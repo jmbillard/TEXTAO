@@ -67,12 +67,20 @@ export function App() {
           ir({ t: 'editor', id: roteiro.id });
           return;
         }
-        ir({ t: 'importar', imp: interpretar(await lerArquivo(dados, arquivo.name)) });
+        const imp = interpretar(await lerArquivo(dados, arquivo.name));
+        // arquivo sem autor (RTF, TXT): o redator é quem está importando, pelo início do e-mail
+        const login = identidade?.email.split('@')[0] || identidade?.nome;
+        if (!imp.meta.redator && login) {
+          imp.meta.redator = login;
+          imp.faltando = imp.faltando.filter((f) => f !== 'quem escreveu');
+          imp.entendido.push(`O arquivo não traz autor → redação: ${login} (seu login)`);
+        }
+        ir({ t: 'importar', imp });
       } catch (e) {
         avisar(e instanceof SyntaxError ? 'Não consegui ler esse .json.' : e instanceof Error ? e.message : 'Não consegui ler esse arquivo.');
       }
     },
-    [avisar, ir],
+    [avisar, ir, identidade],
   );
 
   const criar = useCallback(
