@@ -8,6 +8,10 @@ import Italic from '@tiptap/extension-italic';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import { redoDepth, undoDepth } from '@tiptap/pm/history';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
+import { abrirSala, corDe, presentes as listarPresentes, type Presente } from '../dados/colaboracao';
 import { armazenamento, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, converterLayout, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
@@ -328,54 +332,64 @@ function Checklist({ saida, confirmarTodas }: { saida: Saida; confirmarTodas: ()
 
 /* ---------- compartilhar ---------- */
 
-function Compartilhar({ publico, pessoas, mudar }: { publico: boolean; pessoas: string[]; mudar: (todos: boolean, lista: string[]) => void }) {
+type Convite = { email: string; editar: boolean };
+
+function Compartilhar({ publico, pessoas, mudar }: { publico: boolean; pessoas: Convite[]; mudar: (todos: boolean, lista: Convite[]) => void }) {
   const [usuarios, setUsuarios] = useState<Pessoa[] | null>(null);
   const [busca, setBusca] = useState('');
-  const [modo, setModo] = useState<'eu' | 'algumas' | 'todos'>(publico ? 'todos' : pessoas.length ? 'algumas' : 'eu');
   useEffect(() => {
     armazenamento.usuarios().then(setUsuarios, () => setUsuarios([]));
   }, []);
 
-  const escolher = (m: typeof modo) => {
-    setModo(m);
-    mudar(m === 'todos', m === 'algumas' ? pessoas : []);
-  };
-  const alternar = (email: string) => mudar(false, pessoas.includes(email) ? pessoas.filter((e) => e !== email) : [...pessoas, email]);
+  const papel = (email: string) => pessoas.find((p) => p.email === email);
+  const definir = (email: string, valor: 'nao' | 'ver' | 'editar') =>
+    mudar(publico, [...pessoas.filter((p) => p.email !== email), ...(valor === 'nao' ? [] : [{ email, editar: valor === 'editar' }])]);
   const termo = busca.trim().toLowerCase();
   // quem já foi escolhido aparece mesmo que não esteja mais na lista
-  const lista = [...(usuarios ?? []), ...pessoas.filter((e) => !(usuarios ?? []).some((u) => u.email === e)).map((e) => ({ nome: e.split('@')[0], email: e }))]
+  const lista = [...(usuarios ?? []), ...pessoas.filter((p) => !(usuarios ?? []).some((u) => u.email === p.email)).map((p) => ({ nome: p.email.split('@')[0], email: p.email }))]
     .filter((u) => !termo || `${u.nome} ${u.email}`.toLowerCase().includes(termo));
+  const privado = !publico && !pessoas.length;
 
   return (
-    <div className="painel-compartilhar" role="dialog" aria-label="Quem pode ler este roteiro">
-      <div className="rotulo">Quem pode ler</div>
-      <div className="modos" role="radiogroup" aria-label="Quem pode ler">
-        {([['eu', 'cadeado', 'Só eu', 'Ninguém mais vê'], ['algumas', 'pessoas', 'Algumas pessoas', 'Você escolhe quem'], ['todos', 'olho', 'Todos', 'Qualquer colega que entrar']] as const).map(([id, icone, nome, dica]) => (
-          <button key={id} role="radio" aria-checked={modo === id} className="modo" onClick={() => escolher(id)}>
-            <Selo nome={icone} />
-            <span className="menu-texto"><strong>{nome}</strong><small>{dica}</small></span>
-            <span className="modo-marca">{modo === id && <Icone nome="certo" tam={12} traco={3} />}</span>
-          </button>
-        ))}
+    <div className="painel-compartilhar" role="dialog" aria-label="Quem tem acesso a este roteiro">
+      <div className="rotulo">Quem tem acesso</div>
+      <div className="modos">
+        <button className="modo" role="switch" aria-checked={privado} onClick={() => mudar(false, [])}>
+          <Selo nome="cadeado" />
+          <span className="menu-texto"><strong>Só eu</strong><small>100% privado: ninguém mais vê</small></span>
+          <span className="modo-marca">{privado && <Icone nome="certo" tam={12} traco={3} />}</span>
+        </button>
+        <button className="modo" role="switch" aria-checked={publico} onClick={() => mudar(!publico, pessoas)}>
+          <Selo nome="olho" />
+          <span className="menu-texto"><strong>Todos podem ver</strong><small>Qualquer colega lê; só edita quem você escolher</small></span>
+          <span className="modo-marca">{publico && <Icone nome="certo" tam={12} traco={3} />}</span>
+        </button>
       </div>
-      {modo === 'algumas' && (
-        <div className="quem">
-          {(usuarios?.length ?? 0) > 6 && <input className="popover-obs" placeholder="Buscar pessoa" aria-label="Buscar pessoa" value={busca} onChange={(e) => setBusca(e.target.value)} />}
-          <ul>
-            {lista.map((u) => (
-              <li key={u.email}>
-                <label>
-                  <input type="checkbox" checked={pessoas.includes(u.email)} onChange={() => alternar(u.email)} />
+      <div className="quem">
+        <div className="rotulo">Pessoas</div>
+        {(usuarios?.length ?? 0) > 6 && <input className="popover-obs" placeholder="Buscar pessoa" aria-label="Buscar pessoa" value={busca} onChange={(e) => setBusca(e.target.value)} />}
+        <ul>
+          {lista.map((u) => {
+            const p = papel(u.email);
+            const valor = p ? (p.editar ? 'editar' : 'ver') : 'nao';
+            return (
+              <li key={u.email} className={p ? 'com-acesso' : ''}>
+                <span className="quem-pessoa">
                   <span className="quem-nome">{u.nome}</span>
                   <span className="suave pequeno">{u.email}</span>
-                </label>
+                </span>
+                <select className="quem-papel" data-valor={valor} value={valor} aria-label={`Acesso de ${u.nome}`} onChange={(e) => definir(u.email, e.target.value as 'nao' | 'ver' | 'editar')}>
+                  <option value="nao">{publico ? 'Só vê' : 'Sem acesso'}</option>
+                  {!publico && <option value="ver">Pode ver</option>}
+                  <option value="editar">Pode editar</option>
+                </select>
               </li>
-            ))}
-          </ul>
-          {usuarios && !lista.length && <p className="suave pequeno">{termo ? 'Ninguém com esse nome.' : 'Ainda não há outras pessoas por aqui. Elas aparecem depois do primeiro acesso.'}</p>}
-        </div>
-      )}
-      <p className="suave pequeno">Quem recebe pode ler, exportar e duplicar. Só você edita.</p>
+            );
+          })}
+        </ul>
+        {usuarios && !lista.length && <p className="suave pequeno">{termo ? 'Ninguém com esse nome.' : 'Ainda não há outras pessoas por aqui. Elas aparecem depois do primeiro acesso.'}</p>}
+      </div>
+      <p className="suave pequeno">Quem edita escreve junto com você, ao mesmo tempo. Só você muda o acesso e apaga o roteiro.</p>
     </div>
   );
 }
@@ -385,14 +399,21 @@ function Compartilhar({ publico, pessoas, mudar }: { publico: boolean; pessoas: 
 /** Arrastar para trás desfaz as edições desta sessão; para frente, refaz até o ponto atual. */
 function LinhaDoTempo({ editor, versao }: { editor: Editor; versao: number }) {
   void versao; // recalcula a cada mudança no texto
-  const feitas = undoDepth(editor.state);
-  const total = feitas + redoDepth(editor.state);
+  // com edição simultânea, a pilha é a do documento compartilhado e só guarda as edições desta pessoa
+  const profundidade = (): [number, number] => {
+    const gerente = (yUndoPluginKey.getState(editor.state) as { undoManager?: { undoStack: unknown[]; redoStack: unknown[] } } | undefined)?.undoManager;
+    return gerente ? [gerente.undoStack.length, gerente.redoStack.length] : [undoDepth(editor.state), redoDepth(editor.state)];
+  };
+  const [feitas, refaziveis] = profundidade();
+  const total = feitas + refaziveis;
   if (!total) return null;
   const ir = (alvo: number) => {
-    let atual = undoDepth(editor.state);
+    let atual = profundidade()[0];
     for (let i = 0; i < 500 && atual !== alvo; i++) {
       if (!(alvo < atual ? editor.commands.undo() : editor.commands.redo())) break;
-      atual = undoDepth(editor.state);
+      const novo = profundidade()[0];
+      if (novo === atual) break;
+      atual = novo;
     }
   };
   return (
@@ -445,10 +466,15 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   const [docVersao, setDocVersao] = useState(0);
   const [selVersao, setSelVersao] = useState(0);
   const [salvo, setSalvo] = useState(true);
-  const leitura = inicial.meu === false; // roteiro público de outra pessoa
+  const sou = inicial.meu !== false; // dono (ou modo sem servidor)
+  const leitura = !sou && !inicial.podeEditar; // recebido só para ver
   const comServidor = armazenamento.tipo === 'servidor';
+  // edição simultânea: só existe com servidor
+  const [sala] = useState(() => (comServidor ? abrirSala(inicial.id) : null));
+  const [sincronizado, setSincronizado] = useState(!sala);
+  const [presentes, setPresentes] = useState<Presente[]>([]);
   const [publico, setPublico] = useState(!!inicial.publico);
-  const [pessoas, setPessoas] = useState<string[]>(inicial.compartilhadoCom ?? []);
+  const [pessoas, setPessoas] = useState<Convite[]>(inicial.compartilhadoCom ?? []);
   const [compartilhando, setCompartilhando] = useState(false);
   const publicoRef = useRef(publico);
   publicoRef.current = publico;
@@ -473,11 +499,22 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
   const editor = useEditor({
     extensions: [
-      Document, Paragraph, Text, Bold, Italic, HardBreak, History.configure({ depth: 500 }),
+      Document, Paragraph, Text, Bold, Italic, HardBreak,
       Arte, Etiqueta, Linha, Celula, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
+      ...(sala
+        ? [
+            Collaboration.configure({ document: sala.doc, field: 'doc' }),
+            CollaborationCursor.configure({
+              provider: sala.provedor,
+              user: { name: pessoa?.nome ?? 'Alguém', email: pessoa?.email ?? '', color: corDe(pessoa?.email ?? '') },
+            }),
+          ]
+        : [History.configure({ depth: 500 })]),
     ],
-    content: inicial.doc,
-    editable: inicial.meu !== false,
+    // com edição simultânea, o texto vem do documento compartilhado
+    content: sala ? undefined : inicial.doc,
+    // e só libera a digitação depois de sincronizar, para nunca salvar por cima com uma folha vazia
+    editable: !leitura && !sala,
     editorProps: {
       attributes: { class: 'texto', spellcheck: 'true', lang: 'pt-BR', 'aria-label': 'Texto do roteiro' },
       handleClick: (_view, pos) => {
@@ -485,16 +522,82 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
         return false;
       },
     },
-    onUpdate: () => {
-      mexeu.current = true;
+    onUpdate: ({ transaction }) => {
       setDocVersao((v) => v + 1);
+      // o que chega dos colegas atualiza a tela, mas quem salva é quem digitou
+      if (transaction.getMeta(ySyncPluginKey)?.isChangeOrigin) return;
+      mexeu.current = true;
       setSalvo(false);
     },
     onSelectionUpdate: () => setSelVersao((v) => v + 1),
   });
 
+  // conexão com a sala
+  useEffect(() => {
+    if (!sala) return;
+    const aoSincronizar = (ok: boolean) => ok && setSincronizado(true);
+    const aoMudarPresenca = () => setPresentes(listarPresentes(sala, pessoaRef.current?.email ?? ''));
+    const aoMudarMeta = (e: { transaction: { local: boolean } }) => {
+      if (!e.transaction.local) setMeta((m) => ({ ...m, ...(sala.meta.toJSON() as Partial<Meta>) }));
+    };
+    sala.provedor.on('sync', aoSincronizar);
+    sala.provedor.awareness.on('change', aoMudarPresenca);
+    sala.meta.observe(aoMudarMeta);
+    sala.provedor.connect();
+    const p = pessoaRef.current;
+    sala.provedor.awareness.setLocalStateField('user', { name: p?.nome ?? 'Alguém', email: p?.email ?? '', color: corDe(p?.email ?? '') });
+    return () => {
+      sala.provedor.off('sync', aoSincronizar);
+      sala.provedor.awareness.off('change', aoMudarPresenca);
+      sala.meta.unobserve(aoMudarMeta);
+      sala.provedor.disconnect();
+    };
+  }, [sala]);
+  // depois de sincronizar: preenche o documento na primeira vez e libera a digitação
+  useEffect(() => {
+    if (!sala || !editor || !sincronizado) return;
+    const vazio = () => sala.doc.getXmlFragment('doc').length === 0;
+    const preencher = (r: Roteiro) => {
+      editor.commands.setContent(r.doc, false);
+      sala.doc.transact(() => Object.entries(r.meta).forEach(([k, v]) => sala.meta.set(k, v)));
+      // preencher não é uma edição: a linha do tempo começa depois disso
+      (yUndoPluginKey.getState(editor.state) as { undoManager?: { clear: () => void } } | undefined)?.undoManager?.clear();
+    };
+    const liberar = () => {
+      if (sala.meta.size) setMeta((m) => ({ ...m, ...(sala.meta.toJSON() as Partial<Meta>) }));
+      editor.setEditable(!leitura);
+      setDocVersao((v) => v + 1);
+    };
+    if (!vazio()) return liberar();
+    if (inicial.semear) {
+      preencher(inicial);
+      return liberar();
+    }
+    // Vazio, mas a vez de preencher é de outra sessão. Espera o texto chegar; se quem ia preencher
+    // desistiu, o servidor passa a vez. Enquanto isso a folha fica travada, para nada ser salvo por cima.
+    let ativo = true;
+    const tentar = async () => {
+      if (!ativo) return;
+      if (!vazio()) return liberar();
+      const r = await armazenamento.ler(inicial.id).catch(() => undefined);
+      if (!ativo) return;
+      if (!vazio()) return liberar();
+      if (r?.semear) {
+        preencher(r);
+        return liberar();
+      }
+      setTimeout(tentar, 2000);
+    };
+    const prazo = setTimeout(tentar, leitura ? 2000 : 600);
+    return () => {
+      ativo = false;
+      clearTimeout(prazo);
+    };
+  }, [sala, editor, sincronizado]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const mudarMeta = useCallback((parte: Partial<Meta>) => {
     mexeu.current = true;
+    if (sala) sala.doc.transact(() => Object.entries(parte).forEach(([k, v]) => sala.meta.set(k, v)));
     try {
       if (parte.redator !== undefined) localStorage.setItem('roteirista.redator', parte.redator);
     } catch {
@@ -502,10 +605,10 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     }
     setMeta((m) => ({ ...m, ...parte }));
     setSalvo(false);
-  }, []);
+  }, [sala]);
 
   const roteiroAtual = useCallback(
-    (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString(), publico: publicoRef.current, compartilhadoCom: pessoasRef.current,
+    (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString(), publico: publicoRef.current, ...(sou ? { compartilhadoCom: pessoasRef.current } : {}),
       // só quem alterou assina; abrir para ler não muda a autoria
       ...(mexeu.current && pessoaRef.current ? { alteradoPor: pessoaRef.current, criadoPor: inicial.criadoPor ?? pessoaRef.current } : {}) }),
     [editor, inicial],
@@ -689,7 +792,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     }
   };
 
-  const compartilhar = (todos: boolean, lista: string[]) => {
+  const compartilhar = (todos: boolean, lista: Convite[]) => {
     mexeu.current = true;
     setPublico(todos);
     setPessoas(lista);
@@ -710,8 +813,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
       editor.commands.setContent(c.doc, true);
       mexeu.current = true;
       marco.current = `restaurou a versão ${v.n}`;
-      setMeta(c.meta);
-      setSalvo(false);
+      mudarMeta(c.meta);
       setHistorico(null);
       avisar(`Versão ${v.n} restaurada. Dá para desfazer com ${atalho('Mod-z')}.`);
     } catch {
@@ -770,7 +872,17 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             <span><strong>≈ {est}’’</strong>{alvo ? ` de ${meta.duracaoModo === 'max' ? 'máx. ' : ''}${alvo}’’` : ''}</span>
             <span className="relogio-trilho"><span style={{ width: `${alvo ? Math.min(100, (est / alvo) * 100) : 0}%` }} /></span>
           </div>
-          {comServidor && !leitura && (
+          {presentes.length > 0 && (
+            <div className="presentes" aria-label={`Também neste roteiro: ${presentes.map((x) => x.nome).join(', ')}`}>
+              {presentes.slice(0, 4).map((x) => (
+                <span key={x.email} className="presente" style={{ background: x.cor }} title={`${x.nome} está neste roteiro`}>
+                  {x.nome.split(/\s+/).map((n) => n[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join('').toUpperCase()}
+                </span>
+              ))}
+              {presentes.length > 4 && <span className="presente mais">+{presentes.length - 4}</span>}
+            </div>
+          )}
+          {comServidor && sou && (
             <>
               <button className="botao-icone" title="Histórico de versões" aria-label="Histórico de versões" aria-expanded={!!historico} onClick={abrirHistorico}>
                 <Icone nome="historico" tam={18} />
@@ -778,7 +890,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               <div className="compartilhar">
                 <button className={`visibilidade ${publico || pessoas.length ? 'publico' : ''}`} aria-haspopup="dialog" aria-expanded={compartilhando} onClick={() => setCompartilhando((v) => !v)}>
                   <Icone nome={publico ? 'olho' : pessoas.length ? 'pessoas' : 'cadeado'} tam={14} traco={2} />
-                  {publico ? 'Todos leem' : pessoas.length ? plural(pessoas.length, 'pessoa', 'pessoas') : 'Só eu'}
+                  {publico ? 'Todos veem' : pessoas.length ? plural(pessoas.length, 'pessoa', 'pessoas') : 'Só eu'}
                 </button>
                 {compartilhando && <Compartilhar publico={publico} pessoas={pessoas} mudar={compartilhar} />}
               </div>
@@ -808,6 +920,11 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
       <div className="mesa">
         <div className={`area ${colunas ? 'larga' : ''}`} ref={area}>
           <article className="folha">
+            {!sou && !leitura && (
+              <div className="faixa-leitura">
+                <span>Roteiro de <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Você pode editar junto.</span>
+              </div>
+            )}
             {leitura && (
               <div className="faixa-leitura">
                 <span>Roteiro de <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Você pode ler e exportar.</span>
@@ -824,7 +941,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               </div>
             )}
             <div
-              className={colunas ? 'corpo em-colunas' : 'corpo'}
+              className={`${colunas ? 'corpo em-colunas' : 'corpo'} ${sincronizado ? '' : 'chegando'}`}
               onContextMenu={aoMenuDeContexto}
               onPointerDown={() => {
                 arrastando.current = true;

@@ -218,7 +218,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                       <span className="item-titulo">{r.meta.titulo || 'Sem título'}</span>
                       <span className="item-sub">
                         {[r.meta.programa, dataCurta(r.meta.dataExibicao), r.meta.locutor && `loc. ${r.meta.locutor}`].filter(Boolean).join(' · ') || 'Rascunho'}
-                        {!r.meu && r.dono && <span className="etiqueta-lista">de {r.dono.nome}</span>}
+                        {!r.meu && r.dono && <span className="etiqueta-lista">de {r.dono.nome}{r.podeEditar ? ' · você edita' : ''}</span>}
                         {r.meu && (r.publico || r.compartilhado) && <span className="etiqueta-lista">{r.publico ? 'todos leem' : 'compartilhado'}</span>}
                       </span>
                     </button>

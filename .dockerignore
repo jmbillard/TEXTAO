@@ -3,3 +3,5 @@ dist
 .git
 tests
 *.md
+servidor/node_modules
+dados

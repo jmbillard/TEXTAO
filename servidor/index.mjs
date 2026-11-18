@@ -21,7 +21,10 @@ const backup = () => {
 backup();
 setInterval(backup, 60 * 60 * 1000).unref();
 
-createServer(criarApp({ db, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') })).listen(porta, () =>
+const app = criarApp({ db, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
+const servidor = createServer(app);
+servidor.on('upgrade', app.upgrade);
+servidor.listen(porta, () =>
   console.log(`Roteirista em http://localhost:${porta} · dados em ${dados}`),
 );
 for (const sinal of ['SIGINT', 'SIGTERM']) process.on(sinal, () => (db.close(), process.exit(0)));

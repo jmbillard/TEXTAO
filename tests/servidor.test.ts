@@ -4,6 +4,11 @@ import { mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
+import * as Y from 'yjs';
+import * as sinc from 'y-protocols/sync';
+import * as cod from 'lib0/encoding';
+import * as dec from 'lib0/decoding';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp, fazerBackup } from '../servidor/app.mjs';
 
@@ -21,7 +26,9 @@ const roteiro = (texto: string, publico = false) => ({
 const salvar = (quem: typeof ana, id: string, corpo: object) => quem(`/api/roteiros/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
 
 beforeAll(async () => {
-  servidor = createServer(criarApp({ db, env: {} }));
+  const app = criarApp({ db, env: {} });
+  servidor = createServer(app);
+  servidor.on('upgrade', app.upgrade);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   base = `http://localhost:${(servidor.address() as { port: number }).port}`;
 });
@@ -59,19 +66,89 @@ describe('servidor', () => {
     const carla = como('carla@empresa.com');
     for (const quem of [ana, beto, carla]) await quem('/api/eu');
     expect((await (await ana('/api/usuarios')).json()).map((u: { email: string }) => u.email)).toEqual(['beto@empresa.com', 'carla@empresa.com']);
-    await salvar(ana, 'roteiro-da-ana', { roteiro: { ...roteiro('A').roteiro, compartilhadoCom: ['Beto@empresa.com'] }, nArtes: 1 });
+    await salvar(ana, 'roteiro-da-ana', { roteiro: { ...roteiro('A').roteiro, compartilhadoCom: [{ email: 'Beto@empresa.com', editar: false }] }, nArtes: 1 });
     expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(200);
     expect((await carla('/api/roteiros/roteiro-da-ana')).status).toBe(404);
     expect(await (await carla('/api/roteiros')).json()).toHaveLength(0);
     // quem recebeu lê, mas não altera nem vê com quem mais foi compartilhado
     expect((await salvar(beto, 'roteiro-da-ana', roteiro('invadido'))).status).toBe(403);
     expect((await (await beto('/api/roteiros/roteiro-da-ana')).json()).compartilhadoCom).toBeUndefined();
-    expect((await (await ana('/api/roteiros/roteiro-da-ana')).json()).compartilhadoCom).toEqual(['beto@empresa.com']);
+    expect((await (await ana('/api/roteiros/roteiro-da-ana')).json()).compartilhadoCom).toEqual([{ email: 'beto@empresa.com', editar: false }]);
     // salvar o texto sem mexer no compartilhamento mantém; lista vazia retira
     await salvar(ana, 'roteiro-da-ana', roteiro('A2'));
     expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(200);
     await salvar(ana, 'roteiro-da-ana', { roteiro: { ...roteiro('A2').roteiro, compartilhadoCom: [] }, nArtes: 1 });
     expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(404);
+  });
+
+  it('quem pode editar altera o conteúdo, mas não o compartilhamento', async () => {
+    const carla = como('carla@empresa.com');
+    await salvar(ana, 'a-quatro-maos', { roteiro: { ...roteiro('A').roteiro, compartilhadoCom: [{ email: 'beto@empresa.com', editar: true }, { email: 'carla@empresa.com', editar: false }] }, nArtes: 0 });
+    expect(await (await beto('/api/roteiros/a-quatro-maos')).json()).toMatchObject({ meu: false, podeEditar: true });
+    expect(await (await carla('/api/roteiros/a-quatro-maos')).json()).toMatchObject({ meu: false, podeEditar: false });
+    // Beto edita e tenta abrir para todos: o texto entra, o compartilhamento não muda
+    expect((await salvar(beto, 'a-quatro-maos', { roteiro: { ...roteiro('do Beto', true).roteiro, compartilhadoCom: [] }, nArtes: 0 })).status).toBe(200);
+    const visto = await (await ana('/api/roteiros/a-quatro-maos')).json();
+    expect(visto.doc.content[0].content[0].text).toBe('do Beto');
+    expect(visto.publico).toBe(false);
+    expect(visto.compartilhadoCom).toHaveLength(2);
+    expect((await salvar(carla, 'a-quatro-maos', roteiro('da Carla'))).status).toBe(403);
+    expect((await beto('/api/roteiros/a-quatro-maos', { method: 'DELETE' })).status).toBe(404);
+  });
+
+  it('edição simultânea: quem edita sincroniza, quem só lê recebe e não altera', async () => {
+    const entrar = (email: string) =>
+      new Promise<{ ws: WebSocket; doc: Y.Doc }>((ok, erro) => {
+        const ws = new WebSocket(base.replace('http', 'ws') + '/api/colab/a-quatro-maos', { headers: { 'cf-access-authenticated-user-email': email } });
+        const doc = new Y.Doc();
+        ws.binaryType = 'arraybuffer';
+        ws.on('message', (dados: ArrayBuffer) => {
+          const d = dec.createDecoder(new Uint8Array(dados));
+          if (dec.readVarUint(d) !== 0) return;
+          const e = cod.createEncoder();
+          cod.writeVarUint(e, 0);
+          sinc.readSyncMessage(d, e, doc, ws);
+          if (cod.length(e) > 1) ws.send(cod.toUint8Array(e));
+        });
+        doc.on('update', (u: Uint8Array, origem: unknown) => {
+          if (origem === ws) return;
+          const e = cod.createEncoder();
+          cod.writeVarUint(e, 0);
+          sinc.writeUpdate(e, u);
+          ws.send(cod.toUint8Array(e));
+        });
+        ws.on('open', () => {
+          const e = cod.createEncoder();
+          cod.writeVarUint(e, 0);
+          sinc.writeSyncStep1(e, doc);
+          ws.send(cod.toUint8Array(e));
+          ok({ ws, doc });
+        });
+        ws.on('error', erro);
+      });
+    const pausa = () => new Promise((ok) => setTimeout(ok, 150));
+    const a = await entrar('ana.lima@empresa.com');
+    const b = await entrar('beto@empresa.com');
+    const c = await entrar('carla@empresa.com');
+    a.doc.getText('t').insert(0, 'Ana. ');
+    await pausa();
+    b.doc.getText('t').insert(5, 'Beto. ');
+    await pausa();
+    c.doc.getText('t').insert(0, 'CARLA NÃO PODE. ');
+    await pausa();
+    expect(a.doc.getText('t').toString()).toBe('Ana. Beto. ');
+    expect(b.doc.getText('t').toString()).toBe('Ana. Beto. ');
+    // quem só lê recebeu o texto dos outros; o que digitou ficou só com ela
+    expect(c.doc.getText('t').toString()).toContain('Ana. Beto. ');
+    for (const x of [a, b, c]) x.ws.close();
+    await pausa();
+    // quem não tem acesso nem conecta
+    await expect(entrar('intruso@fora.com')).rejects.toThrow();
+    // o documento ficou guardado: quem entra depois recebe tudo
+    const d = await entrar('ana.lima@empresa.com');
+    await pausa();
+    expect(d.doc.getText('t').toString()).toBe('Ana. Beto. ');
+    d.ws.close();
   });
 
   it('guarda versões nos marcos e não repete conteúdo igual', async () => {

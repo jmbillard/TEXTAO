@@ -1,0 +1,11 @@
+{
+  "name": "roteirista-servidor",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "lib0": "^0.2.99",
+    "ws": "^8.18.0",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.20"
+  }
+}

@@ -6,11 +6,12 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# 2) Servidor: entrega o site e guarda os roteiros em SQLite (sem dependências além do Node)
+# 2) Servidor: entrega o site, guarda os roteiros em SQLite e sincroniza a edição simultânea
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production PORT=80 DADOS=/dados ESTATICOS=/app/dist NODE_NO_WARNINGS=1
 COPY servidor ./servidor
+RUN cd servidor && npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 VOLUME /dados
 EXPOSE 80

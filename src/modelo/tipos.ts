@@ -101,7 +101,11 @@ export interface Roteiro {
   /** Visível (só leitura) para as outras pessoas. Só existe com servidor. */
   publico?: boolean;
   /** E-mails de quem pode ler, além do dono. Só o dono recebe esta lista. */
-  compartilhadoCom?: string[];
+  compartilhadoCom?: { email: string; editar: boolean }[];
+  /** Outra pessoa é a dona, mas autorizou esta a editar. */
+  podeEditar?: boolean;
+  /** O documento compartilhado ainda está vazio e cabe a esta sessão preenchê-lo. */
+  semear?: boolean;
   /** false quando o roteiro é de outra pessoa (aberto por ser público ou compartilhado). */
   meu?: boolean;
   /** Nome do arquivo de origem, quando importado. */

@@ -67,9 +67,11 @@ Variáveis da stack (todas opcionais):
 
 **Dados e backup.** O banco é `/dados/roteirista.db`. Uma vez por dia o servidor grava uma cópia em `/dados/backup/roteirista-AAAA-MM-DD.db`. Mantenha o volume em disco local (SQLite não combina com pasta de rede) e copie a pasta `backup` para outro lugar de tempos em tempos. Para restaurar, pare o container e ponha a cópia no lugar de `roteirista.db`.
 
-**Quem vê o quê.** Cada pessoa vê só os próprios roteiros. No editor, o botão de compartilhar tem três opções: **Só eu**, **Algumas pessoas** (escolhidas na lista de quem já entrou na plataforma) ou **Todos**. Só o dono edita, apaga e sabe com quem compartilhou. Quem lê pode exportar ou **duplicar para editar** a própria cópia.
+**Quem vê o quê.** Cada pessoa vê só os próprios roteiros. No editor, o botão de acesso deixa o dono escolher, pessoa por pessoa (na lista de quem já entrou na plataforma), entre **sem acesso**, **pode ver** e **pode editar**. Há também **Só eu** (100% privado) e **Todos podem ver**. Só o dono muda o acesso, apaga o roteiro e vê o histórico. Quem só vê pode exportar ou **duplicar para editar** a própria cópia.
 
-**Linha do tempo.** O controle deslizante no rodapé do editor percorre as edições da sessão: para trás desfaz, para frente refaz até o ponto atual. Vale para o texto do roteiro (os campos do cabeçalho não entram) e recomeça quando a página é recarregada; para voltar mais longe, use o histórico.
+**Edição simultânea.** Quem pode editar escreve junto, ao mesmo tempo: o texto e o cabeçalho aparecem para todos em tempo real, cada pessoa com seu cursor e sua cor, e o topo mostra quem está no roteiro. Funciona por uma conexão WebSocket em `/api/colab/<id>`, que passa pelo túnel do Cloudflare sem configuração extra. Quem só vê acompanha ao vivo, mas o servidor descarta qualquer alteração que venha dela. Ao mudar o acesso, os convidados são reconectados e conferidos de novo.
+
+**Linha do tempo.** O controle deslizante no rodapé do editor percorre as edições da sessão: para trás desfaz, para frente refaz até o ponto atual. Vale para o texto do roteiro (os campos do cabeçalho não entram) e recomeça quando a página é recarregada; para voltar mais longe, use o histórico. Com mais gente no roteiro, cada pessoa desfaz só as próprias edições.
 
 **Histórico.** O servidor guarda uma versão ao criar, a cada 5 minutos de edição e sempre que o roteiro é exportado ou restaurado. Só o dono vê e restaura versões.
 
@@ -140,8 +142,8 @@ Os IDs de roteiro, artes e etiquetas são estáveis: exportar de novo atualiza, 
 | `src/editor` | Extensões do Tiptap: marcas de arte e etiqueta, colunas, atalhos, reconhecimento visual |
 | `src/ui` | Telas (biblioteca, importação, editor), ícones e exportação para Word |
 | `src/dados` | Persistência e identidade. A interface `Armazenamento` tem duas implementações: servidor e navegador |
-| `servidor` | API e arquivos estáticos em Node, com SQLite (`node:sqlite`, sem dependências) |
-| `tests` | Testes do importador com os 5 roteiros reais e do servidor (privacidade, versões, backup) |
+| `servidor` | API, arquivos estáticos e edição simultânea em Node, com SQLite (`node:sqlite`), `ws` e Yjs |
+| `tests` | Testes do importador com os 5 roteiros reais e do servidor (privacidade, permissões, edição simultânea, versões, backup) |
 
 O leitor de RTF foi adaptado do extrator do app de upload de roteiros.
 

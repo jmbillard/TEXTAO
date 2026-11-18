@@ -3,3 +3,4 @@ dist
 .DS_Store
 *.local
 dados
+servidor/node_modules

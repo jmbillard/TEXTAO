@@ -12,6 +12,7 @@ export interface Resumo {
   atualizadoEm: string;
   dono: Pessoa | null;
   publico: boolean;
+  podeEditar?: boolean;
   /** Compartilhado com pessoas específicas. */
   compartilhado?: boolean;
   meu: boolean;
@@ -94,6 +95,10 @@ const noNavegador: Armazenamento = {
 /* ---------- servidor ---------- */
 
 let cabecalhos: Record<string, string> = {};
+let perfilLocal: Pessoa | null = null;
+
+/** O WebSocket do navegador não envia cabeçalhos; no modo de demonstração o perfil vai na URL. */
+export const parametrosDoPerfil = (): Record<string, string> => (perfilLocal?.email ? { email: perfilLocal.email, nome: perfilLocal.nome } : {});
 
 async function pedir<T>(caminho: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(caminho, { ...init, credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos, ...init.headers } });
@@ -134,6 +139,7 @@ export interface Conexao {
 
 /** Procura o servidor. `perfil` é o perfil local, usado só quando o servidor aceita esse modo (demonstração). */
 export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
+  perfilLocal = perfil;
   cabecalhos = perfil?.email ? { 'x-perfil-email': encodeURIComponent(perfil.email), 'x-perfil-nome': encodeURIComponent(perfil.nome) } : {};
   try {
     const controle = new AbortController();
