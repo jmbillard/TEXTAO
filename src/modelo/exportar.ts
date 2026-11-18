@@ -1,0 +1,264 @@
+import { analisarSonoras, ehCaixaAlta, lerContexto, type ContextoSonora } from './sonora';
+import { nomeSubtipo, SCHEMA_VERSION, type Meta, type NoJSON, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
+
+/* Do documento do editor para o contrato de saída (JSON canônico).
+   Função pura: o mesmo roteiro sempre gera a mesma saída, com os mesmos IDs. */
+
+export interface ArteSaida {
+  id: string;
+  ordem: number;
+  texto: string;
+  subtipo: SubtipoArte;
+  subtipoNome: string;
+  /** Artes com o mesmo grupo são versões que se substituem no mesmo lugar (AMANHÃ/HOJE). */
+  grupoVersoes: string | null;
+  observacao: string;
+  /** false enquanto o subtipo é só a sugestão do importador. */
+  conferida: boolean;
+  contexto: { coluna: string | null; trechoAnterior: string; trechoPosterior: string };
+  status: 'pendente';
+}
+export interface OrientacaoSaida {
+  id: string;
+  ordem: number;
+  texto: string;
+  observacao: string;
+  coluna: string | null;
+}
+export interface SonoraSaida {
+  ordem: number;
+  origem: string;
+  origemOriginal: string;
+  bloco: number | null;
+  timecodeEntrada: string;
+  timecodeOriginal: string;
+  personagem: string;
+  descricaoImagem: string;
+  fala: string;
+}
+export interface Saida {
+  schemaVersion: string;
+  exportadoEm: string;
+  roteiro: Meta & {
+    id: string;
+    versoes: string[];
+    duracaoEstimadaSeg: number;
+    revisao: number;
+    atualizadoEm: string;
+  };
+  artes: ArteSaida[];
+  orientacoes: Record<'edicao' | 'locutor' | 'sonoplastia' | 'producao', OrientacaoSaida[]>;
+  comentarios: OrientacaoSaida[];
+  trechosCortaveis: (OrientacaoSaida & { duracaoEstimadaSeg: number })[];
+  sonoras: SonoraSaida[];
+  texto: { completo: string; locucao: string; markdown: string };
+  blocos: NoJSON;
+}
+
+/** Ritmo médio de leitura, em palavras por segundo. */
+export const RITMO = { locucao: 2.6, sonora: 3 };
+const NAO_LIDO: TipoEtiqueta[] = ['edicao', 'locutor', 'sonoplastia', 'producao', 'comentario'];
+
+interface Pedaco {
+  t: string;
+  arte?: Record<string, unknown>;
+  etq?: Record<string, unknown>;
+}
+interface Bloco {
+  coluna: 'e' | 'd' | null;
+  pedacos: Pedaco[];
+}
+
+function achatar(doc: NoJSON): Bloco[] {
+  const out: Bloco[] = [];
+  const paragrafo = (p: NoJSON, coluna: Bloco['coluna']) => {
+    const pedacos: Pedaco[] = [];
+    for (const n of p.content ?? []) {
+      if (n.type === 'hardBreak') pedacos.push({ t: '\n' });
+      else if (n.type === 'text' && n.text)
+        pedacos.push({
+          t: n.text,
+          arte: n.marks?.find((m) => m.type === 'arte')?.attrs,
+          etq: n.marks?.find((m) => m.type === 'etiqueta')?.attrs,
+        });
+    }
+    out.push({ coluna, pedacos });
+  };
+  for (const n of doc.content ?? []) {
+    if (n.type === 'paragraph') paragrafo(n, null);
+    else if (n.type === 'linha')
+      (n.content ?? []).forEach((cel, i) => (cel.content ?? []).forEach((p) => paragrafo(p, i === 0 ? 'e' : 'd')));
+  }
+  return out;
+}
+
+const palavras = (s: string) => (s.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu) ?? []).length;
+const limpo = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
+  const blocos = achatar(roteiro.doc);
+  const colunas = roteiro.meta.layout === 'ilustracao_audio' ? { e: 'ilustracao', d: 'audio' } : { e: 'instrucoes', d: 'texto' };
+  const nomeColuna = (c: Bloco['coluna']) => (c ? colunas[c] : null);
+
+  const artes: ArteSaida[] = [];
+  const orientacoes: Saida['orientacoes'] = { edicao: [], locutor: [], sonoplastia: [], producao: [] };
+  const comentarios: OrientacaoSaida[] = [];
+  const cortaveis: Saida['trechosCortaveis'] = [];
+  const sonoras: SonoraSaida[] = [];
+  const idsVistos = new Set<string>();
+  const idUnico = (id: string) => {
+    let u = id;
+    for (let n = 2; idsVistos.has(u); n++) u = `${id}-${n}`;
+    idsVistos.add(u);
+    return u;
+  };
+
+  const linhasCompleto: string[] = [];
+  const linhasLocucao: string[] = [];
+  const linhasMd: string[] = [];
+  let segLocucao = 0;
+  let segSonoras = 0;
+  let ctx: ContextoSonora | null = null;
+
+  for (const bloco of blocos) {
+    const total = bloco.pedacos.map((p) => p.t).join('');
+    if (!total.trim()) continue;
+    linhasCompleto.push(limpo(total));
+
+    // faixas contínuas da mesma marca
+    let pos = 0;
+    let md = '';
+    for (let i = 0; i < bloco.pedacos.length; ) {
+      const p = bloco.pedacos[i];
+      const ini = pos;
+      if (p.arte) {
+        let j = i;
+        let texto = '';
+        while (j < bloco.pedacos.length && bloco.pedacos[j].arte?.id === p.arte.id) texto += bloco.pedacos[j++].t;
+        const subtipo = (p.arte.subtipo as SubtipoArte) ?? 'outro';
+        artes.push({
+          id: idUnico(String(p.arte.id)),
+          ordem: artes.length + 1,
+          texto: limpo(texto),
+          subtipo,
+          subtipoNome: nomeSubtipo(subtipo),
+          grupoVersoes: (p.arte.grupo as string | null) ?? null,
+          observacao: String(p.arte.obs ?? ''),
+          conferida: !p.arte.sugerido,
+          contexto: {
+            coluna: nomeColuna(bloco.coluna),
+            trechoAnterior: limpo(total.slice(0, ini)).slice(-80),
+            trechoPosterior: limpo(total.slice(ini + texto.length)).slice(0, 80),
+          },
+          status: 'pendente',
+        });
+        md += `__${limpo(texto)}__` + (/\s$/.test(texto) ? ' ' : '');
+        pos += texto.length;
+        i = j;
+        continue;
+      }
+      md += p.etq ? '' : p.t;
+      pos += p.t.length;
+      i++;
+    }
+    // etiquetas (podem conter artes dentro)
+    for (let i = 0; i < bloco.pedacos.length; ) {
+      const p = bloco.pedacos[i];
+      if (!p.etq) {
+        i++;
+        continue;
+      }
+      let j = i;
+      let texto = '';
+      while (j < bloco.pedacos.length && bloco.pedacos[j].etq?.id === p.etq.id) texto += bloco.pedacos[j++].t;
+      const tipo = p.etq.tipo as TipoEtiqueta;
+      const item: OrientacaoSaida = {
+        id: idUnico(String(p.etq.id)),
+        ordem: 0,
+        texto: limpo(texto),
+        observacao: String(p.etq.obs ?? ''),
+        coluna: nomeColuna(bloco.coluna),
+      };
+      if (tipo === 'comentario') comentarios.push({ ...item, ordem: comentarios.length + 1 });
+      else if (tipo === 'cortavel')
+        cortaveis.push({ ...item, ordem: cortaveis.length + 1, duracaoEstimadaSeg: Math.max(1, Math.round(palavras(texto) / RITMO.sonora)) });
+      else orientacoes[tipo].push({ ...item, ordem: orientacoes[tipo].length + 1 });
+      md += ` _[${tipo}: ${limpo(texto)}]_`;
+      i = j;
+    }
+    linhasMd.push(limpo(md));
+
+    // o que é efetivamente lido ou ouvido
+    const lido = bloco.pedacos
+      .filter((p) => !p.etq || !NAO_LIDO.includes(p.etq.tipo as TipoEtiqueta))
+      .map((p) => p.t)
+      .join('');
+    const novoCtx = lerContexto(total);
+    if (novoCtx) {
+      ctx = novoCtx;
+      continue;
+    }
+    if (bloco.coluna === 'e') continue;
+    const achadas = analisarSonoras(lido, ctx);
+    if (achadas.length) {
+      for (const s of achadas) {
+        sonoras.push({
+          ordem: sonoras.length + 1,
+          origem: s.origem,
+          origemOriginal: s.origemOriginal,
+          bloco: s.bloco,
+          timecodeEntrada: s.timecodeEntrada,
+          timecodeOriginal: s.timecodeOriginal,
+          personagem: s.personagem,
+          descricaoImagem: s.descricaoImagem,
+          fala: limpo(s.fala),
+        });
+        segSonoras += palavras(s.fala) / RITMO.sonora;
+      }
+    } else if (ehCaixaAlta(lido)) {
+      linhasLocucao.push(limpo(lido));
+      segLocucao += palavras(lido) / RITMO.locucao;
+    }
+  }
+
+  const versoes = [
+    ...new Set(artes.filter((a) => a.subtipo === 'versao' && /^\p{L}/u.test(a.texto)).map((a) => a.texto.toUpperCase())),
+  ];
+
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    exportadoEm: agora.toISOString(),
+    roteiro: {
+      id: roteiro.id,
+      ...roteiro.meta,
+      versoes,
+      duracaoEstimadaSeg: Math.round(segLocucao + segSonoras),
+      revisao: roteiro.revisao,
+      atualizadoEm: roteiro.atualizadoEm,
+    },
+    artes,
+    orientacoes,
+    comentarios,
+    trechosCortaveis: cortaveis,
+    sonoras,
+    texto: { completo: linhasCompleto.join('\n'), locucao: linhasLocucao.join('\n'), markdown: linhasMd.join('\n\n') },
+    blocos: roteiro.doc,
+  };
+}
+
+/** Lista de artes em texto simples, para colar em e-mail, card ou planilha. */
+export function listaDeArtes(saida: Saida): string {
+  const r = saida.roteiro;
+  const cab = [r.programa, r.titulo, r.dataExibicao.split('-').reverse().join('/')].filter(Boolean).join(' · ');
+  const linhas = saida.artes.map((a) => `${a.ordem}\t${a.subtipoNome}\t${a.texto}${a.observacao ? `\t${a.observacao}` : ''}`);
+  return [cab, '', 'Nº\tTipo\tTexto', ...linhas].join('\n');
+}
+
+/** Reabre um roteiro a partir de um JSON exportado. */
+export function roteiroDoJson(json: unknown): Roteiro {
+  const s = json as Partial<Saida>;
+  if (!s || typeof s !== 'object' || !s.roteiro || !s.blocos || s.blocos.type !== 'doc')
+    throw new Error('Este .json não é um roteiro exportado daqui.');
+  const { id, versoes: _v, duracaoEstimadaSeg: _d, revisao, atualizadoEm, ...meta } = s.roteiro;
+  return { id, meta: meta as Meta, doc: s.blocos, revisao: revisao ?? 1, criadoEm: atualizadoEm, atualizadoEm };
+}
