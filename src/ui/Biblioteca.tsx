@@ -57,18 +57,15 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar }: Props) {
       <main className="biblioteca">
         <header className="bib-topo">
           <span className="marca" aria-hidden="true">r</span>
-          <div>
-            <h1 className="titulo-serifa">Roteiros</h1>
-            <p className="suave">Tudo fica salvo neste navegador, mesmo sem internet.</p>
-          </div>
+          <h1 className="titulo-serifa">Roteiros</h1>
         </header>
 
         <section className="entrada">
           <button className="entrada-soltar" onClick={() => entrada.current?.click()}>
             <span className="entrada-icone"><Icone nome="importar" tam={20} /></span>
             <span className="entrada-texto">
-              <strong>Trazer um roteiro do Word</strong>
-              <span>Arraste o arquivo para cá ou clique para escolher. O que está sublinhado vira arte.</span>
+              <strong>Trazer do Word</strong>
+              <span>Arraste o arquivo ou clique para escolher</span>
             </span>
           </button>
           <button className="entrada-novo" onClick={criar}>
@@ -90,7 +87,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar }: Props) {
 
         {EXEMPLOS.length > 0 && (
           <section className="exemplos">
-            <span className="rotulo">Ou abra um exemplo</span>
+            <span className="rotulo">Exemplos</span>
             {EXEMPLOS.map(([nome, arquivo]) => (
               <button
                 key={arquivo}
@@ -149,7 +146,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar }: Props) {
             {!visiveis.length && <p className="suave vazio">Nada encontrado para “{busca}”.</p>}
           </section>
         )}
-        {roteiros && roteiros.length === 0 && <p className="suave vazio">Nenhum roteiro por aqui ainda. O primeiro pode vir do Word ou começar em branco.</p>}
+        {roteiros && roteiros.length === 0 && <p className="suave vazio">Nenhum roteiro ainda.</p>}
       </main>
     </div>
   );

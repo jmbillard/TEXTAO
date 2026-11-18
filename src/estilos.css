@@ -172,12 +172,11 @@ kbd {
    Biblioteca
    ========================================================= */
 .biblioteca { max-width: 860px; margin: 0 auto; padding: 72px 24px 96px; display: flex; flex-direction: column; gap: 32px; }
-.bib-topo { display: flex; gap: 18px; align-items: flex-start; }
+.bib-topo { display: flex; gap: 16px; align-items: center; }
 .marca {
-  width: 40px; height: 40px; border-radius: 11px; background: var(--tinta); color: var(--papel); flex-shrink: 0; margin-top: 4px;
+  width: 40px; height: 40px; border-radius: 11px; background: var(--tinta); color: var(--papel); flex-shrink: 0;
   font: 500 italic 24px/1 var(--serifa); display: flex; align-items: center; justify-content: center; padding-bottom: 3px;
 }
-.bib-topo p { margin-top: 6px; }
 
 .entrada { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
 .entrada-soltar {
@@ -186,10 +185,10 @@ kbd {
 }
 .entrada-soltar:hover { border-color: var(--ultra); transform: translateY(-1px); }
 .entrada-icone { width: 44px; height: 44px; border-radius: 12px; background: var(--ultra-suave); color: var(--ultra); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.entrada-texto { display: flex; flex-direction: column; gap: 2px; color: var(--tinta2); }
+.entrada-texto { display: flex; flex-direction: column; gap: 2px; color: var(--tinta2); min-width: 0; }
 .entrada-texto strong { font-size: 16px; font-weight: 600; color: var(--tinta); }
 .entrada-novo {
-  padding: 0 22px; border-radius: 16px; border: 1px solid var(--regua); background: var(--cartao); font-weight: 600;
+  padding: 0 22px; min-height: 56px; border-radius: 16px; border: 1px solid var(--regua); background: var(--cartao); font-weight: 600; justify-content: center;
   display: flex; align-items: center; gap: 10px; transition: border-color 0.2s, transform 0.2s var(--suave);
 }
 .entrada-novo:hover { border-color: var(--tinta3); transform: translateY(-1px); }
@@ -549,3 +548,23 @@ kbd {
 
 .exemplos { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: -12px; }
 .exemplos .rotulo { margin-right: 6px; }
+
+/* Biblioteca e importação em telas pequenas */
+@media (max-width: 640px) {
+  .biblioteca { padding: 40px 16px 72px; gap: 24px; }
+  .entrada { grid-template-columns: minmax(0, 1fr); }
+  .entrada-soltar { padding: 16px; }
+  .item { grid-template-columns: minmax(0, 1fr) auto; }
+  .item-artes, .item-quando { display: none; }
+  .item-acoes { opacity: 1; }
+  .lista-topo { flex-direction: column; align-items: stretch; }
+  .busca { width: 100%; }
+  .importar { padding: 40px 16px 110px; }
+  .titulo-serifa.grande { font-size: 32px; }
+  .imp-rodape { padding: 12px 16px; }
+  .cab-titulo { font-size: 32px; }
+  .mesa { padding: 8px 16px 96px; }
+  .cab, .corpo, .corpo.em-colunas, .folha-fim, .colunas-topo { padding-left: 20px; padding-right: 20px; }
+  .topo { padding: 0 8px; gap: 8px; }
+  .salvo { display: none; }
+}
