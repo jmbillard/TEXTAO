@@ -9,6 +9,14 @@ import { TelaImportar } from './ui/TelaImportar';
 
 type Tela = { t: 'biblioteca' } | { t: 'importar'; imp: Importacao } | { t: 'editor'; id: string };
 
+const lerLocal = (chave: string) => {
+  try {
+    return localStorage.getItem(chave) ?? '';
+  } catch {
+    return '';
+  }
+};
+
 const telaDoHash = (): Tela => {
   const m = /^#\/r\/(.+)$/.exec(location.hash);
   return m ? { t: 'editor', id: decodeURIComponent(m[1]) } : { t: 'biblioteca' };
@@ -29,7 +37,11 @@ export function App() {
 
   const ir = useCallback((nova: Tela) => {
     const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : '#/';
-    if (location.hash !== hash) history.pushState(null, '', hash);
+    try {
+      if (location.hash !== hash) history.pushState(null, '', hash);
+    } catch {
+      /* páginas embutidas podem não permitir mudar o endereço */
+    }
     setTela(nova);
     window.scrollTo(0, 0);
   }, []);
@@ -60,7 +72,7 @@ export function App() {
   const criar = useCallback(
     async (base?: Partial<Roteiro>) => {
       const agora = new Date().toISOString();
-      const meta = base?.meta ?? { ...metaVazia(), redator: localStorage.getItem('roteirista.redator') ?? '' };
+      const meta = base?.meta ?? { ...metaVazia(), redator: lerLocal('roteirista.redator') };
       const roteiro: Roteiro = { id: novoId(), meta, doc: base?.doc ?? docVazio(meta.layout), revisao: 1, criadoEm: agora, atualizadoEm: agora, origem: base?.origem };
       await armazenamento.salvar(roteiro);
       ir({ t: 'editor', id: roteiro.id });

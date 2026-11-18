@@ -388,7 +388,11 @@ function Folha({ inicial, voltar, avisar }: { inicial: Roteiro; voltar: () => vo
   });
 
   const mudarMeta = useCallback((parte: Partial<Meta>) => {
-    if (parte.redator !== undefined) localStorage.setItem('roteirista.redator', parte.redator);
+    try {
+      if (parte.redator !== undefined) localStorage.setItem('roteirista.redator', parte.redator);
+    } catch {
+      /* sem armazenamento local, segue sem lembrar o nome */
+    }
     setMeta((m) => ({ ...m, ...parte }));
     setSalvo(false);
   }, []);

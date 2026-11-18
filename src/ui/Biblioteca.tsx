@@ -5,6 +5,17 @@ import { novoId, type Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
 import { dataCurta, haQuantoTempo, plural } from './util';
 
+/** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
+const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
+  ? [
+      ['Quem Ama Cuida (colunas)', 'Quem_AmaPrologo26_10_Rede.docx'],
+      ['Eliana (.rtf)', 'Eliana_20_9.rtf'],
+      ['Encontro', 'Encontro_27_10.docx'],
+      ['Nobreza do Amor', 'Nobreza_27_10.docx'],
+      ['Futebol', 'FutBrasileirao28_10_Sp.docx'],
+    ]
+  : [];
+
 interface Props {
   abrir: (id: string) => void;
   abrirArquivo: (arquivo: File) => void;
@@ -76,6 +87,30 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar }: Props) {
             }}
           />
         </section>
+
+        {EXEMPLOS.length > 0 && (
+          <section className="exemplos">
+            <span className="rotulo">Ou abra um exemplo</span>
+            {EXEMPLOS.map(([nome, arquivo]) => (
+              <button
+                key={arquivo}
+                className="opcao"
+                onClick={async () => {
+                  try {
+                    const r = await fetch('./exemplos.json');
+                    if (!r.ok) throw new Error();
+                    const b64 = ((await r.json()) as Record<string, string>)[arquivo];
+                    abrirArquivo(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], arquivo));
+                  } catch {
+                    avisar('Não consegui abrir o exemplo.');
+                  }
+                }}
+              >
+                {nome}
+              </button>
+            ))}
+          </section>
+        )}
 
         {roteiros && roteiros.length > 0 && (
           <section className="lista">

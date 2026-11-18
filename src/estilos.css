@@ -2,6 +2,7 @@
    Tokens
    ========================================================= */
 :root {
+  color-scheme: light;
   --mesa: #f1efe9;
   --papel: #fffefb;
   --cartao: #ffffff;
@@ -30,7 +31,8 @@
   --suave: cubic-bezier(0.22, 1, 0.36, 1);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
     --mesa: #141412;
     --papel: #1d1c19;
     --cartao: #232220;
@@ -54,6 +56,31 @@
     --sombra-menu: 0 0 0 1px rgb(255 255 255 / 9%), 0 18px 40px rgb(0 0 0 / 50%);
     --sombra-folha: 0 12px 32px rgb(0 0 0 / 30%);
   }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --mesa: #141412;
+  --papel: #1d1c19;
+  --cartao: #232220;
+  --tinta: #ece9e1;
+  --tinta2: #b3aea3;
+  --tinta3: #948f84;
+  --regua: #32302b;
+  --regua-forte: #45423b;
+  --neutro: #2c2a26;
+  --ultra: #a5a1ff;
+  --ultra-suave: #2a2860;
+  --edicao: #86c9a0;
+  --locutor: #e3a871;
+  --sonoplastia: #dc9cc0;
+  --producao: #d9bd6e;
+  --falta: #e3a871;
+  --falta-fundo: #3a2a1a;
+  --ok: #86c9a0;
+  --ok-fundo: #1f3528;
+  --perigo: #ef9a8c;
+  --sombra-menu: 0 0 0 1px rgb(255 255 255 / 9%), 0 18px 40px rgb(0 0 0 / 50%);
+  --sombra-folha: 0 12px 32px rgb(0 0 0 / 30%);
 }
 
 /* =========================================================
@@ -519,3 +546,6 @@ kbd {
   .so-impressao th, .so-impressao td { border: 1px solid #bbb; padding: 5pt 7pt; text-align: left; vertical-align: top; }
   .so-impressao th { font-size: 9pt; letter-spacing: 0.1em; text-transform: uppercase; }
 }
+
+.exemplos { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: -12px; }
+.exemplos .rotulo { margin-right: 6px; }
