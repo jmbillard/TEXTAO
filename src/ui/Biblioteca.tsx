@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { armazenamento } from '../dados/armazenamento';
-import { exportar } from '../modelo/exportar';
+import { armazenamento, type Resumo } from '../dados/armazenamento';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import { novoId, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
@@ -102,7 +101,8 @@ function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'defin
 }
 
 export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil }: Props) {
-  const [roteiros, setRoteiros] = useState<Roteiro[] | null>(null);
+  const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
+  const [filtro, setFiltro] = useState<'todos' | 'meus' | 'publicos'>('todos');
   const [busca, setBusca] = useState('');
   const [apagando, setApagando] = useState<string | null>(null);
   const entrada = useRef<HTMLInputElement>(null);
@@ -112,15 +112,18 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
     void carregar();
   }, []);
 
-  const duplicar = async (r: Roteiro) => {
+  const duplicar = async (resumo: Resumo) => {
+    const r = await armazenamento.ler(resumo.id);
+    if (!r) return avisar('Não consegui abrir esse roteiro.');
     const agora = new Date().toISOString();
-    const copia: Roteiro = { ...structuredClone(r), id: novoId(), revisao: 1, criadoEm: agora, atualizadoEm: agora };
+    const eu: Pessoa | undefined = identidade ? { nome: identidade.nome, email: identidade.email } : undefined;
+    const copia: Roteiro = { ...structuredClone(r), id: novoId(), revisao: 1, criadoEm: agora, atualizadoEm: agora, criadoPor: eu, alteradoPor: eu, publico: false, meu: true };
     copia.meta.titulo = r.meta.titulo ? `${r.meta.titulo} (cópia)` : '';
     copia.meta.status = 'rascunho';
     await armazenamento.salvar(copia);
     abrir(copia.id);
   };
-  const apagar = async (r: Roteiro) => {
+  const apagar = async (r: Resumo) => {
     await armazenamento.apagar(r.id);
     setApagando(null);
     avisar('Roteiro apagado.');
@@ -128,7 +131,10 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   };
 
   const termo = busca.trim().toLowerCase();
-  const visiveis = (roteiros ?? []).filter((r) => !termo || [r.meta.titulo, r.meta.programa, r.meta.redator, r.meta.locutor].join(' ').toLowerCase().includes(termo));
+  const temPublicos = (roteiros ?? []).some((r) => !r.meu);
+  const visiveis = (roteiros ?? [])
+    .filter((r) => filtro === 'todos' || (filtro === 'meus' ? r.meu : !r.meu))
+    .filter((r) => !termo || [r.meta.titulo, r.meta.programa, r.meta.redator, r.meta.locutor, r.dono?.nome].join(' ').toLowerCase().includes(termo));
 
   return (
     <div className="pagina">
@@ -192,18 +198,28 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         {roteiros && roteiros.length > 0 && (
           <section className="lista">
             <div className="lista-topo">
-              <h2 className="rotulo">{plural(visiveis.length, 'roteiro', 'roteiros')}</h2>
+              {temPublicos ? (
+                <div className="segmento" role="radiogroup" aria-label="Quais roteiros mostrar">
+                  {([['todos', 'Todos'], ['meus', 'Meus'], ['publicos', 'De colegas']] as const).map(([id, nome]) => (
+                    <button key={id} role="radio" aria-checked={filtro === id} onClick={() => setFiltro(id)}>{nome}</button>
+                  ))}
+                </div>
+              ) : (
+                <h2 className="rotulo">{plural(visiveis.length, 'roteiro', 'roteiros')}</h2>
+              )}
               <input className="busca" type="search" placeholder="Buscar por programa, título ou locutor" aria-label="Buscar roteiros" value={busca} onChange={(e) => setBusca(e.target.value)} />
             </div>
             <ul>
               {visiveis.map((r) => {
-                const nArtes = exportar(r).artes.length;
+                const nArtes = r.nArtes;
                 return (
                   <li key={r.id} className="item">
                     <button className="item-abrir" onClick={() => abrir(r.id)}>
                       <span className="item-titulo">{r.meta.titulo || 'Sem título'}</span>
                       <span className="item-sub">
                         {[r.meta.programa, dataCurta(r.meta.dataExibicao), r.meta.locutor && `loc. ${r.meta.locutor}`].filter(Boolean).join(' · ') || 'Rascunho'}
+                        {!r.meu && r.dono && <span className="etiqueta-lista">de {r.dono.nome}</span>}
+                        {r.meu && r.publico && <span className="etiqueta-lista">público</span>}
                       </span>
                     </button>
                     <span className="item-artes">{plural(nArtes, 'arte', 'artes')}</span>
@@ -216,7 +232,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                     ) : (
                       <span className="item-acoes">
                         <button className="botao-icone" title="Duplicar" aria-label={`Duplicar ${r.meta.titulo}`} onClick={() => duplicar(r)}><Icone nome="duplicar" /></button>
-                        <button className="botao-icone" title="Apagar" aria-label={`Apagar ${r.meta.titulo}`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>
+                        {r.meu && <button className="botao-icone" title="Apagar" aria-label={`Apagar ${r.meta.titulo}`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>}
                       </span>
                     )}
                   </li>

@@ -6,9 +6,13 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# 2) Serve com nginx
-FROM nginx:1.27-alpine
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+# 2) Servidor: entrega o site e guarda os roteiros em SQLite (sem dependências além do Node)
+FROM node:22-alpine
+WORKDIR /app
+ENV NODE_ENV=production PORT=80 DADOS=/dados ESTATICOS=/app/dist NODE_NO_WARNINGS=1
+COPY servidor ./servidor
+COPY --from=build /app/dist ./dist
+VOLUME /dados
 EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/api/eu >/dev/null || exit 1
+CMD ["node", "servidor/index.mjs"]

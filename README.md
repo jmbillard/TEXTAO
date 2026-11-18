@@ -2,7 +2,10 @@
 
 Editor de roteiros de chamadas do Promo. Substitui o Word na escrita, padroniza as marcações e entrega, no fim, um roteiro limpo com metadados e a lista de artes.
 
-Tudo roda no navegador: importar, editar e exportar não dependem de servidor, e os roteiros ficam salvos no próprio navegador (IndexedDB).
+Importar, editar e exportar acontecem no navegador. Os roteiros ficam guardados de duas formas, conforme onde o app roda:
+
+- **Com o servidor (container):** num banco SQLite, ligados ao e-mail de quem escreveu, com histórico de versões.
+- **Como site estático (Cloudflare Pages, por exemplo):** no próprio navegador (IndexedDB), sem conta nem histórico.
 
 ## Rodar
 
@@ -24,6 +27,12 @@ npm run build
 
 `npm run build` gera o site estático em `dist/`. Para conferir o build localmente: `npm run preview`.
 
+Para desenvolver com o servidor, rode em outro terminal (porta 8787, com perfil local liberado; o `npm run dev` já encaminha `/api` para ele):
+
+```bash
+npm run servidor
+```
+
 ### Cloudflare Pages
 
 Conecte o repositório em **Workers & Pages → Create → Pages** com:
@@ -31,11 +40,11 @@ Conecte o repositório em **Workers & Pages → Create → Pages** com:
 - Build command: `npm run build`
 - Build output directory: `dist`
 
-Não há funções nem variáveis de ambiente nesta etapa.
+Nesse modo não há servidor: cada pessoa guarda os roteiros no próprio navegador.
 
 ### Docker / Portainer
 
-O repositório traz `Dockerfile` (build + nginx) e `docker-compose.yml`.
+O repositório traz `Dockerfile` e `docker-compose.yml`. O container entrega o site e guarda os roteiros em SQLite, no volume `roteirista-dados`.
 
 No Portainer: **Stacks → Add stack → Repository**, com a URL deste repositório, a branch e o caminho `docker-compose.yml`. Para mudar a porta (padrão 8080), adicione a variável de ambiente `PORTA` na stack. Depois do deploy, o app fica em `http://IP-DO-SERVIDOR:8080`.
 
@@ -45,7 +54,24 @@ Na linha de comando:
 docker compose up -d --build
 ```
 
-Os roteiros continuam salvos no navegador de quem usa, separados por endereço: quem abrir por `http://192.168.0.10:8080` e depois por um domínio verá bibliotecas diferentes. O container não guarda dados e pode ser recriado à vontade.
+Variáveis da stack (todas opcionais):
+
+| Variável | Para quê |
+|---|---|
+| `PORTA` | Porta publicada no servidor (padrão 8080) |
+| `ACCESS_TEAM_DOMAIN` | Ex.: `minhaequipe.cloudflareaccess.com`. Com `ACCESS_AUD`, o servidor confere a assinatura do Cloudflare Access em cada pedido |
+| `ACCESS_AUD` | *Application Audience (AUD) Tag* da aplicação do Access |
+| `PERFIL_LOCAL` | `1` libera o uso sem login: cada pessoa informa nome e e-mail no app. Só para demonstração, porque qualquer um pode informar qualquer e-mail |
+| `BACKUPS` | Quantos backups diários manter (padrão 14) |
+| `COMPOSE_PROFILES`, `TUNNEL_TOKEN` | `tunel` + o token, para subir um cloudflared junto |
+
+**Dados e backup.** O banco é `/dados/roteirista.db`. Uma vez por dia o servidor grava uma cópia em `/dados/backup/roteirista-AAAA-MM-DD.db`. Mantenha o volume em disco local (SQLite não combina com pasta de rede) e copie a pasta `backup` para outro lugar de tempos em tempos. Para restaurar, pare o container e ponha a cópia no lugar de `roteirista.db`.
+
+**Quem vê o quê.** Cada pessoa vê só os próprios roteiros. No editor, o botão **Privado/Público** libera a leitura para os colegas; só o dono edita e apaga. Quem lê pode exportar ou **duplicar para editar** a própria cópia.
+
+**Histórico.** O servidor guarda uma versão ao criar, a cada 5 minutos de edição e sempre que o roteiro é exportado ou restaurado. Só o dono vê e restaura versões.
+
+Sem `ACCESS_TEAM_DOMAIN`/`ACCESS_AUD`, o servidor confia no e-mail que o Cloudflare Access envia no cabeçalho. Isso só é seguro se ninguém alcança o container sem passar pelo túnel; nesse caso, não publique a porta fora da sua rede.
 
 ### Login pelo Cloudflare Access (túnel)
 
@@ -55,7 +81,9 @@ O app não tem tela de login: quem controla a entrada é o Cloudflare Access, na
 2. **Access.** Em **Access → Applications → Add → Self-hosted**, use o mesmo hostname, sem caminho, e crie uma política *Allow* com os e-mails (ou o domínio) liberados.
 3. **Microsoft 365, quando a TI liberar.** Em **Settings → Authentication → Login methods**, adicione *Microsoft Entra ID* com os dados do aplicativo registrado pela TI e selecione esse método na aplicação do Access. Nada muda no app.
 
-Toda a identidade passa por `src/dados/identidade.ts`. Cada roteiro guarda `criadoPor` e `alteradoPor` (nome e e-mail), que também saem no `.json`.
+Copie o **AUD Tag** da aplicação e o domínio da equipe para `ACCESS_AUD` e `ACCESS_TEAM_DOMAIN` na stack.
+
+No app, toda a identidade passa por `src/dados/identidade.ts`; no servidor, por `identificar` em `servidor/app.mjs`. Cada roteiro guarda `criadoPor` e `alteradoPor` (nome e e-mail), que também saem no `.json`.
 
 ## Como funciona
 
@@ -109,8 +137,9 @@ Os IDs de roteiro, artes e etiquetas são estáveis: exportar de novo atualiza, 
 | `src/modelo` | Tipos, vocabulários, reconhecimento de sonoras, exportação para o JSON e o JSON Schema |
 | `src/editor` | Extensões do Tiptap: marcas de arte e etiqueta, colunas, atalhos, reconhecimento visual |
 | `src/ui` | Telas (biblioteca, importação, editor), ícones e exportação para Word |
-| `src/dados` | Persistência. A interface `Armazenamento` isola o IndexedDB para que D1/KV/R2 entrem depois |
-| `tests` | Testes do importador com os 5 roteiros reais |
+| `src/dados` | Persistência e identidade. A interface `Armazenamento` tem duas implementações: servidor e navegador |
+| `servidor` | API e arquivos estáticos em Node, com SQLite (`node:sqlite`, sem dependências) |
+| `tests` | Testes do importador com os 5 roteiros reais e do servidor (privacidade, versões, backup) |
 
 O leitor de RTF foi adaptado do extrator do app de upload de roteiros.
 

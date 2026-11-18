@@ -6,6 +6,18 @@ services:
     restart: unless-stopped
     ports:
       - "${PORTA:-8080}:80"
+    volumes:
+      # banco (roteirista.db) e backups diários (backup/) ficam aqui; use disco local, não pasta de rede
+      - roteirista-dados:/dados
+    environment:
+      # Confere a assinatura do Cloudflare Access (recomendado). Sem isso, o servidor confia no e-mail
+      # que o Access envia; nesse caso não publique a porta acima fora da sua rede.
+      - ACCESS_TEAM_DOMAIN=${ACCESS_TEAM_DOMAIN:-}
+      - ACCESS_AUD=${ACCESS_AUD:-}
+      # 1 = sem login: cada pessoa se identifica com nome e e-mail no próprio app. Só para demonstração.
+      - PERFIL_LOCAL=${PERFIL_LOCAL:-0}
+      # quantos backups diários manter
+      - BACKUPS=${BACKUPS:-14}
 
   # Opcional: túnel do Cloudflare só para este app.
   # Ative com o perfil "tunel" (COMPOSE_PROFILES=tunel) e informe TUNNEL_TOKEN.
@@ -21,3 +33,6 @@ services:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
     depends_on:
       - roteirista
+
+volumes:
+  roteirista-dados:

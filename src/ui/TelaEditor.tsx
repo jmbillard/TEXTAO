@@ -7,18 +7,18 @@ import History from '@tiptap/extension-history';
 import Italic from '@tiptap/extension-italic';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
-import { armazenamento } from '../dados/armazenamento';
+import { armazenamento, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, converterLayout, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   marcarEtiqueta, Reconhecimento, sugestaoParaSelecao, Teclado, trocarPorEtiqueta, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, type Saida } from '../modelo/exportar';
 import {
-  ETIQUETAS, NOMES_COLUNAS, nomeSubtipo, SUBTIPOS_ARTE, type Layout, type Meta, type Pessoa, type Roteiro, type SubtipoArte, type TipoPrograma,
+  ETIQUETAS, NOMES_COLUNAS, nomeSubtipo, novoId, SUBTIPOS_ARTE, type Layout, type Meta, type Pessoa, type Roteiro, type SubtipoArte, type TipoPrograma,
 } from '../modelo/tipos';
 import { LOCUTORES, NOMES_TIPO_PROGRAMA, PRACAS, PROGRAMAS, SELOS } from '../modelo/vocabularios';
 import { Icone, Selo, type NomeIcone } from './icones';
-import { atalho, baixar, copiarTexto, dataPorExtenso, nomeDoArquivo, plural } from './util';
+import { atalho, baixar, copiarTexto, dataPorExtenso, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
 const ALTURA_CARTAO = 62;
 
@@ -355,6 +355,13 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   const [docVersao, setDocVersao] = useState(0);
   const [selVersao, setSelVersao] = useState(0);
   const [salvo, setSalvo] = useState(true);
+  const leitura = inicial.meu === false; // roteiro público de outra pessoa
+  const comServidor = armazenamento.tipo === 'servidor';
+  const [publico, setPublico] = useState(!!inicial.publico);
+  const publicoRef = useRef(publico);
+  publicoRef.current = publico;
+  const marco = useRef<string | undefined>(undefined);
+  const [historico, setHistorico] = useState<Versao[] | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [popover, setPopover] = useState<{ nome: 'arte' | 'etiqueta'; id: string } | null>(null);
   const [exportando, setExportando] = useState(false);
@@ -376,6 +383,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
       Arte, Etiqueta, Linha, Celula, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
     ],
     content: inicial.doc,
+    editable: inicial.meu !== false,
     editorProps: {
       attributes: { class: 'texto', spellcheck: 'true', lang: 'pt-BR', 'aria-label': 'Texto do roteiro' },
       handleClick: (_view, pos) => {
@@ -403,7 +411,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   }, []);
 
   const roteiroAtual = useCallback(
-    (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString(),
+    (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString(), publico: publicoRef.current,
       // só quem alterou assina; abrir para ler não muda a autoria
       ...(mexeu.current && pessoaRef.current ? { alteradoPor: pessoaRef.current, criadoPor: inicial.criadoPor ?? pessoaRef.current } : {}) }),
     [editor, inicial],
@@ -411,15 +419,17 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
   // salvamento automático
   useEffect(() => {
-    if (salvo || !editor) return;
+    if (salvo || !editor || leitura) return;
     const t = setTimeout(() => {
-      armazenamento.salvar(roteiroAtual()).then(() => setSalvo(true), () => avisar('Não consegui salvar neste navegador.'));
+      const m = marco.current;
+      marco.current = undefined;
+      armazenamento.salvar(roteiroAtual(), m).then(() => setSalvo(true), (e: Error) => avisar(comServidor ? e.message : 'Não consegui salvar neste navegador.'));
     }, 500);
     return () => clearTimeout(t);
-  }, [salvo, docVersao, meta, editor, roteiroAtual, avisar]);
+  }, [salvo, docVersao, meta, publico, editor, roteiroAtual, avisar]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const antesDeSair = () => {
-      if (editor && mexeu.current) void armazenamento.salvar(roteiroAtual());
+      if (editor && mexeu.current && !leitura) void armazenamento.salvar(roteiroAtual(), marco.current).catch(() => {});
     };
     window.addEventListener('pagehide', antesDeSair);
     return () => {
@@ -483,7 +493,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
   aoClicar.current = (pos) => {
     if (!editor) return;
-    const m = marcaEm(editor, pos);
+    const m = leitura ? null : marcaEm(editor, pos);
     setPopover(m && editor.state.selection.empty ? { nome: m.nome, id: m.id } : null);
   };
   const marcaDoPopover = useMemo(
@@ -526,7 +536,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   }, [menu, popover, exportando]);
 
   const aoMenuDeContexto = (e: React.MouseEvent) => {
-    if (!editor) return;
+    if (!editor || leitura) return;
     const { from, to, empty } = editor.state.selection;
     const p = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
     if (!p) return;
@@ -572,9 +582,55 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
         await copiarTexto(listaDeArtes(s));
         avisar(`Lista com ${plural(s.artes.length, 'arte copiada', 'artes copiadas')}. É só colar.`);
       } else window.print();
-      setSalvo(false);
+      if (!leitura) {
+        // exportar é um marco: fica registrado no histórico
+        mexeu.current = true;
+        marco.current = 'exportou';
+        setSalvo(false);
+      }
     } catch {
       avisar('Não consegui exportar. Tente de novo.');
+    }
+  };
+
+  const alternarPublico = () => {
+    mexeu.current = true;
+    setPublico((v) => !v);
+    setSalvo(false);
+    avisar(publico ? 'Agora só você vê este roteiro.' : 'Agora os colegas podem ler este roteiro. Só você edita.');
+  };
+  const abrirHistorico = async () => {
+    if (historico) return setHistorico(null);
+    try {
+      setHistorico(await armazenamento.versoes(inicial.id));
+    } catch {
+      avisar('Não consegui abrir o histórico.');
+    }
+  };
+  const restaurar = async (v: Versao) => {
+    if (!editor) return;
+    try {
+      const c = await armazenamento.lerVersao(inicial.id, v.n);
+      editor.commands.setContent(c.doc, true);
+      mexeu.current = true;
+      marco.current = `restaurou a versão ${v.n}`;
+      setMeta(c.meta);
+      setSalvo(false);
+      setHistorico(null);
+      avisar(`Versão ${v.n} restaurada. Dá para desfazer com ${atalho('Mod-z')}.`);
+    } catch {
+      avisar('Não consegui restaurar essa versão.');
+    }
+  };
+  const duplicarParaEditar = async () => {
+    const agora = new Date().toISOString();
+    const copia: Roteiro = { ...roteiroAtual(), id: novoId(), revisao: 1, criadoEm: agora, atualizadoEm: agora, criadoPor: pessoa, alteradoPor: pessoa, publico: false, meu: true };
+    try {
+      await armazenamento.salvar(copia);
+      location.hash = `#/r/${encodeURIComponent(copia.id)}`;
+      location.reload();
+    } catch {
+      avisar('Não consegui duplicar.');
     }
   };
 
@@ -594,13 +650,17 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             <span className="trilha-sep">/</span>
             <strong>{meta.titulo || 'Sem título'}</strong>
           </span>
-          <span className={`salvo ${salvo ? 'ok' : ''}`} aria-live="polite">
-            <Icone nome="certo" tam={12} traco={2.6} />
-            {salvo ? 'salvo' : 'salvando'}
-          </span>
+          {leitura ? (
+            <span className="salvo">somente leitura</span>
+          ) : (
+            <span className={`salvo ${salvo ? 'ok' : ''}`} aria-live="polite">
+              <Icone nome="certo" tam={12} traco={2.6} />
+              {salvo ? 'salvo' : 'salvando'}
+            </span>
+          )}
         </div>
 
-        <div className="segmento" role="radiogroup" aria-label="Formato do roteiro">
+        <div className="segmento" role="radiogroup" aria-label="Formato do roteiro" inert={leitura || undefined}>
           {([['coluna_unica', 'corrido', 'Texto corrido'], ['ilustracao_audio', 'colunas', 'Ilustração | Áudio'], ['instrucoes_texto', 'colunas', 'Instruções | Texto']] as const).map(([l, ic, nome]) => (
             <button key={l} role="radio" aria-checked={meta.layout === l} onClick={() => mudarLayout(l)}>
               <Icone nome={ic} tam={14} traco={2} />
@@ -614,6 +674,17 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             <span><strong>≈ {est}’’</strong>{alvo ? ` de ${meta.duracaoModo === 'max' ? 'máx. ' : ''}${alvo}’’` : ''}</span>
             <span className="relogio-trilho"><span style={{ width: `${alvo ? Math.min(100, (est / alvo) * 100) : 0}%` }} /></span>
           </div>
+          {comServidor && !leitura && (
+            <>
+              <button className="botao-icone" title="Histórico de versões" aria-label="Histórico de versões" aria-expanded={!!historico} onClick={abrirHistorico}>
+                <Icone nome="historico" tam={18} />
+              </button>
+              <button className={`visibilidade ${publico ? 'publico' : ''}`} role="switch" aria-checked={publico} title={publico ? 'Os colegas podem ler. Clique para voltar a privado.' : 'Só você vê. Clique para deixar os colegas lerem.'} onClick={alternarPublico}>
+                <Icone nome={publico ? 'olho' : 'cadeado'} tam={14} traco={2} />
+                {publico ? 'Público' : 'Privado'}
+              </button>
+            </>
+          )}
           <div className="exportar">
             <button className="botao primario" aria-haspopup="menu" aria-expanded={exportando} onClick={() => setExportando((v) => !v)}>
               Exportar <Icone nome="baixo" tam={13} traco={2.4} />
@@ -638,7 +709,15 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
       <div className="mesa">
         <div className={`area ${colunas ? 'larga' : ''}`} ref={area}>
           <article className="folha">
-            <Cabecalho meta={meta} mudar={mudarMeta} />
+            {leitura && (
+              <div className="faixa-leitura">
+                <span>Roteiro de <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Você pode ler e exportar.</span>
+                <button className="botao" onClick={duplicarParaEditar}><Icone nome="duplicar" tam={14} /> Duplicar para editar</button>
+              </div>
+            )}
+            <div inert={leitura || undefined}>
+              <Cabecalho meta={meta} mudar={mudarMeta} />
+            </div>
             {colunas && (
               <div className="colunas-topo rotulo">
                 <span>{colunas[0]}</span>
@@ -670,7 +749,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             </footer>
           </article>
 
-          <aside className="margem" aria-label="Artes do roteiro" style={{ minHeight: fimMargem || undefined }}>
+          <aside className="margem" aria-label="Artes do roteiro" style={{ minHeight: fimMargem || undefined }} inert={leitura || undefined}>
             <div ref={checklist}>
               <Checklist saida={saida} confirmarTodas={confirmarTodas} />
               <p className="margem-titulo">
@@ -716,7 +795,30 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             ))}
           </aside>
 
-          {editor && barra && !menu && !popover && <BarraFlutuante editor={editor} x={barra.x} y={barra.y} programa={meta.programa} abrirMenu={() => setMenu({ x: barra.x, y: barra.y + 44 })} />}
+          {historico && (
+            <aside className="historico" aria-label="Histórico de versões">
+              <div className="historico-topo">
+                <span className="rotulo">Histórico</span>
+                <button className="botao-icone pequeno" aria-label="Fechar histórico" onClick={() => setHistorico(null)}><Icone nome="fechar" tam={14} /></button>
+              </div>
+              {historico.length === 0 && <p className="suave pequeno">A primeira versão aparece assim que o roteiro for salvo.</p>}
+              <ol>
+                {historico.map((v, i) => (
+                  <li key={v.n}>
+                    <span className="historico-n">{v.n}</span>
+                    <span className="historico-corpo">
+                      <strong>{v.motivo[0].toUpperCase() + v.motivo.slice(1)}</strong>
+                      <span className="suave pequeno">{haQuantoTempo(v.criadoEm)}{v.por ? ` · ${v.por.nome}` : ''}</span>
+                    </span>
+                    {i === 0 ? <span className="suave pequeno">mais recente</span> : <button className="botao-texto" onClick={() => restaurar(v)}>Restaurar</button>}
+                  </li>
+                ))}
+              </ol>
+              <p className="suave pequeno">Uma versão é guardada a cada 5 minutos de edição e sempre que você exporta.</p>
+            </aside>
+          )}
+
+          {editor && barra && !leitura && !menu && !popover && <BarraFlutuante editor={editor} x={barra.x} y={barra.y} programa={meta.programa} abrirMenu={() => setMenu({ x: barra.x, y: barra.y + 44 })} />}
           {editor && menu && <MenuEtiquetas editor={editor} x={menu.x} y={menu.y} programa={meta.programa} fechar={() => setMenu(null)} />}
           {editor && marcaDoPopover && posPopover && <PopoverMarca editor={editor} marca={marcaDoPopover} x={posPopover.x} y={posPopover.y} fechar={() => setPopover(null)} />}
         </div>

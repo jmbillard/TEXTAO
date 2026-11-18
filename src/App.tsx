@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { armazenamento } from './dados/armazenamento';
-import { obterIdentidade, salvarPerfilLocal, type Identidade } from './dados/identidade';
+import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { interpretar, lerArquivo, montarDoc, type Importacao, type Resposta } from './importar';
 import { roteiroDoJson } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
@@ -29,8 +29,14 @@ export function App() {
   const [soltando, setSoltando] = useState(false);
   const arrasto = useRef(0);
   const [identidade, setIdentidade] = useState<Identidade | null>(null);
+  const [pronto, setPronto] = useState(false);
+  const [sessao, setSessao] = useState(0);
   useEffect(() => {
-    void obterIdentidade().then(setIdentidade);
+    void iniciarSessao().then((s) => {
+      setIdentidade(s.identidade);
+      setPronto(true);
+      setSessao((n) => n + 1);
+    });
   }, []);
   const pessoa = identidade ? { nome: identidade.nome, email: identidade.email } : undefined;
 
@@ -63,8 +69,16 @@ export function App() {
         const dados = await arquivo.arrayBuffer();
         if (/\.json$/i.test(arquivo.name)) {
           const roteiro = roteiroDoJson(JSON.parse(new TextDecoder().decode(dados)));
-          await armazenamento.salvar({ ...roteiro, origem: arquivo.name });
-          ir({ t: 'editor', id: roteiro.id });
+                    // reabre com o mesmo ID; se esse ID já é de outra pessoa, entra como um roteiro novo
+          let novo = { ...roteiro, origem: arquivo.name, publico: false, meu: true };
+          try {
+            await armazenamento.salvar(novo);
+          } catch (e) {
+            if ((e as { status?: number }).status !== 403) throw e;
+            novo = { ...novo, id: novoId(), criadoPor: pessoa, alteradoPor: pessoa };
+            await armazenamento.salvar(novo);
+          }
+          ir({ t: 'editor', id: novo.id });
           return;
         }
         const imp = interpretar(await lerArquivo(dados, arquivo.name));
@@ -80,7 +94,7 @@ export function App() {
         avisar(e instanceof SyntaxError ? 'Não consegui ler esse .json.' : e instanceof Error ? e.message : 'Não consegui ler esse arquivo.');
       }
     },
-    [avisar, ir, identidade],
+    [avisar, ir, identidade], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const criar = useCallback(
@@ -135,9 +149,18 @@ export function App() {
     };
   }, [abrirArquivo]);
 
+  if (!pronto) return <div className="pagina" />;
+
   return (
     <>
-      {tela.t === 'biblioteca' && <Biblioteca abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} identidade={identidade} definirPerfil={(p) => setIdentidade(salvarPerfilLocal(p))} />}
+      {tela.t === 'biblioteca' && <Biblioteca key={sessao} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+        salvarPerfilLocal(p);
+        // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
+        void iniciarSessao().then((s) => {
+          setIdentidade(s.identidade);
+          setSessao((n) => n + 1);
+        });
+      }} />}
       {tela.t === 'importar' && <TelaImportar imp={tela.imp} concluir={(r) => concluirImportacao(tela.imp, r)} cancelar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} pessoa={pessoa} />}
 

@@ -98,6 +98,10 @@ export interface Roteiro {
   atualizadoEm: string;
   criadoPor?: Pessoa;
   alteradoPor?: Pessoa;
+  /** Visível (só leitura) para as outras pessoas. Só existe com servidor. */
+  publico?: boolean;
+  /** false quando o roteiro é de outra pessoa (aberto por ser público). */
+  meu?: boolean;
   /** Nome do arquivo de origem, quando importado. */
   origem?: string;
 }

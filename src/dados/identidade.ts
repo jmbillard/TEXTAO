@@ -1,4 +1,5 @@
 import type { Pessoa } from '../modelo/tipos';
+import { conectar } from './armazenamento';
 
 /* Quem está usando o app. É o único ponto do código que sabe de onde vem a identidade:
    hoje, do Cloudflare Access (quando o site está atrás dele) ou de um perfil local.
@@ -44,8 +45,18 @@ function local(): Identidade | null {
   }
 }
 
-export async function obterIdentidade(): Promise<Identidade | null> {
-  return (await doAcesso()) ?? local();
+export interface Sessao {
+  identidade: Identidade | null;
+  /** Há servidor esperando o perfil local: depois de se identificar, os roteiros passam a ir para lá. */
+  pedePerfil: boolean;
+}
+
+/** Descobre quem está usando e onde os roteiros ficam guardados (servidor ou navegador). */
+export async function iniciarSessao(): Promise<Sessao> {
+  const perfil = local();
+  const conexao = await conectar(perfil);
+  if (conexao.eu) return { identidade: conexao.eu, pedePerfil: false };
+  return { identidade: (await doAcesso()) ?? perfil, pedePerfil: conexao.pedePerfil };
 }
 
 export function salvarPerfilLocal(pessoa: Pessoa): Identidade {
