@@ -515,7 +515,18 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   const corrido: ParI[] = [];
   const linhas: LinhaI[] = [];
   for (const item of itens) {
-    const e = item.e.map((p) => converter(p, true)).filter((p) => p.length);
+    // na coluna da esquerda, um rótulo com marca-texto ("ARQUIVOS:") vale para as linhas logo abaixo
+    let rotulo: string | undefined;
+    const esquerda = item.e.map((par) => {
+      const texto = textoDoPar(par).trim();
+      const primeiro = par.find((r) => r.t.trim());
+      if (!texto) rotulo = undefined;
+      else if (primeiro?.hl && /:\s*$/.test(primeiro.t)) rotulo = primeiro.hl;
+      else if (par.some((r) => r.hl || r.u)) rotulo = undefined;
+      else if (rotulo) return par.map((r) => ({ ...r, hl: rotulo }));
+      return par;
+    });
+    const e = esquerda.map((p) => converter(p, true)).filter((p) => p.length);
     const d = item.d.map((p) => converter(p, false));
     if (layout === 'coluna_unica') {
       corrido.push(...d.filter((p) => p.length));
@@ -524,14 +535,24 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     // cada grupo de parágrafos (separado por linha em branco) vira uma linha da tabela
     const grupos: ParI[][] = [];
     let atual: ParI[] = [];
+    const fechar = () => {
+      if (atual.length) grupos.push(atual);
+      atual = [];
+    };
     for (const p of d) {
-      if (p.length) atual.push(p);
-      else if (atual.length) {
-        grupos.push(atual);
-        atual = [];
+      if (!p.length) {
+        fechar();
+        continue;
       }
+      const texto = textoI(p);
+      const corte = /^\s*\/\/\s*$/.test(texto);
+      const locucao = !corte && !analisarSonoras(texto).length && ehCaixaAlta(p.filter((t) => !t.etq && t.legado === undefined).map((t) => t.t).join(''));
+      // locução abre uma linha nova; "//" fecha a linha em que está
+      if (locucao && atual.length && !ehCaixaAlta(textoI(atual[atual.length - 1]))) fechar();
+      atual.push(p);
+      if (corte) fechar();
     }
-    if (atual.length) grupos.push(atual);
+    fechar();
     if (!grupos.length && e.length) grupos.push([]);
     grupos.forEach((g, i) => linhas.push({ e: i === 0 ? e : [], d: g }));
   }
@@ -542,6 +563,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     for (const t of p) {
       if (t.legado === undefined) {
         if (t.t.trim()) ultimo = -1;
+        else if (ultimo >= 0) perguntas[ultimo].trechos[perguntas[ultimo].trechos.length - 1] += ' ';
         continue;
       }
       const lista = perguntas[t.legado].trechos;
@@ -611,7 +633,7 @@ export function montarDoc(imp: Importacao, respostas: Record<number, Resposta> =
         marks.push({ type: 'arte', attrs: { id: novoId(), subtipo: tr.arte.subtipo, grupo: tr.arte.grupo ?? null, obs: '', sugerido: true } });
       if (etq) marks.push({ type: 'etiqueta', attrs: { id: etqId, tipo: etq, obs: '' } });
       tr.t.split('\n').forEach((pedaco, i) => {
-        if (i > 0) content.push({ type: 'hardBreak' });
+        if (i > 0) content.push({ type: 'hardBreak', ...(marks.length ? { marks: marks.filter((m) => m.type !== 'bold') } : {}) });
         if (pedaco) content.push({ type: 'text', text: pedaco, ...(marks.length ? { marks } : {}) });
       });
     }

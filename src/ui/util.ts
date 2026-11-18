@@ -1,0 +1,55 @@
+import type { Meta } from '../modelo/tipos';
+
+const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** "2026-10-27" → "terça, 27 de outubro" */
+export function dataPorExtenso(iso: string, comAno = false): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return '';
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return `${DIAS[d.getDay()]}, ${+m[3]} de ${MESES[+m[2] - 1]}${comAno ? ` de ${m[1]}` : ''}`;
+}
+
+export const dataCurta = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}` : '';
+};
+
+export function haQuantoTempo(iso: string, agora = Date.now()): string {
+  const s = Math.max(0, Math.round((agora - new Date(iso).getTime()) / 1000));
+  if (s < 60) return 'agora há pouco';
+  if (s < 3600) return `há ${Math.round(s / 60)} min`;
+  if (s < 86400) return `há ${Math.round(s / 3600)} h`;
+  const dias = Math.round(s / 86400);
+  return dias === 1 ? 'ontem' : dias < 30 ? `há ${dias} dias` : new Date(iso).toLocaleDateString('pt-BR');
+}
+
+export const nomeDoArquivo = (meta: Meta) =>
+  [meta.programa, meta.titulo, meta.titulo.includes(dataCurta(meta.dataExibicao)) ? '' : dataCurta(meta.dataExibicao).replace('/', '-')]
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^\w.-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'roteiro';
+
+export function baixar(conteudo: Blob | string, nome: string, tipo = 'application/octet-stream') {
+  const blob = typeof conteudo === 'string' ? new Blob([conteudo], { type: tipo }) : conteudo;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+export const ehMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+/** "Mod-Shift-1" → "⌘⇧1" no Mac, "Ctrl+Shift+1" nos outros. */
+export const atalho = (s: string) =>
+  ehMac
+    ? s.replace('Mod-', '⌘').replace('Shift-', '⇧').replace(/(.)$/, (c) => c.toUpperCase()).replace('Enter', '↩')
+    : s.replace('Mod-', 'Ctrl+').replace('Shift-', 'Shift+').replace(/\+(.)$/, (_, c: string) => '+' + c.toUpperCase());

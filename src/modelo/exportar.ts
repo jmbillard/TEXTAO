@@ -74,10 +74,9 @@ function achatar(doc: NoJSON): Bloco[] {
   const paragrafo = (p: NoJSON, coluna: Bloco['coluna']) => {
     const pedacos: Pedaco[] = [];
     for (const n of p.content ?? []) {
-      if (n.type === 'hardBreak') pedacos.push({ t: '\n' });
-      else if (n.type === 'text' && n.text)
+      if (n.type === 'hardBreak' || (n.type === 'text' && n.text))
         pedacos.push({
-          t: n.text,
+          t: n.type === 'hardBreak' ? '\n' : n.text!,
           arte: n.marks?.find((m) => m.type === 'arte')?.attrs,
           etq: n.marks?.find((m) => m.type === 'etiqueta')?.attrs,
         });
