@@ -568,3 +568,25 @@ kbd {
   .topo { padding: 0 8px; gap: 8px; }
   .salvo { display: none; }
 }
+
+/* Perfil */
+.perfil { position: relative; }
+.perfil-botao {
+  height: 38px; padding: 0 12px 0 5px; border-radius: 19px; border: 1px solid var(--regua); background: var(--cartao);
+  display: flex; align-items: center; gap: 8px; font-weight: 500; max-width: 220px; transition: border-color 0.15s;
+}
+.perfil-botao:hover { border-color: var(--tinta3); }
+.perfil-botao.falta { padding: 0 14px; border-style: dashed; border-color: var(--falta); color: var(--falta); }
+.perfil-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--neutro); color: var(--tinta); font: 600 11px/28px var(--sans); text-align: center; flex-shrink: 0; }
+.perfil-nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.perfil-painel {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 40; width: 280px; padding: 16px; border-radius: 14px; background: var(--cartao);
+  box-shadow: var(--sombra-menu); display: flex; flex-direction: column; gap: 6px; animation: abrir 0.14s var(--suave); transform-origin: top right;
+}
+.perfil-painel form { display: flex; flex-direction: column; gap: 6px; }
+.perfil-painel label { font-size: 12px; color: var(--tinta2); margin-top: 4px; }
+.perfil-painel input { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--regua-forte); background: var(--papel); outline: 0; }
+.perfil-painel input:focus { border-color: var(--ultra); }
+.perfil-painel .botao { justify-content: center; margin-top: 6px; }
+.perfil-painel a { align-self: flex-start; margin-top: 4px; }
+@media (max-width: 640px) { .perfil-nome { display: none; } .perfil-botao:not(.falta) { padding: 0 5px; } }

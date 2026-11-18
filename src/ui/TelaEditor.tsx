@@ -14,7 +14,7 @@ import {
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, type Saida } from '../modelo/exportar';
 import {
-  ETIQUETAS, NOMES_COLUNAS, nomeSubtipo, SUBTIPOS_ARTE, type Layout, type Meta, type Roteiro, type SubtipoArte, type TipoPrograma,
+  ETIQUETAS, NOMES_COLUNAS, nomeSubtipo, SUBTIPOS_ARTE, type Layout, type Meta, type Pessoa, type Roteiro, type SubtipoArte, type TipoPrograma,
 } from '../modelo/tipos';
 import { LOCUTORES, NOMES_TIPO_PROGRAMA, PRACAS, PROGRAMAS, SELOS } from '../modelo/vocabularios';
 import { Icone, Selo, type NomeIcone } from './icones';
@@ -327,7 +327,7 @@ function Checklist({ saida, confirmarTodas }: { saida: Saida; confirmarTodas: ()
 
 /* ---------- tela ---------- */
 
-export function TelaEditor({ id, voltar, avisar }: { id: string; voltar: () => void; avisar: (t: string) => void }) {
+export function TelaEditor({ id, voltar, avisar, pessoa }: { id: string; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
   const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
   useEffect(() => {
     armazenamento.ler(id).then((r) => setRoteiro(r ?? null), () => setRoteiro(null));
@@ -344,10 +344,13 @@ export function TelaEditor({ id, voltar, avisar }: { id: string; voltar: () => v
         </main>
       </div>
     );
-  return <Folha inicial={roteiro} voltar={voltar} avisar={avisar} />;
+  return <Folha inicial={roteiro} voltar={voltar} avisar={avisar} pessoa={pessoa} />;
 }
 
-function Folha({ inicial, voltar, avisar }: { inicial: Roteiro; voltar: () => void; avisar: (t: string) => void }) {
+function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
+  const pessoaRef = useRef(pessoa);
+  pessoaRef.current = pessoa;
+  const mexeu = useRef(false);
   const [meta, setMeta] = useState<Meta>(inicial.meta);
   const [docVersao, setDocVersao] = useState(0);
   const [selVersao, setSelVersao] = useState(0);
@@ -381,6 +384,7 @@ function Folha({ inicial, voltar, avisar }: { inicial: Roteiro; voltar: () => vo
       },
     },
     onUpdate: () => {
+      mexeu.current = true;
       setDocVersao((v) => v + 1);
       setSalvo(false);
     },
@@ -388,6 +392,7 @@ function Folha({ inicial, voltar, avisar }: { inicial: Roteiro; voltar: () => vo
   });
 
   const mudarMeta = useCallback((parte: Partial<Meta>) => {
+    mexeu.current = true;
     try {
       if (parte.redator !== undefined) localStorage.setItem('roteirista.redator', parte.redator);
     } catch {
@@ -398,7 +403,9 @@ function Folha({ inicial, voltar, avisar }: { inicial: Roteiro; voltar: () => vo
   }, []);
 
   const roteiroAtual = useCallback(
-    (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString() }),
+    (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString(),
+      // só quem alterou assina; abrir para ler não muda a autoria
+      ...(mexeu.current && pessoaRef.current ? { alteradoPor: pessoaRef.current, criadoPor: inicial.criadoPor ?? pessoaRef.current } : {}) }),
     [editor, inicial],
   );
 
@@ -412,7 +419,7 @@ function Folha({ inicial, voltar, avisar }: { inicial: Roteiro; voltar: () => vo
   }, [salvo, docVersao, meta, editor, roteiroAtual, avisar]);
   useEffect(() => {
     const antesDeSair = () => {
-      if (editor) void armazenamento.salvar(roteiroAtual());
+      if (editor && mexeu.current) void armazenamento.salvar(roteiroAtual());
     };
     window.addEventListener('pagehide', antesDeSair);
     return () => {

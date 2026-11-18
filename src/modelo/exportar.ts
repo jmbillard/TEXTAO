@@ -1,5 +1,5 @@
 import { analisarSonoras, ehCaixaAlta, lerContexto, type ContextoSonora } from './sonora';
-import { nomeSubtipo, SCHEMA_VERSION, type Meta, type NoJSON, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
+import { nomeSubtipo, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
 
 /* Do documento do editor para o contrato de saída (JSON canônico).
    Função pura: o mesmo roteiro sempre gera a mesma saída, com os mesmos IDs. */
@@ -45,6 +45,8 @@ export interface Saida {
     duracaoEstimadaSeg: number;
     revisao: number;
     atualizadoEm: string;
+    criadoPor: Pessoa | null;
+    alteradoPor: Pessoa | null;
   };
   artes: ArteSaida[];
   orientacoes: Record<'edicao' | 'locutor' | 'sonoplastia' | 'producao', OrientacaoSaida[]>;
@@ -234,6 +236,8 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
       duracaoEstimadaSeg: Math.round(segLocucao + segSonoras),
       revisao: roteiro.revisao,
       atualizadoEm: roteiro.atualizadoEm,
+      criadoPor: roteiro.criadoPor ?? null,
+      alteradoPor: roteiro.alteradoPor ?? null,
     },
     artes,
     orientacoes,
@@ -258,6 +262,10 @@ export function roteiroDoJson(json: unknown): Roteiro {
   const s = json as Partial<Saida>;
   if (!s || typeof s !== 'object' || !s.roteiro || !s.blocos || s.blocos.type !== 'doc')
     throw new Error('Este .json não é um roteiro exportado daqui.');
-  const { id, versoes: _v, duracaoEstimadaSeg: _d, revisao, atualizadoEm, ...meta } = s.roteiro;
-  return { id, meta: meta as Meta, doc: s.blocos, revisao: revisao ?? 1, criadoEm: atualizadoEm, atualizadoEm };
+  const { id, versoes: _v, duracaoEstimadaSeg: _d, revisao, atualizadoEm, criadoPor, alteradoPor, ...meta } = s.roteiro;
+  return {
+    id, meta: meta as Meta, doc: s.blocos, revisao: revisao ?? 1, criadoEm: atualizadoEm, atualizadoEm,
+    ...(criadoPor ? { criadoPor } : {}),
+    ...(alteradoPor ? { alteradoPor } : {}),
+  };
 }

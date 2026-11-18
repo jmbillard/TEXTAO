@@ -6,3 +6,18 @@ services:
     restart: unless-stopped
     ports:
       - "${PORTA:-8080}:80"
+
+  # Opcional: túnel do Cloudflare só para este app.
+  # Ative com o perfil "tunel" (COMPOSE_PROFILES=tunel) e informe TUNNEL_TOKEN.
+  # Se você já tem um cloudflared rodando, não precisa deste serviço:
+  # aponte um hostname do seu túnel para http://roteirista:80 (ou IP:PORTA).
+  tunel:
+    profiles: ["tunel"]
+    image: cloudflare/cloudflared:latest
+    container_name: roteirista-tunel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
+    depends_on:
+      - roteirista

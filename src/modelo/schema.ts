@@ -15,6 +15,7 @@ const orientacao = {
     coluna: { enum: ['ilustracao', 'audio', 'instrucoes', 'texto', null] },
   },
 } as const;
+const pessoa = { type: ['object', 'null'], properties: { nome: texto, email: texto } } as const;
 const lista = (items: object) => ({ type: 'array', items });
 
 export const JSON_SCHEMA = {
@@ -49,6 +50,8 @@ export const JSON_SCHEMA = {
         status: { enum: ['rascunho', 'revisao', 'aprovado', 'em_producao', 'finalizado'] },
         revisao: { type: 'integer' },
         atualizadoEm: texto,
+        criadoPor: pessoa,
+        alteradoPor: pessoa,
       },
     },
     artes: lista({

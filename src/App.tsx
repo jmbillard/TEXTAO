@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { armazenamento } from './dados/armazenamento';
+import { obterIdentidade, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { interpretar, lerArquivo, montarDoc, type Importacao, type Resposta } from './importar';
 import { roteiroDoJson } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
@@ -27,6 +28,11 @@ export function App() {
   const [aviso, setAviso] = useState<{ texto: string; n: number } | null>(null);
   const [soltando, setSoltando] = useState(false);
   const arrasto = useRef(0);
+  const [identidade, setIdentidade] = useState<Identidade | null>(null);
+  useEffect(() => {
+    void obterIdentidade().then(setIdentidade);
+  }, []);
+  const pessoa = identidade ? { nome: identidade.nome, email: identidade.email } : undefined;
 
   const avisar = useCallback((texto: string) => setAviso({ texto, n: Date.now() }), []);
   useEffect(() => {
@@ -72,12 +78,15 @@ export function App() {
   const criar = useCallback(
     async (base?: Partial<Roteiro>) => {
       const agora = new Date().toISOString();
-      const meta = base?.meta ?? { ...metaVazia(), redator: lerLocal('roteirista.redator') };
-      const roteiro: Roteiro = { id: novoId(), meta, doc: base?.doc ?? docVazio(meta.layout), revisao: 1, criadoEm: agora, atualizadoEm: agora, origem: base?.origem };
+      const meta = base?.meta ?? { ...metaVazia(), redator: identidade?.nome ?? lerLocal('roteirista.redator') };
+      const roteiro: Roteiro = {
+        id: novoId(), meta, doc: base?.doc ?? docVazio(meta.layout), revisao: 1, criadoEm: agora, atualizadoEm: agora, origem: base?.origem,
+        criadoPor: pessoa, alteradoPor: pessoa,
+      };
       await armazenamento.salvar(roteiro);
       ir({ t: 'editor', id: roteiro.id });
     },
-    [ir],
+    [ir, identidade], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const concluirImportacao = useCallback(
@@ -120,9 +129,9 @@ export function App() {
 
   return (
     <>
-      {tela.t === 'biblioteca' && <Biblioteca abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} />}
+      {tela.t === 'biblioteca' && <Biblioteca abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} identidade={identidade} definirPerfil={(p) => setIdentidade(salvarPerfilLocal(p))} />}
       {tela.t === 'importar' && <TelaImportar imp={tela.imp} concluir={(r) => concluirImportacao(tela.imp, r)} cancelar={() => ir({ t: 'biblioteca' })} />}
-      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
+      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} pessoa={pessoa} />}
 
       {soltando && (
         <div className="soltar" aria-hidden="true">

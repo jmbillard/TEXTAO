@@ -83,6 +83,12 @@ export interface NoJSON {
   marks?: MarcaJSON[];
 }
 
+export interface Pessoa {
+  nome: string;
+  /** Identificador estável de quem escreve; é o que o login da empresa vai fornecer. */
+  email: string;
+}
+
 export interface Roteiro {
   id: string;
   meta: Meta;
@@ -90,6 +96,8 @@ export interface Roteiro {
   revisao: number;
   criadoEm: string;
   atualizadoEm: string;
+  criadoPor?: Pessoa;
+  alteradoPor?: Pessoa;
   /** Nome do arquivo de origem, quando importado. */
   origem?: string;
 }

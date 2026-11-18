@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { armazenamento } from '../dados/armazenamento';
 import { exportar } from '../modelo/exportar';
-import { novoId, type Roteiro } from '../modelo/tipos';
+import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
+import { novoId, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
 import { dataCurta, haQuantoTempo, plural } from './util';
 
@@ -21,9 +22,86 @@ interface Props {
   abrirArquivo: (arquivo: File) => void;
   criar: () => void;
   avisar: (texto: string) => void;
+  identidade: Identidade | null;
+  definirPerfil: (p: Pessoa) => void;
 }
 
-export function Biblioteca({ abrir, abrirArquivo, criar, avisar }: Props) {
+const iniciais = (nome: string) =>
+  nome
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .filter((_, i, a) => i === 0 || i === a.length - 1)
+    .join('')
+    .toUpperCase();
+
+/** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
+function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'definirPerfil'>) {
+  const [aberto, setAberto] = useState(false);
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const caixa = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setNome(identidade?.nome ?? '');
+    setEmail(identidade?.email ?? '');
+  }, [identidade]);
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: PointerEvent) => !caixa.current?.contains(e.target as Node) && setAberto(false);
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && setAberto(false);
+    window.addEventListener('pointerdown', fora, true);
+    window.addEventListener('keydown', tecla);
+    return () => {
+      window.removeEventListener('pointerdown', fora, true);
+      window.removeEventListener('keydown', tecla);
+    };
+  }, [aberto]);
+
+  return (
+    <div className="perfil" ref={caixa}>
+      <button className={`perfil-botao ${identidade ? '' : 'falta'}`} aria-haspopup="dialog" aria-expanded={aberto} onClick={() => setAberto((v) => !v)}>
+        {identidade ? (
+          <>
+            <span className="perfil-avatar">{iniciais(identidade.nome)}</span>
+            <span className="perfil-nome">{identidade.nome}</span>
+          </>
+        ) : (
+          'Quem é você?'
+        )}
+      </button>
+      {aberto && (
+        <div className="perfil-painel" role="dialog" aria-label="Seu perfil">
+          {identidade?.origem === 'acesso' ? (
+            <>
+              <strong>{identidade.nome}</strong>
+              <span className="suave">{identidade.email}</span>
+              <p className="suave pequeno">Você entrou com a conta da empresa. Seus roteiros saem assinados com este nome.</p>
+              <a className="botao-texto" href={SAIR_DO_ACESSO}>Sair</a>
+            </>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!nome.trim()) return;
+                definirPerfil({ nome, email });
+                setAberto(false);
+              }}
+            >
+              <label htmlFor="perfil-nome">Seu nome</label>
+              <input id="perfil-nome" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Como assina os roteiros" autoFocus autoComplete="name" />
+              <label htmlFor="perfil-email">E-mail da empresa</label>
+              <input id="perfil-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional" autoComplete="email" />
+              <p className="suave pequeno">Fica só neste navegador e assina os roteiros que você escrever.</p>
+              <button className="botao primario" disabled={!nome.trim()}>Salvar</button>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil }: Props) {
   const [roteiros, setRoteiros] = useState<Roteiro[] | null>(null);
   const [busca, setBusca] = useState('');
   const [apagando, setApagando] = useState<string | null>(null);
@@ -58,6 +136,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar }: Props) {
         <header className="bib-topo">
           <span className="marca" aria-hidden="true">r</span>
           <h1 className="titulo-serifa">Roteiros</h1>
+          <span className="espaco" />
+          <Perfil identidade={identidade} definirPerfil={definirPerfil} />
         </header>
 
         <section className="entrada">
