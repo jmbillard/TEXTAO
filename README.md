@@ -33,6 +33,20 @@ Conecte o repositório em **Workers & Pages → Create → Pages** com:
 
 Não há funções nem variáveis de ambiente nesta etapa.
 
+### Docker / Portainer
+
+O repositório traz `Dockerfile` (build + nginx) e `docker-compose.yml`.
+
+No Portainer: **Stacks → Add stack → Repository**, com a URL deste repositório, a branch e o caminho `docker-compose.yml`. Para mudar a porta (padrão 8080), adicione a variável de ambiente `PORTA` na stack. Depois do deploy, o app fica em `http://IP-DO-SERVIDOR:8080`.
+
+Na linha de comando:
+
+```bash
+docker compose up -d --build
+```
+
+Os roteiros continuam salvos no navegador de quem usa, separados por endereço: quem abrir por `http://192.168.0.10:8080` e depois por um domínio verá bibliotecas diferentes. O container não guarda dados e pode ser recriado à vontade.
+
 ## Como funciona
 
 1. **Trazer do Word.** Arraste um `.docx`, `.rtf` ou `.txt` (ou um `.json` exportado daqui). O app lê sublinhado, marca-texto, cor e tabelas, monta o cabeçalho e só pergunta o que não dá para saber sozinho (o que significa um marca-texto, por exemplo).

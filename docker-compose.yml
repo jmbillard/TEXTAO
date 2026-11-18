@@ -1,0 +1,8 @@
+services:
+  roteirista:
+    build: .
+    image: roteirista:latest
+    container_name: roteirista
+    restart: unless-stopped
+    ports:
+      - "${PORTA:-8080}:80"

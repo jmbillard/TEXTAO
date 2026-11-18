@@ -46,6 +46,19 @@ export function baixar(conteudo: Blob | string, nome: string, tipo = 'applicatio
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Copia texto. Em http:// (rede local, sem HTTPS) a área de transferência moderna não existe; usa o método antigo. */
+export async function copiarTexto(texto: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(texto);
+  const area = document.createElement('textarea');
+  area.value = texto;
+  area.style.cssText = 'position:fixed;left:-9999px;top:0';
+  document.body.appendChild(area);
+  area.select();
+  const ok = document.execCommand('copy');
+  area.remove();
+  if (!ok) throw new Error('cópia bloqueada');
+}
+
 export const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 export const ehMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 /** "Mod-Shift-1" → "⌘⇧1" no Mac, "Ctrl+Shift+1" nos outros. */

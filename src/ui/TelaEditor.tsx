@@ -18,7 +18,7 @@ import {
 } from '../modelo/tipos';
 import { LOCUTORES, NOMES_TIPO_PROGRAMA, PRACAS, PROGRAMAS, SELOS } from '../modelo/vocabularios';
 import { Icone, Selo, type NomeIcone } from './icones';
-import { atalho, baixar, dataPorExtenso, nomeDoArquivo, plural } from './util';
+import { atalho, baixar, copiarTexto, dataPorExtenso, nomeDoArquivo, plural } from './util';
 
 const ALTURA_CARTAO = 62;
 
@@ -558,7 +558,7 @@ function Folha({ inicial, voltar, avisar }: { inicial: Roteiro; voltar: () => vo
       if (formato === 'json') baixar(JSON.stringify(s, null, 2), `${nome}.json`, 'application/json');
       else if (formato === 'docx') baixar(await (await import('./exportarDocx')).gerarDocx(s), `${nome}.docx`);
       else if (formato === 'lista') {
-        await navigator.clipboard.writeText(listaDeArtes(s));
+        await copiarTexto(listaDeArtes(s));
         avisar(`Lista com ${plural(s.artes.length, 'arte copiada', 'artes copiadas')}. É só colar.`);
       } else window.print();
       setSalvo(false);
