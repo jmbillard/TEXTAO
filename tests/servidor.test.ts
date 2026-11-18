@@ -55,6 +55,25 @@ describe('servidor', () => {
     expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(404);
   });
 
+  it('compartilhar com algumas pessoas', async () => {
+    const carla = como('carla@empresa.com');
+    for (const quem of [ana, beto, carla]) await quem('/api/eu');
+    expect((await (await ana('/api/usuarios')).json()).map((u: { email: string }) => u.email)).toEqual(['beto@empresa.com', 'carla@empresa.com']);
+    await salvar(ana, 'roteiro-da-ana', { roteiro: { ...roteiro('A').roteiro, compartilhadoCom: ['Beto@empresa.com'] }, nArtes: 1 });
+    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(200);
+    expect((await carla('/api/roteiros/roteiro-da-ana')).status).toBe(404);
+    expect(await (await carla('/api/roteiros')).json()).toHaveLength(0);
+    // quem recebeu lê, mas não altera nem vê com quem mais foi compartilhado
+    expect((await salvar(beto, 'roteiro-da-ana', roteiro('invadido'))).status).toBe(403);
+    expect((await (await beto('/api/roteiros/roteiro-da-ana')).json()).compartilhadoCom).toBeUndefined();
+    expect((await (await ana('/api/roteiros/roteiro-da-ana')).json()).compartilhadoCom).toEqual(['beto@empresa.com']);
+    // salvar o texto sem mexer no compartilhamento mantém; lista vazia retira
+    await salvar(ana, 'roteiro-da-ana', roteiro('A2'));
+    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(200);
+    await salvar(ana, 'roteiro-da-ana', { roteiro: { ...roteiro('A2').roteiro, compartilhadoCom: [] }, nArtes: 1 });
+    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(404);
+  });
+
   it('guarda versões nos marcos e não repete conteúdo igual', async () => {
     await salvar(ana, 'com-historico', roteiro('um'));
     await salvar(ana, 'com-historico', roteiro('dois')); // menos de 5 min: não vira versão

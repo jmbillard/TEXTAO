@@ -47,6 +47,17 @@ export function abrirBanco(caminho) {
       doc TEXT NOT NULL,
       PRIMARY KEY (roteiro_id, n)
     );
+    CREATE TABLE IF NOT EXISTS usuarios (
+      email TEXT PRIMARY KEY,
+      nome TEXT NOT NULL,
+      visto_em TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS compartilhamentos (
+      roteiro_id TEXT NOT NULL REFERENCES roteiros (id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      PRIMARY KEY (roteiro_id, email)
+    );
+    CREATE INDEX IF NOT EXISTS compartilhamentos_email ON compartilhamentos (email);
   `);
   return db;
 }
@@ -130,8 +141,11 @@ const lerCorpo = (req) =>
 export function criarApp({ db, env = process.env, estaticos = null }) {
   const q = {
     lista: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em FROM roteiros
-       WHERE dono_email = ? OR publico = 1 ORDER BY atualizado_em DESC LIMIT 2000`,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em,
+              EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado
+       FROM roteiros
+       WHERE dono_email = ? OR publico = 1 OR id IN (SELECT roteiro_id FROM compartilhamentos WHERE email = ?)
+       ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
     um: db.prepare('SELECT * FROM roteiros WHERE id = ?'),
     inserir: db.prepare(
@@ -144,6 +158,15 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
     novaVersao: db.prepare('INSERT INTO versoes (roteiro_id, n, criado_em, por_email, por_nome, motivo, meta, doc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     versoes: db.prepare('SELECT n, criado_em, por_email, por_nome, motivo FROM versoes WHERE roteiro_id = ? ORDER BY n DESC LIMIT 200'),
     versao: db.prepare('SELECT * FROM versoes WHERE roteiro_id = ? AND n = ?'),
+    verUsuario: db.prepare(
+      `INSERT INTO usuarios (email, nome, visto_em) VALUES (?, ?, ?)
+       ON CONFLICT (email) DO UPDATE SET nome = excluded.nome, visto_em = excluded.visto_em`,
+    ),
+    usuarios: db.prepare('SELECT email, nome FROM usuarios WHERE email <> ? ORDER BY nome COLLATE NOCASE LIMIT 1000'),
+    compartilhadoCom: db.prepare('SELECT email FROM compartilhamentos WHERE roteiro_id = ? ORDER BY email'),
+    temAcesso: db.prepare('SELECT 1 FROM compartilhamentos WHERE roteiro_id = ? AND email = ?'),
+    limparCompartilhamento: db.prepare('DELETE FROM compartilhamentos WHERE roteiro_id = ?'),
+    compartilhar: db.prepare('INSERT OR IGNORE INTO compartilhamentos (roteiro_id, email) VALUES (?, ?)'),
   };
 
   const paraFora = (l, eu) => ({
@@ -157,6 +180,8 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
     criadoPor: { nome: l.dono_nome, email: l.dono_email },
     publico: !!l.publico,
     meu: l.dono_email === eu.email,
+    // só o dono sabe com quem compartilhou
+    ...(l.dono_email === eu.email ? { compartilhadoCom: q.compartilhadoCom.all(l.id).map((c) => c.email) } : {}),
   });
 
   /** Guarda uma versão quando faz sentido: a primeira, a cada 5 min de edição, ou num marco (exportou, restaurou). */
@@ -170,11 +195,17 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
   async function api(req, res, caminho) {
     const eu = await identificar(req, env);
     if (caminho === '/api/eu') {
-      if (eu) return json(res, 200, eu);
+      if (eu) {
+        // quem entra passa a constar na lista de pessoas com quem se pode compartilhar
+        q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
+        return json(res, 200, eu);
+      }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
     }
     if (!eu) return json(res, 401, { erro: 'Entre com a sua conta para ver os roteiros.' });
+
+    if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
 
     const m = /^\/api\/roteiros(?:\/([^/]+))?(?:\/versoes(?:\/(\d+))?)?$/.exec(caminho);
     if (!m) return json(res, 404, { erro: 'Não encontrado.' });
@@ -186,16 +217,17 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
       return json(
         res,
         200,
-        q.lista.all(eu.email).map((l) => ({
+        q.lista.all(eu.email, eu.email).map((l) => ({
           id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, atualizadoEm: l.atualizado_em,
           dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
+          compartilhado: !!l.compartilhado,
         })),
       );
     }
     if (!ID_VALIDO.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
     const atual = q.um.get(id);
     const meu = atual?.dono_email === eu.email;
-    const podeLer = atual && (meu || atual.publico);
+    const podeLer = atual && (meu || atual.publico || q.temAcesso.get(id, eu.email));
 
     if (pedeVersoes) {
       // o histórico é do dono: mostra o caminho todo do texto, não só o resultado
@@ -234,6 +266,11 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
       try {
         if (atual) q.atualizar.run(publico, meta, doc, nArtes, revisao, agora, id);
         else q.inserir.run(id, eu.email, eu.nome, publico, meta, doc, nArtes, revisao, r.origem ?? null, agora, agora);
+        if (Array.isArray(r.compartilhadoCom)) {
+          q.limparCompartilhamento.run(id);
+          for (const e of r.compartilhadoCom.slice(0, 500))
+            if (typeof e === 'string' && e.includes('@') && e.toLowerCase() !== eu.email) q.compartilhar.run(id, e.toLowerCase());
+        }
         versionar(id, eu, meta, doc, motivo, agora);
         db.exec('COMMIT');
       } catch (e) {

@@ -117,7 +117,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
     if (!r) return avisar('Não consegui abrir esse roteiro.');
     const agora = new Date().toISOString();
     const eu: Pessoa | undefined = identidade ? { nome: identidade.nome, email: identidade.email } : undefined;
-    const copia: Roteiro = { ...structuredClone(r), id: novoId(), revisao: 1, criadoEm: agora, atualizadoEm: agora, criadoPor: eu, alteradoPor: eu, publico: false, meu: true };
+    const copia: Roteiro = { ...structuredClone(r), id: novoId(), revisao: 1, criadoEm: agora, atualizadoEm: agora, criadoPor: eu, alteradoPor: eu, publico: false, compartilhadoCom: [], meu: true };
     copia.meta.titulo = r.meta.titulo ? `${r.meta.titulo} (cópia)` : '';
     copia.meta.status = 'rascunho';
     await armazenamento.salvar(copia);
@@ -219,7 +219,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                       <span className="item-sub">
                         {[r.meta.programa, dataCurta(r.meta.dataExibicao), r.meta.locutor && `loc. ${r.meta.locutor}`].filter(Boolean).join(' · ') || 'Rascunho'}
                         {!r.meu && r.dono && <span className="etiqueta-lista">de {r.dono.nome}</span>}
-                        {r.meu && r.publico && <span className="etiqueta-lista">público</span>}
+                        {r.meu && (r.publico || r.compartilhado) && <span className="etiqueta-lista">{r.publico ? 'todos leem' : 'compartilhado'}</span>}
                       </span>
                     </button>
                     <span className="item-artes">{plural(nArtes, 'arte', 'artes')}</span>

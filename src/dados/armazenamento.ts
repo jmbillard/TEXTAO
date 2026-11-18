@@ -12,6 +12,8 @@ export interface Resumo {
   atualizadoEm: string;
   dono: Pessoa | null;
   publico: boolean;
+  /** Compartilhado com pessoas específicas. */
+  compartilhado?: boolean;
   meu: boolean;
 }
 export interface Versao {
@@ -37,6 +39,8 @@ export interface Armazenamento {
   apagar(id: string): Promise<void>;
   versoes(id: string): Promise<Versao[]>;
   lerVersao(id: string, n: number): Promise<ConteudoVersao>;
+  /** As outras pessoas que já usaram a plataforma. */
+  usuarios(): Promise<Pessoa[]>;
 }
 
 /* ---------- navegador ---------- */
@@ -81,6 +85,7 @@ const noNavegador: Armazenamento = {
     await operar('readwrite', (l) => l.delete(id));
   },
   versoes: async () => [],
+  usuarios: async () => [],
   lerVersao: async () => {
     throw new Error('Sem histórico neste modo.');
   },
@@ -114,6 +119,7 @@ const noServidor: Armazenamento = {
   },
   versoes: (id) => pedir<Versao[]>(`/api/roteiros/${encodeURIComponent(id)}/versoes`),
   lerVersao: (id, n) => pedir<ConteudoVersao>(`/api/roteiros/${encodeURIComponent(id)}/versoes/${n}`),
+  usuarios: () => pedir<Pessoa[]>('/api/usuarios'),
 };
 
 /** O armazenamento em uso. Começa no navegador e passa para o servidor quando `conectar` o encontra. */

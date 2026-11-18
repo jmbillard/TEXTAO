@@ -67,7 +67,9 @@ Variáveis da stack (todas opcionais):
 
 **Dados e backup.** O banco é `/dados/roteirista.db`. Uma vez por dia o servidor grava uma cópia em `/dados/backup/roteirista-AAAA-MM-DD.db`. Mantenha o volume em disco local (SQLite não combina com pasta de rede) e copie a pasta `backup` para outro lugar de tempos em tempos. Para restaurar, pare o container e ponha a cópia no lugar de `roteirista.db`.
 
-**Quem vê o quê.** Cada pessoa vê só os próprios roteiros. No editor, o botão **Privado/Público** libera a leitura para os colegas; só o dono edita e apaga. Quem lê pode exportar ou **duplicar para editar** a própria cópia.
+**Quem vê o quê.** Cada pessoa vê só os próprios roteiros. No editor, o botão de compartilhar tem três opções: **Só eu**, **Algumas pessoas** (escolhidas na lista de quem já entrou na plataforma) ou **Todos**. Só o dono edita, apaga e sabe com quem compartilhou. Quem lê pode exportar ou **duplicar para editar** a própria cópia.
+
+**Linha do tempo.** O controle deslizante no rodapé do editor percorre as edições da sessão: para trás desfaz, para frente refaz até o ponto atual. Vale para o texto do roteiro (os campos do cabeçalho não entram) e recomeça quando a página é recarregada; para voltar mais longe, use o histórico.
 
 **Histórico.** O servidor guarda uma versão ao criar, a cada 5 minutos de edição e sempre que o roteiro é exportado ou restaurado. Só o dono vê e restaura versões.
 

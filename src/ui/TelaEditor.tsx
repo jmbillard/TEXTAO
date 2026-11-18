@@ -7,6 +7,7 @@ import History from '@tiptap/extension-history';
 import Italic from '@tiptap/extension-italic';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
+import { redoDepth, undoDepth } from '@tiptap/pm/history';
 import { armazenamento, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, converterLayout, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
@@ -325,6 +326,95 @@ function Checklist({ saida, confirmarTodas }: { saida: Saida; confirmarTodas: ()
   );
 }
 
+/* ---------- compartilhar ---------- */
+
+function Compartilhar({ publico, pessoas, mudar }: { publico: boolean; pessoas: string[]; mudar: (todos: boolean, lista: string[]) => void }) {
+  const [usuarios, setUsuarios] = useState<Pessoa[] | null>(null);
+  const [busca, setBusca] = useState('');
+  const [modo, setModo] = useState<'eu' | 'algumas' | 'todos'>(publico ? 'todos' : pessoas.length ? 'algumas' : 'eu');
+  useEffect(() => {
+    armazenamento.usuarios().then(setUsuarios, () => setUsuarios([]));
+  }, []);
+
+  const escolher = (m: typeof modo) => {
+    setModo(m);
+    mudar(m === 'todos', m === 'algumas' ? pessoas : []);
+  };
+  const alternar = (email: string) => mudar(false, pessoas.includes(email) ? pessoas.filter((e) => e !== email) : [...pessoas, email]);
+  const termo = busca.trim().toLowerCase();
+  // quem já foi escolhido aparece mesmo que não esteja mais na lista
+  const lista = [...(usuarios ?? []), ...pessoas.filter((e) => !(usuarios ?? []).some((u) => u.email === e)).map((e) => ({ nome: e.split('@')[0], email: e }))]
+    .filter((u) => !termo || `${u.nome} ${u.email}`.toLowerCase().includes(termo));
+
+  return (
+    <div className="painel-compartilhar" role="dialog" aria-label="Quem pode ler este roteiro">
+      <div className="rotulo">Quem pode ler</div>
+      <div className="modos" role="radiogroup" aria-label="Quem pode ler">
+        {([['eu', 'cadeado', 'Só eu', 'Ninguém mais vê'], ['algumas', 'pessoas', 'Algumas pessoas', 'Você escolhe quem'], ['todos', 'olho', 'Todos', 'Qualquer colega que entrar']] as const).map(([id, icone, nome, dica]) => (
+          <button key={id} role="radio" aria-checked={modo === id} className="modo" onClick={() => escolher(id)}>
+            <Selo nome={icone} />
+            <span className="menu-texto"><strong>{nome}</strong><small>{dica}</small></span>
+            <span className="modo-marca">{modo === id && <Icone nome="certo" tam={12} traco={3} />}</span>
+          </button>
+        ))}
+      </div>
+      {modo === 'algumas' && (
+        <div className="quem">
+          {(usuarios?.length ?? 0) > 6 && <input className="popover-obs" placeholder="Buscar pessoa" aria-label="Buscar pessoa" value={busca} onChange={(e) => setBusca(e.target.value)} />}
+          <ul>
+            {lista.map((u) => (
+              <li key={u.email}>
+                <label>
+                  <input type="checkbox" checked={pessoas.includes(u.email)} onChange={() => alternar(u.email)} />
+                  <span className="quem-nome">{u.nome}</span>
+                  <span className="suave pequeno">{u.email}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {usuarios && !lista.length && <p className="suave pequeno">{termo ? 'Ninguém com esse nome.' : 'Ainda não há outras pessoas por aqui. Elas aparecem depois do primeiro acesso.'}</p>}
+        </div>
+      )}
+      <p className="suave pequeno">Quem recebe pode ler, exportar e duplicar. Só você edita.</p>
+    </div>
+  );
+}
+
+/* ---------- linha do tempo ---------- */
+
+/** Arrastar para trás desfaz as edições desta sessão; para frente, refaz até o ponto atual. */
+function LinhaDoTempo({ editor, versao }: { editor: Editor; versao: number }) {
+  void versao; // recalcula a cada mudança no texto
+  const feitas = undoDepth(editor.state);
+  const total = feitas + redoDepth(editor.state);
+  if (!total) return null;
+  const ir = (alvo: number) => {
+    let atual = undoDepth(editor.state);
+    for (let i = 0; i < 500 && atual !== alvo; i++) {
+      if (!(alvo < atual ? editor.commands.undo() : editor.commands.redo())) break;
+      atual = undoDepth(editor.state);
+    }
+  };
+  return (
+    <div className="linha-do-tempo" role="group" aria-label="Linha do tempo das edições">
+      <button className="botao-icone pequeno" title={`Desfazer (${atalho('Mod-z')})`} aria-label="Desfazer" disabled={!feitas} onClick={() => ir(feitas - 1)}><Icone nome="desfazer" tam={15} /></button>
+      <input
+        type="range"
+        min={0}
+        max={total}
+        step={1}
+        value={feitas}
+        aria-label="Voltar ou avançar nas edições"
+        aria-valuetext={feitas === total ? 'ponto atual' : `${total - feitas} ${total - feitas === 1 ? 'edição' : 'edições'} atrás`}
+        style={{ '--pos': `${(feitas / total) * 100}%` } as React.CSSProperties}
+        onChange={(e) => ir(Number(e.target.value))}
+      />
+      <button className="botao-icone pequeno" title="Refazer" aria-label="Refazer" disabled={feitas === total} onClick={() => ir(feitas + 1)}><Icone nome="refazer" tam={15} /></button>
+      <span className="ldt-texto">{feitas === total ? 'agora' : `${total - feitas} atrás`}</span>
+    </div>
+  );
+}
+
 /* ---------- tela ---------- */
 
 export function TelaEditor({ id, voltar, avisar, pessoa }: { id: string; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
@@ -358,8 +448,12 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   const leitura = inicial.meu === false; // roteiro público de outra pessoa
   const comServidor = armazenamento.tipo === 'servidor';
   const [publico, setPublico] = useState(!!inicial.publico);
+  const [pessoas, setPessoas] = useState<string[]>(inicial.compartilhadoCom ?? []);
+  const [compartilhando, setCompartilhando] = useState(false);
   const publicoRef = useRef(publico);
   publicoRef.current = publico;
+  const pessoasRef = useRef(pessoas);
+  pessoasRef.current = pessoas;
   const marco = useRef<string | undefined>(undefined);
   const [historico, setHistorico] = useState<Versao[] | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -411,7 +505,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   }, []);
 
   const roteiroAtual = useCallback(
-    (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString(), publico: publicoRef.current,
+    (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString(), publico: publicoRef.current, compartilhadoCom: pessoasRef.current,
       // só quem alterou assina; abrir para ler não muda a autoria
       ...(mexeu.current && pessoaRef.current ? { alteradoPor: pessoaRef.current, criadoPor: inicial.criadoPor ?? pessoaRef.current } : {}) }),
     [editor, inicial],
@@ -426,7 +520,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
       armazenamento.salvar(roteiroAtual(), m).then(() => setSalvo(true), (e: Error) => avisar(comServidor ? e.message : 'Não consegui salvar neste navegador.'));
     }, 500);
     return () => clearTimeout(t);
-  }, [salvo, docVersao, meta, publico, editor, roteiroAtual, avisar]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [salvo, docVersao, meta, publico, pessoas, editor, roteiroAtual, avisar]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const antesDeSair = () => {
       if (editor && mexeu.current && !leitura) void armazenamento.salvar(roteiroAtual(), marco.current).catch(() => {});
@@ -513,18 +607,20 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
   // fechar com Esc ou clicando fora
   useEffect(() => {
-    if (!menu && !popover && !exportando) return;
+    if (!menu && !popover && !exportando && !compartilhando) return;
     const tecla = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       setMenu(null);
       setPopover(null);
       setExportando(false);
+      setCompartilhando(false);
     };
     const fora = (e: PointerEvent) => {
       const alvo = e.target as HTMLElement;
-      if (alvo.closest('.menu, .popover, .exportar')) return;
+      if (alvo.closest('.menu, .popover, .exportar, .compartilhar')) return;
       setMenu(null);
       setExportando(false);
+      setCompartilhando(false);
       if (!alvo.closest('.texto')) setPopover(null);
     };
     window.addEventListener('keydown', tecla);
@@ -533,7 +629,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
       window.removeEventListener('keydown', tecla);
       window.removeEventListener('pointerdown', fora, true);
     };
-  }, [menu, popover, exportando]);
+  }, [menu, popover, exportando, compartilhando]);
 
   const aoMenuDeContexto = (e: React.MouseEvent) => {
     if (!editor || leitura) return;
@@ -593,11 +689,11 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     }
   };
 
-  const alternarPublico = () => {
+  const compartilhar = (todos: boolean, lista: string[]) => {
     mexeu.current = true;
-    setPublico((v) => !v);
+    setPublico(todos);
+    setPessoas(lista);
     setSalvo(false);
-    avisar(publico ? 'Agora só você vê este roteiro.' : 'Agora os colegas podem ler este roteiro. Só você edita.');
   };
   const abrirHistorico = async () => {
     if (historico) return setHistorico(null);
@@ -624,7 +720,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   };
   const duplicarParaEditar = async () => {
     const agora = new Date().toISOString();
-    const copia: Roteiro = { ...roteiroAtual(), id: novoId(), revisao: 1, criadoEm: agora, atualizadoEm: agora, criadoPor: pessoa, alteradoPor: pessoa, publico: false, meu: true };
+    const copia: Roteiro = { ...roteiroAtual(), id: novoId(), revisao: 1, criadoEm: agora, atualizadoEm: agora, criadoPor: pessoa, alteradoPor: pessoa, publico: false, compartilhadoCom: [], meu: true };
     try {
       await armazenamento.salvar(copia);
       location.hash = `#/r/${encodeURIComponent(copia.id)}`;
@@ -679,10 +775,13 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               <button className="botao-icone" title="Histórico de versões" aria-label="Histórico de versões" aria-expanded={!!historico} onClick={abrirHistorico}>
                 <Icone nome="historico" tam={18} />
               </button>
-              <button className={`visibilidade ${publico ? 'publico' : ''}`} role="switch" aria-checked={publico} title={publico ? 'Os colegas podem ler. Clique para voltar a privado.' : 'Só você vê. Clique para deixar os colegas lerem.'} onClick={alternarPublico}>
-                <Icone nome={publico ? 'olho' : 'cadeado'} tam={14} traco={2} />
-                {publico ? 'Público' : 'Privado'}
-              </button>
+              <div className="compartilhar">
+                <button className={`visibilidade ${publico || pessoas.length ? 'publico' : ''}`} aria-haspopup="dialog" aria-expanded={compartilhando} onClick={() => setCompartilhando((v) => !v)}>
+                  <Icone nome={publico ? 'olho' : pessoas.length ? 'pessoas' : 'cadeado'} tam={14} traco={2} />
+                  {publico ? 'Todos leem' : pessoas.length ? plural(pessoas.length, 'pessoa', 'pessoas') : 'Só eu'}
+                </button>
+                {compartilhando && <Compartilhar publico={publico} pessoas={pessoas} mudar={compartilhar} />}
+              </div>
             </>
           )}
           <div className="exportar">
@@ -794,6 +893,8 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               </div>
             ))}
           </aside>
+
+          {editor && !leitura && <LinhaDoTempo editor={editor} versao={docVersao} />}
 
           {historico && (
             <aside className="historico" aria-label="Histórico de versões">

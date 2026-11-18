@@ -100,7 +100,9 @@ export interface Roteiro {
   alteradoPor?: Pessoa;
   /** Visível (só leitura) para as outras pessoas. Só existe com servidor. */
   publico?: boolean;
-  /** false quando o roteiro é de outra pessoa (aberto por ser público). */
+  /** E-mails de quem pode ler, além do dono. Só o dono recebe esta lista. */
+  compartilhadoCom?: string[];
+  /** false quando o roteiro é de outra pessoa (aberto por ser público ou compartilhado). */
   meu?: boolean;
   /** Nome do arquivo de origem, quando importado. */
   origem?: string;
