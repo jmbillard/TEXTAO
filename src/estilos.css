@@ -408,13 +408,17 @@ kbd {
   color: var(--tinta3); font: italic 400 18px/1.7 var(--serifa);
 }
 
-/* Arte: um chip no meio do texto */
+/* Arte: grifada como com marca-texto, sem mudar a letra; mais forte quando apontada na lista */
 .texto u.arte {
-  text-decoration: none; background: var(--ultra-suave); color: var(--ultra-tinta); font-weight: 600; font-size: 0.88em; letter-spacing: 0.01em;
-  padding: 2px 9px; border-radius: 999px; -webkit-box-decoration-break: clone; box-decoration-break: clone; cursor: pointer;
-  transition: background 0.18s, color 0.18s;
+  --grifo-forca: 30%;
+  text-decoration: none; color: inherit; cursor: pointer;
+  background: linear-gradient(104deg, transparent 0.3em, color-mix(in srgb, var(--ultra) var(--grifo-forca), transparent) 0.5em,
+    color-mix(in srgb, var(--ultra) calc(var(--grifo-forca) - 4%), transparent) calc(100% - 0.5em), transparent calc(100% - 0.3em))
+    0 62% / 100% 70% no-repeat;
+  margin: 0 -0.3em; padding: 0 0.3em; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  transition: background-size 0.2s var(--suave), background-position 0.2s var(--suave);
 }
-.texto u.arte:hover { background: color-mix(in srgb, var(--ultra) 22%, var(--ultra-suave)); }
+.texto u.arte:hover { --grifo-forca: 46%; }
 
 /* Etiquetas: rótulo + estilo próprio, nunca só a cor */
 .texto .etq { font-family: var(--serifa); font-style: italic; font-weight: 400; font-size: 1.02em; letter-spacing: 0; cursor: pointer; border-radius: 3px; transition: background 0.2s; }
@@ -1382,3 +1386,15 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .trello-lado.feito .botao-texto { margin-left: auto; }
 .trello-lado.desligado .botao:disabled { opacity: 0.45; cursor: not-allowed; }
 .ficha-trello .motivo-trello { color: inherit; opacity: 0.8; font-size: 12px; }
+
+/* lista das artes sem tipos: índice na frente e um x para tirar a arte */
+.artes.so-lista li { gap: 4px; padding: 0; }
+.artes.so-lista .arte-linha { gap: 12px; padding: 9px 6px; }
+.artes.so-lista .b { order: -1; flex: none; }
+.artes.so-lista li { border-radius: 10px; transition: background 0.15s; }
+.artes.so-lista li.realcada, .artes.so-lista li:hover { background: var(--neutro); }
+.artes.so-lista .arte-linha:hover { background: none; }
+.tirar-arte { flex: none; width: 28px; height: 28px; border-radius: 8px; border: 0; background: none; color: var(--tinta3); display: grid; place-items: center; cursor: pointer;
+  opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s; }
+.artes.so-lista li:hover .tirar-arte, .tirar-arte:focus-visible { opacity: 1; }
+.tirar-arte:hover { color: var(--perigo); background: color-mix(in srgb, var(--perigo) 10%, transparent); }

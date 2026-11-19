@@ -655,10 +655,21 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
     }
   }, [editor, marcaDoPopover, relativo, medida]);
 
+  /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
+  const TIPOS_NA_LISTA = false;
+  const tirarArte = (a: (typeof artes)[number]) => {
+    if (!editor) return;
+    atualizarMarca(editor, a, null);
+    setRealce(null);
+    // o foco volta ao texto, para o desfazer do teclado pegar a remoção
+    editor.commands.focus(null, { scrollIntoView: false });
+    avisar(`"${a.texto}" deixou de ser arte. ${atalho('Mod-z')} desfaz.`);
+  };
+
   // com uma arte aberta na lista: 1–9 escolhe o tipo, setas trocam de arte, Esc fecha
   const tecladoArtes = useRef<(e: KeyboardEvent) => void>(() => {});
   tecladoArtes.current = (e: KeyboardEvent) => {
-    if (!aberta || leitura || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!TIPOS_NA_LISTA || !aberta || leitura || e.metaKey || e.ctrlKey || e.altKey) return;
     const alvo = e.target as HTMLElement | null;
     if (alvo?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const k = artes.findIndex((a) => a.id === aberta);
@@ -1106,11 +1117,25 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
             <section className="cartao">
               <div className="cab-artes">
                 <b><i>{artes.length}</i> {artes.length === 1 ? 'arte' : 'artes'}</b>
-                {semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
+                {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
               </div>
               {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
-              <ol className="artes">
-                {artes.map((a) => {
+              <ol className={`artes ${TIPOS_NA_LISTA ? '' : 'so-lista'}`}>
+                {!TIPOS_NA_LISTA &&
+                  artes.map((a) => (
+                    <li key={a.id} className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''}`} onMouseEnter={() => setRealce(a.id)} onMouseLeave={() => setRealce(null)}>
+                      <button className="arte-linha" onClick={() => irParaArte(a)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
+                        <span className="b">{a.ordem}</span>
+                        <span className="txt"><b>{a.texto}</b></span>
+                      </button>
+                      {!leitura && (
+                        <button className="tirar-arte" aria-label={`Tirar "${a.texto}" das artes`} title="Deixa de ser arte (o texto fica)" onClick={() => tirarArte(a)}>
+                          <Icone nome="fechar" tam={13} traco={2.2} />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                {TIPOS_NA_LISTA && artes.map((a) => {
                   const subtipo = normalizarSubtipo(a.attrs.subtipo);
                   const esta = aberta === a.id;
                   return (
@@ -1177,7 +1202,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
       </section>
 
       <Estatisticas saida={saida} paginas={meta.paginasOriginal} original={original} />
-      {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{background:color-mix(in srgb,var(--ultra) 22%,var(--ultra-suave))}`}</style>}
+      {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{--grifo-forca:70%;background-size:100% 100%;background-position:0 50%}`}</style>}
     </div>
   );
 }
