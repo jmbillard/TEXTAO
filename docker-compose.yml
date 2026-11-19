@@ -7,6 +7,10 @@ services:
     restart: unless-stopped
     ports:
       - "${PORTA:-8080}:80"
+    networks:
+      - default
+      # a rede do Teable no mesmo Docker, para ler as tabelas sem sair para a internet
+      - teable
     volumes:
       # banco (roteirista.db) e backups diários (backup/) ficam aqui; use disco local, não pasta de rede
       - roteirista-dados:/dados
@@ -19,7 +23,8 @@ services:
       - PERFIL_LOCAL=${PERFIL_LOCAL:-0}
       # quantos backups diários manter
       - BACKUPS=${BACKUPS:-14}
-      # Opcional: nomes da casa vindos do Teable (só leitura). Endereço do Teable visto pelo container,
+      # Opcional: nomes da casa vindos do Teable (só leitura). Endereço do Teable na rede Docker
+      # (http://NOME-DO-CONTAINER-DO-TEABLE:3000),
       # token de acesso só de leitura e os IDs das tabelas (tbl...) de atrações (KEY_atracoes) e de redatores.
       - TEABLE_URL=${TEABLE_URL:-}
       - TEABLE_TOKEN=${TEABLE_TOKEN:-}
@@ -46,3 +51,9 @@ services:
 
 volumes:
   roteirista-dados:
+
+networks:
+  # Rede que já existe, criada pela stack do Teable. Outro nome: variável REDE_TEABLE.
+  teable:
+    external: true
+    name: ${REDE_TEABLE:-teable-network}

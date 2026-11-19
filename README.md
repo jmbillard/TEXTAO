@@ -63,7 +63,8 @@ Variáveis da stack (todas opcionais):
 | `ACCESS_AUD` | *Application Audience (AUD) Tag* da aplicação do Access |
 | `PERFIL_LOCAL` | `1` libera o uso sem login: cada pessoa informa nome e e-mail no app. Só para demonstração, porque qualquer um pode informar qualquer e-mail |
 | `BACKUPS` | Quantos backups diários manter (padrão 14) |
-| `TEABLE_URL` | Opcional. Endereço do Teable visto pelo container (ex.: `http://IP-DO-SERVIDOR:PORTA`) |
+| `REDE_TEABLE` | Nome da rede Docker do Teable, à qual o container se junta (padrão `teable-network`; ela precisa existir) |
+| `TEABLE_URL` | Opcional. Endereço do Teable nessa rede (ex.: `http://NOME-DO-CONTAINER:3000`) |
 | `TEABLE_TOKEN` | Token de acesso do Teable, só de leitura |
 | `TEABLE_ATRACOES` | ID (`tbl…`) da tabela de chaves de atrações: campos `key` e `atracoes` |
 | `TEABLE_REDATORES` | ID (`tbl…`) da tabela de redatores: campo `redator` |
