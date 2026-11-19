@@ -294,3 +294,53 @@ describe('modo aberto (padrão)', () => {
     }
   });
 });
+
+describe('fila ao vivo: correções da revisão', () => {
+  const ouvir = (url: string, email: string, origin?: string) =>
+    new Promise<{ ws: WebSocket; recebidos: { tipo: string; id?: string }[] }>((ok, erro) => {
+      const ws = new WebSocket(url.replace('http', 'ws') + '/api/eventos', { headers: { 'cf-access-authenticated-user-email': email, ...(origin ? { origin } : {}) } });
+      const recebidos: { tipo: string; id?: string }[] = [];
+      ws.on('message', (m) => recebidos.push(JSON.parse(String(m))));
+      ws.on('open', () => ok({ ws, recebidos }));
+      ws.on('error', erro);
+    });
+  const espera = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+  const corpo = (texto: string) => JSON.stringify(roteiro(texto));
+
+  it('recusa conexão em tempo real vinda de outro site', async () => {
+    await expect(ouvir(base, 'ana@empresa.com', 'https://outro-site.example')).rejects.toThrow(/403/);
+    const { ws } = await ouvir(base, 'ana@empresa.com', base);
+    ws.close();
+  });
+
+  it('modo privado: quem não pode ler não fica sabendo do roteiro', async () => {
+    const carla = await ouvir(base, 'carla@empresa.com');
+    await ana('/api/roteiros/so-da-ana-01', { method: 'PUT', body: corpo('segredo') });
+    await espera(150);
+    carla.ws.close();
+    expect(carla.recebidos.filter((e) => e.id === 'so-da-ana-01')).toEqual([]);
+  });
+
+  it('modo aberto: mexer só no texto avisa a fila de quem revisou, uma vez por revisor', async () => {
+    const banco = abrirBanco(':memory:');
+    const app = criarApp({ db: banco, env: {} });
+    const s = createServer(app);
+    s.on('upgrade', app.upgrade);
+    await new Promise<void>((ok) => s.listen(0, ok));
+    const url = `http://localhost:${(s.address() as { port: number }).port}`;
+    const put = (email: string, texto: string) =>
+      fetch(url + '/api/roteiros/rubrica-0001', { method: 'PUT', headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json' }, body: corpo(texto) });
+    try {
+      await put('ana@empresa.com', 'v1');
+      const fila = await ouvir(url, 'carla@empresa.com');
+      await put('beto@empresa.com', 'v2'); // novo revisor: avisa
+      await put('beto@empresa.com', 'v3'); // mesmo revisor, só texto: não avisa de novo
+      await espera(150);
+      fila.ws.close();
+      expect(fila.recebidos.filter((e) => e.tipo === 'alterado').length).toBe(1);
+    } finally {
+      s.close();
+      await app.fechar();
+    }
+  });
+});

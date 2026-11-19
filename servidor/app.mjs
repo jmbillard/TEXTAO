@@ -179,7 +179,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
        FROM roteiros
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
-    um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
+    um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
     conteudo: db.prepare('UPDATE roteiros SET meta = ?, doc = ?, n_artes = ?, atualizado_em = ? WHERE id = ?'),
@@ -275,15 +275,25 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   const naFila = new Map(); // ws → { eu, vivo }
   const FILA = 'fila';
   const pessoasNaFila = () => [...new Map([...naFila.values()].map(({ eu }) => [eu.email, { nome: eu.nome, email: eu.email }])).values()];
+  /** Em qual roteiro o aviso toca: o id, ou a ficha sob o ponteiro. */
+  const roteiroDoAviso = (dado) => dado.id ?? (typeof dado.ancora === 'string' && dado.ancora.startsWith('ficha:') ? dado.ancora.slice(6) : null);
   const paraTodos = (dado) => {
     const msg = JSON.stringify(dado);
-    for (const ws of naFila.keys()) if (ws.readyState === 1) ws.send(msg);
+    const id = roteiroDoAviso(dado);
+    for (const [ws, c] of naFila) {
+      if (ws.readyState !== 1) continue;
+      // no modo privado, ninguém fica sabendo de roteiro que não pode ler (o aviso de apagado só leva o id)
+      if (!aberto && id && dado.tipo !== 'apagado' && !acesso(id, c.eu).ler) continue;
+      ws.send(msg);
+    }
   };
   cache.assinar(FILA, paraTodos);
   const avisarFila = (tipo, id, eu) => void cache.publicar(FILA, { tipo, id, por: eu.email }).catch(() => {});
   // túneis e proxies derrubam conexão parada: um ping a cada 25 s mantém a fila viva e descarta quem sumiu
+  // vale também para quem está num roteiro: notebook fechado não fica "vendo" para sempre
   const batimento = setInterval(() => {
-    for (const [ws, c] of naFila) {
+    const todas = [...naFila, ...[...salas.values()].flatMap((s) => [...s.conexoes])];
+    for (const [ws, c] of todas) {
       if (!c.vivo) ws.terminate();
       else {
         c.vivo = false;
@@ -335,18 +345,37 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     ws.on('close', () => {
       naFila.delete(ws);
       paraTodos({ tipo: 'presenca', pessoas: pessoasNaFila() });
-      void cache.publicar(PONTEIROS, { tipo: 'ponteiro', por: eu.email, nome: eu.nome, saiu: true }).catch(() => {});
+      // com outra aba da mesma pessoa ainda aberta, o ponteiro dela continua
+      if (![...naFila.values()].some((c) => c.eu.email === eu.email))
+        void cache.publicar(PONTEIROS, { tipo: 'ponteiro', por: eu.email, nome: eu.nome, saiu: true }).catch(() => {});
     });
     paraTodos({ tipo: 'presenca', pessoas: pessoasNaFila() });
   }
 
   const wss = new WebSocketServer({ noServer: true });
+  /** Conexão em tempo real só do próprio site: outra página aberta no navegador não pode falar em nome da pessoa.
+      CONFERIR_ORIGEM=0 desliga a conferência (para um proxy que reescreva o endereço). */
+  const origemConfere = (req) => {
+    const origem = req.headers.origin;
+    if (!origem || env.CONFERIR_ORIGEM === '0') return true;
+    try {
+      const host = new URL(origem).host.toLowerCase();
+      return [req.headers.host, req.headers['x-forwarded-host']].some((h) => typeof h === 'string' && h.split(',')[0].trim().toLowerCase() === host);
+    } catch {
+      return false;
+    }
+  };
+
   async function upgrade(req, socket, head) {
     const recusar = (codigo) => {
       socket.write(`HTTP/1.1 ${codigo}\r\nConnection: close\r\n\r\n`);
       socket.destroy();
     };
     try {
+      if (!origemConfere(req)) {
+        console.error(`[tempo real] conexão recusada: origem ${req.headers.origin} não é ${req.headers['x-forwarded-host'] ?? req.headers.host}`);
+        return recusar('403 Forbidden');
+      }
       const caminho = new URL(req.url, 'http://x').pathname;
       if (caminho === '/api/eventos') {
         const eu = await identificar(req, env);
@@ -366,9 +395,10 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   }
   function conectar(ws, id, eu, editar) {
     const sala = abrirSala(id);
-    const con = { eu, editar, clientes: new Set() };
+    const con = { eu, editar, clientes: new Set(), vivo: true };
     sala.conexoes.set(ws, con);
     avisarNoRoteiro(id);
+    ws.on('pong', () => (con.vivo = true));
     ws.binaryType = 'arraybuffer';
 
     ws.on('message', (dados) => {
@@ -522,6 +552,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const revisao = Number.isInteger(r.revisao) ? r.revisao : 1;
       const motivo = typeof corpo.marco === 'string' ? corpo.marco.slice(0, 40) : '';
       let mudouAcesso = false;
+      let novoRevisor = false;
       db.exec('BEGIN');
       try {
         // quem edita sem ser dono muda o conteúdo, nunca o compartilhamento
@@ -540,7 +571,10 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
           }
           mudouAcesso ||= antes !== JSON.stringify(q.compartilhadoCom.all(id));
         }
-        if (atual && (atual.meta !== meta || atual.doc !== doc)) q.revisou.run(eu.email, eu.nome, id);
+        if (atual && (atual.meta !== meta || atual.doc !== doc)) {
+          novoRevisor = atual.revisado_email !== eu.email;
+          q.revisou.run(eu.email, eu.nome, id);
+        }
         versionar(id, eu, meta, doc, motivo, agora);
         db.exec('COMMIT');
       } catch (e) {
@@ -551,7 +585,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       if (mudouAcesso) fecharSala(id, 'acesso alterado', (con) => con.eu.email !== eu.email);
       // a fila só precisa saber quando muda o que ela mostra; o texto sendo digitado não conta
       if (!atual) avisarFila('criado', id, eu);
-      else if (atual.meta !== meta || atual.n_artes !== nArtes) avisarFila('alterado', id, eu);
+      else if (novoRevisor || atual.meta !== meta || atual.n_artes !== nArtes) avisarFila('alterado', id, eu);
       return json(res, 200, { ok: true, atualizadoEm: agora });
     }
     return json(res, 405, { erro: 'Método não permitido.' });
@@ -587,6 +621,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   app.fechar = async () => {
     clearInterval(batimento);
     for (const ws of naFila.keys()) ws.terminate();
+    // o que foi digitado nos últimos instantes ainda não foi gravado: grava antes de desligar
+    for (const [id, sala] of salas) {
+      if (!sala.prazo) continue;
+      clearTimeout(sala.prazo);
+      if (q.um.get(id)) sala.gravar();
+    }
     await cache.fechar();
   };
   return app;

@@ -274,11 +274,18 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
           return novo;
         });
       }
-      if (e.tipo === 'no-roteiro') return setNoRoteiro((atual) => ({ ...atual, [e.id]: e.pessoas.filter((p) => p.email !== eu) }));
+      if (e.tipo === 'no-roteiro') {
+        setNoRoteiro((atual) => ({ ...atual, [e.id]: e.pessoas.filter((p) => p.email !== eu) }));
+        // alguém saiu do roteiro: a ficha pode ter ganhado a rubrica de quem revisou
+        if (!e.pessoas.length) recarregar();
+        return;
+      }
+      if (e.tipo === 'reconectou') {
+        // a conexão caiu: o que se sabia de quem estava onde pode estar velho; o servidor manda tudo de novo
+        setNoRoteiro({});
+        setPonteiros({});
+      }
       if (e.tipo === 'presenca') {
-        const aqui = new Set(e.pessoas.map((p) => p.email));
-        // quem saiu da fila leva o ponteiro junto
-        setPonteiros((atual) => Object.fromEntries(Object.entries(atual).filter(([email]) => aqui.has(email))));
         return setColegas(e.pessoas.filter((p) => p.email !== eu));
       }
       if (e.tipo === 'criado' && e.por !== eu) setDeOutros((d) => [...d, e.id]);
