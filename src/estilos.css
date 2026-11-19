@@ -593,6 +593,11 @@ kbd {
   .cab, .corpo, .corpo.em-colunas, .folha-fim, .colunas-topo { padding-left: 20px; padding-right: 20px; }
   .topo { padding: 0 8px; gap: 8px; }
   .salvo { display: none; }
+  /* no celular a barra fica só com o essencial: o Trello continua no cartão ao lado do texto */
+  .topo .logo-app, .topo .trilha, .topo .trello-topo { display: none; }
+  .topo-dir { gap: 6px; }
+  .botao.proximo { font-size: 0; gap: 6px; padding: 0 10px; }
+  .botao.proximo .proximo-n { font-size: 12px; }
 }
 
 /* Perfil */
