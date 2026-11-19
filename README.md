@@ -1,4 +1,4 @@
-# Roteirista
+# PROMeiro
 
 Editor de roteiros de chamadas do Promo. Substitui o Word na escrita, padroniza as marcações e entrega, no fim, um roteiro limpo com metadados e a lista de artes.
 

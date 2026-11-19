@@ -1,4 +1,4 @@
-// Servidor do Roteirista: API + arquivos estáticos, com SQLite (node:sqlite, sem dependências).
+// Servidor do PROMeiro: API + arquivos estáticos, com SQLite (node:sqlite, sem dependências).
 // Cada roteiro pertence a um e-mail. Só o dono vê e edita; se marcar como público, os outros leem.
 import { DatabaseSync } from 'node:sqlite';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';

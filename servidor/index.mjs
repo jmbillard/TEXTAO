@@ -26,7 +26,7 @@ const app = criarApp({ db, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 
 const servidor = createServer(app);
 servidor.on('upgrade', app.upgrade);
 servidor.listen(porta, () =>
-  console.log(`Roteirista em http://localhost:${porta} · dados em ${dados}`),
+  console.log(`PROMeiro em http://localhost:${porta} · dados em ${dados}`),
 );
 // diz no log, logo na partida, se a ligação com o Teable está de pé
 {

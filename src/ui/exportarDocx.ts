@@ -108,7 +108,7 @@ export async function gerarDocx(saida: Saida): Promise<Blob> {
     });
 
   const doc = new Document({
-    creator: r.redator || 'Roteirista',
+    creator: r.redator || 'PROMeiro',
     title: [r.programa, r.titulo].filter(Boolean).join(' · '),
     sections: [
       {
