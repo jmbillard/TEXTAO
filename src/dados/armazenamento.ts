@@ -183,7 +183,7 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const saida = exportar(roteiro);
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
     method: 'POST',
-    body: JSON.stringify({ artes: saida.artes.map((a) => a.texto), texto: saida.texto.completo, deNovo }),
+    body: JSON.stringify({ artes: saida.artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '' })), texto: saida.texto.completo, deNovo }),
   });
 }
 

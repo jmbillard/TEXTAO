@@ -578,7 +578,10 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const base = env.PROMEIRO_URL ? env.PROMEIRO_URL.replace(/\/+$/, '') : '';
       const r = await trello.enviar({
         meta: JSON.parse(atual.meta),
-        artes: Array.isArray(corpo.artes) ? corpo.artes.slice(0, 200).map((a) => String(a).slice(0, 500)) : [],
+        doc: JSON.parse(atual.doc),
+        artes: Array.isArray(corpo.artes)
+          ? corpo.artes.slice(0, 200).map((a) => (typeof a === 'string' ? a.slice(0, 500) : { texto: String(a?.texto ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40) }))
+          : [],
         texto: typeof corpo.texto === 'string' ? corpo.texto.slice(0, 200_000) : '',
         original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null,
         endereco: base ? `${base}/#/r/${id}` : '',

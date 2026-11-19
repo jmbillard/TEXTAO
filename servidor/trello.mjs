@@ -5,6 +5,7 @@
    Tudo o que é ID do quadro e das tabelas vem do ambiente: este repositório é público. */
 
 import { abrirPg } from './pauta.mjs';
+import { gerarPdf } from './pdf.mjs';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const API_PADRAO = 'https://api.trello.com/1';
@@ -106,7 +107,6 @@ export function configDoTrello(env) {
       sessoes: env.TEABLE_PG_SESSOES || '',
       logBot: env.TEABLE_PG_LOG_BOT || '',
     },
-    stirling: { url: (env.STIRLING_URL || '').replace(/\/+$/, ''), chave: env.STIRLING_CHAVE || '' },
     sftp: {
       host: env.SFTP_HOST || '',
       porta: Number(env.SFTP_PORTA) || 22,
@@ -262,20 +262,11 @@ export function criarTrello(env, deps = {}) {
 
   /* ---------- arquivo ---------- */
 
-  async function emPdf(original) {
-    if (!original) return null;
-    if (/\.pdf$/i.test(original.nome)) return original;
-    if (!c.stirling.url) return null;
-    const form = new FormData();
-    form.append('fileInput', new Blob([original.dados], { type: original.tipo || 'application/octet-stream' }), original.nome);
-    const r = await buscar(`${c.stirling.url}/api/v1/convert/file/pdf`, {
-      method: 'POST',
-      headers: c.stirling.chave ? { 'X-API-KEY': c.stirling.chave } : undefined,
-      body: form,
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (!r.ok) throw new Error(`o Stirling respondeu ${r.status} ao gerar o PDF`);
-    return { nome: original.nome.replace(/\.[^.]+$/, '') + '.pdf', tipo: 'application/pdf', dados: Buffer.from(await r.arrayBuffer()) };
+  /** O Trello só mostra PDF: o PDF que subiu vai como veio; Word, RTF, texto e colado viram PDF aqui mesmo. */
+  async function emPdf(r, artes) {
+    if (r.original && /\.pdf$/i.test(r.original.nome)) return { ...r.original, tipo: 'application/pdf' };
+    const base = (r.original?.nome ?? String(r.meta.claquete || 'roteiro')).replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '_');
+    return { nome: `${base}.pdf`, tipo: 'application/pdf', dados: await gerarPdf({ meta: r.meta, doc: r.doc, artes }) };
   }
 
   async function guardarNoOneDrive(original, hoje) {
@@ -297,7 +288,8 @@ export function criarTrello(env, deps = {}) {
   /**
    * Manda um roteiro.
    * @param r.meta meta do roteiro (claquete, praca, redator, editor, dataExibicao, programa)
-   * @param r.artes textos das artes, na ordem
+   * @param r.artes artes na ordem: texto, ou { texto, tipo }
+   * @param r.doc documento do editor, para o PDF
    * @param r.texto texto corrido
    * @param r.original { nome, tipo, dados: Buffer } | null
    * @param r.endereco link do roteiro no PROMeiro
@@ -334,7 +326,11 @@ export function criarTrello(env, deps = {}) {
     ]);
     const filme = await tentar('achar o card do filme', () => cardDoFilme(atracao?.nome, m.dataExibicao));
 
-    const artes = (r.artes ?? []).map((a) => String(a).trim()).filter(Boolean);
+    const listaDeArtes = (r.artes ?? [])
+      .map((a) => (typeof a === 'string' ? { texto: a, tipo: '' } : { texto: String(a?.texto ?? ''), tipo: String(a?.tipo ?? '') }))
+      .map((a) => ({ texto: a.texto.trim(), tipo: a.tipo.trim() }))
+      .filter((a) => a.texto);
+    const artes = listaDeArtes.map((a) => a.texto);
     const desc = [
       '**ARTES IDENTIFICADAS:**',
       artes.length ? '`' + artes.join('`, `') + '`' : '—',
@@ -382,18 +378,16 @@ export function criarTrello(env, deps = {}) {
 
     // o roteiro em PDF, anexado ao card; e o original guardado no OneDrive, como o n8n fazia
     let anexo = null;
-    if (r.original) {
-      const pdf = await tentar('gerar o PDF', () => emPdf(r.original));
-      const arquivo = pdf ?? r.original;
-      anexo = await tentar('anexar o roteiro', () => {
+    const pdf = await tentar('gerar o PDF', () => emPdf(r, listaDeArtes));
+    if (pdf)
+      anexo = await tentar('anexar o PDF', () => {
         const form = new FormData();
-        form.append('name', arquivo.nome);
-        form.append('mimeType', arquivo.tipo || 'application/octet-stream');
-        form.append('file', new Blob([arquivo.dados], { type: arquivo.tipo || 'application/octet-stream' }), arquivo.nome);
+        form.append('name', pdf.nome);
+        form.append('mimeType', 'application/pdf');
+        form.append('file', new Blob([pdf.dados], { type: 'application/pdf' }), pdf.nome);
         return trello('POST', `/cards/${card.id}/attachments`, { form });
       });
-      await tentar('guardar no OneDrive', () => guardarNoOneDrive(r.original, hoje));
-    } else avisos.push('anexar o roteiro: o arquivo original não está guardado (roteiro colado ou antigo)');
+    if (r.original) await tentar('guardar no OneDrive', () => guardarNoOneDrive(r.original, hoje));
 
     const entrada = agora.toISOString();
     await tentar('marcar a data de entrada', () => campo(card.id, c.campos.entrada, { value: { date: entrada } }));

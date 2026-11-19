@@ -88,9 +88,7 @@ services:
       - TEABLE_PG_FILMES_ESQUEMA=${TEABLE_PG_FILMES_ESQUEMA:-}
       - TEABLE_PG_SESSOES=${TEABLE_PG_SESSOES:-}
       - TEABLE_PG_LOG_BOT=${TEABLE_PG_LOG_BOT:-}
-      # PDF do roteiro (Stirling) e cópia do original no OneDrive (SFTP)
-      - STIRLING_URL=${STIRLING_URL:-}
-      - STIRLING_CHAVE=${STIRLING_CHAVE:-}
+      # cópia do arquivo original no OneDrive (SFTP). O PDF anexado ao card é gerado pelo próprio PROMeiro.
       - SFTP_HOST=${SFTP_HOST:-}
       - SFTP_PORTA=${SFTP_PORTA:-22}
       - SFTP_USUARIO=${SFTP_USUARIO:-}

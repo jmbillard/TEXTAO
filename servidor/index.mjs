@@ -51,7 +51,6 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
     const sem = [
       !c.pg.producao && 'TEABLE_PG_ARTE (sem conferir duplicados)',
       !c.teable.producao && 'TEABLE_ARTE_PRODUCAO (sem registrar a entrada)',
-      !c.stirling.url && 'STIRLING_URL (anexa o arquivo original, sem PDF)',
       !c.sftp.host && 'SFTP_HOST (sem cópia no OneDrive)',
     ].filter(Boolean);
     console.log(`[trello] envio ligado${sem.length ? `; sem ${sem.join(', ')}` : ''}`);

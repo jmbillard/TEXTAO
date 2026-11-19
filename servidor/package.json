@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "lib0": "^0.2.99",
+    "pdfkit": "^0.15.2",
     "pg": "^8.23.1",
     "redis": "^4.7.1",
     "ssh2-sftp-client": "^11.0.0",

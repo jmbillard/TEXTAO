@@ -37,8 +37,6 @@ const ENV = {
   TEABLE_PG_FILMES_ESQUEMA: 'bseFilmes',
   TEABLE_PG_SESSOES: 'sessoes',
   TEABLE_PG_LOG_BOT: 'log_bot',
-  STIRLING_URL: 'http://stirling-pdf:8080',
-  STIRLING_CHAVE: 'chave-stirling',
   SFTP_HOST: 'onedrive',
 };
 
@@ -60,7 +58,6 @@ function falsos(opcoes: { falharCard?: boolean; falharChecklist?: boolean } = {}
     else if (init.body instanceof FormData) corpo = Object.fromEntries([...init.body.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : `arquivo:${(v as File).name}`]));
     pedidos.push({ metodo, url, corpo });
     const ok = (dados: unknown) => ({ ok: true, status: 200, json: async () => dados, text: async () => '', arrayBuffer: async () => new ArrayBuffer(4) });
-    if (url.host === 'stirling-pdf:8080') return ok({});
     if (url.host === 'teable:3000') return ok({ records: [{ id: 'rec1' }] });
     const rota = url.pathname.replace('/1', '');
     if (rota === '/cards' && metodo === 'POST') {
@@ -111,7 +108,28 @@ function banco(opcoes: { duplicado?: boolean; redatorNovo?: boolean; sessao?: bo
 
 const original = { nome: 'Festa_Na_Praca_19_11_SP.docx', tipo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', dados: Buffer.from('PK') };
 const meta = { claquete: 'Festa na Praça 19/11 SP', praca: 'SP', redator: 'ana.lima', editor: 'Bruno Regis', dataExibicao: '2026-11-19', programa: 'Festa na Praça' };
+const DOC = {
+  type: 'doc',
+  content: [
+    { type: 'paragraph', content: [{ type: 'text', text: 'VEM AÍ ' }, { type: 'text', text: 'A GRANDE FESTA', marks: [{ type: 'arte', attrs: { subtipo: 'cartao' } }] }, { type: 'text', text: ' – “ao vivo”…' }] },
+    { type: 'paragraph', content: [{ type: 'text', text: 'nota interna', marks: [{ type: 'etiqueta', attrs: { tipo: 'comentario' } }] }] },
+    { type: 'paragraph', content: [{ type: 'text', text: 'SÁBADO', marks: [{ type: 'arte', attrs: {} }] }, { type: 'hardBreak' }, { type: 'text', text: 'na praça 🎉' }] },
+  ],
+};
 const campoPut = (pedidos: Pedido[], campo: string) => pedidos.find((p) => p.metodo === 'PUT' && p.url.pathname.endsWith(`/customField/${campo}/item`))?.corpo;
+
+describe('PDF do roteiro', () => {
+  it('sai um PDF com o texto e a lista de artes, sem comentários', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { gerarPdf, paragrafosDoDoc } = await import('../servidor/pdf.mjs');
+    const pdf: Buffer = await gerarPdf({ meta, doc: DOC, artes: [{ texto: 'A GRANDE FESTA', tipo: 'Cartão' }, { texto: 'SÁBADO', tipo: '' }] });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdf.length).toBeGreaterThan(1500);
+    const pars = paragrafosDoDoc(DOC);
+    expect(pars).toHaveLength(2);
+    expect(pars[0].find((p: { arte: boolean }) => p.arte).t).toBe('A GRANDE FESTA');
+  });
+});
 
 describe('chaves do n8n', () => {
   it('a claquete e a atração saem como o fluxo antigo escrevia', () => {
@@ -127,7 +145,7 @@ describe('envio para o Trello', () => {
     const { consultar } = banco();
     const enviadosAoOneDrive: string[] = [];
     const t = criarTrello(ENV, { buscar, consultar, sftp: async (caminho: string) => void enviadosAoOneDrive.push(caminho) });
-    const r = await t.enviar({ meta, artes: ['A GRANDE FESTA', 'SÁBADO'], texto: 'texto corrido', original }, new Date('2026-11-19T12:00:00Z'));
+    const r = await t.enviar({ meta, doc: DOC, artes: [{ texto: 'A GRANDE FESTA', tipo: 'Cartão' }, 'SÁBADO'], texto: 'texto corrido', original }, new Date('2026-11-19T12:00:00Z'));
 
     expect(r.card).toEqual({ id: 'card1', url: 'https://trello.com/c/CARD1' });
     expect(r.avisos).toEqual([]);
@@ -146,10 +164,8 @@ describe('envio para o Trello', () => {
     expect(campoPut(pedidos, 'cOutput')).toBeUndefined(); // "caminho_nao_encontrado" não vai para o card
     expect(campoPut(pedidos, 'cBot')).toEqual({ value: { checked: 'true' } });
     expect(campoPut(pedidos, 'cEntrada')).toEqual({ value: { date: '2026-11-19T12:00:00.000Z' } });
-    // o docx vira PDF no Stirling e o PDF vai anexo
-    const stirling = pedidos.find((p) => p.url.host === 'stirling-pdf:8080')!;
-    expect(stirling.corpo).toEqual({ fileInput: `arquivo:${original.nome}` });
-    expect(pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments')!.corpo).toMatchObject({ name: 'Festa_Na_Praca_19_11_SP.pdf', file: 'arquivo:Festa_Na_Praca_19_11_SP.pdf' });
+    // o docx vira PDF aqui mesmo e só o PDF vai anexo
+    expect(pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments')!.corpo).toMatchObject({ name: 'Festa_Na_Praca_19_11_SP.pdf', mimeType: 'application/pdf', file: 'arquivo:Festa_Na_Praca_19_11_SP.pdf' });
     expect(enviadosAoOneDrive).toEqual(['/PROMO/WORKFLOWS/ROTEIROS/2026-11-19/Festa_Na_Praca_19_11_SP.docx']);
     const registro = pedidos.find((p) => p.url.pathname === '/api/table/tblProducao/record')!.corpo as { records: { fields: Record<string, unknown> }[] };
     expect(registro.records[0].fields).toMatchObject({
@@ -184,9 +200,9 @@ describe('envio para o Trello', () => {
     expect(campoPut(pedidos, 'cComplexidade')).toEqual({ idValue: 'opMedia' });
     expect(campoPut(pedidos, 'cIA')).toEqual({ value: { checked: 'true' } });
     expect(campoPut(pedidos, 'cOutroQualquer')).toBeUndefined();
-    // o output do filme vale mais que o da atração; PDF não passa pelo Stirling
+    // o output do filme vale mais que o da atração; o PDF que subiu vai como veio
     expect(campoPut(pedidos, 'cOutput')).toEqual({ value: { text: 'F:\\filmes\\saida' } });
-    expect(pedidos.some((p) => p.url.host === 'stirling-pdf:8080')).toBe(false);
+    expect(pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments' && p.corpo)!.corpo).toMatchObject({ name: 'sessao.pdf', file: 'arquivo:sessao.pdf' });
   });
 
   it('VT vai para a lista de VT; sem o card, o envio falha; passo secundário que falha vira aviso', async () => {
@@ -200,8 +216,9 @@ describe('envio para o Trello', () => {
     const semChecklist = falsos({ falharChecklist: true });
     const r = await criarTrello(ENV, { buscar: semChecklist.buscar, consultar: banco().consultar }).enviar({ meta, artes: ['X'] });
     expect(r.card.id).toBe('card1');
-    expect(r.avisos.join(' ')).toMatch(/criar a checklist/);
-    expect(r.avisos.join(' ')).toMatch(/arquivo original não está guardado/);
+    expect(r.avisos).toEqual([expect.stringMatching(/criar a checklist/)]);
+    // colado do Word, sem arquivo: o PDF sai do texto, com o nome da claquete
+    expect(semChecklist.pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments')!.corpo).toMatchObject({ name: 'Festa na Praça 19_11 SP.pdf' });
   });
 
   it('desligado sem chave, token e lista', () => {
