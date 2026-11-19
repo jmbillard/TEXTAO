@@ -106,6 +106,12 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
 
   return {
     ligado,
+    /** Depois de um cadastro: a próxima leitura vai ao Teable, sem esperar a validade. */
+    async renovar() {
+      lidoEm = 0;
+      await cache?.guardar('vocabulario', null, 1);
+      return this.ler();
+    },
     async ler() {
       if (!ligado) return guardado;
       if (Date.now() - lidoEm < VALIDADE_MS) return guardado;

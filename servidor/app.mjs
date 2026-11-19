@@ -14,6 +14,7 @@ import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
 import { criarTrello } from './trello.mjs';
+import { criarCadastros } from './cadastros.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -204,7 +205,7 @@ const lerBinario = (req, limite) =>
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env) }) {
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
   const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
@@ -217,6 +218,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   };
   const vocabulario = criarVocabulario(env, fetch, cache, copia);
   const pauta = criarPauta(env, vocabulario, undefined, cache, copia);
+  cadastros ??= criarCadastros(env, { vocabulario });
   const q = {
     lista: db.prepare(
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
@@ -616,6 +618,48 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
   }
 
+  /** Cadastros de atrações, redatores e editores: todos cadastram; só CADASTRO_ADMINS removem. */
+  async function rotaDosCadastros(req, res, eu, caminho) {
+    const partes = caminho.split('/').slice(3); // [tipo, id, 'keys', keyId]
+    const [tipo, id, sub, keyId] = partes;
+    const REC = /^rec\w{1,40}$/;
+    const singular = { atracoes: 'atracao', redatores: 'redator', editores: 'editor' }[tipo];
+    try {
+      if (!partes.length || !partes[0]) {
+        if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+        const forcar = new URL(req.url, 'http://x').searchParams.has('renovar');
+        return json(res, 200, { ...(await cadastros.ler(forcar)), podeApagar: cadastros.podeApagar(eu.email) });
+      }
+      if (!singular) return json(res, 404, { erro: 'Não encontrado.' });
+      if (req.method === 'POST' && !id) {
+        const corpo = (await lerCorpo(req)) ?? {};
+        const feito =
+          tipo === 'atracoes' ? await cadastros.novaAtracao(corpo) : tipo === 'redatores' ? await cadastros.novoRedator(corpo) : await cadastros.novoEditor(corpo);
+        console.log(`[cadastros] ${eu.email} cadastrou ${singular}: ${feito.nome}`);
+        return json(res, 200, feito);
+      }
+      if (id && !REC.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
+      if (req.method === 'POST' && sub === 'keys' && !keyId && singular !== 'redator') {
+        const corpo = (await lerCorpo(req)) ?? {};
+        const feito = await cadastros.novaKey(singular, id, corpo.key);
+        console.log(`[cadastros] ${eu.email} deu a key ${feito.key} para ${id}`);
+        return json(res, 200, feito);
+      }
+      if (req.method === 'DELETE') {
+        if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores removem cadastros.' });
+        if (sub === 'keys') {
+          if (!REC.test(keyId ?? '') || singular === 'redator') return json(res, 400, { erro: 'Identificador inválido.' });
+          await cadastros.remover(singular === 'atracao' ? 'keyAtracao' : 'keyEditor', keyId);
+        } else await cadastros.remover(singular, id);
+        console.log(`[cadastros] ${eu.email} removeu ${sub === 'keys' ? `a key ${keyId}` : `${singular} ${id}`}`);
+        return json(res, 200, { ok: true });
+      }
+      return json(res, 405, { erro: 'Método não permitido.' });
+    } catch (e) {
+      return json(res, e.status && e.status < 600 ? e.status : 502, { erro: e instanceof Error ? e.message : 'Não consegui falar com o Teable.' });
+    }
+  }
+
   async function api(req, res, caminho) {
     const eu = await identificar(req, env);
     if (caminho === '/api/eu') {
@@ -631,6 +675,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
 
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
     if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
+    if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
     const extra = /^\/api\/roteiros\/([^/]+)\/(original|trello)$/.exec(caminho);
