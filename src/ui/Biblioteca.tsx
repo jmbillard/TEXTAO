@@ -277,6 +277,35 @@ function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
 }
 
 /** Quando tudo já foi ao ar: convites que se revezam, digitados e apagados à máquina. */
+/** O quadro tracejado de arrastar: título que se escreve sozinho, formatos riscados à mão e o colar do Word. */
+function ConviteDeArrastar({ frases, extra, className = '' }: { frases: string[]; extra: React.ReactNode; className?: string }) {
+  return (
+    <section className={`fila-vazia ${className}`}>
+      <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
+      <h2 className="titulo-serifa"><TituloQueSeEscreve frases={frases} /></h2>
+      <p className="suave">
+        <span className="formatos-riscados">
+          .docx, .rtf ou .pdf
+          <svg viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d="M2 8 C 22 4, 52 5, 97 6 C 70 8, 38 10, 12 11" /></svg>
+        </span>
+        , quantos quiser de uma vez.
+      </p>
+      {extra}
+    </section>
+  );
+}
+
+/** Fila vazia de verdade: ainda não chegou nada. */
+const CONVITES_FILA_VAZIA = [
+  'Arraste os roteiros para cá',
+  'Bora começar?',
+  'Fila vazia, por enquanto',
+  'Chegou roteiro?',
+  'Tem novidade por aí?',
+  'Mais textos para a arte?',
+  'Pode mandar',
+];
+
 const CONVITES = [
   'Fila em dia!',
   'Tem novidade por aí?',
@@ -751,12 +780,10 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         )}
 
         {vazio ? (
-          <section className="fila-vazia">
-            <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
-            <h2 className="titulo-serifa">Arraste os roteiros para cá</h2>
-            <p className="suave">Quantos quiser de uma vez: .docx, .rtf ou .pdf. Cada um vira uma ficha na fila.</p>
-            {colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
-          </section>
+          <ConviteDeArrastar
+            frases={CONVITES_FILA_VAZIA}
+            extra={colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
+          />
         ) : (
           roteiros && (
             <section className="lista">
@@ -808,18 +835,11 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
 
               {/* nada para ir ao ar (tudo já foi exibido): o convite para arrastar volta para o lugar dele */}
               {!proximos.length && !lendo && !falhas.length && !termo && !filtroEstado && (
-                <section className="fila-vazia nada-pela-frente">
-                  <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
-                  <h2 className="titulo-serifa"><TituloQueSeEscreve frases={CONVITES} /></h2>
-                  <p className="suave">
-                    <span className="formatos-riscados">
-                      .docx, .rtf ou .pdf
-                      <svg viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d="M2 8 C 22 4, 52 5, 97 6 C 70 8, 38 10, 12 11" /></svg>
-                    </span>
-                    , quantos quiser de uma vez.
-                  </p>
-                  {colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
-                </section>
+                <ConviteDeArrastar
+                  className="nada-pela-frente"
+                  frases={CONVITES}
+                  extra={colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
+                />
               )}
 
               {proximos.map((g) => (
