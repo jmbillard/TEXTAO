@@ -1341,3 +1341,42 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .formatos-riscados svg { position: absolute; left: -3px; top: calc(100% - 3px); width: calc(100% + 6px); height: 9px; overflow: visible; }
 .formatos-riscados path { fill: none; stroke: var(--ultra); stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; animation: rabiscar-aba 0.7s 0.4s var(--suave) both; }
 @media (prefers-reduced-motion: reduce) { .formatos-riscados path { animation: none; } }
+
+/* ---------- escolher redator/editor na claquete ---------- */
+.escolha-nome { position: relative; }
+.escolha-nome-valor { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 0; cursor: pointer;
+  font: 500 14px/1.4 var(--sans); color: #f4f1ea; border-bottom: 1px dashed transparent; overflow-wrap: anywhere; min-height: 1.4em; }
+.escolha-nome-valor:hover, .escolha-nome-valor[aria-expanded='true'] { border-bottom-color: rgb(244 241 234 / 45%); }
+.escolha-nome-valor.vago .duvida { color: #f5d400; }
+.campo-c .escolha-nome-menu, .escolha-nome-menu {
+  position: absolute; top: calc(100% + 8px); left: -12px; z-index: 60; width: 260px; max-width: 80vw;
+  background: var(--cartao); color: var(--tinta); border-radius: 12px; box-shadow: var(--sombra-menu); padding: 8px;
+  animation: abrir-escolha 0.16s var(--suave);
+}
+@keyframes abrir-escolha { from { opacity: 0; transform: translateY(-4px); } }
+.campo-c .escolha-nome-menu input, .escolha-nome-menu input { width: 100%; height: 36px; border-radius: 8px; border: 1px solid var(--regua-forte); background: var(--papel); padding: 0 10px;
+  font: 500 14px var(--sans); color: var(--tinta); outline: 0; margin-bottom: 6px; }
+.campo-c .escolha-nome-menu input:focus, .escolha-nome-menu input:focus { border-color: var(--ultra); box-shadow: 0 0 0 3px var(--ultra-suave); }
+.escolha-nome-menu ul { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.campo-c .escolha-nome-menu li, .escolha-nome-menu li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 7px; font: 500 14px var(--sans); color: var(--tinta); cursor: pointer; }
+.escolha-nome-menu li.marcado { background: var(--neutro); }
+.escolha-nome-menu li[aria-selected='true'] { color: var(--ultra); font-weight: 600; }
+.escolha-nome-menu li .atual { font: 600 10px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta3); }
+.escolha-nome-menu li.livre { color: var(--tinta2); font-style: italic; border-top: 1px dashed var(--regua); border-radius: 0 0 7px 7px; margin-top: 4px; }
+.escolha-nome-menu li.nada { color: var(--tinta3); cursor: default; }
+.escolha-nome-limpar { display: block; width: 100%; margin-top: 6px; padding: 8px 10px 4px; border: 0; border-top: 1px solid var(--regua); background: none; text-align: left;
+  font: 500 12.5px var(--sans); color: var(--tinta3); cursor: pointer; }
+.escolha-nome-limpar:hover { color: var(--perigo); }
+/* o menu de escolher passa da claquete: ela não corta mais o que sai dela; a ripa guarda os cantos */
+.claquete { overflow: visible; }
+.claquete .ripa { border-radius: 12px 12px 0 0; }
+.campo-c .escolha-nome-menu input::placeholder { color: var(--tinta3); }
+/* o editor fica na metade da direita: o menu abre para a esquerda, sem sair da tela */
+.dupla .campo-c + .campo-c .escolha-nome-menu { left: auto; right: -12px; }
+/* mandar para o Trello direto da lateral do editor */
+.trello-lado { display: flex; flex-direction: column; gap: 8px; }
+.trello-lado .botao.largo { width: 100%; justify-content: center; gap: 8px; height: 42px; white-space: nowrap; }
+.trello-lado small { font: 400 12.5px/1.45 var(--sans); color: var(--tinta3); text-align: center; }
+.trello-lado.feito p { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ok); font: 500 14px var(--sans); }
+.trello-lado.feito a { color: var(--ok); font-weight: 600; }
+.trello-lado.feito .botao-texto { margin-left: auto; }

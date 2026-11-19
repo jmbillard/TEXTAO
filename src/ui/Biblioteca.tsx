@@ -13,7 +13,7 @@ import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
-import { Marca } from './pecas';
+import { CONVITES, CONVITES_FILA_VAZIA, ConviteDeArrastar, Duvida, Marca } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
 import { copiarTexto, dataCurtaComDia, plural } from './util';
 
@@ -260,93 +260,6 @@ function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
     return () => clearInterval(t);
   }, [texto, ligar]);
   return [texto.slice(0, n), n >= texto.length];
-}
-
-/** "???" escritos à mão, cada um meio torto e fora do lugar; sempre do mesmo jeito para o mesmo roteiro. */
-function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
-  let h = 2166136261;
-  for (const c of semente) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
-  const sorteio = () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0) % 1000) / 1000;
-  return (
-    <span className="duvida" role="img" aria-label={rotulo} title={rotulo}>
-      {[0, 1, 2].map((i) => (
-        <i key={i} style={{ transform: `translate(${(sorteio() * 1.2 - 0.6).toFixed(1)}px, ${(sorteio() * 2 - 1).toFixed(1)}px) rotate(${(sorteio() * 12 - 6).toFixed(0)}deg)` }}>?</i>
-      ))}
-    </span>
-  );
-}
-
-/** Quando tudo já foi ao ar: convites que se revezam, digitados e apagados à máquina. */
-/** O quadro tracejado de arrastar: título que se escreve sozinho, formatos riscados à mão e o colar do Word. */
-function ConviteDeArrastar({ frases, extra, className = '' }: { frases: string[]; extra: React.ReactNode; className?: string }) {
-  return (
-    <section className={`fila-vazia ${className}`}>
-      <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
-      <h2 className="titulo-serifa"><TituloQueSeEscreve frases={frases} /></h2>
-      <p className="suave">
-        <span className="formatos-riscados">
-          .docx, .rtf ou .pdf
-          <svg viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d="M2 8 C 22 4, 52 5, 97 6 C 70 8, 38 10, 12 11" /></svg>
-        </span>
-        , quantos quiser de uma vez.
-      </p>
-      {extra}
-    </section>
-  );
-}
-
-/** Fila vazia de verdade: ainda não chegou nada. */
-const CONVITES_FILA_VAZIA = [
-  'Arraste os roteiros para cá',
-  'Bora começar?',
-  'Fila vazia, por enquanto',
-  'Chegou roteiro?',
-  'Tem novidade por aí?',
-  'Mais textos para a arte?',
-  'Pode mandar',
-];
-
-const CONVITES = [
-  'Fila em dia!',
-  'Tem novidade por aí?',
-  'Bora pra próxima leva?',
-  'Chegou roteiro novo?',
-  'Mais textos para a arte?',
-  'Tudo no ar. E agora?',
-  'Pode mandar mais',
-  'Vamos revisar o que vem aí?',
-];
-
-function TituloQueSeEscreve({ frases }: { frases: string[] }) {
-  const [i, setI] = useState(() => Math.floor(Math.random() * frases.length));
-  const [n, setN] = useState(0);
-  const [apagando, setApagando] = useState(false);
-  const calmo = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const frase = frases[i % frases.length];
-  useEffect(() => {
-    if (calmo) {
-      const t = setTimeout(() => setI((v) => v + 1), 6000);
-      return () => clearTimeout(t);
-    }
-    let t: ReturnType<typeof setTimeout>;
-    // digita; espera; seleciona tudo (o grifo corre pelo texto) e apaga de uma vez; a próxima
-    if (!apagando && n < frase.length) t = setTimeout(() => setN(n + 1), 55 + Math.random() * 45);
-    else if (!apagando) t = setTimeout(() => setApagando(true), 3200);
-    else if (n > 0) t = setTimeout(() => setN(0), 950);
-    else
-      t = setTimeout(() => {
-        setApagando(false);
-        setI((v) => v + 1 + Math.floor(Math.random() * (frases.length - 1)));
-      }, 300);
-    return () => clearTimeout(t);
-  }, [n, apagando, frase, calmo, frases.length]);
-  return (
-    <span className="titulo-maquina" aria-live="off" aria-label={frase}>
-      {calmo ? frase : <span className={`texto-maquina ${apagando && n > 0 ? 'selecionado' : ''}`}>{frase.slice(0, n)}</span>}
-      {/* durante a seleção o cursor só fica invisível: tirá-lo encurtaria a linha e o texto centralizado pularia */}
-      {!calmo && <i className="cursor" aria-hidden="true" style={apagando && n > 0 ? { visibility: 'hidden', animation: 'none' } : undefined} />}
-    </span>
-  );
 }
 
 const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });

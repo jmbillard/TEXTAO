@@ -957,7 +957,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                   <ul>{lista.map((p) => <li key={p.texto}>{p.texto}</li>)}</ul>
                   <div className="trello-conferir-acoes">
                     <button className="botao-texto" onClick={() => setConferindoTrello(false)}>Voltar e resolver</button>
-                    <button className="botao primario" onClick={() => void mandarTrello()}>Mandar assim mesmo</button>
+                    <button className="botao primario" onClick={async () => { if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id); }}>{proximo.r ? 'Mandar e ir ao próximo' : 'Mandar assim mesmo'}</button>
                   </div>
                 </div>
               )}
@@ -1048,7 +1048,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                       <span>{p.texto}</span>
                       <span className="pendencia-acoes">
                         {p.id === 'sem-editor' && (
-                          <button className="botao-texto" onClick={() => document.querySelector<HTMLInputElement>('.claquete input[aria-label="Editor"]')?.focus()}>Escolher</button>
+                          <button className="botao-texto" onClick={() => document.querySelector<HTMLButtonElement>('.claquete .escolha-nome-valor[aria-label^="Editor"]')?.click()}>Escolher</button>
                         )}
                         {p.id === 'sem-data' && (
                           <button className="botao-texto" onClick={() => document.querySelector<HTMLButtonElement>('.claquete .campo-data button')?.click()}>Escolher</button>
@@ -1063,6 +1063,34 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                     </li>
                   ))}
                 </ul>
+              </section>
+            )}
+            {podeMandar && (
+              <section className={`cartao trello-lado ${noTrello ? 'feito' : ''}`} aria-label="Trello">
+                {noTrello ? (
+                  <p>
+                    <Icone nome="quadro" tam={15} />
+                    {estadoTrello?.url ? <a href={estadoTrello.url} target="_blank" rel="noreferrer">No Trello</a> : 'Já estava no Trello'}
+                    {proximo.r && <button className="botao-texto" onClick={() => abrir(proximo.r!.id)}>Próximo para revisar →</button>}
+                  </p>
+                ) : (
+                  <>
+                    <button
+                      className="botao primario largo"
+                      disabled={estadoTrello?.estado === 'enviando'}
+                      onClick={async () => {
+                        // com pendência, a confirmação do topo pergunta antes
+                        if (lista.length) return setConferindoTrello(true);
+                        if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id);
+                      }}
+                    >
+                      <Icone nome="quadro" tam={15} />
+                      {estadoTrello?.estado === 'enviando' ? 'Mandando…' : proximo.r ? 'Trello e próximo' : 'Mandar para o Trello'}
+                    </button>
+                    {lista.length > 0 && <small>Ainda {lista.length === 1 ? 'tem uma pendência' : `tem ${lista.length} pendências`} acima.</small>}
+                    {!lista.length && proximo.r && <small>Manda o card e abre {proximo.r.meta.claquete || 'o próximo'} · {plural(proximo.total, 'para revisar', 'para revisar')}</small>}
+                  </>
+                )}
               </section>
             )}
             <section className="cartao">
