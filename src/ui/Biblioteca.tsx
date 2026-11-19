@@ -254,8 +254,8 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao }: { r: Resumo;
           <span>
             <Icone nome="duplicar" tam={14} /> Versão nova de <b>{versao.anterior.meta.claquete || 'um roteiro'}</b>, que já está na fila.
           </span>
-          <button className="botao primario" onClick={versao.substituir}>Substituir a anterior</button>
           <button className="botao-texto" onClick={versao.manter}>Manter as duas</button>
+          <button className="botao primario" onClick={versao.substituir}>Substituir a anterior</button>
         </span>
       )}
       {revisar.length > 0 && <span className="ficha-pendencias some">{revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}</span>}
