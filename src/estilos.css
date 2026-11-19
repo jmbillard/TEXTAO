@@ -1321,3 +1321,8 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .escolha-cor-grade button[aria-checked='true'] { box-shadow: 0 0 0 2px var(--papel), 0 0 0 4px var(--cor); }
 .escolha-cor-grade button[aria-checked='true'] svg { opacity: 1; transform: none; }
 .escolha-cor-grade button:focus-visible { outline: 2px solid var(--tinta); outline-offset: 3px; }
+
+/* ??? à mão onde falta redator ou editor */
+.duvida { display: inline-flex; gap: 1px; vertical-align: -0.12em; color: var(--falta); }
+.duvida i { display: inline-block; font: 700 20px/0.8 Caveat, cursive; font-style: normal; }
+.ficha-gente small .duvida i { font-size: 18px; }

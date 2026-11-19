@@ -262,6 +262,20 @@ function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
   return [texto.slice(0, n), n >= texto.length];
 }
 
+/** "???" escritos à mão, cada um meio torto e fora do lugar; sempre do mesmo jeito para o mesmo roteiro. */
+function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
+  let h = 2166136261;
+  for (const c of semente) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  const sorteio = () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0) % 1000) / 1000;
+  return (
+    <span className="duvida" role="img" aria-label={rotulo} title={rotulo}>
+      {[0, 1, 2].map((i) => (
+        <i key={i} style={{ transform: `translate(${(sorteio() * 3 - 1.5).toFixed(1)}px, ${(sorteio() * 5 - 2.5).toFixed(1)}px) rotate(${(sorteio() * 28 - 14).toFixed(0)}deg)` }}>?</i>
+      ))}
+    </span>
+  );
+}
+
 const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 /** O card no Trello: mandando, mandado (com link), já estava lá, ou deu erro. Sem envio, o botão para mandar. */
@@ -362,8 +376,10 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
         </span>
       </button>
       <span className="ficha-gente some">
-        {r.meta.redator || 'sem redator'}
-        <small className={semEditor ? 'falta' : ''}>{semEditor ? 'edição: não está na pauta' : `edição: ${r.meta.editor}`}</small>
+        {r.meta.redator ? <span>{r.meta.redator}</span> : <Duvida semente={r.id + 'r'} rotulo="sem redator" />}
+        <small className={semEditor ? 'falta' : ''}>
+          edição: {semEditor ? <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" /> : r.meta.editor}
+        </small>
       </span>
       <span className="ficha-artes some"><Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} circular={revisar.length > 0} /></span>
       <span className="ficha-acoes some">
