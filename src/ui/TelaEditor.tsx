@@ -17,7 +17,7 @@ import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { exportar, listaDeArtes, type Saida } from '../modelo/exportar';
+import { exportar, listaDeArtes, pendencias, type Saida } from '../modelo/exportar';
 import {
   ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type Meta, type Pessoa, type Roteiro,
 } from '../modelo/tipos';
@@ -502,6 +502,17 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   }, [editor, roteiroAtual]);
 
   const saida = useMemo(() => exportar(roteiroAtual()), [roteiroAtual, docVersao, meta]); // eslint-disable-line react-hooks/exhaustive-deps
+  // o que pede revisão acompanha o roteiro: é o que a fila mostra
+  useEffect(() => {
+    if (leitura || !editor || !sincronizado) return;
+    const agora = pendencias(saida);
+    if (JSON.stringify(agora) === JSON.stringify(metaRef.current.revisar ?? [])) return;
+    // recalcular não é uma edição: não muda quem assina o roteiro
+    const jaMexeu = mexeu.current;
+    mudarMeta({ revisar: agora });
+    mexeu.current = jaMexeu;
+  }, [saida]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const marcasArte = useMemo(() => (editor ? listarMarcas(editor.state.doc, 'arte') : []), [editor, docVersao]); // eslint-disable-line react-hooks/exhaustive-deps
   // a lista segue a exportação: um "depois de…" sublinhado entra no texto de cada dia e não conta sozinho
   const artes = useMemo(

@@ -60,6 +60,8 @@ export interface Meta {
   duracaoModo: 'fechar' | 'max';
   layout: Layout;
   status: Status;
+  /** Motivos para alguém conferir o roteiro antes de enviar. Vazio = pronto. Recalculado a cada mudança. */
+  revisar?: string[];
 }
 
 export const metaVazia = (): Meta => ({

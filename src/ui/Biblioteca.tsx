@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Falha } from '../App';
 import { armazenamento, type Resumo } from '../dados/armazenamento';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
-import { novoId, type Pessoa, type Roteiro } from '../modelo/tipos';
+import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
-import { dataCurtaComDia, haQuantoTempo, plural } from './util';
+import { dataCurtaComDia, plural } from './util';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
 const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
@@ -25,6 +26,13 @@ interface Props {
   avisar: (texto: string) => void;
   identidade: Identidade | null;
   definirPerfil: (p: Pessoa) => void;
+  /** Roteiros que acabaram de chegar: a ficha deles se monta com animação. */
+  novos: string[];
+  /** Arquivos soltos que não deu para ler. */
+  falhas: Falha[];
+  tirarFalha: (nome: string) => void;
+  /** Muda a cada arquivo processado, para a fila se atualizar. */
+  chegou: number;
 }
 
 const iniciais = (nome: string) =>
@@ -102,79 +110,100 @@ function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'defin
   );
 }
 
-export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil }: Props) {
+/* ---------- ficha da fila ---------- */
+
+const RABISCOS = [
+  'M13 25 C 9 11, 27 4, 43 6 C 60 9, 61 31, 42 37 C 25 42, 5 37, 8 22 C 10 11, 23 5, 38 4',
+  'M50 9 C 30 2, 6 9, 6 23 C 6 37, 30 42, 46 38 C 62 33, 62 12, 44 7 C 34 4, 22 5, 15 9',
+  'M10 18 C 14 6, 36 2, 50 8 C 63 14, 58 34, 40 38 C 22 42, 4 34, 7 20 C 9 12, 18 7, 28 5',
+];
+
+/** "#7 artes" circulado à caneta. Na ficha nova, o círculo é desenhado por último. */
+function Contagem({ n, traco, desenhar }: { n: number; traco: number; desenhar: boolean }) {
+  return (
+    <span className={`contagem ${desenhar ? 'desenhar' : ''}`}>
+      #{n} <em>{n === 1 ? 'arte' : 'artes'}</em>
+      <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d={RABISCOS[traco % RABISCOS.length]} /></svg>
+    </span>
+  );
+}
+
+/** A claquete aparece como se fosse digitada; quando termina, o resto da ficha surge. */
+function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
+  const [n, setN] = useState(ligar ? 0 : texto.length);
+  useEffect(() => {
+    if (!ligar) return setN(texto.length);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return setN(texto.length);
+    setN(0);
+    const passo = Math.max(14, Math.min(42, 900 / Math.max(1, texto.length)));
+    const t = setInterval(() => setN((v) => (v >= texto.length ? (clearInterval(t), v) : v + 1)), passo);
+    return () => clearInterval(t);
+  }, [texto, ligar]);
+  return [texto.slice(0, n), n >= texto.length];
+}
+
+function Ficha({ r, nova, ordem, abrir, acoes }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode }) {
+  const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
+  const [digitado, terminou] = useDigitacao(claquete, nova);
+  const revisar = r.meta.revisar ?? [];
+  const semEditor = !r.meta.editor;
+  return (
+    <li className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'}`}>
+      <span className={`ficha-marca ${revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">{revisar.length ? '!' : <Icone nome="certo" tam={12} traco={3} />}</span>
+      <button className="ficha-claquete" onClick={abrir} aria-label={`Abrir ${claquete}`}>
+        <b>{digitado}{nova && !terminou && <i className="cursor" />}</b>
+        <span className="some">
+          {r.meta.programa || 'atração não reconhecida'}
+          {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
+          {r.meta.dataExibicao ? ` · ${dataCurtaComDia(r.meta.dataExibicao)}` : ' · sem data'}
+        </span>
+      </button>
+      <span className="ficha-gente some">
+        {r.meta.redator || 'sem redator'}
+        <small className={semEditor ? 'falta' : ''}>{semEditor ? 'edição: não está na pauta' : `edição: ${r.meta.editor}`}</small>
+      </span>
+      <span className="ficha-artes some"><Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} /></span>
+      <span className="ficha-acoes some">
+        {acoes}
+        <button className={`botao ${revisar.length ? 'primario' : ''}`} onClick={abrir}>{revisar.length ? 'Revisar' : 'Abrir'}</button>
+      </span>
+      {revisar.length > 0 && <span className="ficha-pendencias some">{revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}</span>}
+    </li>
+  );
+}
+
+export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
-  const [filtro, setFiltro] = useState<'todos' | 'meus' | 'publicos'>('todos');
   const [busca, setBusca] = useState('');
   const [apagando, setApagando] = useState<string | null>(null);
-  const entrada = useRef<HTMLInputElement>(null);
 
   const carregar = () => armazenamento.listar().then(setRoteiros, () => setRoteiros([]));
   useEffect(() => {
     void carregar();
-  }, []);
+  }, [chegou]);
 
-  const duplicar = async (resumo: Resumo) => {
-    const r = await armazenamento.ler(resumo.id);
-    if (!r) return avisar('Não consegui abrir esse roteiro.');
-    const agora = new Date().toISOString();
-    const eu: Pessoa | undefined = identidade ? { nome: identidade.nome, email: identidade.email } : undefined;
-    const copia: Roteiro = { ...structuredClone(r), id: novoId(), revisao: 1, criadoEm: agora, atualizadoEm: agora, criadoPor: eu, alteradoPor: eu, publico: false, compartilhadoCom: [], meu: true };
-    copia.meta.titulo = r.meta.titulo ? `${r.meta.titulo} (cópia)` : '';
-    copia.meta.status = 'rascunho';
-    await armazenamento.salvar(copia);
-    abrir(copia.id);
-  };
   const apagar = async (r: Resumo) => {
     await armazenamento.apagar(r.id);
     setApagando(null);
-    avisar('Roteiro apagado.');
+    avisar('Roteiro tirado da fila.');
     void carregar();
   };
 
   const termo = semAcento(busca.trim());
   const aberto = (roteiros ?? []).some((r) => r.aberto);
-  const temPublicos = !aberto && (roteiros ?? []).some((r) => !r.meu);
-  const visiveis = (roteiros ?? [])
-    .filter((r) => filtro === 'todos' || (filtro === 'meus' ? r.meu : !r.meu))
-    .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo, r.dono?.nome].join(' ')).includes(termo));
+  const todos = roteiros ?? [];
+  const visiveis = todos.filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo));
+  const paraRevisar = todos.filter((r) => r.meta.revisar?.length).length;
+  const vazio = roteiros !== null && !todos.length && !falhas.length;
 
   return (
     <div className="pagina">
-      <main className="biblioteca">
+      <main className="biblioteca fila">
         <header className="bib-topo">
           <h1 className="bib-marca"><Marca /></h1>
           <span className="espaco" />
           <Perfil identidade={identidade} definirPerfil={definirPerfil} />
         </header>
-
-        <section className="entrada">
-          <button className="entrada-soltar" onClick={() => entrada.current?.click()}>
-            <span className="entrada-icone"><Icone nome="importar" tam={20} /></span>
-            <span className="entrada-texto">
-              <strong>Subir roteiro</strong>
-              <span>Arraste o arquivo ou clique para escolher: .docx, .rtf ou .pdf</span>
-            </span>
-          </button>
-          <button className="entrada-novo" onClick={criar}>
-            <Icone nome="colar" tam={18} />
-            <span className="entrada-texto">
-              <strong>Colar do Word</strong>
-              <span>O sublinhado vira arte</span>
-            </span>
-          </button>
-          <input
-            ref={entrada}
-            type="file"
-            accept=".docx,.rtf,.pdf,.txt,.json"
-            hidden
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) abrirArquivo(f);
-              e.target.value = '';
-            }}
-          />
-        </section>
 
         {EXEMPLOS.length > 0 && (
           <section className="exemplos">
@@ -185,9 +214,9 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                 className="opcao"
                 onClick={async () => {
                   try {
-                    const r = await fetch('./exemplos.json');
-                    if (!r.ok) throw new Error();
-                    const b64 = ((await r.json()) as Record<string, string>)[arquivo];
+                    const resposta = await fetch('./exemplos.json');
+                    if (!resposta.ok) throw new Error();
+                    const b64 = ((await resposta.json()) as Record<string, string>)[arquivo];
                     abrirArquivo(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], arquivo));
                   } catch {
                     avisar('Não consegui abrir o exemplo.');
@@ -200,58 +229,69 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
           </section>
         )}
 
-        {roteiros && roteiros.length > 0 && (
-          <section className="lista">
-            <div className="lista-topo">
-              {temPublicos ? (
-                <div className="segmento" role="radiogroup" aria-label="Quais roteiros mostrar">
-                  {([['todos', 'Todos'], ['meus', 'Meus'], ['publicos', 'De colegas']] as const).map(([id, nome]) => (
-                    <button key={id} role="radio" aria-checked={filtro === id} onClick={() => setFiltro(id)}>{nome}</button>
-                  ))}
-                </div>
-              ) : (
-                <h2 className="rotulo">{plural(visiveis.length, 'roteiro', 'roteiros')}</h2>
-              )}
-              <label className="busca">
-                <Icone nome="lupa" tam={15} traco={2} />
-                <input type="search" placeholder="Buscar por atração, claquete ou redator" aria-label="Buscar roteiros" value={busca} onChange={(e) => setBusca(e.target.value)} />
-              </label>
-            </div>
-            <ul>
-              {visiveis.map((r) => {
-                const nArtes = r.nArtes;
-                return (
-                  <li key={r.id} className="item">
-                    <button className="item-abrir" onClick={() => abrir(r.id)}>
-                      <span className="item-titulo">{r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete'}</span>
-                      <span className="item-sub">
-                        {r.meta.redator || 'sem redator'}
-                        {!aberto && !r.meu && r.dono && <span className="etiqueta-lista">de {r.dono.nome}{r.podeEditar ? ' · você edita' : ''}</span>}
-                        {!aberto && r.meu && (r.publico || r.compartilhado) && <span className="etiqueta-lista">{r.publico ? 'todos leem' : 'compartilhado'}</span>}
-                      </span>
-                    </button>
-                    <span className="item-exibe">{r.meta.dataExibicao ? dataCurtaComDia(r.meta.dataExibicao) : ''}</span>
-                    <span className="item-artes">{plural(nArtes, 'arte', 'artes')}</span>
-                    <span className="item-quando">{haQuantoTempo(r.atualizadoEm)}</span>
-                    {apagando === r.id ? (
-                      <span className="item-acoes confirmando">
-                        <button className="botao-texto perigo" onClick={() => apagar(r)}>Apagar</button>
-                        <button className="botao-texto" onClick={() => setApagando(null)}>Manter</button>
-                      </span>
-                    ) : (
-                      <span className="item-acoes">
-                        <button className="botao-icone" title="Duplicar" aria-label={`Duplicar ${r.meta.claquete || r.meta.titulo}`} onClick={() => duplicar(r)}><Icone nome="duplicar" /></button>
-                        {(r.meu || aberto) && <button className="botao-icone" title="Apagar" aria-label={`Apagar ${r.meta.claquete || r.meta.titulo}`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            {!visiveis.length && <p className="suave vazio">Nada encontrado para “{busca}”.</p>}
+        {vazio ? (
+          <section className="fila-vazia">
+            <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
+            <h2 className="titulo-serifa">Arraste os roteiros para cá</h2>
+            <p className="suave">Quantos quiser de uma vez: .docx, .rtf ou .pdf. Cada um vira uma ficha na fila.</p>
+            <button className="botao-texto" onClick={criar}>ou cole o texto copiado do Word</button>
           </section>
+        ) : (
+          roteiros && (
+            <section className="lista">
+              <div className="fila-topo">
+                <div>
+                  <h2 className="titulo-serifa"><em>{todos.length}</em> {todos.length === 1 ? 'roteiro na fila' : 'roteiros na fila'}</h2>
+                  <p className="fila-conta">
+                    <span><i className="ponto ok" />{plural(todos.length - paraRevisar, 'pronto', 'prontos')}</span>
+                    {paraRevisar > 0 && <span><i className="ponto revisar" />{paraRevisar} para revisar</span>}
+                    {falhas.length > 0 && <span><i className="ponto erro" />{plural(falhas.length, 'não lido', 'não lidos')}</span>}
+                  </p>
+                </div>
+                {todos.length > 6 && (
+                  <label className="busca">
+                    <Icone nome="lupa" tam={15} traco={2} />
+                    <input type="search" placeholder="Buscar por atração, claquete ou redator" aria-label="Buscar roteiros" value={busca} onChange={(e) => setBusca(e.target.value)} />
+                  </label>
+                )}
+              </div>
+
+              <ul className="fichas">
+                {falhas.map((f) => (
+                  <li key={f.nome} className="ficha erro montada">
+                    <span className="ficha-marca erro" aria-hidden="true">×</span>
+                    <span className="ficha-claquete"><b>{f.nome}</b><span>Não consegui ler este arquivo</span></span>
+                    <span className="ficha-acoes"><button className="botao" onClick={() => tirarFalha(f.nome)}>Tirar da fila</button></span>
+                    <span className="ficha-pendencias"><span className="pendencia erro">{f.motivo}</span></span>
+                  </li>
+                ))}
+                {visiveis.map((r, k) => (
+                  <Ficha
+                    key={r.id}
+                    r={r}
+                    nova={novos.includes(r.id)}
+                    ordem={k}
+                    abrir={() => abrir(r.id)}
+                    acoes={
+                      apagando === r.id ? (
+                        <>
+                          <button className="botao-texto perigo" onClick={() => apagar(r)}>Tirar</button>
+                          <button className="botao-texto" onClick={() => setApagando(null)}>Manter</button>
+                        </>
+                      ) : (
+                        (r.meu || aberto) && (
+                          <button className="botao-icone ficha-lixo" title="Tirar da fila" aria-label={`Tirar ${r.meta.claquete || r.meta.titulo} da fila`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>
+                        )
+                      )
+                    }
+                  />
+                ))}
+              </ul>
+              {!visiveis.length && termo && <p className="suave vazio">Nada encontrado para “{busca}”.</p>}
+              <p className="fila-rodape">Arraste mais roteiros para qualquer ponto da tela. <button className="botao-texto" onClick={criar}>Colar do Word</button></p>
+            </section>
+          )
         )}
-        {roteiros && roteiros.length === 0 && <p className="suave vazio">Nenhum roteiro ainda.</p>}
       </main>
     </div>
   );

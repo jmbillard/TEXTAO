@@ -3,13 +3,19 @@ import { armazenamento, atualizarVocabulario, consultarPauta } from './dados/arm
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
-import { roteiroDoJson } from './modelo/exportar';
+import { exportar, pendencias, roteiroDoJson } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
 import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
-import { TelaImportar } from './ui/TelaImportar';
 
-type Tela = { t: 'biblioteca' } | { t: 'importar'; imp: Importacao } | { t: 'editor'; id: string };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string };
+
+/** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
+export interface Falha {
+  nome: string;
+  motivo: string;
+}
+const pausa = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
 const lerLocal = (chave: string) => {
   try {
@@ -32,6 +38,10 @@ export function App() {
   const [identidade, setIdentidade] = useState<Identidade | null>(null);
   const [pronto, setPronto] = useState(false);
   const [sessao, setSessao] = useState(0);
+  // fila: roteiros que acabaram de chegar (ganham a animação) e arquivos que não deu para ler
+  const [novos, setNovos] = useState<string[]>([]);
+  const [falhas, setFalhas] = useState<Falha[]>([]);
+  const [chegou, setChegou] = useState(0);
   useEffect(() => {
     void iniciarSessao().then((s) => {
       setIdentidade(s.identidade);
@@ -64,6 +74,55 @@ export function App() {
     return () => window.removeEventListener('popstate', aoVoltar);
   }, []);
 
+  /** Lê um arquivo de roteiro e devolve o roteiro pronto para guardar, com o que já dá para saber sozinho. */
+  const lerRoteiro = useCallback(
+    async (arquivo: File): Promise<Roteiro> => {
+      const imp: Importacao = interpretar(await lerArquivo(await arquivo.arrayBuffer(), arquivo.name));
+      // o editor vem da pauta da edição, pela claquete
+      const pauta = await consultarPauta(imp.meta.claquete);
+      if (!imp.meta.editor) imp.meta.editor = pauta.editor;
+      // quando a claquete bate com a pauta, vale a grafia de lá: "Quem Ama(Prologo)26/10 Rede"
+      if (pauta.claquete) imp.meta.claquete = pauta.claquete;
+      // arquivo sem autor (RTF, TXT): o redator é quem está subindo, pelo início do e-mail
+      const login = identidade?.email.split('@')[0] || identidade?.nome;
+      if (!imp.meta.redator && login) imp.meta.redator = login;
+      const agora = new Date().toISOString();
+      // o roteiro é sempre texto corrido; as cores do Word ficam com o significado que o app deduziu
+      const roteiro: Roteiro = {
+        id: novoId(), meta: { ...imp.meta, layout: 'coluna_unica' }, doc: converterLayout(montarDoc(imp), 'coluna_unica'),
+        revisao: 1, criadoEm: agora, atualizadoEm: agora, origem: imp.bruto.arquivo, criadoPor: pessoa, alteradoPor: pessoa,
+      };
+      roteiro.meta.revisar = pendencias(exportar(roteiro));
+      return roteiro;
+    },
+    [identidade], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  /** Vários roteiros de uma vez: cada um é lido aqui mesmo, guardado e aparece na fila. */
+  const importarParaFila = useCallback(
+    async (arquivos: File[]) => {
+      ir({ t: 'biblioteca' });
+      await atualizarVocabulario();
+      for (const arquivo of arquivos) {
+        try {
+          const roteiro = await lerRoteiro(arquivo);
+          await armazenamento.salvar(roteiro);
+          setNovos((n) => [...n, roteiro.id]);
+        } catch (e) {
+          // as mensagens das bibliotecas de leitura vêm em inglês e não ajudam quem está subindo o roteiro
+          const bruto = e instanceof Error ? e.message : '';
+          const motivo = !bruto || /zip|central directory|xml|undefined|null|cannot|unexpected|invalid|password/i.test(bruto)
+            ? 'O arquivo parece corrompido, ou não é do tipo que o nome diz.'
+            : bruto;
+          setFalhas((f) => [...f.filter((x) => x.nome !== arquivo.name), { nome: arquivo.name, motivo }]);
+        }
+        setChegou((n) => n + 1);
+        await pausa(260); // uma ficha de cada vez, para dar para acompanhar
+      }
+    },
+    [lerRoteiro], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const abrirArquivo = useCallback(
     async (arquivo: File) => {
       try {
@@ -82,26 +141,12 @@ export function App() {
           ir({ t: 'editor', id: novo.id });
           return;
         }
-        await atualizarVocabulario();
-        const imp = interpretar(await lerArquivo(dados, arquivo.name));
-        // o editor vem da pauta da edição, pela claquete
-        const pauta = await consultarPauta(imp.meta.claquete);
-        if (!imp.meta.editor) imp.meta.editor = pauta.editor;
-        // quando a claquete bate com a pauta, vale a grafia de lá: "Quem Ama(Prologo)26/10 Rede"
-        if (pauta.claquete) imp.meta.claquete = pauta.claquete;
-        // arquivo sem autor (RTF, TXT): o redator é quem está importando, pelo início do e-mail
-        const login = identidade?.email.split('@')[0] || identidade?.nome;
-        if (!imp.meta.redator && login) {
-          imp.meta.redator = login;
-          imp.faltando = imp.faltando.filter((f) => f !== 'quem escreveu');
-          imp.entendido.push(`O arquivo não traz autor → redação: ${login} (seu login)`);
-        }
-        ir({ t: 'importar', imp });
+        await importarParaFila([arquivo]);
       } catch (e) {
         avisar(e instanceof SyntaxError ? 'Não consegui ler esse .json.' : e instanceof Error ? e.message : 'Não consegui ler esse arquivo.');
       }
     },
-    [avisar, ir, identidade], // eslint-disable-line react-hooks/exhaustive-deps
+    [avisar, ir, identidade, importarParaFila], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const criar = useCallback(
@@ -116,12 +161,6 @@ export function App() {
       ir({ t: 'editor', id: roteiro.id });
     },
     [ir, identidade], // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  const concluirImportacao = useCallback(
-    // o roteiro é sempre texto corrido; as cores do Word ficam com o significado que o app deduziu
-    (imp: Importacao) => criar({ meta: { ...imp.meta, layout: 'coluna_unica' }, doc: converterLayout(montarDoc(imp), 'coluna_unica'), origem: imp.bruto.arquivo }),
-    [criar],
   );
 
   // soltar um arquivo em qualquer lugar da janela
@@ -142,8 +181,10 @@ export function App() {
       e.preventDefault();
       arrasto.current = 0;
       setSoltando(false);
-      const arquivo = e.dataTransfer?.files[0];
-      if (arquivo) void abrirArquivo(arquivo);
+      const arquivos = [...(e.dataTransfer?.files ?? [])];
+      // um .json exportado daqui reabre o roteiro; o resto entra na fila, todos de uma vez
+      if (arquivos.length === 1 && /\.json$/i.test(arquivos[0].name)) void abrirArquivo(arquivos[0]);
+      else if (arquivos.length) void importarParaFila(arquivos.filter((a) => !/\.json$/i.test(a.name)));
     };
     window.addEventListener('dragenter', entrar);
     window.addEventListener('dragleave', sair);
@@ -155,13 +196,13 @@ export function App() {
       window.removeEventListener('dragover', sobre);
       window.removeEventListener('drop', soltar);
     };
-  }, [abrirArquivo]);
+  }, [abrirArquivo, importarParaFila]);
 
   if (!pronto) return <div className="pagina" />;
 
   return (
     <>
-      {tela.t === 'biblioteca' && <Biblioteca key={sessao} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {tela.t === 'biblioteca' && <Biblioteca key={sessao} novos={novos} falhas={falhas} chegou={chegou} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {
@@ -169,14 +210,13 @@ export function App() {
           setSessao((n) => n + 1);
         });
       }} />}
-      {tela.t === 'importar' && <TelaImportar imp={tela.imp} concluir={() => concluirImportacao(tela.imp)} cancelar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} pessoa={pessoa} />}
 
       {soltando && (
         <div className="soltar" aria-hidden="true">
           <div className="soltar-cartao">
             <span className="soltar-titulo">Pode soltar</span>
-            <span>.docx, .rtf, .pdf, .txt ou um .json exportado daqui</span>
+            <span>Quantos roteiros quiser: .docx, .rtf ou .pdf</span>
           </div>
         </div>
       )}

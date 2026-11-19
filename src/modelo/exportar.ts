@@ -300,3 +300,23 @@ export function roteiroDoJson(json: unknown): Roteiro {
     ...(alteradoPor ? { alteradoPor } : {}),
   };
 }
+
+/* ---------- o que pede revisão antes de enviar ---------- */
+
+/** Texto de arte comprido costuma ser instrução sublinhada, não arte. O "depois de…" juntado ao dia não conta. */
+const arteLonga = (texto: string) => {
+  const t = texto.replace(/,?\s+(?:logo\s+)?(?:depois|ap[óo]s)\b.*$/i, '');
+  return t.length > 60 || palavras(t) > 8;
+};
+
+/** Motivos para o roteiro não entrar na fila como pronto. Atração não reconhecida não é motivo: ela pode ser cadastrada depois. */
+export function pendencias(saida: Saida): string[] {
+  const n = saida.artes.length;
+  const p: string[] = [];
+  if (!n) p.push('Nenhuma arte');
+  if (n >= 10) p.push(`Muitas artes: ${n}`);
+  if (saida.artes.some((a) => arteLonga(a.texto))) p.push('Arte com texto longo');
+  if (!saida.roteiro.editor) p.push('Sem editor: a claquete não está na pauta');
+  if (!saida.roteiro.dataExibicao) p.push('Sem data de exibição');
+  return p;
+}
