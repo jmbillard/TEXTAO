@@ -376,7 +376,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
         </span>
       </button>
       <span className="ficha-gente some">
-        {r.meta.redator ? <span>{r.meta.redator}</span> : <Duvida semente={r.id + 'r'} rotulo="sem redator" />}
+        {r.meta.redator ? <span>{r.meta.redator}</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
         <small className={semEditor ? 'falta' : ''}>
           edição: {semEditor ? <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" /> : r.meta.editor}
         </small>
