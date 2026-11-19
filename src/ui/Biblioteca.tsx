@@ -3,6 +3,8 @@ import { armazenamento, type Resumo } from '../dados/armazenamento';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import { novoId, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
+import { Marca } from './pecas';
+import { semAcento } from '../modelo/vocabularios';
 import { dataCurta, haQuantoTempo, plural } from './util';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
@@ -130,18 +132,17 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
     void carregar();
   };
 
-  const termo = busca.trim().toLowerCase();
+  const termo = semAcento(busca.trim());
   const temPublicos = (roteiros ?? []).some((r) => !r.meu);
   const visiveis = (roteiros ?? [])
     .filter((r) => filtro === 'todos' || (filtro === 'meus' ? r.meu : !r.meu))
-    .filter((r) => !termo || [r.meta.titulo, r.meta.programa, r.meta.redator, r.meta.locutor, r.dono?.nome].join(' ').toLowerCase().includes(termo));
+    .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo, r.dono?.nome].join(' ')).includes(termo));
 
   return (
     <div className="pagina">
       <main className="biblioteca">
         <header className="bib-topo">
-          <span className="marca" aria-hidden="true">r</span>
-          <h1 className="titulo-serifa">Roteiros</h1>
+          <h1 className="bib-marca"><Marca /></h1>
           <span className="espaco" />
           <Perfil identidade={identidade} definirPerfil={definirPerfil} />
         </header>
@@ -150,13 +151,16 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
           <button className="entrada-soltar" onClick={() => entrada.current?.click()}>
             <span className="entrada-icone"><Icone nome="importar" tam={20} /></span>
             <span className="entrada-texto">
-              <strong>Trazer do Word</strong>
-              <span>Arraste o arquivo ou clique para escolher</span>
+              <strong>Subir roteiro</strong>
+              <span>Arraste o arquivo ou clique para escolher: .docx, .rtf ou .pdf</span>
             </span>
           </button>
           <button className="entrada-novo" onClick={criar}>
-            <Icone nome="mais" tam={18} />
-            Começar em branco
+            <Icone nome="colar" tam={18} />
+            <span className="entrada-texto">
+              <strong>Colar do Word</strong>
+              <span>O sublinhado vira arte</span>
+            </span>
           </button>
           <input
             ref={entrada}
@@ -207,7 +211,10 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               ) : (
                 <h2 className="rotulo">{plural(visiveis.length, 'roteiro', 'roteiros')}</h2>
               )}
-              <input className="busca" type="search" placeholder="Buscar por programa, título ou locutor" aria-label="Buscar roteiros" value={busca} onChange={(e) => setBusca(e.target.value)} />
+              <label className="busca">
+                <Icone nome="lupa" tam={15} traco={2} />
+                <input type="search" placeholder="Buscar por atração, claquete ou redator" aria-label="Buscar roteiros" value={busca} onChange={(e) => setBusca(e.target.value)} />
+              </label>
             </div>
             <ul>
               {visiveis.map((r) => {
@@ -215,9 +222,9 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                 return (
                   <li key={r.id} className="item">
                     <button className="item-abrir" onClick={() => abrir(r.id)}>
-                      <span className="item-titulo">{r.meta.titulo || 'Sem título'}</span>
+                      <span className="item-titulo">{r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete'}</span>
                       <span className="item-sub">
-                        {[r.meta.programa, dataCurta(r.meta.dataExibicao), r.meta.locutor && `loc. ${r.meta.locutor}`].filter(Boolean).join(' · ') || 'Rascunho'}
+                        {[r.meta.programa, r.meta.praca, dataCurta(r.meta.dataExibicao), r.meta.redator].filter(Boolean).join(' · ') || 'Rascunho'}
                         {!r.meu && r.dono && <span className="etiqueta-lista">de {r.dono.nome}{r.podeEditar ? ' · você edita' : ''}</span>}
                         {r.meu && (r.publico || r.compartilhado) && <span className="etiqueta-lista">{r.publico ? 'todos leem' : 'compartilhado'}</span>}
                       </span>
@@ -231,8 +238,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                       </span>
                     ) : (
                       <span className="item-acoes">
-                        <button className="botao-icone" title="Duplicar" aria-label={`Duplicar ${r.meta.titulo}`} onClick={() => duplicar(r)}><Icone nome="duplicar" /></button>
-                        {r.meu && <button className="botao-icone" title="Apagar" aria-label={`Apagar ${r.meta.titulo}`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>}
+                        <button className="botao-icone" title="Duplicar" aria-label={`Duplicar ${r.meta.claquete || r.meta.titulo}`} onClick={() => duplicar(r)}><Icone nome="duplicar" /></button>
+                        {r.meu && <button className="botao-icone" title="Apagar" aria-label={`Apagar ${r.meta.claquete || r.meta.titulo}`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>}
                       </span>
                     )}
                   </li>

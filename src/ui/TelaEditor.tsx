@@ -15,7 +15,7 @@ import { abrirSala, corDe, presentes as listarPresentes, type Presente } from '.
 import { armazenamento, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
-  Reconhecimento, Teclado, type MarcaNoDoc,
+  prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, type Saida } from '../modelo/exportar';
 import {
@@ -382,6 +382,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     editable: !leitura && !sala,
     editorProps: {
       attributes: { class: 'texto', spellcheck: 'true', lang: 'pt-BR', 'aria-label': 'Texto do roteiro' },
+      transformPastedHTML: prepararColagem,
       handleClick: (_view, pos) => {
         aoClicar.current(pos);
         return false;

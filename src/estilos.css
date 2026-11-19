@@ -201,10 +201,11 @@ kbd {
 
 .lista-topo { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
 .busca {
-  width: 300px; max-width: 100%; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid transparent;
-  background: var(--neutro); outline: 0; transition: border-color 0.15s, background 0.15s;
+  width: 320px; max-width: 100%; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid transparent; display: flex; align-items: center; gap: 8px;
+  background: var(--neutro); color: var(--tinta3); transition: border-color 0.15s, background 0.15s;
 }
-.busca:focus { border-color: var(--ultra); background: var(--cartao); }
+.busca input { flex: 1; min-width: 0; border: 0; background: none; outline: 0; color: var(--tinta); height: 100%; }
+.busca:focus-within { border-color: var(--ultra); background: var(--cartao); color: var(--ultra); }
 .item {
   display: grid; grid-template-columns: minmax(0, 1fr) 80px 110px 76px; align-items: center; gap: 12px;
   border-top: 1px solid var(--regua); padding: 4px 0; border-radius: 0;
@@ -375,7 +376,7 @@ kbd {
 .texto .p-corte::before { content: ''; order: 3; flex: 1; height: 1px; background: var(--regua); }
 .texto .marca-ed { font: 500 0.8em var(--mono); color: var(--edicao); letter-spacing: 0; }
 .texto .convite::before {
-  content: 'Escreva ou cole o roteiro aqui. Locução em CAIXA ALTA; o que for arte, sublinhe.'; float: left; height: 0; pointer-events: none;
+  content: 'Cole aqui o texto copiado do Word. O que estiver sublinhado vira arte.'; float: left; height: 0; pointer-events: none;
   color: var(--tinta3); font: italic 400 18px/1.7 var(--serifa);
 }
 
@@ -830,3 +831,8 @@ kbd {
   .topo-folha .praca { align-items: flex-start; }
 }
 @media print { .lado, .decupagem-topo button { display: none !important; } .sonoras-recolhidas .texto .p-sonora::after { color: #555; } }
+
+.bib-marca .logo-app { font-size: 34px; margin: 0; }
+.entrada-novo { text-align: left; }
+.entrada-novo .entrada-texto strong { font-size: 15px; }
+.entrada-novo .entrada-texto span { font-size: 12.5px; font-weight: 400; }

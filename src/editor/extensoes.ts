@@ -22,6 +22,8 @@ const attr = (nome: string, padrao: unknown, html = `data-${nome}`) => ({
 export const Arte = Mark.create({
   name: 'arte',
   inclusive: false,
+  // a arte já é um chip: negrito e itálico por dentro só a partiriam em pedaços
+  excludes: 'bold italic',
   addAttributes() {
     return {
       id: attr('id', null),
@@ -52,6 +54,56 @@ export const Etiqueta = Mark.create({
     return ['span', { ...HTMLAttributes, class: 'etq' }, 0];
   },
 });
+
+/** Texto colado do Word ou de outro editor: o que vem sublinhado vira arte, e "AMANHÃ/HOJE" vira uma arte por versão. */
+export function prepararColagem(html: string): string {
+  if (typeof DOMParser === 'undefined' || !/<u[\s>]|underline/i.test(html)) return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const sublinhado = (no: Text): Element | null => {
+    let achado: Element | null = null;
+    for (let el = no.parentElement; el && el !== doc.body; el = el.parentElement) {
+      // link é sublinhado por natureza; e o que foi copiado daqui mesmo já é arte
+      if (el.tagName === 'A' || el.classList.contains('arte')) return null;
+      if (!achado && (el.tagName === 'U' || /underline/i.test(el.getAttribute('style') ?? ''))) achado = el;
+    }
+    return achado;
+  };
+  const textos: Text[] = [];
+  const andar = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  while (andar.nextNode()) textos.push(andar.currentNode as Text);
+  // um mesmo trecho sublinhado pode vir partido (negrito no meio): continua sendo a mesma arte
+  const emCurso = new Map<Element, { id: string; grupo: string | null }>();
+  const marcados = textos.map((t) => ({ t, dono: sublinhado(t) })).filter((x) => x.dono && x.t.data.trim()) as { t: Text; dono: Element }[];
+  marcados.forEach(({ t, dono }, n) => {
+    // espaços entre dois pedaços do mesmo sublinhado ficam dentro da arte, para ela não se partir
+    const continuaAntes = marcados[n - 1]?.dono === dono;
+    const continuaDepois = marcados[n + 1]?.dono === dono;
+    const partes = t.data.split('/');
+    const grupo = partes.filter((p) => p.trim()).length > 1 ? novoId() : (emCurso.get(dono)?.grupo ?? null);
+    const frag = doc.createDocumentFragment();
+    partes.forEach((parte, k) => {
+      if (k > 0) {
+        frag.append('/');
+        emCurso.delete(dono);
+      }
+      const ini = k === 0 && continuaAntes ? 0 : parte.length - parte.trimStart().length;
+      const fim = k === partes.length - 1 && continuaDepois ? parte.length : parte.trimEnd().length;
+      const miolo = parte.slice(ini, fim);
+      if (!miolo.trim()) return void frag.append(parte);
+      const atual = emCurso.get(dono) ?? { id: novoId(), grupo };
+      emCurso.set(dono, atual);
+      const u = doc.createElement('u');
+      u.className = 'arte';
+      u.setAttribute('data-id', atual.id);
+      const g = grupo ?? atual.grupo;
+      if (g) u.setAttribute('data-grupo', g);
+      u.textContent = miolo;
+      frag.append(parte.slice(0, ini), u, parte.slice(fim));
+    });
+    t.replaceWith(frag);
+  });
+  return doc.body.innerHTML;
+}
 
 /* ---------- colunas ---------- */
 

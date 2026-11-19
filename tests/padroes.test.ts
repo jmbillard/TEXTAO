@@ -215,3 +215,17 @@ describe('claquete, praça e editor', () => {
     expect(importar(soltos('TEXTO.'), 'Festa_Na_Praca_26_10.docx').saida.roteiro.praca).toBe('G5');
   });
 });
+
+describe('colar do Word', () => {
+  it('o sublinhado vira arte; link e texto comum ficam como estão', async () => {
+    const { prepararColagem } = await import('../src/editor/extensoes');
+    const div = document.createElement('div');
+    div.innerHTML = prepararColagem('<p>VEM AÍ <u>A GRANDE <b>FESTA</b></u>, <span style="text-decoration:underline">SÁBADO/HOJE</span> <a href="x"><u>link</u></a></p>');
+    const artes = [...div.querySelectorAll('u.arte')].map((u) => [u.textContent, u.getAttribute('data-id'), u.getAttribute('data-grupo')]);
+    expect(artes.map((a) => a[0])).toEqual(['A GRANDE ', 'FESTA', 'SÁBADO', 'HOJE']);
+    expect(artes[0][1]).toBe(artes[1][1]); // partido pelo negrito, mas é a mesma arte
+    expect(artes[2][1]).not.toBe(artes[3][1]);
+    expect(artes[2][2]).toBeTruthy();
+    expect(artes[2][2]).toBe(artes[3][2]); // versões do mesmo lugar
+  });
+});
