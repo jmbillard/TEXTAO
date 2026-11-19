@@ -203,3 +203,51 @@ export function DesenhosDeCursor() {
     </svg>
   );
 }
+
+/* ---------- o meu cursor, no meu próprio mouse ---------- */
+
+const CHAVE_NO_MOUSE = 'promeiro.cursor.no-mouse';
+export function cursorNoMouse(): boolean {
+  try {
+    return localStorage.getItem(CHAVE_NO_MOUSE) !== '0';
+  } catch {
+    return true;
+  }
+}
+export function usarCursorNoMouse(ligado: boolean) {
+  try {
+    localStorage.setItem(CHAVE_NO_MOUSE, ligado ? '1' : '0');
+  } catch {
+    /* vale até recarregar */
+  }
+  window.dispatchEvent(new Event('promeiro:cursor'));
+}
+/** Avisa a página que o cursor, a cor ou o tema mudou: o do mouse é redesenhado. */
+export const avisarCursorMudou = () => window.dispatchEvent(new Event('promeiro:cursor'));
+
+/** Um SVG sozinho (para virar o cursor do mouse) a partir do desenho que está na página.
+    O SVG de um cursor não enxerga a página: cor, traço e contorno vão escritos nele. */
+export function svgDoCursor(id: string, cor: string, contorno: string, tamanho = 32): string | null {
+  const desenho = document.getElementById(`cursor-${cursorValido(id) ? id : 'lapis'}`);
+  const recorte = document.getElementById('escudo-recorte');
+  if (!desenho) return null;
+  const limpar = (html: string) =>
+    html
+      .replace(/var\(--cor\)/g, cor)
+      .replace(/class="trac"/g, 'stroke="#1a1916" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"');
+  // a ponta do desenho fica em (5,5); com folga de 6 em volta, para o contorno e as partes que saem do quadro
+  const filtro = `<filter id="c" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feMorphology in="SourceAlpha" operator="dilate" radius="1.6" result="b"/><feFlood flood-color="${contorno}"/><feComposite in2="b" operator="in" result="w"/><feMerge><feMergeNode in="w"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  const corpo = limpar(desenho.outerHTML).replace(/^<g /, '<g filter="url(#c)" ');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${tamanho}" height="${tamanho}" viewBox="-6 -6 60 60"><defs>${filtro}${recorte ? recorte.outerHTML : ''}</defs>${corpo}</svg>`;
+}
+
+/** Põe o meu cursor no meu mouse (onde a seta normal apareceria; mãozinha e cursor de texto continuam). */
+export function aplicarCursorNoMouse(id: string, cor: string) {
+  const raiz = document.documentElement;
+  if (!cursorNoMouse() || window.matchMedia?.('(pointer: coarse)').matches) return raiz.style.removeProperty('--cursor-meu');
+  const contorno = getComputedStyle(raiz).getPropertyValue('--contorno-cursor').trim() || '#fff';
+  const svg = svgDoCursor(id, cor, contorno);
+  if (!svg) return;
+  const ponta = Math.round(((5 + 6) * 32) / 60); // a ponta do desenho, na escala do cursor
+  raiz.style.setProperty('--cursor-meu', `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${ponta} ${ponta}, auto`);
+}

@@ -1400,3 +1400,9 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .tirar-arte:hover { color: var(--perigo); background: color-mix(in srgb, var(--perigo) 10%, transparent); }
 .artes.so-lista li.ativa { background: var(--neutro); }
 .artes.so-lista li.ativa .arte-linha { background: none; }
+/* o meu cursor divertido no meu mouse; botões, links e texto editável continuam com os cursores de sempre */
+body { cursor: var(--cursor-meu, auto); }
+input, textarea, select, [contenteditable='true'], .texto { cursor: text; }
+input[type='checkbox'], input[type='radio'], input[type='range'] { cursor: pointer; }
+.no-mouse { display: flex; align-items: center; gap: 8px; margin-top: 10px; font: 500 13px var(--sans); color: var(--tinta2); cursor: pointer; }
+.no-mouse input { accent-color: var(--ultra); width: 15px; height: 15px; }

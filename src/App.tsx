@@ -8,7 +8,8 @@ import { exportar, pendencias, roteiroDoJson, travamTrello } from './modelo/expo
 import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
 import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
-import { DesenhosDeCursor } from './ui/cursores';
+import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores';
+import { corDe } from './dados/colaboracao';
 import { acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
 type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'cadastros'; aba?: TipoCadastro; claquete?: string };
@@ -57,6 +58,24 @@ export function App() {
     });
   }, []);
   const pessoa = identidade ? { nome: identidade.nome, email: identidade.email } : undefined;
+
+  // o meu cursor divertido no meu próprio mouse: refeito quando muda o cursor, a cor ou o tema
+  useEffect(() => {
+    if (!pronto) return;
+    const email = identidade?.email ?? '';
+    const aplicar = () => requestAnimationFrame(() => aplicarCursorNoMouse(meuCursor(email), corDe(email)));
+    aplicar();
+    const tema = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const obs = new MutationObserver(aplicar);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    window.addEventListener('promeiro:cursor', aplicar);
+    tema?.addEventListener?.('change', aplicar);
+    return () => {
+      obs.disconnect();
+      window.removeEventListener('promeiro:cursor', aplicar);
+      tema?.removeEventListener?.('change', aplicar);
+    };
+  }, [pronto, identidade?.email]);
 
   const avisar = useCallback((texto: string) => setAviso({ texto, n: Date.now() }), []);
   useEffect(() => {

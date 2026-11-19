@@ -8,7 +8,7 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { agruparPorDia, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
-import { CURSORES, Cursor, escolherCursor, meuCursor } from './cursores';
+import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
@@ -62,6 +62,7 @@ const iniciais = (nome: string) =>
 function EscolhaDeCursor({ email, cor }: { email: string; cor: string }) {
   const [atual, setAtual] = useState(() => meuCursor(email));
   useEffect(() => setAtual(meuCursor(email)), [email]);
+  const [noMouse, setNoMouse] = useState(cursorNoMouse);
   return (
     <div className="escolha-cursor">
       <div className="rotulo">Seu cursor, para os colegas</div>
@@ -76,12 +77,17 @@ function EscolhaDeCursor({ email, cor }: { email: string; cor: string }) {
             onClick={() => {
               escolherCursor(c.id);
               setAtual(c.id);
+              avisarCursorMudou();
             }}
           >
             <Cursor id={c.id} cor={cor} tamanho={34} />
           </button>
         ))}
       </div>
+      <label className="no-mouse">
+        <input type="checkbox" checked={noMouse} onChange={(e) => { setNoMouse(e.target.checked); usarCursorNoMouse(e.target.checked); }} />
+        <span>Usar também no meu mouse</span>
+      </label>
     </div>
   );
 }
@@ -215,6 +221,7 @@ function Perfil({ identidade, definirPerfil, cadastros, aoMudarCor }: Pick<Props
               mudar={(c) => {
                 setMinhaCor(c);
                 aoMudarCor?.();
+                avisarCursorMudou();
                 void escolherMinhaCor(meuEmail, c).catch(() => {});
               }}
             />
