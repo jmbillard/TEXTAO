@@ -1,7 +1,8 @@
 services:
   roteirista:
+    # A imagem é construída a partir deste repositório; não existe em nenhum registro para baixar.
     build: .
-    image: roteirista:latest
+    pull_policy: build
     container_name: roteirista
     restart: unless-stopped
     ports:
