@@ -72,8 +72,9 @@ const pares = (v) =>
 
 export function configDoTrello(env) {
   const c = {
-    chave: env.TRELLO_KEY || '',
-    token: env.TRELLO_TOKEN || '',
+    // colado com espaço, quebra de linha ou aspas no Portainer: vale só o valor
+    chave: nomeLimpoPg(env.TRELLO_KEY),
+    token: nomeLimpoPg(env.TRELLO_TOKEN),
     listas: { padrao: env.TRELLO_LISTA || '', SP: env.TRELLO_LISTA_SP || '', VT: env.TRELLO_LISTA_VT || '' },
     campos: {
       praca: env.TRELLO_CAMPO_PRACA || '',

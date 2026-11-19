@@ -55,6 +55,9 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
       c.pgInvalidos.length && `nomes inválidos no Postgres (${c.pgInvalidos.join(', ')}): use só letras, números e _`,
     ].filter(Boolean);
     console.log(`[trello] envio ligado${sem.length ? `; sem ${sem.join(', ')}` : ''}`);
+    // a API key do Trello tem 32 caracteres; o token, 64 ou mais (começa com ATTA). Fora disso, quase sempre foi colado o campo errado
+    if (!/^[0-9a-f]{32}$/i.test(c.chave)) console.log(`[trello] TRELLO_KEY tem ${c.chave.length} caracteres: a API key do Trello tem 32 (letras e números). Confira se não foi o "Secret" ou o token no lugar dela.`);
+    if (c.token.length < 64) console.log(`[trello] TRELLO_TOKEN tem ${c.token.length} caracteres: o token do Trello tem 64 ou mais. Confira se foi o token, e não a key ou o Secret.`);
   }
 }
 void criarPauta(process.env, criarVocabulario(process.env))
