@@ -156,12 +156,12 @@ const RABISCOS = [
   'M10 18 C 14 6, 36 2, 50 8 C 63 14, 58 34, 40 38 C 22 42, 4 34, 7 20 C 9 12, 18 7, 28 5',
 ];
 
-/** "#7 artes" circulado à caneta. Na ficha nova, o círculo é desenhado por último. */
-function Contagem({ n, traco, desenhar }: { n: number; traco: number; desenhar: boolean }) {
+/** "#7 artes". Só a ficha que pede revisão ganha o círculo à caneta; na ficha nova, ele é desenhado por último. */
+function Contagem({ n, traco, desenhar, circular }: { n: number; traco: number; desenhar: boolean; circular: boolean }) {
   return (
     <span className={`contagem ${desenhar ? 'desenhar' : ''}`}>
       #{n} <em>{n === 1 ? 'arte' : 'artes'}</em>
-      <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d={RABISCOS[traco % RABISCOS.length]} /></svg>
+      {circular && <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d={RABISCOS[traco % RABISCOS.length]} /></svg>}
     </span>
   );
 }
@@ -231,7 +231,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: b
         {r.meta.redator || 'sem redator'}
         <small className={semEditor ? 'falta' : ''}>{semEditor ? 'edição: não está na pauta' : `edição: ${r.meta.editor}`}</small>
       </span>
-      <span className="ficha-artes some"><Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} /></span>
+      <span className="ficha-artes some"><Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} circular={revisar.length > 0} /></span>
       <span className="ficha-acoes some">
         {acoes}
         <button className={`botao ${revisar.length ? 'primario' : ''}`} onClick={abrir}>{revisar.length ? 'Revisar' : 'Abrir'}</button>
