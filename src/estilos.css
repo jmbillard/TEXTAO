@@ -969,9 +969,9 @@ kbd {
 .ficha.revisada { --orelha: 16px; --verso: color-mix(in srgb, var(--tinta) 9%, var(--papel)); }
 .orelha {
   position: absolute; top: 0; right: 0; width: var(--orelha); height: var(--orelha); pointer-events: none; border-bottom-left-radius: 5px;
-  background: linear-gradient(to bottom left, transparent 50%, var(--verso) 50%); filter: drop-shadow(-1.5px 2px 1.5px rgb(26 25 22 / 22%));
-  /* o traço só nos dois lados que encostam na ficha; a dobra (a diagonal) fica sem linha */
-  border-left: 1px solid var(--orelha-linha); border-bottom: 1px solid var(--orelha-linha);
+  /* o traço só na dobra (a diagonal), por cima da ficha */
+  background: linear-gradient(to bottom left, transparent calc(50% - 0.75px), var(--orelha-linha) calc(50% - 0.75px) calc(50% + 0.75px), var(--verso) calc(50% + 0.75px));
+  filter: drop-shadow(-1.5px 2px 1.5px rgb(26 25 22 / 22%));
 }
 .orelha i {
   position: absolute; left: 4px; bottom: 4px; font: 700 16px/1 Caveat, cursive; font-style: normal;
