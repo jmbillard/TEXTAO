@@ -11,7 +11,7 @@ async function abrirPg(url) {
   return new pg.Pool({ connectionString: url, max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000, statement_timeout: 5000 });
 }
 
-export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null) {
+export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copia = null) {
   const esquema = env.TEABLE_PG_ESQUEMA || '';
   const tabela = env.TEABLE_PG_PAUTA || '';
   const comBanco = !!(env.TEABLE_PG_URL && NOME.test(esquema) && NOME.test(tabela));
@@ -32,12 +32,36 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null) {
     const linha = (await vocabulario.ler()).pauta.find((p) => p.chave === chave);
     return linha ? { editor: linha.editor, claquete: linha.claquete ?? '' } : null;
   }
+  // cópia da pauta recente do Postgres, renovada a cada 10 minutos, para quando o banco do Teable cair
+  async function copiarPauta() {
+    banco ??= await abrir(env.TEABLE_PG_URL);
+    const r = await banco.query(`SELECT UPPER(t."key") AS chave, t."editor"->>'title' AS editor, to_jsonb(t)->>'claquete' AS claquete
+      FROM "${esquema}"."${tabela}" t WHERE t."data"::date >= CURRENT_DATE - ${DIAS} ORDER BY t."data" ASC NULLS FIRST`);
+    const porChave = new Map();
+    for (const l of r.rows) if (l.chave && l.editor) porChave.set(l.chave, { editor: l.editor, claquete: l.claquete ?? '' });
+    copia.guardar('pauta-pg', [...porChave].map(([chave, v]) => ({ chave, ...v })));
+    return porChave.size;
+  }
+  let relogio = null;
+  if (comBanco && copia) {
+    const renovar = () => copiarPauta().catch((e) => console.error('[pauta] não consegui copiar a pauta do Postgres:', e.message));
+    setTimeout(renovar, 3000).unref?.();
+    relogio = setInterval(renovar, 10 * 60 * 1000);
+    relogio.unref?.();
+  }
+  function naCopia(chave) {
+    const linha = copia?.ler('pauta-pg')?.dados?.find((p) => p.chave === chave.toUpperCase());
+    return linha ? { editor: linha.editor, claquete: linha.claquete } : null;
+  }
+
   async function procurar(chave) {
     if (comBanco) {
       try {
         return await noBanco(chave);
       } catch (e) {
-        console.error('[pauta] o Postgres não respondeu, usando a API:', e.message);
+        console.error('[pauta] o Postgres não respondeu, usando a cópia local e a API:', e.message);
+        const guardada = naCopia(chave);
+        if (guardada) return guardada;
       }
     }
     return naApi(chave);
@@ -45,6 +69,7 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null) {
 
   return {
     comBanco,
+    parar: () => clearInterval(relogio),
     /** Quem está com a claquete. A grafia só vem quando a chave bate inteira. */
     async achar(chave) {
       chave = String(chave || '').trim().slice(0, 200);

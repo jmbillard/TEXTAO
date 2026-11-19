@@ -344,3 +344,42 @@ describe('fila ao vivo: correções da revisão', () => {
     }
   });
 });
+
+describe('cópia local do Teable', () => {
+  const copiaEmMemoria = () => {
+    const m = new Map<string, { dados: unknown; em: string }>();
+    return { ler: (k: string) => m.get(k) ?? null, guardar: (k: string, d: unknown) => void m.set(k, { dados: JSON.parse(JSON.stringify(d)), em: '2026-11-19T10:00:00.000Z' }) };
+  };
+  it('com o Teable fora do ar (até depois de reiniciar), vale a última leitura boa', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarVocabulario } = await import('../servidor/vocabulario.mjs');
+    const copia = copiaEmMemoria();
+    const env = { TEABLE_URL: 'http://teable:3000', TEABLE_TOKEN: 't', TEABLE_ATRACOES: 'tblA' };
+    const ok = (async () => ({ ok: true, json: async () => ({ records: [{ fields: { key: 'CASA', atracoes: 'É de Casa' } }] }) })) as unknown as typeof fetch;
+    const fora = (async () => {
+      throw new Error('fora do ar');
+    }) as unknown as typeof fetch;
+    expect((await criarVocabulario(env, ok, null, copia).ler()).programas).toEqual([{ nome: 'É de Casa', chaves: ['CASA'] }]);
+    // "reiniciou": instância nova, Teable fora do ar
+    expect((await criarVocabulario(env, fora, null, copia).ler()).programas).toEqual([{ nome: 'É de Casa', chaves: ['CASA'] }]);
+  });
+  it('com o Postgres fora do ar, a pauta vem da cópia', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarPauta } = await import('../servidor/pauta.mjs');
+    const copia = copiaEmMemoria();
+    copia.guardar('pauta-pg', [{ chave: 'FESTA 26 10', editor: 'Fulano Silva', claquete: 'Festa 26/10 (AH)' }]);
+    const abrir = async () => ({
+      query: async () => {
+        throw new Error('conexão recusada');
+      },
+    });
+    const vazio = { ler: async () => ({ pauta: [] }) };
+    const pauta = criarPauta({ TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseA', TEABLE_PG_PAUTA: 'demandasB' }, vazio, abrir, null, copia);
+    try {
+      expect(await pauta.achar('FESTA 26 10')).toEqual({ editor: 'Fulano Silva', claquete: 'Festa 26/10 (AH)' });
+      expect(await pauta.achar('OUTRA 1 1')).toEqual({ editor: '', claquete: '' });
+    } finally {
+      pauta.parar();
+    }
+  });
+});

@@ -59,6 +59,12 @@ export function abrirBanco(caminho) {
       doc TEXT NOT NULL,
       PRIMARY KEY (roteiro_id, n)
     );
+    -- última leitura boa do que vem do Teable, para quando ele estiver fora do ar
+    CREATE TABLE IF NOT EXISTS teable_copia (
+      chave TEXT PRIMARY KEY,
+      dados TEXT NOT NULL,
+      em TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS usuarios (
       email TEXT PRIMARY KEY,
       nome TEXT NOT NULL,
@@ -161,8 +167,18 @@ const lerCorpo = (req) =>
 /* ---------- aplicação ---------- */
 
 export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env) }) {
-  const vocabulario = criarVocabulario(env, fetch, cache);
-  const pauta = criarPauta(env, vocabulario, undefined, cache);
+  // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
+  const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
+  const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
+  const copia = {
+    ler: (chave) => {
+      const l = lerCopia.get(chave);
+      return l ? { dados: JSON.parse(l.dados), em: l.em } : null;
+    },
+    guardar: (chave, dados) => gravarCopia.run(chave, JSON.stringify(dados), new Date().toISOString()),
+  };
+  const vocabulario = criarVocabulario(env, fetch, cache, copia);
+  const pauta = criarPauta(env, vocabulario, undefined, cache, copia);
   const q = {
     lista: db.prepare(
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
@@ -621,6 +637,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   app.cache = cache;
   app.fechar = async () => {
     clearInterval(batimento);
+    pauta.parar();
     for (const ws of naFila.keys()) ws.terminate();
     // o que foi digitado nos últimos instantes ainda não foi gravado: grava antes de desligar
     for (const [id, sala] of salas) {

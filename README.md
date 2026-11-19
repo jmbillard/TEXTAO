@@ -80,7 +80,7 @@ Variáveis da stack (todas opcionais):
 
 Com o Teable configurado, o campo Programa sugere as atrações cadastradas, o importador reconhece a atração pela
 chave da claquete (no começo da linha de título ou do nome do arquivo) e o campo Redação sugere os redatores.
-O servidor só lê, guarda o resultado por 10 minutos e, se o Teable não responder, o app segue com a lista embutida.
+O servidor só lê e guarda o resultado por 10 minutos. A última leitura boa (atrações, redatores, editores e a pauta recente) também fica numa cópia no banco do app: com o Teable ou o Postgres dele fora do ar, inclusive logo depois de reiniciar o container, o app segue com essa cópia e avisa no log desde quando ela é. Sem nenhuma cópia ainda, vale a lista embutida.
 Outros nomes de campo: `TEABLE_CAMPO_CHAVE`, `TEABLE_CAMPO_ATRACAO`, `TEABLE_CAMPO_REDATOR`.
 | `COMPOSE_PROFILES`, `TUNNEL_TOKEN` | `tunel` + o token, para subir um cloudflared junto |
 
