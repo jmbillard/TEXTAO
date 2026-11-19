@@ -1336,3 +1336,8 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 /* selecionar tudo: o grifo corre do fim para o começo, como arrastando o mouse para trás */
 .texto-maquina.selecionado { animation: selecionar-convite 0.45s cubic-bezier(0.45, 0, 0.3, 1) forwards; }
 @keyframes selecionar-convite { to { background-size: 100% 100%; } }
+/* um risco à mão embaixo dos formatos, desenhado quando o quadro aparece */
+.formatos-riscados { position: relative; display: inline-block; color: var(--tinta2); }
+.formatos-riscados svg { position: absolute; left: -3px; top: calc(100% - 3px); width: calc(100% + 6px); height: 9px; overflow: visible; }
+.formatos-riscados path { fill: none; stroke: var(--ultra); stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; animation: rabiscar-aba 0.7s 0.4s var(--suave) both; }
+@media (prefers-reduced-motion: reduce) { .formatos-riscados path { animation: none; } }

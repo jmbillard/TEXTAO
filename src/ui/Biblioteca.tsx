@@ -809,7 +809,13 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                 <section className="fila-vazia nada-pela-frente">
                   <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
                   <h2 className="titulo-serifa"><TituloQueSeEscreve frases={CONVITES} /></h2>
-                  <p className="suave">.docx, .rtf ou .pdf, quantos quiser de uma vez.</p>
+                  <p className="suave">
+                    <span className="formatos-riscados">
+                      .docx, .rtf ou .pdf
+                      <svg viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d="M2 8 C 22 4, 52 5, 97 6 C 70 8, 38 10, 12 11" /></svg>
+                    </span>
+                    , quantos quiser de uma vez.
+                  </p>
                   {colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
                 </section>
               )}
