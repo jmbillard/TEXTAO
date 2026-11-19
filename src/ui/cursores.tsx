@@ -77,7 +77,7 @@ export function DesenhosDeCursor() {
         {/* contorno branco por fora do desenho inteiro: o cursor aparece em qualquer fundo, claro ou escuro */}
         <filter id="cursor-contorno" x="-25%" y="-25%" width="150%" height="150%" colorInterpolationFilters="sRGB">
           <feMorphology in="SourceAlpha" operator="dilate" radius="1.3" result="borda" />
-          <feFlood floodColor="#fff" />
+          <feFlood style={{ floodColor: 'var(--contorno-cursor, #fff)' }} />
           <feComposite in2="borda" operator="in" result="branco" />
           <feMerge>
             <feMergeNode in="branco" />
@@ -173,8 +173,8 @@ export function DesenhosDeCursor() {
         <g id="cursor-vasco" transform="rotate(-10 17 20)">
           <g clipPath="url(#escudo-recorte)">
             <rect x="0" y="0" width="34" height="40" fill="#141414" />
-            <path d="M0 5 L34 28 L34 45 L0 22 Z" fill="#fff" />
-            <path d="M-1.6 -6.2 L1.6 -6.2 L0.9 -0.9 L6.2 -1.6 L6.2 1.6 L0.9 0.9 L1.6 6.2 L-1.6 6.2 L-0.9 0.9 L-6.2 1.6 L-6.2 -1.6 L-0.9 -0.9 Z" fill="#d42a2a" transform="translate(17 25) rotate(34) scale(.82)" />
+            <path d="M0 0 L34 23 L34 40 L0 17 Z" fill="#fff" />
+            <path d="M-1.6 -6.2 L1.6 -6.2 L0.9 -0.9 L6.2 -1.6 L6.2 1.6 L0.9 0.9 L1.6 6.2 L-1.6 6.2 L-0.9 0.9 L-6.2 1.6 L-6.2 -1.6 L-0.9 -0.9 Z" fill="#d42a2a" transform="translate(17 20.5) rotate(34) scale(.82)" />
           </g>
           <path className="trac" d="M3 3 H31 V17 C31 28 23 34 17 37 C11 34 3 28 3 17 Z" fill="none" />
         </g>
@@ -197,7 +197,7 @@ export function DesenhosDeCursor() {
         </g>
         <g id="cursor-botafogo" transform="rotate(-10 17 20)">
           <path className="trac" d="M3 3 H31 V17 C31 28 23 34 17 37 C11 34 3 28 3 17 Z" fill="#141414" />
-          <path d="M17 9.5 L19.4 15.6 L25.9 15.9 L20.9 20 L22.5 26.4 L17 22.8 L11.5 26.4 L13.1 20 L8.1 15.9 L14.6 15.6Z" fill="#fff" strokeLinejoin="round" />
+          <path d="M17 9.5 L19.4 15.6 L25.9 15.9 L20.9 20 L22.5 26.4 L17 22.8 L11.5 26.4 L13.1 20 L8.1 15.9 L14.6 15.6Z" fill="#fff" strokeLinejoin="round" transform="translate(0 -3)" />
         </g>
       </defs>
     </svg>
