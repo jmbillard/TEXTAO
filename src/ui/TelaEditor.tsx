@@ -14,7 +14,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, baixarOriginal, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
@@ -817,6 +817,16 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
   };
   const conferir = (id: string) => mudarMeta({ conferidos: [...new Set([...(meta.conferidos ?? []), id])] });
 
+  const original = inicial.original;
+  const baixarODoc = async () => {
+    if (!original) return;
+    try {
+      baixar(await baixarOriginal(inicial.id), original.nome, original.tipo);
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui baixar o original.');
+    }
+  };
+
   /* ---------- Trello ---------- */
   const [envio, setEnvio] = useState<EnvioTrello | undefined>();
   const [conferindoTrello, setConferindoTrello] = useState(false);
@@ -891,6 +901,15 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
           )}
           {comServidor && (sou || inicial.aberto) && (
             <>
+              {original && (
+                <button className="botao-icone baixar-original" aria-label={`Baixar o original, ${original.nome}`} onClick={() => void baixarODoc()}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z M14 3v5h5" />
+                    <path className="seta-baixar" d="M12 11v6 M9.5 14.5L12 17l2.5-2.5" />
+                  </svg>
+                  <span className="dica" role="tooltip">Baixar o original<small>{original.nome} · {tamanhoLegivel(original.tamanho)}</small></span>
+                </button>
+              )}
               <button className="botao-icone" title="Histórico de versões" aria-label="Histórico de versões" aria-expanded={!!historico} onClick={abrirHistorico}>
                 <Icone nome="historico" tam={18} />
               </button>
@@ -1114,7 +1133,48 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
         {saida.comentarios.length > 0 && <p>Comentários: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
       </section>
 
+      <Estatisticas saida={saida} paginas={meta.paginasOriginal} original={original} />
       {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{background:color-mix(in srgb,var(--ultra) 22%,var(--ultra-suave))}`}</style>}
     </div>
+  );
+}
+
+const contarPalavras = (s: string) => (s.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu) ?? []).length;
+const numero = (n: number) => n.toLocaleString('pt-BR');
+export const tamanhoLegivel = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${Math.round(b / 1024)} KB` : `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
+const duracao = (seg: number) => (seg < 60 ? `${seg}s` : `${Math.floor(seg / 60)}min${seg % 60 ? `${String(seg % 60).padStart(2, '0')}s` : ''}`);
+const quandoSubiu = (iso: string) => {
+  const d = new Date(iso);
+  const hoje = new Date();
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === hoje.toDateString() ? `hoje às ${hora}` : `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${hora}`;
+};
+/** Palavras por página de roteiro, para estimar quando o arquivo não diz. */
+const PALAVRAS_POR_PAGINA = 250;
+
+/** Rodapé com os números do roteiro, atualizados enquanto se edita. */
+function Estatisticas({ saida, paginas, original }: { saida: Saida; paginas?: number; original?: Roteiro['original'] }) {
+  const total = contarPalavras(saida.texto.completo);
+  const locucao = contarPalavras(saida.texto.locucao);
+  const caracteres = saida.texto.completo.replace(/\n/g, '').length;
+  const estimadas = Math.max(1, Math.ceil(total / PALAVRAS_POR_PAGINA));
+  const pags = paginas ?? estimadas;
+  const formato = original?.nome.match(/\.([a-z0-9]+)$/i)?.[1]?.toUpperCase();
+  return (
+    <footer className="estatisticas" aria-label="Números do roteiro">
+      <span><b>{numero(total)}</b> {total === 1 ? 'palavra' : 'palavras'}</span>
+      <span><b>{numero(locucao)}</b> na locução</span>
+      <span className="tempo" title="Locução e sonoras, no ritmo médio de leitura de chamada">≈ <b>{duracao(saida.roteiro.duracaoEstimadaSeg)}</b> de leitura</span>
+      <span><b>{numero(caracteres)}</b> caracteres</span>
+      <span><b>{saida.artes.length}</b> {saida.artes.length === 1 ? 'arte' : 'artes'}</span>
+      <span title={paginas ? 'Páginas do arquivo que subiu' : `Estimativa, ${PALAVRAS_POR_PAGINA} palavras por página`}>
+        <b>{paginas ? '' : '~'}{pags}</b> {pags === 1 ? 'página' : 'páginas'}
+      </span>
+      {original && (
+        <span className="dir">
+          original: {formato ? `${formato}, ` : ''}{tamanhoLegivel(original.tamanho)} · subiu {quandoSubiu(original.em)}
+        </span>
+      )}
+    </footer>
   );
 }

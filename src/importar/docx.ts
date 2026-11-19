@@ -136,5 +136,6 @@ export async function lerDocx(dados: ArrayBuffer | Uint8Array, arquivo: string):
   };
   if (corpo) andarCorpo(corpo);
 
-  return { arquivo, formato: 'docx', autor, blocos };
+  const paginas = Number((await ler('docProps/app.xml'))?.getElementsByTagName('Pages')[0]?.textContent) || undefined;
+  return { arquivo, formato: 'docx', autor, blocos, ...(paginas ? { paginas } : {}) };
 }

@@ -27,6 +27,8 @@ export interface DocBruto {
   avisos?: string[];
   /** Alguma página veio de imagem digitalizada e foi lida por OCR. */
   lidoPorOcr?: boolean;
+  /** Páginas do arquivo, quando o formato diz (PDF; Word, pelo que ele gravou da última vez). */
+  paginas?: number;
 }
 
 const mesmaMarca = (a: Run, b: Run) =>

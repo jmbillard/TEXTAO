@@ -64,6 +64,8 @@ export interface Meta {
   revisar?: string[];
   /** Veio de PDF digitalizado, lido por OCR: pede conferência até alguém marcar como conferido. */
   lidoPorOcr?: boolean;
+  /** Páginas do arquivo que subiu, quando o formato diz. */
+  paginasOriginal?: number;
   /** Pendências que alguém conferiu e disse "está certo" (ids de pendência). */
   conferidos?: string[];
   /** Este roteiro é a versão nova de outro que já estava na fila (id do anterior), até alguém decidir. */
@@ -124,6 +126,8 @@ export interface Roteiro {
   compartilhadoCom?: { email: string; editar: boolean }[];
   /** O servidor está em modo aberto: todos veem e editam todos os roteiros. */
   aberto?: boolean;
+  /** O arquivo que subiu, guardado no servidor para baixar de novo. */
+  original?: { nome: string; tipo: string; tamanho: number; em: string };
   /** Outra pessoa é a dona, mas autorizou esta a editar. */
   podeEditar?: boolean;
   /** O documento compartilhado ainda está vazio e cabe a esta sessão preenchê-lo. */

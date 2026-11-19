@@ -200,7 +200,7 @@ export async function lerPdf(dados: ArrayBuffer | Uint8Array, arquivo: string, p
   if (digitalizadas) avisos.push(`${digitalizadas} ${digitalizadas === 1 ? 'página é uma imagem digitalizada' : 'páginas são imagens digitalizadas'} e não ${digitalizadas === 1 ? 'pôde' : 'puderam'} ser ${digitalizadas === 1 ? 'lida' : 'lidas'}.`);
   const temTexto = blocos.some((bl) => (bl.tipo === 'p' ? bl.par.length : bl.linhas.some((l) => l.some((c) => c.some((p) => p.length)))));
   if (!temTexto) throw new Error('Não encontrei texto neste PDF. Se ele foi digitalizado, é uma imagem e não dá para ler.');
-  return { arquivo, formato: 'pdf', autor: autor.trim(), blocos, avisos, ...(porOcr ? { lidoPorOcr: true } : {}) };
+  return { arquivo, formato: 'pdf', autor: autor.trim(), blocos, avisos, paginas: pdf.numPages, ...(porOcr ? { lidoPorOcr: true } : {}) };
 }
 
 /** Agrupa os trechos de texto em linhas visuais; cada letra guarda a posição estimada. */

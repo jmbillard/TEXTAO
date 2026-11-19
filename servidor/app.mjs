@@ -239,7 +239,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     ),
     original: db.prepare('SELECT nome, tipo, dados FROM originais WHERE roteiro_id = ?'),
     guardarOriginal: db.prepare('INSERT OR REPLACE INTO originais (roteiro_id, nome, tipo, dados, em) VALUES (?, ?, ?, ?, ?)'),
-    limparOriginais: db.prepare('DELETE FROM originais WHERE em < ?'),
+    infoOriginal: db.prepare('SELECT nome, tipo, length(dados) AS tamanho, em FROM originais WHERE roteiro_id = ?'),
     envio: db.prepare('SELECT estado, card_id, url, erro, avisos, em, por_nome FROM envios WHERE roteiro_id = ?'),
     marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
@@ -274,9 +274,6 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   const aberto = env.ACESSO !== 'privado';
 
   /** O que esta pessoa pode fazer com o roteiro: o dono tudo; quem recebeu, ler ou editar; os demais, ler se for de todos. */
-  // o original só serve para o card do Trello: depois de 60 dias, sai do banco
-  q.limparOriginais.run(new Date(Date.now() - 60 * 86400000).toISOString());
-
   const acesso = (id, eu) => {
     const linha = q.um.get(id);
     if (!linha) return { linha: null, meu: false, editar: false, ler: false };
@@ -523,6 +520,11 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     publico: !!l.publico,
     meu: l.dono_email === eu.email,
     ...(aberto ? { aberto: true } : {}),
+    // o arquivo que subiu, para baixar de novo
+    ...(() => {
+      const o = q.infoOriginal.get(l.id);
+      return o ? { original: { nome: o.nome, tipo: o.tipo, tamanho: o.tamanho, em: o.em } } : {};
+    })(),
     // só o dono sabe com quem compartilhou
     ...(l.dono_email === eu.email ? { compartilhadoCom: q.compartilhadoCom.all(l.id).map((c) => ({ email: c.email, editar: !!c.pode_editar })) } : {}),
   });
@@ -540,10 +542,23 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
 
   async function rotaDoTrello(req, res, eu, id, oque) {
     if (!ID_VALIDO.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
-    const { linha: atual, editar: podeEditar } = acesso(id, eu);
-    if (!atual) return json(res, 404, { erro: 'Roteiro não encontrado.' });
-    if (!podeEditar) return json(res, 403, { erro: 'Só quem pode editar o roteiro manda ele adiante.' });
+    const { linha: atual, editar: podeEditar, ler: podeLer } = acesso(id, eu);
+    if (!atual || !podeLer) return json(res, 404, { erro: 'Roteiro não encontrado.' });
 
+    if (oque === 'original' && req.method === 'GET') {
+      // baixar o arquivo como subiu: quem lê o roteiro pode baixar
+      const o = q.original.get(id);
+      if (!o) return json(res, 404, { erro: 'O arquivo original deste roteiro não foi guardado.' });
+      const ascii = o.nome.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+      res.writeHead(200, {
+        'content-type': o.tipo || 'application/octet-stream',
+        'content-length': o.dados.length,
+        'content-disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(o.nome)}`,
+        'cache-control': 'private, no-store',
+      });
+      return res.end(Buffer.from(o.dados));
+    }
+    if (!podeEditar) return json(res, 403, { erro: 'Só quem pode editar o roteiro mexe no original e manda ele adiante.' });
     if (oque === 'original') {
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const dados = await lerBinario(req, LIMITE_ORIGINAL);

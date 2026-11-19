@@ -261,6 +261,14 @@ describe('rotas do envio', () => {
     expect(subiu.status).toBe(200);
     expect((await ana('/api/roteiros')).ok && (await (await ana('/api/roteiros')).json())[0].temOriginal).toBe(true);
 
+    // baixar de novo, como subiu; o roteiro diz o nome e o tamanho
+    const baixado = await ana('/api/roteiros/rot-trello-1/original');
+    expect(baixado.headers.get('content-type')).toBe('application/pdf');
+    expect(baixado.headers.get('content-disposition')).toContain("filename*=UTF-8''Festa%2019_11%20%C3%A7.pdf");
+    expect([...new Uint8Array(await baixado.arrayBuffer())]).toEqual([1, 2, 3]);
+    expect((await (await ana('/api/roteiros/rot-trello-1')).json()).original).toMatchObject({ nome: 'Festa 19_11 ç.pdf', tamanho: 3 });
+    expect((await fetch(base + '/api/roteiros/rot-trello-1/original')).status).toBe(401);
+
     const r = await (await ana('/api/roteiros/rot-trello-1/trello', { method: 'POST', body: JSON.stringify({ artes: ['A', 'B'], texto: 'x' }) })).json();
     expect(r).toEqual({ estado: 'enviado', url: 'https://trello.com/c/C1', avisos: ['guardar no OneDrive: sem resposta'] });
     expect(recebidos[0].artes).toEqual(['A', 'B']);

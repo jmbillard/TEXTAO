@@ -422,6 +422,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   /* 3. Dados que vêm do nome do arquivo e do autor. */
   meta.claquete = claqueteDoArquivo(bruto.arquivo);
   if (bruto.lidoPorOcr) meta.lidoPorOcr = true;
+  if (bruto.paginas) meta.paginasOriginal = bruto.paginas;
   const nome = bruto.arquivo.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
   if (!meta.programa) {
     const prog = acharPrograma(nome) ?? acharPrograma(bruto.arquivo);

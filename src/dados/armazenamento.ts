@@ -178,6 +178,13 @@ export async function guardarOriginal(id: string, arquivo: File) {
   if (!r.ok) throw new Error('Não consegui guardar o arquivo original.');
 }
 
+/** O arquivo como subiu, para baixar de novo. */
+export async function baixarOriginal(id: string): Promise<Blob> {
+  const r = await fetch(`/api/roteiros/${encodeURIComponent(id)}/original`, { credentials: 'same-origin', headers: cabecalhos });
+  if (!r.ok) throw new Error(r.status === 404 ? 'O arquivo original deste roteiro não foi guardado.' : 'Não consegui baixar o original.');
+  return r.blob();
+}
+
 /** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
 export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const saida = exportar(roteiro);
