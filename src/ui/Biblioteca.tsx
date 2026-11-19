@@ -9,6 +9,7 @@ import type { Roteiro } from '../modelo/tipos';
 import { agruparPorDia, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { CURSORES, Cursor, escolherCursor, meuCursor } from './cursores';
+import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
@@ -84,6 +85,38 @@ function EscolhaDeCursor({ email }: { email: string }) {
   );
 }
 
+const TEMAS: { id: Tema; nome: string }[] = [
+  { id: 'sistema', nome: 'Sistema' },
+  { id: 'claro', nome: 'Claro' },
+  { id: 'escuro', nome: 'Escuro' },
+];
+
+function EscolhaDeTema() {
+  const [atual, setAtual] = useState<Tema>(temaSalvo);
+  return (
+    <div className="escolha-tema">
+      <div className="rotulo">Tema</div>
+      <div className="escolha-tema-opcoes" role="radiogroup" aria-label="Tema">
+        {TEMAS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={atual === t.id}
+            onClick={() => {
+              aplicarTema(t.id);
+              setAtual(t.id);
+            }}
+          >
+            <span className={`amostra-tema ${t.id}`} aria-hidden />
+            {t.nome}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
 function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'definirPerfil'>) {
   const [aberto, setAberto] = useState(false);
@@ -144,6 +177,7 @@ function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'defin
               <button className="botao primario" disabled={!nome.trim()}>Salvar</button>
             </form>
           )}
+          <EscolhaDeTema />
           <EscolhaDeCursor email={identidade?.email ?? ''} />
         </div>
       )}
