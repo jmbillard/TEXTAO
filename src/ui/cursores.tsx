@@ -64,7 +64,7 @@ export const cursorValido = (id: unknown): id is string => typeof id === 'string
 export function Cursor({ id, cor, tamanho = 52, className }: { id: string; cor: string; tamanho?: number; className?: string }) {
   return (
     <svg className={className} width={tamanho} height={tamanho} viewBox="0 0 48 48" style={{ '--cor': cor, overflow: 'visible' } as CSSProperties} aria-hidden="true">
-      <use href={`#cursor-${cursorValido(id) ? id : 'lapis'}`} />
+      <use href={`#cursor-${cursorValido(id) ? id : 'lapis'}`} filter="url(#cursor-contorno)" />
     </svg>
   );
 }
@@ -74,6 +74,16 @@ export function DesenhosDeCursor() {
   return (
     <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true" focusable="false">
       <defs>
+        {/* contorno branco por fora do desenho inteiro: o cursor aparece em qualquer fundo, claro ou escuro */}
+        <filter id="cursor-contorno" x="-25%" y="-25%" width="150%" height="150%" colorInterpolationFilters="sRGB">
+          <feMorphology in="SourceAlpha" operator="dilate" radius="2.4" result="borda" />
+          <feFlood floodColor="#fff" />
+          <feComposite in2="borda" operator="in" result="branco" />
+          <feMerge>
+            <feMergeNode in="branco" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
         <clipPath id="escudo-recorte">
           <path d="M3 3 H31 V17 C31 28 23 34 17 37 C11 34 3 28 3 17 Z" />
         </clipPath>

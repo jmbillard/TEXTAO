@@ -941,7 +941,7 @@ kbd {
 /* ponteiros dos colegas */
 .ponteiros { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
 .ponteiro { position: absolute; left: 0; top: 0; transition: transform 0.09s linear, opacity 0.4s; will-change: transform; }
-.ponteiro svg { display: block; margin: -5.4px 0 0 -5.4px; filter: drop-shadow(0 2px 2px rgb(26 25 22 / 22%)); transform-origin: 5.4px 5.4px; animation: balancar-cursor 6s ease-in-out infinite; }
+.ponteiro svg { display: block; margin: -5.4px 0 0 -5.4px; filter: drop-shadow(0 2px 3px rgb(0 0 0 / 35%)); transform-origin: 5.4px 5.4px; animation: balancar-cursor 6s ease-in-out infinite; }
 .ponteiro span {
   position: absolute; left: 34px; top: 42px; padding: 2px 8px; border-radius: 999px; background: var(--cor); color: #fff;
   font: 600 11.5px/1.5 var(--sans); white-space: nowrap; box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
