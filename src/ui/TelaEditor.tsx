@@ -1067,6 +1067,14 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                 </ul>
               </section>
             )}
+            {comServidor && !temTrello() && !leitura && (
+              <section className="cartao trello-lado desligado" aria-label="Trello">
+                <button className="botao primario largo" disabled>
+                  <Icone nome="quadro" tam={15} /> Mandar para o Trello
+                </button>
+                <small>O envio está desligado neste servidor: faltam TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA nas variáveis do stack.</small>
+              </section>
+            )}
             {podeMandar && (
               <section className={`cartao trello-lado ${noTrello ? 'feito' : ''}`} aria-label="Trello">
                 {noTrello ? (
