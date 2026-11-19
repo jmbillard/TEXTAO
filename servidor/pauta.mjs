@@ -12,8 +12,11 @@ async function abrirPg(url) {
 }
 
 export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copia = null) {
-  const esquema = env.TEABLE_PG_ESQUEMA || '';
-  const tabela = env.TEABLE_PG_PAUTA || '';
+  // tolera aspas, espaços e "esquema.tabela" numa variável só, como aparece no Postgres
+  const limpo = (v) => String(v || '').trim().replace(/^["'`]+|["'`]+$/g, '').replace(/"/g, '');
+  let esquema = limpo(env.TEABLE_PG_ESQUEMA);
+  let tabela = limpo(env.TEABLE_PG_PAUTA);
+  if (tabela.includes('.')) [esquema, tabela] = [tabela.split('.')[0] || esquema, tabela.split('.').pop()];
   const comBanco = !!(env.TEABLE_PG_URL && NOME.test(esquema) && NOME.test(tabela));
   let banco = null;
 
@@ -90,7 +93,14 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
     },
     /** Para o log da partida. */
     async testar() {
-      if (!comBanco) return env.TEABLE_PG_URL ? 'TEABLE_PG_ESQUEMA ou TEABLE_PG_PAUTA faltando ou com nome inválido' : null;
+      if (!comBanco) {
+        if (!env.TEABLE_PG_URL) return null;
+        const falta = [
+          !NOME.test(esquema) && `TEABLE_PG_ESQUEMA ${esquema ? `inválido ("${esquema}")` : 'vazio'}`,
+          !NOME.test(tabela) && `TEABLE_PG_PAUTA ${tabela ? `inválido ("${tabela}")` : 'vazio'}`,
+        ].filter(Boolean);
+        return `Postgres desligado: ${falta.join(' e ')}. Use só letras, números e _ (ex.: bseXXXX e demandasXXXX).`;
+      }
       try {
         banco ??= await abrir(env.TEABLE_PG_URL);
         const r = await banco.query(`SELECT count(*)::int AS n FROM "${esquema}"."${tabela}" t WHERE t."data"::date >= CURRENT_DATE - ${DIAS}`);
