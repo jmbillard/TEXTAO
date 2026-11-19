@@ -4,6 +4,7 @@
 
 const VALIDADE_MS = 10 * 60 * 1000;
 const POR_PAGINA = 1000;
+const DIAS_PAUTA = 45; // o mesmo prazo da consulta no Postgres (pauta.mjs)
 
 const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ') : v == null ? '' : String(typeof v === 'object' ? (v.title ?? v.name ?? '') : v)).trim();
 
@@ -19,17 +20,34 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
   let lidoEm = 0;
   let emCurso = null;
 
-  async function registros(tabela, visao = '') {
+  const cabecalho = () => ({ authorization: `Bearer ${env.TEABLE_TOKEN}` });
+
+  /** O ID de um campo pelo nome, para ordenar (a ordenação da API pede o ID). */
+  async function idDoCampo(tabela, nome) {
+    const r = await buscar(`${base}/api/table/${encodeURIComponent(tabela)}/field`, { headers: cabecalho(), signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    return (await r.json()).find?.((c) => c.name === nome)?.id ?? null;
+  }
+
+  /** Lê a tabela em páginas. Com `ordem`, vem do mais novo para o mais antigo e para quando `bastou` disser. */
+  async function registros(tabela, visao = '', ordem = null, bastou = null) {
     const todos = [];
+    let ordenar = ordem ? `&orderBy=${encodeURIComponent(JSON.stringify([{ fieldId: ordem, order: 'desc' }]))}` : '';
     for (let pular = 0; pular < 20 * POR_PAGINA; pular += POR_PAGINA) {
-      const r = await buscar(`${base}/api/table/${encodeURIComponent(tabela)}/record?fieldKeyType=name&take=${POR_PAGINA}&skip=${pular}${visao ? `&viewId=${encodeURIComponent(visao)}` : ''}`, {
-        headers: { authorization: `Bearer ${env.TEABLE_TOKEN}` },
-        signal: AbortSignal.timeout(8000),
-      });
+      const url = (o) => `${base}/api/table/${encodeURIComponent(tabela)}/record?fieldKeyType=name&take=${POR_PAGINA}&skip=${pular}${visao ? `&viewId=${encodeURIComponent(visao)}` : ''}${o}`;
+      let r = await buscar(url(ordenar), { headers: cabecalho(), signal: AbortSignal.timeout(8000) });
+      if (!r.ok && ordenar && pular === 0) {
+        // versão do Teable que não aceita a ordenação: lê na ordem da tabela
+        ordenar = '';
+        r = await buscar(url(''), { headers: cabecalho(), signal: AbortSignal.timeout(8000) });
+      }
       if (!r.ok) throw new Error(`Teable respondeu ${r.status} para a tabela ${tabela}`);
       const pagina = (await r.json()).records ?? [];
       todos.push(...pagina.map((x) => x.fields ?? {}));
       if (pagina.length < POR_PAGINA) break;
+      if (ordenar && bastou?.(pagina)) break;
+      if (pular + POR_PAGINA >= 20 * POR_PAGINA)
+        console.warn(`[vocabulário] a tabela ${tabela} tem mais de ${20 * POR_PAGINA} linhas; li só as primeiras${ordenar ? ' (as mais recentes)' : ''}. Para a pauta, prefira TEABLE_PG_URL ou TEABLE_PAUTA_VISAO.`);
     }
     return todos;
   }
@@ -67,7 +85,13 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
     if (env.TEABLE_PAUTA) {
       // pauta da edição: quem está com cada claquete. Para a mesma chave, vale o expediente mais recente.
       const porChave = new Map();
-      for (const f of await registros(env.TEABLE_PAUTA, env.TEABLE_PAUTA_VISAO)) {
+      // do mais novo para o mais antigo, até passar de 45 dias: a mesma chave volta no ano seguinte
+      const limite = new Date(Date.now() - DIAS_PAUTA * 86400000).toISOString().slice(0, 10);
+      const campoData = env.TEABLE_PAUTA_VISAO ? null : await idDoCampo(env.TEABLE_PAUTA, 'data').catch(() => null);
+      const antiga = (pagina) => texto(pagina.at(-1)?.data).slice(0, 10) < limite;
+      for (const f of await registros(env.TEABLE_PAUTA, env.TEABLE_PAUTA_VISAO, campoData, antiga)) {
+        const dia = texto(f.data).slice(0, 10);
+        if (campoData && dia && dia < limite) continue;
         const chave = texto(f.key);
         const editor = texto(f.editor);
         const quando = texto(f.expediente_inicio) || texto(f.data);

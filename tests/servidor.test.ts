@@ -239,6 +239,32 @@ describe('pauta da edição no Teable', () => {
   });
 });
 
+describe('pauta grande pela API', () => {
+  it('lê do mais novo para o mais antigo e para quando passa de 45 dias', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarVocabulario } = await import('../servidor/vocabulario.mjs');
+    const hoje = Date.now();
+    const dia = (n: number) => new Date(hoje - n * 86400000).toISOString().slice(0, 10);
+    // 3500 linhas, as mais novas por último na ordem da tabela
+    const linhas = Array.from({ length: 3500 }, (_, i) => ({ fields: { key: `CHAMADA ${i}`, editor: 'Fulano', data: dia(3499 - i) } }));
+    linhas.push({ fields: { key: 'AFROPUNK 8 11', editor: 'Alan', data: dia(20) } });
+    const pedidos: string[] = [];
+    const buscar = (async (url: string) => {
+      pedidos.push(url);
+      if (url.endsWith('/field')) return { ok: true, json: async () => [{ id: 'fldData', name: 'data' }, { id: 'fldKey', name: 'key' }] };
+      const u = new URL(url);
+      const pular = Number(u.searchParams.get('skip'));
+      const ordem = u.searchParams.get('orderBy');
+      const lista = ordem?.includes('fldData') ? [...linhas].sort((a, b) => b.fields.data.localeCompare(a.fields.data)) : linhas;
+      return { ok: true, json: async () => ({ records: lista.slice(pular, pular + 1000) }) };
+    }) as unknown as typeof fetch;
+    const v = await criarVocabulario({ TEABLE_URL: 'http://teable:3000', TEABLE_TOKEN: 't', TEABLE_PAUTA: 'tblP' }, buscar).ler();
+    expect(v.pauta.find((p: { chave: string }) => p.chave === 'AFROPUNK 8 11')?.editor).toBe('Alan');
+    expect(v.pauta.length).toBeLessThan(60);
+    expect(pedidos.filter((u) => u.includes('/record')).length).toBe(1);
+  });
+});
+
 describe('pauta direto no Postgres do Teable', () => {
   it('consulta por chave, tenta sem a praça e volta para a API se o banco falhar', async () => {
     // @ts-expect-error módulo JS sem tipos

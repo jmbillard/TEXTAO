@@ -14,7 +14,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, consultarPauta, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
@@ -514,6 +514,19 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
     };
   }, [sala, editor, sincronizado]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // sem editor: a pauta pode ter sido preenchida depois que o roteiro subiu; pergunta de novo ao abrir
+  const perguntouPauta = useRef(false);
+  useEffect(() => {
+    if (!liberado || leitura || perguntouPauta.current || meta.editor || !meta.claquete) return;
+    perguntouPauta.current = true;
+    void consultarPauta(meta.claquete)
+      .then((p) => {
+        if (p.editor) mudarMetaRef.current?.({ editor: p.editor });
+      })
+      .catch(() => {});
+  }, [liberado, leitura, meta.editor, meta.claquete]);
+  const mudarMetaRef = useRef<((parte: Partial<Meta>) => void) | null>(null);
+
   const mudarMeta = useCallback((parte: Partial<Meta>) => {
     mexeu.current = true;
     if (sala) sala.doc.transact(() => Object.entries(parte).forEach(([k, v]) => sala.meta.set(k, v)));
@@ -524,8 +537,9 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
     }
     setMeta((m) => ({ ...m, ...parte }));
     alteracoes.current++;
-      setSalvo(false);
+    setSalvo(false);
   }, [sala]);
+  mudarMetaRef.current = mudarMeta;
 
   const roteiroAtual = useCallback(
     (): Roteiro => ({ ...inicial, meta: metaRef.current, doc: editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc, revisao: revisao.current, atualizadoEm: new Date().toISOString(), publico: publicoRef.current, ...(sou ? { compartilhadoCom: pessoasRef.current } : {}),
