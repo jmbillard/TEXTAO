@@ -84,7 +84,7 @@ export interface VocabularioExterno {
   redatores: string[];
   editores?: string[];
   /** Pauta da edição: chave da claquete → quem está editando. */
-  pauta?: { chave: string; editor: string }[];
+  pauta?: { chave: string; editor: string; claquete?: string }[];
 }
 
 interface Externo {
@@ -98,7 +98,7 @@ interface Externo {
 let externos: Externo[] = [];
 let redatores: string[] = [];
 let editores: string[] = [];
-let pauta = new Map<string, string>();
+let pauta = new Map<string, { editor: string; claquete: string }>();
 
 const normal = (s: string) =>
   semAcento(s)
@@ -116,7 +116,7 @@ export function registrarVocabulario(v: VocabularioExterno | null) {
   });
   redatores = v?.redatores ?? [];
   editores = v?.editores ?? [];
-  pauta = new Map((v?.pauta ?? []).map((p) => [p.chave, p.editor]));
+  pauta = new Map((v?.pauta ?? []).map((p) => [p.chave, { editor: p.editor, claquete: p.claquete ?? '' }]));
 }
 
 /** Programas para sugerir no cabeçalho: os da casa, quando existem; senão, os embutidos. */
@@ -139,11 +139,15 @@ export function chaveDaClaquete(claquete: string): string {
     .trim();
 }
 
-/** Quem está com esta claquete na pauta da edição, se o servidor souber. */
-export function editorDaPauta(claquete: string): string {
+/** O que a pauta da edição sabe desta claquete: quem está editando e, se a chave bate inteira, como ela é escrita lá. */
+export function naPauta(claquete: string): { editor: string; claquete: string } {
   const chave = chaveDaClaquete(claquete);
-  return pauta.get(chave) ?? pauta.get(chave.replace(/ (?:REDE|G5|SP|PRACAS)$/, '')) ?? '';
+  const exata = pauta.get(chave);
+  if (exata) return exata;
+  // sem a praça no fim, ainda serve para achar o editor, mas a grafia já não é desta claquete
+  return { editor: pauta.get(chave.replace(/ (?:REDE|G5|SP|PRACAS)$/, ''))?.editor ?? '', claquete: '' };
 }
+export const editorDaPauta = (claquete: string): string => naPauta(claquete).editor;
 
 export function acharPrograma(texto: string): ProgramaVocab | null {
   // A claquete começa pela chave ("QUEM AMA 12/3 REDE"); chaves curtas ("CASA", "VT") não valem no meio de uma frase.

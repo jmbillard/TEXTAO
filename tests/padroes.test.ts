@@ -198,12 +198,15 @@ describe('claquete, praça e editor', () => {
     expect(chaveDaClaquete('Rio(Vim De La)clip 14/11 AH')).toBe('RIO VIM DE LA CLIP 14 11 AH');
   });
   it('o editor vem da pauta, pela claquete; a praça, do começo ou do fim dela', async () => {
-    const { registrarVocabulario, editorDaPauta } = await import('../src/modelo/vocabularios');
-    registrarVocabulario({ programas: [], redatores: [], editores: ['Fulano Silva'], pauta: [{ chave: 'FESTA NA PRACA 26 10', editor: 'Fulano Silva' }] });
+    const { registrarVocabulario, editorDaPauta, naPauta } = await import('../src/modelo/vocabularios');
+    registrarVocabulario({ programas: [], redatores: [], editores: ['Fulano Silva'], pauta: [{ chave: 'FESTA NA PRACA 26 10', editor: 'Fulano Silva', claquete: 'Festa(Na Praca)26/10 (AH)' }] });
     try {
       expect(editorDaPauta('FESTA NA PRACA 26/10')).toBe('Fulano Silva');
       expect(editorDaPauta('FESTA NA PRACA 26/10 REDE')).toBe('Fulano Silva');
       expect(editorDaPauta('OUTRA COISA 1/1')).toBe('');
+      // a grafia da pauta só vale quando a chave bate inteira
+      expect(naPauta('FESTA NA PRACA 26/10').claquete).toBe('Festa(Na Praca)26/10 (AH)');
+      expect(naPauta('FESTA NA PRACA 26/10 REDE').claquete).toBe('');
     } finally {
       registrarVocabulario(null);
     }

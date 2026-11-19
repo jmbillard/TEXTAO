@@ -43,7 +43,7 @@ export function Claquete({ dados, mudar }: { dados: DadosClaquete; mudar?: (m: P
         list={lista}
         autoComplete="off"
         spellCheck={false}
-        onChange={(e) => mudar({ [chave]: chave === 'claquete' ? e.target.value.toUpperCase() : e.target.value })}
+        onChange={(e) => mudar({ [chave]: e.target.value })}
       />
     ) : (
       <div>{dados[chave]}</div>

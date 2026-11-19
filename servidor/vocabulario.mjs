@@ -68,9 +68,9 @@ export function criarVocabulario(env, buscar = fetch) {
         const quando = texto(f.expediente_inicio) || texto(f.data);
         if (!chave || !editor) continue;
         const atual = porChave.get(chave);
-        if (!atual || quando >= atual.quando) porChave.set(chave, { editor, quando });
+        if (!atual || quando >= atual.quando) porChave.set(chave, { editor, quando, claquete: texto(f.claquete) });
       }
-      novo.pauta = [...porChave].map(([chave, v]) => ({ chave, editor: v.editor }));
+      novo.pauta = [...porChave].map(([chave, v]) => ({ chave, editor: v.editor, claquete: v.claquete }));
     }
     return novo;
   }

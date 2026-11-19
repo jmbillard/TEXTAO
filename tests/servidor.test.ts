@@ -227,14 +227,14 @@ describe('pauta da edição no Teable', () => {
         ? [{ fields: { editor: 'Fulano Silva' } }, { fields: { editor: 'Beltrana Souza' } }]
         : [
             { fields: { key: 'FESTA 26 10', editor: [{ id: 'rec1', title: 'Fulano Silva' }], data: '2026-10-24', expediente_inicio: '2026-10-24 06:00' } },
-            { fields: { key: 'FESTA 26 10', editor: [{ id: 'rec2', title: 'Beltrana Souza' }], data: '2026-10-25', expediente_inicio: '2026-10-25 14:00' } },
+            { fields: { key: 'FESTA 26 10', claquete: 'Festa 26/10 (AH)', editor: [{ id: 'rec2', title: 'Beltrana Souza' }], data: '2026-10-25', expediente_inicio: '2026-10-25 14:00' } },
             { fields: { key: 'FINALIZAR', editor: 'Fulano Silva', data: '2026-10-25' } },
           ];
       return { ok: true, json: async () => ({ records: registros }) };
     }) as unknown as typeof fetch;
     const v = await criarVocabulario({ TEABLE_URL: 'http://teable:3000', TEABLE_TOKEN: 't', TEABLE_EDITORES: 'tblE', TEABLE_PAUTA: 'tblP', TEABLE_PAUTA_VISAO: 'viwRecentes' }, buscar).ler();
     expect(v.editores).toEqual(['Beltrana Souza', 'Fulano Silva']);
-    expect(v.pauta).toEqual([{ chave: 'FESTA 26 10', editor: 'Beltrana Souza' }, { chave: 'FINALIZAR', editor: 'Fulano Silva' }]);
+    expect(v.pauta).toEqual([{ chave: 'FESTA 26 10', editor: 'Beltrana Souza', claquete: 'Festa 26/10 (AH)' }, { chave: 'FINALIZAR', editor: 'Fulano Silva', claquete: '' }]);
     expect(pedidos.find((u) => u.includes('tblP'))).toContain('&viewId=viwRecentes');
   });
 });
