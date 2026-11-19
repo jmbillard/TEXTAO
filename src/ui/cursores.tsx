@@ -234,20 +234,54 @@ export function svgDoCursor(id: string, cor: string, contorno: string, tamanho =
   const limpar = (html: string) =>
     html
       .replace(/var\(--cor\)/g, cor)
-      .replace(/class="trac"/g, 'stroke="#1a1916" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"');
+      // o traço vai como style (e não como atributo): igual ao .trac da página, vale por cima de um stroke-width do
+      // próprio desenho, e não repete atributo (atributo repetido deixa o SVG inválido e o cursor não carrega)
+      .replace(/class="trac"/g, 'style="stroke:#1a1916;stroke-width:2;stroke-linejoin:round;stroke-linecap:round"');
   // a ponta do desenho fica em (5,5); com folga de 6 em volta, para o contorno e as partes que saem do quadro
   const filtro = `<filter id="c" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feMorphology in="SourceAlpha" operator="dilate" radius="1.6" result="b"/><feFlood flood-color="${contorno}"/><feComposite in2="b" operator="in" result="w"/><feMerge><feMergeNode in="w"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
   const corpo = limpar(desenho.outerHTML).replace(/^<g /, '<g filter="url(#c)" ');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${tamanho}" height="${tamanho}" viewBox="-6 -6 60 60"><defs>${filtro}${recorte ? recorte.outerHTML : ''}</defs>${corpo}</svg>`;
 }
 
-/** Põe o meu cursor no meu mouse (onde a seta normal apareceria; mãozinha e cursor de texto continuam). */
-export function aplicarCursorNoMouse(id: string, cor: string) {
+/** Desenha o SVG num quadro de `px` pixels e devolve um PNG: a tela de alta densidade ganha um cursor nítido. */
+function pngDoSvg(svg: string, px: number): Promise<string | null> {
+  return new Promise((ok) => {
+    const img = new Image();
+    img.onload = () => {
+      const tela = document.createElement('canvas');
+      tela.width = tela.height = px;
+      const ctx = tela.getContext('2d');
+      if (!ctx) return ok(null);
+      ctx.drawImage(img, 0, 0, px, px);
+      try {
+        ok(tela.toDataURL('image/png'));
+      } catch {
+        ok(null);
+      }
+    };
+    img.onerror = () => ok(null);
+    img.src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  });
+}
+
+let pedidoCursor = 0;
+/** Põe o meu cursor no meu mouse (onde a seta normal apareceria; mãozinha e cursor de texto continuam).
+    Em tela de alta densidade (Retina), vai uma versão com o dobro de pixels, para não borrar. */
+export async function aplicarCursorNoMouse(id: string, cor: string) {
   const raiz = document.documentElement;
+  const meu = ++pedidoCursor;
   if (!cursorNoMouse() || window.matchMedia?.('(pointer: coarse)').matches) return raiz.style.removeProperty('--cursor-meu');
   const contorno = getComputedStyle(raiz).getPropertyValue('--contorno-cursor').trim() || '#fff';
-  const svg = svgDoCursor(id, cor, contorno);
+  const tam = 32;
+  const svg = svgDoCursor(id, cor, contorno, tam);
   if (!svg) return;
-  const ponta = Math.round(((5 + 6) * 32) / 60); // a ponta do desenho, na escala do cursor
-  raiz.style.setProperty('--cursor-meu', `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${ponta} ${ponta}, auto`);
+  const ponta = Math.round(((5 + 6) * tam) / 60); // a ponta do desenho, na escala do cursor
+  const [um, dois] = await Promise.all([pngDoSvg(svg, tam), pngDoSvg(svg, tam * 2)]);
+  if (meu !== pedidoCursor) return; // outro pedido mais novo já está a caminho
+  if (!um) return raiz.style.removeProperty('--cursor-meu');
+  const opcoes = dois
+    ? [`image-set(url("${um}") 1x, url("${dois}") 2x) ${ponta} ${ponta}, auto`, `-webkit-image-set(url("${um}") 1x, url("${dois}") 2x) ${ponta} ${ponta}, auto`]
+    : [];
+  const valor = opcoes.find((v) => CSS.supports?.('cursor', v)) ?? `url("${um}") ${ponta} ${ponta}, auto`;
+  raiz.style.setProperty('--cursor-meu', valor);
 }
