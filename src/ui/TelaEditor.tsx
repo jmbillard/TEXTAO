@@ -657,6 +657,17 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
 
   // arte apontada na lista: selecionada no texto com a animação do cursor. Vai por uma regra de estilo
   // (não por classe no elemento), porque o editor redesenha o texto a cada mudança e a classe se perderia.
+  // se a arte apontada está fora da tela, depois de um instante com o mouse parado ela rola para o meio
+  // (a lista é fixa na lateral, então continua no lugar)
+  useEffect(() => {
+    if (!realce || !editor) return;
+    const t = setTimeout(() => {
+      const el = editor.view.dom.querySelector<HTMLElement>(`u.arte[data-id="${CSS.escape(realce)}"]`);
+      const r = el?.getBoundingClientRect();
+      if (el && r && (r.bottom < 80 || r.top > window.innerHeight - 50)) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [realce, editor]);
 
   /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
   const TIPOS_NA_LISTA = false;
