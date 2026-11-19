@@ -760,6 +760,16 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                 </ul>
               )}
 
+              {/* nada para ir ao ar (tudo já foi exibido): o convite para arrastar volta para o lugar dele */}
+              {!proximos.length && !lendo && !falhas.length && !termo && !filtroEstado && (
+                <section className="fila-vazia nada-pela-frente">
+                  <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
+                  <h2 className="titulo-serifa">Nada para ir ao ar</h2>
+                  <p className="suave">Arraste os próximos roteiros para cá: .docx, .rtf ou .pdf, quantos quiser de uma vez.</p>
+                  {colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
+                </section>
+              )}
+
               {proximos.map((g) => (
                 <section key={g.chave} className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
                   {cabecalhoDoDia(g)}
@@ -786,9 +796,9 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                   {termo ? `Nada encontrado para “${busca}”.` : filtroEstado === 'revisar' ? 'Nada para revisar.' : 'Nenhum roteiro pronto ainda.'}
                 </p>
               )}
-              {colando ? colar : (
+              {proximos.length > 0 || lendo || falhas.length > 0 || termo || filtroEstado ? (colando ? colar : (
                 <p className="fila-rodape">Arraste mais roteiros para qualquer ponto da tela. <button className="botao-texto" onClick={() => setColando(true)}>Colar do Word</button></p>
-              )}
+              )) : null}
             </section>
           )
         )}

@@ -1327,3 +1327,5 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .duvida { display: inline-flex; gap: 2.5px; margin-left: 1px; vertical-align: -0.12em; color: var(--falta); }
 .duvida i { display: inline-block; font: 700 18px/0.8 Caveat, cursive; font-style: normal; }
 .ficha-gente small .duvida i { font-size: 16px; }
+/* fila com tudo já exibido: o mesmo convite, um pouco mais baixo, antes de "Já foram ao ar" */
+.fila-vazia.nada-pela-frente { margin: 8px 0 28px; padding-block: 40px; }
