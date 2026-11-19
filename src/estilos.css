@@ -968,9 +968,10 @@ kbd {
 .ficha.ocupada { --orelha: 34px; --verso: color-mix(in srgb, var(--cor) var(--orelha-tom), var(--papel)); }
 .ficha.revisada { --orelha: 16px; --verso: color-mix(in srgb, var(--tinta) 9%, var(--papel)); }
 .orelha {
-  position: absolute; top: 0; right: 0; width: var(--orelha); height: var(--orelha); pointer-events: none; border-bottom-left-radius: 5px;
-  /* o traço só na dobra (a diagonal), por cima da ficha */
-  background: linear-gradient(to bottom left, transparent calc(50% - 0.75px), var(--orelha-linha) calc(50% - 0.75px) calc(50% + 0.75px), var(--verso) calc(50% + 0.75px));
+  /* encostada no canto de fora da borda, onde o recorte da ficha começa: a dobra cai exatamente sobre o corte */
+  position: absolute; top: -1px; right: -1px; width: var(--orelha); height: var(--orelha); pointer-events: none; border-bottom-left-radius: 5px;
+  /* o traço só na dobra (a diagonal), todo do lado de dentro da ficha */
+  background: linear-gradient(to bottom left, transparent 50%, var(--orelha-linha) 50% calc(50% + 1px), var(--verso) calc(50% + 1px));
   filter: drop-shadow(-1.5px 2px 1.5px rgb(26 25 22 / 22%));
 }
 .orelha i {
