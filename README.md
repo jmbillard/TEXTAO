@@ -71,7 +71,7 @@ Variáveis da stack (todas opcionais):
 
 **Edição simultânea.** Quem pode editar escreve junto, ao mesmo tempo: o texto e o cabeçalho aparecem para todos em tempo real, cada pessoa com seu cursor e sua cor, e o topo mostra quem está no roteiro. Funciona por uma conexão WebSocket em `/api/colab/<id>`, que passa pelo túnel do Cloudflare sem configuração extra. Quem só vê acompanha ao vivo, mas o servidor descarta qualquer alteração que venha dela. Ao mudar o acesso, os convidados são reconectados e conferidos de novo.
 
-**Linha do tempo.** O controle deslizante no rodapé do editor percorre as edições da sessão: para trás desfaz, para frente refaz até o ponto atual. Vale para o texto do roteiro (os campos do cabeçalho não entram) e recomeça quando a página é recarregada; para voltar mais longe, use o histórico. Com mais gente no roteiro, cada pessoa desfaz só as próprias edições.
+**Linha do tempo.** O controle deslizante no rodapé do editor percorre as edições da sessão: para trás desfaz, para frente refaz até o ponto atual. Vale para o texto do roteiro (os campos do cabeçalho não entram) e recomeça quando a página é recarregada; para voltar mais longe, use o histórico. Só aparece em roteiro individual; quando o roteiro é compartilhado com alguém, o controle some e fica o desfazer comum do teclado.
 
 **Histórico.** O servidor guarda uma versão ao criar, a cada 5 minutos de edição e sempre que o roteiro é exportado ou restaurado. Só o dono vê e restaura versões.
 

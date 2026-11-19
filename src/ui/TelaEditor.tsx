@@ -1011,7 +1011,8 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             ))}
           </aside>
 
-          {editor && !leitura && <LinhaDoTempo editor={editor} versao={docVersao} />}
+          {/* só em roteiro individual: com mais gente, desfazer pelo controle ficaria confuso */}
+          {editor && sou && !publico && pessoas.length === 0 && <LinhaDoTempo editor={editor} versao={docVersao} />}
 
           {historico && (
             <aside className="historico" aria-label="Histórico de versões">
