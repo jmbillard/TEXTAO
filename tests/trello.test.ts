@@ -46,7 +46,7 @@ interface Pedido {
   corpo: unknown;
 }
 
-/** Trello, Teable e Stirling de mentira, num fetch só. */
+/** Trello e Teable de mentira, num fetch só. */
 function falsos(opcoes: { falharCard?: boolean; falharChecklist?: boolean } = {}) {
   const pedidos: Pedido[] = [];
   let n = 0;
@@ -238,7 +238,7 @@ describe('rotas do envio', () => {
     enviar: async (r: (typeof recebidos)[number]) => {
       recebidos.push(r);
       if (falhar) throw new Error('Trello respondeu 401');
-      return { card: { id: 'c1', url: 'https://trello.com/c/C1' }, avisos: ['gerar o PDF: sem Stirling'] };
+      return { card: { id: 'c1', url: 'https://trello.com/c/C1' }, avisos: ['guardar no OneDrive: sem resposta'] };
     },
   };
   const ana = (caminho: string, init: RequestInit = {}) =>
@@ -262,7 +262,7 @@ describe('rotas do envio', () => {
     expect((await ana('/api/roteiros')).ok && (await (await ana('/api/roteiros')).json())[0].temOriginal).toBe(true);
 
     const r = await (await ana('/api/roteiros/rot-trello-1/trello', { method: 'POST', body: JSON.stringify({ artes: ['A', 'B'], texto: 'x' }) })).json();
-    expect(r).toEqual({ estado: 'enviado', url: 'https://trello.com/c/C1', avisos: ['gerar o PDF: sem Stirling'] });
+    expect(r).toEqual({ estado: 'enviado', url: 'https://trello.com/c/C1', avisos: ['guardar no OneDrive: sem resposta'] });
     expect(recebidos[0].artes).toEqual(['A', 'B']);
     expect(recebidos[0].original).toMatchObject({ nome: 'Festa 19_11 ç.pdf' });
     expect([...recebidos[0].original!.dados]).toEqual([1, 2, 3]);
