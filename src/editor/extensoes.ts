@@ -1,8 +1,8 @@
 import { Extension, Mark, Node, type Editor } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { RE_LINK, sugerirSubtipo } from '../importar/interpretar';
+import { ehVersoes, RE_LINK, sugerirSubtipo } from '../importar/interpretar';
 import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, type ContextoSonora } from '../modelo/sonora';
 import { nomeEtiqueta, novoId, type Layout, type NoJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
 
@@ -57,8 +57,18 @@ export const Etiqueta = Mark.create({
 
 /** Texto colado do Word ou de outro editor: o que vem sublinhado vira arte, e "AMANHÃ/HOJE" vira uma arte por versão. */
 export function prepararColagem(html: string): string {
-  if (typeof DOMParser === 'undefined' || !/<u[\s>]|underline/i.test(html)) return html;
+  if (typeof DOMParser === 'undefined' || !/<u[\s>]|underline|data-id/i.test(html)) return html;
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  // arte ou etiqueta copiada daqui mesmo: a cópia ganha identidade própria, senão mudar uma mudaria as duas
+  const grupos = new Map<string, string>();
+  doc.querySelectorAll('u.arte[data-id], span.etq[data-id]').forEach((el) => {
+    el.setAttribute('data-id', novoId());
+    const g = el.getAttribute('data-grupo');
+    if (g) {
+      if (!grupos.has(g)) grupos.set(g, novoId());
+      el.setAttribute('data-grupo', grupos.get(g)!);
+    }
+  });
   const sublinhado = (no: Text): Element | null => {
     let achado: Element | null = null;
     for (let el = no.parentElement; el && el !== doc.body; el = el.parentElement) {
@@ -79,7 +89,7 @@ export function prepararColagem(html: string): string {
     // espaços entre dois pedaços do mesmo sublinhado ficam dentro da arte, para ela não se partir
     const continuaAntes = marcados[n - 1]?.dono === dono;
     const continuaDepois = marcados[n + 1]?.dono === dono;
-    const partes = t.data.split('/');
+    const partes = ehVersoes(t.data) ? t.data.split('/') : [t.data];
     const grupo = partes.filter((p) => p.trim()).length > 1 ? novoId() : (emCurso.get(dono)?.grupo ?? null);
     const frag = doc.createDocumentFragment();
     partes.forEach((parte, k) => {
@@ -222,7 +232,7 @@ export function marcarArte(editor: Editor, subtipo?: SubtipoArte, programa = '')
   }
   for (const f of faixas) {
     tr.removeMark(f.from, f.to, tipo);
-    const partes = f.texto.split('/');
+    const partes = ehVersoes(f.texto) ? f.texto.split('/') : [f.texto];
     const grupo = partes.filter((p) => p.trim()).length > 1 ? novoId() : null;
     let pos = f.from;
     for (const parte of partes) {
@@ -388,7 +398,7 @@ export const Teclado = Extension.create<{ programa: () => string }>({
         const anterior = $l.nodeBefore;
         if (anterior?.type.name !== 'linha') return false;
         const tr = this.editor.state.tr.delete(c.linhaPos, c.linhaPos + c.linha.nodeSize);
-        this.editor.view.dispatch(tr.setSelection(TextSelection.create(tr.doc, c.linhaPos - 2)).scrollIntoView());
+        this.editor.view.dispatch(tr.setSelection(Selection.near(tr.doc.resolve(c.linhaPos - 1), -1)).scrollIntoView());
         return true;
       },
     };

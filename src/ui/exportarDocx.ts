@@ -116,7 +116,7 @@ export async function gerarDocx(saida: Saida): Promise<Blob> {
         children: [
           new Paragraph({ children: [rotulo([r.programa, data].filter(Boolean).join(' · '))], spacing: { after: 80 } }),
           new Paragraph({ children: [new TextRun({ text: r.titulo || 'Roteiro', font: FONTE, size: 40, bold: true })], spacing: { after: 240 } }),
-          cabecalho,
+          ...(preenchidos.length ? [cabecalho] : []),
           new Paragraph({ spacing: { after: 320 } }),
           ...corpo,
           new Paragraph({ pageBreakBefore: true, children: [new TextRun({ text: 'Lista de artes', font: FONTE, size: 30, bold: true })], spacing: { after: 80 } }),

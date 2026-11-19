@@ -114,6 +114,13 @@ const iso = (ano: number, mes: number, dia: number) =>
 
 /* ---------- artes ---------- */
 
+/** "AMANHÃ/HOJE" são versões; "15/11" é uma data. Só separa quando toda barra fica entre letras. */
+export const ehVersoes = (texto: string) => /\//.test(texto) && [...texto.matchAll(/\//g)].every((m) => {
+  const antes = texto.slice(0, m.index).trimEnd();
+  const depois = texto.slice(m.index! + 1).trimStart();
+  return /\p{L}$/u.test(antes) && /^\p{L}/u.test(depois);
+});
+
 /** Link ou caminho de rede: costuma vir sublinhado, mas não é arte. */
 export const RE_LINK = /\\\\|https?:|www\.|\b[a-z]:\\|servicos\.corp|\.com\.br\b|\S\\\S/i;
 
@@ -424,8 +431,9 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     }
   }
   if (!dataExib) {
-    const m = nome.match(/(\d{1,2})[ .-](\d{1,2})(?!\d)/);
-    if (m && +m[1] <= 31 && +m[2] <= 12) {
+    // como na claquete, vale o último par dia/mês válido do nome ("Quem_Ama_V2_26_10" → 26/10)
+    const m = [...nome.matchAll(/(?<!\d)(\d{1,2})[ .-](?=(\d{1,2})(?!\d))/g)].reverse().find((x) => +x[1] >= 1 && +x[1] <= 31 && +x[2] >= 1 && +x[2] <= 12);
+    if (m) {
       dataExib = lerData(m);
       anotar('Data de exibição tirada do nome do arquivo');
     }
@@ -542,7 +550,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
           j++;
         }
         i = j - 1;
-        const partes = texto.split('/');
+        const partes = ehVersoes(texto) ? texto.split('/') : [texto];
         const grupo = partes.filter((p) => p.trim()).length > 1 ? novoId() : undefined;
         if (grupo) anotar('Versões sublinhadas juntas ("AMANHÃ/HOJE") → uma arte por versão');
         partes.forEach((parte, k) => {

@@ -380,6 +380,9 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   // edição simultânea: só existe com servidor
   const [sala] = useState(() => (comServidor ? abrirSala(inicial.id) : null));
   const [sincronizado, setSincronizado] = useState(!sala);
+  // com edição simultânea, o texto só está aqui depois de sincronizar e preencher: antes disso, nada é salvo
+  const [liberado, setLiberado] = useState(!sala);
+  const alteracoes = useRef(0);
   const [presentes, setPresentes] = useState<Presente[]>([]);
   const [publico, setPublico] = useState(!!inicial.publico);
   const [pessoas, setPessoas] = useState<Convite[]>(inicial.compartilhadoCom ?? []);
@@ -436,6 +439,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
       // o que chega dos colegas atualiza a tela, mas quem salva é quem digitou
       if (transaction.getMeta(ySyncPluginKey)?.isChangeOrigin) return;
       mexeu.current = true;
+      alteracoes.current++;
       setSalvo(false);
     },
     onSelectionUpdate: () => setSelVersao((v) => v + 1),
@@ -479,6 +483,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     const liberar = () => {
       if (sala.meta.size) setMeta((m) => ({ ...m, ...(sala.meta.toJSON() as Partial<Meta>) }));
       editor.setEditable(!leitura);
+      setLiberado(true);
       setDocVersao((v) => v + 1);
     };
     if (!vazio()) return liberar();
@@ -517,7 +522,8 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
       /* sem armazenamento local, segue sem lembrar o nome */
     }
     setMeta((m) => ({ ...m, ...parte }));
-    setSalvo(false);
+    alteracoes.current++;
+      setSalvo(false);
   }, [sala]);
 
   const roteiroAtual = useCallback(
@@ -529,17 +535,24 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
   // salvamento automático
   useEffect(() => {
-    if (salvo || !editor || leitura) return;
+    if (salvo || !editor || leitura || !liberado) return;
     const t = setTimeout(() => {
       const m = marco.current;
       marco.current = undefined;
-      armazenamento.salvar(roteiroAtual(), m).then(() => setSalvo(true), (e: Error) => avisar(comServidor ? e.message : 'Não consegui salvar neste navegador.'));
+      const marca = alteracoes.current;
+      armazenamento.salvar(roteiroAtual(), m).then(
+        // se algo mudou enquanto a gravação ia e voltava, ainda não está salvo: a próxima rodada grava
+        () => alteracoes.current === marca && setSalvo(true),
+        (e: Error) => avisar(comServidor ? e.message : 'Não consegui salvar neste navegador.'),
+      );
     }, 500);
     return () => clearTimeout(t);
-  }, [salvo, docVersao, meta, publico, pessoas, editor, roteiroAtual, avisar]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [salvo, liberado, docVersao, meta, publico, pessoas, editor, roteiroAtual, avisar]); // eslint-disable-line react-hooks/exhaustive-deps
+  const liberadoRef = useRef(liberado);
+  liberadoRef.current = liberado;
   useEffect(() => {
     const antesDeSair = () => {
-      if (editor && mexeu.current && !leitura) void armazenamento.salvar(roteiroAtual(), marco.current).catch(() => {});
+      if (editor && mexeu.current && !leitura && liberadoRef.current) void armazenamento.salvar(roteiroAtual(), marco.current).catch(() => {});
     };
     window.addEventListener('pagehide', antesDeSair);
     return () => {
@@ -669,7 +682,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   const irParaArte = (a: MarcaNoDoc) => {
     if (!editor) return;
     editor.chain().focus().setTextSelection({ from: a.from, to: a.to }).run();
-    editor.view.dom.querySelector(`u.arte[data-id="${a.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    editor.view.dom.querySelector(`u.arte[data-id="${CSS.escape(a.id)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   };
   const exportarComo = async (formato: 'docx' | 'json' | 'lista' | 'pdf') => {
     setExportando(false);
@@ -687,7 +700,8 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
         // exportar é um marco: fica registrado no histórico
         mexeu.current = true;
         marco.current = 'exportou';
-        setSalvo(false);
+        alteracoes.current++;
+      setSalvo(false);
       }
     } catch {
       avisar('Não consegui exportar. Tente de novo.');
@@ -698,7 +712,8 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     mexeu.current = true;
     setPublico(todos);
     setPessoas(lista);
-    setSalvo(false);
+    alteracoes.current++;
+      setSalvo(false);
   };
   const abrirHistorico = async () => {
     if (historico) return setHistorico(null);
@@ -819,7 +834,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
                 <button className="botao" onClick={duplicarParaEditar}><Icone nome="duplicar" tam={14} /> Duplicar para editar</button>
               </div>
             )}
-            <div inert={leitura || undefined}>
+            <div inert={leitura || !liberado || undefined}>
               <TopoFolha meta={meta} mudar={mudarMeta} />
             </div>
             {colunas && (
@@ -852,7 +867,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             <Decupagem saida={saida} noTexto={sonorasNoTexto} alternar={() => setSonorasNoTexto((v) => !v)} />
           </article>
 
-          <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={leitura || undefined}>
+          <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={leitura || !liberado || undefined}>
             <Claquete dados={meta} mudar={mudarMeta} />
             <section className="cartao">
               <div className="cab-artes">
@@ -936,7 +951,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
         {saida.comentarios.length > 0 && <p>Comentários: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
       </section>
 
-      {realce && <style>{`.texto u.arte[data-id="${realce}"]{background:color-mix(in srgb,var(--ultra) 22%,var(--ultra-suave))}`}</style>}
+      {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{background:color-mix(in srgb,var(--ultra) 22%,var(--ultra-suave))}`}</style>}
     </div>
   );
 }

@@ -104,8 +104,10 @@ export async function lerDocx(dados: ArrayBuffer | Uint8Array, arquivo: string):
       for (const n of filhos(el)) {
         if (n.nodeName === 'w:r') lerRun(n, link);
         else if (n.nodeName === 'w:hyperlink') andar(n, true);
-        else if (n.nodeName === 'w:ins' || n.nodeName === 'w:smartTag' || n.nodeName === 'w:sdt' || n.nodeName === 'w:sdtContent')
-          andar(n, link);
+        // campo de link (w:fldSimple HYPERLINK) conta como link; o resto só embrulha o texto.
+        // w:del e w:moveFrom ficam de fora: é o texto apagado ou o lugar de onde ele saiu.
+        else if (n.nodeName === 'w:fldSimple') andar(n, link || /HYPERLINK/i.test(n.getAttribute('w:instr') ?? ''));
+        else if (['w:ins', 'w:moveTo', 'w:smartTag', 'w:customXml', 'w:sdt', 'w:sdtContent'].includes(n.nodeName)) andar(n, link);
       }
     };
     andar(p, false);

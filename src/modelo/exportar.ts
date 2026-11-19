@@ -188,7 +188,9 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
       if (tipo === 'comentario') comentarios.push({ ...item, ordem: comentarios.length + 1 });
       else if (tipo === 'cortavel')
         cortaveis.push({ ...item, ordem: cortaveis.length + 1, duracaoEstimadaSeg: Math.max(1, Math.round(palavras(texto) / RITMO.sonora)) });
-      else orientacoes[tipo].push({ ...item, ordem: orientacoes[tipo].length + 1 });
+      else if (tipo in orientacoes) orientacoes[tipo as keyof typeof orientacoes].push({ ...item, ordem: orientacoes[tipo as keyof typeof orientacoes].length + 1 });
+      // tipo que o app não conhece (arquivo antigo, colagem): entra como comentário em vez de derrubar a tela
+      else comentarios.push({ ...item, ordem: comentarios.length + 1 });
       md += ` _[${tipo}: ${limpo(texto)}]_`;
       i = j;
     }

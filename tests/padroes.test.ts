@@ -231,3 +231,30 @@ describe('colar do Word', () => {
     expect([...div.querySelectorAll('u.arte')].map((u) => u.textContent)).toEqual(['HOJE']);
   });
 });
+
+describe('correções da revisão geral', () => {
+  it('barra só separa versões entre palavras; data sublinhada continua uma arte só', async () => {
+    const { ehVersoes } = await import('../src/importar/interpretar');
+    expect([ehVersoes('AMANHÃ/HOJE'), ehVersoes('AMANHÃ / HOJE'), ehVersoes('SÁBADO 15/11'), ehVersoes('2/3'), ehVersoes('HOJE')]).toEqual([true, true, false, false, false]);
+    const { saida } = importar(soltos([u('SÁBADO 15/11'), { t: ' TEM ' }, u('AMANHÃ/HOJE')]));
+    expect(saida.artes.map((a) => a.texto)).toEqual(['SÁBADO 15/11', 'AMANHÃ', 'HOJE']);
+  });
+  it('a data do nome do arquivo é o último par válido', () => {
+    expect(importar(soltos('TEXTO.'), 'Festa_V2_26_10.docx').saida.roteiro.dataExibicao).toBe('2026-10-26');
+  });
+  it('etiqueta de tipo desconhecido não derruba a exportação', () => {
+    const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'nota estranha', marks: [{ type: 'etiqueta', attrs: { id: 'e1', tipo: 'xyz' } }] }] }] };
+    const saida = exportar({ id: 't', meta: importar(soltos('x')).imp.meta, doc, revisao: 1, criadoEm: '', atualizadoEm: '' });
+    expect(saida.comentarios.map((c) => c.texto)).toEqual(['nota estranha']);
+  });
+  it('arte copiada e colada aqui mesmo ganha identidade própria', async () => {
+    const { prepararColagem } = await import('../src/editor/extensoes');
+    const div = document.createElement('div');
+    div.innerHTML = prepararColagem('<p><u class="arte" data-id="a1" data-grupo="g1">AMANHÃ</u>/<u class="arte" data-id="a2" data-grupo="g1">HOJE</u></p>');
+    const [x, y] = [...div.querySelectorAll('u.arte')];
+    expect([x.getAttribute('data-id'), y.getAttribute('data-id')]).not.toContain('a1');
+    expect(x.getAttribute('data-id')).not.toBe(y.getAttribute('data-id'));
+    expect(x.getAttribute('data-grupo')).toBe(y.getAttribute('data-grupo'));
+    expect(x.getAttribute('data-grupo')).not.toBe('g1');
+  });
+});
