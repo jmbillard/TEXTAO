@@ -150,23 +150,21 @@ export function DesenhosDeCursor() {
           <path d="M3 1.4 C8 -2.6 11 4.6 16 1 C21 -2.6 25 4.6 30 1 C35 -2.6 39 4.6 45 1" fill="none" stroke="#f7d7c8" strokeWidth="2.4" strokeLinecap="round" />
           <path d="M6 -3.4 C9 -5.5 11 -2 13 -3.6 M27 4.6 C30 7 32 3.5 35 5" fill="none" stroke="#8f2f22" strokeWidth="1.2" strokeLinecap="round" />
         </g>
-        <g id="cursor-brocolis">
-          <path className="trac" d="M15 17 L22 13 L39 34 Q39.5 39.5 34 39 Z" fill="#a9d06b" />
-          <path d="M23 21 L31 31" stroke="#7fae45" strokeWidth="1.4" strokeLinecap="round" />
-          <circle className="trac" cx="21" cy="12" r="7.5" fill="#3f8a32" />
-          <circle className="trac" cx="13" cy="20" r="7.5" fill="#3f8a32" />
-          <circle className="trac" cx="14" cy="11" r="8" fill="#4f9b3a" />
-          <circle className="trac" cx="8.5" cy="8.5" r="6" fill="#5aa845" />
-          <circle cx="12" cy="7" r="1.4" fill="#2f6e25" />
-          <circle cx="17" cy="13" r="1.4" fill="#2f6e25" />
-          <circle cx="10" cy="15" r="1.2" fill="#2f6e25" />
-          <circle cx="21" cy="9" r="1.1" fill="#2f6e25" />
+        <g id="cursor-brocolis" transform="translate(-1 0.5) rotate(-38 20 24)">
+          <path className="trac" d="M16.5 24 C16.5 31 15.5 37 13.5 44 Q20 46.5 26.5 44 C24.5 37 23.5 31 23.5 24 Z" fill="#a6d36c" />
+          <path className="trac" d="M17 30 C14 28.5 11.5 27 10 24.5 M23 30 C26 28.5 28.5 27 30 24.5" fill="none" stroke="#1a1916" strokeWidth="6" />
+          <path d="M17 30 C14 28.5 11.5 27 10 24.5 M23 30 C26 28.5 28.5 27 30 24.5" fill="none" stroke="#a6d36c" strokeWidth="3.4" strokeLinecap="round" />
+          <path d="M20 33 V42" stroke="#86b955" strokeWidth="1.4" strokeLinecap="round" />
+          <circle cx="12" cy="17" r="8" fill="#1a1916" stroke="#1a1916" strokeWidth="4" /><circle cx="20" cy="11" r="9.5" fill="#1a1916" stroke="#1a1916" strokeWidth="4" /><circle cx="29" cy="16" r="8" fill="#1a1916" stroke="#1a1916" strokeWidth="4" /><circle cx="17" cy="22" r="7" fill="#1a1916" stroke="#1a1916" strokeWidth="4" /><circle cx="25" cy="22" r="6.5" fill="#1a1916" stroke="#1a1916" strokeWidth="4" />
+          <circle cx="12" cy="17" r="8" fill="#4f9d3c" /><circle cx="20" cy="11" r="9.5" fill="#4f9d3c" /><circle cx="29" cy="16" r="8" fill="#4f9d3c" /><circle cx="17" cy="22" r="7" fill="#4f9d3c" /><circle cx="25" cy="22" r="6.5" fill="#4f9d3c" />
+          <circle cx="13" cy="15" r="2.6" fill="#3b822e" /><circle cx="19" cy="9" r="2.8" fill="#3b822e" /><circle cx="26" cy="12" r="2.4" fill="#3b822e" /><circle cx="29" cy="18" r="2.4" fill="#3b822e" /><circle cx="21" cy="17" r="2.6" fill="#3b822e" /><circle cx="15" cy="22" r="2.2" fill="#3b822e" /><circle cx="24" cy="22" r="2.2" fill="#3b822e" /><circle cx="9" cy="19" r="1.8" fill="#3b822e" /><circle cx="17" cy="13" r="1.6" fill="#3b822e" />
+          <path d="M14 9.5 C16 7 19 6 22 6.2 M24.5 8 C27 8.5 29 10 30 12" fill="none" stroke="#8fd16a" strokeWidth="1.6" strokeLinecap="round" />
         </g>
         <g id="cursor-vasco" transform="rotate(-10 17 20)">
           <g clipPath="url(#escudo-recorte)">
             <rect x="0" y="0" width="34" height="40" fill="#141414" />
-            <path d="M0 9 L34 32 L34 41 L0 18 Z" fill="#fff" />
-            <path d="M-1.6 -6.2 L1.6 -6.2 L0.9 -0.9 L6.2 -1.6 L6.2 1.6 L0.9 0.9 L1.6 6.2 L-1.6 6.2 L-0.9 0.9 L-6.2 1.6 L-6.2 -1.6 L-0.9 -0.9 Z" fill="#d42a2a" transform="translate(17 22.5) rotate(34)" />
+            <path d="M0 5 L34 28 L34 45 L0 22 Z" fill="#fff" />
+            <path d="M-1.6 -6.2 L1.6 -6.2 L0.9 -0.9 L6.2 -1.6 L6.2 1.6 L0.9 0.9 L1.6 6.2 L-1.6 6.2 L-0.9 0.9 L-6.2 1.6 L-6.2 -1.6 L-0.9 -0.9 Z" fill="#d42a2a" transform="translate(17 25) rotate(34) scale(.82)" />
           </g>
           <path className="trac" d="M3 3 H31 V17 C31 28 23 34 17 37 C11 34 3 28 3 17 Z" fill="none" />
         </g>
@@ -188,14 +186,8 @@ export function DesenhosDeCursor() {
           <path className="trac" d="M3 3 H31 V17 C31 28 23 34 17 37 C11 34 3 28 3 17 Z" fill="none" />
         </g>
         <g id="cursor-botafogo" transform="rotate(-10 17 20)">
-          <g clipPath="url(#escudo-recorte)">
-            <rect x="0" y="0" width="34" height="40" fill="#fff" />
-            <rect x="5" y="0" width="5" height="40" fill="#141414" />
-            <rect x="15" y="0" width="5" height="40" fill="#141414" />
-            <rect x="25" y="0" width="5" height="40" fill="#141414" />
-            <path d="M17 11 L18.8 15.6 L23.7 15.8 L19.9 18.9 L21.1 23.7 L17 21 L12.9 23.7 L14.1 18.9 L10.3 15.8 L15.2 15.6Z" fill="#fff" stroke="#141414" strokeWidth="1.2" strokeLinejoin="round" />
-          </g>
-          <path className="trac" d="M3 3 H31 V17 C31 28 23 34 17 37 C11 34 3 28 3 17 Z" fill="none" />
+          <path className="trac" d="M3 3 H31 V17 C31 28 23 34 17 37 C11 34 3 28 3 17 Z" fill="#141414" />
+          <path d="M17 9.5 L19.4 15.6 L25.9 15.9 L20.9 20 L22.5 26.4 L17 22.8 L11.5 26.4 L13.1 20 L8.1 15.9 L14.6 15.6Z" fill="#fff" strokeLinejoin="round" />
         </g>
       </defs>
     </svg>
