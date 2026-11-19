@@ -18,6 +18,9 @@
   --realce: #fde5da;
   --claquete-borda: 0 0 0 0 transparent;
   --contorno-cursor: #ffffff;
+  --orelha-linha: var(--regua-forte);
+  --orelha-tom: 22%;
+  --orelha-letra: 100%;
   --no-ultra: #fff;
   --edicao: #2f6b47;
   --locutor: #8a4b14;
@@ -64,6 +67,9 @@
     --perigo: #ef9a8c;
     --claquete-borda: 0 0 0 1px #34312b;
     --contorno-cursor: #8a867d;
+    --orelha-linha: #5c5850;
+    --orelha-tom: 30%;
+    --orelha-letra: 45%;
     --sombra-menu: 0 0 0 1px rgb(255 255 255 / 8%), 0 18px 40px rgb(0 0 0 / 55%);
     --sombra-folha: 0 1px 0 rgb(255 255 255 / 3%) inset, 0 12px 32px rgb(0 0 0 / 35%);
   }
@@ -95,6 +101,9 @@
   --perigo: #ef9a8c;
   --claquete-borda: 0 0 0 1px #34312b;
   --contorno-cursor: #8a867d;
+  --orelha-linha: #5c5850;
+  --orelha-tom: 30%;
+  --orelha-letra: 45%;
   --sombra-menu: 0 0 0 1px rgb(255 255 255 / 8%), 0 18px 40px rgb(0 0 0 / 55%);
   --sombra-folha: 0 1px 0 rgb(255 255 255 / 3%) inset, 0 12px 32px rgb(0 0 0 / 35%);
 }
@@ -956,13 +965,18 @@ kbd {
 @property --orelha { syntax: '<length>'; inherits: true; initial-value: 0px; }
 .ficha { position: relative; --orelha: 0px; transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s var(--suave), --orelha 0.55s cubic-bezier(0.3, 0.7, 0.35, 1.3); }
 .ficha.ocupada, .ficha.revisada { clip-path: polygon(0 0, calc(100% - var(--orelha)) 0, 100% var(--orelha), 100% 100%, 0 100%); }
-.ficha.ocupada { --orelha: 34px; --verso: color-mix(in srgb, var(--cor) 22%, var(--papel)); }
+.ficha.ocupada { --orelha: 34px; --verso: color-mix(in srgb, var(--cor) var(--orelha-tom), var(--papel)); }
 .ficha.revisada { --orelha: 16px; --verso: color-mix(in srgb, var(--tinta) 9%, var(--papel)); }
 .orelha {
   position: absolute; top: 0; right: 0; width: var(--orelha); height: var(--orelha); pointer-events: none; border-bottom-left-radius: 5px;
   background: linear-gradient(to bottom left, transparent 50%, var(--verso) 50%); filter: drop-shadow(-1.5px 2px 1.5px rgb(26 25 22 / 22%));
+  /* o traço só nos dois lados que encostam na ficha; a dobra (a diagonal) fica sem linha */
+  border-left: 1px solid var(--orelha-linha); border-bottom: 1px solid var(--orelha-linha);
 }
-.orelha i { position: absolute; left: 4px; bottom: 0; font: 600 16px/1 Caveat, cursive; font-style: normal; color: var(--cor); opacity: 0; transition: opacity 0.3s 0.35s; }
+.orelha i {
+  position: absolute; left: 4px; bottom: 4px; font: 700 16px/1 Caveat, cursive; font-style: normal;
+  color: color-mix(in srgb, var(--cor) var(--orelha-letra), #fff); opacity: 0; transition: opacity 0.3s 0.35s;
+}
 .ficha.ocupada .orelha i { opacity: 1; }
 
 .ficha-claquete b { position: relative; align-self: flex-start; }
