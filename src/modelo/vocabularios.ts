@@ -45,7 +45,14 @@ export const normalizarPraca = (p: string) => (p.toUpperCase() === 'REDE' ? 'G5'
 
 /** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. */
 export function claqueteDoArquivo(arquivo: string): string {
-  const partes = arquivo.replace(/\.[^.]+$/, '').replace(/[_\s]+/g, ' ').trim().toUpperCase().split(' ');
+  const partes = arquivo
+    .replace(/\.[^.]+$/, '')
+    .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2') // "AmaPrologo" → "Ama Prologo"
+    .replace(/(\p{L}{3,})(\d{1,2})(?=[ _.-]\d{1,2}(?:\D|$))/u, '$1 $2') // dia colado no nome: "Prologo26_10"
+    .replace(/[_\s]+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .split(' ');
   for (let i = partes.length - 2; i >= 0; i--) {
     const [d, m] = [partes[i], partes[i + 1]];
     if (/^\d{1,2}$/.test(d) && /^\d{1,2}$/.test(m) && +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12) {

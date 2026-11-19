@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Bold from '@tiptap/extension-bold';
 import Document from '@tiptap/extension-document';
@@ -14,115 +14,83 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, presentes as listarPresentes, type Presente } from '../dados/colaboracao';
 import { armazenamento, type Versao } from '../dados/armazenamento';
 import {
-  Arte, atualizarMarca, Celula, converterLayout, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
-  marcarEtiqueta, Reconhecimento, sugestaoParaSelecao, Teclado, trocarPorEtiqueta, type MarcaNoDoc,
+  Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
+  Reconhecimento, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, type Saida } from '../modelo/exportar';
 import {
-  ETIQUETAS, NOMES_COLUNAS, nomeSubtipo, novoId, SUBTIPOS_ARTE, type Layout, type Meta, type Pessoa, type Roteiro, type SubtipoArte, type TipoPrograma,
+  ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type Meta, type Pessoa, type Roteiro,
 } from '../modelo/tipos';
-import { LOCUTORES, NOMES_TIPO_PROGRAMA, PRACAS, SELOS, programasConhecidos, redatoresConhecidos } from '../modelo/vocabularios';
+import { PRACAS, programasConhecidos } from '../modelo/vocabularios';
+import { Claquete, EscolhaDeTipo, Marca, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
-import { atalho, baixar, copiarTexto, dataPorExtenso, haQuantoTempo, nomeDoArquivo, plural } from './util';
+import { atalho, baixar, copiarTexto, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
-const ALTURA_CARTAO = 62;
 
-/* ---------- campos do cabeçalho ---------- */
+/* ---------- topo da folha: atração e praça ---------- */
 
-function Campo(props: {
-  valor: string;
-  aoMudar: (v: string) => void;
-  rotulo: string;
-  vazio: string;
-  lista?: string;
-  falta?: boolean;
-  classe?: string;
-  modo?: 'numeric' | 'text';
-}) {
+function TopoFolha({ meta, mudar }: { meta: Meta; mudar: (m: Partial<Meta>) => void }) {
+  const outra = !!meta.praca && !PRACAS.includes(meta.praca);
   return (
-    <span className={`campo ${props.falta && !props.valor ? 'falta' : ''} ${props.classe ?? ''}`} data-valor={props.valor || props.vazio}>
-      <input
-        size={1}
-        value={props.valor}
-        placeholder={props.vazio}
-        aria-label={props.rotulo}
-        list={props.lista}
-        inputMode={props.modo}
-        autoComplete="off"
-        spellCheck={false}
-        onChange={(e) => props.aoMudar(e.target.value)}
-      />
-    </span>
-  );
-}
-
-function Cabecalho({ meta, mudar }: { meta: Meta; mudar: (m: Partial<Meta>) => void }) {
-  const data = useRef<HTMLInputElement>(null);
-  return (
-    <header className="cab">
-      <div className="cab-linha rotulo">
-        <Campo
-          valor={meta.programa}
-          rotulo="Programa"
-          vazio="Programa"
-          lista="lista-programas"
-          aoMudar={(v) => {
+    <header className="topo-folha">
+      <label className="atracao">
+        <span className="rotulo">Atração</span>
+        <input
+          value={meta.programa}
+          placeholder="Qual atração?"
+          aria-label="Atração"
+          list="lista-programas"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(e) => {
+            const v = e.target.value;
             const p = programasConhecidos().find((x) => x.nome.toLowerCase() === v.trim().toLowerCase()) ?? null;
             mudar({ programa: v, ...(p ? { tipoPrograma: p.tipo } : {}) });
           }}
         />
-        <span className="ponto">·</span>
-        <span className="campo-select">
-          <select value={meta.tipoPrograma} aria-label="Tipo de programa" onChange={(e) => mudar({ tipoPrograma: e.target.value as TipoPrograma })}>
-            {Object.entries(NOMES_TIPO_PROGRAMA).map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
-          </select>
-        </span>
-        <span className="ponto">·</span>
-        <span className="campo-data">
-          <button className={meta.dataExibicao ? '' : 'falta'} onClick={() => data.current?.showPicker?.()}>
-            {dataPorExtenso(meta.dataExibicao) || 'data de exibição'}
-          </button>
-          <input ref={data} type="date" tabIndex={-1} aria-label="Data de exibição" value={meta.dataExibicao} onChange={(e) => mudar({ dataExibicao: e.target.value })} />
-        </span>
-        <span className="ponto">·</span>
-        <Campo valor={meta.praca} rotulo="Praça" vazio="praça" lista="lista-pracas" aoMudar={(v) => mudar({ praca: v.toUpperCase() })} />
+      </label>
+      <div className="praca">
+        <span className="rotulo">Praça</span>
+        <div className="pracas" role="radiogroup" aria-label="Praça">
+          {PRACAS.map((p) => (
+            <button key={p} role="radio" aria-checked={meta.praca === p} onClick={() => mudar({ praca: meta.praca === p ? '' : p })}>{p}</button>
+          ))}
+          <input className={outra ? 'cheio' : ''} value={outra ? meta.praca : ''} placeholder="outra" aria-label="Outra praça" size={5} maxLength={12} onChange={(e) => mudar({ praca: e.target.value.toUpperCase() })} />
+        </div>
       </div>
-
-      <Campo classe="cab-titulo" valor={meta.titulo} rotulo="Título da chamada" vazio="Título da chamada" aoMudar={(v) => mudar({ titulo: v })} />
-
-      <p className="cab-frase">
-        Locução <Campo valor={meta.locutor} rotulo="Locutor" vazio="quem grava?" lista="lista-locutores" falta aoMudar={(v) => mudar({ locutor: v.toUpperCase() })} />,{' '}
-        <button className="alternar" title="Alternar entre “fecha em” e “no máximo”" onClick={() => mudar({ duracaoModo: meta.duracaoModo === 'max' ? 'fechar' : 'max' })}>
-          {meta.duracaoModo === 'max' ? 'no máximo' : 'fecha em'}
-        </button>{' '}
-        <Campo
-          valor={meta.duracaoAlvoSeg ? String(meta.duracaoAlvoSeg) : ''}
-          rotulo="Duração em segundos"
-          vazio="quantos"
-          modo="numeric"
-          falta
-          aoMudar={(v) => mudar({ duracaoAlvoSeg: parseInt(v.replace(/\D/g, ''), 10) || null })}
-        />
-        ’’, selo <Campo valor={meta.selo} rotulo="Selo" vazio="qual selo?" lista="lista-selos" falta aoMudar={(v) => mudar({ selo: v })} />.{' '}
-        {meta.tipoPrograma === 'novela' ? (
-          <>
-            Capítulo{' '}
-            <Campo valor={meta.capitulo ? String(meta.capitulo) : ''} rotulo="Capítulo" vazio="nº" modo="numeric" aoMudar={(v) => mudar({ capitulo: parseInt(v.replace(/\D/g, ''), 10) || null })} />.{' '}
-          </>
-        ) : (
-          <>
-            Edição <Campo valor={meta.edicao} rotulo="Edição do programa" vazio="opcional" aoMudar={(v) => mudar({ edicao: v })} />.{' '}
-          </>
-        )}
-        Redação: <Campo valor={meta.redator} rotulo="Redator" vazio="quem escreveu?" falta lista="lista-redatores" aoMudar={(v) => mudar({ redator: v })} />.
-      </p>
-
       <datalist id="lista-programas">{programasConhecidos().map((p) => <option key={p.nome} value={p.nome} />)}</datalist>
-      <datalist id="lista-redatores">{redatoresConhecidos().map((p) => <option key={p} value={p} />)}</datalist>
-      <datalist id="lista-locutores">{LOCUTORES.map((p) => <option key={p} value={p} />)}</datalist>
-      <datalist id="lista-selos">{SELOS.map((p) => <option key={p} value={p} />)}</datalist>
-      <datalist id="lista-pracas">{PRACAS.map((p) => <option key={p} value={p} />)}</datalist>
     </header>
+  );
+}
+
+/** Origem, timecode e fala de cada sonora: o que a edição precisa, fora do caminho da Arte. */
+function Decupagem({ saida, noTexto, alternar }: { saida: Saida; noTexto: boolean; alternar: () => void }) {
+  if (!saida.sonoras.length) return null;
+  return (
+    <section className="decupagem" aria-label="Decupagem">
+      <div className="decupagem-topo">
+        <div>
+          <div className="rotulo">Para a edição</div>
+          <h2>Decupagem</h2>
+        </div>
+        <button className="botao-texto" onClick={alternar}>{noTexto ? 'Recolher no texto' : 'Mostrar no texto'}</button>
+      </div>
+      <div className="rola">
+        <table>
+          <thead><tr><th /><th>TC</th><th>Origem</th><th>Fala</th></tr></thead>
+          <tbody>
+            {saida.sonoras.map((s) => (
+              <tr key={s.ordem}>
+                <td className="n">{s.ordem}</td>
+                <td className="tc">{s.timecodeEntrada && <span>{s.timecodeEntrada}</span>}</td>
+                <td className="orig">{s.origemOriginal || s.origem}</td>
+                <td className="fala">{s.fala}<small>{[s.personagem, s.descricaoImagem].filter(Boolean).join(' · ')}</small></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -139,26 +107,16 @@ interface ItemMenu {
 }
 
 /** Menu do botão direito. O foco continua no texto: as setas e o Enter são capturados aqui. */
-function MenuEtiquetas({ editor, x, y, programa, fechar }: { editor: Editor; x: number; y: number; programa: string; fechar: () => void }) {
-  const sugestao = useMemo(() => sugestaoParaSelecao(editor, programa), [editor, programa]);
-  const [ativo, setAtivo] = useState(-1);
-  const [sub, setSub] = useState(false);
-  const [subAtivo, setSubAtivo] = useState(0);
-
-  const subtipos = useMemo(() => [...SUBTIPOS_ARTE].sort((a, b) => +(b.id === sugestao) - +(a.id === sugestao)), [sugestao]);
+function MenuEtiquetas({ editor, x, y, fechar }: { editor: Editor; x: number; y: number; fechar: () => void }) {
+  const [ativo, setAtivo] = useState(0);
   const fazer = (f: () => void) => () => {
     f();
     fechar();
   };
   const itens: ItemMenu[] = [
-    { id: 'arte', texto: 'Arte', icone: 'arte', atalho: atalho('Mod-u'), sub: true, acao: fazer(() => marcarArte(editor, sugestao, programa)) },
-    ...ETIQUETAS.filter((e) => e.id !== 'comentario').map((e): ItemMenu => ({
-      id: e.id, texto: e.nome, icone: e.id, atalho: atalho(e.atalho), acao: fazer(() => marcarEtiqueta(editor, e.id)),
-    })),
-    { id: 'comentario', texto: 'Transformar em comentário', icone: 'comentario', atalho: atalho('Mod-Shift-m'), separar: true, acao: fazer(() => marcarEtiqueta(editor, 'comentario')) },
+    { id: 'arte', texto: 'Arte', icone: 'arte', atalho: atalho('Mod-u'), acao: fazer(() => marcarArte(editor)) },
     { id: 'limpar', texto: 'Limpar marcações', icone: 'borracha', separar: true, acao: fazer(() => limparMarcas(editor)) },
   ];
-
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       const usar = () => {
@@ -166,53 +124,23 @@ function MenuEtiquetas({ editor, x, y, programa, fechar }: { editor: Editor; x: 
         e.stopPropagation();
       };
       if (e.key === 'Escape') return usar(), fechar();
-      if (sub) {
-        if (e.key === 'ArrowDown') return usar(), setSubAtivo((i) => (i + 1) % subtipos.length);
-        if (e.key === 'ArrowUp') return usar(), setSubAtivo((i) => (i - 1 + subtipos.length) % subtipos.length);
-        if (e.key === 'ArrowLeft') return usar(), setSub(false);
-        if (e.key === 'Enter') return usar(), marcarArte(editor, subtipos[subAtivo].id, programa), fechar();
-        return;
-      }
       if (e.key === 'ArrowDown') return usar(), setAtivo((i) => (i + 1) % itens.length);
       if (e.key === 'ArrowUp') return usar(), setAtivo((i) => (i <= 0 ? itens.length - 1 : i - 1));
-      if (e.key === 'ArrowRight' && itens[ativo]?.sub) return usar(), setSub(true), setSubAtivo(0);
-      if (e.key === 'Enter' && ativo >= 0) return usar(), itens[ativo].acao();
+      if (e.key === 'Enter') return usar(), itens[ativo].acao();
     };
     window.addEventListener('keydown', tecla, true);
     return () => window.removeEventListener('keydown', tecla, true);
   });
-
   return (
     <div className="menu" role="menu" aria-label="Marcar trecho" style={{ left: x, top: y }} onMouseDown={(e) => e.preventDefault()}>
       {itens.map((it, i) => (
         <div key={it.id} className="menu-grupo">
           {it.separar && <div className="menu-sep" />}
-          <button
-            role="menuitem"
-            className={`menu-item ${ativo === i ? 'ativo' : ''}`}
-            aria-haspopup={it.sub || undefined}
-            onMouseEnter={() => {
-              setAtivo(i);
-              setSub(!!it.sub);
-            }}
-            onClick={it.acao}
-          >
+          <button role="menuitem" className={`menu-item ${ativo === i ? 'ativo' : ''}`} onMouseEnter={() => setAtivo(i)} onClick={it.acao}>
             <Selo nome={it.icone!} />
             <span className="menu-texto">{it.texto}</span>
             <span className="menu-atalho">{it.atalho}</span>
-            {it.sub && <Icone nome="direita" tam={12} traco={2.2} />}
           </button>
-          {it.sub && sub && (
-            <div className="menu submenu" role="menu" aria-label="Tipo de arte">
-              {subtipos.map((s, k) => (
-                <button key={s.id} role="menuitem" className={`menu-item ${subAtivo === k ? 'ativo' : ''}`} onMouseEnter={() => setSubAtivo(k)} onClick={fazer(() => marcarArte(editor, s.id, programa))}>
-                  <Miniatura subtipo={s.id} />
-                  <span className="menu-texto">{s.nome}</span>
-                  {s.id === sugestao && <span className="menu-sugerido">sugerido</span>}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       ))}
     </div>
@@ -220,21 +148,11 @@ function MenuEtiquetas({ editor, x, y, programa, fechar }: { editor: Editor; x: 
 }
 
 /** Barra que aparece sobre a seleção. */
-function BarraFlutuante({ editor, x, y, programa, abrirMenu }: { editor: Editor; x: number; y: number; programa: string; abrirMenu: () => void }) {
+function BarraFlutuante({ editor, x, y }: { editor: Editor; x: number; y: number }) {
   return (
     <div className="barra-flutuante" role="toolbar" aria-label="Marcar trecho selecionado" style={{ left: x, top: y }} onMouseDown={(e) => e.preventDefault()}>
-      <button className="bf-arte" title={`Arte (${atalho('Mod-u')})`} onClick={() => marcarArte(editor, undefined, programa)}>
-        <Icone nome="arte" tam={15} /> <u>Arte</u>
-      </button>
-      <span className="bf-sep" />
-      {ETIQUETAS.map((e) => (
-        <button key={e.id} title={`${e.nome} (${atalho(e.atalho)})`} aria-label={e.nome} onClick={() => marcarEtiqueta(editor, e.id)}>
-          <Icone nome={e.id} tam={15} />
-        </button>
-      ))}
-      <span className="bf-sep" />
-      <button title="Mais opções" aria-label="Mais opções" onClick={abrirMenu}>
-        <Icone nome="baixo" tam={13} traco={2.2} />
+      <button className="bf-arte" title={`Arte (${atalho('Mod-u')})`} onClick={() => marcarArte(editor)}>
+        <Icone nome="arte" tam={15} /> Arte
       </button>
     </div>
   );
@@ -250,7 +168,8 @@ function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: 
         <span className="rotulo">{arte ? 'Arte' : 'Etiqueta'}</span>
         <span className="campo-select forte">
           {arte ? (
-            <select value={marca.attrs.subtipo} aria-label="Tipo de arte" onChange={(e) => atualizarMarca(editor, marca, { subtipo: e.target.value, sugerido: false })}>
+            <select value={normalizarSubtipo(marca.attrs.subtipo)} aria-label="Tipo de arte" onChange={(e) => atualizarMarca(editor, marca, { subtipo: e.target.value, sugerido: false })}>
+              <option value="">Sem tipo</option>
               {SUBTIPOS_ARTE.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </select>
           ) : (
@@ -263,70 +182,16 @@ function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: 
       </div>
       <input
         className="popover-obs"
-        placeholder={arte ? 'Observação para o Motion (opcional)' : 'Observação (opcional)'}
+        placeholder={arte ? 'Observação para a Arte (opcional)' : 'Observação (opcional)'}
         aria-label="Observação"
         value={marca.attrs.obs ?? ''}
         onChange={(e) => atualizarMarca(editor, marca, { obs: e.target.value })}
         onKeyDown={(e) => e.key === 'Enter' && fechar()}
       />
       <div className="popover-acoes">
-        {arte && (
-          <button className="botao-texto" onClick={() => (trocarPorEtiqueta(editor, marca, 'comentario'), fechar())}>Transformar em comentário</button>
-        )}
         <span className="espaco" />
         <button className="botao-texto perigo" onClick={() => (atualizarMarca(editor, marca, null), fechar())}>Remover</button>
       </div>
-    </div>
-  );
-}
-
-/* ---------- artes na margem ---------- */
-
-/** Como a arte vai ao ar, em miniatura. Lettering em alpha aparece sobre o xadrez de transparência. */
-export function Miniatura({ subtipo, texto }: { subtipo: string; texto?: string }) {
-  return (
-    <span className="mini" data-subtipo={subtipo} aria-hidden="true">
-      <span className="mini-forma">{subtipo === 'versao' && texto ? texto.slice(0, 7) : ''}</span>
-    </span>
-  );
-}
-
-function Checklist({ saida, confirmarTodas }: { saida: Saida; confirmarTodas: () => void }) {
-  const r = saida.roteiro;
-  const conferidas = saida.artes.filter((a) => a.conferida).length;
-  const est = r.duracaoEstimadaSeg;
-  const estouro = r.duracaoAlvoSeg ? est - r.duracaoAlvoSeg : 0;
-  const folga = Math.max(1, Math.round((r.duracaoAlvoSeg ?? 0) * 0.1)); // a estimativa é aproximada
-  const linhas: { ok: boolean; nome: string; valor: ReactNode }[] = [
-    { ok: !!r.locutor, nome: 'Locução', valor: r.locutor || 'falta' },
-    { ok: !!r.selo, nome: 'Selo', valor: r.selo ? (r.selo.startsWith('Verifique') ? 'Verifique' : r.selo) : 'falta' },
-    {
-      ok: !!r.duracaoAlvoSeg && estouro <= folga,
-      nome: 'Tempo',
-      valor: !r.duracaoAlvoSeg ? 'falta a duração' : estouro > folga ? `passa uns ${estouro}''` : `≈ ${est}'' de ${r.duracaoAlvoSeg}''`,
-    },
-    {
-      ok: conferidas === saida.artes.length,
-      nome: 'Tipos das artes',
-      valor:
-        conferidas === saida.artes.length ? (
-          saida.artes.length ? 'conferidos' : 'sem artes'
-        ) : (
-          <button className="botao-texto" onClick={confirmarTodas} title="Aceitar os tipos sugeridos">confirmar {saida.artes.length - conferidas}</button>
-        ),
-    },
-    { ok: !!r.redator, nome: 'Redação', valor: r.redator || 'falta' },
-  ];
-  return (
-    <div className="checklist">
-      <div className="rotulo">Antes de exportar</div>
-      {linhas.map((l) => (
-        <div key={l.nome} className={`check ${l.ok ? 'ok' : ''}`}>
-          <span className="check-marca">{l.ok && <Icone nome="certo" tam={11} traco={3} />}</span>
-          <span className="check-nome">{l.nome}</span>
-          <span className="check-valor">{l.valor}</span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -463,7 +328,8 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   const pessoaRef = useRef(pessoa);
   pessoaRef.current = pessoa;
   const mexeu = useRef(false);
-  const [meta, setMeta] = useState<Meta>(inicial.meta);
+  // roteiros de antes da claquete não têm os campos novos
+  const [meta, setMeta] = useState<Meta>(() => ({ ...metaVazia(), ...inicial.meta }));
   const [docVersao, setDocVersao] = useState(0);
   const [selVersao, setSelVersao] = useState(0);
   const [salvo, setSalvo] = useState(true);
@@ -487,11 +353,11 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   const [popover, setPopover] = useState<{ nome: 'arte' | 'etiqueta'; id: string } | null>(null);
   const [exportando, setExportando] = useState(false);
   const [realce, setRealce] = useState<string | null>(null);
-  const [tops, setTops] = useState<Record<string, number>>({});
+  const [aberta, setAberta] = useState<string | null>(null);
+  const [sonorasNoTexto, setSonorasNoTexto] = useState(false);
   const [medida, setMedida] = useState(0);
 
   const area = useRef<HTMLDivElement>(null);
-  const checklist = useRef<HTMLDivElement>(null);
   const arrastando = useRef(false);
   const revisao = useRef(inicial.revisao);
   const metaRef = useRef(meta);
@@ -637,7 +503,15 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   }, [editor, roteiroAtual]);
 
   const saida = useMemo(() => exportar(roteiroAtual()), [roteiroAtual, docVersao, meta]); // eslint-disable-line react-hooks/exhaustive-deps
-  const artes = useMemo(() => (editor ? listarMarcas(editor.state.doc, 'arte') : []), [editor, docVersao]); // eslint-disable-line react-hooks/exhaustive-deps
+  const marcasArte = useMemo(() => (editor ? listarMarcas(editor.state.doc, 'arte') : []), [editor, docVersao]); // eslint-disable-line react-hooks/exhaustive-deps
+  // a lista segue a exportação: um "depois de…" sublinhado entra no texto de cada dia e não conta sozinho
+  const artes = useMemo(
+    () => saida.artes.flatMap((a) => {
+      const marca = marcasArte.find((m) => m.id === a.id);
+      return marca ? [{ ...marca, texto: a.texto, ordem: a.ordem }] : [];
+    }),
+    [saida, marcasArte],
+  );
 
   // posição relativa à área da folha (para menus e cartões)
   const relativo = useCallback((left: number, top: number) => {
@@ -645,24 +519,6 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     return { x: left - r.left, y: top - r.top };
   }, []);
 
-  // cartões das artes alinhados ao texto, como comentários do Word
-  useLayoutEffect(() => {
-    if (!editor || !area.current) return;
-    const base = area.current.getBoundingClientRect().top;
-    let piso = checklist.current ? checklist.current.offsetTop + checklist.current.offsetHeight + 14 : 0;
-    const novo: Record<string, number> = {};
-    for (const a of artes) {
-      let y = piso;
-      try {
-        y = Math.max(piso, editor.view.coordsAtPos(a.from).top - base - 8);
-      } catch {
-        /* a vista ainda não foi montada */
-      }
-      novo[a.id] = Math.round(y);
-      piso = y + ALTURA_CARTAO + 8;
-    }
-    setTops((antigo) => (JSON.stringify(antigo) === JSON.stringify(novo) ? antigo : novo));
-  }, [editor, artes, meta, medida]);
   useEffect(() => {
     const medir = () => setMedida((m) => m + 1);
     window.addEventListener('resize', medir);
@@ -753,23 +609,11 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     }
   };
 
-  const mudarLayout = (layout: Layout) => {
-    if (!editor || layout === meta.layout) return;
-    editor.commands.setContent(converterLayout(editor.getJSON() as Roteiro['doc'], layout), true);
-    mudarMeta({ layout });
-  };
   const irParaArte = (a: MarcaNoDoc) => {
     if (!editor) return;
     editor.chain().focus().setTextSelection({ from: a.from, to: a.to }).run();
     editor.view.dom.querySelector(`u.arte[data-id="${a.id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   };
-  const confirmarTodas = () => {
-    if (!editor) return;
-    const tr = editor.state.tr;
-    for (const a of artes) if (a.attrs.sugerido) tr.removeMark(a.from, a.to, editor.schema.marks.arte).addMark(a.from, a.to, editor.schema.marks.arte.create({ ...a.attrs, sugerido: false }));
-    editor.view.dispatch(tr);
-  };
-
   const exportarComo = async (formato: 'docx' | 'json' | 'lista' | 'pdf') => {
     setExportando(false);
     revisao.current += formato === 'json' || formato === 'docx' ? 1 : 0;
@@ -834,21 +678,15 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   };
 
   const colunas = NOMES_COLUNAS[meta.layout];
-  const est = saida.roteiro.duracaoEstimadaSeg;
-  const alvo = meta.duracaoAlvoSeg;
-  const passou = !!alvo && est - alvo > Math.max(1, Math.round(alvo * 0.1));
-  const fimMargem = artes.length ? (tops[artes[artes.length - 1].id] ?? 0) + ALTURA_CARTAO + 24 : 0;
+  const semTipo = artes.filter((a) => !normalizarSubtipo(a.attrs.subtipo)).length;
 
   return (
     <div className="pagina editor">
       <header className="topo">
         <div className="topo-esq">
           <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
-          <span className="trilha">
-            <span>{meta.programa || 'Roteiro'}</span>
-            <span className="trilha-sep">/</span>
-            <strong>{meta.titulo || 'Sem título'}</strong>
-          </span>
+          <Marca />
+          <span className="trilha"><strong>{meta.claquete || meta.programa || 'Roteiro'}</strong></span>
           {leitura ? (
             <span className="salvo">somente leitura</span>
           ) : (
@@ -859,20 +697,9 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
           )}
         </div>
 
-        <div className="segmento" role="radiogroup" aria-label="Formato do roteiro" inert={leitura || undefined}>
-          {([['coluna_unica', 'corrido', 'Texto corrido'], ['ilustracao_audio', 'colunas', 'Ilustração | Áudio'], ['instrucoes_texto', 'colunas', 'Instruções | Texto']] as const).map(([l, ic, nome]) => (
-            <button key={l} role="radio" aria-checked={meta.layout === l} onClick={() => mudarLayout(l)}>
-              <Icone nome={ic} tam={14} traco={2} />
-              {nome}
-            </button>
-          ))}
-        </div>
+        <span />
 
         <div className="topo-dir">
-          <div className={`relogio ${passou ? 'passou' : ''}`} title="Estimativa: locução e falas das sonoras em ritmo normal de leitura">
-            <span><strong>≈ {est}’’</strong>{alvo ? ` de ${meta.duracaoModo === 'max' ? 'máx. ' : ''}${alvo}’’` : ''}</span>
-            <span className="relogio-trilho"><span style={{ width: `${alvo ? Math.min(100, (est / alvo) * 100) : 0}%` }} /></span>
-          </div>
           {presentes.length > 0 && (
             <div className="presentes" aria-label={`Também neste roteiro: ${presentes.map((x) => x.nome).join(', ')}`}>
               {presentes.slice(0, 4).map((x) => (
@@ -933,7 +760,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               </div>
             )}
             <div inert={leitura || undefined}>
-              <Cabecalho meta={meta} mudar={mudarMeta} />
+              <TopoFolha meta={meta} mudar={mudarMeta} />
             </div>
             {colunas && (
               <div className="colunas-topo rotulo">
@@ -942,7 +769,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               </div>
             )}
             <div
-              className={`${colunas ? 'corpo em-colunas' : 'corpo'} ${sincronizado ? '' : 'chegando'}`}
+              className={`${colunas ? 'corpo em-colunas' : 'corpo'} ${sincronizado ? '' : 'chegando'} ${sonorasNoTexto ? '' : 'sonoras-recolhidas'}`}
               onContextMenu={aoMenuDeContexto}
               onPointerDown={() => {
                 arrastando.current = true;
@@ -959,57 +786,52 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               <div className="fim-linha"><span>fim da chamada</span></div>
               <p className="dicas">
                 <span><kbd>{atalho('Mod-u')}</kbd> marca como arte</span>
-                <span><kbd>botão direito</kbd> etiqueta o trecho</span>
-                {colunas ? <span><kbd>Tab</kbd> troca de coluna</span> : <span><kbd>CAIXA ALTA</kbd> é locução</span>}
-                {colunas && <span><kbd>{atalho('Mod-Enter')}</kbd> nova linha</span>}
+                <span><kbd>CAIXA ALTA</kbd> é locução</span>
               </p>
             </footer>
+            <Decupagem saida={saida} noTexto={sonorasNoTexto} alternar={() => setSonorasNoTexto((v) => !v)} />
           </article>
 
-          <aside className="margem" aria-label="Artes do roteiro" style={{ minHeight: fimMargem || undefined }} inert={leitura || undefined}>
-            <div ref={checklist}>
-              <Checklist saida={saida} confirmarTodas={confirmarTodas} />
-              <p className="margem-titulo">
-                {artes.length ? (
-                  <><strong>{plural(artes.length, 'arte', 'artes')}</strong> para o Motion, na ordem em que aparecem.</>
-                ) : (
-                  <>Sublinhe um trecho com <kbd>{atalho('Mod-u')}</kbd> e a arte aparece aqui, ao lado do texto.</>
-                )}
-              </p>
-            </div>
-            {artes.map((a, i) => (
-              <div
-                key={a.id}
-                className={`cartao-arte ${ativa?.id === a.id ? 'ativa' : ''}`}
-                style={{ top: tops[a.id] ?? 0 }}
-                onMouseEnter={() => setRealce(a.id)}
-                onMouseLeave={() => setRealce(null)}
-              >
-                <button className="cartao-ir" onClick={() => irParaArte(a)} aria-label={`Ir para a arte ${i + 1}: ${a.texto}`}>
-                  <Miniatura subtipo={a.attrs.subtipo} texto={a.texto} />
-                  <span className="cartao-n">{i + 1}</span>
-                </button>
-                <span className="cartao-corpo">
-                  <span className="cartao-texto" title={a.texto}>{a.texto}</span>
-                  <span className="cartao-tipo">
-                    <span className="campo-select">
-                      <select
-                        value={a.attrs.subtipo}
-                        aria-label={`Tipo da arte ${i + 1}`}
-                        onChange={(e) => editor && atualizarMarca(editor, a, { subtipo: e.target.value as SubtipoArte, sugerido: false })}
-                      >
-                        {SUBTIPOS_ARTE.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                      </select>
-                    </span>
-                    {a.attrs.sugerido && (
-                      <button className="cartao-ok" title="Tipo sugerido. Clique para confirmar." onClick={() => editor && atualizarMarca(editor, a, { sugerido: false })}>
-                        sugerido · ok?
-                      </button>
-                    )}
-                  </span>
-                </span>
+          <aside className="lado" aria-label="Claquete e artes" inert={leitura || undefined}>
+            <Claquete dados={meta} mudar={mudarMeta} />
+            <section className="cartao">
+              <div className="cab-artes">
+                <b><i>{artes.length}</i> {artes.length === 1 ? 'arte' : 'artes'}</b>
+                {semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
               </div>
-            ))}
+              {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
+              <ol className="artes">
+                {artes.map((a) => {
+                  const subtipo = normalizarSubtipo(a.attrs.subtipo);
+                  const esta = aberta === a.id;
+                  return (
+                    <li key={a.id} className={`${esta ? 'aberta' : ''} ${ativa?.id === a.id ? 'ativa' : ''}`} onMouseEnter={() => setRealce(a.id)} onMouseLeave={() => setRealce(null)}>
+                      <button
+                        className="arte-linha"
+                        aria-expanded={esta}
+                        onClick={() => {
+                          setAberta(esta ? null : a.id);
+                          if (!esta) irParaArte(a);
+                        }}
+                      >
+                        <Miniatura subtipo={subtipo} />
+                        <span className="txt"><b>{a.texto}</b><span className={subtipo ? '' : 'pede'}>{subtipo ? nomeSubtipo(subtipo) : esta ? 'escolha o tipo' : 'sem tipo'}</span></span>
+                        <span className="b">{a.ordem}</span>
+                      </button>
+                      {esta && editor && (
+                        <EscolhaDeTipo
+                          valor={subtipo}
+                          escolher={(novo) => {
+                            atualizarMarca(editor, a, { subtipo: novo, sugerido: false });
+                            if (novo) setAberta(null);
+                          }}
+                        />
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
           </aside>
 
           {/* só em roteiro individual: com mais gente, desfazer pelo controle ficaria confuso */}
@@ -1038,8 +860,8 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             </aside>
           )}
 
-          {editor && barra && !leitura && !menu && !popover && <BarraFlutuante editor={editor} x={barra.x} y={barra.y} programa={meta.programa} abrirMenu={() => setMenu({ x: barra.x, y: barra.y + 44 })} />}
-          {editor && menu && <MenuEtiquetas editor={editor} x={menu.x} y={menu.y} programa={meta.programa} fechar={() => setMenu(null)} />}
+          {editor && barra && !leitura && !menu && !popover && <BarraFlutuante editor={editor} x={barra.x} y={barra.y} />}
+          {editor && menu && <MenuEtiquetas editor={editor} x={menu.x} y={menu.y} fechar={() => setMenu(null)} />}
           {editor && marcaDoPopover && posPopover && <PopoverMarca editor={editor} marca={marcaDoPopover} x={posPopover.x} y={posPopover.y} fechar={() => setPopover(null)} />}
         </div>
       </div>
@@ -1049,7 +871,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
         <h2>Lista de artes</h2>
         <table>
           <thead><tr><th>Nº</th><th>Tipo</th><th>Texto</th><th>Observação</th></tr></thead>
-          <tbody>{saida.artes.map((a) => <tr key={a.id}><td>{a.ordem}</td><td>{nomeSubtipo(a.subtipo)}</td><td>{a.texto}</td><td>{a.observacao}</td></tr>)}</tbody>
+          <tbody>{saida.artes.map((a) => <tr key={a.id}><td>{a.ordem}</td><td>{a.subtipo ? nomeSubtipo(a.subtipo) : ''}</td><td>{a.texto}</td><td>{a.observacao}</td></tr>)}</tbody>
         </table>
         {saida.comentarios.length > 0 && <p>Comentários: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
       </section>

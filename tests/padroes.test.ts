@@ -166,6 +166,8 @@ describe('o que a Arte precisa', () => {
     expect(claqueteDoArquivo('Passeio_No_Parque_11_07_Rede.docx')).toBe('PASSEIO NO PARQUE 11/07 REDE');
     expect(claqueteDoArquivo('SERTANEJO 2 20 9 SP.rtf')).toBe('SERTANEJO 2 20/9 SP');
     expect(claqueteDoArquivo('Chamada especial.pdf')).toBe('CHAMADA ESPECIAL');
+    expect(claqueteDoArquivo('Festa_NaPraca26_10_Rede.docx')).toBe('FESTA NA PRACA 26/10 REDE');
+    expect(claqueteDoArquivo('SP2_3_4.docx')).toBe('SP2 3/4');
     const { saida } = importar(soltos('HOJE TEM FESTA NA PRAÇA.'), 'Passeio_No_Parque_11_07_Rede.docx');
     expect(saida.roteiro).toMatchObject({ claquete: 'PASSEIO NO PARQUE 11/07 REDE', praca: 'G5', editor: '' });
   });

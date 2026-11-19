@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { armazenamento } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
-import { interpretar, lerArquivo, montarDoc, type Importacao, type Resposta } from './importar';
+import { converterLayout } from './editor/extensoes';
+import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
 import { roteiroDoJson } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
 import { Biblioteca } from './ui/Biblioteca';
@@ -112,7 +113,8 @@ export function App() {
   );
 
   const concluirImportacao = useCallback(
-    (imp: Importacao, respostas: Record<number, Resposta>) => criar({ meta: imp.meta, doc: montarDoc(imp, respostas), origem: imp.bruto.arquivo }),
+    // o roteiro é sempre texto corrido; as cores do Word ficam com o significado que o app deduziu
+    (imp: Importacao) => criar({ meta: { ...imp.meta, layout: 'coluna_unica' }, doc: converterLayout(montarDoc(imp), 'coluna_unica'), origem: imp.bruto.arquivo }),
     [criar],
   );
 
@@ -161,7 +163,7 @@ export function App() {
           setSessao((n) => n + 1);
         });
       }} />}
-      {tela.t === 'importar' && <TelaImportar imp={tela.imp} concluir={(r) => concluirImportacao(tela.imp, r)} cancelar={() => ir({ t: 'biblioteca' })} />}
+      {tela.t === 'importar' && <TelaImportar imp={tela.imp} concluir={() => concluirImportacao(tela.imp)} cancelar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} pessoa={pessoa} />}
 
       {soltando && (

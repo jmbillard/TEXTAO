@@ -1,23 +1,20 @@
 import { useMemo, useState } from 'react';
 import type { Run } from '../importar/bruto';
-import type { Importacao, Resposta } from '../importar';
-import { ETIQUETAS } from '../modelo/tipos';
+import { montarDoc, type Importacao } from '../importar';
+import { exportar } from '../modelo/exportar';
 import { Icone } from './icones';
-import { dataPorExtenso, plural } from './util';
+import { Claquete, Marca } from './pecas';
 
-const NOMES: Record<Resposta, string> = {
-  cortavel: 'Pode cortar', producao: 'Recado para a produção', sonoplastia: 'Sonoplastia', locutor: 'Para o locutor',
-  edicao: 'Para a edição', comentario: 'Comentário', ignorar: 'É texto normal',
-};
 const COR_WORD: Record<string, string> = { yellow: '#fff200', cyan: '#00ffff', green: '#00ff00', magenta: '#ff00ff', lightGray: '#d9d9d9' };
 
 function Trecho({ r }: { r: Run }) {
+  // o sublinhado do original é o que vira arte: aparece em destaque
+  if (r.u && r.t.trim()) return <span className="achou">{r.t}</span>;
   return (
     <span
       style={{
         fontWeight: r.b ? 700 : undefined,
         fontStyle: r.i ? 'italic' : undefined,
-        textDecoration: r.u ? 'underline' : undefined,
         background: r.hl ? (COR_WORD[r.hl] ?? `#${r.hl}`) : undefined,
         color: r.cor ? `#${r.cor}` : undefined,
       }}
@@ -26,115 +23,84 @@ function Trecho({ r }: { r: Run }) {
     </span>
   );
 }
-const Par = ({ par }: { par: Run[] }) => <p>{par.length ? par.map((r, i) => <Trecho key={i} r={r} />) : ' '}</p>;
+const Par = ({ par }: { par: Run[] }) => <p>{par.length ? par.map((r, i) => <Trecho key={i} r={r} />) : ' '}</p>;
 
-export function TelaImportar({ imp, concluir, cancelar }: { imp: Importacao; concluir: (r: Record<number, Resposta>) => void; cancelar: () => void }) {
-  const [respostas, setRespostas] = useState<Record<number, Resposta>>(() => Object.fromEntries(imp.perguntas.map((p) => [p.id, p.sugestao])));
+/** Tela 1: o arquivo como veio, com o que foi identificado ao lado. Nada é reescrito aqui. */
+export function TelaImportar({ imp, concluir, cancelar }: { imp: Importacao; concluir: () => void; cancelar: () => void }) {
   const [abrindo, setAbrindo] = useState(false);
-  const n = imp.perguntas.length;
   const m = imp.meta;
-
-  const resumo = useMemo(() => {
-    const partes = [
-      m.locutor && `locução de ${m.locutor}`,
-      m.selo && `selo ${m.selo === 'Verifique a classificação indicativa' ? '“Verifique”' : m.selo}`,
-      m.duracaoAlvoSeg && `${m.duracaoModo === 'max' ? 'no máximo ' : ''}${m.duracaoAlvoSeg}''`,
-    ].filter(Boolean);
-    return partes.length ? `, com ${partes.join(', ')}` : '';
-  }, [m]);
-  const contagens = imp.entendido.filter((e) => /→ \d+ (arte|sonora)/.test(e)).map((e) => e.split('→ ')[1]);
+  const artes = useMemo(() => exportar({ id: 'previa', meta: imp.meta, doc: montarDoc(imp), revisao: 1, criadoEm: '', atualizadoEm: '' }).artes, [imp]);
 
   return (
-    <div className="pagina">
-      <main className="importar">
-        <header className="imp-topo">
-          <div className="rotulo imp-arquivo"><Icone nome="arquivo" tam={14} />{imp.bruto.arquivo}</div>
-          <h1 className="titulo-serifa grande">
-            Tudo no lugar. {n ? <>Só {n === 1 ? 'falta' : 'faltam'} <em>{n === 1 ? 'uma confirmação' : `${n} confirmações`}</em>.</> : <em>Nenhuma dúvida.</em>}
-          </h1>
-          <p className="imp-resumo">
-            Li o arquivo inteiro: <strong>{[m.programa, m.titulo].filter(Boolean).join(' · ') || 'um roteiro'}</strong>
-            {m.dataExibicao && `, para ${dataPorExtenso(m.dataExibicao)}`}{resumo}.
-            {contagens.length > 0 && ` Encontrei ${contagens.join(' e ')}.`}
-            {n > 0 && ' Só não sei o que significam algumas cores que foram usadas.'}
-          </p>
-        </header>
-
-        <div className="imp-corpo">
-          <section aria-label="Como estava no Word">
-            <h2 className="rotulo">{imp.bruto.formato === 'pdf' ? 'O que li no PDF' : 'Como estava no Word'}</h2>
-            <div className="word">
-              {imp.bruto.blocos.map((b, i) =>
-                b.tipo === 'p' ? (
-                  <Par key={i} par={b.par} />
-                ) : (
-                  <table key={i}>
-                    <tbody>
-                      {b.linhas.map((linha, j) => (
-                        <tr key={j}>{linha.map((cel, k) => <td key={k}>{cel.map((p, x) => <Par key={x} par={p} />)}</td>)}</tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ),
-              )}
-            </div>
-            <p className="suave pequeno">Nada do arquivo original é alterado.</p>
-          </section>
-
-          <section aria-label="Confirmações" className="imp-perguntas">
-            {n > 0 && <h2 className="rotulo">{plural(n, 'confirmação rápida', 'confirmações rápidas')}</h2>}
-            {imp.perguntas.map((p, i) => (
-              <article key={p.id} className="pergunta">
-                <span className="pergunta-n">{i + 1}</span>
-                <div className="pergunta-corpo">
-                  <h3>{p.pergunta}</h3>
-                  <ul className="pergunta-trechos">
-                    {p.trechos.slice(0, 4).map((t, k) => (
-                      <li key={k}><span style={p.estilo === 'marca-texto' ? { background: p.corCss } : { color: p.corCss }}>{t}</span></li>
-                    ))}
-                    {p.trechos.length > 4 && <li className="suave">e mais {p.trechos.length - 4}</li>}
-                  </ul>
-                  <div className="opcoes" role="radiogroup" aria-label={p.pergunta}>
-                    {[p.sugestao, ...(['ignorar', ...ETIQUETAS.map((e) => e.id)] as Resposta[]).filter((o) => o !== p.sugestao)].map((o) => (
-                      <button key={o} role="radio" aria-checked={respostas[p.id] === o} className="opcao" onClick={() => setRespostas({ ...respostas, [p.id]: o })}>
-                        {NOMES[o]}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="suave pequeno">{p.porque} A sugestão já vem marcada.</p>
-                </div>
-              </article>
-            ))}
-
-            {imp.bruto.avisos?.map((a) => <p key={a} className="imp-faltando">{a}</p>)}
-
-            {imp.faltando.length > 0 && (
-              <p className="imp-faltando">
-                Não encontrei <strong>{imp.faltando.join(', ').replace(/, ([^,]*)$/, ' e $1')}</strong>. Dá para completar direto no roteiro.
-              </p>
-            )}
-
-            <details className="entendido" open={n === 0}>
-              <summary>O que entendi sozinho ({imp.entendido.length})</summary>
-              <ul>{imp.entendido.map((e) => <li key={e}>{e}</li>)}</ul>
-            </details>
-          </section>
+    <div className="pagina conferir">
+      <header className="topo">
+        <div className="topo-esq">
+          <button className="botao-icone" aria-label="Descartar e voltar" title="Descartar" onClick={cancelar}><Icone nome="voltar" tam={18} /></button>
+          <Marca />
         </div>
+        <ol className="passos" aria-label="Etapas">
+          <li aria-current="step"><i>1</i>Arquivo</li>
+          <li><i>2</i>Roteiro</li>
+        </ol>
+        <div className="topo-dir" />
+      </header>
 
-        <footer className="imp-rodape">
-          <button className="botao" onClick={cancelar}>Descartar</button>
-          <button
-            className="botao primario"
-            disabled={abrindo}
-            onClick={() => {
-              setAbrindo(true);
-              concluir(respostas);
-            }}
-          >
-            Abrir o roteiro <Icone nome="seta" tam={14} traco={2.2} />
-          </button>
-        </footer>
-      </main>
+      <div className="mesa">
+        <div className="area">
+            <article className="folha folha-original">
+              {(m.programa || m.praca) && (
+                <header className="topo-folha">
+                  {m.programa ? <div className="atracao"><span className="rotulo">Atração</span><h2>{m.programa}</h2></div> : <span />}
+                  {m.praca && <div className="praca"><span className="rotulo">Praça</span><div className="pracas"><b>{m.praca}</b></div></div>}
+                </header>
+              )}
+              <div className="original">
+              <div className="word">
+                {imp.bruto.blocos.map((b, i) =>
+                  b.tipo === 'p' ? (
+                    <Par key={i} par={b.par} />
+                  ) : (
+                    <table key={i}>
+                      <tbody>
+                        {b.linhas.map((linha, j) => (
+                          <tr key={j}>{linha.map((cel, k) => <td key={k}>{cel.map((p, x) => <Par key={x} par={p} />)}</td>)}</tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ),
+                )}
+              </div>
+              <p className="legenda"><span className="achou">sublinhado</span> no arquivo vira arte. Nada do original é alterado.</p>
+              {imp.bruto.avisos?.map((a) => <p key={a} className="imp-faltando">{a}</p>)}
+              </div>
+              <footer className="rodape-arquivo"><Icone nome="arquivo" tam={15} /><span>{imp.bruto.arquivo}</span></footer>
+            </article>
+
+          <aside className="lado" aria-label="O que foi identificado">
+            <Claquete dados={m} />
+            <section className="cartao">
+              <div className="cab-artes"><b><i>{artes.length}</i> {artes.length === 1 ? 'arte' : 'artes'}</b><span className="rotulo">na ordem</span></div>
+              {artes.length ? (
+                <ol className="artes">
+                  {artes.map((a) => <li key={a.id}><span className="b">{a.ordem}</span><span className="txt"><b>{a.texto}</b></span></li>)}
+                </ol>
+              ) : (
+                <p className="suave pequeno">Nenhum trecho sublinhado no arquivo. Dá para marcar as artes no roteiro.</p>
+              )}
+            </section>
+            <button
+              className="botao primario grande"
+              disabled={abrindo}
+              onClick={() => {
+                setAbrindo(true);
+                concluir();
+              }}
+            >
+              Está certo, abrir roteiro <Icone nome="seta" tam={15} traco={2.2} />
+            </button>
+          </aside>
+        </div>
+      </div>
     </div>
   );
 }

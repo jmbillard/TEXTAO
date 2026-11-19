@@ -26,7 +26,8 @@ export function haQuantoTempo(iso: string, agora = Date.now()): string {
 }
 
 export const nomeDoArquivo = (meta: Meta) =>
-  [meta.programa, meta.titulo, meta.titulo.includes(dataCurta(meta.dataExibicao)) ? '' : dataCurta(meta.dataExibicao).replace('/', '-')]
+  // a claquete já é o nome da chamada; a barra da data não cabe em nome de arquivo
+  (meta.claquete ? [meta.claquete.replace(/\//g, ' ')] : [meta.programa, meta.titulo, meta.titulo.includes(dataCurta(meta.dataExibicao)) ? '' : dataCurta(meta.dataExibicao).replace('/', '-')])
     .filter(Boolean)
     .join(' ')
     .normalize('NFD')
