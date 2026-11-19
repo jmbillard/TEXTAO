@@ -1408,3 +1408,5 @@ input, textarea, select, [contenteditable='true'], .texto { cursor: text; }
 input[type='checkbox'], input[type='radio'], input[type='range'] { cursor: pointer; }
 .no-mouse { display: flex; align-items: center; gap: 8px; margin-top: 10px; font: 500 13px var(--sans); color: var(--tinta2); cursor: pointer; }
 .no-mouse input { accent-color: var(--ultra); width: 15px; height: 15px; }
+/* com um menu, painel ou popover aberto, os ponteiros dos colegas passam por baixo dele (e por cima do resto) */
+body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .ponteiros { z-index: 25; }
