@@ -16,6 +16,8 @@ export interface Resumo {
   podeEditar?: boolean;
   /** Servidor em modo aberto: todos veem e editam tudo. */
   aberto?: boolean;
+  /** Quem mexeu por último depois que o roteiro chegou. */
+  revisadoPor?: Pessoa | null;
   /** Compartilhado com pessoas específicas. */
   compartilhado?: boolean;
   meu: boolean;

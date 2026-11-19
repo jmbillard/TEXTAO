@@ -283,7 +283,10 @@ describe('modo aberto (padrão)', () => {
       const lista = (await (await b('/api/roteiros')).json()) as { id: string; meu: boolean; podeEditar: boolean; aberto: boolean }[];
       expect(lista).toMatchObject([{ id: 'aberto-0001', meu: false, podeEditar: true, aberto: true }]);
       expect(await (await b('/api/roteiros/aberto-0001')).json()).toMatchObject({ meu: false, podeEditar: true, aberto: true });
+      expect(((await (await b('/api/roteiros')).json()) as { revisadoPor: unknown }[])[0].revisadoPor).toBeNull();
       expect((await b('/api/roteiros/aberto-0001', { method: 'PUT', body: JSON.stringify(roteiro('mexido pelo Beto')) })).status).toBeLessThan(300);
+      // quem mexe depois que o roteiro chegou aparece na fila como "revisado por"
+      expect(((await (await a('/api/roteiros')).json()) as { revisadoPor: unknown }[])[0].revisadoPor).toEqual({ nome: 'Beto', email: 'beto@empresa.com' });
       expect((await b('/api/roteiros/aberto-0001', { method: 'DELETE' })).status).toBeLessThan(300);
       expect(await (await a('/api/roteiros')).json()).toEqual([]);
     } finally {

@@ -11,7 +11,8 @@ import { redoDepth, undoDepth } from '@tiptap/pm/history';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
-import { abrirSala, corDe, presentes as listarPresentes, type Presente } from '../dados/colaboracao';
+import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
+import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { armazenamento, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
@@ -300,6 +301,47 @@ function LinhaDoTempo({ editor, versao }: { editor: Editor; versao: number }) {
   );
 }
 
+/* ---------- ponteiros na sala ---------- */
+
+function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor: Editor | null }) {
+  const [lista, setLista] = useState<PonteiroDeAlguem[]>([]);
+  useEffect(() => {
+    const ler = () => setLista(ponteirosDaSala(sala, eu));
+    sala.provedor.awareness.on('change', ler);
+    return () => sala.provedor.awareness.off('change', ler);
+  }, [sala, eu]);
+  // em cima do texto, o ponteiro vai junto da letra
+  const resolver = useCallback(
+    (p: PosicaoPonteiro) => {
+      if (p.pos == null || !editor || editor.isDestroyed) return null;
+      try {
+        const c = editor.view.coordsAtPos(Math.max(0, Math.min(p.pos, editor.state.doc.content.size)));
+        return { x: c.left + (p.dx ?? 0), y: c.top + (p.dy ?? 0) };
+      } catch {
+        return null;
+      }
+    },
+    [editor],
+  );
+  const enviar = useMemo(() => (p: PosicaoPonteiro | null) => sala.provedor.awareness.setLocalStateField('ponteiro', p), [sala]);
+  const refinar = useCallback(
+    (e: PointerEvent, p: PosicaoPonteiro): PosicaoPonteiro => {
+      if (!editor || editor.isDestroyed || !(e.target as Element | null)?.closest?.('.texto')) return p;
+      const achado = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+      if (!achado) return p;
+      try {
+        const c = editor.view.coordsAtPos(achado.pos);
+        return { ...p, pos: achado.pos, dx: Math.round(e.clientX - c.left), dy: Math.round(e.clientY - c.top) };
+      } catch {
+        return p;
+      }
+    },
+    [editor],
+  );
+  useMeuPonteiro(enviar, refinar);
+  return <Ponteiros lista={lista} resolver={resolver} />;
+}
+
 /* ---------- tela ---------- */
 
 export function TelaEditor({ id, voltar, avisar, pessoa }: { id: string; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
@@ -402,7 +444,11 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
   useEffect(() => {
     if (!sala) return;
     const aoSincronizar = (ok: boolean) => ok && setSincronizado(true);
-    const aoMudarPresenca = () => setPresentes(listarPresentes(sala, pessoaRef.current?.email ?? ''));
+    // a presença muda a cada movimento de mouse dos colegas: só redesenha a tela quando muda quem está aqui
+    const aoMudarPresenca = () => {
+      const novo = listarPresentes(sala, pessoaRef.current?.email ?? '');
+      setPresentes((antes) => (JSON.stringify(antes) === JSON.stringify(novo) ? antes : novo));
+    };
     const aoMudarMeta = (e: { transaction: { local: boolean } }) => {
       if (!e.transaction.local) setMeta((m) => ({ ...m, ...(sala.meta.toJSON() as Partial<Meta>) }));
     };
@@ -692,7 +738,8 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
   return (
     <div className="pagina editor">
-      <header className="topo">
+      {sala && sincronizado && <PonteirosDaSala sala={sala} eu={pessoa?.email ?? ''} editor={editor} />}
+      <header className="topo" data-ancora="topo">
         <div className="topo-esq">
           <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
           <Marca />
@@ -759,7 +806,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
       <div className="mesa">
         <div className={`area ${colunas ? 'larga' : ''}`} ref={area}>
-          <article className="folha">
+          <article className="folha" data-ancora="folha">
             {!sou && !leitura && (
               <div className="faixa-leitura">
                 <span>Subido por <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Todos editam juntos.</span>
@@ -804,7 +851,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             <Decupagem saida={saida} noTexto={sonorasNoTexto} alternar={() => setSonorasNoTexto((v) => !v)} />
           </article>
 
-          <aside className="lado" aria-label="Claquete e artes" inert={leitura || undefined}>
+          <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={leitura || undefined}>
             <Claquete dados={meta} mudar={mudarMeta} />
             <section className="cartao">
               <div className="cab-artes">

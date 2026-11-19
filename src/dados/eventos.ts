@@ -5,11 +5,21 @@ import { armazenamento, parametrosDoPerfil } from './armazenamento';
 export type EventoFila =
   | { tipo: 'criado' | 'alterado' | 'apagado'; id: string; por: string }
   | { tipo: 'presenca'; pessoas: { nome: string; email: string }[] }
+  /** Quem está com um roteiro aberto agora. Lista vazia: ninguém mais. */
+  | { tipo: 'no-roteiro'; id: string; pessoas: { nome: string; email: string }[] }
+  /** Ponteiro do mouse de quem está na fila; `saiu` quando ele deixa a tela. */
+  | { tipo: 'ponteiro'; por: string; nome: string; ancora?: string; fx?: number; fy?: number; saiu?: boolean }
   /** A conexão voltou depois de cair: pode ter perdido avisos, então vale recarregar. */
   | { tipo: 'reconectou' };
 
-export function ouvirFila(aoReceber: (e: EventoFila) => void): () => void {
-  if (armazenamento.tipo !== 'servidor' || typeof WebSocket === 'undefined') return () => {};
+export interface Fila {
+  parar: () => void;
+  /** Manda um aviso meu para quem está na fila (o ponteiro do mouse). Fora do ar, não faz nada. */
+  enviar: (dado: object) => void;
+}
+
+export function ouvirFila(aoReceber: (e: EventoFila) => void): Fila {
+  if (armazenamento.tipo !== 'servidor' || typeof WebSocket === 'undefined') return { parar: () => {}, enviar: () => {} };
   let ws: WebSocket | null = null;
   let parar = false;
   let espera = 1000;
@@ -39,9 +49,14 @@ export function ouvirFila(aoReceber: (e: EventoFila) => void): () => void {
     };
   };
   abrir();
-  return () => {
-    parar = true;
-    clearTimeout(prazo);
-    ws?.close();
+  return {
+    parar: () => {
+      parar = true;
+      clearTimeout(prazo);
+      ws?.close();
+    },
+    enviar: (dado) => {
+      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(dado));
+    },
   };
 }

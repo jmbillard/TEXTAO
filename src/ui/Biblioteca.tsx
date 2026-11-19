@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
 import { armazenamento, type Resumo } from '../dados/armazenamento';
 import { corDe } from '../dados/colaboracao';
-import { ouvirFila } from '../dados/eventos';
+import { ouvirFila, type Fila } from '../dados/eventos';
+import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
@@ -114,6 +115,10 @@ function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'defin
 
 /* ---------- ficha da fila ---------- */
 
+const primeiro = (nome: string) => nome.split(/\s+/)[0];
+const nomes = (pessoas: { nome: string }[]) =>
+  pessoas.length <= 2 ? pessoas.map((p) => primeiro(p.nome)).join(' e ') : `${primeiro(pessoas[0].nome)} e mais ${pessoas.length - 1}`;
+
 const RABISCOS = [
   'M13 25 C 9 11, 27 4, 43 6 C 60 9, 61 31, 42 37 C 25 42, 5 37, 8 22 C 10 11, 23 5, 38 4',
   'M50 9 C 30 2, 6 9, 6 23 C 6 37, 30 42, 46 38 C 62 33, 62 12, 44 7 C 34 4, 22 5, 15 9',
@@ -144,13 +149,17 @@ function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
   return [texto.slice(0, n), n >= texto.length];
 }
 
-function Ficha({ r, nova, ordem, abrir, acoes }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode }) {
+function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string }) {
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   const revisar = r.meta.revisar ?? [];
   const semEditor = !r.meta.editor;
   return (
-    <li className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'}`}>
+    <li
+      className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${agora.length ? 'ocupada' : ''}`}
+      data-ancora={`ficha:${r.id}`}
+      style={agora.length ? ({ '--cor': corDe(agora[0].email) } as React.CSSProperties) : undefined}
+    >
       <span className={`ficha-marca ${revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">{revisar.length ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}</span>
       <button className="ficha-claquete" onClick={abrir} aria-label={`Abrir ${claquete}`}>
         <b>{digitado}{nova && !terminou && <i className="cursor" />}</b>
@@ -159,6 +168,14 @@ function Ficha({ r, nova, ordem, abrir, acoes }: { r: Resumo; nova: boolean; ord
           {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
           {r.meta.dataExibicao ? ` · ${dataCurtaComDia(r.meta.dataExibicao)}` : ' · sem data'}
         </span>
+        {agora.length > 0 ? (
+          <span className="ficha-quem agora some" style={{ '--cor': corDe(agora[0].email) } as React.CSSProperties}>
+            <i className="bolinha" />
+            {nomes(agora)} {agora.length === 1 ? 'está' : 'estão'} revisando agora
+          </span>
+        ) : (
+          r.revisadoPor && <span className="ficha-quem some">revisado por {r.revisadoPor.email === eu ? 'você' : primeiro(r.revisadoPor.nome)}</span>
+        )}
       </button>
       <span className="ficha-gente some">
         {r.meta.redator || 'sem redator'}
@@ -187,6 +204,9 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   // fila ao vivo: o que os colegas sobem aparece aqui na hora, com a mesma animação
   const [deOutros, setDeOutros] = useState<string[]>([]);
   const [colegas, setColegas] = useState<{ nome: string; email: string }[]>([]);
+  const [noRoteiro, setNoRoteiro] = useState<Record<string, { nome: string; email: string }[]>>({});
+  const [ponteiros, setPonteiros] = useState<Record<string, PonteiroDeAlguem>>({});
+  const [fila, setFila] = useState<Fila | null>(null);
   const eu = identidade?.email;
   useEffect(() => {
     let prazo: ReturnType<typeof setTimeout> | undefined;
@@ -194,16 +214,38 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
       clearTimeout(prazo);
       prazo = setTimeout(() => void carregar(), 350);
     };
-    const parar = ouvirFila((e) => {
-      if (e.tipo === 'presenca') return setColegas(e.pessoas.filter((p) => p.email !== eu));
+    const f = ouvirFila((e) => {
+      if (e.tipo === 'ponteiro') {
+        if (e.por === eu) return;
+        return setPonteiros((atual) => {
+          const novo = { ...atual };
+          if (e.saiu || !e.ancora) delete novo[e.por];
+          else novo[e.por] = { email: e.por, nome: e.nome, cor: corDe(e.por), p: { ancora: e.ancora, fx: e.fx ?? 0, fy: e.fy ?? 0 } };
+          return novo;
+        });
+      }
+      if (e.tipo === 'no-roteiro') return setNoRoteiro((atual) => ({ ...atual, [e.id]: e.pessoas.filter((p) => p.email !== eu) }));
+      if (e.tipo === 'presenca') {
+        const aqui = new Set(e.pessoas.map((p) => p.email));
+        // quem saiu da fila leva o ponteiro junto
+        setPonteiros((atual) => Object.fromEntries(Object.entries(atual).filter(([email]) => aqui.has(email))));
+        return setColegas(e.pessoas.filter((p) => p.email !== eu));
+      }
       if (e.tipo === 'criado' && e.por !== eu) setDeOutros((d) => [...d, e.id]);
       recarregar();
     });
+    setFila(f);
     return () => {
-      parar();
+      f.parar();
       clearTimeout(prazo);
+      setFila(null);
     };
   }, [eu]); // eslint-disable-line react-hooks/exhaustive-deps
+  const enviarPonteiro = useMemo(
+    () => (fila ? (p: PosicaoPonteiro | null) => fila.enviar(p ? { tipo: 'ponteiro', ...p } : { tipo: 'ponteiro', saiu: true }) : null),
+    [fila],
+  );
+  useMeuPonteiro(enviarPonteiro);
 
   const apagar = async (r: Resumo) => {
     await armazenamento.apagar(r.id);
@@ -221,7 +263,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
 
   return (
     <div className="pagina">
-      <main className="biblioteca fila">
+      <main className="biblioteca fila" data-ancora="pagina">
         <header className="bib-topo">
           <h1 className="bib-marca"><Marca /></h1>
           <span className="espaco" />
@@ -290,7 +332,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
 
               <ul className="fichas">
                 {falhas.map((f) => (
-                  <li key={f.nome} className="ficha erro montada">
+                  <li key={f.nome} className="ficha erro montada" data-ancora={`falha:${f.nome}`}>
                     <span className="ficha-marca erro" aria-hidden="true"><Icone nome="fechar" tam={11} traco={3} /></span>
                     <span className="ficha-claquete"><b>{f.nome.replace(/\.[^.]+$/, '')}</b><span>Não consegui ler este arquivo</span></span>
                     <span className="ficha-acoes"><button className="botao" onClick={() => tirarFalha(f.nome)}>Tirar da fila</button></span>
@@ -302,6 +344,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                     key={r.id}
                     r={r}
                     nova={novos.includes(r.id) || deOutros.includes(r.id)}
+                    agora={noRoteiro[r.id] ?? []}
+                    eu={eu}
                     ordem={k}
                     abrir={() => abrir(r.id)}
                     acoes={
@@ -325,6 +369,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
           )
         )}
       </main>
+      <Ponteiros lista={Object.values(ponteiros)} />
     </div>
   );
 }

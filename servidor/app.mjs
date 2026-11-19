@@ -75,6 +75,8 @@ export function abrirBanco(caminho) {
   const tem = (tabela, coluna) => db.prepare(`PRAGMA table_info(${tabela})`).all().some((c) => c.name === coluna);
   if (!tem('compartilhamentos', 'pode_editar')) db.exec('ALTER TABLE compartilhamentos ADD COLUMN pode_editar INTEGER NOT NULL DEFAULT 0');
   if (!tem('roteiros', 'ydoc')) db.exec('ALTER TABLE roteiros ADD COLUMN ydoc BLOB');
+  // quem mexeu por último no roteiro depois que ele chegou: aparece na fila como "revisado por"
+  if (!tem('roteiros', 'revisado_email')) db.exec('ALTER TABLE roteiros ADD COLUMN revisado_email TEXT; ALTER TABLE roteiros ADD COLUMN revisado_nome TEXT');
   return db;
 }
 
@@ -163,7 +165,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   const pauta = criarPauta(env, vocabulario, undefined, cache);
   const q = {
     lista: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar
        FROM roteiros
@@ -171,7 +173,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
     listaTudo: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar
        FROM roteiros
@@ -181,6 +183,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
     conteudo: db.prepare('UPDATE roteiros SET meta = ?, doc = ?, n_artes = ?, atualizado_em = ? WHERE id = ?'),
+    revisou: db.prepare('UPDATE roteiros SET revisado_email = ?, revisado_nome = ? WHERE id = ?'),
     inserir: db.prepare(
       `INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -289,8 +292,42 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
   }, 25_000);
   batimento.unref?.();
+  /** Quem está com cada roteiro aberto agora (nesta instância), sem repetir a pessoa de duas abas. */
+  const quemNoRoteiro = (id) => {
+    const sala = salas.get(id);
+    if (!sala) return [];
+    return [...new Map([...sala.conexoes.values()].map(({ eu }) => [eu.email, { nome: eu.nome, email: eu.email }])).values()];
+  };
+  const avisarNoRoteiro = (id) => void cache.publicar(FILA, { tipo: 'no-roteiro', id, pessoas: quemNoRoteiro(id) }).catch(() => {});
+
+  // ponteiros do mouse: passam pelo mesmo caminho, mas só valem para quem está na fila agora
+  const PONTEIROS = 'ponteiros';
+  cache.assinar(PONTEIROS, paraTodos);
+  const num = (v) => (Number.isFinite(v) ? Math.max(-0.5, Math.min(1.5, v)) : null);
+
   function entrarNaFila(ws, eu) {
     naFila.set(ws, { eu, vivo: true });
+    ws.on('message', (dados) => {
+      if (dados.length > 400) return;
+      let m;
+      try {
+        m = JSON.parse(String(dados));
+      } catch {
+        return;
+      }
+      if (m?.tipo !== 'ponteiro') return;
+      const fx = num(m.fx);
+      const fy = num(m.fy);
+      const fora = m.saiu === true || fx === null || fy === null || typeof m.ancora !== 'string';
+      void cache
+        .publicar(PONTEIROS, fora ? { tipo: 'ponteiro', por: eu.email, nome: eu.nome, saiu: true } : { tipo: 'ponteiro', por: eu.email, nome: eu.nome, ancora: m.ancora.slice(0, 80), fx, fy })
+        .catch(() => {});
+    });
+    // quem chega na fila já vê quem está revisando o quê
+    for (const id of salas.keys()) {
+      const pessoas = quemNoRoteiro(id);
+      if (pessoas.length && ws.readyState === 1) ws.send(JSON.stringify({ tipo: 'no-roteiro', id, pessoas }));
+    }
     ws.on('pong', () => {
       const c = naFila.get(ws);
       if (c) c.vivo = true;
@@ -298,6 +335,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     ws.on('close', () => {
       naFila.delete(ws);
       paraTodos({ tipo: 'presenca', pessoas: pessoasNaFila() });
+      void cache.publicar(PONTEIROS, { tipo: 'ponteiro', por: eu.email, nome: eu.nome, saiu: true }).catch(() => {});
     });
     paraTodos({ tipo: 'presenca', pessoas: pessoasNaFila() });
   }
@@ -330,6 +368,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     const sala = abrirSala(id);
     const con = { eu, editar, clientes: new Set() };
     sala.conexoes.set(ws, con);
+    avisarNoRoteiro(id);
     ws.binaryType = 'arraybuffer';
 
     ws.on('message', (dados) => {
@@ -353,6 +392,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     ws.on('close', () => {
       presenca.removeAwarenessStates(sala.presenca, [...con.clientes], null);
       sala.conexoes.delete(ws);
+      avisarNoRoteiro(id);
       if (!sala.conexoes.size) {
         if (sala.prazo) clearTimeout(sala.prazo);
         if (q.um.get(id)) sala.gravar();
@@ -430,6 +470,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
           dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
           compartilhado: !!l.compartilhado,
           podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
+          revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
           ...(aberto ? { aberto: true } : {}),
         })),
       );
@@ -499,6 +540,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
           }
           mudouAcesso ||= antes !== JSON.stringify(q.compartilhadoCom.all(id));
         }
+        if (atual && (atual.meta !== meta || atual.doc !== doc)) q.revisou.run(eu.email, eu.nome, id);
         versionar(id, eu, meta, doc, motivo, agora);
         db.exec('COMMIT');
       } catch (e) {
