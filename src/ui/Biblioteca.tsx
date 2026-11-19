@@ -149,7 +149,7 @@ function Ficha({ r, nova, ordem, abrir, acoes }: { r: Resumo; nova: boolean; ord
   const semEditor = !r.meta.editor;
   return (
     <li className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'}`}>
-      <span className={`ficha-marca ${revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">{revisar.length ? '!' : <Icone nome="certo" tam={12} traco={3} />}</span>
+      <span className={`ficha-marca ${revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">{revisar.length ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}</span>
       <button className="ficha-claquete" onClick={abrir} aria-label={`Abrir ${claquete}`}>
         <b>{digitado}{nova && !terminou && <i className="cursor" />}</b>
         <span className="some">
@@ -259,8 +259,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               <ul className="fichas">
                 {falhas.map((f) => (
                   <li key={f.nome} className="ficha erro montada">
-                    <span className="ficha-marca erro" aria-hidden="true">×</span>
-                    <span className="ficha-claquete"><b>{f.nome}</b><span>Não consegui ler este arquivo</span></span>
+                    <span className="ficha-marca erro" aria-hidden="true"><Icone nome="fechar" tam={11} traco={3} /></span>
+                    <span className="ficha-claquete"><b>{f.nome.replace(/\.[^.]+$/, '')}</b><span>Não consegui ler este arquivo</span></span>
                     <span className="ficha-acoes"><button className="botao" onClick={() => tirarFalha(f.nome)}>Tirar da fila</button></span>
                     <span className="ficha-pendencias"><span className="pendencia erro">{f.motivo}</span></span>
                   </li>
