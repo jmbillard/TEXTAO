@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { armazenamento, escolherMinhaCor, mandarParaTrello, temCadastros, temTrello, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias } from '../modelo/exportar';
@@ -593,6 +593,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
       const atualizado: Roteiro = { ...rn, doc, meta: { ...rn.meta, substitui: undefined, editor: rn.meta.editor || ra.meta.editor } };
       atualizado.meta.revisar = pendencias(exportar(atualizado));
       await armazenamento.salvar(atualizado, 'substituiu a versão anterior');
+      // o card que a anterior já tinha fica com a nova, antes que ela saia
+      if (jaNoTrello(anterior)) await herdarEnvio(rn.id, ra.id).catch(() => {});
       await armazenamento.apagar(ra.id);
       const card = jaNoTrello(anterior) ? ' O card no Trello continua o da versão anterior.' : '';
       avisar(herdadas ? `Versão anterior substituída. ${plural(herdadas, 'tipo de arte foi mantido', 'tipos de arte foram mantidos')}.${card}` : `Versão anterior substituída.${card}`);

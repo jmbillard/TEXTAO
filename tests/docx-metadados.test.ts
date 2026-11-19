@@ -56,3 +56,26 @@ describe('docx com metadados', () => {
     expect(zip.file('customXml/_rels/item1.xml.rels')).toBeTruthy();
   });
 });
+
+describe('comentário de arte que atravessa parágrafos', () => {
+  it('prende o comentário uma vez só, com um número só', async () => {
+    const marca = { type: 'arte', attrs: { id: 'a9', subtipo: '', obs: 'usar a foto' } };
+    const r: Roteiro = {
+      ...roteiro,
+      doc: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'VEM AÍ A GRANDE', marks: [marca] }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'FESTA DA PRAÇA', marks: [marca] }, { type: 'text', text: ' HOJE.' }] },
+        ],
+      },
+    };
+    const zip = await JSZip.loadAsync(await (await gerarDocx(exportar(r))).arrayBuffer());
+    const documento = await zip.file('word/document.xml')!.async('string');
+    expect(documento.match(/<w:commentRangeStart /g)).toHaveLength(1);
+    expect(documento.match(/<w:commentRangeEnd /g)).toHaveLength(1);
+    expect(documento.match(/<w:commentReference /g)).toHaveLength(1);
+    const comentarios = await zip.file('word/comments.xml')!.async('string');
+    expect(comentarios.match(/<w:comment /g)).toHaveLength(1);
+  });
+});

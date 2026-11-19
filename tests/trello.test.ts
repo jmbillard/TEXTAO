@@ -86,13 +86,13 @@ function falsos(opcoes: { falharCard?: boolean; falharChecklist?: boolean } = {}
 }
 
 /** O Postgres do Teable, respondendo pelo nome da tabela na consulta. */
-function banco(opcoes: { duplicado?: boolean; redatorNovo?: boolean; sessao?: boolean } = {}) {
+function banco(opcoes: { duplicado?: boolean; redatorNovo?: boolean; redatorSemId?: boolean; sessao?: boolean } = {}) {
   const consultas: { sql: string; params: unknown[] }[] = [];
   const consultar = async (sql: string, params: unknown[] = []) => {
     consultas.push({ sql, params });
     if (sql.includes('"producao"')) return opcoes.duplicado ? [{ claquete: 'Festa_Na_Praca_19_11_SP' }] : [{ claquete: 'Outra 19/11' }];
     if (sql.includes('MAX("customField_ID")')) return [{ id: 'cRedator' }];
-    if (sql.includes('"redatores"')) return opcoes.redatorNovo ? [] : [{ redator: 'Ana Lima', redator_ID: 'opAna', customField_ID: 'cRedator' }];
+    if (sql.includes('"redatores"')) return opcoes.redatorNovo ? [] : opcoes.redatorSemId ? [{ id: 'recAna', redator: 'Ana Lima', redator_ID: null, customField_ID: null }] : [{ redator: 'Ana Lima', redator_ID: 'opAna', customField_ID: 'cRedator' }];
     if (sql.includes('"editores"')) return [{ editor: 'Bruno Regis', editor_ID: 'opBruno', customField_ID: 'cEditor' }];
     if (sql.includes('"atracoes"'))
       return opcoes.sessao
@@ -150,9 +150,8 @@ describe('envio para o Trello', () => {
     expect(r.card).toEqual({ id: 'card1', url: 'https://trello.com/c/CARD1' });
     expect(r.avisos).toEqual([]);
     const card = pedidos.find((p) => p.url.pathname === '/1/cards' && p.metodo === 'POST')!;
-    expect(card.url.searchParams.get('idList')).toBe('listaSP');
-    expect(card.url.searchParams.get('name')).toBe('Festa na Praça 19/11 SP');
-    expect(card.url.searchParams.get('desc')).toContain('`A GRANDE FESTA`, `SÁBADO`');
+    expect(card.corpo).toMatchObject({ idList: 'listaSP', name: 'Festa na Praça 19/11 SP' });
+    expect((card.corpo as { desc: string }).desc).toContain('`A GRANDE FESTA`, `SÁBADO`');
     expect(card.url.searchParams.get('key')).toBe('k');
     // a checklist leva só o texto de cada arte
     expect(pedidos.filter((p) => p.url.pathname === '/1/checklists/checklist1/checkItems').map((p) => p.url.searchParams.get('name'))).toEqual(['A GRANDE FESTA', 'SÁBADO']);
@@ -190,11 +189,22 @@ describe('envio para o Trello', () => {
     expect(campoPut(pedidos, 'cRedator')).toEqual({ idValue: 'opNovoRedator' });
   });
 
+  it('redator que já está na tabela sem opção no Trello: cria a opção e completa a mesma linha', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, consultar: banco({ redatorSemId: true }).consultar });
+    await t.enviar({ meta, artes: ['X'] });
+    expect(pedidos.find((p) => p.url.pathname === '/1/customField/cRedator/options')!.corpo).toEqual({ pos: 'bottom', value: { text: 'Ana Lima' } });
+    const patch = pedidos.find((p) => p.metodo === 'PATCH')!;
+    expect(patch.url.pathname).toBe('/api/table/tblRedatores/record/recAna');
+    expect(patch.corpo).toMatchObject({ record: { fields: { redator_ID: 'opNovoRedator', customField_ID: 'cRedator' } } });
+    expect(pedidos.some((p) => p.url.pathname === '/api/table/tblRedatores/record' && p.metodo === 'POST')).toBe(false);
+  });
+
   it('sessão de filmes: liga ao card do filme, copia membros e os campos combinados', async () => {
     const { buscar, pedidos } = falsos();
     const t = criarTrello(ENV, { buscar, consultar: banco({ sessao: true }).consultar });
     await t.enviar({ meta: { ...meta, claquete: 'Sessão da Tarde 19/11', praca: 'G5' }, artes: ['X'], original: { ...original, nome: 'sessao.pdf', tipo: 'application/pdf' } });
-    expect(pedidos.find((p) => p.url.pathname === '/1/cards' && p.metodo === 'POST')!.url.searchParams.get('idList')).toBe('listaG5');
+    expect((pedidos.find((p) => p.url.pathname === '/1/cards' && p.metodo === 'POST')!.corpo as { idList: string }).idList).toBe('listaG5');
     expect(pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments' && p.url.searchParams.get('url'))!.url.searchParams.get('url')).toBe('https://trello.com/c/cardFilme');
     expect(pedidos.find((p) => p.metodo === 'PUT' && p.url.pathname === '/1/cards/card1')!.url.searchParams.get('idMembers')).toBe('m1,m2');
     expect(campoPut(pedidos, 'cComplexidade')).toEqual({ idValue: 'opMedia' });
@@ -208,7 +218,7 @@ describe('envio para o Trello', () => {
   it('VT vai para a lista de VT; sem o card, o envio falha; passo secundário que falha vira aviso', async () => {
     const um = falsos();
     await criarTrello(ENV, { buscar: um.buscar, consultar: banco().consultar }).enviar({ meta: { ...meta, claquete: 'Vt Festa 19/11 SP' }, artes: [] });
-    expect(um.pedidos.find((p) => p.url.pathname === '/1/cards')!.url.searchParams.get('idList')).toBe('listaVT');
+    expect((um.pedidos.find((p) => p.url.pathname === '/1/cards')!.corpo as { idList: string }).idList).toBe('listaVT');
 
     const semCard = falsos({ falharCard: true });
     await expect(criarTrello(ENV, { buscar: semCard.buscar, consultar: banco().consultar }).enviar({ meta, artes: [] })).rejects.toThrow(/401/);
@@ -279,6 +289,24 @@ describe('rotas do envio', () => {
     // de novo, sem pedir: recusa
     expect((await ana('/api/roteiros/rot-trello-1/trello', { method: 'POST', body: '{}' })).status).toBe(409);
     expect(recebidos).toHaveLength(1);
+  });
+
+  it('versão nova que substitui a anterior herda o card do Trello', async () => {
+    const doc = { type: 'doc', content: [] };
+    await ana('/api/roteiros/rot-nova-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Festa 19/11' }, doc }, nArtes: 0 }) });
+    const r = await (await ana('/api/roteiros/rot-nova-1/trello', { method: 'POST', body: JSON.stringify({ herdarDe: 'rot-trello-1' }) })).json();
+    expect(r.herdado).toBe(true);
+    await ana('/api/roteiros/rot-trello-1', { method: 'DELETE' });
+    const lista = await (await ana('/api/roteiros')).json();
+    expect(lista.find((x: { id: string }) => x.id === 'rot-nova-1').trello).toMatchObject({ estado: 'enviado', url: 'https://trello.com/c/C1' });
+    // de novo, sem pedir: continua recusado, agora para a versão nova
+    expect((await ana('/api/roteiros/rot-nova-1/trello', { method: 'POST', body: '{}' })).status).toBe(409);
+  });
+
+  it('original grande demais recebe 413 com a mensagem, sem derrubar a conexão', async () => {
+    const r = await ana('/api/roteiros/rot-nova-1/original', { method: 'PUT', body: new Uint8Array(31 * 1024 * 1024), headers: { 'content-type': 'application/pdf' } });
+    expect(r.status).toBe(413);
+    expect((await r.json()).erro).toMatch(/grande demais/);
   });
 
   it('erro fica registrado e pode tentar de novo', async () => {

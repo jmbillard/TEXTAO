@@ -246,6 +246,12 @@ export async function baixarOriginal(id: string): Promise<Blob> {
   return r.blob();
 }
 
+/** Versão nova que substitui outra: herda o card do Trello que a anterior já tinha. */
+export async function herdarEnvio(novo: string, anterior: string) {
+  if (armazenamento.tipo !== 'servidor') return;
+  await pedir(`/api/roteiros/${encodeURIComponent(novo)}/trello`, { method: 'POST', body: JSON.stringify({ herdarDe: anterior }) });
+}
+
 /** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
 export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const saida = exportar(roteiro);

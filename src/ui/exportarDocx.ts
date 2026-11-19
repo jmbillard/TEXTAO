@@ -23,17 +23,28 @@ const semBordas = { top: semBorda, bottom: semBorda, left: semBorda, right: semB
 const rotulo = (t: string) => new TextRun({ text: t.toUpperCase(), font: FONTE, size: 15, color: CINZA, bold: true, characterSpacing: 20 });
 const texto = (t: string, extra: object = {}) => new TextRun({ text: t, font: FONTE, size: 22, ...extra });
 
-/** Arte com observação vira comentário do Word: o id da arte → o número do comentário. */
-type Comentarios = Map<string, number>;
+/** Arte com observação vira comentário do Word: o id da marca da arte → o número do comentário.
+    `usados`: cada comentário é preso a um trecho só (a primeira vez que a arte aparece), senão o Word
+    acusa o arquivo de corrompido quando a mesma arte atravessa dois parágrafos. */
+interface Comentarios {
+  ids: Map<string, number>;
+  usados: Set<string>;
+}
 
-function paragrafo(p: NoJSON, comentarios: Comentarios = new Map()): Paragraph {
+function paragrafo(p: NoJSON, comentarios: Comentarios = { ids: new Map(), usados: new Set() }): Paragraph {
   const filhos: (TextRun | CommentRangeStart | CommentRangeEnd)[] = [];
   let etqAnterior: unknown = null;
   const nos = (p.content ?? []).filter((n) => n.type === 'hardBreak' || (n.type === 'text' && n.text));
   const idArte = (n?: NoJSON) => String(n?.marks?.find((m) => m.type === 'arte')?.attrs?.id ?? '');
+  const abertos = new Set<string>();
   for (const [k, n] of nos.entries()) {
-    const comentario = comentarios.get(idArte(n));
-    if (comentario !== undefined && idArte(nos[k - 1]) !== idArte(n)) filhos.push(new CommentRangeStart(comentario));
+    const id = idArte(n);
+    const comentario = comentarios.ids.get(id);
+    if (comentario !== undefined && idArte(nos[k - 1]) !== id && !comentarios.usados.has(id)) {
+      filhos.push(new CommentRangeStart(comentario));
+      comentarios.usados.add(id);
+      abertos.add(id);
+    }
     if (n.type === 'hardBreak') {
       filhos.push(new TextRun({ break: 1 }));
       continue;
@@ -54,8 +65,10 @@ function paragrafo(p: NoJSON, comentarios: Comentarios = new Map()): Paragraph {
         color: etq ? (CORES[String(etq.tipo)] ?? CINZA) : undefined,
       }),
     );
-    if (comentario !== undefined && idArte(nos[k + 1]) !== idArte(n))
+    if (comentario !== undefined && abertos.has(id) && idArte(nos[k + 1]) !== id) {
       filhos.push(new CommentRangeEnd(comentario), new TextRun({ children: [new CommentReference(comentario)] }));
+      abertos.delete(id);
+    }
   }
   return new Paragraph({ children: filhos, spacing: { after: 140, line: 320 } });
 }
@@ -140,9 +153,16 @@ export async function gerarDocx(saida: Saida): Promise<Blob> {
   const r = saida.roteiro;
   const autores = autoresDe(saida);
   // a observação de cada arte vira comentário do Word, preso ao trecho sublinhado
-  const comentarios: Comentarios = new Map();
-  const notas = saida.artes.filter((a) => a.observacao.trim());
-  notas.forEach((a, i) => comentarios.set(a.id, i));
+  // as observações saem das próprias marcas do texto: o id da marca é o mesmo em todos os pedaços da arte
+  const notas: { id: string; observacao: string }[] = [];
+  const visitar = (n: NoJSON) => {
+    for (const m of n.marks ?? [])
+      if (m.type === 'arte' && String(m.attrs?.obs ?? '').trim() && !notas.some((x) => x.id === String(m.attrs?.id)))
+        notas.push({ id: String(m.attrs?.id), observacao: String(m.attrs?.obs).trim() });
+    (n.content ?? []).forEach(visitar);
+  };
+  visitar(saida.blocos);
+  const comentarios: Comentarios = { ids: new Map(notas.map((a, i) => [a.id, i])), usados: new Set() };
   const data = r.dataExibicao ? r.dataExibicao.split('-').reverse().join('/') : '';
   const duracao = r.duracaoAlvoSeg ? `${r.duracaoModo === 'max' ? 'no máximo ' : 'fechar com '}${r.duracaoAlvoSeg}''` : '';
   const campos: [string, string][] = [

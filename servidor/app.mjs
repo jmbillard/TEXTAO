@@ -190,18 +190,22 @@ const lerCorpo = (req) =>
     req.on('error', erro);
   });
 
+/** Corpo binário (o arquivo original). Grande demais: o resto é lido e descartado, sem derrubar a conexão,
+    para a resposta 413 chegar a quem enviou. */
 const lerBinario = (req, limite) =>
   new Promise((ok, erro) => {
+    const grandeDemais = () => Object.assign(new Error('Arquivo grande demais para guardar (até 30 MB).'), { status: 413 });
+    if (Number(req.headers['content-length']) > limite) {
+      req.resume();
+      return erro(grandeDemais());
+    }
     const partes = [];
     let total = 0;
     req.on('data', (p) => {
       total += p.length;
-      if (total > limite) {
-        erro(Object.assign(new Error('grande demais'), { status: 413 }));
-        req.destroy();
-      } else partes.push(p);
+      if (total <= limite) partes.push(p);
     });
-    req.on('end', () => ok(Buffer.concat(partes)));
+    req.on('end', () => (total > limite ? erro(grandeDemais()) : ok(Buffer.concat(partes))));
     req.on('error', erro);
   });
 
@@ -331,6 +335,24 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     });
     salas.set(id, sala);
     return sala;
+  }
+  /** Copia os metadados para o documento compartilhado do roteiro (na memória, se a sala estiver aberta, ou no banco). */
+  function metaNoYdoc(id, meta) {
+    const sala = salas.get(id);
+    let doc = sala?.doc;
+    if (!doc) {
+      const guardado = q.ydoc.get(id)?.ydoc;
+      if (!guardado) return;
+      doc = new Y.Doc();
+      Y.applyUpdate(doc, guardado);
+    }
+    const m = doc.getMap('meta');
+    if (!m.size) return; // sala que nunca recebeu metadados: o editor os preenche ao abrir
+    doc.transact(() => {
+      for (const [k, v] of Object.entries(meta)) if (JSON.stringify(m.get(k)) !== JSON.stringify(v)) m.set(k, v);
+      for (const k of [...m.keys()]) if (!(k in meta)) m.delete(k);
+    });
+    if (!sala) q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
   }
   function fecharSala(id, motivo, filtro = () => true) {
     const sala = salas.get(id);
@@ -585,8 +607,15 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, e ? { estado: e.estado, url: e.url, erro: e.erro, avisos: JSON.parse(e.avisos || '[]'), em: e.em, por: e.por_nome } : null);
     }
     if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
-    if (!trello.ligado) return json(res, 503, { erro: 'O envio para o Trello não está configurado neste servidor.' });
     const corpo = (await lerCorpo(req)) ?? {};
+    // versão nova que substitui outra: o card que a anterior já tinha passa a ser desta
+    if (typeof corpo.herdarDe === 'string') {
+      if (!ID_VALIDO.test(corpo.herdarDe) || !acesso(corpo.herdarDe, eu).editar) return json(res, 404, { erro: 'Roteiro anterior não encontrado.' });
+      const e = q.envio.get(corpo.herdarDe);
+      if (e) q.marcarEnvio.run(id, e.estado, e.card_id, e.url, e.erro, e.avisos, e.em, null, e.por_nome);
+      return json(res, 200, { herdado: !!e });
+    }
+    if (!trello.ligado) return json(res, 503, { erro: 'O envio para o Trello não está configurado neste servidor.' });
     const antes = q.envio.get(id);
     if (antes?.estado === 'enviado' && !corpo.deNovo) return json(res, 409, { erro: 'Este roteiro já está no Trello.', url: antes.url });
     if (enviando.has(id)) return json(res, 409, { erro: 'Este roteiro já está sendo enviado.' });
@@ -790,6 +819,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         // texto trocado por fora da edição simultânea (versão nova do arquivo): o estado guardado da sala
         // ficaria por cima dele na próxima abertura; sem ninguém na sala, ele é descartado
         if (atual && motivo === 'substituiu a versão anterior' && !salas.get(id)?.conexoes.size) q.limparYdoc.run(id);
+        // metadados mudados por fora do editor (atração reconhecida num cadastro, "manter as duas"): sem ninguém
+        // na sala, o estado guardado dela recebe a mudança, senão a próxima abertura traria os valores antigos de volta
+        else if (atual && atual.meta !== meta && !salas.get(id)?.conexoes.size) metaNoYdoc(id, r.meta);
         versionar(id, eu, meta, doc, motivo, agora);
         db.exec('COMMIT');
       } catch (e) {

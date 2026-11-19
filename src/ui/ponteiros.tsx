@@ -109,6 +109,9 @@ export function Ponteiros({ lista, resolver }: { lista: PonteiroDeAlguem[]; reso
         const alvo = exato ? null : document.querySelector<HTMLElement>(`[data-ancora="${CSS.escape(a.p.ancora)}"]`);
         if (!exato && !alvo) return null;
         const r = alvo?.getBoundingClientRect();
+        // âncora escondida aqui (dentro de "Já foram ao ar" fechado, por exemplo): o ponteiro não aparece no canto
+        // (o navegador mantém o tamanho do que está num <details> fechado; checkVisibility diz se aparece de fato)
+        if (alvo && ((r && !r.width && !r.height) || alvo.checkVisibility?.({ contentVisibilityAuto: true }) === false)) return null;
         const x = exato ? exato.x : r!.left + a.p.fx * r!.width;
         const y = exato ? exato.y : r!.top + a.p.fy * r!.height;
         return (

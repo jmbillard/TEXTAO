@@ -420,3 +420,45 @@ describe('cor de destaque', () => {
     expect((await (await ana('/api/cores')).json()).some((c: { email: string }) => c.email === 'ana.lima@empresa.com')).toBe(false);
   });
 });
+
+describe('vocabulário depois de um cadastro', () => {
+  it('renovar espera a leitura em curso e lê de novo, com o que acabou de entrar', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarVocabulario } = await import('../servidor/vocabulario.mjs');
+    let atracoes = [{ fields: { key: 'SHOW', atracoes: 'Show da Noite' } }];
+    let soltar: () => void = () => {};
+    let leituras = 0;
+    const buscar = (async () => {
+      const lista = atracoes; // a leitura enxerga a tabela como estava quando começou
+      if (leituras++ === 0) await new Promise<void>((ok) => (soltar = ok)); // só a primeira demora
+      return { ok: true, json: async () => ({ records: lista }) };
+    }) as unknown as typeof fetch;
+    const v = criarVocabulario({ TEABLE_URL: 'http://teable', TEABLE_TOKEN: 't', TEABLE_ATRACOES: 'tblA' }, buscar);
+    const lendo = v.ler();
+    await new Promise((ok) => setTimeout(ok, 10)); // a primeira leitura já pediu a tabela (sem a atração nova)
+    atracoes = [...atracoes, { fields: { key: 'FESTA', atracoes: 'Festa na Praça' } }];
+    const renovado = v.renovar();
+    await new Promise((ok) => setTimeout(ok, 10));
+    soltar();
+    await lendo;
+    expect((await renovado).programas.map((p: { nome: string }) => p.nome)).toContain('Festa na Praça');
+  });
+});
+
+describe('metadados mudados por fora do editor', () => {
+  it('chegam ao documento compartilhado guardado, para a próxima abertura não trazer os antigos', async () => {
+    const ana = como('ana.lima@empresa.com');
+    await salvar(ana, 'roteiro-meta-1', { roteiro: { ...roteiro('A').roteiro, meta: { titulo: 'T', programa: '', substitui: 'outro' } }, nArtes: 0 });
+    // alguém já abriu o roteiro: há um estado guardado da sala, com os metadados de então
+    const d = new Y.Doc();
+    d.getMap('meta').set('titulo', 'T');
+    d.getMap('meta').set('programa', '');
+    d.getMap('meta').set('substitui', 'outro');
+    db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?').run(Y.encodeStateAsUpdate(d), 'roteiro-meta-1');
+    // cadastro reconheceu a atração e "manter as duas" tirou o substitui, tudo por fora do editor
+    await salvar(ana, 'roteiro-meta-1', { roteiro: { ...roteiro('A').roteiro, meta: { titulo: 'T', programa: 'Festa na Praça' } }, nArtes: 0 });
+    const guardado = new Y.Doc();
+    Y.applyUpdate(guardado, db.prepare('SELECT ydoc FROM roteiros WHERE id = ?').get('roteiro-meta-1').ydoc);
+    expect(guardado.getMap('meta').toJSON()).toEqual({ titulo: 'T', programa: 'Festa na Praça' });
+  });
+});

@@ -11,12 +11,18 @@ export async function abrirPg(url) {
   return new pg.Pool({ connectionString: url, max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000, statement_timeout: 5000 });
 }
 
-export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copia = null) {
-  // tolera aspas, espaços e "esquema.tabela" numa variável só, como aparece no Postgres
-  const limpo = (v) => String(v || '').trim().replace(/^["'`]+|["'`]+$/g, '').replace(/"/g, '');
-  let esquema = limpo(env.TEABLE_PG_ESQUEMA);
-  let tabela = limpo(env.TEABLE_PG_PAUTA);
+/** Tolera aspas, espaços e "esquema.tabela" numa variável só, como aparece no Postgres. */
+export const nomeLimpoPg = (v) => String(v || '').trim().replace(/^["'`]+|["'`]+$/g, '').replace(/"/g, '');
+/** O esquema (TEABLE_PG_ESQUEMA) e uma tabela, já limpos; "esquema.tabela" na tabela vale pelos dois. */
+export function nomesDoPg(env, tabelaBruta) {
+  let esquema = nomeLimpoPg(env.TEABLE_PG_ESQUEMA);
+  let tabela = nomeLimpoPg(tabelaBruta);
   if (tabela.includes('.')) [esquema, tabela] = [tabela.split('.')[0] || esquema, tabela.split('.').pop()];
+  return { esquema, tabela };
+}
+
+export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copia = null) {
+  const { esquema, tabela } = nomesDoPg(env, env.TEABLE_PG_PAUTA);
   const comBanco = !!(env.TEABLE_PG_URL && NOME.test(esquema) && NOME.test(tabela));
   let banco = null;
 
@@ -46,9 +52,11 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
     return porChave.size;
   }
   let relogio = null;
+  let primeira = null;
   if (comBanco && copia) {
     const renovar = () => copiarPauta().catch((e) => console.error('[pauta] não consegui copiar a pauta do Postgres:', e.message));
-    setTimeout(renovar, 3000).unref?.();
+    primeira = setTimeout(renovar, 3000);
+    primeira.unref?.();
     relogio = setInterval(renovar, 10 * 60 * 1000);
     relogio.unref?.();
   }
@@ -72,7 +80,13 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
 
   return {
     comBanco,
-    parar: () => clearInterval(relogio),
+    parar: () => {
+      clearTimeout(primeira);
+      clearInterval(relogio);
+      const b = banco;
+      banco = null;
+      return b?.end?.().catch(() => {});
+    },
     /** Quem está com a claquete. A grafia só vem quando a chave bate inteira. */
     async achar(chave) {
       chave = String(chave || '').trim().slice(0, 200);

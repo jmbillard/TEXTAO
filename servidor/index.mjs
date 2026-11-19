@@ -52,6 +52,7 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
       !c.pg.producao && 'TEABLE_PG_ARTE (sem conferir duplicados)',
       !c.teable.producao && 'TEABLE_ARTE_PRODUCAO (sem registrar a entrada)',
       !c.sftp.host && 'SFTP_HOST (sem cópia no OneDrive)',
+      c.pgInvalidos.length && `nomes inválidos no Postgres (${c.pgInvalidos.join(', ')}): use só letras, números e _`,
     ].filter(Boolean);
     console.log(`[trello] envio ligado${sem.length ? `; sem ${sem.join(', ')}` : ''}`);
   }

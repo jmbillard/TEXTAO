@@ -4,7 +4,7 @@
    o card do filme. Depois registra a entrada na tabela de produção da arte do Teable.
    Tudo o que é ID do quadro e das tabelas vem do ambiente: este repositório é público. */
 
-import { abrirPg } from './pauta.mjs';
+import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { gerarPdf } from './pdf.mjs';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
@@ -97,15 +97,16 @@ export function configDoTrello(env) {
     },
     pg: {
       url: env.TEABLE_PG_URL || '',
-      esquema: env.TEABLE_PG_ESQUEMA || '',
-      producao: env.TEABLE_PG_ARTE || '',
-      redatores: env.TEABLE_PG_REDATORES || '',
-      editores: env.TEABLE_PG_EDITORES || '',
-      atracoes: env.TEABLE_PG_ATRACOES || '',
-      prioridade: env.TEABLE_PG_PRIORIDADE || '',
-      filmes: env.TEABLE_PG_FILMES_ESQUEMA || '',
-      sessoes: env.TEABLE_PG_SESSOES || '',
-      logBot: env.TEABLE_PG_LOG_BOT || '',
+      // limpos do mesmo jeito que a pauta (aspas, espaços, "esquema.tabela")
+      esquema: nomesDoPg(env, '').esquema,
+      producao: nomeLimpoPg(env.TEABLE_PG_ARTE),
+      redatores: nomeLimpoPg(env.TEABLE_PG_REDATORES),
+      editores: nomeLimpoPg(env.TEABLE_PG_EDITORES),
+      atracoes: nomeLimpoPg(env.TEABLE_PG_ATRACOES),
+      prioridade: nomeLimpoPg(env.TEABLE_PG_PRIORIDADE),
+      filmes: nomeLimpoPg(env.TEABLE_PG_FILMES_ESQUEMA),
+      sessoes: nomeLimpoPg(env.TEABLE_PG_SESSOES),
+      logBot: nomeLimpoPg(env.TEABLE_PG_LOG_BOT),
     },
     sftp: {
       host: env.SFTP_HOST || '',
@@ -117,8 +118,13 @@ export function configDoTrello(env) {
     endereco: (env.PROMEIRO_URL || '').replace(/\/+$/, ''),
   };
   c.ligado = !!(c.chave && c.token && c.listas.padrao);
-  // nomes que entram no SQL: só letras, números e _
-  for (const k of Object.keys(c.pg)) if (k !== 'url' && c.pg[k] && !NOME_SQL.test(c.pg[k])) c.pg[k] = '';
+  // nomes que entram no SQL: só letras, números e _; o que sobrar inválido é avisado na partida
+  c.pgInvalidos = [];
+  for (const k of Object.keys(c.pg))
+    if (!['url', 'pgInvalidos'].includes(k) && c.pg[k] && !NOME_SQL.test(c.pg[k])) {
+      c.pgInvalidos.push(k);
+      c.pg[k] = '';
+    }
   return c;
 }
 
@@ -194,32 +200,54 @@ export function criarTrello(env, deps = {}) {
     return r.json().catch(() => ({}));
   }
 
+  async function teableAtualizar(tabelaId, recId, campos) {
+    if (!c.teable.url || !c.teable.token || !tabelaId || !recId) return null;
+    const r = await buscar(`${c.teable.url}/api/table/${encodeURIComponent(tabelaId)}/record/${encodeURIComponent(recId)}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${c.teable.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ fieldKeyType: 'name', typecast: true, record: { fields: campos } }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) throw new Error(`Teable respondeu ${r.status} ao atualizar ${tabelaId}`);
+    return r.json().catch(() => ({}));
+  }
+
   /* ---------- o que o n8n descobria no Postgres ---------- */
 
   /** Já entrou hoje na produção da arte (pelo PROMeiro ou pelo upload antigo)? */
   async function jaEntrouHoje(claquete) {
     if (!t.producao) return false;
-    const linhas = await sql(`SELECT "claquete" FROM ${t.producao} WHERE "data_entrada"::date >= CURRENT_DATE`);
+    // "hoje" é o dia de Brasília, não o do relógio UTC do banco
+    const linhas = await sql(
+      `SELECT "claquete" FROM ${t.producao} WHERE ("data_entrada" AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date`,
+    );
     return linhas.some((l) => mesmaClaquete(l.claquete, claquete));
   }
 
   async function acharRedator(nome) {
     if (!nome) return null;
     let campoId = c.campos.redator;
+    let existente = null;
     if (t.redatores) {
+      // a linha que já tem opção no Trello vem primeiro
       const [l] = await sql(
-        `SELECT "redator", "redator_ID", "customField_ID" FROM ${t.redatores} WHERE UPPER("user") = UPPER($1) OR UPPER("redator") = UPPER($1) LIMIT 1`,
+        `SELECT "__id" AS id, "redator", "redator_ID", "customField_ID" FROM ${t.redatores}
+         WHERE UPPER("user") = UPPER($1) OR UPPER("redator") = UPPER($1)
+         ORDER BY ("redator_ID" IS NULL OR "redator_ID" = '') LIMIT 1`,
         [nome],
       );
       if (l?.redator_ID) return { idValue: l.redator_ID, nome: l.redator, campo: l.customField_ID || campoId };
       if (!campoId) campoId = (await sql(`SELECT MAX("customField_ID") AS id FROM ${t.redatores}`))[0]?.id || '';
+      if (l) existente = l;
     }
     if (!campoId) return null;
-    // redator novo: vira opção no campo do Trello e linha na tabela de redatores
-    const op = await trello('POST', `/customField/${campoId}/options`, { corpo: { pos: 'bottom', value: { text: nome } } });
+    // sem opção no Trello: cria a opção; a linha que já existia é completada, senão nasce uma nova
+    const nomeNoCard = existente?.redator || nome;
+    const op = await trello('POST', `/customField/${campoId}/options`, { corpo: { pos: 'bottom', value: { text: nomeNoCard } } });
     if (!op?.id) return null;
-    await teableCriar(c.teable.redatores, { user: nome, redator: nome, redator_ID: op.id }).catch(() => {});
-    return { idValue: op.id, nome, campo: campoId };
+    if (existente?.id) await teableAtualizar(c.teable.redatores, existente.id, { redator_ID: op.id, customField_ID: campoId }).catch(() => {});
+    else await teableCriar(c.teable.redatores, { user: nome, redator: nome, redator_ID: op.id, customField_ID: campoId }).catch(() => {});
+    return { idValue: op.id, nome: nomeNoCard, campo: campoId };
   }
 
   async function acharEditor(nome) {
@@ -312,7 +340,7 @@ export function criarTrello(env, deps = {}) {
 
     if (await tentar('conferir a produção de hoje', () => jaEntrouHoje(claquete))) return { duplicado: true, avisos };
 
-    const hoje = agora.toISOString().slice(0, 10);
+    const hoje = agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
     const chave = chaveN8n(claquete);
     const praca = ['SP', 'RJ', 'G5'].includes(m.praca) ? m.praca : 'G5';
     const vt = /\bVt\b/i.test(claquete) || /\bVt\b/i.test(r.original?.nome ?? '');
@@ -346,7 +374,8 @@ export function criarTrello(env, deps = {}) {
     ].join('\n');
 
     // o card é o que importa: sem ele, o envio falhou
-    const card = await trello('POST', '/cards', { consulta: { idList: lista, name: claquete, desc } });
+    // no corpo, não no endereço: roteiro com muitas artes estouraria o tamanho da URL
+    const card = await trello('POST', '/cards', { corpo: { idList: lista, name: claquete, desc } });
     if (!card?.id) throw new Error('O Trello não devolveu o card criado.');
 
     await tentar('criar a checklist', async () => {
