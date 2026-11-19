@@ -122,7 +122,7 @@ async function pedir<T>(caminho: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(caminho, { ...init, credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos, ...init.headers } });
   if (!r.ok) {
     const erro = (await r.json().catch(() => null)) as { erro?: string } | null;
-    throw Object.assign(new Error(erro?.erro ?? 'O servidor não respondeu.'), { status: r.status });
+    throw Object.assign(new Error(erro?.erro ?? `O servidor não respondeu (${r.status}${r.status === 524 ? ', demorou demais' : ''}).`), { status: r.status });
   }
   return (await r.json()) as T;
 }

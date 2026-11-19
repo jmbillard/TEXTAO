@@ -1381,3 +1381,4 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .trello-lado.feito a { color: var(--ok); font-weight: 600; }
 .trello-lado.feito .botao-texto { margin-left: auto; }
 .trello-lado.desligado .botao:disabled { opacity: 0.45; cursor: not-allowed; }
+.ficha-trello .motivo-trello { color: inherit; opacity: 0.8; font-size: 12px; }

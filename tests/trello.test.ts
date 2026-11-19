@@ -314,7 +314,7 @@ describe('rotas do envio', () => {
     await ana('/api/roteiros/rot-trello-2', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Outra 20/11' }, doc }, nArtes: 0 }) });
     falhar = true;
     const r = await ana('/api/roteiros/rot-trello-2/trello', { method: 'POST', body: '{}' });
-    expect(r.status).toBe(502);
+    expect(r.status).toBe(422);
     expect((await (await ana('/api/roteiros/rot-trello-2/trello')).json())).toMatchObject({ estado: 'erro', erro: 'Trello respondeu 401' });
     falhar = false;
     expect((await (await ana('/api/roteiros/rot-trello-2/trello', { method: 'POST', body: '{}' })).json()).estado).toBe('enviado');

@@ -301,7 +301,7 @@ function FichaTrello({ r, mandar }: { r: Resumo; mandar: () => Promise<void> }) 
   return (
     <span className={`ficha-trello some ${e?.estado === 'erro' ? 'erro' : 'falta'}`}>
       <Icone nome="quadro" tam={14} />
-      {e?.estado === 'erro' ? <span title={e.erro}>Não foi para o Trello</span> : <span>{revisar.length ? 'Vai para o Trello depois da revisão' : 'Ainda não foi para o Trello'}</span>}
+      {e?.estado === 'erro' ? <span title={e.erro}>Não foi para o Trello{e.erro && <small className="motivo-trello">: {e.erro}</small>}</span> : <span>{revisar.length ? 'Vai para o Trello depois da revisão' : 'Ainda não foi para o Trello'}</span>}
       <button className="botao-texto" onClick={() => (revisar.length ? setConferindo(true) : void mandar())}>
         {e?.estado === 'erro' ? 'Tentar de novo' : 'Mandar agora'}
       </button>

@@ -644,7 +644,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const erro = e instanceof Error ? e.message : String(e);
       console.error(`[trello] ${id}: ${erro}`);
       q.marcarEnvio.run(id, 'erro', null, null, erro.slice(0, 500), null, new Date().toISOString(), eu.email, eu.nome);
-      return json(res, 502, { estado: 'erro', erro });
+      return json(res, 422, { estado: 'erro', erro });
     } finally {
       enviando.delete(id);
       avisarFila('alterado', id, eu);
@@ -689,7 +689,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       }
       return json(res, 405, { erro: 'Método não permitido.' });
     } catch (e) {
-      return json(res, e.status && e.status < 600 ? e.status : 502, { erro: e instanceof Error ? e.message : 'Não consegui falar com o Teable.' });
+      return json(res, e.status && e.status < 600 ? e.status : 422, { erro: e instanceof Error ? e.message : 'Não consegui falar com o Teable.' });
     }
   }
 

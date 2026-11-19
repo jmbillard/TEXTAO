@@ -56,7 +56,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
     });
     if (!r.ok) {
       const msg = (await r.text().catch(() => '')).slice(0, 200);
-      throw Object.assign(new Error(r.status === 403 || r.status === 401 ? 'O token do Teable não tem permissão para gravar nesta tabela.' : `O Teable respondeu ${r.status}: ${msg}`), { status: 502 });
+      throw Object.assign(new Error(r.status === 403 || r.status === 401 ? 'O token do Teable não tem permissão para gravar nesta tabela.' : `O Teable respondeu ${r.status}: ${msg}`), { status: 422 });
     }
     return r.status === 204 ? {} : r.json().catch(() => ({}));
   }
@@ -74,7 +74,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
   async function criar(tabela, fields) {
     const r = await teable('POST', `/table/${encodeURIComponent(tabela)}/record`, { fieldKeyType: 'name', typecast: true, records: [{ fields }] });
     const rec = r.records?.[0];
-    if (!rec?.id) throw Object.assign(new Error('O Teable não devolveu o registro criado.'), { status: 502 });
+    if (!rec?.id) throw Object.assign(new Error('O Teable não devolveu o registro criado.'), { status: 422 });
     return rec;
   }
   const apagarRegistro = (tabela, id) => teable('DELETE', `/table/${encodeURIComponent(tabela)}/record/${encodeURIComponent(id)}`);
@@ -84,7 +84,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
     if (!trello.chave || !trello.token || !campo) return null;
     const url = `${trello.api}/customField/${encodeURIComponent(campo)}/options?key=${encodeURIComponent(trello.chave)}&token=${encodeURIComponent(trello.token)}`;
     const r = await buscar(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pos: 'bottom', value: { text: nome } }), signal: AbortSignal.timeout(15_000) });
-    if (!r.ok) throw Object.assign(new Error(`O Trello respondeu ${r.status} ao criar a opção.`), { status: 502 });
+    if (!r.ok) throw Object.assign(new Error(`O Trello respondeu ${r.status} ao criar a opção.`), { status: 422 });
     return (await r.json())?.id ?? null;
   }
   /** O campo do Trello (REDATOR/EDITOR): do ambiente ou de quem já está cadastrado. */
