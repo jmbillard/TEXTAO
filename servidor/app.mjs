@@ -406,6 +406,13 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   const PONTEIROS = 'ponteiros';
   cache.assinar(PONTEIROS, paraTodos);
   const num = (v) => (Number.isFinite(v) ? Math.max(-0.5, Math.min(1.5, v)) : null);
+  // onde está o ponteiro de cada um: quem chega (ou reconecta) já vê quem está parado na tela, sem esperar que mexa
+  const ultimosPonteiros = new Map(); // email → aviso
+  cache.assinar(PONTEIROS, (dado) => {
+    if (dado?.tipo !== 'ponteiro') return;
+    if (dado.saiu) ultimosPonteiros.delete(dado.por);
+    else ultimosPonteiros.set(dado.por, dado);
+  });
 
   function entrarNaFila(ws, eu) {
     naFila.set(ws, { eu, vivo: true });
@@ -422,10 +429,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const fy = num(m.fy);
       const fora = m.saiu === true || fx === null || fy === null || typeof m.ancora !== 'string';
       void cache
-        .publicar(PONTEIROS, fora ? { tipo: 'ponteiro', por: eu.email, nome: eu.nome, saiu: true } : { tipo: 'ponteiro', por: eu.email, nome: eu.nome, ancora: m.ancora.slice(0, 80), fx, fy, ...(/^[a-z-]{1,24}$/.test(m.cursor ?? '') ? { cursor: m.cursor } : {}) })
+        .publicar(PONTEIROS, fora ? { tipo: 'ponteiro', por: eu.email, nome: eu.nome, saiu: true } : { tipo: 'ponteiro', por: eu.email, nome: eu.nome, ancora: m.ancora.slice(0, 80), fx, fy, ...(m.parado === true ? { parado: true } : {}), ...(/^[a-z-]{1,24}$/.test(m.cursor ?? '') ? { cursor: m.cursor } : {}) })
         .catch(() => {});
     });
-    // quem chega na fila já vê quem está revisando o quê
+    // quem chega na fila já vê os ponteiros parados e quem está revisando o quê
+    for (const aviso of ultimosPonteiros.values())
+      if (aviso.por !== eu.email && ws.readyState === 1 && (aberto || !roteiroDoAviso(aviso) || acesso(roteiroDoAviso(aviso), eu).ler)) ws.send(JSON.stringify(aviso));
     for (const id of salas.keys()) {
       const pessoas = quemNoRoteiro(id);
       if (pessoas.length && ws.readyState === 1) ws.send(JSON.stringify({ tipo: 'no-roteiro', id, pessoas }));

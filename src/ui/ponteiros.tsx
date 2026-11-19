@@ -13,6 +13,8 @@ export interface PosicaoPonteiro {
   pos?: number;
   dx?: number;
   dy?: number;
+  /** A pessoa saiu da janela, trocou de aba ou deixou o mouse fora da página: o ponteiro fica onde estava, apagadinho. */
+  parado?: boolean;
 }
 export interface PonteiroDeAlguem {
   email: string;
@@ -54,10 +56,14 @@ export function useMeuPonteiro(enviar: ((p: PosicaoPonteiro | null) => void) | n
       if (falta <= 0) mandar();
       else prazo.current = setTimeout(mandar, falta);
     };
+    // sair da janela não tira o ponteiro da tela dos colegas: ele fica parado onde estava, apagadinho,
+    // e volta ao normal no próximo movimento. Só some quando a pessoa sai da página.
     const sair = () => {
       clearTimeout(prazo.current);
-      pendente.current = null;
-      enviar(null);
+      if (!pendente.current) return;
+      pendente.current = { ...pendente.current, parado: true };
+      ultimo.current = Date.now();
+      enviar(pendente.current);
     };
     const visibilidade = () => document.hidden && sair();
     window.addEventListener('pointermove', mover, { passive: true });
@@ -75,7 +81,8 @@ export function useMeuPonteiro(enviar: ((p: PosicaoPonteiro | null) => void) | n
   }, [enviar]);
 }
 
-/** Desenha os ponteiros. Acompanha a rolagem e o tamanho da janela; quem fica parado 20 s some. */
+/** Desenha os ponteiros. Acompanha a rolagem e o tamanho da janela; quem fica parado (20 s sem mexer,
+    ou fora da janela) continua no lugar, só mais apagado. */
 export function Ponteiros({ lista, resolver }: { lista: PonteiroDeAlguem[]; resolver?: (p: PosicaoPonteiro) => { x: number; y: number } | null }) {
   const [, redesenhar] = useState(0);
   const [agora, setAgora] = useState(Date.now());
@@ -104,7 +111,7 @@ export function Ponteiros({ lista, resolver }: { lista: PonteiroDeAlguem[]; reso
         const chave = `${a.p.ancora}|${a.p.fx}|${a.p.fy}|${a.p.pos}|${a.p.dx}|${a.p.dy}`;
         const visto = vistos.current.get(a.email);
         if (!visto || visto.chave !== chave) vistos.current.set(a.email, { chave, quando: Date.now() });
-        const parado = agora - (vistos.current.get(a.email)?.quando ?? agora) > 20_000;
+        const parado = !!a.p.parado || agora - (vistos.current.get(a.email)?.quando ?? agora) > 20_000;
         const exato = resolver?.(a.p);
         const alvo = exato ? null : document.querySelector<HTMLElement>(`[data-ancora="${CSS.escape(a.p.ancora)}"]`);
         if (!exato && !alvo) return null;

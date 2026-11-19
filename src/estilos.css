@@ -972,7 +972,9 @@ kbd {
   position: absolute; left: 34px; top: 42px; padding: 2px 8px; border-radius: 999px; background: var(--cor); color: #fff;
   font: 600 11.5px/1.5 var(--sans); white-space: nowrap; box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
 }
-.ponteiro.parado { opacity: 0.35; }
+.ponteiro { transition: transform 0.09s linear, opacity 0.6s; }
+.ponteiro.parado { opacity: 0.6; }
+.ponteiro.parado svg { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .ponteiro { transition: none; } }
 
 /* quem está revisando / quem revisou: orelha dobrada, claquete selecionada e rubrica à mão */

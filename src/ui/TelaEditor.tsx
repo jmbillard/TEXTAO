@@ -314,6 +314,8 @@ function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor:
   const [lista, setLista] = useState<PonteiroDeAlguem[]>([]);
   useEffect(() => {
     const ler = () => setLista(ponteirosDaSala(sala, eu));
+    // quem já estava na sala, parado, aparece logo ao entrar (sem esperar que mexa)
+    ler();
     sala.provedor.awareness.on('change', ler);
     return () => sala.provedor.awareness.off('change', ler);
   }, [sala, eu]);

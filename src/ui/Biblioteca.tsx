@@ -444,7 +444,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         return setPonteiros((atual) => {
           const novo = { ...atual };
           if (e.saiu || !e.ancora) delete novo[e.por];
-          else novo[e.por] = { email: e.por, nome: e.nome, cor: corDe(e.por), cursor: e.cursor, p: { ancora: e.ancora, fx: e.fx ?? 0, fy: e.fy ?? 0 } };
+          else novo[e.por] = { email: e.por, nome: e.nome, cor: corDe(e.por), cursor: e.cursor, p: { ancora: e.ancora, fx: e.fx ?? 0, fy: e.fy ?? 0, parado: !!e.parado } };
           return novo;
         });
       }
@@ -457,7 +457,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
       if (e.tipo === 'reconectou') {
         // a conexão caiu: o que se sabia de quem estava onde pode estar velho; o servidor manda tudo de novo
         setNoRoteiro({});
-        setPonteiros({});
+        setPonteiros({}); // o servidor manda de novo onde cada um está
       }
       if (e.tipo === 'presenca') {
         return setColegas(e.pessoas.filter((p) => p.email !== eu));
