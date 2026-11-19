@@ -25,6 +25,8 @@ services:
       - ACCESS_AUD=${ACCESS_AUD:-}
       # 1 = sem login: cada pessoa se identifica com nome e e-mail no próprio app. Só para demonstração.
       - PERFIL_LOCAL=${PERFIL_LOCAL:-0}
+      # aberto (padrão): todos veem e editam todos os roteiros. privado: cada um só vê os seus e os que recebeu.
+      - ACESSO=${ACESSO:-aberto}
       # quantos backups diários manter
       - BACKUPS=${BACKUPS:-14}
       # Opcional: nomes da casa vindos do Teable (só leitura). Endereço do Teable na rede Docker

@@ -14,6 +14,8 @@ export interface Resumo {
   dono: Pessoa | null;
   publico: boolean;
   podeEditar?: boolean;
+  /** Servidor em modo aberto: todos veem e editam tudo. */
+  aberto?: boolean;
   /** Compartilhado com pessoas específicas. */
   compartilhado?: boolean;
   meu: boolean;

@@ -169,6 +169,13 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
        WHERE dono_email = ? OR publico = 1 OR id IN (SELECT roteiro_id FROM compartilhamentos WHERE email = ?)
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
+    listaTudo: db.prepare(
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em,
+              EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
+              COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar
+       FROM roteiros
+       ORDER BY atualizado_em DESC LIMIT 2000`,
+    ),
     um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
@@ -194,13 +201,17 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
     compartilhar: db.prepare('INSERT OR REPLACE INTO compartilhamentos (roteiro_id, email, pode_editar) VALUES (?, ?, ?)'),
   };
 
+  // Por enquanto a ferramenta é da Arte: todo mundo que entra vê e edita todos os roteiros.
+  // ACESSO=privado volta ao modelo em que cada um só vê os seus e os que recebeu.
+  const aberto = env.ACESSO !== 'privado';
+
   /** O que esta pessoa pode fazer com o roteiro: o dono tudo; quem recebeu, ler ou editar; os demais, ler se for de todos. */
   const acesso = (id, eu) => {
     const linha = q.um.get(id);
     if (!linha) return { linha: null, meu: false, editar: false, ler: false };
     const meu = linha.dono_email === eu.email;
     const parte = meu ? null : q.temAcesso.get(id, eu.email);
-    const editar = meu || !!parte?.pode_editar;
+    const editar = aberto || meu || !!parte?.pode_editar;
     return { linha, meu, editar, ler: editar || !!parte || !!linha.publico };
   };
 
@@ -330,6 +341,7 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
     criadoPor: { nome: l.dono_nome, email: l.dono_email },
     publico: !!l.publico,
     meu: l.dono_email === eu.email,
+    ...(aberto ? { aberto: true } : {}),
     // só o dono sabe com quem compartilhou
     ...(l.dono_email === eu.email ? { compartilhadoCom: q.compartilhadoCom.all(l.id).map((c) => ({ email: c.email, editar: !!c.pode_editar })) } : {}),
   });
@@ -369,11 +381,12 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
       return json(
         res,
         200,
-        q.lista.all(eu.email, eu.email, eu.email).map((l) => ({
+        (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).map((l) => ({
           id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, atualizadoEm: l.atualizado_em,
           dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
           compartilhado: !!l.compartilhado,
-          podeEditar: l.dono_email === eu.email || !!l.pode_editar,
+          podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
+          ...(aberto ? { aberto: true } : {}),
         })),
       );
     }

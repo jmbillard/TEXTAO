@@ -714,6 +714,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               <button className="botao-icone" title="Histórico de versões" aria-label="Histórico de versões" aria-expanded={!!historico} onClick={abrirHistorico}>
                 <Icone nome="historico" tam={18} />
               </button>
+              {!inicial.aberto && (
               <div className="compartilhar">
                 <button className={`visibilidade ${publico || pessoas.length ? 'publico' : ''}`} aria-haspopup="dialog" aria-expanded={compartilhando} onClick={() => setCompartilhando((v) => !v)}>
                   <Icone nome={publico ? 'olho' : pessoas.length ? 'pessoas' : 'cadeado'} tam={14} traco={2} />
@@ -721,6 +722,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
                 </button>
                 {compartilhando && <Compartilhar publico={publico} pessoas={pessoas} mudar={compartilhar} />}
               </div>
+              )}
             </>
           )}
           <div className="exportar">
@@ -749,7 +751,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
           <article className="folha">
             {!sou && !leitura && (
               <div className="faixa-leitura">
-                <span>Roteiro de <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Você pode editar junto.</span>
+                <span>Subido por <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Todos editam juntos.</span>
               </div>
             )}
             {leitura && (

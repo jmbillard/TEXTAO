@@ -16,6 +16,14 @@ export const dataCurta = (iso: string) => {
   return m ? `${m[3]}/${m[2]}` : '';
 };
 
+/** "sáb, 11/07": o dia da semana ajuda a bater o olho na exibição. */
+export const dataCurtaComDia = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return '';
+  const dia = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][new Date(+m[1], +m[2] - 1, +m[3]).getDay()];
+  return `${dia}, ${m[3]}/${m[2]}`;
+};
+
 export function haQuantoTempo(iso: string, agora = Date.now()): string {
   const s = Math.max(0, Math.round((agora - new Date(iso).getTime()) / 1000));
   if (s < 60) return 'agora há pouco';

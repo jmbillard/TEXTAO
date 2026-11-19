@@ -26,7 +26,7 @@ const roteiro = (texto: string, publico = false) => ({
 const salvar = (quem: typeof ana, id: string, corpo: object) => quem(`/api/roteiros/${id}`, { method: 'PUT', body: JSON.stringify(corpo) });
 
 beforeAll(async () => {
-  const app = criarApp({ db, env: {} });
+  const app = criarApp({ db, env: { ACESSO: 'privado' } });
   servidor = createServer(app);
   servidor.on('upgrade', app.upgrade);
   await new Promise<void>((ok) => servidor.listen(0, ok));
@@ -265,5 +265,29 @@ describe('pauta direto no Postgres do Teable', () => {
     expect(await pauta.achar('FESTA 26 10')).toEqual({ editor: 'Pela Api', claquete: 'Festa 26/10' });
     // nome de tabela que não é um identificador simples não entra na consulta
     expect(criarPauta({ ...env, TEABLE_PG_PAUTA: 'x"; drop' }, vocabulario, abrir).comBanco).toBe(false);
+  });
+});
+
+describe('modo aberto (padrão)', () => {
+  it('todos veem e editam todos os roteiros; só quem subiu apaga', async () => {
+    const banco = abrirBanco(':memory:');
+    const app = criarApp({ db: banco, env: {} });
+    const s = createServer(app);
+    await new Promise<void>((ok) => s.listen(0, ok));
+    const url = `http://localhost:${(s.address() as { port: number }).port}`;
+    const pedir = (email: string) => (caminho: string, init: RequestInit = {}) =>
+      fetch(url + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json', ...init.headers } });
+    const [a, b] = [pedir('ana@empresa.com'), pedir('beto@empresa.com')];
+    try {
+      expect((await a('/api/roteiros/aberto-0001', { method: 'PUT', body: JSON.stringify(roteiro('da Ana')) })).status).toBeLessThan(300);
+      const lista = (await (await b('/api/roteiros')).json()) as { id: string; meu: boolean; podeEditar: boolean; aberto: boolean }[];
+      expect(lista).toMatchObject([{ id: 'aberto-0001', meu: false, podeEditar: true, aberto: true }]);
+      expect(await (await b('/api/roteiros/aberto-0001')).json()).toMatchObject({ meu: false, podeEditar: true, aberto: true });
+      expect((await b('/api/roteiros/aberto-0001', { method: 'PUT', body: JSON.stringify(roteiro('mexido pelo Beto')) })).status).toBeLessThan(300);
+      expect((await b('/api/roteiros/aberto-0001', { method: 'DELETE' })).status).toBeGreaterThanOrEqual(400);
+      expect((await a('/api/roteiros/aberto-0001', { method: 'DELETE' })).status).toBeLessThan(300);
+    } finally {
+      s.close();
+    }
   });
 });

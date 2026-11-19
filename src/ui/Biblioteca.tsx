@@ -5,7 +5,7 @@ import { novoId, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
-import { dataCurta, haQuantoTempo, plural } from './util';
+import { dataCurtaComDia, haQuantoTempo, plural } from './util';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
 const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
@@ -133,7 +133,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   };
 
   const termo = semAcento(busca.trim());
-  const temPublicos = (roteiros ?? []).some((r) => !r.meu);
+  const aberto = (roteiros ?? []).some((r) => r.aberto);
+  const temPublicos = !aberto && (roteiros ?? []).some((r) => !r.meu);
   const visiveis = (roteiros ?? [])
     .filter((r) => filtro === 'todos' || (filtro === 'meus' ? r.meu : !r.meu))
     .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo, r.dono?.nome].join(' ')).includes(termo));
@@ -224,11 +225,12 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                     <button className="item-abrir" onClick={() => abrir(r.id)}>
                       <span className="item-titulo">{r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete'}</span>
                       <span className="item-sub">
-                        {[r.meta.programa, r.meta.praca, dataCurta(r.meta.dataExibicao), r.meta.redator].filter(Boolean).join(' · ') || 'Rascunho'}
-                        {!r.meu && r.dono && <span className="etiqueta-lista">de {r.dono.nome}{r.podeEditar ? ' · você edita' : ''}</span>}
-                        {r.meu && (r.publico || r.compartilhado) && <span className="etiqueta-lista">{r.publico ? 'todos leem' : 'compartilhado'}</span>}
+                        {r.meta.redator || 'sem redator'}
+                        {!aberto && !r.meu && r.dono && <span className="etiqueta-lista">de {r.dono.nome}{r.podeEditar ? ' · você edita' : ''}</span>}
+                        {!aberto && r.meu && (r.publico || r.compartilhado) && <span className="etiqueta-lista">{r.publico ? 'todos leem' : 'compartilhado'}</span>}
                       </span>
                     </button>
+                    <span className="item-exibe">{r.meta.dataExibicao ? dataCurtaComDia(r.meta.dataExibicao) : ''}</span>
                     <span className="item-artes">{plural(nArtes, 'arte', 'artes')}</span>
                     <span className="item-quando">{haQuantoTempo(r.atualizadoEm)}</span>
                     {apagando === r.id ? (

@@ -114,6 +114,8 @@ export interface Roteiro {
   publico?: boolean;
   /** E-mails de quem pode ler, além do dono. Só o dono recebe esta lista. */
   compartilhadoCom?: { email: string; editar: boolean }[];
+  /** O servidor está em modo aberto: todos veem e editam todos os roteiros. */
+  aberto?: boolean;
   /** Outra pessoa é a dona, mas autorizou esta a editar. */
   podeEditar?: boolean;
   /** O documento compartilhado ainda está vazio e cabe a esta sessão preenchê-lo. */

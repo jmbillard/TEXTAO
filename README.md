@@ -62,6 +62,7 @@ Variáveis da stack (todas opcionais):
 | `ACCESS_TEAM_DOMAIN` | Ex.: `minhaequipe.cloudflareaccess.com`. Com `ACCESS_AUD`, o servidor confere a assinatura do Cloudflare Access em cada pedido |
 | `ACCESS_AUD` | *Application Audience (AUD) Tag* da aplicação do Access |
 | `PERFIL_LOCAL` | `1` libera o uso sem login: cada pessoa informa nome e e-mail no app. Só para demonstração, porque qualquer um pode informar qualquer e-mail |
+| `ACESSO` | `aberto` (padrão): todos veem e editam todos os roteiros; só quem subiu apaga. `privado`: cada um só vê os seus e os que recebeu |
 | `BACKUPS` | Quantos backups diários manter (padrão 14) |
 | `REDE_TEABLE` | Nome da rede Docker do Teable, à qual o container se junta (padrão `teable-network`; ela precisa existir) |
 | `TEABLE_URL` | Opcional. Endereço do Teable nessa rede (ex.: `http://NOME-DO-CONTAINER:3000`) |
