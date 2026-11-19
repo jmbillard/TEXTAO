@@ -9,6 +9,8 @@ export type EventoFila =
   | { tipo: 'no-roteiro'; id: string; pessoas: { nome: string; email: string }[] }
   /** Ponteiro do mouse de quem está na fila; `saiu` quando ele deixa a tela. */
   | { tipo: 'ponteiro'; por: string; nome: string; ancora?: string; fx?: number; fy?: number; cursor?: string; saiu?: boolean }
+  /** Alguém trocou a cor de destaque no perfil ('' = voltou para a sorteada). */
+  | { tipo: 'cor'; por: string; cor: string }
   /** A conexão voltou depois de cair: pode ter perdido avisos, então vale recarregar. */
   | { tipo: 'reconectou' };
 

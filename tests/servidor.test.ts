@@ -409,3 +409,14 @@ describe('cópia local do Teable', () => {
     }
   });
 });
+
+describe('cor de destaque', () => {
+  it('cada um escolhe a sua; inválida é recusada; vazio volta para a sorteada', async () => {
+    const ana = (c: string, init: RequestInit = {}) => fetch(base + c, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana.lima@empresa.com', 'content-type': 'application/json' } });
+    expect((await ana('/api/eu/cor', { method: 'PUT', body: JSON.stringify({ cor: '#2E7D32' }) })).status).toBe(200);
+    expect(await (await ana('/api/cores')).json()).toContainEqual({ email: 'ana.lima@empresa.com', cor: '#2e7d32' });
+    expect((await ana('/api/eu/cor', { method: 'PUT', body: JSON.stringify({ cor: 'red; x' }) })).status).toBe(400);
+    await ana('/api/eu/cor', { method: 'PUT', body: JSON.stringify({ cor: '' }) });
+    expect((await (await ana('/api/cores')).json()).some((c: { email: string }) => c.email === 'ana.lima@empresa.com')).toBe(false);
+  });
+});

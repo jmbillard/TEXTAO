@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { armazenamento, mandarParaTrello, temCadastros, temTrello, type Resumo, type TipoCadastro } from '../dados/armazenamento';
-import { corDe } from '../dados/colaboracao';
+import { armazenamento, escolherMinhaCor, mandarParaTrello, temCadastros, temTrello, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
@@ -59,10 +59,9 @@ const iniciais = (nome: string) =>
     .toUpperCase();
 
 /** O desenho do meu ponteiro, como os colegas o veem. Times só por escolha. */
-function EscolhaDeCursor({ email }: { email: string }) {
+function EscolhaDeCursor({ email, cor }: { email: string; cor: string }) {
   const [atual, setAtual] = useState(() => meuCursor(email));
   useEffect(() => setAtual(meuCursor(email)), [email]);
-  const cor = corDe(email);
   return (
     <div className="escolha-cursor">
       <div className="rotulo">Seu cursor, para os colegas</div>
@@ -80,6 +79,27 @@ function EscolhaDeCursor({ email }: { email: string }) {
             }}
           >
             <Cursor id={c.id} cor={cor} tamanho={34} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A minha cor de destaque: o grifo na claquete, a orelha, o "tá vendo", o cursor e a edição junto. */
+function EscolhaDeCor({ email, cor, mudar }: { email: string; cor: string; mudar: (cor: string) => void }) {
+  const primeiroNome = (email.split('@')[0].split(/[._-]/)[0] || 'você').replace(/^./, (c) => c.toUpperCase());
+  return (
+    <div className="escolha-cor">
+      <div className="rotulo">Sua cor de destaque</div>
+      <div className="amostra-cor" style={{ '--cor': cor } as React.CSSProperties} aria-hidden="true">
+        <b>FESTA 19/11</b>
+        <span>{primeiroNome} tá vendo</span>
+      </div>
+      <div className="escolha-cor-grade" role="radiogroup" aria-label="Sua cor de destaque">
+        {PALETA.map((p) => (
+          <button key={p.cor} type="button" role="radio" aria-checked={cor === p.cor} title={p.nome} aria-label={p.nome} style={{ '--cor': p.cor } as React.CSSProperties} onClick={() => mudar(p.cor)}>
+            <Icone nome="certo" tam={13} traco={3} />
           </button>
         ))}
       </div>
@@ -120,7 +140,10 @@ function EscolhaDeTema() {
 }
 
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
-function Perfil({ identidade, definirPerfil, cadastros }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void }) {
+function Perfil({ identidade, definirPerfil, cadastros, aoMudarCor }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; aoMudarCor?: () => void }) {
+  const meuEmail = identidade?.email ?? '';
+  const [minhaCor, setMinhaCor] = useState(() => corDe(meuEmail));
+  useEffect(() => setMinhaCor(corDe(meuEmail)), [meuEmail]);
   const [aberto, setAberto] = useState(false);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
@@ -185,7 +208,18 @@ function Perfil({ identidade, definirPerfil, cadastros }: Pick<Props, 'identidad
             </button>
           )}
           <EscolhaDeTema />
-          <EscolhaDeCursor email={identidade?.email ?? ''} />
+          {meuEmail && (
+            <EscolhaDeCor
+              email={meuEmail}
+              cor={minhaCor}
+              mudar={(c) => {
+                setMinhaCor(c);
+                aoMudarCor?.();
+                void escolherMinhaCor(meuEmail, c).catch(() => {});
+              }}
+            />
+          )}
+          <EscolhaDeCursor email={meuEmail} cor={minhaCor} />
         </div>
       )}
     </div>
@@ -381,6 +415,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   const [noRoteiro, setNoRoteiro] = useState<Record<string, { nome: string; email: string }[]>>({});
   const [ponteiros, setPonteiros] = useState<Record<string, PonteiroDeAlguem>>({});
   const [fila, setFila] = useState<Fila | null>(null);
+  // muda quando alguém troca a cor de destaque: as fichas e os ponteiros se redesenham
+  const [, setCores] = useState(0);
   const eu = identidade?.email;
   useEffect(() => {
     let prazo: ReturnType<typeof setTimeout> | undefined;
@@ -389,6 +425,10 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
       prazo = setTimeout(() => void carregar(), 350);
     };
     const f = ouvirFila((e) => {
+      if (e.tipo === 'cor') {
+        registrarCores([{ email: e.por, cor: e.cor }]);
+        return setCores((n) => n + 1);
+      }
       if (e.tipo === 'ponteiro') {
         if (e.por === eu) return;
         return setPonteiros((atual) => {
@@ -621,7 +661,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
             </div>
           )}
-          <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} />
+          <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} aoMudarCor={() => setCores((n) => n + 1)} />
         </header>
 
         {EXEMPLOS.length > 0 && (

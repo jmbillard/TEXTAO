@@ -1006,7 +1006,7 @@ kbd {
 }
 
 .rubrica { display: inline-block; margin-left: 12px; font: 600 19px/1 Caveat, cursive; letter-spacing: 0; color: var(--tinta3); white-space: nowrap; transform: rotate(-3deg) translateY(-1px); transform-origin: left; }
-.rubrica.agora { color: var(--cor); clip-path: inset(0 100% 0 0); animation: escrever-nome 0.65s 1.15s steps(14, end) forwards; }
+.rubrica.agora { color: color-mix(in srgb, var(--cor) var(--orelha-letra), #fff); clip-path: inset(0 100% 0 0); animation: escrever-nome 0.65s 1.15s steps(14, end) forwards; }
 @keyframes escrever-nome { to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) {
   .ficha { transition: none; }
@@ -1307,3 +1307,17 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 @media (prefers-reduced-motion: reduce) {
   .item-cad.rascunho, .folha-rascunho::before, .seta-form path, .item-cad.rascunho .nota, .abas-cad .sub path, .ibeam-cad, .item-cad.chegou { animation: none; }
 }
+
+/* ---------- cor de destaque, no perfil ---------- */
+.escolha-cor { border-top: 1px solid var(--regua); margin-top: 12px; padding-top: 12px; }
+.amostra-cor { display: flex; align-items: baseline; gap: 10px; margin: 8px 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--neutro); }
+.amostra-cor b { font: 700 14px var(--mono); color: var(--tinta); background: color-mix(in srgb, var(--cor) 24%, transparent); border-radius: 2px; padding: 0 3px; transition: background 0.25s; }
+.amostra-cor span { font: 600 17px Caveat, cursive; color: color-mix(in srgb, var(--cor) var(--orelha-letra), #fff); transition: color 0.25s; }
+.escolha-cor-grade { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.escolha-cor-grade button { aspect-ratio: 1; border-radius: 50%; border: 0; padding: 0; background: var(--cor); color: #fff; display: grid; place-items: center; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%); transition: transform 0.15s var(--suave), box-shadow 0.15s; }
+.escolha-cor-grade button svg { opacity: 0; transform: scale(0.6); transition: opacity 0.15s, transform 0.2s var(--suave); }
+.escolha-cor-grade button:hover { transform: scale(1.08); }
+.escolha-cor-grade button[aria-checked='true'] { box-shadow: 0 0 0 2px var(--papel), 0 0 0 4px var(--cor); }
+.escolha-cor-grade button[aria-checked='true'] svg { opacity: 1; transform: none; }
+.escolha-cor-grade button:focus-visible { outline: 2px solid var(--tinta); outline-offset: 3px; }

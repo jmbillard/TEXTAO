@@ -106,6 +106,8 @@ export function abrirBanco(caminho) {
   if (!tem('compartilhamentos', 'pode_editar')) db.exec('ALTER TABLE compartilhamentos ADD COLUMN pode_editar INTEGER NOT NULL DEFAULT 0');
   if (!tem('roteiros', 'ydoc')) db.exec('ALTER TABLE roteiros ADD COLUMN ydoc BLOB');
   // quem mexeu por último no roteiro depois que ele chegou: aparece na fila como "revisado por"
+  // a cor de destaque que a pessoa escolheu (grifo, orelha, cursor); vazio = a sorteada pelo e-mail
+  if (!tem('usuarios', 'cor')) db.exec('ALTER TABLE usuarios ADD COLUMN cor TEXT');
   if (!tem('roteiros', 'revisado_email')) db.exec('ALTER TABLE roteiros ADD COLUMN revisado_email TEXT; ALTER TABLE roteiros ADD COLUMN revisado_nome TEXT');
   return db;
 }
@@ -265,6 +267,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
        ON CONFLICT (email) DO UPDATE SET nome = excluded.nome, visto_em = excluded.visto_em`,
     ),
     usuarios: db.prepare('SELECT email, nome FROM usuarios WHERE email <> ? ORDER BY nome COLLATE NOCASE LIMIT 1000'),
+    cores: db.prepare("SELECT email, cor FROM usuarios WHERE cor IS NOT NULL AND cor <> '' LIMIT 2000"),
+    mudarCor: db.prepare('UPDATE usuarios SET cor = ? WHERE email = ?'),
     compartilhadoCom: db.prepare('SELECT email, pode_editar FROM compartilhamentos WHERE roteiro_id = ? ORDER BY email'),
     temAcesso: db.prepare('SELECT pode_editar FROM compartilhamentos WHERE roteiro_id = ? AND email = ?'),
     limparCompartilhamento: db.prepare('DELETE FROM compartilhamentos WHERE roteiro_id = ?'),
@@ -674,6 +678,17 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     if (!eu) return json(res, 401, { erro: 'Entre com a sua conta para ver os roteiros.' });
 
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
+    if (caminho === '/api/cores') return json(res, 200, q.cores.all());
+    if (caminho === '/api/eu/cor') {
+      if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
+      const cor = String((await lerCorpo(req))?.cor ?? '').toLowerCase();
+      if (cor && !/^#[0-9a-f]{6}$/.test(cor)) return json(res, 400, { erro: 'Cor inválida.' });
+      q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
+      q.mudarCor.run(cor || null, eu.email);
+      // os colegas com a fila aberta passam a ver a cor nova na hora
+      void cache.publicar(FILA, { tipo: 'cor', por: eu.email, cor }).catch(() => {});
+      return json(res, 200, { ok: true, cor });
+    }
     if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));

@@ -1,5 +1,6 @@
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { exportar } from '../modelo/exportar';
+import { registrarCores } from './colaboracao';
 import type { Meta, NoJSON, Pessoa, Roteiro } from '../modelo/tipos';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
@@ -221,6 +222,12 @@ export interface Cadastros {
 }
 export type TipoCadastro = 'atracoes' | 'redatores' | 'editores';
 
+/** Minha cor de destaque, para os colegas ('' volta para a sorteada). */
+export async function escolherMinhaCor(email: string, cor: string) {
+  registrarCores([{ email, cor }]);
+  if (armazenamento.tipo === 'servidor') await pedir('/api/eu/cor', { method: 'PUT', body: JSON.stringify({ cor }) });
+}
+
 /** Há servidor para guardar os cadastros (o Teable em si é conferido na tela). */
 export const temCadastros = () => armazenamento.tipo === 'servidor';
 
@@ -272,6 +279,8 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     if (d.email) {
       armazenamento = noServidor;
       trelloLigado = !!d.trello;
+      // as cores que cada um escolheu, para a orelha, o grifo e os cursores saírem certos
+      await pedir<{ email: string; cor: string }[]>('/api/cores').then(registrarCores, () => {});
       // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable
       await atualizarVocabulario();
       return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false };
