@@ -14,6 +14,8 @@ services:
       # a rede do Teable no mesmo Docker, para ler as tabelas sem sair para a internet
       teable:
         aliases: [roteirista]
+    depends_on:
+      - redis
     volumes:
       # banco (roteirista.db) e backups diários (backup/) ficam aqui; use disco local, não pasta de rede
       # o volume e o banco guardam o nome antigo de propósito: renomear faria o app subir vazio
@@ -27,6 +29,8 @@ services:
       - PERFIL_LOCAL=${PERFIL_LOCAL:-0}
       # aberto (padrão): todos veem, editam e apagam todos os roteiros. privado: cada um só vê os seus e os que recebeu.
       - ACESSO=${ACESSO:-aberto}
+      # Cache e avisos da fila ao vivo. Sem Redis (ou com ele fora do ar) o app segue em memória.
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       # quantos backups diários manter
       - BACKUPS=${BACKUPS:-14}
       # Opcional: nomes da casa vindos do Teable (só leitura). Endereço do Teable na rede Docker
@@ -51,6 +55,13 @@ services:
       - TEABLE_CAMPO_CHAVE=${TEABLE_CAMPO_CHAVE:-}
       - TEABLE_CAMPO_ATRACAO=${TEABLE_CAMPO_ATRACAO:-}
       - TEABLE_CAMPO_REDATOR=${TEABLE_CAMPO_REDATOR:-}
+
+  # Só cache: nada aqui precisa sobreviver a um reinício (o banco dos roteiros é o SQLite, no volume acima).
+  redis:
+    image: redis:7.4-alpine
+    container_name: promeiro-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
 
   # Opcional: túnel do Cloudflare só para este app.
   # Ative com o perfil "tunel" (COMPOSE_PROFILES=tunel) e informe TUNNEL_TOKEN.

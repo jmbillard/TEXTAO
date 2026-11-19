@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Falha } from '../App';
 import { armazenamento, type Resumo } from '../dados/armazenamento';
+import { corDe } from '../dados/colaboracao';
+import { ouvirFila } from '../dados/eventos';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
@@ -182,6 +184,27 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
     void carregar();
   }, [chegou]);
 
+  // fila ao vivo: o que os colegas sobem aparece aqui na hora, com a mesma animação
+  const [deOutros, setDeOutros] = useState<string[]>([]);
+  const [colegas, setColegas] = useState<{ nome: string; email: string }[]>([]);
+  const eu = identidade?.email;
+  useEffect(() => {
+    let prazo: ReturnType<typeof setTimeout> | undefined;
+    const recarregar = () => {
+      clearTimeout(prazo);
+      prazo = setTimeout(() => void carregar(), 350);
+    };
+    const parar = ouvirFila((e) => {
+      if (e.tipo === 'presenca') return setColegas(e.pessoas.filter((p) => p.email !== eu));
+      if (e.tipo === 'criado' && e.por !== eu) setDeOutros((d) => [...d, e.id]);
+      recarregar();
+    });
+    return () => {
+      parar();
+      clearTimeout(prazo);
+    };
+  }, [eu]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const apagar = async (r: Resumo) => {
     await armazenamento.apagar(r.id);
     setApagando(null);
@@ -202,6 +225,15 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         <header className="bib-topo">
           <h1 className="bib-marca"><Marca /></h1>
           <span className="espaco" />
+          {colegas.length > 0 && (
+            <div className="na-fila" title={`Também com a fila aberta: ${colegas.map((c) => c.nome).join(', ')}`}>
+              {colegas.slice(0, 5).map((c) => (
+                <span key={c.email} className="presente" style={{ background: corDe(c.email) }}>{iniciais(c.nome)}</span>
+              ))}
+              {colegas.length > 5 && <span className="presente mais">+{colegas.length - 5}</span>}
+              <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
+            </div>
+          )}
           <Perfil identidade={identidade} definirPerfil={definirPerfil} />
         </header>
 
@@ -269,7 +301,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                   <Ficha
                     key={r.id}
                     r={r}
-                    nova={novos.includes(r.id)}
+                    nova={novos.includes(r.id) || deOutros.includes(r.id)}
                     ordem={k}
                     abrir={() => abrir(r.id)}
                     acoes={

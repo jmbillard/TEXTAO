@@ -12,6 +12,7 @@ import * as cod from 'lib0/encoding';
 import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
+import { criarCache } from './cache.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -157,9 +158,9 @@ const lerCorpo = (req) =>
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null }) {
-  const vocabulario = criarVocabulario(env);
-  const pauta = criarPauta(env, vocabulario);
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env) }) {
+  const vocabulario = criarVocabulario(env, fetch, cache);
+  const pauta = criarPauta(env, vocabulario, undefined, cache);
   const q = {
     lista: db.prepare(
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em,
@@ -264,6 +265,43 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
     for (const [ws, con] of sala.conexoes) if (filtro(con)) ws.close(4001, motivo);
   }
 
+  /* ---------- fila ao vivo ---------- */
+
+  // Quem está com a fila aberta recebe um aviso quando um roteiro chega, muda ou sai.
+  // Com Redis, o aviso passa por ele e chega a quem estiver em qualquer instância.
+  const naFila = new Map(); // ws → { eu, vivo }
+  const FILA = 'fila';
+  const pessoasNaFila = () => [...new Map([...naFila.values()].map(({ eu }) => [eu.email, { nome: eu.nome, email: eu.email }])).values()];
+  const paraTodos = (dado) => {
+    const msg = JSON.stringify(dado);
+    for (const ws of naFila.keys()) if (ws.readyState === 1) ws.send(msg);
+  };
+  cache.assinar(FILA, paraTodos);
+  const avisarFila = (tipo, id, eu) => void cache.publicar(FILA, { tipo, id, por: eu.email }).catch(() => {});
+  // túneis e proxies derrubam conexão parada: um ping a cada 25 s mantém a fila viva e descarta quem sumiu
+  const batimento = setInterval(() => {
+    for (const [ws, c] of naFila) {
+      if (!c.vivo) ws.terminate();
+      else {
+        c.vivo = false;
+        ws.ping();
+      }
+    }
+  }, 25_000);
+  batimento.unref?.();
+  function entrarNaFila(ws, eu) {
+    naFila.set(ws, { eu, vivo: true });
+    ws.on('pong', () => {
+      const c = naFila.get(ws);
+      if (c) c.vivo = true;
+    });
+    ws.on('close', () => {
+      naFila.delete(ws);
+      paraTodos({ tipo: 'presenca', pessoas: pessoasNaFila() });
+    });
+    paraTodos({ tipo: 'presenca', pessoas: pessoasNaFila() });
+  }
+
   const wss = new WebSocketServer({ noServer: true });
   async function upgrade(req, socket, head) {
     const recusar = (codigo) => {
@@ -271,7 +309,13 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
       socket.destroy();
     };
     try {
-      const m = /^\/api\/colab\/([\w-]{6,80})$/.exec(new URL(req.url, 'http://x').pathname);
+      const caminho = new URL(req.url, 'http://x').pathname;
+      if (caminho === '/api/eventos') {
+        const eu = await identificar(req, env);
+        if (!eu) return recusar('401 Unauthorized');
+        return wss.handleUpgrade(req, socket, head, (ws) => entrarNaFila(ws, eu));
+      }
+      const m = /^\/api\/colab\/([\w-]{6,80})$/.exec(caminho);
       if (!m) return recusar('404 Not Found');
       const eu = await identificar(req, env);
       if (!eu) return recusar('401 Unauthorized');
@@ -420,6 +464,7 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
       if (!atual || !(meu || aberto)) return json(res, 404, { erro: 'Roteiro não encontrado.' });
       q.apagar.run(id);
       fecharSala(id, 'apagado');
+      avisarFila('apagado', id, eu);
       return json(res, 200, { ok: true });
     }
     if (req.method === 'PUT') {
@@ -462,6 +507,9 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
       }
       // mudou quem pode o quê: os convidados reconectam e passam pela conferência de novo
       if (mudouAcesso) fecharSala(id, 'acesso alterado', (con) => con.eu.email !== eu.email);
+      // a fila só precisa saber quando muda o que ela mostra; o texto sendo digitado não conta
+      if (!atual) avisarFila('criado', id, eu);
+      else if (atual.meta !== meta || atual.n_artes !== nArtes) avisarFila('alterado', id, eu);
       return json(res, 200, { ok: true, atualizadoEm: agora });
     }
     return json(res, 405, { erro: 'Método não permitido.' });
@@ -491,8 +539,14 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
       if (!e.status) console.error(e);
     }
   };
-  /** Ligue em `server.on('upgrade', app.upgrade)` para a edição simultânea. */
+  /** Ligue em `server.on('upgrade', app.upgrade)` para a edição simultânea e a fila ao vivo. */
   app.upgrade = upgrade;
+  app.cache = cache;
+  app.fechar = async () => {
+    clearInterval(batimento);
+    for (const ws of naFila.keys()) ws.terminate();
+    await cache.fechar();
+  };
   return app;
 }
 

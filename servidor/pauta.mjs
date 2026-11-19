@@ -11,7 +11,7 @@ async function abrirPg(url) {
   return new pg.Pool({ connectionString: url, max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000, statement_timeout: 5000 });
 }
 
-export function criarPauta(env, vocabulario, abrir = abrirPg) {
+export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null) {
   const esquema = env.TEABLE_PG_ESQUEMA || '';
   const tabela = env.TEABLE_PG_PAUTA || '';
   const comBanco = !!(env.TEABLE_PG_URL && NOME.test(esquema) && NOME.test(tabela));
@@ -49,6 +49,14 @@ export function criarPauta(env, vocabulario, abrir = abrirPg) {
     async achar(chave) {
       chave = String(chave || '').trim().slice(0, 200);
       if (!chave) return { editor: '', claquete: '' };
+      // a pauta muda ao longo do dia: o que achou vale 5 minutos; o que não achou, 1 minuto
+      const guardado = await cache?.ler(`pauta:${chave}`);
+      if (guardado) return guardado;
+      const achado = await this.consultar(chave);
+      await cache?.guardar(`pauta:${chave}`, achado, achado.editor ? 300 : 60);
+      return achado;
+    },
+    async consultar(chave) {
       const exata = await procurar(chave);
       if (exata?.editor) return { editor: exata.editor, claquete: exata.claquete ?? '' };
       const curta = semPraca(chave);

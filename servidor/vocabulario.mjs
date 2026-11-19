@@ -7,7 +7,8 @@ const POR_PAGINA = 1000;
 
 const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ') : v == null ? '' : String(typeof v === 'object' ? (v.title ?? v.name ?? '') : v)).trim();
 
-export function criarVocabulario(env, buscar = fetch) {
+/** `cache` (opcional) guarda o resultado para as outras instâncias e para depois de um reinício. */
+export function criarVocabulario(env, buscar = fetch, cache = null) {
   const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
   const ligado = !!(base && env.TEABLE_TOKEN && (env.TEABLE_ATRACOES || env.TEABLE_REDATORES || env.TEABLE_EDITORES || env.TEABLE_PAUTA));
   let guardado = { programas: [], redatores: [], editores: [], pauta: [] };
@@ -80,10 +81,12 @@ export function criarVocabulario(env, buscar = fetch) {
     async ler() {
       if (!ligado) return guardado;
       if (Date.now() - lidoEm < VALIDADE_MS) return guardado;
-      emCurso ??= carregar()
-        .then((novo) => {
-          guardado = novo;
-        })
+      emCurso ??= (async () => {
+        const doCache = await cache?.ler('vocabulario');
+        if (doCache) return void (guardado = doCache);
+        guardado = await carregar();
+        await cache?.guardar('vocabulario', guardado, VALIDADE_MS / 1000);
+      })()
         .catch((e) => console.error('[vocabulário] não consegui ler o Teable:', e.message, e.cause?.code ?? e.cause?.message ?? ''))
         .finally(() => {
           lidoEm = Date.now();

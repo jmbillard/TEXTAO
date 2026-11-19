@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { abrirBanco, criarApp, fazerBackup } from './app.mjs';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
+import { criarCache } from './cache.mjs';
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const dados = process.env.DADOS ?? join(aqui, '..', 'dados');
@@ -23,7 +24,8 @@ const backup = () => {
 backup();
 setInterval(backup, 60 * 60 * 1000).unref();
 
-const app = criarApp({ db, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
+const cache = criarCache(process.env);
+const app = criarApp({ db, cache, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
 const servidor = createServer(app);
 servidor.on('upgrade', app.upgrade);
 servidor.listen(porta, () =>
@@ -34,12 +36,20 @@ servidor.listen(porta, () =>
   const faltam = ['TEABLE_URL', 'TEABLE_TOKEN', 'TEABLE_ATRACOES'].filter((n) => !process.env[n]);
   if (faltam.length) console.log(`[vocabulário] Teable desligado: falta ${faltam.join(', ')}. Vale a lista embutida.`);
   else
-    criarVocabulario(process.env)
+    criarVocabulario(process.env, fetch, cache)
       .ler()
       .then((v) => console.log(`[vocabulário] Teable em ${process.env.TEABLE_URL}: ${v.programas.length} atrações, ${v.redatores.length} redatores, ${v.editores.length} editores, ${v.pauta.length} claquetes na pauta`));
 }
+if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos da fila em memória (serve para uma instância só)');
 void criarPauta(process.env, criarVocabulario(process.env))
   .testar()
   .then((m) => m && console.log(`[pauta] ${m}`));
 
-for (const sinal of ['SIGINT', 'SIGTERM']) process.on(sinal, () => (db.close(), process.exit(0)));
+for (const sinal of ['SIGINT', 'SIGTERM'])
+  process.on(sinal, () => {
+    void app.fechar().finally(() => {
+      db.close();
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 2000).unref();
+  });

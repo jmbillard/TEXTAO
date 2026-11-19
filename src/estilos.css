@@ -923,3 +923,10 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .ficha.nova, .ficha.nova.montada .some, .contagem.desenhar path { animation: none; }
 }
+
+/* quem mais está com a fila aberta */
+.na-fila { display: flex; align-items: center; margin-right: 14px; }
+.na-fila .presente { margin-left: -6px; box-shadow: 0 0 0 2px var(--mesa); }
+.na-fila .presente:first-child { margin-left: 0; }
+.na-fila-texto { margin-left: 10px; font-size: 13px; color: var(--tinta2); }
+@media (max-width: 640px) { .na-fila-texto { display: none; } .fila-topo .busca { margin-left: 0; } }

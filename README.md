@@ -63,6 +63,7 @@ Variáveis da stack (todas opcionais):
 | `ACCESS_AUD` | *Application Audience (AUD) Tag* da aplicação do Access |
 | `PERFIL_LOCAL` | `1` libera o uso sem login: cada pessoa informa nome e e-mail no app. Só para demonstração, porque qualquer um pode informar qualquer e-mail |
 | `ACESSO` | `aberto` (padrão): todos veem, editam e apagam todos os roteiros. `privado`: cada um só vê os seus e os que recebeu |
+| `REDIS_URL` | Cache e avisos da fila ao vivo (o compose já sobe um Redis e aponta para ele). Sem Redis, ou com ele fora do ar, tudo funciona em memória; ele é o que permite rodar mais de uma instância do app |
 | `BACKUPS` | Quantos backups diários manter (padrão 14) |
 | `REDE_TEABLE` | Nome da rede Docker do Teable, à qual o container se junta (padrão `teable-network`; ela precisa existir) |
 | `TEABLE_URL` | Opcional. Endereço do Teable nessa rede (ex.: `http://NOME-DO-CONTAINER:3000`) |
