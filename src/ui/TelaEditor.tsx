@@ -20,7 +20,7 @@ import {
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
-import { agruparPorDia } from './fila';
+import { agruparPorDia, pendentes } from './fila';
 import {
   ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
@@ -711,7 +711,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
     armazenamento.listar().then(setFila, () => setFila([]));
   }, [meta.revisar?.length]);
   const proximo = useMemo(() => {
-    const { proximos } = agruparPorDia(fila.filter((r) => r.id !== inicial.id && r.meta.revisar?.length));
+    const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id !== inicial.id && r.meta.revisar?.length));
     return { r: proximos.flatMap((g) => g.itens)[0], total: proximos.reduce((n, g) => n + g.itens.length, 0) };
   }, [fila, inicial.id]);
 

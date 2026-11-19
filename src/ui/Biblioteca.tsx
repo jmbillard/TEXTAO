@@ -6,7 +6,7 @@ import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
-import { agruparPorDia, type GrupoDia } from './fila';
+import { agruparPorDia, pendentes, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -585,10 +585,13 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   const termo = semAcento(busca.trim());
   const aberto = (roteiros ?? []).some((r) => r.aberto);
   const todos = (roteiros ?? []).filter((r) => r.id !== saindo?.id);
-  const paraRevisar = todos.filter((r) => r.meta.revisar?.length).length;
+  // a conta do topo e os filtros olham só o que ainda pede trabalho: o que foi ao ar ou já está no Trello fica de fora
+  const pendente = new Set(pendentes(todos).map((r) => r.id));
+  const nPendentes = pendente.size;
+  const paraRevisar = todos.filter((r) => pendente.has(r.id) && r.meta.revisar?.length).length;
   const visiveis = todos
     .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo))
-    .filter((r) => !filtroEstado || (filtroEstado === 'revisar' ? !!r.meta.revisar?.length : !r.meta.revisar?.length));
+    .filter((r) => !filtroEstado || (pendente.has(r.id) && (filtroEstado === 'revisar' ? !!r.meta.revisar?.length : !r.meta.revisar?.length)));
   const { proximos, exibidos } = agruparPorDia(visiveis);
   const porId = new Map(todos.map((r) => [r.id, r]));
   const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo && !saindo;
@@ -711,14 +714,14 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               <div className="fila-topo">
                 <div>
                   <h2 className="titulo-serifa">
-                    {todos.length || !lendo ? (
-                      <><em>{todos.length}</em> {todos.length === 1 ? 'roteiro na fila' : 'roteiros na fila'}</>
+                    {nPendentes || !lendo ? (
+                      nPendentes ? <><em>{nPendentes}</em> {nPendentes === 1 ? 'roteiro na fila' : 'roteiros na fila'}</> : <>Fila em dia</>
                     ) : (
                       <>Lendo <em>1</em> roteiro</>
                     )}
                   </h2>
                   <p className="fila-conta">
-                    {filtro('prontos', <><i className="ponto ok" />{plural(todos.length - paraRevisar, 'pronto', 'prontos')}</>)}
+                    {nPendentes - paraRevisar > 0 && filtro('prontos', <><i className="ponto ok" />{plural(nPendentes - paraRevisar, 'pronto', 'prontos')}</>)}
                     {paraRevisar > 0 && filtro('revisar', <><i className="ponto revisar" />{paraRevisar} para revisar</>)}
                     {falhas.length > 0 && <span><i className="ponto erro" />{plural(falhas.length, 'não lido', 'não lidos')}</span>}
                     {lendo && <span><i className="ponto lendo" />lendo 1</span>}

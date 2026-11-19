@@ -27,6 +27,15 @@ function nomear(iso: string, hoje: string, amanha: string): Pick<GrupoDia, 'titu
   return { titulo: maiuscula(DIAS[data.getDay()]), subtitulo: extenso };
 }
 
+/** Já tem card no Trello (mandado pelo PROMeiro ou pelo upload antigo). */
+export const noTrello = (r: Resumo) => r.trello?.estado === 'enviado' || r.trello?.estado === 'duplicado';
+
+/** O que ainda pede trabalho: nem foi ao ar, nem já está no Trello. É isso que a fila conta. */
+export function pendentes(lista: Resumo[], agora = new Date()): Resumo[] {
+  const hoje = isoLocal(agora);
+  return lista.filter((r) => !noTrello(r) && !(/^\d{4}-\d{2}-\d{2}$/.test(r.meta.dataExibicao) && r.meta.dataExibicao < hoje));
+}
+
 export function agruparPorDia(lista: Resumo[], agora = new Date()): { proximos: GrupoDia[]; exibidos: GrupoDia[] } {
   const hoje = isoLocal(agora);
   const amanha = isoLocal(new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1));

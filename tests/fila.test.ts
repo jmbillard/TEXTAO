@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agruparPorDia } from '../src/ui/fila';
+import { agruparPorDia, pendentes } from '../src/ui/fila';
 import { herdarTipos } from '../src/modelo/versoes';
 import { dataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
@@ -89,5 +89,21 @@ describe('data com a versão grudada por hífen', () => {
     expect(imp.meta.dataExibicao).toBe('2026-12-25');
     // sem outro par, o hífen ainda vale como separador
     expect(interpretar({ arquivo: 'Festa_19-11.rtf', formato: 'rtf', autor: '', blocos: [] }, { anoPadrao: 2026 }).meta.dataExibicao).toBe('2026-11-19');
+  });
+});
+
+describe('o que a fila conta', () => {
+  it('deixa de fora o que já foi ao ar e o que já está no Trello', () => {
+    const agora = new Date(2026, 10, 19, 15);
+    const lista = [
+      resumo('amanha', '2026-11-20', ['sem-editor']),
+      resumo('hoje', '2026-11-19'),
+      resumo('ontem', '2026-11-18', ['data']),
+      { ...resumo('mandado', '2026-11-21'), trello: { estado: 'enviado', url: 'https://trello.com/c/x', em: '2026-11-19T12:00:00Z' } },
+      { ...resumo('antigo', '2026-11-21'), trello: { estado: 'duplicado', em: '2026-11-19T12:00:00Z' } },
+      { ...resumo('falhou', '2026-11-21'), trello: { estado: 'erro', erro: 'fora do ar', em: '2026-11-19T12:00:00Z' } },
+      resumo('sem-data', ''),
+    ] as Resumo[];
+    expect(pendentes(lista, agora).map((r) => r.id)).toEqual(['amanha', 'hoje', 'falhou', 'sem-data']);
   });
 });
