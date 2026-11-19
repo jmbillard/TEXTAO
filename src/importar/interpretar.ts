@@ -310,6 +310,21 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     }
   }
 
+  // Uma linha curta, sozinha, acima das colunas e que não é cabeçalho conhecido: é o nome do programa ou da chamada.
+  const primeiraDupla = itens.findIndex((it) => it.duas);
+  if (!meta.programa && primeiraDupla > 0) {
+    for (const item of itens.slice(0, primeiraDupla)) {
+      const candidatos = item.d.filter((p) => textoDoPar(p).trim());
+      const texto = candidatos.length === 1 ? textoDoPar(candidatos[0]).replace(/\s+/g, ' ').trim() : '';
+      if (texto && texto.length <= 70 && !candidatos[0].some((r) => r.u) && !acharPrograma(bruto.arquivo.replace(/[_.]+/g, ' '))) {
+        meta.programa = tituloCaso(texto);
+        item.d = [];
+        anotar(`"${texto}" acima das colunas → programa no cabeçalho`);
+        break;
+      }
+    }
+  }
+
   /* 3. Dados que vêm do nome do arquivo e do autor. */
   const nome = bruto.arquivo.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
   if (!meta.programa) {
@@ -404,8 +419,10 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
 
     // marca-texto num rótulo ("ARQUIVOS:") vale para o resto do parágrafo
     let hlHerdado: string | undefined;
+    // (só quando o rótulo é a única parte destacada; se a frase inteira está em marca-texto, não é rótulo)
+    const destacados = par.filter((r) => r.hl && r.t.trim());
     const runs = par.map((r) => {
-      if (r.hl && /:\s*$/.test(r.t)) hlHerdado = r.hl;
+      if (r.hl && destacados.length === 1 && /:\s*$/.test(r.t)) hlHerdado = r.hl;
       return !r.hl && hlHerdado ? { ...r, hl: hlHerdado } : r;
     });
 
@@ -521,7 +538,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
       const texto = textoDoPar(par).trim();
       const primeiro = par.find((r) => r.t.trim());
       if (!texto) rotulo = undefined;
-      else if (primeiro?.hl && /:\s*$/.test(primeiro.t)) rotulo = primeiro.hl;
+      else if (primeiro?.hl && /:\s*$/.test(primeiro.t) && par.filter((r) => r.hl && r.t.trim()).length === 1) rotulo = primeiro.hl;
       else if (par.some((r) => r.hl || r.u)) rotulo = undefined;
       else if (rotulo) return par.map((r) => ({ ...r, hl: rotulo }));
       return par;

@@ -1,4 +1,4 @@
-import { empurrar, type DocBruto, type Par } from './bruto';
+import { empurrar, type BlocoBruto, type DocBruto, type Par } from './bruto';
 
 /* Leitura de PDF com pdf.js. O PDF não guarda "sublinhado": o texto e os traços são desenhos
    separados. Aqui o texto é agrupado em linhas e cada traço horizontal fino logo abaixo de uma
@@ -25,6 +25,8 @@ interface Letra {
   anot: boolean;
   link: boolean;
   u?: boolean;
+  b?: boolean;
+  hl?: string;
 }
 interface Linha {
   letras: Letra[];
@@ -34,6 +36,15 @@ interface Linha {
   tam: number;
 }
 type Traco = [x0: number, x1: number, y: number];
+/** Traço vertical (borda de tabela): x, do alto (y0) até embaixo (y1). */
+type Vertical = [x: number, y0: number, y1: number];
+/** Retângulo colorido atrás do texto (marca-texto). */
+type Fundo = [x0: number, y0: number, x1: number, y1: number, cor: string];
+interface Desenhos {
+  tracos: Traco[];
+  verticais: Vertical[];
+  fundos: Fundo[];
+}
 type Matriz = [number, number, number, number, number, number];
 
 /* Larguras aproximadas (Helvetica, /1000) para estimar a posição de cada letra dentro de um trecho. */
@@ -73,33 +84,53 @@ export async function lerPdf(dados: ArrayBuffer | Uint8Array, arquivo: string, p
     /* sem metadados */
   }
 
-  const pars: Par[] = [];
+  const blocos: BlocoBruto[] = [];
   let digitalizadas = 0;
+  let temColunas = false;
   for (let n = 1; n <= pdf.numPages; n++) {
     const pagina = await pdf.getPage(n);
     const topo = pagina.view[3];
     const virarY = (y: number) => topo - y;
-    const linhas = montarLinhas((await pagina.getTextContent()).items, virarY);
-    const operadores = await pagina.getOperatorList();
+    const operadores = await pagina.getOperatorList(); // também carrega as fontes, para saber o que é negrito
+    const desenhos = coletarDesenhos(pdfjs.OPS, operadores, virarY);
+    const negrito = (fonte: string): boolean => {
+      try {
+        return /bold|black|heavy|semibold/i.test(pagina.commonObjs.get(fonte)?.name ?? '');
+      } catch {
+        return false;
+      }
+    };
+    const itens = (await pagina.getTextContent()).items;
+    // tabela sem bordas desenhadas: a segunda coluna se denuncia por várias linhas começando no mesmo ponto
+    const corredor = desenhos.verticais.length ? null : acharCorredor(itens);
+    const barreiras = [...new Set(desenhos.verticais.map((v) => Math.round(v[0]))), ...(corredor ? [corredor] : [])];
+    const linhas = montarLinhas(itens, virarY, barreiras, negrito);
     if (!linhas.length) {
       const O = pdfjs.OPS;
       if (operadores.fnArray.some((f: number) => f === O.paintImageXObject || f === O.paintInlineImageXObject || f === O.paintJpegXObject)) digitalizadas++;
       continue;
     }
-    marcar(linhas, coletarTracos(pdfjs.OPS, operadores, virarY), await pagina.getAnnotations(), virarY);
-    pars.push(...linhasParaParagrafos(linhas));
+    marcar(linhas, desenhos, await pagina.getAnnotations(), virarY);
+    const daPagina = montarBlocos(linhas, desenhos, corredor);
+    temColunas ||= daPagina.some((bl) => bl.tipo === 'tabela');
+    blocos.push(...daPagina);
     pagina.cleanup();
   }
   await pdf.destroy();
 
-  const avisos = ['O PDF não guarda colunas, negrito, marca-texto nem cores. Confira o texto e as artes antes de seguir.'];
+  const avisos = [
+    temColunas
+      ? 'Num PDF, colunas, sublinhado e marca-texto são reconhecidos pelo desenho da página, e a cor do texto não vem. Confira antes de seguir.'
+      : 'Num PDF, sublinhado e marca-texto são reconhecidos pelo desenho da página, e a cor do texto não vem. Confira antes de seguir.',
+  ];
   if (digitalizadas) avisos.push(`${digitalizadas} ${digitalizadas === 1 ? 'página é uma imagem digitalizada' : 'páginas são imagens digitalizadas'} e não ${digitalizadas === 1 ? 'pôde' : 'puderam'} ser ${digitalizadas === 1 ? 'lida' : 'lidas'}.`);
-  if (!pars.some((p) => p.length)) throw new Error('Não encontrei texto neste PDF. Se ele foi digitalizado, é uma imagem e não dá para ler.');
-  return { arquivo, formato: 'pdf', autor: autor.trim(), blocos: pars.map((par) => ({ tipo: 'p' as const, par })), avisos };
+  const temTexto = blocos.some((bl) => (bl.tipo === 'p' ? bl.par.length : bl.linhas.some((l) => l.some((c) => c.some((p) => p.length)))));
+  if (!temTexto) throw new Error('Não encontrei texto neste PDF. Se ele foi digitalizado, é uma imagem e não dá para ler.');
+  return { arquivo, formato: 'pdf', autor: autor.trim(), blocos, avisos };
 }
 
 /** Agrupa os trechos de texto em linhas visuais; cada letra guarda a posição estimada. */
-function montarLinhas(itens: any[], virarY: (y: number) => number): Linha[] {
+function montarLinhas(itens: any[], virarY: (y: number) => number, barreiras: number[], negrito: (fonte: string) => boolean): Linha[] {
   const linhas: Linha[] = [];
   for (const it of itens) {
     if (!it.str || !it.transform) continue;
@@ -112,9 +143,10 @@ function montarLinhas(itens: any[], virarY: (y: number) => number): Linha[] {
     const total = pesos.reduce((s, w) => s + w, 0) || 1;
     const largura = it.width || (total / 1000) * tam;
     let x = e;
+    const forte = it.fontName ? negrito(it.fontName) : false;
     const lista: Letra[] = chars.map((ch, k) => {
       const w = (pesos[k] / total) * largura;
-      const letra = { c: ch, x0: x, x1: x + w, base, tam, cob: 0, anot: false, link: false };
+      const letra = { c: ch, x0: x, x1: x + w, base, tam, cob: 0, anot: false, link: false, b: forte };
       x += w;
       return letra;
     });
@@ -124,7 +156,9 @@ function montarLinhas(itens: any[], virarY: (y: number) => number): Linha[] {
 
     const ant = linhas[linhas.length - 1];
     const vao = ant ? lista[0].x0 - ant.x1 : 0;
-    if (ant && Math.abs(ant.base - base) <= 0.3 * tam && vao >= -1 && vao <= 4 * tam) {
+    // uma borda de tabela entre dois trechos da mesma altura: são colunas diferentes, não a mesma linha
+    const cruzaBorda = !!ant && barreiras.some((bx) => bx > ant.x1 - 1 && bx < lista[0].x0 + 1);
+    if (ant && !cruzaBorda && Math.abs(ant.base - base) <= 0.3 * tam && vao >= -1 && vao <= 1.5 * tam) {
       if (vao > 0.15 * tam) ant.letras.push({ c: ' ', x0: ant.x1, x1: lista[0].x0, base: ant.base, tam, cob: 0, anot: false, link: false });
       ant.letras.push(...lista);
       ant.x1 = lista[lista.length - 1].x1;
@@ -136,14 +170,18 @@ function montarLinhas(itens: any[], virarY: (y: number) => number): Linha[] {
   return linhas;
 }
 
-/** Traços horizontais finos (linhas e retângulos) desenhados na página. */
-function coletarTracos(OPS: Record<string, number>, ol: { fnArray: number[]; argsArray: any[] }, virarY: (y: number) => number): Traco[] {
+/** O que foi desenhado além do texto: traços horizontais (sublinhado), verticais (bordas de tabela) e fundos coloridos (marca-texto). */
+function coletarDesenhos(OPS: Record<string, number>, ol: { fnArray: number[]; argsArray: any[] }, virarY: (y: number) => number): Desenhos {
   type Ponto = { x: number; y: number };
   type Seg = { tipo: 'l' | 'c'; pts: Ponto[] } | { tipo: 're'; p0: Ponto; p1: Ponto };
   const tracos: Traco[] = [];
-  const pilha: [Matriz, number][] = [];
+  const verticais: Vertical[] = [];
+  const fundos: Fundo[] = [];
+  const pilha: [Matriz, number, string][] = [];
   let ctm: Matriz = [1, 0, 0, 1, 0, 0];
   let espessura = 1;
+  let cor = '000000';
+  const hex = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0').toUpperCase();
   let caminho: Seg[] = [];
 
   const mul = (m: number[], n: number[]): Matriz => [
@@ -166,16 +204,36 @@ function coletarTracos(OPS: Record<string, number>, ol: { fnArray: number[]; arg
       tracos.push([bx0, bx1, (by0 + by1) / 2]);
       return;
     }
+    if (preenche && bx1 - bx0 <= TRACO_MAX && by1 - by0 >= 20) {
+      verticais.push([(bx0 + bx1) / 2, by0, by1]);
+      return;
+    }
+    // faixa colorida da altura de uma linha de texto: marca-texto
+    if (preenche && !contorna && by1 - by0 >= 6 && by1 - by0 <= 44 && bx1 - bx0 >= 4 && !/^(FFFFFF|000000)$/.test(cor)) {
+      const [r, g, b] = [0, 2, 4].map((k) => parseInt(cor.slice(k, k + 2), 16));
+      if (Math.max(r, g, b) - Math.min(r, g, b) >= 40) fundos.push([bx0, by0, bx1, by1, cor]);
+      return;
+    }
     const lw = espessura * escala();
     for (const s of caminho) {
       if (s.tipo === 'l' && contorna) {
         const [p1, p2] = s.pts;
         if (Math.abs(p1.y - p2.y) <= 1 && Math.abs(p1.x - p2.x) >= TRACO_MIN_LARGURA && lw <= TRACO_MAX)
           tracos.push([Math.min(p1.x, p2.x), Math.max(p1.x, p2.x), (p1.y + p2.y) / 2]);
+        else if (Math.abs(p1.x - p2.x) <= 1 && Math.abs(p1.y - p2.y) >= 20 && lw <= TRACO_MAX)
+          verticais.push([(p1.x + p2.x) / 2, Math.min(p1.y, p2.y), Math.max(p1.y, p2.y)]);
       } else if (s.tipo === 're') {
         const x0 = Math.min(s.p0.x, s.p1.x);
         const x1 = Math.max(s.p0.x, s.p1.x);
-        if (Math.abs(s.p0.y - s.p1.y) <= TRACO_MAX && x1 - x0 >= TRACO_MIN_LARGURA) tracos.push([x0, x1, (s.p0.y + s.p1.y) / 2]);
+        const y0 = Math.min(s.p0.y, s.p1.y);
+        const y1 = Math.max(s.p0.y, s.p1.y);
+        if (y1 - y0 <= TRACO_MAX && x1 - x0 >= TRACO_MIN_LARGURA) tracos.push([x0, x1, (y0 + y1) / 2]);
+        else if (x1 - x0 <= TRACO_MAX && y1 - y0 >= 20) verticais.push([(x0 + x1) / 2, y0, y1]);
+        else if (contorna && y1 - y0 >= 20 && x1 - x0 >= 20 && lw <= TRACO_MAX) {
+          // moldura de célula: as quatro bordas
+          verticais.push([x0, y0, y1], [x1, y0, y1]);
+          tracos.push([x0, x1, y0], [x0, x1, y1]);
+        }
       }
     }
   }
@@ -183,13 +241,16 @@ function coletarTracos(OPS: Record<string, number>, ol: { fnArray: number[]; arg
   for (let i = 0; i < ol.fnArray.length; i++) {
     const fn = ol.fnArray[i];
     const args = ol.argsArray[i];
-    if (fn === OPS.save) pilha.push([ctm, espessura]);
+    if (fn === OPS.save) pilha.push([ctm, espessura, cor]);
     else if (fn === OPS.restore || fn === OPS.paintFormXObjectEnd) {
       const topo = pilha.pop();
-      if (topo) [ctm, espessura] = topo;
+      if (topo) [ctm, espessura, cor] = topo;
+    } else if (fn === OPS.setFillRGBColor) {
+      // conforme a versão do pdf.js: três números (0–255) ou "#rrggbb"
+      cor = typeof args[0] === 'string' ? args[0].replace('#', '').toUpperCase() : hex(args[0]) + hex(args[1]) + hex(args[2]);
     } else if (fn === OPS.transform) ctm = mul(args, ctm);
     else if (fn === OPS.paintFormXObjectBegin) {
-      pilha.push([ctm, espessura]);
+      pilha.push([ctm, espessura, cor]);
       if (Array.isArray(args[0]) || ArrayBuffer.isView(args[0])) ctm = mul([...(args[0] as number[])], ctm);
     } else if (fn === OPS.setLineWidth) espessura = args[0];
     else if (fn === OPS.setGState) {
@@ -228,13 +289,21 @@ function coletarTracos(OPS: Record<string, number>, ol: { fnArray: number[]; arg
       caminho = [];
     } else if (fn === OPS.endPath) caminho = [];
   }
-  return tracos;
+  return { tracos, verticais, fundos };
 }
 
 /** Marca as letras sublinhadas (por traço ou anotação) e as que estão em links. */
-function marcar(linhas: Linha[], tracos: Traco[], anotacoes: any[], virarY: (y: number) => number) {
+function marcar(linhas: Linha[], { tracos, fundos }: Desenhos, anotacoes: any[], virarY: (y: number) => number) {
   for (const ln of linhas) {
     const t = ln.tam;
+    for (const [fx0, fy0, fx1, fy1, cor] of fundos) {
+      if (fy1 - fy0 > 2.4 * t) continue; // fundo de célula, não marca-texto
+      for (const ch of ln.letras) {
+        const px = (ch.x0 + ch.x1) / 2;
+        const py = ch.base - 0.3 * ch.tam;
+        if (fx0 <= px && px <= fx1 && fy0 <= py && py <= fy1) ch.hl = cor;
+      }
+    }
     for (const [x0, x1, y] of tracos) {
       if (!(ln.base - 0.06 * t <= y && y <= ln.base + 0.35 * t)) continue;
       if (x0 < ln.x0 - 0.5 * t || x1 > ln.x1 + t) continue; // régua ou borda de tabela
@@ -310,17 +379,21 @@ function marcar(linhas: Linha[], tracos: Traco[], anotacoes: any[], virarY: (y: 
 
 const RE_ABRE_SONORA = /^\s*(?:\([^()]{2,90}\)\s*)?\d{1,2}[.:]\d{2}(?:[.:]\d{2})?\s*(?:[–—-]\s|\p{L})|^\s*(?:MC|M[IÍ]DIA\s+CENTRAL|FRAME\.?\s?IO)\b/iu;
 
+const RE_ABRE_CABECALHO = /^\s*\(?\s*(?:LOC(?:UTOR[A]?|U[CÇ][AÃ]O)?\s*[:-]|(?:COM\s+)?SELO\b|FECHAR\s+C|REDATOR[A]?\s*:|PGM\s*:|M[AÁ]X\w*\.?\s*\d)/i;
+
 /** A linha i+1 continua a linha i por quebra automática? null = não; " " = sim; "" = sim, com palavra cortada. */
-function quebraAutomatica(linhas: Linha[], i: number): string | null {
+function quebraAutomatica(linhas: Linha[], i: number, disponivel: number): string | null {
   const a = linhas[i];
   const b = linhas[i + 1];
   const t = a.tam;
-  if (Math.abs(a.x0 - b.x0) > 2 || !(b.base - a.base > 0 && b.base - a.base <= 2.2 * t)) return null;
+  // mesmo alinhamento (à esquerda, à direita ou centralizado) e na linha logo abaixo
+  const alinhadas = Math.abs(a.x0 - b.x0) <= 2 || Math.abs(a.x1 - b.x1) <= 2 || Math.abs(a.x0 + a.x1 - b.x0 - b.x1) <= 4;
+  if (!alinhadas || !(b.base - a.base > 0 && b.base - a.base <= 2 * t)) return null;
   // Em roteiro, juntar duas linhas que eram separadas custa mais do que separar um parágrafo:
   // frase terminada + linha nova começando "do zero", ou linha que abre uma sonora, é parágrafo novo.
   const textoA = a.letras.map((l) => l.c).join('');
   const textoB = b.letras.map((l) => l.c).join('');
-  if (RE_ABRE_SONORA.test(textoB) || /^\s*\/\/\s*$/.test(textoA) || /^\s*\/\/\s*$/.test(textoB)) return null;
+  if (RE_ABRE_CABECALHO.test(textoB) || RE_ABRE_SONORA.test(textoB) || /^\s*\/\/\s*$/.test(textoA) || /^\s*\/\/\s*$/.test(textoB)) return null;
   if (/[.!?…][”"')\]/]*\s*$/.test(textoA) && /^[\p{Lu}\d(/“"]/u.test(textoB)) return null;
   let primeira = b.x1;
   for (const ch of b.letras)
@@ -328,7 +401,7 @@ function quebraAutomatica(linhas: Linha[], i: number): string | null {
       primeira = ch.x0;
       break;
     }
-  const disponivel = Math.max(...linhas.filter((l) => Math.abs(l.x0 - a.x0) <= 2).map((l) => l.x1 - l.x0));
+  // se a primeira palavra da linha de baixo cabia na de cima, a quebra foi de quem escreveu
   if (a.x1 - a.x0 + 0.25 * t + (primeira - b.x0) <= disponivel + 0.5) return null;
   const umaPalavra = !a.letras.some((ch) => !ch.c.trim());
   const cheia = disponivel - (a.x1 - a.x0) < 0.9 * t;
@@ -337,17 +410,94 @@ function quebraAutomatica(linhas: Linha[], i: number): string | null {
 
 function linhasParaParagrafos(linhas: Linha[]): Par[] {
   const pars: Par[] = [];
+  if (!linhas.length) return pars;
+  const disponivel = Math.max(...linhas.map((l) => l.x1 - l.x0));
   let par: Par = [];
+  const marcas = (ch: Letra) => ({ ...(ch.u ? { u: true } : {}), ...(ch.b ? { b: true } : {}), ...(ch.hl ? { hl: ch.hl } : {}), ...(ch.link ? { link: true } : {}) });
   linhas.forEach((ln, i) => {
     if (i > 0) {
-      const sep = quebraAutomatica(linhas, i - 1);
+      const sep = quebraAutomatica(linhas, i - 1, disponivel);
       if (sep === null) {
         pars.push(par);
         par = [];
-      } else if (sep) empurrar(par, { t: sep, ...(par[par.length - 1]?.u && ln.letras[0]?.u ? { u: true } : {}) });
+        const acima = linhas[i - 1];
+        if (ln.base - acima.base > 1.9 * Math.max(acima.tam, ln.tam) && Math.abs(ln.x0 - acima.x0) < 200) pars.push([]);
+      } else if (sep) {
+        // o espaço da quebra herda a marcação quando os dois lados a têm
+        const antes = linhas[i - 1].letras[linhas[i - 1].letras.length - 1];
+        const depois = ln.letras[0];
+        empurrar(par, { t: sep, ...(antes.u && depois.u ? { u: true } : {}), ...(antes.b && depois.b ? { b: true } : {}), ...(antes.hl && antes.hl === depois.hl ? { hl: antes.hl } : {}) });
+      }
     }
-    for (const ch of ln.letras) empurrar(par, { t: ch.c, ...(ch.u ? { u: true } : {}), ...(ch.link ? { link: true } : {}) });
+    for (const ch of ln.letras) empurrar(par, { t: ch.c, ...marcas(ch) });
   });
   pars.push(par);
   return pars;
+}
+
+/** Separa a página em parágrafos soltos e tabela de duas colunas, usando as bordas desenhadas. */
+function acharCorredor(itens: any[]): number | null {
+  const caixas = itens.filter((it) => it.str?.trim() && it.transform).map((it) => [it.transform[4], it.transform[4] + (it.width || 0)] as [number, number]);
+  if (caixas.length < 8) return null;
+  const margem = Math.min(...caixas.map((c) => c[0]));
+  const inicios = new Map<number, number>();
+  for (const [x0] of caixas) inicios.set(Math.round(x0 / 2) * 2, (inicios.get(Math.round(x0 / 2) * 2) ?? 0) + 1);
+  let melhor: { x: number; n: number } | null = null;
+  for (const [inicio, n] of inicios) {
+    if (n < 3 || inicio < margem + 60) continue;
+    const x = inicio - 1.5;
+    const cruzam = caixas.filter((c) => c[0] < x - 1 && c[1] > x + 1).length;
+    const aEsquerda = caixas.filter((c) => c[1] <= x + 1).length;
+    if (aEsquerda >= 3 && cruzam <= Math.max(1, 0.04 * caixas.length) && (!melhor || n > melhor.n)) melhor = { x, n };
+  }
+  return melhor?.x ?? null;
+}
+
+function montarBlocos(linhas: Linha[], { tracos, verticais }: Desenhos, corredor: number | null): BlocoBruto[] {
+  const soltos = (ls: Linha[]): BlocoBruto[] => linhasParaParagrafos(ls).map((par) => ({ tipo: 'p' as const, par }));
+  const X0 = Math.min(...linhas.map((l) => l.x0));
+  const X1 = Math.max(...linhas.map((l) => l.x1));
+
+  // candidata a divisória: borda vertical no miolo da página, com texto dos dois lados
+  let melhor: { x: number; y0: number; y1: number; lados: number } | null = null;
+  const vistos = new Set<number>();
+  for (const [vx] of verticais) {
+    const x = Math.round(vx);
+    if (vistos.has(x) || vx < X0 + 0.12 * (X1 - X0) || vx > X1 - 0.12 * (X1 - X0)) continue;
+    vistos.add(x);
+    const trechos = verticais.filter((v) => Math.abs(v[0] - vx) <= 2);
+    const y0 = Math.min(...trechos.map((v) => v[1]));
+    const y1 = Math.max(...trechos.map((v) => v[2]));
+    const dentro = linhas.filter((l) => l.base >= y0 - 2 && l.base <= y1 + l.tam);
+    const esq = dentro.filter((l) => l.x1 <= vx + 1).length;
+    const dir = dentro.filter((l) => l.x0 >= vx - 1).length;
+    const lados = Math.min(esq, dir);
+    if (dir >= 2 && (!melhor || lados > melhor.lados || (lados === melhor.lados && dir > 0 && y1 - y0 > melhor.y1 - melhor.y0))) melhor = { x: vx, y0, y1, lados };
+  }
+  if (!melhor) {
+    if (corredor === null) return soltos(linhas);
+    melhor = { x: corredor, y0: -1e6, y1: 1e6, lados: 0 };
+  }
+  const { x, y0, y1 } = melhor;
+
+  const antes = linhas.filter((l) => l.base < y0 - 2);
+  const depois = linhas.filter((l) => l.base > y1 + l.tam);
+  const dentro = linhas.filter((l) => !antes.includes(l) && !depois.includes(l));
+  // bordas horizontais que atravessam a divisória separam as linhas da tabela
+  const cortes = [...new Set(tracos.filter((t) => t[0] < x - 5 && t[1] > x + 5 && t[2] > y0 + 2 && t[2] < y1 - 2).map((t) => Math.round(t[2])))].sort((a, b) => a - b);
+  // uma linha que atravessa a divisória (título, célula mesclada) também separa as linhas da tabela
+  for (const l of dentro) if (l.x0 < x - 3 && l.x1 > x + 3) cortes.push(Math.round(l.base - l.tam), Math.round(l.base + 0.2 * l.tam));
+  cortes.sort((a, b) => a - b);
+  const faixas = [y0 - 1e6, ...cortes, y1 + 1e6];
+  const linhasDaTabela: Par[][][] = [];
+  for (let k = 0; k + 1 < faixas.length; k++) {
+    const daFaixa = dentro.filter((l) => l.base - 0.3 * l.tam > faixas[k] && l.base - 0.3 * l.tam <= faixas[k + 1]);
+    if (!daFaixa.length) continue;
+    const esq = daFaixa.filter((l) => l.x1 <= x + 3 && l.x0 < x - 3);
+    const dir = daFaixa.filter((l) => l.x0 >= x - 3 && !esq.includes(l));
+    const outras = daFaixa.filter((l) => !esq.includes(l) && !dir.includes(l)); // célula que ocupa a largura toda
+    if (outras.length || (!esq.length && !dir.length)) linhasDaTabela.push([linhasParaParagrafos(daFaixa)]);
+    else linhasDaTabela.push([linhasParaParagrafos(esq), linhasParaParagrafos(dir)]);
+  }
+  return [...soltos(antes), { tipo: 'tabela', linhas: linhasDaTabela }, ...soltos(depois)];
 }

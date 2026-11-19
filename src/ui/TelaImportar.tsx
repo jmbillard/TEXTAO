@@ -62,7 +62,7 @@ export function TelaImportar({ imp, concluir, cancelar }: { imp: Importacao; con
 
         <div className="imp-corpo">
           <section aria-label="Como estava no Word">
-            <h2 className="rotulo">Como estava no Word</h2>
+            <h2 className="rotulo">{imp.bruto.formato === 'pdf' ? 'O que li no PDF' : 'Como estava no Word'}</h2>
             <div className="word">
               {imp.bruto.blocos.map((b, i) =>
                 b.tipo === 'p' ? (
