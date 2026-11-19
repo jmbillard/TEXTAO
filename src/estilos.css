@@ -408,17 +408,23 @@ kbd {
   color: var(--tinta3); font: italic 400 18px/1.7 var(--serifa);
 }
 
-/* Arte: grifada como com marca-texto, sem mudar a letra; mais forte quando apontada na lista */
+/* Arte: sublinhada, como no roteiro; apontada na lista, é selecionada como se fosse arrastando o cursor */
 .texto u.arte {
-  --grifo-forca: 30%;
-  text-decoration: none; color: inherit; cursor: pointer;
-  background: linear-gradient(104deg, transparent 0.3em, color-mix(in srgb, var(--ultra) var(--grifo-forca), transparent) 0.5em,
-    color-mix(in srgb, var(--ultra) calc(var(--grifo-forca) - 4%), transparent) calc(100% - 0.5em), transparent calc(100% - 0.3em))
-    0 62% / 100% 70% no-repeat;
-  margin: 0 -0.3em; padding: 0 0.3em; -webkit-box-decoration-break: clone; box-decoration-break: clone;
-  transition: background-size 0.2s var(--suave), background-position 0.2s var(--suave);
+  color: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--ultra); text-decoration-thickness: 2px; text-underline-offset: 0.2em;
+  background: linear-gradient(color-mix(in srgb, var(--ultra) 26%, transparent), color-mix(in srgb, var(--ultra) 26%, transparent)) no-repeat 0 0 / 0% 100%;
+  border-radius: 2px; -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }
-.texto u.arte:hover { --grifo-forca: 46%; }
+.texto u.arte:hover { text-decoration-thickness: 3px; }
+.texto u.arte.selecionando { position: relative; animation: selecionar-arte 0.5s cubic-bezier(0.45, 0, 0.3, 1) forwards; }
+/* o cursor de texto que "arrasta" a seleção, como na claquete da fila */
+.texto u.arte.selecionando::after {
+  content: ''; position: absolute; top: -0.2em; width: 0.5em; height: 1.4em; margin-left: -0.25em; pointer-events: none;
+  background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 28'%3E%3Cpath d='M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5' fill='none' stroke='%23e2532b' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  animation: arrastar-cursor-arte 0.5s cubic-bezier(0.45, 0, 0.3, 1) forwards;
+}
+@keyframes selecionar-arte { to { background-size: 100% 100%; } }
+@keyframes arrastar-cursor-arte { from { left: 0; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .texto u.arte.selecionando { animation: none; background-size: 100% 100%; } .texto u.arte.selecionando::after { display: none; } }
 
 /* Etiquetas: rótulo + estilo próprio, nunca só a cor */
 .texto .etq { font-family: var(--serifa); font-style: italic; font-weight: 400; font-size: 1.02em; letter-spacing: 0; cursor: pointer; border-radius: 3px; transition: background 0.2s; }

@@ -655,6 +655,14 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
     }
   }, [editor, marcaDoPopover, relativo, medida]);
 
+  // arte apontada na lista: selecionada no texto com a animação do cursor
+  useEffect(() => {
+    if (!realce || !editor) return;
+    const els = [...editor.view.dom.querySelectorAll<HTMLElement>(`u.arte[data-id="${CSS.escape(realce)}"]`)];
+    els.forEach((el) => el.classList.add('selecionando'));
+    return () => els.forEach((el) => el.classList.remove('selecionando'));
+  }, [realce, editor]);
+
   /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
   const TIPOS_NA_LISTA = false;
   const tirarArte = (a: (typeof artes)[number]) => {
@@ -1202,7 +1210,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
       </section>
 
       <Estatisticas saida={saida} paginas={meta.paginasOriginal} original={original} />
-      {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{--grifo-forca:70%;background-size:100% 100%;background-position:0 50%}`}</style>}
+
     </div>
   );
 }
