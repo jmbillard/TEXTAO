@@ -1,7 +1,7 @@
 import { textoDoPar, type DocBruto, type Par } from './bruto';
 import { analisarSonoras, ehCaixaAlta, ehLocucao, RE_LINHA_LOC } from '../modelo/sonora';
 import { metaVazia, novoId, type Layout, type Meta, type NoJSON, type MarcaJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
-import { acharPrograma, claqueteDoArquivo, normalizarPraca, PRACAS_LIDAS as PRACAS, semAcento } from '../modelo/vocabularios';
+import { acharPrograma, claqueteDoArquivo, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, semAcento } from '../modelo/vocabularios';
 
 /* Interpretação do arquivo: do "o que estava escrito" para "o que isso significa".
    Tudo o que é certo é resolvido sozinho e listado em `entendido`;
@@ -452,7 +452,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     meta.dataExibicao = iso(ano, exib.mes, exib.dia);
   }
   // claquete do Rio começa por "RIO", a de São Paulo termina em "SP"; o resto é G5
-  if (!meta.praca) meta.praca = /^RIO /.test(meta.claquete) ? 'RJ' : / SP$/.test(meta.claquete) ? 'SP' : 'G5';
+  if (!meta.praca) meta.praca = pracaDaClaquete(meta.claquete);
   if (!meta.redator && bruto.autor) {
     meta.redator = bruto.autor.replace(/_[A-Z0-9]+$/, '').trim();
     anotar('Redação: autor do arquivo');

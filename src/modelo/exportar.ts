@@ -311,15 +311,31 @@ const arteLonga = (texto: string) => {
   return t.length > 60 || palavras(t) > 8;
 };
 
-/** Motivos para o roteiro não entrar na fila como pronto. Atração não reconhecida não é motivo: ela pode ser cadastrada depois. */
-export function pendencias(saida: Saida): string[] {
-  const n = saida.artes.length;
-  const p: string[] = [];
-  if (!n) p.push('Nenhuma arte');
-  if (n >= 10) p.push(`Muitas artes: ${n}`);
-  if (saida.artes.some((a) => arteLonga(a.texto))) p.push('Arte com texto longo');
-  if (!saida.roteiro.editor) p.push('Sem editor: a claquete não está na pauta');
-  if (!saida.roteiro.dataExibicao) p.push('Sem data de exibição');
-  if (saida.roteiro.lidoPorOcr) p.push('Lido por OCR: confira texto e artes');
-  return p;
+export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-editor' | 'sem-data' | 'ocr';
+export interface Pendencia {
+  id: IdPendencia;
+  texto: string;
+  /** Dá para conferir e dizer "está certo" (as outras se resolvem preenchendo o que falta). */
+  dispensavel: boolean;
+  /** A arte que motivou, quando é uma só. */
+  arte?: string;
 }
+
+/** Motivos para o roteiro não entrar na fila como pronto, menos os que alguém já conferiu.
+    Atração não reconhecida não é motivo: ela pode ser cadastrada depois. */
+export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
+  const n = saida.artes.length;
+  const r = saida.roteiro;
+  const longa = saida.artes.find((a) => arteLonga(a.texto));
+  const p: Pendencia[] = [];
+  if (!n) p.push({ id: 'sem-arte', texto: 'Nenhuma arte', dispensavel: true });
+  if (n >= 10) p.push({ id: 'muitas-artes', texto: `Muitas artes: ${n}`, dispensavel: true });
+  if (longa) p.push({ id: 'arte-longa', texto: 'Arte com texto longo', dispensavel: true, arte: longa.id });
+  if (!r.editor) p.push({ id: 'sem-editor', texto: 'Sem editor: a claquete não está na pauta', dispensavel: false });
+  if (!r.dataExibicao) p.push({ id: 'sem-data', texto: 'Sem data de exibição', dispensavel: false });
+  if (r.lidoPorOcr) p.push({ id: 'ocr', texto: 'Lido por OCR: confira texto e artes', dispensavel: true });
+  const conferidos = new Set(r.conferidos ?? []);
+  return p.filter((x) => !(x.dispensavel && conferidos.has(x.id)));
+}
+
+export const pendencias = (saida: Saida): string[] => pendenciasDetalhadas(saida).map((p) => p.texto);

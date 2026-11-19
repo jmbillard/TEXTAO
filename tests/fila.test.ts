@@ -1,0 +1,70 @@
+import { describe, expect, it } from 'vitest';
+import { agruparPorDia } from '../src/ui/fila';
+import { herdarTipos } from '../src/modelo/versoes';
+import { dataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
+import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
+import { metaVazia, type Meta, type NoJSON } from '../src/modelo/tipos';
+import type { Resumo } from '../src/dados/armazenamento';
+
+const resumo = (id: string, data: string, revisar: string[] = [], atualizadoEm = '2026-11-19T10:00:00Z'): Resumo => ({
+  id, meta: { ...metaVazia(), dataExibicao: data, revisar }, nArtes: 1, atualizadoEm, dono: null, publico: false, meu: true,
+});
+
+describe('fila por dia de exibição', () => {
+  const agora = new Date(2026, 10, 19, 15, 0); // qui, 19/11
+  it('próximos dias em ordem, revisar primeiro, sem data no fim, exibidos à parte', () => {
+    const { proximos, exibidos } = agruparPorDia(
+      [resumo('a', '2026-11-21'), resumo('b', '2026-11-19'), resumo('c', '2026-11-19', ['Sem editor']), resumo('d', ''), resumo('e', '2026-11-18'), resumo('f', '2026-11-20')],
+      agora,
+    );
+    expect(proximos.map((g) => [g.titulo, g.itens.map((r) => r.id)])).toEqual([
+      ['Hoje', ['c', 'b']],
+      ['Amanhã', ['f']],
+      ['Sábado', ['a']],
+      ['Sem data', ['d']],
+    ]);
+    expect(proximos[0].subtitulo).toBe('quinta, 19 de novembro');
+    expect(exibidos.map((g) => g.itens.map((r) => r.id))).toEqual([['e']]);
+  });
+});
+
+describe('claquete', () => {
+  it('data e praça saem da claquete', () => {
+    const hoje = new Date(2026, 10, 19);
+    expect(dataDaClaquete('Quem Ama(Prologo)26/10 Rede', hoje)).toBe('2026-10-26');
+    expect(dataDaClaquete('Terra 20/11-2 (AH)', hoje)).toBe('2026-11-20');
+    expect(dataDaClaquete('Reveillon 2/1', hoje)).toBe('2027-01-02'); // virada do ano
+    expect(dataDaClaquete('FILME INÉDITO', hoje)).toBe('');
+    expect([pracaDaClaquete('Rio Fut 21/11'), pracaDaClaquete('Encontro 19/11 SP'), pracaDaClaquete('Encontro 19/11')]).toEqual(['RJ', 'SP', 'G5']);
+  });
+});
+
+describe('versão nova de um roteiro', () => {
+  const doc = (artes: [string, string][]): NoJSON => ({
+    type: 'doc',
+    content: artes.map(([texto, subtipo], k) => ({ type: 'paragraph', content: [{ type: 'text', text: texto, marks: [{ type: 'arte', attrs: { id: `x${k}-${subtipo}`, subtipo, obs: '' } }] }] })),
+  });
+  it('as artes que continuam iguais herdam o tipo escolhido na versão anterior', () => {
+    const anterior = doc([['A GRANDE FESTA', 'cartao'], ['HOJE', 'assinatura'], ['ARTE QUE SAIU', 'logo']]);
+    const nova = doc([['A grande festa', ''], ['HOJE', ''], ['ARTE NOVA', '']]);
+    const { doc: resultado, herdadas } = herdarTipos(nova, anterior);
+    const artes = exportar({ id: 't', meta: metaVazia(), doc: resultado, revisao: 1, criadoEm: '', atualizadoEm: '' }).artes;
+    expect(artes.map((a) => [a.texto, a.subtipo])).toEqual([['A grande festa', 'cartao'], ['HOJE', 'assinatura'], ['ARTE NOVA', '']]);
+    expect(herdadas).toBe(2);
+  });
+});
+
+describe('pendências conferidas', () => {
+  const comArtes = (n: number, meta: Partial<Meta> = {}) =>
+    exportar({
+      id: 't',
+      meta: { ...metaVazia(), editor: 'Fulano', dataExibicao: '2026-11-20', ...meta },
+      doc: { type: 'doc', content: Array.from({ length: n }, (_, k) => ({ type: 'paragraph', content: [{ type: 'text', text: `ARTE ${k}`, marks: [{ type: 'arte', attrs: { id: `a${k}`, subtipo: '' } }] }] })) },
+      revisao: 1, criadoEm: '', atualizadoEm: '',
+    });
+  it('"está certo" tira a pendência; o que falta preencher não dá para dispensar', () => {
+    expect(pendencias(comArtes(12))).toEqual(['Muitas artes: 12']);
+    expect(pendencias(comArtes(12, { conferidos: ['muitas-artes'] }))).toEqual([]);
+    expect(pendenciasDetalhadas(comArtes(2, { editor: '', conferidos: ['sem-editor'] })).map((p) => p.id)).toEqual(['sem-editor']);
+  });
+});

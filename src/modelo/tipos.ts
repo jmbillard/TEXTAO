@@ -64,6 +64,10 @@ export interface Meta {
   revisar?: string[];
   /** Veio de PDF digitalizado, lido por OCR: pede conferência até alguém marcar como conferido. */
   lidoPorOcr?: boolean;
+  /** Pendências que alguém conferiu e disse "está certo" (ids de pendência). */
+  conferidos?: string[];
+  /** Este roteiro é a versão nova de outro que já estava na fila (id do anterior), até alguém decidir. */
+  substitui?: string;
 }
 
 export const metaVazia = (): Meta => ({

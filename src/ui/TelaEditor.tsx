@@ -14,14 +14,15 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, type Versao } from '../dados/armazenamento';
+import { armazenamento, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { exportar, listaDeArtes, pendencias, type Saida } from '../modelo/exportar';
+import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
+import { agruparPorDia } from './fila';
 import {
-  ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type Meta, type Pessoa, type Roteiro,
+  ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
 import { PRACAS, programasConhecidos } from '../modelo/vocabularios';
 import { Claquete, EscolhaDeTipo, Marca, Miniatura } from './pecas';
@@ -345,7 +346,7 @@ function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor:
 
 /* ---------- tela ---------- */
 
-export function TelaEditor({ id, voltar, avisar, pessoa }: { id: string; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
+export function TelaEditor({ id, voltar, abrir, avisar, pessoa }: { id: string; voltar: () => void; abrir: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
   const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
   useEffect(() => {
     armazenamento.ler(id).then((r) => setRoteiro(r ?? null), () => setRoteiro(null));
@@ -362,10 +363,10 @@ export function TelaEditor({ id, voltar, avisar, pessoa }: { id: string; voltar:
         </main>
       </div>
     );
-  return <Folha inicial={roteiro} voltar={voltar} avisar={avisar} pessoa={pessoa} />;
+  return <Folha inicial={roteiro} voltar={voltar} abrir={abrir} avisar={avisar} pessoa={pessoa} />;
 }
 
-function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
+function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; voltar: () => void; abrir: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
   const pessoaRef = useRef(pessoa);
   pessoaRef.current = pessoa;
   const mexeu = useRef(false);
@@ -635,6 +636,39 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     }
   }, [editor, marcaDoPopover, relativo, medida]);
 
+  // com uma arte aberta na lista: 1–9 escolhe o tipo, setas trocam de arte, Esc fecha
+  const tecladoArtes = useRef<(e: KeyboardEvent) => void>(() => {});
+  tecladoArtes.current = (e: KeyboardEvent) => {
+    if (!aberta || leitura || e.metaKey || e.ctrlKey || e.altKey) return;
+    const alvo = e.target as HTMLElement | null;
+    if (alvo?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    const k = artes.findIndex((a) => a.id === aberta);
+    if (k < 0) return;
+    const n = Number(e.key);
+    if (Number.isInteger(n) && n >= 1 && n <= SUBTIPOS_ARTE.length) {
+      e.preventDefault();
+      escolherTipo(artes[k], SUBTIPOS_ARTE[n - 1].id);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      abrirArte(artes[(k + (e.key === 'ArrowDown' ? 1 : artes.length - 1)) % artes.length]);
+    } else if (e.key === 'Escape') setAberta(null);
+  };
+  useEffect(() => {
+    const ouvir = (e: KeyboardEvent) => tecladoArtes.current(e);
+    window.addEventListener('keydown', ouvir);
+    return () => window.removeEventListener('keydown', ouvir);
+  }, []);
+
+  // o próximo roteiro para revisar, na ordem da fila
+  const [fila, setFila] = useState<Resumo[]>([]);
+  useEffect(() => {
+    armazenamento.listar().then(setFila, () => setFila([]));
+  }, [meta.revisar?.length]);
+  const proximo = useMemo(() => {
+    const { proximos } = agruparPorDia(fila.filter((r) => r.id !== inicial.id && r.meta.revisar?.length));
+    return { r: proximos.flatMap((g) => g.itens)[0], total: proximos.reduce((n, g) => n + g.itens.length, 0) };
+  }, [fila, inicial.id]);
+
   // fechar com Esc ou clicando fora
   useEffect(() => {
     if (!menu && !popover && !exportando && !compartilhando) return;
@@ -679,9 +713,10 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
     }
   };
 
-  const irParaArte = (a: MarcaNoDoc) => {
+  const irParaArte = (a: MarcaNoDoc, focar = true) => {
     if (!editor) return;
-    editor.chain().focus().setTextSelection({ from: a.from, to: a.to }).run();
+    if (focar) editor.chain().focus().setTextSelection({ from: a.from, to: a.to }).run();
+    else editor.commands.setTextSelection({ from: a.from, to: a.to });
     editor.view.dom.querySelector(`u.arte[data-id="${CSS.escape(a.id)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   };
   const exportarComo = async (formato: 'docx' | 'json' | 'lista' | 'pdf') => {
@@ -751,6 +786,22 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
   const colunas = NOMES_COLUNAS[meta.layout];
   const semTipo = artes.filter((a) => !normalizarSubtipo(a.attrs.subtipo)).length;
+  const lista = pendenciasDetalhadas(saida);
+
+  /** Abre uma arte na lista (sem levar o foco para o texto, para o teclado seguir escolhendo). */
+  const abrirArte = (a: (typeof artes)[number] | undefined) => {
+    setAberta(a?.id ?? null);
+    if (a) irParaArte(a, false);
+  };
+  /** Depois de escolher o tipo, a próxima arte sem tipo já abre. */
+  const escolherTipo = (a: (typeof artes)[number], novo: SubtipoArte) => {
+    if (!editor) return;
+    atualizarMarca(editor, a, { subtipo: novo, sugerido: false });
+    if (!novo) return;
+    const faltam = artes.filter((x) => x.id !== a.id && !normalizarSubtipo(x.attrs.subtipo));
+    abrirArte(faltam.find((x) => x.ordem > a.ordem) ?? faltam[0]);
+  };
+  const conferir = (id: string) => mudarMeta({ conferidos: [...new Set([...(meta.conferidos ?? []), id])] });
 
   return (
     <div className="pagina editor">
@@ -773,6 +824,15 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
         <span />
 
         <div className="topo-dir">
+          {proximo.r && (
+            <button
+              className={`botao proximo ${lista.length ? '' : 'primario'}`}
+              title={`${proximo.r.meta.claquete || 'Próximo roteiro'} · ${plural(proximo.total, 'roteiro', 'roteiros')} para revisar`}
+              onClick={() => abrir(proximo.r!.id)}
+            >
+              {lista.length ? 'Próximo' : 'Pronto · próximo'} <span className="proximo-n">{proximo.total}</span> <Icone nome="seta" tam={14} traco={2.2} />
+            </button>
+          )}
           {presentes.length > 0 && (
             <div className="presentes" aria-label={`Também neste roteiro: ${presentes.map((x) => x.nome).join(', ')}`}>
               {presentes.slice(0, 4).map((x) => (
@@ -837,10 +897,10 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             <div inert={leitura || !liberado || undefined}>
               <TopoFolha meta={meta} mudar={mudarMeta} />
             </div>
-            {meta.lidoPorOcr && (
+            {meta.lidoPorOcr && !meta.conferidos?.includes('ocr') && (
               <div className="faixa-ocr">
                 <span>Este roteiro veio de um PDF digitalizado e foi lido por reconhecimento de texto. Confira o texto e, principalmente, as artes.</span>
-                {!leitura && <button className="botao" onClick={() => mudarMeta({ lidoPorOcr: false })}><Icone nome="certo" tam={14} traco={2.4} /> Conferido</button>}
+                {!leitura && <button className="botao" onClick={() => conferir('ocr')}><Icone nome="certo" tam={14} traco={2.4} /> Conferido</button>}
               </div>
             )}
             {colunas && (
@@ -875,6 +935,32 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
 
           <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={leitura || !liberado || undefined}>
             <Claquete dados={meta} mudar={mudarMeta} />
+            {lista.length > 0 && (
+              <section className="cartao pendencias-editor" aria-label="Para revisar">
+                <div className="cab-artes"><b>Para revisar</b><span className="rotulo">{lista.length}</span></div>
+                <ul>
+                  {lista.map((p) => (
+                    <li key={p.id}>
+                      <span>{p.texto}</span>
+                      <span className="pendencia-acoes">
+                        {p.id === 'sem-editor' && (
+                          <button className="botao-texto" onClick={() => document.querySelector<HTMLInputElement>('.claquete input[aria-label="Editor"]')?.focus()}>Escolher</button>
+                        )}
+                        {p.id === 'sem-data' && (
+                          <button className="botao-texto" onClick={() => document.querySelector<HTMLButtonElement>('.claquete .campo-data button')?.click()}>Escolher</button>
+                        )}
+                        {p.id === 'arte-longa' && p.arte && (
+                          <button className="botao-texto" onClick={() => abrirArte(artes.find((a) => a.id === p.arte))}>Ver</button>
+                        )}
+                        {p.dispensavel && (
+                          <button className="botao-texto forte" onClick={() => conferir(p.id)}>{p.id === 'ocr' ? 'Conferido' : 'Está certo'}</button>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <section className="cartao">
               <div className="cab-artes">
                 <b><i>{artes.length}</i> {artes.length === 1 ? 'arte' : 'artes'}</b>
@@ -890,23 +976,14 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
                       <button
                         className="arte-linha"
                         aria-expanded={esta}
-                        onClick={() => {
-                          setAberta(esta ? null : a.id);
-                          if (!esta) irParaArte(a);
-                        }}
+                        onClick={() => (esta ? setAberta(null) : abrirArte(a))}
                       >
                         <Miniatura subtipo={subtipo} />
                         <span className="txt"><b>{a.texto}</b><span className={subtipo ? '' : 'pede'}>{subtipo ? nomeSubtipo(subtipo) : esta ? 'escolha o tipo' : 'sem tipo'}</span></span>
                         <span className="b">{a.ordem}</span>
                       </button>
                       {esta && editor && (
-                        <EscolhaDeTipo
-                          valor={subtipo}
-                          escolher={(novo) => {
-                            atualizarMarca(editor, a, { subtipo: novo, sugerido: false });
-                            if (novo) setAberta(null);
-                          }}
-                        />
+                        <EscolhaDeTipo valor={subtipo} atalhos escolher={(novo) => escolherTipo(a, novo)} />
                       )}
                     </li>
                   );

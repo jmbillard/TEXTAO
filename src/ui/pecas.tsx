@@ -16,15 +16,18 @@ export function Miniatura({ subtipo }: { subtipo: string }) {
 }
 
 /** Grade para escolher o tipo da arte. Clicar no tipo já escolhido volta a deixar em branco. */
-export function EscolhaDeTipo({ valor, escolher }: { valor: SubtipoArte; escolher: (s: SubtipoArte) => void }) {
+export function EscolhaDeTipo({ valor, escolher, atalhos }: { valor: SubtipoArte; escolher: (s: SubtipoArte) => void; atalhos?: boolean }) {
   return (
-    <div className="escolha" role="radiogroup" aria-label="Tipo da arte">
-      {SUBTIPOS_ARTE.map((s) => (
-        <button key={s.id} role="radio" aria-checked={valor === s.id} onClick={() => escolher(valor === s.id ? '' : s.id)}>
-          <Miniatura subtipo={s.id} />
-          {s.curto}
-        </button>
-      ))}
+    <div className="escolha-bloco">
+      <div className="escolha" role="radiogroup" aria-label="Tipo da arte">
+        {SUBTIPOS_ARTE.map((s, k) => (
+          <button key={s.id} role="radio" aria-checked={valor === s.id} aria-keyshortcuts={atalhos ? String(k + 1) : undefined} onClick={() => escolher(valor === s.id ? '' : s.id)}>
+            <Miniatura subtipo={s.id} />
+            <span>{atalhos && <kbd>{k + 1}</kbd>}{s.curto}</span>
+          </button>
+        ))}
+      </div>
+      {atalhos && <p className="escolha-dica"><kbd>1</kbd>–<kbd>9</kbd> escolhe · <kbd>↑</kbd><kbd>↓</kbd> troca de arte · <kbd>Esc</kbd> fecha</p>}
     </div>
   );
 }

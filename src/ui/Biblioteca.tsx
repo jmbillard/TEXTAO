@@ -3,6 +3,10 @@ import type { Falha } from '../App';
 import { armazenamento, type Resumo } from '../dados/armazenamento';
 import { corDe } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
+import { exportar, pendencias } from '../modelo/exportar';
+import { herdarTipos } from '../modelo/versoes';
+import type { Roteiro } from '../modelo/tipos';
+import { agruparPorDia, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { CURSORES, Cursor, escolherCursor, meuCursor } from './cursores';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
@@ -10,7 +14,7 @@ import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
-import { dataCurtaComDia, plural } from './util';
+import { copiarTexto, dataCurtaComDia, plural } from './util';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
 const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
@@ -26,7 +30,8 @@ const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
 interface Props {
   abrir: (id: string) => void;
   abrirArquivo: (arquivo: File) => void;
-  criar: () => void;
+  /** Folha nova para colar do Word, a partir da claquete. */
+  criar: (claquete: string) => void;
   avisar: (texto: string) => void;
   identidade: Identidade | null;
   definirPerfil: (p: Pessoa) => void;
@@ -182,7 +187,13 @@ function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
   return [texto.slice(0, n), n >= texto.length];
 }
 
-function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string }) {
+interface VersaoNova {
+  anterior: Resumo;
+  substituir: () => void;
+  manter: () => void;
+}
+
+function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova }) {
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   const revisar = r.meta.revisar ?? [];
@@ -238,6 +249,15 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: b
         {acoes}
         <button className={`botao ${revisar.length ? 'primario' : ''}`} onClick={abrir}>{revisar.length ? 'Revisar' : 'Abrir'}</button>
       </span>
+      {versao && (
+        <span className="ficha-versao some">
+          <span>
+            <Icone nome="duplicar" tam={14} /> Versão nova de <b>{versao.anterior.meta.claquete || 'um roteiro'}</b>, que já está na fila.
+          </span>
+          <button className="botao primario" onClick={versao.substituir}>Substituir a anterior</button>
+          <button className="botao-texto" onClick={versao.manter}>Manter as duas</button>
+        </span>
+      )}
       {revisar.length > 0 && <span className="ficha-pendencias some">{revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}</span>}
     </li>
   );
@@ -246,7 +266,12 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: b
 export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState('');
-  const [apagando, setApagando] = useState<string | null>(null);
+  // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
+  const [saindo, setSaindo] = useState<Resumo | null>(null);
+  const prazoSaida = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [filtroEstado, setFiltroEstado] = useState<'prontos' | 'revisar' | null>(null);
+  const [colando, setColando] = useState(false);
+  const [claqueteNova, setClaqueteNova] = useState('');
 
   const carregar = () => armazenamento.listar().then(setRoteiros, () => setRoteiros([]));
   useEffect(() => {
@@ -306,19 +331,159 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   );
   useMeuPonteiro(enviarPonteiro);
 
-  const apagar = async (r: Resumo) => {
-    await armazenamento.apagar(r.id);
-    setApagando(null);
-    avisar('Roteiro tirado da fila.');
+  const apagarDeVez = (r: Resumo) =>
+    armazenamento.apagar(r.id).then(
+      () => void carregar(),
+      () => avisar('Não consegui tirar esse roteiro da fila.'),
+    );
+  const tirar = (r: Resumo) => {
+    if (saindo) {
+      clearTimeout(prazoSaida.current);
+      void apagarDeVez(saindo);
+    }
+    setSaindo(r);
+    prazoSaida.current = setTimeout(() => {
+      setSaindo(null);
+      void apagarDeVez(r);
+    }, 6000);
+  };
+  // quem volta com "desfazer" não repete a animação de chegada
+  const [devolvidos, setDevolvidos] = useState<string[]>([]);
+  const desfazer = () => {
+    clearTimeout(prazoSaida.current);
+    if (saindo) setDevolvidos((d) => [...d, saindo.id]);
+    setSaindo(null);
+  };
+  // saiu da tela com um "tirar" pendente: apaga de vez
+  const saindoRef = useRef(saindo);
+  saindoRef.current = saindo;
+  useEffect(
+    () => () => {
+      clearTimeout(prazoSaida.current);
+      if (saindoRef.current) void armazenamento.apagar(saindoRef.current.id).catch(() => {});
+    },
+    [],
+  );
+
+  /** Versão nova de uma claquete que já estava na fila: fica a nova, com os tipos de arte da anterior. */
+  const substituir = async (nova: Resumo) => {
+    try {
+      const [rn, ra] = await Promise.all([armazenamento.ler(nova.id), nova.meta.substitui ? armazenamento.ler(nova.meta.substitui) : undefined]);
+      if (!rn) return;
+      if (!ra) {
+        await armazenamento.salvar({ ...rn, meta: { ...rn.meta, substitui: undefined } });
+        return void carregar();
+      }
+      const { doc, herdadas } = herdarTipos(rn.doc, ra.doc);
+      const atualizado: Roteiro = { ...rn, doc, meta: { ...rn.meta, substitui: undefined, editor: rn.meta.editor || ra.meta.editor } };
+      atualizado.meta.revisar = pendencias(exportar(atualizado));
+      await armazenamento.salvar(atualizado, 'substituiu a versão anterior');
+      await armazenamento.apagar(ra.id);
+      avisar(herdadas ? `Versão anterior substituída. ${plural(herdadas, 'tipo de arte foi mantido', 'tipos de arte foram mantidos')}.` : 'Versão anterior substituída.');
+      void carregar();
+    } catch {
+      avisar('Não consegui substituir a versão anterior.');
+    }
+  };
+  const manterAsDuas = async (nova: Resumo) => {
+    const rn = await armazenamento.ler(nova.id).catch(() => undefined);
+    if (rn) await armazenamento.salvar({ ...rn, meta: { ...rn.meta, substitui: undefined } }).catch(() => {});
     void carregar();
+  };
+
+  /** Lista de artes de todos os roteiros de um dia, para planejar a produção. */
+  const copiarArtesDoDia = async (g: GrupoDia) => {
+    try {
+      const completos = (await Promise.all(g.itens.map((r) => armazenamento.ler(r.id)))).filter((r): r is Roteiro => !!r);
+      const blocos = completos
+        .map((r) => exportar(r))
+        .filter((x) => x.artes.length)
+        .map((x) => {
+          const cab = [x.roteiro.claquete || x.roteiro.titulo, [x.roteiro.programa, x.roteiro.praca].filter(Boolean).join(' · ')].filter(Boolean).join('  —  ');
+          return [cab, ...x.artes.map((a) => `${a.ordem}\t${a.subtipo ? a.subtipoNome : 'sem tipo'}\t${a.texto}${a.observacao ? `\t(${a.observacao})` : ''}`)].join('\n');
+        });
+      if (!blocos.length) return avisar('Nenhuma arte nos roteiros desse dia.');
+      const total = completos.reduce((n, r) => n + exportar(r).artes.length, 0);
+      await copiarTexto([`ARTES · ${g.titulo.toUpperCase()}${g.chave !== 'sem-data' ? ` (${g.subtitulo})` : ''}`, '', blocos.join('\n\n')].join('\n'));
+      avisar(`${plural(total, 'arte copiada', 'artes copiadas')}, de ${plural(blocos.length, 'roteiro', 'roteiros')}. É só colar.`);
+    } catch {
+      avisar('Não consegui copiar as artes do dia.');
+    }
   };
 
   const termo = semAcento(busca.trim());
   const aberto = (roteiros ?? []).some((r) => r.aberto);
-  const todos = roteiros ?? [];
-  const visiveis = todos.filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo));
+  const todos = (roteiros ?? []).filter((r) => r.id !== saindo?.id);
   const paraRevisar = todos.filter((r) => r.meta.revisar?.length).length;
-  const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo;
+  const visiveis = todos
+    .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo))
+    .filter((r) => !filtroEstado || (filtroEstado === 'revisar' ? !!r.meta.revisar?.length : !r.meta.revisar?.length));
+  const { proximos, exibidos } = agruparPorDia(visiveis);
+  const porId = new Map(todos.map((r) => [r.id, r]));
+  const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo && !saindo;
+  let ordem = 0;
+
+  const ficha = (r: Resumo) => {
+    const anterior = r.meta.substitui ? porId.get(r.meta.substitui) : undefined;
+    return (
+      <Ficha
+        key={r.id}
+        r={r}
+        nova={(novos.includes(r.id) || deOutros.includes(r.id)) && !devolvidos.includes(r.id)}
+        agora={noRoteiro[r.id] ?? []}
+        eu={eu}
+        ordem={ordem++}
+        abrir={() => abrir(r.id)}
+        versao={anterior ? { anterior, substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
+        acoes={
+          (r.meu || aberto) && (
+            <button className="botao-icone ficha-lixo" title="Tirar da fila" aria-label={`Tirar ${r.meta.claquete || r.meta.titulo} da fila`} onClick={() => tirar(r)}>
+              <Icone nome="lixo" />
+            </button>
+          )
+        }
+      />
+    );
+  };
+  const cabecalhoDoDia = (g: GrupoDia) => (
+    <div className="dia-topo">
+      <h3>
+        {g.titulo}
+        <span>{g.subtitulo}</span>
+      </h3>
+      <span className="dia-conta">{plural(g.itens.length, 'roteiro', 'roteiros')}</span>
+      <button className="botao-texto" onClick={() => copiarArtesDoDia(g)} title="Copia a lista de artes de todos os roteiros deste dia">
+        <Icone nome="copiar" tam={14} /> Copiar artes do dia
+      </button>
+    </div>
+  );
+  const filtro = (id: 'prontos' | 'revisar', conteudo: React.ReactNode) => (
+    <button className="conta-filtro" aria-pressed={filtroEstado === id} onClick={() => setFiltroEstado((f) => (f === id ? null : id))} title={filtroEstado === id ? 'Mostrar todos' : 'Mostrar só estes'}>
+      {conteudo}
+    </button>
+  );
+  const colar = (
+    <form
+      className="colar-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!claqueteNova.trim()) return;
+        criar(claqueteNova.trim());
+        setColando(false);
+        setClaqueteNova('');
+      }}
+    >
+      <label>
+        <span className="rotulo">Claquete do roteiro</span>
+        <input autoFocus value={claqueteNova} onChange={(e) => setClaqueteNova(e.target.value)} placeholder="Quem Ama(Prologo)26/10 Rede" aria-label="Claquete do roteiro" />
+      </label>
+      <small className="suave">É pela claquete que vêm o editor, a praça e a data. Depois é só colar o texto do Word na folha.</small>
+      <div className="colar-acoes">
+        <button type="button" className="botao-texto" onClick={() => setColando(false)}>Cancelar</button>
+        <button className="botao primario" disabled={!claqueteNova.trim()}>Abrir a folha</button>
+      </div>
+    </form>
+  );
 
   return (
     <div className="pagina">
@@ -367,18 +532,25 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
             <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
             <h2 className="titulo-serifa">Arraste os roteiros para cá</h2>
             <p className="suave">Quantos quiser de uma vez: .docx, .rtf ou .pdf. Cada um vira uma ficha na fila.</p>
-            <button className="botao-texto" onClick={criar}>ou cole o texto copiado do Word</button>
+            {colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
           </section>
         ) : (
           roteiros && (
             <section className="lista">
               <div className="fila-topo">
                 <div>
-                  <h2 className="titulo-serifa"><em>{todos.length}</em> {todos.length === 1 ? 'roteiro na fila' : 'roteiros na fila'}</h2>
+                  <h2 className="titulo-serifa">
+                    {todos.length || !lendo ? (
+                      <><em>{todos.length}</em> {todos.length === 1 ? 'roteiro na fila' : 'roteiros na fila'}</>
+                    ) : (
+                      <>Lendo <em>1</em> roteiro</>
+                    )}
+                  </h2>
                   <p className="fila-conta">
-                    <span><i className="ponto ok" />{plural(todos.length - paraRevisar, 'pronto', 'prontos')}</span>
-                    {paraRevisar > 0 && <span><i className="ponto revisar" />{paraRevisar} para revisar</span>}
+                    {filtro('prontos', <><i className="ponto ok" />{plural(todos.length - paraRevisar, 'pronto', 'prontos')}</>)}
+                    {paraRevisar > 0 && filtro('revisar', <><i className="ponto revisar" />{paraRevisar} para revisar</>)}
                     {falhas.length > 0 && <span><i className="ponto erro" />{plural(falhas.length, 'não lido', 'não lidos')}</span>}
+                    {lendo && <span><i className="ponto lendo" />lendo 1</span>}
                   </p>
                 </div>
                 {todos.length > 6 && (
@@ -389,54 +561,67 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                 )}
               </div>
 
-              <ul className="fichas">
-                {lendo && (
-                  <li className="ficha lendo" aria-live="polite">
-                    <span className="ficha-marca lendo" aria-hidden="true" />
-                    <span className="ficha-claquete">
-                      <b>{lendo.nome.replace(/\.[^.]+$/, '')}</b>
-                      <span>{lendo.detalhe}</span>
-                    </span>
-                  </li>
-                )}
-                {falhas.map((f) => (
-                  <li key={f.nome} className="ficha erro montada" data-ancora={`falha:${f.nome}`}>
-                    <span className="ficha-marca erro" aria-hidden="true"><Icone nome="fechar" tam={11} traco={3} /></span>
-                    <span className="ficha-claquete"><b>{f.nome.replace(/\.[^.]+$/, '')}</b><span>Não consegui ler este arquivo</span></span>
-                    <span className="ficha-acoes"><button className="botao" onClick={() => tirarFalha(f.nome)}>Tirar da fila</button></span>
-                    <span className="ficha-pendencias"><span className="pendencia erro">{f.motivo}</span></span>
-                  </li>
-                ))}
-                {visiveis.map((r, k) => (
-                  <Ficha
-                    key={r.id}
-                    r={r}
-                    nova={novos.includes(r.id) || deOutros.includes(r.id)}
-                    agora={noRoteiro[r.id] ?? []}
-                    eu={eu}
-                    ordem={k}
-                    abrir={() => abrir(r.id)}
-                    acoes={
-                      apagando === r.id ? (
-                        <>
-                          <button className="botao-texto perigo" onClick={() => apagar(r)}>Tirar</button>
-                          <button className="botao-texto" onClick={() => setApagando(null)}>Manter</button>
-                        </>
-                      ) : (
-                        (r.meu || aberto) && (
-                          <button className="botao-icone ficha-lixo" title="Tirar da fila" aria-label={`Tirar ${r.meta.claquete || r.meta.titulo} da fila`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>
-                        )
-                      )
-                    }
-                  />
-                ))}
-              </ul>
-              {!visiveis.length && termo && <p className="suave vazio">Nada encontrado para “{busca}”.</p>}
-              <p className="fila-rodape">Arraste mais roteiros para qualquer ponto da tela. <button className="botao-texto" onClick={criar}>Colar do Word</button></p>
+              {(lendo || falhas.length > 0) && (
+                <ul className="fichas">
+                  {lendo && (
+                    <li className="ficha lendo" aria-live="polite">
+                      <span className="ficha-marca lendo" aria-hidden="true" />
+                      <span className="ficha-claquete">
+                        <b>{lendo.nome.replace(/\.[^.]+$/, '')}</b>
+                        <span>{lendo.detalhe}</span>
+                      </span>
+                    </li>
+                  )}
+                  {falhas.map((f) => (
+                    <li key={f.nome} className="ficha erro montada" data-ancora={`falha:${f.nome}`}>
+                      <span className="ficha-marca erro" aria-hidden="true"><Icone nome="fechar" tam={11} traco={3} /></span>
+                      <span className="ficha-claquete"><b>{f.nome.replace(/\.[^.]+$/, '')}</b><span>Não consegui ler este arquivo</span></span>
+                      <span className="ficha-acoes"><button className="botao" onClick={() => tirarFalha(f.nome)}>Tirar da fila</button></span>
+                      <span className="ficha-pendencias"><span className="pendencia erro">{f.motivo}</span></span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {proximos.map((g) => (
+                <section key={g.chave} className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
+                  {cabecalhoDoDia(g)}
+                  <ul className="fichas">{g.itens.map(ficha)}</ul>
+                </section>
+              ))}
+
+              {exibidos.length > 0 && (
+                <details className="exibidos">
+                  <summary>
+                    Já foram ao ar <span>{plural(exibidos.reduce((n, g) => n + g.itens.length, 0), 'roteiro', 'roteiros')}</span>
+                  </summary>
+                  {exibidos.map((g) => (
+                    <section key={g.chave} className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
+                      {cabecalhoDoDia(g)}
+                      <ul className="fichas">{g.itens.map(ficha)}</ul>
+                    </section>
+                  ))}
+                </details>
+              )}
+
+              {!visiveis.length && (termo || filtroEstado) && (
+                <p className="suave vazio">
+                  {termo ? `Nada encontrado para “${busca}”.` : filtroEstado === 'revisar' ? 'Nada para revisar.' : 'Nenhum roteiro pronto ainda.'}
+                </p>
+              )}
+              {colando ? colar : (
+                <p className="fila-rodape">Arraste mais roteiros para qualquer ponto da tela. <button className="botao-texto" onClick={() => setColando(true)}>Colar do Word</button></p>
+              )}
             </section>
           )
         )}
       </main>
+      {saindo && (
+        <div className="desfazer" role="status">
+          <span><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</span>
+          <button className="botao-texto" onClick={desfazer}>Desfazer</button>
+        </div>
+      )}
       <Ponteiros lista={Object.values(ponteiros)} />
     </div>
   );

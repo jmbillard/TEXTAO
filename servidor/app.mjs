@@ -200,6 +200,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
     conteudo: db.prepare('UPDATE roteiros SET meta = ?, doc = ?, n_artes = ?, atualizado_em = ? WHERE id = ?'),
     revisou: db.prepare('UPDATE roteiros SET revisado_email = ?, revisado_nome = ? WHERE id = ?'),
+    limparYdoc: db.prepare('UPDATE roteiros SET ydoc = NULL WHERE id = ?'),
     inserir: db.prepare(
       `INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -591,6 +592,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
           novoRevisor = atual.revisado_email !== eu.email;
           q.revisou.run(eu.email, eu.nome, id);
         }
+        // texto trocado por fora da edição simultânea (versão nova do arquivo): o estado guardado da sala
+        // ficaria por cima dele na próxima abertura; sem ninguém na sala, ele é descartado
+        if (atual && motivo === 'substituiu a versão anterior' && !salas.get(id)?.conexoes.size) q.limparYdoc.run(id);
         versionar(id, eu, meta, doc, motivo, agora);
         db.exec('COMMIT');
       } catch (e) {

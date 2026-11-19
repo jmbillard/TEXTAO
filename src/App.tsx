@@ -8,6 +8,7 @@ import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
 import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
 import { DesenhosDeCursor } from './ui/cursores';
+import { acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
 type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string };
 
@@ -106,9 +107,18 @@ export function App() {
     async (arquivos: File[]) => {
       ir({ t: 'biblioteca' });
       await atualizarVocabulario();
+      // claquete que já está na fila: o arquivo novo é uma versão nova dela, e a ficha pergunta se substitui
+      const naFila = new Map<string, string>();
+      for (const r of await armazenamento.listar().catch(() => [])) {
+        const k = chaveDaClaquete(r.meta.claquete ?? '');
+        if (k) naFila.set(k, r.id);
+      }
       for (const arquivo of arquivos) {
         try {
           const roteiro = await lerRoteiro(arquivo, (detalhe) => setLendo({ nome: arquivo.name, detalhe }));
+          const k = chaveDaClaquete(roteiro.meta.claquete);
+          if (k && naFila.has(k)) roteiro.meta.substitui = naFila.get(k);
+          if (k) naFila.set(k, roteiro.id);
           await armazenamento.salvar(roteiro);
           setNovos((n) => [...n, roteiro.id]);
         } catch (e) {
@@ -167,6 +177,27 @@ export function App() {
     [ir, identidade], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  /** Folha para colar do Word: a claquete vem primeiro, porque é dela que saem editor, praça, data e atração. */
+  const colarComClaquete = useCallback(
+    async (claquete: string) => {
+      await atualizarVocabulario();
+      const pauta = await consultarPauta(claquete).catch(() => ({ editor: '', claquete: '' }));
+      const programa = acharPrograma(claquete);
+      const meta = {
+        ...metaVazia(),
+        claquete: pauta.claquete || claquete,
+        editor: pauta.editor,
+        praca: pracaDaClaquete(claquete),
+        dataExibicao: dataDaClaquete(claquete),
+        programa: programa?.nome ?? '',
+        tipoPrograma: programa?.tipo ?? 'outro',
+        redator: identidade?.nome ?? lerLocal('roteirista.redator'),
+      };
+      await criar({ meta });
+    },
+    [criar, identidade], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // soltar um arquivo em qualquer lugar da janela
   useEffect(() => {
     const temArquivo = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
@@ -206,7 +237,7 @@ export function App() {
 
   return (
     <>
-      {tela.t === 'biblioteca' && <Biblioteca key={sessao} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {tela.t === 'biblioteca' && <Biblioteca key={sessao} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={(claquete) => void colarComClaquete(claquete)} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {
@@ -214,7 +245,7 @@ export function App() {
           setSessao((n) => n + 1);
         });
       }} />}
-      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} pessoa={pessoa} />}
+      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} avisar={avisar} pessoa={pessoa} />}
 
       <DesenhosDeCursor />
       {soltando && (

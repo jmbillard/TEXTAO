@@ -44,6 +44,18 @@ export const PRACAS_LIDAS = ['REDE', 'G5', 'SP', 'RJ', 'MG', 'DF', 'PE'];
 /** Só existem três praças: o que não é Rio nem São Paulo é G5. */
 export const normalizarPraca = (p: string) => (/^(SP|RJ)$/i.test(p) ? p.toUpperCase() : 'G5');
 
+/** Claquete do Rio começa por "RIO"; a de São Paulo termina em "SP"; o resto é G5. */
+export const pracaDaClaquete = (claquete: string) => (/^RIO /i.test(claquete.trim()) ? 'RJ' : / SP$/i.test(claquete.trim()) ? 'SP' : 'G5');
+
+/** O último dd/mm da claquete, no ano corrente (ou no seguinte, se já passou há mais de seis meses). */
+export function dataDaClaquete(claquete: string, hoje = new Date()): string {
+  const m = [...claquete.matchAll(/(?<!\d)(\d{1,2})\/(\d{1,2})(?!\d)/g)].reverse().find((x) => +x[1] >= 1 && +x[1] <= 31 && +x[2] >= 1 && +x[2] <= 12);
+  if (!m) return '';
+  let ano = hoje.getFullYear();
+  if (new Date(ano, +m[2] - 1, +m[1]).getTime() < hoje.getTime() - 183 * 864e5) ano++;
+  return `${ano}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
 /** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. */
 export function claqueteDoArquivo(arquivo: string): string {
   const partes = arquivo
