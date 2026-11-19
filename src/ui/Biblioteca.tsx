@@ -314,7 +314,8 @@ function TituloQueSeEscreve({ frases }: { frases: string[] }) {
   return (
     <span className="titulo-maquina" aria-live="off" aria-label={frase}>
       {calmo ? frase : <span className={`texto-maquina ${apagando && n > 0 ? 'selecionado' : ''}`}>{frase.slice(0, n)}</span>}
-      {!calmo && !(apagando && n > 0) && <i className="cursor" aria-hidden="true" />}
+      {/* durante a seleção o cursor só fica invisível: tirá-lo encurtaria a linha e o texto centralizado pularia */}
+      {!calmo && <i className="cursor" aria-hidden="true" style={apagando && n > 0 ? { visibility: 'hidden', animation: 'none' } : undefined} />}
     </span>
   );
 }
