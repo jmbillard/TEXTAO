@@ -55,6 +55,13 @@ services:
       - TEABLE_CAMPO_CHAVE=${TEABLE_CAMPO_CHAVE:-}
       - TEABLE_CAMPO_ATRACAO=${TEABLE_CAMPO_ATRACAO:-}
       - TEABLE_CAMPO_REDATOR=${TEABLE_CAMPO_REDATOR:-}
+      # ---- Cadastros (atrações, redatores, editores) ----
+      # Tabela KEY_editores (tbl…): as keys da pauta de cada editor
+      - TEABLE_KEY_EDITORES=${TEABLE_KEY_EDITORES:-}
+      # Campos das atrações que são os caminhos (fórmulas); o formulário pede os campos que elas usam
+      - TEABLE_CAMPOS_CAMINHO=${TEABLE_CAMPOS_CAMINHO:-projeto_win,output_win}
+      # Quem pode remover cadastros (e-mails separados por vírgula). Cadastrar, todos podem.
+      - CADASTRO_ADMINS=${CADASTRO_ADMINS:-}
       # ---- Envio para o Trello (no lugar do fluxo upload_roteiros do n8n) ----
       # Sem TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA, o envio fica desligado e nada aparece na tela.
       - TRELLO_KEY=${TRELLO_KEY:-}

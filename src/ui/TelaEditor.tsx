@@ -32,7 +32,7 @@ import { atalho, baixar, copiarTexto, haQuantoTempo, nomeDoArquivo, plural } fro
 
 /* ---------- topo da folha: atração e praça ---------- */
 
-function TopoFolha({ meta, mudar }: { meta: Meta; mudar: (m: Partial<Meta>) => void }) {
+function TopoFolha({ meta, mudar, cadastrar }: { meta: Meta; mudar: (m: Partial<Meta>) => void; cadastrar?: () => void }) {
   return (
     <header className="topo-folha">
       <label className="atracao">
@@ -50,6 +50,11 @@ function TopoFolha({ meta, mudar }: { meta: Meta; mudar: (m: Partial<Meta>) => v
             mudar({ programa: v, ...(p ? { tipoPrograma: p.tipo } : {}) });
           }}
         />
+        {cadastrar && !programasConhecidos().some((p) => p.nome.toLowerCase() === meta.programa.trim().toLowerCase()) && (
+          <button type="button" className="atalho-cadastro" onClick={cadastrar}>
+            <Icone nome="mais" tam={12} traco={2.4} /> {meta.programa.trim() ? `cadastrar “${meta.programa.trim()}”` : 'cadastrar a atração'}
+          </button>
+        )}
       </label>
       <div className="praca">
         <span className="rotulo">Praça</span>
@@ -346,7 +351,7 @@ function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor:
 
 /* ---------- tela ---------- */
 
-export function TelaEditor({ id, voltar, abrir, avisar, pessoa }: { id: string; voltar: () => void; abrir: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
+export function TelaEditor({ id, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { id: string; voltar: () => void; abrir: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string) => void }) {
   const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
   useEffect(() => {
     armazenamento.ler(id).then((r) => setRoteiro(r ?? null), () => setRoteiro(null));
@@ -363,10 +368,10 @@ export function TelaEditor({ id, voltar, abrir, avisar, pessoa }: { id: string; 
         </main>
       </div>
     );
-  return <Folha inicial={roteiro} voltar={voltar} abrir={abrir} avisar={avisar} pessoa={pessoa} />;
+  return <Folha inicial={roteiro} voltar={voltar} abrir={abrir} avisar={avisar} pessoa={pessoa} cadastrarAtracao={cadastrarAtracao} />;
 }
 
-function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; voltar: () => void; abrir: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa }) {
+function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { inicial: Roteiro; voltar: () => void; abrir: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string) => void }) {
   const pessoaRef = useRef(pessoa);
   pessoaRef.current = pessoa;
   const mexeu = useRef(false);
@@ -994,7 +999,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
               </div>
             )}
             <div inert={leitura || !liberado || undefined}>
-              <TopoFolha meta={meta} mudar={mudarMeta} />
+              <TopoFolha meta={meta} mudar={mudarMeta} cadastrar={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined} />
             </div>
             {meta.lidoPorOcr && !meta.conferidos?.includes('ocr') && (
               <div className="faixa-ocr">

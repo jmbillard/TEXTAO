@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { armazenamento, mandarParaTrello, temTrello, type Resumo } from '../dados/armazenamento';
+import { armazenamento, mandarParaTrello, temCadastros, temTrello, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias } from '../modelo/exportar';
@@ -45,6 +45,8 @@ interface Props {
   chegou: number;
   /** Arquivo sendo lido agora, quando a leitura demora (OCR). */
   lendo: { nome: string; detalhe: string } | null;
+  /** Abre os cadastros (atrações, redatores, editores), opcionalmente já com uma claquete para cadastrar. */
+  cadastros: (inicio?: { aba?: TipoCadastro; claquete?: string }) => void;
 }
 
 const iniciais = (nome: string) =>
@@ -118,7 +120,7 @@ function EscolhaDeTema() {
 }
 
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
-function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'definirPerfil'>) {
+function Perfil({ identidade, definirPerfil, cadastros }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void }) {
   const [aberto, setAberto] = useState(false);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
@@ -176,6 +178,11 @@ function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'defin
               <p className="suave pequeno">Fica só neste navegador e assina os roteiros que você escrever.</p>
               <button className="botao primario" disabled={!nome.trim()}>Salvar</button>
             </form>
+          )}
+          {cadastros && (
+            <button type="button" className="perfil-link" onClick={cadastros}>
+              <Icone nome="pessoas" tam={16} /> Cadastros <small>atrações, redatores, editores</small>
+            </button>
           )}
           <EscolhaDeTema />
           <EscolhaDeCursor email={identidade?.email ?? ''} />
@@ -273,7 +280,7 @@ interface VersaoNova {
   manter: () => void;
 }
 
-function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; mandar?: () => Promise<void> }) {
+function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadastrarAtracao }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; mandar?: () => Promise<void>; cadastrarAtracao?: () => void }) {
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   const revisar = r.meta.revisar ?? [];
@@ -338,13 +345,22 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar }: { r:
           <button className="botao primario" onClick={versao.substituir}>Substituir a anterior</button>
         </span>
       )}
-      {revisar.length > 0 && <span className="ficha-pendencias some">{revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}</span>}
+      {(revisar.length > 0 || (!r.meta.programa && cadastrarAtracao)) && (
+        <span className="ficha-pendencias some">
+          {revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}
+          {!r.meta.programa && cadastrarAtracao && (
+            <button type="button" className="atalho-cadastro" onClick={cadastrarAtracao}>
+              <Icone nome="mais" tam={12} traco={2.4} /> cadastrar a atração
+            </button>
+          )}
+        </span>
+      )}
       {mandar && !versao && <FichaTrello r={r} mandar={mandar} />}
     </li>
   );
 }
 
-export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo }: Props) {
+export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState('');
   // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
@@ -539,6 +555,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         abrir={() => abrir(r.id)}
         versao={anterior ? { anterior, substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
         mandar={temTrello() && (r.podeEditar || r.meu || aberto) ? () => mandar(r) : undefined}
+        cadastrarAtracao={temCadastros() && r.meta.claquete ? () => cadastros({ aba: 'atracoes', claquete: r.meta.claquete }) : undefined}
         acoes={
           (r.meu || aberto) && (
             <button className="botao-icone ficha-lixo" title="Tirar da fila" aria-label={`Tirar ${r.meta.claquete || r.meta.titulo} da fila`} onClick={() => tirar(r)}>
@@ -604,7 +621,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
             </div>
           )}
-          <Perfil identidade={identidade} definirPerfil={definirPerfil} />
+          <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} />
         </header>
 
         {EXEMPLOS.length > 0 && (

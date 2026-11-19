@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { armazenamento, atualizarVocabulario, consultarPauta, guardarOriginal, mandarParaTrello, temTrello } from './dados/armazenamento';
+import { Cadastros } from './ui/Cadastros';
+import { armazenamento, atualizarVocabulario, temCadastros, type TipoCadastro, consultarPauta, guardarOriginal, mandarParaTrello, temTrello } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -10,7 +11,7 @@ import { TelaEditor } from './ui/TelaEditor';
 import { DesenhosDeCursor } from './ui/cursores';
 import { acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'cadastros'; aba?: TipoCadastro; claquete?: string };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -29,7 +30,9 @@ const lerLocal = (chave: string) => {
 
 const telaDoHash = (): Tela => {
   const m = /^#\/r\/(.+)$/.exec(location.hash);
-  return m ? { t: 'editor', id: decodeURIComponent(m[1]) } : { t: 'biblioteca' };
+  if (m) return { t: 'editor', id: decodeURIComponent(m[1]) };
+  const c = /^#\/cadastros(?:\/(atracoes|redatores|editores))?$/.exec(location.hash);
+  return c ? { t: 'cadastros', aba: (c[1] as TipoCadastro | undefined) ?? 'atracoes' } : { t: 'biblioteca' };
 };
 
 export function App() {
@@ -63,7 +66,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : '#/';
     try {
       if (location.hash !== hash) history.pushState(null, '', hash);
     } catch {
@@ -242,7 +245,7 @@ export function App() {
 
   return (
     <>
-      {tela.t === 'biblioteca' && <Biblioteca key={sessao} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={(claquete) => void colarComClaquete(claquete)} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {tela.t === 'biblioteca' && <Biblioteca key={sessao} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {
@@ -250,7 +253,8 @@ export function App() {
           setSessao((n) => n + 1);
         });
       }} />}
-      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} avisar={avisar} pessoa={pessoa} />}
+      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete) => ir({ t: 'cadastros', aba: 'atracoes', claquete }) : undefined} />}
+      {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete }} />}
 
       <DesenhosDeCursor />
       {soltando && (

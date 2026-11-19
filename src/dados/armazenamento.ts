@@ -178,6 +178,60 @@ export async function guardarOriginal(id: string, arquivo: File) {
   if (!r.ok) throw new Error('Não consegui guardar o arquivo original.');
 }
 
+/* ---------- cadastros (atrações, redatores, editores) ---------- */
+
+export interface KeyCadastro {
+  id: string;
+  key: string;
+}
+export interface AtracaoCadastro {
+  id: string;
+  nome: string;
+  categoria: string;
+  keys: KeyCadastro[];
+  caminhos: Record<string, string>;
+  campos: Record<string, string>;
+}
+export interface RedatorCadastro {
+  id: string;
+  nome: string;
+  user: string;
+  trello: boolean;
+}
+export interface EditorCadastro {
+  id: string;
+  nome: string;
+  keys: KeyCadastro[];
+  trello: boolean;
+}
+export interface CampoCaminho {
+  nome: string;
+  tipo: string;
+  opcoes: string[] | null;
+}
+export interface Cadastros {
+  ligado: boolean;
+  atracoes: AtracaoCadastro[];
+  redatores: RedatorCadastro[];
+  editores: EditorCadastro[];
+  categorias: string[];
+  camposCaminho: CampoCaminho[];
+  formulas: Record<string, string>;
+  podeApagar: boolean;
+}
+export type TipoCadastro = 'atracoes' | 'redatores' | 'editores';
+
+/** Há servidor para guardar os cadastros (o Teable em si é conferido na tela). */
+export const temCadastros = () => armazenamento.tipo === 'servidor';
+
+export const lerCadastros = (renovar = false) => pedir<Cadastros>(`/api/cadastros${renovar ? '?renovar=1' : ''}`);
+export const cadastrar = <T = { id: string; nome: string }>(tipo: TipoCadastro, dados: object) =>
+  pedir<T>(`/api/cadastros/${tipo}`, { method: 'POST', body: JSON.stringify(dados) });
+export const darKey = (tipo: 'atracoes' | 'editores', id: string, key: string) =>
+  pedir<KeyCadastro>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}/keys`, { method: 'POST', body: JSON.stringify({ key }) });
+export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
+  pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });
+
 /** O arquivo como subiu, para baixar de novo. */
 export async function baixarOriginal(id: string): Promise<Blob> {
   const r = await fetch(`/api/roteiros/${encodeURIComponent(id)}/original`, { credentials: 'same-origin', headers: cabecalhos });
