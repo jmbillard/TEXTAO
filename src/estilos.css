@@ -1329,3 +1329,6 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .ficha-gente small .duvida i { font-size: 16px; }
 /* fila com tudo já exibido: o mesmo convite, um pouco mais baixo, antes de "Já foram ao ar" */
 .fila-vazia.nada-pela-frente { margin: 8px 0 28px; padding-block: 40px; }
+.titulo-maquina { display: inline-block; min-height: 1.2em; white-space: nowrap; }
+.titulo-maquina .cursor { display: inline-block; width: 2px; height: 0.9em; margin-left: 3px; vertical-align: -0.08em; background: var(--ultra); animation: piscar-cursor-titulo 1s steps(1) infinite; }
+@keyframes piscar-cursor-titulo { 50% { opacity: 0; } }

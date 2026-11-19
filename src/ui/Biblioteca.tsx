@@ -276,6 +276,48 @@ function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
   );
 }
 
+/** Quando tudo já foi ao ar: convites que se revezam, digitados e apagados à máquina. */
+const CONVITES = [
+  'Fila em dia!',
+  'Tem novidade por aí?',
+  'Bora pra próxima leva?',
+  'Chegou roteiro novo?',
+  'Mais textos para a arte?',
+  'Tudo no ar. E agora?',
+  'Pode mandar mais',
+  'Vamos revisar o que vem aí?',
+];
+
+function TituloQueSeEscreve({ frases }: { frases: string[] }) {
+  const [i, setI] = useState(() => Math.floor(Math.random() * frases.length));
+  const [n, setN] = useState(0);
+  const [apagando, setApagando] = useState(false);
+  const calmo = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const frase = frases[i % frases.length];
+  useEffect(() => {
+    if (calmo) {
+      const t = setTimeout(() => setI((v) => v + 1), 6000);
+      return () => clearTimeout(t);
+    }
+    let t: ReturnType<typeof setTimeout>;
+    if (!apagando && n < frase.length) t = setTimeout(() => setN(n + 1), 55 + Math.random() * 45);
+    else if (!apagando) t = setTimeout(() => setApagando(true), 3200);
+    else if (n > 0) t = setTimeout(() => setN(n - 1), 22);
+    else
+      t = setTimeout(() => {
+        setApagando(false);
+        setI((v) => v + 1 + Math.floor(Math.random() * (frases.length - 1)));
+      }, 350);
+    return () => clearTimeout(t);
+  }, [n, apagando, frase, calmo, frases.length]);
+  return (
+    <span className="titulo-maquina" aria-live="off" aria-label={frase}>
+      {calmo ? frase : frase.slice(0, n)}
+      {!calmo && <i className="cursor" aria-hidden="true" />}
+    </span>
+  );
+}
+
 const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 /** O card no Trello: mandando, mandado (com link), já estava lá, ou deu erro. Sem envio, o botão para mandar. */
@@ -764,7 +806,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               {!proximos.length && !lendo && !falhas.length && !termo && !filtroEstado && (
                 <section className="fila-vazia nada-pela-frente">
                   <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
-                  <h2 className="titulo-serifa">Nada para ir ao ar</h2>
+                  <h2 className="titulo-serifa"><TituloQueSeEscreve frases={CONVITES} /></h2>
                   <p className="suave">Arraste os próximos roteiros para cá: .docx, .rtf ou .pdf, quantos quiser de uma vez.</p>
                   {colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
                 </section>
