@@ -888,7 +888,7 @@ kbd {
 
 .fichas { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
 .ficha {
-  display: grid; grid-template-columns: 24px minmax(0, 1.5fr) minmax(0, 1fr) auto auto; gap: 6px 16px; align-items: center;
+  display: grid; grid-template-columns: 24px minmax(0, 2.8fr) minmax(0, 1fr) auto auto; gap: 6px 16px; align-items: center;
   background: var(--papel); border: 1px solid var(--regua); border-radius: 14px; padding: 12px 14px 12px 16px;
   box-shadow: 0 1px 2px rgb(26 25 22 / 5%); transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s var(--suave);
 }
@@ -1005,7 +1005,7 @@ kbd {
   100% { left: 100%; opacity: 0; transform: translate(14px, 8px); }
 }
 
-.rubrica { display: inline-block; margin-left: 12px; font: 600 19px/1 Caveat, cursive; letter-spacing: 0; color: var(--tinta3); white-space: nowrap; transform: rotate(-3deg) translateY(-1px); transform-origin: left; }
+.rubrica { display: inline-block; margin-left: 10px; font: 600 19px/1 Caveat, cursive; letter-spacing: 0; color: var(--tinta3); white-space: nowrap; transform: rotate(-3deg) translateY(-1px); transform-origin: left; }
 .rubrica.agora { color: color-mix(in srgb, var(--cor) var(--orelha-letra), #fff); clip-path: inset(0 100% 0 0); animation: escrever-nome 0.65s 1.15s steps(14, end) forwards; }
 @keyframes escrever-nome { to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) {
