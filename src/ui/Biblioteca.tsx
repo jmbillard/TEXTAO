@@ -241,7 +241,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                     ) : (
                       <span className="item-acoes">
                         <button className="botao-icone" title="Duplicar" aria-label={`Duplicar ${r.meta.claquete || r.meta.titulo}`} onClick={() => duplicar(r)}><Icone nome="duplicar" /></button>
-                        {r.meu && <button className="botao-icone" title="Apagar" aria-label={`Apagar ${r.meta.claquete || r.meta.titulo}`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>}
+                        {(r.meu || aberto) && <button className="botao-icone" title="Apagar" aria-label={`Apagar ${r.meta.claquete || r.meta.titulo}`} onClick={() => setApagando(r.id)}><Icone nome="lixo" /></button>}
                       </span>
                     )}
                   </li>

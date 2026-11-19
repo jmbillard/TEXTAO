@@ -269,7 +269,7 @@ describe('pauta direto no Postgres do Teable', () => {
 });
 
 describe('modo aberto (padrão)', () => {
-  it('todos veem e editam todos os roteiros; só quem subiu apaga', async () => {
+  it('todos veem, editam e apagam todos os roteiros', async () => {
     const banco = abrirBanco(':memory:');
     const app = criarApp({ db: banco, env: {} });
     const s = createServer(app);
@@ -284,8 +284,8 @@ describe('modo aberto (padrão)', () => {
       expect(lista).toMatchObject([{ id: 'aberto-0001', meu: false, podeEditar: true, aberto: true }]);
       expect(await (await b('/api/roteiros/aberto-0001')).json()).toMatchObject({ meu: false, podeEditar: true, aberto: true });
       expect((await b('/api/roteiros/aberto-0001', { method: 'PUT', body: JSON.stringify(roteiro('mexido pelo Beto')) })).status).toBeLessThan(300);
-      expect((await b('/api/roteiros/aberto-0001', { method: 'DELETE' })).status).toBeGreaterThanOrEqual(400);
-      expect((await a('/api/roteiros/aberto-0001', { method: 'DELETE' })).status).toBeLessThan(300);
+      expect((await b('/api/roteiros/aberto-0001', { method: 'DELETE' })).status).toBeLessThan(300);
+      expect(await (await a('/api/roteiros')).json()).toEqual([]);
     } finally {
       s.close();
     }

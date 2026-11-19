@@ -394,8 +394,8 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
     const { linha: atual, meu, editar: podeEditar, ler: podeLer } = acesso(id, eu);
 
     if (pedeVersoes) {
-      // o histórico é do dono: mostra o caminho todo do texto, não só o resultado
-      if (!atual || !meu) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+      // no modo privado o histórico é do dono: mostra o caminho todo do texto, não só o resultado
+      if (!atual || !(meu || aberto)) return json(res, 404, { erro: 'Roteiro não encontrado.' });
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       if (!nVersao)
         return json(res, 200, q.versoes.all(id).map((v) => ({ n: v.n, criadoEm: v.criado_em, por: { nome: v.por_nome, email: v.por_email }, motivo: v.motivo })));
@@ -416,7 +416,8 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
       return json(res, 200, fora);
     }
     if (req.method === 'DELETE') {
-      if (!atual || !meu) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+      // no modo aberto qualquer pessoa apaga; no privado, só quem é dono
+      if (!atual || !(meu || aberto)) return json(res, 404, { erro: 'Roteiro não encontrado.' });
       q.apagar.run(id);
       fecharSala(id, 'apagado');
       return json(res, 200, { ok: true });

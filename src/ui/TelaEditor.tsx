@@ -709,7 +709,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
               {presentes.length > 4 && <span className="presente mais">+{presentes.length - 4}</span>}
             </div>
           )}
-          {comServidor && sou && (
+          {comServidor && (sou || inicial.aberto) && (
             <>
               <button className="botao-icone" title="Histórico de versões" aria-label="Histórico de versões" aria-expanded={!!historico} onClick={abrirHistorico}>
                 <Icone nome="historico" tam={18} />
