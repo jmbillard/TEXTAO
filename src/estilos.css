@@ -1332,3 +1332,7 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .titulo-maquina { display: inline-block; min-height: 1.2em; white-space: nowrap; }
 .titulo-maquina .cursor { display: inline-block; width: 2px; height: 0.9em; margin-left: 3px; vertical-align: -0.08em; background: var(--ultra); animation: piscar-cursor-titulo 1s steps(1) infinite; }
 @keyframes piscar-cursor-titulo { 50% { opacity: 0; } }
+.texto-maquina { background: linear-gradient(color-mix(in srgb, var(--ultra) 26%, transparent), color-mix(in srgb, var(--ultra) 26%, transparent)) no-repeat 100% 0 / 0% 100%; border-radius: 2px; }
+/* selecionar tudo: o grifo corre do fim para o começo, como arrastando o mouse para trás */
+.texto-maquina.selecionado { animation: selecionar-convite 0.45s cubic-bezier(0.45, 0, 0.3, 1) forwards; }
+@keyframes selecionar-convite { to { background-size: 100% 100%; } }

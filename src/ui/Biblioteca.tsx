@@ -300,20 +300,21 @@ function TituloQueSeEscreve({ frases }: { frases: string[] }) {
       return () => clearTimeout(t);
     }
     let t: ReturnType<typeof setTimeout>;
+    // digita; espera; seleciona tudo (o grifo corre pelo texto) e apaga de uma vez; a próxima
     if (!apagando && n < frase.length) t = setTimeout(() => setN(n + 1), 55 + Math.random() * 45);
     else if (!apagando) t = setTimeout(() => setApagando(true), 3200);
-    else if (n > 0) t = setTimeout(() => setN(n - 1), 22);
+    else if (n > 0) t = setTimeout(() => setN(0), 950);
     else
       t = setTimeout(() => {
         setApagando(false);
         setI((v) => v + 1 + Math.floor(Math.random() * (frases.length - 1)));
-      }, 350);
+      }, 300);
     return () => clearTimeout(t);
   }, [n, apagando, frase, calmo, frases.length]);
   return (
     <span className="titulo-maquina" aria-live="off" aria-label={frase}>
-      {calmo ? frase : frase.slice(0, n)}
-      {!calmo && <i className="cursor" aria-hidden="true" />}
+      {calmo ? frase : <span className={`texto-maquina ${apagando && n > 0 ? 'selecionado' : ''}`}>{frase.slice(0, n)}</span>}
+      {!calmo && !(apagando && n > 0) && <i className="cursor" aria-hidden="true" />}
     </span>
   );
 }
