@@ -16,6 +16,8 @@ export interface ArteSaida {
   /** false enquanto o subtipo é só a sugestão do importador. */
   conferida: boolean;
   contexto: { coluna: string | null; trechoAnterior: string; trechoPosterior: string };
+  /** Quanto tempo a arte fica no ar: a leitura da frase em que ela aparece, no ritmo da locução. */
+  duracaoEstimadaSeg: number;
   status: 'pendente';
 }
 export interface OrientacaoSaida {
@@ -95,6 +97,18 @@ function achatar(doc: NoJSON): Bloco[] {
   return out;
 }
 
+/** A frase em volta do trecho [ini, fim): do último ponto antes até o primeiro depois. */
+function fraseEmVolta(total: string, ini: number, fim: number) {
+  const antes = total.slice(0, ini);
+  const comeco = Math.max(antes.search(/[^.!?\n]*$/), 0);
+  const depois = total.slice(fim).search(/[.!?\n]/);
+  return total.slice(comeco, depois < 0 ? total.length : fim + depois + 1);
+}
+/** A arte fica no ar enquanto a frase dela é lida; no mínimo 2 segundos, para dar tempo de ler. */
+function duracaoDaArte(total: string, ini: number, fim: number) {
+  return Math.max(2, Math.round(palavras(fraseEmVolta(total, ini, fim)) / RITMO.locucao));
+}
+
 const palavras = (s: string) => (s.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu) ?? []).length;
 const limpo = (s: string) => s.replace(/\s+/g, ' ').trim();
 
@@ -156,6 +170,7 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
             trechoAnterior: limpo(total.slice(0, ini)).slice(-80),
             trechoPosterior: limpo(total.slice(ini + texto.length)).slice(0, 80),
           },
+          duracaoEstimadaSeg: 0,
           status: 'pendente',
         });
         md += `__${limpo(texto)}__` + (/\s$/.test(texto) ? ' ' : '');
@@ -257,7 +272,10 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
     }
     i = fim;
   }
-  artes.forEach((a, k) => (a.ordem = k + 1));
+  artes.forEach((a, k) => {
+    a.ordem = k + 1;
+    a.duracaoEstimadaSeg = duracaoDaArte(locais[k].total, locais[k].ini, locais[k].fim);
+  });
 
   return {
     schemaVersion: SCHEMA_VERSION,
