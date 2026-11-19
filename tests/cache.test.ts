@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
+import { connect } from 'node:net';
 import WebSocket from 'ws';
 // @ts-expect-error módulo JS sem tipos
 import { criarCache } from '../servidor/cache.mjs';
@@ -16,7 +17,15 @@ let redis: ChildProcess | null = null;
 beforeAll(async () => {
   if (!temRedis) return;
   redis = spawn('redis-server', ['--port', String(PORTA), '--save', '', '--appendonly', 'no'], { stdio: 'ignore' });
-  await esperar(400);
+  // espera o Redis aceitar conexão (um tempo fixo falhava com a máquina carregada)
+  for (let i = 0; i < 50; i++) {
+    const pronto = await new Promise<boolean>((ok) => {
+      const c = connect(PORTA, '127.0.0.1', () => (c.end(), ok(true)));
+      c.on('error', () => ok(false));
+    });
+    if (pronto) break;
+    await esperar(100);
+  }
 });
 afterAll(() => redis?.kill());
 
