@@ -432,7 +432,11 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   }
   if (!dataExib) {
     // como na claquete, vale o último par dia/mês válido do nome ("Quem_Ama_V2_26_10" → 26/10)
-    const m = [...nome.matchAll(/(?<!\d)(\d{1,2})[ .-](?=(\d{1,2})(?!\d))/g)].reverse().find((x) => +x[1] >= 1 && +x[1] <= 31 && +x[2] >= 1 && +x[2] <= 12);
+    // o hífen só separa dia e mês quando não há outro par: em "Chef_25_12-2" o "-2" é a versão, a data é 25/12
+    const valido = (x: RegExpMatchArray) => +x[1] >= 1 && +x[1] <= 31 && +x[2] >= 1 && +x[2] <= 12;
+    const m =
+      [...nome.matchAll(/(?<!\d)(\d{1,2})[ .](?=(\d{1,2})(?!\d))/g)].reverse().find(valido) ??
+      [...nome.matchAll(/(?<!\d)(\d{1,2})-(?=(\d{1,2})(?!\d))/g)].reverse().find(valido);
     if (m) {
       dataExib = lerData(m);
       anotar('Data de exibição tirada do nome do arquivo');

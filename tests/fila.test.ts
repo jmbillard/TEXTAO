@@ -77,3 +77,17 @@ describe('o que segura o envio para o Trello', () => {
     expect(travamTrello(undefined)).toEqual([]);
   });
 });
+
+describe('data com a versão grudada por hífen', () => {
+  it('"Chef_25_12-2": a claquete é CHEF 25/12-2 e a exibição, 25/12', async () => {
+    const { claqueteDoArquivo, dataDaClaquete } = await import('../src/modelo/vocabularios');
+    const { interpretar } = await import('../src/importar');
+    expect(claqueteDoArquivo('Chef_25_12-2.docx')).toBe('CHEF 25/12-2');
+    expect(dataDaClaquete('CHEF 25/12-2', new Date('2026-11-19'))).toBe('2026-12-25');
+    const imp = interpretar({ arquivo: 'Chef_25_12-2.rtf', formato: 'rtf', autor: '', blocos: [] }, { anoPadrao: 2026 });
+    expect(imp.meta.claquete).toBe('CHEF 25/12-2');
+    expect(imp.meta.dataExibicao).toBe('2026-12-25');
+    // sem outro par, o hífen ainda vale como separador
+    expect(interpretar({ arquivo: 'Festa_19-11.rtf', formato: 'rtf', autor: '', blocos: [] }, { anoPadrao: 2026 }).meta.dataExibicao).toBe('2026-11-19');
+  });
+});

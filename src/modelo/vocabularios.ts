@@ -67,9 +67,11 @@ export function claqueteDoArquivo(arquivo: string): string {
     .toUpperCase()
     .split(' ');
   for (let i = partes.length - 2; i >= 0; i--) {
-    const [d, m] = [partes[i], partes[i + 1]];
-    if (/^\d{1,2}$/.test(d) && /^\d{1,2}$/.test(m) && +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12) {
-      partes.splice(i, 2, `${d}/${m}`);
+    const d = partes[i];
+    // o mês pode vir com a versão grudada por hífen: "25 12-2" → "25/12-2"
+    const [, m, resto = ''] = /^(\d{1,2})(-\w+)?$/.exec(partes[i + 1]) ?? [];
+    if (/^\d{1,2}$/.test(d) && m && +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12) {
+      partes.splice(i, 2, `${d}/${m}${resto}`);
       break;
     }
   }
