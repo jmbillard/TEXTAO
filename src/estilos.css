@@ -1323,6 +1323,6 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .escolha-cor-grade button:focus-visible { outline: 2px solid var(--tinta); outline-offset: 3px; }
 
 /* ??? à mão onde falta redator ou editor */
-.duvida { display: inline-flex; gap: 0; vertical-align: -0.12em; color: var(--falta); }
+.duvida { display: inline-flex; gap: 2.5px; margin-left: 1px; vertical-align: -0.12em; color: var(--falta); }
 .duvida i { display: inline-block; font: 700 18px/0.8 Caveat, cursive; font-style: normal; }
 .ficha-gente small .duvida i { font-size: 16px; }
