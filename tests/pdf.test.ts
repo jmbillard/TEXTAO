@@ -22,8 +22,8 @@ describe('PDF', () => {
     expect(bruto.avisos?.[0]).toMatch(/reconhecidos pelo desenho da página/);
     expect(saida.roteiro).toMatchObject({ programa: 'Futebol Brasileirão', dataExibicao: '2026-10-28', praca: 'SP', locutor: 'WALMIR', duracaoAlvoSeg: 15 });
     expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([
-      ['RETA FINAL', 'rodape'], ['QUARTA', 'versao'], ['AMANHÃ', 'versao'], ['HOJE', 'versao'],
-      ['BAHIA X SÃO PAULO', 'tela_cheia'], ['BRASILEIRÃO', 'logo'], ['GLOBO', 'logo'],
+      ['RETA FINAL', ''], ['QUARTA', ''], ['AMANHÃ', ''], ['HOJE', ''],
+      ['BAHIA X SÃO PAULO', ''], ['BRASILEIRÃO', ''], ['GLOBO', ''],
     ]);
     expect(saida.texto.locucao.split('\n')[0]).toBe('É RETA FINAL! CADA PONTO VALE MUITO.');
   });
@@ -32,7 +32,7 @@ describe('PDF', () => {
     const { saida } = await importar('Nobreza_27_10.pdf');
     expect(saida.roteiro).toMatchObject({ programa: 'Nobreza do Amor', dataExibicao: '2026-10-27', capitulo: 184, locutor: 'DIRCEU', duracaoAlvoSeg: 30 });
     expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([
-      ['A NOBREZA DO AMOR', 'logo'], ['ÚLTIMAS SEMANAS', 'lettering'], ['AMANHÃ', 'versao'], ['HOJE', 'versao'], ['A NOBREZA DO AMOR', 'logo'],
+      ['A NOBREZA DO AMOR', 'logo'], ['ÚLTIMAS SEMANAS', ''], ['AMANHÃ', ''], ['HOJE', ''], ['A NOBREZA DO AMOR', ''],
     ]);
     expect(saida.sonoras.map((s) => [s.origem, s.bloco, s.timecodeEntrada, s.personagem])).toEqual([
       ['FRAME_IO', 1, '00:05:02', 'Fortunato'], ['FRAME_IO', 1, '00:06:36', 'Manoel'], ['FRAME_IO', 2, '00:04:56', 'Jendal'],
@@ -61,7 +61,7 @@ describe('PDF', () => {
   it('Quem Ama Cuida (convertido do Word): duas colunas, cabeçalho e marca-textos', async () => {
     const { imp, saida } = await importar('Quem_AmaPrologo26_10_Rede.pdf');
     expect(saida.roteiro).toMatchObject({
-      programa: 'Quem Ama Cuida', capitulo: 137, praca: 'REDE', locutor: 'DIRCEU VIRTUAL', selo: 'A12', duracaoAlvoSeg: 60, duracaoModo: 'max', layout: 'ilustracao_audio',
+      programa: 'Quem Ama Cuida', capitulo: 137, praca: 'G5', locutor: 'DIRCEU VIRTUAL', selo: 'A12', duracaoAlvoSeg: 60, duracaoModo: 'max', layout: 'ilustracao_audio',
     });
     expect(imp.perguntas.map((p) => [p.nomeCor, p.sugestao])).toEqual([['amarelo', 'producao'], ['azul', 'producao']]);
     expect(saida.artes.map((a) => a.texto)).toEqual(['NO CAPÍTULO ANTERIOR...', 'EM DEZ SEGUNDOS, FIQUE COM O CAPÍTULO DE HOJE...']);

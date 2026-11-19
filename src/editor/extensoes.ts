@@ -25,7 +25,7 @@ export const Arte = Mark.create({
   addAttributes() {
     return {
       id: attr('id', null),
-      subtipo: attr('subtipo', 'outro'),
+      subtipo: attr('subtipo', ''),
       grupo: attr('grupo', null),
       obs: attr('obs', ''),
       sugerido: attr('sugerido', false),
@@ -139,10 +139,8 @@ function faixasDaSelecao(editor: Editor): Faixa[] {
 /** Subtipo que o app sugere para o trecho selecionado. */
 export function sugestaoParaSelecao(editor: Editor, programa: string): SubtipoArte {
   const f = faixasDaSelecao(editor)[0];
-  if (!f) return 'rodape';
-  if (f.texto.split('/').filter((p) => p.trim()).length > 1) return 'versao';
-  const sozinha = !f.total.replace(f.texto, '').replace(/[\s.…!?,;:()-]/g, '');
-  return sugerirSubtipo(f.texto, f.antes, sozinha, programa);
+  void programa;
+  return f ? sugerirSubtipo(f.texto, f.antes) : '';
 }
 
 export function selecaoTem(editor: Editor, nome: 'arte' | 'etiqueta', tipo?: string): boolean {
@@ -159,6 +157,7 @@ export function selecaoTem(editor: Editor, nome: 'arte' | 'etiqueta', tipo?: str
 
 /** Marca a seleção como arte. "AMANHÃ/HOJE" vira uma arte por versão. Sem subtipo, usa a sugestão. */
 export function marcarArte(editor: Editor, subtipo?: SubtipoArte, programa = ''): boolean {
+  void programa;
   const faixas = faixasDaSelecao(editor);
   if (!faixas.length) return false;
   const tipo = editor.schema.marks.arte;
@@ -172,14 +171,13 @@ export function marcarArte(editor: Editor, subtipo?: SubtipoArte, programa = '')
     tr.removeMark(f.from, f.to, tipo);
     const partes = f.texto.split('/');
     const grupo = partes.filter((p) => p.trim()).length > 1 ? novoId() : null;
-    const sozinha = !f.total.replace(f.texto, '').replace(/[\s.…!?,;:()-]/g, '');
     let pos = f.from;
     for (const parte of partes) {
       const a = parte.length - parte.trimStart().length;
       const miolo = parte.trim();
       if (miolo) {
-        const sub = grupo && !subtipo ? 'versao' : (subtipo ?? sugerirSubtipo(miolo, f.antes, sozinha, programa));
-        tr.addMark(pos + a, pos + a + miolo.length, tipo.create({ id: novoId(), subtipo: sub, grupo, obs: '', sugerido: !subtipo }));
+        const sub = subtipo ?? sugerirSubtipo(miolo, f.antes);
+        tr.addMark(pos + a, pos + a + miolo.length, tipo.create({ id: novoId(), subtipo: sub, grupo, obs: '', sugerido: false }));
       }
       pos += parte.length + 1;
     }

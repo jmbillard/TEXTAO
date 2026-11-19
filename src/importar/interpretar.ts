@@ -1,7 +1,7 @@
 import { textoDoPar, type DocBruto, type Par } from './bruto';
 import { analisarSonoras, ehCaixaAlta, ehLocucao, RE_LINHA_LOC } from '../modelo/sonora';
 import { metaVazia, novoId, type Layout, type Meta, type NoJSON, type MarcaJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
-import { acharPrograma, PRACAS, semAcento } from '../modelo/vocabularios';
+import { acharPrograma, claqueteDoArquivo, normalizarPraca, PRACAS_LIDAS as PRACAS, semAcento } from '../modelo/vocabularios';
 
 /* Interpretação do arquivo: do "o que estava escrito" para "o que isso significa".
    Tudo o que é certo é resolvido sozinho e listado em `entendido`;
@@ -117,21 +117,19 @@ const iso = (ano: number, mes: number, dia: number) =>
 const RE_DIA = /^(PR[ÓO]XIM[OA]\s+)?(HOJE|AMANH[ÃA]|DOMINGO|SEGUNDA|TER[ÇC]A|QUARTA|QUINTA|SEXTA|S[ÁA]BADO)(-FEIRA)?(\s+QUE\s+VEM)?$/i;
 const RE_HORA = /^\d{1,2}\s?[:h]\s?\d{2}$/i;
 
-export function sugerirSubtipo(texto: string, antes: string, sozinha: boolean, programa: string): SubtipoArte {
+/** Dia ou horário: a pontuação que vem depois não faz parte da arte. */
+const ehDiaOuHora = (texto: string) => {
   const t = texto.trim().replace(/[\s.…,!?:;]+$/, '');
-  if (RE_DIA.test(t) || RE_HORA.test(t)) return 'versao';
-  // o próprio roteiro diz o tipo: "LETTERING: …", "(Arte: …)", "CARTELA …"
-  if (/\blettering\s*:?\s*$/i.test(antes)) return 'lettering';
-  if (/\b(?:gc|rodap[eé])\s*:?\s*$/i.test(antes)) return 'rodape';
-  if (/\btela\s+cheia\s*:?\s*$/i.test(antes) || /\bcartela\b/i.test(t) || /\bcartela\s*:?\s*$/i.test(antes)) return 'tela_cheia';
-  if (/\bvinheta\b/i.test(t)) return 'outro';
-  if (/\blogo\b\s*:?\s*$/i.test(antes) || /\blogo\b/i.test(t)) return 'logo';
-  const s = semAcento(t).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (/^(tv )?globo$/.test(s)) return 'logo';
-  const prog = acharPrograma(programa);
-  if (prog && prog.pistas.some((p) => s === p || (s.includes(p) && s.length - p.length <= 6))) return 'logo';
-  if (/\sX\s/.test(t)) return 'tela_cheia';
-  return sozinha ? 'lettering' : 'rodape';
+  return RE_DIA.test(t) || RE_HORA.test(t);
+};
+
+/** O tipo só é preenchido quando o próprio roteiro diz ("LETTERING: …", "GC: …"). Fora isso, fica em branco. */
+export function sugerirSubtipo(_texto: string, antes: string): SubtipoArte {
+  const dito = antes.match(/\b(lettering|gc|rodap[eé]|cart[aã]o|cartela|tela\s+cheia|vinheta|assinatura|logo|passagem|foto|moldura)\s*:?\s*$/i)?.[1].toLowerCase();
+  if (!dito) return '';
+  if (dito === 'gc' || dito.startsWith('rodap')) return 'rodape';
+  if (dito.startsWith('cart') || dito.startsWith('tela')) return 'cartao';
+  return dito as SubtipoArte;
 }
 
 /* ---------- etiquetas reconhecidas pelo texto ---------- */
@@ -260,7 +258,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     if (data && !dataExib) dataExib = lerData(data);
     if (cap) definir('capitulo', parseInt(cap[1], 10));
     const praca = PRACAS.find((p) => new RegExp(`\\b${p}\\b`).test(s));
-    if (praca) definir('praca', praca);
+    if (praca) definir('praca', normalizarPraca(praca));
     // o que sobra da linha, tirando data, capítulo, praça e duração, é o nome do programa e/ou da chamada
     let resto = s.replace(/^PGM\s*:\s*/i, '');
     if (duracao) resto = resto.replace(duracao[0], ' ');
@@ -412,6 +410,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   }
 
   /* 3. Dados que vêm do nome do arquivo e do autor. */
+  meta.claquete = claqueteDoArquivo(bruto.arquivo);
   const nome = bruto.arquivo.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
   if (!meta.programa) {
     const prog = acharPrograma(nome) ?? acharPrograma(bruto.arquivo);
@@ -431,7 +430,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   if (!meta.praca) {
     const p = PRACAS.find((x) => new RegExp(`(^|[ _])${x}($|[ _.])`, 'i').test(bruto.arquivo.replace(/\.[^.]+$/, '')));
     if (p) {
-      meta.praca = p;
+      meta.praca = normalizarPraca(p);
       anotar('Praça tirada do nome do arquivo');
     }
   }
@@ -538,7 +537,6 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
           j++;
         }
         i = j - 1;
-        const sozinha = !total.replace(texto, '').replace(/[\s.…!?,;:()-]/g, '');
         const partes = texto.split('/');
         const grupo = partes.filter((p) => p.trim()).length > 1 ? novoId() : undefined;
         if (grupo) anotar('Versões sublinhadas juntas ("AMANHÃ/HOJE") → uma arte por versão');
@@ -552,8 +550,8 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
           const fim = parte.match(/\s*$/)![0];
           const miolo = parte.slice(ini.length, parte.length - fim.length);
           if (ini) out.push({ t: ini });
-          const subtipo = sugerirSubtipo(miolo, contexto, sozinha, meta.programa);
-          const rabo = subtipo === 'versao' ? (miolo.match(/[\s.…,!?:;]+$/)?.[0] ?? '') : '';
+          const subtipo = sugerirSubtipo(miolo, contexto);
+          const rabo = ehDiaOuHora(miolo) ? (miolo.match(/[\s.…,!?:;]+$/)?.[0] ?? '') : '';
           out.push({ t: rabo ? miolo.slice(0, -rabo.length) : miolo, arte: { subtipo, grupo } });
           if (rabo + fim) out.push({ t: rabo + fim });
         });
@@ -762,7 +760,7 @@ export function montarDoc(imp: Importacao, respostas: Record<number, Resposta> =
       if (tr.b) marks.push({ type: 'bold' });
       if (tr.i && !etq && !tr.arte) marks.push({ type: 'italic' });
       if (tr.arte)
-        marks.push({ type: 'arte', attrs: { id: novoId(), subtipo: tr.arte.subtipo, grupo: tr.arte.grupo ?? null, obs: '', sugerido: true } });
+        marks.push({ type: 'arte', attrs: { id: novoId(), subtipo: tr.arte.subtipo, grupo: tr.arte.grupo ?? null, obs: '', sugerido: false } });
       if (etq) marks.push({ type: 'etiqueta', attrs: { id: etqId, tipo: etq, obs: '' } });
       tr.t.split('\n').forEach((pedaco, i) => {
         if (i > 0) content.push({ type: 'hardBreak', ...(marks.length ? { marks: marks.filter((m) => m.type !== 'bold') } : {}) });

@@ -77,7 +77,7 @@ describe('cabeçalho e corpo: variações', () => {
     expect(saida.roteiro).toMatchObject({ programa: 'Viver Sertanejo', dataExibicao: '2026-09-20', locutor: 'SICRANO', selo: 'Com selo', layout: 'ilustracao_audio' });
     expect(saida.texto.locucao.split('\n')).toEqual(['No dia da festa, a tradição encontra gente nova...', 'VIVER SERTANEJO!']);
     expect(saida.sonoras).toHaveLength(1);
-    expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([['CARTELA DO PROGRAMA VIVER SERTANEJO', 'tela_cheia']]);
+    expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([['CARTELA DO PROGRAMA VIVER SERTANEJO', '']]);
   });
 
   it('programa fora do vocabulário, nome da chamada, duração em minutos e timecode sozinho na linha', () => {
@@ -157,5 +157,29 @@ describe('vocabulário da casa', () => {
     } finally {
       registrarVocabulario(null);
     }
+  });
+});
+
+describe('o que a Arte precisa', () => {
+  it('claquete vem do nome do arquivo, com a data em dd/mm; REDE é a praça G5', async () => {
+    const { claqueteDoArquivo } = await import('../src/modelo/vocabularios');
+    expect(claqueteDoArquivo('Passeio_No_Parque_11_07_Rede.docx')).toBe('PASSEIO NO PARQUE 11/07 REDE');
+    expect(claqueteDoArquivo('SERTANEJO 2 20 9 SP.rtf')).toBe('SERTANEJO 2 20/9 SP');
+    expect(claqueteDoArquivo('Chamada especial.pdf')).toBe('CHAMADA ESPECIAL');
+    const { saida } = importar(soltos('HOJE TEM FESTA NA PRAÇA.'), 'Passeio_No_Parque_11_07_Rede.docx');
+    expect(saida.roteiro).toMatchObject({ claquete: 'PASSEIO NO PARQUE 11/07 REDE', praca: 'G5', editor: '' });
+  });
+  it('o tipo da arte nunca é sugerido; só entra quando o roteiro diz', () => {
+    const { saida } = importar(soltos([{ t: 'VEM AÍ ' }, u('A GRANDE FESTA')], [{ t: 'GC: ' }, u('MARIA LUZ')], [u('SEXTA'), { t: ' TEM MAIS.' }]));
+    expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([['A GRANDE FESTA', ''], ['MARIA LUZ', 'rodape'], ['SEXTA', '']]);
+  });
+  it('"depois de" sublinhado no fim dos dias vale para cada dia; o horário continua arte separada', () => {
+    const { saida } = importar(soltos([u('SÁBADO/AMANHÃ/HOJE'), { t: ', ' }, u('LOGO APÓS O JORNAL DA NOITE'), { t: ' (' }, u('2:45'), { t: ').' }]));
+    expect(saida.artes.map((a) => a.texto)).toEqual(['SÁBADO, LOGO APÓS O JORNAL DA NOITE', 'AMANHÃ, LOGO APÓS O JORNAL DA NOITE', 'HOJE, LOGO APÓS O JORNAL DA NOITE', '2:45']);
+    expect(saida.artes.map((a) => a.ordem)).toEqual([1, 2, 3, 4]);
+    expect(saida.roteiro.versoes).toEqual(['SÁBADO', 'AMANHÃ', 'HOJE']);
+    // sem sublinhado, o complemento não entra
+    const sem = importar(soltos([u('SÁBADO/HOJE'), { t: ', DEPOIS DA NOVELA.' }])).saida;
+    expect(sem.artes.map((a) => a.texto)).toEqual(['SÁBADO', 'HOJE']);
   });
 });

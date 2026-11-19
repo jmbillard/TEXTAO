@@ -32,6 +32,7 @@ export const JSON_SCHEMA = {
       required: ['id', 'programa', 'layout', 'status'],
       properties: {
         id: texto,
+        claquete: texto,
         titulo: texto,
         programa: texto,
         tipoPrograma: { enum: ['novela', 'ao_vivo', 'esporte', 'auditorio', 'outro'] },
@@ -40,6 +41,7 @@ export const JSON_SCHEMA = {
         edicao: { type: 'string', description: 'Ex.: "PGM 23"' },
         praca: texto,
         redator: texto,
+        editor: texto,
         locutor: texto,
         selo: texto,
         duracaoAlvoSeg: inteiroOuNulo,

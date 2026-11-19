@@ -18,14 +18,14 @@ describe('Quem Ama Cuida · Prólogo (.docx, Ilustração | Áudio)', async () =
 
   it('cabeçalho', () => {
     expect(saida.roteiro).toMatchObject({
-      programa: 'Quem Ama Cuida', tipoPrograma: 'novela', dataExibicao: '2026-10-26', capitulo: 137, praca: 'REDE',
+      programa: 'Quem Ama Cuida', tipoPrograma: 'novela', dataExibicao: '2026-10-26', capitulo: 137, praca: 'G5',
       locutor: 'DIRCEU VIRTUAL', selo: 'A12', duracaoAlvoSeg: 60, duracaoModo: 'max', layout: 'ilustracao_audio',
       redator: 'Juliana Amorim', titulo: 'Prólogo · cap. 137',
     });
   });
   it('artes', () => {
     expect(textos(saida.artes)).toEqual(['NO CAPÍTULO ANTERIOR...', 'EM DEZ SEGUNDOS, FIQUE COM O CAPÍTULO DE HOJE...']);
-    expect(saida.artes.every((a) => a.subtipo === 'lettering')).toBe(true);
+    expect(saida.artes.every((a) => a.subtipo === '')).toBe(true);
   });
   it('sonoras com origem, timecode e personagem', () => {
     expect(saida.sonoras.map((s) => [s.origem, s.bloco, s.timecodeEntrada, s.personagem])).toEqual([
@@ -59,7 +59,7 @@ describe('Encontro (.docx, Instruções | Texto)', async () => {
   });
   it('artes: cada versão é uma arte', () => {
     expect(textos(saida.artes)).toEqual(['AMANHÃ', 'HOJE', '9:30', 'DEBORAH EVELYN']);
-    expect(saida.artes.map((a) => a.subtipo)).toEqual(['versao', 'versao', 'versao', 'rodape']);
+    expect(saida.artes.map((a) => a.subtipo)).toEqual(['', '', '', '']);
     expect(saida.artes[0].grupoVersoes).toBe(saida.artes[1].grupoVersoes);
     expect(saida.artes[0].grupoVersoes).not.toBeNull();
   });
@@ -85,7 +85,7 @@ describe('Nobreza do Amor (.docx, coluna da esquerda vazia)', async () => {
   });
   it('artes', () => {
     expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([
-      ['A NOBREZA DO AMOR', 'logo'], ['ÚLTIMAS SEMANAS', 'lettering'], ['AMANHÃ', 'versao'], ['HOJE', 'versao'], ['A NOBREZA DO AMOR', 'logo'],
+      ['A NOBREZA DO AMOR', 'logo'], ['ÚLTIMAS SEMANAS', ''], ['AMANHÃ', ''], ['HOJE', ''], ['A NOBREZA DO AMOR', ''],
     ]);
   });
   it('sonoras herdam a origem de "FRAME IO ONLINE BLOCO 01"', () => {
@@ -109,8 +109,8 @@ describe('Futebol Brasileirão (.docx, coluna única)', async () => {
   });
   it('artes', () => {
     expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([
-      ['RETA FINAL', 'rodape'], ['QUARTA', 'versao'], ['AMANHÃ', 'versao'], ['HOJE', 'versao'],
-      ['BAHIA X SÃO PAULO', 'tela_cheia'], ['BRASILEIRÃO', 'logo'], ['GLOBO', 'logo'],
+      ['RETA FINAL', ''], ['QUARTA', ''], ['AMANHÃ', ''], ['HOJE', ''],
+      ['BAHIA X SÃO PAULO', ''], ['BRASILEIRÃO', ''], ['GLOBO', ''],
     ]);
     expect(new Set(saida.artes.slice(1, 4).map((a) => a.grupoVersoes)).size).toBe(1);
   });
@@ -134,8 +134,8 @@ describe('Eliana (.rtf, cp1252)', async () => {
   });
   it('artes com acentos corretos', () => {
     expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([
-      ['DOMINGO', 'versao'], ['AMANHÃ', 'versao'], ['HOJE', 'versao'], ['PRISCILLA', 'rodape'], ['GUILHERME & BENUTO', 'rodape'],
-      ['TAÍS ARAUJO', 'rodape'], ['2:30', 'versao'], ['EM FAMÍLIA COM ELIANA', 'logo'],
+      ['DOMINGO', ''], ['AMANHÃ', ''], ['HOJE', ''], ['PRISCILLA', ''], ['GUILHERME & BENUTO', ''],
+      ['TAÍS ARAUJO', ''], ['2:30', ''], ['EM FAMÍLIA COM ELIANA', 'logo'],
     ]);
     expect(new Set(saida.artes.slice(0, 3).map((a) => a.grupoVersoes)).size).toBe(1);
   });

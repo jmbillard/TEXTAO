@@ -1,5 +1,5 @@
 import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, textoDaLocucao, type ContextoSonora } from './sonora';
-import { nomeSubtipo, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
+import { nomeSubtipo, normalizarSubtipo, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
 
 /* Do documento do editor para o contrato de saída (JSON canônico).
    Função pura: o mesmo roteiro sempre gera a mesma saída, com os mesmos IDs. */
@@ -104,6 +104,8 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
   const nomeColuna = (c: Bloco['coluna']) => (c ? colunas[c] : null);
 
   const artes: ArteSaida[] = [];
+  /** Onde cada arte está no texto, para juntar o "depois de…" aos dias que vêm antes. */
+  const locais: { bloco: Bloco; ini: number; fim: number; total: string }[] = [];
   const orientacoes: Saida['orientacoes'] = { edicao: [], locutor: [], sonoplastia: [], producao: [] };
   const comentarios: OrientacaoSaida[] = [];
   const cortaveis: Saida['trechosCortaveis'] = [];
@@ -138,7 +140,8 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
         let j = i;
         let texto = '';
         while (j < bloco.pedacos.length && bloco.pedacos[j].arte?.id === p.arte.id) texto += bloco.pedacos[j++].t;
-        const subtipo = (p.arte.subtipo as SubtipoArte) ?? 'outro';
+        const subtipo = normalizarSubtipo(p.arte.subtipo);
+        locais.push({ bloco, ini, fim: ini + texto.length, total });
         artes.push({
           id: idUnico(String(p.arte.id)),
           ordem: artes.length + 1,
@@ -234,8 +237,25 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
   }
 
   const versoes = [
-    ...new Set(artes.filter((a) => a.subtipo === 'versao' && /^\p{L}/u.test(a.texto)).map((a) => a.texto.toUpperCase().replace(/[\s.…,!?:;]+$/, ''))),
+    ...new Set(artes.filter((a) => a.grupoVersoes && /^\p{L}/u.test(a.texto)).map((a) => a.texto.toUpperCase().replace(/[\s.…,!?:;]+$/, ''))),
   ];
+
+  // "SÁBADO/AMANHÃ/HOJE, DEPOIS DE …": o complemento sublinhado vale para cada um dos dias
+  for (let i = 0; i < artes.length; i++) {
+    const grupo = artes[i].grupoVersoes;
+    if (!grupo) continue;
+    let fim = i;
+    while (fim + 1 < artes.length && artes[fim + 1].grupoVersoes === grupo) fim++;
+    const depois = artes[fim + 1];
+    const entre = depois && locais[fim + 1].bloco === locais[fim].bloco ? locais[fim].total.slice(locais[fim].fim, locais[fim + 1].ini) : null;
+    if (depois && !depois.grupoVersoes && entre !== null && entre.length <= 8 && !/[\p{L}\p{N}]/u.test(entre) && /^(?:logo\s+)?(?:depois|ap[óo]s)\b/i.test(depois.texto)) {
+      for (let k = i; k <= fim; k++) artes[k].texto += (entre.includes(',') ? ', ' : ' ') + depois.texto;
+      artes.splice(fim + 1, 1);
+      locais.splice(fim + 1, 1);
+    }
+    i = fim;
+  }
+  artes.forEach((a, k) => (a.ordem = k + 1));
 
   return {
     schemaVersion: SCHEMA_VERSION,

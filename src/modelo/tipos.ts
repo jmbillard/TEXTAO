@@ -7,18 +7,25 @@ export type Layout = 'coluna_unica' | 'ilustracao_audio' | 'instrucoes_texto';
 export type TipoPrograma = 'novela' | 'ao_vivo' | 'esporte' | 'auditorio' | 'outro';
 export type Status = 'rascunho' | 'revisao' | 'aprovado' | 'em_producao' | 'finalizado';
 
-export type SubtipoArte = 'rodape' | 'tela_cheia' | 'lettering' | 'logo' | 'versao' | 'selo' | 'outro';
+/** '' = ainda sem tipo: o app nunca sugere, quem escolhe é a pessoa. */
+export type SubtipoArte = '' | 'rodape' | 'cartao' | 'lettering' | 'vinheta' | 'assinatura' | 'logo' | 'passagem' | 'foto' | 'moldura';
 export type TipoEtiqueta = 'edicao' | 'locutor' | 'sonoplastia' | 'cortavel' | 'producao' | 'comentario';
 
-export const SUBTIPOS_ARTE: { id: SubtipoArte; nome: string; curto: string }[] = [
-  { id: 'rodape', nome: 'Rodapé / GC', curto: 'Rodapé' },
-  { id: 'tela_cheia', nome: 'Tela cheia', curto: 'Tela cheia' },
-  { id: 'lettering', nome: 'Lettering em alpha', curto: 'Lettering' },
-  { id: 'logo', nome: 'Logo', curto: 'Logo' },
-  { id: 'versao', nome: 'Versão', curto: 'Versão' },
-  { id: 'selo', nome: 'Selo', curto: 'Selo' },
-  { id: 'outro', nome: 'Outro', curto: 'Outro' },
+export const SUBTIPOS_ARTE: { id: Exclude<SubtipoArte, ''>; nome: string; curto: string }[] = [
+  { id: 'rodape', nome: 'Rodapé', curto: 'Rodapé' },
+  { id: 'cartao', nome: 'Cartão', curto: 'Cartão' },
+  { id: 'lettering', nome: 'Lettering com alpha', curto: 'Lettering alpha' },
+  { id: 'vinheta', nome: 'Vinheta', curto: 'Vinheta' },
+  { id: 'assinatura', nome: 'Assinatura', curto: 'Assinatura' },
+  { id: 'logo', nome: 'Logo Globo', curto: 'Logo Globo' },
+  { id: 'passagem', nome: 'Passagem', curto: 'Passagem' },
+  { id: 'foto', nome: 'Foto', curto: 'Foto' },
+  { id: 'moldura', nome: 'Moldura', curto: 'Moldura' },
 ];
+
+/** Roteiros antigos usavam outros tipos; o que não existe mais volta a ficar sem tipo. */
+export const normalizarSubtipo = (s: unknown): SubtipoArte =>
+  s === 'tela_cheia' ? 'cartao' : SUBTIPOS_ARTE.some((x) => x.id === s) ? (s as SubtipoArte) : '';
 
 export const ETIQUETAS: { id: TipoEtiqueta; nome: string; rotulo: string; atalho: string }[] = [
   { id: 'edicao', nome: 'Orientação para a edição', rotulo: 'edição', atalho: 'Mod-Shift-1' },
@@ -33,6 +40,8 @@ export const nomeSubtipo = (s: string) => SUBTIPOS_ARTE.find((x) => x.id === s)?
 export const nomeEtiqueta = (t: string) => ETIQUETAS.find((x) => x.id === t)?.rotulo ?? t;
 
 export interface Meta {
+  /** Nome da chamada como vai na claquete: vem do nome do arquivo, com a data em dd/mm. */
+  claquete: string;
   titulo: string;
   programa: string;
   tipoPrograma: TipoPrograma;
@@ -43,6 +52,7 @@ export interface Meta {
   edicao: string;
   praca: string;
   redator: string;
+  editor: string;
   locutor: string;
   selo: string;
   duracaoAlvoSeg: number | null;
@@ -53,6 +63,7 @@ export interface Meta {
 }
 
 export const metaVazia = (): Meta => ({
+  claquete: '',
   titulo: '',
   programa: '',
   tipoPrograma: 'outro',
@@ -61,6 +72,7 @@ export const metaVazia = (): Meta => ({
   edicao: '',
   praca: '',
   redator: '',
+  editor: '',
   locutor: '',
   selo: '',
   duracaoAlvoSeg: null,

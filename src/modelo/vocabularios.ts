@@ -37,7 +37,24 @@ export const PROGRAMAS: ProgramaVocab[] = [
 
 export const LOCUTORES = ['DIRCEU', 'DIRCEU VIRTUAL', 'WALMIR', 'MCK', 'TATI', 'GIL'];
 export const SELOS = ['Verifique a classificação indicativa', 'Sem selo', 'Livre', 'A10', 'A12', 'A14', 'A16', 'A18'];
-export const PRACAS = ['REDE', 'SP', 'RJ', 'MG', 'DF', 'PE'];
+/** Praças oferecidas no app. "REDE" nos roteiros e nos nomes de arquivo é a G5. */
+export const PRACAS = ['G5', 'SP', 'RJ'];
+/** Como a praça aparece escrita nos arquivos. */
+export const PRACAS_LIDAS = ['REDE', 'G5', 'SP', 'RJ', 'MG', 'DF', 'PE'];
+export const normalizarPraca = (p: string) => (p.toUpperCase() === 'REDE' ? 'G5' : p.toUpperCase());
+
+/** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. */
+export function claqueteDoArquivo(arquivo: string): string {
+  const partes = arquivo.replace(/\.[^.]+$/, '').replace(/[_\s]+/g, ' ').trim().toUpperCase().split(' ');
+  for (let i = partes.length - 2; i >= 0; i--) {
+    const [d, m] = [partes[i], partes[i + 1]];
+    if (/^\d{1,2}$/.test(d) && /^\d{1,2}$/.test(m) && +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12) {
+      partes.splice(i, 2, `${d}/${m}`);
+      break;
+    }
+  }
+  return partes.join(' ');
+}
 
 export const NOMES_TIPO_PROGRAMA: Record<TipoPrograma, string> = {
   novela: 'Novela',
