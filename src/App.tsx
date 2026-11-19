@@ -168,7 +168,7 @@ export function App() {
         <div className="soltar" aria-hidden="true">
           <div className="soltar-cartao">
             <span className="soltar-titulo">Pode soltar</span>
-            <span>.docx, .rtf, .txt ou um .json exportado daqui</span>
+            <span>.docx, .rtf, .pdf, .txt ou um .json exportado daqui</span>
           </div>
         </div>
       )}

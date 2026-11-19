@@ -161,7 +161,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
           <input
             ref={entrada}
             type="file"
-            accept=".docx,.rtf,.txt,.json"
+            accept=".docx,.rtf,.pdf,.txt,.json"
             hidden
             onChange={(e) => {
               const f = e.target.files?.[0];

@@ -20,9 +20,11 @@ export type BlocoBruto = { tipo: 'p'; par: Par } | { tipo: 'tabela'; linhas: Par
 
 export interface DocBruto {
   arquivo: string;
-  formato: 'docx' | 'rtf' | 'txt';
+  formato: 'docx' | 'rtf' | 'txt' | 'pdf';
   autor: string;
   blocos: BlocoBruto[];
+  /** O que o formato não conseguiu trazer e merece conferência. */
+  avisos?: string[];
 }
 
 const mesmaMarca = (a: Run, b: Run) =>

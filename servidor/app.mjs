@@ -15,7 +15,7 @@ const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
 
 const TIPOS = {
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.png': 'image/png', '.ico': 'image/x-icon',
 };
 const INTERVALO_VERSAO_MS = 5 * 60 * 1000;

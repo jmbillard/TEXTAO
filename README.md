@@ -91,7 +91,7 @@ No app, toda a identidade passa por `src/dados/identidade.ts`; no servidor, por 
 
 ## Como funciona
 
-1. **Trazer do Word.** Arraste um `.docx`, `.rtf` ou `.txt` (ou um `.json` exportado daqui). O app lê sublinhado, marca-texto, cor e tabelas, monta o cabeçalho e só pergunta o que não dá para saber sozinho (o que significa um marca-texto, por exemplo).
+1. **Trazer do Word.** Arraste um `.docx`, `.rtf`, `.pdf` ou `.txt` (ou um `.json` exportado daqui). O app lê sublinhado, marca-texto, cor e tabelas, monta o cabeçalho e só pergunta o que não dá para saber sozinho (o que significa um marca-texto, por exemplo).
 2. **Escrever.** Texto corrido ou duas colunas (Ilustração | Áudio, Instruções | Texto). CAIXA ALTA é locução; uma linha que começa com origem e timecode é sonora. Nada disso muda o que foi digitado, só a aparência.
 3. **Marcar.** Selecione e use o botão direito, a barra que aparece sobre a seleção ou o atalho:
 
@@ -137,7 +137,7 @@ Os IDs de roteiro, artes e etiquetas são estáveis: exportar de novo atualiza, 
 
 | Pasta | O que tem |
 |---|---|
-| `src/importar` | Leitura de `.docx` (XML via JSZip), `.rtf` (cp1252) e `.txt`, e a interpretação: cabeçalho, artes, etiquetas, perguntas |
+| `src/importar` | Leitura de `.docx` (XML via JSZip), `.rtf` (cp1252), `.pdf` (pdf.js) e `.txt`, e a interpretação: cabeçalho, artes, etiquetas, perguntas |
 | `src/modelo` | Tipos, vocabulários, reconhecimento de sonoras, exportação para o JSON e o JSON Schema |
 | `src/editor` | Extensões do Tiptap: marcas de arte e etiqueta, colunas, atalhos, reconhecimento visual |
 | `src/ui` | Telas (biblioteca, importação, editor), ícones e exportação para Word |
@@ -145,7 +145,7 @@ Os IDs de roteiro, artes e etiquetas são estáveis: exportar de novo atualiza, 
 | `servidor` | API, arquivos estáticos e edição simultânea em Node, com SQLite (`node:sqlite`), `ws` e Yjs |
 | `tests` | Testes do importador com os 5 roteiros reais e do servidor (privacidade, permissões, edição simultânea, versões, backup) |
 
-O leitor de RTF foi adaptado do extrator do app de upload de roteiros.
+Os leitores de RTF e de PDF foram adaptados do extrator do app de upload de roteiros.
 
 ## Decisões registradas
 
@@ -155,6 +155,7 @@ O leitor de RTF foi adaptado do extrator do app de upload de roteiros.
 - **Cabeçalho sai do corpo.** `LOC:`, `SELO`, `FECHAR COM 30''`, `REDATORA:`, a linha de título e a legenda "Em vermelho se precisar cortar" viram campos e deixam o texto. A tela de importação lista tudo o que foi movido.
 - **Data de exibição.** Vale a da linha de título (ou do nome do arquivo). Uma data solta no cabeçalho é tratada como data de redação e só fornece o ano.
 - **Redator.** Vem de `REDATORA:` no texto ou do autor do arquivo. Se o arquivo não traz autor (RTF, TXT), vale o início do e-mail de quem importou (`joao.silva`).
+- **PDF.** O PDF não tem "sublinhado": o app considera sublinhado todo traço horizontal fino logo abaixo de uma palavra, além das anotações de sublinhado. Colunas, negrito, marca-texto e cores não vêm no PDF, então o roteiro entra em texto corrido e a tela de importação pede conferência. PDF digitalizado (imagem) não é lido. Quando houver o `.docx`, ele é sempre a melhor origem.
 - **Vermelho.** Com a legenda no roteiro, vira "pode cortar" sem perguntar. Sem a legenda, o app pergunta.
 - **Uma etiqueta por trecho; arte convive com etiqueta.** Etiquetar por cima troca a anterior.
 - **Negrito** só é mantido nas falas das sonoras. Locução fica em texto limpo.
@@ -164,4 +165,4 @@ O leitor de RTF foi adaptado do extrator do app de upload de roteiros.
 
 ## Fora desta etapa
 
-Envio para n8n/Trello, importação de PDF, uso offline como app instalado (PWA), tela de Configurações para editar os vocabulários (hoje em `src/modelo/vocabularios.ts`), troca de voz, prévia por versão e modos locutor/Motion.
+Envio para n8n/Trello, uso offline como app instalado (PWA), tela de Configurações para editar os vocabulários (hoje em `src/modelo/vocabularios.ts`), troca de voz, prévia por versão e modos locutor/Motion.

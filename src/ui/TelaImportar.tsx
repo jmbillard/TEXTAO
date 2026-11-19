@@ -106,6 +106,8 @@ export function TelaImportar({ imp, concluir, cancelar }: { imp: Importacao; con
               </article>
             ))}
 
+            {imp.bruto.avisos?.map((a) => <p key={a} className="imp-faltando">{a}</p>)}
+
             {imp.faltando.length > 0 && (
               <p className="imp-faltando">
                 Não encontrei <strong>{imp.faltando.join(', ').replace(/, ([^,]*)$/, ' e $1')}</strong>. Dá para completar direto no roteiro.
