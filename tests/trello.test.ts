@@ -1,0 +1,269 @@
+// @vitest-environment node
+import { createServer, type Server } from 'node:http';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+// @ts-expect-error módulo JS sem tipos
+import { chaveDaAtracao, chaveN8n, criarTrello } from '../servidor/trello.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { abrirBanco, criarApp } from '../servidor/app.mjs';
+
+/* IDs inventados: o quadro de verdade fica só nas variáveis do servidor. */
+const ENV = {
+  TRELLO_KEY: 'k',
+  TRELLO_TOKEN: 't',
+  TRELLO_LISTA: 'listaG5',
+  TRELLO_LISTA_SP: 'listaSP',
+  TRELLO_LISTA_VT: 'listaVT',
+  TRELLO_CAMPO_PRACA: 'cPraca',
+  TRELLO_PRACAS: 'G5=opG5, SP=opSP, RJ=opRJ',
+  TRELLO_CAMPO_REDATOR: 'cRedator',
+  TRELLO_CAMPO_PRIORIDADE: 'cPrio',
+  TRELLO_PRIORIDADE_ALTA: 'opAlta',
+  TRELLO_CAMPO_PROJETO: 'cProjeto',
+  TRELLO_CAMPO_OUTPUT: 'cOutput',
+  TRELLO_CAMPO_BOT: 'cBot',
+  TRELLO_CAMPO_ENTRADA: 'cEntrada',
+  TRELLO_CAMPOS_FILME: 'cComplexidade,cIA',
+  TEABLE_URL: 'http://teable:3000',
+  TEABLE_TOKEN_ESCRITA: 'escrita',
+  TEABLE_ARTE_PRODUCAO: 'tblProducao',
+  TEABLE_REDATORES: 'tblRedatores',
+  TEABLE_PG_URL: 'postgres://x',
+  TEABLE_PG_ESQUEMA: 'bseBase',
+  TEABLE_PG_ARTE: 'producao',
+  TEABLE_PG_REDATORES: 'redatores',
+  TEABLE_PG_EDITORES: 'editores',
+  TEABLE_PG_ATRACOES: 'atracoes',
+  TEABLE_PG_PRIORIDADE: 'prioridade',
+  TEABLE_PG_FILMES_ESQUEMA: 'bseFilmes',
+  TEABLE_PG_SESSOES: 'sessoes',
+  TEABLE_PG_LOG_BOT: 'log_bot',
+  STIRLING_URL: 'http://stirling-pdf:8080',
+  STIRLING_CHAVE: 'chave-stirling',
+  SFTP_HOST: 'onedrive',
+};
+
+interface Pedido {
+  metodo: string;
+  url: URL;
+  corpo: unknown;
+}
+
+/** Trello, Teable e Stirling de mentira, num fetch só. */
+function falsos(opcoes: { falharCard?: boolean; falharChecklist?: boolean } = {}) {
+  const pedidos: Pedido[] = [];
+  let n = 0;
+  const buscar = async (endereco: string, init: RequestInit = {}) => {
+    const url = new URL(endereco);
+    const metodo = init.method ?? 'GET';
+    let corpo: unknown = null;
+    if (typeof init.body === 'string') corpo = JSON.parse(init.body);
+    else if (init.body instanceof FormData) corpo = Object.fromEntries([...init.body.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : `arquivo:${(v as File).name}`]));
+    pedidos.push({ metodo, url, corpo });
+    const ok = (dados: unknown) => ({ ok: true, status: 200, json: async () => dados, text: async () => '', arrayBuffer: async () => new ArrayBuffer(4) });
+    if (url.host === 'stirling-pdf:8080') return ok({});
+    if (url.host === 'teable:3000') return ok({ records: [{ id: 'rec1' }] });
+    const rota = url.pathname.replace('/1', '');
+    if (rota === '/cards' && metodo === 'POST') {
+      if (opcoes.falharCard) return { ok: false, status: 401, text: async () => 'invalid token', json: async () => ({}) };
+      return ok({ id: 'card' + ++n, shortUrl: `https://trello.com/c/CARD${n}` });
+    }
+    if (rota === '/checklists') {
+      if (opcoes.falharChecklist) return { ok: false, status: 500, text: async () => 'erro', json: async () => ({}) };
+      return ok({ id: 'checklist1' });
+    }
+    if (rota.endsWith('/attachments') && metodo === 'POST') return ok({ id: 'anexo1', url: 'https://trello.com/anexo.pdf' });
+    if (rota.startsWith('/customField/') && rota.endsWith('/options')) return ok({ id: 'opNovoRedator', idCustomField: 'cRedator', value: { text: 'Nova Pessoa' } });
+    if (rota === '/cards/cardFilme' && metodo === 'GET')
+      return ok({
+        id: 'cardFilme',
+        idMembers: ['m1', 'm2'],
+        customFieldItems: [
+          { idCustomField: 'cComplexidade', idValue: 'opMedia' },
+          { idCustomField: 'cIA', value: { checked: 'true' } },
+          { idCustomField: 'cOutroQualquer', idValue: 'x' },
+        ],
+      });
+    return ok({});
+  };
+  return { buscar, pedidos };
+}
+
+/** O Postgres do Teable, respondendo pelo nome da tabela na consulta. */
+function banco(opcoes: { duplicado?: boolean; redatorNovo?: boolean; sessao?: boolean } = {}) {
+  const consultas: { sql: string; params: unknown[] }[] = [];
+  const consultar = async (sql: string, params: unknown[] = []) => {
+    consultas.push({ sql, params });
+    if (sql.includes('"producao"')) return opcoes.duplicado ? [{ claquete: 'Festa_Na_Praca_19_11_SP' }] : [{ claquete: 'Outra 19/11' }];
+    if (sql.includes('MAX("customField_ID")')) return [{ id: 'cRedator' }];
+    if (sql.includes('"redatores"')) return opcoes.redatorNovo ? [] : [{ redator: 'Ana Lima', redator_ID: 'opAna', customField_ID: 'cRedator' }];
+    if (sql.includes('"editores"')) return [{ editor: 'Bruno Regis', editor_ID: 'opBruno', customField_ID: 'cEditor' }];
+    if (sql.includes('"atracoes"'))
+      return opcoes.sessao
+        ? [{ atracao: 'Sessão da Tarde', projeto_win: 'cole_aqui_o_caminho', output_win: 'X:\\saida' }]
+        : [{ atracao: 'Festa na Praça', projeto_win: 'P:\\festa\\projeto', output_win: 'caminho_nao_encontrado' }];
+    if (sql.includes('"prioridade"')) return [{ '?column?': 1 }];
+    if (sql.includes('"sessoes"')) return [{ sessao: 'SESSÃO DA TARDE' }];
+    if (sql.includes('"log_bot"')) return [{ card_ID: 'cardFilme', output: 'F:\\filmes\\saida' }];
+    return [];
+  };
+  return { consultar, consultas };
+}
+
+const original = { nome: 'Festa_Na_Praca_19_11_SP.docx', tipo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', dados: Buffer.from('PK') };
+const meta = { claquete: 'Festa na Praça 19/11 SP', praca: 'SP', redator: 'ana.lima', editor: 'Bruno Regis', dataExibicao: '2026-11-19', programa: 'Festa na Praça' };
+const campoPut = (pedidos: Pedido[], campo: string) => pedidos.find((p) => p.metodo === 'PUT' && p.url.pathname.endsWith(`/customField/${campo}/item`))?.corpo;
+
+describe('chaves do n8n', () => {
+  it('a claquete e a atração saem como o fluxo antigo escrevia', () => {
+    expect(chaveN8n('Quem Ama(Prologo)26/10 Rede')).toBe('QUEM AMA PROLOGO 26 10 REDE');
+    expect(chaveDaAtracao('Rio Festa na Praça 19/11 (AH)')).toBe('FESTA NA PRACA');
+    expect(chaveDaAtracao('Fant(Abertura) 22/11')).toBe('FANT');
+  });
+});
+
+describe('envio para o Trello', () => {
+  it('cria o card na lista de SP, com checklist, campos, PDF, OneDrive e registro na produção', async () => {
+    const { buscar, pedidos } = falsos();
+    const { consultar } = banco();
+    const enviadosAoOneDrive: string[] = [];
+    const t = criarTrello(ENV, { buscar, consultar, sftp: async (caminho: string) => void enviadosAoOneDrive.push(caminho) });
+    const r = await t.enviar({ meta, artes: ['A GRANDE FESTA', 'SÁBADO'], texto: 'texto corrido', original }, new Date('2026-11-19T12:00:00Z'));
+
+    expect(r.card).toEqual({ id: 'card1', url: 'https://trello.com/c/CARD1' });
+    expect(r.avisos).toEqual([]);
+    const card = pedidos.find((p) => p.url.pathname === '/1/cards' && p.metodo === 'POST')!;
+    expect(card.url.searchParams.get('idList')).toBe('listaSP');
+    expect(card.url.searchParams.get('name')).toBe('Festa na Praça 19/11 SP');
+    expect(card.url.searchParams.get('desc')).toContain('`A GRANDE FESTA`, `SÁBADO`');
+    expect(card.url.searchParams.get('key')).toBe('k');
+    // a checklist leva só o texto de cada arte
+    expect(pedidos.filter((p) => p.url.pathname === '/1/checklists/checklist1/checkItems').map((p) => p.url.searchParams.get('name'))).toEqual(['A GRANDE FESTA', 'SÁBADO']);
+    expect(campoPut(pedidos, 'cPraca')).toEqual({ idValue: 'opSP' });
+    expect(campoPut(pedidos, 'cRedator')).toEqual({ idValue: 'opAna' });
+    expect(campoPut(pedidos, 'cEditor')).toEqual({ idValue: 'opBruno' });
+    expect(campoPut(pedidos, 'cPrio')).toEqual({ idValue: 'opAlta' });
+    expect(campoPut(pedidos, 'cProjeto')).toEqual({ value: { text: 'P:\\festa\\projeto' } });
+    expect(campoPut(pedidos, 'cOutput')).toBeUndefined(); // "caminho_nao_encontrado" não vai para o card
+    expect(campoPut(pedidos, 'cBot')).toEqual({ value: { checked: 'true' } });
+    expect(campoPut(pedidos, 'cEntrada')).toEqual({ value: { date: '2026-11-19T12:00:00.000Z' } });
+    // o docx vira PDF no Stirling e o PDF vai anexo
+    const stirling = pedidos.find((p) => p.url.host === 'stirling-pdf:8080')!;
+    expect(stirling.corpo).toEqual({ fileInput: `arquivo:${original.nome}` });
+    expect(pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments')!.corpo).toMatchObject({ name: 'Festa_Na_Praca_19_11_SP.pdf', file: 'arquivo:Festa_Na_Praca_19_11_SP.pdf' });
+    expect(enviadosAoOneDrive).toEqual(['/PROMO/WORKFLOWS/ROTEIROS/2026-11-19/Festa_Na_Praca_19_11_SP.docx']);
+    const registro = pedidos.find((p) => p.url.pathname === '/api/table/tblProducao/record')!.corpo as { records: { fields: Record<string, unknown> }[] };
+    expect(registro.records[0].fields).toMatchObject({
+      claquete: 'Festa na Praça 19/11 SP', artes_quantidade: 2, artes: 'A GRANDE FESTA | SÁBADO', doc: 'https://trello.com/anexo.pdf',
+      redator: 'Ana Lima', card_ID: 'card1', atracao: 'Festa na Praça', editor: 'Bruno Regis', key: 'FESTA NA PRACA 19 11 SP', praca: 'SP', prioridade: 'ALTA',
+    });
+  });
+
+  it('não repete o que já entrou hoje na produção da arte (pelo upload antigo, com outra grafia)', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, consultar: banco({ duplicado: true }).consultar });
+    expect(await t.enviar({ meta, artes: [], original })).toMatchObject({ duplicado: true });
+    expect(pedidos.some((p) => p.url.pathname === '/1/cards')).toBe(false);
+  });
+
+  it('redator que ainda não existe vira opção no Trello e linha na tabela de redatores', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, consultar: banco({ redatorNovo: true }).consultar });
+    await t.enviar({ meta: { ...meta, redator: 'Nova Pessoa' }, artes: ['X'], original });
+    expect(pedidos.find((p) => p.url.pathname === '/1/customField/cRedator/options')!.corpo).toEqual({ pos: 'bottom', value: { text: 'Nova Pessoa' } });
+    expect(pedidos.find((p) => p.url.pathname === '/api/table/tblRedatores/record')!.corpo).toMatchObject({ records: [{ fields: { user: 'Nova Pessoa', redator: 'Nova Pessoa', redator_ID: 'opNovoRedator' } }] });
+    expect(campoPut(pedidos, 'cRedator')).toEqual({ idValue: 'opNovoRedator' });
+  });
+
+  it('sessão de filmes: liga ao card do filme, copia membros e os campos combinados', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, consultar: banco({ sessao: true }).consultar });
+    await t.enviar({ meta: { ...meta, claquete: 'Sessão da Tarde 19/11', praca: 'G5' }, artes: ['X'], original: { ...original, nome: 'sessao.pdf', tipo: 'application/pdf' } });
+    expect(pedidos.find((p) => p.url.pathname === '/1/cards' && p.metodo === 'POST')!.url.searchParams.get('idList')).toBe('listaG5');
+    expect(pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments' && p.url.searchParams.get('url'))!.url.searchParams.get('url')).toBe('https://trello.com/c/cardFilme');
+    expect(pedidos.find((p) => p.metodo === 'PUT' && p.url.pathname === '/1/cards/card1')!.url.searchParams.get('idMembers')).toBe('m1,m2');
+    expect(campoPut(pedidos, 'cComplexidade')).toEqual({ idValue: 'opMedia' });
+    expect(campoPut(pedidos, 'cIA')).toEqual({ value: { checked: 'true' } });
+    expect(campoPut(pedidos, 'cOutroQualquer')).toBeUndefined();
+    // o output do filme vale mais que o da atração; PDF não passa pelo Stirling
+    expect(campoPut(pedidos, 'cOutput')).toEqual({ value: { text: 'F:\\filmes\\saida' } });
+    expect(pedidos.some((p) => p.url.host === 'stirling-pdf:8080')).toBe(false);
+  });
+
+  it('VT vai para a lista de VT; sem o card, o envio falha; passo secundário que falha vira aviso', async () => {
+    const um = falsos();
+    await criarTrello(ENV, { buscar: um.buscar, consultar: banco().consultar }).enviar({ meta: { ...meta, claquete: 'Vt Festa 19/11 SP' }, artes: [] });
+    expect(um.pedidos.find((p) => p.url.pathname === '/1/cards')!.url.searchParams.get('idList')).toBe('listaVT');
+
+    const semCard = falsos({ falharCard: true });
+    await expect(criarTrello(ENV, { buscar: semCard.buscar, consultar: banco().consultar }).enviar({ meta, artes: [] })).rejects.toThrow(/401/);
+
+    const semChecklist = falsos({ falharChecklist: true });
+    const r = await criarTrello(ENV, { buscar: semChecklist.buscar, consultar: banco().consultar }).enviar({ meta, artes: ['X'] });
+    expect(r.card.id).toBe('card1');
+    expect(r.avisos.join(' ')).toMatch(/criar a checklist/);
+    expect(r.avisos.join(' ')).toMatch(/arquivo original não está guardado/);
+  });
+
+  it('desligado sem chave, token e lista', () => {
+    expect(criarTrello({}).ligado).toBe(false);
+    expect(criarTrello({ ...ENV, TRELLO_LISTA: '' }).ligado).toBe(false);
+  });
+});
+
+describe('rotas do envio', () => {
+  let servidor: Server;
+  let base = '';
+  const recebidos: { artes: string[]; original: { nome: string; dados: Buffer } | null; meta: { claquete: string } }[] = [];
+  let falhar = false;
+  const trello = {
+    ligado: true,
+    parar: async () => {},
+    enviar: async (r: (typeof recebidos)[number]) => {
+      recebidos.push(r);
+      if (falhar) throw new Error('Trello respondeu 401');
+      return { card: { id: 'c1', url: 'https://trello.com/c/C1' }, avisos: ['gerar o PDF: sem Stirling'] };
+    },
+  };
+  const ana = (caminho: string, init: RequestInit = {}) =>
+    fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com', 'content-type': 'application/json', ...init.headers } });
+
+  beforeAll(async () => {
+    const app = criarApp({ db: abrirBanco(':memory:'), env: {}, trello });
+    servidor = createServer(app);
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+  });
+  afterAll(() => servidor.close());
+
+  it('guarda o original, manda uma vez e mostra o estado na fila', async () => {
+    const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'X' }] }] };
+    await ana('/api/roteiros/rot-trello-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Festa 19/11' }, doc }, nArtes: 1 }) });
+    expect((await ana('/api/eu').then((r) => r.json())).trello).toBe(true);
+
+    const subiu = await ana('/api/roteiros/rot-trello-1/original', { method: 'PUT', body: new Uint8Array([1, 2, 3]), headers: { 'content-type': 'application/pdf', 'x-arquivo': encodeURIComponent('Festa 19_11 ç.pdf') } });
+    expect(subiu.status).toBe(200);
+    expect((await ana('/api/roteiros')).ok && (await (await ana('/api/roteiros')).json())[0].temOriginal).toBe(true);
+
+    const r = await (await ana('/api/roteiros/rot-trello-1/trello', { method: 'POST', body: JSON.stringify({ artes: ['A', 'B'], texto: 'x' }) })).json();
+    expect(r).toEqual({ estado: 'enviado', url: 'https://trello.com/c/C1', avisos: ['gerar o PDF: sem Stirling'] });
+    expect(recebidos[0].artes).toEqual(['A', 'B']);
+    expect(recebidos[0].original).toMatchObject({ nome: 'Festa 19_11 ç.pdf' });
+    expect([...recebidos[0].original!.dados]).toEqual([1, 2, 3]);
+    expect((await (await ana('/api/roteiros')).json())[0].trello).toMatchObject({ estado: 'enviado', url: 'https://trello.com/c/C1', por: 'Ana' });
+
+    // de novo, sem pedir: recusa
+    expect((await ana('/api/roteiros/rot-trello-1/trello', { method: 'POST', body: '{}' })).status).toBe(409);
+    expect(recebidos).toHaveLength(1);
+  });
+
+  it('erro fica registrado e pode tentar de novo', async () => {
+    const doc = { type: 'doc', content: [] };
+    await ana('/api/roteiros/rot-trello-2', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Outra 20/11' }, doc }, nArtes: 0 }) });
+    falhar = true;
+    const r = await ana('/api/roteiros/rot-trello-2/trello', { method: 'POST', body: '{}' });
+    expect(r.status).toBe(502);
+    expect((await (await ana('/api/roteiros/rot-trello-2/trello')).json())).toMatchObject({ estado: 'erro', erro: 'Trello respondeu 401' });
+    falhar = false;
+    expect((await (await ana('/api/roteiros/rot-trello-2/trello', { method: 'POST', body: '{}' })).json()).estado).toBe('enviado');
+  });
+});

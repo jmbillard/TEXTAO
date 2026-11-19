@@ -55,6 +55,49 @@ services:
       - TEABLE_CAMPO_CHAVE=${TEABLE_CAMPO_CHAVE:-}
       - TEABLE_CAMPO_ATRACAO=${TEABLE_CAMPO_ATRACAO:-}
       - TEABLE_CAMPO_REDATOR=${TEABLE_CAMPO_REDATOR:-}
+      # ---- Envio para o Trello (no lugar do fluxo upload_roteiros do n8n) ----
+      # Sem TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA, o envio fica desligado e nada aparece na tela.
+      - TRELLO_KEY=${TRELLO_KEY:-}
+      - TRELLO_TOKEN=${TRELLO_TOKEN:-}
+      # listas: padrão (G5 e RJ), SP e VT
+      - TRELLO_LISTA=${TRELLO_LISTA:-}
+      - TRELLO_LISTA_SP=${TRELLO_LISTA_SP:-}
+      - TRELLO_LISTA_VT=${TRELLO_LISTA_VT:-}
+      # campos personalizados do quadro (IDs) e as opções de praça no formato G5=id,SP=id,RJ=id
+      - TRELLO_CAMPO_PRACA=${TRELLO_CAMPO_PRACA:-}
+      - TRELLO_PRACAS=${TRELLO_PRACAS:-}
+      - TRELLO_CAMPO_REDATOR=${TRELLO_CAMPO_REDATOR:-}
+      - TRELLO_CAMPO_EDITOR=${TRELLO_CAMPO_EDITOR:-}
+      - TRELLO_CAMPO_PRIORIDADE=${TRELLO_CAMPO_PRIORIDADE:-}
+      - TRELLO_PRIORIDADE_ALTA=${TRELLO_PRIORIDADE_ALTA:-}
+      - TRELLO_CAMPO_PROJETO=${TRELLO_CAMPO_PROJETO:-}
+      - TRELLO_CAMPO_OUTPUT=${TRELLO_CAMPO_OUTPUT:-}
+      - TRELLO_CAMPO_BOT=${TRELLO_CAMPO_BOT:-}
+      - TRELLO_CAMPO_ENTRADA=${TRELLO_CAMPO_ENTRADA:-}
+      # campos copiados do card do filme nas sessões (complexidade, uso de IA), separados por vírgula
+      - TRELLO_CAMPOS_FILME=${TRELLO_CAMPOS_FILME:-}
+      # Teable, escrita: token com permissão de criar registros na produção da arte e nos redatores
+      - TEABLE_TOKEN_ESCRITA=${TEABLE_TOKEN_ESCRITA:-}
+      - TEABLE_ARTE_PRODUCAO=${TEABLE_ARTE_PRODUCAO:-}
+      # Postgres do Teable, leitura: nomes internos das tabelas (os mesmos do nó Globals do n8n)
+      - TEABLE_PG_ARTE=${TEABLE_PG_ARTE:-}
+      - TEABLE_PG_REDATORES=${TEABLE_PG_REDATORES:-}
+      - TEABLE_PG_EDITORES=${TEABLE_PG_EDITORES:-}
+      - TEABLE_PG_ATRACOES=${TEABLE_PG_ATRACOES:-}
+      - TEABLE_PG_PRIORIDADE=${TEABLE_PG_PRIORIDADE:-}
+      - TEABLE_PG_FILMES_ESQUEMA=${TEABLE_PG_FILMES_ESQUEMA:-}
+      - TEABLE_PG_SESSOES=${TEABLE_PG_SESSOES:-}
+      - TEABLE_PG_LOG_BOT=${TEABLE_PG_LOG_BOT:-}
+      # PDF do roteiro (Stirling) e cópia do original no OneDrive (SFTP)
+      - STIRLING_URL=${STIRLING_URL:-}
+      - STIRLING_CHAVE=${STIRLING_CHAVE:-}
+      - SFTP_HOST=${SFTP_HOST:-}
+      - SFTP_PORTA=${SFTP_PORTA:-22}
+      - SFTP_USUARIO=${SFTP_USUARIO:-}
+      - SFTP_SENHA=${SFTP_SENHA:-}
+      - SFTP_PASTA=${SFTP_PASTA:-/PROMO/WORKFLOWS/ROTEIROS}
+      # endereço público, para o link do roteiro no registro da produção
+      - PROMEIRO_URL=${PROMEIRO_URL:-}
 
   # Só cache: nada aqui precisa sobreviver a um reinício (o banco dos roteiros é o SQLite, no volume acima).
   redis:

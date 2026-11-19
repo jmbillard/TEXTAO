@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { armazenamento, type Resumo } from '../dados/armazenamento';
+import { armazenamento, mandarParaTrello, temTrello, type Resumo } from '../dados/armazenamento';
 import { corDe } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias } from '../modelo/exportar';
@@ -221,13 +221,59 @@ function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
   return [texto.slice(0, n), n >= texto.length];
 }
 
+const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/** O card no Trello: mandando, mandado (com link), já estava lá, ou deu erro. Sem envio, o botão para mandar. */
+function FichaTrello({ r, mandar }: { r: Resumo; mandar: () => Promise<void> }) {
+  const revisar = r.meta.revisar ?? [];
+  const [conferindo, setConferindo] = useState(false);
+  const e = r.trello;
+  if (e?.estado === 'enviando')
+    return (
+      <span className="ficha-trello some enviando">
+        <Icone nome="quadro" tam={14} /> Mandando para o Trello…
+      </span>
+    );
+  if (e?.estado === 'enviado')
+    return (
+      <span className="ficha-trello some ok">
+        <Icone nome="quadro" tam={14} />
+        <a href={e.url} target="_blank" rel="noreferrer">No Trello</a>
+        <small>{e.por ? `${primeiro(e.por)}, ` : ''}{horaCurta(e.em)}</small>
+      </span>
+    );
+  if (e?.estado === 'duplicado')
+    return (
+      <span className="ficha-trello some ok" title="A claquete já tinha entrado hoje na produção da arte, pelo upload antigo. O PROMeiro não criou outro card.">
+        <Icone nome="quadro" tam={14} /> Já estava no Trello <small>pelo upload antigo</small>
+      </span>
+    );
+  if (conferindo)
+    return (
+      <span className="ficha-trello some conferir">
+        <span>Ainda {revisar.length === 1 ? 'tem uma pendência' : `tem ${revisar.length} pendências`}: {revisar.join(' · ')}.</span>
+        <button className="botao-texto" onClick={() => setConferindo(false)}>Voltar</button>
+        <button className="botao primario" onClick={() => { setConferindo(false); void mandar(); }}>Mandar assim mesmo</button>
+      </span>
+    );
+  return (
+    <span className={`ficha-trello some ${e?.estado === 'erro' ? 'erro' : 'falta'}`}>
+      <Icone nome="quadro" tam={14} />
+      {e?.estado === 'erro' ? <span title={e.erro}>Não foi para o Trello</span> : <span>{revisar.length ? 'Vai para o Trello depois da revisão' : 'Ainda não foi para o Trello'}</span>}
+      <button className="botao-texto" onClick={() => (revisar.length ? setConferindo(true) : void mandar())}>
+        {e?.estado === 'erro' ? 'Tentar de novo' : 'Mandar agora'}
+      </button>
+    </span>
+  );
+}
+
 interface VersaoNova {
   anterior: Resumo;
   substituir: () => void;
   manter: () => void;
 }
 
-function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova }) {
+function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; mandar?: () => Promise<void> }) {
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   const revisar = r.meta.revisar ?? [];
@@ -293,6 +339,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao }: { r: Resumo;
         </span>
       )}
       {revisar.length > 0 && <span className="ficha-pendencias some">{revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}</span>}
+      {mandar && !versao && <FichaTrello r={r} mandar={mandar} />}
     </li>
   );
 }
@@ -399,8 +446,26 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
     [],
   );
 
+  /** Cria o card no Trello. A ficha mostra "mandando" na hora; o resultado chega pela fila ao vivo. */
+  const mandar = async (r: Resumo | Roteiro) => {
+    setRoteiros((l) => l?.map((x) => (x.id === r.id ? { ...x, trello: { estado: 'enviando', em: new Date().toISOString() } } : x)) ?? l);
+    try {
+      const completo = 'doc' in r ? r : await armazenamento.ler(r.id);
+      if (!completo) throw new Error('Roteiro não encontrado.');
+      const res = await mandarParaTrello(completo);
+      const nome = completo.meta.claquete || 'O roteiro';
+      if (res.estado === 'duplicado') avisar(`${nome} já tinha entrado hoje pelo upload antigo. Não criei outro card.`);
+      else if (res.avisos?.length) avisar(`${nome} foi para o Trello, mas: ${res.avisos[0]}${res.avisos.length > 1 ? ` (e mais ${res.avisos.length - 1})` : ''}.`);
+    } catch (e) {
+      avisar(`Não foi para o Trello: ${e instanceof Error ? e.message : 'o servidor não respondeu'}`);
+    }
+    void carregar();
+  };
+  const jaNoTrello = (r?: Resumo) => r?.trello?.estado === 'enviado' || r?.trello?.estado === 'duplicado';
+
   /** Versão nova de uma claquete que já estava na fila: fica a nova, com os tipos de arte da anterior. */
   const substituir = async (nova: Resumo) => {
+    const anterior = roteiros?.find((x) => x.id === nova.meta.substitui);
     try {
       const [rn, ra] = await Promise.all([armazenamento.ler(nova.id), nova.meta.substitui ? armazenamento.ler(nova.meta.substitui) : undefined]);
       if (!rn) return;
@@ -413,8 +478,11 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
       atualizado.meta.revisar = pendencias(exportar(atualizado));
       await armazenamento.salvar(atualizado, 'substituiu a versão anterior');
       await armazenamento.apagar(ra.id);
-      avisar(herdadas ? `Versão anterior substituída. ${plural(herdadas, 'tipo de arte foi mantido', 'tipos de arte foram mantidos')}.` : 'Versão anterior substituída.');
-      void carregar();
+      const card = jaNoTrello(anterior) ? ' O card no Trello continua o da versão anterior.' : '';
+      avisar(herdadas ? `Versão anterior substituída. ${plural(herdadas, 'tipo de arte foi mantido', 'tipos de arte foram mantidos')}.${card}` : `Versão anterior substituída.${card}`);
+      // a anterior não tinha ido para o Trello: a nova vai, se não tiver pendência
+      if (temTrello() && !jaNoTrello(anterior) && !atualizado.meta.revisar?.length) void mandar(atualizado);
+      else void carregar();
     } catch {
       avisar('Não consegui substituir a versão anterior.');
     }
@@ -422,7 +490,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   const manterAsDuas = async (nova: Resumo) => {
     const rn = await armazenamento.ler(nova.id).catch(() => undefined);
     if (rn) await armazenamento.salvar({ ...rn, meta: { ...rn.meta, substitui: undefined } }).catch(() => {});
-    void carregar();
+    if (rn && temTrello() && !rn.meta.revisar?.length) void mandar({ ...rn, meta: { ...rn.meta, substitui: undefined } });
+    else void carregar();
   };
 
   /** Lista de artes de todos os roteiros de um dia, para planejar a produção. */
@@ -469,6 +538,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         ordem={ordem++}
         abrir={() => abrir(r.id)}
         versao={anterior ? { anterior, substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
+        mandar={temTrello() && (r.podeEditar || r.meu || aberto) ? () => mandar(r) : undefined}
         acoes={
           (r.meu || aberto) && (
             <button className="botao-icone ficha-lixo" title="Tirar da fila" aria-label={`Tirar ${r.meta.claquete || r.meta.titulo} da fila`} onClick={() => tirar(r)}>

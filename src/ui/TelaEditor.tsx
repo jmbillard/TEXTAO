@@ -14,7 +14,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, consultarPauta, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
@@ -817,6 +817,33 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
   };
   const conferir = (id: string) => mudarMeta({ conferidos: [...new Set([...(meta.conferidos ?? []), id])] });
 
+  /* ---------- Trello ---------- */
+  const [envio, setEnvio] = useState<EnvioTrello | undefined>();
+  const [conferindoTrello, setConferindoTrello] = useState(false);
+  const estadoTrello = envio ?? fila.find((r) => r.id === inicial.id)?.trello;
+  const podeMandar = temTrello() && !leitura && liberado;
+  const noTrello = estadoTrello?.estado === 'enviado' || estadoTrello?.estado === 'duplicado';
+  /** Grava o que está na tela e cria o card. */
+  const mandarTrello = async () => {
+    setConferindoTrello(false);
+    setEnvio({ estado: 'enviando', em: new Date().toISOString() });
+    try {
+      const atual = roteiroAtual();
+      await armazenamento.salvar(atual);
+      const r = await mandarParaTrello(atual);
+      setEnvio({ estado: r.estado, url: r.url, em: new Date().toISOString(), por: pessoa?.nome });
+      if (r.estado === 'duplicado') avisar('Essa claquete já tinha entrado hoje pelo upload antigo. Não criei outro card.');
+      else if (r.avisos?.length) avisar(`Foi para o Trello, mas: ${r.avisos[0]}${r.avisos.length > 1 ? ` (e mais ${r.avisos.length - 1})` : ''}.`);
+      else avisar('Foi para o Trello.');
+      return true;
+    } catch (e) {
+      const erro = e instanceof Error ? e.message : 'o servidor não respondeu';
+      setEnvio({ estado: 'erro', erro, em: new Date().toISOString() });
+      avisar(`Não foi para o Trello: ${erro}`);
+      return false;
+    }
+  };
+
   return (
     <div className="pagina editor">
       {sala && sincronizado && <PonteirosDaSala sala={sala} eu={pessoa?.email ?? ''} editor={editor} />}
@@ -842,9 +869,14 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
             <button
               className={`botao proximo ${lista.length ? '' : 'primario'}`}
               title={`${proximo.r.meta.claquete || 'Próximo roteiro'} · ${plural(proximo.total, 'roteiro', 'roteiros')} para revisar`}
-              onClick={() => abrir(proximo.r!.id)}
+              disabled={estadoTrello?.estado === 'enviando'}
+              onClick={async () => {
+                // revisado e sem pendência: vai para o Trello antes de passar ao próximo
+                if (!lista.length && podeMandar && !noTrello && !(await mandarTrello())) return;
+                abrir(proximo.r!.id);
+              }}
             >
-              {lista.length ? 'Próximo' : 'Pronto · próximo'} <span className="proximo-n">{proximo.total}</span> <Icone nome="seta" tam={14} traco={2.2} />
+              {lista.length ? 'Próximo' : podeMandar && !noTrello ? 'Mandar · próximo' : 'Pronto · próximo'} <span className="proximo-n">{proximo.total}</span> <Icone nome="seta" tam={14} traco={2.2} />
             </button>
           )}
           {presentes.length > 0 && (
@@ -872,6 +904,40 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa }: { inicial: Roteiro; v
               </div>
               )}
             </>
+          )}
+          {temTrello() && !leitura && (
+            <div className="trello-topo">
+              {noTrello ? (
+                estadoTrello?.url ? (
+                  <a className="botao trello ok" href={estadoTrello.url} target="_blank" rel="noreferrer" title={estadoTrello.por ? `Mandado por ${estadoTrello.por}` : undefined}>
+                    <Icone nome="quadro" tam={15} /> No Trello
+                  </a>
+                ) : (
+                  <span className="botao trello ok" title="A claquete já tinha entrado hoje pelo upload antigo"><Icone nome="quadro" tam={15} /> Já estava no Trello</span>
+                )
+              ) : (
+                <button
+                  className={`botao trello ${estadoTrello?.estado === 'erro' ? 'erro' : ''}`}
+                  disabled={!liberado || estadoTrello?.estado === 'enviando'}
+                  title={estadoTrello?.estado === 'erro' ? estadoTrello.erro : 'Cria o card com as artes, os campos e o PDF do roteiro'}
+                  aria-expanded={conferindoTrello}
+                  onClick={() => (lista.length ? setConferindoTrello((v) => !v) : void mandarTrello())}
+                >
+                  <Icone nome="quadro" tam={15} />
+                  {estadoTrello?.estado === 'enviando' ? 'Mandando…' : estadoTrello?.estado === 'erro' ? 'Tentar de novo' : 'Mandar para o Trello'}
+                </button>
+              )}
+              {conferindoTrello && (
+                <div className="menu trello-conferir" role="dialog" aria-label="Pendências antes de mandar">
+                  <strong>{lista.length === 1 ? 'Ainda tem uma pendência' : `Ainda tem ${lista.length} pendências`}</strong>
+                  <ul>{lista.map((p) => <li key={p.texto}>{p.texto}</li>)}</ul>
+                  <div className="trello-conferir-acoes">
+                    <button className="botao-texto" onClick={() => setConferindoTrello(false)}>Voltar e resolver</button>
+                    <button className="botao primario" onClick={() => void mandarTrello()}>Mandar assim mesmo</button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           <div className="exportar">
             <button className="botao primario" aria-haspopup="menu" aria-expanded={exportando} onClick={() => setExportando((v) => !v)}>

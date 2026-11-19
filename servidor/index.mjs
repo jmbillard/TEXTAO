@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { abrirBanco, criarApp, fazerBackup } from './app.mjs';
+import { configDoTrello, faltasDoTrello } from './trello.mjs';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
@@ -41,6 +42,21 @@ servidor.listen(porta, () =>
       .then((v) => console.log(`[vocabulário] Teable em ${process.env.TEABLE_URL}: ${v.programas.length} atrações, ${v.redatores.length} redatores, ${v.editores.length} editores, ${v.pauta.length} claquetes na pauta`));
 }
 if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos da fila em memória (serve para uma instância só)');
+{
+  const c = configDoTrello(process.env);
+  const faltam = faltasDoTrello(c);
+  if (faltam === null) console.log('[trello] envio desligado (sem TRELLO_KEY e TRELLO_TOKEN)');
+  else if (faltam.length) console.log(`[trello] envio desligado: falta ${faltam.join(', ')}`);
+  else {
+    const sem = [
+      !c.pg.producao && 'TEABLE_PG_ARTE (sem conferir duplicados)',
+      !c.teable.producao && 'TEABLE_ARTE_PRODUCAO (sem registrar a entrada)',
+      !c.stirling.url && 'STIRLING_URL (anexa o arquivo original, sem PDF)',
+      !c.sftp.host && 'SFTP_HOST (sem cópia no OneDrive)',
+    ].filter(Boolean);
+    console.log(`[trello] envio ligado${sem.length ? `; sem ${sem.join(', ')}` : ''}`);
+  }
+}
 void criarPauta(process.env, criarVocabulario(process.env))
   .testar()
   .then((m) => m && console.log(`[pauta] ${m}`));

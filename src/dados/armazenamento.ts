@@ -21,6 +21,18 @@ export interface Resumo {
   /** Compartilhado com pessoas específicas. */
   compartilhado?: boolean;
   meu: boolean;
+  /** O que aconteceu ao mandar para o Trello. */
+  trello?: EnvioTrello;
+  /** O arquivo que subiu está guardado no servidor (vira o PDF do card). */
+  temOriginal?: boolean;
+}
+export interface EnvioTrello {
+  /** "duplicado": a claquete já tinha entrado hoje na produção da arte (pelo upload antigo). */
+  estado: 'enviando' | 'enviado' | 'duplicado' | 'erro';
+  url?: string;
+  erro?: string;
+  em: string;
+  por?: string;
 }
 export interface Versao {
   n: number;
@@ -148,6 +160,33 @@ export async function consultarPauta(claquete: string): Promise<{ editor: string
   return naPauta(claquete);
 }
 
+/* ---------- Trello ---------- */
+
+let trelloLigado = false;
+/** O servidor sabe mandar para o Trello (TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA configurados). */
+export const temTrello = () => armazenamento.tipo === 'servidor' && trelloLigado;
+
+/** Guarda o arquivo como veio: é ele que vira o PDF anexado ao card. */
+export async function guardarOriginal(id: string, arquivo: File) {
+  if (armazenamento.tipo !== 'servidor') return;
+  const r = await fetch(`/api/roteiros/${encodeURIComponent(id)}/original`, {
+    method: 'PUT',
+    credentials: 'same-origin',
+    headers: { ...cabecalhos, 'content-type': arquivo.type || 'application/octet-stream', 'x-arquivo': encodeURIComponent(arquivo.name) },
+    body: arquivo,
+  });
+  if (!r.ok) throw new Error('Não consegui guardar o arquivo original.');
+}
+
+/** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
+export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
+  const saida = exportar(roteiro);
+  return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
+    method: 'POST',
+    body: JSON.stringify({ artes: saida.artes.map((a) => a.texto), texto: saida.texto.completo, deNovo }),
+  });
+}
+
 /** O armazenamento em uso. Começa no navegador e passa para o servidor quando `conectar` o encontra. */
 export let armazenamento: Armazenamento = noNavegador;
 
@@ -168,9 +207,10 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean };
     if (d.email) {
       armazenamento = noServidor;
+      trelloLigado = !!d.trello;
       // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable
       await atualizarVocabulario();
       return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false };

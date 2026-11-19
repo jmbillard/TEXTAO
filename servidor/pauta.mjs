@@ -6,7 +6,7 @@ const NOME = /^[A-Za-z0-9_]+$/;
 const DIAS = 45; // a mesma chave volta a existir no ano seguinte ("QUEM AMA 20 11"); só vale a pauta recente
 const semPraca = (chave) => chave.replace(/ (?:REDE|G5|SP|PRACAS)$/, '');
 
-async function abrirPg(url) {
+export async function abrirPg(url) {
   const { default: pg } = await import('pg');
   return new pg.Pool({ connectionString: url, max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000, statement_timeout: 5000 });
 }

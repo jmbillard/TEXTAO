@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { armazenamento, atualizarVocabulario, consultarPauta } from './dados/armazenamento';
+import { armazenamento, atualizarVocabulario, consultarPauta, guardarOriginal, mandarParaTrello, temTrello } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -121,6 +121,11 @@ export function App() {
           if (k) naFila.set(k, roteiro.id);
           await armazenamento.salvar(roteiro);
           setNovos((n) => [...n, roteiro.id]);
+          // o arquivo como veio fica no servidor: é ele que vira o PDF do card
+          const guardado = guardarOriginal(roteiro.id, arquivo).catch(() => {});
+          // sem pendência, vai direto para o Trello; os marcados para revisar esperam a revisão
+          if (temTrello() && !roteiro.meta.revisar?.length && !roteiro.meta.substitui)
+            void guardado.then(() => mandarParaTrello(roteiro)).catch((e) => avisar(`${roteiro.meta.claquete || arquivo.name} não foi para o Trello: ${e instanceof Error ? e.message : e}`)).finally(() => setChegou((n) => n + 1));
         } catch (e) {
           // as mensagens das bibliotecas de leitura vêm em inglês e não ajudam quem está subindo o roteiro
           const bruto = e instanceof Error ? e.message : '';

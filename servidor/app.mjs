@@ -13,6 +13,7 @@ import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
+import { criarTrello } from './trello.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -23,6 +24,8 @@ const TIPOS = {
 };
 const INTERVALO_VERSAO_MS = 5 * 60 * 1000;
 const LIMITE_CORPO = 2 * 1024 * 1024;
+/** Arquivo original do roteiro (docx, rtf, pdf): guardado para o PDF do card do Trello. */
+const LIMITE_ORIGINAL = 30 * 1024 * 1024;
 const ID_VALIDO = /^[\w-]{6,80}$/;
 
 const nomeDoEmail = (email) =>
@@ -76,6 +79,26 @@ export function abrirBanco(caminho) {
       PRIMARY KEY (roteiro_id, email)
     );
     CREATE INDEX IF NOT EXISTS compartilhamentos_email ON compartilhamentos (email);
+    -- o arquivo que subiu, como veio: vira o PDF anexado ao card do Trello
+    CREATE TABLE IF NOT EXISTS originais (
+      roteiro_id TEXT PRIMARY KEY REFERENCES roteiros (id) ON DELETE CASCADE,
+      nome TEXT NOT NULL,
+      tipo TEXT NOT NULL,
+      dados BLOB NOT NULL,
+      em TEXT NOT NULL
+    );
+    -- o que aconteceu ao mandar para o Trello
+    CREATE TABLE IF NOT EXISTS envios (
+      roteiro_id TEXT PRIMARY KEY REFERENCES roteiros (id) ON DELETE CASCADE,
+      estado TEXT NOT NULL,
+      card_id TEXT,
+      url TEXT,
+      erro TEXT,
+      avisos TEXT,
+      em TEXT NOT NULL,
+      por_email TEXT,
+      por_nome TEXT
+    );
   `);
   // colunas que chegaram depois da primeira versão do banco
   const tem = (tabela, coluna) => db.prepare(`PRAGMA table_info(${tabela})`).all().some((c) => c.name === coluna);
@@ -164,9 +187,24 @@ const lerCorpo = (req) =>
     req.on('error', erro);
   });
 
+const lerBinario = (req, limite) =>
+  new Promise((ok, erro) => {
+    const partes = [];
+    let total = 0;
+    req.on('data', (p) => {
+      total += p.length;
+      if (total > limite) {
+        erro(Object.assign(new Error('grande demais'), { status: 413 }));
+        req.destroy();
+      } else partes.push(p);
+    });
+    req.on('end', () => ok(Buffer.concat(partes)));
+    req.on('error', erro);
+  });
+
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env) }) {
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
   const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
@@ -183,18 +221,27 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     lista: db.prepare(
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
-              COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar
-       FROM roteiros
+              COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
+              e.estado AS envio_estado, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
+              EXISTS (SELECT 1 FROM originais o WHERE o.roteiro_id = roteiros.id) AS tem_original
+       FROM roteiros LEFT JOIN envios e ON e.roteiro_id = roteiros.id
        WHERE dono_email = ? OR publico = 1 OR id IN (SELECT roteiro_id FROM compartilhamentos WHERE email = ?)
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
     listaTudo: db.prepare(
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
-              COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar
-       FROM roteiros
+              COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
+              e.estado AS envio_estado, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
+              EXISTS (SELECT 1 FROM originais o WHERE o.roteiro_id = roteiros.id) AS tem_original
+       FROM roteiros LEFT JOIN envios e ON e.roteiro_id = roteiros.id
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
+    original: db.prepare('SELECT nome, tipo, dados FROM originais WHERE roteiro_id = ?'),
+    guardarOriginal: db.prepare('INSERT OR REPLACE INTO originais (roteiro_id, nome, tipo, dados, em) VALUES (?, ?, ?, ?, ?)'),
+    limparOriginais: db.prepare('DELETE FROM originais WHERE em < ?'),
+    envio: db.prepare('SELECT estado, card_id, url, erro, avisos, em, por_nome FROM envios WHERE roteiro_id = ?'),
+    marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
@@ -227,6 +274,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   const aberto = env.ACESSO !== 'privado';
 
   /** O que esta pessoa pode fazer com o roteiro: o dono tudo; quem recebeu, ler ou editar; os demais, ler se for de todos. */
+  // o original só serve para o card do Trello: depois de 60 dias, sai do banco
+  q.limparOriginais.run(new Date(Date.now() - 60 * 86400000).toISOString());
+
   const acesso = (id, eu) => {
     const linha = q.um.get(id);
     if (!linha) return { linha: null, meu: false, editar: false, ler: false };
@@ -485,13 +535,76 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     q.novaVersao.run(id, (ultima?.n ?? 0) + 1, agora, eu.email, eu.nome, motivo || (ultima ? 'edição' : 'criação'), meta, doc);
   }
 
+  /** Envios em andamento, para o mesmo roteiro não virar dois cards. */
+  const enviando = new Set();
+
+  async function rotaDoTrello(req, res, eu, id, oque) {
+    if (!ID_VALIDO.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
+    const { linha: atual, editar: podeEditar } = acesso(id, eu);
+    if (!atual) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+    if (!podeEditar) return json(res, 403, { erro: 'Só quem pode editar o roteiro manda ele adiante.' });
+
+    if (oque === 'original') {
+      if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
+      const dados = await lerBinario(req, LIMITE_ORIGINAL);
+      if (!dados.length) return json(res, 400, { erro: 'Arquivo vazio.' });
+      let nome = 'roteiro';
+      try {
+        nome = decodeURIComponent(String(req.headers['x-arquivo'] || 'roteiro')).replace(/[\u0000-\u001f/\\]/g, '_').slice(0, 200);
+      } catch {
+        /* nome malformado: fica o padrão */
+      }
+      const tipo = String(req.headers['content-type'] || 'application/octet-stream').slice(0, 100);
+      q.guardarOriginal.run(id, nome, tipo, dados, new Date().toISOString());
+      return json(res, 200, { ok: true });
+    }
+
+    if (req.method === 'GET') {
+      const e = q.envio.get(id);
+      return json(res, 200, e ? { estado: e.estado, url: e.url, erro: e.erro, avisos: JSON.parse(e.avisos || '[]'), em: e.em, por: e.por_nome } : null);
+    }
+    if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    if (!trello.ligado) return json(res, 503, { erro: 'O envio para o Trello não está configurado neste servidor.' });
+    const corpo = (await lerCorpo(req)) ?? {};
+    const antes = q.envio.get(id);
+    if (antes?.estado === 'enviado' && !corpo.deNovo) return json(res, 409, { erro: 'Este roteiro já está no Trello.', url: antes.url });
+    if (enviando.has(id)) return json(res, 409, { erro: 'Este roteiro já está sendo enviado.' });
+    enviando.add(id);
+    const agora = new Date().toISOString();
+    q.marcarEnvio.run(id, 'enviando', null, null, null, null, agora, eu.email, eu.nome);
+    avisarFila('alterado', id, eu);
+    try {
+      const o = q.original.get(id);
+      const base = env.PROMEIRO_URL ? env.PROMEIRO_URL.replace(/\/+$/, '') : '';
+      const r = await trello.enviar({
+        meta: JSON.parse(atual.meta),
+        artes: Array.isArray(corpo.artes) ? corpo.artes.slice(0, 200).map((a) => String(a).slice(0, 500)) : [],
+        texto: typeof corpo.texto === 'string' ? corpo.texto.slice(0, 200_000) : '',
+        original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null,
+        endereco: base ? `${base}/#/r/${id}` : '',
+      });
+      const estado = r.duplicado ? 'duplicado' : 'enviado';
+      q.marcarEnvio.run(id, estado, r.card?.id ?? null, r.card?.url ?? null, null, JSON.stringify(r.avisos ?? []), new Date().toISOString(), eu.email, eu.nome);
+      if (r.avisos?.length) console.warn(`[trello] ${id}: ${r.avisos.join(' · ')}`);
+      return json(res, 200, { estado, url: r.card?.url, avisos: r.avisos ?? [] });
+    } catch (e) {
+      const erro = e instanceof Error ? e.message : String(e);
+      console.error(`[trello] ${id}: ${erro}`);
+      q.marcarEnvio.run(id, 'erro', null, null, erro.slice(0, 500), null, new Date().toISOString(), eu.email, eu.nome);
+      return json(res, 502, { estado: 'erro', erro });
+    } finally {
+      enviando.delete(id);
+      avisarFila('alterado', id, eu);
+    }
+  }
+
   async function api(req, res, caminho) {
     const eu = await identificar(req, env);
     if (caminho === '/api/eu') {
       if (eu) {
         // quem entra passa a constar na lista de pessoas com quem se pode compartilhar
         q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
-        return json(res, 200, eu);
+        return json(res, 200, { ...eu, trello: trello.ligado });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -502,6 +615,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
+    const extra = /^\/api\/roteiros\/([^/]+)\/(original|trello)$/.exec(caminho);
+    if (extra) return rotaDoTrello(req, res, eu, extra[1], extra[2]);
     const m = /^\/api\/roteiros(?:\/([^/]+))?(?:\/versoes(?:\/(\d+))?)?$/.exec(caminho);
     if (!m) return json(res, 404, { erro: 'Não encontrado.' });
     const [, id, nVersao] = m;
@@ -518,6 +633,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
           compartilhado: !!l.compartilhado,
           podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
           revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
+          ...(l.envio_estado ? { trello: { estado: l.envio_estado, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
+          temOriginal: !!l.tem_original,
           ...(aberto ? { aberto: true } : {}),
         })),
       );
@@ -642,6 +759,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   app.fechar = async () => {
     clearInterval(batimento);
     pauta.parar();
+    await trello.parar();
     for (const ws of naFila.keys()) ws.terminate();
     // o que foi digitado nos últimos instantes ainda não foi gravado: grava antes de desligar
     for (const [id, sala] of salas) {
