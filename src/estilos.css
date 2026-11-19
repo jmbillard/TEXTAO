@@ -956,6 +956,7 @@ kbd {
 .ficha.ocupada .orelha i { opacity: 1; }
 
 .ficha-claquete b { position: relative; align-self: flex-start; }
+.claquete-alvo { position: relative; }
 .claquete-texto { background: linear-gradient(var(--grifo, transparent), var(--grifo, transparent)) no-repeat 0 0 / 0% 100%; -webkit-box-decoration-break: clone; box-decoration-break: clone; border-radius: 2px; }
 .ficha.ocupada .claquete-texto { --grifo: color-mix(in srgb, var(--cor) 24%, transparent); animation: selecionar-claquete 0.88s 0.32s cubic-bezier(0.45, 0, 0.3, 1) forwards; }
 .ficha.revisada .claquete-texto { background-image: linear-gradient(transparent 62%, var(--neutro) 62%); background-size: 100% 100%; }
@@ -968,20 +969,15 @@ kbd {
   75% { left: 100%; opacity: 1; transform: none; }
   100% { left: 100%; opacity: 0; transform: translate(14px, 8px); }
 }
-.bandeira {
-  position: absolute; left: calc(100% + 10px); top: 2px; font: 600 10.5px/1.6 var(--sans); color: #fff; background: var(--cor);
-  padding: 0 7px; border-radius: 999px; white-space: nowrap; pointer-events: none; opacity: 0; animation: mostrar-bandeira 2.6s 0.9s forwards;
-}
-@keyframes mostrar-bandeira { 0% { opacity: 0; transform: translateX(-4px); } 12%, 70% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 
-.ficha-quem.mao { font: 600 18px/1.1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); transform-origin: left; margin-top: 3px; }
-.ficha-quem.mao.agora { color: var(--cor); clip-path: inset(0 100% 0 0); animation: escrever-nome 0.65s 1.15s steps(14, end) forwards; }
+.rubrica { display: inline-block; margin-left: 12px; font: 600 19px/1 Caveat, cursive; letter-spacing: 0; color: var(--tinta3); white-space: nowrap; transform: rotate(-3deg) translateY(-1px); transform-origin: left; }
+.rubrica.agora { color: var(--cor); clip-path: inset(0 100% 0 0); animation: escrever-nome 0.65s 1.15s steps(14, end) forwards; }
 @keyframes escrever-nome { to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) {
   .ficha { transition: none; }
   .ficha.ocupada .claquete-texto { animation: none; background-size: 100% 100%; }
-  .ibeam, .bandeira { display: none; }
-  .ficha-quem.mao.agora { animation: none; clip-path: none; }
+  .ibeam { display: none; }
+  .rubrica.agora { animation: none; clip-path: none; }
 }
 
 /* desenhos dos cursores */
@@ -998,3 +994,6 @@ kbd {
 .escolha-cursor-grade button:hover { transform: translateY(-1px); border-color: var(--regua-forte); }
 .escolha-cursor-grade button[aria-checked='true'] { border-color: var(--ultra); background: var(--ultra-suave); }
 .escolha-cursor-grade svg { transform: translate(2px, 2px); }
+/* respiro para a orelha dobrada não cobrir o botão */
+.ficha { padding-right: 30px; }
+@media (max-width: 860px) { .ficha { padding-right: 22px; } }

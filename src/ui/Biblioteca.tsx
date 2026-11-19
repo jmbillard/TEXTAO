@@ -204,13 +204,21 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: b
       <span className={`ficha-marca ${revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">{revisar.length ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}</span>
       <button className="ficha-claquete" onClick={abrir} aria-label={`Abrir ${claquete}`}>
         <b>
-          <span className="claquete-texto">{digitado}</span>
+          <span className="claquete-alvo">
+            <span className="claquete-texto">{digitado}</span>
+            {ocupada && <svg className="ibeam" viewBox="0 0 12 28" aria-hidden="true"><path d="M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5" /></svg>}
+          </span>
           {nova && !terminou && <i className="cursor" />}
-          {ocupada && (
-            <>
-              <svg className="ibeam" viewBox="0 0 12 28" aria-hidden="true"><path d="M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5" /></svg>
-              <span className="bandeira" aria-hidden="true">{nomes(agora)}</span>
-            </>
+          {ocupada ? (
+            <span className="rubrica agora" title={`${agora.map((p) => p.nome).join(', ')} com o roteiro aberto agora`}>
+              {nomes(agora)} {agora.length === 1 ? 'tá vendo' : 'tão vendo'}
+            </span>
+          ) : (
+            r.revisadoPor && (
+              <span className="rubrica some" title={`Revisado por ${r.revisadoPor.nome}`}>
+                rev. {r.revisadoPor.email === eu ? 'você' : primeiro(r.revisadoPor.nome)} ✓
+              </span>
+            )
           )}
         </b>
         <span className="some">
@@ -218,17 +226,6 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: b
           {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
           {r.meta.dataExibicao ? ` · ${dataCurtaComDia(r.meta.dataExibicao)}` : ' · sem data'}
         </span>
-        {ocupada ? (
-          <span className="ficha-quem mao agora some" title={`${agora.map((p) => p.nome).join(', ')} com o roteiro aberto agora`}>
-            {nomes(agora)} {agora.length === 1 ? 'tá vendo' : 'tão vendo'}
-          </span>
-        ) : (
-          r.revisadoPor && (
-            <span className="ficha-quem mao some" title={`Revisado por ${r.revisadoPor.nome}`}>
-              rev. {r.revisadoPor.email === eu ? 'você' : primeiro(r.revisadoPor.nome)} ✓
-            </span>
-          )
-        )}
       </button>
       <span className="ficha-gente some">
         {r.meta.redator || 'sem redator'}
