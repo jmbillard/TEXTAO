@@ -83,13 +83,14 @@ export const JSON_SCHEMA = {
     trechosCortaveis: lista({ ...orientacao, properties: { ...orientacao.properties, duracaoEstimadaSeg: { type: 'integer' } } }),
     sonoras: lista({
       type: 'object',
-      required: ['ordem', 'timecodeEntrada'],
+      required: ['ordem'],
       properties: {
         ordem: { type: 'integer' },
         origem: { enum: ['MC', 'FRAME_IO', 'PGM', 'outro'] },
         origemOriginal: texto,
         bloco: inteiroOuNulo,
-        timecodeEntrada: { type: 'string', pattern: '^\\d{2}:\\d{2}:\\d{2}$' },
+        timecodeEntrada: { type: 'string', pattern: '^(\\d{2}:\\d{2}:\\d{2})?$', description: 'Vazio quando o roteiro não informa.' },
+        timecodeSaida: { type: ['string', 'null'] },
         timecodeOriginal: texto,
         personagem: texto,
         descricaoImagem: texto,

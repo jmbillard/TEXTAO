@@ -1,5 +1,5 @@
 import { textoDoPar, type DocBruto, type Par } from './bruto';
-import { analisarSonoras, ehCaixaAlta } from '../modelo/sonora';
+import { analisarSonoras, ehCaixaAlta, ehLocucao, RE_LINHA_LOC } from '../modelo/sonora';
 import { metaVazia, novoId, type Layout, type Meta, type NoJSON, type MarcaJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
 import { acharPrograma, PRACAS, semAcento } from '../modelo/vocabularios';
 
@@ -82,21 +82,31 @@ function nomearCor(hexOuNome: string): [string, string] {
 /* ---------- cabeçalho ---------- */
 
 const ASPAS = String.raw`[”"'’′″“]`;
-const RE_LOC = /^LOC(?:UTOR[A]?|U[CÇ][AÃ]O)?\s*[:-]\s*(.+)$/i;
+const RE_LOC = /^\**\s*LOC(?:UTOR[A]?|U[CÇ][AÃ]O)?\s*[:-]?\s+(.+?)\s*\**$/i;
+const RE_SEM_LOC = /^SEM\s+LOC\w*\.?$/i;
+const RE_SEM_SELO = /^SEM\s+SELO\.?$/i;
+const RE_COM_SELO = /^COM\s+SELO\.?$/i;
+const RE_VERSOES = /^VERS[ÕO]ES\s*:/i;
+const RE_CAP_SO = /^CAP(?:[IÍ]TULO)?\.?\s*(\d+)$/i;
+/** Nome de locutor: curto, sem pontuação de frase. "LOC: No dia do gaúcho…" é texto de locução, não cabeçalho. */
+const pareceNome = (v: string) => v.length <= 40 && v.split(/\s+/).length <= 6 && !/[.!?…,;:]/.test(v) && !/\p{Ll}{2,}\s+\p{Ll}{2,}\s+\p{Ll}{2,}/u.test(v);
 const RE_SELO = /^(?:COM\s+)?SELO(?:\s+DE)?\s*:?\s*(.+)$/i;
 const RE_FECHAR = new RegExp(String.raw`^\(?\s*FECHAR\s+(?:COM|C\/)\s*(\d{1,3})\s*${ASPAS}*\s*(NO\s+M[AÁ]X\w*)?\.?\s*\)?$`, 'i');
 const RE_MAX = new RegExp(String.raw`^\(?\s*M[AÁ]X\w*\.?\s*(\d{1,3})\s*${ASPAS}*\s*\)?$`, 'i');
-const RE_DUR = new RegExp(String.raw`^\(?\s*(?:ESTIMADA\s+)?(\d{1,3})\s*${ASPAS}{1,2}\s*\)?$`, 'i');
+const RE_DUR = new RegExp(String.raw`^[\s(/]*(?:ESTIMADA\s+|(?:TEMPO|DURA[CÇ][AÃ]O)(?:\s+ESTIMAD[OA])?\s*:?\s*)?(?:\d{1,3}\s*\/\s*)?(\d{1,3})\s*${ASPAS}{1,2}[\s)/]*$`, 'i');
+const RE_MIN_SEG = new RegExp(String.raw`\b(\d)\s*[’'′]\s*(\d{2})\s*${ASPAS}{1,2}`);
 const RE_REDATOR = /^REDATOR[A]?\s*:\s*(.+)$/i;
 const RE_DATA_SO = /^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?$/;
-const RE_DATA = /(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/;
+const RE_DATA = /(?<![\d:.])(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?(?![\d:.]*\d)/;
 const RE_CAP = /\bCAP(?:[IÍ]TULO)?\.?\s*(\d+)/i;
 const RE_LEGENDA_VERMELHO = /em vermelho.*cort/i;
 
+const MINUSCULAS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'com', 'em', 'no', 'na', 'a', 'o', 'para', 'por']);
 const tituloCaso = (s: string) =>
   s
     .toLowerCase()
-    .replace(/(^|[\s-])(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase())
+    .replace(/(^|[\s/(-])(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase())
+    .replace(/(?<=\s)\p{L}+(?=\s)/gu, (w) => (MINUSCULAS.has(w.toLowerCase()) ? w.toLowerCase() : w))
     .trim();
 
 const iso = (ano: number, mes: number, dia: number) =>
@@ -104,12 +114,17 @@ const iso = (ano: number, mes: number, dia: number) =>
 
 /* ---------- artes ---------- */
 
-const RE_DIA = /^(HOJE|AMANH[ÃA]|DOMINGO|SEGUNDA|TER[ÇC]A|QUARTA|QUINTA|SEXTA|S[ÁA]BADO)(-FEIRA)?$/i;
+const RE_DIA = /^(PR[ÓO]XIM[OA]\s+)?(HOJE|AMANH[ÃA]|DOMINGO|SEGUNDA|TER[ÇC]A|QUARTA|QUINTA|SEXTA|S[ÁA]BADO)(-FEIRA)?(\s+QUE\s+VEM)?$/i;
 const RE_HORA = /^\d{1,2}\s?[:h]\s?\d{2}$/i;
 
 export function sugerirSubtipo(texto: string, antes: string, sozinha: boolean, programa: string): SubtipoArte {
-  const t = texto.trim();
+  const t = texto.trim().replace(/[\s.…,!?:;]+$/, '');
   if (RE_DIA.test(t) || RE_HORA.test(t)) return 'versao';
+  // o próprio roteiro diz o tipo: "LETTERING: …", "(Arte: …)", "CARTELA …"
+  if (/\blettering\s*:?\s*$/i.test(antes)) return 'lettering';
+  if (/\b(?:gc|rodap[eé])\s*:?\s*$/i.test(antes)) return 'rodape';
+  if (/\btela\s+cheia\s*:?\s*$/i.test(antes) || /\bcartela\b/i.test(t) || /\bcartela\s*:?\s*$/i.test(antes)) return 'tela_cheia';
+  if (/\bvinheta\b/i.test(t)) return 'outro';
   if (/\blogo\b\s*:?\s*$/i.test(antes) || /\blogo\b/i.test(t)) return 'logo';
   const s = semAcento(t).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   if (/^(tv )?globo$/.test(s)) return 'logo';
@@ -122,6 +137,12 @@ export function sugerirSubtipo(texto: string, antes: string, sozinha: boolean, p
 /* ---------- etiquetas reconhecidas pelo texto ---------- */
 
 const INFERENCIAS: { re: RegExp; etq: TipoEtiqueta; nota: string }[] = [
+  { re: /^\s*\(?\s*(?:lettering|gc|arte|cartela|rodap[eé]|tela\s+cheia)\s*:.*$/i, etq: 'edicao', nota: 'Linha que pede uma arte ("LETTERING: …", "(ARTE: …)") → orientação, fora da locução' },
+  { re: /\(\s*(?:arte|lettering|gc|cartela|logo)\b[^()]*\)/gi, etq: 'edicao', nota: '"(Arte: …)" e "(logo …)" no meio do texto → orientação, fora da locução' },
+  { re: /^\s*caminho\s*:.*$/i, etq: 'producao', nota: '"CAMINHO: …" → nota de produção' },
+  { re: /^(?=.*\p{Ll})\s*\(*\s*(?:(?:bate|assina\s+com|fecha\s+com|encerra\s+com|abre\s+com|abrir\s+com)\s+)?logo\b[^.!?]{0,60}\)*\s*$/iu, etq: 'edicao', nota: '"Logo …", "Fecha com logo …" → orientação para a edição' },
+  { re: /^\s*\/*\s*passagem\s*\/*\s*$/i, etq: 'edicao', nota: '"Passagem//" → orientação para a edição' },
+  { re: /^(?=.*\p{Ll})\s*(?:respiro|sobe\s+som|trilha)\b.{0,60}$/iu, etq: 'sonoplastia', nota: '"Respiro trilha", "Sobe som" → sonoplastia' },
   { re: /^\s*aten[cç][aã]o,?\s+sonoplast\w*\s*:?.*$/i, etq: 'sonoplastia', nota: 'Recado ao sonoplasta → sonoplastia' },
   { re: /^\s*\(*\s*plim[\s-]?plim\s*\)*\s*$/i, etq: 'sonoplastia', nota: '"Plim plim" → sonoplastia' },
   { re: /\(\(?[^()]*\b(?:plim|sonoplast\w*|trilha|m[uú]sica|sobe som)\b[^()]*\)\)?/gi, etq: 'sonoplastia', nota: 'Instrução de som entre parênteses → sonoplastia' },
@@ -181,7 +202,18 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
         parou = true;
         break;
       }
-      out.push(p.map((r) => ({ ...r, t: r.t.replace(/\t/g, ' ') })));
+      // quebra manual (Shift+Enter) vale como parágrafo: o roteiro é escrito linha a linha
+      let linha: Par = [];
+      for (const r of p) {
+        r.t.replace(/\t/g, ' ').split('\n').forEach((pedaco, k) => {
+          if (k > 0) {
+            out.push(linha);
+            linha = [];
+          }
+          if (pedaco) linha.push({ ...r, t: pedaco });
+        });
+      }
+      out.push(linha);
     }
     return out;
   };
@@ -208,6 +240,11 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     return { dia: parseInt(m[1], 10), mes: parseInt(m[2], 10), ano };
   };
 
+  const definir = <K extends keyof Meta>(campo: K, valor: Meta[K]) => {
+    // num arquivo com mais de uma chamada, vale o cabeçalho da primeira
+    if (meta[campo] === '' || meta[campo] === null) meta[campo] = valor;
+  };
+
   const lerLinhaTitulo = (s: string): boolean => {
     const comPgm = /^PGM\s*:/i.test(s);
     const prog = acharPrograma(s);
@@ -215,63 +252,109 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     const data = s.match(RE_DATA);
     const cap = s.match(RE_CAP);
     if (!comPgm && !data && !cap) return false;
-    if (s.length > 90 || analisarSonoras(s).length) return false;
-    if (prog) {
-      meta.programa = prog.nome;
-      meta.tipoPrograma = prog.tipo;
-    }
-    if (data) dataExib = lerData(data);
-    if (cap) meta.capitulo = parseInt(cap[1], 10);
+    if (s.length > 110 || analisarSonoras(s).length) return false;
+    // sem "PGM:", só vale uma linha curta que começa pelo programa ("NOBREZA 27-10 (CAP 184)"), não uma frase que o cita
+    if (!comPgm && (s.length > 45 || !prog!.pistas.some((p) => semAcento(s.split(/\s+/).slice(0, 3).join(' ')).includes(p)))) return false;
+    const duracao = s.match(RE_MIN_SEG);
+    if (duracao) definir('duracaoAlvoSeg', parseInt(duracao[1], 10) * 60 + parseInt(duracao[2], 10));
+    if (data && !dataExib) dataExib = lerData(data);
+    if (cap) definir('capitulo', parseInt(cap[1], 10));
     const praca = PRACAS.find((p) => new RegExp(`\\b${p}\\b`).test(s));
-    if (praca) meta.praca = praca;
-    const par = [...s.matchAll(/\(([^()]+)\)/g)].map((m) => m[1]).find((x) => !RE_CAP.test(x));
-    if (par) tituloExtra = /^pr[oó]logo$/i.test(par.trim()) ? 'Prólogo' : tituloCaso(par);
+    if (praca) definir('praca', praca);
+    // o que sobra da linha, tirando data, capítulo, praça e duração, é o nome do programa e/ou da chamada
+    let resto = s.replace(/^PGM\s*:\s*/i, '');
+    if (duracao) resto = resto.replace(duracao[0], ' ');
+    if (data) resto = resto.replace(data[0], ' ');
+    resto = resto.replace(/\(?\s*CAP(?:[IÍ]TULO)?\.?\s*\d+\s*\)?/gi, ' ');
+    if (praca) resto = resto.replace(new RegExp(`\\b${praca}\\b`), ' ');
+    const entre = [...resto.matchAll(/\(([^()]+)\)/g)].map((m) => m[1].trim()).filter(Boolean);
+    resto = resto.replace(/\([^()]*\)/g, ' ').replace(/\s+/g, ' ').replace(/^[\s–—-]+|[\s–—.-]+$/g, '');
+    const [antes, ...depois] = resto.split(/\s+[–—-]\s+/);
+    if (prog) {
+      definir('programa', prog.nome);
+      if (meta.programa === prog.nome) meta.tipoPrograma = prog.tipo;
+    } else if (antes) definir('programa', tituloCaso(antes));
+    const sobra = [
+      // "VERT ESTRELAS/THIS IS US": quando a linha diz mais do que o nome do programa, é o nome da chamada
+      prog && antes && !prog.pistas.some((p) => semAcento(antes) === p) && semAcento(antes) !== semAcento(prog.nome) ? tituloCaso(antes) : '',
+      ...depois.map(tituloCaso),
+      ...entre.map((x) => (/^pr[oó]logo$/i.test(x) ? 'Prólogo' : tituloCaso(x))),
+    ].filter(Boolean);
+    if (sobra.length && !tituloExtra) tituloExtra = sobra.join(' · ');
     anotar('Linha de título → programa, data e capítulo no cabeçalho');
     return true;
   };
 
   const consumirSegmento = (s: string): boolean => {
     let m: RegExpMatchArray | null;
-    if ((m = s.match(RE_LOC))) {
-      meta.locutor = m[1].trim().toUpperCase();
+    if (RE_SEM_LOC.test(s)) {
+      definir('locutor', 'SEM LOC');
+      anotar(`"${s}" → sem locução, no cabeçalho`);
+      return true;
+    }
+    if ((m = s.match(RE_LOC)) && pareceNome(m[1].trim())) {
+      definir('locutor', m[1].trim().toUpperCase());
       anotar(`"${s}" → locutor no cabeçalho`);
       return true;
     }
+    if (RE_SEM_SELO.test(s) || RE_COM_SELO.test(s)) {
+      definir('selo', RE_SEM_SELO.test(s) ? 'Sem selo' : 'Com selo');
+      anotar(`"${s}" → selo no cabeçalho`);
+      return true;
+    }
+    if (RE_VERSOES.test(s)) {
+      anotar('"VERSÕES: …" saiu do texto: as versões vêm das artes marcadas');
+      return true;
+    }
+    if ((m = s.match(RE_CAP_SO))) {
+      definir('capitulo', parseInt(m[1], 10));
+      return true;
+    }
     if ((m = s.match(RE_FECHAR))) {
-      meta.duracaoAlvoSeg = parseInt(m[1], 10);
-      meta.duracaoModo = m[2] ? 'max' : 'fechar';
+      if (meta.duracaoAlvoSeg === null) meta.duracaoModo = m[2] ? 'max' : 'fechar';
+      definir('duracaoAlvoSeg', parseInt(m[1], 10));
       anotar(`"${s}" → duração-alvo: ${m[2] ? 'no máximo' : 'fechar com'} ${m[1]}''`);
       return true;
     }
     if ((m = s.match(RE_MAX))) {
-      meta.duracaoAlvoSeg = parseInt(m[1], 10);
-      meta.duracaoModo = 'max';
+      if (meta.duracaoAlvoSeg === null) meta.duracaoModo = 'max';
+      definir('duracaoAlvoSeg', parseInt(m[1], 10));
       anotar(`"${s}" → duração-alvo: no máximo ${m[1]}''`);
       return true;
     }
     if ((m = s.match(RE_DUR))) {
-      meta.duracaoAlvoSeg = parseInt(m[1], 10);
+      definir('duracaoAlvoSeg', parseInt(m[1], 10));
       anotar(`"${s}" → duração-alvo: ${m[1]}''`);
       return true;
     }
     if ((m = s.match(RE_SELO))) {
       const v = m[1].trim().replace(/\.$/, '');
-      meta.selo = /verifique/i.test(v) ? 'Verifique a classificação indicativa' : v.toUpperCase();
+      definir('selo', /verifi/i.test(v) ? 'Verifique a classificação indicativa' : v.toUpperCase());
       anotar(`"${s}" → selo no cabeçalho`);
       return true;
     }
     if ((m = s.match(RE_REDATOR))) {
-      meta.redator = tituloCaso(m[1]);
+      definir('redator', tituloCaso(m[1]));
       anotar(`"${s}" → redação no cabeçalho`);
       return true;
     }
     if ((m = s.match(RE_DATA_SO))) {
-      dataRedacao = lerData(m);
+      dataRedacao ??= lerData(m);
       return true;
     }
-    return lerLinhaTitulo(s);
+    if (lerLinhaTitulo(s)) return true;
+    if (naZonaDoCabecalho && s.length <= 30 && (m = s.match(RE_DATA)) && !analisarSonoras(s).length) {
+      if (!dataExib) dataExib = lerData(m);
+      const nome = s.replace(m[0], ' ').replace(/\s+/g, ' ').trim();
+      if (nome && !tituloExtra) tituloExtra = tituloCaso(nome);
+      anotar(`"${s}" → nome da chamada e data no cabeçalho`);
+      return true;
+    }
+    return false;
   };
 
+  /** Antes da linha ILUSTRAÇÃO | ÁUDIO tudo é cabeçalho. */
+  let naZonaDoCabecalho = false;
   const ehMeta = (par: Par): boolean => {
     const texto = textoDoPar(par).replace(/\s+/g, ' ').trim();
     if (!texto || texto.length > 120) return false;
@@ -292,7 +375,9 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     return ['ilustracao', 'audio', 'instrucoes', 'texto'].includes(s) ? s : null;
   };
 
-  for (const item of itens) {
+  const linhaDasColunas = itens.findIndex((it) => [...it.e, ...it.d].some((p) => ehCabecalhoColuna(p)));
+  itens.forEach((item, idx) => {
+    naZonaDoCabecalho = idx < linhaDasColunas;
     for (const lado of ['e', 'd'] as const) {
       item[lado] = item[lado].filter((par) => {
         const col = ehCabecalhoColuna(par);
@@ -308,20 +393,21 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
         return !ehMeta(par);
       });
     }
-  }
+  });
 
   // Uma linha curta, sozinha, acima das colunas e que não é cabeçalho conhecido: é o nome do programa ou da chamada.
   const primeiraDupla = itens.findIndex((it) => it.duas);
-  if (!meta.programa && primeiraDupla > 0) {
+  if (primeiraDupla > 0 && (!meta.programa || !tituloExtra)) {
     for (const item of itens.slice(0, primeiraDupla)) {
       const candidatos = item.d.filter((p) => textoDoPar(p).trim());
       const texto = candidatos.length === 1 ? textoDoPar(candidatos[0]).replace(/\s+/g, ' ').trim() : '';
-      if (texto && texto.length <= 70 && !candidatos[0].some((r) => r.u) && !acharPrograma(bruto.arquivo.replace(/[_.]+/g, ' '))) {
-        meta.programa = tituloCaso(texto);
-        item.d = [];
-        anotar(`"${texto}" acima das colunas → programa no cabeçalho`);
-        break;
-      }
+      if (!texto || texto.length > 70 || candidatos[0].some((r) => r.u || r.hl)) continue;
+      if (!meta.programa && !acharPrograma(bruto.arquivo.replace(/[_.]+/g, ' '))) meta.programa = tituloCaso(texto);
+      else if (!tituloExtra) tituloExtra = tituloCaso(texto);
+      else continue;
+      item.d = [];
+      anotar(`"${texto}" acima das colunas → nome no cabeçalho`);
+      break;
     }
   }
 
@@ -361,7 +447,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
 
   /* 4. Layout. */
   const temEsquerda = itens.some((it) => it.e.some((p) => textoDoPar(p).trim()));
-  const layout: Layout = temEsquerda ? ((cabecalhoColunas as Layout | null) ?? 'ilustracao_audio') : 'coluna_unica';
+  const layout: Layout = temEsquerda ? ((cabecalhoColunas as Layout | null) ?? 'instrucoes_texto') : 'coluna_unica';
   meta.layout = layout;
   if (layout !== 'coluna_unica')
     anotar(`Tabela de 2 colunas → layout ${layout === 'ilustracao_audio' ? 'Ilustração | Áudio' : 'Instruções | Texto'}`);
@@ -432,13 +518,21 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
       if (r.b) base.b = true;
       if (r.i) base.i = true;
 
-      if (r.u && !r.link && r.t.trim()) {
+      const ehLink = (t: string, cor?: string) => /\\\\|https?:|www\.|\b[a-z]:\\|servicos\.corp|\.com\.br\b|\S\\\S/i.test(t) || /^(0563C1|0000FF|1155CC)$/i.test(cor ?? '');
+      // instrução de imagem sublinhada ("Ilustrar com imagens de…") é para a edição, não é arte
+      if (r.u && !r.link && /^\s*(?:ilustrar|cobrir)\s+com\s+(?:imagens?|sequ[eê]ncia|takes?)\b/i.test(r.t)) {
+        out.push({ ...base, etq: 'edicao' });
+        anotar('"Ilustrar com imagens…" sublinhado → orientação para a edição');
+        contexto += r.t;
+        continue;
+      }
+      if (r.u && !r.link && r.t.trim() && !ehLink(r.t, r.cor)) {
         // junta sublinhados vizinhos (inclusive com espaços entre eles)
         let texto = r.t;
         let j = i + 1;
         while (j < runs.length) {
           const prox = runs[j];
-          if (prox.u && !prox.link) texto += prox.t;
+          if (prox.u && !prox.link && !ehLink(prox.t, prox.cor)) texto += prox.t;
           else if (!prox.t.trim() && runs[j + 1]?.u && runs[j + 1].t.trim()) texto += prox.t;
           else break;
           j++;
@@ -458,13 +552,20 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
           const fim = parte.match(/\s*$/)![0];
           const miolo = parte.slice(ini.length, parte.length - fim.length);
           if (ini) out.push({ t: ini });
-          out.push({ t: miolo, arte: { subtipo: sugerirSubtipo(miolo, contexto, sozinha, meta.programa), grupo } });
-          if (fim) out.push({ t: fim });
+          const subtipo = sugerirSubtipo(miolo, contexto, sozinha, meta.programa);
+          const rabo = subtipo === 'versao' ? (miolo.match(/[\s.…,!?:;]+$/)?.[0] ?? '') : '';
+          out.push({ t: rabo ? miolo.slice(0, -rabo.length) : miolo, arte: { subtipo, grupo } });
+          if (rabo + fim) out.push({ t: rabo + fim });
         });
         contexto += texto;
         continue;
       }
 
+      if (ehLink(r.t, r.cor) && !r.hl) {
+        out.push({ ...base, ...(naEsquerda ? { etq: 'producao' as const } : {}) });
+        contexto += r.t;
+        continue;
+      }
       if (r.t.trim() && (r.hl || r.cor)) {
         if (r.cor && !r.hl && legendaVermelho && nomearCor(r.cor)[1] === 'vermelho') {
           base.etq = 'cortavel';
@@ -517,7 +618,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     }
 
     // negrito só faz sentido nas falas das sonoras; no resto, o padrão é texto limpo
-    if (!analisarSonoras(total).length) out = out.map(({ b: _b, ...resto }) => resto);
+    if (RE_LINHA_LOC.test(total) || !analisarSonoras(total).length) out = out.map(({ b: _b, ...resto }) => resto);
 
     // limpa espaços das pontas
     while (out.length && !out[0].t.trim()) out.shift();
@@ -563,15 +664,28 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
       }
       const texto = textoI(p);
       const corte = /^\s*\/\/\s*$/.test(texto);
-      const locucao = !corte && !analisarSonoras(texto).length && ehCaixaAlta(p.filter((t) => !t.etq && t.legado === undefined).map((t) => t.t).join(''));
+      const locucao = !corte && (RE_LINHA_LOC.test(texto) || !analisarSonoras(texto).length) && ehLocucao(p.filter((t) => !t.etq && t.legado === undefined).map((t) => t.t).join(''));
       // locução abre uma linha nova; "//" fecha a linha em que está
-      if (locucao && atual.length && !ehCaixaAlta(textoI(atual[atual.length - 1]))) fechar();
+      if (locucao && atual.length && !ehLocucao(textoI(atual[atual.length - 1]))) fechar();
       atual.push(p);
       if (corte) fechar();
     }
     fechar();
     if (!grupos.length && e.length) grupos.push([]);
     grupos.forEach((g, i) => linhas.push({ e: i === 0 ? e : [], d: g }));
+  }
+
+  // Sem a linha ILUSTRAÇÃO | ÁUDIO, confere de que lado está o texto falado: o padrão é à direita.
+  if (layout !== 'coluna_unica' && !cabecalhoColunas) {
+    // só conta o que não foi etiquetado: rótulo de produção em CAIXA ALTA não é locução
+    const limpo = (p: ParI) => p.filter((t) => !t.etq && t.legado === undefined).map((t) => t.t).join('');
+    const falado = (pars: ParI[]) => pars.reduce((n, p) => n + (analisarSonoras(limpo(p)).length ? 2 : ehLocucao(limpo(p)) && limpo(p).trim().length > 12 ? 1 : 0), 0);
+    const esq = linhas.reduce((n, l) => n + falado(l.e), 0);
+    const dir = linhas.reduce((n, l) => n + falado(l.d), 0);
+    if (esq > dir) {
+      for (const l of linhas) [l.e, l.d] = [l.d, l.e];
+      anotar('O texto falado estava na coluna da esquerda → colunas trocadas para o padrão (texto à direita)');
+    }
   }
 
   // textos das perguntas, na ordem do documento
@@ -599,7 +713,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   if (nArtes) anotar(`Sublinhados → ${nArtes} ${nArtes === 1 ? 'arte' : 'artes'}`);
   let nSonoras = 0;
   for (const p of todos) {
-    const s = analisarSonoras(textoI(p));
+    const s = RE_LINHA_LOC.test(textoI(p)) ? [] : analisarSonoras(textoI(p));
     nSonoras += s.length;
     if (!meta.edicao && s[0]?.origem === 'PGM') {
       const m = s[0].origemOriginal.match(/PGM\s*(\d+)/i);
@@ -608,6 +722,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   }
   if (nSonoras) anotar(`Timecodes → ${nSonoras} ${nSonoras === 1 ? 'sonora' : 'sonoras'}`);
   if (todos.some((p) => ehCaixaAlta(textoI(p)))) anotar('CAIXA ALTA → locução');
+  if (todos.some((p) => RE_LINHA_LOC.test(textoI(p)))) anotar('Linhas com "LOC:" ou "OFF:" → locução');
 
   const partesTitulo = [tituloExtra, meta.capitulo ? `cap. ${meta.capitulo}` : '', meta.edicao].filter(Boolean);
   if (partesTitulo.length) meta.titulo = partesTitulo.join(' · ').replace(/^cap\./, 'Cap.');

@@ -3,7 +3,7 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { sugerirSubtipo } from '../importar/interpretar';
-import { analisarSonoras, ehCaixaAlta, lerContexto, type ContextoSonora } from '../modelo/sonora';
+import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, type ContextoSonora } from '../modelo/sonora';
 import { nomeEtiqueta, novoId, type Layout, type NoJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
 
 /* ---------- marcas ---------- */
@@ -373,19 +373,28 @@ function decorar(doc: PMNode): DecorationSet {
     });
 
     const novoCtx = lerContexto(total);
-    const sonoras = novoCtx ? [] : analisarSonoras(total, ctx);
+    const solto = novoCtx ? null : lerTimecodeSolto(total);
+    const linhaLoc = RE_LINHA_LOC.exec(total);
+    const sonoras = novoCtx || solto || linhaLoc || !lido.trim() ? [] : analisarSonoras(total, ctx);
+    if (ctx?.tcPendente) ctx = { ...ctx, tcPendente: undefined };
     let classe = 'p-nota';
     if (novoCtx) {
       ctx = novoCtx;
       classe = 'p-origem';
+    } else if (solto) {
+      ctx = { origem: ctx?.origem ?? 'outro', origemOriginal: ctx?.origemOriginal ?? '', bloco: ctx?.bloco ?? null, tcPendente: solto };
+      classe = 'p-origem';
+    } else if (linhaLoc) {
+      classe = 'p-loc';
+      decos.push(Decoration.inline(ini, ini + linhaLoc[0].length, { class: 'marca-ed' }));
     } else if (sonoras.length) {
       classe = 'p-sonora';
       for (const s of sonoras) {
-        decos.push(Decoration.inline(ini + s.ini, ini + s.ini + s.prefixo, { class: 'tc' }));
+        if (s.prefixo) decos.push(Decoration.inline(ini + s.ini, ini + s.ini + s.prefixo, { class: 'tc' }));
         if (s.quemFim > s.quemIni) decos.push(Decoration.inline(ini + s.quemIni, ini + s.quemFim, { class: 'quem' }));
       }
     } else if (/^\s*\/\/\s*$/.test(total)) classe = 'p-corte';
-    else if (ehCaixaAlta(lido)) classe = 'p-loc';
+    else if (ehLocucao(lido)) classe = 'p-loc';
     decos.push(Decoration.node(pos, pos + node.nodeSize, { class: classe }));
 
     if (classe !== 'p-corte')

@@ -160,6 +160,12 @@ Os leitores de RTF e de PDF foram adaptados do extrator do app de upload de rote
 - **Uma etiqueta por trecho; arte convive com etiqueta.** Etiquetar por cima troca a anterior.
 - **Negrito** só é mantido nas falas das sonoras. Locução fica em texto limpo.
 - **Tempo estimado.** Locução a 2,6 palavras por segundo e falas a 3 (constantes em `src/modelo/exportar.ts`). É uma referência, com 10% de folga antes de avisar.
+- **Quebra manual é parágrafo.** No Word, muita gente separa as linhas com Shift+Enter. Na importação, cada linha vira um parágrafo.
+- **"LOC:" e "OFF Fulano:" no corpo** marcam uma linha de locução, mesmo em minúsculas. No cabeçalho, "LOC: NOME" (curto, sem pontuação) é o locutor.
+- **Pedido de arte não é locução.** Linhas como "LETTERING: …", "(Arte: …)", "(logo JH)", "Fecha com logo …" e "Passagem//" viram orientação para a edição e ficam fora do texto lido.
+- **Sublinhado que é caminho de rede ou link** não vira arte; "Ilustrar com imagens de…" sublinhado vira orientação para a edição.
+- **Colunas sem título.** Sem a linha ILUSTRAÇÃO | ÁUDIO, o app confere de que lado está o texto falado e, se for o esquerdo, troca as colunas para o padrão.
+- **Mais de uma chamada no mesmo arquivo** (plano A e plano B, por exemplo): o cabeçalho vale o da primeira e o texto entra todo no mesmo roteiro. Separar em roteiros diferentes ainda é manual.
 - **Tudo a partir de "DECUPAGEM"** fica de fora, como no app de upload.
 - **Fixtures.** Os roteiros em `tests/fixtures` são reais, com o contato da produção e o caminho de rede trocados por valores fictícios.
 

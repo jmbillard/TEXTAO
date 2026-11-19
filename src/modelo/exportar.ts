@@ -1,4 +1,4 @@
-import { analisarSonoras, ehCaixaAlta, lerContexto, type ContextoSonora } from './sonora';
+import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, textoDaLocucao, type ContextoSonora } from './sonora';
 import { nomeSubtipo, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
 
 /* Do documento do editor para o contrato de saída (JSON canônico).
@@ -30,7 +30,9 @@ export interface SonoraSaida {
   origem: string;
   origemOriginal: string;
   bloco: number | null;
+  /** Vazio quando o roteiro não informa. */
   timecodeEntrada: string;
+  timecodeSaida: string | null;
   timecodeOriginal: string;
   personagem: string;
   descricaoImagem: string;
@@ -200,7 +202,14 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
       continue;
     }
     if (bloco.coluna === 'e') continue;
-    const achadas = analisarSonoras(lido, ctx);
+    // timecode sozinho na linha: vale para a fala da linha seguinte
+    const solto = lerTimecodeSolto(lido);
+    if (solto) {
+      ctx = { origem: ctx?.origem ?? 'outro', origemOriginal: ctx?.origemOriginal ?? '', bloco: ctx?.bloco ?? null, tcPendente: solto };
+      continue;
+    }
+    const achadas = RE_LINHA_LOC.test(lido) ? [] : analisarSonoras(lido, ctx);
+    if (ctx?.tcPendente) ctx = { ...ctx, tcPendente: undefined };
     if (achadas.length) {
       for (const s of achadas) {
         sonoras.push({
@@ -209,6 +218,7 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
           origemOriginal: s.origemOriginal,
           bloco: s.bloco,
           timecodeEntrada: s.timecodeEntrada,
+          timecodeSaida: s.timecodeSaida,
           timecodeOriginal: s.timecodeOriginal,
           personagem: s.personagem,
           descricaoImagem: s.descricaoImagem,
@@ -216,14 +226,15 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
         });
         segSonoras += palavras(s.fala) / RITMO.sonora;
       }
-    } else if (ehCaixaAlta(lido)) {
-      linhasLocucao.push(limpo(lido));
-      segLocucao += palavras(lido) / RITMO.locucao;
+    } else if (ehLocucao(lido)) {
+      const lida = textoDaLocucao(lido);
+      linhasLocucao.push(limpo(lida));
+      segLocucao += palavras(lida) / RITMO.locucao;
     }
   }
 
   const versoes = [
-    ...new Set(artes.filter((a) => a.subtipo === 'versao' && /^\p{L}/u.test(a.texto)).map((a) => a.texto.toUpperCase())),
+    ...new Set(artes.filter((a) => a.subtipo === 'versao' && /^\p{L}/u.test(a.texto)).map((a) => a.texto.toUpperCase().replace(/[\s.…,!?:;]+$/, ''))),
   ];
 
   return {
