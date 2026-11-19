@@ -134,12 +134,10 @@ const ehDiaOuHora = (texto: string) => {
 };
 
 /** O tipo só é preenchido quando o próprio roteiro diz ("LETTERING: …", "GC: …"). Fora isso, fica em branco. */
-export function sugerirSubtipo(_texto: string, antes: string): SubtipoArte {
-  const dito = antes.match(/\b(lettering|gc|rodap[eé]|cart[aã]o|cartela|tela\s+cheia|vinheta|assinatura|logo|passagem|foto|moldura)\s*:?\s*$/i)?.[1].toLowerCase();
-  if (!dito) return '';
-  if (dito === 'gc' || dito.startsWith('rodap')) return 'rodape';
-  if (dito.startsWith('cart') || dito.startsWith('tela')) return 'cartao';
-  return dito as SubtipoArte;
+/** O tipo da arte é sempre escolha de quem revisa: o app nunca propõe, nem pelo texto em volta
+    ("BATE LOGO …", "LETTERING: …" são orientações para a edição, não o tipo da arte). */
+export function sugerirSubtipo(_texto: string, _antes: string): SubtipoArte {
+  return '';
 }
 
 /* ---------- etiquetas reconhecidas pelo texto ---------- */

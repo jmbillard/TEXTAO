@@ -32,7 +32,7 @@ describe('PDF', () => {
     const { saida } = await importar('Nobreza_27_10.pdf');
     expect(saida.roteiro).toMatchObject({ programa: 'Nobreza do Amor', dataExibicao: '2026-10-27', capitulo: 184, locutor: 'DIRCEU', duracaoAlvoSeg: 30 });
     expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([
-      ['A NOBREZA DO AMOR', 'logo'], ['ÚLTIMAS SEMANAS', ''], ['AMANHÃ', ''], ['HOJE', ''], ['A NOBREZA DO AMOR', ''],
+      ['A NOBREZA DO AMOR', ''], ['ÚLTIMAS SEMANAS', ''], ['AMANHÃ', ''], ['HOJE', ''], ['A NOBREZA DO AMOR', ''],
     ]);
     expect(saida.sonoras.map((s) => [s.origem, s.bloco, s.timecodeEntrada, s.personagem])).toEqual([
       ['FRAME_IO', 1, '00:05:02', 'Fortunato'], ['FRAME_IO', 1, '00:06:36', 'Manoel'], ['FRAME_IO', 2, '00:04:56', 'Jendal'],

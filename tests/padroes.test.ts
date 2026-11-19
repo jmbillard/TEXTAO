@@ -90,7 +90,7 @@ describe('cabeçalho e corpo: variações', () => {
     ]);
     expect(saida.roteiro).toMatchObject({ programa: 'Baile do Bairro', titulo: 'Pílula de Verão', dataExibicao: '2026-09-12', locutor: 'MCK', duracaoAlvoSeg: 80 });
     expect(saida.sonoras.map((s) => [s.timecodeEntrada, s.personagem])).toEqual([['00:03:40', 'MARIA LUZ']]);
-    expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([['DEPOIS DA NOVELA', 'lettering']]);
+    expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([['DEPOIS DA NOVELA', '']]);
     expect(saida.orientacoes.edicao.map((o) => o.texto)).toEqual(['LETTERING: DEPOIS DA NOVELA', 'Fecha com logo do programa']);
     expect(saida.orientacoes.producao).toHaveLength(1);
     expect(saida.texto.locucao).toBe(''); // a linha do lettering é pedido de arte, não é lida
@@ -171,9 +171,9 @@ describe('o que a Arte precisa', () => {
     const { saida } = importar(soltos('HOJE TEM FESTA NA PRAÇA.'), 'Passeio_No_Parque_11_07_Rede.docx');
     expect(saida.roteiro).toMatchObject({ claquete: 'PASSEIO NO PARQUE 11/07 REDE', praca: 'G5', editor: '' });
   });
-  it('o tipo da arte nunca é sugerido; só entra quando o roteiro diz', () => {
+  it('o tipo da arte nunca é sugerido, nem pelo texto em volta ("GC:", "BATE LOGO")', () => {
     const { saida } = importar(soltos([{ t: 'VEM AÍ ' }, u('A GRANDE FESTA')], [{ t: 'GC: ' }, u('MARIA LUZ')], [u('SEXTA'), { t: ' TEM MAIS.' }]));
-    expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([['A GRANDE FESTA', ''], ['MARIA LUZ', 'rodape'], ['SEXTA', '']]);
+    expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([['A GRANDE FESTA', ''], ['MARIA LUZ', ''], ['SEXTA', '']]);
   });
   it('"depois de" sublinhado no fim dos dias vale para cada dia; o horário continua arte separada', () => {
     const { saida } = importar(soltos([u('SÁBADO/AMANHÃ/HOJE'), { t: ', ' }, u('LOGO APÓS O JORNAL DA NOITE'), { t: ' (' }, u('2:45'), { t: ').' }]));

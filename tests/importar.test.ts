@@ -85,7 +85,7 @@ describe('Nobreza do Amor (.docx, coluna da esquerda vazia)', async () => {
   });
   it('artes', () => {
     expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([
-      ['A NOBREZA DO AMOR', 'logo'], ['ÚLTIMAS SEMANAS', ''], ['AMANHÃ', ''], ['HOJE', ''], ['A NOBREZA DO AMOR', ''],
+      ['A NOBREZA DO AMOR', ''], ['ÚLTIMAS SEMANAS', ''], ['AMANHÃ', ''], ['HOJE', ''], ['A NOBREZA DO AMOR', ''],
     ]);
   });
   it('sonoras herdam a origem de "FRAME IO ONLINE BLOCO 01"', () => {
@@ -135,7 +135,7 @@ describe('Eliana (.rtf, cp1252)', async () => {
   it('artes com acentos corretos', () => {
     expect(saida.artes.map((a) => [a.texto, a.subtipo])).toEqual([
       ['DOMINGO', ''], ['AMANHÃ', ''], ['HOJE', ''], ['PRISCILLA', ''], ['GUILHERME & BENUTO', ''],
-      ['TAÍS ARAUJO', ''], ['2:30', ''], ['EM FAMÍLIA COM ELIANA', 'logo'],
+      ['TAÍS ARAUJO', ''], ['2:30', ''], ['EM FAMÍLIA COM ELIANA', ''],
     ]);
     expect(new Set(saida.artes.slice(0, 3).map((a) => a.grupoVersoes)).size).toBe(1);
   });
