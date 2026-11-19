@@ -54,35 +54,23 @@ Na linha de comando:
 docker compose up -d --build
 ```
 
-Variáveis da stack (todas opcionais):
+Variáveis da stack: o modelo completo, em blocos e comentado, está em [`stack.env.exemplo`](stack.env.exemplo).
+Todas são opcionais; vazia, aquela parte fica desligada, e o log da partida diz o que falta.
 
-| Variável | Para quê |
-|---|---|
-| `PORTA` | Porta publicada no servidor (padrão 8080) |
-| `ACCESS_TEAM_DOMAIN` | Ex.: `minhaequipe.cloudflareaccess.com`. Com `ACCESS_AUD`, o servidor confere a assinatura do Cloudflare Access em cada pedido |
-| `ACCESS_AUD` | *Application Audience (AUD) Tag* da aplicação do Access |
-| `PERFIL_LOCAL` | `1` libera o uso sem login: cada pessoa informa nome e e-mail no app. Só para demonstração, porque qualquer um pode informar qualquer e-mail |
-| `ACESSO` | `aberto` (padrão): todos veem, editam e apagam todos os roteiros. `privado`: cada um só vê os seus e os que recebeu |
-| `REDIS_URL` | Cache e avisos da fila ao vivo (o compose já sobe um Redis e aponta para ele). Sem Redis, ou com ele fora do ar, tudo funciona em memória; ele é o que permite rodar mais de uma instância do app |
-| `BACKUPS` | Quantos backups diários manter (padrão 14) |
-| `REDE_TEABLE` | Nome da rede Docker do Teable, à qual o container se junta (padrão `teable-network`; ela precisa existir) |
-| `TEABLE_URL` | Opcional. Endereço do Teable nessa rede (ex.: `http://NOME-DO-CONTAINER:3000`) |
-| `TEABLE_TOKEN` | Token de acesso do Teable, só de leitura |
-| `TEABLE_ATRACOES` | ID (`tbl…`) da tabela de chaves de atrações: campos `key` e `atracoes` |
-| `TEABLE_REDATORES` | ID (`tbl…`) da tabela de redatores: campo `redator` |
-| `TEABLE_EDITORES` | Opcional. ID da tabela de editores (campo `editor`): sugestões do campo Editor |
-| `TEABLE_PAUTA` | Opcional. ID da tabela da pauta da edição (campos `key` e `editor`): preenche o editor pela claquete |
-| `TEABLE_PAUTA_VISAO` | Opcional. ID (`viw…`) de uma visão da pauta só com os dias recentes; sem ela, o servidor lê a tabela inteira |
-| `TEABLE_PG_URL` | Opcional. Postgres do Teable, com usuário só de leitura: `postgres://USUARIO:SENHA@teable-db:5432/BANCO`. Com ele, a pauta é consultada direto no banco |
-| `TEABLE_PG_ESQUEMA` | ID da base do Teable (`bse…`), que é o esquema no Postgres |
-| `TEABLE_PG_PAUTA` | Nome interno da tabela da pauta da edição no Postgres |
-| `TEABLE_CADASTRO` | Opcional. ID da tabela de atrações (campos `atracao` e `categoria`), para saber o que é novela e o que é esporte |
+| Bloco | Variáveis | Para quê |
+|---|---|---|
+| Acesso | `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `PERFIL_LOCAL`, `ACESSO`, `PROMEIRO_URL` | Login pelo Cloudflare Access, modo sem login (demonstração), quem vê o quê e o endereço público |
+| Servidor | `PORTA`, `BACKUPS`, `REDE_TEABLE`, `REDIS_URL` | Porta publicada, backups diários, rede Docker do Teable e cache da fila ao vivo |
+| Teable: API | `TEABLE_URL`, `TEABLE_TOKEN`, `TEABLE_ATRACOES`, `TEABLE_CADASTRO`, `TEABLE_REDATORES`, `TEABLE_EDITORES`, `TEABLE_KEY_EDITORES`, `TEABLE_PAUTA`, `TEABLE_ARTE_PRODUCAO` | Atrações, redatores e editores para reconhecer os roteiros, os cadastros e o registro de cada envio. Um token só, que lê e grava |
+| Teable: Postgres | `TEABLE_PG_URL`, `TEABLE_PG_ESQUEMA`, `TEABLE_PG_*` | Consultas só de leitura: pauta da edição, duplicados, editor, atração, prioridade e sessões de filmes |
+| Cadastros | `CADASTRO_ADMINS` | Quem pode remover cadastros |
+| Trello | `TRELLO_KEY`, `TRELLO_TOKEN`, `TRELLO_LISTA*`, `TRELLO_CAMPO*`, `TRELLO_PRACAS`, `TRELLO_PRIORIDADE_ALTA` | Envio do roteiro como card. Sem chave, token e lista, o envio fica desligado |
+| OneDrive | `SFTP_HOST`, `SFTP_USUARIO`, `SFTP_SENHA` | Cópia do arquivo original |
+| Túnel | `COMPOSE_PROFILES=tunel`, `TUNNEL_TOKEN` | Subir um cloudflared junto |
 
-Com o Teable configurado, o campo Programa sugere as atrações cadastradas, o importador reconhece a atração pela
-chave da claquete (no começo da linha de título ou do nome do arquivo) e o campo Redação sugere os redatores.
-O servidor só lê e guarda o resultado por 10 minutos. A última leitura boa (atrações, redatores, editores e a pauta recente) também fica numa cópia no banco do app: com o Teable ou o Postgres dele fora do ar, inclusive logo depois de reiniciar o container, o app segue com essa cópia e avisa no log desde quando ela é. Sem nenhuma cópia ainda, vale a lista embutida.
-Outros nomes de campo: `TEABLE_CAMPO_CHAVE`, `TEABLE_CAMPO_ATRACAO`, `TEABLE_CAMPO_REDATOR`.
-| `COMPOSE_PROFILES`, `TUNNEL_TOKEN` | `tunel` + o token, para subir um cloudflared junto |
+Com o Teable configurado, a atração é reconhecida pela chave da claquete e os campos de redator e editor sugerem os nomes cadastrados.
+A última leitura boa do Teable (atrações, redatores, editores e a pauta recente) fica numa cópia no banco do app: com o Teable ou o Postgres dele fora do ar, inclusive logo depois de reiniciar o container, o app segue com essa cópia e avisa no log desde quando ela é.
+Nomes de campo diferentes do padrão (`TEABLE_CAMPO_*`), a pasta do OneDrive (`SFTP_PASTA`) e a porta do SFTP (`SFTP_PORTA`): acrescente a linha no `environment` do compose.
 
 **Dados e backup.** O banco é `/dados/roteirista.db`. Uma vez por dia o servidor grava uma cópia em `/dados/backup/roteirista-AAAA-MM-DD.db`. Mantenha o volume em disco local (SQLite não combina com pasta de rede) e copie a pasta `backup` para outro lugar de tempos em tempos. Para restaurar, pare o container e ponha a cópia no lugar de `roteirista.db`.
 

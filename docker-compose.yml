@@ -21,56 +21,54 @@ services:
       # o volume e o banco guardam o nome antigo de propósito: renomear faria o app subir vazio
       - roteirista-dados:/dados
     environment:
-      # Confere a assinatura do Cloudflare Access (recomendado). Sem isso, o servidor confia no e-mail
-      # que o Access envia; nesse caso não publique a porta acima fora da sua rede.
+      # As variáveis estão em blocos, na mesma ordem do stack.env.exemplo. Vazia = desligado.
+      # Nomes de campo das tabelas (TEABLE_CAMPO_*), a pasta do OneDrive (SFTP_PASTA) e a porta do SFTP (SFTP_PORTA)
+      # têm padrão no código. Só se o seu Teable for diferente: acrescente a linha aqui, como as de baixo.
+
+      # ---- Acesso ----
       - ACCESS_TEAM_DOMAIN=${ACCESS_TEAM_DOMAIN:-}
       - ACCESS_AUD=${ACCESS_AUD:-}
-      # 1 = sem login: cada pessoa se identifica com nome e e-mail no próprio app. Só para demonstração.
       - PERFIL_LOCAL=${PERFIL_LOCAL:-0}
-      # aberto (padrão): todos veem, editam e apagam todos os roteiros. privado: cada um só vê os seus e os que recebeu.
       - ACESSO=${ACESSO:-aberto}
-      # Cache e avisos da fila ao vivo. Sem Redis (ou com ele fora do ar) o app segue em memória.
+      - PROMEIRO_URL=${PROMEIRO_URL:-}
+
+      # ---- Servidor ----
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
-      # quantos backups diários manter
       - BACKUPS=${BACKUPS:-14}
-      # Opcional: nomes da casa vindos do Teable (só leitura). Endereço do Teable na rede Docker
-      # (http://NOME-DO-CONTAINER-DO-TEABLE:3000),
-      # token de acesso só de leitura e os IDs das tabelas (tbl...) de atrações (KEY_atracoes) e de redatores.
+
+      # ---- Teable: API (lê e grava com o mesmo token) ----
       - TEABLE_URL=${TEABLE_URL:-}
       - TEABLE_TOKEN=${TEABLE_TOKEN:-}
       - TEABLE_ATRACOES=${TEABLE_ATRACOES:-}
-      - TEABLE_REDATORES=${TEABLE_REDATORES:-}
-      # cadastro de atrações (campos atracao e categoria): diz o que é novela e o que é esporte
       - TEABLE_CADASTRO=${TEABLE_CADASTRO:-}
-      # editores (campo editor) e pauta da edição (campos key e editor), para preencher o editor pela claquete.
-      # TEABLE_PAUTA_VISAO: ID (viw...) de uma visão da pauta que mostre só os dias recentes; sem ela, lê a tabela inteira.
+      - TEABLE_REDATORES=${TEABLE_REDATORES:-}
       - TEABLE_EDITORES=${TEABLE_EDITORES:-}
+      - TEABLE_KEY_EDITORES=${TEABLE_KEY_EDITORES:-}
       - TEABLE_PAUTA=${TEABLE_PAUTA:-}
-      - TEABLE_PAUTA_VISAO=${TEABLE_PAUTA_VISAO:-}
-      # Opcional, e melhor para a pauta: consultar direto o Postgres do Teable, com um usuário só de leitura.
-      # URL no formato postgres://USUARIO:SENHA@teable-db:5432/BANCO; esquema é o ID da base; tabela é o nome interno.
+      - TEABLE_ARTE_PRODUCAO=${TEABLE_ARTE_PRODUCAO:-}
+
+      # ---- Teable: Postgres (só leitura; nomes internos das tabelas) ----
       - TEABLE_PG_URL=${TEABLE_PG_URL:-}
       - TEABLE_PG_ESQUEMA=${TEABLE_PG_ESQUEMA:-}
       - TEABLE_PG_PAUTA=${TEABLE_PG_PAUTA:-}
-      - TEABLE_CAMPO_CHAVE=${TEABLE_CAMPO_CHAVE:-}
-      - TEABLE_CAMPO_ATRACAO=${TEABLE_CAMPO_ATRACAO:-}
-      - TEABLE_CAMPO_REDATOR=${TEABLE_CAMPO_REDATOR:-}
-      # ---- Cadastros (atrações, redatores, editores) ----
-      # Tabela KEY_editores (tbl…): as keys da pauta de cada editor
-      - TEABLE_KEY_EDITORES=${TEABLE_KEY_EDITORES:-}
-      # Campos das atrações que são os caminhos (fórmulas); o formulário pede os campos que elas usam
-      - TEABLE_CAMPOS_CAMINHO=${TEABLE_CAMPOS_CAMINHO:-projeto_win,output_win}
-      # Quem pode remover cadastros (e-mails separados por vírgula). Cadastrar, todos podem.
+      - TEABLE_PG_ARTE=${TEABLE_PG_ARTE:-}
+      - TEABLE_PG_REDATORES=${TEABLE_PG_REDATORES:-}
+      - TEABLE_PG_EDITORES=${TEABLE_PG_EDITORES:-}
+      - TEABLE_PG_ATRACOES=${TEABLE_PG_ATRACOES:-}
+      - TEABLE_PG_PRIORIDADE=${TEABLE_PG_PRIORIDADE:-}
+      - TEABLE_PG_FILMES_ESQUEMA=${TEABLE_PG_FILMES_ESQUEMA:-}
+      - TEABLE_PG_SESSOES=${TEABLE_PG_SESSOES:-}
+      - TEABLE_PG_LOG_BOT=${TEABLE_PG_LOG_BOT:-}
+
+      # ---- Cadastros ----
       - CADASTRO_ADMINS=${CADASTRO_ADMINS:-}
-      # ---- Envio para o Trello (no lugar do fluxo upload_roteiros do n8n) ----
-      # Sem TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA, o envio fica desligado e nada aparece na tela.
+
+      # ---- Trello ----
       - TRELLO_KEY=${TRELLO_KEY:-}
       - TRELLO_TOKEN=${TRELLO_TOKEN:-}
-      # listas: padrão (G5 e RJ), SP e VT
       - TRELLO_LISTA=${TRELLO_LISTA:-}
       - TRELLO_LISTA_SP=${TRELLO_LISTA_SP:-}
       - TRELLO_LISTA_VT=${TRELLO_LISTA_VT:-}
-      # campos personalizados do quadro (IDs) e as opções de praça no formato G5=id,SP=id,RJ=id
       - TRELLO_CAMPO_PRACA=${TRELLO_CAMPO_PRACA:-}
       - TRELLO_PRACAS=${TRELLO_PRACAS:-}
       - TRELLO_CAMPO_REDATOR=${TRELLO_CAMPO_REDATOR:-}
@@ -81,28 +79,12 @@ services:
       - TRELLO_CAMPO_OUTPUT=${TRELLO_CAMPO_OUTPUT:-}
       - TRELLO_CAMPO_BOT=${TRELLO_CAMPO_BOT:-}
       - TRELLO_CAMPO_ENTRADA=${TRELLO_CAMPO_ENTRADA:-}
-      # campos copiados do card do filme nas sessões (complexidade, uso de IA), separados por vírgula
       - TRELLO_CAMPOS_FILME=${TRELLO_CAMPOS_FILME:-}
-      # Teable, escrita: token com permissão de criar registros na produção da arte e nos redatores
-      - TEABLE_TOKEN_ESCRITA=${TEABLE_TOKEN_ESCRITA:-}
-      - TEABLE_ARTE_PRODUCAO=${TEABLE_ARTE_PRODUCAO:-}
-      # Postgres do Teable, leitura: nomes internos das tabelas (os mesmos do nó Globals do n8n)
-      - TEABLE_PG_ARTE=${TEABLE_PG_ARTE:-}
-      - TEABLE_PG_REDATORES=${TEABLE_PG_REDATORES:-}
-      - TEABLE_PG_EDITORES=${TEABLE_PG_EDITORES:-}
-      - TEABLE_PG_ATRACOES=${TEABLE_PG_ATRACOES:-}
-      - TEABLE_PG_PRIORIDADE=${TEABLE_PG_PRIORIDADE:-}
-      - TEABLE_PG_FILMES_ESQUEMA=${TEABLE_PG_FILMES_ESQUEMA:-}
-      - TEABLE_PG_SESSOES=${TEABLE_PG_SESSOES:-}
-      - TEABLE_PG_LOG_BOT=${TEABLE_PG_LOG_BOT:-}
-      # cópia do arquivo original no OneDrive (SFTP). O PDF anexado ao card é gerado pelo próprio PROMeiro.
+
+      # ---- OneDrive (cópia do arquivo original, por SFTP) ----
       - SFTP_HOST=${SFTP_HOST:-}
-      - SFTP_PORTA=${SFTP_PORTA:-22}
       - SFTP_USUARIO=${SFTP_USUARIO:-}
       - SFTP_SENHA=${SFTP_SENHA:-}
-      - SFTP_PASTA=${SFTP_PASTA:-/PROMO/WORKFLOWS/ROTEIROS}
-      # endereço público, para o link do roteiro no registro da produção
-      - PROMEIRO_URL=${PROMEIRO_URL:-}
 
   # Só cache: nada aqui precisa sobreviver a um reinício (o banco dos roteiros é o SQLite, no volume acima).
   redis:

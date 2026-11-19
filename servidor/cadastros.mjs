@@ -29,8 +29,9 @@ const NAO_EDITAVEIS = new Set(['formula', 'link', 'lookup', 'rollup', 'createdTi
 
 export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {}) {
   const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
-  const leitura = env.TEABLE_TOKEN || '';
-  const escrita = env.TEABLE_TOKEN_ESCRITA || env.TEABLE_TOKEN || '';
+  // um token só, que lê e grava (TEABLE_TOKEN_ESCRITA é o nome antigo, ainda aceito)
+  const leitura = env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '';
+  const escrita = leitura;
   const t = {
     atracoes: env.TEABLE_CADASTRO || '',
     keysAtracoes: env.TEABLE_ATRACOES || '',

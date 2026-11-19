@@ -92,7 +92,7 @@ export function configDoTrello(env) {
     prioridadeAlta: env.TRELLO_PRIORIDADE_ALTA || '',
     teable: {
       url: (env.TEABLE_URL || '').replace(/\/+$/, ''),
-      token: env.TEABLE_TOKEN_ESCRITA || env.TEABLE_TOKEN || '',
+      token: env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '',
       producao: env.TEABLE_ARTE_PRODUCAO || '',
       redatores: env.TEABLE_REDATORES || '',
     },

@@ -24,7 +24,7 @@ const ENV = {
   TRELLO_CAMPO_ENTRADA: 'cEntrada',
   TRELLO_CAMPOS_FILME: 'cComplexidade,cIA',
   TEABLE_URL: 'http://teable:3000',
-  TEABLE_TOKEN_ESCRITA: 'escrita',
+  TEABLE_TOKEN: 'um-token-so',
   TEABLE_ARTE_PRODUCAO: 'tblProducao',
   TEABLE_REDATORES: 'tblRedatores',
   TEABLE_PG_URL: 'postgres://x',

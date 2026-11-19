@@ -8,8 +8,7 @@ import { abrirBanco, criarApp } from '../servidor/app.mjs';
 
 const ENV = {
   TEABLE_URL: 'http://teable:3000',
-  TEABLE_TOKEN: 'leitura',
-  TEABLE_TOKEN_ESCRITA: 'escrita',
+  TEABLE_TOKEN: 'um-token-so',
   TEABLE_CADASTRO: 'tblAtr',
   TEABLE_ATRACOES: 'tblKeyAtr',
   TEABLE_REDATORES: 'tblRed',
@@ -98,7 +97,7 @@ describe('cadastros no Teable', () => {
       { key: 'FESTA NA PRACA', atracoes: [{ id: r.id }] },
       { key: 'FESTA', atracoes: [{ id: r.id }] },
     ]);
-    expect(pedidos.filter((p) => p.metodo === 'POST').every((p) => p.token === 'Bearer escrita')).toBe(true);
+    expect(pedidos.filter((p) => p.metodo === 'POST').every((p) => p.token === 'Bearer um-token-so')).toBe(true);
     expect(vocab.renovacoes).toBe(1);
     await expect(c.novaKey('atracao', 'recA2', 'show da noite')).rejects.toThrow('A key SHOW DA NOITE já é de Show da Noite.');
     expect((await c.novaKey('atracao', 'recA2', 'colina resumo')).key).toBe('COLINA RESUMO');
