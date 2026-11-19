@@ -270,7 +270,7 @@ function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
   return (
     <span className="duvida" role="img" aria-label={rotulo} title={rotulo}>
       {[0, 1, 2].map((i) => (
-        <i key={i} style={{ transform: `translate(${(sorteio() * 3 - 1.5).toFixed(1)}px, ${(sorteio() * 5 - 2.5).toFixed(1)}px) rotate(${(sorteio() * 28 - 14).toFixed(0)}deg)` }}>?</i>
+        <i key={i} style={{ transform: `translate(${(sorteio() * 1.2 - 0.6).toFixed(1)}px, ${(sorteio() * 2 - 1).toFixed(1)}px) rotate(${(sorteio() * 12 - 6).toFixed(0)}deg)` }}>?</i>
       ))}
     </span>
   );
