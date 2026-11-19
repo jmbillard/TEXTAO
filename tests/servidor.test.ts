@@ -202,6 +202,8 @@ describe('vocabulário do Teable', () => {
         { nome: 'Sessão da Tarde', chaves: ['S TARDE', 'STARDE'] },
       ],
       redatores: ['Beltrano Silva', 'Fulana de Tal'],
+      editores: [],
+      pauta: [],
     });
     expect(pedidos[0]).toBe('http://teable:3000/api/table/tblA/record?fieldKeyType=name&take=1000&skip=0 Bearer segredo');
     await v.ler();
@@ -209,7 +211,30 @@ describe('vocabulário do Teable', () => {
 
     fora = true;
     const semRede = criarVocabulario({ TEABLE_URL: 'http://x', TEABLE_TOKEN: 't', TEABLE_ATRACOES: 'tblA' }, buscar);
-    expect(await semRede.ler()).toEqual({ programas: [], redatores: [] });
-    expect(await criarVocabulario({}, buscar).ler()).toEqual({ programas: [], redatores: [] });
+    expect(await semRede.ler()).toEqual({ programas: [], redatores: [], editores: [], pauta: [] });
+    expect(await criarVocabulario({}, buscar).ler()).toEqual({ programas: [], redatores: [], editores: [], pauta: [] });
+  });
+});
+
+describe('pauta da edição no Teable', () => {
+  it('para a mesma claquete vale o expediente mais recente; a visão entra no pedido', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarVocabulario } = await import('../servidor/vocabulario.mjs');
+    const pedidos: string[] = [];
+    const buscar = (async (url: string) => {
+      pedidos.push(url);
+      const registros = url.includes('tblE')
+        ? [{ fields: { editor: 'Fulano Silva' } }, { fields: { editor: 'Beltrana Souza' } }]
+        : [
+            { fields: { key: 'FESTA 26 10', editor: [{ id: 'rec1', title: 'Fulano Silva' }], data: '2026-10-24', expediente_inicio: '2026-10-24 06:00' } },
+            { fields: { key: 'FESTA 26 10', editor: [{ id: 'rec2', title: 'Beltrana Souza' }], data: '2026-10-25', expediente_inicio: '2026-10-25 14:00' } },
+            { fields: { key: 'FINALIZAR', editor: 'Fulano Silva', data: '2026-10-25' } },
+          ];
+      return { ok: true, json: async () => ({ records: registros }) };
+    }) as unknown as typeof fetch;
+    const v = await criarVocabulario({ TEABLE_URL: 'http://teable:3000', TEABLE_TOKEN: 't', TEABLE_EDITORES: 'tblE', TEABLE_PAUTA: 'tblP', TEABLE_PAUTA_VISAO: 'viwRecentes' }, buscar).ler();
+    expect(v.editores).toEqual(['Beltrana Souza', 'Fulano Silva']);
+    expect(v.pauta).toEqual([{ chave: 'FESTA 26 10', editor: 'Beltrana Souza' }, { chave: 'FINALIZAR', editor: 'Fulano Silva' }]);
+    expect(pedidos.find((u) => u.includes('tblP'))).toContain('&viewId=viwRecentes');
   });
 });

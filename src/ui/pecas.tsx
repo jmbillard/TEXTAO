@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte } from '../modelo/tipos';
-import { redatoresConhecidos } from '../modelo/vocabularios';
+import { editoresConhecidos, redatoresConhecidos } from '../modelo/vocabularios';
 import { dataPorExtenso } from './util';
 
 /** A marca do app. */
@@ -71,7 +71,7 @@ export function Claquete({ dados, mudar }: { dados: DadosClaquete; mudar?: (m: P
             {mostra(dados.editor) && (
               <label className="campo-c">
                 <small>Editor</small>
-                {campo('Editor', 'editor', 'escolher…')}
+                {campo('Editor', 'editor', 'escolher…', 'lista-editores')}
               </label>
             )}
           </div>
@@ -93,6 +93,7 @@ export function Claquete({ dados, mudar }: { dados: DadosClaquete; mudar?: (m: P
         )}
       </div>
       {mudar && <datalist id="lista-redatores">{redatoresConhecidos().map((p) => <option key={p} value={p} />)}</datalist>}
+      {mudar && <datalist id="lista-editores">{editoresConhecidos().map((p) => <option key={p} value={p} />)}</datalist>}
     </section>
   );
 }

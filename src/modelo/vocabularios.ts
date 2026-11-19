@@ -82,6 +82,9 @@ export const semAcento = (s: string) =>
 export interface VocabularioExterno {
   programas: { nome: string; chaves: string[]; categoria?: string }[];
   redatores: string[];
+  editores?: string[];
+  /** Pauta da edição: chave da claquete → quem está editando. */
+  pauta?: { chave: string; editor: string }[];
 }
 
 interface Externo {
@@ -94,6 +97,8 @@ interface Externo {
 
 let externos: Externo[] = [];
 let redatores: string[] = [];
+let editores: string[] = [];
+let pauta = new Map<string, string>();
 
 const normal = (s: string) =>
   semAcento(s)
@@ -110,11 +115,35 @@ export function registrarVocabulario(v: VocabularioExterno | null) {
     return { p: { nome, tipo: daCategoria ?? embutido?.tipo ?? 'outro', pistas: [...new Set([n, ...ch])] }, chaves: ch, nome: n };
   });
   redatores = v?.redatores ?? [];
+  editores = v?.editores ?? [];
+  pauta = new Map((v?.pauta ?? []).map((p) => [p.chave, p.editor]));
 }
 
 /** Programas para sugerir no cabeçalho: os da casa, quando existem; senão, os embutidos. */
 export const programasConhecidos = (): ProgramaVocab[] => (externos.length ? externos.map((e) => e.p) : PROGRAMAS);
 export const redatoresConhecidos = (): string[] => redatores;
+export const editoresConhecidos = (): string[] => editores;
+
+/** A claquete como chave de cruzamento: sem acento, sem versão ("(AH)", "V2", "(DIA)") e sem pontuação. Igual à fórmula do Teable. */
+export function chaveDaClaquete(claquete: string): string {
+  return claquete
+    .toUpperCase()
+    .replace(/&/g, 'E')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\([PNAH/+D\s]+\)/g, '')
+    .replace(/V[2-9]+|MNT|\sCLIPE$/g, '')
+    .replace(/\((?:DIA|MES)\)/g, ' ')
+    .replace(/[-+_/().,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Quem está com esta claquete na pauta da edição, se o servidor souber. */
+export function editorDaPauta(claquete: string): string {
+  const chave = chaveDaClaquete(claquete);
+  return pauta.get(chave) ?? pauta.get(chave.replace(/ (?:REDE|G5|SP|PRACAS)$/, '')) ?? '';
+}
 
 export function acharPrograma(texto: string): ProgramaVocab | null {
   // A claquete começa pela chave ("QUEM AMA 12/3 REDE"); chaves curtas ("CASA", "VT") não valem no meio de uma frase.

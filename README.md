@@ -68,6 +68,9 @@ Variáveis da stack (todas opcionais):
 | `TEABLE_TOKEN` | Token de acesso do Teable, só de leitura |
 | `TEABLE_ATRACOES` | ID (`tbl…`) da tabela de chaves de atrações: campos `key` e `atracoes` |
 | `TEABLE_REDATORES` | ID (`tbl…`) da tabela de redatores: campo `redator` |
+| `TEABLE_EDITORES` | Opcional. ID da tabela de editores (campo `editor`): sugestões do campo Editor |
+| `TEABLE_PAUTA` | Opcional. ID da tabela da pauta da edição (campos `key` e `editor`): preenche o editor pela claquete |
+| `TEABLE_PAUTA_VISAO` | Opcional. ID (`viw…`) de uma visão da pauta só com os dias recentes; sem ela, o servidor lê a tabela inteira |
 | `TEABLE_CADASTRO` | Opcional. ID da tabela de atrações (campos `atracao` e `categoria`), para saber o que é novela e o que é esporte |
 
 Com o Teable configurado, o campo Programa sugere as atrações cadastradas, o importador reconhece a atração pela

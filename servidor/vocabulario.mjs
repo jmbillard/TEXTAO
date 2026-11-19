@@ -9,15 +9,15 @@ const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ')
 
 export function criarVocabulario(env, buscar = fetch) {
   const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
-  const ligado = !!(base && env.TEABLE_TOKEN && (env.TEABLE_ATRACOES || env.TEABLE_REDATORES));
-  let guardado = { programas: [], redatores: [] };
+  const ligado = !!(base && env.TEABLE_TOKEN && (env.TEABLE_ATRACOES || env.TEABLE_REDATORES || env.TEABLE_EDITORES || env.TEABLE_PAUTA));
+  let guardado = { programas: [], redatores: [], editores: [], pauta: [] };
   let lidoEm = 0;
   let emCurso = null;
 
-  async function registros(tabela) {
+  async function registros(tabela, visao = '') {
     const todos = [];
     for (let pular = 0; pular < 20 * POR_PAGINA; pular += POR_PAGINA) {
-      const r = await buscar(`${base}/api/table/${encodeURIComponent(tabela)}/record?fieldKeyType=name&take=${POR_PAGINA}&skip=${pular}`, {
+      const r = await buscar(`${base}/api/table/${encodeURIComponent(tabela)}/record?fieldKeyType=name&take=${POR_PAGINA}&skip=${pular}${visao ? `&viewId=${encodeURIComponent(visao)}` : ''}`, {
         headers: { authorization: `Bearer ${env.TEABLE_TOKEN}` },
         signal: AbortSignal.timeout(8000),
       });
@@ -30,7 +30,7 @@ export function criarVocabulario(env, buscar = fetch) {
   }
 
   async function carregar() {
-    const novo = { programas: guardado.programas, redatores: guardado.redatores };
+    const novo = { ...guardado };
     if (env.TEABLE_ATRACOES) {
       const campoChave = env.TEABLE_CAMPO_CHAVE || 'key';
       const campoNome = env.TEABLE_CAMPO_ATRACAO || 'atracoes';
@@ -54,6 +54,23 @@ export function criarVocabulario(env, buscar = fetch) {
       const campo = env.TEABLE_CAMPO_REDATOR || 'redator';
       const nomes = (await registros(env.TEABLE_REDATORES)).map((f) => texto(f[campo])).filter(Boolean);
       novo.redatores = [...new Set(nomes)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }
+    if (env.TEABLE_EDITORES) {
+      const nomes = (await registros(env.TEABLE_EDITORES)).map((f) => texto(f[env.TEABLE_CAMPO_EDITOR || 'editor'])).filter(Boolean);
+      novo.editores = [...new Set(nomes)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }
+    if (env.TEABLE_PAUTA) {
+      // pauta da edição: quem está com cada claquete. Para a mesma chave, vale o expediente mais recente.
+      const porChave = new Map();
+      for (const f of await registros(env.TEABLE_PAUTA, env.TEABLE_PAUTA_VISAO)) {
+        const chave = texto(f.key);
+        const editor = texto(f.editor);
+        const quando = texto(f.expediente_inicio) || texto(f.data);
+        if (!chave || !editor) continue;
+        const atual = porChave.get(chave);
+        if (!atual || quando >= atual.quando) porChave.set(chave, { editor, quando });
+      }
+      novo.pauta = [...porChave].map(([chave, v]) => ({ chave, editor: v.editor }));
     }
     return novo;
   }

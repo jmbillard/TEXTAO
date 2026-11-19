@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { armazenamento } from './dados/armazenamento';
+import { armazenamento, atualizarVocabulario } from './dados/armazenamento';
+import { editorDaPauta } from './modelo/vocabularios';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -82,7 +83,10 @@ export function App() {
           ir({ t: 'editor', id: novo.id });
           return;
         }
+        await atualizarVocabulario();
         const imp = interpretar(await lerArquivo(dados, arquivo.name));
+        // o editor vem da pauta da edição, pela claquete
+        if (!imp.meta.editor) imp.meta.editor = editorDaPauta(imp.meta.claquete);
         // arquivo sem autor (RTF, TXT): o redator é quem está importando, pelo início do e-mail
         const login = identidade?.email.split('@')[0] || identidade?.nome;
         if (!imp.meta.redator && login) {

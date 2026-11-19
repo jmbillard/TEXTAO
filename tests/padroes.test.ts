@@ -185,3 +185,30 @@ describe('o que a Arte precisa', () => {
     expect(sem.artes.map((a) => a.texto)).toEqual(['SÁBADO', 'HOJE']);
   });
 });
+
+describe('claquete, praça e editor', () => {
+  it('a chave da claquete segue a fórmula do Teable', async () => {
+    const { chaveDaClaquete } = await import('../src/modelo/vocabularios');
+    expect(chaveDaClaquete('Fut(Brasileirao)21/11 (N)')).toBe('FUT BRASILEIRAO 21 11');
+    expect(chaveDaClaquete('Terra 20/11-2 (AH)')).toBe('TERRA 20 11 2');
+    expect(chaveDaClaquete('S.Tarde 20/11 (H)')).toBe('S TARDE 20 11');
+    expect(chaveDaClaquete('Rio Silva(Teaser)12/12 (MÊS)')).toBe('RIO SILVA TEASER 12 12');
+    expect(chaveDaClaquete('F1(Las Vegas)21/11 (N) V2')).toBe('F1 LAS VEGAS 21 11');
+    expect(chaveDaClaquete('LANÇAMENTO DONA DO PEDAÇO')).toBe('LANCAMENTO DONA DO PEDACO');
+    expect(chaveDaClaquete('Rio(Vim De La)clip 14/11 AH')).toBe('RIO VIM DE LA CLIP 14 11 AH');
+  });
+  it('o editor vem da pauta, pela claquete; a praça, do começo ou do fim dela', async () => {
+    const { registrarVocabulario, editorDaPauta } = await import('../src/modelo/vocabularios');
+    registrarVocabulario({ programas: [], redatores: [], editores: ['Fulano Silva'], pauta: [{ chave: 'FESTA NA PRACA 26 10', editor: 'Fulano Silva' }] });
+    try {
+      expect(editorDaPauta('FESTA NA PRACA 26/10')).toBe('Fulano Silva');
+      expect(editorDaPauta('FESTA NA PRACA 26/10 REDE')).toBe('Fulano Silva');
+      expect(editorDaPauta('OUTRA COISA 1/1')).toBe('');
+    } finally {
+      registrarVocabulario(null);
+    }
+    expect(importar(soltos('TEXTO.'), 'Rio_Festa_Na_Praca_26_10.docx').saida.roteiro.praca).toBe('RJ');
+    expect(importar(soltos('TEXTO.'), 'Festa_Na_Praca_26_10_SP.docx').saida.roteiro.praca).toBe('SP');
+    expect(importar(soltos('TEXTO.'), 'Festa_Na_Praca_26_10.docx').saida.roteiro.praca).toBe('');
+  });
+});

@@ -35,7 +35,7 @@ servidor.listen(porta, () =>
   else
     criarVocabulario(process.env)
       .ler()
-      .then((v) => console.log(`[vocabulário] Teable em ${process.env.TEABLE_URL}: ${v.programas.length} atrações, ${v.redatores.length} redatores`));
+      .then((v) => console.log(`[vocabulário] Teable em ${process.env.TEABLE_URL}: ${v.programas.length} atrações, ${v.redatores.length} redatores, ${v.editores.length} editores, ${v.pauta.length} claquetes na pauta`));
 }
 
 for (const sinal of ['SIGINT', 'SIGTERM']) process.on(sinal, () => (db.close(), process.exit(0)));

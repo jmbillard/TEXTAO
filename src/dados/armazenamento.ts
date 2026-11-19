@@ -128,6 +128,13 @@ const noServidor: Armazenamento = {
   usuarios: () => pedir<Pessoa[]>('/api/usuarios'),
 };
 
+/** Nomes da casa e pauta da edição, quando o servidor está ligado ao Teable. A pauta muda ao longo do dia. */
+export async function atualizarVocabulario() {
+  if (armazenamento.tipo !== 'servidor') return;
+  const v = await pedir<VocabularioExterno>('/api/vocabulario').catch(() => undefined);
+  if (v) registrarVocabulario(v);
+}
+
 /** O armazenamento em uso. Começa no navegador e passa para o servidor quando `conectar` o encontra. */
 export let armazenamento: Armazenamento = noNavegador;
 
@@ -152,7 +159,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     if (d.email) {
       armazenamento = noServidor;
       // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable
-      registrarVocabulario(await pedir<VocabularioExterno>('/api/vocabulario').catch(() => null));
+      await atualizarVocabulario();
       return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false };
     }
     armazenamento = noNavegador;
