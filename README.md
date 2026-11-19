@@ -63,6 +63,15 @@ Variáveis da stack (todas opcionais):
 | `ACCESS_AUD` | *Application Audience (AUD) Tag* da aplicação do Access |
 | `PERFIL_LOCAL` | `1` libera o uso sem login: cada pessoa informa nome e e-mail no app. Só para demonstração, porque qualquer um pode informar qualquer e-mail |
 | `BACKUPS` | Quantos backups diários manter (padrão 14) |
+| `TEABLE_URL` | Opcional. Endereço do Teable visto pelo container (ex.: `http://IP-DO-SERVIDOR:PORTA`) |
+| `TEABLE_TOKEN` | Token de acesso do Teable, só de leitura |
+| `TEABLE_ATRACOES` | ID (`tbl…`) da tabela de chaves de atrações: campos `key` e `atracoes` |
+| `TEABLE_REDATORES` | ID (`tbl…`) da tabela de redatores: campo `redator` |
+
+Com o Teable configurado, o campo Programa sugere as atrações cadastradas, o importador reconhece a atração pela
+chave da claquete (no começo da linha de título ou do nome do arquivo) e o campo Redação sugere os redatores.
+O servidor só lê, guarda o resultado por 10 minutos e, se o Teable não responder, o app segue com a lista embutida.
+Outros nomes de campo: `TEABLE_CAMPO_CHAVE`, `TEABLE_CAMPO_ATRACAO`, `TEABLE_CAMPO_REDATOR`.
 | `COMPOSE_PROFILES`, `TUNNEL_TOKEN` | `tunel` + o token, para subir um cloudflared junto |
 
 **Dados e backup.** O banco é `/dados/roteirista.db`. Uma vez por dia o servidor grava uma cópia em `/dados/backup/roteirista-AAAA-MM-DD.db`. Mantenha o volume em disco local (SQLite não combina com pasta de rede) e copie a pasta `backup` para outro lugar de tempos em tempos. Para restaurar, pare o container e ponha a cópia no lugar de `roteirista.db`.

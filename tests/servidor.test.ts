@@ -174,3 +174,42 @@ describe('servidor', () => {
     expect(readdirSync(pasta)).toHaveLength(1);
   });
 });
+
+describe('vocabulário do Teable', () => {
+  it('agrupa as chaves por atração, lista redatores e aguenta o Teable fora do ar', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarVocabulario } = await import('../servidor/vocabulario.mjs');
+    const tabelas: Record<string, unknown[]> = {
+      tblA: [
+        { fields: { key: 'S TARDE', atracoes: 'Sessão da Tarde' } },
+        { fields: { key: 'STARDE', atracoes: 'Sessão da Tarde' } },
+        { fields: { key: 'CASA', atracoes: 'É de Casa' } },
+      ],
+      tblR: [{ fields: { redator: 'Fulana de Tal' } }, { fields: { redator: 'Beltrano Silva' } }],
+    };
+    let fora = false;
+    const pedidos: string[] = [];
+    const buscar = (async (url: string, init: { headers: Record<string, string> }) => {
+      pedidos.push(url + ' ' + init.headers.authorization);
+      if (fora) throw new Error('fora do ar');
+      const id = /table\/(\w+)\/record/.exec(url)![1];
+      return { ok: true, json: async () => ({ records: tabelas[id] }) };
+    }) as unknown as typeof fetch;
+    const v = criarVocabulario({ TEABLE_URL: 'http://teable:3000/', TEABLE_TOKEN: 'segredo', TEABLE_ATRACOES: 'tblA', TEABLE_REDATORES: 'tblR' }, buscar);
+    expect(await v.ler()).toEqual({
+      programas: [
+        { nome: 'É de Casa', chaves: ['CASA'] },
+        { nome: 'Sessão da Tarde', chaves: ['S TARDE', 'STARDE'] },
+      ],
+      redatores: ['Beltrano Silva', 'Fulana de Tal'],
+    });
+    expect(pedidos[0]).toBe('http://teable:3000/api/table/tblA/record?fieldKeyType=name&take=1000&skip=0 Bearer segredo');
+    await v.ler();
+    expect(pedidos.length).toBe(2); // dentro da validade, não pergunta de novo
+
+    fora = true;
+    const semRede = criarVocabulario({ TEABLE_URL: 'http://x', TEABLE_TOKEN: 't', TEABLE_ATRACOES: 'tblA' }, buscar);
+    expect(await semRede.ler()).toEqual({ programas: [], redatores: [] });
+    expect(await criarVocabulario({}, buscar).ler()).toEqual({ programas: [], redatores: [] });
+  });
+});

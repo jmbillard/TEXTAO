@@ -21,7 +21,7 @@ import { exportar, listaDeArtes, type Saida } from '../modelo/exportar';
 import {
   ETIQUETAS, NOMES_COLUNAS, nomeSubtipo, novoId, SUBTIPOS_ARTE, type Layout, type Meta, type Pessoa, type Roteiro, type SubtipoArte, type TipoPrograma,
 } from '../modelo/tipos';
-import { LOCUTORES, NOMES_TIPO_PROGRAMA, PRACAS, PROGRAMAS, SELOS } from '../modelo/vocabularios';
+import { LOCUTORES, NOMES_TIPO_PROGRAMA, PRACAS, SELOS, programasConhecidos, redatoresConhecidos } from '../modelo/vocabularios';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { atalho, baixar, copiarTexto, dataPorExtenso, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
@@ -67,7 +67,7 @@ function Cabecalho({ meta, mudar }: { meta: Meta; mudar: (m: Partial<Meta>) => v
           vazio="Programa"
           lista="lista-programas"
           aoMudar={(v) => {
-            const p = PROGRAMAS.find((x) => x.nome.toLowerCase() === v.trim().toLowerCase()) ?? null;
+            const p = programasConhecidos().find((x) => x.nome.toLowerCase() === v.trim().toLowerCase()) ?? null;
             mudar({ programa: v, ...(p ? { tipoPrograma: p.tipo } : {}) });
           }}
         />
@@ -114,10 +114,11 @@ function Cabecalho({ meta, mudar }: { meta: Meta; mudar: (m: Partial<Meta>) => v
             Edição <Campo valor={meta.edicao} rotulo="Edição do programa" vazio="opcional" aoMudar={(v) => mudar({ edicao: v })} />.{' '}
           </>
         )}
-        Redação: <Campo valor={meta.redator} rotulo="Redator" vazio="quem escreveu?" falta aoMudar={(v) => mudar({ redator: v })} />.
+        Redação: <Campo valor={meta.redator} rotulo="Redator" vazio="quem escreveu?" falta lista="lista-redatores" aoMudar={(v) => mudar({ redator: v })} />.
       </p>
 
-      <datalist id="lista-programas">{PROGRAMAS.map((p) => <option key={p.nome} value={p.nome} />)}</datalist>
+      <datalist id="lista-programas">{programasConhecidos().map((p) => <option key={p.nome} value={p.nome} />)}</datalist>
+      <datalist id="lista-redatores">{redatoresConhecidos().map((p) => <option key={p} value={p} />)}</datalist>
       <datalist id="lista-locutores">{LOCUTORES.map((p) => <option key={p} value={p} />)}</datalist>
       <datalist id="lista-selos">{SELOS.map((p) => <option key={p} value={p} />)}</datalist>
       <datalist id="lista-pracas">{PRACAS.map((p) => <option key={p} value={p} />)}</datalist>

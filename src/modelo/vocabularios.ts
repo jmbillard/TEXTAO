@@ -54,9 +54,55 @@ export const semAcento = (s: string) =>
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
 
+/* ---------- vocabulário da casa (vem do servidor, quando ele está ligado ao Teable) ---------- */
+
+export interface VocabularioExterno {
+  programas: { nome: string; chaves: string[] }[];
+  redatores: string[];
+}
+
+interface Externo {
+  p: ProgramaVocab;
+  /** Chaves de claquete, normalizadas. Só valem no começo do texto. */
+  chaves: string[];
+  /** Nome normalizado; vale em qualquer ponto do texto quando é longo o bastante. */
+  nome: string;
+}
+
+let externos: Externo[] = [];
+let redatores: string[] = [];
+
+const normal = (s: string) =>
+  semAcento(s)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+export function registrarVocabulario(v: VocabularioExterno | null) {
+  externos = (v?.programas ?? []).map(({ nome, chaves }) => {
+    const n = normal(nome);
+    // o tipo (novela, esporte…) não vem do Teable: aproveita o do programa embutido parecido
+    const embutido = PROGRAMAS.find((p) => p.pistas.some((pista) => ` ${n} `.includes(` ${pista} `)));
+    const ch = chaves.map(normal).filter(Boolean);
+    return { p: { nome, tipo: embutido?.tipo ?? 'outro', pistas: [...new Set([n, ...ch])] }, chaves: ch, nome: n };
+  });
+  redatores = v?.redatores ?? [];
+}
+
+/** Programas para sugerir no cabeçalho: os da casa, quando existem; senão, os embutidos. */
+export const programasConhecidos = (): ProgramaVocab[] => (externos.length ? externos.map((e) => e.p) : PROGRAMAS);
+export const redatoresConhecidos = (): string[] => redatores;
+
 export function acharPrograma(texto: string): ProgramaVocab | null {
-  const t = semAcento(texto);
+  // A claquete começa pela chave ("QUEM AMA 12/3 REDE"); chaves curtas ("CASA", "VT") não valem no meio de uma frase.
+  const n = normal(texto.replace(/^\s*PGM\s*:/i, ''));
   let melhor: { p: ProgramaVocab; tam: number } | null = null;
+  for (const e of externos) {
+    for (const c of e.chaves)
+      if ((n === c || n.startsWith(c + ' ')) && (!melhor || c.length > melhor.tam)) melhor = { p: e.p, tam: c.length };
+    if (e.nome.length >= 8 && ` ${n} `.includes(` ${e.nome} `) && (!melhor || e.nome.length > melhor.tam))
+      melhor = { p: e.p, tam: e.nome.length };
+  }
+  const t = semAcento(texto);
   for (const p of PROGRAMAS)
     for (const pista of p.pistas)
       if (t.includes(pista) && (!melhor || pista.length > melhor.tam)) melhor = { p, tam: pista.length };

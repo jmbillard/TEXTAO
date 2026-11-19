@@ -10,6 +10,7 @@ import * as sinc from 'y-protocols/sync';
 import * as presenca from 'y-protocols/awareness';
 import * as cod from 'lib0/encoding';
 import * as dec from 'lib0/decoding';
+import { criarVocabulario } from './vocabulario.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -156,6 +157,7 @@ const lerCorpo = (req) =>
 /* ---------- aplicação ---------- */
 
 export function criarApp({ db, env = process.env, estaticos = null }) {
+  const vocabulario = criarVocabulario(env);
   const q = {
     lista: db.prepare(
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em,
@@ -352,6 +354,7 @@ export function criarApp({ db, env = process.env, estaticos = null }) {
     if (!eu) return json(res, 401, { erro: 'Entre com a sua conta para ver os roteiros.' });
 
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
+    if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
 
     const m = /^\/api\/roteiros(?:\/([^/]+))?(?:\/versoes(?:\/(\d+))?)?$/.exec(caminho);
     if (!m) return json(res, 404, { erro: 'Não encontrado.' });

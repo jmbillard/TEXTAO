@@ -19,6 +19,15 @@ services:
       - PERFIL_LOCAL=${PERFIL_LOCAL:-0}
       # quantos backups diários manter
       - BACKUPS=${BACKUPS:-14}
+      # Opcional: nomes da casa vindos do Teable (só leitura). Endereço do Teable visto pelo container,
+      # token de acesso só de leitura e os IDs das tabelas (tbl...) de atrações (KEY_atracoes) e de redatores.
+      - TEABLE_URL=${TEABLE_URL:-}
+      - TEABLE_TOKEN=${TEABLE_TOKEN:-}
+      - TEABLE_ATRACOES=${TEABLE_ATRACOES:-}
+      - TEABLE_REDATORES=${TEABLE_REDATORES:-}
+      - TEABLE_CAMPO_CHAVE=${TEABLE_CAMPO_CHAVE:-}
+      - TEABLE_CAMPO_ATRACAO=${TEABLE_CAMPO_ATRACAO:-}
+      - TEABLE_CAMPO_REDATOR=${TEABLE_CAMPO_REDATOR:-}
 
   # Opcional: túnel do Cloudflare só para este app.
   # Ative com o perfil "tunel" (COMPOSE_PROFILES=tunel) e informe TUNNEL_TOKEN.

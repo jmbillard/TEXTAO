@@ -1,3 +1,4 @@
+import { registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { exportar } from '../modelo/exportar';
 import type { Meta, NoJSON, Pessoa, Roteiro } from '../modelo/tipos';
 
@@ -150,6 +151,8 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean };
     if (d.email) {
       armazenamento = noServidor;
+      // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable
+      registrarVocabulario(await pedir<VocabularioExterno>('/api/vocabulario').catch(() => null));
       return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false };
     }
     armazenamento = noNavegador;

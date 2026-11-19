@@ -134,3 +134,28 @@ describe('cabeçalho e corpo: variações', () => {
     expect(saida.roteiro.locutor).toBe('BELTRANA');
   });
 });
+
+describe('vocabulário da casa', () => {
+  it('a chave da claquete vale no começo do texto; nomes longos valem em qualquer ponto', async () => {
+    const { acharPrograma, registrarVocabulario, programasConhecidos } = await import('../src/modelo/vocabularios');
+    registrarVocabulario({
+      programas: [
+        { nome: 'É de Casa', chaves: ['CASA'] },
+        { nome: 'A Nobreza do Amor', chaves: ['NOBREZA'] },
+        { nome: 'Libertadores', chaves: ['FUT LIBERTA', 'LIBERTA'] },
+        { nome: 'Futebol', chaves: ['FUT'] },
+      ],
+      redatores: [],
+    });
+    try {
+      expect(acharPrograma('PGM: CASA 12/3 REDE')?.nome).toBe('É de Casa');
+      expect(acharPrograma('HOJE TEM FESTA EM CASA 12/3')).toBeNull();
+      expect(acharPrograma('FUT_LIBERTA_20_8_SP.docx'.replace(/[_.]+/g, ' '))?.nome).toBe('Libertadores');
+      expect(acharPrograma('NOBREZA 7/9 cap 19')).toMatchObject({ nome: 'A Nobreza do Amor', tipo: 'novela' });
+      expect(acharPrograma('Chamada de A Nobreza do Amor')?.nome).toBe('A Nobreza do Amor');
+      expect(programasConhecidos().length).toBe(4);
+    } finally {
+      registrarVocabulario(null);
+    }
+  });
+});
