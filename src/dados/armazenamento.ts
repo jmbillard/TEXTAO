@@ -1,4 +1,4 @@
-import { registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
+import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { exportar } from '../modelo/exportar';
 import type { Meta, NoJSON, Pessoa, Roteiro } from '../modelo/tipos';
 
@@ -133,6 +133,15 @@ export async function atualizarVocabulario() {
   if (armazenamento.tipo !== 'servidor') return;
   const v = await pedir<VocabularioExterno>('/api/vocabulario').catch(() => undefined);
   if (v) registrarVocabulario(v);
+}
+
+/** Quem está com a claquete na pauta da edição. Pergunta ao servidor; sem resposta, usa a pauta que já veio no vocabulário. */
+export async function consultarPauta(claquete: string): Promise<{ editor: string; claquete: string }> {
+  if (armazenamento.tipo === 'servidor') {
+    const r = await pedir<{ editor: string; claquete: string }>(`/api/pauta?chave=${encodeURIComponent(chaveDaClaquete(claquete))}`).catch(() => null);
+    if (r) return r;
+  }
+  return naPauta(claquete);
 }
 
 /** O armazenamento em uso. Começa no navegador e passa para o servidor quando `conectar` o encontra. */

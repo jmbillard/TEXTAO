@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { armazenamento, atualizarVocabulario } from './dados/armazenamento';
-import { naPauta } from './modelo/vocabularios';
+import { armazenamento, atualizarVocabulario, consultarPauta } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -86,7 +85,7 @@ export function App() {
         await atualizarVocabulario();
         const imp = interpretar(await lerArquivo(dados, arquivo.name));
         // o editor vem da pauta da edição, pela claquete
-        const pauta = naPauta(imp.meta.claquete);
+        const pauta = await consultarPauta(imp.meta.claquete);
         if (!imp.meta.editor) imp.meta.editor = pauta.editor;
         // quando a claquete bate com a pauta, vale a grafia de lá: "Quem Ama(Prologo)26/10 Rede"
         if (pauta.claquete) imp.meta.claquete = pauta.claquete;

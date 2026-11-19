@@ -212,6 +212,6 @@ describe('claquete, praça e editor', () => {
     }
     expect(importar(soltos('TEXTO.'), 'Rio_Festa_Na_Praca_26_10.docx').saida.roteiro.praca).toBe('RJ');
     expect(importar(soltos('TEXTO.'), 'Festa_Na_Praca_26_10_SP.docx').saida.roteiro.praca).toBe('SP');
-    expect(importar(soltos('TEXTO.'), 'Festa_Na_Praca_26_10.docx').saida.roteiro.praca).toBe('');
+    expect(importar(soltos('TEXTO.'), 'Festa_Na_Praca_26_10.docx').saida.roteiro.praca).toBe('G5');
   });
 });

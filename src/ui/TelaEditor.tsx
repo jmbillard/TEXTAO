@@ -30,7 +30,6 @@ import { atalho, baixar, copiarTexto, haQuantoTempo, nomeDoArquivo, plural } fro
 /* ---------- topo da folha: atração e praça ---------- */
 
 function TopoFolha({ meta, mudar }: { meta: Meta; mudar: (m: Partial<Meta>) => void }) {
-  const outra = !!meta.praca && !PRACAS.includes(meta.praca);
   return (
     <header className="topo-folha">
       <label className="atracao">
@@ -53,9 +52,8 @@ function TopoFolha({ meta, mudar }: { meta: Meta; mudar: (m: Partial<Meta>) => v
         <span className="rotulo">Praça</span>
         <div className="pracas" role="radiogroup" aria-label="Praça">
           {PRACAS.map((p) => (
-            <button key={p} role="radio" aria-checked={meta.praca === p} onClick={() => mudar({ praca: meta.praca === p ? '' : p })}>{p}</button>
+            <button key={p} role="radio" aria-checked={meta.praca === p} onClick={() => mudar({ praca: p })}>{p}</button>
           ))}
-          <input className={outra ? 'cheio' : ''} value={outra ? meta.praca : ''} placeholder="outra" aria-label="Outra praça" size={5} maxLength={12} onChange={(e) => mudar({ praca: e.target.value.toUpperCase() })} />
         </div>
       </div>
       <datalist id="lista-programas">{programasConhecidos().map((p) => <option key={p.nome} value={p.nome} />)}</datalist>

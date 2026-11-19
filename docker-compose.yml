@@ -41,6 +41,11 @@ services:
       - TEABLE_EDITORES=${TEABLE_EDITORES:-}
       - TEABLE_PAUTA=${TEABLE_PAUTA:-}
       - TEABLE_PAUTA_VISAO=${TEABLE_PAUTA_VISAO:-}
+      # Opcional, e melhor para a pauta: consultar direto o Postgres do Teable, com um usuário só de leitura.
+      # URL no formato postgres://USUARIO:SENHA@teable-db:5432/BANCO; esquema é o ID da base; tabela é o nome interno.
+      - TEABLE_PG_URL=${TEABLE_PG_URL:-}
+      - TEABLE_PG_ESQUEMA=${TEABLE_PG_ESQUEMA:-}
+      - TEABLE_PG_PAUTA=${TEABLE_PG_PAUTA:-}
       - TEABLE_CAMPO_CHAVE=${TEABLE_CAMPO_CHAVE:-}
       - TEABLE_CAMPO_ATRACAO=${TEABLE_CAMPO_ATRACAO:-}
       - TEABLE_CAMPO_REDATOR=${TEABLE_CAMPO_REDATOR:-}

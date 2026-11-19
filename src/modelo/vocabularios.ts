@@ -41,7 +41,8 @@ export const SELOS = ['Verifique a classificação indicativa', 'Sem selo', 'Liv
 export const PRACAS = ['G5', 'SP', 'RJ'];
 /** Como a praça aparece escrita nos arquivos. */
 export const PRACAS_LIDAS = ['REDE', 'G5', 'SP', 'RJ', 'MG', 'DF', 'PE'];
-export const normalizarPraca = (p: string) => (p.toUpperCase() === 'REDE' ? 'G5' : p.toUpperCase());
+/** Só existem três praças: o que não é Rio nem São Paulo é G5. */
+export const normalizarPraca = (p: string) => (/^(SP|RJ)$/i.test(p) ? p.toUpperCase() : 'G5');
 
 /** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. */
 export function claqueteDoArquivo(arquivo: string): string {

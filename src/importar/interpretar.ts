@@ -439,8 +439,8 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     const ano = exib.ano ?? (dataRedacao as { ano?: number } | null)?.ano ?? opcoes.anoPadrao ?? new Date().getFullYear();
     meta.dataExibicao = iso(ano, exib.mes, exib.dia);
   }
-  // sem praça escrita: claquete do Rio começa por "RIO", a de São Paulo termina em "SP"
-  if (!meta.praca) meta.praca = /^RIO /.test(meta.claquete) ? 'RJ' : / SP$/.test(meta.claquete) ? 'SP' : '';
+  // claquete do Rio começa por "RIO", a de São Paulo termina em "SP"; o resto é G5
+  if (!meta.praca) meta.praca = /^RIO /.test(meta.claquete) ? 'RJ' : / SP$/.test(meta.claquete) ? 'SP' : 'G5';
   if (!meta.redator && bruto.autor) {
     meta.redator = bruto.autor.replace(/_[A-Z0-9]+$/, '').trim();
     anotar('Redação: autor do arquivo');

@@ -71,6 +71,9 @@ Variáveis da stack (todas opcionais):
 | `TEABLE_EDITORES` | Opcional. ID da tabela de editores (campo `editor`): sugestões do campo Editor |
 | `TEABLE_PAUTA` | Opcional. ID da tabela da pauta da edição (campos `key` e `editor`): preenche o editor pela claquete |
 | `TEABLE_PAUTA_VISAO` | Opcional. ID (`viw…`) de uma visão da pauta só com os dias recentes; sem ela, o servidor lê a tabela inteira |
+| `TEABLE_PG_URL` | Opcional. Postgres do Teable, com usuário só de leitura: `postgres://USUARIO:SENHA@teable-db:5432/BANCO`. Com ele, a pauta é consultada direto no banco |
+| `TEABLE_PG_ESQUEMA` | ID da base do Teable (`bse…`), que é o esquema no Postgres |
+| `TEABLE_PG_PAUTA` | Nome interno da tabela da pauta da edição no Postgres |
 | `TEABLE_CADASTRO` | Opcional. ID da tabela de atrações (campos `atracao` e `categoria`), para saber o que é novela e o que é esporte |
 
 Com o Teable configurado, o campo Programa sugere as atrações cadastradas, o importador reconhece a atração pela

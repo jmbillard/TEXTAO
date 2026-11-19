@@ -1,0 +1,70 @@
+/* Pauta da edição: quem está com cada claquete.
+   Com TEABLE_PG_URL, pergunta direto ao Postgres do Teable (só leitura): uma consulta por chave, sem depender
+   de visão nem de paginação. Se o banco não responder, vale a pauta lida pela API (vocabulario.mjs). */
+
+const NOME = /^[A-Za-z0-9_]+$/;
+const DIAS = 45; // a mesma chave volta a existir no ano seguinte ("QUEM AMA 20 11"); só vale a pauta recente
+const semPraca = (chave) => chave.replace(/ (?:REDE|G5|SP|PRACAS)$/, '');
+
+async function abrirPg(url) {
+  const { default: pg } = await import('pg');
+  return new pg.Pool({ connectionString: url, max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000, statement_timeout: 5000 });
+}
+
+export function criarPauta(env, vocabulario, abrir = abrirPg) {
+  const esquema = env.TEABLE_PG_ESQUEMA || '';
+  const tabela = env.TEABLE_PG_PAUTA || '';
+  const comBanco = !!(env.TEABLE_PG_URL && NOME.test(esquema) && NOME.test(tabela));
+  let banco = null;
+
+  // to_jsonb: se a coluna "claquete" mudar de nome numa atualização do Teable, o editor continua vindo
+  const sql = `SELECT t."editor"->>'title' AS editor, to_jsonb(t)->>'claquete' AS claquete
+    FROM "${esquema}"."${tabela}" t
+    WHERE UPPER(t."key") = UPPER($1) AND t."data"::date >= CURRENT_DATE - ${DIAS}
+    ORDER BY t."data" DESC NULLS LAST LIMIT 1`;
+
+  async function noBanco(chave) {
+    banco ??= await abrir(env.TEABLE_PG_URL);
+    const r = await banco.query(sql, [chave]);
+    return r.rows[0] ?? null;
+  }
+  async function naApi(chave) {
+    const linha = (await vocabulario.ler()).pauta.find((p) => p.chave === chave);
+    return linha ? { editor: linha.editor, claquete: linha.claquete ?? '' } : null;
+  }
+  async function procurar(chave) {
+    if (comBanco) {
+      try {
+        return await noBanco(chave);
+      } catch (e) {
+        console.error('[pauta] o Postgres não respondeu, usando a API:', e.message);
+      }
+    }
+    return naApi(chave);
+  }
+
+  return {
+    comBanco,
+    /** Quem está com a claquete. A grafia só vem quando a chave bate inteira. */
+    async achar(chave) {
+      chave = String(chave || '').trim().slice(0, 200);
+      if (!chave) return { editor: '', claquete: '' };
+      const exata = await procurar(chave);
+      if (exata?.editor) return { editor: exata.editor, claquete: exata.claquete ?? '' };
+      const curta = semPraca(chave);
+      const outra = curta !== chave ? await procurar(curta) : null;
+      return { editor: outra?.editor ?? '', claquete: '' };
+    },
+    /** Para o log da partida. */
+    async testar() {
+      if (!comBanco) return env.TEABLE_PG_URL ? 'TEABLE_PG_ESQUEMA ou TEABLE_PG_PAUTA faltando ou com nome inválido' : null;
+      try {
+        banco ??= await abrir(env.TEABLE_PG_URL);
+        const r = await banco.query(`SELECT count(*)::int AS n FROM "${esquema}"."${tabela}" t WHERE t."data"::date >= CURRENT_DATE - ${DIAS}`);
+        return `Postgres do Teable ligado: ${r.rows[0].n} linhas de pauta nos últimos ${DIAS} dias`;
+      } catch (e) {
+        return `não consegui consultar o Postgres do Teable: ${e.message}`;
+      }
+    },
+  };
+}

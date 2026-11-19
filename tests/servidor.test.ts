@@ -238,3 +238,32 @@ describe('pauta da edição no Teable', () => {
     expect(pedidos.find((u) => u.includes('tblP'))).toContain('&viewId=viwRecentes');
   });
 });
+
+describe('pauta direto no Postgres do Teable', () => {
+  it('consulta por chave, tenta sem a praça e volta para a API se o banco falhar', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarPauta } = await import('../servidor/pauta.mjs');
+    const vocabulario = { ler: async () => ({ pauta: [{ chave: 'FESTA 26 10', editor: 'Pela Api', claquete: 'Festa 26/10' }] }) };
+    const env = { TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseABC', TEABLE_PG_PAUTA: 'demandasXYZ' };
+    const consultas: unknown[][] = [];
+    let fora = false;
+    const abrir = async () => ({
+      query: async (sql: string, params: unknown[] = []) => {
+        consultas.push([sql, params]);
+        if (fora) throw new Error('conexão recusada');
+        return { rows: params[0] === 'FESTA 26 10' ? [{ editor: 'Do Banco', claquete: 'Festa 26/10 (AH)' }] : [] };
+      },
+    });
+    const pauta = criarPauta(env, vocabulario, abrir);
+    expect(await pauta.achar('FESTA 26 10')).toEqual({ editor: 'Do Banco', claquete: 'Festa 26/10 (AH)' });
+    expect(consultas[0][0]).toContain('"bseABC"."demandasXYZ"');
+    expect(consultas[0][1]).toEqual(['FESTA 26 10']);
+    // achou só sem a praça: vale o editor, não a grafia
+    expect(await pauta.achar('FESTA 26 10 REDE')).toEqual({ editor: 'Do Banco', claquete: '' });
+    expect(await pauta.achar('NADA 1 1')).toEqual({ editor: '', claquete: '' });
+    fora = true;
+    expect(await pauta.achar('FESTA 26 10')).toEqual({ editor: 'Pela Api', claquete: 'Festa 26/10' });
+    // nome de tabela que não é um identificador simples não entra na consulta
+    expect(criarPauta({ ...env, TEABLE_PG_PAUTA: 'x"; drop' }, vocabulario, abrir).comBanco).toBe(false);
+  });
+});
