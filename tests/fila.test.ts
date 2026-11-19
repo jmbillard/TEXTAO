@@ -68,3 +68,12 @@ describe('pendências conferidas', () => {
     expect(pendenciasDetalhadas(comArtes(2, { editor: '', conferidos: ['sem-editor'] })).map((p) => p.id)).toEqual(['sem-editor']);
   });
 });
+
+describe('o que segura o envio para o Trello', () => {
+  it('sem editor não segura (o n8n preenche depois); o resto segura', async () => {
+    const { travamTrello, TEXTO_SEM_EDITOR } = await import('../src/modelo/exportar');
+    expect(travamTrello([TEXTO_SEM_EDITOR])).toEqual([]);
+    expect(travamTrello([TEXTO_SEM_EDITOR, 'Muitas artes: 13'])).toEqual(['Muitas artes: 13']);
+    expect(travamTrello(undefined)).toEqual([]);
+  });
+});

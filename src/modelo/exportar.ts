@@ -329,6 +329,10 @@ const arteLonga = (texto: string) => {
   return t.length > 60 || palavras(t) > 8;
 };
 
+/** Pendências que seguram o envio para o Trello. Sem editor não segura: o n8n preenche depois, pela pauta. */
+export const TEXTO_SEM_EDITOR = 'Sem editor: a claquete não está na pauta';
+export const travamTrello = (revisar: string[] | undefined) => (revisar ?? []).filter((t) => t !== TEXTO_SEM_EDITOR);
+
 export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-editor' | 'sem-data' | 'ocr';
 export interface Pendencia {
   id: IdPendencia;
@@ -349,7 +353,7 @@ export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
   if (!n) p.push({ id: 'sem-arte', texto: 'Nenhuma arte', dispensavel: true });
   if (n >= 10) p.push({ id: 'muitas-artes', texto: `Muitas artes: ${n}`, dispensavel: true });
   if (longa) p.push({ id: 'arte-longa', texto: 'Arte com texto longo', dispensavel: true, arte: longa.id });
-  if (!r.editor) p.push({ id: 'sem-editor', texto: 'Sem editor: a claquete não está na pauta', dispensavel: false });
+  if (!r.editor) p.push({ id: 'sem-editor', texto: TEXTO_SEM_EDITOR, dispensavel: false });
   if (!r.dataExibicao) p.push({ id: 'sem-data', texto: 'Sem data de exibição', dispensavel: false });
   if (r.lidoPorOcr) p.push({ id: 'ocr', texto: 'Lido por OCR: confira texto e artes', dispensavel: true });
   const conferidos = new Set(r.conferidos ?? []);

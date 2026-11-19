@@ -806,6 +806,8 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
   const colunas = NOMES_COLUNAS[meta.layout];
   const semTipo = artes.filter((a) => !normalizarSubtipo(a.attrs.subtipo)).length;
   const lista = pendenciasDetalhadas(saida);
+  // o que segura o envio para o Trello: tudo menos "sem editor", que o n8n preenche depois
+  const trava = lista.filter((p) => p.id !== 'sem-editor');
 
   /** Abre uma arte na lista (sem levar o foco para o texto, para o teclado seguir escolhendo). */
   const abrirArte = (a: (typeof artes)[number] | undefined) => {
@@ -882,16 +884,16 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
         <div className="topo-dir">
           {proximo.r && (
             <button
-              className={`botao proximo ${lista.length ? '' : 'primario'}`}
+              className={`botao proximo ${trava.length ? '' : 'primario'}`}
               title={`${proximo.r.meta.claquete || 'Próximo roteiro'} · ${plural(proximo.total, 'roteiro', 'roteiros')} para revisar`}
               disabled={estadoTrello?.estado === 'enviando'}
               onClick={async () => {
                 // revisado e sem pendência: vai para o Trello antes de passar ao próximo
-                if (!lista.length && podeMandar && !noTrello && !(await mandarTrello())) return;
+                if (!trava.length && podeMandar && !noTrello && !(await mandarTrello())) return;
                 abrir(proximo.r!.id);
               }}
             >
-              {lista.length ? 'Próximo' : podeMandar && !noTrello ? 'Mandar · próximo' : 'Pronto · próximo'} <span className="proximo-n">{proximo.total}</span> <Icone nome="seta" tam={14} traco={2.2} />
+              {trava.length ? 'Próximo' : podeMandar && !noTrello ? 'Mandar · próximo' : 'Pronto · próximo'} <span className="proximo-n">{proximo.total}</span> <Icone nome="seta" tam={14} traco={2.2} />
             </button>
           )}
           {presentes.length > 0 && (
@@ -945,7 +947,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                   disabled={!liberado || estadoTrello?.estado === 'enviando'}
                   title={estadoTrello?.estado === 'erro' ? estadoTrello.erro : 'Cria o card com as artes, os campos e o PDF do roteiro'}
                   aria-expanded={conferindoTrello}
-                  onClick={() => (lista.length ? setConferindoTrello((v) => !v) : void mandarTrello())}
+                  onClick={() => (trava.length ? setConferindoTrello((v) => !v) : void mandarTrello())}
                 >
                   <Icone nome="quadro" tam={15} />
                   {estadoTrello?.estado === 'enviando' ? 'Mandando…' : estadoTrello?.estado === 'erro' ? 'Tentar de novo' : 'Mandar para o Trello'}
@@ -953,8 +955,8 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
               )}
               {conferindoTrello && (
                 <div className="menu trello-conferir" role="dialog" aria-label="Pendências antes de mandar">
-                  <strong>{lista.length === 1 ? 'Ainda tem uma pendência' : `Ainda tem ${lista.length} pendências`}</strong>
-                  <ul>{lista.map((p) => <li key={p.texto}>{p.texto}</li>)}</ul>
+                  <strong>{trava.length === 1 ? 'Ainda tem uma pendência' : `Ainda tem ${trava.length} pendências`}</strong>
+                  <ul>{trava.map((p) => <li key={p.texto}>{p.texto}</li>)}</ul>
                   <div className="trello-conferir-acoes">
                     <button className="botao-texto" onClick={() => setConferindoTrello(false)}>Voltar e resolver</button>
                     <button className="botao primario" onClick={async () => { if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id); }}>{proximo.r ? 'Mandar e ir ao próximo' : 'Mandar assim mesmo'}</button>
@@ -1080,15 +1082,15 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                       disabled={estadoTrello?.estado === 'enviando'}
                       onClick={async () => {
                         // com pendência, a confirmação do topo pergunta antes
-                        if (lista.length) return setConferindoTrello(true);
+                        if (trava.length) return setConferindoTrello(true);
                         if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id);
                       }}
                     >
                       <Icone nome="quadro" tam={15} />
                       {estadoTrello?.estado === 'enviando' ? 'Mandando…' : proximo.r ? 'Trello e próximo' : 'Mandar para o Trello'}
                     </button>
-                    {lista.length > 0 && <small>Ainda {lista.length === 1 ? 'tem uma pendência' : `tem ${lista.length} pendências`} acima.</small>}
-                    {!lista.length && proximo.r && <small>Manda o card e abre {proximo.r.meta.claquete || 'o próximo'} · {plural(proximo.total, 'para revisar', 'para revisar')}</small>}
+                    {trava.length > 0 && <small>Ainda {trava.length === 1 ? 'tem uma pendência' : `tem ${trava.length} pendências`} acima.</small>}
+                    {!trava.length && proximo.r && <small>Manda o card e abre {proximo.r.meta.claquete || 'o próximo'} · {plural(proximo.total, 'para revisar', 'para revisar')}</small>}
                   </>
                 )}
               </section>

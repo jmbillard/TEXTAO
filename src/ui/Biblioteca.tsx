@@ -3,7 +3,7 @@ import type { Falha } from '../App';
 import { armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
-import { exportar, pendencias } from '../modelo/exportar';
+import { exportar, pendencias, travamTrello } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { agruparPorDia, type GrupoDia } from './fila';
@@ -266,7 +266,8 @@ const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { h
 
 /** O card no Trello: mandando, mandado (com link), já estava lá, ou deu erro. Sem envio, o botão para mandar. */
 function FichaTrello({ r, mandar }: { r: Resumo; mandar: () => Promise<void> }) {
-  const revisar = r.meta.revisar ?? [];
+  // só o que segura o envio (sem editor não segura: o n8n preenche depois)
+  const revisar = travamTrello(r.meta.revisar);
   const [conferindo, setConferindo] = useState(false);
   const e = r.trello;
   if (e?.estado === 'enviando')
@@ -541,7 +542,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
       const card = jaNoTrello(anterior) ? ' O card no Trello continua o da versão anterior.' : '';
       avisar(herdadas ? `Versão anterior substituída. ${plural(herdadas, 'tipo de arte foi mantido', 'tipos de arte foram mantidos')}.${card}` : `Versão anterior substituída.${card}`);
       // a anterior não tinha ido para o Trello: a nova vai, se não tiver pendência
-      if (temTrello() && !jaNoTrello(anterior) && !atualizado.meta.revisar?.length) void mandar(atualizado);
+      if (temTrello() && !jaNoTrello(anterior) && !travamTrello(atualizado.meta.revisar).length) void mandar(atualizado);
       else void carregar();
     } catch {
       avisar('Não consegui substituir a versão anterior.');
@@ -550,7 +551,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   const manterAsDuas = async (nova: Resumo) => {
     const rn = await armazenamento.ler(nova.id).catch(() => undefined);
     if (rn) await armazenamento.salvar({ ...rn, meta: { ...rn.meta, substitui: undefined } }).catch(() => {});
-    if (rn && temTrello() && !rn.meta.revisar?.length) void mandar({ ...rn, meta: { ...rn.meta, substitui: undefined } });
+    if (rn && temTrello() && !travamTrello(rn.meta.revisar).length) void mandar({ ...rn, meta: { ...rn.meta, substitui: undefined } });
     else void carregar();
   };
 

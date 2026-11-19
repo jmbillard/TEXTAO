@@ -4,7 +4,7 @@ import { armazenamento, atualizarVocabulario, temCadastros, type TipoCadastro, c
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
-import { exportar, pendencias, roteiroDoJson } from './modelo/exportar';
+import { exportar, pendencias, roteiroDoJson, travamTrello } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
 import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
@@ -127,7 +127,7 @@ export function App() {
           // o arquivo como veio fica no servidor: é ele que vira o PDF do card
           const guardado = guardarOriginal(roteiro.id, arquivo).catch(() => {});
           // sem pendência, vai direto para o Trello; os marcados para revisar esperam a revisão
-          if (temTrello() && !roteiro.meta.revisar?.length && !roteiro.meta.substitui)
+          if (temTrello() && !travamTrello(roteiro.meta.revisar).length && !roteiro.meta.substitui)
             void guardado.then(() => mandarParaTrello(roteiro)).catch((e) => avisar(`${roteiro.meta.claquete || arquivo.name} não foi para o Trello: ${e instanceof Error ? e.message : e}`)).finally(() => setChegou((n) => n + 1));
         } catch (e) {
           // as mensagens das bibliotecas de leitura vêm em inglês e não ajudam quem está subindo o roteiro
