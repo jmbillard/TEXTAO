@@ -383,9 +383,9 @@ kbd {
 .texto u.arte {
   text-decoration: none; background: var(--ultra-suave); color: var(--ultra-tinta); font-weight: 600; font-size: 0.88em; letter-spacing: 0.01em;
   padding: 2px 9px; border-radius: 999px; -webkit-box-decoration-break: clone; box-decoration-break: clone; cursor: pointer;
-  transition: box-shadow 0.2s;
+  transition: background 0.18s, color 0.18s;
 }
-.texto u.arte:hover { box-shadow: 0 0 0 1.5px var(--ultra); }
+.texto u.arte:hover { background: color-mix(in srgb, var(--ultra) 22%, var(--ultra-suave)); }
 
 /* Etiquetas: rótulo + estilo próprio, nunca só a cor */
 .texto .etq { font-family: var(--serifa); font-style: italic; font-weight: 400; font-size: 1.02em; letter-spacing: 0; cursor: pointer; border-radius: 3px; transition: background 0.2s; }

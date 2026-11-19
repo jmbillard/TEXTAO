@@ -876,7 +876,7 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
         {saida.comentarios.length > 0 && <p>Comentários: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
       </section>
 
-      {realce && <style>{`.texto u.arte[data-id="${realce}"]{background:var(--ultra-suave)}`}</style>}
+      {realce && <style>{`.texto u.arte[data-id="${realce}"]{background:color-mix(in srgb,var(--ultra) 22%,var(--ultra-suave))}`}</style>}
     </div>
   );
 }
