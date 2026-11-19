@@ -655,13 +655,8 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
     }
   }, [editor, marcaDoPopover, relativo, medida]);
 
-  // arte apontada na lista: selecionada no texto com a animação do cursor
-  useEffect(() => {
-    if (!realce || !editor) return;
-    const els = [...editor.view.dom.querySelectorAll<HTMLElement>(`u.arte[data-id="${CSS.escape(realce)}"]`)];
-    els.forEach((el) => el.classList.add('selecionando'));
-    return () => els.forEach((el) => el.classList.remove('selecionando'));
-  }, [realce, editor]);
+  // arte apontada na lista: selecionada no texto com a animação do cursor. Vai por uma regra de estilo
+  // (não por classe no elemento), porque o editor redesenha o texto a cada mudança e a classe se perderia.
 
   /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
   const TIPOS_NA_LISTA = false;
@@ -1209,6 +1204,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
         {saida.comentarios.length > 0 && <p>Comentários: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
       </section>
 
+      {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{position:relative;animation:selecionar-arte .5s cubic-bezier(.45,0,.3,1) forwards}.texto u.arte[data-id="${CSS.escape(realce)}"]::after{content:'';position:absolute;top:-.2em;width:.5em;height:1.4em;margin-left:-.25em;pointer-events:none;background:var(--ibeam-arte) no-repeat center/contain;animation:arrastar-cursor-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}
       <Estatisticas saida={saida} paginas={meta.paginasOriginal} original={original} />
 
     </div>
