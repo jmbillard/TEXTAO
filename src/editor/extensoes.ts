@@ -2,7 +2,7 @@ import { Extension, Mark, Node, type Editor } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { sugerirSubtipo } from '../importar/interpretar';
+import { RE_LINK, sugerirSubtipo } from '../importar/interpretar';
 import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, type ContextoSonora } from '../modelo/sonora';
 import { nomeEtiqueta, novoId, type Layout, type NoJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
 
@@ -73,7 +73,8 @@ export function prepararColagem(html: string): string {
   while (andar.nextNode()) textos.push(andar.currentNode as Text);
   // um mesmo trecho sublinhado pode vir partido (negrito no meio): continua sendo a mesma arte
   const emCurso = new Map<Element, { id: string; grupo: string | null }>();
-  const marcados = textos.map((t) => ({ t, dono: sublinhado(t) })).filter((x) => x.dono && x.t.data.trim()) as { t: Text; dono: Element }[];
+  // link e caminho de rede colados como texto sublinhado também não são arte
+  const marcados = textos.map((t) => ({ t, dono: sublinhado(t) })).filter((x) => x.dono && x.t.data.trim() && !RE_LINK.test(x.dono.textContent ?? '')) as { t: Text; dono: Element }[];
   marcados.forEach(({ t, dono }, n) => {
     // espaços entre dois pedaços do mesmo sublinhado ficam dentro da arte, para ela não se partir
     const continuaAntes = marcados[n - 1]?.dono === dono;

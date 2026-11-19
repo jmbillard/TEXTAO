@@ -114,6 +114,9 @@ const iso = (ano: number, mes: number, dia: number) =>
 
 /* ---------- artes ---------- */
 
+/** Link ou caminho de rede: costuma vir sublinhado, mas não é arte. */
+export const RE_LINK = /\\\\|https?:|www\.|\b[a-z]:\\|servicos\.corp|\.com\.br\b|\S\\\S/i;
+
 const RE_DIA = /^(PR[ÓO]XIM[OA]\s+)?(HOJE|AMANH[ÃA]|DOMINGO|SEGUNDA|TER[ÇC]A|QUARTA|QUINTA|SEXTA|S[ÁA]BADO)(-FEIRA)?(\s+QUE\s+VEM)?$/i;
 const RE_HORA = /^\d{1,2}\s?[:h]\s?\d{2}$/i;
 
@@ -519,7 +522,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
       if (r.b) base.b = true;
       if (r.i) base.i = true;
 
-      const ehLink = (t: string, cor?: string) => /\\\\|https?:|www\.|\b[a-z]:\\|servicos\.corp|\.com\.br\b|\S\\\S/i.test(t) || /^(0563C1|0000FF|1155CC)$/i.test(cor ?? '');
+      const ehLink = (t: string, cor?: string) => RE_LINK.test(t) || /^(0563C1|0000FF|1155CC)$/i.test(cor ?? '');
       // instrução de imagem sublinhada ("Ilustrar com imagens de…") é para a edição, não é arte
       if (r.u && !r.link && /^\s*(?:ilustrar|cobrir)\s+com\s+(?:imagens?|sequ[eê]ncia|takes?)\b/i.test(r.t)) {
         out.push({ ...base, etq: 'edicao' });

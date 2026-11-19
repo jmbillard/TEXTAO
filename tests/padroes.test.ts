@@ -227,5 +227,7 @@ describe('colar do Word', () => {
     expect(artes[2][1]).not.toBe(artes[3][1]);
     expect(artes[2][2]).toBeTruthy();
     expect(artes[2][2]).toBe(artes[3][2]); // versões do mesmo lugar
+    div.innerHTML = prepararColagem('<p><u>\\\\servidor-exemplo\\PASTA\\ARQUIVO.mxf</u> e <u>https://exemplo.com.br/x</u> e <u>HOJE</u></p>');
+    expect([...div.querySelectorAll('u.arte')].map((u) => u.textContent)).toEqual(['HOJE']);
   });
 });
