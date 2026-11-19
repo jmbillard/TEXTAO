@@ -320,7 +320,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const fy = num(m.fy);
       const fora = m.saiu === true || fx === null || fy === null || typeof m.ancora !== 'string';
       void cache
-        .publicar(PONTEIROS, fora ? { tipo: 'ponteiro', por: eu.email, nome: eu.nome, saiu: true } : { tipo: 'ponteiro', por: eu.email, nome: eu.nome, ancora: m.ancora.slice(0, 80), fx, fy })
+        .publicar(PONTEIROS, fora ? { tipo: 'ponteiro', por: eu.email, nome: eu.nome, saiu: true } : { tipo: 'ponteiro', por: eu.email, nome: eu.nome, ancora: m.ancora.slice(0, 80), fx, fy, ...(/^[a-z-]{1,24}$/.test(m.cursor ?? '') ? { cursor: m.cursor } : {}) })
         .catch(() => {});
     });
     // quem chega na fila já vê quem está revisando o quê

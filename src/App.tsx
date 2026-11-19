@@ -7,6 +7,7 @@ import { exportar, pendencias, roteiroDoJson } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
 import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
+import { DesenhosDeCursor } from './ui/cursores';
 
 type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string };
 
@@ -212,6 +213,7 @@ export function App() {
       }} />}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} pessoa={pessoa} />}
 
+      <DesenhosDeCursor />
       {soltando && (
         <div className="soltar" aria-hidden="true">
           <div className="soltar-cartao">

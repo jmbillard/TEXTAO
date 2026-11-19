@@ -35,12 +35,12 @@ export interface Presente {
 }
 
 /** Ponteiros do mouse de quem mais está no roteiro. */
-export function ponteirosDaSala(sala: Sala, euEmail: string): { email: string; nome: string; cor: string; p: { ancora: string; fx: number; fy: number; pos?: number; dx?: number; dy?: number } }[] {
+export function ponteirosDaSala(sala: Sala, euEmail: string): { email: string; nome: string; cor: string; cursor?: string; p: { ancora: string; fx: number; fy: number; pos?: number; dx?: number; dy?: number } }[] {
   const vistos = new Map<string, ReturnType<typeof ponteirosDaSala>[number]>();
   sala.provedor.awareness.getStates().forEach((estado, cliente) => {
-    const { user: u, ponteiro: p } = estado as { user?: { name?: string; email?: string; color?: string }; ponteiro?: { ancora?: string; fx?: number; fy?: number } | null };
+    const { user: u, ponteiro: p } = estado as { user?: { name?: string; email?: string; color?: string }; ponteiro?: { ancora?: string; fx?: number; fy?: number; cursor?: string } | null };
     if (!u?.email || !p?.ancora || u.email === euEmail || cliente === sala.doc.clientID) return;
-    vistos.set(u.email, { email: u.email, nome: u.name ?? u.email, cor: u.color ?? '#5f5b53', p: p as { ancora: string; fx: number; fy: number } });
+    vistos.set(u.email, { email: u.email, nome: u.name ?? u.email, cor: u.color ?? '#5f5b53', cursor: p.cursor, p: p as { ancora: string; fx: number; fy: number } });
   });
   return [...vistos.values()];
 }

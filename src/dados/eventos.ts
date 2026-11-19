@@ -8,7 +8,7 @@ export type EventoFila =
   /** Quem está com um roteiro aberto agora. Lista vazia: ninguém mais. */
   | { tipo: 'no-roteiro'; id: string; pessoas: { nome: string; email: string }[] }
   /** Ponteiro do mouse de quem está na fila; `saiu` quando ele deixa a tela. */
-  | { tipo: 'ponteiro'; por: string; nome: string; ancora?: string; fx?: number; fy?: number; saiu?: boolean }
+  | { tipo: 'ponteiro'; por: string; nome: string; ancora?: string; fx?: number; fy?: number; cursor?: string; saiu?: boolean }
   /** A conexão voltou depois de cair: pode ter perdido avisos, então vale recarregar. */
   | { tipo: 'reconectou' };
 

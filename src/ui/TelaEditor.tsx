@@ -13,6 +13,7 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
+import { meuCursor } from './cursores';
 import { armazenamento, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
@@ -323,7 +324,7 @@ function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor:
     },
     [editor],
   );
-  const enviar = useMemo(() => (p: PosicaoPonteiro | null) => sala.provedor.awareness.setLocalStateField('ponteiro', p), [sala]);
+  const enviar = useMemo(() => (p: PosicaoPonteiro | null) => sala.provedor.awareness.setLocalStateField('ponteiro', p && { ...p, cursor: meuCursor(eu) }), [sala, eu]);
   const refinar = useCallback(
     (e: PointerEvent, p: PosicaoPonteiro): PosicaoPonteiro => {
       if (!editor || editor.isDestroyed || !(e.target as Element | null)?.closest?.('.texto')) return p;

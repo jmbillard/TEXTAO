@@ -4,6 +4,7 @@ import { armazenamento, type Resumo } from '../dados/armazenamento';
 import { corDe } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
+import { CURSORES, Cursor, escolherCursor, meuCursor } from './cursores';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
@@ -46,6 +47,35 @@ const iniciais = (nome: string) =>
     .filter((_, i, a) => i === 0 || i === a.length - 1)
     .join('')
     .toUpperCase();
+
+/** O desenho do meu ponteiro, como os colegas o veem. Times só por escolha. */
+function EscolhaDeCursor({ email }: { email: string }) {
+  const [atual, setAtual] = useState(() => meuCursor(email));
+  useEffect(() => setAtual(meuCursor(email)), [email]);
+  const cor = corDe(email);
+  return (
+    <div className="escolha-cursor">
+      <div className="rotulo">Seu cursor, para os colegas</div>
+      <div className="escolha-cursor-grade" role="radiogroup" aria-label="Seu cursor">
+        {CURSORES.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            role="radio"
+            aria-checked={atual === c.id}
+            title={c.nome}
+            onClick={() => {
+              escolherCursor(c.id);
+              setAtual(c.id);
+            }}
+          >
+            <Cursor id={c.id} cor={cor} tamanho={34} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
 function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'definirPerfil'>) {
@@ -107,6 +137,7 @@ function Perfil({ identidade, definirPerfil }: Pick<Props, 'identidade' | 'defin
               <button className="botao primario" disabled={!nome.trim()}>Salvar</button>
             </form>
           )}
+          <EscolhaDeCursor email={identidade?.email ?? ''} />
         </div>
       )}
     </div>
@@ -154,27 +185,49 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: b
   const [digitado, terminou] = useDigitacao(claquete, nova);
   const revisar = r.meta.revisar ?? [];
   const semEditor = !r.meta.editor;
+  // alguém com o roteiro aberto: a orelha dobra, a claquete é selecionada e o nome é anotado à mão.
+  // Depois que a pessoa sai, ficam a orelha pequena, um grifo e a rubrica.
+  const ocupada = agora.length > 0;
+  const revisada = !ocupada && !!r.revisadoPor;
+  const quem = ocupada ? agora[0] : r.revisadoPor;
   return (
     <li
-      className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${agora.length ? 'ocupada' : ''}`}
+      className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''}`}
       data-ancora={`ficha:${r.id}`}
-      style={agora.length ? ({ '--cor': corDe(agora[0].email) } as React.CSSProperties) : undefined}
+      style={quem ? ({ '--cor': corDe(quem.email) } as React.CSSProperties) : undefined}
     >
+      {(ocupada || revisada) && (
+        <span className="orelha" aria-hidden="true">
+          <i>{ocupada ? primeiro(agora[0].nome)[0] : ''}</i>
+        </span>
+      )}
       <span className={`ficha-marca ${revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">{revisar.length ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}</span>
       <button className="ficha-claquete" onClick={abrir} aria-label={`Abrir ${claquete}`}>
-        <b>{digitado}{nova && !terminou && <i className="cursor" />}</b>
+        <b>
+          <span className="claquete-texto">{digitado}</span>
+          {nova && !terminou && <i className="cursor" />}
+          {ocupada && (
+            <>
+              <svg className="ibeam" viewBox="0 0 12 28" aria-hidden="true"><path d="M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5" /></svg>
+              <span className="bandeira" aria-hidden="true">{nomes(agora)}</span>
+            </>
+          )}
+        </b>
         <span className="some">
           {r.meta.programa || 'atração não reconhecida'}
           {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
           {r.meta.dataExibicao ? ` · ${dataCurtaComDia(r.meta.dataExibicao)}` : ' · sem data'}
         </span>
-        {agora.length > 0 ? (
-          <span className="ficha-quem agora some" style={{ '--cor': corDe(agora[0].email) } as React.CSSProperties}>
-            <i className="bolinha" />
-            {nomes(agora)} {agora.length === 1 ? 'está' : 'estão'} revisando agora
+        {ocupada ? (
+          <span className="ficha-quem mao agora some" title={`${agora.map((p) => p.nome).join(', ')} com o roteiro aberto agora`}>
+            {nomes(agora)} {agora.length === 1 ? 'tá vendo' : 'tão vendo'}
           </span>
         ) : (
-          r.revisadoPor && <span className="ficha-quem some">revisado por {r.revisadoPor.email === eu ? 'você' : primeiro(r.revisadoPor.nome)}</span>
+          r.revisadoPor && (
+            <span className="ficha-quem mao some" title={`Revisado por ${r.revisadoPor.nome}`}>
+              rev. {r.revisadoPor.email === eu ? 'você' : primeiro(r.revisadoPor.nome)} ✓
+            </span>
+          )
         )}
       </button>
       <span className="ficha-gente some">
@@ -220,7 +273,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         return setPonteiros((atual) => {
           const novo = { ...atual };
           if (e.saiu || !e.ancora) delete novo[e.por];
-          else novo[e.por] = { email: e.por, nome: e.nome, cor: corDe(e.por), p: { ancora: e.ancora, fx: e.fx ?? 0, fy: e.fy ?? 0 } };
+          else novo[e.por] = { email: e.por, nome: e.nome, cor: corDe(e.por), cursor: e.cursor, p: { ancora: e.ancora, fx: e.fx ?? 0, fy: e.fy ?? 0 } };
           return novo;
         });
       }
@@ -242,8 +295,8 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
     };
   }, [eu]); // eslint-disable-line react-hooks/exhaustive-deps
   const enviarPonteiro = useMemo(
-    () => (fila ? (p: PosicaoPonteiro | null) => fila.enviar(p ? { tipo: 'ponteiro', ...p } : { tipo: 'ponteiro', saiu: true }) : null),
-    [fila],
+    () => (fila ? (p: PosicaoPonteiro | null) => fila.enviar(p ? { tipo: 'ponteiro', ...p, cursor: meuCursor(eu ?? '') } : { tipo: 'ponteiro', saiu: true }) : null),
+    [fila, eu],
   );
   useMeuPonteiro(enviarPonteiro);
 

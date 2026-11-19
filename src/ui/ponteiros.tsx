@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Cursor, cursorDe } from './cursores';
 
 /* Ponteiros do mouse dos colegas que estão na mesma tela.
    A posição é guardada em relação a um pedaço da tela marcado com data-ancora (uma ficha, a folha, a claquete),
@@ -17,6 +18,8 @@ export interface PonteiroDeAlguem {
   email: string;
   nome: string;
   cor: string;
+  /** O desenho que a pessoa escolheu (ou ganhou no sorteio). */
+  cursor?: string;
   p: PosicaoPonteiro;
 }
 
@@ -110,7 +113,7 @@ export function Ponteiros({ lista, resolver }: { lista: PonteiroDeAlguem[]; reso
         const y = exato ? exato.y : r!.top + a.p.fy * r!.height;
         return (
           <div key={a.email} className={`ponteiro ${parado ? 'parado' : ''}`} style={{ transform: `translate(${x}px, ${y}px)`, '--cor': a.cor } as React.CSSProperties}>
-            <svg width="18" height="20" viewBox="0 0 18 20"><path d="M2 1.5 L16 10 L9.2 11.2 L6 18 Z" /></svg>
+            <Cursor id={a.cursor ?? cursorDe(a.email)} cor={a.cor} />
             <span>{a.nome.split(/\s+/)[0]}</span>
           </div>
         );
