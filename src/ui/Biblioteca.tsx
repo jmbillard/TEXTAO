@@ -37,6 +37,8 @@ interface Props {
   tirarFalha: (nome: string) => void;
   /** Muda a cada arquivo processado, para a fila se atualizar. */
   chegou: number;
+  /** Arquivo sendo lido agora, quando a leitura demora (OCR). */
+  lendo: { nome: string; detalhe: string } | null;
 }
 
 const iniciais = (nome: string) =>
@@ -241,7 +243,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu }: { r: Resumo; nova: b
   );
 }
 
-export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou }: Props) {
+export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState('');
   const [apagando, setApagando] = useState<string | null>(null);
@@ -316,7 +318,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   const todos = roteiros ?? [];
   const visiveis = todos.filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo));
   const paraRevisar = todos.filter((r) => r.meta.revisar?.length).length;
-  const vazio = roteiros !== null && !todos.length && !falhas.length;
+  const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo;
 
   return (
     <div className="pagina">
@@ -388,6 +390,15 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               </div>
 
               <ul className="fichas">
+                {lendo && (
+                  <li className="ficha lendo" aria-live="polite">
+                    <span className="ficha-marca lendo" aria-hidden="true" />
+                    <span className="ficha-claquete">
+                      <b>{lendo.nome.replace(/\.[^.]+$/, '')}</b>
+                      <span>{lendo.detalhe}</span>
+                    </span>
+                  </li>
+                )}
                 {falhas.map((f) => (
                   <li key={f.nome} className="ficha erro montada" data-ancora={`falha:${f.nome}`}>
                     <span className="ficha-marca erro" aria-hidden="true"><Icone nome="fechar" tam={11} traco={3} /></span>

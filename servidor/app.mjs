@@ -599,7 +599,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     const ext = extname(alvo);
     res.writeHead(200, {
       'content-type': TIPOS[ext] ?? 'application/octet-stream',
-      'cache-control': caminho.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+      // o motor de OCR (uns 5 MB) fica um dia no navegador; o resto do site é conferido a cada visita
+      'cache-control': caminho.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : caminho.startsWith('/ocr/') ? 'public, max-age=86400' : 'no-cache',
     });
     if (req.method === 'HEAD') return res.end();
     createReadStream(alvo).pipe(res);

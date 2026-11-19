@@ -43,6 +43,8 @@ export function App() {
   const [novos, setNovos] = useState<string[]>([]);
   const [falhas, setFalhas] = useState<Falha[]>([]);
   const [chegou, setChegou] = useState(0);
+  // o que está sendo lido agora, quando demora (PDF digitalizado, lido por OCR)
+  const [lendo, setLendo] = useState<{ nome: string; detalhe: string } | null>(null);
   useEffect(() => {
     void iniciarSessao().then((s) => {
       setIdentidade(s.identidade);
@@ -77,8 +79,8 @@ export function App() {
 
   /** Lê um arquivo de roteiro e devolve o roteiro pronto para guardar, com o que já dá para saber sozinho. */
   const lerRoteiro = useCallback(
-    async (arquivo: File): Promise<Roteiro> => {
-      const imp: Importacao = interpretar(await lerArquivo(await arquivo.arrayBuffer(), arquivo.name));
+    async (arquivo: File, aoProgredir?: (texto: string) => void): Promise<Roteiro> => {
+      const imp: Importacao = interpretar(await lerArquivo(await arquivo.arrayBuffer(), arquivo.name, aoProgredir));
       // o editor vem da pauta da edição, pela claquete
       const pauta = await consultarPauta(imp.meta.claquete);
       if (!imp.meta.editor) imp.meta.editor = pauta.editor;
@@ -106,7 +108,7 @@ export function App() {
       await atualizarVocabulario();
       for (const arquivo of arquivos) {
         try {
-          const roteiro = await lerRoteiro(arquivo);
+          const roteiro = await lerRoteiro(arquivo, (detalhe) => setLendo({ nome: arquivo.name, detalhe }));
           await armazenamento.salvar(roteiro);
           setNovos((n) => [...n, roteiro.id]);
         } catch (e) {
@@ -117,6 +119,7 @@ export function App() {
             : bruto;
           setFalhas((f) => [...f.filter((x) => x.nome !== arquivo.name), { nome: arquivo.name, motivo }]);
         }
+        setLendo(null);
         setChegou((n) => n + 1);
         await pausa(260); // uma ficha de cada vez, para dar para acompanhar
       }
@@ -203,7 +206,7 @@ export function App() {
 
   return (
     <>
-      {tela.t === 'biblioteca' && <Biblioteca key={sessao} novos={novos} falhas={falhas} chegou={chegou} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {tela.t === 'biblioteca' && <Biblioteca key={sessao} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} abrirArquivo={abrirArquivo} criar={() => criar()} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {

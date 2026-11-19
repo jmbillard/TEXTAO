@@ -320,5 +320,6 @@ export function pendencias(saida: Saida): string[] {
   if (saida.artes.some((a) => arteLonga(a.texto))) p.push('Arte com texto longo');
   if (!saida.roteiro.editor) p.push('Sem editor: a claquete não está na pauta');
   if (!saida.roteiro.dataExibicao) p.push('Sem data de exibição');
+  if (saida.roteiro.lidoPorOcr) p.push('Lido por OCR: confira texto e artes');
   return p;
 }

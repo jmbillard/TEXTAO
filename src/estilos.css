@@ -997,3 +997,15 @@ kbd {
 /* respiro para a orelha dobrada não cobrir o botão */
 .ficha { padding-right: 30px; }
 @media (max-width: 860px) { .ficha { padding-right: 22px; } }
+
+/* ficha enquanto um PDF digitalizado é lido */
+.ficha.lendo { grid-template-columns: 24px minmax(0, 1fr); border-style: dashed; background: color-mix(in srgb, var(--papel) 70%, transparent); }
+.ficha.lendo .ficha-claquete b { color: var(--tinta2); }
+.ficha-marca.lendo { border: 2px solid var(--regua-forte); border-top-color: var(--ultra); animation: girar 0.9s linear infinite; background: none; }
+@keyframes girar { to { transform: rotate(360deg); } }
+
+/* aviso de roteiro lido por OCR, no topo da folha */
+.faixa-ocr { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 12px 64px; background: var(--falta-fundo); color: var(--falta); font-size: 13.5px; border-bottom: 1px solid var(--regua); }
+.faixa-ocr span { flex: 1 1 320px; }
+.faixa-ocr .botao { height: 32px; }
+@media (max-width: 1080px) { .faixa-ocr { padding: 12px 28px; } }

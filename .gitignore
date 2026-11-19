@@ -4,3 +4,4 @@ dist
 *.local
 /dados
 servidor/node_modules
+/public/ocr

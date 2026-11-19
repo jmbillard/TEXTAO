@@ -62,6 +62,8 @@ export interface Meta {
   status: Status;
   /** Motivos para alguém conferir o roteiro antes de enviar. Vazio = pronto. Recalculado a cada mudança. */
   revisar?: string[];
+  /** Veio de PDF digitalizado, lido por OCR: pede conferência até alguém marcar como conferido. */
+  lidoPorOcr?: boolean;
 }
 
 export const metaVazia = (): Meta => ({

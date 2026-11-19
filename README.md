@@ -156,7 +156,7 @@ Os IDs de roteiro, artes e etiquetas são estáveis: exportar de novo atualiza, 
 
 | Pasta | O que tem |
 |---|---|
-| `src/importar` | Leitura de `.docx` (XML via JSZip), `.rtf` (cp1252), `.pdf` (pdf.js) e `.txt`, e a interpretação: cabeçalho, artes, etiquetas, perguntas |
+| `src/importar` | Leitura de `.docx` (XML via JSZip), `.rtf` (cp1252), `.pdf` (pdf.js, com OCR para página digitalizada em `ocr.ts`) e `.txt`, e a interpretação: cabeçalho, artes, etiquetas, perguntas |
 | `src/modelo` | Tipos, vocabulários, reconhecimento de sonoras, exportação para o JSON e o JSON Schema |
 | `src/editor` | Extensões do Tiptap: marcas de arte e etiqueta, colunas, atalhos, reconhecimento visual |
 | `src/ui` | Telas (biblioteca, importação, editor), ícones e exportação para Word |
@@ -174,7 +174,8 @@ Os leitores de RTF e de PDF foram adaptados do extrator do app de upload de rote
 - **Cabeçalho sai do corpo.** `LOC:`, `SELO`, `FECHAR COM 30''`, `REDATORA:`, a linha de título e a legenda "Em vermelho se precisar cortar" viram campos e deixam o texto. A tela de importação lista tudo o que foi movido.
 - **Data de exibição.** Vale a da linha de título (ou do nome do arquivo). Uma data solta no cabeçalho é tratada como data de redação e só fornece o ano.
 - **Redator.** Vem de `REDATORA:` no texto ou do autor do arquivo. Se o arquivo não traz autor (RTF, TXT), vale o início do e-mail de quem importou (`joao.silva`).
-- **PDF.** O PDF não guarda estrutura, só o desenho da página; o app a reconstrói. Sublinhado é todo traço horizontal fino logo abaixo de uma palavra (ou anotação de sublinhado). Colunas vêm das bordas verticais da tabela ou, sem bordas, de várias linhas começando no mesmo ponto. Marca-texto é a faixa colorida atrás do texto. Negrito vem do nome da fonte. A cor do texto (o vermelho de "pode cortar") não é lida, e PDF digitalizado (imagem) também não. Quando houver o `.docx`, ele é sempre a melhor origem.
+- **PDF.** O PDF não guarda estrutura, só o desenho da página; o app a reconstrói. Sublinhado é todo traço horizontal fino logo abaixo de uma palavra (ou anotação de sublinhado). Colunas vêm das bordas verticais da tabela ou, sem bordas, de várias linhas começando no mesmo ponto. Marca-texto é a faixa colorida atrás do texto. Negrito vem do nome da fonte. A cor do texto (o vermelho de "pode cortar") não é lida. Quando houver o `.docx`, ele é sempre a melhor origem.
+- **PDF digitalizado (OCR).** Página que é só imagem é lida por reconhecimento de texto (Tesseract, em português), no próprio navegador: nada sai do computador. Sublinhado, bordas de tabela e marca-texto são achados nos pixels da imagem e passam pelas mesmas regras do PDF comum. O motor (uns 5 MB) é servido pelo próprio app, copiado para `public/ocr` no build (`scripts/preparar-ocr.mjs`), e só é baixado quando aparece o primeiro PDF digitalizado. Roteiro lido assim sempre entra na fila para revisar, até alguém marcar "Conferido" no editor.
 - **Vermelho.** Com a legenda no roteiro, vira "pode cortar" sem perguntar. Sem a legenda, o app pergunta.
 - **Uma etiqueta por trecho; arte convive com etiqueta.** Etiquetar por cima troca a anterior.
 - **Negrito** só é mantido nas falas das sonoras. Locução fica em texto limpo.

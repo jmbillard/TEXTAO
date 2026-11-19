@@ -75,3 +75,34 @@ describe('PDF', () => {
     expect(saida.sonoras.map((s) => [s.timecodeEntrada, s.personagem])).toEqual([['00:00:14', 'Eliana'], ['00:03:04', 'Benuto']]);
   });
 });
+
+describe('PDF digitalizado (OCR)', () => {
+  it('palavras do OCR viram parágrafos; traço da imagem sob a palavra vira sublinhado', async () => {
+    const { blocosDoOcr } = await import('../src/importar/pdf');
+    const p = (texto: string, x0: number, x1: number, linha: number, base: number) => ({ texto, x0, x1, base, tam: 12, linha });
+    const blocos = blocosDoOcr({
+      palavras: [p('LOC:', 72, 100, 1, 100), p('FULANO', 104, 150, 1, 100), p('VEM', 72, 98, 2, 130), p('AÍ', 102, 116, 2, 130), p('SÁBADO', 120, 170, 2, 130)],
+      tracos: [[119, 171, 131.5]], // risco logo abaixo de SÁBADO
+      verticais: [],
+      fundos: [[71, 120, 99, 131, 'ffe94d']], // marca-texto amarelo em VEM
+    });
+    const pars = blocos.flatMap((b) => (b.tipo === 'p' ? [b.par] : []));
+    const corrido = pars.map((par) => par.map((r) => r.t).join('')).join(' | ');
+    expect(corrido).toContain('LOC: FULANO');
+    expect(corrido).toContain('VEM AÍ SÁBADO');
+    const runs = pars.flat();
+    expect(runs.find((r) => r.u)?.t).toBe('SÁBADO');
+    expect(runs.find((r) => r.hl)?.t).toBe('VEM');
+  });
+  it('corrige os erros de acento mais comuns do OCR', async () => {
+    const { corrigirOcr } = await import('../src/importar/pdf');
+    expect(['AMANHÁ', 'AMANHA,', 'amanhá', 'NÁO', 'ENTÁO...', 'AMANHECER', 'SÁBADO/AMANHÁ/HOJE,'].map(corrigirOcr)).toEqual(['AMANHÃ', 'AMANHÃ,', 'amanhã', 'NÃO', 'ENTÃO...', 'AMANHECER', 'SÁBADO/AMANHÃ/HOJE,']);
+  });
+  it('roteiro lido por OCR sempre pede conferência', async () => {
+    const { interpretar, montarDoc } = await import('../src/importar/interpretar');
+    const imp = interpretar({ arquivo: 'Festa_1_1.pdf', formato: 'pdf', autor: '', lidoPorOcr: true, blocos: [{ tipo: 'p', par: [{ t: 'HOJE TEM ' }, { t: 'FESTA', u: true }] }] }, { anoPadrao: 2026 });
+    const saida = exportar({ id: 't', meta: imp.meta, doc: montarDoc(imp), revisao: 1, criadoEm: '', atualizadoEm: '' });
+    const { pendencias } = await import('../src/modelo/exportar');
+    expect(pendencias(saida)).toContain('Lido por OCR: confira texto e artes');
+  });
+});

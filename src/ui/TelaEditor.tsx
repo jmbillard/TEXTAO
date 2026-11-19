@@ -837,6 +837,12 @@ function Folha({ inicial, voltar, avisar, pessoa }: { inicial: Roteiro; voltar: 
             <div inert={leitura || !liberado || undefined}>
               <TopoFolha meta={meta} mudar={mudarMeta} />
             </div>
+            {meta.lidoPorOcr && (
+              <div className="faixa-ocr">
+                <span>Este roteiro veio de um PDF digitalizado e foi lido por reconhecimento de texto. Confira o texto e, principalmente, as artes.</span>
+                {!leitura && <button className="botao" onClick={() => mudarMeta({ lidoPorOcr: false })}><Icone nome="certo" tam={14} traco={2.4} /> Conferido</button>}
+              </div>
+            )}
             {colunas && (
               <div className="colunas-topo rotulo">
                 <span>{colunas[0]}</span>

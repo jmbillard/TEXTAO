@@ -11,6 +11,20 @@ export interface PdfJs {
   OPS: Record<string, number>;
 }
 
+/** O que o OCR viu numa página digitalizada, já em pontos (pt) com y de cima para baixo. */
+export interface LeituraOcr {
+  /** Palavras na ordem de leitura; `linha` agrupa as da mesma linha. */
+  palavras: { texto: string; x0: number; x1: number; base: number; tam: number; linha: number }[];
+  /** Traços horizontais (sublinhados, réguas) e verticais (bordas de tabela) achados na imagem. */
+  tracos: Traco[];
+  verticais: Vertical[];
+  /** Fundos coloridos atrás de palavras (marca-texto). */
+  fundos: Fundo[];
+}
+
+/** Quem lê as páginas que são só imagem. */
+export type LerPorOcr = (pagina: any, n: number, total: number) => Promise<LeituraOcr>;
+
 /** Espessura máxima e largura mínima (pt) de um traço de sublinhado. */
 const TRACO_MAX = 3;
 const TRACO_MIN_LARGURA = 2;
@@ -62,7 +76,52 @@ const HELV: Record<string, number> = (() => {
 })();
 const peso = (c: string) => HELV[c] ?? HELV[c.normalize('NFD')[0]] ?? 556;
 
-export async function lerPdf(dados: ArrayBuffer | Uint8Array, arquivo: string, pdfjs: PdfJs): Promise<DocBruto> {
+/** Erros de acento que o OCR comete em palavras que aparecem em todo roteiro ("AMANHÁ" no lugar de "AMANHÃ"). */
+const CORRECOES_OCR: [RegExp, string][] = [
+  [/(?<!\p{L})AMANH[AÁÀÂ](?!\p{L})/gu, 'AMANHÃ'],
+  [/(?<!\p{L})amanh[aáàâ](?!\p{L})/gu, 'amanhã'],
+  [/(?<!\p{L})N[ÁÀÂ]O(?!\p{L})/gu, 'NÃO'],
+  [/(?<!\p{L})ENT[ÁÀÂ]O(?!\p{L})/gu, 'ENTÃO'],
+];
+export const corrigirOcr = (palavra: string) => CORRECOES_OCR.reduce((p, [re, por]) => p.replace(re, por), palavra);
+
+/** Palavras do OCR viram linhas como as do texto do PDF; uma borda de tabela entre duas palavras separa as linhas. */
+export function linhasDoOcr(leitura: LeituraOcr): Linha[] {
+  const barreiras = [...new Set(leitura.verticais.map((v) => Math.round(v[0])))];
+  const linhas: Linha[] = [];
+  let atual: Linha | null = null;
+  let linhaOcr = -1;
+  for (const p of leitura.palavras) {
+    const texto = corrigirOcr(p.texto.trim());
+    if (!texto) continue;
+    const chars = [...texto];
+    const w = (p.x1 - p.x0) / chars.length;
+    const letras: Letra[] = chars.map((c, k) => ({ c, x0: p.x0 + k * w, x1: p.x0 + (k + 1) * w, base: p.base, tam: p.tam, cob: 0, anot: false, link: false }));
+    const cruza = !!atual && barreiras.some((bx) => bx > atual!.x1 - 1 && bx < p.x0 + 1);
+    const longe = !!atual && p.x0 - atual.x1 > 3 * p.tam;
+    if (!atual || p.linha !== linhaOcr || cruza || longe) {
+      atual = { letras, x0: p.x0, x1: p.x1, base: p.base, tam: p.tam };
+      linhas.push(atual);
+    } else {
+      atual.letras.push({ c: ' ', x0: atual.x1, x1: p.x0, base: atual.base, tam: p.tam, cob: 0, anot: false, link: false }, ...letras);
+      atual.x1 = p.x1;
+      atual.tam = Math.max(atual.tam, p.tam);
+    }
+    linhaOcr = p.linha;
+  }
+  return linhas;
+}
+
+/** Uma página lida por OCR, pelas mesmas regras do texto do PDF: sublinhado, marca-texto e colunas. */
+export function blocosDoOcr(leitura: LeituraOcr): BlocoBruto[] {
+  const linhas = linhasDoOcr(leitura);
+  if (!linhas.length) return [];
+  const desenhos: Desenhos = { tracos: leitura.tracos, verticais: leitura.verticais, fundos: leitura.fundos };
+  marcar(linhas, desenhos, [], (y) => y);
+  return montarBlocos(linhas, desenhos, null);
+}
+
+export async function lerPdf(dados: ArrayBuffer | Uint8Array, arquivo: string, pdfjs: PdfJs, ocr?: LerPorOcr): Promise<DocBruto> {
   let pdf: any;
   try {
     // o pdf.js fica com o buffer para si; entrega uma cópia
@@ -86,6 +145,7 @@ export async function lerPdf(dados: ArrayBuffer | Uint8Array, arquivo: string, p
 
   const blocos: BlocoBruto[] = [];
   let digitalizadas = 0;
+  let porOcr = 0;
   let temColunas = false;
   for (let n = 1; n <= pdf.numPages; n++) {
     const pagina = await pdf.getPage(n);
@@ -107,7 +167,19 @@ export async function lerPdf(dados: ArrayBuffer | Uint8Array, arquivo: string, p
     const linhas = montarLinhas(itens, virarY, barreiras, negrito);
     if (!linhas.length) {
       const O = pdfjs.OPS;
-      if (operadores.fnArray.some((f: number) => f === O.paintImageXObject || f === O.paintInlineImageXObject || f === O.paintJpegXObject)) digitalizadas++;
+      const imagem = operadores.fnArray.some((f: number) => f === O.paintImageXObject || f === O.paintInlineImageXObject || f === O.paintJpegXObject);
+      if (imagem && ocr) {
+        // página digitalizada: o texto vem da imagem
+        const daPagina = blocosDoOcr(await ocr(pagina, n, pdf.numPages));
+        if (daPagina.length) {
+          porOcr++;
+          temColunas ||= daPagina.some((bl) => bl.tipo === 'tabela');
+          blocos.push(...daPagina);
+          pagina.cleanup();
+          continue;
+        }
+      }
+      if (imagem) digitalizadas++;
       continue;
     }
     marcar(linhas, desenhos, await pagina.getAnnotations(), virarY);
@@ -123,10 +195,12 @@ export async function lerPdf(dados: ArrayBuffer | Uint8Array, arquivo: string, p
       ? 'Num PDF, colunas, sublinhado e marca-texto são reconhecidos pelo desenho da página, e a cor do texto não vem. Confira antes de seguir.'
       : 'Num PDF, sublinhado e marca-texto são reconhecidos pelo desenho da página, e a cor do texto não vem. Confira antes de seguir.',
   ];
+  if (porOcr)
+    avisos.push(`${porOcr === 1 ? 'Uma página era imagem digitalizada e foi lida' : `${porOcr} páginas eram imagens digitalizadas e foram lidas`} por reconhecimento de texto (OCR). Confira o texto e as artes.`);
   if (digitalizadas) avisos.push(`${digitalizadas} ${digitalizadas === 1 ? 'página é uma imagem digitalizada' : 'páginas são imagens digitalizadas'} e não ${digitalizadas === 1 ? 'pôde' : 'puderam'} ser ${digitalizadas === 1 ? 'lida' : 'lidas'}.`);
   const temTexto = blocos.some((bl) => (bl.tipo === 'p' ? bl.par.length : bl.linhas.some((l) => l.some((c) => c.some((p) => p.length)))));
   if (!temTexto) throw new Error('Não encontrei texto neste PDF. Se ele foi digitalizado, é uma imagem e não dá para ler.');
-  return { arquivo, formato: 'pdf', autor: autor.trim(), blocos, avisos };
+  return { arquivo, formato: 'pdf', autor: autor.trim(), blocos, avisos, ...(porOcr ? { lidoPorOcr: true } : {}) };
 }
 
 /** Agrupa os trechos de texto em linhas visuais; cada letra guarda a posição estimada. */

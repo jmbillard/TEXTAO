@@ -25,6 +25,8 @@ export interface DocBruto {
   blocos: BlocoBruto[];
   /** O que o formato não conseguiu trazer e merece conferência. */
   avisos?: string[];
+  /** Alguma página veio de imagem digitalizada e foi lida por OCR. */
+  lidoPorOcr?: boolean;
 }
 
 const mesmaMarca = (a: Run, b: Run) =>
