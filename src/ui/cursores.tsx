@@ -76,7 +76,7 @@ export function DesenhosDeCursor() {
       <defs>
         {/* contorno branco por fora do desenho inteiro: o cursor aparece em qualquer fundo, claro ou escuro */}
         <filter id="cursor-contorno" x="-25%" y="-25%" width="150%" height="150%" colorInterpolationFilters="sRGB">
-          <feMorphology in="SourceAlpha" operator="dilate" radius="2.4" result="borda" />
+          <feMorphology in="SourceAlpha" operator="dilate" radius="1.3" result="borda" />
           <feFlood floodColor="#fff" />
           <feComposite in2="borda" operator="in" result="branco" />
           <feMerge>
