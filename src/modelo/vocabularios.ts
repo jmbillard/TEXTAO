@@ -57,7 +57,7 @@ export const semAcento = (s: string) =>
 /* ---------- vocabulário da casa (vem do servidor, quando ele está ligado ao Teable) ---------- */
 
 export interface VocabularioExterno {
-  programas: { nome: string; chaves: string[] }[];
+  programas: { nome: string; chaves: string[]; categoria?: string }[];
   redatores: string[];
 }
 
@@ -78,12 +78,13 @@ const normal = (s: string) =>
     .trim();
 
 export function registrarVocabulario(v: VocabularioExterno | null) {
-  externos = (v?.programas ?? []).map(({ nome, chaves }) => {
+  externos = (v?.programas ?? []).map(({ nome, chaves, categoria }) => {
     const n = normal(nome);
     // o tipo (novela, esporte…) não vem do Teable: aproveita o do programa embutido parecido
     const embutido = PROGRAMAS.find((p) => p.pistas.some((pista) => ` ${n} `.includes(` ${pista} `)));
     const ch = chaves.map(normal).filter(Boolean);
-    return { p: { nome, tipo: embutido?.tipo ?? 'outro', pistas: [...new Set([n, ...ch])] }, chaves: ch, nome: n };
+    const daCategoria = ({ novelas: 'novela', esportes: 'esporte' } as Record<string, TipoPrograma>)[normal(categoria ?? '')];
+    return { p: { nome, tipo: daCategoria ?? embutido?.tipo ?? 'outro', pistas: [...new Set([n, ...ch])] }, chaves: ch, nome: n };
   });
   redatores = v?.redatores ?? [];
 }

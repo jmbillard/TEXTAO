@@ -30,6 +30,8 @@ services:
       - TEABLE_TOKEN=${TEABLE_TOKEN:-}
       - TEABLE_ATRACOES=${TEABLE_ATRACOES:-}
       - TEABLE_REDATORES=${TEABLE_REDATORES:-}
+      # cadastro de atrações (campos atracao e categoria): diz o que é novela e o que é esporte
+      - TEABLE_CADASTRO=${TEABLE_CADASTRO:-}
       - TEABLE_CAMPO_CHAVE=${TEABLE_CAMPO_CHAVE:-}
       - TEABLE_CAMPO_ATRACAO=${TEABLE_CAMPO_ATRACAO:-}
       - TEABLE_CAMPO_REDATOR=${TEABLE_CAMPO_REDATOR:-}

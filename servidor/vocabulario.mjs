@@ -42,7 +42,13 @@ export function criarVocabulario(env, buscar = fetch) {
         if (!porNome.has(nome)) porNome.set(nome, []);
         if (chave) porNome.get(nome).push(chave);
       }
-      novo.programas = [...porNome].map(([nome, chaves]) => ({ nome, chaves })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      // a categoria (NOVELAS, ESPORTES…) mora no cadastro de atrações, quando ele é informado
+      const categorias = new Map();
+      if (env.TEABLE_CADASTRO)
+        for (const f of await registros(env.TEABLE_CADASTRO)) categorias.set(texto(f[env.TEABLE_CAMPO_NOME || 'atracao']), texto(f[env.TEABLE_CAMPO_CATEGORIA || 'categoria']));
+      novo.programas = [...porNome]
+        .map(([nome, chaves]) => ({ nome, chaves, ...(categorias.get(nome) ? { categoria: categorias.get(nome) } : {}) }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     }
     if (env.TEABLE_REDATORES) {
       const campo = env.TEABLE_CAMPO_REDATOR || 'redator';
