@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { abrirBanco, criarApp, fazerBackup } from './app.mjs';
+import { criarVocabulario } from './vocabulario.mjs';
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const dados = process.env.DADOS ?? join(aqui, '..', 'dados');
@@ -27,4 +28,14 @@ servidor.on('upgrade', app.upgrade);
 servidor.listen(porta, () =>
   console.log(`Roteirista em http://localhost:${porta} · dados em ${dados}`),
 );
+// diz no log, logo na partida, se a ligação com o Teable está de pé
+{
+  const faltam = ['TEABLE_URL', 'TEABLE_TOKEN', 'TEABLE_ATRACOES'].filter((n) => !process.env[n]);
+  if (faltam.length) console.log(`[vocabulário] Teable desligado: falta ${faltam.join(', ')}. Vale a lista embutida.`);
+  else
+    criarVocabulario(process.env)
+      .ler()
+      .then((v) => console.log(`[vocabulário] Teable em ${process.env.TEABLE_URL}: ${v.programas.length} atrações, ${v.redatores.length} redatores`));
+}
+
 for (const sinal of ['SIGINT', 'SIGTERM']) process.on(sinal, () => (db.close(), process.exit(0)));

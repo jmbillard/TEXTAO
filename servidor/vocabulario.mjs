@@ -67,7 +67,7 @@ export function criarVocabulario(env, buscar = fetch) {
         .then((novo) => {
           guardado = novo;
         })
-        .catch((e) => console.error('[vocabulário]', e.message))
+        .catch((e) => console.error('[vocabulário] não consegui ler o Teable:', e.message, e.cause?.code ?? e.cause?.message ?? ''))
         .finally(() => {
           lidoEm = Date.now();
           emCurso = null;
