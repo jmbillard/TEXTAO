@@ -25,8 +25,8 @@ const roteiro: Roteiro = {
 describe('docx com metadados', () => {
   it('cada arte tem a duração da frase em que aparece', () => {
     const s = exportar(roteiro);
-    // "HOJE TEM A GRANDE FESTA NA PRAÇA DA MATRIZ, COM MÚSICA E COMIDA." = 12 palavras ≈ 5s; "NÃO PERCA!" fica no mínimo de 2s
-    expect(s.artes.map((a) => a.duracaoEstimadaSeg)).toEqual([5, 2]);
+    // "HOJE TEM A GRANDE FESTA NA PRAÇA DA MATRIZ, COM MÚSICA E COMIDA." = 12 palavras ≈ 5s; "NÃO PERCA!" fica no mínimo de 3s
+    expect(s.artes.map((a) => a.duracaoEstimadaSeg)).toEqual([5, 3]);
   });
 
   it('leva autores, comentário na arte e o XML do PROMeiro', async () => {
@@ -47,7 +47,7 @@ describe('docx com metadados', () => {
     const artes = [...d.getElementsByTagNameNS(ns, 'arte')];
     expect(artes.map((a) => [a.getAttribute('tipoNome'), a.getAttribute('duracaoEstimadaSeg'), a.getElementsByTagNameNS(ns, 'texto')[0].textContent])).toEqual([
       ['Cartão', '5', 'A GRANDE FESTA'],
-      ['', '2', 'NÃO PERCA'],
+      ['', '3', 'NÃO PERCA'],
     ]);
     expect(artes[0].getElementsByTagNameNS(ns, 'comentario')[0].textContent).toBe('usar a foto da praça');
     // o Word só preserva a parte se ela estiver ligada ao documento e declarada

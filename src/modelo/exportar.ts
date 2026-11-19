@@ -104,9 +104,9 @@ function fraseEmVolta(total: string, ini: number, fim: number) {
   const depois = total.slice(fim).search(/[.!?\n]/);
   return total.slice(comeco, depois < 0 ? total.length : fim + depois + 1);
 }
-/** A arte fica no ar enquanto a frase dela é lida; no mínimo 2 segundos, para dar tempo de ler. */
+/** A arte fica no ar enquanto a frase dela é lida; no mínimo 3 segundos, para dar tempo de ler. */
 function duracaoDaArte(total: string, ini: number, fim: number) {
-  return Math.max(2, Math.round(palavras(fraseEmVolta(total, ini, fim)) / RITMO.locucao));
+  return Math.max(3, Math.round(palavras(fraseEmVolta(total, ini, fim)) / RITMO.locucao));
 }
 
 const palavras = (s: string) => (s.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu) ?? []).length;
