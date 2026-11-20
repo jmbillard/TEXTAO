@@ -5,3 +5,8 @@ dist
 /dados
 servidor/node_modules
 /public/ocr
+# saídas do tsc -b (o código é .ts)
+src/**/*.js
+tests/*.js
+/vite.config.js
+*.tsbuildinfo
