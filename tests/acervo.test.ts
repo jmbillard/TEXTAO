@@ -17,9 +17,9 @@ const ENV = {
 /** O Postgres do Teable (acervo, atrações, produção) e a API, de mentira. */
 function falsos() {
   const linhas = [
-    { id: 'recH', arte: 'HOJE', chave: 'HOJE', tipo: '["Lettering com alpha"]', atracao: '[{"id":"recEnc","title":"Encontro"}]', producao: '[{"id":"recP1","title":"ENCONTRO 02/01 REDE"}]' },
-    { id: 'recA', arte: 'Amanhã!', chave: null, tipo: null, atracao: [{ id: 'recEnc', title: 'Encontro' }], producao: [] },
-    { id: 'recS', arte: 'SÁBADO', chave: 'SABADO', tipo: 'Rodapé', atracao: [{ id: 'recShow', title: 'Show da Noite' }], producao: [] },
+    { id: 'recH', arte: 'HOJE', key: 'HOJE', tipo: '["Lettering com alpha"]', atracao: '[{"id":"recEnc","title":"Encontro"}]', claquete: '[{"id":"recP1","title":"ENCONTRO 02/01 REDE"}]' },
+    { id: 'recA', arte: 'Amanhã!', key: null, tipo: null, atracao: [{ id: 'recEnc', title: 'Encontro' }], claquete: [] },
+    { id: 'recS', arte: 'SÁBADO', key: 'SABADO', tipo: 'Rodapé', atracao: [{ id: 'recShow', title: 'Show da Noite' }], claquete: [] },
   ];
   const consultas: { sql: string; params: unknown[] }[] = [];
   const consultar = async (sql: string, params: unknown[] = []) => {
@@ -29,9 +29,9 @@ function falsos() {
     if (sql.includes('"producao"')) return [{ id: 'recCard9' }];
     return [];
   };
-  const pedidos: { metodo: string; url: string; corpo: { records: { id?: string; fields: Record<string, unknown> }[] } }[] = [];
+  const pedidos: { metodo: string; url: string; corpo: null | { records: { id?: string; fields: Record<string, unknown> }[] } }[] = [];
   const buscar = async (url: string, init: RequestInit = {}) => {
-    pedidos.push({ metodo: init.method ?? 'GET', url, corpo: JSON.parse(String(init.body)) });
+    pedidos.push({ metodo: init.method ?? 'GET', url, corpo: init.body ? JSON.parse(String(init.body)) : null });
     return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
   };
   return { consultar, consultas, buscar, pedidos };
@@ -43,7 +43,7 @@ describe('acervo de artes', () => {
     expect(chaveDeArte('sábado/domingo')).toBe('SABADO DOMINGO');
   });
 
-  it('lê as artes ativas da atração, com o tipo e a claquete em que foram pedidas', async () => {
+  it('lê as artes da atração, com o tipo e a claquete em que foram pedidas', async () => {
     const { consultar, consultas } = falsos();
     const a = criarAcervo(ENV, { consultar });
     expect(a.ligado).toBe(true);
@@ -51,7 +51,7 @@ describe('acervo de artes', () => {
       { arte: 'HOJE', chave: 'HOJE', tipo: 'Lettering com alpha', claquete: 'ENCONTRO 02/01 REDE' },
       { arte: 'Amanhã!', chave: 'AMANHA', tipo: '', claquete: '' },
     ]);
-    expect(consultas[0].sql).toMatch(/COALESCE\("ativa", false\) = true/);
+    expect(consultas[0].sql).toMatch(/"key".*"claquete"/);
     await a.daAtracao('Show da Noite');
     expect(consultas).toHaveLength(1); // guardado por 1 min
   });
@@ -62,22 +62,19 @@ describe('acervo de artes', () => {
     expect(await a.registrar({ atracao: 'Encontro', card: 'card9', artes: ['Hoje', 'DOMINGO', 'domingo', 'Sexta'] })).toBe(2);
     expect(pedidos[0].metodo).toBe('POST');
     expect(pedidos[0].url).toBe('http://teable:3000/api/table/tblAcervo/record');
-    expect(pedidos[0].corpo.records.map((r) => r.fields)).toEqual([
-      { arte: 'DOMINGO', chave: 'DOMINGO', atracao: [{ id: 'recEnc' }], producao: [{ id: 'recCard9' }], ativa: true },
-      { arte: 'Sexta', chave: 'SEXTA', atracao: [{ id: 'recEnc' }], producao: [{ id: 'recCard9' }], ativa: true },
+    expect(pedidos[0].corpo!.records.map((r) => r.fields)).toEqual([
+      { arte: 'DOMINGO', key: 'DOMINGO', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
+      { arte: 'Sexta', key: 'SEXTA', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
     ]);
     await expect(a.registrar({ atracao: 'Sem Cadastro', card: 'c', artes: ['X'] })).rejects.toThrow('não está nos cadastros');
   });
 
-  it('pacote gráfico novo: desmarca ativa em todas as artes da atração', async () => {
+  it('pacote gráfico novo: apaga todas as artes da atração', async () => {
     const { consultar, buscar, pedidos } = falsos();
     const a = criarAcervo(ENV, { consultar, buscar });
     expect(await a.zerar('Encontro')).toBe(2);
-    expect(pedidos[0].metodo).toBe('PATCH');
-    expect(pedidos[0].corpo.records).toEqual([
-      { id: 'recH', fields: { ativa: false } },
-      { id: 'recA', fields: { ativa: false } },
-    ]);
+    expect(pedidos[0].metodo).toBe('DELETE');
+    expect(pedidos[0].url).toBe('http://teable:3000/api/table/tblAcervo/record?recordIds[0]=recH&recordIds[1]=recA');
   });
 
   it('sem configuração, fica desligado e não lê nada', async () => {

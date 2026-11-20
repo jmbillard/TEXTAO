@@ -137,21 +137,20 @@ Tabela **ARTES_acervo** no Teable, uma linha por arte:
 | Campo | Tipo | |
 |---|---|---|
 | `arte` | texto | "HOJE" |
-| `chave` | texto | a arte sem acento, caixa e pontuação; o PROMeiro grava e compara por ela |
+| `key` | texto | a arte sem acento, caixa e pontuação; o PROMeiro grava e compara por ela |
 | `tipo` | seleção | lettering, rodapé, cartão…; preenchido à mão ou por script, nunca pelo PROMeiro |
 | `atracao` | vínculo → atrações | a arte é da atração, de qualquer praça |
-| `producao` | vínculo → ARTE_producao | o card (a claquete) em que foi pedida |
-| `ativa` | caixa de seleção | desmarcada, deixa de valer |
+| `claquete` | vínculo → ARTE_producao | o card (a claquete) em que foi pedida |
 
 E uma coluna de texto **`artes_existentes`** na ARTE_producao, com as artes de cada envio que já existiam.
 
-- **Na chegada**, as artes do roteiro que estão no acervo ativo da atração são contadas ("Já existem: N") e o roteiro
+- **Na chegada**, as artes do roteiro que estão no acervo da atração são contadas ("Já existem: N") e o roteiro
   espera a revisão.
 - **Na revisão**, a que já existe tem o número apagado na lista; a claquete e o tipo de onde veio aparecem ao passar o
   mouse. Quem revisa confere no servidor e, se achar, exclui a arte com o × (Ctrl+Z desfaz). O que sobra vai para o
   checklist.
 - **Quando o card sai** (status FINALIZADO ou entregue), as artes novas dele entram no acervo da atração.
-- **Pacote gráfico novo**: em Cadastros, na atração, "novo pacote" desmarca `ativa` em todas as artes dela (só
+- **Pacote gráfico novo**: em Cadastros, na atração, "novo pacote" apaga do acervo todas as artes dela (só
   `CADASTRO_ADMINS`).
 - **O histórico**: `node scripts/acervo-historico.mjs --desde AAAA-MM-DD` mostra o que entraria; com `--gravar`,
   grava (com as mesmas variáveis do servidor).

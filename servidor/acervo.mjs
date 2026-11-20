@@ -1,9 +1,9 @@
 /*
  * Acervo de artes: o que cada atração já tem pronto. Uma linha por arte, ligada à atração e ao card
- * (produção da arte) em que foi pedida. Vale até trocar o pacote gráfico ("ativa" desmarcada).
+ * (produção da arte) em que foi pedida. Vale até trocar o pacote gráfico: aí as artes da atração são apagadas.
  *
- * Tabela ARTES_acervo no Teable: arte (texto), chave (texto), tipo (seleção; preenchido à mão ou por script,
- * nunca pelo PROMeiro), atracao (vínculo → atrações), producao (vínculo → ARTE_producao), ativa (caixa).
+ * Tabela ARTES_acervo no Teable: arte (texto), key (texto), tipo (seleção; preenchido à mão ou por script,
+ * nunca pelo PROMeiro), atracao (vínculo → atrações), claquete (vínculo → ARTE_producao).
  *
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
  */
@@ -59,25 +59,25 @@ export function criarAcervo(env, deps = {}) {
   const ligado = !!(consultar && t.acervo);
   const grava = !!(api.url && api.token && api.tabela);
 
-  // o acervo ativo inteiro, guardado por 1 min (é pequeno: algumas centenas de artes por atração)
+  // o acervo inteiro, guardado por 1 min (é pequeno: algumas centenas de artes por atração)
   let memo = { em: 0, linhas: null };
   async function ativas() {
     if (!ligado) return [];
     if (memo.linhas && Date.now() - memo.em < 60_000) return memo.linhas;
-    const linhas = await consultar(`SELECT "__id" AS id, "arte", "chave", "tipo", "atracao", "producao" FROM ${t.acervo} WHERE COALESCE("ativa", false) = true LIMIT 50000`);
+    const linhas = await consultar(`SELECT "__id" AS id, "arte", "key", "tipo", "atracao", "claquete" FROM ${t.acervo} LIMIT 50000`);
     memo = {
       em: Date.now(),
       linhas: linhas.map((l) => {
         const atr = vinculos(l.atracao)[0] ?? { id: '', title: '' };
-        const prod = vinculos(l.producao)[0] ?? { id: '', title: '' };
-        return { id: l.id, arte: String(l.arte ?? ''), chave: l.chave ? String(l.chave) : chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, atracaoId: atr.id, claquete: prod.title, producaoId: prod.id };
+        const prod = vinculos(l.claquete)[0] ?? { id: '', title: '' };
+        return { id: l.id, arte: String(l.arte ?? ''), chave: l.key ? String(l.key) : chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, atracaoId: atr.id, claquete: prod.title, producaoId: prod.id };
       }),
     };
     return memo.linhas;
   }
   const esquecer = () => (memo = { em: 0, linhas: null });
 
-  /** As artes ativas de uma atração (pelo nome). */
+  /** As artes de uma atração (pelo nome). */
   async function daAtracao(atracao) {
     const n = nomeComparavel(atracao);
     if (!n) return [];
@@ -87,8 +87,8 @@ export function criarAcervo(env, deps = {}) {
   async function teable(metodo, caminho, corpo) {
     const r = await buscar(`${api.url}/api/table/${encodeURIComponent(api.tabela)}/record${caminho}`, {
       method: metodo,
-      headers: { authorization: `Bearer ${api.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(corpo),
+      headers: { authorization: `Bearer ${api.token}`, ...(corpo ? { 'content-type': 'application/json' } : {}) },
+      ...(corpo ? { body: JSON.stringify(corpo) } : {}),
       signal: AbortSignal.timeout(20_000),
     });
     if (!r.ok) throw new Error(`Teable respondeu ${r.status} no acervo: ${(await r.text().catch(() => '')).slice(0, 160)}`);
@@ -113,20 +113,20 @@ export function criarAcervo(env, deps = {}) {
     await teable('POST', '', {
       fieldKeyType: 'name',
       typecast: true,
-      records: novas.map((x) => ({ fields: { arte: x.arte, chave: x.chave, atracao: [{ id: a.id }], ...(p?.id ? { producao: [{ id: p.id }] } : {}), ativa: true } })),
+      records: novas.map((x) => ({ fields: { arte: x.arte, key: x.chave, atracao: [{ id: a.id }], ...(p?.id ? { claquete: [{ id: p.id }] } : {}) } })),
     });
     esquecer();
     return novas.length;
   }
 
-  /** Pacote gráfico novo: todas as artes da atração deixam de valer (ativa desmarcada). @returns quantas */
+  /** Pacote gráfico novo: todas as artes da atração saem do acervo (apagadas). @returns quantas */
   async function zerar(atracao) {
     if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
     esquecer();
     const n = nomeComparavel(atracao);
     const ids = (await ativas()).filter((l) => nomeComparavel(l.atracao) === n).map((l) => l.id);
-    for (let i = 0; i < ids.length; i += 500)
-      await teable('PATCH', '', { fieldKeyType: 'name', typecast: true, records: ids.slice(i, i + 500).map((id) => ({ id, fields: { ativa: false } })) });
+    for (let i = 0; i < ids.length; i += 100)
+      await teable('DELETE', '?' + ids.slice(i, i + 100).map((id, n) => `recordIds[${n}]=${encodeURIComponent(id)}`).join('&'));
     esquecer();
     return ids.length;
   }

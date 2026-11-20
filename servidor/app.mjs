@@ -818,7 +818,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, await trello.naProducao(claquete).catch((e) => (console.warn(`[producao] ${e instanceof Error ? e.message : e}`), null)));
     }
     if (caminho === '/api/acervo') {
-      // as artes que a atração já tem prontas (as ativas), para marcar na revisão
+      // as artes que a atração já tem prontas (as do acervo), para marcar na revisão
       const atracao = (new URL(req.url, 'http://x').searchParams.get('atracao') ?? '').slice(0, 200);
       if (!acervo.ligado) return json(res, 200, { ligado: false, artes: [] });
       return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), artes: await acervo.daAtracao(atracao).catch((e) => (console.warn(`[acervo] ${e instanceof Error ? e.message : e}`), [])) });
