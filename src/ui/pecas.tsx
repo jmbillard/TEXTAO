@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte } from '../modelo/tipos';
-import { editoresConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
+import { PRACAS, editoresConhecidos, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { dataPorExtenso } from './util';
 import { Icone } from './icones';
 
@@ -120,10 +120,11 @@ export function EscolhaDeTipo({ valor, escolher, atalhos }: { valor: SubtipoArte
   );
 }
 
-type DadosClaquete = Pick<Meta, 'claquete' | 'redator' | 'editor' | 'dataExibicao'>;
+type DadosClaquete = Pick<Meta, 'claquete' | 'redator' | 'editor' | 'dataExibicao'> & Partial<Pick<Meta, 'programa' | 'praca'>>;
 
 /** A claquete da chamada: nome, equipe e exibição. Com `mudar`, os campos são editáveis. */
-export function Claquete({ dados, mudar }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void }) {
+/** Com `comAtracao`, a claquete também mostra (e edita) a atração e a praça, como na revisão. */
+export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void }) {
   const data = useRef<HTMLInputElement>(null);
   const campo = (rotulo: string, chave: 'claquete' | 'redator' | 'editor', vazio: string, lista?: () => string[]) =>
     mudar && lista ? (
@@ -169,7 +170,7 @@ export function Claquete({ dados, mudar }: { dados: DadosClaquete; mudar?: (m: P
           </div>
         )}
         {mostra(dados.dataExibicao) && (
-          <div className="campo-c ultimo">
+          <div className={`campo-c ${comAtracao ? '' : 'ultimo'}`}>
             <small>Exibição</small>
             {mudar ? (
               <span className="campo-data">
@@ -181,6 +182,36 @@ export function Claquete({ dados, mudar }: { dados: DadosClaquete; mudar?: (m: P
             ) : (
               <div>{dataPorExtenso(dados.dataExibicao)}</div>
             )}
+          </div>
+        )}
+        {comAtracao && (
+          <div className="campo-c ultimo atracao-c">
+            <small>Atração</small>
+            <span className="linha-atracao">
+              {mudar ? (
+                <EscolhaDeNome
+                  rotulo="Atração"
+                  valor={dados.programa ?? ''}
+                  opcoes={() => programasConhecidos().map((p) => p.nome)}
+                  semente={(dados.claquete || '') + 'atracao'}
+                  mudar={(v) => {
+                    // a key às vezes engana (DONA serve a mais de uma novela): aqui se corrige à mão
+                    const p = programasConhecidos().find((x) => x.nome.toLowerCase() === v.trim().toLowerCase()) ?? null;
+                    mudar({ programa: v, ...(p ? { tipoPrograma: p.tipo } : {}) });
+                  }}
+                />
+              ) : (
+                <span>{dados.programa}</span>
+              )}
+              {mudar && cadastrarAtracao && !programasConhecidos().some((p) => p.nome.toLowerCase() === (dados.programa ?? '').trim().toLowerCase()) && (
+                <button type="button" className="cadastrar-c" onClick={cadastrarAtracao}>cadastrar</button>
+              )}
+              <span className="pracas-c" role="radiogroup" aria-label="Praça">
+                {PRACAS.map((p) => (
+                  <button key={p} role="radio" aria-checked={dados.praca === p} disabled={!mudar} onClick={() => mudar?.({ praca: p })}>{p}</button>
+                ))}
+              </span>
+            </span>
           </div>
         )}
       </div>

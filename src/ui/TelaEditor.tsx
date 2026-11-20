@@ -24,50 +24,12 @@ import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import {
   ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
-import { PRACAS, programasConhecidos } from '../modelo/vocabularios';
 import { Claquete, EscolhaDeTipo, Marca, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
 
 /* ---------- topo da folha: atração e praça ---------- */
-
-function TopoFolha({ meta, mudar, cadastrar }: { meta: Meta; mudar: (m: Partial<Meta>) => void; cadastrar?: () => void }) {
-  return (
-    <header className="topo-folha">
-      <label className="atracao">
-        <span className="rotulo">Atração</span>
-        <input
-          value={meta.programa}
-          placeholder="Qual atração?"
-          aria-label="Atração"
-          list="lista-programas"
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(e) => {
-            const v = e.target.value;
-            const p = programasConhecidos().find((x) => x.nome.toLowerCase() === v.trim().toLowerCase()) ?? null;
-            mudar({ programa: v, ...(p ? { tipoPrograma: p.tipo } : {}) });
-          }}
-        />
-        {cadastrar && !programasConhecidos().some((p) => p.nome.toLowerCase() === meta.programa.trim().toLowerCase()) && (
-          <button type="button" className="atalho-cadastro" onClick={cadastrar}>
-            <Icone nome="mais" tam={12} traco={2.4} /> {meta.programa.trim() ? `cadastrar “${meta.programa.trim()}”` : 'cadastrar a atração'}
-          </button>
-        )}
-      </label>
-      <div className="praca">
-        <span className="rotulo">Praça</span>
-        <div className="pracas" role="radiogroup" aria-label="Praça">
-          {PRACAS.map((p) => (
-            <button key={p} role="radio" aria-checked={meta.praca === p} onClick={() => mudar({ praca: p })}>{p}</button>
-          ))}
-        </div>
-      </div>
-      <datalist id="lista-programas">{programasConhecidos().map((p) => <option key={p.nome} value={p.nome} />)}</datalist>
-    </header>
-  );
-}
 
 /** Origem, timecode e fala de cada sonora: o que a edição precisa, fora do caminho da Arte. */
 function Decupagem({ saida, noTexto, alternar }: { saida: Saida; noTexto: boolean; alternar: () => void }) {
@@ -890,6 +852,37 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
 
   const perguntaProducao = meta.naProducao && !noTrello && podeMandar ? meta.naProducao : undefined;
 
+  /** O botão principal: manda (ou atualiza o card da v2) e vai para o próximo; já mandado, só vai para o próximo. */
+  const vaiMandar = podeMandar && !noTrello;
+  const rotuloPrincipal =
+    estadoTrello?.estado === 'enviando'
+      ? 'Mandando…'
+      : !vaiMandar
+        ? 'Próximo'
+        : estadoTrello?.estado === 'erro'
+          ? 'Tentar de novo'
+          : `${meta.v2De ? 'Atualizar card' : 'Mandar'}${proximo.r ? ' e próximo' : meta.v2De ? '' : ' para o Trello'}`;
+  const acaoPrincipal = async () => {
+    if (!liberado || estadoTrello?.estado === 'enviando') return;
+    if (!vaiMandar) return proximo.r && abrir(proximo.r.id);
+    if (perguntaProducao) return comparar(inicial.id);
+    // com pendência, pergunta antes
+    if (trava.length) return setConferindoTrello((v) => !v);
+    if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id);
+  };
+  const acaoRef = useRef(acaoPrincipal);
+  acaoRef.current = acaoPrincipal;
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.repeat) {
+        e.preventDefault();
+        void acaoRef.current();
+      }
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, []);
+
   return (
     <div className="pagina editor">
       {sala && sincronizado && <PonteirosDaSala sala={sala} eu={pessoa?.email ?? ''} editor={editor} />}
@@ -911,20 +904,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
         <span />
 
         <div className="topo-dir">
-          {proximo.r && (
-            <button
-              className={`botao proximo ${trava.length ? '' : 'primario'}`}
-              title={`${proximo.r.meta.claquete || 'Próximo roteiro'} · ${plural(proximo.total, 'roteiro', 'roteiros')} para revisar`}
-              disabled={estadoTrello?.estado === 'enviando'}
-              onClick={async () => {
-                // revisado e sem pendência: vai para o Trello antes de passar ao próximo
-                if (!trava.length && podeMandar && !noTrello && !(await mandarTrello())) return;
-                abrir(proximo.r!.id);
-              }}
-            >
-              {trava.length ? 'Próximo' : podeMandar && !noTrello ? 'Mandar · próximo' : 'Pronto · próximo'} <span className="proximo-n">{proximo.total}</span> <Icone nome="seta" tam={14} traco={2.2} />
-            </button>
-          )}
           {presentes.length > 0 && (
             <div className="presentes" aria-label={`Também neste roteiro: ${presentes.map((x) => x.nome).join(', ')}`}>
               {presentes.slice(0, 4).map((x) => (
@@ -960,43 +939,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               )}
             </>
           )}
-          {temTrello() && !leitura && (
-            <div className="trello-topo">
-              {noTrello ? (
-                estadoTrello?.url ? (
-                  <a className="botao trello ok" href={estadoTrello.url} target="_blank" rel="noreferrer" title={estadoTrello.por ? `Mandado por ${estadoTrello.por}` : undefined}>
-                    <Icone nome="quadro" tam={15} /> No Trello
-                  </a>
-                ) : (
-                  <span className="botao trello ok" title="A claquete já tinha entrado hoje pelo upload antigo"><Icone nome="quadro" tam={15} /> Já estava no Trello</span>
-                )
-              ) : (
-                <button
-                  className={`botao trello ${estadoTrello?.estado === 'erro' ? 'erro' : ''}`}
-                  disabled={!liberado || estadoTrello?.estado === 'enviando' || !!perguntaProducao}
-                  title={perguntaProducao ? 'Antes, compare com o que já está no Trello e decida' : estadoTrello?.estado === 'erro' ? estadoTrello.erro : meta.v2De ? 'Põe as artes novas no checklist do card da versão anterior e anexa este roteiro' : 'Cria o card com as artes, os campos e o PDF do roteiro'}
-                  aria-expanded={conferindoTrello}
-                  onClick={() => (trava.length ? setConferindoTrello((v) => !v) : void mandarTrello())}
-                >
-                  <Icone nome="quadro" tam={15} />
-                  {estadoTrello?.estado === 'enviando' ? 'Mandando…' : estadoTrello?.estado === 'erro' ? 'Tentar de novo' : meta.v2De ? 'Atualizar o card (v2)' : 'Mandar para o Trello'}
-                </button>
-              )}
-              {conferindoTrello && (
-                <div className="menu trello-conferir" role="dialog" aria-label="Pendências antes de mandar">
-                  <strong>{trava.length === 1 ? 'Ainda tem uma pendência' : `Ainda tem ${trava.length} pendências`}</strong>
-                  <ul>{trava.map((p) => <li key={p.texto}>{p.texto}</li>)}</ul>
-                  <div className="trello-conferir-acoes">
-                    <button className="botao-texto" onClick={() => setConferindoTrello(false)}>Voltar e resolver</button>
-                    <button className="botao primario" onClick={async () => { if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id); }}>{proximo.r ? 'Mandar e ir ao próximo' : 'Mandar assim mesmo'}</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
           <div className="exportar">
-            <button className="botao primario" aria-haspopup="menu" aria-expanded={exportando} onClick={() => setExportando((v) => !v)}>
-              Exportar <Icone nome="baixo" tam={13} traco={2.4} />
+            <button className="botao-icone mais-acoes" aria-haspopup="menu" aria-expanded={exportando} title="Exportar" aria-label="Exportar" onClick={() => setExportando((v) => !v)}>
+              <span aria-hidden="true">···</span>
             </button>
             {exportando && (
               <div className="menu menu-exportar" role="menu">
@@ -1012,26 +957,66 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               </div>
             )}
           </div>
+          {vaiMandar && proximo.r && (
+            <button className="botao-texto pular" title={`Pular para ${proximo.r.meta.claquete || 'o próximo'}, sem mandar`} onClick={() => abrir(proximo.r!.id)}>
+              Pular <Icone nome="seta" tam={13} traco={2.2} />
+            </button>
+          )}
+          {noTrello && (
+            estadoTrello?.url ? (
+              <a className="botao-icone no-trello" href={estadoTrello.url} target="_blank" rel="noreferrer" title={`No Trello${estadoTrello.por ? ` · mandado por ${estadoTrello.por}` : ''}`} aria-label="Abrir o card no Trello">
+                <Icone nome="quadro" tam={17} traco={2.2} />
+              </a>
+            ) : (
+              <span className="botao-icone no-trello" title="A claquete já tinha entrado pelo upload antigo"><Icone nome="quadro" tam={17} traco={2.2} /></span>
+            )
+          )}
+          {(podeMandar && !noTrello) || proximo.r ? (
+            <div className="acao-principal">
+              <button
+                className={`botao primario ${estadoTrello?.estado === 'erro' ? 'erro' : ''}`}
+                disabled={!liberado || estadoTrello?.estado === 'enviando' || (podeMandar && !noTrello && !!perguntaProducao)}
+                aria-expanded={conferindoTrello}
+                title={
+                  podeMandar && !noTrello
+                    ? perguntaProducao
+                      ? 'Antes, compare com o que já está no Trello e decida'
+                      : estadoTrello?.estado === 'erro'
+                        ? estadoTrello.erro
+                        : `${meta.v2De ? 'Põe as artes novas no card que já existe' : 'Cria o card com as artes, os campos e o PDF'}${proximo.r ? ` e abre ${proximo.r.meta.claquete || 'o próximo'}` : ''} (${atalho('Mod-Enter')})`
+                    : `${proximo.r?.meta.claquete || 'Próximo roteiro'} (${atalho('Mod-Enter')})`
+                }
+                onClick={() => void acaoPrincipal()}
+              >
+                {podeMandar && !noTrello && <Icone nome="quadro" tam={15} traco={2.2} />}
+                {rotuloPrincipal}
+                {proximo.r && <span className="proximo-n">{proximo.total}</span>}
+                {!podeMandar || noTrello ? <Icone nome="seta" tam={14} traco={2.2} /> : null}
+              </button>
+              {conferindoTrello && (
+                <div className="menu trello-conferir" role="dialog" aria-label="Pendências antes de mandar">
+                  <strong>{trava.length === 1 ? 'Ainda tem uma pendência' : `Ainda tem ${trava.length} pendências`}</strong>
+                  <ul>{trava.map((p) => <li key={p.texto}>{p.texto}</li>)}</ul>
+                  <div className="trello-conferir-acoes">
+                    <button className="botao-texto" onClick={() => setConferindoTrello(false)}>Voltar e resolver</button>
+                    <button className="botao primario" onClick={async () => { if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id); }}>{proximo.r ? 'Mandar e ir ao próximo' : 'Mandar assim mesmo'}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       </header>
 
       <div className="mesa">
         <div className={`area ${colunas ? 'larga' : ''}`} ref={area}>
           <article className="folha" data-ancora="folha">
-            {!sou && !leitura && (
-              <div className="faixa-leitura">
-                <span>Subido por <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Todos editam juntos.</span>
-              </div>
-            )}
             {leitura && (
               <div className="faixa-leitura">
                 <span>Roteiro de <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Você pode ler e exportar.</span>
                 <button className="botao" onClick={duplicarParaEditar}><Icone nome="duplicar" tam={14} /> Duplicar para editar</button>
               </div>
             )}
-            <div inert={leitura || !liberado || undefined}>
-              <TopoFolha meta={meta} mudar={mudarMeta} cadastrar={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined} />
-            </div>
             {meta.lidoPorOcr && !meta.conferidos?.includes('ocr') && (
               <div className="faixa-ocr">
                 <span>Este roteiro veio de um PDF digitalizado e foi lido por reconhecimento de texto. Confira o texto e, principalmente, as artes.</span>
@@ -1069,7 +1054,16 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
           </article>
 
           <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={leitura || !liberado || undefined}>
-            <Claquete dados={meta} mudar={mudarMeta} />
+            {perguntaProducao && (
+              <section className="cartao trello-lado pergunta-producao" aria-label="Já na produção da arte">
+                <a className="card-existente" href={perguntaProducao.url} target="_blank" rel="noreferrer" title="Já está no Trello">
+                  <Icone nome="quadro" tam={15} traco={2.2} />
+                  <b>{perguntaProducao.claquete}</b>
+                  {perguntaProducao.entrada && <small>{dataCurtaComDia(new Date(perguntaProducao.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
+                </a>
+                <button className="botao primario largo" onClick={() => comparar(inicial.id)}>Comparar e decidir</button>
+              </section>
+            )}
             {lista.length > 0 && (
               <section className="cartao pendencias-editor" aria-label="Para revisar">
                 <div className="cab-artes"><b>Para revisar</b><span className="rotulo">{lista.length}</span></div>
@@ -1096,50 +1090,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                 </ul>
               </section>
             )}
+            <Claquete dados={meta} mudar={mudarMeta} comAtracao cadastrarAtracao={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined} />
             {comServidor && !temTrello() && !leitura && (
               <section className="cartao trello-lado desligado" aria-label="Trello">
-                <button className="botao primario largo" disabled>
-                  <Icone nome="quadro" tam={15} /> Mandar para o Trello
-                </button>
-                <small>O envio está desligado neste servidor: faltam TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA nas variáveis do stack.</small>
-              </section>
-            )}
-            {perguntaProducao && (
-              <section className="cartao trello-lado pergunta-producao" aria-label="Já na produção da arte">
-                <a className="card-existente" href={perguntaProducao.url} target="_blank" rel="noreferrer" title="Já está no Trello">
-                  <Icone nome="quadro" tam={15} traco={2.2} />
-                  <b>{perguntaProducao.claquete}</b>
-                  {perguntaProducao.entrada && <small>{dataCurtaComDia(new Date(perguntaProducao.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
-                </a>
-                <button className="botao primario largo" onClick={() => comparar(inicial.id)}>Comparar e decidir</button>
-              </section>
-            )}
-            {podeMandar && !perguntaProducao && (
-              <section className={`cartao trello-lado ${noTrello ? 'feito' : ''}`} aria-label="Trello">
-                {noTrello ? (
-                  <p>
-                    <Icone nome="quadro" tam={15} />
-                    {estadoTrello?.url ? <a href={estadoTrello.url} target="_blank" rel="noreferrer">No Trello</a> : 'Já estava no Trello'}
-                    {proximo.r && <button className="botao-texto" onClick={() => abrir(proximo.r!.id)}>Próximo para revisar →</button>}
-                  </p>
-                ) : (
-                  <>
-                    <button
-                      className="botao primario largo"
-                      disabled={estadoTrello?.estado === 'enviando'}
-                      onClick={async () => {
-                        // com pendência, a confirmação do topo pergunta antes
-                        if (trava.length) return setConferindoTrello(true);
-                        if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id);
-                      }}
-                    >
-                      <Icone nome="quadro" tam={15} />
-                      {estadoTrello?.estado === 'enviando' ? 'Mandando…' : meta.v2De ? (proximo.r ? 'Atualizar card e próximo' : 'Atualizar o card (v2)') : proximo.r ? 'Trello e próximo' : 'Mandar para o Trello'}
-                    </button>
-                    {trava.length > 0 && <small>Ainda {trava.length === 1 ? 'tem uma pendência' : `tem ${trava.length} pendências`} acima.</small>}
-                    {!trava.length && proximo.r && <small>Manda o card e abre {proximo.r.meta.claquete || 'o próximo'} · {plural(proximo.total, 'para revisar', 'para revisar')}</small>}
-                  </>
-                )}
+                <small><Icone nome="quadro" tam={13} /> O envio está desligado neste servidor: faltam TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA nas variáveis do stack.</small>
               </section>
             )}
             <section className="cartao">

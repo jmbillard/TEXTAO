@@ -1579,3 +1579,25 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .comparar.lightbox { background: color-mix(in srgb, var(--mesa) 45%, transparent); }
 /* no lightbox, o rodapé é sólido: as folhas não aparecem por baixo */
 .comparar.lightbox .estatisticas { background: var(--mesa); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* =========================================================
+   Revisão: uma ação principal no topo; atração e praça na claquete
+   ========================================================= */
+.acao-principal { position: relative; }
+.acao-principal > .botao { height: 36px; gap: 7px; padding: 0 16px; }
+.acao-principal > .botao.erro { background: var(--perigo); border-color: var(--perigo); }
+.mais-acoes span { font: 700 17px/1 var(--sans); letter-spacing: 1px; transform: translateY(-3px); display: inline-block; }
+.pular { display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; }
+.no-trello { color: var(--ok); }
+/* o texto começa no alto da folha, sem cabeçalho */
+.folha > .corpo:first-child, .folha > .faixa-ocr + .corpo { padding-top: 40px; }
+/* atração e praça dentro da claquete */
+.atracao-c .linha-atracao { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; }
+.atracao-c .linha-atracao > :first-child { flex: 1; min-width: 0; }
+.cadastrar-c { border: 0; background: none; padding: 0; color: rgb(244 241 234 / 65%); font: 500 12px var(--sans); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.cadastrar-c:hover { color: #f4f1ea; }
+.pracas-c { display: flex; gap: 3px; flex: none; }
+.pracas-c button { height: 24px; padding: 0 8px; border-radius: 999px; border: 1px solid rgb(244 241 234 / 28%); background: none; color: rgb(244 241 234 / 60%); font: 600 11px var(--sans); cursor: pointer; }
+.pracas-c button:hover:not(:disabled) { color: #f4f1ea; border-color: rgb(244 241 234 / 55%); }
+.pracas-c button[aria-checked='true'] { background: #f4f1ea; border-color: #f4f1ea; color: #1a1916; }
+@media (max-width: 640px) { .pular { display: none; } }
