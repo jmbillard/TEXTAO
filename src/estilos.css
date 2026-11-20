@@ -1623,3 +1623,8 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .nav-folha .seta-nav.voltar { justify-self: start; }
 .nav-folha .seta-nav.voltar svg { transform: scaleX(-1); }
 .nav-folha { padding-block: 8px 6px; }
+
+/* a folha da revisão é papel: as mesmas fibras e o mesmo grão do rascunho dos cadastros */
+.pagina.editor .folha { background: var(--folha-fibras), url('/papel-grao.svg'), var(--papel); }
+/* o fim da chamada, escrito à mão */
+.pagina.editor .fim-linha span { font: 600 23px/1 Caveat, cursive; font-style: normal; color: var(--tinta3); transform: rotate(-3deg); padding: 0 4px; }

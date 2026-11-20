@@ -1053,7 +1053,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               <EditorContent editor={editor} />
             </div>
             <footer className="folha-fim">
-              <div className="fim-linha"><span>fim da chamada</span></div>
+              <div className="fim-linha"><span>fim</span></div>
               <p className="dicas">
                 <span><kbd>{atalho('Mod-u')}</kbd> marca como arte</span>
                 <span><kbd>CAIXA ALTA</kbd> é locução</span>
