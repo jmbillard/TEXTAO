@@ -111,6 +111,8 @@ export function abrirBanco(caminho) {
   if (!tem('usuarios', 'cor')) db.exec('ALTER TABLE usuarios ADD COLUMN cor TEXT');
   if (!tem('roteiros', 'revisado_email')) db.exec('ALTER TABLE roteiros ADD COLUMN revisado_email TEXT; ALTER TABLE roteiros ADD COLUMN revisado_nome TEXT');
   // acervo de artes: as artes novas de cada envio e a atração, para entrarem no acervo quando o card sair
+  // o texto do original com o sublinhado do redator, trecho a trecho: é dele que sai o PDF do card sem o Stirling
+  if (!tem('originais', 'texto')) db.exec('ALTER TABLE originais ADD COLUMN texto TEXT');
   if (!tem('envios', 'artes_novas')) db.exec('ALTER TABLE envios ADD COLUMN artes_novas TEXT; ALTER TABLE envios ADD COLUMN atracao TEXT; ALTER TABLE envios ADD COLUMN acervo_em TEXT');
   return db;
 }
@@ -248,7 +250,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
        FROM roteiros LEFT JOIN envios e ON e.roteiro_id = roteiros.id
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
-    original: db.prepare('SELECT nome, tipo, dados FROM originais WHERE roteiro_id = ?'),
+    original: db.prepare('SELECT nome, tipo, dados, texto FROM originais WHERE roteiro_id = ?'),
+    guardarTextoOriginal: db.prepare('UPDATE originais SET texto = ? WHERE roteiro_id = ?'),
     guardarOriginal: db.prepare('INSERT OR REPLACE INTO originais (roteiro_id, nome, tipo, dados, em) VALUES (?, ?, ?, ?, ?)'),
     infoOriginal: db.prepare('SELECT nome, tipo, length(dados) AS tamanho, em FROM originais WHERE roteiro_id = ?'),
     envio: db.prepare('SELECT estado, card_id, url, erro, avisos, em, por_nome FROM envios WHERE roteiro_id = ?'),
@@ -611,7 +614,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const artes = Array.isArray(corpo.artes) ? corpo.artes.slice(0, 200).map((a) => ({ texto: String(a?.texto ?? a ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40) })) : [];
       try {
         const v1 = q.primeiraVersao.get(id);
-        const pdf = await trello.pdfDoRoteiro({ meta: JSON.parse(atual.meta), doc: JSON.parse(atual.doc), ...(v1 ? { docOriginal: JSON.parse(v1.doc), metaOriginal: JSON.parse(v1.meta) } : {}), original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null }, artes);
+        const pdf = await trello.pdfDoRoteiro({ meta: JSON.parse(atual.meta), doc: JSON.parse(atual.doc), ...(v1 ? { docOriginal: JSON.parse(v1.doc), metaOriginal: JSON.parse(v1.meta) } : {}), ...(o?.texto ? { textoOriginal: JSON.parse(o.texto) } : {}), original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null }, artes);
         res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': pdf.dados.length, 'cache-control': 'private, no-store' });
         return res.end(Buffer.from(pdf.dados));
       } catch (e) {
@@ -619,6 +622,17 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       }
     }
     if (!podeEditar) return json(res, 403, { erro: 'Só quem pode editar o roteiro mexe no original e manda ele adiante.' });
+    if (oque === 'original-texto') {
+      if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req)) ?? {};
+      const pars = Array.isArray(corpo.pars)
+        ? corpo.pars.slice(0, 5000).map((par) => (Array.isArray(par) ? par.slice(0, 500).filter((r) => r && typeof r.t === 'string').map((r) => ({ t: r.t.slice(0, 5000), ...(r.u ? { u: 1 } : {}), ...(r.b ? { b: 1 } : {}), ...(r.i ? { i: 1 } : {}) })) : []))
+        : null;
+      if (!pars) return json(res, 400, { erro: 'Faltou o texto.' });
+      if (!q.original.get(id)) return json(res, 404, { erro: 'O arquivo original deste roteiro não foi guardado.' });
+      q.guardarTextoOriginal.run(JSON.stringify(pars), id);
+      return json(res, 200, { ok: true });
+    }
     if (oque === 'original') {
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const dados = await lerBinario(req, LIMITE_ORIGINAL);
@@ -669,6 +683,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         meta: JSON.parse(atual.meta),
         doc: JSON.parse(atual.doc),
         ...(v1 ? { docOriginal: JSON.parse(v1.doc), metaOriginal: JSON.parse(v1.meta) } : {}),
+        ...(o?.texto ? { textoOriginal: JSON.parse(o.texto) } : {}),
         artes: Array.isArray(corpo.artes)
           ? corpo.artes.slice(0, 200).map((a) => (typeof a === 'string' ? a.slice(0, 500) : { texto: String(a?.texto ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40), existe: !!a?.existe }))
           : [],
@@ -833,7 +848,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
-    const extra = /^\/api\/roteiros\/([^/]+)\/(original|trello|pdf)$/.exec(caminho);
+    const extra = /^\/api\/roteiros\/([^/]+)\/(original|original-texto|trello|pdf)$/.exec(caminho);
     if (extra) return rotaDoTrello(req, res, eu, extra[1], extra[2]);
     const m = /^\/api\/roteiros(?:\/([^/]+))?(?:\/versoes(?:\/(\d+))?)?$/.exec(caminho);
     if (!m) return json(res, 404, { erro: 'Não encontrado.' });

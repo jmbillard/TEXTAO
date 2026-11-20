@@ -495,3 +495,30 @@ describe('PDF do card: sempre o roteiro como chegou', () => {
     expect((await t.pdfDoRoteiro({ meta, doc: DOC, original: pdfOriginal }, [])).dados.toString()).toBe('%PDF-original');
   });
 });
+
+describe('PDF do card sem Stirling: o sublinhado do redator, nem mais nem menos', () => {
+  const sublinhados = async (dados: Buffer) => {
+    // pdfkit desenha o sublinhado como um traço logo abaixo do texto: conta os traços e preenchimentos
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(dados), isEvalSupported: false, verbosity: 0 }).promise;
+    const pagina = await doc.getPage(1);
+    const texto = (await pagina.getTextContent()).items.map((i) => ('str' in i ? i.str : '')).join('');
+    const ops = await pagina.getOperatorList();
+    const preenchimentos = ops.fnArray.filter((f) => [pdfjs.OPS.fill, pdfjs.OPS.eoFill, pdfjs.OPS.stroke, pdfjs.OPS.fillStroke].includes(f)).length;
+    return { texto, preenchimentos };
+  };
+  it('sai do texto do original: o que estava sublinhado (até o link) sublinha; o resto não', async () => {
+    const t = criarTrello(ENV, {});
+    const textoOriginal = [
+      [{ t: 'VEM AÍ ' }, { t: 'A GRANDE FESTA', u: 1 }, { t: '. Veja em ' }, { t: 'www.exemplo.com', u: 1 }],
+      [{ t: 'NADA SUBLINHADO AQUI' }],
+    ];
+    const comOriginal = await t.pdfDoRoteiro({ meta, doc: DOC, docOriginal: DOC, textoOriginal, original }, [{ texto: 'X' }]);
+    const semNada = await t.pdfDoRoteiro({ meta, doc: DOC, docOriginal: DOC, textoOriginal: [[{ t: 'VEM AÍ A GRANDE FESTA. Veja em www.exemplo.com' }], [{ t: 'NADA SUBLINHADO AQUI' }]], original }, []);
+    const a = await sublinhados(comOriginal.dados);
+    const b = await sublinhados(semNada.dados);
+    expect(a.texto).toContain('www.exemplo.com');
+    expect(a.texto).not.toMatch(/ARTES \(/);
+    expect(a.preenchimentos - b.preenchimentos).toBe(2); // os dois trechos sublinhados pelo redator, e só eles
+  });
+});

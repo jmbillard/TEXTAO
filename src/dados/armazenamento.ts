@@ -180,7 +180,10 @@ let trelloLigado = false;
 export const temTrello = () => armazenamento.tipo === 'servidor' && trelloLigado;
 
 /** Guarda o arquivo como veio: é ele que vira o PDF anexado ao card. */
-export async function guardarOriginal(id: string, arquivo: File) {
+/** O texto do original, parágrafo a parágrafo, com o sublinhado (e negrito, itálico) exatamente como veio. */
+export type TextoOriginal = { t: string; u?: 1; b?: 1; i?: 1 }[][];
+
+export async function guardarOriginal(id: string, arquivo: File, texto?: TextoOriginal) {
   if (armazenamento.tipo !== 'servidor') return;
   const r = await fetch(`/api/roteiros/${encodeURIComponent(id)}/original`, {
     method: 'PUT',
@@ -189,6 +192,8 @@ export async function guardarOriginal(id: string, arquivo: File) {
     body: arquivo,
   });
   if (!r.ok) throw new Error('Não consegui guardar o arquivo original.');
+  // é dele que sai o PDF do card quando não há conversão fiel (Stirling): o sublinhado do redator, nem mais nem menos
+  if (texto?.length) await pedir(`/api/roteiros/${encodeURIComponent(id)}/original-texto`, { method: 'PUT', body: JSON.stringify({ pars: texto }) }).catch(() => {});
 }
 
 /* ---------- cadastros (atrações, redatores, editores) ---------- */

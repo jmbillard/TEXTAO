@@ -305,7 +305,10 @@ export function criarTrello(env, deps = {}) {
         console.warn(`[trello] o Stirling não converteu ${r.original.nome}: ${e instanceof Error ? e.message : e}; vai o PDF do roteiro como chegou`);
       }
     }
-    // sem conversão fiel: o roteiro como foi importado (a primeira versão), sem a lista de artes que o original não tem
+    // sem conversão fiel: o texto do original, com o sublinhado exatamente como o redator deixou
+    if (Array.isArray(r.textoOriginal) && r.textoOriginal.length)
+      return { nome: `${base}.pdf`, tipo: 'application/pdf', dados: await gerarPdf({ meta: r.metaOriginal ?? r.meta, pars: r.textoOriginal, artes: [] }) };
+    // roteiro guardado antes disso: o que foi importado (a primeira versão), sem a lista de artes que o original não tem
     if (r.docOriginal) return { nome: `${base}.pdf`, tipo: 'application/pdf', dados: await gerarPdf({ meta: r.metaOriginal ?? r.meta, doc: r.docOriginal, artes: [] }) };
     return { nome: `${base}.pdf`, tipo: 'application/pdf', dados: await gerarPdf({ meta: r.meta, doc: r.doc, artes }) };
   }

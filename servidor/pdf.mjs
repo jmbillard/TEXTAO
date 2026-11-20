@@ -51,7 +51,11 @@ const dataBr = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(iso || '') ? iso.slice(0, 10)
  * @param artes [{ texto, tipo }]
  * @returns Buffer
  */
-export function gerarPdf({ meta = {}, doc, artes = [], agora = new Date() }) {
+/**
+ * @param pars em vez de doc: os parágrafos do arquivo original, trecho a trecho ({ t, u, b, i }), sem interpretação.
+ *   Assim o sublinhado é exatamente o do redator (nem mais, nem menos).
+ */
+export function gerarPdf({ meta = {}, doc, pars = null, artes = [], agora = new Date() }) {
   return new Promise((ok, erro) => {
     const pdf = new PDFDocument({ size: 'A4', margin: MARGEM, bufferPages: true, info: { Title: latino(meta.claquete || 'Roteiro'), Creator: 'PROMeiro' } });
     const partes = [];
@@ -71,19 +75,20 @@ export function gerarPdf({ meta = {}, doc, artes = [], agora = new Date() }) {
     pdf.moveTo(MARGEM, pdf.y).lineTo(MARGEM + largura, pdf.y).lineWidth(0.6).strokeColor('#d6d1c5').stroke();
     pdf.moveDown(1);
 
-    // texto corrido, com as artes sublinhadas como no roteiro
+    // texto corrido: do original (o sublinhado do redator) ou do roteiro (as artes sublinhadas)
+    const paragrafos = pars
+      ? pars.map((par) => (Array.isArray(par) ? par : []).filter((r) => r && typeof r.t === 'string' && r.t).map((r) => ({ t: r.t, u: !!r.u, b: !!r.b, i: !!r.i, cor: TINTA })))
+      : paragrafosDoDoc(doc).map((ps) => ps.map((p) => ({ t: p.t, u: !!p.arte, b: !!p.arte, i: !!p.etq, cor: p.arte ? ARTE : p.etq ? SUAVE : TINTA })));
+    const fonte = (b, i) => (b && i ? 'Helvetica-BoldOblique' : b ? 'Helvetica-Bold' : i ? 'Helvetica-Oblique' : 'Helvetica');
     pdf.fontSize(11.5).fillColor(TINTA);
-    for (const pedacos of paragrafosDoDoc(doc)) {
-      if (!pedacos.length) {
+    for (const pedacos of paragrafos) {
+      if (!pedacos.length || !pedacos.some((p) => p.t.trim())) {
         pdf.moveDown(0.6);
         continue;
       }
       pedacos.forEach((p, i) => {
         const fim = i === pedacos.length - 1;
-        pdf
-          .font(p.arte ? 'Helvetica-Bold' : p.etq ? 'Helvetica-Oblique' : 'Helvetica')
-          .fillColor(p.arte ? ARTE : p.etq ? SUAVE : TINTA)
-          .text(latino(p.t), { continued: !fim, underline: !!p.arte, width: largura, lineGap: 3 });
+        pdf.font(fonte(p.b, p.i)).fillColor(p.cor).text(latino(p.t), { continued: !fim, underline: p.u, width: largura, lineGap: 3 });
       });
       pdf.moveDown(0.55);
     }

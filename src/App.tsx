@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Comparar } from './ui/Comparar';
 import { Cadastros } from './ui/Cadastros';
-import { armazenamento, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello } from './dados/armazenamento';
+import { armazenamento, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
+import type { DocBruto } from './importar/bruto';
 import { exportar, pendencias, roteiroDoJson, travamTrello } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type ArteDoAcervo, type Roteiro } from './modelo/tipos';
 import { chaveDeArte } from './modelo/diferencas';
@@ -39,6 +40,13 @@ const telaDoHash = (): Tela => {
   const c = /^#\/cadastros(?:\/(atracoes|redatores|editores))?$/.exec(location.hash);
   return c ? { t: 'cadastros', aba: (c[1] as TipoCadastro | undefined) ?? 'atracoes' } : { t: 'biblioteca' };
 };
+
+/** O texto do arquivo como chegou, parágrafo a parágrafo, com o sublinhado do redator (para o PDF do card). */
+const textosOriginais = new Map<string, TextoOriginal>();
+const textoDoOriginal = (bruto: DocBruto): TextoOriginal =>
+  bruto.blocos
+    .flatMap((b) => (b.tipo === 'p' ? [b.par] : b.linhas.flatMap((linha) => linha.flatMap((celula) => celula))))
+    .map((par) => par.filter((r) => r.t).map((r) => ({ t: r.t, ...(r.u ? { u: 1 as const } : {}), ...(r.b ? { b: 1 as const } : {}), ...(r.i ? { i: 1 as const } : {}) })));
 
 export function App() {
   const [tela, setTela] = useState<Tela>(telaDoHash);
@@ -126,6 +134,7 @@ export function App() {
         revisao: 1, criadoEm: agora, atualizadoEm: agora, origem: imp.bruto.arquivo, criadoPor: pessoa, alteradoPor: pessoa,
       };
       roteiro.meta.revisar = pendencias(exportar(roteiro));
+      textosOriginais.set(roteiro.id, textoDoOriginal(imp.bruto));
       return roteiro;
     },
     [identidade], // eslint-disable-line react-hooks/exhaustive-deps
@@ -172,7 +181,8 @@ export function App() {
           await armazenamento.salvar(roteiro);
           setNovos((n) => [...n, roteiro.id]);
           // o arquivo como veio fica no servidor: é ele que vira o PDF do card
-          const guardado = guardarOriginal(roteiro.id, arquivo).catch(() => {});
+          const guardado = guardarOriginal(roteiro.id, arquivo, textosOriginais.get(roteiro.id)).catch(() => {});
+          textosOriginais.delete(roteiro.id);
           // sem pendência, vai direto para o Trello; os marcados para revisar esperam a revisão
           if (temTrello() && !travamTrello(roteiro.meta.revisar).length && !roteiro.meta.substitui && !roteiro.meta.naProducao)
             void guardado.then(() => mandarParaTrello(roteiro)).catch((e) => avisar(`${roteiro.meta.claquete || arquivo.name} não foi para o Trello: ${e instanceof Error ? e.message : e}`)).finally(() => setChegou((n) => n + 1));

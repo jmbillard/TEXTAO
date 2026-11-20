@@ -122,8 +122,10 @@ excluídas, editor, atração…) vai no checklist, na descrição e nos campos 
 
 - Arquivo que já é PDF: vai como veio.
 - Word e RTF, com `STIRLING_URL`: convertidos pelo Stirling-PDF (LibreOffice), idênticos ao original.
-- Sem o Stirling (ou se ele falhar): o PDF sai do roteiro como foi importado (a primeira versão do histórico), sem
-  a lista de artes no fim.
+- Sem o Stirling (ou se ele falhar): o PDF sai do **texto do arquivo original**, guardado na importação trecho a
+  trecho, com o sublinhado exatamente como o redator deixou (nem mais, nem menos; até o de link ou de orientação),
+  sem a lista de artes no fim. A diagramação é a do PROMeiro; o conteúdo e o sublinhado, os do original.
+- Roteiros guardados antes disso: a primeira versão do histórico (o que foi importado).
 
 ## Acervo de artes
 
