@@ -408,15 +408,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
   );
 }
 
-/** Variação em teste: o que já está no Trello vira um card pequeno, numa grade no fim do dia. */
-const TRELLO_EM_CARDS = (() => {
-  try {
-    return localStorage.getItem('promeiro.fila.cards') === '1';
-  } catch {
-    return false;
-  }
-})();
-
+/** O que já está no Trello vira um card pequeno, numa grade no fim do dia: ser card já diz que está lá. */
 function CardTrello({ r, abrir }: { r: Resumo; abrir: () => void }) {
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
   const e = r.trello!;
@@ -428,11 +420,14 @@ function CardTrello({ r, abrir }: { r: Resumo; abrir: () => void }) {
       </span>
       <button className="card-claquete" onClick={abrir} title={`Abrir ${claquete}`}>{claquete}</button>
       <span className="card-rodape">
-        <Icone nome="quadro" tam={13} />
-        {e.estado === 'enviado' ? (
-          <a href={e.url} target="_blank" rel="noreferrer">No Trello</a>
-        ) : (
-          <span>pelo upload antigo</span>
+        <span className="card-gente">
+          {r.meta.redator && <span title="Redator">{r.meta.redator}</span>}
+          {r.meta.editor && <small>edição: {r.meta.editor}</small>}
+        </span>
+        {e.url && (
+          <a className="card-link" href={e.url} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label={`Abrir ${claquete} no Trello`}>
+            <Icone nome="quadro" tam={13} />
+          </a>
         )}
         {e.estado === 'enviado' && e.por && (
           <span className="card-quem" style={{ '--cor': corDe(e.por) } as React.CSSProperties} title={`Mandado por ${e.por}, ${horaCurta(e.em)}`}>
@@ -786,7 +781,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               {proximos.map((g) => (
                 <section key={g.chave} className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
                   {cabecalhoDoDia(g)}
-                  {TRELLO_EM_CARDS ? (
+                  {(
                     <>
                       <ul className="fichas">{g.itens.filter((r) => !noTrello(r)).map(ficha)}</ul>
                       {g.itens.some(noTrello) && (
@@ -798,8 +793,6 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                         </div>
                       )}
                     </>
-                  ) : (
-                    <ul className="fichas">{g.itens.map(ficha)}</ul>
                   )}
                 </section>
               ))}
