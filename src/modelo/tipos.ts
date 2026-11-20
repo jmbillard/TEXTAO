@@ -185,4 +185,6 @@ export interface NaProducao {
 export interface ProducaoCompleta extends NaProducao {
   listaDeArtes: string[];
   texto: string;
+  redator?: string;
+  editor?: string;
 }

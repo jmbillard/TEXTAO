@@ -1541,3 +1541,7 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .comparar-decisao { align-items: center; gap: 12px; }
 .comparar-decisao .segmento button { font-size: 13px; gap: 6px; padding: 0 12px; }
 .comparar-decisao > .botao { height: 36px; padding: 0 18px; }
+.comparar-gente { display: flex; flex-wrap: wrap; gap: 2px 18px; margin: 8px 0 0 23px; font-size: 13px; color: var(--tinta3); }
+.comparar-gente span > span { color: var(--tinta); }
+.comparar-gente .trocado { font-weight: 600; background: linear-gradient(transparent 60%, color-mix(in srgb, var(--ultra) 22%, transparent) 60%); }
+.comparar-gente .riscado-mao { color: var(--tinta2); }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro } from '../dados/armazenamento';
-import { diferencasDeArtes, diferencasDeTexto, semelhanca, type ArteComparada } from '../modelo/diferencas';
+import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, type ArteComparada } from '../modelo/diferencas';
 import { exportar } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
@@ -53,7 +53,9 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
     const novas = artes.novas.filter((a) => a.tipo === 'entrou').length;
     const sairam = artes.antigas.filter((a) => a.tipo === 'saiu').length;
     const igual = semelhanca(texto);
-    return { texto, artes, novas, sairam, igual, mesmo: igual === 1 && !novas && !sairam };
+    const outroRedator = !mesmaPessoa(producao.redator, roteiro.meta.redator);
+    const outroEditor = !mesmaPessoa(producao.editor, roteiro.meta.editor);
+    return { texto, artes, novas, sairam, igual, outroRedator, outroEditor, mesmo: igual === 1 && !novas && !sairam };
   }, [roteiro, producao]);
 
   // as duas folhas: o PDF que está no card e o do roteiro novo, como vai para o Trello
@@ -134,6 +136,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                   )
                 }
                 rotulo="no Trello"
+                gente={producao && <Gente redator={producao.redator} editor={producao.editor} riscar={{ redator: !!comparacao?.outroRedator, editor: !!comparacao?.outroEditor }} />}
                 artes={comparacao?.artes.antigas}
                 folha={roteiro && <VisorPdf carregar={pdfAntigo} rotulo="Roteiro no Trello" reserva={producao?.texto ? <div className="comparar-texto">{producao.texto}</div> : undefined} />}
               />
@@ -146,6 +149,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                   </span>
                 }
                 rotulo="chegou agora"
+                gente={<Gente redator={roteiro.meta.redator} editor={roteiro.meta.editor} destacar={{ redator: !!comparacao?.outroRedator, editor: !!comparacao?.outroEditor }} />}
                 artes={comparacao?.artes.novas ?? exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: 'igual' as const }))}
                 folha={<VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />}
               />
@@ -161,6 +165,8 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
               <span><b>{Math.round(comparacao.igual * 100)}%</b> do texto igual</span>
               <span><b>{comparacao.novas}</b> {comparacao.novas === 1 ? 'arte nova' : 'artes novas'}</span>
               <span><b>{comparacao.sairam}</b> {comparacao.sairam === 1 ? 'arte saiu' : 'artes saíram'}</span>
+              {comparacao.outroRedator && <span><b>outro</b> redator</span>}
+              {comparacao.outroEditor && <span><b>outra</b> edição</span>}
               {comparacao.mesmo && <span className="parece">parece o mesmo</span>}
             </>
           ) : (
@@ -172,26 +178,44 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
   );
 }
 
-function Lado({ titulo, rotulo, artes, folha }: { titulo: React.ReactNode; rotulo: string; artes?: ArteComparada[]; folha: React.ReactNode }) {
+/** Um risco à mão por cima: o que saiu (ou foi trocado) no roteiro novo. */
+function Riscado({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="riscado-mao">
+      {children}
+      <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M1 6.5 C 18 4, 40 7.5, 62 5 S 88 3.5, 99 5.5" /></svg>
+    </span>
+  );
+}
+
+/** Redator e edição de cada lado; quem foi trocado aparece riscado no antigo e marcado no novo. */
+function Gente({ redator, editor, riscar, destacar }: { redator?: string; editor?: string; riscar?: { redator: boolean; editor: boolean }; destacar?: { redator: boolean; editor: boolean } }) {
+  const nome = (n: string | undefined, r?: boolean, d?: boolean) =>
+    !n ? <span className="suave">—</span> : r ? <Riscado>{n}</Riscado> : <span className={d ? 'trocado' : ''}>{n}</span>;
+  return (
+    <p className="comparar-gente">
+      <span>redator: {nome(redator, riscar?.redator, destacar?.redator)}</span>
+      <span>edição: {nome(editor, riscar?.editor, destacar?.editor)}</span>
+    </p>
+  );
+}
+
+function Lado({ titulo, gente, rotulo, artes, folha }: { titulo: React.ReactNode; gente?: React.ReactNode; rotulo: string; artes?: ArteComparada[]; folha: React.ReactNode }) {
   const mudou = (artes ?? []).map((a, i) => ({ ...a, n: i + 1 })).filter((a) => a.tipo !== 'igual');
   return (
     <section className="comparar-lado" aria-label={rotulo}>
       <span className="comparar-rotulo">{rotulo}</span>
-      <div className="comparar-titulo">{titulo}</div>
+      <div className="comparar-titulo">
+        {titulo}
+        {gente}
+      </div>
       {/* só o que mudou, com o número que a arte tem no roteiro; a lista existe mesmo vazia, para as colunas
           se alinharem por linha e as folhas começarem na mesma altura */}
       {(
         <ol className={`comparar-artes ${mudou.length ? '' : 'vazia'}`}>
           {mudou.map((a) => (
             <li key={a.n} data-n={a.n} className={a.tipo} title={a.tipo === 'entrou' ? 'Arte nova' : a.tipo === 'saiu' ? 'Saiu no roteiro novo' : undefined}>
-              {a.tipo === 'saiu' ? (
-                <span className="riscado-mao">
-                  {a.texto}
-                  <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M1 6.5 C 18 4, 40 7.5, 62 5 S 88 3.5, 99 5.5" /></svg>
-                </span>
-              ) : (
-                a.texto
-              )}
+              {a.tipo === 'saiu' ? <Riscado>{a.texto}</Riscado> : a.texto}
             </li>
           ))}
         </ol>

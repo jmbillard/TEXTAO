@@ -96,3 +96,17 @@ export function diferencasDeArtes(antigas: string[], novas: string[]): { antigas
     novas: novas.map((t) => ({ texto: t, tipo: ka.has(comparavel(t)) ? 'igual' : 'entrou' })),
   };
 }
+
+const tokens = (s: string) =>
+  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[\s._-]+/).filter(Boolean);
+
+/**
+ * É a mesma pessoa? Aceita o login no lugar do nome ("ana.lima" ou "ana" e "Ana Lima"): basta o primeiro nome bater.
+ * Sem nome de um dos lados, não dá para dizer que mudou.
+ */
+export function mesmaPessoa(a: string | undefined, b: string | undefined): boolean {
+  const ta = tokens(a ?? '');
+  const tb = tokens(b ?? '');
+  if (!ta.length || !tb.length) return true;
+  return ta[0] === tb[0];
+}

@@ -26,3 +26,14 @@ describe('comparar dois roteiros', () => {
     expect(d.novas).toEqual([{ texto: 'A Grande Festa', tipo: 'igual' }, { texto: 'DOMINGO', tipo: 'entrou' }]);
   });
 });
+
+describe('mesma pessoa', () => {
+  it('login, nome completo e acento contam como a mesma; outro primeiro nome, não', async () => {
+    const { mesmaPessoa } = await import('../src/modelo/diferencas');
+    expect(mesmaPessoa('ana', 'Ana Lima')).toBe(true);
+    expect(mesmaPessoa('ana.lima', 'ANA LIMA')).toBe(true);
+    expect(mesmaPessoa('Joao', 'João Pedro')).toBe(true);
+    expect(mesmaPessoa('Bia Costa', 'Ana Lima')).toBe(false);
+    expect(mesmaPessoa('', 'Ana Lima')).toBe(true);
+  });
+});

@@ -496,7 +496,7 @@ export function criarTrello(env, deps = {}) {
     if (!t.producao || !claquete) return null;
     const chave = chaveN8n(claquete);
     const linhas = await sql(
-      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc" FROM ${t.producao}
+      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc", "redator", "editor" FROM ${t.producao}
        WHERE "key" = $1 OR "data_entrada" >= now() - interval '60 days' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 3000`,
       [chave],
     );
@@ -514,6 +514,9 @@ export function criarTrello(env, deps = {}) {
       listaDeArtes: String(l.artes ?? '').split(/\s*\|\s*|\n+/).map((a) => a.trim()).filter(Boolean),
       texto: String(l.texto ?? ''),
       doc: String(l.doc ?? ''),
+      // redator e editor são vínculos no Teable: vem o nome
+      redator: lerLista(l.redator)[0] ?? '',
+      editor: lerLista(l.editor)[0] ?? '',
     };
   }
 
