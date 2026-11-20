@@ -817,7 +817,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     const faltam = artes.filter((x) => x.id !== a.id && !normalizarSubtipo(x.attrs.subtipo));
     abrirArte(faltam.find((x) => x.ordem > a.ordem) ?? faltam[0]);
   };
-  const conferir = (id: string) => mudarMeta({ conferidos: [...new Set([...(meta.conferidos ?? []), id])] });
 
   const original = inicial.original;
   const baixarODoc = async () => {
@@ -1026,12 +1025,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                 <button className="botao" onClick={duplicarParaEditar}><Icone nome="duplicar" tam={14} /> Duplicar para editar</button>
               </div>
             )}
-            {meta.lidoPorOcr && !meta.conferidos?.includes('ocr') && (
-              <div className="faixa-ocr">
-                <span>Este roteiro veio de um PDF digitalizado e foi lido por reconhecimento de texto. Confira o texto e, principalmente, as artes.</span>
-                {!leitura && <button className="botao" onClick={() => conferir('ocr')}><Icone nome="certo" tam={14} traco={2.4} /> Conferido</button>}
-              </div>
-            )}
             {colunas && (
               <div className="colunas-topo rotulo">
                 <span>{colunas[0]}</span>
@@ -1096,9 +1089,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                         )}
                         {p.id === 'arte-longa' && p.arte && (
                           <button className="botao-texto" onClick={() => abrirArte(artes.find((a) => a.id === p.arte))}>Ver</button>
-                        )}
-                        {p.dispensavel && (
-                          <button className="botao-texto forte" onClick={() => conferir(p.id)}>{p.id === 'ocr' ? 'Conferido' : 'Está certo'}</button>
                         )}
                       </span>
                     </li>
