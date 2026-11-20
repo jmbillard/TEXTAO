@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { armazenamento, consultarProducao, ligarAoCardExistente } from '../dados/armazenamento';
-import { diferencasDeArtes, diferencasDeTexto, semelhanca, type ArteComparada, type Trecho } from '../modelo/diferencas';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro } from '../dados/armazenamento';
+import { diferencasDeArtes, diferencasDeTexto, semelhanca, type ArteComparada } from '../modelo/diferencas';
 import { exportar } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { dataCurtaComDia, plural } from './util';
+import { VisorPdf } from './VisorPdf';
 
 interface Props {
   id: string;
@@ -46,6 +47,11 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
     const igual = semelhanca(texto);
     return { texto, artes, novas, sairam, igual, mesmo: igual === 1 && !novas && !sairam };
   }, [roteiro, producao]);
+
+  // as duas folhas: o PDF que está no card e o do roteiro novo, como vai para o Trello
+  const claquete = roteiro?.meta.claquete ?? '';
+  const pdfAntigo = useCallback(() => pdfDaProducao(claquete), [claquete]);
+  const pdfNovo = useCallback(() => (roteiro ? pdfDoRoteiro(roteiro) : Promise.resolve(null)), [roteiro?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // o card que o roteiro aponta (guardado na chegada) vale mesmo se o Teable não responder agora
   const np = producao ?? roteiro?.meta.naProducao ?? null;
@@ -116,8 +122,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                 }
                 rotulo="no Trello"
                 artes={comparacao?.artes.antigas}
-                texto={comparacao?.texto.filter((t) => t.tipo !== 'entrou').map((t) => ({ ...t, texto: t.antigo ?? t.texto }))}
-                vazio={producao === null ? 'O texto de lá não veio.' : undefined}
+                folha={roteiro && <VisorPdf carregar={pdfAntigo} rotulo="Roteiro no Trello" reserva={producao?.texto ? <div className="comparar-texto">{producao.texto}</div> : undefined} />}
               />
               <Lado
                 titulo={
@@ -129,7 +134,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                 }
                 rotulo="chegou agora"
                 artes={comparacao?.artes.novas ?? exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: 'igual' as const }))}
-                texto={comparacao?.texto.filter((t) => t.tipo !== 'saiu') ?? [{ tipo: 'igual', texto: exportar(roteiro).texto.completo }]}
+                folha={<VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />}
               />
             </div>
 
@@ -154,14 +159,15 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
   );
 }
 
-function Lado({ titulo, rotulo, artes, texto, vazio }: { titulo: React.ReactNode; rotulo: string; artes?: ArteComparada[]; texto?: Trecho[]; vazio?: string }) {
+function Lado({ titulo, rotulo, artes, folha }: { titulo: React.ReactNode; rotulo: string; artes?: ArteComparada[]; folha: React.ReactNode }) {
   return (
     <section className="comparar-lado" aria-label={rotulo}>
       <span className="comparar-rotulo">{rotulo}</span>
       <div className="comparar-titulo">{titulo}</div>
-      {artes && (
-        <ol className="comparar-artes">
-          {artes.map((a, i) => (
+      {/* sempre presente (mesmo vazia): as duas colunas se alinham por linha, e as folhas começam na mesma altura */}
+      {(
+        <ol className={`comparar-artes ${artes?.length ? '' : 'vazia'}`}>
+          {(artes ?? []).map((a, i) => (
             <li key={i} className={a.tipo}>
               {a.texto}
               {a.tipo !== 'igual' && <small>{a.tipo === 'entrou' ? 'nova' : 'saiu'}</small>}
@@ -169,9 +175,7 @@ function Lado({ titulo, rotulo, artes, texto, vazio }: { titulo: React.ReactNode
           ))}
         </ol>
       )}
-      <div className="comparar-texto">
-        {vazio ? <p className="suave">{vazio}</p> : texto ? texto.map((t, i) => (t.tipo === 'igual' ? <span key={i}>{t.texto}</span> : <mark key={i} className={t.tipo}>{t.texto}</mark>)) : <p className="suave">…</p>}
-      </div>
+      {folha}
     </section>
   );
 }

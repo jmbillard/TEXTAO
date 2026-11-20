@@ -404,3 +404,25 @@ describe('versão nova de um roteiro que já está na produção', () => {
     expect(pedidos.filter((p) => p.metodo === 'POST' && p.url.pathname.endsWith('/cards'))).toHaveLength(1);
   });
 });
+
+describe('PDF do card que já está na produção', () => {
+  const linha = (doc: string) => async () => [{ registro: 'r', card_ID: 'cardVelho', claquete: 'FESTA NA PRACA 19/11 SP', key: chaveN8n('Festa na Praça 19/11 SP'), status: null, data_entrada: new Date(), artes_quantidade: 1, artes: 'A', texto: 't', doc }];
+  it('baixa o anexo do link do Teable, com a autenticação do Trello', async () => {
+    const pedidos: { url: string; auth?: string }[] = [];
+    const buscar = async (url: string, init: RequestInit = {}) => {
+      pedidos.push({ url, auth: (init.headers as Record<string, string> | undefined)?.authorization });
+      return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('%PDF-1.4').buffer, json: async () => ({}), text: async () => '' };
+    };
+    const t = criarTrello(ENV, { buscar, consultar: linha('https://trello.com/1/cards/x/attachments/y/download/roteiro.pdf') });
+    const pdf = await t.pdfDaProducao('Festa na Praça 19/11 SP');
+    expect(pdf?.dados.toString()).toBe('%PDF-1.4');
+    expect(pedidos[0].auth).toMatch(/^OAuth oauth_consumer_key="k", oauth_token="t"$/);
+  });
+  it('não busca endereço que não seja do Trello', async () => {
+    const pedidos: string[] = [];
+    const buscar = async (url: string) => (pedidos.push(url), { ok: true, status: 200, json: async () => [], arrayBuffer: async () => new ArrayBuffer(0), text: async () => '' });
+    const t = criarTrello(ENV, { buscar, consultar: linha('https://intranet.exemplo/segredo.pdf') });
+    expect(await t.pdfDaProducao('Festa na Praça 19/11 SP')).toBeNull();
+    expect(pedidos.some((u) => u.includes('intranet'))).toBe(false);
+  });
+});

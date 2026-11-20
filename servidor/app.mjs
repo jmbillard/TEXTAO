@@ -595,6 +595,20 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       });
       return res.end(Buffer.from(o.dados));
     }
+    if (oque === 'pdf') {
+      // o roteiro em PDF, como vai para o card (para comparar com o que já está no Trello)
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req)) ?? {};
+      const o = q.original.get(id);
+      const artes = Array.isArray(corpo.artes) ? corpo.artes.slice(0, 200).map((a) => ({ texto: String(a?.texto ?? a ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40) })) : [];
+      try {
+        const pdf = await trello.pdfDoRoteiro({ meta: JSON.parse(atual.meta), doc: JSON.parse(atual.doc), original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null }, artes);
+        res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': pdf.dados.length, 'cache-control': 'private, no-store' });
+        return res.end(Buffer.from(pdf.dados));
+      } catch (e) {
+        return json(res, 422, { erro: `Não consegui montar o PDF: ${e instanceof Error ? e.message : e}` });
+      }
+    }
     if (!podeEditar) return json(res, 403, { erro: 'Só quem pode editar o roteiro mexe no original e manda ele adiante.' });
     if (oque === 'original') {
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
@@ -734,6 +748,19 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, { ok: true, cor });
     }
     if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
+    if (caminho === '/api/producao/pdf') {
+      // o PDF anexado ao card que já está na produção da arte (baixado do Trello só quando alguém compara)
+      const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
+      try {
+        const pdf = await trello.pdfDaProducao(claquete);
+        if (!pdf) return json(res, 404, { erro: 'O card não tem o roteiro em PDF.' });
+        res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': pdf.dados.length, 'cache-control': 'private, max-age=300' });
+        return res.end(pdf.dados);
+      } catch (e) {
+        console.warn(`[producao] PDF: ${e instanceof Error ? e.message : e}`);
+        return json(res, 422, { erro: 'Não consegui baixar o PDF do card.' });
+      }
+    }
     if (caminho === '/api/producao') {
       // a claquete já está na produção da arte? (para perguntar se o roteiro novo é uma v2)
       const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
@@ -747,7 +774,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
-    const extra = /^\/api\/roteiros\/([^/]+)\/(original|trello)$/.exec(caminho);
+    const extra = /^\/api\/roteiros\/([^/]+)\/(original|trello|pdf)$/.exec(caminho);
     if (extra) return rotaDoTrello(req, res, eu, extra[1], extra[2]);
     const m = /^\/api\/roteiros(?:\/([^/]+))?(?:\/versoes(?:\/(\d+))?)?$/.exec(caminho);
     if (!m) return json(res, 404, { erro: 'Não encontrado.' });

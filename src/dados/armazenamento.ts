@@ -258,6 +258,24 @@ export async function baixarOriginal(id: string): Promise<Blob> {
   return r.blob();
 }
 
+/** O PDF anexado ao card que já está na produção da arte (null se o card não tiver). */
+export async function pdfDaProducao(claquete: string): Promise<ArrayBuffer | null> {
+  const r = await fetch(`/api/producao/pdf?claquete=${encodeURIComponent(claquete)}`, { credentials: 'same-origin', headers: cabecalhos });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('Não consegui baixar o PDF do card.');
+  return r.arrayBuffer();
+}
+
+/** O roteiro em PDF, como vai para o card. */
+export async function pdfDoRoteiro(roteiro: Roteiro): Promise<ArrayBuffer> {
+  const artes = exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '' }));
+  const r = await fetch(`/api/roteiros/${encodeURIComponent(roteiro.id)}/pdf`, {
+    method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify({ artes }),
+  });
+  if (!r.ok) throw new Error('Não consegui montar o PDF do roteiro.');
+  return r.arrayBuffer();
+}
+
 /** Versão nova que substitui outra: herda o card do Trello que a anterior já tinha. */
 export async function herdarEnvio(novo: string, anterior: string) {
   if (armazenamento.tipo !== 'servidor') return;

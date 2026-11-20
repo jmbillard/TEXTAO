@@ -496,7 +496,7 @@ export function criarTrello(env, deps = {}) {
     if (!t.producao || !claquete) return null;
     const chave = chaveN8n(claquete);
     const linhas = await sql(
-      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto" FROM ${t.producao}
+      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc" FROM ${t.producao}
        WHERE "key" = $1 OR "data_entrada" >= now() - interval '60 days' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 3000`,
       [chave],
     );
@@ -513,7 +513,39 @@ export function criarTrello(env, deps = {}) {
       // para comparar com o roteiro novo: as artes ("A | B", ou uma por linha) e o texto como entraram
       listaDeArtes: String(l.artes ?? '').split(/\s*\|\s*|\n+/).map((a) => a.trim()).filter(Boolean),
       texto: String(l.texto ?? ''),
+      doc: String(l.doc ?? ''),
     };
+  }
+
+  // anexos do Trello: só destes endereços (o link vem do Teable; nada de buscar endereço qualquer)
+  const anexoConfiavel = (url) => {
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' && (u.hostname === 'trello.com' || u.hostname.endsWith('.trello.com') || u.hostname === 'trello-attachments.s3.amazonaws.com' || url.startsWith(API));
+    } catch {
+      return false;
+    }
+  };
+
+  /** O PDF que está no card da produção da arte: o do link guardado no Teable, ou o último PDF anexado ao card. */
+  async function pdfDaProducao(claquete) {
+    if (!c.ligado) return null;
+    const p = await naProducao(claquete);
+    if (!p) return null;
+    let url = p.doc && /\.pdf($|\?)/i.test(p.doc) ? p.doc : '';
+    if (!url) {
+      const anexos = (await trello('GET', `/cards/${p.card}/attachments`).catch(() => [])) ?? [];
+      url = [...anexos].reverse().find((a) => /pdf/i.test(a.mimeType ?? '') || /\.pdf$/i.test(a.name ?? ''))?.url ?? '';
+    }
+    if (!url || !anexoConfiavel(url)) return null;
+    const r = await buscar(url, {
+      headers: { authorization: `OAuth oauth_consumer_key="${c.chave}", oauth_token="${c.token}"` },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!r.ok) throw new Error(`Trello respondeu ${r.status} ao baixar o anexo`);
+    const dados = Buffer.from(await r.arrayBuffer());
+    if (dados.length > 30 * 1024 * 1024) throw new Error('PDF grande demais');
+    return { nome: url.split('/').pop() || 'roteiro.pdf', dados };
   }
 
   /* ---------- como anda cada card: lido da produção da arte no Teable (o n8n sincroniza com o Trello) ---------- */
@@ -575,5 +607,5 @@ export function criarTrello(env, deps = {}) {
     }
   }
 
-  return { ligado: c.ligado, config: c, enviar, andamento, naProducao, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, andamento, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }
