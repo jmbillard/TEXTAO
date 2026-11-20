@@ -56,15 +56,15 @@ describe('acervo de artes', () => {
     expect(consultas).toHaveLength(1); // guardado por 1 min
   });
 
-  it('registra só as artes novas, ligadas à atração e ao card; o tipo fica para depois', async () => {
+  it('registra só as artes novas, ligadas à atração e ao card; key (fórmula) e tipo ficam com o Teable', async () => {
     const { consultar, buscar, pedidos } = falsos();
     const a = criarAcervo(ENV, { consultar, buscar });
     expect(await a.registrar({ atracao: 'Encontro', card: 'card9', artes: ['Hoje', 'DOMINGO', 'domingo', 'Sexta'] })).toBe(2);
     expect(pedidos[0].metodo).toBe('POST');
     expect(pedidos[0].url).toBe('http://teable:3000/api/table/tblAcervo/record');
     expect(pedidos[0].corpo!.records.map((r) => r.fields)).toEqual([
-      { arte: 'DOMINGO', key: 'DOMINGO', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
-      { arte: 'Sexta', key: 'SEXTA', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
+      { arte: 'DOMINGO', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
+      { arte: 'Sexta', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
     ]);
     await expect(a.registrar({ atracao: 'Sem Cadastro', card: 'c', artes: ['X'] })).rejects.toThrow('não está nos cadastros');
   });

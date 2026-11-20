@@ -2,7 +2,7 @@
  * Acervo de artes: o que cada atração já tem pronto. Uma linha por arte, ligada à atração e ao card
  * (produção da arte) em que foi pedida. Vale até trocar o pacote gráfico: aí as artes da atração são apagadas.
  *
- * Tabela ARTES_acervo no Teable: arte (texto), key (texto), tipo (seleção; preenchido à mão ou por script,
+ * Tabela ARTES_acervo no Teable: arte (texto), key (fórmula: a arte sem acento, caixa e pontuação, igual a chaveDeArte), tipo (seleção; preenchido à mão ou por script,
  * nunca pelo PROMeiro), atracao (vínculo → atrações), claquete (vínculo → ARTE_producao).
  *
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
@@ -113,7 +113,7 @@ export function criarAcervo(env, deps = {}) {
     await teable('POST', '', {
       fieldKeyType: 'name',
       typecast: true,
-      records: novas.map((x) => ({ fields: { arte: x.arte, key: x.chave, atracao: [{ id: a.id }], ...(p?.id ? { claquete: [{ id: p.id }] } : {}) } })),
+      records: novas.map((x) => ({ fields: { arte: x.arte, atracao: [{ id: a.id }], ...(p?.id ? { claquete: [{ id: p.id }] } : {}) } })),
     });
     esquecer();
     return novas.length;

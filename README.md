@@ -137,10 +137,16 @@ Tabela **ARTES_acervo** no Teable, uma linha por arte:
 | Campo | Tipo | |
 |---|---|---|
 | `arte` | texto | "HOJE" |
-| `key` | texto | a arte sem acento, caixa e pontuação; o PROMeiro grava e compara por ela |
+| `key` | fórmula | a arte sem acento, caixa e pontuação (fórmula abaixo); o PROMeiro compara por ela |
 | `tipo` | seleção | lettering, rodapé, cartão…; preenchido à mão ou por script, nunca pelo PROMeiro |
 | `atracao` | vínculo → atrações | a arte é da atração, de qualquer praça |
 | `claquete` | vínculo → ARTE_producao | o card (a claquete) em que foi pedida |
+
+Fórmula do `key` (a mesma regra do app: sem acento, maiúsculas, o que não é letra ou número vira espaço):
+
+```
+TRIM(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(UPPER({arte}),"[ÁÃÂÄÀáãâäà]","A"),"[ÉÊËẼÈéêëẽè]","E"),"[ÍÏÎĨÌíïîĩì]","I"),"[ÓÔÕÖÒóôõöò]","O"),"[ÜÚÛÙŨüúûùũ]","U"),"[Çç]","C"),"[Ññ]","N"),"[^A-Z0-9]+"," "))
+```
 
 E uma coluna de texto **`artes_existentes`** na ARTE_producao, com as artes de cada envio que já existiam.
 
