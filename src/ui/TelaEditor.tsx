@@ -861,7 +861,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
         ? 'Próximo'
         : estadoTrello?.estado === 'erro'
           ? 'Tentar de novo'
-          : `${meta.v2De ? 'Atualizar card' : 'Mandar'}${proximo.r ? ' e próximo' : meta.v2De ? '' : ' para o Trello'}`;
+          : meta.v2De
+            ? 'Atualizar'
+            : 'Enviar';
   const acaoPrincipal = async () => {
     if (!liberado || estadoTrello?.estado === 'enviando') return;
     if (!vaiMandar) return proximo.r && abrir(proximo.r.id);
@@ -873,14 +875,16 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const acaoRef = useRef(acaoPrincipal);
   acaoRef.current = acaoPrincipal;
   useEffect(() => {
+    // na captura, antes do editor: senão o Ctrl+Enter também vira quebra de linha no texto
     const tecla = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.repeat) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        void acaoRef.current();
+        e.stopPropagation();
+        if (!e.repeat) void acaoRef.current();
       }
     };
-    window.addEventListener('keydown', tecla);
-    return () => window.removeEventListener('keydown', tecla);
+    window.addEventListener('keydown', tecla, true);
+    return () => window.removeEventListener('keydown', tecla, true);
   }, []);
 
   return (
@@ -957,6 +961,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               </div>
             )}
           </div>
+          {proximo.r && <span className="restam" title={proximo.r.meta.claquete ? `O próximo é ${proximo.r.meta.claquete}` : undefined}>mais {plural(proximo.total, 'para revisar', 'para revisar')}</span>}
           {vaiMandar && proximo.r && (
             <button className="botao-texto pular" title={`Pular para ${proximo.r.meta.claquete || 'o próximo'}, sem mandar`} onClick={() => abrir(proximo.r!.id)}>
               Pular <Icone nome="seta" tam={13} traco={2.2} />
@@ -990,7 +995,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               >
                 {podeMandar && !noTrello && <Icone nome="quadro" tam={15} traco={2.2} />}
                 {rotuloPrincipal}
-                {proximo.r && <span className="proximo-n">{proximo.total}</span>}
                 {!podeMandar || noTrello ? <Icone nome="seta" tam={14} traco={2.2} /> : null}
               </button>
               {conferindoTrello && (
@@ -1054,6 +1058,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
           </article>
 
           <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={leitura || !liberado || undefined}>
+            <Claquete dados={meta} mudar={mudarMeta} comAtracao cadastrarAtracao={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined} />
             {perguntaProducao && (
               <section className="cartao trello-lado pergunta-producao" aria-label="Já na produção da arte">
                 <a className="card-existente" href={perguntaProducao.url} target="_blank" rel="noreferrer" title="Já está no Trello">
@@ -1064,8 +1069,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                 <button className="botao primario largo" onClick={() => comparar(inicial.id)}>Comparar e decidir</button>
               </section>
             )}
+            {comServidor && !temTrello() && !leitura && (
+              <section className="cartao trello-lado desligado" aria-label="Trello">
+                <small><Icone nome="quadro" tam={13} /> O envio está desligado neste servidor: faltam TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA nas variáveis do stack.</small>
+              </section>
+            )}
+            <section className="cartao">
             {lista.length > 0 && (
-              <section className="cartao pendencias-editor" aria-label="Para revisar">
+              <div className="pendencias-editor" aria-label="Para revisar">
                 <div className="cab-artes"><b>Para revisar</b><span className="rotulo">{lista.length}</span></div>
                 <ul>
                   {lista.map((p) => (
@@ -1088,15 +1099,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                     </li>
                   ))}
                 </ul>
-              </section>
+                <hr className="sep-artes" />
+              </div>
             )}
-            <Claquete dados={meta} mudar={mudarMeta} comAtracao cadastrarAtracao={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined} />
-            {comServidor && !temTrello() && !leitura && (
-              <section className="cartao trello-lado desligado" aria-label="Trello">
-                <small><Icone nome="quadro" tam={13} /> O envio está desligado neste servidor: faltam TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA nas variáveis do stack.</small>
-              </section>
-            )}
-            <section className="cartao">
               <div className="cab-artes">
                 <b><i>{artes.length}</i> {artes.length === 1 ? 'arte' : 'artes'}</b>
                 {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}

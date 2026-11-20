@@ -1601,3 +1601,9 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .pracas-c button:hover:not(:disabled) { color: #f4f1ea; border-color: rgb(244 241 234 / 55%); }
 .pracas-c button[aria-checked='true'] { background: #f4f1ea; border-color: #f4f1ea; color: #1a1916; }
 @media (max-width: 640px) { .pular { display: none; } }
+/* pendências no alto do cartão de artes, com um separador antes da lista */
+.cartao > .pendencias-editor { margin-bottom: 4px; }
+.sep-artes { border: 0; height: 0; border-top: 1.5px dashed var(--regua-forte); margin: 12px 0 14px; }
+/* quantos ainda faltam: ao lado da ação, não dentro do botão */
+.restam { font-size: 12.5px; color: var(--tinta3); white-space: nowrap; }
+@media (max-width: 900px) { .restam { display: none; } }
