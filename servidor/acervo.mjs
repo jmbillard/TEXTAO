@@ -93,6 +93,16 @@ export function criarAcervo(env, deps = {}) {
   }
   const esquecer = () => (memo = { em: 0, linhas: null });
   const publica = ({ arte, chave, tipo, claquete }) => ({ arte, chave, tipo, claquete });
+  // a mesma arte pode estar em mais de um tipo (HOJE em rodapé e em cartão): uma entrada só, com os tipos juntos
+  const juntar = (lista) => {
+    const m = new Map();
+    for (const x of lista) {
+      const ja = m.get(x.chave);
+      if (!ja) m.set(x.chave, { ...x });
+      else if (x.tipo && !ja.tipo.split(', ').includes(x.tipo)) ja.tipo = ja.tipo ? `${ja.tipo}, ${x.tipo}` : x.tipo;
+    }
+    return [...m.values()];
+  };
 
   // o tipo de cada atração, guardado por 10 min; sem a coluna (ou sem a tabela), toda atração tem acervo próprio
   let memoTipos = { em: 0, tipos: null };
@@ -136,7 +146,7 @@ export function criarAcervo(env, deps = {}) {
   async function doFilme(f) {
     if (!f?.id) return [];
     const saida = new Map();
-    for (const l of await todas()) if (l.filmeId === f.id) saida.set(l.chave, publica(l));
+    for (const l of juntar((await todas()).filter((x) => x.filmeId === f.id).map(publica))) saida.set(l.chave, l);
     if (t.exibicoes) {
       const exibicoes = await consultar(`SELECT "sessao", "data_de_exibicao", "card_ID" FROM ${t.exibicoes} WHERE "filme"::jsonb->>'id' = $1`, [f.id]);
       for (const l of exibicoes.filter((x) => x.card_ID)) {
@@ -162,7 +172,7 @@ export function criarAcervo(env, deps = {}) {
   async function daAtracao(atracao) {
     const n = nomeComparavel(atracao);
     if (!n || (await semAcervo(atracao)) || (await ehSessao(atracao))) return [];
-    return (await todas()).filter((l) => !l.filmeId && nomeComparavel(l.atracao) === n).map(publica);
+    return juntar((await todas()).filter((l) => !l.filmeId && nomeComparavel(l.atracao) === n).map(publica));
   }
 
   /** O que já existe para o roteiro: o acervo da atração ou, numa sessão, o do filme daquele dia. */

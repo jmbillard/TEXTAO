@@ -25,6 +25,7 @@ const D = 'd'.repeat(24);
 function falsos() {
   const linhas = [
     { id: 'recH', arte: 'HOJE', key: 'HOJE', tipo: '["Lettering com alpha"]', atracao: '[{"id":"recEnc","title":"Encontro"}]', claquete: '[{"id":"recP1","title":"ENCONTRO 02/01 REDE"}]', filme: null },
+    { id: 'recH2', arte: 'Hoje', key: 'HOJE', tipo: 'CRT', atracao: [{ id: 'recEnc', title: 'Encontro' }], claquete: [], filme: null },
     { id: 'recA', arte: 'Amanhã!', key: null, tipo: null, atracao: [{ id: 'recEnc', title: 'Encontro' }], claquete: [], filme: null },
     { id: 'recS', arte: 'SÁBADO', key: 'SABADO', tipo: 'Rodapé', atracao: [{ id: 'recShow', title: 'Show da Noite' }], claquete: [], filme: null },
     { id: 'recF', arte: 'Frase de efeito', key: 'FRASE DE EFEITO', tipo: null, atracao: [{ id: 'recTQ', title: 'Tela Quente' }], claquete: [{ id: 'recP2', title: 'TELA QUENTE 02/03' }], filme: RIVAIS },
@@ -80,7 +81,7 @@ describe('acervo de artes', () => {
     const a = criarAcervo(ENV, { consultar });
     expect(a.ligado).toBe(true);
     expect(await a.daAtracao('ENCONTRO')).toEqual([
-      { arte: 'HOJE', chave: 'HOJE', tipo: 'Lettering com alpha', claquete: 'ENCONTRO 02/01 REDE' },
+      { arte: 'HOJE', chave: 'HOJE', tipo: 'Lettering com alpha, CRT', claquete: 'ENCONTRO 02/01 REDE' }, // a mesma arte em dois tipos: uma entrada
       { arte: 'Amanhã!', chave: 'AMANHA', tipo: '', claquete: '' },
     ]);
     expect(consultas.find((c) => c.sql.includes('"acervo"'))!.sql).toMatch(/"claquete", "filme"/);
@@ -104,9 +105,9 @@ describe('acervo de artes', () => {
   it('pacote gráfico novo: apaga todas as artes da atração (as de filme, não)', async () => {
     const { consultar, buscar, pedidos } = falsos();
     const a = criarAcervo(ENV, { consultar, buscar });
-    expect(await a.zerar('Encontro')).toBe(2);
+    expect(await a.zerar('Encontro')).toBe(3);
     expect(pedidos[0].metodo).toBe('DELETE');
-    expect(pedidos[0].url).toBe('http://teable:3000/api/table/tblAcervo/record?recordIds[0]=recH&recordIds[1]=recA');
+    expect(pedidos[0].url).toBe('http://teable:3000/api/table/tblAcervo/record?recordIds[0]=recH&recordIds[1]=recH2&recordIds[2]=recA');
   });
 
   it('o tipo da atração manda: sessão usa o filme, genérica não tem acervo, VT com atração própria tem', async () => {
