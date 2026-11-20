@@ -66,10 +66,10 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
       await armazenamento.salvar({ ...roteiro, meta }, resposta === 'v2' ? 'é v2 de um card que já estava na produção' : resposta === 'outro' ? 'é outro roteiro, não o da produção' : undefined);
       if (resposta === 'mesmo') {
         await ligarAoCardExistente(roteiro.id, np.card);
-        avisar('É o mesmo: ficou ligado ao card que já estava no Trello.');
+        avisar('Ignorado: ficou ligado ao card que já estava no Trello.');
         return voltar();
       }
-      avisar(resposta === 'v2' ? 'Versão nova: ao mandar, o card antigo recebe as artes novas e este roteiro.' : 'Outro roteiro: vai como card novo.');
+      avisar(resposta === 'v2' ? 'Ao mandar, o card que já existe recebe as artes novas e este roteiro.' : 'Vai como um card novo.');
       revisar(roteiro.id);
     } catch {
       avisar('Não consegui guardar a resposta.');
@@ -95,14 +95,14 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
             <h1>É o mesmo roteiro?</h1>
             </div>
             <div className="comparar-decisao" role="group" aria-label="Decisão">
-              <button className={`botao ${comparacao?.mesmo ? 'primario' : ''}`} disabled={decidindo || !np} onClick={() => void decidir('mesmo')} title="Não manda nada: liga ao card que já existe e sai da revisão">
-                É o mesmo
+              <button className="botao" disabled={decidindo || !np} onClick={() => void decidir('outro')} title="É outro roteiro: segue para a revisão e vira um card novo">
+                Novo card
               </button>
-              <button className="botao" disabled={decidindo || !np} onClick={() => void decidir('outro')} title="Segue para a revisão e vira um card novo">
-                É outro
+              <button className={`botao ${comparacao?.mesmo ? 'primario' : ''}`} disabled={decidindo || !np} onClick={() => void decidir('mesmo')} title="É o mesmo roteiro: não manda nada, liga ao card que já existe e sai da revisão">
+                Ignorar
               </button>
-              <button className={`botao ${comparacao?.mesmo ? '' : 'primario'}`} disabled={decidindo || !np} onClick={() => void decidir('v2')} title={comparacao?.novas ? `Segue para a revisão; o card ganha ${plural(comparacao.novas, 'arte nova', 'artes novas')} e este roteiro` : 'Segue para a revisão; o card ganha este roteiro anexado'}>
-                É v2
+              <button className={`botao ${comparacao?.mesmo ? '' : 'primario'}`} disabled={decidindo || !np} onClick={() => void decidir('v2')} title={comparacao?.novas ? `É uma versão nova: segue para a revisão; o card ganha ${plural(comparacao.novas, 'arte nova', 'artes novas')} e este roteiro` : 'É uma versão nova: segue para a revisão; o card ganha este roteiro anexado'}>
+                Atualizar o card
               </button>
             </div>
             </div>
