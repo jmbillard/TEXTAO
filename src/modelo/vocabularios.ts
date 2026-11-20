@@ -38,14 +38,15 @@ export const PROGRAMAS: ProgramaVocab[] = [
 export const LOCUTORES = ['DIRCEU', 'DIRCEU VIRTUAL', 'WALMIR', 'MCK', 'TATI', 'GIL'];
 export const SELOS = ['Verifique a classificação indicativa', 'Sem selo', 'Livre', 'A10', 'A12', 'A14', 'A16', 'A18'];
 /** Praças oferecidas no app. "REDE" nos roteiros e nos nomes de arquivo é a G5. */
-export const PRACAS = ['G5', 'SP', 'RJ'];
+export const PRACAS = ['G5', 'SP', 'RJ', 'INTER'];
 /** Como a praça aparece escrita nos arquivos. */
-export const PRACAS_LIDAS = ['REDE', 'G5', 'SP', 'RJ', 'MG', 'DF', 'PE'];
+export const PRACAS_LIDAS = ['REDE', 'G5', 'SP', 'RJ', 'INTER', 'INTERNACIONAL', 'MG', 'DF', 'PE'];
 /** Só existem três praças: o que não é Rio nem São Paulo é G5. */
-export const normalizarPraca = (p: string) => (/^(SP|RJ)$/i.test(p) ? p.toUpperCase() : 'G5');
+export const normalizarPraca = (p: string) => (/^(SP|RJ)$/i.test(p) ? p.toUpperCase() : /^INTER/i.test(p) ? 'INTER' : 'G5');
 
 /** Claquete do Rio começa por "RIO"; a de São Paulo termina em "SP"; o resto é G5. */
-export const pracaDaClaquete = (claquete: string) => (/^RIO /i.test(claquete.trim()) ? 'RJ' : / SP$/i.test(claquete.trim()) ? 'SP' : 'G5');
+export const pracaDaClaquete = (claquete: string) =>
+  /^RIO /i.test(claquete.trim()) ? 'RJ' : / SP$/i.test(claquete.trim()) ? 'SP' : / INTER(?:NACIONAL)?$/i.test(claquete.trim()) ? 'INTER' : 'G5';
 
 /** O último dd/mm da claquete, no ano corrente (ou no seguinte, se já passou há mais de seis meses). */
 export function dataDaClaquete(claquete: string, hoje = new Date()): string {

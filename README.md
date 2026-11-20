@@ -64,7 +64,7 @@ Todas são opcionais; vazia, aquela parte fica desligada, e o log da partida diz
 | Teable: API | `TEABLE_URL`, `TEABLE_TOKEN`, `TEABLE_ATRACOES`, `TEABLE_CADASTRO`, `TEABLE_REDATORES`, `TEABLE_EDITORES`, `TEABLE_KEY_EDITORES`, `TEABLE_PAUTA`, `TEABLE_ARTE_PRODUCAO` | Atrações, redatores e editores para reconhecer os roteiros, os cadastros e o registro de cada envio. Um token só, que lê e grava |
 | Teable: Postgres | `TEABLE_PG_URL`, `TEABLE_PG_ESQUEMA`, `TEABLE_PG_*` | Consultas só de leitura: pauta da edição, duplicados, editor, atração, prioridade, sessões de filmes e o andamento dos cards na fila (status, designers e entrega da `ARTE_producao`, que o n8n sincroniza com o Trello) |
 | Cadastros | `CADASTRO_ADMINS` | Quem pode remover cadastros |
-| Trello | `TRELLO_KEY`, `TRELLO_TOKEN`, `TRELLO_LISTA*`, `TRELLO_CAMPO*`, `TRELLO_PRACAS`, `TRELLO_PRIORIDADE_ALTA` | Envio do roteiro como card. Sem chave, token e lista, o envio fica desligado |
+| Trello | `TRELLO_KEY`, `TRELLO_TOKEN`, `TRELLO_LISTA` e `TRELLO_LISTA_SP/_RJ/_G5/_INTER` (entradas por praça; RJ e G5 podem repetir), `TRELLO_SAIDA_*`, `TRELLO_CAMPO*`, `TRELLO_PRACAS`, `TRELLO_PRIORIDADE_ALTA` | Envio do roteiro como card. Sem chave, token e ao menos uma entrada, o envio fica desligado |
 | OneDrive | `SFTP_HOST`, `SFTP_USUARIO`, `SFTP_SENHA` | Cópia do arquivo original |
 | Túnel | `COMPOSE_PROFILES=tunel`, `TUNNEL_TOKEN` | Subir um cloudflared junto |
 

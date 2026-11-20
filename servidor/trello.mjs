@@ -75,7 +75,17 @@ export function configDoTrello(env) {
     // colado com espaço, quebra de linha ou aspas no Portainer: vale só o valor
     chave: nomeLimpoPg(env.TRELLO_KEY),
     token: nomeLimpoPg(env.TRELLO_TOKEN),
-    listas: { padrao: env.TRELLO_LISTA || '', SP: env.TRELLO_LISTA_SP || '', VT: env.TRELLO_LISTA_VT || '' },
+    // entrada de cada praça (RJ e G5 podem repetir a mesma lista); TRELLO_LISTA é a reserva de quem não tiver a sua
+    listas: {
+      padrao: env.TRELLO_LISTA || '',
+      SP: env.TRELLO_LISTA_SP || '',
+      RJ: env.TRELLO_LISTA_RJ || '',
+      G5: env.TRELLO_LISTA_G5 || '',
+      INTER: env.TRELLO_LISTA_INTER || '',
+      VT: env.TRELLO_LISTA_VT || '',
+    },
+    // saída de cada praça (para onde o card vai quando a arte fica pronta)
+    saidas: { SP: env.TRELLO_SAIDA_SP || '', RJ: env.TRELLO_SAIDA_RJ || '', G5: env.TRELLO_SAIDA_G5 || '', INTER: env.TRELLO_SAIDA_INTER || '' },
     campos: {
       praca: env.TRELLO_CAMPO_PRACA || '',
       redator: env.TRELLO_CAMPO_REDATOR || '',
@@ -120,7 +130,7 @@ export function configDoTrello(env) {
     },
     endereco: (env.PROMEIRO_URL || '').replace(/\/+$/, ''),
   };
-  c.ligado = !!(c.chave && c.token && c.listas.padrao);
+  c.ligado = !!(c.chave && c.token && (c.listas.padrao || PRACAS_TRELLO.some((p) => c.listas[p])));
   // nomes que entram no SQL: só letras, números e _; o que sobrar inválido é avisado na partida
   c.pgInvalidos = [];
   for (const k of Object.keys(c.pg))
@@ -132,12 +142,15 @@ export function configDoTrello(env) {
 }
 
 /** O que falta configurar, para o log da partida. */
+/** As praças do quadro, cada uma com a sua entrada e a sua saída. */
+export const PRACAS_TRELLO = ['SP', 'RJ', 'G5', 'INTER'];
+
 export function faltasDoTrello(c) {
   if (!c.chave && !c.token) return null;
   const f = [];
   if (!c.chave) f.push('TRELLO_KEY');
   if (!c.token) f.push('TRELLO_TOKEN');
-  if (!c.listas.padrao) f.push('TRELLO_LISTA');
+  if (!c.listas.padrao && !PRACAS_TRELLO.some((p) => c.listas[p])) f.push('TRELLO_LISTA_SP / _RJ / _G5 / _INTER (ao menos uma entrada)');
   return f;
 }
 
@@ -384,10 +397,11 @@ export function criarTrello(env, deps = {}) {
 
     const hoje = agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
     const chave = chaveN8n(claquete);
-    const praca = ['SP', 'RJ', 'G5'].includes(m.praca) ? m.praca : 'G5';
+    const praca = PRACAS_TRELLO.includes(m.praca) ? m.praca : 'G5';
     const vt = /\bVt\b/i.test(claquete) || /\bVt\b/i.test(r.original?.nome ?? '');
-    const lista = (vt && c.listas.VT) || (praca === 'SP' && c.listas.SP) || c.listas.padrao;
-    if (praca === 'SP' && !vt && !c.listas.SP) avisos.push('sem TRELLO_LISTA_SP: o card de SP foi para a lista padrão (TRELLO_LISTA)');
+    const lista = (vt && c.listas.VT) || c.listas[praca] || c.listas.padrao;
+    if (!lista) throw new Error(`Não há lista de entrada para ${praca} no Trello (TRELLO_LISTA_${praca}).`);
+    if (!(vt && c.listas.VT) && !c.listas[praca]) avisos.push(`sem TRELLO_LISTA_${praca}: o card de ${praca} foi para a lista padrão (TRELLO_LISTA)`);
 
     const [redator, editor, atracao, alta] = await Promise.all([
       tentar('achar o redator', () => acharRedator(m.redator)),

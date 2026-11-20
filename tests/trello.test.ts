@@ -233,7 +233,8 @@ describe('envio para o Trello', () => {
 
   it('desligado sem chave, token e lista', () => {
     expect(criarTrello({}).ligado).toBe(false);
-    expect(criarTrello({ ...ENV, TRELLO_LISTA: '' }).ligado).toBe(false);
+    expect(criarTrello({ ...ENV, TRELLO_LISTA: '', TRELLO_LISTA_SP: '' }).ligado).toBe(false);
+    expect(criarTrello({ ...ENV, TRELLO_LISTA: '' }).ligado).toBe(true); // basta a entrada de uma praça
   });
 });
 
@@ -520,5 +521,27 @@ describe('PDF do card sem Stirling: o sublinhado do redator, nem mais nem menos'
     expect(a.texto).toContain('www.exemplo.com');
     expect(a.texto).not.toMatch(/ARTES \(/);
     expect(a.preenchimentos - b.preenchimentos).toBe(2); // os dois trechos sublinhados pelo redator, e só eles
+  });
+});
+
+describe('uma entrada por praça', () => {
+  const env = { ...ENV, TRELLO_LISTA: 'listaPadrao', TRELLO_LISTA_SP: 'entradaSP', TRELLO_LISTA_RJ: 'entradaRJ', TRELLO_LISTA_G5: 'entradaRJ', TRELLO_LISTA_INTER: 'entradaINTER', TRELLO_LISTA_VT: '' };
+  const lista = async (e: Record<string, string>, praca: string, claquete = 'Festa na Praça 19/11') => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(e, { buscar, ...banco(), sftp: async () => {} });
+    const r = await t.enviar({ meta: { ...meta, praca, claquete }, doc: DOC, artes: ['X'], original });
+    const card = pedidos.find((p) => p.metodo === 'POST' && p.url.pathname.endsWith('/cards'))?.corpo as { idList: string };
+    return { lista: card.idList, avisos: r.avisos };
+  };
+  it('SP, RJ, G5 (pode repetir a do RJ) e INTER, cada uma na sua', async () => {
+    expect((await lista(env, 'SP')).lista).toBe('entradaSP');
+    expect((await lista(env, 'RJ')).lista).toBe('entradaRJ');
+    expect((await lista(env, 'G5')).lista).toBe('entradaRJ');
+    expect((await lista(env, 'INTER')).lista).toBe('entradaINTER');
+  });
+  it('praça sem a sua lista vai para a TRELLO_LISTA, com aviso', async () => {
+    const r = await lista({ ...env, TRELLO_LISTA_INTER: '' }, 'INTER');
+    expect(r.lista).toBe('listaPadrao');
+    expect(r.avisos.join(' ')).toContain('sem TRELLO_LISTA_INTER');
   });
 });
