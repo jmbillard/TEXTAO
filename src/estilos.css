@@ -1645,10 +1645,10 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .artes.so-lista li { border-radius: 6px; }
 
 /* acervo: a arte que a atração já tem fica apagada, com de onde veio; "produzir" põe de volta no checklist */
-.artes li.existe .txt b { color: var(--tinta3); font-weight: 500; }
-.artes li.existe .b { background: var(--neutro); color: var(--tinta3); }
-.artes li.refazer .txt b { color: var(--tinta); font-weight: 600; }
-.artes li.refazer .b { background: var(--ultra); color: var(--no-ultra); }
+/* já existe: aviso discreto (o padrão é produzir); decidida "não produzir", fica apagada */
+.marca-existe { flex: none; display: inline-grid; color: var(--tinta3); }
+.artes li.pulada .txt b { color: var(--tinta3); font-weight: 500; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--tinta3) 60%, transparent); }
+.artes li.pulada .b { background: var(--neutro); color: var(--tinta3); }
 .alternar-acervo { flex: none; font-size: 12px; padding: 0 4px; opacity: 0; transition: opacity 0.15s; }
 .artes li:hover .alternar-acervo, .alternar-acervo:focus-visible { opacity: 1; }
 .ficha-novas { display: block; margin-top: 2px; font: 600 15px/1 Caveat, cursive; color: var(--tinta3); text-align: center; }

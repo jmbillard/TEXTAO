@@ -76,10 +76,10 @@ export interface Meta {
   v2De?: { card: string; url: string; registro?: string | null };
   /** Respondido "é outro roteiro": vai como card novo, mesmo com a claquete parecida. */
   outroRoteiro?: boolean;
-  /** Artes do roteiro que a atração já tem prontas (acervo do Teable): conferidas na revisão, fora do checklist. */
+  /** Artes do roteiro que a atração já tem prontas (acervo do Teable): aviso para quem revisa decidir. */
   jaExistem?: ArteDoAcervo[];
-  /** Chaves de artes que existem no acervo, mas que alguém mandou produzir de novo. */
-  produzirDeNovo?: string[];
+  /** Chaves das artes que já existem e que quem revisou decidiu não produzir (saem do checklist). */
+  naoProduzir?: string[];
 }
 
 export const metaVazia = (): Meta => ({

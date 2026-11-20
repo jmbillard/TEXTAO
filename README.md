@@ -133,12 +133,13 @@ Tabela **ARTES_acervo** no Teable, uma linha por arte:
 
 E uma coluna de texto **`artes_existentes`** na ARTE_producao, com as artes de cada envio que já existiam.
 
-- **Na chegada**, as artes do roteiro que estão no acervo ativo da atração ficam marcadas ("Já existem: N") e o
-  roteiro espera a revisão. Na fila: "#13 artes · 10 novas".
-- **Na revisão**, as que já existem ficam apagadas na lista; a claquete e o tipo de onde vieram aparecem ao passar o
-  mouse. Quem revisa confere no servidor e, se não achar, "produzir" põe de volta no checklist.
-- **No envio**, as que já existem vão no PDF (sublinhadas, como no roteiro), mas não no checklist nem em `artes`
-  e `artes_quantidade`; a descrição do card diz "JÁ EXISTEM (não produzir)".
+- **O padrão é produzir tudo.** Na chegada, as artes do roteiro que estão no acervo ativo da atração ganham um aviso
+  ("Já existem: N") e o roteiro espera a revisão.
+- **Na revisão**, a que já existe tem um ícone discreto; a claquete e o tipo de onde veio aparecem ao passar o mouse.
+  Quem revisa confere no servidor e, se achar, "não produzir" tira do checklist (a arte fica riscada). Na fila: "#13
+  artes · 11 a produzir".
+- **No envio**, as que não vão ser produzidas vão no PDF (sublinhadas, como no roteiro), mas não no checklist nem em
+  `artes` e `artes_quantidade`; a descrição do card diz "JÁ EXISTEM (não produzir)".
 - **Quando o card sai** (status FINALIZADO ou entregue), as artes novas dele entram no acervo da atração.
 - **Pacote gráfico novo**: em Cadastros, na atração, "novo pacote" desmarca `ativa` em todas as artes dela (só
   `CADASTRO_ADMINS`).

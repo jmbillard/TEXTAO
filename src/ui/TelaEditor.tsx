@@ -697,9 +697,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     if (chaves(ja) !== chaves(meta.jaExistem)) mudarMeta({ jaExistem: ja.length ? ja : undefined }, true);
   }, [acervo, saida.artes, liberado]); // eslint-disable-line react-hooks/exhaustive-deps
   const doAcervo = useMemo(() => new Map((meta.jaExistem ?? []).map((a) => [a.chave, a])), [meta.jaExistem]);
-  const deNovo = useMemo(() => new Set(meta.produzirDeNovo ?? []), [meta.produzirDeNovo]);
-  const alternarDeNovo = (k: string) =>
-    mudarMeta({ produzirDeNovo: deNovo.has(k) ? [...deNovo].filter((x) => x !== k) : [...deNovo, k] });
+  // o padrão é produzir tudo; quem revisa confere no servidor e decide não produzir a que já existe
+  const naoProduzir = useMemo(() => new Set(meta.naoProduzir ?? []), [meta.naoProduzir]);
+  const alternarProduzir = (k: string) =>
+    mudarMeta({ naoProduzir: naoProduzir.has(k) ? [...naoProduzir].filter((x) => x !== k) : [...naoProduzir, k] });
   // anterior e seguinte na ordem da fila de revisão (este roteiro incluído), para andar por ela
   const vizinhos = useMemo(() => {
     const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id === inicial.id || pedeRevisao(r)));
@@ -1131,22 +1132,23 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                   artes.map((a) => {
                     const k = chaveDeArte(a.texto);
                     const ja = doAcervo.get(k);
-                    const refazer = !!ja && deNovo.has(k);
+                    const pula = !!ja && naoProduzir.has(k);
                     return (
                     <li
                       key={a.id}
-                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja ? (refazer ? 'existe refazer' : 'existe') : ''}`}
-                      title={ja ? `${refazer ? 'Vai ser produzida de novo. Já existia em' : 'Já existe:'} ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo}` : ''}` : undefined}
+                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja ? 'existe' : ''} ${pula ? 'pulada' : ''}`}
+                      title={ja ? `${pula ? 'Não vai ser produzida. ' : ''}Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo}` : ''}` : undefined}
                       onMouseEnter={() => setRealce(a.id)}
                       onMouseLeave={() => setRealce(null)}
                     >
                       <button className="arte-linha" onClick={() => irParaArte(a)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
                         <span className="b">{a.ordem}</span>
                         <span className="txt"><b>{a.texto}</b></span>
+                        {ja && !pula && <span className="marca-existe" aria-label="já existe"><Icone nome="copiar" tam={13} traco={2} /></span>}
                       </button>
                       {ja && !leitura && (
-                        <button className="botao-texto alternar-acervo" title={refazer ? 'Usar a que já existe (sai do checklist)' : 'Não achou no servidor? Entra no checklist para ser feita'} onClick={() => alternarDeNovo(k)}>
-                          {refazer ? 'não produzir' : 'produzir'}
+                        <button className="botao-texto alternar-acervo" title={pula ? 'Volta para o checklist' : 'Achou no servidor? Sai do checklist do Trello'} onClick={() => alternarProduzir(k)}>
+                          {pula ? 'produzir' : 'não produzir'}
                         </button>
                       )}
                       {!leitura && (

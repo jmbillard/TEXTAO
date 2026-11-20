@@ -362,7 +362,7 @@ export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
   if (!r.dataExibicao) p.push({ id: 'sem-data', texto: 'Sem data', dispensavel: false });
   if (r.lidoPorOcr) p.push({ id: 'ocr', texto: 'Lido por OCR', dispensavel: true });
   // claquete que já estava na produção da arte: fica marcada até alguém conferir
-  // artes que a atração já tem: tudo é conferido antes de seguir (e elas não vão para o checklist)
+  // artes que a atração já tem: quem revisa confere e decide se produz (o padrão é produzir tudo)
   const existem = artesQueJaExistem(saida).length;
   if (existem) p.push({ id: 'ja-existem', texto: `Já existem: ${existem}`, dispensavel: true });
   if (r.v2De) p.push({ id: 'v2', texto: 'Versão nova (v2)', dispensavel: true });
@@ -371,12 +371,17 @@ export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
   return p.filter((x) => !(x.dispensavel && conferidos.has(x.id)));
 }
 
-/** As artes do roteiro que estão no acervo da atração (menos as que alguém mandou produzir de novo). */
+/** As artes do roteiro que estão no acervo da atração. */
 export function artesQueJaExistem(saida: Saida): string[] {
   const acervo = new Set((saida.roteiro.jaExistem ?? []).map((a) => a.chave));
   if (!acervo.size) return [];
-  const deNovo = new Set(saida.roteiro.produzirDeNovo ?? []);
-  return [...new Set(saida.artes.map((a) => chaveDeArte(a.texto)))].filter((k) => acervo.has(k) && !deNovo.has(k));
+  return [...new Set(saida.artes.map((a) => chaveDeArte(a.texto)))].filter((k) => acervo.has(k));
+}
+
+/** As que já existem e que quem revisou decidiu não produzir: ficam fora do checklist. */
+export function artesForaDoChecklist(saida: Saida): string[] {
+  const nao = new Set(saida.roteiro.naoProduzir ?? []);
+  return artesQueJaExistem(saida).filter((k) => nao.has(k));
 }
 
 export const pendencias = (saida: Saida): string[] => pendenciasDetalhadas(saida).map((p) => p.texto);
