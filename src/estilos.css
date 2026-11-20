@@ -1556,3 +1556,22 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .anotacao-folha.circulada { padding: 2px 9px 4px; }
 .anotacao-folha svg { position: absolute; inset: -4px -6px; width: calc(100% + 12px); height: calc(100% + 8px); overflow: visible; }
 .anotacao-folha path { fill: none; stroke: var(--ultra); stroke-width: 1.7; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+
+/* a comparação como lightbox: a fila continua lá atrás, borrada e quase sem cor */
+.comparar.lightbox {
+  position: fixed; inset: 0; z-index: 60; overflow-y: auto; overscroll-behavior: contain;
+  background: color-mix(in srgb, var(--mesa) 55%, transparent);
+  animation: abrir-lightbox 0.28s var(--suave) both;
+}
+/* a fila de trás, borrada e quase sem cor (o filtro vai nela mesma: mais confiável que backdrop-filter numa camada que rola) */
+.pagina { transition: filter 0.35s var(--suave); }
+.pagina[inert] { filter: blur(14px) saturate(0.15); pointer-events: none; user-select: none; }
+.comparar.lightbox .comparar-corpo { animation: subir-lightbox 0.36s var(--suave) both; }
+.comparar.lightbox .estatisticas { z-index: 61; }
+@keyframes abrir-lightbox { from { opacity: 0; } }
+@keyframes subir-lightbox { from { opacity: 0; transform: translateY(14px) scale(0.99); } }
+@media (prefers-reduced-motion: reduce) { .comparar.lightbox, .comparar.lightbox .comparar-corpo { animation: none; } }
+/* no lightbox, só as folhas são opacas: o resto deixa a fila borrada aparecer */
+.comparar.lightbox { background: color-mix(in srgb, var(--mesa) 45%, transparent); }
+.comparar.lightbox .comparar-lado,
+.comparar.lightbox .comparar-lado:first-child { background: color-mix(in srgb, var(--papel) 38%, transparent); border-color: color-mix(in srgb, var(--regua) 60%, transparent); box-shadow: none; }

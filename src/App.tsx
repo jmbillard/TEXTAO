@@ -94,8 +94,11 @@ export function App() {
     } catch {
       /* páginas embutidas podem não permitir mudar o endereço */
     }
-    setTela(nova);
-    window.scrollTo(0, 0);
+    // a comparação abre por cima da fila: a fila fica onde estava, sem voltar ao topo
+    setTela((antes) => {
+      if (nova.t !== 'comparar' && !(antes.t === 'comparar' && nova.t === 'biblioteca')) window.scrollTo(0, 0);
+      return nova;
+    });
   }, []);
   useEffect(() => {
     const aoVoltar = () => setTela(telaDoHash());
@@ -272,7 +275,7 @@ export function App() {
 
   return (
     <>
-      {tela.t === 'biblioteca' && <Biblioteca key={sessao} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={sessao} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {

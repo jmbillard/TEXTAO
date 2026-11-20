@@ -4,7 +4,6 @@ import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, type Art
 import { exportar } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
-import { Marca } from './pecas';
 import { dataCurtaComDia } from './util';
 import { VisorPdf } from './VisorPdf';
 
@@ -31,6 +30,19 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
   const [producao, setProducao] = useState<ProducaoCompleta | null | undefined>(undefined);
   const [decidindo, setDecidindo] = useState(false);
   const [escolha, setEscolha] = useState<Resposta | null>(null);
+
+  // por cima da fila: a página de trás não rola, e Esc fecha
+  useEffect(() => {
+    const raiz = document.documentElement;
+    const antes = raiz.style.overflow;
+    raiz.style.overflow = 'hidden';
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && voltar();
+    window.addEventListener('keydown', tecla);
+    return () => {
+      raiz.style.overflow = antes;
+      window.removeEventListener('keydown', tecla);
+    };
+  }, [voltar]);
 
   useEffect(() => {
     let vivo = true;
@@ -90,12 +102,12 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
   };
 
   return (
-    <div className="pagina comparar">
+    <div className="comparar lightbox" role="dialog" aria-modal="true" aria-label="Comparar com o que já está no Trello">
       <header className="cad-topo">
         <button className="voltar-cad" onClick={voltar}>
           <Icone nome="voltar" tam={16} /> Fila
         </button>
-        <Marca />
+        <span />
         <span />
       </header>
       <main className="comparar-corpo">

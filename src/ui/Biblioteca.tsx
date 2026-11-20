@@ -30,6 +30,8 @@ const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
 
 interface Props {
   abrir: (id: string) => void;
+  /** Coberta pela comparação: continua à vista, borrada, mas não responde. */
+  aoFundo?: boolean;
   /** Roteiro cuja claquete já está na produção da arte: compara e decide antes da revisão. */
   comparar: (id: string) => void;
   abrirArquivo: (arquivo: File) => void;
@@ -487,7 +489,7 @@ function CardTrello({ r, abrir, andamento }: { r: Resumo; abrir: () => void; and
   );
 }
 
-export function Biblioteca({ abrir, comparar, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState('');
   // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
@@ -733,7 +735,7 @@ export function Biblioteca({ abrir, comparar, abrirArquivo, criar, avisar, ident
   );
 
   return (
-    <div className="pagina">
+    <div className="pagina" inert={aoFundo || undefined} aria-hidden={aoFundo || undefined}>
       <main className="biblioteca fila" data-ancora="pagina">
         <header className="bib-topo">
           <h1 className="bib-marca"><Marca /></h1>
