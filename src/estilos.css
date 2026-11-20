@@ -1537,3 +1537,7 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 
 .estatisticas .parece { font: 600 17px/1 Caveat, cursive; color: var(--ok); }
 .comparar-cabeca h1 { margin: 0; }
+
+.comparar-decisao { align-items: center; gap: 12px; }
+.comparar-decisao .segmento button { font-size: 13px; gap: 6px; padding: 0 12px; }
+.comparar-decisao > .botao { height: 36px; padding: 0 18px; }

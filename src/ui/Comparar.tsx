@@ -5,7 +5,7 @@ import { exportar } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
 import { Marca } from './pecas';
-import { dataCurtaComDia, plural } from './util';
+import { dataCurtaComDia } from './util';
 import { VisorPdf } from './VisorPdf';
 
 interface Props {
@@ -16,6 +16,13 @@ interface Props {
   avisar: (texto: string) => void;
 }
 
+type Resposta = 'v2' | 'mesmo' | 'outro';
+const OPCOES: { id: Resposta; nome: string; dica: string }[] = [
+  { id: 'v2', nome: 'Atualizar o card', dica: 'Ao mandar, o card que já existe ganha as artes novas e este roteiro' },
+  { id: 'outro', nome: 'Novo card', dica: 'Ao mandar, vira um card novo' },
+  { id: 'mesmo', nome: 'Ignorar', dica: 'Não manda nada: liga ao card que já existe e volta para a fila' },
+];
+
 const diaDe = (iso: string | null) => (iso ? dataCurtaComDia(new Date(iso).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })) : '');
 
 /** O roteiro que chegou ao lado do que já está na produção da arte, com as diferenças marcadas. A decisão vem antes da revisão. */
@@ -23,6 +30,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
   const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
   const [producao, setProducao] = useState<ProducaoCompleta | null | undefined>(undefined);
   const [decidindo, setDecidindo] = useState(false);
+  const [escolha, setEscolha] = useState<Resposta | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -56,7 +64,10 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
   // o card que o roteiro aponta (guardado na chegada) vale mesmo se o Teable não responder agora
   const np = producao ?? roteiro?.meta.naProducao ?? null;
 
-  const decidir = async (resposta: 'v2' | 'mesmo' | 'outro') => {
+  // sem escolha da pessoa: atualizar o card, ou ignorar quando os dois são iguais
+  const opcao: Resposta = escolha ?? (comparacao?.mesmo ? 'mesmo' : 'v2');
+
+  const decidir = async (resposta: Resposta) => {
     if (!roteiro || !np || decidindo) return;
     setDecidindo(true);
     const meta = { ...roteiro.meta, naProducao: undefined };
@@ -94,15 +105,17 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
             <div>
             <h1>É o mesmo roteiro?</h1>
             </div>
-            <div className="comparar-decisao" role="group" aria-label="Decisão">
-              <button className="botao" disabled={decidindo || !np} onClick={() => void decidir('outro')} title="É outro roteiro: segue para a revisão e vira um card novo">
-                Novo card
-              </button>
-              <button className={`botao ${comparacao?.mesmo ? 'primario' : ''}`} disabled={decidindo || !np} onClick={() => void decidir('mesmo')} title="É o mesmo roteiro: não manda nada, liga ao card que já existe e sai da revisão">
-                Ignorar
-              </button>
-              <button className={`botao ${comparacao?.mesmo ? '' : 'primario'}`} disabled={decidindo || !np} onClick={() => void decidir('v2')} title={comparacao?.novas ? `É uma versão nova: segue para a revisão; o card ganha ${plural(comparacao.novas, 'arte nova', 'artes novas')} e este roteiro` : 'É uma versão nova: segue para a revisão; o card ganha este roteiro anexado'}>
-                Atualizar o card
+            <div className="comparar-decisao">
+              {/* o seletor muda o que o botão faz: a revisão segue como se a claquete não fosse repetida */}
+              <div className="segmento" role="radiogroup" aria-label="O que fazer com o card">
+                {OPCOES.map((o) => (
+                  <button key={o.id} role="radio" aria-checked={opcao === o.id} title={o.dica} onClick={() => setEscolha(o.id)}>
+                    {o.nome}
+                  </button>
+                ))}
+              </div>
+              <button className="botao primario" disabled={decidindo || !np} onClick={() => void decidir(opcao)}>
+                {opcao === 'mesmo' ? 'Voltar para a fila' : 'Revisar'}
               </button>
             </div>
             </div>
@@ -171,7 +184,6 @@ function Lado({ titulo, rotulo, artes, folha }: { titulo: React.ReactNode; rotul
         <ol className={`comparar-artes ${mudou.length ? '' : 'vazia'}`}>
           {mudou.map((a) => (
             <li key={a.n} data-n={a.n} className={a.tipo} title={a.tipo === 'entrou' ? 'Arte nova' : a.tipo === 'saiu' ? 'Saiu no roteiro novo' : undefined}>
-              {a.tipo === 'entrou' && <i className="asterisco" aria-hidden="true">*</i>}
               {a.tipo === 'saiu' ? (
                 <span className="riscado-mao">
                   {a.texto}
