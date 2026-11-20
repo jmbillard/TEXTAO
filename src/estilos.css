@@ -1629,7 +1629,6 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 /* o fim da chamada, escrito à mão */
 .pagina.editor .fim-linha span { font: 600 23px/1 Caveat, cursive; font-style: normal; color: var(--tinta3); transform: rotate(-3deg); padding: 0 4px; }
 /* a faixa de navegação fica lisa; a textura é só do papel do texto */
-.pagina.editor .nav-folha { background: var(--papel); border-radius: 14px 14px 0 0; }
 /* rodapé das estatísticas opaco, como na comparação */
 .estatisticas { background: var(--mesa); backdrop-filter: none; -webkit-backdrop-filter: none; }
 /* a folha assenta na mesa: sombra discreta */
@@ -1637,6 +1636,10 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .pagina.editor .folha { box-shadow: 0 1px 2px rgb(0 0 0 / 30%); } }
 :root[data-theme='dark'] .pagina.editor .folha { box-shadow: 0 1px 2px rgb(0 0 0 / 30%); }
 /* a folha termina como papel: cantos de baixo quase retos */
-.pagina.editor .folha { border-radius: 14px 14px 3px 3px; }
+.pagina.editor .folha { border-radius: 3px; }
 /* a claquete escrita sempre do mesmo jeito: a fonte da claquete */
 .topo .trilha strong { font: 600 14.5px/1.2 var(--mono); letter-spacing: 0.01em; }
+
+/* lista de artes sem a linha entre os itens: o espaço já separa (o hover marca a linha) */
+.artes li + li { box-shadow: none; }
+.artes.so-lista li { border-radius: 6px; }
