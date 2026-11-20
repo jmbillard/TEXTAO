@@ -66,6 +66,17 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
     if (c.token.length < 64) console.log(`[trello] TRELLO_TOKEN tem ${c.token.length} caracteres: o token do Trello tem 64 ou mais. Confira se foi o token, e não a key ou o Secret.`);
   }
 }
+// como sai o PDF do card, e se o acervo de artes está ligado
+{
+  const e = process.env;
+  console.log(
+    e.STIRLING_URL
+      ? `[pdf] Word e RTF convertidos pelo Stirling em ${e.STIRLING_URL}${e.STIRLING_CHAVE ? ' (com chave)' : ' (sem STIRLING_CHAVE: se o Stirling pedir chave, a conversão falha e vai o PDF do texto do original)'}`
+      : '[pdf] sem STIRLING_URL: o PDF do card sai do texto do original, com o sublinhado do redator',
+  );
+  if (e.TEABLE_PG_ACERVO || e.TEABLE_ACERVO)
+    console.log(`[acervo] ${e.TEABLE_PG_ACERVO && e.TEABLE_ACERVO ? 'ligado' : `falta ${e.TEABLE_PG_ACERVO ? 'TEABLE_ACERVO (para gravar)' : 'TEABLE_PG_ACERVO (para ler)'}`}`);
+}
 void criarPauta(process.env, criarVocabulario(process.env))
   .testar()
   .then((m) => m && console.log(`[pauta] ${m}`));

@@ -46,12 +46,14 @@ services:
       - TEABLE_KEY_EDITORES=${TEABLE_KEY_EDITORES:-}
       - TEABLE_PAUTA=${TEABLE_PAUTA:-}
       - TEABLE_ARTE_PRODUCAO=${TEABLE_ARTE_PRODUCAO:-}
+      - TEABLE_ACERVO=${TEABLE_ACERVO:-}
 
       # ---- Teable: Postgres (só leitura; nomes internos das tabelas) ----
       - TEABLE_PG_URL=${TEABLE_PG_URL:-}
       - TEABLE_PG_ESQUEMA=${TEABLE_PG_ESQUEMA:-}
       - TEABLE_PG_PAUTA=${TEABLE_PG_PAUTA:-}
       - TEABLE_PG_ARTE=${TEABLE_PG_ARTE:-}
+      - TEABLE_PG_ACERVO=${TEABLE_PG_ACERVO:-}
       - TEABLE_PG_REDATORES=${TEABLE_PG_REDATORES:-}
       - TEABLE_PG_EDITORES=${TEABLE_PG_EDITORES:-}
       - TEABLE_PG_ATRACOES=${TEABLE_PG_ATRACOES:-}
@@ -85,6 +87,10 @@ services:
       - SFTP_HOST=${SFTP_HOST:-}
       - SFTP_USUARIO=${SFTP_USUARIO:-}
       - SFTP_SENHA=${SFTP_SENHA:-}
+
+      # ---- PDF do card: conversão fiel do original (Stirling-PDF; opcional) ----
+      - STIRLING_URL=${STIRLING_URL:-}
+      - STIRLING_CHAVE=${STIRLING_CHAVE:-}
 
   # Só cache: nada aqui precisa sobreviver a um reinício (o banco dos roteiros é o SQLite, no volume acima).
   redis:

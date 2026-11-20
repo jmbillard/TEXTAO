@@ -462,15 +462,15 @@ describe('artes que já existem no acervo', () => {
 
 describe('PDF do card: sempre o roteiro como chegou', () => {
   it('Word com Stirling: o original é convertido lá, sem nada da revisão', async () => {
-    const pedidos: { url: string; nome?: string }[] = [];
+    const pedidos: { url: string; nome?: string; chave?: string }[] = [];
     const buscar = async (url: string, init: RequestInit = {}) => {
       const arq = init.body instanceof FormData ? (init.body.get('fileInput') as File | null) : null;
-      pedidos.push({ url, nome: arq?.name });
+      pedidos.push({ url, nome: arq?.name, chave: (init.headers as Record<string, string> | undefined)?.['X-API-KEY'] });
       return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('%PDF-stirling').buffer, json: async () => ({}), text: async () => '' };
     };
-    const t = criarTrello({ ...ENV, STIRLING_URL: 'http://stirling:8080/' }, { buscar });
+    const t = criarTrello({ ...ENV, STIRLING_URL: 'http://stirling:8080/', STIRLING_CHAVE: 'chave-do-stirling' }, { buscar });
     const pdf = await t.pdfDoRoteiro({ meta, doc: DOC, docOriginal: DOC, original }, [{ texto: 'X' }]);
-    expect(pedidos[0]).toEqual({ url: 'http://stirling:8080/api/v1/convert/file/pdf', nome: 'Festa_Na_Praca_19_11_SP.docx' });
+    expect(pedidos[0]).toEqual({ url: 'http://stirling:8080/api/v1/convert/file/pdf', nome: 'Festa_Na_Praca_19_11_SP.docx', chave: 'chave-do-stirling' });
     expect(pdf.nome).toBe('Festa_Na_Praca_19_11_SP.pdf');
     expect(pdf.dados.toString()).toBe('%PDF-stirling');
   });
