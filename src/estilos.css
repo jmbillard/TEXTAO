@@ -1545,3 +1545,10 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .comparar-gente span > span { color: var(--tinta); }
 .comparar-gente .trocado { font-weight: 600; background: linear-gradient(transparent 60%, color-mix(in srgb, var(--ultra) 22%, transparent) 60%); }
 .comparar-gente .riscado-mao { color: var(--tinta2); }
+
+/* o bilhete à mão no canto da folha */
+.visor-pdf { position: relative; }
+.anotacao-folha { position: absolute; top: 14px; z-index: 1; font: 600 22px/1 Caveat, cursive; color: var(--ultra); pointer-events: none; }
+.anotacao-folha.esquerda { left: 18px; transform: rotate(-4deg); }
+.anotacao-folha.direita { right: 18px; transform: rotate(3deg); }
+.comparar-lado { padding-top: 22px; }

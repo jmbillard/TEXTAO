@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 /** Mostra um PDF página por página, na largura da coluna, nítido em tela de alta densidade. */
 /** `reserva`: o que mostrar quando não há PDF (ou ele não abre). */
-export function VisorPdf({ carregar, rotulo, reserva }: { carregar: () => Promise<ArrayBuffer | null>; rotulo: string; reserva?: React.ReactNode }) {
+/** `anotacao`: um bilhete à mão no canto da primeira folha (`lado`: em que canto). */
+export function VisorPdf({ carregar, rotulo, reserva, anotacao, lado = 'esquerda' }: { carregar: () => Promise<ArrayBuffer | null>; rotulo: string; reserva?: React.ReactNode; anotacao?: string; lado?: 'esquerda' | 'direita' }) {
   const caixa = useRef<HTMLDivElement>(null);
   const [estado, setEstado] = useState<'lendo' | 'pronto' | 'sem' | 'erro'>('lendo');
   useEffect(() => {
@@ -44,6 +45,7 @@ export function VisorPdf({ carregar, rotulo, reserva }: { carregar: () => Promis
     <div className={`visor-pdf ${estado}`}>
       {estado === 'lendo' && <p className="suave visor-aviso">Abrindo o PDF…</p>}
       {(estado === 'sem' || estado === 'erro') && (reserva ?? <p className="suave visor-aviso">{estado === 'sem' ? 'Sem o roteiro em PDF.' : 'Não consegui abrir o PDF.'}</p>)}
+      {anotacao && estado === 'pronto' && <span className={`anotacao-folha ${lado}`}>{anotacao}</span>}
       <div ref={caixa} className="visor-paginas" />
     </div>
   );

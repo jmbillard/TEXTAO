@@ -138,7 +138,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                 rotulo="no Trello"
                 gente={producao && <Gente redator={producao.redator} editor={producao.editor} riscar={{ redator: !!comparacao?.outroRedator, editor: !!comparacao?.outroEditor }} />}
                 artes={comparacao?.artes.antigas}
-                folha={roteiro && <VisorPdf carregar={pdfAntigo} rotulo="Roteiro no Trello" reserva={producao?.texto ? <div className="comparar-texto">{producao.texto}</div> : undefined} />}
+                folha={roteiro && <VisorPdf carregar={pdfAntigo} rotulo="Roteiro no Trello" anotacao="no Trello" reserva={producao?.texto ? <div className="comparar-texto">{producao.texto}</div> : undefined} />}
               />
               <Lado
                 titulo={
@@ -151,7 +151,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                 rotulo="chegou agora"
                 gente={<Gente redator={roteiro.meta.redator} editor={roteiro.meta.editor} destacar={{ redator: !!comparacao?.outroRedator, editor: !!comparacao?.outroEditor }} />}
                 artes={comparacao?.artes.novas ?? exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: 'igual' as const }))}
-                folha={<VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />}
+                folha={<VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />}
               />
             </div>
 
@@ -204,7 +204,6 @@ function Lado({ titulo, gente, rotulo, artes, folha }: { titulo: React.ReactNode
   const mudou = (artes ?? []).map((a, i) => ({ ...a, n: i + 1 })).filter((a) => a.tipo !== 'igual');
   return (
     <section className="comparar-lado" aria-label={rotulo}>
-      <span className="comparar-rotulo">{rotulo}</span>
       <div className="comparar-titulo">
         {titulo}
         {gente}
