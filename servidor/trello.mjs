@@ -489,7 +489,8 @@ export function criarTrello(env, deps = {}) {
   }
 
   /**
-   * A claquete já está na produção da arte? Procura pela key (como o n8n grava), e pela claquete nos últimos 60 dias.
+   * A claquete já está na produção da arte? Procura pela key (como o n8n grava) e, sem key igual, pela claquete.
+   * Só nos últimos 3 meses: a key não tem o ano, e a claquete do ano que vem bateria com a deste ano sem ser a mesma.
    * @returns { card, url, registro, claquete, entrada, status: string[], artes: number, listaDeArtes: string[], texto } | null
    */
   async function naProducao(claquete) {
@@ -497,8 +498,7 @@ export function criarTrello(env, deps = {}) {
     const chave = chaveN8n(claquete);
     const linhas = await sql(
       `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc", "redator", "editor" FROM ${t.producao}
-       WHERE "key" = $1 OR "data_entrada" >= now() - interval '60 days' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 3000`,
-      [chave],
+       WHERE "data_entrada" >= now() - interval '3 months' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 5000`,
     );
     const l = linhas.find((x) => x.key === chave) ?? linhas.find((x) => mesmaClaquete(x.claquete, claquete));
     if (!l?.card_ID) return null;

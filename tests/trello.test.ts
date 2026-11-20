@@ -372,6 +372,14 @@ describe('versão nova de um roteiro que já está na produção', () => {
     expect(await t.naProducao('Nada a ver 01/01')).toBeNull();
   });
 
+  it('só olha os últimos 3 meses (a key não tem o ano)', async () => {
+    const consultas: string[] = [];
+    const t = criarTrello(ENV, { consultar: async (sql: string) => (consultas.push(sql), []) });
+    await t.naProducao('Festa na Praça 19/11 SP');
+    expect(consultas[0]).toMatch(/"data_entrada" >= now\(\) - interval '3 months'/);
+    expect(consultas[0]).not.toMatch(/"key" = \$1 OR/);
+  });
+
   it('v2: não cria card; põe só as artes novas no checklist, anexa o roteiro, comenta e atualiza o Teable', async () => {
     const { buscar, pedidos } = falsos();
     const buscarComCard = async (endereco: string, init: RequestInit = {}) => {

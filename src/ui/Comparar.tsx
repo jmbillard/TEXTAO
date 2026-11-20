@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro } from '../dados/armazenamento';
 import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, type ArteComparada } from '../modelo/diferencas';
-import { exportar } from '../modelo/exportar';
+import { exportar, pendencias } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
 import { dataCurtaComDia } from './util';
@@ -86,6 +86,8 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
     const meta = { ...roteiro.meta, naProducao: undefined };
     if (resposta === 'v2') meta.v2De = { card: np.card, url: np.url, registro: np.registro };
     if (resposta === 'outro') meta.outroRoteiro = true;
+    // v2 e card novo ficam marcados como pendência, como as outras
+    meta.revisar = pendencias(exportar({ ...roteiro, meta }));
     try {
       await armazenamento.salvar({ ...roteiro, meta }, resposta === 'v2' ? 'é v2 de um card que já estava na produção' : resposta === 'outro' ? 'é outro roteiro, não o da produção' : undefined);
       if (resposta === 'mesmo') {

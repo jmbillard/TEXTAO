@@ -333,7 +333,7 @@ const arteLonga = (texto: string) => {
 export const TEXTO_SEM_EDITOR = 'Sem editor: a claquete não está na pauta';
 export const travamTrello = (revisar: string[] | undefined) => (revisar ?? []).filter((t) => t !== TEXTO_SEM_EDITOR);
 
-export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-editor' | 'sem-data' | 'ocr';
+export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-editor' | 'sem-data' | 'ocr' | 'v2' | 'repetida';
 export interface Pendencia {
   id: IdPendencia;
   texto: string;
@@ -356,6 +356,9 @@ export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
   if (!r.editor) p.push({ id: 'sem-editor', texto: TEXTO_SEM_EDITOR, dispensavel: false });
   if (!r.dataExibicao) p.push({ id: 'sem-data', texto: 'Sem data de exibição', dispensavel: false });
   if (r.lidoPorOcr) p.push({ id: 'ocr', texto: 'Lido por OCR: confira texto e artes', dispensavel: true });
+  // claquete que já estava na produção da arte: fica marcada até alguém conferir
+  if (r.v2De) p.push({ id: 'v2', texto: 'Versão nova: atualiza o card que já está no Trello', dispensavel: true });
+  else if (r.outroRoteiro) p.push({ id: 'repetida', texto: 'Claquete repetida: vai como card novo', dispensavel: true });
   const conferidos = new Set(r.conferidos ?? []);
   return p.filter((x) => !(x.dispensavel && conferidos.has(x.id)));
 }

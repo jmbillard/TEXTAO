@@ -137,7 +137,10 @@ export function App() {
       await atualizarVocabulario();
       // claquete que já está na fila: o arquivo novo é uma versão nova dela, e a ficha pergunta se substitui
       const naFila = new Map<string, string>();
+      // só os dos últimos 3 meses: a claquete não tem o ano, e a do ano que vem bateria com a deste ano
+      const limite = new Date(Date.now() - 92 * 86_400_000).toISOString();
       for (const r of await armazenamento.listar().catch(() => [])) {
+        if (r.atualizadoEm < limite) continue;
         const k = chaveDaClaquete(r.meta.claquete ?? '');
         if (k) naFila.set(k, r.id);
       }
