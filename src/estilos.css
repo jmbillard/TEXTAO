@@ -1498,17 +1498,17 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .comparar-rotulo { position: absolute; top: -13px; left: 16px; padding: 0 6px; background: var(--mesa); font: 600 20px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-2deg); }
 .comparar-titulo { margin-bottom: 14px; }
 .comparar-titulo .card-existente.novo svg { color: var(--ultra); }
-.comparar-artes { list-style: none; counter-reset: arte; margin: 0 0 16px; padding: 0 0 14px; border-bottom: 1px dashed var(--regua); display: flex; flex-direction: column; gap: 4px; }
-.comparar-artes li { counter-increment: arte; display: flex; align-items: baseline; gap: 12px; padding: 3px 8px; border-radius: 7px; font: 600 13px/1.4 var(--sans); color: var(--tinta); }
-.comparar-artes li::before { content: counter(arte); flex: none; width: 18px; font: 600 11px var(--mono); color: var(--tinta3); }
+.comparar-artes { list-style: none; margin: 0 0 16px; padding: 0 0 14px; border-bottom: 1px dashed var(--regua); display: flex; flex-direction: column; gap: 4px; }
+.comparar-artes li { display: flex; align-items: baseline; gap: 12px; padding: 3px 8px; border-radius: 7px; font: 600 13px/1.4 var(--sans); color: var(--tinta); }
+.comparar-artes li::before { content: attr(data-n); flex: none; width: 18px; font: 600 11px var(--mono); color: var(--tinta3); }
 .comparar-artes li { position: relative; }
 .comparar-artes li.saiu { color: var(--tinta3); }
 /* a arte nova ganha um asterisco à mão, no canto, antes do texto */
-.comparar-artes li .asterisco { position: absolute; left: 23px; top: 11px; transform: rotate(-8deg); font: 700 23px/0 Caveat, cursive; font-style: normal; color: var(--ok); pointer-events: none; }
+.comparar-artes li .asterisco { position: absolute; left: 23px; top: 11px; transform: rotate(-8deg); font: 700 23px/0 Caveat, cursive; font-style: normal; color: var(--ultra); pointer-events: none; }
 /* a que saiu é riscada à mão */
 .riscado-mao { position: relative; display: inline-block; }
 .riscado-mao svg { position: absolute; left: -3px; right: -3px; top: 50%; width: calc(100% + 6px); height: 0.55em; transform: translateY(-45%); overflow: visible; }
-.riscado-mao path { fill: none; stroke: var(--perigo); stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: 0.85; }
+.riscado-mao path { fill: none; stroke: var(--ultra); stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: 0.85; }
 .comparar-texto { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.75; color: var(--tinta); }
 .comparar-texto mark { color: inherit; border-radius: 3px; padding: 1px 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .comparar-texto mark.saiu { background: color-mix(in srgb, var(--perigo) 16%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--perigo) 70%, transparent); }

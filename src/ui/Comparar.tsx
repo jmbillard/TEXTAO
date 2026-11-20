@@ -160,15 +160,17 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
 }
 
 function Lado({ titulo, rotulo, artes, folha }: { titulo: React.ReactNode; rotulo: string; artes?: ArteComparada[]; folha: React.ReactNode }) {
+  const mudou = (artes ?? []).map((a, i) => ({ ...a, n: i + 1 })).filter((a) => a.tipo !== 'igual');
   return (
     <section className="comparar-lado" aria-label={rotulo}>
       <span className="comparar-rotulo">{rotulo}</span>
       <div className="comparar-titulo">{titulo}</div>
-      {/* sempre presente (mesmo vazia): as duas colunas se alinham por linha, e as folhas começam na mesma altura */}
+      {/* só o que mudou, com o número que a arte tem no roteiro; a lista existe mesmo vazia, para as colunas
+          se alinharem por linha e as folhas começarem na mesma altura */}
       {(
-        <ol className={`comparar-artes ${artes?.length ? '' : 'vazia'}`}>
-          {(artes ?? []).map((a, i) => (
-            <li key={i} className={a.tipo} title={a.tipo === 'entrou' ? 'Arte nova' : a.tipo === 'saiu' ? 'Saiu no roteiro novo' : undefined}>
+        <ol className={`comparar-artes ${mudou.length ? '' : 'vazia'}`}>
+          {mudou.map((a) => (
+            <li key={a.n} data-n={a.n} className={a.tipo} title={a.tipo === 'entrou' ? 'Arte nova' : a.tipo === 'saiu' ? 'Saiu no roteiro novo' : undefined}>
               {a.tipo === 'entrou' && <i className="asterisco" aria-hidden="true">*</i>}
               {a.tipo === 'saiu' ? (
                 <span className="riscado-mao">
