@@ -90,6 +90,8 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
         {roteiro === null && <p className="cad-falha">Esse roteiro não está mais na fila.</p>}
         {roteiro && (
           <>
+            <div className="comparar-cabeca">
+            <div>
             <h1>É o mesmo roteiro?</h1>
             <p className="comparar-resumo">
               {comparacao ? (
@@ -106,6 +108,19 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                 'Não consegui ler o que está na produção da arte agora. Dá para decidir pelo card.'
               )}
             </p>
+            </div>
+            <div className="comparar-decisao" role="group" aria-label="Decisão">
+              <button className={`botao ${comparacao?.mesmo ? 'primario' : ''}`} disabled={decidindo || !np} onClick={() => void decidir('mesmo')} title="Não manda nada: liga ao card que já existe e sai da revisão">
+                É o mesmo
+              </button>
+              <button className="botao" disabled={decidindo || !np} onClick={() => void decidir('outro')} title="Segue para a revisão e vira um card novo">
+                É outro
+              </button>
+              <button className={`botao ${comparacao?.mesmo ? '' : 'primario'}`} disabled={decidindo || !np} onClick={() => void decidir('v2')} title={comparacao?.novas ? `Segue para a revisão; o card ganha ${plural(comparacao.novas, 'arte nova', 'artes novas')} e este roteiro` : 'Segue para a revisão; o card ganha este roteiro anexado'}>
+                É v2
+              </button>
+            </div>
+            </div>
 
             <div className="comparar-grade">
               <Lado
@@ -138,20 +153,6 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
               />
             </div>
 
-            <div className="comparar-decisao" role="group" aria-label="Decisão">
-              <button className={`decisao ${comparacao?.mesmo ? 'primaria' : ''}`} disabled={decidindo || !np} onClick={() => void decidir('mesmo')}>
-                <strong>É o mesmo</strong>
-                <small>não manda nada e sai da revisão</small>
-              </button>
-              <button className="decisao" disabled={decidindo || !np} onClick={() => void decidir('outro')}>
-                <strong>É outro</strong>
-                <small>vira um card novo</small>
-              </button>
-              <button className={`decisao ${comparacao?.mesmo ? '' : 'primaria'}`} disabled={decidindo || !np} onClick={() => void decidir('v2')}>
-                <strong>É v2</strong>
-                <small>{comparacao?.novas ? `o card ganha ${plural(comparacao.novas, 'arte nova', 'artes novas')} e este roteiro` : 'o card ganha este roteiro anexado'}</small>
-              </button>
-            </div>
           </>
         )}
       </main>
@@ -168,9 +169,16 @@ function Lado({ titulo, rotulo, artes, folha }: { titulo: React.ReactNode; rotul
       {(
         <ol className={`comparar-artes ${artes?.length ? '' : 'vazia'}`}>
           {(artes ?? []).map((a, i) => (
-            <li key={i} className={a.tipo}>
-              {a.texto}
-              {a.tipo !== 'igual' && <small>{a.tipo === 'entrou' ? 'nova' : 'saiu'}</small>}
+            <li key={i} className={a.tipo} title={a.tipo === 'entrou' ? 'Arte nova' : a.tipo === 'saiu' ? 'Saiu no roteiro novo' : undefined}>
+              {a.tipo === 'entrou' && <i className="asterisco" aria-hidden="true">*</i>}
+              {a.tipo === 'saiu' ? (
+                <span className="riscado-mao">
+                  {a.texto}
+                  <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M1 6.5 C 18 4, 40 7.5, 62 5 S 88 3.5, 99 5.5" /></svg>
+                </span>
+              ) : (
+                a.texto
+              )}
             </li>
           ))}
         </ol>
