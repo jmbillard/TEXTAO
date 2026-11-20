@@ -12,6 +12,8 @@ const ENV = {
   TEABLE_PG_ACERVO: 'acervo',
   TEABLE_PG_ATRACOES: 'atracoes',
   TEABLE_PG_ARTE: 'producao',
+  TEABLE_PG_FILMES_ESQUEMA: 'bseFilmes',
+  TEABLE_PG_SESSOES: 'sessoes',
 };
 
 /** O Postgres do Teable (acervo, atrações, produção) e a API, de mentira. */
@@ -27,6 +29,7 @@ function falsos() {
     if (sql.includes('"acervo"')) return linhas;
     if (sql.includes('"atracoes"')) return params[0] === 'Encontro' ? [{ id: 'recEnc' }] : [];
     if (sql.includes('"producao"')) return [{ id: 'recCard9' }];
+    if (sql.includes('"sessoes"')) return [{ sessao: 'Sessão da Tarde' }, { sessao: 'Temperatura Máxima' }];
     return [];
   };
   const pedidos: { metodo: string; url: string; corpo: null | { records: { id?: string; fields: Record<string, unknown> }[] } }[] = [];
@@ -51,9 +54,9 @@ describe('acervo de artes', () => {
       { arte: 'HOJE', chave: 'HOJE', tipo: 'Lettering com alpha', claquete: 'ENCONTRO 02/01 REDE' },
       { arte: 'Amanhã!', chave: 'AMANHA', tipo: '', claquete: '' },
     ]);
-    expect(consultas[0].sql).toMatch(/"key".*"claquete"/);
+    expect(consultas.find((c) => c.sql.includes('"acervo"'))!.sql).toMatch(/"key".*"claquete"/);
     await a.daAtracao('Show da Noite');
-    expect(consultas).toHaveLength(1); // guardado por 1 min
+    expect(consultas.filter((c) => c.sql.includes('"acervo"'))).toHaveLength(1); // guardado por 1 min
   });
 
   it('registra só as artes novas, ligadas à atração e ao card; key (fórmula) e tipo ficam com o Teable', async () => {
@@ -75,6 +78,16 @@ describe('acervo de artes', () => {
     expect(await a.zerar('Encontro')).toBe(2);
     expect(pedidos[0].metodo).toBe('DELETE');
     expect(pedidos[0].url).toBe('http://teable:3000/api/table/tblAcervo/record?recordIds[0]=recH&recordIds[1]=recA');
+  });
+
+  it('sessão de filme fica de fora: cada filme tem o seu pacote gráfico', async () => {
+    const { consultar, buscar, pedidos } = falsos();
+    const a = criarAcervo(ENV, { consultar, buscar });
+    expect(await a.ehSessao('SESSAO DA TARDE')).toBe(true);
+    expect(await a.ehSessao('Encontro')).toBe(false);
+    expect(await a.daAtracao('Sessão da Tarde')).toEqual([]);
+    expect(await a.registrar({ atracao: 'Temperatura Máxima', card: 'c', artes: ['HOJE'] })).toBe(0);
+    expect(pedidos).toHaveLength(0);
   });
 
   it('sem configuração, fica desligado e não lê nada', async () => {

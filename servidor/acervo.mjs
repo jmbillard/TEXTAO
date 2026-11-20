@@ -6,6 +6,9 @@
  * nunca pelo PROMeiro), atracao (vínculo → atrações), claquete (vínculo → ARTE_producao).
  *
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
+ *
+ * Sessões de filme (Sessão da Tarde, Temperatura Máxima…) ficam de fora: cada filme tem o seu pacote gráfico, então o
+ * HOJE de um filme não é o HOJE de outro. A lista é a mesma do envio (TEABLE_PG_FILMES_ESQUEMA + TEABLE_PG_SESSOES).
  */
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 
@@ -45,6 +48,8 @@ export function criarAcervo(env, deps = {}) {
   const esquema = nomesDoPg(env, '').esquema;
   const tabela = (nome) => (esquema && nome ? `"${esquema}"."${nome}"` : null);
   const t = { acervo: tabela(nomeLimpoPg(env.TEABLE_PG_ACERVO)), atracoes: tabela(nomeLimpoPg(env.TEABLE_PG_ATRACOES)), producao: tabela(nomeLimpoPg(env.TEABLE_PG_ARTE)) };
+  const filmes = nomeLimpoPg(env.TEABLE_PG_FILMES_ESQUEMA);
+  const sessoes = filmes && nomeLimpoPg(env.TEABLE_PG_SESSOES) ? `"${filmes}"."${nomeLimpoPg(env.TEABLE_PG_SESSOES)}"` : null;
   const api = { url: (env.TEABLE_URL || '').replace(/\/+$/, ''), token: env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '', tabela: env.TEABLE_ACERVO || '' };
   const buscar = deps.buscar ?? fetch;
   let banco = null;
@@ -77,10 +82,25 @@ export function criarAcervo(env, deps = {}) {
   }
   const esquecer = () => (memo = { em: 0, linhas: null });
 
+  // as sessões de filme, guardadas por 10 min; se a consulta falhar, ninguém é tratado como sessão
+  let memoSessoes = { em: 0, nomes: null };
+  async function ehSessao(atracao) {
+    if (!sessoes || !consultar) return false;
+    if (!memoSessoes.nomes || Date.now() - memoSessoes.em > 600_000) {
+      try {
+        const linhas = await consultar(`SELECT "sessao" FROM ${sessoes}`);
+        memoSessoes = { em: Date.now(), nomes: new Set(linhas.map((l) => nomeComparavel(l.sessao)).filter(Boolean)) };
+      } catch {
+        return false;
+      }
+    }
+    return memoSessoes.nomes.has(nomeComparavel(atracao));
+  }
+
   /** As artes de uma atração (pelo nome). */
   async function daAtracao(atracao) {
     const n = nomeComparavel(atracao);
-    if (!n) return [];
+    if (!n || (await ehSessao(atracao))) return [];
     return (await ativas()).filter((l) => nomeComparavel(l.atracao) === n).map(({ arte, chave, tipo, claquete }) => ({ arte, chave, tipo, claquete }));
   }
 
@@ -100,7 +120,7 @@ export function criarAcervo(env, deps = {}) {
    * @returns quantas entraram
    */
   async function registrar({ atracao, card, artes }) {
-    if (!ligado || !grava || !atracao || !artes?.length) return 0;
+    if (!ligado || !grava || !atracao || !artes?.length || (await ehSessao(atracao))) return 0;
     const [a] = t.atracoes ? await consultar(`SELECT "__id" AS id FROM ${t.atracoes} WHERE "atracao" = $1 LIMIT 1`, [atracao]) : [];
     if (!a?.id) throw new Error(`A atração ${atracao} não está nos cadastros.`);
     const [p] = card && t.producao ? await consultar(`SELECT "__id" AS id FROM ${t.producao} WHERE "card_ID" = $1 LIMIT 1`, [card]) : [];
@@ -131,5 +151,5 @@ export function criarAcervo(env, deps = {}) {
     return ids.length;
   }
 
-  return { ligado, grava, daAtracao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, ehSessao, daAtracao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }
