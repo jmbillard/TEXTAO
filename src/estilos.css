@@ -1615,3 +1615,11 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .nav-folha .restam { display: inline; text-align: center; }
 .folha > .nav-folha + .corpo { padding-top: 30px; }
 @media (max-width: 640px) { .nav-folha { padding: 10px 14px; } }
+
+/* + quantos faltam, escrito à mão; e as duas setas iguais, uma espelhada */
+.restam-mao { font: 600 21px/1 Caveat, cursive; color: var(--tinta3); text-align: center; white-space: nowrap; transform: rotate(-1.5deg); }
+.restam-mao b { color: var(--ultra); font-weight: 700; font-size: 1.15em; }
+.nav-folha .seta-nav { justify-self: end; color: var(--tinta2); }
+.nav-folha .seta-nav.voltar { justify-self: start; }
+.nav-folha .seta-nav.voltar svg { transform: scaleX(-1); }
+.nav-folha { padding-block: 8px 6px; }

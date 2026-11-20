@@ -1004,16 +1004,16 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             {(vizinhos.anterior || vizinhos.seguinte || proximo.total > 0) && (
               <nav className="nav-folha" aria-label="Fila de revisão">
                 {vizinhos.anterior ? (
-                  <button className="botao-texto" title={vizinhos.anterior.meta.claquete || 'O anterior'} onClick={() => abrir(vizinhos.anterior!.id)}>
-                    <Icone nome="voltar" tam={13} traco={2.2} /> Anterior
+                  <button className="botao-icone seta-nav voltar" title={`Anterior: ${vizinhos.anterior.meta.claquete || 'sem claquete'}`} aria-label="Roteiro anterior" onClick={() => abrir(vizinhos.anterior!.id)}>
+                    <Icone nome="seta" tam={17} traco={2.2} />
                   </button>
                 ) : (
                   <span />
                 )}
-                <span className="restam">{proximo.total ? `mais ${plural(proximo.total, 'para revisar', 'para revisar')}` : 'último da fila'}</span>
+                <span className="restam-mao">{proximo.total ? <><b>+{proximo.total}</b> para revisar</> : 'último da fila'}</span>
                 {vizinhos.seguinte ? (
-                  <button className="botao-texto" title={`${vaiMandar ? 'Pular, sem mandar, para' : 'Ir para'} ${vizinhos.seguinte.meta.claquete || 'o próximo'}`} onClick={() => abrir(vizinhos.seguinte!.id)}>
-                    {vaiMandar ? 'Pular' : 'Próximo'} <Icone nome="seta" tam={13} traco={2.2} />
+                  <button className="botao-icone seta-nav" title={`${vaiMandar ? 'Pular, sem mandar, para' : 'Próximo:'} ${vizinhos.seguinte.meta.claquete || 'o próximo'}`} aria-label={vaiMandar ? 'Pular para o próximo' : 'Próximo roteiro'} onClick={() => abrir(vizinhos.seguinte!.id)}>
+                    <Icone nome="seta" tam={17} traco={2.2} />
                   </button>
                 ) : (
                   <span />
