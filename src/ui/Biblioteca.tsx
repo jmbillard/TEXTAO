@@ -6,7 +6,7 @@ import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
-import { agruparPorDia, pendentes, type GrupoDia } from './fila';
+import { agruparPorDia, noTrello, pendentes, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -325,7 +325,9 @@ interface VersaoNova {
 function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadastrarAtracao }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; mandar?: () => Promise<void>; cadastrarAtracao?: () => void }) {
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
-  const revisar = r.meta.revisar ?? [];
+  // já no Trello: a ficha descansa (sem alerta, sem pendências, "Abrir" discreto)
+  const mandada = noTrello(r);
+  const revisar = mandada ? [] : r.meta.revisar ?? [];
   const semEditor = !r.meta.editor;
   // alguém com o roteiro aberto: a orelha dobra, a claquete é selecionada e o nome é anotado à mão.
   // Depois que a pessoa sai, ficam a orelha pequena, um grifo e a rubrica.
@@ -334,7 +336,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
   const quem = ocupada ? agora[0] : r.revisadoPor;
   return (
     <li
-      className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''}`}
+      className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''} ${mandada ? 'mandada' : ''}`}
       data-ancora={`ficha:${r.id}`}
       style={quem ? ({ '--cor': corDe(quem.email) } as React.CSSProperties) : undefined}
     >
@@ -343,7 +345,9 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
           <i>{ocupada ? primeiro(agora[0].nome)[0] : ''}</i>
         </span>
       )}
-      <span className={`ficha-marca ${revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">{revisar.length ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}</span>
+      <span className={`ficha-marca ${mandada ? 'trello' : revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">
+        {mandada ? <Icone nome="quadro" tam={12} traco={2.4} /> : revisar.length ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
+      </span>
       <button className="ficha-claquete" onClick={abrir} aria-label={`Abrir ${claquete}`}>
         <b>
           <span className="claquete-alvo">
@@ -370,15 +374,15 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
         </span>
       </button>
       <span className="ficha-gente some">
-        {r.meta.redator ? <span>{r.meta.redator}</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
-        <small className={semEditor ? 'falta' : ''}>
-          edição: {semEditor ? <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" /> : r.meta.editor}
+        {r.meta.redator ? <span>{r.meta.redator}</span> : mandada ? <span className="suave">redator: —</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
+        <small className={semEditor && !mandada ? 'falta' : ''}>
+          edição: {!semEditor ? r.meta.editor : mandada ? 'a definir' : <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" />}
         </small>
       </span>
       <span className="ficha-artes some"><Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} circular={revisar.length > 0} /></span>
       <span className="ficha-acoes some">
         {acoes}
-        <button className={`botao ${revisar.length ? 'primario' : ''}`} onClick={abrir}>{revisar.length ? 'Revisar' : 'Abrir'}</button>
+        <button className={mandada ? 'botao-texto' : `botao ${revisar.length ? 'primario' : ''}`} onClick={abrir}>{revisar.length ? 'Revisar' : 'Abrir'}</button>
       </span>
       {versao && (
         <span className="ficha-versao some">
@@ -389,10 +393,10 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
           <button className="botao primario" onClick={versao.substituir}>Substituir a anterior</button>
         </span>
       )}
-      {(revisar.length > 0 || (!r.meta.programa && cadastrarAtracao)) && (
+      {(revisar.length > 0 || (!r.meta.programa && cadastrarAtracao && !mandada)) && (
         <span className="ficha-pendencias some">
           {revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}
-          {!r.meta.programa && cadastrarAtracao && (
+          {!r.meta.programa && cadastrarAtracao && !mandada && (
             <button type="button" className="atalho-cadastro" onClick={cadastrarAtracao}>
               <Icone nome="mais" tam={12} traco={2.4} /> cadastrar a atração
             </button>
@@ -400,6 +404,42 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
         </span>
       )}
       {mandar && !versao && <FichaTrello r={r} mandar={mandar} />}
+    </li>
+  );
+}
+
+/** Variação em teste: o que já está no Trello vira um card pequeno, numa grade no fim do dia. */
+const TRELLO_EM_CARDS = (() => {
+  try {
+    return localStorage.getItem('promeiro.fila.cards') === '1';
+  } catch {
+    return false;
+  }
+})();
+
+function CardTrello({ r, abrir }: { r: Resumo; abrir: () => void }) {
+  const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
+  const e = r.trello!;
+  return (
+    <li className="card-trello">
+      <span className="card-etiquetas" aria-hidden="true">
+        {r.meta.praca && <i className="etq praca">{r.meta.praca}</i>}
+        <i className="etq artes">{plural(r.nArtes, 'arte', 'artes')}</i>
+      </span>
+      <button className="card-claquete" onClick={abrir} title={`Abrir ${claquete}`}>{claquete}</button>
+      <span className="card-rodape">
+        <Icone nome="quadro" tam={13} />
+        {e.estado === 'enviado' ? (
+          <a href={e.url} target="_blank" rel="noreferrer">No Trello</a>
+        ) : (
+          <span>pelo upload antigo</span>
+        )}
+        {e.estado === 'enviado' && e.por && (
+          <span className="card-quem" style={{ '--cor': corDe(e.por) } as React.CSSProperties} title={`Mandado por ${e.por}, ${horaCurta(e.em)}`}>
+            {iniciais(e.por)}
+          </span>
+        )}
+      </span>
     </li>
   );
 }
@@ -746,7 +786,21 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
               {proximos.map((g) => (
                 <section key={g.chave} className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
                   {cabecalhoDoDia(g)}
-                  <ul className="fichas">{g.itens.map(ficha)}</ul>
+                  {TRELLO_EM_CARDS ? (
+                    <>
+                      <ul className="fichas">{g.itens.filter((r) => !noTrello(r)).map(ficha)}</ul>
+                      {g.itens.some(noTrello) && (
+                        <div className="cards-trello-bloco">
+                        <p className="cards-rotulo">já no Trello</p>
+                        <ul className="cards-trello" aria-label="Já no Trello">
+                          {g.itens.filter(noTrello).map((r) => <CardTrello key={r.id} r={r} abrir={() => abrir(r.id)} />)}
+                        </ul>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <ul className="fichas">{g.itens.map(ficha)}</ul>
+                  )}
                 </section>
               ))}
 

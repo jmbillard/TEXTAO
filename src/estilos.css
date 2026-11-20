@@ -1415,3 +1415,33 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { cursor: point
 .no-mouse input { accent-color: var(--ultra); width: 15px; height: 15px; }
 /* com um menu, painel ou popover aberto, os ponteiros dos colegas passam por baixo dele (e por cima do resto) */
 body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .ponteiros { z-index: 25; }
+
+/* Ficha já no Trello: descansa. Sem alerta, mais apagada, e desce para o fim do dia. */
+.ficha.mandada { background: color-mix(in srgb, var(--papel) 45%, var(--mesa)); border-color: var(--regua); box-shadow: none; }
+.ficha.mandada:hover { background: var(--papel); box-shadow: 0 2px 10px rgb(26 25 22 / 6%); }
+.ficha.mandada .ficha-claquete b { color: var(--tinta2); }
+.ficha.mandada .ficha-claquete > span, .ficha.mandada .ficha-gente { color: var(--tinta3); }
+.ficha.mandada .ficha-artes { opacity: 0.6; }
+.ficha-marca.trello { background: var(--ok-fundo); color: var(--ok); }
+.ficha.mandada .ficha-acoes .botao-texto { font-size: 13px; padding: 0 6px; }
+
+/* Variação em teste: os mandados viram cards pequenos, como no quadro do Trello */
+.cards-trello-bloco { margin-top: 14px; }
+.cards-rotulo { margin: 0 0 6px 4px; font: 600 19px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); transform-origin: left; }
+.cards-trello { list-style: none; margin: 0; padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 8px; border-radius: 14px; background: color-mix(in srgb, var(--tinta) 5%, var(--mesa)); }
+.card-trello {
+  display: flex; flex-direction: column; gap: 7px; padding: 9px 11px 8px; border-radius: 9px; background: var(--papel);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--tinta) 14%, transparent); transition: box-shadow 0.15s, transform 0.15s var(--suave);
+}
+.card-trello:hover { box-shadow: 0 3px 10px rgb(26 25 22 / 10%), 0 1px 0 color-mix(in srgb, var(--tinta) 14%, transparent); transform: translateY(-1px); }
+.card-etiquetas { display: flex; gap: 4px; }
+.etq { font: 600 10.5px/1 var(--sans); font-style: normal; padding: 3px 7px; border-radius: 4px; }
+.etq.praca { background: var(--tinta); color: var(--papel); }
+.etq.artes { background: var(--ultra-suave); color: var(--ultra); }
+.card-claquete { border: 0; background: none; padding: 0; text-align: left; font: 600 13px/1.3 var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
+.card-claquete:hover { text-decoration: underline; text-underline-offset: 3px; }
+.card-rodape { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ok); }
+.card-rodape a { color: inherit; font-weight: 600; text-decoration: none; }
+.card-rodape a:hover { text-decoration: underline; }
+.card-rodape > span:not(.card-quem) { color: var(--tinta3); }
+.card-quem { margin-left: auto; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 9.5px var(--sans); color: #fff; background: var(--cor, var(--tinta3)); }

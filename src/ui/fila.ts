@@ -15,8 +15,12 @@ const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julh
 const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const maiuscula = (s: string) => s[0].toUpperCase() + s.slice(1);
 
+/** Já tem card no Trello (mandado pelo PROMeiro ou pelo upload antigo). */
+export const noTrello = (r: Resumo) => r.trello?.estado === 'enviado' || r.trello?.estado === 'duplicado';
+
+// dentro do dia: o que pede revisão, depois os prontos, e por último o que já está no Trello
 const ordemNoDia = (a: Resumo, b: Resumo) =>
-  +!!b.meta.revisar?.length - +!!a.meta.revisar?.length || b.atualizadoEm.localeCompare(a.atualizadoEm);
+  +noTrello(a) - +noTrello(b) || +!!b.meta.revisar?.length - +!!a.meta.revisar?.length || b.atualizadoEm.localeCompare(a.atualizadoEm);
 
 function nomear(iso: string, hoje: string, amanha: string): Pick<GrupoDia, 'titulo' | 'subtitulo'> {
   const [a, m, d] = iso.split('-').map(Number);
@@ -26,9 +30,6 @@ function nomear(iso: string, hoje: string, amanha: string): Pick<GrupoDia, 'titu
   if (iso === amanha) return { titulo: 'Amanhã', subtitulo: `${DIAS[data.getDay()]}, ${extenso}` };
   return { titulo: maiuscula(DIAS[data.getDay()]), subtitulo: extenso };
 }
-
-/** Já tem card no Trello (mandado pelo PROMeiro ou pelo upload antigo). */
-export const noTrello = (r: Resumo) => r.trello?.estado === 'enviado' || r.trello?.estado === 'duplicado';
 
 /** O que ainda pede trabalho: nem foi ao ar, nem já está no Trello. É isso que a fila conta. */
 export function pendentes(lista: Resumo[], agora = new Date()): Resumo[] {
