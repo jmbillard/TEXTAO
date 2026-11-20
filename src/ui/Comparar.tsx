@@ -93,21 +93,6 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
             <div className="comparar-cabeca">
             <div>
             <h1>É o mesmo roteiro?</h1>
-            <p className="comparar-resumo">
-              {comparacao ? (
-                <>
-                  <b>{Math.round(comparacao.igual * 100)}%</b> do texto igual
-                  {' · '}
-                  {comparacao.novas ? <span className="entrou">{plural(comparacao.novas, 'arte nova', 'artes novas')}</span> : 'nenhuma arte nova'}
-                  {comparacao.sairam > 0 && <> · <span className="saiu">{plural(comparacao.sairam, 'arte saiu', 'artes saíram')}</span></>}
-                  {comparacao.mesmo && <span className="parece">parece o mesmo</span>}
-                </>
-              ) : producao === undefined ? (
-                'Buscando o que já está na produção da arte…'
-              ) : (
-                'Não consegui ler o que está na produção da arte agora. Dá para decidir pelo card.'
-              )}
-            </p>
             </div>
             <div className="comparar-decisao" role="group" aria-label="Decisão">
               <button className={`botao ${comparacao?.mesmo ? 'primario' : ''}`} disabled={decidindo || !np} onClick={() => void decidir('mesmo')} title="Não manda nada: liga ao card que já existe e sai da revisão">
@@ -156,6 +141,20 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
           </>
         )}
       </main>
+      {roteiro && (
+        <footer className="estatisticas" aria-label="Comparação">
+          {comparacao ? (
+            <>
+              <span><b>{Math.round(comparacao.igual * 100)}%</b> do texto igual</span>
+              <span><b>{comparacao.novas}</b> {comparacao.novas === 1 ? 'arte nova' : 'artes novas'}</span>
+              <span><b>{comparacao.sairam}</b> {comparacao.sairam === 1 ? 'arte saiu' : 'artes saíram'}</span>
+              {comparacao.mesmo && <span className="parece">parece o mesmo</span>}
+            </>
+          ) : (
+            <span>{producao === undefined ? 'buscando o que já está na produção da arte…' : 'não consegui ler o que está na produção da arte'}</span>
+          )}
+        </footer>
+      )}
     </div>
   );
 }

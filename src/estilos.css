@@ -1514,7 +1514,7 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .comparar-texto mark.saiu { background: color-mix(in srgb, var(--perigo) 16%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--perigo) 70%, transparent); }
 .comparar-texto mark.entrou { background: color-mix(in srgb, var(--ok) 20%, transparent); }
 /* cabeça: título e resumo à esquerda, a decisão à direita */
-.comparar-cabeca { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 22px; }
+.comparar-cabeca { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 22px; }
 .comparar-cabeca .comparar-resumo { margin-bottom: 0; }
 .comparar-decisao { display: flex; gap: 8px; flex-wrap: wrap; }
 .comparar-decisao .botao { height: 34px; padding: 0 14px; font-size: 13.5px; border-radius: 10px; }
@@ -1534,3 +1534,6 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
   @media (max-width: 860px) { .comparar-lado { grid-row: auto; grid-template-rows: none; } }
 }
 .comparar-artes.vazia { padding: 0; border: 0; margin: 0; }
+
+.estatisticas .parece { font: 600 17px/1 Caveat, cursive; color: var(--ok); }
+.comparar-cabeca h1 { margin: 0; }
