@@ -14,6 +14,7 @@ const ENV = {
   TEABLE_PG_ARTE: 'producao',
   TEABLE_PG_FILMES_ESQUEMA: 'bseFilmes',
   TEABLE_PG_SESSOES: 'sessoes',
+  TEABLE_PG_LOG_BOT: 'log_bot',
 };
 
 /** O Postgres do Teable (acervo, atrações, produção) e a API, de mentira. */
@@ -22,6 +23,15 @@ function falsos() {
     { id: 'recH', arte: 'HOJE', key: 'HOJE', tipo: '["Lettering com alpha"]', atracao: '[{"id":"recEnc","title":"Encontro"}]', claquete: '[{"id":"recP1","title":"ENCONTRO 02/01 REDE"}]' },
     { id: 'recA', arte: 'Amanhã!', key: null, tipo: null, atracao: [{ id: 'recEnc', title: 'Encontro' }], claquete: [] },
     { id: 'recS', arte: 'SÁBADO', key: 'SABADO', tipo: 'Rodapé', atracao: [{ id: 'recShow', title: 'Show da Noite' }], claquete: [] },
+    { id: 'recF', arte: 'Frase de efeito', key: 'FRASE DE EFEITO', tipo: null, atracao: [{ id: 'recTQ', title: 'Tela Quente' }], claquete: [{ id: 'recP2', title: 'TELA QUENTE 02/03' }], filme: 'RIVAIS 2024' },
+    { id: 'recM', arte: 'Outro filme', key: 'OUTRO FILME', tipo: null, atracao: [{ id: 'recTQ', title: 'Tela Quente' }], claquete: [], filme: 'A MUMIA 1999' },
+  ];
+  // o log do bot: o mesmo filme em duas sessões, outro com o mesmo título e outro ano, e um cancelado no mesmo dia
+  const logBot = [
+    { key: 'RIVAIS', ano_de_producao: 2024, titulo: 'RIVAIS', sessao: { id: 's1', title: 'TELA QUENTE' }, data_de_exibicao: '2026-11-16', card_ID: 'a'.repeat(24), labels: null },
+    { key: 'OUTRO', ano_de_producao: 2020, titulo: 'OUTRO', sessao: { id: 's1', title: 'TELA QUENTE' }, data_de_exibicao: '2026-11-16', card_ID: 'c'.repeat(24), labels: ['CANCELADO'] },
+    { key: 'RIVAIS', ano_de_producao: 0, titulo: 'RIVAIS', sessao: { id: 's2', title: 'SESSÃO DA TARDE' }, data_de_exibicao: '2027-02-03', card_ID: 'b'.repeat(24), labels: null },
+    { key: 'RIVAIS', ano_de_producao: 1990, titulo: 'RIVAIS', sessao: { id: 's3', title: 'CORUJÃO' }, data_de_exibicao: '2025-01-01', card_ID: 'd'.repeat(24), labels: null },
   ];
   const consultas: { sql: string; params: unknown[] }[] = [];
   const consultar = async (sql: string, params: unknown[] = []) => {
@@ -29,7 +39,9 @@ function falsos() {
     if (sql.includes('"acervo"')) return linhas;
     if (sql.includes('"atracoes"')) return params[0] === 'Encontro' ? [{ id: 'recEnc' }] : [];
     if (sql.includes('"producao"')) return [{ id: 'recCard9' }];
-    if (sql.includes('"sessoes"')) return [{ sessao: 'Sessão da Tarde' }, { sessao: 'Temperatura Máxima' }];
+    if (sql.includes('"log_bot"') && sql.includes('data_de_exibicao"::date = $1')) return params[0] === '2026-11-16' ? logBot.filter((l) => l.data_de_exibicao === '2026-11-16') : [];
+    if (sql.includes('"log_bot"')) return logBot.filter((l) => l.key === params[0]);
+    if (sql.includes('"sessoes"')) return [{ sessao: 'Sessão da Tarde' }, { sessao: 'Temperatura Máxima' }, { sessao: 'TELA QUENTE' }];
     return [];
   };
   const pedidos: { metodo: string; url: string; corpo: null | { records: { id?: string; fields: Record<string, unknown> }[] } }[] = [];
@@ -88,6 +100,32 @@ describe('acervo de artes', () => {
     expect(await a.daAtracao('Sessão da Tarde')).toEqual([]);
     expect(await a.registrar({ atracao: 'Temperatura Máxima', card: 'c', artes: ['HOJE'] })).toBe(0);
     expect(pedidos).toHaveLength(0);
+  });
+
+  it('filme: a prévia (em qualquer sessão, o mesmo ano) e as claquetes dele contam; outro ano é outro filme', async () => {
+    const { consultar } = falsos();
+    const lidos: string[] = [];
+    const artesDoCard = async (card: string) => (lidos.push(card), card === 'a'.repeat(24) ? ['RIVAIS', 'HOJE', 'AMANHÃ', 'SEGUNDA', 'PRÓXIMA SEGUNDA', 'TELA QUENTE APRESENTA'] : card === 'b'.repeat(24) ? ['HOJE', 'QUARTA'] : ['NÃO É ESTE']);
+    const a = criarAcervo(ENV, { consultar, artesDoCard });
+    expect(await a.filmeDe('Tela Quente', '2026-11-16')).toEqual({ key: 'RIVAIS', ano: 2024, titulo: 'RIVAIS' });
+    expect(await a.filmeDe('Tela Quente', '2026-11-17')).toBeNull();
+    const artes = await a.paraRevisao('Tela Quente', '2026-11-16');
+    expect(artes.map((x: { chave: string }) => x.chave).sort()).toEqual(['AMANHA', 'FRASE DE EFEITO', 'HOJE', 'PROXIMA SEGUNDA', 'QUARTA', 'RIVAIS', 'SEGUNDA', 'TELA QUENTE APRESENTA']);
+    expect(artes.find((x: { chave: string }) => x.chave === 'HOJE').claquete).toBe('Prévia: TELA QUENTE 16/11');
+    expect(artes.find((x: { chave: string }) => x.chave === 'FRASE DE EFEITO').claquete).toBe('TELA QUENTE 02/03');
+    expect(lidos).not.toContain('d'.repeat(24)); // RIVAIS de 1990 é outro filme
+    expect(await a.daAtracao('Tela Quente')).toEqual([]); // a sessão em si não tem acervo
+  });
+
+  it('o card de uma sessão que sai grava as artes novas no filme', async () => {
+    const { consultar, buscar, pedidos } = falsos();
+    const a = criarAcervo({ ...ENV }, { consultar, buscar, artesDoCard: async () => ['HOJE'] });
+    // atração cadastrada com esse nome
+    const consultar2 = async (sql: string, params: unknown[] = []) => (sql.includes('"atracoes"') ? [{ id: 'recTQ' }] : consultar(sql, params));
+    const b = criarAcervo(ENV, { consultar: consultar2, buscar, artesDoCard: async () => ['HOJE'] });
+    expect(await b.registrar({ atracao: 'TELA QUENTE', data: '2026-11-16', card: 'card9', artes: ['Hoje', 'Zendaya'] })).toBe(1);
+    expect(pedidos[0].corpo!.records.map((r) => r.fields)).toEqual([{ arte: 'Zendaya', atracao: [{ id: 'recTQ' }], claquete: [{ id: 'recCard9' }], filme: 'RIVAIS 2024' }]);
+    expect(await a.registrar({ atracao: 'TELA QUENTE', data: '2026-11-17', card: 'c', artes: ['X'] })).toBe(0); // sem filme no dia
   });
 
   it('sem configuração, fica desligado e não lê nada', async () => {

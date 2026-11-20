@@ -658,5 +658,12 @@ export function criarTrello(env, deps = {}) {
     }
   }
 
-  return { ligado: c.ligado, config: c, enviar, andamento, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  /** As artes de um card (os itens dos checklists dele), feitas ou não: o card da prévia de um filme, por exemplo. */
+  async function artesDoCard(card) {
+    if (!c.chave || !c.token || !/^[0-9a-f]{24}$/i.test(String(card ?? ''))) return [];
+    const listas = await trello('GET', `/cards/${card}/checklists`, { consulta: { fields: 'name', checkItem_fields: 'name' } });
+    return (Array.isArray(listas) ? listas : []).flatMap((l) => (l.checkItems ?? []).map((i) => String(i.name ?? '').trim())).filter(Boolean);
+  }
+
+  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

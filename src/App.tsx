@@ -168,8 +168,8 @@ export function App() {
           }
           // artes que a atração já tem prontas: ficam marcadas para a conferência e seguram o envio automático
           if (roteiro.meta.programa) {
-            const chave = roteiro.meta.programa.trim().toLowerCase();
-            if (!acervos.has(chave)) acervos.set(chave, consultarAcervo(roteiro.meta.programa).then((a) => a.artes));
+            const chave = `${roteiro.meta.programa.trim().toLowerCase()}|${roteiro.meta.dataExibicao ?? ''}`;
+            if (!acervos.has(chave)) acervos.set(chave, consultarAcervo(roteiro.meta.programa, roteiro.meta.dataExibicao ?? '').then((a) => a.artes));
             const doAcervo = await acervos.get(chave)!;
             const noRoteiro = new Set(exportar(roteiro).artes.map((a) => chaveDeArte(a.texto)));
             const ja = doAcervo.filter((a) => noRoteiro.has(a.chave));

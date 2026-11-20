@@ -114,6 +114,8 @@ export function abrirBanco(caminho) {
   // o texto do original com o sublinhado do redator, trecho a trecho: é dele que sai o PDF do card sem o Stirling
   if (!tem('originais', 'texto')) db.exec('ALTER TABLE originais ADD COLUMN texto TEXT');
   if (!tem('envios', 'artes_novas')) db.exec('ALTER TABLE envios ADD COLUMN artes_novas TEXT; ALTER TABLE envios ADD COLUMN atracao TEXT; ALTER TABLE envios ADD COLUMN acervo_em TEXT');
+  // a data de exibição: numa sessão de filme, é ela que diz qual filme (pelo log do bot)
+  if (!tem('envios', 'exibicao')) db.exec('ALTER TABLE envios ADD COLUMN exibicao TEXT');
   return db;
 }
 
@@ -216,7 +218,7 @@ const lerBinario = (req, limite) =>
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env) }) {
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
   const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
@@ -255,8 +257,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     guardarOriginal: db.prepare('INSERT OR REPLACE INTO originais (roteiro_id, nome, tipo, dados, em) VALUES (?, ?, ?, ?, ?)'),
     infoOriginal: db.prepare('SELECT nome, tipo, length(dados) AS tamanho, em FROM originais WHERE roteiro_id = ?'),
     envio: db.prepare('SELECT estado, card_id, url, erro, avisos, em, por_nome FROM envios WHERE roteiro_id = ?'),
-    guardarArtesNovas: db.prepare('UPDATE envios SET artes_novas = ?, atracao = ?, acervo_em = NULL WHERE roteiro_id = ?'),
-    paraOAcervo: db.prepare("SELECT roteiro_id, card_id, artes_novas, atracao FROM envios WHERE estado = 'enviado' AND artes_novas IS NOT NULL AND acervo_em IS NULL AND card_id IS NOT NULL"),
+    guardarArtesNovas: db.prepare('UPDATE envios SET artes_novas = ?, atracao = ?, exibicao = ?, acervo_em = NULL WHERE roteiro_id = ?'),
+    paraOAcervo: db.prepare("SELECT roteiro_id, card_id, artes_novas, atracao, exibicao FROM envios WHERE estado = 'enviado' AND artes_novas IS NOT NULL AND acervo_em IS NULL AND card_id IS NOT NULL"),
     noAcervo: db.prepare('UPDATE envios SET acervo_em = ? WHERE roteiro_id = ?'),
     marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
@@ -695,7 +697,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       q.marcarEnvio.run(id, estado, r.card?.id ?? null, r.card?.url ?? null, null, JSON.stringify(r.avisos ?? []), new Date().toISOString(), eu.email, eu.nome);
       // o que entra no acervo da atração quando o card sair: só as artes novas (as que já existiam, não)
       if (estado === 'enviado' && Array.isArray(corpo.artes))
-        q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => String(a?.texto ?? a).slice(0, 500))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), id);
+        q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => String(a?.texto ?? a).slice(0, 500))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), String(JSON.parse(atual.meta).dataExibicao ?? '').slice(0, 10) || null, id);
       if (r.avisos?.length) console.warn(`[trello] ${id}: ${r.avisos.join(' · ')}`);
       return json(res, 200, { estado, url: r.card?.url, avisos: r.avisos ?? [] });
     } catch (e) {
@@ -719,7 +721,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         const saiu = a && (a.entregue || a.status.some((s) => /FINALIZADO/i.test(s)));
         if (!saiu || !e.atracao) continue;
         try {
-          const n = await acervo.registrar({ atracao: e.atracao, card: e.card_id, artes: JSON.parse(e.artes_novas) });
+          const n = await acervo.registrar({ atracao: e.atracao, data: e.exibicao, card: e.card_id, artes: JSON.parse(e.artes_novas) });
           q.noAcervo.run(new Date().toISOString(), e.roteiro_id);
           if (n) console.log(`[acervo] ${e.atracao}: ${n} ${n === 1 ? 'arte nova' : 'artes novas'} do card ${e.card_id}`);
         } catch (erro) {
@@ -818,10 +820,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, await trello.naProducao(claquete).catch((e) => (console.warn(`[producao] ${e instanceof Error ? e.message : e}`), null)));
     }
     if (caminho === '/api/acervo') {
-      // as artes que a atração já tem prontas (as do acervo), para marcar na revisão
-      const atracao = (new URL(req.url, 'http://x').searchParams.get('atracao') ?? '').slice(0, 200);
+      // as artes que a atração já tem prontas (as do acervo), para marcar na revisão; numa sessão, as do filme do dia
+      const busca = new URL(req.url, 'http://x').searchParams;
+      const atracao = (busca.get('atracao') ?? '').slice(0, 200);
+      const data = (busca.get('data') ?? '').slice(0, 10);
       if (!acervo.ligado) return json(res, 200, { ligado: false, artes: [] });
-      return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), artes: await acervo.daAtracao(atracao).catch((e) => (console.warn(`[acervo] ${e instanceof Error ? e.message : e}`), [])) });
+      return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), artes: await acervo.paraRevisao(atracao, data).catch((e) => (console.warn(`[acervo] ${e instanceof Error ? e.message : e}`), [])) });
     }
     if (caminho === '/api/acervo/zerar') {
       // pacote gráfico novo: as artes da atração deixam de valer. Só administradores (CADASTRO_ADMINS).

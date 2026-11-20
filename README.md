@@ -141,6 +141,7 @@ Tabela **ARTES_acervo** no Teable, uma linha por arte:
 | `tipo` | seleção | lettering, rodapé, cartão…; preenchido à mão ou por script, nunca pelo PROMeiro |
 | `atracao` | vínculo → atrações | a arte é da atração, de qualquer praça |
 | `claquete` | vínculo → ARTE_producao | o card (a claquete) em que foi pedida |
+| `filme` | texto | só nas sessões de filme: a key do título e o ano ("RIVAIS 2024"); o PROMeiro grava |
 
 Fórmula do `key` (a mesma regra do app: sem acento, maiúsculas, o que não é letra ou número vira espaço):
 
@@ -155,8 +156,10 @@ E uma coluna de texto **`artes_existentes`** na ARTE_producao, com as artes de c
 - **Na revisão**, a que já existe tem o número apagado na lista; a claquete e o tipo de onde veio aparecem ao passar o
   mouse. Quem revisa confere no servidor e, se achar, exclui a arte com o × (Ctrl+Z desfaz). O que sobra vai para o
   checklist.
-- **Sessões de filme ficam de fora** (as da `TEABLE_PG_SESSOES`): cada filme tem o seu pacote gráfico, então o HOJE de
-  um filme não é o de outro. Nem são marcadas na revisão nem entram no acervo.
+- **Sessões de filme**: o pacote gráfico é do filme, não da sessão. Pela sessão e pelo dia de exibição, o log do bot
+  (`TEABLE_PG_LOG_BOT`) diz qual é o filme (key e ano); o que ele já tem pronto é tudo o que está nos checklists das
+  prévias dele, em qualquer sessão, usado ou não, mais as artes das claquetes dele que já saíram (gravadas com `filme`).
+  Mesmo título com outro ano é outro filme.
 - **Quando o card sai** (status FINALIZADO ou entregue), as artes novas dele entram no acervo da atração.
 - **Pacote gráfico novo**: em Cadastros, na atração, "novo pacote" apaga do acervo todas as artes dela (só
   `CADASTRO_ADMINS`).
