@@ -490,13 +490,13 @@ export function criarTrello(env, deps = {}) {
 
   /**
    * A claquete já está na produção da arte? Procura pela key (como o n8n grava), e pela claquete nos últimos 60 dias.
-   * @returns { card, url, registro, claquete, entrada, status: string[], artes: number } | null
+   * @returns { card, url, registro, claquete, entrada, status: string[], artes: number, listaDeArtes: string[], texto } | null
    */
   async function naProducao(claquete) {
     if (!t.producao || !claquete) return null;
     const chave = chaveN8n(claquete);
     const linhas = await sql(
-      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade" FROM ${t.producao}
+      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto" FROM ${t.producao}
        WHERE "key" = $1 OR "data_entrada" >= now() - interval '60 days' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 3000`,
       [chave],
     );
@@ -510,6 +510,9 @@ export function criarTrello(env, deps = {}) {
       entrada: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : null,
       status: lerLista(l.status),
       artes: Number(l.artes_quantidade) || 0,
+      // para comparar com o roteiro novo: as artes ("A | B", ou uma por linha) e o texto como entraram
+      listaDeArtes: String(l.artes ?? '').split(/\s*\|\s*|\n+/).map((a) => a.trim()).filter(Boolean),
+      texto: String(l.texto ?? ''),
     };
   }
 

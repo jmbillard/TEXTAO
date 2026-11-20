@@ -1480,3 +1480,50 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .card-existente:hover b { text-decoration-thickness: 2px; }
 .ficha-producao .card-existente { flex: 1 1 260px; }
 .pergunta-producao .card-existente { align-self: flex-start; flex-wrap: wrap; row-gap: 2px; }
+
+/* =========================================================
+   Comparar: o roteiro que chegou ao lado do que já está no Trello
+   ========================================================= */
+.comparar-corpo { max-width: 1180px; margin: 0 auto; padding: 30px max(20px, env(safe-area-inset-right, 0px)) 140px max(20px, env(safe-area-inset-left, 0px)); }
+.comparar-corpo h1 { font: 400 40px/1.1 var(--serifa); letter-spacing: -0.01em; color: var(--tinta); margin: 0 0 8px; text-wrap: balance; }
+.comparar-resumo { margin: 0 0 22px; color: var(--tinta2); font-size: 15px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; }
+.comparar-resumo b { font: 400 26px/1 var(--serifa); font-style: italic; color: var(--ultra); margin-right: 2px; }
+.comparar-resumo .entrou { color: var(--ok); font-weight: 600; }
+.comparar-resumo .saiu { color: var(--perigo); font-weight: 600; }
+.comparar-resumo .parece { margin-left: 12px; font: 600 21px/1 Caveat, cursive; color: var(--ok); transform: rotate(-3deg); display: inline-block; }
+.comparar-grade { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .comparar-grade { grid-template-columns: minmax(0, 1fr); } }
+.comparar-lado { position: relative; background: var(--papel); border: 1px solid var(--regua); border-radius: 14px; padding: 26px 22px 22px; box-shadow: 0 1px 2px rgb(26 25 22 / 5%); min-width: 0; }
+.comparar-lado:first-child { background: color-mix(in srgb, var(--papel) 55%, var(--mesa)); }
+.comparar-rotulo { position: absolute; top: -13px; left: 16px; padding: 0 6px; background: var(--mesa); font: 600 20px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-2deg); }
+.comparar-titulo { margin-bottom: 14px; }
+.comparar-titulo .card-existente.novo svg { color: var(--ultra); }
+.comparar-artes { list-style: none; counter-reset: arte; margin: 0 0 16px; padding: 0 0 14px; border-bottom: 1px dashed var(--regua); display: flex; flex-direction: column; gap: 4px; }
+.comparar-artes li { counter-increment: arte; display: flex; align-items: baseline; gap: 8px; padding: 3px 8px; border-radius: 7px; font: 600 13px/1.4 var(--sans); color: var(--tinta); }
+.comparar-artes li::before { content: counter(arte); flex: none; width: 18px; font: 600 11px var(--mono); color: var(--tinta3); }
+.comparar-artes li small { margin-left: auto; font: 600 18px/1 Caveat, cursive; }
+.comparar-artes li.saiu { background: color-mix(in srgb, var(--perigo) 9%, transparent); color: var(--tinta2); text-decoration: line-through; text-decoration-color: var(--perigo); }
+.comparar-artes li.saiu small { color: var(--perigo); text-decoration: none; }
+.comparar-artes li.entrou { background: var(--ok-fundo); }
+.comparar-artes li.entrou small { color: var(--ok); }
+.comparar-texto { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.75; color: var(--tinta); }
+.comparar-texto mark { color: inherit; border-radius: 3px; padding: 1px 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.comparar-texto mark.saiu { background: color-mix(in srgb, var(--perigo) 16%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--perigo) 70%, transparent); }
+.comparar-texto mark.entrou { background: color-mix(in srgb, var(--ok) 20%, transparent); }
+.comparar-decisao {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px;
+  padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: color-mix(in srgb, var(--mesa) 88%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--regua);
+}
+.decisao {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 180px; padding: 10px 16px; border-radius: 12px; text-align: left;
+  border: 1px solid var(--regua-forte); background: var(--papel); color: var(--tinta); transition: transform 0.15s var(--suave), box-shadow 0.15s, border-color 0.15s;
+}
+.decisao strong { font: 600 15px var(--sans); }
+.decisao small { font-size: 12px; color: var(--tinta3); }
+.decisao:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgb(26 25 22 / 10%); border-color: var(--tinta3); }
+.decisao.primaria { background: var(--tinta); border-color: var(--tinta); color: var(--papel); }
+.decisao.primaria small { color: color-mix(in srgb, var(--papel) 70%, transparent); }
+.decisao:disabled { opacity: 0.5; }
+.ficha-producao { grid-column: 2 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: 12.5px; }
+.ficha-producao .card-existente b { font-size: 12.5px; }

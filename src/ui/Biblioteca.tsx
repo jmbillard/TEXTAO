@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { armazenamento, escolherMinhaCor, herdarEnvio, ligarAoCardExistente, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
@@ -30,6 +30,8 @@ const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
 
 interface Props {
   abrir: (id: string) => void;
+  /** Roteiro cuja claquete já está na produção da arte: compara e decide antes da revisão. */
+  comparar: (id: string) => void;
   abrirArquivo: (arquivo: File) => void;
   /** Folha nova para colar do Word, a partir da claquete. */
   criar: (claquete: string) => void;
@@ -322,11 +324,9 @@ interface VersaoNova {
   manter: () => void;
 }
 
-/** A claquete já está na produção da arte: é v2 (atualiza o card), o mesmo roteiro, ou outro? */
+/** A claquete já está na produção da arte: antes de revisar, comparar com o que está lá e decidir. */
 interface JaNaProducao {
-  v2: () => void;
-  mesmo: () => void;
-  outro: () => void;
+  comparar: () => void;
 }
 
 function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: () => void }) {
@@ -358,7 +358,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
       <span className={`ficha-marca ${mandada ? 'trello' : alerta ? 'revisar' : 'ok'}`} aria-hidden="true">
         {mandada ? <Icone nome="quadro" tam={12} traco={2.4} /> : alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
       </span>
-      <button className="ficha-claquete" onClick={abrir} aria-label={`Abrir ${claquete}`}>
+      <button className="ficha-claquete" onClick={np && producao ? producao.comparar : abrir} aria-label={`Abrir ${claquete}`}>
         <b>
           <span className="claquete-alvo">
             <span className="claquete-texto">{digitado}</span>
@@ -392,7 +392,11 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
       <span className="ficha-artes some"><Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} circular={revisar.length > 0} /></span>
       <span className="ficha-acoes some">
         {acoes}
-        <button className={mandada ? 'botao-texto' : `botao ${alerta ? 'primario' : ''}`} onClick={abrir}>{alerta ? 'Revisar' : 'Abrir'}</button>
+        {np && producao ? (
+          <button className="botao primario" onClick={producao.comparar} title="Comparar com o que já está no Trello e decidir antes de revisar">Comparar</button>
+        ) : (
+          <button className={mandada ? 'botao-texto' : `botao ${alerta ? 'primario' : ''}`} onClick={abrir}>{alerta ? 'Revisar' : 'Abrir'}</button>
+        )}
       </span>
       {versao && (
         <span className="ficha-versao some">
@@ -404,15 +408,13 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
         </span>
       )}
       {np && producao && !versao && (
-        <span className="ficha-versao ficha-producao some">
-          <a className="card-existente" href={np.url} target="_blank" rel="noreferrer" title={`Já está no Trello${np.status.length ? ` · ${np.status.map((x) => etapaDe(x).nome).join(', ')}` : ''}`}>
-            <Icone nome="quadro" tam={15} traco={2.2} />
+        <span className="ficha-producao some">
+          <span className="rotulo-gente">já no Trello</span>
+          <a className="card-existente" href={np.url} target="_blank" rel="noreferrer" title={np.status.length ? np.status.map((x) => etapaDe(x).nome).join(', ') : undefined}>
+            <Icone nome="quadro" tam={14} traco={2.2} />
             <b>{np.claquete}</b>
             {np.entrada && <small>{dataCurtaComDia(new Date(np.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
           </a>
-          <button className="botao-texto" onClick={producao.outro} title="Vai como um card novo">É outro</button>
-          <button className="botao-texto" onClick={producao.mesmo} title="Não manda nada: liga a ficha ao card que já existe">É o mesmo</button>
-          <button className="botao primario" onClick={producao.v2} title="Põe as artes novas no checklist do card e anexa este roteiro">É v2</button>
         </span>
       )}
       {(revisar.length > 0 || (!r.meta.programa && cadastrarAtracao && !mandada)) && (
@@ -485,7 +487,7 @@ function CardTrello({ r, abrir, andamento }: { r: Resumo; abrir: () => void; and
   );
 }
 
-export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros }: Props) {
+export function Biblioteca({ abrir, comparar, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState('');
   // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
@@ -646,29 +648,6 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
       avisar('Não consegui substituir a versão anterior.');
     }
   };
-  /** A resposta à pergunta da produção da arte: v2 atualiza o card antigo, "o mesmo" só liga a ele, "outro" vai como card novo. */
-  const responderProducao = async (r: Resumo, resposta: 'v2' | 'mesmo' | 'outro') => {
-    const np = r.meta.naProducao;
-    const rn = await armazenamento.ler(r.id).catch(() => undefined);
-    if (!rn || !np) return;
-    const meta = { ...rn.meta, naProducao: undefined };
-    if (resposta === 'v2') meta.v2De = { card: np.card, url: np.url, registro: np.registro };
-    if (resposta === 'outro') meta.outroRoteiro = true;
-    const atualizado: Roteiro = { ...rn, meta };
-    try {
-      await armazenamento.salvar(atualizado, resposta === 'v2' ? 'é v2 de um card que já estava na produção' : undefined);
-      if (resposta === 'mesmo') {
-        await ligarAoCardExistente(r.id, np.card);
-        avisar('Ligado ao card que já estava no Trello.');
-        return void carregar();
-      }
-      if (resposta === 'v2') avisar(travamTrello(meta.revisar).length ? 'Quando for para o Trello, atualiza o card da versão anterior.' : 'Atualizando o card da versão anterior…');
-      if (temTrello() && !travamTrello(meta.revisar).length) void mandar(atualizado);
-      else void carregar();
-    } catch {
-      avisar('Não consegui guardar a resposta.');
-    }
-  };
   const manterAsDuas = async (nova: Resumo) => {
     const rn = await armazenamento.ler(nova.id).catch(() => undefined);
     if (rn) await armazenamento.salvar({ ...rn, meta: { ...rn.meta, substitui: undefined } }).catch(() => {});
@@ -703,7 +682,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         ordem={ordem++}
         abrir={() => abrir(r.id)}
         versao={anterior ? { anterior, substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
-        producao={r.meta.naProducao && (r.podeEditar || r.meu || aberto) ? { v2: () => responderProducao(r, 'v2'), mesmo: () => responderProducao(r, 'mesmo'), outro: () => responderProducao(r, 'outro') } : undefined}
+        producao={r.meta.naProducao && (r.podeEditar || r.meu || aberto) ? { comparar: () => comparar(r.id) } : undefined}
         mandar={temTrello() && (r.podeEditar || r.meu || aberto) ? () => mandar(r) : undefined}
         cadastrarAtracao={temCadastros() && r.meta.claquete ? () => cadastros({ aba: 'atracoes', claquete: r.meta.claquete }) : undefined}
         acoes={

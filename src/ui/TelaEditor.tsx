@@ -14,7 +14,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, baixarOriginal, consultarPauta, ligarAoCardExistente, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, baixarOriginal, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
@@ -353,7 +353,7 @@ function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor:
 
 /* ---------- tela ---------- */
 
-export function TelaEditor({ id, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { id: string; voltar: () => void; abrir: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string) => void }) {
+export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao }: { id: string; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string) => void }) {
   const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
   useEffect(() => {
     armazenamento.ler(id).then((r) => setRoteiro(r ?? null), () => setRoteiro(null));
@@ -370,10 +370,10 @@ export function TelaEditor({ id, voltar, abrir, avisar, pessoa, cadastrarAtracao
         </main>
       </div>
     );
-  return <Folha inicial={roteiro} voltar={voltar} abrir={abrir} avisar={avisar} pessoa={pessoa} cadastrarAtracao={cadastrarAtracao} />;
+  return <Folha inicial={roteiro} voltar={voltar} abrir={abrir} comparar={comparar} avisar={avisar} pessoa={pessoa} cadastrarAtracao={cadastrarAtracao} />;
 }
 
-function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { inicial: Roteiro; voltar: () => void; abrir: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string) => void }) {
+function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao }: { inicial: Roteiro; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string) => void }) {
   const pessoaRef = useRef(pessoa);
   pessoaRef.current = pessoa;
   const mexeu = useRef(false);
@@ -888,24 +888,6 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
     }
   };
 
-  /** A claquete já está na produção da arte: a resposta decide o que o envio faz. */
-  const responderProducao = async (resposta: 'v2' | 'mesmo' | 'outro') => {
-    const np = meta.naProducao;
-    if (!np) return;
-    if (resposta === 'v2') {
-      mudarMeta({ naProducao: undefined, v2De: { card: np.card, url: np.url, registro: np.registro } });
-      return avisar('Ao mandar, as artes novas entram no checklist do card e este roteiro é anexado.');
-    }
-    if (resposta === 'outro') return mudarMeta({ naProducao: undefined, outroRoteiro: true });
-    mudarMeta({ naProducao: undefined });
-    try {
-      const r = await ligarAoCardExistente(inicial.id, np.card);
-      setEnvio({ estado: r.estado, url: r.url, em: new Date().toISOString(), por: pessoa?.nome });
-      avisar('Ligado ao card que já estava no Trello.');
-    } catch {
-      avisar('Não consegui ligar ao card que já existe.');
-    }
-  };
   const perguntaProducao = meta.naProducao && !noTrello && podeMandar ? meta.naProducao : undefined;
 
   return (
@@ -992,7 +974,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                 <button
                   className={`botao trello ${estadoTrello?.estado === 'erro' ? 'erro' : ''}`}
                   disabled={!liberado || estadoTrello?.estado === 'enviando' || !!perguntaProducao}
-                  title={perguntaProducao ? 'Antes, responda ao lado se é uma v2 do que já está na produção' : estadoTrello?.estado === 'erro' ? estadoTrello.erro : meta.v2De ? 'Põe as artes novas no checklist do card da versão anterior e anexa este roteiro' : 'Cria o card com as artes, os campos e o PDF do roteiro'}
+                  title={perguntaProducao ? 'Antes, compare com o que já está no Trello e decida' : estadoTrello?.estado === 'erro' ? estadoTrello.erro : meta.v2De ? 'Põe as artes novas no checklist do card da versão anterior e anexa este roteiro' : 'Cria o card com as artes, os campos e o PDF do roteiro'}
                   aria-expanded={conferindoTrello}
                   onClick={() => (trava.length ? setConferindoTrello((v) => !v) : void mandarTrello())}
                 >
@@ -1129,11 +1111,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                   <b>{perguntaProducao.claquete}</b>
                   {perguntaProducao.entrada && <small>{dataCurtaComDia(new Date(perguntaProducao.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
                 </a>
-                <button className="botao primario largo" onClick={() => void responderProducao('v2')} title="Põe as artes novas no checklist do card e anexa este roteiro">É v2</button>
-                <span className="pergunta-producao-outras">
-                  <button className="botao-texto" onClick={() => void responderProducao('mesmo')} title="Não manda nada: liga ao card que já existe">É o mesmo</button>
-                  <button className="botao-texto" onClick={() => void responderProducao('outro')} title="Vai como um card novo">É outro</button>
-                </span>
+                <button className="botao primario largo" onClick={() => comparar(inicial.id)}>Comparar e decidir</button>
               </section>
             )}
             {podeMandar && !perguntaProducao && (

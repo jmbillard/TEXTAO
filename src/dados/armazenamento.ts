@@ -1,7 +1,7 @@
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
-import type { Meta, NaProducao, NoJSON, Pessoa, Roteiro } from '../modelo/tipos';
+import type { Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
    - servidor (SQLite, com dono, público/privado e histórico), quando a API responde;
@@ -274,10 +274,13 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
 }
 
 /** A claquete já está na produção da arte (Teable)? Só com servidor; sem resposta, segue como novo. */
-export async function consultarProducao(claquete: string): Promise<NaProducao | null> {
+export async function consultarProducao(claquete: string): Promise<ProducaoCompleta | null> {
   if (armazenamento.tipo !== 'servidor' || !claquete.trim()) return null;
-  return pedir<NaProducao | null>(`/api/producao?claquete=${encodeURIComponent(claquete)}`).catch(() => null);
+  return pedir<ProducaoCompleta | null>(`/api/producao?claquete=${encodeURIComponent(claquete)}`).catch(() => null);
 }
+
+/** Só o resumo fica no roteiro; o texto e as artes de lá se buscam na hora de comparar. */
+export const resumoDaProducao = ({ card, url, registro, claquete, entrada, status, artes }: ProducaoCompleta): NaProducao => ({ card, url, registro, claquete, entrada, status, artes });
 
 /** "É o mesmo roteiro que já está na produção": liga ao card que já existe, sem mandar nada. */
 export const ligarAoCardExistente = (id: string, card: string) =>

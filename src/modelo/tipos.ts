@@ -180,3 +180,9 @@ export interface NaProducao {
   status: string[];
   artes: number;
 }
+
+/** O que já está na produção da arte, completo, para comparar (não fica guardado no roteiro). */
+export interface ProducaoCompleta extends NaProducao {
+  listaDeArtes: string[];
+  texto: string;
+}
