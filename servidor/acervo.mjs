@@ -12,6 +12,9 @@
  *   - tudo o que está nos checklists dos cards da prévia dele (os que o bot cria), usado ou não;
  *   - as artes dos cards de claquete do filme que já saíram (gravadas aqui com o campo filme).
  *
+ * Sem acervo nenhum: VT (cada VT é único, com a sua arte) e as categorias que juntam coisas de pacotes diferentes
+ * (ACERVO_FORA; por padrão VTs, EVENTOS, Shows Diversos, Mood Mensal, Produções Estúdios Globo, Filmes Diversos).
+ *
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
  */
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
@@ -26,6 +29,9 @@ export function chaveDeArte(texto) {
     .trim();
 }
 const nomeComparavel = (s) => chaveDeArte(s);
+const FORA_PADRAO = 'VTs, VT, EVENTOS, Shows Diversos, Mood Mensal, Produções Estúdios Globo, Filmes Diversos';
+/** Roteiro de VT (claquete com "Vt"): cada um é único, não tem acervo. */
+export const ehVt = (claquete) => /\bVt\b/i.test(String(claquete ?? ''));
 
 // vínculo do Teable no Postgres: lista (ou objeto, ou texto JSON) com { id, title }
 function vinculos(v) {
@@ -73,6 +79,9 @@ export function criarAcervo(env, deps = {}) {
         }
       : null);
   const ligado = !!(consultar && t.acervo);
+  const fora = new Set(String(env.ACERVO_FORA || FORA_PADRAO).split(',').map(nomeComparavel).filter(Boolean));
+  /** Atração sem acervo: cada coisa dela tem o seu pacote (VTs, eventos, shows, moods…). */
+  const semAcervo = (atracao) => fora.has(nomeComparavel(atracao));
   const grava = !!(api.url && api.token && api.tabela);
 
   // o acervo inteiro, guardado por 1 min (é pequeno: algumas centenas de artes por atração)
@@ -169,12 +178,13 @@ export function criarAcervo(env, deps = {}) {
   /** As artes de uma atração (pelo nome). Sessão de filme não tem acervo próprio: ver paraRevisao. */
   async function daAtracao(atracao) {
     const n = nomeComparavel(atracao);
-    if (!n || (await ehSessao(atracao))) return [];
+    if (!n || semAcervo(atracao) || (await ehSessao(atracao))) return [];
     return (await todas()).filter((l) => !l.filme && nomeComparavel(l.atracao) === n).map(publica);
   }
 
   /** O que já existe para o roteiro: o acervo da atração ou, numa sessão, o do filme daquele dia. */
-  async function paraRevisao(atracao, data) {
+  async function paraRevisao(atracao, data, claquete = '') {
+    if (ehVt(claquete) || semAcervo(atracao)) return [];
     if (!(await ehSessao(atracao))) return daAtracao(atracao);
     return doFilme(await filmeDe(atracao, data));
   }
@@ -196,7 +206,7 @@ export function criarAcervo(env, deps = {}) {
    * @returns quantas entraram
    */
   async function registrar({ atracao, data, card, artes }) {
-    if (!ligado || !grava || !atracao || !artes?.length) return 0;
+    if (!ligado || !grava || !atracao || !artes?.length || semAcervo(atracao)) return 0;
     let filme = null;
     if (await ehSessao(atracao)) {
       filme = await filmeDe(atracao, data);
@@ -232,5 +242,5 @@ export function criarAcervo(env, deps = {}) {
     return ids.length;
   }
 
-  return { ligado, grava, ehSessao, filmeDe, doFilme, daAtracao, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, semAcervo, ehSessao, filmeDe, doFilme, daAtracao, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }

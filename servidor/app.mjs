@@ -15,7 +15,7 @@ import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
 import { criarTrello } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
-import { criarAcervo } from './acervo.mjs';
+import { criarAcervo, ehVt } from './acervo.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -696,7 +696,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const estado = r.duplicado ? 'duplicado' : 'enviado';
       q.marcarEnvio.run(id, estado, r.card?.id ?? null, r.card?.url ?? null, null, JSON.stringify(r.avisos ?? []), new Date().toISOString(), eu.email, eu.nome);
       // o que entra no acervo da atração quando o card sair: só as artes novas (as que já existiam, não)
-      if (estado === 'enviado' && Array.isArray(corpo.artes))
+      if (estado === 'enviado' && Array.isArray(corpo.artes) && !ehVt(JSON.parse(atual.meta).claquete))
         q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => String(a?.texto ?? a).slice(0, 500))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), String(JSON.parse(atual.meta).dataExibicao ?? '').slice(0, 10) || null, id);
       if (r.avisos?.length) console.warn(`[trello] ${id}: ${r.avisos.join(' · ')}`);
       return json(res, 200, { estado, url: r.card?.url, avisos: r.avisos ?? [] });
@@ -824,8 +824,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const busca = new URL(req.url, 'http://x').searchParams;
       const atracao = (busca.get('atracao') ?? '').slice(0, 200);
       const data = (busca.get('data') ?? '').slice(0, 10);
+      const claquete = (busca.get('claquete') ?? '').slice(0, 200);
       if (!acervo.ligado) return json(res, 200, { ligado: false, artes: [] });
-      return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), artes: await acervo.paraRevisao(atracao, data).catch((e) => (console.warn(`[acervo] ${e instanceof Error ? e.message : e}`), [])) });
+      return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), artes: await acervo.paraRevisao(atracao, data, claquete).catch((e) => (console.warn(`[acervo] ${e instanceof Error ? e.message : e}`), [])) });
     }
     if (caminho === '/api/acervo/zerar') {
       // pacote gráfico novo: as artes da atração deixam de valer. Só administradores (CADASTRO_ADMINS).
