@@ -55,6 +55,7 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
   else if (faltam.length) console.log(`[trello] envio desligado: falta ${faltam.join(', ')}`);
   else {
     const sem = [
+      !c.listas.SP && 'TRELLO_LISTA_SP (os roteiros de SP vão para a mesma lista do Rio e da rede)',
       !c.pg.producao && 'TEABLE_PG_ARTE (sem conferir duplicados)',
       !c.teable.producao && 'TEABLE_ARTE_PRODUCAO (sem registrar a entrada)',
       !c.sftp.host && 'SFTP_HOST (sem cópia no OneDrive)',

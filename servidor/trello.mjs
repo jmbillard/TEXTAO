@@ -387,6 +387,7 @@ export function criarTrello(env, deps = {}) {
     const praca = ['SP', 'RJ', 'G5'].includes(m.praca) ? m.praca : 'G5';
     const vt = /\bVt\b/i.test(claquete) || /\bVt\b/i.test(r.original?.nome ?? '');
     const lista = (vt && c.listas.VT) || (praca === 'SP' && c.listas.SP) || c.listas.padrao;
+    if (praca === 'SP' && !vt && !c.listas.SP) avisos.push('sem TRELLO_LISTA_SP: o card de SP foi para a lista padrão (TRELLO_LISTA)');
 
     const [redator, editor, atracao, alta] = await Promise.all([
       tentar('achar o redator', () => acharRedator(m.redator)),
