@@ -15,7 +15,7 @@ import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
 import { CONVITES, CONVITES_FILA_VAZIA, ConviteDeArrastar, Duvida, Marca } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
-import { copiarTexto, dataCurtaComDia, plural } from './util';
+import { dataCurtaComDia, plural } from './util';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
 const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
@@ -562,26 +562,6 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
     else void carregar();
   };
 
-  /** Lista de artes de todos os roteiros de um dia, para planejar a produção. */
-  const copiarArtesDoDia = async (g: GrupoDia) => {
-    try {
-      const completos = (await Promise.all(g.itens.map((r) => armazenamento.ler(r.id)))).filter((r): r is Roteiro => !!r);
-      const blocos = completos
-        .map((r) => exportar(r))
-        .filter((x) => x.artes.length)
-        .map((x) => {
-          const cab = [x.roteiro.claquete || x.roteiro.titulo, [x.roteiro.programa, x.roteiro.praca].filter(Boolean).join(' · ')].filter(Boolean).join('  —  ');
-          return [cab, ...x.artes.map((a) => `${a.ordem}\t${a.subtipo ? a.subtipoNome : 'sem tipo'}\t${a.texto}${a.observacao ? `\t(${a.observacao})` : ''}`)].join('\n');
-        });
-      if (!blocos.length) return avisar('Nenhuma arte nos roteiros desse dia.');
-      const total = completos.reduce((n, r) => n + exportar(r).artes.length, 0);
-      await copiarTexto([`ARTES · ${g.titulo.toUpperCase()}${g.chave !== 'sem-data' ? ` (${g.subtitulo})` : ''}`, '', blocos.join('\n\n')].join('\n'));
-      avisar(`${plural(total, 'arte copiada', 'artes copiadas')}, de ${plural(blocos.length, 'roteiro', 'roteiros')}. É só colar.`);
-    } catch {
-      avisar('Não consegui copiar as artes do dia.');
-    }
-  };
-
   const termo = semAcento(busca.trim());
   const aberto = (roteiros ?? []).some((r) => r.aberto);
   const todos = (roteiros ?? []).filter((r) => r.id !== saindo?.id);
@@ -628,9 +608,6 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         <span>{g.subtitulo}</span>
       </h3>
       <span className="dia-conta">{plural(g.itens.length, 'roteiro', 'roteiros')}</span>
-      <button className="botao-texto" onClick={() => copiarArtesDoDia(g)} title="Copia a lista de artes de todos os roteiros deste dia">
-        <Icone nome="copiar" tam={14} /> Copiar artes do dia
-      </button>
     </div>
   );
   const filtro = (id: 'prontos' | 'revisar', conteudo: React.ReactNode) => (
@@ -730,7 +707,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                 {todos.length > 6 && (
                   <label className="busca">
                     <Icone nome="lupa" tam={15} traco={2} />
-                    <input type="search" placeholder="Buscar por atração, claquete ou redator" aria-label="Buscar roteiros" value={busca} onChange={(e) => setBusca(e.target.value)} />
+                    <input type="search" placeholder="Buscar claquete, atração ou redator" aria-label="Buscar roteiros" value={busca} onChange={(e) => setBusca(e.target.value)} />
                   </label>
                 )}
               </div>
