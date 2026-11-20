@@ -112,9 +112,9 @@ describe('claquete repetida fica marcada', () => {
   const rot = (meta: Partial<Meta>) =>
     exportar({ id: 'x', meta: { ...metaVazia(), editor: 'Jorge', dataExibicao: '2026-11-20', ...meta }, doc: { type: 'doc', content: [] }, revisao: 1, criadoEm: '', atualizadoEm: '' } as never);
   it('v2 e card novo viram pendência; conferida, sai', () => {
-    expect(pendencias(rot({ v2De: { card: 'c', url: 'u' } }))).toContain('Versão nova: atualiza o card que já está no Trello');
-    expect(pendencias(rot({ outroRoteiro: true }))).toContain('Claquete repetida: vai como card novo');
-    expect(pendencias(rot({ v2De: { card: 'c', url: 'u' }, conferidos: ['v2'] }))).not.toContain('Versão nova: atualiza o card que já está no Trello');
+    expect(pendencias(rot({ v2De: { card: 'c', url: 'u' } }))).toContain('Versão nova (v2)');
+    expect(pendencias(rot({ outroRoteiro: true }))).toContain('Claquete repetida');
+    expect(pendencias(rot({ v2De: { card: 'c', url: 'u' }, conferidos: ['v2'] }))).not.toContain('Versão nova (v2)');
     expect(pendenciasDetalhadas(rot({ outroRoteiro: true })).find((p) => p.id === 'repetida')?.dispensavel).toBe(true);
   });
 });

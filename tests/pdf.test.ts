@@ -103,6 +103,6 @@ describe('PDF digitalizado (OCR)', () => {
     const imp = interpretar({ arquivo: 'Festa_1_1.pdf', formato: 'pdf', autor: '', lidoPorOcr: true, blocos: [{ tipo: 'p', par: [{ t: 'HOJE TEM ' }, { t: 'FESTA', u: true }] }] }, { anoPadrao: 2026 });
     const saida = exportar({ id: 't', meta: imp.meta, doc: montarDoc(imp), revisao: 1, criadoEm: '', atualizadoEm: '' });
     const { pendencias } = await import('../src/modelo/exportar');
-    expect(pendencias(saida)).toContain('Lido por OCR: confira texto e artes');
+    expect(pendencias(saida)).toContain('Lido por OCR');
   });
 });
