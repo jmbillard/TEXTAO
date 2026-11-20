@@ -1552,3 +1552,7 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .anotacao-folha.esquerda { left: 18px; transform: rotate(-4deg); }
 .anotacao-folha.direita { right: 18px; transform: rotate(3deg); }
 .comparar-lado { padding-top: 22px; }
+
+.anotacao-folha.circulada { padding: 2px 9px 4px; }
+.anotacao-folha svg { position: absolute; inset: -4px -6px; width: calc(100% + 12px); height: calc(100% + 8px); overflow: visible; }
+.anotacao-folha path { fill: none; stroke: var(--ultra); stroke-width: 1.7; stroke-linecap: round; vector-effect: non-scaling-stroke; }

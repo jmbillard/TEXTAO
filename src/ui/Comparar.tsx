@@ -54,8 +54,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
     const sairam = artes.antigas.filter((a) => a.tipo === 'saiu').length;
     const igual = semelhanca(texto);
     const outroRedator = !mesmaPessoa(producao.redator, roteiro.meta.redator);
-    const outroEditor = !mesmaPessoa(producao.editor, roteiro.meta.editor);
-    return { texto, artes, novas, sairam, igual, outroRedator, outroEditor, mesmo: igual === 1 && !novas && !sairam };
+    return { texto, artes, novas, sairam, igual, outroRedator, mesmo: igual === 1 && !novas && !sairam };
   }, [roteiro, producao]);
 
   // as duas folhas: o PDF que está no card e o do roteiro novo, como vai para o Trello
@@ -136,7 +135,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                   )
                 }
                 rotulo="no Trello"
-                gente={producao && <Gente redator={producao.redator} editor={producao.editor} riscar={{ redator: !!comparacao?.outroRedator, editor: !!comparacao?.outroEditor }} />}
+                gente={producao && <Gente redator={producao.redator} />}
                 artes={comparacao?.artes.antigas}
                 folha={roteiro && <VisorPdf carregar={pdfAntigo} rotulo="Roteiro no Trello" anotacao="no Trello" reserva={producao?.texto ? <div className="comparar-texto">{producao.texto}</div> : undefined} />}
               />
@@ -149,9 +148,9 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                   </span>
                 }
                 rotulo="chegou agora"
-                gente={<Gente redator={roteiro.meta.redator} editor={roteiro.meta.editor} destacar={{ redator: !!comparacao?.outroRedator, editor: !!comparacao?.outroEditor }} />}
+                gente={<Gente redator={roteiro.meta.redator} destacar={!!comparacao?.outroRedator} />}
                 artes={comparacao?.artes.novas ?? exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: 'igual' as const }))}
-                folha={<VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />}
+                folha={<VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" circular reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />}
               />
             </div>
 
@@ -166,7 +165,6 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
               <span><b>{comparacao.novas}</b> {comparacao.novas === 1 ? 'arte nova' : 'artes novas'}</span>
               <span><b>{comparacao.sairam}</b> {comparacao.sairam === 1 ? 'arte saiu' : 'artes saíram'}</span>
               {comparacao.outroRedator && <span><b>outro</b> redator</span>}
-              {comparacao.outroEditor && <span><b>outra</b> edição</span>}
               {comparacao.mesmo && <span className="parece">parece o mesmo</span>}
             </>
           ) : (
@@ -188,14 +186,11 @@ function Riscado({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Redator e edição de cada lado; quem foi trocado aparece riscado no antigo e marcado no novo. */
-function Gente({ redator, editor, riscar, destacar }: { redator?: string; editor?: string; riscar?: { redator: boolean; editor: boolean }; destacar?: { redator: boolean; editor: boolean } }) {
-  const nome = (n: string | undefined, r?: boolean, d?: boolean) =>
-    !n ? <span className="suave">—</span> : r ? <Riscado>{n}</Riscado> : <span className={d ? 'trocado' : ''}>{n}</span>;
+/** O redator de cada lado; quando é outra pessoa, o novo ganha destaque. */
+function Gente({ redator, destacar }: { redator?: string; destacar?: boolean }) {
   return (
     <p className="comparar-gente">
-      <span>redator: {nome(redator, riscar?.redator, destacar?.redator)}</span>
-      <span>edição: {nome(editor, riscar?.editor, destacar?.editor)}</span>
+      <span>redator: {redator ? <span className={destacar ? 'trocado' : ''}>{redator}</span> : <span className="suave">—</span>}</span>
     </p>
   );
 }
