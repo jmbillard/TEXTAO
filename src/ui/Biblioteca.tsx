@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
@@ -409,20 +409,43 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
 }
 
 /** O que já está no Trello vira um card pequeno, numa grade no fim do dia: ser card já diz que está lá. */
-function CardTrello({ r, abrir }: { r: Resumo; abrir: () => void }) {
+// a etapa do card na produção da arte (status do Teable, que o n8n traz do Trello)
+const ETAPAS: Record<string, { nome: string; tom: string }> = {
+  'AGUARDANDO MATERIAL': { nome: 'Aguardando material', tom: 'espera' },
+  PRODUZINDO: { nome: 'Produzindo', tom: 'produzindo' },
+  'EM APROVAÇÃO': { nome: 'Em aprovação', tom: 'aprovacao' },
+  'PEDIDO DE ALTERAÇÃO': { nome: 'Pedido de alteração', tom: 'alteracao' },
+  FINALIZADO: { nome: 'Finalizado', tom: 'finalizado' },
+  FILME: { nome: 'Filme', tom: 'espera' },
+  CAIU: { nome: 'Caiu', tom: 'caiu' },
+};
+const etapaDe = (st: string) => ETAPAS[st.toUpperCase()] ?? { nome: st[0] + st.slice(1).toLowerCase(), tom: 'espera' };
+
+function CardTrello({ r, abrir, andamento }: { r: Resumo; abrir: () => void; andamento?: Andamento }) {
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
   const e = r.trello!;
+  const etapas = (andamento?.status ?? []).map(etapaDe);
+  const caiu = etapas.some((x) => x.tom === 'caiu');
+  // a entrega vem em UTC; o dia que vale é o de Brasília
+  const prazo = !andamento?.entregue && andamento?.entrega && !caiu ? new Date(andamento.entrega).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '';
   return (
-    <li className="card-trello">
-      <span className="card-etiquetas" aria-hidden="true">
-        {r.meta.praca && <i className="etq praca">{r.meta.praca}</i>}
-        <i className="etq artes">{plural(r.nArtes, 'arte', 'artes')}</i>
+    <li className={`card-trello ${caiu ? 'caiu' : ''}`}>
+      <span className="card-etiquetas">
+        {r.meta.praca && <i className="etq praca" aria-hidden="true">{r.meta.praca}</i>}
+        <i className="etq artes" aria-hidden="true">{plural(r.nArtes, 'arte', 'artes')}</i>
+        {andamento?.entregue && !caiu ? (
+          <i className="etq etapa entregue"><Icone nome="certo" tam={10} traco={3} /> Entregue</i>
+        ) : (
+          etapas.map((x) => <i key={x.nome} className={`etq etapa ${x.tom}`}>{x.nome}</i>)
+        )}
+        {prazo && <small className="card-prazo" title={`Entrega ${dataCurtaComDia(new Date(andamento!.entrega!).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}`}>até {prazo}</small>}
       </span>
       <button className="card-claquete" onClick={abrir} title={`Abrir ${claquete}`}>{claquete}</button>
       <span className="card-rodape">
         <span className="card-gente">
           {r.meta.redator && <span title="Redator">{r.meta.redator}</span>}
           {r.meta.editor && <small>edição: {r.meta.editor}</small>}
+          {!!andamento?.designers.length && <small>arte: {andamento.designers.join(', ')}</small>}
         </span>
         {e.url && (
           <a className="card-link" href={e.url} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label={`Abrir ${claquete} no Trello`}>
@@ -450,6 +473,16 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   const [claqueteNova, setClaqueteNova] = useState('');
 
   const carregar = () => armazenamento.listar().then(setRoteiros, () => setRoteiros([]));
+  // o andamento na produção da arte: junto com a fila e a cada 2 min (o servidor guarda por 1 min)
+  const [andamento, setAndamento] = useState<Record<string, Andamento>>({});
+  const temNoTrello = (roteiros ?? []).some(noTrello);
+  useEffect(() => {
+    if (!temNoTrello) return;
+    const ler = () => void armazenamento.andamento().then(setAndamento);
+    ler();
+    const t = setInterval(ler, 120_000);
+    return () => clearInterval(t);
+  }, [temNoTrello, roteiros]);
   useEffect(() => {
     void carregar();
   }, [chegou]);
@@ -788,7 +821,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
                         <div className="cards-trello-bloco">
                         <p className="cards-rotulo">já no Trello</p>
                         <ul className="cards-trello" aria-label="Já no Trello">
-                          {g.itens.filter(noTrello).map((r) => <CardTrello key={r.id} r={r} abrir={() => abrir(r.id)} />)}
+                          {g.itens.filter(noTrello).map((r) => <CardTrello key={r.id} r={r} abrir={() => abrir(r.id)} andamento={andamento[r.id]} />)}
                         </ul>
                         </div>
                       )}

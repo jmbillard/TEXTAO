@@ -320,3 +320,39 @@ describe('rotas do envio', () => {
     expect((await (await ana('/api/roteiros/rot-trello-2/trello', { method: 'POST', body: '{}' })).json()).estado).toBe('enviado');
   });
 });
+
+describe('andamento na produção da arte', () => {
+  it('lê status, designers e entrega do Teable pelo card; sem card, pela claquete; guarda por 1 min', async () => {
+    const consultas: { sql: string; params: unknown[] }[] = [];
+    const consultar = async (sql: string, params: unknown[] = []) => {
+      consultas.push({ sql, params });
+      return [
+        { card_ID: 'c1', claquete: 'SHOW DA NOITE 20/11 SP', status: '["EM APROVAÇÃO"]', designers: ['Rafa Lins'], entregue: false, data_entrega: new Date('2026-11-21T03:00:00Z'), data_entrada: new Date('2026-11-20T10:00:00Z') },
+        { card_ID: 'c2', claquete: 'FESTA 20/11', status: ['FINALIZADO'], designers: '["Bia Costa","Rafa Lins"]', entregue: true, data_entrega: null, data_entrada: new Date('2026-11-20T09:00:00Z') },
+        { card_ID: 'velho', claquete: 'JORNAL DA TARDE 20/11', status: null, designers: null, entregue: false, data_entrega: null, data_entrada: new Date('2026-11-19T09:00:00Z') },
+        { card_ID: 'novo', claquete: 'Jornal da Tarde 20/11', status: '["CAIU"]', designers: null, entregue: false, data_entrega: null, data_entrada: new Date('2026-11-20T08:00:00Z') },
+      ].filter((l) => (params[0] as string[]).includes(l.card_ID) || sql.includes('30 days'));
+    };
+    const t = criarTrello(ENV, { consultar });
+    const itens = [
+      { id: 'r1', card: 'c1', claquete: 'SHOW DA NOITE 20/11 SP' },
+      { id: 'r2', card: 'c2', claquete: 'FESTA 20/11' },
+      { id: 'r3', card: null, claquete: 'JORNAL DA TARDE 20/11' },
+      { id: 'r4', card: 'sumiu', claquete: 'X' },
+    ];
+    const a = await t.andamento(itens);
+    expect(a.r1).toEqual({ status: ['EM APROVAÇÃO'], designers: ['Rafa Lins'], entregue: false, entrega: '2026-11-21T03:00:00.000Z' });
+    expect(a.r2).toMatchObject({ status: ['FINALIZADO'], designers: ['Bia Costa', 'Rafa Lins'], entregue: true, entrega: null });
+    expect(a.r3.status).toEqual(['CAIU']); // a linha mais recente com a mesma claquete
+    expect(a.r4).toBeUndefined();
+    expect(consultas[0].sql).toContain('"bseBase"."producao"');
+    await t.andamento(itens);
+    expect(consultas).toHaveLength(1);
+  });
+
+  it('sem Postgres ou com erro, devolve vazio', async () => {
+    expect(await criarTrello({ ...ENV, TEABLE_PG_ARTE: '' }, { consultar: async () => [] }).andamento([{ id: 'r', card: 'c' }])).toEqual({});
+    const t = criarTrello(ENV, { consultar: async () => { throw new Error('coluna não existe'); } });
+    expect(await t.andamento([{ id: 'r', card: 'c', claquete: '' }])).toEqual({});
+  });
+});

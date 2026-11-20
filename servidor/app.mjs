@@ -230,7 +230,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
-              e.estado AS envio_estado, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
+              e.estado AS envio_estado, e.card_id AS envio_card, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
               EXISTS (SELECT 1 FROM originais o WHERE o.roteiro_id = roteiros.id) AS tem_original
        FROM roteiros LEFT JOIN envios e ON e.roteiro_id = roteiros.id
        WHERE dono_email = ? OR publico = 1 OR id IN (SELECT roteiro_id FROM compartilhamentos WHERE email = ?)
@@ -240,7 +240,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
-              e.estado AS envio_estado, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
+              e.estado AS envio_estado, e.card_id AS envio_card, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
               EXISTS (SELECT 1 FROM originais o WHERE o.roteiro_id = roteiros.id) AS tem_original
        FROM roteiros LEFT JOIN envios e ON e.roteiro_id = roteiros.id
        ORDER BY atualizado_em DESC LIMIT 2000`,
@@ -728,6 +728,11 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, { ok: true, cor });
     }
     if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
+    if (caminho === '/api/andamento') {
+      // como anda, na produção da arte, o que já foi para o Trello (só dos roteiros que a pessoa vê)
+      const linhas = (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).filter((l) => l.envio_estado === 'enviado' || l.envio_estado === 'duplicado');
+      return json(res, 200, await trello.andamento(linhas.map((l) => ({ id: l.id, card: l.envio_card, claquete: JSON.parse(l.meta).claquete ?? '' }))));
+    }
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 

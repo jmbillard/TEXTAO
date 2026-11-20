@@ -1437,7 +1437,7 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .card-etiquetas { display: flex; gap: 4px; }
 .etq { font: 600 10.5px/1 var(--sans); font-style: normal; padding: 3px 7px; border-radius: 4px; }
 .etq.praca { background: var(--tinta); color: var(--papel); }
-.etq.artes { background: var(--ultra-suave); color: var(--ultra); }
+.etq.artes { background: transparent; color: var(--tinta2); box-shadow: inset 0 0 0 1px var(--regua-forte); }
 .card-claquete { border: 0; background: none; padding: 0; text-align: left; font: 600 13px/1.3 var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
 .card-claquete:hover { text-decoration: underline; text-underline-offset: 3px; }
 .card-rodape { display: flex; align-items: flex-end; gap: 6px; min-height: 22px; }
@@ -1447,3 +1447,14 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .card-link { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--tinta3); transition: background 0.15s, color 0.15s; }
 .card-link:hover { background: var(--neutro); color: var(--ok); }
 .card-quem { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 9.5px var(--sans); color: #fff; background: var(--cor, var(--tinta3)); }
+.card-etiquetas { flex-wrap: wrap; align-items: center; }
+.etq.etapa { display: inline-flex; align-items: center; gap: 3px; }
+.etq.etapa.espera { background: var(--neutro); color: var(--tinta2); }
+.etq.etapa.produzindo { background: var(--falta-fundo); color: var(--falta); }
+.etq.etapa.aprovacao { background: color-mix(in srgb, #3b6fd8 16%, var(--papel)); color: color-mix(in srgb, #3b6fd8 80%, var(--tinta)); }
+.etq.etapa.alteracao { background: color-mix(in srgb, var(--perigo) 14%, var(--papel)); color: var(--perigo); }
+.etq.etapa.finalizado, .etq.etapa.entregue { background: var(--ok-fundo); color: var(--ok); }
+.etq.etapa.caiu { background: var(--neutro); color: var(--tinta3); }
+.card-prazo { font-size: 11px; color: var(--tinta3); margin-left: 2px; white-space: nowrap; }
+.card-trello.caiu { background: color-mix(in srgb, var(--papel) 50%, transparent); box-shadow: none; }
+.card-trello.caiu .card-claquete { color: var(--tinta3); text-decoration: line-through; text-decoration-thickness: 1.5px; }

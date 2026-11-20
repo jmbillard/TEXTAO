@@ -60,6 +60,16 @@ export interface Armazenamento {
   lerVersao(id: string, n: number): Promise<ConteudoVersao>;
   /** As outras pessoas que já usaram a plataforma. */
   usuarios(): Promise<Pessoa[]>;
+  /** Como anda na produção da arte o que já está no Trello, por roteiro (lido do Teable). */
+  andamento(): Promise<Record<string, Andamento>>;
+}
+
+export interface Andamento {
+  /** FINALIZADO, EM APROVAÇÃO, PRODUZINDO, AGUARDANDO MATERIAL, PEDIDO DE ALTERAÇÃO, CAIU, FILME */
+  status: string[];
+  designers: string[];
+  entregue: boolean;
+  entrega: string | null;
 }
 
 /* ---------- navegador ---------- */
@@ -105,6 +115,7 @@ const noNavegador: Armazenamento = {
   },
   versoes: async () => [],
   usuarios: async () => [],
+  andamento: async () => ({}),
   lerVersao: async () => {
     throw new Error('Sem histórico neste modo.');
   },
@@ -130,6 +141,7 @@ async function pedir<T>(caminho: string, init: RequestInit = {}): Promise<T> {
 const noServidor: Armazenamento = {
   tipo: 'servidor',
   listar: () => pedir<Resumo[]>('/api/roteiros'),
+  andamento: () => pedir<Record<string, Andamento>>('/api/andamento').catch(() => ({})),
   ler: (id) => pedir<Roteiro>(`/api/roteiros/${encodeURIComponent(id)}`).catch((e: { status?: number }) => (e.status === 404 ? undefined : Promise.reject(e))),
   async salvar(roteiro, marco) {
     await pedir(`/api/roteiros/${encodeURIComponent(roteiro.id)}`, {

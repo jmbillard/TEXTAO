@@ -445,5 +445,64 @@ export function criarTrello(env, deps = {}) {
     return { card: { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}` }, avisos };
   }
 
-  return { ligado: c.ligado, config: c, enviar, parar: () => banco?.end?.().catch(() => {}) };
+  /* ---------- como anda cada card: lido da produção da arte no Teable (o n8n sincroniza com o Trello) ---------- */
+
+  // status (seleção múltipla) e designers (fórmula) chegam do Postgres como texto JSON, lista ou objeto
+  const lerLista = (v) => {
+    if (v == null || v === '') return [];
+    if (typeof v === 'string') {
+      try {
+        return lerLista(JSON.parse(v));
+      } catch {
+        return [v];
+      }
+    }
+    if (Array.isArray(v)) return v.flatMap(lerLista);
+    if (typeof v === 'object') return [v.title ?? v.name ?? ''].filter(Boolean);
+    return [String(v)];
+  };
+  const quando = (v) => (v ? new Date(v).getTime() || 0 : 0);
+  let memo = { em: 0, chave: '', dados: {} };
+  let avisouFalha = false;
+
+  /**
+   * @param itens [{ id, card, claquete }]: os roteiros que já estão no Trello. Sem card (veio pelo upload
+   *   antigo), procura pela claquete nos últimos 30 dias.
+   * @returns { [id]: { status: string[], designers: string[], entregue: boolean, entrega: string|null } }
+   */
+  async function andamento(itens) {
+    if (!t.producao || !itens.length) return {};
+    const chave = itens.map((i) => `${i.id}:${i.card ?? ''}`).sort().join(',');
+    if (memo.chave === chave && Date.now() - memo.em < 60_000) return memo.dados;
+    try {
+      const semCard = itens.some((i) => !i.card);
+      const linhas = await sql(
+        `SELECT "card_ID", "claquete", "status", "designers", "entregue", "data_entrega", "data_entrada" FROM ${t.producao}
+         WHERE "card_ID" = ANY($1::text[])${semCard ? ` OR "data_entrada" >= now() - interval '30 days'` : ''}`,
+        [itens.map((i) => i.card).filter(Boolean)],
+      );
+      const dados = {};
+      for (const i of itens) {
+        const l = i.card
+          ? linhas.find((x) => x.card_ID === i.card)
+          : linhas.filter((x) => mesmaClaquete(x.claquete, i.claquete)).sort((a, b) => quando(b.data_entrada) - quando(a.data_entrada))[0];
+        if (!l) continue;
+        dados[i.id] = {
+          status: lerLista(l.status),
+          designers: lerLista(l.designers),
+          entregue: !!l.entregue,
+          entrega: quando(l.data_entrega) ? new Date(l.data_entrega).toISOString() : null,
+        };
+      }
+      memo = { em: Date.now(), chave, dados };
+      avisouFalha = false;
+      return dados;
+    } catch (e) {
+      if (!avisouFalha) console.warn(`[andamento] não consegui ler a produção da arte: ${e instanceof Error ? e.message : e}`);
+      avisouFalha = true;
+      return {};
+    }
+  }
+
+  return { ligado: c.ligado, config: c, enviar, andamento, parar: () => banco?.end?.().catch(() => {}) };
 }
