@@ -18,9 +18,12 @@ const maiuscula = (s: string) => s[0].toUpperCase() + s.slice(1);
 /** Já tem card no Trello (mandado pelo PROMeiro ou pelo upload antigo). */
 export const noTrello = (r: Resumo) => r.trello?.estado === 'enviado' || r.trello?.estado === 'duplicado';
 
+/** Pede alguém olhar: tem pendência, ou falta responder se é uma v2 do que já está na produção. */
+export const pedeRevisao = (r: Resumo) => !!r.meta.revisar?.length || !!r.meta.naProducao;
+
 // dentro do dia: o que pede revisão, depois os prontos, e por último o que já está no Trello
 const ordemNoDia = (a: Resumo, b: Resumo) =>
-  +noTrello(a) - +noTrello(b) || +!!b.meta.revisar?.length - +!!a.meta.revisar?.length || b.atualizadoEm.localeCompare(a.atualizadoEm);
+  +noTrello(a) - +noTrello(b) || +pedeRevisao(b) - +pedeRevisao(a) || b.atualizadoEm.localeCompare(a.atualizadoEm);
 
 function nomear(iso: string, hoje: string, amanha: string): Pick<GrupoDia, 'titulo' | 'subtitulo'> {
   const [a, m, d] = iso.split('-').map(Number);

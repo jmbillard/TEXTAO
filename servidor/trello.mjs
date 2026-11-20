@@ -339,7 +339,18 @@ export function criarTrello(env, deps = {}) {
       }
     };
 
-    if (await tentar('conferir a produção de hoje', () => jaEntrouHoje(claquete))) return { duplicado: true, avisos };
+    const listaDeArtes = (r.artes ?? [])
+      .map((a) => (typeof a === 'string' ? { texto: a, tipo: '' } : { texto: String(a?.texto ?? ''), tipo: String(a?.tipo ?? '') }))
+      .map((a) => ({ texto: a.texto.trim(), tipo: a.tipo.trim() }))
+      .filter((a) => a.texto);
+    const artes = listaDeArtes.map((a) => a.texto);
+
+    // versão nova de um roteiro que já está na produção: o card antigo recebe as artes novas e o roteiro novo
+    r.v2De ??= m.v2De;
+    if (r.v2De?.card) return atualizarCard(r, listaDeArtes, avisos, tentar);
+
+    // "é outro roteiro" (a pessoa respondeu na fila): não é o mesmo da produção de hoje
+    if (!(r.outro ?? m.outroRoteiro) && (await tentar('conferir a produção de hoje', () => jaEntrouHoje(claquete)))) return { duplicado: true, avisos };
 
     const hoje = agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
     const chave = chaveN8n(claquete);
@@ -355,11 +366,6 @@ export function criarTrello(env, deps = {}) {
     ]);
     const filme = await tentar('achar o card do filme', () => cardDoFilme(atracao?.nome, m.dataExibicao));
 
-    const listaDeArtes = (r.artes ?? [])
-      .map((a) => (typeof a === 'string' ? { texto: a, tipo: '' } : { texto: String(a?.texto ?? ''), tipo: String(a?.tipo ?? '') }))
-      .map((a) => ({ texto: a.texto.trim(), tipo: a.tipo.trim() }))
-      .filter((a) => a.texto);
-    const artes = listaDeArtes.map((a) => a.texto);
     const desc = [
       '**ARTES IDENTIFICADAS:**',
       artes.length ? '`' + artes.join('`, `') + '`' : '—',
@@ -445,6 +451,68 @@ export function criarTrello(env, deps = {}) {
     return { card: { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}` }, avisos };
   }
 
+  /** Versão nova: artes que faltam no checklist, o roteiro novo anexado, um comentário e a linha do Teable em dia. */
+  async function atualizarCard(r, listaDeArtes, avisos, tentar) {
+    const id = r.v2De.card;
+    const artes = listaDeArtes.map((a) => a.texto);
+    const card = await trello('GET', `/cards/${id}`, { consulta: { fields: 'id,shortUrl,url,name' } });
+    if (!card?.id) throw new Error('O card da versão anterior não foi encontrado no Trello.');
+    const listas = (await tentar('ler as checklists', () => trello('GET', `/cards/${id}/checklists`))) ?? [];
+    let lista = listas.find((l) => /ARTES/i.test(l.name)) ?? null;
+    const ja = new Set((lista?.checkItems ?? []).map((i) => chaveN8n(i.name)));
+    const novas = artes.filter((a) => !ja.has(chaveN8n(a)));
+    if (novas.length) {
+      lista ??= await tentar('criar a checklist', () => trello('POST', '/checklists', { consulta: { idCard: id, name: 'ARTES PRODUZIDAS' } }));
+      if (lista?.id) for (const a of novas) await tentar(`incluir a arte ${a}`, () => trello('POST', `/checklists/${lista.id}/checkItems`, { consulta: { name: a } }));
+    }
+    const pdf = await tentar('gerar o PDF', () => emPdf(r, listaDeArtes));
+    if (pdf) {
+      const nome = pdf.nome.replace(/(\.pdf)$/i, ' V2$1');
+      await tentar('anexar o roteiro novo', () => {
+        const form = new FormData();
+        form.append('name', nome);
+        form.append('mimeType', 'application/pdf');
+        form.append('file', new Blob([pdf.dados], { type: 'application/pdf' }), nome);
+        return trello('POST', `/cards/${id}/attachments`, { form });
+      });
+    }
+    await tentar('comentar no card', () =>
+      trello('POST', `/cards/${id}/actions/comments`, {
+        consulta: { text: `Versão nova do roteiro pelo PROMeiro: ${novas.length ? `${novas.length === 1 ? '1 arte nova' : `${novas.length} artes novas`} no checklist (${novas.join(', ')})` : 'nenhuma arte nova'}, roteiro anexado.` },
+      }),
+    );
+    if (r.v2De.registro && c.teable.producao)
+      await tentar('atualizar a produção da arte', () =>
+        teableAtualizar(c.teable.producao, r.v2De.registro, { artes: artes.join(' | '), artes_quantidade: artes.length, texto: String(r.texto ?? '').replaceAll('\u0000', '') }),
+      );
+    return { card: { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}` }, avisos, v2: true, novas: novas.length };
+  }
+
+  /**
+   * A claquete já está na produção da arte? Procura pela key (como o n8n grava), e pela claquete nos últimos 60 dias.
+   * @returns { card, url, registro, claquete, entrada, status: string[], artes: number } | null
+   */
+  async function naProducao(claquete) {
+    if (!t.producao || !claquete) return null;
+    const chave = chaveN8n(claquete);
+    const linhas = await sql(
+      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade" FROM ${t.producao}
+       WHERE "key" = $1 OR "data_entrada" >= now() - interval '60 days' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 3000`,
+      [chave],
+    );
+    const l = linhas.find((x) => x.key === chave) ?? linhas.find((x) => mesmaClaquete(x.claquete, claquete));
+    if (!l?.card_ID) return null;
+    return {
+      card: l.card_ID,
+      url: `https://trello.com/c/${l.card_ID}`,
+      registro: l.registro ?? null,
+      claquete: l.claquete,
+      entrada: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : null,
+      status: lerLista(l.status),
+      artes: Number(l.artes_quantidade) || 0,
+    };
+  }
+
   /* ---------- como anda cada card: lido da produção da arte no Teable (o n8n sincroniza com o Trello) ---------- */
 
   // status (seleção múltipla) e designers (fórmula) chegam do Postgres como texto JSON, lista ou objeto
@@ -504,5 +572,5 @@ export function criarTrello(env, deps = {}) {
     }
   }
 
-  return { ligado: c.ligado, config: c, enviar, andamento, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, andamento, naProducao, parar: () => banco?.end?.().catch(() => {}) };
 }

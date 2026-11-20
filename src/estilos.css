@@ -1458,3 +1458,17 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .card-prazo { font-size: 11px; color: var(--tinta3); margin-left: 2px; white-space: nowrap; }
 .card-trello.caiu { background: color-mix(in srgb, var(--papel) 50%, transparent); box-shadow: none; }
 .card-trello.caiu .card-claquete { color: var(--tinta3); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+
+/* "redator:" na ficha, no mesmo tom do "edição:" */
+.ficha-gente .rotulo-gente { font-size: 12px; color: var(--tinta3); }
+.etq.v2 { background: var(--tinta); color: var(--papel); font-family: var(--mono); }
+
+/* a claquete já está na produção da arte: é v2? */
+.ficha-producao a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.ficha-producao b { font: 600 13px var(--mono); color: var(--tinta); }
+.pergunta-producao { border-color: color-mix(in srgb, var(--falta) 40%, var(--regua)); display: flex; flex-direction: column; gap: 10px; }
+.pergunta-producao p { display: flex; gap: 8px; margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--tinta2); }
+.pergunta-producao p svg { flex: none; margin-top: 3px; color: var(--falta); }
+.pergunta-producao a { color: inherit; }
+.pergunta-producao b { font: 600 13px var(--mono); color: var(--tinta); }
+.pergunta-producao-outras { display: flex; justify-content: center; gap: 18px; }

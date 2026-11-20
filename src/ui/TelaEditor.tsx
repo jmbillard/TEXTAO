@@ -14,20 +14,20 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, baixarOriginal, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, baixarOriginal, consultarPauta, ligarAoCardExistente, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
-import { agruparPorDia, pendentes } from './fila';
+import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import {
   ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
 import { PRACAS, programasConhecidos } from '../modelo/vocabularios';
 import { Claquete, EscolhaDeTipo, Marca, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
-import { atalho, baixar, copiarTexto, haQuantoTempo, nomeDoArquivo, plural } from './util';
+import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
 
 /* ---------- topo da folha: atração e praça ---------- */
@@ -536,7 +536,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
 
   const mudarMeta = useCallback((parte: Partial<Meta>) => {
     mexeu.current = true;
-    if (sala) sala.doc.transact(() => Object.entries(parte).forEach(([k, v]) => sala.meta.set(k, v)));
+    if (sala) sala.doc.transact(() => Object.entries(parte).forEach(([k, v]) => (v === undefined ? sala.meta.delete(k) : sala.meta.set(k, v))));
     try {
       if (parte.redator !== undefined) localStorage.setItem('roteirista.redator', parte.redator);
     } catch {
@@ -711,7 +711,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
     armazenamento.listar().then(setFila, () => setFila([]));
   }, [meta.revisar?.length]);
   const proximo = useMemo(() => {
-    const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id !== inicial.id && r.meta.revisar?.length));
+    const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id !== inicial.id && pedeRevisao(r)));
     return { r: proximos.flatMap((g) => g.itens)[0], total: proximos.reduce((n, g) => n + g.itens.length, 0) };
   }, [fila, inicial.id]);
 
@@ -888,6 +888,26 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
     }
   };
 
+  /** A claquete já está na produção da arte: a resposta decide o que o envio faz. */
+  const responderProducao = async (resposta: 'v2' | 'mesmo' | 'outro') => {
+    const np = meta.naProducao;
+    if (!np) return;
+    if (resposta === 'v2') {
+      mudarMeta({ naProducao: undefined, v2De: { card: np.card, url: np.url, registro: np.registro } });
+      return avisar('Ao mandar, as artes novas entram no checklist do card e este roteiro é anexado.');
+    }
+    if (resposta === 'outro') return mudarMeta({ naProducao: undefined, outroRoteiro: true });
+    mudarMeta({ naProducao: undefined });
+    try {
+      const r = await ligarAoCardExistente(inicial.id, np.card);
+      setEnvio({ estado: r.estado, url: r.url, em: new Date().toISOString(), por: pessoa?.nome });
+      avisar('Ligado ao card que já estava no Trello.');
+    } catch {
+      avisar('Não consegui ligar ao card que já existe.');
+    }
+  };
+  const perguntaProducao = meta.naProducao && !noTrello && podeMandar ? meta.naProducao : undefined;
+
   return (
     <div className="pagina editor">
       {sala && sincronizado && <PonteirosDaSala sala={sala} eu={pessoa?.email ?? ''} editor={editor} />}
@@ -971,13 +991,13 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
               ) : (
                 <button
                   className={`botao trello ${estadoTrello?.estado === 'erro' ? 'erro' : ''}`}
-                  disabled={!liberado || estadoTrello?.estado === 'enviando'}
-                  title={estadoTrello?.estado === 'erro' ? estadoTrello.erro : 'Cria o card com as artes, os campos e o PDF do roteiro'}
+                  disabled={!liberado || estadoTrello?.estado === 'enviando' || !!perguntaProducao}
+                  title={perguntaProducao ? 'Antes, responda ao lado se é uma v2 do que já está na produção' : estadoTrello?.estado === 'erro' ? estadoTrello.erro : meta.v2De ? 'Põe as artes novas no checklist do card da versão anterior e anexa este roteiro' : 'Cria o card com as artes, os campos e o PDF do roteiro'}
                   aria-expanded={conferindoTrello}
                   onClick={() => (trava.length ? setConferindoTrello((v) => !v) : void mandarTrello())}
                 >
                   <Icone nome="quadro" tam={15} />
-                  {estadoTrello?.estado === 'enviando' ? 'Mandando…' : estadoTrello?.estado === 'erro' ? 'Tentar de novo' : 'Mandar para o Trello'}
+                  {estadoTrello?.estado === 'enviando' ? 'Mandando…' : estadoTrello?.estado === 'erro' ? 'Tentar de novo' : meta.v2De ? 'Atualizar o card (v2)' : 'Mandar para o Trello'}
                 </button>
               )}
               {conferindoTrello && (
@@ -1102,7 +1122,24 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                 <small>O envio está desligado neste servidor: faltam TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA nas variáveis do stack.</small>
               </section>
             )}
-            {podeMandar && (
+            {perguntaProducao && (
+              <section className="cartao trello-lado pergunta-producao" aria-label="Já na produção da arte">
+                <p>
+                  <Icone nome="quadro" tam={15} />
+                  <span>
+                    Essa claquete já está na produção da arte:{' '}
+                    <a href={perguntaProducao.url} target="_blank" rel="noreferrer"><b>{perguntaProducao.claquete}</b></a>
+                    {perguntaProducao.entrada && <>, entrou {dataCurtaComDia(new Date(perguntaProducao.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</>}. É uma versão nova do roteiro?
+                  </span>
+                </p>
+                <button className="botao primario largo" onClick={() => void responderProducao('v2')}>É v2: atualizar o card</button>
+                <span className="pergunta-producao-outras">
+                  <button className="botao-texto" onClick={() => void responderProducao('mesmo')}>É o mesmo</button>
+                  <button className="botao-texto" onClick={() => void responderProducao('outro')}>É outro roteiro</button>
+                </span>
+              </section>
+            )}
+            {podeMandar && !perguntaProducao && (
               <section className={`cartao trello-lado ${noTrello ? 'feito' : ''}`} aria-label="Trello">
                 {noTrello ? (
                   <p>
@@ -1122,7 +1159,7 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
                       }}
                     >
                       <Icone nome="quadro" tam={15} />
-                      {estadoTrello?.estado === 'enviando' ? 'Mandando…' : proximo.r ? 'Trello e próximo' : 'Mandar para o Trello'}
+                      {estadoTrello?.estado === 'enviando' ? 'Mandando…' : meta.v2De ? (proximo.r ? 'Atualizar card e próximo' : 'Atualizar o card (v2)') : proximo.r ? 'Trello e próximo' : 'Mandar para o Trello'}
                     </button>
                     {trava.length > 0 && <small>Ainda {trava.length === 1 ? 'tem uma pendência' : `tem ${trava.length} pendências`} acima.</small>}
                     {!trava.length && proximo.r && <small>Manda o card e abre {proximo.r.meta.claquete || 'o próximo'} · {plural(proximo.total, 'para revisar', 'para revisar')}</small>}

@@ -70,6 +70,12 @@ export interface Meta {
   conferidos?: string[];
   /** Este roteiro é a versão nova de outro que já estava na fila (id do anterior), até alguém decidir. */
   substitui?: string;
+  /** A claquete já estava na produção da arte (Teable) quando o roteiro chegou: a fila pergunta se é uma v2. */
+  naProducao?: NaProducao;
+  /** Respondido "é v2": o envio atualiza este card em vez de criar outro. */
+  v2De?: { card: string; url: string; registro?: string | null };
+  /** Respondido "é outro roteiro": vai como card novo, mesmo com a claquete parecida. */
+  outroRoteiro?: boolean;
 }
 
 export const metaVazia = (): Meta => ({
@@ -164,3 +170,13 @@ export const NOMES_COLUNAS: Record<Layout, [string, string] | null> = {
   ilustracao_audio: ['Ilustração', 'Áudio'],
   instrucoes_texto: ['Instruções', 'Texto'],
 };
+
+export interface NaProducao {
+  card: string;
+  url: string;
+  registro?: string | null;
+  claquete: string;
+  entrada: string | null;
+  status: string[];
+  artes: number;
+}

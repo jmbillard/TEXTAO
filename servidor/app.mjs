@@ -624,6 +624,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       if (e) q.marcarEnvio.run(id, e.estado, e.card_id, e.url, e.erro, e.avisos, e.em, null, e.por_nome);
       return json(res, 200, { herdado: !!e });
     }
+    // "é o mesmo roteiro que já está na produção": liga ao card que já existe, sem mandar nada
+    if (corpo.jaEsta && typeof corpo.jaEsta.card === 'string' && /^[0-9a-zA-Z]{8,32}$/.test(corpo.jaEsta.card)) {
+      q.marcarEnvio.run(id, 'duplicado', corpo.jaEsta.card, `https://trello.com/c/${corpo.jaEsta.card}`, null, null, new Date().toISOString(), eu.email, eu.nome);
+      avisarFila('alterado', id, eu);
+      return json(res, 200, { estado: 'duplicado', url: `https://trello.com/c/${corpo.jaEsta.card}` });
+    }
     if (!trello.ligado) return json(res, 503, { erro: 'O envio para o Trello não está configurado neste servidor.' });
     const antes = q.envio.get(id);
     if (antes?.estado === 'enviado' && !corpo.deNovo) return json(res, 409, { erro: 'Este roteiro já está no Trello.', url: antes.url });
@@ -728,6 +734,11 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, { ok: true, cor });
     }
     if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
+    if (caminho === '/api/producao') {
+      // a claquete já está na produção da arte? (para perguntar se o roteiro novo é uma v2)
+      const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
+      return json(res, 200, await trello.naProducao(claquete).catch((e) => (console.warn(`[producao] ${e instanceof Error ? e.message : e}`), null)));
+    }
     if (caminho === '/api/andamento') {
       // como anda, na produção da arte, o que já foi para o Trello (só dos roteiros que a pessoa vê)
       const linhas = (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).filter((l) => l.envio_estado === 'enviado' || l.envio_estado === 'duplicado');

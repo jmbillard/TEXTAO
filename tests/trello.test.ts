@@ -356,3 +356,51 @@ describe('andamento na produção da arte', () => {
     expect(await t.andamento([{ id: 'r', card: 'c', claquete: '' }])).toEqual({});
   });
 });
+
+describe('versão nova de um roteiro que já está na produção', () => {
+  it('acha na produção pela key; sem key igual, pela claquete', async () => {
+    const consultar = async () => [
+      { registro: 'recP1', card_ID: 'cardVelho', claquete: 'FESTA NA PRACA 19/11 SP', key: 'FESTA NA PRACA 19 11 SP', status: '["PRODUZINDO"]', data_entrada: new Date('2026-11-18T13:00:00Z'), artes_quantidade: 3 },
+      { registro: 'recP2', card_ID: 'cardShow', claquete: 'Show_Da_Noite_20_11', key: 'OUTRA COISA', status: null, data_entrada: new Date('2026-11-17T13:00:00Z'), artes_quantidade: 1 },
+    ];
+    const t = criarTrello(ENV, { consultar });
+    const chave = chaveN8n('Festa na Praça 19/11 SP');
+    const achado = await t.naProducao('Festa na Praça 19/11 SP');
+    expect(achado).toMatchObject({ card: 'cardVelho', url: 'https://trello.com/c/cardVelho', registro: 'recP1', status: ['PRODUZINDO'], artes: 3 });
+    expect(chave).toBeTruthy();
+    expect((await t.naProducao('SHOW DA NOITE 20/11'))?.card).toBe('cardShow');
+    expect(await t.naProducao('Nada a ver 01/01')).toBeNull();
+  });
+
+  it('v2: não cria card; põe só as artes novas no checklist, anexa o roteiro, comenta e atualiza o Teable', async () => {
+    const { buscar, pedidos } = falsos();
+    const buscarComCard = async (endereco: string, init: RequestInit = {}) => {
+      const u = new URL(endereco);
+      if ((init.method ?? 'GET') === 'GET' && u.pathname.endsWith('/cards/cardVelho')) return { ok: true, status: 200, json: async () => ({ id: 'cardVelho', shortUrl: 'https://trello.com/c/VELHO' }), text: async () => '' };
+      if ((init.method ?? 'GET') === 'GET' && u.pathname.endsWith('/cards/cardVelho/checklists'))
+        return { ok: true, status: 200, json: async () => [{ id: 'chkVelho', name: 'ARTES PRODUZIDAS', checkItems: [{ name: 'A GRANDE FESTA' }] }], text: async () => '' };
+      return buscar(endereco, init);
+    };
+    const t = criarTrello(ENV, { buscar: buscarComCard, ...banco(), sftp: async () => {} });
+    const r = await t.enviar({ meta: { ...meta, v2De: { card: 'cardVelho', url: 'https://trello.com/c/cardVelho', registro: 'recP1' } }, doc: DOC, artes: ['A GRANDE FESTA', 'SÁBADO'], texto: 'texto novo', original });
+    expect(r).toMatchObject({ card: { id: 'cardVelho', url: 'https://trello.com/c/VELHO' }, v2: true, novas: 1 });
+    expect(pedidos.some((p) => p.metodo === 'POST' && p.url.pathname.endsWith('/cards'))).toBe(false);
+    const itens = pedidos.filter((p) => p.url.pathname.includes('/checklists/chkVelho/checkItems')).map((p) => p.url.searchParams.get('name'));
+    expect(itens).toEqual(['SÁBADO']);
+    const anexo = pedidos.find((p) => p.url.pathname.endsWith('/cards/cardVelho/attachments'));
+    expect((anexo?.corpo as { name: string }).name).toMatch(/ V2\.pdf$/);
+    expect(pedidos.find((p) => p.url.pathname.endsWith('/cards/cardVelho/actions/comments'))?.url.searchParams.get('text')).toContain('1 arte nova no checklist (SÁBADO)');
+    const patch = pedidos.find((p) => p.metodo === 'PATCH' && p.url.host === 'teable:3000');
+    expect(patch?.url.pathname).toContain('/record/recP1');
+    expect((patch?.corpo as { record: { fields: Record<string, unknown> } }).record.fields).toMatchObject({ artes: 'A GRANDE FESTA | SÁBADO', artes_quantidade: 2 });
+  });
+
+  it('"é outro roteiro" passa pela checagem de duplicado de hoje', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, ...banco({ duplicado: true }), sftp: async () => {} });
+    expect(await t.enviar({ meta, doc: DOC, artes: ['X'], original })).toMatchObject({ duplicado: true });
+    const r = await t.enviar({ meta: { ...meta, outroRoteiro: true }, doc: DOC, artes: ['X'], original });
+    expect(r.card?.id).toBeTruthy();
+    expect(pedidos.filter((p) => p.metodo === 'POST' && p.url.pathname.endsWith('/cards'))).toHaveLength(1);
+  });
+});

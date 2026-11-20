@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { armazenamento, escolherMinhaCor, herdarEnvio, ligarAoCardExistente, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
-import { agruparPorDia, noTrello, pendentes, type GrupoDia } from './fila';
+import { agruparPorDia, noTrello, pedeRevisao, pendentes, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -322,12 +322,22 @@ interface VersaoNova {
   manter: () => void;
 }
 
-function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadastrarAtracao }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; mandar?: () => Promise<void>; cadastrarAtracao?: () => void }) {
+/** A claquete já está na produção da arte: é v2 (atualiza o card), o mesmo roteiro, ou outro? */
+interface JaNaProducao {
+  v2: () => void;
+  mesmo: () => void;
+  outro: () => void;
+}
+
+function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: () => void }) {
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   // já no Trello: a ficha descansa (sem alerta, sem pendências, "Abrir" discreto)
   const mandada = noTrello(r);
   const revisar = mandada ? [] : r.meta.revisar ?? [];
+  // a pergunta da v2 também pede atenção
+  const np = !mandada && producao ? r.meta.naProducao : undefined;
+  const alerta = revisar.length > 0 || !!np;
   const semEditor = !r.meta.editor;
   // alguém com o roteiro aberto: a orelha dobra, a claquete é selecionada e o nome é anotado à mão.
   // Depois que a pessoa sai, ficam a orelha pequena, um grifo e a rubrica.
@@ -336,7 +346,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
   const quem = ocupada ? agora[0] : r.revisadoPor;
   return (
     <li
-      className={`ficha ${revisar.length ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''} ${mandada ? 'mandada' : ''}`}
+      className={`ficha ${alerta ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''} ${mandada ? 'mandada' : ''}`}
       data-ancora={`ficha:${r.id}`}
       style={quem ? ({ '--cor': corDe(quem.email) } as React.CSSProperties) : undefined}
     >
@@ -345,8 +355,8 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
           <i>{ocupada ? primeiro(agora[0].nome)[0] : ''}</i>
         </span>
       )}
-      <span className={`ficha-marca ${mandada ? 'trello' : revisar.length ? 'revisar' : 'ok'}`} aria-hidden="true">
-        {mandada ? <Icone nome="quadro" tam={12} traco={2.4} /> : revisar.length ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
+      <span className={`ficha-marca ${mandada ? 'trello' : alerta ? 'revisar' : 'ok'}`} aria-hidden="true">
+        {mandada ? <Icone nome="quadro" tam={12} traco={2.4} /> : alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
       </span>
       <button className="ficha-claquete" onClick={abrir} aria-label={`Abrir ${claquete}`}>
         <b>
@@ -374,7 +384,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
         </span>
       </button>
       <span className="ficha-gente some">
-        {r.meta.redator ? <span>{r.meta.redator}</span> : mandada ? <span className="suave">redator: —</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
+        {r.meta.redator ? <span><small className="rotulo-gente">redator:</small> {r.meta.redator}</span> : mandada ? <span className="suave">redator: —</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
         <small className={semEditor && !mandada ? 'falta' : ''}>
           edição: {!semEditor ? r.meta.editor : mandada ? 'a definir' : <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" />}
         </small>
@@ -382,7 +392,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
       <span className="ficha-artes some"><Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} circular={revisar.length > 0} /></span>
       <span className="ficha-acoes some">
         {acoes}
-        <button className={mandada ? 'botao-texto' : `botao ${revisar.length ? 'primario' : ''}`} onClick={abrir}>{revisar.length ? 'Revisar' : 'Abrir'}</button>
+        <button className={mandada ? 'botao-texto' : `botao ${alerta ? 'primario' : ''}`} onClick={abrir}>{alerta ? 'Revisar' : 'Abrir'}</button>
       </span>
       {versao && (
         <span className="ficha-versao some">
@@ -391,6 +401,19 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
           </span>
           <button className="botao-texto" onClick={versao.manter}>Manter as duas</button>
           <button className="botao primario" onClick={versao.substituir}>Substituir a anterior</button>
+        </span>
+      )}
+      {np && producao && !versao && (
+        <span className="ficha-versao ficha-producao some">
+          <span>
+            <Icone nome="quadro" tam={14} /> Essa claquete já está na produção da arte:{' '}
+            <a href={np.url} target="_blank" rel="noreferrer"><b>{np.claquete}</b></a>
+            {np.entrada && <>, entrou {dataCurtaComDia(new Date(np.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</>}
+            {np.status.length > 0 && <> · {np.status.map((x) => etapaDe(x).nome).join(', ')}</>}. É uma versão nova do roteiro?
+          </span>
+          <button className="botao-texto" onClick={producao.outro} title="Vai como um card novo">É outro roteiro</button>
+          <button className="botao-texto" onClick={producao.mesmo} title="Não manda nada: liga a ficha ao card que já existe">É o mesmo</button>
+          <button className="botao primario" onClick={producao.v2} title="Põe as artes novas no checklist do card e anexa este roteiro">É v2: atualizar o card</button>
         </span>
       )}
       {(revisar.length > 0 || (!r.meta.programa && cadastrarAtracao && !mandada)) && (
@@ -403,7 +426,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, mandar, cadast
           )}
         </span>
       )}
-      {mandar && !versao && <FichaTrello r={r} mandar={mandar} />}
+      {mandar && !versao && !np && <FichaTrello r={r} mandar={mandar} />}
     </li>
   );
 }
@@ -433,6 +456,7 @@ function CardTrello({ r, abrir, andamento }: { r: Resumo; abrir: () => void; and
       <span className="card-etiquetas">
         {r.meta.praca && <i className="etq praca" aria-hidden="true">{r.meta.praca}</i>}
         <i className="etq artes" aria-hidden="true">{plural(r.nArtes, 'arte', 'artes')}</i>
+        {r.meta.v2De && <i className="etq v2" title="Versão nova: atualizou o card que já existia">v2</i>}
         {andamento?.entregue && !caiu ? (
           <i className="etq etapa entregue"><Icone nome="certo" tam={10} traco={3} /> Entregue</i>
         ) : (
@@ -443,7 +467,7 @@ function CardTrello({ r, abrir, andamento }: { r: Resumo; abrir: () => void; and
       <button className="card-claquete" onClick={abrir} title={`Abrir ${claquete}`}>{claquete}</button>
       <span className="card-rodape">
         <span className="card-gente">
-          {r.meta.redator && <span title="Redator">{r.meta.redator}</span>}
+          {r.meta.redator && <span>redator: {r.meta.redator}</span>}
           {r.meta.editor && <small>edição: {r.meta.editor}</small>}
           {!!andamento?.designers.length && <small>arte: {andamento.designers.join(', ')}</small>}
         </span>
@@ -623,6 +647,29 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
       avisar('Não consegui substituir a versão anterior.');
     }
   };
+  /** A resposta à pergunta da produção da arte: v2 atualiza o card antigo, "o mesmo" só liga a ele, "outro" vai como card novo. */
+  const responderProducao = async (r: Resumo, resposta: 'v2' | 'mesmo' | 'outro') => {
+    const np = r.meta.naProducao;
+    const rn = await armazenamento.ler(r.id).catch(() => undefined);
+    if (!rn || !np) return;
+    const meta = { ...rn.meta, naProducao: undefined };
+    if (resposta === 'v2') meta.v2De = { card: np.card, url: np.url, registro: np.registro };
+    if (resposta === 'outro') meta.outroRoteiro = true;
+    const atualizado: Roteiro = { ...rn, meta };
+    try {
+      await armazenamento.salvar(atualizado, resposta === 'v2' ? 'é v2 de um card que já estava na produção' : undefined);
+      if (resposta === 'mesmo') {
+        await ligarAoCardExistente(r.id, np.card);
+        avisar('Ligado ao card que já estava no Trello.');
+        return void carregar();
+      }
+      if (resposta === 'v2') avisar(travamTrello(meta.revisar).length ? 'Quando for para o Trello, atualiza o card da versão anterior.' : 'Atualizando o card da versão anterior…');
+      if (temTrello() && !travamTrello(meta.revisar).length) void mandar(atualizado);
+      else void carregar();
+    } catch {
+      avisar('Não consegui guardar a resposta.');
+    }
+  };
   const manterAsDuas = async (nova: Resumo) => {
     const rn = await armazenamento.ler(nova.id).catch(() => undefined);
     if (rn) await armazenamento.salvar({ ...rn, meta: { ...rn.meta, substitui: undefined } }).catch(() => {});
@@ -636,10 +683,10 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
   // a conta do topo e os filtros olham só o que ainda pede trabalho: o que foi ao ar ou já está no Trello fica de fora
   const pendente = new Set(pendentes(todos).map((r) => r.id));
   const nPendentes = pendente.size;
-  const paraRevisar = todos.filter((r) => pendente.has(r.id) && r.meta.revisar?.length).length;
+  const paraRevisar = todos.filter((r) => pendente.has(r.id) && pedeRevisao(r)).length;
   const visiveis = todos
     .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo))
-    .filter((r) => !filtroEstado || (pendente.has(r.id) && (filtroEstado === 'revisar' ? !!r.meta.revisar?.length : !r.meta.revisar?.length)));
+    .filter((r) => !filtroEstado || (pendente.has(r.id) && (filtroEstado === 'revisar' ? pedeRevisao(r) : !pedeRevisao(r))));
   const { proximos, exibidos } = agruparPorDia(visiveis);
   const porId = new Map(todos.map((r) => [r.id, r]));
   const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo && !saindo;
@@ -657,6 +704,7 @@ export function Biblioteca({ abrir, abrirArquivo, criar, avisar, identidade, def
         ordem={ordem++}
         abrir={() => abrir(r.id)}
         versao={anterior ? { anterior, substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
+        producao={r.meta.naProducao && (r.podeEditar || r.meu || aberto) ? { v2: () => responderProducao(r, 'v2'), mesmo: () => responderProducao(r, 'mesmo'), outro: () => responderProducao(r, 'outro') } : undefined}
         mandar={temTrello() && (r.podeEditar || r.meu || aberto) ? () => mandar(r) : undefined}
         cadastrarAtracao={temCadastros() && r.meta.claquete ? () => cadastros({ aba: 'atracoes', claquete: r.meta.claquete }) : undefined}
         acoes={

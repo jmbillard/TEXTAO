@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Cadastros } from './ui/Cadastros';
-import { armazenamento, atualizarVocabulario, temCadastros, type TipoCadastro, consultarPauta, guardarOriginal, mandarParaTrello, temTrello } from './dados/armazenamento';
+import { armazenamento, atualizarVocabulario, temCadastros, type TipoCadastro, consultarPauta, consultarProducao, guardarOriginal, mandarParaTrello, temTrello } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -141,12 +141,17 @@ export function App() {
           const k = chaveDaClaquete(roteiro.meta.claquete);
           if (k && naFila.has(k)) roteiro.meta.substitui = naFila.get(k);
           if (k) naFila.set(k, roteiro.id);
+          // não está na fila, mas já está na produção da arte: a ficha pergunta se é uma v2
+          if (!roteiro.meta.substitui) {
+            const np = await consultarProducao(roteiro.meta.claquete);
+            if (np) roteiro.meta.naProducao = np;
+          }
           await armazenamento.salvar(roteiro);
           setNovos((n) => [...n, roteiro.id]);
           // o arquivo como veio fica no servidor: é ele que vira o PDF do card
           const guardado = guardarOriginal(roteiro.id, arquivo).catch(() => {});
           // sem pendência, vai direto para o Trello; os marcados para revisar esperam a revisão
-          if (temTrello() && !travamTrello(roteiro.meta.revisar).length && !roteiro.meta.substitui)
+          if (temTrello() && !travamTrello(roteiro.meta.revisar).length && !roteiro.meta.substitui && !roteiro.meta.naProducao)
             void guardado.then(() => mandarParaTrello(roteiro)).catch((e) => avisar(`${roteiro.meta.claquete || arquivo.name} não foi para o Trello: ${e instanceof Error ? e.message : e}`)).finally(() => setChegou((n) => n + 1));
         } catch (e) {
           // as mensagens das bibliotecas de leitura vêm em inglês e não ajudam quem está subindo o roteiro

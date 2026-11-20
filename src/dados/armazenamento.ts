@@ -1,7 +1,7 @@
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
-import type { Meta, NoJSON, Pessoa, Roteiro } from '../modelo/tipos';
+import type { Meta, NaProducao, NoJSON, Pessoa, Roteiro } from '../modelo/tipos';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
    - servidor (SQLite, com dono, público/privado e histórico), quando a API responde;
@@ -272,6 +272,16 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
     body: JSON.stringify({ artes: saida.artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '' })), texto: saida.texto.completo, deNovo }),
   });
 }
+
+/** A claquete já está na produção da arte (Teable)? Só com servidor; sem resposta, segue como novo. */
+export async function consultarProducao(claquete: string): Promise<NaProducao | null> {
+  if (armazenamento.tipo !== 'servidor' || !claquete.trim()) return null;
+  return pedir<NaProducao | null>(`/api/producao?claquete=${encodeURIComponent(claquete)}`).catch(() => null);
+}
+
+/** "É o mesmo roteiro que já está na produção": liga ao card que já existe, sem mandar nada. */
+export const ligarAoCardExistente = (id: string, card: string) =>
+  pedir<{ estado: EnvioTrello['estado']; url?: string }>(`/api/roteiros/${encodeURIComponent(id)}/trello`, { method: 'POST', body: JSON.stringify({ jaEsta: { card } }) });
 
 /** O armazenamento em uso. Começa no navegador e passa para o servidor quando `conectar` o encontra. */
 export let armazenamento: Armazenamento = noNavegador;
