@@ -103,7 +103,8 @@ export function criarAcervo(env, deps = {}) {
       linhas: linhas.map((l) => {
         const atr = vinculos(l.atracao)[0] ?? { id: '', title: '' };
         const prod = vinculos(l.claquete)[0] ?? { id: '', title: '' };
-        return { id: l.id, arte: String(l.arte ?? ''), chave: l.key ? String(l.key) : chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, atracaoId: atr.id, claquete: prod.title, producaoId: prod.id, filme: String(l.filme ?? '').trim() };
+        // a chave sai da arte, aqui: o key do Teable é só para ver na tabela (e uma fórmula errada não estraga a revisão)
+        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, atracaoId: atr.id, claquete: prod.title, producaoId: prod.id, filme: String(l.filme ?? '').trim() };
       }),
     };
     return memo.linhas;
