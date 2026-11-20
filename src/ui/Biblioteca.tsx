@@ -330,8 +330,6 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   const revisar = mandada ? [] : r.meta.revisar ?? [];
   // a pergunta da v2 também pede atenção
   const np = !mandada && producao ? r.meta.naProducao : undefined;
-  // artes que já existem e quem revisou decidiu não produzir (o padrão é produzir tudo)
-  const jaExistem = (r.meta.jaExistem ?? []).filter((a) => (r.meta.naoProduzir ?? []).includes(a.chave)).length;
   const alerta = revisar.length > 0 || !!np;
   const semEditor = !r.meta.editor;
   // alguém com o roteiro aberto: a orelha dobra, a claquete é selecionada e o nome é anotado à mão.
@@ -386,7 +384,6 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
       </span>
       <span className="ficha-artes some">
         <Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} circular={revisar.length > 0} />
-        {jaExistem > 0 && <small className="ficha-novas" title={`${plural(jaExistem, 'arte já existia e não vai ser produzida', 'artes já existiam e não vão ser produzidas')}`}>{Math.max(0, r.nArtes - jaExistem)} a produzir</small>}
       </span>
       <span className="ficha-acoes some">
         {acoes}

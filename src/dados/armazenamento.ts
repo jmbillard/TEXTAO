@@ -1,8 +1,7 @@
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
-import { artesForaDoChecklist, exportar } from '../modelo/exportar';
+import { exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
 import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
-import { chaveDeArte } from '../modelo/diferencas';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
    - servidor (SQLite, com dono, público/privado e histórico), quando a API responde;
@@ -295,11 +294,9 @@ export async function herdarEnvio(novo: string, anterior: string) {
 /** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
 export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const saida = exportar(roteiro);
-  // as que já existem e quem revisou decidiu não produzir: ficam no PDF, fora do checklist
-  const existem = new Set(artesForaDoChecklist(saida));
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
     method: 'POST',
-    body: JSON.stringify({ artes: saida.artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '', existe: existem.has(chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
+    body: JSON.stringify({ artes: saida.artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : ''})), texto: saida.texto.completo, deNovo }),
   });
 }
 

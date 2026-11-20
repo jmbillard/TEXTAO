@@ -1644,12 +1644,6 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .artes li + li { box-shadow: none; }
 .artes.so-lista li { border-radius: 6px; }
 
-/* acervo: a arte que a atração já tem fica apagada, com de onde veio; "produzir" põe de volta no checklist */
-/* já existe: aviso discreto (o padrão é produzir); decidida "não produzir", fica apagada */
-.marca-existe { flex: none; display: inline-grid; color: var(--tinta3); }
-.artes li.pulada .txt b { color: var(--tinta3); font-weight: 500; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--tinta3) 60%, transparent); }
-.artes li.pulada .b { background: var(--neutro); color: var(--tinta3); }
-.alternar-acervo { flex: none; font-size: 12px; padding: 0 4px; opacity: 0; transition: opacity 0.15s; }
-.artes li:hover .alternar-acervo, .alternar-acervo:focus-visible { opacity: 1; }
-.ficha-novas { display: block; margin-top: 2px; font: 600 15px/1 Caveat, cursive; color: var(--tinta3); text-align: center; }
+/* acervo: a arte que a atração já tem fica com o número apagado (a claquete de onde veio, na dica) */
+.artes li.existe .b { background: var(--neutro); color: var(--tinta3); }
 .pacote-cad { font-size: 12px; color: var(--tinta3); }

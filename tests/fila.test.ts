@@ -127,15 +127,13 @@ describe('nada impede o envio', () => {
   });
 });
 
-describe('acervo: o padrão é produzir tudo', () => {
-  it('só sai do checklist o que quem revisou decidiu não produzir', async () => {
-    const { artesQueJaExistem, artesForaDoChecklist } = await import('../src/modelo/exportar');
+describe('acervo: a que já existe é marcada; quem revisa exclui da lista', () => {
+  it('conta as artes do roteiro que estão no acervo da atração', async () => {
+    const { artesQueJaExistem } = await import('../src/modelo/exportar');
     const doc = { type: 'doc', content: [{ type: 'paragraph', content: ['HOJE', 'AMANHÃ', 'SÁBADO'].flatMap((t, i) => [{ type: 'text', text: t, marks: [{ type: 'arte', attrs: { id: 'a' + i } }] }, { type: 'text', text: ' ' }]) }] };
     const s = (meta: Partial<Meta>) => exportar({ id: 'x', meta: { ...metaVazia(), ...meta }, doc, revisao: 1, criadoEm: '', atualizadoEm: '' } as never);
     const jaExistem = [{ arte: 'HOJE', chave: 'HOJE', tipo: '', claquete: 'C' }, { arte: 'Amanhã', chave: 'AMANHA', tipo: '', claquete: 'C' }];
     expect(artesQueJaExistem(s({ jaExistem }))).toEqual(['HOJE', 'AMANHA']);
-    expect(artesForaDoChecklist(s({ jaExistem }))).toEqual([]);
-    expect(artesForaDoChecklist(s({ jaExistem, naoProduzir: ['AMANHA'] }))).toEqual(['AMANHA']);
     expect(pendencias(s({ jaExistem }))).toContain('Já existem: 2');
   });
 });
