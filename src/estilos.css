@@ -1577,3 +1577,5 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 @media (prefers-reduced-motion: reduce) { .comparar.lightbox, .comparar.lightbox .comparar-corpo { animation: none; } }
 /* no lightbox, a fila borrada aparece em volta das colunas (que continuam opacas) */
 .comparar.lightbox { background: color-mix(in srgb, var(--mesa) 45%, transparent); }
+/* no lightbox, o rodapé é sólido: as folhas não aparecem por baixo */
+.comparar.lightbox .estatisticas { background: var(--mesa); backdrop-filter: none; -webkit-backdrop-filter: none; }
