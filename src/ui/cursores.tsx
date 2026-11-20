@@ -207,6 +207,27 @@ export function DesenhosDeCursor() {
 /* ---------- o meu cursor, no meu próprio mouse ---------- */
 
 const CHAVE_NO_MOUSE = 'promeiro.cursor.no-mouse';
+/* Ver os ponteiros dos colegas: preferência de cada um, guardada no navegador. Desligado, eles somem só desta
+   tela; o meu continua indo para os outros. */
+const CHAVE_VER_PONTEIROS = 'promeiro.ponteiros.ver';
+export function verPonteiros(): boolean {
+  try {
+    return localStorage.getItem(CHAVE_VER_PONTEIROS) !== '0';
+  } catch {
+    return true;
+  }
+}
+const aplicarVerPonteiros = (ver: boolean) => document.documentElement.classList.toggle('sem-ponteiros', !ver);
+export function usarVerPonteiros(ver: boolean) {
+  try {
+    localStorage.setItem(CHAVE_VER_PONTEIROS, ver ? '1' : '0');
+  } catch {
+    /* vale até recarregar */
+  }
+  aplicarVerPonteiros(ver);
+}
+if (typeof document !== 'undefined') aplicarVerPonteiros(verPonteiros());
+
 export function cursorNoMouse(): boolean {
   try {
     return localStorage.getItem(CHAVE_NO_MOUSE) !== '0';

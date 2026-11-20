@@ -8,7 +8,7 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { agruparPorDia, noTrello, pedeRevisao, pendentes, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
-import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse } from './cursores';
+import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
@@ -67,6 +67,7 @@ function EscolhaDeCursor({ email, cor }: { email: string; cor: string }) {
   const [atual, setAtual] = useState(() => meuCursor(email));
   useEffect(() => setAtual(meuCursor(email)), [email]);
   const [noMouse, setNoMouse] = useState(cursorNoMouse);
+  const [ver, setVer] = useState(verPonteiros);
   return (
     <div className="escolha-cursor">
       <div className="rotulo">Seu cursor, para os colegas</div>
@@ -91,6 +92,10 @@ function EscolhaDeCursor({ email, cor }: { email: string; cor: string }) {
       <label className="no-mouse">
         <input type="checkbox" checked={noMouse} onChange={(e) => { setNoMouse(e.target.checked); usarCursorNoMouse(e.target.checked); }} />
         <span>Usar também no meu mouse</span>
+      </label>
+      <label className="no-mouse">
+        <input type="checkbox" checked={ver} onChange={(e) => { setVer(e.target.checked); usarVerPonteiros(e.target.checked); }} />
+        <span>Ver os ponteiros dos colegas</span>
       </label>
     </div>
   );

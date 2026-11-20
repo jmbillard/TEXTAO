@@ -1651,3 +1651,6 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .artes.so-lista li { margin-inline: -16px; padding-inline: 16px; border-radius: 0; }
 /* o número da arte que já existe: só o contorno, para não sumir no realce */
 .artes li.existe .b { background: transparent; color: var(--tinta3); box-shadow: inset 0 0 0 1.5px var(--regua-forte); }
+/* "Ver os ponteiros dos colegas" desligado: eles somem desta tela (o meu continua indo para os outros) */
+html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !important; }
+.no-mouse + .no-mouse { margin-top: 6px; }
