@@ -405,15 +405,14 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
       )}
       {np && producao && !versao && (
         <span className="ficha-versao ficha-producao some">
-          <span>
-            <Icone nome="quadro" tam={14} /> Essa claquete já está na produção da arte:{' '}
-            <a href={np.url} target="_blank" rel="noreferrer"><b>{np.claquete}</b></a>
-            {np.entrada && <>, entrou {dataCurtaComDia(new Date(np.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</>}
-            {np.status.length > 0 && <> · {np.status.map((x) => etapaDe(x).nome).join(', ')}</>}. É uma versão nova do roteiro?
-          </span>
-          <button className="botao-texto" onClick={producao.outro} title="Vai como um card novo">É outro roteiro</button>
+          <a className="card-existente" href={np.url} target="_blank" rel="noreferrer" title={`Já está no Trello${np.status.length ? ` · ${np.status.map((x) => etapaDe(x).nome).join(', ')}` : ''}`}>
+            <Icone nome="quadro" tam={15} traco={2.2} />
+            <b>{np.claquete}</b>
+            {np.entrada && <small>{dataCurtaComDia(new Date(np.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
+          </a>
+          <button className="botao-texto" onClick={producao.outro} title="Vai como um card novo">É outro</button>
           <button className="botao-texto" onClick={producao.mesmo} title="Não manda nada: liga a ficha ao card que já existe">É o mesmo</button>
-          <button className="botao primario" onClick={producao.v2} title="Põe as artes novas no checklist do card e anexa este roteiro">É v2: atualizar o card</button>
+          <button className="botao primario" onClick={producao.v2} title="Põe as artes novas no checklist do card e anexa este roteiro">É v2</button>
         </span>
       )}
       {(revisar.length > 0 || (!r.meta.programa && cadastrarAtracao && !mandada)) && (

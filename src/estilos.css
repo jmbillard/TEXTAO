@@ -1464,7 +1464,6 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .etq.v2 { background: var(--tinta); color: var(--papel); font-family: var(--mono); }
 
 /* a claquete já está na produção da arte: é v2? */
-.ficha-producao a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .ficha-producao b { font: 600 13px var(--mono); color: var(--tinta); }
 .pergunta-producao { border-color: color-mix(in srgb, var(--falta) 40%, var(--regua)); display: flex; flex-direction: column; gap: 10px; }
 .pergunta-producao p { display: flex; gap: 8px; margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--tinta2); }
@@ -1472,3 +1471,12 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .pergunta-producao a { color: inherit; }
 .pergunta-producao b { font: 600 13px var(--mono); color: var(--tinta); }
 .pergunta-producao-outras { display: flex; justify-content: center; gap: 18px; }
+
+/* o card que já existe: ícone, claquete e o dia em que entrou */
+.card-existente { display: inline-flex; align-items: center; gap: 7px; min-width: 0; color: var(--tinta); text-decoration: none; }
+.card-existente svg { flex: none; color: var(--falta); }
+.card-existente b { font: 600 13px var(--mono); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.card-existente small { font-size: 12px; color: var(--tinta3); white-space: nowrap; }
+.card-existente:hover b { text-decoration-thickness: 2px; }
+.ficha-producao .card-existente { flex: 1 1 260px; }
+.pergunta-producao .card-existente { align-self: flex-start; flex-wrap: wrap; row-gap: 2px; }

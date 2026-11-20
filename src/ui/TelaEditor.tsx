@@ -1124,18 +1124,15 @@ function Folha({ inicial, voltar, abrir, avisar, pessoa, cadastrarAtracao }: { i
             )}
             {perguntaProducao && (
               <section className="cartao trello-lado pergunta-producao" aria-label="Já na produção da arte">
-                <p>
-                  <Icone nome="quadro" tam={15} />
-                  <span>
-                    Essa claquete já está na produção da arte:{' '}
-                    <a href={perguntaProducao.url} target="_blank" rel="noreferrer"><b>{perguntaProducao.claquete}</b></a>
-                    {perguntaProducao.entrada && <>, entrou {dataCurtaComDia(new Date(perguntaProducao.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</>}. É uma versão nova do roteiro?
-                  </span>
-                </p>
-                <button className="botao primario largo" onClick={() => void responderProducao('v2')}>É v2: atualizar o card</button>
+                <a className="card-existente" href={perguntaProducao.url} target="_blank" rel="noreferrer" title="Já está no Trello">
+                  <Icone nome="quadro" tam={15} traco={2.2} />
+                  <b>{perguntaProducao.claquete}</b>
+                  {perguntaProducao.entrada && <small>{dataCurtaComDia(new Date(perguntaProducao.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
+                </a>
+                <button className="botao primario largo" onClick={() => void responderProducao('v2')} title="Põe as artes novas no checklist do card e anexa este roteiro">É v2</button>
                 <span className="pergunta-producao-outras">
-                  <button className="botao-texto" onClick={() => void responderProducao('mesmo')}>É o mesmo</button>
-                  <button className="botao-texto" onClick={() => void responderProducao('outro')}>É outro roteiro</button>
+                  <button className="botao-texto" onClick={() => void responderProducao('mesmo')} title="Não manda nada: liga ao card que já existe">É o mesmo</button>
+                  <button className="botao-texto" onClick={() => void responderProducao('outro')} title="Vai como um card novo">É outro</button>
                 </span>
               </section>
             )}
