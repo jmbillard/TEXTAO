@@ -1647,8 +1647,6 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 /* acervo: a arte que a atração já tem fica apagada, com de onde veio; "produzir" põe de volta no checklist */
 .artes li.existe .txt b { color: var(--tinta3); font-weight: 500; }
 .artes li.existe .b { background: var(--neutro); color: var(--tinta3); }
-.artes .ja-existe { font: 600 15px/1.1 Caveat, cursive; color: var(--tinta3); }
-.artes li.refazer .ja-existe { color: var(--ultra); }
 .artes li.refazer .txt b { color: var(--tinta); font-weight: 600; }
 .artes li.refazer .b { background: var(--ultra); color: var(--no-ultra); }
 .alternar-acervo { flex: none; font-size: 12px; padding: 0 4px; opacity: 0; transition: opacity 0.15s; }

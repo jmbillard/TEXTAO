@@ -1133,21 +1133,20 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                     const ja = doAcervo.get(k);
                     const refazer = !!ja && deNovo.has(k);
                     return (
-                    <li key={a.id} className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja ? (refazer ? 'existe refazer' : 'existe') : ''}`} onMouseEnter={() => setRealce(a.id)} onMouseLeave={() => setRealce(null)}>
+                    <li
+                      key={a.id}
+                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja ? (refazer ? 'existe refazer' : 'existe') : ''}`}
+                      title={ja ? `${refazer ? 'Vai ser produzida de novo. Já existia em' : 'Já existe:'} ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo}` : ''}` : undefined}
+                      onMouseEnter={() => setRealce(a.id)}
+                      onMouseLeave={() => setRealce(null)}
+                    >
                       <button className="arte-linha" onClick={() => irParaArte(a)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
                         <span className="b">{a.ordem}</span>
-                        <span className="txt">
-                          <b>{a.texto}</b>
-                          {ja && (
-                            <span className="ja-existe">
-                              {refazer ? 'produzir de novo' : <>já existe{ja.claquete && <> · {ja.claquete}</>}{ja.tipo && <> · {ja.tipo}</>}</>}
-                            </span>
-                          )}
-                        </span>
+                        <span className="txt"><b>{a.texto}</b></span>
                       </button>
                       {ja && !leitura && (
-                        <button className="botao-texto alternar-acervo" title={refazer ? 'Volta a usar a que já existe (fora do checklist)' : 'Entra no checklist do Trello para ser feita de novo'} onClick={() => alternarDeNovo(k)}>
-                          {refazer ? 'já existe' : 'produzir'}
+                        <button className="botao-texto alternar-acervo" title={refazer ? 'Usar a que já existe (sai do checklist)' : 'Não achou no servidor? Entra no checklist para ser feita'} onClick={() => alternarDeNovo(k)}>
+                          {refazer ? 'não produzir' : 'produzir'}
                         </button>
                       )}
                       {!leitura && (
