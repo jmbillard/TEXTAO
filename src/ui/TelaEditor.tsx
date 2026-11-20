@@ -676,6 +676,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id !== inicial.id && pedeRevisao(r)));
     return { r: proximos.flatMap((g) => g.itens)[0], total: proximos.reduce((n, g) => n + g.itens.length, 0) };
   }, [fila, inicial.id]);
+  // anterior e seguinte na ordem da fila de revisão (este roteiro incluído), para andar por ela
+  const vizinhos = useMemo(() => {
+    const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id === inicial.id || pedeRevisao(r)));
+    const ordem = proximos.flatMap((g) => g.itens);
+    const i = ordem.findIndex((r) => r.id === inicial.id);
+    return { anterior: i > 0 ? ordem[i - 1] : undefined, // no fim da fila, volta para o começo
+      seguinte: i >= 0 ? (ordem[i + 1] ?? (i > 0 ? ordem[0] : undefined)) : proximo.r };
+  }, [fila, inicial.id, proximo.r]);
 
   // fechar com Esc ou clicando fora
   useEffect(() => {
@@ -956,12 +964,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               </div>
             )}
           </div>
-          {proximo.r && <span className="restam" title={proximo.r.meta.claquete ? `O próximo é ${proximo.r.meta.claquete}` : undefined}>mais {plural(proximo.total, 'para revisar', 'para revisar')}</span>}
-          {vaiMandar && proximo.r && (
-            <button className="botao-texto pular" title={`Pular para ${proximo.r.meta.claquete || 'o próximo'}, sem mandar`} onClick={() => abrir(proximo.r!.id)}>
-              Pular <Icone nome="seta" tam={13} traco={2.2} />
-            </button>
-          )}
           {noTrello && (
             estadoTrello?.url ? (
               <a className="botao-icone no-trello" href={estadoTrello.url} target="_blank" rel="noreferrer" title={`No Trello${estadoTrello.por ? ` · mandado por ${estadoTrello.por}` : ''}`} aria-label="Abrir o card no Trello">
@@ -999,6 +1001,25 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       <div className="mesa">
         <div className={`area ${colunas ? 'larga' : ''}`} ref={area}>
           <article className="folha" data-ancora="folha">
+            {(vizinhos.anterior || vizinhos.seguinte || proximo.total > 0) && (
+              <nav className="nav-folha" aria-label="Fila de revisão">
+                {vizinhos.anterior ? (
+                  <button className="botao-texto" title={vizinhos.anterior.meta.claquete || 'O anterior'} onClick={() => abrir(vizinhos.anterior!.id)}>
+                    <Icone nome="voltar" tam={13} traco={2.2} /> Anterior
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <span className="restam">{proximo.total ? `mais ${plural(proximo.total, 'para revisar', 'para revisar')}` : 'último da fila'}</span>
+                {vizinhos.seguinte ? (
+                  <button className="botao-texto" title={`${vaiMandar ? 'Pular, sem mandar, para' : 'Ir para'} ${vizinhos.seguinte.meta.claquete || 'o próximo'}`} onClick={() => abrir(vizinhos.seguinte!.id)}>
+                    {vaiMandar ? 'Pular' : 'Próximo'} <Icone nome="seta" tam={13} traco={2.2} />
+                  </button>
+                ) : (
+                  <span />
+                )}
+              </nav>
+            )}
             {leitura && (
               <div className="faixa-leitura">
                 <span>Roteiro de <strong>{inicial.criadoPor?.nome ?? 'um colega'}</strong>. Você pode ler e exportar.</span>
