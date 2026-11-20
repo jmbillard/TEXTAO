@@ -115,6 +115,16 @@ No app, toda a identidade passa por `src/dados/identidade.ts`; no servidor, por 
    Cada arte tem um tipo: rodapé/GC, tela cheia, lettering em alpha, logo, versão, selo ou outro. O app sugere o tipo e marca como "sugerido" até alguém confirmar.
 4. **Exportar.** Roteiro em Word (padronizado, com a lista de artes no fim), dados em `.json`, lista de artes para colar, ou impressão/PDF.
 
+## PDF do card
+
+O PDF anexado ao card é sempre o roteiro **como chegou**: nada da revisão entra nele. O que a revisão corrige (artes
+excluídas, editor, atração…) vai no checklist, na descrição e nos campos do card.
+
+- Arquivo que já é PDF: vai como veio.
+- Word e RTF, com `STIRLING_URL`: convertidos pelo Stirling-PDF (LibreOffice), idênticos ao original.
+- Sem o Stirling (ou se ele falhar): o PDF sai do roteiro como foi importado (a primeira versão do histórico), sem
+  a lista de artes no fim.
+
 ## Acervo de artes
 
 O que cada atração já tem pronto, para não produzir de novo. Liga com `TEABLE_ACERVO` (o ID da tabela, para gravar) e

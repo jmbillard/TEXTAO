@@ -109,6 +109,8 @@ export function configDoTrello(env) {
       sessoes: nomeLimpoPg(env.TEABLE_PG_SESSOES),
       logBot: nomeLimpoPg(env.TEABLE_PG_LOG_BOT),
     },
+    // conversão fiel do original (Word, RTF) para PDF, com LibreOffice; sem ele, o PDF sai do roteiro como chegou
+    stirling: { url: (env.STIRLING_URL || '').replace(/\/+$/, ''), chave: env.STIRLING_CHAVE || '' },
     sftp: {
       host: env.SFTP_HOST || '',
       porta: Number(env.SFTP_PORTA) || 22,
@@ -293,9 +295,32 @@ export function criarTrello(env, deps = {}) {
 
   /** O Trello só mostra PDF: o PDF que subiu vai como veio; Word, RTF, texto e colado viram PDF aqui mesmo. */
   async function emPdf(r, artes) {
+    // o PDF do card é sempre o roteiro como chegou: nada da revisão entra nele (só no checklist e nos campos)
     if (r.original && /\.pdf$/i.test(r.original.nome)) return { ...r.original, tipo: 'application/pdf' };
     const base = (r.original?.nome ?? String(r.meta.claquete || 'roteiro')).replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '_');
+    if (r.original && c.stirling.url) {
+      try {
+        return { nome: `${base}.pdf`, tipo: 'application/pdf', dados: await converterNoStirling(r.original) };
+      } catch (e) {
+        console.warn(`[trello] o Stirling não converteu ${r.original.nome}: ${e instanceof Error ? e.message : e}; vai o PDF do roteiro como chegou`);
+      }
+    }
+    // sem conversão fiel: o roteiro como foi importado (a primeira versão), sem a lista de artes que o original não tem
+    if (r.docOriginal) return { nome: `${base}.pdf`, tipo: 'application/pdf', dados: await gerarPdf({ meta: r.metaOriginal ?? r.meta, doc: r.docOriginal, artes: [] }) };
     return { nome: `${base}.pdf`, tipo: 'application/pdf', dados: await gerarPdf({ meta: r.meta, doc: r.doc, artes }) };
+  }
+
+  async function converterNoStirling(original) {
+    const form = new FormData();
+    form.append('fileInput', new Blob([original.dados], { type: original.tipo || 'application/octet-stream' }), original.nome);
+    const r = await buscar(`${c.stirling.url}/api/v1/convert/file/pdf`, {
+      method: 'POST',
+      headers: c.stirling.chave ? { 'X-API-KEY': c.stirling.chave } : undefined,
+      body: form,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!r.ok) throw new Error(`o Stirling respondeu ${r.status}`);
+    return Buffer.from(await r.arrayBuffer());
   }
 
   async function guardarNoOneDrive(original, hoje) {

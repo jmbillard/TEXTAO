@@ -269,6 +269,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     atualizar: db.prepare('UPDATE roteiros SET publico = ?, meta = ?, doc = ?, n_artes = ?, revisao = ?, atualizado_em = ? WHERE id = ?'),
     apagar: db.prepare('DELETE FROM roteiros WHERE id = ?'),
     ultimaVersao: db.prepare('SELECT n, criado_em, meta, doc FROM versoes WHERE roteiro_id = ? ORDER BY n DESC LIMIT 1'),
+    // o roteiro como foi importado: é dele que sai o PDF do card (a revisão não entra no anexo)
+    primeiraVersao: db.prepare('SELECT meta, doc FROM versoes WHERE roteiro_id = ? ORDER BY n ASC LIMIT 1'),
     novaVersao: db.prepare('INSERT INTO versoes (roteiro_id, n, criado_em, por_email, por_nome, motivo, meta, doc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     versoes: db.prepare('SELECT n, criado_em, por_email, por_nome, motivo FROM versoes WHERE roteiro_id = ? ORDER BY n DESC LIMIT 200'),
     versao: db.prepare('SELECT * FROM versoes WHERE roteiro_id = ? AND n = ?'),
@@ -608,7 +610,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const o = q.original.get(id);
       const artes = Array.isArray(corpo.artes) ? corpo.artes.slice(0, 200).map((a) => ({ texto: String(a?.texto ?? a ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40) })) : [];
       try {
-        const pdf = await trello.pdfDoRoteiro({ meta: JSON.parse(atual.meta), doc: JSON.parse(atual.doc), original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null }, artes);
+        const v1 = q.primeiraVersao.get(id);
+        const pdf = await trello.pdfDoRoteiro({ meta: JSON.parse(atual.meta), doc: JSON.parse(atual.doc), ...(v1 ? { docOriginal: JSON.parse(v1.doc), metaOriginal: JSON.parse(v1.meta) } : {}), original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null }, artes);
         res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': pdf.dados.length, 'cache-control': 'private, no-store' });
         return res.end(Buffer.from(pdf.dados));
       } catch (e) {
@@ -661,9 +664,11 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     try {
       const o = q.original.get(id);
       const base = env.PROMEIRO_URL ? env.PROMEIRO_URL.replace(/\/+$/, '') : '';
+      const v1 = q.primeiraVersao.get(id);
       const r = await trello.enviar({
         meta: JSON.parse(atual.meta),
         doc: JSON.parse(atual.doc),
+        ...(v1 ? { docOriginal: JSON.parse(v1.doc), metaOriginal: JSON.parse(v1.meta) } : {}),
         artes: Array.isArray(corpo.artes)
           ? corpo.artes.slice(0, 200).map((a) => (typeof a === 'string' ? a.slice(0, 500) : { texto: String(a?.texto ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40), existe: !!a?.existe }))
           : [],

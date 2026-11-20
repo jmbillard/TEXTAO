@@ -459,3 +459,39 @@ describe('artes que já existem no acervo', () => {
     expect(teable.records[0].fields).toMatchObject({ artes: 'A GRANDE FESTA', artes_quantidade: 1, artes_existentes: 'HOJE | AMANHÃ' });
   });
 });
+
+describe('PDF do card: sempre o roteiro como chegou', () => {
+  it('Word com Stirling: o original é convertido lá, sem nada da revisão', async () => {
+    const pedidos: { url: string; nome?: string }[] = [];
+    const buscar = async (url: string, init: RequestInit = {}) => {
+      const arq = init.body instanceof FormData ? (init.body.get('fileInput') as File | null) : null;
+      pedidos.push({ url, nome: arq?.name });
+      return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('%PDF-stirling').buffer, json: async () => ({}), text: async () => '' };
+    };
+    const t = criarTrello({ ...ENV, STIRLING_URL: 'http://stirling:8080/' }, { buscar });
+    const pdf = await t.pdfDoRoteiro({ meta, doc: DOC, docOriginal: DOC, original }, [{ texto: 'X' }]);
+    expect(pedidos[0]).toEqual({ url: 'http://stirling:8080/api/v1/convert/file/pdf', nome: 'Festa_Na_Praca_19_11_SP.docx' });
+    expect(pdf.nome).toBe('Festa_Na_Praca_19_11_SP.pdf');
+    expect(pdf.dados.toString()).toBe('%PDF-stirling');
+  });
+
+  it('sem Stirling (ou se ele falhar): sai do roteiro como foi importado, não do editado', async () => {
+    const buscar = async () => ({ ok: false, status: 500, text: async () => 'erro', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
+    const t = criarTrello({ ...ENV, STIRLING_URL: 'http://stirling:8080' }, { buscar });
+    const editado = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'TEXTO EDITADO NA REVISAO' }] }] };
+    const pdf = await t.pdfDoRoteiro({ meta, doc: editado, docOriginal: DOC, original }, [{ texto: 'X' }]);
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(pdf.dados), isEvalSupported: false }).promise;
+    const pagina = await doc.getPage(1);
+    const texto = (await pagina.getTextContent()).items.map((i) => ('str' in i ? i.str : '')).join(' ');
+    expect(texto).toContain('A GRANDE FESTA');
+    expect(texto).not.toContain('EDITADO');
+    expect(texto).not.toMatch(/ARTES \(/); // o original não tem a lista de artes no fim
+  });
+
+  it('PDF que chegou vai como veio', async () => {
+    const t = criarTrello(ENV, {});
+    const pdfOriginal = { nome: 'Roteiro.pdf', tipo: 'application/pdf', dados: Buffer.from('%PDF-original') };
+    expect((await t.pdfDoRoteiro({ meta, doc: DOC, original: pdfOriginal }, [])).dados.toString()).toBe('%PDF-original');
+  });
+});

@@ -45,8 +45,6 @@ servidor.listen(porta, () =>
 for (const [antiga, aviso] of [
   ['TEABLE_TOKEN_ESCRITA', 'agora o TEABLE_TOKEN lê e grava; ponha o token com escrita nele e apague esta'],
   ['TEABLE_PAUTA_VISAO', 'a pauta é lida do mais novo para o mais antigo, até 45 dias; pode apagar'],
-  ['STIRLING_URL', 'o PDF é gerado pelo próprio PROMeiro; pode apagar'],
-  ['STIRLING_CHAVE', 'o PDF é gerado pelo próprio PROMeiro; pode apagar'],
 ])
   if (process.env[antiga]) console.log(`[config] ${antiga} não é mais usada: ${aviso}.`);
 if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos da fila em memória (serve para uma instância só)');
