@@ -15,6 +15,7 @@ import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
 import { criarTrello } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
+import { criarAcervo } from './acervo.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -109,6 +110,8 @@ export function abrirBanco(caminho) {
   // a cor de destaque que a pessoa escolheu (grifo, orelha, cursor); vazio = a sorteada pelo e-mail
   if (!tem('usuarios', 'cor')) db.exec('ALTER TABLE usuarios ADD COLUMN cor TEXT');
   if (!tem('roteiros', 'revisado_email')) db.exec('ALTER TABLE roteiros ADD COLUMN revisado_email TEXT; ALTER TABLE roteiros ADD COLUMN revisado_nome TEXT');
+  // acervo de artes: as artes novas de cada envio e a atração, para entrarem no acervo quando o card sair
+  if (!tem('envios', 'artes_novas')) db.exec('ALTER TABLE envios ADD COLUMN artes_novas TEXT; ALTER TABLE envios ADD COLUMN atracao TEXT; ALTER TABLE envios ADD COLUMN acervo_em TEXT');
   return db;
 }
 
@@ -211,7 +214,7 @@ const lerBinario = (req, limite) =>
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null }) {
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
   const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
@@ -249,6 +252,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     guardarOriginal: db.prepare('INSERT OR REPLACE INTO originais (roteiro_id, nome, tipo, dados, em) VALUES (?, ?, ?, ?, ?)'),
     infoOriginal: db.prepare('SELECT nome, tipo, length(dados) AS tamanho, em FROM originais WHERE roteiro_id = ?'),
     envio: db.prepare('SELECT estado, card_id, url, erro, avisos, em, por_nome FROM envios WHERE roteiro_id = ?'),
+    guardarArtesNovas: db.prepare('UPDATE envios SET artes_novas = ?, atracao = ?, acervo_em = NULL WHERE roteiro_id = ?'),
+    paraOAcervo: db.prepare("SELECT roteiro_id, card_id, artes_novas, atracao FROM envios WHERE estado = 'enviado' AND artes_novas IS NOT NULL AND acervo_em IS NULL AND card_id IS NOT NULL"),
+    noAcervo: db.prepare('UPDATE envios SET acervo_em = ? WHERE roteiro_id = ?'),
     marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
@@ -659,7 +665,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         meta: JSON.parse(atual.meta),
         doc: JSON.parse(atual.doc),
         artes: Array.isArray(corpo.artes)
-          ? corpo.artes.slice(0, 200).map((a) => (typeof a === 'string' ? a.slice(0, 500) : { texto: String(a?.texto ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40) }))
+          ? corpo.artes.slice(0, 200).map((a) => (typeof a === 'string' ? a.slice(0, 500) : { texto: String(a?.texto ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40), existe: !!a?.existe }))
           : [],
         texto: typeof corpo.texto === 'string' ? corpo.texto.slice(0, 200_000) : '',
         original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null,
@@ -667,6 +673,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       });
       const estado = r.duplicado ? 'duplicado' : 'enviado';
       q.marcarEnvio.run(id, estado, r.card?.id ?? null, r.card?.url ?? null, null, JSON.stringify(r.avisos ?? []), new Date().toISOString(), eu.email, eu.nome);
+      // o que entra no acervo da atração quando o card sair: só as artes novas (as que já existiam, não)
+      if (estado === 'enviado' && Array.isArray(corpo.artes))
+        q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => String(a?.texto ?? a).slice(0, 500))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), id);
       if (r.avisos?.length) console.warn(`[trello] ${id}: ${r.avisos.join(' · ')}`);
       return json(res, 200, { estado, url: r.card?.url, avisos: r.avisos ?? [] });
     } catch (e) {
@@ -677,6 +686,28 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     } finally {
       enviando.delete(id);
       avisarFila('alterado', id, eu);
+    }
+  }
+
+  let registrando = false;
+  async function registrarNoAcervo(andamento) {
+    if (registrando) return;
+    registrando = true;
+    try {
+      for (const e of q.paraOAcervo.all()) {
+        const a = andamento[e.roteiro_id];
+        const saiu = a && (a.entregue || a.status.some((s) => /FINALIZADO/i.test(s)));
+        if (!saiu || !e.atracao) continue;
+        try {
+          const n = await acervo.registrar({ atracao: e.atracao, card: e.card_id, artes: JSON.parse(e.artes_novas) });
+          q.noAcervo.run(new Date().toISOString(), e.roteiro_id);
+          if (n) console.log(`[acervo] ${e.atracao}: ${n} ${n === 1 ? 'arte nova' : 'artes novas'} do card ${e.card_id}`);
+        } catch (erro) {
+          console.warn(`[acervo] não registrei o card ${e.card_id}: ${erro instanceof Error ? erro.message : erro}`);
+        }
+      }
+    } finally {
+      registrando = false;
     }
   }
 
@@ -766,10 +797,33 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
       return json(res, 200, await trello.naProducao(claquete).catch((e) => (console.warn(`[producao] ${e instanceof Error ? e.message : e}`), null)));
     }
+    if (caminho === '/api/acervo') {
+      // as artes que a atração já tem prontas (as ativas), para marcar na revisão
+      const atracao = (new URL(req.url, 'http://x').searchParams.get('atracao') ?? '').slice(0, 200);
+      if (!acervo.ligado) return json(res, 200, { ligado: false, artes: [] });
+      return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), artes: await acervo.daAtracao(atracao).catch((e) => (console.warn(`[acervo] ${e instanceof Error ? e.message : e}`), [])) });
+    }
+    if (caminho === '/api/acervo/zerar') {
+      // pacote gráfico novo: as artes da atração deixam de valer. Só administradores (CADASTRO_ADMINS).
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores trocam o pacote gráfico.' });
+      const corpo = (await lerCorpo(req)) ?? {};
+      if (typeof corpo.atracao !== 'string' || !corpo.atracao.trim()) return json(res, 400, { erro: 'Qual atração?' });
+      try {
+        const n = await acervo.zerar(corpo.atracao.trim());
+        console.log(`[acervo] ${eu.email} trocou o pacote gráfico de ${corpo.atracao}: ${n} artes deixaram de valer`);
+        return json(res, 200, { zeradas: n });
+      } catch (e) {
+        return json(res, 422, { erro: e instanceof Error ? e.message : String(e) });
+      }
+    }
     if (caminho === '/api/andamento') {
       // como anda, na produção da arte, o que já foi para o Trello (só dos roteiros que a pessoa vê)
       const linhas = (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).filter((l) => l.envio_estado === 'enviado' || l.envio_estado === 'duplicado');
-      return json(res, 200, await trello.andamento(linhas.map((l) => ({ id: l.id, card: l.envio_card, claquete: JSON.parse(l.meta).claquete ?? '' }))));
+      const dados = await trello.andamento(linhas.map((l) => ({ id: l.id, card: l.envio_card, claquete: JSON.parse(l.meta).claquete ?? '' })));
+      // card que saiu (finalizado ou entregue): as artes novas dele entram no acervo da atração, uma vez só
+      if (acervo.ligado && acervo.grava) void registrarNoAcervo(dados);
+      return json(res, 200, dados);
     }
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
@@ -922,6 +976,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     clearInterval(batimento);
     pauta.parar();
     await trello.parar();
+    await acervo.parar?.();
     for (const ws of naFila.keys()) ws.terminate();
     // o que foi digitado nos últimos instantes ainda não foi gravado: grava antes de desligar
     for (const [id, sala] of salas) {

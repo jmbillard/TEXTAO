@@ -14,15 +14,16 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, baixarOriginal, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
+import { chaveDeArte } from '../modelo/diferencas';
 import {
-  ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
+  ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
 import { Claquete, EscolhaDeTipo, Marca, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
@@ -494,10 +495,11 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       })
       .catch(() => {});
   }, [liberado, leitura, meta.editor, meta.claquete]);
-  const mudarMetaRef = useRef<((parte: Partial<Meta>) => void) | null>(null);
+  const mudarMetaRef = useRef<((parte: Partial<Meta>, silencioso?: boolean) => void) | null>(null);
 
-  const mudarMeta = useCallback((parte: Partial<Meta>) => {
-    mexeu.current = true;
+  /** `silencioso`: o app atualizando sozinho (ex.: o acervo); não conta como alguém ter mexido no roteiro. */
+  const mudarMeta = useCallback((parte: Partial<Meta>, silencioso = false) => {
+    if (!silencioso) mexeu.current = true;
     if (sala) sala.doc.transact(() => Object.entries(parte).forEach(([k, v]) => (v === undefined ? sala.meta.delete(k) : sala.meta.set(k, v))));
     try {
       if (parte.redator !== undefined) localStorage.setItem('roteirista.redator', parte.redator);
@@ -676,6 +678,28 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id !== inicial.id && pedeRevisao(r)));
     return { r: proximos.flatMap((g) => g.itens)[0], total: proximos.reduce((n, g) => n + g.itens.length, 0) };
   }, [fila, inicial.id]);
+  // o acervo da atração: artes que ela já tem prontas (conferidas aqui, fora do checklist do Trello)
+  const [acervo, setAcervo] = useState<{ ligado: boolean; artes: ArteDoAcervo[] }>({ ligado: false, artes: [] });
+  useEffect(() => {
+    let vivo = true;
+    const t = setTimeout(() => void consultarAcervo(meta.programa).then((a) => vivo && setAcervo(a)), 400);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [meta.programa]);
+  // o roteiro guarda quais das artes dele já existem (a fila e o envio usam); atualiza sem contar como revisão
+  useEffect(() => {
+    if (!acervo.ligado || leitura || !liberado) return;
+    const noRoteiro = new Set(saida.artes.map((a) => chaveDeArte(a.texto)));
+    const ja = acervo.artes.filter((a) => noRoteiro.has(a.chave));
+    const chaves = (l: ArteDoAcervo[] | undefined) => (l ?? []).map((a) => a.chave).sort().join('|');
+    if (chaves(ja) !== chaves(meta.jaExistem)) mudarMeta({ jaExistem: ja.length ? ja : undefined }, true);
+  }, [acervo, saida.artes, liberado]); // eslint-disable-line react-hooks/exhaustive-deps
+  const doAcervo = useMemo(() => new Map((meta.jaExistem ?? []).map((a) => [a.chave, a])), [meta.jaExistem]);
+  const deNovo = useMemo(() => new Set(meta.produzirDeNovo ?? []), [meta.produzirDeNovo]);
+  const alternarDeNovo = (k: string) =>
+    mudarMeta({ produzirDeNovo: deNovo.has(k) ? [...deNovo].filter((x) => x !== k) : [...deNovo, k] });
   // anterior e seguinte na ordem da fila de revisão (este roteiro incluído), para andar por ela
   const vizinhos = useMemo(() => {
     const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id === inicial.id || pedeRevisao(r)));
@@ -1104,19 +1128,36 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
               <ol className={`artes ${TIPOS_NA_LISTA ? '' : 'so-lista'}`}>
                 {!TIPOS_NA_LISTA &&
-                  artes.map((a) => (
-                    <li key={a.id} className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''}`} onMouseEnter={() => setRealce(a.id)} onMouseLeave={() => setRealce(null)}>
+                  artes.map((a) => {
+                    const k = chaveDeArte(a.texto);
+                    const ja = doAcervo.get(k);
+                    const refazer = !!ja && deNovo.has(k);
+                    return (
+                    <li key={a.id} className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja ? (refazer ? 'existe refazer' : 'existe') : ''}`} onMouseEnter={() => setRealce(a.id)} onMouseLeave={() => setRealce(null)}>
                       <button className="arte-linha" onClick={() => irParaArte(a)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
                         <span className="b">{a.ordem}</span>
-                        <span className="txt"><b>{a.texto}</b></span>
+                        <span className="txt">
+                          <b>{a.texto}</b>
+                          {ja && (
+                            <span className="ja-existe">
+                              {refazer ? 'produzir de novo' : <>já existe{ja.claquete && <> · {ja.claquete}</>}{ja.tipo && <> · {ja.tipo}</>}</>}
+                            </span>
+                          )}
+                        </span>
                       </button>
+                      {ja && !leitura && (
+                        <button className="botao-texto alternar-acervo" title={refazer ? 'Volta a usar a que já existe (fora do checklist)' : 'Entra no checklist do Trello para ser feita de novo'} onClick={() => alternarDeNovo(k)}>
+                          {refazer ? 'já existe' : 'produzir'}
+                        </button>
+                      )}
                       {!leitura && (
                         <button className="tirar-arte" aria-label={`Tirar "${a.texto}" das artes`} title="Deixa de ser arte (o texto fica)" onClick={() => tirarArte(a)}>
                           <Icone nome="fechar" tam={13} traco={2.2} />
                         </button>
                       )}
                     </li>
-                  ))}
+                    );
+                  })}
                 {TIPOS_NA_LISTA && artes.map((a) => {
                   const subtipo = normalizarSubtipo(a.attrs.subtipo);
                   const esta = aberta === a.id;

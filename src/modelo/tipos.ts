@@ -76,6 +76,10 @@ export interface Meta {
   v2De?: { card: string; url: string; registro?: string | null };
   /** Respondido "é outro roteiro": vai como card novo, mesmo com a claquete parecida. */
   outroRoteiro?: boolean;
+  /** Artes do roteiro que a atração já tem prontas (acervo do Teable): conferidas na revisão, fora do checklist. */
+  jaExistem?: ArteDoAcervo[];
+  /** Chaves de artes que existem no acervo, mas que alguém mandou produzir de novo. */
+  produzirDeNovo?: string[];
 }
 
 export const metaVazia = (): Meta => ({
@@ -170,6 +174,15 @@ export const NOMES_COLUNAS: Record<Layout, [string, string] | null> = {
   ilustracao_audio: ['Ilustração', 'Áudio'],
   instrucoes_texto: ['Instruções', 'Texto'],
 };
+
+export interface ArteDoAcervo {
+  arte: string;
+  chave: string;
+  /** Preenchido no Teable (à mão ou por script); o PROMeiro só mostra. */
+  tipo: string;
+  /** A claquete em que foi pedida. */
+  claquete: string;
+}
 
 export interface NaProducao {
   card: string;

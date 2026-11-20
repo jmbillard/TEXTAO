@@ -445,3 +445,17 @@ describe('sem claquete', () => {
     expect((card?.corpo as { name: string }).name).toBe('Vt Evento Interno');
   });
 });
+
+describe('artes que já existem no acervo', () => {
+  it('vão no PDF, mas não no checklist nem na conta; a descrição diz para não produzir', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, ...banco(), sftp: async () => {} });
+    await t.enviar({ meta, doc: DOC, artes: [{ texto: 'A GRANDE FESTA' }, { texto: 'HOJE', existe: true }, { texto: 'AMANHÃ', existe: true }], original });
+    const itens = pedidos.filter((p) => p.url.pathname.includes('/checkItems')).map((p) => p.url.searchParams.get('name'));
+    expect(itens).toEqual(['A GRANDE FESTA']);
+    const card = pedidos.find((p) => p.metodo === 'POST' && p.url.pathname.endsWith('/cards'))?.corpo as { desc: string };
+    expect(card.desc).toContain('**JÁ EXISTEM (não produzir):**\n`HOJE`, `AMANHÃ`');
+    const teable = pedidos.find((p) => p.url.host === 'teable:3000' && p.metodo === 'POST')?.corpo as { records: { fields: Record<string, unknown> }[] };
+    expect(teable.records[0].fields).toMatchObject({ artes: 'A GRANDE FESTA', artes_quantidade: 1, artes_existentes: 'HOJE | AMANHÃ' });
+  });
+});

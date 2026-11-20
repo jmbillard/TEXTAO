@@ -1643,3 +1643,15 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 /* lista de artes sem a linha entre os itens: o espaço já separa (o hover marca a linha) */
 .artes li + li { box-shadow: none; }
 .artes.so-lista li { border-radius: 6px; }
+
+/* acervo: a arte que a atração já tem fica apagada, com de onde veio; "produzir" põe de volta no checklist */
+.artes li.existe .txt b { color: var(--tinta3); font-weight: 500; }
+.artes li.existe .b { background: var(--neutro); color: var(--tinta3); }
+.artes .ja-existe { font: 600 15px/1.1 Caveat, cursive; color: var(--tinta3); }
+.artes li.refazer .ja-existe { color: var(--ultra); }
+.artes li.refazer .txt b { color: var(--tinta); font-weight: 600; }
+.artes li.refazer .b { background: var(--ultra); color: var(--no-ultra); }
+.alternar-acervo { flex: none; font-size: 12px; padding: 0 4px; opacity: 0; transition: opacity 0.15s; }
+.artes li:hover .alternar-acervo, .alternar-acervo:focus-visible { opacity: 1; }
+.ficha-novas { display: block; margin-top: 2px; font: 600 15px/1 Caveat, cursive; color: var(--tinta3); text-align: center; }
+.pacote-cad { font-size: 12px; color: var(--tinta3); }

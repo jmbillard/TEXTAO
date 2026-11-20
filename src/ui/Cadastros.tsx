@@ -6,6 +6,7 @@ import {
   darKey,
   lerCadastros,
   removerCadastro,
+  zerarAcervo,
   type AtracaoCadastro,
   type Cadastros as DadosCadastros,
   type CampoCaminho,
@@ -220,6 +221,42 @@ function Remover({ pode, nome, remover }: { pode: boolean; nome: string; remover
   );
 }
 
+/** Pacote gráfico novo: as artes da atração no acervo deixam de valer (só administradores). */
+function NovoPacote({ nome, avisar }: { nome: string; avisar: (t: string) => void }) {
+  const [conferindo, setConferindo] = useState(false);
+  const [indo, setIndo] = useState(false);
+  if (conferindo)
+    return (
+      <span className="remover-conferir">
+        Pacote gráfico novo? As artes de {nome} deixam de valer.
+        <button type="button" className="botao-texto" onClick={() => setConferindo(false)}>Não</button>
+        <button
+          type="button"
+          className="botao-texto perigo"
+          disabled={indo}
+          onClick={async () => {
+            setIndo(true);
+            try {
+              const r = await zerarAcervo(nome);
+              avisar(r.zeradas ? `${nome}: ${plural(r.zeradas, 'arte deixou', 'artes deixaram')} de valer. As próximas entram como novas.` : `${nome} não tinha artes no acervo.`);
+            } catch (e) {
+              avisar(e instanceof Error ? e.message : 'Não consegui trocar o pacote.');
+            }
+            setIndo(false);
+            setConferindo(false);
+          }}
+        >
+          Trocar
+        </button>
+      </span>
+    );
+  return (
+    <button type="button" className="botao-texto pacote-cad" title="Pacote gráfico novo: as artes da atração no acervo deixam de valer" onClick={() => setConferindo(true)}>
+      novo pacote
+    </button>
+  );
+}
+
 /** A folha de rascunho: o que está no formulário, solto por cima da lista. */
 function Rascunho({ nome, categoria, keys, assentando }: { nome: string; categoria?: string; keys: string[]; assentando: boolean }) {
   return (
@@ -412,6 +449,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       </div>
       <div className="lado-cad">
         <span>{plural(a.keys.length, 'key', 'keys')}</span>
+        {pode && <NovoPacote nome={a.nome} avisar={avisar} />}
         <Remover pode={pode} nome={a.nome} remover={remover('atracoes', a.id)} />
       </div>
       <div className="keys">

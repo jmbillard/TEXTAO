@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Comparar } from './ui/Comparar';
 import { Cadastros } from './ui/Cadastros';
-import { armazenamento, atualizarVocabulario, temCadastros, type TipoCadastro, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello } from './dados/armazenamento';
+import { armazenamento, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
 import { exportar, pendencias, roteiroDoJson, travamTrello } from './modelo/exportar';
-import { docVazio, metaVazia, novoId, type Roteiro } from './modelo/tipos';
+import { docVazio, metaVazia, novoId, type ArteDoAcervo, type Roteiro } from './modelo/tipos';
+import { chaveDeArte } from './modelo/diferencas';
 import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
 import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores';
@@ -137,6 +138,7 @@ export function App() {
       await atualizarVocabulario();
       // claquete que já está na fila: o arquivo novo é uma versão nova dela, e a ficha pergunta se substitui
       const naFila = new Map<string, string>();
+      const acervos = new Map<string, Promise<ArteDoAcervo[]>>();
       // só os dos últimos 3 meses: a claquete não tem o ano, e a do ano que vem bateria com a deste ano
       const limite = new Date(Date.now() - 92 * 86_400_000).toISOString();
       for (const r of await armazenamento.listar().catch(() => [])) {
@@ -154,6 +156,18 @@ export function App() {
           if (!roteiro.meta.substitui) {
             const np = await consultarProducao(roteiro.meta.claquete);
             if (np) roteiro.meta.naProducao = resumoDaProducao(np);
+          }
+          // artes que a atração já tem prontas: ficam marcadas para a conferência e seguram o envio automático
+          if (roteiro.meta.programa) {
+            const chave = roteiro.meta.programa.trim().toLowerCase();
+            if (!acervos.has(chave)) acervos.set(chave, consultarAcervo(roteiro.meta.programa).then((a) => a.artes));
+            const doAcervo = await acervos.get(chave)!;
+            const noRoteiro = new Set(exportar(roteiro).artes.map((a) => chaveDeArte(a.texto)));
+            const ja = doAcervo.filter((a) => noRoteiro.has(a.chave));
+            if (ja.length) {
+              roteiro.meta.jaExistem = ja;
+              roteiro.meta.revisar = pendencias(exportar(roteiro));
+            }
           }
           await armazenamento.salvar(roteiro);
           setNovos((n) => [...n, roteiro.id]);

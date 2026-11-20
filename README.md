@@ -115,6 +115,35 @@ No app, toda a identidade passa por `src/dados/identidade.ts`; no servidor, por 
    Cada arte tem um tipo: rodapé/GC, tela cheia, lettering em alpha, logo, versão, selo ou outro. O app sugere o tipo e marca como "sugerido" até alguém confirmar.
 4. **Exportar.** Roteiro em Word (padronizado, com a lista de artes no fim), dados em `.json`, lista de artes para colar, ou impressão/PDF.
 
+## Acervo de artes
+
+O que cada atração já tem pronto, para não produzir de novo. Liga com `TEABLE_ACERVO` (o ID da tabela, para gravar) e
+`TEABLE_PG_ACERVO` (o nome dela no Postgres, para ler); sem elas, nada muda.
+
+Tabela **ARTES_acervo** no Teable, uma linha por arte:
+
+| Campo | Tipo | |
+|---|---|---|
+| `arte` | texto | "HOJE" |
+| `chave` | texto | a arte sem acento, caixa e pontuação; o PROMeiro grava e compara por ela |
+| `tipo` | seleção | lettering, rodapé, cartão…; preenchido à mão ou por script, nunca pelo PROMeiro |
+| `atracao` | vínculo → atrações | a arte é da atração, de qualquer praça |
+| `producao` | vínculo → ARTE_producao | o card (a claquete) em que foi pedida |
+| `ativa` | caixa de seleção | desmarcada, deixa de valer |
+
+E uma coluna de texto **`artes_existentes`** na ARTE_producao, com as artes de cada envio que já existiam.
+
+- **Na chegada**, as artes do roteiro que estão no acervo ativo da atração ficam marcadas ("Já existem: N") e o
+  roteiro espera a revisão. Na fila: "#13 artes · 10 novas".
+- **Na revisão**, cada uma mostra a claquete e o tipo de onde veio; "produzir" põe de volta no checklist.
+- **No envio**, as que já existem vão no PDF (sublinhadas, como no roteiro), mas não no checklist nem em `artes`
+  e `artes_quantidade`; a descrição do card diz "JÁ EXISTEM (não produzir)".
+- **Quando o card sai** (status FINALIZADO ou entregue), as artes novas dele entram no acervo da atração.
+- **Pacote gráfico novo**: em Cadastros, na atração, "novo pacote" desmarca `ativa` em todas as artes dela (só
+  `CADASTRO_ADMINS`).
+- **O histórico**: `node scripts/acervo-historico.mjs --desde AAAA-MM-DD` mostra o que entraria; com `--gravar`,
+  grava (com as mesmas variáveis do servidor).
+
 ## Formato de dados (`.json`, versão 1.0)
 
 O JSON Schema está em `src/modelo/schema.ts`. Resumo:

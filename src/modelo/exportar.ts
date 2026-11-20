@@ -1,5 +1,6 @@
 import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, textoDaLocucao, type ContextoSonora } from './sonora';
 import { nomeSubtipo, normalizarSubtipo, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
+import { chaveDeArte } from './diferencas';
 
 /* Do documento do editor para o contrato de saída (JSON canônico).
    Função pura: o mesmo roteiro sempre gera a mesma saída, com os mesmos IDs. */
@@ -337,7 +338,7 @@ const SEM_EDITOR_ANTIGO = 'Sem editor: a claquete não está na pauta';
 const NAO_SEGURAM = new Set(['Sem editor', SEM_EDITOR_ANTIGO, 'Sem data', 'Sem data de exibição']);
 export const travamTrello = (revisar: string[] | undefined) => (revisar ?? []).filter((t) => !NAO_SEGURAM.has(t));
 
-export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-editor' | 'sem-data' | 'ocr' | 'v2' | 'repetida';
+export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-editor' | 'sem-data' | 'ocr' | 'v2' | 'repetida' | 'ja-existem';
 export interface Pendencia {
   id: IdPendencia;
   texto: string;
@@ -361,10 +362,21 @@ export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
   if (!r.dataExibicao) p.push({ id: 'sem-data', texto: 'Sem data', dispensavel: false });
   if (r.lidoPorOcr) p.push({ id: 'ocr', texto: 'Lido por OCR', dispensavel: true });
   // claquete que já estava na produção da arte: fica marcada até alguém conferir
+  // artes que a atração já tem: tudo é conferido antes de seguir (e elas não vão para o checklist)
+  const existem = artesQueJaExistem(saida).length;
+  if (existem) p.push({ id: 'ja-existem', texto: `Já existem: ${existem}`, dispensavel: true });
   if (r.v2De) p.push({ id: 'v2', texto: 'Versão nova (v2)', dispensavel: true });
   else if (r.outroRoteiro) p.push({ id: 'repetida', texto: 'Claquete repetida', dispensavel: true });
   const conferidos = new Set(r.conferidos ?? []);
   return p.filter((x) => !(x.dispensavel && conferidos.has(x.id)));
+}
+
+/** As artes do roteiro que estão no acervo da atração (menos as que alguém mandou produzir de novo). */
+export function artesQueJaExistem(saida: Saida): string[] {
+  const acervo = new Set((saida.roteiro.jaExistem ?? []).map((a) => a.chave));
+  if (!acervo.size) return [];
+  const deNovo = new Set(saida.roteiro.produzirDeNovo ?? []);
+  return [...new Set(saida.artes.map((a) => chaveDeArte(a.texto)))].filter((k) => acervo.has(k) && !deNovo.has(k));
 }
 
 export const pendencias = (saida: Saida): string[] => pendenciasDetalhadas(saida).map((p) => p.texto);

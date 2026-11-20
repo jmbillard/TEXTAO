@@ -1,7 +1,8 @@
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
-import { exportar } from '../modelo/exportar';
+import { artesQueJaExistem, exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
-import type { Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
+import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
+import { chaveDeArte } from '../modelo/diferencas';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
    - servidor (SQLite, com dono, público/privado e histórico), quando a API responde;
@@ -258,6 +259,15 @@ export async function baixarOriginal(id: string): Promise<Blob> {
   return r.blob();
 }
 
+/** As artes que a atração já tem prontas (acervo do Teable). Sem servidor ou sem acervo: lista vazia. */
+export async function consultarAcervo(atracao: string): Promise<{ ligado: boolean; podeZerar?: boolean; artes: ArteDoAcervo[] }> {
+  if (armazenamento.tipo !== 'servidor' || !atracao.trim()) return { ligado: false, artes: [] };
+  return pedir<{ ligado: boolean; podeZerar?: boolean; artes: ArteDoAcervo[] }>(`/api/acervo?atracao=${encodeURIComponent(atracao)}`).catch(() => ({ ligado: false, artes: [] }));
+}
+
+/** Pacote gráfico novo: as artes da atração deixam de valer. */
+export const zerarAcervo = (atracao: string) => pedir<{ zeradas: number }>('/api/acervo/zerar', { method: 'POST', body: JSON.stringify({ atracao }) });
+
 /** O PDF anexado ao card que já está na produção da arte (null se o card não tiver). */
 export async function pdfDaProducao(claquete: string): Promise<ArrayBuffer | null> {
   const r = await fetch(`/api/producao/pdf?claquete=${encodeURIComponent(claquete)}`, { credentials: 'same-origin', headers: cabecalhos });
@@ -285,9 +295,11 @@ export async function herdarEnvio(novo: string, anterior: string) {
 /** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
 export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const saida = exportar(roteiro);
+  // as que a atração já tem (acervo) vão marcadas: ficam no PDF, fora do checklist
+  const existem = new Set(artesQueJaExistem(saida));
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
     method: 'POST',
-    body: JSON.stringify({ artes: saida.artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '' })), texto: saida.texto.completo, deNovo }),
+    body: JSON.stringify({ artes: saida.artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '', existe: existem.has(chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
   });
 }
 

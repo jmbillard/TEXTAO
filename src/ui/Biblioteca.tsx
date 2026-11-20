@@ -330,6 +330,8 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   const revisar = mandada ? [] : r.meta.revisar ?? [];
   // a pergunta da v2 também pede atenção
   const np = !mandada && producao ? r.meta.naProducao : undefined;
+  // artes que a atração já tem prontas (acervo), menos as que alguém mandou produzir de novo
+  const jaExistem = (r.meta.jaExistem ?? []).filter((a) => !(r.meta.produzirDeNovo ?? []).includes(a.chave)).length;
   const alerta = revisar.length > 0 || !!np;
   const semEditor = !r.meta.editor;
   // alguém com o roteiro aberto: a orelha dobra, a claquete é selecionada e o nome é anotado à mão.
@@ -382,7 +384,10 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
           edição: {!semEditor ? r.meta.editor : mandada ? 'a definir' : <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" />}
         </small>
       </span>
-      <span className="ficha-artes some"><Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} circular={revisar.length > 0} /></span>
+      <span className="ficha-artes some">
+        <Contagem n={r.nArtes} traco={ordem} desenhar={nova && terminou} circular={revisar.length > 0} />
+        {jaExistem > 0 && <small className="ficha-novas" title={`${plural(jaExistem, 'arte já existe', 'artes já existem')} no acervo da atração`}>{plural(Math.max(0, r.nArtes - jaExistem), 'nova', 'novas')}</small>}
+      </span>
       <span className="ficha-acoes some">
         {acoes}
         {np && producao ? (

@@ -340,10 +340,12 @@ export function criarTrello(env, deps = {}) {
     };
 
     const listaDeArtes = (r.artes ?? [])
-      .map((a) => (typeof a === 'string' ? { texto: a, tipo: '' } : { texto: String(a?.texto ?? ''), tipo: String(a?.tipo ?? '') }))
-      .map((a) => ({ texto: a.texto.trim(), tipo: a.tipo.trim() }))
+      .map((a) => (typeof a === 'string' ? { texto: a, tipo: '' } : { texto: String(a?.texto ?? ''), tipo: String(a?.tipo ?? ''), existe: !!a?.existe }))
+      .map((a) => ({ texto: a.texto.trim(), tipo: a.tipo.trim(), existe: !!a.existe }))
       .filter((a) => a.texto);
-    const artes = listaDeArtes.map((a) => a.texto);
+    // a que já existe no acervo da atração vai no PDF (sublinhada, como no roteiro), mas não no checklist nem na conta
+    const artes = listaDeArtes.filter((a) => !a.existe).map((a) => a.texto);
+    const existentes = listaDeArtes.filter((a) => a.existe).map((a) => a.texto);
 
     // versão nova de um roteiro que já está na produção: o card antigo recebe as artes novas e o roteiro novo
     r.v2De ??= m.v2De;
@@ -369,6 +371,7 @@ export function criarTrello(env, deps = {}) {
     const desc = [
       '**ARTES IDENTIFICADAS:**',
       artes.length ? '`' + artes.join('`, `') + '`' : '—',
+      ...(existentes.length ? ['', '**JÁ EXISTEM (não produzir):**', '`' + existentes.join('`, `') + '`'] : []),
       '',
       '---',
       '**CAMINHO DO PROJETO:**',
@@ -432,6 +435,8 @@ export function criarTrello(env, deps = {}) {
         claquete,
         artes_quantidade: artes.length,
         artes: artes.join(' | '),
+        // a coluna só é escrita quando há o que escrever: sem acervo, nada muda na tabela
+        ...(existentes.length ? { artes_existentes: existentes.join(' | ') } : {}),
         doc: anexo?.url ?? '',
         redator: redator?.nome ?? m.redator ?? '',
         card_ID: card.id,
@@ -454,7 +459,7 @@ export function criarTrello(env, deps = {}) {
   /** Versão nova: artes que faltam no checklist, o roteiro novo anexado, um comentário e a linha do Teable em dia. */
   async function atualizarCard(r, listaDeArtes, avisos, tentar) {
     const id = r.v2De.card;
-    const artes = listaDeArtes.map((a) => a.texto);
+    const artes = listaDeArtes.filter((a) => !a.existe).map((a) => a.texto);
     const card = await trello('GET', `/cards/${id}`, { consulta: { fields: 'id,shortUrl,url,name' } });
     if (!card?.id) throw new Error('O card da versão anterior não foi encontrado no Trello.');
     const listas = (await tentar('ler as checklists', () => trello('GET', `/cards/${id}/checklists`))) ?? [];

@@ -2,6 +2,15 @@
    Serve para decidir se o roteiro que chegou é o mesmo que já está na produção, outro, ou uma versão nova. */
 
 /** `antigo`: num trecho igual, como ele estava escrito no texto antigo (com as quebras de linha de lá). */
+/** A arte do jeito de comparar com o acervo: sem acento, sem caixa, sem pontuação (igual ao servidor). */
+export const chaveDeArte = (texto: string) =>
+  texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+
 export type Trecho = { tipo: 'igual' | 'saiu' | 'entrou'; texto: string; antigo?: string };
 
 // para comparar: sem acento, sem caixa e sem pontuação colada (VEM AÍ, == Vem ai)
