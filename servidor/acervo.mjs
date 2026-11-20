@@ -12,8 +12,9 @@
  *   - tudo o que está nos checklists dos cards da prévia dele (os que o bot cria), usado ou não;
  *   - as artes dos cards de claquete do filme que já saíram (gravadas aqui com o campo filme).
  *
- * Sem acervo nenhum: VT (cada VT é único, com a sua arte) e as categorias que juntam coisas de pacotes diferentes
- * (ACERVO_FORA; por padrão VTs, EVENTOS, Shows Diversos, Mood Mensal, Produções Estúdios Globo, Filmes Diversos).
+ * Sem acervo: as categorias genéricas, que juntam coisas de pacotes diferentes (ACERVO_FORA; por padrão VTs, EVENTOS,
+ * Shows Diversos, Mood Mensal, Produções Estúdios Globo, Filmes Diversos). O que tem linguagem própria ganha uma
+ * atração própria (VT Upfront 2026, Dezembro na Globo, o show tal) e, com ela, o seu acervo.
  *
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
  */
@@ -30,8 +31,6 @@ export function chaveDeArte(texto) {
 }
 const nomeComparavel = (s) => chaveDeArte(s);
 const FORA_PADRAO = 'VTs, VT, EVENTOS, Shows Diversos, Mood Mensal, Produções Estúdios Globo, Filmes Diversos';
-/** Roteiro de VT (claquete com "Vt"): cada um é único, não tem acervo. */
-export const ehVt = (claquete) => /\bVt\b/i.test(String(claquete ?? ''));
 
 // vínculo do Teable no Postgres: lista (ou objeto, ou texto JSON) com { id, title }
 function vinculos(v) {
@@ -80,7 +79,7 @@ export function criarAcervo(env, deps = {}) {
       : null);
   const ligado = !!(consultar && t.acervo);
   const fora = new Set(String(env.ACERVO_FORA || FORA_PADRAO).split(',').map(nomeComparavel).filter(Boolean));
-  /** Atração sem acervo: cada coisa dela tem o seu pacote (VTs, eventos, shows, moods…). */
+  /** Categoria genérica, sem acervo: cada coisa dentro dela tem o seu pacote (VTs, eventos, shows, moods…). */
   const semAcervo = (atracao) => fora.has(nomeComparavel(atracao));
   const grava = !!(api.url && api.token && api.tabela);
 
@@ -183,8 +182,8 @@ export function criarAcervo(env, deps = {}) {
   }
 
   /** O que já existe para o roteiro: o acervo da atração ou, numa sessão, o do filme daquele dia. */
-  async function paraRevisao(atracao, data, claquete = '') {
-    if (ehVt(claquete) || semAcervo(atracao)) return [];
+  async function paraRevisao(atracao, data) {
+    if (semAcervo(atracao)) return [];
     if (!(await ehSessao(atracao))) return daAtracao(atracao);
     return doFilme(await filmeDe(atracao, data));
   }

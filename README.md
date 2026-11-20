@@ -160,8 +160,9 @@ E uma coluna de texto **`artes_existentes`** na ARTE_producao, com as artes de c
   (`TEABLE_PG_LOG_BOT`) diz qual é o filme (key e ano); o que ele já tem pronto é tudo o que está nos checklists das
   prévias dele, em qualquer sessão, usado ou não, mais as artes das claquetes dele que já saíram (gravadas com `filme`).
   Mesmo título com outro ano é outro filme.
-- **Sem acervo**: VT (cada VT é único) e as categorias que juntam pacotes diferentes, em `ACERVO_FORA` (padrão: VTs,
-  EVENTOS, Shows Diversos, Mood Mensal, Produções Estúdios Globo, Filmes Diversos). Nada é marcado nem gravado.
+- **Sem acervo**: as categorias genéricas, que juntam pacotes diferentes, em `ACERVO_FORA` (padrão: VTs, EVENTOS,
+  Shows Diversos, Mood Mensal, Produções Estúdios Globo, Filmes Diversos). O que tem linguagem própria ganha atração
+  própria (VT Upfront 2026, Dezembro na Globo) e, com ela, o seu acervo.
 - **Quando o card sai** (status FINALIZADO ou entregue), as artes novas dele entram no acervo da atração.
 - **Pacote gráfico novo**: em Cadastros, na atração, "novo pacote" apaga do acervo todas as artes dela (só
   `CADASTRO_ADMINS`).

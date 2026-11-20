@@ -682,12 +682,12 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const [acervo, setAcervo] = useState<{ ligado: boolean; artes: ArteDoAcervo[] }>({ ligado: false, artes: [] });
   useEffect(() => {
     let vivo = true;
-    const t = setTimeout(() => void consultarAcervo(meta.programa, meta.dataExibicao ?? '', meta.claquete).then((a) => vivo && setAcervo(a)), 400);
+    const t = setTimeout(() => void consultarAcervo(meta.programa, meta.dataExibicao ?? '').then((a) => vivo && setAcervo(a)), 400);
     return () => {
       vivo = false;
       clearTimeout(t);
     };
-  }, [meta.programa, meta.dataExibicao, meta.claquete]);
+  }, [meta.programa, meta.dataExibicao]);
   // o roteiro guarda quais das artes dele já existem (a fila e o envio usam); atualiza sem contar como revisão
   useEffect(() => {
     if (!acervo.ligado || leitura || !liberado) return;

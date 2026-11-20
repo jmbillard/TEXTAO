@@ -265,9 +265,9 @@ export async function baixarOriginal(id: string): Promise<Blob> {
 
 /** As artes que a atração já tem prontas (acervo do Teable); numa sessão de filme, as do filme daquele dia.
     Sem servidor ou sem acervo: lista vazia. */
-export async function consultarAcervo(atracao: string, dataExibicao = '', claquete = ''): Promise<{ ligado: boolean; podeZerar?: boolean; artes: ArteDoAcervo[] }> {
+export async function consultarAcervo(atracao: string, dataExibicao = ''): Promise<{ ligado: boolean; podeZerar?: boolean; artes: ArteDoAcervo[] }> {
   if (armazenamento.tipo !== 'servidor' || !atracao.trim()) return { ligado: false, artes: [] };
-  return pedir<{ ligado: boolean; podeZerar?: boolean; artes: ArteDoAcervo[] }>(`/api/acervo?atracao=${encodeURIComponent(atracao)}&data=${encodeURIComponent(dataExibicao)}&claquete=${encodeURIComponent(claquete)}`).catch(() => ({ ligado: false, artes: [] }));
+  return pedir<{ ligado: boolean; podeZerar?: boolean; artes: ArteDoAcervo[] }>(`/api/acervo?atracao=${encodeURIComponent(atracao)}&data=${encodeURIComponent(dataExibicao)}`).catch(() => ({ ligado: false, artes: [] }));
 }
 
 /** Pacote gráfico novo: as artes da atração deixam de valer. */

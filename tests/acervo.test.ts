@@ -128,12 +128,12 @@ describe('acervo de artes', () => {
     expect(await a.registrar({ atracao: 'TELA QUENTE', data: '2026-11-17', card: 'c', artes: ['X'] })).toBe(0); // sem filme no dia
   });
 
-  it('VT e categorias de pacotes diferentes (shows, moods, eventos) não têm acervo', async () => {
+  it('categorias genéricas (VTs, shows, moods, eventos) não têm acervo; VT com atração própria tem', async () => {
     const { consultar, buscar, pedidos } = falsos();
     const a = criarAcervo(ENV, { consultar, buscar });
-    expect(await a.paraRevisao('Encontro', '', 'ENCONTRO VT 02/01')).toEqual([]);
-    expect((await a.paraRevisao('Encontro', '', 'ENCONTRO 02/01')).length).toBe(2);
-    expect(await a.paraRevisao('Shows Diversos', '', 'X')).toEqual([]);
+    expect((await a.paraRevisao('Encontro', '')).length).toBe(2); // vale a atração, seja VT ou não
+    expect(await a.paraRevisao('Shows Diversos', '')).toEqual([]);
+    expect(await a.paraRevisao('VTs', '')).toEqual([]);
     expect(await a.registrar({ atracao: 'Mood Mensal', card: 'c', artes: ['HOJE'] })).toBe(0);
     expect(pedidos).toHaveLength(0);
     expect(criarAcervo({ ...ENV, ACERVO_FORA: 'Encontro' }, { consultar }).semAcervo('ENCONTRO')).toBe(true);
