@@ -115,9 +115,8 @@ export function configDoTrello(env) {
       editores: nomeLimpoPg(env.TEABLE_PG_EDITORES),
       atracoes: nomeLimpoPg(env.TEABLE_PG_ATRACOES),
       prioridade: nomeLimpoPg(env.TEABLE_PG_PRIORIDADE),
-      filmes: nomeLimpoPg(env.TEABLE_PG_FILMES_ESQUEMA),
-      sessoes: nomeLimpoPg(env.TEABLE_PG_SESSOES),
-      logBot: nomeLimpoPg(env.TEABLE_PG_LOG_BOT),
+      // exibições de filme (filme + sessão + dia + card da prévia), na mesma base
+      exibicoes: nomeLimpoPg(env.TEABLE_PG_EXIBICOES),
     },
     // conversão fiel do original (Word, RTF) para PDF, com LibreOffice; sem ele, o PDF sai do roteiro como chegou
     stirling: { url: (env.STIRLING_URL || '').replace(/\/+$/, ''), chave: env.STIRLING_CHAVE || '' },
@@ -180,8 +179,7 @@ export function criarTrello(env, deps = {}) {
     editores: tabela(c.pg.esquema, c.pg.editores),
     atracoes: tabela(c.pg.esquema, c.pg.atracoes),
     prioridade: tabela(c.pg.esquema, c.pg.prioridade),
-    sessoes: tabela(c.pg.filmes, c.pg.sessoes),
-    logBot: tabela(c.pg.filmes, c.pg.logBot),
+    exibicoes: tabela(c.pg.esquema, c.pg.exibicoes),
   };
   async function sql(texto, params) {
     if (!consultar) return [];
@@ -272,8 +270,13 @@ export function criarTrello(env, deps = {}) {
     return l?.editor_ID ? { idValue: l.editor_ID, nome: l.editor, campo: l.customField_ID || c.campos.editor } : null;
   }
 
-  async function acharAtracao(claquete) {
+  async function acharAtracao(claquete, nome) {
     if (!t.atracoes) return null;
+    // a atração escolhida na revisão vale mais que a key da claquete (DONA serve a mais de uma novela)
+    if (nome) {
+      const [n] = await sql(`SELECT "atracao", "projeto_win", "output_win" FROM ${t.atracoes} WHERE LOWER("atracao") = LOWER($1) LIMIT 1`, [nome]);
+      if (n) return { nome: n.atracao, projeto: caminho(n.projeto_win), output: caminho(n.output_win) };
+    }
     const chave = chaveDaAtracao(claquete);
     if (!chave) return null;
     const [l] = await sql(
@@ -290,18 +293,23 @@ export function criarTrello(env, deps = {}) {
     return (await sql(`SELECT 1 FROM ${t.prioridade} WHERE "key" = $1 LIMIT 1`, [chave])).length > 0;
   }
 
-  /** Atração que é "sessão" (filmes): o card do filme no log do bot, do mesmo dia de exibição. */
+  /** Atração que é sessão de filme: a exibição do dia (exibicoes) dá o card da prévia e o filme. */
   async function cardDoFilme(atracao, dataExibicao) {
-    if (!atracao || !dataExibicao || !t.sessoes || !t.logBot) return null;
-    const sessoes = (await sql(`SELECT "sessao" FROM ${t.sessoes}`)).map((l) => String(l.sessao || '').toUpperCase());
-    if (!sessoes.includes(atracao.toUpperCase())) return null;
+    if (!atracao || !dataExibicao || !t.exibicoes) return null;
     const [l] = await sql(
-      `SELECT "card_ID", "output" FROM ${t.logBot}
-       WHERE "sessao"->>'title' = $1 AND "data_de_exibicao"::date = $2::date
-         AND NOT (COALESCE("labels", '[]'::jsonb) @> '["CANCELADO"]'::jsonb) LIMIT 1`,
-      [atracao.toUpperCase(), dataExibicao],
+      `SELECT "card_ID", "output", "filme" FROM ${t.exibicoes}
+       WHERE UPPER("sessao"::jsonb->>'title') = UPPER($1) AND "data_de_exibicao"::date = $2::date
+         AND NOT (COALESCE("labels"::jsonb, '[]'::jsonb) @> '["CANCELADO"]'::jsonb) LIMIT 1`,
+      [atracao, dataExibicao],
     );
-    return l?.card_ID ? { card: l.card_ID, output: caminho(l.output) } : null;
+    if (!l?.card_ID) return null;
+    let filme = l.filme;
+    try {
+      if (typeof filme === 'string') filme = JSON.parse(filme);
+    } catch {
+      filme = null;
+    }
+    return { card: l.card_ID, output: caminho(l.output), filmeId: (Array.isArray(filme) ? filme[0] : filme)?.id ?? '' };
   }
 
   /* ---------- arquivo ---------- */
@@ -406,7 +414,7 @@ export function criarTrello(env, deps = {}) {
     const [redator, editor, atracao, alta] = await Promise.all([
       tentar('achar o redator', () => acharRedator(m.redator)),
       tentar('achar o editor', () => acharEditor(m.editor)),
-      tentar('achar a atração', () => acharAtracao(claquete)),
+      tentar('achar a atração', () => acharAtracao(claquete, m.programa)),
       tentar('conferir a prioridade', () => prioridadeAlta(chave)),
     ]);
     const filme = await tentar('achar o card do filme', () => cardDoFilme(atracao?.nome, m.dataExibicao));
@@ -488,6 +496,7 @@ export function criarTrello(env, deps = {}) {
         atracao: atracao?.nome ?? m.programa ?? '',
         editor: editor?.nome ?? m.editor ?? '',
         key: chave,
+        ...(filme?.filmeId ? { filme: { id: filme.filmeId } } : {}),
         praca,
         prioridade: alta ? 'ALTA' : '',
         workflow: r.endereco || c.endereco || 'PROMeiro',

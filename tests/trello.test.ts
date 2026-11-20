@@ -34,9 +34,7 @@ const ENV = {
   TEABLE_PG_EDITORES: 'editores',
   TEABLE_PG_ATRACOES: 'atracoes',
   TEABLE_PG_PRIORIDADE: 'prioridade',
-  TEABLE_PG_FILMES_ESQUEMA: 'bseFilmes',
-  TEABLE_PG_SESSOES: 'sessoes',
-  TEABLE_PG_LOG_BOT: 'log_bot',
+  TEABLE_PG_EXIBICOES: 'exibicoes',
   SFTP_HOST: 'onedrive',
 };
 
@@ -99,8 +97,7 @@ function banco(opcoes: { duplicado?: boolean; redatorNovo?: boolean; redatorSemI
         ? [{ atracao: 'Sessão da Tarde', projeto_win: 'cole_aqui_o_caminho', output_win: 'X:\\saida' }]
         : [{ atracao: 'Festa na Praça', projeto_win: 'P:\\festa\\projeto', output_win: 'caminho_nao_encontrado' }];
     if (sql.includes('"prioridade"')) return [{ '?column?': 1 }];
-    if (sql.includes('"sessoes"')) return [{ sessao: 'SESSÃO DA TARDE' }];
-    if (sql.includes('"log_bot"')) return [{ card_ID: 'cardFilme', output: 'F:\\filmes\\saida' }];
+    if (sql.includes('"exibicoes"')) return String(params[0]).toUpperCase() === 'SESSÃO DA TARDE' ? [{ card_ID: 'cardFilme', output: 'F:\\filmes\\saida', filme: { id: 'recFilme', title: 'RIVAIS (2024)' } }] : [];
     return [];
   };
   return { consultar, consultas };
@@ -212,7 +209,9 @@ describe('envio para o Trello', () => {
     expect(campoPut(pedidos, 'cOutroQualquer')).toBeUndefined();
     // o output do filme vale mais que o da atração; o PDF que subiu vai como veio
     expect(campoPut(pedidos, 'cOutput')).toEqual({ value: { text: 'F:\\filmes\\saida' } });
-    expect(pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments' && p.corpo)!.corpo).toMatchObject({ name: 'sessao.pdf', file: 'arquivo:sessao.pdf' });
+    expect(pedidos.find((p) => p.url.pathname === '/1/cards/card1/attachments' && p.corpo)!.corpo).toMatchObject({ name: 'sessao.pdf', file: 'arquivo:sessao.pdf' });    // na produção da arte, o card fica ligado ao filme (o pacote gráfico é dele)
+    const registro = pedidos.find((p) => p.url.pathname === '/api/table/tblProducao/record')!.corpo as { records: { fields: Record<string, unknown> }[] };
+    expect(registro.records[0].fields.filme).toEqual({ id: 'recFilme' });
   });
 
   it('VT vai para a lista de VT; sem o card, o envio falha; passo secundário que falha vira aviso', async () => {
