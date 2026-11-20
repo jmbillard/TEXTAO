@@ -6,6 +6,7 @@
   --mesa: #f1efe9;
   --papel: #fffefb;
   --cartao: #ffffff;
+  --segmento-ativo: #ffffff;
   --tinta: #1a1916;
   --tinta2: #5f5b53;
   --tinta3: #77736a;
@@ -48,6 +49,7 @@
     --mesa: #121110;
     --papel: #1b1a17;
     --cartao: #211f1c;
+    --segmento-ativo: #423e37;
     --tinta: #ece8df;
     --tinta2: #b2ada2;
     --tinta3: #918b80;
@@ -85,6 +87,7 @@
   --mesa: #121110;
   --papel: #1b1a17;
   --cartao: #211f1c;
+  --segmento-ativo: #423e37;
   --tinta: #ece8df;
   --tinta2: #b2ada2;
   --tinta3: #918b80;
@@ -320,7 +323,8 @@ kbd {
   display: flex; align-items: center; gap: 7px; white-space: nowrap; transition: background 0.2s, color 0.2s, box-shadow 0.2s;
 }
 .segmento button:hover { color: var(--tinta); }
-.segmento button[aria-checked='true'] { background: var(--cartao); color: var(--tinta); font-weight: 600; box-shadow: 0 1px 3px rgb(26 25 22 / 14%); }
+/* a opção marcada é uma pastilha um pouco mais clara que o trilho, nos dois temas */
+.segmento button[aria-checked='true'] { background: var(--segmento-ativo); color: var(--tinta); font-weight: 600; box-shadow: 0 1px 3px rgb(26 25 22 / 14%); }
 
 .relogio { display: flex; flex-direction: column; gap: 4px; min-width: 120px; font-size: 12px; color: var(--tinta3); font-variant-numeric: tabular-nums; }
 .relogio strong { color: var(--tinta); font-weight: 600; }
@@ -1571,7 +1575,5 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 @keyframes abrir-lightbox { from { opacity: 0; } }
 @keyframes subir-lightbox { from { opacity: 0; transform: translateY(14px) scale(0.99); } }
 @media (prefers-reduced-motion: reduce) { .comparar.lightbox, .comparar.lightbox .comparar-corpo { animation: none; } }
-/* no lightbox, só as folhas são opacas: o resto deixa a fila borrada aparecer */
+/* no lightbox, a fila borrada aparece em volta das colunas (que continuam opacas) */
 .comparar.lightbox { background: color-mix(in srgb, var(--mesa) 45%, transparent); }
-.comparar.lightbox .comparar-lado,
-.comparar.lightbox .comparar-lado:first-child { background: color-mix(in srgb, var(--papel) 38%, transparent); border-color: color-mix(in srgb, var(--regua) 60%, transparent); box-shadow: none; }
