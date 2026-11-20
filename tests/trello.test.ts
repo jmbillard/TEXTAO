@@ -434,3 +434,14 @@ describe('PDF do card que já está na produção', () => {
     expect(pedidos.some((u) => u.includes('intranet'))).toBe(false);
   });
 });
+
+describe('sem claquete', () => {
+  it('o card leva o nome do arquivo, em vez de recusar', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, ...banco(), sftp: async () => {} });
+    const r = await t.enviar({ meta: { ...meta, claquete: '', dataExibicao: '' }, doc: DOC, artes: ['X'], original: { ...original, nome: 'Vt_Evento_Interno.docx' } });
+    expect(r.card?.id).toBeTruthy();
+    const card = pedidos.find((p) => p.metodo === 'POST' && p.url.pathname.endsWith('/cards'));
+    expect((card?.corpo as { name: string }).name).toBe('Vt Evento Interno');
+  });
+});

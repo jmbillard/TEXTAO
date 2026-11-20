@@ -795,8 +795,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const colunas = NOMES_COLUNAS[meta.layout];
   const semTipo = artes.filter((a) => !normalizarSubtipo(a.attrs.subtipo)).length;
   const lista = pendenciasDetalhadas(saida);
-  // o que segura o envio para o Trello: tudo menos "sem editor", que o n8n preenche depois
-  const trava = lista.filter((p) => p.id !== 'sem-editor');
 
   /** Abre uma arte na lista (sem levar o foco para o texto, para o teclado seguir escolhendo). */
   const abrirArte = (a: (typeof artes)[number] | undefined) => {
@@ -825,13 +823,11 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
 
   /* ---------- Trello ---------- */
   const [envio, setEnvio] = useState<EnvioTrello | undefined>();
-  const [conferindoTrello, setConferindoTrello] = useState(false);
   const estadoTrello = envio ?? fila.find((r) => r.id === inicial.id)?.trello;
   const podeMandar = temTrello() && !leitura && liberado;
   const noTrello = estadoTrello?.estado === 'enviado' || estadoTrello?.estado === 'duplicado';
   /** Grava o que está na tela e cria o card. */
   const mandarTrello = async () => {
-    setConferindoTrello(false);
     setEnvio({ estado: 'enviando', em: new Date().toISOString() });
     try {
       const atual = roteiroAtual();
@@ -868,8 +864,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     if (!liberado || estadoTrello?.estado === 'enviando') return;
     if (!vaiMandar) return proximo.r && abrir(proximo.r.id);
     if (perguntaProducao) return comparar(inicial.id);
-    // com pendência, pergunta antes
-    if (trava.length) return setConferindoTrello((v) => !v);
+    // nada impede o envio: as pendências ficam à vista ao lado, e o que faltar o n8n completa depois
     if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id);
   };
   const acaoRef = useRef(acaoPrincipal);
@@ -981,7 +976,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               <button
                 className={`botao primario ${estadoTrello?.estado === 'erro' ? 'erro' : ''}`}
                 disabled={!liberado || estadoTrello?.estado === 'enviando' || (podeMandar && !noTrello && !!perguntaProducao)}
-                aria-expanded={conferindoTrello}
                 title={
                   podeMandar && !noTrello
                     ? perguntaProducao
@@ -997,16 +991,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                 {rotuloPrincipal}
                 {!podeMandar || noTrello ? <Icone nome="seta" tam={14} traco={2.2} /> : null}
               </button>
-              {conferindoTrello && (
-                <div className="menu trello-conferir" role="dialog" aria-label="Pendências antes de mandar">
-                  <strong>{trava.length === 1 ? 'Ainda tem uma pendência' : `Ainda tem ${trava.length} pendências`}</strong>
-                  <ul>{trava.map((p) => <li key={p.texto}>{p.texto}</li>)}</ul>
-                  <div className="trello-conferir-acoes">
-                    <button className="botao-texto" onClick={() => setConferindoTrello(false)}>Voltar e resolver</button>
-                    <button className="botao primario" onClick={async () => { if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id); }}>{proximo.r ? 'Mandar e ir ao próximo' : 'Mandar assim mesmo'}</button>
-                  </div>
-                </div>
-              )}
             </div>
           ) : null}
         </div>

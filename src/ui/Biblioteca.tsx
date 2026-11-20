@@ -279,7 +279,6 @@ const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { h
 function FichaTrello({ r, mandar }: { r: Resumo; mandar: () => Promise<void> }) {
   // só o que segura o envio (sem editor não segura: o n8n preenche depois)
   const revisar = travamTrello(r.meta.revisar);
-  const [conferindo, setConferindo] = useState(false);
   const e = r.trello;
   if (e?.estado === 'enviando')
     return (
@@ -301,19 +300,11 @@ function FichaTrello({ r, mandar }: { r: Resumo; mandar: () => Promise<void> }) 
         <Icone nome="quadro" tam={14} /> Já estava no Trello <small>pelo upload antigo</small>
       </span>
     );
-  if (conferindo)
-    return (
-      <span className="ficha-trello some conferir">
-        <span>Ainda {revisar.length === 1 ? 'tem uma pendência' : `tem ${revisar.length} pendências`}: {revisar.join(' · ')}.</span>
-        <button className="botao-texto" onClick={() => setConferindo(false)}>Voltar</button>
-        <button className="botao primario" onClick={() => { setConferindo(false); void mandar(); }}>Mandar assim mesmo</button>
-      </span>
-    );
   return (
     <span className={`ficha-trello some ${e?.estado === 'erro' ? 'erro' : 'falta'}`}>
       <Icone nome="quadro" tam={14} />
       {e?.estado === 'erro' ? <span title={e.erro}>Não foi para o Trello{e.erro && <small className="motivo-trello">: {e.erro}</small>}</span> : <span>{revisar.length ? 'Vai para o Trello depois da revisão' : 'Ainda não foi para o Trello'}</span>}
-      <button className="botao-texto" onClick={() => (revisar.length ? setConferindo(true) : void mandar())}>
+      <button className="botao-texto" onClick={() => void mandar()}>
         {e?.estado === 'erro' ? 'Tentar de novo' : 'Mandar agora'}
       </button>
     </span>

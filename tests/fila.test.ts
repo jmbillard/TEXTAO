@@ -118,3 +118,11 @@ describe('claquete repetida fica marcada', () => {
     expect(pendenciasDetalhadas(rot({ outroRoteiro: true })).find((p) => p.id === 'repetida')?.dispensavel).toBe(true);
   });
 });
+
+describe('nada impede o envio', () => {
+  it('sem editor e sem data não seguram (o n8n completa; VT de evento não tem data)', async () => {
+    const { travamTrello } = await import('../src/modelo/exportar');
+    expect(travamTrello(['Sem editor', 'Sem data', 'Sem data de exibição', 'Sem editor: a claquete não está na pauta'])).toEqual([]);
+    expect(travamTrello(['Sem data', 'Muitas artes: 13'])).toEqual(['Muitas artes: 13']);
+  });
+});

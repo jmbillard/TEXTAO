@@ -329,11 +329,13 @@ const arteLonga = (texto: string) => {
   return t.length > 60 || palavras(t) > 8;
 };
 
-/** Pendências que seguram o envio para o Trello. Sem editor não segura: o n8n preenche depois, pela pauta. */
+/** Pendências que fazem o roteiro esperar a revisão antes de ir sozinho ao Trello. Nada impede o envio de fato:
+    sem editor e sem data não seguram (o n8n completa depois; VT de evento ou reunião interna não tem data). */
 export const TEXTO_SEM_EDITOR = 'Sem editor';
 // o texto de antes, que roteiros já guardados ainda têm
 const SEM_EDITOR_ANTIGO = 'Sem editor: a claquete não está na pauta';
-export const travamTrello = (revisar: string[] | undefined) => (revisar ?? []).filter((t) => t !== TEXTO_SEM_EDITOR && t !== SEM_EDITOR_ANTIGO);
+const NAO_SEGURAM = new Set(['Sem editor', SEM_EDITOR_ANTIGO, 'Sem data', 'Sem data de exibição']);
+export const travamTrello = (revisar: string[] | undefined) => (revisar ?? []).filter((t) => !NAO_SEGURAM.has(t));
 
 export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-editor' | 'sem-data' | 'ocr' | 'v2' | 'repetida';
 export interface Pendencia {

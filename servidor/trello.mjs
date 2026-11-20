@@ -327,8 +327,8 @@ export function criarTrello(env, deps = {}) {
   async function enviar(r, agora = new Date()) {
     if (!c.ligado) throw new Error('O Trello não está configurado (TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA).');
     const m = r.meta;
-    const claquete = String(m.claquete || '').trim();
-    if (!claquete) throw new Error('O roteiro está sem claquete.');
+    // sem claquete, o card leva o título ou o nome do arquivo: nada impede o envio
+    const claquete = String(m.claquete || m.titulo || (r.original?.nome ?? '').replace(/\.[^.]+$/, '').replace(/_/g, ' ') || 'Roteiro sem claquete').trim();
     const avisos = [];
     const tentar = async (o_que, f) => {
       try {
