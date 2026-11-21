@@ -1754,3 +1754,7 @@ html.com-cursor-meu { min-height: 100%; }
 .pacote-cad { opacity: 0; transition: opacity 0.15s; }
 .item-cad:hover .pacote-cad, .pacote-cad:focus-visible { opacity: 1; }
 @media (hover: none) { .pacote-cad { opacity: 1; } }
+/* "Ligar a…": o fundo do item vai de lado a lado do menu, como nas outras listas */
+.menu-ligar ul { margin-inline: -8px; }
+.escolha-nome-menu.menu-ligar li { padding-inline: 18px; border-radius: 0; }
+.menu-ligar .nova-ligar { width: calc(100% + 16px); margin-inline: -8px; padding-inline: 18px; border-radius: 0; }
