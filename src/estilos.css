@@ -1309,9 +1309,9 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 @keyframes piscar-ibeam { 60% { opacity: 0; } }
 .item-cad.rascunho .key { font: 700 15.5px Caveat, cursive; letter-spacing: 0.03em; border-style: dashed; background: transparent; color: var(--tinta2); }
 .item-cad.rascunho .cat { font: 700 14px Caveat, cursive; letter-spacing: 0.04em; text-transform: none; background: transparent; border: 1px dashed var(--regua-forte); color: var(--tinta3); opacity: 0.8; padding: 1px 9px; }
-.seta-form { position: absolute !important; right: 22px; top: 16px; width: 54px; height: 26px; overflow: visible; color: var(--ultra); transform: rotate(-4deg); }
+.seta-form { position: absolute !important; right: 18px; top: calc(50% - 15px); width: 54px; height: 26px; overflow: visible; color: var(--ultra); transform: rotate(-4deg); }
 .seta-form path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; animation: rabiscar-aba 0.6s 0.45s var(--suave) both; }
-.item-cad.rascunho .nota { position: absolute; right: 18px; bottom: 12px; font: 600 17px Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); animation: surgir-nota 0.4s 0.75s both; }
+.item-cad.rascunho .nota { position: absolute; right: 80px; top: calc(50% - 10px); line-height: 1; font: 600 17px Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); animation: surgir-nota 0.4s 0.75s both; }
 @keyframes folha-solta { from { opacity: 0; transform: translateY(-4px) rotate(0); box-shadow: none; } }
 @keyframes sombra-solta { from { opacity: 0; } }
 @keyframes surgir-nota { from { opacity: 0; transform: rotate(-3deg) translateY(3px); } }
