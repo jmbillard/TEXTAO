@@ -790,7 +790,14 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // para conferir de fora, direto no navegador (o domínio já fica atrás do Cloudflare Access; aqui não há
       // segredo, só contagens e nomes de tabela): a versão no ar, a lista de atrações e a busca de uma claquete
       const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? 'CHEF(MANUT) C').slice(0, 200);
-      await vocabulario.ler();
+      // &renovar=1: lê o Teable agora, sem o cache (para descartar uma lista velha guardada)
+      const voc = new URL(req.url, 'http://x').searchParams.get('renovar') ? await vocabulario.renovar() : await vocabulario.ler();
+      // a mesma regra do navegador: a key no começo da claquete (sem acento, pontuação vira espaço)
+      const normal = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const n = normal(claquete);
+      const naLista = (voc.programas ?? [])
+        .filter((p) => (p.chaves ?? []).some((c) => n === normal(c) || n.startsWith(normal(c) + ' ')))
+        .map((p) => ({ nome: p.nome, chaves: p.chaves }));
       let compilado = null;
       try {
         compilado = estaticos ? (await import('node:fs')).statSync(join(estaticos, 'index.html')).mtime.toISOString() : null;
@@ -798,6 +805,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, {
         compilado,
         vocabulario: vocabulario.estado?.() ?? null,
+        // o que o navegador acharia com a lista que recebe (vazio aqui = a lista não tem a key desta claquete)
+        naListaDoNavegador: naLista,
+        exemplo: (voc.programas ?? []).filter((p) => /chef|eliana/i.test(p.nome)).map((p) => ({ nome: p.nome, chaves: p.chaves })),
         atracao: trello.diagnosticarAtracao ? await trello.diagnosticarAtracao(claquete) : null,
         postgres: { esquema: env.TEABLE_PG_ESQUEMA || '', atracoes: env.TEABLE_PG_ATRACOES || '', url: env.TEABLE_PG_URL ? 'configurada' : 'faltando' },
       });
