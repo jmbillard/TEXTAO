@@ -786,6 +786,22 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
     }
+    if (caminho === '/api/diagnostico') {
+      // para conferir de fora, direto no navegador (o domínio já fica atrás do Cloudflare Access; aqui não há
+      // segredo, só contagens e nomes de tabela): a versão no ar, a lista de atrações e a busca de uma claquete
+      const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? 'CHEF(MANUT) C').slice(0, 200);
+      await vocabulario.ler();
+      let compilado = null;
+      try {
+        compilado = estaticos ? (await import('node:fs')).statSync(join(estaticos, 'index.html')).mtime.toISOString() : null;
+      } catch {}
+      return json(res, 200, {
+        compilado,
+        vocabulario: vocabulario.estado?.() ?? null,
+        atracao: trello.diagnosticarAtracao ? await trello.diagnosticarAtracao(claquete) : null,
+        postgres: { esquema: env.TEABLE_PG_ESQUEMA || '', atracoes: env.TEABLE_PG_ATRACOES || '', url: env.TEABLE_PG_URL ? 'configurada' : 'faltando' },
+      });
+    }
     if (!eu) return json(res, 401, { erro: 'Entre com a sua conta para ver os roteiros.' });
 
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
@@ -801,21 +817,6 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, { ok: true, cor });
     }
     if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
-    if (caminho === '/api/diagnostico') {
-      // para conferir de fora: a versão no ar, a lista de atrações e a busca de uma claquete (?claquete=)
-      const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? 'CHEF(MANUT) C').slice(0, 200);
-      await vocabulario.ler();
-      let compilado = null;
-      try {
-        compilado = estaticos ? (await import('node:fs')).statSync(join(estaticos, 'index.html')).mtime.toISOString() : null;
-      } catch {}
-      return json(res, 200, {
-        compilado,
-        vocabulario: vocabulario.estado?.() ?? null,
-        atracao: trello.diagnosticarAtracao ? await trello.diagnosticarAtracao(claquete) : null,
-        postgres: { esquema: env.TEABLE_PG_ESQUEMA || '', atracoes: env.TEABLE_PG_ATRACOES || '', url: env.TEABLE_PG_URL ? 'configurada' : 'faltando' },
-      });
-    }
     if (caminho === '/api/producao/pdf') {
       // o PDF anexado ao card que já está na produção da arte (baixado do Trello só quando alguém compara)
       const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
