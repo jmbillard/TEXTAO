@@ -326,78 +326,30 @@ export async function aplicarCursorNoMouse(id: string, cor: string) {
   const tirar = () => {
     raiz.style.removeProperty('--cursor-meu');
     raiz.classList.remove('com-cursor-meu');
-    desenhado?.remove();
-    desenhado = null;
   };
   if (!cursorNoMouse() || window.matchMedia?.('(pointer: coarse)').matches) return tirar();
   const contorno = getComputedStyle(raiz).getPropertyValue('--contorno-cursor').trim() || '#fff';
   const tam = 32;
-  // mede onde o desenho está de fato (para ele ter ~32 px na tela, como um cursor, com a ponta no lugar certo)
+  // desenha grande, mede onde o desenho está de fato e recorta rente: o desenho enche o quadro de 32 px do cursor
   const GRANDE = 480;
   const svg = svgDoCursor(id, cor, contorno, GRANDE);
   if (!svg) return;
-  const quadros = await cursorRecortado(svg, GRANDE, [tam]);
+  const quadros = await cursorRecortado(svg, GRANDE, [tam, tam * 2]);
   if (meu !== pedidoCursor) return; // outro pedido mais novo já está a caminho
   if (!quadros) return tirar();
-  // Firefox: o cursor nativo em SVG (sem atraso; o Firefox desenha o SVG do cursor na densidade da tela), recortado
-  // rente como o PNG; se o SVG não carregar, vale o PNG
+  const { x, y } = quadros.ponta;
+  const [um, dois] = quadros.imagens;
   if (/firefox/i.test(navigator.userAgent)) {
-    desenhado?.remove();
-    desenhado = null;
-    desenhoAtual = null;
+    // Firefox: estica a imagem de 1x do cursor (borra); o SVG ele desenha na densidade da tela. Se não carregar, o PNG.
     const u = 60 / GRANDE; // unidades do viewBox por px do desenho grande
     const caixa = `${(-6 + quadros.ox * u).toFixed(3)} ${(-6 + quadros.oy * u).toFixed(3)} ${(quadros.lado * u).toFixed(3)} ${(quadros.lado * u).toFixed(3)}`;
     const vetor = svg.replace(/width="\d+" height="\d+" viewBox="[^"]*"/, `width="${tam}" height="${tam}" viewBox="${caixa}"`);
-    const { x, y } = quadros.ponta;
-    raiz.style.setProperty('--cursor-meu', `url("data:image/svg+xml,${encodeURIComponent(vetor)}") ${x} ${y}, url("${quadros.imagens[0]}") ${x} ${y}, auto`);
-    raiz.classList.add('com-cursor-meu');
-    return;
+    raiz.style.setProperty('--cursor-meu', `url("data:image/svg+xml,${encodeURIComponent(vetor)}") ${x} ${y}, url("${um}") ${x} ${y}, auto`);
+  } else {
+    // Chrome e Safari: as duas imagens (1x e 2x, para tela Retina), no formato que eles entendem para cursor
+    const opcoes = [`-webkit-image-set(url("${um}") 1x, url("${dois}") 2x) ${x} ${y}, auto`, `image-set(url("${um}") 1x, url("${dois}") 2x) ${x} ${y}, auto`];
+    raiz.style.setProperty('--cursor-meu', opcoes.find((v) => CSS.supports?.('cursor', v)) ?? `url("${um}") ${x} ${y}, auto`);
   }
-  // O cursor do sistema não serve: o navegador do Mac usa a imagem de 1x esticada, borrada. O meu cursor é
-  // desenhado na página, em vetor, nítido em qualquer tela; o do sistema some (menos onde se digita).
-  const escala = tam / quadros.lado; // px na tela por px do desenho grande
-  const lado = GRANDE * escala;
-  const pontaX = ((5 + 6) * GRANDE) / 60;
-  // o filtro do contorno ganha um id próprio, para não colidir com nada da página
-  const noDom = (svgDoCursor(id, cor, contorno, Math.round(lado)) ?? '').replace('<filter id="c"', '<filter id="cursor-meu-contorno"').replace('filter="url(#c)"', 'filter="url(#cursor-meu-contorno)"');
-  desenhoAtual = { svg: noDom, dx: pontaX * escala, dy: pontaX * escala, lado };
-  montarDesenhado();
-  raiz.style.setProperty('--cursor-meu', 'none');
   raiz.classList.add('com-cursor-meu');
 }
 
-/* ---------- o cursor desenhado na página ---------- */
-
-let desenhado: HTMLDivElement | null = null;
-let desenhoAtual: { svg: string; dx: number; dy: number; lado: number } | null = null;
-let ouvindo = false;
-const ONDE_SE_DIGITA = 'input, textarea, select, [contenteditable="true"]';
-
-function montarDesenhado() {
-  if (!desenhoAtual) return;
-  if (!desenhado) {
-    desenhado = document.createElement('div');
-    desenhado.className = 'cursor-desenhado';
-    desenhado.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(desenhado);
-  }
-  desenhado.innerHTML = desenhoAtual.svg;
-  desenhado.style.width = desenhado.style.height = `${desenhoAtual.lado}px`;
-  if (ouvindo) return;
-  ouvindo = true;
-  const esconder = () => desenhado?.classList.add('fora');
-  window.addEventListener(
-    'pointermove',
-    (e) => {
-      if (!desenhado || !desenhoAtual || e.pointerType === 'touch') return;
-      desenhado.style.transform = `translate3d(${e.clientX - desenhoAtual.dx}px, ${e.clientY - desenhoAtual.dy}px, 0)`;
-      // onde se digita, vale o cursor de texto do sistema
-      const alvo = e.target as Element | null;
-      desenhado.classList.toggle('fora', !!alvo?.closest?.(ONDE_SE_DIGITA));
-    },
-    { passive: true, capture: true },
-  );
-  document.documentElement.addEventListener('pointerleave', esconder);
-  window.addEventListener('blur', esconder);
-  document.addEventListener('visibilitychange', () => document.hidden && esconder());
-}
