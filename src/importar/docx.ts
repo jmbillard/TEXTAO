@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { empurrar, type BlocoBruto, type DocBruto, type Par, type Run } from './bruto';
+import { empurrar, marcaDeImagem, type BlocoBruto, type DocBruto, type Par, type Run } from './bruto';
 
 /* Leitura de .docx direto do XML (o mammoth descarta sublinhado, marca-texto e cor).
    Lê w:u, w:b, w:i, w:highlight, w:shd, w:color, w:caps, quebras e tabelas,
@@ -61,6 +61,23 @@ function lerEstilos(xml: Document | null) {
 
 const parseXml = (texto: string) => new DOMParser().parseFromString(texto, 'application/xml');
 
+/** A imagem no máximo com 1200 px de largura (JPEG), para o roteiro não pesar; sem canvas (testes), fica como veio. */
+async function reduzirImagem(src: string): Promise<string> {
+  try {
+    if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return src;
+    const bmp = await createImageBitmap(await (await fetch(src)).blob());
+    const escala = Math.min(1, 1200 / bmp.width);
+    if (escala === 1 && src.length < 400_000) return src;
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * escala);
+    c.height = Math.round(bmp.height * escala);
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.82);
+  } catch {
+    return src;
+  }
+}
+
 export async function lerDocx(dados: ArrayBuffer | Uint8Array, arquivo: string): Promise<DocBruto> {
   const zip = await JSZip.loadAsync(dados);
   const ler = async (nome: string) => {
@@ -69,6 +86,19 @@ export async function lerDocx(dados: ArrayBuffer | Uint8Array, arquivo: string):
   };
   const documento = await ler('word/document.xml');
   if (!documento) throw new Error('Este arquivo não parece ser um .docx válido.');
+  // as imagens do documento (relação rId → arquivo em word/media), lidas antes porque o resto é síncrono
+  const midia = new Map<string, string>();
+  const rels = await ler('word/_rels/document.xml.rels');
+  for (const r of rels ? [...rels.getElementsByTagName('Relationship')] : []) {
+    const alvo = r.getAttribute('Target') ?? '';
+    if (!/\/image$/.test(r.getAttribute('Type') ?? '') || r.getAttribute('TargetMode') === 'External') continue;
+    const caminho = alvo.startsWith('/') ? alvo.slice(1) : `word/${alvo.replace(/^\.\//, '')}`;
+    const f = zip.file(caminho);
+    const ext = (caminho.split('.').pop() ?? '').toLowerCase();
+    const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp' }[ext];
+    if (f && mime) midia.set(r.getAttribute('Id') ?? '', `data:${mime};base64,${await f.async('base64')}`);
+  }
+  const imagens: string[] = [];
   const estilo = lerEstilos(await ler('word/styles.xml'));
   const core = await ler('docProps/core.xml');
   const autor =
@@ -97,6 +127,15 @@ export async function lerDocx(dados: ArrayBuffer | Uint8Array, arquivo: string):
         else if (n.nodeName === 'w:tab') t = '\t';
         else if (n.nodeName === 'w:br' || n.nodeName === 'w:cr') t = '\n';
         else if (n.nodeName === 'w:noBreakHyphen') t = '-';
+        else if (n.nodeName === 'w:drawing' || n.nodeName === 'w:pict' || n.nodeName === 'mc:AlternateContent') {
+          // a imagem (a:blip r:embed, ou v:imagedata r:id no formato antigo) vira um marcador no texto
+          const blip = n.getElementsByTagName('a:blip')[0] ?? n.getElementsByTagName('v:imagedata')[0];
+          const src = midia.get(blip?.getAttribute('r:embed') ?? blip?.getAttribute('r:id') ?? '');
+          if (src) {
+            imagens.push(src);
+            t = marcaDeImagem(imagens.length - 1);
+          }
+        }
         if (t) empurrar(par, { ...base, t: f.caps ? t.toUpperCase() : t });
       }
     };
@@ -137,5 +176,5 @@ export async function lerDocx(dados: ArrayBuffer | Uint8Array, arquivo: string):
   if (corpo) andarCorpo(corpo);
 
   const paginas = Number((await ler('docProps/app.xml'))?.getElementsByTagName('Pages')[0]?.textContent) || undefined;
-  return { arquivo, formato: 'docx', autor, blocos, ...(paginas ? { paginas } : {}) };
+  return { arquivo, formato: 'docx', autor, blocos, ...(paginas ? { paginas } : {}), ...(imagens.length ? { imagens: await Promise.all(imagens.map(reduzirImagem)) } : {}) };
 }

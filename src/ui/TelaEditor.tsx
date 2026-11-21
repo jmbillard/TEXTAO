@@ -16,7 +16,7 @@ import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro 
 import { meuCursor } from './cursores';
 import { armazenamento, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
-  Arte, atualizarMarca, Celula, dividirArte, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
+  Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
@@ -402,7 +402,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const editor = useEditor({
     extensions: [
       Document, Paragraph, Text, Bold, Italic, HardBreak,
-      Arte, Etiqueta, Linha, Celula, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
+      Arte, Etiqueta, Imagem, Linha, Celula, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
       SoMarcas.configure({ aviso: () => avisoTexto.current() }),
       ...(sala
         ? [

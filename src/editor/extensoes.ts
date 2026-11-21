@@ -120,6 +120,19 @@ export function prepararColagem(html: string): string {
 
 /* ---------- colunas ---------- */
 
+/** Imagem que veio no roteiro (a foto da pessoa, a referência): só para ver, não se mexe nela na revisão. */
+export const Imagem = Node.create({
+  name: 'imagem',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: false,
+  draggable: false,
+  addAttributes: () => ({ src: { default: '' } }),
+  parseHTML: () => [{ tag: 'img[src^="data:image/"]', getAttrs: (el) => ({ src: (el as HTMLElement).getAttribute('src') }) }],
+  renderHTML: ({ HTMLAttributes }) => ['img', { src: HTMLAttributes.src, class: 'imagem-roteiro', alt: '', draggable: 'false' }],
+});
+
 export const Linha = Node.create({
   name: 'linha',
   group: 'block',

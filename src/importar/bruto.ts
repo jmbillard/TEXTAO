@@ -29,7 +29,16 @@ export interface DocBruto {
   lidoPorOcr?: boolean;
   /** Páginas do arquivo, quando o formato diz (PDF; Word, pelo que ele gravou da última vez). */
   paginas?: number;
+  /** As imagens do roteiro (data URL), na ordem. No texto, cada uma é um marcador de um caractere (marcaDeImagem). */
+  imagens?: string[];
 }
+
+/* As imagens atravessam a leitura do roteiro como um caractere de uso privado por imagem: as regras de texto
+   (colunas, sublinhado, etiquetas) não precisam saber delas, e a montagem do documento troca o marcador pela imagem. */
+export const marcaDeImagem = (i: number) => String.fromCharCode(0xe000 + i);
+export const RE_MARCA_IMAGEM = /[\ue000-\uf8ff]/g;
+export const indiceDaMarca = (c: string) => c.charCodeAt(0) - 0xe000;
+export const semMarcasDeImagem = (s: string) => s.replace(RE_MARCA_IMAGEM, '');
 
 const mesmaMarca = (a: Run, b: Run) =>
   !!a.u === !!b.u && !!a.b === !!b.b && !!a.i === !!b.i && a.hl === b.hl && a.cor === b.cor && !!a.link === !!b.link;

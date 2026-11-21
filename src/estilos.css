@@ -1675,3 +1675,5 @@ html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !imp
 .menu-opcoes-lista { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; width: auto; min-width: 210px; margin: 0; padding: 6px; list-style: none; }
 .menu-opcoes-lista li svg { color: var(--ultra); }
 .menu-opcoes-botao:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ultra-suave); background: var(--neutro); }
+/* imagem que veio no roteiro: no tamanho dela, até a largura da coluna, com o canto da folha */
+.texto img.imagem-roteiro { display: inline-block; max-width: min(100%, 360px); height: auto; margin: 6px 0; border-radius: 3px; vertical-align: top; box-shadow: 0 0 0 1px var(--regua); }

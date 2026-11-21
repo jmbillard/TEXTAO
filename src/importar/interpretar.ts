@@ -1,4 +1,4 @@
-import { textoDoPar, type DocBruto, type Par } from './bruto';
+import { indiceDaMarca, semMarcasDeImagem, textoDoPar, type DocBruto, type Par } from './bruto';
 import { analisarSonoras, ehCaixaAlta, ehLocucao, RE_LINHA_LOC } from '../modelo/sonora';
 import { metaVazia, novoId, type Layout, type Meta, type NoJSON, type MarcaJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
 import { acharPrograma, claqueteDoArquivo, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, semAcento } from '../modelo/vocabularios';
@@ -406,7 +406,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   if (primeiraDupla > 0 && (!meta.programa || !tituloExtra)) {
     for (const item of itens.slice(0, primeiraDupla)) {
       const candidatos = item.d.filter((p) => textoDoPar(p).trim());
-      const texto = candidatos.length === 1 ? textoDoPar(candidatos[0]).replace(/\s+/g, ' ').trim() : '';
+      const texto = candidatos.length === 1 ? semMarcasDeImagem(textoDoPar(candidatos[0])).replace(/\s+/g, ' ').trim() : '';
       if (!texto || texto.length > 70 || candidatos[0].some((r) => r.u || r.hl)) continue;
       if (!meta.programa && !acharPrograma(bruto.arquivo.replace(/[_.]+/g, ' '))) meta.programa = tituloCaso(texto);
       else if (!tituloExtra) tituloExtra = tituloCaso(texto);
@@ -781,7 +781,12 @@ export function montarDoc(imp: Importacao, respostas: Record<number, Resposta> =
       if (etq) marks.push({ type: 'etiqueta', attrs: { id: etqId, tipo: etq, obs: '' } });
       tr.t.split('\n').forEach((pedaco, i) => {
         if (i > 0) content.push({ type: 'hardBreak', ...(marks.length ? { marks: marks.filter((m) => m.type !== 'bold') } : {}) });
-        if (pedaco) content.push({ type: 'text', text: pedaco, ...(marks.length ? { marks } : {}) });
+        // as imagens voltam ao lugar delas (o marcador de um caractere vira o nó da imagem)
+        for (const parte of pedaco.split(/([\ue000-\uf8ff])/)) {
+          const img = /^[\ue000-\uf8ff]$/.test(parte) ? imp.bruto.imagens?.[indiceDaMarca(parte)] : undefined;
+          if (img) content.push({ type: 'imagem', attrs: { src: img } });
+          else if (parte && !/^[\ue000-\uf8ff]$/.test(parte)) content.push({ type: 'text', text: parte, ...(marks.length ? { marks } : {}) });
+        }
       });
     }
     return content.length ? { type: 'paragraph', content } : { type: 'paragraph' };
