@@ -220,19 +220,32 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao }:
 }
 
 /** Um menu de opções curto (sem busca), no visual dos outros menus do app: no lugar do seletor nativo do sistema. */
-export function MenuDeOpcoes({ rotulo, valor, opcoes, mudar }: { rotulo: string; valor: string; opcoes: { id: string; nome: string }[]; mudar: (v: string) => void }) {
+/** Com `multiplo`, valor é uma lista separada por vírgula: cada clique liga ou desliga, o menu fica aberto, e a opção
+    de id vazio ("Sem tipo") limpa tudo. */
+export function MenuDeOpcoes({ rotulo, valor, opcoes, mudar, multiplo = false }: { rotulo: string; valor: string; opcoes: { id: string; nome: string }[]; mudar: (v: string) => void; multiplo?: boolean }) {
   const [aberto, setAberto] = useState(false);
   const [marcado, setMarcado] = useState(0);
   const caixa = useRef<HTMLDivElement>(null);
-  const atual = opcoes.find((o) => o.id === valor) ?? opcoes[0];
+  const escolhidos = multiplo ? valor.split(',').filter(Boolean) : [valor];
+  const ligado = (id: string) => (multiplo && !id ? escolhidos.length === 0 : escolhidos.includes(id));
+  const rotuloAtual = multiplo
+    ? opcoes.filter((o) => o.id && escolhidos.includes(o.id)).map((o) => o.nome).join(' + ') || (opcoes.find((o) => !o.id)?.nome ?? '')
+    : (opcoes.find((o) => o.id === valor) ?? opcoes[0])?.nome;
   useEffect(() => {
     if (!aberto) return;
-    setMarcado(Math.max(0, opcoes.findIndex((o) => o.id === valor)));
+    setMarcado(Math.max(0, opcoes.findIndex((o) => ligado(o.id))));
     const fora = (e: MouseEvent) => !caixa.current?.contains(e.target as Node) && setAberto(false);
     document.addEventListener('mousedown', fora);
     return () => document.removeEventListener('mousedown', fora);
   }, [aberto]); // eslint-disable-line react-hooks/exhaustive-deps
   const escolher = (id: string) => {
+    if (multiplo && id) {
+      const s = new Set(escolhidos);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
+      mudar(opcoes.filter((o) => o.id && s.has(o.id)).map((o) => o.id).join(','));
+      return; // com vários, o menu fica aberto para escolher o próximo
+    }
     mudar(id);
     setAberto(false);
   };
@@ -249,23 +262,23 @@ export function MenuDeOpcoes({ rotulo, valor, opcoes, mudar }: { rotulo: string;
   return (
     <div className="menu-opcoes" ref={caixa} onKeyDown={teclado}>
       <button type="button" className="menu-opcoes-botao" aria-label={rotulo} aria-haspopup="listbox" aria-expanded={aberto} onClick={() => setAberto((a) => !a)}>
-        <span>{atual?.nome}</span>
+        <span>{rotuloAtual}</span>
         <Icone nome="baixo" tam={13} traco={2} />
       </button>
       {aberto && (
-        <ul className="escolha-nome-menu menu-opcoes-lista" role="listbox" aria-label={rotulo}>
+        <ul className="escolha-nome-menu menu-opcoes-lista" role="listbox" aria-label={rotulo} aria-multiselectable={multiplo || undefined}>
           {opcoes.map((o, k) => (
             <li
               key={o.id}
               role="option"
-              aria-selected={o.id === valor}
+              aria-selected={ligado(o.id)}
               className={k === marcado ? 'marcado' : ''}
               onMouseEnter={() => setMarcado(k)}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => escolher(o.id)}
             >
               {o.nome}
-              {o.id === valor && <Icone nome="certo" tam={13} traco={2.2} />}
+              {ligado(o.id) && <Icone nome="certo" tam={13} traco={2.2} />}
             </li>
           ))}
         </ul>

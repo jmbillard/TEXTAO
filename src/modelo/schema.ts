@@ -64,6 +64,7 @@ export const JSON_SCHEMA = {
         ordem: { type: 'integer', minimum: 1 },
         texto,
         subtipo: { enum: SUBTIPOS_ARTE.map((s) => s.id) },
+        subtipos: { type: 'array', items: { enum: SUBTIPOS_ARTE.map((s) => s.id) }, description: 'Todos os tipos da arte; subtipo é o primeiro.' },
         subtipoNome: texto,
         grupoVersoes: { type: ['string', 'null'], description: 'Artes com o mesmo grupo são versões da mesma arte (AMANHÃ/HOJE).' },
         observacao: texto,

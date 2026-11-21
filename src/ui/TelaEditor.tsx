@@ -23,7 +23,7 @@ import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } 
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import { nomeDaSigla,
-  ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
+  ETIQUETAS, juntarTipos, metaVazia, NOMES_COLUNAS, nomesDosTipos, normalizarSubtipo, tiposDaArte, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
 import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
@@ -139,7 +139,8 @@ function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: 
         {arte ? (
           <MenuDeOpcoes
             rotulo="Tipo de arte"
-            valor={normalizarSubtipo(marca.attrs.subtipo)}
+            multiplo
+            valor={juntarTipos(tiposDaArte(marca.attrs.subtipo))}
             opcoes={[{ id: '', nome: 'Sem tipo' }, ...SUBTIPOS_ARTE.map((s) => ({ id: s.id, nome: s.nome }))]}
             mudar={(v) => atualizarMarca(editor, marca, { subtipo: v, sugerido: false })}
           />
@@ -1191,7 +1192,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                         onClick={() => (esta ? setAberta(null) : abrirArte(a))}
                       >
                         <Miniatura subtipo={subtipo} />
-                        <span className="txt"><b>{a.texto}</b><span className={subtipo ? '' : 'pede'}>{subtipo ? nomeSubtipo(subtipo) : esta ? 'escolha o tipo' : 'sem tipo'}</span></span>
+                        <span className="txt"><b>{a.texto}</b><span className={subtipo ? '' : 'pede'}>{subtipo ? nomesDosTipos(a.attrs.subtipo) : esta ? 'escolha o tipo' : 'sem tipo'}</span></span>
                         <span className="b">{a.ordem}</span>
                       </button>
                       {esta && editor && (
@@ -1241,7 +1242,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
         <h2>Lista de artes</h2>
         <table>
           <thead><tr><th>Nº</th><th>Tipo</th><th>Texto</th><th>Observação</th></tr></thead>
-          <tbody>{saida.artes.map((a) => <tr key={a.id}><td>{a.ordem}</td><td>{a.subtipo ? nomeSubtipo(a.subtipo) : ''}</td><td>{a.texto}</td><td>{a.observacao}</td></tr>)}</tbody>
+          <tbody>{saida.artes.map((a) => <tr key={a.id}><td>{a.ordem}</td><td>{a.subtipo ? a.subtipoNome : ''}</td><td>{a.texto}</td><td>{a.observacao}</td></tr>)}</tbody>
         </table>
         {saida.comentarios.length > 0 && <p>Comentários: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
       </section>

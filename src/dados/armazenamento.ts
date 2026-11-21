@@ -308,7 +308,7 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const fora = new Set(roteiro.meta.naoProduzir ?? []);
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
     method: 'POST',
-    body: JSON.stringify({ artes: saida.artes.filter((a) => !fora.has(chaveDeArte(a.texto))).map((a) => ({ texto: a.texto, tipo: siglaDoTipo(a.subtipo), existe: jaExiste.has(chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
+    body: JSON.stringify({ artes: saida.artes.filter((a) => !fora.has(chaveDeArte(a.texto))).map((a) => ({ texto: a.texto, tipo: a.subtipos.map(siglaDoTipo).join(', '), tipos: a.subtipos.map(siglaDoTipo), existe: jaExiste.has(chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
   });
 }
 

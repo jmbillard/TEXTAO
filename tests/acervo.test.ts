@@ -105,12 +105,14 @@ describe('acervo de artes', () => {
   it('com o tipo (sigla): a sem tipo ganha o tipo; o mesmo tipo não repete; outro tipo é outra arte', async () => {
     const { consultar, buscar, pedidos } = falsos();
     const a = criarAcervo(ENV, { consultar, buscar });
-    const n = await a.registrar({ atracao: 'Encontro', card: 'card9', artes: [{ texto: 'Amanhã', tipo: 'RDP' }, { texto: 'Hoje', tipo: 'CRT' }, { texto: 'HOJE', tipo: 'RDP' }, { texto: 'Domingo', tipo: 'LETT' }, 'Domingo'] });
-    expect(n).toBe(3);
+    const n = await a.registrar({ atracao: 'Encontro', card: 'card9', artes: [{ texto: 'Amanhã', tipo: 'RDP' }, { texto: 'Hoje', tipo: 'CRT' }, { texto: 'HOJE', tipo: 'RDP' }, { texto: 'Domingo', tipo: 'LETT' }, 'Domingo', { texto: 'Sexta', tipos: ['FOTO', 'LETT'] }] });
+    expect(n).toBe(5);
     const post = pedidos.find((p) => p.metodo === 'POST')!.corpo!.records.map((r) => r.fields);
     expect(post).toEqual([
       { arte: 'HOJE', tipo: 'RDP', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
       { arte: 'Domingo', tipo: 'LETT', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
+      { arte: 'Sexta', tipo: 'FOTO', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] }, // dois tipos: uma linha de cada
+      { arte: 'Sexta', tipo: 'LETT', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
     ]);
     expect(pedidos.find((p) => p.metodo === 'PATCH')!.corpo!.records).toEqual([{ id: 'recA', fields: { tipo: 'RDP' } }]);
   });

@@ -1,5 +1,5 @@
 import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, textoDaLocucao, type ContextoSonora } from './sonora';
-import { nomeSubtipo, normalizarSubtipo, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
+import { nomesDosTipos, normalizarSubtipo, tiposDaArte, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
 import { chaveDeArte } from './diferencas';
 
 /* Do documento do editor para o contrato de saída (JSON canônico).
@@ -10,6 +10,8 @@ export interface ArteSaida {
   ordem: number;
   texto: string;
   subtipo: SubtipoArte;
+  /** Todos os tipos da arte (pode ter mais de um); subtipo é o primeiro. */
+  subtipos: Exclude<SubtipoArte, ''>[];
   subtipoNome: string;
   /** Artes com o mesmo grupo são versões que se substituem no mesmo lugar (AMANHÃ/HOJE). */
   grupoVersoes: string | null;
@@ -156,13 +158,15 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
         let texto = '';
         while (j < bloco.pedacos.length && bloco.pedacos[j].arte?.id === p.arte.id) texto += bloco.pedacos[j++].t;
         const subtipo = normalizarSubtipo(p.arte.subtipo);
+        const subtipos = tiposDaArte(p.arte.subtipo);
         locais.push({ bloco, ini, fim: ini + texto.length, total });
         artes.push({
           id: idUnico(String(p.arte.id)),
           ordem: artes.length + 1,
           texto: limpo(texto),
           subtipo,
-          subtipoNome: nomeSubtipo(subtipo),
+          subtipos,
+          subtipoNome: nomesDosTipos(subtipos),
           grupoVersoes: (p.arte.grupo as string | null) ?? null,
           observacao: String(p.arte.obs ?? ''),
           conferida: !p.arte.sugerido,

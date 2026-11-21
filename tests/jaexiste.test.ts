@@ -16,3 +16,17 @@ describe('já existe', () => {
     expect(artesQueJaExistem(saida(['HOJE'], ['AMANHA']))).toEqual([]); // não produzir também resolve
   });
 });
+
+import { juntarTipos, nomesDosTipos, normalizarSubtipo, siglaDoTipo, tiposDaArte } from '../src/modelo/tipos';
+
+describe('mais de um tipo por arte', () => {
+  it('guarda juntos, na ordem da lista, sem repetir; o primeiro serve onde só cabe um', () => {
+    expect(tiposDaArte('lettering,foto,lettering')).toEqual(['lettering', 'foto']);
+    expect(juntarTipos(['cartao', 'rodape', 'xxx'])).toBe('rodape,cartao');
+    expect(normalizarSubtipo('foto,lettering')).toBe('lettering');
+    expect(normalizarSubtipo('tela_cheia')).toBe('cartao'); // roteiro antigo
+    expect(nomesDosTipos('rodape,cartao')).toBe('Rodapé + Cartão');
+    expect(nomesDosTipos('')).toBe('Sem tipo');
+    expect(tiposDaArte('rodape,cartao').map(siglaDoTipo)).toEqual(['RDP', 'CRT']);
+  });
+});

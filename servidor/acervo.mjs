@@ -194,7 +194,7 @@ export function criarAcervo(env, deps = {}) {
   }
 
   /**
-   * O card saiu (finalizado/entregue): as artes novas dele (texto, ou { texto, tipo } com a sigla) entram no acervo da
+   * O card saiu (finalizado/entregue): as artes novas dele (texto, ou { texto, tipos } com as siglas) entram no acervo da
    * atração ou, numa sessão, do filme
    * do dia (data = exibição). As que já estão lá, não.
    * @returns quantas entraram
@@ -214,7 +214,12 @@ export function criarAcervo(env, deps = {}) {
     const linhas = (await todas()).filter((l) => (filme ? l.filmeId === filme.id : !l.filmeId && nomeComparavel(l.atracao) === n));
     const daPrevia = new Set(filme ? (await doFilme(filme)).map((x) => x.chave).filter((k) => !linhas.some((l) => l.chave === k)) : []);
     const entradas = artes
-      .map((x) => (typeof x === 'string' ? { arte: x, tipo: '' } : { arte: String(x?.texto ?? ''), tipo: String(x?.tipo ?? '').trim() }))
+      // uma entrada por tipo: a arte com mais de um tipo (foto com lettering) vira uma linha de cada no acervo
+      .flatMap((x) => {
+        if (typeof x === 'string') return [{ arte: x, tipo: '' }];
+        const tipos = (Array.isArray(x?.tipos) && x.tipos.length ? x.tipos : [x?.tipo ?? '']).map((t) => String(t ?? '').trim());
+        return tipos.map((tipo) => ({ arte: String(x?.texto ?? ''), tipo }));
+      })
       .map((x) => ({ ...x, arte: x.arte.trim(), chave: chaveDeArte(x.arte) }))
       .filter((x) => x.chave);
     const comTipo = new Set(entradas.filter((x) => x.tipo).map((x) => x.chave));

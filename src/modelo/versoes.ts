@@ -10,7 +10,7 @@ const chave = (texto: string) => semAcento(texto).replace(/[^a-z0-9]+/g, ' ').tr
 
 export function herdarTipos(novo: NoJSON, anterior: NoJSON): { doc: NoJSON; herdadas: number } {
   const daAnterior = new Map<string, { subtipo: string; obs: string }>();
-  for (const a of exportar(comoRoteiro(anterior)).artes) if (a.subtipo || a.observacao) daAnterior.set(chave(a.texto), { subtipo: a.subtipo, obs: a.observacao });
+  for (const a of exportar(comoRoteiro(anterior)).artes) if (a.subtipo || a.observacao) daAnterior.set(chave(a.texto), { subtipo: a.subtipos.join(','), obs: a.observacao });
   const textoDaNova = new Map(exportar(comoRoteiro(novo)).artes.map((a) => [a.id, a.texto]));
 
   let herdadas = 0;

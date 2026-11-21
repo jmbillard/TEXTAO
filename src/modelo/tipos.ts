@@ -32,9 +32,21 @@ export const siglaDoTipo = (s: unknown) => SUBTIPOS_ARTE.find((x) => x.id === s)
 /** O nome no app de uma sigla do acervo (ou a própria sigla, se não for nenhuma das conhecidas). */
 export const nomeDaSigla = (sigla: string) => SUBTIPOS_ARTE.find((x) => x.sigla === sigla)?.nome ?? sigla;
 
-/** Roteiros antigos usavam outros tipos; o que não existe mais volta a ficar sem tipo. */
-export const normalizarSubtipo = (s: unknown): SubtipoArte =>
-  s === 'tela_cheia' ? 'cartao' : SUBTIPOS_ARTE.some((x) => x.id === s) ? (s as SubtipoArte) : '';
+/** Um tipo só, como os roteiros antigos guardavam; o que não existe mais volta a ficar sem tipo. */
+const umTipo = (s: unknown): SubtipoArte => (s === 'tela_cheia' ? 'cartao' : SUBTIPOS_ARTE.some((x) => x.id === s) ? (s as SubtipoArte) : '');
+
+/** Os tipos de uma arte: uma arte pode ter mais de um (foto com lettering, serviço em rodapé e cartão).
+    Guardados juntos no atributo da marca, separados por vírgula; na ordem da lista de tipos. */
+export const tiposDaArte = (s: unknown): Exclude<SubtipoArte, ''>[] => {
+  const lista = (Array.isArray(s) ? s : String(s ?? '').split(',')).map((x) => umTipo(String(x).trim())).filter(Boolean) as Exclude<SubtipoArte, ''>[];
+  return SUBTIPOS_ARTE.map((x) => x.id).filter((id) => lista.includes(id));
+};
+/** Para guardar na marca: os tipos separados por vírgula ('' sem tipo). */
+export const juntarTipos = (tipos: string[]) => tiposDaArte(tipos).join(',');
+/** O primeiro tipo (para o que só mostra um: miniatura, ordem). */
+export const normalizarSubtipo = (s: unknown): SubtipoArte => tiposDaArte(s)[0] ?? '';
+/** Os nomes dos tipos juntos ("Foto + Lettering com alpha"); sem tipo, "Sem tipo". */
+export const nomesDosTipos = (s: unknown) => tiposDaArte(s).map((t) => nomeSubtipo(t)).join(' + ') || 'Sem tipo';
 
 export const ETIQUETAS: { id: TipoEtiqueta; nome: string; rotulo: string; atalho: string }[] = [
   { id: 'edicao', nome: 'Orientação para a edição', rotulo: 'edição', atalho: 'Mod-Shift-1' },
