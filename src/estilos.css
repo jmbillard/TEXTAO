@@ -1677,3 +1677,15 @@ html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !imp
 .menu-opcoes-botao:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ultra-suave); background: var(--neutro); }
 /* imagem que veio no roteiro: no tamanho dela, até a largura da coluna, com o canto da folha */
 .texto img.imagem-roteiro { display: inline-block; max-width: min(100%, 360px); height: auto; margin: 6px 0; border-radius: 3px; vertical-align: top; box-shadow: 0 0 0 1px var(--regua); }
+/* Texto | Original, no alto da folha, à direita */
+.folha { position: relative; }
+.vista-folha { position: absolute; top: 12px; right: 18px; z-index: 3; }
+.vista-folha button { height: 26px; padding: 0 10px; font-size: 12.5px; }
+/* o original: a página do Word dentro da folha, com as artes do PROMeiro pintadas por cima */
+:root { --realce-original: rgb(226 83 43 / 0.22); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --realce-original: rgb(255 140 96 / 0.3); } }
+:root[data-theme='dark'] { --realce-original: rgb(255 140 96 / 0.3); }
+.corpo-original { padding: 8px 0 20px; }
+.visor-original { position: relative; }
+.visor-docx { height: min(82vh, 1100px); border-radius: 4px; overflow: hidden; }
+.visor-docx > * { height: 100%; }

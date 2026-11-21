@@ -28,6 +28,7 @@ import { nomeDaSigla,
 import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
+import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
@@ -354,6 +355,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const mexeu = useRef(false);
   // roteiros de antes da claquete não têm os campos novos
   const [meta, setMeta] = useState<Meta>(() => ({ ...metaVazia(), ...inicial.meta }));
+  // o original como chegou (Word ou PDF), ao lado do texto: para conferir o sublinhado do redator com as artes
+  const temOriginal = ehDocx(inicial.original?.nome) || ehPdf(inicial.original?.nome);
+  const [vista, setVista] = useState<'texto' | 'original'>('texto');
   // o texto da revisão não se digita: um aviso, no máximo a cada 6 s, para quem tentar
   const ultimoAvisoTexto = useRef(0);
   const avisoTexto = useRef(() => {});
@@ -1065,6 +1069,12 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       <div className="mesa">
         <div className={`area ${colunas ? 'larga' : ''}`} ref={area}>
           <article className="folha" data-ancora="folha">
+            {temOriginal && (
+              <div className="segmento vista-folha" role="radiogroup" aria-label="Ver o roteiro">
+                <button role="radio" aria-checked={vista === 'texto'} onClick={() => setVista('texto')}>Texto</button>
+                <button role="radio" aria-checked={vista === 'original'} onClick={() => setVista('original')} title={`Como chegou: ${inicial.original?.nome ?? ''}`}>Original</button>
+              </div>
+            )}
             {(vizinhos.anterior || vizinhos.seguinte || proximo.total > 0) && (
               <nav className="nav-folha" aria-label="Fila de revisão">
                 {vizinhos.anterior ? (
@@ -1098,6 +1108,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             )}
             <div
               className={`${colunas ? 'corpo em-colunas' : 'corpo'} ${sincronizado ? '' : 'chegando'} ${sonorasNoTexto ? '' : 'sonoras-recolhidas'}`}
+              hidden={vista === 'original' && temOriginal}
               onContextMenu={aoMenuDeContexto}
               onPointerDown={() => {
                 arrastando.current = true;
@@ -1110,6 +1121,11 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             >
               <EditorContent editor={editor} />
             </div>
+            {vista === 'original' && temOriginal && (
+              <div className="corpo-original">
+                <VisorOriginal id={inicial.id} nome={inicial.original?.nome} artes={saida.artes.map((x) => x.texto)} />
+              </div>
+            )}
             <footer className="folha-fim">
               <div className="fim-linha"><span>fim</span></div>
               <p className="dicas">

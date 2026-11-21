@@ -6,6 +6,7 @@ import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
 import { dataCurtaComDia } from './util';
 import { VisorPdf } from './VisorPdf';
+import { ehDocx, VisorOriginal } from './VisorOriginal';
 
 interface Props {
   id: string;
@@ -164,7 +165,14 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                 rotulo="chegou agora"
                 gente={<Gente redator={roteiro.meta.redator} destacar={!!comparacao?.outroRedator} />}
                 artes={comparacao?.artes.novas ?? exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: 'igual' as const }))}
-                folha={<VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" circular reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />}
+                folha={
+                  // o roteiro novo em Word abre aqui mesmo, como o Word mostra (sem converter no servidor)
+                  ehDocx(roteiro.original?.nome) ? (
+                    <VisorOriginal id={roteiro.id} nome={roteiro.original?.nome} artes={[]} anotacao="novo" lado="direita" circular reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />
+                  ) : (
+                    <VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" circular reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />
+                  )
+                }
               />
             </div>
 
