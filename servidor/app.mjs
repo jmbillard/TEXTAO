@@ -221,9 +221,12 @@ const semAcentoMin = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g,
  */
 export function keysSemCadastro(claquetes, programas, ignoradas = new Set()) {
   const lista = programas.map((p) => ({ nome: p.nome, n: semAcentoMin(p.nome), chaves: (p.chaves ?? []).map(semAcentoMin).filter(Boolean) }));
+  // compara a claquete inteira e também a key dela (sem a praça na frente: "Rio Fut(...)" → FUT)
   const reconhece = (claquete) => {
     const n = semAcentoMin(claquete);
-    return lista.some((p) => p.chaves.some((c) => n === c || n.startsWith(c + ' ')) || (p.n.length >= 8 && ` ${n} `.includes(` ${p.n} `)));
+    const k = semAcentoMin(chaveDaAtracao(claquete));
+    const comeca = (x, c) => !!x && (x === c || x.startsWith(c + ' '));
+    return lista.some((p) => p.chaves.some((c) => comeca(n, c) || comeca(k, c)) || (p.n.length >= 8 && ` ${n} `.includes(` ${p.n} `)));
   };
   const grupos = new Map();
   for (const { claquete, em } of claquetes) {

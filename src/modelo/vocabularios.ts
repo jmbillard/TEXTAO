@@ -177,9 +177,11 @@ export function acharPrograma(texto: string): ProgramaVocab | null {
   let melhor: { p: ProgramaVocab; tam: number } | null = null;
   // a key no começo da claquete decide: o que vem nos parênteses é detalhe ("CHEF(QUEM AMA)17-11" é do Chef,
   // numa chamada que fala de Quem Ama); só sem key no começo vale procurar o nome no meio do texto
+  // a praça do Rio vem na frente ("Rio Fut(Brasileirao)21/11"): a key vale também depois dela
+  const comeco = [n, n.replace(/^rio /, '')];
   for (const e of externos)
     for (const c of e.chaves)
-      if ((n === c || n.startsWith(c + ' ')) && (!melhor || c.length > melhor.tam)) melhor = { p: e.p, tam: c.length };
+      if (comeco.some((x) => x === c || x.startsWith(c + ' ')) && (!melhor || c.length > melhor.tam)) melhor = { p: e.p, tam: c.length };
   if (melhor) return melhor.p;
   for (const e of externos) {
     if (e.nome.length >= 8 && ` ${n} `.includes(` ${e.nome} `) && (!melhor || e.nome.length > melhor.tam))

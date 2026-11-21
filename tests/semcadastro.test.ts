@@ -24,6 +24,10 @@ describe('keys sem cadastro', () => {
     expect(r.find((x: { key: string }) => x.key === 'TARJAS VERT DOMINGO').sugestao).toBe('Vertical');
     expect(r.find((x: { key: string }) => x.key === 'UPFRONT').sugestao).toBe('');
   });
+  it('reconhece a key mesmo com a praça na frente da claquete', () => {
+    const comKeys = [...programas, { nome: 'Futebol', chaves: ['FUT'] }, { nome: 'Roque Santeiro', chaves: ['ROQUE'] }];
+    expect(keysSemCadastro([c('Rio Fut(Brasileirao)21/11'), c('Rio Roque (Pilula) 10'), c('Rio Roque(Pilula)15')], comKeys)).toEqual([]);
+  });
   it('as ignoradas não voltam', () => {
     expect(keysSemCadastro([c('UPFRONT 2/12')], programas, new Set(['UPFRONT']))).toEqual([]);
   });

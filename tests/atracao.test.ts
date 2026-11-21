@@ -7,6 +7,7 @@ describe('atração pela claquete', () => {
       { nome: 'Chef de Alto Nível', chaves: ['CHEF'], categoria: 'PROGRAMAS' },
       { nome: 'Quem Ama Cuida', chaves: ['QUEM AMA'], categoria: 'NOVELAS' },
       { nome: 'Coração Acelerado', chaves: ['CORACAO'], categoria: 'NOVELAS' },
+      { nome: 'Futebol', chaves: ['FUT'], categoria: 'ESPORTES' },
     ],
   } as never);
   it('a key do começo decide; o que vem nos parênteses é detalhe', () => {
@@ -14,6 +15,10 @@ describe('atração pela claquete', () => {
     expect(acharPrograma('CHEF(MANUT) C')?.nome).toBe('Chef de Alto Nível');
     expect(acharPrograma('Coracao(Elenco)12/1')?.nome).toBe('Coração Acelerado');
     expect(acharPrograma('QUEM AMA 12/3 REDE')?.nome).toBe('Quem Ama Cuida');
+  });
+  it('a key vale depois da praça do Rio', () => {
+    expect(acharPrograma('Rio Fut(Brasileirao)21/11')?.nome).toBe('Futebol');
+    expect(acharPrograma('Rio Coracao (Pilula) 10')?.nome).toBe('Coração Acelerado');
   });
   it('sem key no começo, ainda acha o nome no meio do texto', () => {
     expect(acharPrograma('Chamada especial Quem Ama Cuida hoje')?.nome).toBe('Quem Ama Cuida');
