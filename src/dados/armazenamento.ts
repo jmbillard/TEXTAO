@@ -353,6 +353,8 @@ export interface Conexao {
   eu: (Pessoa & { origem: 'acesso' | 'local' }) | null;
   /** Há servidor, mas ele espera que a pessoa se apresente com o perfil local. */
   pedePerfil: boolean;
+  /** Há servidor, mas ele não reconheceu o login (Cloudflare Access): os roteiros ficam só neste navegador. */
+  semLogin?: boolean;
 }
 
 /** Procura o servidor. `perfil` é o perfil local, usado só quando o servidor aceita esse modo (demonstração). */
@@ -376,7 +378,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
       return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false };
     }
     armazenamento = noNavegador;
-    return { eu: null, pedePerfil: !!d.perfilLocal };
+    return { eu: null, pedePerfil: !!d.perfilLocal, semLogin: !d.perfilLocal };
   } catch {
     armazenamento = noNavegador;
     return { eu: null, pedePerfil: false };

@@ -1695,3 +1695,7 @@ html.com-cursor-meu body *:not(input):not(textarea):not(select):not([contentedit
 /* o meu cursor vale na janela inteira, não só na altura do conteúdo (abaixo da fila voltava para a seta) */
 html { cursor: var(--cursor-meu, auto); }
 html.com-cursor-meu { min-height: 100%; }
+/* o servidor respondeu, mas não reconheceu o login: tudo fica só neste navegador */
+.faixa-sem-login { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 90; max-width: min(640px, calc(100vw - 32px));
+  padding: 10px 16px; border-radius: 10px; background: #b4441f; color: #fff; font: 500 13.5px/1.4 var(--sans); box-shadow: var(--sombra-menu); text-align: center; }
+.faixa-sem-login a { color: #fff; text-decoration: underline; }

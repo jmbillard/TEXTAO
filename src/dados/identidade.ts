@@ -49,6 +49,8 @@ export interface Sessao {
   identidade: Identidade | null;
   /** Há servidor esperando o perfil local: depois de se identificar, os roteiros passam a ir para lá. */
   pedePerfil: boolean;
+  /** O servidor respondeu, mas não reconheceu o login: tudo fica só neste navegador (o app avisa). */
+  semLogin?: boolean;
 }
 
 /** Descobre quem está usando e onde os roteiros ficam guardados (servidor ou navegador). */
@@ -56,7 +58,7 @@ export async function iniciarSessao(): Promise<Sessao> {
   const perfil = local();
   const conexao = await conectar(perfil);
   if (conexao.eu) return { identidade: conexao.eu, pedePerfil: false };
-  return { identidade: (await doAcesso()) ?? perfil, pedePerfil: conexao.pedePerfil };
+  return { identidade: (await doAcesso()) ?? perfil, pedePerfil: conexao.pedePerfil, semLogin: conexao.semLogin };
 }
 
 export function salvarPerfilLocal(pessoa: Pessoa): Identidade {

@@ -141,6 +141,44 @@ async function validarJwt(token, dominio, aud) {
   return corpo.email;
 }
 
+/** Para o diagnóstico: por que o login do Cloudflare Access foi aceito ou recusado (sem expor o token). */
+async function diagnosticarLogin(req, env) {
+  const h = req.headers;
+  const token = h['cf-access-jwt-assertion'] ? String(h['cf-access-jwt-assertion']) : '';
+  const d = {
+    modo: env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD ? 'Access com assinatura (ACCESS_TEAM_DOMAIN + ACCESS_AUD)' : h['cf-access-authenticated-user-email'] ? 'cabeçalho do Access' : env.PERFIL_LOCAL === '1' ? 'perfil local' : 'nenhum',
+    ACCESS_TEAM_DOMAIN: env.ACCESS_TEAM_DOMAIN || '(vazia)',
+    ACCESS_AUD: env.ACCESS_AUD ? `${String(env.ACCESS_AUD).slice(0, 8)}… (${String(env.ACCESS_AUD).length} caracteres)` : '(vazia)',
+    PERFIL_LOCAL: env.PERFIL_LOCAL ?? '(vazia)',
+    recebeuToken: !!token,
+    recebeuEmailDoAccess: !!h['cf-access-authenticated-user-email'],
+  };
+  if (token) {
+    try {
+      const corpo = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url'));
+      const auds = [].concat(corpo.aud ?? []);
+      Object.assign(d, {
+        tokenEmissor: corpo.iss ?? '',
+        tokenAud: auds.map((x) => `${String(x).slice(0, 8)}…`),
+        audBate: !!env.ACCESS_AUD && auds.includes(env.ACCESS_AUD),
+        dominioBate: !!env.ACCESS_TEAM_DOMAIN && String(corpo.iss ?? '').includes(String(env.ACCESS_TEAM_DOMAIN).replace(/^https?:\/\//, '').replace(/\/+$/, '')),
+        expirado: corpo.exp * 1000 < Date.now(),
+      });
+    } catch {
+      d.token = 'não consegui ler o token';
+    }
+  }
+  if (env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD && token) {
+    try {
+      d.assinatura = (await validarJwt(token, env.ACCESS_TEAM_DOMAIN, env.ACCESS_AUD)) ? 'aceita' : 'recusada (aud, validade ou chave)';
+    } catch (e) {
+      d.assinatura = `erro ao conferir: ${e instanceof Error ? e.message : e}`;
+    }
+  }
+  d.reconhecido = (await identificar(req, env))?.email ?? null;
+  return d;
+}
+
 /**
  * Ordem: 1) Cloudflare Access com assinatura conferida (ACCESS_TEAM_DOMAIN + ACCESS_AUD);
  * 2) cabeçalho do Access, confiando na rede (só o túnel chega ao container);
@@ -812,6 +850,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       } catch {}
       return json(res, 200, {
         compilado,
+        login: await diagnosticarLogin(req, env),
         vocabulario: vocabulario.estado?.() ?? null,
         // o que o navegador acharia com a lista que recebe (vazio aqui = a lista não tem a key desta claquete)
         naListaDoNavegador: naLista,

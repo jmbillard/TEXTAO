@@ -69,11 +69,13 @@ export function App() {
   useEffect(() => {
     void iniciarSessao().then((s) => {
       setIdentidade(s.identidade);
+      setSemLogin(!!s.semLogin);
       setPronto(true);
       setSessao((n) => n + 1);
     });
   }, []);
   const pessoa = identidade ? { nome: identidade.nome, email: identidade.email } : undefined;
+  const [semLogin, setSemLogin] = useState(false);
 
   // o meu cursor divertido no meu próprio mouse: refeito quando muda o cursor, a cor ou o tema
   useEffect(() => {
@@ -323,6 +325,11 @@ export function App() {
           setSessao((n) => n + 1);
         });
       }} />}
+      {semLogin && (
+        <div className="faixa-sem-login" role="alert">
+          O servidor não reconheceu o seu login: os roteiros estão ficando só neste navegador. Veja <a href="/api/diagnostico" target="_blank" rel="noreferrer">o diagnóstico</a>.
+        </div>
+      )}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete) => ir({ t: 'cadastros', aba: 'atracoes', claquete }) : undefined} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete }} />}
