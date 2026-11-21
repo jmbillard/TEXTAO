@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Vagas } from './vagas';
 import {
   armazenamento,
   atualizarVocabulario,
@@ -14,7 +15,6 @@ import {
   type KeyCadastro,
   type RedatorCadastro,
   type TipoCadastro,
-  designorarKey,
   ignorarKey,
   lerSemCadastro,
   type KeySemCadastro,
@@ -302,25 +302,16 @@ function ChipKey({ k, recem, remover }: { k: KeyCadastro; recem: boolean; remove
   );
 }
 
-/** Lixeira com confirmação na própria linha. */
-function Remover({ pode, nome, remover }: { pode: boolean; nome: string; remover: () => Promise<void> }) {
-  const [conferindo, setConferindo] = useState(false);
+/** Lixeira: some na hora e a caixinha preta embaixo oferece desfazer (só administradores). */
+function Remover({ pode, nome, remover }: { pode: boolean; nome: string; remover: () => void }) {
   if (!pode)
     return (
       <span className="lixo-cad travado" title="Só administradores removem">
         <Icone nome="lixo" />
       </span>
     );
-  if (conferindo)
-    return (
-      <span className="remover-conferir">
-        Remover {nome}?
-        <button type="button" className="botao-texto" onClick={() => setConferindo(false)}>Não</button>
-        <button type="button" className="botao-texto perigo" onClick={() => void remover()}>Remover</button>
-      </span>
-    );
   return (
-    <button type="button" className="lixo-cad" aria-label={`Remover ${nome}`} title="Remover (o nome continua no Trello, nos cards antigos)" onClick={() => setConferindo(true)}>
+    <button type="button" className="lixo-cad" aria-label={`Remover ${nome}`} title="Remover (o nome continua no Trello, nos cards antigos)" onClick={remover}>
       <Icone nome="lixo" />
     </button>
   );
@@ -419,7 +410,10 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   // a aba "Sem cadastro": as keys das claquetes que nenhuma atração reconhece (o formulário da direita é o de atração)
   const [semCad, setSemCad] = useState(false);
   const [sem, setSem] = useState<KeySemCadastro[] | null>(null);
-  const [ignoradas, setIgnoradas] = useState<string[]>([]);
+  // apagar, remover key e ignorar: some na hora, a caixinha preta oferece desfazer e só depois vai para o servidor
+  const [escondidos, setEscondidos] = useState<string[]>([]);
+  const [desfazer, setDesfazer] = useState<{ texto: React.ReactNode; id: string } | null>(null);
+  const pendente = useRef<{ id: string; executar: () => Promise<void>; timer: number } | null>(null);
   const nomeAtr = useRef<HTMLInputElement>(null);
   const carregarSem = () => lerSemCadastro().then(setSem, () => setSem([]));
   useEffect(() => {
@@ -546,33 +540,54 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     setAtr({ nome: '', keys: [comoKey(key)], categoria: '', campos: {} });
     setTimeout(() => nomeAtr.current?.focus(), 0);
   };
-  /** Ignorar: a linha vira "ignorada · desfazer" por alguns segundos e some. */
-  const ignorar = async (key: string) => {
-    try {
-      await ignorarKey(key);
-      setIgnoradas((l) => [...l, key]);
-      setTimeout(() => {
-        setIgnoradas((l) => l.filter((x) => x !== key));
-        setSem((l) => l?.filter((x) => x.key !== key) ?? l);
-      }, 6000);
-    } catch (e) {
-      avisar(e instanceof Error ? e.message : 'Não consegui ignorar.');
-    }
+  /** Executa já o que estava esperando o desfazer (outro apagar começou, ou a tela vai fechar). */
+  const concluir = () => {
+    const p = pendente.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendente.current = null;
+    setDesfazer(null);
+    void p.executar().finally(() => setEscondidos((l) => l.filter((x) => x !== p.id)));
   };
-  const desfazerIgnorar = async (key: string) => {
-    await designorarKey(key).catch(() => {});
-    setIgnoradas((l) => l.filter((x) => x !== key));
+  const comDesfazer = (id: string, texto: React.ReactNode, executar: () => Promise<void>) => {
+    concluir();
+    setEscondidos((l) => [...l, id]);
+    setDesfazer({ texto, id });
+    pendente.current = { id, executar, timer: window.setTimeout(concluir, 6000) };
   };
+  const desfazerAgora = () => {
+    const p = pendente.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendente.current = null;
+    setDesfazer(null);
+    setEscondidos((l) => l.filter((x) => x !== p.id));
+  };
+  // sair da tela não cancela: o que foi apagado é apagado
+  useEffect(() => () => {
+    const p = pendente.current;
+    if (p) (clearTimeout(p.timer), void p.executar());
+  }, []);
 
-  const remover = (tipo: TipoCadastro, id: string, keyId?: string) => async () => {
-    try {
-      await removerCadastro(tipo, id, keyId);
-      await carregar(true);
-      avisar(keyId ? 'Key removida.' : 'Removido. No Trello, o nome continua nos cards antigos.');
-    } catch (e) {
-      avisar(e instanceof Error ? e.message : 'Não consegui remover.');
-    }
-  };
+  const ignorar = (key: string) =>
+    comDesfazer(`sem:${key}`, <><b>{key}</b> ignorada.</>, async () => {
+      try {
+        await ignorarKey(key);
+        setSem((l) => l?.filter((x) => x.key !== key) ?? l);
+      } catch (e) {
+        avisar(e instanceof Error ? e.message : 'Não consegui ignorar.');
+      }
+    });
+
+  const remover = (tipo: TipoCadastro, id: string, nome: string, keyId?: string) => () =>
+    comDesfazer(keyId ? `${id}:${keyId}` : id, keyId ? <>Key <b>{nome}</b> removida.</> : <><b>{nome}</b> removido.</>, async () => {
+      try {
+        await removerCadastro(tipo, id, keyId);
+        await carregar(true);
+      } catch (e) {
+        avisar(e instanceof Error ? e.message : 'Não consegui remover.');
+      }
+    });
 
   // lista da aba, filtrada pela busca
   const termo = semAcento(busca.trim());
@@ -594,26 +609,31 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nomeRascunho]);
   const comRascunho = <T extends { nome: string }>(lista: T[], render: (x: T) => React.ReactNode) => {
-    const itens = lista.map((x) => ({ nome: x.nome, no: render(x) }));
+    const itens = lista.map((x) => ({ nome: x.nome, k: (x as unknown as { id: string }).id, no: render(x) }));
     if (rascunho && nomeVaga !== null) {
       const achou = itens.findIndex((x) => x.nome.localeCompare(nomeVaga || '\uffff', 'pt-BR') > 0);
       const pos = achou < 0 ? itens.length : achou;
       const folha = {
         nome: '',
+        k: `rascunho-${aba}-${pos}`,
         no: (
-          <div key={`vaga-${aba}-${pos}`} className="vaga" ref={vaga}>
+          <div className="vaga" ref={vaga}>
             <Rascunho nome={rascunho.nome} categoria={'categoria' in rascunho ? rascunho.categoria : undefined} keys={rascunho.keys} assentando={assentando} />
           </div>
         ),
       };
       itens.splice(pos, 0, folha);
     }
-    return itens.map((x) => x.no);
+    return (
+      <Vagas itens={itens} chave={(x) => x.k}>
+        {(x) => x.no}
+      </Vagas>
+    );
   };
 
-  const listaAtracoes = (dados?.atracoes ?? []).filter((a) => casa(a.nome, a.categoria, ...a.keys.map((k) => k.key)));
-  const listaRedatores = (dados?.redatores ?? []).filter((r) => casa(r.nome, r.user));
-  const listaEditores = (dados?.editores ?? []).filter((e) => casa(e.nome, ...e.keys.map((k) => k.key)));
+  const listaAtracoes = (dados?.atracoes ?? []).filter((a) => !escondidos.includes(a.id) && casa(a.nome, a.categoria, ...a.keys.map((k) => k.key)));
+  const listaRedatores = (dados?.redatores ?? []).filter((r) => !escondidos.includes(r.id) && casa(r.nome, r.user));
+  const listaEditores = (dados?.editores ?? []).filter((e) => !escondidos.includes(e.id) && casa(e.nome, ...e.keys.map((k) => k.key)));
   const itemAtracao = (a: AtracaoCadastro) => (
     <div key={a.id} className={`item-cad ${recem.includes(a.id) ? 'chegou' : ''}`}>
       <div className="nome">
@@ -621,12 +641,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       </div>
       <div className="lado-cad">
         {pode && <NovoPacote nome={a.nome} avisar={avisar} />}
-        <Remover pode={pode} nome={a.nome} remover={remover('atracoes', a.id)} />
+        <Remover pode={pode} nome={a.nome} remover={remover('atracoes', a.id, a.nome)} />
       </div>
       <div className="keys">
-        {a.keys.map((k) => (
-          <ChipKey key={k.id} k={k} recem={recem.includes(k.id) || recem.includes(a.id)} remover={pode ? remover('atracoes', a.id, k.id) : undefined} />
-        ))}
+        <Vagas eixo="x" itens={a.keys.filter((k) => !escondidos.includes(`${a.id}:${k.id}`))} chave={(k) => k.id}>
+          {(k) => <ChipKey k={k} recem={recem.includes(k.id) || recem.includes(a.id)} remover={pode ? remover('atracoes', a.id, k.key, k.id) : undefined} />}
+        </Vagas>
         <NovaKey salvar={novaKey('atracoes', a.id)} />
       </div>
     </div>
@@ -636,7 +656,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       <div className="nome">{r.nome}</div>
       <div className="lado-cad">
         {r.trello && <span className="no-trello"><Icone nome="quadro" tam={14} /> no Trello</span>}
-        <Remover pode={pode} nome={r.nome} remover={remover('redatores', r.id)} />
+        <Remover pode={pode} nome={r.nome} remover={remover('redatores', r.id, r.nome)} />
       </div>
       <div className="keys">{r.user && <span className={`key login ${recem.includes(r.id) ? 'recem' : ''}`}>{r.user}</span>}</div>
     </div>
@@ -646,12 +666,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       <div className="nome">{e.nome}</div>
       <div className="lado-cad">
         {e.trello && <span className="no-trello"><Icone nome="quadro" tam={14} /> no Trello</span>}
-        <Remover pode={pode} nome={e.nome} remover={remover('editores', e.id)} />
+        <Remover pode={pode} nome={e.nome} remover={remover('editores', e.id, e.nome)} />
       </div>
       <div className="keys">
-        {e.keys.map((k) => (
-          <ChipKey key={k.id} k={k} recem={recem.includes(k.id) || recem.includes(e.id)} remover={pode ? remover('editores', e.id, k.id) : undefined} />
-        ))}
+        <Vagas eixo="x" itens={e.keys.filter((k) => !escondidos.includes(`${e.id}:${k.id}`))} chave={(k) => k.id}>
+          {(k) => <ChipKey k={k} recem={recem.includes(k.id) || recem.includes(e.id)} remover={pode ? remover('editores', e.id, k.key, k.id) : undefined} />}
+        </Vagas>
         <NovaKey salvar={novaKey('editores', e.id)} />
       </div>
     </div>
@@ -701,19 +721,14 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
             </div>
             {!dados && !falha && <p className="cad-vazio">Carregando…</p>}
             {semCad && dados && sem && (() => {
-              const lista = sem.filter((k) => casa(k.key, ...k.exemplos));
+              const lista = sem.filter((k) => !escondidos.includes(`sem:${k.key}`) && casa(k.key, ...k.exemplos));
               const nomes = dados.atracoes.map((x) => x.nome).sort((x, y) => x.localeCompare(y, 'pt-BR'));
-              if (!sem.length) return <p className="cad-vazio">Toda claquete dos últimos 90 dias tem atração.</p>;
+              if (!sem.filter((k) => !escondidos.includes(`sem:${k.key}`)).length) return <p className="cad-vazio">Toda claquete dos últimos 90 dias tem atração.</p>;
               if (!lista.length) return <p className="cad-vazio">Nada com “{busca}”.</p>;
-              return lista.map((k) =>
-                ignoradas.includes(k.key) ? (
-                  <div key={k.key} className="item-cad sem-cad ignorada">
-                    <span><span className="key grande">{k.key}</span> ignorada</span>
-                    <button type="button" className="botao-texto" onClick={() => void desfazerIgnorar(k.key)}>Desfazer</button>
-                  </div>
-                ) : (
-                  <LinhaSemCadastro key={k.key} k={k} atracoes={nomes} ligar={(n) => void ligarKey(k.key, n)} nova={() => novaComKey(k.key)} ignorar={() => void ignorar(k.key)} />
-                ),
+              return (
+                <Vagas itens={lista} chave={(k) => k.key}>
+                  {(k) => <LinhaSemCadastro k={k} atracoes={nomes} ligar={(n) => void ligarKey(k.key, n)} nova={() => novaComKey(k.key)} ignorar={() => ignorar(k.key)} />}
+                </Vagas>
               );
             })()}
             {semCad && !sem && <p className="cad-vazio">Procurando nas claquetes…</p>}
@@ -845,6 +860,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
           </aside>
         </div>
       </main>
+      {desfazer && (
+        <div className="desfazer" role="status" key={desfazer.id}>
+          <span>{desfazer.texto}</span>
+          <button className="botao-texto" onClick={desfazerAgora}>Desfazer</button>
+        </div>
+      )}
     </div>
   );
 }

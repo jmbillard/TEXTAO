@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Vagas } from './vagas';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Bold from '@tiptap/extension-bold';
 import Document from '@tiptap/extension-document';
@@ -1193,8 +1194,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               </div>
               {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
               <ol className={`artes ${TIPOS_NA_LISTA ? '' : 'so-lista'}`}>
-                {!TIPOS_NA_LISTA &&
-                  artes.map((a) => {
+                {!TIPOS_NA_LISTA && (
+                  <Vagas itens={artes} chave={(a) => a.id}>
+                  {(a) => {
                     const k = chaveDeArte(a.texto);
                     const ja = doAcervo.get(k);
                     const marcada = marcadasJa.has(k) ? 'existe' : marcadasFora.has(k) ? 'fora' : null;
@@ -1228,7 +1230,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                       )}
                     </li>
                     );
-                  })}
+                  }}
+                  </Vagas>
+                )}
                 {TIPOS_NA_LISTA && artes.map((a) => {
                   const subtipo = normalizarSubtipo(a.attrs.subtipo);
                   const esta = aberta === a.id;

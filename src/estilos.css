@@ -1741,14 +1741,15 @@ html.com-cursor-meu { min-height: 100%; }
 .limpar-campo:hover { color: var(--tinta); background: var(--neutro); }
 
 /* a vaga do rascunho: a lista abre espaço e a tira entra nela */
-.vaga { display: grid; grid-template-rows: 1fr; animation: abrir-vaga 0.34s var(--suave) both; scroll-margin: 96px 0; }
-.vaga > * { min-height: 0; }
-@keyframes abrir-vaga { from { grid-template-rows: 0fr; } }
+.vaga { scroll-margin: 96px 0; }
 .vaga .item-cad.rascunho { animation-delay: 0.26s; }
 .vaga .folha-rascunho::before { animation-delay: 0.34s; }
 .vaga .seta-form path { animation-delay: 0.71s; }
 .vaga .item-cad.rascunho .nota { animation-delay: 1.01s; }
-.lista-topo + .vaga .item-cad { border-top: 0; }
+.lista-topo + .vaga-y .item-cad { border-top: 0; }
+/* as linhas dos cadastros e as keys abrem e fecham a vaga (ui/vagas.tsx) */
+.item-cad .keys { --vaga-gap: 6px; }
+.item-cad .keys .vaga-x { align-self: center; }
 @media (prefers-reduced-motion: reduce) { .vaga { animation: none; } }
 /* "novo pacote" só aparece ao passar o mouse na atração */
 .pacote-cad { opacity: 0; transition: opacity 0.15s; }
@@ -1814,3 +1815,30 @@ html.com-cursor-meu { min-height: 100%; }
 .pendencia .tentar-trello { margin-left: 8px; border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 a.ficha-marca.trello { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .pendencia.trello-indo svg { animation: none; } }
+
+/* ---- Vagas (ui/vagas.tsx): o que entra ou sai abre ou fecha o seu espaço ----
+   --vaga-gap: o gap do contêiner, que também fecha junto (senão ele sobra e dá um salto no fim). */
+.vaga-y { display: grid; grid-template-rows: 1fr; }
+.vaga-x { display: inline-grid; grid-template-columns: 1fr; vertical-align: middle; }
+.vaga-dentro { display: block; min-height: 0; min-width: 0; }
+.vaga-y.entrando { animation: vaga-abrir-y 280ms var(--suave) both; }
+.vaga-y.saindo { animation: vaga-fechar-y 260ms var(--suave) forwards; pointer-events: none; }
+.vaga-x.entrando { animation: vaga-abrir-x 240ms var(--suave) both; }
+.vaga-x.saindo { animation: vaga-fechar-x 220ms var(--suave) forwards; pointer-events: none; }
+/* recorta só enquanto anima: depois, menus e sombras podem sair da vaga */
+.vaga-y.entrando > .vaga-dentro, .vaga-x.entrando > .vaga-dentro { animation: vaga-recorte 280ms; }
+.vaga-y.saindo > .vaga-dentro, .vaga-x.saindo > .vaga-dentro { overflow: hidden; }
+@keyframes vaga-recorte { from, to { overflow: hidden; } }
+@keyframes vaga-abrir-y { from { grid-template-rows: 0fr; opacity: 0; margin-top: calc(-1 * var(--vaga-gap, 0px)); } }
+@keyframes vaga-fechar-y { to { grid-template-rows: 0fr; opacity: 0; margin-top: calc(-1 * var(--vaga-gap, 0px)); } }
+@keyframes vaga-abrir-x { from { grid-template-columns: 0fr; opacity: 0; margin-left: calc(-1 * var(--vaga-gap, 0px)); } }
+@keyframes vaga-fechar-x { to { grid-template-columns: 0fr; opacity: 0; margin-left: calc(-1 * var(--vaga-gap, 0px)); } }
+@media (prefers-reduced-motion: reduce) {
+  .vaga-y.entrando, .vaga-x.entrando, .vaga-y.entrando > .vaga-dentro, .vaga-x.entrando > .vaga-dentro { animation: none; }
+  .vaga-y.saindo, .vaga-x.saindo { display: none; }
+}
+/* fila: fichas e dias abrem e fecham a vaga (o gap fecha junto) */
+.fichas { --vaga-gap: 8px; }
+.dias { display: flex; flex-direction: column; gap: 22px; margin-top: 22px; --vaga-gap: 22px; }
+.dias .dia { margin-top: 0; }
+.dias:empty { display: none; }

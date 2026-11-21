@@ -6,6 +6,7 @@ import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
+import { Vagas } from './vagas';
 import { agruparPorDia, noTrello, pedeRevisao, pendentes, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
@@ -335,7 +336,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   const comPendencias = revisar.length > 0 || (!r.meta.programa && !!cadastrarAtracao && !mandada) || avisoTrello;
   const linhasDaFolha = 1 + (versao ? 1 : 0) + (np && producao && !versao ? 1 : 0) + (comPendencias ? 1 : 0);
   return (
-    <li
+    <div
       className={`ficha ${alerta ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''} ${mandada ? 'mandada' : ''}`}
       data-ancora={`ficha:${r.id}`}
       style={quem ? ({ '--cor': corDe(quem.email), '--fim-folha': linhasDaFolha + 1 } as React.CSSProperties) : undefined}
@@ -426,7 +427,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
           )}
         </span>
       )}
-    </li>
+    </div>
   );
 }
 
@@ -860,12 +861,16 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
                 />
               )}
 
-              {proximos.map((g) => (
-                <section key={g.chave} className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
+              <div className="dias">
+              <Vagas itens={proximos} chave={(g) => g.chave}>
+                {(g) => (
+                <section className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
                   {cabecalhoDoDia(g)}
                   {(
                     <>
-                      <ul className="fichas">{g.itens.filter((r) => !noTrello(r)).map(ficha)}</ul>
+                      <ul className="fichas">
+                        <Vagas como="li" itens={g.itens.filter((r) => !noTrello(r))} chave={(r) => r.id}>{ficha}</Vagas>
+                      </ul>
                       {g.itens.some(noTrello) && (
                         <div className="cards-trello-bloco">
                         <p className="cards-rotulo">já no Trello</p>
@@ -877,7 +882,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
                     </>
                   )}
                 </section>
-              ))}
+                )}
+              </Vagas>
+              </div>
 
               {exibidos.length > 0 && (
                 <details className="exibidos">
@@ -887,7 +894,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
                   {exibidos.map((g) => (
                     <section key={g.chave} className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
                       {cabecalhoDoDia(g)}
-                      <ul className="fichas">{g.itens.map(ficha)}</ul>
+                      <ul className="fichas">
+                        <Vagas como="li" itens={g.itens} chave={(r) => r.id}>{ficha}</Vagas>
+                      </ul>
                     </section>
                   ))}
                 </details>
