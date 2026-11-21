@@ -695,9 +695,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       });
       const estado = r.duplicado ? 'duplicado' : 'enviado';
       q.marcarEnvio.run(id, estado, r.card?.id ?? null, r.card?.url ?? null, null, JSON.stringify(r.avisos ?? []), new Date().toISOString(), eu.email, eu.nome);
-      // o que entra no acervo da atração quando o card sair: só as artes novas (as que já existiam, não)
+      // o que entra no acervo da atração quando o card sair: só as artes novas (as que já existiam, não), com o tipo (sigla)
       if (estado === 'enviado' && Array.isArray(corpo.artes))
-        q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => String(a?.texto ?? a).slice(0, 500))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), String(JSON.parse(atual.meta).dataExibicao ?? '').slice(0, 10) || null, id);
+        q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => ({ texto: String(a?.texto ?? a).slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40) }))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), String(JSON.parse(atual.meta).dataExibicao ?? '').slice(0, 10) || null, id);
       if (r.avisos?.length) console.warn(`[trello] ${id}: ${r.avisos.join(' · ')}`);
       return json(res, 200, { estado, url: r.card?.url, avisos: r.avisos ?? [] });
     } catch (e) {

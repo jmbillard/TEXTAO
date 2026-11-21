@@ -1,4 +1,5 @@
 import { chaveDeArte } from '../modelo/diferencas';
+import { siglaDoTipo } from '../modelo/tipos';
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
@@ -307,7 +308,7 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const fora = new Set(roteiro.meta.naoProduzir ?? []);
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
     method: 'POST',
-    body: JSON.stringify({ artes: saida.artes.filter((a) => !fora.has(chaveDeArte(a.texto))).map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '', existe: jaExiste.has(chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
+    body: JSON.stringify({ artes: saida.artes.filter((a) => !fora.has(chaveDeArte(a.texto))).map((a) => ({ texto: a.texto, tipo: siglaDoTipo(a.subtipo), existe: jaExiste.has(chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
   });
 }
 

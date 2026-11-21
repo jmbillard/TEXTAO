@@ -8,20 +8,29 @@ export type TipoPrograma = 'novela' | 'ao_vivo' | 'esporte' | 'auditorio' | 'out
 export type Status = 'rascunho' | 'revisao' | 'aprovado' | 'em_producao' | 'finalizado';
 
 /** '' = ainda sem tipo: o app nunca sugere, quem escolhe é a pessoa. */
-export type SubtipoArte = '' | 'rodape' | 'cartao' | 'lettering' | 'vinheta' | 'assinatura' | 'logo' | 'passagem' | 'foto' | 'moldura';
+export type SubtipoArte = '' | 'rodape' | 'cartao' | 'lettering' | 'vinheta' | 'assinatura' | 'logo' | 'passagem' | 'foto' | 'moldura' | 'chroma' | 'confronto';
 export type TipoEtiqueta = 'edicao' | 'locutor' | 'sonoplastia' | 'cortavel' | 'producao' | 'comentario';
 
-export const SUBTIPOS_ARTE: { id: Exclude<SubtipoArte, ''>; nome: string; curto: string }[] = [
-  { id: 'rodape', nome: 'Rodapé', curto: 'Rodapé' },
-  { id: 'cartao', nome: 'Cartão', curto: 'Cartão' },
-  { id: 'lettering', nome: 'Lettering com alpha', curto: 'Lettering alpha' },
-  { id: 'vinheta', nome: 'Vinheta', curto: 'Vinheta' },
-  { id: 'assinatura', nome: 'Assinatura', curto: 'Assinatura' },
-  { id: 'logo', nome: 'Logo Globo', curto: 'Logo Globo' },
-  { id: 'passagem', nome: 'Passagem', curto: 'Passagem' },
-  { id: 'foto', nome: 'Foto', curto: 'Foto' },
-  { id: 'moldura', nome: 'Moldura', curto: 'Moldura' },
+/** Os tipos de arte: o nome que aparece no app e a sigla do acervo (campo tipo da ARTES_acervo). A nomenclatura
+    vai ser padronizada na empresa: quando vier, muda aqui (e nas opções do campo no Teable). */
+export const SUBTIPOS_ARTE: { id: Exclude<SubtipoArte, ''>; nome: string; curto: string; sigla: string }[] = [
+  { id: 'rodape', nome: 'Rodapé', curto: 'Rodapé', sigla: 'RDP' },
+  { id: 'cartao', nome: 'Cartão', curto: 'Cartão', sigla: 'CRT' },
+  { id: 'lettering', nome: 'Lettering com alpha', curto: 'Lettering alpha', sigla: 'LETT' },
+  { id: 'vinheta', nome: 'Vinheta', curto: 'Vinheta', sigla: 'VNH' },
+  { id: 'assinatura', nome: 'Assinatura', curto: 'Assinatura', sigla: 'ASSINA' },
+  { id: 'logo', nome: 'Logo Globo', curto: 'Logo Globo', sigla: 'LOGO GLOBO' },
+  { id: 'passagem', nome: 'Passagem', curto: 'Passagem', sigla: 'PASSAGEM' },
+  { id: 'foto', nome: 'Foto', curto: 'Foto', sigla: 'FOTO' },
+  { id: 'moldura', nome: 'Moldura', curto: 'Moldura', sigla: 'MOLDURA' },
+  { id: 'chroma', nome: 'Chroma', curto: 'Chroma', sigla: 'CHROMA' },
+  { id: 'confronto', nome: 'Confronto', curto: 'Confronto', sigla: 'CONFRONTO' },
 ];
+
+/** A sigla do acervo de um tipo (vazia sem tipo). */
+export const siglaDoTipo = (s: unknown) => SUBTIPOS_ARTE.find((x) => x.id === s)?.sigla ?? '';
+/** O nome no app de uma sigla do acervo (ou a própria sigla, se não for nenhuma das conhecidas). */
+export const nomeDaSigla = (sigla: string) => SUBTIPOS_ARTE.find((x) => x.sigla === sigla)?.nome ?? sigla;
 
 /** Roteiros antigos usavam outros tipos; o que não existe mais volta a ficar sem tipo. */
 export const normalizarSubtipo = (s: unknown): SubtipoArte =>

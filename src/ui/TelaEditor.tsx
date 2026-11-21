@@ -22,7 +22,7 @@ import {
 import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
-import {
+import { nomeDaSigla,
   ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
 import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas';
@@ -1153,7 +1153,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                     <li
                       key={a.id}
                       className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''}`}
-                      title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo}` : ''}` : undefined}
+                      title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo.split(', ').map(nomeDaSigla).join(', ')}` : ''}` : undefined}
                       onMouseEnter={() => setRealce(a.id)}
                       onMouseLeave={() => setRealce(null)}
                     >

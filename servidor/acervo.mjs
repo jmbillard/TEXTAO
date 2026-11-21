@@ -194,7 +194,8 @@ export function criarAcervo(env, deps = {}) {
   }
 
   /**
-   * O card saiu (finalizado/entregue): as artes novas dele entram no acervo da atração ou, numa sessão, do filme
+   * O card saiu (finalizado/entregue): as artes novas dele (texto, ou { texto, tipo } com a sigla) entram no acervo da
+   * atração ou, numa sessão, do filme
    * do dia (data = exibição). As que já estão lá, não.
    * @returns quantas entraram
    */
@@ -208,19 +209,42 @@ export function criarAcervo(env, deps = {}) {
     const [a] = t.atracoes ? await consultar(`SELECT "__id" AS id FROM ${t.atracoes} WHERE LOWER("atracao") = LOWER($1) LIMIT 1`, [atracao]) : [];
     if (!a?.id) throw new Error(`A atração ${atracao} não está nos cadastros.`);
     const [p] = card && t.producao ? await consultar(`SELECT "__id" AS id FROM ${t.producao} WHERE "card_ID" = $1 LIMIT 1`, [card]) : [];
-    const ja = new Set((filme ? await doFilme(filme) : await daAtracao(atracao)).map((x) => x.chave));
+    // o que já existe, linha a linha (com o tipo): do filme, ou da atração; numa sessão, a prévia conta de qualquer tipo
+    const n = nomeComparavel(atracao);
+    const linhas = (await todas()).filter((l) => (filme ? l.filmeId === filme.id : !l.filmeId && nomeComparavel(l.atracao) === n));
+    const daPrevia = new Set(filme ? (await doFilme(filme)).map((x) => x.chave).filter((k) => !linhas.some((l) => l.chave === k)) : []);
+    const entradas = artes
+      .map((x) => (typeof x === 'string' ? { arte: x, tipo: '' } : { arte: String(x?.texto ?? ''), tipo: String(x?.tipo ?? '').trim() }))
+      .map((x) => ({ ...x, arte: x.arte.trim(), chave: chaveDeArte(x.arte) }))
+      .filter((x) => x.chave);
+    const comTipo = new Set(entradas.filter((x) => x.tipo).map((x) => x.chave));
+    const novas = [];
+    const tipar = [];
     const vistas = new Set();
-    const novas = artes
-      .map((arte) => ({ arte: String(arte).trim(), chave: chaveDeArte(arte) }))
-      .filter((x) => x.chave && !ja.has(x.chave) && !vistas.has(x.chave) && vistas.add(x.chave));
-    if (!novas.length) return 0;
-    await teable('POST', '', {
-      fieldKeyType: 'name',
-      typecast: true,
-      records: novas.map((x) => ({ fields: { arte: x.arte, atracao: [{ id: a.id }], ...(p?.id ? { claquete: [{ id: p.id }] } : {}), ...(filme ? { filme: { id: filme.id } } : {}) } })),
-    });
+    for (const x of entradas) {
+      if (!x.tipo && comTipo.has(x.chave)) continue; // a mesma arte veio com tipo: vale a com tipo
+      if (vistas.has(`${x.chave}|${x.tipo}`) || daPrevia.has(x.chave)) continue;
+      vistas.add(`${x.chave}|${x.tipo}`);
+      const mesmas = linhas.filter((l) => l.chave === x.chave);
+      if (!mesmas.length) novas.push(x);
+      else if (!x.tipo || mesmas.some((l) => l.tipo === x.tipo)) continue;
+      else {
+        // já estava sem tipo: ganha o tipo; já estava com outro: é outra arte (HOJE em cartão não é HOJE em rodapé)
+        const semTipo = mesmas.find((l) => !l.tipo && !tipar.some((t) => t.id === l.id));
+        if (semTipo) tipar.push({ id: semTipo.id, fields: { tipo: x.tipo } });
+        else novas.push(x);
+      }
+    }
+    if (!novas.length && !tipar.length) return 0;
+    if (novas.length)
+      await teable('POST', '', {
+        fieldKeyType: 'name',
+        typecast: true,
+        records: novas.map((x) => ({ fields: { arte: x.arte, ...(x.tipo ? { tipo: x.tipo } : {}), atracao: [{ id: a.id }], ...(p?.id ? { claquete: [{ id: p.id }] } : {}), ...(filme ? { filme: { id: filme.id } } : {}) } })),
+      });
+    if (tipar.length) await teable('PATCH', '', { fieldKeyType: 'name', typecast: true, records: tipar });
     esquecer();
-    return novas.length;
+    return novas.length + tipar.length;
   }
 
   /** Pacote gráfico novo: todas as artes da atração saem do acervo (apagadas). @returns quantas */
