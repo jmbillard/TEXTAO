@@ -264,25 +264,56 @@ export function svgDoCursor(id: string, cor: string, contorno: string, tamanho =
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${tamanho}" height="${tamanho}" viewBox="-6 -6 60 60"><defs>${filtro}${recorte ? recorte.outerHTML : ''}</defs>${corpo}</svg>`;
 }
 
-/** Desenha o SVG num quadro de `px` pixels e devolve um PNG: a tela de alta densidade ganha um cursor nítido. */
-function pngDoSvg(svg: string, px: number): Promise<string | null> {
-  return new Promise((ok) => {
-    const img = new Image();
-    img.onload = () => {
-      const tela = document.createElement('canvas');
-      tela.width = tela.height = px;
-      const ctx = tela.getContext('2d');
-      if (!ctx) return ok(null);
-      ctx.drawImage(img, 0, 0, px, px);
-      try {
-        ok(tela.toDataURL('image/png'));
-      } catch {
-        ok(null);
-      }
-    };
-    img.onerror = () => ok(null);
-    img.src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+
+/**
+ * O cursor recortado rente ao desenho, em cada tamanho pedido (32 e 64 px), com a ponta no lugar certo. O SVG vem
+ * desenhado em `grande` px sobre o viewBox -6..54 (a ponta do desenho fica em 5,5).
+ */
+async function cursorRecortado(svg: string, grande: number, tamanhos: number[]): Promise<{ imagens: string[]; ponta: { x: number; y: number } } | null> {
+  const img = await new Promise<HTMLImageElement | null>((ok) => {
+    const i = new Image();
+    i.onload = () => ok(i);
+    i.onerror = () => ok(null);
+    i.src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
   });
+  if (!img) return null;
+  const tela = document.createElement('canvas');
+  tela.width = tela.height = grande;
+  const ctx = tela.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, grande, grande);
+  const { data } = ctx.getImageData(0, 0, grande, grande);
+  let x0 = grande, y0 = grande, x1 = -1, y1 = -1;
+  for (let y = 0; y < grande; y++)
+    for (let x = 0; x < grande; x++)
+      if (data[(y * grande + x) * 4 + 3] > 12) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+  if (x1 < 0) return null;
+  const pontaG = { x: ((5 + 6) * grande) / 60, y: ((5 + 6) * grande) / 60 };
+  x0 = Math.min(x0, pontaG.x);
+  y0 = Math.min(y0, pontaG.y);
+  // quadrado (o cursor é quadrado), com 1 px de folga no tamanho final
+  const lado = Math.max(x1 - x0, y1 - y0) + 1;
+  const folga = lado / 30;
+  const ox = x0 - folga;
+  const oy = y0 - folga;
+  const L = lado + 2 * folga;
+  const imagens: string[] = [];
+  for (const t of tamanhos) {
+    const c = document.createElement('canvas');
+    c.width = c.height = t;
+    const k = c.getContext('2d');
+    if (!k) return null;
+    k.imageSmoothingQuality = 'high';
+    k.drawImage(tela, ox, oy, L, L, 0, 0, t, t);
+    imagens.push(c.toDataURL('image/png'));
+  }
+  const base = tamanhos[0];
+  return { imagens, ponta: { x: Math.max(0, Math.min(base - 1, Math.round(((pontaG.x - ox) / L) * base))), y: Math.max(0, Math.min(base - 1, Math.round(((pontaG.y - oy) / L) * base))) } };
 }
 
 let pedidoCursor = 0;
@@ -296,16 +327,19 @@ export async function aplicarCursorNoMouse(id: string, cor: string) {
   if (!cursorNoMouse() || window.matchMedia?.('(pointer: coarse)').matches) return tirar();
   const contorno = getComputedStyle(raiz).getPropertyValue('--contorno-cursor').trim() || '#fff';
   const tam = 32;
-  const svg = svgDoCursor(id, cor, contorno, tam);
+  // desenha grande, mede onde o desenho está de fato e recorta rente: o desenho enche o quadro do cursor (antes
+  // sobrava um terço de margem, e um cursor de ~20 px com traço de 1 px borrava)
+  const GRANDE = 480;
+  const svg = svgDoCursor(id, cor, contorno, GRANDE);
   if (!svg) return;
-  const ponta = Math.round(((5 + 6) * tam) / 60); // a ponta do desenho, na escala do cursor
-  const [um, dois] = await Promise.all([pngDoSvg(svg, tam), pngDoSvg(svg, tam * 2)]);
+  const quadros = await cursorRecortado(svg, GRANDE, [tam, tam * 2]);
   if (meu !== pedidoCursor) return; // outro pedido mais novo já está a caminho
-  if (!um) return tirar();
-  const opcoes = dois
-    ? [`image-set(url("${um}") 1x, url("${dois}") 2x) ${ponta} ${ponta}, auto`, `-webkit-image-set(url("${um}") 1x, url("${dois}") 2x) ${ponta} ${ponta}, auto`]
-    : [];
-  const valor = opcoes.find((v) => CSS.supports?.('cursor', v)) ?? `url("${um}") ${ponta} ${ponta}, auto`;
+  if (!quadros) return tirar();
+  const { imagens: [um, dois], ponta } = quadros;
+  // o -webkit-image-set primeiro: é o que o Safari e o Chrome sempre entenderam para cursor (com o image-set sem
+  // prefixo, o Mac podia ficar com a imagem de 1x esticada, borrada)
+  const opcoes = [`-webkit-image-set(url("${um}") 1x, url("${dois}") 2x) ${ponta.x} ${ponta.y}, auto`, `image-set(url("${um}") 1x, url("${dois}") 2x) ${ponta.x} ${ponta.y}, auto`];
+  const valor = opcoes.find((v) => CSS.supports?.('cursor', v)) ?? `url("${um}") ${ponta.x} ${ponta.y}, auto`;
   raiz.style.setProperty('--cursor-meu', valor);
   raiz.classList.add('com-cursor-meu');
 }
