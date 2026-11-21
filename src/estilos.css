@@ -1775,11 +1775,12 @@ html.com-cursor-meu { min-height: 100%; }
 .ficha.ocupada {
   clip-path: none; border-color: transparent; border-radius: 4px;
   background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha);
-  transform: rotate(-0.5deg) translateY(-2px);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent), -8px 14px 18px -12px var(--folha-sombra), 0 22px 26px -22px var(--folha-sombra);
+  position: relative; z-index: 2;
+  transform: translate(-6px, -4px) rotate(-0.8deg) scale(1.012);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent), -14px 18px 16px -12px var(--folha-sombra), -4px 30px 30px -24px var(--folha-sombra), 10px 14px 22px -18px color-mix(in srgb, var(--folha-sombra) 50%, transparent);
   animation: levantar-folha 0.5s var(--suave) both;
 }
-.ficha.ocupada:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 8%, transparent), -8px 16px 20px -12px var(--folha-sombra), 0 26px 30px -22px var(--folha-sombra); }
+.ficha.ocupada:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 8%, transparent), -16px 22px 18px -12px var(--folha-sombra), -4px 34px 32px -24px var(--folha-sombra), 10px 16px 24px -18px color-mix(in srgb, var(--folha-sombra) 50%, transparent); }
 .ficha.ocupada::after {
   content: ''; position: absolute; top: 0; right: 0; width: var(--orelha); height: var(--orelha); pointer-events: none;
   background: linear-gradient(to bottom left, var(--mesa) 50%, transparent 50%);
