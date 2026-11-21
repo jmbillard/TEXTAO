@@ -30,3 +30,17 @@ describe('mais de um tipo por arte', () => {
     expect(tiposDaArte('rodape,cartao').map(siglaDoTipo)).toEqual(['RDP', 'CRT']);
   });
 });
+
+import { partesDaArte } from '../src/editor/extensoes';
+
+describe('dividir a arte', () => {
+  it('pelas pontuações, sem os separadores', () => {
+    expect(partesDaArte('SÁBADO/AMANHÃ/HOJE').map((p) => p.texto)).toEqual(['SÁBADO', 'AMANHÃ', 'HOJE']);
+    expect(partesDaArte('Cartão tela cheia: 3 COZINHAS').map((p) => p.texto)).toEqual(['Cartão tela cheia', '3 COZINHAS']);
+    expect(partesDaArte('HOJE... DEPOIS DO JORNAL, 9:45').map((p) => p.texto)).toEqual(['HOJE', 'DEPOIS DO JORNAL', '9:45']);
+    expect(partesDaArte('FLAMENGO X VASCO - AO VIVO').map((p) => p.texto)).toEqual(['FLAMENGO X VASCO', 'AO VIVO']);
+    expect(partesDaArte('3 COZINHAS')).toHaveLength(1);
+    const t = 'A, B';
+    expect(partesDaArte(t).map((p) => t.slice(p.ini, p.fim))).toEqual(['A', 'B']);
+  });
+});

@@ -566,3 +566,15 @@ describe('convivência com o n8n: lê a produção de outra base, grava na sua',
     expect(pedidos.some((p) => p.url.pathname === '/api/table/tblProducao/record')).toBe(true);
   });
 });
+
+describe('checklist com mais de um tipo', () => {
+  it('a arte com dois tipos vira dois itens; com um tipo (ou sem), um item; a que já existe fica de fora', async () => {
+    const { itensDoChecklist } = await import('../servidor/trello.mjs' as string);
+    expect(itensDoChecklist([
+      { texto: 'HOJE', tipos: ['RDP', 'CRT'] },
+      { texto: 'AMANHÃ', tipos: ['LETT'] },
+      { texto: 'SÁBADO', tipos: [] },
+      { texto: 'DOMINGO', tipos: ['RDP', 'CRT'], existe: true },
+    ])).toEqual(['HOJE (RDP)', 'HOJE (CRT)', 'AMANHÃ', 'SÁBADO']);
+  });
+});

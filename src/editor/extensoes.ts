@@ -1,6 +1,8 @@
 import { Extension, Mark, Node, type Editor } from '@tiptap/core';
 import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { AddMarkStep, RemoveMarkStep } from '@tiptap/pm/transform';
+import { ySyncPluginKey } from 'y-prosemirror';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { ehVersoes, RE_LINK, sugerirSubtipo } from '../importar/interpretar';
 import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, type ContextoSonora } from '../modelo/sonora';
@@ -225,6 +227,18 @@ export function marcarArte(editor: Editor, subtipo?: SubtipoArte, programa = '')
   if (!faixas.length) return false;
   const tipo = editor.schema.marks.arte;
   const tr = editor.state.tr;
+  // um pedaço dentro de uma arte: a arte encolhe para ele ("Cartão tela cheia: 3 COZINHAS" → "3 COZINHAS"),
+  // com o mesmo id, tipos e observação. A arte inteira selecionada deixa de ser arte, como antes.
+  if (!subtipo && faixas.length === 1) {
+    const f = faixas[0];
+    const dona = listarMarcas(editor.state.doc, 'arte').find((m) => f.from >= m.from && f.to <= m.to);
+    if (dona && dona.texto.trim() !== f.texto) {
+      tr.removeMark(dona.from, dona.to, tipo);
+      tr.addMark(f.from, f.to, tipo.create({ ...dona.attrs }));
+      editor.view.dispatch(tr.setSelection(TextSelection.create(tr.doc, f.to)));
+      return true;
+    }
+  }
   if (!subtipo && selecaoTem(editor, 'arte')) {
     faixas.forEach((f) => tr.removeMark(f.from, f.to, tipo));
     editor.view.dispatch(tr);
@@ -314,6 +328,68 @@ export function atualizarMarca(editor: Editor, marca: Pick<MarcaNoDoc, 'nome' | 
   }
   editor.view.dispatch(tr);
 }
+
+/** Onde uma arte se divide: barras, vírgulas, ponto e vírgula, dois-pontos, travessões, reticências e fim de frase. */
+const RE_DIVISAO = /\s*(?:[/|;,•·]+|:\s|\s[-–—]\s|\.{2,}|…|[.!?](?=\s))\s*/g;
+
+/** Os pedaços de uma arte (início e fim no texto), sem os separadores e sem espaços nas pontas. */
+export function partesDaArte(texto: string): { ini: number; fim: number; texto: string }[] {
+  const out: { ini: number; fim: number; texto: string }[] = [];
+  let ini = 0;
+  const fechar = (fim: number) => {
+    const bruto = texto.slice(ini, fim);
+    const a = bruto.length - bruto.trimStart().length;
+    const miolo = bruto.trim();
+    if (miolo) out.push({ ini: ini + a, fim: ini + a + miolo.length, texto: miolo });
+  };
+  for (const m of texto.matchAll(RE_DIVISAO)) {
+    if (!m[0].trim()) continue;
+    fechar(m.index!);
+    ini = m.index! + m[0].length;
+  }
+  fechar(texto.length);
+  return out;
+}
+
+/** Divide a arte em várias, pelos pedaços: cada uma com os mesmos tipos e observação. @returns quantas ficaram */
+export function dividirArte(editor: Editor, marca: Pick<MarcaNoDoc, 'id'>): number {
+  const tipo = editor.schema.marks.arte;
+  const tr = editor.state.tr;
+  let n = 0;
+  for (const m of listarMarcas(editor.state.doc, 'arte').filter((x) => x.id === marca.id)) {
+    const partes = partesDaArte(editor.state.doc.textBetween(m.from, m.to, '\n', ' '));
+    if (partes.length < 2) continue;
+    tr.removeMark(m.from, m.to, tipo);
+    for (const p of partes) tr.addMark(m.from + p.ini, m.from + p.fim, tipo.create({ ...m.attrs, id: novoId(), grupo: null }));
+    n += partes.length;
+  }
+  if (n) editor.view.dispatch(tr);
+  return n;
+}
+
+/**
+ * Na revisão o texto fica como chegou: só se marca e classifica (artes e etiquetas). Passa o que só mexe em marcas,
+ * o que vem da edição simultânea e o que cai numa folha ainda vazia (colar o roteiro do Word).
+ */
+export const SoMarcas = Extension.create<{ aviso: () => void }>({
+  name: 'soMarcas',
+  addOptions: () => ({ aviso: () => {} }),
+  addProseMirrorPlugins() {
+    const aviso = this.options.aviso;
+    return [
+      new Plugin({
+        key: new PluginKey('soMarcas'),
+        filterTransaction(tr, state) {
+          if (!tr.docChanged || tr.getMeta(ySyncPluginKey) || tr.getMeta('permitirTexto')) return true;
+          if (!state.doc.textContent.trim()) return true;
+          if (tr.steps.every((st) => st instanceof AddMarkStep || st instanceof RemoveMarkStep)) return true;
+          aviso();
+          return false;
+        },
+      }),
+    ];
+  },
+});
 
 /** Troca a arte por um comentário (ou qualquer etiqueta), mantendo o texto. */
 export function trocarPorEtiqueta(editor: Editor, marca: MarcaNoDoc, tipoEtq: TipoEtiqueta) {

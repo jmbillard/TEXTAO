@@ -14,10 +14,10 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
-  Arte, atualizarMarca, Celula, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
-  prepararColagem, Reconhecimento, Teclado, type MarcaNoDoc,
+  Arte, atualizarMarca, Celula, dividirArte, Etiqueta, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
+  partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
@@ -28,6 +28,7 @@ import { nomeDaSigla,
 import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
+import { acharPrograma } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
 
@@ -131,6 +132,7 @@ function BarraFlutuante({ editor, x, y }: { editor: Editor; x: number; y: number
 /** Edição de uma marcação já feita. */
 function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: MarcaNoDoc; x: number; y: number; fechar: () => void }) {
   const arte = marca.nome === 'arte';
+  const pedacos = arte ? partesDaArte(marca.texto) : [];
   return (
     <div className="popover" role="dialog" aria-label="Editar marcação" style={{ left: x, top: y }}>
       <div className="popover-topo">
@@ -163,6 +165,11 @@ function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: 
         onKeyDown={(e) => e.key === 'Enter' && fechar()}
       />
       <div className="popover-acoes">
+        {pedacos.length > 1 && (
+          <button className="botao-texto" title={pedacos.map((p) => p.texto).join(' · ')} onClick={() => (dividirArte(editor, marca), fechar())}>
+            Dividir em {pedacos.length}
+          </button>
+        )}
         <span className="espaco" />
         <button className="botao-texto perigo" onClick={() => (atualizarMarca(editor, marca, null), fechar())}>Remover</button>
       </div>
@@ -347,6 +354,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const mexeu = useRef(false);
   // roteiros de antes da claquete não têm os campos novos
   const [meta, setMeta] = useState<Meta>(() => ({ ...metaVazia(), ...inicial.meta }));
+  // o texto da revisão não se digita: um aviso, no máximo a cada 6 s, para quem tentar
+  const ultimoAvisoTexto = useRef(0);
+  const avisoTexto = useRef(() => {});
+  avisoTexto.current = () => {
+    if (Date.now() - ultimoAvisoTexto.current < 6000) return;
+    ultimoAvisoTexto.current = Date.now();
+    avisar('Aqui o texto fica como chegou: dá para marcar e classificar as artes.');
+  };
   const [docVersao, setDocVersao] = useState(0);
   const [selVersao, setSelVersao] = useState(0);
   const [salvo, setSalvo] = useState(true);
@@ -388,6 +403,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     extensions: [
       Document, Paragraph, Text, Bold, Italic, HardBreak,
       Arte, Etiqueta, Linha, Celula, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
+      SoMarcas.configure({ aviso: () => avisoTexto.current() }),
       ...(sala
         ? [
             Collaboration.configure({ document: sala.doc, field: 'doc' }),
@@ -500,6 +516,18 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       })
       .catch(() => {});
   }, [liberado, leitura, meta.editor, meta.claquete]);
+  // sem atração: a lista de keys pode não ter carregado quando o roteiro chegou; tenta reconhecer de novo pela claquete
+  const procurouAtracao = useRef(false);
+  useEffect(() => {
+    if (!liberado || leitura || procurouAtracao.current || meta.programa || !meta.claquete) return;
+    procurouAtracao.current = true;
+    void atualizarVocabulario()
+      .then(() => {
+        const p = acharPrograma(meta.claquete) ?? (inicial.origem ? acharPrograma(inicial.origem.replace(/[_.]+/g, ' ')) : null);
+        if (p) mudarMetaRef.current?.({ programa: p.nome, tipoPrograma: p.tipo });
+      })
+      .catch(() => {});
+  }, [liberado, leitura, meta.programa, meta.claquete]); // eslint-disable-line react-hooks/exhaustive-deps
   const mudarMetaRef = useRef<((parte: Partial<Meta>, silencioso?: boolean) => void) | null>(null);
 
   /** `silencioso`: o app atualizando sozinho (ex.: o acervo); não conta como alguém ter mexido no roteiro. */
