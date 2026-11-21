@@ -1692,3 +1692,6 @@ html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !imp
 /* com o meu cursor no mouse, ele vale também sobre botões, links e itens da lista (sem piscar para a mãozinha);
    onde se digita ou se seleciona texto, fica o cursor de texto */
 html.com-cursor-meu body *:not(input):not(textarea):not(select):not([contenteditable='true']):not([contenteditable='true'] *) { cursor: var(--cursor-meu) !important; }
+/* o meu cursor vale na janela inteira, não só na altura do conteúdo (abaixo da fila voltava para a seta) */
+html { cursor: var(--cursor-meu, auto); }
+html.com-cursor-meu { min-height: 100%; }
