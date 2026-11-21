@@ -25,7 +25,7 @@ import { chaveDeArte } from '../modelo/diferencas';
 import {
   ETIQUETAS, metaVazia, NOMES_COLUNAS, nomeSubtipo, normalizarSubtipo, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
-import { Claquete, EscolhaDeTipo, Marca, Miniatura } from './pecas';
+import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
@@ -136,18 +136,21 @@ function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: 
       <div className="popover-topo">
         <Selo nome={arte ? 'arte' : (marca.attrs.tipo as NomeIcone)} />
         <span className="rotulo">{arte ? 'Arte' : 'Etiqueta'}</span>
-        <span className="campo-select forte">
-          {arte ? (
-            <select value={normalizarSubtipo(marca.attrs.subtipo)} aria-label="Tipo de arte" onChange={(e) => atualizarMarca(editor, marca, { subtipo: e.target.value, sugerido: false })}>
-              <option value="">Sem tipo</option>
-              {SUBTIPOS_ARTE.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-            </select>
-          ) : (
-            <select value={marca.attrs.tipo} aria-label="Tipo de etiqueta" onChange={(e) => atualizarMarca(editor, marca, { tipo: e.target.value })}>
-              {ETIQUETAS.map((s) => <option key={s.id} value={s.id}>{s.id === 'comentario' ? 'Comentário' : s.nome}</option>)}
-            </select>
-          )}
-        </span>
+        {arte ? (
+          <MenuDeOpcoes
+            rotulo="Tipo de arte"
+            valor={normalizarSubtipo(marca.attrs.subtipo)}
+            opcoes={[{ id: '', nome: 'Sem tipo' }, ...SUBTIPOS_ARTE.map((s) => ({ id: s.id, nome: s.nome }))]}
+            mudar={(v) => atualizarMarca(editor, marca, { subtipo: v, sugerido: false })}
+          />
+        ) : (
+          <MenuDeOpcoes
+            rotulo="Tipo de etiqueta"
+            valor={String(marca.attrs.tipo)}
+            opcoes={ETIQUETAS.map((s) => ({ id: s.id, nome: s.id === 'comentario' ? 'Comentário' : s.nome }))}
+            mudar={(v) => atualizarMarca(editor, marca, { tipo: v })}
+          />
+        )}
         <button className="botao-icone pequeno" aria-label="Fechar" onClick={fechar}><Icone nome="fechar" tam={14} /></button>
       </div>
       <input

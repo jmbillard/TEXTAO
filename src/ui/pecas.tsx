@@ -219,6 +219,61 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao }:
   );
 }
 
+/** Um menu de opções curto (sem busca), no visual dos outros menus do app: no lugar do seletor nativo do sistema. */
+export function MenuDeOpcoes({ rotulo, valor, opcoes, mudar }: { rotulo: string; valor: string; opcoes: { id: string; nome: string }[]; mudar: (v: string) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [marcado, setMarcado] = useState(0);
+  const caixa = useRef<HTMLDivElement>(null);
+  const atual = opcoes.find((o) => o.id === valor) ?? opcoes[0];
+  useEffect(() => {
+    if (!aberto) return;
+    setMarcado(Math.max(0, opcoes.findIndex((o) => o.id === valor)));
+    const fora = (e: MouseEvent) => !caixa.current?.contains(e.target as Node) && setAberto(false);
+    document.addEventListener('mousedown', fora);
+    return () => document.removeEventListener('mousedown', fora);
+  }, [aberto]); // eslint-disable-line react-hooks/exhaustive-deps
+  const escolher = (id: string) => {
+    mudar(id);
+    setAberto(false);
+  };
+  const teclado = (e: React.KeyboardEvent) => {
+    if (!aberto) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') (e.preventDefault(), setAberto(true));
+      return;
+    }
+    if (e.key === 'Escape') (e.preventDefault(), e.stopPropagation(), setAberto(false));
+    else if (e.key === 'ArrowDown') (e.preventDefault(), setMarcado((m) => Math.min(opcoes.length - 1, m + 1)));
+    else if (e.key === 'ArrowUp') (e.preventDefault(), setMarcado((m) => Math.max(0, m - 1)));
+    else if (e.key === 'Enter' || e.key === ' ') (e.preventDefault(), escolher(opcoes[marcado].id));
+  };
+  return (
+    <div className="menu-opcoes" ref={caixa} onKeyDown={teclado}>
+      <button type="button" className="menu-opcoes-botao" aria-label={rotulo} aria-haspopup="listbox" aria-expanded={aberto} onClick={() => setAberto((a) => !a)}>
+        <span>{atual?.nome}</span>
+        <Icone nome="baixo" tam={13} traco={2} />
+      </button>
+      {aberto && (
+        <ul className="escolha-nome-menu menu-opcoes-lista" role="listbox" aria-label={rotulo}>
+          {opcoes.map((o, k) => (
+            <li
+              key={o.id}
+              role="option"
+              aria-selected={o.id === valor}
+              className={k === marcado ? 'marcado' : ''}
+              onMouseEnter={() => setMarcado(k)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => escolher(o.id)}
+            >
+              {o.nome}
+              {o.id === valor && <Icone nome="certo" tam={13} traco={2.2} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Escolher um nome da lista do Teable (redatores, editores), com busca; vazio mostra os ??? à mão.
     Também aceita um nome que não está na lista. */
 export function EscolhaDeNome({ rotulo, valor, opcoes, mudar, semente }: { rotulo: string; valor: string; opcoes: () => string[]; mudar: (v: string) => void; semente: string }) {
