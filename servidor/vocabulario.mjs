@@ -2,6 +2,8 @@
    Só leitura. Sem configuração, ou se o Teable não responder, devolve o último resultado bom
    (ou listas vazias) e o app segue com o vocabulário embutido. */
 
+import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
+
 const VALIDADE_MS = 10 * 60 * 1000;
 const POR_PAGINA = 1000;
 const DIAS_PAUTA = 45; // o mesmo prazo da consulta no Postgres (pauta.mjs)
@@ -10,9 +12,9 @@ const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ')
 
 /** `cache` (opcional) divide o resultado entre instâncias; `copia` (opcional) guarda a última leitura boa
     no banco do app, para quando o Teable estiver fora do ar, inclusive logo depois de um reinício. */
-export function criarVocabulario(env, buscar = fetch, cache = null, copia = null) {
+export function criarVocabulario(env, buscar = fetch, cache = null, copia = null, consultar = null) {
   const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
-  const ligado = !!(base && env.TEABLE_TOKEN && (env.TEABLE_ATRACOES || env.TEABLE_REDATORES || env.TEABLE_EDITORES || env.TEABLE_PAUTA));
+  const ligado = !!((base && env.TEABLE_TOKEN && (env.TEABLE_ATRACOES || env.TEABLE_REDATORES || env.TEABLE_EDITORES || env.TEABLE_PAUTA)) || (env.TEABLE_PG_URL && env.TEABLE_PG_ATRACOES));
   const vazio = { programas: [], redatores: [], editores: [], pauta: [] };
   const daCopia = copia?.ler('vocabulario') ?? null;
   let guardado = daCopia ? { ...vazio, ...daCopia.dados } : vazio;
@@ -52,9 +54,43 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
     return todos;
   }
 
+  // pelo Postgres do Teable (só leitura), quando há: não depende do token da API nem da paginação
+  const esquema = nomesDoPg(env, '').esquema;
+  const tabelaPg = (v) => (esquema && nomeLimpoPg(v) ? `"${esquema}"."${nomeLimpoPg(v)}"` : null);
+  const pg = { atracoes: tabelaPg(env.TEABLE_PG_ATRACOES), redatores: tabelaPg(env.TEABLE_PG_REDATORES), editores: tabelaPg(env.TEABLE_PG_EDITORES) };
+  let banco = null;
+  async function sql(texto) {
+    if (consultar) return consultar(texto);
+    banco ??= await abrirPg(env.TEABLE_PG_URL);
+    return (await banco.query(texto)).rows;
+  }
+  /** As atrações com as keys (o vínculo pattern → KEY_atracoes) e a categoria, numa consulta. */
+  async function atracoesDoPg() {
+    const linhas = await sql(`SELECT "atracao", "categoria", "pattern" FROM ${pg.atracoes}`);
+    return linhas
+      .map((l) => ({
+        nome: texto(l.atracao),
+        chaves: [...new Set((Array.isArray(l.pattern) ? l.pattern : typeof l.pattern === 'string' ? JSON.parse(l.pattern || '[]') : l.pattern ? [l.pattern] : []).map((k) => texto(k)).filter(Boolean))],
+        ...(texto(l.categoria) ? { categoria: texto(l.categoria) } : {}),
+      }))
+      .filter((a) => a.nome)
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+
   async function carregar() {
     const novo = { ...guardado };
-    if (env.TEABLE_ATRACOES) {
+    let peloPg = false;
+    if (env.TEABLE_PG_URL && pg.atracoes) {
+      try {
+        novo.programas = await atracoesDoPg();
+        if (pg.redatores) novo.redatores = [...new Set((await sql(`SELECT "redator" FROM ${pg.redatores}`)).map((l) => texto(l.redator)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        if (pg.editores) novo.editores = [...new Set((await sql(`SELECT "editor" FROM ${pg.editores}`)).map((l) => texto(l.editor)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        peloPg = true;
+      } catch (e) {
+        console.warn(`[vocabulário] não li as atrações pelo Postgres, vou pela API: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    if (env.TEABLE_ATRACOES && !peloPg) {
       const campoChave = env.TEABLE_CAMPO_CHAVE || 'key';
       const campoNome = env.TEABLE_CAMPO_ATRACAO || 'atracoes';
       const porNome = new Map();
@@ -73,12 +109,12 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
         .map(([nome, chaves]) => ({ nome, chaves, ...(categorias.get(nome) ? { categoria: categorias.get(nome) } : {}) }))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     }
-    if (env.TEABLE_REDATORES) {
+    if (env.TEABLE_REDATORES && !(peloPg && pg.redatores)) {
       const campo = env.TEABLE_CAMPO_REDATOR || 'redator';
       const nomes = (await registros(env.TEABLE_REDATORES)).map((f) => texto(f[campo])).filter(Boolean);
       novo.redatores = [...new Set(nomes)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     }
-    if (env.TEABLE_EDITORES) {
+    if (env.TEABLE_EDITORES && !(peloPg && pg.editores)) {
       const nomes = (await registros(env.TEABLE_EDITORES)).map((f) => texto(f[env.TEABLE_CAMPO_EDITOR || 'editor'])).filter(Boolean);
       novo.editores = [...new Set(nomes)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     }

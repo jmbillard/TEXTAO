@@ -13,7 +13,7 @@ import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
 import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores';
 import { corDe } from './dados/colaboracao';
-import { programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
+import { atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
 /** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
     tudo passa pela revisão e vai pelo botão Enviar. */
@@ -163,7 +163,8 @@ export function App() {
         try {
           const roteiro = await lerRoteiro(arquivo, (detalhe) => setLendo({ nome: arquivo.name, detalhe }));
           // atração não reconhecida pela lista do navegador: o servidor procura nas keys do Teable
-          if (!roteiro.meta.programa && roteiro.meta.claquete) {
+          // (também quando o que achou não é do cadastro: o nome embutido "Eliana" não é a atração "Em Família com Eliana")
+          if ((!roteiro.meta.programa || !atracaoCadastrada(roteiro.meta.programa)) && roteiro.meta.claquete) {
             const nome = await atracaoNoServidor(roteiro.meta.claquete);
             if (nome) Object.assign(roteiro.meta, { programa: nome, tipoPrograma: programasConhecidos().find((x) => x.nome === nome)?.tipo ?? 'outro' });
           }

@@ -1689,3 +1689,6 @@ html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !imp
 .visor-original { position: relative; }
 .visor-docx { height: min(82vh, 1100px); border-radius: 4px; overflow: hidden; }
 .visor-docx > * { height: 100%; }
+/* com o meu cursor no mouse, ele vale também sobre botões, links e itens da lista (sem piscar para a mãozinha);
+   onde se digita ou se seleciona texto, fica o cursor de texto */
+html.com-cursor-meu body *:not(input):not(textarea):not(select):not([contenteditable='true']):not([contenteditable='true'] *) { cursor: var(--cursor-meu) !important; }

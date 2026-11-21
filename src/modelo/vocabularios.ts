@@ -135,6 +135,9 @@ export function registrarVocabulario(v: VocabularioExterno | null) {
   pauta = new Map((v?.pauta ?? []).map((p) => [p.chave, { editor: p.editor, claquete: p.claquete ?? '' }]));
 }
 
+/** A atração está no cadastro do Teable (e não é só um nome da lista embutida)? */
+export const atracaoCadastrada = (nome: string) => externos.some((e) => e.p.nome === nome);
+
 /** Programas para sugerir no cabeçalho: os da casa, quando existem; senão, os embutidos. */
 export const programasConhecidos = (): ProgramaVocab[] => (externos.length ? externos.map((e) => e.p) : PROGRAMAS);
 export const redatoresConhecidos = (): string[] => redatores;

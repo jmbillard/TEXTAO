@@ -286,12 +286,14 @@ function pngDoSvg(svg: string, px: number): Promise<string | null> {
 }
 
 let pedidoCursor = 0;
-/** Põe o meu cursor no meu mouse (onde a seta normal apareceria; mãozinha e cursor de texto continuam).
+/** Põe o meu cursor no meu mouse, inclusive sobre o que é clicável (sem piscar para a mãozinha a cada item); onde
+    se digita, fica o cursor de texto.
     Em tela de alta densidade (Retina), vai uma versão com o dobro de pixels, para não borrar. */
 export async function aplicarCursorNoMouse(id: string, cor: string) {
   const raiz = document.documentElement;
   const meu = ++pedidoCursor;
-  if (!cursorNoMouse() || window.matchMedia?.('(pointer: coarse)').matches) return raiz.style.removeProperty('--cursor-meu');
+  const tirar = () => (raiz.style.removeProperty('--cursor-meu'), raiz.classList.remove('com-cursor-meu'));
+  if (!cursorNoMouse() || window.matchMedia?.('(pointer: coarse)').matches) return tirar();
   const contorno = getComputedStyle(raiz).getPropertyValue('--contorno-cursor').trim() || '#fff';
   const tam = 32;
   const svg = svgDoCursor(id, cor, contorno, tam);
@@ -299,10 +301,11 @@ export async function aplicarCursorNoMouse(id: string, cor: string) {
   const ponta = Math.round(((5 + 6) * tam) / 60); // a ponta do desenho, na escala do cursor
   const [um, dois] = await Promise.all([pngDoSvg(svg, tam), pngDoSvg(svg, tam * 2)]);
   if (meu !== pedidoCursor) return; // outro pedido mais novo já está a caminho
-  if (!um) return raiz.style.removeProperty('--cursor-meu');
+  if (!um) return tirar();
   const opcoes = dois
     ? [`image-set(url("${um}") 1x, url("${dois}") 2x) ${ponta} ${ponta}, auto`, `-webkit-image-set(url("${um}") 1x, url("${dois}") 2x) ${ponta} ${ponta}, auto`]
     : [];
   const valor = opcoes.find((v) => CSS.supports?.('cursor', v)) ?? `url("${um}") ${ponta} ${ponta}, auto`;
   raiz.style.setProperty('--cursor-meu', valor);
+  raiz.classList.add('com-cursor-meu');
 }

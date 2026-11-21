@@ -19,3 +19,26 @@ describe('atração pela claquete', () => {
     expect(acharPrograma('Chamada especial Quem Ama Cuida hoje')?.nome).toBe('Quem Ama Cuida');
   });
 });
+
+// @ts-expect-error módulo JS sem tipos
+import { criarVocabulario } from '../servidor/vocabulario.mjs';
+
+describe('vocabulário pelo Postgres', () => {
+  it('monta as atrações com as keys (pattern) e a categoria, sem passar pela API', async () => {
+    const env = { TEABLE_URL: 'http://teable', TEABLE_TOKEN: 't', TEABLE_ATRACOES: 'tblKey', TEABLE_PG_URL: 'pg', TEABLE_PG_ESQUEMA: 'bse', TEABLE_PG_ATRACOES: 'atracoes', TEABLE_PG_REDATORES: 'redatores' };
+    const api: string[] = [];
+    const buscar = async (u: string) => (api.push(u), { ok: false, status: 403, json: async () => ({}) });
+    const consultar = async (sql: string) =>
+      sql.includes('"atracoes"')
+        ? [{ atracao: 'Em Família com Eliana', categoria: 'PROGRAMAS', pattern: [{ id: 'k1', title: 'ELIANA' }] }, { atracao: 'Chef de Alto Nível', categoria: null, pattern: '[{"id":"k2","title":"CHEF"}]' }]
+        : [{ redator: 'Guilherme Heizer' }];
+    const v = criarVocabulario(env, buscar, null, null, consultar);
+    const r = await v.ler();
+    expect(r.programas).toEqual([
+      { nome: 'Chef de Alto Nível', chaves: ['CHEF'] },
+      { nome: 'Em Família com Eliana', chaves: ['ELIANA'], categoria: 'PROGRAMAS' },
+    ]);
+    expect(r.redatores).toEqual(['Guilherme Heizer']);
+    expect(api.filter((u) => u.includes('tblKey'))).toHaveLength(0); // as keys não foram pela API
+  });
+});
