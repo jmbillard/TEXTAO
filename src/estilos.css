@@ -1771,24 +1771,39 @@ html.com-cursor-meu { min-height: 100%; }
 .lado-cad:has(.ligar-icone:hover) .ligar-sug, .lado-cad:has(.ligar-icone[aria-expanded='true']) .ligar-sug { opacity: 0; }
 
 /* ficha em revisão: a ficha fica onde está e ganha uma folha de papel por cima, como a tira de rascunho dos cadastros.
-   A folha (::after) e a sombra colada à esquerda (::before) ocupam a área da grade da marca até as artes, nas linhas
-   de cima: não passam pelo botão nem pela linha do Trello. isolation põe as duas entre o fundo da ficha e o conteúdo. */
-.ficha.ocupada { isolation: isolate; }
-.ficha.ocupada::before, .ficha.ocupada::after {
+   A folha (::after), a sombra colada à esquerda (::before) e a orelha ocupam a mesma área da grade: da marca até as
+   artes, e só as linhas de cima, sem a do Trello. A folha para antes do botão na mesma distância que vai do botão até a
+   borda da ficha, para o botão ter margens iguais dos dois lados. Sem o lixo, que dividiria esse espaço. A orelha sai do canto da
+   ficha e dobra o canto da folha. isolation põe folha e sombra entre o fundo da ficha e o conteúdo. */
+.ficha.ocupada { isolation: isolate; clip-path: none; }
+.ficha.ocupada::before, .ficha.ocupada::after, .ficha.ocupada .orelha {
   content: ''; position: absolute; grid-column: 1 / 5; grid-row: 1 / var(--fim-folha, 2); pointer-events: none;
-  inset: -6px -10px -7px -8px;
+  inset: -6px 14px -7px -8px;
 }
 .ficha.ocupada::after {
   z-index: -1; border-radius: 3px; background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha);
-  transform: rotate(-0.5deg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent);
+  transform: rotate(-0.35deg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent);
+  clip-path: polygon(0 0, calc(100% - var(--orelha)) 0, 100% var(--orelha), 100% 100%, 0 100%);
   animation: pousar-folha 0.5s var(--suave) both;
 }
 .ficha.ocupada::before {
-  z-index: -2; top: 6px; bottom: -3px; border-radius: 6px;
-  background: linear-gradient(90deg, var(--folha-sombra), color-mix(in srgb, var(--folha-sombra) 35%, transparent) 65%, transparent 98%);
-  transform-origin: right center; transform: translate(-7px, 3px) rotate(-0.6deg) skewY(-0.8deg); filter: blur(7px);
+  z-index: -2; top: 4px; bottom: -4px; right: 30%; border-radius: 6px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--folha-sombra) 55%, transparent), transparent 85%);
+  transform: translate(-4px, 2px) rotate(-0.4deg); filter: blur(6px);
   animation: sombra-solta 0.55s 0.08s var(--suave) both;
 }
+/* a orelha acompanha a folha: mesma área e mesma inclinação; a dobra fica no canto de cima à direita */
+.ficha.ocupada .orelha { width: auto; height: auto; background: none; border: 0; border-radius: 0; filter: none; transform: rotate(-0.35deg); }
+.ficha.ocupada .orelha::before {
+  content: ''; position: absolute; top: 0; right: 0; width: var(--orelha); height: var(--orelha); border-bottom-left-radius: 4px;
+  background: linear-gradient(to bottom left, transparent 50%, var(--verso) 50%);
+  border-left: 1px solid var(--orelha-linha); border-bottom: 1px solid var(--orelha-linha);
+  filter: drop-shadow(-1.5px 2px 1.5px rgb(26 25 22 / 22%));
+}
+.ficha.ocupada .orelha i { left: auto; bottom: auto; top: calc(var(--orelha) - 21px); right: calc(var(--orelha) - 15px); }
+.ficha.ocupada .ficha-lixo { display: none; }
+/* as artes saem de baixo da dobra: a folha termina antes da coluna delas e a orelha ocupa o canto */
+.ficha.ocupada .ficha-artes { margin-right: calc(var(--orelha) + 14px); }
 @keyframes pousar-folha { from { opacity: 0; transform: translateY(-4px) rotate(0); } }
-@media (max-width: 860px) { .ficha.ocupada::before, .ficha.ocupada::after { grid-column: 1 / 4; grid-row: 1 / 3; } }
+@media (max-width: 860px) { .ficha.ocupada::before, .ficha.ocupada::after, .ficha.ocupada .orelha { grid-column: 1 / -1; grid-row: 1 / 3; inset: -6px 0 -7px -8px; } }
 @media (prefers-reduced-motion: reduce) { .ficha.ocupada::before, .ficha.ocupada::after { animation: none; } }
