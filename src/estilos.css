@@ -1748,3 +1748,7 @@ html.com-cursor-meu { min-height: 100%; }
 .vaga .item-cad.rascunho .nota { animation-delay: 1.01s; }
 .lista-topo + .vaga .item-cad { border-top: 0; }
 @media (prefers-reduced-motion: reduce) { .vaga { animation: none; } }
+/* "novo pacote" só aparece ao passar o mouse na atração */
+.pacote-cad { opacity: 0; transition: opacity 0.15s; }
+.item-cad:hover .pacote-cad, .pacote-cad:focus-visible { opacity: 1; }
+@media (hover: none) { .pacote-cad { opacity: 1; } }
