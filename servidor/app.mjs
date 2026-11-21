@@ -775,6 +775,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
   }
 
+  const relatosDoNavegador = [];
   async function api(req, res, caminho) {
     const eu = await identificar(req, env);
     if (caminho === '/api/eu') {
@@ -785,6 +786,13 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
+    }
+    if (caminho === '/api/diagnostico/navegador' && req.method === 'POST') {
+      // o navegador conta o que tinha quando um roteiro chegou sem atração (os últimos 10 ficam no diagnóstico)
+      const corpo = (await lerCorpo(req).catch(() => ({}))) ?? {};
+      relatosDoNavegador.unshift({ em: new Date().toISOString(), quem: eu?.email ?? null, ...Object.fromEntries(Object.entries(corpo ?? {}).slice(0, 12).map(([k, v]) => [k, String(v).slice(0, 300)])) });
+      relatosDoNavegador.length = Math.min(relatosDoNavegador.length, 10);
+      return json(res, 200, { ok: true });
     }
     if (caminho === '/api/diagnostico') {
       // para conferir de fora, direto no navegador (o domínio já fica atrás do Cloudflare Access; aqui não há
@@ -807,6 +815,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         vocabulario: vocabulario.estado?.() ?? null,
         // o que o navegador acharia com a lista que recebe (vazio aqui = a lista não tem a key desta claquete)
         naListaDoNavegador: naLista,
+        relatosDoNavegador,
         exemplo: (voc.programas ?? []).filter((p) => /chef|eliana/i.test(p.nome)).map((p) => ({ nome: p.nome, chaves: p.chaves })),
         atracao: trello.diagnosticarAtracao ? await trello.diagnosticarAtracao(claquete) : null,
         postgres: { esquema: env.TEABLE_PG_ESQUEMA || '', atracoes: env.TEABLE_PG_ATRACOES || '', url: env.TEABLE_PG_URL ? 'configurada' : 'faltando' },

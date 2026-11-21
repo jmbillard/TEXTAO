@@ -135,6 +135,9 @@ export function registrarVocabulario(v: VocabularioExterno | null) {
   pauta = new Map((v?.pauta ?? []).map((p) => [p.chave, { editor: p.editor, claquete: p.claquete ?? '' }]));
 }
 
+/** Quantas atrações da casa o navegador tem agora (0 = a lista do Teable não chegou). */
+export const quantasAtracoes = () => externos.length;
+
 /** A atração está no cadastro do Teable (e não é só um nome da lista embutida)? */
 export const atracaoCadastrada = (nome: string) => externos.some((e) => e.p.nome === nome);
 

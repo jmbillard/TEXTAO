@@ -162,7 +162,7 @@ const noServidor: Armazenamento = {
 /** Nomes da casa e pauta da edição, quando o servidor está ligado ao Teable. A pauta muda ao longo do dia. */
 export async function atualizarVocabulario() {
   if (armazenamento.tipo !== 'servidor') return;
-  const v = await pedir<VocabularioExterno>('/api/vocabulario').catch(() => undefined);
+  const v = await pedir<VocabularioExterno>('/api/vocabulario').catch((e) => void (ultimoErroVocabulario = e instanceof Error ? e.message : String(e)));
   if (v) registrarVocabulario(v);
 }
 
@@ -321,7 +321,15 @@ export function apagarAoSair(id: string) {
 /** A atração da claquete pelas keys do Teable, perguntando ao servidor ('' se ele não achar ou não houver servidor). */
 export async function atracaoNoServidor(claquete: string): Promise<string> {
   if (armazenamento.tipo !== 'servidor' || !claquete.trim()) return '';
-  return (await pedir<{ atracao: string }>(`/api/atracao?claquete=${encodeURIComponent(claquete)}`).catch(() => ({ atracao: '' }))).atracao;
+  return (await pedir<{ atracao: string }>(`/api/atracao?claquete=${encodeURIComponent(claquete)}`).catch((e) => ((ultimoErroAtracao = e instanceof Error ? e.message : String(e)), { atracao: '' }))).atracao;
+}
+let ultimoErroAtracao = '';
+let ultimoErroVocabulario = '';
+
+/** Roteiro que chegou sem atração: conta ao servidor o que o navegador tinha (aparece em /api/diagnostico). */
+export function relatarSemAtracao(dados: Record<string, unknown>) {
+  if (armazenamento.tipo !== 'servidor') return;
+  void pedir('/api/diagnostico/navegador', { method: 'POST', body: JSON.stringify({ ...dados, erroAtracao: ultimoErroAtracao, erroVocabulario: ultimoErroVocabulario, pagina: location.pathname + location.hash }) }).catch(() => {});
 }
 
 /** A claquete já está na produção da arte (Teable)? Só com servidor; sem resposta, segue como novo. */

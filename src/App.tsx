@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Comparar } from './ui/Comparar';
 import { Cadastros } from './ui/Cadastros';
-import { armazenamento, atracaoNoServidor, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
+import { armazenamento, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -13,7 +13,7 @@ import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
 import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores';
 import { corDe } from './dados/colaboracao';
-import { atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
+import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
 /** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
     tudo passa pela revisão e vai pelo botão Enviar. */
@@ -165,8 +165,11 @@ export function App() {
           // atração não reconhecida pela lista do navegador: o servidor procura nas keys do Teable
           // (também quando o que achou não é do cadastro: o nome embutido "Eliana" não é a atração "Em Família com Eliana")
           if ((!roteiro.meta.programa || !atracaoCadastrada(roteiro.meta.programa)) && roteiro.meta.claquete) {
+            const antes = roteiro.meta.programa;
             const nome = await atracaoNoServidor(roteiro.meta.claquete);
             if (nome) Object.assign(roteiro.meta, { programa: nome, tipoPrograma: programasConhecidos().find((x) => x.nome === nome)?.tipo ?? 'outro' });
+            // ficou sem atração: o servidor fica sabendo o que o navegador tinha, para o diagnóstico
+            if (!nome) relatarSemAtracao({ claquete: roteiro.meta.claquete, arquivo: arquivo.name, achadoNoNavegador: antes, atracoesNoNavegador: quantasAtracoes(), porLista: acharPrograma(roteiro.meta.claquete)?.nome ?? '' });
           }
           const k = chaveDaClaquete(roteiro.meta.claquete);
           if (k && naFila.has(k)) roteiro.meta.substitui = naFila.get(k);
