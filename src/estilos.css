@@ -1769,3 +1769,21 @@ html.com-cursor-meu { min-height: 100%; }
 .ligar-icone:hover .ligar-texto { opacity: 1; transform: translate(0, -50%); }
 .ligar-sug { transition: opacity 0.15s, transform 0.15s, color 0.15s; }
 .lado-cad:has(.ligar-icone:hover) .ligar-sug, .lado-cad:has(.ligar-icone[aria-expanded='true']) .ligar-sug { opacity: 0; }
+
+/* ficha em revisão: uma folha solta por cima da lista, com o mesmo papel da tira de rascunho dos cadastros.
+   Sem o recorte (clip-path), que cortaria a sombra: o canto da orelha é pintado com a cor da mesa. */
+.ficha.ocupada {
+  clip-path: none; border-color: transparent; border-radius: 4px;
+  background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha);
+  transform: rotate(-0.5deg) translateY(-2px);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent), -8px 14px 18px -12px var(--folha-sombra), 0 22px 26px -22px var(--folha-sombra);
+  animation: levantar-folha 0.5s var(--suave) both;
+}
+.ficha.ocupada:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 8%, transparent), -8px 16px 20px -12px var(--folha-sombra), 0 26px 30px -22px var(--folha-sombra); }
+.ficha.ocupada::after {
+  content: ''; position: absolute; top: 0; right: 0; width: var(--orelha); height: var(--orelha); pointer-events: none;
+  background: linear-gradient(to bottom left, var(--mesa) 50%, transparent 50%);
+}
+.ficha.ocupada .orelha { top: 0; right: 0; z-index: 1; border-bottom-left-radius: 3px; }
+@keyframes levantar-folha { from { transform: none; box-shadow: 0 0 0 1px var(--regua); } }
+@media (prefers-reduced-motion: reduce) { .ficha.ocupada { animation: none; } }
