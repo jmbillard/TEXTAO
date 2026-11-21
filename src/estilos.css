@@ -1763,7 +1763,7 @@ html.com-cursor-meu { min-height: 100%; }
 .ligar-icone svg { overflow: visible; }
 .ligar-icone circle { fill: none; stroke: currentColor; stroke-width: 2; }
 .ligar-icone .curva { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 0.1 2.9; transition: stroke-dashoffset 0.4s; }
-.ligar-icone:hover, .ligar-icone[aria-expanded='true'] { color: var(--ultra); background: var(--ultra-suave); }
+.ligar-icone:hover, .ligar-icone[aria-expanded='true'] { color: var(--ultra); }
 .ligar-icone:hover .curva { stroke-dashoffset: -5.8; }
 .ligar-texto { position: absolute; right: calc(100% + 6px); top: 50%; transform: translate(6px, -50%); white-space: nowrap; font: 500 13px var(--sans); color: var(--ultra); opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.2s var(--suave); }
 .ligar-icone:hover .ligar-texto { opacity: 1; transform: translate(0, -50%); }
