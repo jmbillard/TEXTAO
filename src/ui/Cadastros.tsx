@@ -132,15 +132,20 @@ function MenuLigar({ atracoes, ligar, nova, fechar }: { atracoes: string[]; liga
   const [marcado, setMarcado] = useState(0);
   const caixa = useRef<HTMLDivElement>(null);
   const t = semAcento(busca.trim());
-  const achadas = atracoes.filter((a) => !t || semAcento(a).includes(t)).slice(0, 8);
-  const total = achadas.length + 1; // + Nova atração
+  const achadas = atracoes.filter((a) => !t || semAcento(a).includes(t));
+  // -1 é o "+ Nova atração", preso embaixo da busca; sem nenhuma achada, ele já vem marcado
+  const NOVA = -1;
   useEffect(() => {
     const fora = (e: MouseEvent) => !caixa.current?.contains(e.target as Node) && fechar();
     document.addEventListener('mousedown', fora);
     return () => document.removeEventListener('mousedown', fora);
   }, [fechar]);
-  useEffect(() => setMarcado(0), [busca]);
-  const escolher = (k: number) => (k < achadas.length ? ligar(achadas[k]) : nova());
+  useEffect(() => setMarcado(achadas.length ? 0 : NOVA), [busca]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lista = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    lista.current?.querySelector('.marcado')?.scrollIntoView({ block: 'nearest' });
+  }, [marcado]);
+  const escolher = (k: number) => (k >= 0 && k < achadas.length ? ligar(achadas[k]) : nova());
   return (
     <div className="escolha-nome-menu menu-ligar" ref={caixa}>
       <input
@@ -151,21 +156,21 @@ function MenuLigar({ atracoes, ligar, nova, fechar }: { atracoes: string[]; liga
         aria-label="Buscar atração"
         onKeyDown={(e) => {
           if (e.key === 'Escape') fechar();
-          else if (e.key === 'ArrowDown') (e.preventDefault(), setMarcado((m) => Math.min(total - 1, m + 1)));
-          else if (e.key === 'ArrowUp') (e.preventDefault(), setMarcado((m) => Math.max(0, m - 1)));
+          else if (e.key === 'ArrowDown') (e.preventDefault(), setMarcado((m) => Math.min(achadas.length - 1, m + 1)));
+          else if (e.key === 'ArrowUp') (e.preventDefault(), setMarcado((m) => Math.max(NOVA, m - 1)));
           else if (e.key === 'Enter') (e.preventDefault(), escolher(marcado));
         }}
       />
-      <ul role="listbox">
+      <button type="button" className={`nova-ligar ${marcado === NOVA ? 'marcado' : ''}`} onMouseEnter={() => setMarcado(NOVA)} onMouseDown={(e) => e.preventDefault()} onClick={nova}>
+        + Nova atração
+      </button>
+      <ul role="listbox" ref={lista}>
         {achadas.map((a, k) => (
           <li key={a} role="option" aria-selected={k === marcado} className={k === marcado ? 'marcado' : ''} onMouseEnter={() => setMarcado(k)} onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(k)}>
             {a}
           </li>
         ))}
         {!achadas.length && <li className="vazio-ligar">Nenhuma com “{busca}”</li>}
-        <li role="option" aria-selected={marcado === achadas.length} className={`nova-ligar ${marcado === achadas.length ? 'marcado' : ''}`} onMouseEnter={() => setMarcado(achadas.length)} onMouseDown={(e) => e.preventDefault()} onClick={nova}>
-          + Nova atração
-        </li>
       </ul>
     </div>
   );

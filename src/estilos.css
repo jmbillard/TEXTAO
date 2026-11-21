@@ -1723,7 +1723,9 @@ html.com-cursor-meu { min-height: 100%; }
 .ligar-sug:hover { color: var(--ultra-tinta); transform: rotate(-2deg) scale(1.06); }
 .ligar-a { position: relative; }
 .ligar-a .menu-ligar { position: absolute; right: 0; top: calc(100% + 6px); left: auto; z-index: 40; width: 260px; }
-.escolha-nome-menu li.nova-ligar { color: var(--tinta); font-weight: 600; border-top: 1px solid var(--regua); border-radius: 0 0 7px 7px; margin-top: 4px; }
+.menu-ligar .nova-ligar { display: block; width: 100%; text-align: left; margin: 6px 0 4px; padding: 7px 10px; border: 0; border-radius: 7px; background: none; font: 600 14px var(--sans); color: var(--ultra); cursor: pointer; }
+.menu-ligar .nova-ligar.marcado { background: var(--ultra-suave); }
+.menu-ligar ul { border-top: 1px solid var(--regua); padding-top: 4px; }
 .escolha-nome-menu li.vazio-ligar { color: var(--tinta3); cursor: default; }
 .ignorar-key { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; border: 0; background: none; color: var(--tinta3); cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s; }
 .item-cad.sem-cad:hover .ignorar-key, .ignorar-key:focus-visible { opacity: 1; }

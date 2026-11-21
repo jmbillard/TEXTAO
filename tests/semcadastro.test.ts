@@ -26,7 +26,7 @@ describe('keys sem cadastro', () => {
   });
   it('reconhece a key mesmo com a praça na frente da claquete', () => {
     const comKeys = [...programas, { nome: 'Futebol', chaves: ['FUT'] }, { nome: 'Roque Santeiro', chaves: ['ROQUE'] }];
-    expect(keysSemCadastro([c('Rio Fut(Brasileirao)21/11'), c('Rio Roque (Pilula) 10'), c('Rio Roque(Pilula)15'), c('Fut(Brasileirao)21/11 SP'), c('Roque SP')], comKeys)).toEqual([]);
+    expect(keysSemCadastro([c('Rio Fut(Brasileirao)21/11'), c('Rio Roque (Pilula) 10'), c('Rio Roque(Pilula)15'), c('Fut(Brasileirao)21/11 SP'), c('Roque SP'), c('Rio(Chef)manut_')], comKeys)).toEqual([]);
   });
   it('as ignoradas não voltam', () => {
     expect(keysSemCadastro([c('UPFRONT 2/12')], programas, new Set(['UPFRONT']))).toEqual([]);

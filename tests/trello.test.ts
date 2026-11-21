@@ -132,6 +132,7 @@ describe('chaves do n8n', () => {
   it('a claquete e a atração saem como o fluxo antigo escrevia', () => {
     expect(chaveN8n('Quem Ama(Prologo)26/10 Rede')).toBe('QUEM AMA PROLOGO 26 10 REDE');
     expect(chaveDaAtracao('Rio Festa na Praça 19/11 (AH)')).toBe('FESTA NA PRACA');
+    expect(chaveDaAtracao('Rio(Chef)manut_')).toBe('CHEF');
     expect(chaveDaAtracao('Fant(Abertura) 22/11')).toBe('FANT');
   });
 });

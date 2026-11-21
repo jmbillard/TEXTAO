@@ -19,6 +19,7 @@ describe('atração pela claquete', () => {
   it('a key vale depois da praça do Rio', () => {
     expect(acharPrograma('Rio Fut(Brasileirao)21/11')?.nome).toBe('Futebol');
     expect(acharPrograma('Rio Coracao (Pilula) 10')?.nome).toBe('Coração Acelerado');
+    expect(acharPrograma('Rio(Chef)manut_')?.nome).toBe('Chef de Alto Nível');
   });
   it('o SP no fim não atrapalha', () => {
     expect(acharPrograma('Fut(Brasileirao)21/11 SP')?.nome).toBe('Futebol');
