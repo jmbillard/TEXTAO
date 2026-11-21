@@ -1705,3 +1705,8 @@ html.com-cursor-meu { min-height: 100%; }
 .card-trello:hover .card-lixo, .card-lixo:focus-visible { opacity: 1; }
 .card-lixo:hover { color: var(--perigo); background: color-mix(in srgb, var(--perigo) 10%, transparent); }
 @media (hover: none) { .card-lixo { opacity: 1; } }
+/* tirar da fila: o item encolhe e esmaece antes de sair; a fila vazia entra devagar, sem a tela pular */
+@keyframes sumir-da-fila { to { opacity: 0; transform: scale(0.97); } }
+@keyframes entrar-suave { from { opacity: 0; transform: translateY(6px); } }
+.entra-suave { animation: entrar-suave 0.35s var(--suave) both; }
+@media (prefers-reduced-motion: reduce) { .entra-suave { animation: none; } }

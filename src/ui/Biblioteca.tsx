@@ -453,7 +453,7 @@ function CardTrello({ r, abrir, andamento, tirar }: { r: Resumo; abrir: () => vo
   // a entrega vem em UTC; o dia que vale é o de Brasília
   const prazo = !andamento?.entregue && andamento?.entrega && !caiu ? new Date(andamento.entrega).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '';
   return (
-    <li className={`card-trello ${caiu ? 'caiu' : ''}`}>
+    <li className={`card-trello ${caiu ? 'caiu' : ''}`} data-card={r.id}>
       {tirar && (
         <button className="card-lixo" title="Tirar da fila (o card no Trello continua lá)" aria-label={`Tirar ${claquete} da fila`} onClick={tirar}>
           <Icone nome="fechar" tam={11} traco={2.4} />
@@ -581,7 +581,17 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
       () => void carregar(),
       () => avisar('Não consegui tirar esse roteiro da fila.'),
     );
+  // tirar da fila: primeiro o item some com uma animação curta, depois sai da lista (sem a tela pular de uma vez)
+  const [sumindo, setSumindo] = useState<string | null>(null);
   const tirar = (r: Resumo) => {
+    if (sumindo) return;
+    setSumindo(r.id);
+    setTimeout(() => {
+      setSumindo(null);
+      tirarJa(r);
+    }, 260);
+  };
+  const tirarJa = (r: Resumo) => {
     if (saindo) {
       clearTimeout(prazoSaida.current);
       void apagarDeVez(saindo);
@@ -678,7 +688,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
     .filter((r) => !filtroEstado || (pendente.has(r.id) && (filtroEstado === 'revisar' ? pedeRevisao(r) : !pedeRevisao(r))));
   const { proximos, exibidos } = agruparPorDia(visiveis);
   const porId = new Map(todos.map((r) => [r.id, r]));
-  const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo && !saindo;
+  // durante o "desfazer" a fila já fica como vai ficar (sem trocar de tela de novo quando o prazo acaba)
+  const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo;
   let ordem = 0;
 
   const ficha = (r: Resumo) => {
@@ -785,11 +796,14 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
           </section>
         )}
 
+        {sumindo && <style>{`[data-ancora="ficha:${sumindo}"], [data-card="${sumindo}"] { animation: sumir-da-fila 0.26s var(--suave) forwards; pointer-events: none; }`}</style>}
         {vazio ? (
-          <ConviteDeArrastar
-            frases={CONVITES_FILA_VAZIA}
-            extra={colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
-          />
+          <div className="entra-suave">
+            <ConviteDeArrastar
+              frases={CONVITES_FILA_VAZIA}
+              extra={colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
+            />
+          </div>
         ) : (
           roteiros && (
             <section className="lista">
