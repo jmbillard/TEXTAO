@@ -862,6 +862,54 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
     if (!eu) return json(res, 401, { erro: 'Entre com a sua conta para ver os roteiros.' });
 
+    if (caminho === '/api/conferencia') {
+      // ponta a ponta no ambiente de verdade, depois de cada deploy: só lê, nada é criado nem alterado
+      const itens = [];
+      itens.push({ item: 'Login (Cloudflare Access)', ok: eu.origem === 'acesso', detalhe: `${eu.email} (${eu.origem})` });
+      const voc = await vocabulario.renovar?.().catch(() => null) ?? (await vocabulario.ler());
+      const ev = vocabulario.estado?.() ?? {};
+      itens.push({ item: 'Atrações e keys', ok: (voc.programas?.length ?? 0) > 0 && ev.origem !== 'cópia local antiga', detalhe: `${voc.programas?.length ?? 0} atrações (${ev.comKeys ?? '?'} com key), pelo ${ev.origem || 'cache'}${ev.erroPg ? ` · erro no Postgres: ${ev.erroPg}` : ''}${ev.erroApi ? ` · erro na API: ${ev.erroApi}` : ''}` });
+      itens.push({ item: 'Redatores e editores', ok: (voc.redatores?.length ?? 0) > 0 && (voc.editores?.length ?? 0) > 0, detalhe: `${voc.redatores?.length ?? 0} redatores, ${voc.editores?.length ?? 0} editores` });
+      // a API do Teable: o token lê cada tabela em que o app grava
+      const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
+      for (const [nome, id] of Object.entries({ TEABLE_CADASTRO: env.TEABLE_CADASTRO, TEABLE_ATRACOES: env.TEABLE_ATRACOES, TEABLE_REDATORES: env.TEABLE_REDATORES, TEABLE_EDITORES: env.TEABLE_EDITORES, TEABLE_KEY_EDITORES: env.TEABLE_KEY_EDITORES, TEABLE_ARTE_PRODUCAO: env.TEABLE_ARTE_PRODUCAO, TEABLE_ACERVO: env.TEABLE_ACERVO, TEABLE_PAUTA: env.TEABLE_PAUTA })) {
+        if (!id) {
+          itens.push({ item: `API do Teable: ${nome}`, ok: nome === 'TEABLE_PAUTA', detalhe: 'não configurada' });
+          continue;
+        }
+        try {
+          const r = await fetch(`${base}/api/table/${encodeURIComponent(id)}/field`, { headers: { authorization: `Bearer ${env.TEABLE_TOKEN}` }, signal: AbortSignal.timeout(8000) });
+          itens.push({ item: `API do Teable: ${nome}`, ok: r.ok, detalhe: r.ok ? `${(await r.json()).length} campos` : `respondeu ${r.status}${r.status === 401 || r.status === 403 ? ' (o token não tem acesso a esta tabela)' : ''}` });
+        } catch (e) {
+          itens.push({ item: `API do Teable: ${nome}`, ok: false, detalhe: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      itens.push({ item: 'Acervo de artes', ok: acervo.ligado && acervo.grava, detalhe: acervo.ligado ? (acervo.grava ? 'lê e grava' : 'só lê (falta TEABLE_ACERVO)') : 'desligado (falta TEABLE_PG_ACERVO)' });
+      if (trello.conferir) itens.push(...(await trello.conferir()));
+      // o reconhecimento de atração com dados reais: a mesma regra do navegador (key no começo; senão, o nome no meio)
+      if (trello.ultimasClaquetes) {
+        try {
+          const normal = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+          const lista = (voc.programas ?? []).map((p) => ({ nome: p.nome, n: normal(p.nome), chaves: (p.chaves ?? []).map(normal).filter(Boolean) }));
+          const achar = (claquete) => {
+            const n = normal(claquete);
+            let melhor = null;
+            for (const p of lista) for (const c of p.chaves) if ((n === c || n.startsWith(c + ' ')) && (!melhor || c.length > melhor.tam)) melhor = { nome: p.nome, tam: c.length };
+            if (melhor) return melhor.nome;
+            for (const p of lista) if (p.n.length >= 8 && ` ${n} `.includes(` ${p.n} `) && (!melhor || p.n.length > melhor.tam)) melhor = { nome: p.nome, tam: p.n.length };
+            return melhor?.nome ?? '';
+          };
+          const casos = await trello.ultimasClaquetes(500);
+          const errados = casos.map((c) => ({ ...c, achou: achar(c.claquete) })).filter((c) => c.achou !== c.atracao);
+          const pct = casos.length ? Math.round((100 * (casos.length - errados.length)) / casos.length) : 0;
+          itens.push({ item: 'Reconhecimento de atração (últimas claquetes reais)', ok: casos.length > 0 && pct >= 90, detalhe: `${casos.length - errados.length} de ${casos.length} iguais ao Teable (${pct}%)`, diferentes: errados.slice(0, 25).map((c) => `${c.claquete} → ${c.achou || 'nada'} (Teable: ${c.atracao})`) });
+        } catch (e) {
+          itens.push({ item: 'Reconhecimento de atração (últimas claquetes reais)', ok: false, detalhe: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      const falhas = itens.filter((i) => !i.ok).length;
+      return json(res, 200, { resumo: falhas ? `${falhas} de ${itens.length} itens com problema` : `tudo certo (${itens.length} itens)`, quando: new Date().toISOString(), itens });
+    }
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
     if (caminho === '/api/cores') return json(res, 200, q.cores.all());
     if (caminho === '/api/eu/cor') {

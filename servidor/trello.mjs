@@ -689,6 +689,68 @@ export function criarTrello(env, deps = {}) {
 
   /** A atração da claquete pelas keys no Postgres (o mesmo que o envio usa): o nome, ou '' se não achar. */
   const atracaoDaClaquete = async (claquete) => (await acharAtracao(claquete).catch(() => null))?.nome ?? '';
+  /**
+   * Conferência no ambiente de verdade: cada tabela do Postgres com as colunas que o app usa, o Trello (chave,
+   * listas e campos) e o Stirling. Só lê; nada é criado nem alterado. @returns [{ item, ok, detalhe }]
+   */
+  async function conferir() {
+    const out = [];
+    const item = async (nome, fn) => {
+      try {
+        const d = await fn();
+        out.push({ item: nome, ok: d !== false && !(d && d.ok === false), detalhe: typeof d === 'string' ? d : d?.detalhe ?? '' });
+      } catch (e) {
+        out.push({ item: nome, ok: false, detalhe: e instanceof Error ? e.message : String(e) });
+      }
+    };
+    const colunas = {
+      producao: ['card_ID', 'claquete', 'key', 'status', 'designers', 'entregue', 'data_entrega', 'data_entrada', 'artes', 'texto', 'doc', 'redator', 'editor', 'atracao', 'filme'],
+      leitura: ['card_ID', 'claquete', 'key', 'status', 'designers', 'entregue', 'data_entrega', 'data_entrada'],
+      redatores: ['redator', 'redator_ID', 'customField_ID'],
+      editores: ['editor', 'editor_ID', 'customField_ID'],
+      atracoes: ['atracao', 'pattern', 'projeto_win', 'output_win', 'tipo'],
+      prioridade: ['key'],
+      exibicoes: ['filme', 'sessao', 'data_de_exibicao', 'card_ID', 'output', 'labels'],
+    };
+    for (const [nome, cols] of Object.entries(colunas)) {
+      if (!t[nome]) {
+        out.push({ item: `Postgres: ${nome}`, ok: nome === 'leitura' || nome === 'exibicoes' || nome === 'prioridade', detalhe: 'não configurada' });
+        continue;
+      }
+      await item(`Postgres: ${nome}`, async () => {
+        const [esq, tab] = t[nome].replaceAll('"', '').split('.');
+        const tem = (await sql(`SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2`, [esq, tab])).map((l) => l.column_name);
+        if (!tem.length) return { ok: false, detalhe: `a tabela ${t[nome]} não existe (ou o usuário não lê)` };
+        const faltam = cols.filter((c) => !tem.includes(c));
+        const [{ n }] = await sql(`SELECT count(*)::int AS n FROM ${t[nome]}`);
+        return faltam.length ? { ok: false, detalhe: `faltam colunas: ${faltam.join(', ')}` } : `${n} linhas`;
+      });
+    }
+    if (!c.chave || !c.token) out.push({ item: 'Trello', ok: false, detalhe: 'sem TRELLO_KEY ou TRELLO_TOKEN' });
+    else {
+      await item('Trello: chave e token', async () => `conta ${(await trello('GET', '/members/me', { consulta: { fields: 'username' } })).username}`);
+      const listas = { ...Object.fromEntries(Object.entries(c.listas).map(([k, v]) => [`lista ${k}`, v])), ...Object.fromEntries(Object.entries(c.saidas ?? {}).map(([k, v]) => [`saída ${k}`, v])) };
+      for (const [nome, idLista] of Object.entries(listas))
+        if (idLista) await item(`Trello: ${nome}`, async () => `"${(await trello('GET', `/lists/${idLista}`, { consulta: { fields: 'name,closed' } })).name}"`);
+      const campos = Object.entries(c.campos).filter(([, v]) => typeof v === 'string' && v);
+      for (const [nome, idCampo] of campos) await item(`Trello: campo ${nome}`, async () => `"${(await trello('GET', `/customFields/${idCampo}`)).name}"`);
+    }
+    if (c.stirling.url)
+      await item('Stirling-PDF', async () => {
+        const r = await buscar(`${c.stirling.url}/api/v1/info/status`, { headers: c.stirling.chave ? { 'X-API-KEY': c.stirling.chave } : undefined, signal: AbortSignal.timeout(8000) });
+        return r.ok || r.status === 404 ? `respondeu ${r.status}` : { ok: false, detalhe: `respondeu ${r.status}` };
+      });
+    else out.push({ item: 'Stirling-PDF', ok: true, detalhe: 'não configurado (o PDF sai do texto do original)' });
+    return out;
+  }
+
+  /** As últimas claquetes da produção com a atração registrada (para conferir o reconhecimento com dados reais). */
+  async function ultimasClaquetes(n = 500) {
+    if (!t.leitura) return [];
+    const linhas = await sql(`SELECT "claquete", "atracao" FROM ${t.leitura} WHERE "claquete" IS NOT NULL ORDER BY "data_entrada" DESC NULLS LAST LIMIT ${Math.min(2000, Math.max(1, n | 0))}`);
+    return linhas.map((l) => ({ claquete: String(l.claquete ?? ''), atracao: lerLista(l.atracao)[0] ?? '' })).filter((l) => l.claquete && l.atracao);
+  }
+
   /** Para o diagnóstico: a busca da atração com a chave usada e o erro, se houver. */
   const diagnosticarAtracao = async (claquete) => {
     try {
@@ -698,5 +760,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

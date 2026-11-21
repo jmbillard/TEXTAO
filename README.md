@@ -127,6 +127,18 @@ excluídas, editor, atração…) vai no checklist, na descrição e nos campos 
   sem a lista de artes no fim. A diagramação é a do PROMeiro; o conteúdo e o sublinhado, os do original.
 - Roteiros guardados antes disso: a primeira versão do histórico (o que foi importado).
 
+## Conferência depois de cada deploy
+
+`/api/conferencia` (com login) testa o encaixe com os serviços de verdade, só lendo: o login do Cloudflare Access,
+a lista de atrações e keys (e de onde veio), o token da API do Teable em cada tabela em que o app grava, cada tabela
+do Postgres com as colunas que o app usa, o Trello (chave, cada lista de entrada e saída, cada campo), o Stirling,
+o acervo e o reconhecimento de atração nas últimas 500 claquetes reais da produção (comparado com a atração que está
+no Teable, com as diferentes listadas). Os testes automáticos (`npm test`) e a bateria de navegador rodam com
+Teable e Trello de mentira: conferem a lógica, não o ambiente.
+
+`/api/diagnostico` (sem o login do app) mostra a versão no ar, o login recebido do Access e por que foi recusado,
+e o que o navegador relatou quando um roteiro chegou sem atração.
+
 ## Convivência com o n8n
 
 Enquanto o fluxo antigo do n8n continua criando cards, o PROMeiro grava só na base dele e **lê** a produção da base
