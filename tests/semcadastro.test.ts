@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
-import { keysSemCadastro } from '../servidor/app.mjs';
+import { keysSemCadastro, sugerirAtracao } from '../servidor/app.mjs';
 
 const programas = [
   { nome: 'Sessão da Tarde', chaves: ['S.TARDE', 'S TARDE'] },
@@ -27,6 +27,11 @@ describe('keys sem cadastro', () => {
   it('reconhece a key mesmo com a praça na frente da claquete', () => {
     const comKeys = [...programas, { nome: 'Futebol', chaves: ['FUT'] }, { nome: 'Roque Santeiro', chaves: ['ROQUE'] }];
     expect(keysSemCadastro([c('Rio Fut(Brasileirao)21/11'), c('Rio Roque (Pilula) 10'), c('Rio Roque(Pilula)15'), c('Fut(Brasileirao)21/11 SP'), c('Roque SP'), c('Rio(Chef)manut_')], comKeys)).toEqual([]);
+  });
+  it('sugere a atração parecida para uma key (o balão de ligar usa a mesma regra)', () => {
+    expect(sugerirAtracao('ROQUE', programas)).toBe('Roque Santeiro');
+    expect(sugerirAtracao('STARDE', programas)).toBe('Sessão da Tarde');
+    expect(sugerirAtracao('UPFRONT', programas)).toBe('');
   });
   it('as ignoradas não voltam', () => {
     expect(keysSemCadastro([c('UPFRONT 2/12')], programas, new Set(['UPFRONT']))).toEqual([]);

@@ -124,7 +124,8 @@ type DadosClaquete = Pick<Meta, 'claquete' | 'redator' | 'editor' | 'dataExibica
 
 /** A claquete da chamada: nome, equipe e exibição. Com `mudar`, os campos são editáveis. */
 /** Com `comAtracao`, a claquete também mostra (e edita) a atração e a praça, como na revisão. */
-export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void }) {
+export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode }) {
+  const [ligando, setLigando] = useState(false);
   const data = useRef<HTMLInputElement>(null);
   const campo = (rotulo: string, chave: 'claquete' | 'redator' | 'editor', vazio: string, lista?: () => string[]) =>
     mudar && lista ? (
@@ -204,7 +205,10 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao }:
                 <span>{dados.programa}</span>
               )}
               {mudar && cadastrarAtracao && !programasConhecidos().some((p) => p.nome.toLowerCase() === (dados.programa ?? '').trim().toLowerCase()) && (
-                <button type="button" className="cadastrar-c" onClick={cadastrarAtracao}>cadastrar</button>
+                <span className="ancora-balao">
+                  <button type="button" className="cadastrar-c" aria-expanded={ligando} onClick={() => (balaoLigar ? setLigando((x) => !x) : cadastrarAtracao())}>cadastrar</button>
+                  {ligando && balaoLigar?.(() => setLigando(false))}
+                </span>
               )}
               <span className="pracas-c" role="radiogroup" aria-label="Praça">
                 {PRACAS.map((p) => (

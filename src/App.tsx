@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Comparar } from './ui/Comparar';
+import { Atalhos } from './ui/Atalhos';
 import { Cadastros } from './ui/Cadastros';
 import { armazenamento, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
@@ -332,6 +333,7 @@ export function App() {
       )}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete) => ir({ t: 'cadastros', aba: 'atracoes', claquete }) : undefined} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} />}
+      <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} />
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete }} />}
 
       <DesenhosDeCursor />

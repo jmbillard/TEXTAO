@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Vagas } from './vagas';
+import { BalaoLigar } from './BalaoLigar';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Bold from '@tiptap/extension-bold';
 import Document from '@tiptap/extension-document';
@@ -699,6 +700,49 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     avisar(como === 'existe' ? `"${a.texto}" já existe: sai do checklist.` : como === 'fora' ? `"${a.texto}" não vai ser produzida.` : `"${a.texto}" volta para o checklist.`);
   };
 
+  // várias de uma vez: Shift+clique seleciona um trecho da lista, Ctrl/⌘+clique soma uma; a barra marca todas juntas
+  const [selecionadas, setSelecionadas] = useState<string[]>([]);
+  const ancoraSel = useRef<string | null>(null);
+  const clicarArte = (a: (typeof artes)[number], e: React.MouseEvent) => {
+    if (leitura || !(e.shiftKey || e.metaKey || e.ctrlKey)) {
+      setSelecionadas([]);
+      ancoraSel.current = a.id;
+      return irParaArte(a);
+    }
+    e.preventDefault();
+    if (e.shiftKey && ancoraSel.current) {
+      const i = artes.findIndex((x) => x.id === ancoraSel.current);
+      const j = artes.findIndex((x) => x.id === a.id);
+      const [de, ate] = i < 0 ? [j, j] : [Math.min(i, j), Math.max(i, j)];
+      const trecho = artes.slice(de, ate + 1).map((x) => x.id);
+      setSelecionadas((l) => [...new Set([...l, ...trecho])]);
+    } else setSelecionadas((l) => (l.includes(a.id) ? l.filter((x) => x !== a.id) : [...l, a.id]));
+    ancoraSel.current = a.id;
+  };
+  const marcarVarias = (como: 'existe' | 'fora' | null) => {
+    const lista = artes.filter((a) => selecionadas.includes(a.id));
+    if (!lista.length) return;
+    const ja = new Set(meta.jaExiste ?? []);
+    const fora = new Set(meta.naoProduzir ?? []);
+    for (const a of lista) {
+      const k = chaveDeArte(a.texto);
+      ja.delete(k);
+      fora.delete(k);
+      if (como === 'existe') ja.add(k);
+      if (como === 'fora') fora.add(k);
+    }
+    mudarMeta({ jaExiste: ja.size ? [...ja] : undefined, naoProduzir: fora.size ? [...fora] : undefined });
+    setSelecionadas([]);
+    const n = plural(lista.length, 'arte', 'artes');
+    avisar(como === 'existe' ? `${n} já existem: saem do checklist.` : como === 'fora' ? `${n} não vão ser produzidas.` : `${n} voltam para o checklist.`);
+  };
+  useEffect(() => {
+    if (!selecionadas.length) return;
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && setSelecionadas([]);
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [selecionadas.length]);
+
   // com uma arte aberta na lista: 1–9 escolhe o tipo, setas trocam de arte, Esc fecha
   const tecladoArtes = useRef<(e: KeyboardEvent) => void>(() => {});
   tecladoArtes.current = (e: KeyboardEvent) => {
@@ -1142,7 +1186,30 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
           </article>
 
           <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={leitura || !liberado || undefined}>
-            <Claquete dados={meta} mudar={mudarMeta} comAtracao cadastrarAtracao={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined} />
+            <Claquete
+              dados={meta}
+              mudar={mudarMeta}
+              comAtracao
+              cadastrarAtracao={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined}
+              balaoLigar={
+                cadastrarAtracao && meta.claquete
+                  ? (fechar) => (
+                      <BalaoLigar
+                        claquete={meta.claquete}
+                        aberto={inicial.id}
+                        avisar={avisar}
+                        fechar={fechar}
+                        nova={() => (fechar(), cadastrarAtracao(meta.programa.trim() || meta.claquete))}
+                        ligado={(nome) => {
+                          fechar();
+                          const p = programasConhecidos().find((x) => x.nome === nome);
+                          mudarMeta({ programa: nome, ...(p ? { tipoPrograma: p.tipo } : {}) });
+                        }}
+                      />
+                    )
+                  : undefined
+              }
+            />
             {perguntaProducao && (
               <section className="cartao trello-lado pergunta-producao" aria-label="Já na produção da arte">
                 <a className="card-existente" href={perguntaProducao.url} target="_blank" rel="noreferrer" title="Já está no Trello">
@@ -1193,6 +1260,15 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                 {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
               </div>
               {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
+              {selecionadas.length > 0 && !leitura && (
+                <div className="barra-lote" role="toolbar" aria-label="Marcar as artes selecionadas">
+                  <span><b>{selecionadas.length}</b> {selecionadas.length === 1 ? 'selecionada' : 'selecionadas'}</span>
+                  <button type="button" className="botao-texto" onClick={() => marcarVarias('existe')}><Icone nome="certo" tam={13} traco={2.2} /> Já existem</button>
+                  <button type="button" className="botao-texto" onClick={() => marcarVarias('fora')}><Icone nome="fechar" tam={13} traco={2.2} /> Não produzir</button>
+                  <button type="button" className="botao-texto" onClick={() => marcarVarias(null)}><Icone nome="desfazer" tam={13} traco={2.2} /> Produzir</button>
+                  <button type="button" className="fechar-lote" aria-label="Limpar a seleção" title="Limpar (Esc)" onClick={() => setSelecionadas([])}><Icone nome="fechar" tam={12} traco={2.4} /></button>
+                </div>
+              )}
               <ol className={`artes ${TIPOS_NA_LISTA ? '' : 'so-lista'}`}>
                 {!TIPOS_NA_LISTA && (
                   <Vagas itens={artes} chave={(a) => a.id}>
@@ -1203,12 +1279,13 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                     return (
                     <li
                       key={a.id}
-                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''}`}
+                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
+                      aria-selected={selecionadas.length ? selecionadas.includes(a.id) : undefined}
                       title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo.split(', ').map(nomeDaSigla).join(', ')}` : ''}` : undefined}
                       onMouseEnter={() => setRealce(a.id)}
                       onMouseLeave={() => setRealce(null)}
                     >
-                      <button className="arte-linha" onClick={() => irParaArte(a)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
+                      <button className="arte-linha" onMouseDown={(e) => e.shiftKey && e.preventDefault()} onClick={(e) => clicarArte(a, e)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
                         <span className="b">{a.ordem}</span>
                         <span className="txt"><b>{marcada ? <Riscado>{a.texto}</Riscado> : a.texto}</b></span>
                       </button>

@@ -1601,6 +1601,7 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 .pracas-c button { height: 24px; padding: 0 8px; border-radius: 999px; border: 1px solid rgb(244 241 234 / 28%); background: none; color: rgb(244 241 234 / 60%); font: 600 11px var(--sans); cursor: pointer; }
 .pracas-c button:hover:not(:disabled) { color: #f4f1ea; border-color: rgb(244 241 234 / 55%); }
 .pracas-c button[aria-checked='true'] { background: #f4f1ea; border-color: #f4f1ea; color: #1a1916; }
+.pracas-c button[aria-checked='true']:hover { color: #1a1916; border-color: #f4f1ea; }
 @media (max-width: 640px) { .pular { display: none; } }
 /* pendências no alto do cartão de artes, com um separador antes da lista */
 .cartao > .pendencias-editor { margin-bottom: 4px; }
@@ -1850,3 +1851,67 @@ a.ficha-marca.trello { text-decoration: none; }
 /* lixeiras e ícones de apagar: só o ícone muda de cor no hover, sem fundo */
 .ficha-lixo:hover, .ficha-lixo:focus-visible { background: none; color: var(--perigo); }
 .limpar-campo:hover { background: none; }
+
+/* ---- balão de ligar a atração (ficha da fila e editor) ---- */
+.ancora-balao { position: relative; display: inline-flex; }
+.balao-ligar {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 70; width: 290px; max-width: 86vw; padding: 10px 8px 8px;
+  background: var(--cartao); color: var(--tinta); border-radius: 12px; box-shadow: var(--sombra-menu); animation: abrir-escolha 0.16s var(--suave);
+  text-align: left; font: 500 13px var(--sans);
+}
+.balao-topo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 7px; padding: 0 4px 8px; color: var(--tinta2); }
+.balao-topo input.key { width: auto; min-width: 4ch; height: 26px; }
+.balao-topo .ligar-sug { font-size: 20px; }
+.balao-ligar .escolha-nome-menu.menu-ligar { position: static; width: auto; max-width: none; padding: 0; background: none; box-shadow: none; animation: none; }
+.balao-carregando { margin: 4px 6px 6px; color: var(--tinta3); font-size: 12.5px; }
+/* a vaga que tem um balão aberto fica por cima das vizinhas (a animação das vagas isola cada uma numa camada) */
+.vaga-y:has(.balao-ligar, .escolha-nome-menu, .menu-ligar) { position: relative; z-index: 50; }
+.balao-topo input.key { border-color: var(--regua-forte); box-shadow: none; }
+.balao-topo input.key:focus { border-color: var(--ultra); }
+/* "R revisar o próximo", ao lado das contas da fila */
+.tecla-proximo { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: 500 13px var(--sans); color: var(--tinta3); cursor: pointer; }
+.tecla-proximo kbd { font: 600 11px var(--mono); padding: 1px 6px; border-radius: 5px; border: 1px solid var(--regua-forte); border-bottom-width: 2px; color: var(--tinta2); background: var(--cartao); }
+.tecla-proximo:hover { color: var(--tinta); }
+.tecla-proximo:hover kbd { border-color: var(--tinta3); }
+
+/* ---- atalhos: "?" no canto e o cartão ---- */
+.botao-atalhos {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 40;
+  width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--regua-forte); background: var(--cartao); color: var(--tinta3);
+  font: 600 14px var(--sans); cursor: pointer; opacity: 0.7; transition: opacity 0.15s, color 0.15s;
+}
+.botao-atalhos:hover { opacity: 1; color: var(--tinta); }
+.atalhos-fundo { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: color-mix(in srgb, var(--tinta) 18%, transparent); animation: aparecer-fundo 0.15s both; padding: 16px; }
+@keyframes aparecer-fundo { from { opacity: 0; } }
+.atalhos-cartao { width: min(440px, 100%); background: var(--cartao); border-radius: 14px; box-shadow: var(--sombra-menu); padding: 18px 20px 14px; animation: abrir-escolha 0.18s var(--suave); }
+.atalhos-cartao h2 { margin: 0 0 12px; font: 400 22px/1.2 var(--serifa); display: flex; align-items: baseline; gap: 10px; }
+.atalhos-cartao h2 span { font: 600 10.5px var(--sans); letter-spacing: 0.09em; text-transform: uppercase; color: var(--tinta3); }
+.atalhos-cartao dl { margin: 0; display: flex; flex-direction: column; }
+.atalhos-cartao dl > div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; align-items: center; padding: 7px 0; border-top: 1px dashed var(--regua); }
+.atalhos-cartao dl > div:first-child { border-top: 0; }
+.atalhos-cartao dt { margin: 0; }
+.atalhos-cartao dd { margin: 0; font-size: 13.5px; color: var(--tinta2); }
+.atalhos-cartao kbd { font: 600 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; border: 1px solid var(--regua-forte); border-bottom-width: 2px; color: var(--tinta); background: var(--papel); white-space: nowrap; }
+
+/* ---- várias artes de uma vez (Shift+clique) ---- */
+.artes.so-lista li.selecionada, .artes.so-lista li.selecionada:hover { background: color-mix(in srgb, var(--ultra) 13%, transparent); }
+.artes.so-lista li.selecionada .b { box-shadow: inset 0 0 0 1.5px var(--ultra); }
+.barra-lote {
+  position: sticky; top: 8px; z-index: 5; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 8px; padding: 8px 10px 8px 12px;
+  border-radius: 10px; background: var(--tinta); color: var(--papel); font: 500 12.5px var(--sans); animation: abrir-escolha 0.16s var(--suave);
+}
+.barra-lote b { font: 600 13px var(--mono); }
+.barra-lote .botao-texto { display: inline-flex; align-items: center; gap: 4px; color: var(--papel); font-weight: 600; font-size: 12.5px; text-decoration: none; }
+.barra-lote .botao-texto:hover { text-decoration: underline; text-underline-offset: 3px; }
+.barra-lote .fechar-lote { margin-left: auto; border: 0; background: none; color: inherit; opacity: 0.7; cursor: pointer; display: grid; place-items: center; padding: 2px; }
+.barra-lote .fechar-lote:hover { opacity: 1; }
+body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+/* dentro da claquete escura, o balão não herda as cores dela */
+.balao-ligar, .balao-ligar .balao-topo > span { color: var(--tinta2); }
+.balao-ligar input.key {
+  color: var(--tinta); background: var(--papel); border: 1px solid var(--regua-forte); border-radius: 6px; padding: 0 7px;
+  font: 600 12px var(--mono); letter-spacing: 0; text-transform: uppercase; outline: 0;
+}
+.balao-ligar input.key:focus { border-color: var(--ultra); }
+.balao-ligar .ligar-sug { color: var(--ultra); }
+.balao-ligar li { color: var(--tinta); }

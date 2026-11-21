@@ -219,6 +219,24 @@ const semAcentoMin = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g,
  * da atração no meio), com quantos roteiros, até dois exemplos e uma atração parecida, se houver.
  * @param claquetes [{ claquete, em }]  @param programas [{ nome, chaves }]  @param ignoradas Set de keys
  */
+/** A atração parecida com a key: a key (sem espaços) tem um bom pedaço em comum com o nome, ou uma palavra da key
+    começa uma do nome. Vazio quando nenhuma chega perto. */
+export function sugerirAtracao(key, programas) {
+  const k = semAcentoMin(key);
+  const kJunto = k.replace(/ /g, '');
+  let melhor = null;
+  for (const p of programas) {
+    const n = semAcentoMin(p.nome);
+    const nJunto = n.replace(/ /g, '');
+    let comum = 0;
+    for (let i = 0; i < kJunto.length; i++) for (let j = i + comum + 1; j <= kJunto.length; j++) if (nJunto.includes(kJunto.slice(i, j))) comum = j - i;
+    const porPalavra = k.split(' ').some((w) => w.length >= 4 && n.split(' ').some((x) => x.startsWith(w)));
+    const nota = Math.max(comum / Math.max(4, kJunto.length), porPalavra ? 0.75 : 0);
+    if (nota >= 0.7 && (!melhor || nota > melhor.nota)) melhor = { nome: p.nome, nota };
+  }
+  return melhor?.nome ?? '';
+}
+
 export function keysSemCadastro(claquetes, programas, ignoradas = new Set()) {
   const lista = programas.map((p) => ({ nome: p.nome, n: semAcentoMin(p.nome), chaves: (p.chaves ?? []).map(semAcentoMin).filter(Boolean) }));
   // compara a claquete inteira e também a key dela (sem a praça na frente: "Rio Fut(...)" → FUT)
@@ -238,21 +256,7 @@ export function keysSemCadastro(claquetes, programas, ignoradas = new Set()) {
     if (!g.claquetes.has(c) || g.claquetes.get(c) < em) g.claquetes.set(c, em);
     grupos.set(key, g);
   }
-  // atração parecida: a key (sem espaços) tem um bom pedaço em comum com o nome, ou uma palavra da key começa uma do nome
-  const parecida = (key) => {
-    const k = semAcentoMin(key);
-    const kJunto = k.replace(/ /g, '');
-    let melhor = null;
-    for (const p of lista) {
-      const nJunto = p.n.replace(/ /g, '');
-      let comum = 0;
-      for (let i = 0; i < kJunto.length; i++) for (let j = i + comum + 1; j <= kJunto.length; j++) if (nJunto.includes(kJunto.slice(i, j))) comum = j - i;
-      const porPalavra = k.split(' ').some((w) => w.length >= 4 && p.n.split(' ').some((x) => x.startsWith(w)));
-      const nota = Math.max(comum / Math.max(4, kJunto.length), porPalavra ? 0.75 : 0);
-      if (nota >= 0.7 && (!melhor || nota > melhor.nota)) melhor = { nome: p.nome, nota };
-    }
-    return melhor?.nome ?? '';
-  };
+  const parecida = (key) => sugerirAtracao(key, programas);
   return [...grupos.values()]
     .map((g) => {
       const ordem = [...g.claquetes].sort((a, b) => (a[1] < b[1] ? 1 : -1));
@@ -1033,6 +1037,13 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       if (acervo.ligado && acervo.grava) void registrarNoAcervo(dados);
       return json(res, 200, dados);
     }
+    if (caminho === '/api/cadastros/sugerir' && req.method === 'GET') {
+      // a key de uma claquete e a atração parecida, para ligar sem sair da revisão
+      const claquete = String(new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
+      const key = semAcentoMin(chaveDaAtracao(claquete)).toUpperCase();
+      const voc = await vocabulario.ler();
+      return json(res, 200, { key, sugestao: key ? sugerirAtracao(key, voc.programas ?? []) : '' });
+    }
     if (caminho === '/api/cadastros/sem-cadastro' && req.method === 'GET') {
       // as keys que aparecem nas claquetes dos últimos 90 dias (produção e fila) e não são de nenhuma atração
       const desde = new Date(Date.now() - 90 * 86_400_000).toISOString();
@@ -1146,7 +1157,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
           }
           mudouAcesso ||= antes !== JSON.stringify(q.compartilhadoCom.all(id));
         }
-        if (atual && (atual.meta !== meta || atual.doc !== doc)) {
+        // o que o app preenche sozinho (a atração reconhecida depois de um cadastro) não é revisão de ninguém
+        if (atual && !corpo.automatico && (atual.meta !== meta || atual.doc !== doc)) {
           novoRevisor = atual.revisado_email !== eu.email;
           q.revisou.run(eu.email, eu.nome, id);
         }

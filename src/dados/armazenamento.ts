@@ -56,7 +56,8 @@ export interface Armazenamento {
   listar(): Promise<Resumo[]>;
   ler(id: string): Promise<Roteiro | undefined>;
   /** `marco` registra uma versão no histórico (ex.: "exportou"). */
-  salvar(roteiro: Roteiro, marco?: string): Promise<void>;
+  /** automatico: o app preencheu sozinho (não conta como revisão de quem está usando). */
+  salvar(roteiro: Roteiro, marco?: string, automatico?: boolean): Promise<void>;
   apagar(id: string): Promise<void>;
   versoes(id: string): Promise<Versao[]>;
   lerVersao(id: string, n: number): Promise<ConteudoVersao>;
@@ -145,10 +146,10 @@ const noServidor: Armazenamento = {
   listar: () => pedir<Resumo[]>('/api/roteiros'),
   andamento: () => pedir<Record<string, Andamento>>('/api/andamento').catch(() => ({})),
   ler: (id) => pedir<Roteiro>(`/api/roteiros/${encodeURIComponent(id)}`).catch((e: { status?: number }) => (e.status === 404 ? undefined : Promise.reject(e))),
-  async salvar(roteiro, marco) {
+  async salvar(roteiro, marco, automatico) {
     await pedir(`/api/roteiros/${encodeURIComponent(roteiro.id)}`, {
       method: 'PUT',
-      body: JSON.stringify({ roteiro, nArtes: exportar(roteiro).artes.length, marco }),
+      body: JSON.stringify({ roteiro, nArtes: exportar(roteiro).artes.length, marco, ...(automatico ? { automatico: true } : {}) }),
     });
   },
   async apagar(id) {
@@ -266,6 +267,8 @@ export interface KeySemCadastro {
   /** Uma atração cadastrada parecida (o nome), ou ''. */
   sugestao: string;
 }
+/** A key de uma claquete e a atração parecida (para ligar sem sair da revisão). */
+export const sugerirLigacao = (claquete: string) => pedir<{ key: string; sugestao: string }>(`/api/cadastros/sugerir?claquete=${encodeURIComponent(claquete)}`);
 export const lerSemCadastro = () => pedir<KeySemCadastro[]>('/api/cadastros/sem-cadastro');
 export const ignorarKey = (key: string) => pedir<{ ok: true }>('/api/cadastros/ignorar', { method: 'POST', body: JSON.stringify({ key }) });
 export const designorarKey = (key: string) => pedir<{ ok: true }>(`/api/cadastros/ignorar/${encodeURIComponent(key)}`, { method: 'DELETE' });

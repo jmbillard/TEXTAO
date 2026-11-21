@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Vagas } from './vagas';
+import { reconhecerNaFila } from '../dados/reconhecer';
 import {
-  armazenamento,
-  atualizarVocabulario,
   cadastrar,
   darKey,
   lerCadastros,
@@ -19,7 +18,6 @@ import {
   lerSemCadastro,
   type KeySemCadastro,
 } from '../dados/armazenamento';
-import { exportar, pendencias } from '../modelo/exportar';
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
 import { Icone } from './icones';
 import { Marca } from './pecas';
@@ -127,7 +125,7 @@ function Abas({ aba, mudar, totais, sem }: { aba: TipoCadastro; mudar: (a: TipoC
 }
 
 /** "Ligar a…": a busca nas atrações, com "+ Nova atração" sempre no fim. */
-function MenuLigar({ atracoes, ligar, nova, fechar }: { atracoes: string[]; ligar: (nome: string) => void; nova: () => void; fechar: () => void }) {
+export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { atracoes: string[]; ligar: (nome: string) => void; nova: () => void; fechar: () => void; dentro?: boolean }) {
   const [busca, setBusca] = useState('');
   const [marcado, setMarcado] = useState(0);
   const caixa = useRef<HTMLDivElement>(null);
@@ -136,10 +134,11 @@ function MenuLigar({ atracoes, ligar, nova, fechar }: { atracoes: string[]; liga
   // -1 é o "+ Nova atração", preso embaixo da busca; sem nenhuma achada, ele já vem marcado
   const NOVA = -1;
   useEffect(() => {
+    if (dentro) return; // dentro de um balão, quem fecha com o clique fora é o balão
     const fora = (e: MouseEvent) => !caixa.current?.contains(e.target as Node) && fechar();
     document.addEventListener('mousedown', fora);
     return () => document.removeEventListener('mousedown', fora);
-  }, [fechar]);
+  }, [fechar, dentro]);
   useEffect(() => setMarcado(achadas.length ? 0 : NOVA), [busca]); // eslint-disable-line react-hooks/exhaustive-deps
   const lista = useRef<HTMLUListElement>(null);
   useEffect(() => {
@@ -444,27 +443,6 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   };
 
   /** Atração nova: os roteiros da fila que estavam sem atração e começam com uma das keys passam a ter. */
-  const reconhecerNaFila = async (nome: string, keys: string[]) => {
-    let n = 0;
-    try {
-      await atualizarVocabulario();
-      for (const r of await armazenamento.listar()) {
-        if (r.meta.programa || !r.podeEditar) continue;
-        const k = chaveDaClaquete(r.meta.claquete ?? '');
-        if (!keys.some((key) => k === key || k.startsWith(key + ' '))) continue;
-        const completo = await armazenamento.ler(r.id);
-        if (!completo) continue;
-        const novo = { ...completo, meta: { ...completo.meta, programa: nome } };
-        novo.meta.revisar = pendencias(exportar(novo));
-        await armazenamento.salvar(novo);
-        n++;
-      }
-    } catch {
-      /* reconhecer é um bônus: o cadastro já foi feito */
-    }
-    return n;
-  };
-
   /** Salva o formulário da aba: a folha assenta, a lista recarrega e o item novo pisca. */
   const salvar = async () => {
     if (salvando) return;
@@ -479,7 +457,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         msg = `${r.nome} cadastrada.`;
         // reconhecer os roteiros da fila leva um tempo: acontece depois que a folha assenta
         depois = async () => {
-          const n = await reconhecerNaFila(r.nome, r.keys);
+          const n = await reconhecerNaFila(r.nome);
           if (n) avisar(`${r.nome}: ${plural(n, 'roteiro reconhecido', 'roteiros reconhecidos')} na fila.`);
         };
       } else if (aba === 'redatores') {
@@ -516,7 +494,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       if (tipo === 'atracoes') {
         const a = dados?.atracoes.find((x) => x.id === id);
         if (a) {
-          const n = await reconhecerNaFila(a.nome, [k.key]);
+          const n = await reconhecerNaFila(a.nome);
           if (n) avisar(`${plural(n, 'roteiro reconhecido', 'roteiros reconhecidos')} na fila.`);
         }
       }

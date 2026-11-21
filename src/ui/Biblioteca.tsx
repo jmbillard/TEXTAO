@@ -7,6 +7,7 @@ import { exportar, pendencias, travamTrello } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { Vagas } from './vagas';
+import { BalaoLigar } from './BalaoLigar';
 import { agruparPorDia, noTrello, pedeRevisao, pendentes, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
@@ -316,7 +317,8 @@ interface JaNaProducao {
   comparar: () => void;
 }
 
-function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: () => void }) {
+function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: () => void; avisar?: (t: string) => void; ligou?: () => void }) {
+  const [ligando, setLigando] = useState(false);
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   // já no Trello: a ficha descansa (sem alerta, sem pendências, "Abrir" discreto)
@@ -421,9 +423,20 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
           <AvisoTrello r={r} mandar={mandar} />
           {revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}
           {!r.meta.programa && cadastrarAtracao && !mandada && (
-            <button type="button" className="atalho-cadastro" onClick={cadastrarAtracao}>
-              <Icone nome="mais" tam={12} traco={2.4} /> cadastrar a atração
-            </button>
+            <span className="ancora-balao">
+              <button type="button" className="atalho-cadastro" aria-expanded={ligando} onClick={() => (avisar ? setLigando((x) => !x) : cadastrarAtracao())}>
+                <Icone nome="mais" tam={12} traco={2.4} /> cadastrar a atração
+              </button>
+              {ligando && avisar && r.meta.claquete && (
+                <BalaoLigar
+                  claquete={r.meta.claquete}
+                  avisar={avisar}
+                  fechar={() => setLigando(false)}
+                  nova={() => (setLigando(false), cadastrarAtracao())}
+                  ligado={() => (setLigando(false), ligou?.())}
+                />
+              )}
+            </span>
           )}
         </span>
       )}
@@ -520,6 +533,20 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
   const [deOutros, setDeOutros] = useState<string[]>([]);
   const [colegas, setColegas] = useState<{ nome: string; email: string }[]>([]);
   const [noRoteiro, setNoRoteiro] = useState<Record<string, { nome: string; email: string }[]>>({});
+  // R: abre o próximo roteiro que pede revisão e que ninguém está vendo (o primeiro da fila, na ordem da tela)
+  const proximoParaRevisar = useRef<string | null>(null);
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'r' || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const alvo = e.target as HTMLElement | null;
+      if (alvo?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (!proximoParaRevisar.current) return;
+      e.preventDefault();
+      abrir(proximoParaRevisar.current);
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [abrir]);
   const [ponteiros, setPonteiros] = useState<Record<string, PonteiroDeAlguem>>({});
   const [fila, setFila] = useState<Fila | null>(null);
   // muda quando alguém troca a cor de destaque: as fichas e os ponteiros se redesenham
@@ -686,6 +713,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
     .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo))
     .filter((r) => !filtroEstado || (pendente.has(r.id) && (filtroEstado === 'revisar' ? pedeRevisao(r) : !pedeRevisao(r))));
   const { proximos, exibidos } = agruparPorDia(visiveis);
+  proximoParaRevisar.current =
+    proximos.flatMap((g) => g.itens).find((r) => pendente.has(r.id) && pedeRevisao(r) && !noTrello(r) && !noRoteiro[r.id]?.length)?.id ?? null;
   const porId = new Map(todos.map((r) => [r.id, r]));
   // durante o "desfazer" a fila já fica como vai ficar (sem trocar de tela de novo quando o prazo acaba)
   const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo;
@@ -706,6 +735,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
         producao={r.meta.naProducao && (r.podeEditar || r.meu || aberto) ? { comparar: () => comparar(r.id) } : undefined}
         mandar={temTrello() && (r.podeEditar || r.meu || aberto) ? () => mandar(r) : undefined}
         cadastrarAtracao={temCadastros() && r.meta.claquete ? () => cadastros({ aba: 'atracoes', claquete: r.meta.claquete }) : undefined}
+        avisar={avisar}
+        ligou={() => void carregar()}
         acoes={
           (r.meu || aberto) && (
             <button className="botao-icone ficha-lixo" title="Tirar da fila" aria-label={`Tirar ${r.meta.claquete || r.meta.titulo} da fila`} onClick={() => tirar(r)}>
@@ -818,6 +849,11 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
                   <p className="fila-conta">
                     {nPendentes - paraRevisar > 0 && filtro('prontos', <><i className="ponto ok" />{plural(nPendentes - paraRevisar, 'pronto', 'prontos')}</>)}
                     {paraRevisar > 0 && filtro('revisar', <><i className="ponto revisar" />{paraRevisar} para revisar</>)}
+                    {proximoParaRevisar.current && (
+                      <button type="button" className="tecla-proximo" onClick={() => proximoParaRevisar.current && abrir(proximoParaRevisar.current)} title="Abre o próximo roteiro para revisar">
+                        <kbd>R</kbd> revisar o próximo
+                      </button>
+                    )}
                     {falhas.length > 0 && <span><i className="ponto erro" />{plural(falhas.length, 'não lido', 'não lidos')}</span>}
                     {lendo && <span><i className="ponto lendo" />lendo 1</span>}
                   </p>
