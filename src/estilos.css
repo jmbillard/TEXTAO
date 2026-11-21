@@ -1787,3 +1787,9 @@ html.com-cursor-meu { min-height: 100%; }
 .ficha.ocupada .orelha { top: 0; right: 0; z-index: 1; border-bottom-left-radius: 3px; }
 @keyframes levantar-folha { from { transform: none; box-shadow: 0 0 0 1px var(--regua); } }
 @media (prefers-reduced-motion: reduce) { .ficha.ocupada { animation: none; } }
+/* a tira é maior que a vaga: passa da borda da lista e cobre as linhas vizinhas, para ler como papel por cima */
+.vaga { position: relative; z-index: 2; }
+.vaga .folha-rascunho { margin: 6px -22px 10px -6px; }
+.vaga .item-cad.rascunho { transform: rotate(-0.9deg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 7%, transparent), 0 1px 2px rgb(26 25 22 / 8%); }
+.vaga .folha-rascunho::before { top: 16px; bottom: 2px; left: 4px; transform: translate(-9px, 6px) rotate(-1deg) skewY(-1deg); filter: blur(9px); }
+@media (max-width: 900px) { .vaga .folha-rascunho { margin-inline: -4px -10px; } }
