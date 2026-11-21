@@ -1770,21 +1770,15 @@ html.com-cursor-meu { min-height: 100%; }
 .ligar-sug { transition: opacity 0.15s, transform 0.15s, color 0.15s; }
 .lado-cad:has(.ligar-icone:hover) .ligar-sug, .lado-cad:has(.ligar-icone[aria-expanded='true']) .ligar-sug { opacity: 0; }
 
-/* ficha em revisão: uma folha solta por cima da lista, com o mesmo papel da tira de rascunho dos cadastros.
-   Sem o recorte (clip-path), que cortaria a sombra: o canto da orelha é pintado com a cor da mesa. */
-.ficha.ocupada {
-  clip-path: none; border-color: transparent; border-radius: 4px;
+/* ficha em revisão: a ficha fica onde está e ganha uma folha de papel por cima, por dentro da borda,
+   como a tira de rascunho dos cadastros. isolation deixa a folha (z-index -1) entre o fundo da ficha e o conteúdo. */
+.ficha.ocupada { isolation: isolate; }
+.ficha.ocupada::before {
+  content: ''; position: absolute; inset: 7px 9px 9px 7px; z-index: -1; pointer-events: none; border-radius: 3px;
   background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha);
-  position: relative; z-index: 2;
-  transform: translate(-6px, -4px) rotate(-0.8deg) scale(1.012);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent), -14px 18px 16px -12px var(--folha-sombra), -4px 30px 30px -24px var(--folha-sombra), 10px 14px 22px -18px color-mix(in srgb, var(--folha-sombra) 50%, transparent);
-  animation: levantar-folha 0.5s var(--suave) both;
+  transform: rotate(-0.6deg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent), -7px 9px 12px -7px var(--folha-sombra), 0 12px 16px -14px var(--folha-sombra);
+  animation: pousar-folha 0.5s var(--suave) both;
 }
-.ficha.ocupada:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 8%, transparent), -16px 22px 18px -12px var(--folha-sombra), -4px 34px 32px -24px var(--folha-sombra), 10px 16px 24px -18px color-mix(in srgb, var(--folha-sombra) 50%, transparent); }
-.ficha.ocupada::after {
-  content: ''; position: absolute; top: 0; right: 0; width: var(--orelha); height: var(--orelha); pointer-events: none;
-  background: linear-gradient(to bottom left, var(--mesa) 50%, transparent 50%);
-}
-.ficha.ocupada .orelha { top: 0; right: 0; z-index: 1; border-bottom-left-radius: 3px; }
-@keyframes levantar-folha { from { transform: none; box-shadow: 0 0 0 1px var(--regua); } }
-@media (prefers-reduced-motion: reduce) { .ficha.ocupada { animation: none; } }
+@keyframes pousar-folha { from { opacity: 0; transform: translateY(-4px) rotate(0); box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { .ficha.ocupada::before { animation: none; } }
