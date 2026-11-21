@@ -454,6 +454,11 @@ function CardTrello({ r, abrir, andamento, tirar }: { r: Resumo; abrir: () => vo
   const prazo = !andamento?.entregue && andamento?.entrega && !caiu ? new Date(andamento.entrega).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '';
   return (
     <li className={`card-trello ${caiu ? 'caiu' : ''}`}>
+      {tirar && (
+        <button className="card-lixo" title="Tirar da fila (o card no Trello continua lá)" aria-label={`Tirar ${claquete} da fila`} onClick={tirar}>
+          <Icone nome="fechar" tam={11} traco={2.4} />
+        </button>
+      )}
       <span className="card-etiquetas">
         {r.meta.praca && <i className="etq praca" aria-hidden="true">{r.meta.praca}</i>}
         <i className="etq artes" aria-hidden="true">{plural(r.nArtes, 'arte', 'artes')}</i>
@@ -476,11 +481,6 @@ function CardTrello({ r, abrir, andamento, tirar }: { r: Resumo; abrir: () => vo
           <a className="card-link" href={e.url} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label={`Abrir ${claquete} no Trello`}>
             <Icone nome="quadro" tam={13} />
           </a>
-        )}
-        {tirar && (
-          <button className="card-lixo" title="Tirar da fila (o card no Trello continua lá)" aria-label={`Tirar ${claquete} da fila`} onClick={tirar}>
-            <Icone nome="lixo" tam={13} />
-          </button>
         )}
         {e.estado === 'enviado' && e.por && (
           <span className="card-quem" style={{ '--cor': corDe(e.por) } as React.CSSProperties} title={`Mandado por ${e.por}, ${horaCurta(e.em)}`}>
