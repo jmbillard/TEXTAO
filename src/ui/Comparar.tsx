@@ -191,7 +191,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
 }
 
 /** Um risco à mão por cima: o que saiu (ou foi trocado) no roteiro novo. */
-function Riscado({ children }: { children: React.ReactNode }) {
+export function Riscado({ children }: { children: React.ReactNode }) {
   return (
     <span className="riscado-mao">
       {children}

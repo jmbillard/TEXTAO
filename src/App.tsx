@@ -15,6 +15,10 @@ import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores
 import { corDe } from './dados/colaboracao';
 import { acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
+/** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
+    tudo passa pela revisão e vai pelo botão Enviar. */
+const ENVIO_AUTOMATICO = false;
+
 type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | { t: 'cadastros'; aba?: TipoCadastro; claquete?: string };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
@@ -183,8 +187,8 @@ export function App() {
           // o arquivo como veio fica no servidor: é ele que vira o PDF do card
           const guardado = guardarOriginal(roteiro.id, arquivo, textosOriginais.get(roteiro.id)).catch(() => {});
           textosOriginais.delete(roteiro.id);
-          // sem pendência, vai direto para o Trello; os marcados para revisar esperam a revisão
-          if (temTrello() && !travamTrello(roteiro.meta.revisar).length && !roteiro.meta.substitui && !roteiro.meta.naProducao)
+          // sem pendência, vai direto para o Trello (quando o envio automático está ligado); os marcados para revisar esperam a revisão
+          if (ENVIO_AUTOMATICO && temTrello() && !travamTrello(roteiro.meta.revisar).length && !roteiro.meta.substitui && !roteiro.meta.naProducao)
             void guardado.then(() => mandarParaTrello(roteiro)).catch((e) => avisar(`${roteiro.meta.claquete || arquivo.name} não foi para o Trello: ${e instanceof Error ? e.message : e}`)).finally(() => setChegou((n) => n + 1));
         } catch (e) {
           // as mensagens das bibliotecas de leitura vêm em inglês e não ajudam quem está subindo o roteiro

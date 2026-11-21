@@ -375,7 +375,9 @@ export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
 export function artesQueJaExistem(saida: Saida): string[] {
   const acervo = new Set((saida.roteiro.jaExistem ?? []).map((a) => a.chave));
   if (!acervo.size) return [];
-  return [...new Set(saida.artes.map((a) => chaveDeArte(a.texto)))].filter((k) => acervo.has(k));
+  // as que quem revisa já marcou como "já existe" estão resolvidas: não contam mais
+  const marcadas = new Set(saida.roteiro.jaExiste ?? []);
+  return [...new Set(saida.artes.map((a) => chaveDeArte(a.texto)))].filter((k) => acervo.has(k) && !marcadas.has(k));
 }
 
 export const pendencias = (saida: Saida): string[] => pendenciasDetalhadas(saida).map((p) => p.texto);

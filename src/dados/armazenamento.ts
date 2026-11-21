@@ -1,3 +1,4 @@
+import { chaveDeArte } from '../modelo/diferencas';
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
@@ -300,9 +301,11 @@ export async function herdarEnvio(novo: string, anterior: string) {
 /** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
 export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const saida = exportar(roteiro);
+  // a marcada como "já existe" vai no PDF (sublinhada, como no roteiro), fora do checklist e do acervo
+  const jaExiste = new Set(roteiro.meta.jaExiste ?? []);
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
     method: 'POST',
-    body: JSON.stringify({ artes: saida.artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : ''})), texto: saida.texto.completo, deNovo }),
+    body: JSON.stringify({ artes: saida.artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '', existe: jaExiste.has(chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
   });
 }
 

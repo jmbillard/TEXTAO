@@ -27,6 +27,7 @@ import {
 } from '../modelo/tipos';
 import { Claquete, EscolhaDeTipo, Marca, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
+import { Riscado } from './Comparar';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
 
@@ -637,13 +638,19 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
 
   /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
   const TIPOS_NA_LISTA = false;
-  const tirarArte = (a: (typeof artes)[number]) => {
-    if (!editor) return;
-    atualizarMarca(editor, a, null);
+  // "já existe": a arte fica no texto (e no PDF), mas sai do checklist e não entra no acervo como nova.
+  // Clicar de novo devolve ao checklist. Deixar de ser arte de vez é no texto (tirar o sublinhado).
+  const marcadasJa = useMemo(() => new Set(meta.jaExiste ?? []), [meta.jaExiste]);
+  const nJa = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto))).length;
+  const alternarExiste = (a: (typeof artes)[number]) => {
+    const k = chaveDeArte(a.texto);
+    const s = new Set(meta.jaExiste ?? []);
+    const marcar = !s.has(k);
+    if (marcar) s.add(k);
+    else s.delete(k);
+    mudarMeta({ jaExiste: s.size ? [...s] : undefined });
     setRealce(null);
-    // o foco volta ao texto, para o desfazer do teclado pegar a remoção
-    editor.commands.focus(null, { scrollIntoView: false });
-    avisar(`"${a.texto}" deixou de ser arte. ${atalho('Mod-z')} desfaz.`);
+    avisar(marcar ? `"${a.texto}" já existe: fica no texto e sai do checklist.` : `"${a.texto}" volta para o checklist.`);
   };
 
   // com uma arte aberta na lista: 1–9 escolhe o tipo, setas trocam de arte, Esc fecha
@@ -1119,7 +1126,8 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               </div>
             )}
               <div className="cab-artes">
-                <b><i>{artes.length}</i> {artes.length === 1 ? 'arte' : 'artes'}</b>
+                <b><i>{artes.length - nJa}</i> {artes.length - nJa === 1 ? 'arte' : 'artes'}</b>
+                {nJa > 0 && <span className="rotulo">+{nJa} já {nJa === 1 ? 'existe' : 'existem'}</span>}
                 {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
               </div>
               {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
@@ -1128,21 +1136,28 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                   artes.map((a) => {
                     const k = chaveDeArte(a.texto);
                     const ja = doAcervo.get(k);
+                    const marcada = marcadasJa.has(k);
                     return (
                     <li
                       key={a.id}
-                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja ? 'existe' : ''}`}
+                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada ? 'existe' : ''} ${marcada ? 'marcada' : ''}`}
                       title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo}` : ''}` : undefined}
                       onMouseEnter={() => setRealce(a.id)}
                       onMouseLeave={() => setRealce(null)}
                     >
                       <button className="arte-linha" onClick={() => irParaArte(a)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
                         <span className="b">{a.ordem}</span>
-                        <span className="txt"><b>{a.texto}</b></span>
+                        <span className="txt"><b>{marcada ? <Riscado>{a.texto}</Riscado> : a.texto}</b></span>
                       </button>
                       {!leitura && (
-                        <button className="tirar-arte" aria-label={`Tirar "${a.texto}" das artes`} title="Deixa de ser arte (o texto fica)" onClick={() => tirarArte(a)}>
-                          <Icone nome="fechar" tam={13} traco={2.2} />
+                        <button
+                          className="tirar-arte"
+                          aria-pressed={marcada}
+                          aria-label={marcada ? `Produzir "${a.texto}"` : `"${a.texto}" já existe`}
+                          title={marcada ? 'Produzir (volta para o checklist)' : 'Já existe: fica no texto, sai do checklist'}
+                          onClick={() => alternarExiste(a)}
+                        >
+                          <Icone nome={marcada ? 'desfazer' : 'fechar'} tam={13} traco={2.2} />
                         </button>
                       )}
                     </li>

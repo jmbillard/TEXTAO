@@ -1654,3 +1654,7 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
 /* "Ver os ponteiros dos colegas" desligado: eles somem desta tela (o meu continua indo para os outros) */
 html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !important; }
 .no-mouse + .no-mouse { margin-top: 6px; }
+/* "já existe" marcado por quem revisa: riscado à mão, apagado, e o botão de devolver sempre à vista */
+.artes li.marcada .txt b { color: var(--tinta3); font-weight: 600; }
+.artes.so-lista li.marcada .tirar-arte { opacity: 1; color: var(--tinta3); }
+.artes.so-lista li.marcada .tirar-arte:hover { color: var(--ultra); background: color-mix(in srgb, var(--ultra) 10%, transparent); }

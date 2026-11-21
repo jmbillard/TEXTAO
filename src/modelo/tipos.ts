@@ -78,6 +78,8 @@ export interface Meta {
   outroRoteiro?: boolean;
   /** Artes do roteiro que a atração já tem prontas (acervo do Teable): aviso para quem revisa decidir. */
   jaExistem?: ArteDoAcervo[];
+  /** Artes que quem revisa marcou como "já existe" (pela chave): ficam no texto, saem do checklist e não entram no acervo. */
+  jaExiste?: string[];
 }
 
 export const metaVazia = (): Meta => ({
