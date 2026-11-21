@@ -14,6 +14,10 @@ import {
   type KeyCadastro,
   type RedatorCadastro,
   type TipoCadastro,
+  designorarKey,
+  ignorarKey,
+  lerSemCadastro,
+  type KeySemCadastro,
 } from '../dados/armazenamento';
 import { exportar, pendencias } from '../modelo/exportar';
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
@@ -24,6 +28,8 @@ import { plural } from './util';
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
    (e redator/editor novo também para o Trello). O que está sendo cadastrado aparece na lista como
    uma folha de rascunho, solta por cima, que assenta no lugar quando é salva. */
+
+const ICONE_SEM = 'M4 7h11l5 5-5 5H4z M9 12h.01';
 
 const ICONES = {
   atracoes: 'M4 7h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z M8.5 3l3.5 4 3.5-4',
@@ -84,13 +90,13 @@ export function previaDoCaminho(formula: string, valores: Record<string, string>
 
 /* ---------- pedaços ---------- */
 
-function Abas({ aba, mudar, totais }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number> }) {
+function Abas({ aba, mudar, totais, sem }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: { ativa: boolean; total: number; abrir: () => void } }) {
   return (
     <div className="abas-cad" role="tablist" aria-label="Cadastros">
       {(Object.keys(NOMES) as TipoCadastro[]).map((a) => (
-        <button key={a} role="tab" aria-selected={aba === a} title={aba === a ? undefined : NOMES[a]} onClick={() => mudar(a)}>
+        <button key={a} role="tab" aria-selected={aba === a && !sem.ativa} title={aba === a && !sem.ativa ? undefined : NOMES[a]} onClick={() => mudar(a)}>
           <Desenho d={ICONES[a]} />
-          {aba === a ? (
+          {aba === a && !sem.ativa ? (
             <span className="rot">
               {NOMES[a]} <b>{totais[a]}</b>
               <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
@@ -102,6 +108,93 @@ function Abas({ aba, mudar, totais }: { aba: TipoCadastro; mudar: (a: TipoCadast
           )}
         </button>
       ))}
+      {/* as keys que aparecem nas claquetes e nenhuma atração reconhece */}
+      <button role="tab" aria-selected={sem.ativa} title={sem.ativa ? undefined : 'Sem cadastro'} onClick={sem.abrir}>
+        <Desenho d={ICONE_SEM} />
+        {sem.ativa ? (
+          <span className="rot">
+            Sem cadastro <b>{sem.total}</b>
+            <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
+              <path pathLength={1} d={RABISCO} />
+            </svg>
+          </span>
+        ) : (
+          <sup>{sem.total}</sup>
+        )}
+      </button>
+    </div>
+  );
+}
+
+/** "Ligar a…": a busca nas atrações, com "+ Nova atração" sempre no fim. */
+function MenuLigar({ atracoes, ligar, nova, fechar }: { atracoes: string[]; ligar: (nome: string) => void; nova: () => void; fechar: () => void }) {
+  const [busca, setBusca] = useState('');
+  const [marcado, setMarcado] = useState(0);
+  const caixa = useRef<HTMLDivElement>(null);
+  const t = semAcento(busca.trim());
+  const achadas = atracoes.filter((a) => !t || semAcento(a).includes(t)).slice(0, 8);
+  const total = achadas.length + 1; // + Nova atração
+  useEffect(() => {
+    const fora = (e: MouseEvent) => !caixa.current?.contains(e.target as Node) && fechar();
+    document.addEventListener('mousedown', fora);
+    return () => document.removeEventListener('mousedown', fora);
+  }, [fechar]);
+  useEffect(() => setMarcado(0), [busca]);
+  const escolher = (k: number) => (k < achadas.length ? ligar(achadas[k]) : nova());
+  return (
+    <div className="escolha-nome-menu menu-ligar" ref={caixa}>
+      <input
+        autoFocus
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        placeholder="Buscar atração"
+        aria-label="Buscar atração"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') fechar();
+          else if (e.key === 'ArrowDown') (e.preventDefault(), setMarcado((m) => Math.min(total - 1, m + 1)));
+          else if (e.key === 'ArrowUp') (e.preventDefault(), setMarcado((m) => Math.max(0, m - 1)));
+          else if (e.key === 'Enter') (e.preventDefault(), escolher(marcado));
+        }}
+      />
+      <ul role="listbox">
+        {achadas.map((a, k) => (
+          <li key={a} role="option" aria-selected={k === marcado} className={k === marcado ? 'marcado' : ''} onMouseEnter={() => setMarcado(k)} onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(k)}>
+            {a}
+          </li>
+        ))}
+        {!achadas.length && <li className="vazio-ligar">Nenhuma com “{busca}”</li>}
+        <li role="option" aria-selected={marcado === achadas.length} className={`nova-ligar ${marcado === achadas.length ? 'marcado' : ''}`} onMouseEnter={() => setMarcado(achadas.length)} onMouseDown={(e) => e.preventDefault()} onClick={nova}>
+          + Nova atração
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+/** Uma key sem cadastro: quantos roteiros, as claquetes de exemplo, a atração parecida, ligar, nova e ignorar. */
+function LinhaSemCadastro({ k, atracoes, ligar, nova, ignorar }: { k: KeySemCadastro; atracoes: string[]; ligar: (nome: string) => void; nova: () => void; ignorar: () => void }) {
+  const [menu, setMenu] = useState(false);
+  return (
+    <div className="item-cad sem-cad">
+      <div className="nome">
+        <span className="key grande">{k.key}</span>
+        <span className="qtd">{plural(k.roteiros, 'roteiro', 'roteiros')}</span>
+      </div>
+      <div className="lado-cad">
+        {k.sugestao && (
+          <button type="button" className="ligar-sug" title={`Pôr a key ${k.key} em ${k.sugestao}`} onClick={() => ligar(k.sugestao)}>
+            {k.sugestao}?
+          </button>
+        )}
+        <span className="ligar-a">
+          <button type="button" className="botao-texto" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>Ligar a…</button>
+          {menu && <MenuLigar atracoes={atracoes} ligar={(n) => (setMenu(false), ligar(n))} nova={() => (setMenu(false), nova())} fechar={() => setMenu(false)} />}
+        </span>
+      </div>
+      <div className="exemplos">{k.exemplos.map((e) => <span key={e}>{e}</span>)}</div>
+      <button type="button" className="ignorar-key" title="Ignorar: não é atração" aria-label={`Ignorar ${k.key}`} onClick={ignorar}>
+        <Icone nome="fechar" tam={11} traco={2.4} />
+      </button>
     </div>
   );
 }
@@ -302,6 +395,15 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const [recem, setRecem] = useState<string[]>([]);
   const [assentando, setAssentando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  // a aba "Sem cadastro": as keys das claquetes que nenhuma atração reconhece (o formulário da direita é o de atração)
+  const [semCad, setSemCad] = useState(false);
+  const [sem, setSem] = useState<KeySemCadastro[] | null>(null);
+  const [ignoradas, setIgnoradas] = useState<string[]>([]);
+  const nomeAtr = useRef<HTMLInputElement>(null);
+  const carregarSem = () => lerSemCadastro().then(setSem, () => setSem([]));
+  useEffect(() => {
+    void carregarSem();
+  }, []);
 
   // formulários, um por aba
   const daClaquete = inicio?.claquete ? atracaoDaClaquete(inicio.claquete) : '';
@@ -384,6 +486,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       marcarRecem([id]);
       avisar(msg);
       void depois?.();
+      void carregarSem();
     } catch (e) {
       avisar(e instanceof Error ? e.message : 'Não consegui cadastrar.');
     }
@@ -408,6 +511,38 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       return false;
     }
   };
+  /** Liga a key a uma atração que já existe (pelo nome) e tira a linha da lista. */
+  const ligarKey = async (key: string, nome: string) => {
+    const a = dados?.atracoes.find((x) => x.nome === nome);
+    if (!a) return avisar(`${nome} não está nos cadastros.`);
+    if (await novaKey('atracoes', a.id)(key)) {
+      setSem((l) => l?.filter((x) => x.key !== key) ?? l);
+      avisar(`${key} agora é de ${a.nome}.`);
+    }
+  };
+  /** "+ Nova": o formulário da direita começa com a key. */
+  const novaComKey = (key: string) => {
+    setAtr({ nome: '', keys: [comoKey(key)], categoria: '', campos: {} });
+    setTimeout(() => nomeAtr.current?.focus(), 0);
+  };
+  /** Ignorar: a linha vira "ignorada · desfazer" por alguns segundos e some. */
+  const ignorar = async (key: string) => {
+    try {
+      await ignorarKey(key);
+      setIgnoradas((l) => [...l, key]);
+      setTimeout(() => {
+        setIgnoradas((l) => l.filter((x) => x !== key));
+        setSem((l) => l?.filter((x) => x.key !== key) ?? l);
+      }, 6000);
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui ignorar.');
+    }
+  };
+  const desfazerIgnorar = async (key: string) => {
+    await designorarKey(key).catch(() => {});
+    setIgnoradas((l) => l.filter((x) => x !== key));
+  };
+
   const remover = (tipo: TipoCadastro, id: string, keyId?: string) => async () => {
     try {
       await removerCadastro(tipo, id, keyId);
@@ -509,19 +644,41 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         )}
 
         <div className="cad-grade">
-          <section className="lista-cad" aria-label={NOMES[aba]}>
+          <section className="lista-cad" aria-label={semCad ? 'Sem cadastro' : NOMES[aba]}>
             <div className="lista-topo">
-              <Abas aba={aba} mudar={(a) => { setAba(a); setBusca(''); }} totais={totais} />
+              <Abas
+                aba={aba}
+                mudar={(a) => { setAba(a); setSemCad(false); setBusca(''); }}
+                totais={totais}
+                sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setBusca(''); } }}
+              />
               <label className="cad-busca">
                 <Icone nome="lupa" />
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator ou login' : 'Buscar editor ou key'} />
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator ou login' : 'Buscar editor ou key'} />
               </label>
             </div>
             {!dados && !falha && <p className="cad-vazio">Carregando…</p>}
-            {dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
-            {dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
-            {dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
-            {dados && termo && !rascunho && !(aba === 'atracoes' ? listaAtracoes : aba === 'redatores' ? listaRedatores : listaEditores).length && (
+            {semCad && dados && sem && (() => {
+              const lista = sem.filter((k) => casa(k.key, ...k.exemplos));
+              const nomes = dados.atracoes.map((x) => x.nome).sort((x, y) => x.localeCompare(y, 'pt-BR'));
+              if (!sem.length) return <p className="cad-vazio">Toda claquete dos últimos 90 dias tem atração.</p>;
+              if (!lista.length) return <p className="cad-vazio">Nada com “{busca}”.</p>;
+              return lista.map((k) =>
+                ignoradas.includes(k.key) ? (
+                  <div key={k.key} className="item-cad sem-cad ignorada">
+                    <span><span className="key grande">{k.key}</span> ignorada</span>
+                    <button type="button" className="botao-texto" onClick={() => void desfazerIgnorar(k.key)}>Desfazer</button>
+                  </div>
+                ) : (
+                  <LinhaSemCadastro key={k.key} k={k} atracoes={nomes} ligar={(n) => void ligarKey(k.key, n)} nova={() => novaComKey(k.key)} ignorar={() => void ignorar(k.key)} />
+                ),
+              );
+            })()}
+            {semCad && !sem && <p className="cad-vazio">Procurando nas claquetes…</p>}
+            {!semCad && dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
+            {!semCad && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
+            {!semCad && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
+            {!semCad && dados && termo && !rascunho && !(aba === 'atracoes' ? listaAtracoes : aba === 'redatores' ? listaRedatores : listaEditores).length && (
               <p className="cad-vazio">Nada com “{busca}”.</p>
             )}
           </section>
@@ -548,7 +705,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                   </p>
                   <label className="campo-cad">
                     <span>Nome</span>
-                    <input className="entrada-cad" value={atr.nome} onChange={(e) => setAtr({ ...atr, nome: e.target.value })} placeholder="Como a atração se chama" autoFocus />
+                    <input ref={nomeAtr} className="entrada-cad" value={atr.nome} onChange={(e) => setAtr({ ...atr, nome: e.target.value })} placeholder="Como a atração se chama" autoFocus />
                   </label>
                   <div className="campo-cad">
                     <span>Keys</span>

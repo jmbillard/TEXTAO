@@ -106,7 +106,9 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
     const usados = [];
     const formulas = {};
     for (const nome of caminhos) {
-      const f = lista.find((c) => c.name === nome);
+      // o nome pode vir com espaço ("projeto win") ou como o nome interno ("projeto_win")
+      const igual = (x) => String(x ?? '').trim().toLowerCase().replace(/[\s_]+/g, '_') === nome.trim().toLowerCase().replace(/[\s_]+/g, '_');
+      const f = lista.find((c) => igual(c.name) || igual(c.dbFieldName));
       const expr = f?.options?.expression ?? '';
       formulas[nome] = expr.replace(/\{(fld\w+)\}/g, (_, id) => `{${porId.get(id)?.name ?? id}}`);
       for (const [, id] of expr.matchAll(/\{(fld\w+)\}/g)) {

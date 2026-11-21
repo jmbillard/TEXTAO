@@ -744,6 +744,13 @@ export function criarTrello(env, deps = {}) {
     return out;
   }
 
+  /** As claquetes que entraram na produção nos últimos `dias` dias (para a aba Sem cadastro). */
+  async function claquetesRecentes(dias = 90) {
+    if (!t.leitura) return [];
+    const linhas = await sql(`SELECT "claquete", "data_entrada" FROM ${t.leitura} WHERE "data_entrada" >= now() - ($1 || ' days')::interval AND "claquete" IS NOT NULL`, [String(dias | 0)]);
+    return linhas.map((l) => ({ claquete: String(l.claquete ?? ''), em: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : '' }));
+  }
+
   /** As últimas claquetes da produção com a atração registrada (para conferir o reconhecimento com dados reais). */
   async function ultimasClaquetes(n = 500) {
     if (!t.leitura) return [];
@@ -760,5 +767,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

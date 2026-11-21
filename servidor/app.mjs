@@ -13,7 +13,7 @@ import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
-import { criarTrello } from './trello.mjs';
+import { chaveDaAtracao, criarTrello } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
 
@@ -116,6 +116,8 @@ export function abrirBanco(caminho) {
   if (!tem('envios', 'artes_novas')) db.exec('ALTER TABLE envios ADD COLUMN artes_novas TEXT; ALTER TABLE envios ADD COLUMN atracao TEXT; ALTER TABLE envios ADD COLUMN acervo_em TEXT');
   // a data de exibição: numa sessão de filme, é ela que diz qual filme (pelo log do bot)
   if (!tem('envios', 'exibicao')) db.exec('ALTER TABLE envios ADD COLUMN exibicao TEXT');
+  // keys que alguém marcou como "não é atração" na aba Sem cadastro: não voltam para a lista
+  db.exec('CREATE TABLE IF NOT EXISTS keys_ignoradas (key TEXT PRIMARY KEY, por TEXT, em TEXT)');
   return db;
 }
 
@@ -206,6 +208,54 @@ async function identificar(req, env) {
   if (!email) return null;
   email = email.toLowerCase();
   return { email, nome: nomeDoEmail(email), origem: 'acesso' };
+}
+
+/* ---------- keys sem cadastro ---------- */
+
+const semAcentoMin = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * As keys das claquetes que nenhuma atração reconhece (a mesma regra do navegador: key no começo; senão, o nome
+ * da atração no meio), com quantos roteiros, até dois exemplos e uma atração parecida, se houver.
+ * @param claquetes [{ claquete, em }]  @param programas [{ nome, chaves }]  @param ignoradas Set de keys
+ */
+export function keysSemCadastro(claquetes, programas, ignoradas = new Set()) {
+  const lista = programas.map((p) => ({ nome: p.nome, n: semAcentoMin(p.nome), chaves: (p.chaves ?? []).map(semAcentoMin).filter(Boolean) }));
+  const reconhece = (claquete) => {
+    const n = semAcentoMin(claquete);
+    return lista.some((p) => p.chaves.some((c) => n === c || n.startsWith(c + ' ')) || (p.n.length >= 8 && ` ${n} `.includes(` ${p.n} `)));
+  };
+  const grupos = new Map();
+  for (const { claquete, em } of claquetes) {
+    if (reconhece(claquete)) continue;
+    const key = semAcentoMin(chaveDaAtracao(claquete)).toUpperCase();
+    if (!key || key.length < 2 || /^[\d ]+$/.test(key) || ignoradas.has(key)) continue;
+    const g = grupos.get(key) ?? { key, claquetes: new Map() };
+    const c = claquete.trim();
+    if (!g.claquetes.has(c) || g.claquetes.get(c) < em) g.claquetes.set(c, em);
+    grupos.set(key, g);
+  }
+  // atração parecida: a key (sem espaços) tem um bom pedaço em comum com o nome, ou uma palavra da key começa uma do nome
+  const parecida = (key) => {
+    const k = semAcentoMin(key);
+    const kJunto = k.replace(/ /g, '');
+    let melhor = null;
+    for (const p of lista) {
+      const nJunto = p.n.replace(/ /g, '');
+      let comum = 0;
+      for (let i = 0; i < kJunto.length; i++) for (let j = i + comum + 1; j <= kJunto.length; j++) if (nJunto.includes(kJunto.slice(i, j))) comum = j - i;
+      const porPalavra = k.split(' ').some((w) => w.length >= 4 && p.n.split(' ').some((x) => x.startsWith(w)));
+      const nota = Math.max(comum / Math.max(4, kJunto.length), porPalavra ? 0.75 : 0);
+      if (nota >= 0.7 && (!melhor || nota > melhor.nota)) melhor = { nome: p.nome, nota };
+    }
+    return melhor?.nome ?? '';
+  };
+  return [...grupos.values()]
+    .map((g) => {
+      const ordem = [...g.claquetes].sort((a, b) => (a[1] < b[1] ? 1 : -1));
+      return { key: g.key, roteiros: ordem.length, exemplos: ordem.slice(0, 2).map(([c]) => c), sugestao: parecida(g.key) };
+    })
+    .sort((a, b) => b.roteiros - a.roteiros || a.key.localeCompare(b.key));
 }
 
 /* ---------- utilidades HTTP ---------- */
@@ -299,6 +349,10 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     paraOAcervo: db.prepare("SELECT roteiro_id, card_id, artes_novas, atracao, exibicao FROM envios WHERE estado = 'enviado' AND artes_novas IS NOT NULL AND acervo_em IS NULL AND card_id IS NOT NULL"),
     noAcervo: db.prepare('UPDATE envios SET acervo_em = ? WHERE roteiro_id = ?'),
     marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+    claquetesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete, atualizado_em AS em FROM roteiros WHERE atualizado_em >= ?"),
+    ignoradas: db.prepare('SELECT key FROM keys_ignoradas'),
+    ignorar: db.prepare('INSERT OR REPLACE INTO keys_ignoradas (key, por, em) VALUES (?, ?, ?)'),
+    designorar: db.prepare('DELETE FROM keys_ignoradas WHERE key = ?'),
     um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
@@ -975,6 +1029,26 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // card que saiu (finalizado ou entregue): as artes novas dele entram no acervo da atração, uma vez só
       if (acervo.ligado && acervo.grava) void registrarNoAcervo(dados);
       return json(res, 200, dados);
+    }
+    if (caminho === '/api/cadastros/sem-cadastro' && req.method === 'GET') {
+      // as keys que aparecem nas claquetes dos últimos 90 dias (produção e fila) e não são de nenhuma atração
+      const desde = new Date(Date.now() - 90 * 86_400_000).toISOString();
+      const voc = await vocabulario.ler();
+      const claquetes = [
+        ...q.claquetesDaFila.all(desde).map((l) => ({ claquete: String(l.claquete ?? ''), em: String(l.em ?? '') })),
+        ...((await trello.claquetesRecentes?.(90).catch(() => [])) ?? []),
+      ].filter((c) => c.claquete.trim());
+      return json(res, 200, keysSemCadastro(claquetes, voc.programas ?? [], new Set(q.ignoradas.all().map((l) => l.key))));
+    }
+    if (caminho === '/api/cadastros/ignorar' && req.method === 'POST') {
+      const { key } = (await lerCorpo(req).catch(() => ({}))) ?? {};
+      if (!key || typeof key !== 'string') return json(res, 400, { erro: 'Falta a key.' });
+      q.ignorar.run(key.trim().toUpperCase().slice(0, 80), eu.email, new Date().toISOString());
+      return json(res, 200, { ok: true });
+    }
+    if (caminho.startsWith('/api/cadastros/ignorar/') && req.method === 'DELETE') {
+      q.designorar.run(decodeURIComponent(caminho.slice('/api/cadastros/ignorar/'.length)).toUpperCase());
+      return json(res, 200, { ok: true });
     }
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));

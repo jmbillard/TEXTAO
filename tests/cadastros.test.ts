@@ -68,6 +68,21 @@ function falso() {
 }
 
 describe('cadastros no Teable', () => {
+  it('acha as fórmulas dos caminhos quando o nome tem espaço ("projeto win")', async () => {
+    const { buscar } = falso();
+    const comEspaco = async (url: string, init?: RequestInit) => {
+      const r = await buscar(url, init);
+      if (!/\/field/.test(url)) return r;
+      const campos = (await r.json()) as { name: string }[];
+      const novos = campos.map((c) =>
+        /_win$/.test(c.name) ? { ...c, name: c.name.replace('_', ' '), dbFieldName: c.name } : c,
+      );
+      return { ...r, json: async () => novos };
+    };
+    const d = await criarCadastros(ENV, { buscar: comEspaco }).ler();
+    expect(d.camposCaminho.map((c: { nome: string }) => c.nome)).toEqual(['servidor', 'pasta']);
+  });
+
   it('lê atrações com as keys, as categorias do campo e os campos que as fórmulas dos caminhos usam', async () => {
     const { buscar } = falso();
     const c = criarCadastros(ENV, { buscar });

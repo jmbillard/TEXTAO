@@ -258,6 +258,18 @@ export const darKey = (tipo: 'atracoes' | 'editores', id: string, key: string) =
 export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
   pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });
 
+/** Uma key que aparece nas claquetes e nenhuma atração reconhece. */
+export interface KeySemCadastro {
+  key: string;
+  roteiros: number;
+  exemplos: string[];
+  /** Uma atração cadastrada parecida (o nome), ou ''. */
+  sugestao: string;
+}
+export const lerSemCadastro = () => pedir<KeySemCadastro[]>('/api/cadastros/sem-cadastro');
+export const ignorarKey = (key: string) => pedir<{ ok: true }>('/api/cadastros/ignorar', { method: 'POST', body: JSON.stringify({ key }) });
+export const designorarKey = (key: string) => pedir<{ ok: true }>(`/api/cadastros/ignorar/${encodeURIComponent(key)}`, { method: 'DELETE' });
+
 /** O arquivo como subiu, para baixar de novo. */
 export async function baixarOriginal(id: string): Promise<Blob> {
   const r = await fetch(`/api/roteiros/${encodeURIComponent(id)}/original`, { credentials: 'same-origin', headers: cabecalhos });
