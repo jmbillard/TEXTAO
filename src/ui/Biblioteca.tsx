@@ -280,7 +280,7 @@ function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
 
 const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-/** O card no Trello: mandando, mandado (com link), já estava lá, ou deu erro. Sem envio, o botão para mandar. */
+/** O card no Trello: mandando, mandado (com link), já estava lá, ou deu erro (com o botão para tentar de novo). */
 function FichaTrello({ r, mandar }: { r: Resumo; mandar: () => Promise<void> }) {
   // só o que segura o envio (sem editor não segura: o n8n preenche depois)
   const revisar = travamTrello(r.meta.revisar);
@@ -309,9 +309,12 @@ function FichaTrello({ r, mandar }: { r: Resumo; mandar: () => Promise<void> }) 
     <span className={`ficha-trello some ${e?.estado === 'erro' ? 'erro' : 'falta'}`}>
       <Icone nome="quadro" tam={14} />
       {e?.estado === 'erro' ? <span title={e.erro}>Não foi para o Trello{e.erro && <small className="motivo-trello">: {e.erro}</small>}</span> : <span>{revisar.length ? 'Vai para o Trello depois da revisão' : 'Ainda não foi para o Trello'}</span>}
-      <button className="botao-texto" onClick={() => void mandar()}>
-        {e?.estado === 'erro' ? 'Tentar de novo' : 'Mandar agora'}
-      </button>
+      {/* sem "mandar agora": o caminho para o Trello é a revisão; só o envio que falhou pode ser tentado de novo */}
+      {e?.estado === 'erro' && (
+        <button className="botao-texto" onClick={() => void mandar()}>
+          Tentar de novo
+        </button>
+      )}
     </span>
   );
 }

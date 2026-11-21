@@ -1782,18 +1782,19 @@ html.com-cursor-meu { min-height: 100%; }
 }
 .ficha.ocupada::after {
   z-index: -1; border-radius: 3px; background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha);
-  transform: rotate(-0.35deg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent);
+  transform: rotate(-0.6deg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent);
   clip-path: polygon(0 0, calc(100% - var(--orelha)) 0, 100% var(--orelha), 100% 100%, 0 100%);
   animation: pousar-folha 0.5s var(--suave) both;
 }
 .ficha.ocupada::before {
-  z-index: -2; top: 4px; bottom: -4px; right: 30%; border-radius: 6px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--folha-sombra) 55%, transparent), transparent 85%);
-  transform: translate(-4px, 2px) rotate(-0.4deg); filter: blur(6px);
+  /* a mesma sombra da tira de rascunho: escura à esquerda, sumindo para a direita, saindo por baixo da folha */
+  z-index: -2; inset: 6px 24px 1px 2px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--folha-sombra), color-mix(in srgb, var(--folha-sombra) 35%, transparent) 65%, transparent 98%);
+  transform-origin: right center; transform: translate(-7px, 3px) rotate(-0.6deg) skewY(-0.8deg); filter: blur(7px);
   animation: sombra-solta 0.55s 0.08s var(--suave) both;
 }
 /* a orelha acompanha a folha: mesma área e mesma inclinação; a dobra fica no canto de cima à direita */
-.ficha.ocupada .orelha { width: auto; height: auto; background: none; border: 0; border-radius: 0; filter: none; transform: rotate(-0.35deg); }
+.ficha.ocupada .orelha { width: auto; height: auto; background: none; border: 0; border-radius: 0; filter: none; transform: rotate(-0.6deg); }
 .ficha.ocupada .orelha::before {
   content: ''; position: absolute; top: 0; right: 0; width: var(--orelha); height: var(--orelha); border-bottom-left-radius: 4px;
   background: linear-gradient(to bottom left, transparent 50%, var(--verso) 50%);
