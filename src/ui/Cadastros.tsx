@@ -583,7 +583,6 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         {a.nome} {a.categoria && <span className="cat">{a.categoria}</span>}
       </div>
       <div className="lado-cad">
-        <span>{plural(a.keys.length, 'key', 'keys')}</span>
         {pode && <NovoPacote nome={a.nome} avisar={avisar} />}
         <Remover pode={pode} nome={a.nome} remover={remover('atracoes', a.id)} />
       </div>
@@ -621,6 +620,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     </div>
   );
 
+  const limpar = () => (aba === 'atracoes' ? setAtr({ nome: '', keys: [], categoria: '', campos: {} }) : aba === 'redatores' ? setRed({ nome: '', user: '' }) : setEdi({ nome: '', keys: [] }));
+  const xLimpar = rascunho && (
+    <button type="button" className="limpar-campo" title="Limpar" aria-label="Limpar o formulário" onClick={(e) => { e.preventDefault(); limpar(); }}>
+      <Icone nome="fechar" tam={14} />
+    </button>
+  );
   const valoresCaminho = { ...atr.campos, atracao: atr.nome, categoria: atr.categoria };
   const prontoParaSalvar =
     aba === 'atracoes' ? !!atr.nome.trim() && atr.keys.length > 0 : aba === 'redatores' ? !!red.nome.trim() : !!edi.nome.trim();
@@ -705,7 +710,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                   </p>
                   <label className="campo-cad">
                     <span>Nome</span>
-                    <input ref={nomeAtr} className="entrada-cad" value={atr.nome} onChange={(e) => setAtr({ ...atr, nome: e.target.value })} placeholder="Como a atração se chama" autoFocus />
+                    <span className="com-limpar"><input ref={nomeAtr} className="entrada-cad" value={atr.nome} onChange={(e) => setAtr({ ...atr, nome: e.target.value })} placeholder="Como a atração se chama" autoFocus />{xLimpar}</span>
                   </label>
                   <div className="campo-cad">
                     <span>Keys</span>
@@ -765,7 +770,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                   <p className="dica">Entra na lista do campo REDATOR do Trello e no Teable.</p>
                   <label className="campo-cad">
                     <span>Nome no card</span>
-                    <input className="entrada-cad" value={red.nome} onChange={(e) => setRed({ ...red, nome: e.target.value })} placeholder="Como aparece no Trello" autoFocus />
+                    <span className="com-limpar"><input className="entrada-cad" value={red.nome} onChange={(e) => setRed({ ...red, nome: e.target.value })} placeholder="Como aparece no Trello" autoFocus />{xLimpar}</span>
                   </label>
                   <label className="campo-cad">
                     <span>Login ou autor do Word</span>
@@ -779,7 +784,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                   <p className="dica">Entra na lista do campo EDITOR do Trello e no Teable.</p>
                   <label className="campo-cad">
                     <span>Nome no card</span>
-                    <input className="entrada-cad" value={edi.nome} onChange={(e) => setEdi({ ...edi, nome: e.target.value })} placeholder="Como aparece no Trello" autoFocus />
+                    <span className="com-limpar"><input className="entrada-cad" value={edi.nome} onChange={(e) => setEdi({ ...edi, nome: e.target.value })} placeholder="Como aparece no Trello" autoFocus />{xLimpar}</span>
                   </label>
                   <div className="campo-cad">
                     <span>Keys da pauta</span>
@@ -788,28 +793,17 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                   </div>
                 </>
               )}
-              <div className="acoes">
-                {rascunho && (
-                  <button
-                    type="button"
-                    className="botao-texto"
-                    onClick={() =>
-                      aba === 'atracoes' ? setAtr({ nome: '', keys: [], categoria: '', campos: {} }) : aba === 'redatores' ? setRed({ nome: '', user: '' }) : setEdi({ nome: '', keys: [] })
-                    }
-                  >
-                    Cancelar
-                  </button>
-                )}
-                <button className="botao primario" disabled={!prontoParaSalvar || salvando || !dados?.ligado}>
-                  <Icone nome="mais" tam={15} traco={2.2} /> {salvando ? 'Cadastrando…' : 'Cadastrar'}
-                </button>
-              </div>
               <p className="efeito">
                 {aba === 'atracoes'
                   ? 'Cria a atração e as keys no Teable. Os roteiros da fila que começam com essas keys são reconhecidos na hora.'
                   : 'Remover tira do PROMeiro e do Teable; no Trello o nome continua, para os cards antigos.'}
                 {!pode && <> <b>Só administradores removem.</b></>}
               </p>
+              <div className="acoes">
+                <button className="botao primario" disabled={!prontoParaSalvar || salvando || !dados?.ligado}>
+                  <Icone nome="mais" tam={15} traco={2.2} /> {salvando ? 'Cadastrando…' : 'Cadastrar'}
+                </button>
+              </div>
             </form>
           </aside>
         </div>

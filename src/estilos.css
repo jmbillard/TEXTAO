@@ -1273,13 +1273,14 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .cats { display: flex; flex-wrap: wrap; gap: 6px; }
 .cats button { font: 500 13px var(--sans); padding: 6px 11px; border-radius: 999px; border: 1px solid var(--regua-forte); color: var(--tinta2); background: none; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .cats button:hover { border-color: var(--tinta3); color: var(--tinta); }
-.cats button[aria-checked='true'], .cats button[aria-pressed='true'] { background: var(--tinta); color: var(--papel); border-color: var(--tinta); }
+.cats button[aria-checked='true'], .cats button[aria-pressed='true'] { background: var(--ultra); color: #fff; border-color: var(--ultra); }
 .caminhos-cad { border: 1px dashed var(--regua-forte); border-radius: 10px; padding: 12px 12px 4px; margin-bottom: 14px; }
 .caminhos-cad .titulo { font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta3); margin-bottom: 10px; }
 .previa-caminho { font: 500 11.5px/1.6 var(--mono); color: var(--tinta2); overflow-wrap: anywhere; margin-bottom: 8px; }
 .previa-caminho b { color: var(--tinta3); font-weight: 500; margin-right: 6px; }
-.form-cad .acoes { display: flex; justify-content: flex-end; gap: 12px; align-items: center; margin-top: 6px; }
-.form-cad .efeito { font: 400 12.5px/1.5 var(--sans); color: var(--tinta3); border-top: 1px dashed var(--regua); padding-top: 12px; margin: 14px 0 0; }
+.form-cad .acoes { display: flex; margin-top: 14px; }
+.form-cad .acoes .botao { flex: 1; justify-content: center; }
+.form-cad .efeito { font: 400 12.5px/1.5 var(--sans); color: var(--tinta3); margin: 6px 0 0; }
 .form-cad .efeito b { color: var(--tinta2); font-weight: 600; }
 
 /* atalhos para cadastrar onde a atração não foi reconhecida */
@@ -1728,3 +1729,11 @@ html.com-cursor-meu { min-height: 100%; }
 .item-cad.sem-cad:hover .ignorar-key, .ignorar-key:focus-visible { opacity: 1; }
 .ignorar-key:hover { color: var(--perigo); background: color-mix(in srgb, var(--perigo) 10%, transparent); }
 @media (hover: none) { .ignorar-key { opacity: 1; } }
+
+/* chips da lista com a mesma altura do "+ key"; × que limpa o formulário */
+.item-cad .keys { align-items: center; }
+.item-cad .keys .key { height: 26px; box-sizing: border-box; padding: 0 8px; line-height: 1; }
+.com-limpar { position: relative; display: block; }
+.com-limpar .entrada-cad { padding-right: 36px; }
+.limpar-campo { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; border: 0; background: none; color: var(--tinta3); cursor: pointer; }
+.limpar-campo:hover { color: var(--tinta); background: var(--neutro); }
