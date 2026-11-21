@@ -578,3 +578,16 @@ describe('checklist com mais de um tipo', () => {
     ])).toEqual(['HOJE (RDP)', 'HOJE (CRT)', 'AMANHÃ', 'SÁBADO']);
   });
 });
+
+describe('atração pela claquete, no servidor', () => {
+  it('"CHEF(MANUT) C" procura a key CHEF nas keys do Teable', async () => {
+    const { chaveDaAtracao } = await import('../servidor/trello.mjs' as string);
+    expect(chaveDaAtracao('CHEF(MANUT) C')).toBe('CHEF');
+    const params: unknown[] = [];
+    const consultar = async (sql: string, p: unknown[] = []) => (sql.includes('"pattern"') ? (params.push(p[0]), [{ atracao: 'Chef de Alto Nível', projeto_win: '', output_win: '' }]) : []);
+    const t = criarTrello(ENV, { consultar });
+    expect(await t.atracaoDaClaquete('CHEF(MANUT) C')).toBe('Chef de Alto Nível');
+    expect(params).toEqual(['CHEF']);
+    expect(await criarTrello(ENV, { consultar: async () => [] }).atracaoDaClaquete('NADA 1/1')).toBe('');
+  });
+});

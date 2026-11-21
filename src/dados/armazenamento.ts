@@ -312,6 +312,12 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   });
 }
 
+/** A atração da claquete pelas keys do Teable, perguntando ao servidor ('' se ele não achar ou não houver servidor). */
+export async function atracaoNoServidor(claquete: string): Promise<string> {
+  if (armazenamento.tipo !== 'servidor' || !claquete.trim()) return '';
+  return (await pedir<{ atracao: string }>(`/api/atracao?claquete=${encodeURIComponent(claquete)}`).catch(() => ({ atracao: '' }))).atracao;
+}
+
 /** A claquete já está na produção da arte (Teable)? Só com servidor; sem resposta, segue como novo. */
 export async function consultarProducao(claquete: string): Promise<ProducaoCompleta | null> {
   if (armazenamento.tipo !== 'servidor' || !claquete.trim()) return null;

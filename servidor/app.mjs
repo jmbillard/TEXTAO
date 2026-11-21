@@ -814,6 +814,11 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         return json(res, 422, { erro: 'Não consegui baixar o PDF do card.' });
       }
     }
+    if (caminho === '/api/atracao') {
+      // a atração pela claquete, direto das keys do Teable: para quando a lista do navegador não reconhece
+      const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
+      return json(res, 200, { atracao: claquete && trello.atracaoDaClaquete ? await trello.atracaoDaClaquete(claquete) : '' });
+    }
     if (caminho === '/api/producao') {
       // a claquete já está na produção da arte? (para perguntar se o roteiro novo é uma v2)
       const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);

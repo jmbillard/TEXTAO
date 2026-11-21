@@ -687,5 +687,8 @@ export function criarTrello(env, deps = {}) {
     return (Array.isArray(listas) ? listas : []).flatMap((l) => (l.checkItems ?? []).map((i) => String(i.name ?? '').trim())).filter(Boolean);
   }
 
-  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  /** A atração da claquete pelas keys no Postgres (o mesmo que o envio usa): o nome, ou '' se não achar. */
+  const atracaoDaClaquete = async (claquete) => (await acharAtracao(claquete).catch(() => null))?.nome ?? '';
+
+  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, atracaoDaClaquete, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

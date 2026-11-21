@@ -14,7 +14,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
@@ -29,7 +29,7 @@ import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
 import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
-import { acharPrograma } from '../modelo/vocabularios';
+import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
 
 
@@ -528,7 +528,11 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     void atualizarVocabulario()
       .then(() => {
         const p = acharPrograma(meta.claquete) ?? (inicial.origem ? acharPrograma(inicial.origem.replace(/[_.]+/g, ' ')) : null);
-        if (p) mudarMetaRef.current?.({ programa: p.nome, tipoPrograma: p.tipo });
+        if (p) return mudarMetaRef.current?.({ programa: p.nome, tipoPrograma: p.tipo });
+        // a lista do navegador não reconheceu: o servidor procura nas keys do Teable
+        return atracaoNoServidor(meta.claquete).then((nome) => {
+          if (nome) mudarMetaRef.current?.({ programa: nome, tipoPrograma: programasConhecidos().find((x) => x.nome === nome)?.tipo ?? 'outro' });
+        });
       })
       .catch(() => {});
   }, [liberado, leitura, meta.programa, meta.claquete]); // eslint-disable-line react-hooks/exhaustive-deps
