@@ -638,19 +638,24 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
 
   /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
   const TIPOS_NA_LISTA = false;
-  // "já existe": a arte fica no texto (e no PDF), mas sai do checklist e não entra no acervo como nova.
-  // Clicar de novo devolve ao checklist. Deixar de ser arte de vez é no texto (tirar o sublinhado).
+  // Tirar do checklist, de dois jeitos: "já existe" (vai na linha JÁ EXISTEM do card) ou "não produzir" (só sai).
+  // Nos dois a arte fica no texto (e no PDF) e não entra no acervo como nova; ↺ devolve ao checklist.
+  // Deixar de ser arte de vez é no texto (tirar o sublinhado).
   const marcadasJa = useMemo(() => new Set(meta.jaExiste ?? []), [meta.jaExiste]);
+  const marcadasFora = useMemo(() => new Set(meta.naoProduzir ?? []), [meta.naoProduzir]);
   const nJa = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto))).length;
-  const alternarExiste = (a: (typeof artes)[number]) => {
+  const nFora = artes.filter((a) => marcadasFora.has(chaveDeArte(a.texto))).length;
+  const marcarArte = (a: (typeof artes)[number], como: 'existe' | 'fora' | null) => {
     const k = chaveDeArte(a.texto);
-    const s = new Set(meta.jaExiste ?? []);
-    const marcar = !s.has(k);
-    if (marcar) s.add(k);
-    else s.delete(k);
-    mudarMeta({ jaExiste: s.size ? [...s] : undefined });
+    const ja = new Set(meta.jaExiste ?? []);
+    const fora = new Set(meta.naoProduzir ?? []);
+    ja.delete(k);
+    fora.delete(k);
+    if (como === 'existe') ja.add(k);
+    if (como === 'fora') fora.add(k);
+    mudarMeta({ jaExiste: ja.size ? [...ja] : undefined, naoProduzir: fora.size ? [...fora] : undefined });
     setRealce(null);
-    avisar(marcar ? `"${a.texto}" já existe: fica no texto e sai do checklist.` : `"${a.texto}" volta para o checklist.`);
+    avisar(como === 'existe' ? `"${a.texto}" já existe: sai do checklist.` : como === 'fora' ? `"${a.texto}" não vai ser produzida.` : `"${a.texto}" volta para o checklist.`);
   };
 
   // com uma arte aberta na lista: 1–9 escolhe o tipo, setas trocam de arte, Esc fecha
@@ -1126,8 +1131,12 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               </div>
             )}
               <div className="cab-artes">
-                <b><i>{artes.length - nJa}</i> {artes.length - nJa === 1 ? 'arte' : 'artes'}</b>
-                {nJa > 0 && <span className="rotulo">+{nJa} já {nJa === 1 ? 'existe' : 'existem'}</span>}
+                <b><i>{artes.length - nJa - nFora}</i> {artes.length - nJa - nFora === 1 ? 'arte' : 'artes'}</b>
+                {(nJa > 0 || nFora > 0) && (
+                  <span className="rotulo">
+                    {[nJa > 0 && `+${nJa} já ${nJa === 1 ? 'existe' : 'existem'}`, nFora > 0 && `+${nFora} fora`].filter(Boolean).join(' · ')}
+                  </span>
+                )}
                 {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
               </div>
               {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
@@ -1136,11 +1145,11 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                   artes.map((a) => {
                     const k = chaveDeArte(a.texto);
                     const ja = doAcervo.get(k);
-                    const marcada = marcadasJa.has(k);
+                    const marcada = marcadasJa.has(k) ? 'existe' : marcadasFora.has(k) ? 'fora' : null;
                     return (
                     <li
                       key={a.id}
-                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada ? 'existe' : ''} ${marcada ? 'marcada' : ''}`}
+                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''}`}
                       title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo}` : ''}` : undefined}
                       onMouseEnter={() => setRealce(a.id)}
                       onMouseLeave={() => setRealce(null)}
@@ -1150,15 +1159,20 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                         <span className="txt"><b>{marcada ? <Riscado>{a.texto}</Riscado> : a.texto}</b></span>
                       </button>
                       {!leitura && (
-                        <button
-                          className="tirar-arte"
-                          aria-pressed={marcada}
-                          aria-label={marcada ? `Produzir "${a.texto}"` : `"${a.texto}" já existe`}
-                          title={marcada ? 'Produzir (volta para o checklist)' : 'Já existe: fica no texto, sai do checklist'}
-                          onClick={() => alternarExiste(a)}
-                        >
-                          <Icone nome={marcada ? 'desfazer' : 'fechar'} tam={13} traco={2.2} />
-                        </button>
+                        marcada ? (
+                          <button className="tirar-arte" aria-label={`Produzir "${a.texto}"`} title="Produzir (volta para o checklist)" onClick={() => marcarArte(a, null)}>
+                            <Icone nome="desfazer" tam={13} traco={2.2} />
+                          </button>
+                        ) : (
+                          <span className="acoes-arte">
+                            <button className="tirar-arte ja" aria-label={`"${a.texto}" já existe`} title="Já existe (sai do checklist, vai em JÁ EXISTEM no card)" onClick={() => marcarArte(a, 'existe')}>
+                              <Icone nome="certo" tam={13} traco={2.2} />
+                            </button>
+                            <button className="tirar-arte" aria-label={`Não produzir "${a.texto}"`} title="Não produzir (sai do checklist)" onClick={() => marcarArte(a, 'fora')}>
+                              <Icone nome="fechar" tam={13} traco={2.2} />
+                            </button>
+                          </span>
+                        )
                       )}
                     </li>
                     );

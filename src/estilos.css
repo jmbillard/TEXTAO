@@ -1658,3 +1658,9 @@ html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !imp
 .artes li.marcada .txt b { color: var(--tinta3); font-weight: 600; }
 .artes.so-lista li.marcada .tirar-arte { opacity: 1; color: var(--tinta3); }
 .artes.so-lista li.marcada .tirar-arte:hover { color: var(--ultra); background: color-mix(in srgb, var(--ultra) 10%, transparent); }
+/* duas saídas do checklist no hover: já existe (✓) e não produzir (×) */
+.acoes-arte { display: flex; gap: 2px; flex: none; }
+.tirar-arte.ja:hover { color: var(--ultra); background: color-mix(in srgb, var(--ultra) 10%, transparent); }
+/* não produzir: o número some num traço e o risco é cinza (não diz que existe) */
+.artes li.marcada.fora .b { background: transparent; color: var(--tinta3); box-shadow: inset 0 0 0 1.5px var(--regua); opacity: 0.6; }
+.artes li.marcada.fora .riscado-mao path { stroke: var(--tinta3); }

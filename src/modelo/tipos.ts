@@ -80,6 +80,8 @@ export interface Meta {
   jaExistem?: ArteDoAcervo[];
   /** Artes que quem revisa marcou como "já existe" (pela chave): ficam no texto, saem do checklist e não entram no acervo. */
   jaExiste?: string[];
+  /** Artes que quem revisa decidiu não produzir (pela chave): ficam no texto, saem do checklist, sem dizer que existem. */
+  naoProduzir?: string[];
 }
 
 export const metaVazia = (): Meta => ({
