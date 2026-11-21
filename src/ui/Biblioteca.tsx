@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { apagarAoSair, armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
@@ -597,13 +597,19 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
   // saiu da tela com um "tirar" pendente: apaga de vez
   const saindoRef = useRef(saindo);
   saindoRef.current = saindo;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // recarregar ou fechar a página durante o "desfazer" também apaga (antes, o roteiro voltava)
+    const aoSair = () => {
       clearTimeout(prazoSaida.current);
-      if (saindoRef.current) void armazenamento.apagar(saindoRef.current.id).catch(() => {});
-    },
-    [],
-  );
+      if (saindoRef.current) apagarAoSair(saindoRef.current.id);
+      saindoRef.current = null;
+    };
+    window.addEventListener('pagehide', aoSair);
+    return () => {
+      window.removeEventListener('pagehide', aoSair);
+      aoSair();
+    };
+  }, []);
 
   /** Cria o card no Trello. A ficha mostra "mandando" na hora; o resultado chega pela fila ao vivo. */
   const mandar = async (r: Resumo | Roteiro) => {

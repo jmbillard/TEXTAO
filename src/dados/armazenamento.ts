@@ -312,6 +312,12 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   });
 }
 
+/** Apaga mesmo com a página fechando ou recarregando (o pedido sobrevive à saída). */
+export function apagarAoSair(id: string) {
+  if (armazenamento.tipo !== 'servidor') return void armazenamento.apagar(id).catch(() => {});
+  void fetch(`/api/roteiros/${encodeURIComponent(id)}`, { method: 'DELETE', keepalive: true, credentials: 'same-origin', headers: cabecalhos }).catch(() => {});
+}
+
 /** A atração da claquete pelas keys do Teable, perguntando ao servidor ('' se ele não achar ou não houver servidor). */
 export async function atracaoNoServidor(claquete: string): Promise<string> {
   if (armazenamento.tipo !== 'servidor' || !claquete.trim()) return '';
