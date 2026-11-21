@@ -139,6 +139,7 @@ h1, h2, h3, p, ul { margin: 0; }
 ul { padding: 0; list-style: none; }
 ::selection { background: rgb(58 53 224 / 20%); }
 :focus-visible { outline: 2px solid var(--ultra); outline-offset: 2px; border-radius: 4px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible, [contenteditable]:focus-visible { outline: none; }
 kbd {
   font: 500 11.5px var(--sans);
   padding: 1px 6px;
@@ -1215,7 +1216,6 @@ kbd {
 .lista-topo { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--regua); }
 .cad-busca { flex: 0 1 300px; margin-left: auto; height: 38px; border-radius: 11px; background: var(--neutro); display: flex; align-items: center; gap: 10px; padding: 0 12px; color: var(--tinta3); min-width: 160px; }
 .cad-busca input { flex: 1; min-width: 0; border: 0; background: none; outline: 0; font: 400 14px var(--sans); color: var(--tinta); }
-.cad-busca:focus-within { box-shadow: 0 0 0 2px var(--ultra-suave); }
 
 .abas-cad { display: flex; align-items: center; gap: 2px; }
 .abas-cad button { position: relative; border: 0; background: none; color: var(--tinta3); display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; font: 500 15px var(--sans); cursor: pointer; transition: color 0.15s; }
@@ -1242,7 +1242,7 @@ kbd {
 .key button:hover { color: var(--perigo); }
 .key.nova { border-style: dashed; color: var(--tinta3); background: transparent; cursor: pointer; font-family: var(--sans); font-weight: 500; }
 .key.nova:hover { color: var(--tinta); border-color: var(--tinta3); }
-input.key.editando { border-color: var(--ultra); color: var(--tinta); background: var(--papel); box-shadow: 0 0 0 3px var(--ultra-suave); outline: 0; text-transform: uppercase; }
+input.key.editando { border-color: var(--ultra); color: var(--tinta); background: var(--papel); outline: 0; text-transform: uppercase; }
 .key.recem { border-color: color-mix(in srgb, var(--ok) 50%, var(--regua)); color: var(--ok); background: var(--ok-fundo); }
 .no-trello { display: inline-flex; align-items: center; gap: 5px; color: var(--ok); }
 .lixo-cad { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--tinta3); border: 0; background: none; cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s; }
@@ -1266,7 +1266,7 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .campo-cad small { font: 400 12px/1.45 var(--sans); color: var(--tinta3); }
 .campo-cad mark { background: var(--ultra-suave); color: var(--ultra-tinta); border-radius: 3px; padding: 0 2px; }
 .entrada-cad { height: 40px; border-radius: 9px; border: 1px solid var(--regua-forte); background: var(--cartao); padding: 0 12px; font: 500 14.5px var(--sans); color: var(--tinta); outline: 0; width: 100%; transition: border-color 0.15s, box-shadow 0.15s; }
-.entrada-cad:focus, .entrada-cad:focus-within { border-color: var(--ultra); box-shadow: 0 0 0 3px var(--ultra-suave); }
+.entrada-cad:focus, .entrada-cad:focus-within { border-color: var(--ultra); }
 .entrada-cad.chips { height: auto; min-height: 40px; padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; cursor: text; }
 .entrada-cad.chips input { flex: 1 1 40px; width: 0; min-width: 40px; border: 0; background: none; outline: 0; font: 600 13px var(--mono); color: var(--tinta); text-transform: uppercase; padding: 3px 2px; }
 .entrada-cad.chips input::placeholder { font: 400 13.5px var(--sans); text-transform: none; color: var(--tinta3); }
@@ -1372,7 +1372,7 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 @keyframes abrir-escolha { from { opacity: 0; transform: translateY(-4px); } }
 .campo-c .escolha-nome-menu input, .escolha-nome-menu input { width: 100%; height: 36px; border-radius: 8px; border: 1px solid var(--regua-forte); background: var(--papel); padding: 0 10px;
   font: 500 14px var(--sans); color: var(--tinta); outline: 0; margin-bottom: 6px; }
-.campo-c .escolha-nome-menu input:focus, .escolha-nome-menu input:focus { border-color: var(--ultra); box-shadow: 0 0 0 3px var(--ultra-suave); }
+.campo-c .escolha-nome-menu input:focus, .escolha-nome-menu input:focus { border-color: var(--ultra); }
 .escolha-nome-menu ul { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .campo-c .escolha-nome-menu li, .escolha-nome-menu li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 7px; font: 500 14px var(--sans); color: var(--tinta); cursor: pointer; }
 .escolha-nome-menu li.marcado { background: var(--neutro); }
@@ -1725,7 +1725,7 @@ html.com-cursor-meu { min-height: 100%; }
 .ligar-a .menu-ligar { position: absolute; right: 0; top: calc(100% + 6px); left: auto; z-index: 40; width: 260px; }
 .menu-ligar .nova-ligar { display: block; width: 100%; text-align: left; margin: 6px 0 4px; padding: 7px 10px; border: 0; border-radius: 7px; background: none; font: 600 14px var(--sans); color: var(--ultra); cursor: pointer; }
 .menu-ligar .nova-ligar.marcado { background: var(--ultra-suave); }
-.menu-ligar ul { border-top: 1px solid var(--regua); padding-top: 4px; }
+.menu-ligar ul { border-top: 1px dashed var(--regua-forte); padding-top: 4px; }
 .escolha-nome-menu li.vazio-ligar { color: var(--tinta3); cursor: default; }
 .ignorar-key { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; border: 0; background: none; color: var(--tinta3); cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s; }
 .item-cad.sem-cad:hover .ignorar-key, .ignorar-key:focus-visible { opacity: 1; }
