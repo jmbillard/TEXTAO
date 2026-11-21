@@ -280,43 +280,28 @@ function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
 
 const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-/** O card no Trello: mandando, mandado (com link), já estava lá, ou deu erro (com o botão para tentar de novo). */
-function FichaTrello({ r, mandar }: { r: Resumo; mandar: () => Promise<void> }) {
-  // só o que segura o envio (sem editor não segura: o n8n preenche depois)
-  const revisar = travamTrello(r.meta.revisar);
+/** O envio ao Trello na ficha: só quando está indo ou deu erro, como uma pendência (com o botão para tentar de novo).
+    Antes de ir não há aviso (o caminho é a revisão); depois de ir, a ficha vira card e a marca leva até ele. */
+function AvisoTrello({ r, mandar }: { r: Resumo; mandar?: () => Promise<void> }) {
   const e = r.trello;
   if (e?.estado === 'enviando')
     return (
-      <span className="ficha-trello some enviando">
-        <Icone nome="quadro" tam={14} /> Mandando para o Trello…
+      <span className="pendencia trello-indo">
+        <Icone nome="quadro" tam={12} /> Mandando para o Trello…
       </span>
     );
-  if (e?.estado === 'enviado')
+  if (e?.estado === 'erro')
     return (
-      <span className="ficha-trello some ok">
-        <Icone nome="quadro" tam={14} />
-        <a href={e.url} target="_blank" rel="noreferrer">No Trello</a>
-        <small>{e.por ? `${primeiro(e.por)}, ` : ''}{horaCurta(e.em)}</small>
+      <span className="pendencia erro" title={e.erro || undefined}>
+        Não foi para o Trello
+        {mandar && (
+          <button type="button" className="tentar-trello" onClick={() => void mandar()}>
+            Tentar de novo
+          </button>
+        )}
       </span>
     );
-  if (e?.estado === 'duplicado')
-    return (
-      <span className="ficha-trello some ok" title="A claquete já tinha entrado hoje na produção da arte, pelo upload antigo. O PROMeiro não criou outro card.">
-        <Icone nome="quadro" tam={14} /> Já estava no Trello <small>pelo upload antigo</small>
-      </span>
-    );
-  return (
-    <span className={`ficha-trello some ${e?.estado === 'erro' ? 'erro' : 'falta'}`}>
-      <Icone nome="quadro" tam={14} />
-      {e?.estado === 'erro' ? <span title={e.erro}>Não foi para o Trello{e.erro && <small className="motivo-trello">: {e.erro}</small>}</span> : <span>{revisar.length ? 'Vai para o Trello depois da revisão' : 'Ainda não foi para o Trello'}</span>}
-      {/* sem "mandar agora": o caminho para o Trello é a revisão; só o envio que falhou pode ser tentado de novo */}
-      {e?.estado === 'erro' && (
-        <button className="botao-texto" onClick={() => void mandar()}>
-          Tentar de novo
-        </button>
-      )}
-    </span>
-  );
+  return null;
 }
 
 interface VersaoNova {
@@ -346,7 +331,8 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   const revisada = !ocupada && !!r.revisadoPor;
   const quem = ocupada ? agora[0] : r.revisadoPor;
   // a folha de quem está revisando cobre só as linhas de cima (sem a do Trello): a principal, a versão, a produção e as pendências
-  const comPendencias = revisar.length > 0 || (!r.meta.programa && !!cadastrarAtracao && !mandada);
+  const avisoTrello = r.trello?.estado === 'enviando' || r.trello?.estado === 'erro';
+  const comPendencias = revisar.length > 0 || (!r.meta.programa && !!cadastrarAtracao && !mandada) || avisoTrello;
   const linhasDaFolha = 1 + (versao ? 1 : 0) + (np && producao && !versao ? 1 : 0) + (comPendencias ? 1 : 0);
   return (
     <li
@@ -359,9 +345,15 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
           <i>{ocupada ? primeiro(agora[0].nome)[0] : ''}</i>
         </span>
       )}
-      <span className={`ficha-marca ${mandada ? 'trello' : alerta ? 'revisar' : 'ok'}`} aria-hidden="true">
-        {mandada ? <Icone nome="quadro" tam={12} traco={2.4} /> : alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
-      </span>
+      {mandada && r.trello?.url ? (
+        <a className="ficha-marca trello" href={r.trello.url} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label="Abrir o card no Trello">
+          <Icone nome="quadro" tam={12} traco={2.4} />
+        </a>
+      ) : (
+        <span className={`ficha-marca ${mandada ? 'trello' : alerta ? 'revisar' : 'ok'}`} aria-hidden="true">
+          {mandada ? <Icone nome="quadro" tam={12} traco={2.4} /> : alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
+        </span>
+      )}
       <button className="ficha-claquete" onClick={np && producao ? producao.comparar : abrir} aria-label={`Abrir ${claquete}`}>
         <b>
           <span className="claquete-alvo">
@@ -423,8 +415,9 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
           </a>
         </span>
       )}
-      {(revisar.length > 0 || (!r.meta.programa && cadastrarAtracao && !mandada)) && (
+      {comPendencias && (
         <span className="ficha-pendencias some">
+          <AvisoTrello r={r} mandar={mandar} />
           {revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}
           {!r.meta.programa && cadastrarAtracao && !mandada && (
             <button type="button" className="atalho-cadastro" onClick={cadastrarAtracao}>
@@ -433,7 +426,6 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
           )}
         </span>
       )}
-      {mandar && !versao && !np && <FichaTrello r={r} mandar={mandar} />}
     </li>
   );
 }
