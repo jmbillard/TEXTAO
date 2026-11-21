@@ -342,11 +342,14 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   const ocupada = agora.length > 0;
   const revisada = !ocupada && !!r.revisadoPor;
   const quem = ocupada ? agora[0] : r.revisadoPor;
+  // a folha de quem está revisando cobre só as linhas de cima (sem a do Trello): a principal, a versão, a produção e as pendências
+  const comPendencias = revisar.length > 0 || (!r.meta.programa && !!cadastrarAtracao && !mandada);
+  const linhasDaFolha = 1 + (versao ? 1 : 0) + (np && producao && !versao ? 1 : 0) + (comPendencias ? 1 : 0);
   return (
     <li
       className={`ficha ${alerta ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''} ${mandada ? 'mandada' : ''}`}
       data-ancora={`ficha:${r.id}`}
-      style={quem ? ({ '--cor': corDe(quem.email) } as React.CSSProperties) : undefined}
+      style={quem ? ({ '--cor': corDe(quem.email), '--fim-folha': linhasDaFolha + 1 } as React.CSSProperties) : undefined}
     >
       {(ocupada || revisada) && (
         <span className="orelha" aria-hidden="true">

@@ -1770,15 +1770,25 @@ html.com-cursor-meu { min-height: 100%; }
 .ligar-sug { transition: opacity 0.15s, transform 0.15s, color 0.15s; }
 .lado-cad:has(.ligar-icone:hover) .ligar-sug, .lado-cad:has(.ligar-icone[aria-expanded='true']) .ligar-sug { opacity: 0; }
 
-/* ficha em revisão: a ficha fica onde está e ganha uma folha de papel por cima, por dentro da borda,
-   como a tira de rascunho dos cadastros. isolation deixa a folha (z-index -1) entre o fundo da ficha e o conteúdo. */
+/* ficha em revisão: a ficha fica onde está e ganha uma folha de papel por cima, como a tira de rascunho dos cadastros.
+   A folha (::after) e a sombra colada à esquerda (::before) ocupam a área da grade da marca até as artes, nas linhas
+   de cima: não passam pelo botão nem pela linha do Trello. isolation põe as duas entre o fundo da ficha e o conteúdo. */
 .ficha.ocupada { isolation: isolate; }
-.ficha.ocupada::before {
-  content: ''; position: absolute; inset: 7px 9px 9px 7px; z-index: -1; pointer-events: none; border-radius: 3px;
-  background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha);
-  transform: rotate(-0.6deg);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent), -7px 9px 12px -7px var(--folha-sombra), 0 12px 16px -14px var(--folha-sombra);
+.ficha.ocupada::before, .ficha.ocupada::after {
+  content: ''; position: absolute; grid-column: 1 / 5; grid-row: 1 / var(--fim-folha, 2); pointer-events: none;
+  inset: -6px -10px -7px -8px;
+}
+.ficha.ocupada::after {
+  z-index: -1; border-radius: 3px; background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha);
+  transform: rotate(-0.5deg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tinta) 6%, transparent);
   animation: pousar-folha 0.5s var(--suave) both;
 }
-@keyframes pousar-folha { from { opacity: 0; transform: translateY(-4px) rotate(0); box-shadow: none; } }
-@media (prefers-reduced-motion: reduce) { .ficha.ocupada::before { animation: none; } }
+.ficha.ocupada::before {
+  z-index: -2; top: 6px; bottom: -3px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--folha-sombra), color-mix(in srgb, var(--folha-sombra) 35%, transparent) 65%, transparent 98%);
+  transform-origin: right center; transform: translate(-7px, 3px) rotate(-0.6deg) skewY(-0.8deg); filter: blur(7px);
+  animation: sombra-solta 0.55s 0.08s var(--suave) both;
+}
+@keyframes pousar-folha { from { opacity: 0; transform: translateY(-4px) rotate(0); } }
+@media (max-width: 860px) { .ficha.ocupada::before, .ficha.ocupada::after { grid-column: 1 / 4; grid-row: 1 / 3; } }
+@media (prefers-reduced-motion: reduce) { .ficha.ocupada::before, .ficha.ocupada::after { animation: none; } }
