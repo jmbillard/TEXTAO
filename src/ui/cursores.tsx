@@ -339,6 +339,20 @@ export async function aplicarCursorNoMouse(id: string, cor: string) {
   const quadros = await cursorRecortado(svg, GRANDE, [tam]);
   if (meu !== pedidoCursor) return; // outro pedido mais novo já está a caminho
   if (!quadros) return tirar();
+  // Firefox: o cursor nativo em SVG (sem atraso; o Firefox desenha o SVG do cursor na densidade da tela), recortado
+  // rente como o PNG; se o SVG não carregar, vale o PNG
+  if (/firefox/i.test(navigator.userAgent)) {
+    desenhado?.remove();
+    desenhado = null;
+    desenhoAtual = null;
+    const u = 60 / GRANDE; // unidades do viewBox por px do desenho grande
+    const caixa = `${(-6 + quadros.ox * u).toFixed(3)} ${(-6 + quadros.oy * u).toFixed(3)} ${(quadros.lado * u).toFixed(3)} ${(quadros.lado * u).toFixed(3)}`;
+    const vetor = svg.replace(/width="\d+" height="\d+" viewBox="[^"]*"/, `width="${tam}" height="${tam}" viewBox="${caixa}"`);
+    const { x, y } = quadros.ponta;
+    raiz.style.setProperty('--cursor-meu', `url("data:image/svg+xml,${encodeURIComponent(vetor)}") ${x} ${y}, url("${quadros.imagens[0]}") ${x} ${y}, auto`);
+    raiz.classList.add('com-cursor-meu');
+    return;
+  }
   // O cursor do sistema não serve: o navegador do Mac usa a imagem de 1x esticada, borrada. O meu cursor é
   // desenhado na página, em vetor, nítido em qualquer tela; o do sistema some (menos onde se digita).
   const escala = tam / quadros.lado; // px na tela por px do desenho grande
