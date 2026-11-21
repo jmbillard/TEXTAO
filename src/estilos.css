@@ -1699,3 +1699,8 @@ html.com-cursor-meu { min-height: 100%; }
 .faixa-sem-login { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 90; max-width: min(640px, calc(100vw - 32px));
   padding: 10px 16px; border-radius: 10px; background: #b4441f; color: #fff; font: 500 13.5px/1.4 var(--sans); box-shadow: var(--sombra-menu); text-align: center; }
 .faixa-sem-login a { color: #fff; text-decoration: underline; }
+/* tirar da fila um card que já foi para o Trello: a lixeira aparece no hover, como nas fichas */
+.card-lixo { width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; display: grid; place-items: center; color: var(--tinta3); opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s; }
+.card-trello:hover .card-lixo, .card-lixo:focus-visible { opacity: 1; }
+.card-lixo:hover { color: var(--perigo); background: color-mix(in srgb, var(--perigo) 10%, transparent); }
+@media (hover: none) { .card-lixo { opacity: 1; } }

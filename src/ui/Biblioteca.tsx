@@ -445,7 +445,7 @@ const ETAPAS: Record<string, { nome: string; tom: string }> = {
 };
 const etapaDe = (st: string) => ETAPAS[st.toUpperCase()] ?? { nome: st[0] + st.slice(1).toLowerCase(), tom: 'espera' };
 
-function CardTrello({ r, abrir, andamento }: { r: Resumo; abrir: () => void; andamento?: Andamento }) {
+function CardTrello({ r, abrir, andamento, tirar }: { r: Resumo; abrir: () => void; andamento?: Andamento; tirar?: () => void }) {
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
   const e = r.trello!;
   const etapas = (andamento?.status ?? []).map(etapaDe);
@@ -476,6 +476,11 @@ function CardTrello({ r, abrir, andamento }: { r: Resumo; abrir: () => void; and
           <a className="card-link" href={e.url} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label={`Abrir ${claquete} no Trello`}>
             <Icone nome="quadro" tam={13} />
           </a>
+        )}
+        {tirar && (
+          <button className="card-lixo" title="Tirar da fila (o card no Trello continua lá)" aria-label={`Tirar ${claquete} da fila`} onClick={tirar}>
+            <Icone nome="lixo" tam={13} />
+          </button>
         )}
         {e.estado === 'enviado' && e.por && (
           <span className="card-quem" style={{ '--cor': corDe(e.por) } as React.CSSProperties} title={`Mandado por ${e.por}, ${horaCurta(e.em)}`}>
@@ -853,7 +858,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
                         <div className="cards-trello-bloco">
                         <p className="cards-rotulo">já no Trello</p>
                         <ul className="cards-trello" aria-label="Já no Trello">
-                          {g.itens.filter(noTrello).map((r) => <CardTrello key={r.id} r={r} abrir={() => abrir(r.id)} andamento={andamento[r.id]} />)}
+                          {g.itens.filter(noTrello).map((r) => <CardTrello key={r.id} r={r} abrir={() => abrir(r.id)} andamento={andamento[r.id]} tirar={() => tirar(r)} />)}
                         </ul>
                         </div>
                       )}
