@@ -77,6 +77,9 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
+  // para o diagnóstico: de onde veio a última leitura e o que deu errado
+  const estado = { origem: '', erroPg: '', erroApi: '', em: '' };
+
   async function carregar() {
     const novo = { ...guardado };
     let peloPg = false;
@@ -86,11 +89,15 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
         if (pg.redatores) novo.redatores = [...new Set((await sql(`SELECT "redator" FROM ${pg.redatores}`)).map((l) => texto(l.redator)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
         if (pg.editores) novo.editores = [...new Set((await sql(`SELECT "editor" FROM ${pg.editores}`)).map((l) => texto(l.editor)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
         peloPg = true;
+        estado.origem = 'postgres';
+        estado.erroPg = '';
       } catch (e) {
-        console.warn(`[vocabulário] não li as atrações pelo Postgres, vou pela API: ${e instanceof Error ? e.message : e}`);
+        estado.erroPg = e instanceof Error ? e.message : String(e);
+        console.warn(`[vocabulário] não li as atrações pelo Postgres, vou pela API: ${estado.erroPg}`);
       }
     }
     if (env.TEABLE_ATRACOES && !peloPg) {
+      estado.origem = 'api';
       const campoChave = env.TEABLE_CAMPO_CHAVE || 'key';
       const campoNome = env.TEABLE_CAMPO_ATRACAO || 'atracoes';
       const porNome = new Map();
@@ -142,6 +149,8 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
 
   return {
     ligado,
+    /** Para o diagnóstico: de onde veio a lista, quantas atrações, e os erros. */
+    estado: () => ({ ...estado, atracoes: guardado.programas?.length ?? 0, comKeys: (guardado.programas ?? []).filter((p) => p.chaves?.length).length }),
     /** Depois de um cadastro: a próxima leitura vai ao Teable, sem esperar a validade. */
     async renovar() {
       // uma leitura que já estava em curso começou antes do cadastro: espera ela acabar e lê de novo
@@ -157,11 +166,16 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
         const doCache = await cache?.ler('vocabulario');
         if (doCache) return void (guardado = doCache);
         guardado = await carregar();
+        estado.em = new Date().toISOString();
+        estado.erroApi = '';
+        console.log(`[vocabulário] ${guardado.programas?.length ?? 0} atrações, pelo ${estado.origem || '—'}`);
         await cache?.guardar('vocabulario', guardado, VALIDADE_MS / 1000);
         copia?.guardar('vocabulario', guardado);
         avisouCopia = false;
       })()
         .catch((e) => {
+          estado.erroApi = `${e.message} ${e.cause?.code ?? e.cause?.message ?? ''}`.trim();
+          estado.origem = copia?.ler('vocabulario') ? 'cópia local antiga' : 'nenhuma';
           console.error('[vocabulário] não consegui ler o Teable:', e.message, e.cause?.code ?? e.cause?.message ?? '');
           const c = copia?.ler('vocabulario');
           if (c && !avisouCopia) {

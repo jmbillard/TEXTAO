@@ -689,6 +689,14 @@ export function criarTrello(env, deps = {}) {
 
   /** A atração da claquete pelas keys no Postgres (o mesmo que o envio usa): o nome, ou '' se não achar. */
   const atracaoDaClaquete = async (claquete) => (await acharAtracao(claquete).catch(() => null))?.nome ?? '';
+  /** Para o diagnóstico: a busca da atração com a chave usada e o erro, se houver. */
+  const diagnosticarAtracao = async (claquete) => {
+    try {
+      return { chave: chaveDaAtracao(claquete), tabela: t.atracoes ?? null, atracao: (await acharAtracao(claquete))?.nome ?? '' };
+    } catch (e) {
+      return { chave: chaveDaAtracao(claquete), tabela: t.atracoes ?? null, erro: e instanceof Error ? e.message : String(e) };
+    }
+  };
 
-  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, atracaoDaClaquete, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }
