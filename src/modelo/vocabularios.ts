@@ -169,9 +169,13 @@ export function acharPrograma(texto: string): ProgramaVocab | null {
   // A claquete começa pela chave ("QUEM AMA 12/3 REDE"); chaves curtas ("CASA", "VT") não valem no meio de uma frase.
   const n = normal(texto.replace(/^\s*PGM\s*:/i, ''));
   let melhor: { p: ProgramaVocab; tam: number } | null = null;
-  for (const e of externos) {
+  // a key no começo da claquete decide: o que vem nos parênteses é detalhe ("CHEF(QUEM AMA)17-11" é do Chef,
+  // numa chamada que fala de Quem Ama); só sem key no começo vale procurar o nome no meio do texto
+  for (const e of externos)
     for (const c of e.chaves)
       if ((n === c || n.startsWith(c + ' ')) && (!melhor || c.length > melhor.tam)) melhor = { p: e.p, tam: c.length };
+  if (melhor) return melhor.p;
+  for (const e of externos) {
     if (e.nome.length >= 8 && ` ${n} `.includes(` ${e.nome} `) && (!melhor || e.nome.length > melhor.tam))
       melhor = { p: e.p, tam: e.nome.length };
   }
