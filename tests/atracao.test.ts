@@ -20,6 +20,11 @@ describe('atração pela claquete', () => {
     expect(acharPrograma('Rio Fut(Brasileirao)21/11')?.nome).toBe('Futebol');
     expect(acharPrograma('Rio Coracao (Pilula) 10')?.nome).toBe('Coração Acelerado');
   });
+  it('o SP no fim não atrapalha', () => {
+    expect(acharPrograma('Fut(Brasileirao)21/11 SP')?.nome).toBe('Futebol');
+    expect(acharPrograma('Coracao SP')?.nome).toBe('Coração Acelerado');
+    expect(acharPrograma('CHEF(MANUT) C SP')?.nome).toBe('Chef de Alto Nível');
+  });
   it('sem key no começo, ainda acha o nome no meio do texto', () => {
     expect(acharPrograma('Chamada especial Quem Ama Cuida hoje')?.nome).toBe('Quem Ama Cuida');
   });
