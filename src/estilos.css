@@ -1214,7 +1214,7 @@ kbd {
 
 .lista-cad { background: var(--papel); border: 1px solid var(--regua); border-radius: 14px; }
 .lista-topo { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--regua); }
-.cad-busca { flex: 0 1 300px; margin-left: auto; height: 38px; border-radius: 11px; background: var(--neutro); display: flex; align-items: center; gap: 10px; padding: 0 12px; color: var(--tinta3); min-width: 160px; }
+.cad-busca { flex: 1 1 180px; max-width: 300px; margin-left: auto; height: 38px; border-radius: 11px; background: var(--neutro); display: flex; align-items: center; gap: 10px; padding: 0 12px; color: var(--tinta3); min-width: 160px; }
 .cad-busca input { flex: 1; min-width: 0; border: 0; background: none; outline: 0; font: 400 14px var(--sans); color: var(--tinta); }
 
 .abas-cad { display: flex; align-items: center; gap: 2px; }
@@ -1758,3 +1758,14 @@ html.com-cursor-meu { min-height: 100%; }
 .menu-ligar ul { margin-inline: -8px; }
 .escolha-nome-menu.menu-ligar li { padding-inline: 18px; border-radius: 0; }
 .menu-ligar .nova-ligar { width: calc(100% + 16px); margin-inline: -8px; padding-inline: 18px; border-radius: 0; }
+/* Ligar a…: dois nós e uma curva pontilhada; no hover o texto toma o lugar da sugestão */
+.ligar-icone { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--tinta3); cursor: pointer; transition: color 0.15s, background 0.15s; }
+.ligar-icone svg { overflow: visible; }
+.ligar-icone circle { fill: none; stroke: currentColor; stroke-width: 2; }
+.ligar-icone .curva { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 0.1 2.9; transition: stroke-dashoffset 0.4s; }
+.ligar-icone:hover, .ligar-icone[aria-expanded='true'] { color: var(--ultra); background: var(--ultra-suave); }
+.ligar-icone:hover .curva { stroke-dashoffset: -5.8; }
+.ligar-texto { position: absolute; right: calc(100% + 6px); top: 50%; transform: translate(6px, -50%); white-space: nowrap; font: 500 13px var(--sans); color: var(--ultra); opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.2s var(--suave); }
+.ligar-icone:hover .ligar-texto { opacity: 1; transform: translate(0, -50%); }
+.ligar-sug { transition: opacity 0.15s, transform 0.15s, color 0.15s; }
+.lado-cad:has(.ligar-icone:hover) .ligar-sug, .lado-cad:has(.ligar-icone[aria-expanded='true']) .ligar-sug { opacity: 0; }

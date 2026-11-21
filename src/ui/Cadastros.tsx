@@ -192,7 +192,14 @@ function LinhaSemCadastro({ k, atracoes, ligar, nova, ignorar }: { k: KeySemCada
           </button>
         )}
         <span className="ligar-a">
-          <button type="button" className="botao-texto" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>Ligar a…</button>
+          <button type="button" className="ligar-icone" aria-label={`Ligar ${k.key} a uma atração`} aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
+            <span className="ligar-texto" aria-hidden="true">Ligar a…</span>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path className="curva" d="M5.6 16.6 C 6 6, 18 18, 18.4 7.4" />
+              <circle cx="4" cy="19" r="2.6" />
+              <circle cx="20" cy="5" r="2.6" />
+            </svg>
+          </button>
           {menu && <MenuLigar atracoes={atracoes} ligar={(n) => (setMenu(false), ligar(n))} nova={() => (setMenu(false), nova())} fechar={() => setMenu(false)} />}
         </span>
       </div>
