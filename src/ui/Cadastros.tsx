@@ -394,6 +394,15 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const [busca, setBusca] = useState('');
   const [recem, setRecem] = useState<string[]>([]);
   const [assentando, setAssentando] = useState(false);
+  // onde a tira de rascunho abre a vaga na lista
+  const [nomeVaga, setNomeVaga] = useState<string | null>(null);
+  const vaga = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = vaga.current;
+    if (!el) return;
+    const t = setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }), 60);
+    return () => clearTimeout(t);
+  }, [nomeVaga, aba]);
   const [salvando, setSalvando] = useState(false);
   // a aba "Sem cadastro": as keys das claquetes que nenhuma atração reconhece (o formulário da direita é o de atração)
   const [semCad, setSemCad] = useState(false);
@@ -564,12 +573,28 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     aba === 'atracoes' ? (atr.nome || atr.keys.length ? { nome: atr.nome, categoria: atr.categoria, keys: atr.keys } : null)
     : aba === 'redatores' ? (red.nome || red.user ? { nome: red.nome, keys: red.user ? [red.user] : [] } : null)
     : edi.nome || edi.keys.length ? { nome: edi.nome, keys: edi.keys } : null;
+  // o lugar segue o nome com um respiro: abre a vaga quando a pessoa para de digitar, não a cada letra
+  const nomeRascunho = rascunho ? rascunho.nome : null;
+  useEffect(() => {
+    if (nomeRascunho === null) return setNomeVaga(null);
+    const t = setTimeout(() => setNomeVaga(nomeRascunho), nomeVaga === null ? 120 : 380);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nomeRascunho]);
   const comRascunho = <T extends { nome: string }>(lista: T[], render: (x: T) => React.ReactNode) => {
     const itens = lista.map((x) => ({ nome: x.nome, no: render(x) }));
-    if (rascunho) {
-      const pos = itens.findIndex((x) => x.nome.localeCompare(rascunho.nome || '￿', 'pt-BR') > 0);
-      const folha = { nome: '', no: <Rascunho key="rascunho" nome={rascunho.nome} categoria={'categoria' in rascunho ? rascunho.categoria : undefined} keys={rascunho.keys} assentando={assentando} /> };
-      itens.splice(pos < 0 ? itens.length : pos, 0, folha);
+    if (rascunho && nomeVaga !== null) {
+      const achou = itens.findIndex((x) => x.nome.localeCompare(nomeVaga || '\uffff', 'pt-BR') > 0);
+      const pos = achou < 0 ? itens.length : achou;
+      const folha = {
+        nome: '',
+        no: (
+          <div key={`vaga-${aba}-${pos}`} className="vaga" ref={vaga}>
+            <Rascunho nome={rascunho.nome} categoria={'categoria' in rascunho ? rascunho.categoria : undefined} keys={rascunho.keys} assentando={assentando} />
+          </div>
+        ),
+      };
+      itens.splice(pos, 0, folha);
     }
     return itens.map((x) => x.no);
   };

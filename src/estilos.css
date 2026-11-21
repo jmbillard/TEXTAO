@@ -1737,3 +1737,14 @@ html.com-cursor-meu { min-height: 100%; }
 .com-limpar .entrada-cad { padding-right: 36px; }
 .limpar-campo { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; border: 0; background: none; color: var(--tinta3); cursor: pointer; }
 .limpar-campo:hover { color: var(--tinta); background: var(--neutro); }
+
+/* a vaga do rascunho: a lista abre espaço e a tira entra nela */
+.vaga { display: grid; grid-template-rows: 1fr; animation: abrir-vaga 0.34s var(--suave) both; scroll-margin: 96px 0; }
+.vaga > * { min-height: 0; }
+@keyframes abrir-vaga { from { grid-template-rows: 0fr; } }
+.vaga .item-cad.rascunho { animation-delay: 0.26s; }
+.vaga .folha-rascunho::before { animation-delay: 0.34s; }
+.vaga .seta-form path { animation-delay: 0.71s; }
+.vaga .item-cad.rascunho .nota { animation-delay: 1.01s; }
+.lista-topo + .vaga .item-cad { border-top: 0; }
+@media (prefers-reduced-motion: reduce) { .vaga { animation: none; } }
