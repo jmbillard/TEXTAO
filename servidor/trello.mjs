@@ -111,6 +111,10 @@ export function configDoTrello(env) {
       // limpos do mesmo jeito que a pauta (aspas, espaços, "esquema.tabela")
       esquema: nomesDoPg(env, '').esquema,
       producao: nomeLimpoPg(env.TEABLE_PG_ARTE),
+      // de onde ler a produção (andamento, claquete repetida, "já entrou hoje"), quando não é a mesma em que o app grava:
+      // na convivência com o n8n, a base de produção (esquema.tabela); vazia = a mesma de TEABLE_PG_ARTE
+      leituraEsquema: env.TEABLE_PG_ARTE_LEITURA ? nomesDoPg(env, env.TEABLE_PG_ARTE_LEITURA).esquema : '',
+      leitura: env.TEABLE_PG_ARTE_LEITURA ? nomesDoPg(env, env.TEABLE_PG_ARTE_LEITURA).tabela : '',
       redatores: nomeLimpoPg(env.TEABLE_PG_REDATORES),
       editores: nomeLimpoPg(env.TEABLE_PG_EDITORES),
       atracoes: nomeLimpoPg(env.TEABLE_PG_ATRACOES),
@@ -175,6 +179,7 @@ export function criarTrello(env, deps = {}) {
   const tabela = (esquema, nome) => (esquema && nome ? `"${esquema}"."${nome}"` : null);
   const t = {
     producao: tabela(c.pg.esquema, c.pg.producao),
+    leitura: c.pg.leitura ? tabela(c.pg.leituraEsquema || c.pg.esquema, c.pg.leitura) : tabela(c.pg.esquema, c.pg.producao),
     redatores: tabela(c.pg.esquema, c.pg.redatores),
     editores: tabela(c.pg.esquema, c.pg.editores),
     atracoes: tabela(c.pg.esquema, c.pg.atracoes),
@@ -230,10 +235,10 @@ export function criarTrello(env, deps = {}) {
 
   /** Já entrou hoje na produção da arte (pelo PROMeiro ou pelo upload antigo)? */
   async function jaEntrouHoje(claquete) {
-    if (!t.producao) return false;
+    if (!t.leitura) return false;
     // "hoje" é o dia de Brasília, não o do relógio UTC do banco
     const linhas = await sql(
-      `SELECT "claquete" FROM ${t.producao} WHERE ("data_entrada" AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date`,
+      `SELECT "claquete" FROM ${t.leitura} WHERE ("data_entrada" AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date`,
     );
     return linhas.some((l) => mesmaClaquete(l.claquete, claquete));
   }
@@ -538,10 +543,12 @@ export function criarTrello(env, deps = {}) {
         consulta: { text: `Versão nova do roteiro pelo PROMeiro: ${novas.length ? `${novas.length === 1 ? '1 arte nova' : `${novas.length} artes novas`} no checklist (${novas.join(', ')})` : 'nenhuma arte nova'}, roteiro anexado.` },
       }),
     );
-    if (r.v2De.registro && c.teable.producao)
-      await tentar('atualizar a produção da arte', () =>
-        teableAtualizar(c.teable.producao, r.v2De.registro, { artes: artes.join(' | '), artes_quantidade: artes.length, texto: String(r.texto ?? '').replaceAll('\u0000', '') }),
-      );
+    if (c.teable.producao)
+      await tentar('atualizar a produção da arte', async () => {
+        // lendo de outra base (convivência com o n8n), o registro dela não existe aqui: acha o daqui pelo card
+        const registro = t.leitura === t.producao ? r.v2De.registro : (await sql(`SELECT "__id" AS id FROM ${t.producao} WHERE "card_ID" = $1 LIMIT 1`, [id]))[0]?.id;
+        if (registro) await teableAtualizar(c.teable.producao, registro, { artes: artes.join(' | '), artes_quantidade: artes.length, texto: String(r.texto ?? '').replaceAll('\u0000', '') });
+      });
     return { card: { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}` }, avisos, v2: true, novas: novas.length };
   }
 
@@ -551,10 +558,10 @@ export function criarTrello(env, deps = {}) {
    * @returns { card, url, registro, claquete, entrada, status: string[], artes: number, listaDeArtes: string[], texto } | null
    */
   async function naProducao(claquete) {
-    if (!t.producao || !claquete) return null;
+    if (!t.leitura || !claquete) return null;
     const chave = chaveN8n(claquete);
     const linhas = await sql(
-      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc", "redator", "editor" FROM ${t.producao}
+      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc", "redator", "editor" FROM ${t.leitura}
        WHERE "data_entrada" >= now() - interval '3 months' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 5000`,
     );
     const l = linhas.find((x) => x.key === chave) ?? linhas.find((x) => mesmaClaquete(x.claquete, claquete));
@@ -634,13 +641,13 @@ export function criarTrello(env, deps = {}) {
    * @returns { [id]: { status: string[], designers: string[], entregue: boolean, entrega: string|null } }
    */
   async function andamento(itens) {
-    if (!t.producao || !itens.length) return {};
+    if (!t.leitura || !itens.length) return {};
     const chave = itens.map((i) => `${i.id}:${i.card ?? ''}`).sort().join(',');
     if (memo.chave === chave && Date.now() - memo.em < 60_000) return memo.dados;
     try {
       const semCard = itens.some((i) => !i.card);
       const linhas = await sql(
-        `SELECT "card_ID", "claquete", "status", "designers", "entregue", "data_entrega", "data_entrada" FROM ${t.producao}
+        `SELECT "card_ID", "claquete", "status", "designers", "entregue", "data_entrega", "data_entrada" FROM ${t.leitura}
          WHERE "card_ID" = ANY($1::text[])${semCard ? ` OR "data_entrada" >= now() - interval '30 days'` : ''}`,
         [itens.map((i) => i.card).filter(Boolean)],
       );

@@ -544,3 +544,25 @@ describe('uma entrada por praça', () => {
     expect(r.avisos.join(' ')).toContain('sem TRELLO_LISTA_INTER');
   });
 });
+
+describe('convivência com o n8n: lê a produção de outra base, grava na sua', () => {
+  it('andamento, claquete repetida e "já entrou hoje" vêm de TEABLE_PG_ARTE_LEITURA; o registro vai para a tabela do app', async () => {
+    const lidas: string[] = [];
+    const consultar = async (sql: string) => {
+      lidas.push(sql);
+      if (sql.includes('"bseProd"."producaoViva"') && sql.includes('"designers"')) return [{ card_ID: 'cardN8n', claquete: 'X', status: '["FINALIZADO"]', designers: '[]', entregue: true, data_entrega: null, data_entrada: null }];
+      return [];
+    };
+    const env = { ...ENV, TEABLE_PG_ARTE_LEITURA: 'bseProd.producaoViva' };
+    const t = criarTrello(env, { consultar });
+    expect((await t.andamento([{ id: 'r1', card: 'cardN8n' }])).r1.status).toEqual(['FINALIZADO']);
+    await t.naProducao('Festa na Praça 19/11 SP');
+    expect(lidas.filter((s) => s.includes('"producao"'))).toHaveLength(0);
+    const { buscar, pedidos } = falsos();
+    const b = banco();
+    const consultar2 = async (sql: string, params: unknown[] = []) => (lidas.push(sql), b.consultar(sql, params));
+    await criarTrello(env, { buscar, consultar: consultar2, sftp: async () => {} }).enviar({ meta, doc: DOC, artes: ['X'], original });
+    expect(lidas.some((s) => s.includes('"bseProd"."producaoViva"') && s.includes('America/Sao_Paulo'))).toBe(true);
+    expect(pedidos.some((p) => p.url.pathname === '/api/table/tblProducao/record')).toBe(true);
+  });
+});

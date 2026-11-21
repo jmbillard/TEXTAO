@@ -127,6 +127,13 @@ excluídas, editor, atração…) vai no checklist, na descrição e nos campos 
   sem a lista de artes no fim. A diagramação é a do PROMeiro; o conteúdo e o sublinhado, os do original.
 - Roteiros guardados antes disso: a primeira versão do histórico (o que foi importado).
 
+## Convivência com o n8n
+
+Enquanto o fluxo antigo do n8n continua criando cards, o PROMeiro grava só na base dele e **lê** a produção da base
+que o n8n mantém em dia (`TEABLE_PG_ARTE_LEITURA=esquema.tabela`): o andamento dos cards (e, com ele, o acervo quando o
+card sai), a claquete repetida e o "já entrou hoje" enxergam também o que o n8n criou. O card que o PROMeiro cria no
+Trello entra na base do n8n pela ponte que copia cards novos (ela casa pelo ID do card).
+
 ## Acervo de artes
 
 O que cada atração já tem pronto, para não produzir de novo. Liga com `TEABLE_ACERVO` (o ID da tabela, para gravar) e
