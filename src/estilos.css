@@ -1439,7 +1439,7 @@ body:has([role='menu'], [role='dialog'], .escolha-nome-menu, .menu, .popover) .p
   box-shadow: 0 1px 0 color-mix(in srgb, var(--tinta) 14%, transparent); transition: box-shadow 0.15s, transform 0.15s var(--suave);
 }
 .card-trello:hover { box-shadow: 0 3px 10px rgb(26 25 22 / 10%), 0 1px 0 color-mix(in srgb, var(--tinta) 14%, transparent); transform: translateY(-1px); }
-.card-etiquetas { display: flex; gap: 4px; }
+.card-etiquetas { display: flex; flex-wrap: wrap; gap: 4px; }
 .etq { font: 600 10.5px/1 var(--sans); font-style: normal; padding: 3px 7px; border-radius: 4px; }
 .etq.praca { background: var(--tinta); color: var(--papel); }
 .etq.artes { background: transparent; color: var(--tinta2); box-shadow: inset 0 0 0 1px var(--regua-forte); }
@@ -1915,3 +1915,11 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .balao-ligar input.key:focus { border-color: var(--ultra); }
 .balao-ligar .ligar-sug { color: var(--ultra); }
 .balao-ligar li { color: var(--tinta); }
+
+/* filmes do dia: mesmo card das claquetes, com a sessão no lugar da praça */
+.etq.sessao { background: var(--tinta); color: var(--papel); font-family: var(--mono); }
+.etq.inedito { background: var(--ultra-suave); color: var(--ultra); }
+.etq.ja { background: transparent; color: var(--tinta3); border: 1px dashed var(--regua-forte); padding: 2px 6px; }
+.card-filme .card-claquete { text-decoration: none; font-family: var(--sans); font-size: 14px; }
+.card-filme a.card-claquete:hover { text-decoration: underline; text-underline-offset: 3px; }
+.filmes-bloco { margin-top: 10px; }

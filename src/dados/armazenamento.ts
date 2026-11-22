@@ -251,6 +251,27 @@ export async function escolherMinhaCor(email: string, cor: string) {
 /** Há servidor para guardar os cadastros (o Teable em si é conferido na tela). */
 export const temCadastros = () => armazenamento.tipo === 'servidor';
 
+/** Um filme da fila: a exibição do dia e o andamento do card dele (a mesma produção da arte das claquetes). */
+export interface FilmeNaFila {
+  id: string;
+  card: string;
+  link: string;
+  /** dia da exibição, YYYY-MM-DD */
+  data: string;
+  sessao: string;
+  titulo: string;
+  ano: number | null;
+  inedito: boolean;
+  status: string[];
+  designers: string[];
+  entregue: boolean;
+  entrega: string | null;
+  /** as artes a produzir e as que o acervo do filme já tem */
+  artes: string[];
+  existentes: string[];
+}
+export const lerFilmes = () => (armazenamento.tipo === 'servidor' ? pedir<FilmeNaFila[]>('/api/filmes').catch(() => []) : Promise.resolve([] as FilmeNaFila[]));
+
 export const lerCadastros = (renovar = false) => pedir<Cadastros>(`/api/cadastros${renovar ? '?renovar=1' : ''}`);
 export const cadastrar = <T = { id: string; nome: string }>(tipo: TipoCadastro, dados: object) =>
   pedir<T>(`/api/cadastros/${tipo}`, { method: 'POST', body: JSON.stringify(dados) });

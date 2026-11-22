@@ -682,6 +682,53 @@ export function criarTrello(env, deps = {}) {
     }
   }
 
+  /**
+   * Os filmes da fila: as exibições de ontem até `dias` à frente (sem as canceladas), com o andamento do card na
+   * produção da arte, que é a mesma das claquetes (o PROMO: DB cuida do status, dos designers e da entrega).
+   * Base sem o vínculo exibição → produção (antes da virada): os filmes vêm sem o andamento.
+   */
+  async function filmesProximos(dias = 14) {
+    if (!t.exibicoes) return [];
+    const base = `SELECT e."__id" AS id, e."card_ID" AS card, e."link", e."inedito", e."labels",
+        ((e."data_de_exibicao" AT TIME ZONE 'America/Sao_Paulo')::date)::text AS data,
+        e."filme"->>'title' AS filme, e."sessao"->>'title' AS sessao`;
+    const onde = `WHERE (e."data_de_exibicao" AT TIME ZONE 'America/Sao_Paulo')::date
+          BETWEEN (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 AND (now() AT TIME ZONE 'America/Sao_Paulo')::date + $1::int
+        AND NOT (COALESCE(e."labels", '[]'::jsonb) @> '["CANCELADO"]'::jsonb)
+        ORDER BY data, sessao`;
+    let linhas;
+    try {
+      if (!t.producao) throw new Error('sem a produção');
+      linhas = await sql(
+        `${base}, p."status", p."designers", p."entregue", p."data_entrega", p."artes", p."artes_existentes"
+         FROM ${t.exibicoes} e LEFT JOIN ${t.producao} p ON p."__id" = e."producao"->>'id' ${onde}`,
+        [String(dias | 0)],
+      );
+    } catch {
+      linhas = await sql(`${base} FROM ${t.exibicoes} e ${onde}`, [String(dias | 0)]);
+    }
+    const pipe = (v) => String(v ?? '').split('|').map((x) => x.trim()).filter(Boolean);
+    return linhas.map((l) => {
+      const m = /^(.*?)\s*\((\d{4})\)\s*$/.exec(String(l.filme ?? ''));
+      return {
+        id: String(l.id),
+        card: l.card ? String(l.card) : '',
+        link: l.link || (l.card ? `https://trello.com/c/${l.card}` : ''),
+        data: String(l.data ?? ''),
+        sessao: String(l.sessao ?? ''),
+        titulo: m ? m[1] : String(l.filme ?? ''),
+        ano: m ? Number(m[2]) : null,
+        inedito: !!l.inedito,
+        status: lerLista(l.status),
+        designers: lerLista(l.designers),
+        entregue: !!l.entregue,
+        entrega: quando(l.data_entrega) ? new Date(l.data_entrega).toISOString() : null,
+        artes: pipe(l.artes),
+        existentes: pipe(l.artes_existentes),
+      };
+    });
+  }
+
   /** As artes de um card (os itens dos checklists dele), feitas ou não: o card da prévia de um filme, por exemplo. */
   async function artesDoCard(card) {
     if (!c.chave || !c.token || !/^[0-9a-f]{24}$/i.test(String(card ?? ''))) return [];
@@ -769,5 +816,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, enviar, andamento, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, andamento, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

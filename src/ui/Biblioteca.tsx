@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { apagarAoSair, armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { apagarAoSair, armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, lerFilmes, temCadastros, temTrello, type Andamento, type FilmeNaFila, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
@@ -457,6 +457,43 @@ const ETAPAS: Record<string, { nome: string; tom: string }> = {
 };
 const etapaDe = (st: string) => ETAPAS[st.toUpperCase()] ?? { nome: st[0] + st.slice(1).toLowerCase(), tom: 'espera' };
 
+/** O card de um filme do dia: igual ao das claquetes no Trello (etapas, entrega, designers), com o que já existe no acervo do filme. */
+function CardFilme({ f }: { f: FilmeNaFila }) {
+  const etapas = f.status.map(etapaDe);
+  const caiu = etapas.some((x) => x.tom === 'caiu');
+  const prazo = !f.entregue && f.entrega && !caiu ? new Date(f.entrega).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '';
+  const nome = f.titulo + (f.ano ? ` (${f.ano})` : '');
+  return (
+    <li className={`card-trello card-filme ${caiu ? 'caiu' : ''}`} data-card={f.card}>
+      <span className="card-etiquetas">
+        <i className="etq sessao" aria-hidden="true">{f.sessao}</i>
+        {f.inedito && <i className="etq inedito">inédito</i>}
+        {f.artes.length > 0 && <i className="etq artes" title={f.artes.join(', ')}>{plural(f.artes.length, 'arte', 'artes')}</i>}
+        {f.existentes.length > 0 && <i className="etq ja" title={`Já existem: ${f.existentes.join(', ')}`}>{f.existentes.length} já existe{f.existentes.length > 1 ? 'm' : ''}</i>}
+        {f.entregue && !caiu ? (
+          <i className="etq etapa entregue"><Icone nome="certo" tam={10} traco={3} /> Entregue</i>
+        ) : (
+          etapas.map((x) => <i key={x.nome} className={`etq etapa ${x.tom}`}>{x.nome}</i>)
+        )}
+        {prazo && <small className="card-prazo">até {prazo}</small>}
+      </span>
+      {f.link ? (
+        <a className="card-claquete" href={f.link} target="_blank" rel="noreferrer" title={`Abrir ${nome} no Trello`}>{nome}</a>
+      ) : (
+        <span className="card-claquete">{nome}</span>
+      )}
+      <span className="card-rodape">
+        <span className="card-gente">{f.designers.length > 0 && <small>arte: {f.designers.join(', ')}</small>}</span>
+        {f.link && (
+          <a className="card-link" href={f.link} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label={`Abrir ${nome} no Trello`}>
+            <Icone nome="quadro" tam={13} />
+          </a>
+        )}
+      </span>
+    </li>
+  );
+}
+
 function CardTrello({ r, abrir, andamento, tirar }: { r: Resumo; abrir: () => void; andamento?: Andamento; tirar?: () => void }) {
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
   const e = r.trello!;
@@ -528,6 +565,14 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
   useEffect(() => {
     void carregar();
   }, [chegou]);
+  // os filmes dos próximos dias (cards da grade de filmes, na mesma produção da arte): a cada 2 min, como o andamento
+  const [filmes, setFilmes] = useState<FilmeNaFila[]>([]);
+  useEffect(() => {
+    const ler = () => void lerFilmes().then(setFilmes);
+    ler();
+    const t = setInterval(ler, 120_000);
+    return () => clearInterval(t);
+  }, []);
 
   // fila ao vivo: o que os colegas sobem aparece aqui na hora, com a mesma animação
   const [deOutros, setDeOutros] = useState<string[]>([]);
@@ -712,12 +757,14 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
   const visiveis = todos
     .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo))
     .filter((r) => !filtroEstado || (pendente.has(r.id) && (filtroEstado === 'revisar' ? pedeRevisao(r) : !pedeRevisao(r))));
-  const { proximos, exibidos } = agruparPorDia(visiveis);
+  const filmesVisiveis = filtroEstado ? [] : filmes.filter((f) => !termo || semAcento([f.titulo, f.sessao].join(' ')).includes(termo));
+  const filmesDoDia = (dia: string) => filmesVisiveis.filter((f) => f.data === dia);
+  const { proximos, exibidos } = agruparPorDia(visiveis, undefined, filmesVisiveis.map((f) => f.data));
   proximoParaRevisar.current =
     proximos.flatMap((g) => g.itens).find((r) => pendente.has(r.id) && pedeRevisao(r) && !noTrello(r) && !noRoteiro[r.id]?.length)?.id ?? null;
   const porId = new Map(todos.map((r) => [r.id, r]));
   // durante o "desfazer" a fila já fica como vai ficar (sem trocar de tela de novo quando o prazo acaba)
-  const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo;
+  const vazio = roteiros !== null && !todos.length && !filmes.length && !falhas.length && !lendo;
   let ordem = 0;
 
   const ficha = (r: Resumo) => {
@@ -753,7 +800,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
         {g.titulo}
         <span>{g.subtitulo}</span>
       </h3>
-      <span className="dia-conta">{plural(g.itens.length, 'roteiro', 'roteiros')}</span>
+      <span className="dia-conta">
+        {[g.itens.length ? plural(g.itens.length, 'roteiro', 'roteiros') : '', filmesDoDia(g.chave).length ? plural(filmesDoDia(g.chave).length, 'filme', 'filmes') : ''].filter(Boolean).join(' · ')}
+      </span>
     </div>
   );
   const filtro = (id: 'prontos' | 'revisar', conteudo: React.ReactNode) => (
@@ -912,6 +961,14 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
                         <p className="cards-rotulo">já no Trello</p>
                         <ul className="cards-trello" aria-label="Já no Trello">
                           {g.itens.filter(noTrello).map((r) => <CardTrello key={r.id} r={r} abrir={() => abrir(r.id)} andamento={andamento[r.id]} tirar={() => tirar(r)} />)}
+                        </ul>
+                        </div>
+                      )}
+                      {filmesDoDia(g.chave).length > 0 && (
+                        <div className="cards-trello-bloco filmes-bloco">
+                        <p className="cards-rotulo">filmes</p>
+                        <ul className="cards-trello" aria-label="Filmes do dia">
+                          {filmesDoDia(g.chave).map((f) => <CardFilme key={f.id} f={f} />)}
                         </ul>
                         </div>
                       )}

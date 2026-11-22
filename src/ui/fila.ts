@@ -40,7 +40,8 @@ export function pendentes(lista: Resumo[], agora = new Date()): Resumo[] {
   return lista.filter((r) => !noTrello(r) && !(/^\d{4}-\d{2}-\d{2}$/.test(r.meta.dataExibicao) && r.meta.dataExibicao < hoje));
 }
 
-export function agruparPorDia(lista: Resumo[], agora = new Date()): { proximos: GrupoDia[]; exibidos: GrupoDia[] } {
+/** diasExtras: dias que aparecem mesmo sem roteiro (os dias que só têm filme). */
+export function agruparPorDia(lista: Resumo[], agora = new Date(), diasExtras: string[] = []): { proximos: GrupoDia[]; exibidos: GrupoDia[] } {
   const hoje = isoLocal(agora);
   const amanha = isoLocal(new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1));
   const porDia = new Map<string, Resumo[]>();
@@ -49,6 +50,7 @@ export function agruparPorDia(lista: Resumo[], agora = new Date()): { proximos: 
     if (!porDia.has(k)) porDia.set(k, []);
     porDia.get(k)!.push(r);
   }
+  for (const k of diasExtras) if (/^\d{4}-\d{2}-\d{2}$/.test(k) && k >= hoje && !porDia.has(k)) porDia.set(k, []);
   const grupo = (k: string): GrupoDia => ({
     chave: k || 'sem-data',
     ...(k ? nomear(k, hoje, amanha) : { titulo: 'Sem data', subtitulo: 'a data de exibição não veio no arquivo' }),

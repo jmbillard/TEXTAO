@@ -118,6 +118,8 @@ export function abrirBanco(caminho) {
   if (!tem('envios', 'exibicao')) db.exec('ALTER TABLE envios ADD COLUMN exibicao TEXT');
   // keys que alguém marcou como "não é atração" na aba Sem cadastro: não voltam para a lista
   db.exec('CREATE TABLE IF NOT EXISTS keys_ignoradas (key TEXT PRIMARY KEY, por TEXT, em TEXT)');
+  // cards de filme cujas artes já foram para o acervo do filme (uma vez só, como os roteiros)
+  db.exec('CREATE TABLE IF NOT EXISTS filmes_no_acervo (card TEXT PRIMARY KEY, em TEXT)');
   return db;
 }
 
@@ -358,6 +360,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     claquetesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete, atualizado_em AS em FROM roteiros WHERE atualizado_em >= ?"),
     ignoradas: db.prepare('SELECT key FROM keys_ignoradas'),
+    filmeNoAcervo: db.prepare('SELECT 1 FROM filmes_no_acervo WHERE card = ?'),
+    filmeFoiAoAcervo: db.prepare('INSERT OR IGNORE INTO filmes_no_acervo (card, em) VALUES (?, ?)'),
     ignorar: db.prepare('INSERT OR REPLACE INTO keys_ignoradas (key, por, em) VALUES (?, ?, ?)'),
     designorar: db.prepare('DELETE FROM keys_ignoradas WHERE key = ?'),
     um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
@@ -810,6 +814,27 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
   }
 
+  /** Card de filme que saiu (finalizado ou entregue): as artes dele entram no acervo do filme, uma vez só. */
+  let registrandoFilmes = false;
+  async function filmesNoAcervo(filmes) {
+    if (registrandoFilmes || !acervo.ligado || !acervo.grava) return;
+    registrandoFilmes = true;
+    try {
+      for (const f of filmes) {
+        const saiu = f.entregue || f.status.some((s) => /FINALIZADO/i.test(s));
+        if (!saiu || !f.card || !f.artes.length || q.filmeNoAcervo.get(f.card)) continue;
+        try {
+          const n = await acervo.registrar({ atracao: f.sessao, data: f.data, card: f.card, artes: f.artes });
+          q.filmeFoiAoAcervo.run(f.card, new Date().toISOString());
+          if (n) console.log(`[acervo] ${f.titulo}: ${n} ${n === 1 ? 'arte nova' : 'artes novas'} do card ${f.card}`);
+        } catch (erro) {
+          console.warn(`[acervo] não registrei o filme ${f.titulo}: ${erro instanceof Error ? erro.message : erro}`);
+        }
+      }
+    } finally {
+      registrandoFilmes = false;
+    }
+  }
   let registrando = false;
   async function registrarNoAcervo(andamento) {
     if (registrando) return;
@@ -1036,6 +1061,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // card que saiu (finalizado ou entregue): as artes novas dele entram no acervo da atração, uma vez só
       if (acervo.ligado && acervo.grava) void registrarNoAcervo(dados);
       return json(res, 200, dados);
+    }
+    if (caminho === '/api/filmes' && req.method === 'GET') {
+      // os filmes dos próximos dias, com o andamento do card (a mesma produção da arte das claquetes)
+      const filmes = await trello.filmesProximos?.(14).catch((e) => (console.warn(`[filmes] ${e instanceof Error ? e.message : e}`), [])) ?? [];
+      void filmesNoAcervo(filmes);
+      return json(res, 200, filmes);
     }
     if (caminho === '/api/cadastros/sugerir' && req.method === 'GET') {
       // a key de uma claquete e a atração parecida, para ligar sem sair da revisão
