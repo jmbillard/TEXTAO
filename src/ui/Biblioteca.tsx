@@ -37,6 +37,8 @@ interface Props {
   /** Roteiro cuja claquete já está na produção da arte: compara e decide antes da revisão. */
   comparar: (id: string) => void;
   abrirArquivo: (arquivo: File) => void;
+  /** Arquivos escolhidos no seletor (clique na área de importação). */
+  receberArquivos: (arquivos: File[]) => void;
   /** Folha nova para colar do Word, a partir da claquete. */
   criar: (claquete: string) => void;
   avisar: (texto: string) => void;
@@ -541,7 +543,7 @@ function CardTrello({ r, abrir, andamento, tirar }: { r: Resumo; abrir: () => vo
   );
 }
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState('');
   // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
@@ -880,6 +882,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
           <div className="entra-suave">
             <ConviteDeArrastar
               frases={CONVITES_FILA_VAZIA}
+              escolher={colando ? undefined : receberArquivos}
               extra={colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
             />
           </div>
@@ -942,6 +945,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, cri
                 <ConviteDeArrastar
                   className="nada-pela-frente"
                   frases={CONVITES}
+                  escolher={colando ? undefined : receberArquivos}
                   extra={colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
                 />
               )}

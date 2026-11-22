@@ -167,6 +167,22 @@ describe('servidor', () => {
     expect((await ana('/api/roteiros/com-historico')).status).toBe(404);
   });
 
+  it('roteiro grande demais recebe a resposta 413, sem a conexão cair', async () => {
+    const grande = roteiro('x'.repeat(3 * 1024 * 1024));
+    const r = await salvar(ana, 'grande-demais-1', grande);
+    expect(r.status).toBe(413);
+    expect((await r.json()).erro).toMatch(/grande/i);
+  });
+
+  it('edição simultânea recusa mensagem gigante', async () => {
+    await salvar(ana, 'colab-gigante', roteiro('oi'));
+    const ws = new WebSocket(base.replace('http', 'ws') + '/api/colab/colab-gigante', { headers: { 'cf-access-authenticated-user-email': 'ana.lima@empresa.com' } });
+    await new Promise((ok) => ws.once('open', ok));
+    const fechou = new Promise<number>((ok) => ws.once('close', (codigo) => ok(codigo)));
+    ws.send(new Uint8Array(20 * 1024 * 1024));
+    expect(await fechou).toBe(1009);
+  });
+
   it('backup diário em arquivo próprio', () => {
     const pasta = mkdtempSync(join(tmpdir(), 'roteirista-'));
     expect(fazerBackup(db, pasta)).toMatch(/roteirista-\d{4}-\d{2}-\d{2}\.db$/);

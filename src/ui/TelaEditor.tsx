@@ -395,7 +395,21 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const [exportando, setExportando] = useState(false);
   const [realce, setRealce] = useState<string | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
-  const [sonorasNoTexto, setSonorasNoTexto] = useState(false);
+  // as falas aparecem no texto, a menos que a pessoa tenha recolhido (a escolha fica no navegador)
+  const [sonorasNoTexto, setSonorasNoTexto] = useState(() => {
+    try {
+      return localStorage.getItem('promeiro:sonoras') !== 'recolhidas';
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('promeiro:sonoras', sonorasNoTexto ? 'no-texto' : 'recolhidas');
+    } catch {
+      /* sem armazenamento: vale só nesta sessão */
+    }
+  }, [sonorasNoTexto]);
   const [medida, setMedida] = useState(0);
 
   const area = useRef<HTMLDivElement>(null);
@@ -1189,6 +1203,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             <Claquete
               dados={meta}
               mudar={mudarMeta}
+              estimadaSeg={saida.roteiro.duracaoEstimadaSeg}
               comAtracao
               cadastrarAtracao={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined}
               balaoLigar={

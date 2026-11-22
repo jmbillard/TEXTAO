@@ -164,6 +164,13 @@ export function analisarSonoras(texto: string, ctx?: ContextoSonora | null): Son
     if (!base) return;
 
     let resto = texto.slice(ini + prefixo, fim).replace(/\s*\/edit\/\s*$/i, '');
+    // "fala. + cara de Pilar": depois do fim da frase, um "+" com minúscula é imagem, não fala
+    let imagemDepois = '';
+    const depois = /([.!?…])\s+\+\s+(\p{Ll}[^:]*?)\s*$/u.exec(resto);
+    if (depois && resto.indexOf(':') !== -1 && depois.index > resto.indexOf(':')) {
+      imagemDepois = depois[2];
+      resto = resto.slice(0, depois.index + 1);
+    }
     // "… OUT 00:05:34": o ponto de saída vem depois da fala
     const saida = /\s+OUT\s+(\d{2}[.:]\d{2}(?:[.:]\d{2}){0,2})\b/.exec(resto);
     if (saida && !base.timecodeSaida) {
@@ -182,7 +189,7 @@ export function analisarSonoras(texto: string, ctx?: ContextoSonora | null): Son
       const mais = antes.lastIndexOf(' + ');
       const q = separarQuem(mais === -1 ? antes : antes.slice(mais + 3));
       personagem = q.personagem;
-      descricao = [mais === -1 ? '' : antes.slice(0, mais).trim().replace(/\.$/, ''), q.descricao].filter(Boolean).join(' · ');
+      descricao = [mais === -1 ? '' : antes.slice(0, mais).trim().replace(/\.$/, ''), q.descricao, imagemDepois].filter(Boolean).join(' · ');
       fala = resto.slice(dois + 1).trim();
       quemFim = ini + prefixo + dois + 1;
     }
@@ -197,7 +204,9 @@ export function analisarSonoras(texto: string, ctx?: ContextoSonora | null): Son
       descricaoImagem: descricao,
       fala,
     });
-    anterior = { origem: base.origem, origemOriginal: base.origemOriginal, bloco: base.bloco };
+    // a próxima (depois de um /edit/, por exemplo) herda a fonte e o bloco, nunca o timecode desta
+    const semTc = base.timecodeOriginal ? base.origemOriginal.replace(new RegExp(String.raw`\s*\/\s*${TC}\s*$`), '') : base.origemOriginal;
+    anterior = { origem: base.origem, origemOriginal: semTc, bloco: base.bloco };
   });
   return out;
 }

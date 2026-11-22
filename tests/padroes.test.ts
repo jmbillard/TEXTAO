@@ -49,6 +49,20 @@ describe('sonoras: formatos', () => {
     expect(analisarSonoras('ÀS 21:30 TEM JORNAL')).toEqual([]);
     expect(analisarSonoras('/edit/ 08.41 – Nando: Se o vizinho reclamar do barulho')).toHaveLength(1);
   });
+  it('/edit/ herda a origem sem o timecode da sonora anterior', () => {
+    const [a, b] = analisarSonoras('MC/BL04/09.42 – Lia: Eu vou perder tudo? /edit/ 08.41 – Caio: Vai, sim.');
+    expect(a).toMatchObject({ origemOriginal: 'MC/BL04/09.42', timecodeEntrada: '00:09:42' });
+    expect(b).toMatchObject({ origem: 'MC', origemOriginal: 'MC/BL04', bloco: 4, timecodeEntrada: '00:08:41', personagem: 'Caio' });
+  });
+  it('"+ descrição" depois do fim da fala é imagem, não fala', () => {
+    expect(um('MC/BL04/08.41 – Caio: A herança fica pra viúva e pro filho. + cara de Lia')).toMatchObject({
+      fala: 'A herança fica pra viúva e pro filho.',
+      descricaoImagem: 'cara de Lia',
+    });
+    // no meio da frase, ou com nome próprio depois do "+", continua sendo fala
+    expect(um('MC/BL04/08.41 – Caio: Eu e você + Lia, pra sempre!')).toMatchObject({ fala: 'Eu e você + Lia, pra sempre!' });
+    expect(um('MC/BL04/08.41 – Caio: Foi assim. + Lia: Não foi.').fala).not.toBe('Foi assim.');
+  });
 });
 
 describe('cabeçalho e corpo: variações', () => {
