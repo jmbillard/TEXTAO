@@ -1939,3 +1939,13 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .card-filme .card-claquete { text-decoration: none; font-family: var(--sans); font-size: 14px; }
 .card-filme a.card-claquete:hover { text-decoration: underline; text-underline-offset: 3px; }
 .filmes-bloco { margin-top: 10px; }
+/* o pôster do filme (do FilmeBOT), à esquerda do card */
+.card-filme.com-poster { position: relative; padding-left: 60px; min-height: 84px; }
+.card-poster {
+  position: absolute; left: 9px; top: 9px; width: 42px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 4px;
+  background: var(--neutro); box-shadow: 0 2px 6px rgb(26 25 22 / 18%); opacity: 0; transform: rotate(-1.5deg) scale(0.96);
+  transition: opacity 0.3s, transform 0.3s var(--suave);
+}
+.card-poster.pronto { opacity: 1; transform: rotate(-1.5deg); }
+.card-filme:hover .card-poster.pronto { transform: rotate(0deg) scale(1.04); }
+.card-trello.caiu .card-poster { filter: grayscale(1); opacity: 0.5; }

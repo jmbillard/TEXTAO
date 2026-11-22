@@ -465,8 +465,12 @@ function CardFilme({ f }: { f: FilmeNaFila }) {
   const caiu = etapas.some((x) => x.tom === 'caiu');
   const prazo = !f.entregue && f.entrega && !caiu ? new Date(f.entrega).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '';
   const nome = f.titulo + (f.ano ? ` (${f.ano})` : '');
+  const [poster, setPoster] = useState<'carregando' | 'ok' | 'sem'>(f.filme ? 'carregando' : 'sem');
   return (
-    <li className={`card-trello card-filme ${caiu ? 'caiu' : ''}`} data-card={f.card}>
+    <li className={`card-trello card-filme ${caiu ? 'caiu' : ''} ${poster !== 'sem' ? 'com-poster' : ''}`} data-card={f.card}>
+      {poster !== 'sem' && (
+        <img className={`card-poster ${poster === 'ok' ? 'pronto' : ''}`} src={`/api/filmes/poster/${f.filme}`} alt="" loading="lazy" onLoad={() => setPoster('ok')} onError={() => setPoster('sem')} />
+      )}
       <span className="card-etiquetas">
         <i className="etq sessao" aria-hidden="true">{f.sessao}</i>
         {f.inedito && <i className="etq inedito">inédito</i>}

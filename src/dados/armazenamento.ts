@@ -254,6 +254,8 @@ export const temCadastros = () => armazenamento.tipo === 'servidor';
 /** Um filme da fila: a exibição do dia e o andamento do card dele (a mesma produção da arte das claquetes). */
 export interface FilmeNaFila {
   id: string;
+  /** o registro do filme na tabela de filmes (o pôster sai de /api/filmes/poster/:filme) */
+  filme?: string;
   card: string;
   link: string;
   /** dia da exibição, YYYY-MM-DD */

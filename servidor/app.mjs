@@ -824,6 +824,30 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
 
   /** Card de filme que saiu (finalizado ou entregue): as artes dele entram no acervo do filme, uma vez só. */
   let registrandoFilmes = false;
+  // pôsteres: o Teable dá um link temporário; o app guarda a imagem por algumas horas (e o "não tem" por 10 min)
+  const posteres = new Map();
+  async function posterDoFilme(id) {
+    const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
+    if (!base || !env.TEABLE_FILMES || !env.TEABLE_TOKEN) return null;
+    const guardado = posteres.get(id);
+    if (guardado && Date.now() - guardado.em < (guardado.img ? 6 * 3600e3 : 600e3)) return guardado.img;
+    let img = null;
+    try {
+      const r = await fetch(`${base}/api/table/${encodeURIComponent(env.TEABLE_FILMES)}/record/${id}?fieldKeyType=name`, { headers: { authorization: `Bearer ${env.TEABLE_TOKEN}` }, signal: AbortSignal.timeout(8000) });
+      const anexo = r.ok ? (await r.json())?.fields?.poster?.[0] : null;
+      const url = anexo?.presignedUrl ? new URL(anexo.presignedUrl, base).toString() : '';
+      if (url && /^image\//.test(anexo.mimetype ?? 'image/')) {
+        const f = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (f.ok) img = { tipo: f.headers.get('content-type') || anexo.mimetype || 'image/jpeg', dados: Buffer.from(await f.arrayBuffer()) };
+      }
+    } catch (e) {
+      console.warn(`[pôster] ${id}: ${e instanceof Error ? e.message : e}`);
+    }
+    if (posteres.size > 400) posteres.delete(posteres.keys().next().value);
+    posteres.set(id, { img, em: Date.now() });
+    return img;
+  }
+
   async function filmesNoAcervo(filmes) {
     if (registrandoFilmes || !acervo.ligado || !acervo.grava) return;
     registrandoFilmes = true;
@@ -1069,6 +1093,17 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // card que saiu (finalizado ou entregue): as artes novas dele entram no acervo da atração, uma vez só
       if (acervo.ligado && acervo.grava) void registrarNoAcervo(dados);
       return json(res, 200, dados);
+    }
+    const posterDe = /^\/api\/filmes\/poster\/(rec[A-Za-z0-9]{6,32})$/.exec(caminho);
+    if (posterDe && req.method === 'GET') {
+      // o pôster do filme (campo "poster" da tabela de filmes, que o FilmeBOT preenche), servido daqui com cache
+      const img = await posterDoFilme(posterDe[1]);
+      if (!img) {
+        res.writeHead(404, { 'cache-control': 'private, max-age=600' });
+        return res.end();
+      }
+      res.writeHead(200, { 'content-type': img.tipo, 'content-length': img.dados.length, 'cache-control': 'private, max-age=86400' });
+      return res.end(img.dados);
     }
     if (caminho === '/api/filmes' && req.method === 'GET') {
       // os filmes dos próximos dias, com o andamento do card (a mesma produção da arte das claquetes)

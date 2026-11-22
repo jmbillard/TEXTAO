@@ -691,7 +691,7 @@ export function criarTrello(env, deps = {}) {
     if (!t.exibicoes) return [];
     const base = `SELECT e."__id" AS id, e."card_ID" AS card, e."link", e."inedito", e."labels",
         ((e."data_de_exibicao" AT TIME ZONE 'America/Sao_Paulo')::date)::text AS data,
-        e."filme"->>'title' AS filme, e."sessao"->>'title' AS sessao`;
+        e."filme"->>'title' AS filme, e."filme"->>'id' AS filme_id, e."sessao"->>'title' AS sessao`;
     const onde = `WHERE (e."data_de_exibicao" AT TIME ZONE 'America/Sao_Paulo')::date
           BETWEEN (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 AND (now() AT TIME ZONE 'America/Sao_Paulo')::date + $1::int
         AND NOT (COALESCE(e."labels", '[]'::jsonb) @> '["CANCELADO"]'::jsonb)
@@ -712,6 +712,7 @@ export function criarTrello(env, deps = {}) {
       const m = /^(.*?)\s*\((\d{4})\)\s*$/.exec(String(l.filme ?? ''));
       return {
         id: String(l.id),
+        filme: l.filme_id ? String(l.filme_id) : '',
         card: l.card ? String(l.card) : '',
         link: l.link || (l.card ? `https://trello.com/c/${l.card}` : ''),
         data: String(l.data ?? ''),
