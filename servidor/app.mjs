@@ -271,18 +271,22 @@ const json = (res, status, corpo) => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(corpo));
 };
+/** Corpo JSON. Grande demais: o resto é lido e descartado, sem derrubar a conexão, para a resposta 413 chegar. */
 const lerCorpo = (req) =>
   new Promise((ok, erro) => {
+    const grandeDemais = () => Object.assign(new Error('Roteiro grande demais para guardar (até 2 MB).'), { status: 413 });
+    if (Number(req.headers['content-length']) > LIMITE_CORPO) {
+      req.resume();
+      return erro(grandeDemais());
+    }
     const partes = [];
     let total = 0;
     req.on('data', (p) => {
       total += p.length;
-      if (total > LIMITE_CORPO) {
-        erro(Object.assign(new Error('grande demais'), { status: 413 }));
-        req.destroy();
-      } else partes.push(p);
+      if (total <= LIMITE_CORPO) partes.push(p);
     });
     req.on('end', () => {
+      if (total > LIMITE_CORPO) return erro(grandeDemais());
       try {
         ok(JSON.parse(Buffer.concat(partes).toString('utf8') || 'null'));
       } catch {
@@ -551,6 +555,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const pessoas = quemNoRoteiro(id);
       if (pessoas.length && ws.readyState === 1) ws.send(JSON.stringify({ tipo: 'no-roteiro', id, pessoas }));
     }
+    // erro de protocolo (mensagem grande demais, quadro inválido): só esta conexão cai, o servidor continua
+    ws.on('error', (e) => console.warn(`[fila] conexão de ${eu.email} encerrada: ${e.message}`));
     ws.on('pong', () => {
       const c = naFila.get(ws);
       if (c) c.vivo = true;
@@ -565,7 +571,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     paraTodos({ tipo: 'presenca', pessoas: pessoasNaFila() });
   }
 
-  const wss = new WebSocketServer({ noServer: true });
+  // uma mensagem de edição simultânea nunca chega perto disso (o roteiro inteiro cabe em 2 MB); acima, a conexão fecha
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 * 1024 });
   /** Conexão em tempo real só do próprio site: outra página aberta no navegador não pode falar em nome da pessoa.
       CONFERIR_ORIGEM=0 desliga a conferência (para um proxy que reescreva o endereço). */
   const origemConfere = (req) => {
@@ -612,6 +619,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     sala.conexoes.set(ws, con);
     avisarNoRoteiro(id);
     ws.on('pong', () => (con.vivo = true));
+    ws.on('error', (e) => console.warn(`[colab] ${id}: conexão de ${eu.email} encerrada: ${e.message}`));
     ws.binaryType = 'arraybuffer';
 
     ws.on('message', (dados) => {

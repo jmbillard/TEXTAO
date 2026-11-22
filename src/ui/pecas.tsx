@@ -20,9 +20,15 @@ function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
 
 /** Quando tudo já foi ao ar: convites que se revezam, digitados e apagados à máquina. */
 /** O quadro tracejado de arrastar: título que se escreve sozinho, formatos riscados à mão e o colar do Word. */
-export function ConviteDeArrastar({ frases, extra, className = '' }: { frases: string[]; extra: React.ReactNode; className?: string }) {
+export function ConviteDeArrastar({ frases, extra, className = '', escolher }: { frases: string[]; extra: React.ReactNode; className?: string; escolher?: (arquivos: File[]) => void }) {
+  const seletor = useRef<HTMLInputElement>(null);
+  const abrirSeletor = () => seletor.current?.click();
   return (
-    <section className={`fila-vazia ${className}`}>
+    <section
+      className={`fila-vazia ${escolher ? 'clicavel' : ''} ${className}`}
+      // a área toda abre o seletor; os botões de dentro (colar do Word) seguem com a própria ação
+      onClick={escolher ? (e) => !(e.target as HTMLElement).closest('button, textarea, input, a') && abrirSeletor() : undefined}
+    >
       <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
       <h2 className="titulo-serifa"><TituloQueSeEscreve frases={frases} /></h2>
       <p className="suave">
@@ -32,7 +38,29 @@ export function ConviteDeArrastar({ frases, extra, className = '' }: { frases: s
         </span>
         , quantos quiser de uma vez.
       </p>
-      {extra}
+      {escolher ? (
+        <div className="convite-acoes">
+          <button type="button" className="botao-texto escolher" onClick={abrirSeletor}>escolher arquivos</button>
+          <span className="ponto" aria-hidden="true">·</span>
+          {extra}
+        </div>
+      ) : (
+        extra
+      )}
+      {escolher && (
+        <input
+          ref={seletor}
+          type="file"
+          multiple
+          hidden
+          accept=".docx,.rtf,.pdf,.txt,.json"
+          onChange={(e) => {
+            const arquivos = [...(e.target.files ?? [])];
+            e.target.value = '';
+            if (arquivos.length) escolher(arquivos);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -120,11 +148,11 @@ export function EscolhaDeTipo({ valor, escolher, atalhos }: { valor: SubtipoArte
   );
 }
 
-type DadosClaquete = Pick<Meta, 'claquete' | 'redator' | 'editor' | 'dataExibicao'> & Partial<Pick<Meta, 'programa' | 'praca'>>;
+type DadosClaquete = Pick<Meta, 'claquete' | 'redator' | 'editor' | 'dataExibicao'> & Partial<Pick<Meta, 'programa' | 'praca' | 'locutor' | 'selo' | 'duracaoAlvoSeg' | 'duracaoModo'>>;
 
 /** A claquete da chamada: nome, equipe e exibição. Com `mudar`, os campos são editáveis. */
 /** Com `comAtracao`, a claquete também mostra (e edita) a atração e a praça, como na revisão. */
-export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode }) {
+export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar, estimadaSeg }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode; estimadaSeg?: number | null }) {
   const [ligando, setLigando] = useState(false);
   const data = useRef<HTMLInputElement>(null);
   const campo = (rotulo: string, chave: 'claquete' | 'redator' | 'editor', vazio: string, lista?: () => string[]) =>
@@ -183,6 +211,53 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, b
             ) : (
               <div>{dataPorExtenso(dados.dataExibicao)}</div>
             )}
+          </div>
+        )}
+        {comAtracao && (
+          <div className="trio">
+            <div className="campo-c">
+              <small>Locutor</small>
+              {mudar ? <input value={dados.locutor ?? ''} placeholder="???" aria-label="Locutor" autoComplete="off" spellCheck={false} onChange={(e) => mudar({ locutor: e.target.value })} /> : <div>{dados.locutor}</div>}
+            </div>
+            <div className="campo-c">
+              <small>Selo</small>
+              {mudar ? <input value={dados.selo ?? ''} placeholder="sem selo" aria-label="Selo" autoComplete="off" spellCheck={false} onChange={(e) => mudar({ selo: e.target.value })} /> : <div>{dados.selo}</div>}
+            </div>
+            <div className="campo-c tempo-c">
+              <small>Tempo</small>
+              <span className="linha-tempo">
+                <button
+                  type="button"
+                  className="modo-tempo"
+                  title="Alternar entre fechar com e no máximo"
+                  disabled={!mudar}
+                  onClick={() => mudar?.({ duracaoModo: dados.duracaoModo === 'max' ? 'fechar' : 'max' })}
+                >
+                  {dados.duracaoModo === 'max' ? 'máx.' : 'fecha'}
+                </button>
+                {mudar ? (
+                  <input
+                    className="segundos"
+                    inputMode="numeric"
+                    value={dados.duracaoAlvoSeg ?? ''}
+                    placeholder="??"
+                    aria-label="Tempo da chamada, em segundos"
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value.replace(/\D/g, ''), 10);
+                      mudar({ duracaoAlvoSeg: Number.isFinite(n) ? n : null });
+                    }}
+                  />
+                ) : (
+                  <span>{dados.duracaoAlvoSeg ?? ''}</span>
+                )}
+                <span className="aspas">''</span>
+              </span>
+              {estimadaSeg != null && dados.duracaoAlvoSeg ? (
+                <span className={`estimada ${estimadaSeg > dados.duracaoAlvoSeg * 1.1 ? 'estourou' : ''}`} title="Leitura estimada da locução e das sonoras">
+                  ≈ {estimadaSeg}'' lidos
+                </span>
+              ) : null}
+            </div>
           </div>
         )}
         {comAtracao && (

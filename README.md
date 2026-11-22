@@ -1,6 +1,8 @@
 # PROMeiro
 
-Editor de roteiros de chamadas do Promo. Substitui o Word na escrita, padroniza as marcações e entrega, no fim, um roteiro limpo com metadados e a lista de artes.
+Ferramenta de revisão de roteiros da Arte do Promo. Os roteiros chegam do Word (ou em PDF) numa fila; quem revisa confere a claquete, a atração e as artes, e manda para o Trello com um roteiro limpo, os metadados e a lista de artes.
+
+**Escopo atual:** só a revisão da Arte. Se a ferramenta for bem aceita, a próxima etapa é virar também o lugar onde o redator escreve o roteiro, com edição em tempo real. Por isso parte do que existe no código (as outras marcações, a edição simultânea) fica guardada, mas fora da interface.
 
 Importar, editar e exportar acontecem no navegador. Os roteiros ficam guardados de duas formas, conforme onde o app roda:
 
@@ -98,9 +100,9 @@ No app, toda a identidade passa por `src/dados/identidade.ts`; no servidor, por 
 
 ## Como funciona
 
-1. **Trazer do Word.** Arraste um `.docx`, `.rtf`, `.pdf` ou `.txt` (ou um `.json` exportado daqui). O app lê sublinhado, marca-texto, cor e tabelas, monta o cabeçalho e só pergunta o que não dá para saber sozinho (o que significa um marca-texto, por exemplo).
-2. **Escrever.** Texto corrido ou duas colunas (Ilustração | Áudio, Instruções | Texto). CAIXA ALTA é locução; uma linha que começa com origem e timecode é sonora. Nada disso muda o que foi digitado, só a aparência.
-3. **Marcar.** Selecione e use o botão direito, a barra que aparece sobre a seleção ou o atalho:
+1. **Trazer do Word.** Arraste um `.docx`, `.rtf`, `.pdf` ou `.txt` (ou um `.json` exportado daqui), ou clique na área de importação para escolher os arquivos. O app lê sublinhado, marca-texto, cor e tabelas, monta o cabeçalho e só pergunta o que não dá para saber sozinho (o que significa um marca-texto, por exemplo).
+2. **Conferir.** Texto corrido ou duas colunas (Ilustração | Áudio, Instruções | Texto). CAIXA ALTA é locução; uma linha que começa com origem e timecode é sonora, mostrada com origem, personagem e fala (dá para recolher as sonoras no texto pela decupagem; a escolha fica guardada no navegador). Nada disso muda o que foi digitado, só a aparência. A claquete mostra e corrige locutor, selo e tempo pedido, com a leitura estimada ao lado.
+3. **Marcar artes.** Selecione e use o botão direito, a barra que aparece sobre a seleção ou Ctrl/⌘ U. Na interface só existe a marcação de arte, de propósito: as outras abaixo continuam no modelo e no `.json` (o importador as preenche e os atalhos funcionam), e voltam ao menu quando a ferramenta passar a ser usada para escrever roteiros.
 
    | Marcação | Atalho | Sai em |
    |---|---|---|
@@ -251,4 +253,4 @@ Os leitores de RTF e de PDF foram adaptados do extrator do app de upload de rote
 
 ## Fora desta etapa
 
-Envio para n8n/Trello, uso offline como app instalado (PWA), tela de Configurações para editar os vocabulários (hoje em `src/modelo/vocabularios.ts`), troca de voz, prévia por versão e modos locutor/Motion.
+Escrita de roteiros pelo redator (com as marcações além da arte no menu), uso offline como app instalado (PWA), tela de Configurações para editar os vocabulários (hoje em `src/modelo/vocabularios.ts`), troca de voz, prévia por versão e modos locutor/Motion.

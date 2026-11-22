@@ -777,6 +777,17 @@ kbd {
 .dupla { display: grid; grid-template-columns: 1fr 1fr; }
 .dupla > :only-child { grid-column: 1 / -1; }
 .dupla .campo-c + .campo-c { border-left: 1px solid rgb(244 241 234 / 30%); padding-left: 12px; }
+.trio { display: grid; grid-template-columns: 1.7fr 0.7fr 1fr; border-bottom: 1px solid rgb(244 241 234 / 30%); }
+.trio .campo-c { border-bottom: 0; }
+.trio .campo-c input, .trio .linha-tempo { font-size: 13.5px; }
+.trio .campo-c + .campo-c { border-left: 1px solid rgb(244 241 234 / 30%); padding-left: 12px; }
+.linha-tempo { display: flex; align-items: baseline; gap: 5px; font: 500 14px/1.4 var(--sans); color: #f4f1ea; }
+.linha-tempo .modo-tempo { font: 500 11px var(--sans); color: rgb(244 241 234 / 70%); background: none; border: 0; padding: 0; border-bottom: 1px dashed rgb(244 241 234 / 35%); cursor: pointer; }
+.linha-tempo .modo-tempo:disabled { cursor: default; border-bottom-color: transparent; }
+.campo-c .linha-tempo input.segundos { width: 3ch; text-align: right; }
+.linha-tempo .aspas { margin-left: -4px; }
+.tempo-c .estimada { display: block; margin-top: 2px; font: 400 11px var(--sans); color: rgb(244 241 234 / 62%); }
+.tempo-c .estimada.estourou { color: #ffb27a; }
 
 /* lista de artes */
 .cab-artes { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
@@ -952,6 +963,11 @@ kbd {
 
 .fila-vazia { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 72px 20px; border: 1.5px dashed var(--regua-forte); border-radius: 18px; }
 .fila-vazia h2 { font-size: 32px; }
+.fila-vazia.clicavel { cursor: pointer; transition: border-color 0.15s, background-color 0.15s; }
+.fila-vazia.clicavel:hover { border-color: var(--ultra); background: color-mix(in srgb, var(--ultra) 3%, transparent); }
+.convite-acoes { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.convite-acoes .ponto { color: var(--tinta3); }
+.convite-acoes .botao-texto.escolher { color: var(--ultra); }
 .fila-vazia-icone { width: 58px; height: 58px; border-radius: 16px; background: var(--ultra-suave); color: var(--ultra); display: grid; place-items: center; margin-bottom: 4px; }
 .fila-rodape { margin-top: 18px; font-size: 13px; color: var(--tinta3); text-align: center; }
 
