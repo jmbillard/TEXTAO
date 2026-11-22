@@ -279,6 +279,16 @@ export function App() {
     [criar, identidade], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  /** Arquivos soltos na janela ou escolhidos no seletor: o mesmo caminho. */
+  const receberArquivos = useCallback(
+    (arquivos: File[]) => {
+      // um .json exportado daqui reabre o roteiro; o resto entra na fila, todos de uma vez
+      if (arquivos.length === 1 && /\.json$/i.test(arquivos[0].name)) void abrirArquivo(arquivos[0]);
+      else if (arquivos.length) void importarParaFila(arquivos.filter((a) => !/\.json$/i.test(a.name)));
+    },
+    [abrirArquivo, importarParaFila],
+  );
+
   // soltar um arquivo em qualquer lugar da janela
   useEffect(() => {
     const temArquivo = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
@@ -297,10 +307,7 @@ export function App() {
       e.preventDefault();
       arrasto.current = 0;
       setSoltando(false);
-      const arquivos = [...(e.dataTransfer?.files ?? [])];
-      // um .json exportado daqui reabre o roteiro; o resto entra na fila, todos de uma vez
-      if (arquivos.length === 1 && /\.json$/i.test(arquivos[0].name)) void abrirArquivo(arquivos[0]);
-      else if (arquivos.length) void importarParaFila(arquivos.filter((a) => !/\.json$/i.test(a.name)));
+      receberArquivos([...(e.dataTransfer?.files ?? [])]);
     };
     window.addEventListener('dragenter', entrar);
     window.addEventListener('dragleave', sair);
@@ -312,13 +319,13 @@ export function App() {
       window.removeEventListener('dragover', sobre);
       window.removeEventListener('drop', soltar);
     };
-  }, [abrirArquivo, importarParaFila]);
+  }, [receberArquivos]);
 
   if (!pronto) return <div className="pagina" />;
 
   return (
     <>
-      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={sessao} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={sessao} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {
