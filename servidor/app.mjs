@@ -867,6 +867,15 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       registrandoFilmes = false;
     }
   }
+  // os cards de filme que saíram (finalizados ou entregues) levam as artes ao acervo do filme. A fila não mostra mais
+  // os filmes (ela é a revisão dos roteiros), então o servidor confere sozinho: 1 min depois de subir e de 10 em 10 min
+  if (trello.filmesProximos && acervo.ligado && acervo.grava) {
+    const conferirFilmes = () =>
+      void trello.filmesProximos(14).then(filmesNoAcervo).catch((e) => console.warn(`[filmes] ${e instanceof Error ? e.message : e}`));
+    setTimeout(conferirFilmes, 60_000).unref?.();
+    setInterval(conferirFilmes, 600_000).unref?.();
+  }
+
   let registrando = false;
   async function registrarNoAcervo(andamento) {
     if (registrando) return;
