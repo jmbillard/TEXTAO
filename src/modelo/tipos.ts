@@ -103,6 +103,8 @@ export interface Meta {
   jaExiste?: string[];
   /** Artes que quem revisa decidiu não produzir (pela chave): ficam no texto, saem do checklist, sem dizer que existem. */
   naoProduzir?: string[];
+  /** Artes do acervo (que já viriam riscadas) que quem revisa mandou produzir de novo (↺), pela chave. */
+  produzir?: string[];
 }
 
 export const metaVazia = (): Meta => ({

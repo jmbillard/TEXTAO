@@ -1,7 +1,7 @@
 import { chaveDeArte } from '../modelo/diferencas';
 import { siglaDoTipo } from '../modelo/tipos';
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
-import { exportar } from '../modelo/exportar';
+import { chavesQueExistem, exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
 import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
 
@@ -318,8 +318,9 @@ export async function herdarEnvio(novo: string, anterior: string) {
 /** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
 export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const saida = exportar(roteiro);
-  // a marcada como "já existe" vai no PDF (sublinhada, como no roteiro), fora do checklist e do acervo
-  const jaExiste = new Set(roteiro.meta.jaExiste ?? []);
+  // a que já existe (✓, ou do acervo, que já vem riscada) vai no PDF (sublinhada, como no roteiro), fora do checklist;
+  // o servidor guarda no acervo da atração as confirmadas (da próxima vez, ela já vem riscada)
+  const jaExiste = chavesQueExistem(roteiro.meta);
   // a que não vai ser produzida nem vai para o card (o PDF é o original, ela continua lá)
   const fora = new Set(roteiro.meta.naoProduzir ?? []);
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {

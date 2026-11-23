@@ -624,3 +624,33 @@ describe('filmes na fila', () => {
     expect(pedidos).toHaveLength(1);
   });
 });
+
+describe('✓ já existe: no envio, a arte confirmada entra no acervo da atração', () => {
+  it('guarda só as confirmadas (com a atração, o dia e o tipo); as novas esperam o card sair', async () => {
+    const guardadas: { atracao: string; data: string; artes: { texto: string; tipos: string[] }[] }[] = [];
+    const acervo = {
+      ligado: true,
+      grava: true,
+      registrar: async (x: (typeof guardadas)[number]) => (guardadas.push(x), x.artes.length),
+      parar: async () => {},
+    };
+    const trello = { ligado: true, parar: async () => {}, enviar: async () => ({ card: { id: 'c9', url: 'https://trello.com/c/C9' }, avisos: [] }) };
+    const app = criarApp({ db: abrirBanco(':memory:'), env: {}, trello, acervo });
+    const servidor = createServer(app);
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    const ana = (caminho: string, init: RequestInit = {}) =>
+      fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com', 'content-type': 'application/json', ...init.headers } });
+    try {
+      await ana('/api/roteiros/rot-ja-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Festa 19/11', programa: 'Festa na Praça', dataExibicao: '2026-11-19' }, doc: { type: 'doc', content: [] } }, nArtes: 2 }) });
+      const r = await (
+        await ana('/api/roteiros/rot-ja-1/trello', { method: 'POST', body: JSON.stringify({ artes: [{ texto: 'HOJE', tipo: 'RDP', tipos: ['RDP'], existe: true }, { texto: 'A GRANDE FESTA', tipo: 'CRT', tipos: ['CRT'], existe: false }], texto: 'x' }) })
+      ).json();
+      expect(r.estado).toBe('enviado');
+      await new Promise((ok) => setTimeout(ok, 50));
+      expect(guardadas).toEqual([{ atracao: 'Festa na Praça', data: '2026-11-19', artes: [{ texto: 'HOJE', tipos: ['RDP'] }] }]);
+    } finally {
+      servidor.close();
+    }
+  });
+});

@@ -21,7 +21,7 @@ import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
+import { chavesQueExistem, exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import { nomeDaSigla,
@@ -694,24 +694,31 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
 
   /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
   const TIPOS_NA_LISTA = false;
-  // Tirar do checklist, de dois jeitos: "já existe" (vai na linha JÁ EXISTEM do card) ou "não produzir" (só sai).
-  // Nos dois a arte fica no texto (e no PDF) e não entra no acervo como nova; ↺ devolve ao checklist.
-  // Deixar de ser arte de vez é no texto (tirar o sublinhado).
-  const marcadasJa = useMemo(() => new Set(meta.jaExiste ?? []), [meta.jaExiste]);
+  // Tirar do checklist, de dois jeitos: "já existe" (✓: vai na linha JÁ EXISTEM do card e, no envio, entra no acervo da
+  // atração) ou "não produzir" (✕: só sai). A arte que já está no acervo vem riscada sozinha; ↺ devolve ao checklist.
+  // Nos dois a arte fica no texto (e no PDF). Deixar de ser arte de vez é no texto (tirar o sublinhado).
+  const marcadasJa = useMemo(() => chavesQueExistem(meta), [meta.jaExiste, meta.jaExistem, meta.naoProduzir, meta.produzir]); // eslint-disable-line react-hooks/exhaustive-deps
   const marcadasFora = useMemo(() => new Set(meta.naoProduzir ?? []), [meta.naoProduzir]);
   const nJa = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto))).length;
   const nFora = artes.filter((a) => marcadasFora.has(chaveDeArte(a.texto))).length;
-  const marcarArte = (a: (typeof artes)[number], como: 'existe' | 'fora' | null) => {
-    const k = chaveDeArte(a.texto);
-    const ja = new Set(meta.jaExiste ?? []);
-    const fora = new Set(meta.naoProduzir ?? []);
+  // a marcação de uma arte (pela chave): ✓ existe, ✕ não produzir, ↺ produzir (a do acervo fica lembrada como "produzir")
+  const marcar = (ja: Set<string>, fora: Set<string>, prod: Set<string>, k: string, como: 'existe' | 'fora' | null) => {
     ja.delete(k);
     fora.delete(k);
+    prod.delete(k);
     if (como === 'existe') ja.add(k);
     if (como === 'fora') fora.add(k);
-    mudarMeta({ jaExiste: ja.size ? [...ja] : undefined, naoProduzir: fora.size ? [...fora] : undefined });
+    if (!como && (meta.jaExistem ?? []).some((x) => x.chave === k)) prod.add(k);
+  };
+  const comoLista = (s: Set<string>) => (s.size ? [...s] : undefined);
+  const marcarArte = (a: (typeof artes)[number], como: 'existe' | 'fora' | null) => {
+    const ja = new Set(meta.jaExiste ?? []);
+    const fora = new Set(meta.naoProduzir ?? []);
+    const prod = new Set(meta.produzir ?? []);
+    marcar(ja, fora, prod, chaveDeArte(a.texto), como);
+    mudarMeta({ jaExiste: comoLista(ja), naoProduzir: comoLista(fora), produzir: comoLista(prod) });
     setRealce(null);
-    avisar(como === 'existe' ? `"${a.texto}" já existe: sai do checklist.` : como === 'fora' ? `"${a.texto}" não vai ser produzida.` : `"${a.texto}" volta para o checklist.`);
+    avisar(como === 'existe' ? `"${a.texto}" já existe: sai do checklist e, no envio, entra no acervo.` : como === 'fora' ? `"${a.texto}" não vai ser produzida.` : `"${a.texto}" volta para o checklist.`);
   };
 
   // várias de uma vez: Shift+clique seleciona um trecho da lista, Ctrl/⌘+clique soma uma; a barra marca todas juntas
@@ -734,20 +741,15 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     ancoraSel.current = a.id;
   };
   const marcarVarias = (como: 'existe' | 'fora' | null) => {
-    const lista = artes.filter((a) => selecionadas.includes(a.id));
-    if (!lista.length) return;
+    const escolhidas = artes.filter((a) => selecionadas.includes(a.id));
+    if (!escolhidas.length) return;
     const ja = new Set(meta.jaExiste ?? []);
     const fora = new Set(meta.naoProduzir ?? []);
-    for (const a of lista) {
-      const k = chaveDeArte(a.texto);
-      ja.delete(k);
-      fora.delete(k);
-      if (como === 'existe') ja.add(k);
-      if (como === 'fora') fora.add(k);
-    }
-    mudarMeta({ jaExiste: ja.size ? [...ja] : undefined, naoProduzir: fora.size ? [...fora] : undefined });
+    const prod = new Set(meta.produzir ?? []);
+    for (const a of escolhidas) marcar(ja, fora, prod, chaveDeArte(a.texto), como);
+    mudarMeta({ jaExiste: comoLista(ja), naoProduzir: comoLista(fora), produzir: comoLista(prod) });
     setSelecionadas([]);
-    const n = plural(lista.length, 'arte', 'artes');
+    const n = plural(escolhidas.length, 'arte', 'artes');
     avisar(como === 'existe' ? `${n} já existem: saem do checklist.` : como === 'fora' ? `${n} não vão ser produzidas.` : `${n} voltam para o checklist.`);
   };
   useEffect(() => {

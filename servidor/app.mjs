@@ -809,6 +809,19 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // o que entra no acervo da atração quando o card sair: só as artes novas (as que já existiam, não), com o tipo (sigla)
       if (estado === 'enviado' && Array.isArray(corpo.artes))
         q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => ({ texto: String(a?.texto ?? a).slice(0, 500), tipos: (Array.isArray(a?.tipos) ? a.tipos : a?.tipo ? [a.tipo] : []).map((t) => String(t).slice(0, 40)).slice(0, 12) }))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), String(JSON.parse(atual.meta).dataExibicao ?? '').slice(0, 10) || null, id);
+      // as que quem revisa confirmou que já existem (✓) entram no acervo da atração agora (ou no do filme do dia, numa
+      // sessão): da próxima vez que ela pedir a mesma arte, já vem riscada. As que já estavam lá não repetem
+      if (estado === 'enviado' && Array.isArray(corpo.artes) && acervo.ligado && acervo.grava) {
+        const metaAtual = JSON.parse(atual.meta);
+        const existentes = corpo.artes
+          .filter((a) => a && typeof a === 'object' && a.existe && String(a.texto ?? '').trim())
+          .map((a) => ({ texto: String(a.texto).slice(0, 500), tipos: (Array.isArray(a.tipos) ? a.tipos : a.tipo ? [a.tipo] : []).map((t) => String(t).slice(0, 40)).filter(Boolean).slice(0, 12) }));
+        if (existentes.length)
+          void acervo
+            .registrar({ atracao: String(metaAtual.programa ?? ''), data: String(metaAtual.dataExibicao ?? '').slice(0, 10), artes: existentes })
+            .then((n) => n && console.log(`[acervo] ${metaAtual.programa}: ${n} ${n === 1 ? 'arte confirmada' : 'artes confirmadas'} na revisão`))
+            .catch((e) => console.warn(`[acervo] não guardei as confirmadas de ${id}: ${e instanceof Error ? e.message : e}`));
+      }
       if (r.avisos?.length) console.warn(`[trello] ${id}: ${r.avisos.join(' · ')}`);
       return json(res, 200, { estado, url: r.card?.url, avisos: r.avisos ?? [] });
     } catch (e) {

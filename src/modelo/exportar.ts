@@ -375,13 +375,25 @@ export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
   return p.filter((x) => !(x.dispensavel && conferidos.has(x.id)));
 }
 
-/** As artes do roteiro que estão no acervo da atração. */
+/**
+ * As artes que contam como já existentes (pela chave): as que quem revisa confirmou (✓) e as que estão no acervo da
+ * atração, que já vêm riscadas, menos as que quem revisa mandou produzir (↺) ou não produzir (✕). O ✓ vai para o
+ * acervo no envio: da próxima vez que a atração pedir a mesma arte, ela já vem riscada.
+ */
+export function chavesQueExistem(meta: Pick<Meta, 'jaExiste' | 'jaExistem' | 'naoProduzir' | 'produzir'>): Set<string> {
+  const fora = new Set([...(meta.naoProduzir ?? []), ...(meta.produzir ?? [])]);
+  const existem = new Set((meta.jaExiste ?? []).filter((k) => !(meta.naoProduzir ?? []).includes(k)));
+  for (const a of meta.jaExistem ?? []) if (!fora.has(a.chave)) existem.add(a.chave);
+  return existem;
+}
+
+/** As artes do roteiro que estão no acervo da atração e ninguém resolveu (com elas já riscadas, normalmente nenhuma). */
 export function artesQueJaExistem(saida: Saida): string[] {
   const acervo = new Set((saida.roteiro.jaExistem ?? []).map((a) => a.chave));
   if (!acervo.size) return [];
-  // as que quem revisa já resolveu (já existe ou não produzir) não contam mais
-  const marcadas = new Set([...(saida.roteiro.jaExiste ?? []), ...(saida.roteiro.naoProduzir ?? [])]);
-  return [...new Set(saida.artes.map((a) => chaveDeArte(a.texto)))].filter((k) => acervo.has(k) && !marcadas.has(k));
+  // as que já contam como existentes e as que quem revisa resolveu (produzir ou não produzir) não contam mais
+  const resolvidas = new Set([...chavesQueExistem(saida.roteiro), ...(saida.roteiro.naoProduzir ?? []), ...(saida.roteiro.produzir ?? [])]);
+  return [...new Set(saida.artes.map((a) => chaveDeArte(a.texto)))].filter((k) => acervo.has(k) && !resolvidas.has(k));
 }
 
 export const pendencias = (saida: Saida): string[] => pendenciasDetalhadas(saida).map((p) => p.texto);
