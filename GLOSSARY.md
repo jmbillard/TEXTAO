@@ -57,7 +57,11 @@ Um filme numa sessão num dia, com o card do Trello dele e as artes do card. É 
 _Evitar_: produção (para filmes)
 
 **Prévia**:
-O PDF mensal da programação de filmes, lido pelo FilmeBOT, que vira os cards de filme.
+O PDF mensal da programação de filmes, lido na aba Filmes, que vira os cards de filme.
+
+**Aba Filmes**:
+A tela do PROMeiro que lê a prévia, confere cada filme com o banco e cria os cards de filme.
+_Evitar_: FilmeBOT (o site avulso que ela substitui)
 
 ## Produção e acervo
 
