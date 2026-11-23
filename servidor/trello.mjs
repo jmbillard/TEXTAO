@@ -694,6 +694,37 @@ export function criarTrello(env, deps = {}) {
    * produção da arte, que é a mesma das claquetes (o PROMO: DB cuida do status, dos designers e da entrega).
    * Base sem o vínculo exibição → produção (antes da virada): os filmes vêm sem o andamento.
    */
+  /**
+   * O andamento de cada card de filme é o próprio card no Trello: as etiquetas (PRODUZINDO, FINALIZADO…), os membros
+   * (quem faz) e o "concluído". Os cards de filme não entram na ARTE_producao (lá só as claquetes dos roteiros).
+   * Em lotes de 10 (o /batch do Trello) e guardado por 2 min (a fila pede de tempos em tempos).
+   */
+  const andamentos = new Map();
+  async function andamentoDosCards(ids) {
+    const validos = [...new Set(ids.filter((id) => /^[0-9a-f]{24}$/i.test(String(id ?? ''))))];
+    const faltam = validos.filter((id) => !(Date.now() - (andamentos.get(id)?.em ?? 0) < 120_000));
+    if (faltam.length && c.chave && c.token) {
+      for (let i = 0; i < faltam.length; i += 10) {
+        const grupo = faltam.slice(i, i + 10);
+        const urls = grupo.map((id) => `/cards/${id}?members=true&member_fields=fullName`).join(',');
+        const r = await trello('GET', '/batch', { consulta: { urls } }).catch((e) => (console.warn(`[filmes] andamento no Trello: ${e instanceof Error ? e.message : e}`), []));
+        (Array.isArray(r) ? r : []).forEach((x, k) => {
+          const card = x?.['200'];
+          if (!card) return;
+          andamentos.set(grupo[k], {
+            em: Date.now(),
+            // a etiqueta FILME é de todos os cards da coluna: não é andamento
+            status: (card.labels ?? []).map((l) => String(l?.name ?? '').trim()).filter((n) => n && !/^FILME$/i.test(n)),
+            designers: (card.members ?? []).map((m) => String(m?.fullName ?? '').trim()).filter(Boolean),
+            entregue: !!card.dueComplete,
+          });
+        });
+      }
+    }
+    if (andamentos.size > 2000) andamentos.clear();
+    return (id) => andamentos.get(id) ?? null;
+  }
+
   async function filmesProximos(dias = 14) {
     if (!t.exibicoes) return [];
     const base = `SELECT e."__id" AS id, e."card_ID" AS card, e."link", e."inedito", e."labels",
@@ -705,18 +736,16 @@ export function criarTrello(env, deps = {}) {
         ORDER BY data, sessao`;
     let linhas;
     try {
-      if (!t.producao) throw new Error('sem a produção');
-      linhas = await sql(
-        `${base}, p."status", p."designers", p."entregue", p."data_entrega", p."artes", p."artes_existentes"
-         FROM ${t.exibicoes} e LEFT JOIN ${t.producao} p ON p."__id" = e."producao"->>'id' ${onde}`,
-        [String(dias | 0)],
-      );
+      // as artes do card ficam na própria exibição
+      linhas = await sql(`${base}, e."artes", e."artes_existentes" FROM ${t.exibicoes} e ${onde}`, [String(dias | 0)]);
     } catch {
       linhas = await sql(`${base} FROM ${t.exibicoes} e ${onde}`, [String(dias | 0)]);
     }
+    const andamento = await andamentoDosCards(linhas.map((l) => String(l.card ?? '')));
     const pipe = (v) => String(v ?? '').split('|').map((x) => x.trim()).filter(Boolean);
     return linhas.map((l) => {
       const m = /^(.*?)\s*\((\d{4})\)\s*$/.exec(String(l.filme ?? ''));
+      const a = l.card ? andamento(String(l.card)) : null;
       return {
         id: String(l.id),
         filme: l.filme_id ? String(l.filme_id) : '',
@@ -727,10 +756,10 @@ export function criarTrello(env, deps = {}) {
         titulo: m ? m[1] : String(l.filme ?? ''),
         ano: m ? Number(m[2]) : null,
         inedito: !!l.inedito,
-        status: lerLista(l.status),
-        designers: lerLista(l.designers),
-        entregue: !!l.entregue,
-        entrega: quando(l.data_entrega) ? new Date(l.data_entrega).toISOString() : null,
+        status: a?.status ?? [],
+        designers: a?.designers ?? [],
+        entregue: !!a?.entregue,
+        entrega: null,
         artes: pipe(l.artes),
         existentes: pipe(l.artes_existentes),
       };

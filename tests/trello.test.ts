@@ -594,3 +594,33 @@ describe('atração pela claquete, no servidor', () => {
     expect(await criarTrello(ENV, { consultar: async () => [] }).atracaoDaClaquete('NADA 1/1')).toBe('');
   });
 });
+
+describe('filmes na fila', () => {
+  it('o andamento vem do card no Trello (sem a ARTE_producao) e as artes da exibição', async () => {
+    const pedidos: string[] = [];
+    const buscar = async (endereco: string) => {
+      const url = new URL(endereco);
+      pedidos.push(url.pathname + '?' + (url.searchParams.get('urls') ?? ''));
+      const card = {
+        labels: [{ name: 'FILME' }, { name: 'PRODUZINDO' }],
+        members: [{ fullName: 'Juliana Barão' }],
+        dueComplete: false,
+      };
+      return { ok: true, status: 200, json: async () => [{ 200: card }], text: async () => '' };
+    };
+    const consultas: string[] = [];
+    const consultar = async (sql: string) => {
+      consultas.push(sql);
+      return [{ id: 'recExib', card: '6b04334f81cc4c3dcdf0ebca', link: 'https://trello.com/c/AbC', inedito: true, labels: null, data: '2026-12-06', filme: 'Duro de Matar (1988)', filme_id: 'recFilme', sessao: 'Cinemaço', artes: 'DURO DE MATAR | HOJE', artes_existentes: 'AMANHÃ' }];
+    };
+    const t = criarTrello(ENV, { buscar, consultar });
+    const [f] = await t.filmesProximos(14);
+    expect(consultas[0]).not.toContain('"producao"');
+    expect(pedidos[0]).toContain('/1/batch');
+    expect(pedidos[0]).toContain('/cards/6b04334f81cc4c3dcdf0ebca');
+    expect(f).toMatchObject({ titulo: 'Duro de Matar', ano: 1988, status: ['PRODUZINDO'], designers: ['Juliana Barão'], entregue: false, artes: ['DURO DE MATAR', 'HOJE'], existentes: ['AMANHÃ'] });
+    // a segunda vez (dentro de 2 min) não pergunta de novo ao Trello
+    await t.filmesProximos(14);
+    expect(pedidos).toHaveLength(1);
+  });
+});
