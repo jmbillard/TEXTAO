@@ -422,7 +422,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   // formulários, um por aba
   const daClaquete = inicio?.claquete ? atracaoDaClaquete(inicio.claquete) : '';
   const [atr, setAtr] = useState({ nome: daClaquete, keys: daClaquete ? [comoKey(daClaquete)] : [], categoria: '', campos: {} as Record<string, string> });
-  const [red, setRed] = useState({ nome: '', user: '' });
+  const [red, setRed] = useState({ nome: '', keys: [] as string[] });
   const [edi, setEdi] = useState({ nome: '', keys: [] as string[] });
 
   const carregar = (renovar = false) =>
@@ -474,7 +474,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       await carregar(true);
       setAssentando(false);
       if (aba === 'atracoes') setAtr({ nome: '', keys: [], categoria: '', campos: {} });
-      else if (aba === 'redatores') setRed({ nome: '', user: '' });
+      else if (aba === 'redatores') setRed({ nome: '', keys: [] });
       else setEdi({ nome: '', keys: [] });
       marcarRecem([id]);
       avisar(msg);
@@ -486,7 +486,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     setSalvando(false);
   };
 
-  const novaKey = (tipo: 'atracoes' | 'editores', id: string) => async (key: string) => {
+  const novaKey = (tipo: TipoCadastro, id: string) => async (key: string) => {
     try {
       const k = await darKey(tipo, id, key);
       await carregar(true);
@@ -576,7 +576,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   // o rascunho entra na ordem alfabética
   const rascunho =
     aba === 'atracoes' ? (atr.nome || atr.keys.length ? { nome: atr.nome, categoria: atr.categoria, keys: atr.keys } : null)
-    : aba === 'redatores' ? (red.nome || red.user ? { nome: red.nome, keys: red.user ? [red.user] : [] } : null)
+    : aba === 'redatores' ? (red.nome || red.keys.length ? { nome: red.nome, keys: red.keys } : null)
     : edi.nome || edi.keys.length ? { nome: edi.nome, keys: edi.keys } : null;
   // o lugar segue o nome com um respiro: abre a vaga quando a pessoa para de digitar, não a cada letra
   const nomeRascunho = rascunho ? rascunho.nome : null;
@@ -610,7 +610,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   };
 
   const listaAtracoes = (dados?.atracoes ?? []).filter((a) => !escondidos.includes(a.id) && casa(a.nome, a.categoria, ...a.keys.map((k) => k.key)));
-  const listaRedatores = (dados?.redatores ?? []).filter((r) => !escondidos.includes(r.id) && casa(r.nome, r.user));
+  const listaRedatores = (dados?.redatores ?? []).filter((r) => !escondidos.includes(r.id) && casa(r.nome, ...r.keys.map((k) => k.key)));
   const listaEditores = (dados?.editores ?? []).filter((e) => !escondidos.includes(e.id) && casa(e.nome, ...e.keys.map((k) => k.key)));
   const itemAtracao = (a: AtracaoCadastro) => (
     <div key={a.id} className={`item-cad ${recem.includes(a.id) ? 'chegou' : ''}`}>
@@ -636,7 +636,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         {r.trello && <span className="no-trello"><Icone nome="quadro" tam={14} /> no Trello</span>}
         <Remover pode={pode} nome={r.nome} remover={remover('redatores', r.id, r.nome)} />
       </div>
-      <div className="keys">{r.user && <span className={`key login ${recem.includes(r.id) ? 'recem' : ''}`}>{r.user}</span>}</div>
+      <div className="keys">
+        <Vagas eixo="x" itens={r.keys.filter((k) => !escondidos.includes(`${r.id}:${k.id}`))} chave={(k) => k.id}>
+          {(k) => <ChipKey k={k} recem={recem.includes(k.id) || recem.includes(r.id)} remover={pode ? remover('redatores', r.id, k.key, k.id) : undefined} />}
+        </Vagas>
+        <NovaKey salvar={novaKey('redatores', r.id)} />
+      </div>
     </div>
   );
   const itemEditor = (e: EditorCadastro) => (
@@ -655,7 +660,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     </div>
   );
 
-  const limpar = () => (aba === 'atracoes' ? setAtr({ nome: '', keys: [], categoria: '', campos: {} }) : aba === 'redatores' ? setRed({ nome: '', user: '' }) : setEdi({ nome: '', keys: [] }));
+  const limpar = () => (aba === 'atracoes' ? setAtr({ nome: '', keys: [], categoria: '', campos: {} }) : aba === 'redatores' ? setRed({ nome: '', keys: [] }) : setEdi({ nome: '', keys: [] }));
   const xLimpar = rascunho && (
     <button type="button" className="limpar-campo" title="Limpar" aria-label="Limpar o formulário" onClick={(e) => { e.preventDefault(); limpar(); }}>
       <Icone nome="fechar" tam={14} />
@@ -694,7 +699,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               />
               <label className="cad-busca">
                 <Icone nome="lupa" />
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator ou login' : 'Buscar editor ou key'} />
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator ou key' : 'Buscar editor ou key'} />
               </label>
             </div>
             {!dados && !falha && <p className="cad-vazio">Carregando…</p>}
@@ -802,11 +807,11 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                     <span>Nome no card</span>
                     <span className="com-limpar"><input className="entrada-cad" value={red.nome} onChange={(e) => setRed({ ...red, nome: e.target.value })} placeholder="Como aparece no Trello" autoFocus />{xLimpar}</span>
                   </label>
-                  <label className="campo-cad">
-                    <span>Login ou autor do Word</span>
-                    <input className="entrada-cad" value={red.user} onChange={(e) => setRed({ ...red, user: e.target.value })} placeholder="ex.: gpires" />
-                    <small>O autor gravado no .docx, ou o começo do e-mail. É por ele que o PROMeiro reconhece quem escreveu.</small>
-                  </label>
+                  <div className="campo-cad">
+                    <span>Keys</span>
+                    <Chips itens={red.keys} mudar={(keys) => setRed({ ...red, keys })} rotulo="Keys do redator" placeholder="ex.: gpires" />
+                    <small>O autor gravado no .docx, ou o começo do e-mail. É por elas que o PROMeiro reconhece quem escreveu. Sem nenhuma, vale o nome.</small>
+                  </div>
                 </>
               )}
               {aba === 'editores' && (

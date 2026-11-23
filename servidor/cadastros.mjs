@@ -6,7 +6,8 @@
    Tabelas (IDs tbl… da API):
      TEABLE_CADASTRO      atrações (atracao, categoria, campos dos caminhos)
      TEABLE_ATRACOES      KEY_atracoes (key, atracoes → link para a atração)
-     TEABLE_REDATORES     redatores (user, redator, redator_ID, customField_ID)
+     TEABLE_REDATORES     redatores (redator, redator_ID, customField_ID)
+     TEABLE_KEY_REDATORES KEY_redatores (key, redator → link para o redator): o autor do Word ou o login
      TEABLE_EDITORES      editores (editor, editor_ID, customField_ID)
      TEABLE_KEY_EDITORES  KEY_editores (key, editor → link para o editor) */
 
@@ -38,6 +39,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
     redatores: env.TEABLE_REDATORES || '',
     editores: env.TEABLE_EDITORES || '',
     keysEditores: env.TEABLE_KEY_EDITORES || '',
+    keysRedatores: env.TEABLE_KEY_REDATORES || '',
   };
   const campoAtracao = env.TEABLE_CAMPO_NOME || 'atracao';
   const campoCategoria = env.TEABLE_CAMPO_CATEGORIA || 'categoria';
@@ -123,10 +125,11 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
   async function ler(forcar = false) {
     if (!ligado) return { ligado: false, atracoes: [], redatores: [], editores: [], categorias: [], camposCaminho: [], formulas: {} };
     if (lido && !forcar && Date.now() - lidoEm < 60_000) return lido;
-    const [atr, kAtr, red, edi, kEdi] = await Promise.all([
+    const [atr, kAtr, red, kRed, edi, kEdi] = await Promise.all([
       t.atracoes ? registros(t.atracoes) : [],
       t.keysAtracoes ? registros(t.keysAtracoes) : [],
       t.redatores ? registros(t.redatores) : [],
+      t.keysRedatores ? registros(t.keysRedatores) : [],
       t.editores ? registros(t.editores) : [],
       t.keysEditores ? registros(t.keysEditores) : [],
     ]);
@@ -137,6 +140,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
     };
     const kA = keysPor(kAtr, campoKeyLink);
     const kE = keysPor(kEdi, 'editor');
+    const kR = keysPor(kRed, 'redator');
     const esquema = t.atracoes ? await esquemaDasAtracoes(atr) : { categorias: [], camposCaminho: [], formulas: {} };
     const porNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR');
     lido = {
@@ -153,7 +157,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
         .filter((a) => a.nome)
         .sort(porNome),
       redatores: red
-        .map((l) => ({ id: l.id, nome: texto(l.f.redator), user: texto(l.f.user), trello: !!texto(l.f.redator_ID), campoTrello: texto(l.f.customField_ID) }))
+        .map((l) => ({ id: l.id, nome: texto(l.f.redator), keys: (kR.get(l.id) ?? []).filter((k) => k.key), trello: !!texto(l.f.redator_ID), campoTrello: texto(l.f.customField_ID) }))
         .filter((r) => r.nome)
         .sort(porNome),
       editores: edi
@@ -179,7 +183,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
   const nomeLimpo = (s, max = 80) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
   async function keyLivre(tabelaKeys, key) {
     const atual = await ler();
-    const lista = tabelaKeys === t.keysAtracoes ? atual.atracoes : atual.editores;
+    const lista = tabelaKeys === t.keysAtracoes ? atual.atracoes : tabelaKeys === t.keysRedatores ? atual.redatores : atual.editores;
     const dono = lista.find((x) => x.keys.some((k) => k.key === key));
     if (dono) throw erro(`A key ${key} já é de ${dono.nome}.`, 409);
   }
@@ -208,28 +212,34 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
     },
 
     async novaKey(tipo, alvoId, key) {
-      const tabela = tipo === 'atracao' ? t.keysAtracoes : t.keysEditores;
+      const tabela = { atracao: t.keysAtracoes, redator: t.keysRedatores, editor: t.keysEditores }[tipo];
       exigir(tabela, 'Falta a tabela de keys no servidor.');
       key = normalizarKey(key);
       exigir(key, 'Escreva a key.');
       await keyLivre(tabela, key);
-      const rec = await criar(tabela, tipo === 'atracao' ? { key, [campoKeyLink]: [{ id: alvoId }] } : { key, editor: [{ id: alvoId }] });
+      const link = { atracao: campoKeyLink, redator: 'redator', editor: 'editor' }[tipo];
+      const rec = await criar(tabela, { key, [link]: [{ id: alvoId }] });
       await depois();
       return { id: rec.id, key };
     },
 
-    async novoRedator({ nome, user }) {
+    async novoRedator({ nome, keys = [], user = '' }) {
       exigir(t.redatores, 'Falta a tabela de redatores no servidor (TEABLE_REDATORES).');
       nome = nomeLimpo(nome);
-      user = nomeLimpo(user || nome);
       exigir(nome, 'Escreva o nome do redator.');
+      // sem key, o próprio nome; "user" é o nome antigo do campo, ainda aceito
+      const lista = [...new Set([...keys, user].map(normalizarKey).filter(Boolean))].slice(0, 20);
+      if (!lista.length) lista.push(normalizarKey(nome));
       const atual = await ler();
-      exigir(!atual.redatores.some((r) => r.nome.toLowerCase() === nome.toLowerCase() || r.user.toLowerCase() === user.toLowerCase()), `${nome} já está cadastrado.`);
+      exigir(!atual.redatores.some((r) => r.nome.toLowerCase() === nome.toLowerCase()), `${nome} já está cadastrado.`);
+      exigir(t.keysRedatores, 'Falta a tabela de keys dos redatores no servidor (TEABLE_KEY_REDATORES).');
+      for (const k of lista) await keyLivre(t.keysRedatores, k);
       const campo = campoDoTrello(atual.redatores, env.TRELLO_CAMPO_REDATOR);
       const opcao = await opcaoNoTrello(campo, nome);
-      const rec = await criar(t.redatores, { user, redator: nome, ...(opcao ? { redator_ID: opcao, customField_ID: campo } : {}) });
+      const rec = await criar(t.redatores, { redator: nome, ...(opcao ? { redator_ID: opcao, customField_ID: campo } : {}) });
+      for (const k of lista) await criar(t.keysRedatores, { key: k, redator: [{ id: rec.id }] });
       await depois();
-      return { id: rec.id, nome, user, trello: !!opcao };
+      return { id: rec.id, nome, keys: lista, trello: !!opcao };
     },
 
     async novoEditor({ nome, keys = [] }) {
@@ -251,13 +261,14 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
 
     /** Remove do Teable (só administradores). A opção no Trello fica, para os cards antigos. */
     async remover(tipo, id) {
-      const tabela = { atracao: t.atracoes, redator: t.redatores, editor: t.editores, keyAtracao: t.keysAtracoes, keyEditor: t.keysEditores }[tipo];
+      const tabela = { atracao: t.atracoes, redator: t.redatores, editor: t.editores, keyAtracao: t.keysAtracoes, keyRedator: t.keysRedatores, keyEditor: t.keysEditores }[tipo];
       exigir(tabela, 'Tipo de cadastro desconhecido.');
-      // atração e editor levam as keys junto, para não sobrar key apontando para ninguém
-      if (tipo === 'atracao' || tipo === 'editor') {
+      // atração, redator e editor levam as keys junto, para não sobrar key apontando para ninguém
+      const keysDe = { atracao: ['atracoes', t.keysAtracoes], redator: ['redatores', t.keysRedatores], editor: ['editores', t.keysEditores] }[tipo];
+      if (keysDe) {
         const atual = await ler();
-        const item = (tipo === 'atracao' ? atual.atracoes : atual.editores).find((x) => x.id === id);
-        for (const k of item?.keys ?? []) await apagarRegistro(tipo === 'atracao' ? t.keysAtracoes : t.keysEditores, k.id);
+        const item = atual[keysDe[0]].find((x) => x.id === id);
+        for (const k of item?.keys ?? []) await apagarRegistro(keysDe[1], k.id);
       }
       await apagarRegistro(tabela, id);
       await depois();

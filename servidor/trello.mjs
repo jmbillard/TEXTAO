@@ -6,6 +6,7 @@
 
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { gerarPdf } from './pdf.mjs';
+import { normalizarKey } from './cadastros.mjs';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const API_PADRAO = 'https://api.trello.com/1';
@@ -107,6 +108,7 @@ export function configDoTrello(env) {
       token: env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '',
       producao: env.TEABLE_ARTE_PRODUCAO || '',
       redatores: env.TEABLE_REDATORES || '',
+      keysRedatores: env.TEABLE_KEY_REDATORES || '',
     },
     pg: {
       url: env.TEABLE_PG_URL || '',
@@ -256,12 +258,13 @@ export function criarTrello(env, deps = {}) {
     let campoId = c.campos.redator;
     let existente = null;
     if (t.redatores) {
-      // a linha que já tem opção no Trello vem primeiro
+      // pelo nome ou por uma das keys (KEY_redatores: o autor do Word, o login); a linha que já tem opção no Trello vem primeiro
       const [l] = await sql(
         `SELECT "__id" AS id, "redator", "redator_ID", "customField_ID" FROM ${t.redatores}
-         WHERE UPPER("user") = UPPER($1) OR UPPER("redator") = UPPER($1)
+         WHERE UPPER("redator") = UPPER($1)
+            OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE("key", '[]')::jsonb) AS k WHERE k->>'title' = $2)
          ORDER BY ("redator_ID" IS NULL OR "redator_ID" = '') LIMIT 1`,
-        [nome],
+        [nome, normalizarKey(nome)],
       );
       if (l?.redator_ID) return { idValue: l.redator_ID, nome: l.redator, campo: l.customField_ID || campoId };
       if (!campoId) campoId = (await sql(`SELECT MAX("customField_ID") AS id FROM ${t.redatores}`))[0]?.id || '';
@@ -273,7 +276,11 @@ export function criarTrello(env, deps = {}) {
     const op = await trello('POST', `/customField/${campoId}/options`, { corpo: { pos: 'bottom', value: { text: nomeNoCard } } });
     if (!op?.id) return null;
     if (existente?.id) await teableAtualizar(c.teable.redatores, existente.id, { redator_ID: op.id, customField_ID: campoId }).catch(() => {});
-    else await teableCriar(c.teable.redatores, { user: nome, redator: nome, redator_ID: op.id, customField_ID: campoId }).catch(() => {});
+    else {
+      const novo = await teableCriar(c.teable.redatores, { redator: nome, redator_ID: op.id, customField_ID: campoId }).catch(() => null);
+      const id = novo?.records?.[0]?.id;
+      if (id && normalizarKey(nome)) await teableCriar(c.teable.keysRedatores, { key: normalizarKey(nome), redator: [{ id }] }).catch(() => {});
+    }
     return { idValue: op.id, nome: nomeNoCard, campo: campoId };
   }
 

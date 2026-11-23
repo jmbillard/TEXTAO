@@ -910,7 +910,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         return json(res, 200, feito);
       }
       if (id && !REC.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
-      if (req.method === 'POST' && sub === 'keys' && !keyId && singular !== 'redator') {
+      if (req.method === 'POST' && sub === 'keys' && !keyId) {
         const corpo = (await lerCorpo(req)) ?? {};
         const feito = await cadastros.novaKey(singular, id, corpo.key);
         console.log(`[cadastros] ${eu.email} deu a key ${feito.key} para ${id}`);
@@ -919,8 +919,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       if (req.method === 'DELETE') {
         if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores removem cadastros.' });
         if (sub === 'keys') {
-          if (!REC.test(keyId ?? '') || singular === 'redator') return json(res, 400, { erro: 'Identificador inválido.' });
-          await cadastros.remover(singular === 'atracao' ? 'keyAtracao' : 'keyEditor', keyId);
+          if (!REC.test(keyId ?? '')) return json(res, 400, { erro: 'Identificador inválido.' });
+          await cadastros.remover({ atracao: 'keyAtracao', redator: 'keyRedator', editor: 'keyEditor' }[singular], keyId);
         } else await cadastros.remover(singular, id);
         console.log(`[cadastros] ${eu.email} removeu ${sub === 'keys' ? `a key ${keyId}` : `${singular} ${id}`}`);
         return json(res, 200, { ok: true });
@@ -990,7 +990,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       itens.push({ item: 'Redatores e editores', ok: (voc.redatores?.length ?? 0) > 0 && (voc.editores?.length ?? 0) > 0, detalhe: `${voc.redatores?.length ?? 0} redatores, ${voc.editores?.length ?? 0} editores` });
       // a API do Teable: o token lê cada tabela em que o app grava
       const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
-      for (const [nome, id] of Object.entries({ TEABLE_CADASTRO: env.TEABLE_CADASTRO, TEABLE_ATRACOES: env.TEABLE_ATRACOES, TEABLE_REDATORES: env.TEABLE_REDATORES, TEABLE_EDITORES: env.TEABLE_EDITORES, TEABLE_KEY_EDITORES: env.TEABLE_KEY_EDITORES, TEABLE_ARTE_PRODUCAO: env.TEABLE_ARTE_PRODUCAO, TEABLE_ACERVO: env.TEABLE_ACERVO, TEABLE_PAUTA: env.TEABLE_PAUTA })) {
+      for (const [nome, id] of Object.entries({ TEABLE_CADASTRO: env.TEABLE_CADASTRO, TEABLE_ATRACOES: env.TEABLE_ATRACOES, TEABLE_REDATORES: env.TEABLE_REDATORES, TEABLE_KEY_REDATORES: env.TEABLE_KEY_REDATORES, TEABLE_EDITORES: env.TEABLE_EDITORES, TEABLE_KEY_EDITORES: env.TEABLE_KEY_EDITORES, TEABLE_ARTE_PRODUCAO: env.TEABLE_ARTE_PRODUCAO, TEABLE_ACERVO: env.TEABLE_ACERVO, TEABLE_PAUTA: env.TEABLE_PAUTA })) {
         if (!id) {
           itens.push({ item: `API do Teable: ${nome}`, ok: nome === 'TEABLE_PAUTA', detalhe: 'não configurada' });
           continue;

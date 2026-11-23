@@ -216,7 +216,8 @@ export interface AtracaoCadastro {
 export interface RedatorCadastro {
   id: string;
   nome: string;
-  user: string;
+  /** como aparece nos roteiros: o autor do Word, o login */
+  keys: KeyCadastro[];
   trello: boolean;
 }
 export interface EditorCadastro {
@@ -277,7 +278,7 @@ export const lerFilmes = () => (armazenamento.tipo === 'servidor' ? pedir<FilmeN
 export const lerCadastros = (renovar = false) => pedir<Cadastros>(`/api/cadastros${renovar ? '?renovar=1' : ''}`);
 export const cadastrar = <T = { id: string; nome: string }>(tipo: TipoCadastro, dados: object) =>
   pedir<T>(`/api/cadastros/${tipo}`, { method: 'POST', body: JSON.stringify(dados) });
-export const darKey = (tipo: 'atracoes' | 'editores', id: string, key: string) =>
+export const darKey = (tipo: TipoCadastro, id: string, key: string) =>
   pedir<KeyCadastro>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}/keys`, { method: 'POST', body: JSON.stringify({ key }) });
 export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
   pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });

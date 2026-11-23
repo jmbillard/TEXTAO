@@ -12,6 +12,7 @@ const ENV = {
   TEABLE_CADASTRO: 'tblAtr',
   TEABLE_ATRACOES: 'tblKeyAtr',
   TEABLE_REDATORES: 'tblRed',
+  TEABLE_KEY_REDATORES: 'tblKeyRed',
   TEABLE_EDITORES: 'tblEdi',
   TEABLE_KEY_EDITORES: 'tblKeyEdi',
   TRELLO_KEY: 'k',
@@ -32,7 +33,8 @@ function falso() {
       { id: 'recK1', fields: { key: 'SHOW DA NOITE', atracoes: [{ id: 'recA1', title: 'Show da Noite' }] } },
       { id: 'recK2', fields: { key: 'COLINA', atracoes: [{ id: 'recA2', title: 'A Casa da Colina' }] } },
     ],
-    tblRed: [{ id: 'recR1', fields: { user: 'ana.lima', redator: 'Ana Lima', redator_ID: 'opAna', customField_ID: 'cRedator' } }],
+    tblRed: [{ id: 'recR1', fields: { redator: 'Ana Lima', redator_ID: 'opAna', customField_ID: 'cRedator' } }],
+    tblKeyRed: [{ id: 'recKR1', fields: { key: 'ANA LIMA', redator: [{ id: 'recR1', title: 'Ana Lima' }] } }],
     tblEdi: [{ id: 'recE1', fields: { editor: 'Bruno Regis', editor_ID: 'opBruno', customField_ID: 'cEditor' } }],
     tblKeyEdi: [{ id: 'recKE1', fields: { key: 'BRUNO', editor: [{ id: 'recE1', title: 'Bruno Regis' }] } }],
   };
@@ -121,12 +123,23 @@ describe('cadastros no Teable', () => {
   it('redator e editor novos viram opção no Trello e linha no Teable', async () => {
     const { buscar, pedidos, tabelas } = falso();
     const c = criarCadastros(ENV, { buscar });
-    const r = await c.novoRedator({ nome: 'Gabriel Pires', user: 'gpires' });
+    const r = await c.novoRedator({ nome: 'Gabriel Pires', keys: ['gpires', 'Gabriel_P'] });
     expect(r.trello).toBe(true);
     const op = pedidos.find((p) => p.url.includes('/customField/cRedator/options'))!;
     expect(op.corpo).toEqual({ pos: 'bottom', value: { text: 'Gabriel Pires' } });
-    expect(tabelas.tblRed.at(-1)!.fields).toMatchObject({ user: 'gpires', redator: 'Gabriel Pires', customField_ID: 'cRedator' });
+    expect(tabelas.tblRed.at(-1)!.fields).toMatchObject({ redator: 'Gabriel Pires', customField_ID: 'cRedator' });
+    expect(tabelas.tblKeyRed.slice(-2).map((k) => k.fields)).toEqual([
+      { key: 'GPIRES', redator: [{ id: r.id }] },
+      { key: 'GABRIEL P', redator: [{ id: r.id }] },
+    ]);
     await expect(c.novoRedator({ nome: 'ana lima' })).rejects.toThrow('já está cadastrado');
+    await expect(c.novoRedator({ nome: 'Outra Ana', keys: ['ana lima'] })).rejects.toThrow('A key ANA LIMA já é de Ana Lima.');
+    // sem key, vale o nome; a key nova e a remoção levam as keys junto
+    const s = await c.novoRedator({ nome: 'Sem Login' });
+    expect(tabelas.tblKeyRed.at(-1)!.fields).toEqual({ key: 'SEM LOGIN', redator: [{ id: s.id }] });
+    expect((await c.novaKey('redator', s.id, 'slogin')).key).toBe('SLOGIN');
+    await c.remover('redator', s.id);
+    expect(tabelas.tblKeyRed.some((k) => (k.fields.redator as { id: string }[])[0].id === s.id)).toBe(false);
 
     const e = await c.novoEditor({ nome: 'Marina Castro', keys: ['marina', 'Marina 16'] });
     expect(pedidos.some((p) => p.url.includes('/customField/cEditor/options'))).toBe(true);

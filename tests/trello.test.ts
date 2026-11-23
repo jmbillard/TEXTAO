@@ -27,6 +27,7 @@ const ENV = {
   TEABLE_TOKEN: 'um-token-so',
   TEABLE_ARTE_PRODUCAO: 'tblProducao',
   TEABLE_REDATORES: 'tblRedatores',
+  TEABLE_KEY_REDATORES: 'tblKeyRedatores',
   TEABLE_PG_URL: 'postgres://x',
   TEABLE_PG_ESQUEMA: 'bseBase',
   TEABLE_PG_ARTE: 'producao',
@@ -183,7 +184,8 @@ describe('envio para o Trello', () => {
     const t = criarTrello(ENV, { buscar, consultar: banco({ redatorNovo: true }).consultar });
     await t.enviar({ meta: { ...meta, redator: 'Nova Pessoa' }, artes: ['X'], original });
     expect(pedidos.find((p) => p.url.pathname === '/1/customField/cRedator/options')!.corpo).toEqual({ pos: 'bottom', value: { text: 'Nova Pessoa' } });
-    expect(pedidos.find((p) => p.url.pathname === '/api/table/tblRedatores/record')!.corpo).toMatchObject({ records: [{ fields: { user: 'Nova Pessoa', redator: 'Nova Pessoa', redator_ID: 'opNovoRedator' } }] });
+    expect(pedidos.find((p) => p.url.pathname === '/api/table/tblRedatores/record')!.corpo).toMatchObject({ records: [{ fields: { redator: 'Nova Pessoa', redator_ID: 'opNovoRedator' } }] });
+    expect(pedidos.find((p) => p.url.pathname === '/api/table/tblKeyRedatores/record')!.corpo).toMatchObject({ records: [{ fields: { key: 'NOVA PESSOA', redator: [{ id: 'rec1' }] } }] });
     expect(campoPut(pedidos, 'cRedator')).toEqual({ idValue: 'opNovoRedator' });
   });
 
