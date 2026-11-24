@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { apagarAoSair, armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { apagarAoSair, armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
@@ -55,6 +55,8 @@ interface Props {
   lendo: { nome: string; detalhe: string } | null;
   /** Abre os cadastros (atrações, redatores, editores), opcionalmente já com uma claquete para cadastrar. */
   cadastros: (inicio?: { aba?: TipoCadastro; claquete?: string }) => void;
+  /** Abre a aba Filmes (as prévias de filmes). */
+  filmes?: () => void;
 }
 
 const iniciais = (nome: string) =>
@@ -159,7 +161,7 @@ function EscolhaDeTema() {
 }
 
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
-function Perfil({ identidade, definirPerfil, cadastros, aoMudarCor }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; aoMudarCor?: () => void }) {
+function Perfil({ identidade, definirPerfil, cadastros, filmes, aoMudarCor }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; aoMudarCor?: () => void }) {
   const meuEmail = identidade?.email ?? '';
   const [minhaCor, setMinhaCor] = useState(() => corDe(meuEmail));
   useEffect(() => setMinhaCor(corDe(meuEmail)), [meuEmail]);
@@ -224,6 +226,11 @@ function Perfil({ identidade, definirPerfil, cadastros, aoMudarCor }: Pick<Props
           {cadastros && (
             <button type="button" className="perfil-link" onClick={cadastros}>
               <Icone nome="pessoas" tam={16} /> Cadastros <small>atrações, redatores, editores</small>
+            </button>
+          )}
+          {filmes && (
+            <button type="button" className="perfil-link" onClick={filmes}>
+              <Icone nome="quadro" tam={16} /> Filmes <small>as prévias de filmes</small>
             </button>
           )}
           <EscolhaDeTema />
@@ -506,7 +513,7 @@ function CardTrello({ r, abrir, andamento, tirar }: { r: Resumo; abrir: () => vo
   );
 }
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState('');
   // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
@@ -804,7 +811,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
               <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
             </div>
           )}
-          <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} aoMudarCor={() => setCores((n) => n + 1)} />
+          <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} aoMudarCor={() => setCores((n) => n + 1)} />
         </header>
 
         {EXEMPLOS.length > 0 && (

@@ -179,6 +179,7 @@ export async function consultarPauta(claquete: string): Promise<{ editor: string
 /* ---------- Trello ---------- */
 
 let trelloLigado = false;
+let filmesLigado = false;
 /** O servidor sabe mandar para o Trello (TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA configurados). */
 export const temTrello = () => armazenamento.tipo === 'servidor' && trelloLigado;
 
@@ -198,6 +199,70 @@ export async function guardarOriginal(id: string, arquivo: File, texto?: TextoOr
   // é dele que sai o PDF do card quando não há conversão fiel (Stirling): o sublinhado do redator, nem mais nem menos
   if (texto?.length) await pedir(`/api/roteiros/${encodeURIComponent(id)}/original-texto`, { method: 'PUT', body: JSON.stringify({ pars: texto }) }).catch(() => {});
 }
+
+/* ---------- aba Filmes: as prévias de filmes ---------- */
+
+/** O servidor lê as prévias de filmes (N8N_FILMES_LER configurado). */
+export const temFilmes = () => armazenamento.tipo === 'servidor' && filmesLigado;
+
+export interface CaixaDaPagina {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+export interface FilmeLido {
+  titulo: string;
+  ano: number | null;
+  sessao: string;
+  data: string;
+  inedito: boolean;
+  /** o pôster da página (a posição na ordem de leitura), ou null */
+  poster: number | null;
+}
+export interface PaginaDaPrevia {
+  numero: number;
+  util: number;
+  estado: 'esperando' | 'fila' | 'lendo' | 'lida' | 'erro';
+  erro: string;
+  filmes: FilmeLido[];
+  sessoes: string[];
+  posteres: { caixa: CaixaDaPagina }[];
+  vagas: { caixa: CaixaDaPagina; texto: string }[];
+  tamanho: { width: number; height: number } | null;
+}
+export interface Previa {
+  id: string;
+  nome: string;
+  por: string;
+  criada: string;
+  paginas: PaginaDaPrevia[];
+}
+export interface PreviaNaLista {
+  id: string;
+  nome: string;
+  por: string;
+  criada: string;
+  paginas: number;
+}
+export interface PaginaPreparada {
+  pdf: string;
+  imagem: string;
+  tamanho: { width: number; height: number };
+  posteres: { dados: string; caixa: CaixaDaPagina }[];
+  textos: { str: string; x: number; top: number; width: number; height: number }[];
+  vagas: { caixa: CaixaDaPagina; texto: string }[];
+}
+
+export const listarPrevias = () => pedir<PreviaNaLista[]>('/api/filmes/previas');
+export const criarPrevia = (nome: string, hash: string, paginas: number[]) =>
+  pedir<{ id: string; existente: boolean }>('/api/filmes/previas', { method: 'POST', body: JSON.stringify({ nome, hash, paginas }) });
+export const abrirPrevia = (id: string) => pedir<Previa>(`/api/filmes/previas/${encodeURIComponent(id)}`);
+export const mandarPagina = (id: string, numero: number, pagina: PaginaPreparada) =>
+  pedir<{ ok: true }>(`/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}`, { method: 'PUT', body: JSON.stringify(pagina) });
+export const relerPagina = (id: string, numero: number) => pedir<{ ok: true }>(`/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/reler`, { method: 'POST' });
+export const imagemDaPagina = (id: string, numero: number, poster = 0) =>
+  `/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/${poster ? `poster/${poster}` : 'imagem'}`;
 
 /* ---------- cadastros (atrações, redatores, editores) ---------- */
 
@@ -384,10 +449,11 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean };
     if (d.email) {
       armazenamento = noServidor;
       trelloLigado = !!d.trello;
+      filmesLigado = !!d.filmes;
       // as cores que cada um escolheu, para a orelha, o grifo e os cursores saírem certos
       await pedir<{ email: string; cor: string }[]>('/api/cores').then(registrarCores, () => {});
       // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable

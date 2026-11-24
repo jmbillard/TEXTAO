@@ -1,0 +1,254 @@
+/* A aba Filmes: a prévia mensal de filmes guardada no servidor e lida página por página pela IA do n8n.
+   O navegador separa as páginas úteis e recorta os pôsteres; aqui ficam a prévia (no banco local), as imagens
+   (em disco) e a fila de leitura, que manda uma página por vez para o mesmo webhook que o FilmeBOT usava,
+   sem mudar o que ele recebe e devolve. O endereço do webhook vem do ambiente: este repositório é público. */
+
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+/* ---------- o título lido pela IA e o texto do PDF (a regra do FilmeBOT) ---------- */
+const compacto = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'e').replace(/[^a-z0-9]/gi, '').toLowerCase();
+const MIUDAS = new Set(['a', 'o', 'as', 'os', 'um', 'uma', 'the', 'de', 'da', 'do', 'e']);
+const palavras = (t) =>
+  String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, ' e ').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !MIUDAS.has(w)).join('');
+function distancia(a, b) {
+  let ant = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j += 1) cur[j] = Math.min(ant[j] + 1, cur[j - 1] + 1, ant[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    ant = cur;
+  }
+  return ant[b.length];
+}
+/** O texto do PDF e o título lido são o mesmo filme? Tolera artigos e pequenas diferenças, mas não o número da continuação. */
+export function mesmoTitulo(texto, titulo) {
+  const a = compacto(texto);
+  const b = compacto(titulo);
+  if (!a || !b) return false;
+  if (a === b || (a.startsWith(b) && b.length >= 4) || (b.startsWith(a) && a.length >= 6)) return true;
+  const x = palavras(texto);
+  const y = palavras(titulo);
+  if (x.length < 6 || y.length < 6) return false;
+  if (x === y) return true;
+  if ((x.match(/\d+/g) || []).join() !== (y.match(/\d+/g) || []).join()) return false;
+  return distancia(x, y) <= Math.floor(Math.max(x.length, y.length) * 0.12);
+}
+
+/** Cada filme vai para o pôster logo acima do seu título; sem achar o título, e com um pôster por filme, vai pela ordem. */
+export function ligarPosteres(filmes, posteres, textos) {
+  const usados = new Set();
+  const peloTitulo = filmes.map((f) => {
+    if (compacto(f.titulo).length < 2) return null;
+    let melhor = null;
+    for (const linha of textos.filter((l) => mesmoTitulo(l.str, f.titulo)))
+      posteres.forEach(({ caixa: { x, y, width, height } }, i) => {
+        const sobra = Math.min(x + width, linha.x + linha.width) - Math.max(x, linha.x);
+        const vao = linha.top - (y + height);
+        if (sobra <= 0 || vao < -height * 0.15 || vao > height * 0.6) return;
+        const nota = vao - sobra * 0.01;
+        if (!melhor || nota < melhor.nota) melhor = { i, nota };
+      });
+    return melhor ? melhor.i : null;
+  });
+  return filmes.map((f, i) => {
+    let p = peloTitulo[i];
+    if (p === null && posteres.length === filmes.length) p = i;
+    if (p !== null && usados.has(p)) p = null;
+    if (p !== null) usados.add(p);
+    return { ...f, poster: p };
+  });
+}
+
+/** A resposta do fluxo de leitura: um objeto (ou uma lista com um) com "movies". */
+function respostaDaLeitura(texto) {
+  if (!texto.trim()) throw new Error('a leitura voltou vazia');
+  let dados;
+  try {
+    dados = JSON.parse(texto);
+  } catch {
+    throw new Error('a leitura voltou um JSON inválido');
+  }
+  const r = Array.isArray(dados) ? dados[0] : dados;
+  if (!r || typeof r !== 'object' || !Array.isArray(r.movies)) throw new Error('a leitura não trouxe a lista "movies"');
+  const ano = (v) => (/^\d{4}$/.test(String(v ?? '').trim()) ? Number(String(v).trim()) : null);
+  return {
+    filmes: r.movies.map((m) => ({
+      titulo: typeof m?.titulo === 'string' ? m.titulo.trim() : '',
+      ano: ano(m?.ano_de_producao),
+      sessao: typeof m?.sessao === 'string' ? m.sessao.trim() : '',
+      data: typeof m?.data === 'string' ? m.data.trim() : '',
+      inedito: m?.inedito === true,
+    })),
+    sessoes: Array.isArray(r.sessoes) ? r.sessoes.filter((x) => typeof x === 'string') : [],
+  };
+}
+
+const b64 = (v) => (typeof v === 'string' && v ? Buffer.from(v, 'base64') : null);
+const numero = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const umaCaixa = (c) => ({ x: numero(c?.x), y: numero(c?.y), width: numero(c?.width), height: numero(c?.height) });
+
+export function criarFilmes(env, { db, pasta, buscar = fetch } = {}) {
+  const enderecoDaLeitura = String(env.N8N_FILMES_LER || '').trim();
+  const ligado = !!enderecoDaLeitura && !!db;
+  const faltando = enderecoDaLeitura ? [] : ['N8N_FILMES_LER'];
+  if (!ligado) return { ligado, faltando };
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS previas (
+      id TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, nome TEXT NOT NULL,
+      por_email TEXT, por_nome TEXT, criada_em TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS previa_paginas (
+      previa_id TEXT NOT NULL REFERENCES previas(id) ON DELETE CASCADE,
+      numero INTEGER NOT NULL, util INTEGER NOT NULL,
+      estado TEXT NOT NULL DEFAULT 'esperando', erro TEXT, tentativas INTEGER NOT NULL DEFAULT 0,
+      dados TEXT, filmes TEXT, sessoes TEXT, lida_em TEXT,
+      PRIMARY KEY (previa_id, numero)
+    );
+  `);
+  const q = {
+    porHash: db.prepare('SELECT id FROM previas WHERE hash = ?'),
+    criar: db.prepare('INSERT INTO previas (id, hash, nome, por_email, por_nome, criada_em) VALUES (?, ?, ?, ?, ?, ?)'),
+    criarPagina: db.prepare('INSERT INTO previa_paginas (previa_id, numero, util) VALUES (?, ?, ?)'),
+    lista: db.prepare(
+      `SELECT p.id, p.nome, p.por_nome, p.criada_em, COUNT(g.numero) AS paginas
+       FROM previas p LEFT JOIN previa_paginas g ON g.previa_id = p.id GROUP BY p.id ORDER BY p.criada_em DESC`,
+    ),
+    previa: db.prepare('SELECT id, nome, por_nome, criada_em FROM previas WHERE id = ?'),
+    paginas: db.prepare('SELECT numero, util, estado, erro, dados, filmes, sessoes FROM previa_paginas WHERE previa_id = ? ORDER BY util'),
+    pagina: db.prepare('SELECT p.nome, g.numero, g.util, g.estado, g.dados, (SELECT COUNT(*) FROM previa_paginas x WHERE x.previa_id = g.previa_id) AS total FROM previa_paginas g JOIN previas p ON p.id = g.previa_id WHERE g.previa_id = ? AND g.numero = ?'),
+    receber: db.prepare("UPDATE previa_paginas SET dados = ?, estado = 'fila', erro = NULL, filmes = NULL WHERE previa_id = ? AND numero = ?"),
+    proxima: db.prepare("SELECT g.previa_id, g.numero FROM previa_paginas g JOIN previas p ON p.id = g.previa_id WHERE g.estado = 'fila' ORDER BY p.criada_em, g.util LIMIT 1"),
+    estado: db.prepare('UPDATE previa_paginas SET estado = ?, erro = ?, tentativas = tentativas + ? WHERE previa_id = ? AND numero = ?'),
+    lida: db.prepare("UPDATE previa_paginas SET estado = 'lida', erro = NULL, filmes = ?, sessoes = ?, lida_em = ? WHERE previa_id = ? AND numero = ?"),
+    retomar: db.prepare("UPDATE previa_paginas SET estado = 'fila' WHERE estado = 'lendo'"),
+  };
+  const intervalo = Math.max(0, Number(env.FILMES_INTERVALO_MS ?? 2500) || 0);
+  const espera = Math.max(1000, Number(env.FILMES_TEMPO_MS ?? 240_000) || 240_000);
+  const dir = (id) => join(pasta, id);
+  const arquivo = (id, n, k = 0) => join(dir(id), k ? `p${n}_${k}.jpg` : `p${n}.jpg`);
+
+  function criar({ nome, hash, paginas }, eu) {
+    const ja = q.porHash.get(hash);
+    if (ja) return { id: ja.id, existente: true };
+    const id = randomUUID();
+    q.criar.run(id, hash, nome, eu?.email ?? '', eu?.nome ?? '', new Date().toISOString());
+    paginas.forEach((numero, i) => q.criarPagina.run(id, numero, i + 1));
+    return { id, existente: false };
+  }
+
+  const listar = () => q.lista.all().map((l) => ({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas }));
+
+  function abrir(id) {
+    const p = q.previa.get(id);
+    if (!p) return null;
+    const paginas = q.paginas.all(id).map((g) => {
+      const d = g.dados ? JSON.parse(g.dados) : null;
+      return {
+        numero: g.numero,
+        util: g.util,
+        estado: g.estado,
+        erro: g.erro ?? '',
+        filmes: g.filmes ? JSON.parse(g.filmes) : [],
+        sessoes: g.sessoes ? JSON.parse(g.sessoes) : [],
+        posteres: d?.posteres ?? [],
+        vagas: d?.vagas ?? [],
+        tamanho: d?.tamanho ?? null,
+      };
+    });
+    return { id: p.id, nome: p.nome, por: p.por_nome, criada: p.criada_em, paginas };
+  }
+
+  /** A página que o navegador preparou: o PDF dela, a imagem, os pôsteres recortados (com as caixas) e as linhas de texto. */
+  function receberPagina(id, n, corpo) {
+    const g = q.pagina.get(id, n);
+    if (!g) return { erro: 'Página não encontrada.', status: 404 };
+    const pdf = b64(corpo?.pdf);
+    const imagem = b64(corpo?.imagem);
+    if (!pdf || !imagem) return { erro: 'Faltam o PDF ou a imagem da página.' };
+    const posteres = (Array.isArray(corpo.posteres) ? corpo.posteres : []).slice(0, 40).map((p) => ({ dados: b64(p?.dados), caixa: umaCaixa(p?.caixa) }));
+    if (posteres.some((p) => !p.dados)) return { erro: 'Pôster sem imagem.' };
+    mkdirSync(dir(id), { recursive: true });
+    writeFileSync(join(dir(id), `p${n}.pdf`), pdf);
+    writeFileSync(arquivo(id, n), imagem);
+    posteres.forEach((p, i) => writeFileSync(arquivo(id, n, i + 1), p.dados));
+    const textos = (Array.isArray(corpo.textos) ? corpo.textos : []).slice(0, 400).map((l) => ({ str: String(l?.str ?? '').slice(0, 200), x: numero(l?.x), top: numero(l?.top), width: numero(l?.width), height: numero(l?.height) }));
+    const vagas = (Array.isArray(corpo.vagas) ? corpo.vagas : []).slice(0, 20).map((v) => ({ caixa: umaCaixa(v?.caixa ?? v?.box), texto: String(v?.texto ?? v?.text ?? 'CANCELADO').slice(0, 40) }));
+    const dados = { tamanho: { width: numero(corpo.tamanho?.width), height: numero(corpo.tamanho?.height) }, posteres: posteres.map((p) => ({ caixa: p.caixa })), textos, vagas };
+    q.receber.run(JSON.stringify(dados), id, n);
+    acordar();
+    return { ok: true };
+  }
+
+  /* ---------- a fila de leitura: uma página por vez ---------- */
+  let lendo = false;
+  let parado = false;
+  async function ler(id, n) {
+    const g = q.pagina.get(id, n);
+    const dados = JSON.parse(g.dados);
+    const base = g.nome.replace(/\.pdf$/i, '');
+    const form = new FormData();
+    const jpg = (k) => new Blob([readFileSync(arquivo(id, n, k))], { type: 'image/jpeg' });
+    form.append('page', new Blob([readFileSync(join(dir(id), `p${n}.pdf`))], { type: 'application/pdf' }), `${base}_pagina_${n}.pdf`);
+    form.append('request_id', randomUUID());
+    form.append('document_id', id);
+    form.append('original_file_name', g.nome);
+    form.append('original_page_number', String(n));
+    form.append('useful_page_number', String(g.util));
+    form.append('total_useful_pages', String(g.total));
+    form.append('page_image', jpg(0), `${base}_pagina_${n}.jpg`);
+    form.append('poster_count', String(dados.posteres.length));
+    form.append('poster_boxes', JSON.stringify(dados.posteres.map((p) => p.caixa)));
+    dados.posteres.forEach((_, i) => form.append(`poster_${i + 1}`, jpg(i + 1), `${base}_pagina_${n}_poster_${String(i + 1).padStart(2, '0')}.jpg`));
+    const r = await buscar(enderecoDaLeitura, { method: 'POST', body: form, signal: AbortSignal.timeout(espera) });
+    const texto = await r.text();
+    if (!r.ok) throw new Error(`a leitura respondeu ${r.status}: ${texto.slice(0, 160)}`);
+    const { filmes, sessoes } = respostaDaLeitura(texto);
+    const ligados = ligarPosteres(filmes, dados.posteres, dados.textos);
+    // na ordem dos pôsteres da página; os que ficaram sem pôster, no fim
+    ligados.sort((a, b) => (a.poster ?? 1e9) - (b.poster ?? 1e9));
+    q.lida.run(JSON.stringify(ligados), JSON.stringify(sessoes), new Date().toISOString(), id, n);
+  }
+  async function rodar() {
+    if (lendo || parado) return;
+    lendo = true;
+    try {
+      for (let prox = q.proxima.get(); prox && !parado; prox = q.proxima.get()) {
+        q.estado.run('lendo', null, 1, prox.previa_id, prox.numero);
+        try {
+          await ler(prox.previa_id, prox.numero);
+        } catch (e) {
+          q.estado.run('erro', e instanceof Error ? e.message : String(e), 0, prox.previa_id, prox.numero);
+        }
+        if (intervalo) await new Promise((ok) => setTimeout(ok, intervalo));
+      }
+    } finally {
+      lendo = false;
+    }
+  }
+  const acordar = () => void rodar();
+  // a leitura que ficou pela metade (o servidor reiniciou) volta para a fila
+  q.retomar.run();
+  setTimeout(acordar, 0);
+
+  function reler(id, n) {
+    const g = q.pagina.get(id, n);
+    if (!g) return { erro: 'Página não encontrada.', status: 404 };
+    if (!g.dados) return { erro: 'A página ainda não chegou.' };
+    if (g.estado === 'lendo' || g.estado === 'fila') return { ok: true };
+    q.estado.run('fila', null, 0, id, n);
+    acordar();
+    return { ok: true };
+  }
+
+  function imagem(id, n, k = 0) {
+    try {
+      return readFileSync(arquivo(id, n, k));
+    } catch {
+      return null;
+    }
+  }
+
+  return { ligado, faltando, criar, listar, abrir, receberPagina, reler, imagem, parar: () => void (parado = true) };
+}

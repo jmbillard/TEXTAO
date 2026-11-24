@@ -16,6 +16,7 @@ import { criarCache } from './cache.mjs';
 import { chaveDaAtracao, criarTrello } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
+import { criarFilmes } from './filmes.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -28,6 +29,8 @@ const INTERVALO_VERSAO_MS = 5 * 60 * 1000;
 const LIMITE_CORPO = 2 * 1024 * 1024;
 /** Arquivo original do roteiro (docx, rtf, pdf): guardado para o PDF do card do Trello. */
 const LIMITE_ORIGINAL = 30 * 1024 * 1024;
+// uma página da prévia: a imagem, o PDF e os recortes dos pôsteres, em base64
+const LIMITE_PAGINA = 24 * 1024 * 1024;
 const ID_VALIDO = /^[\w-]{6,80}$/;
 
 const nomeDoEmail = (email) =>
@@ -274,10 +277,10 @@ const json = (res, status, corpo) => {
   res.end(JSON.stringify(corpo));
 };
 /** Corpo JSON. Grande demais: o resto é lido e descartado, sem derrubar a conexão, para a resposta 413 chegar. */
-const lerCorpo = (req) =>
+const lerCorpo = (req, LIMITE = LIMITE_CORPO, oQue = 'Roteiro') =>
   new Promise((ok, erro) => {
-    const grandeDemais = () => Object.assign(new Error('Roteiro grande demais para guardar (até 2 MB).'), { status: 413 });
-    if (Number(req.headers['content-length']) > LIMITE_CORPO) {
+    const grandeDemais = () => Object.assign(new Error(`${oQue} grande demais para guardar (até ${Math.round(LIMITE / 1048576)} MB).`), { status: 413 });
+    if (Number(req.headers['content-length']) > LIMITE) {
       req.resume();
       return erro(grandeDemais());
     }
@@ -285,10 +288,10 @@ const lerCorpo = (req) =>
     let total = 0;
     req.on('data', (p) => {
       total += p.length;
-      if (total <= LIMITE_CORPO) partes.push(p);
+      if (total <= LIMITE) partes.push(p);
     });
     req.on('end', () => {
-      if (total > LIMITE_CORPO) return erro(grandeDemais());
+      if (total > LIMITE) return erro(grandeDemais());
       try {
         ok(JSON.parse(Buffer.concat(partes).toString('utf8') || 'null'));
       } catch {
@@ -319,7 +322,7 @@ const lerBinario = (req, limite) =>
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }) }) {
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA }) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
   const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
@@ -953,6 +956,43 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
   }
 
+  /* ---------- aba Filmes: as prévias de filmes ---------- */
+  async function previas(req, res, caminho, eu) {
+    if (!filmes.ligado) return json(res, 503, { erro: `A aba Filmes está desligada: falta ${filmes.faltando.join(', ')}.` });
+    if (caminho === '/api/filmes/previas' && req.method === 'GET') return json(res, 200, filmes.listar());
+    if (caminho === '/api/filmes/previas' && req.method === 'POST') {
+      const { nome, hash, paginas } = (await lerCorpo(req)) ?? {};
+      if (typeof nome !== 'string' || typeof hash !== 'string' || !/^[\w-]{6,128}$/.test(hash) || !Array.isArray(paginas) || !paginas.length || !paginas.every((n) => Number.isInteger(n) && n > 0))
+        return json(res, 400, { erro: 'Faltam o nome, a impressão do PDF ou as páginas.' });
+      return json(res, 200, filmes.criar({ nome: nome.slice(0, 200), hash, paginas: paginas.slice(0, 12) }, eu));
+    }
+    const daPagina = /^\/api\/filmes\/previas\/([\w-]{6,80})\/paginas\/(\d{1,3})(?:\/(imagem|poster\/(\d{1,3})|reler))?$/.exec(caminho);
+    if (daPagina) {
+      const [, id, numero, extra, k] = daPagina;
+      if (!extra && req.method === 'PUT') {
+        const corpo = (await lerCorpo(req, LIMITE_PAGINA, 'Página')) ?? {};
+        const r = filmes.receberPagina(id, Number(numero), corpo);
+        return r.erro ? json(res, r.status ?? 400, { erro: r.erro }) : json(res, 200, { ok: true });
+      }
+      if (extra === 'reler' && req.method === 'POST') {
+        const r = filmes.reler(id, Number(numero));
+        return r.erro ? json(res, r.status ?? 400, { erro: r.erro }) : json(res, 200, { ok: true });
+      }
+      if (extra && req.method === 'GET') {
+        const img = filmes.imagem(id, Number(numero), k ? Number(k) : 0);
+        if (!img) return json(res, 404, { erro: 'Imagem não encontrada.' });
+        res.writeHead(200, { 'content-type': 'image/jpeg', 'content-length': img.length, 'cache-control': 'private, max-age=86400' });
+        return res.end(img);
+      }
+    }
+    const umaPrevia = /^\/api\/filmes\/previas\/([\w-]{6,80})$/.exec(caminho);
+    if (umaPrevia && req.method === 'GET') {
+      const p = filmes.abrir(umaPrevia[1]);
+      return p ? json(res, 200, p) : json(res, 404, { erro: 'Prévia não encontrada.' });
+    }
+    return json(res, 404, { erro: 'Não encontrado.' });
+  }
+
   const relatosDoNavegador = [];
   async function api(req, res, caminho) {
     const eu = await identificar(req, env);
@@ -960,7 +1000,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       if (eu) {
         // quem entra passa a constar na lista de pessoas com quem se pode compartilhar
         q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
-        return json(res, 200, { ...eu, trello: trello.ligado });
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -1127,6 +1167,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       res.writeHead(200, { 'content-type': img.tipo, 'content-length': img.dados.length, 'cache-control': 'private, max-age=86400' });
       return res.end(img.dados);
     }
+    if (caminho.startsWith('/api/filmes/previas')) return previas(req, res, caminho, eu);
     if (caminho === '/api/filmes' && req.method === 'GET') {
       // os filmes dos próximos dias, com o andamento do card (a mesma produção da arte das claquetes)
       const filmes = await trello.filmesProximos?.(14).catch((e) => (console.warn(`[filmes] ${e instanceof Error ? e.message : e}`), [])) ?? [];

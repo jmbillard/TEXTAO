@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ETIQUETAS } from '../modelo/tipos';
 import { atalho } from './util';
 
-type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar';
+type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar' | 'filmes';
 type Linha = [tecla: string, oque: string];
 
 const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
@@ -22,6 +22,13 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       ...ETIQUETAS.map((e): Linha => [atalho(e.atalho), e.nome]),
       [atalho('Mod-Enter'), 'Manda para o Trello ou abre o próximo'],
       [atalho('Mod-z'), 'Desfaz'],
+    ],
+  },
+  filmes: {
+    titulo: 'Filmes',
+    linhas: [
+      ['← →', 'Página anterior e próxima da prévia'],
+      ['Arrastar', 'Solta o PDF da prévia na tela'],
     ],
   },
   cadastros: {

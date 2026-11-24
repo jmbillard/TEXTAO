@@ -1949,3 +1949,61 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .card-poster.pronto { opacity: 1; transform: rotate(-1.5deg); }
 .card-filme:hover .card-poster.pronto { transform: rotate(0deg) scale(1.04); }
 .card-trello.caiu .card-poster { filter: grayscale(1); opacity: 0.5; }
+
+/* =========================================================
+   Aba Filmes: as prévias de filmes (tela de trabalho para monitor grande)
+   ========================================================= */
+.pagina.filmes { min-height: 100vh; }
+.pagina.filmes .cad-topo { max-width: 1640px; }
+.filmes-inicio { max-width: 1060px; margin: 0 auto; padding: 26px 28px 60px; display: grid; gap: 10px; }
+.filmes-inicio h1 { font: 400 34px/1.1 var(--serifa); margin: 0 0 10px; }
+.solta-previa { border: 1.5px dashed var(--regua-forte); border-radius: 14px; background: var(--papel); padding: 28px; display: grid; gap: 4px; color: var(--tinta); font: inherit; cursor: pointer; margin-bottom: 14px; transition: border-color 0.2s, background 0.2s; }
+.solta-previa strong { font-size: 15px; }
+.solta-previa span { color: var(--tinta3); font-size: 13px; }
+.solta-previa.soltando, .solta-previa:hover:not(:disabled) { border-color: var(--ultra); }
+.solta-previa:disabled { cursor: progress; }
+.ficha-previa { display: grid; gap: 3px; text-align: left; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); padding: 14px 18px; font: inherit; color: inherit; cursor: pointer; }
+.ficha-previa:hover { border-color: var(--regua-forte); }
+.ficha-previa b { font: 600 16px/1.35 var(--mono); }
+.ficha-previa .some { font-size: 13px; color: var(--tinta2); }
+
+.previa { max-width: 1640px; margin: 0 auto; padding: 18px 28px 60px; }
+.previa-cab { display: flex; align-items: center; gap: 22px; margin-bottom: 14px; }
+.previa-cab h1 { font: 600 22px/1.2 var(--mono); letter-spacing: 0.01em; margin: 0; }
+.previa-paginas { display: flex; align-items: center; gap: 8px; }
+.previa-paginas .bolinha { width: 8px; height: 8px; border-radius: 50%; border: 0; padding: 0; background: var(--regua-forte); cursor: pointer; }
+.previa-paginas .bolinha.atual { background: var(--tinta); }
+.previa-paginas .seta { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: var(--tinta2); font: 400 22px/1 var(--sans); padding: 0 0 3px; cursor: pointer; display: grid; place-items: center; }
+.previa-paginas .seta:hover:not(:disabled) { background: var(--neutro); color: var(--tinta); }
+.previa-paginas .seta:disabled { opacity: 0.3; cursor: default; }
+
+.fileiras { margin-bottom: 10px; }
+.fileira { position: relative; height: 116px; margin-bottom: 10px; }
+.fileira.baixo { height: 64px; }
+.fileiras.esperando .fileira { border-radius: 12px; background: repeating-linear-gradient(90deg, var(--neutro) 0 15.8%, transparent 15.8% 16.6%); opacity: 0.6; }
+.cartao-filme { position: absolute; top: 0; bottom: 0; min-width: 0; display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 9px; background: var(--papel); border: 1px solid color-mix(in srgb, var(--tinta) 13%, var(--regua)); border-radius: 12px; transition: border-color 0.15s; }
+.cartao-filme.destaque { border-color: var(--ultra); }
+.cartao-filme .cf-poster { width: 64px; height: 92px; object-fit: cover; border-radius: 5px; display: block; background: var(--neutro); }
+.cartao-filme .cf-corpo { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cartao-filme .cf-sessao { font: 500 10.5px var(--mono); color: var(--tinta2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cartao-filme .cf-titulo { font-weight: 600; font-size: 13.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.cartao-filme .cf-linha { margin-top: auto; display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--tinta2); font-variant-numeric: tabular-nums; }
+.cartao-filme .cf-inedito { font-size: 10px; font-weight: 700; color: var(--ultra-tinta); letter-spacing: 0.05em; }
+.cartao-filme.baixo { grid-template-columns: 36px 1fr; align-items: center; padding: 6px 8px; gap: 9px; }
+.cartao-filme.baixo .cf-poster { width: 36px; height: 52px; }
+.cartao-filme.baixo .cf-titulo { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cartao-filme.vaga { grid-template-columns: 1fr; place-items: center; background: transparent; border-style: dashed; }
+.cartao-filme.vaga .mao { font: 700 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-4deg); }
+.pagina-erro { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 12px; border-radius: 12px; background: var(--falta-fundo); color: var(--falta); }
+
+.folha-previa { position: relative; padding: 14px; border-radius: 3px; background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha); box-shadow: 0 1px 1px rgb(26 25 22 / 8%), 0 14px 34px -10px var(--folha-sombra); }
+.folha-dentro > img { width: 100%; display: block; border-radius: 2px; }
+.folha-previa .folha-vazia { aspect-ratio: 16 / 9; }
+.folha-dentro { position: relative; }
+.caixa-poster { position: absolute; border: 2px solid transparent; border-radius: 4px; transition: border-color 0.15s; }
+.caixa-poster.destaque { border-color: var(--ultra); }
+.caixa-poster i { position: absolute; top: 0; left: 0; background: var(--papel); color: var(--tinta); font: 700 15px/1.1 Caveat, cursive; font-style: normal; border-radius: 0 0 6px 0; padding: 1px 6px; }
+.lendo-pagina { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.lendo-pagina::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--ultra); animation: ler-pagina 2.2s ease-in-out infinite alternate; }
+@keyframes ler-pagina { to { top: calc(100% - 3px); } }
+@media (prefers-reduced-motion: reduce) { .lendo-pagina::after { animation: none; } }

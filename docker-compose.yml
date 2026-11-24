@@ -103,6 +103,10 @@ services:
       - STIRLING_URL=${STIRLING_URL:-}
       - STIRLING_CHAVE=${STIRLING_CHAVE:-}
 
+      # ---- n8n: a aba Filmes (a leitura da prévia por IA; vazia, a aba fica desligada) ----
+      - N8N_FILMES_LER=${N8N_FILMES_LER:-}
+      - FILMES_INTERVALO_MS=${FILMES_INTERVALO_MS:-}
+
   # Só cache: nada aqui precisa sobreviver a um reinício (o banco dos roteiros é o SQLite, no volume acima).
   redis:
     image: redis:7.4-alpine

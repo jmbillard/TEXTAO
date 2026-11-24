@@ -1,3 +1,4 @@
+import { criarFilmes } from './filmes.mjs';
 import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,7 +27,10 @@ backup();
 setInterval(backup, 60 * 60 * 1000).unref();
 
 const cache = criarCache(process.env);
-const app = criarApp({ db, cache, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
+// as prévias de filmes (aba Filmes): as imagens das páginas e dos pôsteres ficam junto dos dados
+const filmes = criarFilmes(process.env, { db, pasta: process.env.FILMES_PASTA ?? join(dados, 'previas') });
+console.log(filmes.ligado ? '[filmes] aba Filmes ligada' : `[filmes] aba Filmes desligada: falta ${filmes.faltando.join(', ')}`);
+const app = criarApp({ db, cache, filmes, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
 const servidor = createServer(app);
 servidor.on('upgrade', app.upgrade);
 servidor.listen(porta, () =>
