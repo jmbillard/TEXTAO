@@ -273,11 +273,19 @@ export interface PaginaDaPrevia {
   /** os pôsteres da fileira de cima da página (identidade própria) */
   fileiraDeCima?: number[];
 }
+/** Outra pessoa com a prévia aberta, e o card em que está mexendo (o título sendo corrigido ou o balão aberto). */
+export interface PessoaNaPrevia {
+  nome: string;
+  email: string;
+  card?: { numero: number; i: number } | null;
+}
 export interface Previa {
   id: string;
   nome: string;
   por: string;
   criada: string;
+  /** muda quando muda qualquer coisa da prévia no servidor */
+  versao?: string;
   paginas: PaginaDaPrevia[];
   erroDaConferencia?: string;
   /** o envio ao Trello está configurado? (sem a lista dos filmes, por exemplo, não está) */
@@ -289,6 +297,8 @@ export interface PreviaNaLista {
   por: string;
   criada: string;
   paginas: number;
+  /** quem está com ela aberta agora (sem a própria pessoa) */
+  pessoas?: PessoaNaPrevia[];
 }
 export interface PaginaPreparada {
   pdf: string;
@@ -314,6 +324,15 @@ export const mudarFilme = (id: string, numero: number, i: number, mudanca: Mudan
   });
 /** O Enviar: os filmes prontos de toda a prévia vão para o Trello (o servidor continua sozinho). */
 export const enviarPrevia = (id: string) => pedir<{ enviando: number }>(`/api/filmes/previas/${encodeURIComponent(id)}/enviar`, { method: 'POST' });
+/** Avisa que a prévia está aberta (e o card em que mexe); volta quem mais está nela e a versão da prévia no servidor. */
+export const avisarNaPrevia = (id: string, card: { numero: number; i: number } | null) =>
+  pedir<{ versao: string; pessoas: PessoaNaPrevia[] }>(`/api/filmes/previas/${encodeURIComponent(id)}/presenca`, { method: 'POST', body: JSON.stringify({ card }) });
+/** Sai da prévia, mesmo com a página fechando (o pedido sobrevive à saída). */
+export function sairDaPrevia(id: string) {
+  void fetch(`/api/filmes/previas/${encodeURIComponent(id)}/presenca`, {
+    method: 'POST', keepalive: true, credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify({ saiu: true }),
+  }).catch(() => {});
+}
 export const posterDoFilme = (id: string) => `/api/filmes/poster/${encodeURIComponent(id)}`;
 export const imagemDaPagina = (id: string, numero: number, poster = 0) =>
   `/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/${poster ? `poster/${poster}` : 'imagem'}`;

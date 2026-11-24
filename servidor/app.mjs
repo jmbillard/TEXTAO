@@ -957,9 +957,37 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   }
 
   /* ---------- aba Filmes: as prévias de filmes ---------- */
+  // Quem está em cada prévia: a tela aberta avisa a cada poucos segundos (e diz o card em que mexe); quem para de
+  // avisar (a aba fechou, o notebook dormiu) sai sozinho. Fica na memória desta instância, como a sala de um roteiro.
+  const naPrevia = new Map(); // id → Map<email, { nome, email, card, em }>
+  const PRESENCA_MS = Math.max(1000, Number(env.FILMES_PRESENCA_MS ?? 12_000) || 12_000);
+  /** Quem está na prévia agora, sem a própria pessoa. */
+  const pessoasNaPrevia = (id, eu) => {
+    const gente = naPrevia.get(id);
+    if (!gente) return [];
+    for (const [email, p] of gente) if (Date.now() - p.em > PRESENCA_MS) gente.delete(email);
+    if (!gente.size) naPrevia.delete(id);
+    return [...gente.values()].filter((p) => p.email !== eu.email).sort((a, b) => a.em - b.em);
+  };
+  const umCard = (c) => (c && Number.isInteger(c.numero) && Number.isInteger(c.i) && c.numero > 0 && c.i >= 0 && c.i < 100 ? { numero: c.numero, i: c.i } : null);
+
   async function previas(req, res, caminho, eu) {
     if (!filmes.ligado) return json(res, 503, { erro: `A aba Filmes está desligada: falta ${filmes.faltando.join(', ')}.` });
-    if (caminho === '/api/filmes/previas' && req.method === 'GET') return json(res, 200, filmes.listar());
+    if (caminho === '/api/filmes/previas' && req.method === 'GET')
+      return json(res, 200, filmes.listar().map((p) => ({ ...p, pessoas: pessoasNaPrevia(p.id, eu).map(({ nome, email }) => ({ nome, email })) })));
+    const presenca = /^\/api\/filmes\/previas\/([\w-]{6,80})\/presenca$/.exec(caminho);
+    if (presenca && req.method === 'POST') {
+      const id = presenca[1];
+      const versao = filmes.versao(id);
+      if (versao === null) return json(res, 404, { erro: 'Prévia não encontrada.' });
+      const corpo = (await lerCorpo(req)) ?? {};
+      if (corpo.saiu === true) naPrevia.get(id)?.delete(eu.email);
+      else {
+        if (!naPrevia.has(id)) naPrevia.set(id, new Map());
+        naPrevia.get(id).set(eu.email, { nome: eu.nome, email: eu.email, card: umCard(corpo.card), em: Date.now() });
+      }
+      return json(res, 200, { versao, pessoas: pessoasNaPrevia(id, eu).map(({ nome, email, card }) => ({ nome, email, card })) });
+    }
     if (caminho === '/api/filmes/previas' && req.method === 'POST') {
       const { nome, hash, paginas } = (await lerCorpo(req)) ?? {};
       if (typeof nome !== 'string' || typeof hash !== 'string' || !/^[\w-]{6,128}$/.test(hash) || !Array.isArray(paginas) || !paginas.length || !paginas.every((n) => Number.isInteger(n) && n > 0))

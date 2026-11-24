@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   abrirPrevia,
+  avisarNaPrevia,
   enviarPrevia,
   imagemDaPagina,
   listarPrevias,
   mudarFilme,
   posterDoFilme,
   relerPagina,
+  sairDaPrevia,
   type FilmeLido,
   type MudancaNoFilme,
   type PaginaDaPrevia,
+  type PessoaNaPrevia,
   type Previa,
   type PreviaNaLista,
 } from "../dados/armazenamento";
+import { corDe } from "../dados/colaboracao";
 import { montarFileiras, podeSubir, type ItemDaFileira } from "../filmes/fileiras";
 import { Icone } from "./icones";
 import { Marca } from "./pecas";
@@ -23,7 +27,10 @@ import { Marca } from "./pecas";
    com o banco: ✓ pronto, ! pede atenção (abre o balão com a pergunta) ou o Trello (já tem card). O filme que a leitura
    pôs por engano na Sessão da Tarde deixa "???" na vaga do pôster dele em cima: arrastado até lá, ele pede a sessão,
    a da coluna dele na página primeiro (só de baixo para cima). O Enviar, o mesmo do editor de roteiros, manda os
-   prontos de toda a prévia; o que der erro mostra o motivo e vai no próximo Enviar. */
+   prontos de toda a prévia; o que der erro mostra o motivo e vai no próximo Enviar.
+   Várias pessoas na mesma prévia: cada tela avisa o servidor a cada poucos segundos (e diz o card em que mexe) e
+   reabre a prévia só quando a versão dela muda. O card em que outra pessoa mexe fica com o título grifado na cor
+   dela e a rubrica do nome, como na fila. Não há trava: vale a última mudança. */
 
 interface Props {
   aberta?: string;
@@ -41,6 +48,45 @@ const vaiNoEnvio = (f: FilmeLido) =>
   f.conferencia?.marca === "ok" &&
   f.envio?.estado !== "enviando" &&
   f.envio?.estado !== "enviado";
+/** De quanto em quanto tempo a prévia aberta avisa que está ali e pergunta se mudou (e a lista, quem está em cada uma). */
+const BATIDA_MS = 2500;
+const LISTA_MS = 5000;
+const primeiro = (nome: string) => nome.split(/\s+/)[0];
+const iniciais = (nome: string) =>
+  nome
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .filter((_, i, a) => i === 0 || i === a.length - 1)
+    .join("")
+    .toUpperCase();
+/** "Ana tá vendo", "Ana e Bruno tão vendo", "Ana e mais 2 tão vendo". */
+const taoVendo = (pessoas: { nome: string }[]) =>
+  `${pessoas.length <= 2 ? pessoas.map((p) => primeiro(p.nome)).join(" e ") : `${primeiro(pessoas[0].nome)} e mais ${pessoas.length - 1}`} ${pessoas.length === 1 ? "tá vendo" : "tão vendo"}`;
+
+/** Quem mais está na prévia: as bolinhas com as iniciais, na cor de cada um. */
+function Presentes({ pessoas, texto }: { pessoas: PessoaNaPrevia[]; texto?: boolean }) {
+  if (!pessoas.length) return null;
+  return (
+    <span
+      className="na-fila"
+      title={`Também nesta prévia: ${pessoas.map((c) => c.nome).join(", ")}`}
+    >
+      {pessoas.slice(0, 5).map((c) => (
+        <span key={c.email} className="presente" style={{ background: corDe(c.email) }}>
+          {iniciais(c.nome)}
+        </span>
+      ))}
+      {pessoas.length > 5 && <span className="presente mais">+{pessoas.length - 5}</span>}
+      {texto && (
+        <span className="na-fila-texto">
+          {pessoas.length === 1 ? `${primeiro(pessoas[0].nome)} também está aqui` : `mais ${pessoas.length} aqui`}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** O card abre o balão: a pergunta do ! ou o motivo do erro no envio. */
 const temBalao = (f?: FilmeLido) =>
   !!f?.conferencia?.pergunta || f?.envio?.estado === "erro";
@@ -87,6 +133,12 @@ function ListaDePrevias({
       setPrevias,
       (e: Error) => (setPrevias([]), avisar(e.message)),
     );
+    // quem está em cada prévia: a lista pergunta de novo de tempos em tempos (barato: não consulta o banco)
+    const t = setInterval(
+      () => void listarPrevias().then(setPrevias, () => {}),
+      LISTA_MS,
+    );
+    return () => clearInterval(t);
   }, [avisar]);
 
   const subir = async (arquivo?: File) => {
@@ -155,6 +207,15 @@ function ListaDePrevias({
             {p.paginas} {p.paginas === 1 ? "página" : "páginas"} · subida por{" "}
             {p.por || "—"} em {new Date(p.criada).toLocaleDateString("pt-BR")}
           </span>
+          {!!p.pessoas?.length && (
+            <span
+              className="ficha-previa-gente"
+              style={{ "--cor": corDe(p.pessoas[0].email) } as React.CSSProperties}
+            >
+              <Presentes pessoas={p.pessoas} />
+              <span className="rubrica agora">{taoVendo(p.pessoas)}</span>
+            </span>
+          )}
         </button>
       ))}
     </main>
@@ -172,16 +233,25 @@ function PreviaAberta({
   const [pag, setPag] = useState(0);
   const [destaque, setDestaque] = useState<number | null>(null);
   const [mandando, setMandando] = useState(false);
+  // quem mais está na prévia, e o card em que eu estou mexendo (vai no aviso, para os outros verem)
+  const [pessoas, setPessoas] = useState<PessoaNaPrevia[]>([]);
+  const [meuCard, setMeuCard] = useState<{ numero: number; i: number } | null>(null);
+  // a versão da prévia que está na tela; uma reabertura por vez
+  const versaoNaTela = useRef<string | undefined>(undefined);
+  const reabrindo = useRef<Promise<void> | null>(null);
   const carregar = useCallback(
     () =>
-      abrirPrevia(id).then(
-        (p) => {
-          setPrevia(p);
-          if (p.erroDaConferencia)
-            avisar(`Não consegui conferir com o banco: ${p.erroDaConferencia}`);
-        },
-        (e: Error) => avisar(e.message),
-      ),
+      (reabrindo.current ??= abrirPrevia(id)
+        .then(
+          (p) => {
+            versaoNaTela.current = p.versao;
+            setPrevia(p);
+            if (p.erroDaConferencia)
+              avisar(`Não consegui conferir com o banco: ${p.erroDaConferencia}`);
+          },
+          (e: Error) => avisar(e.message),
+        )
+        .finally(() => (reabrindo.current = null))),
     [id, avisar],
   );
   // a mudança grava na hora; o filme volta conferido de novo e entra no lugar do antigo
@@ -207,16 +277,45 @@ function PreviaAberta({
     [id, avisar],
   );
   useEffect(() => void carregar(), [carregar]);
-  // enquanto há página na fila ou sendo lida, ou filme indo para o Trello, a tela pergunta de novo de tempos em tempos
-  const algumaLendo = !!previa?.paginas.some(lendo);
+  // a batida: a cada poucos segundos a tela avisa que está aqui (com o card em que mexe) e fica sabendo quem mais
+  // está; a prévia só é reaberta (com a conferência no banco) quando a versão dela muda: a leitura de uma página,
+  // o envio ou a mudança de outra pessoa
+  const cardAgora = useRef(meuCard);
+  cardAgora.current = meuCard;
+  const bater = useRef<() => void>(() => {});
+  useEffect(() => {
+    let vivo = true;
+    let prazo = 0;
+    const umaBatida = async () => {
+      try {
+        const r = await avisarNaPrevia(id, cardAgora.current);
+        if (!vivo) return;
+        setPessoas(r.pessoas);
+        if (versaoNaTela.current !== undefined && r.versao !== versaoNaTela.current)
+          void carregar();
+      } catch {
+        // sem servidor por um instante: tenta na próxima batida
+      }
+      // uma batida fora de hora (mudou o card) não abre um segundo relógio: fica só o último
+      window.clearTimeout(prazo);
+      if (vivo) prazo = window.setTimeout(umaBatida, BATIDA_MS);
+    };
+    bater.current = () => void umaBatida();
+    void umaBatida();
+    const sair = () => sairDaPrevia(id);
+    window.addEventListener("pagehide", sair);
+    return () => {
+      vivo = false;
+      window.clearTimeout(prazo);
+      window.removeEventListener("pagehide", sair);
+      sair();
+    };
+  }, [id, carregar]);
+  // mexi em outro card: os outros ficam sabendo já, sem esperar a próxima batida
+  useEffect(() => bater.current(), [meuCard?.numero, meuCard?.i]);
   const algumEnviando = !!previa?.paginas.some((g) =>
     g.filmes.some((f) => f.envio?.estado === "enviando"),
   );
-  useEffect(() => {
-    if (!algumaLendo && !algumEnviando) return;
-    const t = setInterval(() => void carregar(), algumEnviando ? 1500 : 3000);
-    return () => clearInterval(t);
-  }, [algumaLendo, algumEnviando, carregar]);
   const enviar = async () => {
     if (mandando) return;
     setMandando(true);
@@ -287,6 +386,7 @@ function PreviaAberta({
             ›
           </button>
         </nav>
+        <Presentes pessoas={pessoas} texto />
         <button
           className="botao primario enviar-previa"
           disabled={!envioLigado || !algumPronto || mandando || algumEnviando}
@@ -308,6 +408,8 @@ function PreviaAberta({
         mudar={(i, m) => mudar(p.numero, i, m)}
         destaque={destaque}
         destacar={setDestaque}
+        outros={pessoas}
+        mexer={setMeuCard}
         reler={() =>
           relerPagina(previa.id, p.numero).then(carregar, (e: Error) =>
             avisar(e.message),
@@ -323,6 +425,8 @@ function Pagina({
   p,
   destaque,
   destacar,
+  outros,
+  mexer,
   reler,
   mudar,
 }: {
@@ -330,6 +434,10 @@ function Pagina({
   p: PaginaDaPrevia;
   destaque: number | null;
   destacar: (i: number | null) => void;
+  /** quem mais está na prévia, com o card em que mexe */
+  outros: PessoaNaPrevia[];
+  /** o card em que esta pessoa está mexendo (o título sendo corrigido, o balão aberto ou o arrasto) */
+  mexer: (card: { numero: number; i: number } | null) => void;
   reler: () => void;
   mudar: (i: number, m: MudancaNoFilme) => Promise<void>;
 }) {
@@ -338,7 +446,12 @@ function Pagina({
   const [aberto, setAberto] = useState<number | null>(null);
   // o filme da Sessão da Tarde sendo arrastado para a vaga dele em cima, e o título sendo editado (não arrasta)
   const [arrastando, setArrastando] = useState<number | null>(null);
-  const [editando, setEditando] = useState(false);
+  const [editando, setEditando] = useState<number | null>(null);
+  const mexendo = editando ?? aberto ?? arrastando;
+  useEffect(
+    () => mexer(mexendo === null ? null : { numero: p.numero, i: mexendo }),
+    [mexer, mexendo, p.numero],
+  );
   const subir = (i: number) => {
     setArrastando(null);
     if (podeSubir(p, i)) void mudar(i, { subir: true }).then(() => setAberto(i));
@@ -371,6 +484,20 @@ function Pagina({
       );
     const filme = it.filme!;
     const sobe = baixo && podeSubir(p, it.i);
+    // outra pessoa mexendo neste card: o título grifado na cor dela e a rubrica do nome, dentro do card
+    const ali = outros.filter((o) => o.card?.numero === p.numero && o.card?.i === it.i);
+    const titulo = (
+      <Titulo
+        filme={filme}
+        gravar={(titulo) => mudar(it.i, { titulo })}
+        aoEditar={(sim) => setEditando((e) => (sim ? it.i : e === it.i ? null : e))}
+      />
+    );
+    const rubrica = ali.length > 0 && (
+      <span className="rubrica agora" title={`${ali.map((o) => o.nome).join(", ")} mexendo neste filme agora`}>
+        {taoVendo(ali)}
+      </span>
+    );
     const poster =
       filme.poster !== null
         ? imagemDaPagina(previaId, p.numero, filme.poster + 1)
@@ -378,11 +505,15 @@ function Pagina({
     return (
       <div
         key={`f${it.i}`}
-        className={`cartao-filme ${baixo ? "baixo" : ""} ${sobe ? "sobe" : ""} ${arrastando === it.i ? "arrastando" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""}`}
-        style={pos(it.x)}
+        className={`cartao-filme ${baixo ? "baixo" : ""} ${sobe ? "sobe" : ""} ${arrastando === it.i ? "arrastando" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""} ${ali.length ? "ocupado" : ""}`}
+        style={
+          ali.length
+            ? ({ ...pos(it.x), "--cor": corDe(ali[0].email) } as React.CSSProperties)
+            : pos(it.x)
+        }
         onMouseEnter={() => destacar(filme.poster)}
         onMouseLeave={() => destacar(null)}
-        draggable={sobe && !editando}
+        draggable={sobe && editando === null}
         onDragStart={
           sobe
             ? (e) => {
@@ -401,7 +532,10 @@ function Pagina({
           <span className="cf-poster sem" />
         )}
         {baixo ? (
-          <Titulo filme={filme} gravar={(titulo) => mudar(it.i, { titulo })} aoEditar={setEditando} />
+          <div className="cf-corpo">
+            {titulo}
+            {rubrica}
+          </div>
         ) : (
           <div className="cf-corpo">
             {filme.sessao ? (
@@ -409,7 +543,8 @@ function Pagina({
             ) : (
               <span className="cf-sessao falta">sessão: ???</span>
             )}
-            <Titulo filme={filme} gravar={(titulo) => mudar(it.i, { titulo })} aoEditar={setEditando} />
+            {titulo}
+            {rubrica}
             <span className="cf-linha">
               {filme.conferencia?.ano ?? filme.ano ?? "—"}{" "}
               <span>{filme.data.slice(0, 5)}</span>
@@ -524,11 +659,13 @@ function Titulo({
 }) {
   const [texto, setTexto] = useState<string | null>(null);
   const editandoAgora = texto !== null;
+  const avisa = useRef(aoEditar);
+  avisa.current = aoEditar;
   useEffect(() => {
     if (!editandoAgora) return;
-    aoEditar?.(true);
-    return () => aoEditar?.(false);
-  }, [editandoAgora, aoEditar]);
+    avisa.current?.(true);
+    return () => avisa.current?.(false);
+  }, [editandoAgora]);
   // o campo some depois do Enter ou do Esc: o blur que vem junto não pode gravar de novo (nem o que foi desistido)
   const terminado = useRef(false);
   const editar = () => {
@@ -552,7 +689,7 @@ function Titulo({
         onClick={editar}
         onKeyDown={(e) => e.key === "Enter" && editar()}
       >
-        {filme.titulo || "???"}
+        <span className="cf-grifo">{filme.titulo || "???"}</span>
       </span>
     );
   return (

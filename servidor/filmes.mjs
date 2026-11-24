@@ -3,7 +3,7 @@
    (em disco) e a fila de leitura, que manda uma página por vez para o mesmo webhook que o FilmeBOT usava,
    sem mudar o que ele recebe e devolve. O endereço do webhook vem do ambiente: este repositório é público. */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vinculos } from './acervo.mjs';
@@ -266,6 +266,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     filmesDaPagina: db.prepare("SELECT filmes FROM previa_paginas WHERE previa_id = ? AND numero = ? AND estado = 'lida'"),
     paginaLida: db.prepare("SELECT dados, filmes, sessoes FROM previa_paginas WHERE previa_id = ? AND numero = ? AND estado = 'lida'"),
     gravarFilmes: db.prepare('UPDATE previa_paginas SET filmes = ? WHERE previa_id = ? AND numero = ?'),
+    assinatura: db.prepare('SELECT numero, estado, erro, filmes, sessoes, dados IS NOT NULL AS chegou FROM previa_paginas WHERE previa_id = ? ORDER BY util'),
     retomar: db.prepare("UPDATE previa_paginas SET estado = 'fila' WHERE estado = 'lendo'"),
   };
   const intervalo = Math.max(0, Number(env.FILMES_INTERVALO_MS ?? 2500) || 0);
@@ -280,6 +281,14 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     q.criar.run(id, hash, nome, eu?.email ?? '', eu?.nome ?? '', new Date().toISOString());
     paginas.forEach((numero, i) => q.criarPagina.run(id, numero, i + 1));
     return { id, existente: false };
+  }
+
+  /** A versão da prévia: muda quando muda qualquer coisa dela no banco local (a leitura, o título, as escolhas, o envio).
+      É barata (não consulta o Postgres): a tela aberta pergunta por ela a cada poucos segundos e só reabre a prévia
+      quando ela muda. @returns null quando a prévia não existe */
+  function versao(id) {
+    if (!q.previa.get(id)) return null;
+    return createHash('sha1').update(JSON.stringify(q.assinatura.all(id))).digest('base64url').slice(0, 16);
   }
 
   const listar = () => q.lista.all().map((l) => ({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas }));
@@ -317,6 +326,8 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
   async function abrir(id) {
     const p = q.previa.get(id);
     if (!p) return null;
+    // antes de ler as páginas: o que mudar no meio do caminho muda a versão, e a tela reabre de novo
+    const v = versao(id);
     const textos = [];
     const paginas = q.paginas.all(id).map((g) => {
       const d = g.dados ? JSON.parse(g.dados) : null;
@@ -346,6 +357,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
       nome: p.nome,
       por: p.por_nome,
       criada: p.criada_em,
+      versao: v,
       paginas,
       envio: { ligado: envio.ligado, faltando: envio.faltando },
       ...(r.erro ? { erroDaConferencia: r.erro } : {}),
@@ -573,5 +585,5 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     }
   }
 
-  return { ligado, faltando, conferindo: !!conferencia, envio: { ligado: envio.ligado, faltando: envio.faltando }, criar, listar, abrir, mudar, receberPagina, reler, enviar, imagem, parar: () => void (parado = true) };
+  return { ligado, faltando, conferindo: !!conferencia, envio: { ligado: envio.ligado, faltando: envio.faltando }, criar, listar, versao, abrir, mudar, receberPagina, reler, enviar, imagem, parar: () => void (parado = true) };
 }

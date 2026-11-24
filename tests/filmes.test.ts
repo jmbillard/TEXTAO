@@ -912,3 +912,60 @@ describe('aba Filmes: o filme de identidade própria lido na Sessão da Tarde', 
     expect(c.conferencia.sessoes).toEqual([{ sessao: 'SUPERCINE' }, { sessao: 'TELA QUENTE' }]);
   });
 });
+
+/* ---------- várias pessoas na mesma prévia ---------- */
+describe('aba Filmes: várias pessoas na mesma prévia', () => {
+  const comoBruno = { 'cf-access-authenticated-user-email': 'bruno.reis@empresa.com' };
+  const presenca = (api: Awaited<ReturnType<typeof subir>>['api'], id: string, corpo: object = {}, headers: Record<string, string> = {}) =>
+    api(`/api/filmes/previas/${id}/presenca`, { method: 'POST', body: JSON.stringify(corpo), headers }).then((r) => r.json());
+
+  it('quem está na prévia aparece para os outros, com o card em que mexe, e a lista mostra quem está em cada uma', async () => {
+    const { api } = await subir();
+    const { id } = await criar(api, { nome: 'PREVIA_DEZEMBRO_2026.pdf', hash: 'gente01', paginas: [2] });
+    const { id: outra } = await criar(api, { nome: 'PREVIA_JANEIRO_2027.pdf', hash: 'gente02', paginas: [2] });
+
+    expect((await presenca(api, id, { card: { numero: 2, i: 1 } })).pessoas).toEqual([]);
+    // a Ana não se vê; o Bruno vê a Ana no card que ela abriu
+    expect((await presenca(api, id, {}, comoBruno)).pessoas).toEqual([{ nome: 'Ana Lima', email: 'ana.lima@empresa.com', card: { numero: 2, i: 1 } }]);
+    expect((await presenca(api, id)).pessoas).toEqual([{ nome: 'Bruno Reis', email: 'bruno.reis@empresa.com', card: null }]);
+
+    const lista = await (await api('/api/filmes/previas', { headers: comoBruno })).json();
+    expect(lista.find((p: { id: string }) => p.id === id).pessoas).toEqual([{ nome: 'Ana Lima', email: 'ana.lima@empresa.com' }]);
+    expect(lista.find((p: { id: string }) => p.id === outra).pessoas).toEqual([]);
+
+    // a Ana sai: some para o Bruno
+    await presenca(api, id, { saiu: true });
+    expect((await presenca(api, id, {}, comoBruno)).pessoas).toEqual([]);
+  });
+
+  it('a mudança de uma pessoa aparece para a outra: a versão muda, e só então a prévia é reaberta (o aviso não consulta o banco)', async () => {
+    const { api, id, mudar, pg } = await conferir([{ titulo: 'RIVAIS', ano_de_producao: 2023 }], { filmes: [filmeDoBanco('recRivais1', 'Rivais', 2024)] });
+    const aberta = await (await api(`/api/filmes/previas/${id}`, { headers: comoBruno })).json();
+    const consultas = pg.consultas.length;
+    const antes = await presenca(api, id, {}, comoBruno);
+    expect(antes.versao).toBe(aberta.versao);
+    expect((await presenca(api, id, {}, comoBruno)).versao).toBe(antes.versao);
+    expect(pg.consultas.length).toBe(consultas);
+
+    // a Ana escolhe o ano: o próximo aviso do Bruno traz outra versão, e a prévia reaberta mostra a escolha
+    await mudar(0, { ano: 2023 });
+    const depois = await presenca(api, id, {}, comoBruno);
+    expect(depois.versao).not.toBe(antes.versao);
+    const nova = await (await api(`/api/filmes/previas/${id}`, { headers: comoBruno })).json();
+    expect(nova.versao).toBe(depois.versao);
+    expect(nova.paginas[0].filmes[0].conferencia).toMatchObject({ marca: 'ok', ano: 2023 });
+    // o título também
+    await mudar(0, { titulo: 'Rivais' });
+    expect((await presenca(api, id, {}, comoBruno)).versao).not.toBe(depois.versao);
+  });
+
+  it('quem para de avisar (a aba fechou sem dizer) sai sozinho', async () => {
+    const { api } = await subir({ env: { ...ENV, FILMES_PRESENCA_MS: '1000' } });
+    const { id } = await criar(api, { nome: 'PREVIA_DEZEMBRO_2026.pdf', hash: 'gente03', paginas: [2] });
+    await presenca(api, id);
+    expect((await presenca(api, id, {}, comoBruno)).pessoas).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 1100));
+    expect((await presenca(api, id, {}, comoBruno)).pessoas).toEqual([]);
+    expect((await (await api('/api/filmes/previas', { headers: comoBruno })).json())[0].pessoas).toEqual([]);
+  });
+});

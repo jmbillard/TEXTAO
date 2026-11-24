@@ -2007,9 +2007,25 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .cartao-filme > .ficha-marca { position: absolute; top: -7px; right: -7px; border: 0; padding: 0; box-shadow: 0 0 0 2px var(--papel); }
 .cartao-filme > button.ficha-marca { cursor: pointer; }
 .cartao-filme.aberto { z-index: 60; }
-.cartao-filme .cf-titulo.editavel { cursor: text; border-radius: 3px; }
-.cartao-filme .cf-titulo.editavel:hover { background: var(--neutro); }
-.cartao-filme input.cf-titulo { width: 100%; min-width: 0; font: inherit; font-weight: 600; font-size: 13.5px; color: var(--tinta); background: var(--cartao); border: 1px solid var(--regua-forte); border-radius: 4px; padding: 1px 4px; outline: none; }
+.cartao-filme .cf-titulo.editavel { cursor: text; }
+.cartao-filme input.cf-titulo { width: 100%; min-width: 0; font: inherit; font-weight: 600; font-size: 13.5px; color: var(--tinta); background: transparent; border: 1px solid var(--regua-forte); border-radius: 4px; padding: 1px 4px; outline: none; }
+/* outra pessoa mexendo no card: o título grifado na cor dela e a rubrica do nome embaixo, como na fila */
+.cartao-filme .cf-grifo { background: linear-gradient(var(--grifo, transparent), var(--grifo, transparent)) no-repeat 0 0 / 0% 100%; -webkit-box-decoration-break: clone; box-decoration-break: clone; border-radius: 2px; }
+.cartao-filme.ocupado .cf-grifo { --grifo: color-mix(in srgb, var(--cor) 24%, transparent); animation: selecionar-claquete 0.88s 0.1s cubic-bezier(0.45, 0, 0.3, 1) forwards; }
+.cartao-filme .rubrica { margin: 0; align-self: flex-start; font-size: 17px; line-height: 0.9; animation-delay: 0.6s; }
+.cartao-filme.baixo .cf-corpo { gap: 1px; }
+.cartao-filme.baixo.ocupado .cf-titulo { -webkit-line-clamp: 1; }
+.ficha-previa { grid-template-columns: minmax(0, 1fr) auto; }
+.ficha-previa > b, .ficha-previa > .some { grid-column: 1; }
+.ficha-previa-gente { grid-column: 2; grid-row: 1 / 3; align-self: center; display: flex; align-items: center; gap: 10px; }
+.ficha-previa-gente .na-fila { margin-right: 0; }
+.ficha-previa-gente .presente { box-shadow: 0 0 0 2px var(--cartao); }
+.ficha-previa-gente .rubrica { margin: 0; }
+.previa-cab .na-fila { margin: 0 0 0 auto; }
+.previa-cab .na-fila + .enviar-previa { margin-left: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .cartao-filme.ocupado .cf-grifo { animation: none; background-size: 100% 100%; }
+}
 .cartao-filme input.cf-titulo:focus { border-color: var(--ultra); }
 .balao-filme { position: absolute; top: calc(100% + 8px); left: 0; z-index: 70; min-width: 100%; width: max-content; max-width: 640px; padding: 10px 10px 8px; background: var(--cartao); color: var(--tinta); border-radius: 12px; box-shadow: var(--sombra-menu); animation: abrir-escolha 0.16s var(--suave); }
 .balao-filme > b { display: block; font: 700 19px/1 Caveat, cursive; color: var(--falta); margin: 0 4px 8px; }
