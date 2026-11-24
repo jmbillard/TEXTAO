@@ -341,17 +341,16 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
       else if (!String(lido.titulo ?? '').trim()) resultados[k] = { erro: 'falta o título' };
       else
         try {
-          vao.push({ k, lido, conferencia, poster, dia, filme: await filmeDoEnvio(lido, conferencia, lote, agora) });
+          const filme = await filmeDoEnvio(lido, conferencia, lote, agora);
+          // a arte do filme é o título dele no template: a produzir, ou já no acervo do filme
+          const arte = String(filme.titulo || lido.titulo).toUpperCase();
+          const fazer = !conferencia.artes.existentes.some((a) => chaveDeArte(a) === chaveDeArte(arte));
+          vao.push({ k, lido, conferencia, poster, dia, filme, arte, fazer });
         } catch (e) {
           resultados[k] = { erro: e instanceof Error ? e.message : String(e) };
         }
     }
     if (!vao.length) return resultados;
-    // a arte de cada filme é o título dele no template: a produzir, ou já no acervo do filme
-    for (const x of vao) {
-      x.arte = String(x.filme.titulo || x.lido.titulo).toUpperCase();
-      x.fazer = !x.conferencia.artes.existentes.some((a) => chaveDeArte(a) === chaveDeArte(x.arte));
-    }
     const linhas = vao.map(({ conferencia, dia, filme, arte, fazer }) => {
       const ano = conferencia.ano ?? null;
       return { dia, nome: `${arte}${ano ? ` (${ano})` : ''}`, fazer, novo: !!filme.novo };
