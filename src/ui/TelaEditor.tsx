@@ -34,9 +34,12 @@ import { Fogo, FogoComTroca } from './fogo';
 import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
-import { ehDoTour } from '../tour/exemplo';
-import { enviarNoTour } from '../tour/TourDaRevisao';
+import { ehDoTour, enviarExemplo } from '../tour/exemplo';
+import { enviadoNoTour, enviarNoTour } from '../tour/TourDaRevisao';
 
+
+/** No tour, quanto tempo o Enviar do exemplo mostra "Mandando…" antes de voltar para a fila. */
+const MANDANDO_NO_TOUR_MS = 900;
 
 /* ---------- topo da folha: atração e praça ---------- */
 
@@ -1052,8 +1055,15 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             : 'Enviar';
   const acaoPrincipal = async () => {
     if (!liberado || estadoTrello?.estado === 'enviando') return;
-    // o exemplo nunca vai ao Trello: o Enviar dele é do tour
-    if (doTour) return enviarNoTour();
+    // o exemplo nunca vai ao Trello: o Enviar dele é do tour, que só aceita no passo de enviar. Aceito, o envio é
+    // simulado, só na memória: "Mandando…" por um instante, e o tour leva de volta à fila
+    if (doTour) {
+      if (!enviarNoTour()) return;
+      setEnvio({ estado: 'enviando', em: new Date().toISOString() });
+      const [simulado] = await Promise.all([enviarExemplo(roteiroAtual()), new Promise((ok) => setTimeout(ok, MANDANDO_NO_TOUR_MS))]);
+      setEnvio(simulado);
+      return enviadoNoTour();
+    }
     if (!vaiMandar) return proximo.r && abrir(proximo.r.id);
     if (perguntaProducao) return comparar(inicial.id);
     // nada impede o envio: as pendências ficam à vista ao lado, e o que faltar o n8n completa depois

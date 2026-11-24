@@ -445,8 +445,10 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
   const { nome: etapaNome, ate } = etapaPorExtenso(andamento);
   const idMais = `card-mais-${r.id}`;
+  // o card simulado do roteiro de exemplo, no fim do tour: não é um card do Trello
+  const doTour = ehDoTour(r.id);
   return (
-    <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''}`} data-card={r.id}>
+    <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''}`} data-card={r.id}>
       <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
         <span className="card-semana-claquete">{c.prioridade ? <Riscado traco={tracoDe(r.id)}>{claquete}</Riscado> : claquete}</span>
         <span className="card-semana-linha">
@@ -459,6 +461,7 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
             </span>
           )}
         </span>
+        {doTour && <span className="nota-exemplo">só de exemplo</span>}
         {/* na semana encolhida, a etapa vira só o pontinho à direita da claquete */}
         {etapa && etapa !== 'caiu' && <i key={etapa} className={`card-semana-sinal ${etapa}`} aria-hidden="true" />}
       </button>

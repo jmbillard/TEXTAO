@@ -16,8 +16,8 @@ import { TelaEditor } from './ui/TelaEditor';
 import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores';
 import { corDe } from './dados/colaboracao';
 import { TourDaRevisao } from './tour/TourDaRevisao';
-import { convidar, passoAtual, pular, type Tour } from './tour/passos';
-import { colocarExemplo, ID_DO_EXEMPLO, roteiroDeExemplo } from './tour/exemplo';
+import { convidar, passoAtual, pular, recomecar, type Tour } from './tour/passos';
+import { colocarExemplo, exemploNoTrello, ID_DO_EXEMPLO, roteiroDeExemplo } from './tour/exemplo';
 import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
 /** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
@@ -86,9 +86,10 @@ export function App() {
   }, []);
   const mudarTour = useCallback((t: Tour) => {
     setTour(t);
-    if (t.fase !== 'fora') return;
-    // terminou, pulou ou disse "Agora não": o servidor guarda, e o exemplo sai da fila (a vaga fecha)
-    void marcarTourVisto().catch(() => {});
+    if (t.fase !== 'fim' && t.fase !== 'fora') return;
+    // Terminar (a despedida), pular ou "Agora não": o servidor guarda (a despedida que some sozinha não grava de novo),
+    // e o exemplo sai da fila e da agenda (a vaga fecha)
+    if (t.fase === 'fim' || t.como === 'pulou') void marcarTourVisto().catch(() => {});
     if (colocarExemplo(null)) setChegou((n) => n + 1);
   }, []);
   /** O exemplo chega à fila como um roteiro de verdade: a vaga abre e a claquete é digitada. Nenhum arquivo é lido. */
@@ -155,6 +156,24 @@ export function App() {
   }, [noEditorDoExemplo, tour, ir]);
   /** Revisar no exemplo, durante o tour: o editor do exemplo abre. */
   const abrirExemplo = useCallback(() => ir({ t: 'editor', id: ID_DO_EXEMPLO }), [ir]);
+  /** Enviado o exemplo, durante o tour: a fila volta e, com a agenda já na tela, o card dele entra nela (a vaga abre). */
+  const levarAoTrello = useCallback(() => {
+    ir({ t: 'biblioteca' });
+    const desde = performance.now();
+    const esperar = () => {
+      // a fila montou (a agenda, ou o convite de soltar quando ainda não há card); sem ela, desiste em 3 s
+      const naTela = document.querySelector('.secao-trello, .convite-compacto, .fila-vazia');
+      if (!naTela && performance.now() - desde < 3000) return void requestAnimationFrame(esperar);
+      setTimeout(() => exemploNoTrello() && setChegou((n) => n + 1), 350);
+    };
+    requestAnimationFrame(esperar);
+  }, [ir]);
+  /** "Fazer o tour" no "?": o tour recomeça na fila, com o exemplo de antes fora. O servidor não muda. */
+  const refazerTour = useCallback(() => {
+    if (colocarExemplo(null)) setChegou((n) => n + 1);
+    ir({ t: 'biblioteca' });
+    setTour(recomecar());
+  }, [ir]);
   useEffect(() => {
     const aoVoltar = () => setTela(telaDoHash());
     window.addEventListener('popstate', aoVoltar);
@@ -379,8 +398,8 @@ export function App() {
       )}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete) => ir({ t: 'cadastros', aba: 'atracoes', claquete }) : undefined} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} />}
-      {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} />}
-      <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} />
+      {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
+      <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={refazerTour} />
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete }} />}
 

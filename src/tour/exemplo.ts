@@ -3,7 +3,7 @@
    nunca vai ao Trello (o servidor também recusa o prefixo do id, por defesa). */
 import { exportar, pendencias } from '../modelo/exportar';
 import { metaVazia, type NoJSON, type Roteiro } from '../modelo/tipos';
-import type { Armazenamento, Resumo } from '../dados/armazenamento';
+import type { Armazenamento, EnvioTrello, Resumo } from '../dados/armazenamento';
 
 /** O prefixo reservado do id do exemplo (o servidor recusa salvar e enviar ao Trello com ele). */
 export const PREFIXO_DO_TOUR = 'tour-';
@@ -69,12 +69,32 @@ export function roteiroDeExemplo(hoje = new Date()): Roteiro {
 /* ---------- o adaptador em memória ---------- */
 
 let exemplo: Roteiro | null = null;
+/** O envio simulado do exemplo: a caminho (saiu da fila e ainda não entrou na agenda) ou já na agenda No Trello. */
+let envio: { estado: 'a-caminho' | 'no-trello'; trello: EnvioTrello } | null = null;
 
-/** Põe o exemplo na fila deste navegador (ou tira, com null). Devolve se havia um antes. */
+/** Põe o exemplo na fila deste navegador (ou tira, com null), sem envio. Devolve se havia um antes. */
 export function colocarExemplo(r: Roteiro | null): boolean {
   const havia = !!exemplo;
   exemplo = r;
+  envio = null;
   return havia;
+}
+
+/** O Enviar do exemplo no tour: guarda o que está na tela, só na memória, e devolve um envio simulado. Nada vai ao
+    servidor nem ao Trello. O exemplo sai da fila e fica a caminho até `exemploNoTrello`. */
+export async function enviarExemplo(r: Roteiro): Promise<EnvioTrello> {
+  const trello: EnvioTrello = { estado: 'enviado', em: new Date().toISOString() };
+  if (exemplo?.id !== r.id) return trello;
+  exemplo = { ...copia(r), atualizadoEm: trello.em };
+  envio = { estado: 'a-caminho', trello };
+  return trello;
+}
+
+/** O exemplo enviado entra na agenda No Trello (com a fila já na tela, para a vaga abrir). Devolve se entrou. */
+export function exemploNoTrello(): boolean {
+  if (!exemplo || envio?.estado !== 'a-caminho') return false;
+  envio = { ...envio, estado: 'no-trello' };
+  return true;
 }
 
 const copia = (r: Roteiro): Roteiro => JSON.parse(JSON.stringify(r)) as Roteiro;
@@ -88,6 +108,7 @@ const resumo = (r: Roteiro): Resumo => ({
   publico: false,
   podeEditar: true,
   meu: true,
+  ...(envio?.estado === 'no-trello' ? { trello: envio.trello } : {}),
 });
 
 /** O armazenamento de sempre, com o exemplo do tour somado à listagem. Tudo o que tem o prefixo do tour responde da
@@ -99,7 +120,8 @@ export function comExemplo(base: Armazenamento): Armazenamento {
     },
     async listar() {
       const lista = await base.listar();
-      return exemplo ? [...lista.filter((r) => r.id !== exemplo?.id), resumo(exemplo)] : lista;
+      // a caminho do Trello, o exemplo não está nem na fila nem na agenda
+      return exemplo && envio?.estado !== 'a-caminho' ? [...lista.filter((r) => r.id !== exemplo?.id), resumo(exemplo)] : lista;
     },
     async ler(id) {
       if (!ehDoTour(id)) return base.ler(id);

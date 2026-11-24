@@ -76,6 +76,9 @@ export function seguir(t: Tour, acao: Acao): Tour {
   return t.i + 1 < PASSOS.length ? { fase: 'passo', i: t.i + 1 } : { fase: 'fim' };
 }
 
+/** "Fazer o tour" no cartão de atalhos ("?"): de onde estiver, o tour volta ao primeiro passo. */
+export const recomecar = (): Tour => ({ fase: 'passo', i: 0 });
+
 /** "Agora não" no convite ou "pular tour" num passo. */
 export const pular = (t: Tour): Tour => (t.fase === 'fora' ? t : { fase: 'fora', como: 'pulou' });
 

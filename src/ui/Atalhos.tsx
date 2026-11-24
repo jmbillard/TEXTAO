@@ -45,8 +45,8 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
   comparar: { titulo: 'Comparar', linhas: [['Esc', 'Fecha menus e balões']] },
 };
 
-/** "?" mostra os atalhos da tela onde a pessoa está. */
-export function Atalhos({ tela }: { tela: Tela }) {
+/** "?" mostra os atalhos da tela onde a pessoa está e, embaixo, "Fazer o tour" (o tour da revisão de novo). */
+export function Atalhos({ tela, fazerTour }: { tela: Tela; fazerTour?: () => void }) {
   const [aberto, setAberto] = useState(false);
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
@@ -89,6 +89,20 @@ export function Atalhos({ tela }: { tela: Tela }) {
                 <dd>Mostra ou esconde este cartão</dd>
               </div>
             </dl>
+            {fazerTour && (
+              <div className="atalhos-pe">
+                <button
+                  type="button"
+                  className="botao-texto"
+                  onClick={() => {
+                    setAberto(false);
+                    fazerTour();
+                  }}
+                >
+                  Fazer o tour
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

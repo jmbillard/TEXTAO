@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { aceita, comecar, convidar, passoAtual, PASSOS, pular, segura, seguir, terminar, type Acao, type Tour } from '../src/tour/passos';
+import { aceita, comecar, convidar, passoAtual, PASSOS, pular, recomecar, segura, seguir, terminar, type Acao, type Tour } from '../src/tour/passos';
+import { colocarExemplo, comExemplo, enviarExemplo, exemploNoTrello, ID_DO_EXEMPLO, roteiroDeExemplo } from '../src/tour/exemplo';
+import type { Armazenamento } from '../src/dados/armazenamento';
+import { noTrello } from '../src/ui/fila';
 
 const noPasso = (i: number): Tour => ({ fase: 'passo', i });
 
@@ -86,5 +89,77 @@ describe('tour da revisão: a sequência de passos', () => {
   it('a ficha e o fogo têm uma segunda tela, com os textos do rascunho', () => {
     const meio = Object.fromEntries(PASSOS.filter((p) => p.meio).map((p) => [p.id, p.meio]));
     expect(meio).toEqual({ ficha: 'Quem vai editar esta chamada? Escolha um nome.', fogo: 'Mais um clique.' });
+  });
+
+  it('enviar: o Enviar avança para no Trello; Terminar antes, não', () => {
+    expect(passoAtual(seguir(noPasso(5), 'enviar'))?.id).toBe('no-trello');
+    expect(seguir(noPasso(5), 'terminar')).toEqual(noPasso(5));
+  });
+
+  it('no Trello: Terminar leva à despedida; o Enviar de novo, não', () => {
+    expect(seguir(noPasso(6), 'terminar')).toEqual({ fase: 'fim' });
+    expect(seguir(noPasso(6), 'enviar')).toEqual(noPasso(6));
+  });
+
+  it('o envio e o Terminar têm os textos do rascunho', () => {
+    expect(PASSOS[5].texto).toBe('Sem pendências, é só enviar. No tour é de mentira: nada vai ao Trello.');
+    expect(PASSOS[6].texto).toBe('De verdade, o card iria para o Trello e entraria aqui, na agenda. Este foi só de exemplo.');
+  });
+
+  it('recomeçar ("Fazer o tour" no "?"): volta ao primeiro passo, sem passar pelo convite', () => {
+    expect(recomecar()).toEqual(noPasso(0));
+    expect(passoAtual(recomecar())?.id).toBe('chegar');
+  });
+
+  it('recomeçado, o tour anda de novo até o fim', () => {
+    const acoes: Acao[] = ['colar', 'revisar', 'escolher-editor', 'bolinha', 'fogo-alta', 'enviar', 'terminar'];
+    let t = recomecar();
+    for (const a of acoes) t = seguir(t, a);
+    expect(terminar(t)).toEqual({ fase: 'fora', como: 'terminou' });
+  });
+});
+
+describe('tour da revisão: o envio simulado do exemplo', () => {
+  const base: Armazenamento = {
+    tipo: 'servidor',
+    listar: async () => [],
+    ler: async () => undefined,
+    salvar: async () => {
+      throw new Error('o exemplo não pode ir ao servidor');
+    },
+    apagar: async () => {},
+    versoes: async () => [],
+    lerVersao: async () => {
+      throw new Error('sem histórico');
+    },
+    usuarios: async () => [],
+    andamento: async () => ({}),
+  };
+  const arm = comExemplo(base);
+  const doExemplo = async () => (await arm.listar()).find((r) => r.id === ID_DO_EXEMPLO);
+
+  it('enviado, o exemplo some da fila a caminho e entra na agenda No Trello depois, sem ir ao servidor', async () => {
+    const r = roteiroDeExemplo();
+    colocarExemplo(r);
+    expect(noTrello((await doExemplo())!)).toBe(false);
+    const envio = await enviarExemplo({ ...r, meta: { ...r.meta, editor: 'Editora Fictícia' } });
+    expect(envio.estado).toBe('enviado');
+    expect(await doExemplo()).toBeUndefined();
+    expect(exemploNoTrello()).toBe(true);
+    const noCard = await doExemplo();
+    expect(noCard && noTrello(noCard)).toBe(true);
+    expect(noCard?.meta.editor).toBe('Editora Fictícia');
+  });
+
+  it('no fim, o exemplo sai da fila e da agenda; recolocado, chega sem envio', async () => {
+    colocarExemplo(roteiroDeExemplo());
+    await enviarExemplo(roteiroDeExemplo());
+    exemploNoTrello();
+    expect(colocarExemplo(null)).toBe(true);
+    expect(await doExemplo()).toBeUndefined();
+    expect(exemploNoTrello()).toBe(false);
+    colocarExemplo(roteiroDeExemplo());
+    expect((await doExemplo())?.trello).toBeUndefined();
+    colocarExemplo(null);
   });
 });

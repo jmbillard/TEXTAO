@@ -2265,6 +2265,12 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 /* a anotação à mão que marca o roteiro de exemplo, sempre dentro do seu elemento */
 .nota-exemplo { display: inline-block; align-self: center; margin-left: 4px; font: 600 18px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); transform-origin: left; white-space: nowrap; }
 .topo-esq .nota-exemplo { margin-left: 6px; }
+/* o card simulado do exemplo na agenda No Trello: borda tracejada e "só de exemplo" à mão, numa linha só dele */
+.card-semana.exemplo { border-style: dashed; border-color: var(--regua-forte); background: var(--folha); }
+.card-semana.exemplo .nota-exemplo { display: block; width: max-content; margin: 4px 0 0; font-size: 16px; }
+.secao-trello.encolhida .card-semana.exemplo .nota-exemplo { margin-top: 2px; font-size: 15px; }
+/* "Fazer o tour", embaixo do cartão de atalhos */
+.atalhos-pe { display: flex; justify-content: flex-end; margin-top: 8px; padding-top: 10px; border-top: 1px dashed var(--regua); }
 
 .tour { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
 .tour.esperando { visibility: hidden; }

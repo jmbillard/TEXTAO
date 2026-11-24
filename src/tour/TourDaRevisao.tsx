@@ -14,6 +14,8 @@ interface Props {
   trazerExemplo: () => void;
   /** Revisar no passo da fila: o editor do exemplo abre. */
   abrirExemplo: () => void;
+  /** Enviar no passo de enviar: a tela volta para a fila, e o card do exemplo entra na agenda No Trello. */
+  levarAoTrello: () => void;
 }
 
 interface Retangulo {
@@ -46,6 +48,10 @@ interface Desenho {
   esperaDepois?: number;
   /** O passo está na segunda tela (a lista de nomes aberta, o fogo a meio caminho): o balão diz a frase `meio`. */
   meio?: () => boolean;
+  /** Pronto o alvo, quanto o tour ainda espera para aparecer (a vaga terminando de abrir). */
+  esperaAntes?: number;
+  /** O balão tem o botão do passo (Terminar), em vez de "pular tour". */
+  botao?: { rotulo: string; acao: Acao };
 }
 
 const conviteDeSoltar = () => document.querySelector('.convite-compacto, .fila-vazia');
@@ -59,7 +65,12 @@ const fogoDaArteComplexa = () => linhaDaArte(ARTE_COMPLEXA)?.querySelector('.cx'
 /** O fogo da arte complexa está no nível (pelo nome que o botão anuncia: "Complexidade MÉDIA"). */
 const fogoEm = (n: 2 | 3) => fogoDaArteComplexa()?.getAttribute('aria-label') === `Complexidade ${NOME_DA_COMPLEXIDADE[n]}`;
 
-/** Onde cada passo aponta. Os passos do editor e do envio entram nos próximos tickets (#35, #36). */
+/** O Enviar do editor (o botão principal do topo). */
+const botaoEnviar = () => document.querySelector('.acao-principal .botao.primario');
+/** O card do exemplo na agenda No Trello. */
+const cardDoExemplo = () => document.querySelector(`.secao-trello [data-card="${ID_DO_EXEMPLO}"]`);
+
+/** Onde cada passo aponta. */
 const DESENHOS: Partial<Record<IdDoPasso, Desenho>> = {
   chegar: {
     alvo: conviteDeSoltar,
@@ -104,6 +115,21 @@ const DESENHOS: Partial<Record<IdDoPasso, Desenho>> = {
     feito: () => (fogoEm(3) ? 'fogo-alta' : null),
     // o incêndio termina de subir, na linha e no rodapé
     esperaDepois: 900,
+  },
+  enviar: {
+    alvo: botaoEnviar,
+    seta: true,
+    // o clique vai para o editor, que pede ao tour (e o Ctrl+Enter também): o tour segue quando o envio simulado acaba
+    deixa: (el) => !!botaoEnviar()?.contains(el),
+  },
+  'no-trello': {
+    alvo: cardDoExemplo,
+    lado: 'sob',
+    seta: true,
+    // o balão espera a vaga do card terminar de abrir (e não aponta um card que está saindo)
+    pronto: (card) => !card.closest('.saindo'),
+    esperaAntes: 520,
+    botao: { rotulo: 'Terminar', acao: 'terminar' },
   },
 };
 /** O convite e a despedida: o balão ao lado do convite de soltar, sem laço. */
@@ -215,11 +241,15 @@ function medir(alvo: Element | null, ancora: Element | null, balao: { w: number;
 const mesmo = (a: Geometria | null, b: Geometria) =>
   !!a && a.laco === b.laco && a.balao.x === b.balao.x && a.balao.y === b.balao.y && a.seta?.corpo === b.seta?.corpo;
 
-/** O Enviar do editor do exemplo (o botão ou Ctrl+Enter) pede ao tour: antes do passo de enviar, o tour segura. */
+/** O Enviar do editor do exemplo (o botão ou Ctrl+Enter) pede ao tour. Devolve se o tour aceitou (no passo de enviar);
+    antes dele, o tour segura e o balão lembra o passo atual. */
 const PEDIDO_DE_ENVIO = 'tour-revisao:enviar';
-export const enviarNoTour = () => void window.dispatchEvent(new Event(PEDIDO_DE_ENVIO));
+export const enviarNoTour = (): boolean => !window.dispatchEvent(new Event(PEDIDO_DE_ENVIO, { cancelable: true }));
+/** O envio simulado acabou ("Mandando…" já apareceu): o tour segue e a tela volta para a fila. */
+const ENVIO_FEITO = 'tour-revisao:enviado';
+export const enviadoNoTour = () => void window.dispatchEvent(new Event(ENVIO_FEITO));
 
-export function TourDaRevisao({ tour, mudar, trazerExemplo, abrirExemplo }: Props) {
+export function TourDaRevisao({ tour, mudar, trazerExemplo, abrirExemplo, levarAoTrello }: Props) {
   const passo = passoAtual(tour);
   const desenho: Desenho | null = tour.fase === 'convite' || tour.fase === 'fim' ? AO_LADO_DO_CONVITE : passo ? (DESENHOS[passo.id] ?? null) : null;
   // a segunda tela do passo (a lista de nomes aberta, o fogo a meio caminho): a frase muda e o laço é desenhado de novo
@@ -244,14 +274,10 @@ export function TourDaRevisao({ tour, mudar, trazerExemplo, abrirExemplo }: Prop
     const id = passoAtual(t)?.id;
     if (id === 'chegar') trazerExemplo();
     else if (id === 'fila') abrirExemplo();
+    else if (id === 'enviar') levarAoTrello();
     setNoMeio(false);
     mudar(seguir(t, acao));
   };
-
-  // um passo que ainda não tem desenho (o de enviar, no próximo ticket): por enquanto, o tour termina como "pular"
-  useEffect(() => {
-    if (tour.fase === 'passo' && !desenho) mudar(pular(tour));
-  }, [tour, desenho, mudar]);
 
   // a despedida some sozinha
   useEffect(() => {
@@ -287,7 +313,7 @@ export function TourDaRevisao({ tour, mudar, trazerExemplo, abrirExemplo }: Prop
       if (alvo && desenho.pronto) {
         if (!desenho.pronto(alvo)) return void (prontoDesde = 0);
         prontoDesde ||= performance.now();
-        if (performance.now() - prontoDesde < ESPERA_DEPOIS_DE_MONTAR_MS) return;
+        if (performance.now() - prontoDesde < (desenho.esperaAntes ?? ESPERA_DEPOIS_DE_MONTAR_MS)) return;
       }
       const g = medir(alvo, ancora, { w: b.offsetWidth, h: b.offsetHeight }, desenho, n);
       if (mesmo(ultima, g)) return;
@@ -306,7 +332,8 @@ export function TourDaRevisao({ tour, mudar, trazerExemplo, abrirExemplo }: Prop
     if (!desenho) return;
     const clique = (e: MouseEvent) => {
       const el = e.target as Element | null;
-      if (!el || el.closest('.tour-balao')) return;
+      // o balão e o cartão de atalhos ("?", com o Fazer o tour) não são cliques fora do lugar
+      if (!el || el.closest('.tour-balao, .botao-atalhos, .atalhos-fundo')) return;
       // no editor, o clique no alvo vai para o app, que faz a ação de verdade
       if (geo && !passando && desenho.deixa?.(el)) return;
       e.preventDefault();
@@ -330,19 +357,24 @@ export function TourDaRevisao({ tour, mudar, trazerExemplo, abrirExemplo }: Prop
         e.stopPropagation();
       }
     };
-    // o Enviar do editor: no passo de enviar, segue; antes, o tour segura e o balão lembra o passo atual
-    const enviar = () => {
+    // o Enviar do editor: no passo de enviar, o tour aceita e o editor mostra "Mandando…"; antes, o tour segura e o
+    // balão lembra o passo atual
+    const enviar = (e: Event) => {
       const t = tourRef.current;
-      if (aceita(t, 'enviar')) agir.current('enviar');
+      if (aceita(t, 'enviar')) e.preventDefault();
       else if (segura(t, 'enviar')) setCutucado((k) => k + 1);
     };
+    // o envio simulado acabou: a fila volta e o tour segue para o card na agenda
+    const enviado = () => agir.current('enviar');
     window.addEventListener('click', clique, true);
     window.addEventListener('keydown', tecla, true);
     window.addEventListener(PEDIDO_DE_ENVIO, enviar);
+    window.addEventListener(ENVIO_FEITO, enviado);
     return () => {
       window.removeEventListener('click', clique, true);
       window.removeEventListener('keydown', tecla, true);
       window.removeEventListener(PEDIDO_DE_ENVIO, enviar);
+      window.removeEventListener(ENVIO_FEITO, enviado);
     };
   }, [desenho, geo, passando]);
 
@@ -390,7 +422,11 @@ export function TourDaRevisao({ tour, mudar, trazerExemplo, abrirExemplo }: Prop
         {tour.fase === 'passo' && (
           <div className="tour-pe">
             <span className="tour-prog">{n}/{PASSOS.length}</span>
-            <button type="button" className="botao-texto" onClick={() => mudar(pular(tour))}>pular tour</button>
+            {desenho.botao ? (
+              <button type="button" className="botao primario" onClick={() => agir.current(desenho.botao!.acao)}>{desenho.botao.rotulo}</button>
+            ) : (
+              <button type="button" className="botao-texto" onClick={() => mudar(pular(tour))}>pular tour</button>
+            )}
           </div>
         )}
       </div>
