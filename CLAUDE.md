@@ -3,6 +3,13 @@
 A ferramenta da equipe de arte da Globo Promo: recebe os roteiros, revisa as artes e manda para produção no Trello,
 com o registro no Teable (base PROMeiro). Tudo em pt-BR: textos, comentários, commits e documentos.
 
+## O agente da conversa é o gestor do projeto
+
+Quem conversa com o usuário **gerencia**: pergunta, decide a ordem, registra as decisões e responde. O trabalho que
+muda código ou dados vai para um **subagente** novo, um ticket por vez na ordem dos bloqueios, com um briefing
+completo; o gestor confere o que voltou antes de seguir e continua livre para a conversa. Consultas rápidas e
+respostas ficam com o gestor. Ao delegar ou conferir, siga `docs/agents/gestao.md`.
+
 ## Skills dos agentes (Agent skills)
 
 As skills do Matt Pocock, traduzidas para pt-BR, ficam em `.claude/skills/` (veja `.claude/skills/README.md`).
