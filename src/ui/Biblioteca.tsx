@@ -821,17 +821,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
       },
     );
   };
-  // tirar da fila: primeiro o item some com uma animação curta, depois sai da lista (sem a tela pular de uma vez)
-  const [sumindo, setSumindo] = useState<string | null>(null);
+  // tirar da fila: a ficha (ou o card da agenda) fecha a vaga na hora, esmaecendo junto. Antes, a ficha sumia
+  // primeiro e só depois fechava a vaga: na virada ela piscava de volta por alguns quadros (#32)
   const tirar = (r: Resumo) => {
-    if (sumindo) return;
-    setSumindo(r.id);
-    setTimeout(() => {
-      setSumindo(null);
-      tirarJa(r);
-    }, 260);
-  };
-  const tirarJa = (r: Resumo) => {
     if (saindo) {
       clearTimeout(prazoSaida.current);
       void apagarDeVez(saindo);
@@ -1047,7 +1039,6 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           </section>
         )}
 
-        {sumindo && <style>{`[data-ancora="ficha:${sumindo}"] { animation: sumir-da-fila 0.26s var(--suave) forwards; pointer-events: none; }`}</style>}
         {vazio ? (
           <div className="entra-suave">
             <ConviteDeArrastar
@@ -1144,7 +1135,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           )
         )}
       </main>
-      {!vazio && roteiros && enviados.length > 0 && <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirarJa} />}
+      {!vazio && roteiros && enviados.length > 0 && <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} />}
       {saindo && (
         <div className="desfazer" role="status">
           <span><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</span>
