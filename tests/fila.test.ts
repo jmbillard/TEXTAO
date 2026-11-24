@@ -234,3 +234,37 @@ describe('No Trello: a semana de agenda', () => {
     ]);
   });
 });
+
+describe('No Trello: o card aberto', () => {
+  const andamento = (status: string[], extra: Partial<Andamento> = {}): Andamento => ({ status, designers: [], entregue: false, entrega: null, ...extra });
+
+  it('a etapa por extenso: o nome de cada etiqueta, com caiu e entregue vencendo as outras', async () => {
+    const { etapaPorExtenso } = await import('../src/ui/fila');
+    expect(etapaPorExtenso(andamento(['PRODUZINDO'])).nome).toBe('Produzindo');
+    expect(etapaPorExtenso(andamento(['AGUARDANDO MATERIAL', 'PEDIDO DE ALTERAÇÃO'])).nome).toBe('Aguardando material, Pedido de alteração');
+    expect(etapaPorExtenso(andamento(['NOVA ETIQUETA'])).nome).toBe('Nova etiqueta');
+    expect(etapaPorExtenso(andamento(['PRODUZINDO'], { entregue: true })).nome).toBe('Entregue');
+    expect(etapaPorExtenso(andamento(['FINALIZADO', 'PRODUZINDO'])).nome).toBe('Entregue');
+    expect(etapaPorExtenso(andamento(['PRODUZINDO', 'CAIU'], { entregue: true })).nome).toBe('Caiu');
+    expect(etapaPorExtenso(andamento([])).nome).toBe('');
+    expect(etapaPorExtenso(undefined)).toEqual({ nome: '', ate: '' });
+  });
+
+  it('o prazo "até" é o dia da entrega em Brasília, só enquanto o card não foi entregue nem caiu', async () => {
+    const { etapaPorExtenso } = await import('../src/ui/fila');
+    // 25/11 às 23h em Brasília já é 26/11 em UTC
+    expect(etapaPorExtenso(andamento(['PRODUZINDO'], { entrega: '2026-11-26T02:00:00.000Z' })).ate).toBe('25/11');
+    expect(etapaPorExtenso(andamento([], { entrega: '2026-12-03T15:00:00.000Z' }))).toEqual({ nome: '', ate: '03/12' });
+    expect(etapaPorExtenso(andamento(['PRODUZINDO'], { entrega: '2026-11-26T15:00:00.000Z', entregue: true })).ate).toBe('');
+    expect(etapaPorExtenso(andamento(['CAIU'], { entrega: '2026-11-26T15:00:00.000Z' })).ate).toBe('');
+    expect(etapaPorExtenso(andamento(['PRODUZINDO'])).ate).toBe('');
+  });
+
+  it('a rubrica de quem revisou: o primeiro nome e a inicial do último', async () => {
+    const { rubrica } = await import('../src/ui/fila');
+    expect(rubrica('Clara Vieira')).toBe('Clara V.');
+    expect(rubrica('  Ana Maria da Costa ')).toBe('Ana C.');
+    expect(rubrica('Bruno')).toBe('Bruno');
+    expect(rubrica('')).toBe('');
+  });
+});

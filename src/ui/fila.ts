@@ -83,6 +83,8 @@ export interface DiaDaSemana {
 export interface CardDaSemana {
   r: Resumo;
   etapa: EtapaDoCard;
+  /** As etiquetas, os designers e a entrega do card, para o card aberto. */
+  andamento?: Andamento;
 }
 
 /** O que o card fechado mostra à direita. As outras etapas (aguardando material, pedido de alteração…) não aparecem. */
@@ -118,7 +120,7 @@ const somarDias = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth()
 export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0): Semana {
   const hoje = isoLocal(agora);
   const amanha = isoLocal(somarDias(agora, 1));
-  const enviados = lista.filter(noTrello).map((r): CardDaSemana => ({ r, etapa: etapaDoCard(andamento[r.id]) }));
+  const enviados = lista.filter(noTrello).map((r): CardDaSemana => ({ r, etapa: etapaDoCard(andamento[r.id]), andamento: andamento[r.id] }));
   const claquete = (c: CardDaSemana) => c.r.meta.claquete || c.r.meta.titulo || '';
   // o que caiu desce para o fim do dia
   const ordem = (a: CardDaSemana, b: CardDaSemana) => +(a.etapa === 'caiu') - +(b.etapa === 'caiu') || claquete(a).localeCompare(claquete(b), 'pt-BR');
@@ -138,4 +140,38 @@ export function montarSemana(lista: Resumo[], andamento: Record<string, Andament
   });
   const naSemana = dias.flatMap((d) => d.cards);
   return { dias, semData, anteriores, periodo, total: naSemana.length, entregues: naSemana.filter((c) => c.etapa === 'entregue').length };
+}
+
+/* ---------- No Trello: o card aberto ---------- */
+
+// as etiquetas do card na produção da arte (status do Teable, que o n8n traz do Trello), por extenso
+const ETIQUETAS: Record<string, string> = {
+  'AGUARDANDO MATERIAL': 'Aguardando material',
+  PRODUZINDO: 'Produzindo',
+  'EM APROVAÇÃO': 'Em aprovação',
+  'PEDIDO DE ALTERAÇÃO': 'Pedido de alteração',
+  FINALIZADO: 'Finalizado',
+  FILME: 'Filme',
+  CAIU: 'Caiu',
+};
+/** O nome de uma etiqueta do card ("EM APROVAÇÃO" → "Em aprovação"); a que não conhece vira só minúscula. */
+export const nomeDaEtiqueta = (st: string) => ETIQUETAS[st.toUpperCase()] ?? st[0] + st.slice(1).toLowerCase();
+
+/** A etapa no card aberto: o nome por extenso (caiu e entregue vencem as outras etiquetas) e o prazo "até 25/11",
+    o dia da entrega em Brasília, só enquanto o card não foi entregue nem caiu. */
+export function etapaPorExtenso(a: Andamento | undefined): { nome: string; ate: string } {
+  const etapa = etapaDoCard(a);
+  const nome = etapa === 'caiu' ? 'Caiu' : etapa === 'entregue' ? 'Entregue' : (a?.status ?? []).map(nomeDaEtiqueta).join(', ');
+  // a entrega vem em UTC; o dia que vale é o de Brasília
+  const ate =
+    a?.entrega && etapa !== 'caiu' && etapa !== 'entregue'
+      ? new Date(a.entrega).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })
+      : '';
+  return { nome, ate };
+}
+
+/** A rubrica de quem revisou, à mão no pé do card: "Clara Vieira" → "Clara V.". */
+export function rubrica(nome: string): string {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  return partes.length > 1 ? `${partes[0]} ${partes[partes.length - 1][0].toUpperCase()}.` : partes[0] ?? '';
 }

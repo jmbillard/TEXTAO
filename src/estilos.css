@@ -1474,7 +1474,7 @@ a.ficha-marca.trello { text-decoration: none; }
 .semana-avulsa ul { list-style: none; margin: 0; padding: 8px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 7px; border-radius: 14px; background: color-mix(in srgb, var(--tinta) 3.5%, var(--mesa)); }
 
 /* o card fechado (formato A): sem sombra e sem realce embaixo, só a borda fina */
-.card-semana { position: relative; border-radius: 10px; background: var(--papel); border: 1px solid var(--regua); transition: border-color 0.2s; }
+.card-semana { position: relative; border-radius: 10px; background: var(--papel); border: 1px solid var(--regua); transition: border-color 0.2s, background-color 0.2s; }
 .card-semana:hover { border-color: var(--regua-forte); }
 .card-semana-abrir { display: block; width: 100%; padding: 10px 12px 8px; border: 0; border-radius: inherit; background: none; text-align: left; cursor: pointer; }
 .card-semana-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
@@ -1490,6 +1490,29 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-etapa.caiu { color: var(--tinta3); }
 .card-semana.caiu { opacity: 0.75; }
 .card-semana.caiu .card-semana-claquete { color: var(--tinta3); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+
+/* o card aberto: um clique abre a ficha com animação de altura (as linhas da grade vão de 0fr a 1fr) */
+.card-semana.aberto { border-color: var(--regua-forte); background: var(--cartao); }
+.card-semana.caiu.aberto { opacity: 1; }
+.card-semana-mais { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.34s var(--suave); }
+.card-semana-mais > div { overflow: hidden; min-height: 0; }
+.card-semana-mais-dentro { padding: 2px 12px 10px; opacity: 0; transform: translateY(-3px); transition: opacity 0.2s, transform 0.34s var(--suave); }
+.card-semana.aberto .card-semana-mais { grid-template-rows: 1fr; }
+.card-semana.aberto .card-semana-mais-dentro { opacity: 1; transform: none; transition-delay: 0.06s; }
+.card-semana-dados { margin: 0; padding-top: 9px; border-top: 1px dashed var(--regua-forte); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; font-size: 12.5px; }
+.card-semana-dados dt { color: var(--tinta3); }
+.card-semana-dados dd { margin: 0; color: var(--tinta); min-width: 0; overflow-wrap: anywhere; }
+.card-semana-dados dd small { color: var(--tinta3); font-size: 11.5px; }
+.card-semana-pe { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; min-height: 28px; }
+.card-semana-rubrica { font: 600 19px/1 Caveat, cursive; color: var(--tinta2); transform: rotate(-3deg); transform-origin: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.card-semana-rubrica small { font: inherit; font-size: 15px; color: var(--tinta3); }
+.card-semana-links { margin-left: auto; display: flex; gap: 2px; flex: none; }
+.card-semana-links a, .card-semana-links button { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--tinta2); text-decoration: none; cursor: pointer; }
+.card-semana-links a:hover, .card-semana-links button:hover { background: var(--neutro); color: var(--tinta); }
+.card-semana-links a:focus-visible, .card-semana-links button:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) {
+  .card-semana-mais, .card-semana-mais-dentro { transition: none; }
+}
 
 /* a etiqueta pequena (também a das marcações no editor, que ajusta o resto em .texto .etq) */
 .etq { font: 600 10.5px/1 var(--sans); font-style: normal; padding: 3px 7px; border-radius: 4px; }

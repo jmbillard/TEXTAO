@@ -8,7 +8,7 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
-import { agruparPorDia, montarSemana, noTrello, pedeRevisao, pendentes, type CardDaSemana, type EtapaDoCard, type GrupoDia } from './fila';
+import { agruparPorDia, etapaPorExtenso, montarSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, type CardDaSemana, type EtapaDoCard, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -394,7 +394,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
       {np && producao && !versao && (
         <span className="ficha-producao some">
           <span className="rotulo-gente">já no Trello</span>
-          <a className="card-existente" href={np.url} target="_blank" rel="noreferrer" title={np.status.length ? np.status.map(etapaDe).join(', ') : undefined}>
+          <a className="card-existente" href={np.url} target="_blank" rel="noreferrer" title={np.status.length ? np.status.map(nomeDaEtiqueta).join(', ') : undefined}>
             <Icone nome="quadro" tam={14} traco={2.2} />
             <b>{np.claquete}</b>
             {np.entrada && <small>{dataCurtaComDia(new Date(np.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
@@ -427,29 +427,21 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   );
 }
 
-// a etapa do card na produção da arte (status do Teable, que o n8n traz do Trello): o nome, para a pergunta da v2
-const ETAPAS: Record<string, string> = {
-  'AGUARDANDO MATERIAL': 'Aguardando material',
-  PRODUZINDO: 'Produzindo',
-  'EM APROVAÇÃO': 'Em aprovação',
-  'PEDIDO DE ALTERAÇÃO': 'Pedido de alteração',
-  FINALIZADO: 'Finalizado',
-  FILME: 'Filme',
-  CAIU: 'Caiu',
-};
-const etapaDe = (st: string) => ETAPAS[st.toUpperCase()] ?? st[0] + st.slice(1).toLowerCase();
-
 /* ---------- No Trello: a semana de agenda ---------- */
 
 const ETAPA_NO_CARD: Record<NonNullable<EtapaDoCard>, string> = { produzindo: 'produzindo', aprovacao: 'em aprovação', entregue: 'entregue', caiu: 'caiu' };
 
-/** O card fechado (formato A): a claquete em cima; embaixo, discretas, a praça e as artes à mão; à direita, a etapa. */
-function CardNoTrello({ c, abrir, tirar }: { c: CardDaSemana; abrir: () => void; tirar?: () => void }) {
-  const { r, etapa } = c;
+/** O card da semana (formato A). Fechado: a claquete em cima; embaixo, discretas, a praça e as artes à mão; à direita,
+    a etapa. Um clique abre (com animação de altura) a ficha do card: redator, edição, arte, etapa com o prazo, a rubrica
+    de quem revisou e os atalhos para o roteiro e para o card no Trello. */
+function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
+  const { r, etapa, andamento } = c;
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
+  const { nome: etapaNome, ate } = etapaPorExtenso(andamento);
+  const idMais = `card-mais-${r.id}`;
   return (
-    <li className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''}`} data-card={r.id}>
-      <button type="button" className="card-semana-abrir" onClick={abrir} title={`Abrir ${claquete}`}>
+    <li className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''}`} data-card={r.id}>
+      <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
         <span className="card-semana-claquete">{claquete}</span>
         <span className="card-semana-linha">
           {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
@@ -462,6 +454,50 @@ function CardNoTrello({ c, abrir, tirar }: { c: CardDaSemana; abrir: () => void;
           )}
         </span>
       </button>
+      <div className="card-semana-mais" id={idMais} inert={!aberto || undefined}>
+        <div>
+          <div className="card-semana-mais-dentro">
+            <dl className="card-semana-dados">
+              <dt>redator</dt>
+              <dd>{r.meta.redator || <small>sem redator</small>}</dd>
+              <dt>edição</dt>
+              <dd>{r.meta.editor || <small>sem editor</small>}</dd>
+              {!!andamento?.designers.length && (
+                <>
+                  <dt>arte</dt>
+                  <dd>{andamento.designers.join(', ')}</dd>
+                </>
+              )}
+              {(etapaNome || ate) && (
+                <>
+                  <dt>etapa</dt>
+                  <dd>
+                    {etapaNome}
+                    {ate && <small> até {ate}</small>}
+                  </dd>
+                </>
+              )}
+            </dl>
+            <div className="card-semana-pe">
+              {r.revisadoPor && (
+                <span className="card-semana-rubrica" title={`Revisado por ${r.revisadoPor.nome}`}>
+                  <small>rev.</small> {rubrica(r.revisadoPor.nome)}
+                </span>
+              )}
+              <span className="card-semana-links">
+                <button type="button" onClick={abrir} title="Abrir o roteiro" aria-label={`Abrir o roteiro ${claquete}`}>
+                  <Icone nome="arquivo" tam={15} traco={1.9} />
+                </button>
+                {r.trello?.url && (
+                  <a href={r.trello.url} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label={`Abrir ${claquete} no Trello`}>
+                    <Icone nome="quadro" tam={15} traco={1.9} />
+                  </a>
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
       {tirar && (
         <button type="button" className="card-lixo" title="Tirar da fila (o card no Trello continua lá)" aria-label={`Tirar ${claquete} da fila`} onClick={tirar}>
           <Icone nome="fechar" tam={11} traco={2.4} />
@@ -475,8 +511,30 @@ function CardNoTrello({ c, abrir, tirar }: { c: CardDaSemana; abrir: () => void;
 function NoTrello({ lista, andamento, abrir, tirar }: { lista: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void }) {
   const [deslocamento, setDeslocamento] = useState(0);
   const [verAnteriores, setVerAnteriores] = useState(false);
+  // só um card aberto por vez; Esc fecha (e devolve o foco ao card, se ele estava lá dentro)
+  const [aberto, setAberto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!aberto) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const li = document.querySelector<HTMLElement>(`.secao-trello [data-card="${CSS.escape(aberto)}"]`);
+      if (li?.contains(document.activeElement)) li.querySelector<HTMLElement>('.card-semana-abrir')?.focus();
+      setAberto(null);
+    };
+    document.addEventListener('keydown', tecla);
+    return () => document.removeEventListener('keydown', tecla);
+  }, [aberto]);
   const s = montarSemana(lista, andamento, new Date(), deslocamento);
-  const card = (c: CardDaSemana) => <CardNoTrello key={c.r.id} c={c} abrir={() => abrir(c.r.id)} tirar={() => tirar(c.r)} />;
+  const card = (c: CardDaSemana) => (
+    <CardNoTrello
+      key={c.r.id}
+      c={c}
+      aberto={aberto === c.r.id}
+      alternar={() => setAberto((a) => (a === c.r.id ? null : c.r.id))}
+      abrir={() => abrir(c.r.id)}
+      tirar={() => tirar(c.r)}
+    />
+  );
   const avulsa = (titulo: string, cards: CardDaSemana[], chave: string) => (
     <section key={chave} className="semana-avulsa" aria-label={titulo}>
       <h3>{titulo}</h3>
