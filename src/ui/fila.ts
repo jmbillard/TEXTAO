@@ -1,4 +1,4 @@
-import type { Resumo } from '../dados/armazenamento';
+import type { Andamento, Resumo } from '../dados/armazenamento';
 
 /* A fila organizada pela data de exibição: o que vai ao ar primeiro vem primeiro, e o que já foi ao ar
    desce para um grupo recolhido. Dentro de cada dia, o que pede revisão vem antes. */
@@ -61,4 +61,79 @@ export function agruparPorDia(lista: Resumo[], agora = new Date(), diasExtras: s
   if (porDia.has('')) proximos.push(grupo(''));
   const exibidos = datas.filter((k) => k < hoje).sort().reverse().map(grupo);
   return { proximos, exibidos };
+}
+
+/* ---------- No Trello: a semana de agenda ---------- */
+
+/** O dia de uma semana de agenda: sete colunas fixas, a primeira é hoje (ou o dia em que a semana navegada começa). */
+export interface DiaDaSemana {
+  iso: string;
+  /** "ter", "qua"… */
+  diaDaSemana: string;
+  numero: number;
+  /** "hoje" ou "amanhã", escritos à mão; nos outros dias, vazio. */
+  marca: '' | 'hoje' | 'amanhã';
+  fimDeSemana: boolean;
+  cards: CardDaSemana[];
+}
+
+/** Um roteiro já no Trello, com a etapa do card na produção da arte. */
+export interface CardDaSemana {
+  r: Resumo;
+  etapa: EtapaDoCard;
+}
+
+/** O que o card fechado mostra à direita. As outras etapas (aguardando material, pedido de alteração…) não aparecem. */
+export type EtapaDoCard = 'produzindo' | 'aprovacao' | 'entregue' | 'caiu' | null;
+
+/** A etapa a partir das etiquetas do card na produção da arte: o card que caiu vence tudo, e entregue vale como finalizado. */
+export function etapaDoCard(a: Andamento | undefined): EtapaDoCard {
+  const status = (a?.status ?? []).map((s) => s.toUpperCase());
+  if (status.includes('CAIU')) return 'caiu';
+  if (a?.entregue || status.includes('FINALIZADO')) return 'entregue';
+  if (status.includes('EM APROVAÇÃO')) return 'aprovacao';
+  if (status.includes('PRODUZINDO')) return 'produzindo';
+  return null;
+}
+
+export interface Semana {
+  dias: DiaDaSemana[];
+  /** Os enviados sem data de exibição (VT de evento…): não cabem em coluna nenhuma. */
+  semData: CardDaSemana[];
+  /** Os cards nas sete colunas, e quantos deles já foram entregues (o resumo do título). */
+  total: number;
+  entregues: number;
+  /** Os dias antes de hoje que têm card, do mais recente para o mais antigo (o link "dias anteriores"). */
+  anteriores: { iso: string; titulo: string; cards: CardDaSemana[] }[];
+  /** "24 – 30 de novembro", "29 de novembro – 5 de dezembro". */
+  periodo: string;
+}
+
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const somarDias = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+
+/** deslocamento: quantas semanas para a frente (ou para trás, negativo) a partir da que começa hoje. */
+export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0): Semana {
+  const hoje = isoLocal(agora);
+  const amanha = isoLocal(somarDias(agora, 1));
+  const enviados = lista.filter(noTrello).map((r): CardDaSemana => ({ r, etapa: etapaDoCard(andamento[r.id]) }));
+  const claquete = (c: CardDaSemana) => c.r.meta.claquete || c.r.meta.titulo || '';
+  // o que caiu desce para o fim do dia
+  const ordem = (a: CardDaSemana, b: CardDaSemana) => +(a.etapa === 'caiu') - +(b.etapa === 'caiu') || claquete(a).localeCompare(claquete(b), 'pt-BR');
+  const doDia = (iso: string) => enviados.filter((c) => c.r.meta.dataExibicao === iso).sort(ordem);
+  const datas = Array.from({ length: 7 }, (_, i) => somarDias(agora, deslocamento * 7 + i));
+  const dias = datas.map((d): DiaDaSemana => {
+    const iso = isoLocal(d);
+    return { iso, diaDaSemana: DIAS_CURTOS[d.getDay()], numero: d.getDate(), marca: iso === hoje ? 'hoje' : iso === amanha ? 'amanhã' : '', fimDeSemana: d.getDay() === 0 || d.getDay() === 6, cards: doDia(iso) };
+  });
+  const [ini, fim] = [datas[0], datas[6]];
+  const periodo = ini.getMonth() === fim.getMonth() ? `${ini.getDate()} – ${fim.getDate()} de ${MESES[fim.getMonth()]}` : `${ini.getDate()} de ${MESES[ini.getMonth()]} – ${fim.getDate()} de ${MESES[fim.getMonth()]}`;
+  const semData = enviados.filter((c) => !/^\d{4}-\d{2}-\d{2}$/.test(c.r.meta.dataExibicao)).sort(ordem);
+  const passados = [...new Set(enviados.map((c) => c.r.meta.dataExibicao).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d < hoje))].sort().reverse();
+  const anteriores = passados.map((iso) => {
+    const [a, m, d] = iso.split('-').map(Number);
+    return { iso, titulo: `${DIAS[new Date(a, m - 1, d).getDay()]}, ${d} de ${MESES[m - 1]}`, cards: doDia(iso) };
+  });
+  const naSemana = dias.flatMap((d) => d.cards);
+  return { dias, semData, anteriores, periodo, total: naSemana.length, entregues: naSemana.filter((c) => c.etapa === 'entregue').length };
 }

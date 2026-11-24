@@ -4,7 +4,7 @@ import { herdarTipos } from '../src/modelo/versoes';
 import { dataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
 import { metaVazia, type Meta, type NoJSON } from '../src/modelo/tipos';
-import type { Resumo } from '../src/dados/armazenamento';
+import type { Andamento, Resumo } from '../src/dados/armazenamento';
 
 const resumo = (id: string, data: string, revisar: string[] = [], atualizadoEm = '2026-11-19T10:00:00Z'): Resumo => ({
   id, meta: { ...metaVazia(), dataExibicao: data, revisar }, nArtes: 1, atualizadoEm, dono: null, publico: false, meu: true,
@@ -135,5 +135,102 @@ describe('acervo: a que já existe vem riscada; quem revisa devolve ao checklist
     const jaExistem = [{ arte: 'HOJE', chave: 'HOJE', tipo: '', claquete: 'C' }, { arte: 'Amanhã', chave: 'AMANHA', tipo: '', claquete: 'C' }];
     expect(artesQueJaExistem(s({ jaExistem }))).toEqual([]);
     expect(pendencias(s({ jaExistem }))).not.toContain('Já existem: 2');
+  });
+});
+
+describe('No Trello: a semana de agenda', () => {
+  const agora = new Date(2026, 10, 24, 15, 0); // ter, 24/11
+  const enviado = (id: string, data: string, claquete = id.toUpperCase()): Resumo => ({
+    ...resumo(id, data),
+    meta: { ...metaVazia(), dataExibicao: data, claquete },
+    trello: { estado: 'enviado', url: 'https://trello.com/c/x', em: '2026-11-20T12:00:00Z' },
+  });
+
+  it('sete colunas fixas a partir de hoje, com hoje e amanhã marcados', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const s = montarSemana([], {}, agora);
+    expect(s.dias.map((d) => [d.diaDaSemana, d.numero])).toEqual([['ter', 24], ['qua', 25], ['qui', 26], ['sex', 27], ['sáb', 28], ['dom', 29], ['seg', 30]]);
+    expect(s.dias.map((d) => d.marca)).toEqual(['hoje', 'amanhã', '', '', '', '', '']);
+    expect(s.dias.filter((d) => d.fimDeSemana).map((d) => d.numero)).toEqual([28, 29]);
+    expect(s.periodo).toBe('24 – 30 de novembro');
+  });
+
+  it('as setas andam de sete em sete dias, atravessando o mês', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const seguinte = montarSemana([], {}, agora, 1);
+    expect(seguinte.dias.map((d) => d.iso)).toEqual(['2026-12-01', '2026-12-02', '2026-12-03', '2026-12-04', '2026-12-05', '2026-12-06', '2026-12-07']);
+    expect(seguinte.dias.some((d) => d.marca)).toBe(false);
+    const anterior = montarSemana([], {}, agora, -1);
+    expect([anterior.dias[0].iso, anterior.dias[6].iso]).toEqual(['2026-11-17', '2026-11-23']);
+    expect(montarSemana([], {}, new Date(2026, 10, 27), 0).periodo).toBe('27 de novembro – 3 de dezembro');
+  });
+
+  it('cada card enviado fica no dia de exibição dele; o que não foi ao Trello fica de fora', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const lista = [
+      enviado('festa', '2026-11-26', 'FESTA 26/11'),
+      enviado('chef', '2026-11-24', 'CHEF 24/11'),
+      enviado('bolo', '2026-11-26', 'BOLO 26/11'),
+      enviado('longe', '2026-12-10'),
+      enviado('ontem', '2026-11-23'),
+      resumo('na-revisao', '2026-11-24'),
+    ];
+    const s = montarSemana(lista, {}, agora);
+    expect(s.dias.map((d) => d.cards.map((c) => c.r.id))).toEqual([['chef'], [], ['bolo', 'festa'], [], [], [], []]);
+    expect(montarSemana(lista, {}, agora, 2).dias[2].cards.map((c) => c.r.id)).toEqual(['longe']);
+    expect(montarSemana(lista, {}, agora, -1).dias[6].cards.map((c) => c.r.id)).toEqual(['ontem']);
+  });
+
+  it('o roteiro sem data fica à parte, fora das colunas, em qualquer semana', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const lista = [enviado('vt', '', 'VT EVENTO'), enviado('chef', '2026-11-24')];
+    for (const n of [0, 1]) {
+      const s = montarSemana(lista, {}, agora, n);
+      expect(s.semData.map((c) => c.r.id)).toEqual(['vt']);
+      expect(s.dias.flatMap((d) => d.cards).map((c) => c.r.id)).not.toContain('vt');
+    }
+  });
+
+  it('a etapa sai das etiquetas do andamento: caiu vence tudo; finalizado ou entregue é entregue', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const andamento = (status: string[], entregue = false): Andamento => ({ status, designers: [], entregue, entrega: null });
+    const ids = ['prod', 'aprov', 'final', 'entregue', 'caiu', 'caiu-entregue', 'esperando', 'sem-andamento', 'alteracao'];
+    const s = montarSemana(ids.map((id) => enviado(id, '2026-11-24')), {
+      prod: andamento(['PRODUZINDO']),
+      aprov: andamento(['Em aprovação']),
+      final: andamento(['FINALIZADO']),
+      entregue: andamento([], true),
+      caiu: andamento(['CAIU']),
+      'caiu-entregue': andamento(['PRODUZINDO', 'CAIU'], true),
+      esperando: andamento(['AGUARDANDO MATERIAL']),
+      alteracao: andamento(['PEDIDO DE ALTERAÇÃO']),
+    }, agora);
+    const etapa = Object.fromEntries(s.dias[0].cards.map((c) => [c.r.id, c.etapa]));
+    expect(etapa).toEqual({
+      prod: 'produzindo', aprov: 'aprovacao', final: 'entregue', entregue: 'entregue', caiu: 'caiu', 'caiu-entregue': 'caiu',
+      esperando: null, 'sem-andamento': null, alteracao: null,
+    });
+    // o que caiu desce para o fim do dia
+    expect(s.dias[0].cards.slice(-2).map((c) => c.r.id)).toEqual(['caiu', 'caiu-entregue']);
+  });
+
+  it('o título conta os cards da semana mostrada e quantos foram entregues', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const pronto: Andamento = { status: ['FINALIZADO'], designers: [], entregue: true, entrega: null };
+    const caiu: Andamento = { status: ['CAIU'], designers: [], entregue: true, entrega: null };
+    const lista = [enviado('a', '2026-11-24'), enviado('b', '2026-11-25'), enviado('c', '2026-11-30'), enviado('d', '2026-12-01'), enviado('e', '2026-11-23')];
+    const s = montarSemana(lista, { a: pronto, b: caiu, d: pronto }, agora);
+    expect([s.total, s.entregues]).toEqual([3, 1]);
+    expect([montarSemana(lista, { a: pronto, d: pronto }, agora, 1).total, montarSemana(lista, { d: pronto }, agora, 1).entregues]).toEqual([1, 1]);
+  });
+
+  it('os dias anteriores a hoje, do mais recente para o mais antigo, para achar o card que já passou', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const lista = [enviado('a', '2026-11-20'), enviado('b', '2026-11-23'), enviado('c', '2026-11-20'), enviado('d', '2026-11-24'), enviado('e', '')];
+    const { anteriores } = montarSemana(lista, {}, agora, 1);
+    expect(anteriores.map((d) => [d.titulo, d.cards.map((c) => c.r.id)])).toEqual([
+      ['segunda, 23 de novembro', ['b']],
+      ['sexta, 20 de novembro', ['a', 'c']],
+    ]);
   });
 });

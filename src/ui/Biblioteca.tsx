@@ -8,7 +8,7 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
-import { agruparPorDia, noTrello, pedeRevisao, pendentes, type GrupoDia } from './fila';
+import { agruparPorDia, montarSemana, noTrello, pedeRevisao, pendentes, type CardDaSemana, type EtapaDoCard, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -272,8 +272,6 @@ function useDigitacao(texto: string, ligar: boolean): [string, boolean] {
   return [texto.slice(0, n), n >= texto.length];
 }
 
-const horaCurta = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
 /** O envio ao Trello na ficha: só quando está indo ou deu erro, como uma pendência (com o botão para tentar de novo).
     Antes de ir não há aviso (o caminho é a revisão); depois de ir, a ficha vira card e a marca leva até ele. */
 function AvisoTrello({ r, mandar }: { r: Resumo; mandar?: () => Promise<void> }) {
@@ -436,63 +434,107 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   );
 }
 
-/** O que já está no Trello vira um card pequeno, numa grade no fim do dia: ser card já diz que está lá. */
-// a etapa do card na produção da arte (status do Teable, que o n8n traz do Trello)
-const ETAPAS: Record<string, { nome: string; tom: string }> = {
-  'AGUARDANDO MATERIAL': { nome: 'Aguardando material', tom: 'espera' },
-  PRODUZINDO: { nome: 'Produzindo', tom: 'produzindo' },
-  'EM APROVAÇÃO': { nome: 'Em aprovação', tom: 'aprovacao' },
-  'PEDIDO DE ALTERAÇÃO': { nome: 'Pedido de alteração', tom: 'alteracao' },
-  FINALIZADO: { nome: 'Finalizado', tom: 'finalizado' },
-  FILME: { nome: 'Filme', tom: 'espera' },
-  CAIU: { nome: 'Caiu', tom: 'caiu' },
+// a etapa do card na produção da arte (status do Teable, que o n8n traz do Trello): o nome, para a pergunta da v2
+const ETAPAS: Record<string, string> = {
+  'AGUARDANDO MATERIAL': 'Aguardando material',
+  PRODUZINDO: 'Produzindo',
+  'EM APROVAÇÃO': 'Em aprovação',
+  'PEDIDO DE ALTERAÇÃO': 'Pedido de alteração',
+  FINALIZADO: 'Finalizado',
+  FILME: 'Filme',
+  CAIU: 'Caiu',
 };
-const etapaDe = (st: string) => ETAPAS[st.toUpperCase()] ?? { nome: st[0] + st.slice(1).toLowerCase(), tom: 'espera' };
+const etapaDe = (st: string) => ({ nome: ETAPAS[st.toUpperCase()] ?? st[0] + st.slice(1).toLowerCase() });
 
-function CardTrello({ r, abrir, andamento, tirar }: { r: Resumo; abrir: () => void; andamento?: Andamento; tirar?: () => void }) {
+/* ---------- No Trello: a semana de agenda ---------- */
+
+const ETAPA_NO_CARD: Record<NonNullable<EtapaDoCard>, string> = { produzindo: 'produzindo', aprovacao: 'em aprovação', entregue: 'entregue', caiu: 'caiu' };
+
+/** O card fechado (formato A): a claquete em cima; embaixo, discretas, a praça e as artes à mão; à direita, a etapa. */
+function CardNoTrello({ c, abrir, tirar }: { c: CardDaSemana; abrir: () => void; tirar?: () => void }) {
+  const { r, etapa } = c;
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
-  const e = r.trello!;
-  const etapas = (andamento?.status ?? []).map(etapaDe);
-  const caiu = etapas.some((x) => x.tom === 'caiu');
-  // a entrega vem em UTC; o dia que vale é o de Brasília
-  const prazo = !andamento?.entregue && andamento?.entrega && !caiu ? new Date(andamento.entrega).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }) : '';
   return (
-    <li className={`card-trello ${caiu ? 'caiu' : ''}`} data-card={r.id}>
+    <li className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''}`} data-card={r.id}>
+      <button type="button" className="card-semana-abrir" onClick={abrir} title={`Abrir ${claquete}`}>
+        <span className="card-semana-claquete">{claquete}</span>
+        <span className="card-semana-linha">
+          {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
+          <span className="card-semana-artes">{plural(r.nArtes, 'arte', 'artes')}</span>
+          {etapa && (
+            <span className={`card-semana-etapa ${etapa}`}>
+              {etapa === 'entregue' ? <Icone nome="certo" tam={11} traco={3} /> : etapa !== 'caiu' && <i aria-hidden="true" />}
+              {ETAPA_NO_CARD[etapa]}
+            </span>
+          )}
+        </span>
+      </button>
       {tirar && (
-        <button className="card-lixo" title="Tirar da fila (o card no Trello continua lá)" aria-label={`Tirar ${claquete} da fila`} onClick={tirar}>
+        <button type="button" className="card-lixo" title="Tirar da fila (o card no Trello continua lá)" aria-label={`Tirar ${claquete} da fila`} onClick={tirar}>
           <Icone nome="fechar" tam={11} traco={2.4} />
         </button>
       )}
-      <span className="card-etiquetas">
-        {r.meta.praca && <i className="etq praca" aria-hidden="true">{r.meta.praca}</i>}
-        <i className="etq artes" aria-hidden="true">{plural(r.nArtes, 'arte', 'artes')}</i>
-        {r.meta.v2De && <i className="etq v2" title="Versão nova: atualizou o card que já existia">v2</i>}
-        {andamento?.entregue && !caiu ? (
-          <i className="etq etapa entregue"><Icone nome="certo" tam={10} traco={3} /> Entregue</i>
-        ) : (
-          etapas.map((x) => <i key={x.nome} className={`etq etapa ${x.tom}`}>{x.nome}</i>)
-        )}
-        {prazo && <small className="card-prazo" title={`Entrega ${dataCurtaComDia(new Date(andamento!.entrega!).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}`}>até {prazo}</small>}
-      </span>
-      <button className="card-claquete" onClick={abrir} title={`Abrir ${claquete}`}>{claquete}</button>
-      <span className="card-rodape">
-        <span className="card-gente">
-          {r.meta.redator && <span>redator: {r.meta.redator}</span>}
-          {r.meta.editor && <small>edição: {r.meta.editor}</small>}
-          {!!andamento?.designers.length && <small>arte: {andamento.designers.join(', ')}</small>}
-        </span>
-        {e.url && (
-          <a className="card-link" href={e.url} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label={`Abrir ${claquete} no Trello`}>
-            <Icone nome="quadro" tam={13} />
-          </a>
-        )}
-        {e.estado === 'enviado' && e.por && (
-          <span className="card-quem" style={{ '--cor': corDe(e.por) } as React.CSSProperties} title={`Mandado por ${e.por}, ${horaCurta(e.em)}`}>
-            {iniciais(e.por)}
-          </span>
-        )}
-      </span>
     </li>
+  );
+}
+
+/** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de hoje. */
+function NoTrello({ lista, andamento, abrir, tirar }: { lista: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void }) {
+  const [deslocamento, setDeslocamento] = useState(0);
+  const [verAnteriores, setVerAnteriores] = useState(false);
+  const s = montarSemana(lista, andamento, new Date(), deslocamento);
+  const card = (c: CardDaSemana) => <CardNoTrello key={c.r.id} c={c} abrir={() => abrir(c.r.id)} tirar={() => tirar(c.r)} />;
+  const avulsa = (titulo: string, cards: CardDaSemana[], chave: string) => (
+    <section key={chave} className="semana-avulsa" aria-label={titulo}>
+      <h3>{titulo}</h3>
+      <ul>{cards.map(card)}</ul>
+    </section>
+  );
+  return (
+    <section className="secao-trello" aria-label="No Trello">
+      <div className="secao-trello-topo">
+        <h2>
+          <Icone nome="quadro" tam={22} traco={1.7} />
+          No Trello
+        </h2>
+        <span className="secao-trello-conta">
+          {plural(s.total, 'card', 'cards')}
+          {s.entregues > 0 && ` · ${plural(s.entregues, 'entregue', 'entregues')}`}
+        </span>
+        <span className="semana-nav">
+          {deslocamento !== 0 && <button type="button" className="botao-texto" onClick={() => setDeslocamento(0)}>voltar para hoje</button>}
+          {s.anteriores.length > 0 && (
+            <button type="button" className="botao-texto" aria-expanded={verAnteriores} onClick={() => setVerAnteriores((v) => !v)}>
+              dias anteriores
+            </button>
+          )}
+          <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
+            <Icone nome="voltar" tam={16} traco={2.2} />
+          </button>
+          <b>{s.periodo}</b>
+          <button type="button" className="botao-icone" aria-label="Próxima semana" title="Próxima semana" onClick={() => setDeslocamento((n) => n + 1)}>
+            <Icone nome="direita" tam={16} traco={2.2} />
+          </button>
+        </span>
+      </div>
+      <div className="semana">
+        {s.dias.map((d) => (
+          <section key={d.iso} className={`coluna ${d.marca === 'hoje' ? 'hoje' : ''} ${d.fimDeSemana ? 'fim-de-semana' : ''}`} aria-label={`${d.diaDaSemana} ${d.numero}${d.marca ? `, ${d.marca}` : ''}`}>
+            <div className="coluna-topo">
+              <span className="dia-sem">{d.diaDaSemana}</span>
+              <span className="dia-num">
+                {d.numero}
+                {d.marca === 'hoje' && <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path d={RABISCOS[1]} /></svg>}
+              </span>
+              {d.marca && <span className="dia-rel">{d.marca}</span>}
+            </div>
+            <ul className="coluna-corpo">{d.cards.length ? d.cards.map(card) : <li className="nada">nada ainda</li>}</ul>
+          </section>
+        ))}
+      </div>
+      {s.semData.length > 0 && avulsa('sem data', s.semData, 'sem-data')}
+      {verAnteriores && s.anteriores.map((d) => avulsa(d.titulo, d.cards, d.iso))}
+    </section>
   );
 }
 
@@ -705,7 +747,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
     .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo))
     .filter((r) => !filtroEstado || (pendente.has(r.id) && (filtroEstado === 'revisar' ? pedeRevisao(r) : !pedeRevisao(r))));
   // a fila é a revisão dos roteiros: os filmes da grade não entram (os cards deles ficam no Trello e no FilmeBOT)
-  const { proximos, exibidos } = agruparPorDia(visiveis);
+  const { proximos, exibidos } = agruparPorDia(visiveis.filter((r) => !noTrello(r)));
+  // os enviados vão para a seção No Trello: a busca vale para eles, os filtros de revisão não
+  const enviados = todos.filter((r) => noTrello(r) && (!termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo)));
   proximoParaRevisar.current =
     proximos.flatMap((g) => g.itens).find((r) => pendente.has(r.id) && pedeRevisao(r) && !noTrello(r) && !noRoteiro[r.id]?.length)?.id ?? null;
   const porId = new Map(todos.map((r) => [r.id, r]));
@@ -899,21 +943,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                 {(g) => (
                 <section className="dia" aria-label={`${g.titulo}, ${g.subtitulo}`}>
                   {cabecalhoDoDia(g)}
-                  {(
-                    <>
-                      <ul className="fichas">
-                        <Vagas como="li" itens={g.itens.filter((r) => !noTrello(r))} chave={(r) => r.id}>{ficha}</Vagas>
-                      </ul>
-                      {g.itens.some(noTrello) && (
-                        <div className="cards-trello-bloco">
-                        <p className="cards-rotulo">já no Trello</p>
-                        <ul className="cards-trello" aria-label="Já no Trello">
-                          {g.itens.filter(noTrello).map((r) => <CardTrello key={r.id} r={r} abrir={() => abrir(r.id)} andamento={andamento[r.id]} tirar={() => tirar(r)} />)}
-                        </ul>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  <ul className="fichas">
+                    <Vagas como="li" itens={g.itens} chave={(r) => r.id}>{ficha}</Vagas>
+                  </ul>
                 </section>
                 )}
               </Vagas>
@@ -947,6 +979,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           )
         )}
       </main>
+      {!vazio && roteiros && enviados.length > 0 && <NoTrello lista={enviados} andamento={andamento} abrir={abrir} tirar={tirar} />}
       {saindo && (
         <div className="desfazer" role="status">
           <span><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</span>
