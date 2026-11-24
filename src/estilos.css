@@ -1233,7 +1233,8 @@ kbd {
 .estatisticas .tempo b { color: var(--ultra); }
 /* o card leva a maior complexidade: o fogo e o nome */
 .estatisticas .cx-card { align-items: center; }
-.estatisticas .cx-card .fogo { margin-top: -6px; }
+.estatisticas .cx-card .cx-pe { display: grid; justify-items: center; align-items: end; margin-top: -6px; padding: 0; border: 0; }
+.estatisticas .cx-pe > span { display: block; padding: 0; border: 0; }
 .estatisticas .cx-card.n2 b, .estatisticas .cx-card.n3 b { color: var(--ultra); }
 .estatisticas .dir { margin-left: auto; border-left: 0; padding-right: 0; overflow: hidden; text-overflow: ellipsis; }
 .pagina.editor .mesa { padding-bottom: 60px; }
@@ -1762,6 +1763,32 @@ html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !imp
 .artes.so-lista .cx .fogo.n1 { opacity: 0.6; }
 .artes.so-lista .cx:hover .fogo.n1 { opacity: 1; }
 .artes.so-lista .cx:hover .fogo.n2, .artes.so-lista .cx:hover .fogo.n3 { color: var(--ultra-tinta); }
+/* o tremor: as chamas tremulam num ciclo único, todas na mesma fase (o Fogo põe cada uma no zero do relógio da página).
+   Só a chama se mexe (o pavio, a vela e as lenhas ficam paradas), só com transform; a vela quase não se mexe */
+.fogo .chama { transform-box: fill-box; transform-origin: 50% 100%; animation: tremor-1 2.4s ease-in-out infinite; }
+.fogo.n2 .chama { animation-name: tremor-2; }
+.fogo.n3 .chama { animation-name: tremor-3; }
+@keyframes tremor-1 { 0%, 100% { transform: none; } 30% { transform: skewX(-1.2deg) scaleY(1.015); } 60% { transform: skewX(0.6deg) scaleY(0.99); } 80% { transform: skewX(1deg) scaleY(1.01); } }
+@keyframes tremor-2 { 0%, 100% { transform: none; } 30% { transform: skewX(-3deg) scaleY(1.04); } 60% { transform: skewX(1.5deg) scaleY(0.97); } 80% { transform: skewX(2.5deg) scaleY(1.03); } }
+@keyframes tremor-3 { 0%, 100% { transform: none; } 30% { transform: skewX(-4deg) scaleY(1.06); } 60% { transform: skewX(2deg) scaleY(0.96); } 80% { transform: skewX(3.5deg) scaleY(1.04); } }
+/* a troca de nível (na lista e no rodapé): os dois desenhos na mesma célula, numa troca cruzada a partir do chão.
+   O velho vai até o tamanho do novo e some; o novo nasce do tamanho do velho. O brilho laranja é a única exceção ao
+   "sem brilho": só no desenho que entra, por menos de um segundo, e some */
+.cx > span, .cx-pe > span { grid-area: 1 / 1; }
+.cx > .sai, .cx-pe > .sai { transform-origin: 50% 100%; animation: fogo-sai 0.3s var(--suave) both; pointer-events: none; }
+.cx > .entra, .cx-pe > .entra { transform-origin: 50% 100%; animation: fogo-entra 0.3s var(--suave) both; }
+.cx > .entra .fogo, .cx-pe > .entra .fogo { animation: fogo-brilho 0.8s ease-out both; }
+@keyframes fogo-sai { from { transform: none; opacity: 1; } to { transform: scale(var(--escala)); opacity: 0; } }
+@keyframes fogo-entra { from { transform: scale(var(--escala)); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fogo-brilho {
+  0% { filter: drop-shadow(0 0 0 transparent) drop-shadow(0 0 0 transparent); }
+  20% { filter: drop-shadow(0 0 3px var(--ultra)) drop-shadow(0 0 7px color-mix(in srgb, var(--ultra) 60%, transparent)); }
+  100% { filter: drop-shadow(0 0 0 transparent) drop-shadow(0 0 0 transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fogo .chama, .cx > .entra, .cx-pe > .entra, .cx > .entra .fogo, .cx-pe > .entra .fogo { animation: none; }
+  .cx > .sai, .cx-pe > .sai { display: none; }
+}
 /* a bolinha do índice marca "já existe": no hover vira ✓; na arte que existe, fica o ✓ no aro */
 .artes.so-lista .b svg { display: none; margin: 0 -3px; }
 .artes.so-lista .b[data-marca] { cursor: pointer; }

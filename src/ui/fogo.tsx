@@ -1,5 +1,6 @@
-import { useId } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Complexidade } from '../modelo/exportar';
+import { acabarTroca, comecarFogo, DURACAO_BRILHO, trocarFogo } from './trocaDoFogo';
 
 /*
   A complexidade da arte desenhada: o fogo cresce com o nível, em traço à mão nos tokens do app.
@@ -35,13 +36,22 @@ const FOGO: Record<Complexidade, { w: number; x0?: number; vivos: string[]; para
   },
 };
 
-/** O fogo de um nível, parado, alinhado pelo chão; `escala` aumenta o desenho inteiro (a vela da barra de lote). */
+/**
+  O fogo de um nível, alinhado pelo chão; `escala` aumenta o desenho inteiro (a vela da barra de lote).
+  Só a chama tremula (o CSS faz o tremor), e todas no mesmo ciclo e na mesma fase: o tremor de cada chama começa no
+  zero do relógio da página, então a que acabou de entrar cai no mesmo ponto do ciclo das que já estavam lá.
+*/
 export function Fogo({ n, escala = 1 }: { n: Complexidade; escala?: number }) {
   const f = FOGO[n];
   const clip = `fogo-${useId().replace(/:/g, '')}`;
+  const chama = useRef<SVGGElement>(null);
+  useLayoutEffect(() => {
+    // sem animação (movimento reduzido) a lista vem vazia e nada muda
+    for (const a of chama.current?.getAnimations?.() ?? []) if (a.startTime !== 0) a.startTime = 0;
+  }, [n]);
   return (
     <svg className={`fogo n${n}`} width={f.w * escala} height={24 * escala} viewBox={`${f.x0 ?? 0} 0 ${f.w} 24`} aria-hidden="true">
-      <g className="chama">
+      <g className="chama" ref={chama}>
         {f.hachura && (
           <>
             <clipPath id={clip}><path d={f.vivos[0]} /></clipPath>
@@ -52,5 +62,35 @@ export function Fogo({ n, escala = 1 }: { n: Complexidade; escala?: number }) {
       </g>
       {f.parados.map((d) => <path key={d} d={d} />)}
     </svg>
+  );
+}
+
+/**
+  O fogo que troca de nível com transição: o desenho velho e o novo, sobrepostos no mesmo lugar, numa troca cruzada a
+  partir do chão, com um brilho curto só no que entra. Quem usa põe as camadas numa grade de uma célula só.
+*/
+export function FogoComTroca({ n }: { n: Complexidade }) {
+  const [estado, setEstado] = useState(() => comecarFogo(n));
+  // o nível mudou: a troca começa já neste desenho, sem um quadro do nível novo parado antes dela
+  const atual = n === estado.n ? estado : trocarFogo(estado, n);
+  if (atual !== estado) setEstado(atual);
+  const trocando = atual.camadas.length > 1;
+  useEffect(() => {
+    if (!trocando) return;
+    const t = setTimeout(() => setEstado(acabarTroca), DURACAO_BRILHO);
+    return () => clearTimeout(t);
+  }, [trocando, atual.proxima]);
+  return (
+    <>
+      {atual.camadas.map((c) => (
+        <span
+          key={c.k}
+          className={c.papel === 'fica' ? undefined : c.papel}
+          style={c.papel === 'fica' ? undefined : ({ '--escala': c.escala } as CSSProperties)}
+        >
+          <Fogo n={c.n} />
+        </span>
+      ))}
+    </>
   );
 }

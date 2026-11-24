@@ -30,7 +30,7 @@ import { nomeDaSigla,
 import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
-import { Fogo } from './fogo';
+import { Fogo, FogoComTroca } from './fogo';
 import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
@@ -1378,7 +1378,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                         <>
                           {/* a coluna da complexidade da arte: largura fixa, o fogo do nível centrado nela; o clique sobe um nível */}
                           <button className="cx" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[cx]}`} title={`Complexidade: ${NOME_DA_COMPLEXIDADE[cx]} · clique sobe um nível (1, 2, 3)`} onClick={() => subirFogo(a)}>
-                            <Fogo n={cx} />
+                            <FogoComTroca n={cx} />
                           </button>
                           <span className="acoes-arte">
                             <button className="tirar-arte" aria-label={`Não produzir "${a.texto}"`} title="Não produzir (sai do checklist)" onClick={() => marcarArte(a, 'fora')}>
@@ -1494,7 +1494,7 @@ function Estatisticas({ saida, complexidade, paginas, original }: { saida: Saida
       <span><b>{numero(caracteres)}</b> caracteres</span>
       <span><b>{saida.artes.length}</b> {saida.artes.length === 1 ? 'arte' : 'artes'}</span>
       {/* o card leva a maior complexidade das artes a produzir */}
-      <span className={`cx-card n${complexidade}`} title="O card vai com a maior complexidade das artes"><Fogo n={complexidade} /><b>{NOME_DA_COMPLEXIDADE[complexidade]}</b></span>
+      <span className={`cx-card n${complexidade}`} title="O card vai com a maior complexidade das artes"><span className="cx-pe"><FogoComTroca n={complexidade} /></span><b>{NOME_DA_COMPLEXIDADE[complexidade]}</b></span>
       <span title={paginas ? 'Páginas do arquivo que subiu' : `Estimativa, ${PALAVRAS_POR_PAGINA} palavras por página`}>
         <b>{paginas ? '' : '~'}{pags}</b> {pags === 1 ? 'página' : 'páginas'}
       </span>
