@@ -67,7 +67,7 @@ export function agruparPorDia(lista: Resumo[], agora = new Date(), diasExtras: s
 
 /* ---------- No Trello: a semana de agenda ---------- */
 
-/** O dia de uma semana de agenda: sete colunas fixas, a primeira é ontem e a segunda é hoje (ou o dia em que a semana navegada começa). */
+/** O dia de uma semana de agenda: sete colunas fixas; na semana de agora, a primeira é ontem e a segunda é hoje. */
 export interface DiaDaSemana {
   iso: string;
   /** "ter", "qua"… */
