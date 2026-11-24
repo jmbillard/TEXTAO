@@ -10,6 +10,10 @@ export const PREFIXO_DO_TOUR = 'tour-';
 export const ID_DO_EXEMPLO = `${PREFIXO_DO_TOUR}revisao-exemplo`;
 export const ehDoTour = (id: string) => id.startsWith(PREFIXO_DO_TOUR);
 
+/** As artes que o tour aponta no editor: a que já existe (a bolinha) e a que dá trabalho (o fogo). */
+export const ARTE_QUE_JA_EXISTE = 'LOGO DO FESTIVAL DE EXEMPLO';
+export const ARTE_COMPLEXA = 'MAPA ANIMADO COM OS PALCOS DA ORLA';
+
 const par = (...partes: (string | { arte: string; id: string; tipo?: string })[]): NoJSON => ({
   type: 'paragraph',
   content: partes.map((p) =>
@@ -42,13 +46,13 @@ export function roteiroDeExemplo(hoje = new Date()): Roteiro {
       content: [
         par('TÉC: abre no palco da orla, o público cantando junto.'),
         par('LOC: AMANHÃ, A PRAIA VIRA PALCO.'),
-        par({ arte: 'LOGO DO FESTIVAL DE EXEMPLO', id: 'tour-a1', tipo: 'logo' }),
+        par({ arte: ARTE_QUE_JA_EXISTE, id: 'tour-a1', tipo: 'logo' }),
         par('LOC: SEIS BANDAS, UMA NOITE INTEIRA DE MÚSICA.'),
         par({ arte: 'SEIS BANDAS, UMA NOITE', id: 'tour-a2', tipo: 'lettering' }),
         par('SONORA: cantora fictícia, "A gente vem pela energia de quem está aqui."'),
         par({ arte: 'NOME DA CANTORA / VOCALISTA', id: 'tour-a3', tipo: 'rodape' }),
         par('LOC: OS PALCOS ESPALHADOS PELA ORLA, DO PÔR DO SOL ATÉ DE MADRUGADA.'),
-        par({ arte: 'MAPA ANIMADO COM OS PALCOS DA ORLA', id: 'tour-a4', tipo: 'cartao' }),
+        par({ arte: ARTE_COMPLEXA, id: 'tour-a4', tipo: 'cartao' }),
         par('LOC: FESTIVAL DE EXEMPLO. AMANHÃ, DEPOIS DA NOVELA.'),
         par({ arte: 'AMANHÃ, DEPOIS DA NOVELA', id: 'tour-a5', tipo: 'assinatura' }),
       ],

@@ -2264,6 +2264,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
    ========================================================= */
 /* a anotação à mão que marca o roteiro de exemplo, sempre dentro do seu elemento */
 .nota-exemplo { display: inline-block; align-self: center; margin-left: 4px; font: 600 18px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); transform-origin: left; white-space: nowrap; }
+.topo-esq .nota-exemplo { margin-left: 6px; }
 
 .tour { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
 .tour.esperando { visibility: hidden; }

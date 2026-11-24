@@ -16,8 +16,8 @@ import { TelaEditor } from './ui/TelaEditor';
 import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores';
 import { corDe } from './dados/colaboracao';
 import { TourDaRevisao } from './tour/TourDaRevisao';
-import { convidar, type Tour } from './tour/passos';
-import { colocarExemplo, roteiroDeExemplo } from './tour/exemplo';
+import { convidar, passoAtual, pular, type Tour } from './tour/passos';
+import { colocarExemplo, ID_DO_EXEMPLO, roteiroDeExemplo } from './tour/exemplo';
 import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
 /** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
@@ -139,6 +139,22 @@ export function App() {
       return nova;
     });
   }, []);
+  // o tour da revisão anda na fila e no editor do exemplo. Se a pessoa sai do caminho (o voltar do navegador, outra
+  // tela), o tour sai, como ao pular; e, com o tour fora, o editor do exemplo (que já sumiu) volta para a fila.
+  const noEditorDoExemplo = tela.t === 'editor' && tela.id === ID_DO_EXEMPLO;
+  const ondeEsta = noEditorDoExemplo ? 'editor' : tela.t === 'biblioteca' ? 'fila' : null;
+  const tourAgora = useRef(tour);
+  tourAgora.current = tour;
+  useEffect(() => {
+    const t = tourAgora.current;
+    const p = t && passoAtual(t);
+    if (t && p && p.tela !== ondeEsta) mudarTour(pular(t));
+  }, [ondeEsta, mudarTour]);
+  useEffect(() => {
+    if (noEditorDoExemplo && (!tour || tour.fase === 'fora')) ir({ t: 'biblioteca' });
+  }, [noEditorDoExemplo, tour, ir]);
+  /** Revisar no exemplo, durante o tour: o editor do exemplo abre. */
+  const abrirExemplo = useCallback(() => ir({ t: 'editor', id: ID_DO_EXEMPLO }), [ir]);
   useEffect(() => {
     const aoVoltar = () => setTela(telaDoHash());
     window.addEventListener('popstate', aoVoltar);
@@ -363,7 +379,7 @@ export function App() {
       )}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete) => ir({ t: 'cadastros', aba: 'atracoes', claquete }) : undefined} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} />}
-      {tela.t === 'biblioteca' && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} />}
+      {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} />}
       <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} />
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete }} />}

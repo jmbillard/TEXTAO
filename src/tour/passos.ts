@@ -22,17 +22,23 @@ export interface Passo {
   texto: string;
   /** As ações que fazem o tour seguir deste passo. */
   acoes: readonly Acao[];
+  /** Onde o passo acontece: na fila ou no editor do exemplo. */
+  tela: 'fila' | 'editor';
+  /** A frase da segunda tela do passo, quando a ação tem duas partes (a lista de nomes aberta, o fogo a meio caminho). */
+  meio?: string;
 }
 
 /** Os sete passos, na ordem, com os textos do rascunho aprovado (sem o passo do tipo, que foi cortado). */
 export const PASSOS: readonly Passo[] = [
-  { id: 'chegar', etapa: 'chegar', texto: 'Os roteiros chegam por aqui. Clique em Colar do Word para trazer o exemplo.', acoes: ['colar', 'escolher-arquivo'] },
-  { id: 'fila', etapa: 'a fila', texto: 'Ele entrou no dia da exibição, com o que falta conferir. Clique em Revisar.', acoes: ['revisar'] },
-  { id: 'ficha', etapa: 'a ficha', texto: 'A claquete já vem preenchida, e o que falta fica em Para revisar. Escolha o editor.', acoes: ['escolher-editor'] },
-  { id: 'bolinha', etapa: 'as artes', texto: 'O logo do festival já existe. Clique na bolinha dele: a arte sai do checklist.', acoes: ['bolinha'] },
-  { id: 'fogo', etapa: 'as artes', texto: 'O mapa animado dá trabalho. Clique no fogo até ele virar incêndio.', acoes: ['fogo-alta'] },
-  { id: 'enviar', etapa: 'enviar', texto: 'Sem pendências, é só enviar. No tour é de mentira: nada vai ao Trello.', acoes: ['enviar'] },
-  { id: 'no-trello', etapa: 'no Trello', texto: 'De verdade, o card iria para o Trello e entraria aqui, na agenda. Este foi só de exemplo.', acoes: ['terminar'] },
+  { id: 'chegar', etapa: 'chegar', texto: 'Os roteiros chegam por aqui. Clique em Colar do Word para trazer o exemplo.', acoes: ['colar', 'escolher-arquivo'], tela: 'fila' },
+  { id: 'fila', etapa: 'a fila', texto: 'Ele entrou no dia da exibição, com o que falta conferir. Clique em Revisar.', acoes: ['revisar'], tela: 'fila' },
+  { id: 'ficha', etapa: 'a ficha', texto: 'A claquete já vem preenchida, e o que falta fica em Para revisar. Escolha o editor.', acoes: ['escolher-editor'], tela: 'editor',
+    meio: 'Quem vai editar esta chamada? Escolha um nome.' },
+  { id: 'bolinha', etapa: 'as artes', texto: 'O logo do festival já existe. Clique na bolinha dele: a arte sai do checklist.', acoes: ['bolinha'], tela: 'editor' },
+  { id: 'fogo', etapa: 'as artes', texto: 'O mapa animado dá trabalho. Clique no fogo até ele virar incêndio.', acoes: ['fogo-alta'], tela: 'editor',
+    meio: 'Mais um clique.' },
+  { id: 'enviar', etapa: 'enviar', texto: 'Sem pendências, é só enviar. No tour é de mentira: nada vai ao Trello.', acoes: ['enviar'], tela: 'editor' },
+  { id: 'no-trello', etapa: 'no Trello', texto: 'De verdade, o card iria para o Trello e entraria aqui, na agenda. Este foi só de exemplo.', acoes: ['terminar'], tela: 'fila' },
 ];
 
 /** O balão de boas-vindas e o da despedida. */
@@ -56,6 +62,13 @@ export const passoAtual = (t: Tour): Passo | null => (t.fase === 'passo' ? PASSO
 
 /** A ação faz o tour seguir do passo atual? */
 export const aceita = (t: Tour, acao: Acao): boolean => !!passoAtual(t)?.acoes.includes(acao);
+
+/** O tour segura a ação: ela é de um passo que ainda vai chegar (o Enviar antes do passo de enviar). Segurada, ela não
+    acontece; o balão só lembra o passo atual. */
+export function segura(t: Tour, acao: Acao): boolean {
+  if (t.fase !== 'passo') return false;
+  return PASSOS.findIndex((p) => p.acoes.includes(acao)) > t.i;
+}
 
 /** A pessoa fez `acao`: se é a do passo, o tour segue (do último passo, para o fim); senão, fica onde está. */
 export function seguir(t: Tour, acao: Acao): Tour {

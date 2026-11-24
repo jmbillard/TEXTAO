@@ -35,6 +35,7 @@ import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
+import { enviarNoTour } from '../tour/TourDaRevisao';
 
 
 /* ---------- topo da folha: atração e praça ---------- */
@@ -375,8 +376,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const [salvo, setSalvo] = useState(true);
   const sou = inicial.meu !== false; // dono (ou modo sem servidor)
   const leitura = !sou && !inicial.podeEditar; // recebido só para ver
-  // o exemplo do tour vive só neste navegador: sem a sala de edição simultânea, como no modo navegador
-  const comServidor = armazenamento.tipo === 'servidor' && !ehDoTour(inicial.id);
+  // o exemplo do tour vive só neste navegador: sem a sala de edição simultânea, como no modo navegador, e sem perguntar
+  // nada ao servidor sobre ele (pauta, acervo)
+  const doTour = ehDoTour(inicial.id);
+  const comServidor = armazenamento.tipo === 'servidor' && !doTour;
   // edição simultânea: só existe com servidor
   const [sala] = useState(() => (comServidor ? abrirSala(inicial.id) : null));
   const [sincronizado, setSincronizado] = useState(!sala);
@@ -531,14 +534,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // sem editor: a pauta pode ter sido preenchida depois que o roteiro subiu; pergunta de novo ao abrir
   const perguntouPauta = useRef(false);
   useEffect(() => {
-    if (!liberado || leitura || perguntouPauta.current || meta.editor || !meta.claquete) return;
+    if (!liberado || leitura || doTour || perguntouPauta.current || meta.editor || !meta.claquete) return;
     perguntouPauta.current = true;
     void consultarPauta(meta.claquete)
       .then((p) => {
         if (p.editor) mudarMetaRef.current?.({ editor: p.editor });
       })
       .catch(() => {});
-  }, [liberado, leitura, meta.editor, meta.claquete]);
+  }, [liberado, leitura, doTour, meta.editor, meta.claquete]);
   // sem atração: a lista de keys pode não ter carregado quando o roteiro chegou; tenta reconhecer de novo pela claquete
   const procurouAtracao = useRef(false);
   useEffect(() => {
@@ -838,13 +841,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // o acervo da atração: artes que ela já tem prontas (conferidas aqui, fora do checklist do Trello)
   const [acervo, setAcervo] = useState<{ ligado: boolean; artes: ArteDoAcervo[] }>({ ligado: false, artes: [] });
   useEffect(() => {
+    if (doTour) return;
     let vivo = true;
     const t = setTimeout(() => void consultarAcervo(meta.programa, meta.dataExibicao ?? '').then((a) => vivo && setAcervo(a)), 400);
     return () => {
       vivo = false;
       clearTimeout(t);
     };
-  }, [meta.programa, meta.dataExibicao]);
+  }, [meta.programa, meta.dataExibicao, doTour]);
   // o roteiro guarda quais das artes dele já existem (a fila e o envio usam); atualiza sem contar como revisão
   useEffect(() => {
     if (!acervo.ligado || leitura || !liberado) return;
@@ -1009,7 +1013,8 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   /* ---------- Trello ---------- */
   const [envio, setEnvio] = useState<EnvioTrello | undefined>();
   const estadoTrello = envio ?? fila.find((r) => r.id === inicial.id)?.trello;
-  const podeMandar = temTrello() && !leitura && liberado;
+  // o exemplo do tour tem o Enviar mesmo sem Trello: quem decide o que ele faz é o tour
+  const podeMandar = (temTrello() || doTour) && !leitura && liberado;
   const noTrello = estadoTrello?.estado === 'enviado' || estadoTrello?.estado === 'duplicado';
   /** Grava o que está na tela e cria o card. */
   const mandarTrello = async () => {
@@ -1047,6 +1052,8 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             : 'Enviar';
   const acaoPrincipal = async () => {
     if (!liberado || estadoTrello?.estado === 'enviando') return;
+    // o exemplo nunca vai ao Trello: o Enviar dele é do tour
+    if (doTour) return enviarNoTour();
     if (!vaiMandar) return proximo.r && abrir(proximo.r.id);
     if (perguntaProducao) return comparar(inicial.id);
     // nada impede o envio: as pendências ficam à vista ao lado, e o que faltar o n8n completa depois
@@ -1083,6 +1090,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               {salvo ? 'salvo' : 'salvando'}
             </span>
           )}
+          {doTour && <span className="nota-exemplo">exemplo do tour</span>}
         </div>
 
         <span />

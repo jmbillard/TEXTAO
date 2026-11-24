@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CONVITE, FIM, aceita, comecar, PASSOS, passoAtual, pular, seguir, terminar, type Acao, type IdDoPasso, type Tour } from './passos';
-import { ID_DO_EXEMPLO } from './exemplo';
+import { CONVITE, FIM, aceita, comecar, PASSOS, passoAtual, pular, segura, seguir, terminar, type Acao, type IdDoPasso, type Tour } from './passos';
+import { ARTE_COMPLEXA, ARTE_QUE_JA_EXISTE, ID_DO_EXEMPLO } from './exemplo';
+import { NOME_DA_COMPLEXIDADE } from '../modelo/exportar';
 
 /* O desenho do tour da revisão: o balão de papel com a anotação à mão, o laço à mão por fora do alvo, o véu leve no
    resto da tela e a seta, só quando cabe. Quem decide em que passo o tour está é a sequência (passos.ts); aqui fica só
@@ -11,6 +12,8 @@ interface Props {
   mudar: (t: Tour) => void;
   /** Colar do Word, Escolher arquivos ou Ctrl+V no passo chegar: o exemplo entra na fila, sem ler arquivo nenhum. */
   trazerExemplo: () => void;
+  /** Revisar no passo da fila: o editor do exemplo abre. */
+  abrirExemplo: () => void;
 }
 
 interface Retangulo {
@@ -30,10 +33,31 @@ interface Desenho {
   acaoDoClique?: (el: Element) => Acao | null;
   /** O alvo está pronto para ser mostrado (a ficha que chega termina de se montar antes). */
   pronto?: (alvo: Element) => boolean;
+  /** Onde o balão fica: à direita do alvo (o normal) ou sob a âncora, alinhado à esquerda dela. */
+  lado?: 'direita' | 'sob';
+  /** Sob a âncora, a seta sobe contornando a âncora por este lado até o alvo. */
+  via?: 'esq' | 'dir';
+  /** No editor, o clique vai para o app (abrir a lista, marcar a arte, subir o fogo): o tour não o segura e vê o que ele
+      fez com `feito`. */
+  deixa?: (el: Element) => boolean;
+  /** A ação do passo já aconteceu na tela (o editor escolhido, a arte fora do checklist, o fogo em ALTA). */
+  feito?: () => Acao | null;
+  /** Depois de feito, quanto o tour espera, fora da frente, para a pessoa ver o que mudou. */
+  esperaDepois?: number;
+  /** O passo está na segunda tela (a lista de nomes aberta, o fogo a meio caminho): o balão diz a frase `meio`. */
+  meio?: () => boolean;
 }
 
 const conviteDeSoltar = () => document.querySelector('.convite-compacto, .fila-vazia');
 const fichaDoExemplo = () => document.querySelector(`.ficha[data-ancora="ficha:${ID_DO_EXEMPLO}"]`);
+// no editor do exemplo
+const CAMPO_DO_EDITOR = '.claquete .escolha-nome-valor[aria-label^="Editor"]';
+const LISTA_DE_EDITORES = '.claquete .escolha-nome-menu[aria-label="Escolher editor"]';
+const cartaoDasArtes = () => document.querySelector('ol.artes')?.closest('.cartao') ?? null;
+const linhaDaArte = (texto: string) => [...document.querySelectorAll('ol.artes li')].find((li) => li.querySelector('.txt')?.textContent === texto) ?? null;
+const fogoDaArteComplexa = () => linhaDaArte(ARTE_COMPLEXA)?.querySelector('.cx') ?? null;
+/** O fogo da arte complexa está no nível (pelo nome que o botão anuncia: "Complexidade MÉDIA"). */
+const fogoEm = (n: 2 | 3) => fogoDaArteComplexa()?.getAttribute('aria-label') === `Complexidade ${NOME_DA_COMPLEXIDADE[n]}`;
 
 /** Onde cada passo aponta. Os passos do editor e do envio entram nos próximos tickets (#35, #36). */
 const DESENHOS: Partial<Record<IdDoPasso, Desenho>> = {
@@ -48,6 +72,38 @@ const DESENHOS: Partial<Record<IdDoPasso, Desenho>> = {
     seta: true,
     acaoDoClique: (el) => (el.closest('.ficha-acoes .botao, .ficha-claquete') ? 'revisar' : null),
     pronto: (ficha) => ficha.classList.contains('montada'),
+  },
+  ficha: {
+    // "Sem editor" em Para revisar; com a lista de nomes aberta (na claquete), a lista
+    alvo: () => document.querySelector(`${LISTA_DE_EDITORES} ul`) ?? document.querySelector('.pendencias-editor li'),
+    ancora: () => document.querySelector('.pendencias-editor'),
+    seta: true,
+    deixa: (el) => !!el.closest(`.pendencias-editor li .botao-texto, ${CAMPO_DO_EDITOR}, ${LISTA_DE_EDITORES}`),
+    meio: () => !!document.querySelector(LISTA_DE_EDITORES),
+    feito: () => (document.querySelector(`${CAMPO_DO_EDITOR}:not(.vago)`) ? 'escolher-editor' : null),
+    esperaDepois: 500,
+  },
+  bolinha: {
+    alvo: () => linhaDaArte(ARTE_QUE_JA_EXISTE)?.querySelector('.b') ?? null,
+    ancora: cartaoDasArtes,
+    lado: 'sob',
+    via: 'esq',
+    seta: true,
+    deixa: (el) => !!el.closest('.b') && el.closest('li') === linhaDaArte(ARTE_QUE_JA_EXISTE),
+    feito: () => (linhaDaArte(ARTE_QUE_JA_EXISTE)?.classList.contains('existe') ? 'bolinha' : null),
+    esperaDepois: 450,
+  },
+  fogo: {
+    alvo: fogoDaArteComplexa,
+    ancora: cartaoDasArtes,
+    lado: 'sob',
+    via: 'dir',
+    seta: true,
+    deixa: (el) => !!el.closest('.cx') && el.closest('li') === linhaDaArte(ARTE_COMPLEXA),
+    meio: () => fogoEm(2),
+    feito: () => (fogoEm(3) ? 'fogo-alta' : null),
+    // o incêndio termina de subir, na linha e no rodapé
+    esperaDepois: 900,
   },
 };
 /** O convite e a despedida: o balão ao lado do convite de soltar, sem laço. */
@@ -84,8 +140,9 @@ interface Geometria {
 
 const sobrepoe = (a: Retangulo, b: Retangulo) => a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
 
-/** O balão à direita do alvo (e, se não couber sem cobri-lo, embaixo), o laço por fora e a seta do balão até o laço. */
-function medir(alvo: Element | null, ancora: Element | null, balao: { w: number; h: number }, comSeta: boolean, semente: number): Geometria {
+/** O balão à direita do alvo (e, se não couber sem cobri-lo, embaixo) ou sob a âncora, o laço por fora e a seta do
+    balão até o laço (sob a âncora, contornando-a pelo lado `via`). */
+function medir(alvo: Element | null, ancora: Element | null, balao: { w: number; h: number }, desenho: Desenho, semente: number): Geometria {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   let buraco: Retangulo | null = null;
@@ -98,31 +155,41 @@ function medir(alvo: Element | null, ancora: Element | null, balao: { w: number;
   }
   const a = (ancora ?? alvo)?.getBoundingClientRect() ?? { left: vw / 2, right: vw / 2, top: vh / 2, bottom: vh / 2, width: 0, height: 0 };
   const dentro = (x: number, y: number) => ({ x: Math.min(Math.max(12, x), vw - balao.w - 12), y: Math.min(Math.max(12, y), vh - balao.h - 60) });
-  let pos = dentro((c ? Math.max(a.right, c.x + c.w / 2) : a.right) + 44, a.top + a.height / 2 - balao.h / 2);
+  const sob = desenho.lado === 'sob';
+  let pos = sob ? dentro(a.left, a.bottom + 34) : dentro((c ? Math.max(a.right, c.x + c.w / 2) : a.right) + 44, a.top + a.height / 2 - balao.h / 2);
   // o balão nunca cobre o alvo: sem espaço à direita, ele desce para baixo do alvo
   const ocupado = c ? { left: c.x - c.w / 2, top: c.y - c.h / 2, width: c.w, height: c.h } : null;
   if (ocupado && sobrepoe({ left: pos.x, top: pos.y, width: balao.w, height: balao.h }, ocupado)) pos = dentro(a.right - balao.w, ocupado.top + ocupado.height + 34);
 
   let seta: Geometria['seta'] = null;
-  if (c && comSeta) {
+  if (c && desenho.seta) {
     const B = balao;
-    const bx = pos.x + B.w / 2;
-    const by = pos.y + B.h / 2;
-    const dx = c.x - bx;
-    const dy = c.y - by;
-    // onde a reta do centro do balão ao alvo sai do balão
-    const k = Math.min(Math.abs(B.w / 2 / (dx || 1e-6)), Math.abs(B.h / 2 / (dy || 1e-6)));
-    const len0 = Math.hypot(dx, dy) || 1;
-    const s = { x: bx + dx * k + (dx / len0) * 8, y: by + dy * k + (dy / len0) * 8 };
-    const L = Math.hypot(c.x - s.x, c.y - s.y) || 1;
-    const nx = -(c.y - s.y) / L;
-    const ny = (c.x - s.x) / L;
-    // a curva cede para baixo (seta deitada) ou para a esquerda (seta em pé), como quem desenha à mão
-    let curva = 0.12 * L;
-    if (Math.abs(dx) > Math.abs(dy) ? ny * curva < 0 : nx * curva > 0) curva = -curva;
-    const ctrl = { x: (s.x + c.x) / 2 + nx * curva, y: (s.y + c.y) / 2 + ny * curva };
-    // termina na borda do laço, do lado de onde a seta vem
-    const ang = Math.atan2(s.y - c.y, s.x - c.x);
+    let s: { x: number; y: number };
+    let ctrl: { x: number; y: number };
+    if (sob && desenho.via) {
+      // do canto de cima do balão, a seta sobe por fora da âncora (pela esquerda ou pela direita) até o alvo
+      s = { x: desenho.via === 'esq' ? pos.x + 8 : pos.x + B.w - 22, y: pos.y - 8 };
+      ctrl = { x: desenho.via === 'esq' ? a.left - 42 : a.right - 6, y: (s.y + c.y) / 2 };
+    } else {
+      const bx = pos.x + B.w / 2;
+      const by = pos.y + B.h / 2;
+      const dx = c.x - bx;
+      const dy = c.y - by;
+      // onde a reta do centro do balão ao alvo sai do balão
+      const k = Math.min(Math.abs(B.w / 2 / (dx || 1e-6)), Math.abs(B.h / 2 / (dy || 1e-6)));
+      const len0 = Math.hypot(dx, dy) || 1;
+      s = { x: bx + dx * k + (dx / len0) * 8, y: by + dy * k + (dy / len0) * 8 };
+      const L = Math.hypot(c.x - s.x, c.y - s.y) || 1;
+      const nx = -(c.y - s.y) / L;
+      const ny = (c.x - s.x) / L;
+      // a curva cede para baixo (seta deitada) ou para a esquerda (seta em pé), como quem desenha à mão
+      let curva = 0.12 * L;
+      if (Math.abs(dx) > Math.abs(dy) ? ny * curva < 0 : nx * curva > 0) curva = -curva;
+      ctrl = { x: (s.x + c.x) / 2 + nx * curva, y: (s.y + c.y) / 2 + ny * curva };
+    }
+    // termina na borda do laço, do lado de onde a seta vem (pelo contorno, quando ela contorna a âncora)
+    const de = sob && desenho.via ? ctrl : s;
+    const ang = Math.atan2(de.y - c.y, de.x - c.x);
     const re = Math.min(c.w / 2 / Math.max(Math.abs(Math.cos(ang)), 1e-6), c.h / 2 / Math.max(Math.abs(Math.sin(ang)), 1e-6)) + 7;
     const e = { x: c.x + Math.cos(ang) * re, y: c.y + Math.sin(ang) * re };
     // só quando há espaço entre o balão e o laço
@@ -148,19 +215,40 @@ function medir(alvo: Element | null, ancora: Element | null, balao: { w: number;
 const mesmo = (a: Geometria | null, b: Geometria) =>
   !!a && a.laco === b.laco && a.balao.x === b.balao.x && a.balao.y === b.balao.y && a.seta?.corpo === b.seta?.corpo;
 
-export function TourDaRevisao({ tour, mudar, trazerExemplo }: Props) {
+/** O Enviar do editor do exemplo (o botão ou Ctrl+Enter) pede ao tour: antes do passo de enviar, o tour segura. */
+const PEDIDO_DE_ENVIO = 'tour-revisao:enviar';
+export const enviarNoTour = () => void window.dispatchEvent(new Event(PEDIDO_DE_ENVIO));
+
+export function TourDaRevisao({ tour, mudar, trazerExemplo, abrirExemplo }: Props) {
   const passo = passoAtual(tour);
   const desenho: Desenho | null = tour.fase === 'convite' || tour.fase === 'fim' ? AO_LADO_DO_CONVITE : passo ? (DESENHOS[passo.id] ?? null) : null;
+  // a segunda tela do passo (a lista de nomes aberta, o fogo a meio caminho): a frase muda e o laço é desenhado de novo
+  const [noMeio, setNoMeio] = useState(false);
+  const meio = noMeio && !!passo?.meio;
   // a chave de cada tela do tour: muda, e o balão, o laço e a seta são desenhados de novo
-  const tela = tour.fase === 'passo' ? `passo-${tour.i}` : tour.fase;
+  const tela = tour.fase === 'passo' ? `passo-${tour.i}${meio ? '-meio' : ''}` : tour.fase;
   const n = tour.fase === 'passo' ? tour.i + 1 : 0;
   const balao = useRef<HTMLDivElement>(null);
   const [geo, setGeo] = useState<Geometria | null>(null);
   const [cutucado, setCutucado] = useState(0);
+  // a ação do passo acabou de acontecer na tela: o tour sai da frente enquanto a pessoa vê o que mudou
+  const [passando, setPassando] = useState(false);
   const tourRef = useRef(tour);
   tourRef.current = tour;
 
-  // um passo que ainda não tem desenho (os do editor, nos próximos tickets): por enquanto, o tour termina como "pular"
+  /** A ação do passo: o que ela faz por conta do tour (trazer o exemplo, abrir o editor) e o tour segue. */
+  const agir = useRef((_acao: Acao) => {});
+  agir.current = (acao: Acao) => {
+    const t = tourRef.current;
+    if (!aceita(t, acao)) return;
+    const id = passoAtual(t)?.id;
+    if (id === 'chegar') trazerExemplo();
+    else if (id === 'fila') abrirExemplo();
+    setNoMeio(false);
+    mudar(seguir(t, acao));
+  };
+
+  // um passo que ainda não tem desenho (o de enviar, no próximo ticket): por enquanto, o tour termina como "pular"
   useEffect(() => {
     if (tour.fase === 'passo' && !desenho) mudar(pular(tour));
   }, [tour, desenho, mudar]);
@@ -172,15 +260,26 @@ export function TourDaRevisao({ tour, mudar, trazerExemplo }: Props) {
     return () => clearTimeout(t);
   }, [tour.fase, mudar]);
 
-  // acompanha o alvo na tela (a fila se mexe: a vaga abre, a ficha se monta); só redesenha quando algo mudou
+  // acompanha o alvo na tela (a fila se mexe, a lista de artes se reorganiza); só redesenha quando algo mudou. No editor,
+  // também vê se a ação do passo já aconteceu e em qual das duas telas do passo a pessoa está.
   useLayoutEffect(() => {
     setGeo(null);
+    setPassando(false);
     if (!desenho) return;
     let quadro = 0;
     let prontoDesde = 0;
     let ultima: Geometria | null = null;
+    let depois = 0;
     const olhar = () => {
       quadro = requestAnimationFrame(olhar);
+      const feita = desenho.feito?.();
+      if (feita && aceita(tourRef.current, feita)) {
+        cancelAnimationFrame(quadro);
+        setPassando(true);
+        depois = window.setTimeout(() => agir.current(feita), desenho.esperaDepois ?? 0);
+        return;
+      }
+      setNoMeio(!!desenho.meio?.());
       const alvo = desenho.alvo?.() ?? null;
       const ancora = desenho.ancora?.() ?? alvo;
       const b = balao.current;
@@ -190,58 +289,66 @@ export function TourDaRevisao({ tour, mudar, trazerExemplo }: Props) {
         prontoDesde ||= performance.now();
         if (performance.now() - prontoDesde < ESPERA_DEPOIS_DE_MONTAR_MS) return;
       }
-      const g = medir(alvo, ancora, { w: b.offsetWidth, h: b.offsetHeight }, !!desenho.seta, n);
+      const g = medir(alvo, ancora, { w: b.offsetWidth, h: b.offsetHeight }, desenho, n);
       if (mesmo(ultima, g)) return;
       ultima = g;
       setGeo(g);
     };
     olhar();
-    return () => cancelAnimationFrame(quadro);
+    return () => {
+      cancelAnimationFrame(quadro);
+      clearTimeout(depois);
+    };
   }, [tela, desenho, n]);
 
   // o que a pessoa faz: só a ação do passo conta; um clique fora do alvo faz o balão lembrar onde clicar
   useEffect(() => {
     if (!desenho) return;
-    const agir = (acao: Acao) => {
-      const t = tourRef.current;
-      if (!aceita(t, acao)) return;
-      if (passoAtual(t)?.id === 'chegar') trazerExemplo();
-      mudar(seguir(t, acao));
-    };
     const clique = (e: MouseEvent) => {
       const el = e.target as Element | null;
       if (!el || el.closest('.tour-balao')) return;
+      // no editor, o clique no alvo vai para o app, que faz a ação de verdade
+      if (geo && !passando && desenho.deixa?.(el)) return;
       e.preventDefault();
       e.stopPropagation();
-      // o alvo ainda não apareceu (a ficha está chegando): o clique não faz nada
-      if (!geo) return;
+      // o alvo ainda não apareceu (a ficha está chegando), ou o tour está passando ao próximo: o clique não faz nada
+      if (!geo || passando) return;
       const alvo = desenho.alvo?.();
       const acao = alvo?.contains(el) ? desenho.acaoDoClique?.(el) : null;
-      if (acao) agir(acao);
+      if (acao) agir.current(acao);
       else setCutucado((k) => k + 1);
     };
     const tecla = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
+      const digitando = !!(e.target as Element | null)?.closest?.('input, textarea, [contenteditable="true"]');
       // Ctrl/⌘+V no passo chegar traz o exemplo; R (revisar o próximo) não abre o exemplo por fora do tour
       if (mod && e.key.toLowerCase() === 'v' && passoAtual(tourRef.current)?.id === 'chegar') {
         e.preventDefault();
         e.stopPropagation();
-        agir('colar');
-      } else if (!mod && e.key.toLowerCase() === 'r' && tourRef.current.fase === 'passo') {
+        agir.current('colar');
+      } else if (!mod && !digitando && e.key.toLowerCase() === 'r' && tourRef.current.fase === 'passo') {
         e.stopPropagation();
       }
     };
+    // o Enviar do editor: no passo de enviar, segue; antes, o tour segura e o balão lembra o passo atual
+    const enviar = () => {
+      const t = tourRef.current;
+      if (aceita(t, 'enviar')) agir.current('enviar');
+      else if (segura(t, 'enviar')) setCutucado((k) => k + 1);
+    };
     window.addEventListener('click', clique, true);
     window.addEventListener('keydown', tecla, true);
+    window.addEventListener(PEDIDO_DE_ENVIO, enviar);
     return () => {
       window.removeEventListener('click', clique, true);
       window.removeEventListener('keydown', tecla, true);
+      window.removeEventListener(PEDIDO_DE_ENVIO, enviar);
     };
-  }, [desenho, geo, mudar, trazerExemplo]);
+  }, [desenho, geo, passando]);
 
   if (!desenho || tour.fase === 'fora') return null;
-  const textos = tour.fase === 'convite' ? CONVITE : tour.fase === 'fim' ? FIM : passo!;
-  const visivel = !!geo;
+  const textos = tour.fase === 'convite' ? CONVITE : tour.fase === 'fim' ? FIM : { etapa: passo!.etapa, texto: meio ? passo!.meio! : passo!.texto };
+  const visivel = !!geo && !passando;
   return (
     <div className={`tour ${visivel ? '' : 'esperando'}`} key={tela}>
       {geo?.buraco ? (
