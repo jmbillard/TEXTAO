@@ -395,9 +395,10 @@ type Pedido = { metodo: string; url: URL; corpo: Record<string, unknown> | null 
 type CardNoTrello = { id: string; card: Record<string, unknown>; checklist: { name: string; itens: string[] } | null; campos: Record<string, unknown>; anexos: Record<string, unknown>[] };
 const sem = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
 /** Trello e Teable falsos: guardam os pedidos e montam os cards criados (com a checklist, os campos e os anexos). */
-function trelloETeableFalsos({ falharCard = (_nome: string): boolean => false } = {}) {
+function trelloETeableFalsos({ falharCard = (_nome: string): boolean => false, jaNoTrello = [] as CardNoTrello[] } = {}) {
   const pedidos: Pedido[] = [];
-  const cards = new Map<string, CardNoTrello>();
+  // os cards que já estavam no quadro (criados antes, pelo n8n)
+  const cards = new Map<string, CardNoTrello>(jaNoTrello.map((c) => [c.id, c]));
   let n = 0;
   let novos = 0;
   const ok = (dados: unknown) => ({ ok: true, status: 200, json: async () => dados, text: async () => JSON.stringify(dados) });
@@ -771,5 +772,41 @@ describe('aba Filmes: a Sessão da Tarde', () => {
     const exibicoes = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: { card_ID: string; link: string } }[])[0].fields);
     expect(exibicoes.map((e) => [e.card_ID, e.link])).toEqual(Array(5).fill([card.id, link]));
     for (const f of filmes) expect(f.envio).toMatchObject({ estado: 'enviado', card: card.id, link });
+  });
+
+  it('o card do n8n que pega mais de uma semana recebe o filme novo sem perder os títulos das outras semanas', async () => {
+    const doN8n: CardNoTrello = {
+      id: 'cardN8n00001',
+      card: { idList: 'listaFilmes', name: 'SESSÃO DA TARDE 30/11 A 08/12 - TÍTULOS', desc: ['**TÍTULOS IDENTIFICADOS (2):**', '`30/11 SEG` FLORES DE AÇO (2012)', '`08/12 TER` O COMITÊ DA VIDA (2021)', '', '**A PRODUZIR (2):** no checklist.'].join('\n') },
+      checklist: { name: 'TÍTULOS A PRODUZIR', itens: ['30/11 SEG · FLORES DE AÇO (2012)', '08/12 TER · O COMITÊ DA VIDA (2021)'] },
+      campos: {},
+      anexos: [],
+    };
+    const exibicao = (filme: string, data: string): ExibicaoDoBanco => ({ filme: { id: filme, title: '' }, sessao: { id: 'recSessaoTarde', title: 'Sessão da Tarde' }, data_de_exibicao: data, card_ID: doN8n.id, link: 'https://trello.com/c/N8N00001', labels: null });
+    const { enviar, terminar, falsos } = await paraEnviar(
+      [tarde('OS SALAFRÁRIOS', '09/12/2026')],
+      { filmes: DA_TARDE, atracoes: SESSOES, exibicoes: [exibicao('recFlores01', '2026-11-30T03:00:00.000Z'), exibicao('recComite01', '2026-12-08T03:00:00.000Z')] },
+      { jaNoTrello: [doN8n] },
+    );
+    await enviar();
+    await terminar();
+    expect(falsos.cards()).toHaveLength(1);
+    expect(doN8n.card.name).toBe('SESSÃO DA TARDE 30/11 A 09/12 - TÍTULOS');
+    expect(doN8n.card.desc).toBe(
+      ['**TÍTULOS IDENTIFICADOS (3):**', '`30/11 SEG` FLORES DE AÇO (2012)', '`08/12 TER` O COMITÊ DA VIDA (2021)', '`09/12 QUA` OS SALAFRÁRIOS (2021)', '', '**A PRODUZIR (3):** no checklist.'].join('\n'),
+    );
+    expect(doN8n.checklist!.itens.at(-1)).toBe('09/12 QUA · OS SALAFRÁRIOS (2021)');
+  });
+
+  it('sem título a produzir e sem card na semana, não há card (como no CARDS): as exibições ficam sem ele', async () => {
+    const { enviar, terminar, falsos } = await paraEnviar([SEMANA[1]], { filmes: DA_TARDE, acervo: BECKY_NO_ACERVO, atracoes: SESSOES });
+    expect(await (await enviar()).json()).toEqual({ enviando: 1 });
+    const [becky] = await terminar();
+    expect(falsos.cards()).toEqual([]);
+    const [e] = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: Record<string, unknown> }[])[0].fields);
+    expect(e).toMatchObject({ exibicao: 'SESSÃO DA TARDE 01/12 - OS DELÍRIOS DE CONSUMO DE BECKY BLOOM', filme: { id: 'recBecky01' } });
+    expect(e).not.toHaveProperty('card_ID');
+    expect(becky.envio).toMatchObject({ estado: 'enviado' });
+    expect(becky.envio!.card).toBeUndefined();
   });
 });

@@ -91,6 +91,16 @@ function descricao(artes, c) {
   ].join('\n');
 }
 
+/** O "tentar" do envio: o que der errado vira aviso (na lista dada) e devolve null. */
+const tentarCom = (avisos) => async (o_que, f) => {
+  try {
+    return await f();
+  } catch (e) {
+    avisos.push(`${o_que}: ${e instanceof Error ? e.message : e}`);
+    return null;
+  }
+};
+
 const nomeDeArquivo = (t) => String(t || 'poster').replace(/[\\/:*?"<>|]+/g, ' ').trim() + '.jpg';
 // o pôster que o PROMeiro põe no cadastro leva o mês da prévia no nome: é assim que se sabe se o da prévia é mais atual
 const MARCA_DA_PREVIA = /\(prévia (\d{4}-\d{2})\)/;
@@ -171,14 +181,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     if (!String(lido.titulo ?? '').trim()) throw new Error('falta o título');
     const agora = new Date().toISOString();
     const avisos = [];
-    const tentar = async (o_que, f) => {
-      try {
-        return await f();
-      } catch (e) {
-        avisos.push(`${o_que}: ${e instanceof Error ? e.message : e}`);
-        return null;
-      }
-    };
+    const tentar = tentarCom(avisos);
     lote.sessoes ??= await tentar('ler as sessões', sessoes) ?? new Map();
     const sessao = lote.sessoes.get(chaveDaSessao(lido.sessao)) ?? { id: '', nome: String(lido.sessao).trim() };
     const ano = conferencia.ano ?? null;
@@ -203,7 +206,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
         lista: f.lista,
         nome: `${exibicao}${ano ? ` (${ano})` : ''}${lido.inedito ? ' INÉDITO' : ''}`,
         desc: descricao(conferencia.artes, filme),
-        etiquetas: [...f.etiquetas, ...Object.entries(f.etiquetasDaSessao).filter(([s]) => chaveDaSessao(s) === chaveDaSessao(sessao.nome)).map(([, id]) => id)],
+        etiquetas: etiquetasDa(sessao),
         data: `${dia}T03:00:00.000Z`,
         posicao: 'top',
         checklist: { nome: 'ARTES PRODUZIDAS', itens: conferencia.artes.novas },
@@ -231,6 +234,9 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     await depoisDoCard({ conferencia, poster, dia, filme, titulo }, lote, tentar);
     return { card, filme: filme.id, avisos };
   }
+
+  /** As etiquetas do card de filme: as de todos e as da sessão ("SUPERCINE=id", escrita de qualquer jeito). */
+  const etiquetasDa = (sessao) => [...c.filmes.etiquetas, ...Object.entries(c.filmes.etiquetasDaSessao).filter(([s]) => chaveDaSessao(s) === chaveDaSessao(sessao.nome)).map(([, id]) => id)];
 
   /** O filme do envio: o do banco ou o novo (cadastrado uma vez só no Envio, mesmo que passe em duas sessões). */
   async function filmeDoEnvio(lido, conferencia, lote, agora) {
@@ -285,15 +291,20 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     };
   }
 
-  /** Os títulos que a descrição do card da semana já lista (a linha "`DD/MM DIA` TÍTULO (ANO)[ · …]"), com o dia. */
+  /** Os títulos que a descrição do card da semana já lista (a linha "`DD/MM DIA` TÍTULO (ANO)[ · …]"), com o dia: o
+      DD/MM no ano mais perto da semana. O card do n8n pode pegar mais de uma semana, e nenhum título se perde. */
   function linhasDoCard(desc, segunda) {
-    const dias = Array.from({ length: 7 }, (_, i) => maisDias(segunda, i));
+    const perto = (dm) => {
+      const ano = Number(segunda.slice(0, 4));
+      const dias = [ano - 1, ano, ano + 1].map((a) => `${a}-${dm.slice(3, 5)}-${dm.slice(0, 2)}`);
+      const longe = (d) => Math.abs(Date.parse(`${d}T12:00:00Z`) - Date.parse(`${segunda}T12:00:00Z`));
+      return dias.sort((a, b) => longe(a) - longe(b))[0];
+    };
     return String(desc ?? '')
       .split('\n')
       .map((l) => /^`(\d{2}\/\d{2}) [^`]*` (.+?)( · filme novo| · ✓ já existe)?$/.exec(l.trim()))
       .filter(Boolean)
-      .map(([, dm, nome, marca]) => ({ dia: dias.find((d) => ddmm(d) === dm), nome, fazer: !marca?.includes('já existe'), novo: !!marca?.includes('filme novo') }))
-      .filter((l) => l.dia);
+      .map(([, dm, nome, marca]) => ({ dia: perto(dm), nome, fazer: !marca?.includes('já existe'), novo: !!marca?.includes('filme novo') }));
   }
 
   /** O card da Sessão da Tarde da semana que começa na segunda dada, pelas exibições dela que têm card: o ID ou null. */
@@ -319,10 +330,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
   async function enviarSemanaDaTarde(itens, lote) {
     const agora = new Date().toISOString();
     const avisos = [];
-    lote.sessoes ??= await sessoes().catch((e) => {
-      avisos.push(`ler as sessões: ${e instanceof Error ? e.message : e}`);
-      return new Map();
-    });
+    lote.sessoes ??= (await tentarCom(avisos)('ler as sessões', sessoes)) ?? new Map();
     const sessao = lote.sessoes.get(chaveDaSessao('Sessão da Tarde')) ?? { id: '', nome: 'Sessão da Tarde' };
     const resultados = itens.map(() => null);
     const vao = [];
@@ -360,14 +368,13 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
       card = { id: atual.id, url: atual.url };
     } else {
       const semana = cardDaSemana(linhas);
-      const f = c.filmes;
       if (semana.itens.length)
         card = await trello.criarCard(
           {
-            lista: f.lista,
+            lista: c.filmes.lista,
             nome: semana.nome,
             desc: semana.desc,
-            etiquetas: [...f.etiquetas, ...Object.entries(f.etiquetasDaSessao).filter(([s]) => chaveDaSessao(s) === chaveDaSessao(sessao.nome)).map(([, id]) => id)],
+            etiquetas: etiquetasDa(sessao),
             data: semana.data,
             posicao: 'top',
             checklist: { nome: CHECKLIST_DA_TARDE, itens: semana.itens },
@@ -379,14 +386,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     // a exibição de cada filme, ligada ao card (sem as artes, como no CARDS), e o cadastro depois do card
     for (const { k, lido, conferencia, poster, dia, filme } of vao) {
       const seus = [...avisos];
-      const tentar = async (o_que, f) => {
-        try {
-          return await f();
-        } catch (e) {
-          seus.push(`${o_que}: ${e instanceof Error ? e.message : e}`);
-          return null;
-        }
-      };
+      const tentar = tentarCom(seus);
       const titulo = filme.titulo || lido.titulo;
       await tentar('gravar a exibição', () =>
         trello.teableCriar(c.teable.exibicoes, {
