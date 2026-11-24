@@ -10,6 +10,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
     titulo: 'Fila',
     linhas: [
       ['R', 'Abre o próximo roteiro para revisar'],
+      ['/', 'Abre a busca (Esc limpa e fecha)'],
       ['Arrastar', 'Solta .docx, .rtf ou .pdf em qualquer ponto da tela'],
       ['Esc', 'Fecha menus e balões'],
     ],

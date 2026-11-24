@@ -625,6 +625,43 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
 /** A tecla foi num campo de texto ou num diálogo: os atalhos da fila não valem ali. */
 const emCampo = (e: KeyboardEvent) => !!(e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]');
 
+/** A busca da fila recolhida numa lupa na barra do topo: "/" ou um clique abrem o campo; Esc limpa e recolhe; sem texto, perder o foco recolhe. */
+function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string) => void; ativa: boolean }) {
+  const campo = useRef<HTMLInputElement>(null);
+  const [aberta, setAberta] = useState(false);
+  useEffect(() => {
+    if (!ativa) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || emCampo(e)) return;
+      e.preventDefault();
+      campo.current?.focus();
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [ativa]);
+  return (
+    <label className={`busca lupa ${aberta || valor ? 'aberta' : ''}`} title="Buscar (/)">
+      <Icone nome="lupa" tam={15} traco={2} />
+      <input
+        ref={campo}
+        type="search"
+        placeholder="Buscar claquete, atração ou redator"
+        aria-label="Buscar roteiros"
+        aria-keyshortcuts="/"
+        value={valor}
+        onChange={(e) => mudar(e.target.value)}
+        onFocus={() => setAberta(true)}
+        onBlur={() => setAberta(false)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Escape') return;
+          mudar('');
+          e.currentTarget.blur();
+        }}
+      />
+    </label>
+  );
+}
+
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
@@ -942,22 +979,22 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
 
   return (
     <div className="pagina" inert={aoFundo || undefined} aria-hidden={aoFundo || undefined}>
+      <header className="barra-topo">
+        <h1 className="bib-marca"><Marca /></h1>
+        <span className="espaco" />
+        {todos.length > 6 && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
+        {colegas.length > 0 && (
+          <div className="na-fila" title={`Também com a fila aberta: ${colegas.map((c) => c.nome).join(', ')}`}>
+            {colegas.slice(0, 5).map((c) => (
+              <span key={c.email} className="presente" style={{ background: corDe(c.email) }}>{iniciais(c.nome)}</span>
+            ))}
+            {colegas.length > 5 && <span className="presente mais">+{colegas.length - 5}</span>}
+            <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
+          </div>
+        )}
+        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} aoMudarCor={() => setCores((n) => n + 1)} />
+      </header>
       <main className="biblioteca fila" data-ancora="pagina">
-        <header className="bib-topo">
-          <h1 className="bib-marca"><Marca /></h1>
-          <span className="espaco" />
-          {colegas.length > 0 && (
-            <div className="na-fila" title={`Também com a fila aberta: ${colegas.map((c) => c.nome).join(', ')}`}>
-              {colegas.slice(0, 5).map((c) => (
-                <span key={c.email} className="presente" style={{ background: corDe(c.email) }}>{iniciais(c.nome)}</span>
-              ))}
-              {colegas.length > 5 && <span className="presente mais">+{colegas.length - 5}</span>}
-              <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
-            </div>
-          )}
-          <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} aoMudarCor={() => setCores((n) => n + 1)} />
-        </header>
-
         {EXEMPLOS.length > 0 && (
           <section className="exemplos">
             <span className="rotulo">Exemplos</span>
@@ -1016,12 +1053,6 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                   </p>
                 </div>
                 <ConviteCompacto frases={CONVITES_AO_LADO} escolher={receberArquivos} colar={() => setColando(true)} colando={colando} />
-                {todos.length > 6 && (
-                  <label className="busca">
-                    <Icone nome="lupa" tam={15} traco={2} />
-                    <input type="search" placeholder="Buscar claquete, atração ou redator" aria-label="Buscar roteiros" value={busca} onChange={(e) => setBusca(e.target.value)} />
-                  </label>
-                )}
               </div>
               {colando && colar}
 
