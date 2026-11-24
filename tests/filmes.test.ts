@@ -1082,4 +1082,15 @@ describe('aba Filmes: a prévia toda enviada é apagada depois de 60 dias', () =
     const lista = ((await (await api('/api/filmes/previas')).json()) as NaLista[]).map((p) => [p.id, p.diasParaApagar]);
     expect(lista).toEqual([[pendente, null]]);
   });
+
+  it('a prévia lida sem nenhum filme não conta como enviada', async () => {
+    const r = relogio();
+    const { api, filmes } = await subir({ n8n: n8nFalso({ 2: { movies: [] } }), agora: () => r.agora });
+    const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: 'vazia01', paginas: [2] });
+    await api(`/api/filmes/previas/${id}/paginas/2`, { method: 'PUT', body: JSON.stringify(pagina([])) });
+    await ate(api, id, (p) => p.paginas[0].estado === 'lida');
+    r.andar(400);
+    expect(await filmes.apagarVencidas()).toEqual([]);
+    expect(((await (await api('/api/filmes/previas')).json()) as NaLista[])[0]).toMatchObject({ id, diasParaApagar: null });
+  });
 });

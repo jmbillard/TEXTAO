@@ -149,7 +149,7 @@ function ListaDePrevias({
       setPrevias,
       (e: Error) => (setPrevias([]), avisar(e.message)),
     );
-    // quem está em cada prévia: a lista pergunta de novo de tempos em tempos (barato: não consulta o banco)
+    // quem está em cada prévia: a lista pergunta de novo de tempos em tempos (barato: só consulta o banco pela prévia que mudou)
     const t = setInterval(
       () => void listarPrevias().then(setPrevias, () => {}),
       LISTA_MS,

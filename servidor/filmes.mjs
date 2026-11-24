@@ -228,17 +228,18 @@ function criarConferencia(env, consultar) {
 /* ---------- o prazo da prévia toda enviada ---------- */
 const DIA = 86_400_000;
 /** A prévia toda enviada é apagada (o registro e as imagens) depois destes dias; as exibições e os cards ficam. */
-export const PRAZO_DA_PREVIA_DIAS = 60;
+const PRAZO_DA_PREVIA_DIAS = 60;
 
 /**
  * Quando a prévia (aberta, com a conferência) ficou toda enviada: todas as páginas lidas, e cada filme enviado ou com o
  * card que já existia (a marca do Trello). Página pendente, filme com ! ou ainda não enviado: não está toda enviada.
- * O prazo conta do último envio; sem nenhum envio (todos os cards já existiam), da última leitura.
+ * A prévia sem nenhum filme lido não conta. O prazo conta do último envio; sem nenhum envio (todos os cards já
+ * existiam), da última leitura.
  * @param ultimaLeitura a data da última página lida (ISO)
  * @returns a data em ms, ou null
  */
 function todaEnviadaEm(p, ultimaLeitura) {
-  if (!p.paginas.length) return null;
+  if (!p.paginas.some((g) => g.filmes.length)) return null;
   let em = null;
   for (const g of p.paginas) {
     if (g.estado !== 'lida') return null;
