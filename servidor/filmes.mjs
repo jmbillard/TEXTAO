@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { vinculos } from './acervo.mjs';
 import { conferirFilme, diaDaPrevia } from './conferencia.mjs';
 import { abrirPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
@@ -93,18 +94,7 @@ const umaCaixa = (c) => ({ x: numero(c?.x), y: numero(c?.y), width: numero(c?.wi
 
 /* ---------- o banco de filmes e as exibições, no Postgres do Teable (só leitura) ---------- */
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
-// vínculo do Teable no Postgres: { id, title }, uma lista com um, ou o texto JSON disso
-function vinculo(v) {
-  if (typeof v === 'string') {
-    try {
-      return vinculo(JSON.parse(v));
-    } catch {
-      return null;
-    }
-  }
-  if (Array.isArray(v)) return vinculo(v[0]);
-  return v && typeof v === 'object' ? { id: String(v.id ?? ''), title: String(v.title ?? '') } : null;
-}
+const vinculo = (v) => vinculos(v)[0] ?? null;
 const cancelada = (labels) => JSON.stringify(labels ?? '').toUpperCase().includes('CANCELADO');
 const diaEmBrasilia = (v) => {
   const d = new Date(v);

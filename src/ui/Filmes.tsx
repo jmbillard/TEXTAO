@@ -427,7 +427,15 @@ function Titulo({
   gravar: (titulo: string) => Promise<void>;
 }) {
   const [texto, setTexto] = useState<string | null>(null);
+  // o campo some depois do Enter ou do Esc: o blur que vem junto não pode gravar de novo (nem o que foi desistido)
+  const terminado = useRef(false);
+  const editar = () => {
+    terminado.current = false;
+    setTexto(filme.titulo);
+  };
   const fim = (salvar: boolean) => {
+    if (terminado.current) return;
+    terminado.current = true;
     const novo = texto?.replace(/\s+/g, " ").trim() ?? "";
     setTexto(null);
     if (salvar && novo && novo !== filme.titulo) void gravar(novo);
@@ -439,8 +447,8 @@ function Titulo({
         role="button"
         tabIndex={0}
         title="Corrigir o título"
-        onClick={() => setTexto(filme.titulo)}
-        onKeyDown={(e) => e.key === "Enter" && setTexto(filme.titulo)}
+        onClick={editar}
+        onKeyDown={(e) => e.key === "Enter" && editar()}
       >
         {filme.titulo || "???"}
       </span>

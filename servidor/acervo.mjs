@@ -28,7 +28,7 @@ export function chaveDeArte(texto) {
 const nomeComparavel = (s) => chaveDeArte(s);
 
 // vínculo do Teable no Postgres: lista (ou objeto, ou texto JSON) com { id, title }
-function vinculos(v) {
+export function vinculos(v) {
   if (v == null || v === '') return [];
   if (typeof v === 'string') {
     try {
