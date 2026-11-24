@@ -273,11 +273,16 @@ export interface PaginaDaPrevia {
   /** os pôsteres da fileira de cima da página (identidade própria) */
   fileiraDeCima?: number[];
 }
-/** Outra pessoa com a prévia aberta, e o card em que está mexendo (o título sendo corrigido ou o balão aberto). */
+/** Um card da prévia: o filme i da página (o número da página no PDF). */
+export interface CardDaPrevia {
+  numero: number;
+  i: number;
+}
+/** Outra pessoa com a prévia aberta, e o card em que está mexendo (o título sendo corrigido, o balão aberto ou o arrasto). */
 export interface PessoaNaPrevia {
   nome: string;
   email: string;
-  card?: { numero: number; i: number } | null;
+  card?: CardDaPrevia | null;
 }
 export interface Previa {
   id: string;
@@ -325,7 +330,7 @@ export const mudarFilme = (id: string, numero: number, i: number, mudanca: Mudan
 /** O Enviar: os filmes prontos de toda a prévia vão para o Trello (o servidor continua sozinho). */
 export const enviarPrevia = (id: string) => pedir<{ enviando: number }>(`/api/filmes/previas/${encodeURIComponent(id)}/enviar`, { method: 'POST' });
 /** Avisa que a prévia está aberta (e o card em que mexe); volta quem mais está nela e a versão da prévia no servidor. */
-export const avisarNaPrevia = (id: string, card: { numero: number; i: number } | null) =>
+export const avisarNaPrevia = (id: string, card: CardDaPrevia | null) =>
   pedir<{ versao: string; pessoas: PessoaNaPrevia[] }>(`/api/filmes/previas/${encodeURIComponent(id)}/presenca`, { method: 'POST', body: JSON.stringify({ card }) });
 /** Sai da prévia, mesmo com a página fechando (o pedido sobrevive à saída). */
 export function sairDaPrevia(id: string) {

@@ -57,6 +57,21 @@ export function corSorteada(email: string): string {
   return CORES[h % CORES.length];
 }
 
+/** O primeiro nome, para a rubrica à mão ("Ana tá vendo"). */
+export const primeiroNome = (nome: string) => nome.split(/\s+/)[0];
+/** As iniciais da bolinha de quem está junto: a do primeiro nome e a do último. */
+export const iniciais = (nome: string) =>
+  nome
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .filter((_, i, a) => i === 0 || i === a.length - 1)
+    .join('')
+    .toUpperCase();
+/** "Ana", "Ana e Bruno", "Ana e mais 2". */
+export const nomesCurtos = (pessoas: { nome: string }[]) =>
+  pessoas.length <= 2 ? pessoas.map((p) => primeiroNome(p.nome)).join(' e ') : `${primeiroNome(pessoas[0].nome)} e mais ${pessoas.length - 1}`;
+
 export interface Presente {
   nome: string;
   email: string;

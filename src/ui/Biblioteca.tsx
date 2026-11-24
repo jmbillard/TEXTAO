@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
 import { apagarAoSair, armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
-import { corDe, PALETA, registrarCores } from '../dados/colaboracao';
+import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
@@ -59,14 +59,6 @@ interface Props {
   filmes?: () => void;
 }
 
-const iniciais = (nome: string) =>
-  nome
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((p) => p[0])
-    .filter((_, i, a) => i === 0 || i === a.length - 1)
-    .join('')
-    .toUpperCase();
 
 /** O desenho do meu ponteiro, como os colegas o veem. Times só por escolha. */
 function EscolhaDeCursor({ email, cor }: { email: string; cor: string }) {
@@ -255,9 +247,6 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, aoMudarCor }: Pi
 
 /* ---------- ficha da fila ---------- */
 
-const primeiro = (nome: string) => nome.split(/\s+/)[0];
-const nomes = (pessoas: { nome: string }[]) =>
-  pessoas.length <= 2 ? pessoas.map((p) => primeiro(p.nome)).join(' e ') : `${primeiro(pessoas[0].nome)} e mais ${pessoas.length - 1}`;
 
 const RABISCOS = [
   'M13 25 C 9 11, 27 4, 43 6 C 60 9, 61 31, 42 37 C 25 42, 5 37, 8 22 C 10 11, 23 5, 38 4',

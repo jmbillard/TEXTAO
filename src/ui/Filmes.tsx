@@ -12,11 +12,12 @@ import {
   type FilmeLido,
   type MudancaNoFilme,
   type PaginaDaPrevia,
+  type CardDaPrevia,
   type PessoaNaPrevia,
   type Previa,
   type PreviaNaLista,
 } from "../dados/armazenamento";
-import { corDe } from "../dados/colaboracao";
+import { corDe, iniciais, nomesCurtos, primeiroNome as primeiro } from "../dados/colaboracao";
 import { montarFileiras, podeSubir, type ItemDaFileira } from "../filmes/fileiras";
 import { Icone } from "./icones";
 import { Marca } from "./pecas";
@@ -51,18 +52,9 @@ const vaiNoEnvio = (f: FilmeLido) =>
 /** De quanto em quanto tempo a prévia aberta avisa que está ali e pergunta se mudou (e a lista, quem está em cada uma). */
 const BATIDA_MS = 2500;
 const LISTA_MS = 5000;
-const primeiro = (nome: string) => nome.split(/\s+/)[0];
-const iniciais = (nome: string) =>
-  nome
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((p) => p[0])
-    .filter((_, i, a) => i === 0 || i === a.length - 1)
-    .join("")
-    .toUpperCase();
 /** "Ana tá vendo", "Ana e Bruno tão vendo", "Ana e mais 2 tão vendo". */
 const taoVendo = (pessoas: { nome: string }[]) =>
-  `${pessoas.length <= 2 ? pessoas.map((p) => primeiro(p.nome)).join(" e ") : `${primeiro(pessoas[0].nome)} e mais ${pessoas.length - 1}`} ${pessoas.length === 1 ? "tá vendo" : "tão vendo"}`;
+  `${nomesCurtos(pessoas)} ${pessoas.length === 1 ? "tá vendo" : "tão vendo"}`;
 
 /** Quem mais está na prévia: as bolinhas com as iniciais, na cor de cada um. */
 function Presentes({ pessoas, texto }: { pessoas: PessoaNaPrevia[]; texto?: boolean }) {
@@ -235,7 +227,7 @@ function PreviaAberta({
   const [mandando, setMandando] = useState(false);
   // quem mais está na prévia, e o card em que eu estou mexendo (vai no aviso, para os outros verem)
   const [pessoas, setPessoas] = useState<PessoaNaPrevia[]>([]);
-  const [meuCard, setMeuCard] = useState<{ numero: number; i: number } | null>(null);
+  const [meuCard, setMeuCard] = useState<CardDaPrevia | null>(null);
   // a versão da prévia que está na tela; uma reabertura por vez
   const versaoNaTela = useRef<string | undefined>(undefined);
   const reabrindo = useRef<Promise<void> | null>(null);
@@ -271,10 +263,12 @@ function PreviaAberta({
           );
           if (erroDaConferencia)
             avisar(`Não consegui conferir com o banco: ${erroDaConferencia}`);
+          // uma reabertura que saiu antes desta mudança chega sem ela: reabre de novo logo depois
+          if (reabrindo.current) void reabrindo.current.then(carregar);
         },
         (e: Error) => avisar(e.message),
       ),
-    [id, avisar],
+    [id, avisar, carregar],
   );
   useEffect(() => void carregar(), [carregar]);
   // a batida: a cada poucos segundos a tela avisa que está aqui (com o card em que mexe) e fica sabendo quem mais
@@ -437,7 +431,7 @@ function Pagina({
   /** quem mais está na prévia, com o card em que mexe */
   outros: PessoaNaPrevia[];
   /** o card em que esta pessoa está mexendo (o título sendo corrigido, o balão aberto ou o arrasto) */
-  mexer: (card: { numero: number; i: number } | null) => void;
+  mexer: (card: CardDaPrevia | null) => void;
   reler: () => void;
   mudar: (i: number, m: MudancaNoFilme) => Promise<void>;
 }) {
