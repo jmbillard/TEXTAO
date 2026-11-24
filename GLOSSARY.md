@@ -48,6 +48,14 @@ _Evitar_: padrão, apelido
 **Sessão de filme**:
 A atração que exibe filmes da grade (Tela Quente, Supercine, Corujão…). A arte dela é do filme daquele dia.
 
+**Identidade própria do filme**:
+A arte feita para aquele filme (título, cartão…), com um card para cada exibição. É o caso das sessões de filme, menos a
+Sessão da Tarde. Na prévia, é a fileira de cima.
+
+**Sessão da Tarde**:
+A sessão de filme cuja arte é um template vertical, sem identidade própria do filme: os filmes da semana viram um card
+só. Na prévia, é a fileira de baixo; um filme lido ali por engano é arrastado para a fileira de cima.
+
 **Filme**:
 Um título da grade que passa numa sessão, sem claquete própria; mora na tabela `filmes`. Lançamento com claquete
 própria é atração, não filme.
