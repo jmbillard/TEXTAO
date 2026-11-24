@@ -1231,6 +1231,10 @@ kbd {
 .estatisticas span:first-child { border-left: 0; padding-left: 0; }
 .estatisticas b { font: 600 12.5px var(--mono); color: var(--tinta); letter-spacing: -0.01em; }
 .estatisticas .tempo b { color: var(--ultra); }
+/* o card leva a maior complexidade: o fogo e o nome */
+.estatisticas .cx-card { align-items: center; }
+.estatisticas .cx-card .fogo { margin-top: -6px; }
+.estatisticas .cx-card.n2 b, .estatisticas .cx-card.n3 b { color: var(--ultra); }
 .estatisticas .dir { margin-left: auto; border-left: 0; padding-right: 0; overflow: hidden; text-overflow: ellipsis; }
 .pagina.editor .mesa { padding-bottom: 60px; }
 @media (max-width: 900px) { .estatisticas .dir { display: none; } }
@@ -1743,8 +1747,21 @@ html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !imp
 .artes li.marcada .txt b { color: var(--tinta3); font-weight: 600; }
 /* a saída do checklist no hover: não produzir (×) */
 .acoes-arte { display: flex; gap: 2px; flex: none; }
-/* a coluna da complexidade da arte, entre o texto e o ×: largura fixa, reservada (vazia por enquanto) */
-.artes.so-lista .cx { flex: none; align-self: center; width: 26px; height: 24px; margin-right: -2px; }
+/* a complexidade da arte: o fogo em traço à mão, sem preenchimento, sem brilho e sem sombra. A vela (BAIXA) fica
+   apagada; a fogueira (MÉDIA) e o incêndio (ALTA) na cor de destaque */
+.fogo { display: block; overflow: visible; }
+.fogo path { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+.fogo .hachura { stroke-width: 0.9; opacity: 0.75; }
+.fogo.n1 { color: var(--tinta3); }
+.fogo.n1 path { stroke-width: 1.25; }
+.fogo.n2 path { stroke-width: 1.5; }
+.fogo.n3 path:not(.hachura) { stroke-width: 1.7; }
+.fogo.n2, .fogo.n3 { color: var(--ultra); }
+/* a coluna da complexidade, entre o texto e o ×: largura fixa (a do incêndio), cada fogo centrado nela e no chão */
+.artes.so-lista .cx { flex: none; align-self: center; width: 26px; height: 24px; margin: 0 -2px 0 0; padding: 0; border: 0; background: none; cursor: pointer; display: grid; justify-items: center; align-items: end; }
+.artes.so-lista .cx .fogo.n1 { opacity: 0.6; }
+.artes.so-lista .cx:hover .fogo.n1 { opacity: 1; }
+.artes.so-lista .cx:hover .fogo.n2, .artes.so-lista .cx:hover .fogo.n3 { color: var(--ultra-tinta); }
 /* a bolinha do índice marca "já existe": no hover vira ✓; na arte que existe, fica o ✓ no aro */
 .artes.so-lista .b svg { display: none; margin: 0 -3px; }
 .artes.so-lista .b[data-marca] { cursor: pointer; }

@@ -406,6 +406,29 @@ export function remarcar(meta: Pick<Meta, 'jaExiste' | 'jaExistem' | 'naoProduzi
   return { jaExiste: lista(ja), naoProduzir: lista(fora), produzir: lista(prod) };
 }
 
+/** Complexidade da arte: BAIXA, MÉDIA ou ALTA, na escala do campo do Trello e da produção da arte. */
+export type Complexidade = 1 | 2 | 3;
+export const NOME_DA_COMPLEXIDADE: Record<Complexidade, string> = { 1: 'BAIXA', 2: 'MÉDIA', 3: 'ALTA' };
+
+/** A complexidade da arte (pela chave): a não marcada é BAIXA. */
+export const complexidadeDaArte = (meta: Pick<Meta, 'complexidade'>, chave: string): Complexidade => meta.complexidade?.[chave] ?? 1;
+
+/** O clique no fogo: sobe um nível (BAIXA → MÉDIA → ALTA → BAIXA). Devolve as marcas novas; a BAIXA não é guardada. */
+export function subirComplexidade(meta: Pick<Meta, 'complexidade'>, chave: string): Pick<Meta, 'complexidade'> {
+  const n = complexidadeDaArte(meta, chave);
+  const marcas = { ...meta.complexidade };
+  if (n === 3) delete marcas[chave];
+  else marcas[chave] = n === 1 ? 2 : 3;
+  return { complexidade: Object.keys(marcas).length ? marcas : undefined };
+}
+
+/** A complexidade do card: a maior das artes a produzir (a que já existe e a que está fora não contam); sem nenhuma, BAIXA. */
+export function complexidadeDoRoteiro(meta: Pick<Meta, 'complexidade' | 'jaExiste' | 'jaExistem' | 'naoProduzir' | 'produzir'>, chaves: string[]): Complexidade {
+  const existem = chavesQueExistem(meta);
+  const fora = new Set(meta.naoProduzir ?? []);
+  return Math.max(1, ...chaves.filter((k) => !existem.has(k) && !fora.has(k)).map((k) => complexidadeDaArte(meta, k))) as Complexidade;
+}
+
 /** As artes do roteiro que estão no acervo da atração e ninguém resolveu (com elas já riscadas, normalmente nenhuma). */
 export function artesQueJaExistem(saida: Saida): string[] {
   const acervo = new Set((saida.roteiro.jaExistem ?? []).map((a) => a.chave));

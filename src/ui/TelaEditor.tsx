@@ -21,7 +21,7 @@ import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { chavesQueExistem, exportar, listaDeArtes, pendencias, pendenciasDetalhadas, remarcar, type Saida } from '../modelo/exportar';
+import { chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import { nomeDaSigla,
@@ -30,6 +30,7 @@ import { nomeDaSigla,
 import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
+import { Fogo } from './fogo';
 import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
@@ -707,6 +708,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     setRealce(null);
     avisar(como === 'existe' ? `"${a.texto}" já existe: sai do checklist e, no envio, entra no acervo.` : como === 'fora' ? `"${a.texto}" não vai ser produzida.` : `"${a.texto}" volta para o checklist.`);
   };
+  // a complexidade da arte: o clique no fogo sobe um nível; o card leva a maior das artes a produzir
+  const subirFogo = (a: (typeof artes)[number]) => mudarMeta(subirComplexidade(meta, chaveDeArte(a.texto)));
+  const complexidadeDoCard = useMemo(() => complexidadeDoRoteiro(meta, saida.artes.map((a) => chaveDeArte(a.texto))), [meta, saida]);
 
   // várias de uma vez: Shift+clique seleciona um trecho da lista, Ctrl/⌘+clique soma uma; a barra marca todas juntas
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
@@ -1100,7 +1104,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                       ? 'Antes, compare com o que já está no Trello e decida'
                       : estadoTrello?.estado === 'erro'
                         ? estadoTrello.erro
-                        : `${meta.v2De ? 'Põe as artes novas no card que já existe' : 'Cria o card com as artes, os campos e o PDF'}${proximo.r ? ` e abre ${proximo.r.meta.claquete || 'o próximo'}` : ''} (${atalho('Mod-Enter')})`
+                        : `${meta.v2De ? 'Põe as artes novas no card que já existe' : `Cria o card com as artes, os campos e o PDF · complexidade ${NOME_DA_COMPLEXIDADE[complexidadeDoCard]}`}${proximo.r ? ` e abre ${proximo.r.meta.claquete || 'o próximo'}` : ''} (${atalho('Mod-Enter')})`
                     : `${proximo.r?.meta.claquete || 'Próximo roteiro'} (${atalho('Mod-Enter')})`
                 }
                 onClick={() => void acaoPrincipal()}
@@ -1272,6 +1276,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                     const k = chaveDeArte(a.texto);
                     const ja = doAcervo.get(k);
                     const marcada = marcadasJa.has(k) ? 'existe' : marcadasFora.has(k) ? 'fora' : null;
+                    const cx = complexidadeDaArte(meta, k);
                     return (
                     <li
                       key={a.id}
@@ -1302,8 +1307,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                       </button>
                       {!leitura && !marcada && (
                         <>
-                          {/* a coluna da complexidade da arte: largura fixa, por enquanto vazia */}
-                          <span className="cx" aria-hidden="true" />
+                          {/* a coluna da complexidade da arte: largura fixa, o fogo do nível centrado nela; o clique sobe um nível */}
+                          <button className="cx" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[cx]}`} title={`Complexidade: ${NOME_DA_COMPLEXIDADE[cx]} · clique sobe um nível`} onClick={() => subirFogo(a)}>
+                            <Fogo n={cx} />
+                          </button>
                           <span className="acoes-arte">
                             <button className="tirar-arte" aria-label={`Não produzir "${a.texto}"`} title="Não produzir (sai do checklist)" onClick={() => marcarArte(a, 'fora')}>
                               <Icone nome="fechar" tam={13} traco={2.2} />
@@ -1383,7 +1390,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       </section>
 
       {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{position:relative;animation:selecionar-arte .5s cubic-bezier(.45,0,.3,1) forwards}.texto u.arte[data-id="${CSS.escape(realce)}"]::after{content:'';position:absolute;top:-.2em;width:.5em;height:1.4em;margin-left:-.25em;pointer-events:none;background:var(--ibeam-arte) no-repeat center/contain;animation:arrastar-cursor-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}
-      <Estatisticas saida={saida} paginas={meta.paginasOriginal} original={original} />
+      <Estatisticas saida={saida} complexidade={complexidadeDoCard} paginas={meta.paginasOriginal} original={original} />
 
     </div>
   );
@@ -1403,7 +1410,7 @@ const quandoSubiu = (iso: string) => {
 const PALAVRAS_POR_PAGINA = 250;
 
 /** Rodapé com os números do roteiro, atualizados enquanto se edita. */
-function Estatisticas({ saida, paginas, original }: { saida: Saida; paginas?: number; original?: Roteiro['original'] }) {
+function Estatisticas({ saida, complexidade, paginas, original }: { saida: Saida; complexidade: Complexidade; paginas?: number; original?: Roteiro['original'] }) {
   const total = contarPalavras(saida.texto.completo);
   const locucao = contarPalavras(saida.texto.locucao);
   const caracteres = saida.texto.completo.replace(/\n/g, '').length;
@@ -1417,6 +1424,8 @@ function Estatisticas({ saida, paginas, original }: { saida: Saida; paginas?: nu
       <span className="tempo" title="Locução e sonoras, no ritmo médio de leitura de chamada">≈ <b>{duracao(saida.roteiro.duracaoEstimadaSeg)}</b> de leitura</span>
       <span><b>{numero(caracteres)}</b> caracteres</span>
       <span><b>{saida.artes.length}</b> {saida.artes.length === 1 ? 'arte' : 'artes'}</span>
+      {/* o card leva a maior complexidade das artes a produzir */}
+      <span className={`cx-card n${complexidade}`} title="O card vai com a maior complexidade das artes"><Fogo n={complexidade} /><b>{NOME_DA_COMPLEXIDADE[complexidade]}</b></span>
       <span title={paginas ? 'Páginas do arquivo que subiu' : `Estimativa, ${PALAVRAS_POR_PAGINA} palavras por página`}>
         <b>{paginas ? '' : '~'}{pags}</b> {pags === 1 ? 'página' : 'páginas'}
       </span>

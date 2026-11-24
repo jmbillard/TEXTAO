@@ -105,6 +105,8 @@ export interface Meta {
   naoProduzir?: string[];
   /** Artes do acervo (que já viriam riscadas) que quem revisa mandou produzir de novo (↺), pela chave. */
   produzir?: string[];
+  /** Complexidade de cada arte a produzir (pela chave): só MÉDIA (2) e ALTA (3) ficam guardadas; a ausência é BAIXA. */
+  complexidade?: Record<string, 2 | 3>;
 }
 
 export const metaVazia = (): Meta => ({

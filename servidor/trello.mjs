@@ -98,11 +98,14 @@ export function configDoTrello(env) {
       output: env.TRELLO_CAMPO_OUTPUT || '',
       bot: env.TRELLO_CAMPO_BOT || '',
       entrada: env.TRELLO_CAMPO_ENTRADA || '',
+      complexidade: nomeLimpoPg(env.TRELLO_CAMPO_COMPLEXIDADE),
       // campos copiados do card do filme (complexidade, uso de IA)
       doFilme: String(env.TRELLO_CAMPOS_FILME || '').split(',').map((s) => s.trim()).filter(Boolean),
     },
     pracas: pares(env.TRELLO_PRACAS),
     prioridadeAlta: env.TRELLO_PRIORIDADE_ALTA || '',
+    // as opções do campo Complexidade, na ordem BAIXA, MÉDIA, ALTA (o nível 1 é a primeira)
+    complexidades: String(env.TRELLO_COMPLEXIDADE_OPCOES || '').split(',').map((s) => s.trim()),
     // os cards de filme da prévia (aba Filmes), como o fluxo CARDS do n8n: a lista dos filmes, as etiquetas (todas
     // ou por sessão, "SUPERCINE=id"), a opção da praça e a prioridade MÉDIA do inédito
     filmes: {
@@ -173,6 +176,12 @@ export function faltasDoTrello(c) {
   if (!c.listas.padrao && !PRACAS_TRELLO.some((p) => c.listas[p])) f.push('TRELLO_LISTA_SP / _RJ / _G5 / _INTER (ao menos uma entrada)');
   return f;
 }
+
+/** A complexidade da arte que chegou no envio: 1, 2 ou 3 (BAIXA, MÉDIA, ALTA); o resto vale BAIXA. */
+export const nivelDeComplexidade = (v) => ([1, 2, 3].includes(Number(v)) ? Number(v) : 1);
+
+/** A complexidade do card: a maior das artes a produzir (a que já existe não conta); sem nenhuma, BAIXA. */
+export const complexidadeDoCard = (lista) => Math.max(1, ...lista.filter((a) => !a.existe).map((a) => nivelDeComplexidade(a.complexidade)));
 
 /** Os itens do checklist: um por arte, ou um por tipo quando a arte tem mais de um ("HOJE (RDP)", "HOJE (CRT)"),
     porque cada tipo é uma produção. A que já existe fica de fora. */
@@ -508,8 +517,8 @@ export function criarTrello(env, deps = {}) {
     };
 
     const listaDeArtes = (r.artes ?? [])
-      .map((a) => (typeof a === 'string' ? { texto: a, tipo: '' } : { texto: String(a?.texto ?? ''), tipo: String(a?.tipo ?? ''), tipos: a?.tipos, existe: !!a?.existe }))
-      .map((a) => ({ texto: a.texto.trim(), tipo: a.tipo.trim(), tipos: Array.isArray(a.tipos) ? a.tipos.map((t) => String(t).trim()).filter(Boolean) : [], existe: !!a.existe }))
+      .map((a) => (typeof a === 'string' ? { texto: a, tipo: '' } : { texto: String(a?.texto ?? ''), tipo: String(a?.tipo ?? ''), tipos: a?.tipos, existe: !!a?.existe, complexidade: a?.complexidade }))
+      .map((a) => ({ texto: a.texto.trim(), tipo: a.tipo.trim(), tipos: Array.isArray(a.tipos) ? a.tipos.map((t) => String(t).trim()).filter(Boolean) : [], existe: !!a.existe, complexidade: nivelDeComplexidade(a.complexidade) }))
       .filter((a) => a.texto);
     // a que já existe no acervo da atração vai no PDF (sublinhada, como no roteiro), mas não no checklist nem na conta
     const artes = itensDoChecklist(listaDeArtes);
@@ -524,6 +533,7 @@ export function criarTrello(env, deps = {}) {
 
     const hoje = agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
     const chave = chaveN8n(claquete);
+    const complexidade = complexidadeDoCard(listaDeArtes);
     const praca = PRACAS_TRELLO.includes(m.praca) ? m.praca : 'G5';
     const vt = /\bVt\b/i.test(claquete) || /\bVt\b/i.test(r.original?.nome ?? '');
     const lista = (vt && c.listas.VT) || c.listas[praca] || c.listas.padrao;
@@ -556,6 +566,7 @@ export function criarTrello(env, deps = {}) {
     // o card é o que importa: sem ele, o envio falhou (a checklist que falhar vira aviso)
     const card = await criarCard({ lista, nome: claquete, desc, checklist: { nome: 'ARTES PRODUZIDAS', itens: artes } }, avisos);
     const output = filme?.output || atracao?.output || '';
+    const opcaoDaComplexidade = c.campos.complexidade ? c.complexidades[complexidade - 1] : '';
     await Promise.all([
       tentar('marcar o BOT', () => campo(card.id, c.campos.bot, { value: { checked: 'true' } })),
       c.pracas[praca] && tentar('preencher a praça', () => campo(card.id, c.campos.praca, { idValue: c.pracas[praca] })),
@@ -564,6 +575,8 @@ export function criarTrello(env, deps = {}) {
       alta && tentar('preencher a prioridade', () => campo(card.id, c.campos.prioridade, { idValue: c.prioridadeAlta })),
       atracao?.projeto && tentar('preencher o projeto', () => campo(card.id, c.campos.projeto, { value: { text: atracao.projeto } })),
       output && tentar('preencher o output', () => campo(card.id, c.campos.output, { value: { text: output } })),
+      // sem o campo ou sem a opção do nível, o card sai sem ele (a produção da arte grava o número do mesmo jeito)
+      opcaoDaComplexidade && tentar('preencher a complexidade', () => campo(card.id, c.campos.complexidade, { idValue: opcaoDaComplexidade })),
     ]);
 
     if (filme)
@@ -573,6 +586,8 @@ export function criarTrello(env, deps = {}) {
         if (doFilme.idMembers?.length) await trello('PUT', `/cards/${card.id}`, { consulta: { idMembers: doFilme.idMembers.join(',') } });
         for (const item of doFilme.customFieldItems ?? []) {
           if (!c.campos.doFilme.includes(item.idCustomField)) continue;
+          // a complexidade marcada na revisão vale mais que a do filme: o card fica igual à produção da arte
+          if (opcaoDaComplexidade && item.idCustomField === c.campos.complexidade) continue;
           const corpo = item.idValue ? { idValue: item.idValue } : item.value && Object.keys(item.value).length ? { value: item.value } : null;
           if (corpo) await campo(card.id, item.idCustomField, corpo);
         }
@@ -613,7 +628,7 @@ export function criarTrello(env, deps = {}) {
         prioridade: alta ? 'ALTA' : '',
         workflow: r.endereco || c.endereco || 'PROMeiro',
         urgencia: 1,
-        complexidade: 1,
+        complexidade,
       }),
     );
 

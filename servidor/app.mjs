@@ -13,7 +13,7 @@ import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
-import { chaveDaAtracao, criarTrello } from './trello.mjs';
+import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
 import { criarFilmes } from './filmes.mjs';
@@ -803,7 +803,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         ...(v1 ? { docOriginal: JSON.parse(v1.doc), metaOriginal: JSON.parse(v1.meta) } : {}),
         ...(o?.texto ? { textoOriginal: JSON.parse(o.texto) } : {}),
         artes: Array.isArray(corpo.artes)
-          ? corpo.artes.slice(0, 200).map((a) => (typeof a === 'string' ? a.slice(0, 500) : { texto: String(a?.texto ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40), existe: !!a?.existe }))
+          ? corpo.artes.slice(0, 200).map((a) => (typeof a === 'string' ? a.slice(0, 500) : { texto: String(a?.texto ?? '').slice(0, 500), tipo: String(a?.tipo ?? '').slice(0, 40), existe: !!a?.existe, complexidade: nivelDeComplexidade(a?.complexidade) }))
           : [],
         texto: typeof corpo.texto === 'string' ? corpo.texto.slice(0, 200_000) : '',
         original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null,

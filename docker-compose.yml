@@ -96,6 +96,9 @@ services:
       - TRELLO_CAMPO_OUTPUT=${TRELLO_CAMPO_OUTPUT:-}
       - TRELLO_CAMPO_BOT=${TRELLO_CAMPO_BOT:-}
       - TRELLO_CAMPO_ENTRADA=${TRELLO_CAMPO_ENTRADA:-}
+      # o campo Complexidade e as opções BAIXA,MÉDIA,ALTA (IDs); vazios = o card sai sem o campo
+      - TRELLO_CAMPO_COMPLEXIDADE=${TRELLO_CAMPO_COMPLEXIDADE:-}
+      - TRELLO_COMPLEXIDADE_OPCOES=${TRELLO_COMPLEXIDADE_OPCOES:-}
       - TRELLO_CAMPOS_FILME=${TRELLO_CAMPOS_FILME:-}
       # os cards de filme da aba Filmes: a lista (sem ela, o Enviar fica desligado), as etiquetas, a praça e a prioridade MÉDIA
       - TRELLO_LISTA_FILMES=${TRELLO_LISTA_FILMES:-}

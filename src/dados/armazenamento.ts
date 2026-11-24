@@ -1,7 +1,7 @@
 import { chaveDeArte } from '../modelo/diferencas';
 import { siglaDoTipo } from '../modelo/tipos';
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
-import { chavesQueExistem, exportar } from '../modelo/exportar';
+import { chavesQueExistem, complexidadeDaArte, exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
 import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
 
@@ -478,9 +478,10 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   const jaExiste = chavesQueExistem(roteiro.meta);
   // a que não vai ser produzida nem vai para o card (o PDF é o original, ela continua lá)
   const fora = new Set(roteiro.meta.naoProduzir ?? []);
+  // cada arte leva a sua complexidade; o servidor calcula a maior das que vão ser produzidas para o card
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
     method: 'POST',
-    body: JSON.stringify({ artes: saida.artes.filter((a) => !fora.has(chaveDeArte(a.texto))).map((a) => ({ texto: a.texto, tipo: a.subtipos.map(siglaDoTipo).join(', '), tipos: a.subtipos.map(siglaDoTipo), existe: jaExiste.has(chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
+    body: JSON.stringify({ artes: saida.artes.filter((a) => !fora.has(chaveDeArte(a.texto))).map((a) => ({ texto: a.texto, tipo: a.subtipos.map(siglaDoTipo).join(', '), tipos: a.subtipos.map(siglaDoTipo), existe: jaExiste.has(chaveDeArte(a.texto)), complexidade: complexidadeDaArte(roteiro.meta, chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
   });
 }
 

@@ -724,3 +724,74 @@ describe('card avulso: o mesmo jeito de criar card, fora do envio de roteiros', 
     expect(r.avisos).toEqual([expect.stringMatching(/^criar a checklist: .*500/)]);
   });
 });
+
+describe('complexidade da arte: o card leva a maior das artes a produzir', () => {
+  /* o campo Complexidade e as opções BAIXA, MÉDIA, ALTA, inventados (o mesmo campo que o card do filme copia) */
+  const COM_CAMPO = { ...ENV, TRELLO_CAMPO_COMPLEXIDADE: 'cComplexidade', TRELLO_COMPLEXIDADE_OPCOES: 'opBaixa, opMedia, opAlta' };
+  const registro = (pedidos: Pedido[]) =>
+    (pedidos.find((p) => p.url.pathname === '/api/table/tblProducao/record')!.corpo as { records: { fields: Record<string, unknown> }[] }).records[0].fields;
+  const enviar = async (env: Record<string, string>, artes: unknown[]) => {
+    const { buscar, pedidos } = falsos();
+    await criarTrello(env, { buscar, ...banco(), sftp: async () => {} }).enviar({ meta, doc: DOC, artes, original });
+    return pedidos;
+  };
+
+  it('a maior vai no campo do card e na produção da arte', async () => {
+    const pedidos = await enviar(COM_CAMPO, [{ texto: 'A GRANDE FESTA', complexidade: 2 }, { texto: 'SÁBADO', complexidade: 3 }, { texto: 'DOMINGO' }]);
+    expect(campoPut(pedidos, 'cComplexidade')).toEqual({ idValue: 'opAlta' });
+    expect(registro(pedidos).complexidade).toBe(3);
+  });
+
+  it('sem marca, vai BAIXA e 1', async () => {
+    const pedidos = await enviar(COM_CAMPO, [{ texto: 'A GRANDE FESTA' }, 'SÁBADO']);
+    expect(campoPut(pedidos, 'cComplexidade')).toEqual({ idValue: 'opBaixa' });
+    expect(registro(pedidos).complexidade).toBe(1);
+  });
+
+  it('a arte que já existe não conta (a que está fora nem chega ao servidor)', async () => {
+    const pedidos = await enviar(COM_CAMPO, [{ texto: 'A GRANDE FESTA', complexidade: 2 }, { texto: 'HOJE', existe: true, complexidade: 3 }]);
+    expect(campoPut(pedidos, 'cComplexidade')).toEqual({ idValue: 'opMedia' });
+    expect(registro(pedidos).complexidade).toBe(2);
+    // só artes que já existem: nenhuma a produzir, BAIXA
+    const soExistem = await enviar(COM_CAMPO, [{ texto: 'HOJE', existe: true, complexidade: 3 }]);
+    expect(campoPut(soExistem, 'cComplexidade')).toEqual({ idValue: 'opBaixa' });
+    expect(registro(soExistem).complexidade).toBe(1);
+  });
+
+  it('o campo não configurado não é preenchido, mas a produção da arte é gravada com o número', async () => {
+    const pedidos = await enviar(ENV, [{ texto: 'A GRANDE FESTA', complexidade: 3 }]);
+    expect(campoPut(pedidos, 'cComplexidade')).toBeUndefined();
+    expect(registro(pedidos).complexidade).toBe(3);
+    // o campo sem as opções também não é preenchido
+    const semOpcoes = await enviar({ ...ENV, TRELLO_CAMPO_COMPLEXIDADE: 'cComplexidade' }, [{ texto: 'A GRANDE FESTA', complexidade: 3 }]);
+    expect(campoPut(semOpcoes, 'cComplexidade')).toBeUndefined();
+    expect(registro(semOpcoes).complexidade).toBe(3);
+  });
+
+  it('na sessão de filmes, a complexidade da revisão vale mais que a copiada do card do filme', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(COM_CAMPO, { buscar, consultar: banco({ sessao: true }).consultar });
+    await t.enviar({ meta: { ...meta, claquete: 'Sessão da Tarde 19/11', praca: 'G5' }, artes: [{ texto: 'X', complexidade: 3 }], original: { ...original, nome: 'sessao.pdf', tipo: 'application/pdf' } });
+    const puts = pedidos.filter((p) => p.metodo === 'PUT' && p.url.pathname.endsWith('/customField/cComplexidade/item')).map((p) => p.corpo);
+    expect(puts).toEqual([{ idValue: 'opAlta' }]);
+    expect(campoPut(pedidos, 'cIA')).toEqual({ value: { checked: 'true' } });
+    expect(registro(pedidos).complexidade).toBe(3);
+  });
+
+  it('a rota passa a complexidade de cada arte ao envio', async () => {
+    const recebidos: { artes: unknown[] }[] = [];
+    const trello = { ligado: true, parar: async () => {}, enviar: async (r: { artes: unknown[] }) => (recebidos.push(r), { card: { id: 'c7', url: 'https://trello.com/c/C7' }, avisos: [] }) };
+    const servidor = createServer(criarApp({ db: abrirBanco(':memory:'), env: {}, trello }));
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    const ana = (caminho: string, init: RequestInit = {}) =>
+      fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com', 'content-type': 'application/json', ...init.headers } });
+    try {
+      await ana('/api/roteiros/rot-cx-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Festa 19/11' }, doc: { type: 'doc', content: [] } }, nArtes: 2 }) });
+      await ana('/api/roteiros/rot-cx-1/trello', { method: 'POST', body: JSON.stringify({ artes: [{ texto: 'HOJE', tipo: '', complexidade: 3 }, { texto: 'AMANHÃ', tipo: '' }], texto: 'x' }) });
+      expect(recebidos[0].artes).toMatchObject([{ texto: 'HOJE', complexidade: 3 }, { texto: 'AMANHÃ', complexidade: 1 }]);
+    } finally {
+      servidor.close();
+    }
+  });
+});
