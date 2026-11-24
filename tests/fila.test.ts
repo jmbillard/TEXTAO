@@ -255,6 +255,44 @@ describe('No Trello: a semana de agenda', () => {
   });
 });
 
+describe('No Trello: a agenda ao vivo', () => {
+  const agora = new Date(2026, 10, 24, 15, 0); // ter, 24/11
+  const enviado = (id: string, data: string): Resumo => ({
+    ...resumo(id, data),
+    meta: { ...metaVazia(), dataExibicao: data, claquete: id.toUpperCase() },
+    trello: { estado: 'enviado', url: 'https://trello.com/c/x', em: '2026-11-20T12:00:00Z' },
+  });
+  const semana = async (lista: Resumo[], andamento: Record<string, Andamento> = {}) => (await import('../src/ui/fila')).montarSemana(lista, andamento, agora);
+
+  it('o card sem data que ganha data muda de coluna: do "sem data" para o dia', async () => {
+    const { mudancasDaSemana } = await import('../src/ui/fila');
+    const antes = await semana([enviado('vt', ''), enviado('chef', '2026-11-24')]);
+    const depois = await semana([enviado('vt', '2026-11-26'), enviado('chef', '2026-11-24')]);
+    expect(mudancasDaSemana(antes, depois)).toEqual({ sairam: [], entraram: [], moveram: [{ id: 'vt', de: 'sem-data', para: '2026-11-26' }] });
+  });
+
+  it('o card apagado sai, e o enviado agora entra; quem fica no lugar não aparece', async () => {
+    const { mudancasDaSemana } = await import('../src/ui/fila');
+    const antes = await semana([enviado('chef', '2026-11-24'), enviado('vt', ''), enviado('bolo', '2026-11-25')]);
+    const depois = await semana([enviado('bolo', '2026-11-25'), enviado('festa', '2026-11-27'), enviado('evento', '')]);
+    expect(mudancasDaSemana(antes, depois)).toEqual({ sairam: ['chef', 'vt'], entraram: ['festa', 'evento'], moveram: [] });
+  });
+
+  it('o card que só muda de etapa (e desce para o fim do dia ao cair) não aparece em nada', async () => {
+    const { mudancasDaSemana } = await import('../src/ui/fila');
+    const lista = [enviado('a', '2026-11-24'), enviado('b', '2026-11-24')];
+    const caiu: Andamento = { status: ['CAIU'], designers: [], entregue: false, entrega: null };
+    expect(mudancasDaSemana(await semana(lista), await semana(lista, { a: caiu }))).toEqual({ sairam: [], entraram: [], moveram: [] });
+  });
+
+  it('o card que muda de dia dentro da semana vai de uma coluna para a outra; o que vai para fora dela sai', async () => {
+    const { mudancasDaSemana } = await import('../src/ui/fila');
+    const antes = await semana([enviado('a', '2026-11-24'), enviado('b', '2026-11-25')]);
+    const depois = await semana([enviado('a', '2026-11-28'), enviado('b', '2026-12-10')]);
+    expect(mudancasDaSemana(antes, depois)).toEqual({ sairam: ['b'], entraram: [], moveram: [{ id: 'a', de: '2026-11-24', para: '2026-11-28' }] });
+  });
+});
+
 describe('No Trello: o card aberto', () => {
   const andamento = (status: string[], extra: Partial<Andamento> = {}): Andamento => ({ status, designers: [], entregue: false, entrega: null, ...extra });
 

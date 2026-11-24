@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
 import { apagarAoSair, armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
 import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
@@ -6,9 +6,9 @@ import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, travamTrello } from '../modelo/exportar';
 import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
-import { Vagas } from './vagas';
+import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
-import { agruparPorDia, etapaPorExtenso, filaVisivel, montarSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type GrupoDia } from './fila';
+import { agruparPorDia, etapaPorExtenso, filaVisivel, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type GrupoDia, type Semana } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -444,21 +444,21 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
   const { nome: etapaNome, ate } = etapaPorExtenso(andamento);
   const idMais = `card-mais-${r.id}`;
   return (
-    <li className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''}`} data-card={r.id}>
+    <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''}`} data-card={r.id}>
       <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
         <span className="card-semana-claquete">{c.prioridade ? <Riscado traco={tracoDe(r.id)}>{claquete}</Riscado> : claquete}</span>
         <span className="card-semana-linha">
           {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
           <span className="card-semana-artes">{plural(r.nArtes, 'arte', 'artes')}</span>
           {etapa && (
-            <span className={`card-semana-etapa ${etapa}`}>
+            <span key={etapa} className={`card-semana-etapa ${etapa}`}>
               {etapa === 'entregue' ? <Icone nome="certo" tam={11} traco={3} /> : etapa !== 'caiu' && <i aria-hidden="true" />}
               {ETAPA_NO_CARD[etapa]}
             </span>
           )}
         </span>
         {/* na semana encolhida, a etapa vira só o pontinho à direita da claquete */}
-        {etapa && etapa !== 'caiu' && <i className={`card-semana-sinal ${etapa}`} aria-hidden="true" />}
+        {etapa && etapa !== 'caiu' && <i key={etapa} className={`card-semana-sinal ${etapa}`} aria-hidden="true" />}
       </button>
       <div className="card-semana-mais" id={idMais} inert={!aberto || undefined}>
         <div>
@@ -509,11 +509,13 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
           <Icone nome="fechar" tam={11} traco={2.4} />
         </button>
       )}
-    </li>
+    </div>
   );
 }
 
 const CHAVE_SEMANA = 'promeiro:semana';
+/** De quanto em quanto tempo a etapa dos cards é lida de novo, com a aba à vista. */
+const LER_ANDAMENTO_MS = 60_000;
 
 /** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de ontem. Com roteiros
     para revisar na fila, a semana encolhe; "ver a semana inteira" volta ao tamanho normal (a escolha fica no navegador). */
@@ -552,9 +554,20 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
     return () => document.removeEventListener('keydown', tecla);
   }, [aberto]);
   const s = montarSemana(lista, andamento, new Date(), deslocamento);
+  // ao vivo: o que sai fecha a vaga, o que entra abre a sua, e o que troca de coluna (o sem data que ganhou data)
+  // desliza até o lugar novo. Outra semana (as setas, a virada do dia) ou a semana encolhendo não animam.
+  const secao = useRef<HTMLElement>(null);
+  const vista = useRef<{ s: Semana; encolhida: boolean } | null>(null);
+  const antes = vista.current;
+  const mesmaVista = !!antes && antes.s.dias[0].iso === s.dias[0].iso && antes.encolhida === encolhida;
+  const deslizam = new Set(mesmaVista ? mudancasDaSemana(antes.s, s).moveram.map((m) => m.id) : []);
+  const disposicao = [...s.dias.map((d) => d.cards), s.semData].map((cs) => cs.map((c) => c.r.id).join(',')).join('|');
+  useDeslize(secao, '.semana [data-card], .sem-data [data-card]', disposicao, mesmaVista);
+  useLayoutEffect(() => {
+    vista.current = { s, encolhida };
+  });
   const card = (c: CardDaSemana) => (
     <CardNoTrello
-      key={c.r.id}
       c={c}
       aberto={aberto === c.r.id}
       alternar={() => setAberto((a) => (a === c.r.id ? null : c.r.id))}
@@ -563,13 +576,15 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
     />
   );
   const avulsa = (titulo: string, cards: CardDaSemana[], chave: string) => (
-    <section key={chave} className="semana-avulsa" aria-label={titulo}>
+    <section key={chave} className={`semana-avulsa ${chave === 'sem-data' ? 'sem-data' : ''}`} aria-label={titulo}>
       <h3>{titulo}</h3>
-      <ul>{cards.map(card)}</ul>
+      <ul data-grade="">
+        <Vagas como="li" itens={cards} chave={(c) => c.r.id} deslizam={deslizam}>{card}</Vagas>
+      </ul>
     </section>
   );
   return (
-    <section className={`secao-trello ${encolhida ? 'encolhida' : ''}`} aria-label="No Trello">
+    <section ref={secao} className={`secao-trello ${encolhida ? 'encolhida' : ''}`} aria-label="No Trello">
       <div className="secao-trello-topo">
         <h2>
           <Icone nome="quadro" tam={22} traco={1.7} />
@@ -612,11 +627,15 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
               </span>
               {d.marca && <span className="dia-rel">{d.marca}</span>}
             </div>
-            <ul className="coluna-corpo">{d.cards.length ? d.cards.map(card) : <li className="nada">nada ainda</li>}</ul>
+            <ul className="coluna-corpo">
+              <Vagas como="li" itens={d.cards} chave={(c) => c.r.id} deslizam={deslizam}>{card}</Vagas>
+              {!d.cards.length && <li className="nada entra-suave">nada ainda</li>}
+            </ul>
           </section>
         ))}
       </div>
-      {s.semData.length > 0 && avulsa('sem data', s.semData, 'sem-data')}
+      {/* a faixa do sem data também fecha a vaga quando o último card dela sai (ou ganha data) */}
+      <Vagas itens={s.semData.length ? ['sem-data'] : []} chave={(k) => k}>{() => avulsa('sem data', s.semData, 'sem-data')}</Vagas>
       {verAnteriores && s.anteriores.map((d) => avulsa(d.titulo, d.cards, d.iso))}
     </section>
   );
@@ -676,16 +695,25 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const [claqueteNova, setClaqueteNova] = useState('');
 
   const carregar = () => armazenamento.listar().then(setRoteiros, () => setRoteiros([]));
-  // o andamento na produção da arte: junto com a fila e a cada 2 min (o servidor guarda por 1 min)
+  // o andamento na produção da arte (a etapa dos cards): junto com a fila, a cada minuto só com a aba à vista, e de
+  // novo quando a aba volta à vista ou ganha o foco (o servidor guarda por 30 s)
   const [andamento, setAndamento] = useState<Record<string, Andamento>>({});
   // vem também para a fila de revisão: quais roteiros estão na lista de prioridade
   const temRoteiros = !!roteiros?.length;
   useEffect(() => {
     if (!temRoteiros) return;
-    const ler = () => void armazenamento.andamento().then(setAndamento);
+    const ler = () => {
+      if (document.visibilityState === 'visible') void armazenamento.andamento().then(setAndamento);
+    };
     ler();
-    const t = setInterval(ler, 120_000);
-    return () => clearInterval(t);
+    const t = setInterval(ler, LER_ANDAMENTO_MS);
+    document.addEventListener('visibilitychange', ler);
+    window.addEventListener('focus', ler);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', ler);
+      window.removeEventListener('focus', ler);
+    };
   }, [temRoteiros, roteiros]);
   useEffect(() => {
     void carregar();
@@ -1019,7 +1047,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           </section>
         )}
 
-        {sumindo && <style>{`[data-ancora="ficha:${sumindo}"], [data-card="${sumindo}"] { animation: sumir-da-fila 0.26s var(--suave) forwards; pointer-events: none; }`}</style>}
+        {sumindo && <style>{`[data-ancora="ficha:${sumindo}"] { animation: sumir-da-fila 0.26s var(--suave) forwards; pointer-events: none; }`}</style>}
         {vazio ? (
           <div className="entra-suave">
             <ConviteDeArrastar
@@ -1116,7 +1144,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           )
         )}
       </main>
-      {!vazio && roteiros && enviados.length > 0 && <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} />}
+      {!vazio && roteiros && enviados.length > 0 && <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirarJa} />}
       {saindo && (
         <div className="desfazer" role="status">
           <span><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</span>

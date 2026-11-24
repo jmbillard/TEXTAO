@@ -154,6 +154,36 @@ export function montarSemana(lista: Resumo[], andamento: Record<string, Andament
   return { dias, semData, anteriores, periodo, total: naSemana.length, entregues: naSemana.filter((c) => c.etapa === 'entregue').length, comPrioridade: naSemana.filter((c) => c.prioridade).length };
 }
 
+/** A coluna de um card na agenda: o dia (ISO) ou "sem data". */
+export type ColunaDaSemana = string;
+export interface MudancasDaSemana {
+  /** Saíram da agenda (apagados, ou foram para fora da semana mostrada): fecham a vaga. */
+  sairam: string[];
+  /** Entraram na agenda (enviados agora, ou vieram de fora da semana): abrem a vaga. */
+  entraram: string[];
+  /** Continuam na agenda, mas em outra coluna: deslizam de uma para a outra, sem fechar nem abrir vaga. */
+  moveram: { id: string; de: ColunaDaSemana; para: ColunaDaSemana }[];
+}
+
+/** Onde está cada card da semana: o dia da coluna, ou "sem-data". */
+function colunas(s: Semana): Map<string, ColunaDaSemana> {
+  const onde = new Map<string, ColunaDaSemana>();
+  for (const d of s.dias) for (const c of d.cards) onde.set(c.r.id, d.iso);
+  for (const c of s.semData) onde.set(c.r.id, 'sem-data');
+  return onde;
+}
+
+/** O que mudou na agenda de uma leitura para a outra (as sete colunas e o "sem data"); a etapa e a ordem dentro da
+    coluna não contam. Compara a mesma semana: quem troca de semana pelas setas não anima. */
+export function mudancasDaSemana(antes: Semana, depois: Semana): MudancasDaSemana {
+  const de = colunas(antes);
+  const para = colunas(depois);
+  const sairam = [...de.keys()].filter((id) => !para.has(id));
+  const entraram = [...para.keys()].filter((id) => !de.has(id));
+  const moveram = [...para].filter(([id, col]) => de.has(id) && de.get(id) !== col).map(([id, col]) => ({ id, de: de.get(id)!, para: col }));
+  return { sairam, entraram, moveram };
+}
+
 /** A semana encolhe quando há roteiros para revisar (a prioridade é a revisão), a menos que a pessoa tenha escolhido
     "ver a semana inteira". Só conta o que ainda pede trabalho: o que foi ao ar ou já está no Trello fica de fora. */
 export function semanaEncolhida(fila: Resumo[], inteira: boolean, agora = new Date()): boolean {

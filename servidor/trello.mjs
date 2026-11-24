@@ -800,7 +800,7 @@ export function criarTrello(env, deps = {}) {
   async function andamento(itens) {
     if (!itens.length) return {};
     const chave = itens.map((i) => `${i.id}:${i.card ?? ''}:${i.naFila ? chaveN8n(i.claquete) : ''}`).sort().join(',');
-    if (memo.chave === chave && Date.now() - memo.em < 60_000) return memo.dados;
+    if (memo.chave === chave && Date.now() - memo.em < 30_000) return memo.dados; // menos que o minuto da agenda: a etapa nova não espera duas leituras
     const enviados = itens.filter((i) => !i.naFila);
     const [producao, prioridade] = await Promise.all([lerProducao(enviados), listaDePrioridade(itens.map((i) => chaveN8n(i.claquete)))]);
     if (!producao) return {};

@@ -1517,6 +1517,16 @@ a.ficha-marca.trello { text-decoration: none; }
 .coluna-corpo { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 7px; padding: 8px; border-radius: 14px; background: color-mix(in srgb, var(--tinta) 3.5%, var(--mesa)); min-height: 520px; }
 .coluna.hoje .coluna-corpo { background: color-mix(in srgb, var(--ultra) 5%, var(--mesa)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ultra) 28%, transparent); }
 .coluna.fim-de-semana .coluna-corpo { background: color-mix(in srgb, var(--tinta) 2%, var(--mesa)); }
+/* ao vivo (ui/vagas.tsx): o card que sai fecha a vaga, o que entra abre a sua, e o que troca de coluna desliza por
+   cima dos outros. O gap da coluna fecha junto com a vaga. */
+.coluna-corpo { --vaga-gap: 7px; }
+.semana-avulsa ul { position: relative; }
+.semana-avulsa .vaga-y.solta { position: absolute; }
+.card-semana.deslizando { z-index: 3; }
+/* a etapa nova (lida a cada minuto) troca com um esmaecer curto, sem saltar */
+.card-semana-etapa, .card-semana-sinal { animation: etapa-trocar 0.3s var(--suave); }
+@keyframes etapa-trocar { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .card-semana-etapa, .card-semana-sinal { animation: none; } }
 .nada { font: 600 19px/1 Caveat, cursive; color: color-mix(in srgb, var(--tinta3) 70%, transparent); padding: 10px 8px; transform: rotate(-2deg); }
 
 /* sem data e dias anteriores: os mesmos cards, numa faixa abaixo da semana */
@@ -2228,7 +2238,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .secao-trello.encolhida .coluna-topo { min-height: 38px; padding-bottom: 6px; }
 .secao-trello.encolhida .dia-num { font-size: 22px; }
 .secao-trello.encolhida .dia-rel { font-size: 18px; }
-.secao-trello.encolhida .coluna-corpo { min-height: 0; gap: 4px; padding: 6px; border-radius: 12px; }
+.secao-trello.encolhida .coluna-corpo { min-height: 0; gap: 4px; --vaga-gap: 4px; padding: 6px; border-radius: 12px; }
 .secao-trello.encolhida .nada { font-size: 16px; padding: 4px 6px; }
 .secao-trello.encolhida .card-semana:not(.aberto) { border-radius: 8px; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-abrir { position: relative; padding: 6px 10px; }
