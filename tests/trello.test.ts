@@ -654,3 +654,41 @@ describe('✓ já existe: no envio, a arte confirmada entra no acervo da atraç�
     }
   });
 });
+
+describe('card avulso: o mesmo jeito de criar card, fora do envio de roteiros', () => {
+  it('cria o card na lista pedida, com etiquetas, checklist, campos, data e anexos', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, consultar: banco().consultar });
+    const r = await t.criarCard({
+      lista: 'listaFilmes',
+      nome: 'RIVAIS (2024)',
+      desc: 'descrição do filme',
+      etiquetas: ['etqSessao', 'etqFilme'],
+      data: '2026-12-06T22:00:00.000Z',
+      checklist: { nome: 'ARTES PRODUZIDAS', itens: ['TÍTULO', 'CARTÃO'] },
+      campos: { cComplexidade: { idValue: 'opMedia' }, cIA: { value: { checked: 'true' } } },
+      anexos: [{ url: 'https://trello.com/c/OUTRO' }, { nome: 'Rivais.jpg', tipo: 'image/jpeg', dados: Buffer.from('jpg') }],
+    });
+
+    expect(r).toMatchObject({ id: 'card1', url: 'https://trello.com/c/CARD1', avisos: [] });
+    expect(r.anexos).toHaveLength(2);
+    const card = pedidos.find((p) => p.url.pathname === '/1/cards' && p.metodo === 'POST')!;
+    expect(card.corpo).toEqual({ idList: 'listaFilmes', name: 'RIVAIS (2024)', desc: 'descrição do filme', idLabels: 'etqSessao,etqFilme', due: '2026-12-06T22:00:00.000Z' });
+    expect(pedidos.filter((p) => p.url.pathname === '/1/checklists/checklist1/checkItems').map((p) => p.url.searchParams.get('name'))).toEqual(['TÍTULO', 'CARTÃO']);
+    expect(pedidos.find((p) => p.url.pathname === '/1/checklists')!.url.searchParams.get('name')).toBe('ARTES PRODUZIDAS');
+    expect(campoPut(pedidos, 'cComplexidade')).toEqual({ idValue: 'opMedia' });
+    expect(campoPut(pedidos, 'cIA')).toEqual({ value: { checked: 'true' } });
+    const anexos = pedidos.filter((p) => p.url.pathname === '/1/cards/card1/attachments');
+    expect(anexos[0].url.searchParams.get('url')).toBe('https://trello.com/c/OUTRO');
+    expect(anexos[1].corpo).toMatchObject({ name: 'Rivais.jpg', mimeType: 'image/jpeg', file: 'arquivo:Rivais.jpg' });
+  });
+
+  it('sem card não há envio; o resto que falhar vira aviso', async () => {
+    const semCard = falsos({ falharCard: true });
+    await expect(criarTrello(ENV, { buscar: semCard.buscar }).criarCard({ lista: 'l', nome: 'X' })).rejects.toThrow(/401/);
+    const semChecklist = falsos({ falharChecklist: true });
+    const r = await criarTrello(ENV, { buscar: semChecklist.buscar }).criarCard({ lista: 'l', nome: 'X', checklist: { nome: 'ARTES', itens: ['A'] } });
+    expect(r.id).toBe('card1');
+    expect(r.avisos).toEqual([expect.stringMatching(/^criar a checklist: .*500/)]);
+  });
+});

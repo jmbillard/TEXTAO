@@ -216,6 +216,46 @@ export function criarTrello(env, deps = {}) {
   }
   const campo = (card, idCampo, corpo) => (idCampo ? trello('PUT', `/cards/${card}/customField/${idCampo}/item`, { corpo }) : null);
 
+  /**
+   * Um card com o que vier: lista, nome, descrição, etiquetas, data, checklist, campos e anexos (por URL ou arquivo).
+   * Sem o card, falha; o resto que der errado vira aviso. É o mesmo caminho do envio de roteiros, para outros usos
+   * (os cards de filme da prévia, por exemplo).
+   */
+  async function criarCard({ lista, nome, desc = '', etiquetas = [], data, checklist, campos = {}, anexos = [] }, avisos = []) {
+    const tentar = async (o_que, f) => {
+      try {
+        return await f();
+      } catch (e) {
+        avisos.push(`${o_que}: ${e instanceof Error ? e.message : e}`);
+        return null;
+      }
+    };
+    // no corpo, não no endereço: muitas artes estourariam o tamanho da URL
+    const card = await trello('POST', '/cards', {
+      corpo: { idList: lista, name: nome, desc, ...(etiquetas.length ? { idLabels: etiquetas.join(',') } : {}), ...(data ? { due: data } : {}) },
+    });
+    if (!card?.id) throw new Error('O Trello não devolveu o card criado.');
+    if (checklist?.itens?.length)
+      await tentar('criar a checklist', async () => {
+        const l = await trello('POST', '/checklists', { consulta: { idCard: card.id, name: checklist.nome } });
+        for (const item of checklist.itens) await trello('POST', `/checklists/${l.id}/checkItems`, { consulta: { name: item } });
+      });
+    await Promise.all(Object.entries(campos).map(([id, corpo]) => tentar(`preencher o campo ${id}`, () => campo(card.id, id, corpo))));
+    const anexados = [];
+    for (const a of anexos)
+      anexados.push(
+        await tentar(`anexar ${a.nome ?? a.url}`, () => {
+          if (a.url) return trello('POST', `/cards/${card.id}/attachments`, { consulta: { url: a.url } });
+          const form = new FormData();
+          form.append('name', a.nome);
+          form.append('mimeType', a.tipo);
+          form.append('file', new Blob([a.dados], { type: a.tipo }), a.nome);
+          return trello('POST', `/cards/${card.id}/attachments`, { form });
+        }),
+      );
+    return { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}`, anexos: anexados, avisos };
+  }
+
   /* ---------- Teable (escrita pela API) ---------- */
   async function teableCriar(tabelaId, campos) {
     if (!c.teable.url || !c.teable.token || !tabelaId) return null;
@@ -454,15 +494,8 @@ export function criarTrello(env, deps = {}) {
       '',
     ].join('\n');
 
-    // o card é o que importa: sem ele, o envio falhou
-    // no corpo, não no endereço: roteiro com muitas artes estouraria o tamanho da URL
-    const card = await trello('POST', '/cards', { corpo: { idList: lista, name: claquete, desc } });
-    if (!card?.id) throw new Error('O Trello não devolveu o card criado.');
-
-    await tentar('criar a checklist', async () => {
-      const lista = await trello('POST', '/checklists', { consulta: { idCard: card.id, name: 'ARTES PRODUZIDAS' } });
-      for (const a of artes) await trello('POST', `/checklists/${lista.id}/checkItems`, { consulta: { name: a } });
-    });
+    // o card é o que importa: sem ele, o envio falhou (a checklist que falhar vira aviso)
+    const card = await criarCard({ lista, nome: claquete, desc, checklist: { nome: 'ARTES PRODUZIDAS', itens: artes } }, avisos);
     const output = filme?.output || atracao?.output || '';
     await Promise.all([
       tentar('marcar o BOT', () => campo(card.id, c.campos.bot, { value: { checked: 'true' } })),
@@ -853,5 +886,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, enviar, andamento, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, criarCard, andamento, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }
