@@ -622,8 +622,11 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   );
 }
 
+/** A tecla foi num campo de texto ou num diálogo: os atalhos da fila não valem ali. */
+const emCampo = (e: KeyboardEvent) => !!(e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]');
+
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
-const CONVITES_EM_DIA = CONVITES.filter((f) => f !== 'Fila em dia!');
+const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
 export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
@@ -660,8 +663,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== 'r' || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
-      const alvo = e.target as HTMLElement | null;
-      if (alvo?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (emCampo(e)) return;
       if (!proximoParaRevisar.current) return;
       e.preventDefault();
       abrir(proximoParaRevisar.current);
@@ -674,8 +676,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
     if (aoFundo) return;
     const tecla = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== 'v' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.repeat) return;
-      const alvo = e.target as HTMLElement | null;
-      if (alvo?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (emCampo(e)) return;
       setColando(true);
     };
     window.addEventListener('keydown', tecla);
@@ -1000,7 +1001,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                     {lendo && <span><i className="ponto lendo" />lendo 1</span>}
                   </p>
                 </div>
-                <ConviteCompacto frases={CONVITES_EM_DIA} escolher={receberArquivos} colar={() => setColando(true)} colando={colando} />
+                <ConviteCompacto frases={CONVITES_AO_LADO} escolher={receberArquivos} colar={() => setColando(true)} colando={colando} />
                 {todos.length > 6 && (
                   <label className="busca">
                     <Icone nome="lupa" tam={15} traco={2} />
