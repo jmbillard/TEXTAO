@@ -18,6 +18,7 @@ import { Icone } from './icones';
 import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, plural } from './util';
+import { ehDoTour } from '../tour/exemplo';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
 const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
@@ -409,6 +410,7 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
         <span className="ficha-pendencias some">
           <AvisoTrello r={r} mandar={mandar} />
           {revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}
+          {ehDoTour(r.id) && <span className="nota-exemplo">exemplo do tour</span>}
           {!r.meta.programa && cadastrarAtracao && (
             <span className="ancora-balao">
               <button type="button" className="atalho-cadastro" aria-expanded={ligando} onClick={() => (avisar ? setLigando((x) => !x) : cadastrarAtracao())}>
@@ -949,7 +951,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         avisar={avisar}
         ligou={() => void carregar()}
         acoes={
-          (r.meu || aberto) && (
+          // o exemplo do tour só sai da fila pelo próprio tour
+          (r.meu || aberto) && !ehDoTour(r.id) && (
             <button className="botao-icone ficha-lixo" title="Tirar da fila" aria-label={`Tirar ${r.meta.claquete || r.meta.titulo} da fila`} onClick={() => tirar(r)}>
               <Icone nome="lixo" />
             </button>

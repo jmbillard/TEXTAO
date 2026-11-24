@@ -33,6 +33,9 @@ const LIMITE_ORIGINAL = 30 * 1024 * 1024;
 // uma página da prévia: a imagem, o PDF e os recortes dos pôsteres, em base64
 const LIMITE_PAGINA = 24 * 1024 * 1024;
 const ID_VALIDO = /^[\w-]{6,80}$/;
+/** O roteiro de exemplo do tour da revisão vive só no navegador: um id com este prefixo nunca é gravado nem vai ao Trello. */
+const PREFIXO_DO_TOUR = 'tour-';
+const RECUSA_DO_TOUR = { erro: 'Este é o roteiro de exemplo do tour: ele não é gravado nem vai ao Trello.' };
 
 const nomeDoEmail = (email) =>
   email.split('@')[0].split(/[._-]+/).filter(Boolean).map((p) => p[0].toUpperCase() + p.slice(1)).join(' ');
@@ -113,6 +116,8 @@ export function abrirBanco(caminho) {
   // quem mexeu por último no roteiro depois que ele chegou: aparece na fila como "revisado por"
   // a cor de destaque que a pessoa escolheu (grifo, orelha, cursor); vazio = a sorteada pelo e-mail
   if (!tem('usuarios', 'cor')) db.exec('ALTER TABLE usuarios ADD COLUMN cor TEXT');
+  // quando a pessoa viu o tour da revisão (terminou, pulou ou disse "Agora não"); vazio = ainda não viu
+  if (!tem('usuarios', 'tour_revisao_em')) db.exec('ALTER TABLE usuarios ADD COLUMN tour_revisao_em TEXT');
   if (!tem('roteiros', 'revisado_email')) db.exec('ALTER TABLE roteiros ADD COLUMN revisado_email TEXT; ALTER TABLE roteiros ADD COLUMN revisado_nome TEXT');
   // acervo de artes: as artes novas de cada envio e a atração, para entrarem no acervo quando o card sair
   // o texto do original com o sublinhado do redator, trecho a trecho: é dele que sai o PDF do card sem o Stirling
@@ -398,6 +403,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     usuarios: db.prepare('SELECT email, nome FROM usuarios WHERE email <> ? ORDER BY nome COLLATE NOCASE LIMIT 1000'),
     cores: db.prepare("SELECT email, cor FROM usuarios WHERE cor IS NOT NULL AND cor <> '' LIMIT 2000"),
     mudarCor: db.prepare('UPDATE usuarios SET cor = ? WHERE email = ?'),
+    tourDe: db.prepare('SELECT tour_revisao_em FROM usuarios WHERE email = ?'),
+    viuTour: db.prepare('UPDATE usuarios SET tour_revisao_em = ? WHERE email = ?'),
     compartilhadoCom: db.prepare('SELECT email, pode_editar FROM compartilhamentos WHERE roteiro_id = ? ORDER BY email'),
     temAcesso: db.prepare('SELECT pode_editar FROM compartilhamentos WHERE roteiro_id = ? AND email = ?'),
     limparCompartilhamento: db.prepare('DELETE FROM compartilhamentos WHERE roteiro_id = ?'),
@@ -1057,7 +1064,8 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       if (eu) {
         // quem entra passa a constar na lista de pessoas com quem se pode compartilhar
         q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
-        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado });
+        const tour = { revisao: q.tourDe.get(eu.email)?.tour_revisao_em ?? null };
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -1158,6 +1166,14 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // os colegas com a fila aberta passam a ver a cor nova na hora
       void cache.publicar(FILA, { tipo: 'cor', por: eu.email, cor }).catch(() => {});
       return json(res, 200, { ok: true, cor });
+    }
+    if (caminho === '/api/eu/tour') {
+      // a pessoa viu o tour da revisão: o convite não aparece mais, em nenhum navegador
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const agora = new Date().toISOString();
+      q.verUsuario.run(eu.email, eu.nome, agora);
+      q.viuTour.run(agora, eu.email);
+      return json(res, 200, { ok: true, tour: { revisao: agora } });
     }
     if (caminho === '/api/vocabulario') return json(res, 200, await vocabulario.ler());
     if (caminho === '/api/producao/pdf') {
@@ -1264,6 +1280,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
     const extra = /^\/api\/roteiros\/([^/]+)\/(original|original-texto|trello|pdf)$/.exec(caminho);
+    if (extra?.[2] === 'trello' && extra[1].startsWith(PREFIXO_DO_TOUR)) return json(res, 400, RECUSA_DO_TOUR);
     if (extra) return rotaDoTrello(req, res, eu, extra[1], extra[2]);
     const m = /^\/api\/roteiros(?:\/([^/]+))?(?:\/versoes(?:\/(\d+))?)?$/.exec(caminho);
     if (!m) return json(res, 404, { erro: 'Não encontrado.' });
@@ -1321,6 +1338,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, { ok: true });
     }
     if (req.method === 'PUT') {
+      if (id.startsWith(PREFIXO_DO_TOUR)) return json(res, 400, RECUSA_DO_TOUR);
       // só o dono e quem ele autorizou a editar alteram o roteiro
       if (atual && !podeEditar) return json(res, 403, { erro: 'Este roteiro é de outra pessoa. Duplique para editar.' });
       const corpo = await lerCorpo(req);

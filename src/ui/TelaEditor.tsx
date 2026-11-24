@@ -34,6 +34,7 @@ import { Fogo, FogoComTroca } from './fogo';
 import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
+import { ehDoTour } from '../tour/exemplo';
 
 
 /* ---------- topo da folha: atração e praça ---------- */
@@ -374,7 +375,8 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const [salvo, setSalvo] = useState(true);
   const sou = inicial.meu !== false; // dono (ou modo sem servidor)
   const leitura = !sou && !inicial.podeEditar; // recebido só para ver
-  const comServidor = armazenamento.tipo === 'servidor';
+  // o exemplo do tour vive só neste navegador: sem a sala de edição simultânea, como no modo navegador
+  const comServidor = armazenamento.tipo === 'servidor' && !ehDoTour(inicial.id);
   // edição simultânea: só existe com servidor
   const [sala] = useState(() => (comServidor ? abrirSala(inicial.id) : null));
   const [sincronizado, setSincronizado] = useState(!sala);

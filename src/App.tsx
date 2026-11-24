@@ -3,7 +3,7 @@ import { Comparar } from './ui/Comparar';
 import { Atalhos } from './ui/Atalhos';
 import { Cadastros } from './ui/Cadastros';
 import { Filmes } from './ui/Filmes';
-import { armazenamento, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
+import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -15,6 +15,9 @@ import { Biblioteca } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
 import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores';
 import { corDe } from './dados/colaboracao';
+import { TourDaRevisao } from './tour/TourDaRevisao';
+import { convidar, type Tour } from './tour/passos';
+import { colocarExemplo, roteiroDeExemplo } from './tour/exemplo';
 import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
 /** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
@@ -70,13 +73,30 @@ export function App() {
   const [chegou, setChegou] = useState(0);
   // o que está sendo lido agora, quando demora (PDF digitalizado, lido por OCR)
   const [lendo, setLendo] = useState<{ nome: string; detalhe: string } | null>(null);
+  // o tour da revisão: o convite aparece na primeira entrada de quem ainda não viu (guardado no servidor, por pessoa)
+  const [tour, setTour] = useState<Tour | null>(null);
   useEffect(() => {
     void iniciarSessao().then((s) => {
       setIdentidade(s.identidade);
       setSemLogin(!!s.semLogin);
       setPronto(true);
       setSessao((n) => n + 1);
+      if (s.tourRevisao === null) setTour(convidar());
     });
+  }, []);
+  const mudarTour = useCallback((t: Tour) => {
+    setTour(t);
+    if (t.fase !== 'fora') return;
+    // terminou, pulou ou disse "Agora não": o servidor guarda, e o exemplo sai da fila (a vaga fecha)
+    void marcarTourVisto().catch(() => {});
+    if (colocarExemplo(null)) setChegou((n) => n + 1);
+  }, []);
+  /** O exemplo chega à fila como um roteiro de verdade: a vaga abre e a claquete é digitada. Nenhum arquivo é lido. */
+  const trazerExemplo = useCallback(() => {
+    const r = roteiroDeExemplo();
+    colocarExemplo(r);
+    setNovos((n) => [...n.filter((id) => id !== r.id), r.id]);
+    setChegou((n) => n + 1);
   }, []);
   const pessoa = identidade ? { nome: identidade.nome, email: identidade.email } : undefined;
   const [semLogin, setSemLogin] = useState(false);
@@ -343,6 +363,7 @@ export function App() {
       )}
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete) => ir({ t: 'cadastros', aba: 'atracoes', claquete }) : undefined} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} />}
+      {tela.t === 'biblioteca' && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} />}
       <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} />
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete }} />}

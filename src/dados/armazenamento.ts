@@ -3,6 +3,7 @@ import { siglaDoTipo } from '../modelo/tipos';
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { chavesQueExistem, complexidadeDaArte, exportar } from '../modelo/exportar';
 import { registrarCores } from './colaboracao';
+import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
@@ -192,7 +193,7 @@ export const temTrello = () => armazenamento.tipo === 'servidor' && trelloLigado
 export type TextoOriginal = { t: string; u?: 1; b?: 1; i?: 1 }[][];
 
 export async function guardarOriginal(id: string, arquivo: File, texto?: TextoOriginal) {
-  if (armazenamento.tipo !== 'servidor') return;
+  if (armazenamento.tipo !== 'servidor' || ehDoTour(id)) return;
   const r = await fetch(`/api/roteiros/${encodeURIComponent(id)}/original`, {
     method: 'PUT',
     credentials: 'same-origin',
@@ -472,6 +473,8 @@ export async function herdarEnvio(novo: string, anterior: string) {
 
 /** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
 export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
+  // o exemplo do tour nunca vai ao Trello (o envio dele é simulado pelo próprio tour)
+  if (ehDoTour(roteiro.id)) throw new Error('O roteiro de exemplo do tour não vai ao Trello.');
   const saida = exportar(roteiro);
   // a que já existe (✓, ou do acervo, que já vem riscada) vai no PDF (sublinhada, como no roteiro), fora do checklist;
   // o servidor guarda no acervo da atração as confirmadas (da próxima vez, ela já vem riscada)
@@ -487,7 +490,7 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
 
 /** Apaga mesmo com a página fechando ou recarregando (o pedido sobrevive à saída). */
 export function apagarAoSair(id: string) {
-  if (armazenamento.tipo !== 'servidor') return void armazenamento.apagar(id).catch(() => {});
+  if (armazenamento.tipo !== 'servidor' || ehDoTour(id)) return void armazenamento.apagar(id).catch(() => {});
   void fetch(`/api/roteiros/${encodeURIComponent(id)}`, { method: 'DELETE', keepalive: true, credentials: 'same-origin', headers: cabecalhos }).catch(() => {});
 }
 
@@ -518,8 +521,17 @@ export const resumoDaProducao = ({ card, url, registro, claquete, entrada, statu
 export const ligarAoCardExistente = (id: string, card: string) =>
   pedir<{ estado: EnvioTrello['estado']; url?: string }>(`/api/roteiros/${encodeURIComponent(id)}/trello`, { method: 'POST', body: JSON.stringify({ jaEsta: { card } }) });
 
-/** O armazenamento em uso. Começa no navegador e passa para o servidor quando `conectar` o encontra. */
-export let armazenamento: Armazenamento = noNavegador;
+/** O armazenamento em uso. Começa no navegador e passa para o servidor quando `conectar` o encontra. Os dois levam o
+    roteiro de exemplo do tour da revisão, que vive só na memória. */
+const doNavegador = comExemplo(noNavegador);
+const doServidor = comExemplo(noServidor);
+export let armazenamento: Armazenamento = doNavegador;
+
+/** A pessoa viu o tour da revisão (terminou, pulou ou disse "Agora não"): o servidor guarda e o convite não volta. */
+export async function marcarTourVisto() {
+  if (armazenamento.tipo !== 'servidor') return;
+  await pedir('/api/eu/tour', { method: 'POST', body: JSON.stringify({ tour: 'revisao' }) });
+}
 
 export interface Conexao {
   /** Quem o servidor reconheceu, se houver servidor e login. */
@@ -528,6 +540,8 @@ export interface Conexao {
   pedePerfil: boolean;
   /** Há servidor, mas ele não reconheceu o login (Cloudflare Access): os roteiros ficam só neste navegador. */
   semLogin?: boolean;
+  /** Quando a pessoa viu o tour da revisão (null = ainda não viu). Só com servidor e login. */
+  tourRevisao?: string | null;
 }
 
 /** Procura o servidor. `perfil` é o perfil local, usado só quando o servidor aceita esse modo (demonstração). */
@@ -540,21 +554,21 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null } };
     if (d.email) {
-      armazenamento = noServidor;
+      armazenamento = doServidor;
       trelloLigado = !!d.trello;
       filmesLigado = !!d.filmes;
       // as cores que cada um escolheu, para a orelha, o grifo e os cursores saírem certos
       await pedir<{ email: string; cor: string }[]>('/api/cores').then(registrarCores, () => {});
       // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable
       await atualizarVocabulario();
-      return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false };
+      return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false, tourRevisao: d.tour?.revisao ?? null };
     }
-    armazenamento = noNavegador;
+    armazenamento = doNavegador;
     return { eu: null, pedePerfil: !!d.perfilLocal, semLogin: !d.perfilLocal };
   } catch {
-    armazenamento = noNavegador;
+    armazenamento = doNavegador;
     return { eu: null, pedePerfil: false };
   }
 }

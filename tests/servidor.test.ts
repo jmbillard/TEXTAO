@@ -478,3 +478,30 @@ describe('metadados mudados por fora do editor', () => {
     expect(guardado.getMap('meta').toJSON()).toEqual({ titulo: 'T', programa: 'Festa na Praça' });
   });
 });
+
+describe('tour da revisão', () => {
+  it('/api/eu diz se a pessoa já viu o tour, e a rota grava a data só para ela', async () => {
+    const dani = como('dani.tour@empresa.com');
+    const edu = como('edu.tour@empresa.com');
+    expect((await (await dani('/api/eu')).json()).tour).toEqual({ revisao: null });
+    expect((await (await edu('/api/eu')).json()).tour).toEqual({ revisao: null });
+    const r = await dani('/api/eu/tour', { method: 'POST', body: JSON.stringify({ tour: 'revisao' }) });
+    expect(r.status).toBe(200);
+    const visto = (await (await dani('/api/eu')).json()).tour.revisao;
+    expect(visto).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // vale em qualquer navegador (está no servidor) e não marca mais ninguém
+    expect((await (await edu('/api/eu')).json()).tour).toEqual({ revisao: null });
+    // sem login, não grava
+    expect((await fetch(base + '/api/eu/tour', { method: 'POST' })).status).toBe(401);
+  });
+
+  it('salvar e enviar ao Trello recusam o id reservado do roteiro de exemplo', async () => {
+    const r = await salvar(ana, 'tour-revisao-exemplo', roteiro('exemplo'));
+    expect(r.status).toBe(400);
+    expect((await r.json()).erro).toMatch(/tour/);
+    expect((await (await ana('/api/roteiros')).json()).map((x: { id: string }) => x.id)).not.toContain('tour-revisao-exemplo');
+    const t = await ana('/api/roteiros/tour-revisao-exemplo/trello', { method: 'POST', body: JSON.stringify({ artes: [], texto: '' }) });
+    expect(t.status).toBe(400);
+    expect((await t.json()).erro).toMatch(/tour/);
+  });
+});

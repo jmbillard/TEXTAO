@@ -51,13 +51,15 @@ export interface Sessao {
   pedePerfil: boolean;
   /** O servidor respondeu, mas não reconheceu o login: tudo fica só neste navegador (o app avisa). */
   semLogin?: boolean;
+  /** Quando a pessoa viu o tour da revisão: null = ainda não viu (o convite aparece); sem servidor, não vem. */
+  tourRevisao?: string | null;
 }
 
 /** Descobre quem está usando e onde os roteiros ficam guardados (servidor ou navegador). */
 export async function iniciarSessao(): Promise<Sessao> {
   const perfil = local();
   const conexao = await conectar(perfil);
-  if (conexao.eu) return { identidade: conexao.eu, pedePerfil: false };
+  if (conexao.eu) return { identidade: conexao.eu, pedePerfil: false, tourRevisao: conexao.tourRevisao };
   return { identidade: (await doAcesso()) ?? perfil, pedePerfil: conexao.pedePerfil, semLogin: conexao.semLogin };
 }
 

@@ -40,6 +40,18 @@ _Evitar_: dificuldade, peso
 **Não produzir (✕)**:
 A arte que sai do checklist sem dizer que existe.
 
+**Tour da revisão**:
+O passeio curto e interativo pela revisão, da chegada do roteiro ao envio, com o roteiro de exemplo: sete passos, e
+cada um só segue quando a pessoa faz a ação dele. O convite aparece na primeira entrada; terminar, pular ou dizer
+"Agora não" fica guardado no servidor, por pessoa, e o convite não volta.
+_Evitar_: tutorial, onboarding
+
+**Roteiro de exemplo**:
+O roteiro fictício e fixo do tour da revisão. Vive só na memória do navegador de quem faz o tour: não é gravado, não
+aparece na fila de mais ninguém e nunca vai ao Trello. O id tem o prefixo reservado `tour-`, que o servidor recusa ao
+salvar e ao enviar. O "card de exemplo" da agenda é só a aparência simulada dele, não um card do Trello.
+_Evitar_: roteiro de teste, roteiro fake
+
 ## Atrações e filmes
 
 **Atração**:
