@@ -237,6 +237,15 @@ export function criarTrello(env, deps = {}) {
     return r.json().catch(() => ({}));
   }
   const campo = (card, idCampo, corpo) => (idCampo ? trello('PUT', `/cards/${card}/customField/${idCampo}/item`, { corpo }) : null);
+  // a sessão de filme copia o campo Complexidade do card do filme (TRELLO_CAMPOS_FILME)?
+  const copiaComplexidadeDoFilme = !!c.campos.complexidade && c.campos.doFilme.includes(c.campos.complexidade);
+  /** A complexidade do card do filme (1–3), pela ordem de TRELLO_COMPLEXIDADE_OPCOES; sem o campo, ou com uma opção
+      fora das três configuradas, 0 (vale a da revisão). */
+  const nivelDoFilme = (doFilme) => {
+    if (!copiaComplexidadeDoFilme) return 0;
+    const item = (doFilme?.customFieldItems ?? []).find((i) => i.idCustomField === c.campos.complexidade);
+    return item?.idValue ? c.complexidades.slice(0, 3).indexOf(item.idValue) + 1 : 0;
+  };
 
   /**
    * Um card com o que vier: lista, nome, descrição, etiquetas, data, checklist, campos e anexos (por URL ou arquivo).
@@ -526,14 +535,13 @@ export function criarTrello(env, deps = {}) {
 
     // versão nova de um roteiro que já está na produção: o card antigo recebe as artes novas e o roteiro novo
     r.v2De ??= m.v2De;
-    if (r.v2De?.card) return atualizarCard(r, listaDeArtes, avisos, tentar);
+    if (r.v2De?.card) return atualizarCard(r, claquete, listaDeArtes, avisos, tentar);
 
     // "é outro roteiro" (a pessoa respondeu na fila): não é o mesmo da produção de hoje
     if (!(r.outro ?? m.outroRoteiro) && (await tentar('conferir a produção de hoje', () => jaEntrouHoje(claquete)))) return { duplicado: true, avisos };
 
     const hoje = agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
     const chave = chaveN8n(claquete);
-    const complexidade = complexidadeDoCard(listaDeArtes);
     const praca = PRACAS_TRELLO.includes(m.praca) ? m.praca : 'G5';
     const vt = /\bVt\b/i.test(claquete) || /\bVt\b/i.test(r.original?.nome ?? '');
     const lista = (vt && c.listas.VT) || c.listas[praca] || c.listas.padrao;
@@ -547,6 +555,9 @@ export function criarTrello(env, deps = {}) {
       tentar('conferir a prioridade', () => prioridadeAlta(chave)),
     ]);
     const filme = await tentar('achar o card do filme', () => cardDoFilme(atracao?.nome, m.dataExibicao));
+    // o card do filme é lido antes dos campos: a complexidade do card é a maior entre a dele e a da revisão
+    const doFilme = filme ? await tentar('ler o card do filme', () => trello('GET', `/cards/${filme.card}`, { consulta: { fields: 'id,idMembers', customFieldItems: 'true' } })) : null;
+    const complexidade = Math.max(complexidadeDoCard(listaDeArtes), nivelDoFilme(doFilme));
 
     const desc = [
       '**ARTES IDENTIFICADAS:**',
@@ -582,11 +593,11 @@ export function criarTrello(env, deps = {}) {
     if (filme)
       await tentar('ligar ao card do filme', async () => {
         await trello('POST', `/cards/${card.id}/attachments`, { consulta: { url: `https://trello.com/c/${filme.card}` } });
-        const doFilme = await trello('GET', `/cards/${filme.card}`, { consulta: { fields: 'id,idMembers', customFieldItems: 'true' } });
+        if (!doFilme) return;
         if (doFilme.idMembers?.length) await trello('PUT', `/cards/${card.id}`, { consulta: { idMembers: doFilme.idMembers.join(',') } });
         for (const item of doFilme.customFieldItems ?? []) {
           if (!c.campos.doFilme.includes(item.idCustomField)) continue;
-          // a complexidade marcada na revisão vale mais que a do filme: o card fica igual à produção da arte
+          // a complexidade já foi ao card, a maior entre a do filme e a da revisão: o card fica igual à produção da arte
           if (opcaoDaComplexidade && item.idCustomField === c.campos.complexidade) continue;
           const corpo = item.idValue ? { idValue: item.idValue } : item.value && Object.keys(item.value).length ? { value: item.value } : null;
           if (corpo) await campo(card.id, item.idCustomField, corpo);
@@ -636,7 +647,7 @@ export function criarTrello(env, deps = {}) {
   }
 
   /** Versão nova: artes que faltam no checklist, o roteiro novo anexado, um comentário e a linha do Teable em dia. */
-  async function atualizarCard(r, listaDeArtes, avisos, tentar) {
+  async function atualizarCard(r, claquete, listaDeArtes, avisos, tentar) {
     const id = r.v2De.card;
     const artes = itensDoChecklist(listaDeArtes);
     const card = await trello('GET', `/cards/${id}`, { consulta: { fields: 'id,shortUrl,url,name' } });
@@ -665,6 +676,14 @@ export function criarTrello(env, deps = {}) {
         consulta: { text: `Versão nova do roteiro pelo PROMeiro: ${novas.length ? `${novas.length === 1 ? '1 arte nova' : `${novas.length} artes novas`} no checklist (${novas.join(', ')})` : 'nenhuma arte nova'}, roteiro anexado.` },
       }),
     );
+    // a complexidade do card: a maior das artes do roteiro novo; na sessão de filme, a maior entre ela e a do card do
+    // filme, como no card novo (o filme só é procurado quando o campo dele é copiado)
+    let doFilme = null;
+    if (copiaComplexidadeDoFilme) {
+      const filme = await tentar('achar o card do filme', async () => cardDoFilme((await acharAtracao(claquete, r.meta.programa))?.nome, r.meta.dataExibicao));
+      if (filme) doFilme = await tentar('ler o card do filme', () => trello('GET', `/cards/${filme.card}`, { consulta: { fields: 'id', customFieldItems: 'true' } }));
+    }
+    const complexidade = Math.max(complexidadeDoCard(listaDeArtes), nivelDoFilme(doFilme));
     if (c.teable.producao)
       await tentar('atualizar a produção da arte', async () => {
         // lendo de outra base (convivência com o n8n), o registro dela não existe aqui: acha o daqui pelo card
@@ -677,9 +696,8 @@ export function criarTrello(env, deps = {}) {
           )) ?? [];
         const registro = mesmaBase ? r.v2De.registro : linha?.id;
         if (!registro) return;
-        // a complexidade do card: a maior das artes do roteiro novo; só é escrita quando muda em relação à da produção
-        // da arte (sem a linha lida, não há com o que comparar, e nada de complexidade é escrito)
-        const complexidade = complexidadeDoCard(listaDeArtes);
+        // a complexidade só é escrita quando muda em relação à da produção da arte (sem a linha lida, não há com o que
+        // comparar, e nada de complexidade é escrito)
         const mudou = !!linha && Number(linha.complexidade) !== complexidade;
         const opcao = mudou && c.campos.complexidade ? c.complexidades[complexidade - 1] : '';
         if (opcao) await tentar('atualizar a complexidade', () => campo(id, c.campos.complexidade, { idValue: opcao }));

@@ -768,14 +768,38 @@ describe('complexidade da arte: o card leva a maior das artes a produzir', () =>
     expect(registro(semOpcoes).complexidade).toBe(3);
   });
 
-  it('na sessão de filmes, a complexidade da revisão vale mais que a copiada do card do filme', async () => {
-    const { buscar, pedidos } = falsos();
-    const t = criarTrello(COM_CAMPO, { buscar, consultar: banco({ sessao: true }).consultar });
-    await t.enviar({ meta: { ...meta, claquete: 'Sessão da Tarde 19/11', praca: 'G5' }, artes: [{ texto: 'X', complexidade: 3 }], original: { ...original, nome: 'sessao.pdf', tipo: 'application/pdf' } });
-    const puts = pedidos.filter((p) => p.metodo === 'PUT' && p.url.pathname.endsWith('/customField/cComplexidade/item')).map((p) => p.corpo);
-    expect(puts).toEqual([{ idValue: 'opAlta' }]);
-    expect(campoPut(pedidos, 'cIA')).toEqual({ value: { checked: 'true' } });
-    expect(registro(pedidos).complexidade).toBe(3);
+  describe('sessão de filme: vale a maior entre a do card do filme e a da revisão', () => {
+    /** Envia a sessão; o card do filme vem com a complexidade MÉDIA (o falso), ou sem o campo. */
+    const enviarSessao = async (artes: unknown[], filmeSemCampo = false) => {
+      const { buscar, pedidos } = falsos();
+      const buscarFilme = async (endereco: string, init: RequestInit = {}) =>
+        filmeSemCampo && (init.method ?? 'GET') === 'GET' && new URL(endereco).pathname.endsWith('/cards/cardFilme')
+          ? { ok: true, status: 200, json: async () => ({ id: 'cardFilme', idMembers: [], customFieldItems: [{ idCustomField: 'cIA', value: { checked: 'true' } }] }), text: async () => '' }
+          : buscar(endereco, init);
+      const t = criarTrello(COM_CAMPO, { buscar: buscarFilme, consultar: banco({ sessao: true }).consultar });
+      await t.enviar({ meta: { ...meta, claquete: 'Sessão da Tarde 19/11', praca: 'G5' }, artes, original: { ...original, nome: 'sessao.pdf', tipo: 'application/pdf' } });
+      const puts = pedidos.filter((p) => p.metodo === 'PUT' && p.url.pathname.endsWith('/customField/cComplexidade/item')).map((p) => p.corpo);
+      return { puts, producao: registro(pedidos).complexidade, pedidos };
+    };
+
+    it('filme MÉDIA e revisão BAIXA dão MÉDIA', async () => {
+      const { puts, producao, pedidos } = await enviarSessao([{ texto: 'X' }]);
+      expect(puts).toEqual([{ idValue: 'opMedia' }]);
+      expect(producao).toBe(2);
+      expect(campoPut(pedidos, 'cIA')).toEqual({ value: { checked: 'true' } });
+    });
+
+    it('filme MÉDIA e revisão ALTA dão ALTA', async () => {
+      const { puts, producao } = await enviarSessao([{ texto: 'X', complexidade: 3 }]);
+      expect(puts).toEqual([{ idValue: 'opAlta' }]);
+      expect(producao).toBe(3);
+    });
+
+    it('filme sem o campo: vale a da revisão', async () => {
+      const { puts, producao } = await enviarSessao([{ texto: 'X' }], true);
+      expect(puts).toEqual([{ idValue: 'opBaixa' }]);
+      expect(producao).toBe(1);
+    });
   });
 
   it('a rota passa a complexidade de cada arte ao envio', async () => {
@@ -800,7 +824,7 @@ describe('complexidade da arte na versão nova (V2): recalcula a do card quando 
   const COM_CAMPO = { ...ENV, TRELLO_CAMPO_COMPLEXIDADE: 'cComplexidade', TRELLO_COMPLEXIDADE_OPCOES: 'opBaixa, opMedia, opAlta' };
   const v2De = { card: 'cardVelho', url: 'https://trello.com/c/cardVelho', registro: 'recP1' };
   /** Envia a V2 com a linha da produção da arte numa complexidade; devolve os pedidos ao Trello e ao Teable. */
-  const enviarV2 = async (env: Record<string, string>, atual: number | null | Error, artes: unknown[]) => {
+  const enviarV2 = async (env: Record<string, string>, atual: number | null | Error, artes: unknown[], sessao = false) => {
     const { buscar, pedidos } = falsos();
     const buscarComCard = async (endereco: string, init: RequestInit = {}) => {
       const u = new URL(endereco);
@@ -812,9 +836,12 @@ describe('complexidade da arte na versão nova (V2): recalcula a do card quando 
     // a linha da produção da arte, pelo registro (mesma base) ou pelo card (outra base)
     const consultar = async (sql: string, params: unknown[] = []) => {
       if (atual instanceof Error) throw atual;
-      return sql.includes('"complexidade"') && sql.includes('"producao"') && ['recP1', 'cardVelho'].includes(String(params[0])) ? [{ id: 'recP1', complexidade: atual }] : [];
+      if (sql.includes('"complexidade"') && sql.includes('"producao"')) return ['recP1', 'cardVelho'].includes(String(params[0])) ? [{ id: 'recP1', complexidade: atual }] : [];
+      // a sessão de filme: a atração e o card do filme (com a complexidade MÉDIA), como no envio do card novo
+      return sessao ? banco({ sessao: true }).consultar(sql, params) : [];
     };
-    await criarTrello(env, { buscar: buscarComCard, consultar, sftp: async () => {} }).enviar({ meta: { ...meta, v2De }, doc: DOC, artes, texto: 'texto novo', original });
+    const m = sessao ? { ...meta, claquete: 'Sessão da Tarde 19/11', praca: 'G5', v2De } : { ...meta, v2De };
+    await criarTrello(env, { buscar: buscarComCard, consultar, sftp: async () => {} }).enviar({ meta: m, doc: DOC, artes, texto: 'texto novo', original });
     const patch = pedidos.find((p) => p.metodo === 'PATCH' && p.url.host === 'teable:3000');
     return { pedidos, patch: patch && { rota: patch.url.pathname, campos: (patch.corpo as { record: { fields: Record<string, unknown> } }).record.fields } };
   };
@@ -847,6 +874,17 @@ describe('complexidade da arte na versão nova (V2): recalcula a do card quando 
     const outraBase = await enviarV2({ ...ENV, TEABLE_PG_ARTE_LEITURA: 'bseProd.producaoViva' }, 1, [{ texto: 'SÁBADO', complexidade: 2 }]);
     expect(outraBase.patch?.rota).toContain('/record/recP1');
     expect(outraBase.patch?.campos).toMatchObject({ complexidade: 2 });
+  });
+
+  it('sessão de filme: vale a maior entre a do card do filme e a da revisão', async () => {
+    const sobe = await enviarV2(COM_CAMPO, 1, [{ texto: 'X' }], true);
+    expect(putDoCard(sobe.pedidos)).toEqual([{ idValue: 'opMedia' }]);
+    expect(sobe.patch?.campos).toMatchObject({ complexidade: 2 });
+    // a da revisão é maior: vale a da revisão; a do filme igual à atual: nada é escrito
+    expect(putDoCard((await enviarV2(COM_CAMPO, 2, [{ texto: 'X', complexidade: 3 }], true)).pedidos)).toEqual([{ idValue: 'opAlta' }]);
+    const igual = await enviarV2(COM_CAMPO, 2, [{ texto: 'X' }], true);
+    expect(putDoCard(igual.pedidos)).toEqual([]);
+    expect(igual.patch?.campos).not.toHaveProperty('complexidade');
   });
 
   it('sem ler a complexidade atual (o Postgres caiu), nada de complexidade é escrito, mas as artes e o texto sim', async () => {
