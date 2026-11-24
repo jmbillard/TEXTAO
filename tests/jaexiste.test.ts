@@ -49,3 +49,29 @@ describe('dividir a arte', () => {
     expect(partesDaArte(t).map((p) => t.slice(p.ini, p.fim))).toEqual(['A', 'B']);
   });
 });
+
+import { remarcar } from '../src/modelo/exportar';
+
+describe('a bolinha do índice marca e devolve a arte', () => {
+  const meta = (m: { jaExiste?: string[]; naoProduzir?: string[]; produzir?: string[] } = {}) => ({ ...saida(m.jaExiste, m.naoProduzir, m.produzir).roteiro });
+  it('a arte a produzir passa a existir, e volta a produzir no segundo clique', () => {
+    const marcada = { ...meta(), ...remarcar(meta(), ['SEXTA'], 'existe') };
+    expect(marcada.jaExiste).toEqual(['SEXTA']);
+    expect(chavesQueExistem(marcada).has('SEXTA')).toBe(true);
+    const devolvida = { ...marcada, ...remarcar(marcada, ['SEXTA'], null) };
+    expect(devolvida.jaExiste).toBeUndefined();
+    expect(chavesQueExistem(devolvida).has('SEXTA')).toBe(false);
+  });
+  it('a arte fora (✕) volta para a lista', () => {
+    const fora = meta({ naoProduzir: ['SEXTA'] });
+    expect(remarcar(fora, ['SEXTA'], null)).toEqual({ jaExiste: undefined, naoProduzir: undefined, produzir: undefined });
+  });
+  it('a arte do acervo volta a produzir e fica lembrada como "produzir"', () => {
+    const devolvida = { ...meta(), ...remarcar(meta(), ['HOJE'], null) };
+    expect(devolvida.produzir).toEqual(['HOJE']);
+    expect([...chavesQueExistem(devolvida)]).toEqual(['AMANHA']);
+  });
+  it('o ✕ tira a arte que já existia da lista de "já existe"', () => {
+    expect(remarcar(meta({ jaExiste: ['SEXTA', 'DOMINGO'] }), ['SEXTA'], 'fora')).toEqual({ jaExiste: ['DOMINGO'], naoProduzir: ['SEXTA'], produzir: undefined });
+  });
+});

@@ -387,6 +387,25 @@ export function chavesQueExistem(meta: Pick<Meta, 'jaExiste' | 'jaExistem' | 'na
   return existem;
 }
 
+/** Marca as artes (pelas chaves) como já existe (✓), não produzir (✕) ou de volta à lista (null), e devolve as listas
+ *  novas das marcas. A arte do acervo devolvida à lista fica lembrada como "produzir", para não voltar riscada. */
+export function remarcar(meta: Pick<Meta, 'jaExiste' | 'jaExistem' | 'naoProduzir' | 'produzir'>, chaves: string[], como: 'existe' | 'fora' | null): Pick<Meta, 'jaExiste' | 'naoProduzir' | 'produzir'> {
+  const ja = new Set(meta.jaExiste ?? []);
+  const fora = new Set(meta.naoProduzir ?? []);
+  const prod = new Set(meta.produzir ?? []);
+  const doAcervo = new Set((meta.jaExistem ?? []).map((a) => a.chave));
+  for (const k of chaves) {
+    ja.delete(k);
+    fora.delete(k);
+    prod.delete(k);
+    if (como === 'existe') ja.add(k);
+    if (como === 'fora') fora.add(k);
+    if (!como && doAcervo.has(k)) prod.add(k);
+  }
+  const lista = (s: Set<string>) => (s.size ? [...s] : undefined);
+  return { jaExiste: lista(ja), naoProduzir: lista(fora), produzir: lista(prod) };
+}
+
 /** As artes do roteiro que estão no acervo da atração e ninguém resolveu (com elas já riscadas, normalmente nenhuma). */
 export function artesQueJaExistem(saida: Saida): string[] {
   const acervo = new Set((saida.roteiro.jaExistem ?? []).map((a) => a.chave));

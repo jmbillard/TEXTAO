@@ -1739,16 +1739,23 @@ a.ficha-marca.trello { text-decoration: none; }
 /* "Ver os ponteiros dos colegas" desligado: eles somem desta tela (o meu continua indo para os outros) */
 html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !important; }
 .no-mouse + .no-mouse { margin-top: 6px; }
-/* "já existe" marcado por quem revisa: riscado à mão, apagado, e o botão de devolver sempre à vista */
+/* "já existe" marcado por quem revisa: riscado à mão e apagado; a bolinha devolve a arte à lista */
 .artes li.marcada .txt b { color: var(--tinta3); font-weight: 600; }
-.artes.so-lista li.marcada .tirar-arte { opacity: 1; color: var(--tinta3); }
-.artes.so-lista li.marcada .tirar-arte:hover { color: var(--ultra); background: none; }
-/* duas saídas do checklist no hover: já existe (✓) e não produzir (×) */
+/* a saída do checklist no hover: não produzir (×) */
 .acoes-arte { display: flex; gap: 2px; flex: none; }
-.tirar-arte.ja:hover { color: var(--ultra); background: none; }
+/* a coluna da complexidade da arte, entre o texto e o ×: largura fixa, reservada (vazia por enquanto) */
+.artes.so-lista .cx { flex: none; align-self: center; width: 26px; height: 24px; margin-right: -2px; }
+/* a bolinha do índice marca "já existe": no hover vira ✓; na arte que existe, fica o ✓ no aro */
+.artes.so-lista .b svg { display: none; margin: 0 -3px; }
+.artes.so-lista .b[data-marca] { cursor: pointer; }
+.artes.so-lista .b[data-marca='produzir']:hover .num, .artes.so-lista .b[data-marca='existe'] .num { display: none; }
+.artes.so-lista .b[data-marca='produzir']:hover svg, .artes.so-lista .b[data-marca='existe'] svg { display: block; }
+.artes.so-lista li .b[data-marca='existe']:hover { color: var(--tinta); box-shadow: inset 0 0 0 1.5px var(--tinta3); }
 /* não produzir: o número some num traço e o risco é cinza (não diz que existe) */
 .artes li.marcada.fora .b { background: transparent; color: var(--tinta3); box-shadow: inset 0 0 0 1.5px var(--regua); opacity: 0.6; }
 .artes li.marcada.fora .riscado-mao path { stroke: var(--tinta3); }
+/* arte fora: no hover a bolinha volta a ser a do checklist, com o número (sinal de que ela volta) */
+.artes.so-lista li.marcada.fora .b[data-marca='fora']:hover { background: var(--ultra); color: var(--no-ultra); box-shadow: none; opacity: 1; }
 /* menu de opções curto (tipo da arte, tipo da etiqueta): no lugar do seletor nativo */
 .menu-opcoes { position: relative; flex: 1; min-width: 0; }
 .menu-opcoes-botao { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 7px;

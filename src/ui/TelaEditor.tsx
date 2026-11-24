@@ -21,7 +21,7 @@ import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { chavesQueExistem, exportar, listaDeArtes, pendencias, pendenciasDetalhadas, type Saida } from '../modelo/exportar';
+import { chavesQueExistem, exportar, listaDeArtes, pendencias, pendenciasDetalhadas, remarcar, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import { nomeDaSigla,
@@ -695,28 +695,15 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
   const TIPOS_NA_LISTA = false;
   // Tirar do checklist, de dois jeitos: "já existe" (✓: vai na linha JÁ EXISTEM do card e, no envio, entra no acervo da
-  // atração) ou "não produzir" (✕: só sai). A arte que já está no acervo vem riscada sozinha; ↺ devolve ao checklist.
+  // atração) ou "não produzir" (✕: só sai). A arte que já está no acervo vem riscada sozinha. A bolinha do índice marca
+  // "já existe" na arte a produzir e devolve ao checklist a que já existe ou está fora.
   // Nos dois a arte fica no texto (e no PDF). Deixar de ser arte de vez é no texto (tirar o sublinhado).
   const marcadasJa = useMemo(() => chavesQueExistem(meta), [meta.jaExiste, meta.jaExistem, meta.naoProduzir, meta.produzir]); // eslint-disable-line react-hooks/exhaustive-deps
   const marcadasFora = useMemo(() => new Set(meta.naoProduzir ?? []), [meta.naoProduzir]);
   const nJa = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto))).length;
   const nFora = artes.filter((a) => marcadasFora.has(chaveDeArte(a.texto))).length;
-  // a marcação de uma arte (pela chave): ✓ existe, ✕ não produzir, ↺ produzir (a do acervo fica lembrada como "produzir")
-  const marcar = (ja: Set<string>, fora: Set<string>, prod: Set<string>, k: string, como: 'existe' | 'fora' | null) => {
-    ja.delete(k);
-    fora.delete(k);
-    prod.delete(k);
-    if (como === 'existe') ja.add(k);
-    if (como === 'fora') fora.add(k);
-    if (!como && (meta.jaExistem ?? []).some((x) => x.chave === k)) prod.add(k);
-  };
-  const comoLista = (s: Set<string>) => (s.size ? [...s] : undefined);
   const marcarArte = (a: (typeof artes)[number], como: 'existe' | 'fora' | null) => {
-    const ja = new Set(meta.jaExiste ?? []);
-    const fora = new Set(meta.naoProduzir ?? []);
-    const prod = new Set(meta.produzir ?? []);
-    marcar(ja, fora, prod, chaveDeArte(a.texto), como);
-    mudarMeta({ jaExiste: comoLista(ja), naoProduzir: comoLista(fora), produzir: comoLista(prod) });
+    mudarMeta(remarcar(meta, [chaveDeArte(a.texto)], como));
     setRealce(null);
     avisar(como === 'existe' ? `"${a.texto}" já existe: sai do checklist e, no envio, entra no acervo.` : como === 'fora' ? `"${a.texto}" não vai ser produzida.` : `"${a.texto}" volta para o checklist.`);
   };
@@ -743,11 +730,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const marcarVarias = (como: 'existe' | 'fora' | null) => {
     const escolhidas = artes.filter((a) => selecionadas.includes(a.id));
     if (!escolhidas.length) return;
-    const ja = new Set(meta.jaExiste ?? []);
-    const fora = new Set(meta.naoProduzir ?? []);
-    const prod = new Set(meta.produzir ?? []);
-    for (const a of escolhidas) marcar(ja, fora, prod, chaveDeArte(a.texto), como);
-    mudarMeta({ jaExiste: comoLista(ja), naoProduzir: comoLista(fora), produzir: comoLista(prod) });
+    mudarMeta(remarcar(meta, escolhidas.map((a) => chaveDeArte(a.texto)), como));
     setSelecionadas([]);
     const n = plural(escolhidas.length, 'arte', 'artes');
     avisar(como === 'existe' ? `${n} já existem: saem do checklist.` : como === 'fora' ? `${n} não vão ser produzidas.` : `${n} voltam para o checklist.`);
@@ -1269,11 +1252,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             )}
               <div className="cab-artes">
                 <b><i>{artes.length - nJa - nFora}</i> {artes.length - nJa - nFora === 1 ? 'arte' : 'artes'}</b>
-                {(nJa > 0 || nFora > 0) && (
-                  <span className="rotulo">
-                    {[nJa > 0 && `+${nJa} já ${nJa === 1 ? 'existe' : 'existem'}`, nFora > 0 && `+${nFora} fora`].filter(Boolean).join(' · ')}
-                  </span>
-                )}
+                {nFora > 0 && <span className="rotulo">+{nFora} fora</span>}
                 {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
               </div>
               {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
@@ -1303,24 +1282,34 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                       onMouseLeave={() => setRealce(null)}
                     >
                       <button className="arte-linha" onMouseDown={(e) => e.shiftKey && e.preventDefault()} onClick={(e) => clicarArte(a, e)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
-                        <span className="b">{a.ordem}</span>
+                        {/* a bolinha do índice: na arte a produzir, marca "já existe"; na que existe ou está fora, devolve à lista.
+                            Com Shift, Ctrl ou ⌘ o clique segue para a seleção da linha. */}
+                        <span
+                          className="b"
+                          data-marca={leitura ? undefined : (marcada ?? 'produzir')}
+                          title={leitura ? undefined : marcada === 'existe' ? `Arte ${a.ordem} · já existe · clique para voltar a produzir`
+                            : marcada === 'fora' ? `Arte ${a.ordem} · não produzir · clique para voltar a produzir` : `Arte ${a.ordem} · clique: já existe`}
+                          onClick={(e) => {
+                            if (leitura || e.shiftKey || e.metaKey || e.ctrlKey) return;
+                            e.stopPropagation();
+                            marcarArte(a, marcada ? null : 'existe');
+                          }}
+                        >
+                          <span className="num">{a.ordem}</span>
+                          <Icone nome="certo" tam={11} traco={2.8} />
+                        </span>
                         <span className="txt"><b>{marcada ? <Riscado>{a.texto}</Riscado> : a.texto}</b></span>
                       </button>
-                      {!leitura && (
-                        marcada ? (
-                          <button className="tirar-arte" aria-label={`Produzir "${a.texto}"`} title="Produzir (volta para o checklist)" onClick={() => marcarArte(a, null)}>
-                            <Icone nome="desfazer" tam={13} traco={2.2} />
-                          </button>
-                        ) : (
+                      {!leitura && !marcada && (
+                        <>
+                          {/* a coluna da complexidade da arte: largura fixa, por enquanto vazia */}
+                          <span className="cx" aria-hidden="true" />
                           <span className="acoes-arte">
-                            <button className="tirar-arte ja" aria-label={`"${a.texto}" já existe`} title="Já existe (sai do checklist, vai em JÁ EXISTEM no card)" onClick={() => marcarArte(a, 'existe')}>
-                              <Icone nome="certo" tam={13} traco={2.2} />
-                            </button>
                             <button className="tirar-arte" aria-label={`Não produzir "${a.texto}"`} title="Não produzir (sai do checklist)" onClick={() => marcarArte(a, 'fora')}>
                               <Icone nome="fechar" tam={13} traco={2.2} />
                             </button>
                           </span>
-                        )
+                        </>
                       )}
                     </li>
                     );
