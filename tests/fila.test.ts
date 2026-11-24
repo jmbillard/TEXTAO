@@ -279,3 +279,29 @@ describe('No Trello: o card aberto', () => {
     expect(rubrica('')).toBe('');
   });
 });
+
+describe('No Trello: a semana encolhida', () => {
+  const agora = new Date(2026, 10, 24, 15, 0); // ter, 24/11
+  const pronto = resumo('pronto', '2026-11-25');
+  const paraRevisar = resumo('revisar', '2026-11-25', ['falta o editor']);
+  const jaFoiAoAr = resumo('antigo', '2026-11-20', ['falta o editor']);
+  const enviadoComPendencia: Resumo = { ...resumo('enviado', '2026-11-25', ['falta o editor']), trello: { estado: 'enviado', url: 'https://trello.com/c/x', em: '2026-11-20T12:00:00Z' } };
+
+  it('com roteiros para revisar, a semana encolhe', async () => {
+    const { semanaEncolhida } = await import('../src/ui/fila');
+    expect(semanaEncolhida([pronto, paraRevisar], false, agora)).toBe(true);
+  });
+
+  it('com a fila em dia, a semana fica no tamanho normal', async () => {
+    const { semanaEncolhida } = await import('../src/ui/fila');
+    expect(semanaEncolhida([pronto], false, agora)).toBe(false);
+    expect(semanaEncolhida([], false, agora)).toBe(false);
+    // o que já foi ao ar ou já está no Trello não conta como revisão pendente
+    expect(semanaEncolhida([pronto, jaFoiAoAr, enviadoComPendencia], false, agora)).toBe(false);
+  });
+
+  it('quem escolheu "ver a semana inteira" vê a semana no tamanho normal mesmo com revisão', async () => {
+    const { semanaEncolhida } = await import('../src/ui/fila');
+    expect(semanaEncolhida([pronto, paraRevisar], true, agora)).toBe(false);
+  });
+});

@@ -8,7 +8,7 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
-import { agruparPorDia, etapaPorExtenso, montarSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, type CardDaSemana, type EtapaDoCard, type GrupoDia } from './fila';
+import { agruparPorDia, etapaPorExtenso, montarSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -457,6 +457,8 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
             </span>
           )}
         </span>
+        {/* na semana encolhida, a etapa vira só o pontinho à direita da claquete */}
+        {etapa && etapa !== 'caiu' && <i className={`card-semana-sinal ${etapa}`} aria-hidden="true" />}
       </button>
       <div className="card-semana-mais" id={idMais} inert={!aberto || undefined}>
         <div>
@@ -511,8 +513,29 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
   );
 }
 
-/** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de hoje. */
-function NoTrello({ lista, andamento, abrir, tirar }: { lista: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void }) {
+const CHAVE_SEMANA = 'promeiro:semana';
+
+/** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de hoje. Com roteiros
+    para revisar na fila, a semana encolhe; "ver a semana inteira" volta ao tamanho normal (a escolha fica no navegador). */
+function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; fila: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void }) {
+  const [inteira, setInteira] = useState(() => {
+    try {
+      return localStorage.getItem(CHAVE_SEMANA) === 'inteira';
+    } catch {
+      return false;
+    }
+  });
+  const alternarInteira = () => {
+    const nova = !inteira;
+    setInteira(nova);
+    try {
+      localStorage.setItem(CHAVE_SEMANA, nova ? 'inteira' : 'encolhida');
+    } catch {
+      /* sem armazenamento: vale só nesta sessão */
+    }
+  };
+  const haRevisao = semanaEncolhida(fila, false);
+  const encolhida = semanaEncolhida(fila, inteira);
   const [deslocamento, setDeslocamento] = useState(0);
   const [verAnteriores, setVerAnteriores] = useState(false);
   // só um card aberto por vez; Esc fecha (e devolve o foco ao card, se ele estava lá dentro)
@@ -546,7 +569,7 @@ function NoTrello({ lista, andamento, abrir, tirar }: { lista: Resumo[]; andamen
     </section>
   );
   return (
-    <section className="secao-trello" aria-label="No Trello">
+    <section className={`secao-trello ${encolhida ? 'encolhida' : ''}`} aria-label="No Trello">
       <div className="secao-trello-topo">
         <h2>
           <Icone nome="quadro" tam={22} traco={1.7} />
@@ -558,6 +581,11 @@ function NoTrello({ lista, andamento, abrir, tirar }: { lista: Resumo[]; andamen
           {s.comPrioridade > 0 && <> · <span className="prio-nota">{s.comPrioridade} com prioridade</span></>}
         </span>
         <span className="semana-nav">
+          {haRevisao && (
+            <button type="button" className="botao-texto" onClick={alternarInteira}>
+              {inteira ? 'recolher a semana' : 'ver a semana inteira'}
+            </button>
+          )}
           {deslocamento !== 0 && <button type="button" className="botao-texto" onClick={() => setDeslocamento(0)}>voltar para hoje</button>}
           {s.anteriores.length > 0 && (
             <button type="button" className="botao-texto" aria-expanded={verAnteriores} onClick={() => setVerAnteriores((v) => !v)}>
@@ -1038,7 +1066,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           )
         )}
       </main>
-      {!vazio && roteiros && enviados.length > 0 && <NoTrello lista={enviados} andamento={andamento} abrir={abrir} tirar={tirar} />}
+      {!vazio && roteiros && enviados.length > 0 && <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} />}
       {saindo && (
         <div className="desfazer" role="status">
           <span><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</span>

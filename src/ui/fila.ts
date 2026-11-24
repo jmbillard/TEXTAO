@@ -146,6 +146,12 @@ export function montarSemana(lista: Resumo[], andamento: Record<string, Andament
   return { dias, semData, anteriores, periodo, total: naSemana.length, entregues: naSemana.filter((c) => c.etapa === 'entregue').length, comPrioridade: naSemana.filter((c) => c.prioridade).length };
 }
 
+/** A semana encolhe quando há roteiros para revisar (a prioridade é a revisão), a menos que a pessoa tenha escolhido
+    "ver a semana inteira". Só conta o que ainda pede trabalho: o que foi ao ar ou já está no Trello fica de fora. */
+export function semanaEncolhida(fila: Resumo[], inteira: boolean, agora = new Date()): boolean {
+  return !inteira && pendentes(fila, agora).some(pedeRevisao);
+}
+
 /* ---------- No Trello: o card aberto ---------- */
 
 // as etiquetas do card na produção da arte (status do Teable, que o n8n traz do Trello), por extenso

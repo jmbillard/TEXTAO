@@ -2124,3 +2124,28 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .lendo-pagina::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--ultra); animation: ler-pagina 2.2s ease-in-out infinite alternate; }
 @keyframes ler-pagina { to { top: calc(100% - 3px); } }
 @media (prefers-reduced-motion: reduce) { .lendo-pagina::after { animation: none; } }
+
+/* com roteiros para revisar, a semana encolhe (a prioridade é a revisão): as colunas perdem a altura mínima e o card
+   fechado mostra só a claquete numa linha, com o pontinho da etapa à direita. O card aberto continua completo. */
+.card-semana-sinal { display: none; background: var(--tinta3); }
+.secao-trello.encolhida .secao-trello-topo h2 { font-size: 24px; }
+.secao-trello.encolhida .coluna-topo { min-height: 38px; padding-bottom: 6px; }
+.secao-trello.encolhida .dia-num { font-size: 22px; }
+.secao-trello.encolhida .dia-rel { font-size: 18px; }
+.secao-trello.encolhida .coluna-corpo { min-height: 0; gap: 4px; padding: 6px; border-radius: 12px; }
+.secao-trello.encolhida .nada { font-size: 16px; padding: 4px 6px; }
+.secao-trello.encolhida .card-semana:not(.aberto) { border-radius: 8px; }
+.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-abrir { position: relative; padding: 6px 10px; }
+.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding-bottom: 3px; margin-bottom: -3px; }
+.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete .riscado { display: inline; }
+.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-linha { display: none; }
+.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-sinal { display: block; position: absolute; right: 8px; top: 50%; margin-top: -3px; width: 6px; height: 6px; border-radius: 50%; transition: opacity 0.15s; }
+.secao-trello.encolhida .card-semana:not(.aberto):has(.card-semana-sinal) .card-semana-claquete { padding-right: 10px; }
+.card-semana-sinal.produzindo { background: var(--ultra); }
+.card-semana-sinal.aprovacao { background: var(--producao); }
+.card-semana-sinal.entregue { background: var(--ok); }
+/* o x de tirar da fila aparece no lugar do pontinho */
+.secao-trello.encolhida .card-semana:not(.aberto) .card-lixo { top: 3px; right: 4px; }
+.secao-trello.encolhida .card-semana:not(.aberto):hover .card-semana-sinal,
+.secao-trello.encolhida .card-semana:not(.aberto):has(.card-lixo:focus-visible) .card-semana-sinal { opacity: 0; }
