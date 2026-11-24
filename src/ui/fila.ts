@@ -67,14 +67,14 @@ export function agruparPorDia(lista: Resumo[], agora = new Date(), diasExtras: s
 
 /* ---------- No Trello: a semana de agenda ---------- */
 
-/** O dia de uma semana de agenda: sete colunas fixas, a primeira é hoje (ou o dia em que a semana navegada começa). */
+/** O dia de uma semana de agenda: sete colunas fixas, a primeira é ontem e a segunda é hoje (ou o dia em que a semana navegada começa). */
 export interface DiaDaSemana {
   iso: string;
   /** "ter", "qua"… */
   diaDaSemana: string;
   numero: number;
-  /** "hoje" ou "amanhã", escritos à mão; nos outros dias, vazio. */
-  marca: '' | 'hoje' | 'amanhã';
+  /** "ontem", "hoje" ou "amanhã", escritos à mão; nos outros dias, vazio. */
+  marca: '' | 'ontem' | 'hoje' | 'amanhã';
   fimDeSemana: boolean;
   cards: CardDaSemana[];
 }
@@ -111,17 +111,19 @@ export interface Semana {
   entregues: number;
   /** Quantos dos cards nas sete colunas estão na lista de prioridade ("N com prioridade", à mão). */
   comPrioridade: number;
-  /** Os dias antes de hoje que têm card, do mais recente para o mais antigo (o link "dias anteriores"). */
+  /** Os dias antes de ontem que têm card, do mais recente para o mais antigo (o link "dias anteriores"). */
   anteriores: { iso: string; titulo: string; cards: CardDaSemana[] }[];
-  /** "24 – 30 de novembro", "29 de novembro – 5 de dezembro". */
+  /** "23 – 29 de novembro", "30 de novembro – 6 de dezembro". */
   periodo: string;
 }
 
 const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const somarDias = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
-/** deslocamento: quantas semanas para a frente (ou para trás, negativo) a partir da que começa hoje. */
+/** A semana começa em ontem, para o dia que passou estar sempre à mão; hoje fica na segunda coluna.
+    deslocamento: quantas semanas para a frente (ou para trás, negativo) a partir da que começa ontem. */
 export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0): Semana {
+  const ontem = isoLocal(somarDias(agora, -1));
   const hoje = isoLocal(agora);
   const amanha = isoLocal(somarDias(agora, 1));
   const enviados = lista.filter(noTrello).map((r): CardDaSemana => ({ r, etapa: etapaDoCard(andamento[r.id]), andamento: andamento[r.id], prioridade: !!andamento[r.id]?.prioridade }));
@@ -129,15 +131,15 @@ export function montarSemana(lista: Resumo[], andamento: Record<string, Andament
   // o que caiu desce para o fim do dia
   const ordem = (a: CardDaSemana, b: CardDaSemana) => +(a.etapa === 'caiu') - +(b.etapa === 'caiu') || claquete(a).localeCompare(claquete(b), 'pt-BR');
   const doDia = (iso: string) => enviados.filter((c) => c.r.meta.dataExibicao === iso).sort(ordem);
-  const datas = Array.from({ length: 7 }, (_, i) => somarDias(agora, deslocamento * 7 + i));
+  const datas = Array.from({ length: 7 }, (_, i) => somarDias(agora, deslocamento * 7 + i - 1));
   const dias = datas.map((d): DiaDaSemana => {
     const iso = isoLocal(d);
-    return { iso, diaDaSemana: DIAS_CURTOS[d.getDay()], numero: d.getDate(), marca: iso === hoje ? 'hoje' : iso === amanha ? 'amanhã' : '', fimDeSemana: d.getDay() === 0 || d.getDay() === 6, cards: doDia(iso) };
+    return { iso, diaDaSemana: DIAS_CURTOS[d.getDay()], numero: d.getDate(), marca: iso === ontem ? 'ontem' : iso === hoje ? 'hoje' : iso === amanha ? 'amanhã' : '', fimDeSemana: d.getDay() === 0 || d.getDay() === 6, cards: doDia(iso) };
   });
   const [ini, fim] = [datas[0], datas[6]];
   const periodo = ini.getMonth() === fim.getMonth() ? `${ini.getDate()} – ${fim.getDate()} de ${MESES[fim.getMonth()]}` : `${ini.getDate()} de ${MESES[ini.getMonth()]} – ${fim.getDate()} de ${MESES[fim.getMonth()]}`;
   const semData = enviados.filter((c) => !ehData(c.r.meta.dataExibicao)).sort(ordem);
-  const passados = [...new Set(enviados.map((c) => c.r.meta.dataExibicao).filter((d) => ehData(d) && d < hoje))].sort().reverse();
+  const passados = [...new Set(enviados.map((c) => c.r.meta.dataExibicao).filter((d) => ehData(d) && d < ontem))].sort().reverse();
   const anteriores = passados.map((iso) => {
     const [a, m, d] = iso.split('-').map(Number);
     return { iso, titulo: `${DIAS[new Date(a, m - 1, d).getDay()]}, ${d} de ${MESES[m - 1]}`, cards: doDia(iso) };

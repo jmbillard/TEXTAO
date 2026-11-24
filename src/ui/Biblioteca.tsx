@@ -515,7 +515,7 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
 
 const CHAVE_SEMANA = 'promeiro:semana';
 
-/** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de hoje. Com roteiros
+/** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de ontem. Com roteiros
     para revisar na fila, a semana encolhe; "ver a semana inteira" volta ao tamanho normal (a escolha fica no navegador). */
 function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; fila: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void }) {
   const [inteira, setInteira] = useState(() => {
