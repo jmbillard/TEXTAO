@@ -67,7 +67,7 @@ export function ligarPosteres(filmes, posteres, textos) {
 
 /* ---------- as fileiras da página: o filme que a leitura pôs por engano na Sessão da Tarde ---------- */
 /** Os pôsteres da fileira de cima (identidade própria): os da altura do pôster mais alto, se há outra fileira embaixo. */
-export function fileiraDeCima(posteres) {
+function fileiraDeCima(posteres) {
   if (!posteres.length) return [];
   const topo = posteres.reduce((a, p) => (p.caixa.y < a.caixa.y ? p : a)).caixa;
   const cima = posteres.flatMap((p, i) => (p.caixa.y + p.caixa.height / 2 <= topo.y + topo.height ? [i] : []));
@@ -99,21 +99,20 @@ function dataDaColuna(linhas, dataLida) {
  * @param pagina { posteres, textos, sessoes (as da leitura), filmes }
  * @returns [{ sessao, data?, coluna? }]
  */
-export function sessoesParaPerguntar(pagina, i) {
+function sessoesParaPerguntar(pagina, i) {
   const { posteres = [], textos = [], sessoes = [], filmes = [] } = pagina;
-  const chave = compacto;
   const todas = [];
   for (const s of [...sessoes, ...filmes.map((f) => f.sessao)].map((s) => String(s ?? '').trim()))
-    if (s && !ehSessaoDaTarde(s) && !todas.some((t) => chave(t) === chave(s))) todas.push(s);
+    if (s && !ehSessaoDaTarde(s) && !todas.some((t) => compacto(t) === compacto(s))) todas.push(s);
   const f = filmes[i];
   const caixa = f && f.poster !== null && f.poster !== undefined ? posteres[f.poster]?.caixa : null;
   if (!caixa) return todas.map((sessao) => ({ sessao }));
   const linhas = textoAcima(caixa, textos);
-  let daColuna = linhas.map((l) => todas.find((s) => chave(s) === chave(l.str))).find(Boolean);
+  let daColuna = linhas.map((l) => todas.find((s) => compacto(s) === compacto(l.str))).find(Boolean);
   if (!daColuna) {
     const temSessao = (j) => j !== i && filmes[j].sessao && !ehSessaoDaTarde(filmes[j].sessao);
-    const usadas = new Set(filmes.filter((_, j) => temSessao(j)).map((g) => chave(g.sessao)));
-    const livres = todas.filter((s) => !usadas.has(chave(s)));
+    const usadas = new Set(filmes.filter((_, j) => temSessao(j)).map((g) => compacto(g.sessao)));
+    const livres = todas.filter((s) => !usadas.has(compacto(s)));
     const colunas = fileiraDeCima(posteres)
       .filter((p) => !filmes.some((g, j) => g.poster === p && temSessao(j)))
       .sort((a, b) => posteres[a].caixa.x - posteres[b].caixa.x);
@@ -318,8 +317,10 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
   async function abrir(id) {
     const p = q.previa.get(id);
     if (!p) return null;
+    const textos = [];
     const paginas = q.paginas.all(id).map((g) => {
       const d = g.dados ? JSON.parse(g.dados) : null;
+      textos.push(d?.textos ?? []);
       return {
         numero: g.numero,
         util: g.util,
@@ -331,17 +332,15 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
         vagas: d?.vagas ?? [],
         tamanho: d?.tamanho ?? null,
         fileiraDeCima: fileiraDeCima(d?.posteres ?? []),
-        textos: d?.textos ?? [],
       };
     });
     // a conferência de todas as páginas de uma vez (uma consulta ao banco por prévia aberta)
     const r = await conferidos(paginas.flatMap((g) => g.filmes));
     let k = 0;
-    for (const g of paginas) {
-      const lidos = g.filmes;
-      g.filmes = lidos.map((_, i) => comPergunta(comEnvio(r.filmes[k++]), { ...g, filmes: lidos }, i));
-      delete g.textos;
-    }
+    paginas.forEach((g, n) => {
+      const pagina = { ...g, textos: textos[n] };
+      g.filmes = g.filmes.map((_, i) => comPergunta(comEnvio(r.filmes[k++]), pagina, i));
+    });
     return {
       id: p.id,
       nome: p.nome,
@@ -355,7 +354,8 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
 
   /**
    * Muda um filme lido e grava na hora: o título corrigido (e a conferência recomeça com ele), o candidato escolhido
-   * ("rec…" ou "novo") ou o ano escolhido. @returns o filme conferido de novo
+   * ("rec…" ou "novo"), o ano escolhido, subir da Sessão da Tarde para a vaga do pôster dele em cima (fica sem sessão)
+   * ou a sessão escolhida para o que subiu (a da coluna traz a data do alto da coluna). @returns o filme conferido de novo
    */
   async function mudar(id, n, i, corpo) {
     const g = q.paginaLida.get(id, n);

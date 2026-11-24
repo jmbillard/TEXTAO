@@ -1,7 +1,8 @@
 /* As duas fileiras de cards em cima da página da prévia: a de cima com os filmes de identidade própria (e as
    vagas canceladas), a de baixo com os da Sessão da Tarde. O filme lido na Sessão da Tarde com o pôster na fileira
-   de cima da página deixa lá a vaga do pôster dele ("???"), para onde ele é arrastado. Cada card fica centrado sobre o seu pôster, sem
-   encostar no vizinho; o filme sem pôster vai para o fim da fileira dele. Posições em frações da largura. */
+   de cima da página deixa lá a vaga do pôster dele ("???"), para onde ele é arrastado. Cada card fica centrado sobre
+   o seu pôster, sem encostar no vizinho; o filme sem pôster vai para o fim da fileira dele. Posições em frações da
+   largura. */
 import type { FilmeLido, PaginaDaPrevia } from '../dados/armazenamento';
 
 export const ehSessaoDaTarde = (sessao: string) => /^SESS[ÃA]O\s*DA\s*TARDE$/i.test(sessao.trim());

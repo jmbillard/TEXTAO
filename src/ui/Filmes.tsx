@@ -22,8 +22,8 @@ import { Marca } from "./pecas";
    própria em cima, Sessão da Tarde embaixo), e a página grande embaixo. Cada card tem uma marca só, da conferência
    com o banco: ✓ pronto, ! pede atenção (abre o balão com a pergunta) ou o Trello (já tem card). O filme que a leitura
    pôs por engano na Sessão da Tarde deixa "???" na vaga do pôster dele em cima: arrastado até lá, ele pede a sessão,
-   a da coluna dele na página primeiro (só de baixo para cima). O Enviar, o mesmo
-   do editor de roteiros, manda os prontos de toda a prévia; o que der erro mostra o motivo e vai no próximo Enviar. */
+   a da coluna dele na página primeiro (só de baixo para cima). O Enviar, o mesmo do editor de roteiros, manda os
+   prontos de toda a prévia; o que der erro mostra o motivo e vai no próximo Enviar. */
 
 interface Props {
   aberta?: string;
