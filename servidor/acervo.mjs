@@ -16,6 +16,7 @@
  */
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
+import { nivelDeComplexidade } from './trello.mjs';
 
 /** A arte do jeito de comparar: sem acento, sem caixa, sem pontuação nas pontas, espaços simples. */
 export function chaveDeArte(texto) {
@@ -208,9 +209,9 @@ export function criarAcervo(env, deps = {}) {
   }
 
   /**
-   * O card saiu (finalizado/entregue): as artes novas dele (texto, ou { texto, tipos } com as siglas) entram no acervo da
-   * atração ou, numa sessão, do filme
-   * do dia (data = exibição). As que já estão lá, não.
+   * O card saiu (finalizado/entregue): as artes novas dele (texto, ou { texto, tipos, complexidade } com as siglas e o
+   * nível 1–3) entram no acervo da atração ou, numa sessão, do filme do dia (data = exibição). As que já estão lá, não,
+   * nem mudam de complexidade. A que vem sem nível (os cards de filme e as ✓, que ninguém marcou) entra sem complexidade.
    * @returns quantas entraram
    */
   async function registrar({ atracao, data, card, artes }) {
@@ -230,9 +231,10 @@ export function criarAcervo(env, deps = {}) {
     const entradas = artes
       // uma entrada por tipo: a arte com mais de um tipo (foto com lettering) vira uma linha de cada no acervo
       .flatMap((x) => {
-        if (typeof x === 'string') return [{ arte: x, tipo: '' }];
+        if (typeof x === 'string') return [{ arte: x, tipo: '', complexidade: null }];
         const tipos = (Array.isArray(x?.tipos) && x.tipos.length ? x.tipos : [x?.tipo ?? '']).map((t) => String(t ?? '').trim());
-        return tipos.map((tipo) => ({ arte: String(x?.texto ?? ''), tipo }));
+        const complexidade = x?.complexidade == null ? null : nivelDeComplexidade(x.complexidade); // cada tipo, o mesmo nível
+        return tipos.map((tipo) => ({ arte: String(x?.texto ?? ''), tipo, complexidade }));
       })
       .map((x) => ({ ...x, arte: x.arte.trim(), chave: chaveDeArte(x.arte) }))
       .filter((x) => x.chave);
@@ -259,7 +261,7 @@ export function criarAcervo(env, deps = {}) {
       await teable('POST', '', {
         fieldKeyType: 'name',
         typecast: true,
-        records: novas.map((x) => ({ fields: { arte: x.arte, ...(x.tipo ? { tipo: x.tipo } : {}), atracao: [{ id: a.id }], ...(p?.id ? { claquete: [{ id: p.id }] } : {}), ...(filme ? { filme: { id: filme.id } } : {}) } })),
+        records: novas.map((x) => ({ fields: { arte: x.arte, ...(x.tipo ? { tipo: x.tipo } : {}), ...(x.complexidade ? { complexidade: x.complexidade } : {}), atracao: [{ id: a.id }], ...(p?.id ? { claquete: [{ id: p.id }] } : {}), ...(filme ? { filme: { id: filme.id } } : {}) } })),
       });
     if (tipar.length) await teable('PATCH', '', { fieldKeyType: 'name', typecast: true, records: tipar });
     esquecer();

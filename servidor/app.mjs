@@ -812,8 +812,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const estado = r.duplicado ? 'duplicado' : 'enviado';
       q.marcarEnvio.run(id, estado, r.card?.id ?? null, r.card?.url ?? null, null, JSON.stringify(r.avisos ?? []), new Date().toISOString(), eu.email, eu.nome);
       // o que entra no acervo da atração quando o card sair: só as artes novas (as que já existiam, não), com o tipo (sigla)
+      // e a complexidade (1–3; a sem marca, 1)
       if (estado === 'enviado' && Array.isArray(corpo.artes))
-        q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => ({ texto: String(a?.texto ?? a).slice(0, 500), tipos: (Array.isArray(a?.tipos) ? a.tipos : a?.tipo ? [a.tipo] : []).map((t) => String(t).slice(0, 40)).slice(0, 12) }))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), String(JSON.parse(atual.meta).dataExibicao ?? '').slice(0, 10) || null, id);
+        q.guardarArtesNovas.run(JSON.stringify(corpo.artes.filter((a) => a && !a.existe).map((a) => ({ texto: String(a?.texto ?? a).slice(0, 500), tipos: (Array.isArray(a?.tipos) ? a.tipos : a?.tipo ? [a.tipo] : []).map((t) => String(t).slice(0, 40)).slice(0, 12), complexidade: nivelDeComplexidade(a?.complexidade) }))), String(JSON.parse(atual.meta).programa ?? '').slice(0, 200), String(JSON.parse(atual.meta).dataExibicao ?? '').slice(0, 10) || null, id);
       // as que quem revisa confirmou que já existem (✓) entram no acervo da atração agora (ou no do filme do dia, numa
       // sessão): da próxima vez que ela pedir a mesma arte, já vem riscada. As que já estavam lá não repetem
       if (estado === 'enviado' && Array.isArray(corpo.artes) && acervo.ligado && acervo.grava) {
@@ -915,7 +916,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         const saiu = a && (a.entregue || a.status.some((s) => /FINALIZADO/i.test(s)));
         if (!saiu || !e.atracao) continue;
         try {
-          const n = await acervo.registrar({ atracao: e.atracao, data: e.exibicao, card: e.card_id, artes: JSON.parse(e.artes_novas) });
+          // as artes a produzir levam a complexidade; o envio guardado antes dela (texto, ou { texto, tipos }) entra com 1
+          const artes = JSON.parse(e.artes_novas).map((x) => (typeof x === 'string' ? { texto: x } : x)).map((x) => ({ ...x, complexidade: nivelDeComplexidade(x?.complexidade) }));
+          const n = await acervo.registrar({ atracao: e.atracao, data: e.exibicao, card: e.card_id, artes });
           q.noAcervo.run(new Date().toISOString(), e.roteiro_id);
           if (n) console.log(`[acervo] ${e.atracao}: ${n} ${n === 1 ? 'arte nova' : 'artes novas'} do card ${e.card_id}`);
         } catch (erro) {

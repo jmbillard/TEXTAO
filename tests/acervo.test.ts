@@ -127,6 +127,88 @@ describe('acervo de artes', () => {
     expect(pedidos.find((p) => p.metodo === 'PATCH')!.corpo!.records).toEqual([{ id: 'recA', fields: { tipo: 'RDP' } }]);
   });
 
+  describe('a complexidade da arte (1, 2 ou 3) entra com ela no acervo', () => {
+    const registrar = async (artes: unknown[]) => {
+      const { consultar, buscar, pedidos } = falsos();
+      const a = criarAcervo(ENV, { consultar, buscar });
+      await a.registrar({ atracao: 'Encontro', card: 'card9', artes });
+      return {
+        post: pedidos.filter((p) => p.metodo === 'POST').flatMap((p) => p.corpo!.records.map((r) => r.fields)),
+        patch: pedidos.filter((p) => p.metodo === 'PATCH').flatMap((p) => p.corpo!.records),
+      };
+    };
+
+    it('a arte nova entra com o seu nível', async () => {
+      const { post } = await registrar([{ texto: 'Sexta', tipos: ['RDP'], complexidade: 3 }, { texto: 'Domingo', tipos: [], complexidade: 2 }]);
+      expect(post).toEqual([
+        { arte: 'Sexta', tipo: 'RDP', complexidade: 3, atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
+        { arte: 'Domingo', complexidade: 2, atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
+      ]);
+    });
+
+    it('a arte sem marca entra com 1', async () => {
+      const { post } = await registrar([{ texto: 'Sexta', tipos: [], complexidade: 1 }, { texto: 'Domingo', tipos: [], complexidade: 'alta' }]);
+      expect(post.map((f) => f.complexidade)).toEqual([1, 1]);
+    });
+
+    it('a arte com dois tipos leva o mesmo nível nas duas linhas', async () => {
+      const { post } = await registrar([{ texto: 'Sexta', tipos: ['FOTO', 'LETT'], complexidade: 2 }]);
+      expect(post.map((f) => [f.tipo, f.complexidade])).toEqual([
+        ['FOTO', 2],
+        ['LETT', 2],
+      ]);
+    });
+
+    it('a arte que já estava no acervo não muda de complexidade, nem quando só ganha o tipo', async () => {
+      const { post, patch } = await registrar([{ texto: 'Hoje', tipos: ['CRT'], complexidade: 3 }, { texto: 'Amanhã', tipos: ['RDP'], complexidade: 3 }]);
+      expect(post).toEqual([]);
+      expect(patch).toEqual([{ id: 'recA', fields: { tipo: 'RDP' } }]);
+    });
+
+    it('a arte que ninguém marcou (o card de filme, a ✓) entra sem complexidade, sem inventar', async () => {
+      const { post } = await registrar(['Sexta', { texto: 'Domingo', tipos: ['RDP'] }]);
+      expect(post).toEqual([
+        { arte: 'Sexta', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
+        { arte: 'Domingo', tipo: 'RDP', atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] },
+      ]);
+    });
+
+    it('do envio ao card que sai: o nível guardado no envio é o que entra; o envio guardado antes entra com 1', async () => {
+      const { consultar, buscar, pedidos } = falsos();
+      const acervo = criarAcervo(ENV, { consultar, buscar });
+      const db = abrirBanco(':memory:');
+      const andamento = async (linhas: { id: string }[]) => Object.fromEntries(linhas.map((l) => [l.id, { status: ['FINALIZADO'], entregue: false }]));
+      const trello = { ligado: true, parar: async () => {}, andamento, enviar: async () => ({ card: { id: 'card9', url: 'https://trello.com/c/C9' }, avisos: [] }) };
+      const servidor = createServer(criarApp({ db, env: {}, trello, acervo }));
+      await new Promise<void>((ok) => servidor.listen(0, ok));
+      const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+      const ana = (caminho: string, init: RequestInit = {}) =>
+        fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com', 'content-type': 'application/json', ...init.headers } });
+      const gravadas = () => pedidos.filter((p) => p.metodo === 'POST').flatMap((p) => p.corpo!.records.map((r) => [r.fields.arte, r.fields.complexidade]));
+      try {
+        const roteiro = { meta: { claquete: 'Encontro 19/11', programa: 'Encontro' }, doc: { type: 'doc', content: [] } };
+        await ana('/api/roteiros/rot-cx-1', { method: 'PUT', body: JSON.stringify({ roteiro, nArtes: 2 }) });
+        await ana('/api/roteiros/rot-cx-1/trello', { method: 'POST', body: JSON.stringify({ artes: [{ texto: 'Sexta', tipo: '', complexidade: 3 }, { texto: 'Domingo', tipo: '' }], texto: 'x' }) });
+        await ana('/api/andamento');
+        await new Promise((ok) => setTimeout(ok, 50));
+        expect(gravadas()).toEqual([
+          ['Sexta', 3],
+          ['Domingo', 1],
+        ]);
+        // o envio guardado antes desta mudança, sem a complexidade ({ texto, tipos }, ou só o texto, o formato mais antigo)
+        db.prepare('UPDATE envios SET artes_novas = ?, acervo_em = NULL WHERE roteiro_id = ?').run(JSON.stringify([{ texto: 'Segunda', tipos: ['RDP'] }, 'Terça']), 'rot-cx-1');
+        await ana('/api/andamento');
+        await new Promise((ok) => setTimeout(ok, 50));
+        expect(gravadas().slice(2)).toEqual([
+          ['Segunda', 1],
+          ['Terça', 1],
+        ]);
+      } finally {
+        servidor.close();
+      }
+    });
+  });
+
   it('pacote gráfico novo: apaga todas as artes da atração (as de filme, não)', async () => {
     const { consultar, buscar, pedidos } = falsos();
     const a = criarAcervo(ENV, { consultar, buscar });
