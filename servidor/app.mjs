@@ -17,6 +17,7 @@ import { chaveDaAtracao, criarTrello } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
 import { criarFilmes } from './filmes.mjs';
+import { ehSessaoDaTarde } from './exibicao.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -121,7 +122,8 @@ export function abrirBanco(caminho) {
   if (!tem('envios', 'exibicao')) db.exec('ALTER TABLE envios ADD COLUMN exibicao TEXT');
   // keys que alguém marcou como "não é atração" na aba Sem cadastro: não voltam para a lista
   db.exec('CREATE TABLE IF NOT EXISTS keys_ignoradas (key TEXT PRIMARY KEY, por TEXT, em TEXT)');
-  // cards de filme cujas artes já foram para o acervo do filme (uma vez só, como os roteiros)
+  // cards de filme cujas artes já foram para o acervo do filme (uma vez só, como os roteiros); o card da semana da
+  // Sessão da Tarde vai uma vez por filme: a chave é "card|filme"
   db.exec('CREATE TABLE IF NOT EXISTS filmes_no_acervo (card TEXT PRIMARY KEY, em TEXT)');
   return db;
 }
@@ -870,10 +872,15 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     try {
       for (const f of filmes) {
         const saiu = f.entregue || f.status.some((s) => /FINALIZADO/i.test(s));
-        if (!saiu || !f.card || !f.artes.length || q.filmeNoAcervo.get(f.card)) continue;
+        // o card da semana da Sessão da Tarde junta vários filmes: o registro é por filme (card + filme), não por card.
+        // A exibição da Sessão da Tarde sem artes (a do n8n) tem uma arte só: o título do filme
+        const daTarde = ehSessaoDaTarde(f.sessao);
+        const artes = daTarde && !f.artes.length && !f.existentes?.length && f.titulo ? [String(f.titulo).toUpperCase()] : f.artes;
+        const chave = daTarde ? `${f.card}|${f.filme}` : f.card;
+        if (!saiu || !f.card || !artes.length || (daTarde && !f.filme) || q.filmeNoAcervo.get(chave)) continue;
         try {
-          const n = await acervo.registrar({ atracao: f.sessao, data: f.data, card: f.card, artes: f.artes });
-          q.filmeFoiAoAcervo.run(f.card, new Date().toISOString());
+          const n = await acervo.registrar({ atracao: f.sessao, data: f.data, card: f.card, artes });
+          q.filmeFoiAoAcervo.run(chave, new Date().toISOString());
           if (n) console.log(`[acervo] ${f.titulo}: ${n} ${n === 1 ? 'arte nova' : 'artes novas'} do card ${f.card}`);
         } catch (erro) {
           console.warn(`[acervo] não registrei o filme ${f.titulo}: ${erro instanceof Error ? erro.message : erro}`);

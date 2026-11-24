@@ -699,7 +699,9 @@ describe('aba Filmes: a Sessão da Tarde', () => {
     const link = `https://trello.com/c/${card.id.toUpperCase()}`;
     const exibicoes = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: Record<string, unknown> }[])[0].fields);
     exibicoes.forEach((e) => expect(e.criado_em).toMatch(ISO));
-    expect(exibicoes.map((e) => ({ ...e, criado_em: '<agora>' }))).toEqual(referenciaDaTarde.exibicoes.map((e) => ({ ...e, card_ID: card.id, link })));
+    // a exibição do n8n vinha sem artes; a do PROMeiro guarda as do filme (o título): a produzir ou que já existe
+    const artes = [{ artes: 'FLORES DE AÇO' }, { artes: '', artes_existentes: 'OS DELÍRIOS DE CONSUMO DE BECKY BLOOM' }, { artes: 'O COMITÊ DA VIDA' }, { artes: 'OS SALAFRÁRIOS' }];
+    expect(exibicoes.map((e) => ({ ...e, criado_em: '<agora>' }))).toEqual(referenciaDaTarde.exibicoes.map((e, k) => ({ ...e, card_ID: card.id, link, ...artes[k] })));
     // nada na produção da arte (ADR 0001)
     expect(falsos.pedidos.filter((p) => p.url.host === 'teable:3000' && !/tblFilmes|tblExibicoes/.test(p.url.pathname))).toEqual([]);
 
@@ -796,6 +798,25 @@ describe('aba Filmes: a Sessão da Tarde', () => {
       ['**TÍTULOS IDENTIFICADOS (3):**', '`30/11 SEG` FLORES DE AÇO (2012)', '`08/12 TER` O COMITÊ DA VIDA (2021)', '`09/12 QUA` OS SALAFRÁRIOS (2021)', '', '**A PRODUZIR (3):** no checklist.'].join('\n'),
     );
     expect(doN8n.checklist!.itens.at(-1)).toBe('09/12 QUA · OS SALAFRÁRIOS (2021)');
+  });
+
+  it('na conferência seguinte, o título que o card da semana pôs no acervo do filme conta como arte que já existe', async () => {
+    // a linha do acervo como o card da semana que saiu a grava: o título, ligado ao filme
+    const floresNoAcervo = [doAcervo('FLORES DE AÇO', 'recFlores01', 'Flores de Aço (2012)')];
+    const { enviar, terminar, filmes, falsos } = await paraEnviar([tarde('FLORES DE AÇO', '07/12/2026'), tarde('O COMITÊ DA VIDA', '08/12/2026')], { filmes: DA_TARDE, acervo: floresNoAcervo, atracoes: SESSOES });
+    const [flores, comite] = (await filmes()) as (FilmeEnviado & { conferencia: { artes: { novas: string[]; existentes: string[] } } })[];
+    expect(flores.conferencia.artes.existentes).toEqual(['FLORES DE AÇO']);
+    expect(comite.conferencia.artes.existentes).toEqual([]);
+    await enviar();
+    await terminar();
+    const [card] = falsos.cards();
+    expect(card.checklist!.itens).toEqual(['08/12 TER · O COMITÊ DA VIDA (2021)']);
+    expect(card.card.desc).toContain('`07/12 SEG` FLORES DE AÇO (2012) · ✓ já existe');
+    const exibicoes = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: Record<string, unknown> }[])[0].fields);
+    expect(exibicoes.map((e) => [e.artes, e.artes_existentes])).toEqual([
+      ['', 'FLORES DE AÇO'],
+      ['O COMITÊ DA VIDA', undefined],
+    ]);
   });
 
   it('sem título a produzir e sem card na semana, não há card (como no CARDS): as exibições ficam sem ele', async () => {

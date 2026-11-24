@@ -1,7 +1,10 @@
 // @vitest-environment node
+import { createServer } from 'node:http';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
 import { chaveDeArte, criarAcervo } from '../servidor/acervo.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { abrirBanco, criarApp } from '../servidor/app.mjs';
 
 const ENV = {
   TEABLE_URL: 'http://teable:3000',
@@ -20,6 +23,10 @@ const A = 'a'.repeat(24);
 const B = 'b'.repeat(24);
 const C = 'c'.repeat(24);
 const D = 'd'.repeat(24);
+const W = 'e'.repeat(24); // o card da semana da Sessão da Tarde
+const FLORES = { id: 'recFlores', title: 'FLORES DE AÇO (2012)' };
+const COMITE = { id: 'recComite', title: 'O COMITÊ DA VIDA (2021)' };
+const TARDE = { id: 's2', title: 'Sessão da Tarde' };
 
 /** O Postgres do Teable (acervo, atrações, exibições, produção) e a API, de mentira. */
 function falsos() {
@@ -45,13 +52,16 @@ function falsos() {
     { filme: { id: 'recOutro', title: 'OUTRO (2020)' }, sessao: { id: 's1', title: 'Tela Quente' }, data_de_exibicao: '2026-11-17T03:00:00.000Z', dia: '2026-11-17', card_ID: C, labels: ['CANCELADO'] },
     { filme: RIVAIS, sessao: { id: 's2', title: 'Sessão da Tarde' }, data_de_exibicao: '2027-02-03T03:00:00.000Z', dia: '2027-02-03', card_ID: B, labels: null },
     { filme: { id: 'recRivais90', title: 'RIVAIS (1990)' }, sessao: { id: 's3', title: 'Corujão' }, data_de_exibicao: '2025-01-01T03:00:00.000Z', dia: '2025-01-01', card_ID: D, labels: null },
+    // o card da semana da Sessão da Tarde: dois filmes, um card só
+    { filme: FLORES, sessao: TARDE, data_de_exibicao: '2026-11-30T03:00:00.000Z', dia: '2026-11-30', card_ID: W, labels: null },
+    { filme: COMITE, sessao: TARDE, data_de_exibicao: '2026-12-03T03:00:00.000Z', dia: '2026-12-03', card_ID: W, labels: null },
   ];
   const consultas: { sql: string; params: unknown[] }[] = [];
   const consultar = async (sql: string, params: unknown[] = []) => {
     consultas.push({ sql, params });
     if (sql.includes('"acervo"')) return linhas;
     if (sql.includes('"atracoes"') && sql.includes('"tipo"')) return tipos;
-    if (sql.includes('"atracoes"')) return { Encontro: [{ id: 'recEnc' }], 'Tela Quente': [{ id: 'recTQ' }], '': [] }[String(params[0]).toLowerCase() === 'encontro' ? 'Encontro' : String(params[0]).toLowerCase() === 'tela quente' ? 'Tela Quente' : ''];
+    if (sql.includes('"atracoes"')) return ({ encontro: [{ id: 'recEnc' }], 'tela quente': [{ id: 'recTQ' }], 'sessão da tarde': [{ id: 'recTarde' }] } as Record<string, { id: string }[]>)[String(params[0]).toLowerCase()] ?? [];
     if (sql.includes('"producao"')) return [{ id: 'recCard9' }];
     if (sql.includes('"exibicoes"') && sql.includes('::date = $1')) return exibicoes.filter((e) => e.dia === params[0]);
     if (sql.includes('"exibicoes"')) return exibicoes.filter((e) => e.filme.id === params[0]);
@@ -62,7 +72,7 @@ function falsos() {
     pedidos.push({ metodo: init.method ?? 'GET', url, corpo: init.body ? JSON.parse(String(init.body)) : null });
     return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
   };
-  const previas: Record<string, string[]> = { [A]: ['RIVAIS', 'HOJE', 'AMANHÃ', 'SEGUNDA', 'PRÓXIMA SEGUNDA', 'TELA QUENTE APRESENTA'], [B]: ['HOJE', 'QUARTA'], [D]: ['NÃO É ESTE'] };
+  const previas: Record<string, string[]> = { [A]: ['RIVAIS', 'HOJE', 'AMANHÃ', 'SEGUNDA', 'PRÓXIMA SEGUNDA', 'TELA QUENTE APRESENTA'], [B]: ['HOJE', 'QUARTA'], [D]: ['NÃO É ESTE'], [W]: ['30/11 SEG · FLORES DE AÇO (2012)', '03/12 QUI · O COMITÊ DA VIDA (2021)'] };
   const lidos: string[] = [];
   const artesDoCard = async (card: string) => (lidos.push(card), previas[card] ?? []);
   return { consultar, consultas, buscar, pedidos, artesDoCard, lidos };
@@ -152,6 +162,13 @@ describe('acervo de artes', () => {
     expect(lidos).not.toContain(D); // RIVAIS de 1990 é outro filme
   });
 
+  it('o acervo de um filme da Sessão da Tarde traz o título dele do card da semana, e não os dos outros filmes', async () => {
+    const { consultar, artesDoCard } = falsos();
+    const a = criarAcervo(ENV, { consultar, artesDoCard });
+    const artes: Arte[] = await a.paraRevisao('Sessão da Tarde', '2026-12-03');
+    expect(artes.map((x) => [x.chave, x.claquete])).toEqual([['O COMITE DA VIDA', 'Prévia: Sessão da Tarde 03/12']]);
+  });
+
   it('o card de uma sessão que sai grava as artes novas no filme; sem filme no dia, não grava', async () => {
     const { consultar, buscar, pedidos, artesDoCard } = falsos();
     const a = criarAcervo(ENV, { consultar, buscar, artesDoCard });
@@ -164,5 +181,32 @@ describe('acervo de artes', () => {
     const a = criarAcervo({});
     expect(a.ligado).toBe(false);
     expect(await a.daAtracao('Encontro')).toEqual([]);
+  });
+
+  it('o card da semana da Sessão da Tarde que sai põe no acervo o título de cada filme, uma vez por filme', async () => {
+    const { consultar, buscar, pedidos, artesDoCard } = falsos();
+    const acervo = criarAcervo(ENV, { consultar, buscar, artesDoCard });
+    // as exibições do card da semana: a do PROMeiro guarda o título; a do n8n vem sem artes (o título é a arte dela)
+    const exibicao = (filme: { id: string }, titulo: string, data: string, artes: string[]) => ({ id: `rec${data}`, filme: filme.id, card: W, data, sessao: 'Sessão da Tarde', titulo, ano: null, status: ['FINALIZADO'], entregue: false, artes, existentes: [] });
+    const filmesProximos = async () => [exibicao(FLORES, 'FLORES DE AÇO', '2026-11-30', ['FLORES DE AÇO']), exibicao(COMITE, 'O Comitê da Vida', '2026-12-03', [])];
+    const trello = { ligado: false, filmesProximos, parar: async () => {} };
+    const servidor = createServer(criarApp({ db: abrirBanco(':memory:'), env: {}, trello, acervo }));
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    const filmes = () => fetch(`http://localhost:${(servidor.address() as { port: number }).port}/api/filmes`, { headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } });
+    try {
+      expect((await filmes()).status).toBe(200);
+      await new Promise((ok) => setTimeout(ok, 50));
+      const gravadas = () => pedidos.filter((p) => p.metodo === 'POST').flatMap((p) => p.corpo!.records.map((r) => r.fields));
+      expect(gravadas()).toEqual([
+        { arte: 'FLORES DE AÇO', atracao: [{ id: 'recTarde' }], claquete: [{ id: 'recCard9' }], filme: { id: 'recFlores' } },
+        { arte: 'O COMITÊ DA VIDA', atracao: [{ id: 'recTarde' }], claquete: [{ id: 'recCard9' }], filme: { id: 'recComite' } },
+      ]);
+      // da próxima conferência, o card da semana não vai de novo
+      await filmes();
+      await new Promise((ok) => setTimeout(ok, 50));
+      expect(gravadas()).toHaveLength(2);
+    } finally {
+      servidor.close();
+    }
   });
 });

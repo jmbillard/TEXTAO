@@ -15,6 +15,7 @@
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
  */
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
+import { chaveDoTitulo } from './titulo.mjs';
 
 /** A arte do jeito de comparar: sem acento, sem caixa, sem pontuação nas pontas, espaços simples. */
 export function chaveDeArte(texto) {
@@ -43,6 +44,17 @@ export function vinculos(v) {
 }
 const lerTipo = (v) => (Array.isArray(v) ? v[0] : typeof v === 'string' && v.startsWith('[') ? (JSON.parse(v)[0] ?? '') : v) || '';
 const titulo = (v) => vinculos(v)[0]?.title ?? '';
+const semAno = (t) => String(t ?? '').replace(/\s*\(\d{4}\)\s*$/, '').trim();
+// o item do card da semana da Sessão da Tarde: "DD/MM DIA · TÍTULO (ANO)", um por filme
+const ITEM_DA_SEMANA = /^\d{2}\/\d{2} \S+ · (.+)$/;
+/** A arte do item do checklist para o filme: o item do card da semana é o título de um filme só (o deste filme vira o
+    título, sem o dia nem o ano; o de outro filme, nada); os outros itens valem como estão. */
+function arteDoItem(item, filme) {
+  const m = ITEM_DA_SEMANA.exec(String(item ?? '').trim());
+  if (!m) return item;
+  const nome = semAno(m[1]);
+  return chaveDoTitulo(nome) && chaveDoTitulo(nome) === chaveDoTitulo(semAno(filme?.nome)) ? nome : null;
+}
 
 /**
  * @param env TEABLE_ACERVO (id da tabela, para gravar), TEABLE_PG_ACERVO (nome no Postgres, para ler),
@@ -142,14 +154,15 @@ export function criarAcervo(env, deps = {}) {
     return artes;
   }
 
-  /** O que o filme já tem pronto: as artes gravadas com ele e os checklists das prévias dele (em qualquer sessão). */
-  async function doFilme(f) {
+  /** O que o filme já tem pronto: as artes gravadas com ele e os checklists das prévias dele (em qualquer sessão).
+      @param fora o card que não conta como prévia (o que está saindo: as artes dele são as que vão ao acervo) */
+  async function doFilme(f, fora = '') {
     if (!f?.id) return [];
     const saida = new Map();
     for (const l of juntar((await todas()).filter((x) => x.filmeId === f.id).map(publica))) saida.set(l.chave, l);
     if (t.exibicoes) {
       const exibicoes = await consultar(`SELECT "sessao", "data_de_exibicao", "card_ID" FROM ${t.exibicoes} WHERE "filme"::jsonb->>'id' = $1`, [f.id]);
-      for (const l of exibicoes.filter((x) => x.card_ID)) {
+      for (const l of exibicoes.filter((x) => x.card_ID && x.card_ID !== fora)) {
         const d = new Date(l.data_de_exibicao);
         const dia = isNaN(d) ? '' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
         const origem = `Prévia: ${titulo(l.sessao)} ${dia}`.trim();
@@ -159,7 +172,8 @@ export function criarAcervo(env, deps = {}) {
         } catch (e) {
           console.warn(`[acervo] não li a prévia ${l.card_ID}: ${e instanceof Error ? e.message : e}`);
         }
-        for (const arte of artes) {
+        for (const item of artes) {
+          const arte = arteDoItem(item, f);
           const chave = chaveDeArte(arte);
           if (chave && !saida.has(chave)) saida.set(chave, { arte, chave, tipo: '', claquete: origem });
         }
@@ -212,7 +226,7 @@ export function criarAcervo(env, deps = {}) {
     // o que já existe, linha a linha (com o tipo): do filme, ou da atração; numa sessão, a prévia conta de qualquer tipo
     const n = nomeComparavel(atracao);
     const linhas = (await todas()).filter((l) => (filme ? l.filmeId === filme.id : !l.filmeId && nomeComparavel(l.atracao) === n));
-    const daPrevia = new Set(filme ? (await doFilme(filme)).map((x) => x.chave).filter((k) => !linhas.some((l) => l.chave === k)) : []);
+    const daPrevia = new Set(filme ? (await doFilme(filme, card)).map((x) => x.chave).filter((k) => !linhas.some((l) => l.chave === k)) : []);
     const entradas = artes
       // uma entrada por tipo: a arte com mais de um tipo (foto com lettering) vira uma linha de cada no acervo
       .flatMap((x) => {

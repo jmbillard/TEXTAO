@@ -13,10 +13,11 @@
    A Sessão da Tarde não tem identidade própria do filme: os filmes de uma semana (de segunda a domingo) viram um card
    só, como o "card resumo" do CARDS: "SESSÃO DA TARDE DD/MM A DD/MM - TÍTULOS", todos os títulos na descrição, os que
    faltam produzir (o título não está no acervo do filme) na checklist "TÍTULOS A PRODUZIR", sem campos e sem pôster.
-   Cada filme ganha a sua exibição, ligada ao card. Um segundo Envio na mesma semana (desta prévia ou de outra)
-   acrescenta ao card que já existe, achado pelas exibições da semana. */
+   Cada filme ganha a sua exibição, ligada ao card e com as artes dele (o título), que vão ao acervo do filme quando o
+   card sai. Um segundo Envio na mesma semana (desta prévia ou de outra) acrescenta ao card que já existe, achado pelas
+   exibições da semana. */
 
-import { vinculos } from './acervo.mjs';
+import { chaveDeArte, vinculos } from './acervo.mjs';
 import { nomesDoPg } from './pauta.mjs';
 import { diaDaPrevia } from './conferencia.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
@@ -346,10 +347,14 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
         }
     }
     if (!vao.length) return resultados;
-    const linhas = vao.map(({ lido, conferencia, dia, filme }) => {
-      const titulo = String(filme.titulo || lido.titulo).toUpperCase();
+    // a arte de cada filme é o título dele no template: a produzir, ou já no acervo do filme
+    for (const x of vao) {
+      x.arte = String(x.filme.titulo || x.lido.titulo).toUpperCase();
+      x.fazer = !x.conferencia.artes.existentes.some((a) => chaveDeArte(a) === chaveDeArte(x.arte));
+    }
+    const linhas = vao.map(({ conferencia, dia, filme, arte, fazer }) => {
       const ano = conferencia.ano ?? null;
-      return { dia, nome: `${titulo}${ano ? ` (${ano})` : ''}`, fazer: !conferencia.artes.existentes.includes(titulo), novo: !!filme.novo };
+      return { dia, nome: `${arte}${ano ? ` (${ano})` : ''}`, fazer, novo: !!filme.novo };
     });
     const segunda = segundaDaSemana(vao[0].dia);
 
@@ -383,8 +388,9 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
         );
     }
 
-    // a exibição de cada filme, ligada ao card (sem as artes, como no CARDS), e o cadastro depois do card
-    for (const { k, lido, conferencia, poster, dia, filme } of vao) {
+    // a exibição de cada filme, ligada ao card, com as artes dele (o título: a produzir ou que já existe), para o card
+    // da semana levar ao acervo de cada filme o título dele; e o cadastro depois do card
+    for (const { k, lido, conferencia, poster, dia, filme, arte, fazer } of vao) {
       const seus = [...avisos];
       const tentar = tentarCom(seus);
       const titulo = filme.titulo || lido.titulo;
@@ -395,6 +401,8 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
           inedito: !!lido.inedito,
           output: filme.output_win || '',
           criado_em: agora,
+          artes: fazer ? arte : '',
+          ...(fazer ? {} : { artes_existentes: arte }),
           ...(card ? { card_ID: card.id, link: card.url } : {}),
           filme: { id: filme.id },
           ...(sessao.id ? { sessao: { id: sessao.id } } : {}),
