@@ -15,7 +15,7 @@ import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
-import { CONVITES, CONVITES_FILA_VAZIA, ConviteDeArrastar, Duvida, Marca } from './pecas';
+import { CONVITES, CONVITES_FILA_VAZIA, ConviteDeArrastar, Duvida, Marca, RABISCOS } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, plural } from './util';
 
@@ -247,12 +247,6 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, aoMudarCor }: Pi
 
 /* ---------- ficha da fila ---------- */
 
-
-const RABISCOS = [
-  'M13 25 C 9 11, 27 4, 43 6 C 60 9, 61 31, 42 37 C 25 42, 5 37, 8 22 C 10 11, 23 5, 38 4',
-  'M50 9 C 30 2, 6 9, 6 23 C 6 37, 30 42, 46 38 C 62 33, 62 12, 44 7 C 34 4, 22 5, 15 9',
-  'M10 18 C 14 6, 36 2, 50 8 C 63 14, 58 34, 40 38 C 22 42, 4 34, 7 20 C 9 12, 18 7, 28 5',
-];
 
 /** "#7 artes". Só a ficha que pede revisão ganha o círculo à caneta; na ficha nova, ele é desenhado por último. */
 function Contagem({ n, traco, desenhar, circular }: { n: number; traco: number; desenhar: boolean; circular: boolean }) {

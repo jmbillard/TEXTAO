@@ -20,7 +20,7 @@ import {
 import { corDe, iniciais, nomesCurtos, primeiroNome as primeiro } from "../dados/colaboracao";
 import { montarFileiras, podeSubir, type ItemDaFileira } from "../filmes/fileiras";
 import { Icone } from "./icones";
-import { Marca } from "./pecas";
+import { Duvida, Marca, RABISCOS } from "./pecas";
 
 /* A aba Filmes: as prévias de filmes. Solta-se o PDF, o navegador prepara as páginas e o servidor lê cada uma
    com a IA (dá para fechar a aba). Em cada página, os cards em cima, alinhados com os pôsteres (identidade
@@ -78,6 +78,26 @@ function Presentes({ pessoas, texto }: { pessoas: PessoaNaPrevia[]; texto?: bool
     </span>
   );
 }
+
+/** A anotação à mão logo abaixo do título do card que pede atenção: a pergunta do ! ou o envio que não foi. */
+const anotacao = (f: FilmeLido) => {
+  const c = f.conferencia;
+  if (!c || f.envio?.estado === "enviando" || f.envio?.estado === "enviado") return null;
+  if (f.envio?.estado === "erro" && c.marca === "ok") return "não foi";
+  if (c.marca !== "atencao") return null;
+  if (c.pergunta === "qual-filme") return "qual filme?";
+  if (c.pergunta === "ano-diferente") return c.anos ? `${c.anos[0]} ou ${c.anos[1]}?` : "qual ano?";
+  if (c.pergunta === "sessao") return "sessão: ???";
+  if (c.pergunta === "sem-titulo") return "sem título";
+  return null;
+};
+
+/** O círculo à caneta em volta do pôster da página (os traços da contagem de artes da fila). */
+const Circulo = ({ traco, className }: { traco: number; className: string }) => (
+  <svg className={className} viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true">
+    <path pathLength={1} d={RABISCOS[traco % RABISCOS.length]} />
+  </svg>
+);
 
 /** O card abre o balão: a pergunta do ! ou o motivo do erro no envio. */
 const temBalao = (f?: FilmeLido) =>
@@ -461,7 +481,11 @@ function Pagina({
   const card = (it: ItemDaFileira, baixo: boolean) => {
     if (it.tipo === "vaga")
       return (
-        <div key={`v${it.i}`} className="cartao-filme vaga" style={pos(it.x)}>
+        <div key={`v${it.i}`} className="cartao-filme vaga cancelada" style={pos(it.x)}>
+          <svg className="risco" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M4 8 C 30 34, 62 62, 97 93" />
+            <path d="M95 6 C 66 30, 36 64, 3 95" />
+          </svg>
           <span className="mao">{it.texto?.toLowerCase()}</span>
         </div>
       );
@@ -487,11 +511,16 @@ function Pagina({
         aoEditar={(sim) => setEditando((e) => (sim ? it.i : e === it.i ? null : e))}
       />
     );
-    const rubrica = ali.length > 0 && (
-      <span className="rubrica agora" title={`${ali.map((o) => o.nome).join(", ")} mexendo neste filme agora`}>
-        {taoVendo(ali)}
-      </span>
-    );
+    // embaixo do título, uma anotação só: quem está mexendo no card ou, sem ninguém, o que ele pede
+    const nota = anotacao(filme);
+    const rubrica =
+      ali.length > 0 ? (
+        <span className="rubrica agora" title={`${ali.map((o) => o.nome).join(", ")} mexendo neste filme agora`}>
+          {taoVendo(ali)}
+        </span>
+      ) : (
+        nota && <span className="cf-nota">{nota}</span>
+      );
     const poster =
       filme.poster !== null
         ? imagemDaPagina(previaId, p.numero, filme.poster + 1)
@@ -499,7 +528,7 @@ function Pagina({
     return (
       <div
         key={`f${it.i}`}
-        className={`cartao-filme ${baixo ? "baixo" : ""} ${sobe ? "sobe" : ""} ${arrastando === it.i ? "arrastando" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""} ${ali.length ? "ocupado" : ""}`}
+        className={`cartao-filme ${baixo ? "baixo" : ""} ${nota ? "atencao" : ""} ${filme.envio?.estado === "enviado" ? "enviado" : ""} ${sobe ? "sobe" : ""} ${arrastando === it.i ? "arrastando" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""} ${ali.length ? "ocupado" : ""}`}
         style={
           ali.length
             ? ({ ...pos(it.x), "--cor": corDe(ali[0].email) } as React.CSSProperties)
@@ -535,7 +564,9 @@ function Pagina({
             {filme.sessao ? (
               <span className="cf-sessao">{filme.sessao}</span>
             ) : (
-              <span className="cf-sessao falta">sessão: ???</span>
+              <span className="cf-sessao">
+                <Duvida semente={`${p.numero}-${it.i}`} rotulo="Sem sessão" />
+              </span>
             )}
             {titulo}
             {rubrica}
@@ -562,6 +593,8 @@ function Pagina({
     );
   };
   const pronta = p.estado === "lida";
+  // o filme de cada pôster da página: o que pede atenção ganha o círculo à caneta; o enviado, o ✓ à mão
+  const filmeDoPoster = (k: number) => p.filmes.find((x) => x.poster === k);
   return (
     <>
       {pronta ? (
@@ -618,22 +651,33 @@ function Pagina({
           {lendo(p) && <div className="lendo-pagina" />}
           {pronta &&
             p.tamanho &&
-            p.posteres.map(({ caixa: c }, i) => (
-              <span
-                key={i}
-                className={`caixa-poster ${destaque === i ? "destaque" : ""}`}
-                style={{
-                  left: `${(c.x / p.tamanho!.width) * 100}%`,
-                  top: `${(c.y / p.tamanho!.height) * 100}%`,
-                  width: `${(c.width / p.tamanho!.width) * 100}%`,
-                  height: `${(c.height / p.tamanho!.height) * 100}%`,
-                }}
-                onMouseEnter={() => destacar(i)}
-                onMouseLeave={() => destacar(null)}
-              >
-                <i>{i + 1}</i>
-              </span>
-            ))}
+            p.posteres.map(({ caixa: c }, i) => {
+              const dele = filmeDoPoster(i);
+              const pede = !!dele && !!anotacao(dele);
+              return (
+                <span
+                  key={i}
+                  className={`caixa-poster ${destaque === i ? "destaque" : ""}`}
+                  style={{
+                    left: `${(c.x / p.tamanho!.width) * 100}%`,
+                    top: `${(c.y / p.tamanho!.height) * 100}%`,
+                    width: `${(c.width / p.tamanho!.width) * 100}%`,
+                    height: `${(c.height / p.tamanho!.height) * 100}%`,
+                  }}
+                  onMouseEnter={() => destacar(i)}
+                  onMouseLeave={() => destacar(null)}
+                >
+                  {destaque === i && <Circulo traco={i} className="circulo mouse" />}
+                  {pede && <Circulo traco={i + 1} className="circulo atencao" />}
+                  {dele?.envio?.estado === "enviado" && (
+                    <svg className="visto" viewBox="0 0 32 26" aria-label="Foi para o Trello">
+                      <path d="M3 14 C 6 16, 9 19, 11 23 C 15 14, 21 7, 30 2" />
+                    </svg>
+                  )}
+                  <i>{i + 1}</i>
+                </span>
+              );
+            })}
         </div>
       </div>
     </>
@@ -683,7 +727,9 @@ function Titulo({
         onClick={editar}
         onKeyDown={(e) => e.key === "Enter" && editar()}
       >
-        <span className="cf-grifo">{filme.titulo || "???"}</span>
+        <span className="cf-grifo">
+          {filme.titulo || <Duvida semente={filme.data + filme.sessao} rotulo="Sem título" />}
+        </span>
       </span>
     );
   return (

@@ -1962,7 +1962,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .solta-previa span { color: var(--tinta3); font-size: 13px; }
 .solta-previa.soltando, .solta-previa:hover:not(:disabled) { border-color: var(--ultra); }
 .solta-previa:disabled { cursor: progress; }
-.ficha-previa { display: grid; gap: 3px; text-align: left; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); padding: 14px 18px; font: inherit; color: inherit; cursor: pointer; }
+.ficha-previa { display: grid; gap: 3px; text-align: left; border: 1px solid var(--regua); border-radius: 14px; background: var(--papel); box-shadow: 0 1px 2px rgb(26 25 22 / 5%); padding: 14px 18px; font: inherit; color: inherit; cursor: pointer; transition: border-color 0.15s; }
 .ficha-previa:hover { border-color: var(--regua-forte); }
 .ficha-previa b { font: 600 16px/1.35 var(--mono); }
 .ficha-previa .some { font-size: 13px; color: var(--tinta2); }
@@ -1982,8 +1982,17 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .fileira { position: relative; height: 116px; margin-bottom: 10px; }
 .fileira.baixo { height: 64px; }
 .fileiras.esperando .fileira { border-radius: 12px; background: repeating-linear-gradient(90deg, var(--neutro) 0 15.8%, transparent 15.8% 16.6%); opacity: 0.6; }
-.cartao-filme { position: absolute; top: 0; bottom: 0; min-width: 0; display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 9px; background: var(--papel); border: 1px solid color-mix(in srgb, var(--tinta) 13%, var(--regua)); border-radius: 12px; transition: border-color 0.15s; }
+/* cada card é uma ficha de papel, como as da fila; o que pede atenção ganha a borda quente e a anotação à mão logo
+   abaixo do título. No mouse só muda a cor da borda. */
+.cartao-filme { position: absolute; top: 0; bottom: 0; min-width: 0; display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 9px; background: var(--papel); border: 1px solid color-mix(in srgb, var(--tinta) 13%, var(--regua)); border-radius: 12px; box-shadow: 0 1px 2px rgb(26 25 22 / 5%); transition: border-color 0.15s; }
+.cartao-filme.atencao { border-color: color-mix(in srgb, var(--falta) 40%, var(--regua)); }
+.cartao-filme.enviado { opacity: 0.7; }
 .cartao-filme.destaque { border-color: var(--ultra); }
+.cartao-filme .cf-nota { align-self: flex-start; padding: 0 2px; font: 700 17px/0.95 Caveat, cursive; color: var(--falta); white-space: nowrap; transform: rotate(-3deg); transform-origin: left; }
+.cartao-filme.atencao .cf-titulo.editavel { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cartao-filme.baixo.atencao .cf-titulo.editavel { -webkit-line-clamp: 1; }
+.cartao-filme.baixo .cf-nota { font-size: 16px; }
+.cartao-filme .cf-titulo.editavel:hover .cf-grifo { text-decoration: underline dotted var(--tinta3); text-underline-offset: 3px; }
 .cartao-filme .cf-poster { width: 64px; height: 92px; object-fit: cover; border-radius: 5px; display: block; background: var(--neutro); }
 .cartao-filme .cf-corpo { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .cartao-filme .cf-sessao { font: 500 10.5px var(--mono); color: var(--tinta2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1994,7 +2003,10 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .cartao-filme.baixo .cf-poster { width: 36px; height: 52px; }
 .cartao-filme.baixo .cf-titulo { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cartao-filme.vaga { grid-template-columns: 1fr; place-items: center; background: transparent; border-style: dashed; }
-.cartao-filme.vaga .mao { font: 700 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-4deg); }
+.cartao-filme.vaga .mao { position: relative; font: 700 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-4deg); }
+/* a vaga cancelada: riscada com um X à mão, "cancelado" escrito por cima */
+.cartao-filme.vaga .risco { position: absolute; inset: 14px 22px; width: calc(100% - 44px); height: calc(100% - 28px); overflow: visible; }
+.cartao-filme.vaga .risco path { fill: none; stroke: var(--perigo); stroke-width: 1.6; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: 0.55; }
 /* a vaga do pôster de um filme lido na Sessão da Tarde: o card de baixo é arrastado até ela */
 .cartao-filme.vaga.lugar { border-color: color-mix(in srgb, var(--falta) 55%, transparent); transition: border-color 0.15s, background 0.15s; }
 .cartao-filme.vaga.lugar .mao { color: var(--falta); letter-spacing: 3px; }
@@ -2002,7 +2014,6 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .cartao-filme.sobe { cursor: grab; user-select: none; -webkit-user-select: none; }
 .cartao-filme.sobe input { user-select: text; -webkit-user-select: text; }
 .cartao-filme.arrastando { opacity: 0.45; }
-.cartao-filme .cf-sessao.falta { font: 700 17px/0.9 Caveat, cursive; color: var(--falta); letter-spacing: 0.02em; overflow: visible; }
 /* a marca da conferência (✓, ! ou Trello), na quina do card; o ! abre o balão logo abaixo */
 .cartao-filme > .ficha-marca { position: absolute; top: -7px; right: -7px; border: 0; padding: 0; box-shadow: 0 0 0 2px var(--papel); }
 .cartao-filme > button.ficha-marca { cursor: pointer; }
@@ -2047,8 +2058,17 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .folha-dentro > img { width: 100%; display: block; border-radius: 2px; }
 .folha-previa .folha-vazia { aspect-ratio: 16 / 9; }
 .folha-dentro { position: relative; }
-.caixa-poster { position: absolute; border: 2px solid transparent; border-radius: 4px; transition: border-color 0.15s; }
-.caixa-poster.destaque { border-color: var(--ultra); }
+/* A caneta na página: o pôster sob o mouse e o que pede atenção circulados (os traços da contagem de artes, grandes
+   o bastante para abraçar o pôster inteiro), o ✓ no que foi para o Trello e o número de cada um à mão. A tinta fica
+   sobre a arte da prévia (sempre escura e colorida), não sobre o papel do app: os tons claros valem nos dois temas. */
+.folha-dentro { --caneta-atencao: #ffb36b; --caneta-visto: #9be3b5; }
+.caixa-poster { position: absolute; }
+.caixa-poster .circulo { position: absolute; left: -43%; top: -37%; width: 186%; height: 172%; overflow: visible; pointer-events: none; }
+.caixa-poster .circulo path { fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.caixa-poster .circulo.mouse path { stroke: var(--ultra); }
+.caixa-poster .circulo.atencao path { stroke: var(--caneta-atencao); }
+.caixa-poster .visto { position: absolute; right: -6%; top: -9%; width: 30%; max-width: 44px; overflow: visible; pointer-events: none; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%)); }
+.caixa-poster .visto path { fill: none; stroke: var(--caneta-visto); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
 .caixa-poster i { position: absolute; top: 0; left: 0; background: var(--papel); color: var(--tinta); font: 700 15px/1.1 Caveat, cursive; font-style: normal; border-radius: 0 0 6px 0; padding: 1px 6px; }
 .lendo-pagina { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .lendo-pagina::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--ultra); animation: ler-pagina 2.2s ease-in-out infinite alternate; }
