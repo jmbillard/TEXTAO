@@ -8,7 +8,7 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
-import { agruparPorDia, etapaPorExtenso, montarSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type GrupoDia } from './fila';
+import { agruparPorDia, etapaPorExtenso, filaVisivel, montarSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type GrupoDia } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -737,11 +737,25 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   );
   useMeuPonteiro(enviarPonteiro);
 
-  const apagarDeVez = (r: Resumo) =>
-    armazenamento.apagar(r.id).then(
+  // o que já foi apagado sai da tela na hora, sem esperar o servidor (senão pisca de volta no fim do desfazer);
+  // fica fora até o fim da sessão: uma leitura da fila que já estava a caminho ainda pode trazê-lo
+  const [apagados, setApagados] = useState<ReadonlySet<string>>(() => new Set());
+  const apagarDeVez = (r: Resumo) => {
+    setApagados((a) => new Set(a).add(r.id));
+    return armazenamento.apagar(r.id).then(
       () => void carregar(),
-      () => avisar('Não consegui tirar esse roteiro da fila.'),
+      () => {
+        // o servidor não apagou: o roteiro volta para a fila
+        setApagados((a) => {
+          const sem = new Set(a);
+          sem.delete(r.id);
+          return sem;
+        });
+        avisar('Não consegui tirar esse roteiro da fila.');
+        void carregar();
+      },
     );
+  };
   // tirar da fila: primeiro o item some com uma animação curta, depois sai da lista (sem a tela pular de uma vez)
   const [sumindo, setSumindo] = useState<string | null>(null);
   const tirar = (r: Resumo) => {
@@ -839,7 +853,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
 
   const termo = semAcento(busca.trim());
   const aberto = (roteiros ?? []).some((r) => r.aberto);
-  const todos = (roteiros ?? []).filter((r) => r.id !== saindo?.id);
+  const todos = filaVisivel(roteiros, saindo?.id, apagados);
   // a conta do topo e os filtros olham só o que ainda pede trabalho: o que foi ao ar ou já está no Trello fica de fora
   const pendente = new Set(pendentes(todos).map((r) => r.id));
   const nPendentes = pendente.size;

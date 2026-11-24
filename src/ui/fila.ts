@@ -36,6 +36,12 @@ function nomear(iso: string, hoje: string, amanha: string): Pick<GrupoDia, 'titu
   return { titulo: maiuscula(DIAS[data.getDay()]), subtitulo: extenso };
 }
 
+/** O que a fila desenha: os roteiros menos o que está saindo (no prazo do desfazer) e o que já foi apagado.
+ *  O apagado fica fora desde o começo do apagar, sem esperar o servidor confirmar (senão ele pisca de volta). */
+export function filaVisivel(roteiros: Resumo[] | null, saindo: string | undefined, apagados: ReadonlySet<string>): Resumo[] {
+  return (roteiros ?? []).filter((r) => r.id !== saindo && !apagados.has(r.id));
+}
+
 /** O que ainda pede trabalho: nem foi ao ar, nem já está no Trello. É isso que a fila conta. */
 export function pendentes(lista: Resumo[], agora = new Date()): Resumo[] {
   const hoje = isoLocal(agora);

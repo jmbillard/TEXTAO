@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agruparPorDia, pendentes } from '../src/ui/fila';
+import { agruparPorDia, filaVisivel, pendentes } from '../src/ui/fila';
 import { herdarTipos } from '../src/modelo/versoes';
 import { dataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
@@ -312,5 +312,19 @@ describe('No Trello: a semana encolhida', () => {
   it('quem escolheu "ver a semana inteira" vê a semana no tamanho normal mesmo com revisão', async () => {
     const { semanaEncolhida } = await import('../src/ui/fila');
     expect(semanaEncolhida([pronto, paraRevisar], true, agora)).toBe(false);
+  });
+});
+
+describe('a fila visível', () => {
+  const lista = [resumo('a', ''), resumo('b', '2026-11-25'), resumo('c', '2026-11-26')];
+  it('tira o que está saindo (no prazo do desfazer) e o que foi apagado há pouco', () => {
+    expect(filaVisivel(lista, 'b', new Set(['c'])).map((r) => r.id)).toEqual(['a']);
+  });
+  it('o apagado há pouco continua fora mesmo se uma leitura antiga do servidor ainda o trouxer', () => {
+    expect(filaVisivel(lista, undefined, new Set(['a'])).map((r) => r.id)).toEqual(['b', 'c']);
+  });
+  it('sem nada saindo, mostra tudo; antes da primeira leitura, nada', () => {
+    expect(filaVisivel(lista, undefined, new Set()).map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    expect(filaVisivel(null, undefined, new Set())).toEqual([]);
   });
 });
