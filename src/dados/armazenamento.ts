@@ -302,6 +302,8 @@ export interface PreviaNaLista {
   por: string;
   criada: string;
   paginas: number;
+  /** a prévia toda enviada: em quantos dias ela é apagada (null enquanto não está toda enviada) */
+  diasParaApagar?: number | null;
   /** quem está com ela aberta agora (sem a própria pessoa) */
   pessoas?: PessoaNaPrevia[];
 }

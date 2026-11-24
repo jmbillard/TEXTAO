@@ -4,7 +4,7 @@
    sem mudar o que ele recebe e devolve. O endereço do webhook vem do ambiente: este repositório é público. */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vinculos } from './acervo.mjs';
 import { conferirFilme, diaDaPrevia } from './conferencia.mjs';
@@ -225,11 +225,38 @@ function criarConferencia(env, consultar) {
   return { conferir, esquecer };
 }
 
+/* ---------- o prazo da prévia toda enviada ---------- */
+const DIA = 86_400_000;
+/** A prévia toda enviada é apagada (o registro e as imagens) depois destes dias; as exibições e os cards ficam. */
+export const PRAZO_DA_PREVIA_DIAS = 60;
+
+/**
+ * Quando a prévia (aberta, com a conferência) ficou toda enviada: todas as páginas lidas, e cada filme enviado ou com o
+ * card que já existia (a marca do Trello). Página pendente, filme com ! ou ainda não enviado: não está toda enviada.
+ * O prazo conta do último envio; sem nenhum envio (todos os cards já existiam), da última leitura.
+ * @param ultimaLeitura a data da última página lida (ISO)
+ * @returns a data em ms, ou null
+ */
+function todaEnviadaEm(p, ultimaLeitura) {
+  if (!p.paginas.length) return null;
+  let em = null;
+  for (const g of p.paginas) {
+    if (g.estado !== 'lida') return null;
+    for (const f of g.filmes) {
+      const foi = f.envio?.estado === 'enviado';
+      if (!foi && f.conferencia?.marca !== 'trello') return null;
+      if (foi) em = Math.max(em ?? 0, Date.parse(f.envio.em) || 0);
+    }
+  }
+  return em ?? (Date.parse(ultimaLeitura ?? '') || null);
+}
+
 /**
  * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL
  * @param deps.trello o módulo do Trello (o card e a escrita no Teable), para o envio
+ * @param deps.agora o relógio (ms); o teste anda os dias com ele
  */
-export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello } = {}) {
+export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello, agora = () => Date.now() } = {}) {
   const enderecoDaLeitura = String(env.N8N_FILMES_LER || '').trim();
   const faltando = [!enderecoDaLeitura && 'N8N_FILMES_LER', !pasta && 'FILMES_PASTA'].filter(Boolean);
   const ligado = !faltando.length && !!db;
@@ -268,7 +295,11 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     gravarFilmes: db.prepare('UPDATE previa_paginas SET filmes = ? WHERE previa_id = ? AND numero = ?'),
     assinatura: db.prepare('SELECT numero, estado, erro, filmes, sessoes, dados IS NOT NULL AS chegou FROM previa_paginas WHERE previa_id = ? ORDER BY util'),
     retomar: db.prepare("UPDATE previa_paginas SET estado = 'fila' WHERE estado = 'lendo'"),
+    ultimaLeitura: db.prepare('SELECT MAX(lida_em) AS em FROM previa_paginas WHERE previa_id = ?'),
+    apagarPaginas: db.prepare('DELETE FROM previa_paginas WHERE previa_id = ?'),
+    apagar: db.prepare('DELETE FROM previas WHERE id = ?'),
   };
+  const agoraISO = () => new Date(agora()).toISOString();
   const intervalo = Math.max(0, Number(env.FILMES_INTERVALO_MS ?? 2500) || 0);
   const espera = Math.max(1000, Number(env.FILMES_TEMPO_MS ?? 240_000) || 240_000);
   const dir = (id) => join(pasta, id);
@@ -278,7 +309,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     const ja = q.porHash.get(hash);
     if (ja) return { id: ja.id, existente: true };
     const id = randomUUID();
-    q.criar.run(id, hash, nome, eu?.email ?? '', eu?.nome ?? '', new Date().toISOString());
+    q.criar.run(id, hash, nome, eu?.email ?? '', eu?.nome ?? '', agoraISO());
     paginas.forEach((numero, i) => q.criarPagina.run(id, numero, i + 1));
     return { id, existente: false };
   }
@@ -291,7 +322,20 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     return createHash('sha1').update(JSON.stringify(q.assinatura.all(id))).digest('base64url').slice(0, 16);
   }
 
-  const listar = () => q.lista.all().map((l) => ({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas }));
+  /**
+   * A lista das prévias, com os dias que faltam para a toda enviada ser apagada (null na que não está toda enviada).
+   * A conta guardada vale enquanto a versão da prévia não muda: a lista, perguntada de tempos em tempos, não consulta
+   * o banco de novo.
+   */
+  async function listar() {
+    const lista = [];
+    for (const l of q.lista.all()) {
+      const em = await todaEnviada(l.id).catch(() => null);
+      const diasParaApagar = em === null ? null : Math.max(0, Math.ceil((em + PRAZO_DA_PREVIA_DIAS * DIA - agora()) / DIA));
+      lista.push({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas, diasParaApagar });
+    }
+    return lista;
+  }
 
   if (!consultar && env.TEABLE_PG_URL) {
     let banco = null;
@@ -457,7 +501,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     const ligados = ligarPosteres(filmes, dados.posteres, dados.textos);
     // na ordem dos pôsteres da página; os que ficaram sem pôster, no fim
     ligados.sort((a, b) => (a.poster ?? 1e9) - (b.poster ?? 1e9));
-    q.lida.run(JSON.stringify(ligados), JSON.stringify(sessoes), new Date().toISOString(), id, n);
+    q.lida.run(JSON.stringify(ligados), JSON.stringify(sessoes), agoraISO(), id, n);
   }
   async function rodar() {
     if (lendo || parado) return;
@@ -533,7 +577,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
       for (const x of prontos.filter((y) => y.n === n)) {
         const f = filmes[x.i];
         if (!f || indo(f) || !mesmoFilme(f, x.f)) continue;
-        f.envio = { estado: 'enviando', por, em: new Date().toISOString() };
+        f.envio = { estado: 'enviando', por, em: agoraISO() };
         vao.push(x);
       }
       q.gravarFilmes.run(JSON.stringify(filmes), id, n);
@@ -546,13 +590,13 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     const lote = envio.novoLote(() => conferencia?.esquecer());
     const posterDe = ({ n, f }) => (f.poster !== null && f.poster !== undefined ? imagem(id, n, f.poster + 1) : null);
     const enviado = ({ n, i, f }, r) => {
-      gravarEnvio(id, n, i, { estado: 'enviado', ...(r.card ? { card: r.card.id, link: r.card.url } : {}), filme: r.filme, por, em: new Date().toISOString(), ...(r.avisos.length ? { avisos: r.avisos } : {}) });
+      gravarEnvio(id, n, i, { estado: 'enviado', ...(r.card ? { card: r.card.id, link: r.card.url } : {}), filme: r.filme, por, em: agoraISO(), ...(r.avisos.length ? { avisos: r.avisos } : {}) });
       if (r.avisos.length) console.warn(`[filmes] ${f.titulo}: ${r.avisos.join('; ')}`);
     };
     const falhou = ({ n, i, f }, e) => {
       const erro = e instanceof Error ? e.message : String(e);
       console.warn(`[filmes] não enviei ${f.titulo}: ${erro}`);
-      gravarEnvio(id, n, i, { estado: 'erro', erro: erro.slice(0, 500), por, em: new Date().toISOString() });
+      gravarEnvio(id, n, i, { estado: 'erro', erro: erro.slice(0, 500), por, em: agoraISO() });
     };
     for (const x of vao.filter(({ f }) => !ehSessaoDaTarde(f.sessao))) {
       try {
@@ -577,6 +621,52 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     }
   }
 
+  /* ---------- a prévia toda enviada: o prazo e o apagar ---------- */
+  const contas = new Map(); // id → { versao, em }: a conta de todaEnviadaEm na versão em que foi feita
+  /** Quando a prévia ficou toda enviada (ms), ou null. @param fresca refaz a conta com o banco, sem a guardada */
+  async function todaEnviada(id, { fresca = false } = {}) {
+    const v = versao(id);
+    if (!v) return null;
+    const guardada = contas.get(id);
+    if (!fresca && guardada?.versao === v) return guardada.em;
+    // a página pendente já responde, sem consultar o banco
+    if (q.assinatura.all(id).some((g) => g.estado !== 'lida')) {
+      contas.set(id, { versao: v, em: null });
+      return null;
+    }
+    const p = await abrir(id);
+    if (!p) return null;
+    const em = todaEnviadaEm(p, q.ultimaLeitura.get(id)?.em);
+    // a conferência que falhou não vale como conta guardada: na próxima, tenta de novo
+    if (!p.erroDaConferencia) contas.set(id, { versao: p.versao, em });
+    return em;
+  }
+
+  /**
+   * Apaga as prévias enviadas há mais de PRAZO_DA_PREVIA_DIAS: o registro no banco local e as imagens em disco. As
+   * exibições e os cards ficam. Antes de apagar, refaz a conta com o banco.
+   * @returns os ids apagados
+   */
+  async function apagarVencidas() {
+    const apagadas = [];
+    for (const { id } of q.lista.all()) {
+      const vencida = (em) => em !== null && em < agora() - PRAZO_DA_PREVIA_DIAS * DIA;
+      try {
+        if (!vencida(await todaEnviada(id)) || !vencida(await todaEnviada(id, { fresca: true }))) continue;
+      } catch (e) {
+        console.warn(`[filmes] não deu para conferir a prévia ${id}: ${e instanceof Error ? e.message : e}`);
+        continue;
+      }
+      q.apagarPaginas.run(id);
+      q.apagar.run(id);
+      contas.delete(id);
+      rmSync(dir(id), { recursive: true, force: true });
+      apagadas.push(id);
+    }
+    if (apagadas.length) console.log(`[filmes] ${apagadas.length === 1 ? 'apagada 1 prévia enviada' : `apagadas ${apagadas.length} prévias enviadas`} há mais de ${PRAZO_DA_PREVIA_DIAS} dias`);
+    return apagadas;
+  }
+
   function imagem(id, n, k = 0) {
     try {
       return readFileSync(arquivo(id, n, k));
@@ -585,5 +675,5 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     }
   }
 
-  return { ligado, faltando, conferindo: !!conferencia, envio: { ligado: envio.ligado, faltando: envio.faltando }, criar, listar, versao, abrir, mudar, receberPagina, reler, enviar, imagem, parar: () => void (parado = true) };
+  return { ligado, faltando, conferindo: !!conferencia, envio: { ligado: envio.ligado, faltando: envio.faltando }, criar, listar, versao, abrir, mudar, receberPagina, reler, enviar, imagem, apagarVencidas, parar: () => void (parado = true) };
 }

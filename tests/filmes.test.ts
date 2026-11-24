@@ -47,8 +47,8 @@ afterEach(() => {
   for (const s of servidores) s.close();
   servidores = [];
 });
-async function subir({ db = abrirBanco(':memory:'), env = ENV as Record<string, string>, n8n = n8nFalso({}), pasta = mkdtempSync(join(tmpdir(), 'previas-')), consultar = undefined as Consultar | undefined, trello = undefined as unknown } = {}) {
-  const filmes = criarFilmes(env, { db, pasta, buscar: n8n.buscar, consultar, trello });
+async function subir({ db = abrirBanco(':memory:'), env = ENV as Record<string, string>, n8n = n8nFalso({}), pasta = mkdtempSync(join(tmpdir(), 'previas-')), consultar = undefined as Consultar | undefined, trello = undefined as unknown, agora = undefined as (() => number) | undefined } = {}) {
+  const filmes = criarFilmes(env, { db, pasta, buscar: n8n.buscar, consultar, trello, agora });
   const app = criarApp({ db, env, filmes, ...(trello ? { trello } : {}) });
   const servidor = createServer(app);
   servidores.push(servidor);
@@ -457,7 +457,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 type Envio = { estado: string; card?: string; link?: string; por?: string; em?: string; erro?: string };
 type FilmeEnviado = { titulo: string; envio?: Envio; conferencia?: { marca: string; link?: string } };
 /** Sobe uma prévia de uma página com estes filmes lidos, com Trello, Teable e Postgres falsos. */
-async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>[0], opcoes: Parameters<typeof trelloETeableFalsos>[0] = {}, env: Record<string, string> = ENVIO, outrasPaginas: Record<number, Lido[]> = {}) {
+async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>[0], opcoes: Parameters<typeof trelloETeableFalsos>[0] = {}, env: Record<string, string> = ENVIO, outrasPaginas: Record<number, Lido[]> = {}, agora?: () => number) {
   const falsos = trelloETeableFalsos(opcoes);
   // as exibições que o envio grava no Teable aparecem no Postgres, como no de verdade
   const sessaoDe = (id: string) => ({ id, title: banco.atracoes?.find((s) => s.__id === id)?.atracao ?? '' });
@@ -470,7 +470,7 @@ async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>
   const trello = criarTrello(env, { buscar: falsos.buscar, consultar: pg.consultar });
   const movies = (l: Lido[]) => ({ movies: l.map((x) => ({ sessao: 'SUPERCINE', data: '05/12/2026', inedito: false, ano_de_producao: null, ...x })) });
   const n8n = n8nFalso({ 2: movies(lidos), ...Object.fromEntries(Object.entries(outrasPaginas).map(([n, l]) => [n, movies(l)])) });
-  const { api } = await subir({ env: { ...ENV, ...env }, n8n, consultar: pg.consultar, trello });
+  const { api, filmes: modulo } = await subir({ env: { ...ENV, ...env }, n8n, consultar: pg.consultar, trello, agora });
   /** Uma prévia de uma página só (a página n, com os filmes dela). */
   const previa = async (n: number, titulos: string[]) => {
     const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: `env${Math.random().toString(36).slice(2, 10)}`, paginas: [n] });
@@ -492,7 +492,7 @@ async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>
   const primeira = await previa(2, lidos.map((l) => l.titulo));
   /** A prévia de outra página (de outrasPaginas), no mesmo servidor. */
   const outra = (n: number) => previa(n, outrasPaginas[n].map((l) => l.titulo));
-  return { api, ...primeira, outra, falsos, pg };
+  return { api, ...primeira, outra, falsos, pg, modulo };
 }
 
 const SESSOES = [
@@ -967,5 +967,119 @@ describe('aba Filmes: várias pessoas na mesma prévia', () => {
     await new Promise((r) => setTimeout(r, 1100));
     expect((await presenca(api, id, {}, comoBruno)).pessoas).toEqual([]);
     expect((await (await api('/api/filmes/previas', { headers: comoBruno })).json())[0].pessoas).toEqual([]);
+  });
+});
+
+/* ---------- a prévia toda enviada some depois de 60 dias ---------- */
+/* O relógio é injetado: o teste anda os dias em vez de esperar por eles. */
+describe('aba Filmes: a prévia toda enviada é apagada depois de 60 dias', () => {
+  const DIA = 86_400_000;
+  const relogio = () => {
+    const r = { agora: Date.parse('2026-11-10T15:00:00Z'), andar: (dias: number) => void (r.agora += dias * DIA) };
+    return r;
+  };
+  type NaLista = { id: string; diasParaApagar: number | null };
+
+  it('a prévia toda enviada mostra na lista em quantos dias será apagada', async () => {
+    const r = relogio();
+    const { api, id, enviar, terminar } = await paraEnviar([{ titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 }], { filmes: [DESPEDIDA], atracoes: SESSOES }, {}, ENVIO, {}, () => r.agora);
+    const naLista = async () => ((await (await api('/api/filmes/previas')).json()) as NaLista[]).find((p) => p.id === id)!;
+    expect((await naLista()).diasParaApagar).toBeNull();
+    await enviar();
+    await terminar();
+    expect((await naLista()).diasParaApagar).toBe(60);
+    r.andar(22);
+    expect((await naLista()).diasParaApagar).toBe(38);
+  });
+
+  it('a prévia enviada há 61 dias some, o registro e as imagens; a de 59 dias fica; as exibições e os cards ficam', async () => {
+    const r = relogio();
+    const { api, id, enviar, terminar, outra, falsos, modulo } = await paraEnviar(
+      [{ titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 }],
+      { filmes: [DESPEDIDA, filmeDoBanco('recRivais1', 'Rivais', 2024)], atracoes: SESSOES },
+      {},
+      ENVIO,
+      { 3: [{ titulo: 'RIVAIS', ano_de_producao: 2024, sessao: 'TELA QUENTE', data: '07/12/2026' }] },
+      () => r.agora,
+    );
+    await enviar();
+    await terminar();
+    r.andar(2);
+    const segunda = await outra(3);
+    await segunda.enviar();
+    await segunda.terminar();
+    const pedidos = falsos.pedidos.length;
+
+    r.andar(59);
+    expect(await modulo.apagarVencidas()).toEqual([id]);
+    const lista = ((await (await api('/api/filmes/previas')).json()) as NaLista[]).map((p) => [p.id, p.diasParaApagar]);
+    expect(lista).toEqual([[segunda.id, 1]]);
+    expect((await api(`/api/filmes/previas/${id}`)).status).toBe(404);
+    expect((await api(`/api/filmes/previas/${id}/paginas/2/imagem`)).status).toBe(404);
+    expect((await api(`/api/filmes/previas/${id}/paginas/2/poster/1`)).status).toBe(404);
+    // a de 59 dias fica inteira, com as imagens
+    expect(await (await api(`/api/filmes/previas/${segunda.id}/paginas/3/imagem`)).text()).toBe('jpg-pagina');
+    // nada sai do Trello nem do Teable
+    expect(falsos.pedidos.length).toBe(pedidos);
+    expect(falsos.cards()).toHaveLength(2);
+  });
+
+  it('a prévia com filme ainda não enviado nunca é apagada; enviado o último, o prazo conta deste envio', async () => {
+    const r = relogio();
+    let recusar = true;
+    const { api, id, enviar, terminar, modulo } = await paraEnviar(
+      [
+        { titulo: 'RIVAIS', ano_de_producao: 2024, sessao: 'TELA QUENTE', data: '07/12/2026' },
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 },
+      ],
+      { filmes: [DESPEDIDA, filmeDoBanco('recRivais1', 'Rivais', 2024)], atracoes: SESSOES },
+      { falharCard: (nome) => recusar && nome.includes('RIVAIS') },
+      ENVIO,
+      {},
+      () => r.agora,
+    );
+    const naLista = async () => ((await (await api('/api/filmes/previas')).json()) as NaLista[]).find((p) => p.id === id);
+    await enviar();
+    expect((await terminar()).map((f) => f.envio?.estado)).toEqual(['erro', 'enviado']);
+    r.andar(400);
+    expect(await modulo.apagarVencidas()).toEqual([]);
+    expect((await naLista())!.diasParaApagar).toBeNull();
+
+    recusar = false;
+    await enviar();
+    await terminar();
+    expect((await naLista())!.diasParaApagar).toBe(60);
+    r.andar(59);
+    expect(await modulo.apagarVencidas()).toEqual([]);
+    r.andar(2);
+    expect(await modulo.apagarVencidas()).toEqual([id]);
+    expect(await naLista()).toBeUndefined();
+  });
+
+  it('a página que ainda não foi lida segura a prévia; o filme com o card que já existia conta como enviado', async () => {
+    const r = relogio();
+    const ja = { filme: { id: 'recRivais1', title: 'Rivais (2024)' }, sessao: { id: 'recSessaoTQ', title: 'Tela Quente' }, data_de_exibicao: '2026-12-07T03:00:00.000Z', card_ID: 'cardRivais0001', link: 'https://trello.com/c/AbCd1234', labels: null };
+    const { api, id, enviar, terminar, modulo } = await paraEnviar(
+      [
+        { titulo: 'RIVAIS', ano_de_producao: 2024, sessao: 'TELA QUENTE', data: '07/12/2026' },
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 },
+      ],
+      { filmes: [DESPEDIDA, filmeDoBanco('recRivais1', 'Rivais', 2024)], exibicoes: [ja], atracoes: SESSOES },
+      {},
+      ENVIO,
+      { 3: [{ titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 }] },
+      () => r.agora,
+    );
+    expect(await (await enviar()).json()).toEqual({ enviando: 1 });
+    await terminar();
+    // a outra prévia: na página lida, o filme já tem card (o da primeira); a outra página nunca chegou
+    const { id: pendente } = await criar(api, { nome: 'PREVIA_JANEIRO.pdf', hash: 'pendente01', paginas: [3, 5] });
+    await api(`/api/filmes/previas/${pendente}/paginas/3`, { method: 'PUT', body: JSON.stringify(pagina(['DESPEDIDA EM GRANDE ESTILO'])) });
+    const lida = await ate(api, pendente, (p) => p.paginas[0].estado === 'lida');
+    expect((lida as unknown as { paginas: { filmes: FilmeEnviado[] }[] }).paginas[0].filmes[0].conferencia!.marca).toBe('trello');
+    r.andar(61);
+    expect(await modulo.apagarVencidas()).toEqual([id]);
+    const lista = ((await (await api('/api/filmes/previas')).json()) as NaLista[]).map((p) => [p.id, p.diasParaApagar]);
+    expect(lista).toEqual([[pendente, null]]);
   });
 });

@@ -125,6 +125,10 @@ export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
   );
 }
 
+/** "em 38 dias", "amanhã" ou "hoje": quando a prévia toda enviada é apagada. */
+const quandoSome = (dias: number) =>
+  dias <= 0 ? "hoje" : dias === 1 ? "amanhã" : `em ${dias} dias`;
+
 function ListaDePrevias({
   abrir,
   avisar,
@@ -218,6 +222,8 @@ function ListaDePrevias({
           <span className="some">
             {p.paginas} {p.paginas === 1 ? "página" : "páginas"} · subida por{" "}
             {p.por || "—"} em {new Date(p.criada).toLocaleDateString("pt-BR")}
+            {typeof p.diasParaApagar === "number" &&
+              ` · toda enviada, some ${quandoSome(p.diasParaApagar)}`}
           </span>
           {!!p.pessoas?.length && (
             <span

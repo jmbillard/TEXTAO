@@ -891,6 +891,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     setTimeout(conferirFilmes, 60_000).unref?.();
     setInterval(conferirFilmes, 600_000).unref?.();
   }
+  // a prévia toda enviada há mais de 60 dias é apagada (o registro e as imagens): 1 min depois de subir e de 6 em 6 h
+  if (filmes.ligado && filmes.apagarVencidas) {
+    const apagarPrevias = () => void filmes.apagarVencidas().catch((e) => console.warn(`[filmes] ${e instanceof Error ? e.message : e}`));
+    setTimeout(apagarPrevias, 60_000).unref?.();
+    setInterval(apagarPrevias, 6 * 3_600_000).unref?.();
+  }
 
   let registrando = false;
   async function registrarNoAcervo(andamento) {
@@ -974,7 +980,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   async function previas(req, res, caminho, eu) {
     if (!filmes.ligado) return json(res, 503, { erro: `A aba Filmes está desligada: falta ${filmes.faltando.join(', ')}.` });
     if (caminho === '/api/filmes/previas' && req.method === 'GET')
-      return json(res, 200, filmes.listar().map((p) => ({ ...p, pessoas: pessoasNaPrevia(p.id, eu).map(({ nome, email }) => ({ nome, email })) })));
+      return json(res, 200, (await filmes.listar()).map((p) => ({ ...p, pessoas: pessoasNaPrevia(p.id, eu).map(({ nome, email }) => ({ nome, email })) })));
     const presenca = /^\/api\/filmes\/previas\/([\w-]{6,80})\/presenca$/.exec(caminho);
     if (presenca && req.method === 'POST') {
       const id = presenca[1];
