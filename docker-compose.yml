@@ -106,6 +106,7 @@ services:
       # ---- n8n: a aba Filmes (a leitura da prévia por IA; vazia, a aba fica desligada) ----
       - N8N_FILMES_LER=${N8N_FILMES_LER:-}
       - FILMES_INTERVALO_MS=${FILMES_INTERVALO_MS:-}
+      - FILMES_TEMPO_MS=${FILMES_TEMPO_MS:-}
 
   # Só cache: nada aqui precisa sobreviver a um reinício (o banco dos roteiros é o SQLite, no volume acima).
   redis:

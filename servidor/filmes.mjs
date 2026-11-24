@@ -90,8 +90,8 @@ const umaCaixa = (c) => ({ x: numero(c?.x), y: numero(c?.y), width: numero(c?.wi
 
 export function criarFilmes(env, { db, pasta, buscar = fetch } = {}) {
   const enderecoDaLeitura = String(env.N8N_FILMES_LER || '').trim();
-  const ligado = !!enderecoDaLeitura && !!db;
-  const faltando = enderecoDaLeitura ? [] : ['N8N_FILMES_LER'];
+  const faltando = [!enderecoDaLeitura && 'N8N_FILMES_LER', !pasta && 'FILMES_PASTA'].filter(Boolean);
+  const ligado = !faltando.length && !!db;
   if (!ligado) return { ligado, faltando };
 
   db.exec(`

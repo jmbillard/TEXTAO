@@ -23,8 +23,9 @@ interface Props {
   avisar: (t: string) => void;
 }
 
+// a página que ainda não chegou (a aba fechou no meio da subida) não está sendo lida: não adianta esperar
 const lendo = (p: PaginaDaPrevia) =>
-  p.estado === "esperando" || p.estado === "fila" || p.estado === "lendo";
+  p.estado === "fila" || p.estado === "lendo";
 
 export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
   return (
@@ -304,6 +305,13 @@ function Pagina({
             {f.baixo.map((it) => card(it, true))}
           </div>
         </div>
+      ) : p.estado === "esperando" ? (
+        <div className="pagina-erro">
+          <span>
+            Esta página não chegou ao servidor (a aba fechou no meio da subida).
+            Solte o mesmo PDF de novo na lista de prévias: só sobe o que falta.
+          </span>
+        </div>
       ) : p.estado === "erro" ? (
         <div className="pagina-erro">
           <span>A leitura desta página deu erro: {p.erro}</span>
@@ -327,7 +335,7 @@ function Pagina({
           ) : (
             <div className="folha-vazia" />
           )}
-          {!pronta && p.estado !== "erro" && <div className="lendo-pagina" />}
+          {lendo(p) && <div className="lendo-pagina" />}
           {pronta &&
             p.tamanho &&
             p.posteres.map(({ caixa: c }, i) => (

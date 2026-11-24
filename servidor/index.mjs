@@ -1,9 +1,9 @@
-import { criarFilmes } from './filmes.mjs';
 import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { abrirBanco, criarApp, fazerBackup } from './app.mjs';
+import { criarFilmes } from './filmes.mjs';
 import { configDoTrello, faltasDoTrello, PRACAS_TRELLO } from './trello.mjs';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
