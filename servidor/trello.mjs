@@ -741,6 +741,7 @@ export function criarTrello(env, deps = {}) {
   const quando = (v) => (v ? new Date(v).getTime() || 0 : 0);
   let memo = { em: 0, chave: '', dados: {} };
   let avisouFalha = false;
+  let avisouFalhaPrioridade = false;
 
   /**
    * @param itens [{ id, card, claquete, naFila? }]: os roteiros que já estão no Trello e, com `naFila`, os da fila de
@@ -758,9 +759,9 @@ export function criarTrello(env, deps = {}) {
     if (!producao) return {};
     const dados = {};
     for (const i of itens) {
-      const a = producao[i.id] ?? (prioridade.has(chaveN8n(i.claquete)) ? { status: [], designers: [], entregue: false, entrega: null } : null);
-      if (!a) continue;
-      dados[i.id] = prioridade.has(chaveN8n(i.claquete)) ? { ...a, prioridade: true } : a;
+      const prio = prioridade.has(chaveN8n(i.claquete));
+      const a = producao[i.id] ?? (prio ? { status: [], designers: [], entregue: false, entrega: null } : null);
+      if (a) dados[i.id] = prio ? { ...a, prioridade: true } : a;
     }
     memo = { em: Date.now(), chave, dados };
     return dados;
@@ -803,9 +804,12 @@ export function criarTrello(env, deps = {}) {
     const validas = [...new Set(chaves.filter(Boolean))];
     if (!t.prioridade || !c.prioridadeAlta || !validas.length) return new Set();
     try {
-      return new Set((await sql(`SELECT "key" FROM ${t.prioridade} WHERE "key" = ANY($1::text[])`, [validas])).map((l) => l.key));
+      const chavesNaLista = new Set((await sql(`SELECT "key" FROM ${t.prioridade} WHERE "key" = ANY($1::text[])`, [validas])).map((l) => l.key));
+      avisouFalhaPrioridade = false;
+      return chavesNaLista;
     } catch (e) {
-      console.warn(`[andamento] não consegui ler a lista de prioridade: ${e instanceof Error ? e.message : e}`);
+      if (!avisouFalhaPrioridade) console.warn(`[andamento] não consegui ler a lista de prioridade: ${e instanceof Error ? e.message : e}`);
+      avisouFalhaPrioridade = true;
       return new Set();
     }
   }
