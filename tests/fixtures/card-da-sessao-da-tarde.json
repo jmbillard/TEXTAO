@@ -1,0 +1,81 @@
+{
+  "_origem": "O card da Sessão da Tarde criado pelo fluxo CARDS v10 do n8n (execução de 23/11/2026, a semana de 30/11 a 04/12, quatro filmes: o de quarta já tinha card), gravado como referência do card da semana que o PROMeiro tem de criar. Anonimizado: os IDs do quadro, os do Teable e os caminhos de rede foram trocados por inventados; nomes, datas, títulos e o formato ficaram como o CARDS fez. O card da Sessão da Tarde não tem campos nem anexos; a exibição dele não leva as artes. '<agora>' é a hora do envio, '<card>' e '<link>' os do card criado.",
+  "card": {
+    "idList": "listaFilmes",
+    "name": "SESSÃO DA TARDE 30/11 A 04/12 - TÍTULOS",
+    "desc": "**TÍTULOS IDENTIFICADOS (4):**\n`30/11 SEG` FLORES DE AÇO (2012)\n`01/12 TER` OS DELÍRIOS DE CONSUMO DE BECKY BLOOM (2009) · ✓ já existe\n`03/12 QUI` O COMITÊ DA VIDA (2021)\n`04/12 SEX` OS SALAFRÁRIOS (2021)\n\n**A PRODUZIR (3):** no checklist.\n\n**JÁ EXISTEM (não produzir):** OS DELÍRIOS DE CONSUMO DE BECKY BLOOM (2009)",
+    "idLabels": "etqFilme",
+    "due": "2026-11-30T03:00:00.000Z",
+    "pos": "top"
+  },
+  "checklist": {
+    "name": "TÍTULOS A PRODUZIR",
+    "itens": [
+      "30/11 SEG · FLORES DE AÇO (2012)",
+      "03/12 QUI · O COMITÊ DA VIDA (2021)",
+      "04/12 SEX · OS SALAFRÁRIOS (2021)"
+    ]
+  },
+  "exibicoes": [
+    {
+      "exibicao": "SESSÃO DA TARDE 30/11 - FLORES DE AÇO",
+      "data_de_exibicao": "2026-11-30T03:00:00.000Z",
+      "inedito": false,
+      "output": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_F_\\FLORES DE ACO",
+      "criado_em": "<agora>",
+      "card_ID": "<card>",
+      "link": "<link>",
+      "filme": {
+        "id": "recFlores01"
+      },
+      "sessao": {
+        "id": "recSessaoTarde"
+      }
+    },
+    {
+      "exibicao": "SESSÃO DA TARDE 01/12 - OS DELÍRIOS DE CONSUMO DE BECKY BLOOM",
+      "data_de_exibicao": "2026-12-01T03:00:00.000Z",
+      "inedito": false,
+      "output": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_D_\\OS DELIRIOS DE CONSUMO DE BECKY BLOOM",
+      "criado_em": "<agora>",
+      "card_ID": "<card>",
+      "link": "<link>",
+      "filme": {
+        "id": "recBecky01"
+      },
+      "sessao": {
+        "id": "recSessaoTarde"
+      }
+    },
+    {
+      "exibicao": "SESSÃO DA TARDE 03/12 - O COMITÊ DA VIDA",
+      "data_de_exibicao": "2026-12-03T03:00:00.000Z",
+      "inedito": false,
+      "output": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_C_\\O COMITE DA VIDA",
+      "criado_em": "<agora>",
+      "card_ID": "<card>",
+      "link": "<link>",
+      "filme": {
+        "id": "recComite01"
+      },
+      "sessao": {
+        "id": "recSessaoTarde"
+      }
+    },
+    {
+      "exibicao": "SESSÃO DA TARDE 04/12 - OS SALAFRÁRIOS",
+      "data_de_exibicao": "2026-12-04T03:00:00.000Z",
+      "inedito": false,
+      "output": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_S_\\OS SALAFRARIOS",
+      "criado_em": "<agora>",
+      "card_ID": "<card>",
+      "link": "<link>",
+      "filme": {
+        "id": "recSalafra01"
+      },
+      "sessao": {
+        "id": "recSessaoTarde"
+      }
+    }
+  ]
+}

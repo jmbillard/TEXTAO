@@ -8,7 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vinculos } from './acervo.mjs';
 import { conferirFilme, diaDaPrevia } from './conferencia.mjs';
-import { criarEnvioDeFilmes, ehSessaoDaTarde } from './exibicao.mjs';
+import { criarEnvioDeFilmes, ehSessaoDaTarde, segundaDaSemana } from './exibicao.mjs';
 import { abrirPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 
@@ -415,9 +415,10 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
   const indo = (f) => f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado';
 
   /**
-   * O Enviar: os filmes prontos (✓), de identidade própria e ainda não enviados, de todas as páginas, passam a
-   * "enviando" de uma vez (um segundo Enviar no meio do caminho não pega os mesmos) e vão um por um, sem esperar a
-   * resposta. O erro de um filme fica nele, com o motivo, e não para os outros; ele pode ir de novo.
+   * O Enviar: os filmes prontos (✓) e ainda não enviados, de todas as páginas, passam a "enviando" de uma vez (um
+   * segundo Enviar no meio do caminho não pega os mesmos) e vão sem esperar a resposta: os de identidade própria um por
+   * um, os da Sessão da Tarde semana por semana (um card por semana). O erro de um filme fica nele, com o motivo, e não
+   * para os outros; ele pode ir de novo.
    * @returns { enviando: quantos foram }
    */
   async function enviar(id, eu) {
@@ -425,7 +426,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     const p = await abrir(id);
     if (!p) return { erro: 'Prévia não encontrada.', status: 404 };
     const prontos = p.paginas.flatMap((g) =>
-      g.estado !== 'lida' ? [] : g.filmes.map((f, i) => ({ n: g.numero, i, f })).filter(({ f }) => f.conferencia?.marca === 'ok' && !ehSessaoDaTarde(f.sessao) && !indo(f)),
+      g.estado !== 'lida' ? [] : g.filmes.map((f, i) => ({ n: g.numero, i, f })).filter(({ f }) => f.conferencia?.marca === 'ok' && !indo(f)),
     );
     // daqui até marcar, nada espera: quem chegar depois já vê "enviando"
     const por = eu?.nome || eu?.email || '';
@@ -447,16 +448,35 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
 
   async function enviarUmPorUm(id, vao, por) {
     const lote = envio.novoLote(() => conferencia?.esquecer());
-    for (const { n, i, f } of vao) {
+    const posterDe = ({ n, f }) => (f.poster !== null && f.poster !== undefined ? imagem(id, n, f.poster + 1) : null);
+    const enviado = ({ n, i, f }, r) => {
+      gravarEnvio(id, n, i, { estado: 'enviado', ...(r.card ? { card: r.card.id, link: r.card.url } : {}), filme: r.filme, por, em: new Date().toISOString(), ...(r.avisos.length ? { avisos: r.avisos } : {}) });
+      if (r.avisos.length) console.warn(`[filmes] ${f.titulo}: ${r.avisos.join('; ')}`);
+    };
+    const falhou = ({ n, i, f }, e) => {
+      const erro = e instanceof Error ? e.message : String(e);
+      console.warn(`[filmes] não enviei ${f.titulo}: ${erro}`);
+      gravarEnvio(id, n, i, { estado: 'erro', erro: erro.slice(0, 500), por, em: new Date().toISOString() });
+    };
+    for (const x of vao.filter(({ f }) => !ehSessaoDaTarde(f.sessao))) {
       try {
-        const poster = f.poster !== null && f.poster !== undefined ? imagem(id, n, f.poster + 1) : null;
-        const r = await envio.enviarUm({ lido: f, conferencia: f.conferencia, poster }, lote);
-        gravarEnvio(id, n, i, { estado: 'enviado', card: r.card.id, link: r.card.url, filme: r.filme, por, em: new Date().toISOString(), ...(r.avisos.length ? { avisos: r.avisos } : {}) });
-        if (r.avisos.length) console.warn(`[filmes] ${f.titulo}: ${r.avisos.join('; ')}`);
+        enviado(x, await envio.enviarUm({ lido: x.f, conferencia: x.f.conferencia, poster: posterDe(x) }, lote));
       } catch (e) {
-        const erro = e instanceof Error ? e.message : String(e);
-        console.warn(`[filmes] não enviei ${f.titulo}: ${erro}`);
-        gravarEnvio(id, n, i, { estado: 'erro', erro: erro.slice(0, 500), por, em: new Date().toISOString() });
+        falhou(x, e);
+      }
+    }
+    // a Sessão da Tarde: um card por semana (o filme sem data vai sozinho, e volta com o motivo)
+    const semanas = new Map();
+    for (const x of vao.filter(({ f }) => ehSessaoDaTarde(f.sessao))) {
+      const chave = segundaDaSemana(diaDaPrevia(x.f.data)) || `sem-data-${x.n}-${x.i}`;
+      semanas.set(chave, [...(semanas.get(chave) ?? []), x]);
+    }
+    for (const doGrupo of semanas.values()) {
+      try {
+        const rs = await envio.enviarSemanaDaTarde(doGrupo.map((x) => ({ lido: x.f, conferencia: x.f.conferencia, poster: posterDe(x) })), lote);
+        doGrupo.forEach((x, k) => (rs[k].erro ? falhou(x, rs[k].erro) : enviado(x, rs[k])));
+      } catch (e) {
+        for (const x of doGrupo) falhou(x, e);
       }
     }
   }

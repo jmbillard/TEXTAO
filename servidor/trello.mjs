@@ -270,6 +270,36 @@ export function criarTrello(env, deps = {}) {
     return { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}`, anexos: anexados, avisos };
   }
 
+  /** Um card que já existe: o nome, a descrição, o link e as checklists (com os nomes dos itens). */
+  async function lerCard(id) {
+    const card = await trello('GET', `/cards/${id}`, { consulta: { fields: 'id,name,desc,due,shortUrl,url' } });
+    if (!card?.id) throw new Error('O card não foi encontrado no Trello.');
+    const listas = await trello('GET', `/cards/${id}/checklists`, { consulta: { fields: 'name', checkItem_fields: 'name' } });
+    return {
+      id: card.id,
+      url: card.shortUrl || card.url || `https://trello.com/c/${card.id}`,
+      nome: String(card.name ?? ''),
+      desc: String(card.desc ?? ''),
+      checklists: (Array.isArray(listas) ? listas : []).map((l) => ({ id: l.id, nome: String(l.name ?? ''), itens: (l.checkItems ?? []).map((i) => String(i.name ?? '')) })),
+    };
+  }
+
+  /**
+   * Muda um card que já existe: o nome, a descrição e a data (os que vierem) e os itens novos na checklist (criada
+   * quando não há uma com esse nome). Sem mudar o card, falha; os itens que não entrarem viram aviso.
+   */
+  async function mudarCard(id, { nome, desc, data, checklist }, avisos = []) {
+    await trello('PUT', `/cards/${id}`, { corpo: { ...(nome !== undefined ? { name: nome } : {}), ...(desc !== undefined ? { desc } : {}), ...(data ? { due: data } : {}) } });
+    if (!checklist?.itens?.length) return;
+    try {
+      let lista = checklist.id ? { id: checklist.id } : null;
+      lista ??= await trello('POST', '/checklists', { consulta: { idCard: id, name: checklist.nome } });
+      for (const item of checklist.itens) await trello('POST', `/checklists/${lista.id}/checkItems`, { consulta: { name: item } });
+    } catch (e) {
+      avisos.push(`acrescentar à checklist: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   /* ---------- Teable (escrita pela API) ---------- */
   async function teableCriar(tabelaId, campos) {
     if (!c.teable.url || !c.teable.token || !tabelaId) return null;
@@ -915,5 +945,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, enviar, criarCard, teableCriar, teableAtualizar, teableAnexar, andamento, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

@@ -11,6 +11,7 @@ import { criarFilmes } from '../servidor/filmes.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { criarTrello } from '../servidor/trello.mjs';
 import referencia from './fixtures/cards-de-filme.json';
+import referenciaDaTarde from './fixtures/card-da-sessao-da-tarde.json';
 
 /* A aba Filmes pela API do servidor: a leitura por IA do n8n é falsa; o resto é o de verdade (banco em memória,
    imagens numa pasta temporária). O endereço do n8n é inventado: o de verdade fica só nas variáveis do servidor. */
@@ -196,15 +197,22 @@ describe('aba Filmes: quando a leitura falha ou o servidor reinicia', () => {
    como o Teable guarda: vínculos como { id, title } e a data da exibição em UTC (meia-noite de Brasília = 03:00Z). */
 const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', TEABLE_PG_FILMES: 'filmes_teste', TEABLE_PG_EXIBICOES: 'exibicoes_teste', TEABLE_PG_ACERVO: 'acervo_teste' };
 type FilmeDoBanco = { __id: string; titulo: string; ano_de_producao: number | null; projeto_win?: string; projeto_mac?: string; output_win?: string; output_mac?: string; poster?: { name: string; token: string }[] | null };
-type ExibicaoDoBanco = { filme: { id: string; title: string }; sessao: { id: string; title: string }; data_de_exibicao: string; card_ID: string; link: string; labels: string[] | null };
+type ExibicaoDoBanco = { filme: { id: string; title: string }; sessao: { id: string; title: string }; data_de_exibicao: string; card_ID: string; link: string; labels: string[] | null; exibicao?: string };
 type ArteDoAcervo = { arte: string; filme: { id: string; title: string } };
 type SessaoDoBanco = { __id: string; atracao: string; tipo: string };
 function postgresFalso(banco: { filmes?: FilmeDoBanco[]; exibicoes?: ExibicaoDoBanco[]; acervo?: ArteDoAcervo[]; atracoes?: SessaoDoBanco[] }) {
   const consultas: string[] = [];
-  const consultar: Consultar = async (sql) => {
+  // o dia da exibição em Brasília, como o filtro por data das consultas faz no Postgres
+  const dia = (e: ExibicaoDoBanco) => new Date(e.data_de_exibicao).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const consultar: Consultar = async (sql, params = []) => {
     consultas.push(sql);
     if (sql.includes('"filmes_teste"')) return banco.filmes ?? [];
-    if (sql.includes('"exibicoes_teste"')) return banco.exibicoes ?? [];
+    if (sql.includes('"exibicoes_teste"')) {
+      const todas = banco.exibicoes ?? [];
+      if (sql.includes('BETWEEN')) return todas.filter((e) => dia(e) >= String(params[0]) && dia(e) <= String(params[1]));
+      if (sql.includes('ANY($1::date[])')) return todas.filter((e) => (params[0] as string[]).includes(dia(e)));
+      return todas;
+    }
     if (sql.includes('"acervo_teste"')) return banco.acervo ?? [];
     if (sql.includes('"atracoes_teste"')) return banco.atracoes ?? [];
     throw new Error(`tabela inesperada: ${sql}`);
@@ -421,6 +429,17 @@ function trelloETeableFalsos({ falharCard = (_nome: string): boolean => false } 
       card.checklist = { name: url.searchParams.get('name')!, itens: [] };
       return ok({ id: `chk-${card.id}` });
     }
+    const umCard = /^\/cards\/(\w+)$/.exec(rota);
+    if (umCard && cards.has(umCard[1])) {
+      const card = cards.get(umCard[1])!;
+      if (metodo === 'PUT') Object.assign(card.card, corpo);
+      return ok({ id: card.id, name: card.card.name, desc: card.card.desc, due: card.card.due, shortUrl: `https://trello.com/c/${card.id.toUpperCase()}` });
+    }
+    const listas = /^\/cards\/(\w+)\/checklists$/.exec(rota);
+    if (listas && metodo === 'GET') {
+      const card = cards.get(listas[1])!;
+      return ok(card.checklist ? [{ id: `chk-${card.id}`, name: card.checklist.name, checkItems: card.checklist.itens.map((name) => ({ name })) }] : []);
+    }
     const item = /^\/checklists\/chk-(\w+)\/checkItems$/.exec(rota);
     if (item) cards.get(item[1])!.checklist!.itens.push(url.searchParams.get('name')!);
     const campo = /^\/cards\/(\w+)\/customField\/(\w+)\/item$/.exec(rota);
@@ -437,27 +456,42 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 type Envio = { estado: string; card?: string; link?: string; por?: string; em?: string; erro?: string };
 type FilmeEnviado = { titulo: string; envio?: Envio; conferencia?: { marca: string; link?: string } };
 /** Sobe uma prévia de uma página com estes filmes lidos, com Trello, Teable e Postgres falsos. */
-async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>[0], opcoes: Parameters<typeof trelloETeableFalsos>[0] = {}, env: Record<string, string> = ENVIO) {
-  const pg = postgresFalso(banco);
+async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>[0], opcoes: Parameters<typeof trelloETeableFalsos>[0] = {}, env: Record<string, string> = ENVIO, outrasPaginas: Record<number, Lido[]> = {}) {
   const falsos = trelloETeableFalsos(opcoes);
+  // as exibições que o envio grava no Teable aparecem no Postgres, como no de verdade
+  const sessaoDe = (id: string) => ({ id, title: banco.atracoes?.find((s) => s.__id === id)?.atracao ?? '' });
+  const gravadas = (): ExibicaoDoBanco[] =>
+    falsos.teable('tblExibicoes').map((p) => {
+      const e = (p.corpo!.records as { fields: Record<string, unknown> }[])[0].fields as { filme: { id: string }; sessao?: { id: string }; data_de_exibicao: string; card_ID?: string; link?: string; exibicao: string };
+      return { filme: { id: e.filme.id, title: '' }, sessao: sessaoDe(e.sessao?.id ?? ''), data_de_exibicao: e.data_de_exibicao, card_ID: e.card_ID ?? '', link: e.link ?? '', labels: null, exibicao: e.exibicao };
+    });
+  const pg = postgresFalso({ ...banco, get exibicoes() { return [...(banco.exibicoes ?? []), ...gravadas()]; } });
   const trello = criarTrello(env, { buscar: falsos.buscar, consultar: pg.consultar });
-  const movies = lidos.map((l) => ({ sessao: 'SUPERCINE', data: '05/12/2026', inedito: false, ano_de_producao: null, ...l }));
-  const { api } = await subir({ env: { ...ENV, ...env }, n8n: n8nFalso({ 2: { movies } }), consultar: pg.consultar, trello });
-  const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: `env${Math.random().toString(36).slice(2, 10)}`, paginas: [2] });
-  await api(`/api/filmes/previas/${id}/paginas/2`, { method: 'PUT', body: JSON.stringify(pagina(lidos.map((l) => l.titulo))) });
-  await ate(api, id, (p) => p.paginas[0].estado === 'lida');
-  const filmes = async (): Promise<FilmeEnviado[]> => (await (await api(`/api/filmes/previas/${id}`)).json()).paginas[0].filmes;
-  const enviar = () => api(`/api/filmes/previas/${id}/enviar`, { method: 'POST' });
-  /** Espera o envio terminar (nenhum filme "enviando"). */
-  const terminar = async () => {
-    for (let i = 0; i < 200; i++) {
-      const f = await filmes();
-      if (!f.some((x) => x.envio?.estado === 'enviando')) return f;
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    throw new Error('o envio não terminou');
+  const movies = (l: Lido[]) => ({ movies: l.map((x) => ({ sessao: 'SUPERCINE', data: '05/12/2026', inedito: false, ano_de_producao: null, ...x })) });
+  const n8n = n8nFalso({ 2: movies(lidos), ...Object.fromEntries(Object.entries(outrasPaginas).map(([n, l]) => [n, movies(l)])) });
+  const { api } = await subir({ env: { ...ENV, ...env }, n8n, consultar: pg.consultar, trello });
+  /** Uma prévia de uma página só (a página n, com os filmes dela). */
+  const previa = async (n: number, titulos: string[]) => {
+    const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: `env${Math.random().toString(36).slice(2, 10)}`, paginas: [n] });
+    await api(`/api/filmes/previas/${id}/paginas/${n}`, { method: 'PUT', body: JSON.stringify(pagina(titulos)) });
+    await ate(api, id, (p) => p.paginas[0].estado === 'lida');
+    const filmes = async (): Promise<FilmeEnviado[]> => (await (await api(`/api/filmes/previas/${id}`)).json()).paginas[0].filmes;
+    const enviar = () => api(`/api/filmes/previas/${id}/enviar`, { method: 'POST' });
+    /** Espera o envio terminar (nenhum filme "enviando"). */
+    const terminar = async () => {
+      for (let i = 0; i < 200; i++) {
+        const f = await filmes();
+        if (!f.some((x) => x.envio?.estado === 'enviando')) return f;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      throw new Error('o envio não terminou');
+    };
+    return { id, filmes, enviar, terminar };
   };
-  return { api, id, filmes, enviar, terminar, falsos, pg };
+  const primeira = await previa(2, lidos.map((l) => l.titulo));
+  /** A prévia de outra página (de outrasPaginas), no mesmo servidor. */
+  const outra = (n: number) => previa(n, outrasPaginas[n].map((l) => l.titulo));
+  return { api, ...primeira, outra, falsos, pg };
 }
 
 const SESSOES = [
@@ -475,8 +509,6 @@ describe('aba Filmes: o envio', () => {
       [
         { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'SUPERCINE', data: '05/12/2026' },
         { titulo: 'PERSEGUIÇÃO NAS ALTURAS', ano_de_producao: 2022, sessao: 'DOMINGO MAIOR', data: '06/12/2026', inedito: true },
-        // a Sessão da Tarde ganha o card da semana (outro ticket): fica de fora deste envio
-        { titulo: 'KONG: ILHA DA CAVEIRA', ano_de_producao: 2017, sessao: 'SESSÃO DA TARDE', data: '08/12/2026' },
       ],
       {
         filmes: [DESPEDIDA],
@@ -528,7 +560,6 @@ describe('aba Filmes: o envio', () => {
     expect(filmes[0].envio!.em).toMatch(ISO);
     expect(filmes[0].conferencia).toMatchObject({ marca: 'trello', link: `https://trello.com/c/${cards[0].id.toUpperCase()}` });
     expect(filmes[1].envio).toMatchObject({ estado: 'enviado', card: cards[1].id });
-    expect(filmes[2].envio).toBeUndefined();
   });
 
   it('dois Envios seguidos não criam card duplicado', async () => {
@@ -633,3 +664,112 @@ describe('aba Filmes: o envio', () => {
   });
 });
 
+
+/* ---------- a Sessão da Tarde: um card por semana ---------- */
+/* O card da semana comparado com o do fluxo CARDS (tests/fixtures/card-da-sessao-da-tarde.json): os quatro filmes da
+   semana de 30/11 a 04/12, o de terça com o título já no acervo. */
+const saida = (pasta: string, letra: string) => `\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\${letra}\\${pasta}`;
+const daTarde = (__id: string, titulo: string, ano: number, pasta: string, letra: string): FilmeDoBanco => ({ ...filmeDoBanco(__id, titulo, ano), output_win: saida(pasta, letra), poster: null });
+const DA_TARDE = [
+  daTarde('recFlores01', 'Flores de Aço', 2012, 'FLORES DE ACO', '_F_'),
+  daTarde('recBecky01', 'Os Delírios de Consumo de Becky Bloom', 2009, 'OS DELIRIOS DE CONSUMO DE BECKY BLOOM', '_D_'),
+  daTarde('recComite01', 'O Comitê da Vida', 2021, 'O COMITE DA VIDA', '_C_'),
+  daTarde('recSalafra01', 'Os Salafrários', 2021, 'OS SALAFRARIOS', '_S_'),
+  daTarde('recRepente01', 'De Repente 30', 2004, 'DE REPENTE 30', '_R_'),
+];
+const tarde = (titulo: string, data: string): Lido => ({ titulo, sessao: 'SESSÃO DA TARDE', data });
+const SEMANA = [tarde('FLORES DE AÇO', '30/11/2026'), tarde('OS DELÍRIOS DE CONSUMO DE BECKY BLOOM', '01/12/2026'), tarde('O COMITÊ DA VIDA', '03/12/2026'), tarde('OS SALAFRÁRIOS', '04/12/2026')];
+const BECKY_NO_ACERVO = [doAcervo('Os Delírios de Consumo de Becky Bloom', 'recBecky01', 'Os Delírios de Consumo de Becky Bloom (2009)')];
+
+describe('aba Filmes: a Sessão da Tarde', () => {
+  it('os filmes da semana viram um card só, igual ao do fluxo CARDS (o de referência), e cada um ganha a sua exibição ligada a ele', async () => {
+    const { enviar, terminar, falsos } = await paraEnviar(SEMANA, { filmes: DA_TARDE, acervo: BECKY_NO_ACERVO, atracoes: SESSOES });
+    expect(await (await enviar()).json()).toEqual({ enviando: 4 });
+    const filmes = await terminar();
+
+    const cards = falsos.cards();
+    expect(cards).toHaveLength(1);
+    const [card] = cards;
+    expect(card.card).toEqual(referenciaDaTarde.card);
+    expect(card.checklist).toEqual({ name: referenciaDaTarde.checklist.name, itens: referenciaDaTarde.checklist.itens });
+    expect(card.campos).toEqual({});
+    expect(card.anexos).toEqual([]);
+
+    const link = `https://trello.com/c/${card.id.toUpperCase()}`;
+    const exibicoes = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: Record<string, unknown> }[])[0].fields);
+    exibicoes.forEach((e) => expect(e.criado_em).toMatch(ISO));
+    expect(exibicoes.map((e) => ({ ...e, criado_em: '<agora>' }))).toEqual(referenciaDaTarde.exibicoes.map((e) => ({ ...e, card_ID: card.id, link })));
+    // nada na produção da arte (ADR 0001)
+    expect(falsos.pedidos.filter((p) => p.url.host === 'teable:3000' && !/tblFilmes|tblExibicoes/.test(p.url.pathname))).toEqual([]);
+
+    for (const f of filmes) {
+      expect(f.envio).toMatchObject({ estado: 'enviado', card: card.id, link, por: 'Ana Lima' });
+      expect(f.conferencia).toMatchObject({ marca: 'trello', link });
+    }
+  });
+
+  it('uma semana com cinco filmes gera um card, e não cinco; a semana seguinte ganha o seu', async () => {
+    const cinco = [...SEMANA, tarde('DE REPENTE 30', '02/12/2026')];
+    const { enviar, terminar, falsos } = await paraEnviar([...cinco, tarde('FLORES DE AÇO', '07/12/2026')], { filmes: DA_TARDE, atracoes: SESSOES });
+    expect(await (await enviar()).json()).toEqual({ enviando: 6 });
+    const filmes = await terminar();
+
+    const cards = falsos.cards();
+    expect(cards.map((c) => c.card.name)).toEqual(['SESSÃO DA TARDE 30/11 A 04/12 - TÍTULOS', 'SESSÃO DA TARDE 07/12 - TÍTULOS']);
+    expect(cards[0].checklist!.itens).toEqual([
+      '30/11 SEG · FLORES DE AÇO (2012)',
+      '01/12 TER · OS DELÍRIOS DE CONSUMO DE BECKY BLOOM (2009)',
+      '02/12 QUA · DE REPENTE 30 (2004)',
+      '03/12 QUI · O COMITÊ DA VIDA (2021)',
+      '04/12 SEX · OS SALAFRÁRIOS (2021)',
+    ]);
+    expect(cards[1].checklist!.itens).toEqual(['07/12 SEG · FLORES DE AÇO (2012)']);
+    // cada filme com a sua exibição, ligada ao card da semana dele
+    const exibicoes = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: { exibicao: string; card_ID: string } }[])[0].fields);
+    expect(exibicoes.map((e) => [e.exibicao, e.card_ID])).toEqual([
+      ['SESSÃO DA TARDE 30/11 - FLORES DE AÇO', cards[0].id],
+      ['SESSÃO DA TARDE 01/12 - OS DELÍRIOS DE CONSUMO DE BECKY BLOOM', cards[0].id],
+      ['SESSÃO DA TARDE 03/12 - O COMITÊ DA VIDA', cards[0].id],
+      ['SESSÃO DA TARDE 04/12 - OS SALAFRÁRIOS', cards[0].id],
+      ['SESSÃO DA TARDE 02/12 - DE REPENTE 30', cards[0].id],
+      ['SESSÃO DA TARDE 07/12 - FLORES DE AÇO', cards[1].id],
+    ]);
+    expect(filmes.map((f) => f.envio!.card)).toEqual([...cinco.map(() => cards[0].id), cards[1].id]);
+  });
+
+  it('um segundo Envio na mesma semana acrescenta ao card que já existe, sem criar outro', async () => {
+    const quarta = [tarde('DE REPENTE 30', '02/12/2026'), tarde('O COMITÊ DA VIDA', '03/12/2026'), tarde('OS SALAFRÁRIOS', '04/12/2026')];
+    // a semana passa de uma prévia para a outra: segunda e terça numa, o resto na outra
+    const { enviar, terminar, outra, falsos } = await paraEnviar(SEMANA.slice(0, 2), { filmes: DA_TARDE, acervo: BECKY_NO_ACERVO, atracoes: SESSOES }, {}, ENVIO, { 3: quarta });
+    await enviar();
+    await terminar();
+    const [card] = falsos.cards();
+    expect(card.card.name).toBe('SESSÃO DA TARDE 30/11 A 01/12 - TÍTULOS');
+
+    const segunda = await outra(3);
+    expect(await (await segunda.enviar()).json()).toEqual({ enviando: 3 });
+    const filmes = await segunda.terminar();
+    expect(falsos.cards()).toHaveLength(1);
+    expect(card.card).toMatchObject({
+      name: 'SESSÃO DA TARDE 30/11 A 04/12 - TÍTULOS',
+      desc: [
+        '**TÍTULOS IDENTIFICADOS (5):**',
+        '`30/11 SEG` FLORES DE AÇO (2012)',
+        '`01/12 TER` OS DELÍRIOS DE CONSUMO DE BECKY BLOOM (2009) · ✓ já existe',
+        '`02/12 QUA` DE REPENTE 30 (2004)',
+        '`03/12 QUI` O COMITÊ DA VIDA (2021)',
+        '`04/12 SEX` OS SALAFRÁRIOS (2021)',
+        '',
+        '**A PRODUZIR (4):** no checklist.',
+        '',
+        '**JÁ EXISTEM (não produzir):** OS DELÍRIOS DE CONSUMO DE BECKY BLOOM (2009)',
+      ].join('\n'),
+      due: '2026-11-30T03:00:00.000Z',
+    });
+    expect(card.checklist).toEqual({ name: 'TÍTULOS A PRODUZIR', itens: ['30/11 SEG · FLORES DE AÇO (2012)', '02/12 QUA · DE REPENTE 30 (2004)', '03/12 QUI · O COMITÊ DA VIDA (2021)', '04/12 SEX · OS SALAFRÁRIOS (2021)'] });
+    const link = `https://trello.com/c/${card.id.toUpperCase()}`;
+    const exibicoes = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: { card_ID: string; link: string } }[])[0].fields);
+    expect(exibicoes.map((e) => [e.card_ID, e.link])).toEqual(Array(5).fill([card.id, link]));
+    for (const f of filmes) expect(f.envio).toMatchObject({ estado: 'enviado', card: card.id, link });
+  });
+});

@@ -33,12 +33,10 @@ interface Props {
 // a página que ainda não chegou (a aba fechou no meio da subida) não está sendo lida: não adianta esperar
 const lendo = (p: PaginaDaPrevia) =>
   p.estado === "fila" || p.estado === "lendo";
-// a Sessão da Tarde ganha o card da semana (ainda não): fica fora do Enviar
-const sessaoDaTarde = (s: string) => /^sess[aã]o\s*da\s*tarde$/i.test(s.trim());
-/** Vai no próximo Enviar: pronto (✓), de identidade própria e ainda não mandado (o que deu erro vai de novo). */
+/** Vai no próximo Enviar: pronto (✓) e ainda não mandado (o que deu erro vai de novo). Os de identidade própria
+    ganham um card cada; os da Sessão da Tarde, o card da semana. */
 const vaiNoEnvio = (f: FilmeLido) =>
   f.conferencia?.marca === "ok" &&
-  !sessaoDaTarde(f.sessao) &&
   f.envio?.estado !== "enviando" &&
   f.envio?.estado !== "enviado";
 /** O card abre o balão: a pergunta do ! ou o motivo do erro no envio. */

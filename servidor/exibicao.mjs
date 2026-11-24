@@ -8,14 +8,31 @@
    3. depois do card: a exibição (filme, sessão, dia, card e artes; nada na ARTE_producao, ADR 0001), o ano que
       faltava (ou o escolhido no !) e o pôster no cadastro do filme, quando ele não tem ou o da prévia é mais atual.
 
-   O que der errado depois do card vira aviso: o card já existe e não pode ir de novo. Os IDs vêm do ambiente. */
+   O que der errado depois do card vira aviso: o card já existe e não pode ir de novo. Os IDs vêm do ambiente.
 
+   A Sessão da Tarde não tem identidade própria do filme: os filmes de uma semana (de segunda a domingo) viram um card
+   só, como o "card resumo" do CARDS: "SESSÃO DA TARDE DD/MM A DD/MM - TÍTULOS", todos os títulos na descrição, os que
+   faltam produzir (o título não está no acervo do filme) na checklist "TÍTULOS A PRODUZIR", sem campos e sem pôster.
+   Cada filme ganha a sua exibição, ligada ao card. Um segundo Envio na mesma semana (desta prévia ou de outra)
+   acrescenta ao card que já existe, achado pelas exibições da semana. */
+
+import { vinculos } from './acervo.mjs';
 import { nomesDoPg } from './pauta.mjs';
 import { diaDaPrevia } from './conferencia.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 export const ehSessaoDaTarde = (sessao) => /^sess[aã]o\s*da\s*tarde$/i.test(String(sessao ?? '').trim());
+/** A segunda-feira da semana do dia ("AAAA-MM-DD"): a semana do card da Sessão da Tarde vai de segunda a domingo. */
+export function segundaDaSemana(dia) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dia ?? ''))) return '';
+  return maisDias(dia, -((new Date(`${dia}T12:00:00Z`).getUTCDay() + 6) % 7));
+}
+function maisDias(dia, n) {
+  const d = new Date(`${dia}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 const chaveDaSessao = (s) =>
   String(s ?? '')
     .normalize('NFD')
@@ -90,7 +107,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     const nome = nomesDoPg(env, v).tabela;
     return esquema && NOME_SQL.test(esquema) && nome && NOME_SQL.test(nome) ? `"${esquema}"."${nome}"` : null;
   };
-  const t = { filmes: tabela(env.TEABLE_PG_FILMES), atracoes: tabela(env.TEABLE_PG_ATRACOES) };
+  const t = { filmes: tabela(env.TEABLE_PG_FILMES), atracoes: tabela(env.TEABLE_PG_ATRACOES), exibicoes: tabela(env.TEABLE_PG_EXIBICOES) };
   const faltando = [
     !c?.chave && 'TRELLO_KEY',
     !c?.token && 'TRELLO_TOKEN',
@@ -166,18 +183,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     const sessao = lote.sessoes.get(chaveDaSessao(lido.sessao)) ?? { id: '', nome: String(lido.sessao).trim() };
     const ano = conferencia.ano ?? null;
 
-    // o filme: o do banco ou o novo (cadastrado uma vez só no Envio, mesmo que passe em duas sessões)
-    let filme;
-    if (conferencia.filme) filme = await doCadastro(conferencia.filme.id);
-    else {
-      const chave = `${chaveDoTitulo(lido.titulo)}|${ano ?? ''}`;
-      filme = lote.novos.get(chave);
-      if (!filme) {
-        filme = await cadastrar(lido, ano, agora);
-        lote.novos.set(chave, filme);
-        lote.aoCadastrar?.();
-      }
-    }
+    const filme = await filmeDoEnvio(lido, conferencia, lote, agora);
     const titulo = filme.titulo || lido.titulo;
     const ddmm = `${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
     const exibicao = `${sessao.nome.toUpperCase()} ${ddmm} - ${titulo.toUpperCase()}`;
@@ -222,16 +228,184 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
         ...(sessao.id ? { sessao: { id: sessao.id } } : {}),
       }),
     );
-    // o ano que faltava no cadastro, ou o da prévia escolhido no "ano diferente"
+    await depoisDoCard({ conferencia, poster, dia, filme, titulo }, lote, tentar);
+    return { card, filme: filme.id, avisos };
+  }
+
+  /** O filme do envio: o do banco ou o novo (cadastrado uma vez só no Envio, mesmo que passe em duas sessões). */
+  async function filmeDoEnvio(lido, conferencia, lote, agora) {
+    if (conferencia.filme) return doCadastro(conferencia.filme.id);
+    const ano = conferencia.ano ?? null;
+    const chave = `${chaveDoTitulo(lido.titulo)}|${ano ?? ''}`;
+    let filme = lote.novos.get(chave);
+    if (!filme) {
+      filme = await cadastrar(lido, ano, agora);
+      lote.novos.set(chave, filme);
+      lote.aoCadastrar?.();
+    }
+    return filme;
+  }
+
+  /** O cadastro depois do card: o ano que faltava (ou o da prévia escolhido no "ano diferente") e o pôster. */
+  async function depoisDoCard({ conferencia, poster, dia, filme, titulo }, lote, tentar) {
+    const ano = conferencia.ano ?? null;
     if (conferencia.filme && ano && ano !== conferencia.filme.ano) await tentar('completar o ano', () => trello.teableAtualizar(c.teable.filmes, filme.id, { ano_de_producao: ano }));
     // um pôster por filme no Envio, mesmo que ele passe em duas sessões
     if (poster && c.teable.posterDoFilme && !lote.posteres.has(filme.id)) {
       lote.posteres.add(filme.id);
       await tentar('pôr o pôster no cadastro', () => posterNoCadastro(filme, poster, titulo, dia.slice(0, 7)));
     }
-    return { card, filme: filme.id, avisos };
+  }
+
+  /* ---------- a Sessão da Tarde: o card da semana ---------- */
+  const DIAS_CURTOS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+  const ddmm = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
+  const comDia = (dia) => `${ddmm(dia)} ${DIAS_CURTOS[new Date(`${dia}T12:00:00Z`).getUTCDay()]}`;
+  const CHECKLIST_DA_TARDE = 'TÍTULOS A PRODUZIR';
+
+  /** O nome, a descrição, a data e a checklist do card da semana, a regra do nó "Sessão da Tarde" do CARDS.
+      @param linhas [{ dia, nome, fazer, novo }] */
+  function cardDaSemana(linhas) {
+    const ordem = [...linhas].sort((a, b) => a.dia.localeCompare(b.dia));
+    const fazer = ordem.filter((l) => l.fazer);
+    const ja = ordem.filter((l) => !l.fazer);
+    const de = ordem[0].dia;
+    const ate = ordem.at(-1).dia;
+    return {
+      nome: `SESSÃO DA TARDE ${ddmm(de)}${ate !== de ? ` A ${ddmm(ate)}` : ''} - TÍTULOS`,
+      desc: [
+        `**TÍTULOS IDENTIFICADOS (${ordem.length}):**`,
+        ...ordem.map((l) => `\`${comDia(l.dia)}\` ${l.nome}${l.fazer ? (l.novo ? ' · filme novo' : '') : ' · ✓ já existe'}`),
+        '',
+        `**A PRODUZIR (${fazer.length}):** no checklist.`,
+        ...(ja.length ? ['', `**JÁ EXISTEM (não produzir):** ${ja.map((l) => l.nome).join(', ')}`] : []),
+      ].join('\n'),
+      data: `${de}T03:00:00.000Z`,
+      itens: fazer.map((l) => `${comDia(l.dia)} · ${l.nome}`),
+    };
+  }
+
+  /** Os títulos que a descrição do card da semana já lista (a linha "`DD/MM DIA` TÍTULO (ANO)[ · …]"), com o dia. */
+  function linhasDoCard(desc, segunda) {
+    const dias = Array.from({ length: 7 }, (_, i) => maisDias(segunda, i));
+    return String(desc ?? '')
+      .split('\n')
+      .map((l) => /^`(\d{2}\/\d{2}) [^`]*` (.+?)( · filme novo| · ✓ já existe)?$/.exec(l.trim()))
+      .filter(Boolean)
+      .map(([, dm, nome, marca]) => ({ dia: dias.find((d) => ddmm(d) === dm), nome, fazer: !marca?.includes('já existe'), novo: !!marca?.includes('filme novo') }))
+      .filter((l) => l.dia);
+  }
+
+  /** O card da Sessão da Tarde da semana que começa na segunda dada, pelas exibições dela que têm card: o ID ou null. */
+  async function cardJaDaSemana(segunda) {
+    if (!t.exibicoes) return null;
+    const linhas = await consultar(
+      `SELECT "card_ID", "sessao", "exibicao", "labels" FROM ${t.exibicoes}
+       WHERE ("data_de_exibicao" AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $1::date AND $2::date`,
+      [segunda, maisDias(segunda, 6)],
+    );
+    const daTarde = (l) => ehSessaoDaTarde(vinculos(l.sessao)[0]?.title) || chaveDaSessao(l.exibicao).startsWith(chaveDaSessao('Sessão da Tarde'));
+    const l = linhas.find((x) => x.card_ID && daTarde(x) && !JSON.stringify(x.labels ?? '').toUpperCase().includes('CANCELADO'));
+    return l ? String(l.card_ID) : null;
+  }
+
+  /**
+   * Envia os filmes da Sessão da Tarde de uma semana: o cadastro (filme novo, ano, pôster), como nos outros, o card da
+   * semana (novo, ou o que já existe com os filmes acrescentados) e a exibição de cada um, ligada ao card. Sem título a
+   * produzir e sem card na semana, não há card, como no CARDS: as exibições ficam sem ele.
+   * @param itens [{ lido, conferencia, poster }] da mesma semana
+   * @returns na mesma ordem: { card: { id, url } | null, filme, avisos } ou { erro } (o filme que não pôde ir)
+   */
+  async function enviarSemanaDaTarde(itens, lote) {
+    const agora = new Date().toISOString();
+    const avisos = [];
+    lote.sessoes ??= await sessoes().catch((e) => {
+      avisos.push(`ler as sessões: ${e instanceof Error ? e.message : e}`);
+      return new Map();
+    });
+    const sessao = lote.sessoes.get(chaveDaSessao('Sessão da Tarde')) ?? { id: '', nome: 'Sessão da Tarde' };
+    const resultados = itens.map(() => null);
+    const vao = [];
+    for (const [k, { lido, conferencia, poster }] of itens.entries()) {
+      const dia = diaDaPrevia(lido.data);
+      if (!dia) resultados[k] = { erro: 'falta a data' };
+      else if (!String(lido.titulo ?? '').trim()) resultados[k] = { erro: 'falta o título' };
+      else
+        try {
+          vao.push({ k, lido, conferencia, poster, dia, filme: await filmeDoEnvio(lido, conferencia, lote, agora) });
+        } catch (e) {
+          resultados[k] = { erro: e instanceof Error ? e.message : String(e) };
+        }
+    }
+    if (!vao.length) return resultados;
+    const linhas = vao.map(({ lido, conferencia, dia, filme }) => {
+      const titulo = String(filme.titulo || lido.titulo).toUpperCase();
+      const ano = conferencia.ano ?? null;
+      return { dia, nome: `${titulo}${ano ? ` (${ano})` : ''}`, fazer: !conferencia.artes.existentes.includes(titulo), novo: !!filme.novo };
+    });
+    const segunda = segundaDaSemana(vao[0].dia);
+
+    let card = null;
+    const existente = await cardJaDaSemana(segunda);
+    if (existente) {
+      // o card que já existe (de um Envio anterior, desta prévia ou de outra) recebe os filmes novos
+      const atual = await trello.lerCard(existente);
+      const antes = linhasDoCard(atual.desc, segunda);
+      const semana = cardDaSemana([...antes, ...linhas.filter((l) => !antes.some((a) => a.dia === l.dia && a.nome === l.nome))]);
+      const lista = atual.checklists.find((l) => /T[IÍ]TULOS/i.test(l.nome));
+      const itensNovos = cardDaSemana(linhas).itens.filter((i) => !(lista?.itens ?? []).includes(i));
+      // a descrição que não segue o formato (mexida à mão) fica, com a lista nova embaixo
+      const desc = antes.length || !atual.desc.trim() ? semana.desc : `${atual.desc}\n\n---\n${semana.desc}`;
+      await trello.mudarCard(atual.id, { nome: semana.nome, desc, data: semana.data, checklist: { id: lista?.id, nome: CHECKLIST_DA_TARDE, itens: itensNovos } }, avisos);
+      card = { id: atual.id, url: atual.url };
+    } else {
+      const semana = cardDaSemana(linhas);
+      const f = c.filmes;
+      if (semana.itens.length)
+        card = await trello.criarCard(
+          {
+            lista: f.lista,
+            nome: semana.nome,
+            desc: semana.desc,
+            etiquetas: [...f.etiquetas, ...Object.entries(f.etiquetasDaSessao).filter(([s]) => chaveDaSessao(s) === chaveDaSessao(sessao.nome)).map(([, id]) => id)],
+            data: semana.data,
+            posicao: 'top',
+            checklist: { nome: CHECKLIST_DA_TARDE, itens: semana.itens },
+          },
+          avisos,
+        );
+    }
+
+    // a exibição de cada filme, ligada ao card (sem as artes, como no CARDS), e o cadastro depois do card
+    for (const { k, lido, conferencia, poster, dia, filme } of vao) {
+      const seus = [...avisos];
+      const tentar = async (o_que, f) => {
+        try {
+          return await f();
+        } catch (e) {
+          seus.push(`${o_que}: ${e instanceof Error ? e.message : e}`);
+          return null;
+        }
+      };
+      const titulo = filme.titulo || lido.titulo;
+      await tentar('gravar a exibição', () =>
+        trello.teableCriar(c.teable.exibicoes, {
+          exibicao: `${sessao.nome.toUpperCase()} ${ddmm(dia)} - ${titulo.toUpperCase()}`,
+          data_de_exibicao: `${dia}T03:00:00.000Z`,
+          inedito: !!lido.inedito,
+          output: filme.output_win || '',
+          criado_em: agora,
+          ...(card ? { card_ID: card.id, link: card.url } : {}),
+          filme: { id: filme.id },
+          ...(sessao.id ? { sessao: { id: sessao.id } } : {}),
+        }),
+      );
+      await depoisDoCard({ conferencia, poster, dia, filme, titulo }, lote, tentar);
+      resultados[k] = { card, filme: filme.id, avisos: seus };
+    }
+    return resultados;
   }
 
   const novoLote = (aoCadastrar) => ({ sessoes: null, novos: new Map(), posteres: new Set(), aoCadastrar });
-  return { ligado: true, faltando: [], enviarUm, novoLote };
+  return { ligado: true, faltando: [], enviarUm, enviarSemanaDaTarde, novoLote };
 }
