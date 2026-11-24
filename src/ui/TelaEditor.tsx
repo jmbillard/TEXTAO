@@ -21,7 +21,7 @@ import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
+import { alternarJaExiste, alvosDoTeclado, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import { nomeDaSigla,
@@ -719,9 +719,12 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     if (leitura || !(e.shiftKey || e.metaKey || e.ctrlKey)) {
       setSelecionadas([]);
       ancoraSel.current = a.id;
+      selDaLista.current = { from: a.from, to: a.to };
       return irParaArte(a);
     }
     e.preventDefault();
+    // o foco sai do texto, para as teclas da lista valerem na seleção (e não caírem no roteiro)
+    if (editor?.isFocused) editor.commands.blur();
     if (e.shiftKey && ancoraSel.current) {
       const i = artes.findIndex((x) => x.id === ancoraSel.current);
       const j = artes.findIndex((x) => x.id === a.id);
@@ -739,12 +742,64 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     const n = plural(escolhidas.length, 'arte', 'artes');
     avisar(como === 'existe' ? `${n} já existem: saem do checklist.` : como === 'fora' ? `${n} não vão ser produzidas.` : `${n} voltam para o checklist.`);
   };
+  // a complexidade de várias de uma vez (a barra de lote e as teclas 1, 2 e 3): direto ao nível
+  const nivelDasArtes = (ids: string[], n: Complexidade) => {
+    const escolhidas = artes.filter((a) => ids.includes(a.id));
+    if (!escolhidas.length) return;
+    mudarMeta(marcarComplexidade(meta, escolhidas.map((a) => chaveDeArte(a.texto)), n));
+    if (selecionadas.length) {
+      setSelecionadas([]);
+      avisar(`${plural(escolhidas.length, 'arte', 'artes')} com complexidade ${NOME_DA_COMPLEXIDADE[n]}.`);
+    }
+  };
   useEffect(() => {
     if (!selecionadas.length) return;
     const tecla = (e: KeyboardEvent) => e.key === 'Escape' && setSelecionadas([]);
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
   }, [selecionadas.length]);
+
+  // as teclas da lista: 1, 2 e 3 levam a complexidade direto ao nível; E alterna "já existe" (como a bolinha).
+  // Valem para a seleção, para a arte sob o mouse ou para a última clicada, e nunca enquanto se digita: num campo, ou no
+  // texto do roteiro, a não ser que a seleção dele ainda seja a arte que o clique na lista apontou.
+  const sobOMouse = useRef<string | null>(null);
+  const selDaLista = useRef<{ from: number; to: number } | null>(null);
+  const tecladoDaLista = useRef<(e: KeyboardEvent) => void>(() => {});
+  tecladoDaLista.current = (e: KeyboardEvent) => {
+    const n = ({ 1: 1, 2: 2, 3: 3 } as Record<string, Complexidade | undefined>)[e.key];
+    const ja = e.key === 'e' || e.key === 'E';
+    if ((!n && !ja) || leitura || !liberado || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (TIPOS_NA_LISTA && aberta) return; // com a arte aberta, os números escolhem o tipo
+    const alvo = e.target as HTMLElement | null;
+    if (alvo?.closest?.('input, textarea, select, [role="dialog"]')) return;
+    if (alvo?.closest?.('[contenteditable="true"]')) {
+      const sel = editor?.state.selection;
+      const daLista = selDaLista.current;
+      if (!editor?.view.dom.contains(alvo) || !sel || !daLista || sel.from !== daLista.from || sel.to !== daLista.to) return;
+    }
+    const ids = alvosDoTeclado(selecionadas, sobOMouse.current, ancoraSel.current);
+    const escolhidas = artes.filter((a) => ids.includes(a.id));
+    if (!escolhidas.length) return;
+    e.preventDefault();
+    if (n) return nivelDasArtes(ids, n);
+    const chaves = escolhidas.map((a) => chaveDeArte(a.texto));
+    const novas = alternarJaExiste(meta, chaves);
+    mudarMeta(novas);
+    if (selecionadas.length) setSelecionadas([]);
+    const existe = chavesQueExistem({ ...meta, ...novas }).has(chaves[0]);
+    if (escolhidas.length === 1) {
+      const t = escolhidas[0].texto;
+      avisar(existe ? `"${t}" já existe: sai do checklist e, no envio, entra no acervo.` : `"${t}" volta para o checklist.`);
+    } else {
+      const nArtes = plural(escolhidas.length, 'arte', 'artes');
+      avisar(existe ? `${nArtes} já existem: saem do checklist.` : `${nArtes} voltam para o checklist.`);
+    }
+  };
+  useEffect(() => {
+    const ouvir = (e: KeyboardEvent) => tecladoDaLista.current(e);
+    window.addEventListener('keydown', ouvir, true);
+    return () => window.removeEventListener('keydown', ouvir, true);
+  }, []);
 
   // com uma arte aberta na lista: 1–9 escolhe o tipo, setas trocam de arte, Esc fecha
   const tecladoArtes = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -1266,6 +1321,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                   <button type="button" className="botao-texto" onClick={() => marcarVarias('existe')}><Icone nome="certo" tam={13} traco={2.2} /> Já existem</button>
                   <button type="button" className="botao-texto" onClick={() => marcarVarias('fora')}><Icone nome="fechar" tam={13} traco={2.2} /> Não produzir</button>
                   <button type="button" className="botao-texto" onClick={() => marcarVarias(null)}><Icone nome="desfazer" tam={13} traco={2.2} /> Produzir</button>
+                  {/* a complexidade das selecionadas: os três fogos lado a lado, cada um com a sua tecla */}
+                  <span className="cx-lote">
+                    {([1, 2, 3] as const).map((n) => (
+                      <button key={n} type="button" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[n]} nas selecionadas`} title={`${NOME_DA_COMPLEXIDADE[n]} (${n})`} onClick={() => nivelDasArtes(selecionadas, n)}>
+                        <Fogo n={n} escala={n === 1 ? 1.2 : 1} /><kbd>{n}</kbd>
+                      </button>
+                    ))}
+                  </span>
                   <button type="button" className="fechar-lote" aria-label="Limpar a seleção" title="Limpar (Esc)" onClick={() => setSelecionadas([])}><Icone nome="fechar" tam={12} traco={2.4} /></button>
                 </div>
               )}
@@ -1283,8 +1346,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                       className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
                       aria-selected={selecionadas.length ? selecionadas.includes(a.id) : undefined}
                       title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo.split(', ').map(nomeDaSigla).join(', ')}` : ''}` : undefined}
-                      onMouseEnter={() => setRealce(a.id)}
-                      onMouseLeave={() => setRealce(null)}
+                      onMouseEnter={() => {
+                        sobOMouse.current = a.id;
+                        setRealce(a.id);
+                      }}
+                      onMouseLeave={() => {
+                        sobOMouse.current = null;
+                        setRealce(null);
+                      }}
                     >
                       <button className="arte-linha" onMouseDown={(e) => e.shiftKey && e.preventDefault()} onClick={(e) => clicarArte(a, e)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
                         {/* a bolinha do índice: na arte a produzir, marca "já existe"; na que existe ou está fora, devolve à lista.
@@ -1308,7 +1377,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                       {!leitura && !marcada && (
                         <>
                           {/* a coluna da complexidade da arte: largura fixa, o fogo do nível centrado nela; o clique sobe um nível */}
-                          <button className="cx" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[cx]}`} title={`Complexidade: ${NOME_DA_COMPLEXIDADE[cx]} · clique sobe um nível`} onClick={() => subirFogo(a)}>
+                          <button className="cx" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[cx]}`} title={`Complexidade: ${NOME_DA_COMPLEXIDADE[cx]} · clique sobe um nível (1, 2, 3)`} onClick={() => subirFogo(a)}>
                             <Fogo n={cx} />
                           </button>
                           <span className="acoes-arte">

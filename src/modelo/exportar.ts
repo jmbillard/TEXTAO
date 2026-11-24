@@ -406,6 +406,22 @@ export function remarcar(meta: Pick<Meta, 'jaExiste' | 'jaExistem' | 'naoProduzi
   return { jaExiste: lista(ja), naoProduzir: lista(fora), produzir: lista(prod) };
 }
 
+/** "Já existe" pelo teclado, como a bolinha do índice: se alguma das artes ainda vai ser produzida, todas viram "já
+ *  existe"; se todas já saíram da lista (já existe ou fora), todas voltam para ela. */
+export function alternarJaExiste(meta: Pick<Meta, 'jaExiste' | 'jaExistem' | 'naoProduzir' | 'produzir'>, chaves: string[]): Pick<Meta, 'jaExiste' | 'naoProduzir' | 'produzir'> {
+  const existem = chavesQueExistem(meta);
+  const fora = new Set(meta.naoProduzir ?? []);
+  return remarcar(meta, chaves, chaves.every((k) => existem.has(k) || fora.has(k)) ? null : 'existe');
+}
+
+/** A quais artes valem as teclas da lista (1, 2, 3 e E): a seleção inteira; sem seleção, a arte sob o mouse; sem ela,
+ *  a última clicada. */
+export function alvosDoTeclado<T>(selecionadas: T[], sobOMouse: T | null, ultimaClicada: T | null): T[] {
+  if (selecionadas.length) return selecionadas;
+  const uma = sobOMouse ?? ultimaClicada;
+  return uma == null ? [] : [uma];
+}
+
 /** Complexidade da arte: BAIXA, MÉDIA ou ALTA, na escala do campo do Trello e da produção da arte. */
 export type Complexidade = 1 | 2 | 3;
 export const NOME_DA_COMPLEXIDADE: Record<Complexidade, string> = { 1: 'BAIXA', 2: 'MÉDIA', 3: 'ALTA' };
@@ -419,6 +435,20 @@ export function subirComplexidade(meta: Pick<Meta, 'complexidade'>, chave: strin
   const marcas = { ...meta.complexidade };
   if (n === 3) delete marcas[chave];
   else marcas[chave] = n === 1 ? 2 : 3;
+  return { complexidade: Object.keys(marcas).length ? marcas : undefined };
+}
+
+/** As teclas 1, 2 e 3 e a barra de lote: levam as artes direto ao nível. A que já existe e a que está fora não têm
+ *  fogo e ficam como estão; a BAIXA não é guardada. */
+export function marcarComplexidade(meta: Pick<Meta, 'complexidade' | 'jaExiste' | 'jaExistem' | 'naoProduzir' | 'produzir'>, chaves: string[], n: Complexidade): Pick<Meta, 'complexidade'> {
+  const existem = chavesQueExistem(meta);
+  const fora = new Set(meta.naoProduzir ?? []);
+  const marcas = { ...meta.complexidade };
+  for (const k of chaves) {
+    if (existem.has(k) || fora.has(k)) continue;
+    if (n === 1) delete marcas[k];
+    else marcas[k] = n;
+  }
   return { complexidade: Object.keys(marcas).length ? marcas : undefined };
 }
 

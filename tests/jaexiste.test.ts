@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { artesQueJaExistem, chavesQueExistem } from '../src/modelo/exportar';
+import { alternarJaExiste, artesQueJaExistem, chavesQueExistem } from '../src/modelo/exportar';
 import type { Saida } from '../src/modelo/exportar';
 
 const saida = (jaExiste?: string[], naoProduzir?: string[], produzir?: string[]) =>
@@ -73,5 +73,18 @@ describe('a bolinha do índice marca e devolve a arte', () => {
   });
   it('o ✕ tira a arte que já existia da lista de "já existe"', () => {
     expect(remarcar(meta({ jaExiste: ['SEXTA', 'DOMINGO'] }), ['SEXTA'], 'fora')).toEqual({ jaExiste: ['DOMINGO'], naoProduzir: ['SEXTA'], produzir: undefined });
+  });
+});
+
+describe('já existe pelo teclado', () => {
+  it('como a bolinha: a arte a produzir vira "já existe"; a que já existe ou está fora volta para a lista', () => {
+    expect(alternarJaExiste({}, ['HOJE'])).toEqual({ jaExiste: ['HOJE'], naoProduzir: undefined, produzir: undefined });
+    expect(alternarJaExiste({ jaExiste: ['HOJE'] }, ['HOJE'])).toEqual({ jaExiste: undefined, naoProduzir: undefined, produzir: undefined });
+    expect(alternarJaExiste({ naoProduzir: ['HOJE'] }, ['HOJE'])).toEqual({ jaExiste: undefined, naoProduzir: undefined, produzir: undefined });
+  });
+
+  it('na seleção: se alguma ainda vai ser produzida, todas viram "já existe"; se todas já saíram, todas voltam', () => {
+    expect(alternarJaExiste({ jaExiste: ['HOJE'] }, ['HOJE', 'AMANHA']).jaExiste?.sort()).toEqual(['AMANHA', 'HOJE']);
+    expect(alternarJaExiste({ jaExiste: ['HOJE'], naoProduzir: ['AMANHA'] }, ['HOJE', 'AMANHA'])).toEqual({ jaExiste: undefined, naoProduzir: undefined, produzir: undefined });
   });
 });

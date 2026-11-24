@@ -19,6 +19,8 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
     linhas: [
       [atalho('Mod-u'), 'Marca o trecho como arte'],
       ['Shift+clique', 'Seleciona várias artes na lista'],
+      ['1 2 3', 'Leva a arte (ou as selecionadas) à BAIXA, MÉDIA ou ALTA'],
+      ['E', 'Marca a arte (ou as selecionadas) como já existe ou devolve à lista'],
       ...ETIQUETAS.map((e): Linha => [atalho(e.atalho), e.nome]),
       [atalho('Mod-Enter'), 'Manda para o Trello ou abre o próximo'],
       [atalho('Mod-z'), 'Desfaz'],

@@ -35,12 +35,12 @@ const FOGO: Record<Complexidade, { w: number; x0?: number; vivos: string[]; para
   },
 };
 
-/** O fogo de um nível, parado, alinhado pelo chão. */
-export function Fogo({ n }: { n: Complexidade }) {
+/** O fogo de um nível, parado, alinhado pelo chão; `escala` aumenta o desenho inteiro (a vela da barra de lote). */
+export function Fogo({ n, escala = 1 }: { n: Complexidade; escala?: number }) {
   const f = FOGO[n];
   const clip = `fogo-${useId().replace(/:/g, '')}`;
   return (
-    <svg className={`fogo n${n}`} width={f.w} height={24} viewBox={`${f.x0 ?? 0} 0 ${f.w} 24`} aria-hidden="true">
+    <svg className={`fogo n${n}`} width={f.w * escala} height={24 * escala} viewBox={`${f.x0 ?? 0} 0 ${f.w} 24`} aria-hidden="true">
       <g className="chama">
         {f.hachura && (
           <>

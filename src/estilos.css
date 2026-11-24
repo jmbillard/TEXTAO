@@ -2008,6 +2008,14 @@ html.com-cursor-meu { min-height: 100%; }
 .barra-lote b { font: 600 13px var(--mono); }
 .barra-lote .botao-texto { display: inline-flex; align-items: center; gap: 4px; color: var(--papel); font-weight: 600; font-size: 12.5px; text-decoration: none; }
 .barra-lote .botao-texto:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* a complexidade das selecionadas: os três fogos com a tecla ao lado, no traço da barra (sem pílula) */
+.barra-lote .cx-lote { display: inline-flex; align-items: center; gap: 6px; }
+.barra-lote .cx-lote button { display: inline-flex; align-items: flex-end; gap: 4px; height: 30px; padding: 0 4px 3px; border: 0; background: none; color: var(--papel); cursor: pointer; }
+.barra-lote .cx-lote .fogo { color: var(--papel); opacity: 1; }
+.barra-lote .cx-lote .fogo.n1 path { stroke-width: 1.5; }
+.barra-lote .cx-lote .fogo .hachura { opacity: 0.85; }
+.barra-lote .cx-lote kbd { font: 600 10.5px var(--mono); color: inherit; opacity: 0.6; margin-bottom: 1px; background: none; border: 0; box-shadow: none; padding: 0; min-width: 0; height: auto; }
+.barra-lote .cx-lote button:hover kbd { opacity: 1; text-decoration: underline; text-underline-offset: 2px; }
 .barra-lote .fechar-lote { margin-left: auto; border: 0; background: none; color: inherit; opacity: 0.7; cursor: pointer; display: grid; place-items: center; padding: 2px; }
 .barra-lote .fechar-lote:hover { opacity: 1; }
 body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
