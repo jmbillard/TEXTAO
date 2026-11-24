@@ -31,6 +31,12 @@ Algo que impede ou pede atenção antes do envio (sem editor, sem data, claquete
 A arte confirmada como já produzida: sai do checklist, vai na linha JÁ EXISTEM do card e, no envio, entra no acervo.
 _Evitar_: concluída, repetida
 
+**Complexidade da arte**:
+BAIXA, MÉDIA ou ALTA (1, 2, 3), marcada na revisão para cada arte a produzir; a não marcada é BAIXA. O card leva a
+maior complexidade das artes dele, na mesma escala do campo do Trello e da produção da arte, e a arte entra no acervo
+com a sua. A arte que já existe (✓) fica com a complexidade que o acervo já tem.
+_Evitar_: dificuldade, peso
+
 **Não produzir (✕)**:
 A arte que sai do checklist sem dizer que existe.
 
