@@ -222,16 +222,31 @@ function postgresFalso(banco: { filmes?: FilmeDoBanco[]; exibicoes?: ExibicaoDoB
 const filmeDoBanco = (__id: string, titulo: string, ano_de_producao: number | null): FilmeDoBanco => ({ __id, titulo, ano_de_producao });
 type Lido = { titulo: string; ano_de_producao?: number | string | null; sessao?: string; data?: string; inedito?: boolean };
 /** Sobe uma prévia de uma página com estes filmes lidos e espera a leitura; devolve a API e a prévia aberta. */
-async function conferir(lidos: Lido[], banco: Parameters<typeof postgresFalso>[0] = {}) {
+const comPadroes = (lidos: Lido[]) => lidos.map((l) => ({ sessao: 'SUPERCINE', data: '05/12/2026', inedito: false, ano_de_producao: null, ...l }));
+async function conferir(lidos: Lido[], banco: Parameters<typeof postgresFalso>[0] = {}, naPagina = lidos.map((l) => l.titulo)) {
   const pg = postgresFalso(banco);
-  const movies = lidos.map((l) => ({ sessao: 'SUPERCINE', data: '05/12/2026', inedito: false, ano_de_producao: null, ...l }));
-  const { api } = await subir({ env: { ...ENV, ...PG }, n8n: n8nFalso({ 2: { movies } }), consultar: pg.consultar });
+  // a resposta do n8n falso é lida a cada leitura: trocá-la faz a próxima leitura (o reler) voltar diferente
+  const respostas: Record<number, unknown> = { 2: { movies: comPadroes(lidos) } };
+  const n8n = n8nFalso(respostas);
+  const { api } = await subir({ env: { ...ENV, ...PG }, n8n, consultar: pg.consultar });
   const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: `conf${Math.random().toString(36).slice(2, 10)}`, paginas: [2] });
-  await api(`/api/filmes/previas/${id}/paginas/2`, { method: 'PUT', body: JSON.stringify(pagina(lidos.map((l) => l.titulo))) });
+  await api(`/api/filmes/previas/${id}/paginas/2`, { method: 'PUT', body: JSON.stringify(pagina(naPagina)) });
   await ate(api, id, (p) => p.paginas[0].estado === 'lida');
   const abrir = async () => (await (await api(`/api/filmes/previas/${id}`)).json()).paginas[0].filmes;
   const mudar = (i: number, corpo: object) => api(`/api/filmes/previas/${id}/paginas/2/filmes/${i}`, { method: 'PATCH', body: JSON.stringify(corpo) });
-  return { api, id, abrir, mudar, pg };
+  /** Lê a página de novo, agora com estes filmes na resposta do n8n, e espera a leitura nova. */
+  const reler = (novos: Lido[]) => relerComo(api, id, 2, n8n, respostas, novos);
+  return { api, id, abrir, mudar, pg, reler };
+}
+/** O botão "Ler de novo": a resposta do n8n troca para estes filmes, a página vai para a fila, e espera a leitura nova. */
+async function relerComo(api: Awaited<ReturnType<typeof subir>>['api'], id: string, n: number, n8n: ReturnType<typeof n8nFalso>, respostas: Record<number, unknown>, novos: Lido[], extra: object = {}) {
+  respostas[n] = { ...extra, movies: comPadroes(novos) };
+  const antes = n8n.leituras.length;
+  const r = await api(`/api/filmes/previas/${id}/paginas/${n}/reler`, { method: 'POST' });
+  if (r.status !== 200) return r;
+  for (let i = 0; i < 100 && n8n.leituras.length === antes; i++) await new Promise((ok) => setTimeout(ok, 10));
+  await ate(api, id, (p) => p.paginas.every((g) => g.estado === 'lida' || g.estado === 'erro'));
+  return r;
 }
 
 describe('aba Filmes: a conferência com o banco', () => {
@@ -469,7 +484,8 @@ async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>
   const pg = postgresFalso({ ...banco, get exibicoes() { return [...(banco.exibicoes ?? []), ...gravadas()]; } });
   const trello = criarTrello(env, { buscar: falsos.buscar, consultar: pg.consultar });
   const movies = (l: Lido[]) => ({ movies: l.map((x) => ({ sessao: 'SUPERCINE', data: '05/12/2026', inedito: false, ano_de_producao: null, ...x })) });
-  const n8n = n8nFalso({ 2: movies(lidos), ...Object.fromEntries(Object.entries(outrasPaginas).map(([n, l]) => [n, movies(l)])) });
+  const respostas: Record<number, unknown> = { 2: movies(lidos), ...Object.fromEntries(Object.entries(outrasPaginas).map(([n, l]) => [n, movies(l)])) };
+  const n8n = n8nFalso(respostas);
   const { api, filmes: modulo } = await subir({ env: { ...ENV, ...env }, n8n, consultar: pg.consultar, trello, agora });
   /** Uma prévia de uma página só (a página n, com os filmes dela). */
   const previa = async (n: number, titulos: string[]) => {
@@ -487,7 +503,8 @@ async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>
       }
       throw new Error('o envio não terminou');
     };
-    return { id, filmes, enviar, terminar };
+    const reler = (novos: Lido[]) => relerComo(api, id, n, n8n, respostas, novos);
+    return { id, filmes, enviar, terminar, reler };
   };
   const primeira = await previa(2, lidos.map((l) => l.titulo));
   /** A prévia de outra página (de outrasPaginas), no mesmo servidor. */
@@ -861,13 +878,17 @@ async function comFilmeNaTardePorEngano({ sessoes = SESSOES_DA_PAGINA, sessaoDaD
     { titulo: 'KONG', ano_de_producao: 2017, sessao: 'SESSÃO DA TARDE', data: '09/12/2026' },
     { titulo: 'LUCA', ano_de_producao: 2021, sessao: 'SESSÃO DA TARDE', data: '10/12/2026' },
   ];
-  const { api } = await subir({ env: { ...ENV, ...PG }, n8n: n8nFalso({ 2: { movies, sessoes } }), consultar: pg.consultar });
+  const respostas: Record<number, unknown> = { 2: { movies, sessoes } };
+  const n8n = n8nFalso(respostas);
+  const { api } = await subir({ env: { ...ENV, ...PG }, n8n, consultar: pg.consultar });
   const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: `tarde${Math.random().toString(36).slice(2, 10)}`, paginas: [2] });
   await api(`/api/filmes/previas/${id}/paginas/2`, { method: 'PUT', body: JSON.stringify(paginaComDuasFileiras(textosAcima)) });
   await ate(api, id, (p) => p.paginas[0].estado === 'lida');
   const abrir = async () => (await (await api(`/api/filmes/previas/${id}`)).json()).paginas[0];
   const mudar = (i: number, corpo: object) => api(`/api/filmes/previas/${id}/paginas/2/filmes/${i}`, { method: 'PATCH', body: JSON.stringify(corpo) });
-  return { abrir, mudar };
+  /** Lê de novo: a leitura nova traz os mesmos filmes, com as mudanças dadas (filme i → campos novos). */
+  const reler = (mudancas: Record<number, Partial<Lido>> = {}) => relerComo(api, id, 2, n8n, respostas, movies.map((m, i) => ({ ...m, ...mudancas[i] })), { sessoes });
+  return { abrir, mudar, reler };
 }
 
 describe('aba Filmes: o filme de identidade própria lido na Sessão da Tarde', () => {
@@ -1113,5 +1134,151 @@ describe('aba Filmes: a prévia toda enviada é apagada depois de 60 dias', () =
     r.andar(400);
     expect(await filmes.apagarVencidas()).toEqual([]);
     expect(((await (await api('/api/filmes/previas')).json()) as NaLista[])[0]).toMatchObject({ id, diasParaApagar: null });
+  });
+});
+
+/* ---------- ler a página de novo preserva as correções feitas à mão ---------- */
+describe('aba Filmes: ler a página de novo preserva as correções feitas à mão', () => {
+  it('o título corrigido fica no filme do mesmo pôster; o filme sem correção segue a leitura nova', async () => {
+    const { abrir, mudar, reler } = await conferir([
+      { titulo: 'KONG ILHA DA CAVERA', ano_de_producao: 2017 },
+      { titulo: 'RIVAIS', ano_de_producao: 2024 },
+    ]);
+    await mudar(0, { titulo: 'KONG: A ILHA DA CAVEIRA' });
+    await reler([
+      { titulo: 'KONG ILHA DA CAVERNA', ano_de_producao: 2016, data: '06/12/2026' },
+      { titulo: 'RIVAIS', ano_de_producao: 2023, sessao: 'TELA QUENTE' },
+    ]);
+    const [kong, rivais] = await abrir();
+    expect(kong).toMatchObject({ titulo: 'KONG: A ILHA DA CAVEIRA', ano: 2016, data: '06/12/2026', poster: 0 });
+    expect(rivais).toMatchObject({ titulo: 'RIVAIS', ano: 2023, sessao: 'TELA QUENTE', poster: 1 });
+  });
+
+  it('as escolhas de "qual filme?" e de "ano diferente" ficam no filme do mesmo pôster', async () => {
+    const banco = { filmes: [filmeDoBanco('recCorvo94', 'O Corvo', 1994), filmeDoBanco('recCorvo24', 'O Corvo', 2024), filmeDoBanco('recRivais1', 'Rivais', 2024)] };
+    const { abrir, mudar, reler } = await conferir([{ titulo: 'O CORVO' }, { titulo: 'RIVAIS', ano_de_producao: 2023 }], banco);
+    await mudar(0, { filme: 'recCorvo94' });
+    await mudar(1, { ano: 2023 });
+    await reler([{ titulo: 'O CORVO' }, { titulo: 'RIVAIS', ano_de_producao: 2023, data: '06/12/2026' }]);
+    const [corvo, rivais] = await abrir();
+    expect(corvo).toMatchObject({ escolha: { filme: 'recCorvo94' }, conferencia: { marca: 'ok', filme: { id: 'recCorvo94' } } });
+    expect(rivais).toMatchObject({ data: '06/12/2026', escolha: { ano: 2023 }, conferencia: { marca: 'ok', ano: 2023 } });
+  });
+
+  it('o filme sem pôster é reconhecido pelo título', async () => {
+    // a página tem dois pôsteres; o terceiro filme lido não tem o dele
+    const { abrir, mudar, reler } = await conferir(
+      [{ titulo: 'KONG', ano_de_producao: 2017 }, { titulo: 'RIVAIS', ano_de_producao: 2024 }, { titulo: 'O CORVO', ano_de_producao: 1994 }],
+      {},
+      ['KONG', 'RIVAIS'],
+    );
+    expect((await abrir())[2]).toMatchObject({ titulo: 'O CORVO', poster: null });
+    await mudar(2, { titulo: 'O CORVO: A VINGANÇA' });
+    // a leitura nova traz o Corvo primeiro e mais um filme sem pôster
+    await reler([{ titulo: 'CORVO', ano_de_producao: 1995 }, { titulo: 'KONG', ano_de_producao: 2017 }, { titulo: 'RIVAIS', ano_de_producao: 2024 }, { titulo: 'TREZE VIDAS', ano_de_producao: 2022 }]);
+    const filmes = await abrir();
+    expect(filmes.map((f: { titulo: string; poster: number | null }) => [f.titulo, f.poster])).toEqual([
+      ['KONG', 0],
+      ['RIVAIS', 1],
+      ['O CORVO: A VINGANÇA', null],
+      ['TREZE VIDAS', null],
+    ]);
+    expect(filmes[2].ano).toBe(1995);
+  });
+
+  it('o filme que subiu da Sessão da Tarde continua em cima, com a sessão escolhida', async () => {
+    const { abrir, mudar, reler } = await comFilmeNaTardePorEngano();
+    await mudar(1, { subir: true });
+    await mudar(1, { sessao: 'Cinemaço' });
+    // a leitura nova põe o filme na Sessão da Tarde de novo
+    await reler({ 0: { ano_de_producao: 2018 } });
+    const { filmes } = await abrir();
+    expect(filmes[0]).toMatchObject({ titulo: 'DESPEDIDA EM GRANDE ESTILO', ano: 2018 });
+    expect(filmes[1]).toMatchObject({ titulo: 'UM SONHO DE LIBERDADE', subiu: true, sessao: 'CINEMAÇO', data: '06/12/2026', conferencia: { marca: 'ok' } });
+  });
+
+  it('o filme enviado continua enviado, com o card e o link, e não vai de novo; o erro do envio fica', async () => {
+    let recusar = true;
+    const { enviar, terminar, reler, filmes, falsos } = await paraEnviar(
+      [
+        { titulo: 'RIVAIS', ano_de_producao: 2024, sessao: 'TELA QUENTE', data: '07/12/2026' },
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 },
+      ],
+      { filmes: [DESPEDIDA, filmeDoBanco('recRivais1', 'Rivais', 2024)], atracoes: SESSOES },
+      { falharCard: (nome) => recusar && nome.includes('RIVAIS') },
+    );
+    await enviar();
+    const [, enviada] = await terminar();
+    // a leitura nova lê a Despedida em outra sessão: o que foi para o Trello não muda
+    await reler([
+      { titulo: 'RIVAIS', ano_de_producao: 2024, sessao: 'TELA QUENTE', data: '07/12/2026' },
+      { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'CORUJÃO' },
+    ]);
+    const [rivais, despedida] = await filmes();
+    expect(despedida).toMatchObject({ sessao: 'SUPERCINE', envio: enviada.envio, conferencia: { marca: 'trello', link: enviada.envio!.link } });
+    expect(rivais.envio).toMatchObject({ estado: 'erro' });
+    expect(rivais.envio!.erro).toMatch(/401/);
+
+    recusar = false;
+    expect(await (await enviar()).json()).toEqual({ enviando: 1 });
+    await terminar();
+    expect(falsos.cards().map((c) => c.card.name)).toEqual(['SUPERCINE 05/12 - DESPEDIDA EM GRANDE ESTILO (2017)', 'TELA QUENTE 07/12 - RIVAIS (2024)']);
+  });
+
+  it('o filme com correção que a leitura nova não trouxe fica com um !; a pessoa decide se ele fica ou sai', async () => {
+    const { abrir, mudar, reler } = await conferir(
+      [{ titulo: 'KONG', ano_de_producao: 2017 }, { titulo: 'RIVAIS', ano_de_producao: 2024 }, { titulo: 'O CORVO' }, { titulo: 'TREZE VIDAS' }, { titulo: 'LUCA' }],
+      { filmes: [filmeDoBanco('recCorvo94', 'O Corvo', 1994), filmeDoBanco('recCorvo24', 'O Corvo', 2024)] },
+      ['KONG', 'RIVAIS'],
+    );
+    await mudar(2, { filme: 'recCorvo94' });
+    await mudar(3, { titulo: 'TREZE VIDAS: O RESGATE' });
+    // a leitura nova não traz o Corvo, Treze Vidas e Luca; o Luca não tinha correção e some
+    await reler([{ titulo: 'KONG', ano_de_producao: 2017 }, { titulo: 'RIVAIS', ano_de_producao: 2024 }]);
+    let filmes = await abrir();
+    expect(filmes.map((f: { titulo: string }) => f.titulo)).toEqual(['KONG', 'RIVAIS', 'O CORVO', 'TREZE VIDAS: O RESGATE']);
+    expect(filmes[0].naoAchado).toBeUndefined();
+    expect(filmes[2]).toMatchObject({ naoAchado: true, escolha: { filme: 'recCorvo94' }, conferencia: { marca: 'atencao', pergunta: 'nao-achado' } });
+    expect(filmes[3]).toMatchObject({ naoAchado: true, conferencia: { marca: 'atencao', pergunta: 'nao-achado' } });
+
+    // sai: some da página
+    const saiu = await mudar(3, { sai: true });
+    expect(saiu.status).toBe(200);
+    expect(await saiu.json()).toEqual({ saiu: true });
+    // fica: perde o ! e volta a ser um filme como os outros, com a correção
+    const ficou = await mudar(2, { fica: true });
+    expect((await ficou.json()).filme).toMatchObject({ titulo: 'O CORVO', escolha: { filme: 'recCorvo94' }, conferencia: { marca: 'ok', filme: { id: 'recCorvo94' } } });
+    filmes = await abrir();
+    expect(filmes.map((f: { titulo: string }) => f.titulo)).toEqual(['KONG', 'RIVAIS', 'O CORVO']);
+    expect(filmes[2].naoAchado).toBeUndefined();
+    // só o filme não achado pode sair ou ficar
+    expect((await mudar(0, { sai: true })).status).toBe(409);
+  });
+
+  it('o filme enviado que a leitura nova não trouxe segura a prévia até a pessoa decidir', async () => {
+    const r = { agora: Date.parse('2026-11-10T15:00:00Z') };
+    const { api, id, enviar, terminar, reler, filmes, falsos } = await paraEnviar(
+      [{ titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 }],
+      { filmes: [DESPEDIDA], atracoes: SESSOES },
+      {},
+      ENVIO,
+      {},
+      () => r.agora,
+    );
+    const diasParaApagar = async () => ((await (await api('/api/filmes/previas')).json()) as { id: string; diasParaApagar: number | null }[]).find((p) => p.id === id)!.diasParaApagar;
+    await enviar();
+    const [enviada] = await terminar();
+    expect(await diasParaApagar()).toBe(60);
+    await reler([]);
+    const [despedida] = await filmes();
+    expect(despedida).toMatchObject({ naoAchado: true, envio: enviada.envio, conferencia: { marca: 'atencao', pergunta: 'nao-achado' } });
+    expect(await diasParaApagar()).toBeNull();
+    // o ! não manda de novo
+    expect(await (await enviar()).json()).toEqual({ enviando: 0 });
+
+    const ficou = await api(`/api/filmes/previas/${id}/paginas/2/filmes/0`, { method: 'PATCH', body: JSON.stringify({ fica: true }) });
+    expect((await ficou.json()).filme).toMatchObject({ envio: enviada.envio, conferencia: { marca: 'trello', link: enviada.envio!.link } });
+    expect(await diasParaApagar()).toBe(60);
+    expect(falsos.cards()).toHaveLength(1);
   });
 });

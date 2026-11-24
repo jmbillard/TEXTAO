@@ -2034,6 +2034,9 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .ficha-previa-gente .rubrica { margin: 0; }
 .previa-cab .na-fila { margin: 0 0 0 auto; }
 .previa-cab .na-fila + .enviar-previa { margin-left: 0; }
+/* "Ler de novo" da página lida, ao lado do Enviar (empurra os dois para a direita, como o Enviar sozinho) */
+.previa-cab .reler-pagina { margin-left: auto; }
+.previa-cab .na-fila + .reler-pagina, .previa-cab .reler-pagina + .enviar-previa { margin-left: 0; }
 @media (prefers-reduced-motion: reduce) {
   .cartao-filme.ocupado .cf-grifo { animation: none; background-size: 100% 100%; }
 }
@@ -2042,6 +2045,10 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .balao-filme > b { display: block; font: 700 19px/1 Caveat, cursive; color: var(--falta); margin: 0 4px 8px; }
 .balao-filme.nota { max-width: 320px; }
 .balao-filme.nota p { margin: 0 4px 2px; font: 13px/1.35 var(--sans); color: var(--tinta2); white-space: normal; }
+/* do tamanho do card: o enviado não achado pode ser o último da fileira, e o balão não passa da borda da tela */
+.balao-filme.nao-achado { width: 100%; }
+.balao-filme.nao-achado p { margin: 0 4px 10px; font: 13px/1.35 var(--sans); color: var(--tinta2); white-space: normal; }
+.nao-achado .balao-opcoes button { width: auto; padding: 8px 18px 8px 26px; font: 600 14px var(--sans); }
 .balao-opcoes { display: flex; gap: 8px; }
 .balao-opcoes button { position: relative; display: grid; justify-items: center; align-content: start; gap: 4px; width: 104px; padding: 8px 6px; border: 1px solid var(--regua); border-radius: 10px; background: var(--papel); color: var(--tinta); font: 500 12.5px/1.25 var(--sans); text-align: center; cursor: pointer; }
 .ano-diferente .balao-opcoes button { width: auto; padding: 8px 16px 8px 26px; font: 600 15px var(--mono); }

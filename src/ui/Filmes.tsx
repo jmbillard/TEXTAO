@@ -28,7 +28,9 @@ import { Duvida, Marca, RABISCOS } from "./pecas";
    com o banco: ✓ pronto, ! pede atenção (abre o balão com a pergunta) ou o Trello (já tem card). O filme que a leitura
    pôs por engano na Sessão da Tarde deixa "???" na vaga do pôster dele em cima: arrastado até lá, ele pede a sessão,
    a da coluna dele na página primeiro (só de baixo para cima). O Enviar, o mesmo do editor de roteiros, manda os
-   prontos de toda a prévia; o que der erro mostra o motivo e vai no próximo Enviar.
+   prontos de toda a prévia; o que der erro mostra o motivo e vai no próximo Enviar. "Ler de novo" lê a página outra
+   vez com a IA e guarda o que foi corrigido à mão; o filme corrigido (ou enviado) que a leitura nova não achou fica com
+   um !, e a pessoa decide se ele fica ou sai.
    Várias pessoas na mesma prévia: cada tela avisa o servidor a cada poucos segundos (e diz o card em que mexe) e
    reabre a prévia só quando a versão dela muda. O card em que outra pessoa mexe fica com o título grifado na cor
    dela e a rubrica do nome, como na fila. Não há trava: vale a última mudança. */
@@ -82,6 +84,8 @@ function Presentes({ pessoas, texto }: { pessoas: PessoaNaPrevia[]; texto?: bool
 /** A anotação à mão logo abaixo do título do card que pede atenção: a pergunta do ! ou o envio que não foi. */
 const anotacao = (f: FilmeLido) => {
   const c = f.conferencia;
+  // o que a leitura nova não achou pede a decisão mesmo depois de enviado
+  if (c?.pergunta === "nao-achado") return "não achado";
   if (!c || f.envio?.estado === "enviando" || f.envio?.estado === "enviado") return null;
   if (f.envio?.estado === "erro" && c.marca === "ok") return "não foi";
   if (c.marca !== "atencao") return null;
@@ -277,6 +281,8 @@ function PreviaAberta({
     (numero: number, i: number, m: MudancaNoFilme) =>
       mudarFilme(id, numero, i, m).then(
         ({ filme, erroDaConferencia }) => {
+          // o filme saiu da página: os outros mudam de posição, a prévia é reaberta
+          if (!filme) return void carregar();
           setPrevia((p) =>
             p && {
               ...p,
@@ -369,6 +375,8 @@ function PreviaAberta({
     (g) => g.estado === "lida" && g.filmes.some(vaiNoEnvio),
   );
   const envioLigado = previa.envio?.ligado !== false;
+  const relerEsta = () =>
+    relerPagina(previa.id, p.numero).then(carregar, (e: Error) => avisar(e.message));
 
   return (
     <main className="previa">
@@ -407,6 +415,16 @@ function PreviaAberta({
           </button>
         </nav>
         <Presentes pessoas={pessoas} texto />
+        {p.estado === "lida" && (
+          <button
+            className="botao reler-pagina"
+            disabled={p.filmes.some((f) => f.envio?.estado === "enviando")}
+            title="Lê esta página outra vez com a IA; o que foi corrigido à mão fica"
+            onClick={() => void relerEsta()}
+          >
+            Ler de novo
+          </button>
+        )}
         <button
           className="botao primario enviar-previa"
           disabled={!envioLigado || !algumPronto || mandando || algumEnviando}
@@ -430,11 +448,7 @@ function PreviaAberta({
         destacar={setDestaque}
         outros={pessoas}
         mexer={setMeuCard}
-        reler={() =>
-          relerPagina(previa.id, p.numero).then(carregar, (e: Error) =>
-            avisar(e.message),
-          )
-        }
+        reler={() => void relerEsta()}
       />
     </main>
   );
@@ -534,7 +548,7 @@ function Pagina({
     return (
       <div
         key={`f${it.i}`}
-        className={`cartao-filme ${baixo ? "baixo" : ""} ${nota ? "atencao" : ""} ${filme.envio?.estado === "enviado" ? "enviado" : ""} ${sobe ? "sobe" : ""} ${arrastando === it.i ? "arrastando" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""} ${ali.length ? "ocupado" : ""}`}
+        className={`cartao-filme ${baixo ? "baixo" : ""} ${nota ? "atencao" : ""} ${filme.envio?.estado === "enviado" && !nota ? "enviado" : ""} ${sobe ? "sobe" : ""} ${arrastando === it.i ? "arrastando" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""} ${ali.length ? "ocupado" : ""}`}
         style={
           ali.length
             ? ({ ...pos(it.x), "--cor": corDe(ali[0].email) } as React.CSSProperties)
@@ -810,7 +824,9 @@ function MarcaDoFilme({
               ? "Sem título"
               : c.pergunta === "sessao"
                 ? "Qual sessão?"
-                : "Ano diferente"
+                : c.pergunta === "nao-achado"
+                  ? "A leitura nova não achou"
+                  : "Ano diferente"
         }
       >
         <Icone nome="atencao" tam={12} traco={3} />
@@ -823,8 +839,9 @@ function MarcaDoFilme({
   );
 }
 
-/** O balão do !: "qual filme?" (os candidatos lado a lado e "outro filme (novo)"), "ano diferente" (os dois anos) ou
-    "qual sessão?" (o filme que subiu da Sessão da Tarde: a sessão da coluna dele primeiro, depois as outras da página).
+/** O balão do !: "qual filme?" (os candidatos lado a lado e "outro filme (novo)"), "ano diferente" (os dois anos),
+    "qual sessão?" (o filme que subiu da Sessão da Tarde: a sessão da coluna dele primeiro, depois as outras da página)
+    ou "não achado" (a leitura nova não achou o filme corrigido ou enviado: ele fica ou sai).
     As teclas 1, 2, 3… escolhem; Esc fecha. A escolha grava na hora. */
 function Balao({
   filme,
@@ -862,10 +879,17 @@ function Balao({
               nota: s.coluna ? "a coluna dele na página" : undefined,
               m: { sessao: s.sessao },
             }))
-          : [];
+          : c.pergunta === "nao-achado"
+            ? [
+                { rotulo: "fica", m: { fica: true } },
+                { rotulo: "sai", m: { sai: true } },
+              ]
+            : [];
   const escolher = useRef<(k: number) => void>(() => {});
   escolher.current = (k) => {
-    if (opcoes[k]) void mudar(opcoes[k].m);
+    const m = opcoes[k]?.m;
+    // o que sai da página leva o balão junto (a posição dele passa a ser de outro filme)
+    if (m) void mudar(m).then(() => void ("sai" in m && fechar()));
   };
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
@@ -895,8 +919,16 @@ function Balao({
           ? "qual filme?"
           : c.pergunta === "sessao"
             ? "qual sessão?"
-            : "ano diferente"}
+            : c.pergunta === "nao-achado"
+              ? "não achado"
+              : "ano diferente"}
       </b>
+      {c.pergunta === "nao-achado" && (
+        <p>
+          A leitura nova não achou este filme na página
+          {filme.envio?.estado === "enviado" ? " (ele já foi para o Trello)" : ""}. Ele fica ou sai?
+        </p>
+      )}
       <div className="balao-opcoes">
         {opcoes.map((o, k) => (
           <button key={k} onClick={() => escolher.current(k)}>

@@ -151,6 +151,62 @@ const b64 = (v) => (typeof v === 'string' && v ? Buffer.from(v, 'base64') : null
 const numero = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const umaCaixa = (c) => ({ x: numero(c?.x), y: numero(c?.y), width: numero(c?.width), height: numero(c?.height) });
 
+/* ---------- ler a página de novo: as correções feitas à mão ficam ---------- */
+const jaFoi = (f) => f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado';
+const semNaoAchado = ({ naoAchado: _, ...f }) => f;
+/** O filme em que alguém mexeu à mão: o título corrigido, uma escolha no !, subiu da Sessão da Tarde ou foi enviado. */
+const temCorrecao = (f) => (f.tituloLido !== undefined && f.tituloLido !== f.titulo) || !!f.escolha || !!f.subiu || !!f.envio;
+const titulosParecidos = (a, b) => mesmoTitulo(a, b) || (!!chaveDoTitulo(a) && chaveDoTitulo(a) === chaveDoTitulo(b));
+
+/**
+ * Junta a leitura nova de uma página com os filmes da leitura anterior. O filme da leitura nova é reconhecido pelo
+ * pôster (a mesma posição na página) e, sem pôster, pelo título. No filme reconhecido ficam as correções.
+ * @param antigos os filmes da página antes de ler de novo; novos os da leitura nova (já ligados aos pôsteres)
+ * @returns os filmes da página
+ */
+export function preservarCorrecoes(antigos, novos) {
+  const usados = new Set();
+  const temPoster = (f) => f.poster !== null && f.poster !== undefined;
+  const achar = (n, igual) => {
+    const k = antigos.findIndex((o, j) => !usados.has(j) && igual(o, n));
+    if (k >= 0) usados.add(k);
+    return k;
+  };
+  // primeiro pelo pôster; depois, quando um dos dois não tem pôster, pelo título (o lido e o corrigido)
+  const pares = novos.map((n) => (temPoster(n) ? achar(n, (o) => o.poster === n.poster) : -1));
+  novos.forEach((n, i) => {
+    if (pares[i] < 0)
+      pares[i] = achar(n, (o) => (!temPoster(n) || !temPoster(o)) && [o.titulo, o.tituloLido].some((t) => t !== undefined && titulosParecidos(t, n.titulo)));
+  });
+  const juntos = novos.map((n, i) => {
+    if (pares[i] < 0) return n;
+    const o = antigos[pares[i]];
+    // o que já foi para o Trello fica como foi (o card nasceu com estes dados) e não vai de novo
+    if (jaFoi(o)) return { ...semNaoAchado(o), poster: n.poster ?? o.poster };
+    const f = { ...n };
+    if (o.envio) f.envio = o.envio;
+    if (o.tituloLido !== undefined && o.tituloLido !== o.titulo) {
+      f.titulo = o.titulo;
+      f.tituloLido = n.titulo;
+    }
+    if (o.escolha) f.escolha = o.escolha;
+    // o que subiu da Sessão da Tarde fica em cima, com a sessão escolhida (e a data da coluna); sem a sessão escolhida
+    // ainda, vale a da leitura nova se ela já não pôs o filme na Sessão da Tarde
+    if (o.subiu) {
+      f.subiu = true;
+      if (o.sessao) {
+        f.sessao = o.sessao;
+        f.data = o.data;
+      } else if (ehSessaoDaTarde(n.sessao)) f.sessao = '';
+    }
+    return f;
+  });
+  // o filme com correção (ou já enviado) que a leitura nova não trouxe não some em silêncio: fica com um !, e a pessoa
+  // decide se ele fica ou sai; o pôster dele nenhum filme da leitura nova pegou (o do mesmo pôster seria ele)
+  const naoAchados = antigos.filter((o, j) => !usados.has(j) && temCorrecao(o)).map((o) => ({ ...o, naoAchado: true }));
+  return [...juntos, ...naoAchados];
+}
+
 /* ---------- o banco de filmes e as exibições, no Postgres do Teable (só leitura) ---------- */
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const vinculo = (v) => vinculos(v)[0] ?? null;
@@ -232,7 +288,8 @@ const PRAZO_DA_PREVIA_DIAS = 60;
 
 /**
  * Quando a prévia (aberta, com a conferência) ficou toda enviada: todas as páginas lidas, e cada filme enviado ou com o
- * card que já existia (a marca do Trello). Página pendente, filme com ! ou ainda não enviado: não está toda enviada.
+ * card que já existia (a marca do Trello). Página pendente, filme com ! (também o que a leitura nova não achou) ou
+ * ainda não enviado: não está toda enviada.
  * A prévia sem nenhum filme lido não conta. O prazo conta do último envio; sem nenhum envio (todos os cards já
  * existiam), da última leitura.
  * @param ultimaLeitura a data da última página lida (ISO)
@@ -244,6 +301,8 @@ function todaEnviadaEm(p, ultimaLeitura) {
   for (const g of p.paginas) {
     if (g.estado !== 'lida') return null;
     for (const f of g.filmes) {
+      // o filme que a leitura nova não achou espera a pessoa decidir
+      if (f.naoAchado) return null;
       const foi = f.envio?.estado === 'enviado';
       if (!foi && f.conferencia?.marca !== 'trello') return null;
       if (foi) em = Math.max(em ?? 0, Date.parse(f.envio.em) || 0);
@@ -292,6 +351,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     estado: db.prepare('UPDATE previa_paginas SET estado = ?, erro = ?, tentativas = tentativas + ? WHERE previa_id = ? AND numero = ?'),
     lida: db.prepare("UPDATE previa_paginas SET estado = 'lida', erro = NULL, filmes = ?, sessoes = ?, lida_em = ? WHERE previa_id = ? AND numero = ?"),
     filmesDaPagina: db.prepare("SELECT filmes FROM previa_paginas WHERE previa_id = ? AND numero = ? AND estado = 'lida'"),
+    filmesGravados: db.prepare('SELECT filmes FROM previa_paginas WHERE previa_id = ? AND numero = ?'),
     paginaLida: db.prepare("SELECT dados, filmes, sessoes FROM previa_paginas WHERE previa_id = ? AND numero = ? AND estado = 'lida'"),
     gravarFilmes: db.prepare('UPDATE previa_paginas SET filmes = ? WHERE previa_id = ? AND numero = ?'),
     assinatura: db.prepare('SELECT numero, estado, erro, filmes, sessoes, dados IS NOT NULL AS chegou FROM previa_paginas WHERE previa_id = ? ORDER BY util'),
@@ -368,6 +428,14 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
   /** O filme enviado mostra o Trello, com o link do card que ele criou. */
   const comEnvio = (f) => (f.envio?.estado === 'enviado' && f.conferencia ? { ...f, conferencia: { ...f.conferencia, marca: 'trello', link: f.envio.link } } : f);
 
+  /** O filme que a leitura nova não achou mostra o !, até a pessoa decidir se ele fica ou sai (mesmo o enviado). */
+  const comNaoAchado = (f) =>
+    f.naoAchado
+      ? { ...f, conferencia: { ...(f.conferencia ?? { filme: null, novo: false, ano: f.ano, artes: { novas: [], existentes: [] } }), marca: 'atencao', pergunta: 'nao-achado' } }
+      : f;
+  /** O filme como a tela mostra: com a conferência, o envio, o ! do não achado e a pergunta da sessão. */
+  const naTela = (f, pagina, i) => comPergunta(comNaoAchado(comEnvio(f)), pagina, i);
+
   async function abrir(id) {
     const p = q.previa.get(id);
     if (!p) return null;
@@ -395,7 +463,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     let k = 0;
     paginas.forEach((g, n) => {
       const pagina = { ...g, textos: textos[n] };
-      g.filmes = g.filmes.map((_, i) => comPergunta(comEnvio(r.filmes[k++]), pagina, i));
+      g.filmes = g.filmes.map((_, i) => naTela(r.filmes[k++], pagina, i));
     });
     return {
       id: p.id,
@@ -420,10 +488,22 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     const filmes = g.filmes ? JSON.parse(g.filmes) : [];
     const f = filmes[i];
     if (!f) return { erro: 'Filme não encontrado.', status: 404 };
-    if (f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado') return { erro: 'Este filme já foi para o Trello.', status: 409 };
+    // o filme que a leitura nova não achou: a pessoa decide se ele fica (perde o !) ou sai da página (mesmo o enviado)
+    if (corpo?.fica !== undefined || corpo?.sai !== undefined) {
+      if (!f.naoAchado) return { erro: 'Só o filme que a leitura nova não achou fica ou sai.', status: 409 };
+      if (corpo.sai === true) {
+        filmes.splice(i, 1);
+        q.gravarFilmes.run(JSON.stringify(filmes), id, n);
+        return { saiu: true };
+      }
+      if (corpo.fica !== true) return { erro: 'Nada para mudar.' };
+      delete f.naoAchado;
+    } else if (jaFoi(f)) return { erro: 'Este filme já foi para o Trello.', status: 409 };
     const dados = g.dados ? JSON.parse(g.dados) : {};
     const pagina = { posteres: dados.posteres ?? [], textos: dados.textos ?? [], sessoes: g.sessoes ? JSON.parse(g.sessoes) : [], filmes };
-    if (corpo?.subir !== undefined) {
+    if (corpo?.fica !== undefined) {
+      // nada mais muda: já tirou o !
+    } else if (corpo?.subir !== undefined) {
       if (corpo.subir !== true) return { erro: 'Nada para mudar.' };
       if (!ehSessaoDaTarde(f.sessao) || !fileiraDeCima(pagina.posteres).includes(f.poster))
         return { erro: 'Este filme não tem vaga na fileira de cima.', status: 409 };
@@ -439,6 +519,8 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       const titulo = typeof corpo.titulo === 'string' ? corpo.titulo.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
       if (!titulo) return { erro: 'O título não pode ficar vazio.' };
       if (titulo !== f.titulo) {
+        // o título que a leitura trouxe fica guardado: a correção sobrevive a ler a página de novo
+        f.tituloLido ??= f.titulo;
         f.titulo = titulo;
         delete f.escolha;
       }
@@ -451,7 +533,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     } else return { erro: 'Nada para mudar.' };
     q.gravarFilmes.run(JSON.stringify(filmes), id, n);
     const r = await conferidos([f]);
-    return { filme: comPergunta(comEnvio(r.filmes[0]), pagina, i), ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
+    return { filme: naTela(r.filmes[0], pagina, i), ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
   }
 
   /** A página que o navegador preparou: o PDF dela, a imagem, os pôsteres recortados (com as caixas) e as linhas de texto. */
@@ -499,7 +581,8 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     const texto = await r.text();
     if (!r.ok) throw new Error(`a leitura respondeu ${r.status}: ${texto.slice(0, 160)}`);
     const { filmes, sessoes } = respostaDaLeitura(texto);
-    const ligados = ligarPosteres(filmes, dados.posteres, dados.textos);
+    const antes = q.filmesGravados.get(id, n)?.filmes;
+    const ligados = preservarCorrecoes(antes ? JSON.parse(antes) : [], ligarPosteres(filmes, dados.posteres, dados.textos));
     // na ordem dos pôsteres da página; os que ficaram sem pôster, no fim
     ligados.sort((a, b) => (a.poster ?? 1e9) - (b.poster ?? 1e9));
     q.lida.run(JSON.stringify(ligados), JSON.stringify(sessoes), agoraISO(), id, n);
@@ -538,6 +621,10 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     if (!g) return { erro: 'Página não encontrada.', status: 404 };
     if (!g.dados) return { erro: 'A página ainda não chegou.' };
     if (g.estado === 'lendo' || g.estado === 'fila') return { ok: true };
+    // o envio grava o resultado no filme pela posição dele na página: ler de novo no meio do envio trocaria os filmes
+    const gravados = q.filmesGravados.get(id, n)?.filmes;
+    if (gravados && JSON.parse(gravados).some((f) => f.envio?.estado === 'enviando'))
+      return { erro: 'Espere o envio desta página terminar para ler de novo.', status: 409 };
     q.estado.run('fila', null, 0, id, n);
     acordar();
     return { ok: true };
@@ -553,7 +640,6 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     q.gravarFilmes.run(JSON.stringify(filmes), id, n);
   }
   const mesmoFilme = (a, b) => a.titulo === b.titulo && JSON.stringify(a.escolha ?? null) === JSON.stringify(b.escolha ?? null);
-  const indo = (f) => f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado';
 
   /**
    * O Enviar: os filmes prontos (✓) e ainda não enviados, de todas as páginas, passam a "enviando" de uma vez (um
@@ -567,7 +653,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     const p = await abrir(id);
     if (!p) return { erro: 'Prévia não encontrada.', status: 404 };
     const prontos = p.paginas.flatMap((g) =>
-      g.estado !== 'lida' ? [] : g.filmes.map((f, i) => ({ n: g.numero, i, f })).filter(({ f }) => f.conferencia?.marca === 'ok' && !indo(f)),
+      g.estado !== 'lida' ? [] : g.filmes.map((f, i) => ({ n: g.numero, i, f })).filter(({ f }) => f.conferencia?.marca === 'ok' && !jaFoi(f)),
     );
     // daqui até marcar, nada espera: quem chegar depois já vê "enviando"
     const por = eu?.nome || eu?.email || '';
@@ -577,7 +663,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       const filmes = g?.filmes ? JSON.parse(g.filmes) : [];
       for (const x of prontos.filter((y) => y.n === n)) {
         const f = filmes[x.i];
-        if (!f || indo(f) || !mesmoFilme(f, x.f)) continue;
+        if (!f || jaFoi(f) || !mesmoFilme(f, x.f)) continue;
         f.envio = { estado: 'enviando', por, em: agoraISO() };
         vao.push(x);
       }
