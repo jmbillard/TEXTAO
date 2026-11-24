@@ -8,6 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vinculos } from './acervo.mjs';
 import { conferirFilme, diaDaPrevia } from './conferencia.mjs';
+import { criarEnvioDeFilmes, ehSessaoDaTarde } from './exibicao.mjs';
 import { abrirPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 
@@ -104,7 +105,7 @@ const diaEmBrasilia = (v) => {
 /**
  * A conferência dos filmes lidos com o banco: TEABLE_PG_FILMES (a tabela de filmes) liga; TEABLE_PG_EXIBICOES
  * (o card que já existe) e TEABLE_PG_ACERVO (as artes que o filme já tem) completam.
- * @param consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL
+ * @param consultar (sql, params) => linhas, no Postgres do Teable
  */
 function criarConferencia(env, consultar) {
   const esquema = nomesDoPg(env, '').esquema;
@@ -113,13 +114,6 @@ function criarConferencia(env, consultar) {
     return esquema && NOME_SQL.test(esquema) && nome && NOME_SQL.test(nome) ? `"${esquema}"."${nome}"` : null;
   };
   const t = { filmes: tabela(env.TEABLE_PG_FILMES), exibicoes: tabela(env.TEABLE_PG_EXIBICOES), acervo: tabela(env.TEABLE_PG_ACERVO) };
-  if (!consultar && env.TEABLE_PG_URL) {
-    let banco = null;
-    consultar = async (sql, params = []) => {
-      banco ??= await abrirPg(env.TEABLE_PG_URL);
-      return (await banco.query(sql, params)).rows;
-    };
-  }
   if (!consultar || !t.filmes) return null;
 
   // o banco de filmes inteiro (alguns milhares), guardado por 1 min
@@ -168,10 +162,16 @@ function criarConferencia(env, consultar) {
       }
     return lidos.map((l) => conferirFilme(l, { filmes, exibicoes, acervo }));
   }
-  return { conferir };
+  // um filme novo entrou no cadastro: a próxima conferência relê o banco
+  const esquecer = () => void (memo = { em: 0, filmes: null });
+  return { conferir, esquecer };
 }
 
-export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) {
+/**
+ * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL
+ * @param deps.trello o módulo do Trello (o card e a escrita no Teable), para o envio
+ */
+export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello } = {}) {
   const enderecoDaLeitura = String(env.N8N_FILMES_LER || '').trim();
   const faltando = [!enderecoDaLeitura && 'N8N_FILMES_LER', !pasta && 'FILMES_PASTA'].filter(Boolean);
   const ligado = !faltando.length && !!db;
@@ -225,7 +225,15 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) 
 
   const listar = () => q.lista.all().map((l) => ({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas }));
 
+  if (!consultar && env.TEABLE_PG_URL) {
+    let banco = null;
+    consultar = async (sql, params = []) => {
+      banco ??= await abrirPg(env.TEABLE_PG_URL);
+      return (await banco.query(sql, params)).rows;
+    };
+  }
   const conferencia = criarConferencia(env, consultar);
+  const envio = criarEnvioDeFilmes(env, { trello, consultar });
 
   /** Põe a conferência com o banco em cada filme (sem o banco configurado, os filmes ficam sem ela). */
   async function conferidos(filmes) {
@@ -239,6 +247,9 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) 
       return { filmes, erro };
     }
   }
+
+  /** O filme enviado mostra o Trello, com o link do card que ele criou. */
+  const comEnvio = (f) => (f.envio?.estado === 'enviado' && f.conferencia ? { ...f, conferencia: { ...f.conferencia, marca: 'trello', link: f.envio.link } } : f);
 
   async function abrir(id) {
     const p = q.previa.get(id);
@@ -260,8 +271,16 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) 
     // a conferência de todas as páginas de uma vez (uma consulta ao banco por prévia aberta)
     const r = await conferidos(paginas.flatMap((g) => g.filmes));
     let k = 0;
-    for (const g of paginas) g.filmes = g.filmes.map(() => r.filmes[k++]);
-    return { id: p.id, nome: p.nome, por: p.por_nome, criada: p.criada_em, paginas, ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
+    for (const g of paginas) g.filmes = g.filmes.map(() => comEnvio(r.filmes[k++]));
+    return {
+      id: p.id,
+      nome: p.nome,
+      por: p.por_nome,
+      criada: p.criada_em,
+      paginas,
+      envio: { ligado: envio.ligado, faltando: envio.faltando },
+      ...(r.erro ? { erroDaConferencia: r.erro } : {}),
+    };
   }
 
   /**
@@ -274,6 +293,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) 
     const filmes = g.filmes ? JSON.parse(g.filmes) : [];
     const f = filmes[i];
     if (!f) return { erro: 'Filme não encontrado.', status: 404 };
+    if (f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado') return { erro: 'Este filme já foi para o Trello.', status: 409 };
     if (corpo?.titulo !== undefined) {
       const titulo = typeof corpo.titulo === 'string' ? corpo.titulo.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
       if (!titulo) return { erro: 'O título não pode ficar vazio.' };
@@ -290,7 +310,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) 
     } else return { erro: 'Nada para mudar.' };
     q.gravarFilmes.run(JSON.stringify(filmes), id, n);
     const r = await conferidos([f]);
-    return { filme: r.filmes[0], ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
+    return { filme: comEnvio(r.filmes[0]), ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
   }
 
   /** A página que o navegador preparou: o PDF dela, a imagem, os pôsteres recortados (com as caixas) e as linhas de texto. */
@@ -363,6 +383,13 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) 
   const acordar = () => void rodar();
   // a leitura que ficou pela metade (o servidor reiniciou) volta para a fila
   q.retomar.run();
+  // o envio que ficou pela metade não se sabe se criou o card: vira erro, para a pessoa conferir e mandar de novo
+  for (const g of db.prepare(`SELECT previa_id, numero, filmes FROM previa_paginas WHERE filmes LIKE '%"enviando"%'`).all()) {
+    const filmes = JSON.parse(g.filmes);
+    for (const f of filmes)
+      if (f.envio?.estado === 'enviando') f.envio = { ...f.envio, estado: 'erro', erro: 'o servidor reiniciou no meio do envio: confira no Trello antes de mandar de novo' };
+    q.gravarFilmes.run(JSON.stringify(filmes), g.previa_id, g.numero);
+  }
   setTimeout(acordar, 0);
 
   function reler(id, n) {
@@ -375,6 +402,65 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) 
     return { ok: true };
   }
 
+  /* ---------- o envio: o card de cada filme pronto, e o registro no Teable ---------- */
+  /** O resultado do envio de um filme, gravado na hora no filme da página. */
+  function gravarEnvio(id, n, i, estado) {
+    const g = q.filmesDaPagina.get(id, n);
+    const filmes = g?.filmes ? JSON.parse(g.filmes) : [];
+    if (!filmes[i]) return;
+    filmes[i].envio = estado;
+    q.gravarFilmes.run(JSON.stringify(filmes), id, n);
+  }
+  const mesmoFilme = (a, b) => a.titulo === b.titulo && JSON.stringify(a.escolha ?? null) === JSON.stringify(b.escolha ?? null);
+  const indo = (f) => f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado';
+
+  /**
+   * O Enviar: os filmes prontos (✓), de identidade própria e ainda não enviados, de todas as páginas, passam a
+   * "enviando" de uma vez (um segundo Enviar no meio do caminho não pega os mesmos) e vão um por um, sem esperar a
+   * resposta. O erro de um filme fica nele, com o motivo, e não para os outros; ele pode ir de novo.
+   * @returns { enviando: quantos foram }
+   */
+  async function enviar(id, eu) {
+    if (!envio.ligado) return { erro: `O envio está desligado: falta ${envio.faltando.join(', ')}.`, status: 503 };
+    const p = await abrir(id);
+    if (!p) return { erro: 'Prévia não encontrada.', status: 404 };
+    const prontos = p.paginas.flatMap((g) =>
+      g.estado !== 'lida' ? [] : g.filmes.map((f, i) => ({ n: g.numero, i, f })).filter(({ f }) => f.conferencia?.marca === 'ok' && !ehSessaoDaTarde(f.sessao) && !indo(f)),
+    );
+    // daqui até marcar, nada espera: quem chegar depois já vê "enviando"
+    const por = eu?.nome || eu?.email || '';
+    const vao = [];
+    for (const n of new Set(prontos.map((x) => x.n))) {
+      const g = q.filmesDaPagina.get(id, n);
+      const filmes = g?.filmes ? JSON.parse(g.filmes) : [];
+      for (const x of prontos.filter((y) => y.n === n)) {
+        const f = filmes[x.i];
+        if (!f || indo(f) || !mesmoFilme(f, x.f)) continue;
+        f.envio = { estado: 'enviando', por, em: new Date().toISOString() };
+        vao.push(x);
+      }
+      q.gravarFilmes.run(JSON.stringify(filmes), id, n);
+    }
+    void enviarUmPorUm(id, vao, por);
+    return { enviando: vao.length };
+  }
+
+  async function enviarUmPorUm(id, vao, por) {
+    const lote = envio.novoLote(() => conferencia?.esquecer());
+    for (const { n, i, f } of vao) {
+      try {
+        const poster = f.poster !== null && f.poster !== undefined ? imagem(id, n, f.poster + 1) : null;
+        const r = await envio.enviarUm({ lido: f, conferencia: f.conferencia, poster }, lote);
+        gravarEnvio(id, n, i, { estado: 'enviado', card: r.card.id, link: r.card.url, filme: r.filme, por, em: new Date().toISOString(), ...(r.avisos.length ? { avisos: r.avisos } : {}) });
+        if (r.avisos.length) console.warn(`[filmes] ${f.titulo}: ${r.avisos.join('; ')}`);
+      } catch (e) {
+        const erro = e instanceof Error ? e.message : String(e);
+        console.warn(`[filmes] não enviei ${f.titulo}: ${erro}`);
+        gravarEnvio(id, n, i, { estado: 'erro', erro: erro.slice(0, 500), por, em: new Date().toISOString() });
+      }
+    }
+  }
+
   function imagem(id, n, k = 0) {
     try {
       return readFileSync(arquivo(id, n, k));
@@ -383,5 +469,5 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) 
     }
   }
 
-  return { ligado, faltando, conferindo: !!conferencia, criar, listar, abrir, mudar, receberPagina, reler, imagem, parar: () => void (parado = true) };
+  return { ligado, faltando, conferindo: !!conferencia, envio: { ligado: envio.ligado, faltando: envio.faltando }, criar, listar, abrir, mudar, receberPagina, reler, enviar, imagem, parar: () => void (parado = true) };
 }

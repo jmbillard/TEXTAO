@@ -1,0 +1,164 @@
+{
+  "_origem": "Dois cards de filme criados pelo fluxo CARDS v10 do n8n (execução de 23/11/2026), gravados como referência do card que o PROMeiro tem de criar. Anonimizados: os IDs do quadro (lista, etiqueta, campos, opções), os IDs do Teable e os caminhos de rede foram trocados por inventados; nomes, datas, artes e o formato ficaram como o CARDS fez. A exibição segue o nó 'Exibições' da versão atual do fluxo (com as artes e sem a produção, ADR 0001). '<agora>' é a hora do envio.",
+  "cards": [
+    {
+      "card": {
+        "idList": "listaFilmes",
+        "name": "SUPERCINE 05/12 - DESPEDIDA EM GRANDE ESTILO (2017)",
+        "desc": "**ARTES IDENTIFICADAS:**\n`SÁBADO`, `PRÓXIMO SÁBADO`\n\n**JÁ EXISTEM (não produzir):**\n`DESPEDIDA EM GRANDE ESTILO`, `HOJE`, `AMANHÃ`\n\n---\n**CAMINHO DO PROJETO:**\n`\\\\servidor-arte\\VFX\\FILMES\\TITULOS\\_D_\\DESPEDIDA EM GRANDE ESTILO`\n`/Volumes/VFX/FILMES/TITULOS/_D_/DESPEDIDA EM GRANDE ESTILO`\n\n---\n**CAMINHO DAS ARTES:**\n`\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_D_\\DESPEDIDA EM GRANDE ESTILO`\n`/Volumes/SAIDA/FILMES/TITULOS/_D_/DESPEDIDA EM GRANDE ESTILO`\n",
+        "idLabels": "etqFilme",
+        "due": "2026-12-05T03:00:00.000Z",
+        "pos": "top"
+      },
+      "checklist": {
+        "name": "ARTES PRODUZIDAS",
+        "itens": [
+          "SÁBADO",
+          "PRÓXIMO SÁBADO"
+        ]
+      },
+      "campos": {
+        "cBot": {
+          "value": {
+            "checked": "true"
+          }
+        },
+        "cOutput": {
+          "value": {
+            "text": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_D_\\DESPEDIDA EM GRANDE ESTILO"
+          }
+        },
+        "cProjeto": {
+          "value": {
+            "text": "\\\\servidor-arte\\VFX\\FILMES\\TITULOS\\_D_\\DESPEDIDA EM GRANDE ESTILO"
+          }
+        },
+        "cPraca": {
+          "idValue": "opPracaFilmes"
+        },
+        "cEntrada": {
+          "value": {
+            "date": "<agora>"
+          }
+        }
+      },
+      "anexos": [
+        {
+          "name": "Despedida em Grande Estilo.jpg",
+          "setCover": "true",
+          "file": "Despedida em Grande Estilo.jpg"
+        }
+      ],
+      "exibicao": {
+        "exibicao": "SUPERCINE 05/12 - DESPEDIDA EM GRANDE ESTILO",
+        "data_de_exibicao": "2026-12-05T03:00:00.000Z",
+        "card_ID": "<card>",
+        "link": "<link>",
+        "inedito": false,
+        "output": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_D_\\DESPEDIDA EM GRANDE ESTILO",
+        "criado_em": "<agora>",
+        "artes": "SÁBADO | PRÓXIMO SÁBADO",
+        "artes_existentes": "DESPEDIDA EM GRANDE ESTILO | HOJE | AMANHÃ",
+        "filme": {
+          "id": "recDespedida01"
+        },
+        "sessao": {
+          "id": "recSessaoSuper"
+        }
+      }
+    },
+    {
+      "card": {
+        "idList": "listaFilmes",
+        "name": "DOMINGO MAIOR 06/12 - PERSEGUIÇÃO NAS ALTURAS (2022) INÉDITO",
+        "desc": "**ARTES IDENTIFICADAS:**\n`PERSEGUIÇÃO NAS ALTURAS`, `HOJE`, `AMANHÃ`, `DOMINGO`, `PRÓXIMO DOMINGO`\n\n---\n**CAMINHO DO PROJETO:**\n`\\\\servidor-arte\\VFX\\FILMES\\TITULOS\\_P_\\PERSEGUICAO NAS ALTURAS`\n`/Volumes/VFX/FILMES/TITULOS/_P_/PERSEGUICAO NAS ALTURAS`\n\n---\n**CAMINHO DAS ARTES:**\n`\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_P_\\PERSEGUICAO NAS ALTURAS`\n`/Volumes/SAIDA/FILMES/TITULOS/_P_/PERSEGUICAO NAS ALTURAS`\n",
+        "idLabels": "etqFilme",
+        "due": "2026-12-06T03:00:00.000Z",
+        "pos": "top"
+      },
+      "checklist": {
+        "name": "ARTES PRODUZIDAS",
+        "itens": [
+          "PERSEGUIÇÃO NAS ALTURAS",
+          "HOJE",
+          "AMANHÃ",
+          "DOMINGO",
+          "PRÓXIMO DOMINGO"
+        ]
+      },
+      "campos": {
+        "cBot": {
+          "value": {
+            "checked": "true"
+          }
+        },
+        "cOutput": {
+          "value": {
+            "text": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_P_\\PERSEGUICAO NAS ALTURAS"
+          }
+        },
+        "cPrio": {
+          "idValue": "opMedia",
+          "value": {
+            "text": "MÉDIA"
+          }
+        },
+        "cProjeto": {
+          "value": {
+            "text": "\\\\servidor-arte\\VFX\\FILMES\\TITULOS\\_P_\\PERSEGUICAO NAS ALTURAS"
+          }
+        },
+        "cPraca": {
+          "idValue": "opPracaFilmes"
+        },
+        "cEntrada": {
+          "value": {
+            "date": "<agora>"
+          }
+        }
+      },
+      "anexos": [
+        {
+          "name": "Perseguição nas Alturas.jpg",
+          "setCover": "true",
+          "file": "Perseguição nas Alturas.jpg"
+        }
+      ],
+      "filmeNovo": {
+        "titulo": "Perseguição nas Alturas",
+        "cadastrado_em": "<agora>",
+        "ano_de_producao": 2022
+      },
+      "exibicao": {
+        "exibicao": "DOMINGO MAIOR 06/12 - PERSEGUIÇÃO NAS ALTURAS",
+        "data_de_exibicao": "2026-12-06T03:00:00.000Z",
+        "card_ID": "<card>",
+        "link": "<link>",
+        "inedito": true,
+        "output": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_P_\\PERSEGUICAO NAS ALTURAS",
+        "criado_em": "<agora>",
+        "artes": "PERSEGUIÇÃO NAS ALTURAS | HOJE | AMANHÃ | DOMINGO | PRÓXIMO DOMINGO",
+        "filme": {
+          "id": "recNovo0001"
+        },
+        "sessao": {
+          "id": "recSessaoDomMaior"
+        }
+      }
+    }
+  ],
+  "caminhos": {
+    "DESPEDIDA EM GRANDE ESTILO": {
+      "projeto_win": "\\\\servidor-arte\\VFX\\FILMES\\TITULOS\\_D_\\DESPEDIDA EM GRANDE ESTILO",
+      "projeto_mac": "/Volumes/VFX/FILMES/TITULOS/_D_/DESPEDIDA EM GRANDE ESTILO",
+      "output_win": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_D_\\DESPEDIDA EM GRANDE ESTILO",
+      "output_mac": "/Volumes/SAIDA/FILMES/TITULOS/_D_/DESPEDIDA EM GRANDE ESTILO"
+    },
+    "PERSEGUICAO NAS ALTURAS": {
+      "projeto_win": "\\\\servidor-arte\\VFX\\FILMES\\TITULOS\\_P_\\PERSEGUICAO NAS ALTURAS",
+      "projeto_mac": "/Volumes/VFX/FILMES/TITULOS/_P_/PERSEGUICAO NAS ALTURAS",
+      "output_win": "\\\\servidor-arte\\SAIDA\\FILMES\\TITULOS\\_P_\\PERSEGUICAO NAS ALTURAS",
+      "output_mac": "/Volumes/SAIDA/FILMES/TITULOS/_P_/PERSEGUICAO NAS ALTURAS"
+    }
+  }
+}

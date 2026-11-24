@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   abrirPrevia,
+  enviarPrevia,
   imagemDaPagina,
   listarPrevias,
   mudarFilme,
@@ -19,7 +20,8 @@ import { Marca } from "./pecas";
 /* A aba Filmes: as prévias de filmes. Solta-se o PDF, o navegador prepara as páginas e o servidor lê cada uma
    com a IA (dá para fechar a aba). Em cada página, os cards em cima, alinhados com os pôsteres (identidade
    própria em cima, Sessão da Tarde embaixo), e a página grande embaixo. Cada card tem uma marca só, da conferência
-   com o banco: ✓ pronto, ! pede atenção (abre o balão com a pergunta) ou o Trello (já tem card). O envio vem depois. */
+   com o banco: ✓ pronto, ! pede atenção (abre o balão com a pergunta) ou o Trello (já tem card). O Enviar, o mesmo
+   do editor de roteiros, manda os prontos de toda a prévia; o que der erro mostra o motivo e vai no próximo Enviar. */
 
 interface Props {
   aberta?: string;
@@ -31,6 +33,17 @@ interface Props {
 // a página que ainda não chegou (a aba fechou no meio da subida) não está sendo lida: não adianta esperar
 const lendo = (p: PaginaDaPrevia) =>
   p.estado === "fila" || p.estado === "lendo";
+// a Sessão da Tarde ganha o card da semana (ainda não): fica fora do Enviar
+const sessaoDaTarde = (s: string) => /^sess[aã]o\s*da\s*tarde$/i.test(s.trim());
+/** Vai no próximo Enviar: pronto (✓), de identidade própria e ainda não mandado (o que deu erro vai de novo). */
+const vaiNoEnvio = (f: FilmeLido) =>
+  f.conferencia?.marca === "ok" &&
+  !sessaoDaTarde(f.sessao) &&
+  f.envio?.estado !== "enviando" &&
+  f.envio?.estado !== "enviado";
+/** O card abre o balão: a pergunta do ! ou o motivo do erro no envio. */
+const temBalao = (f?: FilmeLido) =>
+  !!f?.conferencia?.pergunta || f?.envio?.estado === "erro";
 
 export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
   return (
@@ -158,6 +171,7 @@ function PreviaAberta({
   const [previa, setPrevia] = useState<Previa | null>(null);
   const [pag, setPag] = useState(0);
   const [destaque, setDestaque] = useState<number | null>(null);
+  const [mandando, setMandando] = useState(false);
   const carregar = useCallback(
     () =>
       abrirPrevia(id).then(
@@ -193,13 +207,28 @@ function PreviaAberta({
     [id, avisar],
   );
   useEffect(() => void carregar(), [carregar]);
-  // enquanto há página na fila ou sendo lida, a tela pergunta de novo de tempos em tempos
+  // enquanto há página na fila ou sendo lida, ou filme indo para o Trello, a tela pergunta de novo de tempos em tempos
   const algumaLendo = !!previa?.paginas.some(lendo);
+  const algumEnviando = !!previa?.paginas.some((g) =>
+    g.filmes.some((f) => f.envio?.estado === "enviando"),
+  );
   useEffect(() => {
-    if (!algumaLendo) return;
-    const t = setInterval(() => void carregar(), 3000);
+    if (!algumaLendo && !algumEnviando) return;
+    const t = setInterval(() => void carregar(), algumEnviando ? 1500 : 3000);
     return () => clearInterval(t);
-  }, [algumaLendo, carregar]);
+  }, [algumaLendo, algumEnviando, carregar]);
+  const enviar = async () => {
+    if (mandando) return;
+    setMandando(true);
+    try {
+      await enviarPrevia(id);
+      await carregar();
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMandando(false);
+    }
+  };
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       if (
@@ -217,6 +246,10 @@ function PreviaAberta({
   }, [previa]);
   if (!previa) return <main className="previa" />;
   const p = previa.paginas[Math.min(pag, previa.paginas.length - 1)];
+  const algumPronto = previa.paginas.some(
+    (g) => g.estado === "lida" && g.filmes.some(vaiNoEnvio),
+  );
+  const envioLigado = previa.envio?.ligado !== false;
 
   return (
     <main className="previa">
@@ -254,6 +287,19 @@ function PreviaAberta({
             ›
           </button>
         </nav>
+        <button
+          className="botao primario enviar-previa"
+          disabled={!envioLigado || !algumPronto || mandando || algumEnviando}
+          title={
+            !envioLigado
+              ? `O envio está desligado: falta ${previa.envio?.faltando.join(", ")}`
+              : "Cria no Trello os cards dos filmes prontos de toda a prévia"
+          }
+          onClick={() => void enviar()}
+        >
+          <Icone nome="quadro" tam={15} traco={2.2} />
+          {mandando || algumEnviando ? "Mandando…" : "Enviar"}
+        </button>
       </div>
       <Pagina
         key={p.numero}
@@ -290,10 +336,10 @@ function Pagina({
   const f = montarFileiras(p);
   // o card com o balão do ! aberto (o índice do filme na página)
   const [aberto, setAberto] = useState<number | null>(null);
-  const pergunta = aberto !== null ? p.filmes[aberto]?.conferencia?.pergunta : undefined;
+  const balao = aberto !== null && temBalao(p.filmes[aberto]);
   useEffect(() => {
-    if (aberto !== null && !pergunta) setAberto(null);
-  }, [aberto, pergunta]);
+    if (aberto !== null && !balao) setAberto(null);
+  }, [aberto, balao]);
   const pos = (x: number) => ({
     left: `${x * 100}%`,
     width: `${f.largura * 100}%`,
@@ -341,7 +387,7 @@ function Pagina({
           aberto={aberto === it.i}
           alternar={() => setAberto(aberto === it.i ? null : it.i)}
         />
-        {aberto === it.i && filme.conferencia?.pergunta && (
+        {aberto === it.i && temBalao(filme) && (
           <Balao
             filme={filme}
             fechar={() => setAberto(null)}
@@ -481,6 +527,20 @@ function MarcaDoFilme({
 }) {
   const c = filme.conferencia;
   if (!c) return null;
+  if (filme.envio?.estado === "enviando")
+    return <span className="ficha-marca lendo" aria-label="Indo para o Trello" />;
+  if (filme.envio?.estado === "erro" && c.marca === "ok")
+    return (
+      <button
+        className="ficha-marca erro"
+        onClick={alternar}
+        aria-expanded={aberto}
+        aria-label="Não foi para o Trello"
+        title={filme.envio.erro}
+      >
+        <Icone nome="atencao" tam={12} traco={3} />
+      </button>
+    );
   if (c.marca === "trello")
     return c.link ? (
       <a
@@ -504,7 +564,13 @@ function MarcaDoFilme({
         className="ficha-marca revisar"
         onClick={alternar}
         aria-expanded={aberto}
-        aria-label={c.pergunta === "qual-filme" ? "Qual filme?" : "Ano diferente"}
+        aria-label={
+          c.pergunta === "qual-filme"
+            ? "Qual filme?"
+            : c.pergunta === "sem-titulo"
+              ? "Sem título"
+              : "Ano diferente"
+        }
       >
         <Icone nome="atencao" tam={12} traco={3} />
       </button>
@@ -528,6 +594,13 @@ function Balao({
   mudar: (m: MudancaNoFilme) => Promise<void>;
 }) {
   const c = filme.conferencia!;
+  // o motivo do erro no envio (o filme vai de novo no próximo Enviar) ou o título que falta: nada para escolher
+  const nota =
+    filme.envio?.estado === "erro" && !c.pergunta
+      ? { titulo: "não foi", texto: filme.envio.erro ?? "" }
+      : c.pergunta === "sem-titulo"
+        ? { titulo: "sem título", texto: "clique no título para escrever" }
+        : null;
   const opcoes: { rotulo: string; ano?: number | null; poster?: string; m: MudancaNoFilme }[] =
     c.pergunta === "qual-filme"
       ? [
@@ -539,7 +612,9 @@ function Balao({
           })),
           { rotulo: "outro filme (novo)", poster: "", m: { filme: "novo" } },
         ]
-      : (c.anos ?? []).map((ano) => ({ rotulo: String(ano), m: { ano } }));
+      : c.pergunta === "ano-diferente"
+        ? (c.anos ?? []).map((ano) => ({ rotulo: String(ano), m: { ano } }))
+        : [];
   const escolher = useRef<(k: number) => void>(() => {});
   escolher.current = (k) => {
     if (opcoes[k]) void mudar(opcoes[k].m);
@@ -558,6 +633,13 @@ function Balao({
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
   }, [fechar]);
+  if (nota)
+    return (
+      <div className="balao-filme nota" role="dialog">
+        <b>{nota.titulo}</b>
+        <p>{nota.texto}</p>
+      </div>
+    );
   return (
     <div className={`balao-filme ${c.pergunta}`} role="dialog">
       <b>{c.pergunta === "qual-filme" ? "qual filme?" : "ano diferente"}</b>

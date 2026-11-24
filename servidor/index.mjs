@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { abrirBanco, criarApp, fazerBackup } from './app.mjs';
 import { criarFilmes } from './filmes.mjs';
-import { configDoTrello, faltasDoTrello, PRACAS_TRELLO } from './trello.mjs';
+import { configDoTrello, criarTrello, faltasDoTrello, PRACAS_TRELLO } from './trello.mjs';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
@@ -28,9 +28,15 @@ setInterval(backup, 60 * 60 * 1000).unref();
 
 const cache = criarCache(process.env);
 // as prévias de filmes (aba Filmes): as imagens das páginas e dos pôsteres ficam junto dos dados
-const filmes = criarFilmes(process.env, { db, pasta: process.env.FILMES_PASTA ?? join(dados, 'previas') });
-console.log(filmes.ligado ? `[filmes] aba Filmes ligada${filmes.conferindo ? '' : ' (sem a conferência com o banco: falta TEABLE_PG_FILMES)'}` : `[filmes] aba Filmes desligada: falta ${filmes.faltando.join(', ')}`);
-const app = criarApp({ db, cache, filmes, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
+// o mesmo módulo do Trello para os roteiros e para os cards de filme
+const trello = criarTrello(process.env);
+const filmes = criarFilmes(process.env, { db, pasta: process.env.FILMES_PASTA ?? join(dados, 'previas'), trello });
+console.log(
+  filmes.ligado
+    ? `[filmes] aba Filmes ligada${filmes.conferindo ? '' : ' (sem a conferência com o banco: falta TEABLE_PG_FILMES)'}${filmes.envio.ligado ? '' : `; envio desligado: falta ${filmes.envio.faltando.join(', ')}`}`
+    : `[filmes] aba Filmes desligada: falta ${filmes.faltando.join(', ')}`,
+);
+const app = criarApp({ db, cache, trello, filmes, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
 const servidor = createServer(app);
 servidor.on('upgrade', app.upgrade);
 servidor.listen(porta, () =>

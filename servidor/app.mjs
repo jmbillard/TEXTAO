@@ -322,7 +322,7 @@ const lerBinario = (req, limite) =>
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA }) }) {
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
   const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
@@ -990,6 +990,13 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         res.writeHead(200, { 'content-type': 'image/jpeg', 'content-length': img.length, 'cache-control': 'private, max-age=86400' });
         return res.end(img);
       }
+    }
+    const envio = /^\/api\/filmes\/previas\/([\w-]{6,80})\/enviar$/.exec(caminho);
+    if (envio && req.method === 'POST') {
+      const r = await filmes.enviar(envio[1], eu);
+      if (r.erro) return json(res, r.status ?? 400, { erro: r.erro });
+      if (r.enviando) console.log(`[filmes] ${eu.email} mandou ${r.enviando} ${r.enviando === 1 ? 'filme' : 'filmes'} para o Trello`);
+      return json(res, 200, r);
     }
     const umaPrevia = /^\/api\/filmes\/previas\/([\w-]{6,80})$/.exec(caminho);
     if (umaPrevia && req.method === 'GET') {

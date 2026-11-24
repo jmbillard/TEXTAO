@@ -1973,6 +1973,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .previa-paginas { display: flex; align-items: center; gap: 8px; }
 .previa-paginas .bolinha { width: 8px; height: 8px; border-radius: 50%; border: 0; padding: 0; background: var(--regua-forte); cursor: pointer; }
 .previa-paginas .bolinha.atual { background: var(--tinta); }
+.previa-cab .enviar-previa { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; }
 .previa-paginas .seta { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: var(--tinta2); font: 400 22px/1 var(--sans); padding: 0 0 3px; cursor: pointer; display: grid; place-items: center; }
 .previa-paginas .seta:hover:not(:disabled) { background: var(--neutro); color: var(--tinta); }
 .previa-paginas .seta:disabled { opacity: 0.3; cursor: default; }
@@ -2004,6 +2005,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .cartao-filme input.cf-titulo:focus { border-color: var(--ultra); }
 .balao-filme { position: absolute; top: calc(100% + 8px); left: 0; z-index: 70; min-width: 100%; width: max-content; max-width: 640px; padding: 10px 10px 8px; background: var(--cartao); color: var(--tinta); border-radius: 12px; box-shadow: var(--sombra-menu); animation: abrir-escolha 0.16s var(--suave); }
 .balao-filme > b { display: block; font: 700 19px/1 Caveat, cursive; color: var(--falta); margin: 0 4px 8px; }
+.balao-filme.nota { max-width: 320px; }
+.balao-filme.nota p { margin: 0 4px 2px; font: 13px/1.35 var(--sans); color: var(--tinta2); white-space: normal; }
 .balao-opcoes { display: flex; gap: 8px; }
 .balao-opcoes button { position: relative; display: grid; justify-items: center; align-content: start; gap: 4px; width: 104px; padding: 8px 6px; border: 1px solid var(--regua); border-radius: 10px; background: var(--papel); color: var(--tinta); font: 500 12.5px/1.25 var(--sans); text-align: center; cursor: pointer; }
 .ano-diferente .balao-opcoes button { width: auto; padding: 8px 16px 8px 26px; font: 600 15px var(--mono); }

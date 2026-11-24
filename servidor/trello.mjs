@@ -103,12 +103,25 @@ export function configDoTrello(env) {
     },
     pracas: pares(env.TRELLO_PRACAS),
     prioridadeAlta: env.TRELLO_PRIORIDADE_ALTA || '',
+    // os cards de filme da prévia (aba Filmes), como o fluxo CARDS do n8n: a lista dos filmes, as etiquetas (todas
+    // ou por sessão, "SUPERCINE=id"), a opção da praça e a prioridade MÉDIA do filme novo ou inédito
+    filmes: {
+      lista: nomeLimpoPg(env.TRELLO_LISTA_FILMES),
+      etiquetas: String(env.TRELLO_FILMES_ETIQUETAS || '').split(',').map((s) => s.trim()).filter(Boolean),
+      etiquetasDaSessao: pares(env.TRELLO_FILMES_ETIQUETAS_SESSAO),
+      praca: nomeLimpoPg(env.TRELLO_FILMES_PRACA),
+      prioridadeMedia: nomeLimpoPg(env.TRELLO_PRIORIDADE_MEDIA),
+    },
     teable: {
       url: (env.TEABLE_URL || '').replace(/\/+$/, ''),
       token: env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '',
       producao: env.TEABLE_ARTE_PRODUCAO || '',
       redatores: env.TEABLE_REDATORES || '',
       keysRedatores: env.TEABLE_KEY_REDATORES || '',
+      // os filmes (o cadastro e o campo do pôster, pelo ID) e as exibições: onde o envio da aba Filmes grava
+      filmes: env.TEABLE_FILMES || '',
+      posterDoFilme: env.TEABLE_FILMES_POSTER || '',
+      exibicoes: env.TEABLE_EXIBICOES || '',
     },
     pg: {
       url: env.TEABLE_PG_URL || '',
@@ -221,7 +234,7 @@ export function criarTrello(env, deps = {}) {
    * Sem o card, falha; o resto que der errado vira aviso. É o mesmo caminho do envio de roteiros, para outros usos
    * (os cards de filme da prévia, por exemplo).
    */
-  async function criarCard({ lista, nome, desc = '', etiquetas = [], data, checklist, campos = {}, anexos = [] }, avisos = []) {
+  async function criarCard({ lista, nome, desc = '', etiquetas = [], data, posicao, checklist, campos = {}, anexos = [] }, avisos = []) {
     const tentar = async (o_que, f) => {
       try {
         return await f();
@@ -232,7 +245,7 @@ export function criarTrello(env, deps = {}) {
     };
     // no corpo, não no endereço: muitas artes estourariam o tamanho da URL
     const card = await trello('POST', '/cards', {
-      corpo: { idList: lista, name: nome, desc, ...(etiquetas.length ? { idLabels: etiquetas.join(',') } : {}), ...(data ? { due: data } : {}) },
+      corpo: { idList: lista, name: nome, desc, ...(etiquetas.length ? { idLabels: etiquetas.join(',') } : {}), ...(data ? { due: data } : {}), ...(posicao ? { pos: posicao } : {}) },
     });
     if (!card?.id) throw new Error('O Trello não devolveu o card criado.');
     if (checklist?.itens?.length)
@@ -250,6 +263,7 @@ export function criarTrello(env, deps = {}) {
           form.append('name', a.nome);
           form.append('mimeType', a.tipo);
           form.append('file', new Blob([a.dados], { type: a.tipo }), a.nome);
+          if (a.capa) form.append('setCover', 'true');
           return trello('POST', `/cards/${card.id}/attachments`, { form });
         }),
       );
@@ -278,6 +292,21 @@ export function criarTrello(env, deps = {}) {
       signal: AbortSignal.timeout(15_000),
     });
     if (!r.ok) throw new Error(`Teable respondeu ${r.status} ao atualizar ${tabelaId}`);
+    return r.json().catch(() => ({}));
+  }
+
+  /** Sobe um arquivo para um campo de anexo do Teable (o pôster no cadastro do filme): o registro volta com o campo. */
+  async function teableAnexar(tabelaId, recId, campoId, { nome, tipo, dados }) {
+    if (!c.teable.url || !c.teable.token) throw new Error('O Teable não está configurado (TEABLE_URL e TEABLE_TOKEN).');
+    const form = new FormData();
+    form.append('file', new Blob([dados], { type: tipo }), nome);
+    const r = await buscar(`${c.teable.url}/api/table/${encodeURIComponent(tabelaId)}/record/${encodeURIComponent(recId)}/${encodeURIComponent(campoId)}/uploadAttachment`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${c.teable.token}` },
+      body: form,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!r.ok) throw new Error(`Teable respondeu ${r.status} ao anexar em ${tabelaId}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
     return r.json().catch(() => ({}));
   }
 
@@ -886,5 +915,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, enviar, criarCard, andamento, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, criarCard, teableCriar, teableAtualizar, teableAnexar, andamento, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

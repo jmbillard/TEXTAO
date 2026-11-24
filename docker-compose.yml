@@ -66,6 +66,9 @@ services:
       - TEABLE_PG_FILMES=${TEABLE_PG_FILMES:-}
       # tabela dos filmes (id da API): o pôster do filme aparece no card da fila
       - TEABLE_FILMES=${TEABLE_FILMES:-}
+      # o campo do pôster nos filmes e a tabela de exibições (id da API): onde o envio da aba Filmes grava
+      - TEABLE_FILMES_POSTER=${TEABLE_FILMES_POSTER:-}
+      - TEABLE_EXIBICOES=${TEABLE_EXIBICOES:-}
 
       # ---- Cadastros ----
       - CADASTRO_ADMINS=${CADASTRO_ADMINS:-}
@@ -94,6 +97,12 @@ services:
       - TRELLO_CAMPO_BOT=${TRELLO_CAMPO_BOT:-}
       - TRELLO_CAMPO_ENTRADA=${TRELLO_CAMPO_ENTRADA:-}
       - TRELLO_CAMPOS_FILME=${TRELLO_CAMPOS_FILME:-}
+      # os cards de filme da aba Filmes: a lista (sem ela, o Enviar fica desligado), as etiquetas, a praça e a prioridade MÉDIA
+      - TRELLO_LISTA_FILMES=${TRELLO_LISTA_FILMES:-}
+      - TRELLO_FILMES_ETIQUETAS=${TRELLO_FILMES_ETIQUETAS:-}
+      - TRELLO_FILMES_ETIQUETAS_SESSAO=${TRELLO_FILMES_ETIQUETAS_SESSAO:-}
+      - TRELLO_FILMES_PRACA=${TRELLO_FILMES_PRACA:-}
+      - TRELLO_PRIORIDADE_MEDIA=${TRELLO_PRIORIDADE_MEDIA:-}
 
       # ---- OneDrive (cópia do arquivo original, por SFTP) ----
       - SFTP_HOST=${SFTP_HOST:-}

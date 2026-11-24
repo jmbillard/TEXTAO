@@ -223,6 +223,17 @@ export interface FilmeLido {
   escolha?: { filme?: string; ano?: number };
   /** a conferência com o banco; sem o banco configurado, não vem */
   conferencia?: Conferencia;
+  /** o resultado do Enviar: o card criado (com o link), quem mandou e quando, ou o erro */
+  envio?: EnvioDoFilme;
+}
+export interface EnvioDoFilme {
+  estado: 'enviando' | 'enviado' | 'erro';
+  card?: string;
+  link?: string;
+  por?: string;
+  em?: string;
+  erro?: string;
+  avisos?: string[];
 }
 export interface FilmeDoBanco {
   id: string;
@@ -232,7 +243,7 @@ export interface FilmeDoBanco {
 /** A conferência de um filme lido com o banco: ✓ (ok), ! (atencao, com a pergunta) ou o Trello (já tem card). */
 export interface Conferencia {
   marca: 'ok' | 'atencao' | 'trello';
-  pergunta?: 'qual-filme' | 'ano-diferente';
+  pergunta?: 'qual-filme' | 'ano-diferente' | 'sem-titulo';
   /** o filme do banco; null é filme novo (ou ainda sem resposta para "qual filme?") */
   filme: FilmeDoBanco | null;
   novo: boolean;
@@ -263,6 +274,8 @@ export interface Previa {
   criada: string;
   paginas: PaginaDaPrevia[];
   erroDaConferencia?: string;
+  /** o envio ao Trello está configurado? (sem a lista dos filmes, por exemplo, não está) */
+  envio?: { ligado: boolean; faltando: string[] };
 }
 export interface PreviaNaLista {
   id: string;
@@ -293,6 +306,8 @@ export const mudarFilme = (id: string, numero: number, i: number, mudanca: Mudan
     method: 'PATCH',
     body: JSON.stringify(mudanca),
   });
+/** O Enviar: os filmes prontos de toda a prévia vão para o Trello (o servidor continua sozinho). */
+export const enviarPrevia = (id: string) => pedir<{ enviando: number }>(`/api/filmes/previas/${encodeURIComponent(id)}/enviar`, { method: 'POST' });
 export const posterDoFilme = (id: string) => `/api/filmes/poster/${encodeURIComponent(id)}`;
 export const imagemDaPagina = (id: string, numero: number, poster = 0) =>
   `/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/${poster ? `poster/${poster}` : 'imagem'}`;
