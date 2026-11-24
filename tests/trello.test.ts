@@ -795,3 +795,65 @@ describe('complexidade da arte: o card leva a maior das artes a produzir', () =>
     }
   });
 });
+
+describe('complexidade da arte na versão nova (V2): recalcula a do card quando a maior muda', () => {
+  const COM_CAMPO = { ...ENV, TRELLO_CAMPO_COMPLEXIDADE: 'cComplexidade', TRELLO_COMPLEXIDADE_OPCOES: 'opBaixa, opMedia, opAlta' };
+  const v2De = { card: 'cardVelho', url: 'https://trello.com/c/cardVelho', registro: 'recP1' };
+  /** Envia a V2 com a linha da produção da arte numa complexidade; devolve os pedidos ao Trello e ao Teable. */
+  const enviarV2 = async (env: Record<string, string>, atual: number | null | Error, artes: unknown[]) => {
+    const { buscar, pedidos } = falsos();
+    const buscarComCard = async (endereco: string, init: RequestInit = {}) => {
+      const u = new URL(endereco);
+      if ((init.method ?? 'GET') === 'GET' && u.pathname.endsWith('/cards/cardVelho')) return { ok: true, status: 200, json: async () => ({ id: 'cardVelho', shortUrl: 'https://trello.com/c/VELHO' }), text: async () => '' };
+      if ((init.method ?? 'GET') === 'GET' && u.pathname.endsWith('/cards/cardVelho/checklists'))
+        return { ok: true, status: 200, json: async () => [{ id: 'chkVelho', name: 'ARTES PRODUZIDAS', checkItems: [{ name: 'A GRANDE FESTA' }] }], text: async () => '' };
+      return buscar(endereco, init);
+    };
+    // a linha da produção da arte, pelo registro (mesma base) ou pelo card (outra base)
+    const consultar = async (sql: string, params: unknown[] = []) => {
+      if (atual instanceof Error) throw atual;
+      return sql.includes('"complexidade"') && sql.includes('"producao"') && ['recP1', 'cardVelho'].includes(String(params[0])) ? [{ id: 'recP1', complexidade: atual }] : [];
+    };
+    await criarTrello(env, { buscar: buscarComCard, consultar, sftp: async () => {} }).enviar({ meta: { ...meta, v2De }, doc: DOC, artes, texto: 'texto novo', original });
+    const patch = pedidos.find((p) => p.metodo === 'PATCH' && p.url.host === 'teable:3000');
+    return { pedidos, patch: patch && { rota: patch.url.pathname, campos: (patch.corpo as { record: { fields: Record<string, unknown> } }).record.fields } };
+  };
+  const putDoCard = (pedidos: Pedido[]) => pedidos.filter((p) => p.metodo === 'PUT' && p.url.pathname.endsWith('/cards/cardVelho/customField/cComplexidade/item')).map((p) => p.corpo);
+
+  it('a maior que sobe: o campo do card e a produção da arte vão para a nova', async () => {
+    const { pedidos, patch } = await enviarV2(COM_CAMPO, 1, [{ texto: 'A GRANDE FESTA' }, { texto: 'SÁBADO', complexidade: 3 }]);
+    expect(putDoCard(pedidos)).toEqual([{ idValue: 'opAlta' }]);
+    expect(patch?.rota).toContain('/record/recP1');
+    expect(patch?.campos).toMatchObject({ complexidade: 3, artes_quantidade: 2 });
+  });
+
+  it('a maior que desce: a arte que já existe deixa de contar', async () => {
+    const { pedidos, patch } = await enviarV2(COM_CAMPO, 3, [{ texto: 'A GRANDE FESTA', complexidade: 2 }, { texto: 'SÁBADO', existe: true, complexidade: 3 }]);
+    expect(putDoCard(pedidos)).toEqual([{ idValue: 'opMedia' }]);
+    expect(patch?.campos).toMatchObject({ complexidade: 2 });
+  });
+
+  it('a maior que fica igual: nada de complexidade é escrito (nem no card, nem na produção da arte)', async () => {
+    const { pedidos, patch } = await enviarV2(COM_CAMPO, 2, [{ texto: 'A GRANDE FESTA', complexidade: 2 }, { texto: 'SÁBADO' }]);
+    expect(putDoCard(pedidos)).toEqual([]);
+    expect(patch?.campos).not.toHaveProperty('complexidade');
+    expect(patch?.campos).toMatchObject({ artes: 'A GRANDE FESTA | SÁBADO' });
+  });
+
+  it('o campo não configurado: só a produção da arte é atualizada (também lendo de outra base, pelo card)', async () => {
+    const { pedidos, patch } = await enviarV2(ENV, 1, [{ texto: 'SÁBADO', complexidade: 3 }]);
+    expect(pedidos.filter((p) => p.metodo === 'PUT' && p.url.pathname.includes('/customField/'))).toEqual([]);
+    expect(patch?.campos).toMatchObject({ complexidade: 3 });
+    const outraBase = await enviarV2({ ...ENV, TEABLE_PG_ARTE_LEITURA: 'bseProd.producaoViva' }, 1, [{ texto: 'SÁBADO', complexidade: 2 }]);
+    expect(outraBase.patch?.rota).toContain('/record/recP1');
+    expect(outraBase.patch?.campos).toMatchObject({ complexidade: 2 });
+  });
+
+  it('sem ler a complexidade atual (o Postgres caiu), nada de complexidade é escrito, mas as artes e o texto sim', async () => {
+    const { pedidos, patch } = await enviarV2(COM_CAMPO, new Error('caiu'), [{ texto: 'SÁBADO', complexidade: 3 }]);
+    expect(putDoCard(pedidos)).toEqual([]);
+    expect(patch?.rota).toContain('/record/recP1');
+    expect(patch?.campos).not.toHaveProperty('complexidade');
+    expect(patch?.campos).toMatchObject({ artes: 'SÁBADO', texto: 'texto novo' });
+  });
+});

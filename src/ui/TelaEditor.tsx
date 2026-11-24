@@ -1104,7 +1104,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                       ? 'Antes, compare com o que já está no Trello e decida'
                       : estadoTrello?.estado === 'erro'
                         ? estadoTrello.erro
-                        : `${meta.v2De ? 'Põe as artes novas no card que já existe' : `Cria o card com as artes, os campos e o PDF · complexidade ${NOME_DA_COMPLEXIDADE[complexidadeDoCard]}`}${proximo.r ? ` e abre ${proximo.r.meta.claquete || 'o próximo'}` : ''} (${atalho('Mod-Enter')})`
+                        : `${meta.v2De ? 'Põe as artes novas no card que já existe' : 'Cria o card com as artes, os campos e o PDF'} · complexidade ${NOME_DA_COMPLEXIDADE[complexidadeDoCard]}${proximo.r ? ` e abre ${proximo.r.meta.claquete || 'o próximo'}` : ''} (${atalho('Mod-Enter')})`
                     : `${proximo.r?.meta.claquete || 'Próximo roteiro'} (${atalho('Mod-Enter')})`
                 }
                 onClick={() => void acaoPrincipal()}

@@ -668,8 +668,22 @@ export function criarTrello(env, deps = {}) {
     if (c.teable.producao)
       await tentar('atualizar a produção da arte', async () => {
         // lendo de outra base (convivência com o n8n), o registro dela não existe aqui: acha o daqui pelo card
-        const registro = t.leitura === t.producao ? r.v2De.registro : (await sql(`SELECT "__id" AS id FROM ${t.producao} WHERE "card_ID" = $1 LIMIT 1`, [id]))[0]?.id;
-        if (registro) await teableAtualizar(c.teable.producao, registro, { artes: artes.join(' | '), artes_quantidade: artes.length, texto: String(r.texto ?? '').replaceAll('\u0000', '') });
+        const mesmaBase = t.leitura === t.producao;
+        if (mesmaBase && !r.v2De.registro) return;
+        // a leitura que falha vira aviso: na mesma base, as artes e o texto vão do mesmo jeito, só sem a complexidade
+        const [linha] =
+          (await tentar('ler a complexidade da produção da arte', () =>
+            sql(`SELECT "__id" AS id, "complexidade" FROM ${t.producao} WHERE ${mesmaBase ? '"__id"' : '"card_ID"'} = $1 LIMIT 1`, [mesmaBase ? r.v2De.registro : id]),
+          )) ?? [];
+        const registro = mesmaBase ? r.v2De.registro : linha?.id;
+        if (!registro) return;
+        // a complexidade do card: a maior das artes do roteiro novo; só é escrita quando muda em relação à da produção
+        // da arte (sem a linha lida, não há com o que comparar, e nada de complexidade é escrito)
+        const complexidade = complexidadeDoCard(listaDeArtes);
+        const mudou = !!linha && Number(linha.complexidade) !== complexidade;
+        const opcao = mudou && c.campos.complexidade ? c.complexidades[complexidade - 1] : '';
+        if (opcao) await tentar('atualizar a complexidade', () => campo(id, c.campos.complexidade, { idValue: opcao }));
+        await teableAtualizar(c.teable.producao, registro, { artes: artes.join(' | '), artes_quantidade: artes.length, texto: String(r.texto ?? '').replaceAll('\u0000', ''), ...(mudou ? { complexidade } : {}) });
       });
     return { card: { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}` }, avisos, v2: true, novas: novas.length };
   }
