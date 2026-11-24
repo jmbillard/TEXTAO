@@ -219,7 +219,32 @@ export interface FilmeLido {
   inedito: boolean;
   /** o pôster da página (a posição na ordem de leitura), ou null */
   poster: number | null;
+  /** o que a pessoa escolheu no ! (um candidato, "novo" ou um dos anos) */
+  escolha?: { filme?: string; ano?: number };
+  /** a conferência com o banco; sem o banco configurado, não vem */
+  conferencia?: Conferencia;
 }
+export interface FilmeDoBanco {
+  id: string;
+  titulo: string;
+  ano: number | null;
+}
+/** A conferência de um filme lido com o banco: ✓ (ok), ! (atencao, com a pergunta) ou o Trello (já tem card). */
+export interface Conferencia {
+  marca: 'ok' | 'atencao' | 'trello';
+  pergunta?: 'qual-filme' | 'ano-diferente';
+  /** o filme do banco; null é filme novo (ou ainda sem resposta para "qual filme?") */
+  filme: FilmeDoBanco | null;
+  novo: boolean;
+  ano: number | null;
+  candidatos?: FilmeDoBanco[];
+  /** "ano diferente": [o da prévia, o do banco] */
+  anos?: [number, number];
+  link?: string;
+  /** as artes do card: as novas e as que o filme já tem no acervo */
+  artes: { novas: string[]; existentes: string[] };
+}
+export type MudancaNoFilme = { titulo: string } | { filme: string } | { ano: number };
 export interface PaginaDaPrevia {
   numero: number;
   util: number;
@@ -237,6 +262,7 @@ export interface Previa {
   por: string;
   criada: string;
   paginas: PaginaDaPrevia[];
+  erroDaConferencia?: string;
 }
 export interface PreviaNaLista {
   id: string;
@@ -261,6 +287,13 @@ export const abrirPrevia = (id: string) => pedir<Previa>(`/api/filmes/previas/${
 export const mandarPagina = (id: string, numero: number, pagina: PaginaPreparada) =>
   pedir<{ ok: true }>(`/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}`, { method: 'PUT', body: JSON.stringify(pagina) });
 export const relerPagina = (id: string, numero: number) => pedir<{ ok: true }>(`/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/reler`, { method: 'POST' });
+/** Grava na hora uma mudança num filme lido (título, candidato ou ano) e devolve o filme conferido de novo. */
+export const mudarFilme = (id: string, numero: number, i: number, mudanca: MudancaNoFilme) =>
+  pedir<{ filme: FilmeLido; erroDaConferencia?: string }>(`/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/filmes/${i}`, {
+    method: 'PATCH',
+    body: JSON.stringify(mudanca),
+  });
+export const posterDoFilme = (id: string) => `/api/filmes/poster/${encodeURIComponent(id)}`;
 export const imagemDaPagina = (id: string, numero: number, poster = 0) =>
   `/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/${poster ? `poster/${poster}` : 'imagem'}`;
 

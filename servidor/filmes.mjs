@@ -6,6 +6,9 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { conferirFilme, diaDaPrevia } from './conferencia.mjs';
+import { abrirPg, nomesDoPg } from './pauta.mjs';
+import { chaveDoTitulo } from './titulo.mjs';
 
 /* ---------- o título lido pela IA e o texto do PDF (a regra do FilmeBOT) ---------- */
 const compacto = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'e').replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -88,7 +91,97 @@ const b64 = (v) => (typeof v === 'string' && v ? Buffer.from(v, 'base64') : null
 const numero = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const umaCaixa = (c) => ({ x: numero(c?.x), y: numero(c?.y), width: numero(c?.width), height: numero(c?.height) });
 
-export function criarFilmes(env, { db, pasta, buscar = fetch } = {}) {
+/* ---------- o banco de filmes e as exibições, no Postgres do Teable (só leitura) ---------- */
+const NOME_SQL = /^[A-Za-z0-9_]+$/;
+// vínculo do Teable no Postgres: { id, title }, uma lista com um, ou o texto JSON disso
+function vinculo(v) {
+  if (typeof v === 'string') {
+    try {
+      return vinculo(JSON.parse(v));
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(v)) return vinculo(v[0]);
+  return v && typeof v === 'object' ? { id: String(v.id ?? ''), title: String(v.title ?? '') } : null;
+}
+const cancelada = (labels) => JSON.stringify(labels ?? '').toUpperCase().includes('CANCELADO');
+const diaEmBrasilia = (v) => {
+  const d = new Date(v);
+  return isNaN(d) ? '' : d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+};
+
+/**
+ * A conferência dos filmes lidos com o banco: TEABLE_PG_FILMES (a tabela de filmes) liga; TEABLE_PG_EXIBICOES
+ * (o card que já existe) e TEABLE_PG_ACERVO (as artes que o filme já tem) completam.
+ * @param consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL
+ */
+function criarConferencia(env, consultar) {
+  const esquema = nomesDoPg(env, '').esquema;
+  const tabela = (v) => {
+    const nome = nomesDoPg(env, v).tabela;
+    return esquema && NOME_SQL.test(esquema) && nome && NOME_SQL.test(nome) ? `"${esquema}"."${nome}"` : null;
+  };
+  const t = { filmes: tabela(env.TEABLE_PG_FILMES), exibicoes: tabela(env.TEABLE_PG_EXIBICOES), acervo: tabela(env.TEABLE_PG_ACERVO) };
+  if (!consultar && env.TEABLE_PG_URL) {
+    let banco = null;
+    consultar = async (sql, params = []) => {
+      banco ??= await abrirPg(env.TEABLE_PG_URL);
+      return (await banco.query(sql, params)).rows;
+    };
+  }
+  if (!consultar || !t.filmes) return null;
+
+  // o banco de filmes inteiro (alguns milhares), guardado por 1 min
+  let memo = { em: 0, filmes: null };
+  async function filmesDoBanco() {
+    if (memo.filmes && Date.now() - memo.em < 60_000) return memo.filmes;
+    const linhas = await consultar(`SELECT "__id", "titulo", "ano_de_producao" FROM ${t.filmes}`);
+    const filmes = linhas.map((l) => {
+      const ano = Number.parseInt(String(l.ano_de_producao ?? ''), 10);
+      return { id: String(l.__id), titulo: String(l.titulo ?? ''), ano: Number.isInteger(ano) ? ano : null };
+    });
+    memo = { em: Date.now(), filmes };
+    return filmes;
+  }
+
+  /** A conferência de cada filme lido (na mesma ordem). */
+  async function conferir(lidos) {
+    if (!lidos.length) return [];
+    const filmes = await filmesDoBanco();
+    const dias = [...new Set(lidos.map((l) => diaDaPrevia(l.data)).filter(Boolean))];
+    const exibicoes =
+      t.exibicoes && dias.length
+        ? (
+            await consultar(
+              `SELECT "filme", "sessao", "data_de_exibicao", "card_ID", "link", "labels" FROM ${t.exibicoes}
+               WHERE ("data_de_exibicao" AT TIME ZONE 'America/Sao_Paulo')::date = ANY($1::date[])`,
+              [dias],
+            )
+          )
+            .filter((e) => !cancelada(e.labels) && vinculo(e.filme)?.id)
+            .map((e) => ({
+              filme: vinculo(e.filme).id,
+              sessao: vinculo(e.sessao)?.title ?? '',
+              dia: diaEmBrasilia(e.data_de_exibicao),
+              link: String(e.link || (e.card_ID ? `https://trello.com/c/${e.card_ID}` : '')),
+            }))
+        : [];
+    // as artes no acervo dos filmes que podem ser estes (os da mesma chave e os escolhidos)
+    const chaves = new Set(lidos.map((l) => chaveDoTitulo(l.titulo)));
+    const ids = [...new Set([...filmes.filter((f) => chaves.has(chaveDoTitulo(f.titulo))).map((f) => f.id), ...lidos.map((l) => l.escolha?.filme).filter((x) => x && x !== 'novo')])];
+    const acervo = new Map();
+    if (t.acervo && ids.length)
+      for (const l of await consultar(`SELECT "arte", "filme" FROM ${t.acervo} WHERE "filme"::jsonb->>'id' = ANY($1::text[])`, [ids])) {
+        const id = vinculo(l.filme)?.id;
+        if (id) acervo.set(id, [...(acervo.get(id) ?? []), String(l.arte ?? '')]);
+      }
+    return lidos.map((l) => conferirFilme(l, { filmes, exibicoes, acervo }));
+  }
+  return { conferir };
+}
+
+export function criarFilmes(env, { db, pasta, buscar = fetch, consultar } = {}) {
   const enderecoDaLeitura = String(env.N8N_FILMES_LER || '').trim();
   const faltando = [!enderecoDaLeitura && 'N8N_FILMES_LER', !pasta && 'FILMES_PASTA'].filter(Boolean);
   const ligado = !faltando.length && !!db;
@@ -122,6 +215,8 @@ export function criarFilmes(env, { db, pasta, buscar = fetch } = {}) {
     proxima: db.prepare("SELECT g.previa_id, g.numero FROM previa_paginas g JOIN previas p ON p.id = g.previa_id WHERE g.estado = 'fila' ORDER BY p.criada_em, g.util LIMIT 1"),
     estado: db.prepare('UPDATE previa_paginas SET estado = ?, erro = ?, tentativas = tentativas + ? WHERE previa_id = ? AND numero = ?'),
     lida: db.prepare("UPDATE previa_paginas SET estado = 'lida', erro = NULL, filmes = ?, sessoes = ?, lida_em = ? WHERE previa_id = ? AND numero = ?"),
+    filmesDaPagina: db.prepare("SELECT filmes FROM previa_paginas WHERE previa_id = ? AND numero = ? AND estado = 'lida'"),
+    gravarFilmes: db.prepare('UPDATE previa_paginas SET filmes = ? WHERE previa_id = ? AND numero = ?'),
     retomar: db.prepare("UPDATE previa_paginas SET estado = 'fila' WHERE estado = 'lendo'"),
   };
   const intervalo = Math.max(0, Number(env.FILMES_INTERVALO_MS ?? 2500) || 0);
@@ -140,7 +235,22 @@ export function criarFilmes(env, { db, pasta, buscar = fetch } = {}) {
 
   const listar = () => q.lista.all().map((l) => ({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas }));
 
-  function abrir(id) {
+  const conferencia = criarConferencia(env, consultar);
+
+  /** Põe a conferência com o banco em cada filme (sem o banco configurado, os filmes ficam sem ela). */
+  async function conferidos(filmes) {
+    if (!conferencia || !filmes.length) return { filmes };
+    try {
+      const r = await conferencia.conferir(filmes);
+      return { filmes: filmes.map((f, i) => ({ ...f, conferencia: r[i] })) };
+    } catch (e) {
+      const erro = e instanceof Error ? e.message : String(e);
+      console.warn(`[filmes] a conferência com o banco falhou: ${erro}`);
+      return { filmes, erro };
+    }
+  }
+
+  async function abrir(id) {
     const p = q.previa.get(id);
     if (!p) return null;
     const paginas = q.paginas.all(id).map((g) => {
@@ -157,7 +267,40 @@ export function criarFilmes(env, { db, pasta, buscar = fetch } = {}) {
         tamanho: d?.tamanho ?? null,
       };
     });
-    return { id: p.id, nome: p.nome, por: p.por_nome, criada: p.criada_em, paginas };
+    // a conferência de todas as páginas de uma vez (uma consulta ao banco por prévia aberta)
+    const r = await conferidos(paginas.flatMap((g) => g.filmes));
+    let k = 0;
+    for (const g of paginas) g.filmes = g.filmes.map(() => r.filmes[k++]);
+    return { id: p.id, nome: p.nome, por: p.por_nome, criada: p.criada_em, paginas, ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
+  }
+
+  /**
+   * Muda um filme lido e grava na hora: o título corrigido (e a conferência recomeça com ele), o candidato escolhido
+   * ("rec…" ou "novo") ou o ano escolhido. @returns o filme conferido de novo
+   */
+  async function mudar(id, n, i, corpo) {
+    const g = q.filmesDaPagina.get(id, n);
+    if (!g) return { erro: 'Página não encontrada.', status: 404 };
+    const filmes = g.filmes ? JSON.parse(g.filmes) : [];
+    const f = filmes[i];
+    if (!f) return { erro: 'Filme não encontrado.', status: 404 };
+    if (corpo?.titulo !== undefined) {
+      const titulo = typeof corpo.titulo === 'string' ? corpo.titulo.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+      if (!titulo) return { erro: 'O título não pode ficar vazio.' };
+      if (titulo !== f.titulo) {
+        f.titulo = titulo;
+        delete f.escolha;
+      }
+    } else if (corpo?.filme !== undefined) {
+      if (typeof corpo.filme !== 'string' || !/^(novo|rec[A-Za-z0-9]{6,32})$/.test(corpo.filme)) return { erro: 'Escolha inválida.' };
+      f.escolha = { filme: corpo.filme };
+    } else if (corpo?.ano !== undefined) {
+      if (!Number.isInteger(corpo.ano) || corpo.ano < 1900 || corpo.ano > 2100) return { erro: 'Ano inválido.' };
+      f.escolha = { ...f.escolha, ano: corpo.ano };
+    } else return { erro: 'Nada para mudar.' };
+    q.gravarFilmes.run(JSON.stringify(filmes), id, n);
+    const r = await conferidos([f]);
+    return { filme: r.filmes[0], ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
   }
 
   /** A página que o navegador preparou: o PDF dela, a imagem, os pôsteres recortados (com as caixas) e as linhas de texto. */
@@ -250,5 +393,5 @@ export function criarFilmes(env, { db, pasta, buscar = fetch } = {}) {
     }
   }
 
-  return { ligado, faltando, criar, listar, abrir, receberPagina, reler, imagem, parar: () => void (parado = true) };
+  return { ligado, faltando, conferindo: !!conferencia, criar, listar, abrir, mudar, receberPagina, reler, imagem, parar: () => void (parado = true) };
 }

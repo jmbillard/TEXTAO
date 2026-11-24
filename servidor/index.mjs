@@ -29,7 +29,7 @@ setInterval(backup, 60 * 60 * 1000).unref();
 const cache = criarCache(process.env);
 // as prévias de filmes (aba Filmes): as imagens das páginas e dos pôsteres ficam junto dos dados
 const filmes = criarFilmes(process.env, { db, pasta: process.env.FILMES_PASTA ?? join(dados, 'previas') });
-console.log(filmes.ligado ? '[filmes] aba Filmes ligada' : `[filmes] aba Filmes desligada: falta ${filmes.faltando.join(', ')}`);
+console.log(filmes.ligado ? `[filmes] aba Filmes ligada${filmes.conferindo ? '' : ' (sem a conferência com o banco: falta TEABLE_PG_FILMES)'}` : `[filmes] aba Filmes desligada: falta ${filmes.faltando.join(', ')}`);
 const app = criarApp({ db, cache, filmes, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
 const servidor = createServer(app);
 servidor.on('upgrade', app.upgrade);

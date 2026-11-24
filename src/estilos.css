@@ -1994,6 +1994,24 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .cartao-filme.baixo .cf-titulo { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cartao-filme.vaga { grid-template-columns: 1fr; place-items: center; background: transparent; border-style: dashed; }
 .cartao-filme.vaga .mao { font: 700 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-4deg); }
+/* a marca da conferência (✓, ! ou Trello), na quina do card; o ! abre o balão logo abaixo */
+.cartao-filme > .ficha-marca { position: absolute; top: -7px; right: -7px; border: 0; padding: 0; box-shadow: 0 0 0 2px var(--papel); }
+.cartao-filme > button.ficha-marca { cursor: pointer; }
+.cartao-filme.aberto { z-index: 60; }
+.cartao-filme .cf-titulo.editavel { cursor: text; border-radius: 3px; }
+.cartao-filme .cf-titulo.editavel:hover { background: var(--neutro); }
+.cartao-filme input.cf-titulo { width: 100%; min-width: 0; font: inherit; font-weight: 600; font-size: 13.5px; color: var(--tinta); background: var(--cartao); border: 1px solid var(--regua-forte); border-radius: 4px; padding: 1px 4px; outline: none; }
+.cartao-filme input.cf-titulo:focus { border-color: var(--ultra); }
+.balao-filme { position: absolute; top: calc(100% + 8px); left: 0; z-index: 70; min-width: 100%; width: max-content; max-width: 640px; padding: 10px 10px 8px; background: var(--cartao); color: var(--tinta); border-radius: 12px; box-shadow: var(--sombra-menu); animation: abrir-escolha 0.16s var(--suave); }
+.balao-filme > b { display: block; font: 700 19px/1 Caveat, cursive; color: var(--falta); margin: 0 4px 8px; }
+.balao-opcoes { display: flex; gap: 8px; }
+.balao-opcoes button { position: relative; display: grid; justify-items: center; align-content: start; gap: 4px; width: 104px; padding: 8px 6px; border: 1px solid var(--regua); border-radius: 10px; background: var(--papel); color: var(--tinta); font: 500 12.5px/1.25 var(--sans); text-align: center; cursor: pointer; }
+.ano-diferente .balao-opcoes button { width: auto; padding: 8px 16px 8px 26px; font: 600 15px var(--mono); }
+.balao-opcoes button:hover, .balao-opcoes button:focus-visible { border-color: var(--ultra); }
+.balao-opcoes i { position: absolute; top: 4px; left: 6px; font: 700 15px/1 Caveat, cursive; font-style: normal; color: var(--tinta3); }
+.balao-opcoes img, .balao-opcoes .sem { width: 64px; height: 92px; object-fit: cover; border-radius: 5px; background: var(--neutro); display: block; }
+.balao-opcoes img.sem { visibility: hidden; }
+.balao-opcoes small { color: var(--tinta2); font-variant-numeric: tabular-nums; }
 .pagina-erro { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 12px; border-radius: 12px; background: var(--falta-fundo); color: var(--falta); }
 
 .folha-previa { position: relative; padding: 14px; border-radius: 3px; background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha); box-shadow: 0 1px 1px rgb(26 25 22 / 8%), 0 14px 34px -10px var(--folha-sombra); }

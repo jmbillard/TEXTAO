@@ -37,13 +37,14 @@ function n8nFalso(respostas: Record<number, unknown | ((n: number) => unknown)>)
   return { buscar, leituras };
 }
 
+type Consultar = (sql: string, params?: unknown[]) => Promise<unknown[]>;
 let servidores: Server[] = [];
 afterEach(() => {
   for (const s of servidores) s.close();
   servidores = [];
 });
-async function subir({ db = abrirBanco(':memory:'), env = ENV, n8n = n8nFalso({}), pasta = mkdtempSync(join(tmpdir(), 'previas-')) } = {}) {
-  const filmes = criarFilmes(env, { db, pasta, buscar: n8n.buscar });
+async function subir({ db = abrirBanco(':memory:'), env = ENV, n8n = n8nFalso({}), pasta = mkdtempSync(join(tmpdir(), 'previas-')), consultar = undefined as Consultar | undefined } = {}) {
+  const filmes = criarFilmes(env, { db, pasta, buscar: n8n.buscar, consultar });
   const app = criarApp({ db, env, filmes });
   const servidor = createServer(app);
   servidores.push(servidor);
@@ -184,5 +185,170 @@ describe('aba Filmes: quando a leitura falha ou o servidor reinicia', () => {
     expect(r.status).toBe(503);
     expect((await r.json()).erro).toMatch(/N8N_FILMES_LER/);
     expect(await (await api('/api/eu')).json()).toMatchObject({ filmes: false });
+  });
+});
+
+/* ---------- a conferência com o banco ---------- */
+/* O Postgres do Teable falso: responde pelo nome da tabela que aparece no SQL (nomes inventados). Devolve as linhas
+   como o Teable guarda: vínculos como { id, title } e a data da exibição em UTC (meia-noite de Brasília = 03:00Z). */
+const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', TEABLE_PG_FILMES: 'filmes_teste', TEABLE_PG_EXIBICOES: 'exibicoes_teste', TEABLE_PG_ACERVO: 'acervo_teste' };
+type FilmeDoBanco = { __id: string; titulo: string; ano_de_producao: number | null };
+type ExibicaoDoBanco = { filme: { id: string; title: string }; sessao: { id: string; title: string }; data_de_exibicao: string; card_ID: string; link: string; labels: string[] | null };
+type ArteDoAcervo = { arte: string; filme: { id: string; title: string } };
+function postgresFalso(banco: { filmes?: FilmeDoBanco[]; exibicoes?: ExibicaoDoBanco[]; acervo?: ArteDoAcervo[] }) {
+  const consultas: string[] = [];
+  const consultar: Consultar = async (sql) => {
+    consultas.push(sql);
+    if (sql.includes('"filmes_teste"')) return banco.filmes ?? [];
+    if (sql.includes('"exibicoes_teste"')) return banco.exibicoes ?? [];
+    if (sql.includes('"acervo_teste"')) return banco.acervo ?? [];
+    throw new Error(`tabela inesperada: ${sql}`);
+  };
+  return { consultar, consultas };
+}
+const filmeDoBanco = (__id: string, titulo: string, ano_de_producao: number | null): FilmeDoBanco => ({ __id, titulo, ano_de_producao });
+type Lido = { titulo: string; ano_de_producao?: number | string | null; sessao?: string; data?: string; inedito?: boolean };
+/** Sobe uma prévia de uma página com estes filmes lidos e espera a leitura; devolve a API e a prévia aberta. */
+async function conferir(lidos: Lido[], banco: Parameters<typeof postgresFalso>[0] = {}) {
+  const pg = postgresFalso(banco);
+  const movies = lidos.map((l) => ({ sessao: 'SUPERCINE', data: '05/12/2026', inedito: false, ano_de_producao: null, ...l }));
+  const { api } = await subir({ env: { ...ENV, ...PG }, n8n: n8nFalso({ 2: { movies } }), consultar: pg.consultar });
+  const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: `conf${Math.random().toString(36).slice(2, 10)}`, paginas: [2] });
+  await api(`/api/filmes/previas/${id}/paginas/2`, { method: 'PUT', body: JSON.stringify(pagina(lidos.map((l) => l.titulo))) });
+  await ate(api, id, (p) => p.paginas[0].estado === 'lida');
+  const abrir = async () => (await (await api(`/api/filmes/previas/${id}`)).json()).paginas[0].filmes;
+  const mudar = (i: number, corpo: object) => api(`/api/filmes/previas/${id}/paginas/2/filmes/${i}`, { method: 'PATCH', body: JSON.stringify(corpo) });
+  return { api, id, abrir, mudar, pg };
+}
+
+describe('aba Filmes: a conferência com o banco', () => {
+  it('um filme do banco com a mesma chave sem artigos e ano compatível: é ele, pronto', async () => {
+    const { abrir } = await conferir([{ titulo: 'KONG: ILHA DA CAVEIRA', ano_de_producao: 2017 }], {
+      filmes: [filmeDoBanco('recKong01', 'Kong - A Ilha da Caveira', 2017), filmeDoBanco('recOutro1', 'Rei Leão', 2019)],
+    });
+    const [f] = await abrir();
+    expect(f.conferencia).toMatchObject({ marca: 'ok', filme: { id: 'recKong01', titulo: 'Kong - A Ilha da Caveira', ano: 2017 }, novo: false, ano: 2017 });
+    expect(f.conferencia.pergunta).toBeUndefined();
+  });
+
+  it('o inédito sem filme compatível no banco é filme novo, sem pergunta, mesmo com o mesmo título em outro ano', async () => {
+    const { abrir } = await conferir([{ titulo: 'O CORVO', ano_de_producao: 2024, inedito: true }], {
+      filmes: [filmeDoBanco('recCorvo94', 'O Corvo', 1994)],
+    });
+    const [f] = await abrir();
+    expect(f.conferencia).toMatchObject({ marca: 'ok', filme: null, novo: true, ano: 2024 });
+    expect(f.conferencia.pergunta).toBeUndefined();
+  });
+
+  it('mais de um candidato: "qual filme?" com os candidatos; sem ano na prévia, todos os da mesma chave', async () => {
+    const banco = { filmes: [filmeDoBanco('recCorvo94', 'O Corvo', 1994), filmeDoBanco('recCorvo24', 'O Corvo', 2024), filmeDoBanco('recCorvoSA', 'Corvo', null)] };
+    const semAno = (await (await conferir([{ titulo: 'O CORVO' }], banco)).abrir())[0];
+    expect(semAno.conferencia).toMatchObject({ marca: 'atencao', pergunta: 'qual-filme', filme: null, novo: false });
+    expect(semAno.conferencia.candidatos).toEqual([
+      { id: 'recCorvo94', titulo: 'O Corvo', ano: 1994 },
+      { id: 'recCorvo24', titulo: 'O Corvo', ano: 2024 },
+      { id: 'recCorvoSA', titulo: 'Corvo', ano: null },
+    ]);
+    // com o ano, o de 1994 sai; o do banco sem ano continua compatível
+    const comAno = (await (await conferir([{ titulo: 'O CORVO', ano_de_producao: 2025 }], banco)).abrir())[0];
+    expect(comAno.conferencia.candidatos.map((c: { id: string }) => c.id)).toEqual(['recCorvo24', 'recCorvoSA']);
+  });
+
+  it('candidato único com o ano a um de distância: "ano diferente", com os dois anos', async () => {
+    const { abrir } = await conferir([{ titulo: 'RIVAIS', ano_de_producao: 2023 }], { filmes: [filmeDoBanco('recRivais1', 'Rivais', 2024)] });
+    const [f] = await abrir();
+    expect(f.conferencia).toMatchObject({ marca: 'atencao', pergunta: 'ano-diferente', filme: { id: 'recRivais1' }, anos: [2023, 2024] });
+  });
+
+  it('já existe card do mesmo filme na mesma sessão e no mesmo dia: a marca é o Trello, com o link', async () => {
+    const exibicao = (sessao: string, data: string, labels: string[] | null = null): ExibicaoDoBanco => ({
+      filme: { id: 'recRivais1', title: 'Rivais (2024)' },
+      sessao: { id: `recSes${sessao.length}xx`, title: sessao },
+      data_de_exibicao: data,
+      card_ID: 'cardRivais0001',
+      link: 'https://trello.com/c/AbCd1234',
+      labels,
+    });
+    const filmes = [filmeDoBanco('recRivais1', 'Rivais', 2024)];
+    const lido = { titulo: 'RIVAIS', ano_de_producao: 2024, sessao: 'TELA QUENTE', data: '07/12/2026' };
+    const ja = (await (await conferir([lido], { filmes, exibicoes: [exibicao('Tela Quente', '2026-12-07T03:00:00.000Z')] })).abrir())[0];
+    expect(ja.conferencia).toMatchObject({ marca: 'trello', link: 'https://trello.com/c/AbCd1234', filme: { id: 'recRivais1' } });
+    // outra sessão, outro dia ou a exibição cancelada não contam
+    const outras = [exibicao('Supercine', '2026-12-07T03:00:00.000Z'), exibicao('Tela Quente', '2026-12-08T03:00:00.000Z'), exibicao('Tela Quente', '2026-12-07T03:00:00.000Z', ['CANCELADO'])];
+    const nao = (await (await conferir([lido], { filmes, exibicoes: outras })).abrir())[0];
+    expect(nao.conferencia).toMatchObject({ marca: 'ok' });
+    expect(nao.conferencia.link).toBeUndefined();
+  });
+});
+
+describe('aba Filmes: resolver o que pede atenção', () => {
+  it('entre vários candidatos, o que já tem card nesta sessão e neste dia é ele', async () => {
+    const { abrir } = await conferir([{ titulo: 'O CORVO', sessao: 'CORUJÃO', data: '06/12/2026' }], {
+      filmes: [filmeDoBanco('recCorvo94', 'O Corvo', 1994), filmeDoBanco('recCorvo24', 'O Corvo', 2024)],
+      exibicoes: [{ filme: { id: 'recCorvo94', title: 'O Corvo (1994)' }, sessao: { id: 'recSesCoru', title: 'Corujão' }, data_de_exibicao: '2026-12-06T03:00:00.000Z', card_ID: 'cardCorvo001', link: '', labels: [] }],
+    });
+    const [f] = await abrir();
+    expect(f.conferencia).toMatchObject({ marca: 'trello', filme: { id: 'recCorvo94' }, link: 'https://trello.com/c/cardCorvo001' });
+  });
+
+  it('escolher um candidato grava e tira o !; "outro filme (novo)" também', async () => {
+    const banco = { filmes: [filmeDoBanco('recCorvo94', 'O Corvo', 1994), filmeDoBanco('recCorvo24', 'O Corvo', 2024)] };
+    const { abrir, mudar } = await conferir([{ titulo: 'O CORVO' }, { titulo: 'CORVO' }], banco);
+    const r = await mudar(0, { filme: 'recCorvo24' });
+    expect(r.status).toBe(200);
+    expect((await r.json()).filme.conferencia).toMatchObject({ marca: 'ok', filme: { id: 'recCorvo24' }, ano: 2024 });
+    await mudar(1, { filme: 'novo' });
+    const [a, b] = await abrir();
+    expect(a.conferencia).toMatchObject({ marca: 'ok', filme: { id: 'recCorvo24', ano: 2024 }, novo: false });
+    expect(b.conferencia).toMatchObject({ marca: 'ok', filme: null, novo: true });
+    expect((await mudar(0, { filme: 'qualquer coisa' })).status).toBe(400);
+  });
+
+  it('escolher um dos anos grava e tira o !', async () => {
+    const { abrir, mudar } = await conferir([{ titulo: 'RIVAIS', ano_de_producao: 2023 }], { filmes: [filmeDoBanco('recRivais1', 'Rivais', 2024)] });
+    await mudar(0, { ano: 2023 });
+    const [f] = await abrir();
+    expect(f.conferencia).toMatchObject({ marca: 'ok', filme: { id: 'recRivais1' }, ano: 2023 });
+    expect(f.conferencia.pergunta).toBeUndefined();
+  });
+
+  it('corrigir o título grava, e a conferência recomeça com o título corrigido', async () => {
+    const { abrir, mudar } = await conferir([{ titulo: 'KONG ILHA DA CAVERA', ano_de_producao: 2017 }], {
+      filmes: [filmeDoBanco('recKong01', 'Kong - A Ilha da Caveira', 2017)],
+    });
+    expect((await abrir())[0].conferencia).toMatchObject({ novo: true });
+    const r = await mudar(0, { titulo: '  Kong: A Ilha da Caveira ' });
+    expect((await r.json()).filme).toMatchObject({ titulo: 'Kong: A Ilha da Caveira', conferencia: { marca: 'ok', filme: { id: 'recKong01' } } });
+    const [f] = await abrir();
+    expect(f.titulo).toBe('Kong: A Ilha da Caveira');
+    expect(f.conferencia.filme.id).toBe('recKong01');
+    expect((await mudar(0, { titulo: '   ' })).status).toBe(400);
+  });
+
+  it('as artes que o filme já tem no acervo não contam como novas', async () => {
+    const { abrir } = await conferir([{ titulo: 'RIVAIS', ano_de_producao: 2024, sessao: 'TELA QUENTE', data: '07/12/2026' }], {
+      filmes: [filmeDoBanco('recRivais1', 'Rivais', 2024)],
+      acervo: [
+        { arte: 'Rivais', filme: { id: 'recRivais1', title: 'Rivais (2024)' } },
+        { arte: 'hoje', filme: { id: 'recRivais1', title: 'Rivais (2024)' } },
+        { arte: 'AMANHÃ', filme: { id: 'recOutro01', title: 'Outro (2020)' } },
+      ],
+    });
+    const [f] = await abrir();
+    // 07/12/2026 é uma segunda-feira
+    expect(f.conferencia.artes).toEqual({
+      novas: ['AMANHÃ', 'SEGUNDA', 'PRÓXIMA SEGUNDA', 'TELA QUENTE APRESENTA'],
+      existentes: ['RIVAIS', 'HOJE'],
+    });
+  });
+
+  it('sem a tabela de filmes configurada, os filmes vêm sem conferência', async () => {
+    const pg = postgresFalso({});
+    const { api } = await subir({ consultar: pg.consultar, n8n: n8nFalso({ 2: { movies: [{ titulo: 'RIVAIS' }] } }) });
+    const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: 'semtabela', paginas: [2] });
+    await api(`/api/filmes/previas/${id}/paginas/2`, { method: 'PUT', body: JSON.stringify(pagina(['RIVAIS'])) });
+    const p = await ate(api, id, (p) => p.paginas[0].estado === 'lida');
+    expect((p as unknown as { paginas: { filmes: object[] }[] }).paginas[0].filmes[0]).not.toHaveProperty('conferencia');
+    expect(pg.consultas).toEqual([]);
   });
 });

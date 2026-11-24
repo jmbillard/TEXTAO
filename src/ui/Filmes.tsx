@@ -3,7 +3,11 @@ import {
   abrirPrevia,
   imagemDaPagina,
   listarPrevias,
+  mudarFilme,
+  posterDoFilme,
   relerPagina,
+  type FilmeLido,
+  type MudancaNoFilme,
   type PaginaDaPrevia,
   type Previa,
   type PreviaNaLista,
@@ -14,7 +18,8 @@ import { Marca } from "./pecas";
 
 /* A aba Filmes: as prévias de filmes. Solta-se o PDF, o navegador prepara as páginas e o servidor lê cada uma
    com a IA (dá para fechar a aba). Em cada página, os cards em cima, alinhados com os pôsteres (identidade
-   própria em cima, Sessão da Tarde embaixo), e a página grande embaixo. A conferência e o envio vêm depois. */
+   própria em cima, Sessão da Tarde embaixo), e a página grande embaixo. Cada card tem uma marca só, da conferência
+   com o banco: ✓ pronto, ! pede atenção (abre o balão com a pergunta) ou o Trello (já tem card). O envio vem depois. */
 
 interface Props {
   aberta?: string;
@@ -154,7 +159,37 @@ function PreviaAberta({
   const [pag, setPag] = useState(0);
   const [destaque, setDestaque] = useState<number | null>(null);
   const carregar = useCallback(
-    () => abrirPrevia(id).then(setPrevia, (e: Error) => avisar(e.message)),
+    () =>
+      abrirPrevia(id).then(
+        (p) => {
+          setPrevia(p);
+          if (p.erroDaConferencia)
+            avisar(`Não consegui conferir com o banco: ${p.erroDaConferencia}`);
+        },
+        (e: Error) => avisar(e.message),
+      ),
+    [id, avisar],
+  );
+  // a mudança grava na hora; o filme volta conferido de novo e entra no lugar do antigo
+  const mudar = useCallback(
+    (numero: number, i: number, m: MudancaNoFilme) =>
+      mudarFilme(id, numero, i, m).then(
+        ({ filme, erroDaConferencia }) => {
+          setPrevia((p) =>
+            p && {
+              ...p,
+              paginas: p.paginas.map((g) =>
+                g.numero === numero
+                  ? { ...g, filmes: g.filmes.map((f, k) => (k === i ? filme : f)) }
+                  : g,
+              ),
+            },
+          );
+          if (erroDaConferencia)
+            avisar(`Não consegui conferir com o banco: ${erroDaConferencia}`);
+        },
+        (e: Error) => avisar(e.message),
+      ),
     [id, avisar],
   );
   useEffect(() => void carregar(), [carregar]);
@@ -221,8 +256,10 @@ function PreviaAberta({
         </nav>
       </div>
       <Pagina
+        key={p.numero}
         previaId={previa.id}
         p={p}
+        mudar={(i, m) => mudar(p.numero, i, m)}
         destaque={destaque}
         destacar={setDestaque}
         reler={() =>
@@ -241,14 +278,22 @@ function Pagina({
   destaque,
   destacar,
   reler,
+  mudar,
 }: {
   previaId: string;
   p: PaginaDaPrevia;
   destaque: number | null;
   destacar: (i: number | null) => void;
   reler: () => void;
+  mudar: (i: number, m: MudancaNoFilme) => Promise<void>;
 }) {
   const f = montarFileiras(p);
+  // o card com o balão do ! aberto (o índice do filme na página)
+  const [aberto, setAberto] = useState<number | null>(null);
+  const pergunta = aberto !== null ? p.filmes[aberto]?.conferencia?.pergunta : undefined;
+  useEffect(() => {
+    if (aberto !== null && !pergunta) setAberto(null);
+  }, [aberto, pergunta]);
   const pos = (x: number) => ({
     left: `${x * 100}%`,
     width: `${f.largura * 100}%`,
@@ -268,7 +313,7 @@ function Pagina({
     return (
       <div
         key={`f${it.i}`}
-        className={`cartao-filme ${baixo ? "baixo" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""}`}
+        className={`cartao-filme ${baixo ? "baixo" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""}`}
         style={pos(it.x)}
         onMouseEnter={() => destacar(filme.poster)}
         onMouseLeave={() => destacar(null)}
@@ -279,16 +324,29 @@ function Pagina({
           <span className="cf-poster sem" />
         )}
         {baixo ? (
-          <span className="cf-titulo">{filme.titulo}</span>
+          <Titulo filme={filme} gravar={(titulo) => mudar(it.i, { titulo })} />
         ) : (
           <div className="cf-corpo">
             <span className="cf-sessao">{filme.sessao || "???"}</span>
-            <span className="cf-titulo">{filme.titulo}</span>
+            <Titulo filme={filme} gravar={(titulo) => mudar(it.i, { titulo })} />
             <span className="cf-linha">
-              {filme.ano ?? "—"} <span>{filme.data.slice(0, 5)}</span>
+              {filme.conferencia?.ano ?? filme.ano ?? "—"}{" "}
+              <span>{filme.data.slice(0, 5)}</span>
               {filme.inedito && <b className="cf-inedito">INÉDITO</b>}
             </span>
           </div>
+        )}
+        <MarcaDoFilme
+          filme={filme}
+          aberto={aberto === it.i}
+          alternar={() => setAberto(aberto === it.i ? null : it.i)}
+        />
+        {aberto === it.i && filme.conferencia?.pergunta && (
+          <Balao
+            filme={filme}
+            fechar={() => setAberto(null)}
+            mudar={(m) => mudar(it.i, m)}
+          />
         )}
       </div>
     );
@@ -357,5 +415,163 @@ function Pagina({
         </div>
       </div>
     </>
+  );
+}
+
+/** O título do card: o único campo editável. Clique para editar; Enter (ou sair do campo) grava, Esc desiste. */
+function Titulo({
+  filme,
+  gravar,
+}: {
+  filme: FilmeLido;
+  gravar: (titulo: string) => Promise<void>;
+}) {
+  const [texto, setTexto] = useState<string | null>(null);
+  const fim = (salvar: boolean) => {
+    const novo = texto?.replace(/\s+/g, " ").trim() ?? "";
+    setTexto(null);
+    if (salvar && novo && novo !== filme.titulo) void gravar(novo);
+  };
+  if (texto === null)
+    return (
+      <span
+        className="cf-titulo editavel"
+        role="button"
+        tabIndex={0}
+        title="Corrigir o título"
+        onClick={() => setTexto(filme.titulo)}
+        onKeyDown={(e) => e.key === "Enter" && setTexto(filme.titulo)}
+      >
+        {filme.titulo || "???"}
+      </span>
+    );
+  return (
+    <input
+      className="cf-titulo"
+      autoFocus
+      value={texto}
+      aria-label="Título do filme"
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => fim(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") fim(true);
+        if (e.key === "Escape") fim(false);
+      }}
+    />
+  );
+}
+
+/** A marca do card, uma só: ✓ pronto, ! pede atenção (abre o balão) ou o Trello com o link do card que já existe. */
+function MarcaDoFilme({
+  filme,
+  aberto,
+  alternar,
+}: {
+  filme: FilmeLido;
+  aberto: boolean;
+  alternar: () => void;
+}) {
+  const c = filme.conferencia;
+  if (!c) return null;
+  if (c.marca === "trello")
+    return c.link ? (
+      <a
+        className="ficha-marca trello"
+        href={c.link}
+        target="_blank"
+        rel="noreferrer"
+        title="Abrir o card no Trello"
+        aria-label="Abrir o card no Trello"
+      >
+        <Icone nome="quadro" tam={12} traco={2.4} />
+      </a>
+    ) : (
+      <span className="ficha-marca trello" aria-label="Já tem card">
+        <Icone nome="quadro" tam={12} traco={2.4} />
+      </span>
+    );
+  if (c.marca === "atencao")
+    return (
+      <button
+        className="ficha-marca revisar"
+        onClick={alternar}
+        aria-expanded={aberto}
+        aria-label={c.pergunta === "qual-filme" ? "Qual filme?" : "Ano diferente"}
+      >
+        <Icone nome="atencao" tam={12} traco={3} />
+      </button>
+    );
+  return (
+    <span className="ficha-marca ok" aria-label="Pronto">
+      <Icone nome="certo" tam={12} traco={3} />
+    </span>
+  );
+}
+
+/** O balão do !: "qual filme?" (os candidatos lado a lado e "outro filme (novo)") ou "ano diferente" (os dois anos).
+    As teclas 1, 2, 3… escolhem; Esc fecha. A escolha grava na hora. */
+function Balao({
+  filme,
+  fechar,
+  mudar,
+}: {
+  filme: FilmeLido;
+  fechar: () => void;
+  mudar: (m: MudancaNoFilme) => Promise<void>;
+}) {
+  const c = filme.conferencia!;
+  const opcoes: { rotulo: string; ano?: number | null; poster?: string; m: MudancaNoFilme }[] =
+    c.pergunta === "qual-filme"
+      ? [
+          ...(c.candidatos ?? []).map((f) => ({
+            rotulo: f.titulo,
+            ano: f.ano,
+            poster: posterDoFilme(f.id),
+            m: { filme: f.id },
+          })),
+          { rotulo: "outro filme (novo)", poster: "", m: { filme: "novo" } },
+        ]
+      : (c.anos ?? []).map((ano) => ({ rotulo: String(ano), m: { ano } }));
+  const escolher = useRef<(k: number) => void>(() => {});
+  escolher.current = (k) => {
+    if (opcoes[k]) void mudar(opcoes[k].m);
+  };
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement;
+      if (alvo?.tagName === "INPUT" || alvo?.isContentEditable) return;
+      if (e.key === "Escape") return fechar();
+      const k = Number(e.key);
+      if (Number.isInteger(k) && k >= 1 && k <= 9) {
+        e.preventDefault();
+        escolher.current(k - 1);
+      }
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [fechar]);
+  return (
+    <div className={`balao-filme ${c.pergunta}`} role="dialog">
+      <b>{c.pergunta === "qual-filme" ? "qual filme?" : "ano diferente"}</b>
+      <div className="balao-opcoes">
+        {opcoes.map((o, k) => (
+          <button key={k} onClick={() => escolher.current(k)}>
+            <i>{k + 1}</i>
+            {o.poster !== undefined &&
+              (o.poster ? (
+                <img
+                  src={o.poster}
+                  alt=""
+                  onError={(e) => e.currentTarget.classList.add("sem")}
+                />
+              ) : (
+                <span className="sem" />
+              ))}
+            <span>{o.rotulo}</span>
+            {o.ano !== undefined && <small>{o.ano ?? "—"}</small>}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

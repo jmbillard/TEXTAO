@@ -63,6 +63,7 @@ services:
       - TEABLE_PG_ATRACOES=${TEABLE_PG_ATRACOES:-}
       - TEABLE_PG_PRIORIDADE=${TEABLE_PG_PRIORIDADE:-}
       - TEABLE_PG_EXIBICOES=${TEABLE_PG_EXIBICOES:-}
+      - TEABLE_PG_FILMES=${TEABLE_PG_FILMES:-}
       # tabela dos filmes (id da API): o pôster do filme aparece no card da fila
       - TEABLE_FILMES=${TEABLE_FILMES:-}
 

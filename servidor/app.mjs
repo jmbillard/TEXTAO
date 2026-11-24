@@ -966,6 +966,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         return json(res, 400, { erro: 'Faltam o nome, a impressão do PDF ou as páginas.' });
       return json(res, 200, filmes.criar({ nome: nome.slice(0, 200), hash, paginas: paginas.slice(0, 12) }, eu));
     }
+    const umFilme = /^\/api\/filmes\/previas\/([\w-]{6,80})\/paginas\/(\d{1,3})\/filmes\/(\d{1,2})$/.exec(caminho);
+    if (umFilme && req.method === 'PATCH') {
+      const [, id, numero, i] = umFilme;
+      const r = await filmes.mudar(id, Number(numero), Number(i), (await lerCorpo(req)) ?? {});
+      return r.erro ? json(res, r.status ?? 400, { erro: r.erro }) : json(res, 200, r);
+    }
     const daPagina = /^\/api\/filmes\/previas\/([\w-]{6,80})\/paginas\/(\d{1,3})(?:\/(imagem|poster\/(\d{1,3})|reler))?$/.exec(caminho);
     if (daPagina) {
       const [, id, numero, extra, k] = daPagina;
@@ -987,7 +993,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
     const umaPrevia = /^\/api\/filmes\/previas\/([\w-]{6,80})$/.exec(caminho);
     if (umaPrevia && req.method === 'GET') {
-      const p = filmes.abrir(umaPrevia[1]);
+      const p = await filmes.abrir(umaPrevia[1]);
       return p ? json(res, 200, p) : json(res, 404, { erro: 'Prévia não encontrada.' });
     }
     return json(res, 404, { erro: 'Não encontrado.' });
