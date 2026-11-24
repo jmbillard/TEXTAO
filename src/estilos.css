@@ -969,7 +969,31 @@ kbd {
 .convite-acoes .ponto { color: var(--tinta3); }
 .convite-acoes .botao-texto.escolher { color: var(--ultra); }
 .fila-vazia-icone { width: 58px; height: 58px; border-radius: 16px; background: var(--ultra-suave); color: var(--ultra); display: grid; place-items: center; margin-bottom: 4px; }
-.fila-rodape { margin-top: 18px; font-size: 13px; color: var(--tinta3); text-align: center; }
+
+/* o mesmo convite, deitado numa linha ao lado do título da fila; a contagem e a busca vão para a linha de baixo */
+.fila-topo:has(.convite-compacto) { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'titulo convite' 'conta conta'; align-items: center; gap: 0 24px; }
+.fila-topo:has(.convite-compacto) .fila-titulo { display: contents; }
+.fila-topo:has(.convite-compacto) h2 { grid-area: titulo; }
+.fila-topo:has(.convite-compacto) .fila-conta { grid-area: conta; }
+.fila-topo:has(.convite-compacto) .busca { grid-area: conta; justify-self: end; margin-top: 8px; }
+.convite-compacto { grid-area: convite; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 8px 10px 8px 8px; border: 1.5px dashed var(--regua-forte); border-radius: 14px; cursor: pointer; transition: border-color 0.15s, background-color 0.15s; }
+.convite-compacto:hover { border-color: var(--ultra); background: color-mix(in srgb, var(--ultra) 3%, transparent); }
+.convite-compacto .fila-vazia-icone { flex: none; width: 36px; height: 36px; border-radius: 11px; margin: 0; }
+.convite-compacto-texto { container: convite / inline-size; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.convite-compacto-texto .titulo-serifa { font-size: 18px; line-height: 1.2; }
+.convite-compacto-texto .suave { font-size: 12.5px; white-space: nowrap; }
+.convite-compacto-acoes { flex: none; display: flex; align-items: center; gap: 6px; }
+.convite-compacto .botao { height: 32px; padding: 0 11px; border-radius: 9px; font-size: 13px; gap: 6px; }
+.convite-compacto .botao kbd { font-size: 11px; padding: 0 5px; }
+/* sem espaço (com a contagem de roteiros ao lado), a frase encolhe e os formatos ficam só com os formatos */
+@container convite (max-width: 275px) { .formatos-resto { display: none; } }
+@container convite (max-width: 225px) { .convite-compacto-texto .titulo-serifa { font-size: 16.5px; } }
+.fila-topo + .colar-form { margin: 0 0 18px auto; }
+@media (max-width: 860px) {
+  .fila-topo:has(.convite-compacto) { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'titulo' 'conta' 'convite'; gap: 0; }
+  .fila-topo:has(.convite-compacto) .busca { grid-area: auto; justify-self: stretch; }
+  .convite-compacto { margin-top: 12px; flex-wrap: wrap; }
+}
 
 @media (max-width: 860px) {
   .ficha { grid-template-columns: 24px minmax(0, 1fr) auto; }
@@ -1359,8 +1383,6 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .duvida { display: inline-flex; gap: 2.5px; margin-left: 1px; vertical-align: -0.12em; color: var(--falta); }
 .duvida i { display: inline-block; font: 700 18px/0.8 Caveat, cursive; font-style: normal; }
 .ficha-gente small .duvida i { font-size: 16px; }
-/* fila com tudo já exibido: o mesmo convite, um pouco mais baixo, antes de "Já foram ao ar" */
-.fila-vazia.nada-pela-frente { margin: 8px 0 28px; padding-block: 40px; }
 .titulo-maquina { display: inline-block; min-height: 1.2em; white-space: nowrap; }
 .titulo-maquina .cursor { display: inline-block; width: 2px; height: 0.9em; margin-left: 3px; vertical-align: -0.08em; background: var(--ultra); animation: piscar-cursor-titulo 1s steps(1) infinite; }
 @keyframes piscar-cursor-titulo { 50% { opacity: 0; } }

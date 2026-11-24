@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte } from '../modelo/tipos';
 import { PRACAS, editoresConhecidos, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
-import { dataPorExtenso } from './util';
+import { atalho, dataPorExtenso, ehMac } from './util';
 import { Icone } from './icones';
 
 /** Os traços do círculo à caneta (viewBox 0 0 64 44, pathLength 1): a contagem de artes da fila e o pôster da prévia. */
@@ -38,46 +38,76 @@ function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
   );
 }
 
-/** Quando tudo já foi ao ar: convites que se revezam, digitados e apagados à máquina. */
+/** O seletor de arquivos escondido do convite: `abrir` chama o diálogo do sistema e `escolher` recebe o que veio. */
+function useSeletorDeArquivos(escolher?: (arquivos: File[]) => void) {
+  const seletor = useRef<HTMLInputElement>(null);
+  const abrir = () => seletor.current?.click();
+  const elemento = escolher && (
+    <input
+      ref={seletor}
+      type="file"
+      multiple
+      hidden
+      accept=".docx,.rtf,.pdf,.txt,.json"
+      onChange={(e) => {
+        const arquivos = [...(e.target.files ?? [])];
+        e.target.value = '';
+        if (arquivos.length) escolher(arquivos);
+      }}
+    />
+  );
+  // a área toda abre o seletor; os botões de dentro seguem com a própria ação
+  const clicarNaArea = escolher ? (e: React.MouseEvent) => !(e.target as HTMLElement).closest('button, textarea, input, a') && abrir() : undefined;
+  return { abrir, elemento, clicarNaArea };
+}
+
+/** Os formatos que o convite aceita, riscados à mão. */
+const Formatos = () => (
+  <>
+    <Riscado className="formatos-riscados">.docx, .rtf ou .pdf</Riscado>
+    <span className="formatos-resto">, quantos quiser de uma vez.</span>
+  </>
+);
+
 /** O quadro tracejado de arrastar: título que se escreve sozinho, formatos riscados à mão e o colar do Word. */
 export function ConviteDeArrastar({ frases, extra, className = '', escolher }: { frases: string[]; extra: React.ReactNode; className?: string; escolher?: (arquivos: File[]) => void }) {
-  const seletor = useRef<HTMLInputElement>(null);
-  const abrirSeletor = () => seletor.current?.click();
+  const seletor = useSeletorDeArquivos(escolher);
   return (
-    <section
-      className={`fila-vazia ${escolher ? 'clicavel' : ''} ${className}`}
-      // a área toda abre o seletor; os botões de dentro (colar do Word) seguem com a própria ação
-      onClick={escolher ? (e) => !(e.target as HTMLElement).closest('button, textarea, input, a') && abrirSeletor() : undefined}
-    >
+    <section className={`fila-vazia ${escolher ? 'clicavel' : ''} ${className}`} onClick={seletor.clicarNaArea}>
       <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
       <h2 className="titulo-serifa"><TituloQueSeEscreve frases={frases} /></h2>
-      <p className="suave">
-        <Riscado className="formatos-riscados">.docx, .rtf ou .pdf</Riscado>
-        , quantos quiser de uma vez.
-      </p>
+      <p className="suave"><Formatos /></p>
       {escolher ? (
         <div className="convite-acoes">
-          <button type="button" className="botao-texto escolher" onClick={abrirSeletor}>escolher arquivos</button>
+          <button type="button" className="botao-texto escolher" onClick={seletor.abrir}>escolher arquivos</button>
           <span className="ponto" aria-hidden="true">·</span>
           {extra}
         </div>
       ) : (
         extra
       )}
-      {escolher && (
-        <input
-          ref={seletor}
-          type="file"
-          multiple
-          hidden
-          accept=".docx,.rtf,.pdf,.txt,.json"
-          onChange={(e) => {
-            const arquivos = [...(e.target.files ?? [])];
-            e.target.value = '';
-            if (arquivos.length) escolher(arquivos);
-          }}
-        />
-      )}
+      {seletor.elemento}
+    </section>
+  );
+}
+
+/** O mesmo convite, deitado numa linha ao lado do título da fila: ícone, frase, formatos e os dois botões dentro. */
+export function ConviteCompacto({ frases, escolher, colar, colando }: { frases: string[]; escolher: (arquivos: File[]) => void; colar: () => void; colando: boolean }) {
+  const seletor = useSeletorDeArquivos(escolher);
+  return (
+    <section className="convite-compacto" aria-label="Mandar roteiros" onClick={seletor.clicarNaArea}>
+      <span className="fila-vazia-icone"><Icone nome="importar" tam={21} /></span>
+      <span className="convite-compacto-texto">
+        <span className="titulo-serifa"><TituloQueSeEscreve frases={frases} /></span>
+        <span className="suave"><Formatos /></span>
+      </span>
+      <span className="convite-compacto-acoes">
+        <button type="button" className="botao primario" onClick={seletor.abrir}>Escolher arquivos</button>
+        <button type="button" className="botao" aria-expanded={colando} aria-keyshortcuts={ehMac ? 'Meta+V' : 'Control+V'} onClick={colar}>
+          Colar do Word <kbd>{atalho('Mod-V')}</kbd>
+        </button>
+      </span>
+      {seletor.elemento}
     </section>
   );
 }

@@ -15,7 +15,7 @@ import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
-import { CONVITES, CONVITES_FILA_VAZIA, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado } from './pecas';
+import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, plural } from './util';
 
@@ -622,6 +622,9 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   );
 }
 
+/** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
+const CONVITES_EM_DIA = CONVITES.filter((f) => f !== 'Fila em dia!');
+
 export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState('');
@@ -666,6 +669,18 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
   }, [abrir]);
+  // Ctrl/⌘+V fora dos campos: o mesmo que o botão "Colar do Word" (a folha começa pela claquete)
+  useEffect(() => {
+    if (aoFundo) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'v' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.repeat) return;
+      const alvo = e.target as HTMLElement | null;
+      if (alvo?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      setColando(true);
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [aoFundo]);
   const [ponteiros, setPonteiros] = useState<Record<string, PonteiroDeAlguem>>({});
   const [fila, setFila] = useState<Fila | null>(null);
   // muda quando alguém troca a cor de destaque: as fichas e os ponteiros se redesenham
@@ -965,7 +980,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           roteiros && (
             <section className="lista">
               <div className="fila-topo">
-                <div>
+                <div className="fila-titulo">
                   <h2 className="titulo-serifa">
                     {nPendentes || !lendo ? (
                       nPendentes ? <><em>{nPendentes}</em> {nPendentes === 1 ? 'roteiro na fila' : 'roteiros na fila'}</> : <>Fila em dia</>
@@ -985,6 +1000,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                     {lendo && <span><i className="ponto lendo" />lendo 1</span>}
                   </p>
                 </div>
+                <ConviteCompacto frases={CONVITES_EM_DIA} escolher={receberArquivos} colar={() => setColando(true)} colando={colando} />
                 {todos.length > 6 && (
                   <label className="busca">
                     <Icone nome="lupa" tam={15} traco={2} />
@@ -992,6 +1008,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                   </label>
                 )}
               </div>
+              {colando && colar}
 
               {(lendo || falhas.length > 0) && (
                 <ul className="fichas">
@@ -1013,16 +1030,6 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                     </li>
                   ))}
                 </ul>
-              )}
-
-              {/* nada para ir ao ar (tudo já foi exibido): o convite para arrastar volta para o lugar dele */}
-              {!proximos.length && !lendo && !falhas.length && !termo && !filtroEstado && (
-                <ConviteDeArrastar
-                  className="nada-pela-frente"
-                  frases={CONVITES}
-                  escolher={colando ? undefined : receberArquivos}
-                  extra={colando ? colar : <button className="botao-texto" onClick={() => setColando(true)}>ou cole o texto copiado do Word</button>}
-                />
               )}
 
               <div className="dias">
@@ -1059,9 +1066,6 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                   {termo ? `Nada encontrado para “${busca}”.` : filtroEstado === 'revisar' ? 'Nada para revisar.' : 'Nenhum roteiro pronto ainda.'}
                 </p>
               )}
-              {proximos.length > 0 || lendo || falhas.length > 0 || termo || filtroEstado ? (colando ? colar : (
-                <p className="fila-rodape">Arraste mais roteiros para qualquer ponto da tela. <button className="botao-texto" onClick={() => setColando(true)}>Colar do Word</button></p>
-              )) : null}
             </section>
           )
         )}
