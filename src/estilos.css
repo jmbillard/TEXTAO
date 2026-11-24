@@ -2005,8 +2005,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .cartao-filme.vaga { grid-template-columns: 1fr; place-items: center; background: transparent; border-style: dashed; }
 .cartao-filme.vaga .mao { position: relative; font: 700 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-4deg); }
 /* a vaga cancelada: riscada com um X à mão, "cancelado" escrito por cima */
-.cartao-filme.vaga .risco { position: absolute; inset: 14px 22px; width: calc(100% - 44px); height: calc(100% - 28px); overflow: visible; }
-.cartao-filme.vaga .risco path { fill: none; stroke: var(--perigo); stroke-width: 1.6; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: 0.55; }
+.cartao-filme.cancelada .risco { position: absolute; inset: 14px 22px; width: calc(100% - 44px); height: calc(100% - 28px); overflow: visible; }
+.cartao-filme.cancelada .risco path { fill: none; stroke: var(--perigo); stroke-width: 1.6; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: 0.55; }
 /* a vaga do pôster de um filme lido na Sessão da Tarde: o card de baixo é arrastado até ela */
 .cartao-filme.vaga.lugar { border-color: color-mix(in srgb, var(--falta) 55%, transparent); transition: border-color 0.15s, background 0.15s; }
 .cartao-filme.vaga.lugar .mao { color: var(--falta); letter-spacing: 3px; }

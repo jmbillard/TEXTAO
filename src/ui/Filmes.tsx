@@ -657,7 +657,7 @@ function Pagina({
               return (
                 <span
                   key={i}
-                  className={`caixa-poster ${destaque === i ? "destaque" : ""}`}
+                  className="caixa-poster"
                   style={{
                     left: `${(c.x / p.tamanho!.width) * 100}%`,
                     top: `${(c.y / p.tamanho!.height) * 100}%`,
@@ -670,7 +670,7 @@ function Pagina({
                   {destaque === i && <Circulo traco={i} className="circulo mouse" />}
                   {pede && <Circulo traco={i + 1} className="circulo atencao" />}
                   {dele?.envio?.estado === "enviado" && (
-                    <svg className="visto" viewBox="0 0 32 26" aria-label="Foi para o Trello">
+                    <svg className="visto" viewBox="0 0 32 26" role="img" aria-label="Foi para o Trello">
                       <path d="M3 14 C 6 16, 9 19, 11 23 C 15 14, 21 7, 30 2" />
                     </svg>
                   )}
