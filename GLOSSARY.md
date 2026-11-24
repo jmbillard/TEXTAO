@@ -54,7 +54,8 @@ Sessão da Tarde. Na prévia, é a fileira de cima.
 
 **Sessão da Tarde**:
 A sessão de filme cuja arte é um template vertical, sem identidade própria do filme: os filmes da semana viram um card
-só. Na prévia, é a fileira de baixo; um filme lido ali por engano é arrastado para a fileira de cima.
+só. Na prévia, é a fileira de baixo; um filme lido ali por engano é arrastado para a fileira de cima. As artes
+produzidas para cada filme (o título no template) entram no acervo dele como as de qualquer atração.
 
 **Filme**:
 Um título da grade que passa numa sessão, sem claquete própria; mora na tabela `filmes`. Lançamento com claquete
