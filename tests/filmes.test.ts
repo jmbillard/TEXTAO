@@ -810,3 +810,105 @@ describe('aba Filmes: a Sessão da Tarde', () => {
     expect(becky.envio!.card).toBeUndefined();
   });
 });
+
+/* ---------- o filme que a leitura pôs por engano na Sessão da Tarde ---------- */
+/* Uma página como a da prévia: na fileira de cima, três colunas (a data em texto acima de cada pôster; o nome da
+   sessão é logotipo, sem texto); na de baixo, a Sessão da Tarde. A leitura erra a coluna do meio. */
+const SESSOES_DA_PAGINA = ['SUPERCINE', 'CINEMAÇO', 'TELA QUENTE', 'SESSÃO DA TARDE'];
+function paginaComDuasFileiras(textosAcima: string[][] = [['05/12'], ['06/12'], ['07/12']]) {
+  const cima = [0, 1, 2].map((k) => ({ x: 100 + k * 200, y: 100, width: 100, height: 150 }));
+  const baixo = [0, 1].map((k) => ({ x: 150 + k * 300, y: 380, width: 90, height: 130 }));
+  const titulos = ['DESPEDIDA EM GRANDE ESTILO', 'UM SONHO DE LIBERDADE', 'TREZE VIDAS', 'KONG', 'LUCA'];
+  return {
+    ...pagina([]),
+    tamanho: { width: 1000, height: 600 },
+    posteres: [...cima, ...baixo].map((c, i) => ({ dados: b64(`jpg-poster-${i + 1}`), caixa: c })),
+    textos: [
+      ...[...cima, ...baixo].map((c, i) => ({ str: titulos[i], x: c.x, top: c.y + c.height + 8, width: c.width, height: 12 })),
+      ...textosAcima.flatMap((linhas, k) => linhas.map((str, j) => ({ str, x: cima[k].x + 10, top: 60 + j * 16, width: 60, height: 12 }))),
+      { str: '09/12', x: 160, top: 355, width: 40, height: 12 },
+      { str: '10/12', x: 460, top: 355, width: 40, height: 12 },
+    ],
+  };
+}
+async function comFilmeNaTardePorEngano({ sessoes = SESSOES_DA_PAGINA, sessaoDaDireita = 'TELA QUENTE', textosAcima = undefined as string[][] | undefined } = {}) {
+  const pg = postgresFalso({ filmes: [filmeDoBanco('recSonho01', 'Um Sonho de Liberdade', 1994)] });
+  const movies = [
+    { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'SUPERCINE', data: '05/12/2026' },
+    { titulo: 'UM SONHO DE LIBERDADE', ano_de_producao: 1994, sessao: 'SESSÃO DA TARDE', data: '09/12/2026' },
+    { titulo: 'TREZE VIDAS', ano_de_producao: 2022, sessao: sessaoDaDireita, data: '07/12/2026' },
+    { titulo: 'KONG', ano_de_producao: 2017, sessao: 'SESSÃO DA TARDE', data: '09/12/2026' },
+    { titulo: 'LUCA', ano_de_producao: 2021, sessao: 'SESSÃO DA TARDE', data: '10/12/2026' },
+  ];
+  const { api } = await subir({ env: { ...ENV, ...PG }, n8n: n8nFalso({ 2: { movies, sessoes } }), consultar: pg.consultar });
+  const { id } = await criar(api, { nome: 'PREVIA.pdf', hash: `tarde${Math.random().toString(36).slice(2, 10)}`, paginas: [2] });
+  await api(`/api/filmes/previas/${id}/paginas/2`, { method: 'PUT', body: JSON.stringify(paginaComDuasFileiras(textosAcima)) });
+  await ate(api, id, (p) => p.paginas[0].estado === 'lida');
+  const abrir = async () => (await (await api(`/api/filmes/previas/${id}`)).json()).paginas[0];
+  const mudar = (i: number, corpo: object) => api(`/api/filmes/previas/${id}/paginas/2/filmes/${i}`, { method: 'PATCH', body: JSON.stringify(corpo) });
+  return { abrir, mudar };
+}
+
+describe('aba Filmes: o filme de identidade própria lido na Sessão da Tarde', () => {
+  it('subir o filme para a vaga dele grava: ele sai da Sessão da Tarde e pede a sessão, a da coluna em primeiro', async () => {
+    const { abrir, mudar } = await comFilmeNaTardePorEngano();
+    const antes = await abrir();
+    // os pôsteres da fileira de cima da página (a vaga do filme lido na Sessão da Tarde é um deles)
+    expect(antes.fileiraDeCima).toEqual([0, 1, 2]);
+    expect(antes.filmes[1]).toMatchObject({ sessao: 'SESSÃO DA TARDE', poster: 1 });
+
+    const r = await mudar(1, { subir: true });
+    expect(r.status).toBe(200);
+    const { filme } = await r.json();
+    expect(filme.sessao).toBe('');
+    expect(filme.conferencia).toMatchObject({ marca: 'atencao', pergunta: 'sessao' });
+    expect(filme.conferencia.sessoes).toEqual([
+      { sessao: 'CINEMAÇO', data: '06/12/2026', coluna: true },
+      { sessao: 'SUPERCINE' },
+      { sessao: 'TELA QUENTE' },
+    ]);
+    // gravado: quem abrir a prévia depois vê o mesmo
+    const depois = (await abrir()).filmes[1];
+    expect(depois).toMatchObject({ sessao: '', conferencia: { marca: 'atencao', pergunta: 'sessao' } });
+  });
+
+  it('escolhida a sessão, o filme passa pela conferência e fica pronto; a da coluna traz a data do alto da coluna', async () => {
+    const { abrir, mudar } = await comFilmeNaTardePorEngano();
+    await mudar(1, { subir: true });
+    expect((await mudar(1, { sessao: 'CORUJÃO' })).status).toBe(400);
+    const r = await mudar(1, { sessao: 'Cinemaço' });
+    expect(r.status).toBe(200);
+    expect((await r.json()).filme).toMatchObject({ sessao: 'CINEMAÇO', data: '06/12/2026', conferencia: { marca: 'ok', filme: { id: 'recSonho01' } } });
+    const pag = await abrir();
+    expect(pag.filmes[1]).toMatchObject({ sessao: 'CINEMAÇO', data: '06/12/2026', conferencia: { marca: 'ok' } });
+    expect(pag.filmes[1].conferencia.pergunta).toBeUndefined();
+
+    // outra sessão da página: fica a data lida
+    const outro = await comFilmeNaTardePorEngano();
+    await outro.mudar(1, { subir: true });
+    expect((await (await outro.mudar(1, { sessao: 'SUPERCINE' })).json()).filme).toMatchObject({ sessao: 'SUPERCINE', data: '09/12/2026', conferencia: { marca: 'ok' } });
+  });
+
+  it('só sobe o filme da Sessão da Tarde com o pôster na fileira de cima; a sessão só muda no que subiu', async () => {
+    const { mudar } = await comFilmeNaTardePorEngano();
+    expect((await mudar(3, { subir: true })).status).toBe(409);
+    expect((await mudar(0, { subir: true })).status).toBe(409);
+    expect((await mudar(0, { sessao: 'CINEMAÇO' })).status).toBe(409);
+  });
+
+  it('a sessão da coluna: o nome escrito acima do pôster vale primeiro; sem ele, as colunas sem sessão casam com as sessões livres', async () => {
+    // o nome da sessão em texto no alto da coluna
+    const escrito = await comFilmeNaTardePorEngano({ textosAcima: [['05/12'], ['06/12', 'TELA QUENTE'], ['07/12']] });
+    const a = (await (await escrito.mudar(1, { subir: true })).json()).filme;
+    expect(a.conferencia.sessoes[0]).toEqual({ sessao: 'TELA QUENTE', data: '06/12/2026', coluna: true });
+    // duas colunas lidas na Sessão da Tarde: a da esquerda fica com a primeira sessão livre, a da direita com a outra
+    const duas = await comFilmeNaTardePorEngano({ sessoes: ['SUPERCINE', 'CINEMAÇO', 'CORUJÃO', 'SESSÃO DA TARDE'], sessaoDaDireita: 'SESSÃO DA TARDE' });
+    const b = (await (await duas.mudar(2, { subir: true })).json()).filme;
+    expect(b.conferencia.sessoes).toEqual([{ sessao: 'CORUJÃO', data: '07/12/2026', coluna: true }, { sessao: 'SUPERCINE' }, { sessao: 'CINEMAÇO' }]);
+    expect((await (await duas.mudar(1, { subir: true })).json()).filme.conferencia.sessoes[0]).toEqual({ sessao: 'CINEMAÇO', data: '06/12/2026', coluna: true });
+    // sem como saber a coluna, as sessões da página na ordem da leitura, nenhuma marcada como a da coluna
+    const sem = await comFilmeNaTardePorEngano({ sessoes: [] });
+    const c = (await (await sem.mudar(1, { subir: true })).json()).filme;
+    expect(c.conferencia.sessoes).toEqual([{ sessao: 'SUPERCINE' }, { sessao: 'TELA QUENTE' }]);
+  });
+});

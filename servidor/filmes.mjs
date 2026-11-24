@@ -65,6 +65,65 @@ export function ligarPosteres(filmes, posteres, textos) {
   });
 }
 
+/* ---------- as fileiras da página: o filme que a leitura pôs por engano na Sessão da Tarde ---------- */
+/** Os pôsteres da fileira de cima (identidade própria): os da altura do pôster mais alto, se há outra fileira embaixo. */
+export function fileiraDeCima(posteres) {
+  if (!posteres.length) return [];
+  const topo = posteres.reduce((a, p) => (p.caixa.y < a.caixa.y ? p : a)).caixa;
+  const cima = posteres.flatMap((p, i) => (p.caixa.y + p.caixa.height / 2 <= topo.y + topo.height ? [i] : []));
+  return cima.length < posteres.length ? cima : [];
+}
+
+/** O alto da coluna do pôster (a regra do FilmeBOT): as linhas de texto logo acima dele, da mais perto para a mais longe. */
+function textoAcima({ x, y, width, height }, textos) {
+  return textos
+    .filter((l) => Math.min(x + width, l.x + l.width) - Math.max(x, l.x) > 0 && y - l.top > 0 && y - l.top < height * 0.7)
+    .sort((a, b) => b.top - a.top);
+}
+
+/** "06/12" no alto da coluna vira "06/12/2026", no ano da data lida (na virada do ano, o ano ao lado). */
+function dataDaColuna(linhas, dataLida) {
+  const m = linhas.map((l) => /\b(\d{1,2})\/(\d{1,2})\b/.exec(l.str)).find(Boolean);
+  const lida = /^\d{1,2}\/(\d{1,2})\/(\d{4})$/.exec(String(dataLida ?? '').trim());
+  if (!m || !lida) return '';
+  const [dia, mes] = [Number(m[1]), Number(m[2])];
+  if (dia < 1 || dia > 31 || mes < 1 || mes > 12) return '';
+  const ano = Number(lida[2]) + (mes - Number(lida[1]) > 6 ? -1 : Number(lida[1]) - mes > 6 ? 1 : 0);
+  return `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${ano}`;
+}
+
+/**
+ * As sessões para perguntar ao filme que subiu: primeiro a da coluna da vaga dele (com a data do alto da coluna), depois
+ * as outras da página. A da coluna é o nome escrito acima do pôster; sem ele (o nome é logotipo), as sessões da página que
+ * nenhum outro filme usa, na ordem da leitura, casadas com as colunas de cima sem sessão, da esquerda para a direita.
+ * @param pagina { posteres, textos, sessoes (as da leitura), filmes }
+ * @returns [{ sessao, data?, coluna? }]
+ */
+export function sessoesParaPerguntar(pagina, i) {
+  const { posteres = [], textos = [], sessoes = [], filmes = [] } = pagina;
+  const chave = compacto;
+  const todas = [];
+  for (const s of [...sessoes, ...filmes.map((f) => f.sessao)].map((s) => String(s ?? '').trim()))
+    if (s && !ehSessaoDaTarde(s) && !todas.some((t) => chave(t) === chave(s))) todas.push(s);
+  const f = filmes[i];
+  const caixa = f && f.poster !== null && f.poster !== undefined ? posteres[f.poster]?.caixa : null;
+  if (!caixa) return todas.map((sessao) => ({ sessao }));
+  const linhas = textoAcima(caixa, textos);
+  let daColuna = linhas.map((l) => todas.find((s) => chave(s) === chave(l.str))).find(Boolean);
+  if (!daColuna) {
+    const temSessao = (j) => j !== i && filmes[j].sessao && !ehSessaoDaTarde(filmes[j].sessao);
+    const usadas = new Set(filmes.filter((_, j) => temSessao(j)).map((g) => chave(g.sessao)));
+    const livres = todas.filter((s) => !usadas.has(chave(s)));
+    const colunas = fileiraDeCima(posteres)
+      .filter((p) => !filmes.some((g, j) => g.poster === p && temSessao(j)))
+      .sort((a, b) => posteres[a].caixa.x - posteres[b].caixa.x);
+    if (livres.length === colunas.length) daColuna = livres[colunas.indexOf(f.poster)];
+  }
+  if (!daColuna) return todas.map((sessao) => ({ sessao }));
+  const data = dataDaColuna(linhas, f.data);
+  return [{ sessao: daColuna, ...(data ? { data } : {}), coluna: true }, ...todas.filter((s) => s !== daColuna).map((sessao) => ({ sessao }))];
+}
+
 /** A resposta do fluxo de leitura: um objeto (ou uma lista com um) com "movies". */
 function respostaDaLeitura(texto) {
   if (!texto.trim()) throw new Error('a leitura voltou vazia');
@@ -206,6 +265,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     estado: db.prepare('UPDATE previa_paginas SET estado = ?, erro = ?, tentativas = tentativas + ? WHERE previa_id = ? AND numero = ?'),
     lida: db.prepare("UPDATE previa_paginas SET estado = 'lida', erro = NULL, filmes = ?, sessoes = ?, lida_em = ? WHERE previa_id = ? AND numero = ?"),
     filmesDaPagina: db.prepare("SELECT filmes FROM previa_paginas WHERE previa_id = ? AND numero = ? AND estado = 'lida'"),
+    paginaLida: db.prepare("SELECT dados, filmes, sessoes FROM previa_paginas WHERE previa_id = ? AND numero = ? AND estado = 'lida'"),
     gravarFilmes: db.prepare('UPDATE previa_paginas SET filmes = ? WHERE previa_id = ? AND numero = ?'),
     retomar: db.prepare("UPDATE previa_paginas SET estado = 'fila' WHERE estado = 'lendo'"),
   };
@@ -248,6 +308,10 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     }
   }
 
+  /** O filme que subiu sem sessão leva, na pergunta, as sessões para escolher (a da coluna dele primeiro). */
+  const comPergunta = (f, pagina, i) =>
+    f.conferencia?.pergunta === 'sessao' ? { ...f, conferencia: { ...f.conferencia, sessoes: sessoesParaPerguntar(pagina, i) } } : f;
+
   /** O filme enviado mostra o Trello, com o link do card que ele criou. */
   const comEnvio = (f) => (f.envio?.estado === 'enviado' && f.conferencia ? { ...f, conferencia: { ...f.conferencia, marca: 'trello', link: f.envio.link } } : f);
 
@@ -266,12 +330,18 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
         posteres: d?.posteres ?? [],
         vagas: d?.vagas ?? [],
         tamanho: d?.tamanho ?? null,
+        fileiraDeCima: fileiraDeCima(d?.posteres ?? []),
+        textos: d?.textos ?? [],
       };
     });
     // a conferência de todas as páginas de uma vez (uma consulta ao banco por prévia aberta)
     const r = await conferidos(paginas.flatMap((g) => g.filmes));
     let k = 0;
-    for (const g of paginas) g.filmes = g.filmes.map(() => comEnvio(r.filmes[k++]));
+    for (const g of paginas) {
+      const lidos = g.filmes;
+      g.filmes = lidos.map((_, i) => comPergunta(comEnvio(r.filmes[k++]), { ...g, filmes: lidos }, i));
+      delete g.textos;
+    }
     return {
       id: p.id,
       nome: p.nome,
@@ -288,13 +358,27 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
    * ("rec…" ou "novo") ou o ano escolhido. @returns o filme conferido de novo
    */
   async function mudar(id, n, i, corpo) {
-    const g = q.filmesDaPagina.get(id, n);
+    const g = q.paginaLida.get(id, n);
     if (!g) return { erro: 'Página não encontrada.', status: 404 };
     const filmes = g.filmes ? JSON.parse(g.filmes) : [];
     const f = filmes[i];
     if (!f) return { erro: 'Filme não encontrado.', status: 404 };
     if (f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado') return { erro: 'Este filme já foi para o Trello.', status: 409 };
-    if (corpo?.titulo !== undefined) {
+    const dados = g.dados ? JSON.parse(g.dados) : {};
+    const pagina = { posteres: dados.posteres ?? [], textos: dados.textos ?? [], sessoes: g.sessoes ? JSON.parse(g.sessoes) : [], filmes };
+    if (corpo?.subir !== undefined) {
+      if (corpo.subir !== true) return { erro: 'Nada para mudar.' };
+      if (!ehSessaoDaTarde(f.sessao) || !fileiraDeCima(pagina.posteres).includes(f.poster))
+        return { erro: 'Este filme não tem vaga na fileira de cima.', status: 409 };
+      f.sessao = '';
+      f.subiu = true;
+    } else if (corpo?.sessao !== undefined) {
+      if (!f.subiu) return { erro: 'A sessão só muda no filme que subiu da Sessão da Tarde.', status: 409 };
+      const opcao = sessoesParaPerguntar(pagina, i).find((o) => typeof corpo.sessao === 'string' && compacto(o.sessao) === compacto(corpo.sessao));
+      if (!opcao) return { erro: 'Sessão inválida.' };
+      f.sessao = opcao.sessao;
+      if (opcao.data) f.data = opcao.data;
+    } else if (corpo?.titulo !== undefined) {
       const titulo = typeof corpo.titulo === 'string' ? corpo.titulo.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
       if (!titulo) return { erro: 'O título não pode ficar vazio.' };
       if (titulo !== f.titulo) {
@@ -310,7 +394,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello 
     } else return { erro: 'Nada para mudar.' };
     q.gravarFilmes.run(JSON.stringify(filmes), id, n);
     const r = await conferidos([f]);
-    return { filme: comEnvio(r.filmes[0]), ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
+    return { filme: comPergunta(comEnvio(r.filmes[0]), pagina, i), ...(r.erro ? { erroDaConferencia: r.erro } : {}) };
   }
 
   /** A página que o navegador preparou: o PDF dela, a imagem, os pôsteres recortados (com as caixas) e as linhas de texto. */

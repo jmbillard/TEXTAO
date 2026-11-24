@@ -219,6 +219,8 @@ export interface FilmeLido {
   inedito: boolean;
   /** o pôster da página (a posição na ordem de leitura), ou null */
   poster: number | null;
+  /** a pessoa subiu o filme da Sessão da Tarde para a vaga dele na fileira de cima (e ele pede a sessão) */
+  subiu?: boolean;
   /** o que a pessoa escolheu no ! (um candidato, "novo" ou um dos anos) */
   escolha?: { filme?: string; ano?: number };
   /** a conferência com o banco; sem o banco configurado, não vem */
@@ -243,19 +245,21 @@ export interface FilmeDoBanco {
 /** A conferência de um filme lido com o banco: ✓ (ok), ! (atencao, com a pergunta) ou o Trello (já tem card). */
 export interface Conferencia {
   marca: 'ok' | 'atencao' | 'trello';
-  pergunta?: 'qual-filme' | 'ano-diferente' | 'sem-titulo';
+  pergunta?: 'qual-filme' | 'ano-diferente' | 'sem-titulo' | 'sessao';
   /** o filme do banco; null é filme novo (ou ainda sem resposta para "qual filme?") */
   filme: FilmeDoBanco | null;
   novo: boolean;
   ano: number | null;
   candidatos?: FilmeDoBanco[];
+  /** "sessão: ???": as sessões para escolher, a da coluna do filme na página primeiro (com a data do alto da coluna) */
+  sessoes?: { sessao: string; data?: string; coluna?: boolean }[];
   /** "ano diferente": [o da prévia, o do banco] */
   anos?: [number, number];
   link?: string;
   /** as artes do card: as novas e as que o filme já tem no acervo */
   artes: { novas: string[]; existentes: string[] };
 }
-export type MudancaNoFilme = { titulo: string } | { filme: string } | { ano: number };
+export type MudancaNoFilme = { titulo: string } | { filme: string } | { ano: number } | { subir: true } | { sessao: string };
 export interface PaginaDaPrevia {
   numero: number;
   util: number;
@@ -266,6 +270,8 @@ export interface PaginaDaPrevia {
   posteres: { caixa: CaixaDaPagina }[];
   vagas: { caixa: CaixaDaPagina; texto: string }[];
   tamanho: { width: number; height: number } | null;
+  /** os pôsteres da fileira de cima da página (identidade própria) */
+  fileiraDeCima?: number[];
 }
 export interface Previa {
   id: string;
@@ -300,7 +306,7 @@ export const abrirPrevia = (id: string) => pedir<Previa>(`/api/filmes/previas/${
 export const mandarPagina = (id: string, numero: number, pagina: PaginaPreparada) =>
   pedir<{ ok: true }>(`/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}`, { method: 'PUT', body: JSON.stringify(pagina) });
 export const relerPagina = (id: string, numero: number) => pedir<{ ok: true }>(`/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/reler`, { method: 'POST' });
-/** Grava na hora uma mudança num filme lido (título, candidato ou ano) e devolve o filme conferido de novo. */
+/** Grava na hora uma mudança num filme lido (título, candidato, ano, subir da Sessão da Tarde ou a sessão) e devolve o filme conferido de novo. */
 export const mudarFilme = (id: string, numero: number, i: number, mudanca: MudancaNoFilme) =>
   pedir<{ filme: FilmeLido; erroDaConferencia?: string }>(`/api/filmes/previas/${encodeURIComponent(id)}/paginas/${numero}/filmes/${i}`, {
     method: 'PATCH',

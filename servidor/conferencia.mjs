@@ -8,6 +8,7 @@
    5. Candidato único com o ano a um de distância: "ano diferente" (!), para escolher entre os dois anos.
    6. Já existe card do mesmo filme, na mesma sessão e no mesmo dia: a marca é o Trello, e o filme não vai.
    7. Sem título (a leitura não achou): "sem título" (!), até a pessoa corrigir o título.
+   8. Filme que subiu da Sessão da Tarde e ainda não tem sessão: "sessão: ???" (!), antes de qualquer outra pergunta.
 
    A escolha da pessoa (um candidato, filme novo ou um dos anos) resolve a pergunta. As artes do card que o filme já
    tem no acervo ficam em "existentes" e não contam como novas. */
@@ -35,10 +36,10 @@ function artesDoCard(titulo, sessao, dia) {
 }
 
 /**
- * @param lido { titulo, ano, sessao, data ("DD/MM/AAAA"), escolha?: { filme?: 'rec…' | 'novo', ano?: number } }
+ * @param lido { titulo, ano, sessao, data ("DD/MM/AAAA"), subiu?: true (saiu da Sessão da Tarde), escolha?: { filme?: 'rec…' | 'novo', ano?: number } }
  * @param banco.filmes [{ id, titulo, ano }]; banco.exibicoes [{ filme (id), sessao, dia ("AAAA-MM-DD"), link }],
  *   já sem as canceladas; banco.acervo Map(id do filme → [arte])
- * @returns { marca: 'ok' | 'atencao' | 'trello', pergunta?: 'qual-filme' | 'ano-diferente' | 'sem-titulo', filme: { id, titulo, ano }
+ * @returns { marca: 'ok' | 'atencao' | 'trello', pergunta?: 'qual-filme' | 'ano-diferente' | 'sem-titulo' | 'sessao', filme: { id, titulo, ano }
  *   ou null (filme novo), novo, ano, candidatos?, anos?, link?, artes: { novas, existentes } }
  */
 export function conferirFilme(lido, { filmes = [], exibicoes = [], acervo = new Map() } = {}) {
@@ -68,6 +69,8 @@ export function conferirFilme(lido, { filmes = [], exibicoes = [], acervo = new 
     else pergunta = 'ano-diferente';
   }
 
+  if (lido.subiu && !String(lido.sessao ?? '').trim()) pergunta = 'sessao';
+
   const card = cardDe(filme);
   const titulo = filme?.titulo ?? lido.titulo;
   const jaTem = new Set((filme ? acervo.get(filme.id) ?? [] : []).map(chaveDeArte));
@@ -85,7 +88,7 @@ export function conferirFilme(lido, { filmes = [], exibicoes = [], acervo = new 
   else if (pergunta === 'qual-filme') {
     r.pergunta = pergunta;
     r.candidatos = candidatos.map((f) => ({ id: f.id, titulo: f.titulo, ano: f.ano }));
-  } else if (pergunta === 'sem-titulo') r.pergunta = pergunta;
+  } else if (pergunta === 'sem-titulo' || pergunta === 'sessao') r.pergunta = pergunta;
   else if (pergunta === 'ano-diferente') {
     r.pergunta = pergunta;
     r.anos = [ano, filme.ano];

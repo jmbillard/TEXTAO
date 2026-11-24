@@ -1995,6 +1995,14 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .cartao-filme.baixo .cf-titulo { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cartao-filme.vaga { grid-template-columns: 1fr; place-items: center; background: transparent; border-style: dashed; }
 .cartao-filme.vaga .mao { font: 700 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-4deg); }
+/* a vaga do pôster de um filme lido na Sessão da Tarde: o card de baixo é arrastado até ela */
+.cartao-filme.vaga.lugar { border-color: color-mix(in srgb, var(--falta) 55%, transparent); transition: border-color 0.15s, background 0.15s; }
+.cartao-filme.vaga.lugar .mao { color: var(--falta); letter-spacing: 3px; }
+.cartao-filme.vaga.lugar.alvo { border-color: var(--falta); background: var(--falta-fundo); }
+.cartao-filme.sobe { cursor: grab; user-select: none; -webkit-user-select: none; }
+.cartao-filme.sobe input { user-select: text; -webkit-user-select: text; }
+.cartao-filme.arrastando { opacity: 0.45; }
+.cartao-filme .cf-sessao.falta { font: 700 17px/0.9 Caveat, cursive; color: var(--falta); letter-spacing: 0.02em; overflow: visible; }
 /* a marca da conferência (✓, ! ou Trello), na quina do card; o ! abre o balão logo abaixo */
 .cartao-filme > .ficha-marca { position: absolute; top: -7px; right: -7px; border: 0; padding: 0; box-shadow: 0 0 0 2px var(--papel); }
 .cartao-filme > button.ficha-marca { cursor: pointer; }
@@ -2010,6 +2018,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .balao-opcoes { display: flex; gap: 8px; }
 .balao-opcoes button { position: relative; display: grid; justify-items: center; align-content: start; gap: 4px; width: 104px; padding: 8px 6px; border: 1px solid var(--regua); border-radius: 10px; background: var(--papel); color: var(--tinta); font: 500 12.5px/1.25 var(--sans); text-align: center; cursor: pointer; }
 .ano-diferente .balao-opcoes button { width: auto; padding: 8px 16px 8px 26px; font: 600 15px var(--mono); }
+.sessao .balao-opcoes { flex-direction: column; gap: 6px; }
+.sessao .balao-opcoes button { width: auto; display: flex; align-items: baseline; gap: 8px; padding: 8px 16px 8px 28px; text-align: left; font: 600 13.5px var(--mono); }
 .balao-opcoes button:hover, .balao-opcoes button:focus-visible { border-color: var(--ultra); }
 .balao-opcoes i { position: absolute; top: 4px; left: 6px; font: 700 15px/1 Caveat, cursive; font-style: normal; color: var(--tinta3); }
 .balao-opcoes img, .balao-opcoes .sem { width: 64px; height: 92px; object-fit: cover; border-radius: 5px; background: var(--neutro); display: block; }

@@ -13,14 +13,16 @@ import {
   type Previa,
   type PreviaNaLista,
 } from "../dados/armazenamento";
-import { montarFileiras, type ItemDaFileira } from "../filmes/fileiras";
+import { montarFileiras, podeSubir, type ItemDaFileira } from "../filmes/fileiras";
 import { Icone } from "./icones";
 import { Marca } from "./pecas";
 
 /* A aba Filmes: as prévias de filmes. Solta-se o PDF, o navegador prepara as páginas e o servidor lê cada uma
    com a IA (dá para fechar a aba). Em cada página, os cards em cima, alinhados com os pôsteres (identidade
    própria em cima, Sessão da Tarde embaixo), e a página grande embaixo. Cada card tem uma marca só, da conferência
-   com o banco: ✓ pronto, ! pede atenção (abre o balão com a pergunta) ou o Trello (já tem card). O Enviar, o mesmo
+   com o banco: ✓ pronto, ! pede atenção (abre o balão com a pergunta) ou o Trello (já tem card). O filme que a leitura
+   pôs por engano na Sessão da Tarde deixa "???" na vaga do pôster dele em cima: arrastado até lá, ele pede a sessão,
+   a da coluna dele na página primeiro (só de baixo para cima). O Enviar, o mesmo
    do editor de roteiros, manda os prontos de toda a prévia; o que der erro mostra o motivo e vai no próximo Enviar. */
 
 interface Props {
@@ -334,6 +336,13 @@ function Pagina({
   const f = montarFileiras(p);
   // o card com o balão do ! aberto (o índice do filme na página)
   const [aberto, setAberto] = useState<number | null>(null);
+  // o filme da Sessão da Tarde sendo arrastado para a vaga dele em cima, e o título sendo editado (não arrasta)
+  const [arrastando, setArrastando] = useState<number | null>(null);
+  const [editando, setEditando] = useState(false);
+  const subir = (i: number) => {
+    setArrastando(null);
+    if (podeSubir(p, i)) void mudar(i, { subir: true }).then(() => setAberto(i));
+  };
   const balao = aberto !== null && temBalao(p.filmes[aberto]);
   useEffect(() => {
     if (aberto !== null && !balao) setAberto(null);
@@ -349,7 +358,19 @@ function Pagina({
           <span className="mao">{it.texto?.toLowerCase()}</span>
         </div>
       );
+    if (it.tipo === "lugar")
+      return (
+        <div
+          key={`l${it.i}`}
+          className={`cartao-filme vaga lugar ${arrastando === it.i ? "alvo" : ""}`}
+          style={pos(it.x)}
+          aria-label={`A vaga de ${it.filme!.titulo || "um filme"}`}
+        >
+          <span className="mao">???</span>
+        </div>
+      );
     const filme = it.filme!;
+    const sobe = baixo && podeSubir(p, it.i);
     const poster =
       filme.poster !== null
         ? imagemDaPagina(previaId, p.numero, filme.poster + 1)
@@ -357,10 +378,22 @@ function Pagina({
     return (
       <div
         key={`f${it.i}`}
-        className={`cartao-filme ${baixo ? "baixo" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""}`}
+        className={`cartao-filme ${baixo ? "baixo" : ""} ${sobe ? "sobe" : ""} ${arrastando === it.i ? "arrastando" : ""} ${destaque === filme.poster && filme.poster !== null ? "destaque" : ""} ${aberto === it.i ? "aberto" : ""}`}
         style={pos(it.x)}
         onMouseEnter={() => destacar(filme.poster)}
         onMouseLeave={() => destacar(null)}
+        draggable={sobe && !editando}
+        onDragStart={
+          sobe
+            ? (e) => {
+                e.dataTransfer.setData("text/plain", String(it.i));
+                e.dataTransfer.effectAllowed = "move";
+                setAberto(null);
+                setArrastando(it.i);
+              }
+            : undefined
+        }
+        onDragEnd={sobe ? () => setArrastando(null) : undefined}
       >
         {poster ? (
           <img className="cf-poster" src={poster} alt="" />
@@ -368,11 +401,15 @@ function Pagina({
           <span className="cf-poster sem" />
         )}
         {baixo ? (
-          <Titulo filme={filme} gravar={(titulo) => mudar(it.i, { titulo })} />
+          <Titulo filme={filme} gravar={(titulo) => mudar(it.i, { titulo })} aoEditar={setEditando} />
         ) : (
           <div className="cf-corpo">
-            <span className="cf-sessao">{filme.sessao || "???"}</span>
-            <Titulo filme={filme} gravar={(titulo) => mudar(it.i, { titulo })} />
+            {filme.sessao ? (
+              <span className="cf-sessao">{filme.sessao}</span>
+            ) : (
+              <span className="cf-sessao falta">sessão: ???</span>
+            )}
+            <Titulo filme={filme} gravar={(titulo) => mudar(it.i, { titulo })} aoEditar={setEditando} />
             <span className="cf-linha">
               {filme.conferencia?.ano ?? filme.ano ?? "—"}{" "}
               <span>{filme.data.slice(0, 5)}</span>
@@ -400,7 +437,19 @@ function Pagina({
     <>
       {pronta ? (
         <div className="fileiras">
-          <div className="fileira cima">
+          <div
+            className="fileira cima"
+            onDragOver={(e) => {
+              if (arrastando !== null) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (arrastando !== null) subir(arrastando);
+            }}
+          >
             {f.cima.map((it) => card(it, false))}
           </div>
           <div className="fileira baixo">
@@ -466,11 +515,20 @@ function Pagina({
 function Titulo({
   filme,
   gravar,
+  aoEditar,
 }: {
   filme: FilmeLido;
   gravar: (titulo: string) => Promise<void>;
+  /** avisa o card enquanto o campo está aberto (o card de baixo não arrasta, para o mouse selecionar o texto) */
+  aoEditar?: (sim: boolean) => void;
 }) {
   const [texto, setTexto] = useState<string | null>(null);
+  const editandoAgora = texto !== null;
+  useEffect(() => {
+    if (!editandoAgora) return;
+    aoEditar?.(true);
+    return () => aoEditar?.(false);
+  }, [editandoAgora, aoEditar]);
   // o campo some depois do Enter ou do Esc: o blur que vem junto não pode gravar de novo (nem o que foi desistido)
   const terminado = useRef(false);
   const editar = () => {
@@ -567,7 +625,9 @@ function MarcaDoFilme({
             ? "Qual filme?"
             : c.pergunta === "sem-titulo"
               ? "Sem título"
-              : "Ano diferente"
+              : c.pergunta === "sessao"
+                ? "Qual sessão?"
+                : "Ano diferente"
         }
       >
         <Icone nome="atencao" tam={12} traco={3} />
@@ -580,7 +640,8 @@ function MarcaDoFilme({
   );
 }
 
-/** O balão do !: "qual filme?" (os candidatos lado a lado e "outro filme (novo)") ou "ano diferente" (os dois anos).
+/** O balão do !: "qual filme?" (os candidatos lado a lado e "outro filme (novo)"), "ano diferente" (os dois anos) ou
+    "qual sessão?" (o filme que subiu da Sessão da Tarde: a sessão da coluna dele primeiro, depois as outras da página).
     As teclas 1, 2, 3… escolhem; Esc fecha. A escolha grava na hora. */
 function Balao({
   filme,
@@ -599,7 +660,7 @@ function Balao({
       : c.pergunta === "sem-titulo"
         ? { titulo: "sem título", texto: "clique no título para escrever" }
         : null;
-  const opcoes: { rotulo: string; ano?: number | null; poster?: string; m: MudancaNoFilme }[] =
+  const opcoes: { rotulo: string; ano?: number | null; poster?: string; nota?: string; m: MudancaNoFilme }[] =
     c.pergunta === "qual-filme"
       ? [
           ...(c.candidatos ?? []).map((f) => ({
@@ -612,7 +673,13 @@ function Balao({
         ]
       : c.pergunta === "ano-diferente"
         ? (c.anos ?? []).map((ano) => ({ rotulo: String(ano), m: { ano } }))
-        : [];
+        : c.pergunta === "sessao"
+          ? (c.sessoes ?? []).map((s) => ({
+              rotulo: s.data ? `${s.sessao} · ${s.data.slice(0, 5)}` : s.sessao,
+              nota: s.coluna ? "a coluna dele na página" : undefined,
+              m: { sessao: s.sessao },
+            }))
+          : [];
   const escolher = useRef<(k: number) => void>(() => {});
   escolher.current = (k) => {
     if (opcoes[k]) void mudar(opcoes[k].m);
@@ -640,7 +707,13 @@ function Balao({
     );
   return (
     <div className={`balao-filme ${c.pergunta}`} role="dialog">
-      <b>{c.pergunta === "qual-filme" ? "qual filme?" : "ano diferente"}</b>
+      <b>
+        {c.pergunta === "qual-filme"
+          ? "qual filme?"
+          : c.pergunta === "sessao"
+            ? "qual sessão?"
+            : "ano diferente"}
+      </b>
       <div className="balao-opcoes">
         {opcoes.map((o, k) => (
           <button key={k} onClick={() => escolher.current(k)}>
@@ -657,6 +730,7 @@ function Balao({
               ))}
             <span>{o.rotulo}</span>
             {o.ano !== undefined && <small>{o.ano ?? "—"}</small>}
+            {o.nota && <small>({o.nota})</small>}
           </button>
         ))}
       </div>
