@@ -311,11 +311,10 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   const [ligando, setLigando] = useState(false);
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
-  // já no Trello: a ficha descansa (sem alerta, sem pendências, "Abrir" discreto)
-  const mandada = noTrello(r);
-  const revisar = mandada ? [] : r.meta.revisar ?? [];
+  // o que já está no Trello não vira ficha: vai para a seção No Trello
+  const revisar = r.meta.revisar ?? [];
   // a pergunta da v2 também pede atenção
-  const np = !mandada && producao ? r.meta.naProducao : undefined;
+  const np = producao ? r.meta.naProducao : undefined;
   const alerta = revisar.length > 0 || !!np;
   const semEditor = !r.meta.editor;
   // alguém com o roteiro aberto: a orelha dobra, a claquete é selecionada e o nome é anotado à mão.
@@ -325,11 +324,11 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
   const quem = ocupada ? agora[0] : r.revisadoPor;
   // a folha de quem está revisando cobre só as linhas de cima (sem a do Trello): a principal, a versão, a produção e as pendências
   const avisoTrello = r.trello?.estado === 'enviando' || r.trello?.estado === 'erro';
-  const comPendencias = revisar.length > 0 || (!r.meta.programa && !!cadastrarAtracao && !mandada) || avisoTrello;
+  const comPendencias = revisar.length > 0 || (!r.meta.programa && !!cadastrarAtracao) || avisoTrello;
   const linhasDaFolha = 1 + (versao ? 1 : 0) + (np && producao && !versao ? 1 : 0) + (comPendencias ? 1 : 0);
   return (
     <div
-      className={`ficha ${alerta ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''} ${mandada ? 'mandada' : ''}`}
+      className={`ficha ${alerta ? 'revisar' : 'pronta'} ${nova ? 'nova' : ''} ${terminou ? 'montada' : 'digitando'} ${ocupada ? 'ocupada' : ''} ${revisada ? 'revisada' : ''}`}
       data-ancora={`ficha:${r.id}`}
       style={quem ? ({ '--cor': corDe(quem.email), '--fim-folha': linhasDaFolha + 1 } as React.CSSProperties) : undefined}
     >
@@ -338,15 +337,9 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
           <i>{ocupada ? primeiro(agora[0].nome)[0] : ''}</i>
         </span>
       )}
-      {mandada && r.trello?.url ? (
-        <a className="ficha-marca trello" href={r.trello.url} target="_blank" rel="noreferrer" title="Abrir o card no Trello" aria-label="Abrir o card no Trello">
-          <Icone nome="quadro" tam={12} traco={2.4} />
-        </a>
-      ) : (
-        <span className={`ficha-marca ${mandada ? 'trello' : alerta ? 'revisar' : 'ok'}`} aria-hidden="true">
-          {mandada ? <Icone nome="quadro" tam={12} traco={2.4} /> : alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
-        </span>
-      )}
+      <span className={`ficha-marca ${alerta ? 'revisar' : 'ok'}`} aria-hidden="true">
+        {alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
+      </span>
       <button className="ficha-claquete" onClick={np && producao ? producao.comparar : abrir} aria-label={`Abrir ${claquete}`}>
         <b>
           <span className="claquete-alvo">
@@ -373,9 +366,9 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
         </span>
       </button>
       <span className="ficha-gente some">
-        {r.meta.redator ? <span><small className="rotulo-gente">redator:</small> {r.meta.redator}</span> : mandada ? <span className="suave">redator: —</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
-        <small className={semEditor && !mandada ? 'falta' : ''}>
-          edição: {!semEditor ? r.meta.editor : mandada ? 'a definir' : <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" />}
+        {r.meta.redator ? <span><small className="rotulo-gente">redator:</small> {r.meta.redator}</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
+        <small className={semEditor ? 'falta' : ''}>
+          edição: {!semEditor ? r.meta.editor : <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" />}
         </small>
       </span>
       <span className="ficha-artes some">
@@ -386,7 +379,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
         {np && producao ? (
           <button className="botao primario" onClick={producao.comparar} title="Comparar com o que já está no Trello e decidir antes de revisar">Comparar</button>
         ) : (
-          <button className={mandada ? 'botao-texto' : `botao ${alerta ? 'primario' : ''}`} onClick={abrir}>{alerta ? 'Revisar' : 'Abrir'}</button>
+          <button className={`botao ${alerta ? 'primario' : ''}`} onClick={abrir}>{alerta ? 'Revisar' : 'Abrir'}</button>
         )}
       </span>
       {versao && (
@@ -401,7 +394,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
       {np && producao && !versao && (
         <span className="ficha-producao some">
           <span className="rotulo-gente">já no Trello</span>
-          <a className="card-existente" href={np.url} target="_blank" rel="noreferrer" title={np.status.length ? np.status.map((x) => etapaDe(x).nome).join(', ') : undefined}>
+          <a className="card-existente" href={np.url} target="_blank" rel="noreferrer" title={np.status.length ? np.status.map(etapaDe).join(', ') : undefined}>
             <Icone nome="quadro" tam={14} traco={2.2} />
             <b>{np.claquete}</b>
             {np.entrada && <small>{dataCurtaComDia(new Date(np.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
@@ -412,7 +405,7 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
         <span className="ficha-pendencias some">
           <AvisoTrello r={r} mandar={mandar} />
           {revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}
-          {!r.meta.programa && cadastrarAtracao && !mandada && (
+          {!r.meta.programa && cadastrarAtracao && (
             <span className="ancora-balao">
               <button type="button" className="atalho-cadastro" aria-expanded={ligando} onClick={() => (avisar ? setLigando((x) => !x) : cadastrarAtracao())}>
                 <Icone nome="mais" tam={12} traco={2.4} /> cadastrar a atração
@@ -444,7 +437,7 @@ const ETAPAS: Record<string, string> = {
   FILME: 'Filme',
   CAIU: 'Caiu',
 };
-const etapaDe = (st: string) => ({ nome: ETAPAS[st.toUpperCase()] ?? st[0] + st.slice(1).toLowerCase() });
+const etapaDe = (st: string) => ETAPAS[st.toUpperCase()] ?? st[0] + st.slice(1).toLowerCase();
 
 /* ---------- No Trello: a semana de agenda ---------- */
 
@@ -743,13 +736,14 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const pendente = new Set(pendentes(todos).map((r) => r.id));
   const nPendentes = pendente.size;
   const paraRevisar = todos.filter((r) => pendente.has(r.id) && pedeRevisao(r)).length;
+  const achado = (r: Resumo) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo);
   const visiveis = todos
-    .filter((r) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo))
+    .filter(achado)
     .filter((r) => !filtroEstado || (pendente.has(r.id) && (filtroEstado === 'revisar' ? pedeRevisao(r) : !pedeRevisao(r))));
   // a fila é a revisão dos roteiros: os filmes da grade não entram (os cards deles ficam no Trello e no FilmeBOT)
   const { proximos, exibidos } = agruparPorDia(visiveis.filter((r) => !noTrello(r)));
   // os enviados vão para a seção No Trello: a busca vale para eles, os filtros de revisão não
-  const enviados = todos.filter((r) => noTrello(r) && (!termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo)));
+  const enviados = todos.filter((r) => noTrello(r) && achado(r));
   proximoParaRevisar.current =
     proximos.flatMap((g) => g.itens).find((r) => pendente.has(r.id) && pedeRevisao(r) && !noTrello(r) && !noRoteiro[r.id]?.length)?.id ?? null;
   const porId = new Map(todos.map((r) => [r.id, r]));

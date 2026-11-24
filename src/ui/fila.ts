@@ -13,6 +13,8 @@ export interface GrupoDia {
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** A data de exibição veio completa (AAAA-MM-DD)? */
+const ehData = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 const maiuscula = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 /** Já tem card no Trello (mandado pelo PROMeiro ou pelo upload antigo). */
@@ -37,7 +39,7 @@ function nomear(iso: string, hoje: string, amanha: string): Pick<GrupoDia, 'titu
 /** O que ainda pede trabalho: nem foi ao ar, nem já está no Trello. É isso que a fila conta. */
 export function pendentes(lista: Resumo[], agora = new Date()): Resumo[] {
   const hoje = isoLocal(agora);
-  return lista.filter((r) => !noTrello(r) && !(/^\d{4}-\d{2}-\d{2}$/.test(r.meta.dataExibicao) && r.meta.dataExibicao < hoje));
+  return lista.filter((r) => !noTrello(r) && !(ehData(r.meta.dataExibicao) && r.meta.dataExibicao < hoje));
 }
 
 /** diasExtras: dias que aparecem mesmo sem roteiro (os dias que só têm filme). */
@@ -46,11 +48,11 @@ export function agruparPorDia(lista: Resumo[], agora = new Date(), diasExtras: s
   const amanha = isoLocal(new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1));
   const porDia = new Map<string, Resumo[]>();
   for (const r of lista) {
-    const k = /^\d{4}-\d{2}-\d{2}$/.test(r.meta.dataExibicao) ? r.meta.dataExibicao : '';
+    const k = ehData(r.meta.dataExibicao) ? r.meta.dataExibicao : '';
     if (!porDia.has(k)) porDia.set(k, []);
     porDia.get(k)!.push(r);
   }
-  for (const k of diasExtras) if (/^\d{4}-\d{2}-\d{2}$/.test(k) && k >= hoje && !porDia.has(k)) porDia.set(k, []);
+  for (const k of diasExtras) if (ehData(k) && k >= hoje && !porDia.has(k)) porDia.set(k, []);
   const grupo = (k: string): GrupoDia => ({
     chave: k || 'sem-data',
     ...(k ? nomear(k, hoje, amanha) : { titulo: 'Sem data', subtitulo: 'a data de exibição não veio no arquivo' }),
@@ -128,8 +130,8 @@ export function montarSemana(lista: Resumo[], andamento: Record<string, Andament
   });
   const [ini, fim] = [datas[0], datas[6]];
   const periodo = ini.getMonth() === fim.getMonth() ? `${ini.getDate()} – ${fim.getDate()} de ${MESES[fim.getMonth()]}` : `${ini.getDate()} de ${MESES[ini.getMonth()]} – ${fim.getDate()} de ${MESES[fim.getMonth()]}`;
-  const semData = enviados.filter((c) => !/^\d{4}-\d{2}-\d{2}$/.test(c.r.meta.dataExibicao)).sort(ordem);
-  const passados = [...new Set(enviados.map((c) => c.r.meta.dataExibicao).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d < hoje))].sort().reverse();
+  const semData = enviados.filter((c) => !ehData(c.r.meta.dataExibicao)).sort(ordem);
+  const passados = [...new Set(enviados.map((c) => c.r.meta.dataExibicao).filter((d) => ehData(d) && d < hoje))].sort().reverse();
   const anteriores = passados.map((iso) => {
     const [a, m, d] = iso.split('-').map(Number);
     return { iso, titulo: `${DIAS[new Date(a, m - 1, d).getDay()]}, ${d} de ${MESES[m - 1]}`, cards: doDia(iso) };
