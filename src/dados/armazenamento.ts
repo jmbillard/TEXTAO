@@ -63,7 +63,8 @@ export interface Armazenamento {
   lerVersao(id: string, n: number): Promise<ConteudoVersao>;
   /** As outras pessoas que já usaram a plataforma. */
   usuarios(): Promise<Pessoa[]>;
-  /** Como anda na produção da arte o que já está no Trello, por roteiro (lido do Teable). */
+  /** Como anda na produção da arte o que já está no Trello, por roteiro (lido do Teable), e quais roteiros (enviados
+      ou na fila de revisão) estão na lista de prioridade. */
   andamento(): Promise<Record<string, Andamento>>;
 }
 
@@ -73,6 +74,9 @@ export interface Andamento {
   designers: string[];
   entregue: boolean;
   entrega: string | null;
+  /** A claquete está na lista de prioridade (a mesma que dá a prioridade ALTA no envio). Vem também para os roteiros
+      da fila de revisão, com o andamento vazio. */
+  prioridade?: true;
 }
 
 /* ---------- navegador ---------- */

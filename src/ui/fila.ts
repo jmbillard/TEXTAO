@@ -85,6 +85,8 @@ export interface CardDaSemana {
   etapa: EtapaDoCard;
   /** As etiquetas, os designers e a entrega do card, para o card aberto. */
   andamento?: Andamento;
+  /** A claquete está na lista de prioridade (a que dá a prioridade ALTA no envio): o card ganha o risco à mão. */
+  prioridade: boolean;
 }
 
 /** O que o card fechado mostra à direita. As outras etapas (aguardando material, pedido de alteração…) não aparecem. */
@@ -107,6 +109,8 @@ export interface Semana {
   /** Os cards nas sete colunas, e quantos deles já foram entregues (o resumo do título). */
   total: number;
   entregues: number;
+  /** Quantos dos cards nas sete colunas estão na lista de prioridade ("N com prioridade", à mão). */
+  comPrioridade: number;
   /** Os dias antes de hoje que têm card, do mais recente para o mais antigo (o link "dias anteriores"). */
   anteriores: { iso: string; titulo: string; cards: CardDaSemana[] }[];
   /** "24 – 30 de novembro", "29 de novembro – 5 de dezembro". */
@@ -120,7 +124,7 @@ const somarDias = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth()
 export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0): Semana {
   const hoje = isoLocal(agora);
   const amanha = isoLocal(somarDias(agora, 1));
-  const enviados = lista.filter(noTrello).map((r): CardDaSemana => ({ r, etapa: etapaDoCard(andamento[r.id]), andamento: andamento[r.id] }));
+  const enviados = lista.filter(noTrello).map((r): CardDaSemana => ({ r, etapa: etapaDoCard(andamento[r.id]), andamento: andamento[r.id], prioridade: !!andamento[r.id]?.prioridade }));
   const claquete = (c: CardDaSemana) => c.r.meta.claquete || c.r.meta.titulo || '';
   // o que caiu desce para o fim do dia
   const ordem = (a: CardDaSemana, b: CardDaSemana) => +(a.etapa === 'caiu') - +(b.etapa === 'caiu') || claquete(a).localeCompare(claquete(b), 'pt-BR');
@@ -139,7 +143,7 @@ export function montarSemana(lista: Resumo[], andamento: Record<string, Andament
     return { iso, titulo: `${DIAS[new Date(a, m - 1, d).getDay()]}, ${d} de ${MESES[m - 1]}`, cards: doDia(iso) };
   });
   const naSemana = dias.flatMap((d) => d.cards);
-  return { dias, semData, anteriores, periodo, total: naSemana.length, entregues: naSemana.filter((c) => c.etapa === 'entregue').length };
+  return { dias, semData, anteriores, periodo, total: naSemana.length, entregues: naSemana.filter((c) => c.etapa === 'entregue').length, comPrioridade: naSemana.filter((c) => c.prioridade).length };
 }
 
 /* ---------- No Trello: o card aberto ---------- */

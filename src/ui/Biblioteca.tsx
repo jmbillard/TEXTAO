@@ -15,7 +15,7 @@ import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
-import { CONVITES, CONVITES_FILA_VAZIA, ConviteDeArrastar, Duvida, Marca, RABISCOS } from './pecas';
+import { CONVITES, CONVITES_FILA_VAZIA, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, plural } from './util';
 
@@ -307,7 +307,10 @@ interface JaNaProducao {
   comparar: () => void;
 }
 
-function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou }: { r: Resumo; nova: boolean; ordem: number; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: () => void; avisar?: (t: string) => void; ligou?: () => void }) {
+/** Qual dos riscos à mão vai sob a claquete: sempre o mesmo para o mesmo roteiro. */
+const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0);
+
+function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou }: { r: Resumo; nova: boolean; ordem: number; prioridade?: boolean; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: () => void; avisar?: (t: string) => void; ligou?: () => void }) {
   const [ligando, setLigando] = useState(false);
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
@@ -343,10 +346,11 @@ function Ficha({ r, nova, ordem, abrir, acoes, agora, eu, versao, producao, mand
       <button className="ficha-claquete" onClick={np && producao ? producao.comparar : abrir} aria-label={`Abrir ${claquete}`}>
         <b>
           <span className="claquete-alvo">
-            <span className="claquete-texto">{digitado}</span>
+            {prioridade && terminou ? <Riscado traco={tracoDe(r.id)}><span className="claquete-texto">{digitado}</span></Riscado> : <span className="claquete-texto">{digitado}</span>}
             {ocupada && <svg className="ibeam" viewBox="0 0 12 28" aria-hidden="true"><path d="M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5" /></svg>}
           </span>
           {nova && !terminou && <i className="cursor" />}
+          {prioridade && terminou && <span className="prio-nota" title="Na lista de prioridade: vai para o Trello com prioridade ALTA">prioridade</span>}
           {ocupada ? (
             <span className="rubrica agora" title={`${agora.map((p) => p.nome).join(', ')} com o roteiro aberto agora`}>
               {nomes(agora)} {agora.length === 1 ? 'tá vendo' : 'tão vendo'}
@@ -442,7 +446,7 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
   return (
     <li className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''}`} data-card={r.id}>
       <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
-        <span className="card-semana-claquete">{claquete}</span>
+        <span className="card-semana-claquete">{c.prioridade ? <Riscado traco={tracoDe(r.id)}>{claquete}</Riscado> : claquete}</span>
         <span className="card-semana-linha">
           {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
           <span className="card-semana-artes">{plural(r.nArtes, 'arte', 'artes')}</span>
@@ -551,6 +555,7 @@ function NoTrello({ lista, andamento, abrir, tirar }: { lista: Resumo[]; andamen
         <span className="secao-trello-conta">
           {plural(s.total, 'card', 'cards')}
           {s.entregues > 0 && ` · ${plural(s.entregues, 'entregue', 'entregues')}`}
+          {s.comPrioridade > 0 && <> · <span className="prio-nota">{s.comPrioridade} com prioridade</span></>}
         </span>
         <span className="semana-nav">
           {deslocamento !== 0 && <button type="button" className="botao-texto" onClick={() => setDeslocamento(0)}>voltar para hoje</button>}
@@ -602,14 +607,15 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const carregar = () => armazenamento.listar().then(setRoteiros, () => setRoteiros([]));
   // o andamento na produção da arte: junto com a fila e a cada 2 min (o servidor guarda por 1 min)
   const [andamento, setAndamento] = useState<Record<string, Andamento>>({});
-  const temNoTrello = (roteiros ?? []).some(noTrello);
+  // vem também para a fila de revisão: quais roteiros estão na lista de prioridade
+  const temRoteiros = !!roteiros?.length;
   useEffect(() => {
-    if (!temNoTrello) return;
+    if (!temRoteiros) return;
     const ler = () => void armazenamento.andamento().then(setAndamento);
     ler();
     const t = setInterval(ler, 120_000);
     return () => clearInterval(t);
-  }, [temNoTrello, roteiros]);
+  }, [temRoteiros, roteiros]);
   useEffect(() => {
     void carregar();
   }, [chegou]);
@@ -819,6 +825,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         agora={noRoteiro[r.id] ?? []}
         eu={eu}
         ordem={ordem++}
+        prioridade={!!andamento[r.id]?.prioridade}
         abrir={() => abrir(r.id)}
         versao={anterior ? { anterior, substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
         producao={r.meta.naProducao && (r.podeEditar || r.meu || aberto) ? { comparar: () => comparar(r.id) } : undefined}

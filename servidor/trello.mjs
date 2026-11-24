@@ -743,14 +743,32 @@ export function criarTrello(env, deps = {}) {
   let avisouFalha = false;
 
   /**
-   * @param itens [{ id, card, claquete }]: os roteiros que já estão no Trello. Sem card (veio pelo upload
-   *   antigo), procura pela claquete nos últimos 30 dias.
-   * @returns { [id]: { status: string[], designers: string[], entregue: boolean, entrega: string|null } }
+   * @param itens [{ id, card, claquete, naFila? }]: os roteiros que já estão no Trello e, com `naFila`, os da fila de
+   *   revisão (só para a prioridade). Enviado sem card (veio pelo upload antigo): procura pela claquete nos últimos 30 dias.
+   * @returns { [id]: { status: string[], designers: string[], entregue: boolean, entrega: string|null, prioridade?: true } }
+   *   `prioridade`: a claquete está na lista de prioridade (a mesma que dá a prioridade ALTA no envio). O roteiro da fila
+   *   que é prioridade vem com o andamento vazio.
    */
   async function andamento(itens) {
-    if (!t.leitura || !itens.length) return {};
-    const chave = itens.map((i) => `${i.id}:${i.card ?? ''}`).sort().join(',');
+    if (!itens.length) return {};
+    const chave = itens.map((i) => `${i.id}:${i.card ?? ''}:${i.naFila ? chaveN8n(i.claquete) : ''}`).sort().join(',');
     if (memo.chave === chave && Date.now() - memo.em < 60_000) return memo.dados;
+    const enviados = itens.filter((i) => !i.naFila);
+    const [producao, prioridade] = await Promise.all([lerProducao(enviados), listaDePrioridade(itens.map((i) => chaveN8n(i.claquete)))]);
+    if (!producao) return {};
+    const dados = {};
+    for (const i of itens) {
+      const a = producao[i.id] ?? (prioridade.has(chaveN8n(i.claquete)) ? { status: [], designers: [], entregue: false, entrega: null } : null);
+      if (!a) continue;
+      dados[i.id] = prioridade.has(chaveN8n(i.claquete)) ? { ...a, prioridade: true } : a;
+    }
+    memo = { em: Date.now(), chave, dados };
+    return dados;
+  }
+
+  /** O andamento dos enviados na produção da arte; null quando a leitura falhou. */
+  async function lerProducao(itens) {
+    if (!t.leitura || !itens.length) return {};
     try {
       const semCard = itens.some((i) => !i.card);
       const linhas = await sql(
@@ -771,13 +789,24 @@ export function criarTrello(env, deps = {}) {
           entrega: quando(l.data_entrega) ? new Date(l.data_entrega).toISOString() : null,
         };
       }
-      memo = { em: Date.now(), chave, dados };
       avisouFalha = false;
       return dados;
     } catch (e) {
       if (!avisouFalha) console.warn(`[andamento] não consegui ler a produção da arte: ${e instanceof Error ? e.message : e}`);
       avisouFalha = true;
-      return {};
+      return null;
+    }
+  }
+
+  /** As chaves (dentre estas) que estão na lista de prioridade; sem a lista configurada ou fora do ar, nenhuma. */
+  async function listaDePrioridade(chaves) {
+    const validas = [...new Set(chaves.filter(Boolean))];
+    if (!t.prioridade || !c.prioridadeAlta || !validas.length) return new Set();
+    try {
+      return new Set((await sql(`SELECT "key" FROM ${t.prioridade} WHERE "key" = ANY($1::text[])`, [validas])).map((l) => l.key));
+    } catch (e) {
+      console.warn(`[andamento] não consegui ler a lista de prioridade: ${e instanceof Error ? e.message : e}`);
+      return new Set();
     }
   }
 

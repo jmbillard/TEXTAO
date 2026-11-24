@@ -349,14 +349,46 @@ describe('andamento na produção da arte', () => {
     expect(a.r3.status).toEqual(['CAIU']); // a linha mais recente com a mesma claquete
     expect(a.r4).toBeUndefined();
     expect(consultas[0].sql).toContain('"bseBase"."producao"');
+    const n = consultas.length;
     await t.andamento(itens);
-    expect(consultas).toHaveLength(1);
+    expect(consultas).toHaveLength(n);
   });
 
   it('sem Postgres ou com erro, devolve vazio', async () => {
     expect(await criarTrello({ ...ENV, TEABLE_PG_ARTE: '' }, { consultar: async () => [] }).andamento([{ id: 'r', card: 'c' }])).toEqual({});
     const t = criarTrello(ENV, { consultar: async () => { throw new Error('coluna não existe'); } });
     expect(await t.andamento([{ id: 'r', card: 'c', claquete: '' }])).toEqual({});
+  });
+
+  it('diz quais roteiros estão na lista de prioridade, os enviados e os da fila de revisão, pela chave da claquete', async () => {
+    const consultar = async (sql: string, params: unknown[] = []) => {
+      if (sql.includes('"bseBase"."prioridade"')) return ['SHOW DA NOITE 20 11 SP', 'ENCONTRO 25 11 AH'].filter((k) => (params[0] as string[]).includes(k)).map((key) => ({ key }));
+      return [
+        { card_ID: 'c1', claquete: 'SHOW DA NOITE 20/11 SP', status: ['PRODUZINDO'], designers: [], entregue: false, data_entrega: null, data_entrada: null },
+        { card_ID: 'c2', claquete: 'FESTA 20/11', status: ['PRODUZINDO'], designers: [], entregue: false, data_entrega: null, data_entrada: null },
+      ].filter((l) => (params[0] as string[]).includes(l.card_ID));
+    };
+    const itens = [
+      { id: 'r1', card: 'c1', claquete: 'Show da Noite(20/11) SP' },
+      { id: 'r2', card: 'c2', claquete: 'FESTA 20/11' },
+      { id: 'r3', card: null, claquete: 'Encontro 25/11 (AH)', naFila: true },
+      { id: 'r4', card: null, claquete: 'Profissão Repórter 26/11', naFila: true },
+    ];
+    const a = await criarTrello(ENV, { consultar }).andamento(itens);
+    expect(a.r1).toMatchObject({ status: ['PRODUZINDO'], prioridade: true });
+    expect(a.r2.prioridade).toBeUndefined();
+    expect(a.r3).toEqual({ status: [], designers: [], entregue: false, entrega: null, prioridade: true });
+    expect(a.r4).toBeUndefined();
+
+    // sem a tabela de prioridade, nada é destacado e o andamento continua
+    const sem = await criarTrello({ ...ENV, TEABLE_PG_PRIORIDADE: '' }, { consultar }).andamento(itens);
+    expect(sem.r1).toEqual({ status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null });
+    expect(Object.keys(sem)).toEqual(['r1', 'r2']);
+
+    // a lista de prioridade fora do ar não derruba o andamento
+    const falha = async (sql: string, params: unknown[] = []) => (sql.includes('prioridade') ? Promise.reject(new Error('caiu')) : consultar(sql, params));
+    const comFalha = await criarTrello(ENV, { consultar: falha }).andamento(itens);
+    expect(Object.keys(comFalha)).toEqual(['r1', 'r2']);
   });
 });
 

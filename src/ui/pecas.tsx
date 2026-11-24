@@ -11,6 +11,19 @@ export const RABISCOS = [
   'M10 18 C 14 6, 36 2, 50 8 C 63 14, 58 34, 40 38 C 22 42, 4 34, 7 20 C 9 12, 18 7, 28 5',
 ];
 
+/** Os riscos à caneta sob um texto (viewBox 0 0 100 14, pathLength 1): os formatos do convite e a claquete prioridade. */
+export const RISCOS = ['M2 8 C 22 4, 52 5, 97 6 C 70 8, 38 10, 12 11', 'M3 6 C 30 9, 60 4, 98 7', 'M2 7 C 35 4, 70 9, 97 5 C 75 8, 40 9, 20 10'];
+
+/** Um risco à mão sob o texto de dentro; `traco` escolhe qual dos riscos. */
+export function Riscado({ children, traco = 0, className = '' }: { children: React.ReactNode; traco?: number; className?: string }) {
+  return (
+    <span className={`riscado ${className}`}>
+      {children}
+      <svg viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d={RISCOS[traco % RISCOS.length]} /></svg>
+    </span>
+  );
+}
+
 export /** "???" escritos à mão, cada um meio torto e fora do lugar; sempre do mesmo jeito para o mesmo roteiro. */
 function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
   let h = 2166136261;
@@ -39,10 +52,7 @@ export function ConviteDeArrastar({ frases, extra, className = '', escolher }: {
       <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
       <h2 className="titulo-serifa"><TituloQueSeEscreve frases={frases} /></h2>
       <p className="suave">
-        <span className="formatos-riscados">
-          .docx, .rtf ou .pdf
-          <svg viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d="M2 8 C 22 4, 52 5, 97 6 C 70 8, 38 10, 12 11" /></svg>
-        </span>
+        <Riscado className="formatos-riscados">.docx, .rtf ou .pdf</Riscado>
         , quantos quiser de uma vez.
       </p>
       {escolher ? (

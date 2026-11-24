@@ -1203,9 +1203,11 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       }
     }
     if (caminho === '/api/andamento') {
-      // como anda, na produção da arte, o que já foi para o Trello (só dos roteiros que a pessoa vê)
-      const linhas = (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).filter((l) => l.envio_estado === 'enviado' || l.envio_estado === 'duplicado');
-      const dados = await trello.andamento(linhas.map((l) => ({ id: l.id, card: l.envio_card, claquete: JSON.parse(l.meta).claquete ?? '' })));
+      // como anda, na produção da arte, o que já foi para o Trello, e quais roteiros (enviados ou na fila de revisão)
+      // estão na lista de prioridade; só dos roteiros que a pessoa vê
+      const linhas = aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email);
+      const enviado = (l) => l.envio_estado === 'enviado' || l.envio_estado === 'duplicado';
+      const dados = await trello.andamento(linhas.map((l) => ({ id: l.id, card: l.envio_card, claquete: JSON.parse(l.meta).claquete ?? '', ...(enviado(l) ? {} : { naFila: true }) })));
       // card que saiu (finalizado ou entregue): as artes novas dele entram no acervo da atração, uma vez só
       if (acervo.ligado && acervo.grava) void registrarNoAcervo(dados);
       return json(res, 200, dados);

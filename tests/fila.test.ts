@@ -224,6 +224,17 @@ describe('No Trello: a semana de agenda', () => {
     expect([montarSemana(lista, { a: pronto, d: pronto }, agora, 1).total, montarSemana(lista, { d: pronto }, agora, 1).entregues]).toEqual([1, 1]);
   });
 
+  it('o título conta quantos cards da semana mostrada estão na lista de prioridade, e cada card diz se está', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const prio: Andamento = { status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, prioridade: true };
+    const lista = [enviado('a', '2026-11-24'), enviado('b', '2026-11-25'), enviado('c', '2026-11-26'), enviado('fora', '2026-12-05'), resumo('fila', '2026-11-24')];
+    const andamento = { a: prio, c: { ...prio, status: ['CAIU'] }, fora: prio, fila: prio, b: { ...prio, prioridade: undefined } };
+    const s = montarSemana(lista, andamento, agora);
+    expect(s.comPrioridade).toBe(2);
+    expect(s.dias.flatMap((d) => d.cards).filter((c) => c.prioridade).map((c) => c.r.id)).toEqual(['a', 'c']);
+    expect(montarSemana(lista, {}, agora).comPrioridade).toBe(0);
+  });
+
   it('os dias anteriores a hoje, do mais recente para o mais antigo, para achar o card que já passou', async () => {
     const { montarSemana } = await import('../src/ui/fila');
     const lista = [enviado('a', '2026-11-20'), enviado('b', '2026-11-23'), enviado('c', '2026-11-20'), enviado('d', '2026-11-24'), enviado('e', '')];
