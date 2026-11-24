@@ -164,7 +164,7 @@ const titulosParecidos = (a, b) => mesmoTitulo(a, b) || (!!chaveDoTitulo(a) && c
  * @param antigos os filmes da página antes de ler de novo; novos os da leitura nova (já ligados aos pôsteres)
  * @returns os filmes da página
  */
-export function preservarCorrecoes(antigos, novos) {
+function preservarCorrecoes(antigos, novos) {
   const usados = new Set();
   const temPoster = (f) => f.poster !== null && f.poster !== undefined;
   const achar = (n, igual) => {
@@ -660,7 +660,9 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     const vao = [];
     for (const n of new Set(prontos.map((x) => x.n))) {
       const g = q.filmesDaPagina.get(id, n);
-      const filmes = g?.filmes ? JSON.parse(g.filmes) : [];
+      // a página foi para a fila (alguém pediu para ler de novo) enquanto a prévia abria: os filmes dela esperam a leitura
+      if (!g?.filmes) continue;
+      const filmes = JSON.parse(g.filmes);
       for (const x of prontos.filter((y) => y.n === n)) {
         const f = filmes[x.i];
         if (!f || jaFoi(f) || !mesmoFilme(f, x.f)) continue;
