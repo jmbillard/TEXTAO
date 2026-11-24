@@ -616,5 +616,20 @@ describe('aba Filmes: o envio', () => {
     expect(semTitulo.conferencia).toMatchObject({ marca: 'atencao', pergunta: 'sem-titulo' });
     expect(await (await enviar()).json()).toEqual({ enviando: 1 });
   });
+
+  it('a prioridade MÉDIA vai só no inédito, como no CARDS (o filme novo já está no cadastro quando o card nasce)', async () => {
+    const { enviar, terminar, falsos } = await paraEnviar(
+      [{ titulo: 'KONG: ILHA DA CAVEIRA', ano_de_producao: 2017, sessao: 'TELA QUENTE', data: '07/12/2026' }],
+      { filmes: [], atracoes: SESSOES },
+      {},
+      { ...ENVIO, TRELLO_FILMES_ETIQUETAS_SESSAO: 'Tela Quente=etqTQ' },
+    );
+    await enviar();
+    await terminar();
+    const [card] = falsos.cards();
+    expect(card.campos.cPrio).toBeUndefined();
+    // a etiqueta da sessão, escrita de qualquer jeito na variável
+    expect(card.card.idLabels).toBe('etqFilme,etqTQ');
+  });
 });
 

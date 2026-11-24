@@ -104,7 +104,7 @@ export function configDoTrello(env) {
     pracas: pares(env.TRELLO_PRACAS),
     prioridadeAlta: env.TRELLO_PRIORIDADE_ALTA || '',
     // os cards de filme da prévia (aba Filmes), como o fluxo CARDS do n8n: a lista dos filmes, as etiquetas (todas
-    // ou por sessão, "SUPERCINE=id"), a opção da praça e a prioridade MÉDIA do filme novo ou inédito
+    // ou por sessão, "SUPERCINE=id"), a opção da praça e a prioridade MÉDIA do inédito
     filmes: {
       lista: nomeLimpoPg(env.TRELLO_LISTA_FILMES),
       etiquetas: String(env.TRELLO_FILMES_ETIQUETAS || '').split(',').map((s) => s.trim()).filter(Boolean),

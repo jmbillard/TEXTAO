@@ -4,7 +4,7 @@
    1. o filme novo entra no cadastro (título como no cadastro, ano), antes do card, para o card levar os caminhos dele;
    2. o card: na lista dos filmes, com o nome "SESSÃO DD/MM - TÍTULO (ANO) INÉDITO", a descrição com as artes e os
       caminhos, as etiquetas, a data, a checklist das artes novas, os campos (BOT, praça, projeto, output, entrada e a
-      prioridade MÉDIA do filme novo ou inédito) e o pôster anexado como capa;
+      prioridade MÉDIA do inédito) e o pôster anexado como capa;
    3. depois do card: a exibição (filme, sessão, dia, card e artes; nada na ARTE_producao, ADR 0001), o ano que
       faltava (ou o escolhido no !) e o pôster no cadastro do filme, quando ele não tem ou o da prévia é mais atual.
 
@@ -181,7 +181,8 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     const titulo = filme.titulo || lido.titulo;
     const ddmm = `${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
     const exibicao = `${sessao.nome.toUpperCase()} ${ddmm} - ${titulo.toUpperCase()}`;
-    const prioridade = !!lido.inedito || !conferencia.filme;
+    // o CARDS cadastra o filme novo antes de montar o card: na prática, a MÉDIA vai só no inédito
+    const prioridade = !!lido.inedito;
     const f = c.filmes;
     const campos = {
       ...(c.campos.bot ? { [c.campos.bot]: { value: { checked: 'true' } } } : {}),
@@ -196,7 +197,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
         lista: f.lista,
         nome: `${exibicao}${ano ? ` (${ano})` : ''}${lido.inedito ? ' INÉDITO' : ''}`,
         desc: descricao(conferencia.artes, filme),
-        etiquetas: [...f.etiquetas, ...(f.etiquetasDaSessao[sessao.nome.toUpperCase()] ? [f.etiquetasDaSessao[sessao.nome.toUpperCase()]] : [])],
+        etiquetas: [...f.etiquetas, ...Object.entries(f.etiquetasDaSessao).filter(([s]) => chaveDaSessao(s) === chaveDaSessao(sessao.nome)).map(([, id]) => id)],
         data: `${dia}T03:00:00.000Z`,
         posicao: 'top',
         checklist: { nome: 'ARTES PRODUZIDAS', itens: conferencia.artes.novas },
