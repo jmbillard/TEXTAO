@@ -2063,7 +2063,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
    sobre a arte da prévia (sempre escura e colorida), não sobre o papel do app: os tons claros valem nos dois temas. */
 .folha-dentro { --caneta-atencao: #ffb36b; --caneta-visto: #9be3b5; }
 .caixa-poster { position: absolute; }
-.caixa-poster .circulo { position: absolute; left: -43%; top: -37%; width: 186%; height: 172%; overflow: visible; pointer-events: none; }
+.caixa-poster .circulo { position: absolute; left: -24%; top: -15%; width: 148%; height: 130%; overflow: visible; pointer-events: none; }
 .caixa-poster .circulo path { fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .caixa-poster .circulo.mouse path { stroke: var(--ultra); }
 .caixa-poster .circulo.atencao path { stroke: var(--caneta-atencao); }
