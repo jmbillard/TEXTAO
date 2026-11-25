@@ -327,6 +327,20 @@ const lerBinario = (req, limite) =>
     req.on('error', erro);
   });
 
+/**
+ * Copia os metadados para o mapa "meta" do documento compartilhado do roteiro. Devolve false, sem mexer, quando o
+ * documento nunca recebeu metadados (o editor os preenche ao abrir).
+ */
+export function copiarMetaParaYdoc(doc, meta) {
+  const m = doc.getMap('meta');
+  if (!m.size) return false;
+  doc.transact(() => {
+    for (const [k, v] of Object.entries(meta)) if (JSON.stringify(m.get(k)) !== JSON.stringify(v)) m.set(k, v);
+    for (const k of [...m.keys()]) if (!(k in meta)) m.delete(k);
+  });
+  return true;
+}
+
 /* ---------- aplicação ---------- */
 
 export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }) }) {
@@ -478,13 +492,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       doc = new Y.Doc();
       Y.applyUpdate(doc, guardado);
     }
-    const m = doc.getMap('meta');
-    if (!m.size) return; // sala que nunca recebeu metadados: o editor os preenche ao abrir
-    doc.transact(() => {
-      for (const [k, v] of Object.entries(meta)) if (JSON.stringify(m.get(k)) !== JSON.stringify(v)) m.set(k, v);
-      for (const k of [...m.keys()]) if (!(k in meta)) m.delete(k);
-    });
-    if (!sala) q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
+    if (copiarMetaParaYdoc(doc, meta) && !sala) q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
   }
   function fecharSala(id, motivo, filtro = () => true) {
     const sala = salas.get(id);

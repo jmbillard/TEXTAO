@@ -11,6 +11,8 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production PORT=80 DADOS=/dados ESTATICOS=/app/dist NODE_NO_WARNINGS=1
 COPY servidor ./servidor
+# a regra da data da claquete é a do navegador: a manutenção (servidor/corrigir-datas.mjs) lê o .ts direto, sem os tipos
+COPY src/modelo ./src/modelo
 RUN cd servidor && npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 VOLUME /dados
