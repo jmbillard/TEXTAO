@@ -158,11 +158,14 @@ function montarDias(lista: Resumo[], andamento: Record<string, Andamento>, agora
 /** A semana começa em ontem, para o dia que passou estar sempre à mão; hoje fica na segunda coluna.
     deslocamento: quantas semanas para a frente (ou para trás, negativo) a partir da que começa ontem. */
 export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0): Semana {
-  const { dias, semData, anteriores } = montarDias(lista, andamento, agora, deslocamento * 7 - 1, 7);
-  const [ini, fim] = [dataDoIso(dias[0].iso), dataDoIso(dias[6].iso)];
-  const periodo = ini.getMonth() === fim.getMonth() ? `${ini.getDate()} – ${fim.getDate()} de ${MESES[fim.getMonth()]}` : `${ini.getDate()} de ${MESES[ini.getMonth()]} – ${fim.getDate()} de ${MESES[fim.getMonth()]}`;
-  return { dias, semData, anteriores, periodo, ...resumoDosDias(dias) };
+  const { dias, semData, anteriores } = montarDias(lista, andamento, agora, inicioDaSemana(deslocamento), 7);
+  const { dia1, mes1, dia2, mes2 } = partesDoPeriodo(dias[0].iso, dias[6].iso, mesPorExtenso);
+  return { dias, semData, anteriores, periodo: `${dia1}${mes1} – ${dia2}${mes2}`, ...resumoDosDias(dias) };
 }
+
+/** O primeiro dia da semana de agenda `deslocamento` semanas para a frente (ou para trás), contado de hoje: a de agora
+    começa ontem (-1). É a posição da semana no eixo que conta (eixoDaSemana). */
+export const inicioDaSemana = (deslocamento: number) => deslocamento * 7 - 1;
 
 /** O resumo de alguns dias da agenda: os cards, quantos foram entregues e quantos estão na lista de prioridade. */
 export function resumoDosDias(dias: DiaDaSemana[]): Pick<Semana, 'total' | 'entregues' | 'comPrioridade'> {
@@ -196,19 +199,19 @@ export function diasAVista(posicao: number, larguraDoDia: number, quantos: numbe
   return [primeiro, primeiro + 1];
 }
 
-/* ---------- No Trello no celular: o topo que conta ---------- */
+/* ---------- No Trello: o topo que conta (no celular e no computador) ---------- */
 
 /** A curva do contador: rápido no começo e devagar no fim, perto da --suave dos estilos. */
 const suave = (p: number) => 1 - Math.pow(1 - p, 4);
 
 /** O que o contador mostra no instante `p` (de 0 a 1) da contagem de `de` até `para`: sempre um inteiro, sem passar
-    do alvo nem voltar antes da partida. Vale para os números do resumo e para os dias do seletor (a posição na faixa). */
+    do alvo nem voltar antes da partida. Vale para os números do resumo e para os dias do seletor (a posição no eixo). */
 export function valorNaContagem(de: number, para: number, p: number): number {
   return Math.round(de + (para - de) * suave(Math.max(0, Math.min(1, p))));
 }
 
-/** O período em partes, como o seletor do celular o desenha: o dia e o mês de cada lado. O mês da esquerda ("/11")
-    só aparece na virada do mês (ou do ano); fora dela, fica vazio. */
+/** O período em partes, como o seletor o desenha: o dia e o mês de cada lado. O mês da esquerda ("/11", " de
+    novembro") só aparece na virada do mês (ou do ano); fora dela, fica vazio. */
 export interface PartesDoPeriodo {
   dia1: number;
   mes1: string;
@@ -216,9 +219,12 @@ export interface PartesDoPeriodo {
   mes2: string;
 }
 
-export function partesDoPeriodo(de: string, ate: string): PartesDoPeriodo {
+/** O mês do seletor do celular ("/11") e o da semana do computador (" de novembro"). */
+export const mesCurto = (d: Date) => `/${d.getMonth() + 1}`;
+export const mesPorExtenso = (d: Date) => ` de ${MESES[d.getMonth()]}`;
+
+export function partesDoPeriodo(de: string, ate: string, mes: (d: Date) => string = mesCurto): PartesDoPeriodo {
   const [a, b] = [dataDoIso(de), dataDoIso(ate)];
-  const mes = (d: Date) => `/${d.getMonth() + 1}`;
   return { dia1: a.getDate(), mes1: a.getMonth() === b.getMonth() ? '' : mes(a), dia2: b.getDate(), mes2: mes(b) };
 }
 
@@ -229,35 +235,62 @@ export function periodoCurto(de: string, ate: string): string {
   return `${dia1}${mes1} – ${dia2}${mes2}`;
 }
 
+/** Onde o período conta: o dia (ISO) de cada posição, quantos dias o período cobre e como o mês se escreve. No celular,
+    as posições são os dias da faixa e o período tem dois dias ("25 – 26/11"); no computador, são os dias contados de
+    hoje (inicioDaSemana) e o período tem sete ("24 – 30 de novembro"). Os dias contam pelas datas nos dois. */
+export interface EixoDoPeriodo {
+  dia: (k: number) => string;
+  dias: number;
+  mes: (d: Date) => string;
+}
+
+/** O eixo da faixa do celular: as posições são os dias da faixa (`isos`). */
+export const eixoDaFaixa = (isos: string[]): EixoDoPeriodo => ({ dia: (k) => isos[k], dias: 2, mes: mesCurto });
+/** O eixo da semana do computador: as posições são os dias contados a partir de `agora` (-1 é ontem). */
+export const eixoDaSemana = (agora: Date): EixoDoPeriodo => ({ dia: (k) => isoLocal(somarDias(agora, k)), dias: 7, mes: mesPorExtenso });
+
+/** As funções do período aceitam o eixo ou, como antes, só os dias da faixa do celular. */
+const comoEixo = (e: EixoDoPeriodo | string[]): EixoDoPeriodo => (Array.isArray(e) ? eixoDaFaixa(e) : e);
+const partesEm = (e: EixoDoPeriodo, k: number) => partesDoPeriodo(e.dia(k), e.dia(k + e.dias - 1), e.mes);
+
 /** Quanto os dias do seletor levam contando, em ms. */
 export const PERIODO_MS = 340;
 /** Na virada do mês, quanto os meses levam apagando antes de os dias começarem a contar, em ms (o fade dos meses em
     estilos.css é um pouco mais curto, para nunca sobrar um mês à vista com um dia novo). */
 export const MESES_APAGAM_MS = 80;
 
-const mesesMudam = (isos: string[], de: number, para: number) => {
-  const [a, b] = [partesDoPeriodo(isos[de], isos[de + 1]), partesDoPeriodo(isos[para], isos[para + 1])];
+const mesesMudam = (e: EixoDoPeriodo, de: number, para: number) => {
+  const [a, b] = [partesEm(e, de), partesEm(e, para)];
   return a.mes1 !== b.mes1 || a.mes2 !== b.mes2;
 };
 
 /** Quanto dura a contagem do período da posição `de` até `para`: na virada do mês, os meses apagam antes de os dias
     contarem. */
-export function duracaoDoPeriodo(isos: string[], de: number, para: number): number {
-  return mesesMudam(isos, de, para) ? MESES_APAGAM_MS + PERIODO_MS : PERIODO_MS;
+export function duracaoDoPeriodo(eixo: EixoDoPeriodo | string[], de: number, para: number): number {
+  return mesesMudam(comoEixo(eixo), de, para) ? MESES_APAGAM_MS + PERIODO_MS : PERIODO_MS;
 }
 
-/** O período no instante `p` (de 0 a 1, ao longo de duracaoDoPeriodo) da contagem da posição `de` até `para` na
-    faixa (`isos`: os dias da faixa). Os dias contam pelas datas (30 → 1 passa pela virada). Quando os meses vão mudar,
-    eles ficam apagados até o fim, com os meses da partida guardando a vaga, e os dias só começam a contar depois que
-    os meses terminam de apagar: assim nunca aparece um mês errado ("1/11", "30/12"), e o "/11" da esquerda só abre
+/** A posição no instante `p` (de 0 a 1, ao longo de duracaoDoPeriodo) da contagem de `de` até `para`: na virada do
+    mês, parada na partida enquanto os meses apagam. É por ela que os dias contam: os do seletor e, no computador, os
+    do cabeçalho de cada coluna. */
+export function posicaoNaContagem(eixo: EixoDoPeriodo | string[], de: number, para: number, p: number): number {
+  const e = comoEixo(eixo);
+  if (!mesesMudam(e, de, para)) return valorNaContagem(de, para, p);
+  if (p >= 1) return para;
+  const ms = p * duracaoDoPeriodo(e, de, para);
+  return valorNaContagem(de, para, Math.max(0, ms - MESES_APAGAM_MS) / PERIODO_MS);
+}
+
+/** O período no instante `p` (de 0 a 1, ao longo de duracaoDoPeriodo) da contagem da posição `de` até `para` no eixo
+    (no celular, `isos`: os dias da faixa). Os dias contam pelas datas (30 → 1 passa pela virada). Quando os meses vão
+    mudar, eles ficam apagados até o fim, com os meses da partida guardando a vaga, e os dias só começam a contar depois
+    que os meses terminam de apagar: assim nunca aparece um mês errado ("1/11", "30/12"), e o "/11" da esquerda só abre
     ou fecha a vaga no fim. */
-export function periodoNaContagem(isos: string[], de: number, para: number, p: number): PartesDoPeriodo & { mesesApagados: boolean } {
-  if (!mesesMudam(isos, de, para)) return { ...partesDoPeriodo(isos[valorNaContagem(de, para, p)], isos[valorNaContagem(de, para, p) + 1]), mesesApagados: false };
-  if (p >= 1) return { ...partesDoPeriodo(isos[para], isos[para + 1]), mesesApagados: false };
-  const ms = p * duracaoDoPeriodo(isos, de, para);
-  const k = valorNaContagem(de, para, Math.max(0, ms - MESES_APAGAM_MS) / PERIODO_MS);
-  const agora = partesDoPeriodo(isos[k], isos[k + 1]);
-  const partida = partesDoPeriodo(isos[de], isos[de + 1]);
+export function periodoNaContagem(eixo: EixoDoPeriodo | string[], de: number, para: number, p: number): PartesDoPeriodo & { mesesApagados: boolean } {
+  const e = comoEixo(eixo);
+  const agora = partesEm(e, posicaoNaContagem(e, de, para, p));
+  if (!mesesMudam(e, de, para) || p >= 1) return { ...agora, mesesApagados: false };
+  const partida = partesEm(e, de);
   return { dia1: agora.dia1, mes1: partida.mes1, dia2: agora.dia2, mes2: partida.mes2, mesesApagados: true };
 }
 

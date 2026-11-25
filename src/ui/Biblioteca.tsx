@@ -8,9 +8,10 @@ import type { Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { agruparPorDia, filaVisivel, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type FaixaDeDias, type GrupoDia } from './fila';
+import { agruparPorDia, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, periodoNaContagem, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type FaixaDeDias, type GrupoDia } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
-import { PeriodoQueConta, ResumoQueConta, VoltarParaHoje } from './topoDaFaixa';
+import { Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
+import { useTrocaDeSemana } from './trocaDeSemana';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -569,13 +570,23 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   }, [aberto]);
   // no celular, a faixa de dias; no computador, a semana das setas
   const celular = useTelaDeCelular();
-  const s = montarSemana(lista, andamento, new Date(), deslocamento);
-  const f = celular ? montarFaixa(lista, andamento, new Date()) : null;
+  // no computador, a semana na tela chega à que as setas pediram depois que a anterior sai (useTrocaDeSemana)
+  const grade = useRef<HTMLDivElement>(null);
+  const troca = useTrocaDeSemana(grade, deslocamento, '.coluna-corpo > *, .coluna-topo .dia-num svg, .coluna-topo .dia-rel', '.coluna-corpo > *', !celular);
+  const agora = new Date();
+  const s = montarSemana(lista, andamento, agora, troca.mostrada);
+  // os números dos dias e o período contam juntos, pelas datas, até a semana na tela
+  const eixo = eixoDaSemana(agora);
+  const contagem = useContagemDoPeriodo(eixo, inicioDaSemana(troca.mostrada));
+  const contando = contagem.p < 1;
+  const inicioNaContagem = posicaoNaContagem(eixo, contagem.de, contagem.para, contagem.p);
+  const f = celular ? montarFaixa(lista, andamento, agora) : null;
   const agenda = f ?? s;
   const trilho = useRef<HTMLDivElement>(null);
   const faixa = useFaixa(trilho, f?.dias.length ?? 0, f?.hoje ?? 0, f?.dias[0].iso ?? '');
   // ao vivo: o que sai fecha a vaga, o que entra abre a sua, e o que troca de coluna (o sem data que ganhou data)
-  // desliza até o lugar novo. Outra semana (as setas, a virada do dia) ou a semana encolhendo não animam.
+  // desliza até o lugar novo. Outra semana (as setas, a virada do dia) ou a semana encolhendo não abrem vagas: no
+  // computador, a troca de semana tem o movimento dela (useTrocaDeSemana).
   const secao = useRef<HTMLElement>(null);
   const vista = useRef<{ agenda: typeof agenda; encolhida: boolean } | null>(null);
   const antes = vista.current;
@@ -643,22 +654,21 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
       </div>
     );
   };
+  // no computador: a mesma contagem do celular, para a semana inteira; o "voltar para hoje" abre a vaga entre os links
   const topoDoComputador = (
     <div className="secao-trello-topo">
       {titulo}
       <span className="secao-trello-conta">
-        {plural(s.total, 'card', 'cards')}
-        {s.entregues > 0 && ` · ${plural(s.entregues, 'entregue', 'entregues')}`}
-        {s.comPrioridade > 0 && <> · <span className="prio-nota">{s.comPrioridade} com prioridade</span></>}
+        <ResumoQueConta total={s.total} entregues={s.entregues} comPrioridade={s.comPrioridade} prioridade="com prioridade" />
       </span>
       <span className="semana-nav">
         {verInteira}
-        {deslocamento !== 0 && <button type="button" className="botao-texto" onClick={() => setDeslocamento(0)}>voltar para hoje</button>}
+        <VoltarParaHoje ver={troca.mostrada !== 0} sentido={troca.sentido} voltar={() => setDeslocamento(0)} abreVaga />
         {verDiasAnteriores}
         <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
           <Icone nome="voltar" tam={16} traco={2.2} />
         </button>
-        <b>{s.periodo}</b>
+        <Periodo {...periodoNaContagem(eixo, contagem.de, contagem.para, contagem.p)} largura="suave" />
         <button type="button" className="botao-icone" aria-label="Próxima semana" title="Próxima semana" onClick={() => setDeslocamento((n) => n + 1)}>
           <Icone nome="direita" tam={16} traco={2.2} />
         </button>
@@ -668,23 +678,21 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   return (
     <section ref={secao} className={`secao-trello ${encolhida ? 'encolhida' : ''}`} aria-label="No Trello">
       {f ? topoDoCelular(f) : topoDoComputador}
-      <div className="semana" ref={f ? trilho : undefined}>
-        {agenda.dias.map((d) => (
-          <section key={d.iso} className={`coluna ${d.marca === 'hoje' ? 'hoje' : ''} ${d.fimDeSemana ? 'fim-de-semana' : ''}`} aria-label={`${d.diaDaSemana} ${d.numero}${d.marca ? `, ${d.marca}` : ''}`}>
-            <div className="coluna-topo">
-              <span className="dia-sem">{d.diaDaSemana}</span>
-              <span className="dia-num">
-                {d.numero}
-                {d.marca === 'hoje' && <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path d={RABISCOS[1]} /></svg>}
-              </span>
-              {d.marca && <span className="dia-rel">{d.marca}</span>}
-            </div>
-            <ul className="coluna-corpo">
-              <Vagas como="li" itens={d.cards} chave={(c) => c.r.id} deslizam={deslizam}>{card}</Vagas>
-              {!d.cards.length && <li className="nada entra-suave">nada ainda</li>}
-            </ul>
-          </section>
-        ))}
+      {/* no celular, cada dia é uma coluna da faixa; no computador, as sete colunas ficam no lugar quando a semana troca:
+          os números contam e as marcas do dia (o hoje circulado) se escrevem quando a contagem termina */}
+      <div className="semana" ref={f ? trilho : grade}>
+        {agenda.dias.map((d, i) => {
+          const hoje = d.marca === 'hoje' && (!!f || !contando);
+          return (
+            <section key={f ? d.iso : i} className={`coluna ${hoje ? 'hoje' : ''} ${d.fimDeSemana ? 'fim-de-semana' : ''}`} aria-label={`${d.diaDaSemana} ${d.numero}${d.marca ? `, ${d.marca}` : ''}`}>
+              {f ? <TopoDoDia d={d} /> : <TopoDoDia d={d} numero={Number(eixo.dia(inicioNaContagem + i).slice(8))} marcas={!contando} escrever />}
+              <ul className="coluna-corpo">
+                <Vagas key={d.iso} como="li" itens={d.cards} chave={(c) => c.r.id} deslizam={deslizam}>{card}</Vagas>
+                {!d.cards.length && <li className="nada entra-suave">nada ainda</li>}
+              </ul>
+            </section>
+          );
+        })}
       </div>
       {/* a faixa do sem data também fecha a vaga quando o último card dela sai (ou ganha data) */}
       <Vagas itens={agenda.semData.length ? ['sem-data'] : []} chave={(k) => k}>{() => avulsa('sem data', agenda.semData, 'sem-data')}</Vagas>
@@ -695,7 +703,8 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
           {verDiasAnteriores}
         </div>
       )}
-      {verAnteriores && agenda.anteriores.map((d) => avulsa(d.titulo, d.cards, d.iso))}
+      {/* no computador, os dias anteriores abrem e fecham a vaga, como o "sem data" */}
+      {f ? verAnteriores && agenda.anteriores.map((d) => avulsa(d.titulo, d.cards, d.iso)) : <Vagas itens={verAnteriores ? agenda.anteriores : []} chave={(d) => d.iso}>{(d) => avulsa(d.titulo, d.cards, d.iso)}</Vagas>}
     </section>
   );
 }

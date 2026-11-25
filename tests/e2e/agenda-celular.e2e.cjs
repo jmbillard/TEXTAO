@@ -1,4 +1,5 @@
-// Ponta a ponta da agenda No Trello no celular (spec #37, #40 e as animações do #41), rodado à parte do vitest: `npm run e2e:agenda`.
+// Ponta a ponta da agenda No Trello no celular (spec #37, #40 e as animações do #41) e das mesmas animações na semana do
+// computador, rodado à parte do vitest: `npm run e2e:agenda`.
 //
 // Sobe o servidor e o Vite como o e2e do tour (banco temporário, dados fictícios, nada sai para a rede), abre a tela
 // inicial em tamanho de iPhone e de Android e arrasta a faixa de dias com toque emulado pelo CDP: curto, longo,
@@ -6,6 +7,10 @@
 // faixa nunca anda contra o movimento, que a página não rola (nem para o lado), que as colunas não se mexem por dentro e
 // que o topo (período e resumo) só troca quando a rolagem termina. Confere também que o toque abre o card e o arrasto
 // não, as setas e o "voltar para hoje", a faixa já em hoje antes de pintar, a agenda encolhida e que o tour não aparece.
+// No computador, troca de semana pelas setas e pelo "voltar para hoje" e confere, quadro a quadro, que os números dos
+// dias e o período contam (os meses apagados antes, sem mês errado à vista), que o resumo conta, que os cards saem e
+// entram em vez de trocar de estalo, que as marcas do dia se escrevem, que a seta da direita não sai do lugar e que nada
+// anima na primeira carga nem com o movimento reduzido.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:agenda
 // Com MEDICAO=arquivo.json, grava os números de cada gesto.
@@ -21,6 +26,7 @@ try {
 }
 
 const OUTRA = 'outra.pessoa@exemplo.com';
+const LIA = 'lia.moraes@exemplo.com';
 const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const diaMais = (n) => {
   const h = new Date();
@@ -367,6 +373,143 @@ async function encolhida(navegador, url, conferir) {
   }
 }
 
+/* ---------- No computador: a semana de sete colunas ---------- */
+
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+/** O período de sete dias que começa `k` dias depois de hoje, como o computador escreve. */
+const periodoDesde = (k) => {
+  const [a, b] = [diaMais(k), diaMais(k + 6)];
+  return a.getMonth() === b.getMonth() ? `${a.getDate()} – ${b.getDate()} de ${MESES[b.getMonth()]}` : `${a.getDate()} de ${MESES[a.getMonth()]} – ${b.getDate()} de ${MESES[b.getMonth()]}`;
+};
+/** O período da semana `n` semanas a partir da de agora (que começa ontem). */
+const periodoDaSemana = (n) => periodoDesde(7 * n - 1);
+/** Os números das sete colunas da semana `n`. */
+const numerosDaSemana = (n) => Array.from({ length: 7 }, (_, i) => diaMais(7 * n - 1 + i).getDate()).join(' ');
+
+// a cada quadro: o período (e se algum mês está à vista), os números das colunas, as marcas, o resumo, as setas, os
+// cards meio transparentes e as animações em curso nas marcas do dia
+const QUADROS_DO_COMPUTADOR = () => {
+  window.__log = [];
+  const f = () => {
+    const sec = document.querySelector('.secao-trello');
+    const b = sec.querySelector('.semana-nav b');
+    const setas = [...sec.querySelectorAll('.semana-nav .botao-icone')].map((e) => Math.round(e.getBoundingClientRect().left * 10) / 10);
+    window.__log.push({
+      periodo: b.textContent,
+      mesAVista: [...b.querySelectorAll('.p-mes')].some((m) => +getComputedStyle(m).opacity > 0.05),
+      numeros: [...sec.querySelectorAll('.coluna .dia-num')].map((e) => e.textContent).join(' '),
+      marcas: [...sec.querySelectorAll('.coluna .dia-rel')].map((e) => e.textContent).join(','),
+      circulo: !!sec.querySelector('.coluna .dia-num svg'),
+      escrevendo: [...sec.querySelectorAll('.coluna .dia-num path, .coluna .dia-rel')].some((e) => e.getAnimations().length > 0),
+      resumo: sec.querySelector('.secao-trello-conta').textContent,
+      esquerda: setas[0],
+      direita: setas[1],
+      transparentes: [...sec.querySelectorAll('.coluna-corpo > *')].filter((e) => +getComputedStyle(e).opacity < 0.95).length,
+    });
+    requestAnimationFrame(f);
+  };
+  requestAnimationFrame(f);
+};
+
+/** Anota cada animação feita por código dentro da agenda (o elemento), desde antes de a página carregar. */
+const ANOTAR_ANIMACOES = () => {
+  window.__animadas = [];
+  const animar = Element.prototype.animate;
+  Element.prototype.animate = function (...args) {
+    if (this.closest?.('.secao-trello')) window.__animadas.push({ conta: !!this.closest('.secao-trello-conta'), el: `${this.className?.baseVal ?? this.className}`.trim() });
+    return animar.apply(this, args);
+  };
+};
+
+/** A semana do computador: a primeira carga parada, a troca pelas setas e pelo "voltar para hoje" e o movimento reduzido. */
+async function computador(navegador, url, conferir) {
+  for (const reduzido of [false, true]) {
+    const rotulo = (t) => `computador${reduzido ? ' (movimento reduzido)' : ''}: ${t}`;
+    const { ctx, p, erros } = await contexto(navegador, 'about:blank', { viewport: { width: 1440, height: 900 }, reducedMotion: reduzido ? 'reduce' : 'no-preference' });
+    try {
+      await ctx.route('**/api/andamento', (r) => r.fulfill({ json: ANDAMENTO }));
+      await ctx.addInitScript(ANOTAR_ANIMACOES);
+      await p.goto(url);
+      await p.waitForSelector('.secao-trello .semana .coluna');
+      await p.waitForTimeout(1200);
+      // a primeira carga: só anima o que o celular também anima, o resumo quando o andamento chega ("· 1 entregue" abre
+      // a vaga e a prioridade se escreve); o período, os números, as marcas do dia e os cards ficam parados
+      const naCarga = await p.evaluate(() => window.__animadas);
+      const foraDoResumo = naCarga.filter((a) => !a.conta);
+      conferir(foraDoResumo.length === 0 && (!reduzido || naCarga.length === 0), rotulo(`na primeira carga, só o resumo anima, como no celular${foraDoResumo.length ? `: ${foraDoResumo.map((a) => a.el).join(', ')}` : ''}`));
+      await p.evaluate(() => scrollTo(0, document.querySelector('.secao-trello').getBoundingClientRect().top + scrollY - 8));
+      const topo = () => p.evaluate(() => [document.querySelector('.secao-trello .semana-nav b').textContent, [...document.querySelectorAll('.secao-trello .coluna .dia-num')].map((e) => e.textContent).join(' '), [...document.querySelectorAll('.secao-trello .coluna .dia-rel')].map((e) => e.textContent).join(',')]);
+      const [per, nums, marcas] = await topo();
+      conferir(per === periodoDaSemana(0) && nums === numerosDaSemana(0) && marcas === 'ontem,hoje,amanhã', rotulo(`abre na semana de agora: "${per}", ${nums}, ${marcas}`));
+      conferir(!(await p.isVisible('.secao-trello .voltar-hoje')), rotulo('na semana de agora, sem o "voltar para hoje"'));
+
+      const fase = async (fn, espera = 1100) => {
+        await p.evaluate(QUADROS_DO_COMPUTADOR);
+        await fn();
+        await p.waitForTimeout(espera);
+        const log = await p.evaluate(() => window.__log);
+        await p.evaluate(() => (window.__log = []));
+        return log;
+      };
+      const distintos = (log, campo) => [...new Set(log.map((q) => q[campo]))];
+      const conferirTroca = (log, n, de, para) => {
+        const ultimo = log[log.length - 1];
+        conferir(ultimo.periodo === periodoDaSemana(para) && ultimo.numeros === numerosDaSemana(para), rotulo(`${n}: chega à semana certa ("${ultimo.periodo}")`));
+        const meio = distintos(log, 'numeros').filter((x) => x !== numerosDaSemana(de) && x !== numerosDaSemana(para));
+        const periodos = distintos(log, 'periodo');
+        // as semanas inteiras entre a partida e a chegada (dois toques seguidos, sem movimento, passam por uma delas)
+        const semanas = Array.from({ length: Math.abs(para - de) + 1 }, (_, k) => de + k * Math.sign(para - de));
+        if (reduzido) {
+          conferir(meio.every((x) => semanas.some((w) => numerosDaSemana(w) === x)) && periodos.every((x) => semanas.some((w) => periodoDaSemana(w) === x)), rotulo(`${n}: só a troca, sem contar`));
+          conferir(log.every((q) => q.transparentes === 0 && !q.escrevendo), rotulo(`${n}: os cards e as marcas só trocam`));
+          return;
+        }
+        conferir(meio.length >= 2, rotulo(`${n}: os números dos dias contam pelas datas (${meio.length} quadros no caminho)`));
+        conferir(periodos.length >= 3, rotulo(`${n}: o período conta junto (${periodos.length} períodos)`));
+        // com o mês à vista, o período é sempre um período de verdade (sete dias seguidos com os meses deles)
+        const deVerdade = new Set();
+        for (let k = Math.min(de, para) * 7 - 1; k <= Math.max(de, para) * 7 - 1; k++) deVerdade.add(periodoDesde(k));
+        const errado = log.filter((q) => q.mesAVista && !deVerdade.has(q.periodo));
+        conferir(errado.length === 0, rotulo(`${n}: nenhum mês errado à vista${errado.length ? ` (${errado[0].periodo})` : ''}`));
+        conferir(log.some((q) => q.transparentes > 0), rotulo(`${n}: os cards saem e entram, sem trocar de estalo`));
+        conferir(distintos(log, 'direita').length === 1, rotulo(`${n}: a seta da direita não sai do lugar`));
+        let passo = 0;
+        for (let k = 1; k < log.length; k++) passo = Math.max(passo, Math.abs(log[k].esquerda - log[k - 1].esquerda));
+        conferir(passo <= 6, rotulo(`${n}: a seta da esquerda anda suave quando o período muda de largura (maior passo ${passo} px)`));
+      };
+
+      let log = await fase(() => p.click('.secao-trello button[aria-label="Próxima semana"]'));
+      conferirTroca(log, 'semana seguinte', 0, 1);
+      conferir(log[log.length - 1].marcas === '' && !log[log.length - 1].circulo, rotulo('semana seguinte: sem as marcas do dia'));
+      if (!reduzido) conferir(distintos(log, 'resumo').length >= 3, rotulo(`semana seguinte: o resumo conta (${distintos(log, 'resumo').join(' → ')})`));
+      conferir(await p.isVisible('.secao-trello .voltar-hoje'), rotulo('semana seguinte: o "voltar para hoje" aparece'));
+
+      log = await fase(async () => {
+        await p.click('.secao-trello button[aria-label="Semana anterior"]');
+        await p.waitForTimeout(60);
+        await p.click('.secao-trello button[aria-label="Semana anterior"]');
+      }, 1300);
+      conferirTroca(log, 'duas para trás, seguidas', 1, -1);
+
+      log = await fase(() => p.click('.secao-trello .voltar-hoje'), 1300);
+      conferirTroca(log, 'voltar para hoje', -1, 0);
+      const fim = log[log.length - 1];
+      conferir(fim.marcas === 'ontem,hoje,amanhã' && fim.circulo, rotulo('voltar para hoje: as marcas do dia e o círculo voltam'));
+      if (!reduzido) {
+        const primeiraMarca = log.findIndex((q) => q.marcas);
+        const ultimaContagem = log.map((q) => q.numeros !== numerosDaSemana(0)).lastIndexOf(true);
+        conferir(primeiraMarca > ultimaContagem, rotulo('voltar para hoje: as marcas só aparecem depois que os números terminam de contar'));
+        conferir(log.some((q) => q.escrevendo && q.circulo), rotulo('voltar para hoje: o círculo e as palavras se escrevem à mão'));
+      }
+      await p.waitForTimeout(400);
+      conferir(!(await p.isVisible('.secao-trello .voltar-hoje')), rotulo('de volta em hoje, o "voltar para hoje" sai'));
+      conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
+    } finally {
+      await ctx.close();
+    }
+  }
+}
+
 async function principal() {
   const amb = await subir();
   const navegador = await chromium.launch();
@@ -379,6 +522,9 @@ async function principal() {
   try {
     await semearAgenda(amb.api);
     for (const nome of ['iPhone 13', 'Galaxy S24']) medicao[nome] = await gestos(navegador, amb.url, nome, conferir);
+    // no computador, o tour da revisão já visto (senão o convite cobre a tela)
+    await fetch(`${amb.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
+    await computador(navegador, amb.url, conferir);
     await semearRevisao(amb.api);
     await encolhida(navegador, amb.url, conferir);
   } catch (e) {

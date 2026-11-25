@@ -1580,6 +1580,27 @@ a.ficha-marca.trello { text-decoration: none; }
 .semana-nav b { font-weight: 500; color: var(--tinta); padding: 0 6px; font-variant-numeric: tabular-nums; }
 .semana-nav .botao-texto { margin-right: 14px; }
 
+/* o topo que conta, no celular e no computador (ui/topoDaAgenda.tsx): algarismos de largura fixa (nada em volta se mexe
+   quando os números contam); os itens que aparecem ou somem abrem ou fecham a vaga de lado (a largura e a opacidade
+   animam no código) */
+.secao-trello-topo .ct-item { display: inline-block; overflow-x: clip; overflow-y: visible; white-space: pre; }
+.secao-trello-conta .ct-num, .semana-nav b .p-dia { font-variant-numeric: tabular-nums; }
+.secao-trello-conta .ct-prio { padding-right: 4px; }
+.secao-trello-conta .ct-prio .prio-nota { will-change: clip-path; }
+/* na virada do mês, os meses somem no começo da contagem (antes de os dias contarem: MESES_APAGAM_MS, em fila.ts)
+   e voltam no fim */
+.semana-nav b .p-mes { font-variant-numeric: tabular-nums; transition: opacity 140ms var(--suave); }
+.semana-nav b .p-mes.apagado { opacity: 0; transition: opacity 60ms ease-out; }
+/* o "voltar para hoje" do computador abre a vaga entre os links: em flex, a largura medida inclui o espaço depois dele */
+.semana-nav .ct-voltar { display: inline-flex; }
+/* no computador, as colunas ficam no lugar quando a semana troca (ui/trocaDeSemana.ts): o destaque de hoje (o fundo,
+   o contorno, a cor e o espaço do círculo) chega e sai suave, em vez de pular de coluna */
+@media (min-width: 601px) {
+  .coluna-corpo { transition: background-color 220ms var(--suave), box-shadow 220ms var(--suave); }
+  .dia-sem, .dia-rel { transition: color 220ms var(--suave); }
+  .dia-num { transition: margin 220ms var(--suave); }
+}
+
 .semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: start; }
 .coluna { min-width: 0; display: flex; flex-direction: column; }
 .coluna-topo { display: flex; align-items: baseline; gap: 8px; padding: 0 6px 10px; min-height: 48px; }
@@ -2531,18 +2552,9 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .pe-agenda { display: flex; flex-wrap: wrap; gap: 0 20px; margin: 6px 0 0 4px; }
   .pe-agenda .botao-texto { min-height: 44px; white-space: nowrap; }
 
-  /* o topo que conta (#41): algarismos de largura fixa (nada em volta se mexe quando os números contam); os itens que
-     aparecem ou somem abrem ou fecham a vaga de lado (a largura e a opacidade animam em topoDaFaixa.tsx) */
-  .secao-trello-topo .ct-item { display: inline-block; overflow-x: clip; overflow-y: visible; white-space: pre; }
-  .secao-trello-conta .ct-num, .semana-nav b .p-dia { font-variant-numeric: tabular-nums; }
-  .secao-trello-conta .ct-prio { padding-right: 4px; }
-  .secao-trello-conta .ct-prio .prio-nota { will-change: clip-path; }
-  /* o dia da esquerda alinhado à direita: 1 e 30 ocupam o mesmo espaço */
+  /* o topo que conta (#41; as regras comuns com o computador ficam com a agenda, fora daqui): o dia da esquerda
+     alinhado à direita, 1 e 30 ocupando o mesmo espaço (o seletor tem a largura do maior período) */
   .semana-nav b .p-d1 { display: inline-block; min-width: 2ch; text-align: right; }
-  /* na virada do mês, os meses somem no começo da contagem (antes de os dias contarem: MESES_APAGAM_MS, em fila.ts)
-     e voltam no fim */
-  .semana-nav b .p-mes { font-variant-numeric: tabular-nums; transition: opacity 140ms var(--suave); }
-  .semana-nav b .p-mes.apagado { opacity: 0; transition: opacity 60ms ease-out; }
 
   /* o "?" no canto só mostra atalhos de teclado (o "Fazer o tour" já sai no celular), e cobria as fichas */
   .botao-atalhos { display: none; }

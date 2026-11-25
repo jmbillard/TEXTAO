@@ -1,17 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { duracaoDoPeriodo, periodoNaContagem, valorNaContagem } from './fila';
+import { duracaoDoPeriodo, periodoNaContagem, valorNaContagem, type DiaDaSemana, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
+import { RABISCOS } from './pecas';
 import { semMovimento } from './util';
 
-/* O topo da agenda no celular (#41): o período do seletor, o resumo dos dias à vista e o "voltar para hoje". Quando a
-   faixa para, os números contam do valor antigo até o novo, a prioridade se escreve à mão e o "voltar para hoje"
-   desliza no sentido em que a agenda andou. Nada disso acontece no meio do arrasto: quem decide quando o topo muda é
-   o useFaixa (só quando a rolagem termina). Com o movimento reduzido, tudo é só a troca.
+/* O topo da agenda No Trello, no celular (#41) e no computador: o período do seletor, o resumo dos dias à vista, o
+   "voltar para hoje" e, no computador, o cabeçalho de cada dia. Quando os dias à vista mudam, os números contam do
+   valor antigo até o novo, a prioridade e as marcas do dia ("ontem", "hoje" com o círculo, "amanhã") se escrevem à mão
+   e o "voltar para hoje" desliza no sentido em que a agenda andou. No celular, nada disso acontece no meio do arrasto:
+   quem decide quando o topo muda é o useFaixa (só quando a rolagem termina); no computador, é a troca de semana
+   (useTrocaDeSemana). Com o movimento reduzido, tudo é só a troca.
 
    Todo o movimento roda no relógio das animações da página (Web Animations), nunca em temporizadores nem no horário do
    quadro: assim nada salta quando a página desacelera as animações (o CDP, nos quadros em câmera lenta). */
 
 /** A curva --suave dos estilos, para as animações feitas daqui. */
-const SUAVE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+export const SUAVE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const CONTA_RESUMO_MS = 360;
 
 /** Uma contagem em andamento: de onde, para onde e em que instante (de 0 a 1). Parada, `de` e `para` são o alvo. */
@@ -23,7 +26,7 @@ export interface Contagem {
 
 /** Conta até `alvo` sempre que ele muda, partindo do valor que estava à vista (uma contagem interrompida continua de
     onde estava), em `duracao(de, para)` ms. Na primeira vez, e com o movimento reduzido, só troca. */
-function useContagem(alvo: number, duracao: (de: number, para: number) => number): Contagem {
+export function useContagem(alvo: number, duracao: (de: number, para: number) => number): Contagem {
   const [c, setC] = useState<Contagem>({ de: alvo, para: alvo, p: 1 });
   const agora = useRef(c);
   agora.current = c;
@@ -57,7 +60,7 @@ function useContagem(alvo: number, duracao: (de: number, para: number) => number
 
 /** Um item que abre a vaga de lado ao aparecer e a fecha ao sair, com opacidade, sem a linha pular. Enquanto fecha,
     continua mostrando o que tinha; fechado, sai da página. Na primeira vez, e com o movimento reduzido, só troca. */
-function ItemQueAbre({ ver, classe, ms = 300, opacidadeMs = 200, children }: { ver: boolean; classe: string; ms?: number; opacidadeMs?: number; children: ReactNode }) {
+export function ItemQueAbre({ ver, classe, ms = 300, opacidadeMs = 200, children }: { ver: boolean; classe: string; ms?: number; opacidadeMs?: number; children: ReactNode }) {
   const [montado, setMontado] = useState(ver);
   const ultimo = useRef(children);
   if (ver) ultimo.current = children;
@@ -126,13 +129,17 @@ function NumeroQueConta({ valor, um, varios }: { valor: number; um: string; vari
   );
 }
 
-/** A escrita à mão: o traço aparece da esquerda para a direita, como a caneta. */
-const escrever = (e: HTMLElement) =>
-  e.animate([{ clipPath: 'inset(-40% 100% -40% -8%)' }, { clipPath: 'inset(-40% -8% -40% -8%)' }], { duration: 360, easing: 'cubic-bezier(0.45, 0, 0.3, 1)', fill: 'backwards' });
+/** A escrita à mão: o tempo e a curva da caneta. */
+const ESCREVER_MS = 360;
+const CANETA = 'cubic-bezier(0.45, 0, 0.3, 1)';
+
+/** A escrita à mão: o traço aparece da esquerda para a direita, como a caneta (depois de `atraso` ms). */
+const escrever = (e: HTMLElement, atraso = 0) =>
+  e.animate([{ clipPath: 'inset(-40% 100% -40% -8%)' }, { clipPath: 'inset(-40% -8% -40% -8%)' }], { duration: ESCREVER_MS, delay: atraso, easing: CANETA, fill: 'backwards' });
 
 /** A prioridade à mão: ao aparecer (`escreverAoAparecer`), se escreve; quando só o número muda, apaga rápido e se
     escreve de novo. Ela não conta: a letra à mão não tem algarismos de largura fixa. */
-function PrioridadeAMao({ n, escreverAoAparecer }: { n: number; escreverAoAparecer: boolean }) {
+function PrioridadeAMao({ n, escreverAoAparecer, rotulo }: { n: number; escreverAoAparecer: boolean; rotulo: string }) {
   const [mostrado, setMostrado] = useState(n);
   const nota = useRef<HTMLSpanElement>(null);
   const reescrever = useRef(false);
@@ -164,14 +171,14 @@ function PrioridadeAMao({ n, escreverAoAparecer }: { n: number; escreverAoAparec
   }, [mostrado]);
   return (
     <span ref={nota} className="prio-nota">
-      {mostrado} prioridade
+      {mostrado} {rotulo}
     </span>
   );
 }
 
-/** O resumo dos dias à vista: "4 cards · 1 entregue · 1 prioridade". Os números contam; os itens que aparecem ou
-    somem abrem ou fecham a vaga; a prioridade se escreve. */
-export function ResumoQueConta({ total, entregues, comPrioridade }: { total: number; entregues: number; comPrioridade: number }) {
+/** O resumo dos dias à vista: "4 cards · 1 entregue · 1 prioridade" (no computador, "1 com prioridade": `prioridade`).
+    Os números contam; os itens que aparecem ou somem abrem ou fecham a vaga; a prioridade se escreve. */
+export function ResumoQueConta({ total, entregues, comPrioridade, prioridade = 'prioridade' }: { total: number; entregues: number; comPrioridade: number; prioridade?: string }) {
   const montado = useRef(false);
   useEffect(() => {
     montado.current = true;
@@ -187,7 +194,7 @@ export function ResumoQueConta({ total, entregues, comPrioridade }: { total: num
       </ItemQueAbre>
       <ItemQueAbre ver={comPrioridade > 0} classe="ct-prio" ms={220} opacidadeMs={130}>
         {' · '}
-        <PrioridadeAMao n={comPrioridade} escreverAoAparecer={montado.current} />
+        <PrioridadeAMao n={comPrioridade} escreverAoAparecer={montado.current} rotulo={prioridade} />
       </ItemQueAbre>
     </span>
   );
@@ -196,17 +203,30 @@ export function ResumoQueConta({ total, entregues, comPrioridade }: { total: num
 /** O maior período que o seletor escreve: a largura dele, fixa, para as setas nunca se mexerem. */
 const MAIOR_PERIODO = '<span class="p-dia p-d1">30</span><span class="p-mes">/12</span> – <span class="p-dia p-d2">31</span><span class="p-mes">/12</span>';
 
-/** O período do seletor ("25 – 26/11"): os dias contam até os novos; na virada do mês, os meses somem no começo e
-    voltam no fim, e o "/11" da esquerda abre ou fecha a vaga só no fim. A largura é a do maior período. */
+/** A contagem do período até a posição `k` do eixo (os dias à vista). Na renderização em que a posição muda, a
+    contagem já começa (parada no instante zero): os meses começam a apagar antes de o relógio andar, e os dias só
+    contam depois que eles somem. No computador, os números dos dias contam por ela também, junto com o período. */
+export function useContagemDoPeriodo(eixo: EixoDoPeriodo | string[], k: number): Contagem {
+  const contagem = useContagem(k, (de, para) => duracaoDoPeriodo(eixo, de, para));
+  return contagem.para === k ? contagem : { de: valorNaContagem(contagem.de, contagem.para, contagem.p), para: k, p: 0 };
+}
+
+/** O período do seletor ("25 – 26/11") no celular: os dias contam até os novos; na virada do mês, os meses somem no
+    começo e voltam no fim, e o "/11" da esquerda abre ou fecha a vaga só no fim. A largura é a do maior período. */
 export function PeriodoQueConta({ isos, k }: { isos: string[]; k: number }) {
-  const contagem = useContagem(k, (de, para) => duracaoDoPeriodo(isos, de, para));
-  // na renderização em que os dias à vista mudam, a contagem já começa (parada no instante zero): os meses começam a
-  // apagar antes de o relógio andar, e os dias só contam depois que eles somem
-  const c = contagem.para === k ? contagem : { de: valorNaContagem(contagem.de, contagem.para, contagem.p), para: k, p: 0 };
-  const { dia1, mes1, dia2, mes2, mesesApagados } = periodoNaContagem(isos, c.de, c.para, c.p);
+  const c = useContagemDoPeriodo(isos, k);
+  return <Periodo {...periodoNaContagem(isos, c.de, c.para, c.p)} largura="fixa" />;
+}
+
+/** O período em partes, enquanto conta (ou parado): os dias com algarismos de largura fixa, os meses apagados durante
+    a virada e o mês da esquerda, que abre ou fecha a vaga. A largura: "fixa" é a do maior período do celular, para as
+    setas nunca se mexerem; "suave" (o computador, onde o período é por extenso e varia muito) acompanha o texto, e o
+    que muda de uma vez (um algarismo a mais, o nome do mês) não empurra as setas de estalo: elas andam até o lugar. */
+export function Periodo({ dia1, mes1, dia2, mes2, mesesApagados, largura }: PartesDoPeriodo & { mesesApagados: boolean; largura: 'fixa' | 'suave' }) {
   const el = useRef<HTMLElement>(null);
-  const [largura, setLargura] = useState<number>();
+  const [fixa, setFixa] = useState<number>();
   useLayoutEffect(() => {
+    if (largura !== 'fixa') return;
     const medir = () => {
       const b = el.current;
       if (!b?.parentElement) return;
@@ -215,7 +235,7 @@ export function PeriodoQueConta({ isos, k }: { isos: string[]; k: number }) {
       Object.assign(copia.style, { position: 'absolute', visibility: 'hidden', width: 'auto', minWidth: '0' });
       copia.innerHTML = MAIOR_PERIODO;
       b.parentElement.appendChild(copia);
-      setLargura(Math.ceil(copia.getBoundingClientRect().width) + 2);
+      setFixa(Math.ceil(copia.getBoundingClientRect().width) + 2);
       copia.remove();
     };
     medir();
@@ -225,10 +245,27 @@ export function PeriodoQueConta({ isos, k }: { isos: string[]; k: number }) {
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [largura]);
+  // "suave": a largura de antes desta renderização (a que está na tela) e a margem que compensa o salto
+  const antes = useRef<number | undefined>(undefined);
+  const margem = useRef<Animation | undefined>(undefined);
+  if (largura === 'suave') antes.current = el.current?.getBoundingClientRect().width;
+  useLayoutEffect(() => {
+    const b = el.current;
+    const de = antes.current;
+    if (largura !== 'suave' || !b || de === undefined) return;
+    const salto = b.getBoundingClientRect().width - de;
+    if (Math.abs(salto) < 0.5 || semMovimento()) return;
+    // o período cresceu (ou encolheu) de uma vez: a margem devolve o que mudou e vai a zero, e o que está à esquerda
+    // (a seta, o "voltar para hoje") anda até o lugar novo
+    const atual = parseFloat(getComputedStyle(b).marginLeft) || 0;
+    margem.current?.cancel();
+    margem.current = b.animate([{ marginLeft: `${atual - salto}px` }, { marginLeft: '0px' }], { duration: 220, easing: SUAVE });
+  });
+  useEffect(() => () => margem.current?.cancel(), []);
   const apagado = mesesApagados ? ' apagado' : '';
   return (
-    <b ref={el} style={largura ? { width: largura } : undefined}>
+    <b ref={el} style={fixa ? { width: fixa } : undefined}>
       <span className="p-dia p-d1">{dia1}</span>
       <ItemQueAbre ver={!!mes1} classe="p-m1">
         <span className={`p-mes${apagado}`}>{mes1}</span>
@@ -240,9 +277,39 @@ export function PeriodoQueConta({ isos, k }: { isos: string[]; k: number }) {
   );
 }
 
+/** O cabeçalho de um dia da agenda: "QUA 25 hoje", com o hoje circulado à mão. No computador, o número é o da contagem
+    (conta junto com o período) e as marcas ("ontem", "hoje" com o círculo, "amanhã") só aparecem quando a contagem
+    termina (`marcas`); então se escrevem à mão (`escrever`): o círculo primeiro, a palavra logo atrás. */
+export function TopoDoDia({ d, numero = d.numero, marcas = true, escrever: escreve = false }: { d: DiaDaSemana; numero?: number; marcas?: boolean; escrever?: boolean }) {
+  const marca = marcas ? d.marca : '';
+  const circulo = useRef<SVGPathElement>(null);
+  const rel = useRef<HTMLSpanElement>(null);
+  const antes = useRef(marca);
+  useLayoutEffect(() => {
+    const era = antes.current;
+    antes.current = marca;
+    if (!escreve || !marca || marca === era || semMovimento()) return;
+    const tracos: Animation[] = [];
+    if (circulo.current) tracos.push(circulo.current.animate([{ strokeDasharray: '1', strokeDashoffset: 1 }, { strokeDasharray: '1', strokeDashoffset: 0 }], { duration: ESCREVER_MS, easing: CANETA, fill: 'backwards' }));
+    if (rel.current) tracos.push(escrever(rel.current, circulo.current ? ESCREVER_MS / 2 : 0));
+    return () => tracos.forEach((a) => a.cancel());
+  }, [marca]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="coluna-topo">
+      <span className="dia-sem">{d.diaDaSemana}</span>
+      <span className="dia-num">
+        {numero}
+        {marca === 'hoje' && <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path ref={circulo} pathLength={1} d={RABISCOS[1]} /></svg>}
+      </span>
+      {marca && <span ref={rel} className="dia-rel">{marca}</span>}
+    </div>
+  );
+}
+
 /** O "voltar para hoje", com o lugar guardado: entra e sai deslizando 10px no sentido em que a agenda andou
-    (`sentido`: 1 para a frente, -1 para trás), com opacidade. */
-export function VoltarParaHoje({ ver, sentido, voltar }: { ver: boolean; sentido: number; voltar: () => void }) {
+    (`sentido`: 1 para a frente, -1 para trás), com opacidade. Com `abreVaga` (o computador, onde ele fica entre os
+    outros links), o lugar não fica guardado: ele abre e fecha a vaga de lado enquanto desliza. */
+export function VoltarParaHoje({ ver, sentido, voltar, abreVaga = false }: { ver: boolean; sentido: number; voltar: () => void; abreVaga?: boolean }) {
   const el = useRef<HTMLButtonElement>(null);
   const primeira = useRef(true);
   useLayoutEffect(() => {
@@ -263,9 +330,16 @@ export function VoltarParaHoje({ ver, sentido, voltar }: { ver: boolean; sentido
     return () => a.cancel();
     // o sentido vem junto com a troca: só ela anima
   }, [ver]); // eslint-disable-line react-hooks/exhaustive-deps
-  return (
+  const botao = (
     <button ref={el} type="button" className={`botao-texto voltar-hoje ${ver ? '' : 'fora'}`} onClick={voltar}>
       voltar para hoje
     </button>
+  );
+  return abreVaga ? (
+    <ItemQueAbre ver={ver} classe="ct-voltar">
+      {botao}
+    </ItemQueAbre>
+  ) : (
+    botao
   );
 }

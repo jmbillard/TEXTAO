@@ -659,3 +659,58 @@ describe('No Trello no celular: a faixa de dias', () => {
   });
 });
 
+
+describe('No Trello no computador: a semana que conta', () => {
+  const agora = new Date(2026, 10, 25, 15, 0); // qua, 25/11
+
+  it('o período da semana em partes: o mês por extenso, o da esquerda só na virada', async () => {
+    const { partesDoPeriodo, mesPorExtenso, montarSemana } = await import('../src/ui/fila');
+    expect(partesDoPeriodo('2026-11-24', '2026-11-30', mesPorExtenso)).toEqual({ dia1: 24, mes1: '', dia2: 30, mes2: ' de novembro' });
+    expect(partesDoPeriodo('2026-12-29', '2027-01-04', mesPorExtenso)).toEqual({ dia1: 29, mes1: ' de dezembro', dia2: 4, mes2: ' de janeiro' });
+    // o período escrito da semana sai das mesmas partes
+    expect(montarSemana([], {}, agora).periodo).toBe('24 – 30 de novembro');
+    expect(montarSemana([], {}, agora, 1).periodo).toBe('1 – 7 de dezembro');
+    expect(montarSemana([], {}, agora, 5).periodo).toBe('29 de dezembro – 4 de janeiro');
+  });
+
+  it('a semana no eixo: a posição é o primeiro dia contado de hoje, e o período tem sete dias', async () => {
+    const { eixoDaSemana, inicioDaSemana, periodoNaContagem } = await import('../src/ui/fila');
+    const eixo = eixoDaSemana(agora);
+    expect([inicioDaSemana(0), inicioDaSemana(1), inicioDaSemana(-1)]).toEqual([-1, 6, -8]);
+    expect(eixo.dia(inicioDaSemana(0))).toBe('2026-11-24');
+    expect(periodoNaContagem(eixo, inicioDaSemana(0), inicioDaSemana(0), 1)).toEqual({ dia1: 24, mes1: '', dia2: 30, mes2: ' de novembro', mesesApagados: false });
+  });
+
+  it('trocar de semana na virada do mês: os meses apagam primeiro, os dias contam pelas datas e o mês errado nunca aparece', async () => {
+    const { eixoDaSemana, inicioDaSemana, periodoNaContagem, posicaoNaContagem, duracaoDoPeriodo, MESES_APAGAM_MS } = await import('../src/ui/fila');
+    const eixo = eixoDaSemana(agora);
+    const [de, para] = [inicioDaSemana(0), inicioDaSemana(1)]; // 24 – 30 de novembro → 1 – 7 de dezembro
+    const total = duracaoDoPeriodo(eixo, de, para);
+    expect(total).toBe(MESES_APAGAM_MS + 340);
+    const quadros = Array.from({ length: 41 }, (_, i) => periodoNaContagem(eixo, de, para, i / 40));
+    // enquanto conta, os meses ficam apagados, com o "de novembro" da partida guardando a vaga
+    expect(quadros.slice(0, -1).every((q) => q.mesesApagados && q.mes1 === '' && q.mes2 === ' de novembro')).toBe(true);
+    // os dias ficam parados enquanto os meses apagam
+    for (let ms = 0; ms <= MESES_APAGAM_MS; ms += 10) expect(posicaoNaContagem(eixo, de, para, ms / total)).toBe(de);
+    // e depois passam pelas datas, sempre para a frente: 24, 25… 30, 1
+    const primeiros = [...new Set(quadros.map((q) => q.dia1))];
+    expect(primeiros[0]).toBe(24);
+    expect(primeiros[primeiros.length - 1]).toBe(1);
+    expect(quadros[40]).toEqual({ dia1: 1, mes1: '', dia2: 7, mes2: ' de dezembro', mesesApagados: false });
+    // de volta para trás, a mesma coisa ao contrário
+    const voltando = Array.from({ length: 41 }, (_, i) => posicaoNaContagem(eixo, para, de, i / 40));
+    expect(voltando).toEqual([...voltando].sort((a, b) => b - a));
+    expect(periodoNaContagem(eixo, para, de, 1)).toMatchObject({ dia1: 24, dia2: 30, mes2: ' de novembro', mesesApagados: false });
+  });
+
+  it('voltar para hoje de longe: conta todas as datas do caminho, no mesmo tempo', async () => {
+    const { eixoDaSemana, inicioDaSemana, posicaoNaContagem, duracaoDoPeriodo } = await import('../src/ui/fila');
+    const eixo = eixoDaSemana(agora);
+    const [de, para] = [inicioDaSemana(3), inicioDaSemana(0)];
+    expect(duracaoDoPeriodo(eixo, de, para)).toBe(80 + 340); // 15 – 21 de dezembro → novembro: há virada
+    expect(posicaoNaContagem(eixo, de, para, 0)).toBe(de);
+    expect(posicaoNaContagem(eixo, de, para, 1)).toBe(para);
+    // sem virada, conta desde o primeiro instante
+    expect(posicaoNaContagem(eixo, inicioDaSemana(2), inicioDaSemana(3), 0.1)).toBeGreaterThan(inicioDaSemana(2));
+  });
+});
