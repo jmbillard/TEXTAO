@@ -1531,6 +1531,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                 </span>
                 <span className="txt"><b>{marcada ? <Riscado semente={a.ordem} desde={desdeDaMarca.get(k)}>{a.texto}</Riscado> : a.texto}</b></span>
               </button>
+              {/* na arte marcada (✓ ou ✕), o lugar do fogo e do × fica reservado e vazio: o texto não cresce para ele, e
+                  marcar ou devolver a arte não muda a quebra das linhas nem a altura da linha */}
+              {!leitura && marcada && (
+                <>
+                  <span className="cx-vaga" aria-hidden="true" />
+                  <span className="acoes-arte" aria-hidden="true"><span className="tirar-vaga" /></span>
+                </>
+              )}
               {!leitura && !marcada && (
                 <>
                   {/* a coluna da complexidade da arte: largura fixa, o fogo do nível centrado nela; o clique sobe um nível */}
