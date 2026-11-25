@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro, versaoNova } from '../dados/armazenamento';
 import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, type ArteComparada } from '../modelo/diferencas';
 import { exportar, pendencias } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
+import { useCamadaDeRiscos } from './riscos';
 import { dataCurtaComDia, plural } from './util';
 import { VisorPdf } from './VisorPdf';
 import { ehDocx, VisorOriginal } from './VisorOriginal';
@@ -276,12 +277,17 @@ function FolhaDoRoteiro({ r, pdf, rotulo, anotacao, lado }: { r: Roteiro; pdf: (
   );
 }
 
-/** Um risco à mão por cima: o que saiu (ou foi trocado) no roteiro novo. */
-export function Riscado({ children }: { children: React.ReactNode }) {
+/** Um risco à mão por cima: o que saiu (ou foi trocado) no roteiro novo, e a arte "já existe" na lista. O texto fica
+ *  em linha e o risco atravessa cada linha no meio das letras (`riscos.ts`); com `desde` (o instante da marca), as
+ *  linhas se escrevem uma depois da outra. */
+export function Riscado({ children, semente = 0, desde }: { children: React.ReactNode; semente?: number; desde?: number }) {
+  const texto = useRef<HTMLSpanElement>(null);
+  const camada = useRef<SVGSVGElement>(null);
+  useCamadaDeRiscos(camada, () => (texto.current ? [{ elementos: [texto.current], semente, desde }] : []), `${semente}|${desde ?? ''}|${typeof children === 'string' ? children : ''}`);
   return (
     <span className="riscado-mao">
-      {children}
-      <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M1 6.5 C 18 4, 40 7.5, 62 5 S 88 3.5, 99 5.5" /></svg>
+      <span ref={texto}>{children}</span>
+      <svg ref={camada} className="camada-riscos" aria-hidden="true" />
     </span>
   );
 }

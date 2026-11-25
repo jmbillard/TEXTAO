@@ -32,6 +32,7 @@ import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura, TextoDaClaquet
 import { useTelaDeCelular } from './faixa';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
+import { useCamadaDeRiscos, useDesdeDaMarca } from './riscos';
 import { Fogo, FogoComTroca } from './fogo';
 import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
@@ -53,7 +54,7 @@ const TOQUE_MS = 400;
 /* ---------- topo da folha: atração e praça ---------- */
 
 /** Origem, timecode e fala de cada sonora: o que a edição precisa, fora do caminho da Arte. */
-function Decupagem({ saida, noTexto, alternar }: { saida: Saida; noTexto: boolean; alternar: () => void }) {
+function Decupagem({ saida }: { saida: Saida }) {
   if (!saida.sonoras.length) return null;
   return (
     <section className="decupagem" aria-label="Decupagem">
@@ -62,7 +63,6 @@ function Decupagem({ saida, noTexto, alternar }: { saida: Saida; noTexto: boolea
           <div className="rotulo">Para a edição</div>
           <h2>Decupagem</h2>
         </div>
-        <button className="botao-texto" onClick={alternar}>{noTexto ? 'Recolher no texto' : 'Mostrar no texto'}</button>
       </div>
       <div className="rola">
         <table>
@@ -893,6 +893,31 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const nJa = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto))).length;
   const nFora = artes.filter((a) => marcadasFora.has(chaveDeArte(a.texto))).length;
   const nAProduzir = artes.length - nJa - nFora;
+  // o risco à mão se escreve só na marca nova; o que já vem marcado ao abrir aparece pronto
+  const desdeDaMarca = useDesdeDaMarca([...marcadasJa, ...marcadasFora]);
+  // "já existe" também no texto (#50): o trecho apaga, o sublinhado some e um risco à mão atravessa cada linha, numa
+  // camada por cima da folha (o editor redesenha o texto a cada mudança, então nada vai dentro dele)
+  const camadaDoTexto = useRef<SVGSVGElement>(null);
+  const jaNoTexto = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto)));
+  const redesenharRiscos = useCamadaDeRiscos(
+    camadaDoTexto,
+    () =>
+      editor
+        ? jaNoTexto.map((a) => ({
+            elementos: [...editor.view.dom.querySelectorAll(`u.arte[data-id="${CSS.escape(a.id)}"]`)],
+            semente: a.ordem,
+            desde: desdeDaMarca.get(chaveDeArte(a.texto)),
+          }))
+        : [],
+    `${editor ? 1 : 0}|${vista}|${sonorasNoTexto}|${jaNoTexto.map((a) => `${a.id}:${desdeDaMarca.get(chaveDeArte(a.texto)) ?? ''}`).join(',')}`,
+  );
+  useEffect(() => {
+    if (!editor) return;
+    editor.on('transaction', redesenharRiscos);
+    return () => {
+      editor.off('transaction', redesenharRiscos);
+    };
+  }, [editor, redesenharRiscos]);
   const marcarArte = (a: (typeof artes)[number], como: 'existe' | 'fora' | null) => {
     mudarMeta(remarcar(meta, [chaveDeArte(a.texto)], como));
     setRealce(null);
@@ -1504,7 +1529,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                   <span className="num">{a.ordem}</span>
                   <Icone nome="certo" tam={11} traco={2.8} />
                 </span>
-                <span className="txt"><b>{marcada ? <Riscado>{a.texto}</Riscado> : a.texto}</b></span>
+                <span className="txt"><b>{marcada ? <Riscado semente={a.ordem} desde={desdeDaMarca.get(k)}>{a.texto}</Riscado> : a.texto}</b></span>
               </button>
               {!leitura && !marcada && (
                 <>
@@ -1756,6 +1781,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             >
               <EditorContent editor={editor} />
             </div>
+            <svg ref={camadaDoTexto} className="camada-riscos camada-do-texto" aria-hidden="true" />
             {vista === 'original' && temOriginal && (
               <div className="corpo-original">
                 <VisorOriginal id={inicial.id} nome={inicial.original?.nome} artes={saida.artes.map((x) => x.texto)} />
@@ -1766,9 +1792,15 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               <p className="dicas">
                 <span><kbd>{atalho('Mod-u')}</kbd> marca como arte</span>
                 <span><kbd>CAIXA ALTA</kbd> é locução</span>
+                {/* recolhe ou mostra as falas dentro do texto; sem sonoras, não aparece */}
+                {saida.sonoras.length > 0 && (
+                  <button type="button" className="botao-texto chave-sonoras" aria-pressed={!sonorasNoTexto} onClick={() => setSonorasNoTexto((v) => !v)}>
+                    {sonorasNoTexto ? 'Esconder as sonoras' : 'Mostrar as sonoras'}
+                  </button>
+                )}
               </p>
             </footer>
-            <Decupagem saida={saida} noTexto={sonorasNoTexto} alternar={() => setSonorasNoTexto((v) => !v)} />
+            <Decupagem saida={saida} />
           </article>
 
           {celular ? (
@@ -1840,6 +1872,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       </section>
 
       {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{position:relative;animation:selecionar-arte .5s cubic-bezier(.45,0,.3,1) forwards}.texto u.arte[data-id="${CSS.escape(realce)}"]::after{content:'';position:absolute;top:-.2em;width:.5em;height:1.4em;margin-left:-.25em;pointer-events:none;background:var(--ibeam-arte) no-repeat center/contain;animation:arrastar-cursor-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}
+      {jaNoTexto.length > 0 && <style>{`.texto u.arte:is(${jaNoTexto.map((a) => `[data-id="${CSS.escape(a.id)}"]`).join(',')}){color:color-mix(in srgb,var(--tinta) 55%,transparent);text-decoration-color:transparent}`}</style>}
       {soltando && <style>{`.texto u.arte[data-id="${CSS.escape(soltando)}"]{background-size:100% 100%;animation:soltar-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}
       {emLote ? (
         // no celular, o lote toma o lugar da barra de baixo: a contagem, os fogos e o ✕ em cima; as ações embaixo

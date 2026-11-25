@@ -14,6 +14,10 @@ export const RABISCOS = [
 /** Os riscos à caneta sob um texto (viewBox 0 0 100 14, pathLength 1): os formatos do convite e a claquete prioridade. */
 export const RISCOS = ['M2 8 C 22 4, 52 5, 97 6 C 70 8, 38 10, 12 11', 'M3 6 C 30 9, 60 4, 98 7', 'M2 7 C 35 4, 70 9, 97 5 C 75 8, 40 9, 20 10'];
 
+/** Os riscos à caneta por cima de um texto riscado, um por linha (mesmo viewBox, o meio em y = 7, de um traço só): a arte
+ *  "já existe" na lista e no texto, e a que saiu na comparação. Veja `riscos.ts`. */
+export const RISCOS_DE_LINHA = ['M3 6 C 30 9, 60 4, 98 7', 'M2 7 C 28 5, 62 8.5, 98 5.5', 'M2 6.5 C 25 8.5, 55 4.5, 98 7'];
+
 /** Um risco à mão sob o texto de dentro; `traco` escolhe qual dos riscos. */
 export function Riscado({ children, traco = 0, className = '' }: { children: React.ReactNode; traco?: number; className?: string }) {
   return (
