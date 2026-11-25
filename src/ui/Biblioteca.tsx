@@ -8,7 +8,7 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
-import { agruparPorDia, etapaPorExtenso, filaVisivel, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type GrupoDia, type Semana } from './fila';
+import { agruparPorDia, filaVisivel, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type GrupoDia, type Semana } from './fila';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -373,7 +373,7 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
       <span className="ficha-gente some">
         {r.meta.redator ? <span><small className="rotulo-gente">redator:</small> {r.meta.redator}</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
         <small className={semEditor ? 'falta' : ''}>
-          edição: {!semEditor ? r.meta.editor : <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" />}
+          editor: {!semEditor ? r.meta.editor : <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" />}
         </small>
       </span>
       <span className="ficha-artes some">
@@ -437,13 +437,23 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
 
 const ETAPA_NO_CARD: Record<NonNullable<EtapaDoCard>, string> = { produzindo: 'produzindo', aprovacao: 'em aprovação', entregue: 'entregue', caiu: 'caiu' };
 
+/** Uma pessoa no card aberto: o rótulo discreto e o nome lado a lado, numa linha só; o nome longo termina em
+    reticências e vai inteiro na dica. Sem nome, fica a falta ("sem editor"). */
+function PessoaNoCard({ rotulo, nome, falta }: { rotulo: string; nome: string; falta?: string }) {
+  return (
+    <div className="card-semana-pessoa">
+      <dt>{rotulo}</dt>
+      <dd title={nome || undefined}>{nome || <small>{falta}</small>}</dd>
+    </div>
+  );
+}
+
 /** O card da semana (formato A). Fechado: a claquete em cima; embaixo, discretas, a praça e as artes à mão; à direita,
-    a etapa. Um clique abre (com animação de altura) a ficha do card: redator, edição, arte, etapa com o prazo, a rubrica
-    de quem revisou e os atalhos para o roteiro e para o card no Trello. */
+    a etapa. Um clique abre (com animação de altura) a ficha do card: uma pessoa por linha (redator, editor, designer),
+    a rubrica de quem revisou e os atalhos para o roteiro e para o card no Trello. A etapa não se repete na ficha. */
 function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
   const { r, etapa, andamento } = c;
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
-  const { nome: etapaNome, ate } = etapaPorExtenso(andamento);
   const idMais = `card-mais-${r.id}`;
   // o card simulado do roteiro de exemplo, no fim do tour: não é um card do Trello
   const doTour = ehDoTour(r.id);
@@ -469,25 +479,9 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
         <div>
           <div className="card-semana-mais-dentro">
             <dl className="card-semana-dados">
-              <dt>redator</dt>
-              <dd>{r.meta.redator || <small>sem redator</small>}</dd>
-              <dt>edição</dt>
-              <dd>{r.meta.editor || <small>sem editor</small>}</dd>
-              {!!andamento?.designers.length && (
-                <>
-                  <dt>arte</dt>
-                  <dd>{andamento.designers.join(', ')}</dd>
-                </>
-              )}
-              {(etapaNome || ate) && (
-                <>
-                  <dt>etapa</dt>
-                  <dd>
-                    {etapaNome}
-                    {ate && <small> até {ate}</small>}
-                  </dd>
-                </>
-              )}
+              <PessoaNoCard rotulo="redator" nome={r.meta.redator} falta="sem redator" />
+              <PessoaNoCard rotulo="editor" nome={r.meta.editor} falta="sem editor" />
+              {!!andamento?.designers.length && <PessoaNoCard rotulo="designer" nome={andamento.designers.join(', ')} />}
             </dl>
             <div className="card-semana-pe">
               {r.revisadoPor && (

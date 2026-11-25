@@ -205,19 +205,6 @@ const ETIQUETAS: Record<string, string> = {
 /** O nome de uma etiqueta do card ("EM APROVAÇÃO" → "Em aprovação"); a que não conhece vira só minúscula. */
 export const nomeDaEtiqueta = (st: string) => ETIQUETAS[st.toUpperCase()] ?? st[0] + st.slice(1).toLowerCase();
 
-/** A etapa no card aberto: o nome por extenso (caiu e entregue vencem as outras etiquetas) e o prazo "até 25/11",
-    o dia da entrega em Brasília, só enquanto o card não foi entregue nem caiu. */
-export function etapaPorExtenso(a: Andamento | undefined): { nome: string; ate: string } {
-  const etapa = etapaDoCard(a);
-  const nome = etapa === 'caiu' ? 'Caiu' : etapa === 'entregue' ? 'Entregue' : (a?.status ?? []).map(nomeDaEtiqueta).join(', ');
-  // a entrega vem em UTC; o dia que vale é o de Brasília
-  const ate =
-    a?.entrega && etapa !== 'caiu' && etapa !== 'entregue'
-      ? new Date(a.entrega).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })
-      : '';
-  return { nome, ate };
-}
-
 /** A rubrica de quem revisou, à mão no pé do card: "Clara Vieira" → "Clara V.". */
 export function rubrica(nome: string): string {
   const partes = nome.trim().split(/\s+/).filter(Boolean);

@@ -1564,9 +1564,11 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-mais-dentro { padding: 2px 12px 10px; opacity: 0; transform: translateY(-3px); transition: opacity 0.2s, transform 0.34s var(--suave); }
 .card-semana.aberto .card-semana-mais { grid-template-rows: 1fr; }
 .card-semana.aberto .card-semana-mais-dentro { opacity: 1; transform: none; transition-delay: 0.06s; }
-.card-semana-dados { margin: 0; padding-top: 9px; border-top: 1px dashed var(--regua-forte); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; font-size: 12.5px; }
-.card-semana-dados dt { color: var(--tinta3); }
-.card-semana-dados dd { margin: 0; color: var(--tinta); min-width: 0; overflow-wrap: anywhere; }
+/* uma pessoa por linha: o rótulo discreto e o nome lado a lado; o nome longo termina em reticências (inteiro na dica) */
+.card-semana-dados { margin: 0; padding-top: 9px; border-top: 1px dashed var(--regua-forte); display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+.card-semana-pessoa { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.card-semana-dados dt { flex: none; color: var(--tinta3); }
+.card-semana-dados dd { flex: 1; margin: 0; color: var(--tinta); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-semana-dados dd small { color: var(--tinta3); font-size: 11.5px; }
 .card-semana-pe { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; min-height: 28px; }
 .card-semana-rubrica { font: 600 19px/1 Caveat, cursive; color: var(--tinta2); transform: rotate(-3deg); transform-origin: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
