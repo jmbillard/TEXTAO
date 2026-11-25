@@ -202,10 +202,12 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
     return lido;
   }
 
-  /** Depois de gravar: a lista daqui e o vocabulário de reconhecimento passam a valer na hora. */
-  async function depois() {
+  /** Depois de gravar: a lista daqui e o vocabulário de reconhecimento passam a valer na hora. `entrou`: as keys de
+      atração que acabaram de ser gravadas ([{ nome, chaves }]), para o reconhecimento não esperar o Teable; `null`
+      depois de uma remoção, para o que esperava o Teable não voltar. */
+  async function depois(entrou = []) {
     lidoEm = 0;
-    await vocabulario?.renovar?.().catch(() => {});
+    await vocabulario?.renovar?.(entrou).catch(() => {});
   }
 
   const erro = (msg, status = 400) => Object.assign(new Error(msg), { status });
@@ -241,7 +243,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
       for (const c of atual.camposCaminho) if (extra[c.nome] != null && String(extra[c.nome]).trim()) fields[c.nome] = nomeLimpo(extra[c.nome], 200);
       const rec = await criar(t.atracoes, fields);
       for (const k of lista) await criar(t.keysAtracoes, { key: k, [campoKeyLink]: [{ id: rec.id }] });
-      await depois();
+      await depois([{ nome, chaves: lista }]);
       return { id: rec.id, nome, keys: lista };
     },
 
@@ -266,7 +268,9 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
       await keyLivre(tabela, key);
       const link = { atracao: campoKeyLink, redator: 'redator', editor: 'editor' }[tipo];
       const rec = await criar(tabela, { key, [link]: [{ id: alvoId }] });
-      await depois();
+      // a key nova de uma atração vale já para o reconhecimento (o nome vem da leitura que conferiu a key livre)
+      const dona = tipo === 'atracao' ? (await ler()).atracoes.find((a) => a.id === alvoId)?.nome : '';
+      await depois(dona ? [{ nome: dona, chaves: [key] }] : []);
       return { id: rec.id, key };
     },
 
@@ -318,7 +322,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
         for (const k of item?.keys ?? []) await apagarRegistro(keysDe[1], k.id);
       }
       await apagarRegistro(tabela, id);
-      await depois();
+      await depois(null);
       return { ok: true };
     },
   };

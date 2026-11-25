@@ -77,6 +77,30 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
+  /* O que acabou de ser cadastrado. O Teable grava a key (com o link para a atração) na hora, mas a coluna de keys
+     da própria atração (o outro lado do link, que o Postgres devolve) só se ajeita um pouco depois: a leitura logo
+     depois do cadastro via a atração nova sem nenhuma key, e a lista do Sem cadastro guardava isso por 10 minutos.
+     Até uma leitura trazer as keys por conta própria (ou passar RECENTES_MS), elas entram junto. */
+  const RECENTES_MS = 30 * 60 * 1000;
+  let recentes = [];
+  const comoKey = (k) => String(k ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+  function comRecentes(lido) {
+    const agora = Date.now();
+    const temTudo = (r) => {
+      const p = lido.programas?.find((x) => x.nome === r.nome);
+      return !!p && r.chaves.every((c) => p.chaves.some((k) => comoKey(k) === comoKey(c)));
+    };
+    recentes = recentes.filter((r) => r.ate > agora && !temTudo(r));
+    if (!recentes.length) return lido;
+    const programas = (lido.programas ?? []).map((p) => ({ ...p, chaves: [...(p.chaves ?? [])] }));
+    for (const r of recentes) {
+      let p = programas.find((x) => x.nome === r.nome);
+      if (!p) programas.push((p = { nome: r.nome, chaves: [] }));
+      for (const c of r.chaves) if (!p.chaves.some((k) => comoKey(k) === comoKey(c))) p.chaves.push(c);
+    }
+    return { ...lido, programas: programas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) };
+  }
+
   // para o diagnóstico: de onde veio a última leitura e o que deu errado
   const estado = { origem: '', erroPg: '', erroApi: '', em: '' };
 
@@ -151,8 +175,13 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
     ligado,
     /** Para o diagnóstico: de onde veio a lista, quantas atrações, e os erros. */
     estado: () => ({ ...estado, atracoes: guardado.programas?.length ?? 0, comKeys: (guardado.programas ?? []).filter((p) => p.chaves?.length).length }),
-    /** Depois de um cadastro: a próxima leitura vai ao Teable, sem esperar a validade. */
-    async renovar() {
+    /** Depois de um cadastro: a próxima leitura vai ao Teable, sem esperar a validade. `entrou` são as keys que
+        acabaram de ser gravadas ([{ nome, chaves }]): valem já, mesmo que o Teable ainda não as mostre na atração.
+        Com `entrou` null (uma remoção), o que estava esperando o Teable deixa de valer. */
+    async renovar(entrou = []) {
+      const ate = Date.now() + RECENTES_MS;
+      if (entrou) recentes.push(...entrou.filter((r) => r?.nome && r.chaves?.length).map((r) => ({ nome: r.nome, chaves: [...r.chaves], ate })));
+      else recentes = [];
       // uma leitura que já estava em curso começou antes do cadastro: espera ela acabar e lê de novo
       if (emCurso) await emCurso.catch(() => {});
       lidoEm = 0;
@@ -165,7 +194,7 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
       emCurso ??= (async () => {
         const doCache = await cache?.ler('vocabulario');
         if (doCache) return void (guardado = doCache);
-        guardado = await carregar();
+        guardado = comRecentes(await carregar());
         estado.em = new Date().toISOString();
         estado.erroApi = '';
         console.log(`[vocabulário] ${guardado.programas?.length ?? 0} atrações, pelo ${estado.origem || '—'}`);

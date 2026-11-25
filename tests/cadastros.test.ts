@@ -243,3 +243,48 @@ describe('rotas dos cadastros', () => {
     expect((await ana('/api/cadastros/redatores/recR1', { method: 'PATCH', body: JSON.stringify({ acervo: 'sem' }) })).status).toBe(405);
   });
 });
+
+describe('Sem cadastro depois de cadastrar a atração', () => {
+  /* O Teable grava a key (com o link para a atração) na hora, mas a coluna de keys da própria atração (o lado de lá
+     do link, que o vocabulário lê pelo Postgres) só se ajeita um pouco depois. A leitura logo depois do cadastro
+     vê a atração nova sem nenhuma key. Nomes inventados. */
+  it('a key que acabou de ser cadastrada sai da lista, mesmo com o Teable atrasado', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarVocabulario } = await import('../servidor/vocabulario.mjs');
+    // @ts-expect-error módulo JS sem tipos
+    const { keysSemCadastro } = await import('../servidor/app.mjs');
+    const { buscar, tabelas } = falso();
+    // o lado da atração no link: só muda quando o Teable "se ajeita"
+    const espelho = new Map<string, { id: string; title: string }[]>();
+    const ajeitar = () => {
+      espelho.clear();
+      for (const k of tabelas.tblKeyAtr)
+        for (const a of k.fields.atracoes as { id: string }[]) espelho.set(a.id, [...(espelho.get(a.id) ?? []), { id: k.id, title: String(k.fields.key) }]);
+    };
+    ajeitar();
+    const consultar = async () =>
+      tabelas.tblAtr.map((r) => ({ atracao: r.fields.atracao, categoria: r.fields.categoria ?? null, pattern: espelho.get(r.id) ?? null }));
+    const env = { ...ENV, TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseX', TEABLE_PG_ATRACOES: 'atracoes' };
+    const vocabulario = criarVocabulario(env, buscar, null, null, consultar);
+    const c = criarCadastros(ENV, { buscar, vocabulario });
+    const claquetes = [
+      { claquete: 'Rio Souza(Teaser)12/12', em: '2026-11-17' },
+      { claquete: 'RIO SOUZA TEASER(FLASHMOB)', em: '2026-11-25' },
+    ];
+    const antes = keysSemCadastro(claquetes, (await vocabulario.ler()).programas);
+    expect(antes.map((k: { key: string }) => k.key)).toEqual(['SOUZA', 'SOUZA TEASER']);
+
+    await c.novaAtracao({ nome: 'Só Mais Um Souza', keys: ['SOUZA'] });
+
+    const depois = keysSemCadastro(claquetes, (await vocabulario.ler()).programas);
+    expect(depois).toEqual([]);
+    // ligar uma key a uma atração que já existe ("Ligar a…") tem o mesmo atraso
+    const comNoite = [...claquetes, { claquete: 'NOITINHA(CHAMADA) 3/12', em: '2026-11-25' }];
+    expect(keysSemCadastro(comNoite, (await vocabulario.ler()).programas).map((k: { key: string }) => k.key)).toEqual(['NOITINHA']);
+    await c.novaKey('atracao', 'recA1', 'noitinha');
+    expect(keysSemCadastro(comNoite, (await vocabulario.ler()).programas)).toEqual([]);
+    // quando o Teable se ajeita, a leitura seguinte continua certa
+    ajeitar();
+    expect(keysSemCadastro(comNoite, (await vocabulario.renovar()).programas)).toEqual([]);
+  });
+});
