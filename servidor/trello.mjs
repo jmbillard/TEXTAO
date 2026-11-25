@@ -789,6 +789,7 @@ export function criarTrello(env, deps = {}) {
   let memo = { em: 0, chave: '', dados: {} };
   let avisouFalha = false;
   let avisouFalhaPrioridade = false;
+  let avisouLeituraParada = false;
 
   /**
    * @param itens [{ id, card, claquete, naFila? }]: os roteiros que já estão no Trello e, com `naFila`, os da fila de
@@ -819,11 +820,27 @@ export function criarTrello(env, deps = {}) {
     if (!t.leitura || !itens.length) return {};
     try {
       const semCard = itens.some((i) => !i.card);
-      const linhas = await sql(
-        `SELECT "card_ID", "claquete", "status", "designers", "entregue", "data_entrega", "data_entrada" FROM ${t.leitura}
+      const ler = (tabela, cards) =>
+        sql(
+          `SELECT "card_ID", "claquete", "status", "designers", "entregue", "data_entrega", "data_entrada" FROM ${tabela}
          WHERE "card_ID" = ANY($1::text[])${semCard ? ` OR "data_entrada" >= now() - interval '30 days'` : ''}`,
-        [itens.map((i) => i.card).filter(Boolean)],
-      );
+          [cards],
+        );
+      const cards = itens.map((i) => i.card).filter(Boolean);
+      const linhas = await ler(t.leitura, cards);
+      // lendo de outra base (TEABLE_PG_ARTE_LEITURA): o card que não está lá é procurado na produção do app. Sem isso,
+      // a base de leitura que parou (o n8n já grava na do PROMeiro) deixa todo card novo sem etapa e sem entrega
+      const faltam = t.producao && t.producao !== t.leitura ? cards.filter((id) => !linhas.some((x) => x.card_ID === id)) : [];
+      if (faltam.length) {
+        const doApp = (await ler(t.producao, faltam)).filter((x) => faltam.includes(x.card_ID));
+        if (doApp.length && !avisouLeituraParada)
+          console.warn(
+            `[andamento] ${doApp.length} de ${cards.length} cards não estão em ${t.leitura} (TEABLE_PG_ARTE_LEITURA), só em ${t.producao}: li de lá. ` +
+              'Se o n8n já grava na base do PROMeiro, deixe TEABLE_PG_ARTE_LEITURA vazia.',
+          );
+        avisouLeituraParada = doApp.length > 0;
+        linhas.push(...doApp);
+      }
       const dados = {};
       for (const i of itens) {
         const l = i.card
@@ -1002,7 +1019,18 @@ export function criarTrello(env, deps = {}) {
         if (!tem.length) return { ok: false, detalhe: `a tabela ${t[nome]} não existe (ou o usuário não lê)` };
         const faltam = cols.filter((c) => !tem.includes(c));
         const [{ n }] = await sql(`SELECT count(*)::int AS n FROM ${t[nome]}`);
-        return faltam.length ? { ok: false, detalhe: `faltam colunas: ${faltam.join(', ')}` } : `${n} linhas`;
+        if (faltam.length) return { ok: false, detalhe: `faltam colunas: ${faltam.join(', ')}` };
+        // a produção que parou (a variável ainda na base de antes da virada): os cards novos ficam sem andamento
+        if (nome === 'leitura') {
+          const ultima = quando((await sql(`SELECT max("data_entrada") AS ultima FROM ${t.leitura}`))[0]?.ultima);
+          const dias = Math.floor((Date.now() - ultima) / 86_400_000);
+          if (ultima && dias >= 3)
+            return {
+              ok: false,
+              detalhe: `a última entrada é de ${new Date(ultima).toISOString().slice(0, 10)}, há ${dias} dias: a produção da arte parou aqui? Aponte ${c.pg.leitura ? 'TEABLE_PG_ARTE_LEITURA (ou deixe-a vazia)' : 'TEABLE_PG_ESQUEMA e TEABLE_PG_ARTE'} para a base em que o n8n grava`,
+            };
+        }
+        return `${n} linhas`;
       });
     }
     if (!c.chave || !c.token) out.push({ item: 'Trello', ok: false, detalhe: 'sem TRELLO_KEY ou TRELLO_TOKEN' });

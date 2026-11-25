@@ -916,3 +916,70 @@ describe('complexidade da arte na versão nova (V2): recalcula a do card quando 
     expect(patch?.campos).toMatchObject({ artes: 'SÁBADO', texto: 'texto novo' });
   });
 });
+
+describe('agenda por entrega: o /api/andamento com a leitura apontada para a base que parou (bug do e93af72)', () => {
+  // o formato que a ARTE_producao devolve de verdade: status em lista, entregue booleano, as datas em UTC
+  const DONA = { card_ID: 'cardDona', claquete: 'DONA 25-11', status: ['FINALIZADO'], designers: null, entregue: true, data_entrega: new Date('2026-11-23T22:55:58Z'), data_entrada: new Date('2026-11-23T22:55:20.976Z') };
+  /** Duas bases: a velha (a do n8n antes da virada), que parou antes do card existir, e a do app, que tem o card. */
+  const duasBases = () => {
+    const lidas: string[] = [];
+    const consultar = async (sql: string, params: unknown[] = []) => {
+      lidas.push(sql);
+      if (sql.includes('"bseVelha"."producaoNQ"')) return [];
+      if (sql.includes('"bseBase"."producao"') && sql.includes('"designers"')) return [DONA].filter((l) => (params[0] as string[]).includes(l.card_ID));
+      return [];
+    };
+    return { consultar, lidas };
+  };
+
+  it('o card que não está na base de leitura é lido na produção do app, e o aviso diz o que mudar', async () => {
+    const { consultar, lidas } = duasBases();
+    const trello = criarTrello({ ...ENV, TEABLE_PG_ARTE_LEITURA: 'bseVelha.producaoNQ' }, { consultar });
+    const db = abrirBanco(':memory:');
+    const servidor = createServer(criarApp({ db, env: {}, trello }));
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    const ana = (caminho: string, init: RequestInit = {}) =>
+      fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com', 'content-type': 'application/json', ...init.headers } });
+    const avisos: string[] = [];
+    const warn = console.warn;
+    console.warn = (...a: unknown[]) => void avisos.push(a.join(' '));
+    try {
+      await ana('/api/roteiros/rot-dona', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'DONA 25-11', dataExibicao: '2026-11-25' }, doc: { type: 'doc', content: [] } }, nArtes: 1 }) });
+      db.prepare('INSERT INTO envios (roteiro_id, estado, card_id, url, em) VALUES (?, ?, ?, ?, ?)').run('rot-dona', 'enviado', 'cardDona', 'https://trello.com/c/cardDona', '2026-11-23T22:55:00Z');
+      const r = await ana('/api/andamento');
+      expect(r.status).toBe(200);
+      expect((await r.json())['rot-dona']).toEqual({ status: ['FINALIZADO'], designers: [], entregue: true, entrega: '2026-11-23T22:55:58.000Z', entrada: '2026-11-23T22:55:20.976Z' });
+      expect(lidas.some((s) => s.includes('"bseVelha"."producaoNQ"'))).toBe(true);
+      expect(avisos.join('\n')).toMatch(/TEABLE_PG_ARTE_LEITURA/);
+      // e a agenda por entrega, com a fila e o andamento como chegam ao navegador: o card fica no dia 23, entregue
+      const { montarSemana } = await import('../src/ui/fila');
+      const lista = await (await ana('/api/roteiros')).json();
+      const andamento = await (await ana('/api/andamento')).json();
+      // na quarta 25, a semana por entrega começa ontem (24): o dia 23 fica na semana anterior
+      const s = montarSemana(lista, andamento, new Date(2026, 10, 25, 15, 0), -1, 'entrega');
+      const dia = s.dias.find((d) => d.cards.some((c) => c.r.id === 'rot-dona'))!;
+      const card = dia.cards.find((c) => c.r.id === 'rot-dona')!;
+      expect([dia.iso, card.etapa, card.aEntregar, s.entregues, s.aEntregar]).toEqual(['2026-11-23', 'entregue', false, 1, 0]);
+    } finally {
+      console.warn = warn;
+      servidor.close();
+    }
+  });
+
+  it('a conferência acusa a base de leitura que parou', async () => {
+    const consultar = async (sql: string, params: unknown[] = []) => {
+      if (sql.includes('information_schema')) return ['card_ID', 'claquete', 'key', 'status', 'designers', 'entregue', 'data_entrega', 'data_entrada', 'artes', 'texto', 'doc', 'redator', 'editor', 'atracao', 'filme'].map((column_name) => ({ column_name, p: params }));
+      if (sql.includes('max("data_entrada")')) return [{ ultima: new Date(Date.now() - (sql.includes('bseVelha') ? 4 * 86_400_000 : 3600_000)) }];
+      if (sql.includes('count(*)')) return [{ n: 7 }];
+      return [];
+    };
+    const t = criarTrello({ ...ENV, TRELLO_KEY: '', TEABLE_PG_ARTE_LEITURA: 'bseVelha.producaoNQ' }, { consultar });
+    const leitura = (await t.conferir()).find((i: { item: string }) => i.item === 'Postgres: leitura');
+    expect(leitura.ok).toBe(false);
+    expect(leitura.detalhe).toMatch(/TEABLE_PG_ARTE_LEITURA/);
+    // a mesma base (variável vazia): nada a acusar
+    const mesma = (await criarTrello({ ...ENV, TRELLO_KEY: '' }, { consultar }).conferir()).find((i: { item: string }) => i.item === 'Postgres: leitura');
+    expect(mesma.ok).toBe(true);
+  });
+});
