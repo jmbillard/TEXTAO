@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
@@ -20,7 +20,7 @@ import { meuCursor } from './cursores';
 import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
 import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
-  partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
+  marcarArte as marcarArteNoTexto, partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { alternarJaExiste, alvosDoTeclado, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
@@ -37,6 +37,7 @@ import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural, semMovimento } from './util';
 import { ehDoTour, enviarExemplo } from '../tour/exemplo';
+import { ajustarSelecao } from '../editor/selecao';
 import { enviadoNoTour, enviarNoTour } from '../tour/TourDaRevisao';
 
 
@@ -45,6 +46,8 @@ const MANDANDO_NO_TOUR_MS = 900;
 /** No celular, quanto tempo a arte apontada na lista fica destacada no texto, e quanto leva para o destaque se desfazer. */
 const DESTAQUE_NO_CELULAR_MS = 2200;
 const DESFAZ_DESTAQUE_MS = 520;
+/** No celular, o toque mais longo que ainda conta como toque (segurar é o começo da seleção do sistema). */
+const TOQUE_MS = 400;
 
 /* ---------- topo da folha: atração e praça ---------- */
 
@@ -139,6 +142,91 @@ function BarraFlutuante({ editor, x, y }: { editor: Editor; x: number; y: number
       <button className="bf-arte" title={`Arte (${atalho('Mod-u')})`} onClick={() => marcarArte(editor)}>
         <Icone nome="arte" tam={15} /> Arte
       </button>
+    </div>
+  );
+}
+
+/* ---------- no celular: marcar e desmarcar arte com o dedo ---------- */
+
+/** Um trecho do texto, em posições do editor. */
+type Trecho = { from: number; to: number };
+
+/**
+ * A seleção nativa do dedo, ajustada (palavras inteiras, um parágrafo só, sem a pontuação das pontas), em posições do
+ * editor. O texto é só de leitura no celular, então a seleção vem do documento, não do estado do editor.
+ */
+function trechoDoDedo(editor: Editor): Trecho | null {
+  const sel = document.getSelection();
+  if (!sel || !sel.rangeCount || sel.isCollapsed) return null;
+  const r = sel.getRangeAt(0);
+  const { view } = editor;
+  if (!view.dom.contains(r.startContainer) || !view.dom.contains(r.endContainer)) return null;
+  let from: number, to: number;
+  try {
+    from = view.posAtDOM(r.startContainer, r.startOffset);
+    to = view.posAtDOM(r.endContainer, r.endOffset);
+  } catch {
+    return null;
+  }
+  if (from > to) [from, to] = [to, from];
+  // o texto de cada parágrafo que a seleção toca, com uma posição do editor por caractere (imagem e quebra viram espaço)
+  const blocos: { inicio: number; texto: string }[] = [];
+  editor.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isTextblock) return true;
+    let texto = '';
+    node.forEach((filho) => void (texto += filho.isText ? filho.text! : ' '.repeat(filho.nodeSize)));
+    blocos.push({ inicio: pos + 1, texto });
+    return false;
+  });
+  if (!blocos.length) return null;
+  const ponto = (i: number, pos: number) => ({ paragrafo: i, posicao: Math.max(0, Math.min(blocos[i].texto.length, pos - blocos[i].inicio)) });
+  const t = ajustarSelecao(blocos.map((b) => b.texto), ponto(0, from), ponto(blocos.length - 1, to));
+  if (!t) return null;
+  const trecho = { from: blocos[t.paragrafo].inicio + t.ini, to: blocos[t.paragrafo].inicio + t.fim };
+  // o trecho que já é arte não oferece "Arte" (desmarcar é tocando nela)
+  const dentroDeUma = listarMarcas(editor.state.doc, 'arte').some((m) => m.from <= trecho.from && m.to >= trecho.to);
+  return dentroDeUma ? null : trecho;
+}
+
+/**
+ * O balão do celular (o botão "Arte" ou "Arte N · Desmarcar"): embaixo do trecho, centrado nele e dentro da tela.
+ * Mora na área que rola com a página, então acompanha o trecho quando a página rola.
+ */
+function BalaoDoCelular({ editor, trecho, area, versao, rotulo, children }: { editor: Editor; trecho: Trecho; area: RefObject<HTMLDivElement | null>; versao: number; rotulo: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const caixaArea = area.current?.getBoundingClientRect();
+    if (!el || !caixaArea) return;
+    try {
+      const ini = editor.view.domAtPos(trecho.from);
+      const fim = editor.view.domAtPos(trecho.to);
+      const r = document.createRange();
+      r.setStart(ini.node, ini.offset);
+      r.setEnd(fim.node, fim.offset);
+      const linhas = [...r.getClientRects()].filter((c) => c.width > 0);
+      const caixa = r.getBoundingClientRect();
+      const ultima = linhas[linhas.length - 1] ?? caixa;
+      const largura = el.offsetWidth;
+      const x = Math.max(12, Math.min(caixa.left + caixa.width / 2 - largura / 2, document.documentElement.clientWidth - largura - 12));
+      setPos({ x: x - caixaArea.left, y: ultima.bottom + 10 - caixaArea.top });
+    } catch {
+      setPos(null);
+    }
+  }, [editor, trecho.from, trecho.to, area, versao]);
+  return (
+    <div
+      ref={ref}
+      className="barra-flutuante balao-celular"
+      role="toolbar"
+      aria-label={rotulo}
+      style={pos ? { left: pos.x, top: pos.y } : { left: 0, top: 0, visibility: 'hidden' }}
+      // tocar no balão não desfaz a seleção do texto
+      onPointerDown={(e) => e.preventDefault()}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {children}
     </div>
   );
 }
@@ -684,6 +772,63 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   }, [editor, selVersao, docVersao, menu]); // eslint-disable-line react-hooks/exhaustive-deps
   // no celular, a linha acende só com uma seleção de verdade (o cursor parado no fim do texto, ao abrir, não conta)
   const ativa = editor && selecao && !(celular && selecao.empty) ? marcaEm(editor, selecao.from) : null;
+
+  // no celular: o botão "Arte" embaixo da seleção do dedo, e "Arte N · Desmarcar" embaixo da arte tocada (com a linha
+  // dela acesa na lista). Os dois somem com um toque fora; a seleção que some leva o botão junto.
+  const [balao, setBalao] = useState<({ tipo: 'selecao' } & Trecho) | { tipo: 'arte'; id: string } | null>(null);
+  const podeMarcarNoCelular = !!editor && celular && !leitura && liberado;
+  useEffect(() => {
+    if (!podeMarcarNoCelular) return setBalao(null);
+    // a seleção muda a cada passo do dedo: lê quando ela para
+    let espera: ReturnType<typeof setTimeout> | undefined;
+    const aoMudar = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => {
+        const t = trechoDoDedo(editor!);
+        setBalao((b) => (t ? { tipo: 'selecao', ...t } : b?.tipo === 'selecao' ? null : b));
+      }, 120);
+    };
+    document.addEventListener('selectionchange', aoMudar);
+    return () => {
+      clearTimeout(espera);
+      document.removeEventListener('selectionchange', aoMudar);
+    };
+  }, [podeMarcarNoCelular, editor]);
+  // o toque fora é um toque de verdade: rolar a página (o dedo que arrasta) ou segurar não fecha o balão
+  const temBalao = !!balao;
+  useEffect(() => {
+    if (!temBalao) return;
+    let inicio: { x: number; y: number; t: number } | null = null;
+    const desceu = (e: PointerEvent) => void (inicio = { x: e.clientX, y: e.clientY, t: e.timeStamp });
+    const subiu = (e: PointerEvent) => {
+      const toque = inicio && e.timeStamp - inicio.t < TOQUE_MS && Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) < 10;
+      inicio = null;
+      if (toque && !(e.target as HTMLElement).closest?.('.balao-celular')) setBalao(null);
+    };
+    window.addEventListener('pointerdown', desceu, true);
+    window.addEventListener('pointerup', subiu, true);
+    return () => {
+      window.removeEventListener('pointerdown', desceu, true);
+      window.removeEventListener('pointerup', subiu, true);
+    };
+  }, [temBalao]);
+  const tocarNoTexto = (e: React.MouseEvent) => {
+    const id = (e.target as HTMLElement).closest('u.arte')?.getAttribute('data-id');
+    if (podeMarcarNoCelular && id && document.getSelection()?.isCollapsed !== false) setBalao({ tipo: 'arte', id });
+  };
+  /** "Arte": a mesma marca do Ctrl+U no trecho ajustado. */
+  const marcarNoCelular = (t: Trecho) => {
+    if (!editor) return;
+    editor.commands.setTextSelection(t);
+    marcarArteNoTexto(editor, undefined, metaRef.current.programa);
+    document.getSelection()?.removeAllRanges();
+    setBalao(null);
+  };
+  const arteDoBalao = balao?.tipo === 'arte' ? artes.find((a) => a.id === balao.id) : undefined;
+  // a arte desmarcada (aqui ou por um colega) leva o balão junto
+  useEffect(() => {
+    if (balao?.tipo === 'arte' && !arteDoBalao) setBalao(null);
+  }, [balao, arteDoBalao]);
 
   aoClicar.current = (pos) => {
     if (!editor) return;
@@ -1265,7 +1410,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             return (
             <li
               key={a.id}
-              className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
+              className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id || arteDoBalao?.id === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
               aria-selected={selecionadas.length ? selecionadas.includes(a.id) : undefined}
               title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo.split(', ').map(nomeDaSigla).join(', ')}` : ''}` : undefined}
               // no celular não há mouse: o realce é o do toque no nome (apontarNoTexto)
@@ -1525,6 +1670,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               className={`${colunas ? 'corpo em-colunas' : 'corpo'} ${sincronizado ? '' : 'chegando'} ${sonorasNoTexto ? '' : 'sonoras-recolhidas'}`}
               hidden={vista === 'original' && temOriginal}
               onContextMenu={aoMenuDeContexto}
+              onClick={celular ? tocarNoTexto : undefined}
               onPointerDown={() => {
                 arrastando.current = true;
                 setBarra(null);
@@ -1593,6 +1739,17 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
           )}
 
           {editor && barra && !leitura && !menu && !popover && <BarraFlutuante editor={editor} x={barra.x} y={barra.y} />}
+          {editor && balao?.tipo === 'selecao' && (
+            <BalaoDoCelular editor={editor} trecho={balao} area={area} versao={docVersao + medida} rotulo="Marcar o trecho como arte">
+              <button type="button" className="bf-arte" onClick={() => marcarNoCelular(balao)}><Icone nome="arte" tam={17} traco={1.9} /> Arte</button>
+            </BalaoDoCelular>
+          )}
+          {editor && arteDoBalao && (
+            <BalaoDoCelular editor={editor} trecho={arteDoBalao} area={area} versao={docVersao + medida} rotulo={`Arte ${arteDoBalao.ordem}`}>
+              <span className="bf-num">Arte {arteDoBalao.ordem}</span>
+              <button type="button" className="bf-desmarcar" onClick={() => (atualizarMarca(editor, arteDoBalao, null), setBalao(null))}><Icone nome="borracha" tam={17} traco={1.9} /> Desmarcar</button>
+            </BalaoDoCelular>
+          )}
           {editor && menu && <MenuEtiquetas editor={editor} x={menu.x} y={menu.y} fechar={() => setMenu(null)} />}
           {editor && marcaDoPopover && posPopover && <PopoverMarca editor={editor} marca={marcaDoPopover} x={posPopover.x} y={posPopover.y} fechar={() => setPopover(null)} />}
         </div>

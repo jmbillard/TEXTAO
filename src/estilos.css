@@ -2529,6 +2529,13 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   /* a navegação da fila e o Texto/Original, no alto da folha: alvos de 44px */
   .pagina.editor .nav-folha .botao-icone { width: 44px; height: 44px; }
   .pagina.editor .vista-folha button { height: 38px; }
+  /* marcar e desmarcar no texto (#44): o balão embaixo do trecho, sem sombra (a borda o separa do texto), alvos de 44px */
+  .barra-flutuante.balao-celular { padding: 4px; border-radius: 12px; border: 1px solid var(--regua); box-shadow: none; transform-origin: top center; }
+  .balao-celular button { height: 44px; min-width: 44px; padding: 0 14px; border-radius: 9px; font-size: 15px; }
+  .barra-flutuante.balao-celular .bf-arte { font-size: 15px; }
+  /* a arte é tocável (o Safari do iPhone só entrega o toque a um elemento que parece clicável) */
+  .pagina.editor .texto u.arte { cursor: pointer; }
+  .balao-celular .bf-num { font: 600 12px var(--mono); color: var(--tinta3); padding: 0 6px 0 10px; }
   /* a arte apontada (pela lista ou pelo "Ver") se desfaz devagar, em vez de sumir */
   @keyframes soltar-arte { to { background-size: 0% 100%; } }
 

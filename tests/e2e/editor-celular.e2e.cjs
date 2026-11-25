@@ -4,9 +4,12 @@
 // pedidos ficam guardados aqui e nada sai para a rede. Abre um roteiro fictício em tamanho de iPhone e de Android e,
 // tocando como a pessoa faria, confere a ordem da página (topo, ficha, "Para revisar", texto, lista, barra), a ficha e
 // as pendências que abrem e recolhem, que digitar no texto não muda nada, o fogo que sobe, a bolinha que marca "já
-// existe", o toque no nome que leva à arte no texto e a barra de baixo (a maior complexidade e a contagem). No iPhone,
-// envia pelo Enviar da barra e confere o que chegou ao Trello e à produção da arte: as artes do checklist e a
-// complexidade. Em nenhum momento a página rola para o lado.
+// existe", o toque no nome que leva à arte no texto e a barra de baixo (a maior complexidade e a contagem). No texto
+// (#44): uma seleção nativa, como a do dedo, mostra o botão "Arte" embaixo do trecho, e tocar nele marca o trecho
+// ajustado (palavras inteiras) como arte, que entra na lista; tocar numa arte mostra "Arte N · Desmarcar", acende a
+// linha dela, acompanha o trecho quando a página rola e desmarca; um toque fora fecha. No iPhone, envia pelo Enviar da
+// barra e confere o que chegou ao Trello e à produção da arte: as artes do checklist (a marcada pelo dedo entra, a
+// desmarcada sai) e a complexidade. Em nenhum momento a página rola para o lado.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:editor
 const assert = require('node:assert/strict');
@@ -131,6 +134,53 @@ async function semRolagemDeLado(p, onde) {
   assert.ok(conteudo <= largura, `${onde}: a página rola para o lado (${conteudo} > ${largura})`);
 }
 
+/**
+ * Seleciona no texto como o dedo faria: uma seleção nativa no parágrafo `i` do texto do roteiro, do caractere `de`
+ * (inclusive) ao `ate` (exclusive), contados no texto do parágrafo.
+ */
+async function selecionarNoTexto(p, i, de, ate) {
+  await p.evaluate(([i, de, ate]) => {
+    const par = document.querySelectorAll('.texto p')[i];
+    par.scrollIntoView({ block: 'center' });
+    const ponto = (n) => {
+      const andar = document.createTreeWalker(par, NodeFilter.SHOW_TEXT);
+      for (let resto = n; andar.nextNode(); resto -= andar.currentNode.length) if (resto <= andar.currentNode.length) return [andar.currentNode, resto];
+      throw new Error(`a posição ${n} passa do parágrafo ${i}`);
+    };
+    const r = document.createRange();
+    r.setStart(...ponto(de));
+    r.setEnd(...ponto(ate));
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+  }, [i, de, ate]);
+}
+
+/**
+ * Rola a página com o dedo, `dy` px para baixo. O gesto de toque sintético dispara os eventos do dedo (que encosta,
+ * arrasta e solta: não é um toque), mas o Chromium sem janela não move a página com ele; quem rola de fato é o gesto
+ * seguinte, sem dedo. Juntos: o dedo que arrasta não fecha o balão, e a página rola.
+ */
+async function rolarComODedo(p, dy) {
+  const cdp = await p.context().newCDPSession(p);
+  const { width, height } = p.viewportSize();
+  const gesto = { x: Math.round(width / 2), y: Math.round(height * 0.6), yDistance: -dy, speed: 1200, preventFling: true };
+  await cdp.send('Input.synthesizeScrollGesture', { ...gesto, gestureSourceType: 'touch' });
+  await cdp.send('Input.synthesizeScrollGesture', gesto);
+  await cdp.detach();
+}
+
+/** O balão do celular ("Arte" ou "Arte N · Desmarcar") e a distância dele até a última linha do trecho. */
+const BALAO = '.balao-celular';
+const distanciaDoTrecho = (p, seletor) =>
+  p.evaluate(([b, s]) => {
+    const linhas = [...document.querySelector(s).getClientRects()];
+    return document.querySelector(b).getBoundingClientRect().top - linhas[linhas.length - 1].bottom;
+  }, [BALAO, seletor]);
+
+/** O parágrafo da locução de abertura, onde o dedo marca a arte nova. */
+const LOC_ABERTURA = 'LOC: NESTE SÁBADO, O PALCO É DE QUEM CANTA.';
+const ARTE_DO_DEDO = 'NESTE SÁBADO';
+
 const linha = (p, texto) => p.locator('ol.artes li', { has: p.locator('.txt', { hasText: texto }) });
 const topoDe = (p, sel) => p.evaluate((s) => document.querySelector(s).getBoundingClientRect().top + scrollY, sel);
 
@@ -185,6 +235,60 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
   // as dicas de teclado ficam escondidas
   assert.equal(await p.locator('.folha-fim .dicas').isVisible(), false);
 
+  // marcar arte com o dedo: a seleção corta as palavras ("STE SÁB"); o botão "Arte" aparece embaixo do trecho, sem
+  // sombra, e marca o trecho ajustado ("NESTE SÁBADO"), que entra na lista. O texto continua o mesmo
+  await selecionarNoTexto(p, 1, LOC_ABERTURA.indexOf('STE'), LOC_ABERTURA.indexOf('ADO,'));
+  const botaoArte = p.locator(BALAO).getByRole('button', { name: 'Arte', exact: true });
+  await botaoArte.waitFor({ state: 'visible', timeout: 3000 });
+  await p.waitForTimeout(300); // o balão abre com uma animação curta de escala
+  const caixaArte = await botaoArte.boundingBox();
+  const fimDaSelecao = await p.evaluate(() => getSelection().getRangeAt(0).getBoundingClientRect().bottom);
+  assert.ok(caixaArte.y >= fimDaSelecao, `${nome}: o botão "Arte" fica embaixo da seleção`);
+  assert.ok(caixaArte.height >= 44, `${nome}: o botão "Arte" tem 44px`);
+  assert.equal(await p.locator(BALAO).evaluate((el) => getComputedStyle(el).boxShadow), 'none', `${nome}: o botão "Arte" não tem sombra`);
+  await semRolagemDeLado(p, `${nome}, com o botão "Arte"`);
+  await botaoArte.tap();
+  await p.waitForFunction((t) => [...document.querySelectorAll('.texto u.arte')].some((u) => u.textContent === t), ARTE_DO_DEDO, { timeout: 3000 });
+  assert.equal(await p.locator(BALAO).count(), 0, `${nome}: o botão some depois de marcar`);
+  assert.equal(await p.locator('ol.artes li').first().locator('.txt').innerText(), ARTE_DO_DEDO, `${nome}: a arte nova entra na lista, em primeiro`);
+  assert.equal(await p.locator('.texto').innerText(), antes, `${nome}: marcar a arte não muda o texto`);
+
+  // seleção só de espaço e pontuação: nada
+  await selecionarNoTexto(p, 1, LOC_ABERTURA.indexOf(', O'), LOC_ABERTURA.indexOf(', O') + 2);
+  await p.waitForTimeout(400);
+  assert.equal(await p.locator(BALAO).count(), 0, `${nome}: a seleção sem palavra não oferece "Arte"`);
+  await p.evaluate(() => getSelection().removeAllRanges());
+
+  // desmarcar pelo texto: tocar numa arte mostra "Arte N · Desmarcar" embaixo dela e acende a linha dela na lista
+  const vote = '.texto u.arte[data-id="c6"]';
+  await p.locator(vote).scrollIntoViewIfNeeded();
+  await p.locator(vote).tap();
+  const balao = p.locator(BALAO);
+  await balao.waitFor({ state: 'visible', timeout: 3000 });
+  assert.match(await balao.innerText(), /^Arte 7\s+Desmarcar$/, `${nome}: o balão diz o número da arte`);
+  assert.ok(await linha(p, ARTES[5]).evaluate((li) => li.classList.contains('realcada')), `${nome}: a linha da arte acende na lista`);
+  const antesDeRolar = await distanciaDoTrecho(p, vote);
+  assert.ok(antesDeRolar >= 0 && antesDeRolar < 30, `${nome}: o balão fica logo embaixo da arte (${antesDeRolar}px)`);
+  // rolar a página com o dedo não fecha o balão, e ele acompanha a arte
+  const topoAntes = await balao.evaluate((el) => el.getBoundingClientRect().top);
+  await rolarComODedo(p, 120);
+  await p.waitForTimeout(300);
+  const topoDepois = await balao.evaluate((el) => el.getBoundingClientRect().top);
+  assert.ok(topoAntes - topoDepois > 60, `${nome}: a página rolou (${topoAntes} → ${topoDepois})`);
+  assert.ok(await balao.isVisible(), `${nome}: rolar não fecha o balão`);
+  assert.ok(Math.abs((await distanciaDoTrecho(p, vote)) - antesDeRolar) < 1, `${nome}: o balão acompanha a arte quando a página rola`);
+  await balao.getByRole('button', { name: /Desmarcar/ }).tap();
+  await p.waitForFunction((s) => !document.querySelector(s), vote, { timeout: 3000 });
+  // a linha sai da lista com a vaga fechando
+  await linha(p, ARTES[5]).waitFor({ state: 'detached', timeout: 3000 });
+  assert.equal(await p.locator('.texto').innerText(), antes, `${nome}: desmarcar não muda o texto`);
+
+  // um toque fora fecha o balão
+  await p.locator('.texto u.arte[data-id="c5"]').tap();
+  await balao.waitFor({ state: 'visible', timeout: 3000 });
+  await p.locator('.texto p').nth(9).tap();
+  await balao.waitFor({ state: 'detached', timeout: 3000 });
+
   // a lista: o ✕ sempre visível, o fogo que sobe, a bolinha que marca "já existe"
   await p.locator('ol.artes').scrollIntoViewIfNeeded();
   const tirar = linha(p, ARTES[0]).locator('.tirar-arte');
@@ -229,14 +333,16 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
     const registrou = () => pedidos.some((x) => x.url.pathname === '/api/table/tblProducao/record');
     for (let t = Date.now(); !registrou() && Date.now() - t < 30000; ) await p.waitForTimeout(250);
     const checklist = pedidos.filter((x) => x.url.pathname === '/1/checklists/checklist1/checkItems').map((x) => x.url.searchParams.get('name'));
-    assert.deepEqual(checklist, ARTES.filter((a) => a !== 'AO VIVO'), 'o checklist leva as artes a produzir, sem a que já existe');
+    // a marcada pelo dedo entra, a desmarcada no texto sai, a que já existe fica de fora
+    const aProduzir = [ARTE_DO_DEDO, ...ARTES.filter((a) => a !== 'AO VIVO' && a !== ARTES[5])];
+    assert.deepEqual(checklist, aProduzir, 'o checklist leva as artes a produzir, sem a que já existe');
     const campo = pedidos.find((x) => x.metodo === 'PUT' && x.url.pathname.endsWith('/customField/cComplexidade/item'))?.corpo;
     assert.deepEqual(campo, { idValue: 'opAlta' }, 'o card vai com a maior complexidade');
     const registro = pedidos.find((x) => x.url.pathname === '/api/table/tblProducao/record')?.corpo?.records?.[0]?.fields;
     assert.ok(registro, 'a produção da arte recebe o registro');
     assert.equal(registro.complexidade, 3, 'a produção da arte leva a maior complexidade');
     assert.equal(registro.artes_quantidade, 6);
-    assert.equal(registro.artes, ARTES.filter((a) => a !== 'AO VIVO').join(' | '));
+    assert.equal(registro.artes, aProduzir.join(' | '));
     await semRolagemDeLado(p, `${nome}, depois de enviar`);
   }
   assert.deepEqual(erros, [], `${nome}: erros na página`);
@@ -269,4 +375,4 @@ if (require.main === module)
     },
   );
 
-module.exports = { trelloFalso, semearRoteiro, abrirEditor, aparelho, ARTES, ID };
+module.exports = { trelloFalso, semearRoteiro, abrirEditor, aparelho, selecionarNoTexto, rolarComODedo, ARTES, ID, LOC_ABERTURA };
