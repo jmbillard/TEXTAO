@@ -75,3 +75,9 @@ export const atalho = (s: string) =>
   ehMac
     ? s.replace('Mod-', '⌘').replace('Shift-', '⇧').replace(/(.)$/, (c) => c.toUpperCase()).replace('Enter', '↩')
     : s.replace('Mod-', 'Ctrl+').replace('Shift-', 'Shift+').replace(/\+(.)$/, (_, c: string) => '+' + c.toUpperCase());
+
+/** A versão de celular: até 600px de largura (o mesmo corte das regras de tela em estilos.css). */
+const TELA_DE_CELULAR = '(max-width: 600px)';
+/** A tela é de celular agora? Lido uma vez, na entrada: girar o aparelho ou estreitar a janela depois não muda o que
+    já foi decidido (o tour, o "Fazer o tour"). */
+export const ehCelular = () => typeof window !== 'undefined' && !!window.matchMedia?.(TELA_DE_CELULAR).matches;

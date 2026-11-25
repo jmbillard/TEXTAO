@@ -15,7 +15,7 @@ import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { Icone } from './icones';
-import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado } from './pecas';
+import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado, TextoDaClaquete } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
@@ -347,7 +347,7 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
       <button className="ficha-claquete" onClick={np && producao ? producao.comparar : abrir} aria-label={`Abrir ${claquete}`}>
         <b>
           <span className="claquete-alvo">
-            {prioridade && terminou ? <Riscado traco={tracoDe(r.id)}><span className="claquete-texto">{digitado}</span></Riscado> : <span className="claquete-texto">{digitado}</span>}
+            {prioridade && terminou ? <Riscado traco={tracoDe(r.id)}><span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span></Riscado> : <span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span>}
             {ocupada && <svg className="ibeam" viewBox="0 0 12 28" aria-hidden="true"><path d="M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5" /></svg>}
           </span>
           {nova && !terminou && <i className="cursor" />}
@@ -460,7 +460,7 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
   return (
     <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''}`} data-card={r.id}>
       <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
-        <span className="card-semana-claquete">{c.prioridade ? <Riscado traco={tracoDe(r.id)}>{claquete}</Riscado> : claquete}</span>
+        <span className="card-semana-claquete">{c.prioridade ? <Riscado traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} /></Riscado> : <TextoDaClaquete texto={claquete} />}</span>
         <span className="card-semana-linha">
           {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
           <span className="card-semana-artes">{plural(r.nArtes, 'arte', 'artes')}</span>

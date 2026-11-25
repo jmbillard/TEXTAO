@@ -16,7 +16,8 @@ import { TelaEditor } from './ui/TelaEditor';
 import { aplicarCursorNoMouse, DesenhosDeCursor, meuCursor } from './ui/cursores';
 import { corDe } from './dados/colaboracao';
 import { TourDaRevisao } from './tour/TourDaRevisao';
-import { convidar, passoAtual, pular, recomecar, type Tour } from './tour/passos';
+import { passoAtual, pular, recomecar, tourNaEntrada, type Tour } from './tour/passos';
+import { ehCelular } from './ui/util';
 import { colocarExemplo, exemploNoTrello, ID_DO_EXEMPLO, roteiroDeExemplo } from './tour/exemplo';
 import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
 
@@ -75,15 +76,18 @@ export function App() {
   const [lendo, setLendo] = useState<{ nome: string; detalhe: string } | null>(null);
   // o tour da revisão: o convite aparece na primeira entrada de quem ainda não viu (guardado no servidor, por pessoa)
   const [tour, setTour] = useState<Tour | null>(null);
+  // no celular, o tour não aparece (nem pelo "Fazer o tour") e não conta como visto. Decidido pela largura da tela na
+  // entrada, e não a cada mudança: girar o aparelho no meio do tour não o derruba nem o faz surgir
+  const [noCelular] = useState(ehCelular);
   useEffect(() => {
     void iniciarSessao().then((s) => {
       setIdentidade(s.identidade);
       setSemLogin(!!s.semLogin);
       setPronto(true);
       setSessao((n) => n + 1);
-      if (s.tourRevisao === null) setTour(convidar());
+      setTour(tourNaEntrada(s.tourRevisao, noCelular));
     });
-  }, []);
+  }, [noCelular]);
   const mudarTour = useCallback((t: Tour) => {
     setTour(t);
     if (t.fase !== 'fim' && t.fase !== 'fora') return;
@@ -399,7 +403,7 @@ export function App() {
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete) => ir({ t: 'cadastros', aba: 'atracoes', claquete }) : undefined} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} />}
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
-      <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={refazerTour} />
+      <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete }} />}
 

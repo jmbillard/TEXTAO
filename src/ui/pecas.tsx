@@ -69,6 +69,19 @@ const Formatos = () => (
   </>
 );
 
+/** O texto da claquete em pedaços, cada um terminando no seu sublinhado (`CHAMADA_` `NOVELA_` `25/11`), na ficha e no
+    card. No computador os pedaços correm juntos, como texto corrido; no celular (estilos.css) a claquete quebra depois
+    de cada sublinhado, e o pedaço que não cabe na linha termina em reticências. */
+export function TextoDaClaquete({ texto }: { texto: string }) {
+  return (
+    <>
+      {texto.split(/(?<=_)/).map((pedaco, i) => (
+        <span key={i} className="seg">{pedaco}</span>
+      ))}
+    </>
+  );
+}
+
 /** O quadro tracejado de arrastar: título que se escreve sozinho, formatos riscados à mão e o colar do Word. */
 export function ConviteDeArrastar({ frases, extra, className = '', escolher }: { frases: string[]; extra: React.ReactNode; className?: string; escolher?: (arquivos: File[]) => void }) {
   const seletor = useSeletorDeArquivos(escolher);

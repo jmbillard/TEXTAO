@@ -54,6 +54,12 @@ export type Tour =
 
 export const convidar = (): Tour => ({ fase: 'convite' });
 
+/** Na entrada: o convite aparece para quem ainda não viu o tour (`vistoEm` null; undefined é "não se sabe", sem
+    servidor). No celular, nada: o editor ainda não é de celular, então o tour não aparece e não conta como visto, e o
+    convite espera a primeira entrada pelo computador. */
+export const tourNaEntrada = (vistoEm: string | null | undefined, noCelular: boolean): Tour | null =>
+  vistoEm === null && !noCelular ? convidar() : null;
+
 /** "Começar" no convite: o primeiro passo. */
 export const comecar = (t: Tour): Tour => (t.fase === 'convite' ? { fase: 'passo', i: 0 } : t);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aceita, comecar, convidar, passoAtual, PASSOS, pular, recomecar, segura, seguir, terminar, type Acao, type Tour } from '../src/tour/passos';
+import { aceita, comecar, convidar, passoAtual, PASSOS, pular, recomecar, segura, seguir, terminar, tourNaEntrada, type Acao, type Tour } from '../src/tour/passos';
 import { colocarExemplo, comExemplo, enviarExemplo, exemploNoTrello, ID_DO_EXEMPLO, roteiroDeExemplo } from '../src/tour/exemplo';
 import type { Armazenamento } from '../src/dados/armazenamento';
 import { noTrello } from '../src/ui/fila';
@@ -109,6 +109,16 @@ describe('tour da revisão: a sequência de passos', () => {
   it('recomeçar ("Fazer o tour" no "?"): volta ao primeiro passo, sem passar pelo convite', () => {
     expect(recomecar()).toEqual(noPasso(0));
     expect(passoAtual(recomecar())?.id).toBe('chegar');
+  });
+
+  it('na entrada: o convite só para quem ainda não viu, e nunca no celular', () => {
+    expect(tourNaEntrada(null, false)).toEqual({ fase: 'convite' });
+    expect(tourNaEntrada('2026-11-20T10:00:00.000Z', false)).toBeNull();
+    // sem servidor (não se sabe se viu): sem convite
+    expect(tourNaEntrada(undefined, false)).toBeNull();
+    // no celular, nada: nem o convite, nem a marca de visto (o convite espera a entrada pelo computador)
+    expect(tourNaEntrada(null, true)).toBeNull();
+    expect(tourNaEntrada('2026-11-20T10:00:00.000Z', true)).toBeNull();
   });
 
   it('recomeçado, o tour anda de novo até o fim', () => {
