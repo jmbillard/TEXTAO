@@ -28,9 +28,9 @@ export const chaveDaAtracao = (claquete) =>
   String(claquete || '')
     .toUpperCase()
     .replaceAll(/_/g, ' ')
-    // a praça do Rio na frente: "RIO CHEF..." ou com a atração no parêntese, "RIO(CHEF)MANUT"
+    // a praça do Rio na frente: "RIO CHEF...", "RIO-CHEF..." ou com a atração no parêntese, "RIO(CHEF)MANUT"
     .replace(/^RIO\s*\(([^)]*)\)\s*/, '$1 ')
-    .replace(/^RIO\s+|\s+SP$/, '')
+    .replace(/^RIO[\s-]+|\s+SP$/, '')
     .replace(/\sOPÇÃO|\sOPCAO/, ' ')
     .replace(/\).*$/, ')')
     .replace(/FUT[\s(]+COPA BR.*/, 'FUT COPA BR')

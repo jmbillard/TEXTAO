@@ -47,9 +47,10 @@ export const PRACAS_LIDAS = ['REDE', 'G5', 'SP', 'RJ', 'INTER', 'INTERNACIONAL',
 /** Só existem três praças: o que não é Rio nem São Paulo é G5. */
 export const normalizarPraca = (p: string) => (/^(SP|RJ)$/i.test(p) ? p.toUpperCase() : /^INTER/i.test(p) ? 'INTER' : 'G5');
 
-/** Claquete do Rio começa por "RIO"; a de São Paulo termina em "SP"; o resto é G5. */
+/** Claquete do Rio começa por "RIO" e um separador ("RIO ", "Rio(", "Rio_"; não "RIOS"); a de São Paulo termina em
+    "SP"; o resto é G5. */
 export const pracaDaClaquete = (claquete: string) =>
-  /^RIO /i.test(claquete.trim()) ? 'RJ' : / SP$/i.test(claquete.trim()) ? 'SP' : / INTER(?:NACIONAL)?$/i.test(claquete.trim()) ? 'INTER' : 'G5';
+  /^RIO[^\p{L}\d]/iu.test(claquete.trim()) ? 'RJ' : / SP$/i.test(claquete.trim()) ? 'SP' : / INTER(?:NACIONAL)?$/i.test(claquete.trim()) ? 'INTER' : 'G5';
 
 /** A data achada numa claquete ou num nome de arquivo, e onde ela está no texto. */
 export interface DataLida {

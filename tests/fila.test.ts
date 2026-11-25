@@ -37,6 +37,13 @@ describe('claquete', () => {
     expect(dataDaClaquete('FILME INÉDITO', hoje)).toBe('');
     expect([pracaDaClaquete('Rio Fut 21/11'), pracaDaClaquete('Encontro 19/11 SP'), pracaDaClaquete('Encontro 19/11')]).toEqual(['RJ', 'SP', 'G5']);
   });
+  it('a praça do Rio vale com qualquer separador depois de "RIO", não com palavra que só começa por ele', () => {
+    expect(pracaDaClaquete('Rio(Vim De La)21/11-2')).toBe('RJ');
+    expect(pracaDaClaquete('RIO SHOW 5/12')).toBe('RJ');
+    expect(pracaDaClaquete('Rio_Show')).toBe('RJ');
+    expect(pracaDaClaquete('RIOS DO BRASIL 5/12')).toBe('G5');
+    expect(pracaDaClaquete('RIOGRANDENSE')).toBe('G5');
+  });
 });
 
 describe('versão nova de um roteiro', () => {

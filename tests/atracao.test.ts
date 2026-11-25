@@ -1,5 +1,8 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { acharPrograma, registrarVocabulario } from '../src/modelo/vocabularios';
+// @ts-expect-error módulo JS sem tipos
+import { atracaoPelaClaquete } from '../servidor/app.mjs';
 
 describe('atração pela claquete', () => {
   registrarVocabulario({
@@ -8,6 +11,7 @@ describe('atração pela claquete', () => {
       { nome: 'Quem Ama Cuida', chaves: ['QUEM AMA'], categoria: 'NOVELAS' },
       { nome: 'Coração Acelerado', chaves: ['CORACAO'], categoria: 'NOVELAS' },
       { nome: 'Futebol', chaves: ['FUT'], categoria: 'ESPORTES' },
+      { nome: 'Mira', chaves: ['MIRA'], categoria: 'NOVELAS' },
     ],
   } as never);
   it('a key do começo decide; o que vem nos parênteses é detalhe', () => {
@@ -20,6 +24,12 @@ describe('atração pela claquete', () => {
     expect(acharPrograma('Rio Fut(Brasileirao)21/11')?.nome).toBe('Futebol');
     expect(acharPrograma('Rio Coracao (Pilula) 10')?.nome).toBe('Coração Acelerado');
     expect(acharPrograma('Rio(Chef)manut_')?.nome).toBe('Chef de Alto Nível');
+  });
+  it('a key vale depois de "Rio(" colado, no navegador e no servidor', () => {
+    const programas = [{ nome: 'Mira', chaves: ['MIRA'] }];
+    expect(acharPrograma('Rio(Mira)21/11-2')?.nome).toBe('Mira');
+    expect(atracaoPelaClaquete('Rio(Mira)21/11-2', programas)).toBe('Mira');
+    expect(atracaoPelaClaquete('Rio_Mira 21/11', programas)).toBe('Mira');
   });
   it('o SP no fim não atrapalha', () => {
     expect(acharPrograma('Fut(Brasileirao)21/11 SP')?.nome).toBe('Futebol');
