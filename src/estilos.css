@@ -1399,6 +1399,36 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
   .item-cad.rascunho, .folha-rascunho::before, .seta-form path, .item-cad.rascunho .nota, .abas-cad .sub path, .ibeam-cad, .item-cad.chegou { animation: none; }
 }
 
+/* ---------- a comemoração de uma lista que zerou (ui/Comemoracao.tsx): o Sem cadastro zerado ----------
+   O repouso é a frase à mão, o risco e a linha de baixo. Enquanto a cena roda, o palco tem a altura dela
+   (min-height no próprio elemento) e recorta a claquete e os papéis; no fim ele encolhe até o repouso. */
+.comemoracao { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 30px 20px 28px; border-radius: 0 0 13px 13px; }
+.comemoracao .frase { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.comemoracao .mao { margin: 0; font: 600 min(36px, 8.4vw)/1.05 Caveat, cursive; color: var(--tinta); transform: rotate(-2deg); white-space: nowrap; padding: 0 4px; }
+.comemoracao .risco { display: block; width: 78%; height: 12px; overflow: visible; margin: 2px 0 0; }
+.comemoracao .risco path { fill: none; stroke: var(--ultra); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.comemoracao .linha { margin: 8px 0 0; font: 400 14px/1.45 var(--sans); color: var(--tinta3); }
+.comemoracao .linha b { font: 600 13px var(--mono); color: var(--ultra); }
+/* a claquete gigante: solta por cima da lista, sai de cena depois da batida */
+.claq-gigante { position: absolute; left: 0; top: 0; width: 220px; color: var(--tinta); z-index: 1; pointer-events: none; }
+.claq-gigante svg { display: block; width: 100%; height: auto; overflow: visible; }
+.claq-gigante path, .claq-gigante circle { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+.claq-gigante .tracos path, .claq-gigante .tracos circle { stroke-width: 2.4; }
+.claq-gigante .hach { stroke-width: 1.4; opacity: 0.85; }
+.claq-gigante .braco { transform-box: view-box; transform-origin: 17px 58px; }
+.claq-gigante .fundo-claq { fill: var(--papel); stroke: none; }
+.claq-gigante text { font-family: Caveat, cursive; font-weight: 600; fill: var(--tinta); stroke: none; }
+.claq-gigante text.rotulo { font: 500 8.5px var(--mono); fill: var(--tinta3); letter-spacing: 0.08em; }
+.claq-gigante .impacto path { stroke: var(--ultra); stroke-width: 3; }
+/* o confete: tiras de papel (as claquetes, na letra das claquetes do app) e picotes */
+.comemoracao .confete { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.comemoracao .tira { position: absolute; left: 0; top: 0; padding: 2px 11px 1px; white-space: nowrap; font: 500 12px/1.75 var(--mono); color: var(--tinta2);
+  background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha); outline: 1px solid color-mix(in srgb, var(--tinta) 12%, transparent); outline-offset: -1px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 3px) 22%, 100% 45%, calc(100% - 3px) 70%, 100% 100%, 0 100%, 3px 76%, 0 52%, 3px 28%); will-change: transform; }
+.comemoracao .tira.destacada { color: var(--ultra-tinta); outline-color: color-mix(in srgb, var(--ultra) 55%, transparent); }
+.comemoracao .tira.verso { color: transparent; }
+.comemoracao .picote { position: absolute; left: 0; top: 0; width: 7px; height: 11px; will-change: transform; }
+
 /* ---------- cor de destaque, no perfil ---------- */
 .escolha-cor { border-top: 1px solid var(--regua); margin-top: 12px; padding-top: 12px; }
 .amostra-cor { display: flex; align-items: baseline; gap: 10px; margin: 8px 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--neutro); }

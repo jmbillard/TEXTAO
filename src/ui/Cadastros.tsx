@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Vagas } from './vagas';
+import { Comemoracao, tremerDeLeve } from './Comemoracao';
+import { festaDoSemCadastro, linhaDoTotal, montarTiras } from './regrasDaComemoracao';
 import { reconhecerNaFila } from '../dados/reconhecer';
 import { acentuar } from '../modelo/acento';
 import {
@@ -199,6 +201,24 @@ export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { a
     </div>
   );
 }
+
+/** "As 142 claquetes dos últimos 90 dias têm atração.", com o número em destaque. */
+function LinhaDoTotal({ total }: { total: number }) {
+  const l = linhaDoTotal(total);
+  return (
+    <>
+      {l.antes}
+      <b>{l.numero}</b>
+      {l.depois}
+    </>
+  );
+}
+
+/** Hoje, curto, como na claquete ("25/11"). */
+const hojeCurto = () => {
+  const d = new Date();
+  return `${d.getDate()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
 
 /** Uma key sem cadastro: quantos roteiros, as claquetes de exemplo, a atração parecida, ligar, nova e ignorar. */
 function LinhaSemCadastro({ k, atracoes, ligar, nova, ignorar }: { k: KeySemCadastro; atracoes: string[]; ligar: (nome: string) => void; nova: (busca: string) => void; ignorar: () => void }) {
@@ -491,7 +511,36 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const [desfazer, setDesfazer] = useState<{ texto: React.ReactNode; id: string } | null>(null);
   const pendente = useRef<{ id: string; executar: () => Promise<void>; timer: number } | null>(null);
   const nomeAtr = useRef<HTMLInputElement>(null);
-  const carregarSem = () => lerSemCadastro().then(setSem, () => setSem([]));
+  // as claquetes que têm atração: o número e a amostra da comemoração do Sem cadastro zerado (total null: ainda não
+  // chegou, ou o cadastro que zerou a lista acabou de mudar o número)
+  const [reconhecidas, setReconhecidas] = useState<{ total: number | null; amostra: string[] }>({ total: null, amostra: [] });
+  const carregarSem = () =>
+    lerSemCadastro().then(
+      (r) => {
+        setSem(r.keys);
+        setReconhecidas({ total: r.reconhecidas.total, amostra: r.reconhecidas.amostra });
+      },
+      () => setSem([]),
+    );
+  // a comemoração: o cadastro (ou o "Ligar a…") desta tela que zerou o Sem cadastro. destacadas: os exemplos das
+  // linhas que saíram, guardados antes de elas saírem; cena: a atração que vai na claquete
+  const [festa, setFesta] = useState<{ destacadas: string[]; cena: string } | null>(null);
+  const listaEl = useRef<HTMLElement>(null);
+  // o Sem cadastro como está agora (as funções assíncronas de salvar e ligar leem daqui, não da renderização velha)
+  const semAgora = useRef({ sem, escondidos, semCad });
+  semAgora.current = { sem, escondidos, semCad };
+  /** Começa a comemoração se as keys que saem levam a última linha que aparece no Sem cadastro. */
+  const comemorarSeZerou = (saem: string[], cena: string, comoNaLinha: (key: string) => string) => {
+    const { sem: linhas, escondidos: esc, semCad: naAba } = semAgora.current;
+    if (!naAba || !linhas) return false;
+    const visiveis = linhas.filter((k) => !esc.includes(`sem:${k.key}`)).map((k) => ({ key: comoNaLinha(k.key), exemplos: k.exemplos }));
+    const f = festaDoSemCadastro(visiveis, saem);
+    if (!f) return false;
+    setFesta({ destacadas: f.destacadas, cena });
+    // o total muda com este cadastro: a linha do número espera o novo
+    setReconhecidas((r) => ({ ...r, total: null }));
+    return true;
+  };
   useEffect(() => {
     void carregarSem();
   }, []);
@@ -534,8 +583,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       if (aba === 'atracoes') {
         const keysNovas = atr.keys.map(comoKey);
         const r = await cadastrar<{ id: string; nome: string; keys: string[] }>('atracoes', atr);
-        // no Sem cadastro, as linhas dessas keys saem junto com a folha (sem esperar a lista nova)
-        tirarDoSem = () => setSem((l) => l?.filter((x) => !keysNovas.includes(comoKey(x.key))) ?? l);
+        // no Sem cadastro, as linhas dessas keys saem junto com a folha (sem esperar a lista nova); se eram as
+        // últimas, a comemoração guarda os exemplos delas antes
+        tirarDoSem = () => {
+          comemorarSeZerou(keysNovas, r.nome, comoKey);
+          setSem((l) => l?.filter((x) => !keysNovas.includes(comoKey(x.key))) ?? l);
+        };
         id = r.id;
         msg = `${r.nome} cadastrada.`;
         // reconhecer os roteiros da fila leva um tempo: acontece depois que a folha assenta
@@ -603,8 +656,11 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     const a = dados?.atracoes.find((x) => x.nome === nome);
     if (!a) return avisar(`${nome} não está nos cadastros.`);
     if (await novaKey('atracoes', a.id)(key)) {
+      const zerou = comemorarSeZerou([key], a.nome, (k) => k);
       setSem((l) => l?.filter((x) => x.key !== key) ?? l);
       avisar(`${key} agora é de ${a.nome}.`);
+      // o número da comemoração já conta a key ligada
+      if (zerou) void carregarSem();
     }
   };
   /** "+ Nova": o formulário da direita começa com a key e com o nome (o da busca, ou o da key). */
@@ -782,13 +838,13 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         )}
 
         <div className="cad-grade">
-          <section className="lista-cad" aria-label={semCad ? 'Sem cadastro' : NOMES[aba]}>
+          <section ref={listaEl} className="lista-cad" aria-label={semCad ? 'Sem cadastro' : NOMES[aba]}>
             <div className="lista-topo">
               <Abas
                 aba={aba}
-                mudar={(a) => { setAba(a); setSemCad(false); setBusca(''); }}
+                mudar={(a) => { setAba(a); setSemCad(false); setBusca(''); setFesta(null); }}
                 totais={totais}
-                sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setBusca(''); } }}
+                sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setBusca(''); setFesta(null); } }}
               />
               <label className="cad-busca">
                 <Icone nome="lupa" />
@@ -800,7 +856,20 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               const lista = sem.filter((k) => !escondidos.includes(`sem:${k.key}`) && casa(k.key, ...k.exemplos));
               const nomes = dados.atracoes.map((x) => x.nome).sort((x, y) => x.localeCompare(y, 'pt-BR'));
               // a lista vazia: a mensagem entra depois que a última linha (ou a folha) sai
-              const vazio = !sem.some((k) => !escondidos.includes(`sem:${k.key}`)) ? <p className="cad-vazio">Toda claquete dos últimos 90 dias tem atração.</p> : <p className="cad-vazio">Nada com “{busca}”.</p>;
+              // (sem nenhuma linha: o repouso da comemoração; ela só roda quando um cadastro desta tela zera a lista)
+              const vazio = !sem.some((k) => !escondidos.includes(`sem:${k.key}`)) ? (
+                <Comemoracao
+                  frase="Corta! Tá tudo cadastrado."
+                  linha={reconhecidas.total == null ? null : <LinhaDoTotal total={reconhecidas.total} />}
+                  tiras={festa ? montarTiras(festa.destacadas, reconhecidas.amostra) : []}
+                  claquete={{ cena: festa?.cena ?? '', data: hojeCurto(), take: reconhecidas.total == null ? '' : reconhecidas.total.toLocaleString('pt-BR') }}
+                  animar={!!festa}
+                  aoBater={() => tremerDeLeve(listaEl.current)}
+                  aoAcabar={() => setFesta(null)}
+                />
+              ) : (
+                <p className="cad-vazio">Nada com “{busca}”.</p>
+              );
               // a atração nova: a folha de rascunho toma o lugar da linha da key (sem ela no rascunho, entra no alto)
               const itens: { k: string; no: React.ReactNode }[] = lista.map((k) => ({
                 k: k.key,

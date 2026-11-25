@@ -432,7 +432,13 @@ export interface KeySemCadastro {
 }
 /** A key de uma claquete e a atração parecida (para ligar sem sair da revisão). */
 export const sugerirLigacao = (claquete: string) => pedir<{ key: string; sugestao: string }>(`/api/cadastros/sugerir?claquete=${encodeURIComponent(claquete)}`);
-export const lerSemCadastro = () => pedir<KeySemCadastro[]>('/api/cadastros/sem-cadastro');
+/** As claquetes dos últimos 90 dias que têm atração: quantas (distintas) e as ~20 mais recentes. */
+export interface ReconhecidasDoSem {
+  total: number;
+  amostra: string[];
+}
+/** O Sem cadastro: as keys sem atração e as claquetes reconhecidas (a comemoração do Sem cadastro zerado). */
+export const lerSemCadastro = () => pedir<{ keys: KeySemCadastro[]; reconhecidas: ReconhecidasDoSem }>('/api/cadastros/sem-cadastro?com=reconhecidas');
 export const ignorarKey = (key: string) => pedir<{ ok: true }>('/api/cadastros/ignorar', { method: 'POST', body: JSON.stringify({ key }) });
 export const designorarKey = (key: string) => pedir<{ ok: true }>(`/api/cadastros/ignorar/${encodeURIComponent(key)}`, { method: 'DELETE' });
 

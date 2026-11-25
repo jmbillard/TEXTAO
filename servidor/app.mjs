@@ -271,6 +271,19 @@ export function sugerirAtracao(key, programas) {
 }
 
 export function keysSemCadastro(claquetes, programas, ignoradas = new Set()) {
+  return semCadastro(claquetes, programas, ignoradas).keys;
+}
+
+/** Quantas claquetes reconhecidas a amostra leva (as mais recentes): as tiras da comemoração do Sem cadastro zerado. */
+const AMOSTRA_RECONHECIDAS = 20;
+
+/**
+ * O Sem cadastro inteiro: as keys sem atração (keysSemCadastro) e as claquetes que têm atração, contadas uma vez
+ * cada (a mesma claquete na fila e na produção conta uma vez, com a data mais recente). As claquetes das keys
+ * ignoradas não são de nenhuma atração: ficam fora das duas.
+ * @returns {{ keys: object[], reconhecidas: { total: number, amostra: string[] } }}
+ */
+export function semCadastro(claquetes, programas, ignoradas = new Set()) {
   const lista = programas.map((p) => ({ nome: p.nome, n: semAcentoMin(p.nome), chaves: (p.chaves ?? []).map(semAcentoMin).filter(Boolean) }));
   // compara a claquete inteira e também a key dela (sem a praça na frente: "Rio Fut(...)" → FUT)
   const reconhece = (claquete) => {
@@ -280,22 +293,28 @@ export function keysSemCadastro(claquetes, programas, ignoradas = new Set()) {
     return lista.some((p) => p.chaves.some((c) => comeca(n, c) || comeca(k, c)) || (p.n.length >= 8 && ` ${n} `.includes(` ${p.n} `)));
   };
   const grupos = new Map();
+  const reconhecidas = new Map();
   for (const { claquete, em } of claquetes) {
-    if (reconhece(claquete)) continue;
+    const c = claquete.trim();
+    if (reconhece(claquete)) {
+      if (c && (!reconhecidas.has(c) || reconhecidas.get(c) < em)) reconhecidas.set(c, em);
+      continue;
+    }
     const key = semAcentoMin(chaveDaAtracao(claquete)).toUpperCase();
     if (!key || key.length < 2 || /^[\d ]+$/.test(key) || ignoradas.has(key)) continue;
     const g = grupos.get(key) ?? { key, claquetes: new Map() };
-    const c = claquete.trim();
     if (!g.claquetes.has(c) || g.claquetes.get(c) < em) g.claquetes.set(c, em);
     grupos.set(key, g);
   }
+  const maisNovas = (m) => [...m].sort((a, b) => (a[1] < b[1] ? 1 : a[1] > b[1] ? -1 : 0));
   const parecida = (key) => sugerirAtracao(key, programas);
-  return [...grupos.values()]
+  const keys = [...grupos.values()]
     .map((g) => {
-      const ordem = [...g.claquetes].sort((a, b) => (a[1] < b[1] ? 1 : -1));
+      const ordem = maisNovas(g.claquetes);
       return { key: g.key, roteiros: ordem.length, exemplos: ordem.slice(0, 2).map(([c]) => c), sugestao: parecida(g.key) };
     })
     .sort((a, b) => b.roteiros - a.roteiros || a.key.localeCompare(b.key));
+  return { keys, reconhecidas: { total: reconhecidas.size, amostra: maisNovas(reconhecidas).slice(0, AMOSTRA_RECONHECIDAS).map(([c]) => c) } };
 }
 
 /* ---------- utilidades HTTP ---------- */
@@ -1308,14 +1327,18 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       return json(res, 200, { key, sugestao: key ? sugerirAtracao(key, voc.programas ?? []) : '' });
     }
     if (caminho === '/api/cadastros/sem-cadastro' && req.method === 'GET') {
-      // as keys que aparecem nas claquetes dos últimos 90 dias (produção e fila) e não são de nenhuma atração
+      // as keys que aparecem nas claquetes dos últimos 90 dias (produção e fila) e não são de nenhuma atração.
+      // Com ?com=reconhecidas, vem também quantas claquetes têm atração (e uma amostra): { keys, reconhecidas }.
+      // Sem pedir, a resposta continua a lista de keys (uma aba aberta com o app antigo segue funcionando).
       const desde = new Date(Date.now() - 90 * 86_400_000).toISOString();
       const voc = await vocabulario.ler();
       const claquetes = [
         ...q.claquetesDaFila.all(desde).map((l) => ({ claquete: String(l.claquete ?? ''), em: String(l.em ?? '') })),
         ...((await trello.claquetesRecentes?.(90).catch(() => [])) ?? []),
       ].filter((c) => c.claquete.trim());
-      return json(res, 200, keysSemCadastro(claquetes, voc.programas ?? [], new Set(q.ignoradas.all().map((l) => l.key))));
+      const r = semCadastro(claquetes, voc.programas ?? [], new Set(q.ignoradas.all().map((l) => l.key)));
+      const comReconhecidas = new URL(req.url, 'http://x').searchParams.get('com') === 'reconhecidas';
+      return json(res, 200, comReconhecidas ? r : r.keys);
     }
     if (caminho === '/api/cadastros/ignorar' && req.method === 'POST') {
       const { key } = (await lerCorpo(req).catch(() => ({}))) ?? {};
