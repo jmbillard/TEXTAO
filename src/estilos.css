@@ -610,7 +610,6 @@ kbd {
   .item { grid-template-columns: minmax(0, 1fr) auto; }
   .item-artes, .item-quando { display: none; }
   .item-acoes { opacity: 1; }
-  .lista-topo { flex-direction: column; align-items: stretch; }
   .busca { width: 100%; }
   .importar { padding: 40px 16px 110px; }
   .titulo-serifa.grande { font-size: 32px; }
@@ -1356,6 +1355,14 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .form-cad .acoes .botao { flex: 1; justify-content: center; }
 .form-cad .efeito { font: 400 12.5px/1.5 var(--sans); color: var(--tinta3); margin: 6px 0 0; }
 .form-cad .efeito b { color: var(--tinta2); font-weight: 600; }
+
+/* os Cadastros no celular: as abas em cima e, se não couberem ao lado, a busca embaixo com a largura toda, na altura
+   do toque; os campos em 16 px para o iOS não dar zoom */
+@media (max-width: 600px) {
+  .lista-topo { padding: 8px 12px; }
+  .cad-busca { max-width: none; height: 44px; margin-left: 0; }
+  .cad-busca input, input.entrada-cad, .entrada-cad.chips input, input.key.editando { font-size: 16px; }
+}
 
 /* atalhos para cadastrar onde a atração não foi reconhecida */
 .atalho-cadastro { display: inline-flex; align-items: center; gap: 4px; border: 1px dashed var(--regua-forte); background: none; color: var(--tinta2); border-radius: 999px; padding: 3px 10px; font: 500 12.5px var(--sans); cursor: pointer; transition: color 0.15s, border-color 0.15s; }
