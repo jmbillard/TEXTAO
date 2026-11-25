@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nomeDaAtracaoNova } from '../src/ui/Cadastros';
+import { linhaDoRascunho, nomeDaAtracaoNova } from '../src/ui/Cadastros';
 
 /* "+ Nova atração" no "Ligar a…": o nome que a atração nova já traz preenchido. */
 describe('nome da atração nova', () => {
@@ -21,5 +21,27 @@ describe('nome da atração nova', () => {
 
   it('com a key encurtada, a claquete não serve e vale a key', () => {
     expect(nomeDaAtracaoNova('', 'TELAO', ['Telão Oktoberfest 19/11'])).toBe('Telao');
+  });
+});
+
+/* Sem cadastro: a folha de rascunho da atração nova toma o lugar da linha da key que ela leva. */
+describe('linha que a folha de rascunho cobre no Sem cadastro', () => {
+  const lista = ['FESTA NA PRACA', 'SUMMER BEATS', 'TELAO'];
+
+  it('cobre a linha da key que está no rascunho', () => {
+    expect(linhaDoRascunho(lista, ['SUMMER BEATS'])).toBe(1);
+  });
+
+  it('compara como key: acento e caixa não importam', () => {
+    expect(linhaDoRascunho(lista, ['Telão'])).toBe(2);
+  });
+
+  it('com várias keys, vale a primeira linha da lista que alguma delas acha', () => {
+    expect(linhaDoRascunho(lista, ['TELAO', 'FESTA NA PRACA'])).toBe(0);
+  });
+
+  it('sem key da lista no rascunho, não cobre nenhuma (a folha entra no alto)', () => {
+    expect(linhaDoRascunho(lista, ['VERAO SEM FIM'])).toBe(-1);
+    expect(linhaDoRascunho(lista, [])).toBe(-1);
   });
 });

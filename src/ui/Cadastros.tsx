@@ -87,6 +87,13 @@ export function nomeDaAtracaoNova(busca: string, key: string, claquetes: string[
   return daClaquete ?? caixaDeTitulo(k);
 }
 
+/** Sem cadastro: a linha que a folha de rascunho cobre, a da primeira key da lista que está no rascunho (-1: nenhuma,
+    e a folha entra no alto da lista). */
+export function linhaDoRascunho(keysDaLista: string[], keysDoRascunho: string[]) {
+  const doRascunho = new Set(keysDoRascunho.map(comoKey));
+  return keysDaLista.findIndex((k) => doRascunho.has(comoKey(k)));
+}
+
 /** Prévia do caminho: as fórmulas do Teable com os campos trocados pelo que está digitado. */
 export function previaDoCaminho(formula: string, valores: Record<string, string>) {
   if (!formula) return '';
@@ -464,6 +471,9 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const [busca, setBusca] = useState('');
   const [recem, setRecem] = useState<string[]>([]);
   const [assentando, setAssentando] = useState(false);
+  // a aba "Sem cadastro": as keys das claquetes que nenhuma atração reconhece (o formulário da direita é o de atração;
+  // a folha de rascunho toma o lugar da linha da key que leva)
+  const [semCad, setSemCad] = useState(false);
   // onde a tira de rascunho abre a vaga na lista
   const [nomeVaga, setNomeVaga] = useState<string | null>(null);
   const vaga = useRef<HTMLDivElement>(null);
@@ -472,10 +482,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     if (!el) return;
     const t = setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }), 60);
     return () => clearTimeout(t);
-  }, [nomeVaga, aba]);
+  }, [nomeVaga, aba, semCad]);
   const [salvando, setSalvando] = useState(false);
-  // a aba "Sem cadastro": as keys das claquetes que nenhuma atração reconhece (o formulário da direita é o de atração)
-  const [semCad, setSemCad] = useState(false);
   const [sem, setSem] = useState<KeySemCadastro[] | null>(null);
   // apagar, remover key e ignorar: some na hora, a caixinha preta oferece desfazer e só depois vai para o servidor
   const [escondidos, setEscondidos] = useState<string[]>([]);
@@ -521,8 +529,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       let msg = '';
       let id = '';
       let depois: (() => Promise<void>) | null = null;
+      let tirarDoSem: (() => void) | null = null;
       if (aba === 'atracoes') {
+        const keysNovas = atr.keys.map(comoKey);
         const r = await cadastrar<{ id: string; nome: string; keys: string[] }>('atracoes', atr);
+        // no Sem cadastro, as linhas dessas keys saem junto com a folha (sem esperar a lista nova)
+        tirarDoSem = () => setSem((l) => l?.filter((x) => !keysNovas.includes(comoKey(x.key))) ?? l);
         id = r.id;
         msg = `${r.nome} cadastrada.`;
         // reconhecer os roteiros da fila leva um tempo: acontece depois que a folha assenta
@@ -543,6 +555,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       await new Promise((ok) => setTimeout(ok, 520));
       await carregar(true);
       setAssentando(false);
+      tirarDoSem?.();
       if (aba === 'atracoes') setAtr({ nome: '', keys: [], categoria: '', acervo: 'proprio', campos: {} });
       else if (aba === 'redatores') setRed({ nome: '', keys: [] });
       else setEdi({ nome: '', keys: [] });
@@ -666,21 +679,19 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nomeRascunho]);
+  // a folha de rascunho na vaga que ela abre: a mesma na lista da aba e no Sem cadastro
+  const folhaNaVaga = () =>
+    rascunho && (
+      <div className="vaga" ref={vaga}>
+        <Rascunho nome={rascunho.nome} categoria={'categoria' in rascunho ? rascunho.categoria : undefined} keys={rascunho.keys} assentando={assentando} />
+      </div>
+    );
   const comRascunho = <T extends { nome: string }>(lista: T[], render: (x: T) => React.ReactNode) => {
     const itens = lista.map((x) => ({ nome: x.nome, k: (x as unknown as { id: string }).id, no: render(x) }));
     if (rascunho && nomeVaga !== null) {
       const achou = itens.findIndex((x) => x.nome.localeCompare(nomeVaga || '\uffff', 'pt-BR') > 0);
       const pos = achou < 0 ? itens.length : achou;
-      const folha = {
-        nome: '',
-        k: `rascunho-${aba}-${pos}`,
-        no: (
-          <div className="vaga" ref={vaga}>
-            <Rascunho nome={rascunho.nome} categoria={'categoria' in rascunho ? rascunho.categoria : undefined} keys={rascunho.keys} assentando={assentando} />
-          </div>
-        ),
-      };
-      itens.splice(pos, 0, folha);
+      itens.splice(pos, 0, { nome: '', k: `rascunho-${aba}-${pos}`, no: folhaNaVaga() });
     }
     return (
       <Vagas itens={itens} chave={(x) => x.k}>
@@ -789,9 +800,18 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               const nomes = dados.atracoes.map((x) => x.nome).sort((x, y) => x.localeCompare(y, 'pt-BR'));
               if (!sem.filter((k) => !escondidos.includes(`sem:${k.key}`)).length) return <p className="cad-vazio">Toda claquete dos últimos 90 dias tem atração.</p>;
               if (!lista.length) return <p className="cad-vazio">Nada com “{busca}”.</p>;
+              // a atração nova: a folha de rascunho toma o lugar da linha da key (sem ela no rascunho, entra no alto)
+              const itens: { k: string; no: React.ReactNode }[] = lista.map((k) => ({
+                k: k.key,
+                no: <LinhaSemCadastro k={k} atracoes={nomes} ligar={(n) => void ligarKey(k.key, n)} nova={(busca) => novaComKey(k, busca)} ignorar={() => ignorar(k.key)} />,
+              }));
+              if (aba === 'atracoes' && rascunho && nomeVaga !== null) {
+                const coberta = linhaDoRascunho(lista.map((k) => k.key), rascunho.keys);
+                itens.splice(Math.max(coberta, 0), coberta < 0 ? 0 : 1, { k: `rascunho-sem-${coberta < 0 ? '' : lista[coberta].key}`, no: folhaNaVaga() });
+              }
               return (
-                <Vagas itens={lista} chave={(k) => k.key}>
-                  {(k) => <LinhaSemCadastro k={k} atracoes={nomes} ligar={(n) => void ligarKey(k.key, n)} nova={(busca) => novaComKey(k, busca)} ignorar={() => ignorar(k.key)} />}
+                <Vagas itens={itens} chave={(x) => x.k}>
+                  {(x) => x.no}
                 </Vagas>
               );
             })()}
