@@ -19,7 +19,7 @@ import { TourDaRevisao } from './tour/TourDaRevisao';
 import { passoAtual, pular, recomecar, tourNaEntrada, type Tour } from './tour/passos';
 import { ehCelular } from './ui/util';
 import { colocarExemplo, exemploNoTrello, ID_DO_EXEMPLO, roteiroDeExemplo } from './tour/exemplo';
-import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete } from './modelo/vocabularios';
+import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete, refazerPelaAtracao } from './modelo/vocabularios';
 
 /** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
     tudo passa pela revisão e vai pelo botão Enviar. */
@@ -233,6 +233,12 @@ export function App() {
             const antes = roteiro.meta.programa;
             const nome = await atracaoNoServidor(roteiro.meta.claquete);
             if (nome) Object.assign(roteiro.meta, { programa: nome, tipoPrograma: programasConhecidos().find((x) => x.nome === nome)?.tipo ?? 'outro' });
+            // a atração com número no nome ("Fórmula 1") que o navegador não conhecia: o número dela saiu da data
+            const refeita = nome ? refazerPelaAtracao(roteiro.meta, arquivo.name, nome) : null;
+            if (refeita) {
+              Object.assign(roteiro.meta, refeita);
+              roteiro.meta.revisar = pendencias(exportar(roteiro));
+            }
             // ficou sem atração: o servidor fica sabendo o que o navegador tinha, para o diagnóstico
             if (!nome) relatarSemAtracao({ claquete: roteiro.meta.claquete, arquivo: arquivo.name, achadoNoNavegador: antes, atracoesNoNavegador: quantasAtracoes(), porLista: acharPrograma(roteiro.meta.claquete)?.nome ?? '' });
           }

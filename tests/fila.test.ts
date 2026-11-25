@@ -137,6 +137,86 @@ describe('data no padrão dia-mês-versão, tudo com hífen', () => {
     expect(dataDaClaquete('SITIO 8 A 20/12', hoje)).toBe('2026-12-08');
     expect(dataDaClaquete('SITIO 8 A 20-12-2', hoje)).toBe('2026-12-08');
   });
+
+  describe('o número do nome da atração não entra na data (#46)', () => {
+    // atrações fictícias com número no nome: uma pela key da claquete, outra só pelo nome
+    const cadastro = {
+      programas: [
+        { nome: 'Fórmula 1', chaves: ['FORMULA 1', 'F1'] },
+        { nome: 'Copa 2', chaves: [] },
+      ],
+      redatores: [],
+    };
+    const comCadastro = async <T,>(fazer: () => T | Promise<T>): Promise<T> => {
+      const { registrarVocabulario } = await import('../src/modelo/vocabularios');
+      registrarVocabulario(cadastro);
+      try {
+        return await fazer();
+      } finally {
+        registrarVocabulario(null);
+      }
+    };
+
+    it('com a atração cadastrada, o número dela fica fora da data', async () => {
+      const { claqueteDoArquivo, dataDaClaquete } = await import('../src/modelo/vocabularios');
+      const { interpretar } = await import('../src/importar');
+      const casos: [string, string, string][] = [
+        ['Formula_1_5-12-2.docx', 'FORMULA 1 5/12-2', '2026-12-05'],
+        ['Fórmula 1 5-12.docx', 'FÓRMULA 1 5/12', '2026-12-05'],
+        ['Formula_1_5_12_2.docx', 'FORMULA 1 5/12-2', '2026-12-05'],
+        ['Copa_2_8_a_20_12-2.docx', 'COPA 2 8 A 20/12-2', '2026-12-08'],
+        ['Rio_Copa_2_5-12.docx', 'RIO COPA 2 5/12', '2026-12-05'],
+      ];
+      await comCadastro(() => {
+        for (const [arquivo, claquete, data] of casos) {
+          expect(claqueteDoArquivo(arquivo), arquivo).toBe(claquete);
+          const imp = interpretar({ arquivo, formato: 'rtf', autor: '', blocos: [] }, { anoPadrao: 2026 });
+          expect(imp.meta.claquete, arquivo).toBe(claquete);
+          expect(imp.meta.dataExibicao, arquivo).toBe(data);
+        }
+        // na claquete digitada, só o traço separa dia e mês
+        expect(dataDaClaquete('COPA 2-5-12-2', hoje)).toBe('2026-12-05');
+        expect(dataDaClaquete('FORMULA 1 5/12-2', hoje)).toBe('2026-12-05');
+      });
+    });
+
+    it('o nome só parecido com a atração não perde o número', async () => {
+      const { claqueteDoArquivo } = await import('../src/modelo/vocabularios');
+      await comCadastro(() => {
+        // "Copa 25" não é "Copa 2": o 25 é o dia
+        expect(claqueteDoArquivo('Copa_25-12-2.docx')).toBe('COPA 25/12-2');
+        // a atração no meio do nome não conta: só o começo
+        expect(claqueteDoArquivo('Chamada_Copa_2_5-12.docx')).toBe('CHAMADA COPA 2/5-12');
+      });
+    });
+
+    it('sem cadastro, vale a regra dos primeiros números', async () => {
+      const { claqueteDoArquivo, dataDaClaquete } = await import('../src/modelo/vocabularios');
+      expect(claqueteDoArquivo('Formula_1_5-12-2.docx')).toBe('FORMULA 1/5-12-2');
+      expect(claqueteDoArquivo('Copa_2_5-12.docx')).toBe('COPA 2/5-12');
+      expect(dataDaClaquete('COPA 2-5-12', hoje)).toBe('2027-05-02');
+    });
+
+    it('o cadastro que chega depois da leitura vai como parâmetro', async () => {
+      const { claqueteDoArquivo, dataDaClaquete, lerDataDaClaquete, refazerPelaAtracao } = await import('../src/modelo/vocabularios');
+      expect(claqueteDoArquivo('Formula_1_5-12-2.docx', ['Fórmula 1'])).toBe('FORMULA 1 5/12-2');
+      expect(lerDataDaClaquete('FORMULA 1 5 12 2', 'arquivo', ['Fórmula 1'])).toMatchObject({ dia: 5, mes: 12 });
+      expect(dataDaClaquete('COPA 2-5-12', hoje, ['Copa 2'])).toBe('2026-12-05');
+      // a atração que o servidor achou depois da importação conserta a claquete e a data tiradas do nome
+      expect(refazerPelaAtracao({ claquete: 'FORMULA 1/5-12-2', dataExibicao: '2026-05-01' }, 'Formula_1_5-12-2.docx', 'Fórmula 1')).toEqual({
+        claquete: 'FORMULA 1 5/12-2',
+        dataExibicao: '2026-12-05',
+      });
+      // a data que veio do texto do roteiro fica
+      expect(refazerPelaAtracao({ claquete: 'FORMULA 1/5-12-2', dataExibicao: '2026-12-07' }, 'Formula_1_5-12-2.docx', 'Fórmula 1')).toEqual({
+        claquete: 'FORMULA 1 5/12-2',
+        dataExibicao: '2026-12-07',
+      });
+      // a claquete que veio da pauta, ou uma atração sem número: nada muda
+      expect(refazerPelaAtracao({ claquete: 'Formula 1 5/12-2', dataExibicao: '2026-12-05' }, 'Formula_1_5-12-2.docx', 'Fórmula 1')).toBeNull();
+      expect(refazerPelaAtracao({ claquete: 'SITIO 5/12-2', dataExibicao: '2026-12-05' }, 'Sitio_5-12-2.docx', 'Sítio')).toBeNull();
+    });
+  });
 });
 
 describe('o que a fila conta', () => {

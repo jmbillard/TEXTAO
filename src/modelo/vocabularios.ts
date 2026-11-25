@@ -71,11 +71,15 @@ const RE_PAR =
  * - Sem barra, valem os primeiros números do grupo: em "5-12-2" ou "5_12_2" o par é 5/12 e o 2 é a versão;
  *   o número que já é o mês de um par válido não abre outro par. Entre grupos, vale o último.
  * - Um número grudado em letras não abre par ("SP2_3_4" → 3/4, "V2-26-10" → 26/10).
+ * - Os números do nome da atração no começo do texto não entram na data: com "Fórmula 1" cadastrada,
+ *   "FORMULA 1 5-12-2" é 5/12, versão 2 (sem o cadastro, vale a regra dos primeiros números: 1/5).
  * @param semBarra se o traço, o underline, o espaço e o ponto também separam dia e mês (nome de arquivo); na
  *   claquete digitada, só o traço.
+ * @param atracoes nomes de atração além dos cadastros que o navegador já tem (a que o servidor achou depois da leitura).
  */
-export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete' = 'claquete'): DataLida | null {
-  const cands = [...texto.matchAll(RE_PAR)].map((m) => {
+export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete' = 'claquete', atracoes: string[] = []): DataLida | null {
+  const depoisDaAtracao = fimDosNumerosDaAtracao(texto, atracoes);
+  const cands = [...texto.matchAll(RE_PAR)].filter((m) => m.index! >= depoisDaAtracao).map((m) => {
     const [, todo, periodo = '', ini, d, sep, mes, versao = '', versaoSolta] = m;
     const posDia = m.index! + periodo.length;
     return { m, todo, periodo, ini, dTexto: d, mesTexto: mes, d: +d, sep, mes: +mes, versao, versaoSolta, posDia, posMes: posDia + d.length + sep.length };
@@ -104,16 +108,18 @@ export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete
 }
 
 /** A data da claquete, no ano corrente (ou no seguinte, se já passou há mais de seis meses). */
-export function dataDaClaquete(claquete: string, hoje = new Date()): string {
-  const m = lerDataDaClaquete(claquete);
+export function dataDaClaquete(claquete: string, hoje = new Date(), atracoes: string[] = []): string {
+  const m = lerDataDaClaquete(claquete, 'claquete', atracoes);
   if (!m) return '';
   let ano = hoje.getFullYear();
   if (new Date(ano, m.mes - 1, m.dia).getTime() < hoje.getTime() - 183 * 864e5) ano++;
-  return `${ano}-${String(m.mes).padStart(2, '0')}-${String(m.dia).padStart(2, '0')}`;
+  return diaIso(ano, m.mes, m.dia);
 }
 
+const diaIso = (ano: number, mes: number, dia: number) => `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+
 /** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. */
-export function claqueteDoArquivo(arquivo: string): string {
+export function claqueteDoArquivo(arquivo: string, atracoes: string[] = []): string {
   const texto = arquivo
     .replace(/\.[^.]+$/, '')
     .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2') // "AmaPrologo" → "Ama Prologo"
@@ -121,8 +127,29 @@ export function claqueteDoArquivo(arquivo: string): string {
     .replace(/[_\s]+/g, ' ')
     .trim()
     .toUpperCase();
-  const data = lerDataDaClaquete(texto, 'arquivo');
+  const data = lerDataDaClaquete(texto, 'arquivo', atracoes);
   return data ? texto.slice(0, data.inicio) + data.comBarra + texto.slice(data.fim) : texto;
+}
+
+/**
+ * A atração que só chegou depois da importação (o servidor achou pelas keys do Teable) conserta a claquete e a data
+ * tiradas do nome do arquivo: "Formula_1_5-12-2" foi lido como "FORMULA 1/5-12-2", 1/5; com "Fórmula 1", é 5/12.
+ * Só mexe na claquete que ainda é a do nome do arquivo (não na da pauta) e na data que saiu dela (não na do texto).
+ * Devolve null quando não há o que mudar.
+ */
+export function refazerPelaAtracao(
+  meta: { claquete: string; dataExibicao: string },
+  arquivo: string,
+  atracao: string,
+): { claquete: string; dataExibicao: string } | null {
+  if (!/\d/.test(atracao) || meta.claquete !== claqueteDoArquivo(arquivo)) return null;
+  const claquete = claqueteDoArquivo(arquivo, [atracao]);
+  if (claquete === meta.claquete) return null;
+  const antes = lerDataDaClaquete(meta.claquete);
+  const depois = lerDataDaClaquete(claquete);
+  const [ano, mes, dia] = meta.dataExibicao.split('-').map(Number);
+  const daClaquete = !!antes && mes === antes.mes && dia === antes.dia;
+  return { claquete, dataExibicao: daClaquete && depois ? diaIso(ano, depois.mes, depois.dia) : meta.dataExibicao };
 }
 
 export const NOMES_TIPO_PROGRAMA: Record<TipoPrograma, string> = {
@@ -216,6 +243,28 @@ export function naPauta(claquete: string): { editor: string; claquete: string } 
   return { editor: pauta.get(chave.replace(/ (?:REDE|G5|SP|PRACAS)$/, ''))?.editor ?? '', claquete: '' };
 }
 export const editorDaPauta = (claquete: string): string => naPauta(claquete).editor;
+
+/**
+ * Onde terminam, no texto, os números do nome da atração que abre a claquete ("FORMULA 1 5-12-2" → logo depois do 1);
+ * 0 quando ela não abre por uma atração com número. Vale o mesmo começo que o acharPrograma aceita (a key, com a praça
+ * do Rio na frente), e também o nome e as pistas dos cadastros e da lista embutida, mais os nomes de `extras`.
+ */
+function fimDosNumerosDaAtracao(texto: string, extras: string[] = []): number {
+  const n = normal(texto);
+  const comeco = [n, n.replace(/^rio /, '')];
+  const trechos = [...externos.flatMap((e) => [e.nome, ...e.chaves]), ...PROGRAMAS.flatMap((p) => [p.nome, ...p.pistas]), ...extras].map(normal);
+  // vale o trecho mais longo que abre o texto; só os com número importam
+  const numeros = Math.max(
+    0,
+    ...trechos
+      .filter((t) => /\d/.test(t) && comeco.some((x) => x === t || x.startsWith(t + ' ')))
+      .map((t) => t.match(/\d+/g)!.length),
+  );
+  if (!numeros) return 0;
+  // os números do texto normalizado são os mesmos do original, na mesma ordem: o n-ésimo grupo de dígitos fecha o trecho
+  const grupo = [...texto.matchAll(/\d+/g)][numeros - 1];
+  return grupo ? grupo.index! + grupo[0].length : 0;
+}
 
 export function acharPrograma(texto: string): ProgramaVocab | null {
   // A claquete começa pela chave ("QUEM AMA 12/3 REDE"); chaves curtas ("CASA", "VT") não valem no meio de uma frase.
