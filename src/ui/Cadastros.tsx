@@ -22,7 +22,7 @@ import {
   type KeySemCadastro,
 } from '../dados/armazenamento';
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
-import { Icone } from './icones';
+import { caminhoDoIcone, Icone } from './icones';
 import { Marca } from './pecas';
 import { plural } from './util';
 
@@ -35,8 +35,7 @@ const ICONE_SEM = 'M4 7h11l5 5-5 5H4z M9 12h.01';
 const ICONES = {
   atracoes: 'M4 7h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z M8.5 3l3.5 4 3.5-4',
   redatores: 'M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
-  editores:
-    'M20.2 6L3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z M6.2 5.3l3.1 3.9 M12.4 3.4l3.1 4 M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  editores: caminhoDoIcone('edicao'),
 } as const;
 const NOMES: Record<TipoCadastro, string> = { atracoes: 'Atrações', redatores: 'Redatores', editores: 'Editores' };
 const RABISCO = 'M2 9 C 30 3, 70 4, 98 6 C 70 8, 40 10, 14 12';

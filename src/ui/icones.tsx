@@ -5,8 +5,9 @@ import type { TipoEtiqueta } from '../modelo/tipos';
 
 const D = {
   arte: 'M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M6 14h8',
+  // a edição: a tira de filme vazada em volta da agulha do playhead
   edicao:
-    'M20.2 6L3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z M6.2 5.3l3.1 3.9 M12.4 3.4l3.1 4 M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+    'M8.5 2.5h7v3L12 8.8 8.5 5.5z M12 8.8v12.7 M9.4 12.5H4A1.5 1.5 0 0 0 2.5 14v5A1.5 1.5 0 0 0 4 20.5h5.4 M14.6 12.5H20a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5h-5.4 M6.2 12.5v8 M17.8 12.5v8',
   locutor: 'M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z M5 10a7 7 0 0 0 14 0 M12 17v4',
   sonoplastia: 'M9 18V5l12-2v13 M3 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0 M15 16a3 3 0 1 0 6 0a3 3 0 1 0 -6 0',
   cortavel: 'M3 6a3 3 0 1 0 6 0a3 3 0 1 0 -6 0 M3 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0 M20 4L8.1 15.9 M14.5 14.5L20 20 M8.1 8.1L12 12',
@@ -43,6 +44,9 @@ const D = {
 } as const;
 
 export type NomeIcone = keyof typeof D;
+
+/** O traço de um ícone, para quem desenha o próprio <svg> (os Cadastros). */
+export const caminhoDoIcone = (nome: NomeIcone): string => D[nome];
 
 export function Icone({ nome, tam = 16, traco = 1.9, style }: { nome: NomeIcone; tam?: number; traco?: number; style?: CSSProperties }) {
   return (
