@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Vagas } from './vagas';
 import { reconhecerNaFila } from '../dados/reconhecer';
+import { acentuar } from '../modelo/acento';
 import {
   cadastrar,
   darKey,
@@ -79,12 +80,13 @@ export interface AtracaoNova {
 }
 
 /** "+ Nova atração" no "Ligar a…": o nome que a atração nova já traz. Com texto na busca, o texto; com a busca
-    vazia, a key como aparece na claquete (uma claquete que dá a mesma key, com acento) ou em caixa de título. */
-export function nomeDaAtracaoNova(busca: string, key: string, claquetes: string[] = []) {
+    vazia, a key como aparece na claquete (uma claquete que dá a mesma key, com acento) ou em caixa de título, com
+    os acentos que dá para pôr (a grafia das claquetes e das atrações cadastradas, ou o dicionário: acentuar). */
+export function nomeDaAtracaoNova(busca: string, key: string, claquetes: string[] = [], cadastradas: string[] = []) {
   if (busca.trim()) return busca.trim();
   const k = comoKey(key);
   const daClaquete = claquetes.map(atracaoDaClaquete).find((n) => n && comoKey(n) === k);
-  return daClaquete ?? caixaDeTitulo(k);
+  return acentuar(daClaquete ?? caixaDeTitulo(k), [...claquetes, ...cadastradas]);
 }
 
 /** Sem cadastro: a linha que a folha de rascunho cobre, a da primeira key da lista que está no rascunho (-1: nenhuma,
@@ -608,7 +610,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   };
   /** "+ Nova": o formulário da direita começa com a key e com o nome (o da busca, ou o da key). */
   const novaComKey = (k: KeySemCadastro, busca: string) => {
-    setAtr({ nome: nomeDaAtracaoNova(busca, k.key, k.exemplos), keys: [comoKey(k.key)], categoria: '', acervo: 'proprio', campos: {} });
+    setAtr({ nome: nomeDaAtracaoNova(busca, k.key, k.exemplos, dados?.atracoes.map((a) => a.nome)), keys: [comoKey(k.key)], categoria: '', acervo: 'proprio', campos: {} });
     setTimeout(() => nomeAtr.current?.focus(), 0);
   };
   /** Executa já o que estava esperando o desfazer (outro apagar começou, ou a tela vai fechar). */
@@ -798,8 +800,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
             {semCad && dados && sem && (() => {
               const lista = sem.filter((k) => !escondidos.includes(`sem:${k.key}`) && casa(k.key, ...k.exemplos));
               const nomes = dados.atracoes.map((x) => x.nome).sort((x, y) => x.localeCompare(y, 'pt-BR'));
-              if (!sem.filter((k) => !escondidos.includes(`sem:${k.key}`)).length) return <p className="cad-vazio">Toda claquete dos últimos 90 dias tem atração.</p>;
-              if (!lista.length) return <p className="cad-vazio">Nada com “{busca}”.</p>;
+              // a lista vazia: a mensagem entra depois que a última linha (ou a folha) sai
+              const vazio = !sem.some((k) => !escondidos.includes(`sem:${k.key}`)) ? <p className="cad-vazio">Toda claquete dos últimos 90 dias tem atração.</p> : <p className="cad-vazio">Nada com “{busca}”.</p>;
               // a atração nova: a folha de rascunho toma o lugar da linha da key (sem ela no rascunho, entra no alto)
               const itens: { k: string; no: React.ReactNode }[] = lista.map((k) => ({
                 k: k.key,
@@ -810,7 +812,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                 itens.splice(Math.max(coberta, 0), coberta < 0 ? 0 : 1, { k: `rascunho-sem-${coberta < 0 ? '' : lista[coberta].key}`, no: folhaNaVaga() });
               }
               return (
-                <Vagas itens={itens} chave={(x) => x.k}>
+                <Vagas itens={itens} chave={(x) => x.k} vazio={vazio}>
                   {(x) => x.no}
                 </Vagas>
               );

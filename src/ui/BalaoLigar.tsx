@@ -60,7 +60,7 @@ export function BalaoLigar({ claquete, ligado, nova, fechar, avisar, aberto }: {
       {atracoes === null ? (
         <p className="balao-carregando">Carregando as atrações…</p>
       ) : (
-        <MenuLigar dentro atracoes={nomes} ligar={(n) => void ligar(n)} nova={(busca) => nova({ nome: nomeDaAtracaoNova(busca, key, [claquete]), key: comoKey(key) })} fechar={fechar} />
+        <MenuLigar dentro atracoes={nomes} ligar={(n) => void ligar(n)} nova={(busca) => nova({ nome: nomeDaAtracaoNova(busca, key, [claquete], nomes), key: comoKey(key) })} fechar={fechar} />
       )}
     </div>
   );

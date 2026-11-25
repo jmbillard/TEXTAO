@@ -79,12 +79,18 @@ export function useVagas<T>(itens: T[], chave: (x: T) => string, deslizam?: Read
   return lista;
 }
 
-/** Lista com vagas animadas. eixo "y" para linhas (a altura abre e fecha), "x" para chips lado a lado (a largura). */
-export function Vagas<T>({ itens, chave, children, eixo = 'y', como, deslizam }: { itens: T[]; chave: (x: T) => string; children: (x: T) => ReactNode; eixo?: 'x' | 'y'; como?: 'li' | 'div' | 'span'; deslizam?: ReadonlySet<string> }) {
+/** Lista com vagas animadas. eixo "y" para linhas (a altura abre e fecha), "x" para chips lado a lado (a largura).
+    vazio: o que aparece com a lista vazia. Só entra depois que a última vaga fecha, abrindo a vaga dele. */
+export function Vagas<T>({ itens, chave, children, eixo = 'y', como, deslizam, vazio }: { itens: T[]; chave: (x: T) => string; children: (x: T) => ReactNode; eixo?: 'x' | 'y'; como?: 'li' | 'div' | 'span'; deslizam?: ReadonlySet<string>; vazio?: ReactNode }) {
   const lista = useVagas(itens, chave, deslizam);
   const Tag = como ?? (eixo === 'x' ? 'span' : 'div');
   return (
     <>
+      {vazio !== undefined && (
+        <Vagas eixo={eixo} como={como} itens={!lista.length && vazio !== null ? ['vazio'] : []} chave={(k) => k}>
+          {() => vazio}
+        </Vagas>
+      )}
       {lista.map((x) => (
         <Tag key={x.k} className={`vaga-${eixo} ${x.estado}`} aria-hidden={x.estado === 'saindo' || undefined} inert={x.estado === 'saindo' || undefined}>
           {eixo === 'x' ? <span className="vaga-dentro">{children(x.item)}</span> : <div className="vaga-dentro">{children(x.item)}</div>}
