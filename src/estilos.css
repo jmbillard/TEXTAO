@@ -2053,6 +2053,12 @@ html.com-cursor-meu { min-height: 100%; }
 .balao-topo .ligar-sug { font-size: 20px; }
 .balao-ligar .escolha-nome-menu.menu-ligar { position: static; width: auto; max-width: none; padding: 0; background: none; box-shadow: none; animation: none; }
 .balao-carregando { margin: 4px 6px 6px; color: var(--tinta3); font-size: 12.5px; }
+/* na claquete, o balão se prende à linha da atração e encosta na borda direita do cartão. Preso ao "cadastrar", ele
+   passava 55px da coluna da direita do editor; a coluna rola (overflow-y), então rolava também para o lado quando a
+   busca do balão ganhava o foco, e a ficha e os cartões de baixo ficavam cortados à esquerda. */
+.claquete .linha-atracao { position: relative; }
+.claquete .ancora-balao { position: static; }
+.claquete .balao-ligar { left: auto; right: 0; }
 /* a vaga que tem um balão aberto fica por cima das vizinhas (a animação das vagas isola cada uma numa camada) */
 .vaga-y:has(.balao-ligar, .escolha-nome-menu, .menu-ligar) { position: relative; z-index: 50; }
 .balao-topo input.key { border-color: var(--regua-forte); box-shadow: none; }
