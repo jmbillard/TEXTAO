@@ -45,7 +45,7 @@ describe('servidor', () => {
     expect((await salvar(ana, 'roteiro-da-ana', roteiro('A'))).status).toBe(200);
     expect(await (await ana('/api/roteiros')).json()).toHaveLength(1);
     expect(await (await beto('/api/roteiros')).json()).toHaveLength(0);
-    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(404);
+    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(403);
     expect((await beto('/api/roteiros/roteiro-da-ana/versoes')).status).toBe(404);
   });
 
@@ -59,7 +59,7 @@ describe('servidor', () => {
     expect((await beto('/api/roteiros/roteiro-da-ana/versoes')).status).toBe(404);
     // voltar a privado esconde de novo
     await salvar(ana, 'roteiro-da-ana', roteiro('A', false));
-    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(404);
+    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(403);
   });
 
   it('compartilhar com algumas pessoas', async () => {
@@ -68,7 +68,7 @@ describe('servidor', () => {
     expect((await (await ana('/api/usuarios')).json()).map((u: { email: string }) => u.email)).toEqual(['beto@empresa.com', 'carla@empresa.com']);
     await salvar(ana, 'roteiro-da-ana', { roteiro: { ...roteiro('A').roteiro, compartilhadoCom: [{ email: 'Beto@empresa.com', editar: false }] }, nArtes: 1 });
     expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(200);
-    expect((await carla('/api/roteiros/roteiro-da-ana')).status).toBe(404);
+    expect((await carla('/api/roteiros/roteiro-da-ana')).status).toBe(403);
     expect(await (await carla('/api/roteiros')).json()).toHaveLength(0);
     // quem recebeu lê, mas não altera nem vê com quem mais foi compartilhado
     expect((await salvar(beto, 'roteiro-da-ana', roteiro('invadido'))).status).toBe(403);
@@ -78,7 +78,7 @@ describe('servidor', () => {
     await salvar(ana, 'roteiro-da-ana', roteiro('A2'));
     expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(200);
     await salvar(ana, 'roteiro-da-ana', { roteiro: { ...roteiro('A2').roteiro, compartilhadoCom: [] }, nArtes: 1 });
-    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(404);
+    expect((await beto('/api/roteiros/roteiro-da-ana')).status).toBe(403);
   });
 
   it('quem pode editar altera o conteúdo, mas não o compartilhamento', async () => {
@@ -164,7 +164,9 @@ describe('servidor', () => {
 
   it('apagar leva o histórico junto', async () => {
     expect((await ana('/api/roteiros/com-historico', { method: 'DELETE' })).status).toBe(200);
-    expect((await ana('/api/roteiros/com-historico')).status).toBe(404);
+    // o link do apagado diz que ele foi apagado (410); o histórico não fica
+    expect((await ana('/api/roteiros/com-historico')).status).toBe(410);
+    expect((await ana('/api/roteiros/com-historico/versoes')).status).toBe(404);
   });
 
   it('roteiro grande demais recebe a resposta 413, sem a conexão cair', async () => {
@@ -503,5 +505,105 @@ describe('tour da revisão', () => {
     const t = await ana('/api/roteiros/tour-revisao-exemplo/trello', { method: 'POST', body: JSON.stringify({ artes: [], texto: '' }) });
     expect(t.status).toBe(400);
     expect((await t.json()).erro).toMatch(/tour/);
+  });
+});
+
+describe('link quebrado: a lápide do roteiro apagado', () => {
+  /** Um servidor só para estes casos, no modo pedido. */
+  async function subir(env: Record<string, string>) {
+    const s = createServer(criarApp({ db: abrirBanco(':memory:'), env }));
+    await new Promise<void>((ok) => s.listen(0, ok));
+    const url = `http://localhost:${(s.address() as { port: number }).port}`;
+    const pedir = (email: string) => (caminho: string, init: RequestInit = {}) =>
+      fetch(url + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json', ...init.headers } });
+    return { s, pedir };
+  }
+  const comClaquete = (claquete: string, extra: object = {}) => ({
+    roteiro: { meta: { claquete }, doc: { type: 'doc', content: [] }, ...extra },
+    nArtes: 0,
+  });
+
+  it('apagado: devolve 410 com a claquete, quem apagou e quando', async () => {
+    const { s, pedir } = await subir({});
+    const [marina, joao] = [pedir('marina.lopes@empresa.com'), pedir('joao@empresa.com')];
+    try {
+      await marina('/api/roteiros/rota-sabor-01', { method: 'PUT', body: JSON.stringify(comClaquete('Rota do Sabor 20/11')) });
+      expect((await marina('/api/roteiros/rota-sabor-01', { method: 'DELETE' })).status).toBe(200);
+      const r = await joao('/api/roteiros/rota-sabor-01');
+      expect(r.status).toBe(410);
+      const lapide = await r.json();
+      expect(lapide).toMatchObject({ claquete: 'Rota do Sabor 20/11', por: 'Marina Lopes' });
+      expect(lapide.em).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(lapide.substituto).toBeUndefined();
+      // nunca existiu: 404; o id malformado continua 400
+      expect((await joao('/api/roteiros/nunca-existiu-01')).status).toBe(404);
+      expect((await joao('/api/roteiros/x')).status).toBe(400);
+    } finally {
+      s.close();
+    }
+  });
+
+  it('versão nova: o substituto é o roteiro vivo com a mesma chave da claquete', async () => {
+    const { s, pedir } = await subir({});
+    const ana = pedir('ana@empresa.com');
+    try {
+      await ana('/api/roteiros/rota-sabor-v1', { method: 'PUT', body: JSON.stringify(comClaquete('Rota do Sabor 20/11')) });
+      await ana('/api/roteiros/outra-coisa-1', { method: 'PUT', body: JSON.stringify(comClaquete('Outra Coisa 20/11')) });
+      await ana('/api/roteiros/rota-sabor-v2', { method: 'PUT', body: JSON.stringify(comClaquete('Rota do Sabor V2 20/11')) });
+      await ana('/api/roteiros/rota-sabor-v1', { method: 'DELETE' });
+      expect(await (await ana('/api/roteiros/rota-sabor-v1')).json()).toMatchObject({ claquete: 'Rota do Sabor 20/11', substituto: 'rota-sabor-v2' });
+    } finally {
+      s.close();
+    }
+  });
+
+  it('modo privado: a lápide só vai para quem podia ler o roteiro; os outros recebem 404', async () => {
+    const { s, pedir } = await subir({ ACESSO: 'privado' });
+    const [ana, beto, carla] = [pedir('ana@empresa.com'), pedir('beto@empresa.com'), pedir('carla@empresa.com')];
+    try {
+      const compartilhado = comClaquete('Festa 26/10', { compartilhadoCom: [{ email: 'beto@empresa.com', editar: false }] });
+      await ana('/api/roteiros/festa-2610-01', { method: 'PUT', body: JSON.stringify(compartilhado) });
+      await ana('/api/roteiros/festa-2610-01', { method: 'DELETE' });
+      expect((await ana('/api/roteiros/festa-2610-01')).status).toBe(410);
+      const paraBeto = await beto('/api/roteiros/festa-2610-01');
+      expect(paraBeto.status).toBe(410);
+      expect(await paraBeto.json()).toMatchObject({ claquete: 'Festa 26/10', por: 'Ana' });
+      const paraCarla = await carla('/api/roteiros/festa-2610-01');
+      expect(paraCarla.status).toBe(404);
+      expect(JSON.stringify(await paraCarla.json())).not.toContain('Festa');
+      // o que era de todos tem a lápide para todos
+      await ana('/api/roteiros/publico-0001', { method: 'PUT', body: JSON.stringify(comClaquete('Aberto 1/12', { publico: true })) });
+      await ana('/api/roteiros/publico-0001', { method: 'DELETE' });
+      expect((await carla('/api/roteiros/publico-0001')).status).toBe(410);
+    } finally {
+      s.close();
+    }
+  });
+
+  it('modo privado: o substituto que a pessoa não pode ler não vai na lápide', async () => {
+    const { s, pedir } = await subir({ ACESSO: 'privado' });
+    const [ana, beto] = [pedir('ana@empresa.com'), pedir('beto@empresa.com')];
+    try {
+      await ana('/api/roteiros/show-0101-v1', { method: 'PUT', body: JSON.stringify(comClaquete('Show 1/1', { publico: true })) });
+      await ana('/api/roteiros/show-0101-v2', { method: 'PUT', body: JSON.stringify(comClaquete('Show V2 1/1')) });
+      await ana('/api/roteiros/show-0101-v1', { method: 'DELETE' });
+      expect((await (await ana('/api/roteiros/show-0101-v1')).json()).substituto).toBe('show-0101-v2');
+      expect((await (await beto('/api/roteiros/show-0101-v1')).json()).substituto).toBeUndefined();
+    } finally {
+      s.close();
+    }
+  });
+
+  it('sem permissão: 403 sem os dados do roteiro', async () => {
+    const { s, pedir } = await subir({ ACESSO: 'privado' });
+    const [ana, beto] = [pedir('ana@empresa.com'), pedir('beto@empresa.com')];
+    try {
+      await ana('/api/roteiros/segredo-0001', { method: 'PUT', body: JSON.stringify(comClaquete('Segredo 2/2')) });
+      const r = await beto('/api/roteiros/segredo-0001');
+      expect(r.status).toBe(403);
+      expect(JSON.stringify(await r.json())).not.toContain('Segredo');
+    } finally {
+      s.close();
+    }
   });
 });

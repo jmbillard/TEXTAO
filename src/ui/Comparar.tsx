@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro, versaoNova } from '../dados/armazenamento';
+import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro, roteiroDa, versaoNova } from '../dados/armazenamento';
+import { casoDaLeitura, LinkQuebrado, type CasoQuebrado } from './LinkQuebrado';
 import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, type ArteComparada } from '../modelo/diferencas';
 import { exportar, pendencias } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
@@ -15,6 +16,8 @@ interface Props {
   /** Depois da decisão (menos "Ignorar"): segue para a revisão de sempre do roteiro que ficou. */
   revisar: (id: string) => void;
   avisar: (texto: string) => void;
+  /** O link quebrado com a lápide: a fila abre buscando a claquete. */
+  buscar?: (termo: string) => void;
 }
 
 /* O lado de lá da comparação: o que já está na produção da arte (a claquete já tem card no Trello) ou, quando o
@@ -46,8 +49,11 @@ const diaDe = (iso: string | null) => (iso ? dataCurtaComDia(new Date(iso).toLoc
 
 /** O roteiro que chegou ao lado do que já está na produção da arte, ou da versão anterior que está na fila, com as
  *  diferenças marcadas. A decisão vem antes da revisão. */
-export function Comparar({ id, voltar, revisar, avisar }: Props) {
+export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
   const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
+  // o link não abriu: por quê (apagado, sem permissão, não existe, a rede)
+  const [falha, setFalha] = useState<CasoQuebrado | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [producao, setProducao] = useState<ProducaoCompleta | null | undefined>(undefined);
   const [anterior, setAnterior] = useState<Roteiro | null | undefined>(undefined);
   const [decidindo, setDecidindo] = useState(false);
@@ -68,21 +74,23 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
 
   useEffect(() => {
     let vivo = true;
-    void armazenamento.ler(id).then(async (r) => {
+    void armazenamento.ler(id).then(async (l) => {
       if (!vivo) return;
+      const r = roteiroDa(l);
+      setFalha(l.estado === 'ok' ? null : casoDaLeitura(l));
       setRoteiro(r ?? null);
       if (r?.meta.substitui) {
-        const a = await armazenamento.ler(r.meta.substitui).catch(() => undefined);
+        const a = roteiroDa(await armazenamento.ler(r.meta.substitui));
         if (vivo) setAnterior(a ?? null);
         return;
       }
       const p = r ? await consultarProducao(r.meta.claquete) : null;
       if (vivo) setProducao(p);
-    }, () => vivo && setRoteiro(null));
+    });
     return () => {
       vivo = false;
     };
-  }, [id]);
+  }, [id, tentativa]);
 
   const daFila = !!roteiro?.meta.substitui;
   const ladoDeLa = useMemo<LadoDeLa | null>(
@@ -169,7 +177,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
         <span />
       </header>
       <main className="comparar-corpo">
-        {roteiro === null && <p className="cad-falha">Esse roteiro não está mais na fila.</p>}
+        {roteiro === null && falha && <LinkQuebrado caso={falha} voltar={voltar} buscar={buscar} abrir={revisar} tentar={() => setTentativa((n) => n + 1)} />}
         {roteiro && (
           <>
             <div className="comparar-cabeca">

@@ -125,7 +125,7 @@ export function comExemplo(base: Armazenamento): Armazenamento {
     },
     async ler(id) {
       if (!ehDoTour(id)) return base.ler(id);
-      return exemplo?.id === id ? copia(exemplo) : undefined;
+      return exemplo?.id === id ? { estado: 'ok', roteiro: copia(exemplo) } : { estado: 'nao-existe' };
     },
     async salvar(roteiro, marco, automatico) {
       if (!ehDoTour(roteiro.id)) return base.salvar(roteiro, marco, automatico);

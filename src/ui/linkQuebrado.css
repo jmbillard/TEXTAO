@@ -1,0 +1,88 @@
+/* ---------- o link quebrado (ui/LinkQuebrado.tsx) ----------
+   O desenho à mão, o título em serifa e as ações. Sem sombra, sem pílula, sem brilho: os tokens do app. */
+:root {
+  /* a película e a lousa da claquete */
+  --lq-filme: #2b2925;
+  --lq-quadro: #f7f4ec;
+  --lq-giz: #efeae0;
+  --lq-lousa: #2b2925;
+  /* o fundo por trás dos furos da película: o da tela onde ela está */
+  --lq-fundo: var(--mesa);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --lq-filme: #3a3731;
+    --lq-quadro: #d9d3c6;
+    --lq-giz: #e6e0d4;
+    --lq-lousa: #2e2b27;
+  }
+}
+:root[data-theme='dark'] {
+  --lq-filme: #3a3731;
+  --lq-quadro: #d9d3c6;
+  --lq-giz: #e6e0d4;
+  --lq-lousa: #2e2b27;
+}
+
+.comparar .lq-pagina { min-height: calc(100vh - 200px); }
+.lq-pagina { min-height: calc(100vh - 120px); display: grid; place-items: center; padding: 40px 16px 72px; overflow-x: hidden; }
+.lq { width: 100%; max-width: 520px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 18px; animation: lq-surgir 0.28s var(--suave); }
+@keyframes lq-surgir { from { opacity: 0; transform: translateY(4px); } }
+.lq-cena { width: 100%; max-width: 380px; height: auto; overflow: visible; display: block; }
+.lq .lq-titulo { font: 400 32px/1.15 var(--serifa); letter-spacing: -0.015em;  line-height: 1.15; text-wrap: balance; overflow-wrap: anywhere; margin: 0; }
+.lq-acoes { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 16px; margin-top: 4px; }
+.lq-acoes .botao { height: auto; min-height: 38px; }
+.lq-buscar span { overflow-wrap: anywhere; text-align: left; }
+.lq-simples .lq { gap: 14px; }
+.lq-simples .lq .lq-titulo { font-size: 26px; }
+
+/* o desenho: traço à mão */
+.lq-mao { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.lq-tracar { stroke-dasharray: 1; stroke-dashoffset: 1; animation: lq-tracar 0.7s 0.35s var(--suave) forwards; }
+@keyframes lq-tracar { to { stroke-dashoffset: 0; } }
+.lq-seta path { fill: none; stroke: var(--ultra); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; animation: rabiscar-aba 0.6s 0.45s var(--suave) both; }
+.lq-nota { font: 600 21px/1 Caveat, cursive; fill: var(--ultra); }
+.lq-escrita { clip-path: inset(0 100% 0 0); animation: lq-escrever 0.7s 0.6s steps(16, end) forwards; }
+@keyframes lq-escrever { to { clip-path: inset(0 -4% 0 0); } }
+.lq-giz { font: 600 21px/1 Caveat, cursive; fill: var(--lq-giz); }
+.lq-rotulo { font: 600 8.5px var(--sans); letter-spacing: 0.12em; fill: color-mix(in srgb, var(--lq-giz) 55%, transparent); }
+.lq-furo { fill: var(--lq-fundo); }
+.lq-fita { font: 600 20px Caveat, cursive; fill: var(--lq-filme); }
+.lq-interrogacao { font: 600 34px Caveat, cursive; fill: var(--lq-quadro); }
+.lq-envelope { font: 600 16px Caveat, cursive; fill: var(--tinta2); }
+
+/* cena cortada: as duas pontas balançam, o picote cai */
+.lq-ponta-esq { transform-box: view-box; transform-origin: 14px 64px; transform: rotate(2deg); animation: lq-pender-esq 4.6s ease-in-out infinite alternate; }
+.lq-ponta-dir { transform-box: view-box; transform-origin: 346px 64px; transform: rotate(-2deg); animation: lq-pender-dir 5.2s -1.3s ease-in-out infinite alternate; }
+@keyframes lq-pender-esq { from { transform: rotate(0.6deg); } to { transform: rotate(3.2deg); } }
+@keyframes lq-pender-dir { from { transform: rotate(-3.2deg); } to { transform: rotate(-0.6deg); } }
+.lq-picote { transform-box: fill-box; transform-origin: center; opacity: 0; animation: lq-cair 5s 1s cubic-bezier(0.45, 0, 0.7, 1) infinite; }
+@keyframes lq-cair { 0% { opacity: 0; transform: translate(0, 0) rotate(0); } 8% { opacity: 1; } 55% { opacity: 1; transform: translate(-10px, 62px) rotate(140deg); } 70%, 100% { opacity: 0; transform: translate(-12px, 70px) rotate(160deg); } }
+.lq-inteira { transform-box: view-box; transform-origin: 180px 64px; animation: lq-balanca 5s ease-in-out infinite alternate; }
+@keyframes lq-balanca { from { transform: rotate(-1.6deg); } to { transform: rotate(1.4deg); } }
+
+/* claquete: o braço abre e fecha devagar, como quem espera */
+.lq-braco { transform-box: view-box; transform-origin: 92px 70px; transform: rotate(-16deg); animation: lq-esperar 5.5s 0.6s ease-in-out infinite; }
+@keyframes lq-esperar { 0%, 18% { transform: rotate(-16deg); } 46% { transform: rotate(-3deg); } 52% { transform: rotate(-4.5deg); } 72%, 100% { transform: rotate(-16deg); } }
+.lq-braco.fechado { animation: none; transform: rotate(0); }
+
+/* investigação: a lupa passeia e não acha nada */
+.lq-lupa { transform-box: view-box; transform-origin: 250px 70px; animation: lq-procurar 9s ease-in-out infinite; }
+@keyframes lq-procurar { 0%, 100% { transform: translate(0, 0) rotate(0); } 22% { transform: translate(-96px, 26px) rotate(-6deg); } 44% { transform: translate(-40px, 70px) rotate(4deg); } 66% { transform: translate(54px, 48px) rotate(8deg); } 84% { transform: translate(30px, -6px) rotate(-2deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lq, .lq-ponta-esq, .lq-ponta-dir, .lq-inteira, .lq-lupa { animation: none; }
+  .lq-ponta-esq { transform: rotate(2deg); }
+  .lq-ponta-dir { transform: rotate(-2deg); }
+  .lq-picote { animation: none; opacity: 1; transform: translate(-6px, 30px) rotate(28deg); }
+  .lq-braco { animation: none; transform: rotate(-11deg); }
+  .lq-braco.fechado { transform: rotate(0); }
+  .lq-tracar, .lq-seta path { animation: none; stroke-dashoffset: 0; }
+  .lq-escrita { animation: none; clip-path: none; }
+}
+
+@media (max-width: 600px) {
+  .lq-pagina { padding: 28px 16px 56px; align-items: start; }
+  .lq { gap: 14px; padding-top: 4vh; }
+  .lq .lq-titulo { font-size: 26px; }
+}

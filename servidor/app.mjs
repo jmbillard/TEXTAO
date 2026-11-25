@@ -18,6 +18,8 @@ import { criarCadastros } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
 import { criarFilmes } from './filmes.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
+// a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
+import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -130,6 +132,12 @@ export function abrirBanco(caminho) {
   // cards de filme cujas artes já foram para o acervo do filme (uma vez só, como os roteiros); o card da semana da
   // Sessão da Tarde vai uma vez por filme: a chave é "card|filme"
   db.exec('CREATE TABLE IF NOT EXISTS filmes_no_acervo (card TEXT PRIMARY KEY, em TEXT)');
+  // a lápide do roteiro apagado: quem abre o link dele fica sabendo o que houve. "leitores" são os e-mails que podiam
+  // ler o roteiro (o dono e quem recebeu): no modo privado, só eles (ou todos, se era público) veem a lápide
+  db.exec(`CREATE TABLE IF NOT EXISTS apagados (
+    id TEXT PRIMARY KEY, claquete TEXT NOT NULL, por_nome TEXT NOT NULL, por_email TEXT NOT NULL, em TEXT NOT NULL,
+    publico INTEGER NOT NULL DEFAULT 0, leitores TEXT NOT NULL DEFAULT '[]'
+  )`);
   return db;
 }
 
@@ -448,6 +456,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     ),
     atualizar: db.prepare('UPDATE roteiros SET publico = ?, meta = ?, doc = ?, n_artes = ?, revisao = ?, atualizado_em = ? WHERE id = ?'),
     apagar: db.prepare('DELETE FROM roteiros WHERE id = ?'),
+    gravarLapide: db.prepare('INSERT OR REPLACE INTO apagados (id, claquete, por_nome, por_email, em, publico, leitores) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    lapide: db.prepare('SELECT claquete, por_nome, por_email, em, publico, leitores FROM apagados WHERE id = ?'),
+    vivosDesde: db.prepare("SELECT id, json_extract(meta, '$.claquete') AS claquete FROM roteiros WHERE atualizado_em >= ? ORDER BY atualizado_em DESC"),
     ultimaVersao: db.prepare('SELECT n, criado_em, meta, doc FROM versoes WHERE roteiro_id = ? ORDER BY n DESC LIMIT 1'),
     // o roteiro como foi importado: é dele que sai o PDF do card (a revisão não entra no anexo)
     primeiraVersao: db.prepare('SELECT meta, doc FROM versoes WHERE roteiro_id = ? ORDER BY n ASC LIMIT 1'),
@@ -760,6 +771,19 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     if (ultima && ultima.meta === meta && ultima.doc === doc) return;
     if (ultima && !motivo && Date.parse(agora) - Date.parse(ultima.criado_em) < INTERVALO_VERSAO_MS) return;
     q.novaVersao.run(id, (ultima?.n ?? 0) + 1, agora, eu.email, eu.nome, motivo || (ultima ? 'edição' : 'criação'), meta, doc);
+  }
+
+  /** O link de um roteiro que não existe mais: 410 com a lápide (a claquete, quem apagou, quando e, se houver, a
+      versão nova), para quem podia lê-lo; 404 para os outros e para o que nunca existiu. */
+  function lapide(res, id, eu) {
+    const l = q.lapide.get(id);
+    const podia = l && (aberto || l.publico || l.por_email === eu.email || JSON.parse(l.leitores).includes(eu.email));
+    if (!podia) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+    // a versão nova: o roteiro vivo (e legível) com a mesma chave da claquete, dos últimos 3 meses, como na fila
+    const chave = chaveDaClaquete(l.claquete);
+    const limite = new Date(Date.now() - 92 * 86_400_000).toISOString();
+    const substituto = chave ? q.vivosDesde.all(limite).find((r) => r.id !== id && chaveDaClaquete(r.claquete ?? '') === chave && acesso(r.id, eu).ler)?.id : undefined;
+    return json(res, 410, { claquete: l.claquete, por: l.por_nome, em: l.em, ...(substituto ? { substituto } : {}) });
   }
 
   /** Envios em andamento, para o mesmo roteiro não virar dois cards. */
@@ -1393,7 +1417,9 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
 
     if (req.method === 'GET') {
-      if (!podeLer) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+      if (!atual) return lapide(res, id, eu);
+      // o id existe e não é para esta pessoa: 403 sem dados, para a tela dizer "sem permissão" e não "não existe"
+      if (!podeLer) return json(res, 403, { erro: 'Você não tem acesso a este roteiro.' });
       const fora = { ...paraFora(atual, eu), podeEditar };
       // o documento compartilhado ainda está vazio: a primeira pessoa que pode editar o preenche (uma só, por 20 s)
       const vazio = !atual.tem_ydoc && !(salas.get(id)?.doc.getXmlFragment('doc').length > 0);
@@ -1406,7 +1432,17 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     if (req.method === 'DELETE') {
       // no modo aberto qualquer pessoa apaga; no privado, só quem é dono
       if (!atual || !(meu || aberto)) return json(res, 404, { erro: 'Roteiro não encontrado.' });
-      q.apagar.run(id);
+      db.exec('BEGIN');
+      try {
+        const leitores = [atual.dono_email, ...q.compartilhadoCom.all(id).map((c) => c.email)];
+        const claquete = String(JSON.parse(atual.meta)?.claquete ?? '');
+        q.gravarLapide.run(id, claquete, eu.nome, eu.email, new Date().toISOString(), atual.publico ? 1 : 0, JSON.stringify(leitores));
+        q.apagar.run(id);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
       fecharSala(id, 'apagado');
       avisarFila('apagado', id, eu);
       return json(res, 200, { ok: true });

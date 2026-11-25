@@ -133,7 +133,7 @@ describe('tour da revisão: o envio simulado do exemplo', () => {
   const base: Armazenamento = {
     tipo: 'servidor',
     listar: async () => [],
-    ler: async () => undefined,
+    ler: async () => ({ estado: 'nao-existe' }),
     salvar: async () => {
       throw new Error('o exemplo não pode ir ao servidor');
     },

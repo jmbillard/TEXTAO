@@ -20,6 +20,7 @@ import {
 import { corDe, iniciais, nomesCurtos, primeiroNome as primeiro } from "../dados/colaboracao";
 import { montarFileiras, podeSubir, type ItemDaFileira } from "../filmes/fileiras";
 import { Icone } from "./icones";
+import { LinkQuebrado } from "./LinkQuebrado";
 import { Duvida, Marca, RABISCOS } from "./pecas";
 
 /* A aba Filmes: as prévias de filmes. Solta-se o PDF, o navegador prepara as páginas e o servidor lê cada uma
@@ -121,7 +122,7 @@ export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
         <span />
       </header>
       {aberta ? (
-        <PreviaAberta id={aberta} avisar={avisar} />
+        <PreviaAberta id={aberta} avisar={avisar} verPrevias={() => abrir()} voltar={voltar} />
       ) : (
         <ListaDePrevias abrir={abrir} avisar={avisar} />
       )}
@@ -247,11 +248,17 @@ function ListaDePrevias({
 function PreviaAberta({
   id,
   avisar,
+  verPrevias,
+  voltar,
 }: {
   id: string;
   avisar: (t: string) => void;
+  verPrevias: () => void;
+  voltar: () => void;
 }) {
   const [previa, setPrevia] = useState<Previa | null>(null);
+  // o link não abriu: a prévia vencida (o servidor já apagou) ou o servidor fora do ar
+  const [falha, setFalha] = useState<"vencida" | "erro" | null>(null);
   const [pag, setPag] = useState(0);
   const [destaque, setDestaque] = useState<number | null>(null);
   const [mandando, setMandando] = useState(false);
@@ -267,11 +274,17 @@ function PreviaAberta({
         .then(
           (p) => {
             versaoNaTela.current = p.versao;
+            setFalha(null);
             setPrevia(p);
             if (p.erroDaConferencia)
               avisar(`Não consegui conferir com o banco: ${p.erroDaConferencia}`);
           },
-          (e: Error) => avisar(e.message),
+          (e: Error & { status?: number }) => {
+            // a prévia já na tela continua; sem ela, a tela de link quebrado
+            if (versaoNaTela.current === undefined)
+              return setFalha(e.status === 404 ? "vencida" : "erro");
+            avisar(e.message);
+          },
         )
         .finally(() => (reabrindo.current = null))),
     [id, avisar],
@@ -369,6 +382,15 @@ function PreviaAberta({
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
   }, [previa]);
+  if (!previa && falha)
+    return (
+      <LinkQuebrado
+        caso={{ tipo: falha }}
+        voltar={voltar}
+        verPrevias={verPrevias}
+        tentar={() => void carregar()}
+      />
+    );
   if (!previa) return <main className="previa" />;
   const p = previa.paginas[Math.min(pag, previa.paginas.length - 1)];
   const algumPronto = previa.paginas.some(

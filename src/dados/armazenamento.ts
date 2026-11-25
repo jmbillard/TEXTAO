@@ -52,11 +52,31 @@ export interface ConteudoVersao {
   doc: NoJSON;
 }
 
+/** O roteiro apagado, como o servidor lembra dele: a claquete, quem apagou, quando e, se houver, a versão nova. */
+export interface Lapide {
+  claquete: string;
+  por: string;
+  /** ISO */
+  em: string;
+  /** o id da versão nova (um roteiro vivo com a mesma chave da claquete) */
+  substituto?: string;
+}
+/** O que veio ao abrir um roteiro pelo id: ele, ou por que não deu (a tela de link quebrado diz qual). */
+export type Leitura =
+  | { estado: 'ok'; roteiro: Roteiro }
+  | { estado: 'apagado'; lapide?: Lapide }
+  | { estado: 'sem-permissao' }
+  | { estado: 'nao-existe' }
+  | { estado: 'erro'; mensagem: string };
+/** O roteiro da leitura, quando ela deu certo. */
+export const roteiroDa = (l: Leitura): Roteiro | undefined => (l.estado === 'ok' ? l.roteiro : undefined);
+
 export interface Armazenamento {
   /** "servidor" guarda por conta, com histórico; "navegador" guarda só neste computador. */
   tipo: 'servidor' | 'navegador';
   listar(): Promise<Resumo[]>;
-  ler(id: string): Promise<Roteiro | undefined>;
+  /** Nunca falha: a rede caída também é uma leitura (estado "erro"). */
+  ler(id: string): Promise<Leitura>;
   /** `marco` registra uma versão no histórico (ex.: "exportou"). */
   /** automatico: o app preencheu sozinho (não conta como revisão de quem está usando). */
   salvar(roteiro: Roteiro, marco?: string, automatico?: boolean): Promise<void>;
@@ -115,7 +135,11 @@ const noNavegador: Armazenamento = {
       .sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
       .map((r) => ({ id: r.id, meta: r.meta, nArtes: exportar(r).artes.length, atualizadoEm: r.atualizadoEm, dono: r.criadoPor ?? null, publico: false, meu: true }));
   },
-  ler: (id) => operar<Roteiro | undefined>('readonly', (l) => l.get(id)),
+  ler: (id) =>
+    operar<Roteiro | undefined>('readonly', (l) => l.get(id)).then(
+      (roteiro): Leitura => (roteiro ? { estado: 'ok', roteiro } : { estado: 'nao-existe' }),
+      (e): Leitura => ({ estado: 'erro', mensagem: e instanceof Error ? e.message : String(e) }),
+    ),
   async salvar(roteiro) {
     await operar('readwrite', (l) => l.put(roteiro));
   },
@@ -147,11 +171,37 @@ async function pedir<T>(caminho: string, init: RequestInit = {}): Promise<T> {
   return (await r.json()) as T;
 }
 
+const ehLapide = (x: unknown): x is Lapide => {
+  const l = x as Partial<Lapide> | null;
+  return typeof l?.claquete === 'string' && typeof l.por === 'string' && typeof l.em === 'string';
+};
+
+/** Abre o roteiro no servidor: 410 é apagado (com a lápide, quando o servidor sabe), 403 sem permissão, 404 (e o id
+    malformado, 400) não existe; a rede caída e o servidor com erro são "erro", para a tela oferecer tentar de novo. */
+export async function lerDoServidor(id: string): Promise<Leitura> {
+  let r: Response;
+  try {
+    r = await fetch(`/api/roteiros/${encodeURIComponent(id)}`, { credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos } });
+  } catch (e) {
+    return { estado: 'erro', mensagem: e instanceof Error ? e.message : String(e) };
+  }
+  const corpo: unknown = await r.json().catch(() => null);
+  if (r.ok && corpo) return { estado: 'ok', roteiro: corpo as Roteiro };
+  if (r.status === 410) {
+    if (!ehLapide(corpo)) return { estado: 'apagado' };
+    const { claquete, por, em, substituto } = corpo;
+    return { estado: 'apagado', lapide: { claquete, por, em, ...(typeof substituto === 'string' ? { substituto } : {}) } };
+  }
+  if (r.status === 403) return { estado: 'sem-permissao' };
+  if (r.status === 404 || r.status === 400) return { estado: 'nao-existe' };
+  return { estado: 'erro', mensagem: (corpo as { erro?: string } | null)?.erro ?? `O servidor não respondeu (${r.status}).` };
+}
+
 const noServidor: Armazenamento = {
   tipo: 'servidor',
   listar: () => pedir<Resumo[]>('/api/roteiros'),
   andamento: () => pedir<Record<string, Andamento>>('/api/andamento').catch(() => ({})),
-  ler: (id) => pedir<Roteiro>(`/api/roteiros/${encodeURIComponent(id)}`).catch((e: { status?: number }) => (e.status === 404 ? undefined : Promise.reject(e))),
+  ler: lerDoServidor,
   async salvar(roteiro, marco, automatico) {
     await pedir(`/api/roteiros/${encodeURIComponent(roteiro.id)}`, {
       method: 'PUT',
@@ -494,9 +544,9 @@ async function anteriorNoTrello(id: string) {
 export const versaoNova = {
   /** Fica a nova, com o trabalho da anterior (modelo/versoes); o card que a anterior já tinha passa para ela, e a anterior sai da fila. */
   async substituir(novaId: string): Promise<{ roteiro: Roteiro; herdadas: number; cardHerdado: boolean } | undefined> {
-    const rn = await armazenamento.ler(novaId);
+    const rn = roteiroDa(await armazenamento.ler(novaId));
     if (!rn) return undefined;
-    const ra = rn.meta.substitui ? await armazenamento.ler(rn.meta.substitui) : undefined;
+    const ra = rn.meta.substitui ? roteiroDa(await armazenamento.ler(rn.meta.substitui)) : undefined;
     // a anterior já saiu da fila: só a pergunta sai
     if (!ra) {
       const roteiro = manterAsDuas(rn);
@@ -513,7 +563,7 @@ export const versaoNova = {
   },
   /** As duas ficam na fila; a nova só deixa de perguntar. */
   async manter(novaId: string): Promise<Roteiro | undefined> {
-    const rn = await armazenamento.ler(novaId);
+    const rn = roteiroDa(await armazenamento.ler(novaId));
     if (!rn) return undefined;
     const roteiro = manterAsDuas(rn);
     await armazenamento.salvar(roteiro);

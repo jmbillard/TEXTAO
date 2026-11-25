@@ -24,6 +24,7 @@ import {
   type KeySemCadastro,
 } from '../dados/armazenamento';
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
+import { SetaCurva } from './setaCurva';
 import { caminhoDoIcone, Icone } from './icones';
 import { Marca } from './pecas';
 import { plural } from './util';
@@ -466,9 +467,7 @@ function Rascunho({ nome, categoria, keys, assentando }: { nome: string; categor
             <span key={k} className="key">{k}</span>
           ))}
         </div>
-        <svg className="seta-form" viewBox="0 0 54 26" aria-hidden="true">
-          <path pathLength={1} d="M3 19 C 14 23, 30 22, 46 10 M 38 8.5 L 47 9.5 L 44.5 18" />
-        </svg>
+        <SetaCurva className="seta-form" />
         <span className="nota">ainda não salvo</span>
       </div>
     </div>

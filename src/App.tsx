@@ -52,6 +52,9 @@ const telaDoHash = (): Tela => {
   const c = /^#\/cadastros(?:\/(atracoes|redatores|editores))?$/.exec(location.hash);
   return c ? { t: 'cadastros', aba: (c[1] as TipoCadastro | undefined) ?? 'atracoes' } : { t: 'biblioteca' };
 };
+/** O endereço aponta para uma tela que o app não conhece (e caiu na fila). */
+const hashDesconhecido = () => telaDoHash().t === 'biblioteca' && !/^#?\/?$/.test(location.hash);
+const AVISO_DO_HASH = 'Esse endereço não existe mais. Você está na fila.';
 
 /** O texto do arquivo como chegou, parágrafo a parágrafo, com o sublinhado do redator (para o PDF do card). */
 const textosOriginais = new Map<string, TextoOriginal>();
@@ -125,6 +128,10 @@ export function App() {
   }, [pronto, identidade?.email]);
 
   const avisar = useCallback((texto: string) => setAviso({ texto, n: Date.now() }), []);
+  // link para uma tela que não existe: a fila abre, com um aviso curto
+  useEffect(() => {
+    if (pronto && hashDesconhecido()) avisar(AVISO_DO_HASH);
+  }, [pronto, avisar]);
   useEffect(() => {
     if (!aviso) return;
     const t = setTimeout(() => setAviso(null), 4200);
@@ -144,6 +151,15 @@ export function App() {
       return nova;
     });
   }, []);
+  // o "Buscar na fila" do link quebrado: a fila abre de novo, já com a busca
+  const [buscaNaFila, setBuscaNaFila] = useState<{ termo: string; n: number } | null>(null);
+  const buscarNaFila = useCallback(
+    (termo: string) => {
+      setBuscaNaFila((b) => ({ termo, n: (b?.n ?? 0) + 1 }));
+      ir({ t: 'biblioteca' });
+    },
+    [ir],
+  );
   // o tour da revisão anda na fila e no editor do exemplo. Se a pessoa sai do caminho (o voltar do navegador, outra
   // tela), o tour sai, como ao pular; e, com o tour fora, o editor do exemplo (que já sumiu) volta para a fila.
   const noEditorDoExemplo = tela.t === 'editor' && tela.id === ID_DO_EXEMPLO;
@@ -179,7 +195,10 @@ export function App() {
     setTour(recomecar());
   }, [ir]);
   useEffect(() => {
-    const aoVoltar = () => setTela(telaDoHash());
+    const aoVoltar = () => {
+      setTela(telaDoHash());
+      if (hashDesconhecido()) setAviso({ texto: AVISO_DO_HASH, n: Date.now() });
+    };
     window.addEventListener('popstate', aoVoltar);
     return () => window.removeEventListener('popstate', aoVoltar);
   }, []);
@@ -393,7 +412,7 @@ export function App() {
 
   return (
     <>
-      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={sessao} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {
@@ -406,8 +425,8 @@ export function App() {
           O servidor não reconheceu o seu login: os roteiros estão ficando só neste navegador. Veja <a href="/api/diagnostico" target="_blank" rel="noreferrer">o diagnóstico</a>.
         </div>
       )}
-      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete, nova) => ir({ t: 'cadastros', aba: 'atracoes', claquete, ...nova }) : undefined} />}
-      {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} />}
+      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete, nova) => ir({ t: 'cadastros', aba: 'atracoes', claquete, ...nova }) : undefined} buscarNaFila={buscarNaFila} />}
+      {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} buscar={buscarNaFila} />}
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
       <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}

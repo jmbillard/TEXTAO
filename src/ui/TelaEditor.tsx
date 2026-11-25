@@ -18,7 +18,8 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, temTrello, type EnvioTrello, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, roteiroDa, temTrello, type EnvioTrello, type Leitura, type Resumo, type Versao } from '../dados/armazenamento';
+import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   marcarArte as marcarArteNoTexto, partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
@@ -432,24 +433,25 @@ function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor:
 
 /* ---------- tela ---------- */
 
-export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao }: { id: string; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string, nova?: AtracaoNova) => void }) {
-  const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
+export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao, buscarNaFila }: { id: string; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string, nova?: AtracaoNova) => void; buscarNaFila?: (termo: string) => void }) {
+  const [leitura, setLeitura] = useState<Leitura | undefined>(undefined);
+  const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
-    armazenamento.ler(id).then((r) => setRoteiro(r ?? null), () => setRoteiro(null));
-  }, [id]);
+    let vivo = true;
+    void armazenamento.ler(id).then((l) => vivo && setLeitura(l));
+    return () => {
+      vivo = false;
+    };
+  }, [id, tentativa]);
 
-  if (roteiro === undefined) return <div className="pagina" />;
-  if (roteiro === null)
+  if (leitura === undefined) return <div className="pagina" />;
+  if (leitura.estado !== 'ok')
     return (
       <div className="pagina">
-        <main className="biblioteca">
-          <h1 className="titulo-serifa">Este roteiro não está neste navegador.</h1>
-          <p className="suave">Ele pode ter sido apagado, ou foi criado em outro computador. Se você tem o .json, é só arrastar para cá.</p>
-          <p><button className="botao" onClick={voltar}><Icone nome="voltar" tam={14} /> Ver os roteiros</button></p>
-        </main>
+        <LinkQuebrado caso={casoDaLeitura(leitura)} voltar={voltar} buscar={buscarNaFila} abrir={abrir} tentar={() => setTentativa((n) => n + 1)} />
       </div>
     );
-  return <Folha inicial={roteiro} voltar={voltar} abrir={abrir} comparar={comparar} avisar={avisar} pessoa={pessoa} cadastrarAtracao={cadastrarAtracao} />;
+  return <Folha inicial={leitura.roteiro} voltar={voltar} abrir={abrir} comparar={comparar} avisar={avisar} pessoa={pessoa} cadastrarAtracao={cadastrarAtracao} />;
 }
 
 function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao }: { inicial: Roteiro; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string, nova?: AtracaoNova) => void }) {
@@ -619,7 +621,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     const tentar = async () => {
       if (!ativo) return;
       if (!vazio()) return liberar();
-      const r = await armazenamento.ler(inicial.id).catch(() => undefined);
+      const r = roteiroDa(await armazenamento.ler(inicial.id));
       if (!ativo) return;
       if (!vazio()) return liberar();
       if (r?.semear) {

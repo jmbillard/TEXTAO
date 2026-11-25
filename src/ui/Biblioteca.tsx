@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
+import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, roteiroDa, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
 import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { travamTrello } from '../modelo/exportar';
@@ -61,6 +61,8 @@ interface Props {
   cadastros: (inicio?: { aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) => void;
   /** Abre a aba Filmes (as prévias de filmes). */
   filmes?: () => void;
+  /** A fila abre já buscando isto (o "Buscar na fila" do link quebrado). */
+  buscaInicial?: string;
 }
 
 
@@ -740,9 +742,9 @@ function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, buscaInicial = '' }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
-  const [busca, setBusca] = useState('');
+  const [busca, setBusca] = useState(buscaInicial);
   // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
   const [saindo, setSaindo] = useState<Resumo | null>(null);
   const prazoSaida = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -918,7 +920,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const mandar = async (r: Resumo | Roteiro) => {
     setRoteiros((l) => l?.map((x) => (x.id === r.id ? { ...x, trello: { estado: 'enviando', em: new Date().toISOString() } } : x)) ?? l);
     try {
-      const completo = 'doc' in r ? r : await armazenamento.ler(r.id);
+      const completo = 'doc' in r ? r : roteiroDa(await armazenamento.ler(r.id));
       if (!completo) throw new Error('Roteiro não encontrado.');
       const res = await mandarParaTrello(completo);
       const nome = completo.meta.claquete || 'O roteiro';
@@ -1045,7 +1047,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
       <header className="barra-topo">
         <h1 className="bib-marca"><Marca /></h1>
         <span className="espaco" />
-        {todos.length > 6 && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
+        {(todos.length > 6 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
         {colegas.length > 0 && (
           <div className="na-fila" title={`Também com a fila aberta: ${colegas.map((c) => c.nome).join(', ')}`}>
             {colegas.slice(0, 5).map((c) => (
