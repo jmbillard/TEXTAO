@@ -417,13 +417,35 @@ describe('No Trello no celular: a faixa de dias', () => {
     const indo = instantes.map((p) => periodoNaContagem(isos, hoje, virada, p));
     expect(indo[0]).toEqual({ dia1: 25, mes1: '', dia2: 26, mes2: '/11', mesesApagados: true });
     expect(indo.every((q) => q.mesesApagados && q.mes1 === '' && q.mes2 === '/11')).toBe(true);
-    expect([...new Set(indo.map((q) => `${q.dia1}-${q.dia2}`))]).toEqual(['25-26', '27-28', '28-29', '29-30', '30-1']);
+    expect([...new Set(indo.map((q) => `${q.dia1}-${q.dia2}`))]).toEqual(['25-26', '27-28', '29-30', '30-1']);
     expect(periodoNaContagem(isos, hoje, virada, 1)).toEqual({ dia1: 30, mes1: '/11', dia2: 1, mes2: '/12', mesesApagados: false });
     // de volta: a vaga do "/11" da esquerda fica aberta durante a contagem e só fecha no fim
     const voltando = instantes.map((p) => periodoNaContagem(isos, virada, hoje, p));
     expect(voltando.every((q) => q.mesesApagados && q.mes1 === '/11' && q.mes2 === '/12')).toBe(true);
     expect(voltando.map((q) => q.dia1)).toEqual([...voltando.map((q) => q.dia1)].sort((a, b) => b - a));
     expect(periodoNaContagem(isos, virada, hoje, 1)).toEqual({ dia1: 25, mes1: '', dia2: 26, mes2: '/11', mesesApagados: false });
+  });
+
+  it('o período na virada do mês: os dias esperam parados até os meses terminarem de apagar, e só então contam', async () => {
+    const { montarFaixa, periodoNaContagem, duracaoDoPeriodo, MESES_APAGAM_MS } = await import('../src/ui/fila');
+    const isos = montarFaixa([], {}, agora).dias.map((d) => d.iso);
+    const hoje = isos.indexOf('2026-11-25');
+    const virada = isos.indexOf('2026-11-30');
+    for (const [de, para, partida] of [[hoje, virada, '25-26'], [virada, hoje, '30-1']] as const) {
+      const total = duracaoDoPeriodo(isos, de, para);
+      // enquanto algum mês ainda está à vista (mesmo apagando), os dias são os de partida
+      for (let ms = 0; ms <= MESES_APAGAM_MS; ms += 5) {
+        const q = periodoNaContagem(isos, de, para, ms / total);
+        expect(`${q.dia1}-${q.dia2}`).toBe(partida);
+        expect(q.mesesApagados).toBe(true);
+      }
+      // depois, os dias contam até a chegada com os meses ainda apagados
+      const contando = periodoNaContagem(isos, de, para, (MESES_APAGAM_MS + 60) / total);
+      expect(`${contando.dia1}-${contando.dia2}`).not.toBe(partida);
+      expect(contando.mesesApagados).toBe(true);
+    }
+    // sem virada, os dias contam desde o começo, no tempo de sempre
+    expect(duracaoDoPeriodo(isos, hoje, hoje + 3)).toBeLessThan(duracaoDoPeriodo(isos, hoje, virada));
   });
 
   it('o período contando sem virada: os meses ficam à vista o tempo todo', async () => {

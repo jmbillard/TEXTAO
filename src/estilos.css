@@ -2444,9 +2444,10 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .secao-trello-conta .ct-prio .prio-nota { will-change: clip-path; }
   /* o dia da esquerda alinhado à direita: 1 e 30 ocupam o mesmo espaço */
   .semana-nav b .p-d1 { display: inline-block; min-width: 2ch; text-align: right; }
-  /* na virada do mês, os meses somem no começo da contagem e voltam no fim */
+  /* na virada do mês, os meses somem no começo da contagem (antes de os dias contarem: MESES_APAGAM_MS, em fila.ts)
+     e voltam no fim */
   .semana-nav b .p-mes { font-variant-numeric: tabular-nums; transition: opacity 140ms var(--suave); }
-  .semana-nav b .p-mes.apagado { opacity: 0; transition: opacity 80ms ease-out; }
+  .semana-nav b .p-mes.apagado { opacity: 0; transition: opacity 60ms ease-out; }
 
   /* o "?" no canto só mostra atalhos de teclado (o "Fazer o tour" já sai no celular), e cobria as fichas */
   .botao-atalhos { display: none; }

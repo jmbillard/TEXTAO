@@ -229,17 +229,35 @@ export function periodoCurto(de: string, ate: string): string {
   return `${dia1}${mes1} – ${dia2}${mes2}`;
 }
 
-/** O período no instante `p` da contagem da posição `de` até `para` na faixa (`isos`: os dias da faixa). Os dias
-    contam pelas datas (30 → 1 passa pela virada). Quando os meses vão mudar, eles ficam apagados até o fim, com os
-    meses da partida guardando a vaga: assim nunca aparece um mês errado ("1/11"), e o "/11" da esquerda só abre ou
-    fecha a vaga no fim. */
+/** Quanto os dias do seletor levam contando, em ms. */
+export const PERIODO_MS = 340;
+/** Na virada do mês, quanto os meses levam apagando antes de os dias começarem a contar, em ms (o fade dos meses em
+    estilos.css é um pouco mais curto, para nunca sobrar um mês à vista com um dia novo). */
+export const MESES_APAGAM_MS = 80;
+
+const mesesMudam = (isos: string[], de: number, para: number) => {
+  const [a, b] = [partesDoPeriodo(isos[de], isos[de + 1]), partesDoPeriodo(isos[para], isos[para + 1])];
+  return a.mes1 !== b.mes1 || a.mes2 !== b.mes2;
+};
+
+/** Quanto dura a contagem do período da posição `de` até `para`: na virada do mês, os meses apagam antes de os dias
+    contarem. */
+export function duracaoDoPeriodo(isos: string[], de: number, para: number): number {
+  return mesesMudam(isos, de, para) ? MESES_APAGAM_MS + PERIODO_MS : PERIODO_MS;
+}
+
+/** O período no instante `p` (de 0 a 1, ao longo de duracaoDoPeriodo) da contagem da posição `de` até `para` na
+    faixa (`isos`: os dias da faixa). Os dias contam pelas datas (30 → 1 passa pela virada). Quando os meses vão mudar,
+    eles ficam apagados até o fim, com os meses da partida guardando a vaga, e os dias só começam a contar depois que
+    os meses terminam de apagar: assim nunca aparece um mês errado ("1/11", "30/12"), e o "/11" da esquerda só abre
+    ou fecha a vaga no fim. */
 export function periodoNaContagem(isos: string[], de: number, para: number, p: number): PartesDoPeriodo & { mesesApagados: boolean } {
-  const k = valorNaContagem(de, para, p);
+  if (!mesesMudam(isos, de, para)) return { ...partesDoPeriodo(isos[valorNaContagem(de, para, p)], isos[valorNaContagem(de, para, p) + 1]), mesesApagados: false };
+  if (p >= 1) return { ...partesDoPeriodo(isos[para], isos[para + 1]), mesesApagados: false };
+  const ms = p * duracaoDoPeriodo(isos, de, para);
+  const k = valorNaContagem(de, para, Math.max(0, ms - MESES_APAGAM_MS) / PERIODO_MS);
   const agora = partesDoPeriodo(isos[k], isos[k + 1]);
   const partida = partesDoPeriodo(isos[de], isos[de + 1]);
-  const chegada = partesDoPeriodo(isos[para], isos[para + 1]);
-  const mesesMudam = partida.mes1 !== chegada.mes1 || partida.mes2 !== chegada.mes2;
-  if (!mesesMudam || p >= 1) return { ...agora, mesesApagados: false };
   return { dia1: agora.dia1, mes1: partida.mes1, dia2: agora.dia2, mes2: partida.mes2, mesesApagados: true };
 }
 

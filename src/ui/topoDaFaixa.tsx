@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { periodoNaContagem, valorNaContagem } from './fila';
+import { duracaoDoPeriodo, periodoNaContagem, valorNaContagem } from './fila';
 import { semMovimento } from './util';
 
 /* O topo da agenda no celular (#41): o período do seletor, o resumo dos dias à vista e o "voltar para hoje". Quando a
@@ -13,7 +13,6 @@ import { semMovimento } from './util';
 /** A curva --suave dos estilos, para as animações feitas daqui. */
 const SUAVE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const CONTA_RESUMO_MS = 360;
-const CONTA_PERIODO_MS = 340;
 
 /** Uma contagem em andamento: de onde, para onde e em que instante (de 0 a 1). Parada, `de` e `para` são o alvo. */
 export interface Contagem {
@@ -22,9 +21,9 @@ export interface Contagem {
   p: number;
 }
 
-/** Conta até `alvo` em `ms` sempre que ele muda, partindo do valor que estava à vista (uma contagem interrompida
-    continua de onde estava). Na primeira vez, e com o movimento reduzido, só troca. */
-function useContagem(alvo: number, ms: number): Contagem {
+/** Conta até `alvo` sempre que ele muda, partindo do valor que estava à vista (uma contagem interrompida continua de
+    onde estava), em `duracao(de, para)` ms. Na primeira vez, e com o movimento reduzido, só troca. */
+function useContagem(alvo: number, duracao: (de: number, para: number) => number): Contagem {
   const [c, setC] = useState<Contagem>({ de: alvo, para: alvo, p: 1 });
   const agora = useRef(c);
   agora.current = c;
@@ -36,6 +35,7 @@ function useContagem(alvo: number, ms: number): Contagem {
       setC({ de: alvo, para: alvo, p: 1 });
       return;
     }
+    const ms = duracao(de, alvo);
     // o relógio: uma animação sem efeito visível, que anda (e desacelera) com as outras da página
     const relogio = new Animation(new KeyframeEffect(null, [], { duration: ms }), document.timeline);
     relogio.play();
@@ -50,7 +50,8 @@ function useContagem(alvo: number, ms: number): Contagem {
       cancelAnimationFrame(quadro);
       relogio.cancel();
     };
-  }, [alvo, ms]);
+    // a duração é lida na troca do alvo: só ela começa uma contagem
+  }, [alvo]); // eslint-disable-line react-hooks/exhaustive-deps
   return c;
 }
 
@@ -116,7 +117,7 @@ function ItemQueAbre({ ver, classe, ms = 300, opacidadeMs = 200, children }: { v
 
 /** O número que conta, com algarismos de largura fixa, e a palavra que acompanha o número à vista ("1 card", "2 cards"). */
 function NumeroQueConta({ valor, um, varios }: { valor: number; um: string; varios: string }) {
-  const c = useContagem(valor, CONTA_RESUMO_MS);
+  const c = useContagem(valor, () => CONTA_RESUMO_MS);
   const v = valorNaContagem(c.de, c.para, c.p);
   return (
     <>
@@ -198,7 +199,10 @@ const MAIOR_PERIODO = '<span class="p-dia p-d1">30</span><span class="p-mes">/12
 /** O período do seletor ("25 – 26/11"): os dias contam até os novos; na virada do mês, os meses somem no começo e
     voltam no fim, e o "/11" da esquerda abre ou fecha a vaga só no fim. A largura é a do maior período. */
 export function PeriodoQueConta({ isos, k }: { isos: string[]; k: number }) {
-  const c = useContagem(k, CONTA_PERIODO_MS);
+  const contagem = useContagem(k, (de, para) => duracaoDoPeriodo(isos, de, para));
+  // na renderização em que os dias à vista mudam, a contagem já começa (parada no instante zero): os meses começam a
+  // apagar antes de o relógio andar, e os dias só contam depois que eles somem
+  const c = contagem.para === k ? contagem : { de: valorNaContagem(contagem.de, contagem.para, contagem.p), para: k, p: 0 };
   const { dia1, mes1, dia2, mes2, mesesApagados } = periodoNaContagem(isos, c.de, c.para, c.p);
   const el = useRef<HTMLElement>(null);
   const [largura, setLargura] = useState<number>();
