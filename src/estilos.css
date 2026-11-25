@@ -2452,3 +2452,118 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   /* o "?" no canto só mostra atalhos de teclado (o "Fazer o tour" já sai no celular), e cobria as fichas */
   .botao-atalhos { display: none; }
 }
+
+/* =========================================================
+   O editor no celular (#43), até 600px; acima disso nada muda. A referência é o rascunho aprovado do editor no
+   celular. Uma página só, que rola de cima para baixo: o topo, a ficha, "Para revisar", o texto (só de leitura), a
+   lista de artes e a barra fixa embaixo. A ordem sai do JSX (TelaEditor arruma as peças para o celular), não daqui.
+   ========================================================= */
+@media (max-width: 600px) {
+  /* ---- o topo: voltar, a claquete em mono (quebra depois do sublinhado) e o "···" com o histórico e o exportar ---- */
+  .pagina.editor .topo { grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 4px; height: 60px; padding: 0 6px; background: var(--mesa); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .pagina.editor .topo .botao-icone { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; }
+  .pagina.editor .topo .trilha { display: block; min-width: 0; white-space: normal; }
+  .pagina.editor .topo .trilha strong { display: block; font: 600 13.5px/1.3 var(--mono); letter-spacing: 0.01em; color: var(--tinta); }
+  /* os pedaços da claquete (TextoDaClaquete): o primeiro não some como o da trilha do computador estreito */
+  .pagina.editor .topo .trilha .seg { display: inline-block; }
+  .pagina.editor .menu-exportar { max-width: calc(100vw - 12px); }
+  .pagina.editor .menu-exportar .menu-item { min-height: 44px; }
+  .pagina.editor .historico .botao-icone { width: 44px; height: 44px; }
+  .pagina.editor .historico .botao-texto { min-height: 44px; }
+
+  /* ---- a mesa: tudo numa coluna só, que rola; embaixo, o lugar da barra fixa ---- */
+  .pagina.editor .mesa { display: block; padding: 4px 16px calc(104px + env(safe-area-inset-bottom, 0px)); }
+  .pagina.editor .area, .pagina.editor .area.larga { display: flex; flex-direction: column; gap: 12px; }
+  .pagina.editor .area > * { align-self: stretch; }
+  .antes-do-texto { display: flex; flex-direction: column; gap: 12px; }
+
+  /* ---- a ficha (a claquete): recolhida mostra editor, exibição e tempo; a seta na ripa abre e recolhe ---- */
+  .claquete.ficha-celular { position: relative; }
+  .ficha-celular .ripa-botao { position: absolute; top: 0; right: 0; width: 56px; height: 44px; padding: 0 12px 0 0; border: 0; background: none; color: #f4f1ea; display: flex; justify-content: flex-end; align-items: flex-start; z-index: 1; }
+  .ficha-celular .ripa-botao span { display: grid; place-items: center; width: 22px; height: 22px; }
+  .ficha-celular .ripa-botao svg { transition: transform 0.28s var(--suave); }
+  .ficha-celular.aberta .ripa-botao svg { transform: rotate(180deg); }
+  .ficha-celular .dobra { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.28s var(--suave), opacity 0.2s; }
+  .ficha-celular .dobra > div { min-height: 0; overflow: hidden; }
+  .ficha-celular .dobra.resumo { grid-template-rows: 1fr; opacity: 1; }
+  .ficha-celular.aberta .dobra.resumo { grid-template-rows: 0fr; opacity: 0; }
+  .ficha-celular.aberta .dobra.inteira { grid-template-rows: 1fr; opacity: 1; }
+  .ficha-resumo { width: 100%; min-height: 56px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto; gap: 0 14px; padding: 4px 16px 10px; border: 0; background: none; color: inherit; text-align: left; }
+  .ficha-resumo .campo-c { border-bottom: 0; padding: 8px 0 2px; }
+  .ficha-resumo .campo-c b { display: block; font: 500 14px/1.4 var(--sans); color: #f4f1ea; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ficha-resumo .duvida { color: #f5d400; }
+  .ficha-celular .quadro input, .ficha-celular .quadro .campo-c .campo-data button, .ficha-celular .escolha-nome-valor, .ficha-celular .escolha-nome-menu input { font-size: 16px; }
+  .ficha-celular .quadro .campo-c { padding-top: 10px; padding-bottom: 9px; }
+  .ficha-celular .trio { grid-template-columns: 1fr 1fr; }
+  .ficha-celular .trio > :first-child { grid-column: 1 / -1; border-bottom: 1px solid rgb(244 241 234 / 30%); }
+  .ficha-celular .trio > :nth-child(2) { border-left: 0; padding-left: 0; }
+  /* as praças: o desenho de sempre, o alvo de toque mais alto */
+  .ficha-celular .pracas-c button { position: relative; }
+  .ficha-celular .pracas-c button::after { content: ''; position: absolute; inset: -9px -2px; }
+
+  /* ---- "Para revisar": recolhido, as pendências numa linha; aberto, a lista com "Ver" e "Escolher" ---- */
+  .cartao.pendencias-celular { padding: 0; }
+  .pendencias-celular .pend-topo { width: 100%; min-height: 56px; display: grid; grid-template-columns: minmax(0, 1fr) 22px; align-items: center; gap: 0 10px; padding: 12px 16px; border: 0; background: none; color: inherit; text-align: left; transition: min-height 0.28s var(--suave), padding 0.28s var(--suave); }
+  .pendencias-celular.aberta .pend-topo { min-height: 44px; padding-bottom: 2px; }
+  .pendencias-celular .cab-artes { margin: 0; justify-content: flex-start; }
+  .pendencias-celular .pend-linha-dobra { grid-column: 1; display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows 0.28s var(--suave), opacity 0.2s; }
+  .pendencias-celular .pend-linha-dobra > span { display: block; min-height: 0; overflow: hidden; }
+  .pendencias-celular.aberta .pend-linha-dobra { grid-template-rows: 0fr; opacity: 0; }
+  .pendencias-celular .pend-linha { display: block; font-size: 13px; color: var(--falta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pendencias-celular .chev { grid-column: 2; grid-row: 1 / span 2; display: grid; place-items: center; color: var(--tinta3); }
+  .pendencias-celular .chev svg { transition: transform 0.28s var(--suave); }
+  .pendencias-celular.aberta .chev svg { transform: rotate(180deg); }
+  .pendencias-celular .pend-dobra { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.28s var(--suave), opacity 0.2s; }
+  .pendencias-celular .pend-dobra > div { min-height: 0; overflow: hidden; }
+  .pendencias-celular.aberta .pend-dobra { grid-template-rows: 1fr; opacity: 1; }
+  .pendencias-celular ul { padding: 0 16px 6px; }
+  .pendencias-celular li { min-height: 48px; padding: 0; font-size: 14px; }
+  .pendencias-celular li .botao-texto { min-height: 44px; padding: 0 2px 0 14px; font-size: 14px; }
+
+  /* ---- o texto: só leitura (e, no #44, marcação); letra um pouco maior, sem as dicas de teclado ---- */
+  .pagina.editor .corpo { padding: 16px 18px 4px; }
+  .pagina.editor .texto p { font-size: 16.5px; line-height: 1.65; padding: 6px 0; }
+  .pagina.editor .texto u.arte { text-underline-offset: 0.22em; }
+  .pagina.editor .folha-fim { padding: 0 18px 14px; }
+  .pagina.editor .dicas { display: none; }
+  /* a navegação da fila e o Texto/Original, no alto da folha: alvos de 44px */
+  .pagina.editor .nav-folha .botao-icone { width: 44px; height: 44px; }
+  .pagina.editor .vista-folha button { height: 38px; }
+  /* a arte apontada (pela lista ou pelo "Ver") se desfaz devagar, em vez de sumir */
+  @keyframes soltar-arte { to { background-size: 0% 100%; } }
+
+  /* ---- a lista de artes, embaixo do texto: o mesmo desenho, com alvos de 44px e o ✕ sempre visível ---- */
+  .cartao.artes-celular { padding: 16px 16px 8px; }
+  /* o toque longo do sistema fica desligado só aqui, para não brigar com o lote (#45) */
+  .artes.so-lista li { min-height: 48px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .artes.so-lista .arte-linha { min-height: 48px; gap: 10px; padding: 4px 0; }
+  /* a bolinha: o desenho de sempre, o alvo de 44px */
+  .artes.so-lista .b { position: relative; min-width: 22px; height: 22px; font-size: 11.5px; }
+  .artes.so-lista .b::after { content: ''; position: absolute; inset: -11px -11px -11px -16px; }
+  .artes .txt b { font-size: 14px; }
+  .artes.so-lista .cx { width: 44px; height: 44px; margin: 0; align-items: center; }
+  .artes.so-lista .cx > span { align-self: end; margin-bottom: 10px; }
+  .artes.so-lista .cx .fogo.n1 { opacity: 0.75; }
+  .acoes-arte { margin-right: -10px; }
+  .tirar-arte { opacity: 1; width: 44px; height: 44px; border-radius: 10px; }
+  .artes.so-lista li:hover { background: none; }
+  .artes.so-lista li.realcada { background: var(--neutro); }
+
+  /* ---- a barra de baixo: a maior complexidade, as artes e o Enviar, ao alcance do polegar; no lugar das estatísticas ---- */
+  .barra-enviar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; align-items: center; gap: 0;
+    min-height: 68px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) 16px;
+    background: var(--mesa); border-top: 1px solid var(--regua); font: 500 12.5px var(--sans); color: var(--tinta3); white-space: nowrap;
+  }
+  .barra-enviar .cx-card, .barra-enviar .conta { display: inline-flex; align-items: baseline; gap: 5px; padding: 0 12px; border-left: 1px solid var(--regua); }
+  .barra-enviar .cx-card { align-items: center; gap: 6px; padding-left: 0; border-left: 0; }
+  .barra-enviar .conta { margin-right: auto; }
+  .barra-enviar b { font: 600 13.5px var(--mono); color: var(--tinta); letter-spacing: -0.01em; }
+  .barra-enviar .cx-pe { display: grid; justify-items: center; align-items: end; width: 24px; height: 24px; margin-top: -4px; }
+  .barra-enviar .cx-pe > span { grid-area: 1 / 1; }
+  .barra-enviar .cx-card.n2 b, .barra-enviar .cx-card.n3 b { color: var(--ultra); }
+  .barra-enviar .no-trello { width: 44px; height: 44px; display: grid; place-items: center; }
+  .barra-enviar .botao.primario { height: 48px; padding: 0 20px; border-radius: 12px; font-size: 15px; gap: 8px; }
+  /* os avisos sobem para cima da barra */
+  body:has(.barra-enviar) .avisos { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); padding: 0 16px; }
+}

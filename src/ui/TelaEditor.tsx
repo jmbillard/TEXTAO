@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
@@ -27,19 +28,23 @@ import { chaveDeArte } from '../modelo/diferencas';
 import { nomeDaSigla,
   ETIQUETAS, juntarTipos, metaVazia, NOMES_COLUNAS, nomesDosTipos, normalizarSubtipo, tiposDaArte, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
-import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura } from './pecas';
+import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura, TextoDaClaquete } from './pecas';
+import { useTelaDeCelular } from './faixa';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
 import { Fogo, FogoComTroca } from './fogo';
 import { ehDocx, ehPdf, VisorOriginal } from './VisorOriginal';
 import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
-import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural } from './util';
+import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural, semMovimento } from './util';
 import { ehDoTour, enviarExemplo } from '../tour/exemplo';
 import { enviadoNoTour, enviarNoTour } from '../tour/TourDaRevisao';
 
 
 /** No tour, quanto tempo o Enviar do exemplo mostra "Mandando…" antes de voltar para a fila. */
 const MANDANDO_NO_TOUR_MS = 900;
+/** No celular, quanto tempo a arte apontada na lista fica destacada no texto, e quanto leva para o destaque se desfazer. */
+const DESTAQUE_NO_CELULAR_MS = 2200;
+const DESFAZ_DESTAQUE_MS = 520;
 
 /* ---------- topo da folha: atração e praça ---------- */
 
@@ -420,12 +425,18 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     }
   }, [sonorasNoTexto]);
   const [medida, setMedida] = useState(0);
+  // o celular (até 600px): uma página só, com a ficha e o "Para revisar" recolhíveis e o texto só de leitura
+  const celular = useTelaDeCelular();
+  const [fichaAberta, setFichaAberta] = useState(false);
+  const [pendenciasAbertas, setPendenciasAbertas] = useState(false);
 
   const area = useRef<HTMLDivElement>(null);
   const arrastando = useRef(false);
   const revisao = useRef(inicial.revisao);
   const metaRef = useRef(meta);
   metaRef.current = meta;
+  const celularRef = useRef(celular);
+  celularRef.current = celular;
   const aoClicar = useRef<(pos: number) => void>(() => {});
 
   const editor = useEditor({
@@ -503,7 +514,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     };
     const liberar = () => {
       if (sala.meta.size) setMeta((m) => ({ ...m, ...(sala.meta.toJSON() as Partial<Meta>) }));
-      editor.setEditable(!leitura);
+      editor.setEditable(!leitura && !celularRef.current);
       setLiberado(true);
       setDocVersao((v) => v + 1);
     };
@@ -533,6 +544,12 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       clearTimeout(prazo);
     };
   }, [sala, editor, sincronizado]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // no celular, o texto é só de leitura: nada de digitar, mas a seleção continua (é por ela que se marca a arte).
+  // Girar o aparelho troca o modo; isso não é uma edição, então não avisa o onUpdate
+  useEffect(() => {
+    if (editor && liberado) editor.setEditable(!leitura && !celular, false);
+  }, [editor, liberado, leitura, celular]);
 
   // sem editor: a pauta pode ter sido preenchida depois que o roteiro subiu; pergunta de novo ao abrir
   const perguntouPauta = useRef(false);
@@ -665,11 +682,12 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       setBarra(null);
     }
   }, [editor, selVersao, docVersao, menu]); // eslint-disable-line react-hooks/exhaustive-deps
-  const ativa = editor && selecao ? marcaEm(editor, selecao.from) : null;
+  // no celular, a linha acende só com uma seleção de verdade (o cursor parado no fim do texto, ao abrir, não conta)
+  const ativa = editor && selecao && !(celular && selecao.empty) ? marcaEm(editor, selecao.from) : null;
 
   aoClicar.current = (pos) => {
     if (!editor) return;
-    const m = leitura ? null : marcaEm(editor, pos);
+    const m = leitura || celular ? null : marcaEm(editor, pos);
     setPopover(m && editor.state.selection.empty ? { nome: m.nome, id: m.id } : null);
   };
   const marcaDoPopover = useMemo(
@@ -692,14 +710,31 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // se a arte apontada está fora da tela, depois de um instante com o mouse parado ela rola para o meio
   // (a lista é fixa na lateral, então continua no lugar)
   useEffect(() => {
-    if (!realce || !editor) return;
+    if (!realce || !editor || celular) return;
     const t = setTimeout(() => {
       const el = editor.view.dom.querySelector<HTMLElement>(`u.arte[data-id="${CSS.escape(realce)}"]`);
       const r = el?.getBoundingClientRect();
       if (el && r && (r.bottom < 80 || r.top > window.innerHeight - 50)) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }, 350);
     return () => clearTimeout(t);
-  }, [realce, editor]);
+  }, [realce, editor, celular]);
+
+  // no celular não há mouse: tocar no nome da arte (ou no "Ver") leva até ela no texto, com o mesmo destaque, que
+  // depois de um tempo se desfaz devagar (`soltando`)
+  const [soltando, setSoltando] = useState<string | null>(null);
+  const apontou = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(apontou.current), []);
+  const apontarNoTexto = (a: MarcaNoDoc) => {
+    clearTimeout(apontou.current);
+    setSoltando(null);
+    setRealce(a.id);
+    editor?.view.dom.querySelector(`u.arte[data-id="${CSS.escape(a.id)}"]`)?.scrollIntoView({ block: 'center', behavior: semMovimento() ? 'auto' : 'smooth' });
+    apontou.current = setTimeout(() => {
+      setRealce(null);
+      setSoltando(a.id);
+      apontou.current = setTimeout(() => setSoltando(null), DESFAZ_DESTAQUE_MS);
+    }, DESTAQUE_NO_CELULAR_MS);
+  };
 
   /** Tipos de arte escondidos por enquanto: a lista é só das artes, com índice, e dá para tirar uma arte por ela. */
   const TIPOS_NA_LISTA = false;
@@ -711,6 +746,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const marcadasFora = useMemo(() => new Set(meta.naoProduzir ?? []), [meta.naoProduzir]);
   const nJa = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto))).length;
   const nFora = artes.filter((a) => marcadasFora.has(chaveDeArte(a.texto))).length;
+  const nAProduzir = artes.length - nJa - nFora;
   const marcarArte = (a: (typeof artes)[number], como: 'existe' | 'fora' | null) => {
     mudarMeta(remarcar(meta, [chaveDeArte(a.texto)], como));
     setRealce(null);
@@ -724,6 +760,12 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
   const ancoraSel = useRef<string | null>(null);
   const clicarArte = (a: (typeof artes)[number], e: React.MouseEvent) => {
+    // no celular, o toque no nome leva até a arte no texto (o lote, ao segurar a linha, é do #45)
+    if (celular) {
+      setSelecionadas([]);
+      ancoraSel.current = a.id;
+      return apontarNoTexto(a);
+    }
     if (leitura || !(e.shiftKey || e.metaKey || e.ctrlKey)) {
       setSelecionadas([]);
       ancoraSel.current = a.id;
@@ -897,7 +939,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   }, [menu, popover, exportando, compartilhando]);
 
   const aoMenuDeContexto = (e: React.MouseEvent) => {
-    if (!editor || leitura) return;
+    if (!editor || leitura || celular) return;
     const { from, to, empty } = editor.state.selection;
     const p = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
     if (!p) return;
@@ -1084,117 +1126,363 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     return () => window.removeEventListener('keydown', tecla, true);
   }, []);
 
+  /* ---------- as peças: o computador e o celular arrumam cada um do seu jeito ---------- */
+  const travado = leitura || !liberado || undefined;
+  /** "Escolher" na pendência: abre o campo na ficha. No celular, abre a ficha antes, para o campo estar na tela. */
+  const escolherNaFicha = (seletor: string) => {
+    if (celular) {
+      flushSync(() => setFichaAberta(true));
+      document.querySelector('.claquete')?.scrollIntoView({ block: 'start', behavior: semMovimento() ? 'auto' : 'smooth' });
+    }
+    document.querySelector<HTMLButtonElement>(`.claquete ${seletor}`)?.click();
+  };
+  /** "Ver" na pendência: no computador, abre a arte na lista; no celular, leva até ela no texto. */
+  const verArte = (id?: string) => {
+    const a = artes.find((x) => x.id === id);
+    if (!celular) return abrirArte(a);
+    if (a) apontarNoTexto(a);
+  };
+  const ficha = (
+    <Claquete
+      dados={meta}
+      mudar={mudarMeta}
+      estimadaSeg={saida.roteiro.duracaoEstimadaSeg}
+      comAtracao
+      cadastrarAtracao={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined}
+      balaoLigar={
+        cadastrarAtracao && meta.claquete
+          ? (fechar) => (
+              <BalaoLigar
+                claquete={meta.claquete}
+                aberto={inicial.id}
+                avisar={avisar}
+                fechar={fechar}
+                nova={() => (fechar(), cadastrarAtracao(meta.programa.trim() || meta.claquete))}
+                ligado={(nome) => {
+                  fechar();
+                  const p = programasConhecidos().find((x) => x.nome === nome);
+                  mudarMeta({ programa: nome, ...(p ? { tipoPrograma: p.tipo } : {}) });
+                }}
+              />
+            )
+          : undefined
+      }
+      recolhivel={celular ? { aberta: fichaAberta, mudar: setFichaAberta } : undefined}
+    />
+  );
+  const avisosDoTrello = (
+    <>
+      {perguntaProducao && (
+        <section className="cartao trello-lado pergunta-producao" aria-label="Já na produção da arte">
+          <a className="card-existente" href={perguntaProducao.url} target="_blank" rel="noreferrer" title="Já está no Trello">
+            <Icone nome="quadro" tam={15} traco={2.2} />
+            <b>{perguntaProducao.claquete}</b>
+            {perguntaProducao.entrada && <small>{dataCurtaComDia(new Date(perguntaProducao.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
+          </a>
+          <button className="botao primario largo" onClick={() => comparar(inicial.id)}>Comparar e decidir</button>
+        </section>
+      )}
+      {comServidor && !temTrello() && !leitura && (
+        <section className="cartao trello-lado desligado" aria-label="Trello">
+          <small><Icone nome="quadro" tam={13} /> O envio está desligado neste servidor: faltam TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA nas variáveis do stack.</small>
+        </section>
+      )}
+    </>
+  );
+  const itensPendentes = (
+    <ul>
+      {lista.map((p) => (
+        <li key={p.id}>
+          <span>{p.texto}</span>
+          <span className="pendencia-acoes">
+            {p.id === 'sem-editor' && (
+              <button className="botao-texto" onClick={() => escolherNaFicha('.escolha-nome-valor[aria-label^="Editor"]')}>Escolher</button>
+            )}
+            {p.id === 'sem-data' && (
+              <button className="botao-texto" onClick={() => escolherNaFicha('.campo-data button')}>Escolher</button>
+            )}
+            {p.id === 'arte-longa' && p.arte && (
+              <button className="botao-texto" onClick={() => verArte(p.arte)}>Ver</button>
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+  const pendenciasNoComputador = lista.length > 0 && (
+    <div className="pendencias-editor" aria-label="Para revisar">
+      <div className="cab-artes"><b>Para revisar</b><span className="rotulo">{lista.length}</span></div>
+      {itensPendentes}
+      <hr className="sep-artes" />
+    </div>
+  );
+  /** No celular, "Para revisar" recolhe: fechado, as pendências numa linha; aberto, a lista com "Ver" e "Escolher". */
+  const pendenciasNoCelular = lista.length > 0 && (
+    <section className={`cartao pendencias-editor pendencias-celular ${pendenciasAbertas ? 'aberta' : ''}`} aria-label="Para revisar">
+      <button type="button" className="pend-topo" aria-expanded={pendenciasAbertas} onClick={() => setPendenciasAbertas((v) => !v)}>
+        <span className="cab-artes"><b>Para revisar</b><span className="rotulo">{lista.length}</span></span>
+        <span className="pend-linha-dobra"><span><span className="pend-linha">{lista.map((x) => x.texto).join(' · ')}</span></span></span>
+        <span className="chev"><Icone nome="baixo" tam={16} traco={2.2} /></span>
+      </button>
+      <div className="pend-dobra" inert={!pendenciasAbertas || undefined}>
+        <div>{itensPendentes}</div>
+      </div>
+    </section>
+  );
+  const listaDasArtes = (
+    <>
+      <div className="cab-artes">
+        <b><i>{nAProduzir}</i> {nAProduzir === 1 ? 'arte' : 'artes'}</b>
+        {nFora > 0 && <span className="rotulo">+{nFora} fora</span>}
+        {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
+      </div>
+      {artes.length === 0 && (celular ? <p className="suave pequeno">As artes sublinhadas no texto aparecem aqui.</p> : <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>)}
+      {selecionadas.length > 0 && !leitura && (
+        <div className="barra-lote" role="toolbar" aria-label="Marcar as artes selecionadas">
+          <span><b>{selecionadas.length}</b> {selecionadas.length === 1 ? 'selecionada' : 'selecionadas'}</span>
+          <button type="button" className="botao-texto" onClick={() => marcarVarias('existe')}><Icone nome="certo" tam={13} traco={2.2} /> Já existem</button>
+          <button type="button" className="botao-texto" onClick={() => marcarVarias('fora')}><Icone nome="fechar" tam={13} traco={2.2} /> Não produzir</button>
+          <button type="button" className="botao-texto" onClick={() => marcarVarias(null)}><Icone nome="desfazer" tam={13} traco={2.2} /> Produzir</button>
+          {/* a complexidade das selecionadas: os três fogos lado a lado, cada um com a sua tecla */}
+          <span className="cx-lote">
+            {([1, 2, 3] as const).map((n) => (
+              <button key={n} type="button" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[n]} nas selecionadas`} title={`${NOME_DA_COMPLEXIDADE[n]} (${n})`} onClick={() => nivelDasArtes(selecionadas, n)}>
+                <Fogo n={n} escala={n === 1 ? 1.2 : 1} /><kbd>{n}</kbd>
+              </button>
+            ))}
+          </span>
+          <button type="button" className="fechar-lote" aria-label="Limpar a seleção" title="Limpar (Esc)" onClick={() => setSelecionadas([])}><Icone nome="fechar" tam={12} traco={2.4} /></button>
+        </div>
+      )}
+      <ol className={`artes ${TIPOS_NA_LISTA ? '' : 'so-lista'}`}>
+        {!TIPOS_NA_LISTA && (
+          <Vagas itens={artes} chave={(a) => a.id}>
+          {(a) => {
+            const k = chaveDeArte(a.texto);
+            const ja = doAcervo.get(k);
+            const marcada = marcadasJa.has(k) ? 'existe' : marcadasFora.has(k) ? 'fora' : null;
+            const cx = complexidadeDaArte(meta, k);
+            return (
+            <li
+              key={a.id}
+              className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
+              aria-selected={selecionadas.length ? selecionadas.includes(a.id) : undefined}
+              title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo.split(', ').map(nomeDaSigla).join(', ')}` : ''}` : undefined}
+              // no celular não há mouse: o realce é o do toque no nome (apontarNoTexto)
+              {...(!celular && {
+                onMouseEnter: () => {
+                  sobOMouse.current = a.id;
+                  setRealce(a.id);
+                },
+                onMouseLeave: () => {
+                  sobOMouse.current = null;
+                  setRealce(null);
+                },
+              })}
+            >
+              <button className="arte-linha" onMouseDown={(e) => e.shiftKey && e.preventDefault()} onClick={(e) => clicarArte(a, e)} onFocus={celular ? undefined : () => setRealce(a.id)} onBlur={celular ? undefined : () => setRealce(null)}>
+                {/* a bolinha do índice: na arte a produzir, marca "já existe"; na que existe ou está fora, devolve à lista.
+                    Com Shift, Ctrl ou ⌘ o clique segue para a seleção da linha. */}
+                <span
+                  className="b"
+                  data-marca={leitura ? undefined : (marcada ?? 'produzir')}
+                  title={leitura ? undefined : marcada === 'existe' ? `Arte ${a.ordem} · já existe · clique para voltar a produzir`
+                    : marcada === 'fora' ? `Arte ${a.ordem} · não produzir · clique para voltar a produzir` : `Arte ${a.ordem} · clique: já existe`}
+                  onClick={(e) => {
+                    if (leitura || e.shiftKey || e.metaKey || e.ctrlKey) return;
+                    e.stopPropagation();
+                    marcarArte(a, marcada ? null : 'existe');
+                  }}
+                >
+                  <span className="num">{a.ordem}</span>
+                  <Icone nome="certo" tam={11} traco={2.8} />
+                </span>
+                <span className="txt"><b>{marcada ? <Riscado>{a.texto}</Riscado> : a.texto}</b></span>
+              </button>
+              {!leitura && !marcada && (
+                <>
+                  {/* a coluna da complexidade da arte: largura fixa, o fogo do nível centrado nela; o clique sobe um nível */}
+                  <button className="cx" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[cx]}`} title={`Complexidade: ${NOME_DA_COMPLEXIDADE[cx]} · clique sobe um nível (1, 2, 3)`} onClick={() => subirFogo(a)}>
+                    <FogoComTroca n={cx} />
+                  </button>
+                  <span className="acoes-arte">
+                    <button className="tirar-arte" aria-label={`Não produzir "${a.texto}"`} title="Não produzir (sai do checklist)" onClick={() => marcarArte(a, 'fora')}>
+                      <Icone nome="fechar" tam={13} traco={2.2} />
+                    </button>
+                  </span>
+                </>
+              )}
+            </li>
+            );
+          }}
+          </Vagas>
+        )}
+        {TIPOS_NA_LISTA && artes.map((a) => {
+          const subtipo = normalizarSubtipo(a.attrs.subtipo);
+          const esta = aberta === a.id;
+          return (
+            <li key={a.id} className={`${esta ? 'aberta' : ''} ${ativa?.id === a.id ? 'ativa' : ''}`} onMouseEnter={() => setRealce(a.id)} onMouseLeave={() => setRealce(null)}>
+              <button
+                className="arte-linha"
+                aria-expanded={esta}
+                onClick={() => (esta ? setAberta(null) : abrirArte(a))}
+              >
+                <Miniatura subtipo={subtipo} />
+                <span className="txt"><b>{a.texto}</b><span className={subtipo ? '' : 'pede'}>{subtipo ? nomesDosTipos(a.attrs.subtipo) : esta ? 'escolha o tipo' : 'sem tipo'}</span></span>
+                <span className="b">{a.ordem}</span>
+              </button>
+              {esta && editor && (
+                <EscolhaDeTipo valor={subtipo} atalhos escolher={(novo) => escolherTipo(a, novo)} />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </>
+  );
+  const menuMais = (
+    <div className="exportar">
+      <button className="botao-icone mais-acoes" aria-haspopup="menu" aria-expanded={exportando} title="Exportar" aria-label="Exportar" onClick={() => setExportando((v) => !v)}>
+        <span aria-hidden="true">···</span>
+      </button>
+      {exportando && (
+        <div className="menu menu-exportar" role="menu">
+          {/* no celular, o histórico mora aqui */}
+          {celular && comServidor && (sou || inicial.aberto) && (
+            <>
+              <button role="menuitem" className="menu-item" onClick={() => (setExportando(false), void abrirHistorico())}><Selo nome="historico" /><span className="menu-texto">Histórico de versões</span></button>
+              <div className="menu-sep" />
+            </>
+          )}
+          <button role="menuitem" className="menu-item alto" onClick={() => exportarComo('docx')}>
+            <Selo nome="arquivo" /><span className="menu-texto"><strong>Roteiro em Word</strong><small>Padronizado, com a lista de artes no fim</small></span>
+          </button>
+          <button role="menuitem" className="menu-item alto" onClick={() => exportarComo('json')}>
+            <Selo nome="baixar" /><span className="menu-texto"><strong>Dados (.json)</strong><small>Metadados, artes e o roteiro para reabrir</small></span>
+          </button>
+          <div className="menu-sep" />
+          <button role="menuitem" className="menu-item" onClick={() => exportarComo('lista')}><Selo nome="copiar" /><span className="menu-texto">Copiar lista de artes</span></button>
+          <button role="menuitem" className="menu-item" onClick={() => exportarComo('pdf')}><Selo nome="imprimir" /><span className="menu-texto">Imprimir ou salvar em PDF</span></button>
+        </div>
+      )}
+    </div>
+  );
+  const noTrelloEl = noTrello && (
+    estadoTrello?.url ? (
+      <a className="botao-icone no-trello" href={estadoTrello.url} target="_blank" rel="noreferrer" title={`No Trello${estadoTrello.por ? ` · mandado por ${estadoTrello.por}` : ''}`} aria-label="Abrir o card no Trello">
+        <Icone nome="quadro" tam={17} traco={2.2} />
+      </a>
+    ) : (
+      <span className="botao-icone no-trello" title="A claquete já tinha entrado pelo upload antigo"><Icone nome="quadro" tam={17} traco={2.2} /></span>
+    )
+  );
+  const botaoPrincipal = (podeMandar && !noTrello) || proximo.r ? (
+    <div className="acao-principal">
+      <button
+        className={`botao primario ${estadoTrello?.estado === 'erro' ? 'erro' : ''}`}
+        disabled={!liberado || estadoTrello?.estado === 'enviando' || (podeMandar && !noTrello && !!perguntaProducao)}
+        title={
+          podeMandar && !noTrello
+            ? perguntaProducao
+              ? 'Antes, compare com o que já está no Trello e decida'
+              : estadoTrello?.estado === 'erro'
+                ? estadoTrello.erro
+                : `${meta.v2De ? 'Põe as artes novas no card que já existe' : 'Cria o card com as artes, os campos e o PDF'} · complexidade ${NOME_DA_COMPLEXIDADE[complexidadeDoCard]}${proximo.r ? ` e abre ${proximo.r.meta.claquete || 'o próximo'}` : ''} (${atalho('Mod-Enter')})`
+            : `${proximo.r?.meta.claquete || 'Próximo roteiro'} (${atalho('Mod-Enter')})`
+        }
+        onClick={() => void acaoPrincipal()}
+      >
+        {podeMandar && !noTrello && <Icone nome="quadro" tam={15} traco={2.2} />}
+        {rotuloPrincipal}
+        {!podeMandar || noTrello ? <Icone nome="seta" tam={14} traco={2.2} /> : null}
+      </button>
+    </div>
+  ) : null;
+
   return (
     <div className="pagina editor">
       {sala && sincronizado && <PonteirosDaSala sala={sala} eu={pessoa?.email ?? ''} editor={editor} />}
       <header className="topo" data-ancora="topo">
-        <div className="topo-esq">
-          <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
-          <Marca />
-          <span className="trilha"><strong>{meta.claquete || meta.programa || 'Roteiro'}</strong></span>
-          {leitura ? (
-            <span className="salvo">somente leitura</span>
-          ) : (
-            <span className={`salvo ${salvo ? 'ok' : ''}`} aria-live="polite">
-              <Icone nome="certo" tam={12} traco={2.6} />
-              {salvo ? 'salvo' : 'salvando'}
-            </span>
-          )}
-          {doTour && <span className="nota-exemplo">exemplo do tour</span>}
-        </div>
-
-        <span />
-
-        <div className="topo-dir">
-          {presentes.length > 0 && (
-            <div className="presentes" aria-label={`Também neste roteiro: ${presentes.map((x) => x.nome).join(', ')}`}>
-              {presentes.slice(0, 4).map((x) => (
-                <span key={x.email} className="presente" style={{ background: x.cor }} title={`${x.nome} está neste roteiro`}>
-                  {x.nome.split(/\s+/).map((n) => n[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join('').toUpperCase()}
+        {celular ? (
+          <>
+            <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
+            <span className="trilha"><strong><TextoDaClaquete texto={meta.claquete || meta.programa || 'Roteiro'} /></strong></span>
+            {menuMais}
+          </>
+        ) : (
+          <>
+            <div className="topo-esq">
+              <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
+              <Marca />
+              <span className="trilha"><strong>{meta.claquete || meta.programa || 'Roteiro'}</strong></span>
+              {leitura ? (
+                <span className="salvo">somente leitura</span>
+              ) : (
+                <span className={`salvo ${salvo ? 'ok' : ''}`} aria-live="polite">
+                  <Icone nome="certo" tam={12} traco={2.6} />
+                  {salvo ? 'salvo' : 'salvando'}
                 </span>
-              ))}
-              {presentes.length > 4 && <span className="presente mais">+{presentes.length - 4}</span>}
-            </div>
-          )}
-          {comServidor && (sou || inicial.aberto) && (
-            <>
-              {original && (
-                <button className="botao-icone baixar-original" aria-label={`Baixar o original, ${original.nome}`} onClick={() => void baixarODoc()}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z M14 3v5h5" />
-                    <path className="seta-baixar" d="M12 11v6 M9.5 14.5L12 17l2.5-2.5" />
-                  </svg>
-                  <span className="dica" role="tooltip">Baixar o original<small>{original.nome} · {tamanhoLegivel(original.tamanho)}</small></span>
-                </button>
               )}
-              <button className="botao-icone" title="Histórico de versões" aria-label="Histórico de versões" aria-expanded={!!historico} onClick={abrirHistorico}>
-                <Icone nome="historico" tam={18} />
-              </button>
-              {!inicial.aberto && (
-              <div className="compartilhar">
-                <button className={`visibilidade ${publico || pessoas.length ? 'publico' : ''}`} aria-haspopup="dialog" aria-expanded={compartilhando} onClick={() => setCompartilhando((v) => !v)}>
-                  <Icone nome={publico ? 'olho' : pessoas.length ? 'pessoas' : 'cadeado'} tam={14} traco={2} />
-                  {publico ? 'Todos veem' : pessoas.length ? plural(pessoas.length, 'pessoa', 'pessoas') : 'Só eu'}
-                </button>
-                {compartilhando && <Compartilhar publico={publico} pessoas={pessoas} mudar={compartilhar} />}
-              </div>
-              )}
-            </>
-          )}
-          <div className="exportar">
-            <button className="botao-icone mais-acoes" aria-haspopup="menu" aria-expanded={exportando} title="Exportar" aria-label="Exportar" onClick={() => setExportando((v) => !v)}>
-              <span aria-hidden="true">···</span>
-            </button>
-            {exportando && (
-              <div className="menu menu-exportar" role="menu">
-                <button role="menuitem" className="menu-item alto" onClick={() => exportarComo('docx')}>
-                  <Selo nome="arquivo" /><span className="menu-texto"><strong>Roteiro em Word</strong><small>Padronizado, com a lista de artes no fim</small></span>
-                </button>
-                <button role="menuitem" className="menu-item alto" onClick={() => exportarComo('json')}>
-                  <Selo nome="baixar" /><span className="menu-texto"><strong>Dados (.json)</strong><small>Metadados, artes e o roteiro para reabrir</small></span>
-                </button>
-                <div className="menu-sep" />
-                <button role="menuitem" className="menu-item" onClick={() => exportarComo('lista')}><Selo nome="copiar" /><span className="menu-texto">Copiar lista de artes</span></button>
-                <button role="menuitem" className="menu-item" onClick={() => exportarComo('pdf')}><Selo nome="imprimir" /><span className="menu-texto">Imprimir ou salvar em PDF</span></button>
-              </div>
-            )}
-          </div>
-          {noTrello && (
-            estadoTrello?.url ? (
-              <a className="botao-icone no-trello" href={estadoTrello.url} target="_blank" rel="noreferrer" title={`No Trello${estadoTrello.por ? ` · mandado por ${estadoTrello.por}` : ''}`} aria-label="Abrir o card no Trello">
-                <Icone nome="quadro" tam={17} traco={2.2} />
-              </a>
-            ) : (
-              <span className="botao-icone no-trello" title="A claquete já tinha entrado pelo upload antigo"><Icone nome="quadro" tam={17} traco={2.2} /></span>
-            )
-          )}
-          {(podeMandar && !noTrello) || proximo.r ? (
-            <div className="acao-principal">
-              <button
-                className={`botao primario ${estadoTrello?.estado === 'erro' ? 'erro' : ''}`}
-                disabled={!liberado || estadoTrello?.estado === 'enviando' || (podeMandar && !noTrello && !!perguntaProducao)}
-                title={
-                  podeMandar && !noTrello
-                    ? perguntaProducao
-                      ? 'Antes, compare com o que já está no Trello e decida'
-                      : estadoTrello?.estado === 'erro'
-                        ? estadoTrello.erro
-                        : `${meta.v2De ? 'Põe as artes novas no card que já existe' : 'Cria o card com as artes, os campos e o PDF'} · complexidade ${NOME_DA_COMPLEXIDADE[complexidadeDoCard]}${proximo.r ? ` e abre ${proximo.r.meta.claquete || 'o próximo'}` : ''} (${atalho('Mod-Enter')})`
-                    : `${proximo.r?.meta.claquete || 'Próximo roteiro'} (${atalho('Mod-Enter')})`
-                }
-                onClick={() => void acaoPrincipal()}
-              >
-                {podeMandar && !noTrello && <Icone nome="quadro" tam={15} traco={2.2} />}
-                {rotuloPrincipal}
-                {!podeMandar || noTrello ? <Icone nome="seta" tam={14} traco={2.2} /> : null}
-              </button>
+              {doTour && <span className="nota-exemplo">exemplo do tour</span>}
             </div>
-          ) : null}
-        </div>
+
+            <span />
+
+            <div className="topo-dir">
+              {presentes.length > 0 && (
+                <div className="presentes" aria-label={`Também neste roteiro: ${presentes.map((x) => x.nome).join(', ')}`}>
+                  {presentes.slice(0, 4).map((x) => (
+                    <span key={x.email} className="presente" style={{ background: x.cor }} title={`${x.nome} está neste roteiro`}>
+                      {x.nome.split(/\s+/).map((n) => n[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join('').toUpperCase()}
+                    </span>
+                  ))}
+                  {presentes.length > 4 && <span className="presente mais">+{presentes.length - 4}</span>}
+                </div>
+              )}
+              {comServidor && (sou || inicial.aberto) && (
+                <>
+                  {original && (
+                    <button className="botao-icone baixar-original" aria-label={`Baixar o original, ${original.nome}`} onClick={() => void baixarODoc()}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z M14 3v5h5" />
+                        <path className="seta-baixar" d="M12 11v6 M9.5 14.5L12 17l2.5-2.5" />
+                      </svg>
+                      <span className="dica" role="tooltip">Baixar o original<small>{original.nome} · {tamanhoLegivel(original.tamanho)}</small></span>
+                    </button>
+                  )}
+                  <button className="botao-icone" title="Histórico de versões" aria-label="Histórico de versões" aria-expanded={!!historico} onClick={abrirHistorico}>
+                    <Icone nome="historico" tam={18} />
+                  </button>
+                  {!inicial.aberto && (
+                  <div className="compartilhar">
+                    <button className={`visibilidade ${publico || pessoas.length ? 'publico' : ''}`} aria-haspopup="dialog" aria-expanded={compartilhando} onClick={() => setCompartilhando((v) => !v)}>
+                      <Icone nome={publico ? 'olho' : pessoas.length ? 'pessoas' : 'cadeado'} tam={14} traco={2} />
+                      {publico ? 'Todos veem' : pessoas.length ? plural(pessoas.length, 'pessoa', 'pessoas') : 'Só eu'}
+                    </button>
+                    {compartilhando && <Compartilhar publico={publico} pessoas={pessoas} mudar={compartilhar} />}
+                  </div>
+                  )}
+                </>
+              )}
+              {menuMais}
+              {noTrelloEl}
+              {botaoPrincipal}
+            </div>
+          </>
+        )}
       </header>
 
       <div className="mesa">
         <div className={`area ${colunas ? 'larga' : ''}`} ref={area}>
+          {/* no celular, uma página só: a ficha e o "Para revisar" antes do texto e a lista de artes depois dele.
+              O texto fica no mesmo lugar da árvore nos dois arranjos, para o editor não ser montado de novo */}
+          {celular && (
+            <div className="antes-do-texto" inert={travado}>
+              {ficha}
+              {avisosDoTrello}
+              {pendenciasNoCelular}
+            </div>
+          )}
           <article className="folha" data-ancora="folha">
             {temOriginal && (
               <div className="segmento vista-folha" role="radiogroup" aria-label="Ver o roteiro">
@@ -1263,181 +1551,23 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             <Decupagem saida={saida} noTexto={sonorasNoTexto} alternar={() => setSonorasNoTexto((v) => !v)} />
           </article>
 
-          <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={leitura || !liberado || undefined}>
-            <Claquete
-              dados={meta}
-              mudar={mudarMeta}
-              estimadaSeg={saida.roteiro.duracaoEstimadaSeg}
-              comAtracao
-              cadastrarAtracao={cadastrarAtracao && meta.claquete ? () => cadastrarAtracao(meta.programa.trim() || meta.claquete) : undefined}
-              balaoLigar={
-                cadastrarAtracao && meta.claquete
-                  ? (fechar) => (
-                      <BalaoLigar
-                        claquete={meta.claquete}
-                        aberto={inicial.id}
-                        avisar={avisar}
-                        fechar={fechar}
-                        nova={() => (fechar(), cadastrarAtracao(meta.programa.trim() || meta.claquete))}
-                        ligado={(nome) => {
-                          fechar();
-                          const p = programasConhecidos().find((x) => x.nome === nome);
-                          mudarMeta({ programa: nome, ...(p ? { tipoPrograma: p.tipo } : {}) });
-                        }}
-                      />
-                    )
-                  : undefined
-              }
-            />
-            {perguntaProducao && (
-              <section className="cartao trello-lado pergunta-producao" aria-label="Já na produção da arte">
-                <a className="card-existente" href={perguntaProducao.url} target="_blank" rel="noreferrer" title="Já está no Trello">
-                  <Icone nome="quadro" tam={15} traco={2.2} />
-                  <b>{perguntaProducao.claquete}</b>
-                  {perguntaProducao.entrada && <small>{dataCurtaComDia(new Date(perguntaProducao.entrada).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))}</small>}
-                </a>
-                <button className="botao primario largo" onClick={() => comparar(inicial.id)}>Comparar e decidir</button>
-              </section>
-            )}
-            {comServidor && !temTrello() && !leitura && (
-              <section className="cartao trello-lado desligado" aria-label="Trello">
-                <small><Icone nome="quadro" tam={13} /> O envio está desligado neste servidor: faltam TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA nas variáveis do stack.</small>
-              </section>
-            )}
-            <section className="cartao">
-            {lista.length > 0 && (
-              <div className="pendencias-editor" aria-label="Para revisar">
-                <div className="cab-artes"><b>Para revisar</b><span className="rotulo">{lista.length}</span></div>
-                <ul>
-                  {lista.map((p) => (
-                    <li key={p.id}>
-                      <span>{p.texto}</span>
-                      <span className="pendencia-acoes">
-                        {p.id === 'sem-editor' && (
-                          <button className="botao-texto" onClick={() => document.querySelector<HTMLButtonElement>('.claquete .escolha-nome-valor[aria-label^="Editor"]')?.click()}>Escolher</button>
-                        )}
-                        {p.id === 'sem-data' && (
-                          <button className="botao-texto" onClick={() => document.querySelector<HTMLButtonElement>('.claquete .campo-data button')?.click()}>Escolher</button>
-                        )}
-                        {p.id === 'arte-longa' && p.arte && (
-                          <button className="botao-texto" onClick={() => abrirArte(artes.find((a) => a.id === p.arte))}>Ver</button>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <hr className="sep-artes" />
-              </div>
-            )}
-              <div className="cab-artes">
-                <b><i>{artes.length - nJa - nFora}</i> {artes.length - nJa - nFora === 1 ? 'arte' : 'artes'}</b>
-                {nFora > 0 && <span className="rotulo">+{nFora} fora</span>}
-                {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
-              </div>
-              {artes.length === 0 && <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>}
-              {selecionadas.length > 0 && !leitura && (
-                <div className="barra-lote" role="toolbar" aria-label="Marcar as artes selecionadas">
-                  <span><b>{selecionadas.length}</b> {selecionadas.length === 1 ? 'selecionada' : 'selecionadas'}</span>
-                  <button type="button" className="botao-texto" onClick={() => marcarVarias('existe')}><Icone nome="certo" tam={13} traco={2.2} /> Já existem</button>
-                  <button type="button" className="botao-texto" onClick={() => marcarVarias('fora')}><Icone nome="fechar" tam={13} traco={2.2} /> Não produzir</button>
-                  <button type="button" className="botao-texto" onClick={() => marcarVarias(null)}><Icone nome="desfazer" tam={13} traco={2.2} /> Produzir</button>
-                  {/* a complexidade das selecionadas: os três fogos lado a lado, cada um com a sua tecla */}
-                  <span className="cx-lote">
-                    {([1, 2, 3] as const).map((n) => (
-                      <button key={n} type="button" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[n]} nas selecionadas`} title={`${NOME_DA_COMPLEXIDADE[n]} (${n})`} onClick={() => nivelDasArtes(selecionadas, n)}>
-                        <Fogo n={n} escala={n === 1 ? 1.2 : 1} /><kbd>{n}</kbd>
-                      </button>
-                    ))}
-                  </span>
-                  <button type="button" className="fechar-lote" aria-label="Limpar a seleção" title="Limpar (Esc)" onClick={() => setSelecionadas([])}><Icone nome="fechar" tam={12} traco={2.4} /></button>
-                </div>
-              )}
-              <ol className={`artes ${TIPOS_NA_LISTA ? '' : 'so-lista'}`}>
-                {!TIPOS_NA_LISTA && (
-                  <Vagas itens={artes} chave={(a) => a.id}>
-                  {(a) => {
-                    const k = chaveDeArte(a.texto);
-                    const ja = doAcervo.get(k);
-                    const marcada = marcadasJa.has(k) ? 'existe' : marcadasFora.has(k) ? 'fora' : null;
-                    const cx = complexidadeDaArte(meta, k);
-                    return (
-                    <li
-                      key={a.id}
-                      className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
-                      aria-selected={selecionadas.length ? selecionadas.includes(a.id) : undefined}
-                      title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo.split(', ').map(nomeDaSigla).join(', ')}` : ''}` : undefined}
-                      onMouseEnter={() => {
-                        sobOMouse.current = a.id;
-                        setRealce(a.id);
-                      }}
-                      onMouseLeave={() => {
-                        sobOMouse.current = null;
-                        setRealce(null);
-                      }}
-                    >
-                      <button className="arte-linha" onMouseDown={(e) => e.shiftKey && e.preventDefault()} onClick={(e) => clicarArte(a, e)} onFocus={() => setRealce(a.id)} onBlur={() => setRealce(null)}>
-                        {/* a bolinha do índice: na arte a produzir, marca "já existe"; na que existe ou está fora, devolve à lista.
-                            Com Shift, Ctrl ou ⌘ o clique segue para a seleção da linha. */}
-                        <span
-                          className="b"
-                          data-marca={leitura ? undefined : (marcada ?? 'produzir')}
-                          title={leitura ? undefined : marcada === 'existe' ? `Arte ${a.ordem} · já existe · clique para voltar a produzir`
-                            : marcada === 'fora' ? `Arte ${a.ordem} · não produzir · clique para voltar a produzir` : `Arte ${a.ordem} · clique: já existe`}
-                          onClick={(e) => {
-                            if (leitura || e.shiftKey || e.metaKey || e.ctrlKey) return;
-                            e.stopPropagation();
-                            marcarArte(a, marcada ? null : 'existe');
-                          }}
-                        >
-                          <span className="num">{a.ordem}</span>
-                          <Icone nome="certo" tam={11} traco={2.8} />
-                        </span>
-                        <span className="txt"><b>{marcada ? <Riscado>{a.texto}</Riscado> : a.texto}</b></span>
-                      </button>
-                      {!leitura && !marcada && (
-                        <>
-                          {/* a coluna da complexidade da arte: largura fixa, o fogo do nível centrado nela; o clique sobe um nível */}
-                          <button className="cx" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[cx]}`} title={`Complexidade: ${NOME_DA_COMPLEXIDADE[cx]} · clique sobe um nível (1, 2, 3)`} onClick={() => subirFogo(a)}>
-                            <FogoComTroca n={cx} />
-                          </button>
-                          <span className="acoes-arte">
-                            <button className="tirar-arte" aria-label={`Não produzir "${a.texto}"`} title="Não produzir (sai do checklist)" onClick={() => marcarArte(a, 'fora')}>
-                              <Icone nome="fechar" tam={13} traco={2.2} />
-                            </button>
-                          </span>
-                        </>
-                      )}
-                    </li>
-                    );
-                  }}
-                  </Vagas>
-                )}
-                {TIPOS_NA_LISTA && artes.map((a) => {
-                  const subtipo = normalizarSubtipo(a.attrs.subtipo);
-                  const esta = aberta === a.id;
-                  return (
-                    <li key={a.id} className={`${esta ? 'aberta' : ''} ${ativa?.id === a.id ? 'ativa' : ''}`} onMouseEnter={() => setRealce(a.id)} onMouseLeave={() => setRealce(null)}>
-                      <button
-                        className="arte-linha"
-                        aria-expanded={esta}
-                        onClick={() => (esta ? setAberta(null) : abrirArte(a))}
-                      >
-                        <Miniatura subtipo={subtipo} />
-                        <span className="txt"><b>{a.texto}</b><span className={subtipo ? '' : 'pede'}>{subtipo ? nomesDosTipos(a.attrs.subtipo) : esta ? 'escolha o tipo' : 'sem tipo'}</span></span>
-                        <span className="b">{a.ordem}</span>
-                      </button>
-                      {esta && editor && (
-                        <EscolhaDeTipo valor={subtipo} atalhos escolher={(novo) => escolherTipo(a, novo)} />
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
+          {celular ? (
+            <section className="cartao artes-celular" aria-label="Artes" inert={travado}>
+              {listaDasArtes}
             </section>
-          </aside>
+          ) : (
+            <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={travado}>
+              {ficha}
+              {avisosDoTrello}
+              <section className="cartao">
+                {pendenciasNoComputador}
+                {listaDasArtes}
+              </section>
+            </aside>
+          )}
 
           {/* só em roteiro individual: com mais gente, desfazer pelo controle ficaria confuso */}
-          {editor && sou && !publico && pessoas.length === 0 && <LinhaDoTempo editor={editor} versao={docVersao} />}
+          {editor && sou && !publico && pessoas.length === 0 && !celular && <LinhaDoTempo editor={editor} versao={docVersao} />}
 
           {historico && (
             <aside className="historico" aria-label="Histórico de versões">
@@ -1479,7 +1609,18 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       </section>
 
       {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{position:relative;animation:selecionar-arte .5s cubic-bezier(.45,0,.3,1) forwards}.texto u.arte[data-id="${CSS.escape(realce)}"]::after{content:'';position:absolute;top:-.2em;width:.5em;height:1.4em;margin-left:-.25em;pointer-events:none;background:var(--ibeam-arte) no-repeat center/contain;animation:arrastar-cursor-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}
-      <Estatisticas saida={saida} complexidade={complexidadeDoCard} paginas={meta.paginasOriginal} original={original} />
+      {soltando && <style>{`.texto u.arte[data-id="${CSS.escape(soltando)}"]{background-size:100% 100%;animation:soltar-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}
+      {celular ? (
+        // no celular, no lugar das estatísticas: a maior complexidade, as artes a produzir e o Enviar, ao alcance do polegar
+        <footer className="barra-enviar" aria-label="Enviar ao Trello">
+          <span className={`cx-card n${complexidadeDoCard}`} title="O card vai com a maior complexidade das artes"><span className="cx-pe"><FogoComTroca n={complexidadeDoCard} /></span><b>{NOME_DA_COMPLEXIDADE[complexidadeDoCard]}</b></span>
+          <span className="conta"><b>{nAProduzir}</b> {nAProduzir === 1 ? 'arte' : 'artes'}</span>
+          {noTrelloEl}
+          {botaoPrincipal}
+        </footer>
+      ) : (
+        <Estatisticas saida={saida} complexidade={complexidadeDoCard} paginas={meta.paginasOriginal} original={original} />
+      )}
 
     </div>
   );

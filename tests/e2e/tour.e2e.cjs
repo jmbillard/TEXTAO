@@ -46,8 +46,11 @@ const diaMais = (n) => {
   return new Date(h.getFullYear(), h.getMonth(), h.getDate() + n);
 };
 
-/** Sobe o servidor (banco temporário) e o Vite; devolve os endereços e como derrubar tudo. */
-async function subir() {
+/**
+ * Sobe o servidor (banco temporário) e o Vite; devolve os endereços e como derrubar tudo. Sem `trello`, o envio fica
+ * desligado; com ele (as variáveis e o `buscar` falsos), o Trello e o Teable são os falsos de quem chama.
+ */
+async function subir({ trello: falso } = {}) {
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-'));
   const { abrirBanco, criarApp } = await import(join(RAIZ, 'servidor', 'app.mjs'));
   const { criarTrello } = await import(join(RAIZ, 'servidor', 'trello.mjs'));
@@ -55,7 +58,7 @@ async function subir() {
     throw new Error(`o teste não sai para a rede: ${url}`);
   };
   const env = {};
-  const trello = criarTrello(env, { buscar: semRede, consultar: async () => [], sftp: async () => {} });
+  const trello = criarTrello(falso?.env ?? env, { buscar: falso?.buscar ?? semRede, consultar: async () => [], sftp: async () => {} });
   const db = abrirBanco(join(pasta, 'roteirista.db'));
   const app = criarApp({ db, env, trello });
   const comLia = (req) => {

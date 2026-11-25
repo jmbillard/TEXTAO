@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte } from '../modelo/tipos';
 import { PRACAS, editoresConhecidos, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
-import { atalho, dataPorExtenso, ehMac } from './util';
+import { atalho, dataCurtaComDia, dataPorExtenso, ehMac } from './util';
 import { Icone } from './icones';
 
 /** Os traços do círculo à caneta (viewBox 0 0 64 44, pathLength 1): a contagem de artes da fila e o pôster da prévia. */
@@ -212,7 +212,13 @@ type DadosClaquete = Pick<Meta, 'claquete' | 'redator' | 'editor' | 'dataExibica
 
 /** A claquete da chamada: nome, equipe e exibição. Com `mudar`, os campos são editáveis. */
 /** Com `comAtracao`, a claquete também mostra (e edita) a atração e a praça, como na revisão. */
-export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar, estimadaSeg }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode; estimadaSeg?: number | null }) {
+/** A ficha que recolhe (o editor no celular): recolhida mostra o editor, a exibição e o tempo; aberta, a ficha inteira. */
+export interface FichaRecolhivel {
+  aberta: boolean;
+  mudar: (aberta: boolean) => void;
+}
+
+export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar, estimadaSeg, recolhivel }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode; estimadaSeg?: number | null; recolhivel?: FichaRecolhivel }) {
   const [ligando, setLigando] = useState(false);
   const data = useRef<HTMLInputElement>(null);
   const campo = (rotulo: string, chave: 'claquete' | 'redator' | 'editor', vazio: string, lista?: () => string[]) =>
@@ -232,128 +238,163 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, b
     );
   // na conferência do arquivo, o que não foi identificado não aparece
   const mostra = (v: string) => !!mudar || !!v;
-  return (
-    <section className="claquete" aria-label="Claquete">
-      <div className="ripa" aria-hidden="true" />
-      <div className="quadro">
-        {mostra(dados.claquete) && (
-          <label className="campo-c nome">
-            <small>Claquete</small>
-            {campo('Claquete', 'claquete', 'NOME DA CHAMADA')}
-          </label>
-        )}
-        {(mostra(dados.redator) || mostra(dados.editor)) && (
-          <div className="dupla">
-            {mostra(dados.redator) && (
-              <div className="campo-c">
-                <small>Redator</small>
-                {campo('Redator', 'redator', 'quem escreveu', redatoresConhecidos)}
-              </div>
-            )}
-            {mostra(dados.editor) && (
-              <div className="campo-c">
-                <small>Editor</small>
-                {campo('Editor', 'editor', 'escolher…', editoresConhecidos)}
-              </div>
-            )}
-          </div>
-        )}
-        {mostra(dados.dataExibicao) && (
-          <div className={`campo-c ${comAtracao ? '' : 'ultimo'}`}>
-            <small>Exibição</small>
-            {mudar ? (
-              <span className="campo-data">
-                <button className={dados.dataExibicao ? '' : 'vago'} onClick={() => data.current?.showPicker?.()}>
-                  {dataPorExtenso(dados.dataExibicao) || 'escolher a data'}
-                </button>
-                <input ref={data} type="date" tabIndex={-1} aria-label="Data de exibição" value={dados.dataExibicao} onChange={(e) => mudar({ dataExibicao: e.target.value })} />
-              </span>
-            ) : (
-              <div>{dataPorExtenso(dados.dataExibicao)}</div>
-            )}
-          </div>
-        )}
-        {comAtracao && (
-          <div className="trio">
+  const quadro = (
+    <div className="quadro">
+      {mostra(dados.claquete) && (
+        <label className="campo-c nome">
+          <small>Claquete</small>
+          {campo('Claquete', 'claquete', 'NOME DA CHAMADA')}
+        </label>
+      )}
+      {(mostra(dados.redator) || mostra(dados.editor)) && (
+        <div className="dupla">
+          {mostra(dados.redator) && (
             <div className="campo-c">
-              <small>Locutor</small>
-              {mudar ? <input value={dados.locutor ?? ''} placeholder="???" aria-label="Locutor" autoComplete="off" spellCheck={false} onChange={(e) => mudar({ locutor: e.target.value })} /> : <div>{dados.locutor}</div>}
+              <small>Redator</small>
+              {campo('Redator', 'redator', 'quem escreveu', redatoresConhecidos)}
             </div>
+          )}
+          {mostra(dados.editor) && (
             <div className="campo-c">
-              <small>Selo</small>
-              {mudar ? <input value={dados.selo ?? ''} placeholder="sem selo" aria-label="Selo" autoComplete="off" spellCheck={false} onChange={(e) => mudar({ selo: e.target.value })} /> : <div>{dados.selo}</div>}
+              <small>Editor</small>
+              {campo('Editor', 'editor', 'escolher…', editoresConhecidos)}
             </div>
-            <div className="campo-c tempo-c">
-              <small>Tempo</small>
-              <span className="linha-tempo">
-                <button
-                  type="button"
-                  className="modo-tempo"
-                  title="Alternar entre fechar com e no máximo"
-                  disabled={!mudar}
-                  onClick={() => mudar?.({ duracaoModo: dados.duracaoModo === 'max' ? 'fechar' : 'max' })}
-                >
-                  {dados.duracaoModo === 'max' ? 'máx.' : 'fecha'}
-                </button>
-                {mudar ? (
-                  <input
-                    className="segundos"
-                    inputMode="numeric"
-                    value={dados.duracaoAlvoSeg ?? ''}
-                    placeholder="??"
-                    aria-label="Tempo da chamada, em segundos"
-                    onChange={(e) => {
-                      const n = parseInt(e.target.value.replace(/\D/g, ''), 10);
-                      mudar({ duracaoAlvoSeg: Number.isFinite(n) ? n : null });
-                    }}
-                  />
-                ) : (
-                  <span>{dados.duracaoAlvoSeg ?? ''}</span>
-                )}
-                <span className="aspas">''</span>
-              </span>
-              {estimadaSeg != null && dados.duracaoAlvoSeg ? (
-                <span className={`estimada ${estimadaSeg > dados.duracaoAlvoSeg * 1.1 ? 'estourou' : ''}`} title="Leitura estimada da locução e das sonoras">
-                  ≈ {estimadaSeg}'' lidos
-                </span>
-              ) : null}
-            </div>
+          )}
+        </div>
+      )}
+      {mostra(dados.dataExibicao) && (
+        <div className={`campo-c ${comAtracao ? '' : 'ultimo'}`}>
+          <small>Exibição</small>
+          {mudar ? (
+            <span className="campo-data">
+              <button className={dados.dataExibicao ? '' : 'vago'} onClick={() => data.current?.showPicker?.()}>
+                {dataPorExtenso(dados.dataExibicao) || 'escolher a data'}
+              </button>
+              <input ref={data} type="date" tabIndex={-1} aria-label="Data de exibição" value={dados.dataExibicao} onChange={(e) => mudar({ dataExibicao: e.target.value })} />
+            </span>
+          ) : (
+            <div>{dataPorExtenso(dados.dataExibicao)}</div>
+          )}
+        </div>
+      )}
+      {comAtracao && (
+        <div className="trio">
+          <div className="campo-c">
+            <small>Locutor</small>
+            {mudar ? <input value={dados.locutor ?? ''} placeholder="???" aria-label="Locutor" autoComplete="off" spellCheck={false} onChange={(e) => mudar({ locutor: e.target.value })} /> : <div>{dados.locutor}</div>}
           </div>
-        )}
-        {comAtracao && (
-          <div className="campo-c ultimo atracao-c">
-            <small>Atração</small>
-            <span className="linha-atracao">
+          <div className="campo-c">
+            <small>Selo</small>
+            {mudar ? <input value={dados.selo ?? ''} placeholder="sem selo" aria-label="Selo" autoComplete="off" spellCheck={false} onChange={(e) => mudar({ selo: e.target.value })} /> : <div>{dados.selo}</div>}
+          </div>
+          <div className="campo-c tempo-c">
+            <small>Tempo</small>
+            <span className="linha-tempo">
+              <button
+                type="button"
+                className="modo-tempo"
+                title="Alternar entre fechar com e no máximo"
+                disabled={!mudar}
+                onClick={() => mudar?.({ duracaoModo: dados.duracaoModo === 'max' ? 'fechar' : 'max' })}
+              >
+                {dados.duracaoModo === 'max' ? 'máx.' : 'fecha'}
+              </button>
               {mudar ? (
-                <EscolhaDeNome
-                  rotulo="Atração"
-                  valor={dados.programa ?? ''}
-                  opcoes={() => programasConhecidos().map((p) => p.nome)}
-                  semente={(dados.claquete || '') + 'atracao'}
-                  mudar={(v) => {
-                    // a key às vezes engana (DONA serve a mais de uma novela): aqui se corrige à mão
-                    const p = programasConhecidos().find((x) => x.nome.toLowerCase() === v.trim().toLowerCase()) ?? null;
-                    mudar({ programa: v, ...(p ? { tipoPrograma: p.tipo } : {}) });
+                <input
+                  className="segundos"
+                  inputMode="numeric"
+                  value={dados.duracaoAlvoSeg ?? ''}
+                  placeholder="??"
+                  aria-label="Tempo da chamada, em segundos"
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value.replace(/\D/g, ''), 10);
+                    mudar({ duracaoAlvoSeg: Number.isFinite(n) ? n : null });
                   }}
                 />
               ) : (
-                <span>{dados.programa}</span>
+                <span>{dados.duracaoAlvoSeg ?? ''}</span>
               )}
-              {mudar && cadastrarAtracao && !programasConhecidos().some((p) => p.nome.toLowerCase() === (dados.programa ?? '').trim().toLowerCase()) && (
-                <span className="ancora-balao">
-                  <button type="button" className="cadastrar-c" aria-expanded={ligando} onClick={() => (balaoLigar ? setLigando((x) => !x) : cadastrarAtracao())}>cadastrar</button>
-                  {ligando && balaoLigar?.(() => setLigando(false))}
-                </span>
-              )}
-              <span className="pracas-c" role="radiogroup" aria-label="Praça">
-                {PRACAS.map((p) => (
-                  <button key={p} role="radio" aria-checked={dados.praca === p} disabled={!mudar} onClick={() => mudar?.({ praca: p })}>{p}</button>
-                ))}
-              </span>
+              <span className="aspas">''</span>
             </span>
+            {estimadaSeg != null && dados.duracaoAlvoSeg ? (
+              <span className={`estimada ${estimadaSeg > dados.duracaoAlvoSeg * 1.1 ? 'estourou' : ''}`} title="Leitura estimada da locução e das sonoras">
+                ≈ {estimadaSeg}'' lidos
+              </span>
+            ) : null}
           </div>
-        )}
+        </div>
+      )}
+      {comAtracao && (
+        <div className="campo-c ultimo atracao-c">
+          <small>Atração</small>
+          <span className="linha-atracao">
+            {mudar ? (
+              <EscolhaDeNome
+                rotulo="Atração"
+                valor={dados.programa ?? ''}
+                opcoes={() => programasConhecidos().map((p) => p.nome)}
+                semente={(dados.claquete || '') + 'atracao'}
+                mudar={(v) => {
+                  // a key às vezes engana (DONA serve a mais de uma novela): aqui se corrige à mão
+                  const p = programasConhecidos().find((x) => x.nome.toLowerCase() === v.trim().toLowerCase()) ?? null;
+                  mudar({ programa: v, ...(p ? { tipoPrograma: p.tipo } : {}) });
+                }}
+              />
+            ) : (
+              <span>{dados.programa}</span>
+            )}
+            {mudar && cadastrarAtracao && !programasConhecidos().some((p) => p.nome.toLowerCase() === (dados.programa ?? '').trim().toLowerCase()) && (
+              <span className="ancora-balao">
+                <button type="button" className="cadastrar-c" aria-expanded={ligando} onClick={() => (balaoLigar ? setLigando((x) => !x) : cadastrarAtracao())}>cadastrar</button>
+                {ligando && balaoLigar?.(() => setLigando(false))}
+              </span>
+            )}
+            <span className="pracas-c" role="radiogroup" aria-label="Praça">
+              {PRACAS.map((p) => (
+                <button key={p} role="radio" aria-checked={dados.praca === p} disabled={!mudar} onClick={() => mudar?.({ praca: p })}>{p}</button>
+              ))}
+            </span>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+  if (!recolhivel)
+    return (
+      <section className="claquete" aria-label="Claquete">
+        <div className="ripa" aria-hidden="true" />
+        {quadro}
+      </section>
+    );
+  // recolhível: as duas dobras se revezam com a animação de altura; a que está fechada sai do foco (inert)
+  const { aberta, mudar: abrir } = recolhivel;
+  return (
+    <section className={`claquete ficha-celular ${aberta ? 'aberta' : ''}`} aria-label="Claquete">
+      <div className="ripa" aria-hidden="true" />
+      <div className="dobra resumo" inert={aberta || undefined}>
+        <div>
+          <button type="button" className="ficha-resumo" aria-label="Abrir a ficha" onClick={() => abrir(true)}>
+            <span className="campo-c">
+              <small>Editor</small>
+              <b>{dados.editor || <Duvida semente={(dados.claquete || '') + 'editor'} rotulo="Editor não preenchido" />}</b>
+            </span>
+            <span className="campo-c">
+              <small>Exibição</small>
+              <b>{dataCurtaComDia(dados.dataExibicao) || <Duvida semente={(dados.claquete || '') + 'data'} rotulo="Exibição não preenchida" />}</b>
+            </span>
+            <span className="campo-c">
+              <small>Tempo</small>
+              <b>{dados.duracaoAlvoSeg != null ? `${dados.duracaoAlvoSeg}''` : <Duvida semente={(dados.claquete || '') + 'tempo'} rotulo="Tempo não preenchido" />}</b>
+            </span>
+          </button>
+        </div>
       </div>
+      <div className="dobra inteira" inert={!aberta || undefined}>
+        <div>{quadro}</div>
+      </div>
+      <button type="button" className="ripa-botao" aria-label={aberta ? 'Recolher a ficha' : 'Abrir a ficha inteira'} aria-expanded={aberta} onClick={() => abrir(!aberta)}>
+        <span><Icone nome="baixo" tam={16} traco={2.4} /></span>
+      </button>
     </section>
   );
 }
