@@ -1,10 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { apagarAoSair, armazenamento, escolherMinhaCor, herdarEnvio, mandarParaTrello, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro } from '../dados/armazenamento';
+import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
 import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
-import { exportar, pendencias, travamTrello } from '../modelo/exportar';
-import { herdarTipos } from '../modelo/versoes';
+import { travamTrello } from '../modelo/exportar';
 import type { Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
@@ -16,10 +15,11 @@ import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meu
 import { aplicarTema, temaSalvo, type Tema } from './tema';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
+import { avisoDaSubstituicao } from './Comparar';
 import { Icone } from './icones';
 import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado, TextoDaClaquete } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
-import { dataCurtaComDia, plural } from './util';
+import { dataCurtaComDia, ehCelular, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
@@ -299,8 +299,11 @@ function AvisoTrello({ r, mandar }: { r: Resumo; mandar?: () => Promise<void> })
   return null;
 }
 
+/** Versão nova de um roteiro que já está na fila. No computador, o Revisar abre a comparação com a anterior e a
+ *  decisão fica lá; no celular, que não comporta os dois lado a lado, o aviso da ficha traz os dois botões. */
 interface VersaoNova {
   anterior: Resumo;
+  comparar: () => void;
   substituir: () => void;
   manter: () => void;
 }
@@ -319,9 +322,11 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
   const [digitado, terminou] = useDigitacao(claquete, nova);
   // o que já está no Trello não vira ficha: vai para a seção No Trello
   const revisar = r.meta.revisar ?? [];
-  // a pergunta da v2 também pede atenção
+  // a pergunta da v2 e a da versão nova também pedem atenção
   const np = producao ? r.meta.naProducao : undefined;
-  const alerta = revisar.length > 0 || !!np;
+  const alerta = revisar.length > 0 || !!np || !!versao;
+  // o que o Revisar (e a claquete) abre: a comparação com a versão anterior ou com a produção, ou a revisão
+  const entrar = () => (versao && !ehCelular() ? versao.comparar() : np && producao ? producao.comparar() : abrir());
   const semEditor = !r.meta.editor;
   // alguém com o roteiro aberto: a orelha dobra, a claquete é selecionada e o nome é anotado à mão.
   // Depois que a pessoa sai, ficam a orelha pequena, um grifo e a rubrica.
@@ -346,7 +351,7 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
       <span className={`ficha-marca ${alerta ? 'revisar' : 'ok'}`} aria-hidden="true">
         {alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
       </span>
-      <button className="ficha-claquete" onClick={np && producao ? producao.comparar : abrir} aria-label={`Abrir ${claquete}`}>
+      <button className="ficha-claquete" onClick={entrar} aria-label={`Abrir ${claquete}`}>
         <b>
           <span className="claquete-alvo">
             {prioridade && terminou ? <Riscado traco={tracoDe(r.id)}><span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span></Riscado> : <span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span>}
@@ -383,7 +388,9 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
       </span>
       <span className="ficha-acoes some">
         {acoes}
-        {np && producao ? (
+        {versao ? (
+          <button className="botao primario" onClick={entrar} title="Comparar com a versão anterior e decidir antes de revisar">Revisar</button>
+        ) : np && producao ? (
           <button className="botao primario" onClick={producao.comparar} title="Comparar com o que já está no Trello e decidir antes de revisar">Comparar</button>
         ) : (
           <button className={`botao ${alerta ? 'primario' : ''}`} onClick={abrir}>{alerta ? 'Revisar' : 'Abrir'}</button>
@@ -394,8 +401,9 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
           <span>
             <Icone nome="duplicar" tam={14} /> Versão nova de <b>{versao.anterior.meta.claquete || 'um roteiro'}</b>, que já está na fila.
           </span>
-          <button className="botao-texto" onClick={versao.manter}>Manter as duas</button>
-          <button className="botao primario" onClick={versao.substituir}>Substituir a anterior</button>
+          {/* só no celular: no computador, a decisão fica na comparação */}
+          <button className="botao-texto so-celular" onClick={versao.manter}>Manter as duas</button>
+          <button className="botao primario so-celular" onClick={versao.substituir}>Substituir a anterior</button>
         </span>
       )}
       {np && producao && !versao && (
@@ -920,38 +928,24 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
     }
     void carregar();
   };
-  const jaNoTrello = (r?: Resumo) => r?.trello?.estado === 'enviado' || r?.trello?.estado === 'duplicado';
 
-  /** Versão nova de uma claquete que já estava na fila: fica a nova, com os tipos de arte da anterior. */
+  /** Versão nova de uma claquete que já estava na fila (o aviso da ficha, no celular): fica a nova, com o trabalho da anterior. */
   const substituir = async (nova: Resumo) => {
-    const anterior = roteiros?.find((x) => x.id === nova.meta.substitui);
     try {
-      const [rn, ra] = await Promise.all([armazenamento.ler(nova.id), nova.meta.substitui ? armazenamento.ler(nova.meta.substitui) : undefined]);
-      if (!rn) return;
-      if (!ra) {
-        await armazenamento.salvar({ ...rn, meta: { ...rn.meta, substitui: undefined } });
-        return void carregar();
-      }
-      const { doc, herdadas } = herdarTipos(rn.doc, ra.doc);
-      const atualizado: Roteiro = { ...rn, doc, meta: { ...rn.meta, substitui: undefined, editor: rn.meta.editor || ra.meta.editor } };
-      atualizado.meta.revisar = pendencias(exportar(atualizado));
-      await armazenamento.salvar(atualizado, 'substituiu a versão anterior');
-      // o card que a anterior já tinha fica com a nova, antes que ela saia
-      if (jaNoTrello(anterior)) await herdarEnvio(rn.id, ra.id).catch(() => {});
-      await armazenamento.apagar(ra.id);
-      const card = jaNoTrello(anterior) ? ' O card no Trello continua o da versão anterior.' : '';
-      avisar(herdadas ? `Versão anterior substituída. ${plural(herdadas, 'tipo de arte foi mantido', 'tipos de arte foram mantidos')}.${card}` : `Versão anterior substituída.${card}`);
+      const feito = await versaoNova.substituir(nova.id);
+      if (!feito) return;
+      const { roteiro, cardHerdado } = feito;
+      avisar(avisoDaSubstituicao(feito));
       // a anterior não tinha ido para o Trello: a nova vai, se não tiver pendência
-      if (temTrello() && !jaNoTrello(anterior) && !travamTrello(atualizado.meta.revisar).length) void mandar(atualizado);
+      if (temTrello() && !cardHerdado && !travamTrello(roteiro.meta.revisar).length) void mandar(roteiro);
       else void carregar();
     } catch {
       avisar('Não consegui substituir a versão anterior.');
     }
   };
   const manterAsDuas = async (nova: Resumo) => {
-    const rn = await armazenamento.ler(nova.id).catch(() => undefined);
-    if (rn) await armazenamento.salvar({ ...rn, meta: { ...rn.meta, substitui: undefined } }).catch(() => {});
-    if (rn && temTrello() && !travamTrello(rn.meta.revisar).length) void mandar({ ...rn, meta: { ...rn.meta, substitui: undefined } });
+    const rn = await versaoNova.manter(nova.id).catch(() => undefined);
+    if (rn && temTrello() && !travamTrello(rn.meta.revisar).length) void mandar(rn);
     else void carregar();
   };
 
@@ -989,7 +983,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         ordem={ordem++}
         prioridade={!!andamento[r.id]?.prioridade}
         abrir={() => abrir(r.id)}
-        versao={anterior ? { anterior, substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
+        versao={anterior ? { anterior, comparar: () => comparar(r.id), substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
         producao={r.meta.naProducao && (r.podeEditar || r.meu || aberto) ? { comparar: () => comparar(r.id) } : undefined}
         mandar={temTrello() && (r.podeEditar || r.meu || aberto) ? () => mandar(r) : undefined}
         cadastrarAtracao={temCadastros() && r.meta.claquete ? () => cadastros({ aba: 'atracoes', claquete: r.meta.claquete }) : undefined}

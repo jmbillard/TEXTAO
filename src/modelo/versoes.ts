@@ -1,5 +1,6 @@
-import { exportar } from './exportar';
-import { metaVazia, type NoJSON, type Roteiro } from './tipos';
+import { chaveDeArte } from './diferencas';
+import { exportar, pendencias } from './exportar';
+import { metaVazia, type Meta, type NoJSON, type Roteiro } from './tipos';
 import { semAcento } from './vocabularios';
 
 /* Versão nova de um roteiro que já estava na fila: o texto vem do arquivo novo, mas o trabalho já feito
@@ -36,3 +37,38 @@ export function herdarTipos(novo: NoJSON, anterior: NoJSON): { doc: NoJSON; herd
   });
   return { doc: copiar(novo), herdadas };
 }
+
+type Marcas = Pick<Meta, 'jaExiste' | 'naoProduzir' | 'produzir' | 'complexidade'>;
+
+/** As marcas da revisão (já existe, não produzir, produzir e a complexidade), pela chave da arte: as da anterior passam
+ *  para as artes que continuam na nova, menos onde a nova já tem a sua. */
+function herdarMarcas(nova: Roteiro, anterior: Roteiro): Marcas {
+  const chaves = new Set(exportar(nova).artes.map((a) => chaveDeArte(a.texto)));
+  const n = nova.meta;
+  const a = anterior.meta;
+  const listaDaNova = new Set([...(n.jaExiste ?? []), ...(n.naoProduzir ?? []), ...(n.produzir ?? [])]);
+  const juntar = (minhas: string[] | undefined, dela: string[] | undefined) => {
+    const lista = [...(minhas ?? []), ...(dela ?? []).filter((k) => chaves.has(k) && !listaDaNova.has(k))];
+    return lista.length ? [...new Set(lista)] : undefined;
+  };
+  const complexidade = { ...n.complexidade };
+  for (const [k, v] of Object.entries(a.complexidade ?? {})) if (chaves.has(k) && !(k in complexidade)) complexidade[k] = v;
+  return {
+    jaExiste: juntar(n.jaExiste, a.jaExiste),
+    naoProduzir: juntar(n.naoProduzir, a.naoProduzir),
+    produzir: juntar(n.produzir, a.produzir),
+    complexidade: Object.keys(complexidade).length ? complexidade : undefined,
+  };
+}
+
+/** "Substituir a anterior": fica a nova, sem a pergunta, com o trabalho já feito na anterior (os tipos e as
+ *  observações das artes, o editor e as marcas da revisão). As pendências são recalculadas. */
+export function substituirVersao(nova: Roteiro, anterior: Roteiro): { roteiro: Roteiro; herdadas: number } {
+  const { doc, herdadas } = herdarTipos(nova.doc, anterior.doc);
+  const roteiro: Roteiro = { ...nova, doc, meta: { ...nova.meta, ...herdarMarcas(nova, anterior), substitui: undefined, editor: nova.meta.editor || anterior.meta.editor } };
+  roteiro.meta.revisar = pendencias(exportar(roteiro));
+  return { roteiro, herdadas };
+}
+
+/** "Manter as duas": a nova só deixa de perguntar; a anterior fica na fila como está. */
+export const manterAsDuas = (nova: Roteiro): Roteiro => ({ ...nova, meta: { ...nova.meta, substitui: undefined } });

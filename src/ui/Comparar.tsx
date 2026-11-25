@@ -1,34 +1,54 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro } from '../dados/armazenamento';
+import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro, versaoNova } from '../dados/armazenamento';
 import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, type ArteComparada } from '../modelo/diferencas';
 import { exportar, pendencias } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
-import { dataCurtaComDia } from './util';
+import { dataCurtaComDia, plural } from './util';
 import { VisorPdf } from './VisorPdf';
 import { ehDocx, VisorOriginal } from './VisorOriginal';
 
 interface Props {
   id: string;
   voltar: () => void;
-  /** Depois de "é outro" ou "é v2": segue para a revisão de sempre. */
+  /** Depois da decisão (menos "Ignorar"): segue para a revisão de sempre do roteiro que ficou. */
   revisar: (id: string) => void;
   avisar: (texto: string) => void;
 }
 
-type Resposta = 'v2' | 'mesmo' | 'outro';
-const OPCOES: { id: Resposta; nome: string; dica: string }[] = [
+/* O lado de lá da comparação: o que já está na produção da arte (a claquete já tem card no Trello) ou, quando o
+   roteiro é a versão nova de outro que ainda está na fila, a versão anterior. */
+type Resposta = 'v2' | 'mesmo' | 'outro' | 'substituir' | 'manter';
+type Opcao = { id: Resposta; nome: string; dica: string };
+const OPCOES_PRODUCAO: Opcao[] = [
   { id: 'v2', nome: 'Atualizar o card', dica: 'Ao mandar, o card que já existe ganha as artes novas e este roteiro' },
   { id: 'outro', nome: 'Novo card', dica: 'Ao mandar, vira um card novo' },
   { id: 'mesmo', nome: 'Ignorar', dica: 'Não manda nada: liga ao card que já existe e volta para a fila' },
 ];
+const OPCOES_FILA: Opcao[] = [
+  { id: 'manter', nome: 'Manter as duas', dica: 'As duas versões ficam na fila' },
+  { id: 'substituir', nome: 'Substituir a anterior', dica: 'Fica a nova, com os tipos de arte, o editor e as marcas da anterior' },
+];
+
+/** O que a comparação precisa do lado de lá, venha da produção da arte ou da versão anterior. */
+type LadoDeLa = { texto: string; artes: string[]; redator?: string };
+const ladoDoRoteiro = (r: Roteiro): LadoDeLa => {
+  const s = exportar(r);
+  return { texto: s.texto.completo, artes: s.artes.map((a) => a.texto), redator: r.meta.redator };
+};
+
+/** O aviso depois de "Substituir a anterior", na comparação e no aviso da ficha (no celular). */
+export const avisoDaSubstituicao = ({ herdadas, cardHerdado }: { herdadas: number; cardHerdado: boolean }) =>
+  `Versão anterior substituída.${herdadas ? ` ${plural(herdadas, 'tipo de arte foi mantido', 'tipos de arte foram mantidos')}.` : ''}${cardHerdado ? ' O card no Trello continua o da versão anterior.' : ''}`;
 
 const diaDe = (iso: string | null) => (iso ? dataCurtaComDia(new Date(iso).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })) : '');
 
-/** O roteiro que chegou ao lado do que já está na produção da arte, com as diferenças marcadas. A decisão vem antes da revisão. */
+/** O roteiro que chegou ao lado do que já está na produção da arte, ou da versão anterior que está na fila, com as
+ *  diferenças marcadas. A decisão vem antes da revisão. */
 export function Comparar({ id, voltar, revisar, avisar }: Props) {
   const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
   const [producao, setProducao] = useState<ProducaoCompleta | null | undefined>(undefined);
+  const [anterior, setAnterior] = useState<Roteiro | null | undefined>(undefined);
   const [decidindo, setDecidindo] = useState(false);
   const [escolha, setEscolha] = useState<Resposta | null>(null);
 
@@ -50,6 +70,11 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
     void armazenamento.ler(id).then(async (r) => {
       if (!vivo) return;
       setRoteiro(r ?? null);
+      if (r?.meta.substitui) {
+        const a = await armazenamento.ler(r.meta.substitui).catch(() => undefined);
+        if (vivo) setAnterior(a ?? null);
+        return;
+      }
       const p = r ? await consultarProducao(r.meta.claquete) : null;
       if (vivo) setProducao(p);
     }, () => vivo && setRoteiro(null));
@@ -58,30 +83,59 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
     };
   }, [id]);
 
+  const daFila = !!roteiro?.meta.substitui;
+  const ladoDeLa = useMemo<LadoDeLa | null>(
+    () => (daFila ? (anterior ? ladoDoRoteiro(anterior) : null) : producao ? { texto: producao.texto, artes: producao.listaDeArtes, redator: producao.redator } : null),
+    [daFila, anterior, producao],
+  );
+
   const comparacao = useMemo(() => {
-    if (!roteiro || !producao) return null;
+    if (!roteiro || !ladoDeLa) return null;
     const s = exportar(roteiro);
-    const texto = diferencasDeTexto(producao.texto, s.texto.completo);
-    const artes = diferencasDeArtes(producao.listaDeArtes, s.artes.map((a) => a.texto));
+    const texto = diferencasDeTexto(ladoDeLa.texto, s.texto.completo);
+    const artes = diferencasDeArtes(ladoDeLa.artes, s.artes.map((a) => a.texto));
     const novas = artes.novas.filter((a) => a.tipo === 'entrou').length;
     const sairam = artes.antigas.filter((a) => a.tipo === 'saiu').length;
     const igual = semelhanca(texto);
-    const outroRedator = !mesmaPessoa(producao.redator, roteiro.meta.redator);
+    const outroRedator = !mesmaPessoa(ladoDeLa.redator, roteiro.meta.redator);
     return { texto, artes, novas, sairam, igual, outroRedator, mesmo: igual === 1 && !novas && !sairam };
-  }, [roteiro, producao]);
+  }, [roteiro, ladoDeLa]);
 
-  // as duas folhas: o PDF que está no card e o do roteiro novo, como vai para o Trello
+  // as duas folhas: o PDF que está no card (ou o da versão anterior) e o do roteiro novo, como vai para o Trello
   const claquete = roteiro?.meta.claquete ?? '';
-  const pdfAntigo = useCallback(() => pdfDaProducao(claquete), [claquete]);
+  const pdfAntigo = useCallback(() => (daFila ? (anterior ? pdfDoRoteiro(anterior) : Promise.resolve(null)) : pdfDaProducao(claquete)), [daFila, anterior?.id, claquete]); // eslint-disable-line react-hooks/exhaustive-deps
   const pdfNovo = useCallback(() => (roteiro ? pdfDoRoteiro(roteiro) : Promise.resolve(null)), [roteiro?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // o card que o roteiro aponta (guardado na chegada) vale mesmo se o Teable não responder agora
   const np = producao ?? roteiro?.meta.naProducao ?? null;
 
-  // sem escolha da pessoa: atualizar o card, ou ignorar quando os dois são iguais
-  const opcao: Resposta = escolha ?? (comparacao?.mesmo ? 'mesmo' : 'v2');
+  // sem escolha da pessoa: substituir a versão anterior; atualizar o card, ou ignorar quando os dois são iguais
+  const opcoes = daFila ? OPCOES_FILA : OPCOES_PRODUCAO;
+  const opcao: Resposta = escolha ?? (daFila ? 'substituir' : comparacao?.mesmo ? 'mesmo' : 'v2');
+
+  // versão nova da fila: as duas saídas do aviso da ficha, e depois a revisão da que ficou
+  const decidirNaFila = async (resposta: Resposta) => {
+    if (!roteiro || decidindo) return;
+    setDecidindo(true);
+    try {
+      if (resposta === 'substituir') {
+        const feito = await versaoNova.substituir(roteiro.id);
+        // a nova saiu da fila enquanto a pessoa decidia: não há o que revisar
+        if (!feito) return voltar();
+        avisar(avisoDaSubstituicao(feito));
+      } else {
+        if (!(await versaoNova.manter(roteiro.id))) return voltar();
+        avisar('As duas versões ficam na fila.');
+      }
+      revisar(roteiro.id);
+    } catch {
+      avisar(resposta === 'substituir' ? 'Não consegui substituir a versão anterior.' : 'Não consegui guardar a resposta.');
+      setDecidindo(false);
+    }
+  };
 
   const decidir = async (resposta: Resposta) => {
+    if (daFila) return decidirNaFila(resposta);
     if (!roteiro || !np || decidindo) return;
     setDecidindo(true);
     const meta = { ...roteiro.meta, naProducao: undefined };
@@ -105,7 +159,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
   };
 
   return (
-    <div className="comparar lightbox" role="dialog" aria-modal="true" aria-label="Comparar com o que já está no Trello">
+    <div className="comparar lightbox" role="dialog" aria-modal="true" aria-label={daFila ? 'Comparar com a versão anterior da fila' : 'Comparar com o que já está no Trello'}>
       <header className="cad-topo">
         <button className="voltar-cad" onClick={voltar}>
           <Icone nome="voltar" tam={16} /> Fila
@@ -119,24 +173,39 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
           <>
             <div className="comparar-cabeca">
             <div>
-            <h1>É o mesmo roteiro?</h1>
+            <h1>{daFila ? 'Versão nova do roteiro' : 'É o mesmo roteiro?'}</h1>
             </div>
             <div className="comparar-decisao">
               {/* o seletor muda o que o botão faz: a revisão segue como se a claquete não fosse repetida */}
-              <div className="segmento" role="radiogroup" aria-label="O que fazer com o card">
-                {OPCOES.map((o) => (
+              <div className="segmento" role="radiogroup" aria-label={daFila ? 'O que fazer com a versão anterior' : 'O que fazer com o card'}>
+                {opcoes.map((o) => (
                   <button key={o.id} role="radio" aria-checked={opcao === o.id} title={o.dica} onClick={() => setEscolha(o.id)}>
                     {o.nome}
                   </button>
                 ))}
               </div>
-              <button className="botao primario" disabled={decidindo || !np} onClick={() => void decidir(opcao)}>
+              <button className="botao primario" disabled={decidindo || (!daFila && !np)} onClick={() => void decidir(opcao)}>
                 {opcao === 'mesmo' ? 'Voltar para a fila' : 'Revisar'}
               </button>
             </div>
             </div>
 
             <div className="comparar-grade">
+              {daFila ? (
+                <Lado
+                  titulo={
+                    <span className="card-existente">
+                      <Icone nome="arquivo" tam={15} />
+                      <b>{anterior?.meta.claquete || 'Versão anterior'}</b>
+                      {anterior && <small>chegou {diaDe(anterior.criadoEm)}</small>}
+                    </span>
+                  }
+                  rotulo="versão anterior"
+                  gente={anterior && <Gente redator={anterior.meta.redator} />}
+                  artes={comparacao?.artes.antigas}
+                  folha={anterior && <FolhaDoRoteiro r={anterior} pdf={pdfAntigo} rotulo="Versão anterior" anotacao="anterior" />}
+                />
+              ) : (
               <Lado
                 titulo={
                   np ? (
@@ -154,6 +223,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                 artes={comparacao?.artes.antigas}
                 folha={roteiro && <VisorPdf carregar={pdfAntigo} rotulo="Roteiro no Trello" anotacao="no Trello" reserva={producao?.texto ? <div className="comparar-texto">{producao.texto}</div> : undefined} />}
               />
+              )}
               <Lado
                 titulo={
                   <span className="card-existente novo">
@@ -165,14 +235,7 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
                 rotulo="chegou agora"
                 gente={<Gente redator={roteiro.meta.redator} destacar={!!comparacao?.outroRedator} />}
                 artes={comparacao?.artes.novas ?? exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: 'igual' as const }))}
-                folha={
-                  // o roteiro novo em Word abre aqui mesmo, como o Word mostra (sem converter no servidor)
-                  ehDocx(roteiro.original?.nome) ? (
-                    <VisorOriginal id={roteiro.id} nome={roteiro.original?.nome} artes={[]} anotacao="novo" lado="direita" circular reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />
-                  ) : (
-                    <VisorPdf carregar={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" circular reserva={<div className="comparar-texto">{exportar(roteiro).texto.completo}</div>} />
-                  )
-                }
+                folha={<FolhaDoRoteiro r={roteiro} pdf={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" />}
               />
             </div>
 
@@ -190,11 +253,26 @@ export function Comparar({ id, voltar, revisar, avisar }: Props) {
               {comparacao.mesmo && <span className="parece">parece o mesmo</span>}
             </>
           ) : (
-            <span>{producao === undefined ? 'buscando o que já está na produção da arte…' : 'não consegui ler o que está na produção da arte'}</span>
+            <span>
+              {daFila
+                ? anterior === undefined ? 'abrindo a versão anterior…' : 'a versão anterior já saiu da fila'
+                : producao === undefined ? 'buscando o que já está na produção da arte…' : 'não consegui ler o que está na produção da arte'}
+            </span>
           )}
         </footer>
       )}
     </div>
+  );
+}
+
+/** A folha de um roteiro da fila: o Word abre aqui mesmo, como o Word mostra (sem converter no servidor); o resto, no PDF
+ *  como vai para o Trello. Sem os dois, o texto. */
+function FolhaDoRoteiro({ r, pdf, rotulo, anotacao, lado }: { r: Roteiro; pdf: () => Promise<ArrayBuffer | null>; rotulo: string; anotacao: string; lado?: 'direita' }) {
+  const reserva = <div className="comparar-texto">{exportar(r).texto.completo}</div>;
+  return ehDocx(r.original?.nome) ? (
+    <VisorOriginal id={r.id} nome={r.original?.nome} artes={[]} anotacao={anotacao} lado={lado} circular={!!lado} reserva={reserva} />
+  ) : (
+    <VisorPdf carregar={pdf} rotulo={rotulo} anotacao={anotacao} lado={lado} circular={!!lado} reserva={reserva} />
   );
 }
 

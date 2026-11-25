@@ -2,6 +2,7 @@ import { chaveDeArte } from '../modelo/diferencas';
 import { siglaDoTipo } from '../modelo/tipos';
 import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { chavesQueExistem, complexidadeDaArte, exportar } from '../modelo/exportar';
+import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
@@ -466,10 +467,48 @@ export async function pdfDoRoteiro(roteiro: Roteiro): Promise<ArrayBuffer> {
 }
 
 /** Versão nova que substitui outra: herda o card do Trello que a anterior já tinha. */
-export async function herdarEnvio(novo: string, anterior: string) {
+async function herdarEnvio(novo: string, anterior: string) {
   if (armazenamento.tipo !== 'servidor') return;
   await pedir(`/api/roteiros/${encodeURIComponent(novo)}/trello`, { method: 'POST', body: JSON.stringify({ herdarDe: anterior }) });
 }
+
+/** A anterior já foi para o Trello (ou já estava lá)? Sem servidor, nunca. */
+async function anteriorNoTrello(id: string) {
+  if (armazenamento.tipo !== 'servidor') return false;
+  const e = await pedir<{ estado: EnvioTrello['estado'] } | null>(`/api/roteiros/${encodeURIComponent(id)}/trello`).catch(() => null);
+  return e?.estado === 'enviado' || e?.estado === 'duplicado';
+}
+
+/** As duas saídas da versão nova de um roteiro que já estava na fila (o aviso da ficha no celular e a comparação). */
+export const versaoNova = {
+  /** Fica a nova, com o trabalho da anterior (modelo/versoes); o card que a anterior já tinha passa para ela, e a anterior sai da fila. */
+  async substituir(novaId: string): Promise<{ roteiro: Roteiro; herdadas: number; cardHerdado: boolean } | undefined> {
+    const rn = await armazenamento.ler(novaId);
+    if (!rn) return undefined;
+    const ra = rn.meta.substitui ? await armazenamento.ler(rn.meta.substitui) : undefined;
+    // a anterior já saiu da fila: só a pergunta sai
+    if (!ra) {
+      const roteiro = manterAsDuas(rn);
+      await armazenamento.salvar(roteiro);
+      return { roteiro, herdadas: 0, cardHerdado: false };
+    }
+    const { roteiro, herdadas } = substituirVersao(rn, ra);
+    await armazenamento.salvar(roteiro, 'substituiu a versão anterior');
+    // o card que a anterior já tinha fica com a nova, antes que ela saia
+    const cardHerdado = await anteriorNoTrello(ra.id);
+    if (cardHerdado) await herdarEnvio(rn.id, ra.id).catch(() => {});
+    await armazenamento.apagar(ra.id);
+    return { roteiro, herdadas, cardHerdado };
+  },
+  /** As duas ficam na fila; a nova só deixa de perguntar. */
+  async manter(novaId: string): Promise<Roteiro | undefined> {
+    const rn = await armazenamento.ler(novaId);
+    if (!rn) return undefined;
+    const roteiro = manterAsDuas(rn);
+    await armazenamento.salvar(roteiro);
+    return roteiro;
+  },
+};
 
 /** Cria o card no Trello. As artes e o texto saem daqui, do mesmo jeito que o app mostra. */
 export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {

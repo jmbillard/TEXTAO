@@ -1153,6 +1153,9 @@ kbd {
 .ficha-versao > span svg { vertical-align: -2px; margin-right: 6px; }
 .ficha-versao b { font: 600 13px var(--mono); color: var(--tinta); }
 .ficha-versao .botao { height: 30px; font-size: 12.5px; }
+/* no computador, a decisão da versão nova fica na comparação: o aviso é só informação */
+.ficha-versao .so-celular { display: none; }
+@media (max-width: 600px) { .ficha-versao .so-celular { display: inline-flex; } }
 
 /* tirar da fila com desfazer */
 .desfazer {

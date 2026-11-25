@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { agruparPorDia, filaVisivel, pendentes } from '../src/ui/fila';
-import { herdarTipos } from '../src/modelo/versoes';
+import { herdarTipos, manterAsDuas, substituirVersao } from '../src/modelo/versoes';
 import { dataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
-import { metaVazia, type Meta, type NoJSON } from '../src/modelo/tipos';
+import { metaVazia, type Meta, type NoJSON, type Roteiro } from '../src/modelo/tipos';
 import type { Andamento, Resumo } from '../src/dados/armazenamento';
 
 const resumo = (id: string, data: string, revisar: string[] = [], atualizadoEm = '2026-11-19T10:00:00Z'): Resumo => ({
@@ -51,6 +51,64 @@ describe('versão nova de um roteiro', () => {
     const artes = exportar({ id: 't', meta: metaVazia(), doc: resultado, revisao: 1, criadoEm: '', atualizadoEm: '' }).artes;
     expect(artes.map((a) => [a.texto, a.subtipo])).toEqual([['A grande festa', 'cartao'], ['HOJE', 'assinatura'], ['ARTE NOVA', '']]);
     expect(herdadas).toBe(2);
+  });
+
+  const roteiro = (id: string, artes: [string, string][], meta: Partial<Meta> = {}): Roteiro => ({
+    id, meta: { ...metaVazia(), dataExibicao: '2026-11-20', ...meta }, doc: doc(artes), revisao: 1, criadoEm: '', atualizadoEm: '',
+  });
+
+  it('substituir: fica a nova, sem a pergunta, com os tipos e o editor da anterior', () => {
+    const anterior = roteiro('a', [['VEM AÍ', 'cartao']], { editor: 'Fulano' });
+    const nova = roteiro('n', [['Vem ai', '']], { substitui: 'a' });
+    const { roteiro: r, herdadas } = substituirVersao(nova, anterior);
+    expect(r.id).toBe('n');
+    expect(r.meta.substitui).toBeUndefined();
+    expect(r.meta.editor).toBe('Fulano');
+    expect(exportar(r).artes.map((a) => a.subtipo)).toEqual(['cartao']);
+    expect(herdadas).toBe(1);
+    expect(r.meta.revisar).toEqual(pendencias(exportar(r)));
+  });
+
+  it('substituir: o editor que a nova já tem não é trocado', () => {
+    const { roteiro: r } = substituirVersao(roteiro('n', [['HOJE', '']], { editor: 'Beltrano', substitui: 'a' }), roteiro('a', [['HOJE', '']], { editor: 'Fulano' }));
+    expect(r.meta.editor).toBe('Beltrano');
+  });
+
+  it('substituir: as artes que continuam herdam já existe, não produzir, produzir e a complexidade', () => {
+    const anterior = roteiro('a', [['VEM AÍ', 'cartao'], ['HOJE', 'assinatura'], ['DOMINGO', 'cartao'], ['NO PLAY', 'logo'], ['SAIU', 'logo']], {
+      jaExiste: ['VEM AI', 'SAIU'],
+      naoProduzir: ['HOJE'],
+      produzir: ['NO PLAY'],
+      complexidade: { DOMINGO: 3, SAIU: 2 },
+    });
+    const nova = roteiro('n', [['Vem aí', ''], ['Hoje', ''], ['Domingo', ''], ['No play', ''], ['ARTE NOVA', '']], { substitui: 'a' });
+    const { roteiro: r } = substituirVersao(nova, anterior);
+    expect(r.meta.jaExiste).toEqual(['VEM AI']);
+    expect(r.meta.naoProduzir).toEqual(['HOJE']);
+    expect(r.meta.produzir).toEqual(['NO PLAY']);
+    expect(r.meta.complexidade).toEqual({ DOMINGO: 3 });
+  });
+
+  it('substituir: a marca que a nova já tem vale mais que a da anterior', () => {
+    const anterior = roteiro('a', [['HOJE', ''], ['DOMINGO', '']], { naoProduzir: ['HOJE'], complexidade: { DOMINGO: 3 } });
+    const nova = roteiro('n', [['HOJE', ''], ['DOMINGO', '']], { jaExiste: ['HOJE'], complexidade: { DOMINGO: 2 }, substitui: 'a' });
+    const { roteiro: r } = substituirVersao(nova, anterior);
+    expect(r.meta.jaExiste).toEqual(['HOJE']);
+    expect(r.meta.naoProduzir).toBeUndefined();
+    expect(r.meta.complexidade).toEqual({ DOMINGO: 2 });
+  });
+
+  it('substituir: sem marcas na anterior, a nova fica sem marcas', () => {
+    const { roteiro: r } = substituirVersao(roteiro('n', [['HOJE', '']], { substitui: 'a' }), roteiro('a', [['HOJE', '']]));
+    expect([r.meta.jaExiste, r.meta.naoProduzir, r.meta.produzir, r.meta.complexidade]).toEqual([undefined, undefined, undefined, undefined]);
+  });
+
+  it('manter as duas: a nova só perde a pergunta', () => {
+    const nova = roteiro('n', [['HOJE', '']], { substitui: 'a', editor: 'Fulano' });
+    const r = manterAsDuas(nova);
+    expect(r.meta.substitui).toBeUndefined();
+    expect(r.doc).toBe(nova.doc);
+    expect(r.meta.editor).toBe('Fulano');
   });
 });
 
