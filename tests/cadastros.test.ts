@@ -2,7 +2,7 @@
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
-import { criarCadastros, normalizarKey } from '../servidor/cadastros.mjs';
+import { ACERVOS, criarCadastros, normalizarKey, valorDoAcervo } from '../servidor/cadastros.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 
@@ -21,13 +21,18 @@ const ENV = {
   CADASTRO_ADMINS: 'chefe@empresa.com',
 };
 
-/** Um Teable de mentira, com as cinco tabelas, e o Trello. Nomes inventados. */
-function falso() {
+type Campo = { id: string; name: string; type: string; options?: { choices: { name: string }[] } };
+const ACERVO_NOVO: Campo = { id: 'fldAcervo', name: 'acervo', type: 'singleSelect', options: { choices: [{ name: 'próprio' }, { name: 'do filme' }, { name: 'sem acervo' }] } };
+const TIPO_ANTIGO: Campo = { id: 'fldTipo', name: 'tipo', type: 'singleSelect', options: { choices: [{ name: 'Atração' }, { name: 'Sessão de filme' }, { name: 'VT' }, { name: 'Genérica' }] } };
+
+/** Um Teable de mentira, com as cinco tabelas, e o Trello. Nomes inventados. O campo do acervo das atrações, quando
+    vem, é a coluna nova ou a antiga. */
+function falso(campoAcervo: Campo | null = null) {
   let n = 100;
   const tabelas: Record<string, { id: string; fields: Record<string, unknown> }[]> = {
     tblAtr: [
       { id: 'recA1', fields: { atracao: 'Show da Noite', categoria: 'Variedades', pasta: 'SHOW', projeto_win: 'P:\\SHOW' } },
-      { id: 'recA2', fields: { atracao: 'A Casa da Colina', categoria: 'Novelas', pasta: 'COLINA' } },
+      { id: 'recA2', fields: { atracao: 'A Casa da Colina', categoria: 'Novelas', pasta: 'COLINA', ...(campoAcervo ? { [campoAcervo.name]: campoAcervo.name === 'tipo' ? 'Genérica' : 'sem acervo' } : {}) } },
     ],
     tblKeyAtr: [
       { id: 'recK1', fields: { key: 'SHOW DA NOITE', atracoes: [{ id: 'recA1', title: 'Show da Noite' }] } },
@@ -56,8 +61,14 @@ function falso() {
         { id: 'fldServ', name: 'servidor', type: 'singleSelect', options: { choices: [{ name: 'HP' }, { name: 'SP' }] } },
         { id: 'fldProj', name: 'projeto_win', type: 'formula', isComputed: true, options: { expression: '"\\\\\\\\" & {fldServ} & "\\\\" & {fldPasta} & "\\\\" & {fldNome}' } },
         { id: 'fldOut', name: 'output_win', type: 'formula', isComputed: true, options: { expression: '{fldProj} & "\\\\OUTPUT"' } },
+        ...(campoAcervo ? [campoAcervo] : []),
       ]);
     if (metodo === 'GET') return ok({ records: tabelas[tabela].map((r) => ({ id: r.id, fields: r.fields })) });
+    if (metodo === 'PATCH') {
+      const r = tabelas[tabela].find((x) => x.id === recId)!;
+      Object.assign(r.fields, (corpo as { record: { fields: Record<string, unknown> } }).record.fields);
+      return ok(r);
+    }
     if (metodo === 'DELETE') {
       tabelas[tabela] = tabelas[tabela].filter((r) => r.id !== recId);
       return ok({});
@@ -120,6 +131,53 @@ describe('cadastros no Teable', () => {
     expect((await c.novaKey('atracao', 'recA2', 'colina resumo')).key).toBe('COLINA RESUMO');
   });
 
+  it.each([
+    ['a coluna nova (acervo)', ACERVO_NOVO, ['próprio', 'do filme', 'sem acervo']],
+    ['a coluna antiga (tipo)', TIPO_ANTIGO, ['Atração', 'Sessão de filme', 'Genérica']],
+  ])('o acervo da atração, com %s: lê, cria (próprio é o padrão) e troca na coluna que existir', async (_, campo, valores) => {
+    const { buscar, pedidos, tabelas } = falso(campo);
+    const c = criarCadastros(ENV, { buscar });
+    const d = await c.ler();
+    expect(d.atracoes.map((a: { nome: string; acervo: string }) => [a.nome, a.acervo])).toEqual([
+      ['A Casa da Colina', 'sem'],
+      ['Show da Noite', 'proprio'], // vazio vale próprio
+    ]);
+    await c.novaAtracao({ nome: 'Festa na Praça', keys: ['FESTA'] });
+    await c.novaAtracao({ nome: 'Cine Noite', acervo: 'filme', keys: ['CINE NOITE'] });
+    await c.novaAtracao({ nome: 'Chamadas Avulsas', acervo: 'sem', keys: ['AVULSAS'] });
+    expect(tabelas.tblAtr.slice(-3).map((r) => r.fields[campo.name])).toEqual(valores);
+    await expect(c.novaAtracao({ nome: 'Outra', acervo: 'VT', keys: ['OUTRA'] })).rejects.toThrow('Escolha o acervo');
+
+    expect(await c.mudarAcervo('recA2', 'filme')).toEqual({ id: 'recA2', nome: 'A Casa da Colina', acervo: 'filme' });
+    const patch = pedidos.find((p) => p.metodo === 'PATCH')!;
+    expect(patch.url).toBe('http://teable:3000/api/table/tblAtr/record/recA2');
+    expect(patch.corpo).toEqual({ fieldKeyType: 'name', typecast: true, record: { fields: { [campo.name]: valores[1] } } });
+    expect((await c.ler()).atracoes.find((a: { id: string }) => a.id === 'recA2').acervo).toBe('filme');
+    await expect(c.mudarAcervo('recNaoTem', 'sem')).rejects.toThrow('não está mais nos cadastros');
+  });
+
+  it('sem a coluna do acervo no Teable, a atração nova não grava o acervo e a troca é recusada', async () => {
+    const { buscar, tabelas } = falso();
+    const c = criarCadastros(ENV, { buscar });
+    await c.novaAtracao({ nome: 'Festa na Praça', acervo: 'filme', keys: ['FESTA'] });
+    expect(tabelas.tblAtr.at(-1)!.fields).toEqual({ atracao: 'Festa na Praça' });
+    await expect(c.mudarAcervo('recA2', 'filme')).rejects.toThrow('não tem a coluna do acervo');
+  });
+
+  it('o valor gravado: o acervo de dentro traduzido para as opções da coluna que existir', () => {
+    const nova = { nome: 'acervo', opcoes: ['próprio', 'do filme', 'sem acervo'] };
+    const antiga = { nome: 'tipo', opcoes: ['Atração', 'Sessão de filme', 'VT', 'Genérica'] };
+    expect(ACERVOS.map((a: string) => valorDoAcervo(a, nova))).toEqual(['próprio', 'do filme', 'sem acervo']);
+    expect(ACERVOS.map((a: string) => valorDoAcervo(a, antiga))).toEqual(['Atração', 'Sessão de filme', 'Genérica']);
+    // a coluna ainda com o nome antigo, mas já com as opções novas: valem as opções
+    expect(valorDoAcervo('filme', { nome: 'tipo', opcoes: ['próprio', 'do filme', 'sem acervo'] })).toBe('do filme');
+    // sem as opções (o campo não disse), o padrão de cada coluna
+    expect(valorDoAcervo('sem', { nome: 'acervo', opcoes: [] })).toBe('sem acervo');
+    expect(valorDoAcervo('sem', { nome: 'tipo', opcoes: [] })).toBe('Genérica');
+    expect(valorDoAcervo('filme', null)).toBeNull();
+    expect(valorDoAcervo('VT', nova)).toBeNull();
+  });
+
   it('redator e editor novos viram opção no Trello e linha no Teable', async () => {
     const { buscar, pedidos, tabelas } = falso();
     const c = criarCadastros(ENV, { buscar });
@@ -171,7 +229,7 @@ describe('rotas dos cadastros', () => {
   const ana = como('ana@empresa.com');
   const chefe = como('chefe@empresa.com');
   beforeAll(async () => {
-    const { buscar } = falso();
+    const { buscar } = falso(ACERVO_NOVO);
     const app = criarApp({ db: abrirBanco(':memory:'), env: {}, cadastros: criarCadastros(ENV, { buscar }) });
     servidor = createServer(app);
     await new Promise<void>((ok) => servidor.listen(0, ok));
@@ -192,5 +250,14 @@ describe('rotas dos cadastros', () => {
     expect((await chefe('/api/cadastros/redatores/recR1', { method: 'DELETE' })).status).toBe(200);
     expect((await chefe('/api/cadastros/editores/recE1/keys/recKE1', { method: 'DELETE' })).status).toBe(200);
     expect((await ana('/api/cadastros/atracoes/recA2/keys', { method: 'POST', body: JSON.stringify({ key: 'colina 2' }) })).status).toBe(200);
+  });
+
+  it('todos trocam o acervo de uma atração; o acervo desconhecido é recusado', async () => {
+    const r = await ana('/api/cadastros/atracoes/recA1', { method: 'PATCH', body: JSON.stringify({ acervo: 'sem' }) });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ id: 'recA1', nome: 'Show da Noite', acervo: 'sem' });
+    const ruim = await ana('/api/cadastros/atracoes/recA1', { method: 'PATCH', body: JSON.stringify({ acervo: 'Genérica' }) });
+    expect(ruim.status).toBe(400);
+    expect((await ana('/api/cadastros/redatores/recR1', { method: 'PATCH', body: JSON.stringify({ acervo: 'sem' }) })).status).toBe(405);
   });
 });

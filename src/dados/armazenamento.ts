@@ -362,10 +362,13 @@ export interface KeyCadastro {
   id: string;
   key: string;
 }
+/** O acervo da atração: próprio (as artes são dela), do filme (sessão de filme) ou sem acervo. */
+export type AcervoDaAtracao = 'proprio' | 'filme' | 'sem';
 export interface AtracaoCadastro {
   id: string;
   nome: string;
   categoria: string;
+  acervo: AcervoDaAtracao;
   keys: KeyCadastro[];
   caminhos: Record<string, string>;
   campos: Record<string, string>;
@@ -414,6 +417,8 @@ export const cadastrar = <T = { id: string; nome: string }>(tipo: TipoCadastro, 
   pedir<T>(`/api/cadastros/${tipo}`, { method: 'POST', body: JSON.stringify(dados) });
 export const darKey = (tipo: TipoCadastro, id: string, key: string) =>
   pedir<KeyCadastro>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}/keys`, { method: 'POST', body: JSON.stringify({ key }) });
+export const mudarAcervo = (id: string, acervo: AcervoDaAtracao) =>
+  pedir<{ id: string; nome: string; acervo: AcervoDaAtracao }>(`/api/cadastros/atracoes/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ acervo }) });
 export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
   pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });
 

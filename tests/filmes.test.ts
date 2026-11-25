@@ -199,7 +199,7 @@ const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', 
 type FilmeDoBanco = { __id: string; titulo: string; ano_de_producao: number | null; projeto_win?: string; projeto_mac?: string; output_win?: string; output_mac?: string; poster?: { name: string; token: string }[] | null };
 type ExibicaoDoBanco = { filme: { id: string; title: string }; sessao: { id: string; title: string }; data_de_exibicao: string; card_ID: string; link: string; labels: string[] | null; exibicao?: string };
 type ArteDoAcervo = { arte: string; filme: { id: string; title: string } };
-type SessaoDoBanco = { __id: string; atracao: string; tipo: string };
+type SessaoDoBanco = { __id: string; atracao: string; tipo?: string; acervo?: string | null };
 function postgresFalso(banco: { filmes?: FilmeDoBanco[]; exibicoes?: ExibicaoDoBanco[]; acervo?: ArteDoAcervo[]; atracoes?: SessaoDoBanco[] }) {
   const consultas: string[] = [];
   // o dia da exibição em Brasília, como o filtro por data das consultas faz no Postgres
@@ -657,6 +657,23 @@ describe('aba Filmes: o envio', () => {
     expect((await r.json()).erro).toMatch(/TRELLO_LISTA_FILMES/);
     expect((await (await api(`/api/filmes/previas/${id}`)).json()).envio).toEqual({ ligado: false, faltando: ['TRELLO_LISTA_FILMES'] });
     expect(falsos.pedidos).toEqual([]);
+  });
+
+  it.each([
+    ['a coluna nova (acervo)', [{ __id: 'recSessaoSuper', atracao: 'Supercine', acervo: 'do filme' }, { __id: 'recDomMaior', atracao: 'Domingo Maior', acervo: null }]],
+    ['a coluna antiga (tipo)', [{ __id: 'recSessaoSuper', atracao: 'Supercine', tipo: 'Sessão de filme' }, { __id: 'recDomMaior', atracao: 'Domingo Maior', tipo: 'Atração' }]],
+  ])('as sessões de filme do cadastro, com %s: só a de acervo do filme vira o vínculo da exibição', async (_, atracoes: SessaoDoBanco[]) => {
+    const { enviar, terminar, falsos } = await paraEnviar(
+      [
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'SUPERCINE', data: '05/12/2026' },
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'DOMINGO MAIOR', data: '06/12/2026' },
+      ],
+      { filmes: [DESPEDIDA], atracoes },
+    );
+    await enviar();
+    await terminar();
+    const exibicoes = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: Record<string, unknown> }[])[0].fields);
+    expect(exibicoes.map((e) => e.sessao)).toEqual([{ id: 'recSessaoSuper' }, undefined]);
   });
 
   it('o filme sem título pede atenção e não vai', async () => {

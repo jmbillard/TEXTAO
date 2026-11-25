@@ -2633,3 +2633,11 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .pagina.editor:has(.barra-lote.no-celular) .mesa { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
   body:has(.barra-lote.no-celular) .avisos { bottom: calc(118px + env(safe-area-inset-bottom, 0px)); padding: 0 16px; }
 }
+/* o acervo da atração na lista: do filme e sem acervo ficam marcados; o próprio (o padrão) só aparece ao passar o mouse */
+.acervo-cad { font: 500 12px var(--sans); color: var(--tinta3); background: none; border: 1px dashed var(--regua-forte); border-radius: 999px; padding: 2px 9px; cursor: pointer; transition: opacity 0.15s, color 0.15s, border-color 0.15s; }
+.acervo-cad:hover { color: var(--tinta); border-color: var(--tinta3); }
+.acervo-cad.filme, .acervo-cad.sem { border-style: solid; color: var(--tinta2); }
+.acervo-cad.proprio { opacity: 0; }
+.item-cad:hover .acervo-cad.proprio, .acervo-cad.proprio:focus-visible { opacity: 1; }
+@media (hover: none) { .acervo-cad.proprio { opacity: 1; } }
+.acervo-trocar .cats button { font-size: 12px; padding: 3px 9px; }

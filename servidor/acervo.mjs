@@ -5,15 +5,17 @@
  * Tabela ARTES_acervo: arte (texto), key (fórmula, só para ver: o app calcula a sua), tipo (seleção; à mão, nunca
  * pelo PROMeiro), atracao (vínculo → atracoes), claquete (vínculo → ARTE_producao), filme (vínculo → filmes).
  *
- * O tipo da atração (campo tipo em atracoes) diz como o acervo funciona:
- *   Atração e VT: acervo próprio.
- *   Sessão de filme: o pacote gráfico é do filme, em qualquer sessão. Pela sessão e pelo dia, exibicoes diz o filme;
- *     o que ele tem pronto são os checklists das prévias dele (o card_ID de cada exibição, usado ou não) e as artes
- *     gravadas com ele aqui.
- *   Genérica (VTs, EVENTOS, Shows Diversos…): sem acervo; o que tem linguagem própria ganha atração própria.
+ * O acervo da atração (campo acervo em atracoes; antes, tipo) diz como o acervo funciona:
+ *   próprio (antes Atração ou VT; vazio também vale próprio): as artes são da atração.
+ *   do filme (antes Sessão de filme): o pacote gráfico é do filme, em qualquer sessão. Pela sessão e pelo dia,
+ *     exibicoes diz o filme; o que ele tem pronto são os checklists das prévias dele (o card_ID de cada exibição, usado
+ *     ou não) e as artes gravadas com ele aqui.
+ *   sem acervo (antes Genérica: VTs, EVENTOS, Shows Diversos…): o que tem linguagem própria ganha atração própria.
+ * Enquanto a coluna nova não existe no Teable, vale a antiga com os valores antigos (acervoDaAtracao, em cadastros).
  *
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
  */
+import { acervoDaAtracao } from './cadastros.mjs';
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 import { nivelDeComplexidade } from './trello.mjs';
@@ -117,23 +119,28 @@ export function criarAcervo(env, deps = {}) {
     return [...m.values()];
   };
 
-  // o tipo de cada atração, guardado por 10 min; sem a coluna (ou sem a tabela), toda atração tem acervo próprio
-  let memoTipos = { em: 0, tipos: null };
-  async function tipoDe(atracao) {
-    if (!t.atracoes || !consultar) return 'Atração';
-    if (!memoTipos.tipos || Date.now() - memoTipos.em > 600_000) {
+  // o acervo de cada atração ('proprio' | 'filme' | 'sem'), guardado por 10 min; sem a coluna (ou sem a tabela), toda
+  // atração tem acervo próprio. SELECT *: a coluna é acervo ou, antes da troca no Teable, tipo
+  let memoAcervos = { em: 0, acervos: null };
+  async function acervoDe(atracao) {
+    if (!t.atracoes || !consultar) return 'proprio';
+    if (!memoAcervos.acervos || Date.now() - memoAcervos.em > 600_000) {
       try {
-        const linhas = await consultar(`SELECT "atracao", "tipo" FROM ${t.atracoes}`);
-        memoTipos = { em: Date.now(), tipos: new Map(linhas.map((l) => [nomeComparavel(l.atracao), String(lerTipo(l.tipo) || 'Atração')])) };
+        const linhas = await consultar(`SELECT * FROM ${t.atracoes}`);
+        memoAcervos = { em: Date.now(), acervos: new Map(linhas.map((l) => [nomeComparavel(l.atracao), acervoDaAtracao(l)])) };
       } catch (e) {
-        console.warn(`[acervo] não li o tipo das atrações: ${e instanceof Error ? e.message : e}`);
-        memoTipos = { em: Date.now(), tipos: new Map() };
+        console.warn(`[acervo] não li o acervo das atrações: ${e instanceof Error ? e.message : e}`);
+        memoAcervos = { em: Date.now(), acervos: new Map() };
       }
     }
-    return memoTipos.tipos.get(nomeComparavel(atracao)) ?? 'Atração';
+    return memoAcervos.acervos.get(nomeComparavel(atracao)) ?? 'proprio';
   }
-  const ehSessao = async (atracao) => /^sess/i.test(await tipoDe(atracao));
-  const semAcervo = async (atracao) => /^gen[eé]rica/i.test(await tipoDe(atracao));
+  const ehSessao = async (atracao) => (await acervoDe(atracao)) === 'filme';
+  const semAcervo = async (atracao) => (await acervoDe(atracao)) === 'sem';
+  /** O acervo de uma atração mudou nos cadastros: a próxima consulta relê. */
+  const esquecerAcervos = () => {
+    memoAcervos = { em: 0, acervos: null };
+  };
 
   /** O filme que a sessão exibe naquele dia (exibicoes): { id, nome } ou null. */
   async function filmeDe(atracao, data) {
@@ -183,7 +190,7 @@ export function criarAcervo(env, deps = {}) {
     return [...saida.values()];
   }
 
-  /** As artes de uma atração (pelo nome). Sessão de filme e categoria genérica não têm acervo próprio. */
+  /** As artes de uma atração (pelo nome). A do filme e a sem acervo não têm acervo próprio. */
   async function daAtracao(atracao) {
     const n = nomeComparavel(atracao);
     if (!n || (await semAcervo(atracao)) || (await ehSessao(atracao))) return [];
@@ -280,5 +287,5 @@ export function criarAcervo(env, deps = {}) {
     return ids.length;
   }
 
-  return { ligado, grava, tipoDe, semAcervo, ehSessao, filmeDe, doFilme, daAtracao, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, acervoDe, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }

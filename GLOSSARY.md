@@ -64,7 +64,8 @@ O começo da claquete que aponta a atração (`CLINICA`, `PREMIO 2026`), na tabe
 _Evitar_: padrão, apelido
 
 **Sessão de filme**:
-A atração que exibe filmes da grade (Tela Quente, Supercine, Corujão…). A arte dela é do filme daquele dia.
+A atração que exibe filmes da grade (Tela Quente, Supercine, Corujão…). A arte dela é do filme daquele dia: o acervo
+dela é "do filme".
 
 **Identidade própria do filme**:
 A arte feita para aquele filme (título, cartão…), com um card para cada exibição. É o caso das sessões de filme, menos a
@@ -103,6 +104,15 @@ _Evitar_: demanda
 As artes que uma atração (ou um filme) já tem prontas, na tabela ARTES_acervo. A arte do roteiro que bate com o
 acervo vem riscada.
 _Evitar_: banco de artes, biblioteca
+
+**Acervo da atração**:
+Como o acervo de uma atração funciona. É um de três valores; sem valor, vale "próprio":
+- **próprio**: as artes prontas são da própria atração (o caso comum);
+- **do filme**: a sessão de filme; as artes prontas são do filme daquele dia, em qualquer sessão;
+- **sem acervo**: a atração genérica (VTs, EVENTOS, Shows Diversos…), que não guarda arte; o que tem linguagem própria
+  ganha atração própria.
+Não é a categoria: a categoria diz o gênero (novela, show, filme…), e dentro de uma categoria há os três acervos.
+_Evitar_: tipo da atração, Genérica, Atração (como valor)
 
 **Pacote gráfico novo**:
 Quando a atração troca a identidade: as artes do acervo dela deixam de valer (zerar o acervo).

@@ -966,7 +966,8 @@ export function criarTrello(env, deps = {}) {
       leitura: ['card_ID', 'claquete', 'key', 'status', 'designers', 'entregue', 'data_entrega', 'data_entrada'],
       redatores: ['redator', 'redator_ID', 'customField_ID'],
       editores: ['editor', 'editor_ID', 'customField_ID'],
-      atracoes: ['atracao', 'pattern', 'projeto_win', 'output_win', 'tipo'],
+      // acervo|tipo: uma ou outra (o acervo da atração, na coluna nova ou na antiga)
+      atracoes: ['atracao', 'pattern', 'projeto_win', 'output_win', 'acervo|tipo'],
       prioridade: ['key'],
       exibicoes: ['filme', 'sessao', 'data_de_exibicao', 'card_ID', 'output', 'labels'],
     };
@@ -979,7 +980,7 @@ export function criarTrello(env, deps = {}) {
         const [esq, tab] = t[nome].replaceAll('"', '').split('.');
         const tem = (await sql(`SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2`, [esq, tab])).map((l) => l.column_name);
         if (!tem.length) return { ok: false, detalhe: `a tabela ${t[nome]} não existe (ou o usuário não lê)` };
-        const faltam = cols.filter((c) => !tem.includes(c));
+        const faltam = cols.filter((c) => !c.split('|').some((x) => tem.includes(x))).map((c) => c.replace('|', ' (ou ') + (c.includes('|') ? ')' : ''));
         const [{ n }] = await sql(`SELECT count(*)::int AS n FROM ${t[nome]}`);
         return faltam.length ? { ok: false, detalhe: `faltam colunas: ${faltam.join(', ')}` } : `${n} linhas`;
       });

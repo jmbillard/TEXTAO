@@ -5,8 +5,10 @@ import {
   cadastrar,
   darKey,
   lerCadastros,
+  mudarAcervo,
   removerCadastro,
   zerarAcervo,
+  type AcervoDaAtracao,
   type AtracaoCadastro,
   type Cadastros as DadosCadastros,
   type CampoCaminho,
@@ -367,6 +369,56 @@ function NovoPacote({ nome, avisar }: { nome: string; avisar: (t: string) => voi
   );
 }
 
+/** O acervo da atração, como aparece na tela (próprio é o padrão). */
+const ACERVOS: { valor: AcervoDaAtracao; rotulo: string; dica: string }[] = [
+  { valor: 'proprio', rotulo: 'próprio', dica: 'As artes prontas são da atração.' },
+  { valor: 'filme', rotulo: 'do filme', dica: 'Sessão de filme: as artes prontas são do filme do dia.' },
+  { valor: 'sem', rotulo: 'sem acervo', dica: 'Genérica: nenhuma arte fica guardada.' },
+];
+const rotuloDoAcervo = (a: AcervoDaAtracao) => ACERVOS.find((x) => x.valor === a)?.rotulo ?? 'próprio';
+
+/** A escolha do acervo: as três opções, uma sempre marcada. */
+function EscolhaDoAcervo({ valor, mudar, desligado = false }: { valor: AcervoDaAtracao; mudar: (a: AcervoDaAtracao) => void; desligado?: boolean }) {
+  return (
+    <div className="cats" role="radiogroup" aria-label="Acervo">
+      {ACERVOS.map((a) => (
+        <button key={a.valor} type="button" role="radio" aria-checked={valor === a.valor} title={a.dica} disabled={desligado} onClick={() => mudar(a.valor)}>
+          {a.rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** O acervo de uma atração da lista: a marca (do filme, sem acervo; o próprio só aparece ao passar o mouse), que abre
+    as três opções para trocar. */
+function AcervoNaLista({ atracao, trocar }: { atracao: AtracaoCadastro; trocar: (a: AcervoDaAtracao) => Promise<void> }) {
+  const [aberto, setAberto] = useState(false);
+  const [indo, setIndo] = useState(false);
+  if (aberto)
+    return (
+      <span className="acervo-trocar" onKeyDown={(e) => e.key === 'Escape' && setAberto(false)}>
+        <EscolhaDoAcervo
+          valor={atracao.acervo}
+          desligado={indo}
+          mudar={async (a) => {
+            if (a !== atracao.acervo) {
+              setIndo(true);
+              await trocar(a);
+              setIndo(false);
+            }
+            setAberto(false);
+          }}
+        />
+      </span>
+    );
+  return (
+    <button type="button" className={`acervo-cad ${atracao.acervo}`} title="O acervo da atração: clique para trocar" onClick={() => setAberto(true)}>
+      {atracao.acervo === 'proprio' ? 'acervo próprio' : rotuloDoAcervo(atracao.acervo)}
+    </button>
+  );
+}
+
 /** A folha de rascunho: o que está no formulário, solto por cima da lista. */
 function Rascunho({ nome, categoria, keys, assentando }: { nome: string; categoria?: string; keys: string[]; assentando: boolean }) {
   return (
@@ -439,7 +491,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const daClaquete = inicio?.claquete ? atracaoDaClaquete(inicio.claquete) : '';
   const nomeInicial = inicio?.nome ?? daClaquete;
   const keyInicial = inicio?.key ? comoKey(inicio.key) : daClaquete ? comoKey(daClaquete) : '';
-  const [atr, setAtr] = useState({ nome: nomeInicial, keys: keyInicial ? [keyInicial] : [], categoria: '', campos: {} as Record<string, string> });
+  const [atr, setAtr] = useState({ nome: nomeInicial, keys: keyInicial ? [keyInicial] : [], categoria: '', acervo: 'proprio' as AcervoDaAtracao, campos: {} as Record<string, string> });
   const [red, setRed] = useState({ nome: '', keys: [] as string[] });
   const [edi, setEdi] = useState({ nome: '', keys: [] as string[] });
 
@@ -491,7 +543,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       await new Promise((ok) => setTimeout(ok, 520));
       await carregar(true);
       setAssentando(false);
-      if (aba === 'atracoes') setAtr({ nome: '', keys: [], categoria: '', campos: {} });
+      if (aba === 'atracoes') setAtr({ nome: '', keys: [], categoria: '', acervo: 'proprio', campos: {} });
       else if (aba === 'redatores') setRed({ nome: '', keys: [] });
       else setEdi({ nome: '', keys: [] });
       marcarRecem([id]);
@@ -522,6 +574,16 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       return false;
     }
   };
+  /** Troca o acervo de uma atração da lista (vai direto para o Teable). */
+  const trocarAcervo = (a: AtracaoCadastro) => async (acervo: AcervoDaAtracao) => {
+    try {
+      await mudarAcervo(a.id, acervo);
+      await carregar(true);
+      avisar(`${a.nome}: acervo ${rotuloDoAcervo(acervo)}.`);
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui trocar o acervo.');
+    }
+  };
   /** Liga a key a uma atração que já existe (pelo nome) e tira a linha da lista. */
   const ligarKey = async (key: string, nome: string) => {
     const a = dados?.atracoes.find((x) => x.nome === nome);
@@ -533,7 +595,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   };
   /** "+ Nova": o formulário da direita começa com a key e com o nome (o da busca, ou o da key). */
   const novaComKey = (k: KeySemCadastro, busca: string) => {
-    setAtr({ nome: nomeDaAtracaoNova(busca, k.key, k.exemplos), keys: [comoKey(k.key)], categoria: '', campos: {} });
+    setAtr({ nome: nomeDaAtracaoNova(busca, k.key, k.exemplos), keys: [comoKey(k.key)], categoria: '', acervo: 'proprio', campos: {} });
     setTimeout(() => nomeAtr.current?.focus(), 0);
   };
   /** Executa já o que estava esperando o desfazer (outro apagar começou, ou a tela vai fechar). */
@@ -634,6 +696,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     <div key={a.id} className={`item-cad ${recem.includes(a.id) ? 'chegou' : ''}`}>
       <div className="nome">
         {a.nome} {a.categoria && <span className="cat">{a.categoria}</span>}
+        <AcervoNaLista atracao={a} trocar={trocarAcervo(a)} />
       </div>
       <div className="lado-cad">
         {pode && <NovoPacote nome={a.nome} avisar={avisar} />}
@@ -678,7 +741,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     </div>
   );
 
-  const limpar = () => (aba === 'atracoes' ? setAtr({ nome: '', keys: [], categoria: '', campos: {} }) : aba === 'redatores' ? setRed({ nome: '', keys: [] }) : setEdi({ nome: '', keys: [] }));
+  const limpar = () => (aba === 'atracoes' ? setAtr({ nome: '', keys: [], categoria: '', acervo: 'proprio', campos: {} }) : aba === 'redatores' ? setRed({ nome: '', keys: [] }) : setEdi({ nome: '', keys: [] }));
   const xLimpar = rascunho && (
     <button type="button" className="limpar-campo" title="Limpar" aria-label="Limpar o formulário" onClick={(e) => { e.preventDefault(); limpar(); }}>
       <Icone nome="fechar" tam={14} />
@@ -790,6 +853,11 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                       </div>
                     </div>
                   )}
+                  <div className="campo-cad">
+                    <span>Acervo</span>
+                    <EscolhaDoAcervo valor={atr.acervo} mudar={(acervo) => setAtr({ ...atr, acervo })} />
+                    <small>{ACERVOS.find((x) => x.valor === atr.acervo)?.dica}</small>
+                  </div>
                   {!!dados?.camposCaminho.length && (
                     <div className="caminhos-cad">
                       <div className="titulo">Caminhos</div>

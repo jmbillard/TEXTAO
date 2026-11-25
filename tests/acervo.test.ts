@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { chaveDeArte, criarAcervo } from '../servidor/acervo.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { acervoDaAtracao } from '../servidor/cadastros.mjs';
 
 const ENV = {
   TEABLE_URL: 'http://teable:3000',
@@ -29,7 +31,26 @@ const COMITE = { id: 'recComite', title: 'O COMITÊ DA VIDA (2021)' };
 const TARDE = { id: 's2', title: 'Sessão da Tarde' };
 
 /** O Postgres do Teable (acervo, atrações, exibições, produção) e a API, de mentira. */
-function falsos() {
+type LinhaDaAtracao = { atracao: string; acervo?: string | null; tipo?: string | null };
+const COLUNA_ANTIGA: LinhaDaAtracao[] = [
+  { atracao: 'Encontro', tipo: 'Atração' },
+  { atracao: 'Tela Quente', tipo: 'Sessão de filme' },
+  { atracao: 'Sessão da Tarde', tipo: 'Sessão de filme' },
+  { atracao: 'Shows Diversos', tipo: 'Genérica' },
+  { atracao: 'VTs', tipo: 'Genérica' },
+  { atracao: 'VT Upfront 2026', tipo: 'VT' },
+];
+// a coluna nova (acervo), com os três valores e o vazio (vale próprio), sem a antiga
+const COLUNA_NOVA: LinhaDaAtracao[] = [
+  { atracao: 'Encontro', acervo: 'próprio' },
+  { atracao: 'Tela Quente', acervo: 'do filme' },
+  { atracao: 'Sessão da Tarde', acervo: '["do filme"]' },
+  { atracao: 'Shows Diversos', acervo: 'sem acervo' },
+  { atracao: 'VTs', acervo: 'sem acervo' },
+  { atracao: 'VT Upfront 2026', acervo: null },
+];
+
+function falsos(atracoes: LinhaDaAtracao[] = COLUNA_ANTIGA) {
   const linhas = [
     { id: 'recH', arte: 'HOJE', key: 'HOJE', tipo: '["Lettering com alpha"]', atracao: '[{"id":"recEnc","title":"Encontro"}]', claquete: '[{"id":"recP1","title":"ENCONTRO 02/01 REDE"}]', filme: null },
     { id: 'recH2', arte: 'Hoje', key: 'HOJE', tipo: 'CRT', atracao: [{ id: 'recEnc', title: 'Encontro' }], claquete: [], filme: null },
@@ -37,14 +58,6 @@ function falsos() {
     { id: 'recS', arte: 'SÁBADO', key: 'SABADO', tipo: 'Rodapé', atracao: [{ id: 'recShow', title: 'Show da Noite' }], claquete: [], filme: null },
     { id: 'recF', arte: 'Frase de efeito', key: 'FRASE DE EFEITO', tipo: null, atracao: [{ id: 'recTQ', title: 'Tela Quente' }], claquete: [{ id: 'recP2', title: 'TELA QUENTE 02/03' }], filme: RIVAIS },
     { id: 'recM', arte: 'Outro filme', key: 'OUTRO FILME', tipo: null, atracao: [{ id: 'recTQ', title: 'Tela Quente' }], claquete: [], filme: { id: 'recMumia', title: 'A MÚMIA (1999)' } },
-  ];
-  const tipos = [
-    { atracao: 'Encontro', tipo: 'Atração' },
-    { atracao: 'Tela Quente', tipo: 'Sessão de filme' },
-    { atracao: 'Sessão da Tarde', tipo: 'Sessão de filme' },
-    { atracao: 'Shows Diversos', tipo: 'Genérica' },
-    { atracao: 'VTs', tipo: 'Genérica' },
-    { atracao: 'VT Upfront 2026', tipo: 'VT' },
   ];
   // exibições: o mesmo filme em duas sessões, outro filme cancelado no mesmo dia, e um filme de mesmo título e outro ano
   const exibicoes = [
@@ -60,7 +73,7 @@ function falsos() {
   const consultar = async (sql: string, params: unknown[] = []) => {
     consultas.push({ sql, params });
     if (sql.includes('"acervo"')) return linhas;
-    if (sql.includes('"atracoes"') && sql.includes('"tipo"')) return tipos;
+    if (sql.includes('"atracoes"') && sql.startsWith('SELECT *')) return atracoes;
     if (sql.includes('"atracoes"')) return ({ encontro: [{ id: 'recEnc' }], 'tela quente': [{ id: 'recTQ' }], 'sessão da tarde': [{ id: 'recTarde' }] } as Record<string, { id: string }[]>)[String(params[0]).toLowerCase()] ?? [];
     if (sql.includes('"producao"')) return [{ id: 'recCard9' }];
     if (sql.includes('"exibicoes"') && sql.includes('::date = $1')) return exibicoes.filter((e) => e.dia === params[0]);
@@ -217,18 +230,44 @@ describe('acervo de artes', () => {
     expect(pedidos[0].url).toBe('http://teable:3000/api/table/tblAcervo/record?recordIds[0]=recH&recordIds[1]=recH2&recordIds[2]=recA');
   });
 
-  it('o tipo da atração manda: sessão usa o filme, genérica não tem acervo, VT com atração própria tem', async () => {
-    const { consultar, buscar, pedidos } = falsos();
+  it.each([
+    ['a coluna nova (acervo)', COLUNA_NOVA],
+    ['a coluna antiga (tipo)', COLUNA_ANTIGA],
+  ])('o acervo da atração manda, com %s: do filme usa o filme, sem acervo não tem, VT com atração própria tem', async (_, atracoes) => {
+    const { consultar, buscar, pedidos } = falsos(atracoes);
     const a = criarAcervo(ENV, { consultar, buscar });
-    expect(await a.tipoDe('TELA QUENTE')).toBe('Sessão de filme');
+    expect(await a.acervoDe('TELA QUENTE')).toBe('filme');
+    expect(await a.acervoDe('Sessão da Tarde')).toBe('filme');
     expect(await a.ehSessao('Tela Quente')).toBe(true);
     expect(await a.semAcervo('Shows Diversos')).toBe(true);
-    expect(await a.tipoDe('Atração sem tipo')).toBe('Atração');
+    expect(await a.acervoDe('Encontro')).toBe('proprio');
+    expect(await a.acervoDe('VT Upfront 2026')).toBe('proprio'); // VT (antigo) e vazio (novo): próprio
+    expect(await a.acervoDe('Atração sem cadastro')).toBe('proprio');
     expect(await a.daAtracao('Tela Quente')).toEqual([]); // a sessão em si não tem acervo
     expect(await a.paraRevisao('VTs', '')).toEqual([]);
     expect(await a.registrar({ atracao: 'Shows Diversos', card: 'c', artes: ['HOJE'] })).toBe(0);
     expect(pedidos).toHaveLength(0);
     expect((await a.paraRevisao('Encontro', '')).length).toBe(2);
+  });
+
+  it('o acervo de cada linha: o valor novo, o antigo, o vazio (próprio) e as duas colunas na troca', () => {
+    expect(['próprio', 'do filme', 'sem acervo', 'Do Filme', '["sem acervo"]'].map((acervo) => acervoDaAtracao({ acervo }))).toEqual(['proprio', 'filme', 'sem', 'filme', 'sem']);
+    expect(['Atração', 'VT', 'Sessão de filme', 'Genérica'].map((tipo) => acervoDaAtracao({ tipo }))).toEqual(['proprio', 'proprio', 'filme', 'sem']);
+    expect([{}, { acervo: null }, { acervo: '' }, { tipo: [] }, null].map(acervoDaAtracao)).toEqual(['proprio', 'proprio', 'proprio', 'proprio', 'proprio']);
+    // a coluna nova criada vazia ao lado da antiga: vale a antiga até ganhar valor
+    expect(acervoDaAtracao({ acervo: null, tipo: 'Sessão de filme' })).toBe('filme');
+    expect(acervoDaAtracao({ acervo: 'sem acervo', tipo: 'Sessão de filme' })).toBe('sem');
+  });
+
+  it('o acervo das atrações é guardado; mudar nos cadastros faz reler', async () => {
+    const { consultar, consultas } = falsos(COLUNA_NOVA);
+    const a = criarAcervo(ENV, { consultar });
+    await a.acervoDe('Encontro');
+    await a.acervoDe('Tela Quente');
+    expect(consultas.filter((c) => c.sql.includes('"atracoes"'))).toHaveLength(1);
+    a.esquecerAcervos();
+    await a.acervoDe('Encontro');
+    expect(consultas.filter((c) => c.sql.includes('"atracoes"'))).toHaveLength(2);
   });
 
   it('filme: as prévias dele (em qualquer sessão) e as claquetes dele contam; outro ano é outro filme', async () => {

@@ -962,10 +962,18 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         const corpo = (await lerCorpo(req)) ?? {};
         const feito =
           tipo === 'atracoes' ? await cadastros.novaAtracao(corpo) : tipo === 'redatores' ? await cadastros.novoRedator(corpo) : await cadastros.novoEditor(corpo);
+        if (tipo === 'atracoes') acervo.esquecerAcervos?.();
         console.log(`[cadastros] ${eu.email} cadastrou ${singular}: ${feito.nome}`);
         return json(res, 200, feito);
       }
       if (id && !REC.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
+      if (req.method === 'PATCH' && tipo === 'atracoes' && id && !sub) {
+        const corpo = (await lerCorpo(req)) ?? {};
+        const feito = await cadastros.mudarAcervo(id, corpo.acervo);
+        acervo.esquecerAcervos?.();
+        console.log(`[cadastros] ${eu.email} mudou o acervo de ${feito.nome}: ${feito.acervo}`);
+        return json(res, 200, feito);
+      }
       if (req.method === 'POST' && sub === 'keys' && !keyId) {
         const corpo = (await lerCorpo(req)) ?? {};
         const feito = await cadastros.novaKey(singular, id, corpo.key);
