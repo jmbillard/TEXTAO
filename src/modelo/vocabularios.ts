@@ -48,35 +48,81 @@ export const normalizarPraca = (p: string) => (/^(SP|RJ)$/i.test(p) ? p.toUpperC
 export const pracaDaClaquete = (claquete: string) =>
   /^RIO /i.test(claquete.trim()) ? 'RJ' : / SP$/i.test(claquete.trim()) ? 'SP' : / INTER(?:NACIONAL)?$/i.test(claquete.trim()) ? 'INTER' : 'G5';
 
-/** O último dd/mm da claquete, no ano corrente (ou no seguinte, se já passou há mais de seis meses). */
+/** A data achada numa claquete ou num nome de arquivo, e onde ela está no texto. */
+export interface DataLida {
+  /** O dia da exibição: num período ("8 a 20/9"), o primeiro dia. */
+  dia: number;
+  mes: number;
+  inicio: number;
+  fim: number;
+  /** O trecho reescrito com a barra, em caixa alta: "5/12-2", "8 A 20/9-2". */
+  comBarra: string;
+}
+
+/* A claquete original é "D/M", com a versão opcional "-V" ("5/12-2"), ou um período "D a D/M" ("8 a 20/9-2").
+   Nome de arquivo não aceita barra: ela vira traço, underline ou espaço, e o hífen da versão às vezes também.
+   Cada candidato é um par "dia separador mês" que começa em qualquer número; os candidatos se sobrepõem. */
+const RE_PAR =
+  /(?<!\d)(?=(((\d{1,2})[ _.-]+A[ _.-]+)?(\d{1,2})([/ _.-])(\d{1,2})(?!\d)(-[\p{L}\d]+|[ _](\d{1,2})(?![\p{L}\d]))?))/giu;
+
+/**
+ * A data da claquete ou do nome do arquivo.
+ * - Com barra, vale o último "D/M" válido, como sempre foi ("Terra 20/11-2 (AH)" → 20/11).
+ * - Sem barra, valem os primeiros números do grupo: em "5-12-2" ou "5_12_2" o par é 5/12 e o 2 é a versão;
+ *   o número que já é o mês de um par válido não abre outro par. Entre grupos, vale o último.
+ * - Um número grudado em letras não abre par ("SP2_3_4" → 3/4, "V2-26-10" → 26/10).
+ * @param semBarra se o traço, o underline, o espaço e o ponto também separam dia e mês (nome de arquivo); na
+ *   claquete digitada, só o traço.
+ */
+export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete' = 'claquete'): DataLida | null {
+  const cands = [...texto.matchAll(RE_PAR)].map((m) => {
+    const [, todo, periodo = '', ini, d, sep, mes, versao = '', versaoSolta] = m;
+    const posDia = m.index! + periodo.length;
+    return { m, todo, periodo, ini, dTexto: d, mesTexto: mes, d: +d, sep, mes: +mes, versao, versaoSolta, posDia, posMes: posDia + d.length + sep.length };
+  });
+  const validos = cands.filter(
+    (c) =>
+      c.d >= 1 && c.d <= 31 && c.mes >= 1 && c.mes <= 12 &&
+      (!c.ini || (+c.ini >= 1 && +c.ini <= 31)) &&
+      (c.sep === '/' || c.sep === '-' || semBarra === 'arquivo') &&
+      // a versão solta (sem hífen) só existe no nome do arquivo, onde o hífen pode ter virado underline ou espaço
+      (!c.versaoSolta || semBarra === 'arquivo') &&
+      (c.sep === '/' || !/\p{L}/u.test(texto[(c.periodo ? c.m.index! : c.posDia) - 1] ?? '')),
+  );
+  const comBarra = validos.filter((c) => c.sep === '/');
+  const escolhidos = comBarra.length ? comBarra : validos.filter((c) => !validos.some((o) => o.posMes === c.posDia));
+  // o mesmo par com e sem o período na frente: fica o do período
+  const c = escolhidos.filter((x) => !escolhidos.some((o) => o !== x && o.periodo && o.posDia === x.posDia)).at(-1);
+  if (!c) return null;
+  return {
+    dia: c.ini ? +c.ini : c.d,
+    mes: c.mes,
+    inicio: c.m.index!,
+    fim: c.m.index! + c.todo.length,
+    comBarra: `${c.ini ? `${c.ini} A ` : ''}${c.dTexto}/${c.mesTexto}${c.versaoSolta ? `-${c.versaoSolta}` : c.versao}`,
+  };
+}
+
+/** A data da claquete, no ano corrente (ou no seguinte, se já passou há mais de seis meses). */
 export function dataDaClaquete(claquete: string, hoje = new Date()): string {
-  const m = [...claquete.matchAll(/(?<!\d)(\d{1,2})\/(\d{1,2})(?!\d)/g)].reverse().find((x) => +x[1] >= 1 && +x[1] <= 31 && +x[2] >= 1 && +x[2] <= 12);
+  const m = lerDataDaClaquete(claquete);
   if (!m) return '';
   let ano = hoje.getFullYear();
-  if (new Date(ano, +m[2] - 1, +m[1]).getTime() < hoje.getTime() - 183 * 864e5) ano++;
-  return `${ano}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  if (new Date(ano, m.mes - 1, m.dia).getTime() < hoje.getTime() - 183 * 864e5) ano++;
+  return `${ano}-${String(m.mes).padStart(2, '0')}-${String(m.dia).padStart(2, '0')}`;
 }
 
 /** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. */
 export function claqueteDoArquivo(arquivo: string): string {
-  const partes = arquivo
+  const texto = arquivo
     .replace(/\.[^.]+$/, '')
     .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2') // "AmaPrologo" → "Ama Prologo"
     .replace(/(\p{L}{3,})(\d{1,2})(?=[ _.-]\d{1,2}(?:\D|$))/u, '$1 $2') // dia colado no nome: "Prologo26_10"
     .replace(/[_\s]+/g, ' ')
     .trim()
-    .toUpperCase()
-    .split(' ');
-  for (let i = partes.length - 2; i >= 0; i--) {
-    const d = partes[i];
-    // o mês pode vir com a versão grudada por hífen: "25 12-2" → "25/12-2"
-    const [, m, resto = ''] = /^(\d{1,2})(-\w+)?$/.exec(partes[i + 1]) ?? [];
-    if (/^\d{1,2}$/.test(d) && m && +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12) {
-      partes.splice(i, 2, `${d}/${m}${resto}`);
-      break;
-    }
-  }
-  return partes.join(' ');
+    .toUpperCase();
+  const data = lerDataDaClaquete(texto, 'arquivo');
+  return data ? texto.slice(0, data.inicio) + data.comBarra + texto.slice(data.fim) : texto;
 }
 
 export const NOMES_TIPO_PROGRAMA: Record<TipoPrograma, string> = {

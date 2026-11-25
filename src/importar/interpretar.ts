@@ -1,7 +1,7 @@
 import { indiceDaMarca, semMarcasDeImagem, textoDoPar, type DocBruto, type Par } from './bruto';
 import { analisarSonoras, ehCaixaAlta, ehLocucao, RE_LINHA_LOC } from '../modelo/sonora';
 import { metaVazia, novoId, type Layout, type Meta, type NoJSON, type MarcaJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
-import { acharPrograma, claqueteDoArquivo, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, semAcento } from '../modelo/vocabularios';
+import { acharPrograma, claqueteDoArquivo, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, semAcento, lerDataDaClaquete } from '../modelo/vocabularios';
 
 /* Interpretação do arquivo: do "o que estava escrito" para "o que isso significa".
    Tudo o que é certo é resolvido sozinho e listado em `entendido`;
@@ -431,14 +431,10 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     }
   }
   if (!dataExib) {
-    // como na claquete, vale o último par dia/mês válido do nome ("Quem_Ama_V2_26_10" → 26/10)
-    // o hífen só separa dia e mês quando não há outro par: em "Chef_25_12-2" o "-2" é a versão, a data é 25/12
-    const valido = (x: RegExpMatchArray) => +x[1] >= 1 && +x[1] <= 31 && +x[2] >= 1 && +x[2] <= 12;
-    const m =
-      [...nome.matchAll(/(?<!\d)(\d{1,2})[ .](?=(\d{1,2})(?!\d))/g)].reverse().find(valido) ??
-      [...nome.matchAll(/(?<!\d)(\d{1,2})-(?=(\d{1,2})(?!\d))/g)].reverse().find(valido);
-    if (m) {
-      dataExib = lerData(m);
+    // a claquete montada do nome do arquivo já traz a data com a barra ("Chef_25_12-2" → "CHEF 25/12-2")
+    const lida = lerDataDaClaquete(meta.claquete);
+    if (lida) {
+      dataExib = { dia: lida.dia, mes: lida.mes };
       anotar('Data de exibição tirada do nome do arquivo');
     }
   }

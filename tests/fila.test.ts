@@ -92,6 +92,53 @@ describe('data com a versão grudada por hífen', () => {
   });
 });
 
+describe('data no padrão dia-mês-versão, tudo com hífen', () => {
+  const hoje = new Date('2026-11-25');
+  it('o nome do arquivo "D-M-V" vira a claquete "D/M-V" e a exibição D/M, não M/V', async () => {
+    const { claqueteDoArquivo } = await import('../src/modelo/vocabularios');
+    const { interpretar } = await import('../src/importar');
+    const casos: [string, string, string][] = [
+      ['Show_De_Verao_5-12-2.docx', 'SHOW DE VERAO 5/12-2', '2026-12-05'],
+      ['Sitio_26-11-2.docx', 'SITIO 26/11-2', '2026-11-26'],
+      ['Sitio 25-11-2.rtf', 'SITIO 25/11-2', '2026-11-25'],
+      ['Sitio_5_12-2.docx', 'SITIO 5/12-2', '2026-12-05'],
+      ['Sitio 5 12-2.docx', 'SITIO 5/12-2', '2026-12-05'],
+      ['Sitio_5-12-V2.docx', 'SITIO 5/12-V2', '2026-12-05'],
+      ['Sitio_5-12.docx', 'SITIO 5/12', '2026-12-05'],
+      // a versão antes da data, grudada nas letras, não rouba o dia
+      ['Sitio_V2-26-11.docx', 'SITIO V2-26/11', '2026-11-26'],
+      // a barra e o hífen da versão viram underline ou espaço: valem os primeiros números
+      ['Sitio_5_12_2.docx', 'SITIO 5/12-2', '2026-12-05'],
+      ['Sitio_5-12_2.docx', 'SITIO 5/12-2', '2026-12-05'],
+      ['Sitio 5 12 2.docx', 'SITIO 5/12-2', '2026-12-05'],
+      // período "dia a dia/mês": a data é o primeiro dia
+      ['Sitio_8_a_20_12.docx', 'SITIO 8 A 20/12', '2026-12-08'],
+      ['Sitio 8 A 20 12-2.docx', 'SITIO 8 A 20/12-2', '2026-12-08'],
+      ['Sitio 8 a 20-12.docx', 'SITIO 8 A 20/12', '2026-12-08'],
+      ['Sitio_8_a_20_12_2.docx', 'SITIO 8 A 20/12-2', '2026-12-08'],
+      ['Sitio_8-a-20-12-2.docx', 'SITIO 8 A 20/12-2', '2026-12-08'],
+    ];
+    for (const [arquivo, claquete, data] of casos) {
+      expect(claqueteDoArquivo(arquivo), arquivo).toBe(claquete);
+      const imp = interpretar({ arquivo, formato: 'rtf', autor: '', blocos: [] }, { anoPadrao: 2026 });
+      expect(imp.meta.claquete, arquivo).toBe(claquete);
+      expect(imp.meta.dataExibicao, arquivo).toBe(data);
+    }
+  });
+  it('a claquete digitada com hífen também dá a data', async () => {
+    const { dataDaClaquete } = await import('../src/modelo/vocabularios');
+    expect(dataDaClaquete('SHOW DE VERÃO 5-12-2', hoje)).toBe('2026-12-05');
+    expect(dataDaClaquete('SITIO 26-11-2', hoje)).toBe('2026-11-26');
+    expect(dataDaClaquete('SITIO 26-11', hoje)).toBe('2026-11-26');
+    // a barra continua valendo antes do hífen
+    expect(dataDaClaquete('SITIO 26/11-2', hoje)).toBe('2026-11-26');
+    // período: o primeiro dia
+    expect(dataDaClaquete('SITIO 8 a 20/12-2', hoje)).toBe('2026-12-08');
+    expect(dataDaClaquete('SITIO 8 A 20/12', hoje)).toBe('2026-12-08');
+    expect(dataDaClaquete('SITIO 8 A 20-12-2', hoje)).toBe('2026-12-08');
+  });
+});
+
 describe('o que a fila conta', () => {
   it('deixa de fora o que já foi ao ar e o que já está no Trello', () => {
     const agora = new Date(2026, 10, 19, 15);
