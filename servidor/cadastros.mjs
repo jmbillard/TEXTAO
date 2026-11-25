@@ -29,11 +29,8 @@ export const normalizarKey = (k) =>
 /** O acervo de uma atração, por dentro: próprio (as artes são dela), do filme (sessão de filme: as artes são do filme
     do dia) ou sem acervo (genérica). */
 export const ACERVOS = ['proprio', 'filme', 'sem'];
-// as opções no Teable: a coluna nova (acervo) e a antiga (tipo), enquanto a troca não acontece
-const OPCOES_DO_ACERVO = {
-  acervo: { proprio: 'próprio', filme: 'do filme', sem: 'sem acervo' },
-  tipo: { proprio: 'Atração', filme: 'Sessão de filme', sem: 'Genérica' },
-};
+// as opções do campo acervo no Teable
+const OPCOES_DO_ACERVO = { proprio: 'próprio', filme: 'do filme', sem: 'sem acervo' };
 const semAcentoMinusculo = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 // singleSelect: texto, ou lista (ou lista em JSON) com uma opção
 const opcaoDe = (v) => {
@@ -47,24 +44,13 @@ const opcaoDe = (v) => {
   }
   return v == null ? '' : String(typeof v === 'object' ? (v.name ?? v.title ?? '') : v);
 };
-/** Uma opção do Teable (nova ou antiga) no acervo de dentro; vazio (ou desconhecido) vale próprio. */
-export function normalizarAcervo(v) {
-  const s = semAcentoMinusculo(opcaoDe(v));
-  if (/^(do filme|sessao de filme)$/.test(s)) return 'filme';
-  if (/^(sem acervo|generica)$/.test(s)) return 'sem';
+/** O acervo de uma linha da tabela de atrações (a opção do campo acervo, por dentro); vazio (ou desconhecido) vale
+    próprio. */
+export function acervoDaAtracao(linha) {
+  const s = semAcentoMinusculo(opcaoDe(linha?.acervo));
+  if (s === 'do filme') return 'filme';
+  if (s === 'sem acervo') return 'sem';
   return 'proprio';
-}
-/** O acervo de uma linha da tabela de atrações: a coluna acervo e, sem valor nela, a antiga tipo. */
-export const acervoDaAtracao = (linha) => normalizarAcervo(opcaoDe(linha?.acervo) || opcaoDe(linha?.tipo));
-/** O campo do acervo na tabela de atrações do Teable (a coluna nova ou a antiga), da lista de campos da API. */
-export function campoDoAcervo(campos) {
-  const c = ['acervo', 'tipo'].map((n) => (campos ?? []).find((x) => x?.name === n)).find(Boolean);
-  return c ? { nome: c.name, opcoes: c.options?.choices?.map((x) => x.name).filter(Boolean) ?? [] } : null;
-}
-/** O que gravar no campo para um acervo de dentro: a opção do campo que quer dizer o mesmo (nova ou antiga). */
-export function valorDoAcervo(acervo, campo) {
-  if (!campo || !ACERVOS.includes(acervo)) return null;
-  return campo.opcoes.find((o) => normalizarAcervo(o) === acervo && (acervo !== 'proprio' || /^(proprio|atracao)$/.test(semAcentoMinusculo(o)))) ?? OPCOES_DO_ACERVO[campo.nome]?.[acervo] ?? null;
 }
 
 /** Campos que nunca entram no formulário dos caminhos. */
@@ -137,8 +123,8 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
 
   /* ---------- leitura ---------- */
   let lido = null;
-  // o campo do acervo no Teable (acervo, ou o antigo tipo), lido junto com o esquema: é nele que a gravação escreve
-  let acervo = null;
+  // se a tabela de atrações do Teable tem o campo acervo (lido junto com o esquema): sem ele, a gravação não o escreve
+  let temAcervo = false;
   let lidoEm = 0;
 
   /** As categorias (opções do campo, ou o que já aparece) e os campos que as fórmulas dos caminhos usam. */
@@ -163,7 +149,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
         usados.push({ nome: c.name, tipo: c.type, opcoes: c.options?.choices?.map((x) => x.name) ?? null });
       }
     }
-    acervo = campoDoAcervo(lista);
+    temAcervo = lista.some((c) => c.name === 'acervo');
     return { categorias, camposCaminho: usados, formulas };
   }
 
@@ -251,8 +237,7 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
       for (const k of lista) await keyLivre(t.keysAtracoes, k);
       const fields = { [campoAtracao]: nome };
       if (categoria) fields[campoCategoria] = nomeLimpo(categoria, 40);
-      const valor = valorDoAcervo(qual, acervo);
-      if (valor) fields[acervo.nome] = valor;
+      if (temAcervo) fields.acervo = OPCOES_DO_ACERVO[qual];
       for (const c of atual.camposCaminho) if (extra[c.nome] != null && String(extra[c.nome]).trim()) fields[c.nome] = nomeLimpo(extra[c.nome], 200);
       const rec = await criar(t.atracoes, fields);
       for (const k of lista) await criar(t.keysAtracoes, { key: k, [campoKeyLink]: [{ id: rec.id }] });
@@ -260,16 +245,15 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
       return { id: rec.id, nome, keys: lista };
     },
 
-    /** Troca o acervo de uma atração que já existe, na coluna que o Teable tiver (acervo, ou o antigo tipo). */
+    /** Troca o acervo de uma atração que já existe. */
     async mudarAcervo(id, qual) {
       exigir(t.atracoes, 'Falta a tabela de atrações no servidor (TEABLE_CADASTRO).');
       exigir(ACERVOS.includes(qual), 'Escolha o acervo: próprio, do filme ou sem acervo.');
       const atual = await ler();
       const a = atual.atracoes.find((x) => x.id === id);
       exigir(a, 'Esta atração não está mais nos cadastros.');
-      const valor = valorDoAcervo(qual, acervo);
-      exigir(valor, 'A tabela de atrações do Teable não tem a coluna do acervo.');
-      await teable('PATCH', `/table/${encodeURIComponent(t.atracoes)}/record/${encodeURIComponent(id)}`, { fieldKeyType: 'name', typecast: true, record: { fields: { [acervo.nome]: valor } } });
+      exigir(temAcervo, 'A tabela de atrações do Teable não tem a coluna do acervo.');
+      await teable('PATCH', `/table/${encodeURIComponent(t.atracoes)}/record/${encodeURIComponent(id)}`, { fieldKeyType: 'name', typecast: true, record: { fields: { acervo: OPCOES_DO_ACERVO[qual] } } });
       await depois();
       return { id, nome: a.nome, acervo: qual };
     },

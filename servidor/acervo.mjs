@@ -5,13 +5,12 @@
  * Tabela ARTES_acervo: arte (texto), key (fórmula, só para ver: o app calcula a sua), tipo (seleção; à mão, nunca
  * pelo PROMeiro), atracao (vínculo → atracoes), claquete (vínculo → ARTE_producao), filme (vínculo → filmes).
  *
- * O acervo da atração (campo acervo em atracoes; antes, tipo) diz como o acervo funciona:
- *   próprio (antes Atração ou VT; vazio também vale próprio): as artes são da atração.
- *   do filme (antes Sessão de filme): o pacote gráfico é do filme, em qualquer sessão. Pela sessão e pelo dia,
- *     exibicoes diz o filme; o que ele tem pronto são os checklists das prévias dele (o card_ID de cada exibição, usado
- *     ou não) e as artes gravadas com ele aqui.
- *   sem acervo (antes Genérica: VTs, EVENTOS, Shows Diversos…): o que tem linguagem própria ganha atração própria.
- * Enquanto a coluna nova não existe no Teable, vale a antiga com os valores antigos (acervoDaAtracao, em cadastros).
+ * O acervo da atração (campo acervo em atracoes) diz como o acervo funciona:
+ *   próprio (vazio também vale próprio): as artes são da atração.
+ *   do filme: o pacote gráfico é do filme, em qualquer sessão. Pela sessão e pelo dia, exibicoes diz o filme; o que ele
+ *     tem pronto são os checklists das prévias dele (o card_ID de cada exibição, usado ou não) e as artes gravadas com
+ *     ele aqui.
+ *   sem acervo (VTs, EVENTOS, Shows Diversos…): o que tem linguagem própria ganha atração própria.
  *
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
  */
@@ -120,13 +119,13 @@ export function criarAcervo(env, deps = {}) {
   };
 
   // o acervo de cada atração ('proprio' | 'filme' | 'sem'), guardado por 10 min; sem a coluna (ou sem a tabela), toda
-  // atração tem acervo próprio. SELECT *: a coluna é acervo ou, antes da troca no Teable, tipo
+  // atração tem acervo próprio
   let memoAcervos = { em: 0, acervos: null };
   async function acervoDe(atracao) {
     if (!t.atracoes || !consultar) return 'proprio';
     if (!memoAcervos.acervos || Date.now() - memoAcervos.em > 600_000) {
       try {
-        const linhas = await consultar(`SELECT * FROM ${t.atracoes}`);
+        const linhas = await consultar(`SELECT "atracao", "acervo" FROM ${t.atracoes}`);
         memoAcervos = { em: Date.now(), acervos: new Map(linhas.map((l) => [nomeComparavel(l.atracao), acervoDaAtracao(l)])) };
       } catch (e) {
         console.warn(`[acervo] não li o acervo das atrações: ${e instanceof Error ? e.message : e}`);

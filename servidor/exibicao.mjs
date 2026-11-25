@@ -19,7 +19,6 @@
 
 import { chaveDeArte, vinculos } from './acervo.mjs';
 import { nomesDoPg } from './pauta.mjs';
-import { acervoDaAtracao } from './cadastros.mjs';
 import { diaDaPrevia } from './conferencia.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 
@@ -133,12 +132,11 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
   if (faltando.length) return { ligado: false, faltando };
 
   /** As sessões de filme do cadastro de atrações (o nome certo e o vínculo), pela chave sem acento: as de acervo do
-      filme, mais a Sessão da Tarde. SELECT *: a coluna é acervo ou, antes da troca no Teable, tipo. */
+      filme, mais a Sessão da Tarde. */
   async function sessoes() {
     if (!t.atracoes) return new Map();
-    const linhas = await consultar(`SELECT * FROM ${t.atracoes}`);
-    const daSessao = (l) => acervoDaAtracao(l) === 'filme' || ehSessaoDaTarde(l.atracao);
-    return new Map(linhas.filter(daSessao).map((l) => [chaveDaSessao(l.atracao), { id: String(l.__id), nome: String(l.atracao ?? '') }]));
+    const linhas = await consultar(`SELECT "__id", "atracao" FROM ${t.atracoes} WHERE "acervo" = 'do filme' OR "atracao" ILIKE 'sess_o da tarde'`);
+    return new Map(linhas.map((l) => [chaveDaSessao(l.atracao), { id: String(l.__id), nome: String(l.atracao ?? '') }]));
   }
 
   async function doCadastro(id) {

@@ -199,7 +199,7 @@ const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', 
 type FilmeDoBanco = { __id: string; titulo: string; ano_de_producao: number | null; projeto_win?: string; projeto_mac?: string; output_win?: string; output_mac?: string; poster?: { name: string; token: string }[] | null };
 type ExibicaoDoBanco = { filme: { id: string; title: string }; sessao: { id: string; title: string }; data_de_exibicao: string; card_ID: string; link: string; labels: string[] | null; exibicao?: string };
 type ArteDoAcervo = { arte: string; filme: { id: string; title: string } };
-type SessaoDoBanco = { __id: string; atracao: string; tipo?: string; acervo?: string | null };
+type SessaoDoBanco = { __id: string; atracao: string; acervo: string | null };
 function postgresFalso(banco: { filmes?: FilmeDoBanco[]; exibicoes?: ExibicaoDoBanco[]; acervo?: ArteDoAcervo[]; atracoes?: SessaoDoBanco[] }) {
   const consultas: string[] = [];
   // o dia da exibição em Brasília, como o filtro por data das consultas faz no Postgres
@@ -214,7 +214,9 @@ function postgresFalso(banco: { filmes?: FilmeDoBanco[]; exibicoes?: ExibicaoDoB
       return todas;
     }
     if (sql.includes('"acervo_teste"')) return banco.acervo ?? [];
-    if (sql.includes('"atracoes_teste"')) return banco.atracoes ?? [];
+    // as sessões de filme: o acervo do filme, mais a Sessão da Tarde (o filtro que o Postgres faria)
+    if (sql.includes('"atracoes_teste"') && sql.includes(`"acervo" = 'do filme'`)) return (banco.atracoes ?? []).filter((a) => a.acervo === 'do filme' || /^sess.o da tarde$/i.test(a.atracao));
+    if (sql.includes('"atracoes_teste"')) throw new Error(`consulta inesperada das atrações: ${sql}`);
     throw new Error(`tabela inesperada: ${sql}`);
   };
   return { consultar, consultas };
@@ -513,10 +515,10 @@ async function paraEnviar(lidos: Lido[], banco: Parameters<typeof postgresFalso>
 }
 
 const SESSOES = [
-  { __id: 'recSessaoSuper', atracao: 'Supercine', tipo: 'Sessão de filme' },
-  { __id: 'recSessaoDomMaior', atracao: 'Domingo Maior', tipo: 'Sessão de filme' },
-  { __id: 'recSessaoTarde', atracao: 'Sessão da Tarde', tipo: 'Sessão de filme' },
-  { __id: 'recSessaoTQ', atracao: 'Tela Quente', tipo: 'Sessão de filme' },
+  { __id: 'recSessaoSuper', atracao: 'Supercine', acervo: 'do filme' },
+  { __id: 'recSessaoDomMaior', atracao: 'Domingo Maior', acervo: 'do filme' },
+  { __id: 'recSessaoTarde', atracao: 'Sessão da Tarde', acervo: 'do filme' },
+  { __id: 'recSessaoTQ', atracao: 'Tela Quente', acervo: 'do filme' },
 ];
 const DESPEDIDA = { ...filmeDoBanco('recDespedida01', 'Despedida em Grande Estilo', 2017), ...referencia.caminhos['DESPEDIDA EM GRANDE ESTILO'], poster: null };
 const doAcervo = (arte: string, id: string, title: string) => ({ arte, filme: { id, title } });
@@ -659,10 +661,11 @@ describe('aba Filmes: o envio', () => {
     expect(falsos.pedidos).toEqual([]);
   });
 
-  it.each([
-    ['a coluna nova (acervo)', [{ __id: 'recSessaoSuper', atracao: 'Supercine', acervo: 'do filme' }, { __id: 'recDomMaior', atracao: 'Domingo Maior', acervo: null }]],
-    ['a coluna antiga (tipo)', [{ __id: 'recSessaoSuper', atracao: 'Supercine', tipo: 'Sessão de filme' }, { __id: 'recDomMaior', atracao: 'Domingo Maior', tipo: 'Atração' }]],
-  ])('as sessões de filme do cadastro, com %s: só a de acervo do filme vira o vínculo da exibição', async (_, atracoes: SessaoDoBanco[]) => {
+  it('as sessões de filme do cadastro: só a de acervo do filme vira o vínculo da exibição', async () => {
+    const atracoes: SessaoDoBanco[] = [
+      { __id: 'recSessaoSuper', atracao: 'Supercine', acervo: 'do filme' },
+      { __id: 'recDomMaior', atracao: 'Domingo Maior', acervo: null },
+    ];
     const { enviar, terminar, falsos } = await paraEnviar(
       [
         { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'SUPERCINE', data: '05/12/2026' },
