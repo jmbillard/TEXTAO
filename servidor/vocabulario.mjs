@@ -8,6 +8,34 @@ const VALIDADE_MS = 10 * 60 * 1000;
 const POR_PAGINA = 1000;
 const DIAS_PAUTA = 45; // o mesmo prazo da consulta no Postgres (pauta.mjs)
 
+/** Os títulos de um vínculo do Teable (lista de { id, title }, às vezes em JSON). */
+const titulos = (v) => {
+  let lista = v;
+  if (typeof v === 'string') {
+    try {
+      lista = JSON.parse(v || '[]');
+    } catch {
+      lista = [v];
+    }
+  }
+  return [...new Set((Array.isArray(lista) ? lista : lista ? [lista] : []).map((x) => texto(x)).filter(Boolean))];
+};
+/** O campo "ativo" dos redatores: a lista ativo/inativo (como o status dos designers) ou um checkbox. Sem o campo,
+    ou vazio, conta como ativo. */
+const ehAtivo = (v) => {
+  const t = Array.isArray(v) ? texto(v[0]) : typeof v === 'boolean' ? (v ? 'ativo' : 'inativo') : texto(v);
+  return !/^(inativ|false|0$|nao|não)/i.test(t);
+};
+/** Os redatores, um por nome, com as keys e o "ativo", em ordem alfabética. */
+const listaDeRedatores = (linhas) => {
+  const porNome = new Map();
+  for (const l of linhas) {
+    const nome = texto(l.redator);
+    if (nome && !porNome.has(nome)) porNome.set(nome, { nome, keys: titulos(l.key), ativo: ehAtivo(l.ativo) });
+  }
+  return [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+};
+
 const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ') : v == null ? '' : String(typeof v === 'object' ? (v.title ?? v.name ?? '') : v)).trim();
 
 /** `cache` (opcional) divide o resultado entre instâncias; `copia` (opcional) guarda a última leitura boa
@@ -110,7 +138,8 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
     if (env.TEABLE_PG_URL && pg.atracoes) {
       try {
         novo.programas = await atracoesDoPg();
-        if (pg.redatores) novo.redatores = [...new Set((await sql(`SELECT "redator" FROM ${pg.redatores}`)).map((l) => texto(l.redator)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        // to_jsonb: sem o campo "ativo" (ou "key") na tabela, a consulta não quebra e todos contam como ativos
+        if (pg.redatores) novo.redatores = listaDeRedatores(await sql(`SELECT r."redator", to_jsonb(r)->'key' AS key, to_jsonb(r)->'ativo' AS ativo FROM ${pg.redatores} r`));
         if (pg.editores) novo.editores = [...new Set((await sql(`SELECT "editor" FROM ${pg.editores}`)).map((l) => texto(l.editor)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
         peloPg = true;
         estado.origem = 'postgres';
@@ -142,8 +171,7 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
     }
     if (env.TEABLE_REDATORES && !(peloPg && pg.redatores)) {
       const campo = env.TEABLE_CAMPO_REDATOR || 'redator';
-      const nomes = (await registros(env.TEABLE_REDATORES)).map((f) => texto(f[campo])).filter(Boolean);
-      novo.redatores = [...new Set(nomes)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      novo.redatores = listaDeRedatores((await registros(env.TEABLE_REDATORES)).map((f) => ({ redator: f[campo], key: f.key, ativo: f.ativo })));
     }
     if (env.TEABLE_EDITORES && !(peloPg && pg.editores)) {
       const nomes = (await registros(env.TEABLE_EDITORES)).map((f) => texto(f[env.TEABLE_CAMPO_EDITOR || 'editor'])).filter(Boolean);

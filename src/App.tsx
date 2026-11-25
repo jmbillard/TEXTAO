@@ -3,7 +3,7 @@ import { Comparar } from './ui/Comparar';
 import { Atalhos } from './ui/Atalhos';
 import { Cadastros, type AtracaoNova } from './ui/Cadastros';
 import { Filmes } from './ui/Filmes';
-import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
+import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -212,9 +212,7 @@ export function App() {
       if (!imp.meta.editor) imp.meta.editor = pauta.editor;
       // quando a claquete bate com a pauta, vale a grafia de lá: "Quem Ama(Prologo)26/10 Rede"
       if (pauta.claquete) imp.meta.claquete = pauta.claquete;
-      // arquivo sem autor (RTF, TXT): o redator é quem está subindo, pelo início do e-mail
-      const login = identidade?.email.split('@')[0] || identidade?.nome;
-      if (!imp.meta.redator && login) imp.meta.redator = login;
+      // quem sobe o arquivo não é o redator: sem redator, o login não entra no lugar dele (a fila sugere um nome)
       const agora = new Date().toISOString();
       // o roteiro é sempre texto corrido; as cores do Word ficam com o significado que o app deduziu
       const roteiro: Roteiro = {
@@ -260,6 +258,12 @@ export function App() {
             }
             // ficou sem atração: o servidor fica sabendo o que o navegador tinha, para o diagnóstico
             if (!nome) relatarSemAtracao({ claquete: roteiro.meta.claquete, arquivo: arquivo.name, achadoNoNavegador: antes, atracoesNoNavegador: quantasAtracoes(), porLista: acharPrograma(roteiro.meta.claquete)?.nome ?? '' });
+          }
+          // sem redator: o PROMeiro sugere um nome, pelo texto e pelas últimas claquetes da atração (já com a atração
+          // que o servidor achou), sem preencher sozinho
+          if (!roteiro.meta.redator) {
+            const paragrafos = (textosOriginais.get(roteiro.id) ?? []).map((par) => par.map((r) => r.t).join(''));
+            roteiro.meta.sugestoesRedator = await palpitesDoRedator(roteiro.meta, paragrafos).catch(() => []);
           }
           const k = chaveDaClaquete(roteiro.meta.claquete);
           if (k && naFila.has(k)) roteiro.meta.substitui = naFila.get(k);

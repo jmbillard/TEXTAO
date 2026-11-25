@@ -1,11 +1,12 @@
 import { chaveDeArte } from '../modelo/diferencas';
 import { siglaDoTipo } from '../modelo/tipos';
-import { chaveDaClaquete, naPauta, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
+import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
+import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../modelo/redator';
 import { chavesQueExistem, complexidadeDaArte, exportar } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
-import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro } from '../modelo/tipos';
+import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro, SugestaoRedator } from '../modelo/tipos';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
    - servidor (SQLite, com dono, público/privado e histórico), quando a API responde;
@@ -506,6 +507,22 @@ export async function baixarOriginal(id: string): Promise<Blob> {
 export async function consultarAcervo(atracao: string, dataExibicao = ''): Promise<{ ligado: boolean; podeZerar?: boolean; artes: ArteDoAcervo[] }> {
   if (armazenamento.tipo !== 'servidor' || !atracao.trim()) return { ligado: false, artes: [] };
   return pedir<{ ligado: boolean; podeZerar?: boolean; artes: ArteDoAcervo[] }>(`/api/acervo?atracao=${encodeURIComponent(atracao)}&data=${encodeURIComponent(dataExibicao)}`).catch(() => ({ ligado: false, artes: [] }));
+}
+
+/** Quem escreveu as últimas claquetes da atração, na mesma praça (a sugestão do histórico). Sem servidor, sem atração
+    ou sem o Postgres do Teable: null. */
+export async function consultarRedatorProvavel(atracao: string, praca: string): Promise<RedatorDoHistorico | null> {
+  if (armazenamento.tipo !== 'servidor' || !atracao.trim()) return null;
+  const r = await pedir<{ redator: RedatorDoHistorico | null }>(`/api/redator-provavel?atracao=${encodeURIComponent(atracao)}&praca=${encodeURIComponent(praca)}`).catch(() => null);
+  return r?.redator ?? null;
+}
+
+/** Os palpites de redator do roteiro que chegou sem redator: o do texto (os parágrafos do roteiro) e o das últimas
+    claquetes da atração. Só redatores ativos; os que quem revisa já recusou ficam de fora. */
+export async function palpitesDoRedator(meta: Pick<Meta, 'programa' | 'praca' | 'redatorRecusado'>, paragrafos: string[]): Promise<SugestaoRedator[]> {
+  const redatores = redatoresDoCadastro();
+  const historico = await consultarRedatorProvavel(meta.programa, meta.praca);
+  return sugestoesDoRedator({ texto: redatorNoTexto(paragrafos, redatores), historico, atracao: meta.programa, redatores, recusados: meta.redatorRecusado });
 }
 
 /** Pacote gráfico novo: as artes da atração deixam de valer. */

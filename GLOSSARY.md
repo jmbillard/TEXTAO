@@ -27,6 +27,13 @@ A lista de roteiros por dia de exibição para revisar e mandar ao Trello. Só r
 **Pendência**:
 Algo que impede ou pede atenção antes do envio (sem editor, sem data, claquete repetida…); algumas são dispensáveis.
 
+**Palpite do redator**:
+Quando o roteiro chega sem redator, o nome que o PROMeiro sugere, à mão e com "?", no lugar do "???": pelo texto (a
+assinatura no fim, o cabeçalho, o resto) ou pelas últimas claquetes da atração (3 das últimas 5, na mesma praça, em 60
+dias). Vale o texto; o outro fica no topo do Escolher. Só redatores ativos. Nunca é preenchido sozinho: um toque aceita,
+o × recusa, e a recusa fica guardada no roteiro. O autor do arquivo que não é redator cadastrado não vira o redator.
+_Evitar_: redator automático, preenchimento
+
 **Já existe (✓)**:
 A arte confirmada como já produzida: sai do checklist, vai na linha JÁ EXISTEM do card e, no envio, entra no acervo.
 _Evitar_: concluída, repetida

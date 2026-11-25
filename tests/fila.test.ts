@@ -123,7 +123,7 @@ describe('pendências conferidas', () => {
   const comArtes = (n: number, meta: Partial<Meta> = {}) =>
     exportar({
       id: 't',
-      meta: { ...metaVazia(), editor: 'Fulano', dataExibicao: '2026-11-20', ...meta },
+      meta: { ...metaVazia(), redator: 'Fulana', editor: 'Fulano', dataExibicao: '2026-11-20', ...meta },
       doc: { type: 'doc', content: Array.from({ length: n }, (_, k) => ({ type: 'paragraph', content: [{ type: 'text', text: `ARTE ${k}`, marks: [{ type: 'arte', attrs: { id: `a${k}`, subtipo: '' } }] }] })) },
       revisao: 1, criadoEm: '', atualizadoEm: '',
     });
@@ -308,6 +308,23 @@ describe('claquete repetida fica marcada', () => {
     expect(pendencias(rot({ outroRoteiro: true }))).toContain('Claquete repetida');
     expect(pendencias(rot({ v2De: { card: 'c', url: 'u' }, conferidos: ['v2'] }))).not.toContain('Versão nova (v2)');
     expect(pendenciasDetalhadas(rot({ outroRoteiro: true })).find((p) => p.id === 'repetida')?.dispensavel).toBe(true);
+  });
+});
+
+describe('sem redator', () => {
+  const rot = (meta: Partial<Meta>) =>
+    exportar({ id: 'x', meta: { ...metaVazia(), redator: 'Fulana Prado', editor: 'Jorge', dataExibicao: '2026-11-20', ...meta }, doc: { type: 'doc', content: [] }, revisao: 1, criadoEm: '', atualizadoEm: '' } as never);
+  it('vira pendência ao lado de "Sem editor", e não dá para dispensar', () => {
+    expect(pendenciasDetalhadas(rot({ redator: '', editor: '' })).map((p) => p.id).filter((id) => id.startsWith('sem-'))).toEqual(['sem-arte', 'sem-redator', 'sem-editor']);
+    expect(pendenciasDetalhadas(rot({ redator: '', conferidos: ['sem-redator'] })).find((p) => p.id === 'sem-redator')).toMatchObject({ texto: 'Sem redator', dispensavel: false });
+  });
+  it('com o redator preenchido (o palpite aceito), a pendência cai', () => {
+    expect(pendencias(rot({ redator: 'Fulana Prado' }))).not.toContain('Sem redator');
+  });
+  it('não segura o envio ao Trello', async () => {
+    const { travamTrello, TEXTO_SEM_REDATOR } = await import('../src/modelo/exportar');
+    expect(TEXTO_SEM_REDATOR).toBe('Sem redator');
+    expect(travamTrello(['Sem redator', 'Sem editor'])).toEqual([]);
   });
 });
 

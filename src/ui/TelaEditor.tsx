@@ -18,7 +18,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, roteiroDa, temTrello, type EnvioTrello, type Leitura, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, palpitesDoRedator, roteiroDa, temTrello, type EnvioTrello, type Leitura, type Resumo, type Versao } from '../dados/armazenamento';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
@@ -30,7 +30,8 @@ import { chaveDeArte } from '../modelo/diferencas';
 import { nomeDaSigla,
   ETIQUETAS, juntarTipos, metaVazia, NOMES_COLUNAS, nomesDosTipos, normalizarSubtipo, tiposDaArte, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
-import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura, TextoDaClaquete } from './pecas';
+import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura, PalpiteAMao, TextoDaClaquete, useSaida, type PalpiteNoCampo } from './pecas';
+import { estadoDoRedator, paragrafosDoDoc, recusarPalpite, sugeridosDoMenu } from '../modelo/redator';
 import { useTelaDeCelular } from './faixa';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { Riscado } from './Comparar';
@@ -654,6 +655,19 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       })
       .catch(() => {});
   }, [liberado, leitura, doTour, meta.editor, meta.claquete]);
+  // sem redator e sem palpite guardado (o roteiro chegou antes da sugestão de redator, ou por outro caminho): procura
+  // um, pelo texto e pelas últimas claquetes da atração. Fica guardado, para não perguntar de novo
+  const procurouRedator = useRef(false);
+  useEffect(() => {
+    if (!liberado || leitura || doTour || procurouRedator.current || meta.redator || meta.sugestoesRedator) return;
+    procurouRedator.current = true;
+    void atualizarVocabulario()
+      .then(() => palpitesDoRedator(metaRef.current, paragrafosDoDoc(editor ? (editor.getJSON() as Roteiro['doc']) : inicial.doc)))
+      .then((sugestoesRedator) => {
+        if (!metaRef.current.redator && !metaRef.current.sugestoesRedator) mudarMetaRef.current?.({ sugestoesRedator }, true);
+      })
+      .catch(() => {});
+  }, [liberado, leitura, doTour, meta.redator, meta.sugestoesRedator, editor]); // eslint-disable-line react-hooks/exhaustive-deps
   // sem atração: a lista de keys pode não ter carregado quando o roteiro chegou; tenta reconhecer de novo pela claquete
   const procurouAtracao = useRef(false);
   useEffect(() => {
@@ -1365,6 +1379,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     if (!celular) return abrirArte(a);
     if (a) apontarNoTexto(a);
   };
+  /* o palpite do redator: na claquete (o campo Redator) e em "Para revisar" */
+  const estadoRedator = estadoDoRedator(meta);
+  const recusarRedator = () => mudarMeta(recusarPalpite(metaRef.current));
+  const palpiteRedator: PalpiteNoCampo | undefined = estadoRedator && !leitura ? { ...estadoRedator, sugeridos: sugeridosDoMenu(meta), recusar: recusarRedator } : undefined;
   const ficha = (
     <Claquete
       dados={meta}
@@ -1391,6 +1409,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
           : undefined
       }
       recolhivel={celular ? { aberta: fichaAberta, mudar: setFichaAberta } : undefined}
+      palpiteRedator={palpiteRedator}
     />
   );
   const avisosDoTrello = (
@@ -1412,12 +1431,31 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       )}
     </>
   );
+  // aceito o palpite, a linha "Sem redator" recolhe pela altura antes de sair da lista
+  const semRedatorNaLista = lista.some((p) => p.id === 'sem-redator');
+  const lugarDoRedator = useRef(0);
+  if (semRedatorNaLista) lugarDoRedator.current = lista.findIndex((p) => p.id === 'sem-redator');
+  const redatorSaindo = useSaida(semRedatorNaLista, 1000);
+  const listaNaTela = redatorSaindo ? [...lista.slice(0, lugarDoRedator.current), { id: 'sem-redator' as const, texto: 'Sem redator', dispensavel: false }, ...lista.slice(lugarDoRedator.current)] : lista;
+  const escolherRedator = () => escolherNaFicha('.escolha-nome-valor[aria-label^="Redator"]');
+  const acoesDoRedator = () => {
+    const sugerido = estadoRedator?.estado === 'sugerido' && !leitura;
+    // aceito: o nome aparece no lugar do palpite enquanto a linha recolhe
+    if (redatorSaindo) return <span className="aceito-na-linha">{meta.redator}</span>;
+    return (
+      <>
+        {sugerido && <PalpiteAMao sugestao={estadoRedator.sugestao} aceitar={(nome) => mudarMeta({ redator: nome })} recusar={recusarRedator} comMotivo={false} />}
+        {(!sugerido || !celular) && <button className="botao-texto" onClick={escolherRedator}>Escolher</button>}
+      </>
+    );
+  };
   const itensPendentes = (
     <ul>
-      {lista.map((p) => (
-        <li key={p.id}>
+      {listaNaTela.map((p) => (
+        <li key={p.id} className={p.id === 'sem-redator' ? `linha-redator ${redatorSaindo ? 'saindo' : ''}` : undefined} aria-hidden={(p.id === 'sem-redator' && redatorSaindo) || undefined}>
           <span>{p.texto}</span>
           <span className="pendencia-acoes">
+            {p.id === 'sem-redator' && acoesDoRedator()}
             {p.id === 'sem-editor' && (
               <button className="botao-texto" onClick={() => escolherNaFicha('.escolha-nome-valor[aria-label^="Editor"]')}>Escolher</button>
             )}
@@ -1428,23 +1466,24 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               <button className="botao-texto" onClick={() => verArte(p.arte)}>Ver</button>
             )}
           </span>
+          {p.id === 'sem-redator' && celular && estadoRedator?.estado === 'sugerido' && !redatorSaindo && <span className="motivo motivo-linha">{estadoRedator.sugestao.motivo}</span>}
         </li>
       ))}
     </ul>
   );
-  const pendenciasNoComputador = lista.length > 0 && (
-    <div className="pendencias-editor" aria-label="Para revisar">
-      <div className="cab-artes"><b>Para revisar</b><span className="rotulo">{lista.length}</span></div>
+  const pendenciasNoComputador = listaNaTela.length > 0 && (
+    <div className={`pendencias-editor ${lista.length ? '' : 'recolhendo'}`} aria-label="Para revisar">
+      <div className="cab-artes"><b>Para revisar</b><span className="rotulo">{listaNaTela.length}</span></div>
       {itensPendentes}
       <hr className="sep-artes" />
     </div>
   );
   /** No celular, "Para revisar" recolhe: fechado, as pendências numa linha; aberto, a lista com "Ver" e "Escolher". */
-  const pendenciasNoCelular = lista.length > 0 && (
-    <section className={`cartao pendencias-editor pendencias-celular ${pendenciasAbertas ? 'aberta' : ''}`} aria-label="Para revisar">
+  const pendenciasNoCelular = listaNaTela.length > 0 && (
+    <section className={`cartao pendencias-editor pendencias-celular ${pendenciasAbertas ? 'aberta' : ''} ${lista.length ? '' : 'recolhendo'}`} aria-label="Para revisar">
       <button type="button" className="pend-topo" aria-expanded={pendenciasAbertas} onClick={() => setPendenciasAbertas((v) => !v)}>
-        <span className="cab-artes"><b>Para revisar</b><span className="rotulo">{lista.length}</span></span>
-        <span className="pend-linha-dobra"><span><span className="pend-linha">{lista.map((x) => x.texto).join(' · ')}</span></span></span>
+        <span className="cab-artes"><b>Para revisar</b><span className="rotulo">{listaNaTela.length}</span></span>
+        <span className="pend-linha-dobra"><span><span className="pend-linha">{listaNaTela.map((x) => x.texto).join(' · ')}</span></span></span>
         <span className="chev"><Icone nome="baixo" tam={16} traco={2.2} /></span>
       </button>
       <div className="pend-dobra" inert={!pendenciasAbertas || undefined}>

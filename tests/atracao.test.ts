@@ -52,14 +52,19 @@ describe('vocabulário pelo Postgres', () => {
     const consultar = async (sql: string) =>
       sql.includes('"atracoes"')
         ? [{ atracao: 'Em Família com Eliana', categoria: 'PROGRAMAS', pattern: [{ id: 'k1', title: 'ELIANA' }] }, { atracao: 'Chef de Alto Nível', categoria: null, pattern: '[{"id":"k2","title":"CHEF"}]' }]
-        : [{ redator: 'Guilherme Heizer' }];
+        : [{ redator: 'Guilherme Heizer', key: null, ativo: null }, { redator: 'Fulana Prado', key: [{ id: 'kr1', title: 'FPRADO' }], ativo: 'ativo' }, { redator: 'Cicrano Dias', key: '[{"id":"kr2","title":"CDIAS"}]', ativo: 'inativo' }];
     const v = criarVocabulario(env, buscar, null, null, consultar);
     const r = await v.ler();
     expect(r.programas).toEqual([
       { nome: 'Chef de Alto Nível', chaves: ['CHEF'] },
       { nome: 'Em Família com Eliana', chaves: ['ELIANA'], categoria: 'PROGRAMAS' },
     ]);
-    expect(r.redatores).toEqual(['Guilherme Heizer']);
+    // com as keys e o "ativo"; sem o campo (ou vazio), conta como ativo
+    expect(r.redatores).toEqual([
+      { nome: 'Cicrano Dias', keys: ['CDIAS'], ativo: false },
+      { nome: 'Fulana Prado', keys: ['FPRADO'], ativo: true },
+      { nome: 'Guilherme Heizer', keys: [], ativo: true },
+    ]);
     expect(api.filter((u) => u.includes('tblKey'))).toHaveLength(0); // as keys não foram pela API
   });
 });

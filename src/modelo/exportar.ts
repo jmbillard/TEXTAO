@@ -335,14 +335,16 @@ const arteLonga = (texto: string) => {
 };
 
 /** Pendências que fazem o roteiro esperar a revisão antes de ir sozinho ao Trello. Nada impede o envio de fato:
-    sem editor e sem data não seguram (o n8n completa depois; VT de evento ou reunião interna não tem data). */
+    sem redator, sem editor e sem data não seguram (o n8n completa depois; VT de evento ou reunião interna não tem data). */
 export const TEXTO_SEM_EDITOR = 'Sem editor';
+/** Sem redator também não segura: o PROMeiro sugere um nome e quem revisa aceita com um toque. */
+export const TEXTO_SEM_REDATOR = 'Sem redator';
 // o texto de antes, que roteiros já guardados ainda têm
 const SEM_EDITOR_ANTIGO = 'Sem editor: a claquete não está na pauta';
-const NAO_SEGURAM = new Set(['Sem editor', SEM_EDITOR_ANTIGO, 'Sem data', 'Sem data de exibição']);
+const NAO_SEGURAM = new Set([TEXTO_SEM_REDATOR, 'Sem editor', SEM_EDITOR_ANTIGO, 'Sem data', 'Sem data de exibição']);
 export const travamTrello = (revisar: string[] | undefined) => (revisar ?? []).filter((t) => !NAO_SEGURAM.has(t));
 
-export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-editor' | 'sem-data' | 'ocr' | 'v2' | 'repetida' | 'ja-existem';
+export type IdPendencia = 'sem-arte' | 'muitas-artes' | 'arte-longa' | 'sem-redator' | 'sem-editor' | 'sem-data' | 'ocr' | 'v2' | 'repetida' | 'ja-existem';
 export interface Pendencia {
   id: IdPendencia;
   texto: string;
@@ -362,6 +364,7 @@ export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
   if (!n) p.push({ id: 'sem-arte', texto: 'Nenhuma arte', dispensavel: true });
   if (n >= 10) p.push({ id: 'muitas-artes', texto: `Muitas artes: ${n}`, dispensavel: true });
   if (longa) p.push({ id: 'arte-longa', texto: 'Arte longa', dispensavel: true, arte: longa.id });
+  if (!r.redator) p.push({ id: 'sem-redator', texto: TEXTO_SEM_REDATOR, dispensavel: false });
   if (!r.editor) p.push({ id: 'sem-editor', texto: TEXTO_SEM_EDITOR, dispensavel: false });
   if (!r.dataExibicao) p.push({ id: 'sem-data', texto: 'Sem data', dispensavel: false });
   if (r.lidoPorOcr) p.push({ id: 'ocr', texto: 'Lido por OCR', dispensavel: true });

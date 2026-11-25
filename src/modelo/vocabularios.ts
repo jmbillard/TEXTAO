@@ -1,4 +1,5 @@
 import type { TipoPrograma } from './tipos';
+import type { RedatorVocab } from './redator';
 
 /* Vocabulários padrão. Servem de sugestão nos campos do cabeçalho e de
    dicionário para o importador reconhecer o programa pelo texto ou pelo nome do arquivo. */
@@ -174,7 +175,9 @@ export const semAcento = (s: string) =>
 
 export interface VocabularioExterno {
   programas: { nome: string; chaves: string[]; categoria?: string }[];
-  redatores: string[];
+  /** Os redatores do cadastro, com as keys e se estão ativos. O servidor antigo (e a cópia local de antes) mandava só
+      os nomes: valem como ativos, sem keys. */
+  redatores: (string | { nome: string; keys?: string[]; ativo?: boolean })[];
   editores?: string[];
   /** Pauta da edição: chave da claquete → quem está editando. */
   pauta?: { chave: string; editor: string; claquete?: string }[];
@@ -189,7 +192,7 @@ interface Externo {
 }
 
 let externos: Externo[] = [];
-let redatores: string[] = [];
+let redatores: RedatorVocab[] = [];
 let editores: string[] = [];
 let pauta = new Map<string, { editor: string; claquete: string }>();
 
@@ -207,7 +210,9 @@ export function registrarVocabulario(v: VocabularioExterno | null) {
     const daCategoria = ({ novelas: 'novela', esportes: 'esporte' } as Record<string, TipoPrograma>)[normal(categoria ?? '')];
     return { p: { nome, tipo: daCategoria ?? embutido?.tipo ?? 'outro', pistas: [...new Set([n, ...ch])] }, chaves: ch, nome: n };
   });
-  redatores = v?.redatores ?? [];
+  redatores = (v?.redatores ?? [])
+    .map((r) => (typeof r === 'string' ? { nome: r, keys: [], ativo: true } : { nome: String(r?.nome ?? ''), keys: (r?.keys ?? []).map(String), ativo: r?.ativo !== false }))
+    .filter((r) => r.nome);
   editores = v?.editores ?? [];
   pauta = new Map((v?.pauta ?? []).map((p) => [p.chave, { editor: p.editor, claquete: p.claquete ?? '' }]));
 }
@@ -220,7 +225,9 @@ export const atracaoCadastrada = (nome: string) => externos.some((e) => e.p.nome
 
 /** Programas para sugerir no cabeçalho: os da casa, quando existem; senão, os embutidos. */
 export const programasConhecidos = (): ProgramaVocab[] => (externos.length ? externos.map((e) => e.p) : PROGRAMAS);
-export const redatoresConhecidos = (): string[] => redatores;
+export const redatoresConhecidos = (): string[] => redatores.map((r) => r.nome);
+/** Os redatores do cadastro, com as keys e o "ativo", para reconhecer o autor e sugerir o redator. */
+export const redatoresDoCadastro = (): RedatorVocab[] => redatores;
 export const editoresConhecidos = (): string[] => editores;
 
 /** A claquete como chave de cruzamento: sem acento, sem versão ("(AH)", "V2", "(DIA)") e sem pontuação. Igual à fórmula do Teable. */

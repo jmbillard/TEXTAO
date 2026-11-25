@@ -107,6 +107,18 @@ export interface Meta {
   produzir?: string[];
   /** Complexidade de cada arte a produzir (pela chave): só MÉDIA (2) e ALTA (3) ficam guardadas; a ausência é BAIXA. */
   complexidade?: Record<string, 2 | 3>;
+  /** Sem redator: os palpites do PROMeiro, do texto do roteiro e das últimas claquetes da atração. O primeiro é o
+      que aparece à mão no lugar do "???"; nada é preenchido sem um toque de quem revisa. */
+  sugestoesRedator?: SugestaoRedator[];
+  /** Os palpites de redator que quem revisa recusou (×): não voltam para este roteiro. */
+  redatorRecusado?: string[];
+}
+
+/** Um palpite de redator: o nome do cadastro e o motivo curto que aparece embaixo ("assinado no fim"). */
+export interface SugestaoRedator {
+  nome: string;
+  motivo: string;
+  fonte: 'texto' | 'historico';
 }
 
 export const metaVazia = (): Meta => ({

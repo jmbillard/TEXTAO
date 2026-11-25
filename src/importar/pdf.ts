@@ -453,7 +453,7 @@ function marcar(linhas: Linha[], { tracos, fundos }: Desenhos, anotacoes: any[],
 
 const RE_ABRE_SONORA = /^\s*(?:\([^()]{2,90}\)\s*)?\d{1,2}[.:]\d{2}(?:[.:]\d{2})?\s*(?:[–—-]\s|\p{L})|^\s*(?:MC|M[IÍ]DIA\s+CENTRAL|FRAME\.?\s?IO)\b/iu;
 
-const RE_ABRE_CABECALHO = /^\s*\(?\s*(?:LOC(?:UTOR[A]?|U[CÇ][AÃ]O)?\s*[:-]|(?:COM\s+)?SELO\b|FECHAR\s+C|REDATOR[A]?\s*:|PGM\s*:|M[AÁ]X\w*\.?\s*\d)/i;
+const RE_ABRE_CABECALHO = /^\s*\(?\s*(?:LOC(?:UTOR[A]?|U[CÇ][AÃ]O)?\s*[:-]|(?:COM\s+)?SELO\b|FECHAR\s+C|REDATOR[A]?\s*:|REDA[CÇ][AÃ]O\b|PGM\s*:|M[AÁ]X\w*\.?\s*\d)/i;
 
 /** A linha i+1 continua a linha i por quebra automática? null = não; " " = sim; "" = sim, com palavra cortada. */
 function quebraAutomatica(linhas: Linha[], i: number, disponivel: number): string | null {

@@ -1,7 +1,8 @@
 import { indiceDaMarca, semMarcasDeImagem, textoDoPar, type DocBruto, type Par } from './bruto';
 import { analisarSonoras, ehCaixaAlta, ehLocucao, RE_LINHA_LOC } from '../modelo/sonora';
 import { metaVazia, novoId, type Layout, type Meta, type NoJSON, type MarcaJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
-import { acharPrograma, claqueteDoArquivo, LOCUTORES, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, semAcento, lerDataDaClaquete } from '../modelo/vocabularios';
+import { acharPrograma, claqueteDoArquivo, LOCUTORES, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, redatoresDoCadastro, semAcento, lerDataDaClaquete } from '../modelo/vocabularios';
+import { autorEhRedator } from '../modelo/redator';
 
 /* Interpretação do arquivo: do "o que estava escrito" para "o que isso significa".
    Tudo o que é certo é resolvido sozinho e listado em `entendido`;
@@ -97,7 +98,10 @@ const RE_FECHAR = new RegExp(String.raw`^\(?\s*FECHAR\s+(?:COM|C\/)\s*(\d{1,3})\
 const RE_MAX = new RegExp(String.raw`^\(?\s*M[AÁ]X\w*\.?\s*(\d{1,3})\s*${ASPAS}*\s*\)?$`, 'i');
 const RE_DUR = new RegExp(String.raw`^[\s(/]*(?:ESTIMADA\s+|(?:TEMPO|DURA[CÇ][AÃ]O)(?:\s+ESTIMAD[OA])?\s*:?\s*)?(?:\d{1,3}\s*\/\s*)?(\d{1,3})\s*${ASPAS}{1,2}[\s)/]*$`, 'i');
 const RE_MIN_SEG = new RegExp(String.raw`\b(\d)\s*[’'′]\s*(\d{2})\s*${ASPAS}{1,2}`);
-const RE_REDATOR = /^REDATOR[A]?\s*:\s*(.+)$/i;
+/** "REDATOR:", "Redatora:", "Redação:", "REDAÇÃO -", "Redação/Texto:". */
+const RE_REDATOR = /^(?:REDATOR[A]?|REDA[CÇ][AÃ]O(?:\s*\/\s*TEXTO)?|TEXTO\s*\/\s*REDA[CÇ][AÃ]O)\s*(?::|\s[-–]\s?)\s*(.+)$/i;
+/** "Texto: Fulana Prado": só com um nome depois (o "TEXTO:" também abre orientação para a locução). */
+const RE_TEXTO_DE = /^TEXTO\s*:\s*(.+)$/i;
 const RE_DATA_SO = /^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?$/;
 const RE_DATA = /(?<![\d:.])(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?(?![\d:.]*\d)/;
 const RE_CAP = /\bCAP(?:[IÍ]TULO)?\.?\s*(\d+)/i;
@@ -346,7 +350,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
       anotar(`"${s}" → selo no cabeçalho`);
       return true;
     }
-    if ((m = s.match(RE_REDATOR))) {
+    if ((m = s.match(RE_REDATOR)) || ((m = s.match(RE_TEXTO_DE)) && pareceNome(m[1].trim()))) {
       definir('redator', tituloCaso(m[1]));
       anotar(`"${s}" → redação no cabeçalho`);
       return true;
@@ -459,8 +463,11 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
   }
   // claquete do Rio começa por "RIO", a de São Paulo termina em "SP"; o resto é G5
   if (!meta.praca) meta.praca = pracaDaClaquete(meta.claquete);
-  if (!meta.redator && bruto.autor) {
-    meta.redator = bruto.autor.replace(/_[A-Z0-9]+$/, '').trim();
+  // o autor do arquivo só vale quando é um redator do cadastro: o estagiário que salvou, o dono do modelo do Word
+  // não são quem escreveu. Fora do cadastro, o roteiro fica sem redator e o PROMeiro sugere um (redator.ts).
+  const autor = bruto.autor.replace(/_[A-Z0-9]+$/, '').trim();
+  if (!meta.redator && autor && autorEhRedator(autor, redatoresDoCadastro())) {
+    meta.redator = autor;
     anotar('Redação: autor do arquivo');
   }
 

@@ -2810,3 +2810,82 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .item-cad:hover .acervo-cad.proprio, .acervo-cad.proprio:focus-visible { opacity: 1; }
 @media (hover: none) { .acervo-cad.proprio { opacity: 1; } }
 .acervo-trocar .cats button { font-size: 12px; padding: 3px 9px; }
+
+/* ---------- o palpite do redator: a sugestão do PROMeiro, à mão, no lugar dos ??? ----------
+   Na ficha da fila, no campo Redator da claquete e em "Para revisar". O nome com "?" (como o palpite do Sem cadastro)
+   aceita com um toque; o × risca e volta o "???" com "Escolher". Os três estados ocupam a mesma célula da grade
+   (.troca): a troca é um fade no mesmo lugar, nada teleporta. */
+.troca { display: inline-grid; vertical-align: top; max-width: 100%; }
+.troca > * { grid-area: 1 / 1; min-width: 0; transition: opacity 0.28s, transform 0.28s var(--suave); }
+.escolha-nome.com-palpite .troca > .troca-valor, .escolha-nome.com-palpite .troca > .troca-vazio { opacity: 0; pointer-events: none; }
+.escolha-nome.aceito .troca > .troca-valor { opacity: 1; pointer-events: auto; }
+.escolha-nome.aceito .troca > .palpite, .escolha-nome.recusado .troca > .palpite { opacity: 0; pointer-events: none; }
+/* recusar: o risco atravessa o palpite primeiro; depois ele some e o "???" volta */
+.escolha-nome.recusado .troca > .palpite { transition-delay: 0.3s; }
+.escolha-nome.recusado .troca > .troca-vazio { opacity: 1; pointer-events: auto; transition-delay: 0.32s; }
+.troca > .troca-valor { display: inline-flex; align-items: baseline; }
+.troca > .troca-vazio { display: inline-flex; align-items: baseline; gap: 8px; }
+.troca .escolha-nome-valor { width: auto; }
+
+.palpite { display: inline-grid; grid-template-columns: auto auto; justify-content: start; align-items: center; gap: 3px 6px; }
+.palpite .motivo { grid-column: 1 / -1; }
+.palpite .sug { position: relative; border: 0; background: none; padding: 0 2px; cursor: pointer; font: 700 22px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-2deg); transition: color 0.15s; white-space: nowrap; }
+.palpite .sug:hover { color: var(--ultra-tinta); }
+/* no hover, uma linha à mão corre por baixo do nome (como no .ligar-sug) */
+.palpite .sug::after { content: ''; position: absolute; left: 2px; right: 4px; bottom: -2px; height: 1.6px; border-radius: 2px; background: currentColor; transform: scaleX(0) rotate(-1deg); transform-origin: left center; transition: transform 0.28s var(--suave); }
+.palpite .sug:hover::after, .palpite .sug:focus-visible::after { transform: scaleX(1) rotate(-1deg); }
+/* o risco à mão da recusa */
+.palpite .sug::before { content: ''; position: absolute; left: -2px; right: -2px; top: 52%; height: 2px; border-radius: 2px; background: var(--tinta2); transform: scaleX(0) rotate(-4deg); transform-origin: left center; transition: transform 0.26s var(--suave); }
+.escolha-nome.recusado .palpite .sug::before { transform: scaleX(1) rotate(-4deg); }
+.palpite .motivo, .motivo-linha { font: 600 16px/1 Caveat, cursive; color: var(--tinta3); white-space: nowrap; }
+.palpite .nao { width: 22px; height: 22px; border: 0; background: none; border-radius: 6px; padding: 0; color: var(--tinta3); display: inline-grid; place-items: center; align-self: center; cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s; }
+.palpite .nao:hover { color: var(--perigo); }
+.ficha:hover .palpite .nao, .campo-c:hover .palpite .nao, .pendencias-editor li:hover .palpite .nao, .palpite .nao:focus-visible { opacity: 1; }
+@media (hover: none) { .palpite .nao { opacity: 1; width: 36px; height: 36px; margin: -7px -8px -7px -6px; } }
+.carimbo { font: 600 15px/1 Caveat, cursive; color: var(--ok); margin-left: 6px; display: inline-block; transform: rotate(-3deg); animation: carimbar 2.6s var(--suave) forwards; }
+@keyframes carimbar { 0% { opacity: 0; } 12% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* na ficha da fila: o valor é só texto, a dúvida na cor da falta. Com o Escolher aberto, a ficha revisada (a orelha
+   recortada) deixa o menu passar da borda */
+.ficha.revisada:has(.escolha-nome-menu) { clip-path: none; }
+.redator-palpite { display: inline-flex; align-items: baseline; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.redator-palpite .escolha-nome { display: inline-block; }
+.redator-palpite .escolha-nome-valor { display: inline; color: var(--tinta); font: inherit; border: 0; min-height: 0; }
+.redator-palpite .escolha-nome-valor.vago .duvida { color: var(--falta); }
+.redator-palpite .botao-texto.escolher { font-size: 12.5px; }
+
+/* na claquete (o quadro escuro): o amarelo dos ??? e o motivo na linha de baixo */
+.claquete .troca { display: grid; width: 100%; }
+.claquete .palpite .sug { color: #f5d400; font-size: 21px; }
+.claquete .palpite .sug:hover { color: #fff27a; }
+.claquete .palpite .sug::before { background: rgb(244 241 234 / 62%); }
+.claquete .palpite .motivo { color: rgb(244 241 234 / 62%); font-size: 15px; }
+.claquete .palpite .nao { color: rgb(244 241 234 / 62%); }
+.claquete .palpite .nao:hover { color: #ef9a8c; }
+.claquete .carimbo { color: #86c9a0; }
+.claquete .troca > .troca-vazio .botao-texto { color: rgb(244 241 234 / 62%); text-decoration-color: rgb(244 241 234 / 30%); }
+.claquete .troca > .troca-vazio .botao-texto:hover { color: #f4f1ea; }
+
+/* o menu do Escolher: os sugeridos em cima, com o motivo à mão */
+.escolha-nome-menu li.grupo { font: 600 9.5px var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--tinta3); padding: 6px 10px 2px; cursor: default; }
+.escolha-nome-menu li.sep { padding: 0; margin: 6px 0 2px; border-top: 1px dashed var(--regua-forte); border-radius: 0; cursor: default; }
+.escolha-nome-menu li .com-por { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.escolha-nome-menu li .por { font: 600 15px/1 Caveat, cursive; color: var(--tinta3); white-space: nowrap; }
+
+/* "Para revisar": aceito o palpite, a linha recolhe pela altura */
+.pendencias-editor li.linha-redator { flex-wrap: wrap; max-height: 90px; overflow: hidden; transition: max-height 0.38s var(--suave) 0.5s, padding 0.38s var(--suave) 0.5s, opacity 0.25s 0.5s, border-color 0.25s 0.5s; }
+.pendencias-editor li.linha-redator.saindo { max-height: 0; padding-block: 0; opacity: 0; border-top-color: transparent; }
+.pendencias-editor li.linha-redator .pendencia-acoes { align-items: baseline; }
+.pendencias-editor li.linha-redator .motivo-linha { flex-basis: 100%; margin-top: -4px; }
+.aceito-na-linha { font-size: 13px; color: var(--tinta); animation: surgir-aceito 0.28s var(--suave) both; }
+@keyframes surgir-aceito { from { opacity: 0; } }
+/* era a última pendência: o cartão inteiro recolhe, depois da linha, em vez de sumir de uma vez */
+.pendencias-editor.recolhendo { overflow: hidden; animation: recolher-pendencias 0.42s var(--suave) 0.5s forwards; }
+@keyframes recolher-pendencias { from { max-height: 400px; } to { max-height: 0; opacity: 0; padding-block: 0; margin-block: 0; border-width: 0; } }
+/* na ficha da fila, a etiqueta "Sem redator" recolhe pela largura */
+.pendencia.de-redator { display: inline-block; max-width: 160px; overflow: hidden; white-space: nowrap; transition: max-width 0.4s var(--suave) 0.3s, opacity 0.25s 0.3s, padding 0.4s var(--suave) 0.3s, margin 0.4s var(--suave) 0.3s; }
+.pendencia.de-redator.saindo { max-width: 0; opacity: 0; padding-inline: 0; margin-right: -6px; }
+@media (prefers-reduced-motion: reduce) {
+  .troca > *, .palpite .sug::before, .pendencias-editor li.linha-redator, .pendencia.de-redator { transition-duration: 0.01ms; transition-delay: 0s; }
+  .carimbo, .aceito-na-linha, .pendencias-editor.recolhendo { animation: none; }
+}

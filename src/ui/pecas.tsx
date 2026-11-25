@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte } from '../modelo/tipos';
+import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte, type SugestaoRedator } from '../modelo/tipos';
+import type { EstadoDoRedator } from '../modelo/redator';
 import { PRACAS, editoresConhecidos, seloCurto, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { atalho, dataCurtaComDia, dataPorExtenso, ehMac } from './util';
 import { Icone } from './icones';
@@ -271,12 +272,12 @@ export interface FichaRecolhivel {
   mudar: (aberta: boolean) => void;
 }
 
-export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar, estimadaSeg, recolhivel }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode; estimadaSeg?: number | null; recolhivel?: FichaRecolhivel }) {
+export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar, estimadaSeg, recolhivel, palpiteRedator }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode; estimadaSeg?: number | null; recolhivel?: FichaRecolhivel; palpiteRedator?: PalpiteNoCampo }) {
   const [ligando, setLigando] = useState(false);
   const data = useRef<HTMLInputElement>(null);
   const campo = (rotulo: string, chave: 'claquete' | 'redator' | 'editor', vazio: string, lista?: () => string[]) =>
     mudar && lista ? (
-      <EscolhaDeNome rotulo={rotulo} valor={dados[chave] ?? ''} opcoes={lista} mudar={(v) => mudar({ [chave]: v })} semente={(dados.claquete || '') + chave} />
+      <EscolhaDeNome rotulo={rotulo} valor={dados[chave] ?? ''} opcoes={lista} mudar={(v) => mudar({ [chave]: v })} semente={(dados.claquete || '') + chave} palpite={chave === 'redator' ? palpiteRedator : undefined} />
     ) : mudar ? (
       <input
         value={dados[chave] ?? ''}
@@ -520,20 +521,71 @@ export function MenuDeOpcoes({ rotulo, valor, opcoes, mudar, multiplo = false }:
   );
 }
 
+/** Um item que sai de uma lista (a pendência "Sem redator" quando o palpite é aceito) continua na tela enquanto
+    recolhe: `saindo` fica ligado por `ms` depois que `presente` vira false. Nada teleporta. */
+export function useSaida(presente: boolean, ms = 900) {
+  const [antes, setAntes] = useState(presente);
+  const [saindo, setSaindo] = useState(false);
+  if (antes !== presente) {
+    setAntes(presente);
+    setSaindo(antes && !presente);
+  }
+  useEffect(() => {
+    if (!saindo) return;
+    const t = setTimeout(() => setSaindo(false), ms);
+    return () => clearTimeout(t);
+  }, [saindo, ms]);
+  return saindo;
+}
+
+/** O palpite do redator (a sugestão do PROMeiro) no lugar dos ??? à mão: o estado, o nome com o motivo, os sugeridos
+    que vão no topo do menu e o × que recusa. Veja `modelo/redator.ts`. */
+export interface PalpiteNoCampo {
+  estado: EstadoDoRedator;
+  sugestao: SugestaoRedator;
+  sugeridos: SugestaoRedator[];
+  recusar: () => void;
+}
+
+/**
+ * O palpite à mão: "Fulana Prado?" (um toque aceita), o × (recusa) e, embaixo, o motivo. É o mesmo na ficha da fila,
+ * no campo Redator da claquete e em "Para revisar".
+ */
+export function PalpiteAMao({ sugestao, aceitar, recusar, comMotivo = true, escondido = false }: { sugestao: SugestaoRedator; aceitar: (nome: string) => void; recusar: () => void; comMotivo?: boolean; escondido?: boolean }) {
+  const fora = escondido ? { tabIndex: -1, 'aria-hidden': true } : {};
+  return (
+    <span className="palpite" aria-hidden={escondido || undefined}>
+      <button type="button" className="sug" title={`Usar ${sugestao.nome} como redator`} onClick={() => aceitar(sugestao.nome)} {...fora}>
+        {sugestao.nome}?
+      </button>
+      <button type="button" className="nao" aria-label={`Não é ${sugestao.nome}`} title={`Não é ${sugestao.nome}`} onClick={recusar} {...fora}>
+        <Icone nome="fechar" tam={11} traco={2.6} />
+      </button>
+      {comMotivo && <span className="motivo">{sugestao.motivo}</span>}
+    </span>
+  );
+}
+
 /** Escolher um nome da lista do Teable (redatores, editores), com busca; vazio mostra os ??? à mão.
-    Também aceita um nome que não está na lista. */
-export function EscolhaDeNome({ rotulo, valor, opcoes, mudar, semente }: { rotulo: string; valor: string; opcoes: () => string[]; mudar: (v: string) => void; semente: string }) {
+    Também aceita um nome que não está na lista. Com `palpite` (o redator sugerido), o palpite à mão ocupa o lugar dos
+    ???, e os três estados (sugerido, aceito, recusado) trocam no mesmo lugar, com fade. `soLeitura`: o valor aceito é
+    só texto (a ficha da fila). */
+export function EscolhaDeNome({ rotulo, valor, opcoes, mudar, semente, palpite, soLeitura = false }: { rotulo: string; valor: string; opcoes: () => string[]; mudar: (v: string) => void; semente: string; palpite?: PalpiteNoCampo; soLeitura?: boolean }) {
   const [aberta, setAberta] = useState(false);
   const [busca, setBusca] = useState('');
   const [marcado, setMarcado] = useState(0);
+  // o carimbo "ok!" só aparece no toque que aceitou o palpite, não em quem abre um roteiro já aceito
+  const [carimbo, setCarimbo] = useState(false);
   const caixa = useRef<HTMLDivElement>(null);
   const lista = useRef<HTMLUListElement>(null);
+  const sugeridos = useMemo(() => (busca.trim() ? [] : (palpite?.sugeridos ?? [])), [busca, palpite?.sugeridos]);
   const filtradas = useMemo(() => {
     const t = semAcento(busca.trim());
-    return opcoes().filter((o) => !t || semAcento(o).includes(t));
-  }, [busca, opcoes, aberta]); // eslint-disable-line react-hooks/exhaustive-deps
+    const ja = new Set(sugeridos.map((s) => s.nome));
+    return opcoes().filter((o) => (!t || semAcento(o).includes(t)) && !ja.has(o));
+  }, [busca, opcoes, aberta, sugeridos]); // eslint-disable-line react-hooks/exhaustive-deps
   const livre = busca.trim() && !filtradas.some((o) => o.toLowerCase() === busca.trim().toLowerCase()) ? busca.trim() : '';
-  const itens = livre ? [...filtradas, livre] : filtradas;
+  const itens = [...sugeridos.map((s) => s.nome), ...filtradas, ...(livre ? [livre] : [])];
   useEffect(() => {
     if (!aberta) return;
     const fora = (e: PointerEvent) => !caixa.current?.contains(e.target as Node) && setAberta(false);
@@ -549,18 +601,54 @@ export function EscolhaDeNome({ rotulo, valor, opcoes, mudar, semente }: { rotul
     setAberta(false);
     setBusca('');
   };
+  const item = (o: string, i: number, por?: string) => (
+    <li
+      key={o + i}
+      data-i={i}
+      role="option"
+      aria-selected={o === valor}
+      className={`${i === marcado ? 'marcado' : ''} ${o === livre ? 'livre' : ''} ${por ? 'sugerido' : ''}`}
+      onPointerEnter={() => setMarcado(i)}
+      onClick={() => escolher(o)}
+    >
+      {o === livre ? <>Usar “{o}”</> : por ? <span className="com-por"><span>{o}</span><span className="por">{por}</span></span> : o}
+      {o === valor && <span className="atual">atual</span>}
+    </li>
+  );
+  const gatilho = (escondido = false) => (
+    <button
+      type="button"
+      className={`escolha-nome-valor ${valor ? '' : 'vago'}`}
+      aria-label={`${rotulo}: ${valor || 'não preenchido'}`}
+      aria-haspopup="listbox"
+      aria-expanded={aberta}
+      onClick={() => setAberta((v) => !v)}
+      {...(escondido ? { tabIndex: -1, 'aria-hidden': true } : {})}
+    >
+      {valor || <Duvida semente={semente} rotulo={`${rotulo} não preenchido`} />}
+    </button>
+  );
+  const estado: EstadoDoRedator | null = palpite ? (valor ? 'aceito' : palpite.estado === 'recusado' ? 'recusado' : 'sugerido') : null;
   return (
-    <div className="escolha-nome" ref={caixa}>
-      <button
-        type="button"
-        className={`escolha-nome-valor ${valor ? '' : 'vago'}`}
-        aria-label={`${rotulo}: ${valor || 'não preenchido'}`}
-        aria-haspopup="listbox"
-        aria-expanded={aberta}
-        onClick={() => setAberta((v) => !v)}
-      >
-        {valor || <Duvida semente={semente} rotulo={`${rotulo} não preenchido`} />}
-      </button>
+    <div className={`escolha-nome ${estado ? `com-palpite ${estado}` : ''}`} ref={caixa}>
+      {!palpite ? (
+        gatilho()
+      ) : (
+        // as três camadas ocupam a mesma célula: só a do estado aparece, e a troca é um fade no mesmo lugar
+        <span className="troca">
+          <span className="troca-valor" aria-hidden={estado !== 'aceito' || undefined}>
+            {soLeitura ? <span className="nome-aceito">{valor}</span> : gatilho(estado !== 'aceito')}
+            {carimbo && estado === 'aceito' && <span className="carimbo" aria-hidden="true">ok!</span>}
+          </span>
+          <PalpiteAMao sugestao={palpite.sugestao} aceitar={(n) => (setCarimbo(true), escolher(n))} recusar={palpite.recusar} escondido={estado !== 'sugerido'} />
+          <span className="troca-vazio" aria-hidden={estado !== 'recusado' || undefined}>
+            {gatilho(estado !== 'recusado')}
+            <button type="button" className="botao-texto escolher" onClick={() => setAberta((v) => !v)} {...(estado !== 'recusado' ? { tabIndex: -1 } : {})}>
+              Escolher
+            </button>
+          </span>
+        </span>
+      )}
       {aberta && (
         <div className="escolha-nome-menu" role="dialog" aria-label={`Escolher ${rotulo.toLowerCase()}`}>
           <input
@@ -577,20 +665,11 @@ export function EscolhaDeNome({ rotulo, valor, opcoes, mudar, semente }: { rotul
             }}
           />
           <ul role="listbox" ref={lista}>
-            {itens.map((o, i) => (
-              <li
-                key={o + i}
-                data-i={i}
-                role="option"
-                aria-selected={o === valor}
-                className={`${i === marcado ? 'marcado' : ''} ${o === livre ? 'livre' : ''}`}
-                onPointerEnter={() => setMarcado(i)}
-                onClick={() => escolher(o)}
-              >
-                {o === livre ? <>Usar “{o}”</> : o}
-                {o === valor && <span className="atual">atual</span>}
-              </li>
-            ))}
+            {sugeridos.length > 0 && <li className="grupo" role="presentation">Sugeridos</li>}
+            {sugeridos.map((s, i) => item(s.nome, i, s.motivo))}
+            {sugeridos.length > 0 && filtradas.length > 0 && <li className="sep" role="presentation" />}
+            {filtradas.map((o, i) => item(o, sugeridos.length + i))}
+            {livre && item(livre, sugeridos.length + filtradas.length)}
             {!itens.length && <li className="nada">Ninguém com esse nome</li>}
           </ul>
           {valor && (

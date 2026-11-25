@@ -3,8 +3,9 @@ import type { Falha } from '../App';
 import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, roteiroDa, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
 import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
-import { travamTrello } from '../modelo/exportar';
-import type { Roteiro } from '../modelo/tipos';
+import { exportar, pendencias, TEXTO_SEM_REDATOR, travamTrello } from '../modelo/exportar';
+import { estadoDoRedator, recusarPalpite, sugeridosDoMenu } from '../modelo/redator';
+import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
@@ -20,8 +21,8 @@ import type { Pessoa } from '../modelo/tipos';
 import { avisoDaSubstituicao } from './Comparar';
 import { Icone } from './icones';
 import { CenaDaFilaZerada, TituloEmDia, useFilaZerada } from './FilaZerada';
-import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado, TextoDaClaquete } from './pecas';
-import { semAcento } from '../modelo/vocabularios';
+import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, EscolhaDeNome, Marca, RABISCOS, Riscado, TextoDaClaquete, useSaida } from './pecas';
+import { redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, ehCelular, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
 
@@ -321,12 +322,24 @@ interface JaNaProducao {
 /** Qual dos riscos à mão vai sob a claquete: sempre o mesmo para o mesmo roteiro. */
 const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0);
 
-function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou }: { r: Resumo; nova: boolean; ordem: number; prioridade?: boolean; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: (nova?: AtracaoNova) => void; avisar?: (t: string) => void; ligou?: () => void }) {
+/** O palpite do redator na ficha: aceitar (um toque no nome, ou o Escolher) e recusar (o ×). */
+interface RedatorNaFicha {
+  mudar: (parte: Partial<Meta>) => void;
+}
+
+function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou, redator }: { r: Resumo; nova: boolean; ordem: number; prioridade?: boolean; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: (nova?: AtracaoNova) => void; avisar?: (t: string) => void; ligou?: () => void; redator?: RedatorNaFicha }) {
   const [ligando, setLigando] = useState(false);
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   // o que já está no Trello não vira ficha: vai para a seção No Trello
-  const revisar = r.meta.revisar ?? [];
+  const revisarAgora = r.meta.revisar ?? [];
+  // aceito o palpite do redator, a etiqueta "Sem redator" recolhe no lugar antes de sair
+  const semRedator = revisarAgora.includes(TEXTO_SEM_REDATOR);
+  const lugarDoRedator = useRef(0);
+  if (semRedator) lugarDoRedator.current = revisarAgora.indexOf(TEXTO_SEM_REDATOR);
+  const redatorSaindo = useSaida(semRedator, 1000);
+  const revisar = redatorSaindo ? [...revisarAgora.slice(0, lugarDoRedator.current), TEXTO_SEM_REDATOR, ...revisarAgora.slice(lugarDoRedator.current)] : revisarAgora;
+  const palpite = redator ? estadoDoRedator(r.meta) : null;
   // a pergunta da v2 e a da versão nova também pedem atenção
   const np = producao ? r.meta.naProducao : undefined;
   const alerta = revisar.length > 0 || !!np || !!versao;
@@ -383,7 +396,24 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
         </span>
       </button>
       <span className="ficha-gente some">
-        {r.meta.redator ? <span><small className="rotulo-gente">redator:</small> {r.meta.redator}</span> : <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>}
+        {palpite && redator ? (
+          <span className="redator-palpite">
+            <small className="rotulo-gente">redator:</small>{' '}
+            <EscolhaDeNome
+              rotulo="Redator"
+              valor={r.meta.redator}
+              opcoes={redatoresConhecidos}
+              mudar={(nome) => redator.mudar({ redator: nome })}
+              semente={r.id + 'r'}
+              soLeitura
+              palpite={{ ...palpite, sugeridos: sugeridosDoMenu(r.meta), recusar: () => redator.mudar(recusarPalpite(r.meta)) }}
+            />
+          </span>
+        ) : r.meta.redator ? (
+          <span><small className="rotulo-gente">redator:</small> {r.meta.redator}</span>
+        ) : (
+          <span className="falta">redator: <Duvida semente={r.id + 'r'} rotulo="sem redator" /></span>
+        )}
         <small className={semEditor ? 'falta' : ''}>
           editor: {!semEditor ? r.meta.editor : <Duvida semente={r.id + 'e'} rotulo="o editor não está na pauta" />}
         </small>
@@ -424,7 +454,11 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
       {comPendencias && (
         <span className="ficha-pendencias some">
           <AvisoTrello r={r} mandar={mandar} />
-          {revisar.map((m) => <span key={m} className="pendencia">{m}</span>)}
+          {revisar.map((m) => (
+            <span key={m} className={`pendencia ${m === TEXTO_SEM_REDATOR ? `de-redator ${redatorSaindo ? 'saindo' : ''}` : ''}`} aria-hidden={(m === TEXTO_SEM_REDATOR && redatorSaindo) || undefined}>
+              {m}
+            </span>
+          ))}
           {ehDoTour(r.id) && <span className="nota-exemplo">exemplo do tour</span>}
           {!r.meta.programa && cadastrarAtracao && (
             <span className="ancora-balao">
@@ -1034,6 +1068,23 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
     void carregar();
   };
 
+  /** O palpite do redator na ficha: aceitar (o nome) ou recusar (o ×). A ficha muda na hora; o roteiro é gravado com
+      as pendências refeitas, e o servidor leva a mudança para quem está com ele aberto (edição simultânea). */
+  const mudarRedator = async (r: Resumo, parte: Partial<Meta>) => {
+    const sai = parte.redator ? (m: string) => m !== TEXTO_SEM_REDATOR : () => true;
+    setRoteiros((l) => l?.map((x) => (x.id === r.id ? { ...x, meta: { ...x.meta, ...parte, revisar: (x.meta.revisar ?? []).filter(sai) } } : x)) ?? l);
+    try {
+      const completo = roteiroDa(await armazenamento.ler(r.id));
+      if (!completo) throw new Error('Roteiro não encontrado.');
+      const meta = { ...completo.meta, ...parte };
+      meta.revisar = pendencias(exportar({ ...completo, meta }));
+      await armazenamento.salvar({ ...completo, meta });
+    } catch (e) {
+      avisar(`Não consegui guardar o redator: ${e instanceof Error ? e.message : 'o servidor não respondeu'}`);
+    }
+    void carregar();
+  };
+
   /** Versão nova de uma claquete que já estava na fila (o aviso da ficha, no celular): fica a nova, com o trabalho da anterior. */
   const substituir = async (nova: Resumo) => {
     try {
@@ -1097,6 +1148,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         cadastrarAtracao={temCadastros() && r.meta.claquete ? (nova) => cadastros({ aba: 'atracoes', claquete: r.meta.claquete, ...nova }) : undefined}
         avisar={avisar}
         ligou={() => void carregar()}
+        redator={(r.podeEditar || r.meu || aberto) && !ehDoTour(r.id) ? { mudar: (parte) => void mudarRedator(r, parte) } : undefined}
         acoes={
           // o exemplo do tour só sai da fila pelo próprio tour
           (r.meu || aberto) && !ehDoTour(r.id) && (

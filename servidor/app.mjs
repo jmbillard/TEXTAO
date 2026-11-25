@@ -16,6 +16,7 @@ import { criarCache } from './cache.mjs';
 import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
+import { criarRedatorProvavel } from './redator.mjs';
 import { criarFilmes } from './filmes.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
@@ -391,7 +392,7 @@ export function copiarMetaParaYdoc(doc, meta) {
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }) }) {
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }), redatorProvavel = criarRedatorProvavel(env) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
   const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
@@ -1292,6 +1293,14 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // a claquete já está na produção da arte? (para perguntar se o roteiro novo é uma v2)
       const claquete = (new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
       return json(res, 200, await trello.naProducao(claquete).catch((e) => (console.warn(`[producao] ${e instanceof Error ? e.message : e}`), null)));
+    }
+    if (caminho === '/api/redator-provavel') {
+      // o roteiro chegou sem redator: quem escreveu as últimas claquetes da atração, na mesma praça (a sugestão do
+      // histórico). Sem o Postgres do Teable, vazio: o app segue com a sugestão do texto, se houver
+      const busca = new URL(req.url, 'http://x').searchParams;
+      const atracao = (busca.get('atracao') ?? '').slice(0, 200);
+      const praca = (busca.get('praca') ?? '').slice(0, 20);
+      return json(res, 200, { redator: await redatorProvavel.provavel(atracao, praca) });
     }
     if (caminho === '/api/acervo') {
       // as artes que a atração já tem prontas (as do acervo), para marcar na revisão; numa sessão, as do filme do dia

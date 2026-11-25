@@ -189,6 +189,37 @@ describe('selo e locutor escritos de outros jeitos', () => {
   });
 });
 
+describe('o redator no cabeçalho', () => {
+  const cabecalho = async (linhas: string[]) =>
+    interpretar(await lerArquivo(new TextEncoder().encode(linhas.join('\n')), 'cabecalho.txt'), { anoPadrao: 2026 }).meta;
+
+  it.each(['REDATOR: FULANA PRADO', 'Redatora: Fulana Prado', 'Redação: Fulana Prado', 'REDAÇÃO: FULANA PRADO', 'Redacao: Fulana Prado', 'Redação/Texto: Fulana Prado', 'Texto: Fulana Prado', 'REDAÇÃO - FULANA PRADO'])('"%s" → Fulana Prado', async (linha) => {
+    expect((await cabecalho([linha, 'TEXTO DA CHAMADA'])).redator).toBe('Fulana Prado');
+  });
+  it('"Redação" no meio de uma frase não é o cabeçalho', async () => {
+    expect((await cabecalho(['A REDAÇÃO DO JORNAL FICOU EM SILÊNCIO.', 'TEXTO'])).redator).toBe('');
+  });
+});
+
+describe('o autor do arquivo', () => {
+  const comAutor = (autor: string) => interpretar({ arquivo: 'CHAMADA_20_11.docx', formato: 'docx', autor, blocos: [{ tipo: 'p', par: [{ t: 'TEXTO DA CHAMADA' }] }] }, { anoPadrao: 2026 }).meta;
+
+  it('quem não é redator cadastrado não vira o redator: o roteiro fica sem redator', async () => {
+    const { registrarVocabulario } = await import('../src/modelo/vocabularios');
+    registrarVocabulario({ programas: [], redatores: [{ nome: 'Fulana Prado', keys: ['FPRADO'], ativo: true }] });
+    try {
+      expect(comAutor('Usuario Generico').redator).toBe('');
+      expect(comAutor('FULANA PRADO').redator).toBe('FULANA PRADO');
+      expect(comAutor('fprado').redator).toBe('fprado');
+    } finally {
+      registrarVocabulario(null);
+    }
+  });
+  it('sem a lista de redatores (servidor sem Teable), o autor continua valendo', () => {
+    expect(comAutor('Usuario Generico').redator).toBe('Usuario Generico');
+  });
+});
+
 describe('ida e volta pelo .json', async () => {
   it('reabre o roteiro como estava', async () => {
     const { saida } = await importar('Nobreza_27_10.docx');

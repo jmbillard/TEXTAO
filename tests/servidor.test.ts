@@ -203,7 +203,7 @@ describe('vocabulário do Teable', () => {
         { fields: { key: 'STARDE', atracoes: 'Sessão da Tarde' } },
         { fields: { key: 'CASA', atracoes: 'É de Casa' } },
       ],
-      tblR: [{ fields: { redator: 'Fulana de Tal' } }, { fields: { redator: 'Beltrano Silva' } }],
+      tblR: [{ fields: { redator: 'Fulana de Tal', key: [{ id: 'k1', title: 'FTAL' }], ativo: 'ativo' } }, { fields: { redator: 'Beltrano Silva', ativo: 'inativo' } }, { fields: { redator: 'Sicrana Lopes' } }],
     };
     let fora = false;
     const pedidos: string[] = [];
@@ -219,7 +219,11 @@ describe('vocabulário do Teable', () => {
         { nome: 'É de Casa', chaves: ['CASA'] },
         { nome: 'Sessão da Tarde', chaves: ['S TARDE', 'STARDE'] },
       ],
-      redatores: ['Beltrano Silva', 'Fulana de Tal'],
+      redatores: [
+        { nome: 'Beltrano Silva', keys: [], ativo: false },
+        { nome: 'Fulana de Tal', keys: ['FTAL'], ativo: true },
+        { nome: 'Sicrana Lopes', keys: [], ativo: true },
+      ],
       editores: [],
       pauta: [],
     });
