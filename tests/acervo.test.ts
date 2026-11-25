@@ -318,3 +318,80 @@ describe('acervo de artes', () => {
     }
   });
 });
+
+describe('a atração do envio ao registrar no acervo (#54)', () => {
+  /**
+   * Um envio de verdade pela API (com ou sem a atração na ficha), o card no andamento e o acervo de mentira.
+   * `ligadas`: a atração ligada na produção da arte de cada card; `programas`: as atrações e keys dos cadastros.
+   */
+  async function cenario({ programa = '', claquete = 'ENCONTRO 19/11', ligadas = {} as Record<string, string>, programas = [] as { nome: string; chaves: string[] }[], saiu = true }) {
+    const { consultar, buscar, pedidos } = falsos();
+    const acervo = criarAcervo(ENV, { consultar, buscar });
+    const db = abrirBanco(':memory:');
+    // a cópia do vocabulário no banco do app: as keys de agora, mesmo sem o Teable ligado
+    db.prepare('INSERT INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)').run('vocabulario', JSON.stringify({ programas }), new Date().toISOString());
+    const procurados: string[][] = [];
+    const andamento = async (linhas: { id: string }[]) => Object.fromEntries(linhas.map((l) => [l.id, { status: [saiu ? 'FINALIZADO' : 'PRODUZINDO'], entregue: false }]));
+    const atracoesDosCards = async (cards: string[]) => (procurados.push(cards), Object.fromEntries(cards.filter((c) => ligadas[c]).map((c) => [c, ligadas[c]])));
+    const trello = { ligado: true, parar: async () => {}, andamento, atracoesDosCards, enviar: async () => ({ card: { id: 'card9', url: 'https://trello.com/c/C9' }, avisos: [] }) };
+    const servidor = createServer(criarApp({ db, env: {}, trello, acervo }));
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    const ana = (caminho: string, init: RequestInit = {}) =>
+      fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com', 'content-type': 'application/json', ...init.headers } });
+    try {
+      const roteiro = { meta: { claquete, programa }, doc: { type: 'doc', content: [] } };
+      await ana('/api/roteiros/rot-54', { method: 'PUT', body: JSON.stringify({ roteiro, nArtes: 1 }) });
+      await ana('/api/roteiros/rot-54/trello', { method: 'POST', body: JSON.stringify({ artes: [{ texto: 'Sexta', tipo: '', complexidade: 2 }], texto: 'x' }) });
+      await ana('/api/andamento');
+      await new Promise((ok) => setTimeout(ok, 50));
+    } finally {
+      servidor.close();
+    }
+    const envio = db.prepare('SELECT atracao, acervo_em FROM envios WHERE roteiro_id = ?').get('rot-54') as { atracao: string; acervo_em: string | null };
+    const gravadas = pedidos.filter((p) => p.metodo === 'POST').flatMap((p) => p.corpo!.records.map((r) => r.fields));
+    return { envio, gravadas, procurados };
+  }
+
+  it('o envio com a atração: entra por ela, sem procurar na produção da arte', async () => {
+    const { envio, gravadas, procurados } = await cenario({ programa: 'Encontro', ligadas: { card9: 'Tela Quente' } });
+    expect(gravadas).toEqual([{ arte: 'Sexta', complexidade: 2, atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] }]);
+    expect(envio.atracao).toBe('Encontro');
+    expect(envio.acervo_em).not.toBeNull();
+    expect(procurados).toEqual([]);
+  });
+
+  it('o envio sem atração, com o link na produção da arte: entra e o envio guarda a atração', async () => {
+    const { envio, gravadas, procurados } = await cenario({ claquete: 'XPTO 19/11', ligadas: { card9: 'Encontro' } });
+    expect(gravadas).toEqual([{ arte: 'Sexta', complexidade: 2, atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] }]);
+    expect(envio.atracao).toBe('Encontro');
+    expect(envio.acervo_em).not.toBeNull();
+    expect(procurados).toEqual([['card9']]);
+  });
+
+  it('o link na produção da arte vale mais que a claquete', async () => {
+    const { envio } = await cenario({ claquete: 'TELA QUENTE 19/11', ligadas: { card9: 'Encontro' }, programas: [{ nome: 'Tela Quente', chaves: ['TELA QUENTE'] }] });
+    expect(envio.atracao).toBe('Encontro');
+  });
+
+  it('o envio sem atração e sem link, com a claquete reconhecida pelas keys de agora: entra', async () => {
+    const { envio, gravadas } = await cenario({ claquete: 'Rio Enc(Festa) 19/11', programas: [{ nome: 'Tela Quente', chaves: ['TELA QUENTE'] }, { nome: 'Encontro', chaves: ['ENC'] }] });
+    expect(gravadas).toEqual([{ arte: 'Sexta', complexidade: 2, atracao: [{ id: 'recEnc' }], claquete: [{ id: 'recCard9' }] }]);
+    expect(envio.atracao).toBe('Encontro');
+    expect(envio.acervo_em).not.toBeNull();
+  });
+
+  it('o envio sem nada: continua esperando, sem ser marcado como registrado', async () => {
+    const { envio, gravadas } = await cenario({ claquete: 'XPTO 19/11', programas: [{ nome: 'Encontro', chaves: ['ENC'] }] });
+    expect(gravadas).toEqual([]);
+    expect(envio.atracao).toBe('');
+    expect(envio.acervo_em).toBeNull();
+  });
+
+  it('o card que ainda não saiu: nada muda e nada é procurado', async () => {
+    const { envio, gravadas, procurados } = await cenario({ ligadas: { card9: 'Encontro' }, programas: [{ nome: 'Encontro', chaves: ['ENCONTRO'] }], saiu: false });
+    expect(gravadas).toEqual([]);
+    expect(envio).toEqual({ atracao: '', acervo_em: null });
+    expect(procurados).toEqual([]);
+  });
+});

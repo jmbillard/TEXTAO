@@ -354,6 +354,24 @@ describe('andamento na produção da arte', () => {
     expect(consultas).toHaveLength(n);
   });
 
+  it('a atração ligada na produção da arte de cada card, numa leitura só (#54)', async () => {
+    const consultas: { sql: string; params: unknown[] }[] = [];
+    const linhas = [
+      { card_ID: 'c1', atracao: '[{"id":"recEnc","title":"Encontro"}]' },
+      { card_ID: 'c2', atracao: [{ id: 'recShow', title: 'Show da Noite' }] },
+      { card_ID: 'c3', atracao: null },
+    ];
+    const consultar = async (sql: string, params: unknown[] = []) => (consultas.push({ sql, params }), linhas.filter((l) => (params[0] as string[]).includes(l.card_ID)));
+    const t = criarTrello(ENV, { consultar });
+    expect(await t.atracoesDosCards(['c1', 'c2', 'c3', 'sumiu'])).toEqual({ c1: 'Encontro', c2: 'Show da Noite' });
+    expect(consultas).toHaveLength(1);
+    expect(consultas[0].sql).toContain('"bseBase"."producao"');
+    expect(consultas[0].sql).toContain('"atracao"');
+    expect(await t.atracoesDosCards([])).toEqual({});
+    expect(await t.atracoesDosCards(['sumiu', 'c3', 'c2', 'c1'])).toEqual({ c1: 'Encontro', c2: 'Show da Noite' }); // guardado por 30 s
+    expect(consultas).toHaveLength(1);
+  });
+
   it('sem Postgres ou com erro, devolve vazio', async () => {
     expect(await criarTrello({ ...ENV, TEABLE_PG_ARTE: '' }, { consultar: async () => [] }).andamento([{ id: 'r', card: 'c' }])).toEqual({});
     const t = criarTrello(ENV, { consultar: async () => { throw new Error('coluna não existe'); } });

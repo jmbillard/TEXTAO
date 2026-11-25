@@ -945,6 +945,26 @@ export function criarTrello(env, deps = {}) {
     return (Array.isArray(listas) ? listas : []).flatMap((l) => (l.checkItems ?? []).map((i) => String(i.name ?? '').trim())).filter(Boolean);
   }
 
+  /**
+   * A atração ligada (o campo link `atracao`) na produção da arte de cada card, numa leitura só, de onde vem o
+   * andamento: { card: nome }, só os cards que têm. Para o acervo achar a atração do envio que saiu sem ela (#54).
+   */
+  let memoAtracoes = { em: 0, chave: '', dados: {} };
+  async function atracoesDosCards(cards) {
+    const ids = [...new Set(cards.filter(Boolean))].sort();
+    if (!t.leitura || !ids.length) return {};
+    // o andamento é pedido por cada navegador aberto: o envio que espera a atração não relê a cada pedido
+    if (memoAtracoes.chave === ids.join() && Date.now() - memoAtracoes.em < 30_000) return memoAtracoes.dados;
+    const linhas = await sql(`SELECT "card_ID", "atracao" FROM ${t.leitura} WHERE "card_ID" = ANY($1::text[])`, [ids]);
+    const dados = {};
+    for (const l of linhas) {
+      const nome = lerLista(l.atracao)[0];
+      if (nome && !dados[l.card_ID]) dados[l.card_ID] = nome;
+    }
+    memoAtracoes = { em: Date.now(), chave: ids.join(), dados };
+    return dados;
+  }
+
   /** A atração da claquete pelas keys no Postgres (o mesmo que o envio usa): o nome, ou '' se não achar. */
   const atracaoDaClaquete = async (claquete) => (await acharAtracao(claquete).catch(() => null))?.nome ?? '';
   /**
@@ -1025,5 +1045,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

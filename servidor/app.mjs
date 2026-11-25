@@ -227,6 +227,27 @@ async function identificar(req, env) {
 const semAcentoMin = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 /**
+ * A atração que a claquete reconhece pelas keys dos cadastros, com a regra do navegador (`acharPrograma`): a key mais
+ * longa no começo (também depois da praça do Rio na frente); sem key, o nome da atração (8 letras ou mais) no meio.
+ * @param programas [{ nome, chaves }]  @returns o nome, ou '' se nenhuma reconhece
+ */
+export function atracaoPelaClaquete(claquete, programas) {
+  const n = semAcentoMin(claquete);
+  if (!n) return '';
+  const comeco = [n, n.replace(/^rio /, '')];
+  let melhor = null;
+  for (const p of programas)
+    for (const c of (p.chaves ?? []).map(semAcentoMin).filter(Boolean))
+      if (comeco.some((x) => x === c || x.startsWith(c + ' ')) && (!melhor || c.length > melhor.tam)) melhor = { nome: p.nome, tam: c.length };
+  if (melhor) return melhor.nome;
+  for (const p of programas) {
+    const nome = semAcentoMin(p.nome);
+    if (nome.length >= 8 && ` ${n} `.includes(` ${nome} `) && (!melhor || nome.length > melhor.tam)) melhor = { nome: p.nome, tam: nome.length };
+  }
+  return melhor?.nome ?? '';
+}
+
+/**
  * As keys das claquetes que nenhuma atração reconhece (a mesma regra do navegador: key no começo; senão, o nome
  * da atração no meio), com quantos roteiros, até dois exemplos e uma atração parecida, se houver.
  * @param claquetes [{ claquete, em }]  @param programas [{ nome, chaves }]  @param ignoradas Set de keys
@@ -383,8 +404,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     infoOriginal: db.prepare('SELECT nome, tipo, length(dados) AS tamanho, em FROM originais WHERE roteiro_id = ?'),
     envio: db.prepare('SELECT estado, card_id, url, erro, avisos, em, por_nome FROM envios WHERE roteiro_id = ?'),
     guardarArtesNovas: db.prepare('UPDATE envios SET artes_novas = ?, atracao = ?, exibicao = ?, acervo_em = NULL WHERE roteiro_id = ?'),
-    paraOAcervo: db.prepare("SELECT roteiro_id, card_id, artes_novas, atracao, exibicao FROM envios WHERE estado = 'enviado' AND artes_novas IS NOT NULL AND acervo_em IS NULL AND card_id IS NOT NULL"),
-    noAcervo: db.prepare('UPDATE envios SET acervo_em = ? WHERE roteiro_id = ?'),
+    paraOAcervo: db.prepare(
+      `SELECT e.roteiro_id, e.card_id, e.artes_novas, e.atracao, e.exibicao, json_extract(r.meta, '$.claquete') AS claquete
+       FROM envios e LEFT JOIN roteiros r ON r.id = e.roteiro_id
+       WHERE e.estado = 'enviado' AND e.artes_novas IS NOT NULL AND e.acervo_em IS NULL AND e.card_id IS NOT NULL`,
+    ),
+    noAcervo: db.prepare('UPDATE envios SET acervo_em = ?, atracao = ? WHERE roteiro_id = ?'),
     marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     claquetesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete, atualizado_em AS em FROM roteiros WHERE atualizado_em >= ?"),
     ignoradas: db.prepare('SELECT key FROM keys_ignoradas'),
@@ -921,21 +946,40 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     setInterval(apagarPrevias, 6 * 3_600_000).unref?.();
   }
 
+  /**
+   * A atração dos envios que saíram sem ela na ficha (#54): a ligada na produção da arte do card (uma leitura para
+   * todos) e, sem link, a que a claquete reconhece pelas keys de agora (o vocabulário que o servidor já guarda).
+   * Só é chamada com envios assim; sem nenhum, não lê nada. @returns (envio) => nome, ou ''
+   */
+  async function atracoesSemFicha(envios) {
+    if (!envios.length) return () => '';
+    const ligadas = trello.atracoesDosCards
+      ? await trello.atracoesDosCards(envios.map((e) => e.card_id)).catch((erro) => (console.warn(`[acervo] não li a atração na produção da arte: ${erro instanceof Error ? erro.message : erro}`), {}))
+      : {};
+    const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+    return (e) => ligadas[e.card_id] || atracaoPelaClaquete(e.claquete ?? '', programas);
+  }
+
   let registrando = false;
   async function registrarNoAcervo(andamento) {
     if (registrando) return;
     registrando = true;
     try {
-      for (const e of q.paraOAcervo.all()) {
+      const sairam = q.paraOAcervo.all().filter((e) => {
         const a = andamento[e.roteiro_id];
-        const saiu = a && (a.entregue || a.status.some((s) => /FINALIZADO/i.test(s)));
-        if (!saiu || !e.atracao) continue;
+        return a && (a.entregue || a.status.some((s) => /FINALIZADO/i.test(s)));
+      });
+      const atracaoDe = await atracoesSemFicha(sairam.filter((e) => !e.atracao));
+      for (const e of sairam) {
+        // a atração da ficha; sem ela, a ligada na produção da arte ou a que a claquete reconhece; sem nenhuma, espera
+        const atracao = e.atracao || atracaoDe(e);
+        if (!atracao) continue;
         try {
           // as artes a produzir levam a complexidade; o envio guardado antes dela (texto, ou { texto, tipos }) entra com 1
           const artes = JSON.parse(e.artes_novas).map((x) => (typeof x === 'string' ? { texto: x } : x)).map((x) => ({ ...x, complexidade: nivelDeComplexidade(x?.complexidade) }));
-          const n = await acervo.registrar({ atracao: e.atracao, data: e.exibicao, card: e.card_id, artes });
-          q.noAcervo.run(new Date().toISOString(), e.roteiro_id);
-          if (n) console.log(`[acervo] ${e.atracao}: ${n} ${n === 1 ? 'arte nova' : 'artes novas'} do card ${e.card_id}`);
+          const n = await acervo.registrar({ atracao, data: e.exibicao, card: e.card_id, artes });
+          q.noAcervo.run(new Date().toISOString(), atracao, e.roteiro_id);
+          if (n) console.log(`[acervo] ${atracao}: ${n} ${n === 1 ? 'arte nova' : 'artes novas'} do card ${e.card_id}`);
         } catch (erro) {
           console.warn(`[acervo] não registrei o card ${e.card_id}: ${erro instanceof Error ? erro.message : erro}`);
         }
@@ -1150,16 +1194,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       // o reconhecimento de atração com dados reais: a mesma regra do navegador (key no começo; senão, o nome no meio)
       if (trello.ultimasClaquetes) {
         try {
-          const normal = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-          const lista = (voc.programas ?? []).map((p) => ({ nome: p.nome, n: normal(p.nome), chaves: (p.chaves ?? []).map(normal).filter(Boolean) }));
-          const achar = (claquete) => {
-            const n = normal(claquete);
-            let melhor = null;
-            for (const p of lista) for (const c of p.chaves) if ((n === c || n.startsWith(c + ' ')) && (!melhor || c.length > melhor.tam)) melhor = { nome: p.nome, tam: c.length };
-            if (melhor) return melhor.nome;
-            for (const p of lista) if (p.n.length >= 8 && ` ${n} `.includes(` ${p.n} `) && (!melhor || p.n.length > melhor.tam)) melhor = { nome: p.nome, tam: p.n.length };
-            return melhor?.nome ?? '';
-          };
+          const achar = (claquete) => atracaoPelaClaquete(claquete, voc.programas ?? []);
           const casos = await trello.ultimasClaquetes(500);
           const errados = casos.map((c) => ({ ...c, achou: achar(c.claquete) })).filter((c) => c.achou !== c.atracao);
           const pct = casos.length ? Math.round((100 * (casos.length - errados.length)) / casos.length) : 0;

@@ -373,7 +373,7 @@ function NovoPacote({ nome, avisar }: { nome: string; avisar: (t: string) => voi
 const ACERVOS: { valor: AcervoDaAtracao; rotulo: string; dica: string }[] = [
   { valor: 'proprio', rotulo: 'próprio', dica: 'As artes prontas são da atração.' },
   { valor: 'filme', rotulo: 'do filme', dica: 'Sessão de filme: as artes prontas são do filme do dia.' },
-  { valor: 'sem', rotulo: 'sem acervo', dica: 'Genérica: nenhuma arte fica guardada.' },
+  { valor: 'sem', rotulo: 'sem acervo', dica: 'Sem acervo: nenhuma arte fica guardada.' },
 ];
 const rotuloDoAcervo = (a: AcervoDaAtracao) => ACERVOS.find((x) => x.valor === a)?.rotulo ?? 'próprio';
 
