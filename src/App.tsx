@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Comparar } from './ui/Comparar';
 import { Atalhos } from './ui/Atalhos';
-import { Cadastros } from './ui/Cadastros';
+import { Cadastros, type AtracaoNova } from './ui/Cadastros';
 import { Filmes } from './ui/Filmes';
 import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
@@ -25,7 +25,7 @@ import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma,
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | { t: 'cadastros'; aba?: TipoCadastro; claquete?: string } | { t: 'filmes'; id?: string };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -406,12 +406,12 @@ export function App() {
           O servidor não reconheceu o seu login: os roteiros estão ficando só neste navegador. Veja <a href="/api/diagnostico" target="_blank" rel="noreferrer">o diagnóstico</a>.
         </div>
       )}
-      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete) => ir({ t: 'cadastros', aba: 'atracoes', claquete }) : undefined} />}
+      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete, nova) => ir({ t: 'cadastros', aba: 'atracoes', claquete, ...nova }) : undefined} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} />}
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
       <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
-      {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete }} />}
+      {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key }} />}
 
       <DesenhosDeCursor />
       {soltando && (

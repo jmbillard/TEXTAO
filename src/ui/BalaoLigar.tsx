@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { darKey, lerCadastros, sugerirLigacao, type AtracaoCadastro } from '../dados/armazenamento';
 import { reconhecerNaFila } from '../dados/reconhecer';
-import { MenuLigar, comoKey } from './Cadastros';
+import { MenuLigar, comoKey, nomeDaAtracaoNova, type AtracaoNova } from './Cadastros';
 import { plural } from './util';
 
 /** Ligar a key de uma claquete a uma atração sem sair da fila ou da revisão: a key já vem da claquete (dá para
-    encurtar), a atração parecida aparece escrita à mão e a busca acha o resto. "+ Nova atração" leva aos cadastros. */
-export function BalaoLigar({ claquete, ligado, nova, fechar, avisar, aberto }: { claquete: string; ligado: (nome: string) => void; nova: () => void; fechar: () => void; avisar: (t: string) => void; aberto?: string }) {
+    encurtar), a atração parecida aparece escrita à mão e a busca acha o resto. "+ Nova atração" leva aos cadastros
+    com o nome (o da busca, ou o da key) e a key. */
+export function BalaoLigar({ claquete, ligado, nova, fechar, avisar, aberto }: { claquete: string; ligado: (nome: string) => void; nova: (atracao: AtracaoNova) => void; fechar: () => void; avisar: (t: string) => void; aberto?: string }) {
   const [key, setKey] = useState('');
   const [sugestao, setSugestao] = useState('');
   const [atracoes, setAtracoes] = useState<AtracaoCadastro[] | null>(null);
@@ -59,7 +60,7 @@ export function BalaoLigar({ claquete, ligado, nova, fechar, avisar, aberto }: {
       {atracoes === null ? (
         <p className="balao-carregando">Carregando as atrações…</p>
       ) : (
-        <MenuLigar dentro atracoes={nomes} ligar={(n) => void ligar(n)} nova={nova} fechar={fechar} />
+        <MenuLigar dentro atracoes={nomes} ligar={(n) => void ligar(n)} nova={(busca) => nova({ nome: nomeDaAtracaoNova(busca, key, [claquete]), key: comoKey(key) })} fechar={fechar} />
       )}
     </div>
   );

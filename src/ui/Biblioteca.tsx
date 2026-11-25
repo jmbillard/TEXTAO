@@ -7,6 +7,7 @@ import { travamTrello } from '../modelo/exportar';
 import type { Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
+import type { AtracaoNova } from './Cadastros';
 import { agruparPorDia, filaVisivel, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type FaixaDeDias, type GrupoDia } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
 import { PeriodoQueConta, ResumoQueConta, VoltarParaHoje } from './topoDaFaixa';
@@ -57,7 +58,7 @@ interface Props {
   /** Arquivo sendo lido agora, quando a leitura demora (OCR). */
   lendo: { nome: string; detalhe: string } | null;
   /** Abre os cadastros (atrações, redatores, editores), opcionalmente já com uma claquete para cadastrar. */
-  cadastros: (inicio?: { aba?: TipoCadastro; claquete?: string }) => void;
+  cadastros: (inicio?: { aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) => void;
   /** Abre a aba Filmes (as prévias de filmes). */
   filmes?: () => void;
 }
@@ -316,7 +317,7 @@ interface JaNaProducao {
 /** Qual dos riscos à mão vai sob a claquete: sempre o mesmo para o mesmo roteiro. */
 const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0);
 
-function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou }: { r: Resumo; nova: boolean; ordem: number; prioridade?: boolean; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: () => void; avisar?: (t: string) => void; ligou?: () => void }) {
+function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou }: { r: Resumo; nova: boolean; ordem: number; prioridade?: boolean; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: (nova?: AtracaoNova) => void; avisar?: (t: string) => void; ligou?: () => void }) {
   const [ligando, setLigando] = useState(false);
   const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
@@ -431,7 +432,7 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
                   claquete={r.meta.claquete}
                   avisar={avisar}
                   fechar={() => setLigando(false)}
-                  nova={() => (setLigando(false), cadastrarAtracao())}
+                  nova={(n) => (setLigando(false), cadastrarAtracao(n))}
                   ligado={() => (setLigando(false), ligou?.())}
                 />
               )}
@@ -986,7 +987,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         versao={anterior ? { anterior, comparar: () => comparar(r.id), substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
         producao={r.meta.naProducao && (r.podeEditar || r.meu || aberto) ? { comparar: () => comparar(r.id) } : undefined}
         mandar={temTrello() && (r.podeEditar || r.meu || aberto) ? () => mandar(r) : undefined}
-        cadastrarAtracao={temCadastros() && r.meta.claquete ? () => cadastros({ aba: 'atracoes', claquete: r.meta.claquete }) : undefined}
+        cadastrarAtracao={temCadastros() && r.meta.claquete ? (nova) => cadastros({ aba: 'atracoes', claquete: r.meta.claquete, ...nova }) : undefined}
         avisar={avisar}
         ligou={() => void carregar()}
         acoes={

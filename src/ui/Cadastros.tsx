@@ -70,6 +70,21 @@ export const atracaoDaClaquete = (claquete: string) =>
     .replace(/\s+(sp|rede|g5|rj)$/i, '')
     .trim());
 
+/** A atração nova que o "+ Nova atração" do balão manda para os cadastros: o nome inicial e a key a ligar. */
+export interface AtracaoNova {
+  nome: string;
+  key: string;
+}
+
+/** "+ Nova atração" no "Ligar a…": o nome que a atração nova já traz. Com texto na busca, o texto; com a busca
+    vazia, a key como aparece na claquete (uma claquete que dá a mesma key, com acento) ou em caixa de título. */
+export function nomeDaAtracaoNova(busca: string, key: string, claquetes: string[] = []) {
+  if (busca.trim()) return busca.trim();
+  const k = comoKey(key);
+  const daClaquete = claquetes.map(atracaoDaClaquete).find((n) => n && comoKey(n) === k);
+  return daClaquete ?? caixaDeTitulo(k);
+}
+
 /** Prévia do caminho: as fórmulas do Teable com os campos trocados pelo que está digitado. */
 export function previaDoCaminho(formula: string, valores: Record<string, string>) {
   if (!formula) return '';
@@ -124,8 +139,8 @@ function Abas({ aba, mudar, totais, sem }: { aba: TipoCadastro; mudar: (a: TipoC
   );
 }
 
-/** "Ligar a…": a busca nas atrações, com "+ Nova atração" sempre no fim. */
-export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { atracoes: string[]; ligar: (nome: string) => void; nova: () => void; fechar: () => void; dentro?: boolean }) {
+/** "Ligar a…": a busca nas atrações, com "+ Nova atração" sempre no fim (ela recebe o que está na busca). */
+export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { atracoes: string[]; ligar: (nome: string) => void; nova: (busca: string) => void; fechar: () => void; dentro?: boolean }) {
   const [busca, setBusca] = useState('');
   const [marcado, setMarcado] = useState(0);
   const caixa = useRef<HTMLDivElement>(null);
@@ -144,7 +159,7 @@ export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { a
   useEffect(() => {
     lista.current?.querySelector('.marcado')?.scrollIntoView({ block: 'nearest' });
   }, [marcado]);
-  const escolher = (k: number) => (k >= 0 && k < achadas.length ? ligar(achadas[k]) : nova());
+  const escolher = (k: number) => (k >= 0 && k < achadas.length ? ligar(achadas[k]) : nova(busca));
   return (
     <div className="escolha-nome-menu menu-ligar" ref={caixa}>
       <input
@@ -160,7 +175,7 @@ export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { a
           else if (e.key === 'Enter') (e.preventDefault(), escolher(marcado));
         }}
       />
-      <button type="button" className={`nova-ligar ${marcado === NOVA ? 'marcado' : ''}`} onMouseEnter={() => setMarcado(NOVA)} onMouseDown={(e) => e.preventDefault()} onClick={nova}>
+      <button type="button" className={`nova-ligar ${marcado === NOVA ? 'marcado' : ''}`} onMouseEnter={() => setMarcado(NOVA)} onMouseDown={(e) => e.preventDefault()} onClick={() => nova(busca)}>
         + Nova atração
       </button>
       <ul role="listbox" ref={lista}>
@@ -176,7 +191,7 @@ export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { a
 }
 
 /** Uma key sem cadastro: quantos roteiros, as claquetes de exemplo, a atração parecida, ligar, nova e ignorar. */
-function LinhaSemCadastro({ k, atracoes, ligar, nova, ignorar }: { k: KeySemCadastro; atracoes: string[]; ligar: (nome: string) => void; nova: () => void; ignorar: () => void }) {
+function LinhaSemCadastro({ k, atracoes, ligar, nova, ignorar }: { k: KeySemCadastro; atracoes: string[]; ligar: (nome: string) => void; nova: (busca: string) => void; ignorar: () => void }) {
   const [menu, setMenu] = useState(false);
   return (
     <div className="item-cad sem-cad">
@@ -199,7 +214,7 @@ function LinhaSemCadastro({ k, atracoes, ligar, nova, ignorar }: { k: KeySemCada
               <circle cx="20" cy="5" r="2.6" />
             </svg>
           </button>
-          {menu && <MenuLigar atracoes={atracoes} ligar={(n) => (setMenu(false), ligar(n))} nova={() => (setMenu(false), nova())} fechar={() => setMenu(false)} />}
+          {menu && <MenuLigar atracoes={atracoes} ligar={(n) => (setMenu(false), ligar(n))} nova={(busca) => (setMenu(false), nova(busca))} fechar={() => setMenu(false)} />}
         </span>
       </div>
       <div className="exemplos">{k.exemplos.map((e) => <span key={e}>{e}</span>)}</div>
@@ -385,8 +400,9 @@ function Rascunho({ nome, categoria, keys, assentando }: { nome: string; categor
 interface Props {
   voltar: () => void;
   avisar: (t: string) => void;
-  /** Abre já numa aba e, para atração, com o formulário preenchido a partir da claquete. */
-  inicio?: { aba?: TipoCadastro; claquete?: string };
+  /** Abre já numa aba e, para atração, com o formulário preenchido a partir da claquete (ou com o nome e a key
+      que o "+ Nova atração" do balão escolheu). */
+  inicio?: { aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>;
 }
 
 export function Cadastros({ voltar, avisar, inicio }: Props) {
@@ -421,7 +437,9 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
 
   // formulários, um por aba
   const daClaquete = inicio?.claquete ? atracaoDaClaquete(inicio.claquete) : '';
-  const [atr, setAtr] = useState({ nome: daClaquete, keys: daClaquete ? [comoKey(daClaquete)] : [], categoria: '', campos: {} as Record<string, string> });
+  const nomeInicial = inicio?.nome ?? daClaquete;
+  const keyInicial = inicio?.key ? comoKey(inicio.key) : daClaquete ? comoKey(daClaquete) : '';
+  const [atr, setAtr] = useState({ nome: nomeInicial, keys: keyInicial ? [keyInicial] : [], categoria: '', campos: {} as Record<string, string> });
   const [red, setRed] = useState({ nome: '', keys: [] as string[] });
   const [edi, setEdi] = useState({ nome: '', keys: [] as string[] });
 
@@ -513,9 +531,9 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       avisar(`${key} agora é de ${a.nome}.`);
     }
   };
-  /** "+ Nova": o formulário da direita começa com a key. */
-  const novaComKey = (key: string) => {
-    setAtr({ nome: '', keys: [comoKey(key)], categoria: '', campos: {} });
+  /** "+ Nova": o formulário da direita começa com a key e com o nome (o da busca, ou o da key). */
+  const novaComKey = (k: KeySemCadastro, busca: string) => {
+    setAtr({ nome: nomeDaAtracaoNova(busca, k.key, k.exemplos), keys: [comoKey(k.key)], categoria: '', campos: {} });
     setTimeout(() => nomeAtr.current?.focus(), 0);
   };
   /** Executa já o que estava esperando o desfazer (outro apagar começou, ou a tela vai fechar). */
@@ -710,7 +728,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               if (!lista.length) return <p className="cad-vazio">Nada com “{busca}”.</p>;
               return (
                 <Vagas itens={lista} chave={(k) => k.key}>
-                  {(k) => <LinhaSemCadastro k={k} atracoes={nomes} ligar={(n) => void ligarKey(k.key, n)} nova={() => novaComKey(k.key)} ignorar={() => ignorar(k.key)} />}
+                  {(k) => <LinhaSemCadastro k={k} atracoes={nomes} ligar={(n) => void ligarKey(k.key, n)} nova={(busca) => novaComKey(k, busca)} ignorar={() => ignorar(k.key)} />}
                 </Vagas>
               );
             })()}

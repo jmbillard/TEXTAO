@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { flushSync } from 'react-dom';
 import { Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
+import type { AtracaoNova } from './Cadastros';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Bold from '@tiptap/extension-bold';
 import Document from '@tiptap/extension-document';
@@ -431,7 +432,7 @@ function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor:
 
 /* ---------- tela ---------- */
 
-export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao }: { id: string; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string) => void }) {
+export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao }: { id: string; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string, nova?: AtracaoNova) => void }) {
   const [roteiro, setRoteiro] = useState<Roteiro | null | undefined>(undefined);
   useEffect(() => {
     armazenamento.ler(id).then((r) => setRoteiro(r ?? null), () => setRoteiro(null));
@@ -451,7 +452,7 @@ export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadast
   return <Folha inicial={roteiro} voltar={voltar} abrir={abrir} comparar={comparar} avisar={avisar} pessoa={pessoa} cadastrarAtracao={cadastrarAtracao} />;
 }
 
-function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao }: { inicial: Roteiro; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string) => void }) {
+function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao }: { inicial: Roteiro; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string, nova?: AtracaoNova) => void }) {
   const pessoaRef = useRef(pessoa);
   pessoaRef.current = pessoa;
   const mexeu = useRef(false);
@@ -1377,7 +1378,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                 aberto={inicial.id}
                 avisar={avisar}
                 fechar={fechar}
-                nova={() => (fechar(), cadastrarAtracao(meta.programa.trim() || meta.claquete))}
+                nova={(n) => (fechar(), cadastrarAtracao(meta.programa.trim() || meta.claquete, n))}
                 ligado={(nome) => {
                   fechar();
                   const p = programasConhecidos().find((x) => x.nome === nome);
