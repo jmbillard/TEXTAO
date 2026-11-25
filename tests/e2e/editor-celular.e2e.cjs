@@ -9,7 +9,10 @@
 // ajustado (palavras inteiras) como arte, que entra na lista; tocar numa arte mostra "Arte N · Desmarcar", acende a
 // linha dela, acompanha o trecho quando a página rola e desmarca; um toque fora fecha. No iPhone, envia pelo Enviar da
 // barra e confere o que chegou ao Trello e à produção da arte: as artes do checklist (a marcada pelo dedo entra, a
-// desmarcada sai) e a complexidade. Em nenhum momento a página rola para o lado.
+// desmarcada sai) e a complexidade. O lote (#45): um arrasto sobre a lista rola a página sem começar o lote; segurar
+// uma linha começa, os toques marcam e desmarcam (sem mexer no fogo da linha), a barra escura toma o lugar da de baixo,
+// um fogo vale para as selecionadas, "Já existem" tira outra seleção do checklist, o ✕ sai e a última linha desmarcada
+// também. Em nenhum momento a página rola para o lado.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:editor
 const assert = require('node:assert/strict');
@@ -160,10 +163,10 @@ async function selecionarNoTexto(p, i, de, ate) {
  * arrasta e solta: não é um toque), mas o Chromium sem janela não move a página com ele; quem rola de fato é o gesto
  * seguinte, sem dedo. Juntos: o dedo que arrasta não fecha o balão, e a página rola.
  */
-async function rolarComODedo(p, dy) {
+async function rolarComODedo(p, dy, { y, speed = 1200 } = {}) {
   const cdp = await p.context().newCDPSession(p);
   const { width, height } = p.viewportSize();
-  const gesto = { x: Math.round(width / 2), y: Math.round(height * 0.6), yDistance: -dy, speed: 1200, preventFling: true };
+  const gesto = { x: Math.round(width / 2), y: Math.round(y ?? height * 0.6), yDistance: -dy, speed, preventFling: true };
   await cdp.send('Input.synthesizeScrollGesture', { ...gesto, gestureSourceType: 'touch' });
   await cdp.send('Input.synthesizeScrollGesture', gesto);
   await cdp.detach();
@@ -180,6 +183,34 @@ const distanciaDoTrecho = (p, seletor) =>
 /** O parágrafo da locução de abertura, onde o dedo marca a arte nova. */
 const LOC_ABERTURA = 'LOC: NESTE SÁBADO, O PALCO É DE QUEM CANTA.';
 const ARTE_DO_DEDO = 'NESTE SÁBADO';
+
+/** O meio do alvo, trazido para o meio da tela (longe da barra fixa de baixo). */
+async function meioDe(alvo) {
+  await alvo.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const c = await alvo.boundingBox();
+  return { x: Math.round(c.x + c.width / 2), y: Math.round(c.y + c.height / 2) };
+}
+
+/**
+ * Um toque do dedo no meio do alvo, pelo ponto da tela (no lote, o que está por baixo do dedo é a linha inteira: o
+ * fogo e a bolinha não recebem o toque, então o toque do Playwright, que confere o alvo, não serve).
+ */
+async function tocar(p, alvo) {
+  const { x, y } = await meioDe(alvo);
+  await p.touchscreen.tap(x, y);
+  await p.waitForTimeout(150);
+}
+
+/** Segura o dedo parado no meio do alvo por `ms` e solta (o toque longo). */
+async function segurar(p, alvo, ms = 700) {
+  const ponto = await meioDe(alvo);
+  const cdp = await p.context().newCDPSession(p);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [ponto] });
+  await p.waitForTimeout(ms);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+  await p.waitForTimeout(150);
+}
 
 const linha = (p, texto) => p.locator('ol.artes li', { has: p.locator('.txt', { hasText: texto }) });
 const topoDe = (p, sel) => p.evaluate((s) => document.querySelector(s).getBoundingClientRect().top + scrollY, sel);
@@ -315,6 +346,70 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
   await p.waitForFunction(() => /ALTA/.test(document.querySelector('.barra-enviar .cx-card').textContent), null, { timeout: 3000 });
   assert.match(await barra.locator('.conta').innerText(), /^6\s+artes$/);
 
+  // o lote (#45). Um arrasto sobre a lista rola a página e não começa o lote
+  const LOTE = '.barra-lote.no-celular';
+  const contaDoLote = () => p.locator(`${LOTE} .conta`).innerText();
+  const selecionadas = () => p.locator('ol.artes li.selecionada .txt').allInnerTexts();
+  await linha(p, ARTES[0]).scrollIntoViewIfNeeded();
+  const yDaLinha = await linha(p, ARTES[0]).evaluate((li) => li.getBoundingClientRect().top + 24);
+  const rolagemAntes = await p.evaluate(() => scrollY);
+  // devagar (mais que o meio segundo de segurar), como quem rola lendo a lista
+  await rolarComODedo(p, 160, { y: yDaLinha, speed: 160 });
+  await p.waitForTimeout(700);
+  assert.ok((await p.evaluate(() => scrollY)) > rolagemAntes + 60, `${nome}: o arrasto sobre a lista rola a página`);
+  assert.equal(await p.locator(LOTE).count(), 0, `${nome}: o arrasto não começa o lote`);
+  assert.deepEqual(await selecionadas(), [], `${nome}: o arrasto não seleciona`);
+  // segurar uma linha começa o lote: a barra escura no lugar da de baixo
+  await segurar(p, linha(p, ARTES[0]));
+  await p.locator(LOTE).waitFor({ state: 'visible', timeout: 3000 });
+  assert.equal(await p.locator('.barra-enviar').count(), 0, `${nome}: a barra do lote toma o lugar da barra de baixo`);
+  assert.match(await contaDoLote(), /^1\s+selecionada$/);
+  // os toques marcam: um no fogo da linha seleciona a linha e não mexe no fogo
+  await tocar(p, linha(p, ARTES[1]).locator('.cx'));
+  await tocar(p, linha(p, ARTE_DO_DEDO));
+  assert.match(await contaDoLote(), /^3\s+selecionadas$/, `${nome}: segurar uma e tocar em outras duas`);
+  assert.deepEqual(await selecionadas(), [ARTE_DO_DEDO, ARTES[0], ARTES[1]]);
+  assert.equal(await linha(p, ARTES[1]).locator('.cx').getAttribute('aria-label'), 'Complexidade BAIXA', `${nome}: no lote, tocar no fogo não muda o fogo`);
+  assert.equal(await linha(p, ARTES[0]).locator('.b').getAttribute('data-marca'), 'produzir', `${nome}: no lote, a bolinha não muda`);
+  const caixaDoLote = await p.locator(LOTE).boundingBox();
+  assert.ok(caixaDoLote.y + caixaDoLote.height <= p.viewportSize().height + 1, `${nome}: a barra do lote fica embaixo, à vista`);
+  for (const b of await p.locator(`${LOTE} button`).all()) assert.ok((await b.boundingBox()).height >= 44, `${nome}: os botões do lote têm 44px`);
+  await semRolagemDeLado(p, `${nome}, no lote`);
+  // um fogo vale para as três, e o lote continua
+  await p.locator(LOTE).getByRole('button', { name: 'Complexidade ALTA nas selecionadas' }).tap();
+  await p.waitForTimeout(200);
+  for (const t of [ARTE_DO_DEDO, ARTES[0], ARTES[1]]) assert.equal(await linha(p, t).locator('.cx').getAttribute('aria-label'), 'Complexidade ALTA', `${nome}: o fogo do lote em "${t}"`);
+  assert.match(await contaDoLote(), /^3\s+selecionadas$/, `${nome}: o lote continua depois do fogo`);
+  // outra seleção: desmarca duas, marca a grade, e "Já existem" tira as duas do checklist e sai do lote
+  await tocar(p, linha(p, ARTES[0]));
+  await tocar(p, linha(p, ARTES[1]));
+  await tocar(p, linha(p, ARTES[3]));
+  assert.deepEqual(await selecionadas(), [ARTE_DO_DEDO, ARTES[3]]);
+  await p.locator(LOTE).getByRole('button', { name: 'Já existem' }).tap();
+  await p.locator(LOTE).waitFor({ state: 'detached', timeout: 3000 });
+  for (const t of [ARTE_DO_DEDO, ARTES[3]]) assert.equal(await linha(p, t).locator('.b').getAttribute('data-marca'), 'existe', `${nome}: "Já existem" em "${t}"`);
+  assert.ok(await p.locator('.barra-enviar').isVisible(), `${nome}: a barra de baixo volta`);
+  // o ✕ sai do lote sem mexer em nada
+  await segurar(p, linha(p, ARTES[2]));
+  await p.locator(LOTE).waitFor({ state: 'visible', timeout: 3000 });
+  await p.locator(LOTE).getByRole('button', { name: 'Limpar a seleção' }).tap();
+  await p.locator(LOTE).waitFor({ state: 'detached', timeout: 3000 });
+  assert.deepEqual(await selecionadas(), [], `${nome}: o ✕ limpa a seleção`);
+  assert.equal(await linha(p, ARTES[2]).locator('.cx').getAttribute('aria-label'), 'Complexidade MÉDIA');
+  // desmarcar a última linha sai sozinho
+  await segurar(p, linha(p, ARTES[6]));
+  await p.locator(LOTE).waitFor({ state: 'visible', timeout: 3000 });
+  await tocar(p, linha(p, ARTES[6]));
+  await p.locator(LOTE).waitFor({ state: 'detached', timeout: 3000 });
+  assert.deepEqual(await selecionadas(), [], `${nome}: sem linha marcada, o lote sai sozinho`);
+  // fora do lote, o fogo volta a responder ao toque
+  await linha(p, ARTES[6]).locator('.cx').tap();
+  await p.waitForTimeout(200);
+  assert.equal(await linha(p, ARTES[6]).locator('.cx').getAttribute('aria-label'), 'Complexidade MÉDIA', `${nome}: fora do lote, o fogo sobe`);
+  // a barra: as quatro a produzir, com a ALTA do lote
+  assert.match(await barra.locator('.conta').innerText(), /^4\s+artes$/);
+  assert.match(await barra.locator('.cx-card').innerText(), /ALTA/);
+
   // tocar no nome leva até a arte no texto, com o destaque
   await p.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
   await linha(p, ARTES[1]).locator('.txt').tap();
@@ -333,15 +428,16 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
     const registrou = () => pedidos.some((x) => x.url.pathname === '/api/table/tblProducao/record');
     for (let t = Date.now(); !registrou() && Date.now() - t < 30000; ) await p.waitForTimeout(250);
     const checklist = pedidos.filter((x) => x.url.pathname === '/1/checklists/checklist1/checkItems').map((x) => x.url.searchParams.get('name'));
-    // a marcada pelo dedo entra, a desmarcada no texto sai, a que já existe fica de fora
-    const aProduzir = [ARTE_DO_DEDO, ...ARTES.filter((a) => a !== 'AO VIVO' && a !== ARTES[5])];
-    assert.deepEqual(checklist, aProduzir, 'o checklist leva as artes a produzir, sem a que já existe');
+    // a desmarcada no texto sai; as que já existem (pela bolinha e pelo lote: entre elas a marcada pelo dedo) ficam de fora
+    const aProduzir = [ARTES[0], ARTES[1], ARTES[2], ARTES[6]];
+    assert.deepEqual(checklist, aProduzir, 'o checklist leva as artes a produzir, sem as que já existem');
+    // a ALTA veio do lote (a grade, que era ALTA, saiu com "Já existem")
     const campo = pedidos.find((x) => x.metodo === 'PUT' && x.url.pathname.endsWith('/customField/cComplexidade/item'))?.corpo;
     assert.deepEqual(campo, { idValue: 'opAlta' }, 'o card vai com a maior complexidade');
     const registro = pedidos.find((x) => x.url.pathname === '/api/table/tblProducao/record')?.corpo?.records?.[0]?.fields;
     assert.ok(registro, 'a produção da arte recebe o registro');
     assert.equal(registro.complexidade, 3, 'a produção da arte leva a maior complexidade');
-    assert.equal(registro.artes_quantidade, 6);
+    assert.equal(registro.artes_quantidade, 4);
     assert.equal(registro.artes, aProduzir.join(' | '));
     await semRolagemDeLado(p, `${nome}, depois de enviar`);
   }
@@ -375,4 +471,4 @@ if (require.main === module)
     },
   );
 
-module.exports = { trelloFalso, semearRoteiro, abrirEditor, aparelho, selecionarNoTexto, rolarComODedo, ARTES, ID, LOC_ABERTURA };
+module.exports = { trelloFalso, semearRoteiro, abrirEditor, aparelho, selecionarNoTexto, rolarComODedo, segurar, tocar, linha, ARTES, ID, LOC_ABERTURA, ARTE_DO_DEDO };

@@ -38,6 +38,7 @@ import { acharPrograma, programasConhecidos } from '../modelo/vocabularios';
 import { atalho, baixar, copiarTexto, dataCurtaComDia, haQuantoTempo, nomeDoArquivo, plural, semMovimento } from './util';
 import { ehDoTour, enviarExemplo } from '../tour/exemplo';
 import { ajustarSelecao } from '../editor/selecao';
+import { gestoNaLista, SEGURAR_MS } from './gestoNaLista';
 import { enviadoNoTour, enviarNoTour } from '../tour/TourDaRevisao';
 
 
@@ -905,7 +906,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
   const ancoraSel = useRef<string | null>(null);
   const clicarArte = (a: (typeof artes)[number], e: React.MouseEvent) => {
-    // no celular, o toque no nome leva até a arte no texto (o lote, ao segurar a linha, é do #45)
+    // no celular, o toque no nome leva até a arte no texto (o lote começa segurando a linha: dedoNaLista)
     if (celular) {
       setSelecionadas([]);
       ancoraSel.current = a.id;
@@ -943,10 +944,59 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     if (!escolhidas.length) return;
     mudarMeta(marcarComplexidade(meta, escolhidas.map((a) => chaveDeArte(a.texto)), n));
     if (selecionadas.length) {
-      setSelecionadas([]);
+      // no celular, o lote continua depois do fogo (dá para seguir com "Já existem" ou mudar a seleção)
+      if (!celular) setSelecionadas([]);
       avisar(`${plural(escolhidas.length, 'arte', 'artes')} com complexidade ${NOME_DA_COMPLEXIDADE[n]}.`);
     }
   };
+  // no celular, o lote: segurar uma linha por meio segundo começa; depois, cada toque marca ou desmarca uma linha, e o
+  // lote sai sozinho quando não sobra nenhuma. Rolar a página (o dedo que arrasta) não conta. No lote, a linha inteira
+  // é o alvo: a bolinha, o nome, o fogo e o ✕ não respondem ao toque, e o clique que vem depois do gesto é engolido.
+  const podeLote = celular && !leitura && liberado;
+  const emLote = podeLote && selecionadas.length > 0;
+  /** O dedo na lista: a linha, onde e quando encostou, o quanto mais se afastou, e se o gesto é do lote. */
+  type Dedo = { id: string; x: number; y: number; t: number; afastou: number; segurar?: ReturnType<typeof setTimeout>; doLote: boolean };
+  const dedo = useRef<Dedo | null>(null);
+  useEffect(() => () => clearTimeout(dedo.current?.segurar), []);
+  const dedoNaLista = {
+    onPointerDown: (e: React.PointerEvent) => {
+      clearTimeout(dedo.current?.segurar);
+      const id = (e.target as HTMLElement).closest<HTMLElement>('li[data-id]')?.dataset.id;
+      if (!id) return void (dedo.current = null);
+      const d: Dedo = { id, x: e.clientX, y: e.clientY, t: e.timeStamp, afastou: 0, doLote: emLote };
+      if (!emLote)
+        d.segurar = setTimeout(() => {
+          if (dedo.current !== d || gestoNaLista(SEGURAR_MS, d.afastou) !== 'segurar') return;
+          d.doLote = true;
+          setSelecionadas([id]);
+        }, SEGURAR_MS);
+      dedo.current = d;
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const d = dedo.current;
+      if (!d) return;
+      d.afastou = Math.max(d.afastou, Math.hypot(e.clientX - d.x, e.clientY - d.y));
+      if (gestoNaLista(e.timeStamp - d.t, d.afastou) === 'arrasto') clearTimeout(d.segurar);
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      const d = dedo.current;
+      if (!d) return;
+      clearTimeout(d.segurar);
+      if (emLote && gestoNaLista(e.timeStamp - d.t, d.afastou) === 'toque')
+        setSelecionadas((l) => (l.includes(d.id) ? l.filter((x) => x !== d.id) : [...l, d.id]));
+    },
+    // o sistema assumiu o gesto (a rolagem): nada de segurar
+    onPointerCancel: () => clearTimeout(dedo.current?.segurar),
+    // o clique que o sistema manda depois do gesto do lote (uma vez só: o próximo gesto decide de novo)
+    onClickCapture: (e: React.MouseEvent) => {
+      if (!dedo.current?.doLote) return;
+      dedo.current.doLote = false;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+  };
+
   useEffect(() => {
     if (!selecionadas.length) return;
     const tecla = (e: KeyboardEvent) => e.key === 'Escape' && setSelecionadas([]);
@@ -1374,6 +1424,26 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       </div>
     </section>
   );
+  // a barra do lote: no computador, no alto da lista; no celular, no lugar da barra de baixo. As mesmas ações.
+  const contaDoLote = <span className="conta"><b>{selecionadas.length}</b> {selecionadas.length === 1 ? 'selecionada' : 'selecionadas'}</span>;
+  const acoesDoLote = (
+    <>
+      <button type="button" className="botao-texto" onClick={() => marcarVarias('existe')}><Icone nome="certo" tam={13} traco={2.2} /> Já existem</button>
+      <button type="button" className="botao-texto" onClick={() => marcarVarias('fora')}><Icone nome="fechar" tam={13} traco={2.2} /> Não produzir</button>
+      <button type="button" className="botao-texto" onClick={() => marcarVarias(null)}><Icone nome="desfazer" tam={13} traco={2.2} /> Produzir</button>
+    </>
+  );
+  /** A complexidade das selecionadas: os três fogos lado a lado (no computador, cada um com a sua tecla). */
+  const fogosDoLote = (
+    <span className="cx-lote">
+      {([1, 2, 3] as const).map((n) => (
+        <button key={n} type="button" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[n]} nas selecionadas`} title={celular ? undefined : `${NOME_DA_COMPLEXIDADE[n]} (${n})`} onClick={() => nivelDasArtes(selecionadas, n)}>
+          <Fogo n={n} escala={n === 1 ? 1.2 : 1} />{!celular && <kbd>{n}</kbd>}
+        </button>
+      ))}
+    </span>
+  );
+  const fecharLote = <button type="button" className="fechar-lote" aria-label="Limpar a seleção" title={celular ? undefined : 'Limpar (Esc)'} onClick={() => setSelecionadas([])}><Icone nome="fechar" tam={celular ? 14 : 12} traco={2.4} /></button>;
   const listaDasArtes = (
     <>
       <div className="cab-artes">
@@ -1382,24 +1452,15 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
         {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
       </div>
       {artes.length === 0 && (celular ? <p className="suave pequeno">As artes sublinhadas no texto aparecem aqui.</p> : <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>)}
-      {selecionadas.length > 0 && !leitura && (
+      {selecionadas.length > 0 && !leitura && !celular && (
         <div className="barra-lote" role="toolbar" aria-label="Marcar as artes selecionadas">
-          <span><b>{selecionadas.length}</b> {selecionadas.length === 1 ? 'selecionada' : 'selecionadas'}</span>
-          <button type="button" className="botao-texto" onClick={() => marcarVarias('existe')}><Icone nome="certo" tam={13} traco={2.2} /> Já existem</button>
-          <button type="button" className="botao-texto" onClick={() => marcarVarias('fora')}><Icone nome="fechar" tam={13} traco={2.2} /> Não produzir</button>
-          <button type="button" className="botao-texto" onClick={() => marcarVarias(null)}><Icone nome="desfazer" tam={13} traco={2.2} /> Produzir</button>
-          {/* a complexidade das selecionadas: os três fogos lado a lado, cada um com a sua tecla */}
-          <span className="cx-lote">
-            {([1, 2, 3] as const).map((n) => (
-              <button key={n} type="button" aria-label={`Complexidade ${NOME_DA_COMPLEXIDADE[n]} nas selecionadas`} title={`${NOME_DA_COMPLEXIDADE[n]} (${n})`} onClick={() => nivelDasArtes(selecionadas, n)}>
-                <Fogo n={n} escala={n === 1 ? 1.2 : 1} /><kbd>{n}</kbd>
-              </button>
-            ))}
-          </span>
-          <button type="button" className="fechar-lote" aria-label="Limpar a seleção" title="Limpar (Esc)" onClick={() => setSelecionadas([])}><Icone nome="fechar" tam={12} traco={2.4} /></button>
+          {contaDoLote}
+          {acoesDoLote}
+          {fogosDoLote}
+          {fecharLote}
         </div>
       )}
-      <ol className={`artes ${TIPOS_NA_LISTA ? '' : 'so-lista'}`}>
+      <ol className={`artes ${TIPOS_NA_LISTA ? '' : 'so-lista'} ${emLote ? 'em-lote' : ''}`} {...(podeLote && dedoNaLista)}>
         {!TIPOS_NA_LISTA && (
           <Vagas itens={artes} chave={(a) => a.id}>
           {(a) => {
@@ -1410,6 +1471,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             return (
             <li
               key={a.id}
+              data-id={a.id}
               className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id || arteDoBalao?.id === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
               aria-selected={selecionadas.length ? selecionadas.includes(a.id) : undefined}
               title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo.split(', ').map(nomeDaSigla).join(', ')}` : ''}` : undefined}
@@ -1767,7 +1829,15 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
 
       {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{position:relative;animation:selecionar-arte .5s cubic-bezier(.45,0,.3,1) forwards}.texto u.arte[data-id="${CSS.escape(realce)}"]::after{content:'';position:absolute;top:-.2em;width:.5em;height:1.4em;margin-left:-.25em;pointer-events:none;background:var(--ibeam-arte) no-repeat center/contain;animation:arrastar-cursor-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}
       {soltando && <style>{`.texto u.arte[data-id="${CSS.escape(soltando)}"]{background-size:100% 100%;animation:soltar-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}
-      {celular ? (
+      {emLote ? (
+        // no celular, o lote toma o lugar da barra de baixo: a contagem, os fogos e o ✕ em cima; as ações embaixo
+        <div className="barra-lote no-celular" role="toolbar" aria-label="Marcar as artes selecionadas">
+          {contaDoLote}
+          {fogosDoLote}
+          {fecharLote}
+          <span className="acoes-lote">{acoesDoLote}</span>
+        </div>
+      ) : celular ? (
         // no celular, no lugar das estatísticas: a maior complexidade, as artes a produzir e o Enviar, ao alcance do polegar
         <footer className="barra-enviar" aria-label="Enviar ao Trello">
           <span className={`cx-card n${complexidadeDoCard}`} title="O card vai com a maior complexidade das artes"><span className="cx-pe"><FogoComTroca n={complexidadeDoCard} /></span><b>{NOME_DA_COMPLEXIDADE[complexidadeDoCard]}</b></span>
