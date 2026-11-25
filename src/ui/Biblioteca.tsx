@@ -8,8 +8,9 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
-import { agruparPorDia, filaVisivel, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, periodoCurto, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type FaixaDeDias, type GrupoDia } from './fila';
+import { agruparPorDia, filaVisivel, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type FaixaDeDias, type GrupoDia } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
+import { PeriodoQueConta, ResumoQueConta, VoltarParaHoje } from './topoDaFaixa';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -607,11 +608,10 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
     </h2>
   );
   // no celular: o título e o seletor de dois dias na primeira linha; o resumo dos dias à vista e o "voltar para hoje"
-  // (com o lugar guardado) na segunda. Tudo isso só muda quando a rolagem termina.
+  // (com o lugar guardado) na segunda. Tudo isso só muda quando a rolagem termina, e então conta até os valores novos.
   const topoDoCelular = (f: FaixaDeDias) => {
     const [k] = faixa.vista;
     const resumo = resumoDosDias(f.dias.slice(k, k + 2));
-    const longeDeHoje = k !== f.hoje;
     return (
       <div className="secao-trello-topo">
         {titulo}
@@ -619,20 +619,14 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
           <button type="button" className="botao-icone" aria-label="Dia anterior" title="Dia anterior" disabled={k <= 0} onClick={() => faixa.andar(-1)}>
             <Icone nome="voltar" tam={16} traco={2.2} />
           </button>
-          <b>{periodoCurto(f.dias[k].iso, f.dias[k + 1].iso)}</b>
+          <PeriodoQueConta isos={f.dias.map((d) => d.iso)} k={k} />
           <button type="button" className="botao-icone" aria-label="Próximo dia" title="Próximo dia" disabled={k >= f.dias.length - 2} onClick={() => faixa.andar(1)}>
             <Icone nome="direita" tam={16} traco={2.2} />
           </button>
         </span>
         <span className="secao-trello-conta">
-          <span>
-            {plural(resumo.total, 'card', 'cards')}
-            {resumo.entregues > 0 && ` · ${plural(resumo.entregues, 'entregue', 'entregues')}`}
-            {resumo.comPrioridade > 0 && <> · <span className="prio-nota">{resumo.comPrioridade} prioridade</span></>}
-          </span>
-          <button type="button" className={`botao-texto voltar-hoje ${longeDeHoje ? '' : 'fora'}`} onClick={() => faixa.ir(f.hoje)}>
-            voltar para hoje
-          </button>
+          <ResumoQueConta {...resumo} />
+          <VoltarParaHoje ver={k !== f.hoje} sentido={faixa.sentido} voltar={() => faixa.ir(f.hoje)} />
         </span>
       </div>
     );

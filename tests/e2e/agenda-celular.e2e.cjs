@@ -1,4 +1,4 @@
-// Ponta a ponta da agenda No Trello no celular (spec #37, #40), rodado à parte do vitest: `npm run e2e:agenda`.
+// Ponta a ponta da agenda No Trello no celular (spec #37, #40 e as animações do #41), rodado à parte do vitest: `npm run e2e:agenda`.
 //
 // Sobe o servidor e o Vite como o e2e do tour (banco temporário, dados fictícios, nada sai para a rede), abre a tela
 // inicial em tamanho de iPhone e de Android e arrasta a faixa de dias com toque emulado pelo CDP: curto, longo,
@@ -115,6 +115,8 @@ const QUADROS = () => {
       interno,
       texto: `${document.querySelector('.secao-trello .semana-nav b').textContent} | ${document.querySelector('.secao-trello-conta').textContent}`,
       aberto: document.querySelectorAll('.secao-trello .card-semana.aberto').length,
+      // onde estão as setas, de lado: o seletor tem largura fixa, elas nunca se mexem (nem com o topo contando)
+      setas: [...document.querySelectorAll('.secao-trello .semana-nav .botao-icone')].map((b) => Math.round(b.getBoundingClientRect().left * 10) / 10).join(','),
     });
     requestAnimationFrame(f);
   };
@@ -140,7 +142,7 @@ function inversoesEm(q) {
  */
 function analisar(log, fase) {
   const q = log.filter((f) => f.fase === fase);
-  let interno = 0, paginaY = 0, paginaX = 0, textoNoMeio = 0, maiorPasso = 0;
+  let interno = 0, paginaY = 0, paginaX = 0, textoNoMeio = 0, maiorPasso = 0, setas = 0;
   const xFim = q[q.length - 1].x;
   const ultimoComDedo = q.map((f) => f.dedo).lastIndexOf(true);
   const comDedo = q.slice(0, ultimoComDedo + 1).filter((f) => f.dedo);
@@ -156,9 +158,10 @@ function analisar(log, fase) {
     if (q[k].y !== q[k - 1].y) paginaY++;
     if (q[k].px !== 0) paginaX++;
     if (q[k].texto !== q[k - 1].texto && Math.abs(q[k].x - xFim) > 0.5) textoNoMeio++;
+    if (q[k].setas !== q[k - 1].setas) setas++;
   }
   const inversoes = inversoesComDedo + inversoesSolto;
-  return { quadros: q.length, rolou: Math.round(xFim - q[0].x), inversoes, inversoesComDedo, inversoesSolto, voltaDoEncaixe: Math.max(0, volta), maiorPasso: Math.round(maiorPasso), interno, paginaY, paginaRolouPx: Math.round(q[q.length - 1].y - q[0].y), paginaX, textoNoMeio, textoFinal: q[q.length - 1].texto, aberto: q[q.length - 1].aberto };
+  return { quadros: q.length, rolou: Math.round(xFim - q[0].x), inversoes, inversoesComDedo, inversoesSolto, voltaDoEncaixe: Math.max(0, volta), maiorPasso: Math.round(maiorPasso), interno, paginaY, paginaRolouPx: Math.round(q[q.length - 1].y - q[0].y), paginaX, textoNoMeio, setas, textoFinal: q[q.length - 1].texto, aberto: q[q.length - 1].aberto };
 }
 
 async function arrastar(cdp, p, pontos, passoMs = 16) {
@@ -247,6 +250,7 @@ async function gestos(navegador, url, nome, conferir) {
       conferir(m.paginaY === 0 && m.paginaX === 0, rotulo(`${n}: a página não rola`));
       conferir(m.interno === 0, rotulo(`${n}: as colunas não se mexem por dentro`));
       conferir(m.textoNoMeio === 0, rotulo(`${n}: o topo só troca quando a rolagem termina`));
+      conferir(m.setas === 0, rotulo(`${n}: as setas não saem do lugar, nem com o topo contando`));
     };
     const encaixado = async (n) => {
       const x = await p.evaluate(() => {
@@ -289,7 +293,8 @@ async function gestos(navegador, url, nome, conferir) {
       const s = document.querySelector('.secao-trello .semana');
       s.scrollTo({ left: h * (s.children[1].offsetLeft - s.children[0].offsetLeft) });
     }, HOJE);
-    await p.waitForTimeout(500);
+    // a faixa parou em hoje: espera o topo terminar de contar (cerca de meio segundo), para o gesto começar parado
+    await p.waitForTimeout(900);
     const [cx, cy] = await cardAVista(p);
     m = await fase('começando num card (180 px)', () => arrastar(cdp, p, linha(cx + 40, cy, cx - 140, cy + 3, 14), 16));
     deLado(m, 'começando num card');
@@ -310,7 +315,7 @@ async function gestos(navegador, url, nome, conferir) {
         await p.waitForTimeout(70);
       }
     }, 1500);
-    conferir(m.inversoes === 0 && m.textoNoMeio === 0 && m.quadros > 5 && m.maiorPasso < m.rolou, rotulo(`seta ›: rola suave (${m.rolou} px), sem tremor e sem trocar o topo no meio`));
+    conferir(m.inversoes === 0 && m.textoNoMeio === 0 && m.setas === 0 && m.quadros > 5 && m.maiorPasso < m.rolou, rotulo(`seta ›: rola suave (${m.rolou} px), sem tremor, sem trocar o topo no meio e sem as setas saírem do lugar`));
     conferir((await encaixado('seta ›')) === k + 3, rotulo('seta › três vezes: três dias para a frente'));
     m = await fase('seta ‹ duas vezes seguidas', async () => {
       for (let n = 0; n < 2; n++) {
@@ -318,9 +323,9 @@ async function gestos(navegador, url, nome, conferir) {
         await p.waitForTimeout(70);
       }
     }, 1500);
-    conferir((await encaixado('seta ‹')) === k + 1 && m.inversoes === 0, rotulo('seta ‹ duas vezes: dois dias para trás'));
+    conferir((await encaixado('seta ‹')) === k + 1 && m.inversoes === 0 && m.setas === 0, rotulo('seta ‹ duas vezes: dois dias para trás'));
     m = await fase('voltar para hoje', () => p.tap('.voltar-hoje'), 1800);
-    conferir((await encaixado('voltar para hoje')) === HOJE && m.inversoes === 0 && m.textoNoMeio === 0, rotulo('"voltar para hoje" rola suave até hoje e amanhã'));
+    conferir((await encaixado('voltar para hoje')) === HOJE && m.inversoes === 0 && m.textoNoMeio === 0 && m.setas === 0, rotulo('"voltar para hoje" rola suave até hoje e amanhã'));
     conferir(!(await p.isVisible('.voltar-hoje')), rotulo('de volta em hoje, o "voltar para hoje" some'));
     const [, resumo2] = await textoDoTopo(p);
     conferir(resumo2 === '4 cards · 1 entregue · 1 prioridade', rotulo('de volta em hoje, o resumo de hoje e amanhã'));

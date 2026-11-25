@@ -21,6 +21,8 @@ const PARADA_MS = 140;
 export interface Faixa {
   /** Os dois dias à vista (as posições na faixa), lidos só quando a rolagem termina: nunca no meio do gesto. */
   vista: [number, number];
+  /** Para que lado a faixa andou na última troca dos dias à vista: 1 para a frente, -1 para trás. */
+  sentido: 1 | -1;
   /** Rola suave até o dia (a posição na faixa) ficar na ponta esquerda. */
   ir: (dia: number) => void;
   /** Anda tantos dias a partir de onde a faixa está (ou de onde ela já está indo: toques seguidos somam). */
@@ -33,7 +35,7 @@ export interface Faixa {
  * (a virada do dia). Sem a faixa na tela (o computador), não faz nada.
  */
 export function useFaixa(raiz: RefObject<HTMLElement | null>, quantos: number, inicio: number, abertura: string): Faixa {
-  const [vista, setVista] = useState<[number, number]>(() => [inicio, inicio + 1]);
+  const [{ vista, sentido }, setVista] = useState<{ vista: [number, number]; sentido: 1 | -1 }>(() => ({ vista: [inicio, inicio + 1], sentido: 1 }));
   // aonde as setas mandaram a faixa, enquanto ela ainda rola até lá
   const alvo = useRef<number | null>(null);
   const larguraDoDia = useCallback(() => {
@@ -47,7 +49,7 @@ export function useFaixa(raiz: RefObject<HTMLElement | null>, quantos: number, i
     if (!el) return;
     el.scrollLeft = inicio * larguraDoDia();
     alvo.current = null;
-    setVista([inicio, inicio + 1]);
+    setVista((v) => ({ vista: [inicio, inicio + 1], sentido: inicio < v.vista[0] ? -1 : 1 }));
   }, [raiz, larguraDoDia, inicio, abertura]);
 
   useEffect(() => {
@@ -56,7 +58,7 @@ export function useFaixa(raiz: RefObject<HTMLElement | null>, quantos: number, i
     const parou = () => {
       alvo.current = null;
       const [a, b] = diasAVista(el.scrollLeft, larguraDoDia(), quantos);
-      setVista((v) => (v[0] === a ? v : [a, b]));
+      setVista((v) => (v.vista[0] === a ? v : { vista: [a, b], sentido: a > v.vista[0] ? 1 : -1 }));
     };
     if ('onscrollend' in window) {
       el.addEventListener('scrollend', parou);
@@ -85,5 +87,5 @@ export function useFaixa(raiz: RefObject<HTMLElement | null>, quantos: number, i
     [raiz, larguraDoDia, quantos],
   );
   const andar = useCallback((dias: number) => ir((alvo.current ?? onde()[0]) + dias), [ir, onde]);
-  return { vista, ir, andar };
+  return { vista, sentido, ir, andar };
 }

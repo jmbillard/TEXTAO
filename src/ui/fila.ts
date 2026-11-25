@@ -196,12 +196,51 @@ export function diasAVista(posicao: number, larguraDoDia: number, quantos: numbe
   return [primeiro, primeiro + 1];
 }
 
+/* ---------- No Trello no celular: o topo que conta ---------- */
+
+/** A curva do contador: rápido no começo e devagar no fim, perto da --suave dos estilos. */
+const suave = (p: number) => 1 - Math.pow(1 - p, 4);
+
+/** O que o contador mostra no instante `p` (de 0 a 1) da contagem de `de` até `para`: sempre um inteiro, sem passar
+    do alvo nem voltar antes da partida. Vale para os números do resumo e para os dias do seletor (a posição na faixa). */
+export function valorNaContagem(de: number, para: number, p: number): number {
+  return Math.round(de + (para - de) * suave(Math.max(0, Math.min(1, p))));
+}
+
+/** O período em partes, como o seletor do celular o desenha: o dia e o mês de cada lado. O mês da esquerda ("/11")
+    só aparece na virada do mês (ou do ano); fora dela, fica vazio. */
+export interface PartesDoPeriodo {
+  dia1: number;
+  mes1: string;
+  dia2: number;
+  mes2: string;
+}
+
+export function partesDoPeriodo(de: string, ate: string): PartesDoPeriodo {
+  const [a, b] = [dataDoIso(de), dataDoIso(ate)];
+  const mes = (d: Date) => `/${d.getMonth() + 1}`;
+  return { dia1: a.getDate(), mes1: a.getMonth() === b.getMonth() ? '' : mes(a), dia2: b.getDate(), mes2: mes(b) };
+}
+
 /** O período dos dias à vista, curto, para o seletor do celular: "25 – 26/11"; na virada do mês (ou do ano), o mês
     vai nos dois lados ("30/11 – 1/12", "31/12 – 1/1"). */
 export function periodoCurto(de: string, ate: string): string {
-  const [a, b] = [dataDoIso(de), dataDoIso(ate)];
-  const mes = (d: Date) => `/${d.getMonth() + 1}`;
-  return `${a.getDate()}${a.getMonth() === b.getMonth() ? '' : mes(a)} – ${b.getDate()}${mes(b)}`;
+  const { dia1, mes1, dia2, mes2 } = partesDoPeriodo(de, ate);
+  return `${dia1}${mes1} – ${dia2}${mes2}`;
+}
+
+/** O período no instante `p` da contagem da posição `de` até `para` na faixa (`isos`: os dias da faixa). Os dias
+    contam pelas datas (30 → 1 passa pela virada). Quando os meses vão mudar, eles ficam apagados até o fim, com os
+    meses da partida guardando a vaga: assim nunca aparece um mês errado ("1/11"), e o "/11" da esquerda só abre ou
+    fecha a vaga no fim. */
+export function periodoNaContagem(isos: string[], de: number, para: number, p: number): PartesDoPeriodo & { mesesApagados: boolean } {
+  const k = valorNaContagem(de, para, p);
+  const agora = partesDoPeriodo(isos[k], isos[k + 1]);
+  const partida = partesDoPeriodo(isos[de], isos[de + 1]);
+  const chegada = partesDoPeriodo(isos[para], isos[para + 1]);
+  const mesesMudam = partida.mes1 !== chegada.mes1 || partida.mes2 !== chegada.mes2;
+  if (!mesesMudam || p >= 1) return { ...agora, mesesApagados: false };
+  return { dia1: agora.dia1, mes1: partida.mes1, dia2: agora.dia2, mes2: partida.mes2, mesesApagados: true };
 }
 
 /** A coluna de um card na agenda: o dia (ISO) ou "sem data". */

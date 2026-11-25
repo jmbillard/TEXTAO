@@ -387,6 +387,53 @@ describe('No Trello no celular: a faixa de dias', () => {
     expect(periodoCurto('2026-12-01', '2026-12-02')).toBe('1 – 2/12');
   });
 
+  it('o contador vai do valor antigo ao novo sempre em inteiros, rápido no começo e devagar no fim', async () => {
+    const { valorNaContagem } = await import('../src/ui/fila');
+    expect(valorNaContagem(0, 4, 0)).toBe(0);
+    expect(valorNaContagem(0, 4, 1)).toBe(4);
+    // na metade do tempo já passou bem da metade do caminho (a curva --suave)
+    expect(valorNaContagem(0, 10, 0.5)).toBe(9);
+    expect(valorNaContagem(4, 1, 0.25)).toBe(2); // para baixo também
+    expect(valorNaContagem(3, 3, 0.5)).toBe(3);
+    // nunca passa do alvo nem volta antes da partida, mesmo com o instante fora de 0 a 1
+    expect(valorNaContagem(2, 5, 1.4)).toBe(5);
+    expect(valorNaContagem(2, 5, -0.2)).toBe(2);
+  });
+
+  it('o período em partes: o dia e o mês de cada lado, com o mês da esquerda só na virada', async () => {
+    const { partesDoPeriodo } = await import('../src/ui/fila');
+    expect(partesDoPeriodo('2026-11-25', '2026-11-26')).toEqual({ dia1: 25, mes1: '', dia2: 26, mes2: '/11' });
+    expect(partesDoPeriodo('2026-12-31', '2027-01-01')).toEqual({ dia1: 31, mes1: '/12', dia2: 1, mes2: '/1' });
+  });
+
+  it('o período contando na virada do mês: os dias passam pelas datas e os meses somem até o fim, sem nunca mostrar um mês errado', async () => {
+    const { montarFaixa, periodoNaContagem } = await import('../src/ui/fila');
+    const isos = montarFaixa([], {}, agora).dias.map((d) => d.iso);
+    const hoje = isos.indexOf('2026-11-25');
+    const virada = isos.indexOf('2026-11-30');
+    const instantes = [0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 0.99];
+    // 25 – 26/11 → 30/11 – 1/12: os dias contam 25, 26… 30 (e 26, 27… 1, pelas datas); os meses ficam apagados, com a
+    // vaga do mês da esquerda como estava (fechada)
+    const indo = instantes.map((p) => periodoNaContagem(isos, hoje, virada, p));
+    expect(indo[0]).toEqual({ dia1: 25, mes1: '', dia2: 26, mes2: '/11', mesesApagados: true });
+    expect(indo.every((q) => q.mesesApagados && q.mes1 === '' && q.mes2 === '/11')).toBe(true);
+    expect([...new Set(indo.map((q) => `${q.dia1}-${q.dia2}`))]).toEqual(['25-26', '27-28', '28-29', '29-30', '30-1']);
+    expect(periodoNaContagem(isos, hoje, virada, 1)).toEqual({ dia1: 30, mes1: '/11', dia2: 1, mes2: '/12', mesesApagados: false });
+    // de volta: a vaga do "/11" da esquerda fica aberta durante a contagem e só fecha no fim
+    const voltando = instantes.map((p) => periodoNaContagem(isos, virada, hoje, p));
+    expect(voltando.every((q) => q.mesesApagados && q.mes1 === '/11' && q.mes2 === '/12')).toBe(true);
+    expect(voltando.map((q) => q.dia1)).toEqual([...voltando.map((q) => q.dia1)].sort((a, b) => b - a));
+    expect(periodoNaContagem(isos, virada, hoje, 1)).toEqual({ dia1: 25, mes1: '', dia2: 26, mes2: '/11', mesesApagados: false });
+  });
+
+  it('o período contando sem virada: os meses ficam à vista o tempo todo', async () => {
+    const { montarFaixa, periodoNaContagem } = await import('../src/ui/fila');
+    const isos = montarFaixa([], {}, agora).dias.map((d) => d.iso);
+    const hoje = isos.indexOf('2026-11-25');
+    for (const p of [0, 0.3, 0.6, 1]) expect(periodoNaContagem(isos, hoje, hoje + 3, p)).toMatchObject({ mes1: '', mes2: '/11', mesesApagados: false });
+    expect(periodoNaContagem(isos, hoje, hoje + 3, 0.1)).toMatchObject({ dia1: 26, dia2: 27 }); // 25 + 3 × 0,34 ≈ 26
+  });
+
   it('o resumo conta só os dois dias à vista: os cards, os entregues e os que estão na lista de prioridade', async () => {
     const { montarFaixa, resumoDosDias } = await import('../src/ui/fila');
     const pronto: Andamento = { status: ['FINALIZADO'], designers: [], entregue: true, entrega: null };
