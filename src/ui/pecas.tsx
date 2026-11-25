@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte } from '../modelo/tipos';
-import { PRACAS, editoresConhecidos, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
+import { PRACAS, editoresConhecidos, seloCurto, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { atalho, dataCurtaComDia, dataPorExtenso, ehMac } from './util';
 import { Icone } from './icones';
 
@@ -25,13 +25,13 @@ export function Riscado({ children, traco = 0, className = '' }: { children: Rea
 }
 
 export /** "???" escritos à mão, cada um meio torto e fora do lugar; sempre do mesmo jeito para o mesmo roteiro. */
-function Duvida({ semente, rotulo }: { semente: string; rotulo: string }) {
+function Duvida({ semente, rotulo, n = 3 }: { semente: string; rotulo: string; n?: number }) {
   let h = 2166136261;
   for (const c of semente) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
   const sorteio = () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0) % 1000) / 1000;
   return (
     <span className="duvida" role="img" aria-label={rotulo} title={rotulo}>
-      {[0, 1, 2].map((i) => (
+      {Array.from({ length: n }, (_, i) => (
         <i key={i} style={{ transform: `translate(${(sorteio() * 1.2 - 0.6).toFixed(1)}px, ${(sorteio() * 2 - 1).toFixed(1)}px) rotate(${(sorteio() * 12 - 6).toFixed(0)}deg)` }}>?</i>
       ))}
     </span>
@@ -208,6 +208,26 @@ export function EscolhaDeTipo({ valor, escolher, atalhos }: { valor: SubtipoArte
   );
 }
 
+/** O selo na ficha, que é estreita: vazio, "??" à mão; o nome longo ("Verifique a classificação indicativa") fica na
+    forma curta ("Verifique") até a pessoa clicar para mudar, e o inteiro vai no title. */
+function CampoSelo({ selo, semente, mudar }: { selo: string; semente: string; mudar: (selo: string) => void }) {
+  const [editando, setEditando] = useState(false);
+  return (
+    <span className="campo-selo" title={selo || 'Selo não reconhecido'}>
+      <input
+        value={editando ? selo : seloCurto(selo)}
+        aria-label="Selo"
+        autoComplete="off"
+        spellCheck={false}
+        onFocus={() => setEditando(true)}
+        onBlur={() => setEditando(false)}
+        onChange={(e) => mudar(e.target.value)}
+      />
+      {!selo && !editando && <Duvida semente={semente + 'selo'} rotulo="Selo não reconhecido" n={2} />}
+    </span>
+  );
+}
+
 type DadosClaquete = Pick<Meta, 'claquete' | 'redator' | 'editor' | 'dataExibicao'> & Partial<Pick<Meta, 'programa' | 'praca' | 'locutor' | 'selo' | 'duracaoAlvoSeg' | 'duracaoModo'>>;
 
 /** A claquete da chamada: nome, equipe e exibição. Com `mudar`, os campos são editáveis. */
@@ -285,7 +305,7 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, b
           </div>
           <div className="campo-c">
             <small>Selo</small>
-            {mudar ? <input value={dados.selo ?? ''} placeholder="sem selo" aria-label="Selo" autoComplete="off" spellCheck={false} onChange={(e) => mudar({ selo: e.target.value })} /> : <div>{dados.selo}</div>}
+            {mudar ? <CampoSelo selo={dados.selo ?? ''} semente={dados.claquete || ''} mudar={(selo) => mudar({ selo })} /> : <div title={dados.selo}>{seloCurto(dados.selo ?? '')}</div>}
           </div>
           <div className="campo-c tempo-c">
             <small>Tempo</small>

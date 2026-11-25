@@ -37,6 +37,9 @@ export const PROGRAMAS: ProgramaVocab[] = [
 
 export const LOCUTORES = ['DIRCEU', 'DIRCEU VIRTUAL', 'WALMIR', 'MCK', 'TATI', 'GIL'];
 export const SELOS = ['Verifique a classificação indicativa', 'Sem selo', 'Livre', 'A10', 'A12', 'A14', 'A16', 'A18'];
+/** A forma curta do selo, para a ficha (a coluna do selo é estreita). O que não tem forma curta fica como está. */
+const SELOS_CURTOS: Record<string, string> = { 'Verifique a classificação indicativa': 'Verifique' };
+export const seloCurto = (selo: string) => SELOS_CURTOS[selo] ?? selo;
 /** Praças oferecidas no app. "REDE" nos roteiros e nos nomes de arquivo é a G5. */
 export const PRACAS = ['G5', 'SP', 'RJ', 'INTER'];
 /** Como a praça aparece escrita nos arquivos. */

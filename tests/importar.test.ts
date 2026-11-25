@@ -154,6 +154,41 @@ describe('Eliana (.rtf, cp1252)', async () => {
   });
 });
 
+describe('RTF em tabela de duas colunas (fictício)', async () => {
+  const { imp, saida } = await importar('Ficticio_Tabela_10-12-1.rtf');
+
+  it('a tabela vira as duas colunas do roteiro', () => {
+    const tabela = imp.bruto.blocos.find((b) => b.tipo === 'tabela');
+    // uma linha, duas células; a da esquerda com o selo, o locutor e o caminho das locs
+    expect(tabela?.tipo === 'tabela' && tabela.linhas.map((l) => l.length)).toEqual([2]);
+    expect(saida.roteiro.layout).toBe('instrucoes_texto');
+  });
+  it('"INSERIR SELO VERIFIQUE" é o selo da classificação indicativa', () => {
+    expect(saida.roteiro.selo).toBe('Verifique a classificação indicativa');
+  });
+  it('"LOC SERVIÇO: DIRCEU VIRTUAL" é o locutor', () => {
+    expect(saida.roteiro.locutor).toBe('DIRCEU VIRTUAL');
+    expect(saida.texto.completo).not.toMatch(/INSERIR SELO|LOC SERVI/);
+  });
+  it('as artes sublinhadas dentro das células', () => {
+    expect(textos(saida.artes)).toEqual(['AMANHÃ', 'HOJE', 'FESTA NA VILA']);
+    expect(saida.artes[0].grupoVersoes).toBe(saida.artes[1].grupoVersoes);
+  });
+});
+
+describe('selo e locutor escritos de outros jeitos', () => {
+  const cabecalho = async (linhas: string[]) =>
+    interpretar(await lerArquivo(new TextEncoder().encode(linhas.join('\n')), 'cabecalho.txt'), { anoPadrao: 2026 }).meta;
+
+  it.each(['INSERIR SELO VERIFIQUE', 'SELO VERIFIQUE', 'INSERIR SELO: VERIFIQUE', 'inserir selo verifique.'])('"%s" → Verifique a classificação indicativa', async (linha) => {
+    expect((await cabecalho([linha, 'TEXTO DA CHAMADA'])).selo).toBe('Verifique a classificação indicativa');
+  });
+  it('"LOC <nota>: <nome>" só vale com um locutor da lista', async () => {
+    expect((await cabecalho(['LOC SERVIÇO: DIRCEU VIRTUAL', 'TEXTO'])).locutor).toBe('DIRCEU VIRTUAL');
+    expect((await cabecalho(['LOC OFF: BOA NOITE', 'TEXTO'])).locutor).toBe('');
+  });
+});
+
 describe('ida e volta pelo .json', async () => {
   it('reabre o roteiro como estava', async () => {
     const { saida } = await importar('Nobreza_27_10.docx');

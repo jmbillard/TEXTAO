@@ -1,7 +1,8 @@
-import { empurrar, type DocBruto, type Par, type Run } from './bruto';
+import { empurrar, type BlocoBruto, type DocBruto, type Par, type Run } from './bruto';
 
 /* Leitor de RTF. Preserva \ul/\ulnone, \b, \i, \highlight, \cf, decodifica
    \'xx na página de código do arquivo (cp1252 nos roteiros) e \uN.
+   As tabelas (\intbl, \cell, \row) viram blocos de tabela, como no .docx: o roteiro em duas colunas.
    Adaptado do extrator do app de upload de roteiros. */
 
 const PULAR = new Set([
@@ -47,8 +48,14 @@ export function lerRtf(dados: ArrayBuffer | Uint8Array, arquivo: string): DocBru
   if (String.fromCharCode(...bytes.subarray(0, 5)) !== '{\\rtf') throw new Error('Este arquivo não parece ser um .rtf válido.');
 
   let dec = new TextDecoder('windows-1252');
-  const pars: Par[] = [];
+  const blocos: BlocoBruto[] = [];
   let par: Par = [];
+  // a tabela que está sendo lida: as linhas fechadas, as células da linha aberta e os parágrafos da célula aberta
+  let tabela: Par[][][] = [];
+  let linha: Par[][] = [];
+  let celula: Par[] = [];
+  // o parágrafo está numa célula (\intbl): vale até o próximo \pard
+  let naTabela = false;
   let autor = '';
   const cores: (string | null)[] = [];
   let corAtual: [number, number, number] | null = null;
@@ -95,10 +102,29 @@ export function lerRtf(dados: ArrayBuffer | Uint8Array, arquivo: string): DocBru
     pendentes = [];
     emitir(texto);
   };
+  const fecharCelula = () => {
+    if (par.length) celula.push(par);
+    par = [];
+    if (celula.length) linha.push(celula);
+    celula = [];
+  };
+  // a célula sem \cell no fim (arquivo cortado) ainda entra na linha
+  const fecharTabela = () => {
+    if (celula.length) linha.push(celula);
+    celula = [];
+    if (linha.length) tabela.push(linha);
+    if (tabela.length) blocos.push({ tipo: 'tabela', linhas: tabela });
+    tabela = [];
+    linha = [];
+  };
   const fimParagrafo = () => {
     descarregar();
     if (st.pular || st.captura) return;
-    pars.push(par);
+    if (naTabela) celula.push(par);
+    else {
+      fecharTabela();
+      blocos.push({ tipo: 'p', par });
+    }
     par = [];
   };
 
@@ -218,8 +244,30 @@ export function lerRtf(dados: ArrayBuffer | Uint8Array, arquivo: string): DocBru
         case 'uc':
           st.uc = param ?? 1;
           break;
-        case 'par': case 'sect': case 'row': case 'cell': case 'nestcell': case 'page':
+        case 'par': case 'sect': case 'nestcell': case 'page':
           fimParagrafo();
+          break;
+        case 'pard':
+          if (!st.pular && !st.captura) naTabela = false;
+          break;
+        case 'intbl':
+          if (!st.pular && !st.captura) naTabela = true;
+          break;
+        case 'cell':
+          descarregar();
+          if (st.pular || st.captura) break;
+          // a célula vazia também conta: as colunas não andam
+          celula.push(par);
+          par = [];
+          fecharCelula();
+          naTabela = true;
+          break;
+        case 'row':
+          descarregar();
+          if (st.pular || st.captura) break;
+          fecharCelula();
+          if (linha.length) tabela.push(linha);
+          linha = [];
           break;
         case 'line':
           descarregar();
@@ -283,9 +331,16 @@ export function lerRtf(dados: ArrayBuffer | Uint8Array, arquivo: string): DocBru
     i++;
   }
   descarregar();
-  if (par.length) pars.push(par);
+  if (par.length) {
+    if (naTabela) celula.push(par);
+    else {
+      fecharTabela();
+      blocos.push({ tipo: 'p', par });
+    }
+  }
+  fecharTabela();
 
-  return { arquivo, formato: 'rtf', autor, blocos: pars.map((p) => ({ tipo: 'p' as const, par: p })) };
+  return { arquivo, formato: 'rtf', autor, blocos };
 }
 
 export function lerTxt(dados: ArrayBuffer | Uint8Array, arquivo: string): DocBruto {

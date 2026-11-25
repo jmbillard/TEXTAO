@@ -758,7 +758,8 @@ kbd {
 .passos [aria-current] { background: var(--cartao); color: var(--tinta); font-weight: 500; box-shadow: 0 1px 2px rgb(26 25 22 / 8%); }
 .passos [aria-current] i { background: var(--tinta); border-color: var(--tinta); color: var(--papel); }
 
-.area, .area.larga { grid-template-columns: minmax(0, 760px) 316px; column-gap: 24px; }
+/* a coluna da direita (a ficha, o "Para revisar" e a lista de artes): 356px, para o selo e os nomes caberem */
+.area, .area.larga { grid-template-columns: minmax(0, 760px) 356px; column-gap: 24px; }
 .lado { display: flex; flex-direction: column; gap: 14px; min-width: 0; position: sticky; top: 72px; max-height: calc(100vh - 88px); overflow-y: auto; padding-bottom: 4px; scrollbar-width: thin; }
 .cartao { background: var(--papel); border: 1px solid var(--regua); border-radius: 14px; padding: 16px 16px 12px; }
 .botao.grande { height: 44px; justify-content: center; border-radius: 12px; font-size: 14.5px; }
@@ -797,7 +798,10 @@ kbd {
 .dupla { display: grid; grid-template-columns: 1fr 1fr; }
 .dupla > :only-child { grid-column: 1 / -1; }
 .dupla .campo-c + .campo-c { border-left: 1px solid rgb(244 241 234 / 30%); padding-left: 12px; }
-.trio { display: grid; grid-template-columns: 1.7fr 0.7fr 1fr; border-bottom: 1px solid rgb(244 241 234 / 30%); }
+.trio { display: grid; grid-template-columns: 1.5fr 0.9fr 1fr; border-bottom: 1px solid rgb(244 241 234 / 30%); }
+/* o selo vazio: "??" à mão por cima do campo, como os outros que faltam (o clique passa para o campo) */
+.campo-selo { position: relative; display: block; }
+.campo-selo .duvida { position: absolute; left: 0; top: 50%; transform: translateY(-50%); color: #f5d400; pointer-events: none; }
 .trio .campo-c { border-bottom: 0; }
 .trio .campo-c input, .trio .linha-tempo { font-size: 13.5px; }
 .trio .campo-c + .campo-c { border-left: 1px solid rgb(244 241 234 / 30%); padding-left: 12px; }
@@ -1848,6 +1852,9 @@ html.sem-ponteiros .ponteiros, html.sem-ponteiros .ponteiro { display: none !imp
 .folha { position: relative; }
 .vista-folha { position: absolute; top: 12px; right: 18px; z-index: 3; }
 .vista-folha button { height: 26px; padding: 0 10px; font-size: 12.5px; }
+/* na linha das setas da fila, depois da seta do próximo */
+.vista-folha.na-nav { position: static; }
+.nav-folha .nav-direita { justify-self: end; display: flex; align-items: center; gap: 10px; }
 /* o original: a página do Word dentro da folha, com as artes do PROMeiro pintadas por cima */
 :root { --realce-original: rgb(226 83 43 / 0.22); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --realce-original: rgb(255 140 96 / 0.3); } }

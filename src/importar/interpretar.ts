@@ -1,7 +1,7 @@
 import { indiceDaMarca, semMarcasDeImagem, textoDoPar, type DocBruto, type Par } from './bruto';
 import { analisarSonoras, ehCaixaAlta, ehLocucao, RE_LINHA_LOC } from '../modelo/sonora';
 import { metaVazia, novoId, type Layout, type Meta, type NoJSON, type MarcaJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
-import { acharPrograma, claqueteDoArquivo, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, semAcento, lerDataDaClaquete } from '../modelo/vocabularios';
+import { acharPrograma, claqueteDoArquivo, LOCUTORES, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, semAcento, lerDataDaClaquete } from '../modelo/vocabularios';
 
 /* Interpretação do arquivo: do "o que estava escrito" para "o que isso significa".
    Tudo o que é certo é resolvido sozinho e listado em `entendido`;
@@ -83,6 +83,8 @@ function nomearCor(hexOuNome: string): [string, string] {
 
 const ASPAS = String.raw`[”"'’′″“]`;
 const RE_LOC = /^\**\s*LOC(?:UTOR[A]?|U[CÇ][AÃ]O)?\s*[:-]?\s+(.+?)\s*\**$/i;
+/** "LOC SERVIÇO: DIRCEU VIRTUAL": uma palavra entre o LOC e os dois-pontos. Só vale com um locutor da lista. */
+const RE_LOC_COM_NOTA = /^\**\s*LOC(?:UTOR[A]?|U[CÇ][AÃ]O)?\s+\p{L}+\s*:\s*(.+?)\s*\**$/iu;
 const RE_SEM_LOC = /^SEM\s+LOC\w*\.?$/i;
 const RE_SEM_SELO = /^SEM\s+SELO\.?$/i;
 const RE_COM_SELO = /^COM\s+SELO\.?$/i;
@@ -90,7 +92,7 @@ const RE_VERSOES = /^VERS[ÕO]ES\s*:/i;
 const RE_CAP_SO = /^CAP(?:[IÍ]TULO)?\.?\s*(\d+)$/i;
 /** Nome de locutor: curto, sem pontuação de frase. "LOC: No dia do gaúcho…" é texto de locução, não cabeçalho. */
 const pareceNome = (v: string) => v.length <= 40 && v.split(/\s+/).length <= 6 && !/[.!?…,;:]/.test(v) && !/\p{Ll}{2,}\s+\p{Ll}{2,}\s+\p{Ll}{2,}/u.test(v);
-const RE_SELO = /^(?:COM\s+)?SELO(?:\s+DE)?\s*:?\s*(.+)$/i;
+const RE_SELO = /^(?:INSERIR\s+)?(?:COM\s+)?SELO(?:\s+DE)?\s*:?\s*(.+)$/i;
 const RE_FECHAR = new RegExp(String.raw`^\(?\s*FECHAR\s+(?:COM|C\/)\s*(\d{1,3})\s*${ASPAS}*\s*(NO\s+M[AÁ]X\w*)?\.?\s*\)?$`, 'i');
 const RE_MAX = new RegExp(String.raw`^\(?\s*M[AÁ]X\w*\.?\s*(\d{1,3})\s*${ASPAS}*\s*\)?$`, 'i');
 const RE_DUR = new RegExp(String.raw`^[\s(/]*(?:ESTIMADA\s+|(?:TEMPO|DURA[CÇ][AÃ]O)(?:\s+ESTIMAD[OA])?\s*:?\s*)?(?:\d{1,3}\s*\/\s*)?(\d{1,3})\s*${ASPAS}{1,2}[\s)/]*$`, 'i');
@@ -299,6 +301,11 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
       return true;
     }
     if ((m = s.match(RE_LOC)) && pareceNome(m[1].trim())) {
+      definir('locutor', m[1].trim().toUpperCase());
+      anotar(`"${s}" → locutor no cabeçalho`);
+      return true;
+    }
+    if ((m = s.match(RE_LOC_COM_NOTA)) && LOCUTORES.includes(m[1].trim().toUpperCase())) {
       definir('locutor', m[1].trim().toUpperCase());
       anotar(`"${s}" → locutor no cabeçalho`);
       return true;

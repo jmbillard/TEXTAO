@@ -1606,6 +1606,22 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     </div>
   ) : null;
 
+  // Texto | Original: no computador, quando a folha tem as setas da fila, ele entra na linha delas, depois da seta do
+  // próximo (solto no canto, ficava por cima da seta e ela aparecia através do "Original")
+  const comNav = !!(vizinhos.anterior || vizinhos.seguinte || proximo.total > 0);
+  const seletorNaNav = temOriginal && comNav && !celular;
+  const seletorDaVista = (
+    <div className={`segmento vista-folha ${seletorNaNav ? 'na-nav' : ''}`} role="radiogroup" aria-label="Ver o roteiro">
+      <button role="radio" aria-checked={vista === 'texto'} onClick={() => setVista('texto')}>Texto</button>
+      <button role="radio" aria-checked={vista === 'original'} onClick={() => setVista('original')} title={`Como chegou: ${inicial.original?.nome ?? ''}`}>Original</button>
+    </div>
+  );
+  const setaSeguinte = vizinhos.seguinte ? (
+    <button className="botao-icone seta-nav" title={`${vaiMandar ? 'Pular, sem mandar, para' : 'Próximo:'} ${vizinhos.seguinte.meta.claquete || 'o próximo'}`} aria-label={vaiMandar ? 'Pular para o próximo' : 'Próximo roteiro'} onClick={() => abrir(vizinhos.seguinte!.id)}>
+      <Icone nome="seta" tam={17} traco={2.2} />
+    </button>
+  ) : null;
+
   return (
     <div className="pagina editor">
       {sala && sincronizado && <PonteirosDaSala sala={sala} eu={pessoa?.email ?? ''} editor={editor} />}
@@ -1691,13 +1707,8 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             </div>
           )}
           <article className="folha" data-ancora="folha">
-            {temOriginal && (
-              <div className="segmento vista-folha" role="radiogroup" aria-label="Ver o roteiro">
-                <button role="radio" aria-checked={vista === 'texto'} onClick={() => setVista('texto')}>Texto</button>
-                <button role="radio" aria-checked={vista === 'original'} onClick={() => setVista('original')} title={`Como chegou: ${inicial.original?.nome ?? ''}`}>Original</button>
-              </div>
-            )}
-            {(vizinhos.anterior || vizinhos.seguinte || proximo.total > 0) && (
+            {temOriginal && !seletorNaNav && seletorDaVista}
+            {comNav && (
               <nav className="nav-folha" aria-label="Fila de revisão">
                 {vizinhos.anterior ? (
                   <button className="botao-icone seta-nav voltar" title={`Anterior: ${vizinhos.anterior.meta.claquete || 'sem claquete'}`} aria-label="Roteiro anterior" onClick={() => abrir(vizinhos.anterior!.id)}>
@@ -1707,12 +1718,13 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                   <span />
                 )}
                 <span className="restam-mao">{proximo.total ? <><b>+{proximo.total}</b> para revisar</> : 'último da fila'}</span>
-                {vizinhos.seguinte ? (
-                  <button className="botao-icone seta-nav" title={`${vaiMandar ? 'Pular, sem mandar, para' : 'Próximo:'} ${vizinhos.seguinte.meta.claquete || 'o próximo'}`} aria-label={vaiMandar ? 'Pular para o próximo' : 'Próximo roteiro'} onClick={() => abrir(vizinhos.seguinte!.id)}>
-                    <Icone nome="seta" tam={17} traco={2.2} />
-                  </button>
+                {seletorNaNav ? (
+                  <span className="nav-direita">
+                    {setaSeguinte}
+                    {seletorDaVista}
+                  </span>
                 ) : (
-                  <span />
+                  setaSeguinte ?? <span />
                 )}
               </nav>
             )}
