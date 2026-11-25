@@ -1571,7 +1571,7 @@ a.ficha-marca.trello { text-decoration: none; }
 /* No Trello: os enviados numa semana de agenda, abaixo da revisão, na largura toda da tela.
    A fila de revisão continua com a largura dela; a seção vem logo depois, fora da coluna. */
 .biblioteca:has(+ .secao-trello) { padding-bottom: 28px; }
-.secao-trello { max-width: 1680px; margin: 0 auto; padding: 0 32px 96px; }
+.secao-trello { position: relative; max-width: 1680px; margin: 0 auto; padding: 0 32px 96px; }
 .secao-trello-topo { display: flex; align-items: baseline; gap: 16px; padding-top: 26px; margin-bottom: 16px; border-top: 1px solid var(--regua); }
 .secao-trello-topo h2 { margin: 0; font: 400 30px/1.1 var(--serifa); letter-spacing: -0.01em; display: inline-flex; align-items: baseline; gap: 10px; }
 .secao-trello-topo h2 svg { align-self: center; color: var(--tinta3); }
@@ -1579,6 +1579,20 @@ a.ficha-marca.trello { text-decoration: none; }
 .semana-nav { margin-left: auto; display: flex; align-items: center; gap: 4px; color: var(--tinta2); font-size: 13.5px; }
 .semana-nav b { font-weight: 500; color: var(--tinta); padding: 0 6px; font-variant-numeric: tabular-nums; }
 .semana-nav .botao-texto { margin-right: 14px; }
+.semana-setas { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+
+/* o critério da agenda: "exibição · entrada · entrega", três abas de texto com o risco à mão sob a ativa (como as abas
+   dos Cadastros), ao lado do resumo */
+.linha-criterio { display: inline-flex; align-items: baseline; gap: 16px; min-width: 0; }
+.abas-criterio { display: inline-flex; align-items: baseline; gap: 2px; margin-left: 4px; }
+.abas-criterio button { position: relative; border: 0; background: none; padding: 4px 8px; border-radius: 8px; font: 500 14px var(--sans); color: var(--tinta3); white-space: nowrap; cursor: pointer; transition: color 0.15s; }
+.abas-criterio button:hover { color: var(--tinta); }
+.abas-criterio button:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.abas-criterio button[aria-selected='true'] { color: var(--ultra); font-weight: 600; }
+.abas-criterio .rot { position: relative; display: inline-block; }
+.abas-criterio .sub { position: absolute; left: -4px; top: calc(100% + 1px); width: calc(100% + 8px); height: 8px; overflow: visible; pointer-events: none; }
+.abas-criterio .sub path { fill: none; stroke: var(--ultra); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; animation: rabiscar-aba 0.5s 0.05s var(--suave) both; }
+@media (prefers-reduced-motion: reduce) { .abas-criterio .sub path { animation: none; stroke-dasharray: none; } }
 
 /* o topo que conta, no celular e no computador (ui/topoDaAgenda.tsx): algarismos de largura fixa (nada em volta se mexe
    quando os números contam); os itens que aparecem ou somem abrem ou fecham a vaga de lado (a largura e a opacidade
@@ -1603,7 +1617,8 @@ a.ficha-marca.trello { text-decoration: none; }
 
 .semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: start; }
 .coluna { min-width: 0; display: flex; flex-direction: column; }
-.coluna-topo { display: flex; align-items: baseline; gap: 8px; padding: 0 6px 10px; min-height: 48px; }
+.coluna-topo { padding: 0 6px 10px; min-height: 48px; }
+.coluna-topo-dentro { display: flex; align-items: baseline; gap: 8px; }
 .dia-sem { font: 600 11.5px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); }
 .dia-num { position: relative; font: 400 28px/1 var(--serifa); font-variant-numeric: tabular-nums; }
 .dia-num svg { position: absolute; left: -11px; top: -9px; width: calc(100% + 22px); height: calc(100% + 16px); overflow: visible; }
@@ -1619,7 +1634,9 @@ a.ficha-marca.trello { text-decoration: none; }
 .coluna-corpo { --vaga-gap: 7px; }
 .semana-avulsa ul { position: relative; }
 .semana-avulsa .vaga-y.solta { position: absolute; }
-.card-semana.deslizando { z-index: 3; }
+.card-semana.deslizando, .card-semana.voando { z-index: 3; }
+/* a troca de critério (ui/trocaDeSemana.ts): os fantasmas dos cards que saem da agenda à vista, no lugar antigo */
+.camada-voo { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 10; pointer-events: none; }
 /* a etapa nova (lida a cada minuto) troca com um esmaecer curto, sem saltar */
 .card-semana-etapa, .card-semana-sinal { animation: etapa-trocar 0.3s var(--suave); }
 @keyframes etapa-trocar { from { opacity: 0; } }
@@ -1637,10 +1654,15 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-abrir { display: block; width: 100%; padding: 10px 12px 8px; border: 0; border-radius: inherit; background: none; text-align: left; cursor: pointer; }
 .card-semana-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
 .card-semana-claquete { display: block; font: 600 13.5px/1.3 var(--mono); letter-spacing: -0.01em; color: var(--tinta); overflow-wrap: anywhere; }
-.card-semana-linha { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11.5px; color: var(--tinta3); white-space: nowrap; }
+/* a claquete quebra entre os pedaços (TextoDaClaquete com quebras: nos espaços, antes de "(", depois de ")" e antes da
+   data), nunca dentro deles */
+.card-semana-claquete .seg { white-space: nowrap; }
+/* a praça e as artes de um lado, a etapa do outro; se não couber, a etapa desce e fica à esquerda */
+.card-semana-linha { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 2px 8px; margin-top: 3px; font-size: 11.5px; color: var(--tinta3); white-space: nowrap; }
+.card-quem { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .card-semana-linha .sep { opacity: 0.6; }
 .card-semana-artes { font: 600 17px/1 Caveat, cursive; color: var(--tinta2); letter-spacing: 0.01em; }
-.card-semana-etapa { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: var(--tinta2); }
+.card-semana-etapa { display: inline-flex; align-items: center; gap: 5px; color: var(--tinta2); white-space: nowrap; }
 .card-semana-etapa i { width: 6px; height: 6px; border-radius: 50%; background: var(--tinta3); flex: none; }
 .card-semana-etapa.produzindo i { background: var(--ultra); }
 .card-semana-etapa.aprovacao i { background: var(--producao); }
@@ -1648,6 +1670,16 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-etapa.caiu { color: var(--tinta3); }
 .card-semana.caiu { opacity: 0.75; }
 .card-semana.caiu .card-semana-claquete { color: var(--tinta3); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+/* a outra data do critério, discreta, no pé do card: "entrou ter 24", "21h59 · ao ar dom 29" (pedaços que não quebram
+   por dentro) e, à mão, "depois do ar" */
+.card-outra { display: block; overflow: hidden; margin-top: 3px; padding: 2px 0; font-size: 11.5px; color: var(--tinta3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.card-outra-dentro { display: flex; flex-wrap: wrap; align-items: baseline; margin-left: -10px; }
+.card-outra .pd::before { content: '·' / ''; display: inline-block; width: 10px; text-align: center; opacity: 0.6; }
+.card-outra b { font-weight: 500; color: var(--tinta2); }
+.card-outra .mao { display: inline-block; padding-left: 12px; font: 600 16px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); transform-origin: 12px 50%; }
+/* por entrega, o que ainda não saiu fica no dia da exibição, tracejado: o prazo */
+.card-semana.a-entregar { border-style: dashed; border-color: var(--regua-forte); background: transparent; }
+.card-semana.a-entregar.aberto { background: var(--cartao); }
 
 /* o card aberto: um clique abre a ficha com animação de altura (as linhas da grade vão de 0fr a 1fr) */
 .card-semana.aberto { border-color: var(--regua-forte); background: var(--cartao); }
@@ -1672,6 +1704,61 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-links a:focus-visible, .card-semana-links button:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
   .card-semana-mais, .card-semana-mais-dentro { transition: none; }
+}
+
+/* ---- No Trello entre o celular e a tela larga (601 a ~1440 px): os tamanhos saem da largura da agenda, da coluna e do
+   card (@container), não da janela ---- */
+@media (min-width: 601px) {
+  .secao-trello { container: agenda / inline-size; }
+  /* o título nunca quebra; os links e o período também não */
+  .secao-trello-topo { flex-wrap: wrap; row-gap: 6px; }
+  .secao-trello-topo h2 { flex: none; white-space: nowrap; }
+  .semana-nav { flex: none; white-space: nowrap; }
+  .semana-nav b, .semana-nav .botao-texto, .secao-trello-conta { white-space: nowrap; }
+  /* o cabeçalho de cada dia e cada card medem a própria largura. A coluna não: o card que voa de uma coluna para a
+     outra precisa passar por cima das vizinhas */
+  .coluna-topo { container: dia / inline-size; }
+  .card-semana { container: card / inline-size; }
+}
+/* até ~1100 px de agenda: as abas e o resumo descem para uma linha própria, embaixo do título; o período fica à direita */
+@container agenda (max-width: 1100px) {
+  .secao-trello-topo { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'titulo nav' 'crit crit'; align-items: baseline; column-gap: 16px; row-gap: 2px; }
+  .secao-trello-topo h2 { grid-area: titulo; }
+  .semana-nav { grid-area: nav; justify-self: end; min-width: 0; flex-wrap: wrap; justify-content: flex-end; row-gap: 2px; }
+  .linha-criterio { grid-area: crit; display: flex; min-height: 34px; }
+  .secao-trello-conta { min-width: 0; overflow-x: clip; overflow-y: visible; text-overflow: ellipsis; }
+  .semana { gap: 6px; }
+  .coluna-corpo { padding: 6px; gap: 6px; --vaga-gap: 6px; }
+  /* sem data: cards de pelo menos 150 px, quantos couberem */
+  .semana-avulsa ul { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; padding: 6px; }
+}
+/* estreita demais para sete colunas: a semana rola de lado, cada dia com 150 px, abrindo em hoje (NoTrello) */
+@container agenda (max-width: 860px) {
+  .semana { grid-template-columns: repeat(7, minmax(150px, 1fr)); overflow-x: auto; overflow-y: hidden; padding-top: 10px; margin-top: -10px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; scrollbar-width: thin; }
+  .semana > .coluna { scroll-snap-align: start; }
+}
+/* o dia estreito (a coluna até ~158 px; o cabeçalho mede por dentro do recuo): "ontem", "hoje" e "amanhã" descem para
+   baixo do número; todos os cabeçalhos com a mesma altura */
+@container dia (max-width: 146px) {
+  .coluna-topo-dentro { flex-wrap: wrap; align-content: flex-start; column-gap: 7px; row-gap: 0; min-height: 54px; }
+  .dia-rel { flex-basis: 100%; font-size: 18px; line-height: 1; margin-top: 2px; }
+  .coluna.hoje .dia-num { margin: 0 4px; }
+}
+/* o card estreito: a claquete menor e menos borda */
+@container card (max-width: 170px) {
+  .card-semana-abrir { padding: 8px 9px 7px; }
+  .card-semana-claquete { font-size: 12.5px; line-height: 1.28; }
+}
+/* o card muito estreito: a etapa só com o sinal (✓ ou •; o nome fica para o leitor de tela) e o pé sem a hora */
+@container card (max-width: 128px) {
+  /* o pedaço que não cabe na linha quebra onde der, em vez de vazar (a data, nunca) */
+  .card-semana-claquete .seg:not(.data) { white-space: normal; }
+  .card-semana-linha { flex-wrap: nowrap; }
+  .card-quem { overflow: hidden; }
+  .card-semana-etapa { flex: none; gap: 0; }
+  .card-semana-etapa .etapa-nome { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .card-semana-etapa.caiu { display: none; }
+  .card-outra .hr { display: none; }
 }
 
 /* a etiqueta pequena (também a das marcações no editor, que ajusta o resto em .texto .etq) */
@@ -2366,7 +2453,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   padding-bottom: 3px; margin-bottom: -3px; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete .riscado { display: inline; }
-.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-linha { display: none; }
+.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete .seg { white-space: nowrap; }
+.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-linha, .secao-trello.encolhida .card-semana:not(.aberto) .card-outra { display: none; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-sinal { display: block; position: absolute; right: 8px; top: 50%; margin-top: -3px; width: 6px; height: 6px; border-radius: 50%; transition: opacity 0.15s; }
 .secao-trello.encolhida .card-semana:not(.aberto):has(.card-semana-sinal) .card-semana-claquete { padding-right: 10px; }
 .card-semana-sinal.produzindo { background: var(--ultra); }
@@ -2497,7 +2585,11 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .secao-trello { padding: 0 16px 64px; overflow-x: clip; overflow-anchor: none; }
   /* o topo em duas linhas: "No Trello" e o seletor ‹ 25 – 26/11 ›; embaixo, o resumo e o "voltar para hoje", com o
      lugar dele guardado (nada pula quando ele aparece) */
-  .secao-trello-topo { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'titulo nav' 'conta conta'; align-items: center; gap: 0 8px; padding-top: 12px; margin-bottom: 4px; }
+  .secao-trello-topo { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'titulo nav' 'crit crit' 'conta conta'; align-items: center; gap: 0 8px; padding-top: 12px; margin-bottom: 4px; }
+  /* as abas do critério numa linha própria, embaixo do título */
+  .linha-criterio { grid-area: crit; margin: 2px 0 -6px; }
+  .abas-criterio { margin-left: -8px; }
+  .abas-criterio button { min-height: 40px; padding: 4px 10px; font-size: 14.5px; }
   .secao-trello-topo h2 { grid-area: titulo; font-size: 26px; }
   .secao-trello.encolhida .secao-trello-topo h2 { font-size: 22px; }
   .semana-nav { grid-area: nav; justify-self: end; margin: 0 -10px 0 0; gap: 0; }
@@ -2518,7 +2610,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .semana::-webkit-scrollbar { display: none; }
   .semana > .coluna { scroll-snap-align: start; }
   /* o cabeçalho do dia numa linha: "QUA 25 hoje", com o hoje circulado à mão */
-  .coluna-topo { flex-wrap: nowrap; align-items: baseline; gap: 0 7px; padding: 6px 2px 8px 4px; min-height: 42px; white-space: nowrap; }
+  .coluna-topo { padding: 6px 2px 8px 4px; min-height: 42px; white-space: nowrap; }
+  .coluna-topo-dentro { flex-wrap: nowrap; gap: 0 7px; }
   .dia-num { font-size: 27px; }
   .dia-rel { font-size: 20px; }
   .coluna.hoje .dia-num { margin: 0 7px 0 5px; }
@@ -2531,9 +2624,11 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .card-semana { border-radius: 9px; }
   .card-semana-abrir { min-height: 44px; padding: 9px 10px 8px; }
   .card-semana-claquete { font-size: 12.5px; line-height: 1.3; }
-  .card-semana-linha { flex-wrap: wrap; gap: 0 5px; font-size: 11.5px; white-space: normal; }
+  .card-semana-linha { gap: 0 6px; font-size: 11.5px; }
+  .card-quem { gap: 5px; }
   .card-semana-artes { font-size: 16px; }
-  .card-semana-etapa { margin-left: auto; font-size: 11.5px; }
+  .card-semana-etapa { font-size: 11.5px; }
+  .card-outra { font-size: 11px; }
   .card-semana-mais-dentro, .card-semana.aberto .card-semana-mais-dentro { padding: 0 8px 8px; }
   .card-semana-dados { padding-top: 7px; font-size: 11.5px; line-height: 1.35; }
   .card-semana-dados dd small { font-size: 11px; }

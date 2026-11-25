@@ -93,6 +93,40 @@ export interface CardDaSemana {
   andamento?: Andamento;
   /** A claquete está na lista de prioridade (a que dá a prioridade ALTA no envio): o card ganha o risco à mão. */
   prioridade: boolean;
+  /** Quando o card entrou na produção da arte (ISO), ou vazio se não se sabe (entradaDoCard). */
+  entrada: string;
+  /** Por entrega: o card ainda não saiu e fica no dia da exibição, tracejado, como um prazo. Nos outros critérios, não. */
+  aEntregar: boolean;
+}
+
+/** O que decide o dia de cada card na agenda: a exibição (o padrão), a entrada na produção da arte ou a entrega. */
+export type CriterioDaAgenda = 'exibicao' | 'entrada' | 'entrega';
+export const CRITERIOS: CriterioDaAgenda[] = ['exibicao', 'entrada', 'entrega'];
+export const NOME_DO_CRITERIO: Record<CriterioDaAgenda, string> = { exibicao: 'exibição', entrada: 'entrada', entrega: 'entrega' };
+
+/** O dia (local) de um instante ISO; vazio se não for uma data. */
+const diaDoInstante = (s: string | null | undefined) => {
+  const t = s ? Date.parse(s) : NaN;
+  return Number.isNaN(t) ? '' : isoLocal(new Date(t));
+};
+
+/** Quando o card entrou na produção da arte: a data_entrada da ARTE_producao; sem ela, a hora do envio pelo PROMeiro.
+    O card que já estava lá (duplicado) não entrou pelo envio: sem a data_entrada, não se sabe. */
+export function entradaDoCard(r: Resumo, a: Andamento | undefined): string {
+  if (diaDoInstante(a?.entrada)) return a!.entrada!;
+  return r.trello?.estado === 'enviado' && diaDoInstante(r.trello.em) ? r.trello.em : '';
+}
+
+/** O card já saiu (tem a data_entrega). */
+const saiu = (c: Pick<CardDaSemana, 'andamento'>) => !!diaDoInstante(c.andamento?.entrega);
+
+/** O dia (ISO) em que o card fica na agenda pelo critério, ou vazio ("sem data"). Por entrega, o card que ainda não
+    saiu fica no dia da exibição: é o prazo de fato (a ARTE_producao não tem um campo de prazo). */
+export function diaDe(c: Pick<CardDaSemana, 'r' | 'andamento' | 'entrada'>, criterio: CriterioDaAgenda): string {
+  const exibicao = ehData(c.r.meta.dataExibicao) ? c.r.meta.dataExibicao : '';
+  if (criterio === 'entrada') return diaDoInstante(c.entrada);
+  if (criterio === 'entrega' && saiu(c)) return diaDoInstante(c.andamento!.entrega);
+  return exibicao;
 }
 
 /** O que o card fechado mostra à direita. As outras etapas (aguardando material, pedido de alteração…) não aparecem. */
@@ -115,7 +149,9 @@ export interface Semana {
   /** Os cards nas sete colunas, e quantos deles já foram entregues (o resumo do título). */
   total: number;
   entregues: number;
-  /** Quantos dos cards nas sete colunas estão na lista de prioridade ("N com prioridade", à mão). */
+  /** Por entrega: quantos dos cards nas sete colunas ainda não saíram ("N a entregar"). */
+  aEntregar: number;
+  /** Quantos dos cards nas sete colunas estão na lista de prioridade ("N prioridades", à mão). */
   comPrioridade: number;
   /** Os dias antes de ontem que têm card, do mais recente para o mais antigo (o link "dias anteriores"). */
   anteriores: { iso: string; titulo: string; cards: CardDaSemana[] }[];
@@ -130,24 +166,50 @@ const dataDoIso = (iso: string) => {
   return new Date(a, m - 1, d);
 };
 
-/** Os dias da agenda a partir do dia `primeiro` (contado de hoje: -1 é ontem), com os cards de cada um, mais o "sem
-    data" e os dias anteriores a ontem: o que a semana do computador e a faixa do celular têm em comum. */
-function montarDias(lista: Resumo[], andamento: Record<string, Andamento>, agora: Date, primeiro: number, quantos: number): Pick<Semana, 'dias' | 'semData' | 'anteriores'> {
+/** A ordem dentro do dia: o que caiu desce para o fim; por exibição, pela claquete; por entrada, na ordem em que
+    entraram; por entrega, na ordem em que saíram, e o que ainda não saiu depois. */
+function ordemDoDia(criterio: CriterioDaAgenda) {
+  const claquete = (c: CardDaSemana) => c.r.meta.claquete || c.r.meta.titulo || '';
+  const quando = (s: string | null | undefined) => (s ? Date.parse(s) || 0 : 0);
+  return (a: CardDaSemana, b: CardDaSemana) => {
+    const caiu = +(a.etapa === 'caiu') - +(b.etapa === 'caiu');
+    if (caiu) return caiu;
+    if (criterio === 'entrada' && a.entrada && b.entrada && quando(a.entrada) !== quando(b.entrada)) return quando(a.entrada) - quando(b.entrada);
+    if (criterio === 'entrega') {
+      const [sa, sb] = [saiu(a), saiu(b)];
+      if (sa !== sb) return sa ? -1 : 1;
+      if (sa && quando(a.andamento!.entrega) !== quando(b.andamento!.entrega)) return quando(a.andamento!.entrega) - quando(b.andamento!.entrega);
+    }
+    return claquete(a).localeCompare(claquete(b), 'pt-BR');
+  };
+}
+
+/** Os dias da agenda a partir do dia `primeiro` (contado de hoje: -1 é ontem), com os cards de cada um pelo critério,
+    mais o "sem data" e os dias anteriores à semana de agora: o que a semana do computador e a faixa do celular têm em
+    comum. */
+function montarDias(lista: Resumo[], andamento: Record<string, Andamento>, agora: Date, primeiro: number, quantos: number, criterio: CriterioDaAgenda): Pick<Semana, 'dias' | 'semData' | 'anteriores'> {
   const ontem = isoLocal(somarDias(agora, -1));
   const hoje = isoLocal(agora);
   const amanha = isoLocal(somarDias(agora, 1));
-  const enviados = lista.filter(noTrello).map((r): CardDaSemana => ({ r, etapa: etapaDoCard(andamento[r.id]), andamento: andamento[r.id], prioridade: !!andamento[r.id]?.prioridade }));
-  const claquete = (c: CardDaSemana) => c.r.meta.claquete || c.r.meta.titulo || '';
-  // o que caiu desce para o fim do dia
-  const ordem = (a: CardDaSemana, b: CardDaSemana) => +(a.etapa === 'caiu') - +(b.etapa === 'caiu') || claquete(a).localeCompare(claquete(b), 'pt-BR');
-  const doDia = (iso: string) => enviados.filter((c) => c.r.meta.dataExibicao === iso).sort(ordem);
+  const enviados = lista.filter(noTrello).map((r): CardDaSemana => {
+    const a = andamento[r.id];
+    const etapa = etapaDoCard(a);
+    const c = { r, etapa, andamento: a, prioridade: !!a?.prioridade, entrada: entradaDoCard(r, a), aEntregar: false };
+    c.aEntregar = criterio === 'entrega' && !saiu(c) && etapa !== 'caiu' && etapa !== 'entregue';
+    return c;
+  });
+  const ordem = ordemDoDia(criterio);
+  const dia = new Map(enviados.map((c) => [c.r.id, diaDe(c, criterio)]));
+  const doDia = (iso: string) => enviados.filter((c) => dia.get(c.r.id) === iso).sort(ordem);
   const dias = Array.from({ length: quantos }, (_, i): DiaDaSemana => {
     const d = somarDias(agora, primeiro + i);
     const iso = isoLocal(d);
     return { iso, diaDaSemana: DIAS_CURTOS[d.getDay()], numero: d.getDate(), marca: iso === ontem ? 'ontem' : iso === hoje ? 'hoje' : iso === amanha ? 'amanhã' : '', fimDeSemana: d.getDay() === 0 || d.getDay() === 6, cards: doDia(iso) };
   });
-  const semData = enviados.filter((c) => !ehData(c.r.meta.dataExibicao)).sort(ordem);
-  const passados = [...new Set(enviados.map((c) => c.r.meta.dataExibicao).filter((d) => ehData(d) && d < ontem))].sort().reverse();
+  const semData = doDia('');
+  // os dias anteriores: antes do primeiro dia da semana de agora do critério
+  const corte = isoLocal(somarDias(agora, inicioDaSemana(0, criterio)));
+  const passados = [...new Set([...dia.values()].filter((d) => d && d < corte))].sort().reverse();
   const anteriores = passados.map((iso) => {
     const d = dataDoIso(iso);
     return { iso, titulo: `${DIAS[d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()]}`, cards: doDia(iso) };
@@ -155,30 +217,72 @@ function montarDias(lista: Resumo[], andamento: Record<string, Andamento>, agora
   return { dias, semData, anteriores };
 }
 
-/** A semana começa em ontem, para o dia que passou estar sempre à mão; hoje fica na segunda coluna.
-    deslocamento: quantas semanas para a frente (ou para trás, negativo) a partir da que começa ontem. */
-export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0): Semana {
-  const { dias, semData, anteriores } = montarDias(lista, andamento, agora, inicioDaSemana(deslocamento), 7);
+/** A outra data, discreta, no pé do card: o dia da coluna já diz uma; o pé diz a outra que importa no critério.
+    Por exibição, quando entrou ("entrou ter 24"); por entrada, a hora e quando vai ao ar ("21h59 · ao ar dom 29");
+    por entrega, o que saiu: a hora e quando vai ao ar, com "depois do ar" quando saiu depois da exibição; o que ainda
+    não saiu: quando entrou. Sem a data que ele diria, nada (null). */
+export interface PeDoCard {
+  /** "21h59", ou vazio. */
+  hora: string;
+  rotulo: 'entrou' | 'ao ar' | 'sem exibição';
+  /** "hoje", "ontem", "amanhã" ou "dom 29"; vazio em "sem exibição". */
+  dia: string;
+  depoisDoAr: boolean;
+}
+
+/** "hoje", "ontem", "amanhã" ou "dom 29". */
+function diaCurto(iso: string, agora: Date): string {
+  if (iso === isoLocal(agora)) return 'hoje';
+  if (iso === isoLocal(somarDias(agora, -1))) return 'ontem';
+  if (iso === isoLocal(somarDias(agora, 1))) return 'amanhã';
+  const d = dataDoIso(iso);
+  return `${DIAS_CURTOS[d.getDay()]} ${d.getDate()}`;
+}
+const horaDoInstante = (s: string) => {
+  const d = new Date(s);
+  return `${d.getHours()}h${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+export function peDoCard(c: Pick<CardDaSemana, 'r' | 'andamento' | 'entrada'>, criterio: CriterioDaAgenda, agora = new Date()): PeDoCard | null {
+  const exibicao = ehData(c.r.meta.dataExibicao) ? c.r.meta.dataExibicao : '';
+  const aoAr = (hora: string, depoisDoAr = false): PeDoCard => (exibicao ? { hora, rotulo: 'ao ar', dia: diaCurto(exibicao, agora), depoisDoAr } : { hora, rotulo: 'sem exibição', dia: '', depoisDoAr: false });
+  if (criterio === 'entrada') return aoAr(c.entrada ? horaDoInstante(c.entrada) : '');
+  if (criterio === 'entrega' && saiu(c)) {
+    const entrega = c.andamento!.entrega!;
+    return aoAr(horaDoInstante(entrega), !!exibicao && diaDoInstante(entrega) > exibicao);
+  }
+  const entrou = diaDoInstante(c.entrada);
+  return entrou ? { hora: '', rotulo: 'entrou', dia: diaCurto(entrou, agora), depoisDoAr: false } : null;
+}
+
+/** A semana começa em ontem, para o dia que passou estar sempre à mão; hoje fica na segunda coluna. Por entrada, a
+    semana termina hoje (ninguém entra amanhã). deslocamento: quantas semanas para a frente (ou para trás, negativo) a
+    partir da de agora. */
+export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0, criterio: CriterioDaAgenda = 'exibicao'): Semana {
+  const { dias, semData, anteriores } = montarDias(lista, andamento, agora, inicioDaSemana(deslocamento, criterio), 7, criterio);
   const { dia1, mes1, dia2, mes2 } = partesDoPeriodo(dias[0].iso, dias[6].iso, mesPorExtenso);
   return { dias, semData, anteriores, periodo: `${dia1}${mes1} – ${dia2}${mes2}`, ...resumoDosDias(dias) };
 }
 
 /** O primeiro dia da semana de agenda `deslocamento` semanas para a frente (ou para trás), contado de hoje: a de agora
-    começa ontem (-1). É a posição da semana no eixo que conta (eixoDaSemana). */
-export const inicioDaSemana = (deslocamento: number) => deslocamento * 7 - 1;
+    começa ontem (-1); por entrada, seis dias atrás (-6), para terminar hoje. É a posição da semana no eixo que conta
+    (eixoDaSemana). */
+export const inicioDaSemana = (deslocamento: number, criterio: CriterioDaAgenda = 'exibicao') => deslocamento * 7 + (criterio === 'entrada' ? -6 : -1);
 
 /** O resumo de alguns dias da agenda: os cards, quantos foram entregues e quantos estão na lista de prioridade. */
-export function resumoDosDias(dias: DiaDaSemana[]): Pick<Semana, 'total' | 'entregues' | 'comPrioridade'> {
+export function resumoDosDias(dias: DiaDaSemana[]): Pick<Semana, 'total' | 'entregues' | 'aEntregar' | 'comPrioridade'> {
   const cards = dias.flatMap((d) => d.cards);
-  return { total: cards.length, entregues: cards.filter((c) => c.etapa === 'entregue').length, comPrioridade: cards.filter((c) => c.prioridade).length };
+  return { total: cards.length, entregues: cards.filter((c) => c.etapa === 'entregue').length, aEntregar: cards.filter((c) => c.aEntregar).length, comPrioridade: cards.filter((c) => c.prioridade).length };
 }
 
 /* ---------- No Trello no celular: a faixa de dias ---------- */
 
 /** A faixa de dias do celular: uma fila contínua de dias, arrastada com o dedo, dois à vista por vez. */
 export interface FaixaDeDias extends Pick<Semana, 'dias' | 'semData' | 'anteriores'> {
-  /** A posição de hoje na faixa: a faixa abre com hoje e amanhã à vista. */
+  /** A posição de hoje na faixa. */
   hoje: number;
+  /** Onde a faixa abre (e para onde o "voltar para hoje" leva): em hoje e amanhã; por entrada, em ontem e hoje. */
+  abre: number;
 }
 
 /** Quantas semanas de agenda a faixa tem antes e depois da de agora (a que começa ontem). */
@@ -186,9 +290,10 @@ const SEMANAS_EM_VOLTA = 2;
 
 /** A faixa vai das duas semanas de agenda antes da de agora até as duas depois (a de agora começa ontem): 35 dias.
     As pontas param ali; o que ficou antes está nos "dias anteriores". */
-export function montarFaixa(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date()): FaixaDeDias {
+export function montarFaixa(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), criterio: CriterioDaAgenda = 'exibicao'): FaixaDeDias {
   const primeiro = -1 - SEMANAS_EM_VOLTA * 7;
-  return { ...montarDias(lista, andamento, agora, primeiro, (2 * SEMANAS_EM_VOLTA + 1) * 7), hoje: -primeiro };
+  const hoje = -primeiro;
+  return { ...montarDias(lista, andamento, agora, primeiro, (2 * SEMANAS_EM_VOLTA + 1) * 7, criterio), hoje, abre: criterio === 'entrada' ? hoje - 1 : hoje };
 }
 
 /** Os dois dias à vista na faixa: o mais perto da ponta esquerda (pela posição da rolagem e pela largura de um dia

@@ -100,6 +100,14 @@ O cartão no Trello de uma claquete (ou de um filme), com o checklist das artes.
 O registro de cada card de claquete de roteiro: status, designers, entrega. Card de filme não entra aqui.
 _Evitar_: demanda
 
+**Critério da agenda**:
+O que decide o dia de cada card na agenda No Trello. É um de três; a escolha fica no navegador:
+- **exibição** (o padrão): o dia em que vai ao ar;
+- **entrada**: o dia em que entrou na produção (data_entrada); a semana termina hoje;
+- **entrega**: o dia em que saiu (data_entrega); o card que ainda não saiu fica no dia da exibição, tracejado, como
+  um prazo.
+_Evitar_: filtro, ordenação
+
 **Acervo**:
 As artes que uma atração (ou um filme) já tem prontas, na tabela ARTES_acervo. A arte do roteiro que bate com o
 acervo vem riscada.

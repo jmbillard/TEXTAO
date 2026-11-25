@@ -345,10 +345,12 @@ describe('andamento na produção da arte', () => {
       { id: 'r4', card: 'sumiu', claquete: 'X' },
     ];
     const a = await t.andamento(itens);
-    expect(a.r1).toEqual({ status: ['EM APROVAÇÃO'], designers: ['Rafa Lins'], entregue: false, entrega: '2026-11-21T03:00:00.000Z' });
+    expect(a.r1).toEqual({ status: ['EM APROVAÇÃO'], designers: ['Rafa Lins'], entregue: false, entrega: '2026-11-21T03:00:00.000Z', entrada: '2026-11-20T10:00:00.000Z' });
     expect(a.r2).toMatchObject({ status: ['FINALIZADO'], designers: ['Bia Costa', 'Rafa Lins'], entregue: true, entrega: null });
     expect(a.r3.status).toEqual(['CAIU']); // a linha mais recente com a mesma claquete
     expect(a.r4).toBeUndefined();
+    // a entrada na produção da arte vai junto (a agenda por entrada); sem a data_entrada, null
+    expect(a.r3.entrada).toBe('2026-11-20T08:00:00.000Z');
     expect(consultas[0].sql).toContain('"bseBase"."producao"');
     const n = consultas.length;
     await t.andamento(itens);
@@ -401,7 +403,7 @@ describe('andamento na produção da arte', () => {
 
     // sem a tabela de prioridade, nada é destacado e o andamento continua
     const sem = await criarTrello({ ...ENV, TEABLE_PG_PRIORIDADE: '' }, { consultar }).andamento(itens);
-    expect(sem.r1).toEqual({ status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null });
+    expect(sem.r1).toEqual({ status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, entrada: null });
     expect(Object.keys(sem)).toEqual(['r1', 'r2']);
 
     // a lista de prioridade fora do ar não derruba o andamento

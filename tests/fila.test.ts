@@ -654,8 +654,8 @@ describe('No Trello no celular: a faixa de dias', () => {
     const prio: Andamento = { status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, prioridade: true };
     const lista = [enviado('a', '2026-11-25'), enviado('b', '2026-11-25'), enviado('c', '2026-11-26'), enviado('d', '2026-11-27'), enviado('vt', '')];
     const f = montarFaixa(lista, { a: pronto, c: prio, d: prio }, agora);
-    expect(resumoDosDias(f.dias.slice(f.hoje, f.hoje + 2))).toEqual({ total: 3, entregues: 1, comPrioridade: 1 });
-    expect(resumoDosDias(f.dias.slice(0, 2))).toEqual({ total: 0, entregues: 0, comPrioridade: 0 });
+    expect(resumoDosDias(f.dias.slice(f.hoje, f.hoje + 2))).toEqual({ total: 3, entregues: 1, aEntregar: 0, comPrioridade: 1 });
+    expect(resumoDosDias(f.dias.slice(0, 2))).toEqual({ total: 0, entregues: 0, aEntregar: 0, comPrioridade: 0 });
   });
 });
 
@@ -712,5 +712,131 @@ describe('No Trello no computador: a semana que conta', () => {
     expect(posicaoNaContagem(eixo, de, para, 1)).toBe(para);
     // sem virada, conta desde o primeiro instante
     expect(posicaoNaContagem(eixo, inicioDaSemana(2), inicioDaSemana(3), 0.1)).toBeGreaterThan(inicioDaSemana(2));
+  });
+});
+
+describe('No Trello: o critério da agenda (exibição, entrada ou entrega)', () => {
+  const agora = new Date(2026, 10, 25, 15, 0); // qua, 25/11
+  const enviado = (id: string, data: string, em = '2026-11-20T12:00:00Z', estado: 'enviado' | 'duplicado' = 'enviado'): Resumo => ({
+    ...resumo(id, data),
+    meta: { ...metaVazia(), dataExibicao: data, claquete: id.toUpperCase() },
+    trello: { estado, url: 'https://trello.com/c/x', em },
+  });
+  const anda = (o: Partial<Andamento> = {}): Andamento => ({ status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, ...o });
+  const saiu = (entrega: string, o: Partial<Andamento> = {}) => anda({ status: ['FINALIZADO'], entregue: true, entrega, ...o });
+  const ids = (cards: { r: Resumo }[]) => cards.map((c) => c.r.id);
+  const porDia = (dias: { cards: { r: Resumo }[] }[]) => dias.map((d) => ids(d.cards));
+
+  it('o dia do card em cada critério: a exibição, a entrada na produção ou a entrega', async () => {
+    const { montarSemana, diaDe } = await import('../src/ui/fila');
+    const andamento = { a: saiu('2026-11-24T22:05:00Z', { entrada: '2026-11-23T21:59:00Z' }) };
+    const [c] = montarSemana([enviado('a', '2026-11-29')], andamento, agora).dias[5].cards;
+    expect(c.r.id).toBe('a');
+    expect([diaDe(c, 'exibicao'), diaDe(c, 'entrada'), diaDe(c, 'entrega')]).toEqual(['2026-11-29', '2026-11-23', '2026-11-24']);
+  });
+
+  it('por entrega, o card que ainda não saiu fica no dia da exibição, como um prazo; o que saiu fica no dia em que saiu', async () => {
+    const { montarSemana, diaDe } = await import('../src/ui/fila');
+    const lista = [enviado('falta', '2026-11-27'), enviado('pronto', '2026-11-27'), enviado('caiu', '2026-11-28'), enviado('vt', '')];
+    const andamento = { falta: anda(), pronto: saiu('2026-11-25T10:12:00Z'), caiu: anda({ status: ['CAIU'] }), vt: anda() };
+    const s = montarSemana(lista, andamento, agora, 0, 'entrega');
+    expect(porDia(s.dias)).toEqual([[], ['pronto'], [], ['falta'], ['caiu'], [], []]);
+    const cards = Object.fromEntries([...s.dias.flatMap((d) => d.cards), ...s.semData].map((c) => [c.r.id, c]));
+    // só o que ainda tem prazo fica "a entregar" (o que caiu, não)
+    expect(Object.fromEntries(Object.entries(cards).map(([k, c]) => [k, c.aEntregar]))).toEqual({ pronto: false, falta: true, caiu: false, vt: true });
+    // o que não saiu e não tem exibição fica no "sem data"
+    expect(ids(s.semData)).toEqual(['vt']);
+    expect(diaDe(cards.vt, 'entrega')).toBe('');
+    // nos outros critérios, ninguém está "a entregar"
+    expect(montarSemana(lista, andamento, agora).dias.flatMap((d) => d.cards).some((c) => c.aEntregar)).toBe(false);
+  });
+
+  it('o resumo de cada critério: por entrega, os entregues e os que faltam entregar', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const lista = [enviado('a', '2026-11-27'), enviado('b', '2026-11-27'), enviado('c', '2026-11-26')];
+    const andamento = { a: anda(), b: saiu('2026-11-25T10:00:00Z'), c: saiu('2026-11-24T18:30:00Z', { prioridade: true }) };
+    const s = montarSemana(lista, andamento, agora, 0, 'entrega');
+    expect([s.total, s.entregues, s.aEntregar, s.comPrioridade]).toEqual([3, 2, 1, 1]);
+    expect(montarSemana(lista, andamento, agora).aEntregar).toBe(0);
+  });
+
+  it('a entrada é a da produção; sem ela, vale a hora do envio, menos no card que já estava lá (duplicado): esse fica sem data', async () => {
+    const { montarSemana, diaDe } = await import('../src/ui/fila');
+    const lista = [enviado('producao', '2026-11-29', '2026-11-25T09:00:00Z'), enviado('envio', '2026-11-29', '2026-11-24T10:20:00Z'), enviado('dup', '2026-11-29', '2026-11-25T09:00:00Z', 'duplicado'), enviado('dup-com', '2026-11-29', '2026-11-25T09:00:00Z', 'duplicado')];
+    const andamento = { producao: anda({ entrada: '2026-11-21T11:00:00Z' }), 'dup-com': anda({ entrada: '2026-11-22T14:00:00Z' }) };
+    const s = montarSemana(lista, andamento, agora, 0, 'entrada');
+    const todos = Object.fromEntries([...s.dias.flatMap((d) => d.cards), ...s.semData].map((c) => [c.r.id, diaDe(c, 'entrada')]));
+    expect(todos).toEqual({ producao: '2026-11-21', envio: '2026-11-24', dup: '', 'dup-com': '2026-11-22' });
+    expect(ids(s.semData)).toEqual(['dup']);
+  });
+
+  it('por entrada, a semana termina hoje (ninguém entra amanhã); as setas andam de sete em sete a partir dela', async () => {
+    const { montarSemana, inicioDaSemana } = await import('../src/ui/fila');
+    const s = montarSemana([], {}, agora, 0, 'entrada');
+    expect(s.dias.map((d) => d.iso)).toEqual(['2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25']);
+    expect(s.dias.map((d) => d.marca)).toEqual(['', '', '', '', '', 'ontem', 'hoje']);
+    expect(s.periodo).toBe('19 – 25 de novembro');
+    expect(montarSemana([], {}, agora, 1, 'entrada').periodo).toBe('26 de novembro – 2 de dezembro');
+    expect([inicioDaSemana(0, 'entrada'), inicioDaSemana(-1, 'entrada'), inicioDaSemana(0, 'entrega'), inicioDaSemana(0, 'exibicao')]).toEqual([-6, -13, -1, -1]);
+  });
+
+  it('por entrada, dentro do dia os cards vêm na ordem em que entraram; o que caiu desce para o fim', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const lista = [enviado('b', '2026-11-29'), enviado('a', '2026-11-29'), enviado('c', '2026-11-30'), enviado('caiu', '2026-11-30')];
+    const andamento = { a: anda({ entrada: '2026-11-24T21:59:00Z' }), b: anda({ entrada: '2026-11-24T10:20:00Z' }), c: anda({ entrada: '2026-11-24T22:30:00Z' }), caiu: anda({ status: ['CAIU'], entrada: '2026-11-24T08:00:00Z' }) };
+    expect(montarSemana(lista, andamento, agora, 0, 'entrada').dias[5].cards.map((c) => c.r.id)).toEqual(['b', 'a', 'c', 'caiu']);
+  });
+
+  it('os dias anteriores começam antes da semana de agora de cada critério', async () => {
+    const { montarSemana } = await import('../src/ui/fila');
+    const lista = [enviado('a', '2026-11-29'), enviado('b', '2026-11-29')];
+    const andamento = { a: anda({ entrada: '2026-11-18T10:00:00Z' }), b: anda({ entrada: '2026-11-20T10:00:00Z' }) };
+    expect(montarSemana(lista, andamento, agora, 0, 'entrada').anteriores.map((d) => [d.iso, ids(d.cards)])).toEqual([['2026-11-18', ['a']]]);
+  });
+
+  it('no celular, a faixa tem os mesmos 35 dias; por entrada, abre em ontem e hoje, e os cards caem no dia em que entraram', async () => {
+    const { montarFaixa } = await import('../src/ui/fila');
+    const lista = [enviado('a', '2026-11-29'), enviado('b', '2026-12-01')];
+    const andamento = { a: anda({ entrada: '2026-11-24T21:59:00Z' }), b: anda({ entrada: '2026-11-25T12:30:00Z' }) };
+    const f = montarFaixa(lista, andamento, agora, 'entrada');
+    expect([f.dias[0].iso, f.dias[34].iso, f.dias[f.hoje].iso]).toEqual(['2026-11-10', '2026-12-14', '2026-11-25']);
+    expect(f.dias.slice(f.abre, f.abre + 2).map((d) => d.iso)).toEqual(['2026-11-24', '2026-11-25']);
+    expect(f.dias.flatMap((d) => d.cards.map((c) => [d.iso, c.r.id]))).toEqual([['2026-11-24', 'a'], ['2026-11-25', 'b']]);
+    // nos outros critérios, abre em hoje e amanhã, como sempre
+    expect([montarFaixa(lista, andamento, agora).abre, montarFaixa(lista, andamento, agora, 'entrega').abre]).toEqual([f.hoje, f.hoje]);
+  });
+});
+
+describe('No Trello: a outra data no pé do card', () => {
+  const agora = new Date(2026, 10, 25, 15, 0); // qua, 25/11
+  const card = (exibicao: string, a: Partial<Andamento> = {}) => {
+    const r: Resumo = { ...resumo('x', exibicao), trello: { estado: 'enviado', url: 'https://trello.com/c/x', em: '2026-11-24T21:59:00Z' } };
+    return { r, andamento: { status: [], designers: [], entregue: false, entrega: null, ...a }, entrada: '2026-11-24T21:59:00Z' };
+  };
+
+  it('por exibição, quando entrou; por entrada, a hora e quando vai ao ar', async () => {
+    const { peDoCard } = await import('../src/ui/fila');
+    expect(peDoCard(card('2026-11-29'), 'exibicao', agora)).toEqual({ hora: '', rotulo: 'entrou', dia: 'ontem', depoisDoAr: false });
+    expect(peDoCard(card('2026-11-29'), 'entrada', agora)).toEqual({ hora: '21h59', rotulo: 'ao ar', dia: 'dom 29', depoisDoAr: false });
+    expect(peDoCard(card(''), 'entrada', agora)).toEqual({ hora: '21h59', rotulo: 'sem exibição', dia: '', depoisDoAr: false });
+    expect(peDoCard({ ...card('2026-11-29'), entrada: '' }, 'exibicao', agora)).toBeNull();
+  });
+
+  it('por entrega, o que saiu: a hora e quando vai ao ar, com "depois do ar" quando saiu tarde; o que não saiu, quando entrou', async () => {
+    const { peDoCard } = await import('../src/ui/fila');
+    expect(peDoCard(card('2026-12-01', { entrega: '2026-11-24T22:09:00Z' }), 'entrega', agora)).toEqual({ hora: '22h09', rotulo: 'ao ar', dia: 'ter 1', depoisDoAr: false });
+    expect(peDoCard(card('2026-11-23', { entrega: '2026-11-24T09:30:00Z' }), 'entrega', agora)).toEqual({ hora: '9h30', rotulo: 'ao ar', dia: 'seg 23', depoisDoAr: true });
+    expect(peDoCard(card('2026-11-26'), 'entrega', agora)).toEqual({ hora: '', rotulo: 'entrou', dia: 'ontem', depoisDoAr: false });
+  });
+});
+
+describe('No Trello: onde a claquete do card quebra', () => {
+  it('antes de "(", depois de ")" e antes da data; nunca no meio da palavra nem da data', async () => {
+    const { pedacosDaClaquete } = await import('../src/ui/pecas');
+    expect(pedacosDaClaquete('FANT(INTERPOL)29-11')).toEqual(['FANT', '(INTERPOL)', '29-11']);
+    expect(pedacosDaClaquete('AMA(PROLOGO)25-11')).toEqual(['AMA', '(PROLOGO)', '25-11']);
+    expect(pedacosDaClaquete('25-11-2')).toEqual(['25-11-2']);
+    expect(pedacosDaClaquete('CHAMADA_AUDITORIO_25/11')).toEqual(['CHAMADA_', 'AUDITORIO_', '25/11']);
+    expect(pedacosDaClaquete('ELIANA29-11')).toEqual(['ELIANA', '29-11']);
   });
 });

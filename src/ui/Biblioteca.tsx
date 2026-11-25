@@ -8,10 +8,10 @@ import type { Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { agruparPorDia, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, periodoNaContagem, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type FaixaDeDias, type GrupoDia } from './fila';
+import { agruparPorDia, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
-import { Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
-import { useTrocaDeSemana } from './trocaDeSemana';
+import { AbasDoCriterio, Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
+import { useTrocaDeCriterio, useTrocaDeSemana } from './trocaDeSemana';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -463,29 +463,52 @@ function PessoaNoCard({ rotulo, nome, falta }: { rotulo: string; nome: string; f
   );
 }
 
+/** A outra data no pé do card (peDoCard): "entrou ter 24", "21h59 · ao ar dom 29", "22h09 · ao ar ter 1 depois do ar". */
+function OutraData({ pe }: { pe: PeDoCard }) {
+  // cada pedaço traz o "·" antes dele; o do começo de cada linha fica escondido (estilos.css), e a linha que quebra
+  // não termina nem começa num separador
+  return (
+    <span className="card-outra">
+      <span className="card-outra-dentro">
+        {pe.hora && <span className="pd hr">{pe.hora}</span>}
+        <span className="pd">
+          {pe.rotulo}
+          {pe.dia && <> <b>{pe.dia}</b></>}
+        </span>
+        {pe.depoisDoAr && <span className="mao">depois do ar</span>}
+      </span>
+    </span>
+  );
+}
+
 /** O card da semana (formato A). Fechado: a claquete em cima; embaixo, discretas, a praça e as artes à mão; à direita,
-    a etapa. Um clique abre (com animação de altura) a ficha do card: uma pessoa por linha (redator, editor, designer),
-    a rubrica de quem revisou e os atalhos para o roteiro e para o card no Trello. A etapa não se repete na ficha. */
-function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
+    a etapa (se não couber, ela desce); no pé, a outra data do critério (OutraData). Por entrega, o card que ainda não
+    saiu fica tracejado, como um prazo. Um clique abre (com animação de altura) a ficha do card: uma pessoa por linha
+    (redator, editor, designer), a rubrica de quem revisou e os atalhos para o roteiro e para o card no Trello. A etapa
+    não se repete na ficha. */
+function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
   const { r, etapa, andamento } = c;
   const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
   const idMais = `card-mais-${r.id}`;
   // o card simulado do roteiro de exemplo, no fim do tour: não é um card do Trello
   const doTour = ehDoTour(r.id);
   return (
-    <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''}`} data-card={r.id}>
+    <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''} ${c.aEntregar ? 'a-entregar' : ''}`} data-card={r.id}>
       <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
-        <span className="card-semana-claquete">{c.prioridade ? <Riscado traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} /></Riscado> : <TextoDaClaquete texto={claquete} />}</span>
+        <span className="card-semana-claquete">{c.prioridade ? <Riscado traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></Riscado> : <TextoDaClaquete texto={claquete} quebras />}</span>
         <span className="card-semana-linha">
-          {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
-          <span className="card-semana-artes">{plural(r.nArtes, 'arte', 'artes')}</span>
+          <span className="card-quem">
+            {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
+            <span className="card-semana-artes">{plural(r.nArtes, 'arte', 'artes')}</span>
+          </span>
           {etapa && (
             <span key={etapa} className={`card-semana-etapa ${etapa}`}>
               {etapa === 'entregue' ? <Icone nome="certo" tam={11} traco={3} /> : etapa !== 'caiu' && <i aria-hidden="true" />}
-              {ETAPA_NO_CARD[etapa]}
+              <span className="etapa-nome">{ETAPA_NO_CARD[etapa]}</span>
             </span>
           )}
         </span>
+        {pe && <OutraData pe={pe} />}
         {doTour && <span className="nota-exemplo">só de exemplo</span>}
         {/* na semana encolhida, a etapa vira só o pontinho à direita da claquete */}
         {etapa && etapa !== 'caiu' && <i key={etapa} className={`card-semana-sinal ${etapa}`} aria-hidden="true" />}
@@ -528,6 +551,7 @@ function CardNoTrello({ c, aberto, alternar, abrir, tirar }: { c: CardDaSemana; 
 }
 
 const CHAVE_SEMANA = 'promeiro:semana';
+const CHAVE_CRITERIO = 'promeiro:criterio';
 /** De quanto em quanto tempo a etapa dos cards é lida de novo, com a aba à vista. */
 const LER_ANDAMENTO_MS = 60_000;
 
@@ -547,6 +571,24 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
     setInteira(nova);
     try {
       localStorage.setItem(CHAVE_SEMANA, nova ? 'inteira' : 'encolhida');
+    } catch {
+      /* sem armazenamento: vale só nesta sessão */
+    }
+  };
+  // o critério da agenda (exibição, entrada ou entrega): a escolha fica no navegador, como a semana inteira
+  const [criterio, setCriterio] = useState<CriterioDaAgenda>(() => {
+    try {
+      const c = localStorage.getItem(CHAVE_CRITERIO);
+      return CRITERIOS.includes(c as CriterioDaAgenda) ? (c as CriterioDaAgenda) : 'exibicao';
+    } catch {
+      return 'exibicao';
+    }
+  });
+  const mudarCriterio = (c: CriterioDaAgenda) => {
+    if (c === criterio) return;
+    setCriterio(c);
+    try {
+      localStorage.setItem(CHAVE_CRITERIO, c);
     } catch {
       /* sem armazenamento: vale só nesta sessão */
     }
@@ -574,38 +616,79 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   const grade = useRef<HTMLDivElement>(null);
   const troca = useTrocaDeSemana(grade, deslocamento, '.coluna-corpo > *, .coluna-topo .dia-num svg, .coluna-topo .dia-rel', '.coluna-corpo > *', !celular);
   const agora = new Date();
-  const s = montarSemana(lista, andamento, agora, troca.mostrada);
-  // os números dos dias e o período contam juntos, pelas datas, até a semana na tela
+  const s = montarSemana(lista, andamento, agora, troca.mostrada, criterio);
+  // os números dos dias e o período contam juntos, pelas datas, até a semana na tela (também quando o critério muda o
+  // começo da semana: por entrada, ela termina hoje)
   const eixo = eixoDaSemana(agora);
-  const contagem = useContagemDoPeriodo(eixo, inicioDaSemana(troca.mostrada));
+  const inicio = inicioDaSemana(troca.mostrada, criterio);
+  const contagem = useContagemDoPeriodo(eixo, inicio);
   const contando = contagem.p < 1;
   const inicioNaContagem = posicaoNaContagem(eixo, contagem.de, contagem.para, contagem.p);
-  const f = celular ? montarFaixa(lista, andamento, agora) : null;
+  const f = celular ? montarFaixa(lista, andamento, agora, criterio) : null;
   const agenda = f ?? s;
   const trilho = useRef<HTMLDivElement>(null);
-  const faixa = useFaixa(trilho, f?.dias.length ?? 0, f?.hoje ?? 0, f?.dias[0].iso ?? '');
+  // a faixa abre onde o critério da hora em que ela aparece manda (por entrada, em ontem e hoje); trocar de critério não
+  // a leva para outro lugar (os cards é que voam)
+  const abertura = useRef<{ iso: string; k: number } | null>(null);
+  if (!f) abertura.current = null;
+  else if (abertura.current?.iso !== f.dias[0].iso) abertura.current = { iso: f.dias[0].iso, k: f.abre };
+  const faixa = useFaixa(trilho, f?.dias.length ?? 0, abertura.current?.k ?? 0, f?.dias[0].iso ?? '');
+  // no computador estreito (a semana rola de lado), hoje fica à vista: com ontem antes dele; por entrada, no fim
+  const rolarAteHoje = () => {
+    const el = grade.current;
+    if (celular || !el) return;
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+    const cols = [...el.children] as HTMLElement[];
+    const i = s.dias.findIndex((d) => d.marca === 'hoje');
+    if (troca.mostrada !== 0 || i < 0 || cols.length < 2) {
+      el.scrollLeft = 0;
+      return;
+    }
+    el.scrollLeft = criterio === 'entrada' ? el.scrollWidth : Math.max(0, (i - 1) * (cols[1].offsetLeft - cols[0].offsetLeft));
+  };
+  const rolar = useRef(rolarAteHoje);
+  rolar.current = rolarAteHoje;
+  useLayoutEffect(() => rolar.current(), [celular, criterio, troca.mostrada]);
+  useEffect(() => {
+    if (celular) return;
+    let largura = grade.current?.clientWidth;
+    const ver = new ResizeObserver(() => {
+      const nova = grade.current?.clientWidth;
+      if (nova !== largura) rolar.current();
+      largura = nova;
+    });
+    if (grade.current) ver.observe(grade.current);
+    return () => ver.disconnect();
+  }, [celular]);
   // ao vivo: o que sai fecha a vaga, o que entra abre a sua, e o que troca de coluna (o sem data que ganhou data)
   // desliza até o lugar novo. Outra semana (as setas, a virada do dia) ou a semana encolhendo não abrem vagas: no
   // computador, a troca de semana tem o movimento dela (useTrocaDeSemana).
   const secao = useRef<HTMLElement>(null);
-  const vista = useRef<{ agenda: typeof agenda; encolhida: boolean } | null>(null);
+  const camadaDoVoo = useRef<HTMLDivElement>(null);
+  // a troca de critério: os cards voam da coluna antiga para a nova (useTrocaDeCriterio); nela, nenhuma vaga abre ou
+  // fecha e o deslize ao vivo não entra
+  const trocandoCriterio = useTrocaDeCriterio(secao, camadaDoVoo, criterio, f ? 0 : inicio);
+  const vista = useRef<{ agenda: typeof agenda; encolhida: boolean; criterio: CriterioDaAgenda } | null>(null);
   const antes = vista.current;
-  const mesmaVista = !!antes && antes.agenda.dias.length === agenda.dias.length && antes.agenda.dias[0].iso === agenda.dias[0].iso && antes.encolhida === encolhida;
-  const deslizam = new Set(mesmaVista ? mudancasDaSemana(antes.agenda, agenda).moveram.map((m) => m.id) : []);
+  const mesmaVista = !!antes && antes.agenda.dias.length === agenda.dias.length && antes.agenda.dias[0].iso === agenda.dias[0].iso && antes.encolhida === encolhida && antes.criterio === criterio;
+  const todos = (a: typeof agenda) => [...a.dias.flatMap((d) => d.cards), ...a.semData, ...a.anteriores.flatMap((d) => d.cards)].map((c) => c.r.id);
+  const deslizam = new Set(trocandoCriterio ? [...todos(agenda), ...(antes ? todos(antes.agenda) : [])] : mesmaVista ? mudancasDaSemana(antes.agenda, agenda).moveram.map((m) => m.id) : []);
   const disposicao = [...agenda.dias.map((d) => d.cards), agenda.semData].map((cs) => cs.map((c) => c.r.id).join(',')).join('|');
   useDeslize(secao, '.semana [data-card], .sem-data [data-card]', disposicao, mesmaVista);
   useLayoutEffect(() => {
-    vista.current = { agenda, encolhida };
+    vista.current = { agenda, encolhida, criterio };
   });
   const card = (c: CardDaSemana) => (
     <CardNoTrello
       c={c}
+      pe={peDoCard(c, criterio, agora)}
       aberto={aberto === c.r.id}
       alternar={() => setAberto((a) => (a === c.r.id ? null : c.r.id))}
       abrir={() => abrir(c.r.id)}
       tirar={() => tirar(c.r)}
     />
   );
+  const abas = <AbasDoCriterio criterio={criterio} mudar={mudarCriterio} />;
   const avulsa = (titulo: string, cards: CardDaSemana[], chave: string) => (
     <section key={chave} className={`semana-avulsa ${chave === 'sem-data' ? 'sem-data' : ''}`} aria-label={titulo}>
       <h3>{titulo}</h3>
@@ -640,16 +723,17 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
         {titulo}
         <span className="semana-nav">
           <button type="button" className="botao-icone" aria-label="Dia anterior" title="Dia anterior" disabled={k <= 0} onClick={() => faixa.andar(-1)}>
-            <Icone nome="voltar" tam={16} traco={2.2} />
+              <Icone nome="voltar" tam={16} traco={2.2} />
           </button>
           <PeriodoQueConta isos={f.dias.map((d) => d.iso)} k={k} />
           <button type="button" className="botao-icone" aria-label="Próximo dia" title="Próximo dia" disabled={k >= f.dias.length - 2} onClick={() => faixa.andar(1)}>
             <Icone nome="direita" tam={16} traco={2.2} />
           </button>
         </span>
+        <span className="linha-criterio">{abas}</span>
         <span className="secao-trello-conta">
-          <ResumoQueConta {...resumo} />
-          <VoltarParaHoje ver={k !== f.hoje} sentido={faixa.sentido} voltar={() => faixa.ir(f.hoje)} />
+          <ResumoQueConta {...resumo} criterio={criterio} />
+          <VoltarParaHoje ver={k !== f.abre && k !== f.hoje} sentido={faixa.sentido} voltar={() => faixa.ir(f.abre)} />
         </span>
       </div>
     );
@@ -658,25 +742,31 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   const topoDoComputador = (
     <div className="secao-trello-topo">
       {titulo}
-      <span className="secao-trello-conta">
-        <ResumoQueConta total={s.total} entregues={s.entregues} comPrioridade={s.comPrioridade} prioridade="com prioridade" />
+      <span className="linha-criterio">
+        {abas}
+        <span className="secao-trello-conta">
+          <ResumoQueConta total={s.total} entregues={s.entregues} aEntregar={s.aEntregar} comPrioridade={s.comPrioridade} criterio={criterio} />
+        </span>
       </span>
       <span className="semana-nav">
         {verInteira}
         <VoltarParaHoje ver={troca.mostrada !== 0} sentido={troca.sentido} voltar={() => setDeslocamento(0)} abreVaga />
         {verDiasAnteriores}
-        <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
-          <Icone nome="voltar" tam={16} traco={2.2} />
-        </button>
-        <Periodo {...periodoNaContagem(eixo, contagem.de, contagem.para, contagem.p)} largura="suave" />
-        <button type="button" className="botao-icone" aria-label="Próxima semana" title="Próxima semana" onClick={() => setDeslocamento((n) => n + 1)}>
-          <Icone nome="direita" tam={16} traco={2.2} />
-        </button>
+        {/* as setas e o período andam juntos: na agenda estreita, a linha quebra entre os links, nunca entre eles */}
+        <span className="semana-setas">
+          <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
+            <Icone nome="voltar" tam={16} traco={2.2} />
+          </button>
+          <Periodo {...periodoNaContagem(eixo, contagem.de, contagem.para, contagem.p)} largura="suave" />
+          <button type="button" className="botao-icone" aria-label="Próxima semana" title="Próxima semana" onClick={() => setDeslocamento((n) => n + 1)}>
+            <Icone nome="direita" tam={16} traco={2.2} />
+          </button>
+        </span>
       </span>
     </div>
   );
   return (
-    <section ref={secao} className={`secao-trello ${encolhida ? 'encolhida' : ''}`} aria-label="No Trello">
+    <section ref={secao} className={`secao-trello ${encolhida ? 'encolhida' : ''} por-${criterio}`} aria-label="No Trello">
       {f ? topoDoCelular(f) : topoDoComputador}
       {/* no celular, cada dia é uma coluna da faixa; no computador, as sete colunas ficam no lugar quando a semana troca:
           os números contam e as marcas do dia (o hoje circulado) se escrevem quando a contagem termina */}
@@ -694,7 +784,7 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
           );
         })}
       </div>
-      {/* a faixa do sem data também fecha a vaga quando o último card dela sai (ou ganha data) */}
+      {/* a faixa do sem data também fecha a vaga quando o último card dela sai (ou ganha data, ou o critério muda) */}
       <Vagas itens={agenda.semData.length ? ['sem-data'] : []} chave={(k) => k}>{() => avulsa('sem data', agenda.semData, 'sem-data')}</Vagas>
       {/* no celular, o "ver a semana inteira" e os "dias anteriores" ficam no pé da agenda */}
       {f && (verInteira || verDiasAnteriores) && (
@@ -705,6 +795,8 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
       )}
       {/* no computador, os dias anteriores abrem e fecham a vaga, como o "sem data" */}
       {f ? verAnteriores && agenda.anteriores.map((d) => avulsa(d.titulo, d.cards, d.iso)) : <Vagas itens={verAnteriores ? agenda.anteriores : []} chave={(d) => d.iso}>{(d) => avulsa(d.titulo, d.cards, d.iso)}</Vagas>}
+      {/* os fantasmas dos cards que saem da agenda à vista na troca de critério */}
+      <div className="camada-voo" ref={camadaDoVoo} aria-hidden="true" />
     </section>
   );
 }

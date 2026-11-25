@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte } from '../modelo/tipos';
 import { PRACAS, editoresConhecidos, seloCurto, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { atalho, dataCurtaComDia, dataPorExtenso, ehMac } from './util';
@@ -73,10 +73,39 @@ const Formatos = () => (
   </>
 );
 
+/** Os pedaços de uma palavra da claquete onde ela pode quebrar: depois do sublinhado, antes de "(", depois de ")" e
+    antes da data ("FANT(INTERPOL)29-11" → `FANT` `(INTERPOL)` `29-11`). Nunca no meio de uma palavra nem da data. */
+export function pedacosDaClaquete(palavra: string): string[] {
+  return palavra
+    .replace(/_/g, '_\u0000')
+    .replace(/\(/g, '\u0000(')
+    .replace(/\)/g, ')\u0000')
+    .replace(/([^\d\u0000/-])(?=\d{1,2}[-/]\d{1,2})/g, '$1\u0000')
+    .split('\u0000')
+    .filter(Boolean);
+}
+
 /** O texto da claquete em pedaços, cada um terminando no seu sublinhado (`CHAMADA_` `NOVELA_` `25/11`), na ficha e no
     card. No computador os pedaços correm juntos, como texto corrido; no celular (estilos.css) a claquete quebra depois
-    de cada sublinhado, e o pedaço que não cabe na linha termina em reticências. */
-export function TextoDaClaquete({ texto }: { texto: string }) {
+    de cada sublinhado, e o pedaço que não cabe na linha termina em reticências. Com `quebras` (o card da agenda), a
+    claquete também quebra nos espaços, antes de "(", depois de ")" e antes da data (pedacosDaClaquete). */
+export function TextoDaClaquete({ texto, quebras = false }: { texto: string; quebras?: boolean }) {
+  if (quebras)
+    return (
+      <>
+        {texto.split(' ').map((palavra, i) => (
+          <Fragment key={i}>
+            {i > 0 && ' '}
+            {pedacosDaClaquete(palavra).map((pedaco, j) => (
+              <Fragment key={j}>
+                {j > 0 && <wbr />}
+                <span className={/^\d{1,2}[-/]\d{1,2}/.test(pedaco) ? 'seg data' : 'seg'}>{pedaco}</span>
+              </Fragment>
+            ))}
+          </Fragment>
+        ))}
+      </>
+    );
   return (
     <>
       {texto.split(/(?<=_)/).map((pedaco, i) => (

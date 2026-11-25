@@ -56,12 +56,19 @@ const CARDS = [
   ['agdsemdata1', 'VT_EVENTO_FICTICIO', null, 'RJ', 3],
   ['agdsemdata2', 'VT_INSTITUCIONAL', null, 'SP', 1],
 ];
-// o andamento fictício (pela rota): um entregue e um na lista de prioridade hoje, um produzindo amanhã
+/** Um instante `n` dias depois de hoje, à hora `h` (ISO). */
+const instante = (n, h) => {
+  const d = diaMais(n);
+  d.setHours(h, 0, 0, 0);
+  return d.toISOString();
+};
+// o andamento fictício (pela rota): um entregue (ontem) e um na lista de prioridade hoje, um produzindo amanhã; a
+// entrada na produção de alguns (o critério "entrada"); os outros, que já estavam no Trello, ficam sem data por entrada
 const ANDAMENTO = {
-  agdhoje1: { status: ['FINALIZADO'], designers: ['Ana Arte'], entregue: true, entrega: null },
-  agdhoje2: { status: ['EM APROVAÇÃO'], designers: ['Bia Arte'], entregue: false, entrega: null, prioridade: true },
-  agdhoje3: { status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null },
-  agdamanha: { status: ['PRODUZINDO'], designers: ['Caio Traço'], entregue: false, entrega: null },
+  agdhoje1: { status: ['FINALIZADO'], designers: ['Ana Arte'], entregue: true, entrega: instante(-1, 18), entrada: instante(-3, 10) },
+  agdhoje2: { status: ['EM APROVAÇÃO'], designers: ['Bia Arte'], entregue: false, entrega: null, prioridade: true, entrada: instante(-1, 11) },
+  agdhoje3: { status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, entrada: instante(0, 9) },
+  agdamanha: { status: ['PRODUZINDO'], designers: ['Caio Traço'], entregue: false, entrega: null, entrada: instante(0, 8) },
   agdsemdata1: { status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null },
 };
 const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'LOC: TEXTO FICTÍCIO.' }] }] };
@@ -510,6 +517,84 @@ async function computador(navegador, url, conferir) {
   }
 }
 
+/* ---------- O critério da agenda: exibição, entrada ou entrega ---------- */
+
+// a cada quadro, onde está o card que troca de coluna e o resumo
+const QUADROS_DO_CRITERIO = () => {
+  window.__log = [];
+  const f = () => {
+    const c = document.querySelector('.secao-trello .semana [data-card="agdhoje1"]');
+    const r = c?.getBoundingClientRect();
+    window.__log.push({ x: r ? Math.round(r.left * 10) / 10 : null, y: r ? Math.round(r.top * 10) / 10 : null, resumo: document.querySelector('.secao-trello-conta').textContent });
+    requestAnimationFrame(f);
+  };
+  requestAnimationFrame(f);
+};
+
+/** As abas do critério no computador: o card voa de uma coluna para a outra (sem teleporte), o resumo muda, a semana por
+    entrada termina hoje, as setas do teclado trocam de aba e o critério fica guardado depois de recarregar. */
+async function criterio(navegador, url, conferir) {
+  for (const reduzido of [false, true]) {
+    const rotulo = (t) => `critério${reduzido ? ' (movimento reduzido)' : ''}: ${t}`;
+    const { ctx, p, erros } = await contexto(navegador, 'about:blank', { viewport: { width: 1440, height: 900 }, reducedMotion: reduzido ? 'reduce' : 'no-preference' });
+    try {
+      await ctx.route('**/api/andamento', (r) => r.fulfill({ json: ANDAMENTO }));
+      await p.goto(url);
+      await p.waitForSelector('.secao-trello .semana .coluna');
+      await p.waitForTimeout(1200);
+      await p.evaluate(() => scrollTo(0, document.querySelector('.secao-trello').getBoundingClientRect().top + scrollY - 8));
+      const ativa = () => p.evaluate(() => document.querySelector('.abas-criterio [aria-selected="true"]')?.dataset.criterio);
+      const colunaDe = (id) => p.evaluate((id) => document.querySelector(`.secao-trello [data-card="${id}"]`)?.closest('.coluna')?.getAttribute('aria-label') ?? (document.querySelector(`.secao-trello .sem-data [data-card="${id}"]`) ? 'sem data' : null), id);
+      const resumo = () => p.textContent('.secao-trello-conta');
+      conferir((await ativa()) === 'exibicao' && (await colunaDe('agdhoje1')).endsWith(', hoje'), rotulo('abre por exibição, com o card de hoje em hoje'));
+      const resumoExibicao = await resumo();
+      conferir(/^\d+ cards/.test(resumoExibicao) && resumoExibicao.includes('1 prioridade'), rotulo(`o resumo por exibição ("${resumoExibicao}")`));
+
+      // por entrega: o card entregue ontem voa de hoje para ontem; o que ainda não saiu fica em hoje, tracejado
+      await p.evaluate(QUADROS_DO_CRITERIO);
+      await p.click('.abas-criterio [data-criterio="entrega"]');
+      await p.waitForTimeout(1100);
+      const log = await p.evaluate(() => window.__log);
+      conferir((await colunaDe('agdhoje1')).endsWith(', ontem'), rotulo('por entrega, o card entregue ontem fica em ontem'));
+      conferir(await p.isVisible('.secao-trello .semana [data-card="agdhoje3"].a-entregar'), rotulo('por entrega, o que ainda não saiu fica no dia da exibição, tracejado'));
+      const xs = log.map((q) => q.x).filter((x) => x !== null);
+      const [x0, x1] = [xs[0], xs[xs.length - 1]];
+      let passo = 0;
+      for (let k = 1; k < xs.length; k++) passo = Math.max(passo, Math.abs(xs[k] - xs[k - 1]));
+      const caminho = new Set(xs.filter((x) => Math.abs(x - x0) > 1 && Math.abs(x - x1) > 1)).size;
+      if (reduzido) conferir(caminho === 0, rotulo('com o movimento reduzido, o card troca de coluna na hora'));
+      else conferir(caminho >= 4 && passo < Math.abs(x1 - x0) / 2, rotulo(`o card voa de uma coluna para a outra, sem teleporte (${caminho} quadros no caminho, maior passo ${passo} px de ${Math.abs(x1 - x0)})`));
+      const resumoEntrega = await resumo();
+      conferir(/entregues? · \d+ a entregar/.test(resumoEntrega) && resumoEntrega !== resumoExibicao, rotulo(`o resumo muda com o critério ("${resumoEntrega}")`));
+      const resumos = [...new Set(log.map((q) => q.resumo))];
+      if (reduzido) conferir(resumos.length <= 2, rotulo(`com o movimento reduzido, o resumo só troca (${resumos.join(' → ')})`));
+      else conferir(resumos.length >= 3, rotulo(`o resumo conta até o novo (${resumos.length} resumos no caminho)`));
+
+      // por entrada: a semana termina hoje, na última coluna; as setas do teclado trocam de aba
+      await p.focus('.abas-criterio [aria-selected="true"]');
+      await p.keyboard.press('ArrowLeft');
+      await p.waitForTimeout(1100);
+      const colunas = await p.$$eval('.secao-trello .semana .coluna', (cs) => cs.map((c) => c.getAttribute('aria-label')));
+      conferir((await ativa()) === 'entrada' && colunas[6].endsWith(', hoje') && colunas[5].endsWith(', ontem'), rotulo('a seta ← leva para entrada, e a semana termina hoje'));
+      conferir((await colunaDe('agdhoje3')).endsWith(', hoje') && (await colunaDe('agdhoje2')).endsWith(', ontem') && (await colunaDe('agdmais2a')) === 'sem data', rotulo('por entrada, cada card no dia em que entrou; o que já estava no Trello sem a entrada fica no "sem data"'));
+      conferir(/^\d+ entraram/.test(await resumo()), rotulo(`o resumo por entrada ("${await resumo()}")`));
+      conferir(await p.evaluate(() => document.activeElement?.dataset.criterio === 'entrada'), rotulo('o foco vai junto para a aba nova'));
+
+      // o critério fica guardado no navegador
+      await p.reload();
+      await p.waitForSelector('.secao-trello .semana .coluna');
+      await p.waitForTimeout(800);
+      conferir((await ativa()) === 'entrada' && (await colunaDe('agdhoje3')).endsWith(', hoje'), rotulo('depois de recarregar, o critério continua o mesmo'));
+      await p.click('.abas-criterio [data-criterio="exibicao"]');
+      await p.waitForTimeout(900);
+      conferir((await colunaDe('agdhoje1')).endsWith(', hoje'), rotulo('de volta por exibição, o card volta para hoje'));
+      conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
+    } finally {
+      await ctx.close();
+    }
+  }
+}
+
 async function principal() {
   const amb = await subir();
   const navegador = await chromium.launch();
@@ -525,6 +610,7 @@ async function principal() {
     // no computador, o tour da revisão já visto (senão o convite cobre a tela)
     await fetch(`${amb.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
     await computador(navegador, amb.url, conferir);
+    await criterio(navegador, amb.url, conferir);
     await semearRevisao(amb.api);
     await encolhida(navegador, amb.url, conferir);
   } catch (e) {

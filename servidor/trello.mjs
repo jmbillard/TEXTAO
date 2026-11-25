@@ -835,6 +835,7 @@ export function criarTrello(env, deps = {}) {
           designers: lerLista(l.designers),
           entregue: !!l.entregue,
           entrega: quando(l.data_entrega) ? new Date(l.data_entrega).toISOString() : null,
+          entrada: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : null,
         };
       }
       avisouFalha = false;

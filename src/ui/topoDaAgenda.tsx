@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { duracaoDoPeriodo, periodoNaContagem, valorNaContagem, type DiaDaSemana, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { CRITERIOS, duracaoDoPeriodo, NOME_DO_CRITERIO, periodoNaContagem, valorNaContagem, type CriterioDaAgenda, type DiaDaSemana, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
+import { RABISCO } from './cena';
 import { RABISCOS } from './pecas';
 import { semMovimento } from './util';
 
@@ -121,7 +122,8 @@ export function ItemQueAbre({ ver, classe, ms = 300, opacidadeMs = 200, children
 /** O número que conta, com algarismos de largura fixa, e a palavra que acompanha o número à vista ("1 card", "2 cards"). */
 function NumeroQueConta({ valor, um, varios }: { valor: number; um: string; varios: string }) {
   const c = useContagem(valor, () => CONTA_RESUMO_MS);
-  const v = valorNaContagem(c.de, c.para, c.p);
+  // com o movimento reduzido, o número novo já sai junto com a palavra nova (a contagem só troca um quadro depois)
+  const v = semMovimento() ? valor : valorNaContagem(c.de, c.para, c.p);
   return (
     <>
       <span className="ct-num">{v}</span> {v === 1 ? um : varios}
@@ -139,7 +141,7 @@ const escrever = (e: HTMLElement, atraso = 0) =>
 
 /** A prioridade à mão: ao aparecer (`escreverAoAparecer`), se escreve; quando só o número muda, apaga rápido e se
     escreve de novo. Ela não conta: a letra à mão não tem algarismos de largura fixa. */
-function PrioridadeAMao({ n, escreverAoAparecer, rotulo }: { n: number; escreverAoAparecer: boolean; rotulo: string }) {
+function PrioridadeAMao({ n, escreverAoAparecer }: { n: number; escreverAoAparecer: boolean }) {
   const [mostrado, setMostrado] = useState(n);
   const nota = useRef<HTMLSpanElement>(null);
   const reescrever = useRef(false);
@@ -171,31 +173,71 @@ function PrioridadeAMao({ n, escreverAoAparecer, rotulo }: { n: number; escrever
   }, [mostrado]);
   return (
     <span ref={nota} className="prio-nota">
-      {mostrado} {rotulo}
+      {mostrado} {mostrado === 1 ? 'prioridade' : 'prioridades'}
     </span>
   );
 }
 
-/** O resumo dos dias à vista: "4 cards · 1 entregue · 1 prioridade" (no computador, "1 com prioridade": `prioridade`).
-    Os números contam; os itens que aparecem ou somem abrem ou fecham a vaga; a prioridade se escreve. */
-export function ResumoQueConta({ total, entregues, comPrioridade, prioridade = 'prioridade' }: { total: number; entregues: number; comPrioridade: number; prioridade?: string }) {
+/** As palavras do resumo em cada critério: o primeiro número e o segundo (que só aparece quando não é zero). */
+const PALAVRAS: Record<CriterioDaAgenda, [[string, string], [string, string]]> = {
+  exibicao: [['card', 'cards'], ['entregue', 'entregues']],
+  entrada: [['entrou', 'entraram'], ['já saiu', 'já saíram']],
+  entrega: [['entregue', 'entregues'], ['a entregar', 'a entregar']],
+};
+
+/** O resumo dos dias à vista, no critério da agenda: "17 cards · 9 entregues · 2 prioridades" (por exibição), "22
+    entraram · 12 já saíram" (por entrada), "10 entregues · 7 a entregar" (por entrega). Os números contam; os itens que
+    aparecem ou somem abrem ou fecham a vaga; a prioridade se escreve. */
+export function ResumoQueConta({ total, entregues, aEntregar = 0, comPrioridade, criterio = 'exibicao' }: { total: number; entregues: number; aEntregar?: number; comPrioridade: number; criterio?: CriterioDaAgenda }) {
   const montado = useRef(false);
   useEffect(() => {
     montado.current = true;
   }, []);
+  const [[um1, varios1], [um2, varios2]] = PALAVRAS[criterio];
+  const [primeiro, segundo] = criterio === 'entrega' ? [entregues, aEntregar] : [total, entregues];
   return (
     <span>
       <span className="ct-item">
-        <NumeroQueConta valor={total} um="card" varios="cards" />
+        <NumeroQueConta valor={primeiro} um={um1} varios={varios1} />
       </span>
-      <ItemQueAbre ver={entregues > 0} classe="ct-entregues">
+      <ItemQueAbre ver={segundo > 0} classe="ct-entregues">
         {' · '}
-        <NumeroQueConta valor={entregues} um="entregue" varios="entregues" />
+        <NumeroQueConta valor={segundo} um={um2} varios={varios2} />
       </ItemQueAbre>
       <ItemQueAbre ver={comPrioridade > 0} classe="ct-prio" ms={220} opacidadeMs={130}>
         {' · '}
-        <PrioridadeAMao n={comPrioridade} escreverAoAparecer={montado.current} rotulo={prioridade} />
+        <PrioridadeAMao n={comPrioridade} escreverAoAparecer={montado.current} />
       </ItemQueAbre>
+    </span>
+  );
+}
+
+/** As abas do critério da agenda: "exibição · entrada · entrega", em texto, com o risco à mão sob a ativa (como as abas
+    dos Cadastros). As setas do teclado trocam de aba. */
+export function AbasDoCriterio({ criterio, mudar }: { criterio: CriterioDaAgenda; mudar: (c: CriterioDaAgenda) => void }) {
+  const abas = useRef<HTMLSpanElement>(null);
+  const tecla = (e: KeyboardEvent) => {
+    const passo = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : e.key === 'Home' ? -CRITERIOS.indexOf(criterio) : e.key === 'End' ? CRITERIOS.length - 1 - CRITERIOS.indexOf(criterio) : null;
+    if (passo === null) return;
+    e.preventDefault();
+    const novo = CRITERIOS[(CRITERIOS.indexOf(criterio) + passo + CRITERIOS.length) % CRITERIOS.length];
+    mudar(novo);
+    abas.current?.querySelector<HTMLElement>(`[data-criterio="${novo}"]`)?.focus();
+  };
+  return (
+    <span ref={abas} className="abas-criterio" role="tablist" aria-label="Organizar a agenda por" onKeyDown={tecla}>
+      {CRITERIOS.map((k) => (
+        <button key={k} type="button" role="tab" data-criterio={k} aria-selected={k === criterio} tabIndex={k === criterio ? 0 : -1} onClick={() => mudar(k)}>
+          <span className="rot">
+            {NOME_DO_CRITERIO[k]}
+            {k === criterio && (
+              <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
+                <path pathLength={1} d={RABISCO} />
+              </svg>
+            )}
+          </span>
+        </button>
+      ))}
     </span>
   );
 }
@@ -296,12 +338,15 @@ export function TopoDoDia({ d, numero = d.numero, marcas = true, escrever: escre
   }, [marca]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="coluna-topo">
-      <span className="dia-sem">{d.diaDaSemana}</span>
-      <span className="dia-num">
-        {numero}
-        {marca === 'hoje' && <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path ref={circulo} pathLength={1} d={RABISCOS[1]} /></svg>}
-      </span>
-      {marca && <span ref={rel} className="dia-rel">{marca}</span>}
+      {/* por dentro, para a coluna estreita (estilos.css: @container dia) levar o "hoje" para baixo do número */}
+      <div className="coluna-topo-dentro">
+        <span className="dia-sem">{d.diaDaSemana}</span>
+        <span className="dia-num">
+          {numero}
+          {marca === 'hoje' && <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path ref={circulo} pathLength={1} d={RABISCOS[1]} /></svg>}
+        </span>
+        {marca && <span ref={rel} className="dia-rel">{marca}</span>}
+      </div>
     </div>
   );
 }

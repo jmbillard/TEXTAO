@@ -96,6 +96,8 @@ export interface Andamento {
   designers: string[];
   entregue: boolean;
   entrega: string | null;
+  /** Quando o card entrou na produção da arte (a data_entrada da ARTE_producao, ISO). */
+  entrada?: string | null;
   /** A claquete está na lista de prioridade (a mesma que dá a prioridade ALTA no envio). Vem também para os roteiros
       da fila de revisão, com o andamento vazio. */
   prioridade?: true;
