@@ -125,10 +125,14 @@ export interface Semana {
 
 const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const somarDias = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const dataDoIso = (iso: string) => {
+  const [a, m, d] = iso.split('-').map(Number);
+  return new Date(a, m - 1, d);
+};
 
-/** A semana começa em ontem, para o dia que passou estar sempre à mão; hoje fica na segunda coluna.
-    deslocamento: quantas semanas para a frente (ou para trás, negativo) a partir da que começa ontem. */
-export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0): Semana {
+/** Os dias da agenda a partir do dia `primeiro` (contado de hoje: -1 é ontem), com os cards de cada um, mais o "sem
+    data" e os dias anteriores a ontem: o que a semana do computador e a faixa do celular têm em comum. */
+function montarDias(lista: Resumo[], andamento: Record<string, Andamento>, agora: Date, primeiro: number, quantos: number): Pick<Semana, 'dias' | 'semData' | 'anteriores'> {
   const ontem = isoLocal(somarDias(agora, -1));
   const hoje = isoLocal(agora);
   const amanha = isoLocal(somarDias(agora, 1));
@@ -137,21 +141,67 @@ export function montarSemana(lista: Resumo[], andamento: Record<string, Andament
   // o que caiu desce para o fim do dia
   const ordem = (a: CardDaSemana, b: CardDaSemana) => +(a.etapa === 'caiu') - +(b.etapa === 'caiu') || claquete(a).localeCompare(claquete(b), 'pt-BR');
   const doDia = (iso: string) => enviados.filter((c) => c.r.meta.dataExibicao === iso).sort(ordem);
-  const datas = Array.from({ length: 7 }, (_, i) => somarDias(agora, deslocamento * 7 + i - 1));
-  const dias = datas.map((d): DiaDaSemana => {
+  const dias = Array.from({ length: quantos }, (_, i): DiaDaSemana => {
+    const d = somarDias(agora, primeiro + i);
     const iso = isoLocal(d);
     return { iso, diaDaSemana: DIAS_CURTOS[d.getDay()], numero: d.getDate(), marca: iso === ontem ? 'ontem' : iso === hoje ? 'hoje' : iso === amanha ? 'amanhã' : '', fimDeSemana: d.getDay() === 0 || d.getDay() === 6, cards: doDia(iso) };
   });
-  const [ini, fim] = [datas[0], datas[6]];
-  const periodo = ini.getMonth() === fim.getMonth() ? `${ini.getDate()} – ${fim.getDate()} de ${MESES[fim.getMonth()]}` : `${ini.getDate()} de ${MESES[ini.getMonth()]} – ${fim.getDate()} de ${MESES[fim.getMonth()]}`;
   const semData = enviados.filter((c) => !ehData(c.r.meta.dataExibicao)).sort(ordem);
   const passados = [...new Set(enviados.map((c) => c.r.meta.dataExibicao).filter((d) => ehData(d) && d < ontem))].sort().reverse();
   const anteriores = passados.map((iso) => {
-    const [a, m, d] = iso.split('-').map(Number);
-    return { iso, titulo: `${DIAS[new Date(a, m - 1, d).getDay()]}, ${d} de ${MESES[m - 1]}`, cards: doDia(iso) };
+    const d = dataDoIso(iso);
+    return { iso, titulo: `${DIAS[d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()]}`, cards: doDia(iso) };
   });
-  const naSemana = dias.flatMap((d) => d.cards);
-  return { dias, semData, anteriores, periodo, total: naSemana.length, entregues: naSemana.filter((c) => c.etapa === 'entregue').length, comPrioridade: naSemana.filter((c) => c.prioridade).length };
+  return { dias, semData, anteriores };
+}
+
+/** A semana começa em ontem, para o dia que passou estar sempre à mão; hoje fica na segunda coluna.
+    deslocamento: quantas semanas para a frente (ou para trás, negativo) a partir da que começa ontem. */
+export function montarSemana(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date(), deslocamento = 0): Semana {
+  const { dias, semData, anteriores } = montarDias(lista, andamento, agora, deslocamento * 7 - 1, 7);
+  const [ini, fim] = [dataDoIso(dias[0].iso), dataDoIso(dias[6].iso)];
+  const periodo = ini.getMonth() === fim.getMonth() ? `${ini.getDate()} – ${fim.getDate()} de ${MESES[fim.getMonth()]}` : `${ini.getDate()} de ${MESES[ini.getMonth()]} – ${fim.getDate()} de ${MESES[fim.getMonth()]}`;
+  return { dias, semData, anteriores, periodo, ...resumoDosDias(dias) };
+}
+
+/** O resumo de alguns dias da agenda: os cards, quantos foram entregues e quantos estão na lista de prioridade. */
+export function resumoDosDias(dias: DiaDaSemana[]): Pick<Semana, 'total' | 'entregues' | 'comPrioridade'> {
+  const cards = dias.flatMap((d) => d.cards);
+  return { total: cards.length, entregues: cards.filter((c) => c.etapa === 'entregue').length, comPrioridade: cards.filter((c) => c.prioridade).length };
+}
+
+/* ---------- No Trello no celular: a faixa de dias ---------- */
+
+/** A faixa de dias do celular: uma fila contínua de dias, arrastada com o dedo, dois à vista por vez. */
+export interface FaixaDeDias extends Pick<Semana, 'dias' | 'semData' | 'anteriores'> {
+  /** A posição de hoje na faixa: a faixa abre com hoje e amanhã à vista. */
+  hoje: number;
+}
+
+/** Quantas semanas de agenda a faixa tem antes e depois da de agora (a que começa ontem). */
+const SEMANAS_EM_VOLTA = 2;
+
+/** A faixa vai das duas semanas de agenda antes da de agora até as duas depois (a de agora começa ontem): 35 dias.
+    As pontas param ali; o que ficou antes está nos "dias anteriores". */
+export function montarFaixa(lista: Resumo[], andamento: Record<string, Andamento>, agora = new Date()): FaixaDeDias {
+  const primeiro = -1 - SEMANAS_EM_VOLTA * 7;
+  return { ...montarDias(lista, andamento, agora, primeiro, (2 * SEMANAS_EM_VOLTA + 1) * 7), hoje: -primeiro };
+}
+
+/** Os dois dias à vista na faixa: o mais perto da ponta esquerda (pela posição da rolagem e pela largura de um dia
+    com o vão) e o seguinte, sem passar das pontas. */
+export function diasAVista(posicao: number, larguraDoDia: number, quantos: number): [number, number] {
+  const k = larguraDoDia > 0 ? Math.round(posicao / larguraDoDia) : 0;
+  const primeiro = Math.max(0, Math.min(quantos - 2, k));
+  return [primeiro, primeiro + 1];
+}
+
+/** O período dos dias à vista, curto, para o seletor do celular: "25 – 26/11"; na virada do mês (ou do ano), o mês
+    vai nos dois lados ("30/11 – 1/12", "31/12 – 1/1"). */
+export function periodoCurto(de: string, ate: string): string {
+  const [a, b] = [dataDoIso(de), dataDoIso(ate)];
+  const mes = (d: Date) => `/${d.getMonth() + 1}`;
+  return `${a.getDate()}${a.getMonth() === b.getMonth() ? '' : mes(a)} – ${b.getDate()}${mes(b)}`;
 }
 
 /** A coluna de um card na agenda: o dia (ISO) ou "sem data". */
@@ -166,7 +216,7 @@ export interface MudancasDaSemana {
 }
 
 /** Onde está cada card da semana: o dia da coluna, ou "sem-data". */
-function colunas(s: Semana): Map<string, ColunaDaSemana> {
+function colunas(s: Pick<Semana, 'dias' | 'semData'>): Map<string, ColunaDaSemana> {
   const onde = new Map<string, ColunaDaSemana>();
   for (const d of s.dias) for (const c of d.cards) onde.set(c.r.id, d.iso);
   for (const c of s.semData) onde.set(c.r.id, 'sem-data');
@@ -174,8 +224,8 @@ function colunas(s: Semana): Map<string, ColunaDaSemana> {
 }
 
 /** O que mudou na agenda de uma leitura para a outra (as sete colunas e o "sem data"); a etapa e a ordem dentro da
-    coluna não contam. Compara a mesma semana: quem troca de semana pelas setas não anima. */
-export function mudancasDaSemana(antes: Semana, depois: Semana): MudancasDaSemana {
+    coluna não contam. Compara a mesma semana (ou a mesma faixa, no celular): quem troca de semana pelas setas não anima. */
+export function mudancasDaSemana(antes: Pick<Semana, 'dias' | 'semData'>, depois: Pick<Semana, 'dias' | 'semData'>): MudancasDaSemana {
   const de = colunas(antes);
   const para = colunas(depois);
   const sairam = [...de.keys()].filter((id) => !para.has(id));

@@ -76,8 +76,11 @@ export const atalho = (s: string) =>
     ? s.replace('Mod-', '⌘').replace('Shift-', '⇧').replace(/(.)$/, (c) => c.toUpperCase()).replace('Enter', '↩')
     : s.replace('Mod-', 'Ctrl+').replace('Shift-', 'Shift+').replace(/\+(.)$/, (_, c: string) => '+' + c.toUpperCase());
 
+/** A pessoa pediu ao sistema para reduzir o movimento: as animações viram só a troca. */
+export const semMovimento = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 /** A versão de celular: até 600px de largura (o mesmo corte das regras de tela em estilos.css). */
-const TELA_DE_CELULAR = '(max-width: 600px)';
-/** A tela é de celular agora? Lido uma vez, na entrada: girar o aparelho ou estreitar a janela depois não muda o que
-    já foi decidido (o tour, o "Fazer o tour"). */
+export const TELA_DE_CELULAR = '(max-width: 600px)';
+/** A tela é de celular agora? O tour e o "Fazer o tour" leem uma vez, na entrada: girar o aparelho ou estreitar a
+    janela depois não muda o que já foi decidido. A agenda acompanha a largura (useTelaDeCelular, em faixa.ts). */
 export const ehCelular = () => typeof window !== 'undefined' && !!window.matchMedia?.(TELA_DE_CELULAR).matches;

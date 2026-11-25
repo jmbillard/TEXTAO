@@ -8,7 +8,8 @@ import { herdarTipos } from '../modelo/versoes';
 import type { Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
-import { agruparPorDia, filaVisivel, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type GrupoDia, type Semana } from './fila';
+import { agruparPorDia, filaVisivel, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, pendentes, periodoCurto, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type EtapaDoCard, type FaixaDeDias, type GrupoDia } from './fila';
+import { useFaixa, useTelaDeCelular } from './faixa';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
@@ -517,7 +518,8 @@ const CHAVE_SEMANA = 'promeiro:semana';
 const LER_ANDAMENTO_MS = 60_000;
 
 /** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de ontem. Com roteiros
-    para revisar na fila, a semana encolhe; "ver a semana inteira" volta ao tamanho normal (a escolha fica no navegador). */
+    para revisar na fila, a semana encolhe; "ver a semana inteira" volta ao tamanho normal (a escolha fica no navegador).
+    No celular (até 600px), a semana vira a faixa de dias arrastada com o dedo, dois dias à vista, abrindo em hoje. */
 function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; fila: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void }) {
   const [inteira, setInteira] = useState(() => {
     try {
@@ -552,18 +554,24 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
     document.addEventListener('keydown', tecla);
     return () => document.removeEventListener('keydown', tecla);
   }, [aberto]);
+  // no celular, a faixa de dias; no computador, a semana das setas
+  const celular = useTelaDeCelular();
   const s = montarSemana(lista, andamento, new Date(), deslocamento);
+  const f = celular ? montarFaixa(lista, andamento, new Date()) : null;
+  const agenda = f ?? s;
+  const trilho = useRef<HTMLDivElement>(null);
+  const faixa = useFaixa(trilho, f?.dias.length ?? 0, f?.hoje ?? 0, f?.dias[0].iso ?? '');
   // ao vivo: o que sai fecha a vaga, o que entra abre a sua, e o que troca de coluna (o sem data que ganhou data)
   // desliza até o lugar novo. Outra semana (as setas, a virada do dia) ou a semana encolhendo não animam.
   const secao = useRef<HTMLElement>(null);
-  const vista = useRef<{ s: Semana; encolhida: boolean } | null>(null);
+  const vista = useRef<{ agenda: typeof agenda; encolhida: boolean } | null>(null);
   const antes = vista.current;
-  const mesmaVista = !!antes && antes.s.dias[0].iso === s.dias[0].iso && antes.encolhida === encolhida;
-  const deslizam = new Set(mesmaVista ? mudancasDaSemana(antes.s, s).moveram.map((m) => m.id) : []);
-  const disposicao = [...s.dias.map((d) => d.cards), s.semData].map((cs) => cs.map((c) => c.r.id).join(',')).join('|');
+  const mesmaVista = !!antes && antes.agenda.dias.length === agenda.dias.length && antes.agenda.dias[0].iso === agenda.dias[0].iso && antes.encolhida === encolhida;
+  const deslizam = new Set(mesmaVista ? mudancasDaSemana(antes.agenda, agenda).moveram.map((m) => m.id) : []);
+  const disposicao = [...agenda.dias.map((d) => d.cards), agenda.semData].map((cs) => cs.map((c) => c.r.id).join(',')).join('|');
   useDeslize(secao, '.semana [data-card], .sem-data [data-card]', disposicao, mesmaVista);
   useLayoutEffect(() => {
-    vista.current = { s, encolhida };
+    vista.current = { agenda, encolhida };
   });
   const card = (c: CardDaSemana) => (
     <CardNoTrello
@@ -582,41 +590,80 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
       </ul>
     </section>
   );
-  return (
-    <section ref={secao} className={`secao-trello ${encolhida ? 'encolhida' : ''}`} aria-label="No Trello">
+  const verInteira = haRevisao && (
+    <button type="button" className="botao-texto" onClick={alternarInteira}>
+      {inteira ? 'recolher a semana' : 'ver a semana inteira'}
+    </button>
+  );
+  const verDiasAnteriores = agenda.anteriores.length > 0 && (
+    <button type="button" className="botao-texto" aria-expanded={verAnteriores} onClick={() => setVerAnteriores((v) => !v)}>
+      dias anteriores
+    </button>
+  );
+  const titulo = (
+    <h2>
+      <Icone nome="quadro" tam={22} traco={1.7} />
+      No Trello
+    </h2>
+  );
+  // no celular: o título e o seletor de dois dias na primeira linha; o resumo dos dias à vista e o "voltar para hoje"
+  // (com o lugar guardado) na segunda. Tudo isso só muda quando a rolagem termina.
+  const topoDoCelular = (f: FaixaDeDias) => {
+    const [k] = faixa.vista;
+    const resumo = resumoDosDias(f.dias.slice(k, k + 2));
+    const longeDeHoje = k !== f.hoje;
+    return (
       <div className="secao-trello-topo">
-        <h2>
-          <Icone nome="quadro" tam={22} traco={1.7} />
-          No Trello
-        </h2>
-        <span className="secao-trello-conta">
-          {plural(s.total, 'card', 'cards')}
-          {s.entregues > 0 && ` · ${plural(s.entregues, 'entregue', 'entregues')}`}
-          {s.comPrioridade > 0 && <> · <span className="prio-nota">{s.comPrioridade} com prioridade</span></>}
-        </span>
+        {titulo}
         <span className="semana-nav">
-          {haRevisao && (
-            <button type="button" className="botao-texto" onClick={alternarInteira}>
-              {inteira ? 'recolher a semana' : 'ver a semana inteira'}
-            </button>
-          )}
-          {deslocamento !== 0 && <button type="button" className="botao-texto" onClick={() => setDeslocamento(0)}>voltar para hoje</button>}
-          {s.anteriores.length > 0 && (
-            <button type="button" className="botao-texto" aria-expanded={verAnteriores} onClick={() => setVerAnteriores((v) => !v)}>
-              dias anteriores
-            </button>
-          )}
-          <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
+          <button type="button" className="botao-icone" aria-label="Dia anterior" title="Dia anterior" disabled={k <= 0} onClick={() => faixa.andar(-1)}>
             <Icone nome="voltar" tam={16} traco={2.2} />
           </button>
-          <b>{s.periodo}</b>
-          <button type="button" className="botao-icone" aria-label="Próxima semana" title="Próxima semana" onClick={() => setDeslocamento((n) => n + 1)}>
+          <b>{periodoCurto(f.dias[k].iso, f.dias[k + 1].iso)}</b>
+          <button type="button" className="botao-icone" aria-label="Próximo dia" title="Próximo dia" disabled={k >= f.dias.length - 2} onClick={() => faixa.andar(1)}>
             <Icone nome="direita" tam={16} traco={2.2} />
           </button>
         </span>
+        <span className="secao-trello-conta">
+          <span>
+            {plural(resumo.total, 'card', 'cards')}
+            {resumo.entregues > 0 && ` · ${plural(resumo.entregues, 'entregue', 'entregues')}`}
+            {resumo.comPrioridade > 0 && <> · <span className="prio-nota">{resumo.comPrioridade} prioridade</span></>}
+          </span>
+          <button type="button" className={`botao-texto voltar-hoje ${longeDeHoje ? '' : 'fora'}`} onClick={() => faixa.ir(f.hoje)}>
+            voltar para hoje
+          </button>
+        </span>
       </div>
-      <div className="semana">
-        {s.dias.map((d) => (
+    );
+  };
+  const topoDoComputador = (
+    <div className="secao-trello-topo">
+      {titulo}
+      <span className="secao-trello-conta">
+        {plural(s.total, 'card', 'cards')}
+        {s.entregues > 0 && ` · ${plural(s.entregues, 'entregue', 'entregues')}`}
+        {s.comPrioridade > 0 && <> · <span className="prio-nota">{s.comPrioridade} com prioridade</span></>}
+      </span>
+      <span className="semana-nav">
+        {verInteira}
+        {deslocamento !== 0 && <button type="button" className="botao-texto" onClick={() => setDeslocamento(0)}>voltar para hoje</button>}
+        {verDiasAnteriores}
+        <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
+          <Icone nome="voltar" tam={16} traco={2.2} />
+        </button>
+        <b>{s.periodo}</b>
+        <button type="button" className="botao-icone" aria-label="Próxima semana" title="Próxima semana" onClick={() => setDeslocamento((n) => n + 1)}>
+          <Icone nome="direita" tam={16} traco={2.2} />
+        </button>
+      </span>
+    </div>
+  );
+  return (
+    <section ref={secao} className={`secao-trello ${encolhida ? 'encolhida' : ''}`} aria-label="No Trello">
+      {f ? topoDoCelular(f) : topoDoComputador}
+      <div className="semana" ref={f ? trilho : undefined}>
+        {agenda.dias.map((d) => (
           <section key={d.iso} className={`coluna ${d.marca === 'hoje' ? 'hoje' : ''} ${d.fimDeSemana ? 'fim-de-semana' : ''}`} aria-label={`${d.diaDaSemana} ${d.numero}${d.marca ? `, ${d.marca}` : ''}`}>
             <div className="coluna-topo">
               <span className="dia-sem">{d.diaDaSemana}</span>
@@ -634,8 +681,15 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
         ))}
       </div>
       {/* a faixa do sem data também fecha a vaga quando o último card dela sai (ou ganha data) */}
-      <Vagas itens={s.semData.length ? ['sem-data'] : []} chave={(k) => k}>{() => avulsa('sem data', s.semData, 'sem-data')}</Vagas>
-      {verAnteriores && s.anteriores.map((d) => avulsa(d.titulo, d.cards, d.iso))}
+      <Vagas itens={agenda.semData.length ? ['sem-data'] : []} chave={(k) => k}>{() => avulsa('sem data', agenda.semData, 'sem-data')}</Vagas>
+      {/* no celular, o "ver a semana inteira" e os "dias anteriores" ficam no pé da agenda */}
+      {f && (verInteira || verDiasAnteriores) && (
+        <div className="pe-agenda">
+          {verInteira}
+          {verDiasAnteriores}
+        </div>
+      )}
+      {verAnteriores && agenda.anteriores.map((d) => avulsa(d.titulo, d.cards, d.iso))}
     </section>
   );
 }

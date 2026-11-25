@@ -342,3 +342,59 @@ describe('a fila visível', () => {
     expect(filaVisivel(null, undefined, new Set())).toEqual([]);
   });
 });
+
+describe('No Trello no celular: a faixa de dias', () => {
+  const agora = new Date(2026, 10, 25, 15, 0); // qua, 25/11
+  const enviado = (id: string, data: string): Resumo => ({
+    ...resumo(id, data),
+    meta: { ...metaVazia(), dataExibicao: data, claquete: id.toUpperCase() },
+    trello: { estado: 'enviado', url: 'https://trello.com/c/x', em: '2026-11-20T12:00:00Z' },
+  });
+
+  it('vai das duas semanas de agenda antes da de agora até as duas depois: 35 dias, e abre em hoje', async () => {
+    const { montarFaixa } = await import('../src/ui/fila');
+    const f = montarFaixa([], {}, agora);
+    expect(f.dias).toHaveLength(35);
+    expect([f.dias[0].iso, f.dias[34].iso]).toEqual(['2026-11-10', '2026-12-14']);
+    expect(f.dias[f.hoje].iso).toBe('2026-11-25');
+    expect(f.dias.slice(f.hoje - 1, f.hoje + 2).map((d) => d.marca)).toEqual(['ontem', 'hoje', 'amanhã']);
+  });
+
+  it('cada card cai no seu dia; o que está fora das pontas não entra na faixa, e o sem data fica à parte', async () => {
+    const { montarFaixa } = await import('../src/ui/fila');
+    const lista = [enviado('primeiro', '2026-11-10'), enviado('ultimo', '2026-12-14'), enviado('antes', '2026-11-09'), enviado('depois', '2026-12-15'), enviado('vt', '')];
+    const f = montarFaixa(lista, {}, agora);
+    expect(f.dias.flatMap((d) => d.cards.map((c) => [d.iso, c.r.id]))).toEqual([['2026-11-10', 'primeiro'], ['2026-12-14', 'ultimo']]);
+    expect(f.semData.map((c) => c.r.id)).toEqual(['vt']);
+  });
+
+  it('os dias à vista saem da posição da rolagem: o dia na ponta esquerda e o seguinte, parando nas pontas', async () => {
+    const { diasAVista } = await import('../src/ui/fila');
+    // cada dia ocupa 183 px (meia largura mais o vão)
+    expect(diasAVista(15 * 183, 183, 35)).toEqual([15, 16]);
+    expect(diasAVista(15 * 183 + 80, 183, 35)).toEqual([15, 16]); // menos de meio dia: fica
+    expect(diasAVista(15 * 183 + 100, 183, 35)).toEqual([16, 17]); // mais de meio dia: o seguinte
+    expect(diasAVista(-40, 183, 35)).toEqual([0, 1]); // o puxão além da ponta (iOS)
+    expect(diasAVista(40 * 183, 183, 35)).toEqual([33, 34]);
+    expect(diasAVista(500, 0, 35)).toEqual([0, 1]); // ainda sem medida
+  });
+
+  it('o período escrito curto: o mês uma vez só, ou nos dois lados na virada do mês e do ano', async () => {
+    const { periodoCurto } = await import('../src/ui/fila');
+    expect(periodoCurto('2026-11-25', '2026-11-26')).toBe('25 – 26/11');
+    expect(periodoCurto('2026-11-30', '2026-12-01')).toBe('30/11 – 1/12');
+    expect(periodoCurto('2026-12-31', '2027-01-01')).toBe('31/12 – 1/1');
+    expect(periodoCurto('2026-12-01', '2026-12-02')).toBe('1 – 2/12');
+  });
+
+  it('o resumo conta só os dois dias à vista: os cards, os entregues e os que estão na lista de prioridade', async () => {
+    const { montarFaixa, resumoDosDias } = await import('../src/ui/fila');
+    const pronto: Andamento = { status: ['FINALIZADO'], designers: [], entregue: true, entrega: null };
+    const prio: Andamento = { status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, prioridade: true };
+    const lista = [enviado('a', '2026-11-25'), enviado('b', '2026-11-25'), enviado('c', '2026-11-26'), enviado('d', '2026-11-27'), enviado('vt', '')];
+    const f = montarFaixa(lista, { a: pronto, c: prio, d: prio }, agora);
+    expect(resumoDosDias(f.dias.slice(f.hoje, f.hoje + 2))).toEqual({ total: 3, entregues: 1, comPrioridade: 1 });
+    expect(resumoDosDias(f.dias.slice(0, 2))).toEqual({ total: 0, entregues: 0, comPrioridade: 0 });
+  });
+});
+

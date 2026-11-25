@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "e2e:tour": "node tests/e2e/tour.e2e.cjs",
+    "e2e:agenda": "node tests/e2e/agenda-celular.e2e.cjs",
     "servidor": "PORT=8787 PERFIL_LOCAL=1 node servidor/index.mjs",
     "start": "node servidor/index.mjs"
   },

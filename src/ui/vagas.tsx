@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, type ReactNode, type RefObject } from 'react';
+import { semMovimento } from './util';
 
 /* Vagas: o que entra ou sai de uma lista abre ou fecha o seu espaço, em vez de aparecer ou sumir de estalo.
    Quem sai continua desenhado no lugar onde estava enquanto a vaga fecha; quem volta (desfazer) abre a vaga de novo.
@@ -104,7 +105,6 @@ const MAX_DESLIZANDO = 24;
 type Ponto = { x: number; y: number };
 const deslizes = new WeakMap<Element, Animation>();
 
-const semMovimento = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 // o que está fechando a vaga não desliza: já está saindo
 const presentes = (raiz: HTMLElement, seletor: string) => [...raiz.querySelectorAll<HTMLElement>(seletor)].filter((el) => !el.closest('.saindo'));
 function onde(el: Element, origem: DOMRect): Ponto {

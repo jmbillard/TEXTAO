@@ -2375,27 +2375,66 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .seg { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
   .card-semana.caiu .card-semana-claquete .seg { text-decoration: line-through; text-decoration-thickness: 1.5px; }
 
-  /* ---- a agenda No Trello, provisória (os dois dias são do #40): a semana de sete dias rola de lado dentro do
-     próprio espaço, dia a dia, sem alargar a página ---- */
-  .secao-trello { padding: 0 16px 64px; }
-  .secao-trello-topo { flex-wrap: wrap; align-items: center; gap: 0 12px; padding-top: 12px; }
-  .secao-trello-topo h2 { font-size: 26px; }
-  /* o seletor numa linha só (as setas nas pontas, o período no meio); os "ver a semana inteira", "voltar para hoje"
-     e "dias anteriores" descem para a linha de baixo */
-  .semana-nav { flex: 1 1 100%; flex-wrap: wrap; margin: 0 -10px 0 -10px; gap: 0; }
-  .semana-nav .botao-icone { order: 0; width: 44px; height: 44px; border-radius: 12px; }
-  .semana-nav b { order: 0; flex: 1; padding: 0; text-align: center; white-space: nowrap; }
-  .semana-nav .botao-texto { order: 1; min-height: 44px; margin: 0 10px; white-space: nowrap; }
-  .semana { grid-template-columns: repeat(7, calc((100% - 8px) / 2)); overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; padding-top: 6px; margin-top: -6px; }
+  /* ---- a agenda No Trello (#40): a faixa de dias arrastada com o dedo, dois à vista, abrindo em hoje e amanhã ---- */
+  .biblioteca:has(+ .secao-trello) { padding-bottom: 16px; }
+  /* a rolagem da página não se ancora na agenda; o que passa da largura (os alvos nas pontas) não alarga a página */
+  .secao-trello { padding: 0 16px 64px; overflow-x: clip; overflow-anchor: none; }
+  /* o topo em duas linhas: "No Trello" e o seletor ‹ 25 – 26/11 ›; embaixo, o resumo e o "voltar para hoje", com o
+     lugar dele guardado (nada pula quando ele aparece) */
+  .secao-trello-topo { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'titulo nav' 'conta conta'; align-items: center; gap: 0 8px; padding-top: 12px; margin-bottom: 4px; }
+  .secao-trello-topo h2 { grid-area: titulo; font-size: 26px; }
+  .secao-trello.encolhida .secao-trello-topo h2 { font-size: 22px; }
+  .semana-nav { grid-area: nav; justify-self: end; margin: 0 -10px 0 0; gap: 0; }
+  .semana-nav .botao-icone { width: 44px; height: 44px; border-radius: 12px; }
+  .semana-nav .botao-icone:disabled { opacity: 0.35; cursor: default; }
+  .semana-nav b { padding: 0; min-width: 5.9em; text-align: center; white-space: nowrap; }
+  .secao-trello-conta { grid-area: conta; display: flex; align-items: baseline; min-height: 44px; font-size: 13px; line-height: 44px; white-space: nowrap; }
+  .secao-trello-conta .prio-nota { margin-left: 0; }
+  .secao-trello-conta .voltar-hoje { margin-left: auto; min-height: 44px; padding: 0; }
+  .secao-trello-conta .voltar-hoje.fora { visibility: hidden; pointer-events: none; }
+  /* a faixa: rolagem e encaixe por dia nativos (o navegador cuida do gesto, da inércia e do encaixe; nenhum código mexe
+     nela no meio do arrasto). O gesto de lado fica na faixa (não puxa a página nem o voltar do navegador); o de cima
+     para baixo rola a página. Numa linha só, a faixa tem a altura do dia mais alto: a página não muda de altura. */
+  .semana { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: calc((100% - 8px) / 2); gap: 8px; align-items: start;
+    position: relative; overflow-x: auto; overflow-y: hidden; padding-top: 6px; margin-top: -6px;
+    scroll-snap-type: x mandatory; overscroll-behavior-x: contain; touch-action: pan-x pan-y; scrollbar-width: none; }
   .semana::-webkit-scrollbar { display: none; }
   .semana > .coluna { scroll-snap-align: start; }
-  .coluna-topo { flex-wrap: nowrap; gap: 0 7px; padding: 6px 2px 8px 4px; min-height: 42px; white-space: nowrap; }
+  /* o cabeçalho do dia numa linha: "QUA 25 hoje", com o hoje circulado à mão */
+  .coluna-topo { flex-wrap: nowrap; align-items: baseline; gap: 0 7px; padding: 6px 2px 8px 4px; min-height: 42px; white-space: nowrap; }
+  .dia-num { font-size: 27px; }
+  .dia-rel { font-size: 20px; }
+  .coluna.hoje .dia-num { margin: 0 7px 0 5px; }
+  .secao-trello.encolhida .coluna-topo { min-height: 36px; padding: 5px 2px 6px 4px; }
+  .secao-trello.encolhida .dia-num { font-size: 23px; }
+  .secao-trello.encolhida .dia-rel { font-size: 18px; }
   .coluna-corpo { min-height: 132px; padding: 6px; gap: 6px; --vaga-gap: 6px; border-radius: 12px; }
-  .card-semana-abrir { min-height: 44px; }
-  /* encolhida, a claquete do card também quebra nos sublinhados (no computador ela fica numa linha só) */
-  .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete { white-space: normal; overflow: visible; text-overflow: clip; }
-  .card-semana-links a, .card-semana-links button { width: 44px; height: 44px; }
-  .semana-avulsa ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* o "?" no canto: alvo de 44px */
-  .botao-atalhos { width: 44px; height: 44px; }
+  .nada { font-size: 17px; padding: 8px 4px; }
+  /* o card em meia largura */
+  .card-semana { border-radius: 9px; }
+  .card-semana-abrir { min-height: 44px; padding: 9px 10px 8px; }
+  .card-semana-claquete { font-size: 12.5px; line-height: 1.3; }
+  .card-semana-linha { flex-wrap: wrap; gap: 0 5px; font-size: 11.5px; white-space: normal; }
+  .card-semana-artes { font-size: 16px; }
+  .card-semana-etapa { margin-left: auto; font-size: 11.5px; }
+  .card-semana-mais-dentro, .card-semana.aberto .card-semana-mais-dentro { padding: 0 8px 8px; }
+  .card-semana-dados { padding-top: 7px; font-size: 11.5px; line-height: 1.35; }
+  .card-semana-dados dd small { font-size: 11px; }
+  .card-semana-pe { align-items: center; gap: 6px; margin-top: 8px; min-height: 0; }
+  .card-semana-links { gap: 6px; }
+  .card-semana-links a, .card-semana-links button { width: 44px; height: 44px; border-radius: 10px; background: var(--neutro); color: var(--tinta); }
+  /* encolhida (há revisão na fila): o card só com a claquete, que quebra nos sublinhados, e o pontinho da etapa */
+  .secao-trello.encolhida .coluna-corpo { min-height: 0; }
+  .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-abrir { min-height: 44px; display: flex; align-items: center; padding: 6px 16px 6px 9px; }
+  .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-sinal { right: 8px; }
+  .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete { font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
+  /* o "sem data" numa grade de dois, embaixo; no pé, o "ver a semana inteira" e os "dias anteriores" */
+  .semana-avulsa { margin-top: 16px; }
+  .semana-avulsa h3 { margin: 0 0 6px 4px; }
+  .semana-avulsa ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 6px; border-radius: 12px; }
+  .pe-agenda { display: flex; flex-wrap: wrap; gap: 0 20px; margin: 6px 0 0 4px; }
+  .pe-agenda .botao-texto { min-height: 44px; white-space: nowrap; }
+
+  /* o "?" no canto só mostra atalhos de teclado (o "Fazer o tour" já sai no celular), e cobria as fichas */
+  .botao-atalhos { display: none; }
 }
