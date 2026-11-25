@@ -1411,9 +1411,9 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
    (min-height no próprio elemento) e recorta a claquete e os papéis; no fim ele encolhe até o repouso. */
 .comemoracao { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 30px 20px 28px; border-radius: 0 0 13px 13px; }
 .comemoracao .frase { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
-.comemoracao .mao { margin: 0; font: 600 min(36px, 8.4vw)/1.05 Caveat, cursive; color: var(--tinta); transform: rotate(-2deg); white-space: nowrap; padding: 0 4px; }
-.comemoracao .risco { display: block; width: 78%; height: 12px; overflow: visible; margin: 2px 0 0; }
-.comemoracao .risco path { fill: none; stroke: var(--ultra); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+:is(.comemoracao, .fila-festa) .mao { margin: 0; font: 600 min(36px, 8.4vw)/1.05 Caveat, cursive; color: var(--tinta); transform: rotate(-2deg); white-space: nowrap; padding: 0 4px; }
+:is(.comemoracao, .fila-festa) .risco { display: block; width: 78%; height: 12px; overflow: visible; margin: 2px 0 0; }
+:is(.comemoracao, .fila-festa) .risco path { fill: none; stroke: var(--ultra); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .comemoracao .linha { margin: 8px 0 0; font: 400 14px/1.45 var(--sans); color: var(--tinta3); }
 .comemoracao .linha b { font: 600 13px var(--mono); color: var(--ultra); }
 /* a claquete gigante: solta por cima da lista, sai de cena depois da batida */
@@ -1435,6 +1435,31 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .comemoracao .tira.destacada { color: var(--ultra-tinta); outline-color: color-mix(in srgb, var(--ultra) 55%, transparent); }
 .comemoracao .tira.verso { color: transparent; }
 .comemoracao .picote { position: absolute; left: 0; top: 0; width: 7px; height: 11px; will-change: transform; }
+
+/* ---------- a fila zerada (ui/FilaZerada.tsx) ----------
+   Entre o título e o No Trello, a área da cena abre (a altura vai no próprio elemento), toca os fogos ou o avião e
+   fecha; fica o risco à mão embaixo de "Fila em dia". */
+.fila-em-dia { position: relative; display: inline-block; }
+.risco-titulo { position: absolute; left: -2px; top: calc(100% - 2px); width: calc(100% + 6px); height: 10px; overflow: visible; pointer-events: none; }
+.risco-titulo path { fill: none; stroke: var(--ultra); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.fila-festa { position: relative; height: 0; overflow: hidden; pointer-events: none; }
+.fila-festa-quadro { position: absolute; left: 0; right: 0; top: 0; height: 300px; }
+.fila-festa-camada { position: absolute; inset: 0; }
+.fila-festa .frase { position: absolute; left: 50%; z-index: 1; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); }
+.fila-festa svg { overflow: visible; }
+.fila-festa .fogos, .fila-festa .voo { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fila-festa .fogos path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.fila-festa .estrela { position: absolute; width: 20px; height: 20px; }
+.fila-festa .estrela path { fill: none; stroke-width: 1.8; stroke-linecap: round; }
+.fila-festa .rastro { fill: none; stroke: var(--ultra); stroke-width: 1.7; stroke-linecap: round; stroke-dasharray: 4 7; }
+/* o bilhete é a ficha que acabou de sair, em papel, na letra das claquetes */
+.fila-festa .bilhete { position: absolute; padding: 5px 10px; font: 600 11.5px/1.3 var(--mono); color: var(--tinta); white-space: nowrap; border-radius: 3px;
+  background: var(--folha-fibras), url('/papel-grao.svg'), var(--folha); outline: 1px solid color-mix(in srgb, var(--tinta) 14%, transparent); outline-offset: -1px; }
+.fila-festa .aviao { position: absolute; left: 0; top: 0; width: 50px; height: 30px; offset-rotate: auto; offset-anchor: 50% 50%; color: var(--tinta); }
+.fila-festa .aviao svg { width: 100%; height: 100%; }
+.fila-festa .aviao .corpo { fill: var(--folha); stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
+.fila-festa .aviao .asa { fill: color-mix(in srgb, var(--tinta) 10%, var(--folha)); stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
+.fila-festa .aviao .dobra { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
 
 /* ---------- cor de destaque, no perfil ---------- */
 .escolha-cor { border-top: 1px solid var(--regua); margin-top: 12px; padding-top: 12px; }

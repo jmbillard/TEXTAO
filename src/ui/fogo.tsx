@@ -8,12 +8,15 @@ import { acabarTroca, comecarFogo, DURACAO_BRILHO, trocarFogo } from './trocaDoF
   Um viewBox por nível (1 unidade = 1 px), com o chão em y≈21. A chama fica num grupo próprio (`.chama`), separada
   do que não se mexe (o pavio, as lenhas), para a animação poder tremular só ela.
 */
+/** A chaminha da vela (BAIXA), num viewBox de 9 × 24 com a ponta em (5.6, 6.6): os fogos da fila zerada estouram nela. */
+export const CHAMA_DA_VELA = 'M5.6 6.6 C 5.9 8.4, 7.6 10.2, 7.5 13 C 7.4 15.3, 6.2 16.6, 5 16.5 C 3.5 16.4, 2.6 15.1, 2.8 13.4 C 3 11.4, 4.6 9.8, 5.2 7.4';
+
 const FOGO: Record<Complexidade, { w: number; x0?: number; vivos: string[]; parados: string[]; hachura?: string }> = {
   // a vela: a chaminha; o pavio e a boca da vela ficam parados
   1: {
     w: 9,
     x0: 0.5,
-    vivos: ['M5.6 6.6 C 5.9 8.4, 7.6 10.2, 7.5 13 C 7.4 15.3, 6.2 16.6, 5 16.5 C 3.5 16.4, 2.6 15.1, 2.8 13.4 C 3 11.4, 4.6 9.8, 5.2 7.4'],
+    vivos: [CHAMA_DA_VELA],
     parados: ['M5 16.9 C 5.1 17.8, 5 18.5, 5.1 19.3', 'M2.4 22.2 C 2.3 21.2, 2.3 20.4, 2.4 19.6 C 4.2 19.3, 5.9 19.4, 7.7 19.7 C 7.8 20.5, 7.7 21.4, 7.8 22.2'],
   },
   // a fogueira: a chama e a língua de dentro; as duas lenhas cruzadas ficam paradas

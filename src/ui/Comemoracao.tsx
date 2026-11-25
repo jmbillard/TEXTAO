@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { criarPalco, escreverFrase, FraseAMao, sorteio, SUAVE } from './cena';
 import type { Tira } from './regrasDaComemoracao';
 import { semMovimento } from './util';
 
@@ -19,9 +20,6 @@ const T = { bate: 720, sai: 840, escreve: 1520, somem: 1920, fim: 2620 } as cons
 /** A altura do palco enquanto a cena roda; no fim ele encolhe até o tamanho do repouso. */
 const ALTURA_DO_PALCO = 320;
 
-const SUAVE = 'cubic-bezier(0.22, 1, 0.36, 1)';
-const ESCREVER = 'cubic-bezier(0.45, 0, 0.3, 1)';
-const RABISCO = 'M2 9 C 30 3, 70 4, 98 6 C 70 8, 40 10, 14 12';
 const CORES = ['--ultra', '--ok', '--producao', '--sonoplastia', '--locutor', '--edicao'];
 /** A largura da claquete na tela; o desenho é de 200 × 170. */
 const LARGURA_CLAQUETE = 220;
@@ -33,16 +31,6 @@ export interface CamposDaClaquete {
   data: string;
   /** O que vai no TAKE (o total); vazio enquanto não chegou. */
   take: string;
-}
-
-/** Sorteio com semente (mulberry32): a mesma cena sempre estoura igual. */
-function sorteio(semente: number) {
-  return () => {
-    semente = (semente + 0x6d2b79f5) | 0;
-    let t = Math.imul(semente ^ (semente >>> 15), 1 | semente);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 /** A hachura das listras da claquete (recortada pelo clipPath das listras). */
@@ -135,20 +123,9 @@ function rodar(
   aoBater: (() => void) | undefined,
   aoAcabar: () => void,
 ) {
-  const animacoes: Animation[] = [];
-  const timers: number[] = [];
+  const palco = criarPalco();
+  const { a, at, tracar } = palco;
   let quadroId = 0;
-  const a = (el: Element, kf: Keyframe[], o: { dur?: number; delay?: number; easing?: string; fill?: FillMode } = {}) => {
-    const an = el.animate(kf, { duration: o.dur ?? 400, delay: o.delay ?? 0, easing: o.easing ?? SUAVE, fill: o.fill ?? 'both' });
-    animacoes.push(an);
-    return an;
-  };
-  const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
-  const tracar = (p: SVGGeometryElement, dur: number, delay: number) => {
-    p.setAttribute('pathLength', '1');
-    p.style.strokeDasharray = '1 1.02';
-    a(p, [{ strokeDashoffset: 1.01 }, { strokeDashoffset: 0 }], { dur, delay, easing: ESCREVER });
-  };
 
   const W = raiz.clientWidth, H = raiz.clientHeight;
   const k = LARGURA_CLAQUETE / 200, ALT = 170 * k;
@@ -186,8 +163,7 @@ function rodar(
   );
 
   // a frase se escreve à mão; a linha de baixo entra quando chegar (ela tem o próprio efeito)
-  a(frase.querySelector('.mao')!, [{ clipPath: 'inset(-40% 100% -40% -10%)' }, { clipPath: 'inset(-40% -10% -40% -10%)' }], { dur: 720, delay: T.escreve, easing: ESCREVER });
-  a(frase.querySelector('.risco')!, [{ clipPath: 'inset(-50% 100% -50% -5%)' }, { clipPath: 'inset(-50% -5% -50% -5%)' }], { dur: 380, delay: T.escreve + 640, easing: ESCREVER });
+  escreverFrase(palco, frase, T.escreve);
 
   // o confete estoura da fresta da batida (entre o braço e o corpo da claquete)
   const fresta = { x: x0 + 100 * k, y: y0 + 58 * k, meia: 80 * k };
@@ -205,9 +181,8 @@ function rodar(
   });
 
   return () => {
-    for (const t of timers) clearTimeout(t);
+    palco.desfazer();
     cancelAnimationFrame(quadroId);
-    for (const an of animacoes) an.cancel();
     confete.replaceChildren();
   };
 }
@@ -379,13 +354,9 @@ export function Comemoracao({
 
   return (
     <div ref={raiz} className="comemoracao">
-      <div ref={fraseEl} className="frase">
-        <p className="mao">{frase}</p>
-        <svg className="risco" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
-          <path d={RABISCO} />
-        </svg>
+      <FraseAMao ref={fraseEl} texto={frase}>
         <p ref={linhaEl} className="linha">{linha ?? ' '}</p>
-      </div>
+      </FraseAMao>
       {rodando && (
         <>
           <div ref={claq} className="claq-gigante">

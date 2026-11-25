@@ -18,6 +18,7 @@ import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { avisoDaSubstituicao } from './Comparar';
 import { Icone } from './icones';
+import { CenaDaFilaZerada, TituloEmDia, useFilaZerada } from './FilaZerada';
 import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, Marca, RABISCOS, Riscado, TextoDaClaquete } from './pecas';
 import { semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, ehCelular, plural } from './util';
@@ -958,6 +959,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   // a conta do topo e os filtros olham só o que ainda pede trabalho: o que foi ao ar ou já está no Trello fica de fora
   const pendente = new Set(pendentes(todos).map((r) => r.id));
   const nPendentes = pendente.size;
+  // a fila zerou: comemora (a regra e a memória ficam em filaZerada.ts)
+  const unico = nPendentes === 1 ? todos.find((r) => pendente.has(r.id)) : undefined;
+  const filaZerada = useFilaZerada(nPendentes, { pronto: roteiros !== null && !lendo, saindo, aoFundo, ultima: unico && (unico.meta.claquete || unico.meta.titulo) });
   const paraRevisar = todos.filter((r) => pendente.has(r.id) && pedeRevisao(r)).length;
   const achado = (r: Resumo) => !termo || semAcento([r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.meta.titulo].join(' ')).includes(termo);
   const visiveis = todos
@@ -1099,7 +1103,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                 <div className="fila-titulo">
                   <h2 className="titulo-serifa">
                     {nPendentes || !lendo ? (
-                      nPendentes ? <><em>{nPendentes}</em> {nPendentes === 1 ? 'roteiro na fila' : 'roteiros na fila'}</> : <>Fila em dia</>
+                      nPendentes ? <><em>{nPendentes}</em> {nPendentes === 1 ? 'roteiro na fila' : 'roteiros na fila'}</> : <TituloEmDia z={filaZerada} />
                     ) : (
                       <>Lendo <em>1</em> roteiro</>
                     )}
@@ -1154,6 +1158,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                 )}
               </Vagas>
               </div>
+              <CenaDaFilaZerada z={filaZerada} />
 
               {exibidos.length > 0 && (
                 <details className="exibidos">
