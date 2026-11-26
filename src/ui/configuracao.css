@@ -1,0 +1,153 @@
+/* A tela de Configuração (#72): o visual do protótipo v3. Cartões de seção no papel, a linha de estado com o ponto,
+   as exceções em cartões (o problema em ultra, o ligado à mão em neutro), as praças com as regras em "chips"
+   tracejados e a barra única de salvar embaixo. */
+
+.cfg { max-width: 1104px; margin: 0 auto; padding: 28px max(20px, env(safe-area-inset-right, 0px)) 140px max(20px, env(safe-area-inset-left, 0px)); }
+.cfg-cabeca { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 8px 0 26px; }
+.cfg-cabeca h1 { font: 400 46px/1.05 var(--serifa); letter-spacing: -0.01em; margin: 0; color: var(--tinta); }
+.cfg-so-admin { display: inline-flex; align-items: center; gap: 5px; font: 500 12.5px var(--sans); color: var(--tinta2); background: var(--neutro); border-radius: 99px; padding: 4px 10px; }
+.cfg-so-consulta { margin: -14px 0 18px; font: 500 13px var(--sans); color: var(--tinta3); }
+.cfg-lendo, .cfg-falha { font: 500 14px var(--sans); color: var(--tinta3); }
+.cfg-falha { color: var(--falta); background: var(--falta-fundo); border-radius: 10px; padding: 10px 14px; margin: 0 0 12px; }
+
+/* ---------- a seção ---------- */
+.cfg-secao { background: var(--papel); border: 1px solid var(--regua); border-radius: 18px; padding: 20px 20px 18px; margin-bottom: 16px; }
+.cfg-secao-topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cfg-secao-topo h2 { font: 400 26px/1.1 var(--serifa); margin: 0; color: var(--tinta); }
+.cfg-secao-topo .espaco { flex: 1; }
+.cfg-estado { display: inline-flex; align-items: center; gap: 8px; font: 400 15px var(--sans); color: var(--tinta2); }
+.cfg-estado::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+.cfg-estado.tem::before { background: var(--ultra); }
+.cfg-estado.falta::before { background: var(--falta); }
+.cfg-ver-tudo { display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; font: 500 14px var(--sans); color: var(--tinta2); cursor: pointer; padding: 4px 6px; border-radius: 8px; }
+.cfg-ver-tudo:hover { color: var(--tinta); background: var(--neutro); }
+.cfg-secao-corpo { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+.cfg-secao-corpo > .cfg-falha { margin: 0; }
+
+/* o "?" */
+.cfg-ajuda { position: relative; display: inline-flex; }
+.cfg-ajuda > button { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--regua-forte); background: none; font: 600 11px var(--sans); color: var(--tinta3); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.cfg-ajuda > button:hover, .cfg-ajuda > button[aria-expanded='true'] { color: var(--tinta); border-color: var(--tinta3); }
+.cfg-ajuda-texto { position: absolute; left: -8px; top: calc(100% + 8px); z-index: 30; width: min(380px, calc(100vw - 40px)); background: var(--tinta); color: var(--papel); font: 400 13px/1.5 var(--sans); padding: 10px 13px; border-radius: 10px; box-shadow: var(--sombra-menu); }
+
+/* ---------- as exceções ---------- */
+.cfg-excecoes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.cfg-exc { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--regua); background: var(--cartao); }
+.cfg-exc.problema { background: color-mix(in srgb, var(--ultra) 7%, var(--cartao)); border-color: color-mix(in srgb, var(--ultra) 35%, var(--regua)); }
+.cfg-exc-ico { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--neutro); color: var(--tinta2); }
+.cfg-exc.problema .cfg-exc-ico { background: var(--ultra); color: var(--no-ultra); }
+.cfg-exc-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cfg-exc-texto strong { font: 600 14.5px var(--sans); color: var(--tinta); overflow-wrap: anywhere; }
+.cfg-exc-texto span { font: 400 13px var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
+.cfg-exc .botao { flex: none; }
+
+/* ---------- as praças ---------- */
+.cfg-pracas { list-style: none; margin: 0; padding: 0; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); }
+.cfg-praca + .cfg-praca { border-top: 1px solid var(--regua); }
+.cfg-praca.arrastando { opacity: 0.5; }
+.cfg-praca.alvo { box-shadow: inset 0 2px 0 var(--ultra); }
+.cfg-praca.aberta { background: color-mix(in srgb, var(--neutro) 45%, var(--cartao)); }
+.cfg-praca-linha { display: grid; grid-template-columns: 18px 58px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; }
+.no-celular .cfg-praca-linha { grid-template-columns: 50px minmax(0, 1fr); }
+.cfg-alca { border: 0; background: none; color: var(--tinta3); cursor: grab; display: grid; place-items: center; padding: 0; height: 28px; border-radius: 6px; }
+.cfg-alca:focus-visible { outline: 2px solid var(--ultra); }
+.cfg-sigla { font: 600 13px var(--mono); height: 28px; border-radius: 8px; background: var(--tinta); color: var(--papel); display: grid; place-items: center; }
+.cfg-regra { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--tinta2); }
+.cfg-regra-padrao { font: 400 13px var(--sans); color: var(--tinta2); }
+.cfg-ed { display: inline-flex; align-items: center; gap: 4px; border: 1px dashed var(--regua-forte); border-radius: 7px; padding: 1px 7px; background: var(--papel); color: var(--tinta); font: 500 12.5px var(--sans); white-space: nowrap; }
+button.cfg-ed { cursor: pointer; }
+button.cfg-ed:hover { border-color: var(--ultra); border-style: solid; }
+.no-celular .cfg-ed { border: 0; background: none; padding: 0; white-space: normal; }
+.cfg-ed code { font: 600 12px var(--mono); color: var(--tinta); }
+.cfg-exemplo { font: 500 11.5px var(--mono); color: var(--tinta3); white-space: nowrap; }
+.cfg-exemplo b { color: var(--ultra); }
+.cfg-marcas { display: flex; gap: 6px; align-items: center; justify-content: flex-end; white-space: nowrap; }
+.no-celular .cfg-marcas { grid-column: 2; justify-content: flex-start; }
+.no-celular .cfg-marcas:empty { display: none; }
+.cfg-marca { display: inline-flex; align-items: center; gap: 4px; font: 600 11px var(--sans); border-radius: 99px; padding: 2px 8px; }
+.cfg-marca.padrao { color: var(--ultra-tinta); background: var(--ultra-suave); }
+.cfg-marca.mao { color: var(--tinta2); background: var(--neutro); }
+.cfg-dica-ordem { margin: -4px 0 0; font: 400 13px var(--sans); color: var(--tinta3); }
+
+/* o editor da regra */
+.cfg-editor { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 4px 12px 12px 98px; }
+.cfg-editor .espaco { flex: 1; }
+.cfg-editor-onde { display: inline-flex; background: var(--neutro); border-radius: 9px; padding: 3px; }
+.cfg-editor-onde button { border: 0; background: none; font: 500 12.5px var(--sans); color: var(--tinta2); padding: 5px 10px; border-radius: 7px; cursor: pointer; }
+.cfg-editor-onde button[aria-checked='true'] { background: var(--segmento-ativo); color: var(--tinta); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+.cfg-editor-campo { display: flex; flex-direction: column; gap: 3px; font: 500 11.5px var(--sans); color: var(--tinta3); }
+.cfg-editor-campo input { height: 32px; border-radius: 8px; border: 1px solid var(--regua-forte); background: var(--papel); color: var(--tinta); font: 600 12.5px var(--mono); padding: 0 9px; width: 180px; text-transform: uppercase; }
+.cfg-editor-campo input::placeholder { text-transform: none; font-family: var(--sans); font-weight: 400; }
+.cfg-editor-campo input:focus { outline: 0; border-color: var(--ultra); }
+
+/* ---------- ver tudo ---------- */
+.cfg-tudo { border-top: 1px dashed var(--regua-forte); padding-top: 14px; display: flex; flex-direction: column; gap: 2px; }
+.cfg-tudo-praca h3 { font: 600 11px var(--sans); letter-spacing: 0.12em; color: var(--tinta3); margin: 12px 0 4px; }
+.cfg-tudo-l { display: grid; grid-template-columns: minmax(110px, 240px) minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 5px 0; font: 400 14px var(--sans); }
+.cfg-tudo-rotulo { color: var(--tinta2); }
+.cfg-tudo-valor { color: var(--tinta); overflow-wrap: anywhere; }
+.cfg-tudo-como { font-size: 13px; color: var(--tinta3); text-align: right; }
+.cfg-tudo-como.mao { color: var(--ultra-tinta); }
+.cfg-tudo-como.problema { color: var(--perigo); font-weight: 500; }
+.no-celular .cfg-tudo-l { grid-template-columns: 1fr; gap: 0; padding: 6px 0; }
+.no-celular .cfg-tudo-como { text-align: left; }
+
+/* ---------- escolher à mão ---------- */
+.cfg-escolher { position: absolute; z-index: 60; background: var(--cartao); border-radius: 14px; box-shadow: var(--sombra-menu); padding: 8px; animation: surgir 0.14s var(--suave); }
+.cfg-escolher-busca { display: flex; align-items: center; gap: 8px; background: var(--neutro); border-radius: 10px; padding: 0 12px; color: var(--tinta3); }
+.cfg-escolher-busca input { flex: 1; border: 0; background: none; height: 38px; font: 400 14.5px var(--sans); color: var(--tinta); outline: 0; }
+.cfg-escolher-titulo { font: 600 12px var(--sans); color: var(--tinta2); padding: 10px 8px 6px; }
+.cfg-escolher ul { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow: auto; }
+.cfg-escolher li button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; text-align: left; padding: 9px 10px; border-radius: 9px; cursor: pointer; color: var(--tinta); font: 400 14px var(--sans); }
+.cfg-escolher li button:hover:not(:disabled), .cfg-escolher li button[aria-current] { background: var(--neutro); }
+.cfg-escolher li button:disabled { opacity: 0.45; cursor: default; }
+.cfg-escolher li .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cfg-escolher li .nota { font: 500 12px var(--sans); color: var(--producao); white-space: nowrap; }
+.cfg-escolher-vazio { padding: 10px; font-size: 13px; color: var(--tinta3); }
+
+/* ---------- a barra de salvar ---------- */
+.cfg-barra { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: 10px; background: var(--tinta); color: var(--papel); padding: 8px 8px 8px 18px; border-radius: 14px; box-shadow: var(--sombra-menu); animation: surgir 0.2s var(--suave); }
+.cfg-barra-n { font: 500 15px var(--sans); white-space: nowrap; margin-right: 4px; }
+.cfg-barra button { height: 40px; border-radius: 10px; font: 600 15px var(--sans); padding: 0 18px; cursor: pointer; white-space: nowrap; }
+.cfg-barra-descartar { background: none; color: var(--papel); border: 1px solid color-mix(in srgb, var(--papel) 28%, transparent); }
+.cfg-barra-salvar { background: var(--papel); color: var(--tinta); border: 0; }
+
+/* ---------- conferir ---------- */
+.cfg-veu { position: fixed; inset: 0; z-index: 70; background: color-mix(in srgb, var(--mesa) 70%, transparent); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 24px; animation: surgir 0.15s; }
+.cfg-modal { width: min(620px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: var(--papel); border-radius: 18px; box-shadow: var(--sombra-menu); display: flex; flex-direction: column; }
+.cfg-modal-corpo { padding: 26px 26px 18px; }
+.cfg-modal-rotulo { display: block; font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta2); margin: 0; }
+h3.cfg-modal-rotulo { margin: 22px 0 6px; }
+.cfg-modal h2 { font: 400 32px/1.15 var(--serifa); margin: 2px 0 18px; color: var(--tinta); }
+.cfg-checks { list-style: none; margin: 0; padding: 0; border: 1px solid var(--regua); border-radius: 12px; overflow: hidden; }
+.cfg-checks li { display: flex; gap: 12px; padding: 11px 14px; align-items: flex-start; }
+.cfg-checks li + li { border-top: 1px solid var(--regua); }
+.cfg-checks li .ico { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; margin-top: 1px; background: var(--ok-fundo); color: var(--ok); }
+.cfg-checks li.aviso .ico { background: var(--falta-fundo); color: var(--falta); }
+.cfg-checks li.erro { background: color-mix(in srgb, var(--perigo) 7%, var(--papel)); }
+.cfg-checks li.erro .ico { background: var(--perigo); color: var(--papel); }
+.cfg-checks strong { display: block; font: 600 14px var(--sans); color: var(--tinta); }
+.cfg-checks small { display: block; font: 400 13px var(--sans); color: var(--tinta2); margin-top: 2px; }
+.cfg-checks li.erro small { color: var(--perigo); }
+.cfg-muda { width: 100%; border-collapse: collapse; font: 400 14px var(--sans); }
+.cfg-muda tr { border-top: 1px solid var(--regua); }
+.cfg-muda th, .cfg-muda td { padding: 9px 6px 9px 0; vertical-align: top; text-align: left; }
+.cfg-muda th { font-weight: 600; color: var(--tinta); width: 34%; }
+.cfg-muda .antes { color: var(--tinta3); text-decoration: line-through; }
+.cfg-muda .seta { color: var(--ultra); width: 22px; }
+.cfg-muda .depois { color: var(--tinta); font-weight: 500; }
+.cfg-modal footer { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 14px 26px; border-top: 1px solid var(--regua); background: var(--papel); }
+.cfg-modal footer .espaco { flex: 1; }
+
+/* ---------- celular: só consulta ---------- */
+@media (max-width: 600px) {
+  .cfg { padding-top: 18px; padding-bottom: 60px; }
+  .cfg-cabeca { margin-bottom: 20px; }
+  .cfg-cabeca h1 { font-size: 34px; }
+  .cfg-secao { padding: 16px 14px; border-radius: 14px; }
+  .cfg-secao-topo { gap: 8px; }
+  .cfg-secao-topo h2 { font-size: 23px; }
+  .cfg-estado { font-size: 13.5px; order: 5; flex-basis: 100%; }
+  .cfg-praca-linha { padding: 9px 10px; }
+  .cfg-exemplo { white-space: normal; }
+}

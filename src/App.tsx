@@ -3,7 +3,8 @@ import { Comparar } from './ui/Comparar';
 import { Atalhos } from './ui/Atalhos';
 import { Cadastros, type AtracaoNova } from './ui/Cadastros';
 import { Filmes } from './ui/Filmes';
-import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, temTrello, type TextoOriginal } from './dados/armazenamento';
+import { Configuracao } from './ui/Configuracao';
+import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
@@ -26,7 +27,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao' };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -50,6 +51,7 @@ const telaDoHash = (): Tela => {
   if (k) return { t: 'comparar', id: decodeURIComponent(k[1]) };
   const f = /^#\/filmes(?:\/(.+))?$/.exec(location.hash);
   if (f) return { t: 'filmes', id: f[1] ? decodeURIComponent(f[1]) : undefined };
+  if (/^#\/configuracao\/?$/.test(location.hash)) return { t: 'configuracao' };
   const c = /^#\/cadastros(?:\/(atracoes|redatores|editores))?$/.exec(location.hash);
   return c ? { t: 'cadastros', aba: (c[1] as TipoCadastro | undefined) ?? 'atracoes' } : { t: 'biblioteca' };
 };
@@ -133,6 +135,18 @@ export function App() {
   useEffect(() => {
     if (pronto && hashDesconhecido()) avisar(AVISO_DO_HASH);
   }, [pronto, avisar]);
+  // a Configuração é só de administradores: quem não é volta para a fila (o servidor também recusa)
+  const configuracaoFechada = pronto && tela.t === 'configuracao' && !souAdministrador();
+  useEffect(() => {
+    if (!configuracaoFechada) return;
+    avisar('Só administradores veem a Configuração.');
+    try {
+      history.replaceState(null, '', '#/');
+    } catch {
+      /* páginas embutidas podem não permitir mudar o endereço */
+    }
+    setTela({ t: 'biblioteca' });
+  }, [configuracaoFechada, avisar]);
   useEffect(() => {
     if (!aviso) return;
     const t = setTimeout(() => setAviso(null), 4200);
@@ -140,7 +154,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? '#/configuracao' : '#/';
     try {
       if (location.hash !== hash) history.pushState(null, '', hash);
     } catch {
@@ -420,7 +434,7 @@ export function App() {
 
   return (
     <>
-      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {
@@ -438,6 +452,7 @@ export function App() {
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
       <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
+      {tela.t === 'configuracao' && souAdministrador() && <Configuracao voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key }} />}
 
       <DesenhosDeCursor />

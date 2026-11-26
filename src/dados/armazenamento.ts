@@ -246,6 +246,9 @@ export async function consultarPauta(claquete: string): Promise<{ editor: string
 
 let trelloLigado = false;
 let filmesLigado = false;
+let souAdmin = false;
+/** Quem está usando é administrador (CADASTRO_ADMINS): o menu do perfil mostra a Configuração. */
+export const souAdministrador = () => armazenamento.tipo === 'servidor' && souAdmin;
 /** O servidor sabe mandar para o Trello (TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA configurados). */
 export const temTrello = () => armazenamento.tipo === 'servidor' && trelloLigado;
 
@@ -819,13 +822,14 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[] };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean };
     if (d.email) {
       armazenamento = doServidor;
       // as praças da Configuração, antes de qualquer roteiro ser lido (até aqui, e sem servidor, valem as de fábrica)
       registrarPracas(d.pracas);
       trelloLigado = !!d.trello;
       filmesLigado = !!d.filmes;
+      souAdmin = !!d.admin;
       // as cores que cada um escolheu, para a orelha, o grifo e os cursores saírem certos
       await pedir<{ email: string; cor: string }[]>('/api/cores').then(registrarCores, () => {});
       // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable
@@ -948,3 +952,32 @@ export const lerRegistroDasDuplicadas = () => pedir<{ registro: AcaoDoRegistro[]
 export const ignorarDuplicada = (id: string, dias: number, motivo: string) =>
   pedir<{ ok: true }>('/api/duplicadas/ignorar', { method: 'POST', body: JSON.stringify({ id, dias, motivo }) });
 export const reabrirDuplicada = (id: string) => pedir<{ ok: true }>('/api/duplicadas/reabrir', { method: 'POST', body: JSON.stringify({ id }) });
+
+/* ---------- a tela de Configuração (só administradores) ---------- */
+
+import type { ConferenciaDasPracas, EstadoDasPracas, LigacoesDasPracas, QuadroLido } from '../modelo/ligarPeloNome';
+/** A seção Praças como o servidor manda: o salvo, a proposta (o salvo com o que o nome acha um só), o estado e o
+    quadro lido do Trello (as listas e os campos). Sem quadro, `erro` diz o que falta. */
+export interface SecaoPracas {
+  primeiraVez: boolean;
+  salvo: LigacoesDasPracas;
+  proposta: LigacoesDasPracas;
+  estado: EstadoDasPracas | null;
+  quadro: (QuadroLido & { id: string; de: 'variavel' | 'lista' }) | null;
+  erro?: string;
+}
+export const lerConfiguracao = () => pedir<{ pracas: SecaoPracas }>('/api/configuracao').then((r) => r.pracas);
+/** Confere sem salvar nada. */
+export const conferirConfiguracao = (pracas: LigacoesDasPracas) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify({ pracas }) });
+/** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */
+export async function salvarConfiguracao(pracas: LigacoesDasPracas): Promise<{ pracas: SecaoPracas } | { conferencia: ConferenciaDasPracas }> {
+  const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify({ pracas }) });
+  const corpo = (await r.json().catch(() => null)) as { pracas?: SecaoPracas; conferencia?: ConferenciaDasPracas; erro?: string } | null;
+  if (r.ok && corpo?.pracas) {
+    // as regras novas valem na hora também neste navegador
+    registrarPracas(corpo.pracas.salvo.pracas);
+    return { pracas: corpo.pracas };
+  }
+  if (corpo?.conferencia) return { conferencia: corpo.conferencia };
+  throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);
+}

@@ -60,8 +60,11 @@ async function subir({ trello: falso, acervo, filmes, env: doTeste = {} } = {}) 
   const semRede = async (url) => {
     throw new Error(`o teste não sai para a rede: ${url}`);
   };
-  const env = { ...doTeste };
-  const trello = criarTrello(falso?.env ?? env, { buscar: falso?.buscar ?? semRede, consultar: falso?.consultar ?? (async () => []), sftp: async () => {} });
+  // com `viva`, as variáveis do Trello falso são o Portainer e o Trello é refeito quando a configuração muda (a tela de
+  // Configuração salva e vale na hora); sem ela, é um módulo pronto, com as variáveis dele
+  const env = { ...(falso?.viva ? falso.env : {}), ...doTeste };
+  const deps = { buscar: falso?.buscar ?? semRede, consultar: falso?.consultar ?? (async () => []), sftp: async () => {} };
+  const trello = falso?.viva ? (e) => criarTrello(e, deps) : criarTrello(falso?.env ?? env, deps);
   const db = abrirBanco(join(pasta, 'roteirista.db'));
   const app = criarApp({ db, env, trello, ...(acervo ? { acervo } : {}), ...(filmes ? { filmes } : {}) });
   // sem o cabeçalho (o WebSocket do navegador não leva os extras), vale o cookie `e2e-email` do contexto, que o
@@ -91,6 +94,7 @@ async function subir({ trello: falso, acervo, filmes, env: doTeste = {} } = {}) 
   return {
     url: `http://localhost:${portaVite}/`,
     api,
+    app,
     async descer() {
       await vite.close();
       await new Promise((ok) => servidor.close(ok));

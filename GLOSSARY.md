@@ -125,6 +125,21 @@ das praças decide quando duas regras batem ("RIO SHOW SP" é do Rio) e uma é a
 nenhuma bate. Sem nada salvo na Configuração, valem as **praças de fábrica** (as de sempre).
 _Evitar_: região, emissora
 
+**Configuração**:
+A tela, no menu do perfil e só de administradores, onde se muda o que antes só mudava no Portainer: onde as coisas
+estão no Trello e no Teable, e as praças. O que é salvo nela vale por cima do Portainer e vale na hora; salvar passa
+sempre pela **conferência** (a lista existe e não está arquivada, a opção existe, o campo é do tipo certo) e, com
+erro, nada é salvo. Segredos e infraestrutura ficam no Portainer. No celular, só consulta.
+_Evitar_: ajustes, painel de controle
+
+**Ligado pelo nome**:
+O PROMeiro procura no quadro o que tem o nome esperado (sem caixa, acento e pontuação: a lista "SP ENTRADA", o campo
+de lista "Praça", a opção "SP") e guarda o id: renomear depois não quebra. Achou um só, liga ("achado pelo nome");
+não achou, ou achou mais de um, é uma **exceção**, e alguém escolhe à mão ("ligado à mão", que também aparece como
+exceção, com "desfazer"). Um id guardado que some do quadro (ou cuja lista foi arquivada) também é exceção. A tela
+mostra só as exceções; o resto fica no "ver tudo".
+_Evitar_: mapeamento, vínculo automático
+
 **Duplicada**:
 Duas ou mais linhas da produção da arte (ARTE_producao), cada uma de um card, com a mesma claquete (pela key, sem
 acento, caixa e pontuação), a mesma praça (a da coluna da linha; sem ela, a que a claquete indica) e a mesma versão: um

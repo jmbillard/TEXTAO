@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ETIQUETAS } from '../modelo/tipos';
 import { atalho } from './util';
 
-type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar' | 'filmes';
+type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao';
 type Linha = [tecla: string, oque: string];
 
 const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
@@ -43,6 +43,13 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
     ],
   },
   comparar: { titulo: 'Comparar', linhas: [['Esc', 'Fecha menus e balões']] },
+  configuracao: {
+    titulo: 'Configuração',
+    linhas: [
+      ['Arrastar', 'Muda a ordem das praças (ou ↑ ↓ na alça)'],
+      ['Esc', 'Fecha a escolha e a conferência'],
+    ],
+  },
 };
 
 /** "?" mostra os atalhos da tela onde a pessoa está e, embaixo, "Fazer o tour" (o tour da revisão de novo). */

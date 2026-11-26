@@ -20,6 +20,8 @@ export const SALVAVEIS = new Set([
   // as praças como dado (#71): a coleção inteira, em JSON (sigla, nome, regra, também lida como, entrada, saída, opção,
   // padrão), na ordem em que as regras são conferidas; sem ela, valem as de fábrica com as variáveis acima
   'PRACAS',
+  // o que a tela ligou à mão (#72), em JSON: as chaves ("campo", "G5.entrada"); o resto foi achado pelo nome
+  'LIGADO_A_MAO',
   // Filmes
   'TEABLE_FILMES', 'TEABLE_FILMES_POSTER', 'TEABLE_EXIBICOES', 'TRELLO_LISTA_FILMES', 'TRELLO_FILMES_ETIQUETAS',
   'TRELLO_FILMES_ETIQUETAS_SESSAO', 'TRELLO_FILMES_PRACA', 'FILMES_INTERVALO_MS', 'FILMES_TEMPO_MS',

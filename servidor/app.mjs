@@ -29,6 +29,7 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco } from '../src/modelo/pracas.ts';
 import { acertarNArtesUmaVez } from './artes.mjs';
+import { conferirSecaoPracas, lerSecaoPracas, mudancasDaSecao, secaoDoPedido } from './configuracao-pracas.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -1177,6 +1178,32 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
 
   /**
+   * A tela de Configuração (#72), só para administradores: GET lê a seção Praças (o salvo, o que o nome liga, o estado
+   * de cada ligação e as listas e campos do quadro); POST conferir { pracas } confere sem salvar nada; POST salvar
+   * { pracas } confere de novo e, sem erro, salva na configuração viva (vale na hora). Com erro, 422 e nada salvo.
+   */
+  async function rotaDaConfiguracao(req, res, eu, caminho) {
+    const acao = caminho.slice('/api/configuracao'.length);
+    if (!['', '/conferir', '/salvar'].includes(acao)) return json(res, 404, { erro: 'Não encontrado.' });
+    if (req.method !== (acao ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
+    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e mudam a Configuração.' });
+    try {
+      if (!acao) return json(res, 200, { pracas: await lerSecaoPracas(trello, env) });
+      const nova = secaoDoPedido(await lerCorpo(req).catch(() => null));
+      if (!nova) return json(res, 400, { erro: 'As praças vieram incompletas.' });
+      const conferencia = await conferirSecaoPracas(trello, env, nova);
+      if (acao === '/conferir') return json(res, 200, conferencia);
+      if (!conferencia.ok) return json(res, 422, { erro: 'A conferência não passou: nada foi salvo.', conferencia });
+      mudarConfiguracao(mudancasDaSecao(nova), { por: eu.email });
+      console.log(`[configuração] ${eu.email} salvou as praças: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}`);
+      return json(res, 200, { pracas: await lerSecaoPracas(trello, env) });
+    } catch (e) {
+      console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);
+      return json(res, 502, { erro: `Não consegui ler o quadro do Trello: ${e instanceof Error ? e.message : e}` });
+    }
+  }
+
+  /**
    * Aba Duplicadas dos Cadastros (#65), só para administradores: a lista dos casos do período (?dias=, 1 a 730, 90 sem
    * dizer; ?busca=; ?renovar=1 lê a produção da arte de novo), o detalhe de um caso (?id=, o único que lê o Trello) e o
    * registro. Ignorar e reabrir (#66,
@@ -1304,7 +1331,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
         const tour = { revisao: q.tourDe.get(eu.email)?.tour_revisao_em ?? null };
         // as praças vão junto: o navegador reconhece a praça da claquete com elas (sem os ids do Trello)
-        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas) });
+        // admin: o menu do perfil mostra a Configuração (só para administradores, CADASTRO_ADMINS)
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin: cadastros.podeApagar(eu.email) });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -1650,6 +1678,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       q.designorar.run(decodeURIComponent(caminho.slice('/api/cadastros/ignorar/'.length)).toUpperCase());
       return json(res, 200, { ok: true });
     }
+    if (caminho === '/api/configuracao' || caminho.startsWith('/api/configuracao/')) return rotaDaConfiguracao(req, res, eu, caminho);
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));

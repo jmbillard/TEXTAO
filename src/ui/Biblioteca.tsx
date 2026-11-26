@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, roteiroDa, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
+import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, roteiroDa, souAdministrador, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
 import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, TEXTO_SEM_REDATOR, travamTrello } from '../modelo/exportar';
@@ -66,6 +66,8 @@ interface Props {
   cadastros: (inicio?: { aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) => void;
   /** Abre a aba Filmes (as prévias de filmes). */
   filmes?: () => void;
+  /** A Configuração (só administradores): o item no menu do perfil. */
+  configuracao?: () => void;
   /** A fila abre já buscando isto (o "Buscar na fila" do link quebrado). */
   buscaInicial?: string;
 }
@@ -180,7 +182,7 @@ function EscolhaDeEnfeites({ tema, ligados }: { tema: TemaDeFimDeAno; ligados: b
 }
 
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
-function Perfil({ identidade, definirPerfil, cadastros, filmes, aoMudarCor, enfeites }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; aoMudarCor?: () => void; enfeites?: { tema: TemaDeFimDeAno; ligados: boolean } }) {
+function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, aoMudarCor, enfeites }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; configuracao?: () => void; aoMudarCor?: () => void; enfeites?: { tema: TemaDeFimDeAno; ligados: boolean } }) {
   const meuEmail = identidade?.email ?? '';
   const [minhaCor, setMinhaCor] = useState(() => corDe(meuEmail));
   useEffect(() => setMinhaCor(corDe(meuEmail)), [meuEmail]);
@@ -250,6 +252,11 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, aoMudarCor, enfe
           {filmes && (
             <button type="button" className="perfil-link" onClick={filmes}>
               <Icone nome="quadro" tam={16} /> Filmes <small>as prévias de filmes</small>
+            </button>
+          )}
+          {configuracao && (
+            <button type="button" className="perfil-link" onClick={configuracao}>
+              <Icone nome="ajustes" tam={16} /> Configuração <small>praças e ligações</small>
             </button>
           )}
           <EscolhaDeTema />
@@ -911,7 +918,7 @@ function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, buscaInicial = '' }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, buscaInicial = '' }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
@@ -1252,7 +1259,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
             <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
           </div>
         )}
-        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} aoMudarCor={() => setCores((n) => n + 1)} enfeites={temaDaData ? { tema: temaDaData.tema, ligados: enfeitesSim } : undefined} />
+        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} configuracao={souAdministrador() && configuracao ? configuracao : undefined} aoMudarCor={() => setCores((n) => n + 1)} enfeites={temaDaData ? { tema: temaDaData.tema, ligados: enfeitesSim } : undefined} />
       </header>
       <main className="biblioteca fila" data-ancora="pagina">
         {EXEMPLOS.length > 0 && (

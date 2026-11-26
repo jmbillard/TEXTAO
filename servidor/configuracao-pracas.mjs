@@ -1,0 +1,102 @@
+/* A seção Praças da tela de Configuração (#72): o que está salvo (ou, na primeira vez, o que vem do Portainer), o
+   quadro do Trello lido (as listas e os campos), o que o PROMeiro liga pelo nome e o estado de cada ligação. Conferir
+   e salvar passam pela mesma conferência; com erro, nada é salvo. As regras de ligar e conferir são as do módulo
+   compartilhado com o navegador (src/modelo/ligarPeloNome.ts). */
+import { pracasDaConfiguracao } from '../src/modelo/pracas.ts';
+import { CHAVE_DO_CAMPO, PONTAS, chaveDa, conferirPracas, estadoDasPracas, ligarPeloNome } from '../src/modelo/ligarPeloNome.ts';
+
+const ID_DO_TRELLO = /^[\w-]{1,64}$/;
+/** O Trello responde (a chave e o token no Portainer), mesmo sem nenhuma lista configurada ainda. */
+const falaComOTrello = (trello) => !!(trello?.ler && trello.config?.chave && trello.config?.token);
+const limpo = (v) => String(v ?? '').trim().replace(/^["']|["']$/g, '');
+
+/** As praças salvas (a coleção PRACAS) ou, sem ela, as de fábrica com as variáveis do Portainer; o campo Praça; o
+    que foi ligado à mão (LIGADO_A_MAO, em JSON). */
+export function pracasSalvas(env) {
+  let aMao = [];
+  try {
+    aMao = JSON.parse(env.LIGADO_A_MAO || '[]');
+  } catch {
+    aMao = [];
+  }
+  return {
+    pracas: pracasDaConfiguracao(env),
+    campoPraca: limpo(env.TRELLO_CAMPO_PRACA),
+    aMao: Array.isArray(aMao) ? aMao.filter((k) => typeof k === 'string') : [],
+  };
+}
+
+/**
+ * O quadro do Trello: o de TRELLO_QUADRO ou, sem ele, o da primeira lista já configurada (a entrada ou a saída de uma
+ * praça, a reserva, o VT), pelo idBoard dela. Lê as listas (também as arquivadas) e os campos personalizados.
+ * @returns { id, de: 'variavel' | 'lista', listas, campos } ou null quando não há como saber o quadro
+ */
+export async function lerQuadro(trello, env, pracas) {
+  let id = limpo(env.TRELLO_QUADRO);
+  let de = 'variavel';
+  if (!id) {
+    de = 'lista';
+    const configuradas = [...pracas.flatMap((p) => [p.entrada, p.saida]), limpo(env.TRELLO_LISTA), limpo(env.TRELLO_LISTA_VT)].filter((x) => ID_DO_TRELLO.test(x));
+    for (const lista of [...new Set(configuradas)]) {
+      const l = await trello.lerSeExistir(`/lists/${lista}`, { fields: 'idBoard' });
+      if (l?.idBoard) {
+        id = String(l.idBoard);
+        break;
+      }
+    }
+  }
+  if (!id || !ID_DO_TRELLO.test(id)) return null;
+  const [listas, campos] = await Promise.all([trello.ler(`/boards/${id}/lists`, { filter: 'all', fields: 'name,closed' }), trello.ler(`/boards/${id}/customFields`)]);
+  return {
+    id,
+    de,
+    listas: (Array.isArray(listas) ? listas : []).map((l) => ({ id: String(l.id), nome: String(l.name ?? ''), arquivada: !!l.closed })),
+    campos: (Array.isArray(campos) ? campos : []).map((c) => ({
+      id: String(c.id),
+      nome: String(c.name ?? ''),
+      tipo: String(c.type ?? ''),
+      opcoes: (c.options ?? []).map((o) => ({ id: String(o.id), nome: String(o.value?.text ?? '') })),
+    })),
+  };
+}
+
+/** A seção como a tela lê: o salvo, a proposta (o salvo com o que o nome acha um só), o estado e o quadro lido. */
+export async function lerSecaoPracas(trello, env) {
+  const salvo = pracasSalvas(env);
+  const primeiraVez = !env.PRACAS;
+  if (!falaComOTrello(trello))
+    return { primeiraVez, salvo, proposta: salvo, estado: null, quadro: null, erro: 'O Trello não está configurado (TRELLO_KEY e TRELLO_TOKEN no Portainer).' };
+  const quadro = await lerQuadro(trello, env, salvo.pracas);
+  if (!quadro)
+    return { primeiraVez, salvo, proposta: salvo, estado: null, quadro: null, erro: 'Não sei qual é o quadro do Trello: falta TRELLO_QUADRO no Portainer (ou uma lista já configurada).' };
+  const proposta = ligarPeloNome(salvo, quadro, { primeiraVez });
+  return { primeiraVez, salvo, proposta, estado: estadoDasPracas(proposta, quadro), quadro };
+}
+
+/** A seção que veio do navegador, limpa: as praças (com sigla), o campo e as chaves do ligado à mão. null se não vale. */
+export function secaoDoPedido(corpo) {
+  const bruto = corpo?.pracas;
+  if (!bruto || !Array.isArray(bruto.pracas) || !bruto.pracas.length) return null;
+  const pracas = pracasDaConfiguracao({ PRACAS: JSON.stringify(bruto.pracas) });
+  if (pracas.length !== bruto.pracas.length || !pracas.every((p, i) => p.sigla === String(bruto.pracas[i]?.sigla ?? '').trim().toUpperCase())) return null;
+  const ids = [bruto.campoPraca, ...pracas.flatMap((p) => PONTAS.map((ponta) => p[ponta]))];
+  if (!ids.every((x) => x === undefined || x === '' || ID_DO_TRELLO.test(String(x)))) return null;
+  const chaves = new Set([CHAVE_DO_CAMPO, ...pracas.flatMap((p) => PONTAS.map((ponta) => chaveDa(p.sigla, ponta)))]);
+  const aMao = Array.isArray(bruto.aMao) ? [...new Set(bruto.aMao.filter((k) => chaves.has(k)))] : [];
+  return { pracas, campoPraca: String(bruto.campoPraca ?? '').trim(), aMao };
+}
+
+/** Confere a seção nova contra o quadro de agora e contra o salvo. */
+export async function conferirSecaoPracas(trello, env, nova) {
+  const salvo = pracasSalvas(env);
+  const quadro = falaComOTrello(trello) ? await lerQuadro(trello, env, salvo.pracas) : null;
+  if (!quadro) return { ok: false, itens: [{ tipo: 'erro', titulo: 'Trello', detalhe: 'não consegui ler o quadro do Trello.' }], muda: [] };
+  return conferirPracas(nova, salvo, quadro);
+}
+
+/** O que vai para a configuração viva quando a seção é salva. */
+export const mudancasDaSecao = (nova) => ({
+  PRACAS: JSON.stringify(nova.pracas),
+  TRELLO_CAMPO_PRACA: nova.campoPraca,
+  LIGADO_A_MAO: JSON.stringify(nova.aMao),
+});
