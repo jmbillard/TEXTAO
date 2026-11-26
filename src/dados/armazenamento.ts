@@ -956,6 +956,7 @@ export const reabrirDuplicada = (id: string) => pedir<{ ok: true }>('/api/duplic
 /* ---------- a tela de Configuração (só administradores) ---------- */
 
 import type { ConferenciaDasPracas, EstadoDasPracas, LigacoesDasPracas, QuadroLido } from '../modelo/ligarPeloNome';
+import type { EstadoDoCard, LigacoesDoCard } from '../modelo/ligarOCard';
 /** A seção Praças como o servidor manda: o salvo, a proposta (o salvo com o que o nome acha um só), o estado e o
     quadro lido do Trello (as listas e os campos). Sem quadro, `erro` diz o que falta. */
 export interface SecaoPracas {
@@ -966,17 +967,34 @@ export interface SecaoPracas {
   quadro: (QuadroLido & { id: string; de: 'variavel' | 'lista' }) | null;
   erro?: string;
 }
-export const lerConfiguracao = () => pedir<{ pracas: SecaoPracas }>('/api/configuracao').then((r) => r.pracas);
+/** A seção Card (#74) como o servidor manda: o salvo, a proposta e o estado (o quadro é o mesmo das praças). */
+export interface SecaoCard {
+  primeiraVez: boolean;
+  salvo: LigacoesDoCard;
+  proposta: LigacoesDoCard;
+  estado: EstadoDoCard | null;
+  erro?: string;
+}
+export interface SecoesDaConfiguracao {
+  pracas: SecaoPracas;
+  card: SecaoCard;
+}
+/** O que vai para conferir e salvar: só as seções que mudaram. */
+export interface MudancasDaConfiguracao {
+  pracas?: LigacoesDasPracas;
+  card?: LigacoesDoCard;
+}
+export const lerConfiguracao = () => pedir<SecoesDaConfiguracao>('/api/configuracao');
 /** Confere sem salvar nada. */
-export const conferirConfiguracao = (pracas: LigacoesDasPracas) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify({ pracas }) });
+export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify(m) });
 /** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */
-export async function salvarConfiguracao(pracas: LigacoesDasPracas): Promise<{ pracas: SecaoPracas } | { conferencia: ConferenciaDasPracas }> {
-  const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify({ pracas }) });
-  const corpo = (await r.json().catch(() => null)) as { pracas?: SecaoPracas; conferencia?: ConferenciaDasPracas; erro?: string } | null;
-  if (r.ok && corpo?.pracas) {
+export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ secoes: SecoesDaConfiguracao } | { conferencia: ConferenciaDasPracas }> {
+  const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify(m) });
+  const corpo = (await r.json().catch(() => null)) as (Partial<SecoesDaConfiguracao> & { conferencia?: ConferenciaDasPracas; erro?: string }) | null;
+  if (r.ok && corpo?.pracas && corpo.card) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { pracas: corpo.pracas };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);

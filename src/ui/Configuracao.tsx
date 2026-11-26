@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { conferirConfiguracao, lerConfiguracao, salvarConfiguracao, type SecaoPracas } from '../dados/armazenamento';
+import { conferirConfiguracao, lerConfiguracao, salvarConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
 import {
   CHAVE_DO_CAMPO,
   FLUXOS_DO_N8N,
@@ -17,6 +17,7 @@ import {
   type Ponta,
   type QuadroLido,
 } from '../modelo/ligarPeloNome';
+import { ITENS_DO_CARD, NOME_DO_TIPO, desfazerAMaoDoCard, estadoDoCard, ligarAMaoNoCard, oQueMudaNoCard, type EstadoDoCard, type ItemDoCard, type LigacoesDoCard } from '../modelo/ligarOCard';
 import { reconhecerPraca, type Praca, type RegraDaPraca } from '../modelo/pracas';
 import { Icone } from './icones';
 import { Marca } from './pecas';
@@ -27,8 +28,10 @@ import './configuracao.css';
    as exceções (o que não achou, o que achou em dobro, o que sumiu e o ligado à mão), e o resto num "ver tudo". As
    regras de cada praça ficam sempre à mostra e editáveis; a ordem é arrastável; uma é a padrão. Tudo o que muda
    fica num rascunho até "Conferir e salvar". "+ Nova praça" (#73) cria uma praça: sigla, nome e regra; a entrada, a
-   saída e a opção ligam pelo nome (ou à mão); a opção que não existe o PROMeiro cria ao salvar. No celular, só
-   consulta. */
+   saída e a opção ligam pelo nome (ou à mão); a opção que não existe o PROMeiro cria ao salvar. A seção Card (#74) é
+   do mesmo jeito: os campos do card, as opções da prioridade e da complexidade e a lista do VT, ligados pelo nome;
+   trocar um campo limpa as opções dele (o nome liga as do campo novo). A barra salva as duas seções juntas. No celular,
+   só consulta. */
 
 interface Props {
   voltar: () => void;
@@ -98,10 +101,14 @@ interface Escolha {
 
 export function Configuracao({ voltar, avisar }: Props) {
   const celular = useTelaDeCelular();
-  const [secao, setSecao] = useState<SecaoPracas | null>(null);
+  const [secoes, setSecoes] = useState<SecoesDaConfiguracao | null>(null);
+  const secao = secoes?.pracas ?? null;
   const [falha, setFalha] = useState('');
   const [rascunho, setRascunho] = useState<LigacoesDasPracas | null>(null);
   const [verTudo, setVerTudo] = useState(false);
+  const [rascunhoCard, setRascunhoCard] = useState<LigacoesDoCard | null>(null);
+  const [verTudoCard, setVerTudoCard] = useState(false);
+  const [escolhaCard, setEscolhaCard] = useState<EscolhaNoCard | null>(null);
   const [editando, setEditando] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<Escolha | null>(null);
   const [conferencia, setConferencia] = useState<{ estado: 'conferindo' } | { estado: 'pronta'; r: ConferenciaDasPracas; salvando?: boolean } | null>(null);
@@ -110,15 +117,19 @@ export function Configuracao({ voltar, avisar }: Props) {
   const [n8nPendente, setN8nPendente] = useState<string[]>([]);
 
   const fecharEscolha = useCallback(() => setEscolha(null), []);
+  const fecharEscolhaCard = useCallback(() => setEscolhaCard(null), []);
+  /** As seções como o servidor mandou: os rascunhos voltam à proposta. */
+  const receber = useCallback((s: SecoesDaConfiguracao) => {
+    setSecoes(s);
+    setRascunho(s.pracas.proposta);
+    setRascunhoCard(s.card.proposta);
+  }, []);
   const carregar = useCallback(() => {
     setFalha('');
     lerConfiguracao()
-      .then((s) => {
-        setSecao(s);
-        setRascunho(s.proposta);
-      })
+      .then(receber)
       .catch((e) => setFalha(e instanceof Error ? e.message : String(e)));
-  }, []);
+  }, [receber]);
   useEffect(carregar, [carregar]);
 
   const quadro = secao?.quadro ?? null;
@@ -128,7 +139,10 @@ export function Configuracao({ voltar, avisar }: Props) {
   const estado = useMemo(() => (completo && quadro ? estadoDasPracas(completo, quadro, novas) : null), [completo, quadro, novas]);
   // a praça nova conta como uma mudança só (mesmo sem sigla ainda: "Conferir" pede a sigla), com as das outras
   const mudancasDasOutras = useMemo(() => (rascunho && secao && quadro ? oQueMuda(rascunho, secao.salvo, quadro).length : 0), [rascunho, secao, quadro]);
-  const nMudancas = mudancasDasOutras + (nova ? 1 : 0);
+  const mudouPracas = mudancasDasOutras + (nova ? 1 : 0);
+  const estadoCard = useMemo(() => (rascunhoCard && quadro ? estadoDoCard(rascunhoCard, quadro) : null), [rascunhoCard, quadro]);
+  const mudouCard = useMemo(() => (rascunhoCard && secoes && quadro ? oQueMudaNoCard(rascunhoCard, secoes.card.salvo, quadro).length : 0), [rascunhoCard, secoes, quadro]);
+  const nMudancas = mudouPracas + mudouCard;
   // no celular, só consulta: nada muda
   const podeMudar = !celular && !!quadro;
 
@@ -173,12 +187,23 @@ export function Configuracao({ voltar, avisar }: Props) {
   /** Desfazer o ligado à mão: volta o que o nome acha (um só), ou fica vazio (vira exceção). */
   const desfazer = (chaves: string[]) => setRascunho((r) => (r && quadro ? desfazerAMao(r, quadro, chaves) : r));
 
+  /** Ligar à mão no card: trocar um campo limpa as opções dele (o nome liga as do campo novo). */
+  const ligarNoCard = (item: string, id: string) => {
+    setRascunhoCard((r) => (r && quadro ? ligarAMaoNoCard(r, quadro, item, id) : r));
+    setEscolhaCard(null);
+  };
+  /** Os campos copiados do card do filme: marcar ou desmarcar um. */
+  const alternarDoFilme = (id: string) => setRascunhoCard((r) => r && { ...r, doFilme: r.doFilme.includes(id) ? r.doFilme.filter((x) => x !== id) : [...r.doFilme, id] });
+  const desfazerNoCard = (chaves: string[]) => setRascunhoCard((r) => (r && quadro ? desfazerAMaoDoCard(r, quadro, chaves) : r));
+  /** Vai para conferir e salvar só a seção que mudou. */
+  const oQueVai = (): MudancasDaConfiguracao => ({ ...(mudouPracas && completo ? { pracas: completo } : {}), ...(mudouCard && rascunhoCard ? { card: rascunhoCard } : {}) });
+
   const conferir = async () => {
     if (!completo) return;
     if (nova && !nova.sigla) return avisar('Falta a sigla da praça nova.');
     setConferencia({ estado: 'conferindo' });
     try {
-      setConferencia({ estado: 'pronta', r: await conferirConfiguracao(completo) });
+      setConferencia({ estado: 'pronta', r: await conferirConfiguracao(oQueVai()) });
     } catch (e) {
       setConferencia(null);
       avisar(e instanceof Error ? e.message : String(e));
@@ -188,10 +213,9 @@ export function Configuracao({ voltar, avisar }: Props) {
     if (!completo || conferencia?.estado !== 'pronta') return;
     setConferencia({ ...conferencia, salvando: true });
     try {
-      const r = await salvarConfiguracao(completo);
+      const r = await salvarConfiguracao(oQueVai());
       if ('conferencia' in r) return setConferencia({ estado: 'pronta', r: r.conferencia });
-      setSecao(r.pracas);
-      setRascunho(r.pracas.proposta);
+      receber(r.secoes);
       setConferencia(null);
       setEditando(null);
       setNova(null);
@@ -224,9 +248,10 @@ export function Configuracao({ voltar, avisar }: Props) {
           <p className="cfg-falha" role="alert">
             {falha} <button className="botao-texto" onClick={carregar}>Tentar de novo</button>
           </p>
-        ) : !secao || !rascunho || !completo ? (
+        ) : !secao || !secoes || !rascunho || !completo || !rascunhoCard ? (
           <p className="cfg-lendo">Lendo o quadro do Trello…</p>
         ) : (
+          <>
           <SecaoDasPracas
             secao={secao}
             rascunho={completo}
@@ -249,6 +274,18 @@ export function Configuracao({ voltar, avisar }: Props) {
             escolher={setEscolha}
             desfazer={desfazer}
           />
+          <SecaoDoCard
+            secao={secoes.card}
+            rascunho={rascunhoCard}
+            estado={estadoCard}
+            quadro={quadro}
+            podeMudar={podeMudar}
+            verTudo={verTudoCard}
+            alternarVerTudo={() => setVerTudoCard((v) => !v)}
+            escolher={setEscolhaCard}
+            desfazer={desfazerNoCard}
+          />
+          </>
         )}
       </main>
 
@@ -260,6 +297,7 @@ export function Configuracao({ voltar, avisar }: Props) {
             className="cfg-barra-descartar"
             onClick={() => {
               setRascunho(secao?.proposta ?? null);
+              setRascunhoCard(secoes?.card.proposta ?? null);
               setEditando(null);
               setNova(null);
             }}
@@ -272,6 +310,9 @@ export function Configuracao({ voltar, avisar }: Props) {
         </div>
       )}
       {escolha && quadro && completo && <Escolher escolha={escolha} quadro={quadro} rascunho={completo} estado={estado} ligar={(id) => ligar(escolha, id)} fechar={fecharEscolha} />}
+      {escolhaCard && quadro && rascunhoCard && (
+        <EscolherNoCard escolha={escolhaCard} quadro={quadro} rascunho={rascunhoCard} estado={estadoCard} ligar={(id) => ligarNoCard(escolhaCard.item, id)} alternar={alternarDoFilme} fechar={fecharEscolhaCard} />
+      )}
       {conferencia && <DialogoDeConferir conferencia={conferencia} novas={novas} voltar={() => setConferencia(null)} salvar={() => void salvar()} />}
     </div>
   );
@@ -313,17 +354,15 @@ function SecaoDasPracas(props: PropsDaSecao) {
   const temProblema = !!estado?.excecoes.length;
   return (
     <section className="cfg-secao" aria-labelledby="cfg-pracas">
-      <header className="cfg-secao-topo">
-        <h2 id="cfg-pracas">Praças</h2>
-        <Ajuda texto={AJUDA_DAS_PRACAS} />
-        <span className={`cfg-estado ${secao.erro ? 'falta' : temProblema ? 'tem' : 'ok'}`}>{estado?.resumo ?? `${plural(rascunho.pracas.length, 'praça', 'praças')} · sem o quadro do Trello`}</span>
-        <span className="espaco" />
-        {estado && (
-          <button type="button" className="cfg-ver-tudo" aria-expanded={verTudo} onClick={alternarVerTudo}>
-            {verTudo ? 'esconder' : 'ver tudo'} <Icone nome="baixo" tam={13} style={{ transform: verTudo ? 'rotate(180deg)' : undefined }} />
-          </button>
-        )}
-      </header>
+      <TopoDaSecao
+        id="cfg-pracas"
+        titulo="Praças"
+        ajuda={AJUDA_DAS_PRACAS}
+        cor={secao.erro ? 'falta' : temProblema ? 'tem' : 'ok'}
+        resumo={estado?.resumo ?? `${plural(rascunho.pracas.length, 'praça', 'praças')} · sem o quadro do Trello`}
+        verTudo={estado ? verTudo : null}
+        alternarVerTudo={alternarVerTudo}
+      />
       <div className="cfg-secao-corpo">
         {secao.erro && <p className="cfg-falha">{secao.erro}</p>}
         {estado && estado.excecoes.length > 0 && <Excecoes {...props} estado={estado} />}
@@ -339,6 +378,49 @@ function SecaoDasPracas(props: PropsDaSecao) {
         {verTudo && estado && <TudoDasPracas {...props} estado={estado} />}
       </div>
     </section>
+  );
+}
+
+/** O topo de cada seção: o título, o "?", a linha de estado e o "ver tudo" (null: sem o que mostrar). */
+function TopoDaSecao({ id, titulo, ajuda, cor, resumo, verTudo, alternarVerTudo }: { id: string; titulo: string; ajuda: string; cor: 'ok' | 'tem' | 'falta'; resumo: string; verTudo: boolean | null; alternarVerTudo: () => void }) {
+  return (
+    <header className="cfg-secao-topo">
+      <h2 id={id}>{titulo}</h2>
+      <Ajuda texto={ajuda} />
+      <span className={`cfg-estado ${cor}`}>{resumo}</span>
+      <span className="espaco" />
+      {verTudo !== null && (
+        <button type="button" className="cfg-ver-tudo" aria-expanded={verTudo} onClick={alternarVerTudo}>
+          {verTudo ? 'esconder' : 'ver tudo'} <Icone nome="baixo" tam={13} style={{ transform: verTudo ? 'rotate(180deg)' : undefined }} />
+        </button>
+      )}
+    </header>
+  );
+}
+
+/** Um cartão de exceção: o problema (com "Escolher") ou o ligado à mão (com "desfazer"). Sem as ações, só consulta. */
+function CartaoDeExcecao({ chave, mao, dobro, titulo, detalhe, escolher, desfazer }: { chave: string; mao: boolean; dobro: boolean; titulo: string; detalhe: string; escolher?: (ancora: DOMRect) => void; desfazer?: () => void }) {
+  return (
+    <li className={`cfg-exc ${mao ? 'mao' : 'problema'}`} data-chave={chave}>
+      <span className="cfg-exc-ico" aria-hidden>
+        <Icone nome={mao ? 'mao' : dobro ? 'duplicar' : 'atencao'} tam={14} traco={2.2} />
+      </span>
+      <span className="cfg-exc-texto">
+        <strong>{titulo}</strong>
+        <span>{detalhe}</span>
+      </span>
+      {mao
+        ? desfazer && (
+            <button type="button" className="botao-texto" onClick={desfazer}>
+              desfazer
+            </button>
+          )
+        : escolher && (
+            <button type="button" className="botao" onClick={(e) => escolher(e.currentTarget.getBoundingClientRect())}>
+              Escolher
+            </button>
+          )}
+    </li>
   );
 }
 
@@ -421,25 +503,16 @@ function Excecoes({ estado, rascunho, podeMudar, escolher, desfazer, quadro }: P
     const t = texto ?? tituloDaExcecao(sigla, ponta, l);
     const detalhe = l.problema === 'dobro' ? nomesDoDobro(l, ponta) : t.detalhe;
     cartoes.push(
-      <li key={chave} className={`cfg-exc ${mao ? 'mao' : 'problema'}`} data-chave={chave}>
-        <span className="cfg-exc-ico" aria-hidden>
-          <Icone nome={mao ? 'mao' : l.problema === 'dobro' ? 'duplicar' : 'atencao'} tam={14} traco={2.2} />
-        </span>
-        <span className="cfg-exc-texto">
-          <strong>{t.titulo}</strong>
-          <span>{detalhe}</span>
-        </span>
-        {podeMudar &&
-          (mao ? (
-            <button type="button" className="botao-texto" onClick={() => desfazer(mao)}>
-              desfazer
-            </button>
-          ) : (
-            <button type="button" className="botao" onClick={(e) => escolher({ chave, sigla, ponta, ancora: e.currentTarget.getBoundingClientRect() })}>
-              Escolher
-            </button>
-          ))}
-      </li>,
+      <CartaoDeExcecao
+        key={chave}
+        chave={chave}
+        mao={!!mao}
+        dobro={l.problema === 'dobro'}
+        titulo={t.titulo}
+        detalhe={detalhe}
+        escolher={podeMudar ? (ancora) => escolher({ chave, sigla, ponta, ancora }) : undefined}
+        desfazer={podeMudar && mao ? () => desfazer(mao) : undefined}
+      />,
     );
   };
   const exc = new Set(estado.excecoes.map((l) => l.chave));
@@ -752,15 +825,216 @@ function TudoDasPracas({ estado, podeMudar, escolher }: PropsDaSecao & { estado:
   );
 }
 
+/* ---------- a seção Card (#74) ---------- */
+
+/** O que se escolhe à mão no card: um item (campo, opção ou a lista do VT) ou os campos copiados do filme. */
+interface EscolhaNoCard {
+  item: string | 'doFilme';
+  ancora: DOMRect;
+}
+type LigacaoDoCard = EstadoDoCard['itens'][number];
+
+interface PropsDoCard {
+  secao: SecaoCard;
+  rascunho: LigacoesDoCard;
+  estado: EstadoDoCard | null;
+  quadro: QuadroLido | null;
+  podeMudar: boolean;
+  verTudo: boolean;
+  alternarVerTudo: () => void;
+  escolher: (e: EscolhaNoCard) => void;
+  desfazer: (chaves: string[]) => void;
+}
+
+const AJUDA_DO_CARD =
+  'Os campos que o card leva no Trello: prioridade (ALTA e MÉDIA), complexidade (BAIXA, MÉDIA e ALTA), redator, editor, projeto, output, BOT e entrada, e a lista do VT. Ligados pelo nome e pelo tipo do campo. Trocar um campo pede de novo as opções dele.';
+const ITEM_DO_CARD = new Map<string, ItemDoCard>(ITENS_DO_CARD.map((i) => [i.chave, i]));
+/** O campo de que a opção depende ("Prioridade"), pelo rótulo do campo. */
+const rotuloDoCampo = (i: ItemDoCard) => (i.o === 'opcao' ? (ITEM_DO_CARD.get(i.de)?.rotulo ?? '') : i.rotulo);
+
+function textoDaExcecaoNoCard(i: ItemDoCard, l: LigacaoDoCard, quadro: QuadroLido | null, rascunho: LigacoesDoCard): { titulo: string; detalhe: string } {
+  const nome = l.nome ? `"${l.nome}"` : '';
+  if (i.o === 'opcao') {
+    const campo = rotuloDoCampo(i);
+    const doCampo = quadro?.campos.find((c) => c.id === rascunho.ids[i.de]);
+    if (l.problema === 'dobro') return { titulo: `${campo}: duas opções "${i.nome}"`, detalhe: `o campo ${doCampo?.nome ?? campo} tem ${i.nome} ${l.candidatos.length === 2 ? 'duas' : l.candidatos.length} vezes. Qual vale?` };
+    if (l.problema === 'nenhum') return { titulo: `${campo}: sem a opção ${i.nome}`, detalhe: `não achei pelo nome no campo ${doCampo?.nome ?? campo}` };
+    if (l.problema === 'sumiu') return { titulo: `${campo}: a opção ${i.nome} sumiu`, detalhe: 'não está mais no campo' };
+    return { titulo: `${i.rotulo}: ${nome}`, detalhe: 'ligada à mão' };
+  }
+  const oQue = i.o === 'lista' ? 'lista' : NOME_DO_TIPO[i.tipo];
+  if (i.o === 'lista') {
+    if (l.problema === 'dobro') return { titulo: `Duas listas "${i.nome}"`, detalhe: 'Qual vale?' };
+    if (l.problema === 'nenhum') return { titulo: `Sem a lista ${i.nome}`, detalhe: 'não achei pelo nome: o VT segue a praça' };
+    if (l.problema === 'sumiu') return { titulo: `A lista ${i.nome} sumiu`, detalhe: 'não está mais no quadro' };
+    if (l.problema === 'arquivada') return { titulo: `A lista ${i.nome} está arquivada`, detalhe: `${nome} está arquivada no Trello` };
+    return { titulo: `${i.rotulo}: ${nome}`, detalhe: 'ligada à mão' };
+  }
+  if (l.problema === 'dobro') return { titulo: `Dois campos "${i.nome}"`, detalhe: 'Qual vale?' };
+  if (l.problema === 'nenhum') return { titulo: `Sem o campo ${i.rotulo}`, detalhe: `nenhum ${oQue} "${i.nome}" no quadro` };
+  if (l.problema === 'tipo') return { titulo: `O campo ${i.rotulo} não é ${oQue}`, detalhe: `${nome} é de outro tipo` };
+  if (l.problema === 'sumiu') return { titulo: `O campo ${i.rotulo} sumiu`, detalhe: 'não está mais no quadro' };
+  return { titulo: `${i.rotulo}: ${nome}`, detalhe: 'ligado à mão' };
+}
+
+function SecaoDoCard(props: PropsDoCard) {
+  const { secao, estado, quadro, rascunho, podeMudar, verTudo, alternarVerTudo, escolher, desfazer } = props;
+  const temProblema = !!estado?.excecoes.length;
+  const sumiuDoFilme = estado?.doFilme.some((l) => l.problema) ?? false;
+  const corpo = !!secao.erro || temProblema || sumiuDoFilme || (verTudo && !!estado);
+  return (
+    <section className="cfg-secao" aria-labelledby="cfg-card" data-secao="card">
+      <TopoDaSecao
+        id="cfg-card"
+        titulo="Card"
+        ajuda={AJUDA_DO_CARD}
+        cor={secao.erro ? 'falta' : temProblema || sumiuDoFilme ? 'tem' : 'ok'}
+        resumo={estado?.resumo ?? 'sem o quadro do Trello'}
+        verTudo={estado ? verTudo : null}
+        alternarVerTudo={alternarVerTudo}
+      />
+      {corpo && (
+        <div className="cfg-secao-corpo">
+          {secao.erro && !secao.estado && <p className="cfg-falha">{secao.erro}</p>}
+          {estado && (temProblema || sumiuDoFilme) && (
+            <ul className="cfg-excecoes">
+              {estado.excecoes.map((l) => {
+                const t = textoDaExcecaoNoCard(ITEM_DO_CARD.get(l.item)!, l, quadro, rascunho);
+                return (
+                  <CartaoDeExcecao
+                    key={l.chave}
+                    chave={l.chave}
+                    mao={!l.problema}
+                    dobro={l.problema === 'dobro'}
+                    titulo={t.titulo}
+                    detalhe={t.detalhe}
+                    escolher={podeMudar ? (ancora) => escolher({ item: l.item, ancora }) : undefined}
+                    desfazer={podeMudar ? () => desfazer([l.chave]) : undefined}
+                  />
+                );
+              })}
+              {sumiuDoFilme && (
+                <CartaoDeExcecao
+                  chave="card.doFilme"
+                  mao={false}
+                  dobro={false}
+                  titulo="Copiados do filme: um campo sumiu"
+                  detalhe="não está mais no quadro"
+                  escolher={podeMudar ? (ancora) => escolher({ item: 'doFilme', ancora }) : undefined}
+                />
+              )}
+            </ul>
+          )}
+          {verTudo && estado && <TudoDoCard {...props} estado={estado} />}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const COMO_FOI: Record<string, string> = { nenhum: 'não achado', dobro: 'em dobro', sumiu: 'sumiu', arquivada: 'arquivada', tipo: 'tipo errado' };
+
+function TudoDoCard({ estado, podeMudar, escolher }: PropsDoCard & { estado: EstadoDoCard }) {
+  const porItem = new Map(estado.itens.map((l) => [l.item, l]));
+  const trocar = (item: string) =>
+    podeMudar && (
+      <>
+        {' · '}
+        <button type="button" className="botao-texto" onClick={(e) => escolher({ item, ancora: e.currentTarget.getBoundingClientRect() })}>
+          trocar
+        </button>
+      </>
+    );
+  const linha = (item: string, rotulo: string) => {
+    const l = porItem.get(item)!;
+    const i = ITEM_DO_CARD.get(item)!;
+    // a opção de um campo que não está ligado espera o campo
+    const esperando = i.o === 'opcao' && !!porItem.get(i.de)?.problema;
+    return (
+      <div className="cfg-tudo-l" key={l.chave} data-chave={l.chave}>
+        <span className="cfg-tudo-rotulo">{rotulo}</span>
+        <span className="cfg-tudo-valor">{l.nome || '—'}</span>
+        <span className={`cfg-tudo-como ${l.problema && !esperando ? 'problema' : l.como === 'mao' ? 'mao' : ''}`}>
+          {esperando ? 'espera o campo' : l.problema ? COMO_FOI[l.problema] : l.como === 'mao' ? (i.o === 'campo' ? 'ligado à mão' : 'ligada à mão') : 'achado pelo nome'}
+          {!esperando && trocar(item)}
+        </span>
+      </div>
+    );
+  };
+  const nomesDoFilme = estado.doFilme.map((l) => l.nome || '(sumiu)').join(', ');
+  return (
+    <div className="cfg-tudo" aria-label="Tudo o que o card leva">
+      <div className="cfg-tudo-praca">
+        <h3>PRIORIDADE</h3>
+        {linha('prioridade', 'Campo')}
+        {linha('prioridade.ALTA', 'ALTA')}
+        {linha('prioridade.MEDIA', 'MÉDIA')}
+      </div>
+      <div className="cfg-tudo-praca">
+        <h3>COMPLEXIDADE</h3>
+        {linha('complexidade', 'Campo')}
+        {linha('complexidade.BAIXA', 'BAIXA')}
+        {linha('complexidade.MEDIA', 'MÉDIA')}
+        {linha('complexidade.ALTA', 'ALTA')}
+      </div>
+      <div className="cfg-tudo-praca">
+        <h3>CAMPOS E LISTA</h3>
+        {['redator', 'editor', 'projeto', 'output', 'bot', 'entrada', 'vt'].map((k) => linha(k, ITEM_DO_CARD.get(k)!.rotulo))}
+        <div className="cfg-tudo-l" data-chave="card.doFilme">
+          <span className="cfg-tudo-rotulo">Copiados do filme</span>
+          <span className="cfg-tudo-valor">{nomesDoFilme || '—'}</span>
+          <span className={`cfg-tudo-como ${estado.doFilme.some((l) => l.problema) ? 'problema' : ''}`}>
+            {estado.doFilme.some((l) => l.problema) ? 'um sumiu' : 'escolhidos'}
+            {trocar('doFilme')}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const COR_DA_OPCAO: Record<string, string> = { green: 'verde', yellow: 'amarela', orange: 'laranja', red: 'vermelha', purple: 'roxa', blue: 'azul', sky: 'celeste', lime: 'lima', pink: 'rosa', black: 'preta' };
+
+function EscolherNoCard({ escolha, quadro, rascunho, estado, ligar, alternar, fechar }: { escolha: EscolhaNoCard; quadro: QuadroLido; rascunho: LigacoesDoCard; estado: EstadoDoCard | null; ligar: (id: string) => void; alternar: (id: string) => void; fechar: () => void }) {
+  const tipoDe = (tipo: string) => NOME_DO_TIPO[tipo] ?? tipo;
+  if (escolha.item === 'doFilme')
+    return (
+      <BalaoDeEscolha
+        titulo="Campos copiados do card do filme"
+        ancora={escolha.ancora}
+        opcoes={quadro.campos.map((c) => ({ id: c.id, nome: c.nome, nota: tipoDe(c.tipo), desligada: false }))}
+        candidatos={[]}
+        atuais={rascunho.doFilme}
+        escolher={alternar}
+        fechar={fechar}
+        varios
+      />
+    );
+  const i = ITEM_DO_CARD.get(escolha.item)!;
+  const ligacao = estado?.itens.find((l) => l.item === i.chave);
+  // o campo que já é de outro item: "é o campo Redator"
+  const usoDo = (id: string) => ITENS_DO_CARD.find((x) => x.o === 'campo' && x.chave !== i.chave && rascunho.ids[x.chave] === id)?.rotulo;
+  let titulo: string = i.rotulo;
+  let opcoes: OpcaoDoBalao[];
+  if (i.o === 'campo') {
+    titulo = `Campo ${i.rotulo}`;
+    opcoes = quadro.campos.map((c) => {
+      const uso = usoDo(c.id);
+      return { id: c.id, nome: c.nome, nota: c.tipo !== i.tipo ? `é ${tipoDe(c.tipo)}` : uso ? `é o campo ${uso}` : tipoDe(c.tipo), desligada: c.tipo !== i.tipo };
+    });
+  } else if (i.o === 'lista') opcoes = quadro.listas.filter((l) => !l.arquivada).map((l) => ({ id: l.id, nome: l.nome, nota: '', desligada: false }));
+  else {
+    const campo = quadro.campos.find((c) => c.id === rascunho.ids[i.de]);
+    titulo = `${i.nome} no campo ${campo?.nome ?? rotuloDoCampo(i)}`;
+    opcoes = (campo?.opcoes ?? []).map((o, n) => ({ id: o.id, nome: o.nome, nota: [`${n + 1}ª do campo`, o.cor && COR_DA_OPCAO[o.cor]].filter(Boolean).join(' · '), desligada: false }));
+  }
+  return <BalaoDeEscolha titulo={titulo} ancora={escolha.ancora} opcoes={opcoes} candidatos={ligacao?.candidatos ?? []} atuais={ligacao?.id ? [ligacao.id] : []} escolher={ligar} fechar={fechar} emOrdem={i.o === 'opcao'} />;
+}
+
 /* ---------- escolher à mão ---------- */
 
 function Escolher({ escolha, quadro, rascunho, estado, ligar, fechar }: { escolha: Escolha; quadro: QuadroLido; rascunho: LigacoesDasPracas; estado: PropsDaSecao['estado']; ligar: (id: string) => void; fechar: () => void }) {
-  const [busca, setBusca] = useState('');
-  const caixa = useRef<HTMLDivElement>(null);
-  useFecharFora(caixa, true, fechar);
   const ligacao = [estado?.campo, ...(estado?.pracas.flatMap((p) => [p.entrada, p.saida, p.opcao]) ?? [])].find((l) => l?.chave === escolha.chave);
-  const candidatos = new Set(ligacao?.candidatos ?? []);
-  const atual = ligacao?.id ?? '';
   // o que cada lista já é: "é a entrada de SP"
   const usoDa = (id: string) =>
     rascunho.pracas.flatMap((p) => (['entrada', 'saida'] as const).filter((x) => p[x] === id && !(p.sigla === escolha.sigla && x === escolha.ponta)).map((x) => `é a ${NOME_DA_PONTA[x]} de ${p.sigla}`))[0] ?? '';
@@ -771,13 +1045,32 @@ function Escolher({ escolha, quadro, rascunho, estado, ligar, fechar }: { escolh
       : escolha.ponta === 'opcao'
         ? (quadro.campos.find((c) => c.id === rascunho.campoPraca)?.opcoes ?? []).map((o) => ({ id: o.id, nome: o.nome, nota: '', desligada: false }))
         : quadro.listas.filter((l) => !l.arquivada).map((l) => ({ id: l.id, nome: l.nome, nota: usoDa(l.id), desligada: false }));
+  return <BalaoDeEscolha titulo={titulo} ancora={escolha.ancora} opcoes={opcoes} candidatos={ligacao?.candidatos ?? []} atuais={ligacao?.id ? [ligacao.id] : []} escolher={ligar} fechar={fechar} />;
+}
+
+interface OpcaoDoBalao {
+  id: string;
+  nome: string;
+  nota: string;
+  desligada: boolean;
+}
+
+/** O balão de escolher à mão, na altura do botão que abriu: a busca, os que o nome achou primeiro, o resto pelo nome.
+    Com `varios`, cada clique marca ou desmarca e o balão fica aberto. */
+function BalaoDeEscolha({ titulo, ancora, opcoes, candidatos, atuais, escolher, fechar, varios = false, emOrdem = false }: { titulo: string; ancora: DOMRect; opcoes: OpcaoDoBalao[]; candidatos: string[]; atuais: string[]; escolher: (id: string) => void; fechar: () => void; varios?: boolean; emOrdem?: boolean }) {
+  const [busca, setBusca] = useState('');
+  const caixa = useRef<HTMLDivElement>(null);
+  useFecharFora(caixa, true, fechar);
+  const doNome = new Set(candidatos);
+  const atual = new Set(atuais);
   const termo = busca.trim().toLowerCase();
-  const vistas = opcoes
-    .filter((o) => !termo || o.nome.toLowerCase().includes(termo))
-    .sort((a, b) => Number(candidatos.has(b.id)) - Number(candidatos.has(a.id)) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const vistas = opcoes.filter((o) => !termo || o.nome.toLowerCase().includes(termo));
+  // as opções de um campo ficam na ordem do campo (a 1ª, a 2ª…); listas e campos, pelo nome
+  if (!emOrdem) vistas.sort((a, b) => Number(doNome.has(b.id)) - Number(doNome.has(a.id)) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  else vistas.sort((a, b) => Number(doNome.has(b.id)) - Number(doNome.has(a.id)));
   const largura = 360;
-  const left = Math.max(12, Math.min(escolha.ancora.right - largura, window.innerWidth - largura - 12));
-  const top = escolha.ancora.bottom + 6;
+  const left = Math.max(12, Math.min(ancora.right - largura, window.innerWidth - largura - 12));
+  const top = ancora.bottom + 6;
   // no corpo da página (fora da seção), na altura do botão que abriu
   return createPortal(
     <div className="cfg-escolher" ref={caixa} role="dialog" aria-label={titulo} style={{ left, top: top + window.scrollY, width: largura }}>
@@ -789,7 +1082,12 @@ function Escolher({ escolha, quadro, rascunho, estado, ligar, fechar }: { escolh
       <ul>
         {vistas.map((o) => (
           <li key={o.id}>
-            <button type="button" disabled={o.desligada} aria-current={o.id === atual || undefined} onClick={() => ligar(o.id)}>
+            <button type="button" disabled={o.desligada} aria-current={(!varios && atual.has(o.id)) || undefined} aria-pressed={varios ? atual.has(o.id) : undefined} onClick={() => escolher(o.id)}>
+              {varios && (
+                <span className="cfg-marcar" aria-hidden>
+                  {atual.has(o.id) && <Icone nome="certo" tam={12} traco={2.6} />}
+                </span>
+              )}
               <span className="n">{o.nome}</span>
               {o.nota && <span className="nota">{o.nota}</span>}
             </button>

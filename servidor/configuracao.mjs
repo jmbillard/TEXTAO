@@ -32,6 +32,7 @@ export const SALVAVEIS = new Set([
  * @param portainer as variáveis de ambiente (não são alteradas)
  * @returns
  *   valores() — o objeto de configuração de agora (congelado): o Portainer com o salvo por cima;
+ *   salvos() — os nomes que têm valor salvo no PROMeiro (o resto vem do Portainer);
  *   salvar(mudancas, { por }) — grava { NOME: 'valor' } (null tira o salvo e volta o Portainer) e devolve os valores
  *   novos; um nome que não é da tela (segredo, infraestrutura, desconhecido) recusa a mudança inteira.
  */
@@ -67,6 +68,8 @@ export function criarConfiguracao(db, portainer = process.env) {
 
   return {
     valores: () => atuais,
+    /** Os nomes que têm valor salvo no PROMeiro (o resto vem do Portainer). */
+    salvos: () => new Set(q.todos.all().filter((l) => SALVAVEIS.has(l.nome)).map((l) => l.nome)),
     salvar(mudancas, { por = '' } = {}) {
       const recusados = Object.keys(mudancas).filter((n) => !SALVAVEIS.has(n));
       if (recusados.length) throw new Error(`Não se guarda no PROMeiro (fica no Portainer): ${recusados.join(', ')}.`);

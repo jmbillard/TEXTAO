@@ -103,6 +103,8 @@ button.cfg-ed:hover { border-color: var(--ultra); border-style: solid; }
 .cfg-escolher li button:disabled { opacity: 0.45; cursor: default; }
 .cfg-escolher li .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .cfg-escolher li .nota { font: 500 12px var(--sans); color: var(--producao); white-space: nowrap; }
+.cfg-marcar { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--regua-forte); display: grid; place-items: center; flex: none; color: var(--no-ultra); }
+.cfg-escolher li button[aria-pressed='true'] .cfg-marcar { background: var(--ultra); border-color: var(--ultra); }
 .cfg-escolher-vazio { padding: 10px; font-size: 13px; color: var(--tinta3); }
 
 /* ---------- a barra de salvar ---------- */

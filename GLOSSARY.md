@@ -142,7 +142,9 @@ O PROMeiro procura no quadro o que tem o nome esperado (sem caixa, acento e pont
 de lista "Praça", a opção "SP") e guarda o id: renomear depois não quebra. Achou um só, liga ("achado pelo nome");
 não achou, ou achou mais de um, é uma **exceção**, e alguém escolhe à mão ("ligado à mão", que também aparece como
 exceção, com "desfazer"). Um id guardado que some do quadro (ou cuja lista foi arquivada) também é exceção. A tela
-mostra só as exceções; o resto fica no "ver tudo".
+mostra só as exceções; o resto fica no "ver tudo". Um campo só liga com o tipo certo (lista, texto, data, caixa de
+marcar). A opção é sempre do campo dela (ALTA e MÉDIA da Prioridade; BAIXA, MÉDIA e ALTA da Complexidade): trocar o
+campo limpa as opções que não são do campo novo, e o nome liga de novo as que acha.
 _Evitar_: mapeamento, vínculo automático
 
 **Duplicada**:

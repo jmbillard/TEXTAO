@@ -29,7 +29,9 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco } from '../src/modelo/pracas.ts';
 import { acertarNArtesUmaVez } from './artes.mjs';
-import { conferirSecaoPracas, criarOpcoesDasNovas, lerSecaoPracas, mudancasDaSecao, secaoDoPedido } from './configuracao-pracas.mjs';
+import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
+import { VARIAVEIS_DO_CARD, cardDoPedido, conferirSecaoDoCard, mudancasDoCard, secaoDoCard } from './configuracao-card.mjs';
+import { cardDaConfiguracao } from '../src/modelo/ligarOCard.ts';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -1194,12 +1196,22 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return { dias, claquetes: [...daFila, ...daProducao].filter((c) => c.trim()) };
   }
 
+  /** As seções da tela de Configuração como a tela lê, com o quadro do Trello lido uma vez só. */
+  async function lerAsSecoes() {
+    const lido = await lerOQuadro(trello, env);
+    const salvos = configuracao.salvos();
+    const card = secaoDoCard(env, lido.quadro, { primeiraVez: !VARIAVEIS_DO_CARD.some((n) => salvos.has(n)) });
+    return { pracas: await lerSecaoPracas(trello, env, lido), card: lido.erro ? { ...card, erro: lido.erro } : card };
+  }
+
   /**
-   * A tela de Configuração (#72), só para administradores: GET lê a seção Praças (o salvo, o que o nome liga, o estado
-   * de cada ligação e as listas e campos do quadro); POST conferir { pracas } confere sem salvar nada; POST salvar
-   * { pracas } confere de novo e, sem erro, salva na configuração viva (vale na hora). Com erro, 422 e nada salvo.
-   * A conferência conta as claquetes recentes que mudariam de praça; a praça nova (#73) ganha a opção no campo Praça
-   * do Trello depois da conferência e antes de salvar: se o Trello recusa, 502 e nada salvo.
+   * A tela de Configuração (#72), só para administradores: GET lê as seções Praças e Card (#74) (o salvo, o que o nome
+   * liga, o estado de cada ligação e as listas e campos do quadro); POST conferir { pracas?, card? } confere sem salvar
+   * nada; POST salvar { pracas?, card? } confere de novo e, sem erro, salva na configuração viva (vale na hora). Vem só
+   * a seção que mudou; as duas juntas passam ou não passam juntas. Com erro, 422 e nada salvo.
+   * A conferência das praças conta as claquetes recentes que mudariam de praça; a praça nova (#73) ganha a opção no
+   * campo Praça do Trello depois da conferência e antes de salvar: se o Trello recusa, 502 e nada salvo. No card, a
+   * opção que não é do campo ligado (o campo foi trocado) sai e o nome liga a do campo novo, antes da conferência.
    */
   async function rotaDaConfiguracao(req, res, eu, caminho) {
     const acao = caminho.slice('/api/configuracao'.length);
@@ -1207,24 +1219,43 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (req.method !== (acao ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
     if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e mudam a Configuração.' });
     try {
-      if (!acao) return json(res, 200, { pracas: await lerSecaoPracas(trello, env) });
-      const nova = secaoDoPedido(await lerCorpo(req).catch(() => null));
-      if (!nova) return json(res, 400, { erro: 'As praças vieram incompletas.' });
-      const conferencia = await conferirSecaoPracas(trello, env, nova, await claquetesParaConferir());
+      if (!acao) return json(res, 200, await lerAsSecoes());
+      const corpo = await lerCorpo(req).catch(() => null);
+      if (corpo?.pracas === undefined && corpo?.card === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
+      const pracas = corpo.pracas === undefined ? null : secaoDoPedido(corpo);
+      if (corpo.pracas !== undefined && !pracas) return json(res, 400, { erro: 'As praças vieram incompletas.' });
+      const card = corpo.card === undefined ? null : cardDoPedido(corpo);
+      if (corpo.card !== undefined && !card) return json(res, 400, { erro: 'O card veio incompleto.' });
+      const lido = await lerOQuadro(trello, env);
+      const daPraca = pracas && (await conferirSecaoPracas(trello, env, pracas, await claquetesParaConferir(), lido));
+      const doCard = card && conferirSecaoDoCard(env, lido.quadro, card);
+      const partes = [daPraca, doCard?.conferencia].filter(Boolean);
+      const conferencia = {
+        ok: partes.every((c) => c.ok),
+        itens: partes.flatMap((c) => c.itens),
+        muda: partes.flatMap((c) => c.muda),
+        ...(daPraca?.claquetes ? { claquetes: daPraca.claquetes } : {}),
+      };
       if (acao === '/conferir') return json(res, 200, conferencia);
       if (!conferencia.ok) return json(res, 422, { erro: 'A conferência não passou: nada foi salvo.', conferencia });
       // a opção da praça nova no campo Praça: só depois da conferência; se o Trello recusa, nada é salvo
-      let completa;
-      try {
-        completa = await criarOpcoesDasNovas(trello, env, nova);
-      } catch (e) {
-        console.warn(`[configuração] a opção da praça nova não foi criada: ${e instanceof Error ? e.message : e}`);
-        return json(res, 502, { erro: `Não consegui criar a opção da praça nova no campo Praça do Trello: nada foi salvo. (${e instanceof Error ? e.message : e})` });
-      }
-      mudarConfiguracao(mudancasDaSecao(completa.secao), { por: eu.email });
-      const criadas = completa.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
-      console.log(`[configuração] ${eu.email} salvou as praças: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
-      return json(res, 200, { pracas: await lerSecaoPracas(trello, env) });
+      let completa = null;
+      if (pracas)
+        try {
+          completa = await criarOpcoesDasNovas(trello, env, pracas);
+        } catch (e) {
+          console.warn(`[configuração] a opção da praça nova não foi criada: ${e instanceof Error ? e.message : e}`);
+          return json(res, 502, { erro: `Não consegui criar a opção da praça nova no campo Praça do Trello: nada foi salvo. (${e instanceof Error ? e.message : e})` });
+        }
+      // o ligado à mão é um só (LIGADO_A_MAO): a seção que não veio fica com o que já estava salvo
+      const aMao = [...(completa ? completa.secao.aMao : pracasSalvas(env).aMao), ...(doCard ? doCard.secao.aMao : cardDaConfiguracao(env).aMao)];
+      mudarConfiguracao(
+        { ...(completa ? mudancasDaSecao(completa.secao) : {}), ...(doCard ? mudancasDoCard(doCard.secao) : {}), LIGADO_A_MAO: JSON.stringify(aMao) },
+        { por: eu.email },
+      );
+      const criadas = completa?.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
+      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
+      return json(res, 200, await lerAsSecoes());
     } catch (e) {
       console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);
       return json(res, 502, { erro: `Não consegui ler o quadro do Trello ou salvar: ${e instanceof Error ? e.message : e}` });

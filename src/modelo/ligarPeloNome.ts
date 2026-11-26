@@ -13,6 +13,8 @@ export interface ListaDoTrello {
 export interface OpcaoDoTrello {
   id: string;
   nome: string;
+  /** a cor da opção no Trello (green, red…): diz qual é qual quando duas têm o mesmo nome */
+  cor?: string;
 }
 export interface CampoDoTrello {
   id: string;
@@ -164,6 +166,22 @@ export function desfazerAMao(c: LigacoesDasPracas, quadro: QuadroLido, chaves: r
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
+/** A linha de estado de uma seção, pelas ligações dela: os problemas contados (ou "tudo ligado") e o à mão. */
+export function resumoDasLigacoes(todas: readonly Ligacao[]): string[] {
+  const conta = (f: (l: Ligacao) => boolean) => todas.filter(f).length;
+  const nenhum = conta((l) => l.problema === 'nenhum');
+  const dobro = conta((l) => l.problema === 'dobro');
+  const sumiu = conta((l) => l.problema === 'sumiu' || l.problema === 'arquivada');
+  const tipo = conta((l) => l.problema === 'tipo');
+  const mao = conta((l) => l.como === 'mao');
+  return [
+    ...(nenhum || dobro || sumiu || tipo
+      ? [nenhum && plural(nenhum, 'não achado', 'não achados'), sumiu && plural(sumiu, 'sumiu', 'sumiram'), dobro && `${dobro} em dobro`, tipo && `${tipo} de tipo errado`]
+      : ['tudo ligado']),
+    mao && `${mao} à mão`,
+  ].filter((x): x is string => !!x);
+}
+
 /** As praças de `novo` que não estão em `antes` (as siglas): as criadas agora. */
 export const pracasNovas = (novo: LigacoesDasPracas, antes: LigacoesDasPracas) => novo.pracas.filter((p) => !antes.pracas.some((a) => a.sigla === p.sigla)).map((p) => p.sigla);
 
@@ -201,20 +219,7 @@ export function estadoDasPracas(c: LigacoesDasPracas, quadro: QuadroLido, novas:
   });
   const todas = [campo, ...pracas.flatMap((p) => [p.entrada, p.saida, p.opcao])];
   const excecoes = todas.filter((l) => l.problema || l.como === 'mao');
-  const conta = (f: (l: Ligacao) => boolean) => todas.filter(f).length;
-  const nenhum = conta((l) => l.problema === 'nenhum');
-  const dobro = conta((l) => l.problema === 'dobro');
-  const sumiu = conta((l) => l.problema === 'sumiu' || l.problema === 'arquivada');
-  const tipo = conta((l) => l.problema === 'tipo');
-  const mao = conta((l) => l.como === 'mao');
-  const partes = [
-    plural(c.pracas.length, 'praça', 'praças'),
-    ...(nenhum || dobro || sumiu || tipo
-      ? [nenhum && plural(nenhum, 'não achado', 'não achados'), sumiu && plural(sumiu, 'sumiu', 'sumiram'), dobro && `${dobro} em dobro`, tipo && plural(tipo, 'de tipo errado', 'de tipo errado')]
-      : ['tudo ligado']),
-    mao && `${mao} à mão`,
-  ].filter(Boolean);
-  return { campo, pracas, excecoes, resumo: partes.join(' · ') };
+  return { campo, pracas, excecoes, resumo: [plural(c.pracas.length, 'praça', 'praças'), ...resumoDasLigacoes(todas)].join(' · ') };
 }
 
 /* ---------- conferir antes de salvar ---------- */

@@ -10,6 +10,9 @@
 // A praça nova (#73), claro e escuro: "+ Nova praça" (MG), a sigla repetida que a conferência recusa, a contagem das
 // claquetes da fila que mudam de praça, o aviso do n8n, e salvar: o PROMeiro cria a opção MG no campo Praça (o único
 // pedido ao Trello que não é leitura) e a praça vale na hora.
+// A seção Card (#74), claro e escuro: tudo ligado (só a linha de estado; o "?" e o "ver tudo"); a ALTA em dobro na
+// Prioridade, escolhida pela posição e pela cor; trocar o campo Complexidade limpa as opções dele (as do campo novo
+// ligam pelo nome, a MÉDIA que falta fica pedindo); conferir e salvar, que vale na hora. No celular, só consulta.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:configuracao
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -51,10 +54,39 @@ const LISTAS = [
 const DOBRO = { id: 'lINs2', name: 'INTER ENTREGUE (2025)', closed: false };
 let comDobro = false;
 const OPCOES = ['G5', 'SP', 'RJ', 'INTER'].map((t) => ({ id: `o${t}`, value: { text: t } }));
+const opcoes = (...xs) => xs.map(([id, text, color]) => ({ id, value: { text }, color }));
+// os campos do card (#74): a Prioridade ganha a segunda ALTA só no cenário com dobro; há uma Complexidade nova, com
+// as três opções em outra ordem e sem a MÉDIA
+const PRIORIDADE = opcoes(['pAlta', 'ALTA', 'red'], ['pMedia', 'MÉDIA', 'yellow']);
+const ALTA_EM_DOBRO = opcoes(['pAlta2', 'ALTA', 'orange'])[0];
 const CAMPOS = [
   { id: 'cPraca', name: 'Praça', type: 'list', options: [...OPCOES] },
+  { id: 'cPrio', name: 'Prioridade', type: 'list', options: [...PRIORIDADE] },
+  { id: 'cCx', name: 'Complexidade', type: 'list', options: opcoes(['xBaixa', 'BAIXA', 'green'], ['xMedia', 'MÉDIA', 'yellow'], ['xAlta', 'ALTA', 'red']) },
+  { id: 'cCx2', name: 'Complexidade 2026', type: 'list', options: opcoes(['yAlta', 'ALTA', 'red'], ['yBaixa', 'BAIXA', 'green']) },
+  { id: 'cRed', name: 'Redator', type: 'list', options: [] },
+  { id: 'cEd', name: 'Editor', type: 'list', options: [] },
   { id: 'cProjeto', name: 'Projeto', type: 'text' },
+  { id: 'cOut', name: 'Output', type: 'text' },
+  { id: 'cBot', name: 'BOT', type: 'checkbox' },
+  { id: 'cEnt', name: 'Entrada', type: 'date' },
+  { id: 'cIA', name: 'Uso de IA', type: 'checkbox' },
 ];
+const CARD_DO_PORTAINER = {
+  TRELLO_CAMPO_PRIORIDADE: 'cPrio',
+  TRELLO_PRIORIDADE_ALTA: 'pAlta',
+  TRELLO_PRIORIDADE_MEDIA: 'pMedia',
+  TRELLO_CAMPO_COMPLEXIDADE: 'cCx',
+  TRELLO_COMPLEXIDADE_OPCOES: 'xBaixa,xMedia,xAlta',
+  TRELLO_CAMPO_REDATOR: 'cRed',
+  TRELLO_CAMPO_EDITOR: 'cEd',
+  TRELLO_CAMPO_PROJETO: 'cProjeto',
+  TRELLO_CAMPO_OUTPUT: 'cOut',
+  TRELLO_CAMPO_BOT: 'cBot',
+  TRELLO_CAMPO_ENTRADA: 'cEnt',
+  TRELLO_LISTA_VT: 'lVT',
+  TRELLO_CAMPOS_FILME: 'cCx,cIA',
+};
 // o Portainer: cada praça nas suas listas; o quadro sai do idBoard da primeira lista (sem TRELLO_QUADRO)
 const ENV_TRELLO = {
   TRELLO_KEY: 'falsa',
@@ -69,6 +101,8 @@ const ENV_TRELLO = {
   TRELLO_SAIDA_INTER: 'lINs',
   TRELLO_CAMPO_PRACA: 'cPraca',
   TRELLO_PRACAS: 'G5=oG5,SP=oSP,RJ=oRJ,INTER=oINTER',
+  // o card: tudo como o nome acharia (a seção Card começa sem mudança)
+  ...CARD_DO_PORTAINER,
 };
 const pedidosAoTrello = [];
 async function buscar(url, init = {}) {
@@ -126,8 +160,11 @@ const capturar = async (p, nome) => {
   await p.screenshot({ path: join(CAPTURAS, `${nome}.png`), fullPage: true });
 };
 const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
-const resumo = async (p) => (await p.locator('.cfg-estado').textContent()).trim();
-const excecoes = (p) => textos(p.locator('.cfg-exc .cfg-exc-texto strong'));
+// a seção Praças e a seção Card (#74)
+const PRACAS = '.cfg-secao[aria-labelledby="cfg-pracas"]';
+const CARD = '.cfg-secao[data-secao="card"]';
+const resumo = async (p, secao = PRACAS) => (await p.locator(`${secao} .cfg-estado`).textContent()).trim();
+const excecoes = (p, secao = PRACAS) => textos(p.locator(`${secao} .cfg-exc .cfg-exc-texto strong`));
 const barra = async (p) => ((await p.locator('.cfg-barra').count()) ? (await p.locator('.cfg-barra-n').textContent()).trim() : '');
 const regra = (p, sigla) => p.locator(`.cfg-praca[data-sigla="${sigla}"]`);
 const ordem = (p) => p.locator('.cfg-praca').evaluateAll((ls) => ls.map((l) => l.dataset.sigla));
@@ -149,7 +186,7 @@ async function noComputador(navegador, url, app, tema) {
 
   // tudo ligado: a tela quase vazia, só a linha de estado e as regras; sem barra
   assert.equal(await resumo(p), '4 praças · tudo ligado');
-  assert.equal(await p.locator('.cfg-exc').count(), 0);
+  assert.equal(await p.locator(`${PRACAS} .cfg-exc`).count(), 0);
   assert.deepEqual(await ordem(p), ['G5', 'RJ', 'SP', 'INTER']);
   assert.deepEqual(await textos(regra(p, 'G5').locator('.cfg-regra > *')), ['quando a claquete não diz', 'também REDE MG DF PE', 'FESTA 3/11 → G5']);
   assert.deepEqual(await textos(regra(p, 'RJ').locator('.cfg-regra > *')), ['começa com RIO', 'RIO FESTA 3/11 → RJ']);
@@ -159,21 +196,21 @@ async function noComputador(navegador, url, app, tema) {
   await semRolagemDeLado(p, `computador ${nome}, tudo ligado`);
   await capturar(p, `02-tudo-ligado-${nome}`);
   // o "?" explica
-  await p.locator('.cfg-ajuda button').click();
+  await p.locator(`${PRACAS} .cfg-ajuda button`).click();
   assert.match(await p.locator('.cfg-ajuda-texto').textContent(), /liga pelo nome/);
   await capturar(p, `02b-ajuda-${nome}`);
   await p.keyboard.press('Escape');
   // ver tudo: cada ligação e como foi ligada
-  await p.locator('.cfg-ver-tudo').click();
+  await p.locator(`${PRACAS} .cfg-ver-tudo`).click();
   assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="SP.entrada"] > span')), ['Entrada', 'SP ENTRADA', 'achado pelo nome · trocar']);
   assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="campo"] > span')), ['Campo Praça', 'Praça', 'achado pelo nome · trocar']);
   await capturar(p, `02c-ver-tudo-${nome}`);
-  await p.locator('.cfg-ver-tudo').click();
+  await p.locator(`${PRACAS} .cfg-ver-tudo`).click();
 
   // com exceções: a G5 nas listas do RJ (à mão, dividida) e a saída de INTER em dobro
   await recomecar(app, { excecoes: true });
   await p.reload();
-  await p.locator('.cfg-exc').first().waitFor();
+  await p.locator(`${PRACAS} .cfg-exc`).first().waitFor();
   assert.equal(await resumo(p), '4 praças · 1 em dobro · 2 à mão');
   assert.deepEqual(await excecoes(p), ['G5 usa as listas do RJ', 'INTER: duas listas de saída']);
   assert.deepEqual(await textos(p.locator('.cfg-exc .cfg-exc-texto span')), ['ligada à mão · dividida com RJ', '"INTER ENTREGUE" e "INTER ENTREGUE (2025)". Qual vale?']);
@@ -182,7 +219,7 @@ async function noComputador(navegador, url, app, tema) {
   await capturar(p, `03-com-excecoes-${nome}`);
 
   // ligar à mão: Escolher a saída de INTER
-  await p.locator('.cfg-exc', { hasText: 'INTER: duas' }).locator('.botao', { hasText: 'Escolher' }).click();
+  await p.locator(`${PRACAS} .cfg-exc`, { hasText: 'INTER: duas' }).locator('.botao', { hasText: 'Escolher' }).click();
   const escolher = p.locator('.cfg-escolher');
   await escolher.waitFor();
   assert.equal(await escolher.locator('.cfg-escolher-titulo').textContent(), 'Saída de INTER');
@@ -251,7 +288,7 @@ async function noComputador(navegador, url, app, tema) {
   assert.deepEqual(eu.pracas.map((x) => x.sigla), ['G5', 'SP', 'RJ', 'INTER']);
   assert.deepEqual(eu.pracas.find((x) => x.sigla === 'SP').regra, { onde: 'fim', palavras: ['SP', 'PAULISTA'] });
   await p.reload();
-  await p.locator('.cfg-exc').first().waitFor();
+  await p.locator(`${PRACAS} .cfg-exc`).first().waitFor();
   assert.equal(await resumo(p), '4 praças · tudo ligado · 3 à mão');
   assert.deepEqual(await ordem(p), ['G5', 'SP', 'RJ', 'INTER']);
   await capturar(p, `08-salvo-${nome}`);
@@ -295,12 +332,12 @@ async function novaPraca(navegador, url, app, tema) {
   assert.deepEqual(await textos(p.locator('.cfg-n8n strong')), ['O n8n ainda não conhece MG']);
   assert.match(await p.locator('.cfg-n8n').textContent(), /PROMO: UPLOAD ROTEIROS · BATCH: TRELLO CARDS → DB · PROMO: DB · PROMO: CLAQUETES DUPLICADAS/);
   assert.equal(await resumo(p), '5 praças · tudo ligado');
-  assert.equal(await p.locator('.cfg-exc').count(), 1, 'só o aviso do n8n: entrada e saída ligadas pelo nome');
-  await p.locator('.cfg-ver-tudo').click();
+  assert.equal(await p.locator(`${PRACAS} .cfg-exc`).count(), 1, 'só o aviso do n8n: entrada e saída ligadas pelo nome');
+  await p.locator(`${PRACAS} .cfg-ver-tudo`).click();
   assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="MG.entrada"] > span')), ['Entrada', 'MG ENTRADA', 'achado pelo nome · trocar']);
   assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="MG.saida"] > span')), ['Saída', 'MG PRONTO', 'achado pelo nome · trocar']);
   assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="MG.opcao"] > span')), ['No campo Praça', '—', 'o PROMeiro cria ao salvar · trocar']);
-  await p.locator('.cfg-ver-tudo').click();
+  await p.locator(`${PRACAS} .cfg-ver-tudo`).click();
   await semRolagemDeLado(p, `computador ${nome}, praça nova`);
   await capturar(p, `12-nova-praca-${nome}`);
 
@@ -344,6 +381,137 @@ async function novaPraca(navegador, url, app, tema) {
   console.log(`ok: praça nova ${nome}: + Nova praça → sigla repetida recusada → MG ligada pelo nome, aviso do n8n → conferir com a contagem → salvar cria a opção no Trello`);
 }
 
+/* ---------- a seção Card (#74) ---------- */
+
+/** O card volta ao Portainer; `dobro` põe a segunda ALTA na Prioridade e salva a ALTA vazia (ela vira exceção). */
+async function recomecarCard(app, { dobro }) {
+  CAMPOS[1].options = dobro ? [...PRIORIDADE, ALTA_EM_DOBRO] : [...PRIORIDADE];
+  const voltar = Object.fromEntries(Object.keys(CARD_DO_PORTAINER).map((k) => [k, null]));
+  await app.mudarConfiguracao({ ...voltar, LIGADO_A_MAO: null, ...(dobro ? { TRELLO_PRIORIDADE_ALTA: '' } : {}) }).antigaFechada;
+}
+const linhaDoCard = (p, chave) => textos(p.locator(`${CARD} .cfg-tudo-l[data-chave="${chave}"] > span`));
+const linhasDoQueMuda = (dialogo) => dialogo.locator('.cfg-muda tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((c) => c.textContent.trim()).filter(Boolean).join(' | ')));
+
+async function secaoCard(navegador, url, app, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await recomecarCard(app, { dobro: false });
+  pedidosAoTrello.length = 0;
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  const card = p.locator(CARD);
+  await card.waitFor();
+
+  // tudo ligado: só a linha de estado; o "?" explica; o "ver tudo" mostra cada campo e como foi ligado
+  assert.equal(await resumo(p, CARD), 'tudo ligado');
+  const dasPracas = await resumo(p);
+  assert.equal(await card.locator('.cfg-exc').count(), 0);
+  assert.equal(await card.locator('.cfg-secao-corpo').count(), 0, 'tudo ligado: a seção fica só com a linha de estado');
+  assert.equal(await barra(p), '');
+  await card.locator('.cfg-ajuda button').click();
+  assert.match(await card.locator('.cfg-ajuda-texto').textContent(), /pelo nome e pelo tipo/);
+  await p.keyboard.press('Escape');
+  await card.locator('.cfg-ver-tudo').click();
+  assert.deepEqual(await linhaDoCard(p, 'card.prioridade'), ['Campo', 'Prioridade', 'achado pelo nome · trocar']);
+  assert.deepEqual(await linhaDoCard(p, 'card.complexidade.MEDIA'), ['MÉDIA', 'MÉDIA', 'achado pelo nome · trocar']);
+  assert.deepEqual(await linhaDoCard(p, 'card.bot'), ['BOT', 'BOT', 'achado pelo nome · trocar']);
+  assert.deepEqual(await linhaDoCard(p, 'card.vt'), ['Lista do VT', 'VT', 'achado pelo nome · trocar']);
+  assert.deepEqual(await linhaDoCard(p, 'card.doFilme'), ['Copiados do filme', 'Complexidade, Uso de IA', 'escolhidos · trocar']);
+  await semRolagemDeLado(p, `card ${nome}, ver tudo`);
+  await card.scrollIntoViewIfNeeded();
+  await capturar(p, `20-card-tudo-ligado-${nome}`);
+  await card.locator('.cfg-ver-tudo').click();
+
+  // com dobro: a Prioridade tem ALTA duas vezes, e a ALTA está vazia
+  await recomecarCard(app, { dobro: true });
+  await p.reload();
+  await card.locator('.cfg-exc').first().waitFor();
+  assert.equal(await resumo(p, CARD), '1 em dobro');
+  assert.deepEqual(await excecoes(p, CARD), ['Prioridade: duas opções "ALTA"']);
+  assert.deepEqual(await textos(card.locator('.cfg-exc .cfg-exc-texto span')), ['o campo Prioridade tem ALTA duas vezes. Qual vale?']);
+  assert.equal(await resumo(p), dasPracas, 'as praças não mudam');
+  await semRolagemDeLado(p, `card ${nome}, com dobro`);
+  await capturar(p, `21-card-com-dobro-${nome}`);
+
+  // Escolher: as duas ALTA primeiro, cada uma com a posição e a cor no campo
+  await card.locator('.cfg-exc .botao', { hasText: 'Escolher' }).click();
+  const escolher = p.locator('.cfg-escolher');
+  await escolher.waitFor();
+  assert.equal(await escolher.locator('.cfg-escolher-titulo').textContent(), 'ALTA no campo Prioridade');
+  assert.deepEqual(await textos(escolher.locator('li button')), ['ALTA1ª do campo · vermelha', 'ALTA3ª do campo · laranja', 'MÉDIA2ª do campo · amarela']);
+  await capturar(p, `22-card-escolher-${nome}`);
+  await escolher.locator('li button', { hasText: '3ª do campo' }).click();
+  assert.deepEqual(await excecoes(p, CARD), ['Prioridade ALTA: "ALTA (a 3ª do campo)"']);
+  assert.equal(await resumo(p, CARD), 'tudo ligado · 1 à mão');
+  assert.equal(await barra(p), '1 mudança');
+
+  // trocar o campo Complexidade: só campos de lista; as opções do campo novo ligam pelo nome, a que falta fica pedindo
+  await card.locator('.cfg-ver-tudo').click();
+  await card.locator('.cfg-tudo-l[data-chave="card.complexidade"] .botao-texto', { hasText: 'trocar' }).click();
+  await escolher.waitFor();
+  assert.equal(await escolher.locator('.cfg-escolher-titulo').textContent(), 'Campo Complexidade');
+  assert.equal(await escolher.locator('li button', { hasText: 'Projeto' }).isDisabled(), true);
+  assert.deepEqual(await textos(escolher.locator('li button', { hasText: 'Redator' }).locator('.nota')), ['é o campo Redator']);
+  await escolher.locator('li button', { hasText: 'Complexidade 2026' }).click();
+  assert.deepEqual(await linhaDoCard(p, 'card.complexidade'), ['Campo', 'Complexidade 2026', 'ligado à mão · trocar']);
+  assert.deepEqual(await linhaDoCard(p, 'card.complexidade.BAIXA'), ['BAIXA', 'BAIXA', 'achado pelo nome · trocar']);
+  assert.deepEqual(await linhaDoCard(p, 'card.complexidade.MEDIA'), ['MÉDIA', '—', 'não achado · trocar']);
+  assert.deepEqual(await linhaDoCard(p, 'card.complexidade.ALTA'), ['ALTA', 'ALTA', 'achado pelo nome · trocar']);
+  assert.deepEqual(await excecoes(p, CARD), ['Prioridade ALTA: "ALTA (a 3ª do campo)"', 'Complexidade: "Complexidade 2026"', 'Complexidade: sem a opção MÉDIA']);
+  assert.equal(await resumo(p, CARD), '1 não achado · 2 à mão');
+  assert.equal(await barra(p), '5 mudanças');
+  await semRolagemDeLado(p, `card ${nome}, trocar o campo`);
+  await capturar(p, `23-card-trocar-campo-${nome}`);
+
+  // conferir: o que muda; salvar vale na hora (a configuração viva já tem as opções novas)
+  await p.locator('.cfg-barra-salvar').click();
+  const dialogo = p.locator('.cfg-modal');
+  await dialogo.locator('h2', { hasText: 'Tudo confere' }).waitFor();
+  assert.deepEqual(await linhasDoQueMuda(dialogo), [
+    'Prioridade ALTA | — | ALTA (a 3ª do campo) (à mão)',
+    'Complexidade | Complexidade | Complexidade 2026 (à mão)',
+    'Complexidade BAIXA | BAIXA | BAIXA',
+    'Complexidade MÉDIA | MÉDIA | —',
+    'Complexidade ALTA | ALTA | ALTA',
+  ]);
+  assert.deepEqual(await textos(dialogo.locator('.cfg-checks li.aviso')), ['Complexidade MÉDIAnada ligado: o card de complexidade MÉDIA vai sem ela.']);
+  assert.equal(await dialogo.locator('.cfg-claquetes').count(), 0, 'só o card foi conferido');
+  await capturar(p, `24-card-conferir-${nome}`);
+  await dialogo.locator('.botao.primario', { hasText: 'Salvar' }).click();
+  await p.locator('.aviso', { hasText: 'Salvo. Já vale.' }).waitFor();
+  assert.equal(await barra(p), '');
+  const env = app.modulos().env;
+  assert.deepEqual([env.TRELLO_PRIORIDADE_ALTA, env.TRELLO_CAMPO_COMPLEXIDADE, env.TRELLO_COMPLEXIDADE_OPCOES], ['pAlta2', 'cCx2', 'yBaixa,,yAlta']);
+  await p.reload();
+  await card.locator('.cfg-exc').first().waitFor();
+  assert.deepEqual(await excecoes(p, CARD), ['Prioridade ALTA: "ALTA (a 3ª do campo)"', 'Complexidade: "Complexidade 2026"', 'Complexidade: sem a opção MÉDIA']);
+  assert.equal(await resumo(p), dasPracas, 'salvar o card não mexe nas praças');
+  assert.deepEqual([...new Set(pedidosAoTrello.map((x) => x.split(' ')[0]))], ['GET'], 'o card só lê o Trello');
+
+  assert.deepEqual(erros, [], `card ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: card ${nome}: tudo ligado (?, ver tudo) → ALTA em dobro → escolher → trocar o campo Complexidade limpa as opções → conferir e salvar, vale na hora`);
+}
+
+async function cardNoCelular(navegador, url, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema });
+  const card = p.locator(CARD);
+  await card.locator('.cfg-exc').first().waitFor();
+  assert.equal(await resumo(p, CARD), '1 não achado · 2 à mão');
+  assert.deepEqual(await excecoes(p, CARD), ['Prioridade ALTA: "ALTA (a 3ª do campo)"', 'Complexidade: "Complexidade 2026"', 'Complexidade: sem a opção MÉDIA']);
+  // só consulta: nada de Escolher, desfazer ou trocar
+  assert.equal(await card.locator('.cfg-exc button').count(), 0);
+  await card.locator('.cfg-ver-tudo').tap();
+  assert.deepEqual(await linhaDoCard(p, 'card.complexidade.MEDIA'), ['MÉDIA', '—', 'não achado']);
+  assert.equal(await card.locator('.cfg-tudo button').count(), 0);
+  await semRolagemDeLado(p, `card no celular ${nome}`);
+  await card.scrollIntoViewIfNeeded();
+  await capturar(p, `25-card-celular-${nome}`);
+  assert.deepEqual(erros, [], `card no celular ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: card no celular ${nome}: a linha de estado, as exceções e o ver tudo, só consulta`);
+}
+
 async function semSerAdministrador(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, { email: OUTRA });
   await p.locator('.aviso', { hasText: 'Só administradores' }).waitFor();
@@ -363,7 +531,7 @@ async function noCelular(navegador, url, tema) {
   const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
   const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema });
   assert.equal(await fundoEscuro(p), tema === 'dark');
-  await p.locator('.cfg-exc').first().waitFor();
+  await p.locator(`${PRACAS} .cfg-exc`).first().waitFor();
   assert.match(await p.locator('.cfg-so-consulta').textContent(), /só consulta/);
   assert.equal(await resumo(p), '4 praças · tudo ligado · 3 à mão');
   assert.deepEqual(await excecoes(p), ['G5 usa as listas do RJ', 'INTER usa "INTER ENTREGUE" na saída']);
@@ -372,7 +540,7 @@ async function noCelular(navegador, url, tema) {
   assert.deepEqual(await textos(regra(p, 'SP').locator('.cfg-ed.regra')), ['termina em SP ou PAULISTA']);
   await semRolagemDeLado(p, `celular ${nome}`);
   await capturar(p, `10-celular-${nome}`);
-  await p.locator('.cfg-ver-tudo').tap();
+  await p.locator(`${PRACAS} .cfg-ver-tudo`).tap();
   assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="INTER.saida"] > span')), ['Saída', 'INTER ENTREGUE', 'ligado à mão']);
   assert.equal(await p.locator('.cfg-tudo button').count(), 0);
   await semRolagemDeLado(p, `celular ${nome}, ver tudo`);
@@ -403,6 +571,8 @@ async function principal() {
         body: JSON.stringify({ roteiro: { meta: { claquete }, doc: { type: 'doc', content: [{ type: 'paragraph' }] } }, nArtes: 0 }),
       });
     for (const tema of ['light', 'dark']) await novaPraca(navegador, s.url, s.app, tema);
+    for (const tema of ['light', 'dark']) await secaoCard(navegador, s.url, s.app, tema);
+    for (const tema of ['light', 'dark']) await cardNoCelular(navegador, s.url, tema);
   } finally {
     await navegador.close();
     await s.descer();

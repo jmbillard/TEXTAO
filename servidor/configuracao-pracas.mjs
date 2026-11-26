@@ -4,6 +4,7 @@
    compartilhado com o navegador (src/modelo/ligarPeloNome.ts). */
 import { pracasDaConfiguracao } from '../src/modelo/pracas.ts';
 import { CAMPO_PRACA, CHAVE_DO_CAMPO, PONTAS, acharOpcao, chaveDa, conferirPracas, estadoDasPracas, ligarPeloNome, pracasNovas } from '../src/modelo/ligarPeloNome.ts';
+import { eDoCard } from '../src/modelo/ligarOCard.ts';
 
 const ID_DO_TRELLO = /^[\w-]{1,64}$/;
 /** O Trello responde (a chave e o token no Portainer), mesmo sem nenhuma lista configurada ainda. */
@@ -22,7 +23,8 @@ export function pracasSalvas(env) {
   return {
     pracas: pracasDaConfiguracao(env),
     campoPraca: limpo(env.TRELLO_CAMPO_PRACA),
-    aMao: Array.isArray(aMao) ? aMao.filter((k) => typeof k === 'string') : [],
+    // o LIGADO_A_MAO é um só para a tela: o do card (#74) fica com a seção Card
+    aMao: Array.isArray(aMao) ? aMao.filter((k) => typeof k === 'string' && !eDoCard(k)) : [],
   };
 }
 
@@ -55,20 +57,27 @@ export async function lerQuadro(trello, env, pracas) {
       id: String(c.id),
       nome: String(c.name ?? ''),
       tipo: String(c.type ?? ''),
-      opcoes: (c.options ?? []).map((o) => ({ id: String(o.id), nome: String(o.value?.text ?? '') })),
+      // a cor diz qual é qual quando duas opções têm o mesmo nome
+      opcoes: (c.options ?? []).map((o) => ({ id: String(o.id), nome: String(o.value?.text ?? ''), ...(o.color ? { cor: String(o.color) } : {}) })),
     })),
   };
 }
 
-/** A seção como a tela lê: o salvo, a proposta (o salvo com o que o nome acha um só), o estado e o quadro lido. */
-export async function lerSecaoPracas(trello, env) {
+/** O quadro do Trello para as seções da tela; sem como ler, `erro` diz o que falta. */
+export async function lerOQuadro(trello, env) {
+  if (!falaComOTrello(trello)) return { quadro: null, erro: 'O Trello não está configurado (TRELLO_KEY e TRELLO_TOKEN no Portainer).' };
+  const quadro = await lerQuadro(trello, env, pracasSalvas(env).pracas);
+  if (!quadro) return { quadro: null, erro: 'Não sei qual é o quadro do Trello: falta TRELLO_QUADRO no Portainer (ou uma lista já configurada).' };
+  return { quadro };
+}
+
+/** A seção como a tela lê: o salvo, a proposta (o salvo com o que o nome acha um só), o estado e o quadro lido.
+    `lido` é o quadro já lido (lerOQuadro), para as seções lerem o Trello uma vez só. */
+export async function lerSecaoPracas(trello, env, lido) {
   const salvo = pracasSalvas(env);
   const primeiraVez = !env.PRACAS;
-  if (!falaComOTrello(trello))
-    return { primeiraVez, salvo, proposta: salvo, estado: null, quadro: null, erro: 'O Trello não está configurado (TRELLO_KEY e TRELLO_TOKEN no Portainer).' };
-  const quadro = await lerQuadro(trello, env, salvo.pracas);
-  if (!quadro)
-    return { primeiraVez, salvo, proposta: salvo, estado: null, quadro: null, erro: 'Não sei qual é o quadro do Trello: falta TRELLO_QUADRO no Portainer (ou uma lista já configurada).' };
+  const { quadro, erro } = lido ?? (await lerOQuadro(trello, env));
+  if (!quadro) return { primeiraVez, salvo, proposta: salvo, estado: null, quadro: null, erro };
   const proposta = ligarPeloNome(salvo, quadro, { primeiraVez });
   return { primeiraVez, salvo, proposta, estado: estadoDasPracas(proposta, quadro), quadro };
 }
@@ -92,9 +101,9 @@ export function secaoDoPedido(corpo) {
 
 /** Confere a seção nova contra o quadro de agora e contra o salvo; com as claquetes recentes ({ dias, claquetes }),
     conta as que mudariam de praça. */
-export async function conferirSecaoPracas(trello, env, nova, recentes) {
+export async function conferirSecaoPracas(trello, env, nova, recentes, lido) {
   const salvo = pracasSalvas(env);
-  const quadro = falaComOTrello(trello) ? await lerQuadro(trello, env, salvo.pracas) : null;
+  const { quadro } = lido ?? (await lerOQuadro(trello, env));
   if (!quadro) return { ok: false, itens: [{ tipo: 'erro', titulo: 'Trello', detalhe: 'não consegui ler o quadro do Trello.' }], muda: [] };
   return conferirPracas(nova, salvo, quadro, recentes);
 }
