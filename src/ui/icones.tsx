@@ -22,6 +22,7 @@ const D = {
   direita: 'M9 6l6 6-6 6',
   certo: 'M20 6L9 17l-5-5',
   mais: 'M12 5v14 M5 12h14',
+  subir: 'M12 19V6 M6 11l6-6 6 6',
   importar: 'M12 15V3 M7 8l5-5 5 5 M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4',
   baixar: 'M12 3v12 M7 10l5 5 5-5 M4 19h16',
   corrido: 'M6 6h12 M6 12h12 M6 18h8',

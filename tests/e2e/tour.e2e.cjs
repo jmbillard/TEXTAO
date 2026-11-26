@@ -50,9 +50,10 @@ const diaMais = (n) => {
  * Sobe o servidor (banco temporário) e o Vite; devolve os endereços e como derrubar tudo. Sem `trello`, o envio fica
  * desligado; com ele (as variáveis, o `buscar` e, se vier, o `consultar` do Postgres falsos), o Trello e o Teable são os
  * falsos de quem chama. Com `acervo` (um criarAcervo com o Postgres do Teable falso), o acervo de artes é o de quem
- * chama. Com `env`, as variáveis do servidor (CADASTRO_ADMINS, por exemplo).
+ * chama. Com `env`, as variáveis do servidor (CADASTRO_ADMINS, por exemplo). Com `filmes` (a fábrica (env, deps) =>
+ * criarFilmes(...), com a leitura e o Postgres falsos de quem chama), a aba Filmes é a de quem chama.
  */
-async function subir({ trello: falso, acervo, env: doTeste = {} } = {}) {
+async function subir({ trello: falso, acervo, filmes, env: doTeste = {} } = {}) {
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-'));
   const { abrirBanco, criarApp } = await import(join(RAIZ, 'servidor', 'app.mjs'));
   const { criarTrello } = await import(join(RAIZ, 'servidor', 'trello.mjs'));
@@ -62,7 +63,7 @@ async function subir({ trello: falso, acervo, env: doTeste = {} } = {}) {
   const env = { ...doTeste };
   const trello = criarTrello(falso?.env ?? env, { buscar: falso?.buscar ?? semRede, consultar: falso?.consultar ?? (async () => []), sftp: async () => {} });
   const db = abrirBanco(join(pasta, 'roteirista.db'));
-  const app = criarApp({ db, env, trello, ...(acervo ? { acervo } : {}) });
+  const app = criarApp({ db, env, trello, ...(acervo ? { acervo } : {}), ...(filmes ? { filmes } : {}) });
   // sem o cabeçalho (o WebSocket do navegador não leva os extras), vale o cookie `e2e-email` do contexto, que o
   // WebSocket leva; sem ele, a Lia. É o que deixa duas pessoas no mesmo teste, cada uma na sua sala
   const comLia = (req) => {

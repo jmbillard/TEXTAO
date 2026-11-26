@@ -19,6 +19,8 @@ import {
 } from "../dados/armazenamento";
 import { corDe, iniciais, nomesCurtos, primeiroNome as primeiro } from "../dados/colaboracao";
 import { montarFileiras, podeSubir, type ItemDaFileira } from "../filmes/fileiras";
+import { useTelaDeCelular } from "./faixa";
+import { EntradaDoCelular } from "./FilmesCelular";
 import { Icone } from "./icones";
 import { LinkQuebrado } from "./LinkQuebrado";
 import { Duvida, Marca, RABISCOS } from "./pecas";
@@ -54,13 +56,13 @@ const vaiNoEnvio = (f: FilmeLido) =>
   f.envio?.estado !== "enviado";
 /** De quanto em quanto tempo a prévia aberta avisa que está ali e pergunta se mudou (e a lista, quem está em cada uma). */
 const BATIDA_MS = 2500;
-const LISTA_MS = 5000;
+export const LISTA_MS = 5000;
 /** "Ana tá vendo", "Ana e Bruno tão vendo", "Ana e mais 2 tão vendo". */
-const taoVendo = (pessoas: { nome: string }[]) =>
+export const taoVendo = (pessoas: { nome: string }[]) =>
   `${nomesCurtos(pessoas)} ${pessoas.length === 1 ? "tá vendo" : "tão vendo"}`;
 
 /** Quem mais está na prévia: as bolinhas com as iniciais, na cor de cada um. */
-function Presentes({ pessoas, texto }: { pessoas: PessoaNaPrevia[]; texto?: boolean }) {
+export function Presentes({ pessoas, texto }: { pessoas: PessoaNaPrevia[]; texto?: boolean }) {
   if (!pessoas.length) return null;
   return (
     <span
@@ -109,6 +111,21 @@ const temBalao = (f?: FilmeLido) =>
   !!f?.conferencia?.pergunta || f?.envio?.estado === "erro";
 
 export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
+  // no celular (até 600px), a entrada é a das prévias empilhadas com o "Subir prévia" (#80). A revisão ainda é a do
+  // computador: a sequência de filmes do celular é o próximo passo (#81)
+  const celular = useTelaDeCelular();
+  if (celular && !aberta)
+    return (
+      <div className="pagina filmes filmes-no-celular">
+        <header className="topo-filmes-celular">
+          <button className="voltar-celular" onClick={voltar} aria-label="Voltar para a fila">
+            <Icone nome="voltar" tam={20} traco={2} />
+          </button>
+          <Marca />
+        </header>
+        <EntradaDoCelular abrir={abrir} avisar={avisar} />
+      </div>
+    );
   return (
     <div className="pagina filmes">
       <header className="cad-topo">
@@ -131,7 +148,7 @@ export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
 }
 
 /** "em 38 dias", "amanhã" ou "hoje": quando a prévia toda enviada é apagada. */
-const quandoSome = (dias: number) =>
+export const quandoSome = (dias: number) =>
   dias <= 0 ? "hoje" : dias === 1 ? "amanhã" : `em ${dias} dias`;
 
 function ListaDePrevias({

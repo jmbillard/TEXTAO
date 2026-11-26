@@ -4,6 +4,7 @@
 import { PDFDocument } from 'pdf-lib';
 import { acharPosteres } from './posteres';
 import { abrirPrevia, criarPrevia, mandarPagina, type PaginaPreparada } from '../dados/armazenamento';
+import type { PassoNoNavegador } from './andamento';
 
 const ESCALA = 2;
 const QUALIDADE = 0.9;
@@ -20,20 +21,32 @@ const jpeg = (c: HTMLCanvasElement) =>
 /** As páginas úteis de uma prévia de n páginas: da segunda à penúltima (com 1 ou 2 páginas, todas). */
 export const paginasUteis = (n: number) => (n <= 2 ? Array.from({ length: n }, (_, i) => i + 1) : Array.from({ length: n - 2 }, (_, i) => i + 2));
 
-export async function subirPrevia(arquivo: File, aoAndar: (feito: number, total: number) => void = () => {}): Promise<string> {
+/** O que a subida conta a cada passo: a prévia criada (ou achada, o mesmo PDF de novo) e cada página que passa pelo navegador. */
+export type PassoDaSubida = { tipo: 'criada'; id: string } | { tipo: PassoNoNavegador; numero: number };
+
+export async function subirPrevia(
+  arquivo: File,
+  aoAndar: (feito: number, total: number) => void = () => {},
+  aoPasso: (passo: PassoDaSubida) => void = () => {},
+): Promise<string> {
   const bytes = new Uint8Array(await arquivo.arrayBuffer());
   const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
   const pdfjs = (await import('../importar/pdfjs')).default as unknown as { getDocument(o: object): { promise: Promise<{ numPages: number; getPage(n: number): Promise<unknown> }> } };
   const doc = await pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
   const uteis = paginasUteis(doc.numPages);
   const { id } = await criarPrevia(arquivo.name, hash, uteis);
+  aoPasso({ tipo: 'criada', id });
   // a mesma prévia de novo: só sobe o que ainda não chegou ao servidor
   const ja = new Set((await abrirPrevia(id)).paginas.filter((p) => p.estado !== 'esperando').map((p) => p.numero));
   const original = await PDFDocument.load(bytes);
   const faltam = uteis.filter((n) => !ja.has(n));
   aoAndar(0, faltam.length);
   for (const [i, n] of faltam.entries()) {
-    await mandarPagina(id, n, await prepararPagina(pdfjs, await doc.getPage(n), original, n));
+    aoPasso({ tipo: 'preparando', numero: n });
+    const pagina = await prepararPagina(pdfjs, await doc.getPage(n), original, n);
+    aoPasso({ tipo: 'subindo', numero: n });
+    await mandarPagina(id, n, pagina);
+    aoPasso({ tipo: 'subiu', numero: n });
     aoAndar(i + 1, faltam.length);
   }
   return id;

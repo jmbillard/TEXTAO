@@ -2416,6 +2416,48 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .ficha-previa b { font: 600 16px/1.35 var(--mono); }
 .ficha-previa .some { font-size: 13px; color: var(--tinta2); }
 
+/* a entrada da aba Filmes no celular (até 600px, #80): as prévias empilhadas e o "Subir prévia"; a subida aparece na
+   ficha da prévia, página por página (só existe no celular: o componente escolhe pela largura) */
+.topo-filmes-celular { display: flex; align-items: center; gap: 4px; height: 56px; padding: 0 max(12px, env(safe-area-inset-right, 0px)) 0 max(6px, env(safe-area-inset-left, 0px)); }
+.voltar-celular { width: 44px; height: 44px; border: 0; border-radius: 12px; background: none; color: var(--tinta2); display: grid; place-items: center; cursor: pointer; }
+.voltar-celular:active { background: var(--neutro); }
+.filmes-celular { padding: 4px max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.filmes-celular h1 { font: 400 34px/1.1 var(--serifa); letter-spacing: -0.015em; margin: 6px 0 16px; }
+.filmes-celular .subir-previa { width: 100%; height: 52px; border-radius: 12px; font-size: 15px; margin-bottom: 18px; display: flex; align-items: center; justify-content: center; gap: 8px; touch-action: manipulation; }
+.previas-celular { display: grid; gap: 10px; }
+.previa-celular { display: grid; gap: 6px; width: 100%; min-width: 0; min-height: 44px; text-align: left; border: 1px solid var(--regua); border-radius: 14px; background: var(--papel); padding: 14px 16px; font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.previa-celular:active { border-color: var(--regua-forte); }
+.previa-celular.subindo:not(.abre) { cursor: default; }
+.previa-celular > b { font: 600 15px/1.35 var(--mono); overflow-wrap: anywhere; }
+.previa-celular .linha { font-size: 13px; color: var(--tinta2); font-variant-numeric: tabular-nums; }
+.previa-celular .andamento { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; color: var(--tinta2); font-variant-numeric: tabular-nums; }
+.previa-celular .andamento .ok { color: var(--ok); font-weight: 600; }
+.previa-celular .andamento .pede { color: var(--falta); font-weight: 600; }
+.previa-celular .some { font-size: 13px; color: var(--tinta3); }
+.previa-celular .gente { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.previa-celular .gente .na-fila { margin: 0; }
+.previa-celular .gente .presente { box-shadow: 0 0 0 2px var(--papel); }
+.previa-celular .gente .rubrica { margin: 0; }
+.subida-estado { font-size: 13px; color: var(--tinta2); font-variant-numeric: tabular-nums; }
+.subida-estado em { font: 600 17px/1 Caveat, cursive; color: var(--tinta3); margin-left: 6px; white-space: nowrap; }
+.paginas-subida { list-style: none; margin: 4px 0 0; padding: 0; }
+.paginas-subida li { display: grid; grid-template-columns: 48px 34px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 36px; border-top: 1px solid var(--regua); font-size: 13px; color: var(--tinta2); }
+.paginas-subida li:first-child { border-top: 0; }
+.paginas-subida .n { white-space: nowrap; font: 500 12px var(--mono); color: var(--tinta3); }
+/* a miniatura da página: a arte da prévia é escura nos dois temas; enche no navegador e fica cheia no servidor */
+.mini-pag { position: relative; width: 34px; height: 22px; border-radius: 3px; background: var(--neutro); overflow: hidden; }
+.mini-pag::before { content: ''; position: absolute; inset: 0; background: #16213a; transform: scaleX(var(--cheio, 0)); transform-origin: left; transition: transform 0.4s var(--suave); }
+.mini-pag.lendo::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--ultra); animation: ler-mini-pag 1.4s ease-in-out infinite alternate; }
+@keyframes ler-mini-pag { to { top: calc(100% - 2px); } }
+.paginas-subida .est { min-width: 0; overflow-wrap: anywhere; }
+.paginas-subida .est.lida { color: var(--ok); }
+.paginas-subida .est.lendo { color: var(--tinta); }
+.paginas-subida .est.falta, .paginas-subida .est.erro { color: var(--falta); }
+@media (prefers-reduced-motion: reduce) {
+  .mini-pag::before { transition: none; }
+  .mini-pag.lendo::after { animation: none; top: 0; }
+}
+
 .previa { max-width: 1640px; margin: 0 auto; padding: 18px 28px 60px; }
 .previa-cab { display: flex; align-items: center; gap: 22px; margin-bottom: 14px; }
 .previa-cab h1 { font: 600 22px/1.2 var(--mono); letter-spacing: 0.01em; margin: 0; }
