@@ -1,11 +1,14 @@
 /*
  * Aba Duplicadas (#65): os cards do quadro da promo com a mesma claquete, praça e versão, no lugar do relatório
- * "PROMO: CLAQUETES DUPLICADAS" do n8n. Só leitura nesta fatia.
+ * "PROMO: CLAQUETES DUPLICADAS" do n8n.
  *
  * Lê do Trello os cards do quadro (TRELLO_QUADRO), abertos e arquivados, criados no período (a data de criação sai do
  * id do card, como o n8n faz), em páginas, e as listas; a leitura fica guardada por alguns minutos. Da produção da arte
  * (o Postgres do Teable) vem a linha de cada card, e do acervo, as artes ligadas a cada linha. O agrupamento e a
  * sugestão de quem sai são o módulo puro src/modelo/duplicadas.ts.
+ *
+ * Ignorar e reabrir (#66) só anotam no registro do PROMeiro (servidor/registro-das-duplicadas.mjs): o caso ignorado
+ * sai da lista e vai para Resolvidas, e volta sozinho quando entra card novo no grupo. Nada muda no Trello nem no Teable.
  */
 import { agruparDuplicadas } from '../src/modelo/duplicadas.ts';
 import { chaveDaClaquete, normalizarPraca, semAcento } from '../src/modelo/vocabularios.ts';
@@ -37,9 +40,10 @@ export function resumoDosAnexos(anexos) {
 /**
  * @param deps.trello o cliente do Trello (`ler` para os GET, `config`, `producaoDosCards`)
  * @param deps.acervo o acervo de artes (`artesPorRegistro`)
+ * @param deps.registro o registro das ações (servidor/registro-das-duplicadas.mjs): os casos ignorados saem da lista
  * @param deps.guardarMs por quanto tempo a leitura do quadro vale (5 min)
  */
-export function criarDuplicadas({ trello, acervo, guardarMs = 5 * 60_000 }) {
+export function criarDuplicadas({ trello, acervo, registro = null, guardarMs = 5 * 60_000 }) {
   const c = trello?.config ?? {};
   const ligado = !!(c.quadro && c.chave && c.token && trello?.ler);
   const entradas = new Set(Object.values(c.listas ?? {}).filter(Boolean));
@@ -119,21 +123,38 @@ export function criarDuplicadas({ trello, acervo, guardarMs = 5 * 60_000 }) {
     return { lido, casos, producao, porId };
   }
 
+  /** O caso ainda ignorado (a última ação dele é ignorar e não entrou card novo), ou null. */
+  const ignoradoAgora = (caso, ignorados) => {
+    const ignorado = ignorados.get(caso.id);
+    return registro?.continuaIgnorado(ignorado, caso.cards) ? ignorado : null;
+  };
+
   /**
-   * A lista: os casos do período (com o filtro da busca, que não muda o contador), a data da leitura e quantos cards
-   * entraram. @returns { ligado, dias, lidoEm, cardsLidos, pendentes, casos: [resumo] }
+   * A lista: os casos pendentes do período (com o filtro da busca, que não muda o contador), os resolvidos (ignorados)
+   * do período, a data da leitura e quantos cards entraram.
+   * @returns { ligado, dias, lidoEm, cardsLidos, pendentes, casos: [resumo], resolvidas: [resolvida], totalResolvidas }
    */
   async function listar({ dias = DIAS_PADRAO, busca = '', renovar = false } = {}) {
-    if (!ligado) return { ligado: false, dias, lidoEm: null, cardsLidos: 0, pendentes: 0, casos: [] };
+    if (!ligado) return { ligado: false, dias, lidoEm: null, cardsLidos: 0, pendentes: 0, casos: [], resolvidas: [], totalResolvidas: 0 };
     const { lido, casos, producao, porId } = await casosDo(dias, renovar);
     const artes = await artesNoAcervo();
+    const ignorados = registro?.ignorados() ?? new Map();
     const termo = semAcento(busca.trim());
     const termoChave = chaveDaClaquete(busca);
-    const resumos = casos.map((k) => {
+    const acha = (k) => !termo || k.cards.some((id) => semAcento(String(porId.get(id)?.name ?? '')).includes(termo)) || (!!termoChave && k.chave.includes(termoChave));
+    const pendentes = [];
+    const resolvidas = [];
+    for (const k of casos) {
+      const ignorado = ignoradoAgora(k, ignorados);
+      if (ignorado) resolvidas.push({ k, ignorado });
+      else pendentes.push(k);
+    }
+    const claquete = (k) => String(porId.get(k.sugestao.fica)?.name ?? '');
+    const resumo = (k) => {
       const cards = k.cards.map((id) => porId.get(id));
       return {
         id: k.id,
-        claquete: String(porId.get(k.sugestao.fica)?.name ?? ''),
+        claquete: claquete(k),
         praca: k.praca,
         versao: k.versao,
         secao: k.secao,
@@ -143,13 +164,45 @@ export function criarDuplicadas({ trello, acervo, guardarMs = 5 * 60_000 }) {
         comProducao: k.cards.filter((id) => producao[id]).length,
         artesNoAcervo: k.cards.reduce((n, id) => n + (artes[producao[id]?.registro] ?? 0), 0),
         dias: Math.floor((Date.now() - k.recente) / DIA),
-        nomes: cards.map((x) => String(x.name ?? '')),
       };
-    });
-    const achados = termo
-      ? resumos.filter((r) => r.nomes.some((n) => semAcento(n).includes(termo)) || (termoChave && casos.find((k) => k.id === r.id)?.chave.includes(termoChave)))
-      : resumos;
-    return { ligado: true, dias, lidoEm: lido.em, cardsLidos: lido.cards.length, pendentes: resumos.length, casos: achados.map(({ nomes, ...r }) => r) };
+    };
+    return {
+      ligado: true,
+      dias,
+      lidoEm: lido.em,
+      cardsLidos: lido.cards.length,
+      pendentes: pendentes.length,
+      casos: pendentes.filter(acha).map(resumo),
+      // a ignorada mais recente primeiro
+      resolvidas: resolvidas
+        .filter(({ k }) => acha(k))
+        .sort((a, b) => b.ignorado.id - a.ignorado.id)
+        .map(({ k, ignorado }) => ({ id: k.id, claquete: claquete(k), praca: k.praca, versao: k.versao, cards: k.cards.length, por: ignorado.por, em: ignorado.em, motivo: ignorado.motivo })),
+      totalResolvidas: resolvidas.length,
+    };
+  }
+
+  /**
+   * Ignorar ("não é duplicada"): anota no registro a assinatura do grupo de agora (os ids dos cards), o motivo, quem e
+   * quando. Nada muda no Trello nem no Teable.
+   * @returns { ok: true } | { erro, status }
+   */
+  async function ignorar(id, { dias = DIAS_PADRAO, motivo = '', por }) {
+    if (!ligado || !registro) return { status: 404, erro: 'A aba Duplicadas não está configurada.' };
+    const { casos, porId } = await casosDo(dias, false);
+    const caso = casos.find((k) => k.id === id);
+    if (!caso) return { status: 404, erro: 'Este caso não está mais entre as duplicadas do período.' };
+    if (ignoradoAgora(caso, registro.ignorados())) return { status: 409, erro: 'Este caso já está em Resolvidas.' };
+    registro.anotar({ acao: 'ignorar', caso: caso.id, claquete: String(porId.get(caso.sugestao.fica)?.name ?? ''), praca: caso.praca, cards: caso.cards, por, motivo });
+    return { ok: true };
+  }
+
+  /** Reabrir: o caso ignorado volta para a lista (fica no registro quem reabriu). Não lê o Trello. */
+  function reabrir(id, { por }) {
+    const ignorado = registro?.ignorados().get(id);
+    if (!ignorado) return { status: 404, erro: 'Este caso não está ignorado.' };
+    registro.anotar({ acao: 'reabrir', caso: id, claquete: ignorado.claquete, praca: ignorado.praca, cards: ignorado.cards, por });
+    return { ok: true };
   }
 
   async function artesNoAcervo() {
@@ -217,5 +270,5 @@ export function criarDuplicadas({ trello, acervo, guardarMs = 5 * 60_000 }) {
     };
   }
 
-  return { ligado, listar, detalhe };
+  return { ligado, listar, detalhe, ignorar, reabrir, registro: () => registro?.lista() ?? [] };
 }

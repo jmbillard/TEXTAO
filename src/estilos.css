@@ -3135,11 +3135,11 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 /* ---------- Cadastros › Duplicadas (#65): só consulta ---------- */
 .filtros-dup { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 18px; background: color-mix(in srgb, var(--neutro) 45%, var(--papel)); border-bottom: 1px solid var(--regua); }
 .rotulo-dup { font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta3); }
-.periodo-dup { display: inline-flex; background: var(--neutro); border-radius: 10px; padding: 3px; }
-.periodo-dup button { border: 0; background: none; padding: 5px 11px; border-radius: 8px; font: 500 14px var(--sans); color: var(--tinta2); cursor: pointer; }
-.periodo-dup button:hover { color: var(--tinta); }
-.periodo-dup button[aria-checked='true'] { background: var(--segmento-ativo); color: var(--tinta); font-weight: 650; box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
-.periodo-dup button:focus-visible, .linha-dup:focus-visible, .fica-sai button:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.periodo-dup, .vista-dup { display: inline-flex; background: var(--neutro); border-radius: 10px; padding: 3px; }
+.periodo-dup button, .vista-dup button { border: 0; background: none; padding: 5px 11px; border-radius: 8px; font: 500 14px var(--sans); color: var(--tinta2); cursor: pointer; }
+.periodo-dup button:hover, .vista-dup button:hover { color: var(--tinta); }
+.periodo-dup button[aria-checked='true'], .vista-dup button[aria-checked='true'] { background: var(--segmento-ativo); color: var(--tinta); font-weight: 650; box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+.periodo-dup button:focus-visible, .vista-dup button:focus-visible, .linha-dup:focus-visible, .fica-sai button:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
 .lido-dup { margin: 0 0 0 auto; font: 400 13px var(--sans); color: var(--tinta3); display: inline-flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .lido-dup .botao-texto { font-size: 12.5px; }
 .dup-falha { margin: 14px 18px; }
@@ -3152,7 +3152,41 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .secao-dup:last-child .caso-dup:last-child { border-radius: 0 0 14px 14px; overflow: hidden; }
 .linha-dup { display: grid; gap: 8px; width: 100%; text-align: left; border: 0; background: none; padding: 14px 18px; cursor: pointer; color: var(--tinta); font: inherit; transition: background 0.15s; }
 .linha-dup:hover { background: color-mix(in srgb, var(--neutro) 55%, transparent); }
-.caso-dup.aberto > .linha-dup { background: var(--ultra-suave); }
+.caso-dup.aberto .linha-dup { background: var(--ultra-suave); }
+/* Ignorar (#66): na linha, embaixo à direita, fora do botão que abre o caso */
+.envolta-dup { position: relative; }
+.caso-dup.com-acao .sinais-dup { padding-right: 76px; }
+.ignorar-dup { position: absolute; right: 18px; bottom: 14px; font-size: 13px; }
+.vista-dup b { font: 600 11px var(--mono); color: var(--ultra); margin-left: 5px; }
+.resolvida-dup { display: grid; gap: 8px; padding: 14px 18px; }
+.resolvida-dup .topo-dup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.resolvida-dup .lado-dup { margin-left: auto; }
+.acoes-dup { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; }
+.acoes-dup .explica-dup { margin: 0; flex: 1 1 280px; }
+.acoes-dup .botao { white-space: nowrap; }
+.veu-dup { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 24px; overflow: auto; background: color-mix(in srgb, var(--mesa) 70%, rgb(0 0 0 / 35%)); animation: surgir 0.18s; }
+.dialogo-dup { width: min(540px, 100%); background: var(--papel); color: var(--tinta); border-radius: 16px; box-shadow: var(--sombra-menu); padding: 22px 24px 20px; }
+.dialogo-dup h2 { font: 400 26px/1.2 var(--serifa); margin: 0 0 6px; }
+.dialogo-dup .dica { font: 400 13.5px/1.55 var(--sans); color: var(--tinta2); margin: 0 0 16px; }
+.dialogo-dup .dica .claquete-dup { font-size: 12px; padding: 2px 7px; }
+.motivos-dup { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.motivos-dup button { border: 1px solid var(--regua-forte); background: var(--cartao); border-radius: 999px; padding: 5px 12px; font: 500 13px var(--sans); color: var(--tinta2); cursor: pointer; }
+.motivos-dup button:hover { color: var(--tinta); border-color: var(--tinta3); }
+.motivos-dup button[aria-pressed='true'] { background: var(--tinta); color: var(--papel); border-color: var(--tinta); }
+.obs-dup { width: 100%; box-sizing: border-box; border: 1px solid var(--regua-forte); border-radius: 10px; padding: 9px 12px; font: 400 14px var(--sans); background: var(--cartao); color: var(--tinta); }
+.obs-dup:focus-visible, .motivos-dup button:focus-visible, .ignorar-dup:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.rodape-dup { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px 14px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--regua); }
+.rodape-dup .quem-dup { margin-right: auto; flex: 1 1 220px; font: 400 12.5px/1.4 var(--sans); color: var(--tinta3); }
+.registro-dup { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.registro-dup li { padding: 10px 8px; margin: 0 -8px; border-top: 1px solid var(--regua); font: 400 13px/1.5 var(--sans); color: var(--tinta2); overflow-wrap: anywhere; border-radius: 6px; }
+.registro-dup li:first-child { border-top: 0; }
+.registro-dup li b { color: var(--tinta); font-weight: 600; }
+.registro-dup li.novo { background: var(--ok-fundo); }
+.quando-dup { display: flex; align-items: baseline; gap: 4px; margin-top: 2px; font: 500 11.5px var(--sans); color: var(--tinta3); }
+.quando-dup .botao-texto { font-size: 12.5px; }
+.vazio-registro-dup { margin: 0; font: 400 13px/1.45 var(--sans); color: var(--tinta3); }
+.regra-dup { margin: 18px 0 0; padding-top: 14px; border-top: 1px dashed var(--regua-forte); font: 400 12.5px/1.5 var(--sans); color: var(--tinta3); }
+.regra-dup b { color: var(--tinta2); font-weight: 600; }
 .linha-dup .topo-dup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
 .claquete-dup { font: 600 13.5px/1.35 var(--mono); text-transform: uppercase; color: var(--tinta); background: var(--cartao); border: 1px solid color-mix(in srgb, var(--tinta) 55%, transparent); border-radius: 6px; padding: 4px 10px; min-width: 0; overflow-wrap: anywhere; }
 .praca-dup { font: 600 11px var(--mono); color: var(--tinta3); background: var(--neutro); border-radius: 999px; padding: 3px 9px; }
@@ -3196,7 +3230,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .card-dup dl > .difere { background: color-mix(in srgb, var(--ultra-suave) 55%, var(--papel)); }
 .card-dup dt { font: 600 10px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta3); }
 .card-dup dd { margin: 2px 0 0; font: 400 14px/1.4 var(--sans); color: var(--tinta); overflow-wrap: anywhere; }
-.painel-dup .dica { margin-bottom: 0; }
+.painel-dup .dica { margin-bottom: 12px; }
 @media (max-width: 900px) { .form-cad.painel-dup { order: 1; } }
 @media (max-width: 600px) {
   .filtros-dup { padding: 12px 14px; }
@@ -3204,5 +3238,6 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .secao-dup > header { padding: 18px 14px 8px; }
   .secao-dup .nota { display: none; }
   .linha-dup { padding: 12px 14px; }
+  .resolvida-dup { padding: 12px 14px; }
   .detalhe-dup { padding: 4px 12px 14px; }
 }

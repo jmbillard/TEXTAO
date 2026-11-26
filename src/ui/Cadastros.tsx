@@ -44,7 +44,7 @@ import { Marca } from './pecas';
 import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
-import { ComoAchaAsDuplicadas, ListaDeDuplicadas, useDuplicadas } from './Duplicadas';
+import { ListaDeDuplicadas, PainelDasDuplicadas, useDuplicadas } from './Duplicadas';
 import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, RegrasDaAtracaoNaFicha, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
@@ -524,7 +524,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   // a aba "Sem cadastro": as keys das claquetes que nenhuma atração reconhece (o formulário da direita é o de atração;
   // a folha de rascunho toma o lugar da linha da key que leva)
   const [semCad, setSemCad] = useState(false);
-  // a aba Duplicadas (só administradores, só consulta)
+  // a aba Duplicadas (só administradores)
   const [dupAberta, setDupAberta] = useState(false);
   // onde a tira de rascunho abre a vaga na lista
   const [nomeVaga, setNomeVaga] = useState<string | null>(null);
@@ -1141,7 +1141,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
           )}
 
           {dupAberta && pode ? (
-            <ComoAchaAsDuplicadas />
+            <PainelDasDuplicadas registro={duplicadas.registro} recente={duplicadas.recente} reabrir={duplicadas.reabrir} celular={celular} />
           ) : atracaoAberta ? (
             <aside className="form-cad ficha-atr" aria-label={`Ficha de ${atracaoAberta.nome}`}>
               <button type="button" className="botao-texto volta-ficha" onClick={fecharFicha}>

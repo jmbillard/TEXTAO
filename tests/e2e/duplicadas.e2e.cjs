@@ -3,8 +3,10 @@
 // Sobe o servidor e o Vite como os outros e2e (banco temporário, nada sai para a rede), com o quadro do Trello, a
 // produção da arte e o acervo falsos (cards fictícios): as rotas /api/duplicadas são as de verdade. No computador, claro
 // e escuro: a aba com o número de casos, o período, "Lido do Trello", a busca, as três seções; abrir um caso mostra os
-// cards lado a lado com as diferenças e a sugestão, que a pessoa troca; o caso de três cards. Quem não é administrador
-// não vê a aba. No celular, claro e escuro: a lista e o caso aberto com os cards empilhados, só consulta.
+// cards lado a lado com as diferenças e a sugestão, que a pessoa troca; o caso de três cards. Ignorar (#66) pela linha,
+// com o motivo: o caso sai da lista e do contador, vai para Resolvidas e para o Registro; Reabrir devolve. Quem não é
+// administrador não vê a aba. No celular, claro e escuro: a lista e o caso aberto com os cards empilhados, Resolvidas e
+// o Registro, só consulta (sem Ignorar nem Reabrir).
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:duplicadas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -154,6 +156,8 @@ const capturar = async (p, nome) => {
   await p.waitForTimeout(300);
   await p.screenshot({ path: join(CAPTURAS, `${nome}.png`), fullPage: true });
 };
+/** O nome que o servidor deu à Lia (sai do e-mail). */
+const nomeDaLia = (p) => p.evaluate(() => fetch('/api/eu').then((r) => r.json()).then((d) => d.nome));
 const claquetes = (p) => p.locator('.linha-dup .claquete-dup').allTextContents();
 const caso = (p, nome) => p.locator('.caso-dup', { has: p.locator('.claquete-dup', { hasText: nome }) });
 const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
@@ -200,6 +204,8 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(await linhaDe('Produção da arte'), ['tem linha', 'tem linha']);
   assert.match((await linhaDe('Criado'))[1], / · 3 h depois$/);
   assert.deepEqual(await linhaDe('Trello'), ['trello.com/c/Ficti4790', 'trello.com/c/Ficti4795']);
+  // Ignorar também no caso aberto (onde ficará o Apagar)
+  assert.deepEqual(await textos(caso(p, 'Show da Noite').locator('.acoes-dup .botao')), ['Ignorar']);
   const fica = () => tabela.locator('.cabeca .col-dup').evaluateAll((cs) => cs.map((c) => (c.classList.contains('fica') ? 'fica' : 'sai')));
   assert.deepEqual(await fica(), ['fica', 'sai']);
   await semRolagemDeLado(p, `computador ${nome}, caso`);
@@ -241,9 +247,56 @@ async function noComputador(navegador, url, tema) {
   await p.locator('.periodo-dup button', { hasText: '90' }).click();
   await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 6);
 
+  // ignorar pela linha, sem abrir o caso, com o motivo
+  const vista = (rotulo) => p.locator('.vista-dup button', { hasText: rotulo });
+  assert.deepEqual(await textos(p.locator('.vista-dup button')), ['Para olhar6', 'Resolvidas0']);
+  assert.equal(await p.locator('.ignorar-dup').count(), 6, 'Ignorar em cada linha');
+  await caso(p, 'Cozinha de Vó').locator('.ignorar-dup').click();
+  const dialogo = p.locator('.dialogo-dup');
+  await dialogo.waitFor();
+  assert.equal(await caso(p, 'Cozinha de Vó').locator('.detalhe-dup').count(), 0, 'ignorar pela linha não abre o caso');
+  assert.match(await dialogo.locator('.dica').textContent(), /Nada muda no Trello nem no Teable/);
+  await dialogo.locator('.motivos-dup button', { hasText: 'São exibições diferentes' }).click();
+  await dialogo.locator('.obs-dup').fill('uma é a reprise');
+  await semRolagemDeLado(p, `computador ${nome}, ignorar`);
+  await capturar(p, `04-ignorar-${nome}`);
+  await dialogo.locator('.botao.primario', { hasText: 'Ignorar' }).click();
+  await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 5);
+  assert.equal(await p.locator('.dialogo-dup').count(), 0);
+  assert.equal(await caso(p, 'Cozinha de Vó').count(), 0, 'o caso saiu da lista');
+  assert.equal((await aba.locator('.rot').textContent()).trim(), 'Duplicadas 5', 'o contador da aba caiu');
+  assert.deepEqual(await textos(p.locator('.vista-dup button')), ['Para olhar5', 'Resolvidas1']);
+  // o Registro: quem ignorou o quê e quando, com o motivo
+  const primeira = p.locator('.registro-dup li').first();
+  await primeira.locator('text=ignorou').waitFor();
+  assert.match((await primeira.textContent()).replace(/\s+/g, ' '), /ignorou Cozinha de Vó 18\/11 \(2 cards\): São exibições diferentes: uma é a reprise\.agora · Reabrir$/);
+  assert.equal(await primeira.getAttribute('class'), 'novo');
+
+  // Resolvidas
+  await vista('Resolvidas').click();
+  const resolvida = p.locator('.resolvida-dup');
+  await resolvida.first().waitFor();
+  assert.equal(await resolvida.count(), 1);
+  assert.equal(await p.locator('.linha-dup').count(), 0);
+  assert.deepEqual(await textos(resolvida.locator('.sinais-dup .s')), ['Não é duplicada', 'São exibições diferentes: uma é a reprise', '2 cards', `${await nomeDaLia(p)}, agora`]);
+  await semRolagemDeLado(p, `computador ${nome}, resolvidas`);
+  await capturar(p, `05-resolvidas-${nome}`);
+
+  // Reabrir devolve o caso
+  await resolvida.locator('button', { hasText: 'Reabrir' }).click();
+  await p.waitForFunction(() => document.querySelectorAll('.resolvida-dup').length === 0);
+  assert.deepEqual(await textos(p.locator('.vista-dup button')), ['Para olhar6', 'Resolvidas0']);
+  assert.equal((await aba.locator('.rot').textContent()).trim(), 'Duplicadas 6');
+  assert.match((await p.locator('.registro-dup li').first().textContent()).replace(/\s+/g, ' '), /reabriu Cozinha de Vó 18\/11\.agora$/);
+  assert.equal(await p.locator('.registro-dup button', { hasText: 'Reabrir' }).count(), 0, 'o reaberto não reabre de novo');
+  await capturar(p, `06-registro-${nome}`);
+  await vista('Para olhar').click();
+  await caso(p, 'Cozinha de Vó').waitFor();
+  assert.equal(await p.locator('.linha-dup').count(), 6);
+
   assert.deepEqual(erros, [], `computador ${nome}: erros na página`);
   await ctx.close();
-  console.log(`ok: computador ${nome}: aba com 6, seções, lista → caso lado a lado com diferenças e sugestão trocável, três cards, busca e período`);
+  console.log(`ok: computador ${nome}: aba com 6, seções, lista → caso lado a lado com diferenças e sugestão trocável, três cards, busca e período; ignorar pela linha → Resolvidas e Registro → reabrir`);
 }
 
 async function semSerAdministrador(navegador, url) {
@@ -275,10 +328,30 @@ async function noCelular(navegador, url, tema) {
   assert.equal(await p.locator('.fica-sai, .tabela-dup').count(), 0, 'no celular, só consulta');
   assert.ok((await textos(detalhe.locator('.card-dup').nth(1).locator('.difere dt'))).includes('Lista'));
   await semRolagemDeLado(p, `celular ${nome}, caso`);
+  assert.equal(await p.locator('.acoes-dup .botao').count(), 0, 'no celular, sem Ignorar no caso');
+  assert.equal(await p.locator('.ignorar-dup').count(), 0, 'no celular, sem Ignorar na linha');
   await capturar(p, `11-celular-detalhe-${nome}`);
+
+  // Resolvidas e o Registro também no celular, sem Reabrir: um caso ignorado pela API (como se fosse no computador)
+  const lista = await (await ctx.request.get(new URL('/api/duplicadas', url).href)).json();
+  const novela = lista.casos.find((c) => c.claquete.startsWith('Novela Sinfonia'));
+  assert.equal((await ctx.request.post(new URL('/api/duplicadas/ignorar', url).href, { data: { id: novela.id, dias: 90, motivo: 'Pedido de propósito' } })).status(), 200);
+  await p.reload();
+  await p.waitForSelector('.abas-cad');
+  await aba.locator('sup', { hasText: '5' }).waitFor();
+  await aba.tap();
+  await p.locator('.vista-dup button', { hasText: 'Resolvidas' }).tap();
+  await p.locator('.resolvida-dup').first().waitFor();
+  assert.equal(await p.locator('.resolvida-dup button').count(), 0, 'no celular, sem Reabrir em Resolvidas');
+  await p.locator('.registro-dup li', { hasText: 'Novela Sinfonia' }).first().waitFor();
+  assert.equal(await p.locator('.registro-dup button').count(), 0, 'no celular, sem Reabrir no Registro');
+  await semRolagemDeLado(p, `celular ${nome}, resolvidas`);
+  await capturar(p, `12-celular-resolvidas-${nome}`);
+  assert.equal((await ctx.request.post(new URL('/api/duplicadas/reabrir', url).href, { data: { id: novela.id } })).status(), 200);
+
   assert.deepEqual(erros, [], `celular ${nome}: erros na página`);
   await ctx.close();
-  console.log(`ok: celular ${nome}: lista → caso com os cards empilhados, só consulta`);
+  console.log(`ok: celular ${nome}: lista → caso com os cards empilhados, Resolvidas e Registro, só consulta`);
 }
 
 async function principal() {

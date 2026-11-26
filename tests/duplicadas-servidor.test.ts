@@ -57,6 +57,12 @@ const quadro = () => {
 function falsos() {
   const cards = quadro();
   const todos = Object.values(cards);
+  /** Um card novo no quadro (o reenvio que chega depois). */
+  const novoCard = (dias: number, name: string): CardFalso => {
+    const x: CardFalso = { id: idCriadoHa(dias), idShort: 5000 + sequencia, name, closed: false, idList: 'entradaG5', idMembers: [] };
+    todos.push(x);
+    return x;
+  };
   const pedidos: string[] = [];
   const buscar = async (url: string, init: RequestInit = {}) => {
     const u = new URL(url);
@@ -131,7 +137,7 @@ function falsos() {
     }
     return [];
   };
-  return { cards, buscar, consultar, pedidos };
+  return { cards, buscar, consultar, pedidos, novoCard };
 }
 
 let parar: (() => Promise<void>) | null = null;
@@ -144,13 +150,14 @@ async function comServidor(env: Record<string, string> = ENV) {
   const f = falsos();
   const trello = criarTrello(env, { buscar: f.buscar, consultar: f.consultar });
   const acervo = criarAcervo(env, { consultar: f.consultar, buscar: f.buscar });
-  const servidor = createServer(criarApp({ db: abrirBanco(':memory:'), env, trello, acervo }));
+  const app = criarApp({ db: abrirBanco(':memory:'), env, trello, acervo });
+  const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   parar = () => new Promise<void>((ok) => servidor.close(() => ok()));
   const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
   const como = (email: string) => (caminho: string, init: RequestInit = {}) =>
     fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json', ...init.headers } });
-  return { ...f, chefe: como('chefe@empresa.com'), ana: como('ana@empresa.com') };
+  return { ...f, app, chefe: como('chefe@empresa.com'), ana: como('ana@empresa.com') };
 }
 
 type Resumo = { id: string; claquete: string; praca: string; secao: string; cards: number; abertos: number; arquivados: number; comProducao: number; artesNoAcervo: number; dias: number };
@@ -251,5 +258,88 @@ describe('o detalhe de um caso', () => {
   it('o caso que não existe mais no período responde 404', async () => {
     const { chefe } = await comServidor();
     expect((await chefe('/api/duplicadas/caso?id=NADA%7CG5%7C')).status).toBe(404);
+  });
+});
+
+type Resolvida = { id: string; claquete: string; praca: string; cards: number; por: string; em: string; motivo: string };
+type ListaComResolvidas = Lista & { resolvidas: Resolvida[] };
+type Registro = { registro: { acao: string; caso: string; claquete: string; praca: string; cards: string[]; por: string; em: string; motivo: string; podeReabrir: boolean }[] };
+
+describe('ignorar e reabrir (#66)', () => {
+  const ignorar = (pedir: (c: string, i?: RequestInit) => Promise<Response>, id: string, motivo?: string) =>
+    pedir('/api/duplicadas/ignorar', { method: 'POST', body: JSON.stringify({ id, dias: 90, ...(motivo === undefined ? {} : { motivo }) }) });
+
+  it('ignorar tira o caso da lista e do contador, põe em Resolvidas e no Registro, sem escrever no Trello nem no Teable', async () => {
+    const { chefe, cards, pedidos } = await comServidor();
+    const antes = (await (await chefe('/api/duplicadas')).json()) as ListaComResolvidas;
+    const cozinha = antes.casos.find((c) => c.claquete === 'Cozinha de Vó 18/11')!;
+    expect(antes.resolvidas).toEqual([]);
+    const r = await ignorar(chefe, cozinha.id, '  São exibições diferentes  ');
+    expect(r.status).toBe(200);
+    const depois = (await (await chefe('/api/duplicadas')).json()) as ListaComResolvidas;
+    expect(depois.pendentes).toBe(2);
+    expect(depois.casos.map((c) => c.claquete)).not.toContain('Cozinha de Vó 18/11');
+    expect(depois.resolvidas).toEqual([
+      expect.objectContaining({ id: cozinha.id, claquete: 'Cozinha de Vó 18/11', praca: 'G5', cards: 2, por: 'Chefe', motivo: 'São exibições diferentes' }),
+    ]);
+    expect(Date.now() - Date.parse(depois.resolvidas[0].em)).toBeLessThan(60_000);
+    const { registro } = (await (await chefe('/api/duplicadas/registro')).json()) as Registro;
+    expect(registro).toEqual([
+      expect.objectContaining({ acao: 'ignorar', caso: cozinha.id, claquete: 'Cozinha de Vó 18/11', praca: 'G5', cards: [cards.cozinha1.id, cards.cozinha2.id], por: 'Chefe', motivo: 'São exibições diferentes', podeReabrir: true }),
+    ]);
+    expect(pedidos.filter((p) => !p.startsWith('GET '))).toEqual([]);
+  });
+
+  it('reabrir devolve o caso à lista; o registro guarda as duas ações, a mais nova primeiro', async () => {
+    const { chefe } = await comServidor();
+    const { casos } = (await (await chefe('/api/duplicadas')).json()) as Lista;
+    const festa = casos[0];
+    expect((await ignorar(chefe, festa.id)).status).toBe(200);
+    expect((await ignorar(chefe, festa.id)).status).toBe(409);
+    const r = await chefe('/api/duplicadas/reabrir', { method: 'POST', body: JSON.stringify({ id: festa.id }) });
+    expect(r.status).toBe(200);
+    const lista = (await (await chefe('/api/duplicadas')).json()) as ListaComResolvidas;
+    expect(lista).toMatchObject({ pendentes: 3, resolvidas: [], totalResolvidas: 0 });
+    expect(lista.casos[0].id).toBe(festa.id);
+    const { registro } = (await (await chefe('/api/duplicadas/registro')).json()) as Registro;
+    expect(registro.map((l) => [l.acao, l.claquete, l.motivo, l.podeReabrir])).toEqual([
+      ['reabrir', 'Festa na Praça 19/11 REDE', '', false],
+      ['ignorar', 'Festa na Praça 19/11 REDE', '', false],
+    ]);
+    // reabrir o que não está ignorado
+    expect((await chefe('/api/duplicadas/reabrir', { method: 'POST', body: JSON.stringify({ id: festa.id }) })).status).toBe(404);
+  });
+
+  it('o caso ignorado volta sozinho quando entra um card novo no grupo', async () => {
+    const { chefe, novoCard } = await comServidor();
+    const { casos } = (await (await chefe('/api/duplicadas')).json()) as Lista;
+    const cozinha = casos.find((c) => c.claquete === 'Cozinha de Vó 18/11')!;
+    await ignorar(chefe, cozinha.id, 'Exibições diferentes');
+    expect(((await (await chefe('/api/duplicadas')).json()) as Lista).pendentes).toBe(2);
+    novoCard(0.5, 'COZINHA DE VÓ 18/11');
+    const lista = (await (await chefe('/api/duplicadas?renovar=1')).json()) as ListaComResolvidas;
+    expect(lista.pendentes).toBe(3);
+    expect(lista.casos.find((c) => c.id === cozinha.id)).toMatchObject({ cards: 3 });
+    expect(lista.resolvidas).toEqual([]);
+  });
+
+  it('só administradores ignoram e reabrem e veem o registro; o caso que não existe responde 404', async () => {
+    const { chefe, ana, pedidos } = await comServidor();
+    expect((await ignorar(ana, 'COZINHA DE VO 18 11|G5|')).status).toBe(403);
+    expect((await ana('/api/duplicadas/reabrir', { method: 'POST', body: JSON.stringify({ id: 'x' }) })).status).toBe(403);
+    expect((await ana('/api/duplicadas/registro')).status).toBe(403);
+    expect(pedidos).toEqual([]);
+    expect((await ignorar(chefe, 'NADA|G5|')).status).toBe(404);
+    expect((await ignorar(chefe, 'NADA|G5|', 'x'.repeat(201))).status).toBe(400);
+    expect((await chefe('/api/duplicadas/ignorar')).status).toBe(405);
+  });
+
+  it('o registro é do PROMeiro: o ignorado continua ignorado quando a configuração muda', async () => {
+    const { chefe, app } = await comServidor();
+    const { casos } = (await (await chefe('/api/duplicadas')).json()) as Lista;
+    await ignorar(chefe, casos[0].id, 'Pedido de propósito');
+    await app.mudarConfiguracao({ TRELLO_LISTA_SP: 'listaNovaSP' }).antigaFechada;
+    const lista = (await (await chefe('/api/duplicadas')).json()) as ListaComResolvidas;
+    expect(lista.resolvidas.map((r) => [r.id, r.motivo])).toEqual([[casos[0].id, 'Pedido de propósito']]);
   });
 });

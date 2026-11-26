@@ -117,6 +117,15 @@ _Evitar_: FilmeBOT (o site avulso que ela substitui)
 **Card**:
 O cartão no Trello de uma claquete (ou de um filme), com o checklist das artes.
 
+**Duplicada**:
+Dois ou mais cards do quadro com a mesma claquete (pela key, sem acento, caixa e pontuação), a mesma praça e a mesma
+versão: um reenvio, um card criado à mão em cima de outro. Versões diferentes (-2, V2, B, Opção N) não são duplicadas.
+Cada grupo é um **caso**, que a aba Duplicadas dos Cadastros mostra só para administradores. **Ignorar** ("não é
+duplicada") tira o caso da lista sem mudar nada no Trello nem no Teable: ele vai para **Resolvidas** e para o
+**Registro** (quem fez o quê e quando, com o motivo), volta com **Reabrir** e volta sozinho quando entra card novo no
+grupo (a assinatura, os ids dos cards, mudou).
+_Evitar_: card repetido, claquete duplicada (no envio, "duplicado" é a claquete que já tinha entrado hoje na produção)
+
 **Produção (ARTE_producao)**:
 O registro de cada card de claquete de roteiro: status, designers, entrega. Card de filme não entra aqui.
 _Evitar_: demanda

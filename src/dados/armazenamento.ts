@@ -837,7 +837,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
   }
 }
 
-/* ---------- aba Duplicadas dos Cadastros (só administradores, só consulta) ---------- */
+/* ---------- aba Duplicadas dos Cadastros (só administradores) ---------- */
 
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 export type { SecaoDaDuplicada };
@@ -863,9 +863,39 @@ export interface ListaDasDuplicadas {
   dias: number;
   lidoEm: string | null;
   cardsLidos: number;
-  /** todos os casos do período, sem a busca */
+  /** todos os casos pendentes do período, sem a busca (os ignorados não contam) */
   pendentes: number;
   casos: ResumoDaDuplicada[];
+  /** os casos ignorados do período (com a busca), o mais recente primeiro */
+  resolvidas: ResolvidaDaDuplicada[];
+  /** todos os ignorados do período, sem a busca */
+  totalResolvidas: number;
+}
+/** Um caso ignorado ("não é duplicada"): sai da lista até alguém reabrir ou entrar card novo no grupo. */
+export interface ResolvidaDaDuplicada {
+  id: string;
+  claquete: string;
+  praca: string;
+  versao: string;
+  cards: number;
+  /** quem ignorou e quando */
+  por: string;
+  em: string;
+  motivo: string;
+}
+/** Uma ação do Registro: quem ignorou ou reabriu (e, depois, apagou ou recriou) o quê e quando. */
+export interface AcaoDoRegistro {
+  id: number;
+  acao: 'ignorar' | 'reabrir' | 'apagar' | 'recriar';
+  caso: string;
+  claquete: string;
+  praca: string;
+  cards: string[];
+  por: string;
+  em: string;
+  motivo: string;
+  /** a ignorada que vale agora: dá para reabrir */
+  podeReabrir: boolean;
 }
 /** Um card do caso aberto, como o detalhe compara. */
 export interface CardDaDuplicada {
@@ -902,3 +932,8 @@ export interface CasoDaDuplicada {
 export const lerDuplicadas = (dias: number, busca = '', renovar = false) =>
   pedir<ListaDasDuplicadas>(`/api/duplicadas?dias=${dias}${busca.trim() ? `&busca=${encodeURIComponent(busca.trim())}` : ''}${renovar ? '&renovar=1' : ''}`);
 export const lerCasoDeDuplicada = (id: string, dias: number) => pedir<CasoDaDuplicada>(`/api/duplicadas/caso?id=${encodeURIComponent(id)}&dias=${dias}`);
+export const lerRegistroDasDuplicadas = () => pedir<{ registro: AcaoDoRegistro[] }>('/api/duplicadas/registro').then((r) => r.registro);
+/** Ignora o caso: só o registro do PROMeiro muda (nada no Trello nem no Teable). */
+export const ignorarDuplicada = (id: string, dias: number, motivo: string) =>
+  pedir<{ ok: true }>('/api/duplicadas/ignorar', { method: 'POST', body: JSON.stringify({ id, dias, motivo }) });
+export const reabrirDuplicada = (id: string) => pedir<{ ok: true }>('/api/duplicadas/reabrir', { method: 'POST', body: JSON.stringify({ id }) });

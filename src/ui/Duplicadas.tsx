@@ -1,11 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { lerCasoDeDuplicada, lerDuplicadas, type CardDaDuplicada, type CasoDaDuplicada, type ListaDasDuplicadas, type ResumoDaDuplicada, type SecaoDaDuplicada } from '../dados/armazenamento';
+import {
+  ignorarDuplicada,
+  lerCasoDeDuplicada,
+  lerDuplicadas,
+  lerRegistroDasDuplicadas,
+  reabrirDuplicada,
+  type AcaoDoRegistro,
+  type CardDaDuplicada,
+  type CasoDaDuplicada,
+  type ListaDasDuplicadas,
+  type ResolvidaDaDuplicada,
+  type ResumoDaDuplicada,
+  type SecaoDaDuplicada,
+} from '../dados/armazenamento';
 import { Icone } from './icones';
 import { plural } from './util';
 
 /* Aba Duplicadas dos Cadastros (#65): os cards do quadro do Trello com a mesma claquete, praça e versão. Só
-   administradores, só consulta: a lista por seção, com o período e a busca, e o caso aberto na própria lista, com os
-   cards lado a lado (empilhados no celular), as diferenças destacadas e a sugestão de qual fica, que a pessoa troca. */
+   administradores: a lista por seção, com o período e a busca, e o caso aberto na própria lista, com os cards lado a
+   lado (empilhados no celular), as diferenças destacadas e a sugestão de qual fica, que a pessoa troca.
+   Ignorar (#66), na linha e no caso aberto, com motivo opcional: o caso vai para Resolvidas e para o Registro (o painel
+   da direita), e Reabrir devolve. Nada muda no Trello nem no Teable. No celular, só consulta (sem os botões). */
 
 export const PERIODOS = [30, 60, 90, 180, 365];
 const PERIODO_PADRAO = 90;
@@ -31,6 +46,14 @@ export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
   const [lendo, setLendo] = useState(false);
   const termo = aberta ? busca.trim() : '';
   const pedido = useRef(0);
+  const [registro, setRegistro] = useState<AcaoDoRegistro[] | null>(null);
+  // a ação que acabou de entrar no registro (pisca no painel)
+  const [recente, setRecente] = useState<number | null>(null);
+  const lerRegistro = () =>
+    lerRegistroDasDuplicadas().then(
+      (r) => setRegistro(r),
+      () => setRegistro((r) => r ?? []),
+    );
   const ler = (renovar = false) => {
     const n = ++pedido.current;
     setLendo(true);
@@ -49,6 +72,9 @@ export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
     );
   };
   useEffect(() => {
+    if (pode && aberta) void lerRegistro();
+  }, [pode, aberta]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
     if (!pode) return;
     // a busca espera a pessoa parar de digitar
     const t = setTimeout(() => ler(), termo ? 250 : 0);
@@ -62,7 +88,29 @@ export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
       /* sem o armazenamento do navegador, o período vale só agora */
     }
   };
-  return { dias, mudarDias, lista, falha, lendo, renovar: () => ler(true) };
+  /** Depois de ignorar ou reabrir: a lista (do que já foi lido do Trello) e o registro de novo. */
+  const depoisDaAcao = async () => {
+    ler();
+    const antes = registro?.[0]?.id ?? 0;
+    const r = await lerRegistroDasDuplicadas().catch(() => null);
+    if (!r) return;
+    setRegistro(r);
+    setRecente(r[0] && r[0].id > antes ? r[0].id : null);
+  };
+  const ignorar = async (id: string, motivo: string) => {
+    await ignorarDuplicada(id, dias, motivo);
+    await depoisDaAcao();
+  };
+  const reabrir = async (id: string) => {
+    try {
+      await reabrirDuplicada(id);
+    } catch (e) {
+      setFalha(e instanceof Error ? e.message : 'Não consegui reabrir o caso.');
+      return;
+    }
+    await depoisDaAcao();
+  };
+  return { dias, mudarDias, lista, falha, lendo, renovar: () => ler(true), registro, recente, ignorar, reabrir };
 }
 
 /* ---------- textos ---------- */
@@ -78,6 +126,28 @@ const quantoTempo = (iso: string | null, agora: number) => {
   const min = Math.floor((agora - Date.parse(iso)) / 60_000);
   return min < 1 ? 'agora' : min < 60 ? `há ${min} min` : `há ${Math.floor(min / 60)} h`;
 };
+/** A hora de agora, de 30 em 30 s e quando `mudou` muda (o "há N min" anda sozinho). */
+function useAgora(mudou: unknown) {
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setAgora(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => setAgora(Date.now()), [mudou]);
+  return agora;
+}
+/** "agora", "há 12 min", "hoje, 14:02", "ontem, 17:10", "24/11, 10:02" */
+function quando(iso: string, agora: number) {
+  const d = new Date(iso);
+  const min = Math.floor((agora - d.getTime()) / 60_000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const dia = (t: number) => new Date(t).toDateString();
+  if (dia(agora) === d.toDateString()) return `hoje, ${hora}`;
+  if (dia(agora - 86_400_000) === d.toDateString()) return `ontem, ${hora}`;
+  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}, ${hora}`;
+}
 const haDias = (n: number) => (n <= 0 ? 'hoje' : n === 1 ? 'ontem' : `há ${n} dias`);
 const diaMes = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—');
 const diaHora = (iso: string) => `${diaMes(iso)} ${new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
@@ -101,17 +171,20 @@ interface PropsDaLista {
   renovar: () => void;
   busca: string;
   celular: boolean;
+  ignorar: (id: string, motivo: string) => Promise<void>;
+  reabrir: (id: string) => Promise<void>;
 }
 
-export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renovar, busca, celular }: PropsDaLista) {
+type Vista = 'pendentes' | 'resolvidas';
+
+export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renovar, busca, celular, ignorar, reabrir }: PropsDaLista) {
   const [aberto, setAberto] = useState<string | null>(null);
+  const [vista, setVista] = useState<Vista>('pendentes');
+  // o caso que está sendo ignorado (o diálogo do motivo aberto)
+  const [ignorando, setIgnorando] = useState<{ id: string; claquete: string } | null>(null);
+  const pedirIgnorar = celular ? undefined : (c: { id: string; claquete: string }) => setIgnorando({ id: c.id, claquete: c.claquete });
   // o "há N min" da leitura anda sozinho
-  const [agora, setAgora] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setAgora(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  useEffect(() => setAgora(Date.now()), [lista?.lidoEm]);
+  const agora = useAgora(lista?.lidoEm);
 
   return (
     <>
@@ -124,6 +197,16 @@ export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renova
             </button>
           ))}
         </div>
+        {lista?.ligado && (
+          <div className="vista-dup" role="radiogroup" aria-label="Situação">
+            <button type="button" role="radio" aria-checked={vista === 'pendentes'} onClick={() => setVista('pendentes')}>
+              Para olhar<b>{lista.pendentes}</b>
+            </button>
+            <button type="button" role="radio" aria-checked={vista === 'resolvidas'} onClick={() => setVista('resolvidas')}>
+              Resolvidas<b>{lista.totalResolvidas}</b>
+            </button>
+          </div>
+        )}
         {lista?.ligado && lista.lidoEm && (
           <p className="lido-dup">
             Lido do Trello {quantoTempo(lista.lidoEm, agora)} · {lista.cardsLidos.toLocaleString('pt-BR')} {lista.cardsLidos === 1 ? 'card' : 'cards'}
@@ -140,10 +223,11 @@ export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renova
           A aba Duplicadas ainda não está configurada: falta o quadro do Trello (<code>TRELLO_QUADRO</code>) no servidor.
         </p>
       )}
-      {lista?.ligado && !lista.casos.length && (
+      {lista?.ligado && vista === 'pendentes' && !lista.casos.length && (
         <p className="cad-vazio">{busca.trim() ? `Nenhuma duplicada com “${busca.trim()}”.` : `Nenhuma duplicada nos cards criados em ${dias} dias.`}</p>
       )}
       {lista?.ligado &&
+        vista === 'pendentes' &&
         SECOES.map((s) => {
           const casos = lista.casos.filter((c) => c.secao === s.id);
           if (!casos.length) return null;
@@ -158,36 +242,175 @@ export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renova
                 <span className="nota">{s.nota}</span>
               </header>
               {casos.map((c) => (
-                <LinhaDoCaso key={c.id} caso={c} aberto={aberto === c.id} alternar={() => setAberto((a) => (a === c.id ? null : c.id))} dias={dias} celular={celular} />
+                <LinhaDoCaso
+                  key={c.id}
+                  caso={c}
+                  aberto={aberto === c.id}
+                  alternar={() => setAberto((a) => (a === c.id ? null : c.id))}
+                  dias={dias}
+                  celular={celular}
+                  ignorar={pedirIgnorar && (() => pedirIgnorar(c))}
+                />
               ))}
             </section>
           );
         })}
+      {lista?.ligado && vista === 'resolvidas' && (
+        <section className="secao-dup" aria-label="Resolvidas">
+          <header>
+            <h3>Resolvidas</h3>
+            <span className="qtd">no período</span>
+            <span className="nota">Não voltam enquanto os mesmos cards estiverem no grupo.</span>
+          </header>
+          {lista.resolvidas.map((r) => (
+            <LinhaResolvida key={r.id} r={r} agora={agora} reabrir={celular ? undefined : () => reabrir(r.id)} />
+          ))}
+          {!lista.resolvidas.length && (
+            <p className="cad-vazio">{busca.trim() ? `Nenhuma resolvida com “${busca.trim()}”.` : `Nenhum caso ignorado nos cards criados em ${dias} dias.`}</p>
+          )}
+        </section>
+      )}
+      {ignorando && (
+        <DialogoIgnorar
+          claquete={ignorando.claquete}
+          fechar={() => setIgnorando(null)}
+          confirmar={async (motivo) => {
+            await ignorar(ignorando.id, motivo);
+            setIgnorando(null);
+            setAberto((a) => (a === ignorando.id ? null : a));
+          }}
+        />
+      )}
     </>
   );
 }
 
-function LinhaDoCaso({ caso, aberto, alternar, dias, celular }: { caso: ResumoDaDuplicada; aberto: boolean; alternar: () => void; dias: number; celular: boolean }) {
+/** Um caso ignorado: a claquete, "Não é duplicada", o motivo, quem e quando, e Reabrir (no computador). */
+function LinhaResolvida({ r, agora, reabrir }: { r: ResolvidaDaDuplicada; agora: number; reabrir?: () => Promise<void> }) {
+  const [indo, setIndo] = useState(false);
   return (
-    <div className={`caso-dup${aberto ? ' aberto' : ''}`}>
-      <button type="button" className="linha-dup" aria-expanded={aberto} onClick={alternar}>
-        <span className="topo-dup">
-          <span className="claquete-dup">{caso.claquete}</span>
-          <span className="praca-dup">{caso.praca}</span>
+    <div className="caso-dup resolvida-dup">
+      <div className="topo-dup">
+        <span className="claquete-dup">{r.claquete}</span>
+        <span className="praca-dup">{r.praca}</span>
+        {reabrir && (
           <span className="lado-dup">
-            <span>{plural(caso.cards, 'card', 'cards')}</span>
-            <span>{haDias(caso.dias)}</span>
-            <Icone nome={aberto ? 'baixo' : 'direita'} tam={15} />
+            <button
+              type="button"
+              className="botao-texto"
+              disabled={indo}
+              onClick={() => {
+                setIndo(true);
+                void reabrir().finally(() => setIndo(false));
+              }}
+            >
+              {indo ? 'Reabrindo…' : 'Reabrir'}
+            </button>
           </span>
+        )}
+      </div>
+      <span className="sinais-dup">
+        <span className="s">Não é duplicada</span>
+        {r.motivo && <span className="s">{r.motivo}</span>}
+        <span className="s">{plural(r.cards, 'card', 'cards')}</span>
+        <span className="s">
+          {r.por}, {quando(r.em, agora)}
         </span>
-        <span className="sinais-dup">
-          {caso.abertos > 0 && <span className="s aberto">{plural(caso.abertos, 'aberto', 'abertos')}</span>}
-          {caso.arquivados > 0 && <span className="s arquivado">{plural(caso.arquivados, 'arquivado', 'arquivados')}</span>}
-          {caso.comProducao > 0 && <span className="s">{caso.comProducao} com linha na produção</span>}
-          {caso.artesNoAcervo > 0 && <span className="s">{plural(caso.artesNoAcervo, 'arte', 'artes')} no acervo</span>}
-        </span>
-      </button>
-      {aberto && <DetalheDoCaso id={caso.id} dias={dias} celular={celular} />}
+      </span>
+    </div>
+  );
+}
+
+/** Os motivos de sempre, para não digitar; o campo curto fica para o resto. */
+const MOTIVOS = ['São exibições diferentes', 'Praças diferentes', 'Uma é versão da outra', 'Pedido de propósito'];
+const MOTIVO_MAXIMO = 200;
+
+/** O diálogo de ignorar: o motivo é opcional (um dos de sempre, uma observação curta, ou os dois). */
+function DialogoIgnorar({ claquete, fechar, confirmar }: { claquete: string; fechar: () => void; confirmar: (motivo: string) => Promise<void> }) {
+  const [escolhido, setEscolhido] = useState('');
+  const [obs, setObs] = useState('');
+  const [indo, setIndo] = useState(false);
+  const [falha, setFalha] = useState('');
+  const campo = useRef<HTMLInputElement>(null);
+  useEffect(() => campo.current?.focus(), []);
+  const motivo = [escolhido, obs.trim()].filter(Boolean).join(': ').slice(0, MOTIVO_MAXIMO);
+  const ir = () => {
+    if (indo) return;
+    setIndo(true);
+    setFalha('');
+    confirmar(motivo).catch((e: unknown) => {
+      setFalha(e instanceof Error ? e.message : 'Não consegui ignorar o caso.');
+      setIndo(false);
+    });
+  };
+  return (
+    <div className="veu-dup" onMouseDown={(e) => e.target === e.currentTarget && !indo && fechar()} onKeyDown={(e) => e.key === 'Escape' && !indo && fechar()}>
+      <div className="dialogo-dup" role="dialog" aria-modal="true" aria-labelledby="titulo-ignorar">
+        <h2 id="titulo-ignorar">Não é duplicada</h2>
+        <p className="dica">
+          <b className="claquete-dup">{claquete}</b> sai da lista e não volta enquanto os mesmos cards estiverem no grupo. Nada muda no Trello nem no Teable.
+        </p>
+        <span className="rotulo-dup">Por quê (opcional)</span>
+        <div className="motivos-dup" role="group" aria-label="Motivo">
+          {MOTIVOS.map((m) => (
+            <button key={m} type="button" aria-pressed={escolhido === m} onClick={() => setEscolhido((e) => (e === m ? '' : m))}>
+              {m}
+            </button>
+          ))}
+        </div>
+        <input
+          ref={campo}
+          className="obs-dup"
+          value={obs}
+          maxLength={120}
+          onChange={(e) => setObs(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && ir()}
+          placeholder="Observação (opcional)"
+          aria-label="Observação (opcional)"
+        />
+        {falha && <p className="cad-falha">{falha}</p>}
+        <div className="rodape-dup">
+          <span className="quem-dup">Fica no registro com o seu nome e a hora. Dá para reabrir.</span>
+          <button type="button" className="botao-texto" onClick={fechar} disabled={indo}>
+            Cancelar
+          </button>
+          <button type="button" className="botao primario" onClick={ir} disabled={indo}>
+            {indo ? 'Ignorando…' : 'Ignorar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LinhaDoCaso({ caso, aberto, alternar, dias, celular, ignorar }: { caso: ResumoDaDuplicada; aberto: boolean; alternar: () => void; dias: number; celular: boolean; ignorar?: () => void }) {
+  return (
+    <div className={`caso-dup${aberto ? ' aberto' : ''}${ignorar ? ' com-acao' : ''}`}>
+      <div className="envolta-dup">
+        <button type="button" className="linha-dup" aria-expanded={aberto} onClick={alternar}>
+          <span className="topo-dup">
+            <span className="claquete-dup">{caso.claquete}</span>
+            <span className="praca-dup">{caso.praca}</span>
+            <span className="lado-dup">
+              <span>{plural(caso.cards, 'card', 'cards')}</span>
+              <span>{haDias(caso.dias)}</span>
+              <Icone nome={aberto ? 'baixo' : 'direita'} tam={15} />
+            </span>
+          </span>
+          <span className="sinais-dup">
+            {caso.abertos > 0 && <span className="s aberto">{plural(caso.abertos, 'aberto', 'abertos')}</span>}
+            {caso.arquivados > 0 && <span className="s arquivado">{plural(caso.arquivados, 'arquivado', 'arquivados')}</span>}
+            {caso.comProducao > 0 && <span className="s">{caso.comProducao} com linha na produção</span>}
+            {caso.artesNoAcervo > 0 && <span className="s">{plural(caso.artesNoAcervo, 'arte', 'artes')} no acervo</span>}
+          </span>
+        </button>
+        {ignorar && (
+          <button type="button" className="botao-texto ignorar-dup" onClick={ignorar} title="Não é duplicada: tirar da lista sem apagar nada">
+            Ignorar
+          </button>
+        )}
+      </div>
+      {aberto && <DetalheDoCaso id={caso.id} dias={dias} celular={celular} ignorar={ignorar} />}
     </div>
   );
 }
@@ -244,7 +467,7 @@ function useEscolha(caso: CasoDaDuplicada | null) {
   return { saem, ficar, sair };
 }
 
-function DetalheDoCaso({ id, dias, celular }: { id: string; dias: number; celular: boolean }) {
+function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: number; celular: boolean; ignorar?: () => void }) {
   const [caso, setCaso] = useState<CasoDaDuplicada | null>(null);
   const [falha, setFalha] = useState('');
   useEffect(() => {
@@ -268,10 +491,17 @@ function DetalheDoCaso({ id, dias, celular }: { id: string; dias: number; celula
     </p>
   );
   const rodape = (
-    <p className="explica-dup">
-      A sugestão usa os mesmos sinais do relatório do n8n: arquivado na entrada, linha na produção, membros, quem foi criado primeiro, lista de saída.
-      {celular ? '' : ' Você pode trocar.'}
-    </p>
+    <div className="acoes-dup">
+      <p className="explica-dup">
+        A sugestão usa os mesmos sinais do relatório do n8n: arquivado na entrada, linha na produção, membros, quem foi criado primeiro, lista de saída.
+        {celular ? ' Ignorar só no computador.' : ' Você pode trocar.'}
+      </p>
+      {ignorar && (
+        <button type="button" className="botao" onClick={ignorar}>
+          Ignorar
+        </button>
+      )}
+    </div>
   );
   if (celular)
     return (
@@ -337,17 +567,66 @@ function DetalheDoCaso({ id, dias, celular }: { id: string; dias: number; celula
   );
 }
 
-/** O painel ao lado da lista: como o PROMeiro acha as duplicadas. */
-export function ComoAchaAsDuplicadas() {
+/** Uma ação do registro em uma frase: quem fez o quê. */
+function fraseDoRegistro(a: AcaoDoRegistro) {
+  const caso = <b>{a.claquete}</b>;
+  if (a.acao === 'ignorar')
+    return (
+      <>
+        <b>{a.por}</b> ignorou {caso} ({plural(a.cards.length, 'card', 'cards')}){a.motivo ? `: ${a.motivo}` : ', sem motivo'}.
+      </>
+    );
+  if (a.acao === 'reabrir')
+    return (
+      <>
+        <b>{a.por}</b> reabriu {caso}.
+      </>
+    );
   return (
-    <aside className="form-cad painel-dup" aria-label="Como o PROMeiro acha as duplicadas">
+    <>
+      <b>{a.por}</b> {a.acao === 'apagar' ? 'apagou um card de' : 'recriou um card de'} {caso}
+      {a.motivo ? `: ${a.motivo}` : ''}.
+    </>
+  );
+}
+
+/** O painel ao lado da lista: o Registro (quem ignorou ou reabriu o quê e quando) e como o PROMeiro acha as duplicadas. */
+export function PainelDasDuplicadas({ registro, recente, reabrir, celular }: { registro: AcaoDoRegistro[] | null; recente: number | null; reabrir: (id: string) => Promise<void>; celular: boolean }) {
+  const agora = useAgora(registro);
+  return (
+    <aside className="form-cad painel-dup" aria-label="Registro das duplicadas">
       <h2>
         <span className="bolha">
-          <Icone nome="duplicar" tam={18} />
+          <Icone nome="historico" tam={18} />
         </span>
-        Duplicadas
+        Registro
       </h2>
-      <p className="dica">
+      <p className="dica">Quem ignorou ou reabriu cada caso, e quando. Fica guardado no PROMeiro; nada disso muda o Trello nem o Teable.</p>
+      {registro === null ? (
+        <p className="vazio-registro-dup">Lendo o registro…</p>
+      ) : registro.length ? (
+        <ul className="registro-dup">
+          {registro.map((a) => (
+            <li key={a.id} className={a.id === recente ? 'novo' : undefined}>
+              {fraseDoRegistro(a)}
+              <span className="quando-dup">
+                {quando(a.em, agora)}
+                {a.podeReabrir && !celular && (
+                  <>
+                    {' · '}
+                    <button type="button" className="botao-texto" onClick={() => void reabrir(a.caso)}>
+                      Reabrir
+                    </button>
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="vazio-registro-dup">Nada ainda: quem ignorar um caso aparece aqui.</p>
+      )}
+      <p className="regra-dup">
         <b>Como o PROMeiro acha:</b> todos os cards do quadro (abertos e arquivados) criados no período, agrupados pela claquete sem acento, caixa e
         pontuação, pela praça e pela versão. Versões diferentes (-2, V2, B, Opção) não contam como duplicadas. Só administradores veem esta aba.
       </p>

@@ -23,6 +23,7 @@ import { criarRegrasDaAtracao, criarTabelaDasRegras } from './regras-da-atracao.
 import { criarRedatorProvavel } from './redator.mjs';
 import { criarFilmes } from './filmes.mjs';
 import { criarDuplicadas, DIAS_MAXIMO, DIAS_PADRAO } from './duplicadas.mjs';
+import { criarRegistroDasDuplicadas, MOTIVO_MAXIMO } from './registro-das-duplicadas.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
@@ -413,7 +414,7 @@ const FABRICAS = {
   acervo: (env, { abrirPg, trello }) => criarAcervo(env, { abrirPg, artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }),
   cadastros: (env, { vocabulario }) => criarCadastros(env, { vocabulario }),
   redatorProvavel: (env, { abrirPg }) => criarRedatorProvavel(env, { abrirPg }),
-  duplicadas: (_env, { trello, acervo }) => criarDuplicadas({ trello, acervo }),
+  duplicadas: (_env, { trello, acervo, registro }) => criarDuplicadas({ trello, acervo, registro }),
   // a aba Filmes nasce uma vez (a fila de leitura da prévia não para); na mudança, só o envio e a conferência mudam
   filmes: (env, { db, trello, abrirPg }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg }),
 };
@@ -431,6 +432,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const importacoes = criarImportacoes(db);
   const regrasDaAtracao = criarRegrasDaAtracao(db);
+  // o registro da aba Duplicadas (#66) é do SQLite: o mesmo em todas as gerações da configuração
+  const registroDasDuplicadas = criarRegistroDasDuplicadas(db);
   // as importações que estão sendo desfeitas ou retomadas agora (o segundo clique espera o primeiro)
   const mexendoNaImportacao = new Set();
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
@@ -453,7 +456,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     g.pauta = criarPauta(env, g.vocabulario, abrir, cache, copia);
     g.cadastros = fazer(fabricas.cadastros, env, { vocabulario: g.vocabulario });
     g.redatorProvavel = fazer(fabricas.redatorProvavel, env, { abrirPg: abrir });
-    g.duplicadas = fazer(fabricas.duplicadas, env, { trello: g.trello, acervo: g.acervo });
+    g.duplicadas = fazer(fabricas.duplicadas, env, { trello: g.trello, acervo: g.acervo, registro: registroDasDuplicadas });
     return g;
   }
   let geracao = montar(configuracao.valores());
@@ -1172,17 +1175,31 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
 
   /**
-   * Aba Duplicadas dos Cadastros (#65), só para administradores e só leitura: a lista dos casos do período (?dias=,
-   * 1 a 730, 90 sem dizer; ?busca=; ?renovar=1 lê o Trello de novo) e o detalhe de um caso (?id=).
+   * Aba Duplicadas dos Cadastros (#65), só para administradores: a lista dos casos do período (?dias=, 1 a 730, 90 sem
+   * dizer; ?busca=; ?renovar=1 lê o Trello de novo), o detalhe de um caso (?id=) e o registro. Ignorar e reabrir (#66,
+   * POST { id, dias, motivo }) só anotam no registro do PROMeiro: nada muda no Trello nem no Teable.
    */
   async function rotaDasDuplicadas(req, res, eu, caminho) {
-    if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
-    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem as duplicadas.' });
+    const acao = caminho === '/api/duplicadas/ignorar' || caminho === '/api/duplicadas/reabrir';
+    if (req.method !== (acao ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
+    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: acao ? 'Só administradores ignoram e reabrem duplicadas.' : 'Só administradores veem as duplicadas.' });
+    if (caminho === '/api/duplicadas/registro') return json(res, 200, { registro: duplicadas.registro() });
     const busca = new URL(req.url, 'http://x').searchParams;
-    const textoDias = busca.get('dias');
+    const corpo = acao ? ((await lerCorpo(req).catch(() => null)) ?? {}) : {};
+    const textoDias = acao ? (corpo.dias == null ? null : String(corpo.dias)) : busca.get('dias');
     const dias = textoDias === null || textoDias === '' ? DIAS_PADRAO : /^\d{1,4}$/.test(textoDias) ? Number(textoDias) : NaN;
     if (!(dias >= 1 && dias <= DIAS_MAXIMO)) return json(res, 400, { erro: `O período vai de 1 a ${DIAS_MAXIMO} dias.` });
+    if (acao) {
+      if (typeof corpo.id !== 'string' || !corpo.id || corpo.id.length > 400) return json(res, 400, { erro: 'Falta o caso.' });
+      if (corpo.motivo != null && typeof corpo.motivo !== 'string') return json(res, 400, { erro: 'O motivo é um texto.' });
+      if ((corpo.motivo ?? '').trim().length > MOTIVO_MAXIMO) return json(res, 400, { erro: `O motivo vai até ${MOTIVO_MAXIMO} letras.` });
+    }
     try {
+      const por = { email: eu.email, nome: eu.nome };
+      if (acao) {
+        const r = caminho === '/api/duplicadas/ignorar' ? await duplicadas.ignorar(corpo.id, { dias, motivo: corpo.motivo ?? '', por }) : duplicadas.reabrir(corpo.id, { por });
+        return r.ok ? json(res, 200, { ok: true }) : json(res, r.status, { erro: r.erro });
+      }
       if (caminho === '/api/duplicadas')
         return json(res, 200, await duplicadas.listar({ dias, busca: (busca.get('busca') ?? '').slice(0, 200), renovar: busca.get('renovar') === '1' }));
       const roteiroDoCard = (card) => {
@@ -1629,7 +1646,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       q.designorar.run(decodeURIComponent(caminho.slice('/api/cadastros/ignorar/'.length)).toUpperCase());
       return json(res, 200, { ok: true });
     }
-    if (caminho === '/api/duplicadas' || caminho === '/api/duplicadas/caso') return rotaDasDuplicadas(req, res, eu, caminho);
+    if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
