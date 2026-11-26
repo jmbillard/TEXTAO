@@ -16,6 +16,29 @@ prévias no acervo do filme (os cards de filme não entram na produção da arte
 mudou (pela coluna `__last_modified_time`) e anota o que mudou em cada uma (etapa, designer que entrou ou saiu, praça,
 prioridade, complexidade; a linha nova vira Produção). O log diz `[producoes] releitura do Teable`.
 
+## Os anexos: guardados pelo PROMeiro
+
+O PDF do roteiro que vai ao card e os pôsteres dos filmes (#90) ficam no SQLite do PROMeiro (a tabela `anexos`, que
+entra no backup com o resto do banco) e são servidos por endereço fixo:
+
+- **O PDF do roteiro:** o envio gera o PDF como sempre (o Stirling converte o Word; sem ele, `servidor/pdf.mjs`),
+  anexa ao card do Trello como antes e guarda uma cópia. O link `doc` da produção da arte passa a ser o do PROMeiro,
+  `PROMEIRO_URL/api/anexos/<id>/<nome>.pdf` (só para quem está logado); a versão nova (V2) também, e o link passa a
+  ser o dela. Comparar com o que está na produção lê o PDF do PROMeiro; só o link antigo, de antes disso, ainda baixa
+  do anexo do Trello. Sem o `PROMEIRO_URL`, o link continua o do Trello (a cópia fica guardada do mesmo jeito).
+- **Os pôsteres:** `/api/filmes/poster/<filme>` serve a cópia do PROMeiro. Sem ela, busca no Teable (campo `poster`
+  da tabela de filmes) e guarda a cópia; a cópia é conferida com o Teable de 6 em 6 horas (um pôster novo posto lá à
+  mão a substitui; o Teable sem o arquivo não apaga a cópia). Sem os dois, 404 limpo, e o "não tem" fica guardado
+  (1 hora; 5 minutos quando o Teable não respondeu), sem ir ao Teable a cada pedido. O pôster da prévia entra no
+  PROMeiro no Envio da aba Filmes, junto com o do cadastro. Os pôsteres que o armazenamento do Teable já perdeu não
+  voltam: só voltam se alguém puser de novo (no Teable, ou pela prévia).
+- **O pôster para o Padeiro:** o Padeiro abre o pôster numa `<img>`, sem login. Com `POSTER_PUBLICO_TOKEN` no
+  Portainer, `PROMEIRO_URL/api/publico/poster/<filme>?t=<token>` serve o mesmo pôster fora do login; precisa de uma
+  aplicação no Cloudflare Access só para o caminho `/api/publico/poster`, com uma política **Bypass** (como a do aviso
+  do Trello). Sem o token, ou com o errado, 404; o que mais estiver embaixo de `/api/publico/` também responde 404 e
+  nunca chega às rotas com login. O fluxo `filmes-recentes` do n8n passa a mandar esse endereço no lugar do link
+  temporário do Teable.
+
 ## O aviso do Trello: desligado
 
 O aviso do Trello (#87, o webhook do quadro, e a recuperação das ações do quadro, #88) está **desligado por padrão** e

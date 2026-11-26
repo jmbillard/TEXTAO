@@ -79,3 +79,14 @@ quadro (#88) ficam no código, **desligados** (`TRELLO_AVISO`): sem ele, nenhum 
 envio depende (as listas, os campos, as opções e as etiquetas do quadro; o card que o PROMeiro vai mudar; o card do
 filme de onde o card novo copia membros e campos) e, até o Teable ter o dado, o andamento dos cards de filme e o
 checklist das prévias (os cards de filme não entram na produção da arte, ADR 0001).
+
+## Os anexos (#90): o PROMeiro guarda o PDF e os pôsteres
+
+O PDF do roteiro que vai ao card e os pôsteres dos filmes ficam no SQLite do PROMeiro (no backup) e são servidos por
+endereço fixo; o Trello continua recebendo o PDF e o Teable, o pôster, mas o link `doc` da produção da arte é o do
+PROMeiro, e o PDF da comparação não é mais baixado do Trello (só o link antigo, de antes disso). O pôster que o Teable
+ainda tem vira cópia do PROMeiro no primeiro pedido; o que ele perdeu não volta. Para o Padeiro, que abre o pôster sem
+login, uma segunda exceção ao Access, só para `/api/publico/poster`, com um token de serviço fixo no endereço
+(`POSTER_PUBLICO_TOKEN`): o pôster é público por natureza e o fluxo filmes-recentes já é aberto, então um token só
+basta para não deixar o caminho aberto a qualquer um. Não responde a pergunta de como o Padeiro se identifica para o
+resto da API: o token do pôster só abre o pôster.

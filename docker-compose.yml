@@ -34,6 +34,8 @@ services:
       - PERFIL_LOCAL=${PERFIL_LOCAL:-0}
       - ACESSO=${ACESSO:-aberto}
       - PROMEIRO_URL=${PROMEIRO_URL:-}
+      # o pôster dos filmes aberto sem login, para o Padeiro (#90): /api/publico/poster/<filme>?t=<token>. Vazia: desligado
+      - POSTER_PUBLICO_TOKEN=${POSTER_PUBLICO_TOKEN:-}
 
       # ---- Servidor ----
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}

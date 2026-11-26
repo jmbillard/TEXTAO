@@ -653,6 +653,29 @@ describe('aba Filmes: o envio', () => {
     expect(falsos.cards()[0].card.name).toBe('TELA QUENTE 07/12 - RIVAIS (2024)');
   });
 
+  it('o pôster da prévia fica guardado no PROMeiro (#90) e é servido de lá, também quando o cadastro já tem um mais atual', async () => {
+    const { enviar, terminar, api, falsos } = await paraEnviar(
+      [
+        { titulo: 'RIVAIS', ano_de_producao: 2024, sessao: 'TELA QUENTE', data: '07/12/2026' },
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 },
+      ],
+      {
+        filmes: [
+          { ...filmeDoBanco('recRivais1', 'Rivais', 2024), poster: [{ name: 'Rivais.jpg', token: 'tokVelho' }] },
+          { ...DESPEDIDA, poster: [{ name: 'Despedida em Grande Estilo (prévia 2027-01).jpg', token: 'tokNovo' }] },
+        ],
+        atracoes: SESSOES,
+      },
+    );
+    await enviar();
+    await terminar();
+    const antes = falsos.pedidos.length;
+    // o que subiu para o cadastro, e o que não subiu (o cadastro tem um mais atual) mas o PROMeiro não tinha
+    expect(await (await api('/api/filmes/poster/recRivais1')).text()).toBe('jpg-poster-1');
+    expect(await (await api('/api/filmes/poster/recDespedida01')).text()).toBe('jpg-poster-2');
+    expect(falsos.pedidos.slice(antes)).toEqual([]);
+  });
+
   it('sem a lista dos filmes no Trello, o envio fica desligado e diz o que falta', async () => {
     const { TRELLO_LISTA_FILMES: _, ...semLista } = ENVIO;
     const { enviar, api, id, falsos } = await paraEnviar([{ titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 }], { filmes: [DESPEDIDA] }, {}, semLista);

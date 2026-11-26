@@ -111,8 +111,9 @@ const MARCA_DA_PREVIA = /\(prévia (\d{4}-\d{2})\)/;
  * @param env as variáveis do servidor (as do Trello e do Teable; as tabelas descobertas, para ler os filmes e as sessões)
  * @param deps.trello o módulo do Trello (criarCard e a escrita no Teable)
  * @param deps.consultar (sql, params) => linhas, no Postgres do Teable
+ * @param deps.anexos os anexos guardados pelo PROMeiro (#90): a cópia do pôster da prévia fica lá
  */
-export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
+export function criarEnvioDeFilmes(env, { trello, consultar, anexos } = {}) {
   const c = trello?.config;
   const esquema = nomesDoPg(env, '').esquema;
   const tabela = (v) => {
@@ -158,16 +159,17 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
   }
 
   /** O pôster da prévia vai para o cadastro quando ele não tem um, ou quando o que tem veio de uma prévia mais antiga
-      (ou de fora do PROMeiro): o da prévia substitui o antigo. */
+      (ou de fora do PROMeiro): o da prévia substitui o antigo.
+      @returns o anexo que subiu (com o token dele no Teable), ou null quando o cadastro já tem um mais atual */
   async function posterNoCadastro(filme, poster, titulo, mes) {
     const meses = filme.poster.map((a) => MARCA_DA_PREVIA.exec(String(a?.name ?? ''))?.[1] ?? '');
-    if (filme.poster.length && meses.some((m) => m >= mes)) return;
+    if (filme.poster.length && meses.some((m) => m >= mes)) return null;
     const nome = nomeDeArquivo(titulo).replace(/\.jpg$/, ` (prévia ${mes}).jpg`);
     const r = await trello.teableAnexar(c.teable.filmes, filme.id, c.teable.posterDoFilme, { nome, tipo: 'image/jpeg', dados: poster });
-    if (!filme.poster.length) return;
     const lista = r?.fields?.[c.teable.posterDoFilme] ?? r?.fields?.poster ?? [];
-    const novo = lista.at(-1);
-    if (novo) await trello.teableAtualizar(c.teable.filmes, filme.id, { poster: [novo] });
+    const novo = lista.at(-1) ?? {};
+    if (filme.poster.length && lista.length) await trello.teableAtualizar(c.teable.filmes, filme.id, { poster: [novo] });
+    return novo;
   }
 
   /**
@@ -260,9 +262,13 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     const ano = conferencia.ano ?? null;
     if (conferencia.filme && ano && ano !== conferencia.filme.ano) await tentar('completar o ano', () => trello.teableAtualizar(c.teable.filmes, filme.id, { ano_de_producao: ano }));
     // um pôster por filme no Envio, mesmo que ele passe em duas sessões
-    if (poster && c.teable.posterDoFilme && !lote.posteres.has(filme.id)) {
+    if (poster && !lote.posteres.has(filme.id)) {
       lote.posteres.add(filme.id);
-      await tentar('pôr o pôster no cadastro', () => posterNoCadastro(filme, poster, titulo, dia.slice(0, 7)));
+      const subiu = c.teable.posterDoFilme ? await tentar('pôr o pôster no cadastro', () => posterNoCadastro(filme, poster, titulo, dia.slice(0, 7))) : null;
+      // a cópia do PROMeiro (#90): a que foi para o cadastro substitui a guardada; a que não foi (o cadastro tem uma
+      // mais atual, ou não subiu) só fica se o PROMeiro ainda não tem nenhuma
+      const origem = String(subiu?.token || subiu?.id || '') || 'previa';
+      if (anexos) await tentar('guardar o pôster no PROMeiro', () => anexos.guardarPoster(filme.id, { mime: 'image/jpeg', dados: poster, origem, seFaltar: !subiu }));
     }
   }
 

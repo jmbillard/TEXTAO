@@ -26,6 +26,7 @@ import { criarFilmes } from './filmes.mjs';
 import { criarDuplicadas, DIAS_MAXIMO, DIAS_PADRAO } from './duplicadas.mjs';
 import { criarRegistroDasDuplicadas, MOTIVO_MAXIMO } from './registro-das-duplicadas.mjs';
 import { criarProducoes } from './producoes.mjs';
+import { ROTA_PUBLICA, criarAnexos, idDoCaminho, posterPublico } from './anexos.mjs';
 import { RECUPERACAO, ROTA_DO_AVISO, acoesDesde, assinaturaConfere, avisoLigado, enderecoDoAviso, faltasDoAviso, garantirWebhook, lerCorpoDoAviso, listasDoQuadro, quadroDoAviso, segredoDoAviso } from './aviso-do-trello.mjs';
 import { eventosDoAviso } from '../src/modelo/avisoDoTrello.ts';
 import { ehSessaoDaTarde } from './exibicao.mjs';
@@ -427,13 +428,13 @@ export function copiarMetaParaYdoc(doc, meta) {
  * (env, deps) => módulo, que é chamada de novo quando a configuração muda, ou por um módulo pronto, que fica o mesmo.
  */
 const FABRICAS = {
-  trello: (env, { abrirPg }) => criarTrello(env, { abrirPg }),
+  trello: (env, { abrirPg, anexos }) => criarTrello(env, { abrirPg, anexos }),
   acervo: (env, { abrirPg, trello }) => criarAcervo(env, { abrirPg, artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }),
   cadastros: (env, { vocabulario }) => criarCadastros(env, { vocabulario }),
   redatorProvavel: (env, { abrirPg }) => criarRedatorProvavel(env, { abrirPg }),
   duplicadas: (_env, { trello, acervo, registro }) => criarDuplicadas({ trello, acervo, registro }),
   // a aba Filmes nasce uma vez (a fila de leitura da prévia não para); na mudança, só o envio e a conferência mudam
-  filmes: (env, { db, trello, abrirPg }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg }),
+  filmes: (env, { db, trello, abrirPg, anexos }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg, anexos }),
 };
 /** Os módulos que são refeitos quando a configuração muda (e fechados, os antigos, quando terminam o que faziam). */
 const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas'];
@@ -474,6 +475,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const registroDasDuplicadas = criarRegistroDasDuplicadas(db);
   // as Produções (#86): o trabalho da arte com id próprio do PROMeiro, no SQLite
   const producoes = criarProducoes(db);
+  // os anexos guardados pelo PROMeiro (#90): o PDF do roteiro do envio e os pôsteres dos filmes, no SQLite (no backup)
+  const anexos = criarAnexos(db, { buscar: buscarNoTeable });
   // as importações que estão sendo desfeitas ou retomadas agora (o segundo clique espera o primeiro)
   const mexendoNaImportacao = new Set();
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
@@ -499,7 +502,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const env = envDosModulos(valores, tabelas);
     // as praças da configuração (a coleção salva ou as de fábrica): o servidor passa estas a cada reconhecimento
     const g = { env, pracas: pracasDaConfiguracao(env), emCurso: 0, drenou: null };
-    g.trello = fazer(fabricas.trello, env, { abrirPg: abrir });
+    g.trello = fazer(fabricas.trello, env, { abrirPg: abrir, anexos });
     g.acervo = fazer(fabricas.acervo, env, { abrirPg: abrir, trello: g.trello });
     g.vocabulario = criarVocabulario(env, fetch, cache, copia, null, abrir);
     g.pauta = criarPauta(env, g.vocabulario, abrir, cache, copia);
@@ -510,7 +513,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
   let geracao = montar(configuracao.valores());
   let { env, pracas, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao;
-  const filmes = fazer(fabricas.filmes, env, { db, trello, abrirPg: abrir });
+  const filmes = fazer(fabricas.filmes, env, { db, trello, abrirPg: abrir, anexos });
 
   /* Os nomes conhecidos para o histórico (#78): o último quadro lido (as listas, os campos, as opções e as
      etiquetas) e os nomes dos quadros e das bases que o PROMeiro já leu. */
@@ -1302,6 +1305,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         texto: typeof corpo.texto === 'string' ? corpo.texto.slice(0, 200_000) : '',
         original: o ? { nome: o.nome, tipo: o.tipo, dados: Buffer.from(o.dados) } : null,
         endereco: base ? `${base}/#/r/${id}` : '',
+        roteiro: id,
       });
       const estado = r.duplicado ? 'duplicado' : 'enviado';
       q.marcarEnvio.run(id, estado, r.card?.id ?? null, r.card?.url ?? null, null, JSON.stringify(r.avisos ?? []), new Date().toISOString(), eu.email, eu.nome);
@@ -1337,30 +1341,6 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /** Card de filme que saiu (finalizado ou entregue): as artes dele entram no acervo do filme, uma vez só. */
   let registrandoFilmes = false;
-  // pôsteres: o Teable dá um link temporário; o app guarda a imagem por algumas horas (e o "não tem" por 10 min)
-  const posteres = new Map();
-  async function posterDoFilme(id) {
-    const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
-    if (!base || !env.TEABLE_FILMES || !env.TEABLE_TOKEN) return null;
-    const guardado = posteres.get(id);
-    if (guardado && Date.now() - guardado.em < (guardado.img ? 6 * 3600e3 : 600e3)) return guardado.img;
-    let img = null;
-    try {
-      const r = await fetch(`${base}/api/table/${encodeURIComponent(env.TEABLE_FILMES)}/record/${id}?fieldKeyType=name`, { headers: { authorization: `Bearer ${env.TEABLE_TOKEN}` }, signal: AbortSignal.timeout(8000) });
-      const anexo = r.ok ? (await r.json())?.fields?.poster?.[0] : null;
-      const url = anexo?.presignedUrl ? new URL(anexo.presignedUrl, base).toString() : '';
-      if (url && /^image\//.test(anexo.mimetype ?? 'image/')) {
-        const f = await fetch(url, { signal: AbortSignal.timeout(10000) });
-        if (f.ok) img = { tipo: f.headers.get('content-type') || anexo.mimetype || 'image/jpeg', dados: Buffer.from(await f.arrayBuffer()) };
-      }
-    } catch (e) {
-      console.warn(`[pôster] ${id}: ${e instanceof Error ? e.message : e}`);
-    }
-    if (posteres.size > 400) posteres.delete(posteres.keys().next().value);
-    posteres.set(id, { img, em: Date.now() });
-    return img;
-  }
-
   async function filmesNoAcervo(filmes) {
     if (registrandoFilmes || !acervo.ligado || !acervo.grava) return;
     registrandoFilmes = true;
@@ -2280,14 +2260,23 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
     const posterDe = /^\/api\/filmes\/poster\/(rec[A-Za-z0-9]{6,32})$/.exec(caminho);
     if (posterDe && req.method === 'GET') {
-      // o pôster do filme (campo "poster" da tabela de filmes, que o FilmeBOT preenche), servido daqui com cache
-      const img = await posterDoFilme(posterDe[1]);
-      if (!img) {
-        res.writeHead(404, { 'cache-control': 'private, max-age=600' });
-        return res.end();
-      }
-      res.writeHead(200, { 'content-type': img.tipo, 'content-length': img.dados.length, 'cache-control': 'private, max-age=86400' });
-      return res.end(img.dados);
+      // o pôster do filme (#90): a cópia guardada pelo PROMeiro; sem ela, o do Teable (campo poster da tabela de
+      // filmes), que vira a cópia. Sem os dois, 404 (e o "não tem" fica guardado, sem ir ao Teable a cada pedido)
+      return servirPoster(res, await anexos.poster(posterDe[1], env), 'private');
+    }
+    const doAnexo = idDoCaminho(caminho);
+    if (doAnexo && req.method === 'GET') {
+      // o PDF do roteiro que foi ao card (#90), pelo endereço fixo que a produção da arte guarda; o id não muda
+      const pdf = anexos.pdf(doAnexo);
+      if (!pdf) return json(res, 404, { erro: 'Este PDF não está guardado no PROMeiro.' });
+      const ascii = pdf.nome.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+      res.writeHead(200, {
+        'content-type': pdf.mime,
+        'content-length': pdf.dados.length,
+        'content-disposition': `inline; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(pdf.nome)}`,
+        'cache-control': 'private, max-age=31536000, immutable',
+      });
+      return res.end(pdf.dados);
     }
     if (caminho.startsWith('/api/filmes/previas')) return previas(req, res, caminho, eu);
     if (caminho === '/api/filmes' && req.method === 'GET') {
@@ -2501,8 +2490,26 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     createReadStream(alvo).pipe(res);
   }
 
+  /** O pôster (ou o 404 limpo, que o navegador guarda 10 minutos). */
+  function servirPoster(res, img, quem) {
+    if (!img) {
+      res.writeHead(404, { 'cache-control': `${quem}, max-age=600` });
+      return res.end();
+    }
+    res.writeHead(200, { 'content-type': img.mime, 'content-length': img.dados.length, 'cache-control': `${quem}, max-age=86400` });
+    return res.end(img.dados);
+  }
+
+  /** O que está embaixo de /api/publico/ (#90): fora do login, para o Padeiro. Só o pôster com o token certo; o resto, 404. */
+  async function rotaPublica(req, res, url) {
+    const rec = req.method === 'GET' ? posterPublico(url.pathname, url.searchParams, env.POSTER_PUBLICO_TOKEN) : null;
+    if (!rec) return json(res, 404, { erro: 'Não encontrado.' });
+    return servirPoster(res, await anexos.poster(rec, env), 'public');
+  }
+
   const app = async (req, res) => {
-    const caminho = new URL(req.url, 'http://x').pathname;
+    const url = new URL(req.url, 'http://x');
+    const caminho = url.pathname;
     // o pedido conta na configuração em que começou: ela só é fechada depois que ele termina
     const g = geracao;
     g.emCurso += 1;
@@ -2512,6 +2519,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // o que está embaixo dela também pode ter passado pelo Bypass do Access (o caminho cobre os de baixo): não é nada,
       // e nunca chega às rotas com login (o cabeçalho do Access, ali, pode ter vindo de qualquer um)
       else if (caminho.startsWith(`${ROTA_DO_AVISO}/`)) json(res, 404, { erro: 'Não encontrado.' });
+      // o pôster público (#90): outra exceção ao Access, só com o token do Padeiro; nada daqui chega às rotas com login
+      else if (caminho.startsWith(ROTA_PUBLICA)) await rotaPublica(req, res, url);
       else if (caminho.startsWith('/api/')) await api(req, res, caminho);
       else arquivo(req, res, caminho);
     } catch (e) {

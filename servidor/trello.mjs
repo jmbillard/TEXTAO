@@ -230,6 +230,8 @@ export function artesDaProducao(texto) {
  * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL (com deps.abrirPg, se vier)
  * @param deps.sftp (caminho, buffer) => Promise; sem ele, usa ssh2-sftp-client quando SFTP_HOST existe
  * @param deps.agora () => Date; o relógio da lista de prioridade no andamento (o envio usa o `agora` do próprio envio)
+ * @param deps.anexos os anexos guardados pelo PROMeiro (servidor/anexos.mjs, #90): o PDF do envio fica lá, e o link da
+ *   produção da arte é o do PROMeiro
  */
 export function criarTrello(env, deps = {}) {
   const c = configDoTrello(env);
@@ -579,6 +581,16 @@ export function criarTrello(env, deps = {}) {
   }
 
   /**
+   * Guarda o PDF do roteiro no PROMeiro (#90): o endereço fixo dele (com o PROMEIRO_URL) é o link da produção da arte.
+   * Sem os anexos ou sem o PROMEIRO_URL, '' (o link fica o do anexo do Trello, como antes).
+   */
+  async function guardarNoPROMeiro(r, pdf, tentar) {
+    if (!pdf || !deps.anexos) return '';
+    const guardado = await tentar('guardar o PDF no PROMeiro', () => deps.anexos.guardarPdf({ chave: r.roteiro ?? r.meta?.claquete ?? '', nome: pdf.nome, dados: pdf.dados }));
+    return guardado && c.endereco ? `${c.endereco}${guardado.caminho}` : '';
+  }
+
+  /**
    * Manda um roteiro.
    * @param r.meta meta do roteiro (claquete, praca, redator, editor, dataExibicao, programa)
    * @param r.artes artes na ordem: texto, ou { texto, tipo }
@@ -586,6 +598,7 @@ export function criarTrello(env, deps = {}) {
    * @param r.texto texto corrido
    * @param r.original { nome, tipo, dados: Buffer } | null
    * @param r.endereco link do roteiro no PROMeiro
+   * @param r.roteiro o id do roteiro no PROMeiro (a chave do PDF guardado)
    * @returns { card: { id, url }, avisos: string[] } ou { duplicado: true }
    */
   async function enviar(r, agora = new Date()) {
@@ -685,9 +698,10 @@ export function criarTrello(env, deps = {}) {
         }
       });
 
-    // o roteiro em PDF, anexado ao card; e o original guardado no OneDrive, como o n8n fazia
+    // o roteiro em PDF, guardado no PROMeiro (#90) e anexado ao card; e o original guardado no OneDrive, como o n8n fazia
     let anexo = null;
     const pdf = await tentar('gerar o PDF', () => emPdf(r, listaDeArtes));
+    const doPROMeiro = await guardarNoPROMeiro(r, pdf, tentar);
     if (pdf)
       anexo = await tentar('anexar o PDF', () => {
         const form = new FormData();
@@ -707,7 +721,8 @@ export function criarTrello(env, deps = {}) {
         artes: artes.join(' | '),
         // a coluna só é escrita quando há o que escrever: sem acervo, nada muda na tabela
         ...(existentes.length ? { artes_existentes: existentes.join(' | ') } : {}),
-        doc: anexo?.url ?? '',
+        // o endereço fixo do PROMeiro; sem ele, o do anexo do Trello
+        doc: doPROMeiro || (anexo?.url ?? ''),
         redator: redator?.nome ?? m.redator ?? '',
         card_ID: card.id,
         data_entrada: entrada,
@@ -742,6 +757,8 @@ export function criarTrello(env, deps = {}) {
       if (lista?.id) for (const a of novas) await tentar(`incluir a arte ${a}`, () => trello('POST', `/checklists/${lista.id}/checkItems`, { consulta: { name: a } }));
     }
     const pdf = await tentar('gerar o PDF', () => emPdf(r, listaDeArtes));
+    // o roteiro novo também fica no PROMeiro, e a produção da arte passa a apontar para ele
+    const doPROMeiro = await guardarNoPROMeiro(r, pdf && { ...pdf, nome: pdf.nome.replace(/(\.pdf)$/i, ' V2$1') }, tentar);
     if (pdf) {
       const nome = pdf.nome.replace(/(\.pdf)$/i, ' V2$1');
       await tentar('anexar o roteiro novo', () => {
@@ -777,7 +794,7 @@ export function criarTrello(env, deps = {}) {
         const mudou = !!linha && Number(linha.complexidade) !== complexidade;
         const opcao = mudou && c.campos.complexidade ? c.complexidades[complexidade - 1] : '';
         if (opcao) await tentar('atualizar a complexidade', () => campo(id, c.campos.complexidade, { idValue: opcao }));
-        await teableAtualizar(c.teable.producao, registro, { artes: artes.join(' | '), artes_quantidade: artes.length, texto: String(r.texto ?? '').replaceAll('\u0000', ''), ...(mudou ? { complexidade } : {}) });
+        await teableAtualizar(c.teable.producao, registro, { artes: artes.join(' | '), artes_quantidade: artes.length, texto: String(r.texto ?? '').replaceAll('\u0000', ''), ...(mudou ? { complexidade } : {}), ...(doPROMeiro ? { doc: doPROMeiro } : {}) });
       });
     return { card: { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}` }, avisos, v2: true, novas: novas.length };
   }
@@ -826,13 +843,15 @@ export function criarTrello(env, deps = {}) {
 
   /**
    * O PDF que está no card da produção da arte: o do link guardado no Teable (a coluna doc). Sem o link, nada: os
-   * anexos do card não são lidos no Trello (ADR 0006: o PROMeiro lê do Teable). O arquivo em si mora no Trello, e o
-   * download vai lá.
+   * anexos do card não são lidos no Trello (ADR 0006: o PROMeiro lê do Teable). O link do PROMeiro (#90) é lido do
+   * PROMeiro; só o link antigo, de antes dele, ainda baixa do anexo do Trello.
    */
   async function pdfDaProducao(claquete) {
-    if (!c.ligado) return null;
     const p = await naProducao(claquete);
     if (!p) return null;
+    const guardado = deps.anexos?.pdfDoEndereco(p.doc);
+    if (guardado) return { nome: guardado.nome, dados: guardado.dados };
+    if (!c.ligado) return null;
     const url = p.doc && /\.pdf($|\?)/i.test(p.doc) ? p.doc : '';
     if (!url || !anexoConfiavel(url)) return null;
     const r = await buscar(url, {

@@ -287,6 +287,15 @@ equipe toda já vê no card do Trello), sem os ids do Trello; as Produções int
 _Evitar_: histórico (na tela), log, atividade. Não confundir com a linha do tempo das edições, no editor do roteiro
 (as versões dele).
 
+**Anexo** (guardado pelo PROMeiro):
+Um arquivo que o PROMeiro guarda no próprio banco (entra no backup) e serve por endereço fixo, sem depender do Trello
+nem do Teable (#90): o **PDF do roteiro** que vai ao card no envio (o link `doc` da produção da arte é o do PROMeiro,
+`/api/anexos/<id>/<nome>.pdf`) e o **pôster do filme** (`/api/filmes/poster/<filme>`, a cópia do que estava no Teable
+ou do que a prévia pôs no cadastro). O card do Trello continua recebendo o PDF, e o cadastro do filme, o pôster: o
+PROMeiro guarda a cópia. O **pôster público** (`/api/publico/poster/<filme>?t=<token>`) é o mesmo pôster aberto sem
+login, para o Padeiro.
+_Evitar_: anexo do card (é o do Trello), link temporário (o do Teable, que vence)
+
 **Produção da arte (ARTE_producao)**:
 A tabela do Teable com o registro de cada card (status, designers, entrega), que o n8n sincroniza com o Trello. É de
 onde a carga tira as Produções do PROMeiro; cada linha dela vira uma Produção.

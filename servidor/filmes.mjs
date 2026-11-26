@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { vinculos } from './acervo.mjs';
 import { conferirFilme, diaDaPrevia } from './conferencia.mjs';
 import { criarEnvioDeFilmes, ehSessaoDaTarde, segundaDaSemana } from './exibicao.mjs';
+import { criarAnexos } from './anexos.mjs';
 import { abrirPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 
@@ -317,12 +318,14 @@ function todaEnviadaEm(p, ultimaLeitura) {
  * @param deps.trello o módulo do Trello (o card e a escrita no Teable), para o envio
  * @param deps.agora o relógio (ms); o teste anda os dias com ele
  */
-export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello, agora = () => Date.now(), abrirPg: abrirOPg = abrirPg } = {}) {
+export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello, agora = () => Date.now(), abrirPg: abrirOPg = abrirPg, anexos: anexosDados } = {}) {
   const enderecoDaLeitura = String(env.N8N_FILMES_LER || '').trim();
   const faltando = [!enderecoDaLeitura && 'N8N_FILMES_LER', !pasta && 'FILMES_PASTA'].filter(Boolean);
   const ligado = !faltando.length && !!db;
   if (!ligado) return { ligado, faltando };
 
+  // os pôsteres da prévia ficam guardados pelo PROMeiro (#90), no mesmo SQLite
+  const anexos = anexosDados ?? criarAnexos(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS previas (
       id TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, nome TEXT NOT NULL,
@@ -422,7 +425,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
           }
         : undefined);
     lado.conferencia = criarConferencia(e, consultarAqui);
-    lado.envio = criarEnvioDeFilmes(e, { trello: oTrello, consultar: consultarAqui });
+    lado.envio = criarEnvioDeFilmes(e, { trello: oTrello, consultar: consultarAqui, anexos });
     lado.fechar = async () => {
       await Promise.allSettled([...lado.emCurso]);
       await lado.banco?.end?.().catch(() => {});
