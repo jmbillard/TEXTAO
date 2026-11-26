@@ -792,6 +792,119 @@ async function filtroDasPrioridades(navegador, url, conferir) {
   }
 }
 
+/* ---------- A Linha do tempo da Produção no card aberto (#89) ---------- */
+
+/** Um instante `n` dias depois de hoje, às `h`h`m` (ISO). */
+const as = (n, h, m = 0) => {
+  const d = diaMais(n);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+};
+const diaMes = (n) => `${diaMais(n).getDate()}/${diaMais(n).getMonth() + 1}`;
+// a rota de mentira (o servidor de verdade não tem Produções neste banco): o card das cinco artes com eventos, o
+// entregue da carga sem eventos (só o estado atual) e um card sem Produção
+const LINHAS_DO_TEMPO = {
+  agdhoje2: {
+    producao: { id: 'p-agdhoje2', claquete: 'CHAMADA_SERIE', etapa: 'produzindo', entradaEm: as(-1, 9, 40), entregaEm: null, artes: [], artesQuantidade: 5, arquivada: false },
+    eventos: [
+      { tipo: 'criada', antes: null, depois: 'entrada', quem: 'Pessoa Fictícia', quando: as(-1, 9, 40) },
+      { tipo: 'designer-entrou', antes: null, depois: 'Bia Arte', quem: 'Bia Arte', quando: as(-1, 10, 2) },
+      { tipo: 'etapa', antes: 'entrada', depois: 'produzindo', quem: 'Bia Arte', quando: as(-1, 10, 3) },
+      { tipo: 'arte-marcada', antes: null, depois: 'HOJE', quem: 'Bia Arte', quando: as(0, 8, 10) },
+      { tipo: 'arte-marcada', antes: null, depois: 'AMANHÃ', quem: 'Bia Arte', quando: as(0, 8, 30) },
+      { tipo: 'arte-marcada', antes: null, depois: 'SÁBADO', quem: 'Bia Arte', quando: as(0, 8, 50) },
+      { tipo: 'campo', campo: 'prioridade', antes: null, depois: 'ALTA', quem: 'Pessoa Fictícia', quando: as(0, 9, 5) },
+    ],
+  },
+  agdhoje1: { producao: { id: 'p-agdhoje1', claquete: 'CHAMADA_AUDITORIO', etapa: 'entregue', entradaEm: as(-3, 10), entregaEm: as(-1, 18, 0), artes: ['A', 'B'], artesQuantidade: 2, arquivada: false }, eventos: [] },
+  agdhoje3: { producao: null, eventos: [] },
+};
+const FRASES = {
+  agdhoje2: [`entrou ${diaMes(-1)} 9h40`, 'Bia Arte pegou 10h02', 'em produção 10h03', '3 de 5 artes', `prioridade alta ${diaMes(0)} 9h05`],
+  agdhoje1: [`na produção desde ${diaMes(-3)}`, `entregue ${diaMes(-1)} 18h00`],
+  agdhoje3: [],
+};
+const CAPTURAS = process.env.CAPTURAS || '';
+
+/** Abrir o card mostra a linha do tempo, lida só então (nenhum pedido antes), discreta e sem passar da largura do
+    card; o card sem Produção não mostra nada. No computador e no celular, claro e escuro. */
+async function linhaDoTempo(navegador, url, conferir) {
+  const casos = [
+    { nome: 'computador', tema: 'light' },
+    { nome: 'computador', tema: 'dark' },
+    { nome: 'iPhone 13', tema: 'light' },
+    { nome: 'iPhone 13', tema: 'dark' },
+  ];
+  for (const { nome, tema } of casos) {
+    const celular = nome !== 'computador';
+    const rotulo = (t) => `linha do tempo, ${nome}, ${tema === 'dark' ? 'escuro' : 'claro'}: ${t}`;
+    const pedidos = [];
+    const comRota = async (ctx) =>
+      ctx.route('**/api/linha-do-tempo?*', (r) => {
+        const card = new URL(r.request().url()).searchParams.get('card');
+        pedidos.push(card);
+        r.fulfill({ json: LINHAS_DO_TEMPO[card] ?? { producao: null, eventos: [] } });
+      });
+    const opcoes = { colorScheme: tema, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}) };
+    // as rotas antes de abrir a página (o abrirNoCelular já navegaria)
+    const { ctx, p, erros } = await contexto(navegador, 'about:blank', { ...(celular ? aparelho(nome) : { viewport: { width: 1440, height: 900 } }), ...opcoes });
+    try {
+      await ctx.route('**/api/andamento', (r) => r.fulfill({ json: ANDAMENTO }));
+      await comRota(ctx);
+      await p.goto(url);
+      await p.waitForSelector('.secao-trello .semana .coluna');
+      await p.waitForTimeout(1200);
+      await levarAteAAgenda(p);
+      conferir(pedidos.length === 0, rotulo(`com os cards fechados, nenhuma linha do tempo é lida (${pedidos.length})`));
+      const card = (id) => p.locator(`.secao-trello .semana [data-card="${id}"]`);
+      const abrirCard = async (id) => {
+        const b = card(id).locator('.card-semana-abrir');
+        if (celular) await b.tap();
+        else await b.click();
+        await p.waitForTimeout(900);
+      };
+      const frases = (id) => card(id).locator('.tempo-da-producao.chegou li').allTextContents();
+
+      await abrirCard('agdhoje2');
+      conferir(JSON.stringify(pedidos) === JSON.stringify(['agdhoje2']), rotulo(`abrir o card lê só a linha do tempo dele, pelo card (${pedidos.join(', ')})`));
+      const vistas = await frases('agdhoje2');
+      conferir(JSON.stringify(vistas) === JSON.stringify(FRASES.agdhoje2), rotulo(`as frases em ordem: "${vistas.join(' · ')}"`));
+      const medida = await card('agdhoje2').evaluate((c) => {
+        const l = c.querySelector('.tempo-da-producao > div');
+        const li = c.querySelector('.tempo-da-producao li');
+        const st = getComputedStyle(li);
+        const r = l.getBoundingClientRect();
+        const rc = c.getBoundingClientRect();
+        return { cabe: l.scrollWidth <= l.clientWidth + 1 && r.right <= rc.right + 0.5, fonte: parseFloat(st.fontSize), cor: st.color, corDoNome: getComputedStyle(c.querySelector('.card-semana-dados dd')).color, visivel: r.height > 10 };
+      });
+      conferir(medida.visivel && medida.cabe, rotulo('a linha do tempo aparece dentro do card, sem passar da largura'));
+      conferir(medida.fonte <= 12 && medida.cor !== medida.corDoNome, rotulo(`discreta: letra pequena (${medida.fonte}px) e mais apagada que os nomes`));
+      conferir((await card('agdhoje2').locator('.tempo-da-producao button, .tempo-da-producao a, .tempo-da-producao input').count()) === 0, rotulo('só leitura: nada para clicar'));
+      conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), rotulo('a página não rola para o lado'));
+      if (CAPTURAS) {
+        const n = `${celular ? 'celular' : 'computador'}-${tema === 'dark' ? 'escuro' : 'claro'}`;
+        await card('agdhoje2').screenshot({ path: `${CAPTURAS}/agenda-card-${n}.png` });
+        await p.screenshot({ path: `${CAPTURAS}/agenda-${n}.png` });
+      }
+
+      // só um card aberto por vez: abrir o entregue da carga, sem eventos, mostra só o estado atual
+      await abrirCard('agdhoje1');
+      const daCarga = await frases('agdhoje1');
+      conferir(JSON.stringify(daCarga) === JSON.stringify(FRASES.agdhoje1), rotulo(`a Produção sem eventos mostra só o estado atual: "${daCarga.join(' · ')}"`));
+      // o card sem Produção não mostra nada (nem a vaga)
+      await abrirCard('agdhoje3');
+      const semProducao = await card('agdhoje3').evaluate((c) => ({ frases: c.querySelectorAll('.tempo-da-producao li').length, altura: c.querySelector('.tempo-da-producao').getBoundingClientRect().height }));
+      conferir(semProducao.frases === 0 && semProducao.altura === 0, rotulo('o card sem Produção não mostra nada'));
+      // reabrir lê de novo, sem piscar: as frases continuam à vista enquanto a leitura chega
+      await abrirCard('agdhoje2');
+      conferir(pedidos.filter((c) => c === 'agdhoje2').length === 2 && JSON.stringify(await frases('agdhoje2')) === JSON.stringify(FRASES.agdhoje2), rotulo('reabrir lê de novo e mostra as mesmas frases'));
+      conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
+    } finally {
+      await ctx.close();
+    }
+  }
+}
+
 async function principal() {
   const amb = await subir();
   const navegador = await chromium.launch();
@@ -809,6 +922,7 @@ async function principal() {
     await computador(navegador, amb.url, conferir);
     await filtroDasPrioridades(navegador, amb.url, conferir);
     await criterio(navegador, amb.url, conferir);
+    await linhaDoTempo(navegador, amb.url, conferir);
     await semearRevisao(amb.api);
     await encolhida(navegador, amb.url, conferir);
   } catch (e) {

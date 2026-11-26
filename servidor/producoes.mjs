@@ -152,6 +152,7 @@ export function criarProducoes(db) {
     envios: db.prepare(`SELECT e.card_id, e.roteiro_id, r.meta FROM envios e JOIN roteiros r ON r.id = e.roteiro_id WHERE e.card_id IS NOT NULL AND e.card_id <> '' ORDER BY e.em`),
     doCard: db.prepare('SELECT * FROM producoes WHERE card_id = ? ORDER BY entrada_em'),
     doRegistro: db.prepare('SELECT * FROM producoes WHERE teable_registro = ?'),
+    doId: db.prepare('SELECT * FROM producoes WHERE id = ?'),
     // a carga adota a Produção que o aviso do Trello criou para o card (ainda sem o registro do Teable): não duplica
     adotar: db.prepare(
       `UPDATE producoes SET teable_registro = ? WHERE id = (SELECT id FROM producoes WHERE card_id = ? AND teable_registro IS NULL ORDER BY criada_em LIMIT 1)`,
@@ -320,7 +321,28 @@ export function criarProducoes(db) {
     return r;
   }
 
+  /**
+   * A Linha do tempo (#89) de uma Produção, pelo id dela ou pelo card (o card com mais de uma: a mais recente, como o
+   * aviso). Só o que a leitura precisa, para qualquer pessoa logada: o estado de agora e os eventos em ordem, com o
+   * nome de quem fez; sem os ids do Trello (o do membro e o da ação).
+   * @returns { producao, eventos }; sem Produção, { producao: null, eventos: [] }
+   */
+  function linhaDoTempo({ card, producao }) {
+    const id = producao || (card ? q.daUltimaDoCard.get(card)?.id : null);
+    const l = id ? q.doId.get(id) : null;
+    if (!l) return { producao: null, eventos: [] };
+    const p = daLinha(l);
+    return {
+      producao: { id: p.id, claquete: p.claquete, etapa: p.etapa, entradaEm: p.entradaEm, entregaEm: p.entregaEm, artes: p.artes, artesQuantidade: p.artesQuantidade, arquivada: p.arquivada },
+      eventos: q.eventosDe.all(l.id).map((linha) => {
+        const { quem, acao, ...e } = doEvento(linha);
+        return { ...e, quem: quem?.nome || null };
+      }),
+    };
+  }
+
   return {
+    linhaDoTempo,
     vazia: () => Number(q.total.get().n) === 0,
     /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */
     ultimoEvento: () => q.ultimoDeTodos.get()?.quando ?? null,

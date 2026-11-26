@@ -15,6 +15,7 @@ import {
 } from '../dados/armazenamento';
 import { Icone } from './icones';
 import { plural } from './util';
+import { LinhaDoTempoDoCard } from './LinhaDoTempo';
 
 /* Aba Duplicadas dos Cadastros (#65): as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça
    e versão. A lista sai só da produção; só o caso aberto lê do Trello os cards dele. Só administradores: a lista por
@@ -432,6 +433,8 @@ const LINHAS: Linha[] = [
   { rotulo: 'Artes', valor: (c) => (c.checklist ? `${c.checklist} no checklist` : '—'), texto: (c) => String(c.checklist) },
   { rotulo: 'Anexos', valor: (c) => c.anexos || '—', texto: (c) => c.anexos },
   { rotulo: 'Acervo ligado', valor: (c) => (c.acervo ? plural(c.acervo, 'arte', 'artes') : '—'), texto: (c) => String(c.acervo) },
+  // a Linha do tempo da Produção do card (#89), lida quando o caso abre
+  { rotulo: 'Linha do tempo', valor: (c) => <LinhaDoTempoDoCard card={c.id} vazio="—" />, compara: false },
   { rotulo: 'Roteiro no PROMeiro', valor: (c) => (c.roteiro ? [c.roteiro.claquete, c.roteiro.por].filter(Boolean).join(' · ') : '—'), texto: (c) => c.roteiro?.id ?? '' },
   {
     rotulo: 'Trello',

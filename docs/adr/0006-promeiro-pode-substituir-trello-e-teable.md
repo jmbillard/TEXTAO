@@ -59,3 +59,6 @@ Produção é ignorado, salvo o criado; um card com várias Produções vale pel
 ar ele recupera lendo as ações do quadro desde o último evento (na subida e de hora em hora; 30 dias e 10 páginas no
 máximo), pela mesma tradução, mas só nas Produções que já existem: a recuperação não cria Produção (o quadro tem muito
 card avulso, e a carga vem do Teable), só o aviso ao vivo cria. O n8n continua sincronizando em paralelo; o PROMeiro ainda não manda no Trello.
+
+A **linha do tempo** (#89) é a leitura desses eventos, para qualquer pessoa logada (não só administradores: é o trabalho
+que a equipe toda já vê no card do Trello), sem os ids do Trello; a agenda e as Duplicadas a leem só quando o card abre.

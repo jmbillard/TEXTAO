@@ -104,6 +104,25 @@ const ENV_TRELLO = {
   // os nomes no Postgres, como a descoberta das tabelas do Teable (#76) acharia
   tabelas: { ARTE_producao: { id: '', pg: 'producao' }, ARTES_acervo: { id: '', pg: 'acervo' } },
 };
+// a Linha do tempo (#89) do card que fica no caso do Show da Noite: a rota de mentira (o banco do e2e não tem eventos);
+// o outro card do caso não é Produção e mostra "—"
+const SHOW = CARDS.find((c) => c.idShort === 4790);
+const diaHoraLocal = (ms) => {
+  const d = new Date(ms);
+  return [`${d.getDate()}/${d.getMonth() + 1}`, `${d.getHours()}h${String(d.getMinutes()).padStart(2, '0')}`];
+};
+const CRIADO_SHOW = AGORA - 6.3 * DIA + HORA;
+const LINHA_DO_SHOW = {
+  producao: { id: 'p-show', claquete: 'Show da Noite 20/11 SP', etapa: 'entregue', entradaEm: new Date(CRIADO_SHOW).toISOString(), entregaEm: null, artes: [], artesQuantidade: 4, arquivada: false },
+  eventos: [
+    { tipo: 'criada', antes: null, depois: 'entrada', quem: 'Pessoa Um', quando: new Date(CRIADO_SHOW).toISOString() },
+    { tipo: 'arte-marcada', antes: null, depois: 'HOJE', quem: 'Pessoa Um', quando: new Date(CRIADO_SHOW + 20 * 60_000).toISOString() },
+    { tipo: 'arte-marcada', antes: null, depois: 'AMANHÃ', quem: 'Pessoa Um', quando: new Date(CRIADO_SHOW + 40 * 60_000).toISOString() },
+  ],
+};
+const FRASES_DO_SHOW = [`entrou ${diaHoraLocal(CRIADO_SHOW).join(' ')}`, '2 de 4 artes'];
+const pedidosDaLinha = [];
+
 /** O Trello de mentira: só o GET de um card (a lista não lê o Trello; qualquer outro pedido derruba o teste). */
 const pedidosAoTrello = [];
 async function buscar(url, init = {}) {
@@ -149,6 +168,11 @@ async function abrir(navegador, url, opcoes, { admin = true } = {}) {
   await ctx.route((u) => u.pathname === '/api/cadastros', (r) => r.fulfill({ json: { ...CADASTROS, podeApagar: admin } }));
   await ctx.route((u) => u.pathname === '/api/cadastros/sem-cadastro', (r) => r.fulfill({ json: { keys: [], reconhecidas: { total: 0, amostra: [] } } }));
   await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+  await ctx.route((u) => u.pathname === '/api/linha-do-tempo', (r) => {
+    const card = new URL(r.request().url()).searchParams.get('card');
+    pedidosDaLinha.push(card);
+    r.fulfill({ json: card === SHOW.id ? LINHA_DO_SHOW : { producao: null, eventos: [] } });
+  });
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
@@ -177,6 +201,7 @@ const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s
 async function noComputador(navegador, url, tema) {
   const nome = tema === 'dark' ? 'escuro' : 'claro';
   pedidosAoTrello.length = 0;
+  pedidosDaLinha.length = 0;
   const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
   assert.equal(await fundoEscuro(p), tema === 'dark');
   // o número de casos já vem na aba, antes de abrir
@@ -206,6 +231,7 @@ async function noComputador(navegador, url, tema) {
 
   // abrir um caso: os cards lado a lado, as diferenças e a sugestão; só os cards do caso são lidos no Trello
   pedidosAoTrello.length = 0;
+  assert.deepEqual(pedidosDaLinha, [], 'a lista não lê a linha do tempo');
   await caso(p, 'Show da Noite').locator('.linha-dup').click();
   const tabela = caso(p, 'Show da Noite').locator('.tabela-dup');
   await tabela.waitFor();
@@ -223,6 +249,13 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(await linhaDe('Anexos'), ['1 PDF, 2 imagens≠', '1 PDF≠']);
   assert.match((await linhaDe('Criado'))[1], / · 3 h depois$/);
   assert.deepEqual(await linhaDe('Trello'), ['trello.com/c/Ficti4790', 'trello.com/c/Ficti4795']);
+  // a Linha do tempo (#89) de cada card, discreta, só leitura; o card que não é Produção mostra "—"
+  const linhaDoTempo = tabela.locator('[role=row]', { has: p.locator('[role=rowheader]', { hasText: /^Linha do tempo$/ }) }).locator('[role=cell]');
+  await linhaDoTempo.nth(0).locator('.tempo-da-producao.chegou li').first().waitFor();
+  assert.deepEqual(await linhaDoTempo.nth(0).locator('li').allTextContents(), FRASES_DO_SHOW);
+  assert.equal((await linhaDoTempo.nth(1).textContent()).trim(), '—');
+  assert.equal(await linhaDoTempo.locator('button, a').count(), 0, 'a linha do tempo é só leitura');
+  assert.ok(diferentes.indexOf('Linha do tempo') < 0, 'a linha do tempo não conta como diferença');
   // Ignorar também no caso aberto (onde ficará o Apagar)
   assert.deepEqual(await textos(caso(p, 'Show da Noite').locator('.acoes-dup .botao')), ['Ignorar']);
   const fica = () => tabela.locator('.cabeca .col-dup').evaluateAll((cs) => cs.map((c) => (c.classList.contains('fica') ? 'fica' : 'sai')));
@@ -360,6 +393,9 @@ async function noCelular(navegador, url, tema) {
   assert.deepEqual(await textos(detalhe.locator('.card-dup .selo-dup')), ['Sugestão: fica', 'Sugestão: duplicado']);
   assert.equal(await p.locator('.fica-sai, .tabela-dup').count(), 0, 'no celular, só consulta');
   assert.ok((await textos(detalhe.locator('.card-dup').nth(1).locator('.difere dt'))).includes('Lista'));
+  const linhaNoCelular = detalhe.locator('.card-dup').nth(0).locator('div', { has: p.locator('dt', { hasText: /^Linha do tempo$/ }) }).locator('dd');
+  await linhaNoCelular.locator('.tempo-da-producao.chegou li').first().waitFor();
+  assert.deepEqual(await linhaNoCelular.locator('li').allTextContents(), FRASES_DO_SHOW, 'a linha do tempo também no celular');
   await semRolagemDeLado(p, `celular ${nome}, caso`);
   assert.equal(await p.locator('.acoes-dup .botao').count(), 0, 'no celular, sem Ignorar no caso');
   assert.equal(await p.locator('.ignorar-dup').count(), 0, 'no celular, sem Ignorar na linha');

@@ -1792,6 +1792,16 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-dados dt { flex: none; color: var(--tinta3); }
 .card-semana-dados dd { flex: 1; margin: 0; color: var(--tinta); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-semana-dados dd small { color: var(--tinta3); font-size: 11.5px; }
+/* a Linha do tempo da Produção (#89), discreta, embaixo das pessoas: as frases em ordem, separadas por "·" (o do começo
+   de cada linha fica escondido, como na outra data do pé); chega abrindo a vaga, depois que o card abriu */
+.tempo-da-producao { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.34s var(--suave), opacity 0.24s 0.06s; }
+.tempo-da-producao > div { overflow: hidden; min-height: 0; }
+.tempo-da-producao.chegou { grid-template-rows: 1fr; opacity: 1; }
+.tempo-da-producao ol { display: flex; flex-wrap: wrap; margin: 0 0 0 -10px; padding: 7px 0 0; list-style: none; font-size: 11.5px; line-height: 1.45; color: var(--tinta3); font-variant-numeric: tabular-nums; }
+.tempo-da-producao li { min-width: 0; padding-left: 10px; text-indent: -10px; }
+.tempo-da-producao li::before { content: '·' / ''; display: inline-block; width: 10px; text-indent: 0; text-align: center; opacity: 0.6; }
+.tabela-dup .tempo-da-producao ol, .card-dup .tempo-da-producao ol { padding-top: 0; font-size: 12.5px; color: var(--tinta2); }
+@media (prefers-reduced-motion: reduce) { .tempo-da-producao { transition: none; } }
 .card-semana-pe { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; min-height: 28px; }
 .card-semana-rubrica { font: 600 19px/1 Caveat, cursive; color: var(--tinta2); transform: rotate(-3deg); transform-origin: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .card-semana-rubrica small { font: inherit; font-size: 15px; color: var(--tinta3); }

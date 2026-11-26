@@ -488,3 +488,55 @@ describe('recuperar o que faltou (#88): as ações do quadro desde o último eve
     expect((await doCard('cardJ5'))[0].eventos).toEqual([]);
   });
 });
+
+/* A Linha do tempo (#89): a leitura dos eventos de uma Produção, pelo card ou pelo id da Produção, para qualquer pessoa
+   logada (é só leitura do trabalho, como o card no Trello que a equipe toda vê). Sem os ids do Trello. */
+describe('a rota da linha do tempo', () => {
+  const ana = (base: string) => (caminho: string) => fetch(base + caminho, { headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } });
+  type Linha = { producao: { id: string; claquete: string; etapa: string; entradaEm: string | null; entregaEm: string | null; artes: string[]; artesQuantidade: number | null; arquivada: boolean } | null; eventos: Record<string, unknown>[] };
+
+  it('qualquer pessoa logada lê os eventos do card, em ordem, com o nome de quem fez e sem os ids do Trello', async () => {
+    const { avisar, app, base } = await comServidor();
+    await avisar(criado('cardLinha'));
+    await avisar(membro('cardLinha', 'addMemberToCard', 'membroDois', 'Rafael', '2026-11-26T13:02:00.000Z'));
+    await avisar(arte('cardLinha', 'HOJE', 'complete', '2026-11-26T14:00:00.000Z'));
+    await avisar(moveu('cardLinha', 'lEntradaSP', 'lSaidaSP', '2026-11-26T18:20:00.000Z'));
+    await app.avisosEmDia();
+    const r = await ana(base)('/api/linha-do-tempo?card=cardLinha');
+    expect(r.status).toBe(200);
+    const l = (await r.json()) as Linha;
+    expect(l.producao).toMatchObject({ claquete: 'Show da Noite 20/11 SP', etapa: 'entregue', entradaEm: '2026-11-26T12:40:00.000Z', arquivada: false });
+    expect(l.eventos).toEqual([
+      { tipo: 'criada', antes: null, depois: 'entrada', quem: 'Designer Um', quando: '2026-11-26T12:40:00.000Z' },
+      { tipo: 'designer-entrou', antes: null, depois: 'Rafael', quem: 'Designer Um', quando: '2026-11-26T13:02:00.000Z' },
+      { tipo: 'arte-marcada', antes: null, depois: 'HOJE', quem: 'Designer Um', quando: '2026-11-26T14:00:00.000Z' },
+      { tipo: 'etapa', antes: 'entrada', depois: 'entregue', quem: 'Designer Um', quando: '2026-11-26T18:20:00.000Z' },
+    ]);
+    // pelo id da Produção, a mesma linha do tempo
+    expect(await (await ana(base)(`/api/linha-do-tempo?producao=${l.producao!.id}`)).json()).toEqual(l);
+  });
+
+  it('card sem Produção (ou Produção que não existe): 200 com nada, para a tela não mostrar nada', async () => {
+    const { base } = await comServidor();
+    for (const q of ['card=cardQueNaoExiste', 'producao=00000000-0000-0000-0000-000000000000']) {
+      const r = await ana(base)(`/api/linha-do-tempo?${q}`);
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual({ producao: null, eventos: [] });
+    }
+  });
+
+  it('a Produção da carga, sem eventos, vem com o estado de agora e a lista vazia', async () => {
+    const producaoDaArte = [{ id: 'recSemEventos', fields: { card_ID: 'cardDaCarga', claquete: 'Festa na Praça 19/11', designers: '["Designer Dois"]', data_entrada: '2026-11-20T12:00:00.000Z', data_entrega: '2026-11-21T18:20:00.000Z', entregue: true, artes: 'HOJE\nAMANHÃ', artes_quantidade: 2 } }];
+    const { base, chefe } = await comServidor({ producaoDaArte });
+    expect((await chefe('/api/producoes/recarregar', { method: 'POST' })).status).toBe(200);
+    const l = (await (await ana(base)('/api/linha-do-tempo?card=cardDaCarga')).json()) as Linha;
+    expect(l).toMatchObject({ producao: { claquete: 'Festa na Praça 19/11', etapa: 'entregue', entradaEm: '2026-11-20T12:00:00.000Z', entregaEm: '2026-11-21T18:20:00.000Z', artes: ['HOJE', 'AMANHÃ'], artesQuantidade: 2 }, eventos: [] });
+  });
+
+  it('sem login, recusa; sem o card nem a Produção, 400; só GET', async () => {
+    const { base } = await comServidor();
+    expect((await fetch(`${base}/api/linha-do-tempo?card=cardLinha`)).status).toBe(401);
+    expect((await ana(base)('/api/linha-do-tempo')).status).toBe(400);
+    expect((await fetch(`${base}/api/linha-do-tempo?card=x`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } })).status).toBe(405);
+  });
+});

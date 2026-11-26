@@ -27,6 +27,7 @@ import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvi
 import { redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, ehCelular, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
+import { LinhaDoTempoDoCard } from './LinhaDoTempo';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
 const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
@@ -557,8 +558,8 @@ function OutraData({ pe }: { pe: PeDoCard }) {
 /** O card da semana (formato A). Fechado: a claquete em cima; embaixo, discretas, a praça e as artes à mão; à direita,
     a etapa (se não couber, ela desce); no pé, a outra data do critério (OutraData). Por entrega, o card que ainda não
     saiu fica tracejado, como um prazo. Um clique abre (com animação de altura) a ficha do card: uma pessoa por linha
-    (redator, editor, designer), a rubrica de quem revisou e os atalhos para o roteiro e para o card no Trello. A etapa
-    não se repete na ficha. */
+    (redator, editor, designer), a Linha do tempo da Produção (lida só quando o card abre), a rubrica de quem revisou e
+    os atalhos para o roteiro e para o card no Trello. A etapa não se repete na ficha. */
 function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
   const { r, etapa, andamento } = c;
   // o nome de hoje na produção da arte (o card no Trello); sem ele, o guardado no padrão da casa
@@ -595,6 +596,7 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
               <PessoaNoCard rotulo="editor" nome={r.meta.editor} falta="sem editor" />
               {!!andamento?.designers.length && <PessoaNoCard rotulo="designer" nome={andamento.designers.join(', ')} />}
             </dl>
+            {!doTour && <LinhaDoTempoDoCard card={r.trello?.card} aberto={aberto} />}
             <div className="card-semana-pe">
               {r.revisadoPor && (
                 <span className="card-semana-rubrica" title={`Revisado por ${r.revisadoPor.nome}`}>

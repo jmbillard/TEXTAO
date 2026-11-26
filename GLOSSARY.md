@@ -268,6 +268,19 @@ porque o quadro tem muito card avulso e a carga vem do Teable; as ações lidas 
 existem. Só o aviso ao vivo cria a Produção do card novo. As Produções da carga não têm eventos passados.
 _Evitar_: log, atividade, ação (a ação é do Trello)
 
+**Linha do tempo** (da Produção):
+Os eventos da Produção em frases curtas do dia a dia, em ordem, separadas por "·": "entrou 26/11 9h40 · Rafael pegou
+10h02 · em produção 10h03 · 3 de 5 artes · entregue 15h20". O dia só aparece na primeira frase e quando muda; as
+marcações de arte seguidas viram uma frase só, com a conta até ali (sem o total, "3 artes marcadas"); a volta de
+etapa é "voltou para a produção" ou "voltou para a entrada"; os campos são "prioridade alta", "sem prioridade",
+"praça SP", "prazo 27/11 18h00". A Produção que já estava lá antes do primeiro evento começa por "na produção desde
+20/11"; sem eventos, mostra só o estado atual (desde quando está na produção e, se saiu, a entrega), e sem nada, nada.
+Aparece, discreta e só de leitura, no card aberto da agenda No Trello e na linha "Linha do tempo" do caso aberto das
+Duplicadas, também no celular, lida só quando o card (ou o caso) abre. Qualquer pessoa logada lê (é o trabalho que a
+equipe toda já vê no card do Trello), sem os ids do Trello; as Produções inteiras continuam só para administradores.
+_Evitar_: histórico (na tela), log, atividade. Não confundir com a linha do tempo das edições, no editor do roteiro
+(as versões dele).
+
 **Produção da arte (ARTE_producao)**:
 A tabela do Teable com o registro de cada card (status, designers, entrega), que o n8n sincroniza com o Trello. É de
 onde a carga tira as Produções do PROMeiro; cada linha dela vira uma Produção.

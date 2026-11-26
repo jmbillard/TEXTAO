@@ -2270,6 +2270,17 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, await andamentoDoProjeto.ler(configuracao.valores(), { deNovo }));
     }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
+    if (caminho === '/api/linha-do-tempo') {
+      // a Linha do tempo (#89): para qualquer pessoa logada, porque é só a leitura do trabalho (quando entrou, quem
+      // pegou, quando saiu), o mesmo que a equipe toda vê no card do Trello; sem os ids do Trello. As Produções inteiras
+      // (a carga, os ids) continuam só para administradores, em /api/producoes
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      const busca = new URL(req.url, 'http://x').searchParams;
+      const card = (busca.get('card') ?? '').trim().slice(0, 100);
+      const producao = (busca.get('producao') ?? '').trim().slice(0, 100);
+      if (!card && !producao) return json(res, 400, { erro: 'Falta o card ou a Produção.' });
+      return json(res, 200, producoes.linhaDoTempo({ card, producao }));
+    }
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
@@ -2293,7 +2304,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           compartilhado: !!l.compartilhado,
           podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
           revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
-          ...(l.envio_estado ? { trello: { estado: l.envio_estado, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
+          ...(l.envio_estado ? { trello: { estado: l.envio_estado, card: l.envio_card || undefined, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
           temOriginal: !!l.tem_original,
           ...(aberto ? { aberto: true } : {}),
         })),

@@ -3,6 +3,7 @@ import { registrarPracas } from '../modelo/pracas';
 import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../modelo/redator';
 import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
+import type { EventoDaLinha, ProducaoDaLinha } from '../modelo/linhaDoTempo';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
@@ -36,6 +37,8 @@ export interface Resumo {
 export interface EnvioTrello {
   /** "duplicado": a claquete já tinha entrado hoje na produção da arte (pelo upload antigo). */
   estado: 'enviando' | 'enviado' | 'duplicado' | 'erro';
+  /** o card do Trello (o id): a linha do tempo da Produção é lida por ele */
+  card?: string;
   url?: string;
   erro?: string;
   em: string;
@@ -957,6 +960,12 @@ export const lerRegistroDasDuplicadas = () => pedir<{ registro: AcaoDoRegistro[]
 /** Ignora o caso: só o registro do PROMeiro muda (nada no Trello nem no Teable). */
 export const ignorarDuplicada = (id: string, dias: number, motivo: string) =>
   pedir<{ ok: true }>('/api/duplicadas/ignorar', { method: 'POST', body: JSON.stringify({ id, dias, motivo }) });
+/** A Linha do tempo (#89) da Produção de um card: o estado de agora e os eventos. Sem Produção, producao é null. */
+export interface LinhaDoTempo {
+  producao: (ProducaoDaLinha & { id: string; claquete: string }) | null;
+  eventos: EventoDaLinha[];
+}
+export const lerLinhaDoTempo = (card: string) => pedir<LinhaDoTempo>(`/api/linha-do-tempo?card=${encodeURIComponent(card)}`);
 export const reabrirDuplicada = (id: string) => pedir<{ ok: true }>('/api/duplicadas/reabrir', { method: 'POST', body: JSON.stringify({ id }) });
 
 /* ---------- a tela de Configuração (só administradores) ---------- */
