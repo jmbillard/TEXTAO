@@ -19,7 +19,8 @@ Produção. Para isso:
 3. **Reinicie** o container. Na subida (e de hora em hora) o PROMeiro confere o webhook do quadro: registra se não
    houver, liga de novo se o Trello desligou e tira o de um quadro antigo. Logo depois, recupera o que faltou: lê as
    ações do quadro desde o último evento guardado (no máximo 30 dias e 10 páginas de 1000 ações) e anota o que não
-   tinha chegado, sem duplicar. O log diz `[aviso do trello]`.
+   tinha chegado nas Produções que já existem, sem duplicar (a recuperação não cria Produção: o card novo só vira
+   Produção pelo aviso ao vivo). O log diz `[aviso do trello]`.
 
 O PROMeiro só aceita o aviso com a assinatura do Trello (o cabeçalho `X-Trello-Webhook`, o HMAC-SHA1 do corpo e do
 endereço com o Secret); o resto recebe 401 e não é processado. O `HEAD` na rota responde 200: é como o Trello confere

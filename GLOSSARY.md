@@ -262,8 +262,10 @@ duas vezes não duplica. Aviso de outro quadro, ou de um card que não é Produ�
 velho que o último evento da mesma família: a etapa, o mesmo designer, a mesma arte, o mesmo campo) entra no histórico,
 mas não muda a Produção. **Recuperar o que faltou**: na subida e de hora em hora (junto da conferência do webhook), o
 PROMeiro lê as ações do quadro desde o último evento (nunca antes de 30 dias, até 10 páginas de 1000) e passa pela mesma
-tradução: o que ficou de fora enquanto ele esteve fora do ar entra, e o que já tinha entrado não duplica. As Produções
-da carga não têm eventos passados.
+tradução: o que ficou de fora enquanto ele esteve fora do ar entra, e o que já tinha entrado não duplica. A recuperação
+não cria Produção: o card criado (ou copiado, ou trazido de outro quadro) que ela lê é ignorado se ainda não é Produção,
+porque o quadro tem muito card avulso e a carga vem do Teable; as ações lidas só viram eventos das Produções que já
+existem. Só o aviso ao vivo cria a Produção do card novo. As Produções da carga não têm eventos passados.
 _Evitar_: log, atividade, ação (a ação é do Trello)
 
 **Produção da arte (ARTE_producao)**:

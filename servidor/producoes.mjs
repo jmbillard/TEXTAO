@@ -279,11 +279,13 @@ export function criarProducoes(db) {
    * Anota os eventos do aviso do Trello (src/modelo/avisoDoTrello.ts), numa transação: "criada" faz a Produção do card
    * quando ainda não há nenhuma (a claquete é o nome do card; a praça, a que a claquete indica); os outros só valem
    * para o card que já é Produção (o resto é card fora do domínio e é ignorado). O id da ação do Trello não repete.
+   * Com `criar: false` (a recuperação das ações do quadro), nem o "criada" faz Produção: o quadro tem muito card
+   * avulso, e a carga vem do Teable; só o aviso ao vivo cria.
    * Depois de anotado, o evento muda a Produção (se não é atrasado na família dele): a etapa, os designers, as artes
    * marcadas, a praça.
    * @returns { anotados, repetidos, ignorados }
    */
-  function anotar(eventos, pracas = pracasRegistradas()) {
+  function anotar(eventos, pracas = pracasRegistradas(), { criar = true } = {}) {
     const r = { anotados: 0, repetidos: 0, ignorados: 0 };
     if (!eventos?.length) return r;
     const em = new Date().toISOString();
@@ -295,7 +297,7 @@ export function criarProducoes(db) {
           continue;
         }
         let id = q.daUltimaDoCard.get(ev.cardId)?.id;
-        if (!id && ev.tipo !== 'criada') {
+        if (!id && (ev.tipo !== 'criada' || !criar)) {
           r.ignorados++;
           continue;
         }

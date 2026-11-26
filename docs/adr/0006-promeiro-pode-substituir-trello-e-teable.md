@@ -57,4 +57,5 @@ Cloudflare Access, só com a assinatura HMAC do Trello. A tradução da ação e
 complexidade, praça, prazo de entrega); uma ação vira no máximo um evento e o id dela não repete. Card que não é
 Produção é ignorado, salvo o criado; um card com várias Produções vale pela mais recente. O que o PROMeiro perdeu fora do
 ar ele recupera lendo as ações do quadro desde o último evento (na subida e de hora em hora; 30 dias e 10 páginas no
-máximo), pela mesma tradução. O n8n continua sincronizando em paralelo; o PROMeiro ainda não manda no Trello.
+máximo), pela mesma tradução, mas só nas Produções que já existem: a recuperação não cria Produção (o quadro tem muito
+card avulso, e a carga vem do Teable), só o aviso ao vivo cria. O n8n continua sincronizando em paralelo; o PROMeiro ainda não manda no Trello.

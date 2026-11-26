@@ -663,6 +663,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /**
    * Lê as ações do quadro desde a marca (só os tipos que a tradução lê, paginando até o limite) e anota pela mesma
    * tradução do aviso, na fila dos avisos: o id da ação não repete, então o que já chegou pelo aviso não duplica.
+   * Não cria Produção: as ações só viram eventos das Produções que já existem (da carga do Teable ou do aviso ao vivo).
    * Nunca lança. @returns { desde, lidas, paginas, noLimite, anotados, repetidos, ignorados } ou null (sem o Trello)
    */
   function recuperarOQueFaltou() {
@@ -679,7 +680,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const { acoes, paginas, noLimite } = await acoesDesde(trello, { quadro, desde, porPagina: limites.porPagina, paginas: limites.paginas });
         const doQuadro = quadroDeAgora();
         const pracasDeAgora = pracas;
-        const r = await naFilaDosAvisos(() => producoes.anotar(acoes.flatMap((a) => eventosDoAviso(a, doQuadro)), pracasDeAgora));
+        const r = await naFilaDosAvisos(() => producoes.anotar(acoes.flatMap((a) => eventosDoAviso(a, doQuadro)), pracasDeAgora, { criar: false }));
         desdeAMarca = new Date(inicio - MARGEM).toISOString();
         ultimaRecuperacao = { em: new Date(inicio).toISOString(), desde, lidas: acoes.length, paginas, noLimite, ...r };
         if (r.anotados || noLimite) console.log(`[aviso do trello] recuperei ${r.anotados} eventos de ${acoes.length} ações desde ${desde}${noLimite ? ` (parei no limite de ${paginas} páginas: as mais velhas ficaram de fora)` : ''}`);

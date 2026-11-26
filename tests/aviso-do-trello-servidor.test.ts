@@ -404,7 +404,7 @@ describe('os outros eventos pelo aviso assinado (#88)', () => {
 describe('recuperar o que faltou (#88): as ações do quadro desde o último evento', () => {
   const acaoDoQuadro = (id: string, type: string, date: string, data: Record<string, unknown>): Acao => ({ id, type, date, idMemberCreator: QUEM.id, memberCreator: QUEM, data: { board: { id: QUADRO }, ...data } });
 
-  it('na subida, lê as ações perdidas e anota pela mesma tradução: o card criado vira Produção, e nada duplica', async () => {
+  it('na subida, lê as ações perdidas e anota pela mesma tradução nas Produções que já existem, sem duplicar', async () => {
     const agora = Date.now();
     const ha = (min: number) => new Date(agora - min * 60_000).toISOString();
     const acoes = [
@@ -414,10 +414,12 @@ describe('recuperar o que faltou (#88): as ações do quadro desde o último eve
       // de um card que nunca foi Produção: ignorada
       acaoDoQuadro('perdida4', 'updateCard', ha(30), { card: { id: 'cardLixo', idList: 'lSaidaSP' }, listBefore: { id: 'lEntradaSP' }, listAfter: { id: 'lSaidaSP' } }),
     ];
-    const { app, doCard, falso } = await comServidor({ acoes });
+    // a Produção do cardFora veio da carga do Teable
+    const producaoDaArte = [{ id: 'recFora', fields: { card_ID: 'cardFora', claquete: 'Novela das Nove 21/11 SP', data_entrada: ha(61) } }];
+    const { app, doCard, falso } = await comServidor({ acoes, producaoDaArte });
     await app.recuperacaoPronta;
     const [p] = await doCard('cardFora');
-    expect(p).toMatchObject({ claquete: 'Novela das Nove 21/11 SP', etapa: 'entregue', designers: ['Fulano'] });
+    expect(p).toMatchObject({ claquete: 'Novela das Nove 21/11 SP', teableRegistro: 'recFora', etapa: 'entregue', designers: ['Fulano'] });
     expect(p.eventos.map((e) => e.acao)).toEqual(['perdida1', 'perdida2', 'perdida3']);
     expect(await doCard('cardLixo')).toEqual([]);
     // só os tipos que a tradução lê
@@ -426,6 +428,27 @@ describe('recuperar o que faltou (#88): as ações do quadro desde o último eve
     const r = await app.recuperarOQueFaltou();
     expect(r).toMatchObject({ anotados: 0 });
     expect((await doCard('cardFora'))[0].eventos).toHaveLength(3);
+  });
+
+  it('a recuperação não cria Produção: o card novo lido do quadro é ignorado (com o que veio depois); o mesmo card pelo aviso ao vivo vira Produção', async () => {
+    const agora = Date.now();
+    const ha = (min: number) => new Date(agora - min * 60_000).toISOString();
+    const criacao = acaoDoQuadro('soNoQuadro', 'createCard', ha(20), { card: { id: 'cardAvulso', name: 'Card Avulso 21/11 SP' }, list: { id: 'lEntradaSP' } });
+    const acoes = [
+      criacao,
+      acaoDoQuadro('soNoQuadro2', 'copyCard', ha(15), { card: { id: 'cardCopiado', name: 'Cópia Avulsa 21/11 SP' }, list: { id: 'lEntradaSP' } }),
+      acaoDoQuadro('soNoQuadro3', 'addMemberToCard', ha(10), { card: { id: 'cardAvulso' }, idMember: 'membroX', member: { id: 'membroX', name: 'Fulano' } }),
+    ];
+    const { app, avisar, doCard } = await comServidor({ acoes });
+    const r = await app.recuperacaoPronta;
+    expect(r).toMatchObject({ lidas: 3, anotados: 0 });
+    expect(await doCard('cardAvulso')).toEqual([]);
+    expect(await doCard('cardCopiado')).toEqual([]);
+    // a mesma criação pelo aviso ao vivo
+    expect((await avisar({ action: criacao, model: { id: QUADRO } })).status).toBe(200);
+    const [p] = await doCard('cardAvulso');
+    expect(p).toMatchObject({ claquete: 'Card Avulso 21/11 SP', etapa: 'entrada', teableRegistro: null });
+    expect(p.eventos.map((e) => [e.tipo, e.acao])).toEqual([['criada', 'soNoQuadro']]);
   });
 
   it('pede desde o último evento guardado e pagina (before = a mais velha da página) até acabar', async () => {
@@ -451,7 +474,9 @@ describe('recuperar o que faltou (#88): as ações do quadro desde o último eve
   it('respeita a janela (nunca antes de N dias) e o limite de páginas', async () => {
     const acoes = [1, 2, 3, 4, 5].map((i) => acaoDoQuadro(`velha${i}`, 'createCard', new Date(Date.now() - i * 60_000).toISOString(), { card: { id: `cardJ${i}`, name: `Card ${i} SP` }, list: { id: 'lEntradaSP' } }));
     const antes = Date.now();
-    const { app, falso, doCard } = await comServidor({ acoes, recuperacao: { porPagina: 2, paginas: 2, dias: 30 } });
+    // as Produções dos cards vieram da carga do Teable (a recuperação não cria Produção)
+    const producaoDaArte = [1, 2, 3, 4, 5].map((i) => ({ id: `recJ${i}`, fields: { card_ID: `cardJ${i}`, claquete: `Card ${i} SP` } }));
+    const { app, falso, doCard } = await comServidor({ acoes, producaoDaArte, recuperacao: { porPagina: 2, paginas: 2, dias: 30 } });
     const r = await app.recuperacaoPronta;
     // sem evento guardado, desde 30 dias atrás
     const desde = new Date(String(falso.leiturasDasAcoes[0].get('since'))).getTime();
@@ -459,7 +484,7 @@ describe('recuperar o que faltou (#88): as ações do quadro desde o último eve
     // 2 páginas de 2: as 4 mais novas; a quinta fica de fora (e a recuperação diz que parou no limite)
     expect(falso.leiturasDasAcoes).toHaveLength(2);
     expect(r).toMatchObject({ lidas: 4, noLimite: true });
-    expect(await doCard('cardJ1')).toHaveLength(1);
-    expect(await doCard('cardJ5')).toEqual([]);
+    expect((await doCard('cardJ1'))[0].eventos.map((e) => e.acao)).toEqual(['velha1']);
+    expect((await doCard('cardJ5'))[0].eventos).toEqual([]);
   });
 });
