@@ -4,7 +4,7 @@ import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
-import type { Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao } from '../../servidor/importacao-do-acervo.mjs';
+import type { Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
 import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro, SugestaoRedator } from '../modelo/tipos';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
@@ -562,6 +562,7 @@ export type {
   MudancaDaImportacao,
   PerguntaDaImportacao,
   PlacarDaImportacao,
+  RegraLembrada,
 } from '../../servidor/importacao-do-acervo.mjs';
 
 /** A prévia da importação: o que o CSV faria no acervo da atração, antes de gravar. */
@@ -591,6 +592,8 @@ export interface ResultadoDaImportacao {
   semMudanca: number;
   /** o id da importação no histórico (null quando nada mudou: não entra no histórico) */
   importacao: string | null;
+  /** quantas regras desta atração as decisões viraram (com "lembrar as decisões"; 0 sem) */
+  lembradas?: number;
 }
 /** Uma linha que o desfazer não devolveu: alguém mexeu nela no Teable depois da importação. */
 export interface LinhaQueNaoVoltou {
@@ -641,8 +644,18 @@ export const preverImportacao = async (atracao: string, arquivo: string, csv: st
 });
 /** Grava o CSV com as escolhas da conferência; o servidor classifica de novo contra o acervo relido, não duplica e
     recusa com decisão pendente. */
-export const gravarImportacao = (previa: Pick<PreviaDaImportacao, 'atracao' | 'arquivo' | 'csv'>, escolhas: Escolhas) =>
-  pedir<ResultadoDaImportacao>('/api/acervo/importar', { method: 'POST', body: JSON.stringify({ atracao: previa.atracao, arquivo: previa.arquivo, csv: previa.csv, escolhas }) });
+export const gravarImportacao = (previa: Pick<PreviaDaImportacao, 'atracao' | 'arquivo' | 'csv'>, escolhas: Escolhas, lembrar = false) =>
+  pedir<ResultadoDaImportacao>('/api/acervo/importar', { method: 'POST', body: JSON.stringify({ atracao: previa.atracao, arquivo: previa.arquivo, csv: previa.csv, escolhas, lembrar }) });
+
+/** Uma regra desta atração (#63): a decisão lembrada de uma importação, com quem a lembrou e quando. */
+export interface RegraDaAtracao extends RegraLembrada {
+  id: number;
+  quem: string;
+  em: string;
+}
+/** As regras desta atração (só administradores): a ficha mostra, para apagar a lembrada errada. */
+export const lerRegrasDaAtracao = (atracao: string) => pedir<{ regras: RegraDaAtracao[] }>(`/api/acervo/regras?atracao=${encodeURIComponent(atracao)}`);
+export const apagarRegraDaAtracao = (id: number) => pedir<{ apagada: number }>('/api/acervo/regras/apagar', { method: 'POST', body: JSON.stringify({ id }) });
 
 /** Pacote gráfico novo: as artes da atração deixam de valer. */
 export const zerarAcervo = (atracao: string) => pedir<{ zeradas: number }>('/api/acervo/zerar', { method: 'POST', body: JSON.stringify({ atracao }) });

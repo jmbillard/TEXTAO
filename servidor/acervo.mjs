@@ -362,13 +362,14 @@ export function criarAcervo(env, deps = {}) {
    * A prévia da importação por CSV (ADR 0005): cada linha do CSV classificada contra o acervo da atração, com as
    * regras de conversão (a grafia pelas fontes, na ordem), as perguntas para quem confere, o placar e as opções de
    * tipo. Vai junto o acervo da atração, para a tela conferir de novo a cada escolha. Nada é gravado.
+   * @param regras as regras desta atração (as decisões lembradas, #63), que quem chama lê do SQLite
    * @returns { antes, tipos, acervo, linhas, placar, faltam }
    */
-  async function previaDaImportacao(atracao, csv) {
+  async function previaDaImportacao(atracao, csv, regras = {}) {
     await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
     const acervo = paraConferir(await linhasDa(atracao));
-    const { linhas, placar, faltam } = classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao) });
+    const { linhas, placar, faltam } = classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao), regras });
     return { antes: acervo.length, tipos, acervo, linhas, placar, faltam };
   }
 
@@ -382,22 +383,27 @@ export function criarAcervo(env, deps = {}) {
    * gravado, falhou), os ids criados, o tipo e o nome antigos das linhas alteradas e, no fim, a data de modificação de
    * cada linha tocada. anotar(registro) é chamado antes do primeiro lote e depois de cada um; o lote que falha para a
    * gravação (o erro tem interrompida: true) e o registro fica até onde foi.
+   *
+   * As regras desta atração (#63) valem como na prévia; lembrar(linhas), quando vem, recebe as linhas conferidas logo
+   * depois de a conferência passar (sem decisão pendente, os tipos no campo) e antes do primeiro lote: as decisões
+   * ficam lembradas mesmo se a gravação parar no meio.
    * @returns { antes, depois, novas, ganharamTipo, renomeadas: [{ id, antes, depois }], semMudanca }
    */
-  async function gravarImportacao(atracao, csv, escolhas = {}, { anotar = () => {} } = {}) {
+  async function gravarImportacao(atracao, csv, escolhas = {}, { anotar = () => {}, regras = {}, lembrar = () => {} } = {}) {
     if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
     const id = await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
     esquecer();
     const linhas = await linhasDa(atracao);
     const acervo = paraConferir(linhas);
-    const { faltam, plano } = classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao), escolhas });
+    const { faltam, plano, linhas: conferidas } = classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao), regras, escolhas });
     // o tipo escolhido (e o que vai ser gravado) que não é opção do campo: o erro diz qual, antes da decisão pendente
     // que ele mesmo causa
     const gravados = [...plano.criar, ...plano.tipar, ...plano.renomear].map((x) => x.tipo);
     const invalidos = [...new Set([...Object.values(escolhas).map((e) => e.tipo), ...gravados].filter((tipo) => tipo && !tipos.includes(tipo)))];
     if (invalidos.length) throw Object.assign(new Error(`Tipo que não está no campo tipo do acervo: ${invalidos.join(', ')}. Nada foi gravado.`), { status: 422 });
     if (faltam) throw Object.assign(new Error(`${faltam === 1 ? 'Falta 1 decisão' : `Faltam ${faltam} decisões`} na conferência: nada foi gravado.`), { status: 422 });
+    await lembrar(conferidas);
     const tipoAntigo = (linha) => linhas.find((l) => l.id === linha)?.tipo ?? '';
     const emLotes = (acao, lista) => Array.from({ length: Math.ceil(lista.length / 100) }, (_, i) => ({ acao, estado: 'pendente', registros: lista.slice(i * 100, i * 100 + 100) }));
     const registro = {

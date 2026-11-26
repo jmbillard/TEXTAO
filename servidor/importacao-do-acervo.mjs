@@ -19,6 +19,10 @@
  * acentos do dicionário e a grafia da primeira fonte que tem a arte (o acervo da atração, os roteiros dela, os de todas,
  * o acervo de todas). Cada regra aplicada vira uma mudança { antes, depois, regra } da linha. As fontes chegam como
  * dados: quem as lê é servidor/acervo.mjs.
+ *
+ * As regras desta atração (#63) são as decisões de conferências anteriores, lembradas no formato das regras das cargas à
+ * mão (trocas, ignorar, versões, cópias, semSigla e tipos): classificar as aplica junto das regras de conversão, e
+ * regrasDasDecisoes tira as regras das escolhas de quem conferiu. Quem as guarda é servidor/regras-da-atracao.mjs.
  */
 import { chaveDeArte as chaveDoTexto } from '../src/modelo/diferencas.ts';
 
@@ -126,17 +130,29 @@ function abreviacoes(t, mudancas) {
 const VERSOES = [/\s+(D|E)$/, /\s+(VERT|VERTICAL|HORIZ|HORIZONTAL)$/, /\s+(\d{1,2}S)$/];
 /** Tira do fim do texto as marcas de versão (mais de uma: "HOJE VERT 6S"), sem deixar o texto vazio. O texto que uma
     fonte da grafia escreve inteiro, ou uma frase conhecida ("QUAL E"), não tem versão. */
-function versao(t, mudancas, grafia) {
+function versao(t, mudancas, grafia, daAtracao = []) {
   const marcas = [];
+  const daCasa = [];
+  const lembradas = [];
   if (grafia(t) || FRASES.some(([re]) => re.test(semAcento(t)))) return { t, versao: '' };
   for (let mudou = true; mudou; ) {
     mudou = false;
     for (const re of VERSOES) {
       const m = re.exec(semAcento(t));
-      if (m && m.index > 0) (t = t.slice(0, m.index).trim()), marcas.unshift(m[1]), (mudou = true);
+      if (m && m.index > 0) (t = t.slice(0, m.index).trim()), marcas.unshift(m[1]), daCasa.unshift(m[1]), (mudou = true);
+    }
+    // as versões próprias da atração (regras lembradas): a marca é o grupo 1, como nas cargas à mão
+    for (const { r } of daAtracao) {
+      const m = r.exec(semAcento(t));
+      if (!m?.[1] || m.index <= 0) continue;
+      t = (t.slice(0, m.index) + t.slice(m.index + m[0].length)).trim();
+      marcas.unshift(m[1].trim());
+      lembradas.unshift(lembrada(m[1].trim(), '', 'versão'));
+      mudou = true;
     }
   }
-  if (marcas.length) mudancas.push({ antes: marcas.join(' '), depois: '', regra: 'versão' });
+  if (daCasa.length) mudancas.push({ antes: daCasa.join(' '), depois: '', regra: 'versão' });
+  mudancas.push(...lembradas);
   return { t, versao: marcas.join(' ') };
 }
 
@@ -202,23 +218,70 @@ function acentoSugerido(arte, palavras) {
 
 const FORA = { valor: 'fora', rotulo: 'Fica fora' };
 
+/* ---------- as regras desta atração (#63) ---------- */
+
+/** O que a linha mostra quando a mudança veio de uma regra lembrada da atração. */
+const DA_ATRACAO = 'regra desta atração';
+const lembrada = (antes, depois, qual = '') => ({ antes, depois, regra: qual ? `${qual} · ${DA_ATRACAO}` : DA_ATRACAO, daAtracao: true });
+
+/**
+ * As regras da atração no formato das cargas à mão, prontas para aplicar: a expressão compilada de cada uma (a
+ * inválida, e a sem o que pôr no lugar, ficam de fora). As trocas valem no texto sem acento e em maiúsculas (depois da
+ * versão e do PROX); ignorar, cópias, semSigla e tipos, no nome do arquivo sem a extensão, sem caixa.
+ * @param regras { trocas: [{ re, por, motivo, fixo }], ignorar: [{ re, motivo }], versoes: [re | { re }],
+ *   copias: [re | { re }], semSigla: [{ re, tipo }], tipos: [{ re, tipo }] }
+ */
+function compilarRegras(regras = {}) {
+  const lista = (v, bandeiras, valida = () => true) =>
+    (Array.isArray(v) ? v : [])
+      .map((x) => (typeof x === 'string' ? { re: x } : x))
+      .filter((x) => x && typeof x.re === 'string' && valida(x))
+      .map((x) => {
+        try {
+          return { ...x, r: new RegExp(x.re, bandeiras) };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  const comTipo = (x) => typeof x.tipo === 'string';
+  return {
+    trocas: lista(regras.trocas, '', (x) => typeof x.por === 'string'),
+    ignorar: lista(regras.ignorar, 'i'),
+    versoes: lista(regras.versoes, ''),
+    copias: lista(regras.copias, 'i'),
+    semSigla: lista(regras.semSigla, 'i', comTipo),
+    tipos: lista(regras.tipos, 'i', comTipo),
+  };
+}
+const SEM_REGRAS = compilarRegras();
+
 /** O nome do arquivo → { arte, tipo, copia, versao, motivo, mudancas, perguntas, naFonte } ou { fora: motivo }. As
     perguntas daqui são as do nome (a sigla que não é tipo, o tipo tirado do começo do nome, o acento sugerido, o
     rodapé composto); a do nome parecido com o acervo sai da comparação (conferir).
     @param grafia (texto) => { texto, fonte } | null: a grafia das fontes para o texto
     @param palavras as palavras das fontes, para o acento sugerido */
-function arteDoNome(nome, tipos, grafia = () => null, palavras = new Map()) {
+function arteDoNome(nome, tipos, grafia = () => null, palavras = new Map(), regras = SEM_REGRAS) {
   const semExt = nome.replace(/\.[a-z0-9]{2,4}$/i, '');
   if (semExt === nome) return { fora: 'é uma pasta, não um arquivo' };
+  const ignorada = regras.ignorar.find((x) => x.r.test(semExt));
+  if (ignorada) return { fora: [ignorada.motivo, DA_ATRACAO].filter(Boolean).join(' · ') };
   const perguntas = [];
+  const mudancas = [];
   // a sigla mais longa primeiro (LOGO GLOBO antes de LOGO)
   const porTamanho = [...tipos].sort((a, b) => b.length - a.length);
   const prefixo = (s) => new RegExp(`^\\s*${escapar(s)}\\s+-\\s+`, 'i');
   const sigla = porTamanho.find((s) => prefixo(s).test(semExt));
   let resto;
   let tipo;
+  // o nome sem sigla que as regras da atração dizem de que tipo é (o tipo tem de ser opção do campo)
+  const semSigla = sigla ? null : regras.semSigla.find((x) => tipos.includes(x.tipo) && x.r.test(semExt));
   if (sigla) (resto = semExt.replace(prefixo(sigla), '')), (tipo = sigla);
-  else {
+  else if (semSigla) {
+    resto = semExt.replace(/^\s*[A-Z]{2,6}\s+-\s+/i, '');
+    tipo = semSigla.tipo;
+    mudancas.push(lembrada('sem “SIGLA - ”', tipo, 'tipo'));
+  } else {
     // a sigla que não é tipo do acervo ("COMP - "): pergunta; nunca vira uma opção nova do campo
     const outra = /^\s*([A-Z]{2,6})\s+-\s+/.exec(semExt);
     // sem "SIGLA - ", o nome que começa por um tipo ("MOLDURA VIDEO.png"): o tipo sai dali, e o nome inteiro é a arte
@@ -234,16 +297,35 @@ function arteDoNome(nome, tipos, grafia = () => null, palavras = new Map()) {
   let copia = false;
   let motivo = '';
   for (const re of COPIA) if (re.test(resto)) (resto = resto.replace(re, '')), (copia = true);
+  for (const { r } of regras.copias) {
+    const m = r.exec(resto);
+    if (m) (resto = resto.replace(r, '')), (copia = true), mudancas.push(lembrada(m[0].trim(), '', 'cópia'));
+  }
   if (ALFA.test(resto)) {
     resto = resto.replace(ALFA, '');
     const lett = tipos.find((t) => t.toUpperCase() === LETTERING);
     if (lett) (tipo = lett), (motivo = '_alfa: lettering');
   }
-  const mudancas = [];
+  // o tipo que a atração decidiu para este arquivo (a sigla do nome estava errada)
+  const doArquivo = sigla ? regras.tipos.find((x) => tipos.includes(x.tipo) && x.r.test(semExt)) : null;
+  if (doArquivo && doArquivo.tipo !== tipo) mudancas.push(lembrada(`tipo ${tipo}`, doArquivo.tipo)), (tipo = doArquivo.tipo);
   const t0 = resto.normalize('NFC').replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLocaleUpperCase('pt-BR');
-  const v = versao(t0, mudancas, grafia);
-  const t = abreviacoes(v.t, mudancas);
-  let arte = hora(t, mudancas);
+  const v = versao(t0, mudancas, grafia, regras.versoes);
+  let t = abreviacoes(v.t, mudancas);
+  // o texto que as trocas da atração leem (e que a decisão de agora guarda como regra)
+  const texto = semAcento(t);
+  // as trocas da atração (a abreviação da casa, o erro de digitação, o nome decidido à mão); a fixa é a arte pronta
+  let trocado = texto;
+  let fixa = false;
+  for (const tr of regras.trocas) {
+    const m = tr.r.exec(trocado);
+    if (!m) continue;
+    trocado = trocado.replace(tr.r, tr.por).replace(/\s+/g, ' ').trim();
+    mudancas.push(lembrada(m[0].trim(), tr.por));
+    fixa ||= !!tr.fixo;
+  }
+  if (trocado !== texto || fixa) t = trocado;
+  let arte = fixa ? t : hora(t, mudancas);
   let naFonte = false;
   // a hora sai pronta; o resto ganha os acentos e, depois, a grafia da primeira fonte que tiver a arte
   if (arte === null) {
@@ -265,7 +347,7 @@ function arteDoNome(nome, tipos, grafia = () => null, palavras = new Map()) {
     }
   }
   if (!chaveDeArte(arte)) return { fora: 'sem texto depois do prefixo' };
-  return { arte, tipo, copia, versao: v.versao, motivo, mudancas, perguntas, naFonte };
+  return { arte, tipo, copia, versao: v.versao, motivo, mudancas, perguntas, naFonte, texto };
 }
 
 // as fontes da grafia, na ordem: a primeira que tiver a arte (pela chave) decide como ela se escreve
@@ -533,18 +615,154 @@ export function emLote(linhas, escolhas, acao) {
  * @param tipos as opções do campo tipo do acervo (as siglas)
  * @param grafias as outras fontes da grafia, que a rota lê: { roteirosDaAtracao, roteiros, acervo } (listas de textos:
  *   as artes dos roteiros desta atração, as dos roteiros das outras e o acervo das outras)
+ * @param regras as regras desta atração, no formato das cargas à mão (veja compilarRegras e comoRegras): as decisões
+ *   lembradas de importações anteriores
  * @param escolhas as escolhas de quem confere (veja conferir); sem elas, a prévia
  * @returns o que conferir devolve: as linhas ({ n, nome, caminho, arte, tipo, estado, motivo, versao, copia, mudancas,
  *   perguntas, origem }), o placar, quantas faltam decidir e o plano de gravação
  */
-export function classificar({ csv, acervo = [], tipos = [], grafias = {}, escolhas = {} }) {
+export function classificar({ csv, acervo = [], tipos = [], grafias = {}, regras = {}, escolhas = {} }) {
   const fontes = [acervo.map((x) => x.arte), grafias.roteirosDaAtracao, grafias.roteiros, grafias.acervo];
   const grafia = grafiaDasFontes(fontes);
   const palavras = palavrasDasFontes(fontes);
+  const daAtracao = compilarRegras(regras);
   const linhas = lerCsv(csv).map((l) => {
     const nome = l.nome ?? '';
-    const { fora = '', arte = '', tipo = '', copia = false, versao = '', motivo = '', mudancas = [], perguntas = [], naFonte = false } = arteDoNome(nome, tipos, grafia, palavras);
-    return { n: l.n, nome, caminho: l.caminho ?? '', origem: { fora, arte, tipo, copia, versao, motivo, mudancas, perguntas, naFonte } };
+    const { fora = '', arte = '', tipo = '', copia = false, versao = '', motivo = '', mudancas = [], perguntas = [], naFonte = false, texto = '' } = arteDoNome(nome, tipos, grafia, palavras, daAtracao);
+    return { n: l.n, nome, caminho: l.caminho ?? '', origem: { fora, arte, tipo, copia, versao, motivo, mudancas, perguntas, naFonte, texto } };
   });
   return conferir({ linhas, acervo, tipos, escolhas });
+}
+
+/* ---------- lembrar as decisões (#63): a conferência decidida vira as regras desta atração ---------- */
+
+const semExtensao = (nome) => nome.replace(/\.[a-z0-9]{2,4}$/i, '');
+/** O nome inteiro do arquivo (sem a extensão), como expressão: a regra que vale para este arquivo quando ele volta no
+    próximo CSV da pasta de output (que lista de novo os arquivos de antes). */
+const doArquivo = (nome) => `^${escapar(semExtensao(nome))}$`;
+const palavrasDe = (s) => s.split(' ').filter(Boolean);
+/** a está em b na ordem, a começar pela primeira letra ("JH" em "JORNAL HOJE", "DPS" em "DEPOIS") */
+const abrevia = (a, b) => {
+  if (a[0] !== b[0]) return false;
+  let i = 0;
+  for (const c of b) if (c === a[i]) i++;
+  return i === a.length;
+};
+
+/**
+ * O nome editado na linha, como regra (o texto que as trocas leem → a arte editada):
+ * - sem a última palavra, que é uma letra ou um número ("HOJE B" → "HOJE"): a versão própria da atração; a letra vale
+ *   para toda arte, o número só para aquela ("AMANHA 2" é versão; "DIA 2", não);
+ * - sem "COPY"/"COPIA" no fim: a cópia;
+ * - uma palavra curta (2 a 4 letras) trocada pelo que ela abrevia ("DP" → "DAQUI A POUCO", "JH" → "JORNAL HOJE"): a
+ *   abreviação da casa, trocada em toda arte da atração;
+ * - o resto: a troca fixa do nome inteiro ("DIA 5" → "DIA 05", "MARVILA" → "MARVVILA").
+ */
+function regraDaEdicao(texto, editada) {
+  const antes = palavrasDe(chaveDeArte(texto));
+  const depois = palavrasDe(chaveDeArte(editada));
+  if (depois.length === antes.length - 1 && depois.every((p, i) => p === antes[i])) {
+    const ultima = antes[antes.length - 1];
+    if (/^(COPY|COPIA)$/.test(ultima)) return { tipo: 'copia', re: `\\s+${ultima}$`, motivo: `“${ultima}” no fim do nome é cópia` };
+    if (/^[A-Z]$/.test(ultima)) return { tipo: 'versao', re: `\\s+(${ultima})$`, motivo: `“${ultima}” no fim do nome é versão` };
+    if (/^\d{1,2}$/.test(ultima)) {
+      const base = texto.replace(new RegExp(`\\s+${ultima}$`), '');
+      if (base !== texto) return { tipo: 'versao', re: `(?<=^${escapar(base)})\\s+(${ultima})$`, motivo: `${texto} é versão de ${base}` };
+    }
+  }
+  // a abreviação: uma palavra trocada, as outras iguais (a palavra nova vem como foi escrita, com acento)
+  const escritas = palavrasDe(editada.trim().replace(/\s+/g, ' ').toLocaleUpperCase('pt-BR'));
+  if (escritas.length === depois.length) {
+    let ini = 0;
+    while (ini < antes.length && ini < depois.length && antes[ini] === depois[ini]) ini++;
+    let fim = 0;
+    while (fim < antes.length - ini && fim < depois.length - ini && antes[antes.length - 1 - fim] === depois[depois.length - 1 - fim]) fim++;
+    const velha = antes.slice(ini, antes.length - fim);
+    const nova = depois.slice(ini, depois.length - fim);
+    if (velha.length === 1 && nova.length >= 1 && /^[A-Z]{2,4}$/.test(velha[0]) && nova.join('').length >= velha[0].length + 2 && abrevia(velha[0], nova.join(''))) {
+      const por = escritas.slice(ini, escritas.length - fim).join(' ');
+      return { tipo: 'troca', re: `\\b${velha[0]}\\b`, por, motivo: `${velha[0]} = ${por}` };
+    }
+  }
+  const por = editada.trim().replace(/\s+/g, ' ');
+  return { tipo: 'troca', re: `^${escapar(texto)}$`, por, fixo: true, motivo: `${texto} → ${por}` };
+}
+
+/**
+ * As decisões da conferência que valem para as próximas importações da atração, como regras no formato das cargas à mão
+ * (cada uma com o tipo da regra e o motivo, para a lista "Regras desta atração"). Só vira regra o que tem sentido fora
+ * desta linha: o padrão que a decisão nomeia (a sigla que não é tipo, a abreviação, a versão, o nome escrito errado) ou
+ * o próprio arquivo, que volta no próximo CSV da pasta de output. "É outra arte" e "corrigir" não precisam de regra para
+ * o próprio arquivo: gravada, a arte já está no acervo e a pergunta não volta.
+ * @param linhas as linhas conferidas com as escolhas (as de classificar ou conferir)
+ * @param escolhas as escolhas de quem conferiu
+ * @returns [{ tipo: 'troca' | 'ignorar' | 'versao' | 'copia' | 'semSigla' | 'tipo', re, por?, fixo?, tipoDaArte?, motivo }]
+ */
+export function regrasDasDecisoes({ linhas, escolhas = {} }) {
+  const regras = [];
+  const resposta = (l, tipo) => l.perguntas.find((q) => q.tipo === tipo)?.resposta ?? '';
+  const ignorar = (l, porque = '') => ({ tipo: 'ignorar', re: doArquivo(l.nome), motivo: `${semExtensao(l.nome)} fica fora${porque}` });
+  const tipoDoArquivo = (l, tipo) => ({ tipo: 'semSigla', re: doArquivo(l.nome), tipoDaArte: tipo, motivo: `${semExtensao(l.nome)} é ${tipo}` });
+  // a sigla que não é tipo: decidida igual em todas as linhas, a regra é da sigla; dividida, de cada arquivo
+  const porSigla = new Map();
+  for (const l of linhas) {
+    const q = l.perguntas?.find((x) => x.tipo === 'sigla');
+    if (!q || l.origem?.fora || escolhas[l.n]?.tirada) continue;
+    porSigla.set(q.sigla, [...(porSigla.get(q.sigla) ?? []), q.resposta === 'fora' ? 'fora' : l.tipo]);
+  }
+  const siglaFeita = new Set();
+  for (const l of linhas) {
+    const e = escolhas[l.n];
+    if (!e || l.origem?.fora) continue;
+    if (e.tirada) {
+      regras.push(ignorar(l, ' (tirada da importação)'));
+      continue;
+    }
+    const q = l.perguntas.find((x) => x.tipo === 'sigla');
+    if (q) {
+      const decisoes = new Set(porSigla.get(q.sigla));
+      const [unica] = decisoes;
+      if (decisoes.size === 1 && !siglaFeita.has(q.sigla)) {
+        siglaFeita.add(q.sigla);
+        // tolerante como a leitura da sigla no nome ("COMP  -  X")
+        const re = `^\\s*${escapar(q.sigla)}\\s+-\\s+`;
+        regras.push(unica === 'fora' ? { tipo: 'ignorar', re, motivo: `${q.sigla} não é tipo do acervo: fica fora` } : { tipo: 'semSigla', re, tipoDaArte: unica, motivo: `${q.sigla} vale como ${unica}` });
+      } else if (decisoes.size > 1) regras.push(q.resposta === 'fora' ? ignorar(l) : tipoDoArquivo(l, l.tipo));
+      if (q.resposta === 'fora') continue;
+    }
+    const doNome = resposta(l, 'tipoDoNome');
+    if (doNome === 'fora' || resposta(l, 'composto') === 'fora') {
+      regras.push(ignorar(l));
+      continue;
+    }
+    if (doNome) regras.push(tipoDoArquivo(l, l.tipo));
+    else if (!q && typeof e.tipo === 'string' && e.tipo && e.tipo !== l.origem.tipo)
+      regras.push({ tipo: 'tipo', re: doArquivo(l.nome), tipoDaArte: e.tipo, motivo: `${semExtensao(l.nome)} é ${e.tipo}` });
+    // o nome: a edição na linha decide; senão a resposta que muda (ou fixa) a arte
+    const texto = l.origem.texto;
+    if (!texto) continue;
+    const fixa = (por, motivo) => ({ tipo: 'troca', re: `^${escapar(texto)}$`, por, fixo: true, motivo });
+    const parecida = l.perguntas.find((x) => x.tipo === 'parecida');
+    const editada = typeof e.arte === 'string' ? e.arte.trim().replace(/\s+/g, ' ') : '';
+    if (chaveDeArte(editada) && editada !== l.origem.arte) regras.push(regraDaEdicao(texto, editada));
+    else if (parecida?.resposta === 'mesma') regras.push(fixa(parecida.alvo.arte, `${texto} é ${parecida.alvo.arte} (erro no arquivo)`));
+    else if (resposta(l, 'acento') === 'sugerido') regras.push(fixa(l.arte, `${texto}: o acento sugerido`));
+    else if (resposta(l, 'acento') === 'como-esta') regras.push(fixa(l.arte, `${texto}: como está, sem o acento sugerido`));
+    else if (resposta(l, 'composto') === 'importar') regras.push(fixa(l.arte, `${texto}: o roteiro escreve assim`));
+    // o nome errado do acervo, corrigido: o arquivo escrito como estava no acervo vem já certo
+    if (parecida?.resposta === 'corrigir') {
+      const errado = semAcento(parecida.alvo.arte.toLocaleUpperCase('pt-BR')).replace(/\s+/g, ' ').trim();
+      if (chaveDeArte(errado) !== chaveDeArte(texto))
+        regras.push({ tipo: 'troca', re: `^${escapar(errado)}$`, por: l.arte, fixo: true, motivo: `${errado} → ${l.arte} (o nome errado do acervo)` });
+    }
+  }
+  return regras;
+}
+
+/** As regras guardadas (a lista de regrasDasDecisoes) no formato das cargas à mão, o que classificar recebe. */
+export function comoRegras(lista = []) {
+  const regras = { trocas: [], ignorar: [], versoes: [], copias: [], semSigla: [], tipos: [] };
+  const onde = { troca: 'trocas', ignorar: 'ignorar', versao: 'versoes', copia: 'copias', semSigla: 'semSigla', tipo: 'tipos' };
+  for (const { tipo, tipoDaArte, ...r } of lista) if (onde[tipo]) regras[onde[tipo]].push(tipoDaArte ? { ...r, tipo: tipoDaArte } : r);
+  return regras;
 }

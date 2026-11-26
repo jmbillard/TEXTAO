@@ -32,6 +32,8 @@ export interface MudancaDaImportacao {
   antes: string;
   depois: string;
   regra: string;
+  /** a mudança veio de uma regra lembrada desta atração ("regra desta atração") */
+  daAtracao?: boolean;
 }
 
 /** O que o nome do arquivo deu, antes das escolhas de quem confere. */
@@ -46,6 +48,9 @@ export interface OrigemDaLinha {
   mudancas: MudancaDaImportacao[];
   perguntas: PerguntaDaImportacao[];
   naFonte: boolean;
+  /** o texto que as trocas da atração leem (sem acento, em maiúsculas, depois da versão e do PROX): a chave das regras
+      lembradas a partir desta linha */
+  texto: string;
 }
 
 /** Uma linha do CSV, convertida numa arte e classificada contra o acervo da atração. */
@@ -109,10 +114,38 @@ export function conferir(p: { linhas: Pick<LinhaDaImportacao, 'n' | 'nome' | 'ca
 /** As decisões em lote, como novas escolhas. */
 export function emLote(linhas: LinhaDaImportacao[], escolhas: Escolhas, acao: { acentos: true } | { siglaFora: string } | { tipo: string; ns: number[] } | { tirar: true; ns: number[] }): Escolhas;
 
+/** As regras desta atração no formato das cargas à mão (os JSONs de regras): as expressões são texto. */
+export interface RegrasDaAtracao {
+  trocas?: { re: string; por: string; motivo?: string; fixo?: boolean }[];
+  ignorar?: { re: string; motivo?: string }[];
+  versoes?: (string | { re: string; motivo?: string })[];
+  copias?: (string | { re: string; motivo?: string })[];
+  semSigla?: { re: string; tipo: string; motivo?: string }[];
+  tipos?: { re: string; tipo: string; motivo?: string }[];
+}
+
+/** Uma decisão lembrada como regra da atração (o tipo da regra, a expressão e o que ela faz). */
+export interface RegraLembrada {
+  tipo: 'troca' | 'ignorar' | 'versao' | 'copia' | 'semSigla' | 'tipo';
+  re: string;
+  por?: string;
+  fixo?: boolean;
+  /** o tipo da arte (semSigla e tipo) */
+  tipoDaArte?: string;
+  motivo: string;
+}
+
 export function classificar(p: {
   csv: string;
   acervo?: LinhaDoAcervo[];
   tipos?: string[];
   grafias?: { roteirosDaAtracao?: string[]; roteiros?: string[]; acervo?: string[] };
+  regras?: RegrasDaAtracao;
   escolhas?: Escolhas;
 }): Conferencia;
+
+/** As decisões da conferência que viram regras desta atração. */
+export function regrasDasDecisoes(p: { linhas: LinhaDaImportacao[]; escolhas?: Escolhas }): RegraLembrada[];
+
+/** As regras lembradas no formato das cargas à mão. */
+export function comoRegras(lista?: RegraLembrada[]): RegrasDaAtracao;

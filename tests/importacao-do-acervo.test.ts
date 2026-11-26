@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { criarAcervo } from '../servidor/acervo.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
-import { classificar, conferir, emLote, type Escolhas, type LinhaDaImportacao } from '../servidor/importacao-do-acervo.mjs';
+import { classificar, comoRegras, conferir, emLote, regrasDasDecisoes, type Escolhas, type LinhaDaImportacao, type RegraLembrada } from '../servidor/importacao-do-acervo.mjs';
 
 /* A importação do acervo por CSV (#58): a função pura que converte cada arquivo do CSV da pasta de output numa arte e
    classifica a linha contra o acervo da atração. Os casos são fictícios, no formato dos CSVs já importados à mão. */
@@ -445,6 +445,175 @@ describe('as decisões em lote (#60)', () => {
   });
 });
 
+/* ---------- as regras desta atração (#63): as decisões lembradas para as próximas ---------- */
+
+describe('as regras desta atração (#63): aplicadas na prévia', () => {
+  it('as regras no formato das cargas à mão (trocas, ignorar, versões, cópias, semSigla) valem na prévia, e a linha diz "regra desta atração"', () => {
+    const regras = {
+      trocas: [
+        { re: '\\bDP\\b', por: 'DAQUI A POUCO', motivo: 'DP = DAQUI A POUCO' },
+        { re: '^DIA 5$', por: 'DIA 05', motivo: 'o roteiro escreve DIA 05', fixo: true },
+      ],
+      ignorar: [{ re: '^COMP - ', motivo: 'COMP não é tipo do acervo: fica fora' }],
+      versoes: ['\\s+(B)$'],
+      copias: ['\\s+copy$'],
+      semSigla: [{ re: '^ABERTURA\\b', tipo: 'LETT' }],
+    };
+    const r = classificar({
+      csv: csv('CRT - DP.mov', 'CRT - DP 3 00.mov', 'CRT - DIA 5.mov', 'COMP - VINHETA EP 12.mov', 'RDP - CANTORA.mov', 'RDP - CANTORA B.mov', 'RDP - CANTORA copy.mov', 'ABERTURA DO PROGRAMA.mov'),
+      acervo: [],
+      tipos: TIPOS,
+      regras,
+    });
+    expect(resumo(r.linhas)).toEqual([
+      'CRT - DP.mov → nova DAQUI A POUCO (CRT)',
+      'CRT - DP 3 00.mov → nova DAQUI A POUCO 3:00 (CRT)',
+      'CRT - DIA 5.mov → nova DIA 05 (CRT)',
+      'COMP - VINHETA EP 12.mov → fora',
+      'RDP - CANTORA.mov → nova CANTORA (RDP)',
+      'RDP - CANTORA B.mov → copia CANTORA (RDP)',
+      'RDP - CANTORA copy.mov → copia CANTORA (RDP)',
+      'ABERTURA DO PROGRAMA.mov → nova ABERTURA DO PROGRAMA (LETT)',
+    ]);
+    expect(r.linhas[0].mudancas).toEqual([{ antes: 'DP', depois: 'DAQUI A POUCO', regra: 'regra desta atração', daAtracao: true }]);
+    expect(mudou(r.linhas[1] as LinhaComRegras)).toEqual(['DP → DAQUI A POUCO · regra desta atração', '3 00 → 3:00 · hora']);
+    expect(r.linhas[3].motivo).toBe('COMP não é tipo do acervo: fica fora · regra desta atração');
+    expect([r.linhas[5].versao, mudou(r.linhas[5] as LinhaComRegras)]).toEqual(['B', ['B →  · versão · regra desta atração']]);
+    expect(mudou(r.linhas[6] as LinhaComRegras)).toEqual(['copy →  · cópia · regra desta atração']);
+    expect(mudou(r.linhas[7] as LinhaComRegras)).toEqual(['sem “SIGLA - ” → LETT · tipo · regra desta atração']);
+    expect(r.placar.decidir).toBe(0);
+  });
+
+  it('a regra com o tipo fora do campo, ou a expressão inválida, não vale', () => {
+    const r = classificar({ csv: csv('ABERTURA DO PROGRAMA.mov', 'CRT - DP.mov'), acervo: [], tipos: TIPOS, regras: { semSigla: [{ re: '^ABERTURA', tipo: 'VNH' }], trocas: [{ re: '(', por: 'X' }] } });
+    expect(resumo(r.linhas)).toEqual(['ABERTURA DO PROGRAMA.mov → fora', 'CRT - DP.mov → nova DP (CRT)']);
+  });
+});
+
+describe('as regras desta atração (#63): as decisões da conferência viram regras', () => {
+  /** A conferência decidida → as regras → a próxima prévia do mesmo CSV, já com as regras. */
+  const lembrado = (texto: string, escolhas: Escolhas, { acervo = [] as { id: string; arte: string; tipo: string }[], grafias = {} } = {}) => {
+    const decidido = classificar({ csv: texto, acervo, tipos: TIPOS, grafias, escolhas });
+    const regras = regrasDasDecisoes({ linhas: decidido.linhas, escolhas });
+    return { regras, decidido, proxima: classificar({ csv: texto, acervo, tipos: TIPOS, grafias, regras: comoRegras(regras) }) };
+  };
+  const semMotivo = (regras: RegraLembrada[]) => regras.map(({ motivo, ...r }) => r);
+
+  it('a abreviação da casa editada na linha (DP, JH) vira a troca da palavra; a próxima prévia já escreve por extenso', () => {
+    const { regras, proxima } = lembrado(csv('CRT - DP.mov', 'CRT - DEPOIS DO JH.mov', 'RDP - DIA 5.mov'), { 2: { arte: 'DAQUI A POUCO' }, 3: { arte: 'DEPOIS DO JORNAL HOJE' }, 4: { arte: 'DIA 05' } });
+    expect(semMotivo(regras)).toEqual([
+      { tipo: 'troca', re: '\\bDP\\b', por: 'DAQUI A POUCO' },
+      { tipo: 'troca', re: '\\bJH\\b', por: 'JORNAL HOJE' },
+      { tipo: 'troca', re: '^DIA 5$', por: 'DIA 05', fixo: true },
+    ]);
+    expect(regras.map((r) => r.motivo)).toEqual(['DP = DAQUI A POUCO', 'JH = JORNAL HOJE', 'DIA 5 → DIA 05']);
+    expect(resumo(proxima.linhas)).toEqual(['CRT - DP.mov → nova DAQUI A POUCO (CRT)', 'CRT - DEPOIS DO JH.mov → nova DEPOIS DO JORNAL HOJE (CRT)', 'RDP - DIA 5.mov → nova DIA 05 (RDP)']);
+    // a troca da palavra vale para outro arquivo da atração
+    expect(resumo(classificar({ csv: csv('RDP - ANTES DO JH.mov'), tipos: TIPOS, regras: comoRegras(regras) }).linhas)).toEqual(['RDP - ANTES DO JH.mov → nova ANTES DO JORNAL HOJE (RDP)']);
+  });
+
+  it('a versão própria da atração (a letra ou o número que sai do fim na edição) vira a versão: a letra vale para toda arte, o número só para aquela', () => {
+    const { regras, proxima } = lembrado(csv('CRT - HOJE.mov', 'CRT - HOJE B.mov', 'CRT - AMANHA.mov', 'CRT - AMANHA 2.mov'), { 3: { arte: 'HOJE' }, 5: { arte: 'AMANHÃ' } });
+    expect(semMotivo(regras)).toEqual([
+      { tipo: 'versao', re: '\\s+(B)$' },
+      { tipo: 'versao', re: '(?<=^AMANHA)\\s+(2)$' },
+    ]);
+    expect(proxima.linhas.map((l) => [l.estado, l.arte, l.versao])).toEqual([
+      ['nova', 'HOJE', ''],
+      ['copia', 'HOJE', 'B'],
+      ['nova', 'AMANHÃ', ''],
+      ['copia', 'AMANHÃ', '2'],
+    ]);
+    expect(resumo(classificar({ csv: csv('CRT - DOMINGO B.mov', 'CRT - DIA 2.mov'), tipos: TIPOS, regras: comoRegras(regras) }).linhas)).toEqual(['CRT - DOMINGO B.mov → nova DOMINGO (CRT)', 'CRT - DIA 2.mov → nova DIA 2 (CRT)']);
+  });
+
+  it('o erro no arquivo ("é a mesma") e o nome editado viram a troca do nome inteiro; o nome errado do acervo corrigido também', () => {
+    const acervo = [
+      { id: 'recBanda', arte: 'BANDA MAR ABERTO', tipo: 'RDP' },
+      { id: 'recSorisso', arte: 'SORISSO FICTICIO', tipo: 'RDP' },
+    ];
+    const { regras, proxima } = lembrado(csv('RDP - BANDA MAR ABERTTO.mov', 'RDP - SORRISO FICTICIO.mov', 'RDP - MARVILA.mov'), { 2: { respostas: { parecida: 'mesma' } }, 3: { respostas: { parecida: 'corrigir' } }, 4: { arte: 'MARVVILA' } }, { acervo, grafias: { roteiros: ['SORRISO FICTÍCIO'] } });
+    expect(semMotivo(regras)).toEqual([
+      { tipo: 'troca', re: '^BANDA MAR ABERTTO$', por: 'BANDA MAR ABERTO', fixo: true },
+      { tipo: 'troca', re: '^SORISSO FICTICIO$', por: 'SORRISO FICTÍCIO', fixo: true },
+      { tipo: 'troca', re: '^MARVILA$', por: 'MARVVILA', fixo: true },
+    ]);
+    expect(resumo(proxima.linhas)[0]).toBe('RDP - BANDA MAR ABERTTO.mov → ja BANDA MAR ABERTO (RDP)');
+    expect(resumo(proxima.linhas)[2]).toBe('RDP - MARVILA.mov → nova MARVVILA (RDP)');
+    // o arquivo com o nome que estava errado no acervo vem já certo
+    expect(resumo(classificar({ csv: csv('RDP - SORISSO FICTICIO.mov'), tipos: TIPOS, regras: comoRegras(regras) }).linhas)).toEqual(['RDP - SORISSO FICTICIO.mov → nova SORRISO FICTÍCIO (RDP)']);
+  });
+
+  it('"é outra arte" não vira regra: gravada, a arte já está no acervo e não pergunta de novo', () => {
+    const acervo = [{ id: 'recBanda', arte: 'BANDA MAR ABERTO', tipo: 'RDP' }];
+    expect(lembrado(csv('RDP - BANDA MAR ABERTTO.mov'), { 2: { respostas: { parecida: 'outra' } } }, { acervo }).regras).toEqual([]);
+  });
+
+  it('o acento (o sugerido ou como está) e o rodapé composto importado viram a troca fixa do nome: a próxima não pergunta', () => {
+    const grafias = { roteiros: ['MÁRCIA UM', 'MÁRCIA DOIS', 'MÁRCIA TRÊS'] };
+    const { regras, proxima } = lembrado(csv('RDP - MARCIA DO VALE.mov', 'RDP - MARCIA LUZ.mov', 'RDP - ANA LUZ E BENTO LUZ.mov'), { 2: { respostas: { acento: 'sugerido' } }, 3: { respostas: { acento: 'como-esta' } }, 4: { respostas: { composto: 'importar' } } }, { grafias });
+    expect(semMotivo(regras)).toEqual([
+      { tipo: 'troca', re: '^MARCIA DO VALE$', por: 'MÁRCIA DO VALE', fixo: true },
+      { tipo: 'troca', re: '^MARCIA LUZ$', por: 'MARCIA LUZ', fixo: true },
+      { tipo: 'troca', re: '^ANA LUZ E BENTO LUZ$', por: 'ANA LUZ E BENTO LUZ', fixo: true },
+    ]);
+    expect(resumo(proxima.linhas)).toEqual(['RDP - MARCIA DO VALE.mov → nova MÁRCIA DO VALE (RDP)', 'RDP - MARCIA LUZ.mov → nova MARCIA LUZ (RDP)', 'RDP - ANA LUZ E BENTO LUZ.mov → nova ANA LUZ E BENTO LUZ (RDP)']);
+    expect(mudou(proxima.linhas[1] as LinhaComRegras)).toEqual(['MARCIA LUZ → MARCIA LUZ · regra desta atração']);
+  });
+
+  it('a sigla que não é tipo: todas fora vira ignorar a sigla; todas com o mesmo tipo vira semSigla; dividida, a regra é de cada arquivo', () => {
+    const fora = lembrado(csv('COMP - ABERTURA EP 12.mov', 'COMP - ENCERRAMENTO EP 12.mov'), { 2: { respostas: { sigla: 'fora' } }, 3: { respostas: { sigla: 'fora' } } });
+    expect(semMotivo(fora.regras)).toEqual([{ tipo: 'ignorar', re: '^\\s*COMP\\s+-\\s+' }]);
+    expect(fora.regras[0].motivo).toBe('COMP não é tipo do acervo: fica fora');
+    expect(resumo(classificar({ csv: csv('COMP - OUTRA EP 13.mov', 'COMP  -  OUTRA EP 14.mov'), tipos: TIPOS, regras: comoRegras(fora.regras) }).linhas)).toEqual(['COMP - OUTRA EP 13.mov → fora', 'COMP  -  OUTRA EP 14.mov → fora']);
+    const comTipo = lembrado(csv('VNH - ABERTURA.mov', 'VNH - ENCERRAMENTO.mov'), { 2: { tipo: 'LETT' }, 3: { tipo: 'LETT' } });
+    expect(semMotivo(comTipo.regras)).toEqual([{ tipo: 'semSigla', re: '^\\s*VNH\\s+-\\s+', tipoDaArte: 'LETT' }]);
+    expect(resumo(comTipo.proxima.linhas)).toEqual(['VNH - ABERTURA.mov → nova ABERTURA (LETT)', 'VNH - ENCERRAMENTO.mov → nova ENCERRAMENTO (LETT)']);
+    const dividida = lembrado(csv('COMP - ABERTURA.mov', 'COMP - VINHETA.mov'), { 2: { respostas: { sigla: 'fora' } }, 3: { tipo: 'CRT' } });
+    expect(semMotivo(dividida.regras)).toEqual([
+      { tipo: 'ignorar', re: '^COMP - ABERTURA$' },
+      { tipo: 'semSigla', re: '^COMP - VINHETA$', tipoDaArte: 'CRT' },
+    ]);
+    expect(resumo(dividida.proxima.linhas)).toEqual(['COMP - ABERTURA.mov → fora', 'COMP - VINHETA.mov → nova VINHETA (CRT)']);
+  });
+
+  it('o tipo do começo do nome confirmado (ou trocado), o tipo trocado na linha e a linha tirada ou fora viram a regra do arquivo', () => {
+    const { regras, proxima } = lembrado(csv('MOLDURA VIDEO.png', 'FOTO PALCO NOVO.png', 'CRT - PLATEIA.mov', 'CRT - VINHETA 1.mov', 'RDP - ANA LUZ E BENTO LUZ.mov', 'MOLDURA AZUL.png'), {
+      2: { respostas: { tipoDoNome: 'confirmar' } },
+      3: { tipo: 'LETT' },
+      4: { tipo: 'LETT' },
+      5: { tirada: true },
+      6: { respostas: { composto: 'fora' } },
+      7: { respostas: { tipoDoNome: 'fora' } },
+    });
+    expect(semMotivo(regras)).toEqual([
+      { tipo: 'semSigla', re: '^MOLDURA VIDEO$', tipoDaArte: 'MOLDURA' },
+      { tipo: 'semSigla', re: '^FOTO PALCO NOVO$', tipoDaArte: 'LETT' },
+      { tipo: 'tipo', re: '^CRT - PLATEIA$', tipoDaArte: 'LETT' },
+      { tipo: 'ignorar', re: '^CRT - VINHETA 1$' },
+      { tipo: 'ignorar', re: '^RDP - ANA LUZ E BENTO LUZ$' },
+      { tipo: 'ignorar', re: '^MOLDURA AZUL$' },
+    ]);
+    expect(regras.map((r) => r.motivo)).toEqual(['MOLDURA VIDEO é MOLDURA', 'FOTO PALCO NOVO é LETT', 'CRT - PLATEIA é LETT', 'CRT - VINHETA 1 fica fora (tirada da importação)', 'RDP - ANA LUZ E BENTO LUZ fica fora', 'MOLDURA AZUL fica fora']);
+    expect(resumo(proxima.linhas)).toEqual([
+      'MOLDURA VIDEO.png → nova MOLDURA VÍDEO (MOLDURA)',
+      'FOTO PALCO NOVO.png → nova FOTO PALCO NOVO (LETT)',
+      'CRT - PLATEIA.mov → nova PLATEIA (LETT)',
+      'CRT - VINHETA 1.mov → fora',
+      'RDP - ANA LUZ E BENTO LUZ.mov → fora',
+      'MOLDURA AZUL.png → fora',
+    ]);
+    expect(mudou(proxima.linhas[2] as LinhaComRegras)).toEqual(['tipo CRT → LETT · regra desta atração']);
+    expect(proxima.faltam).toBe(0);
+  });
+
+  it('sem escolha, nada vira regra; a regra que já valeu não se repete', () => {
+    const regras = { trocas: [{ re: '\\bDP\\b', por: 'DAQUI A POUCO' }] };
+    const r = classificar({ csv: csv('CRT - DP.mov', 'CRT - HOJE.mov'), tipos: TIPOS, regras });
+    expect(regrasDasDecisoes({ linhas: r.linhas, escolhas: {} })).toEqual([]);
+  });
+});
+
 /* ---------- a API: a prévia e o gravar, com o Teable de mentira ---------- */
 
 const ENV = {
@@ -650,7 +819,7 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
     await comServidor(async ({ como, teable }) => {
       const r = await gravar(como, csv('LETT - VEM AI.mov', 'RDP - VEM AI.mov', 'RDP - PLATEIA.mov', 'CRT - AMANHA DEPOIS DO SHOW.mov'));
       expect(r.status).toBe(200);
-      expect(await r.json()).toEqual({ antes: 3, depois: 5, novas: 2, ganharamTipo: 1, renomeadas: [], semMudanca: 1, importacao: expect.any(String) });
+      expect(await r.json()).toEqual({ antes: 3, depois: 5, novas: 2, ganharamTipo: 1, renomeadas: [], semMudanca: 1, importacao: expect.any(String), lembradas: 0 });
       const post = teable.pedidos.filter((p) => p.metodo === 'POST');
       expect(post).toHaveLength(1);
       expect(post[0].url).toBe('http://teable:3000/api/table/tblAcervo/record');
@@ -703,6 +872,7 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
         ],
         semMudanca: 0,
         importacao: expect.any(String),
+        lembradas: 0,
       });
       expect(teable.pedidos.filter((p) => p.metodo === 'POST')).toEqual([]);
       expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').map((p) => [p.corpo!.typecast, p.corpo!.records])).toEqual([
@@ -737,7 +907,7 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
       await como(CHEFE)('/api/acervo/importar/previa', { atracao: 'Programa Fictício', arquivo: 'x.csv', csv: texto });
       teable.linhas.push({ id: 'recDoEnvio', arte: 'Vem aí', tipo: 'RDP', atracao: [PROGRAMA], claquete: [], filme: null });
       const r = await gravar(como, texto);
-      expect(await r.json()).toEqual({ antes: 4, depois: 5, novas: 1, ganharamTipo: 0, renomeadas: [], semMudanca: 1, importacao: expect.any(String) });
+      expect(await r.json()).toEqual({ antes: 4, depois: 5, novas: 1, ganharamTipo: 0, renomeadas: [], semMudanca: 1, importacao: expect.any(String), lembradas: 0 });
       expect(teable.pedidos.filter((p) => p.metodo === 'POST').flatMap((p) => p.corpo!.records.map((x) => x.fields.tipo))).toEqual(['LETT']);
     });
   });
@@ -766,7 +936,7 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
       expect((await sem.json()).erro).toBe('O CSV veio vazio.');
       const nada = await gravar(como, csv('_PASTA', 'CRT - AMANHA DEPOIS DO SHOW.mov'), 'x' as unknown as Escolhas);
       // nada a gravar não entra no histórico
-      expect(await nada.json()).toEqual({ antes: 3, depois: 3, novas: 0, ganharamTipo: 0, renomeadas: [], semMudanca: 2, importacao: null });
+      expect(await nada.json()).toEqual({ antes: 3, depois: 3, novas: 0, ganharamTipo: 0, renomeadas: [], semMudanca: 2, importacao: null, lembradas: 0 });
       expect(escritas(teable)).toEqual([]);
     });
   });
@@ -934,6 +1104,87 @@ describe('o histórico das importações e o desfazer (#61)', () => {
       expect(teable.linhas.length).toBe(5);
       expect((await historico(como))[0]).toMatchObject({ estado: 'desfeita', podeRetomar: false });
       expect((await retomar(como, importacao)).status).toBe(409);
+    });
+  });
+});
+
+describe('lembrar as decisões nas próximas desta atração (#63)', () => {
+  type Como = (email: string) => (caminho: string, corpo?: unknown) => Promise<Response>;
+  const ATRACAO = 'Programa Fictício';
+  const gravar = (como: Como, texto: string, escolhas: Escolhas, lembrar?: boolean) =>
+    como(CHEFE)('/api/acervo/importar', { atracao: ATRACAO, arquivo: 'PROGRAMA_SERVICO.csv', csv: texto, escolhas, ...(lembrar === undefined ? {} : { lembrar }) });
+  const previa = async (como: Como, texto: string, atracao = ATRACAO) => (await (await como(CHEFE)('/api/acervo/importar/previa', { atracao, arquivo: 'DE_NOVO.csv', csv: texto })).json());
+  const regras = async (como: Como, email = CHEFE, atracao = ATRACAO) => como(email)(`/api/acervo/regras?atracao=${encodeURIComponent(atracao)}`);
+  const TEXTO = csv('CRT - DP.mov', 'COMP - ABERTURA EP 12.mov', 'CRT - VINHETA 1.mov', 'RDP - CONVIDADO.mov');
+  const ESCOLHAS: Escolhas = { 2: { arte: 'DAQUI A POUCO' }, 3: { respostas: { sigla: 'fora' } }, 4: { tirada: true } };
+
+  it('gravar com a opção guarda as decisões como regras da atração; a prévia seguinte já vem decidida e diz "regra desta atração"', async () => {
+    await comServidor(async ({ como }) => {
+      expect((await previa(como, TEXTO)).faltam).toBe(1);
+      const r = await gravar(como, TEXTO, ESCOLHAS, true);
+      expect(r.status).toBe(200);
+      expect(await r.json()).toMatchObject({ novas: 2, lembradas: 3 });
+      const depois = await previa(como, TEXTO);
+      expect(depois.faltam).toBe(0);
+      expect(depois.linhas.map((l: Linha) => `${l.nome} → ${l.estado} ${l.arte} · ${l.motivo}`)).toEqual([
+        'CRT - DP.mov → ja DAQUI A POUCO · “DAQUI A POUCO” (CRT)',
+        'COMP - ABERTURA EP 12.mov → fora  · COMP não é tipo do acervo: fica fora · regra desta atração',
+        'CRT - VINHETA 1.mov → fora  · CRT - VINHETA 1 fica fora (tirada da importação) · regra desta atração',
+        'RDP - CONVIDADO.mov → ja CONVIDADO · “CONVIDADO” (RDP)',
+      ]);
+      expect(depois.linhas[0].mudancas).toEqual([{ antes: 'DP', depois: 'DAQUI A POUCO', regra: 'regra desta atração', daAtracao: true }]);
+      // a regra é desta atração: a outra não a aplica
+      const outra = await previa(como, csv('CRT - DP.mov'), 'Novela Fictícia');
+      expect(outra.linhas[0].arte).toBe('DP');
+    });
+  });
+
+  it('sem a opção, nada é guardado: a prévia seguinte pergunta de novo', async () => {
+    await comServidor(async ({ como }) => {
+      for (const lembrar of [undefined, false]) {
+        const r = await gravar(como, csv('COMP - ABERTURA EP 12.mov', `RDP - CONVIDADO ${lembrar}.mov`), { 2: { respostas: { sigla: 'fora' } } }, lembrar);
+        expect(await r.json()).toMatchObject({ novas: 1, lembradas: 0 });
+      }
+      expect((await previa(como, csv('COMP - ABERTURA EP 12.mov'))).faltam).toBe(1);
+      expect((await (await regras(como)).json()).regras).toEqual([]);
+    });
+  });
+
+  it('a gravação recusada (decisão pendente) não guarda nada', async () => {
+    await comServidor(async ({ como }) => {
+      const r = await gravar(como, csv('COMP - ABERTURA.mov', 'COMP - VINHETA.mov', 'CRT - DP.mov'), { 2: { respostas: { sigla: 'fora' } }, 4: { arte: 'DAQUI A POUCO' } }, true);
+      expect(r.status).toBe(422);
+      expect((await (await regras(como)).json()).regras).toEqual([]);
+    });
+  });
+
+  it('"Regras desta atração": o administrador vê quem lembrou, quando e o que cada uma faz, e apaga a lembrada errada', async () => {
+    await comServidor(async ({ como }) => {
+      await gravar(como, TEXTO, ESCOLHAS, true);
+      const lista = (await (await regras(como)).json()).regras;
+      expect(lista.map((x: { tipo: string; motivo: string; quem: string }) => [x.tipo, x.motivo, x.quem])).toEqual([
+        ['troca', 'DP = DAQUI A POUCO', 'Chefe'],
+        ['ignorar', 'COMP não é tipo do acervo: fica fora', 'Chefe'],
+        ['ignorar', 'CRT - VINHETA 1 fica fora (tirada da importação)', 'Chefe'],
+      ]);
+      expect(Date.parse(lista[0].em)).toBeGreaterThan(Date.now() - 60_000);
+      // quem não é administrador não vê nem apaga
+      expect((await regras(como, 'lia@empresa.com')).status).toBe(403);
+      expect((await como('lia@empresa.com')('/api/acervo/regras/apagar', { id: lista[1].id })).status).toBe(403);
+      // apagar a lembrada errada: a próxima prévia volta a perguntar
+      const apagou = await como(CHEFE)('/api/acervo/regras/apagar', { id: lista[1].id });
+      expect(apagou.status).toBe(200);
+      expect((await (await regras(como)).json()).regras.map((x: { motivo: string }) => x.motivo)).toEqual(['DP = DAQUI A POUCO', 'CRT - VINHETA 1 fica fora (tirada da importação)']);
+      expect((await previa(como, csv('COMP - ABERTURA EP 12.mov'))).faltam).toBe(1);
+      expect((await como(CHEFE)('/api/acervo/regras/apagar', { id: lista[1].id })).status).toBe(404);
+    });
+  });
+
+  it('decidir de novo o mesmo nome troca a regra, não junta outra', async () => {
+    await comServidor(async ({ como }) => {
+      await gravar(como, csv('CRT - DP.mov'), { 2: { arte: 'DEPOIS' } }, true);
+      await gravar(como, csv('CRT - DP.mov'), { 2: { arte: 'DAQUI A POUCO' } }, true);
+      expect((await (await regras(como)).json()).regras.map((x: { motivo: string }) => x.motivo)).toEqual(['DP = DAQUI A POUCO']);
     });
   });
 });

@@ -16,8 +16,9 @@ import { criarCache } from './cache.mjs';
 import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
-import { escolhasDoPedido } from './importacao-do-acervo.mjs';
+import { escolhasDoPedido, regrasDasDecisoes } from './importacao-do-acervo.mjs';
 import { criarImportacoes, criarTabelaDasImportacoes } from './importacoes.mjs';
+import { criarRegrasDaAtracao, criarTabelaDasRegras } from './regras-da-atracao.mjs';
 import { criarRedatorProvavel } from './redator.mjs';
 import { criarFilmes } from './filmes.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
@@ -144,6 +145,8 @@ export function abrirBanco(caminho) {
   )`);
   // o histórico das importações do acervo por CSV, para desfazer e retomar (#61)
   criarTabelaDasImportacoes(db);
+  // as regras desta atração: as decisões da conferência lembradas para as próximas importações (#63)
+  criarTabelaDasRegras(db);
   // a conta das artes pela lista sem repetição, uma vez: os roteiros guardados antes dela contavam as repetidas
   acertarNArtesUmaVez(db);
   return db;
@@ -402,6 +405,7 @@ export function copiarMetaParaYdoc(doc, meta) {
 export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }), redatorProvavel = criarRedatorProvavel(env) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const importacoes = criarImportacoes(db);
+  const regrasDaAtracao = criarRegrasDaAtracao(db);
   // as importações que estão sendo desfeitas ou retomadas agora (o segundo clique espera o primeiro)
   const mexendoNaImportacao = new Set();
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
@@ -1360,7 +1364,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         if (typeof corpo.csv !== 'string' || !corpo.csv.trim()) return json(res, 400, { erro: 'O CSV veio vazio.' });
         if (caminho === '/api/acervo/importar/previa') {
           const arquivo = typeof corpo.arquivo === 'string' ? corpo.arquivo.slice(0, 200) : '';
-          return json(res, 200, { atracao, arquivo, ...(await acervo.previaDaImportacao(atracao, corpo.csv)) });
+          return json(res, 200, { atracao, arquivo, ...(await acervo.previaDaImportacao(atracao, corpo.csv, regrasDaAtracao.daAtracao(atracao))) });
         }
         // o gravar recebe o mesmo CSV e as escolhas da conferência, e classifica de novo contra o acervo relido; o
         // registro de cada passo vai para o histórico (#61), para desfazer e para retomar se parar no meio
@@ -1368,12 +1372,21 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         const id = randomUUID();
         const quem = { atracao, por: eu, arquivo, em: new Date().toISOString() };
         const anotar = (registro) => importacoes.anotar(id, quem, registro);
+        // "lembrar as decisões nas próximas desta atração" (#63): só com a opção marcada
+        const escolhas = escolhasDoPedido(corpo.escolhas);
+        let lembradas = 0;
+        const lembrar =
+          corpo.lembrar === true
+            ? (linhas) => {
+                lembradas = regrasDaAtracao.lembrar(atracao, regrasDasDecisoes({ linhas, escolhas }), eu.nome);
+              }
+            : undefined;
         try {
-          const { registro, ...feito } = await acervo.gravarImportacao(atracao, corpo.csv, escolhasDoPedido(corpo.escolhas), { anotar });
+          const { registro, ...feito } = await acervo.gravarImportacao(atracao, corpo.csv, escolhas, { anotar, regras: regrasDaAtracao.daAtracao(atracao), lembrar });
           console.log(
             `[acervo] ${eu.email} importou ${arquivo} em ${atracao}: ${feito.novas} novas, ${feito.ganharamTipo} ganharam o tipo, ${feito.renomeadas.length} renomeadas (${feito.antes} → ${feito.depois})`,
           );
-          return json(res, 200, { ...feito, importacao: registro ? id : null });
+          return json(res, 200, { ...feito, importacao: registro ? id : null, lembradas });
         } catch (e) {
           if (!e?.interrompida) throw e;
           console.warn(`[acervo] a importação de ${arquivo} em ${atracao} parou no meio: ${e.message}`);
@@ -1383,6 +1396,21 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         if (e?.status === 422) return json(res, 422, { erro: e.message });
         return json(res, 502, { erro: `Não consegui ${caminho.endsWith('previa') ? 'ler o acervo' : 'gravar no acervo'}: ${e instanceof Error ? e.message : e}` });
       }
+    }
+    if (caminho === '/api/acervo/regras' || caminho === '/api/acervo/regras/apagar') {
+      // as regras desta atração (#63): as decisões lembradas, para ver e apagar a lembrada errada. Só administradores.
+      if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e apagam as regras da atração.' });
+      if (caminho === '/api/acervo/regras') {
+        if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+        const atracao = (new URL(req.url, 'http://x').searchParams.get('atracao') ?? '').trim().slice(0, 200);
+        return json(res, 200, { regras: atracao ? regrasDaAtracao.lista(atracao) : [] });
+      }
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req)) ?? {};
+      const apagada = Number.isInteger(corpo.id) ? regrasDaAtracao.apagar(corpo.id) : null;
+      if (!apagada) return json(res, 404, { erro: 'Essa regra não está mais na atração.' });
+      console.log(`[acervo] ${eu.email} apagou a regra de ${apagada.atracao}: ${apagada.motivo}`);
+      return json(res, 200, { apagada: corpo.id });
     }
     if (caminho === '/api/acervo/importacoes' && req.method === 'GET') {
       // o histórico das importações da atração (a ficha): quando, o arquivo, quem e +N; todos veem, só administradores

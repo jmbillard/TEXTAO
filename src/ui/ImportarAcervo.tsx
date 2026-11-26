@@ -12,6 +12,7 @@ import {
   type ImportacaoNoHistorico,
   type LinhaQueNaoVoltou,
   type PreviaDaImportacao,
+  type RegraDaAtracao,
   type ResultadoDaImportacao,
 } from '../dados/armazenamento';
 import { Icone } from './icones';
@@ -20,8 +21,8 @@ import { chaveDeBusca, plural } from './util';
 /* A importação do acervo por CSV (ADR 0005), na ficha da atração: a área "Importar CSV" (o botão ou o arquivo solto),
    a conferência antes de gravar (o placar, os filtros por estado, a busca, o ✕ que tira e devolve uma linha, as
    perguntas na linha, o nome e o tipo editáveis e as decisões em lote), o resultado (o total antes → depois, com o
-   desfazer) e o histórico das importações na ficha (desfazer e retomar por 7 dias). Só administradores, só acervo
-   próprio; no celular, só a nota. */
+   desfazer), o histórico das importações na ficha (desfazer e retomar por 7 dias) e as regras desta atração (as
+   decisões lembradas, para apagar a errada). Só administradores, só acervo próprio; no celular, só a nota. */
 
 /** A área da ficha que recebe o CSV: o botão ou o arquivo solto em cima. Quem não é administrador vê o botão travado. */
 export function AreaDeImportar({ pode, lendo, falha, abrir }: { pode: boolean; lendo: boolean; falha: string; abrir: (arquivo: File) => void }) {
@@ -105,13 +106,18 @@ const MAXIMO = 400;
 /** A linha que a pessoa pode tirar: a que grava e a que ainda pergunta. */
 const podeTirar = (e: EstadoDaImportacao) => e === 'nova' || e === 'completa' || e === 'corrige' || e === 'decidir';
 
-/** O que as regras de conversão mudaram do nome para a arte: "antes → depois · regra", uma depois da outra. */
+/** O que as regras de conversão mudaram do nome para a arte: "antes → depois · regra", uma depois da outra; a que veio
+    de uma regra lembrada da atração diz "regra desta atração". */
 function RegrasDaLinha({ mudancas }: { mudancas: MudancaDaImportacao[] }) {
   return (
     <span className="regras">
       {mudancas.map((m, i) => (
-        <span key={i} className="regra">
-          {m.depois ? (
+        <span key={i} className={`regra ${m.daAtracao ? 'da-atracao' : ''}`}>
+          {m.antes === m.depois ? (
+            <>
+              <i>{m.antes}</i> fica como está
+            </>
+          ) : m.depois ? (
             <>
               {m.antes} → <i>{m.depois}</i>
             </>
@@ -201,6 +207,8 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
   const [marcadas, setMarcadas] = useState<Set<number>>(() => new Set());
   const [gravando, setGravando] = useState(false);
   const [falha, setFalha] = useState('');
+  // "lembrar as decisões nas próximas desta atração": marcado, como no protótipo
+  const [lembrar, setLembrar] = useState(true);
 
   // a mesma conta do servidor, a cada escolha: o estado de cada linha recalculado pela chave
   const conf = useMemo(() => conferir({ linhas: previa.linhas, acervo: previa.acervo, tipos: previa.tipos, escolhas }), [previa, escolhas]);
@@ -251,7 +259,7 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
     setGravando(true);
     setFalha('');
     try {
-      gravado(await gravarImportacao(previa, escolhas));
+      gravado(await gravarImportacao(previa, escolhas, lembrar));
     } catch (e) {
       setFalha(e instanceof Error ? e.message : 'Não consegui gravar no acervo.');
       setGravando(false);
@@ -400,6 +408,10 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
           {renomear.length ? `, renomeia ${renomear.length} (o nome errado no acervo, na mesma linha)` : ''}. {outras === 1 ? 'A outra linha não muda' : `As ${outras} outras não mudam`} nada.
         </span>
         {falha && <span className="cad-falha">{falha}</span>}
+        <label className="lembrar" title="As decisões desta conferência viram regras da atração, aplicadas na próxima importação. A ficha mostra as regras, para apagar a errada.">
+          <input type="checkbox" checked={lembrar} disabled={gravando} onChange={(e) => setLembrar(e.target.checked)} />
+          lembrar as decisões nas próximas de {previa.atracao}
+        </label>
         <button type="button" className="botao primario" disabled={gravando || faltam > 0 || !aGravar} onClick={() => void gravar()} title={faltam > 0 ? 'Decida as linhas que faltam para gravar.' : undefined}>
           {gravando ? 'Gravando…' : faltam > 0 ? 'Gravar' : aGravar ? `Gravar ${aGravar} no acervo` : 'Nada a gravar'}
         </button>
@@ -490,6 +502,14 @@ export function ResultadoDaImportacaoNaTela({
           </>
         )}{' '}
         · {plural(resultado.semMudanca, 'linha', 'linhas')} sem mudança
+        {!!resultado.lembradas && (
+          <>
+            <br />
+            <span className="lembradas">
+              {resultado.lembradas === 1 ? '1 decisão lembrada' : `${resultado.lembradas} decisões lembradas`} para as próximas desta atração
+            </span>
+          </>
+        )}
       </p>
       <div className="acoes">
         {resultado.importacao && (
@@ -582,6 +602,75 @@ export function HistoricoDasImportacoes({ importacoes, desfazer, retomar }: { im
           <ItemDoHistorico key={imp.id} imp={imp} desfazer={() => desfazer(imp.id)} retomar={() => retomar(imp.id)} />
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** O que cada tipo de regra faz, na lista da ficha. */
+const ROTULO_DA_REGRA: Record<RegraDaAtracao['tipo'], string> = { troca: 'troca', ignorar: 'fica fora', versao: 'versão', copia: 'cópia', semSigla: 'tipo', tipo: 'tipo' };
+/** Quantas regras a lista mostra antes de "ver todas". */
+const REGRAS_A_MOSTRAR = 8;
+
+/** Uma regra lembrada: o que faz, quem lembrou e quando, e apagar (com a confirmação). */
+function ItemDaRegra({ regra, apagar }: { regra: RegraDaAtracao; apagar: () => Promise<void> }) {
+  const [conferindo, setConferindo] = useState(false);
+  const [indo, setIndo] = useState(false);
+  return (
+    <li>
+      <span className="qual">{ROTULO_DA_REGRA[regra.tipo]}</span>
+      <span className="motivo" title={regra.re}>{regra.motivo}</span>
+      <span className="acoes-regra">
+        {conferindo ? (
+          <span className="remover-conferir">
+            Apagar?
+            <button type="button" className="botao-texto" onClick={() => setConferindo(false)}>Não</button>
+            <button
+              type="button"
+              className="botao-texto perigo"
+              disabled={indo}
+              onClick={async () => {
+                setIndo(true);
+                await apagar();
+                setIndo(false);
+                setConferindo(false);
+              }}
+            >
+              {indo ? 'Apagando…' : 'Apagar'}
+            </button>
+          </span>
+        ) : (
+          <button type="button" className="botao-texto" onClick={() => setConferindo(true)} aria-label={`Apagar a regra ${regra.motivo}`}>
+            apagar
+          </button>
+        )}
+      </span>
+      <span className="meta">
+        {regra.quem} · {diaEMes(regra.em)}
+      </span>
+    </li>
+  );
+}
+
+/** "Regras desta atração" na ficha (só administradores): as decisões lembradas das importações, que a próxima prévia
+    aplica; apagar a lembrada errada faz a próxima prévia perguntar de novo. */
+export function RegrasDaAtracaoNaFicha({ regras, apagar }: { regras: RegraDaAtracao[]; apagar: (id: number) => Promise<void> }) {
+  const [todas, setTodas] = useState(false);
+  if (!regras.length) return null;
+  const visiveis = todas ? regras : regras.slice(0, REGRAS_A_MOSTRAR);
+  return (
+    <div className="regras-atracao">
+      <span className="rot">Regras desta atração</span>
+      <p className="dica-regras">As decisões lembradas das importações: a próxima prévia já vem com elas. Apague a que foi lembrada errada.</p>
+      <ul>
+        {visiveis.map((r) => (
+          <ItemDaRegra key={r.id} regra={r} apagar={() => apagar(r.id)} />
+        ))}
+      </ul>
+      {regras.length > REGRAS_A_MOSTRAR && (
+        <button type="button" className="botao-texto" onClick={() => setTodas(!todas)}>
+          {todas ? 'mostrar menos' : `ver todas as ${regras.length}`}
+        </button>
+      )}
     </div>
   );
 }

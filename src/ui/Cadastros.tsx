@@ -10,7 +10,10 @@ import {
   desfazerImportacao,
   lerAcervoDaFicha,
   lerImportacoes,
+  lerRegrasDaAtracao,
+  apagarRegraDaAtracao,
   retomarImportacao,
+  type RegraDaAtracao,
   type ImportacaoDesfeita,
   type ImportacaoNoHistorico,
   lerCadastros,
@@ -41,7 +44,7 @@ import { Marca } from './pecas';
 import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
-import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
+import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, RegrasDaAtracaoNaFicha, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
    (e redator/editor novo também para o Trello). O que está sendo cadastrado aparece na lista como
@@ -582,9 +585,25 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       (r) => setHistorico({ nome, lista: r.importacoes }),
       () => setHistorico({ nome, lista: [] }),
     );
+  // as regras desta atração (#63), só para administradores (some quando a leitura falha: a ficha continua)
+  const [regras, setRegras] = useState<{ nome: string; lista: RegraDaAtracao[] } | null>(null);
+  const lerRegras = (nome: string) =>
+    lerRegrasDaAtracao(nome).then(
+      (r) => setRegras({ nome, lista: r.regras }),
+      () => setRegras({ nome, lista: [] }),
+    );
+  const apagarRegra = async (id: number, atracao: string) => {
+    try {
+      await apagarRegraDaAtracao(id);
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui apagar a regra.');
+    }
+    await lerRegras(atracao);
+  };
   const lerFicha = (nome: string) => {
     setFicha((f) => (f?.nome === nome ? f : { nome, acervo: null, falha: '' }));
     void lerHistorico(nome);
+    if (dados?.podeApagar) void lerRegras(nome);
     return lerAcervoDaFicha(nome).then(
       (acervo) => setFicha((f) => (f?.nome === nome ? { nome, acervo, falha: '' } : f)),
       (e: Error) => setFicha((f) => (f?.nome === nome ? { nome, acervo: null, falha: e.message || 'Não consegui ler o acervo.' } : f)),
@@ -1127,6 +1146,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                   retomar={(id) => retomarAImportacao(id, atracaoAberta.nome)}
                 />
               )}
+              {pode && regras?.nome === atracaoAberta.nome && <RegrasDaAtracaoNaFicha regras={regras.lista} apagar={(id) => apagarRegra(id, atracaoAberta.nome)} />}
               {pode && atracaoAberta.acervo === 'proprio' && (
                 <div className="rodape-ficha">
                   <span className="qtd-acervo">só administradores</span>

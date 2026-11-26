@@ -28,6 +28,10 @@
 // alguém mexe numa linha no Teable de mentira (a data de modificação muda), desfazer pelo histórico da ficha → o aviso
 // diz qual linha não voltou.
 //
+// Lembrar as decisões (#63): a gravação do Auditório (com "lembrar as decisões", marcado por padrão) guarda as
+// decisões como regras da atração; importar o mesmo CSV de novo já vem decidido, cada linha com "regra desta atração",
+// e a ficha mostra "Regras desta atração"; apagar a regra da sigla COMP faz as linhas dela perguntarem de novo.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:ficha
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -452,7 +456,7 @@ async function importarNoComputador(navegador, url, tema) {
   const res = p.locator('.resultado-importacao');
   await res.waitFor();
   assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '24→31');
-  assert.equal((await res.locator('.det').textContent()).replace(/\s+/g, ' ').trim(), `artes no acervo de ${PROGRAMA}+7 novas · 2 ganharam o tipo · 10 linhas sem mudança`);
+  assert.equal((await res.locator('.det').textContent()).replace(/\s+/g, ' ').trim(), `artes no acervo de ${PROGRAMA}+7 novas · 2 ganharam o tipo · 10 linhas sem mudança1 decisão lembrada para as próximas desta atração`); // a linha tirada
   await semRolagemDeLado(p, `importar ${nome}, resultado`);
   await capturar(p, `importar-gravado-${nome}`);
 
@@ -593,6 +597,8 @@ async function decidirNoComputador(navegador, url, tema, { gravar }) {
   assert.equal((await pe.locator('.efeito').textContent()).replace(/\s+/g, ' ').trim(), 'Cria 5 no acervo, renomeia 1 (o nome errado no acervo, na mesma linha). As 8 outras não mudam nada.');
   assert.equal(await pe.locator('.botao').textContent(), 'Gravar 6 no acervo');
   assert.ok(await pe.locator('.botao').isEnabled());
+  assert.equal((await pe.locator('.lembrar').textContent()).trim(), `lembrar as decisões nas próximas de ${AUDITORIO}`);
+  assert.ok(await pe.locator('.lembrar input').isChecked(), '"lembrar as decisões" vem marcado');
   await semRolagemDeLado(p, `decidir ${nome}, liberado`);
   await capturar(p, `decidir-liberado-${nome}`);
 
@@ -601,7 +607,10 @@ async function decidirNoComputador(navegador, url, tema, { gravar }) {
     const res = p.locator('.resultado-importacao');
     await res.waitFor();
     assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '4→9');
-    assert.equal((await res.locator('.det').textContent()).replace(/\s+/g, ' ').trim(), `artes no acervo de ${AUDITORIO}+5 novas · 0 ganharam o tipo · 1 nome corrigido · 8 linhas sem mudança`);
+    assert.equal(
+      (await res.locator('.det').textContent()).replace(/\s+/g, ' ').trim(),
+      `artes no acervo de ${AUDITORIO}+5 novas · 0 ganharam o tipo · 1 nome corrigido · 8 linhas sem mudança13 decisões lembradas para as próximas desta atração`,
+    );
     assert.equal(LINHAS.find((l) => l.id === 'recAud1').arte, 'SORRISO FICTÍCIO', 'o nome errado do acervo foi corrigido na mesma linha (o mesmo id)');
     await capturar(p, `decidir-gravado-${nome}`);
     await res.locator('.botao', { hasText: 'Ver o acervo' }).click();
@@ -611,6 +620,72 @@ async function decidirNoComputador(navegador, url, tema, { gravar }) {
   assert.deepEqual(erros, [], `decidir ${nome}: erros na página`);
   await ctx.close();
   console.log(`ok: decidir ${nome}: as perguntas na linha, a edição, o lote e o Gravar travado → liberado${gravar ? ' → gravado (cria 5, renomeia 1 no lugar)' : ''}`);
+}
+
+/** Lembrar as decisões (#63): depois de gravar o Auditório lembrando, a ficha mostra as regras e o mesmo CSV volta já
+    decidido, cada linha com "regra desta atração"; com apagar, a regra da sigla COMP some e as linhas dela perguntam
+    de novo. */
+async function lembrarNoComputador(navegador, url, tema, { apagar }) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1500 }, colorScheme: tema });
+  await linha(p, AUDITORIO).locator('.abrir-ficha').click();
+  const ficha = p.locator('.ficha-atr');
+  const regras = ficha.locator('.regras-atracao');
+  await regras.locator('li').first().waitFor();
+  assert.equal(await regras.locator('li').count(), 8, 'a lista mostra 8 e "ver todas"');
+  await regras.locator('> .botao-texto', { hasText: 'ver todas as 13' }).click();
+  assert.deepEqual(await regras.locator('li .motivo').allTextContents(), [
+    'BANDA MAR ABERTTO é BANDA MAR ABERTO (erro no arquivo)',
+    'SORISSO FICTICIO → SORRISO FICTÍCIO (o nome errado do acervo)',
+    'MARCIA DO VALE: o acento sugerido',
+    'JOAO PEDREIRA: o acento sugerido',
+    'MOLDURA VIDEO é MOLDURA',
+    'COMP não é tipo do acervo: fica fora',
+    'RDP - ANA LUZ E BENTO LUZ fica fora',
+    'HOJ → HOJE',
+    'CRT - PLATEIA é LETT',
+    'CRT - DOMINGO é LETT',
+    'CRT - SEGUNDA é LETT',
+    'CRT - VINHETA 1 fica fora (tirada da importação)',
+    'CRT - VINHETA 2 fica fora (tirada da importação)',
+  ]);
+  assert.match(await regras.locator('li .meta').first().textContent(), /^Lia Moraes · \d{2}\/\d{2}$/);
+  await semRolagemDeLado(p, `lembrar ${nome}, ficha`);
+  await capturar(p, `lembrar-regras-${nome}`);
+  if (apagar) {
+    const comp = regras.locator('li', { has: p.locator('.motivo', { hasText: 'COMP não é tipo do acervo' }) });
+    await comp.locator('.botao-texto', { hasText: 'apagar' }).click();
+    await comp.locator('.remover-conferir .botao-texto', { hasText: 'Apagar' }).click();
+    await p.waitForFunction(() => document.querySelectorAll('.regras-atracao li').length === 12);
+  }
+
+  // o mesmo CSV de novo: as linhas já vêm decididas pelas regras desta atração
+  await ficha.locator('.area-importar input[type=file]').setInputFiles({ name: 'AUDITORIO_SERVICO.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV_AUDITORIO) });
+  const conf = p.locator('.conferencia');
+  await conf.waitFor();
+  const da = (arquivo) => conf.locator('.conf-linha', { has: p.locator('.arq', { hasText: arquivo }) });
+  const regrasDa = async (arquivo) => (await da(arquivo).locator('.regra').allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
+  if (apagar) {
+    assert.equal(await placar(p), '0 novas · 0 completam o acervo · 9 já no acervo · 3 ficam de fora · 2 para decidir');
+    assert.deepEqual((await linhasDaConferencia(p)).slice(0, 2), ['COMP - ABERTURA EP 12.mov → decidir ABERTURA EP 12', 'COMP - ENCERRAMENTO EP 12.mov → decidir ENCERRAMENTO EP 12']);
+  } else {
+    assert.equal(await placar(p), '0 novas · 0 completam o acervo · 9 já no acervo · 5 ficam de fora');
+    assert.equal(await conf.locator('.conf-linha.e-decidir').count(), 0, 'nada para decidir');
+    assert.equal((await da('COMP - ABERTURA').locator('.mot').textContent()).trim(), 'COMP não é tipo do acervo: fica fora · regra desta atração');
+    assert.equal(await conf.locator('.conf-pe .botao').textContent(), 'Nada a gravar');
+  }
+  assert.deepEqual(await regrasDa('CRT - HOJ.mov'), ['HOJ → HOJE · regra desta atração']);
+  assert.deepEqual(await regrasDa('BANDA MAR ABERTTO'), ['BANDA MAR ABERTTO → BANDA MAR ABERTO · regra desta atração']);
+  assert.deepEqual(await regrasDa('CRT - PLATEIA'), ['tipo CRT → LETT · regra desta atração']);
+  assert.deepEqual(await regrasDa('MOLDURA VIDEO'), ['sem “SIGLA - ” → MOLDURA · tipo · regra desta atração', 'VIDEO → VÍDEO · acento']);
+  assert.equal((await da('VINHETA 1').locator('.mot').textContent()).trim(), 'CRT - VINHETA 1 fica fora (tirada da importação) · regra desta atração');
+  assert.equal((await da('ANA LUZ').locator('.etq').textContent()).trim(), 'fora');
+  await semRolagemDeLado(p, `lembrar ${nome}, conferência`);
+  await capturar(p, `lembrar-previa-${nome}${apagar ? '-apagada' : ''}`);
+  await conf.locator('.conf-topo .botao', { hasText: 'Cancelar' }).click();
+  assert.deepEqual(erros, [], `lembrar ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: lembrar ${nome}: as regras na ficha${apagar ? ' (apagada a da sigla COMP)' : ''} → o mesmo CSV de novo já vem decidido, com "regra desta atração"`);
 }
 
 /** O histórico e o desfazer (#61): gravar → a caixinha preta → Desfazer → o total volta, com a importação riscada no
@@ -701,6 +776,8 @@ async function principal() {
     await soltarNoComputador(navegador, s.url, 'dark');
     await decidirNoComputador(navegador, s.url, 'dark', { gravar: false });
     await decidirNoComputador(navegador, s.url, 'light', { gravar: true });
+    await lembrarNoComputador(navegador, s.url, 'light', { apagar: false });
+    await lembrarNoComputador(navegador, s.url, 'dark', { apagar: true });
     for (const tema of ['light', 'dark']) await desfazerNoComputador(navegador, s.url, tema);
   } finally {
     await navegador.close();

@@ -179,6 +179,12 @@ Cada importação gravada fica em **Importações**, na ficha (a data, o arquivo
 e o nome antigos das que mudaram; a linha que alguém mexeu no Teable depois (a data de modificação dela mudou) não volta,
 e o PROMeiro diz qual. A gravação **interrompida** (um lote que falhou) fica registrada até onde foi e pode ser desfeita
 ou **retomada** (os lotes que faltaram, sem duplicar o que o lote sem resposta já tinha criado).
+Com **lembrar as decisões** (marcado por padrão, no pé da conferência), as decisões viram **regras desta atração**, no
+formato das regras das cargas à mão (trocas, ignorar, versões, cópias, semSigla e tipos), e a próxima prévia da mesma
+atração já vem com elas: a linha diz "regra desta atração". Vira regra o padrão que a decisão nomeia (a sigla que não é
+tipo, a abreviação da casa como DP → DAQUI A POUCO, a versão própria como " B" no fim, o nome escrito errado) ou o
+próprio arquivo, que volta no próximo CSV da pasta de output (a linha tirada, o tipo decidido). A ficha mostra as regras
+aos administradores, para apagar a lembrada errada.
 _Evitar_: carga, upload, sincronizar, reverter
 
 **Pacote gráfico novo**:
