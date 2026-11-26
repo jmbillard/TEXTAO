@@ -10,6 +10,7 @@ import { normalizarKey } from './cadastros.mjs';
 import { claquetePadrao, jaFoiExibida } from '../src/modelo/vocabularios.ts';
 import { alternativa, palavrasDoComeco, palavrasDoFim, pracaDaSigla, pracaPadrao, pracasDaConfiguracao, pracasRegistradas } from '../src/modelo/pracas.ts';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
+import { opcaoDaPracaDosFilmes } from '../src/modelo/ligarOsFilmes.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const API_PADRAO = 'https://api.trello.com/1';
@@ -126,12 +127,13 @@ export function configDoTrello(env) {
     // as opções do campo Complexidade, na ordem BAIXA, MÉDIA, ALTA (o nível 1 é a primeira)
     complexidades: String(env.TRELLO_COMPLEXIDADE_OPCOES || '').split(',').map((s) => s.trim()),
     // os cards de filme da prévia (aba Filmes), como o fluxo CARDS do n8n: a lista dos filmes, as etiquetas (todas
-    // ou por sessão, "SUPERCINE=id"), a opção da praça e a prioridade MÉDIA do inédito
+    // ou por sessão, "SUPERCINE=id"), a opção da praça e a prioridade MÉDIA do inédito. A praça é a sigla de uma das
+    // praças (a Configuração, #75: o card leva a opção dela no campo Praça) ou, como no Portainer de hoje, o id da opção
     filmes: {
       lista: nomeLimpoPg(env.TRELLO_LISTA_FILMES),
       etiquetas: String(env.TRELLO_FILMES_ETIQUETAS || '').split(',').map((s) => s.trim()).filter(Boolean),
       etiquetasDaSessao: pares(env.TRELLO_FILMES_ETIQUETAS_SESSAO),
-      praca: nomeLimpoPg(env.TRELLO_FILMES_PRACA),
+      praca: opcaoDaPracaDosFilmes(nomeLimpoPg(env.TRELLO_FILMES_PRACA), pracasDaConfiguracao(env)),
       prioridadeMedia: nomeLimpoPg(env.TRELLO_PRIORIDADE_MEDIA),
     },
     teable: {

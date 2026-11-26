@@ -5,6 +5,7 @@
 import { pracasDaConfiguracao } from '../src/modelo/pracas.ts';
 import { CAMPO_PRACA, CHAVE_DO_CAMPO, PONTAS, acharOpcao, chaveDa, conferirPracas, estadoDasPracas, ligarPeloNome, pracasNovas } from '../src/modelo/ligarPeloNome.ts';
 import { eDoCard } from '../src/modelo/ligarOCard.ts';
+import { eDosFilmes } from '../src/modelo/ligarOsFilmes.ts';
 
 const ID_DO_TRELLO = /^[\w-]{1,64}$/;
 /** O Trello responde (a chave e o token no Portainer), mesmo sem nenhuma lista configurada ainda. */
@@ -23,15 +24,16 @@ export function pracasSalvas(env) {
   return {
     pracas: pracasDaConfiguracao(env),
     campoPraca: limpo(env.TRELLO_CAMPO_PRACA),
-    // o LIGADO_A_MAO é um só para a tela: o do card (#74) fica com a seção Card
-    aMao: Array.isArray(aMao) ? aMao.filter((k) => typeof k === 'string' && !eDoCard(k)) : [],
+    // o LIGADO_A_MAO é um só para a tela: o do card (#74) fica com a seção Card, o dos filmes (#75) com a Filmes
+    aMao: Array.isArray(aMao) ? aMao.filter((k) => typeof k === 'string' && !eDoCard(k) && !eDosFilmes(k)) : [],
   };
 }
 
 /**
  * O quadro do Trello: o de TRELLO_QUADRO ou, sem ele, o da primeira lista já configurada (a entrada ou a saída de uma
- * praça, a reserva, o VT), pelo idBoard dela. Lê as listas (também as arquivadas) e os campos personalizados.
- * @returns { id, de: 'variavel' | 'lista', listas, campos } ou null quando não há como saber o quadro
+ * praça, a reserva, o VT), pelo idBoard dela. Lê as listas (também as arquivadas), os campos personalizados e as
+ * etiquetas (as dos cards de filme, #75).
+ * @returns { id, de: 'variavel' | 'lista', listas, campos, etiquetas } ou null quando não há como saber o quadro
  */
 export async function lerQuadro(trello, env, pracas) {
   let id = limpo(env.TRELLO_QUADRO);
@@ -48,7 +50,11 @@ export async function lerQuadro(trello, env, pracas) {
     }
   }
   if (!id || !ID_DO_TRELLO.test(id)) return null;
-  const [listas, campos] = await Promise.all([trello.ler(`/boards/${id}/lists`, { filter: 'all', fields: 'name,closed' }), trello.ler(`/boards/${id}/customFields`)]);
+  const [listas, campos, etiquetas] = await Promise.all([
+    trello.ler(`/boards/${id}/lists`, { filter: 'all', fields: 'name,closed' }),
+    trello.ler(`/boards/${id}/customFields`),
+    trello.lerSeExistir(`/boards/${id}/labels`, { fields: 'name,color', limit: '1000' }),
+  ]);
   return {
     id,
     de,
@@ -60,6 +66,7 @@ export async function lerQuadro(trello, env, pracas) {
       // a cor diz qual é qual quando duas opções têm o mesmo nome
       opcoes: (c.options ?? []).map((o) => ({ id: String(o.id), nome: String(o.value?.text ?? ''), ...(o.color ? { cor: String(o.color) } : {}) })),
     })),
+    etiquetas: (Array.isArray(etiquetas) ? etiquetas : []).map((e) => ({ id: String(e.id), nome: String(e.name ?? ''), ...(e.color ? { cor: String(e.color) } : {}) })),
   };
 }
 

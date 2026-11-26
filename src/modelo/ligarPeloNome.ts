@@ -23,10 +23,18 @@ export interface CampoDoTrello {
   tipo: string;
   opcoes: OpcaoDoTrello[];
 }
+export interface EtiquetaDoTrello {
+  id: string;
+  nome: string;
+  /** a cor da etiqueta no Trello (green, red…) */
+  cor?: string;
+}
 /** O que se lê do quadro para ligar pelo nome. */
 export interface QuadroLido {
   listas: ListaDoTrello[];
   campos: CampoDoTrello[];
+  /** as etiquetas do quadro (os cards de filme, #75) */
+  etiquetas?: EtiquetaDoTrello[];
 }
 
 /** O resultado de procurar pelo nome. */

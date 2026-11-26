@@ -13,6 +13,10 @@
 // A seção Card (#74), claro e escuro: tudo ligado (só a linha de estado; o "?" e o "ver tudo"); a ALTA em dobro na
 // Prioridade, escolhida pela posição e pela cor; trocar o campo Complexidade limpa as opções dele (as do campo novo
 // ligam pelo nome, a MÉDIA que falta fica pedindo); conferir e salvar, que vale na hora. No celular, só consulta.
+// A seção Filmes (#75), claro e escuro: tudo ligado (a praça dos cards entre as praças; o "ver tudo" com a lista, a
+// etiqueta de todos, a de cada sessão e os números da leitura da prévia); a sessão nova no cadastro (Domingo Maior)
+// sem etiqueta é exceção, ligada à mão pelo "Escolher"; a praça trocada e a pausa mudada; conferir e salvar, que vale
+// na hora (a configuração viva tem a praça, a etiqueta da sessão e a pausa novas). No celular, só consulta.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:configuracao
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -20,6 +24,7 @@ const assert = require('node:assert/strict');
 const { mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 const { subir } = require('./tour.e2e.cjs');
+const RAIZ = join(__dirname, '..', '..');
 
 let chromium, devices;
 try {
@@ -49,6 +54,8 @@ const LISTAS = [
   // a praça nova (#73): as listas já estão no quadro
   ['lMG', 'MG ENTRADA'],
   ['lMGs', 'MG PRONTO'],
+  // os cards de filme (#75)
+  ['lFilmes', 'FILMES'],
 ].map(([id, name, closed = false]) => ({ id, name, closed }));
 // a segunda saída de INTER: só no cenário com exceções
 const DOBRO = { id: 'lINs2', name: 'INTER ENTREGUE (2025)', closed: false };
@@ -72,6 +79,26 @@ const CAMPOS = [
   { id: 'cEnt', name: 'Entrada', type: 'date' },
   { id: 'cIA', name: 'Uso de IA', type: 'checkbox' },
 ];
+// as etiquetas do quadro (#75): a de todo card de filme e a de cada sessão; a do Domingo Maior não tem o nome dele
+const ETIQUETAS = [
+  ['eFilme', 'FILME', 'purple'],
+  ['eSuper', 'SUPERCINE', 'blue'],
+  ['eTQ', 'TELA QUENTE', 'red'],
+  ['eCoruja', 'CORUJAO', 'black'],
+  ['eTarde', 'SESSÃO DA TARDE', 'yellow'],
+  ['eDom', 'DOM. MAIOR', 'green'],
+  ['eUrg', 'URGENTE', 'orange'],
+].map(([id, name, color]) => ({ id, name, color }));
+// as sessões de filme do cadastro de atrações; o Domingo Maior entra só no cenário com exceção
+const SESSOES = ['Supercine', 'Tela Quente', 'Corujão', 'Sessão da Tarde'];
+const sessoesDoCadastro = [...SESSOES];
+const FILMES_DO_PORTAINER = {
+  TRELLO_LISTA_FILMES: 'lFilmes',
+  TRELLO_FILMES_ETIQUETAS: 'eFilme',
+  TRELLO_FILMES_ETIQUETAS_SESSAO: 'SUPERCINE=eSuper,TELA QUENTE=eTQ,CORUJAO=eCoruja,SESSAO DA TARDE=eTarde',
+  // a opção da praça, como no Portainer de hoje: a tela mostra a praça dela
+  TRELLO_FILMES_PRACA: 'oG5',
+};
 const CARD_DO_PORTAINER = {
   TRELLO_CAMPO_PRIORIDADE: 'cPrio',
   TRELLO_PRIORIDADE_ALTA: 'pAlta',
@@ -103,6 +130,8 @@ const ENV_TRELLO = {
   TRELLO_PRACAS: 'G5=oG5,SP=oSP,RJ=oRJ,INTER=oINTER',
   // o card: tudo como o nome acharia (a seção Card começa sem mudança)
   ...CARD_DO_PORTAINER,
+  // os filmes: idem
+  ...FILMES_DO_PORTAINER,
 };
 const pedidosAoTrello = [];
 async function buscar(url, init = {}) {
@@ -120,6 +149,7 @@ async function buscar(url, init = {}) {
   if (/^\/1\/lists\/\w+$/.test(u.pathname)) return ok({ id: u.pathname.split('/')[3], idBoard: 'quadroFicticio' });
   if (u.pathname === '/1/boards/quadroFicticio/lists') return ok(comDobro ? [...LISTAS, DOBRO] : LISTAS);
   if (u.pathname === '/1/boards/quadroFicticio/customFields') return ok(CAMPOS);
+  if (u.pathname === '/1/boards/quadroFicticio/labels') return ok(ETIQUETAS);
   throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
 }
 
@@ -512,6 +542,136 @@ async function cardNoCelular(navegador, url, tema) {
   console.log(`ok: card no celular ${nome}: a linha de estado, as exceções e o ver tudo, só consulta`);
 }
 
+/* ---------- a seção Filmes (#75) ---------- */
+
+const FILMES = '.cfg-secao[data-secao="filmes"]';
+/** Os filmes voltam ao Portainer; `excecao` põe o Domingo Maior no cadastro (sem etiqueta com o nome dele). */
+async function recomecarFilmes(app, { excecao }) {
+  sessoesDoCadastro.splice(0, sessoesDoCadastro.length, ...SESSOES, ...(excecao ? ['Domingo Maior'] : []));
+  const voltar = Object.fromEntries([...Object.keys(FILMES_DO_PORTAINER), 'FILMES_INTERVALO_MS', 'FILMES_TEMPO_MS'].map((k) => [k, null]));
+  await app.mudarConfiguracao({ ...voltar, LIGADO_A_MAO: null }).antigaFechada;
+}
+const linhaDosFilmes = (p, chave) => textos(p.locator(`${FILMES} .cfg-tudo-l[data-chave="${chave}"] > span`));
+const pracaDosFilmes = (p) => p.locator(`${FILMES} .cfg-filmes-praca [role="radio"][aria-checked="true"]`).allTextContents();
+
+async function secaoFilmes(navegador, url, app, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await recomecarFilmes(app, { excecao: false });
+  pedidosAoTrello.length = 0;
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  const filmes = p.locator(FILMES);
+  await filmes.waitFor();
+
+  // tudo ligado: a linha de estado e a praça dos cards (a opção do Portainer é a da G5); sem exceção e sem barra
+  assert.equal(await resumo(p, FILMES), '4 sessões · tudo ligado');
+  assert.deepEqual(await pracaDosFilmes(p), ['G5']);
+  // as praças da tela (a MG, criada no passo da praça nova, junto)
+  assert.deepEqual(await textos(filmes.locator('.cfg-filmes-praca [role="radio"]')), ['G5', 'RJ', 'SP', 'INTER', 'MG']);
+  assert.equal(await filmes.locator('.cfg-exc').count(), 0);
+  assert.equal(await barra(p), '');
+  await filmes.locator('.cfg-ajuda button').click();
+  assert.match(await filmes.locator('.cfg-ajuda-texto').textContent(), /cadastro de atrações/);
+  await p.keyboard.press('Escape');
+  await semRolagemDeLado(p, `filmes ${nome}, tudo ligado`);
+  await filmes.scrollIntoViewIfNeeded();
+  await capturar(p, `30-filmes-tudo-ligado-${nome}`);
+  // ver tudo: a lista, a etiqueta de todos, a de cada sessão e os números da leitura da prévia
+  await filmes.locator('.cfg-ver-tudo').click();
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.lista'), ['Lista dos cards', 'FILMES', 'achada pelo nome · trocar']);
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.etiqueta'), ['Etiqueta de todos', 'FILME', 'achada pelo nome · trocar']);
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.sessao.CORUJAO'), ['Corujão', 'CORUJAO', 'achada pelo nome · trocar']);
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.sessao.SESSAO DA TARDE'), ['Sessão da Tarde', 'SESSÃO DA TARDE', 'achada pelo nome · trocar']);
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.pausa'), ['Pausa entre páginas', 's', 'padrão']);
+  assert.equal(await filmes.getByLabel('Pausa entre páginas, em segundos').getAttribute('placeholder'), '2,5');
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.espera'), ['Espera por página', 's', 'padrão']);
+  await semRolagemDeLado(p, `filmes ${nome}, ver tudo`);
+  await filmes.scrollIntoViewIfNeeded();
+  await capturar(p, `31-filmes-ver-tudo-${nome}`);
+  await filmes.locator('.cfg-ver-tudo').click();
+
+  // a sessão nova no cadastro, sem etiqueta com o nome dela: é exceção
+  await recomecarFilmes(app, { excecao: true });
+  await p.reload();
+  await filmes.locator('.cfg-exc').first().waitFor();
+  assert.equal(await resumo(p, FILMES), '5 sessões · 1 não achado');
+  assert.deepEqual(await excecoes(p, FILMES), ['Domingo Maior: sem etiqueta']);
+  assert.deepEqual(await textos(filmes.locator('.cfg-exc .cfg-exc-texto span')), ['nenhuma etiqueta "Domingo Maior" no quadro: o card sai só com a de todos']);
+  await semRolagemDeLado(p, `filmes ${nome}, sessão sem etiqueta`);
+  await filmes.scrollIntoViewIfNeeded();
+  await capturar(p, `32-filmes-sessao-sem-etiqueta-${nome}`);
+
+  // Escolher: as etiquetas do quadro, cada uma com a cor e de quem já é
+  await filmes.locator('.cfg-exc .botao', { hasText: 'Escolher' }).click();
+  const escolher = p.locator('.cfg-escolher');
+  await escolher.waitFor();
+  assert.equal(await escolher.locator('.cfg-escolher-titulo').textContent(), 'Etiqueta de Domingo Maior');
+  assert.deepEqual(await textos(escolher.locator('li button', { hasText: 'SUPERCINE' }).locator('.nota')), ['é a de Supercine · azul']);
+  await capturar(p, `33-filmes-escolher-${nome}`);
+  await escolher.locator('li button', { hasText: 'DOM. MAIOR' }).click();
+  assert.deepEqual(await excecoes(p, FILMES), ['Domingo Maior: "DOM. MAIOR"']);
+  assert.equal(await resumo(p, FILMES), '5 sessões · tudo ligado · 1 à mão');
+  // a praça dos cards e a pausa da leitura
+  await filmes.locator('.cfg-filmes-praca [role="radio"]', { hasText: 'SP' }).click();
+  assert.deepEqual(await pracaDosFilmes(p), ['SP']);
+  await filmes.locator('.cfg-ver-tudo').click();
+  await filmes.getByLabel('Pausa entre páginas, em segundos').fill('5');
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.pausa'), ['Pausa entre páginas', 's', 'padrão: 2,5 s']);
+  assert.equal(await barra(p), '3 mudanças');
+
+  // conferir: o que muda; salvar vale na hora
+  await p.locator('.cfg-barra-salvar').click();
+  const dialogo = p.locator('.cfg-modal');
+  await dialogo.locator('h2', { hasText: 'Tudo confere' }).waitFor();
+  assert.deepEqual(await linhasDoQueMuda(dialogo), [
+    'Praça dos cards de filme | G5 | SP',
+    'Etiqueta de Domingo Maior | — | DOM. MAIOR (à mão)',
+    'Pausa entre páginas | 2,5 s (padrão) | 5 s',
+  ]);
+  await capturar(p, `34-filmes-conferir-${nome}`);
+  await dialogo.locator('.botao.primario', { hasText: 'Salvar' }).click();
+  await p.locator('.aviso', { hasText: 'Salvo. Já vale.' }).waitFor();
+  assert.equal(await barra(p), '');
+  const env = app.modulos().env;
+  assert.equal(env.TRELLO_FILMES_PRACA, 'SP');
+  assert.match(env.TRELLO_FILMES_ETIQUETAS_SESSAO, /(^|,)Domingo Maior=eDom(,|$)/);
+  assert.equal(env.FILMES_INTERVALO_MS, '5000');
+  // o card de filme criado agora já vai com a opção de SP no campo Praça
+  assert.equal(app.modulos().trello.config.filmes.praca, 'oSP');
+  await p.reload();
+  await filmes.locator('.cfg-exc').first().waitFor();
+  assert.deepEqual(await excecoes(p, FILMES), ['Domingo Maior: "DOM. MAIOR"']);
+  assert.deepEqual(await pracaDosFilmes(p), ['SP']);
+  assert.deepEqual([...new Set(pedidosAoTrello.map((x) => x.split(' ')[0]))], ['GET'], 'os filmes só leem o Trello');
+
+  assert.deepEqual(erros, [], `filmes ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: filmes ${nome}: tudo ligado (praça, ?, ver tudo) → sessão sem etiqueta é exceção → escolher → praça e pausa → conferir e salvar, vale na hora`);
+}
+
+async function filmesNoCelular(navegador, url, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema });
+  const filmes = p.locator(FILMES);
+  await filmes.locator('.cfg-exc').first().waitFor();
+  assert.equal(await resumo(p, FILMES), '5 sessões · tudo ligado · 1 à mão');
+  assert.deepEqual(await pracaDosFilmes(p), ['SP']);
+  // só consulta: a praça não muda, nada de Escolher, desfazer, trocar ou número para digitar
+  assert.equal(await filmes.locator('.cfg-filmes-praca [role="radio"]:not([disabled])').count(), 0);
+  assert.equal(await filmes.locator('.cfg-exc button').count(), 0);
+  await filmes.locator('.cfg-ver-tudo').tap();
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.sessao.DOMINGO MAIOR'), ['Domingo Maior', 'DOM. MAIOR', 'ligada à mão']);
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.pausa'), ['Pausa entre páginas', '5 s', 'configurado']);
+  assert.deepEqual(await linhaDosFilmes(p, 'filmes.espera'), ['Espera por página', '4 min', 'padrão']);
+  assert.equal(await filmes.locator('.cfg-tudo button, .cfg-tudo input').count(), 0);
+  await semRolagemDeLado(p, `filmes no celular ${nome}`);
+  await filmes.scrollIntoViewIfNeeded();
+  await capturar(p, `35-filmes-celular-${nome}`);
+  assert.deepEqual(erros, [], `filmes no celular ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: filmes no celular ${nome}: a linha de estado, a praça, as exceções e o ver tudo, só consulta`);
+}
+
 async function semSerAdministrador(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, { email: OUTRA });
   await p.locator('.aviso', { hasText: 'Só administradores' }).waitFor();
@@ -551,7 +711,13 @@ async function noCelular(navegador, url, tema) {
 }
 
 async function principal() {
-  const s = await subir({ trello: { env: ENV_TRELLO, buscar, viva: true }, env: { CADASTRO_ADMINS: LIA } });
+  const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
+  // o cadastro de atrações do Teable, de mentira: só a leitura das sessões de filme (#75)
+  const cadastros = (e, deps) => ({
+    ...criarCadastros(e, deps),
+    ler: async () => ({ ligado: true, atracoes: sessoesDoCadastro.map((nome, i) => ({ id: `recSessao${i}`, nome, acervo: 'filme', categoria: '', keys: [] })), redatores: [], editores: [], categorias: [], camposCaminho: [], formulas: {} }),
+  });
+  const s = await subir({ trello: { env: ENV_TRELLO, buscar, viva: true }, env: { CADASTRO_ADMINS: LIA }, cadastros });
   // o convite do tour da revisão não aparece na fila (as duas já viram)
   for (const email of [LIA, OUTRA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
   const navegador = await chromium.launch();
@@ -573,6 +739,8 @@ async function principal() {
     for (const tema of ['light', 'dark']) await novaPraca(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await secaoCard(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await cardNoCelular(navegador, s.url, tema);
+    for (const tema of ['light', 'dark']) await secaoFilmes(navegador, s.url, s.app, tema);
+    for (const tema of ['light', 'dark']) await filmesNoCelular(navegador, s.url, tema);
   } finally {
     await navegador.close();
     await s.descer();

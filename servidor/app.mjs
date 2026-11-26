@@ -32,6 +32,7 @@ import { acertarNArtesUmaVez } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { VARIAVEIS_DO_CARD, cardDoPedido, conferirSecaoDoCard, mudancasDoCard, secaoDoCard } from './configuracao-card.mjs';
 import { cardDaConfiguracao } from '../src/modelo/ligarOCard.ts';
+import { VARIAVEIS_DOS_FILMES, conferirSecaoDosFilmes, filmesDoPedido, filmesSalvos, mudancasDosFilmes, secaoDosFilmes, sessoesDoCadastro } from './configuracao-filmes.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -1198,16 +1199,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /** As seções da tela de Configuração como a tela lê, com o quadro do Trello lido uma vez só. */
   async function lerAsSecoes() {
-    const lido = await lerOQuadro(trello, env);
+    const [lido, doCadastro] = await Promise.all([lerOQuadro(trello, env), sessoesDoCadastro(cadastros)]);
     const salvos = configuracao.salvos();
+    const comErro = (secao) => (lido.erro ? { ...secao, erro: lido.erro } : secao);
     const card = secaoDoCard(env, lido.quadro, { primeiraVez: !VARIAVEIS_DO_CARD.some((n) => salvos.has(n)) });
-    return { pracas: await lerSecaoPracas(trello, env, lido), card: lido.erro ? { ...card, erro: lido.erro } : card };
+    const filmes = secaoDosFilmes(env, lido.quadro, { primeiraVez: !VARIAVEIS_DOS_FILMES.some((n) => salvos.has(n)), pracas, sessoes: doCadastro.sessoes, erroDasSessoes: doCadastro.erro });
+    return { pracas: await lerSecaoPracas(trello, env, lido), card: comErro(card), filmes: comErro(filmes) };
   }
 
   /**
-   * A tela de Configuração (#72), só para administradores: GET lê as seções Praças e Card (#74) (o salvo, o que o nome
-   * liga, o estado de cada ligação e as listas e campos do quadro); POST conferir { pracas?, card? } confere sem salvar
-   * nada; POST salvar { pracas?, card? } confere de novo e, sem erro, salva na configuração viva (vale na hora). Vem só
+   * A tela de Configuração (#72), só para administradores: GET lê as seções Praças, Card (#74) e Filmes (#75) (o salvo,
+   * o que o nome liga, o estado de cada ligação e as listas, campos e etiquetas do quadro); POST conferir
+   * { pracas?, card?, filmes? } confere sem salvar nada; POST salvar { pracas?, card?, filmes? } confere de novo e, sem
+   * erro, salva na configuração viva (vale na hora: o próximo card de filme já sai com a lista, a praça e as
+   * etiquetas novas). Vem só
    * a seção que mudou; as duas juntas passam ou não passam juntas. Com erro, 422 e nada salvo.
    * A conferência das praças conta as claquetes recentes que mudariam de praça; a praça nova (#73) ganha a opção no
    * campo Praça do Trello depois da conferência e antes de salvar: se o Trello recusa, 502 e nada salvo. No card, a
@@ -1221,15 +1226,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     try {
       if (!acao) return json(res, 200, await lerAsSecoes());
       const corpo = await lerCorpo(req).catch(() => null);
-      if (corpo?.pracas === undefined && corpo?.card === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
+      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
       const pracas = corpo.pracas === undefined ? null : secaoDoPedido(corpo);
       if (corpo.pracas !== undefined && !pracas) return json(res, 400, { erro: 'As praças vieram incompletas.' });
       const card = corpo.card === undefined ? null : cardDoPedido(corpo);
       if (corpo.card !== undefined && !card) return json(res, 400, { erro: 'O card veio incompleto.' });
+      const filmesNovos = corpo.filmes === undefined ? null : filmesDoPedido(corpo);
+      if (corpo.filmes !== undefined && !filmesNovos) return json(res, 400, { erro: 'Os filmes vieram incompletos.' });
       const lido = await lerOQuadro(trello, env);
       const daPraca = pracas && (await conferirSecaoPracas(trello, env, pracas, await claquetesParaConferir(), lido));
       const doCard = card && conferirSecaoDoCard(env, lido.quadro, card);
-      const partes = [daPraca, doCard?.conferencia].filter(Boolean);
+      // a praça dos filmes é uma das praças que vão valer: as do pedido, quando as praças mudam junto
+      const sessoes = filmesNovos && (await sessoesDoCadastro(cadastros)).sessoes;
+      const dosFilmes = filmesNovos && conferirSecaoDosFilmes(env, lido.quadro, filmesNovos, { pracas: pracas ? pracas.pracas : geracao.pracas, sessoes });
+      const partes = [daPraca, doCard?.conferencia, dosFilmes].filter(Boolean);
       const conferencia = {
         ok: partes.every((c) => c.ok),
         itens: partes.flatMap((c) => c.itens),
@@ -1248,13 +1258,22 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           return json(res, 502, { erro: `Não consegui criar a opção da praça nova no campo Praça do Trello: nada foi salvo. (${e instanceof Error ? e.message : e})` });
         }
       // o ligado à mão é um só (LIGADO_A_MAO): a seção que não veio fica com o que já estava salvo
-      const aMao = [...(completa ? completa.secao.aMao : pracasSalvas(env).aMao), ...(doCard ? doCard.secao.aMao : cardDaConfiguracao(env).aMao)];
+      const aMao = [
+        ...(completa ? completa.secao.aMao : pracasSalvas(env).aMao),
+        ...(doCard ? doCard.secao.aMao : cardDaConfiguracao(env).aMao),
+        ...(filmesNovos ? filmesNovos.aMao : filmesSalvos(env, geracao.pracas, []).aMao),
+      ];
       mudarConfiguracao(
-        { ...(completa ? mudancasDaSecao(completa.secao) : {}), ...(doCard ? mudancasDoCard(doCard.secao) : {}), LIGADO_A_MAO: JSON.stringify(aMao) },
+        {
+          ...(completa ? mudancasDaSecao(completa.secao) : {}),
+          ...(doCard ? mudancasDoCard(doCard.secao) : {}),
+          ...(filmesNovos ? mudancasDosFilmes(filmesNovos) : {}),
+          LIGADO_A_MAO: JSON.stringify(aMao),
+        },
         { por: eu.email },
       );
       const criadas = completa?.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
-      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
+      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
       return json(res, 200, await lerAsSecoes());
     } catch (e) {
       console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);

@@ -362,8 +362,13 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
   };
   const agoraISO = () => new Date(agora()).toISOString();
   // a pausa entre as páginas e a espera de uma página: mudam com a configuração, valendo para a próxima página
-  const pausaDe = (e) => Math.max(0, Number(e.FILMES_INTERVALO_MS ?? 2500) || 0);
-  const esperaDe = (e) => Math.max(1000, Number(e.FILMES_TEMPO_MS ?? 240_000) || 240_000);
+  // vazio (a Configuração salva "" para o padrão) vale o padrão
+  const numeroDe = (v) => (String(v ?? '').trim() === '' ? NaN : Number(v));
+  const pausaDe = (e) => {
+    const n = numeroDe(e.FILMES_INTERVALO_MS);
+    return Number.isFinite(n) ? Math.max(0, n) : 2500;
+  };
+  const esperaDe = (e) => Math.max(1000, numeroDe(e.FILMES_TEMPO_MS) || 240_000);
   let intervalo = pausaDe(env);
   let espera = esperaDe(env);
   const dir = (id) => join(pasta, id);

@@ -144,7 +144,9 @@ não achou, ou achou mais de um, é uma **exceção**, e alguém escolhe à mão
 exceção, com "desfazer"). Um id guardado que some do quadro (ou cuja lista foi arquivada) também é exceção. A tela
 mostra só as exceções; o resto fica no "ver tudo". Um campo só liga com o tipo certo (lista, texto, data, caixa de
 marcar). A opção é sempre do campo dela (ALTA e MÉDIA da Prioridade; BAIXA, MÉDIA e ALTA da Complexidade): trocar o
-campo limpa as opções que não são do campo novo, e o nome liga de novo as que acha.
+campo limpa as opções que não são do campo novo, e o nome liga de novo as que acha. Nos cards de filme, a lista com
+FILME no nome, a etiqueta "FILME" e a etiqueta de cada **sessão de filme** pelo nome dela (Corujão → "CORUJAO"); a
+sessão sem etiqueta também é exceção. A praça dos cards de filme não é pelo nome: é escolhida entre as praças.
 _Evitar_: mapeamento, vínculo automático
 
 **Duplicada**:

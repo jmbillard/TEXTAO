@@ -957,6 +957,7 @@ export const reabrirDuplicada = (id: string) => pedir<{ ok: true }>('/api/duplic
 
 import type { ConferenciaDasPracas, EstadoDasPracas, LigacoesDasPracas, QuadroLido } from '../modelo/ligarPeloNome';
 import type { EstadoDoCard, LigacoesDoCard } from '../modelo/ligarOCard';
+import type { EstadoDosFilmes, LigacoesDosFilmes } from '../modelo/ligarOsFilmes';
 /** A seção Praças como o servidor manda: o salvo, a proposta (o salvo com o que o nome acha um só), o estado e o
     quadro lido do Trello (as listas e os campos). Sem quadro, `erro` diz o que falta. */
 export interface SecaoPracas {
@@ -975,14 +976,26 @@ export interface SecaoCard {
   estado: EstadoDoCard | null;
   erro?: string;
 }
+/** A seção Filmes (#75) como o servidor manda: o salvo, a proposta e o estado (o quadro é o mesmo das praças). Sem o
+    cadastro de atrações, `avisoDasSessoes` diz que as sessões são só as já salvas. */
+export interface SecaoFilmes {
+  primeiraVez: boolean;
+  salvo: LigacoesDosFilmes;
+  proposta: LigacoesDosFilmes;
+  estado: EstadoDosFilmes | null;
+  avisoDasSessoes?: string;
+  erro?: string;
+}
 export interface SecoesDaConfiguracao {
   pracas: SecaoPracas;
   card: SecaoCard;
+  filmes: SecaoFilmes;
 }
 /** O que vai para conferir e salvar: só as seções que mudaram. */
 export interface MudancasDaConfiguracao {
   pracas?: LigacoesDasPracas;
   card?: LigacoesDoCard;
+  filmes?: LigacoesDosFilmes;
 }
 export const lerConfiguracao = () => pedir<SecoesDaConfiguracao>('/api/configuracao');
 /** Confere sem salvar nada. */
@@ -991,10 +1004,10 @@ export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<Confere
 export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ secoes: SecoesDaConfiguracao } | { conferencia: ConferenciaDasPracas }> {
   const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify(m) });
   const corpo = (await r.json().catch(() => null)) as (Partial<SecoesDaConfiguracao> & { conferencia?: ConferenciaDasPracas; erro?: string }) | null;
-  if (r.ok && corpo?.pracas && corpo.card) {
+  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);

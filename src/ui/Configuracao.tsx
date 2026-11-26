@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { conferirConfiguracao, lerConfiguracao, salvarConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
+import { conferirConfiguracao, lerConfiguracao, salvarConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoFilmes, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
 import {
   CHAVE_DO_CAMPO,
   FLUXOS_DO_N8N,
@@ -18,6 +18,20 @@ import {
   type QuadroLido,
 } from '../modelo/ligarPeloNome';
 import { ITENS_DO_CARD, NOME_DO_TIPO, desfazerAMaoDoCard, estadoDoCard, ligarAMaoNoCard, oQueMudaNoCard, type EstadoDoCard, type ItemDoCard, type LigacoesDoCard } from '../modelo/ligarOCard';
+import {
+  CHAVE_DA_ETIQUETA,
+  CHAVE_DA_LISTA,
+  ESPERA_PADRAO_MS,
+  PAUSA_PADRAO_MS,
+  desfazerAMaoDosFilmes,
+  duracao,
+  estadoDosFilmes,
+  ligarAMaoNosFilmes,
+  oQueMudaNosFilmes,
+  type EstadoDosFilmes,
+  type LigacoesDosFilmes,
+  type NumeroDosFilmes,
+} from '../modelo/ligarOsFilmes';
 import { reconhecerPraca, type Praca, type RegraDaPraca } from '../modelo/pracas';
 import { Icone } from './icones';
 import { Marca } from './pecas';
@@ -30,8 +44,9 @@ import './configuracao.css';
    fica num rascunho até "Conferir e salvar". "+ Nova praça" (#73) cria uma praça: sigla, nome e regra; a entrada, a
    saída e a opção ligam pelo nome (ou à mão); a opção que não existe o PROMeiro cria ao salvar. A seção Card (#74) é
    do mesmo jeito: os campos do card, as opções da prioridade e da complexidade e a lista do VT, ligados pelo nome;
-   trocar um campo limpa as opções dele (o nome liga as do campo novo). A barra salva as duas seções juntas. No celular,
-   só consulta. */
+   trocar um campo limpa as opções dele (o nome liga as do campo novo). A seção Filmes (#75) também: a praça dos cards
+   de filme é escolhida entre as praças; a lista, a etiqueta de todos e a de cada sessão ligam pelo nome; os números da
+   leitura da prévia ficam no "ver tudo". A barra salva as seções juntas. No celular, só consulta. */
 
 interface Props {
   voltar: () => void;
@@ -109,6 +124,9 @@ export function Configuracao({ voltar, avisar }: Props) {
   const [rascunhoCard, setRascunhoCard] = useState<LigacoesDoCard | null>(null);
   const [verTudoCard, setVerTudoCard] = useState(false);
   const [escolhaCard, setEscolhaCard] = useState<EscolhaNoCard | null>(null);
+  const [rascunhoFilmes, setRascunhoFilmes] = useState<LigacoesDosFilmes | null>(null);
+  const [verTudoFilmes, setVerTudoFilmes] = useState(false);
+  const [escolhaFilmes, setEscolhaFilmes] = useState<EscolhaNosFilmes | null>(null);
   const [editando, setEditando] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<Escolha | null>(null);
   const [conferencia, setConferencia] = useState<{ estado: 'conferindo' } | { estado: 'pronta'; r: ConferenciaDasPracas; salvando?: boolean } | null>(null);
@@ -118,11 +136,13 @@ export function Configuracao({ voltar, avisar }: Props) {
 
   const fecharEscolha = useCallback(() => setEscolha(null), []);
   const fecharEscolhaCard = useCallback(() => setEscolhaCard(null), []);
+  const fecharEscolhaFilmes = useCallback(() => setEscolhaFilmes(null), []);
   /** As seções como o servidor mandou: os rascunhos voltam à proposta. */
   const receber = useCallback((s: SecoesDaConfiguracao) => {
     setSecoes(s);
     setRascunho(s.pracas.proposta);
     setRascunhoCard(s.card.proposta);
+    setRascunhoFilmes(s.filmes.proposta);
   }, []);
   const carregar = useCallback(() => {
     setFalha('');
@@ -142,7 +162,10 @@ export function Configuracao({ voltar, avisar }: Props) {
   const mudouPracas = mudancasDasOutras + (nova ? 1 : 0);
   const estadoCard = useMemo(() => (rascunhoCard && quadro ? estadoDoCard(rascunhoCard, quadro) : null), [rascunhoCard, quadro]);
   const mudouCard = useMemo(() => (rascunhoCard && secoes && quadro ? oQueMudaNoCard(rascunhoCard, secoes.card.salvo, quadro).length : 0), [rascunhoCard, secoes, quadro]);
-  const nMudancas = mudouPracas + mudouCard;
+  // a praça dos filmes é uma das praças do rascunho (a nova junto)
+  const estadoFilmes = useMemo(() => (rascunhoFilmes && quadro && completo ? estadoDosFilmes(rascunhoFilmes, quadro, completo.pracas) : null), [rascunhoFilmes, quadro, completo]);
+  const mudouFilmes = useMemo(() => (rascunhoFilmes && secoes && quadro ? oQueMudaNosFilmes(rascunhoFilmes, secoes.filmes.salvo, quadro).length : 0), [rascunhoFilmes, secoes, quadro]);
+  const nMudancas = mudouPracas + mudouCard + mudouFilmes;
   // no celular, só consulta: nada muda
   const podeMudar = !celular && !!quadro;
 
@@ -195,8 +218,18 @@ export function Configuracao({ voltar, avisar }: Props) {
   /** Os campos copiados do card do filme: marcar ou desmarcar um. */
   const alternarDoFilme = (id: string) => setRascunhoCard((r) => r && { ...r, doFilme: r.doFilme.includes(id) ? r.doFilme.filter((x) => x !== id) : [...r.doFilme, id] });
   const desfazerNoCard = (chaves: string[]) => setRascunhoCard((r) => (r && quadro ? desfazerAMaoDoCard(r, quadro, chaves) : r));
+  const ligarNosFilmes = (chave: string, id: string) => {
+    setRascunhoFilmes((r) => r && ligarAMaoNosFilmes(r, chave, id));
+    setEscolhaFilmes(null);
+  };
+  const desfazerNosFilmes = (chaves: string[]) => setRascunhoFilmes((r) => (r && quadro ? desfazerAMaoDosFilmes(r, quadro, chaves) : r));
+  const mudarFilmes = (m: Partial<LigacoesDosFilmes>) => setRascunhoFilmes((r) => r && { ...r, ...m });
   /** Vai para conferir e salvar só a seção que mudou. */
-  const oQueVai = (): MudancasDaConfiguracao => ({ ...(mudouPracas && completo ? { pracas: completo } : {}), ...(mudouCard && rascunhoCard ? { card: rascunhoCard } : {}) });
+  const oQueVai = (): MudancasDaConfiguracao => ({
+    ...(mudouPracas && completo ? { pracas: completo } : {}),
+    ...(mudouCard && rascunhoCard ? { card: rascunhoCard } : {}),
+    ...(mudouFilmes && rascunhoFilmes ? { filmes: rascunhoFilmes } : {}),
+  });
 
   const conferir = async () => {
     if (!completo) return;
@@ -248,7 +281,7 @@ export function Configuracao({ voltar, avisar }: Props) {
           <p className="cfg-falha" role="alert">
             {falha} <button className="botao-texto" onClick={carregar}>Tentar de novo</button>
           </p>
-        ) : !secao || !secoes || !rascunho || !completo || !rascunhoCard ? (
+        ) : !secao || !secoes || !rascunho || !completo || !rascunhoCard || !rascunhoFilmes ? (
           <p className="cfg-lendo">Lendo o quadro do Trello…</p>
         ) : (
           <>
@@ -285,6 +318,19 @@ export function Configuracao({ voltar, avisar }: Props) {
             escolher={setEscolhaCard}
             desfazer={desfazerNoCard}
           />
+          <SecaoDosFilmes
+            secao={secoes.filmes}
+            rascunho={rascunhoFilmes}
+            estado={estadoFilmes}
+            pracas={completo.pracas}
+            quadro={quadro}
+            podeMudar={podeMudar}
+            verTudo={verTudoFilmes}
+            alternarVerTudo={() => setVerTudoFilmes((v) => !v)}
+            escolher={setEscolhaFilmes}
+            desfazer={desfazerNosFilmes}
+            mudar={mudarFilmes}
+          />
           </>
         )}
       </main>
@@ -298,6 +344,7 @@ export function Configuracao({ voltar, avisar }: Props) {
             onClick={() => {
               setRascunho(secao?.proposta ?? null);
               setRascunhoCard(secoes?.card.proposta ?? null);
+              setRascunhoFilmes(secoes?.filmes.proposta ?? null);
               setEditando(null);
               setNova(null);
             }}
@@ -312,6 +359,9 @@ export function Configuracao({ voltar, avisar }: Props) {
       {escolha && quadro && completo && <Escolher escolha={escolha} quadro={quadro} rascunho={completo} estado={estado} ligar={(id) => ligar(escolha, id)} fechar={fecharEscolha} />}
       {escolhaCard && quadro && rascunhoCard && (
         <EscolherNoCard escolha={escolhaCard} quadro={quadro} rascunho={rascunhoCard} estado={estadoCard} ligar={(id) => ligarNoCard(escolhaCard.item, id)} alternar={alternarDoFilme} fechar={fecharEscolhaCard} />
+      )}
+      {escolhaFilmes && quadro && rascunhoFilmes && (
+        <EscolherNosFilmes escolha={escolhaFilmes} quadro={quadro} rascunho={rascunhoFilmes} estado={estadoFilmes} ligar={(id) => ligarNosFilmes(escolhaFilmes.chave, id)} fechar={fecharEscolhaFilmes} />
       )}
       {conferencia && <DialogoDeConferir conferencia={conferencia} novas={novas} voltar={() => setConferencia(null)} salvar={() => void salvar()} />}
     </div>
@@ -1029,6 +1079,219 @@ function EscolherNoCard({ escolha, quadro, rascunho, estado, ligar, alternar, fe
     opcoes = (campo?.opcoes ?? []).map((o, n) => ({ id: o.id, nome: o.nome, nota: [`${n + 1}ª do campo`, o.cor && COR_DA_OPCAO[o.cor]].filter(Boolean).join(' · '), desligada: false }));
   }
   return <BalaoDeEscolha titulo={titulo} ancora={escolha.ancora} opcoes={opcoes} candidatos={ligacao?.candidatos ?? []} atuais={ligacao?.id ? [ligacao.id] : []} escolher={ligar} fechar={fechar} emOrdem={i.o === 'opcao'} />;
+}
+
+/* ---------- a seção Filmes (#75) ---------- */
+
+/** O que se escolhe à mão nos filmes: a lista, a etiqueta de todos ou a de uma sessão (pela chave). */
+interface EscolhaNosFilmes {
+  chave: string;
+  ancora: DOMRect;
+}
+
+interface PropsDosFilmes {
+  secao: SecaoFilmes;
+  rascunho: LigacoesDosFilmes;
+  estado: EstadoDosFilmes | null;
+  /** as praças do rascunho (a nova junto): a praça dos cards é uma delas */
+  pracas: Praca[];
+  quadro: QuadroLido | null;
+  podeMudar: boolean;
+  verTudo: boolean;
+  alternarVerTudo: () => void;
+  escolher: (e: EscolhaNosFilmes) => void;
+  desfazer: (chaves: string[]) => void;
+  mudar: (m: Partial<LigacoesDosFilmes>) => void;
+}
+
+const AJUDA_DOS_FILMES =
+  'Para onde vai o card de filme que a aba Filmes cria: a praça dele (uma das praças), a lista com FILME no nome, a etiqueta FILME em todos e a etiqueta com o nome da sessão (Supercine → SUPERCINE). As sessões vêm do cadastro de atrações (acervo do filme, mais a Sessão da Tarde). Ligadas pelo nome.';
+
+function textoDaExcecaoNosFilmes(l: Ligacao, estado: EstadoDosFilmes, quadro: QuadroLido | null): { titulo: string; detalhe: string } {
+  const nome = l.nome ? `"${l.nome}"` : '';
+  const doDobro = () =>
+    l.candidatos
+      .map((id) => `"${(l.chave === CHAVE_DA_LISTA ? quadro?.listas.find((x) => x.id === id)?.nome : quadro?.etiquetas?.find((x) => x.id === id)?.nome) ?? id}"`)
+      .join(' e ') + '. Qual vale?';
+  if (l.chave === CHAVE_DA_LISTA) {
+    if (l.problema === 'dobro') return { titulo: 'Duas listas com FILME no nome', detalhe: doDobro() };
+    if (l.problema === 'nenhum') return { titulo: 'Sem a lista dos cards de filme', detalhe: 'nenhuma lista com FILME no nome: o Enviar da aba Filmes some' };
+    if (l.problema === 'sumiu') return { titulo: 'A lista dos cards de filme sumiu', detalhe: 'não está mais no quadro' };
+    if (l.problema === 'arquivada') return { titulo: 'A lista dos cards de filme está arquivada', detalhe: `${nome} está arquivada no Trello` };
+    return { titulo: `Lista dos cards: ${nome}`, detalhe: 'ligada à mão' };
+  }
+  if (l.chave === CHAVE_DA_ETIQUETA) {
+    if (l.problema === 'dobro') return { titulo: 'Duas etiquetas "FILME"', detalhe: doDobro() };
+    if (l.problema === 'nenhum') return { titulo: 'Sem a etiqueta FILME', detalhe: 'não achei pelo nome: o card de filme vai sem ela' };
+    if (l.problema === 'sumiu') return { titulo: 'A etiqueta de todos sumiu', detalhe: 'não está mais no quadro' };
+    return { titulo: `Etiqueta de todos: ${nome}`, detalhe: 'ligada à mão' };
+  }
+  const sessao = estado.sessoes.find((x) => x.chave === l.chave)?.sessao ?? '';
+  if (l.problema === 'dobro') return { titulo: `${sessao}: duas etiquetas`, detalhe: doDobro() };
+  if (l.problema === 'nenhum') return { titulo: `${sessao}: sem etiqueta`, detalhe: `nenhuma etiqueta "${sessao}" no quadro: o card sai só com a de todos` };
+  if (l.problema === 'sumiu') return { titulo: `${sessao}: a etiqueta sumiu`, detalhe: 'não está mais no quadro' };
+  return { titulo: `${sessao}: ${nome}`, detalhe: 'ligada à mão' };
+}
+
+function SecaoDosFilmes(props: PropsDosFilmes) {
+  const { secao, rascunho, estado, pracas, podeMudar, verTudo, alternarVerTudo, escolher, desfazer, mudar } = props;
+  const temProblema = !!estado?.excecoes.length;
+  const ligacoes = estado?.excecoes.filter((l) => l.chave !== estado.praca.chave) ?? [];
+  return (
+    <section className="cfg-secao" aria-labelledby="cfg-filmes" data-secao="filmes">
+      <TopoDaSecao
+        id="cfg-filmes"
+        titulo="Filmes"
+        ajuda={AJUDA_DOS_FILMES}
+        cor={secao.erro ? 'falta' : temProblema ? 'tem' : 'ok'}
+        resumo={estado?.resumo ?? 'sem o quadro do Trello'}
+        verTudo={estado ? verTudo : null}
+        alternarVerTudo={alternarVerTudo}
+      />
+      <div className="cfg-secao-corpo">
+        {secao.erro && !secao.estado && <p className="cfg-falha">{secao.erro}</p>}
+        <div className="cfg-filmes-praca">
+          <span id="cfg-filmes-praca">Praça dos cards</span>
+          <span className="cfg-editor-onde" role="radiogroup" aria-labelledby="cfg-filmes-praca">
+            {pracas.map((p) => (
+              <button key={p.sigla} type="button" role="radio" aria-checked={rascunho.praca === p.sigla} disabled={!podeMudar} onClick={() => mudar({ praca: p.sigla })}>
+                {p.sigla}
+              </button>
+            ))}
+          </span>
+        </div>
+        {estado && temProblema && (
+          <ul className="cfg-excecoes">
+            {estado.praca.problema && (
+              <CartaoDeExcecao
+                chave={estado.praca.chave}
+                mao={false}
+                dobro={false}
+                titulo={estado.praca.problema === 'nenhum' ? 'Praça dos cards: nenhuma escolhida' : 'A praça dos cards não é uma das praças'}
+                detalhe={podeMudar ? 'o card de filme vai sem a praça · escolha uma acima' : 'o card de filme vai sem a praça'}
+              />
+            )}
+            {ligacoes.map((l) => {
+              const t = textoDaExcecaoNosFilmes(l, estado, props.quadro);
+              return (
+                <CartaoDeExcecao
+                  key={l.chave}
+                  chave={l.chave}
+                  mao={!l.problema}
+                  dobro={l.problema === 'dobro'}
+                  titulo={t.titulo}
+                  detalhe={t.detalhe}
+                  escolher={podeMudar ? (ancora) => escolher({ chave: l.chave, ancora }) : undefined}
+                  desfazer={podeMudar ? () => desfazer([l.chave]) : undefined}
+                />
+              );
+            })}
+          </ul>
+        )}
+        {secao.avisoDasSessoes && <p className="cfg-nota">{secao.avisoDasSessoes}</p>}
+        {verTudo && estado && <TudoDosFilmes {...props} estado={estado} />}
+      </div>
+    </section>
+  );
+}
+
+/** "2,5" (segundos, com vírgula ou ponto) → "2500"; vazio → "" (o padrão); o que não é número fica como veio. */
+const msDoTexto = (t: string) => {
+  const v = t.trim().replace(',', '.');
+  if (!v) return '';
+  const n = Number(v);
+  return Number.isFinite(n) ? String(Math.round(n * 1000)) : t.trim();
+};
+const segundosDe = (ms: string) => (ms === '' ? '' : Number.isFinite(Number(ms)) ? String(Number(ms) / 1000).replace('.', ',') : ms);
+
+/** Um número da leitura da prévia: no computador, em segundos (vazio = o padrão); no celular, só o valor. */
+function NumeroDaLeitura({ rotulo, chave, valor, numero, padrao, podeMudar, mudar }: { rotulo: string; chave: string; valor: string; numero: NumeroDosFilmes; padrao: number; podeMudar: boolean; mudar: (ms: string) => void }) {
+  const [texto, setTexto] = useState(segundosDe(valor));
+  // o rascunho voltou (descartar, salvar): o campo acompanha
+  useEffect(() => setTexto((t) => (msDoTexto(t) === valor ? t : segundosDe(valor))), [valor]);
+  return (
+    <div className="cfg-tudo-l" data-chave={chave}>
+      <span className="cfg-tudo-rotulo">{rotulo}</span>
+      <span className="cfg-tudo-valor">
+        {podeMudar ? (
+          <label className="cfg-num">
+            <input
+              value={texto}
+              inputMode="decimal"
+              placeholder={segundosDe(String(padrao))}
+              aria-label={`${rotulo}, em segundos`}
+              onChange={(e) => {
+                setTexto(e.target.value);
+                mudar(msDoTexto(e.target.value));
+              }}
+            />
+            s
+          </label>
+        ) : (
+          duracao(numero.ms)
+        )}
+      </span>
+      <span className="cfg-tudo-como">{numero.como === 'padrao' ? 'padrão' : podeMudar ? `padrão: ${duracao(padrao)}` : 'configurado'}</span>
+    </div>
+  );
+}
+
+function TudoDosFilmes({ estado, rascunho, podeMudar, escolher, mudar }: PropsDosFilmes & { estado: EstadoDosFilmes }) {
+  const linha = (rotulo: string, l: Ligacao) => (
+    <div className="cfg-tudo-l" key={l.chave} data-chave={l.chave}>
+      <span className="cfg-tudo-rotulo">{rotulo}</span>
+      <span className="cfg-tudo-valor">{l.nome || '—'}</span>
+      <span className={`cfg-tudo-como ${l.problema ? 'problema' : l.como === 'mao' ? 'mao' : ''}`}>
+        {l.problema ? COMO_FOI[l.problema] : l.como === 'mao' ? 'ligada à mão' : 'achada pelo nome'}
+        {podeMudar && (
+          <>
+            {' · '}
+            <button type="button" className="botao-texto" onClick={(e) => escolher({ chave: l.chave, ancora: e.currentTarget.getBoundingClientRect() })}>
+              trocar
+            </button>
+          </>
+        )}
+      </span>
+    </div>
+  );
+  return (
+    <div className="cfg-tudo" aria-label="Tudo o que o card de filme leva">
+      <div className="cfg-tudo-praca">
+        <h3>LISTA E ETIQUETA</h3>
+        {linha('Lista dos cards', estado.lista)}
+        {linha('Etiqueta de todos', estado.etiqueta)}
+      </div>
+      <div className="cfg-tudo-praca">
+        <h3>SESSÕES</h3>
+        {estado.sessoes.map((l) => linha(l.sessao, l))}
+        {!estado.sessoes.length && <p className="cfg-nota">Nenhuma sessão de filme no cadastro de atrações.</p>}
+      </div>
+      <div className="cfg-tudo-praca">
+        <h3>LEITURA DA PRÉVIA</h3>
+        <NumeroDaLeitura rotulo="Pausa entre páginas" chave="filmes.pausa" valor={rascunho.pausaMs} numero={estado.pausa} padrao={PAUSA_PADRAO_MS} podeMudar={podeMudar} mudar={(ms) => mudar({ pausaMs: ms })} />
+        <NumeroDaLeitura rotulo="Espera por página" chave="filmes.espera" valor={rascunho.esperaMs} numero={estado.espera} padrao={ESPERA_PADRAO_MS} podeMudar={podeMudar} mudar={(ms) => mudar({ esperaMs: ms })} />
+      </div>
+    </div>
+  );
+}
+
+function EscolherNosFilmes({ escolha, quadro, rascunho, estado, ligar, fechar }: { escolha: EscolhaNosFilmes; quadro: QuadroLido; rascunho: LigacoesDosFilmes; estado: EstadoDosFilmes | null; ligar: (id: string) => void; fechar: () => void }) {
+  const ligacao = estado && [estado.lista, estado.etiqueta, ...estado.sessoes].find((l) => l.chave === escolha.chave);
+  if (escolha.chave === CHAVE_DA_LISTA) {
+    const opcoes = quadro.listas.filter((l) => !l.arquivada).map((l) => ({ id: l.id, nome: l.nome, nota: '', desligada: false }));
+    return <BalaoDeEscolha titulo="Lista dos cards de filme" ancora={escolha.ancora} opcoes={opcoes} candidatos={ligacao?.candidatos ?? []} atuais={rascunho.lista ? [rascunho.lista] : []} escolher={ligar} fechar={fechar} />;
+  }
+  const sessao = estado?.sessoes.find((l) => l.chave === escolha.chave)?.sessao;
+  // a etiqueta que já é de outra sessão (ou a de todos): "é a de Supercine"
+  const usoDa = (id: string) => {
+    if (escolha.chave !== CHAVE_DA_ETIQUETA && rascunho.etiquetas.includes(id)) return 'é a de todos';
+    const outra = rascunho.sessoes.find((s) => s.etiqueta === id && s.nome !== sessao);
+    return outra ? `é a de ${outra.nome}` : '';
+  };
+  const opcoes = (quadro.etiquetas ?? []).map((e) => ({ id: e.id, nome: e.nome || '(sem nome)', nota: [usoDa(e.id), e.cor && COR_DA_OPCAO[e.cor]].filter(Boolean).join(' · '), desligada: false }));
+  const daSessao = rascunho.sessoes.find((s) => s.nome === sessao)?.etiqueta;
+  const atuais = escolha.chave === CHAVE_DA_ETIQUETA ? rascunho.etiquetas : daSessao ? [daSessao] : [];
+  return <BalaoDeEscolha titulo={escolha.chave === CHAVE_DA_ETIQUETA ? 'Etiqueta de todo card de filme' : `Etiqueta de ${sessao}`} ancora={escolha.ancora} opcoes={opcoes} candidatos={ligacao?.candidatos ?? []} atuais={atuais} escolher={ligar} fechar={fechar} />;
 }
 
 /* ---------- escolher à mão ---------- */
