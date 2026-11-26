@@ -24,7 +24,7 @@ import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   marcarArte as marcarArteNoTexto, partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { alternarJaExiste, alvosDoTeclado, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
+import { alternarJaExiste, alvosDoTeclado, artesUnicas, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes, proximoParaRevisar } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import {
@@ -749,14 +749,24 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   }, [saida]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const marcasArte = useMemo(() => (editor ? listarMarcas(editor.state.doc, 'arte') : []), [editor, docVersao]); // eslint-disable-line react-hooks/exhaustive-deps
-  // a lista segue a exportação: um "depois de…" sublinhado entra no texto de cada dia e não conta sozinho
+  // a lista segue a exportação: um "depois de…" sublinhado entra no texto de cada dia e não conta sozinho. A arte
+  // repetida no texto entra uma vez só, na primeira aparição (`ids` são todas as vezes em que ela aparece);
+  // `todasAsArtes` são todas as aparições, cada uma com o número dela na lista (para o risco e o balão no texto)
+  const unicas = useMemo(() => artesUnicas(saida.artes), [saida]);
   const artes = useMemo(
-    () => saida.artes.flatMap((a) => {
-      const marca = marcasArte.find((m) => m.id === a.id);
-      return marca ? [{ ...marca, texto: a.texto, ordem: a.ordem }] : [];
+    () => unicas.flatMap((u) => {
+      const marca = u.ids.map((id) => marcasArte.find((m) => m.id === id)).find(Boolean);
+      return marca ? [{ ...marca, texto: u.texto, ordem: u.ordem, ids: u.ids }] : [];
     }),
-    [saida, marcasArte],
+    [unicas, marcasArte],
   );
+  const todasAsArtes = useMemo(() => {
+    const ordem = new Map(unicas.flatMap((u) => u.ids.map((id) => [id, u.ordem] as const)));
+    return saida.artes.flatMap((a) => {
+      const marca = marcasArte.find((m) => m.id === a.id);
+      return marca ? [{ ...marca, texto: a.texto, ordem: ordem.get(a.id) ?? a.ordem }] : [];
+    });
+  }, [saida, unicas, marcasArte]);
 
   // posição relativa à área da folha (para menus e cartões)
   const relativo = useCallback((left: number, top: number) => {
@@ -842,7 +852,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     document.getSelection()?.removeAllRanges();
     setBalao(null);
   };
-  const arteDoBalao = balao?.tipo === 'arte' ? artes.find((a) => a.id === balao.id) : undefined;
+  const arteDoBalao = balao?.tipo === 'arte' ? todasAsArtes.find((a) => a.id === balao.id) : undefined;
   // a arte desmarcada (aqui ou por um colega) leva o balão junto
   useEffect(() => {
     if (balao?.tipo === 'arte' && !arteDoBalao) setBalao(null);
@@ -915,7 +925,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // "já existe" também no texto (#50): o trecho apaga, o sublinhado some e um risco à mão atravessa cada linha, numa
   // camada por cima da folha (o editor redesenha o texto a cada mudança, então nada vai dentro dele)
   const camadaDoTexto = useRef<SVGSVGElement>(null);
-  const jaNoTexto = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto)));
+  const jaNoTexto = todasAsArtes.filter((a) => marcadasJa.has(chaveDeArte(a.texto)));
   const redesenharRiscos = useCamadaDeRiscos(
     camadaDoTexto,
     () =>
@@ -1397,7 +1407,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   };
   /** "Ver" na pendência: no computador, abre a arte na lista; no celular, leva até ela no texto. */
   const verArte = (id?: string) => {
-    const a = artes.find((x) => x.id === id);
+    const a = artes.find((x) => id && x.ids.includes(id));
     if (!celular) return abrirArte(a);
     if (a) apontarNoTexto(a);
   };
@@ -1560,7 +1570,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             <li
               key={a.id}
               data-id={a.id}
-              className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id || arteDoBalao?.id === a.id ? 'realcada' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
+              className={`${ativa && a.ids.includes(ativa.id) ? 'ativa' : ''} ${realce === a.id || (arteDoBalao && a.ids.includes(arteDoBalao.id)) ? 'realcada' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
               aria-selected={selecionadas.length ? selecionadas.includes(a.id) : undefined}
               // no celular não há mouse: o realce é o do toque no nome (apontarNoTexto)
               {...(!celular && {
@@ -1936,7 +1946,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
         <h2>Lista de artes</h2>
         <table>
           <thead><tr><th>Nº</th><th>Tipo</th><th>Texto</th><th>Observação</th></tr></thead>
-          <tbody>{saida.artes.map((a) => <tr key={a.id}><td>{a.ordem}</td><td>{a.subtipo ? a.subtipoNome : ''}</td><td>{a.texto}</td><td>{a.observacao}</td></tr>)}</tbody>
+          <tbody>{unicas.map((a) => <tr key={a.id}><td>{a.ordem}</td><td>{a.subtipo ? a.subtipoNome : ''}</td><td>{a.texto}</td><td>{a.observacao}</td></tr>)}</tbody>
         </table>
         {saida.comentarios.length > 0 && <p>Comentários: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
       </section>
@@ -1983,6 +1993,8 @@ const PALAVRAS_POR_PAGINA = 250;
 
 /** Rodapé com os números do roteiro, atualizados enquanto se edita. */
 function Estatisticas({ saida, complexidade, paginas, original }: { saida: Saida; complexidade: Complexidade; paginas?: number; original?: Roteiro['original'] }) {
+  // a arte repetida no texto conta uma vez, como na lista
+  const nArtes = artesUnicas(saida.artes).length;
   const total = contarPalavras(saida.texto.completo);
   const locucao = contarPalavras(saida.texto.locucao);
   const caracteres = saida.texto.completo.replace(/\n/g, '').length;
@@ -1995,7 +2007,7 @@ function Estatisticas({ saida, complexidade, paginas, original }: { saida: Saida
       <span><b>{numero(locucao)}</b> na locução</span>
       <span className="tempo" title="Locução e sonoras, no ritmo médio de leitura de chamada">≈ <b>{duracao(saida.roteiro.duracaoEstimadaSeg)}</b> de leitura</span>
       <span><b>{numero(caracteres)}</b> caracteres</span>
-      <span><b>{saida.artes.length}</b> {saida.artes.length === 1 ? 'arte' : 'artes'}</span>
+      <span><b>{nArtes}</b> {nArtes === 1 ? 'arte' : 'artes'}</span>
       {/* o card leva a maior complexidade das artes a produzir */}
       <span className={`cx-card n${complexidade}`} title="O card vai com a maior complexidade das artes"><span className="cx-pe"><FogoComTroca n={complexidade} /></span><b>{NOME_DA_COMPLEXIDADE[complexidade]}</b></span>
       <span title={paginas ? 'Páginas do arquivo que subiu' : `Estimativa, ${PALAVRAS_POR_PAGINA} palavras por página`}>

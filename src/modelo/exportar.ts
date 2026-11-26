@@ -1,5 +1,5 @@
 import { analisarSonoras, ehLocucao, lerContexto, lerTimecodeSolto, RE_LINHA_LOC, textoDaLocucao, type ContextoSonora } from './sonora';
-import { nomesDosTipos, normalizarSubtipo, tiposDaArte, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
+import { nomesDosTipos, normalizarSubtipo, siglaDoTipo, tiposDaArte, SCHEMA_VERSION, type Meta, type NoJSON, type Pessoa, type Roteiro, type SubtipoArte, type TipoEtiqueta } from './tipos';
 import { chaveDeArte } from './diferencas';
 
 /* Do documento do editor para o contrato de saída (JSON canônico).
@@ -305,11 +305,54 @@ export function exportar(roteiro: Roteiro, agora = new Date()): Saida {
   };
 }
 
+/** Uma arte da lista, sem repetição: `ids` são todas as vezes em que ela aparece no texto (a primeira é o `id`). */
+export type ArteUnica = ArteSaida & { ids: string[] };
+
+/**
+ * As artes sem repetição: o redator sublinha a mesma arte várias vezes (IZA, HOJE…), e ela é uma produção só. É a mesma
+ * arte quando a chave do acervo é igual (sem caixa, sem acento, sem pontuação: "AO VIVO!" e "Ao vivo"; "AOVIVO" é
+ * outra). Fica a primeira aparição, na ordem dela, numerada de novo; os tipos das repetidas se somam (cada tipo é uma
+ * produção). O estado (já existe, não produzir, complexidade) é guardado pela mesma chave, então as repetidas nunca
+ * divergem nele.
+ */
+export function artesUnicas(artes: ArteSaida[]): ArteUnica[] {
+  const porChave = new Map<string, ArteUnica>();
+  for (const a of artes) {
+    const k = chaveDeArte(a.texto);
+    const ja = porChave.get(k);
+    if (!ja) {
+      porChave.set(k, { ...a, subtipos: [...a.subtipos], ids: [a.id] });
+      continue;
+    }
+    ja.ids.push(a.id);
+    ja.subtipos = tiposDaArte([...ja.subtipos, ...a.subtipos]);
+    ja.subtipo = ja.subtipos[0] ?? '';
+    ja.subtipoNome = nomesDosTipos(ja.subtipos);
+    ja.observacao ||= a.observacao;
+    ja.conferida &&= a.conferida;
+  }
+  return [...porChave.values()].map((a, k) => ({ ...a, ordem: k + 1 }));
+}
+
+/** O que vai ao Trello: cada arte uma vez, menos as que não vão ser produzidas (✕). A que já existe (✓, ou do acervo)
+    vai marcada (fora do checklist, na linha JÁ EXISTEM); cada uma leva a sua complexidade. */
+export function artesDoEnvio(saida: Saida, meta: Meta) {
+  const jaExiste = chavesQueExistem(meta);
+  const fora = new Set(meta.naoProduzir ?? []);
+  return artesUnicas(saida.artes)
+    .filter((a) => !fora.has(chaveDeArte(a.texto)))
+    .map((a) => {
+      const k = chaveDeArte(a.texto);
+      const tipos = a.subtipos.map(siglaDoTipo);
+      return { texto: a.texto, tipo: tipos.join(', '), tipos, existe: jaExiste.has(k), complexidade: complexidadeDaArte(meta, k) };
+    });
+}
+
 /** Lista de artes em texto simples, para colar em e-mail, card ou planilha. */
 export function listaDeArtes(saida: Saida): string {
   const r = saida.roteiro;
   const cab = [r.programa, r.titulo, r.dataExibicao.split('-').reverse().join('/')].filter(Boolean).join(' · ');
-  const linhas = saida.artes.map((a) => `${a.ordem}\t${a.subtipoNome}\t${a.texto}${a.observacao ? `\t${a.observacao}` : ''}`);
+  const linhas = artesUnicas(saida.artes).map((a) => `${a.ordem}\t${a.subtipoNome}\t${a.texto}${a.observacao ? `\t${a.observacao}` : ''}`);
   return [cab, '', 'Nº\tTipo\tTexto', ...linhas].join('\n');
 }
 
@@ -357,7 +400,7 @@ export interface Pendencia {
 /** Motivos para o roteiro não entrar na fila como pronto, menos os que alguém já conferiu.
     Atração não reconhecida não é motivo: ela pode ser cadastrada depois. */
 export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
-  const n = saida.artes.length;
+  const n = artesUnicas(saida.artes).length;
   const r = saida.roteiro;
   const longa = saida.artes.find((a) => arteLonga(a.texto));
   const p: Pendencia[] = [];

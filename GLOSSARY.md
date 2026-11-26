@@ -16,6 +16,8 @@ _Evitar_: script, documento
 
 **Arte**:
 Um trecho sublinhado do roteiro que vira uma peça a produzir (cartão, rodapé, lettering…), com um ou mais tipos.
+O trecho sublinhado de novo é a mesma arte quando o texto bate sem caixa, acento e pontuação ("AO VIVO!" e "Ao vivo";
+"AOVIVO" é outra): a lista, as contas e o checklist levam cada arte uma vez, na ordem da primeira aparição.
 _Evitar_: GC, letreiro (no código), item
 
 **Tipo da arte**:

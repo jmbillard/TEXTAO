@@ -61,7 +61,8 @@ function trelloFalso() {
   return { env, buscar, pedidos };
 }
 
-/** O roteiro fictício do rascunho: sete artes e duas pendências (sem editor e uma arte longa). */
+/** O roteiro fictício do rascunho: sete artes (uma delas sublinhada de novo no fim, com outra caixa e pontuação) e duas
+    pendências (sem editor e uma arte longa). */
 const P = (...partes) => ({
   type: 'paragraph',
   content: partes.map((x) => (typeof x === 'string' ? { type: 'text', text: x } : { type: 'text', text: x.a, marks: [{ type: 'arte', attrs: { id: x.id, subtipo: '', sugerido: false } }] })),
@@ -85,6 +86,9 @@ const DOC = {
     P({ a: ARTES[5], id: 'c6' }),
     P('LOC: CANTA BRASIL. SÁBADO, DEPOIS DO JORNAL.'),
     P({ a: ARTES[6], id: 'c7' }),
+    P('LOC: DOZE VOZES.'),
+    // a mesma arte de c2, de novo: a lista e o checklist a levam uma vez só
+    P({ a: 'Doze vozes, uma final!', id: 'c8' }),
   ],
 };
 
@@ -223,6 +227,9 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
   const ordem = await Promise.all(['.topo', '.claquete', '.pendencias-celular', '.folha', 'ol.artes'].map((s) => topoDe(p, s)));
   assert.deepEqual([...ordem].sort((a, b) => a - b), ordem, `${nome}: a ordem da página é topo, ficha, pendências, texto e lista`);
   assert.equal(await p.locator('.estatisticas').count(), 0, `${nome}: o rodapé de estatísticas sai no celular`);
+  // a arte repetida no texto entra uma vez só na lista, e a conta é das artes únicas
+  assert.equal(await p.locator('ol.artes li').count(), ARTES.length, `${nome}: a lista só tem artes únicas`);
+  assert.equal(await p.locator('.texto u.arte').count(), ARTES.length + 1, `${nome}: no texto, a repetida continua sublinhada`);
   const barra = p.locator('.barra-enviar');
   assert.ok(await barra.isVisible(), `${nome}: a barra de baixo aparece`);
   assert.equal(await p.locator('.topo .acao-principal').count(), 0, `${nome}: o Enviar sai do topo`);
@@ -428,7 +435,8 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
     const registrou = () => pedidos.some((x) => x.url.pathname === '/api/table/tblProducao/record');
     for (let t = Date.now(); !registrou() && Date.now() - t < 30000; ) await p.waitForTimeout(250);
     const checklist = pedidos.filter((x) => x.url.pathname === '/1/checklists/checklist1/checkItems').map((x) => x.url.searchParams.get('name'));
-    // a desmarcada no texto sai; as que já existem (pela bolinha e pelo lote: entre elas a marcada pelo dedo) ficam de fora
+    // a desmarcada no texto sai; as que já existem (pela bolinha e pelo lote: entre elas a marcada pelo dedo) ficam de
+    // fora; a repetida no texto vai uma vez só
     const aProduzir = [ARTES[0], ARTES[1], ARTES[2], ARTES[6]];
     assert.deepEqual(checklist, aProduzir, 'o checklist leva as artes a produzir, sem as que já existem');
     // a ALTA veio do lote (a grade, que era ALTA, saiu com "Já existem")

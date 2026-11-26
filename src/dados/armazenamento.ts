@@ -1,8 +1,6 @@
-import { chaveDeArte } from '../modelo/diferencas';
-import { siglaDoTipo } from '../modelo/tipos';
 import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../modelo/redator';
-import { chavesQueExistem, complexidadeDaArte, exportar } from '../modelo/exportar';
+import { artesDoEnvio, artesUnicas, exportar } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
@@ -136,7 +134,7 @@ const noNavegador: Armazenamento = {
     const todos = await operar<Roteiro[]>('readonly', (l) => l.getAll());
     return todos
       .sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
-      .map((r) => ({ id: r.id, meta: r.meta, nArtes: exportar(r).artes.length, atualizadoEm: r.atualizadoEm, dono: r.criadoPor ?? null, publico: false, meu: true }));
+      .map((r) => ({ id: r.id, meta: r.meta, nArtes: artesUnicas(exportar(r).artes).length, atualizadoEm: r.atualizadoEm, dono: r.criadoPor ?? null, publico: false, meu: true }));
   },
   ler: (id) =>
     operar<Roteiro | undefined>('readonly', (l) => l.get(id)).then(
@@ -208,7 +206,7 @@ const noServidor: Armazenamento = {
   async salvar(roteiro, marco, automatico) {
     await pedir(`/api/roteiros/${encodeURIComponent(roteiro.id)}`, {
       method: 'PUT',
-      body: JSON.stringify({ roteiro, nArtes: exportar(roteiro).artes.length, marco, ...(automatico ? { automatico: true } : {}) }),
+      body: JSON.stringify({ roteiro, nArtes: artesUnicas(exportar(roteiro).artes).length, marco, ...(automatico ? { automatico: true } : {}) }),
     });
   },
   async apagar(id) {
@@ -538,7 +536,7 @@ export async function pdfDaProducao(claquete: string): Promise<ArrayBuffer | nul
 
 /** O roteiro em PDF, como vai para o card. */
 export async function pdfDoRoteiro(roteiro: Roteiro): Promise<ArrayBuffer> {
-  const artes = exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '' }));
+  const artes = artesUnicas(exportar(roteiro).artes).map((a) => ({ texto: a.texto, tipo: a.subtipo ? a.subtipoNome : '' }));
   const r = await fetch(`/api/roteiros/${encodeURIComponent(roteiro.id)}/pdf`, {
     method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify({ artes }),
   });
@@ -595,15 +593,13 @@ export async function mandarParaTrello(roteiro: Roteiro, deNovo = false) {
   // o exemplo do tour nunca vai ao Trello (o envio dele é simulado pelo próprio tour)
   if (ehDoTour(roteiro.id)) throw new Error('O roteiro de exemplo do tour não vai ao Trello.');
   const saida = exportar(roteiro);
-  // a que já existe (✓, ou do acervo, que já vem riscada) vai no PDF (sublinhada, como no roteiro), fora do checklist;
-  // o servidor guarda no acervo da atração as confirmadas (da próxima vez, ela já vem riscada)
-  const jaExiste = chavesQueExistem(roteiro.meta);
-  // a que não vai ser produzida nem vai para o card (o PDF é o original, ela continua lá)
-  const fora = new Set(roteiro.meta.naoProduzir ?? []);
-  // cada arte leva a sua complexidade; o servidor calcula a maior das que vão ser produzidas para o card
+  // cada arte uma vez (a repetida no texto é a mesma produção). A que já existe (✓, ou do acervo, que já vem riscada)
+  // vai no PDF (sublinhada, como no roteiro), fora do checklist; o servidor guarda no acervo da atração as confirmadas
+  // (da próxima vez, ela já vem riscada). A que não vai ser produzida nem vai para o card (o PDF é o original, ela
+  // continua lá). Cada arte leva a sua complexidade; o servidor calcula a maior das que vão ser produzidas para o card
   return pedir<{ estado: EnvioTrello['estado']; url?: string; avisos?: string[]; erro?: string }>(`/api/roteiros/${encodeURIComponent(roteiro.id)}/trello`, {
     method: 'POST',
-    body: JSON.stringify({ artes: saida.artes.filter((a) => !fora.has(chaveDeArte(a.texto))).map((a) => ({ texto: a.texto, tipo: a.subtipos.map(siglaDoTipo).join(', '), tipos: a.subtipos.map(siglaDoTipo), existe: jaExiste.has(chaveDeArte(a.texto)), complexidade: complexidadeDaArte(roteiro.meta, chaveDeArte(a.texto)) })), texto: saida.texto.completo, deNovo }),
+    body: JSON.stringify({ artes: artesDoEnvio(saida, roteiro.meta), texto: saida.texto.completo, deNovo }),
   });
 }
 
