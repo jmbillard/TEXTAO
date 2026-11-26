@@ -7,6 +7,7 @@
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { gerarPdf } from './pdf.mjs';
 import { normalizarKey } from './cadastros.mjs';
+import { jaFoiExibida } from '../src/modelo/vocabularios.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const API_PADRAO = 'https://api.trello.com/1';
@@ -194,10 +195,12 @@ export function itensDoChecklist(lista) {
  * @param deps.buscar fetch
  * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL
  * @param deps.sftp (caminho, buffer) => Promise; sem ele, usa ssh2-sftp-client quando SFTP_HOST existe
+ * @param deps.agora () => Date; o relógio da lista de prioridade no andamento (o envio usa o `agora` do próprio envio)
  */
 export function criarTrello(env, deps = {}) {
   const c = configDoTrello(env);
   const buscar = deps.buscar ?? fetch;
+  const relogio = deps.agora ?? (() => new Date());
   const API = (env.TRELLO_API || API_PADRAO).replace(/\/+$/, '');
   let banco = null;
   const consultar =
@@ -425,9 +428,23 @@ export function criarTrello(env, deps = {}) {
     return l ? { nome: l.atracao, projeto: caminho(l.projeto_win), output: caminho(l.output_win) } : null;
   }
 
-  async function prioridadeAlta(chave) {
-    if (!t.prioridade || !c.prioridadeAlta) return false;
-    return (await sql(`SELECT 1 FROM ${t.prioridade} WHERE "key" = $1 LIMIT 1`, [chave])).length > 0;
+  /**
+   * As chaves (dentre estas) que são prioridade agora, como no fluxo PRIORIDADE do n8n: a key está numa lista de hoje em
+   * diante (a tabela guarda uma lista por dia, o histórico inteiro) e a claquete dela ainda não foi exibida.
+   */
+  async function chavesPrioritarias(chaves, agora) {
+    const hoje = agora.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
+    const linhas = await sql(
+      `SELECT "key", "claquete" FROM ${t.prioridade}
+       WHERE "key" = ANY($1::text[]) AND ("data" AT TIME ZONE 'America/Sao_Paulo')::date >= $2::date`,
+      [chaves, hoje],
+    );
+    return new Set(linhas.filter((l) => !jaFoiExibida(l.claquete ?? '', agora)).map((l) => l.key));
+  }
+
+  async function prioridadeAlta(chave, agora) {
+    if (!t.prioridade || !c.prioridadeAlta || !chave) return false;
+    return (await chavesPrioritarias([chave], agora)).has(chave);
   }
 
   /** Atração que é sessão de filme: a exibição do dia (exibicoes) dá o card da prévia e o filme. */
@@ -552,7 +569,7 @@ export function criarTrello(env, deps = {}) {
       tentar('achar o redator', () => acharRedator(m.redator)),
       tentar('achar o editor', () => acharEditor(m.editor)),
       tentar('achar a atração', () => acharAtracao(claquete, m.programa)),
-      tentar('conferir a prioridade', () => prioridadeAlta(chave)),
+      tentar('conferir a prioridade', () => prioridadeAlta(chave, agora)),
     ]);
     const filme = await tentar('achar o card do filme', () => cardDoFilme(atracao?.nome, m.dataExibicao));
     // o card do filme é lido antes dos campos: a complexidade do card é a maior entre a dele e a da revisão
@@ -864,12 +881,12 @@ export function criarTrello(env, deps = {}) {
     }
   }
 
-  /** As chaves (dentre estas) que estão na lista de prioridade; sem a lista configurada ou fora do ar, nenhuma. */
+  /** As chaves (dentre estas) que são prioridade (veja chavesPrioritarias); sem a lista configurada ou fora do ar, nenhuma. */
   async function listaDePrioridade(chaves) {
     const validas = [...new Set(chaves.filter(Boolean))];
     if (!t.prioridade || !c.prioridadeAlta || !validas.length) return new Set();
     try {
-      const chavesNaLista = new Set((await sql(`SELECT "key" FROM ${t.prioridade} WHERE "key" = ANY($1::text[])`, [validas])).map((l) => l.key));
+      const chavesNaLista = await chavesPrioritarias(validas, relogio());
       avisouFalhaPrioridade = false;
       return chavesNaLista;
     } catch (e) {

@@ -84,8 +84,20 @@ function falsos(opcoes: { falharCard?: boolean; falharChecklist?: boolean } = {}
   return { buscar, pedidos };
 }
 
+/** Uma linha da tabela prioridade (o histórico das listas): a claquete e o dia da lista. A key sai da claquete. */
+interface Prioridade {
+  claquete: string;
+  data: string;
+}
+
+/** A tabela prioridade no Postgres falso: as linhas das keys pedidas ($1) em listas de hoje ($2) em diante. */
+const listaDePrioridade = (linhas: Prioridade[]) => async (_sql: string, params: unknown[]) =>
+  linhas
+    .map((l) => ({ key: chaveN8n(l.claquete), claquete: l.claquete, data: l.data }))
+    .filter((l) => (params[0] as string[]).includes(l.key) && l.data >= String(params[1]));
+
 /** O Postgres do Teable, respondendo pelo nome da tabela na consulta. */
-function banco(opcoes: { duplicado?: boolean; redatorNovo?: boolean; redatorSemId?: boolean; sessao?: boolean } = {}) {
+function banco(opcoes: { duplicado?: boolean; redatorNovo?: boolean; redatorSemId?: boolean; sessao?: boolean; prioridade?: Prioridade[] } = {}) {
   const consultas: { sql: string; params: unknown[] }[] = [];
   const consultar = async (sql: string, params: unknown[] = []) => {
     consultas.push({ sql, params });
@@ -97,7 +109,7 @@ function banco(opcoes: { duplicado?: boolean; redatorNovo?: boolean; redatorSemI
       return opcoes.sessao
         ? [{ atracao: 'Sessão da Tarde', projeto_win: 'cole_aqui_o_caminho', output_win: 'X:\\saida' }]
         : [{ atracao: 'Festa na Praça', projeto_win: 'P:\\festa\\projeto', output_win: 'caminho_nao_encontrado' }];
-    if (sql.includes('"prioridade"')) return [{ '?column?': 1 }];
+    if (sql.includes('"prioridade"')) return listaDePrioridade(opcoes.prioridade ?? [{ claquete: 'Festa na Praça 19/11 SP', data: '2026-11-19' }])(sql, params);
     if (sql.includes('"exibicoes"')) return String(params[0]).toUpperCase() === 'SESSÃO DA TARDE' ? [{ card_ID: 'cardFilme', output: 'F:\\filmes\\saida', filme: { id: 'recFilme', title: 'RIVAIS (2024)' } }] : [];
     return [];
   };
@@ -171,6 +183,14 @@ describe('envio para o Trello', () => {
       claquete: 'Festa na Praça 19/11 SP', artes_quantidade: 2, artes: 'A GRANDE FESTA | SÁBADO', doc: 'https://trello.com/anexo.pdf',
       redator: 'Ana Lima', card_ID: 'card1', atracao: 'Festa na Praça', editor: 'Bruno Regis', key: 'FESTA NA PRACA 19 11 SP', praca: 'SP', prioridade: 'ALTA',
     });
+  });
+
+  it('a claquete já exibida não leva a prioridade ALTA, mesmo na lista de hoje', async () => {
+    const { buscar, pedidos } = falsos();
+    const { consultar } = banco({ prioridade: [{ claquete: 'Festa na Praça 19/11 SP', data: '2026-11-21' }] });
+    const t = criarTrello(ENV, { buscar, consultar });
+    await t.enviar({ meta, artes: ['X'], original }, new Date('2026-11-21T12:00:00Z'));
+    expect(campoPut(pedidos, 'cPrio')).toBeUndefined();
   });
 
   it('não repete o que já entrou hoje na produção da arte (pelo upload antigo, com outra grafia)', async () => {
@@ -410,6 +430,23 @@ describe('andamento na produção da arte', () => {
     const falha = async (sql: string, params: unknown[] = []) => (sql.includes('prioridade') ? Promise.reject(new Error('caiu')) : consultar(sql, params));
     const comFalha = await criarTrello(ENV, { consultar: falha }).andamento(itens);
     expect(Object.keys(comFalha)).toEqual(['r1', 'r2']);
+  });
+});
+
+describe('lista de prioridade no andamento', () => {
+  it('conta só a key de uma lista de hoje em diante cuja claquete ainda não foi exibida', async () => {
+    const consultar = async (sql: string, params: unknown[] = []) =>
+      sql.includes('"bseBase"."prioridade"')
+        ? listaDePrioridade([
+            { claquete: 'Terra 27/11 (A)', data: '2026-11-25' }, // lista antiga
+            { claquete: 'Encontro 24/11 (H)', data: '2026-11-26' }, // lista de hoje, já exibida
+            { claquete: 'Encontro 26/11 (H)', data: '2026-11-26' }, // lista de hoje, ainda não exibida
+            { claquete: 'Chef(Manut) D', data: '2026-11-27' }, // sem data na claquete
+          ])(sql, params)
+        : [];
+    const itens = ['Terra 27/11 (A)', 'Encontro 24/11 (H)', 'Encontro 26/11 (H)', 'Chef(Manut) D'].map((claquete, i) => ({ id: `r${i}`, card: null, claquete, naFila: true }));
+    const a = await criarTrello(ENV, { consultar, agora: () => new Date('2026-11-26T15:00:00Z') }).andamento(itens);
+    expect(Object.keys(a).filter((id) => a[id].prioridade)).toEqual(['r2', 'r3']);
   });
 });
 

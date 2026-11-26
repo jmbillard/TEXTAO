@@ -121,6 +121,22 @@ export function dataDaClaquete(claquete: string, hoje = new Date(), atracoes: st
   return diaIso(ano, m.mes, m.dia);
 }
 
+/**
+ * A claquete já foi exibida: a data de exibição (no fim da claquete) é anterior a hoje, no horário de Brasília. Num
+ * período ("Tempo 18 A 25/11") vale o último dia, e o ano é o mais perto de hoje (em dezembro, "2/1" é de janeiro
+ * seguinte; em janeiro, "30/12" é do dezembro passado). Sem data reconhecível, não foi exibida. É a regra do fluxo
+ * PRIORIDADE do n8n, que tira da lista de prioridade a claquete já exibida.
+ */
+export function jaFoiExibida(claquete: string, agora = new Date()): boolean {
+  const lida = lerDataDaClaquete(String(claquete ?? ''));
+  if (!lida) return false;
+  const ultimoDia = Number(/(\d{1,2})\//.exec(lida.comBarra)![1]); // "18 A 25/11" → 25
+  const hoje = agora.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD
+  const [anoHoje, mesHoje] = hoje.split('-').map(Number);
+  const ano = lida.mes - mesHoje > 6 ? anoHoje - 1 : mesHoje - lida.mes > 6 ? anoHoje + 1 : anoHoje;
+  return diaIso(ano, lida.mes, ultimoDia) < hoje;
+}
+
 const diaIso = (ano: number, mes: number, dia: number) => `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 
 /** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. */
