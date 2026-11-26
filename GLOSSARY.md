@@ -103,7 +103,7 @@ própria é atração, não filme.
 
 **Exibição**:
 Um filme numa sessão num dia, com o card do Trello dele e as artes do card. É o registro de cada card de filme.
-_Evitar_: produção (para filmes)
+_Evitar_: produção (a exibição é o filme na grade; o trabalho da arte do card dele é a Produção)
 
 **Prévia**:
 O PDF mensal da programação de filmes, lido na aba Filmes, que vira os cards de filme.
@@ -221,8 +221,28 @@ duplicada") tira o caso da lista sem mudar nada no Trello nem no Teable: ele vai
 grupo (a assinatura, os ids dos cards, mudou).
 _Evitar_: card repetido, claquete duplicada (no envio, "duplicado" é a claquete que já tinha entrado hoje na produção)
 
-**Produção (ARTE_producao)**:
-O registro de cada card de claquete de roteiro: status, designers, entrega. Card de filme não entra aqui.
+**Produção**:
+O trabalho da arte de uma claquete numa praça (ou de um card de filme), com **id próprio do PROMeiro**, guardado no
+SQLite (sem nada que só o SQLite tenha, para a troca por Postgres). Tem claquete, praça, **etapa**, marcador, designers,
+artes, as datas (entrada, entrega, exibição), o Roteiro e o filme ligados quando houver, e se está arquivada. O card do
+Trello e o registro da produção da arte no Teable são só **referências** dela, as duas opcionais (ADR 0006): trocar ou
+apagar o card não deixa nada órfão. A **carga** lê a produção da arte inteira (abertas e arquivadas, com e sem card,
+filmes incluídos; nada do Trello, que tem muito lixo) e faz uma Produção por linha, pela chave do registro do Teable:
+rodar de novo atualiza, não duplica. Roda na subida, quando não há nenhuma Produção, e quando um administrador pede
+"recarregar"; as Produções carregadas entram com o estado de agora, sem eventos passados. O Roteiro liga pelo envio
+(o card para onde ele foi); o filme, pela linha ou pela exibição do card.
+_Evitar_: demanda, job, card (o card é só onde a Produção está no Trello)
+
+**Etapa** (da Produção):
+Onde a Produção está no fluxo: **Entrada** → **Produzindo** → **Entregue**, mais **Arquivada**. Sem o Trello, sai da
+produção da arte: arquivada vence tudo; entregue (ou o status FINALIZADO) é Entregue; com designer ou status de
+trabalho, Produzindo; senão, Entrada. O status detalhado (aguardando material, em aprovação, pedido de alteração…) não
+é etapa: é o **marcador** dentro de Produzindo.
+_Evitar_: status, coluna, lista (a lista é do Trello)
+
+**Produção da arte (ARTE_producao)**:
+A tabela do Teable com o registro de cada card (status, designers, entrega), que o n8n sincroniza com o Trello. É de
+onde a carga tira as Produções do PROMeiro; cada linha dela vira uma Produção.
 _Evitar_: demanda
 
 **Critério da agenda**:

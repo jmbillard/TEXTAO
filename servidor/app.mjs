@@ -25,6 +25,7 @@ import { criarRedatorProvavel } from './redator.mjs';
 import { criarFilmes } from './filmes.mjs';
 import { criarDuplicadas, DIAS_MAXIMO, DIAS_PADRAO } from './duplicadas.mjs';
 import { criarRegistroDasDuplicadas, MOTIVO_MAXIMO } from './registro-das-duplicadas.mjs';
+import { criarProducoes } from './producoes.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
@@ -455,6 +456,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const regrasDaAtracao = criarRegrasDaAtracao(db);
   // o registro da aba Duplicadas (#66) é do SQLite: o mesmo em todas as gerações da configuração
   const registroDasDuplicadas = criarRegistroDasDuplicadas(db);
+  // as Produções (#86): o trabalho da arte com id próprio do PROMeiro, no SQLite
+  const producoes = criarProducoes(db);
   // as importações que estão sendo desfeitas ou retomadas agora (o segundo clique espera o primeiro)
   const mexendoNaImportacao = new Set();
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
@@ -592,6 +595,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   };
   // na partida (depois de achar as tabelas) e uma vez por dia, sem depender de alguém abrir a Configuração
   const primeiraVerificacao = primeiraDescoberta.then(() => verificarPessoas()).catch(() => null);
+  // a carga inicial das Produções (#86): na subida, só quando não há nenhuma (depois de achar as tabelas); de novo,
+  // só pela rota do administrador. Sem leitura periódica: o aviso do Trello (#87) é que mantém em dia
+  primeiraDescoberta
+    .then(() => (producoes.vazia() ? producoes.carregar(trello, pracas) : null))
+    .catch((e) => console.warn(`[producoes] a carga inicial não rodou: ${e instanceof Error ? e.message : e}`));
   const verificacaoDiaria = agendar(() => verificarPessoas(), UM_DIA);
   verificacaoDiaria?.unref?.();
   async function aposentar(velha, filmesVelho) {
@@ -1622,6 +1630,33 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * registro. Ignorar e reabrir (#66,
    * POST { id, dias, motivo }) só anotam no registro do PROMeiro: nada muda no Trello nem no Teable.
    */
+  /**
+   * As Produções (#86), só para administradores, para conferir a carga: GET /api/producoes dá quantas há em cada etapa
+   * (e com card, Roteiro e filme) e a última carga desta partida; com ?card= ou ?registro=, as Produções daquele card
+   * ou daquele registro do Teable. POST /api/producoes/recarregar roda a carga de novo (atualiza, não duplica).
+   */
+  async function rotaDasProducoes(req, res, eu, caminho) {
+    const recarregar = caminho === '/api/producoes/recarregar';
+    if (req.method !== (recarregar ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
+    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: recarregar ? 'Só administradores recarregam as Produções.' : 'Só administradores veem as Produções.' });
+    const ligado = !!trello.temProducao;
+    if (recarregar) {
+      if (!ligado) return json(res, 404, { erro: 'A produção da arte do Teable não está configurada.' });
+      try {
+        console.log(`[producoes] ${eu.email} pediu a carga de novo`);
+        return json(res, 200, await producoes.carregar(trello, pracas));
+      } catch (e) {
+        console.warn(`[producoes] ${e instanceof Error ? e.message : e}`);
+        return json(res, 502, { erro: `Não consegui ler a produção da arte: ${e instanceof Error ? e.message : e}` });
+      }
+    }
+    const busca = new URL(req.url, 'http://x').searchParams;
+    const card = (busca.get('card') ?? '').trim().slice(0, 100);
+    const registro = (busca.get('registro') ?? '').trim().slice(0, 100);
+    if (card || registro) return json(res, 200, { producoes: producoes.buscar({ card, registro }) });
+    return json(res, 200, { ligado, ...producoes.contagem() });
+  }
+
   async function rotaDasDuplicadas(req, res, eu, caminho) {
     const acao = caminho === '/api/duplicadas/ignorar' || caminho === '/api/duplicadas/reabrir';
     if (req.method !== (acao ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
@@ -2106,6 +2141,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const deNovo = new URL(req.url, 'http://x').searchParams.get('deNovo') === '1';
       return json(res, 200, await andamentoDoProjeto.ler(configuracao.valores(), { deNovo }));
     }
+    if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));

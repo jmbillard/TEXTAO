@@ -50,7 +50,7 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     variavel: 'TEABLE_ARTE_PRODUCAO',
     // trello.mjs (o registro do envio e a versão nova)
     api: ['claquete', 'artes_quantidade', 'artes', 'artes_existentes', 'doc', 'redator', 'card_ID', 'data_entrada', 'texto', 'atracao', 'editor', 'key', 'filme', 'praca', 'prioridade', 'workflow', 'urgencia', 'complexidade'],
-    // trello.mjs (andamento, duplicadas, já entrou hoje), acervo.mjs, redator.mjs
+    // trello.mjs (andamento, duplicadas, já entrou hoje, a carga das Produções), acervo.mjs, redator.mjs
     pg: ['card_ID', 'claquete', 'key', 'status', 'data_entrada', 'artes_quantidade', 'artes', 'texto', 'doc', 'redator', 'editor', 'designers', 'entregue', 'data_entrega', 'praca', 'arquivado', 'filme', 'atracao', 'complexidade'],
   },
   // pauta.mjs e vocabulario.mjs (quem está com a claquete)
@@ -81,7 +81,7 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     variavel: 'TEABLE_EXIBICOES',
     // exibicao.mjs (a exibição de cada card de filme)
     api: ['exibicao', 'data_de_exibicao', 'card_ID', 'link', 'inedito', 'output', 'criado_em', 'artes', 'artes_existentes', 'filme', 'sessao'],
-    // trello.mjs, exibicao.mjs, acervo.mjs, filmes.mjs
+    // trello.mjs (também a carga das Produções), exibicao.mjs, acervo.mjs, filmes.mjs
     pg: ['card_ID', 'sessao', 'exibicao', 'labels', 'filme', 'data_de_exibicao', 'link', 'inedito', 'output', 'artes', 'artes_existentes'],
   },
 ];
