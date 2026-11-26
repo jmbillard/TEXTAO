@@ -66,7 +66,8 @@ function arteDoItem(item, filme) {
  * @param env TEABLE_ACERVO (id da tabela, para gravar), TEABLE_PG_ACERVO (nome no Postgres, para ler),
  *   TEABLE_PG_URL, TEABLE_PG_ESQUEMA, TEABLE_PG_ATRACOES, TEABLE_PG_ARTE, TEABLE_URL, TEABLE_TOKEN,
  *   e TEABLE_PG_EXIBICOES (filme + sessão + dia + card da prévia), para as sessões de filme
- * @param deps.consultar (sql, params) => linhas; deps.buscar fetch; deps.artesDoCard (card) => itens dos checklists
+ * @param deps.consultar (sql, params) => linhas (sem ele, abre o Postgres com deps.abrirPg ou abrirPg); deps.buscar fetch;
+ *   deps.artesDoCard (card) => itens dos checklists
  */
 export function criarAcervo(env, deps = {}) {
   const esquema = nomesDoPg(env, '').esquema;
@@ -88,7 +89,7 @@ export function criarAcervo(env, deps = {}) {
     deps.consultar ??
     (env.TEABLE_PG_URL
       ? async (sql, params = []) => {
-          banco ??= await abrirPg(env.TEABLE_PG_URL);
+          banco ??= await (deps.abrirPg ?? abrirPg)(env.TEABLE_PG_URL);
           return (await banco.query(sql, params)).rows;
         }
       : null);

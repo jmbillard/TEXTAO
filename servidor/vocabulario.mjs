@@ -40,7 +40,7 @@ const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ')
 
 /** `cache` (opcional) divide o resultado entre instâncias; `copia` (opcional) guarda a última leitura boa
     no banco do app, para quando o Teable estiver fora do ar, inclusive logo depois de um reinício. */
-export function criarVocabulario(env, buscar = fetch, cache = null, copia = null, consultar = null) {
+export function criarVocabulario(env, buscar = fetch, cache = null, copia = null, consultar = null, abrir = abrirPg) {
   const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
   const ligado = !!((base && env.TEABLE_TOKEN && (env.TEABLE_ATRACOES || env.TEABLE_REDATORES || env.TEABLE_EDITORES || env.TEABLE_PAUTA)) || (env.TEABLE_PG_URL && env.TEABLE_PG_ATRACOES));
   const vazio = { programas: [], redatores: [], editores: [], pauta: [] };
@@ -89,7 +89,7 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
   let banco = null;
   async function sql(texto) {
     if (consultar) return consultar(texto);
-    banco ??= await abrirPg(env.TEABLE_PG_URL);
+    banco ??= await abrir(env.TEABLE_PG_URL);
     return (await banco.query(texto)).rows;
   }
   /** As atrações com as keys (o vínculo pattern → KEY_atracoes) e a categoria, numa consulta. */
@@ -201,6 +201,7 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
 
   return {
     ligado,
+    parar: () => banco?.end?.().catch(() => {}),
     /** Para o diagnóstico: de onde veio a lista, quantas atrações, e os erros. */
     estado: () => ({ ...estado, atracoes: guardado.programas?.length ?? 0, comKeys: (guardado.programas ?? []).filter((p) => p.chaves?.length).length }),
     /** Depois de um cadastro: a próxima leitura vai ao Teable, sem esperar a validade. `entrou` são as keys que

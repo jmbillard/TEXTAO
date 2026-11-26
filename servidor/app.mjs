@@ -11,7 +11,8 @@ import * as presenca from 'y-protocols/awareness';
 import * as cod from 'lib0/encoding';
 import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
-import { criarPauta } from './pauta.mjs';
+import { abrirPg, criarPauta } from './pauta.mjs';
+import { criarConfiguracao } from './configuracao.mjs';
 import { criarCache } from './cache.mjs';
 import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
@@ -403,7 +404,30 @@ export function copiarMetaParaYdoc(doc, meta) {
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }), redatorProvavel = criarRedatorProvavel(env), duplicadas = criarDuplicadas({ trello, acervo }) }) {
+/**
+ * Como cada módulo nasce da configuração de agora. Cada um pode ser trocado em criarApp por uma fábrica
+ * (env, deps) => módulo, que é chamada de novo quando a configuração muda, ou por um módulo pronto, que fica o mesmo.
+ */
+const FABRICAS = {
+  trello: (env, { abrirPg }) => criarTrello(env, { abrirPg }),
+  acervo: (env, { abrirPg, trello }) => criarAcervo(env, { abrirPg, artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }),
+  cadastros: (env, { vocabulario }) => criarCadastros(env, { vocabulario }),
+  redatorProvavel: (env, { abrirPg }) => criarRedatorProvavel(env, { abrirPg }),
+  duplicadas: (_env, { trello, acervo }) => criarDuplicadas({ trello, acervo }),
+  // a aba Filmes nasce uma vez (a fila de leitura da prévia não para); na mudança, só o envio e a conferência mudam
+  filmes: (env, { db, trello, abrirPg }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg }),
+};
+/** Os módulos que são refeitos quando a configuração muda (e fechados, os antigos, quando terminam o que faziam). */
+const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas'];
+const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
+
+/**
+ * @param env as variáveis do Portainer; o que foi salvo na configuração do PROMeiro vale por cima delas
+ * @param abrirPg abre o Postgres do Teable (os módulos abrem cada um a sua conexão, na primeira consulta)
+ */
+export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, ...modulos }) {
+  const fabricas = { ...FABRICAS };
+  for (const [nome, m] of Object.entries(modulos)) if (m !== undefined && m !== null) fabricas[nome] = m;
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const importacoes = criarImportacoes(db);
   const regrasDaAtracao = criarRegrasDaAtracao(db);
@@ -418,9 +442,50 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     },
     guardar: (chave, dados) => gravarCopia.run(chave, JSON.stringify(dados), new Date().toISOString()),
   };
-  const vocabulario = criarVocabulario(env, fetch, cache, copia);
-  const pauta = criarPauta(env, vocabulario, undefined, cache, copia);
-  cadastros ??= criarCadastros(env, { vocabulario });
+
+  /* ---------- os módulos da configuração de agora ---------- */
+  /** Uma geração: os módulos feitos de uma configuração, e quantos pedidos ainda estão usando ela. */
+  function montar(env) {
+    const g = { env, emCurso: 0, drenou: null };
+    g.trello = fazer(fabricas.trello, env, { abrirPg: abrir });
+    g.acervo = fazer(fabricas.acervo, env, { abrirPg: abrir, trello: g.trello });
+    g.vocabulario = criarVocabulario(env, fetch, cache, copia, null, abrir);
+    g.pauta = criarPauta(env, g.vocabulario, abrir, cache, copia);
+    g.cadastros = fazer(fabricas.cadastros, env, { vocabulario: g.vocabulario });
+    g.redatorProvavel = fazer(fabricas.redatorProvavel, env, { abrirPg: abrir });
+    g.duplicadas = fazer(fabricas.duplicadas, env, { trello: g.trello, acervo: g.acervo });
+    return g;
+  }
+  let geracao = montar(configuracao.valores());
+  let { env, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao;
+  const filmes = fazer(fabricas.filmes, env, { db, trello, abrirPg: abrir });
+
+  /**
+   * Muda a configuração e ela vale na hora, sem reiniciar: os módulos são refeitos com os valores novos, e o próximo
+   * pedido já usa eles. O que estava em curso (um envio ao Trello, os filmes que estão indo) termina com a
+   * configuração antiga; depois disso os módulos antigos são fechados (e a conexão deles com o Postgres).
+   * A fila de leitura da prévia dos filmes continua a mesma.
+   * @param mudancas { NOME: 'valor' | null } (null volta ao Portainer)
+   * @returns { valores, antigaFechada }: os valores novos, e a promessa de quando a configuração antiga foi fechada
+   */
+  function mudarConfiguracao(mudancas, { por = '' } = {}) {
+    const valores = configuracao.salvar(mudancas, { por });
+    const velha = geracao;
+    geracao = montar(valores);
+    ({ env, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao);
+    const filmesVelho = filmes.reconfigurar?.(env, { trello }) ?? null;
+    // a lista de atrações guardada é da configuração antiga: a próxima leitura vai ao Teable
+    void Promise.resolve(cache.guardar('vocabulario', null, 1)).catch(() => {});
+    return { valores, antigaFechada: aposentar(velha, filmesVelho) };
+  }
+  async function aposentar(velha, filmesVelho) {
+    if (velha.emCurso) await new Promise((ok) => (velha.drenou = ok));
+    await Promise.all([
+      filmesVelho?.fechar(),
+      // o módulo pronto que veio de fora é o mesmo nas duas gerações: esse fica aberto
+      ...RECRIADOS.filter((n) => velha[n] !== geracao[n]).map((n) => velha[n]?.parar?.()),
+    ]);
+  }
   const q = {
     lista: db.prepare(
       `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
@@ -997,9 +1062,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
   }
   // os cards de filme que saíram (finalizados ou entregues) levam as artes ao acervo do filme. A fila não mostra mais
   // os filmes (ela é a revisão dos roteiros), então o servidor confere sozinho: 1 min depois de subir e de 10 em 10 min
-  if (trello.filmesProximos && acervo.ligado && acervo.grava) {
-    const conferirFilmes = () =>
+  // (a condição é olhada a cada vez: a configuração pode mudar com o servidor de pé)
+  {
+    const conferirFilmes = () => {
+      if (!(trello.filmesProximos && acervo.ligado && acervo.grava)) return;
       void trello.filmesProximos(14).then(filmesNoAcervo).catch((e) => console.warn(`[filmes] ${e instanceof Error ? e.message : e}`));
+    };
     setTimeout(conferirFilmes, 60_000).unref?.();
     setInterval(conferirFilmes, 600_000).unref?.();
   }
@@ -1713,22 +1781,29 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
 
   const app = async (req, res) => {
     const caminho = new URL(req.url, 'http://x').pathname;
+    // o pedido conta na configuração em que começou: ela só é fechada depois que ele termina
+    const g = geracao;
+    g.emCurso += 1;
     try {
       if (caminho.startsWith('/api/')) await api(req, res, caminho);
       else arquivo(req, res, caminho);
     } catch (e) {
       if (!res.headersSent) json(res, e.status ?? 500, { erro: e.status ? e.message : 'Algo deu errado no servidor.' });
       if (!e.status) console.error(e);
+    } finally {
+      g.emCurso -= 1;
+      if (!g.emCurso) g.drenou?.();
     }
   };
   /** Ligue em `server.on('upgrade', app.upgrade)` para a edição simultânea e a fila ao vivo. */
   app.upgrade = upgrade;
   app.cache = cache;
+  app.mudarConfiguracao = mudarConfiguracao;
+  /** Os módulos de agora (para os avisos da partida). */
+  app.modulos = () => ({ ...geracao, filmes });
   app.fechar = async () => {
     clearInterval(batimento);
-    pauta.parar();
-    await trello.parar();
-    await acervo.parar?.();
+    for (const n of RECRIADOS) await geracao[n]?.parar?.();
     for (const ws of naFila.keys()) ws.terminate();
     // o que foi digitado nos últimos instantes ainda não foi gravado: grava antes de desligar
     for (const [id, sala] of salas) {

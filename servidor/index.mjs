@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { abrirBanco, criarApp, fazerBackup } from './app.mjs';
 import { criarFilmes } from './filmes.mjs';
-import { configDoTrello, criarTrello, faltasDoTrello, PRACAS_TRELLO } from './trello.mjs';
+import { configDoTrello, faltasDoTrello, PRACAS_TRELLO } from './trello.mjs';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
@@ -27,16 +27,17 @@ backup();
 setInterval(backup, 60 * 60 * 1000).unref();
 
 const cache = criarCache(process.env);
-// as prévias de filmes (aba Filmes): as imagens das páginas e dos pôsteres ficam junto dos dados
-// o mesmo módulo do Trello para os roteiros e para os cards de filme
-const trello = criarTrello(process.env);
-const filmes = criarFilmes(process.env, { db, pasta: process.env.FILMES_PASTA ?? join(dados, 'previas'), trello });
+// as prévias de filmes (aba Filmes): as imagens das páginas e dos pôsteres ficam junto dos dados. O app faz os módulos
+// da configuração (o Portainer com o que foi salvo no PROMeiro por cima) e os refaz quando ela muda
+const pasta = process.env.FILMES_PASTA ?? join(dados, 'previas');
+const app = criarApp({ db, cache, filmes: (env, deps) => criarFilmes(env, { ...deps, pasta }), estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
+// os avisos da partida falam da configuração de agora
+const { env, filmes } = app.modulos();
 console.log(
   filmes.ligado
     ? `[filmes] aba Filmes ligada${filmes.conferindo ? '' : ' (sem a conferência com o banco: falta TEABLE_PG_FILMES)'}${filmes.envio.ligado ? '' : `; envio desligado: falta ${filmes.envio.faltando.join(', ')}`}`
     : `[filmes] aba Filmes desligada: falta ${filmes.faltando.join(', ')}`,
 );
-const app = criarApp({ db, cache, trello, filmes, estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
 const servidor = createServer(app);
 servidor.on('upgrade', app.upgrade);
 servidor.listen(porta, () =>
@@ -44,12 +45,12 @@ servidor.listen(porta, () =>
 );
 // diz no log, logo na partida, se a ligação com o Teable está de pé
 {
-  const faltam = ['TEABLE_URL', 'TEABLE_TOKEN', 'TEABLE_ATRACOES'].filter((n) => !process.env[n]);
+  const faltam = ['TEABLE_URL', 'TEABLE_TOKEN', 'TEABLE_ATRACOES'].filter((n) => !env[n]);
   if (faltam.length) console.log(`[vocabulário] Teable desligado: falta ${faltam.join(', ')}. Vale a lista embutida.`);
   else
-    criarVocabulario(process.env, fetch, cache)
+    criarVocabulario(env, fetch, cache)
       .ler()
-      .then((v) => console.log(`[vocabulário] Teable em ${process.env.TEABLE_URL}: ${v.programas.length} atrações, ${v.redatores.length} redatores, ${v.editores.length} editores, ${v.pauta.length} claquetes na pauta`));
+      .then((v) => console.log(`[vocabulário] Teable em ${env.TEABLE_URL}: ${v.programas.length} atrações, ${v.redatores.length} redatores, ${v.editores.length} editores, ${v.pauta.length} claquetes na pauta`));
 }
 // variáveis que não são mais usadas: o log diz o que fazer com elas
 for (const [antiga, aviso] of [
@@ -59,7 +60,7 @@ for (const [antiga, aviso] of [
   if (process.env[antiga]) console.log(`[config] ${antiga} não é mais usada: ${aviso}.`);
 if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos da fila em memória (serve para uma instância só)');
 {
-  const c = configDoTrello(process.env);
+  const c = configDoTrello(env);
   const faltam = faltasDoTrello(c);
   if (faltam === null) console.log('[trello] envio desligado (sem TRELLO_KEY e TRELLO_TOKEN)');
   else if (faltam.length) console.log(`[trello] envio desligado: falta ${faltam.join(', ')}`);
@@ -79,7 +80,7 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
 }
 // como sai o PDF do card, e se o acervo de artes está ligado
 {
-  const e = process.env;
+  const e = env;
   console.log(
     e.STIRLING_URL
       ? `[pdf] Word e RTF convertidos pelo Stirling em ${e.STIRLING_URL}${e.STIRLING_CHAVE ? ' (com chave)' : ' (sem STIRLING_CHAVE: se o Stirling pedir chave, a conversão falha e vai o PDF do texto do original)'}`
@@ -88,7 +89,7 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
   if (e.TEABLE_PG_ACERVO || e.TEABLE_ACERVO)
     console.log(`[acervo] ${e.TEABLE_PG_ACERVO && e.TEABLE_ACERVO ? 'ligado' : `falta ${e.TEABLE_PG_ACERVO ? 'TEABLE_ACERVO (para gravar)' : 'TEABLE_PG_ACERVO (para ler)'}`}`);
 }
-void criarPauta(process.env, criarVocabulario(process.env))
+void criarPauta(env, criarVocabulario(env))
   .testar()
   .then((m) => m && console.log(`[pauta] ${m}`));
 

@@ -49,7 +49,7 @@ export function redatorDoHistorico(linhas, { praca = '', hoje = new Date() } = {
 
 /**
  * @param env TEABLE_PG_URL, TEABLE_PG_ESQUEMA e TEABLE_PG_ARTE (a ARTE_producao no Postgres)
- * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL. deps.agora () => Date
+ * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL (com deps.abrirPg, se vier). deps.agora () => Date
  */
 export function criarRedatorProvavel(env, deps = {}) {
   const { esquema } = nomesDoPg(env, '');
@@ -59,7 +59,7 @@ export function criarRedatorProvavel(env, deps = {}) {
     deps.consultar ??
     (env.TEABLE_PG_URL
       ? async (sql, params = []) => {
-          banco ??= await abrirPg(env.TEABLE_PG_URL);
+          banco ??= await (deps.abrirPg ?? abrirPg)(env.TEABLE_PG_URL);
           return (await banco.query(sql, params)).rows;
         }
       : null);
@@ -78,6 +78,7 @@ export function criarRedatorProvavel(env, deps = {}) {
 
   return {
     ligado,
+    parar: () => banco?.end?.().catch(() => {}),
     /** O redator provável da atração naquela praça, ou null (sem configuração, sem histórico, banco fora do ar). */
     async provavel(atracao, praca = '') {
       const a = String(atracao ?? '').trim();

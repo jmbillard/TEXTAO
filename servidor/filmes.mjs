@@ -312,11 +312,11 @@ function todaEnviadaEm(p, ultimaLeitura) {
 }
 
 /**
- * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL
+ * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL (com deps.abrirPg, se vier)
  * @param deps.trello o módulo do Trello (o card e a escrita no Teable), para o envio
  * @param deps.agora o relógio (ms); o teste anda os dias com ele
  */
-export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello, agora = () => Date.now() } = {}) {
+export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello, agora = () => Date.now(), abrirPg: abrirOPg = abrirPg } = {}) {
   const enderecoDaLeitura = String(env.N8N_FILMES_LER || '').trim();
   const faltando = [!enderecoDaLeitura && 'N8N_FILMES_LER', !pasta && 'FILMES_PASTA'].filter(Boolean);
   const ligado = !faltando.length && !!db;
@@ -361,8 +361,11 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     apagar: db.prepare('DELETE FROM previas WHERE id = ?'),
   };
   const agoraISO = () => new Date(agora()).toISOString();
-  const intervalo = Math.max(0, Number(env.FILMES_INTERVALO_MS ?? 2500) || 0);
-  const espera = Math.max(1000, Number(env.FILMES_TEMPO_MS ?? 240_000) || 240_000);
+  // a pausa entre as páginas e a espera de uma página: mudam com a configuração, valendo para a próxima página
+  const pausaDe = (e) => Math.max(0, Number(e.FILMES_INTERVALO_MS ?? 2500) || 0);
+  const esperaDe = (e) => Math.max(1000, Number(e.FILMES_TEMPO_MS ?? 240_000) || 240_000);
+  let intervalo = pausaDe(env);
+  let espera = esperaDe(env);
   const dir = (id) => join(pasta, id);
   const arquivo = (id, n, k = 0) => join(dir(id), k ? `p${n}_${k}.jpg` : `p${n}.jpg`);
 
@@ -398,18 +401,44 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     return lista;
   }
 
-  if (!consultar && env.TEABLE_PG_URL) {
-    let banco = null;
-    consultar = async (sql, params = []) => {
-      banco ??= await abrirPg(env.TEABLE_PG_URL);
-      return (await banco.query(sql, params)).rows;
+  /**
+   * O lado dos filmes que vem da configuração: o envio, a conferência com o banco e a conexão com o Postgres delas.
+   * É refeito quando a configuração muda; o antigo só fecha depois que os envios que começaram nele terminam.
+   */
+  function ligarAoBanco(e, oTrello) {
+    const lado = { emCurso: new Set(), banco: null };
+    const consultarAqui =
+      consultar ??
+      (e.TEABLE_PG_URL
+        ? async (sql, params = []) => {
+            lado.banco ??= await abrirOPg(e.TEABLE_PG_URL);
+            return (await lado.banco.query(sql, params)).rows;
+          }
+        : undefined);
+    lado.conferencia = criarConferencia(e, consultarAqui);
+    lado.envio = criarEnvioDeFilmes(e, { trello: oTrello, consultar: consultarAqui });
+    lado.fechar = async () => {
+      await Promise.allSettled([...lado.emCurso]);
+      await lado.banco?.end?.().catch(() => {});
     };
+    return lado;
   }
-  const conferencia = criarConferencia(env, consultar);
-  const envio = criarEnvioDeFilmes(env, { trello, consultar });
+  let lado = ligarAoBanco(env, trello);
+  /**
+   * A configuração mudou: o próximo envio e a próxima conferência já usam a nova; a fila de leitura continua a mesma.
+   * @returns { fechar }: fecha o lado antigo quando o que estava indo por ele terminar
+   */
+  function reconfigurar(envNovo, { trello: trelloNovo } = {}) {
+    const velho = lado;
+    lado = ligarAoBanco(envNovo, trelloNovo);
+    intervalo = pausaDe(envNovo);
+    espera = esperaDe(envNovo);
+    return { fechar: velho.fechar };
+  }
 
   /** Põe a conferência com o banco em cada filme (sem o banco configurado, os filmes ficam sem ela). */
   async function conferidos(filmes) {
+    const { conferencia } = lado;
     if (!conferencia || !filmes.length) return { filmes };
     try {
       const r = await conferencia.conferir(filmes);
@@ -472,7 +501,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       criada: p.criada_em,
       versao: v,
       paginas,
-      envio: { ligado: envio.ligado, faltando: envio.faltando },
+      envio: { ligado: lado.envio.ligado, faltando: lado.envio.faltando },
       ...(r.erro ? { erroDaConferencia: r.erro } : {}),
     };
   }
@@ -649,7 +678,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
    * @returns { enviando: quantos foram }
    */
   async function enviar(id, eu) {
-    if (!envio.ligado) return { erro: `O envio está desligado: falta ${envio.faltando.join(', ')}.`, status: 503 };
+    if (!lado.envio.ligado) return { erro: `O envio está desligado: falta ${lado.envio.faltando.join(', ')}.`, status: 503 };
     const p = await abrir(id);
     if (!p) return { erro: 'Prévia não encontrada.', status: 404 };
     const prontos = p.paginas.flatMap((g) =>
@@ -671,11 +700,16 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       }
       q.gravarFilmes.run(JSON.stringify(filmes), id, n);
     }
-    void enviarUmPorUm(id, vao, por);
+    // o envio começa e termina no lado de agora, mesmo que a configuração mude no meio
+    const noLado = lado;
+    const indo = enviarUmPorUm(id, vao, por, noLado);
+    noLado.emCurso.add(indo);
+    const saiu = () => noLado.emCurso.delete(indo);
+    indo.then(saiu, saiu);
     return { enviando: vao.length };
   }
 
-  async function enviarUmPorUm(id, vao, por) {
+  async function enviarUmPorUm(id, vao, por, { envio, conferencia }) {
     const lote = envio.novoLote(() => conferencia?.esquecer());
     const posterDe = ({ n, f }) => (f.poster !== null && f.poster !== undefined ? imagem(id, n, f.poster + 1) : null);
     const enviado = ({ n, i, f }, r) => {
@@ -764,5 +798,26 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     }
   }
 
-  return { ligado, faltando, conferindo: !!conferencia, envio: { ligado: envio.ligado, faltando: envio.faltando }, criar, listar, versao, abrir, mudar, receberPagina, reler, enviar, imagem, apagarVencidas, parar: () => void (parado = true) };
+  return {
+    ligado,
+    faltando,
+    get conferindo() {
+      return !!lado.conferencia;
+    },
+    get envio() {
+      return { ligado: lado.envio.ligado, faltando: lado.envio.faltando };
+    },
+    reconfigurar,
+    criar,
+    listar,
+    versao,
+    abrir,
+    mudar,
+    receberPagina,
+    reler,
+    enviar,
+    imagem,
+    apagarVencidas,
+    parar: () => void (parado = true),
+  };
 }

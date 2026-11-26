@@ -214,7 +214,7 @@ export function artesDaProducao(texto) {
 /**
  * @param env variáveis de ambiente
  * @param deps.buscar fetch
- * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL
+ * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL (com deps.abrirPg, se vier)
  * @param deps.sftp (caminho, buffer) => Promise; sem ele, usa ssh2-sftp-client quando SFTP_HOST existe
  * @param deps.agora () => Date; o relógio da lista de prioridade no andamento (o envio usa o `agora` do próprio envio)
  */
@@ -228,7 +228,7 @@ export function criarTrello(env, deps = {}) {
     deps.consultar ??
     (c.pg.url
       ? async (sql, params = []) => {
-          banco ??= await abrirPg(c.pg.url);
+          banco ??= await (deps.abrirPg ?? abrirPg)(c.pg.url);
           return (await banco.query(sql, params)).rows;
         }
       : null);
