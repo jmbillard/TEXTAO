@@ -21,8 +21,11 @@ type Linha = { id: string; fields: Record<string, unknown> };
 
 function trelloFalso(membros: { id: string; fullName: string; email?: string }[]) {
   const pedidos: string[] = [];
+  // #79: `estado.fora = true` faz o Trello responder 503 a tudo
+  const estado = { fora: false };
   const ok = (dados: unknown) => ({ ok: true, status: 200, json: async () => dados, text: async () => '' });
   const buscar = async (endereco: string, init: RequestInit = {}) => {
+    if (estado.fora) return { ok: false, status: 503, json: async () => ({}), text: async () => 'Service Unavailable' };
     const url = new URL(endereco);
     const metodo = init.method ?? 'GET';
     const rota = url.pathname.replace(/^\/1/, '');
@@ -32,7 +35,7 @@ function trelloFalso(membros: { id: string; fullName: string; email?: string }[]
     if (rota.startsWith('/boards/qFalso')) return ok(rota === '/boards/qFalso' ? { id: 'qFalso', name: 'Quadro falso' } : []);
     return { ok: false, status: 404, json: async () => ({}), text: async () => 'not found' };
   };
-  return { buscar, pedidos };
+  return { buscar, pedidos, estado };
 }
 
 let fechar: (() => Promise<void>) | null = null;
@@ -92,6 +95,7 @@ type Pessoas = {
   quemJaEntrou: { email: string; nome: string }[];
   verificadoEm: string;
   erro?: string;
+  foraDoAr?: { servico: string; desde: string };
 };
 const ler = async (r: Promise<Response>) => (await (await r).json()) as Pessoas;
 const titulos = (p: Pessoas) => p.novidades.map((n) => `${n.tipo} ${n.nome}`);
@@ -159,8 +163,22 @@ describe('quem entrou e quem saiu do quadro', () => {
     teable.estado.fora = true;
     const p = await ler(chefe('/api/configuracao/pessoas'));
     expect(p.erro).toMatch(/Teable/);
+    // #79: diz qual está fora e desde quando (a tela trava cadastrar e marcar inativo)
+    expect(p.foraDoAr).toMatchObject({ servico: 'Teable' });
+    expect(Date.parse(p.foraDoAr!.desde)).not.toBeNaN();
     expect(titulos(p)).toEqual(['entrou Bia Sampaio', 'saiu Otávio Lins']);
     expect((await chefe('/api/configuracao/pessoas', { acao: 'cadastrar', chave: 'entrou:mBia' })).status).toBe(502);
+    teable.estado.fora = false;
+    expect((await ler(chefe('/api/configuracao/pessoas'))).foraDoAr).toBeUndefined();
+  });
+
+  it('com o Trello fora do ar, o mesmo: valem as novidades da última verificação, com o Trello como o que está fora', async () => {
+    const { chefe, falso } = await comServidor();
+    falso.estado.fora = true;
+    const p = await ler(chefe('/api/configuracao/pessoas'));
+    expect(p.foraDoAr).toMatchObject({ servico: 'Trello' });
+    expect(titulos(p)).toEqual(['entrou Bia Sampaio', 'saiu Otávio Lins']);
+    expect((await chefe('/api/configuracao/pessoas', { acao: 'inativar', chave: 'saiu:recOtavio' })).status).toBe(502);
   });
 });
 

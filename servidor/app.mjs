@@ -32,6 +32,8 @@ import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPraca
 import { acertarNArtesUmaVez } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
+import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
+import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { administradoresDaTela, administradoresSalvos, ehAdministrador, porAdministrador, tirarAdministrador } from '../src/modelo/pessoas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { confirmaATroca, conexoesDaTela, lerQuadros, mudancasDaBaseNova, religarNoQuadroNovo } from './configuracao-conexoes.mjs';
@@ -463,6 +465,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     },
     guardar: (chave, dados) => gravarCopia.run(chave, JSON.stringify(dados), new Date().toISOString()),
   };
+  // o Trello e o Teable fora do ar (#79): desde quando cada um não responde (guardado: vale depois de reiniciar)
+  const fora = criarForaDoAr(copia);
 
   /* ---------- os módulos da configuração de agora ---------- */
   // as tabelas do Teable (#76): achadas pelo nome na base; a última descoberta fica guardada (vale com o Teable fora)
@@ -555,6 +559,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         if (d === null) return null;
         const muda = !mesmasTabelas(d, tabelas);
         tabelas = d;
+        if (d.foraDoAr) fora.caiu('teable', d.foraDoAr);
+        else fora.voltou('teable');
         // sem esperar a geração antiga fechar: quem pediu a descoberta pode ser um pedido dela
         if (muda) trocarGeracao(configuracao.valores());
         clearTimeout(tentarDeNovo);
@@ -569,7 +575,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /* ---------- a seção Pessoas (#77): os membros do quadro × a tabela designers ---------- */
   const pessoas = criarPessoas({ db, copia, buscar: buscarNoTeable });
   /** Olha os membros do quadro e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
-  const verificarPessoas = () => pessoas.verificar(trello, env);
+  // a última verificação desta partida (com o erro e o que não respondeu); sem nenhuma, a guardada
+  let ultimaVerificacao = null;
+  const ultimaDasPessoas = () => ultimaVerificacao ?? pessoas.guardada();
+  const verificarPessoas = async () => {
+    const r = await pessoas.verificar(trello, env);
+    // #79: o Trello ou o Teable fora do ar ficam marcados (desde quando); o que respondeu, volta
+    for (const servico of ['trello', 'teable'])
+      if (r.falhou?.includes(servico)) fora.caiu(servico, r.motivo);
+      else if (r.falhou) fora.voltou(servico);
+    ultimaVerificacao = r;
+    return r;
+  };
   // na partida (depois de achar as tabelas) e uma vez por dia, sem depender de alguém abrir a Configuração
   const primeiraVerificacao = primeiraDescoberta.then(() => verificarPessoas()).catch(() => null);
   const verificacaoDiaria = agendar(() => verificarPessoas(), UM_DIA);
@@ -1282,14 +1299,42 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return { dias, claquetes: [...daFila, ...daProducao].filter((c) => c.trim()) };
   }
 
-  /** As seções da tela de Configuração como a tela lê, com o quadro do Trello lido uma vez só. */
+  /** O quadro do Trello de agora, com a cópia da última leitura (#79): com o Trello fora, valem os nomes dela. */
+  const lerOQuadroDeAgora = () => lerOQuadroComCopia(trello, env, { copia, fora }).then(conhecerQuadro);
+  /** O Teable fora do ar, como a tela lê: desde quando, e de quando são as tabelas que valem. */
+  const teableForaDoAr = () => {
+    const f = tabelas?.foraDoAr ? fora.estado('teable') : null;
+    return f && { servico: f.servico, desde: f.desde, lidoEm: tabelas.em ?? '' };
+  };
+
+  /**
+   * As seções da tela de Configuração como a tela lê, com o quadro do Trello lido uma vez só. Com o Trello fora do ar
+   * (#79), Praças, Card e Filmes vêm com o salvo e os nomes da última leitura, `foraDoAr` (desde quando) e nada ligado
+   * de novo pelo nome: a proposta é o salvo, e salvar é recusado até ele voltar.
+   */
   async function lerAsSecoes() {
-    const [lido, doCadastro] = await Promise.all([lerOQuadro(trello, env).then(conhecerQuadro), sessoesDoCadastro(cadastros)]);
+    const [lido, doCadastro] = await Promise.all([lerOQuadroDeAgora(), sessoesDoCadastro(cadastros)]);
     const salvos = configuracao.salvos();
-    const comErro = (secao) => (lido.erro ? { ...secao, erro: lido.erro } : secao);
+    // o que a tela mostra do Trello fora do ar (o motivo fica no log)
+    const trelloForaDoAr = lido.foraDoAr && { servico: lido.foraDoAr.servico, desde: lido.foraDoAr.desde, lidoEm: lido.foraDoAr.lidoEm };
+    const travada = (secao) => {
+      const comErro = lido.erro ? { ...secao, erro: lido.erro } : secao;
+      return trelloForaDoAr ? { ...comErro, proposta: comErro.salvo, foraDoAr: trelloForaDoAr } : comErro;
+    };
     const card = secaoDoCard(env, lido.quadro, { primeiraVez: !VARIAVEIS_DO_CARD.some((n) => salvos.has(n)) });
     const filmes = secaoDosFilmes(env, lido.quadro, { primeiraVez: !VARIAVEIS_DOS_FILMES.some((n) => salvos.has(n)), pracas, sessoes: doCadastro.sessoes, erroDasSessoes: doCadastro.erro });
-    return { pracas: await lerSecaoPracas(trello, env, lido), card: comErro(card), filmes: comErro(filmes), conexoes: conexoesDaTela(lido, tabelas, env) };
+    const daPraca = await lerSecaoPracas(trello, env, lido);
+    const teable = teableForaDoAr();
+    return {
+      pracas: travada(daPraca),
+      card: travada(card),
+      filmes: travada(filmes),
+      conexoes: {
+        ...conexoesDaTela(lido, tabelas, env),
+        ...(trelloForaDoAr ? { trelloForaDoAr } : {}),
+        ...(teable ? { teableForaDoAr: teable } : {}),
+      },
+    };
   }
 
   /**
@@ -1301,8 +1346,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const confirmacao = String(corpo?.confirmacao ?? '');
     const id = String(corpo?.quadro ?? corpo?.base ?? '').trim();
     if (!id || !/^[\w-]{1,64}$/.test(id) || (corpo.quadro !== undefined) === (corpo.base !== undefined)) return json(res, 400, { erro: 'Diga o quadro ou a base nova.' });
+    // com o serviço fora do ar (#79), a troca é recusada: sem ler o novo, nada é ligado de novo pelo nome
+    const ouForaDoAr = async (servico, ler) => {
+      try {
+        return { lidos: await ler() };
+      } catch (e) {
+        return { recusa: recusaForaDoAr(fora.caiu(servico, e instanceof Error ? e.message : String(e))) };
+      }
+    };
     if (corpo.quadro !== undefined) {
-      const novo = conhecer(conhecidos.quadros, await lerQuadros(trello)).find((q) => q.id === id);
+      const quadros = await ouForaDoAr('trello', () => lerQuadros(trello));
+      if (quadros.recusa) return json(res, 503, { erro: quadros.recusa });
+      const novo = conhecer(conhecidos.quadros, quadros.lidos).find((q) => q.id === id);
       if (!novo) return json(res, 404, { erro: 'Esse quadro não está entre os que o token do Trello enxerga.' });
       if (!confirmaATroca(confirmacao, novo.nome)) return json(res, 422, { erro: `Para trocar, digite o nome do quadro novo: ${novo.nome}.` });
       if (novo.id === String(env.TRELLO_QUADRO ?? '').trim()) return json(res, 200, await lerAsSecoes());
@@ -1312,7 +1367,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       mudarConfiguracao({ TRELLO_QUADRO: id, ...religarNoQuadroNovo(env, quadroNovo, velho, { sessoes }) }, { por: eu.email, quadro: velho });
       console.log(`[configuração] ${eu.email} trocou o quadro do Trello para "${novo.nome}": tudo ligado de novo pelo nome`);
     } else {
-      const nova = conhecer(conhecidos.bases, await descoberta.bases(configuracao.valores())).find((b) => b.id === id);
+      const bases = await ouForaDoAr('teable', () => descoberta.bases(configuracao.valores()));
+      if (bases.recusa) return json(res, 503, { erro: bases.recusa });
+      const nova = conhecer(conhecidos.bases, bases.lidos).find((b) => b.id === id);
       if (!nova) return json(res, 404, { erro: 'Essa base não está entre as que o token do Teable enxerga.' });
       if (!confirmaATroca(confirmacao, nova.nome)) return json(res, 422, { erro: `Para trocar, digite o nome da base nova: ${nova.nome}.` });
       if (nova.id !== String(env.TEABLE_PG_ESQUEMA ?? '').trim()) {
@@ -1400,7 +1457,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    */
   async function rotaDaConfiguracao(req, res, eu, caminho) {
     const acao = caminho.slice('/api/configuracao'.length);
-    const leituras = ['', '/quadros', '/bases', '/historico'];
+    const leituras = ['', '/quadros', '/bases', '/historico', '/portainer'];
     if (![...leituras, '/conferir', '/salvar', '/trocar', '/voltar'].includes(acao)) return json(res, 404, { erro: 'Não encontrado.' });
     if (req.method !== (leituras.includes(acao) ? 'GET' : 'POST')) return json(res, 405, { erro: 'Método não permitido.' });
     if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e mudam a Configuração.' });
@@ -1413,6 +1470,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (acao === '/quadros') return json(res, 200, { quadros: conhecer(conhecidos.quadros, await lerQuadros(trello)) });
       if (acao === '/bases') return json(res, 200, { bases: conhecer(conhecidos.bases, await descoberta.bases(configuracao.valores())) });
       if (acao === '/historico') return json(res, 200, { entradas: await historicoDaTela(eu) });
+      // "Pode apagar do Portainer" (#79): o que já tem valor salvo na tela (ou não é mais lido), o que ainda não e o que fica
+      if (acao === '/portainer') return json(res, 200, listaDoPortainer({ portainer, salvos: configuracao.salvos(), valores: configuracao.valores(), descoberta: tabelas }));
       const corpo = await lerCorpo(req).catch(() => null);
       if (acao === '/trocar') return await trocarAConexao(res, eu, corpo);
       if (acao === '/voltar') return await voltarNoHistorico(res, eu, corpo);
@@ -1423,7 +1482,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (corpo.card !== undefined && !card) return json(res, 400, { erro: 'O card veio incompleto.' });
       const filmesNovos = corpo.filmes === undefined ? null : filmesDoPedido(corpo);
       if (corpo.filmes !== undefined && !filmesNovos) return json(res, 400, { erro: 'Os filmes vieram incompletos.' });
-      const lido = conhecerQuadro(await lerOQuadro(trello, env));
+      const lido = await lerOQuadroDeAgora();
+      // com o Trello fora do ar (#79), Praças, Card e Filmes ficam travados: nada é conferido nem salvo
+      if (lido.foraDoAr) return json(res, 503, { erro: recusaForaDoAr(lido.foraDoAr) });
       const daPraca = pracas && (await conferirSecaoPracas(trello, env, pracas, await claquetesParaConferir(), lido));
       const doCard = card && conferirSecaoDoCard(env, lido.quadro, card);
       // a praça dos filmes é uma das praças que vão valer: as do pedido, quando as praças mudam junto
@@ -1471,12 +1532,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
   }
 
+  /** Pessoas com o Trello ou o Teable fora do ar (#79): qual (ou os dois) e desde quando (a primeira falha). */
+  function foraDasPessoas(verificacao) {
+    const caidos = (verificacao?.falhou ?? []).map((s) => fora.estado(s)).filter(Boolean);
+    if (!caidos.length) return null;
+    return { servico: caidos.map((f) => f.servico).join(' e '), desde: caidos.map((f) => f.desde).sort()[0] };
+  }
+
   /**
    * A seção Pessoas como a tela lê: os administradores (a chave-mestra marcada), quem já entrou no PROMeiro (para
    * escolher), as novidades do quadro (as pendentes e as ignoradas), quando foi a verificação e o erro dela. Cada
    * novidade diz se a pessoa é administradora (pelo e-mail da tabela, do Trello ou de quem entrou com o mesmo nome).
    */
   function estadoDasPessoas(eu, verificacao) {
+    const foraDoAr = foraDasPessoas(verificacao);
     const usuarios = q.todosOsUsuarios.all();
     // o nome de cada administrador: o de quem já entrou no PROMeiro ou, senão, o da tabela designers (pelo e-mail)
     const designers = (verificacao?.designers ?? []).filter((d) => d.email && d.nome).map((d) => ({ email: d.email, nome: d.nome }));
@@ -1496,6 +1565,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       ignoradas: ignoradas.map(comoATelaVe),
       verificadoEm: verificacao?.em ?? '',
       ...(verificacao?.erro ? { erro: verificacao.erro } : {}),
+      ...(foraDoAr ? { foraDoAr } : {}),
     };
   }
 
@@ -1520,11 +1590,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (entrou) pessoas.lembrarEmail(entrou.membro, corpo.email);
       mudarConfiguracao({ ADMINISTRADORES: JSON.stringify(r.salvos) }, { por: eu.email });
       console.log(`[pessoas] ${eu.email} ${acao === 'tirar' ? 'tirou' : 'pôs'} ${String(corpo.email).trim().toLowerCase()} ${acao === 'tirar' ? 'dos' : 'nos'} administradores`);
-      return json(res, 200, estadoDasPessoas(eu, pessoas.guardada()));
+      return json(res, 200, estadoDasPessoas(eu, ultimaDasPessoas()));
     }
     if (acao === 'desfazer') {
       pessoas.desfazer(chave);
-      return json(res, 200, estadoDasPessoas(eu, pessoas.guardada()));
+      return json(res, 200, estadoDasPessoas(eu, ultimaDasPessoas()));
     }
     if (!['cadastrar', 'inativar', 'ignorar'].includes(acao)) return json(res, 400, { erro: 'Ação desconhecida.' });
     const agora = await verificarPessoas();

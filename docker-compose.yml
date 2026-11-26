@@ -23,7 +23,8 @@ services:
       # o volume e o banco guardam o nome antigo de propósito: renomear faria o app subir vazio
       - roteirista-dados:/dados
     environment:
-      # As variáveis estão em blocos, na mesma ordem do stack.env.exemplo. Vazia = desligado.
+      # As variáveis estão em blocos, na mesma ordem do stack.env.exemplo. Vazia = desligado. Aqui ficam os segredos e
+      # a infraestrutura; onde as coisas estão no Trello e no Teable é da tela de Configuração do app (ADR 0007).
       # Nomes de campo das tabelas (TEABLE_CAMPO_*), a pasta do OneDrive (SFTP_PASTA) e a porta do SFTP (SFTP_PORTA)
       # têm padrão no código. Só se o seu Teable for diferente: acrescente a linha aqui, como as de baixo.
 
@@ -38,69 +39,17 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - BACKUPS=${BACKUPS:-14}
 
-      # ---- Teable: API (lê e grava com o mesmo token) ----
-      # os ids das tabelas são opcionais: o PROMeiro acha cada uma pelo nome na base (o id daqui vale, se for da base)
+      # ---- Teable (lê e grava com o mesmo token; o Postgres, só leitura) ----
       - TEABLE_URL=${TEABLE_URL:-}
       - TEABLE_TOKEN=${TEABLE_TOKEN:-}
-      - TEABLE_ATRACOES=${TEABLE_ATRACOES:-}
-      - TEABLE_CADASTRO=${TEABLE_CADASTRO:-}
-      - TEABLE_REDATORES=${TEABLE_REDATORES:-}
-      - TEABLE_EDITORES=${TEABLE_EDITORES:-}
-      - TEABLE_KEY_EDITORES=${TEABLE_KEY_EDITORES:-}
-      - TEABLE_KEY_REDATORES=${TEABLE_KEY_REDATORES:-}
-      - TEABLE_PAUTA=${TEABLE_PAUTA:-}
-      - TEABLE_ARTE_PRODUCAO=${TEABLE_ARTE_PRODUCAO:-}
-      - TEABLE_ACERVO=${TEABLE_ACERVO:-}
-
-      # ---- Teable: Postgres (só leitura) ----
-      # a base (bse…, o esquema); os nomes das tabelas no Postgres vêm do próprio Teable (Configuração → Conexões)
       - TEABLE_PG_URL=${TEABLE_PG_URL:-}
-      - TEABLE_PG_ESQUEMA=${TEABLE_PG_ESQUEMA:-}
-      # tabela dos filmes (id da API): o pôster do filme aparece no card da fila
-      - TEABLE_FILMES=${TEABLE_FILMES:-}
-      # o campo do pôster nos filmes e a tabela de exibições (id da API): onde o envio da aba Filmes grava
-      - TEABLE_FILMES_POSTER=${TEABLE_FILMES_POSTER:-}
-      - TEABLE_EXIBICOES=${TEABLE_EXIBICOES:-}
 
-      # ---- Cadastros ----
+      # ---- Administradores (a chave-mestra) ----
       - CADASTRO_ADMINS=${CADASTRO_ADMINS:-}
 
       # ---- Trello ----
       - TRELLO_KEY=${TRELLO_KEY:-}
       - TRELLO_TOKEN=${TRELLO_TOKEN:-}
-      - TRELLO_LISTA=${TRELLO_LISTA:-}
-      - TRELLO_LISTA_SP=${TRELLO_LISTA_SP:-}
-      - TRELLO_LISTA_RJ=${TRELLO_LISTA_RJ:-}
-      - TRELLO_LISTA_G5=${TRELLO_LISTA_G5:-}
-      - TRELLO_LISTA_INTER=${TRELLO_LISTA_INTER:-}
-      - TRELLO_SAIDA_SP=${TRELLO_SAIDA_SP:-}
-      - TRELLO_SAIDA_RJ=${TRELLO_SAIDA_RJ:-}
-      - TRELLO_SAIDA_G5=${TRELLO_SAIDA_G5:-}
-      - TRELLO_SAIDA_INTER=${TRELLO_SAIDA_INTER:-}
-      # o quadro da promo (opcional: a Configuração → Conexões escolhe e guarda) e a lista dos projetos entregues
-      - TRELLO_QUADRO=${TRELLO_QUADRO:-}
-      - TRELLO_LISTA_ENTREGUES=${TRELLO_LISTA_ENTREGUES:-}
-      - TRELLO_LISTA_VT=${TRELLO_LISTA_VT:-}
-      - TRELLO_CAMPO_PRACA=${TRELLO_CAMPO_PRACA:-}
-      - TRELLO_PRACAS=${TRELLO_PRACAS:-}
-      - TRELLO_CAMPO_REDATOR=${TRELLO_CAMPO_REDATOR:-}
-      - TRELLO_CAMPO_EDITOR=${TRELLO_CAMPO_EDITOR:-}
-      - TRELLO_CAMPO_PRIORIDADE=${TRELLO_CAMPO_PRIORIDADE:-}
-      - TRELLO_PRIORIDADE_ALTA=${TRELLO_PRIORIDADE_ALTA:-}
-      - TRELLO_CAMPO_PROJETO=${TRELLO_CAMPO_PROJETO:-}
-      - TRELLO_CAMPO_OUTPUT=${TRELLO_CAMPO_OUTPUT:-}
-      - TRELLO_CAMPO_BOT=${TRELLO_CAMPO_BOT:-}
-      - TRELLO_CAMPO_ENTRADA=${TRELLO_CAMPO_ENTRADA:-}
-      # o campo Complexidade e as opções BAIXA,MÉDIA,ALTA (IDs); vazios = o card sai sem o campo
-      - TRELLO_CAMPO_COMPLEXIDADE=${TRELLO_CAMPO_COMPLEXIDADE:-}
-      - TRELLO_COMPLEXIDADE_OPCOES=${TRELLO_COMPLEXIDADE_OPCOES:-}
-      - TRELLO_CAMPOS_FILME=${TRELLO_CAMPOS_FILME:-}
-      # os cards de filme da aba Filmes: a lista (sem ela, o Enviar fica desligado), as etiquetas, a praça e a prioridade MÉDIA
-      - TRELLO_LISTA_FILMES=${TRELLO_LISTA_FILMES:-}
-      - TRELLO_FILMES_ETIQUETAS=${TRELLO_FILMES_ETIQUETAS:-}
-      - TRELLO_FILMES_ETIQUETAS_SESSAO=${TRELLO_FILMES_ETIQUETAS_SESSAO:-}
-      - TRELLO_FILMES_PRACA=${TRELLO_FILMES_PRACA:-}
-      - TRELLO_PRIORIDADE_MEDIA=${TRELLO_PRIORIDADE_MEDIA:-}
 
       # ---- OneDrive (cópia do arquivo original, por SFTP) ----
       - SFTP_HOST=${SFTP_HOST:-}
@@ -113,6 +62,53 @@ services:
 
       # ---- n8n: a aba Filmes (a leitura da prévia por IA; vazia, a aba fica desligada) ----
       - N8N_FILMES_LER=${N8N_FILMES_LER:-}
+
+      # ---- Opcionais: pode ficar vazia: a Configuração do app guarda ----
+      # Cada uma vale só enquanto a tela não tiver um valor salvo para ela (na primeira vez, a tela começa com estas).
+      # Ficam aqui para quem ainda as tem no Portainer; a página "Pode apagar do Portainer" diz quais já podem sair.
+      - TEABLE_PG_ESQUEMA=${TEABLE_PG_ESQUEMA:-}
+      - TEABLE_CADASTRO=${TEABLE_CADASTRO:-}
+      - TEABLE_ATRACOES=${TEABLE_ATRACOES:-}
+      - TEABLE_REDATORES=${TEABLE_REDATORES:-}
+      - TEABLE_KEY_REDATORES=${TEABLE_KEY_REDATORES:-}
+      - TEABLE_EDITORES=${TEABLE_EDITORES:-}
+      - TEABLE_KEY_EDITORES=${TEABLE_KEY_EDITORES:-}
+      - TEABLE_PAUTA=${TEABLE_PAUTA:-}
+      - TEABLE_ARTE_PRODUCAO=${TEABLE_ARTE_PRODUCAO:-}
+      - TEABLE_ACERVO=${TEABLE_ACERVO:-}
+      - TEABLE_FILMES=${TEABLE_FILMES:-}
+      - TEABLE_EXIBICOES=${TEABLE_EXIBICOES:-}
+      - TEABLE_FILMES_POSTER=${TEABLE_FILMES_POSTER:-}
+      - TRELLO_QUADRO=${TRELLO_QUADRO:-}
+      - TRELLO_LISTA=${TRELLO_LISTA:-}
+      - TRELLO_LISTA_SP=${TRELLO_LISTA_SP:-}
+      - TRELLO_LISTA_RJ=${TRELLO_LISTA_RJ:-}
+      - TRELLO_LISTA_G5=${TRELLO_LISTA_G5:-}
+      - TRELLO_LISTA_INTER=${TRELLO_LISTA_INTER:-}
+      - TRELLO_SAIDA_SP=${TRELLO_SAIDA_SP:-}
+      - TRELLO_SAIDA_RJ=${TRELLO_SAIDA_RJ:-}
+      - TRELLO_SAIDA_G5=${TRELLO_SAIDA_G5:-}
+      - TRELLO_SAIDA_INTER=${TRELLO_SAIDA_INTER:-}
+      - TRELLO_LISTA_VT=${TRELLO_LISTA_VT:-}
+      - TRELLO_LISTA_ENTREGUES=${TRELLO_LISTA_ENTREGUES:-}
+      - TRELLO_CAMPO_PRACA=${TRELLO_CAMPO_PRACA:-}
+      - TRELLO_PRACAS=${TRELLO_PRACAS:-}
+      - TRELLO_CAMPO_REDATOR=${TRELLO_CAMPO_REDATOR:-}
+      - TRELLO_CAMPO_EDITOR=${TRELLO_CAMPO_EDITOR:-}
+      - TRELLO_CAMPO_PRIORIDADE=${TRELLO_CAMPO_PRIORIDADE:-}
+      - TRELLO_PRIORIDADE_ALTA=${TRELLO_PRIORIDADE_ALTA:-}
+      - TRELLO_PRIORIDADE_MEDIA=${TRELLO_PRIORIDADE_MEDIA:-}
+      - TRELLO_CAMPO_COMPLEXIDADE=${TRELLO_CAMPO_COMPLEXIDADE:-}
+      - TRELLO_COMPLEXIDADE_OPCOES=${TRELLO_COMPLEXIDADE_OPCOES:-}
+      - TRELLO_CAMPO_PROJETO=${TRELLO_CAMPO_PROJETO:-}
+      - TRELLO_CAMPO_OUTPUT=${TRELLO_CAMPO_OUTPUT:-}
+      - TRELLO_CAMPO_BOT=${TRELLO_CAMPO_BOT:-}
+      - TRELLO_CAMPO_ENTRADA=${TRELLO_CAMPO_ENTRADA:-}
+      - TRELLO_CAMPOS_FILME=${TRELLO_CAMPOS_FILME:-}
+      - TRELLO_LISTA_FILMES=${TRELLO_LISTA_FILMES:-}
+      - TRELLO_FILMES_ETIQUETAS=${TRELLO_FILMES_ETIQUETAS:-}
+      - TRELLO_FILMES_ETIQUETAS_SESSAO=${TRELLO_FILMES_ETIQUETAS_SESSAO:-}
+      - TRELLO_FILMES_PRACA=${TRELLO_FILMES_PRACA:-}
       - FILMES_INTERVALO_MS=${FILMES_INTERVALO_MS:-}
       - FILMES_TEMPO_MS=${FILMES_TEMPO_MS:-}
 

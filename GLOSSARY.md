@@ -138,7 +138,21 @@ erro, nada é salvo. Segredos e infraestrutura ficam no Portainer. No celular, s
 seção, também as ações de Pessoas e a troca do quadro ou da base) entra no **histórico**: quem, quando, o antigo → o
 novo pelos nomes. **Voltar** a uma linha aplica na hora os valores de antes dela, depois da mesma conferência; o que
 não passa (a lista antiga foi arquivada) fica travado, com o porquê.
+A migração do Portainer é gradual (ADR 0007): o valor salvo na tela vale; sem ele, vale o do Portainer, e na primeira
+vez a tela começa com os valores de lá. A página **Pode apagar do Portainer** (no rodapé) separa as variáveis que o
+Portainer ainda tem em três grupos: **pode apagar** (o valor já está salvo na tela, ou o PROMeiro não lê mais; com
+"Copiar os nomes"), **ainda não** (sem valor salvo: a do Portainer continua valendo) e **ficam** (segredos,
+infraestrutura e a chave-mestra CADASTRO_ADMINS).
 _Evitar_: ajustes, painel de controle
+
+**Fora do ar** (na Configuração):
+O Trello ou o Teable que não responde. A seção que depende dele mostra o que está salvo com os nomes da **última
+leitura** (o PROMeiro guarda no SQLite cada leitura do quadro, com as listas, os campos, as opções e as etiquetas, e
+cada descoberta das tabelas), diz numa linha desde quando ele não responde e fica **travada**: sem ler, nada é
+conferido, e sem conferir, nada é salvo (a API recusa). Com o Trello fora, travam Praças, Card, Filmes, trocar o
+quadro e, em Pessoas, cadastrar e marcar inativo; com o Teable fora, trocar a base e, em Pessoas, as mesmas ações. O
+resto continua (os administradores, o histórico). Quando ele volta, a próxima leitura destrava.
+_Evitar_: offline, indisponível
 
 **Ligado pelo nome**:
 O PROMeiro procura no quadro o que tem o nome esperado (sem caixa, acento e pontuação: a lista "SP ENTRADA", o campo
@@ -151,6 +165,12 @@ campo limpa as opções que não são do campo novo, e o nome liga de novo as qu
 FILME no nome, a etiqueta "FILME" e a etiqueta de cada **sessão de filme** pelo nome dela (Corujão → "CORUJAO"); a
 sessão sem etiqueta também é exceção. A praça dos cards de filme não é pelo nome: é escolhida entre as praças.
 _Evitar_: mapeamento, vínculo automático
+
+**Exceção** (na Configuração):
+O que precisa de alguém numa seção: o que o nome não achou, o que achou em dobro, o id guardado que sumiu do quadro (ou
+cuja lista foi arquivada) e o que foi **ligado à mão**. É o que a seção mostra; o que foi achado pelo nome fica no "ver
+tudo", e a linha de estado diz "tudo ligado" quando não há nenhuma.
+_Evitar_: erro, pendência (a pendência é do roteiro)
 
 **Conexões**:
 O quadro do Trello e a **base** do Teable em que o PROMeiro trabalha, recolhidos no fim da **Configuração**. Trocar um

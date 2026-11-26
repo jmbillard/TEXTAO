@@ -48,6 +48,8 @@
 .cfg-praca.alvo { box-shadow: inset 0 2px 0 var(--ultra); }
 .cfg-praca.aberta { background: color-mix(in srgb, var(--neutro) 45%, var(--cartao)); }
 .cfg-praca-linha { display: grid; grid-template-columns: 18px 58px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; }
+/* sem a alça (o Trello fora do ar, #79): a sigla na primeira coluna */
+.cfg-praca-linha.sem-alca { grid-template-columns: 58px minmax(0, 1fr) auto; }
 .no-celular .cfg-praca-linha { grid-template-columns: 50px minmax(0, 1fr); }
 .cfg-alca { border: 0; background: none; color: var(--tinta3); cursor: grab; display: grid; place-items: center; padding: 0; height: 28px; border-radius: 6px; }
 .cfg-alca:focus-visible { outline: 2px solid var(--ultra); }
@@ -296,3 +298,25 @@ h3.cfg-modal-rotulo { margin: 22px 0 6px; }
 .no-celular .cfg-hist-q small::before { content: '· '; }
 .no-celular .cfg-hist tr.voltou { background: color-mix(in srgb, var(--ok) 6%, var(--papel)); }
 .no-celular .cfg-hist tr.voltou td { background: none; }
+
+/* ---------- fora do ar (#79): a linha curta de quando o Trello ou o Teable não responde ---------- */
+.cfg-fora { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 500 13.5px/1.45 var(--sans); }
+.cfg-fora svg { flex: none; transform: translateY(2px); }
+.cfg-fora b { font-weight: 700; }
+.cfg-conexoes .cfg-fora + .cfg-fora { margin-top: -4px; }
+
+/* ---------- "Pode apagar do Portainer" (#79) ---------- */
+.cfg-port { padding: 6px 22px 20px; }
+.cfg-port-grupo h3 { font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta3); margin: 18px 0 4px; display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.cfg-port-grupo h3 .espaco { flex: 1; }
+.cfg-port-copiar { height: 32px; display: inline-flex; align-items: center; gap: 6px; letter-spacing: 0; text-transform: none; }
+.cfg-port-linha { margin: 0 0 10px; font: 400 13px var(--sans); color: var(--tinta2); }
+.cfg-vars { display: flex; flex-wrap: wrap; gap: 6px; }
+.cfg-vars code { font: 500 12px var(--mono); padding: 3px 8px; border-radius: 6px; background: var(--cartao); border: 1px solid var(--regua-forte); color: var(--tinta2); display: inline-flex; align-items: center; gap: 5px; overflow-wrap: anywhere; }
+.cfg-vars code.pode { border-color: color-mix(in srgb, var(--ok) 40%, var(--regua)); background: var(--ok-fundo); color: var(--ok); }
+.cfg-vars code.fica { background: var(--neutro); border-color: transparent; color: var(--tinta3); }
+.cfg-port-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.cfg-port-lista li { display: flex; flex-direction: column; gap: 6px; }
+.cfg-port-lista code.nao-ainda { border-style: dashed; color: var(--tinta2); background: none; }
+.cfg-port-lista small { font: 500 12.5px var(--sans); color: var(--tinta3); }
+.no-celular .cfg-port { padding: 2px 16px 16px; }

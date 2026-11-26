@@ -963,6 +963,13 @@ export const reabrirDuplicada = (id: string) => pedir<{ ok: true }>('/api/duplic
 import type { ConferenciaDasPracas, EstadoDasPracas, LigacoesDasPracas, QuadroLido } from '../modelo/ligarPeloNome';
 import type { EstadoDoCard, LigacoesDoCard } from '../modelo/ligarOCard';
 import type { EstadoDosFilmes, LigacoesDosFilmes } from '../modelo/ligarOsFilmes';
+/** O Trello ou o Teable fora do ar (#79): desde quando não responde e de quando são os nomes que valem ('' = nenhuma
+    leitura guardada). A parte que depende dele fica travada. */
+export interface ForaDoAr {
+  servico: string;
+  desde: string;
+  lidoEm: string;
+}
 /** A seção Praças como o servidor manda: o salvo, a proposta (o salvo com o que o nome acha um só), o estado e o
     quadro lido do Trello (as listas e os campos). Sem quadro, `erro` diz o que falta. */
 export interface SecaoPracas {
@@ -972,6 +979,8 @@ export interface SecaoPracas {
   estado: EstadoDasPracas | null;
   quadro: (QuadroLido & { id: string; de: 'variavel' | 'lista' }) | null;
   erro?: string;
+  /** o Trello fora do ar (#79): o salvo com os nomes da última leitura, e a edição travada */
+  foraDoAr?: ForaDoAr;
 }
 /** A seção Card (#74) como o servidor manda: o salvo, a proposta e o estado (o quadro é o mesmo das praças). */
 export interface SecaoCard {
@@ -980,6 +989,7 @@ export interface SecaoCard {
   proposta: LigacoesDoCard;
   estado: EstadoDoCard | null;
   erro?: string;
+  foraDoAr?: ForaDoAr;
 }
 /** A seção Filmes (#75) como o servidor manda: o salvo, a proposta e o estado (o quadro é o mesmo das praças). Sem o
     cadastro de atrações, `avisoDasSessoes` diz que as sessões são só as já salvas. */
@@ -990,6 +1000,7 @@ export interface SecaoFilmes {
   estado: EstadoDosFilmes | null;
   avisoDasSessoes?: string;
   erro?: string;
+  foraDoAr?: ForaDoAr;
 }
 /** As Conexões (#76): o quadro do Trello e a base do Teable de agora, as tabelas achadas pelo nome na base e o aviso
     do topo (a tabela ou a coluna que falta). Com o Teable fora, `foraDoAr` e as tabelas da última leitura. */
@@ -1002,6 +1013,9 @@ export interface ConexoesDaConfiguracao {
   lidasEm?: string;
   foraDoAr?: string;
   semTeable?: string;
+  /** #79: o Trello (trocar o quadro trava) e o Teable (trocar a base trava) fora do ar, desde quando */
+  trelloForaDoAr?: ForaDoAr;
+  teableForaDoAr?: ForaDoAr;
 }
 export interface SecoesDaConfiguracao {
   pracas: SecaoPracas;
@@ -1050,6 +1064,8 @@ export interface PessoasDaConfiguracao {
   ignoradas: NovidadeDoQuadro[];
   verificadoEm: string;
   erro?: string;
+  /** #79: o Trello, o Teable (ou os dois) fora do ar, desde quando: cadastrar e marcar inativo ficam travados */
+  foraDoAr?: { servico: string; desde: string };
 }
 export type AcaoNasPessoas =
   | { acao: 'administrador'; email: string; chave?: string }
@@ -1081,6 +1097,18 @@ export async function voltarNoHistorico(id: number): Promise<EntradaDoHistorico[
   if (r.pracas) registrarPracas(r.pracas);
   return r.entradas;
 }
+/** Uma variável na página "Pode apagar do Portainer" (#79), com o porquê. */
+export interface VariavelDoPortainer {
+  nome: string;
+  porque: string;
+}
+/** O que pode sair do Portainer (o valor já está salvo na tela, ou não é mais lido), o que ainda não e o que fica. */
+export interface ListaDoPortainer {
+  podeApagar: VariavelDoPortainer[];
+  aindaNao: VariavelDoPortainer[];
+  ficam: VariavelDoPortainer[];
+}
+export const lerListaDoPortainer = () => pedir<ListaDoPortainer>('/api/configuracao/portainer');
 /** Confere sem salvar nada. */
 export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify(m) });
 /** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */

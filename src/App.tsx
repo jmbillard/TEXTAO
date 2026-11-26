@@ -5,6 +5,7 @@ import { Cadastros, type AtracaoNova } from './ui/Cadastros';
 import { Filmes } from './ui/Filmes';
 import { Configuracao } from './ui/Configuracao';
 import { HistoricoDaConfiguracao } from './ui/HistoricoDaConfiguracao';
+import { PortainerDaConfiguracao } from './ui/PortainerDaConfiguracao';
 import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
@@ -28,7 +29,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -54,6 +55,7 @@ const telaDoHash = (): Tela => {
   if (f) return { t: 'filmes', id: f[1] ? decodeURIComponent(f[1]) : undefined };
   if (/^#\/configuracao\/?$/.test(location.hash)) return { t: 'configuracao' };
   if (/^#\/configuracao\/historico\/?$/.test(location.hash)) return { t: 'configuracao', pagina: 'historico' };
+  if (/^#\/configuracao\/portainer\/?$/.test(location.hash)) return { t: 'configuracao', pagina: 'portainer' };
   const c = /^#\/cadastros(?:\/(atracoes|redatores|editores))?$/.exec(location.hash);
   return c ? { t: 'cadastros', aba: (c[1] as TipoCadastro | undefined) ?? 'atracoes' } : { t: 'biblioteca' };
 };
@@ -454,8 +456,9 @@ export function App() {
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
       <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
-      {tela.t === 'configuracao' && souAdministrador() && !tela.pagina && <Configuracao voltar={() => ir({ t: 'biblioteca' })} historico={() => ir({ t: 'configuracao', pagina: 'historico' })} avisar={avisar} />}
+      {tela.t === 'configuracao' && souAdministrador() && !tela.pagina && <Configuracao voltar={() => ir({ t: 'biblioteca' })} historico={() => ir({ t: 'configuracao', pagina: 'historico' })} portainer={() => ir({ t: 'configuracao', pagina: 'portainer' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'historico' && <HistoricoDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
+      {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'portainer' && <PortainerDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key }} />}
 
       <DesenhosDeCursor />

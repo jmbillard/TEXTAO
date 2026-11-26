@@ -29,6 +29,11 @@
 // O Histórico (#78), claro e escuro: pelo rodapé da Configuração; as mudanças (Pessoas e Praças, pela API como a tela
 // faz) com quem, quando e o antigo → o novo pelos nomes; voltar travado (a lista antiga foi arquivada) com o porquê;
 // voltar que vale na hora e entra no histórico. No celular, só consulta.
+// Fora do ar (#79), claro e escuro: com o Trello fora, Praças, Card e Filmes mostram o salvo com os nomes da última
+// leitura, a linha "O Trello não responde desde…" e nada para mudar (salvar pela API é recusado); com o Teable fora, as
+// Conexões travam trocar a base. "Pode apagar do Portainer", pelo rodapé: o que pode sair (as variáveis das praças,
+// salvas na tela, e as que o código não lê mais), com "Copiar os nomes"; o que ainda não; o que fica. No celular, os
+// dois, só consulta.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:configuracao
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -172,10 +177,13 @@ const designersDoComeco = () => [
 ];
 const DESIGNERS = designersDoComeco();
 const pedidosAoTrello = [];
+// #79: o Trello fora do ar responde 503 a tudo
+let trelloFora = false;
 async function buscar(url, init = {}) {
   const u = new URL(url);
   const metodo = init.method ?? 'GET';
   pedidosAoTrello.push(`${metodo} ${u.pathname}`);
+  if (trelloFora) return { ok: false, status: 503, json: async () => ({}), text: async () => 'Service Unavailable' };
   const ok = (dados) => ({ ok: true, status: 200, json: async () => dados, text: async () => '' });
   // a única escrita: a opção da praça nova no campo Praça
   if (metodo === 'POST' && u.pathname === '/1/customField/cPraca/options') {
@@ -1056,6 +1064,149 @@ async function historicoNoCelular(navegador, url, app, teable, tema) {
   console.log(`ok: histórico no celular ${nome}: as mudanças, só consulta`);
 }
 
+/* ---------- fora do ar e "Pode apagar do Portainer" (#79) ---------- */
+
+/** Tudo no Portainer e uma leitura do quadro com o Trello de pé (fica guardada); depois o Trello cai. */
+async function derrubarOTrello(app, url, teable) {
+  await voltarAoPortainer(app, teable);
+  await comoLia(url, '/api/configuracao');
+  trelloFora = true;
+}
+async function levantar(app) {
+  trelloFora = false;
+  await app.verificarPessoas();
+}
+
+async function foraDoAr(navegador, url, app, teable, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await derrubarOTrello(app, url, teable);
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+  await p.locator('.cfg-praca').first().waitFor();
+  // cada seção do quadro: a linha de estado diz, a linha curta diz desde quando e de quando são os nomes
+  for (const secao of [PRACAS, CARD, FILMES]) {
+    assert.match(await resumo(p, secao), /· Trello fora do ar$/);
+    assert.match((await p.locator(`${secao} .cfg-fora`).textContent()).replace(/\s+/g, ' '), /^O Trello não responde desde hoje, \d\d:\d\d\. Vale a última leitura \(hoje, \d\d:\d\d\)\. Mudar fica travado até ele voltar\.$/);
+  }
+  // nada para mudar: sem "+ Nova praça", sem Escolher, regras que não abrem, a praça dos filmes parada, sem barra
+  assert.equal(await p.locator('.cfg-mais', { hasText: 'Nova praça' }).count(), 0);
+  assert.equal(await p.locator('.cfg-exc .botao', { hasText: 'Escolher' }).count(), 0);
+  assert.equal(await p.locator('.cfg-alca').count(), 0);
+  assert.equal(await p.locator(`${FILMES} .cfg-filmes-praca button:not([disabled])`).count(), 0);
+  assert.equal(await barra(p), '');
+  // os nomes são os da última leitura
+  await p.locator(`${PRACAS} .cfg-ver-tudo`).click();
+  assert.match(await p.locator(PRACAS).textContent(), /SP ENTRADA/);
+  await semRolagemDeLado(p, `fora do ar ${nome}`);
+  await p.evaluate(() => scrollTo(0, 0));
+  await capturar(p, `70-fora-do-ar-${nome}`);
+  // salvar pela API é recusado
+  const { pracas } = await comoLia(url, '/api/configuracao');
+  const r = await fetch(new URL('/api/configuracao/salvar', url), { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ pracas: pracas.proposta }) });
+  assert.equal(r.status, 503);
+  assert.match((await r.json()).erro, /Trello está fora do ar/);
+  // as Conexões: trocar o quadro travado; com o Teable fora também, trocar a base
+  teable.estado.fora = true;
+  await p.reload();
+  await p.locator(CONEXOES).waitFor();
+  await p.locator(`${CONEXOES} .cfg-ver-tudo`).click();
+  assert.deepEqual((await textos(p.locator(`${CONEXOES} .cfg-fora b`))), ['O Trello não responde', 'O Teable não responde']);
+  for (const linha of ['Quadro do Trello', 'Base do Teable']) assert.equal(await p.locator(`${CONEXOES} .cfg-con-l`, { hasText: linha }).locator('.botao').isDisabled(), true);
+  // o que não depende deles continua: os administradores
+  assert.match(await resumo(p, PESSOAS), /fora do ar/);
+  await p.locator(CONEXOES).scrollIntoViewIfNeeded();
+  await capturar(p, `71-fora-do-ar-conexoes-${nome}`);
+  teable.estado.fora = false;
+  await app.descobrirAsTabelas();
+  await levantar(app);
+  // de volta: a seção destrava
+  await p.reload();
+  await p.locator('.cfg-praca').first().waitFor();
+  assert.equal(await p.locator(`${PRACAS} .cfg-fora`).count(), 0);
+  assert.equal(await p.locator('.cfg-mais', { hasText: 'Nova praça' }).count(), 1);
+  assert.deepEqual(erros, [], `fora do ar ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: fora do ar ${nome}: os nomes da última leitura, desde quando, tudo travado, salvar recusado; de volta, destrava`);
+}
+
+async function foraDoArNoCelular(navegador, url, app, teable, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await derrubarOTrello(app, url, teable);
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+  await p.locator('.cfg-praca').first().waitFor();
+  assert.match(await p.locator(`${PRACAS} .cfg-fora`).textContent(), /O Trello não responde/);
+  await semRolagemDeLado(p, `fora do ar no celular ${nome}`);
+  await capturar(p, `72-fora-do-ar-celular-${nome}`);
+  assert.deepEqual(erros, [], `fora do ar no celular ${nome}: erros na página`);
+  await ctx.close();
+  await levantar(app);
+  console.log(`ok: fora do ar no celular ${nome}: a linha curta, só consulta`);
+}
+
+const PORT = '.cfg-port';
+const doGrupo = (p, grupo) => p.locator(`${PORT} [data-grupo="${grupo}"] code`).allTextContents();
+/** As praças salvas na tela (o nome da SP mudou): as variáveis delas podem sair do Portainer. */
+async function salvarAsPracas(app, url, teable) {
+  await voltarAoPortainer(app, teable);
+  const { pracas } = await comoLia(url, '/api/configuracao');
+  await comoLia(url, '/api/configuracao/salvar', { pracas: { ...pracas.proposta, pracas: pracas.proposta.pracas.map((x) => (x.sigla === 'SP' ? { ...x, nome: 'São Paulo' } : x)) } });
+}
+
+async function portainer(navegador, url, app, teable, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await salvarAsPracas(app, url, teable);
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema, permissions: ['clipboard-read', 'clipboard-write'] });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+  // ligado pelo rodapé da Configuração
+  await p.locator('.cfg-rodape button', { hasText: 'Pode apagar do Portainer' }).click();
+  await p.locator(PORT).waitFor();
+  assert.equal(new URL(p.url()).hash, '#/configuracao/portainer');
+  assert.equal((await p.locator('.cfg-cabeca h1').textContent()).trim(), 'Portainer');
+  // pode apagar: as das praças (salvas na tela); ainda não: as do card e dos filmes (sem valor salvo); ficam: os segredos
+  const pode = await doGrupo(p, 'pode');
+  for (const v of ['TRELLO_LISTA_SP', 'TRELLO_SAIDA_INTER', 'TRELLO_PRACAS', 'TRELLO_CAMPO_PRACA']) assert.ok(pode.includes(v), `pode apagar ${v}`);
+  const ainda = await doGrupo(p, 'nao-ainda');
+  for (const v of ['TRELLO_LISTA_FILMES', 'TRELLO_CAMPO_PRIORIDADE', 'TEABLE_PG_ESQUEMA']) assert.ok(ainda.includes(v), `ainda não ${v}`);
+  assert.ok(!ainda.some((v) => pode.includes(v)));
+  assert.match(await p.locator(`${PORT} [data-grupo="nao-ainda"] li`, { hasText: 'TRELLO_LISTA_FILMES' }).textContent(), /^sem valor salvo em Filmes/);
+  const ficam = await doGrupo(p, 'fica');
+  for (const v of ['TRELLO_KEY', 'TRELLO_TOKEN', 'TEABLE_TOKEN', 'CADASTRO_ADMINS']) assert.ok(ficam.includes(v), `fica ${v}`);
+  assert.deepEqual(await textos(p.locator(`${PORT} .cfg-port-linha`)), [
+    'O valor já está salvo na tela, ou o PROMeiro não lê mais.',
+    'Sem valor salvo na tela: a do Portainer continua valendo.',
+    'Segredos e infraestrutura: o lugar delas é o Portainer.',
+  ]);
+  // copiar os nomes: um por linha
+  await p.locator('.cfg-port-copiar').click();
+  await p.locator('.aviso', { hasText: 'nomes copiados' }).waitFor();
+  assert.deepEqual((await p.evaluate(() => navigator.clipboard.readText())).split('\n'), pode);
+  await semRolagemDeLado(p, `portainer ${nome}`);
+  await capturar(p, `80-portainer-${nome}`);
+  await p.locator('.voltar-cad', { hasText: 'Configuração' }).click();
+  await p.locator('.cfg-praca').first().waitFor();
+  assert.deepEqual(erros, [], `portainer ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: portainer ${nome}: pelo rodapé, pode apagar (com copiar), ainda não e ficam`);
+}
+
+async function portainerNoCelular(navegador, url, app, teable, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await salvarAsPracas(app, url, teable);
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema }, { hash: '#/configuracao/portainer' });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+  await p.locator(PORT).waitFor();
+  assert.ok((await doGrupo(p, 'pode')).includes('TRELLO_LISTA_SP'));
+  await semRolagemDeLado(p, `portainer no celular ${nome}`);
+  await capturar(p, `81-portainer-celular-${nome}`);
+  assert.deepEqual(erros, [], `portainer no celular ${nome}: erros na página`);
+  await ctx.close();
+  await voltarAoPortainer(app, teable);
+  console.log(`ok: portainer no celular ${nome}: os três grupos, sem rolar para o lado`);
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   // o cadastro de atrações do Teable, de mentira: só a leitura das sessões de filme (#75)
@@ -1098,6 +1249,10 @@ async function principal() {
     for (const tema of ['light', 'dark']) await pessoasNoCelular(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await historico(navegador, s.url, s.app, teable, tema);
     for (const tema of ['light', 'dark']) await historicoNoCelular(navegador, s.url, s.app, teable, tema);
+    for (const tema of ['light', 'dark']) await foraDoAr(navegador, s.url, s.app, teable, tema);
+    for (const tema of ['light', 'dark']) await foraDoArNoCelular(navegador, s.url, s.app, teable, tema);
+    for (const tema of ['light', 'dark']) await portainer(navegador, s.url, s.app, teable, tema);
+    for (const tema of ['light', 'dark']) await portainerNoCelular(navegador, s.url, s.app, teable, tema);
   } finally {
     await navegador.close();
     await s.descer();

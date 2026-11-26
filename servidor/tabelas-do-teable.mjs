@@ -67,7 +67,7 @@ export function criarDescoberta({ copia, buscar = fetch }) {
     /**
      * Acha as tabelas na base, lê os campos de cada uma e confere as colunas. Guarda o resultado (sem os campos).
      * Com o Teable fora do ar, devolve a última guardada desta base, com `foraDoAr`.
-     * @returns { base, nomeDaBase, tabelas: TabelaLigada[], avisos, poster, em, foraDoAr? } ou null sem o Teable/a base
+     * @returns { base, nomeDaBase, tabelas: TabelaLigada[], avisos, poster, posterPeloNome (o que o nome acha, sem a variável), em, foraDoAr? } ou null sem o Teable/a base
      */
     async descobrir(valores) {
       const { url, token, base } = doTeable(valores);
@@ -94,14 +94,15 @@ export function criarDescoberta({ copia, buscar = fetch }) {
         );
         // o campo do pôster: o da variável, se é um campo da tabela filmes; senão o de anexo chamado "poster"
         const doPoster = (campos.filmes ?? []).filter((c) => c.type === 'attachment');
-        const poster = doPoster.find((c) => c.id === limpo(valores.TEABLE_FILMES_POSTER))?.id ?? doPoster.find((c) => nomeComparavel(c.name) === nomeComparavel(CAMPO_DO_POSTER))?.id ?? '';
+        const posterPeloNome = doPoster.find((c) => nomeComparavel(c.name) === nomeComparavel(CAMPO_DO_POSTER))?.id ?? '';
+        const poster = doPoster.find((c) => c.id === limpo(valores.TEABLE_FILMES_POSTER))?.id ?? posterPeloNome;
         let nomeDaBase = antes?.nomeDaBase ?? '';
         try {
           nomeDaBase = (await pedir(valores, `/base/${encodeURIComponent(base)}`))?.name ?? nomeDaBase;
         } catch {
           // o nome da base é só para a tela
         }
-        const feita = { base, nomeDaBase: String(nomeDaBase), tabelas, avisos: avisosDasTabelas(tabelas, campos), poster, em: new Date().toISOString() };
+        const feita = { base, nomeDaBase: String(nomeDaBase), tabelas, avisos: avisosDasTabelas(tabelas, campos), poster, posterPeloNome, em: new Date().toISOString() };
         for (const t of tabelas) if (t.variavelFora) console.warn(`[tabelas] ${TABELAS_DO_TEABLE.find((x) => x.nome === t.nome).variavel} aponta para uma tabela que não está na base: ${t.id ? 'achei pelo nome' : 'não achei'} a ${t.nome}.`);
         copia?.guardar(GUARDADA, feita);
         return feita;

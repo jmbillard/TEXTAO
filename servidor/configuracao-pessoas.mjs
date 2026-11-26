@@ -87,23 +87,25 @@ export function criarPessoas({ db, copia, buscar = fetch }) {
   return {
     /**
      * Lê os membros do quadro e a tabela designers e guarda o que mudou. Com o Trello ou o Teable fora, guarda o erro
-     * e mantém as novidades da última verificação que deu certo.
-     * @returns { em, novidades, designers, erro? }
+     * e mantém as novidades da última verificação que deu certo; `falhou` diz qual não respondeu ('trello', 'teable').
+     * @returns { em, novidades, designers, falhou, erro?, motivo? }
      */
     async verificar(trello, env) {
       const antes = copia.ler(GUARDADA)?.dados ?? null;
       const semPoder = falta(trello, env);
       if (semPoder) return { em: '', novidades: [], designers: [], erro: semPoder };
-      try {
-        const [membros, designers] = await Promise.all([lerMembros(trello, env), lerDesigners(env)]);
-        const feita = { em: new Date().toISOString(), novidades: novidadesDoQuadro(membros, designers), designers };
+      const [membros, designers] = await Promise.allSettled([lerMembros(trello, env), lerDesigners(env)]);
+      if (membros.status === 'fulfilled' && designers.status === 'fulfilled') {
+        const feita = { em: new Date().toISOString(), novidades: novidadesDoQuadro(membros.value, designers.value), designers: designers.value };
         copia.guardar(GUARDADA, feita);
-        return feita;
-      } catch (e) {
-        const motivo = e instanceof Error ? e.message : String(e);
-        console.warn(`[pessoas] não consegui ver os membros do quadro: ${motivo}`);
-        return { ...(antes ?? { em: '', novidades: [], designers: [] }), erro: `Não consegui ver o quadro do Trello e a tabela designers do Teable: ${motivo}.` };
+        return { ...feita, falhou: [] };
       }
+      // #79: qual não respondeu (o Trello, o Teable ou os dois), para a tela dizer desde quando e travar o que grava
+      const falhou = [membros.status === 'rejected' && 'trello', designers.status === 'rejected' && 'teable'].filter(Boolean);
+      const e = membros.status === 'rejected' ? membros.reason : designers.reason;
+      const motivo = e instanceof Error ? e.message : String(e);
+      console.warn(`[pessoas] não consegui ver os membros do quadro: ${motivo}`);
+      return { ...(antes ?? { em: '', novidades: [], designers: [] }), erro: `Não consegui ver o quadro do Trello e a tabela designers do Teable: ${motivo}.`, falhou, motivo };
     },
     /** A última verificação guardada (sem ir ao Trello). */
     guardada: () => copia.ler(GUARDADA)?.dados ?? null,

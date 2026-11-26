@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { conferirConfiguracao, lerBasesDoTeable, lerConfiguracao, lerPessoas, lerQuadrosDoTrello, mudarPessoas, salvarConfiguracao, trocarConexao, type AcaoNasPessoas, type ConexoesDaConfiguracao, type NovidadeDoQuadro, type PessoasDaConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoFilmes, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
+import { conferirConfiguracao, lerBasesDoTeable, type ForaDoAr, lerConfiguracao, lerPessoas, lerQuadrosDoTrello, mudarPessoas, salvarConfiguracao, trocarConexao, type AcaoNasPessoas, type ConexoesDaConfiguracao, type NovidadeDoQuadro, type PessoasDaConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoFilmes, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
 import {
   CHAVE_DO_CAMPO,
   FLUXOS_DO_N8N,
@@ -38,6 +38,7 @@ import { TABELAS_DO_TEABLE } from '../modelo/tabelasDoTeable';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { useTelaDeCelular } from './faixa';
+import { quandoFoi } from './HistoricoDaConfiguracao';
 import './configuracao.css';
 
 /* A tela de Configuração (#72), só para administradores: a seção Praças. O PROMeiro liga pelo nome; a tela mostra só
@@ -53,12 +54,16 @@ import './configuracao.css';
    tabelas do Teable são achadas sozinhas: só a que falta (ou a coluna que falta) aparece, num aviso no topo. Pessoas
    (#77): os administradores (no "ver tudo") e as novidades do quadro (quem entrou, quem saiu), com ações que valem na
    hora, sem passar pela barra de salvar. O Histórico (#78) é uma página à parte, ligada pelo rodapé
-   (HistoricoDaConfiguracao.tsx). No celular, só consulta. */
+   (HistoricoDaConfiguracao.tsx), como "Pode apagar do Portainer" (#79, PortainerDaConfiguracao.tsx). Com o Trello ou o
+   Teable fora do ar (#79), a seção que depende dele mostra o salvo com os nomes da última leitura, uma linha curta com
+   desde quando, e fica travada. No celular, só consulta. */
 
 interface Props {
   voltar: () => void;
   /** abre o Histórico (#78), a página ligada pelo rodapé */
   historico: () => void;
+  /** abre "Pode apagar do Portainer" (#79), a outra página do rodapé */
+  portainer: () => void;
   avisar: (texto: string) => void;
 }
 
@@ -123,7 +128,7 @@ interface Escolha {
   ancora: DOMRect;
 }
 
-export function Configuracao({ voltar, historico, avisar }: Props) {
+export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
   const celular = useTelaDeCelular();
   const [secoes, setSecoes] = useState<SecoesDaConfiguracao | null>(null);
   const secao = secoes?.pracas ?? null;
@@ -196,8 +201,8 @@ export function Configuracao({ voltar, historico, avisar }: Props) {
   const estadoFilmes = useMemo(() => (rascunhoFilmes && quadro && completo ? estadoDosFilmes(rascunhoFilmes, quadro, completo.pracas) : null), [rascunhoFilmes, quadro, completo]);
   const mudouFilmes = useMemo(() => (rascunhoFilmes && secoes && quadro ? oQueMudaNosFilmes(rascunhoFilmes, secoes.filmes.salvo, quadro).length : 0), [rascunhoFilmes, secoes, quadro]);
   const nMudancas = mudouPracas + mudouCard + mudouFilmes;
-  // no celular, só consulta: nada muda
-  const podeMudar = !celular && !!quadro;
+  // no celular, só consulta: nada muda; com o Trello fora do ar (#79), Praças, Card e Filmes ficam travados
+  const podeMudar = !celular && !!quadro && !secao?.foraDoAr;
 
   const mudarPraca = (sigla: string, m: Partial<Praca>) =>
     setRascunho((r) => r && { ...r, pracas: r.pracas.map((p) => (p.sigla === sigla ? { ...p, ...m } : p)) });
@@ -368,6 +373,9 @@ export function Configuracao({ voltar, historico, avisar }: Props) {
             <button type="button" onClick={historico}>
               <Icone nome="historico" tam={14} /> Histórico
             </button>
+            <button type="button" onClick={portainer}>
+              <Icone nome="lixo" tam={14} /> Pode apagar do Portainer
+            </button>
           </nav>
           </>
         )}
@@ -461,12 +469,13 @@ function SecaoDasPracas(props: PropsDaSecao) {
         id="cfg-pracas"
         titulo="Praças"
         ajuda={AJUDA_DAS_PRACAS}
-        cor={secao.erro ? 'falta' : temProblema ? 'tem' : 'ok'}
-        resumo={estado?.resumo ?? `${plural(rascunho.pracas.length, 'praça', 'praças')} · sem o quadro do Trello`}
+        cor={secao.erro || secao.foraDoAr ? 'falta' : temProblema ? 'tem' : 'ok'}
+        resumo={comForaDoAr(estado?.resumo ?? `${plural(rascunho.pracas.length, 'praça', 'praças')} · sem o quadro do Trello`, secao.foraDoAr)}
         verTudo={estado ? verTudo : null}
         alternarVerTudo={alternarVerTudo}
       />
       <div className="cfg-secao-corpo">
+        {secao.foraDoAr && <LinhaForaDoAr f={secao.foraDoAr} />}
         {secao.erro && <p className="cfg-falha">{secao.erro}</p>}
         {estado && estado.excecoes.length > 0 && <Excecoes {...props} estado={estado} />}
         <ListaDasPracas {...props} podeMudar={podeMudar} />
@@ -481,6 +490,23 @@ function SecaoDasPracas(props: PropsDaSecao) {
         {verTudo && estado && <TudoDasPracas {...props} estado={estado} />}
       </div>
     </section>
+  );
+}
+
+/** A linha de estado com o serviço fora do ar (#79). */
+const comForaDoAr = (resumo: string, f: ForaDoAr | undefined) => (f ? `${resumo} · ${f.servico} fora do ar` : resumo);
+
+/** A linha curta de quando o Trello ou o Teable está fora do ar (#79): desde quando, de quando são os nomes, e que
+    mudar fica travado até ele voltar. */
+function LinhaForaDoAr({ f, travado = 'Mudar fica travado' }: { f: { servico: string; desde: string; lidoEm?: string }; travado?: string }) {
+  const lido = f.lidoEm === undefined ? '' : f.lidoEm ? ` Vale a última leitura (${quandoFoi(f.lidoEm)}).` : ' Sem nenhuma leitura guardada.';
+  return (
+    <p className="cfg-fora" role="status" data-servico={f.servico}>
+      <Icone nome="cadeado" tam={14} />
+      <span>
+        <b>O {f.servico} não responde</b> desde {quandoFoi(f.desde)}.{lido} {travado} até ele voltar.
+      </span>
+    </p>
   );
 }
 
@@ -681,7 +707,7 @@ function ListaDasPracas({ rascunho, salvas, nova, mudarNova, desistirDaNova, est
                 setSobre(null);
               }}
             >
-              <div className="cfg-praca-linha">
+              <div className={`cfg-praca-linha ${podeMudar ? '' : 'sem-alca'}`}>
                 {podeMudar && (
                   <button
                     type="button"
@@ -984,20 +1010,21 @@ function SecaoDoCard(props: PropsDoCard) {
   const { secao, estado, quadro, rascunho, podeMudar, verTudo, alternarVerTudo, escolher, desfazer } = props;
   const temProblema = !!estado?.excecoes.length;
   const sumiuDoFilme = estado?.doFilme.some((l) => l.problema) ?? false;
-  const corpo = !!secao.erro || temProblema || sumiuDoFilme || (verTudo && !!estado);
+  const corpo = !!secao.erro || !!secao.foraDoAr || temProblema || sumiuDoFilme || (verTudo && !!estado);
   return (
     <section className="cfg-secao" aria-labelledby="cfg-card" data-secao="card">
       <TopoDaSecao
         id="cfg-card"
         titulo="Card"
         ajuda={AJUDA_DO_CARD}
-        cor={secao.erro ? 'falta' : temProblema || sumiuDoFilme ? 'tem' : 'ok'}
-        resumo={estado?.resumo ?? 'sem o quadro do Trello'}
+        cor={secao.erro || secao.foraDoAr ? 'falta' : temProblema || sumiuDoFilme ? 'tem' : 'ok'}
+        resumo={comForaDoAr(estado?.resumo ?? 'sem o quadro do Trello', secao.foraDoAr)}
         verTudo={estado ? verTudo : null}
         alternarVerTudo={alternarVerTudo}
       />
       {corpo && (
         <div className="cfg-secao-corpo">
+          {secao.foraDoAr && <LinhaForaDoAr f={secao.foraDoAr} />}
           {secao.erro && !secao.estado && <p className="cfg-falha">{secao.erro}</p>}
           {estado && (temProblema || sumiuDoFilme) && (
             <ul className="cfg-excecoes">
@@ -1196,12 +1223,13 @@ function SecaoDosFilmes(props: PropsDosFilmes) {
         id="cfg-filmes"
         titulo="Filmes"
         ajuda={AJUDA_DOS_FILMES}
-        cor={secao.erro ? 'falta' : temProblema ? 'tem' : 'ok'}
-        resumo={estado?.resumo ?? 'sem o quadro do Trello'}
+        cor={secao.erro || secao.foraDoAr ? 'falta' : temProblema ? 'tem' : 'ok'}
+        resumo={comForaDoAr(estado?.resumo ?? 'sem o quadro do Trello', secao.foraDoAr)}
         verTudo={estado ? verTudo : null}
         alternarVerTudo={alternarVerTudo}
       />
       <div className="cfg-secao-corpo">
+        {secao.foraDoAr && <LinhaForaDoAr f={secao.foraDoAr} />}
         {secao.erro && !secao.estado && <p className="cfg-falha">{secao.erro}</p>}
         <div className="cfg-filmes-praca">
           <span id="cfg-filmes-praca">Praça dos cards</span>
@@ -1550,7 +1578,7 @@ function SecaoDasConexoes({ conexoes, aberta, alternar, podeMudar, trocar }: { c
       <header className="cfg-secao-topo">
         <h2 id="cfg-conexoes">Conexões</h2>
         <Ajuda texto={AJUDA_DAS_CONEXOES} />
-        <span className={`cfg-estado ${conexoes.avisos.length || conexoes.foraDoAr || !conexoes.quadro ? 'tem' : 'ok'}`}>{resumo}</span>
+        <span className={`cfg-estado ${conexoes.trelloForaDoAr || conexoes.teableForaDoAr ? 'falta' : conexoes.avisos.length || conexoes.foraDoAr || !conexoes.quadro ? 'tem' : 'ok'}`}>{resumo}</span>
         <span className="espaco" />
         <button type="button" className="cfg-ver-tudo" aria-expanded={aberta} onClick={alternar}>
           {aberta ? 'esconder' : 'abrir'} <Icone nome="baixo" tam={13} style={{ transform: aberta ? 'rotate(180deg)' : undefined }} />
@@ -1558,6 +1586,8 @@ function SecaoDasConexoes({ conexoes, aberta, alternar, podeMudar, trocar }: { c
       </header>
       {aberta && (
         <div className="cfg-secao-corpo">
+          {conexoes.trelloForaDoAr && <LinhaForaDoAr f={conexoes.trelloForaDoAr} travado="Trocar o quadro fica travado" />}
+          {conexoes.teableForaDoAr && <LinhaForaDoAr f={conexoes.teableForaDoAr} travado="Trocar a base fica travado" />}
           <div className="cfg-con-l">
             <span className="cfg-con-ico" aria-hidden>
               <Icone nome="quadro" tam={15} />
@@ -1567,7 +1597,7 @@ function SecaoDasConexoes({ conexoes, aberta, alternar, podeMudar, trocar }: { c
               <small>{conexoes.quadro ? `${conexoes.quadro.nome || conexoes.quadro.id}${conexoes.quadro.de === 'lista' ? ' · achado pela lista de uma praça' : ''}` : (conexoes.erroDoQuadro ?? 'não sei qual é o quadro')}</small>
             </span>
             {podeMudar && (
-              <button type="button" className="botao" onClick={() => trocar('quadro')}>
+              <button type="button" className="botao" disabled={!!conexoes.trelloForaDoAr} onClick={() => trocar('quadro')}>
                 Trocar…
               </button>
             )}
@@ -1580,7 +1610,7 @@ function SecaoDasConexoes({ conexoes, aberta, alternar, podeMudar, trocar }: { c
               <b>Base do Teable</b>
               <small>
                 {conexoes.semTeable ?? (conexoes.base ? `${conexoes.base.nome || conexoes.base.id} · ${plural(achadas, 'tabela achada', 'tabelas achadas')} pelo nome` : 'nenhuma base escolhida')}
-                {conexoes.foraDoAr && ` · o Teable não respondeu: valem as tabelas da última leitura${conexoes.lidasEm ? ` (${new Date(conexoes.lidasEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })})` : ''}`}
+                {conexoes.foraDoAr && !conexoes.teableForaDoAr && ` · o Teable não respondeu: valem as tabelas da última leitura${conexoes.lidasEm ? ` (${new Date(conexoes.lidasEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })})` : ''}`}
               </small>
             </span>
             {podeMudar && (
@@ -1740,16 +1770,22 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
     return ok;
   };
   const n = pessoas?.novidades.length ?? 0;
+  // #79: com o Trello ou o Teable fora, cadastrar e marcar inativo (que leem e gravam neles) ficam travados
+  const travadaPeloForaDoAr = !!pessoas?.foraDoAr;
   const resumo = pessoas ? `${plural(pessoas.administradores.length, 'administrador', 'administradores')}${n ? ` · ${plural(n, 'novidade', 'novidades')} no quadro` : ''}` : falha ? 'não consegui ler' : 'lendo…';
   const titulo = (x: NovidadeDoQuadro) => (x.tipo === 'entrou' ? `${x.nome} entrou no quadro` : `${x.nome} saiu do quadro`);
   const detalhe = (x: NovidadeDoQuadro) =>
     x.tipo === 'entrou' ? [x.email || 'sem e-mail no Trello', x.administrador && 'já é administrador'].filter(Boolean).join(' · ') : ['designer ativo', x.email, x.administrador && 'administrador'].filter(Boolean).join(' · ');
   return (
     <section className="cfg-secao" aria-labelledby="cfg-pessoas" data-secao="pessoas">
-      <TopoDaSecao id="cfg-pessoas" titulo="Pessoas" ajuda={AJUDA_DAS_PESSOAS} cor={falha || pessoas?.erro ? 'falta' : n ? 'tem' : 'ok'} resumo={resumo} verTudo={pessoas ? verTudo : null} alternarVerTudo={() => setVerTudo((v) => !v)} />
+      <TopoDaSecao id="cfg-pessoas" titulo="Pessoas" ajuda={AJUDA_DAS_PESSOAS} cor={falha || pessoas?.erro ? 'falta' : n ? 'tem' : 'ok'} resumo={comForaDoAr(resumo, pessoas?.foraDoAr ? { ...pessoas.foraDoAr, lidoEm: '' } : undefined)} verTudo={pessoas ? verTudo : null} alternarVerTudo={() => setVerTudo((v) => !v)} />
       <div className="cfg-secao-corpo">
         {falha && <p className="cfg-falha">{falha}</p>}
-        {pessoas?.erro && <p className="cfg-falha">{pessoas.erro}{pessoas.verificadoEm ? ` Valem as novidades de ${quando(pessoas.verificadoEm)}.` : ''}</p>}
+        {pessoas?.foraDoAr ? (
+          <LinhaForaDoAr f={{ ...pessoas.foraDoAr, lidoEm: pessoas.verificadoEm }} travado="Cadastrar e marcar inativo ficam travados" />
+        ) : (
+          pessoas?.erro && <p className="cfg-falha">{pessoas.erro}{pessoas.verificadoEm ? ` Valem as novidades de ${quando(pessoas.verificadoEm)}.` : ''}</p>
+        )}
         {pessoas && n > 0 && (
           <ul className="cfg-excecoes">
             {pessoas.novidades.map((x) => (
@@ -1765,7 +1801,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                   <span className="cfg-exc-acoes">
                     {x.tipo === 'entrou' ? (
                       <>
-                        <button type="button" className="botao" disabled={ocupado} onClick={() => void fazer({ acao: 'cadastrar', chave: x.chave }, `${x.nome} cadastrado como designer.`)}>
+                        <button type="button" className="botao" disabled={ocupado || travadaPeloForaDoAr} onClick={() => void fazer({ acao: 'cadastrar', chave: x.chave }, `${x.nome} cadastrado como designer.`)}>
                           Cadastrar como designer
                         </button>
                         {!x.administrador && (
@@ -1785,7 +1821,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                       </>
                     ) : (
                       <>
-                        <button type="button" className="botao" disabled={ocupado} onClick={() => void fazer({ acao: 'inativar', chave: x.chave }, `${x.nome} marcado como inativo.`)}>
+                        <button type="button" className="botao" disabled={ocupado || travadaPeloForaDoAr} onClick={() => void fazer({ acao: 'inativar', chave: x.chave }, `${x.nome} marcado como inativo.`)}>
                           Marcar inativo
                         </button>
                         {x.salvo && (
