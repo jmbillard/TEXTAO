@@ -148,6 +148,19 @@ export function ligarPeloNome(c: LigacoesDasPracas, quadro: QuadroLido, { primei
   return { pracas, campoPraca, aMao: chaves.filter((k) => aMao.has(k)) };
 }
 
+/** Desfaz o ligado à mão destas chaves: volta o que o nome acha (um só) ou fica vazio (vira exceção). */
+export function desfazerAMao(c: LigacoesDasPracas, quadro: QuadroLido, chaves: readonly string[]): LigacoesDasPracas {
+  const doNome = (a: Achado) => (a.como === 'um' ? a.id : '');
+  const campoPraca = chaves.includes(CHAVE_DO_CAMPO) ? doNome(acharCampo(quadro.campos, CAMPO_PRACA.nome, CAMPO_PRACA.tipo)) : c.campoPraca;
+  const campo = quadro.campos.find((x) => x.id === campoPraca);
+  const pracas = c.pracas.map((p) => {
+    const nova = { ...p };
+    for (const ponta of PONTAS) if (chaves.includes(chaveDa(p.sigla, ponta))) nova[ponta] = doNome(achadoDa(ponta, p, quadro, campo));
+    return nova;
+  });
+  return { pracas, campoPraca, aMao: c.aMao.filter((k) => !chaves.includes(k)) };
+}
+
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
 /** O estado de cada ligação (como foi ligada, o que há de errado), as exceções e a linha de estado. */
@@ -245,6 +258,10 @@ export function conferirPracas(novo: LigacoesDasPracas, antes: LigacoesDasPracas
       if (repetida) itens.push({ tipo: 'erro', titulo: `${p.sigla}: ${descreverRegra(p.regra)}`, detalhe: `"${repetida}" já é a regra de ${o.sigla}. Use outra palavra.` });
     }
   }
+
+  // a praça sem regra e sem "também lida como" só vale como padrão: sendo outra, nenhuma claquete chega a ela
+  for (const p of novo.pracas)
+    if (!p.padrao && !p.regra?.palavras.length && !p.tambem.length) itens.push({ tipo: 'aviso', titulo: `${p.sigla}: sem regra`, detalhe: `nenhuma claquete vai ser de ${p.sigla}.` });
 
   let listasOk = true;
   let opcoesOk = true;

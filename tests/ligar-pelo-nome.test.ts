@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acharCampo, acharLista, acharOpcao, casar, conferirPracas, estadoDasPracas, ligarPeloNome, nomeComparavel } from '../src/modelo/ligarPeloNome';
+import { acharCampo, acharLista, acharOpcao, casar, conferirPracas, desfazerAMao, estadoDasPracas, ligarPeloNome, nomeComparavel } from '../src/modelo/ligarPeloNome';
 import { PRACAS_DE_FABRICA } from '../src/modelo/pracas';
 
 /* Listas, campos e opções fictícios: os ids e os nomes de verdade ficam só no Trello. */
@@ -202,5 +202,27 @@ describe('conferir: o que não passa e o que muda', () => {
     const semSaida = conferirPracas(com('INTER', { saida: '' }), antes, QUADRO);
     expect(semSaida.ok).toBe(true);
     expect(semSaida.itens.find((i) => i.tipo === 'aviso')).toMatchObject({ titulo: 'INTER: saída', detalhe: 'nada ligado: o card fica na entrada.' });
+  });
+});
+
+describe('desfazer o ligado à mão', () => {
+  it('volta o que o nome acha (um só) ou fica vazio, e sai das marcadas', () => {
+    const c = { pracas: comIds({ G5: { entrada: 'lRJ', saida: 'lRJs' }, SP: { entrada: 'lIN' } }), campoPraca: 'cPraca', aMao: ['G5.entrada', 'G5.saida', 'SP.entrada'] };
+    const r = desfazerAMao(c, QUADRO, ['G5.entrada', 'G5.saida', 'SP.entrada']);
+    expect(r.pracas.map((p) => [p.sigla, p.entrada, p.saida])).toEqual([
+      ['G5', '', ''],
+      ['RJ', '', ''],
+      ['SP', 'lSP', ''],
+      ['INTER', '', ''],
+    ]);
+    expect(r.aMao).toEqual([]);
+  });
+});
+
+describe('conferir: a praça que nunca é reconhecida', () => {
+  it('sem regra nem "também lida como", e sem ser a padrão: aviso', () => {
+    const c = { pracas: comIds({}).map((p) => (p.sigla === 'SP' ? { ...p, regra: null } : p)), campoPraca: 'cPraca', aMao: [] };
+    const r = conferirPracas(c, c, QUADRO);
+    expect(r.itens.find((i) => i.titulo === 'SP: sem regra')).toMatchObject({ tipo: 'aviso', detalhe: 'nenhuma claquete vai ser de SP.' });
   });
 });

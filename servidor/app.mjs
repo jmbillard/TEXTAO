@@ -1199,7 +1199,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, { pracas: await lerSecaoPracas(trello, env) });
     } catch (e) {
       console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);
-      return json(res, 502, { erro: `Não consegui ler o quadro do Trello: ${e instanceof Error ? e.message : e}` });
+      return json(res, 502, { erro: `Não consegui ler o quadro do Trello ou salvar: ${e instanceof Error ? e.message : e}` });
     }
   }
 

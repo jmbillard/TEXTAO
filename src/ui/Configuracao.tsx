@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { conferirConfiguracao, lerConfiguracao, salvarConfiguracao, type SecaoPracas } from '../dados/armazenamento';
 import {
   CHAVE_DO_CAMPO,
   PONTAS,
-  acharCampo,
-  acharLista,
-  acharOpcao,
   CAMPO_PRACA,
-  chaveDa,
+  desfazerAMao,
   estadoDasPracas,
   oQueMuda,
   type ConferenciaDasPracas,
@@ -66,6 +63,7 @@ export function Configuracao({ voltar, avisar }: Props) {
   const [escolha, setEscolha] = useState<Escolha | null>(null);
   const [conferencia, setConferencia] = useState<{ estado: 'conferindo' } | { estado: 'pronta'; r: ConferenciaDasPracas; salvando?: boolean } | null>(null);
 
+  const fecharEscolha = useCallback(() => setEscolha(null), []);
   const carregar = useCallback(() => {
     setFalha('');
     lerConfiguracao()
@@ -105,27 +103,7 @@ export function Configuracao({ voltar, avisar }: Props) {
     setEscolha(null);
   };
   /** Desfazer o ligado à mão: volta o que o nome acha (um só), ou fica vazio (vira exceção). */
-  const desfazer = (chaves: string[]) =>
-    setRascunho((r) => {
-      if (!r || !quadro) return r;
-      const aMao = r.aMao.filter((k) => !chaves.includes(k));
-      let campoPraca = r.campoPraca;
-      if (chaves.includes(CHAVE_DO_CAMPO)) {
-        const a = acharCampo(quadro.campos, CAMPO_PRACA.nome, CAMPO_PRACA.tipo);
-        campoPraca = a.como === 'um' ? a.id : '';
-      }
-      const campo = quadro.campos.find((c) => c.id === campoPraca);
-      const pracas = r.pracas.map((p) => {
-        const nova = { ...p };
-        for (const ponta of PONTAS) {
-          if (!chaves.includes(chaveDa(p.sigla, ponta))) continue;
-          const a = ponta === 'opcao' ? acharOpcao(campo, p) : acharLista(quadro.listas, p, ponta);
-          nova[ponta] = a.como === 'um' ? a.id : '';
-        }
-        return nova;
-      });
-      return { pracas, campoPraca, aMao };
-    });
+  const desfazer = (chaves: string[]) => setRascunho((r) => (r && quadro ? desfazerAMao(r, quadro, chaves) : r));
 
   const conferir = async () => {
     if (!rascunho) return;
@@ -215,7 +193,7 @@ export function Configuracao({ voltar, avisar }: Props) {
           </button>
         </div>
       )}
-      {escolha && quadro && rascunho && <Escolher escolha={escolha} quadro={quadro} rascunho={rascunho} estado={estado} ligar={(id) => ligar(escolha, id)} fechar={() => setEscolha(null)} />}
+      {escolha && quadro && rascunho && <Escolher escolha={escolha} quadro={quadro} rascunho={rascunho} estado={estado} ligar={(id) => ligar(escolha, id)} fechar={fecharEscolha} />}
       {conferencia && <DialogoDeConferir conferencia={conferencia} voltar={() => setConferencia(null)} salvar={() => void salvar()} />}
     </div>
   );
@@ -269,21 +247,27 @@ function SecaoDasPracas(props: PropsDaSecao) {
   );
 }
 
-/** O "?" de cada seção: a explicação fica aqui, não na tela. */
-function Ajuda({ texto }: { texto: string }) {
-  const [aberta, setAberta] = useState(false);
-  const caixa = useRef<HTMLSpanElement>(null);
+/** Fecha o balão no clique fora dele e no Esc. */
+function useFecharFora(caixa: RefObject<HTMLElement | null>, aberto: boolean, fechar: () => void) {
   useEffect(() => {
-    if (!aberta) return;
-    const fora = (e: PointerEvent) => !caixa.current?.contains(e.target as Node) && setAberta(false);
-    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && setAberta(false);
+    if (!aberto) return;
+    const fora = (e: PointerEvent) => !caixa.current?.contains(e.target as Node) && fechar();
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && fechar();
     window.addEventListener('pointerdown', fora, true);
     window.addEventListener('keydown', tecla);
     return () => {
       window.removeEventListener('pointerdown', fora, true);
       window.removeEventListener('keydown', tecla);
     };
-  }, [aberta]);
+  }, [caixa, aberto, fechar]);
+}
+
+/** O "?" de cada seção: a explicação fica aqui, não na tela. */
+function Ajuda({ texto }: { texto: string }) {
+  const [aberta, setAberta] = useState(false);
+  const caixa = useRef<HTMLSpanElement>(null);
+  const fechar = useCallback(() => setAberta(false), []);
+  useFecharFora(caixa, aberta, fechar);
   return (
     <span className="cfg-ajuda" ref={caixa}>
       <button type="button" aria-label="O que é isto?" aria-expanded={aberta} onClick={() => setAberta((v) => !v)}>
@@ -604,16 +588,7 @@ function TudoDasPracas({ estado, podeMudar, escolher }: PropsDaSecao & { estado:
 function Escolher({ escolha, quadro, rascunho, estado, ligar, fechar }: { escolha: Escolha; quadro: QuadroLido; rascunho: LigacoesDasPracas; estado: PropsDaSecao['estado']; ligar: (id: string) => void; fechar: () => void }) {
   const [busca, setBusca] = useState('');
   const caixa = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const fora = (e: PointerEvent) => !caixa.current?.contains(e.target as Node) && fechar();
-    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && fechar();
-    window.addEventListener('pointerdown', fora, true);
-    window.addEventListener('keydown', tecla);
-    return () => {
-      window.removeEventListener('pointerdown', fora, true);
-      window.removeEventListener('keydown', tecla);
-    };
-  }, [fechar]);
+  useFecharFora(caixa, true, fechar);
   const ligacao = [estado?.campo, ...(estado?.pracas.flatMap((p) => [p.entrada, p.saida, p.opcao]) ?? [])].find((l) => l?.chave === escolha.chave);
   const candidatos = new Set(ligacao?.candidatos ?? []);
   const atual = ligacao?.id ?? '';
@@ -662,10 +637,11 @@ function Escolher({ escolha, quadro, rascunho, estado, ligar, fechar }: { escolh
 
 function DialogoDeConferir({ conferencia, voltar, salvar }: { conferencia: { estado: 'conferindo' } | { estado: 'pronta'; r: ConferenciaDasPracas; salvando?: boolean }; voltar: () => void; salvar: () => void }) {
   useEffect(() => {
-    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && voltar();
+    const salvando = conferencia.estado === 'pronta' && conferencia.salvando;
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && !salvando && voltar();
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
-  }, [voltar]);
+  }, [voltar, conferencia]);
   const r = conferencia.estado === 'pronta' ? conferencia.r : null;
   return (
     <div className="cfg-veu">
