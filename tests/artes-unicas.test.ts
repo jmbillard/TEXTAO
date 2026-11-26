@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { artesDoEnvio, artesUnicas, exportar, pendencias } from '../src/modelo/exportar';
+import { artesDoEnvio, artesUnicas, exportar, pendencias, quantasAProduzir } from '../src/modelo/exportar';
 import { metaVazia, type Meta, type NoJSON, type Roteiro } from '../src/modelo/tipos';
+// @ts-expect-error módulo JS sem tipos
+import { artesDaProducao, itensDoChecklist } from '../servidor/trello.mjs';
 
 /* O redator sublinha a mesma arte várias vezes no roteiro (IZA, HOJE, DOMINGÃO…): a lista, as contas e o checklist
    levam cada arte uma vez só. */
@@ -44,10 +46,13 @@ describe('artes únicas', () => {
     expect(hoje.subtipoNome).toBe('Rodapé + Cartão');
   });
 
-  it('"Muitas artes" conta as artes únicas', () => {
+  it('"Muitas artes" conta as artes únicas a produzir', () => {
     const nove = Array.from({ length: 9 }, (_, k) => `ARTE ${k}`);
     expect(pendencias(exportar(roteiro([...nove, ...nove, ...nove])))).toEqual([]);
     expect(pendencias(exportar(roteiro([...nove, 'ARTE 9', ...nove])))).toEqual(['Muitas artes: 10']);
+    // a que já existe e a que não vai ser produzida não pesam no trabalho da equipe
+    expect(pendencias(exportar(roteiro([...nove, 'ARTE 9', 'ARTE 10'], { jaExiste: ['ARTE 9'], naoProduzir: ['ARTE 10'] })))).toEqual([]);
+    expect(pendencias(exportar(roteiro([...nove, 'ARTE 9', 'ARTE 10', 'ARTE 11'], { jaExiste: ['ARTE 11'] })))).toEqual(['Muitas artes: 11']);
   });
 });
 
@@ -68,5 +73,42 @@ describe('as artes que vão ao Trello', () => {
   it('os tipos somados das repetidas vão em siglas', () => {
     const r = roteiro([['HOJE', 'rodape'], ['hoje', 'cartao']]);
     expect(artesDoEnvio(exportar(r), r.meta)).toEqual([{ texto: 'HOJE', tipo: 'RDP, CRT', tipos: ['RDP', 'CRT'], existe: false, complexidade: 1 }]);
+  });
+});
+
+describe('as artes a produzir (o "N artes" da fila, da agenda e do editor)', () => {
+  it('6 artes únicas, 2 já existem e 1 não vai ser produzida: 3', () => {
+    const r = roteiro(['IZA', 'HOJE', 'DOMINGO', 'IZA', '6:10', 'ELIANA', 'AO VIVO', 'HOJE'], {
+      jaExiste: ['DOMINGO'],
+      jaExistem: [{ arte: '6:10', chave: '6 10', tipo: 'CRT', claquete: 'X' }],
+      naoProduzir: ['ELIANA'],
+    });
+    const s = exportar(r);
+    expect(artesUnicas(s.artes)).toHaveLength(6);
+    expect(quantasAProduzir(s, r.meta)).toBe(3);
+  });
+
+  it('a repetida com tipos diferentes conta uma', () => {
+    const r = roteiro([['HOJE', 'rodape'], ['hoje', 'cartao'], ['IZA', 'cartao']]);
+    expect(quantasAProduzir(exportar(r), r.meta)).toBe(2);
+  });
+
+  it('sem a meta, usa a do próprio roteiro exportado', () => {
+    const r = roteiro(['IZA', 'HOJE'], { naoProduzir: ['HOJE'] });
+    expect(quantasAProduzir(exportar(r))).toBe(1);
+  });
+
+  it('a arte do acervo devolvida à lista (produzir) volta a contar', () => {
+    const r = roteiro(['IZA', 'HOJE'], { jaExistem: [{ arte: 'IZA', chave: 'IZA', tipo: 'CRT', claquete: 'X' }], produzir: ['IZA'] });
+    expect(quantasAProduzir(exportar(r), r.meta)).toBe(2);
+  });
+
+  it('bate com o que o envio põe no checklist e o Teable conta (artesDaProducao)', () => {
+    const r = roteiro([['HOJE', 'rodape'], ['hoje', 'cartao'], 'IZA', 'DOMINGO', 'ELIANA (AO VIVO)', 'IZA', 'FIM'], { jaExiste: ['DOMINGO'], naoProduzir: ['FIM'] });
+    const s = exportar(r);
+    const checklist: string[] = itensDoChecklist(artesDoEnvio(s, r.meta));
+    expect(checklist).toEqual(['HOJE (RDP)', 'HOJE (CRT)', 'IZA', 'ELIANA (AO VIVO)']);
+    expect(artesDaProducao(checklist.join(' | '))).toBe(quantasAProduzir(s, r.meta));
+    expect(quantasAProduzir(s, r.meta)).toBe(3);
   });
 });

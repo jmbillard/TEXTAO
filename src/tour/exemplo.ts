@@ -1,7 +1,7 @@
 /* O roteiro de exemplo do tour da revisão: fixo, fictício, e só na memória deste navegador. Ele entra na fila pela
    mesma interface de armazenamento que a fila e o editor usam, mas nunca é gravado, não aparece para mais ninguém e
    nunca vai ao Trello (o servidor também recusa o prefixo do id, por defesa). */
-import { exportar, pendencias } from '../modelo/exportar';
+import { exportar, pendencias, quantasAProduzir } from '../modelo/exportar';
 import { metaVazia, type NoJSON, type Roteiro } from '../modelo/tipos';
 import type { Armazenamento, EnvioTrello, Resumo } from '../dados/armazenamento';
 
@@ -102,7 +102,7 @@ const copia = (r: Roteiro): Roteiro => JSON.parse(JSON.stringify(r)) as Roteiro;
 const resumo = (r: Roteiro): Resumo => ({
   id: r.id,
   meta: r.meta,
-  nArtes: exportar(r).artes.length,
+  nArtes: quantasAProduzir(exportar(r)),
   atualizadoEm: r.atualizadoEm,
   dono: null,
   publico: false,

@@ -348,6 +348,16 @@ export function artesDoEnvio(saida: Saida, meta: Meta) {
     });
 }
 
+/**
+ * Quantas artes a equipe vai produzir: as do checklist do Trello (`artesDoEnvio` menos as que já existem), cada uma uma
+ * vez, mesmo a de vários tipos (o checklist a escreve uma vez por tipo e o Teable a conta uma, `artesDaProducao`). Ficam
+ * de fora a que já existe (✓ ou do acervo da atração) e a que não vai ser produzida (✕). É o "N artes" da fila, da
+ * agenda e do editor, e a conta de "Muitas artes". Sem a meta, vale a do roteiro exportado.
+ */
+export function quantasAProduzir(saida: Saida, meta: Meta = saida.roteiro): number {
+  return artesDoEnvio(saida, meta).filter((a) => !a.existe).length;
+}
+
 /** Lista de artes em texto simples, para colar em e-mail, card ou planilha. */
 export function listaDeArtes(saida: Saida): string {
   const r = saida.roteiro;
@@ -401,11 +411,13 @@ export interface Pendencia {
     Atração não reconhecida não é motivo: ela pode ser cadastrada depois. */
 export function pendenciasDetalhadas(saida: Saida): Pendencia[] {
   const n = artesUnicas(saida.artes).length;
+  // o alerta de volume conta o trabalho da equipe: só as artes a produzir
+  const aProduzir = quantasAProduzir(saida);
   const r = saida.roteiro;
   const longa = saida.artes.find((a) => arteLonga(a.texto));
   const p: Pendencia[] = [];
   if (!n) p.push({ id: 'sem-arte', texto: 'Nenhuma arte', dispensavel: true });
-  if (n >= 10) p.push({ id: 'muitas-artes', texto: `Muitas artes: ${n}`, dispensavel: true });
+  if (aProduzir >= 10) p.push({ id: 'muitas-artes', texto: `Muitas artes: ${aProduzir}`, dispensavel: true });
   if (longa) p.push({ id: 'arte-longa', texto: 'Arte longa', dispensavel: true, arte: longa.id });
   if (!r.redator) p.push({ id: 'sem-redator', texto: TEXTO_SEM_REDATOR, dispensavel: false });
   if (!r.editor) p.push({ id: 'sem-editor', texto: TEXTO_SEM_EDITOR, dispensavel: false });

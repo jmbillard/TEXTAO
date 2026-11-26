@@ -1,6 +1,6 @@
 import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../modelo/redator';
-import { artesDoEnvio, artesUnicas, exportar } from '../modelo/exportar';
+import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
@@ -13,6 +13,7 @@ import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, 
 export interface Resumo {
   id: string;
   meta: Meta;
+  /** As artes a produzir (`quantasAProduzir`): sem as que já existem e as que não vão ser produzidas, como o checklist. */
   nArtes: number;
   atualizadoEm: string;
   dono: Pessoa | null;
@@ -140,7 +141,7 @@ const noNavegador: Armazenamento = {
     const todos = await operar<Roteiro[]>('readonly', (l) => l.getAll());
     return todos
       .sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
-      .map((r) => ({ id: r.id, meta: r.meta, nArtes: artesUnicas(exportar(r).artes).length, atualizadoEm: r.atualizadoEm, dono: r.criadoPor ?? null, publico: false, meu: true }));
+      .map((r) => ({ id: r.id, meta: r.meta, nArtes: quantasAProduzir(exportar(r)), atualizadoEm: r.atualizadoEm, dono: r.criadoPor ?? null, publico: false, meu: true }));
   },
   ler: (id) =>
     operar<Roteiro | undefined>('readonly', (l) => l.get(id)).then(
@@ -212,7 +213,7 @@ const noServidor: Armazenamento = {
   async salvar(roteiro, marco, automatico) {
     await pedir(`/api/roteiros/${encodeURIComponent(roteiro.id)}`, {
       method: 'PUT',
-      body: JSON.stringify({ roteiro, nArtes: artesUnicas(exportar(roteiro).artes).length, marco, ...(automatico ? { automatico: true } : {}) }),
+      body: JSON.stringify({ roteiro, nArtes: quantasAProduzir(exportar(roteiro)), marco, ...(automatico ? { automatico: true } : {}) }),
     });
   },
   async apagar(id) {

@@ -11,7 +11,8 @@ import { acertarNArtesUmaVez, recalcularNArtes } from '../servidor/artes.mjs';
 
 /* Os roteiros guardados antes da lista sem repetição (f4fb6ea) têm o n_artes antigo, que contava as repetidas. Ao subir,
    o servidor refaz a conta pela regra de hoje e grava só a coluna n_artes: a agenda e a fila passam a mostrar a lista
-   sem duplicatas, sem o roteiro parecer alterado. */
+   sem duplicatas, sem o roteiro parecer alterado. Desde a conta das artes a produzir, o n_artes não conta as que já
+   existem (✓ ou do acervo) nem as que não vão ser produzidas (✕), e a subida refaz de novo os guardados. */
 
 const arte = (texto: string, k: number) => ({
   type: 'paragraph',
@@ -79,6 +80,32 @@ describe('recalcular n_artes ao subir', () => {
     db.close();
     const reaberto = abrirBanco(arquivo);
     expect(linha(reaberto, 'r1')).toMatchObject({ n_artes: 2, atualizado_em: QUANDO });
+    reaberto.close();
+  });
+
+  it('conta só as artes a produzir: a que já existe e a que não vai ser produzida saem', () => {
+    const db = abrirBanco(':memory:');
+    const m = { ...meta, jaExiste: ['DOMINGO'], jaExistem: [{ arte: '6:10', chave: '6 10', tipo: 'CRT', claquete: 'X' }], naoProduzir: ['ELIANA'] };
+    guardar(db, 'r1', doc(['IZA', 'HOJE', 'DOMINGO', 'IZA', '6:10', 'ELIANA', 'AO VIVO']), 6, m);
+    const antes = linha(db, 'r1');
+    expect(recalcularNArtes(db, silencioso)).toMatchObject({ mudaram: 1, erros: 0 });
+    expect(linha(db, 'r1')).toEqual({ ...antes, n_artes: 3 });
+    expect(recalcularNArtes(db, silencioso)).toMatchObject({ mudaram: 0, erros: 0 });
+  });
+
+  it('o banco acertado pela regra de antes (sem repetição) é acertado de novo pela das artes a produzir', () => {
+    pasta = mkdtempSync(join(tmpdir(), 'promeiro-artes-'));
+    const arquivo = join(pasta, 'roteirista.db');
+    const db = abrirBanco(arquivo);
+    guardar(db, 'r1', doc(['IZA', 'HOJE', 'IZA']), 2, { ...meta, naoProduzir: ['HOJE'] });
+    // um banco que só tem a marca do acerto antigo
+    db.exec('DELETE FROM acertos');
+    db.prepare("INSERT INTO acertos (nome, em) VALUES ('n_artes sem repetição', ?)").run(QUANDO);
+    db.close();
+    const reaberto = abrirBanco(arquivo);
+    expect(linha(reaberto, 'r1')).toMatchObject({ n_artes: 1, atualizado_em: QUANDO });
+    // e a subida seguinte não relê
+    expect(acertarNArtesUmaVez(reaberto, silencioso)).toBeNull();
     reaberto.close();
   });
 

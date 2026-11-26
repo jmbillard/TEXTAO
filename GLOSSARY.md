@@ -20,6 +20,12 @@ O trecho sublinhado de novo é a mesma arte quando o texto bate sem caixa, acent
 "AOVIVO" é outra): a lista, as contas e o checklist levam cada arte uma vez, na ordem da primeira aparição.
 _Evitar_: GC, letreiro (no código), item
 
+**Artes a produzir**:
+As artes do checklist do Trello: cada arte uma vez (a de vários tipos também), menos a que já existe (✓ ou do acervo
+da atração) e a que não vai ser produzida (✕). É o "N artes" da fila, da agenda, do editor e de "Muitas artes", e bate
+com a contagem da produção da arte no Teable (`quantasAProduzir`).
+_Evitar_: total de artes (a lista do editor mostra todas, com as riscadas)
+
 **Tipo da arte**:
 A forma da arte (cartão, rodapé, lettering, foto…), guardada no acervo pela sigla (`CRT`, `RDP`…).
 

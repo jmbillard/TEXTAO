@@ -1,4 +1,5 @@
-// A conta das artes de um roteiro pela regra do navegador: cada arte uma vez (src/modelo/exportar.ts, artesUnicas).
+// A conta das artes de um roteiro pela regra do navegador: as artes a produzir, cada uma uma vez
+// (src/modelo/exportar.ts, quantasAProduzir).
 // O Node lê o .ts sem os tipos, mas os módulos de src/modelo se importam sem extensão ('./sonora'), como o Vite
 // aceita; o gancho abaixo completa o '.ts' só nesse caso (import relativo, vindo de um .ts, que não achou o arquivo).
 import { registerHooks } from 'node:module';
@@ -15,18 +16,20 @@ registerHooks?.({
   },
 });
 
-const { artesUnicas, exportar } = await import('../src/modelo/exportar.ts');
+const { exportar, quantasAProduzir } = await import('../src/modelo/exportar.ts');
 const { metaVazia } = await import('../src/modelo/tipos.ts');
 
-/** Quantas artes o roteiro tem na lista sem repetição (a que o editor mostra e o cliente manda ao salvar). */
+/** Quantas artes a produzir o roteiro tem (sem as que já existem e as que não vão ser produzidas, cada uma uma vez):
+    a conta que o editor mostra e o cliente manda ao salvar. */
 export function contarArtes(meta, doc) {
   const roteiro = { id: '', meta: { ...metaVazia(), ...meta }, doc, revisao: 1, criadoEm: '', atualizadoEm: '' };
-  return artesUnicas(exportar(roteiro).artes).length;
+  return quantasAProduzir(exportar(roteiro), roteiro.meta);
 }
 
 /**
  * Acerto da subida: refaz o n_artes de cada roteiro guardado e grava só essa coluna, e só quando ela muda. Os roteiros
- * salvos antes da lista sem repetição contavam as repetidas. Não mexe em atualizado_em, meta nem doc, e não avisa a
+ * salvos antes da lista sem repetição contavam as repetidas; os salvos antes da conta das artes a produzir contavam as
+ * que já existem e as que não vão ser produzidas. Não mexe em atualizado_em, meta nem doc, e não avisa a
  * fila: o roteiro não foi alterado, só a conta. Rodar de novo não muda nada. Um roteiro que não dá para ler fica como
  * está (loga e segue).
  */
@@ -46,15 +49,17 @@ export function recalcularNArtes(db, log = console) {
     }
   }
   if (mudaram || erros)
-    log.log(`[artes] conta refeita sem repetição: ${mudaram} ${mudaram === 1 ? 'roteiro mudou' : 'roteiros mudaram'}${erros ? `, ${erros} com erro` : ''}`);
+    log.log(`[artes] conta refeita (artes a produzir): ${mudaram} ${mudaram === 1 ? 'roteiro mudou' : 'roteiros mudaram'}${erros ? `, ${erros} com erro` : ''}`);
   return { mudaram, erros };
 }
 
-const ACERTO = 'n_artes sem repetição';
+/** A marca do acerto, com a versão da regra: quando a regra da conta muda, a marca nova faz o acerto rodar de novo
+    (a marca de antes, 'n_artes sem repetição', fica na tabela e não vale mais). */
+const ACERTO = 'n_artes a produzir';
 
 /**
- * O acerto roda uma vez por banco: a marca fica na tabela acertos, gravada junto com as contas. Depois dele, quem salva
- * já manda a conta certa, e a subida não relê todos os roteiros de novo.
+ * O acerto roda uma vez por banco (por regra): a marca fica na tabela acertos, gravada junto com as contas. Depois dele,
+ * quem salva já manda a conta certa, e a subida não relê todos os roteiros de novo.
  */
 export function acertarNArtesUmaVez(db, log = console) {
   db.exec('CREATE TABLE IF NOT EXISTS acertos (nome TEXT PRIMARY KEY, em TEXT NOT NULL)');

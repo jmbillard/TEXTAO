@@ -24,7 +24,7 @@ import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   marcarArte as marcarArteNoTexto, partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { alternarJaExiste, alvosDoTeclado, artesUnicas, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
+import { alternarJaExiste, alvosDoTeclado, artesUnicas, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, quantasAProduzir, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
 import { agruparPorDia, claqueteParaMostrar, pedeRevisao, pendentes, proximoParaRevisar } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import {
@@ -934,9 +934,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // Nos dois a arte fica no texto (e no PDF). Deixar de ser arte de vez é no texto (tirar o sublinhado).
   const marcadasJa = useMemo(() => chavesQueExistem(meta), [meta.jaExiste, meta.jaExistem, meta.naoProduzir, meta.produzir]); // eslint-disable-line react-hooks/exhaustive-deps
   const marcadasFora = useMemo(() => new Set(meta.naoProduzir ?? []), [meta.naoProduzir]);
-  const nJa = artes.filter((a) => marcadasJa.has(chaveDeArte(a.texto))).length;
   const nFora = artes.filter((a) => marcadasFora.has(chaveDeArte(a.texto))).length;
-  const nAProduzir = artes.length - nJa - nFora;
+  // a mesma conta que a fila, a agenda e o checklist do Trello (quantasAProduzir)
+  const nAProduzir = useMemo(() => quantasAProduzir(saida, meta), [saida, meta]);
   // o risco à mão se escreve só na marca nova; o que já vem marcado ao abrir aparece pronto
   const desdeDaMarca = useDesdeDaMarca([...marcadasJa, ...marcadasFora]);
   // "já existe" também no texto (#50): o trecho apaga, o sublinhado some e um risco à mão atravessa cada linha, numa
@@ -2020,8 +2020,9 @@ const PALAVRAS_POR_PAGINA = 250;
 
 /** Rodapé com os números do roteiro, atualizados enquanto se edita. */
 function Estatisticas({ saida, complexidade, paginas, original }: { saida: Saida; complexidade: Complexidade; paginas?: number; original?: Roteiro['original'] }) {
-  // a arte repetida no texto conta uma vez, como na lista
-  const nArtes = artesUnicas(saida.artes).length;
+  // as artes a produzir, como o cabeçalho da lista e o checklist (a repetida conta uma vez; a que já existe e a que não
+  // vai ser produzida não contam)
+  const nArtes = quantasAProduzir(saida);
   const total = contarPalavras(saida.texto.completo);
   const locucao = contarPalavras(saida.texto.locucao);
   const caracteres = saida.texto.completo.replace(/\n/g, '').length;
@@ -2034,7 +2035,7 @@ function Estatisticas({ saida, complexidade, paginas, original }: { saida: Saida
       <span><b>{numero(locucao)}</b> na locução</span>
       <span className="tempo" title="Locução e sonoras, no ritmo médio de leitura de chamada">≈ <b>{duracao(saida.roteiro.duracaoEstimadaSeg)}</b> de leitura</span>
       <span><b>{numero(caracteres)}</b> caracteres</span>
-      <span><b>{nArtes}</b> {nArtes === 1 ? 'arte' : 'artes'}</span>
+      <span title="Artes a produzir"><b>{nArtes}</b> {nArtes === 1 ? 'arte' : 'artes'}</span>
       {/* o card leva a maior complexidade das artes a produzir */}
       <span className={`cx-card n${complexidade}`} title="O card vai com a maior complexidade das artes"><span className="cx-pe"><FogoComTroca n={complexidade} /></span><b>{NOME_DA_COMPLEXIDADE[complexidade]}</b></span>
       <span title={paginas ? 'Páginas do arquivo que subiu' : `Estimativa, ${PALAVRAS_POR_PAGINA} palavras por página`}>
