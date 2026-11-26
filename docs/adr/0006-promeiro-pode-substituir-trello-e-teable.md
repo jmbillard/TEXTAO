@@ -2,7 +2,7 @@
 status: proposta (direção)
 ---
 
-# O PROMeiro pode virar a ferramenta de gestão da arte, no lugar do Trello e, depois, do Teable
+# O PROMeiro pode virar a ferramenta de gestão da arte, no lugar do Trello, do Teable e do n8n
 
 A equipe de arte entrou no Trello porque era o que havia e era fácil de implantar, mas não usa quase nada do que ele
 oferece: ninguém usa notificações nem comentários, ninguém atualiza os campos. O uso real é olhar o card que está lá,
@@ -25,3 +25,23 @@ um interrogatório futuro, ainda não feito.
 (lista, card, id do Trello) quando houver um conceito próprio do PROMeiro; preferir automações novas dentro do PROMeiro
 a novos fluxos do n8n disparados pelo Trello; o PROMeiro guardar o que é dele (originais, histórico) sem depender do
 Trello nem do Teable para isso.
+
+## Depois do Trello e do Teable, o n8n também sai
+
+Decisão do usuário: logo depois de deixar o Trello e o Teable, deixar o n8n. Fica tudo entre o Padeiro, que funciona
+dentro do After Effects, e o PROMeiro, com uma API do PROMeiro com que o Padeiro fala direto. Os fluxos de hoje caem em
+três grupos:
+
+1. **Somem com o Trello:** sincronizar card↔banco (PROMO: DB, BATCH: TRELLO CARDS → DB), PRIORIDADE, o relatório de
+   CLAQUETES DUPLICADAS (a aba Duplicadas do PROMeiro já o substitui) e o UPLOAD de roteiros.
+2. **Viram a API do PROMeiro para o Padeiro:** o webhook do projeto (`/webhook/projeto`), o `/buscar` (índice das
+   atrações), filmes-recentes e os cards recentes na claquete.
+3. **Integrações de fora** (Teams, a leitura da grade de filmes com IA): passam para dentro do PROMeiro. O n8n só fica
+   se surgir uma integração que não compense escrever.
+
+**Regra a partir de agora:** integração nova do Padeiro nasce no PROMeiro, não no n8n. As rotas que substituírem as do
+n8n mantêm **exatamente** o mesmo contrato JSON documentado no repositório do Padeiro, para a troca ser só mudar o
+endereço na configuração do Padeiro (que já é configurável): uma integração por vez, sem dia de virada.
+
+**Pergunta aberta:** como o Padeiro se identifica no PROMeiro. Hoje o PROMeiro fica atrás do Cloudflare Access e o n8n
+faz o meio; a escolha entre um token por designer e um token de serviço fica para antes da primeira rota.
