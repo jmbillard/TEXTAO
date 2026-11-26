@@ -383,8 +383,10 @@ export function App() {
   // soltar um arquivo em qualquer lugar da janela
   useEffect(() => {
     const temArquivo = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+    // a tela com uma área própria de soltar (o CSV na ficha da atração) desliga o soltar da janela: lá, o arquivo é dela
+    const zonaPropria = () => !!document.querySelector('[data-soltar-aqui]');
     const entrar = (e: DragEvent) => {
-      if (!temArquivo(e)) return;
+      if (!temArquivo(e) || zonaPropria()) return;
       arrasto.current++;
       setSoltando(true);
     };
@@ -398,6 +400,7 @@ export function App() {
       e.preventDefault();
       arrasto.current = 0;
       setSoltando(false);
+      if (zonaPropria()) return;
       receberArquivos([...(e.dataTransfer?.files ?? [])]);
     };
     window.addEventListener('dragenter', entrar);

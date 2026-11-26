@@ -1,18 +1,13 @@
 import { useState } from 'react';
 import type { AcervoDaFicha, ArteDaFicha } from '../dados/armazenamento';
 import { SUBTIPOS_ARTE } from '../modelo/tipos';
-import { semAcento } from '../modelo/vocabularios';
 import { Icone } from './icones';
+import { ImportarNoComputador } from './ImportarAcervo';
+import { chaveDeBusca } from './util';
 
 /* A ficha da atração nos Cadastros: o acervo dela (as artes prontas), só para consultar. No computador, a seção Acervo
    fica no painel da direita e "Ver as N" troca a lista da esquerda pelo acervo; no celular, a ficha ocupa a tela. */
 
-/** A arte do jeito de buscar: sem acento, sem caixa, sem pontuação (como a chave da arte do servidor). */
-const chave = (s: string) =>
-  semAcento(s)
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, ' ')
-    .trim();
 
 /** A cor de cada tipo na barra e na legenda; o tipo sem cor própria fica neutro e o "sem tipo", apagado. */
 const COR: Record<string, string> = {
@@ -27,7 +22,7 @@ const corDoTipo = (tipo: string) => (tipo ? (COR[tipo] ?? 'var(--tinta3)') : 'va
 const nomeDoTipo = (tipo: string) => tipo || 'sem tipo';
 /** A miniatura do tipo (a mesma da lista de artes da revisão), pela sigla ou pelo nome; sem tipo, tracejada. */
 const miniDoTipo = (tipo: string) =>
-  tipo ? SUBTIPOS_ARTE.find((x) => x.sigla === tipo.toUpperCase() || chave(x.nome) === chave(tipo))?.id : 'vazio';
+  tipo ? SUBTIPOS_ARTE.find((x) => x.sigla === tipo.toUpperCase() || chaveDeBusca(x.nome) === chaveDeBusca(tipo))?.id : 'vazio';
 
 /** Quantas linhas a lista mostra de uma vez: o resto aparece pela busca ou pelo filtro. */
 const MAXIMO = 300;
@@ -72,8 +67,8 @@ function LinhasDoAcervo({ artes, vazio }: { artes: ArteDaFicha[]; vazio: string 
 }
 
 const filtrar = (artes: ArteDaFicha[], busca: string, tipo: string | null) => {
-  const termo = chave(busca);
-  return artes.filter((a) => (tipo === null || a.tipo === tipo) && (!termo || chave(a.arte).includes(termo)));
+  const termo = chaveDeBusca(busca);
+  return artes.filter((a) => (tipo === null || a.tipo === tipo) && (!termo || chaveDeBusca(a.arte).includes(termo)));
 };
 
 /** "Ver as N": o acervo da atração no lugar da lista de atrações, com a busca e o filtro por tipo. */
@@ -184,6 +179,7 @@ export function FichaNoCelular({ nome, acervo, falha, voltar }: { nome: string; 
               </section>
             </>
           )}
+          <ImportarNoComputador />
         </>
       )}
     </div>

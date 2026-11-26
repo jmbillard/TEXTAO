@@ -15,7 +15,7 @@ import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
 import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
-import { criarAcervo } from './acervo.mjs';
+import { chaveDeArte, criarAcervo } from './acervo.mjs';
 import { criarRedatorProvavel } from './redator.mjs';
 import { criarFilmes } from './filmes.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
@@ -1336,6 +1336,35 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), ...(await acervo.fichaDa(atracao)) });
       } catch (e) {
         return json(res, 502, { erro: `Não consegui ler o acervo: ${e instanceof Error ? e.message : e}` });
+      }
+    }
+    if (caminho === '/api/acervo/importar/previa' || caminho === '/api/acervo/importar') {
+      // a importação do acervo por CSV (ADR 0005): a prévia classifica, o gravar grava o que a conferência decidiu.
+      // Só administradores (CADASTRO_ADMINS) e só atração de acervo próprio.
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores importam o acervo.' });
+      if (!acervo.ligado || !acervo.grava) return json(res, 503, { erro: 'O acervo de artes não está configurado para gravar (TEABLE_ACERVO e TEABLE_PG_ACERVO).' });
+      const corpo = (await lerCorpo(req, LIMITE_CORPO, 'CSV')) ?? {};
+      const atracao = typeof corpo.atracao === 'string' ? corpo.atracao.trim().slice(0, 200) : '';
+      if (!atracao) return json(res, 400, { erro: 'Qual atração?' });
+      try {
+        const qual = await acervo.acervoDe(atracao);
+        if (qual !== 'proprio') return json(res, 422, { erro: `${atracao} não tem acervo próprio: a importação é só para atração de acervo próprio.` });
+        if (caminho === '/api/acervo/importar/previa') {
+          if (typeof corpo.csv !== 'string' || !corpo.csv.trim()) return json(res, 400, { erro: 'O CSV veio vazio.' });
+          const arquivo = typeof corpo.arquivo === 'string' ? corpo.arquivo.slice(0, 200) : '';
+          return json(res, 200, { atracao, arquivo, ...(await acervo.previaDaImportacao(atracao, corpo.csv)) });
+        }
+        const linhas = Array.isArray(corpo.linhas)
+          ? corpo.linhas.map((l) => ({ arte: typeof l?.arte === 'string' ? l.arte.trim().slice(0, 300) : '', tipo: typeof l?.tipo === 'string' ? l.tipo.trim() : '' }))
+          : [];
+        if (!linhas.length || linhas.length > 20_000 || linhas.some((l) => !chaveDeArte(l.arte))) return json(res, 400, { erro: 'As linhas da importação vieram malformadas.' });
+        const feito = await acervo.gravarImportacao(atracao, linhas);
+        console.log(`[acervo] ${eu.email} importou ${String(corpo.arquivo ?? 'um CSV').slice(0, 200)} em ${atracao}: ${feito.novas} novas, ${feito.ganharamTipo} ganharam o tipo (${feito.antes} → ${feito.depois})`);
+        return json(res, 200, feito);
+      } catch (e) {
+        if (e?.status === 422) return json(res, 422, { erro: e.message });
+        return json(res, 502, { erro: `Não consegui ${caminho.endsWith('previa') ? 'ler o acervo' : 'gravar no acervo'}: ${e instanceof Error ? e.message : e}` });
       }
     }
     if (caminho === '/api/acervo/zerar') {

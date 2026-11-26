@@ -550,6 +550,47 @@ export const lerAcervoDaFicha = (atracao: string) => pedir<AcervoDaFicha>(`/api/
 /** Quantas artes cada atração tem no acervo, pelo nome (a lista de atrações dos Cadastros). */
 export const lerTotaisDoAcervo = () => pedir<{ ligado: boolean; totais: Record<string, number> }>('/api/acervo/totais');
 
+/** O estado de uma linha do CSV na conferência da importação: nova · completa o acervo (só ganha o tipo) · já no
+    acervo · cópia (ou a mesma arte repetida no CSV) · fica de fora · para decidir (a pergunta da conferência). */
+export type EstadoDaImportacao = 'nova' | 'completa' | 'ja' | 'copia' | 'fora' | 'decidir';
+/** Uma linha do CSV, convertida numa arte e classificada contra o acervo da atração. */
+export interface LinhaDaImportacao {
+  /** a linha no arquivo (o cabeçalho é a 1) */
+  n: number;
+  nome: string;
+  caminho: string;
+  arte: string;
+  /** a sigla do tipo ('' sem tipo) */
+  tipo: string;
+  estado: EstadoDaImportacao;
+  motivo: string;
+}
+/** A prévia da importação: o que o CSV faria no acervo da atração, antes de gravar. */
+export interface PreviaDaImportacao {
+  atracao: string;
+  arquivo: string;
+  /** quantas linhas o acervo da atração tem agora */
+  antes: number;
+  /** as opções do campo tipo do acervo */
+  tipos: string[];
+  linhas: LinhaDaImportacao[];
+  placar: Record<EstadoDaImportacao, number>;
+}
+/** O que a importação gravou: o total do acervo antes e depois. */
+export interface ResultadoDaImportacao {
+  antes: number;
+  depois: number;
+  novas: number;
+  ganharamTipo: number;
+  semMudanca: number;
+}
+/** A importação do acervo por CSV (só administradores, só acervo próprio): a prévia não grava nada. */
+export const preverImportacao = (atracao: string, arquivo: string, csv: string) =>
+  pedir<PreviaDaImportacao>('/api/acervo/importar/previa', { method: 'POST', body: JSON.stringify({ atracao, arquivo, csv }) });
+/** Grava as linhas que a conferência decidiu; o servidor relê o acervo antes e não duplica. */
+export const gravarImportacao = (atracao: string, arquivo: string, linhas: Pick<LinhaDaImportacao, 'arte' | 'tipo'>[]) =>
+  pedir<ResultadoDaImportacao>('/api/acervo/importar', { method: 'POST', body: JSON.stringify({ atracao, arquivo, linhas }) });
+
 /** Pacote gráfico novo: as artes da atração deixam de valer. */
 export const zerarAcervo = (atracao: string) => pedir<{ zeradas: number }>('/api/acervo/zerar', { method: 'POST', body: JSON.stringify({ atracao }) });
 

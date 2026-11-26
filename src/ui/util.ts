@@ -1,4 +1,5 @@
 import type { Meta } from '../modelo/tipos';
+import { semAcento } from '../modelo/vocabularios';
 
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -67,6 +68,13 @@ export async function copiarTexto(texto: string): Promise<void> {
   area.remove();
   if (!ok) throw new Error('cópia bloqueada');
 }
+
+/** O texto do jeito de buscar uma arte: sem acento, sem caixa, sem pontuação (como a chave da arte do servidor). */
+export const chaveDeBusca = (s: string) =>
+  semAcento(s)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
 
 export const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 export const ehMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);

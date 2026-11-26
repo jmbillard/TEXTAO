@@ -143,5 +143,24 @@ Como o acervo de uma atração funciona. É um de três valores; sem valor, vale
 Não é a categoria: a categoria diz o gênero (novela, show, filme…), e dentro de uma categoria há os três acervos.
 _Evitar_: tipo da atração, Genérica, Atração (como valor)
 
+**Ficha da atração**:
+O painel que abre ao clicar numa atração em Cadastros › Atrações, no lugar de "Nova atração": nome, categoria, acervo,
+keys e a seção Acervo (o total de artes prontas, a divisão por tipo com "sem tipo" em destaque e "Ver as N", que troca
+a lista pelo acervo da atração). É ali que ficam a importação do acervo e o novo pacote. No celular, só consulta.
+_Evitar_: página da atração, detalhe
+
+**Importação do acervo**:
+O CSV da pasta de output de uma atração (`nome;caminho;criado em`) que vira artes do acervo dela, conferido antes de
+gravar, na ficha da atração. Só administradores e só atração de acervo próprio. Cada arquivo vira uma arte: o prefixo
+"SIGLA - " é o tipo da arte (a sigla mais longa primeiro) e `_alfa`/`_alpha` é lettering. Cada linha vem com um estado:
+- **nova**: a arte não está no acervo da atração;
+- **completa o acervo**: a mesma arte está lá sem tipo, e só ganha o tipo;
+- **já no acervo**: a mesma arte (pela chave) com o mesmo tipo; não muda nada;
+- **cópia**: o arquivo copiado ("- Copy", "(1)") ou a mesma arte repetida no CSV; conta uma vez;
+- **fora**: a pasta, o nome sem "SIGLA - ", ou a linha que quem confere tirou;
+- **para decidir**: a pergunta que a conferência faz antes de gravar.
+Gravar relê o acervo, cria as novas e dá o tipo às que completam; o resultado é o total "antes → depois".
+_Evitar_: carga, upload, sincronizar
+
 **Pacote gráfico novo**:
 Quando a atração troca a identidade: as artes do acervo dela deixam de valer (zerar o acervo).

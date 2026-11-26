@@ -11,6 +11,7 @@ import {
   lerCadastros,
   lerTotaisDoAcervo,
   mudarAcervo,
+  preverImportacao,
   removerCadastro,
   zerarAcervo,
   type AcervoDaAtracao,
@@ -19,6 +20,8 @@ import {
   type Cadastros as DadosCadastros,
   type CampoCaminho,
   type EditorCadastro,
+  type PreviaDaImportacao,
+  type ResultadoDaImportacao,
   type KeyCadastro,
   type RedatorCadastro,
   type TipoCadastro,
@@ -33,6 +36,7 @@ import { Marca } from './pecas';
 import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
+import { AreaDeImportar, ConferenciaDaImportacao, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
    (e redator/editor novo também para o Trello). O que está sendo cadastrado aparece na lista como
@@ -574,12 +578,37 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     );
   };
   const abrirFicha = (a: AtracaoCadastro) => {
+    setImportacao(null);
     setAberta(a.id);
     setVerAcervo(false);
     void lerFicha(a.nome);
     if (celular) window.scrollTo(0, 0);
   };
+  // a importação do acervo por CSV, da atração aberta: lendo o arquivo, conferindo a prévia ou com o resultado gravado
+  const [importacao, setImportacao] = useState<{ atracao: string; lendo: boolean; falha: string; previa?: PreviaDaImportacao; resultado?: ResultadoDaImportacao } | null>(null);
+  const importar = (atracao: string) => async (arquivo: File) => {
+    setImportacao({ atracao, lendo: true, falha: '' });
+    try {
+      const previa = await preverImportacao(atracao, arquivo.name, await arquivo.text());
+      setImportacao((i) => (i?.atracao === atracao ? { atracao, lendo: false, falha: '', previa } : i));
+      window.scrollTo(0, 0);
+    } catch (e) {
+      setImportacao((i) => (i?.atracao === atracao ? { atracao, lendo: false, falha: e instanceof Error ? e.message : 'Não consegui ler o CSV.' } : i));
+    }
+  };
+  /** Sai da conferência (ou do resultado) de volta à ficha; com o acervo gravado, a ficha e a lista releem o total. */
+  const voltarDaImportacao = (atracao: string, ver = false) => {
+    if (importacao?.resultado) {
+      // o acervo antigo não aparece nem por um instante: a ficha relê
+      setFicha({ nome: atracao, acervo: null, falha: '' });
+      void lerFicha(atracao);
+      void carregarTotais();
+    }
+    setImportacao(null);
+    setVerAcervo(ver);
+  };
   const fecharFicha = () => {
+    setImportacao(null);
     setAberta(null);
     setVerAcervo(false);
     setFicha(null);
@@ -894,6 +923,33 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         <main className="cad">
           <FichaNoCelular key={atracaoAberta.id} nome={atracaoAberta.nome} acervo={fichaAberta?.acervo ?? null} falha={fichaAberta?.falha ?? ''} voltar={fecharFicha} />
         </main>
+      ) : atracaoAberta && importacao?.atracao === atracaoAberta.nome && importacao.previa ? (
+        <main className="cad cad-importar">
+          <p className="trilha-cad">
+            <button type="button" className="botao-texto" onClick={() => { setImportacao(null); fecharFicha(); }}>Cadastros</button>
+            <Icone nome="direita" tam={13} />
+            <button type="button" className="botao-texto" onClick={() => voltarDaImportacao(atracaoAberta.nome)}>{atracaoAberta.nome}</button>
+            <Icone nome="direita" tam={13} />
+            <b>Importar acervo</b>
+          </p>
+          {importacao.resultado ? (
+            <ResultadoDaImportacaoNaTela
+              previa={importacao.previa}
+              resultado={importacao.resultado}
+              verFicha={() => voltarDaImportacao(atracaoAberta.nome)}
+              verAcervo={() => voltarDaImportacao(atracaoAberta.nome, true)}
+            />
+          ) : (
+            <ConferenciaDaImportacao
+              previa={importacao.previa}
+              cancelar={() => voltarDaImportacao(atracaoAberta.nome)}
+              gravado={(resultado) => {
+                setImportacao((i) => (i ? { ...i, resultado } : i));
+                window.scrollTo(0, 0);
+              }}
+            />
+          )}
+        </main>
       ) : (
       <main className="cad">
         <h1>Cadastros</h1>
@@ -985,6 +1041,14 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                 </div>
               </div>
               <SecaoAcervo acervo={fichaAberta?.acervo ?? null} falha={fichaAberta?.falha ?? ''} ver={() => setVerAcervo(true)} />
+              {fichaAberta?.acervo?.ligado && fichaAberta.acervo.acervo === 'proprio' && (
+                <AreaDeImportar
+                  pode={pode}
+                  lendo={importacao?.atracao === atracaoAberta.nome && importacao.lendo}
+                  falha={importacao?.atracao === atracaoAberta.nome ? importacao.falha : ''}
+                  abrir={importar(atracaoAberta.nome)}
+                />
+              )}
               {pode && atracaoAberta.acervo === 'proprio' && (
                 <div className="rodape-ficha">
                   <span className="qtd-acervo">só administradores</span>

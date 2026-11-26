@@ -2,8 +2,9 @@
  * Acervo de artes: o que cada atração já tem pronto. Uma linha por arte, ligada à atração e ao card
  * (produção da arte) em que foi pedida. Vale até trocar o pacote gráfico: aí as artes da atração são apagadas.
  *
- * Tabela ARTES_acervo: arte (texto), key (fórmula, só para ver: o app calcula a sua), tipo (seleção; à mão, nunca
- * pelo PROMeiro), atracao (vínculo → atracoes), claquete (vínculo → ARTE_producao), filme (vínculo → filmes).
+ * Tabela ARTES_acervo: arte (texto), key (fórmula, só para ver: o app calcula a sua), tipo (seleção: a sigla; vem do
+ * envio, da importação por CSV conferida na ficha da atração (ADR 0005) ou da mão; o PROMeiro só grava uma opção que o
+ * campo já tem), atracao (vínculo → atracoes), claquete (vínculo → ARTE_producao), filme (vínculo → filmes).
  *
  * O acervo da atração (campo acervo em atracoes) diz como o acervo funciona:
  *   próprio (vazio também vale próprio): as artes são da atração.
@@ -15,6 +16,7 @@
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
  */
 import { acervoDaAtracao } from './cadastros.mjs';
+import { classificar, planoDeGravacao } from './importacao-do-acervo.mjs';
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 import { nivelDeComplexidade } from './trello.mjs';
@@ -247,8 +249,7 @@ export function criarAcervo(env, deps = {}) {
       filme = await filmeDe(atracao, data);
       if (!filme) return 0; // sem saber o filme, não dá para guardar
     }
-    const [a] = t.atracoes ? await consultar(`SELECT "__id" AS id FROM ${t.atracoes} WHERE LOWER("atracao") = LOWER($1) LIMIT 1`, [atracao]) : [];
-    if (!a?.id) throw new Error(`A atração ${atracao} não está nos cadastros.`);
+    const a = { id: await idDaAtracao(atracao) };
     const [p] = card && t.producao ? await consultar(`SELECT "__id" AS id FROM ${t.producao} WHERE "card_ID" = $1 LIMIT 1`, [card]) : [];
     // o que já existe, linha a linha (com o tipo): do filme, ou da atração; numa sessão, a prévia conta de qualquer tipo
     const n = nomeComparavel(atracao);
@@ -294,6 +295,60 @@ export function criarAcervo(env, deps = {}) {
     return novas.length + tipar.length;
   }
 
+  /** As opções do campo tipo do acervo (as siglas), lidas na hora pela API: a importação só grava um tipo daqui. */
+  async function tiposDoAcervo() {
+    const r = await buscar(`${api.url}/api/table/${encodeURIComponent(api.tabela)}/field`, { headers: { authorization: `Bearer ${api.token}` }, signal: AbortSignal.timeout(20_000) });
+    if (!r.ok) throw new Error(`Teable respondeu ${r.status} nos campos do acervo.`);
+    const campos = await r.json();
+    const tipo = (Array.isArray(campos) ? campos : []).find((c) => c?.name === 'tipo');
+    return (tipo?.options?.choices ?? []).map((c) => String(c?.name ?? '')).filter(Boolean);
+  }
+  /** O id da atração nos cadastros (para o vínculo); a que não está lá é um erro de quem pediu (422). */
+  async function idDaAtracao(atracao) {
+    const [a] = t.atracoes ? await consultar(`SELECT "__id" AS id FROM ${t.atracoes} WHERE LOWER("atracao") = LOWER($1) LIMIT 1`, [atracao]) : [];
+    if (!a?.id) throw Object.assign(new Error(`A atração ${atracao} não está nos cadastros.`), { status: 422 });
+    return a.id;
+  }
+  /** As linhas do acervo próprio da atração (sem as de filme), com o id. */
+  const linhasDa = async (atracao) => (await todas()).filter((l) => !l.filmeId && nomeComparavel(l.atracao) === nomeComparavel(atracao));
+
+  /**
+   * A prévia da importação por CSV (ADR 0005): cada linha do CSV classificada contra o acervo da atração, o placar e
+   * as opções de tipo. Nada é gravado. @returns { antes, tipos, linhas, placar }
+   */
+  async function previaDaImportacao(atracao, csv) {
+    await idDaAtracao(atracao);
+    const tipos = await tiposDoAcervo();
+    const acervo = await linhasDa(atracao);
+    return { antes: acervo.length, tipos, ...classificar({ csv, acervo, tipos }) };
+  }
+
+  /**
+   * Grava a importação conferida (ADR 0005): as linhas decididas ({ arte, tipo }) entram no acervo da atração. O tipo
+   * tem de ser uma opção do campo (sem ele, nada é gravado: o typecast nunca cria opção nova); o acervo é relido logo
+   * antes, e a comparação é a da prévia: a mesma arte e tipo não muda nada, a mesma arte sem tipo só ganha o tipo, o
+   * resto é criado, em lotes de 100. @returns { antes, depois, novas, ganharamTipo, semMudanca }
+   */
+  async function gravarImportacao(atracao, linhas) {
+    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
+    const id = await idDaAtracao(atracao);
+    const tipos = await tiposDoAcervo();
+    const invalidos = [...new Set(linhas.map((l) => l.tipo).filter((tipo) => tipo && !tipos.includes(tipo)))];
+    if (invalidos.length) throw Object.assign(new Error(`Tipo que não está no campo tipo do acervo: ${invalidos.join(', ')}. Nada foi gravado.`), { status: 422 });
+    esquecer();
+    const acervo = await linhasDa(atracao);
+    const plano = planoDeGravacao(linhas, acervo);
+    const criar = plano.criar.map(({ arte, tipo }) => ({ fields: { arte, ...(tipo ? { tipo } : {}), atracao: [{ id }] } }));
+    const tipar = plano.tipar.map(({ id: linha, tipo }) => ({ id: linha, fields: { tipo } }));
+    try {
+      for (let i = 0; i < criar.length; i += 100) await teable('POST', '', { fieldKeyType: 'name', typecast: false, records: criar.slice(i, i + 100) });
+      for (let i = 0; i < tipar.length; i += 100) await teable('PATCH', '', { fieldKeyType: 'name', typecast: false, records: tipar.slice(i, i + 100) });
+    } finally {
+      esquecer();
+    }
+    return { antes: acervo.length, depois: acervo.length + criar.length, novas: criar.length, ganharamTipo: tipar.length, semMudanca: plano.semMudanca };
+  }
+
   /** Pacote gráfico novo: todas as artes da atração saem do acervo (apagadas). @returns quantas */
   async function zerar(atracao) {
     if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
@@ -306,5 +361,5 @@ export function criarAcervo(env, deps = {}) {
     return ids.length;
   }
 
-  return { ligado, grava, acervoDe, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, acervoDe, previaDaImportacao, gravarImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }
