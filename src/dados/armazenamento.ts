@@ -852,6 +852,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 /* ---------- aba Duplicadas dos Cadastros (só administradores) ---------- */
 
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
+import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {
@@ -1109,6 +1110,21 @@ export interface ListaDoPortainer {
   ficam: VariavelDoPortainer[];
 }
 export const lerListaDoPortainer = () => pedir<ListaDoPortainer>('/api/configuracao/portainer');
+
+/** O Andamento do projeto (#92), só administradores: a trilha, as frentes (a leitura do GitHub) e de quando é. */
+export interface AndamentoDoProjeto {
+  etapas: Etapa[];
+  /** a leitura de agora ou a última guardada; null quando nunca houve uma */
+  andamento: FrentesDoAndamento | null;
+  lidoEm: string | null;
+  /** as variáveis que faltam no Portainer (GITHUB_TOKEN, GITHUB_REPO) */
+  falta: string[];
+  /** o GitHub não respondeu: o motivo e desde quando */
+  foraDoAr: { motivo: string; desde: string } | null;
+  repo: string;
+}
+/** Lê o Andamento (guardado alguns minutos no servidor); `deNovo` vai ao GitHub. */
+export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** Confere sem salvar nada. */
 export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify(m) });
 /** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */

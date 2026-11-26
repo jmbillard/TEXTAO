@@ -9,7 +9,7 @@ import { criarTrello } from '../servidor/trello.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { SALVAVEIS } from '../servidor/configuracao.mjs';
 // @ts-expect-error módulo JS sem tipos
-import { FICAM_NO_PORTAINER } from '../servidor/configuracao-portainer.mjs';
+import { FICAM_NO_PORTAINER, listaDoPortainer } from '../servidor/configuracao-portainer.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 
@@ -153,6 +153,18 @@ describe('pode apagar do Portainer', () => {
     // a INTER não tem entrada: a reserva ainda vale para ela
     expect(l.aindaNao.find((v) => v.nome === 'TRELLO_LISTA')?.porque).toMatch(/INTER/);
     expect(nomes(l.aindaNao)).toEqual(['TEABLE_ACERVO', 'TEABLE_PG_ESQUEMA', 'TRELLO_LISTA', 'TRELLO_LISTA_FILMES', 'TRELLO_QUADRO']);
+  });
+});
+
+describe('o GitHub do Andamento (#92)', () => {
+  it('o token fica como segredo; o repositório e a branch, como infraestrutura', () => {
+    const l = listaDoPortainer({ portainer: { GITHUB_TOKEN: 'x', GITHUB_REPO: 'exemplo/pomar', GITHUB_BRANCH: 'desenvolvimento' }, salvos: new Set(), valores: {}, descoberta: null });
+    expect(l.ficam).toEqual([
+      { nome: 'GITHUB_BRANCH', porque: 'infraestrutura' },
+      { nome: 'GITHUB_REPO', porque: 'infraestrutura' },
+      { nome: 'GITHUB_TOKEN', porque: 'segredo' },
+    ]);
+    expect([...l.podeApagar, ...l.aindaNao]).toEqual([]);
   });
 });
 

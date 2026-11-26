@@ -63,6 +63,11 @@ services:
       # ---- n8n: a aba Filmes (a leitura da prévia por IA; vazia, a aba fica desligada) ----
       - N8N_FILMES_LER=${N8N_FILMES_LER:-}
 
+      # ---- GitHub: o Andamento do projeto (opcional; o token é segredo, só leitura) ----
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
+      - GITHUB_BRANCH=${GITHUB_BRANCH:-}
+
       # ---- Opcionais: pode ficar vazia: a Configuração do app guarda ----
       # Cada uma vale só enquanto a tela não tiver um valor salvo para ela (na primeira vez, a tela começa com estas).
       # Ficam aqui para quem ainda as tem no Portainer; a página "Pode apagar do Portainer" diz quais já podem sair.

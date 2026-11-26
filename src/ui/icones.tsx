@@ -38,6 +38,8 @@ const D = {
   pessoas: 'M3 20a6 6 0 0 1 12 0 M5.5 8.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0 M16 4.6a3.5 3.5 0 0 1 0 6.8 M18 14.5a6 6 0 0 1 3 5.5',
   desfazer: 'M9 14L4 9l5-5 M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
   refazer: 'M15 14l5-5-5-5 M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
+  // o Andamento do projeto: as barras subindo
+  andamento: 'M4 20h16 M6 16v-3 M11 16V9 M16 16V5',
   historico: 'M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5 M12 7v5l3 2',
   cadeado: 'M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z M8 11V7a4 4 0 0 1 8 0v4',
   olho: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0',

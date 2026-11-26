@@ -34,6 +34,7 @@ import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSec
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
+import { criarAndamento } from './andamento.mjs';
 import { administradoresDaTela, administradoresSalvos, ehAdministrador, porAdministrador, tirarAdministrador } from '../src/modelo/pessoas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { confirmaATroca, conexoesDaTela, lerQuadros, mudancasDaBaseNova, religarNoQuadroNovo } from './configuracao-conexoes.mjs';
@@ -446,7 +447,7 @@ const DIAS_DA_CONTAGEM = 90;
  * @param abrirPg abre o Postgres do Teable (os módulos abrem cada um a sua conexão, na primeira consulta)
  * @param agendar (f, ms) repete f de ms em ms (a verificação diária dos membros do quadro); os testes trocam
  */
-export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, agendar = (f, ms) => setInterval(f, ms), ...modulos }) {
+export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, buscarNoGitHub = fetch, agendar = (f, ms) => setInterval(f, ms), ...modulos }) {
   const fabricas = { ...FABRICAS };
   for (const [nome, m] of Object.entries(modulos)) if (m !== undefined && m !== null) fabricas[nome] = m;
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
@@ -467,6 +468,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   };
   // o Trello e o Teable fora do ar (#79): desde quando cada um não responde (guardado: vale depois de reiniciar)
   const fora = criarForaDoAr(copia);
+  // o Andamento do projeto (#92): o GitHub lido com o GITHUB_TOKEN, guardado alguns minutos e, a última leitura, na cópia
+  const andamentoDoProjeto = criarAndamento({ copia, buscar: buscarNoGitHub });
 
   /* ---------- os módulos da configuração de agora ---------- */
   // as tabelas do Teable (#76): achadas pelo nome na base; a última descoberta fica guardada (vale com o Teable fora)
@@ -2096,6 +2099,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return rotaDasPessoas(req, res, eu);
     }
     if (caminho === '/api/configuracao' || caminho.startsWith('/api/configuracao/')) return rotaDaConfiguracao(req, res, eu, caminho);
+    if (caminho === '/api/andamento-do-projeto') {
+      // o Andamento do projeto (#92), só para administradores (a mesma regra do app); ?deNovo=1 vai ao GitHub
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem o Andamento.' });
+      const deNovo = new URL(req.url, 'http://x').searchParams.get('deNovo') === '1';
+      return json(res, 200, await andamentoDoProjeto.ler(configuracao.valores(), { deNovo }));
+    }
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));

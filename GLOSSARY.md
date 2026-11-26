@@ -145,6 +145,17 @@ Portainer ainda tem em três grupos: **pode apagar** (o valor já está salvo na
 infraestrutura e a chave-mestra CADASTRO_ADMINS).
 _Evitar_: ajustes, painel de controle
 
+**Andamento** (do projeto):
+A página, no menu do perfil e só de administradores, que mostra ao vivo onde o projeto está: a **trilha** das etapas
+do ADR 0006 (com a etapa atual, fixa no código), uma **frente** por spec (a issue-mãe com sub-issues no GitHub) com a
+barra de tickets feitos / total e o que vem agora, e os tickets de cada frente com a **situação**: fechada, pronta no
+código (um commit da branch de desenvolvimento cita "(#N)" no título) ou aberta. **Feito** é fechada ou pronta no
+código. As frentes são uma lista fixa no código mais as specs novas (mais novas que a última da lista, com sub-issues
+e o rótulo pronto-para-agente). O servidor lê o GitHub com um token só de leitura (GITHUB_TOKEN, segredo do
+Portainer) e guarda a resposta alguns minutos; sem token ou com o GitHub fora, a página diz isso e mostra a última
+leitura guardada. No celular, só consulta.
+_Evitar_: dashboard, painel, roadmap
+
 **Fora do ar** (na Configuração):
 O Trello ou o Teable que não responde. A seção que depende dele mostra o que está salvo com os nomes da **última
 leitura** (o PROMeiro guarda no SQLite cada leitura do quadro, com as listas, os campos, as opções e as etiquetas, e

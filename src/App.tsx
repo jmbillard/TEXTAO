@@ -6,6 +6,7 @@ import { Filmes } from './ui/Filmes';
 import { Configuracao } from './ui/Configuracao';
 import { HistoricoDaConfiguracao } from './ui/HistoricoDaConfiguracao';
 import { PortainerDaConfiguracao } from './ui/PortainerDaConfiguracao';
+import { Andamento } from './ui/Andamento';
 import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, temTrello, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
@@ -29,7 +30,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -56,6 +57,7 @@ const telaDoHash = (): Tela => {
   if (/^#\/configuracao\/?$/.test(location.hash)) return { t: 'configuracao' };
   if (/^#\/configuracao\/historico\/?$/.test(location.hash)) return { t: 'configuracao', pagina: 'historico' };
   if (/^#\/configuracao\/portainer\/?$/.test(location.hash)) return { t: 'configuracao', pagina: 'portainer' };
+  if (/^#\/andamento\/?$/.test(location.hash)) return { t: 'andamento' };
   const c = /^#\/cadastros(?:\/(atracoes|redatores|editores))?$/.exec(location.hash);
   return c ? { t: 'cadastros', aba: (c[1] as TipoCadastro | undefined) ?? 'atracoes' } : { t: 'biblioteca' };
 };
@@ -139,11 +141,11 @@ export function App() {
   useEffect(() => {
     if (pronto && hashDesconhecido()) avisar(AVISO_DO_HASH);
   }, [pronto, avisar]);
-  // a Configuração é só de administradores: quem não é volta para a fila (o servidor também recusa)
-  const configuracaoFechada = pronto && tela.t === 'configuracao' && !souAdministrador();
+  // a Configuração e o Andamento são só de administradores: quem não é volta para a fila (o servidor também recusa)
+  const configuracaoFechada = pronto && (tela.t === 'configuracao' || tela.t === 'andamento') && !souAdministrador() ? (tela.t === 'andamento' ? 'Só administradores veem o Andamento.' : 'Só administradores veem a Configuração.') : '';
   useEffect(() => {
     if (!configuracaoFechada) return;
-    avisar('Só administradores veem a Configuração.');
+    avisar(configuracaoFechada);
     try {
       history.replaceState(null, '', '#/');
     } catch {
@@ -158,7 +160,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : '#/';
     try {
       if (location.hash !== hash) history.pushState(null, '', hash);
     } catch {
@@ -438,7 +440,7 @@ export function App() {
 
   return (
     <>
-      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
+      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} andamentoDoProjeto={() => ir({ t: 'andamento' })} avisar={avisar} identidade={identidade} definirPerfil={(p) => {
         salvarPerfilLocal(p);
         // com o perfil, o servidor (se houver) passa a reconhecer a pessoa
         void iniciarSessao().then((s) => {
@@ -458,6 +460,7 @@ export function App() {
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && !tela.pagina && <Configuracao voltar={() => ir({ t: 'biblioteca' })} historico={() => ir({ t: 'configuracao', pagina: 'historico' })} portainer={() => ir({ t: 'configuracao', pagina: 'portainer' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'historico' && <HistoricoDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
+      {tela.t === 'andamento' && souAdministrador() && <Andamento voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'portainer' && <PortainerDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key }} />}
 
