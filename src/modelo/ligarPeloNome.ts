@@ -3,7 +3,7 @@
    liga ("achado pelo nome"); não achou, ou achou mais de um: vira exceção, e alguém escolhe à mão.
    O mesmo módulo serve ao servidor (o estado, a conferência) e ao navegador (a tela refaz o estado a cada mudança):
    só sintaxe que o Node apaga. */
-import type { Praca } from './pracas';
+import { MARCA_TODAS, reconhecerPraca, type Praca } from './pracas.ts';
 
 export interface ListaDoTrello {
   id: string;
@@ -100,7 +100,8 @@ export interface Ligacao {
   id: string;
   /** o nome lido agora no Trello ('' quando não há ou sumiu) */
   nome: string;
-  como: 'nome' | 'mao' | '';
+  /** 'criar': a opção da praça nova, que o PROMeiro cria no campo Praça ao salvar */
+  como: 'nome' | 'mao' | 'criar' | '';
   problema: Problema;
   /** no dobro: os que o nome achou, para escolher */
   candidatos: string[];
@@ -163,8 +164,12 @@ export function desfazerAMao(c: LigacoesDasPracas, quadro: QuadroLido, chaves: r
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
-/** O estado de cada ligação (como foi ligada, o que há de errado), as exceções e a linha de estado. */
-export function estadoDasPracas(c: LigacoesDasPracas, quadro: QuadroLido): EstadoDasPracas {
+/** As praças de `novo` que não estão em `antes` (as siglas): as criadas agora. */
+export const pracasNovas = (novo: LigacoesDasPracas, antes: LigacoesDasPracas) => novo.pracas.filter((p) => !antes.pracas.some((a) => a.sigla === p.sigla)).map((p) => p.sigla);
+
+/** O estado de cada ligação (como foi ligada, o que há de errado), as exceções e a linha de estado. `novas`: as siglas
+    das praças criadas agora; a opção delas que o nome não acha não é exceção: o PROMeiro cria ao salvar. */
+export function estadoDasPracas(c: LigacoesDasPracas, quadro: QuadroLido, novas: readonly string[] = []): EstadoDasPracas {
   const aMao = new Set(c.aMao);
   const montar = (chave: string, id: string, achado: Achado, existe: { nome: string; problema: Problema } | null): Ligacao => {
     const base = { chave, id, candidatos: [] as string[] };
@@ -185,7 +190,10 @@ export function estadoDasPracas(c: LigacoesDasPracas, quadro: QuadroLido): Estad
         const l = quadro.listas.find((x) => x.id === id);
         existe = l ? { nome: l.nome, problema: l.arquivada ? 'arquivada' : '' } : null;
       }
-      const l = montar(chaveDa(p.sigla, ponta), id, achadoDa(ponta, p, quadro, campoLido), existe);
+      const achado = achadoDa(ponta, p, quadro, campoLido);
+      if (ponta === 'opcao' && !id && campoLido && achado.como === 'nenhum' && novas.includes(p.sigla))
+        return { chave: chaveDa(p.sigla, ponta), id, nome: '', como: 'criar', problema: '', candidatos: [] } satisfies Ligacao;
+      const l = montar(chaveDa(p.sigla, ponta), id, achado, existe);
       const outra = ponta !== 'opcao' && id ? c.pracas.find((o) => o !== p && o[ponta] === id) : undefined;
       return outra ? { ...l, divididaCom: outra.sigla } : l;
     };
@@ -221,11 +229,62 @@ export interface Mudanca {
   antes: string;
   depois: string;
 }
+/** As claquetes recentes que mudariam de praça com as regras novas. */
+export interface ClaquetesQueMudam {
+  dias: number;
+  /** quantas claquetes diferentes foram conferidas */
+  total: number;
+  mudam: { claquete: string; antes: string; depois: string }[];
+}
 export interface ConferenciaDasPracas {
   /** sem erro: pode salvar (aviso não impede) */
   ok: boolean;
   itens: ItemDaConferencia[];
   muda: Mudanca[];
+  /** só quando a conferência recebeu as claquetes recentes */
+  claquetes?: ClaquetesQueMudam;
+}
+/** As claquetes recentes (a fila do PROMeiro e a produção da arte), para contar as que mudariam de praça. */
+export interface ClaquetesRecentes {
+  dias: number;
+  claquetes: string[];
+}
+
+/** Os fluxos do n8n que têm as praças escritas dentro: a praça nova precisa ser ajustada neles à mão. */
+export const FLUXOS_DO_N8N = ['PROMO: UPLOAD ROTEIROS', 'BATCH: TRELLO CARDS → DB', 'PROMO: DB', 'PROMO: CLAQUETES DUPLICADAS'] as const;
+
+/** Uma sigla de praça: letras e números, até 8, e não a marca de "todas as praças". */
+export const siglaValida = (sigla: string) => /^[A-Z0-9]{1,8}$/.test(sigla) && sigla !== MARCA_TODAS;
+
+const comparavelDaClaquete = (c: string) => String(c ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+
+/** As claquetes (sem repetir) cuja praça muda das praças de `antes` para as de `novo`, na ordem em que vieram. */
+export function claquetesQueMudam(novo: readonly Praca[], antes: readonly Praca[], recentes: ClaquetesRecentes): ClaquetesQueMudam {
+  const vistas = new Set<string>();
+  const unicas = recentes.claquetes.filter((c) => {
+    const k = comparavelDaClaquete(c);
+    if (!k || vistas.has(k)) return false;
+    vistas.add(k);
+    return true;
+  });
+  const mudam = unicas
+    .map((claquete) => ({ claquete: claquete.trim(), antes: reconhecerPraca(claquete, antes), depois: reconhecerPraca(claquete, novo) }))
+    .filter((c) => c.antes !== c.depois);
+  return { dias: recentes.dias, total: unicas.length, mudam };
+}
+
+/** O item da conferência: quantas mudam, e de onde para onde ("2 de G5 para MG"). */
+function itemDasClaquetes({ dias, total, mudam }: ClaquetesQueMudam): ItemDaConferencia {
+  const titulo = 'Claquetes recentes';
+  if (!total) return { tipo: 'ok', titulo, detalhe: `nenhuma claquete nos últimos ${dias} dias.` };
+  if (!mudam.length) return { tipo: 'ok', titulo, detalhe: `nenhuma das ${total} claquetes dos últimos ${dias} dias muda de praça.` };
+  const grupos = new Map<string, number>();
+  for (const m of mudam) {
+    const grupo = `de ${m.antes} para ${m.depois}`;
+    grupos.set(grupo, (grupos.get(grupo) ?? 0) + 1);
+  }
+  const de = [...grupos].map(([g, n]) => `${n} ${g}`).join(', ');
+  return { tipo: 'aviso', titulo, detalhe: `${mudam.length} das ${total} claquetes dos últimos ${dias} dias ${mudam.length === 1 ? 'muda' : 'mudam'} de praça: ${de}.` };
 }
 
 /** "termina em SP ou PAULISTA", "começa com RIO", "sem regra". */
@@ -239,11 +298,18 @@ const SEM_NADA: Record<Ponta, string> = {
 
 /**
  * Confere a seção Praças antes de salvar: o campo Praça é um campo de lista; cada lista existe e não está arquivada;
- * cada opção existe no campo; nenhuma palavra de regra é a mesma de outra praça. Diz também o que muda, com os nomes
- * lidos no Trello. Nada aqui salva.
+ * cada opção existe no campo; nenhuma palavra de regra é a mesma de outra praça. A praça nova (#73) tem sigla válida
+ * e que não se repete, entrada e saída; a opção dela, se o nome não acha, o PROMeiro cria ao salvar. Com as claquetes
+ * recentes, conta as que mudariam de praça. Diz também o que muda, com os nomes lidos no Trello. Nada aqui salva.
  */
-export function conferirPracas(novo: LigacoesDasPracas, antes: LigacoesDasPracas, quadro: QuadroLido): ConferenciaDasPracas {
+export function conferirPracas(novo: LigacoesDasPracas, antes: LigacoesDasPracas, quadro: QuadroLido, recentes?: ClaquetesRecentes): ConferenciaDasPracas {
   const itens: ItemDaConferencia[] = [];
+  const novas = pracasNovas(novo, antes);
+  const siglas = novo.pracas.map((p) => p.sigla);
+  for (const sigla of new Set(siglas)) {
+    if (siglas.filter((s) => s === sigla).length > 1) itens.push({ tipo: 'erro', titulo: `Sigla ${sigla}`, detalhe: 'já é de outra praça. Use outra sigla.' });
+    else if (!siglaValida(sigla)) itens.push({ tipo: 'erro', titulo: `Sigla ${sigla}`, detalhe: 'só letras e números, até 8 (e não PRACAS).' });
+  }
   const campo = quadro.campos.find((c) => c.id === novo.campoPraca);
   if (!novo.campoPraca) itens.push({ tipo: 'aviso', titulo: 'Campo Praça', detalhe: 'nada ligado: os cards vão sem a praça.' });
   else if (!campo) itens.push({ tipo: 'erro', titulo: 'Campo Praça', detalhe: 'o campo não existe mais no quadro.' });
@@ -269,6 +335,21 @@ export function conferirPracas(novo: LigacoesDasPracas, antes: LigacoesDasPracas
     for (const ponta of PONTAS) {
       const id = p[ponta];
       const titulo = `${p.sigla}: ${NOME_DA_PONTA[ponta]}`;
+      const nova = novas.includes(p.sigla);
+      if (!id && nova && ponta !== 'opcao') {
+        // a praça nova sem entrada ou sem saída: o card dela iria para o lugar errado
+        listasOk = false;
+        itens.push({ tipo: 'erro', titulo, detalhe: `nada ligado: escolha a lista de ${NOME_DA_PONTA[ponta]}.` });
+        continue;
+      }
+      if (!id && nova && campo?.tipo === CAMPO_PRACA.tipo) {
+        const achado = acharOpcao(campo, p);
+        if (achado.como === 'dobro') {
+          opcoesOk = false;
+          itens.push({ tipo: 'erro', titulo, detalhe: `o campo Praça tem ${achado.ids.length} opções "${p.sigla}": escolha uma.` });
+        } else itens.push({ tipo: 'ok', titulo, detalhe: achado.como === 'um' ? `"${p.sigla}" já existe no campo.` : `não existe: o PROMeiro cria "${p.sigla}" ao salvar.` });
+        continue;
+      }
       if (!id) {
         itens.push({ tipo: 'aviso', titulo, detalhe: SEM_NADA[ponta] });
         continue;
@@ -287,13 +368,22 @@ export function conferirPracas(novo: LigacoesDasPracas, antes: LigacoesDasPracas
   if (listasOk) itens.push({ tipo: 'ok', titulo: 'Listas', detalhe: 'todas existem e estão abertas no quadro' });
   if (opcoesOk && campo) itens.push({ tipo: 'ok', titulo: 'Opções no campo Praça', detalhe: 'todas existem no campo' });
 
-  return { ok: !itens.some((i) => i.tipo === 'erro'), itens, muda: oQueMuda(novo, antes, quadro) };
+  const claquetes = recentes && claquetesQueMudam(novo.pracas, antes.pracas, recentes);
+  if (claquetes) itens.push(itemDasClaquetes(claquetes));
+
+  return { ok: !itens.some((i) => i.tipo === 'erro'), itens, muda: oQueMuda(novo, antes, quadro), ...(claquetes ? { claquetes } : {}) };
 }
 
 /** O que muda de `antes` para `novo`, com os nomes do Trello: a ordem, a padrão, as regras e as ligações. */
 export function oQueMuda(novo: LigacoesDasPracas, antes: LigacoesDasPracas, quadro: QuadroLido): Mudanca[] {
   const muda: Mudanca[] = [];
-  const siglas = (c: LigacoesDasPracas) => c.pracas.map((p) => p.sigla).join(', ');
+  // a ordem das que já existiam (a praça nova diz onde entrou na linha dela)
+  const novas = pracasNovas(novo, antes);
+  const siglas = (c: LigacoesDasPracas) =>
+    c.pracas
+      .map((p) => p.sigla)
+      .filter((s) => !novas.includes(s) && novo.pracas.some((p) => p.sigla === s))
+      .join(', ');
   if (siglas(novo) !== siglas(antes)) muda.push({ oque: 'Ordem', antes: siglas(antes), depois: siglas(novo) });
   const padrao = (c: LigacoesDasPracas) => c.pracas.find((p) => p.padrao)?.sigla ?? c.pracas[0]?.sigla ?? '';
   if (padrao(novo) !== padrao(antes)) muda.push({ oque: 'Praça padrão', antes: padrao(antes), depois: padrao(novo) });
@@ -312,7 +402,10 @@ export function oQueMuda(novo: LigacoesDasPracas, antes: LigacoesDasPracas, quad
   for (const p of novo.pracas) {
     const a = antes.pracas.find((x) => x.sigla === p.sigla);
     if (!a) {
-      muda.push({ oque: `Praça nova ${p.sigla}`, antes: '—', depois: descreverRegra(p.regra) });
+      const i = novo.pracas.indexOf(p);
+      const onde = i > 0 ? `depois de ${novo.pracas[i - 1].sigla}` : novo.pracas[1] ? `antes de ${novo.pracas[1].sigla}` : '';
+      muda.push({ oque: `Praça nova ${p.sigla}`, antes: '—', depois: [descreverRegra(p.regra), onde].filter(Boolean).join(' · ') });
+      for (const ponta of ['entrada', 'saida'] as const) muda.push({ oque: `${p.sigla}: ${NOME_DA_PONTA[ponta]}`, antes: '—', depois: nomeDe(ponta, p[ponta], novo) + mao(novo, chaveDa(p.sigla, ponta)) });
       continue;
     }
     if (descreverRegra(a.regra) !== descreverRegra(p.regra)) muda.push({ oque: `${p.sigla}: regra`, antes: descreverRegra(a.regra), depois: descreverRegra(p.regra) });
@@ -321,5 +414,8 @@ export function oQueMuda(novo: LigacoesDasPracas, antes: LigacoesDasPracas, quad
       if (a[ponta] !== p[ponta])
         muda.push({ oque: `${p.sigla}: ${NOME_DA_PONTA[ponta]}`, antes: nomeDe(ponta, a[ponta], antes), depois: nomeDe(ponta, p[ponta], novo) + mao(novo, chaveDa(p.sigla, ponta)) });
   }
+  // as opções que o PROMeiro cria no campo Praça ao salvar (a praça nova que o nome não acha)
+  const criar = campoNovo?.tipo === CAMPO_PRACA.tipo ? novo.pracas.filter((p) => novas.includes(p.sigla) && !p.opcao && acharOpcao(campoNovo, p).como === 'nenhum') : [];
+  if (campoNovo && criar.length) muda.push({ oque: 'Campo Praça', antes: lista(campoNovo.opcoes.map((o) => o.nome)), depois: criar.map((p) => `+ ${p.sigla}`).join(', ') });
   return muda;
 }

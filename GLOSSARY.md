@@ -122,7 +122,12 @@ Para quem é a claquete (G5, SP, RJ, INTER) e, por isso, para onde vai o card: c
 saída e a sua opção no campo Praça. A praça é dado, não código: cada uma diz como aparece no nome da claquete (termina
 em " SP"; começa com "RIO " e um separador) e como pode vir escrita (o **também lida como**: "REDE" é a G5). A ordem
 das praças decide quando duas regras batem ("RIO SHOW SP" é do Rio) e uma é a **praça padrão**, a que vale quando
-nenhuma bate. Sem nada salvo na Configuração, valem as **praças de fábrica** (as de sempre).
+nenhuma bate. Sem nada salvo na Configuração, valem as **praças de fábrica** (as de sempre). A sigla vale antes do
+"também lida como" de outra praça: criada a MG, "MG" é da MG, mesmo com a G5 ainda lendo MG.
+A **praça nova** nasce na Configuração (sigla, nome, regra; entrada e saída ligadas pelo nome ou à mão): antes de
+salvar, a conferência conta as **claquetes recentes** (as da fila do PROMeiro e as da produção da arte, nos últimos 90
+dias) que mudariam de praça; ao salvar, o PROMeiro cria a opção dela no campo Praça do Trello (se o Trello recusa, nada
+é salvo). Os fluxos do n8n têm as praças escritas dentro: a tela avisa quais ajustar.
 _Evitar_: região, emissora
 
 **Configuração**:

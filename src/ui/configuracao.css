@@ -151,3 +151,26 @@ h3.cfg-modal-rotulo { margin: 22px 0 6px; }
   .cfg-praca-linha { padding: 9px 10px; }
   .cfg-exemplo { white-space: normal; }
 }
+
+/* a praça nova (#73) */
+.cfg-praca.nova { background: color-mix(in srgb, var(--ultra) 5%, var(--cartao)); border-radius: 0 0 11px 11px; }
+.cfg-praca.nova .cfg-alca { cursor: default; opacity: 0.5; }
+.cfg-sigla-nova { height: 28px; width: 100%; border-radius: 8px; border: 1.5px solid var(--ultra); background: var(--papel); color: var(--tinta); font: 600 13px var(--mono); text-align: center; text-transform: uppercase; padding: 0 4px; }
+.cfg-sigla-nova::placeholder { font: 400 12px var(--sans); text-transform: none; color: var(--tinta3); }
+.cfg-sigla-nova:focus, .cfg-palavras-nova:focus { outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ultra) 22%, transparent); }
+.cfg-palavras-nova { height: 28px; width: 150px; border-radius: 7px; border: 1px dashed var(--regua-forte); background: var(--papel); color: var(--tinta); font: 600 12px var(--mono); padding: 0 8px; text-transform: uppercase; }
+.cfg-palavras-nova::placeholder { font: 400 12px var(--sans); text-transform: none; }
+.cfg-regra .cfg-editor-onde button { padding: 3px 9px; }
+.cfg-mais { margin-top: -2px; }
+.cfg-mais .botao-texto { font-weight: 600; }
+.cfg-n8n .cfg-exc-texto span { text-transform: none; }
+.cfg-alerta { margin: 18px 0 0; padding: 11px 14px; border-radius: 12px; background: color-mix(in srgb, var(--ultra) 8%, var(--papel)); border: 1px solid color-mix(in srgb, var(--ultra) 35%, var(--regua)); font: 400 13.5px/1.5 var(--sans); color: var(--tinta2); }
+.cfg-alerta b { color: var(--tinta); font-weight: 600; }
+.cfg-claquetes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cfg-claquetes li { display: flex; justify-content: space-between; gap: 12px; font: 400 13px var(--sans); color: var(--tinta2); }
+.cfg-claquetes code { font: 500 12px var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
+.cfg-claquetes b { color: var(--ultra-tinta); }
+.cfg-claquetes .mais { color: var(--tinta3); }
+.cfg-editor-campo input.cfg-nome-nova { text-transform: none; font: 500 13.5px var(--sans); }
+/* o item de aviso da conferência não é o aviso flutuante (.aviso, de estilos.css) */
+.cfg-checks li.aviso { background: none; color: inherit; border-radius: 0; box-shadow: none; animation: none; font-weight: inherit; }

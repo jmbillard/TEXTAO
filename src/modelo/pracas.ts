@@ -95,11 +95,13 @@ export function reconhecerPraca(claquete: string, pracas: readonly Praca[] = pra
   return (pelaRegra ?? peloTambem ?? pracaPadrao(pracas)).sigla;
 }
 
-/** A praça de uma grafia lida ("REDE", "sp", a opção "Internacional" do Trello): a praça da sigla ou do "também lida
-    como"; o que não é de nenhuma vira a padrão. */
+/** A praça de uma grafia lida ("REDE", "sp", a opção "Internacional" do Trello): a praça da sigla ou, sem nenhuma,
+    a do "também lida como"; o que não é de nenhuma vira a padrão. */
 export function normalizarPraca(lida: string, pracas: readonly Praca[] = pracasRegistradas()): string {
   const t = comparavel(lida);
-  return (pracas.find((p) => [p.sigla, ...p.tambem].some((x) => comparavel(x) === t)) ?? pracaPadrao(pracas)).sigla;
+  // a sigla vale antes do "também lida como" de outra: criada a MG, "MG" é dela, mesmo com a G5 ainda lendo MG
+  const daSigla = pracas.find((p) => comparavel(p.sigla) === t);
+  return (daSigla ?? pracas.find((p) => p.tambem.some((x) => comparavel(x) === t)) ?? pracaPadrao(pracas)).sigla;
 }
 
 /** O texto sem a praça escrita no começo ("RIO FESTA 19 11" → "FESTA 19 11"): a palavra e os espaços depois dela. */

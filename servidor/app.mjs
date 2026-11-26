@@ -29,7 +29,7 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco } from '../src/modelo/pracas.ts';
 import { acertarNArtesUmaVez } from './artes.mjs';
-import { conferirSecaoPracas, lerSecaoPracas, mudancasDaSecao, secaoDoPedido } from './configuracao-pracas.mjs';
+import { conferirSecaoPracas, criarOpcoesDasNovas, lerSecaoPracas, mudancasDaSecao, secaoDoPedido } from './configuracao-pracas.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -424,6 +424,9 @@ const FABRICAS = {
 const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas'];
 const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
 
+/** Os dias de claquetes recentes que a conferência das praças conta (os mesmos da aba Sem cadastro). */
+const DIAS_DA_CONTAGEM = 90;
+
 /**
  * @param env as variáveis do Portainer; o que foi salvo na configuração do PROMeiro vale por cima delas
  * @param abrirPg abre o Postgres do Teable (os módulos abrem cada um a sua conexão, na primeira consulta)
@@ -525,6 +528,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     ),
     noAcervo: db.prepare('UPDATE envios SET acervo_em = ?, atracao = ? WHERE roteiro_id = ?'),
     marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+    // as da fila, das mais novas para as mais velhas (a contagem das claquetes que mudariam de praça, #73)
+    claquetesRecentesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete FROM roteiros WHERE atualizado_em >= ? ORDER BY atualizado_em DESC, rowid DESC"),
     claquetesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete, atualizado_em AS em FROM roteiros WHERE atualizado_em >= ?"),
     ignoradas: db.prepare('SELECT key FROM keys_ignoradas'),
     filmeNoAcervo: db.prepare('SELECT 1 FROM filmes_no_acervo WHERE card = ?'),
@@ -1178,9 +1183,23 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
 
   /**
+   * As claquetes recentes para a conferência das praças (#73): as dos roteiros que passaram pelo PROMeiro (a fila) e as
+   * da produção da arte (todo card que entrou, também pelo n8n), sem repetir, das mais novas para as mais velhas. A
+   * produção fora do ar não impede a conferência: conta só a fila.
+   */
+  async function claquetesParaConferir(dias = DIAS_DA_CONTAGEM) {
+    const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+    const daFila = q.claquetesRecentesDaFila.all(desde).map((l) => String(l.claquete ?? ''));
+    const daProducao = ((await trello.claquetesRecentes?.(dias).catch(() => [])) ?? []).sort((a, b) => String(b.em).localeCompare(String(a.em))).map((l) => l.claquete);
+    return { dias, claquetes: [...daFila, ...daProducao].filter((c) => c.trim()) };
+  }
+
+  /**
    * A tela de Configuração (#72), só para administradores: GET lê a seção Praças (o salvo, o que o nome liga, o estado
    * de cada ligação e as listas e campos do quadro); POST conferir { pracas } confere sem salvar nada; POST salvar
    * { pracas } confere de novo e, sem erro, salva na configuração viva (vale na hora). Com erro, 422 e nada salvo.
+   * A conferência conta as claquetes recentes que mudariam de praça; a praça nova (#73) ganha a opção no campo Praça
+   * do Trello depois da conferência e antes de salvar: se o Trello recusa, 502 e nada salvo.
    */
   async function rotaDaConfiguracao(req, res, eu, caminho) {
     const acao = caminho.slice('/api/configuracao'.length);
@@ -1191,11 +1210,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!acao) return json(res, 200, { pracas: await lerSecaoPracas(trello, env) });
       const nova = secaoDoPedido(await lerCorpo(req).catch(() => null));
       if (!nova) return json(res, 400, { erro: 'As praças vieram incompletas.' });
-      const conferencia = await conferirSecaoPracas(trello, env, nova);
+      const conferencia = await conferirSecaoPracas(trello, env, nova, await claquetesParaConferir());
       if (acao === '/conferir') return json(res, 200, conferencia);
       if (!conferencia.ok) return json(res, 422, { erro: 'A conferência não passou: nada foi salvo.', conferencia });
-      mudarConfiguracao(mudancasDaSecao(nova), { por: eu.email });
-      console.log(`[configuração] ${eu.email} salvou as praças: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}`);
+      // a opção da praça nova no campo Praça: só depois da conferência; se o Trello recusa, nada é salvo
+      let completa;
+      try {
+        completa = await criarOpcoesDasNovas(trello, env, nova);
+      } catch (e) {
+        console.warn(`[configuração] a opção da praça nova não foi criada: ${e instanceof Error ? e.message : e}`);
+        return json(res, 502, { erro: `Não consegui criar a opção da praça nova no campo Praça do Trello: nada foi salvo. (${e instanceof Error ? e.message : e})` });
+      }
+      mudarConfiguracao(mudancasDaSecao(completa.secao), { por: eu.email });
+      const criadas = completa.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
+      console.log(`[configuração] ${eu.email} salvou as praças: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
       return json(res, 200, { pracas: await lerSecaoPracas(trello, env) });
     } catch (e) {
       console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);

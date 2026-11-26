@@ -7,6 +7,9 @@
 // ligar à mão pelo "Escolher"; as regras editadas e a ordem arrastada, com a barra "N mudanças"; conferir com erro
 // (nada salvo) e conferir certo, salvar e valer na hora (o /api/eu traz as praças novas). Quem não é administrador
 // não vê o item nem abre a tela. No celular, claro e escuro: só consulta.
+// A praça nova (#73), claro e escuro: "+ Nova praça" (MG), a sigla repetida que a conferência recusa, a contagem das
+// claquetes da fila que mudam de praça, o aviso do n8n, e salvar: o PROMeiro cria a opção MG no campo Praça (o único
+// pedido ao Trello que não é leitura) e a praça vale na hora.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:configuracao
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -40,12 +43,16 @@ const LISTAS = [
   ['lINs', 'INTER ENTREGUE'],
   ['lVT', 'VT'],
   ['lVelha', 'SP ENTRADA 2024', true],
+  // a praça nova (#73): as listas já estão no quadro
+  ['lMG', 'MG ENTRADA'],
+  ['lMGs', 'MG PRONTO'],
 ].map(([id, name, closed = false]) => ({ id, name, closed }));
 // a segunda saída de INTER: só no cenário com exceções
 const DOBRO = { id: 'lINs2', name: 'INTER ENTREGUE (2025)', closed: false };
 let comDobro = false;
+const OPCOES = ['G5', 'SP', 'RJ', 'INTER'].map((t) => ({ id: `o${t}`, value: { text: t } }));
 const CAMPOS = [
-  { id: 'cPraca', name: 'Praça', type: 'list', options: ['G5', 'SP', 'RJ', 'INTER'].map((t) => ({ id: `o${t}`, value: { text: t } })) },
+  { id: 'cPraca', name: 'Praça', type: 'list', options: [...OPCOES] },
   { id: 'cProjeto', name: 'Projeto', type: 'text' },
 ];
 // o Portainer: cada praça nas suas listas; o quadro sai do idBoard da primeira lista (sem TRELLO_QUADRO)
@@ -68,8 +75,14 @@ async function buscar(url, init = {}) {
   const u = new URL(url);
   const metodo = init.method ?? 'GET';
   pedidosAoTrello.push(`${metodo} ${u.pathname}`);
-  if (metodo !== 'GET') throw new Error(`a Configuração só lê o Trello: ${metodo} ${u.pathname}`);
   const ok = (dados) => ({ ok: true, status: 200, json: async () => dados, text: async () => '' });
+  // a única escrita: a opção da praça nova no campo Praça
+  if (metodo === 'POST' && u.pathname === '/1/customField/cPraca/options') {
+    const opcao = { id: `oNova${CAMPOS[0].options.length}`, value: { text: JSON.parse(init.body).value.text } };
+    CAMPOS[0].options.push(opcao);
+    return ok(opcao);
+  }
+  if (metodo !== 'GET') throw new Error(`a Configuração só lê o Trello: ${metodo} ${u.pathname}`);
   if (/^\/1\/lists\/\w+$/.test(u.pathname)) return ok({ id: u.pathname.split('/')[3], idBoard: 'quadroFicticio' });
   if (u.pathname === '/1/boards/quadroFicticio/lists') return ok(comDobro ? [...LISTAS, DOBRO] : LISTAS);
   if (u.pathname === '/1/boards/quadroFicticio/customFields') return ok(CAMPOS);
@@ -79,6 +92,7 @@ async function buscar(url, init = {}) {
 /** Volta ao começo: nada salvo na tela; `excecoes` põe a G5 nas listas do RJ e a saída de INTER sem nada (em dobro). */
 async function recomecar(app, { excecoes }) {
   comDobro = excecoes;
+  CAMPOS[0].options = [...OPCOES];
   await app.mudarConfiguracao(
     excecoes
       ? { PRACAS: null, LIGADO_A_MAO: null, TRELLO_CAMPO_PRACA: null, TRELLO_LISTA_G5: 'lRJ', TRELLO_SAIDA_G5: 'lRJs', TRELLO_SAIDA_INTER: '' }
@@ -247,6 +261,89 @@ async function noComputador(navegador, url, app, tema) {
   console.log(`ok: computador ${nome}${arrastou ? '' : ' (a ordem foi pelas setas: o arrastar não pegou)'}: menu → tudo ligado (?, ver tudo) → exceções → ligar à mão → regras e ordem com a barra → conferir com erro (nada salvo) → conferir e salvar, vale na hora`);
 }
 
+async function novaPraca(navegador, url, app, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await recomecar(app, { excecoes: false });
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  await p.locator('.cfg-praca').first().waitFor();
+  assert.equal(await resumo(p), '4 praças · tudo ligado');
+
+  // + Nova praça: a sigla (as palavras da regra seguem a sigla), o nome; as listas ligam pelo nome
+  await p.locator('.cfg-mais .botao-texto', { hasText: '+ Nova praça' }).click();
+  const linha = p.locator('.cfg-praca.nova');
+  await linha.waitFor();
+  assert.equal(await p.locator('.cfg-mais').count(), 0, 'uma praça nova por vez');
+  await linha.getByLabel('Sigla da praça nova').fill('sp');
+  assert.equal(await linha.getByLabel('Sigla da praça nova').inputValue(), 'SP');
+  assert.equal(await linha.getByLabel('Palavras da regra').inputValue(), 'SP');
+  await linha.getByLabel('Palavras da regra').fill('PAULISTA');
+  assert.equal(await barra(p), '1 mudança');
+  // a sigla repetida: a conferência recusa e nada é salvo
+  await p.locator('.cfg-barra-salvar').click();
+  const dialogo = p.locator('.cfg-modal');
+  await dialogo.locator('h2', { hasText: 'Não dá para salvar' }).waitFor();
+  assert.ok((await textos(dialogo.locator('.cfg-checks li.erro strong'))).includes('Sigla SP'));
+  assert.equal(await dialogo.locator('.botao.primario').isDisabled(), true);
+  await dialogo.locator('.botao', { hasText: 'Voltar' }).click();
+
+  await linha.getByLabel('Sigla da praça nova').fill('MG');
+  await linha.getByLabel('Palavras da regra').fill('MG');
+  await linha.getByLabel('Nome da praça nova').fill('Minas');
+  assert.deepEqual(await textos(linha.locator('.cfg-exemplo')), ['FESTA 3/11 MG → MG']);
+  // a G5 também lia MG: o exemplo dela continua dela
+  assert.deepEqual(await textos(regra(p, 'G5').locator('.cfg-exemplo')), ['FESTA 3/11 → G5']);
+  assert.deepEqual(await textos(p.locator('.cfg-n8n strong')), ['O n8n ainda não conhece MG']);
+  assert.match(await p.locator('.cfg-n8n').textContent(), /PROMO: UPLOAD ROTEIROS · BATCH: TRELLO CARDS → DB · PROMO: DB · PROMO: CLAQUETES DUPLICADAS/);
+  assert.equal(await resumo(p), '5 praças · tudo ligado');
+  assert.equal(await p.locator('.cfg-exc').count(), 1, 'só o aviso do n8n: entrada e saída ligadas pelo nome');
+  await p.locator('.cfg-ver-tudo').click();
+  assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="MG.entrada"] > span')), ['Entrada', 'MG ENTRADA', 'achado pelo nome · trocar']);
+  assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="MG.saida"] > span')), ['Saída', 'MG PRONTO', 'achado pelo nome · trocar']);
+  assert.deepEqual(await textos(p.locator('.cfg-tudo-l[data-chave="MG.opcao"] > span')), ['No campo Praça', '—', 'o PROMeiro cria ao salvar · trocar']);
+  await p.locator('.cfg-ver-tudo').click();
+  await semRolagemDeLado(p, `computador ${nome}, praça nova`);
+  await capturar(p, `12-nova-praca-${nome}`);
+
+  // conferir: a contagem das claquetes da fila que mudam de praça, o que muda e o aviso do n8n
+  await p.locator('.cfg-barra-salvar').click();
+  await dialogo.locator('h2', { hasText: 'Tudo confere' }).waitFor();
+  assert.deepEqual(await textos(dialogo.locator('.cfg-checks li', { hasText: 'Claquetes recentes' }).locator('small')), [
+    '1 das 2 claquetes dos últimos 90 dias muda de praça: 1 de G5 para MG.',
+  ]);
+  assert.deepEqual(await textos(dialogo.locator('.cfg-checks li', { hasText: 'MG: opção' }).locator('small')), ['não existe: o PROMeiro cria "MG" ao salvar.']);
+  assert.deepEqual(await textos(dialogo.locator('.cfg-claquetes li')), ['BAILE 3/12 MGG5 → MG']);
+  const linhasDoQueMuda = await dialogo.locator('.cfg-muda tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((c) => c.textContent.trim()).filter(Boolean).join(' | ')));
+  assert.deepEqual(linhasDoQueMuda, [
+    'Praça nova MG | — | termina em MG · depois de INTER',
+    'MG: entrada | — | MG ENTRADA',
+    'MG: saída | — | MG PRONTO',
+    'Campo Praça | G5, SP, RJ, INTER | + MG',
+  ]);
+  assert.match(await dialogo.locator('.cfg-alerta').textContent(), /O n8n ainda não conhece MG\./);
+  assert.ok(!pedidosAoTrello.some((x) => x.startsWith('POST')), 'nada é criado antes de salvar');
+  await capturar(p, `13-nova-praca-conferir-${nome}`);
+
+  // salvar: o PROMeiro cria a opção MG no campo Praça, e vale na hora
+  await dialogo.locator('.botao.primario', { hasText: 'Salvar' }).click();
+  await p.locator('.aviso', { hasText: 'Salvo. Já vale.' }).waitFor();
+  assert.deepEqual(pedidosAoTrello.filter((x) => x.startsWith('POST')), ['POST /1/customField/cPraca/options']);
+  assert.deepEqual(CAMPOS[0].options.map((o) => o.value.text), ['G5', 'SP', 'RJ', 'INTER', 'MG']);
+  assert.equal(await p.locator('.cfg-praca.nova').count(), 0);
+  assert.deepEqual(await ordem(p), ['G5', 'RJ', 'SP', 'INTER', 'MG']);
+  assert.deepEqual(await textos(regra(p, 'MG').locator('.cfg-regra > *')), ['termina em MG', 'FESTA 3/11 MG → MG']);
+  assert.equal(await resumo(p), '5 praças · tudo ligado');
+  // o aviso do n8n continua na tela depois de salvar
+  assert.deepEqual(await textos(p.locator('.cfg-n8n strong')), ['O n8n ainda não conhece MG']);
+  const eu = await p.evaluate(() => fetch('/api/eu').then((r) => r.json()));
+  assert.deepEqual(eu.pracas.map((x) => x.sigla), ['G5', 'RJ', 'SP', 'INTER', 'MG']);
+  await capturar(p, `14-nova-praca-salva-${nome}`);
+  pedidosAoTrello.length = 0;
+
+  assert.deepEqual(erros, [], `praça nova ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: praça nova ${nome}: + Nova praça → sigla repetida recusada → MG ligada pelo nome, aviso do n8n → conferir com a contagem → salvar cria a opção no Trello`);
+}
+
 async function semSerAdministrador(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, { email: OUTRA });
   await p.locator('.aviso', { hasText: 'Só administradores' }).waitFor();
@@ -295,6 +392,17 @@ async function principal() {
     await semSerAdministrador(navegador, s.url);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema);
     assert.deepEqual([...new Set(pedidosAoTrello.map((x) => x.split(' ')[0]))], ['GET'], 'só leitura no Trello');
+    // a praça nova: roteiros na fila, um deles de Minas (hoje lido como G5)
+    for (const [id, claquete] of [
+      ['rot-mg', 'BAILE 3/12 MG'],
+      ['rot-g5', 'JOGO 2/12'],
+    ])
+      await fetch(`${s.api}/roteiros/${id}`, {
+        method: 'PUT',
+        headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' },
+        body: JSON.stringify({ roteiro: { meta: { claquete }, doc: { type: 'doc', content: [{ type: 'paragraph' }] } }, nArtes: 0 }),
+      });
+    for (const tema of ['light', 'dark']) await novaPraca(navegador, s.url, s.app, tema);
   } finally {
     await navegador.close();
     await s.descer();

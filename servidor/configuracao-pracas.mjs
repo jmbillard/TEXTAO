@@ -3,7 +3,7 @@
    e salvar passam pela mesma conferência; com erro, nada é salvo. As regras de ligar e conferir são as do módulo
    compartilhado com o navegador (src/modelo/ligarPeloNome.ts). */
 import { pracasDaConfiguracao } from '../src/modelo/pracas.ts';
-import { CHAVE_DO_CAMPO, PONTAS, chaveDa, conferirPracas, estadoDasPracas, ligarPeloNome } from '../src/modelo/ligarPeloNome.ts';
+import { CAMPO_PRACA, CHAVE_DO_CAMPO, PONTAS, acharOpcao, chaveDa, conferirPracas, estadoDasPracas, ligarPeloNome, pracasNovas } from '../src/modelo/ligarPeloNome.ts';
 
 const ID_DO_TRELLO = /^[\w-]{1,64}$/;
 /** O Trello responde (a chave e o token no Portainer), mesmo sem nenhuma lista configurada ainda. */
@@ -73,12 +73,16 @@ export async function lerSecaoPracas(trello, env) {
   return { primeiraVez, salvo, proposta, estado: estadoDasPracas(proposta, quadro), quadro };
 }
 
-/** A seção que veio do navegador, limpa: as praças (com sigla), o campo e as chaves do ligado à mão. null se não vale. */
+/** A seção que veio do navegador, limpa: as praças (com sigla), o campo e as chaves do ligado à mão. null se não vale.
+    A sigla repetida passa (uma praça por vez): é a conferência que diz o erro. */
 export function secaoDoPedido(corpo) {
   const bruto = corpo?.pracas;
   if (!bruto || !Array.isArray(bruto.pracas) || !bruto.pracas.length) return null;
-  const pracas = pracasDaConfiguracao({ PRACAS: JSON.stringify(bruto.pracas) });
-  if (pracas.length !== bruto.pracas.length || !pracas.every((p, i) => p.sigla === String(bruto.pracas[i]?.sigla ?? '').trim().toUpperCase())) return null;
+  const pracas = bruto.pracas.map((p) => pracasDaConfiguracao({ PRACAS: JSON.stringify([p]) })[0]);
+  if (!pracas.every((p, i) => p && p.sigla === String(bruto.pracas[i]?.sigla ?? '').trim().toUpperCase())) return null;
+  // cada uma lida sozinha vira a padrão: a padrão é a marcada (ou a primeira)
+  const padrao = Math.max(0, bruto.pracas.findIndex((p) => p?.padrao === true));
+  pracas.forEach((p, i) => (p.padrao = i === padrao));
   const ids = [bruto.campoPraca, ...pracas.flatMap((p) => PONTAS.map((ponta) => p[ponta]))];
   if (!ids.every((x) => x === undefined || x === '' || ID_DO_TRELLO.test(String(x)))) return null;
   const chaves = new Set([CHAVE_DO_CAMPO, ...pracas.flatMap((p) => PONTAS.map((ponta) => chaveDa(p.sigla, ponta)))]);
@@ -86,12 +90,45 @@ export function secaoDoPedido(corpo) {
   return { pracas, campoPraca: String(bruto.campoPraca ?? '').trim(), aMao };
 }
 
-/** Confere a seção nova contra o quadro de agora e contra o salvo. */
-export async function conferirSecaoPracas(trello, env, nova) {
+/** Confere a seção nova contra o quadro de agora e contra o salvo; com as claquetes recentes ({ dias, claquetes }),
+    conta as que mudariam de praça. */
+export async function conferirSecaoPracas(trello, env, nova, recentes) {
   const salvo = pracasSalvas(env);
   const quadro = falaComOTrello(trello) ? await lerQuadro(trello, env, salvo.pracas) : null;
   if (!quadro) return { ok: false, itens: [{ tipo: 'erro', titulo: 'Trello', detalhe: 'não consegui ler o quadro do Trello.' }], muda: [] };
-  return conferirPracas(nova, salvo, quadro);
+  return conferirPracas(nova, salvo, quadro, recentes);
+}
+
+/**
+ * A opção de cada praça nova no campo Praça (#73), depois da conferência e antes de salvar: a que o nome acha (uma só:
+ * a de uma tentativa anterior que não chegou a salvar) é usada; senão, o PROMeiro cria a opção com a sigla. Se o
+ * Trello recusa, lança: quem chama não salva nada.
+ * @returns a seção com as opções preenchidas, e as siglas cuja opção foi criada agora
+ */
+export async function criarOpcoesDasNovas(trello, env, nova) {
+  const novas = pracasNovas(nova, pracasSalvas(env)).filter((sigla) => !nova.pracas.find((p) => p.sigla === sigla).opcao);
+  if (!novas.length || !nova.campoPraca) return { secao: nova, criadas: [] };
+  const quadro = await lerQuadro(trello, env, nova.pracas);
+  const campo = quadro?.campos.find((c) => c.id === nova.campoPraca);
+  if (!campo || campo.tipo !== CAMPO_PRACA.tipo) throw new Error('o campo Praça não está mais no quadro.');
+  const criadas = [];
+  const pracas = [];
+  for (const p of nova.pracas) {
+    if (!novas.includes(p.sigla)) {
+      pracas.push(p);
+      continue;
+    }
+    const achado = acharOpcao(campo, p);
+    if (achado.como === 'dobro') throw new Error(`o campo Praça tem duas opções "${p.sigla}".`);
+    let opcao = achado.como === 'um' ? achado.id : '';
+    if (!opcao) {
+      opcao = String((await trello.criarOpcao(campo.id, p.sigla))?.id ?? '');
+      if (!ID_DO_TRELLO.test(opcao)) throw new Error(`o Trello não devolveu a opção "${p.sigla}".`);
+      criadas.push(p.sigla);
+    }
+    pracas.push({ ...p, opcao });
+  }
+  return { secao: { ...nova, pracas }, criadas };
 }
 
 /** O que vai para a configuração viva quando a seção é salva. */

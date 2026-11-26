@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { criarTrello } from '../servidor/trello.mjs';
-import { reconhecerPraca, type Praca } from '../src/modelo/pracas';
+import { normalizarPraca, reconhecerPraca, type Praca } from '../src/modelo/pracas';
 import type { Ligacao, LigacoesDasPracas } from '../src/modelo/ligarPeloNome';
 
 /* A seção Praças da Configuração (#72) pela API, com o Trello de mentira: o quadro, as listas e o campo Praça são
@@ -24,6 +24,9 @@ const LISTAS = [
   { id: 'lINs', name: 'INTER ENTREGUE', closed: false },
   { id: 'lINs2', name: 'INTER ENTREGUE (2025)', closed: false },
   { id: 'lVelha', name: 'ARQUIVO 2024', closed: true },
+  // a praça que ainda não existe no PROMeiro (#73): as listas já estão no quadro
+  { id: 'lMG', name: 'MG ENTRADA', closed: false },
+  { id: 'lMGs', name: 'MG PRONTO', closed: false },
 ];
 const CAMPOS = [
   { id: 'cPraca', name: 'Praça', type: 'list', options: ['G5', 'SP', 'RJ', 'INTER'].map((t) => ({ id: `o${t}`, value: { text: t } })) },
@@ -45,9 +48,16 @@ const PORTAINER = {
   TRELLO_PRACAS: 'G5=oG5,SP=oSP,RJ=oRJ,INTER=oINTER',
 };
 
+/** As claquetes da produção da arte (o Postgres do Teable), para a contagem do que muda de praça. */
+type LinhaDaProducao = { claquete: string; data_entrada: string };
+
 function trelloFalso() {
   const pedidos: string[] = [];
   const cards: { idList: string }[] = [];
+  // o campo Praça de cada servidor é uma cópia: a praça nova cria a opção nele
+  const campos = CAMPOS.map((c) => ({ ...c, options: c.options?.map((o) => ({ ...o })) }));
+  const itens: { card: string; campo: string; idValue: string }[] = [];
+  const falhas = { criarOpcao: false };
   const buscar = async (endereco: string, init: RequestInit = {}) => {
     const url = new URL(endereco);
     const metodo = init.method ?? 'GET';
@@ -56,7 +66,18 @@ function trelloFalso() {
     const ok = (dados: unknown) => ({ ok: true, status: 200, json: async () => dados, text: async () => '', arrayBuffer: async () => new ArrayBuffer(4) });
     if (metodo === 'GET' && /^\/lists\/\w+$/.test(rota)) return ok({ id: rota.split('/')[2], idBoard: 'quadroFalso' });
     if (metodo === 'GET' && rota === '/boards/quadroFalso/lists') return ok(LISTAS);
-    if (metodo === 'GET' && rota === '/boards/quadroFalso/customFields') return ok(CAMPOS);
+    if (metodo === 'GET' && rota === '/boards/quadroFalso/customFields') return ok(campos);
+    const opcaoNova = rota.match(/^\/customField\/(\w+)\/options$/);
+    if (metodo === 'POST' && opcaoNova) {
+      if (falhas.criarOpcao) return { ok: false, status: 500, json: async () => ({}), text: async () => 'fora do ar' };
+      const campo = campos.find((c) => c.id === opcaoNova[1]);
+      if (!campo?.options) return { ok: false, status: 404, json: async () => ({}), text: async () => 'not found' };
+      const opcao = { id: `oNova${campo.options.length}`, value: { text: String(JSON.parse(String(init.body)).value?.text ?? '') } };
+      campo.options.push(opcao);
+      return ok({ ...opcao, idCustomField: campo.id });
+    }
+    const item = rota.match(/^\/cards\/(\w+)\/customField\/(\w+)\/item$/);
+    if (metodo === 'PUT' && item) itens.push({ card: item[1], campo: item[2], idValue: String(JSON.parse(String(init.body)).idValue ?? '') });
     if (rota === '/cards' && metodo === 'POST') {
       cards.push(JSON.parse(String(init.body)));
       return ok({ id: `card${cards.length}`, shortUrl: `https://trello.com/c/FALSO${cards.length}` });
@@ -64,7 +85,14 @@ function trelloFalso() {
     if (metodo === 'GET') return { ok: false, status: 404, json: async () => ({}), text: async () => 'not found' };
     return ok({});
   };
-  return { buscar, pedidos, listasDosCards: () => cards.map((c) => c.idList) };
+  return {
+    buscar,
+    pedidos,
+    falhas,
+    opcoesDoCampo: () => campos.find((c) => c.id === 'cPraca')!.options!.map((o) => `${o.id}:${o.value.text}`),
+    listasDosCards: () => cards.map((c) => c.idList),
+    pracaDosCards: () => itens.filter((i) => i.campo === 'cPraca').map((i) => i.idValue),
+  };
 }
 
 let fechar: (() => Promise<void>) | null = null;
@@ -73,9 +101,11 @@ afterEach(async () => {
   fechar = null;
 });
 
-async function comServidor(env: Record<string, string> = PORTAINER) {
+async function comServidor(env: Record<string, string> = PORTAINER, producao: LinhaDaProducao[] = []) {
   const falso = trelloFalso();
-  const app = criarApp({ db: abrirBanco(':memory:'), env, trello: (e: Record<string, string>) => criarTrello(e, { buscar: falso.buscar, consultar: async () => [] }) });
+  // só a leitura das claquetes recentes da produção responde; o resto (a produção de hoje, o redator) vem vazio
+  const consultar = async (sql: string) => (/"claquete", "data_entrada" FROM/.test(sql) && /now\(\) -/.test(sql) ? producao : []);
+  const app = criarApp({ db: abrirBanco(':memory:'), env, trello: (e: Record<string, string>) => criarTrello(e, { buscar: falso.buscar, consultar }) });
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   fechar = async () => {
@@ -100,7 +130,14 @@ async function comServidor(env: Record<string, string> = PORTAINER) {
     });
     return chefe(`/api/roteiros/${id}/trello`, { artes: [], texto: 'x' }).then((r) => r.json());
   };
-  return { app, falso, chefe, ana: como(ANA), enviar };
+  /** Um roteiro na fila do PROMeiro, só guardado (sem ir ao Trello). */
+  const guardar = (claquete: string) =>
+    fetch(`${base}/api/roteiros/rot-guardado-${++n}`, {
+      method: 'PUT',
+      headers: { 'cf-access-authenticated-user-email': CHEFE, 'content-type': 'application/json' },
+      body: JSON.stringify({ roteiro: { meta: { claquete }, doc: { type: 'doc', content: [{ type: 'paragraph' }] } }, nArtes: 0 }),
+    });
+  return { app, falso, chefe, ana: como(ANA), enviar, guardar };
 }
 
 interface Secao {
@@ -219,5 +256,114 @@ describe('a seção Praças: conferir e salvar', () => {
   it('uma praça com corpo inválido é recusada', async () => {
     const { chefe } = await comServidor();
     expect((await chefe('/api/configuracao/salvar', { pracas: { pracas: [{ nome: 'sem sigla' }], campoPraca: '', aMao: [] } })).status).toBe(400);
+  });
+});
+
+/* ---------- a praça nova (#73) ---------- */
+
+/** MG: termina em MG; as listas MG ENTRADA e MG PRONTO, ligadas pelo nome; a opção, o PROMeiro cria ao salvar. */
+const MG: Praca = { sigla: 'MG', nome: 'Minas', padrao: false, regra: { onde: 'fim', palavras: ['MG'] }, tambem: [], entrada: 'lMG', saida: 'lMGs', opcao: '' };
+const comNova = (c: LigacoesDasPracas, p: Praca = MG): LigacoesDasPracas => ({ ...c, pracas: [...c.pracas, p] });
+interface Conferencia {
+  ok: boolean;
+  itens: { tipo: string; titulo: string; detalhe: string }[];
+  muda: { oque: string; antes: string; depois: string }[];
+  claquetes: { dias: number; total: number; mudam: { claquete: string; antes: string; depois: string }[] };
+}
+const erros = (c: Conferencia) => c.itens.filter((i) => i.tipo === 'erro').map((i) => `${i.titulo}: ${i.detalhe}`);
+const diasAtras = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+describe('a praça nova', () => {
+  it('criar MG: a conferência conta as claquetes recentes que mudam de praça, e nada vai ao Trello antes de salvar', async () => {
+    // a produção da arte (o que entrou por qualquer caminho) e a fila do PROMeiro (o que foi revisado aqui)
+    const producao = [
+      { claquete: 'BAILE 3/12 MG', data_entrada: diasAtras(3) },
+      { claquete: 'JOGO 2/12', data_entrada: diasAtras(2) },
+      { claquete: 'FESTA 1/12 SP', data_entrada: diasAtras(1) },
+    ];
+    const { chefe, falso, guardar } = await comServidor({ ...PORTAINER, TEABLE_PG_ESQUEMA: 'promo', TEABLE_PG_ARTE: 'producao' }, producao);
+    await guardar('BAILE 3/12 MG'); // o mesmo da produção: conta uma vez só
+    await guardar('RIO SHOW 4/12 MG'); // do Rio: a regra do RJ vem antes
+    await guardar('CHEF 5/12 MG');
+    const s = await lerSecao(chefe);
+    const conferido = (await (await chefe('/api/configuracao/conferir', { pracas: comNova(s.proposta) })).json()) as Conferencia;
+    expect(erros(conferido)).toEqual([]);
+    expect(conferido.ok).toBe(true);
+    expect(conferido.claquetes.dias).toBe(90);
+    expect(conferido.claquetes.total).toBe(5);
+    expect(conferido.claquetes.mudam).toEqual([
+      { claquete: 'CHEF 5/12 MG', antes: 'G5', depois: 'MG' },
+      { claquete: 'BAILE 3/12 MG', antes: 'G5', depois: 'MG' },
+    ]);
+    expect(conferido.itens).toContainEqual({ tipo: 'aviso', titulo: 'Claquetes recentes', detalhe: '2 das 5 claquetes dos últimos 90 dias mudam de praça: 2 de G5 para MG.' });
+    expect(conferido.itens).toContainEqual({ tipo: 'ok', titulo: 'MG: opção no campo Praça', detalhe: 'não existe: o PROMeiro cria "MG" ao salvar.' });
+    expect(conferido.muda).toEqual([
+      { oque: 'Praça nova MG', antes: '—', depois: 'termina em MG · depois de INTER' },
+      { oque: 'MG: entrada', antes: '—', depois: 'MG ENTRADA' },
+      { oque: 'MG: saída', antes: '—', depois: 'MG PRONTO' },
+      { oque: 'Campo Praça', antes: 'G5, SP, RJ, INTER', depois: '+ MG' },
+    ]);
+    expect(falso.pedidos.filter((p) => !p.startsWith('GET'))).toEqual([]);
+    expect(falso.opcoesDoCampo()).toEqual(['oG5:G5', 'oSP:SP', 'oRJ:RJ', 'oINTER:INTER']);
+  });
+
+  it('salvar MG: o PROMeiro cria a opção no campo Praça, e o próximo envio "… MG" vai para a entrada da MG com a opção MG', async () => {
+    const { chefe, falso, enviar } = await comServidor();
+    const s = await lerSecao(chefe);
+    const r = await chefe('/api/configuracao/salvar', { pracas: comNova(s.proposta) });
+    expect(r.status).toBe(200);
+    expect(falso.pedidos.filter((p) => p.startsWith('POST'))).toEqual(['POST /customField/cPraca/options']);
+    expect(falso.opcoesDoCampo()).toEqual(['oG5:G5', 'oSP:SP', 'oRJ:RJ', 'oINTER:INTER', 'oNova4:MG']);
+    const depois = await lerSecao(chefe);
+    expect(depois.salvo.pracas.map((p) => p.sigla)).toEqual(['G5', 'RJ', 'SP', 'INTER', 'MG']);
+    expect(depois.estado.pracas.find((p) => p.sigla === 'MG')).toMatchObject({ entrada: { nome: 'MG ENTRADA', como: 'nome' }, saida: { nome: 'MG PRONTO' }, opcao: { id: 'oNova4', nome: 'MG' } });
+    // o navegador recebe a praça nova: a claquete "… MG" é da MG (e a G5, que também lia MG, deixa de ser)
+    const eu = await (await chefe('/api/eu')).json();
+    const claquete = 'BAILE 5/12 MG';
+    expect(reconhecerPraca(claquete, eu.pracas)).toBe('MG');
+    expect(normalizarPraca('MG', eu.pracas)).toBe('MG');
+    expect((await enviar(claquete, reconhecerPraca(claquete, eu.pracas))).estado).toBe('enviado');
+    expect(falso.listasDosCards()).toEqual(['lMG']);
+    expect(falso.pracaDosCards()).toEqual(['oNova4']);
+  });
+
+  it('conferir com erro: sem entrada e saída, ou com a sigla repetida, não salva nem cria a opção', async () => {
+    const { chefe, falso, app } = await comServidor();
+    const s = await lerSecao(chefe);
+    const semListas = (await (await chefe('/api/configuracao/conferir', { pracas: comNova(s.proposta, { ...MG, entrada: '', saida: '' }) })).json()) as Conferencia;
+    expect(semListas.ok).toBe(false);
+    expect(erros(semListas)).toEqual(['MG: entrada: nada ligado: escolha a lista de entrada.', 'MG: saída: nada ligado: escolha a lista de saída.']);
+    const repetida = (await (await chefe('/api/configuracao/conferir', { pracas: comNova(s.proposta, { ...MG, sigla: 'SP', regra: { onde: 'fim', palavras: ['PAULISTA'] } }) })).json()) as Conferencia;
+    expect(erros(repetida)).toEqual(['Sigla SP: já é de outra praça. Use outra sigla.']);
+    for (const errada of [{ ...MG, entrada: '' }, { ...MG, sigla: 'SP' }]) {
+      const r = await chefe('/api/configuracao/salvar', { pracas: comNova(s.proposta, errada) });
+      expect(r.status).toBe(422);
+    }
+    expect(falso.pedidos.filter((p) => !p.startsWith('GET'))).toEqual([]);
+    expect(app.modulos().env.PRACAS).toBeUndefined();
+  });
+
+  it('se o Trello não cria a opção, nada é salvo; tentar de novo cria e salva', async () => {
+    const { chefe, falso, app } = await comServidor();
+    const s = await lerSecao(chefe);
+    falso.falhas.criarOpcao = true;
+    const r = await chefe('/api/configuracao/salvar', { pracas: comNova(s.proposta) });
+    expect(r.status).toBe(502);
+    expect((await r.json()).erro).toMatch(/nada foi salvo/);
+    expect(app.modulos().env.PRACAS).toBeUndefined();
+    expect((await lerSecao(chefe)).salvo.pracas.map((p) => p.sigla)).toEqual(['G5', 'RJ', 'SP', 'INTER']);
+    falso.falhas.criarOpcao = false;
+    expect((await chefe('/api/configuracao/salvar', { pracas: comNova(s.proposta) })).status).toBe(200);
+    expect((await lerSecao(chefe)).salvo.pracas.find((p) => p.sigla === 'MG')?.opcao).toBe('oNova4');
+  });
+
+  it('a opção que já existe no campo (de uma tentativa que não salvou) é usada, não criada de novo', async () => {
+    const { chefe, falso } = await comServidor();
+    const s = await lerSecao(chefe);
+    // a opção foi criada, mas a configuração não chegou a ser salva
+    await criarTrello(PORTAINER, { buscar: falso.buscar }).criarOpcao('cPraca', 'MG');
+    expect((await chefe('/api/configuracao/salvar', { pracas: comNova(s.proposta) })).status).toBe(200);
+    expect(falso.opcoesDoCampo().filter((o) => o.endsWith(':MG'))).toEqual(['oNova4:MG']);
+    expect((await lerSecao(chefe)).salvo.pracas.find((p) => p.sigla === 'MG')?.opcao).toBe('oNova4');
   });
 });

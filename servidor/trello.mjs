@@ -1168,6 +1168,9 @@ export function criarTrello(env, deps = {}) {
     return linhas.map((l) => ({ claquete: String(l.claquete ?? ''), atracao: lerLista(l.atracao)[0] ?? '' })).filter((l) => l.claquete && l.atracao);
   }
 
+  /** Cria uma opção no fim de um campo de lista do Trello (a praça nova da Configuração, #73). */
+  const criarOpcao = (campoId, texto) => trello('POST', `/customField/${campoId}/options`, { corpo: { pos: 'bottom', value: { text: texto } } });
+
   /** Para o diagnóstico: a busca da atração com a chave usada e o erro, se houver. */
   const diagnosticarAtracao = async (claquete) => {
     try {
@@ -1177,5 +1180,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, temProducao: !!(t.leitura && consultar), producaoDoPeriodo, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.leitura && consultar), producaoDoPeriodo, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

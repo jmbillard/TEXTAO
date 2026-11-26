@@ -3,11 +3,14 @@ import { createPortal } from 'react-dom';
 import { conferirConfiguracao, lerConfiguracao, salvarConfiguracao, type SecaoPracas } from '../dados/armazenamento';
 import {
   CHAVE_DO_CAMPO,
+  FLUXOS_DO_N8N,
   PONTAS,
   CAMPO_PRACA,
+  chaveDa,
   desfazerAMao,
   estadoDasPracas,
   oQueMuda,
+  pracasNovas,
   type ConferenciaDasPracas,
   type Ligacao,
   type LigacoesDasPracas,
@@ -23,7 +26,9 @@ import './configuracao.css';
 /* A tela de Configuração (#72), só para administradores: a seção Praças. O PROMeiro liga pelo nome; a tela mostra só
    as exceções (o que não achou, o que achou em dobro, o que sumiu e o ligado à mão), e o resto num "ver tudo". As
    regras de cada praça ficam sempre à mostra e editáveis; a ordem é arrastável; uma é a padrão. Tudo o que muda
-   fica num rascunho até "Conferir e salvar". No celular, só consulta. */
+   fica num rascunho até "Conferir e salvar". "+ Nova praça" (#73) cria uma praça: sigla, nome e regra; a entrada, a
+   saída e a opção ligam pelo nome (ou à mão); a opção que não existe o PROMeiro cria ao salvar. No celular, só
+   consulta. */
 
 interface Props {
   voltar: () => void;
@@ -45,6 +50,44 @@ const palavrasDoTexto = (t: string) =>
     .map((x) => x.trim().toUpperCase())
     .filter(Boolean);
 
+/** A praça nova, como está sendo escrita: a regra vem do texto das palavras (que segue a sigla até ser mexido). */
+interface Nova {
+  sigla: string;
+  nome: string;
+  onde: RegraDaPraca['onde'];
+  palavras: string;
+  tambem: string;
+  /** as palavras acompanham a sigla enquanto ninguém mexeu nelas */
+  palavrasSeguem: boolean;
+  /** o que foi escolhido à mão (as chaves à mão ficam no rascunho) */
+  entrada: string;
+  saida: string;
+  opcao: string;
+}
+const NOVA_VAZIA: Nova = { sigla: '', nome: '', onde: 'fim', palavras: '', tambem: '', palavrasSeguem: true, entrada: '', saida: '', opcao: '' };
+const siglaDoTexto = (t: string) => t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+const pracaDaNova = (n: Nova): Praca => {
+  const palavras = palavrasDoTexto(n.palavras);
+  return {
+    sigla: n.sigla,
+    nome: n.nome.trim() || n.sigla,
+    padrao: false,
+    regra: palavras.length ? { onde: n.onde, palavras } : null,
+    tambem: palavrasDoTexto(n.tambem),
+    entrada: n.entrada,
+    saida: n.saida,
+    opcao: n.opcao,
+  };
+};
+/** O rascunho com a praça nova no fim: o que não foi ligado à mão, o PROMeiro liga pelo nome (um só) ou deixa vazio. */
+function comANova(r: LigacoesDasPracas, nova: Nova | null, quadro: QuadroLido | null): LigacoesDasPracas {
+  if (!nova?.sigla) return r;
+  const p = pracaDaNova(nova);
+  const pelaMao = new Set(r.aMao);
+  const comEla = { ...r, pracas: [...r.pracas, p] };
+  return quadro ? desfazerAMao(comEla, quadro, PONTAS.map((ponta) => chaveDa(p.sigla, ponta)).filter((k) => !pelaMao.has(k))) : comEla;
+}
+
 /** O que se escolhe à mão: a lista (entrada ou saída de uma praça), a opção da praça ou o campo Praça. */
 interface Escolha {
   chave: string;
@@ -62,6 +105,9 @@ export function Configuracao({ voltar, avisar }: Props) {
   const [editando, setEditando] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<Escolha | null>(null);
   const [conferencia, setConferencia] = useState<{ estado: 'conferindo' } | { estado: 'pronta'; r: ConferenciaDasPracas; salvando?: boolean } | null>(null);
+  const [nova, setNova] = useState<Nova | null>(null);
+  // as praças salvas agora que o n8n ainda não conhece (o aviso fica até sair da tela)
+  const [n8nPendente, setN8nPendente] = useState<string[]>([]);
 
   const fecharEscolha = useCallback(() => setEscolha(null), []);
   const carregar = useCallback(() => {
@@ -76,8 +122,13 @@ export function Configuracao({ voltar, avisar }: Props) {
   useEffect(carregar, [carregar]);
 
   const quadro = secao?.quadro ?? null;
-  const estado = useMemo(() => (rascunho && quadro ? estadoDasPracas(rascunho, quadro) : null), [rascunho, quadro]);
-  const mudancas = useMemo(() => (rascunho && secao && quadro ? oQueMuda(rascunho, secao.salvo, quadro) : []), [rascunho, secao, quadro]);
+  // o rascunho com a praça nova (o que vai para a conferência)
+  const completo = useMemo(() => rascunho && comANova(rascunho, nova, quadro), [rascunho, nova, quadro]);
+  const novas = useMemo(() => (completo && secao ? pracasNovas(completo, secao.salvo) : []), [completo, secao]);
+  const estado = useMemo(() => (completo && quadro ? estadoDasPracas(completo, quadro, novas) : null), [completo, quadro, novas]);
+  // a praça nova conta como uma mudança só (mesmo sem sigla ainda: "Conferir" pede a sigla), com as das outras
+  const mudancasDasOutras = useMemo(() => (rascunho && secao && quadro ? oQueMuda(rascunho, secao.salvo, quadro).length : 0), [rascunho, secao, quadro]);
+  const nMudancas = mudancasDasOutras + (nova ? 1 : 0);
   // no celular, só consulta: nada muda
   const podeMudar = !celular && !!quadro;
 
@@ -92,8 +143,25 @@ export function Configuracao({ voltar, avisar }: Props) {
       pracas.splice(para, 0, p);
       return { ...r, pracas };
     });
+  /** A praça nova: a sigla nova leva junto o que foi ligado à mão. */
+  const mudarNova = (m: Partial<Nova>) => {
+    if (!nova) return;
+    const n = { ...nova, ...m };
+    if (m.sigla !== undefined && n.palavrasSeguem) n.palavras = n.sigla;
+    if (m.palavras !== undefined) n.palavrasSeguem = false;
+    const deOutra = (sigla: string) => !!rascunho?.pracas.some((p) => p.sigla === sigla);
+    if (m.sigla !== undefined && m.sigla !== nova.sigla && !deOutra(nova.sigla) && !deOutra(n.sigla))
+      setRascunho((r) => r && { ...r, aMao: r.aMao.map((k) => (nova.sigla && k.startsWith(`${nova.sigla}.`) ? `${n.sigla}${k.slice(nova.sigla.length)}` : k)) });
+    setNova(n);
+  };
+  const desistirDaNova = () => {
+    // a sigla repetida (a conferência recusa) não leva junto o ligado à mão da praça que já tem essa sigla
+    if (nova?.sigla && !rascunho?.pracas.some((p) => p.sigla === nova.sigla)) setRascunho((r) => r && { ...r, aMao: r.aMao.filter((k) => !k.startsWith(`${nova.sigla}.`)) });
+    setNova(null);
+  };
   /** Ligar à mão: o id escolhido, marcado como "ligado à mão". */
   const ligar = (e: Escolha, id: string) => {
+    if (nova?.sigla && e.sigla === nova.sigla && e.ponta !== 'campo') setNova({ ...nova, [e.ponta]: id });
     setRascunho((r) => {
       if (!r) return r;
       const aMao = [...new Set([...r.aMao, e.chave])];
@@ -106,25 +174,28 @@ export function Configuracao({ voltar, avisar }: Props) {
   const desfazer = (chaves: string[]) => setRascunho((r) => (r && quadro ? desfazerAMao(r, quadro, chaves) : r));
 
   const conferir = async () => {
-    if (!rascunho) return;
+    if (!completo) return;
+    if (nova && !nova.sigla) return avisar('Falta a sigla da praça nova.');
     setConferencia({ estado: 'conferindo' });
     try {
-      setConferencia({ estado: 'pronta', r: await conferirConfiguracao(rascunho) });
+      setConferencia({ estado: 'pronta', r: await conferirConfiguracao(completo) });
     } catch (e) {
       setConferencia(null);
       avisar(e instanceof Error ? e.message : String(e));
     }
   };
   const salvar = async () => {
-    if (!rascunho || conferencia?.estado !== 'pronta') return;
+    if (!completo || conferencia?.estado !== 'pronta') return;
     setConferencia({ ...conferencia, salvando: true });
     try {
-      const r = await salvarConfiguracao(rascunho);
+      const r = await salvarConfiguracao(completo);
       if ('conferencia' in r) return setConferencia({ estado: 'pronta', r: r.conferencia });
       setSecao(r.pracas);
       setRascunho(r.pracas.proposta);
       setConferencia(null);
       setEditando(null);
+      setNova(null);
+      if (novas.length) setN8nPendente((p) => [...new Set([...p, ...novas])]);
       avisar('Salvo. Já vale.');
     } catch (e) {
       setConferencia({ ...conferencia, salvando: false });
@@ -153,12 +224,18 @@ export function Configuracao({ voltar, avisar }: Props) {
           <p className="cfg-falha" role="alert">
             {falha} <button className="botao-texto" onClick={carregar}>Tentar de novo</button>
           </p>
-        ) : !secao || !rascunho ? (
+        ) : !secao || !rascunho || !completo ? (
           <p className="cfg-lendo">Lendo o quadro do Trello…</p>
         ) : (
           <SecaoDasPracas
             secao={secao}
-            rascunho={rascunho}
+            rascunho={completo}
+            salvas={rascunho.pracas}
+            nova={nova}
+            novaPraca={() => setNova(NOVA_VAZIA)}
+            mudarNova={mudarNova}
+            desistirDaNova={desistirDaNova}
+            n8n={[...new Set([...n8nPendente, ...novas])].filter(Boolean)}
             estado={estado}
             quadro={quadro}
             podeMudar={podeMudar}
@@ -175,15 +252,16 @@ export function Configuracao({ voltar, avisar }: Props) {
         )}
       </main>
 
-      {podeMudar && mudancas.length > 0 && !conferencia && (
+      {podeMudar && nMudancas > 0 && !conferencia && (
         <div className="cfg-barra" role="region" aria-label="Mudanças">
-          <span className="cfg-barra-n">{plural(mudancas.length, 'mudança', 'mudanças')}</span>
+          <span className="cfg-barra-n">{plural(nMudancas, 'mudança', 'mudanças')}</span>
           <button
             type="button"
             className="cfg-barra-descartar"
             onClick={() => {
               setRascunho(secao?.proposta ?? null);
               setEditando(null);
+              setNova(null);
             }}
           >
             Descartar
@@ -193,8 +271,8 @@ export function Configuracao({ voltar, avisar }: Props) {
           </button>
         </div>
       )}
-      {escolha && quadro && rascunho && <Escolher escolha={escolha} quadro={quadro} rascunho={rascunho} estado={estado} ligar={(id) => ligar(escolha, id)} fechar={fecharEscolha} />}
-      {conferencia && <DialogoDeConferir conferencia={conferencia} voltar={() => setConferencia(null)} salvar={() => void salvar()} />}
+      {escolha && quadro && completo && <Escolher escolha={escolha} quadro={quadro} rascunho={completo} estado={estado} ligar={(id) => ligar(escolha, id)} fechar={fecharEscolha} />}
+      {conferencia && <DialogoDeConferir conferencia={conferencia} novas={novas} voltar={() => setConferencia(null)} salvar={() => void salvar()} />}
     </div>
   );
 }
@@ -203,7 +281,16 @@ export function Configuracao({ voltar, avisar }: Props) {
 
 interface PropsDaSecao {
   secao: SecaoPracas;
+  /** o rascunho inteiro, com a praça nova */
   rascunho: LigacoesDasPracas;
+  /** as praças que já existem (sem a nova): as que se arrastam e se editam */
+  salvas: Praca[];
+  nova: Nova | null;
+  novaPraca: () => void;
+  mudarNova: (m: Partial<Nova>) => void;
+  desistirDaNova: () => void;
+  /** as siglas que o n8n ainda não conhece: a praça nova e as salvas agora */
+  n8n: string[];
   estado: ReturnType<typeof estadoDasPracas> | null;
   quadro: QuadroLido | null;
   podeMudar: boolean;
@@ -241,9 +328,32 @@ function SecaoDasPracas(props: PropsDaSecao) {
         {secao.erro && <p className="cfg-falha">{secao.erro}</p>}
         {estado && estado.excecoes.length > 0 && <Excecoes {...props} estado={estado} />}
         <ListaDasPracas {...props} podeMudar={podeMudar} />
+        {props.n8n.length > 0 && <AvisoDoN8n siglas={props.n8n} />}
+        {podeMudar && !props.nova && (
+          <div className="cfg-mais">
+            <button type="button" className="botao-texto" onClick={props.novaPraca}>
+              + Nova praça
+            </button>
+          </div>
+        )}
         {verTudo && estado && <TudoDasPracas {...props} estado={estado} />}
       </div>
     </section>
+  );
+}
+
+/** A praça nova ainda não está nos fluxos do n8n (eles têm as praças escritas dentro). */
+function AvisoDoN8n({ siglas }: { siglas: string[] }) {
+  return (
+    <div className="cfg-exc problema cfg-n8n" role="note">
+      <span className="cfg-exc-ico" aria-hidden>
+        <Icone nome="atencao" tam={14} traco={2.2} />
+      </span>
+      <span className="cfg-exc-texto">
+        <strong>O n8n ainda não conhece {siglas.join(' e ')}</strong>
+        <span>ajustar: {FLUXOS_DO_N8N.join(' · ')}</span>
+      </span>
+    </div>
   );
 }
 
@@ -350,10 +460,12 @@ function Excecoes({ estado, rascunho, podeMudar, escolher, desfazer, quadro }: P
 
 /* ---------- as praças, com as regras sempre à mostra ---------- */
 
-function ListaDasPracas({ rascunho, estado, podeMudar, editando, editar, mudarPraca, tornarPadrao, mover }: PropsDaSecao) {
+function ListaDasPracas({ rascunho, salvas, nova, mudarNova, desistirDaNova, estado, podeMudar, editando, editar, mudarPraca, tornarPadrao, mover }: PropsDaSecao) {
   const [arrastando, setArrastando] = useState<number | null>(null);
   const [sobre, setSobre] = useState<number | null>(null);
-  const pracas = rascunho.pracas;
+  const pracas = salvas;
+  // o exemplo de cada praça é reconhecido com todas, a nova junto
+  const todas = rascunho.pracas;
   const dica =
     arrastando !== null && sobre !== null && sobre !== arrastando
       ? `soltando aqui, ${pracas[arrastando].sigla} passa a valer ${sobre < arrastando ? `antes de ${pracas[sobre].sigla}` : `depois de ${pracas[sobre].sigla}`}`
@@ -437,7 +549,7 @@ function ListaDasPracas({ rascunho, estado, podeMudar, editando, editar, mudarPr
                     </Editavel>
                   )}
                   <span className="cfg-exemplo">
-                    {ex} → <b>{reconhecerPraca(ex, pracas)}</b>
+                    {ex} → <b>{reconhecerPraca(ex, todas)}</b>
                   </span>
                 </span>
                 <span className="cfg-marcas">
@@ -458,9 +570,60 @@ function ListaDasPracas({ rascunho, estado, podeMudar, editando, editar, mudarPr
             </li>
           );
         })}
+        {nova && podeMudar && <LinhaDaNova nova={nova} todas={todas} mudar={mudarNova} desistir={desistirDaNova} />}
       </ol>
       {dica && <p className="cfg-dica-ordem">{dica}</p>}
     </>
+  );
+}
+
+/** A linha da praça nova: a sigla, a regra (termina em / começa com e as palavras) e o exemplo; embaixo, o nome e o
+    "também lida como". */
+function LinhaDaNova({ nova, todas, mudar, desistir }: { nova: Nova; todas: Praca[]; mudar: (m: Partial<Nova>) => void; desistir: () => void }) {
+  const p = pracaDaNova(nova);
+  const ex = p.regra ? exemploDa(p) : 'FESTA 3/11 …';
+  return (
+    <li className="cfg-praca nova aberta" data-sigla="nova">
+      <div className="cfg-praca-linha">
+        <span className="cfg-alca" aria-hidden>
+          <Icone nome="alca" tam={14} traco={3} />
+        </span>
+        <input className="cfg-sigla-nova" autoFocus value={nova.sigla} placeholder="sigla" maxLength={8} aria-label="Sigla da praça nova" onChange={(e) => mudar({ sigla: siglaDoTexto(e.target.value) })} />
+        <span className="cfg-regra">
+          <span className="cfg-editor-onde" role="radiogroup" aria-label="Onde a praça aparece">
+            {(
+              [
+                ['fim', 'termina em'],
+                ['comeco', 'começa com'],
+              ] as const
+            ).map(([v, rotulo]) => (
+              <button key={v} type="button" role="radio" aria-checked={nova.onde === v} onClick={() => mudar({ onde: v })}>
+                {rotulo}
+              </button>
+            ))}
+          </span>
+          <input className="cfg-palavras-nova" value={nova.palavras} placeholder="palavras" aria-label="Palavras da regra" onChange={(e) => mudar({ palavras: e.target.value })} />
+          <span className="cfg-exemplo">
+            {ex} → <b>{nova.sigla && p.regra ? reconhecerPraca(ex, todas) : '?'}</b>
+          </span>
+        </span>
+        <span className="cfg-marcas">
+          <button type="button" className="botao-texto" onClick={desistir}>
+            desistir
+          </button>
+        </span>
+      </div>
+      <div className="cfg-editor" role="group" aria-label="A praça nova">
+        <label className="cfg-editor-campo">
+          <span>nome</span>
+          <input className="cfg-nome-nova" value={nova.nome} placeholder={nova.sigla || 'Minas Gerais'} onChange={(e) => mudar({ nome: e.target.value })} aria-label="Nome da praça nova" />
+        </label>
+        <label className="cfg-editor-campo">
+          <span>também lida como</span>
+          <input value={nova.tambem} placeholder="nenhuma" onChange={(e) => mudar({ tambem: e.target.value })} aria-label="Também lida como (praça nova)" />
+        </label>
+      </div>
+    </li>
   );
 }
 
@@ -555,7 +718,13 @@ function TudoDasPracas({ estado, podeMudar, escolher }: PropsDaSecao & { estado:
       <span className="cfg-tudo-rotulo">{rotulo}</span>
       <span className="cfg-tudo-valor">{l.nome || '—'}</span>
       <span className={`cfg-tudo-como ${l.problema ? 'problema' : l.como === 'mao' ? 'mao' : ''}`}>
-        {l.problema ? { nenhum: 'não achado', dobro: 'em dobro', sumiu: 'sumiu', arquivada: 'arquivada', tipo: 'tipo errado' }[l.problema] : l.como === 'mao' ? 'ligado à mão' : 'achado pelo nome'}
+        {l.problema
+          ? { nenhum: 'não achado', dobro: 'em dobro', sumiu: 'sumiu', arquivada: 'arquivada', tipo: 'tipo errado' }[l.problema]
+          : l.como === 'mao'
+            ? 'ligado à mão'
+            : l.como === 'criar'
+              ? 'o PROMeiro cria ao salvar'
+              : 'achado pelo nome'}
         {l.divididaCom && ` · dividida com ${l.divididaCom}`}
         {podeMudar && (
           <>
@@ -635,7 +804,17 @@ function Escolher({ escolha, quadro, rascunho, estado, ligar, fechar }: { escolh
 
 /* ---------- conferir e salvar ---------- */
 
-function DialogoDeConferir({ conferencia, voltar, salvar }: { conferencia: { estado: 'conferindo' } | { estado: 'pronta'; r: ConferenciaDasPracas; salvando?: boolean }; voltar: () => void; salvar: () => void }) {
+function DialogoDeConferir({
+  conferencia,
+  novas,
+  voltar,
+  salvar,
+}: {
+  conferencia: { estado: 'conferindo' } | { estado: 'pronta'; r: ConferenciaDasPracas; salvando?: boolean };
+  novas: string[];
+  voltar: () => void;
+  salvar: () => void;
+}) {
   useEffect(() => {
     const salvando = conferencia.estado === 'pronta' && conferencia.salvando;
     const tecla = (e: KeyboardEvent) => e.key === 'Escape' && !salvando && voltar();
@@ -664,6 +843,22 @@ function DialogoDeConferir({ conferencia, voltar, salvar }: { conferencia: { est
                 ))}
             </ul>
           )}
+          {r && r.claquetes && r.claquetes.mudam.length > 0 && (
+            <>
+              <h3 className="cfg-modal-rotulo">Claquetes que mudam de praça</h3>
+              <ul className="cfg-claquetes">
+                {r.claquetes.mudam.slice(0, 5).map((c) => (
+                  <li key={c.claquete}>
+                    <code>{c.claquete}</code>
+                    <span>
+                      {c.antes} → <b>{c.depois}</b>
+                    </span>
+                  </li>
+                ))}
+                {r.claquetes.mudam.length > 5 && <li className="mais">e mais {r.claquetes.mudam.length - 5}</li>}
+              </ul>
+            </>
+          )}
           {r && r.ok && r.muda.length > 0 && (
             <>
               <h3 className="cfg-modal-rotulo">O que muda</h3>
@@ -682,6 +877,11 @@ function DialogoDeConferir({ conferencia, voltar, salvar }: { conferencia: { est
                 </tbody>
               </table>
             </>
+          )}
+          {r && r.ok && novas.length > 0 && (
+            <p className="cfg-alerta" role="note">
+              <b>O n8n ainda não conhece {novas.join(' e ')}.</b> Ajustar: {FLUXOS_DO_N8N.join(', ')}.
+            </p>
           )}
         </div>
         <footer>
