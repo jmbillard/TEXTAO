@@ -1,6 +1,6 @@
 # Protótipo de UI
 
-Gere **várias variações de UI radicalmente diferentes** num único arquivo HTML, apresentado na **moldura** ([`moldura/`](moldura/)): uma barra fixa no topo com as telas e as alternativas, os três aparelhos (celular, tablet, computador) lado a lado e o tema claro, escuro ou os dois. O usuário alterna entre as variantes, escolhe uma (ou rouba pedaços de cada) e depois joga o resto fora.
+Gere **várias variações de UI radicalmente diferentes** num único arquivo HTML, apresentado na **moldura** ([`moldura/`](moldura/)): um protótipo navegável por dentro (o usuário clica nele como no app), uma barra fixa no topo com as alternativas, o tema e o aparelho, os três aparelhos (celular, tablet, computador) lado a lado e o tema claro, escuro ou os dois. O usuário alterna entre as variantes, escolhe uma (ou rouba pedaços de cada) e depois joga o resto fora.
 
 Se a pergunta for sobre lógica/estado, e não sobre a aparência de algo, este é o ramo errado. Use [LOGIC.md](LOGIC.md).
 
@@ -17,7 +17,7 @@ Se a pergunta for sobre lógica/estado, e não sobre a aparência de algo, este 
 - **O conteúdo tem o visual do app.** O `montar.mjs` injeta o `src/estilos.css` inteiro e as fontes do app em base64 (inclusive a manuscrita Caveat). Use os tokens (`--papel`, `--tinta`, `--ultra`, `--serifa`…) e as classes do app (`.botao`, `.rotulo`, `.logo-app`…), e encoste a variante no resto do app: cabeçalho de verdade, vizinhos de verdade, densidade de verdade. Uma tela solta no vácuo faz toda variante parecer boa. As classes próprias do protótipo levam o prefixo `pr-`: o conteúdo divide o espaço de nomes com o `estilos.css` (um `.item` do protótipo herda o `.item` do app).
 - **Dados fictícios.** Nomes, e-mails `@exemplo.com`, claquetes e listas inventados, plausíveis para o domínio. Nada copiado do Trello, do Teable ou do n8n.
 - **As três larguras e os dois temas, sempre.** Celular 390, tablet 820 e computador 1440 px, cada um num iframe da largura real: os `@media` do conteúdo valem como no aparelho. O layout se adapta por media query, nunca por largura fixa. O escuro é o do app (`data-theme`), aplicado pela moldura.
-- **Opções no topo.** As telas (estados) e as alternativas A/B/C são declaradas no manifesto e viram botões da barra.
+- **Navegável por dentro.** A barra do topo só tem alternativas, tema e aparelho; as telas **não** viram botões. O usuário anda pelo protótipo clicando nele, como no app: todo estado importante tem um caminho clicável a partir da tela inicial (botões, links, menus, linhas de lista do próprio protótipo). Os três aparelhos ficam sincronizados: uma troca de tela num deles vale para todos. O estado que não tem caminho natural ("com erro", "fora do ar", "outra pessoa logada") vira uma **alternativa** ou um **gatilho discreto** no próprio conteúdo (uma nota manuscrita `protótipo: simular …`, em Caveat). O manifesto ainda declara as telas: elas dão a tela inicial (a primeira) e a lista das capturas.
 - **Fora do repositório.** O protótipo fica no scratchpad da sessão, numa pasta do assunto (`<scratchpad>/<assunto>/`). No repositório fica só a moldura.
 
 ## Processo
@@ -34,7 +34,7 @@ Copie [`moldura/modelo.html`](moldura/modelo.html) para a pasta do assunto e esc
 
 - `<script type="application/json" id="manifesto">` com `nome`, `telas` (`[{ id, rotulo }]`, na ordem em que o usuário vai percorrer) e, quando houver, `alternativas` (`[{ id: 'A', rotulo }]`).
 - `Moldura.ao(desenhar)`: `desenhar({ tela, alt, tema, aparelho })` desenha a tela e roda de novo a cada troca na barra. Cada tela parte de um estado conhecido, para sair igual em todo aparelho.
-- `Moldura.ir(tela)` para um botão do próprio protótipo que leva a outra tela: a barra e os outros aparelhos acompanham.
+- `Moldura.ir(tela)` leva a outra tela, e os outros aparelhos acompanham. É assim que o protótipo navega: marque cada elemento clicável com `data-ir="<tela>"` e um único ouvinte de clique chama `Moldura.ir` (veja o modelo). Detalhes que não são tela do manifesto (um campo digitado, um toast) podem ficar só no estado local do aparelho clicado.
 - `html.captura` está ligada durante as capturas: desligue ali animações e o que mais atrapalhar a foto.
 - Todo estado fica em memória (variáveis do script). O conteúdo **não usa** `localStorage`, `sessionStorage`, IndexedDB, cookies, `history`, `location` nem `parent`/`top`: o protótipo é aberto em visualizadores que o servem num iframe com sandbox ou em `srcdoc` (origem opaca), onde essas chamadas lançam `SecurityError` (no WebKit, "The operation is insecure"). Se for inevitável, envolva cada chamada em `try/catch` com alternativa em memória. Tela, alternativa e tema chegam só pela moldura (`Moldura.ao`), que já trata esses casos.
 
@@ -47,6 +47,8 @@ node .claude/skills/prototype/moldura/montar.mjs <pasta>/conteudo.html <pasta>/p
 ```
 
 Sai um único HTML autocontido (cerca de 1 MB): dá para mandar ao usuário e abrir com dois cliques, inclusive no celular. Monte de novo a cada mudança no conteúdo ou no `src/estilos.css`.
+
+Antes de capturar, percorra o protótipo clicando, a partir da tela inicial, e confira que chega a todas as telas do manifesto. Uma tela a que só se chega pela URL é uma tela que o usuário não vai ver.
 
 ### 4. Capture e confira
 
@@ -63,7 +65,7 @@ A conferência termina quando:
 
 ### 5. Entregue
 
-Mande o caminho absoluto do HTML montado e as capturas da moldura. Para apontar um estado, use o hash: `prototipo.html#tela=conferir&alt=B&tema=ambos&foco=celular`. Na moldura: `←` `→` trocam a tela, `[` `]` a alternativa, `T` o tema, `0`–`3` o aparelho e `Esc` volta aos três; o `↗` de cada aparelho abre só o conteúdo em outra aba. Num visualizador restrito (sandbox, `srcdoc`) o hash não é atualizado e o `↗` some; o resto funciona em memória. O retorno interessante costuma ser **"quero o cabeçalho da B com a barra lateral da C"**, que é o design que ele de fato quer.
+Mande o caminho absoluto do HTML montado e as capturas da moldura. Para apontar um estado, use o hash: `prototipo.html#tela=conferir&alt=B&tema=ambos&foco=celular`. O usuário navega clicando no protótipo. Na moldura: `[` `]` trocam a alternativa, `T` o tema, `0`–`3` o aparelho e `Esc` volta aos três; o `↗` de cada aparelho abre só o conteúdo em outra aba. Num visualizador restrito (sandbox, `srcdoc`) o hash não é atualizado e o `↗` some; o resto funciona em memória. O retorno interessante costuma ser **"quero o cabeçalho da B com a barra lateral da C"**, que é o design que ele de fato quer.
 
 ### 6. Registre a resposta
 

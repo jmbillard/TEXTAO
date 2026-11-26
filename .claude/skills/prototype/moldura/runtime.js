@@ -1,6 +1,7 @@
 // Moldura de protótipo: o lado do conteúdo. O montar.mjs injeta este arquivo no <head> do conteúdo.
 // O conteúdo chama Moldura.ao(desenhar) uma vez; desenhar({ tela, alt, tema, aparelho }) roda de novo a cada troca
-// na barra do topo. Para trocar de tela por dentro do conteúdo (um botão do próprio protótipo), use Moldura.ir(tela).
+// na barra do topo (alternativa, tema) ou quando o protótipo navega. O conteúdo navega por dentro com Moldura.ir(tela)
+// (os três aparelhos acompanham); a barra do topo não tem as telas.
 // Fora da moldura (o arquivo de conteúdo aberto sozinho) os parâmetros vêm de ?tela=…&alt=…&tema=claro|escuro.
 // Num contexto restrito (srcdoc, sandbox, origem opaca) location, history, storage e o acesso ao parent podem lançar
 // SecurityError: tudo isso passa por seguro() e, se lançar, o estado fica em memória. O conteúdo não usa storage nem

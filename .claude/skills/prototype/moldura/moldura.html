@@ -26,8 +26,7 @@ button, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--ciano); outline-offset: 2px; }
 
 /* ---------- barra do topo ---------- */
-.mb { position: sticky; top: 0; z-index: 10; background: rgb(18 22 25 / 94%); backdrop-filter: blur(6px); border-bottom: 1px solid var(--borda); padding: 10px 16px 8px; display: flex; flex-direction: column; gap: 8px; }
-.mb-linha { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; min-width: 0; }
+.mb { position: sticky; top: 0; z-index: 10; background: rgb(18 22 25 / 94%); backdrop-filter: blur(6px); border-bottom: 1px solid var(--borda); padding: 8px 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
 .mb-nome { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-right: auto; }
 .mb-selo { flex: none; font-weight: 700; font-size: 10.5px; letter-spacing: .14em; color: var(--fundo); background: var(--ciano); padding: 2px 6px; border-radius: 3px; }
 .mb-nome h1 { font: 600 14px var(--mono); margin: 0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -45,10 +44,10 @@ button, select { font: inherit; color: inherit; }
 .chips button[aria-pressed='true'] { border-color: var(--ciano); background: var(--ciano-esc); color: var(--ciano); font-weight: 700; }
 .chips .n { color: var(--suave); margin-right: 5px; }
 .chips button[aria-pressed='true'] .n { color: var(--ciano); }
-.seta { border: 1px solid var(--borda); background: var(--painel); border-radius: 5px; width: 28px; height: 26px; cursor: pointer; flex: none; color: var(--texto); }
-.seta:hover { border-color: var(--borda2); }
-.mb-sel { display: none; flex: 1; min-width: 0; background: var(--painel); border: 1px solid var(--borda2); border-radius: 5px; padding: 4px 6px; height: 28px; }
 .mb-atalhos { color: var(--suave); font-size: 10.5px; }
+.mb-alt-rot { color: var(--ciano); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
+#grupo-alt { flex: 0 1 auto; }
+@media (max-width: 1500px) { .mb-atalhos, .mb-nome small { display: none; } }
 .mb-atalhos kbd { font: inherit; color: var(--texto); border: 1px solid var(--borda2); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; }
 
 /* ---------- bancada ---------- */
@@ -76,14 +75,13 @@ button, select { font: inherit; color: inherit; }
 .ap[data-ap='computador'] .vidro { border-radius: 4px; }
 .vidro iframe { display: block; border: 0; transform-origin: 0 0; background: #fff; }
 
-/* celular: um aparelho por vez, seletor de tela compacto */
+/* celular: um aparelho por vez, barra em duas linhas */
 @media (max-width: 760px) {
-  .mb { padding: 8px 16px; gap: 6px; }
-  .mb-nome small, .mb-atalhos, .mb .chips-telas, .op-todos { display: none; }
-  .mb-sel { display: block; }
-  .mb-grupo.telas { width: 100%; }
-  .mb-linha.ctl { flex-wrap: nowrap; justify-content: space-between; gap: 8px; }
-  .mb-linha.ctl .mb-rot { display: none; }
+  .mb { gap: 6px 8px; justify-content: space-between; }
+  .mb-nome { width: 100%; }
+  .mb-nome small, .mb-atalhos, .op-todos, .mb-rot { display: none; }
+  #grupo-alt { width: 100%; }
+  .mb-alt-rot { max-width: none; flex: 1; }
   .seg button { padding: 5px 6px; font-size: 11px; }
   .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .bancada { padding: 14px 16px 40px; }
@@ -91,29 +89,14 @@ button, select { font: inherit; color: inherit; }
 </style>
 </head>
 <body>
-<header class="mb" role="toolbar" aria-label="Moldura do protótipo">
-  <div class="mb-linha">
-    <div class="mb-nome"><span class="mb-selo">PROTÓTIPO</span><h1 id="nome"></h1><small>rascunho descartável · dados fictícios</small></div>
-  </div>
-  <div class="mb-linha">
-    <div class="mb-grupo telas" role="group" aria-label="Telas">
-      <span class="mb-rot">Telas</span>
-      <button class="seta" data-passo="-1" aria-label="Tela anterior">←</button>
-      <select class="mb-sel" id="sel-tela" aria-label="Tela"></select>
-      <div class="chips chips-telas" id="telas"></div>
-      <button class="seta" data-passo="1" aria-label="Próxima tela">→</button>
-    </div>
-  </div>
-  <div class="mb-linha" id="linha-alt" hidden>
-    <div class="mb-grupo" role="group" aria-label="Alternativas"><span class="mb-rot">Alternativas</span><div class="chips" id="alts"></div></div>
-  </div>
-  <div class="mb-linha ctl">
-    <div class="mb-grupo" role="group" aria-label="Tema"><span class="mb-rot">Tema</span>
-      <span class="seg" id="seg-tema"><button data-tema="claro">claro</button><button data-tema="escuro">escuro</button><button data-tema="ambos">ambos</button></span></div>
-    <div class="mb-grupo" role="group" aria-label="Aparelho"><span class="mb-rot">Aparelho</span>
-      <span class="seg" id="seg-ap"><button data-foco="" class="op-todos">os três</button><button data-foco="celular">celular</button><button data-foco="tablet">tablet</button><button data-foco="computador">computador</button></span></div>
-    <span class="mb-atalhos"><kbd>←</kbd><kbd>→</kbd> telas · <kbd>[</kbd><kbd>]</kbd> alternativas · <kbd>T</kbd> tema · <kbd>0</kbd>–<kbd>3</kbd> aparelho · <kbd>Esc</kbd> os três</span>
-  </div>
+<header class="mb" role="toolbar" aria-label="Moldura do protótipo" title="Atalhos: [ ] alternativas · T tema · 0–3 aparelho · Esc os três">
+  <div class="mb-nome"><span class="mb-selo">PROTÓTIPO</span><h1 id="nome"></h1><small>clique no protótipo para navegar · dados fictícios</small></div>
+  <div class="mb-grupo" id="grupo-alt" role="group" aria-label="Alternativas" hidden><span class="mb-rot">Alternativas</span><div class="chips" id="alts"></div><span class="mb-alt-rot" id="alt-rot"></span></div>
+  <div class="mb-grupo" role="group" aria-label="Tema"><span class="mb-rot">Tema</span>
+    <span class="seg" id="seg-tema"><button data-tema="claro">claro</button><button data-tema="escuro">escuro</button><button data-tema="ambos">ambos</button></span></div>
+  <div class="mb-grupo" role="group" aria-label="Aparelho"><span class="mb-rot">Aparelho</span>
+    <span class="seg" id="seg-ap"><button data-foco="" class="op-todos">os três</button><button data-foco="celular">celular</button><button data-foco="tablet">tablet</button><button data-foco="computador">computador</button></span></div>
+  <span class="mb-atalhos"><kbd>[</kbd><kbd>]</kbd> alternativas · <kbd>T</kbd> tema · <kbd>0</kbd>–<kbd>3</kbd> aparelho · <kbd>Esc</kbd> os três</span>
 </header>
 <main class="bancada" id="bancada"></main>
 <script>
@@ -158,27 +141,21 @@ function conteudoCom(params) {
 
 function iniciar() {
   document.getElementById('nome').textContent = MANIFESTO.nome;
-  const telas = document.getElementById('telas'), sel = document.getElementById('sel-tela');
-  TELAS.forEach((t, i) => {
-    telas.insertAdjacentHTML('beforeend', `<button data-tela="${t.id}"><span class="n">${String(i + 1).padStart(2, '0')}</span>${esc(t.rotulo)}</button>`);
-    sel.insertAdjacentHTML('beforeend', `<option value="${t.id}">${String(i + 1).padStart(2, '0')} · ${esc(t.rotulo)}</option>`);
-  });
+  // As telas não viram botões: a navegação é por dentro do protótipo (Moldura.ir). O manifesto só dá a tela
+  // inicial e a lista das capturas.
   if (ALTS.length) {
-    document.getElementById('linha-alt').hidden = false;
-    document.getElementById('alts').innerHTML = ALTS.map((a) => `<button data-alt="${a.id}"><span class="n">${esc(a.id)}</span>${esc(a.rotulo)}</button>`).join('');
+    document.getElementById('grupo-alt').hidden = false;
+    document.getElementById('alts').innerHTML = ALTS.map((a) => `<button data-alt="${a.id}" title="${esc(a.rotulo)}">${esc(a.id)}</button>`).join('');
   }
   document.addEventListener('click', (e) => {
     const b = e.target.closest('button, .casco');
     if (!b) return;
     const d = b.dataset;
-    if (d.tela) mudar({ tela: d.tela });
-    else if (d.alt) mudar({ alt: d.alt });
+    if (d.alt) mudar({ alt: d.alt });
     else if (d.tema) mudar({ tema: d.tema });
     else if (d.foco !== undefined) mudar({ foco: d.foco });
-    else if (d.passo) passoTela(+d.passo);
     else if (d.focarAp) mudar({ foco: d.focarAp });
   });
-  sel.addEventListener('change', () => mudar({ tela: sel.value }));
   document.addEventListener('keydown', teclas);
   addEventListener('message', recado);
   addEventListener('resize', desenhar);
@@ -190,7 +167,6 @@ function iniciar() {
 }
 
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
-function passoTela(n) { const i = TELAS.findIndex((t) => t.id === M.tela); mudar({ tela: TELAS[(i + n + TELAS.length) % TELAS.length].id }); }
 function passoAlt(n) { if (!ALTS.length) return; const i = ALTS.findIndex((a) => a.id === M.alt); mudar({ alt: ALTS[(i + n + ALTS.length) % ALTS.length].id }); }
 function mudar(o) {
   const conteudo = ('tela' in o && o.tela !== M.tela) || ('alt' in o && o.alt !== M.alt);
@@ -202,7 +178,6 @@ function mudar(o) {
 function teclas(e) {
   if (e.target.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
-  if (k === 'ArrowRight' || k === 'ArrowLeft') { e.preventDefault(); return passoTela(k === 'ArrowRight' ? 1 : -1); }
   if (k === ']' || k === '[') return passoAlt(k === ']' ? 1 : -1);
   if (k === 't' || k === 'T') { const o = ['claro', 'escuro', 'ambos']; return mudar({ tema: o[(o.indexOf(M.tema) + 1) % 3] }); }
   if (k >= '0' && k <= '3') return mudar({ foco: k === '0' ? '' : APS[+k - 1].id });
@@ -276,13 +251,11 @@ function desenhar() {
     });
     linha++;
   });
-  document.querySelectorAll('[data-tela]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tela === M.tela));
   document.querySelectorAll('[data-alt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.alt === M.alt));
+  const altAtual = ALTS.find((a) => a.id === M.alt);
+  document.getElementById('alt-rot').textContent = altAtual ? altAtual.rotulo : '';
   document.querySelectorAll('[data-tema]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tema === M.tema));
   document.querySelectorAll('[data-foco]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.foco === M.foco));
-  document.getElementById('sel-tela').value = M.tela;
-  const ativo = document.querySelector('.chips-telas [aria-pressed="true"]');
-  if (ativo && document.activeElement && document.activeElement.closest('.chips-telas')) ativo.focus();
 }
 function enviarPara(ifr) { seguro(() => ifr.contentWindow && ifr.contentWindow.postMessage({ moldura: { tela: M.tela, alt: M.alt } }, '*')); }
 function enviar() { for (const k in figs) enviarPara(figs[k].ifr); }

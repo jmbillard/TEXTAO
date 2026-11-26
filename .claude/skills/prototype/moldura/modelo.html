@@ -38,8 +38,11 @@ function desenhar({ tela, alt }) {
   document.getElementById('tela').innerHTML = `<h1>Fila</h1>
     ${itens.length ? `<div class="${caixa}">${itens.map((t) => `<div class="pr-item">${t}</div>`).join('')}</div>`
       : '<p class="suave">Nada na fila. <span class="pr-nota">tudo em dia!</span></p>'}
-    <p><button class="botao" onclick="Moldura.ir('${tela === 'cheio' ? 'vazio' : 'cheio'}')">Trocar de tela por dentro</button></p>`;
+    <p><button class="botao" data-ir="${tela === 'cheio' ? 'vazio' : 'cheio'}">${tela === 'cheio' ? 'Esvaziar' : 'Encher a fila'}</button></p>`;
 }
+// Navegação por dentro: todo elemento com data-ir leva àquela tela, e os três aparelhos acompanham.
+// O conteúdo não usa localStorage, sessionStorage, history, location nem parent/top: o estado fica em memória.
+document.addEventListener('click', (e) => { const el = e.target.closest('[data-ir]'); if (el) { e.preventDefault(); Moldura.ir(el.dataset.ir); } });
 Moldura.ao(desenhar);
 </script>
 </body>
