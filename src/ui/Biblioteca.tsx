@@ -9,9 +9,9 @@ import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { agruparPorDia, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
+import { agruparPorDia, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, soAsPrioridades, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
-import { AbasDoCriterio, Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
+import { AbasDoCriterio, ItemQueAbre, Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
 import { useTrocaDeCriterio, useTrocaDeSemana } from './trocaDeSemana';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
@@ -659,7 +659,6 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   const contando = contagem.p < 1;
   const inicioNaContagem = posicaoNaContagem(eixo, contagem.de, contagem.para, contagem.p);
   const f = celular ? montarFaixa(lista, andamento, agora, criterio) : null;
-  const agenda = f ?? s;
   const trilho = useRef<HTMLDivElement>(null);
   // a faixa abre onde o critério da hora em que ela aparece manda (por entrada, em ontem e hoje); trocar de critério não
   // a leva para outro lugar (os cards é que voam)
@@ -667,6 +666,15 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   if (!f) abertura.current = null;
   else if (abertura.current?.iso !== f.dias[0].iso) abertura.current = { iso: f.dias[0].iso, k: f.abre };
   const faixa = useFaixa(trilho, f?.dias.length ?? 0, abertura.current?.k ?? 0, f?.dias[0].iso ?? '');
+  // o resumo dos dias à vista: no celular, os dois dias da faixa; no computador, a semana
+  const resumo = f ? resumoDosDias(f.dias.slice(faixa.vista[0], faixa.vista[0] + 2)) : s;
+  // o filtro das prioridades: clicar no "N prioridades" mostra só os cards de prioridade (os outros fecham a vaga). Não
+  // fica guardado (recarregar volta a mostrar tudo) e desliga sozinho quando os dias à vista não têm prioridade (o
+  // número some, e com ele o botão)
+  const [soPrioridades, setSoPrioridades] = useState(false);
+  if (soPrioridades && resumo.comPrioridade === 0) setSoPrioridades(false);
+  const filtro = { ligado: soPrioridades && resumo.comPrioridade > 0, alternar: () => setSoPrioridades((x) => !x) };
+  const agenda = filtro.ligado ? soAsPrioridades(f ?? s) : (f ?? s);
   // no computador estreito (a semana rola de lado), hoje fica à vista: com ontem antes dele; por entrada, no fim
   const rolarAteHoje = () => {
     const el = grade.current;
@@ -751,7 +759,6 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
   // (com o lugar guardado) na segunda. Tudo isso só muda quando a rolagem termina, e então conta até os valores novos.
   const topoDoCelular = (f: FaixaDeDias) => {
     const [k] = faixa.vista;
-    const resumo = resumoDosDias(f.dias.slice(k, k + 2));
     return (
       <div className="secao-trello-topo">
         {titulo}
@@ -766,7 +773,7 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
         </span>
         <span className="linha-criterio">{abas}</span>
         <span className="secao-trello-conta">
-          <ResumoQueConta {...resumo} criterio={criterio} />
+          <ResumoQueConta {...resumo} criterio={criterio} filtro={filtro} />
           <VoltarParaHoje ver={k !== f.abre && k !== f.hoje} sentido={faixa.sentido} voltar={() => faixa.ir(f.abre)} />
         </span>
       </div>
@@ -779,13 +786,16 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
       <span className="linha-criterio">
         {abas}
         <span className="secao-trello-conta">
-          <ResumoQueConta total={s.total} entregues={s.entregues} aEntregar={s.aEntregar} comPrioridade={s.comPrioridade} criterio={criterio} />
+          <ResumoQueConta total={s.total} entregues={s.entregues} aEntregar={s.aEntregar} comPrioridade={s.comPrioridade} criterio={criterio} filtro={filtro} />
         </span>
       </span>
       <span className="semana-nav">
         {verInteira}
         <VoltarParaHoje ver={troca.mostrada !== 0} sentido={troca.sentido} voltar={() => setDeslocamento(0)} abreVaga />
-        {verDiasAnteriores}
+        {/* o filtro das prioridades pode tirar todos os dias anteriores: o link fecha a vaga, como o "voltar para hoje" */}
+        <ItemQueAbre ver={!!verDiasAnteriores} classe="ct-anteriores">
+          {verDiasAnteriores}
+        </ItemQueAbre>
         {/* as setas e o período andam juntos: na agenda estreita, a linha quebra entre os links, nunca entre eles */}
         <span className="semana-setas">
           <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
@@ -820,13 +830,18 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
       </div>
       {/* a faixa do sem data também fecha a vaga quando o último card dela sai (ou ganha data, ou o critério muda) */}
       <Vagas itens={agenda.semData.length ? ['sem-data'] : []} chave={(k) => k}>{() => avulsa('sem data', agenda.semData, 'sem-data')}</Vagas>
-      {/* no celular, o "ver a semana inteira" e os "dias anteriores" ficam no pé da agenda */}
-      {f && (verInteira || verDiasAnteriores) && (
-        <div className="pe-agenda">
-          {verInteira}
-          {verDiasAnteriores}
-        </div>
-      )}
+      {/* no celular, o "ver a semana inteira" e os "dias anteriores" ficam no pé da agenda; o pé fecha a vaga quando fica
+          vazio (o filtro das prioridades pode tirar os dias anteriores), mostrando o que tinha enquanto fecha */}
+      <Vagas itens={f && (verInteira || verDiasAnteriores) ? [{ k: 'pe', inteira: verInteira, anteriores: verDiasAnteriores }] : []} chave={(x) => x.k}>
+        {(x) => (
+          <div className="pe-agenda">
+            {x.inteira}
+            <ItemQueAbre ver={!!x.anteriores} classe="ct-anteriores">
+              {x.anteriores}
+            </ItemQueAbre>
+          </div>
+        )}
+      </Vagas>
       {/* no computador, os dias anteriores abrem e fecham a vaga, como o "sem data" */}
       {f ? verAnteriores && agenda.anteriores.map((d) => avulsa(d.titulo, d.cards, d.iso)) : <Vagas itens={verAnteriores ? agenda.anteriores : []} chave={(d) => d.iso}>{(d) => avulsa(d.titulo, d.cards, d.iso)}</Vagas>}
       {/* os fantasmas dos cards que saem da agenda à vista na troca de critério */}

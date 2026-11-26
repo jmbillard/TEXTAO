@@ -901,3 +901,55 @@ describe('o próximo para revisar (proximoParaRevisar)', () => {
     expect(proximo([fila[0]])).toBeUndefined();
   });
 });
+
+describe('No Trello: o filtro das prioridades', () => {
+  const agora = new Date(2026, 10, 24, 15, 0); // ter, 24/11
+  const enviado = (id: string, data: string): Resumo => ({
+    ...resumo(id, data),
+    meta: { ...metaVazia(), dataExibicao: data, claquete: id.toUpperCase() },
+    trello: { estado: 'enviado', url: 'https://trello.com/c/x', em: '2026-11-20T12:00:00Z' },
+  });
+  const prio: Andamento = { status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, prioridade: true };
+  const comum: Andamento = { status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null };
+  const lista = [enviado('a', '2026-11-24'), enviado('b', '2026-11-24'), enviado('c', '2026-11-26'), enviado('d', '2026-11-27'), enviado('vt1', ''), enviado('vt2', ''), enviado('velho1', '2026-11-20'), enviado('velho2', '2026-11-18')];
+  const andamento = { a: prio, b: comum, c: comum, d: prio, vt1: prio, vt2: comum, velho1: prio, velho2: comum };
+  const ids = (cs: { r: Resumo }[]) => cs.map((c) => c.r.id);
+
+  it('na semana, só os cards com o grifo de prioridade ficam, cada um no seu dia; o dia sem nenhuma fica vazio', async () => {
+    const { montarSemana, soAsPrioridades } = await import('../src/ui/fila');
+    const s = soAsPrioridades(montarSemana(lista, andamento, agora));
+    expect(s.dias.map((d) => ids(d.cards))).toEqual([[], ['a'], [], [], ['d'], [], []]);
+    expect(s.dias.map((d) => d.iso)).toEqual(['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29']);
+  });
+
+  it('o sem data e os dias anteriores também ficam só com as prioridades; o dia anterior sem nenhuma sai da lista', async () => {
+    const { montarSemana, soAsPrioridades } = await import('../src/ui/fila');
+    const s = soAsPrioridades(montarSemana(lista, andamento, agora));
+    expect(ids(s.semData)).toEqual(['vt1']);
+    expect(s.anteriores.map((d) => [d.titulo, ids(d.cards)])).toEqual([['sexta, 20 de novembro', ['velho1']]]);
+  });
+
+  it('na faixa do celular, vale o mesmo, e a faixa continua com os mesmos dias e no mesmo lugar', async () => {
+    const { montarFaixa, soAsPrioridades } = await import('../src/ui/fila');
+    const f = montarFaixa(lista, andamento, agora);
+    const so = soAsPrioridades(f);
+    expect(so.dias.map((d) => d.iso)).toEqual(f.dias.map((d) => d.iso));
+    expect([so.hoje, so.abre]).toEqual([f.hoje, f.abre]);
+    expect(so.dias.flatMap((d) => ids(d.cards))).toEqual(['velho1', 'a', 'd']);
+  });
+
+  it('em qualquer critério, a prioridade é a do card, onde quer que ele caia', async () => {
+    const { montarSemana, soAsPrioridades } = await import('../src/ui/fila');
+    const entrou = (dia: string, a: Andamento): Andamento => ({ ...a, entrada: `${dia}T12:00:00Z` });
+    const and = { a: entrou('2026-11-23', prio), b: entrou('2026-11-23', comum), d: entrou('2026-11-24', prio) };
+    const s = soAsPrioridades(montarSemana(lista, and, agora, 0, 'entrada'));
+    expect(s.dias.flatMap((d) => ids(d.cards))).toEqual(['a', 'd']);
+  });
+
+  it('o resto da agenda (o período, o resumo) não muda: o filtro só escolhe os cards à vista', async () => {
+    const { montarSemana, soAsPrioridades } = await import('../src/ui/fila');
+    const s = montarSemana(lista, andamento, agora);
+    const so = soAsPrioridades(s);
+    expect([so.periodo, so.total, so.entregues, so.comPrioridade]).toEqual([s.periodo, s.total, s.entregues, s.comPrioridade]);
+  });
+});

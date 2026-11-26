@@ -132,12 +132,14 @@ function deslizar(raiz: HTMLElement, seletor: string, antes: Map<string, Ponto>)
   // a vaga que voltou (desfazer) antes de sumir volta para o fluxo
   for (const vaga of raiz.querySelectorAll<HTMLElement>('[data-grade] > .vaga-y:not(.saindo)[style]')) vaga.removeAttribute('style');
   // numa grade (o "sem data"), a vaga que fecha sai do fluxo e fica por cima do lugar dela: os vizinhos já
-  // deslizam para o espaço, em vez de pularem quando a vaga some
+  // deslizam para o espaço, em vez de pularem quando a vaga some. Quando a grade inteira sai (o filtro das prioridades
+  // tira todos os cards do "sem data"), não há vizinho para deslizar: as vagas ficam no fluxo e a grade não encolhe de
+  // estalo, enquanto a vaga da seção fecha
   for (const vaga of raiz.querySelectorAll<HTMLElement>('[data-grade] > .vaga-y.saindo:not(.solta)')) {
     const card = vaga.querySelector<HTMLElement>('[data-card]');
     const ponto = card && antes.get(card.dataset.card ?? '');
     const grade = vaga.parentElement!;
-    if (!ponto) continue;
+    if (!ponto || !grade.querySelector(':scope > .vaga-y:not(.saindo)')) continue;
     const g = onde(grade, raiz.getBoundingClientRect());
     Object.assign(vaga.style, { left: `${ponto.x - g.x - grade.clientLeft}px`, top: `${ponto.y - g.y - grade.clientTop}px`, width: `${card.offsetWidth}px` });
     vaga.classList.add('solta');

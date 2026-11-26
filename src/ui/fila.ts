@@ -286,6 +286,20 @@ export function resumoDosDias(dias: DiaDaSemana[]): Pick<Semana, 'total' | 'entr
   return { total: cards.length, entregues: cards.filter((c) => c.etapa === 'entregue').length, aEntregar: cards.filter((c) => c.aEntregar).length, comPrioridade: cards.filter((c) => c.prioridade).length };
 }
 
+/** O filtro das prioridades ("N prioridades" no topo, ligado): a mesma agenda, só com os cards que estão na lista de
+    prioridade (os do grifo na claquete), nos dias, no "sem data" e nos dias anteriores. Os dias continuam todos, no
+    mesmo lugar (o dia sem prioridade fica vazio); o dia anterior sem nenhuma sai da lista. O resto (o período, o
+    resumo) não muda: o filtro só escolhe os cards à vista. */
+export function soAsPrioridades<T extends Pick<Semana, 'dias' | 'semData' | 'anteriores'>>(agenda: T): T {
+  const so = (cs: CardDaSemana[]) => cs.filter((c) => c.prioridade);
+  return {
+    ...agenda,
+    dias: agenda.dias.map((d) => ({ ...d, cards: so(d.cards) })),
+    semData: so(agenda.semData),
+    anteriores: agenda.anteriores.map((d) => ({ ...d, cards: so(d.cards) })).filter((d) => d.cards.length),
+  };
+}
+
 /* ---------- No Trello no celular: a faixa de dias ---------- */
 
 /** A faixa de dias do celular: uma fila contínua de dias, arrastada com o dedo, dois à vista por vez. */

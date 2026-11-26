@@ -637,6 +637,161 @@ async function criterio(navegador, url, conferir) {
   }
 }
 
+/* ---------- O filtro das prioridades: o "N prioridades" do topo ---------- */
+
+// a cada quadro: onde está o card de prioridade de hoje (o que fica), dentro da agenda e na tela (a página pode rolar
+// junto, quando a agenda encolhe no fim da página), e a altura de cada vaga de card nas colunas
+const QUADROS_DO_FILTRO = () => {
+  window.__log = [];
+  const laco = (window.__laco = (window.__laco ?? 0) + 1);
+  const f = () => {
+    if (window.__laco !== laco) return;
+    const sec = document.querySelector('.secao-trello');
+    const fica = sec.querySelector('.semana [data-card="agdhoje2"]');
+    window.__log.push({
+      fica: fica ? Math.round((fica.getBoundingClientRect().top - sec.getBoundingClientRect().top) * 10) / 10 : null,
+      tela: fica ? Math.round(fica.getBoundingClientRect().top * 10) / 10 : null,
+      vagas: [...sec.querySelectorAll('.semana .coluna-corpo > .vaga-y')].map((v) => ({ id: v.querySelector('[data-card]')?.dataset.card, h: Math.round(v.getBoundingClientRect().height * 10) / 10 })),
+    });
+    requestAnimationFrame(f);
+  };
+  requestAnimationFrame(f);
+};
+
+/** Os cards à vista na agenda (fora dos que estão fechando a vaga e dos fantasmas da troca de critério). */
+const cardsAVista = (p) => p.$$eval('.secao-trello [data-card]', (cs) => cs.filter((c) => !c.closest('.saindo, .camada-voo')).map((c) => c.dataset.card).sort());
+const botaoDoFiltro = (p) => p.evaluate(() => {
+  const b = document.querySelector('.secao-trello-conta .prio-filtro');
+  return b && { pressionado: b.getAttribute('aria-pressed'), texto: b.textContent, risco: !!b.querySelector('svg.sub'), botao: b.tagName === 'BUTTON' };
+});
+
+/**
+ * Quantos quadros cada vaga que mudou passou no meio do caminho (nem inteira nem fechada) e o passo do card que fica.
+ * Uma vaga que fecha ou abre de estalo passa zero quadros no meio; o card que fica, se teleporta, anda tudo num quadro.
+ */
+function semTeleporte(log, ids) {
+  const altura = (q, id) => q.vagas.find((v) => v.id === id)?.h ?? 0;
+  const inteira = Object.fromEntries(ids.map((id) => [id, Math.max(...log.map((q) => altura(q, id)))]));
+  const noMeio = Object.fromEntries(ids.map((id) => [id, log.filter((q) => { const h = altura(q, id); return h > 1 && h < inteira[id] - 1; }).length]));
+  const maiorPasso = (ys) => {
+    let passo = 0;
+    for (let k = 1; k < ys.length; k++) passo = Math.max(passo, Math.abs(ys[k] - ys[k - 1]));
+    return Math.round(passo * 10) / 10;
+  };
+  const ys = log.map((q) => q.fica).filter((y) => y !== null);
+  const caminho = Math.round(Math.abs(ys[ys.length - 1] - ys[0]) * 10) / 10;
+  // na tela, o card também anda com a página, que rola junto quando a agenda encolhe no fim dela
+  const naTela = log.map((q) => q.tela).filter((y) => y !== null);
+  return { noMeio, menosNoMeio: Math.min(...Object.values(noMeio)), passo: maiorPasso(ys), caminho, passoNaTela: maiorPasso(naTela), caminhoNaTela: Math.round(Math.abs(naTela[naTela.length - 1] - naTela[0]) * 10) / 10 };
+}
+
+/** O filtro das prioridades no computador (com e sem movimento reduzido) e no celular: clicar mostra só as prioridades,
+    os outros cards fecham a vaga sem teleporte, clicar de novo traz tudo de volta, o teclado liga e desliga, recarregar
+    volta sem filtro e, quando os dias à vista ficam sem prioridade, o filtro desliga sozinho. Os cards fictícios estão
+    em dias contados a partir de hoje: nada aqui depende da data em que roda. */
+async function filtroDasPrioridades(navegador, url, conferir) {
+  const casos = [
+    { nome: 'computador', reduzido: false },
+    { nome: 'computador', reduzido: true },
+    { nome: 'iPhone 13', reduzido: false },
+  ];
+  for (const { nome, reduzido } of casos) {
+    const celular = nome !== 'computador';
+    const rotulo = (t) => `filtro das prioridades, ${nome}${reduzido ? ' (movimento reduzido)' : ''}: ${t}`;
+    const aberto = celular
+      ? await abrirNoCelular(navegador, url, nome)
+      : await contexto(navegador, 'about:blank', { viewport: { width: 1440, height: 900 }, reducedMotion: reduzido ? 'reduce' : 'no-preference' });
+    const { ctx, p, erros } = aberto;
+    try {
+      if (!celular) {
+        await ctx.route('**/api/andamento', (r) => r.fulfill({ json: ANDAMENTO }));
+        await p.goto(url);
+        await p.waitForSelector('.secao-trello .semana .coluna');
+        await p.waitForTimeout(1200);
+      }
+      await levarAteAAgenda(p);
+      // à vista: no computador, a semana de agora (de ontem a cinco dias depois de hoje); no celular, hoje e amanhã
+      const todos = await cardsAVista(p);
+      const b0 = await botaoDoFiltro(p);
+      conferir(b0?.botao && b0.pressionado === 'false' && b0.texto === '1 prioridade' && !b0.risco, rotulo(`o "1 prioridade" é um botão, desligado e sem o risco (${JSON.stringify(b0)})`));
+      conferir(todos.includes('agdhoje2') && todos.length > 2, rotulo(`abre com todos os cards (${todos.length})`));
+      const saem = (await p.$$eval('.secao-trello .semana .coluna-corpo [data-card]', (cs) => cs.map((c) => c.dataset.card))).filter((id) => id !== 'agdhoje2');
+
+      const resumoAntes = await p.textContent('.secao-trello-conta > span');
+      // clicar: só a prioridade fica; os outros fecham a vaga, e o card que fica sobe até o lugar novo sem saltar
+      await p.evaluate(QUADROS_DO_FILTRO);
+      await p.click('.secao-trello-conta .prio-filtro');
+      await p.waitForTimeout(900);
+      let log = await p.evaluate(() => window.__log);
+      const b1 = await botaoDoFiltro(p);
+      conferir(b1.pressionado === 'true' && b1.risco, rotulo('clicar liga o filtro: aria-pressed e o risco à mão embaixo'));
+      conferir(JSON.stringify(await cardsAVista(p)) === JSON.stringify(['agdhoje2']), rotulo(`clicar mostra só a prioridade (${(await cardsAVista(p)).join(', ')})`));
+      conferir(!(await p.$('.secao-trello .sem-data')), rotulo('o "sem data" sem prioridade sai'));
+      conferir(await p.evaluate(() => [...document.querySelectorAll('.secao-trello .coluna')].find((c) => c.getAttribute('aria-label').endsWith(', amanhã'))?.querySelector('.nada')?.textContent === 'nada ainda'), rotulo('amanhã, sem prioridade, mostra o "nada ainda"'));
+      const resumoLigado = await p.textContent('.secao-trello-conta > span');
+      conferir(resumoLigado === resumoAntes, rotulo(`o resumo continua contando todos os cards dos dias à vista ("${resumoLigado}")`));
+      let m = semTeleporte(log, saem);
+      if (reduzido) conferir(m.menosNoMeio === 0 && Math.max(...Object.values(m.noMeio)) === 0, rotulo('com o movimento reduzido, os outros cards só saem'));
+      else {
+        conferir(m.menosNoMeio >= 3, rotulo(`os outros cards fecham a vaga, sem sumir de estalo (cada um passa ${m.menosNoMeio} quadros ou mais no meio)`));
+        conferir(m.caminho > 0 && m.passo < m.caminho / 2 && m.passoNaTela < Math.max(m.caminho, m.caminhoNaTela) / 2, rotulo(`o card que fica sobe sem teleporte, na agenda e na tela (maior passo ${m.passo} px de ${m.caminho}; na tela, ${m.passoNaTela} px de ${m.caminhoNaTela})`));
+      }
+
+      // clicar de novo: tudo volta, abrindo as vagas
+      await p.evaluate(QUADROS_DO_FILTRO);
+      await p.click('.secao-trello-conta .prio-filtro');
+      await p.waitForTimeout(900);
+      log = await p.evaluate(() => window.__log);
+      const b2 = await botaoDoFiltro(p);
+      conferir(b2.pressionado === 'false' && !b2.risco, rotulo('clicar de novo desliga o filtro e tira o risco'));
+      conferir(JSON.stringify(await cardsAVista(p)) === JSON.stringify(todos), rotulo('clicar de novo traz todos os cards de volta'));
+      m = semTeleporte(log, saem);
+      if (reduzido) conferir(Math.max(...Object.values(m.noMeio)) === 0, rotulo('com o movimento reduzido, os cards só voltam'));
+      else {
+        conferir(m.menosNoMeio >= 3, rotulo(`os cards voltam abrindo a vaga (cada um passa ${m.menosNoMeio} quadros ou mais no meio)`));
+        conferir(m.caminho > 0 && m.passo < m.caminho / 2 && m.passoNaTela < Math.max(m.caminho, m.caminhoNaTela) / 2, rotulo(`o card de prioridade desce sem teleporte, na agenda e na tela (maior passo ${m.passo} px de ${m.caminho}; na tela, ${m.passoNaTela} px de ${m.caminhoNaTela})`));
+      }
+
+      // o teclado: o botão recebe o foco, e o espaço e o Enter ligam e desligam
+      await p.focus('.secao-trello-conta .prio-filtro');
+      await p.keyboard.press('Space');
+      await p.waitForTimeout(500);
+      const comEspaco = (await botaoDoFiltro(p)).pressionado;
+      await p.keyboard.press('Enter');
+      await p.waitForTimeout(500);
+      conferir(comEspaco === 'true' && (await botaoDoFiltro(p)).pressionado === 'false', rotulo('o espaço liga e o Enter desliga, pelo teclado'));
+
+      // os dias à vista ficam sem prioridade: o número sai e o filtro desliga sozinho
+      await p.click('.secao-trello-conta .prio-filtro');
+      await p.waitForTimeout(500);
+      if (celular) {
+        await p.evaluate((k) => {
+          const s = document.querySelector('.secao-trello .semana');
+          s.scrollTo({ left: k * (s.children[1].offsetLeft - s.children[0].offsetLeft) });
+        }, HOJE + 5);
+      } else await p.click('.secao-trello button[aria-label="Próxima semana"]');
+      await p.waitForTimeout(1500);
+      const longe = await cardsAVista(p);
+      conferir(!(await p.$('.secao-trello-conta .prio-filtro')) && longe.includes(celular ? 'agdmais5' : 'agdmais8'), rotulo(`sem prioridade à vista, o número sai e o filtro desliga sozinho (${longe.join(', ')})`));
+      if (celular) await p.tap('.voltar-hoje');
+      else await p.click('.secao-trello .voltar-hoje');
+      await p.waitForTimeout(1500);
+      conferir((await botaoDoFiltro(p))?.pressionado === 'false' && JSON.stringify(await cardsAVista(p)) === JSON.stringify(todos), rotulo('de volta em hoje, o filtro continua desligado, com todos os cards'));
+
+      // recarregar volta sem filtro
+      await p.click('.secao-trello-conta .prio-filtro');
+      await p.waitForTimeout(500);
+      await p.reload();
+      await p.waitForSelector('.secao-trello .semana .coluna');
+      await p.waitForTimeout(1200);
+      conferir((await botaoDoFiltro(p))?.pressionado === 'false' && JSON.stringify(await cardsAVista(p)) === JSON.stringify(todos), rotulo('recarregar volta sem o filtro, com todos os cards'));
+      conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
+    } finally {
+      await ctx.close();
+    }
+  }
+}
+
 async function principal() {
   const amb = await subir();
   const navegador = await chromium.launch();
@@ -652,6 +807,7 @@ async function principal() {
     // no computador, o tour da revisão já visto (senão o convite cobre a tela)
     await fetch(`${amb.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
     await computador(navegador, amb.url, conferir);
+    await filtroDasPrioridades(navegador, amb.url, conferir);
     await criterio(navegador, amb.url, conferir);
     await semearRevisao(amb.api);
     await encolhida(navegador, amb.url, conferir);

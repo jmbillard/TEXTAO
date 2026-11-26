@@ -189,10 +189,18 @@ const PALAVRAS: Record<CriterioDaAgenda, [[string, string], [string, string]]> =
   entrega: [['entregue', 'entregues'], ['a entregar', 'a entregar']],
 };
 
+/** O filtro das prioridades: o "N prioridades" vira um botão que liga e desliga, com o risco à mão embaixo enquanto
+    está ligado (como a aba ativa). */
+export interface FiltroDasPrioridades {
+  ligado: boolean;
+  alternar: () => void;
+}
+
 /** O resumo dos dias à vista, no critério da agenda: "17 cards · 9 entregues · 2 prioridades" (por exibição), "22
     entraram · 12 já saíram" (por entrada), "10 entregues · 7 a entregar" (por entrega). Os números contam; os itens que
-    aparecem ou somem abrem ou fecham a vaga; a prioridade se escreve. */
-export function ResumoQueConta({ total, entregues, aEntregar = 0, comPrioridade, criterio = 'exibicao' }: { total: number; entregues: number; aEntregar?: number; comPrioridade: number; criterio?: CriterioDaAgenda }) {
+    aparecem ou somem abrem ou fecham a vaga; a prioridade se escreve. Com o `filtro`, a prioridade é o botão que mostra
+    só os cards de prioridade; o resumo continua contando todos os cards dos dias à vista. */
+export function ResumoQueConta({ total, entregues, aEntregar = 0, comPrioridade, criterio = 'exibicao', filtro }: { total: number; entregues: number; aEntregar?: number; comPrioridade: number; criterio?: CriterioDaAgenda; filtro?: FiltroDasPrioridades }) {
   const montado = useRef(false);
   useEffect(() => {
     montado.current = true;
@@ -210,7 +218,20 @@ export function ResumoQueConta({ total, entregues, aEntregar = 0, comPrioridade,
       </ItemQueAbre>
       <ItemQueAbre ver={comPrioridade > 0} classe="ct-prio" ms={220} opacidadeMs={130}>
         {' · '}
-        <PrioridadeAMao n={comPrioridade} escreverAoAparecer={montado.current} />
+        {filtro ? (
+          <button type="button" className="prio-filtro" aria-pressed={filtro.ligado} title={filtro.ligado ? 'Mostrar todos os cards' : 'Mostrar só as prioridades'} onClick={filtro.alternar}>
+            <span className="prio-rot">
+              <PrioridadeAMao n={comPrioridade} escreverAoAparecer={montado.current} />
+              {filtro.ligado && (
+                <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
+                  <path pathLength={1} d={RABISCO} />
+                </svg>
+              )}
+            </span>
+          </button>
+        ) : (
+          <PrioridadeAMao n={comPrioridade} escreverAoAparecer={montado.current} />
+        )}
       </ItemQueAbre>
     </span>
   );

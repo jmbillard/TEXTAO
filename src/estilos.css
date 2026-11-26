@@ -1597,10 +1597,17 @@ a.ficha-marca.trello { text-decoration: none; }
 /* o topo que conta, no celular e no computador (ui/topoDaAgenda.tsx): algarismos de largura fixa (nada em volta se mexe
    quando os números contam); os itens que aparecem ou somem abrem ou fecham a vaga de lado (a largura e a opacidade
    animam no código) */
-.secao-trello-topo .ct-item { display: inline-block; overflow-x: clip; overflow-y: visible; white-space: pre; }
+.secao-trello-topo .ct-item, .pe-agenda .ct-item { display: inline-block; overflow-x: clip; overflow-y: visible; white-space: pre; }
 .secao-trello-conta .ct-num, .semana-nav b .p-dia { font-variant-numeric: tabular-nums; }
 .secao-trello-conta .ct-prio { padding-right: 4px; }
 .secao-trello-conta .ct-prio .prio-nota { will-change: clip-path; }
+.secao-trello-conta .prio-filtro { position: relative; display: inline-block; border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; border-radius: 6px; }
+.secao-trello-conta .prio-filtro:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.secao-trello-conta .prio-rot { position: relative; display: inline-block; line-height: 1; }
+/* o filtro das prioridades ligado: o risco à mão embaixo, como a aba ativa (inclinado junto com a letra) */
+.secao-trello-conta .prio-filtro .sub { position: absolute; left: 0; top: calc(100% - 1px); width: calc(100% + 2px); height: 8px; overflow: visible; pointer-events: none; transform: rotate(-4deg); transform-origin: left; }
+.secao-trello-conta .prio-filtro .sub path { fill: none; stroke: var(--ultra); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; animation: rabiscar-aba 0.5s 0.05s var(--suave) both; }
+@media (prefers-reduced-motion: reduce) { .secao-trello-conta .prio-filtro .sub path { animation: none; stroke-dasharray: none; } }
 /* na virada do mês, os meses somem no começo da contagem (antes de os dias contarem: MESES_APAGAM_MS, em fila.ts)
    e voltam no fim */
 .semana-nav b .p-mes { font-variant-numeric: tabular-nums; transition: opacity 140ms var(--suave); }
