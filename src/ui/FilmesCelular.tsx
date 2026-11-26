@@ -50,16 +50,23 @@ export function EntradaDoCelular({ abrir, avisar }: { abrir: (id: string) => voi
     return () => clearInterval(t);
   }, [listar, avisar]);
 
-  const pedindo = useRef(new Set<string>());
-  const recarregar = useCallback((id: string) => {
-    if (pedindo.current.has(id)) return Promise.resolve();
-    pedindo.current.add(id);
-    return abrirPrevia(id)
+  // uma abertura por prévia de cada vez; `depois` pede uma nova depois da que está em curso (que pode ter saído antes
+  // da última página chegar ao servidor e voltar sem ela)
+  const emCurso = useRef(new Map<string, Promise<void>>());
+  const recarregar = useCallback((id: string, depois = false) => {
+    const antes = emCurso.current.get(id);
+    if (antes && !depois) return antes;
+    const agora: Promise<void> = (antes ?? Promise.resolve())
+      .then(() => abrirPrevia(id))
       .then(
         (p) => setPaginas((ps) => ({ ...ps, [id]: p.paginas })),
         () => {}, // a ficha fica sem o andamento; a próxima volta tenta de novo
       )
-      .finally(() => pedindo.current.delete(id));
+      .finally(() => {
+        if (emCurso.current.get(id) === agora) emCurso.current.delete(id);
+      });
+    emCurso.current.set(id, agora);
+    return agora;
   }, []);
   // a prévia que apareceu na lista: as páginas dela, uma vez
   useEffect(() => {
@@ -95,7 +102,7 @@ export function EntradaDoCelular({ abrir, avisar }: { abrir: (id: string) => voi
       avisar(`Não deu para subir a prévia: ${e instanceof Error ? e.message : e}`);
     }
     // o que chegou ao servidor segue lá; o que não chegou fica esperando o mesmo PDF de novo
-    if (id) await recarregar(id);
+    if (id) await recarregar(id, true);
     setSubida(null);
   };
 
