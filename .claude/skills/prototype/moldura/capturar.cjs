@@ -4,9 +4,9 @@
 // Usa o Playwright já instalado (require('playwright')); nunca rode `playwright install`.
 //
 // Uso: node .claude/skills/prototype/moldura/capturar.cjs <montado.html> <pasta> [opções]
-//   --telas=a,b      só estas telas (padrão: todas do manifesto)
+//   --telas=a,b      só estas telas ou cenas (padrão: todas do manifesto)
 //   --alts=A,B       só estas alternativas (padrão: todas)
-//   --tela-moldura=a a tela mostrada nas capturas da moldura (padrão: a primeira)
+//   --tela-moldura=a a tela (ou cena) mostrada nas capturas da moldura (padrão: a primeira)
 //   --moldura        também captura a moldura
 //   --so-moldura     só a moldura
 //   --janela         captura só a janela do aparelho, sem rolar a página inteira
@@ -25,7 +25,9 @@ const pasta = path.resolve(pos[1]);
 const html = fs.readFileSync(arquivo, 'utf8');
 const manifesto = JSON.parse(html.match(/const MANIFESTO = (.*);\n/)[1]);
 const APS = [['celular', 390, 844], ['tablet', 820, 1180], ['computador', 1440, 900]];
-const telas = manifesto.telas.filter((t) => !opt.telas || opt.telas.split(',').includes(t.id));
+// as telas (rotas) e as cenas (uma tela com um estado local preparado: menu aberto, balão…), na ordem do manifesto
+const todas = [...manifesto.telas.map((t) => ({ id: t.id, tela: t.id })), ...(manifesto.cenas || []).map((c) => ({ id: c.id, tela: c.tela, cena: c.id }))];
+const telas = todas.filter((t) => !opt.telas || opt.telas.split(',').includes(t.id));
 const alts = (manifesto.alternativas || []).filter((a) => !opt.alts || opt.alts.split(',').includes(a.id));
 const url = (hash) => 'file://' + arquivo + '#' + new URLSearchParams(hash).toString();
 
@@ -72,7 +74,8 @@ const url = (hash) => 'file://' + arquivo + '#' + new URLSearchParams(hash).toSt
         for (const [ap, w, h] of APS) {
           for (const tema of ['claro', 'escuro']) {
             const nome = `${ap}/${String(i + 1).padStart(2, '0')}-${t.id}${a ? '-' + a.id : ''}-${tema}`;
-            const hash = { cru: '', tela: t.id, tema, aparelho: ap, captura: '1' };
+            const hash = { cru: '', tela: t.tela, tema, aparelho: ap, captura: '1' };
+            if (t.cena) hash.cena = t.cena;
             if (a) hash.alt = a.id;
             const p = await abrir(w, h, hash, nome);
             const v = await vazamentos(p);
@@ -88,8 +91,9 @@ const url = (hash) => 'file://' + arquivo + '#' + new URLSearchParams(hash).toSt
   }
 
   if (opt.moldura || opt['so-moldura']) {
-    const tela = opt['tela-moldura'] || manifesto.telas[0].id;
-    const base = { tela, captura: '1' };
+    const tm = todas.find((t) => t.id === opt['tela-moldura']) || todas[0];
+    const base = { tela: tm.tela, captura: '1' };
+    if (tm.cena) base.cena = tm.cena;
     if (alts[0]) base.alt = alts[0].id;
     const fotos = [
       ['computador-os-tres', 1440, 1000, { tema: 'claro' }, false],

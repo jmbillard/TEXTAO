@@ -7,43 +7,76 @@
 <!-- O montar.mjs injeta aqui: o runtime da moldura, as fontes do app e o src/estilos.css inteiro (tokens e classes). -->
 <style>
 body { background: var(--mesa); color: var(--tinta); font: 400 14px/1.45 var(--sans); margin: 0; }
-.pr-topo { display: flex; align-items: center; height: 64px; padding: 0 32px; }
+html.captura *, html.captura *::before, html.captura *::after { animation: none !important; transition: none !important; }
 .pr-pagina { max-width: 1040px; margin: 0 auto; padding: 8px 32px 64px; }
 .pr-pagina h1 { font: 400 40px/1.1 var(--serifa); margin: 0 0 16px; }
-.pr-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.pr-lista { display: flex; flex-direction: column; gap: 8px; }
-.pr-item { background: var(--papel); border: 1px solid var(--regua); border-radius: 14px; padding: 14px 16px; }
+.pr-lista { display: flex; flex-direction: column; gap: 8px; --vaga-gap: 8px; }
+.pr-item { background: var(--papel); border: 1px solid var(--regua); border-radius: 14px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; }
 .pr-nota { font: 600 20px Caveat, cursive; color: var(--ultra); }
-@media (max-width: 1000px) { .pr-grade { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 700px) { .pr-topo, .pr-pagina { padding-left: 16px; padding-right: 16px; } .pr-grade { grid-template-columns: 1fr; } .pr-pagina h1 { font-size: 32px; } }
+@media (max-width: 700px) { .pr-pagina { padding-left: 16px; padding-right: 16px; } .pr-pagina h1 { font-size: 32px; } }
 </style>
 </head>
 <body>
-<!-- O manifesto monta a barra do topo da moldura: as telas (estados) e, quando houver, as alternativas. -->
+<!-- O manifesto: as telas são as ROTAS do app (a primeira é a inicial); as cenas são uma tela com um estado local
+     já preparado (um menu aberto, um campo digitado), só para o hash e as capturas. -->
 <script type="application/json" id="manifesto">
 {
   "nome": "Modelo",
-  "telas": [{ "id": "vazio", "rotulo": "Vazio" }, { "id": "cheio", "rotulo": "Com itens" }],
-  "alternativas": [{ "id": "A", "rotulo": "Grade" }, { "id": "B", "rotulo": "Lista" }]
+  "telas": [{ "id": "fila", "rotulo": "A fila" }, { "id": "item", "rotulo": "Um item aberto" }],
+  "cenas": [{ "id": "perfil", "tela": "fila", "rotulo": "Menu do perfil aberto" }]
 }
 </script>
-<div class="pr-topo"><span class="logo-app"><b>PROM</b>eiro</span></div>
-<main class="pr-pagina" id="tela"></main>
+<!-- As partes: regiões que se redesenham sozinhas. O topo fica; trocar de tela troca só o corpo. -->
+<div class="pagina">
+  <div data-parte="topo"></div>
+  <main class="pr-pagina" data-parte="corpo"></main>
+  <div data-parte="avisos"></div>
+</div>
 <script>
 // dados fictícios
-const ITENS = ['CHEF(FUT) 3/11 SP', 'RIO NOBREZA 27/10', 'FESTIVAL 3/11 INTER', 'SUPERCINE 8/11'];
-function desenhar({ tela, alt }) {
-  const itens = tela === 'cheio' ? ITENS : [];
-  const caixa = alt === 'A' ? 'pr-grade' : 'pr-lista';
-  document.getElementById('tela').innerHTML = `<h1>Fila</h1>
-    ${itens.length ? `<div class="${caixa}">${itens.map((t) => `<div class="pr-item">${t}</div>`).join('')}</div>`
-      : '<p class="suave">Nada na fila. <span class="pr-nota">tudo em dia!</span></p>'}
-    <p><button class="botao" data-ir="${tela === 'cheio' ? 'vazio' : 'cheio'}">${tela === 'cheio' ? 'Esvaziar' : 'Encher a fila'}</button></p>`;
-}
-// Navegação por dentro: todo elemento com data-ir leva àquela tela, e os três aparelhos acompanham.
-// O conteúdo não usa localStorage, sessionStorage, history, location nem parent/top: o estado fica em memória.
-document.addEventListener('click', (e) => { const el = e.target.closest('[data-ir]'); if (el) { e.preventDefault(); Moldura.ir(el.dataset.ir); } });
-Moldura.ao(desenhar);
+const ITENS = [{ id: 'a', t: 'CHEF(FUT) 3/11 SP' }, { id: 'b', t: 'RIO NOBREZA 27/10' }, { id: 'c', t: 'FESTIVAL 3/11 INTER' }];
+
+// Estado local: o que está aberto, digitado, escolhido. NÃO é tela: não passa por Moldura.ir e fica só neste aparelho.
+const S = { perfil: false, feitos: new Set(), caixa: null };
+
+Moldura.partes({
+  topo: () => `<header class="barra-topo"><h1 class="bib-marca" data-acao="inicio"><span class="logo-app"><b>PROM</b>eiro</span></h1><span class="espaco"></span>
+    <div class="perfil"><button class="perfil-botao" data-acao="perfil" aria-expanded="${S.perfil}"><span class="perfil-avatar">AS</span><span class="perfil-nome">Ana Souza</span></button>
+    ${S.perfil ? '<div class="perfil-painel" data-menu><strong>Ana Souza</strong><span class="suave">ana.souza@exemplo.com</span></div>' : ''}</div></header>`,
+  corpo: () => {
+    const [tela, id] = Moldura.tela.split('/'); // uma tela pode levar um parâmetro: "item/b"
+    if (tela === 'item') {
+      const it = ITENS.find((x) => x.id === id) || ITENS[0];
+      return `<p><button class="botao-texto" data-acao="voltar">← A fila</button></p><h1>${it.t}</h1>`;
+    }
+    const resta = ITENS.filter((x) => !S.feitos.has(x.id));
+    // cada item é uma vaga (data-chave): quando sai ou volta, abre ou fecha o seu espaço, como no app
+    return `<h1>Fila</h1><div class="pr-lista">${resta.map((x) => Moldura.vaga(x.id, `<div class="pr-item" data-item="${x.id}"><b>${x.t}</b><button class="botao" data-feito="${x.id}">Feito</button></div>`)).join('')}</div>
+      ${resta.length ? '' : '<p class="suave">Nada na fila. <span class="pr-nota">tudo em dia!</span></p>'}`;
+  },
+  avisos: () => (S.caixa ? `<div class="desfazer" role="status" data-chave="c${S.caixa.n}"><span>${S.caixa.texto}</span><button class="botao-texto" data-acao="desfazer">Desfazer</button></div>` : ''),
+});
+
+// A tela mudou: no começo, num clique deste aparelho, ou porque outro aparelho foi clicado (como.silencioso).
+Moldura.ao('tela', (nova, anterior, como) => {
+  S.perfil = como.cena === 'perfil';
+  Moldura.desenhar();
+  if (!como.inicio) scrollTo(0, 0);
+  if (!como.silencioso) Moldura.animar(document.querySelector('[data-parte="corpo"]'), 'm-surgir');
+});
+
+// Um ouvinte de clique só. Estado local → muda S e Moldura.desenhar(); trocar de tela → Moldura.ir.
+document.addEventListener('click', (e) => {
+  if (S.perfil && !e.target.closest('[data-menu], [data-acao="perfil"]')) { S.perfil = false; Moldura.desenhar(); }
+  const el = e.target.closest('[data-acao], [data-feito], [data-item]');
+  if (!el) return;
+  const d = el.dataset;
+  if (d.feito) { S.feitos.add(d.feito); S.caixa = { n: Date.now(), texto: 'Saiu da fila.', volta: d.feito }; return Moldura.desenhar(); }
+  if (d.item) return Moldura.ir('item/' + d.item);
+  if (d.acao === 'perfil') { S.perfil = !S.perfil; return Moldura.desenhar(); }
+  if (d.acao === 'desfazer') { S.feitos.delete(S.caixa.volta); S.caixa = null; return Moldura.desenhar(); }
+  if (d.acao === 'voltar' || d.acao === 'inicio') return Moldura.ir('fila');
+});
 </script>
 </body>
 </html>

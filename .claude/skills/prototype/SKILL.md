@@ -12,7 +12,7 @@ Um protótipo é **código descartável que responde a uma pergunta**. A pergunt
 Identifique qual pergunta está sendo respondida, usando o prompt do usuário, o código ao redor, ou perguntando se o usuário estiver por perto:
 
 - **"Essa lógica / esse modelo de estado parece certo?"** → [LOGIC.md](LOGIC.md). Monte um único arquivo HTML compartilhável (botões de uso livre mais roteiros guiados em abas) que leve a máquina de estados por casos difíceis de raciocinar no papel, e que alguém que não é desenvolvedor consiga conduzir.
-- **"Como isso deveria ficar?"** → [UI.md](UI.md). Gere várias variações de UI radicalmente diferentes num único arquivo HTML apresentado na **moldura** ([`moldura/`](moldura/)): um protótipo navegável por dentro (clicando nele, como no app), com alternativas, tema e aparelho numa barra fixa no topo, celular, tablet e computador lado a lado, claro e escuro.
+- **"Como isso deveria ficar?"** → [UI.md](UI.md). Gere várias variações de UI radicalmente diferentes num único arquivo HTML apresentado na **moldura** ([`moldura/`](moldura/)): um protótipo que é o app rodando (clicando nele, ele se comporta como o app: o DOM fica vivo e só a região que muda troca, com as transições do app), com alternativas, tema e aparelho numa barra fixa no topo, celular, tablet e computador lado a lado, claro e escuro.
 
 Os dois ramos produzem artefatos muito diferentes, então errar aqui desperdiça o protótipo inteiro. Se a pergunta for de fato ambígua e o usuário não estiver acessível, vá pelo ramo que combina melhor com o código ao redor (um módulo de backend → lógica; uma página ou componente → UI) e declare a suposição no topo do protótipo.
 

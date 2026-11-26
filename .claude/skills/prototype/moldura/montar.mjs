@@ -42,10 +42,12 @@ const m = conteudo.match(/<script type="application\/json" id="manifesto">([\s\S
 if (!m) throw new Error('o conteúdo não tem <script type="application/json" id="manifesto">');
 const manifesto = JSON.parse(m[1]);
 if (!manifesto.nome || !Array.isArray(manifesto.telas) || !manifesto.telas.length) throw new Error('manifesto: precisa de "nome" e de "telas" [{ id, rotulo }]');
-for (const lista of [manifesto.telas, manifesto.alternativas || []]) {
+// cenas: uma tela com um estado local já preparado (menu aberto, balão…), para o hash e as capturas
+for (const lista of [[...manifesto.telas, ...(manifesto.cenas || [])], manifesto.alternativas || []]) {
   const ids = lista.map((x) => x.id);
   if (ids.some((id) => !id || typeof id !== 'string') || new Set(ids).size !== ids.length) throw new Error('manifesto: ids vazios ou repetidos em ' + JSON.stringify(ids));
 }
+for (const c of manifesto.cenas || []) if (!manifesto.telas.some((t) => t.id === c.tela)) throw new Error(`manifesto: a cena "${c.id}" aponta para a tela "${c.tela}", que não existe`);
 const cabeca = conteudo.match(/<head[^>]*>/i);
 if (!cabeca) throw new Error('o conteúdo precisa ser um documento com <head>');
 const injetar = `\n<!--MOLDURA-PARAMS-->\n<script>${readFileSync(resolve(AQUI, 'runtime.js'), 'utf8')}</script>\n<style>\n${fontes}\n${css}\n</style>\n`;
@@ -58,4 +60,4 @@ const html = readFileSync(resolve(AQUI, 'moldura.html'), 'utf8')
   .replace('__NOME__', esc(manifesto.nome))
   .replace('/*__DADOS__*/', () => `const MANIFESTO = ${js(manifesto)};\nconst CONTEUDO = ${js(conteudo)};`);
 writeFileSync(saida, html);
-console.log(`${saida}  ${(html.length / 1024).toFixed(0)} KB · ${manifesto.telas.length} telas · ${(manifesto.alternativas || []).length} alternativas`);
+console.log(`${saida}  ${(html.length / 1024).toFixed(0)} KB · ${manifesto.telas.length} telas · ${(manifesto.cenas || []).length} cenas · ${(manifesto.alternativas || []).length} alternativas`);

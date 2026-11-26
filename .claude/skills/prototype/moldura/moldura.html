@@ -108,9 +108,13 @@ const APS = [
   { id: 'tablet', rot: 'Tablet', w: 820, h: 1180 },
   { id: 'computador', rot: 'Computador', w: 1440, h: 900 },
 ];
-const TELAS = MANIFESTO.telas, ALTS = MANIFESTO.alternativas || [];
+// telas: as rotas do app (a navegação por dentro); cenas: uma tela com um estado local já preparado (menu aberto,
+// balão…), só para o hash e as capturas. Um clique no protótipo nunca vira cena.
+const TELAS = MANIFESTO.telas, CENAS = MANIFESTO.cenas || [], ALTS = MANIFESTO.alternativas || [];
+// uma tela pode levar um parâmetro depois da barra ("roteiro/r3"): vale a parte antes da barra
+const telaValida = (t) => typeof t === 'string' && TELAS.some((x) => x.id === t.split('/')[0]);
 const estreita = matchMedia('(max-width: 760px)');
-const M = { tela: TELAS[0].id, alt: ALTS[0] ? ALTS[0].id : null, tema: 'claro', foco: '', captura: false };
+const M = { tela: TELAS[0].id, cena: null, alt: ALTS[0] ? ALTS[0].id : null, tema: 'claro', foco: '', captura: false };
 
 /* Num contexto restrito (iframe com sandbox, srcdoc, origem opaca, file:// no WebKit) history, storage e o acesso
    entre janelas podem lançar SecurityError. Toda chamada a eles passa por aqui: se lançar, o estado fica em memória. */
@@ -118,7 +122,9 @@ function seguro(fn, alt) { try { return fn(); } catch (e) { return alt; } }
 let hashVivo = true; // vira false na primeira vez que o replaceState for recusado; daí em diante o hash não é mais tocado
 function lerHash() {
   const h = new URLSearchParams(seguro(() => location.hash.slice(1), ''));
-  if (h.get('tela') && TELAS.some((t) => t.id === h.get('tela'))) M.tela = h.get('tela');
+  const cena = CENAS.find((c) => c.id === h.get('cena') || c.id === h.get('tela'));
+  if (cena) { M.cena = cena.id; M.tela = cena.tela; }
+  else { M.cena = null; if (telaValida(h.get('tela'))) M.tela = h.get('tela'); }
   if (h.get('alt') && ALTS.some((a) => a.id === h.get('alt'))) M.alt = h.get('alt');
   if (['claro', 'escuro', 'ambos'].includes(h.get('tema'))) M.tema = h.get('tema');
   if (h.has('foco')) M.foco = APS.some((a) => a.id === h.get('foco')) ? h.get('foco') : '';
@@ -127,6 +133,7 @@ function lerHash() {
 }
 function gravarHash() {
   const h = new URLSearchParams({ tela: M.tela, tema: M.tema });
+  if (M.cena) h.set('cena', M.cena);
   if (M.alt) h.set('alt', M.alt);
   if (M.foco) h.set('foco', M.foco);
   if (M.captura) h.set('captura', '1');
@@ -160,7 +167,7 @@ function iniciar() {
   addEventListener('message', recado);
   addEventListener('resize', desenhar);
   estreita.addEventListener('change', desenhar);
-  addEventListener('hashchange', () => { lerHash(); desenhar(); enviar(); });
+  addEventListener('hashchange', () => { lerHash(); desenhar(); enviar(null, M.cena ? { cena: M.cena } : null); });
   // sem hash (contexto restrito), o ↗ abriria a página errada: some
   if (!seguro(() => /^(file|https?):$/.test(location.protocol), false)) document.documentElement.classList.add('sem-hash');
   desenhar();
@@ -169,11 +176,11 @@ function iniciar() {
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 function passoAlt(n) { if (!ALTS.length) return; const i = ALTS.findIndex((a) => a.id === M.alt); mudar({ alt: ALTS[(i + n + ALTS.length) % ALTS.length].id }); }
 function mudar(o) {
-  const conteudo = ('tela' in o && o.tela !== M.tela) || ('alt' in o && o.alt !== M.alt);
+  const conteudo = 'alt' in o && o.alt !== M.alt;
   Object.assign(M, o);
   gravarHash();
   desenhar();
-  if (conteudo) enviar();
+  if (conteudo) enviar(null);
 }
 function teclas(e) {
   if (e.target.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -197,7 +204,9 @@ function figura(ap, tema) {
   const ifr = f.querySelector('iframe');
   ifr.style.width = ap.w + 'px';
   ifr.style.height = ap.h + 'px';
-  ifr.srcdoc = conteudoCom({ tela: M.tela, alt: M.alt, tema, aparelho: ap.id, captura: M.captura });
+  // o srcdoc é escrito uma vez só, quando o aparelho aparece pela primeira vez: daí em diante tela e alternativa
+  // chegam por mensagem e o app continua rodando (nada de recarregar o iframe)
+  ifr.srcdoc = conteudoCom({ tela: M.tela, cena: M.cena, alt: M.alt, tema, aparelho: ap.id, captura: M.captura, quem: k });
   document.getElementById('bancada').appendChild(f);
   figs[k] = { f, ifr, ap, tema };
   return figs[k];
@@ -247,7 +256,7 @@ function desenhar() {
       vid.style.height = Math.round(ap.h * s) + 'px';
       g.ifr.style.transform = `scale(${s})`;
       const pct = Math.round(s * 100);
-      g.f.querySelector('.esc').innerHTML = `${pct === 100 ? 'real' : pct + '%'} <a class="solto" target="_blank" title="Abrir só o conteúdo, em outra aba" aria-label="Abrir só o conteúdo, em outra aba" href="#cru&tela=${encodeURIComponent(M.tela)}${M.alt ? '&alt=' + encodeURIComponent(M.alt) : ''}&tema=${tema}&aparelho=${ap.id}">↗</a>`;
+      g.f.querySelector('.esc').innerHTML = `${pct === 100 ? 'real' : pct + '%'} <a class="solto" target="_blank" title="Abrir só o conteúdo, em outra aba" aria-label="Abrir só o conteúdo, em outra aba" href="#cru&tela=${encodeURIComponent(M.tela)}${M.cena ? '&cena=' + encodeURIComponent(M.cena) : ''}${M.alt ? '&alt=' + encodeURIComponent(M.alt) : ''}&tema=${tema}&aparelho=${ap.id}">↗</a>`;
     });
     linha++;
   });
@@ -257,19 +266,21 @@ function desenhar() {
   document.querySelectorAll('[data-tema]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tema === M.tema));
   document.querySelectorAll('[data-foco]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.foco === M.foco));
 }
-function enviarPara(ifr) { seguro(() => ifr.contentWindow && ifr.contentWindow.postMessage({ moldura: { tela: M.tela, alt: M.alt } }, '*')); }
-function enviar() { for (const k in figs) enviarPara(figs[k].ifr); }
+/* Sincronia: o aparelho clicado já trocou de tela sozinho (com a transição do app); a moldura só leva os outros
+   junto, por mensagem, e eles trocam em silêncio (sem animar). Nada aqui recarrega um iframe. */
+function enviarPara(ifr, extra) { seguro(() => ifr.contentWindow && ifr.contentWindow.postMessage({ moldura: Object.assign({ tela: M.tela, alt: M.alt }, extra) }, '*')); }
+function enviar(exceto, extra) { for (const k in figs) if (figs[k].ifr.contentWindow !== exceto) enviarPara(figs[k].ifr, extra); }
 function recado(e) {
   const d = e.data || {};
   if (d.molduraPronta) { for (const k in figs) if (figs[k].ifr.contentWindow === e.source) enviarPara(figs[k].ifr); }
   if (d.molduraIr) {
-    const o = {};
-    if (TELAS.some((t) => t.id === d.molduraIr.tela)) o.tela = d.molduraIr.tela;
+    const o = { cena: null };
+    if (telaValida(d.molduraIr.tela)) o.tela = d.molduraIr.tela;
     if (d.molduraIr.alt && ALTS.some((a) => a.id === d.molduraIr.alt)) o.alt = d.molduraIr.alt;
     Object.assign(M, o);
     gravarHash();
     desenhar();
-    enviar();
+    enviar(e.source);
   }
 }
 /* Modo cru: só o conteúdo, na janela inteira (para as capturas e para abrir sozinho). */
@@ -279,7 +290,7 @@ if (h0.has('cru')) {
   document.documentElement.style.visibility = 'hidden';
   addEventListener('DOMContentLoaded', () => {
     document.open();
-    document.write(conteudoCom({ tela: M.tela, alt: M.alt, tema: h0.get('tema') === 'escuro' ? 'escuro' : 'claro', aparelho: h0.get('aparelho') || null, captura: M.captura }));
+    document.write(conteudoCom({ tela: M.tela, cena: M.cena, alt: M.alt, tema: h0.get('tema') === 'escuro' ? 'escuro' : 'claro', aparelho: h0.get('aparelho') || null, captura: M.captura }));
     document.close();
   });
 } else {
