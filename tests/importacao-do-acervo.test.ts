@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createServer } from 'node:http';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
 import { criarAcervo } from '../servidor/acervo.mjs';
 // @ts-expect-error módulo JS sem tipos
@@ -458,11 +458,12 @@ const ENV = {
   TEABLE_PG_ARTE: 'producao',
 };
 const PROGRAMA = { id: 'recProg', title: 'Programa Fictício' };
-type LinhaDoTeable = { id: string; arte: string; tipo: string | null; atracao: { id: string; title: string }[]; claquete: unknown[]; filme: null | { id: string; title: string } };
+type LinhaDoTeable = { id: string; arte: string; tipo: string | null; atracao: { id: string; title: string }[]; claquete: unknown[]; filme: null | { id: string; title: string }; modificado?: string };
 type Pedido = { metodo: string; url: string; corpo: null | { typecast?: boolean; records: { id?: string; fields: Record<string, unknown> }[] } };
 
 /** O Teable de mentira: o Postgres (o acervo, que muda com o que a API grava, e as atrações) e a API (os campos e os
-    registros). */
+    registros). Cada linha tem a data de modificação do Teable (__last_modified_time), que muda a cada gravação: pela
+    API ou por alguém mexendo no Teable (mexer). falharNo: o pedido de escrita (1, 2…) que dá timeout. */
 function teableFalso() {
   const linhas: LinhaDoTeable[] = [
     { id: 'recA1', arte: 'AMANHÃ DEPOIS DO SHOW', tipo: 'CRT', atracao: [PROGRAMA], claquete: [], filme: null },
@@ -493,9 +494,17 @@ function teableFalso() {
   };
   const pedidos: Pedido[] = [];
   let novas = 0;
+  let relogio = 0;
+  const carimbo = () => new Date(Date.UTC(2026, 10, 20, 12, 0, relogio++)).toISOString();
+  for (const l of linhas) l.modificado = carimbo();
+  /** Alguém mexe na linha direto no Teable: muda o campo e a data de modificação. */
+  const mexer = (id: string, campos: Partial<LinhaDoTeable>) => Object.assign(linhas.find((l) => l.id === id)!, campos, { modificado: carimbo() });
+  const falha = { no: 0, escritas: 0, gravou: false };
   const buscar = async (url: string, init: RequestInit = {}) => {
     const pedido: Pedido = { metodo: init.method ?? 'GET', url, corpo: init.body ? JSON.parse(String(init.body)) : null };
     pedidos.push(pedido);
+    const falhar = pedido.metodo !== 'GET' && ++falha.escritas === falha.no;
+    if (falhar && !falha.gravou) throw new Error('The operation was aborted due to timeout');
     let resposta: unknown = {};
     if (url.endsWith('/api/table/tblAcervo/field'))
       resposta = [
@@ -505,15 +514,21 @@ function teableFalso() {
     else if (pedido.metodo === 'POST')
       resposta = {
         records: pedido.corpo!.records.map((r) => {
-          const nova = { id: `recNova${++novas}`, arte: String(r.fields.arte), tipo: (r.fields.tipo as string) ?? null, atracao: [PROGRAMA], claquete: [], filme: null };
+          const nova = { id: `recNova${++novas}`, arte: String(r.fields.arte), tipo: (r.fields.tipo as string) ?? null, atracao: [PROGRAMA], claquete: [], filme: null, modificado: carimbo() };
           linhas.push(nova);
           return { id: nova.id, fields: r.fields };
         }),
       };
-    else if (pedido.metodo === 'PATCH') for (const r of pedido.corpo!.records) Object.assign(linhas.find((l) => l.id === r.id)!, r.fields);
+    else if (pedido.metodo === 'PATCH') for (const r of pedido.corpo!.records) Object.assign(linhas.find((l) => l.id === r.id)!, r.fields, { modificado: carimbo() });
+    else if (pedido.metodo === 'DELETE')
+      for (const [, id] of [...new URL(url).searchParams].filter(([k]) => /^recordIds\[\d+\]$/.test(k))) {
+        const i = linhas.findIndex((l) => l.id === id);
+        if (i >= 0) linhas.splice(i, 1);
+      }
+    if (falhar) throw new Error('The operation was aborted due to timeout'); // gravou, mas a resposta não chegou
     return { ok: true, status: 200, json: async () => resposta, text: async () => '' };
   };
-  return { linhas, consultar, buscar, pedidos, leituras };
+  return { linhas, consultar, buscar, pedidos, leituras, mexer, falharNo: (n: number, { gravou = false } = {}) => Object.assign(falha, { no: n, escritas: 0, gravou }) };
 }
 
 /** O servidor de verdade com o Teable de mentira; o chefe é administrador. */
@@ -635,7 +650,7 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
     await comServidor(async ({ como, teable }) => {
       const r = await gravar(como, csv('LETT - VEM AI.mov', 'RDP - VEM AI.mov', 'RDP - PLATEIA.mov', 'CRT - AMANHA DEPOIS DO SHOW.mov'));
       expect(r.status).toBe(200);
-      expect(await r.json()).toEqual({ antes: 3, depois: 5, novas: 2, ganharamTipo: 1, renomeadas: [], semMudanca: 1 });
+      expect(await r.json()).toEqual({ antes: 3, depois: 5, novas: 2, ganharamTipo: 1, renomeadas: [], semMudanca: 1, importacao: expect.any(String) });
       const post = teable.pedidos.filter((p) => p.metodo === 'POST');
       expect(post).toHaveLength(1);
       expect(post[0].url).toBe('http://teable:3000/api/table/tblAcervo/record');
@@ -687,6 +702,7 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
           { id: 'recA2', antes: 'PLATEIA', depois: 'PLATEIAS' },
         ],
         semMudanca: 0,
+        importacao: expect.any(String),
       });
       expect(teable.pedidos.filter((p) => p.metodo === 'POST')).toEqual([]);
       expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').map((p) => [p.corpo!.typecast, p.corpo!.records])).toEqual([
@@ -721,7 +737,7 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
       await como(CHEFE)('/api/acervo/importar/previa', { atracao: 'Programa Fictício', arquivo: 'x.csv', csv: texto });
       teable.linhas.push({ id: 'recDoEnvio', arte: 'Vem aí', tipo: 'RDP', atracao: [PROGRAMA], claquete: [], filme: null });
       const r = await gravar(como, texto);
-      expect(await r.json()).toEqual({ antes: 4, depois: 5, novas: 1, ganharamTipo: 0, renomeadas: [], semMudanca: 1 });
+      expect(await r.json()).toEqual({ antes: 4, depois: 5, novas: 1, ganharamTipo: 0, renomeadas: [], semMudanca: 1, importacao: expect.any(String) });
       expect(teable.pedidos.filter((p) => p.metodo === 'POST').flatMap((p) => p.corpo!.records.map((x) => x.fields.tipo))).toEqual(['LETT']);
     });
   });
@@ -749,8 +765,175 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
       expect(sem.status).toBe(400);
       expect((await sem.json()).erro).toBe('O CSV veio vazio.');
       const nada = await gravar(como, csv('_PASTA', 'CRT - AMANHA DEPOIS DO SHOW.mov'), 'x' as unknown as Escolhas);
-      expect(await nada.json()).toEqual({ antes: 3, depois: 3, novas: 0, ganharamTipo: 0, renomeadas: [], semMudanca: 2 });
+      // nada a gravar não entra no histórico
+      expect(await nada.json()).toEqual({ antes: 3, depois: 3, novas: 0, ganharamTipo: 0, renomeadas: [], semMudanca: 2, importacao: null });
       expect(escritas(teable)).toEqual([]);
+    });
+  });
+});
+
+describe('o histórico das importações e o desfazer (#61)', () => {
+  type Como = (email: string) => (caminho: string, corpo?: unknown) => Promise<Response>;
+  const gravar = (como: Como, texto: string, escolhas: Escolhas = {}, arquivo = 'PROGRAMA_SERVICO.csv') => como(CHEFE)('/api/acervo/importar', { atracao: 'Programa Fictício', arquivo, csv: texto, escolhas });
+  const historico = async (como: Como, email = CHEFE) => (await (await como(email)('/api/acervo/importacoes?atracao=Programa%20Fict%C3%ADcio')).json()).importacoes;
+
+  it('cada importação gravada fica no histórico da atração: quando, o arquivo, quem e +N', async () => {
+    await comServidor(async ({ como }) => {
+      const r = await gravar(como, csv('LETT - VEM AI.mov', 'RDP - VEM AI.mov', 'RDP - PLATEIA.mov'));
+      const feito = await r.json();
+      expect(feito).toMatchObject({ antes: 3, depois: 5, novas: 2, ganharamTipo: 1 });
+      expect(feito.importacao).toEqual(expect.any(String));
+      await gravar(como, csv('CRT - DOMINGO.mov'), {}, 'PROGRAMA_FOTOS.csv');
+      const lista = await historico(como);
+      // a mais nova primeiro
+      expect(lista.map((i: { arquivo: string; por: string; novas: number; ganharamTipo: number; estado: string }) => [i.arquivo, i.por, i.novas, i.ganharamTipo, i.estado])).toEqual([
+        ['PROGRAMA_FOTOS.csv', 'Chefe', 1, 0, 'gravada'],
+        ['PROGRAMA_SERVICO.csv', 'Chefe', 2, 1, 'gravada'],
+      ]);
+      expect(lista[1]).toMatchObject({ id: feito.importacao, podeDesfazer: true });
+      expect(Date.parse(lista[1].em)).toBeGreaterThan(Date.now() - 60_000);
+      // o histórico é de cada atração
+      expect((await (await como(CHEFE)('/api/acervo/importacoes?atracao=Novela%20Fict%C3%ADcia')).json()).importacoes).toEqual([]);
+    });
+  });
+
+  const desfazer = (como: Como, id: string, email = CHEFE) => como(email)('/api/acervo/importacoes/desfazer', { id });
+  const acervoDoPrograma = (teable: ReturnType<typeof teableFalso>) =>
+    teable.linhas.filter((l) => l.atracao[0]?.id === 'recProg').map((l) => `${l.id} ${l.arte} (${l.tipo ?? ''})`).sort();
+
+  it('desfazer apaga as criadas e devolve o tipo e o nome antigos: o acervo volta ao que era', async () => {
+    await comServidor(async ({ como, teable }) => {
+      teable.linhas.push({ id: 'recSorisso', arte: 'SORISSO FICTICIO', tipo: 'RDP', atracao: [PROGRAMA], claquete: [], filme: null });
+      const antes = acervoDoPrograma(teable);
+      const texto = csv('LETT - VEM AI.mov', 'RDP - VEM AI.mov', 'RDP - PLATEIA.mov', 'RDP - SORRISO FICTICIO.mov', 'CRT - PLATEIAS.mov');
+      const feito = await (await gravar(como, texto, { 5: { respostas: { parecida: 'corrigir' } }, 6: { respostas: { parecida: 'outra' } } })).json();
+      expect(feito).toMatchObject({ antes: 4, depois: 7, novas: 3, ganharamTipo: 1, renomeadas: [{ id: 'recSorisso', antes: 'SORISSO FICTICIO', depois: 'SORRISO FICTICIO' }] });
+      expect(acervoDoPrograma(teable)).not.toEqual(antes);
+      const r = await desfazer(como, feito.importacao);
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual({ antes: 4, depois: 4, apagadas: 3, devolvidas: 2, naoVoltaram: [] });
+      expect(acervoDoPrograma(teable)).toEqual(antes);
+      // PLATEIA estava sem tipo: o tipo é apagado (null), e a gravação nunca cria opção
+      expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').at(-1)!.corpo).toMatchObject({ typecast: false, records: expect.arrayContaining([{ id: 'recA2', fields: { tipo: null } }]) });
+      // no histórico, desfeita por quem; desfazer de novo é recusado
+      const [h] = await historico(como);
+      expect(h).toMatchObject({ estado: 'desfeita', podeDesfazer: false, desfeita: { por: 'Chefe', naoVoltaram: [] } });
+      expect((await desfazer(como, feito.importacao)).status).toBe(409);
+      // a ficha lê o total de volta
+      expect((await (await como(CHEFE)('/api/acervo/atracao?atracao=Programa%20Fict%C3%ADcio')).json()).total).toBe(4);
+    });
+  });
+
+  it('a linha que alguém mexeu no Teable depois da importação não volta, e o PROMeiro diz qual', async () => {
+    await comServidor(async ({ como, teable }) => {
+      teable.linhas.push({ id: 'recSorisso', arte: 'SORISSO FICTICIO', tipo: 'RDP', atracao: [PROGRAMA], claquete: [], filme: null });
+      const texto = csv('LETT - VEM AI.mov', 'RDP - VEM AI.mov', 'RDP - PLATEIA.mov', 'RDP - SORRISO FICTICIO.mov');
+      const feito = await (await gravar(como, texto, { 5: { respostas: { parecida: 'corrigir' } } })).json();
+      const criada = teable.linhas.find((l) => l.arte === 'VEM AÍ' && l.tipo === 'LETT')!;
+      // depois da importação: alguém corrige o tipo de uma criada e renomeia de novo a que foi corrigida
+      teable.mexer(criada.id, { tipo: 'CRT' });
+      teable.mexer('recSorisso', { arte: 'SORRISO FICTÍCIO' });
+      const r = await desfazer(como, feito.importacao);
+      expect(await r.json()).toEqual({
+        antes: 4,
+        depois: 5,
+        apagadas: 1,
+        devolvidas: 1,
+        naoVoltaram: [
+          { id: criada.id, arte: 'VEM AÍ', tipo: 'CRT', motivo: 'continua no acervo' },
+          { id: 'recSorisso', arte: 'SORRISO FICTÍCIO', tipo: 'RDP', motivo: 'não voltou a “SORISSO FICTICIO”' },
+        ],
+      });
+      expect(acervoDoPrograma(teable)).toEqual(['recA1 AMANHÃ DEPOIS DO SHOW (CRT)', 'recA2 PLATEIA ()', 'recA3 SÁBADO (RDP)', `${criada.id} VEM AÍ (CRT)`, 'recSorisso SORRISO FICTÍCIO (RDP)'].sort());
+      // o aviso fica no histórico
+      expect((await historico(como))[0].desfeita.naoVoltaram.map((x: { arte: string }) => x.arte)).toEqual(['VEM AÍ', 'SORRISO FICTÍCIO']);
+    });
+  });
+
+  it('o prazo: até 7 dias depois desfaz; depois, não (nem aparece para desfazer no histórico)', async () => {
+    await comServidor(async ({ como }) => {
+      const feito = await (await gravar(como, csv('LETT - VEM AI.mov'))).json();
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 7 * 86_400_000 + 60_000 });
+      try {
+        expect((await historico(como))[0]).toMatchObject({ estado: 'gravada', podeDesfazer: false });
+        const r = await desfazer(como, feito.importacao);
+        expect(r.status).toBe(422);
+        expect((await r.json()).erro).toBe('Passou o prazo: a importação só pode ser desfeita até 7 dias depois.');
+      } finally {
+        vi.useRealTimers();
+      }
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 7 * 86_400_000 - 60_000 });
+      try {
+        expect((await historico(como))[0].podeDesfazer).toBe(true);
+        expect(await (await desfazer(como, feito.importacao)).json()).toMatchObject({ apagadas: 1 });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it('só administradores desfazem e retomam; os outros veem o histórico sem poder desfazer', async () => {
+    await comServidor(async ({ como, teable }) => {
+      const feito = await (await gravar(como, csv('LETT - VEM AI.mov'))).json();
+      const ana = 'ana@empresa.com';
+      expect((await historico(como, ana))[0]).toMatchObject({ arquivo: 'PROGRAMA_SERVICO.csv', podeDesfazer: false, podeRetomar: false });
+      const r = await desfazer(como, feito.importacao, ana);
+      expect(r.status).toBe(403);
+      expect((await r.json()).erro).toBe('Só administradores desfazem a importação.');
+      expect((await como(ana)('/api/acervo/importacoes/retomar', { id: feito.importacao })).status).toBe(403);
+      expect(teable.pedidos.filter((p) => p.metodo === 'DELETE')).toEqual([]);
+      expect((await desfazer(como, 'nao-existe')).status).toBe(404);
+    });
+  });
+
+  const muitas = (n: number) => csv(...Array.from({ length: n }, (_, i) => `RDP - CONVIDADO FICTICIO ${i + 1}.mov`));
+  const retomar = (como: Como, id: string) => como(CHEFE)('/api/acervo/importacoes/retomar', { id });
+
+  it('a gravação interrompida num lote fica registrada até onde foi, e pode ser retomada', async () => {
+    await comServidor(async ({ como, teable }) => {
+      teable.falharNo(2); // o 2º lote dá timeout: só o 1º (100) entrou
+      const r = await gravar(como, csv('RDP - PLATEIA.mov') + '\n' + muitas(230).split('\n').slice(1).join('\n'));
+      expect(r.status).toBe(502);
+      const { erro, importacao } = await r.json();
+      expect(erro).toBe('A gravação parou no lote 2 de 4 (The operation was aborted due to timeout). O lote anterior ficou gravado: dá para desfazer ou retomar em Importações, na ficha.');
+      expect(teable.linhas.length).toBe(5 + 100);
+      expect((await historico(como))[0]).toMatchObject({ id: importacao, estado: 'interrompida', novas: 230, criadas: 100, ganharamTipo: 1, podeDesfazer: true, podeRetomar: true });
+      teable.falharNo(0);
+      const retomada = await retomar(como, importacao);
+      expect(retomada.status).toBe(200);
+      expect(await retomada.json()).toMatchObject({ antes: 3, depois: 233, novas: 230, ganharamTipo: 1, importacao });
+      expect(teable.linhas.filter((l) => l.arte.startsWith('CONVIDADO')).length).toBe(230);
+      expect(teable.linhas.find((l) => l.id === 'recA2')!.tipo).toBe('RDP');
+      expect((await historico(como))[0]).toMatchObject({ estado: 'gravada', criadas: 230, podeRetomar: false });
+      expect((await retomar(como, importacao)).status).toBe(409);
+    });
+  });
+
+  it('o lote que gravou mas não respondeu (timeout) não duplica ao retomar, e o desfazer apaga também as dele', async () => {
+    await comServidor(async ({ como, teable }) => {
+      teable.falharNo(2, { gravou: true });
+      const { importacao } = await (await gravar(como, muitas(230))).json();
+      expect(teable.linhas.length).toBe(5 + 200); // o 2º lote entrou no Teable, mas os ids não chegaram
+      expect((await historico(como))[0]).toMatchObject({ estado: 'interrompida', criadas: 100 });
+      teable.falharNo(0);
+      expect(await (await retomar(como, importacao)).json()).toMatchObject({ depois: 233 });
+      expect(teable.linhas.filter((l) => l.arte.startsWith('CONVIDADO')).length).toBe(230);
+      expect(teable.pedidos.filter((p) => p.metodo === 'POST').map((p) => p.corpo!.records.length)).toEqual([100, 100, 30]);
+      expect(await (await desfazer(como, importacao)).json()).toMatchObject({ apagadas: 230, depois: 3, naoVoltaram: [] });
+    });
+  });
+
+  it('a gravação interrompida também pode ser desfeita: apaga o que entrou, mesmo do lote sem resposta', async () => {
+    await comServidor(async ({ como, teable }) => {
+      teable.falharNo(2, { gravou: true });
+      const { importacao } = await (await gravar(como, csv('RDP - PLATEIA.mov') + '\n' + muitas(230).split('\n').slice(1).join('\n'))).json();
+      teable.falharNo(0);
+      const r = await desfazer(como, importacao);
+      // os 200 criados (100 com o id, 100 achados pela arte); a PLATEIA (no 4º lote) nunca ganhou o tipo: nada a devolver
+      expect(await r.json()).toEqual({ antes: 3, depois: 3, apagadas: 200, devolvidas: 0, naoVoltaram: [] });
+      expect(teable.linhas.length).toBe(5);
+      expect((await historico(como))[0]).toMatchObject({ estado: 'desfeita', podeRetomar: false });
+      expect((await retomar(como, importacao)).status).toBe(409);
     });
   });
 });

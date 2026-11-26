@@ -174,7 +174,12 @@ um dicionário fechado (NAO → NÃO) e a grafia da primeira fonte que tem a art
 os roteiros de todas, o acervo de todas.
 Gravar relê o acervo, cria as novas, dá o tipo às que completam e renomeia as que corrigem o acervo; o resultado é o
 total "antes → depois".
-_Evitar_: carga, upload, sincronizar
+Cada importação gravada fica em **Importações**, na ficha (a data, o arquivo, quem e +N), e pode ser **desfeita** por
+7 dias: logo depois pela caixinha preta e, até o prazo, pelo histórico. Desfazer apaga as artes criadas e devolve o tipo
+e o nome antigos das que mudaram; a linha que alguém mexeu no Teable depois (a data de modificação dela mudou) não volta,
+e o PROMeiro diz qual. A gravação **interrompida** (um lote que falhou) fica registrada até onde foi e pode ser desfeita
+ou **retomada** (os lotes que faltaram, sem duplicar o que o lote sem resposta já tinha criado).
+_Evitar_: carga, upload, sincronizar, reverter
 
 **Pacote gráfico novo**:
 Quando a atração troca a identidade: as artes do acervo dela deixam de valer (zerar o acervo).

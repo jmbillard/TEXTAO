@@ -13,7 +13,8 @@
  *     ele aqui.
  *   sem acervo (VTs, EVENTOS, Shows Diversos…): o que tem linguagem própria ganha atração própria.
  *
- * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
+ * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN). A data de modificação de cada linha
+ * (__last_modified_time, que o Teable mantém em toda tabela) diz se alguém mexeu nela depois de uma importação.
  */
 import { acervoDaAtracao } from './cadastros.mjs';
 import { classificar } from './importacao-do-acervo.mjs';
@@ -98,7 +99,7 @@ export function criarAcervo(env, deps = {}) {
   async function todas() {
     if (!ligado) return [];
     if (memo.linhas && Date.now() - memo.em < 60_000) return memo.linhas;
-    const linhas = await consultar(`SELECT "__id" AS id, "arte", "tipo", "atracao", "claquete", "filme" FROM ${t.acervo} LIMIT 50000`);
+    const linhas = await consultar(`SELECT "__id" AS id, "arte", "tipo", "atracao", "claquete", "filme", "__last_modified_time" AS modificado FROM ${t.acervo} LIMIT 50000`);
     memo = {
       em: Date.now(),
       linhas: linhas.map((l) => {
@@ -106,7 +107,8 @@ export function criarAcervo(env, deps = {}) {
         const prod = vinculos(l.claquete)[0] ?? { id: '', title: '' };
         const fil = vinculos(l.filme)[0] ?? { id: '', title: '' };
         // a chave sai da arte, aqui: o key do Teable é só para ver na tabela
-        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, claquete: prod.title, filmeId: fil.id };
+        const modificado = l.modificado ? new Date(l.modificado) : null;
+        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, claquete: prod.title, filmeId: fil.id, modificado: modificado && !isNaN(modificado) ? modificado.toISOString() : '' };
       }),
     };
     return memo.linhas;
@@ -375,14 +377,20 @@ export function criarAcervo(env, deps = {}) {
    * as escolhas de quem conferiu (o nome e o tipo editados, as respostas, as linhas tiradas). Com decisão pendente,
    * nada é gravado. O tipo tem de ser uma opção do campo (o typecast nunca cria opção nova). Cria as novas, dá o tipo
    * às que completam e renomeia no lugar (o mesmo id) a linha do acervo que estava errada, em lotes de 100.
+   *
+   * O registro da importação (#61) é o que permite desfazer e retomar: os lotes, cada um com o estado (pendente,
+   * gravado, falhou), os ids criados, o tipo e o nome antigos das linhas alteradas e, no fim, a data de modificação de
+   * cada linha tocada. anotar(registro) é chamado antes do primeiro lote e depois de cada um; o lote que falha para a
+   * gravação (o erro tem interrompida: true) e o registro fica até onde foi.
    * @returns { antes, depois, novas, ganharamTipo, renomeadas: [{ id, antes, depois }], semMudanca }
    */
-  async function gravarImportacao(atracao, csv, escolhas = {}) {
+  async function gravarImportacao(atracao, csv, escolhas = {}, { anotar = () => {} } = {}) {
     if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
     const id = await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
     esquecer();
-    const acervo = paraConferir(await linhasDa(atracao));
+    const linhas = await linhasDa(atracao);
+    const acervo = paraConferir(linhas);
     const { faltam, plano } = classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao), escolhas });
     // o tipo escolhido (e o que vai ser gravado) que não é opção do campo: o erro diz qual, antes da decisão pendente
     // que ele mesmo causa
@@ -390,23 +398,146 @@ export function criarAcervo(env, deps = {}) {
     const invalidos = [...new Set([...Object.values(escolhas).map((e) => e.tipo), ...gravados].filter((tipo) => tipo && !tipos.includes(tipo)))];
     if (invalidos.length) throw Object.assign(new Error(`Tipo que não está no campo tipo do acervo: ${invalidos.join(', ')}. Nada foi gravado.`), { status: 422 });
     if (faltam) throw Object.assign(new Error(`${faltam === 1 ? 'Falta 1 decisão' : `Faltam ${faltam} decisões`} na conferência: nada foi gravado.`), { status: 422 });
-    const criar = plano.criar.map(({ arte, tipo }) => ({ fields: { arte, ...(tipo ? { tipo } : {}), atracao: [{ id }] } }));
-    const tipar = plano.tipar.map(({ id: linha, tipo }) => ({ id: linha, fields: { tipo } }));
-    const renomear = plano.renomear.map(({ id: linha, arte, tipo }) => ({ id: linha, fields: { arte, ...(tipo ? { tipo } : {}) } }));
+    const tipoAntigo = (linha) => linhas.find((l) => l.id === linha)?.tipo ?? '';
+    const emLotes = (acao, lista) => Array.from({ length: Math.ceil(lista.length / 100) }, (_, i) => ({ acao, estado: 'pendente', registros: lista.slice(i * 100, i * 100 + 100) }));
+    const registro = {
+      atracao,
+      atracaoId: id,
+      antes: acervo.length,
+      // as linhas que já estavam: o que aparecer além delas (e dos ids gravados) veio de um lote que falhou no meio
+      antesIds: linhas.map((l) => l.id),
+      lotes: [
+        ...emLotes('criar', plano.criar.map(({ arte, tipo }) => ({ arte, tipo }))),
+        ...emLotes('tipar', plano.tipar.map(({ id: linha, tipo }) => ({ id: linha, tipo, tipoAntigo: tipoAntigo(linha) }))),
+        ...emLotes('renomear', plano.renomear.map(({ id: linha, arte, antigo, tipo }) => ({ id: linha, arte, antigo, ...(tipo ? { tipo } : {}), tipoAntigo: tipoAntigo(linha) }))),
+      ],
+      modificados: {},
+      resumo: {
+        novas: plano.criar.length,
+        ganharamTipo: plano.tipar.length,
+        renomeadas: plano.renomear.map((x) => ({ id: x.id, antes: x.antigo, depois: x.arte })),
+        semMudanca: plano.semMudanca,
+      },
+    };
+    const resumo = { antes: acervo.length, depois: acervo.length + plano.criar.length, ...registro.resumo };
+    if (!registro.lotes.length) return { ...resumo, registro: null };
+    await executar(registro, anotar);
+    return { ...resumo, registro };
+  }
+
+  /** Os lotes da importação que ainda não foram gravados, um a um; no fim, a data de modificação de cada linha tocada. */
+  async function executar(registro, anotar) {
+    await anotar(registro);
     try {
-      for (let i = 0; i < criar.length; i += 100) await teable('POST', '', { fieldKeyType: 'name', typecast: false, records: criar.slice(i, i + 100) });
-      for (const lista of [tipar, renomear]) for (let i = 0; i < lista.length; i += 100) await teable('PATCH', '', { fieldKeyType: 'name', typecast: false, records: lista.slice(i, i + 100) });
+      for (const [i, lote] of registro.lotes.entries()) {
+        if (lote.estado === 'gravado') continue;
+        try {
+          if (lote.acao === 'criar') {
+            const faltam = lote.registros.filter((r) => !r.id);
+            if (faltam.length) {
+              const r = await teable('POST', '', { fieldKeyType: 'name', typecast: false, records: faltam.map(({ arte, tipo }) => ({ fields: { arte, ...(tipo ? { tipo } : {}), atracao: [{ id: registro.atracaoId }] } })) });
+              // o Teable devolve os registros criados na ordem do pedido
+              (r.records ?? []).forEach((x, k) => faltam[k] && x?.id && (faltam[k].id = x.id));
+            }
+          } else
+            await teable('PATCH', '', {
+              fieldKeyType: 'name',
+              typecast: false,
+              records: lote.registros.map((r) => ({ id: r.id, fields: lote.acao === 'tipar' ? { tipo: r.tipo } : { arte: r.arte, ...(r.tipo ? { tipo: r.tipo } : {}) } })),
+            });
+          lote.estado = 'gravado';
+          delete lote.erro;
+        } catch (e) {
+          lote.estado = 'falhou';
+          lote.erro = e instanceof Error ? e.message : String(e);
+          await anotar(registro);
+          const feitos = registro.lotes.filter((l) => l.estado === 'gravado').length;
+          throw Object.assign(new Error(`A gravação parou no lote ${i + 1} de ${registro.lotes.length} (${lote.erro}). ${feitos ? `${feitos === 1 ? 'O lote anterior ficou gravado' : `Os ${feitos} lotes anteriores ficaram gravados`}: dá para desfazer ou retomar em Importações, na ficha.` : 'Dá para retomar ou desfazer em Importações, na ficha.'}`), { interrompida: true });
+        }
+        await anotar(registro);
+      }
     } finally {
       esquecer();
     }
-    return {
-      antes: acervo.length,
-      depois: acervo.length + criar.length,
-      novas: criar.length,
-      ganharamTipo: tipar.length,
-      renomeadas: plano.renomear.map((x) => ({ id: x.id, antes: x.antigo, depois: x.arte })),
-      semMudanca: plano.semMudanca,
-    };
+    // a data de modificação de cada linha logo depois de gravada: a que mudar depois é de alguém que mexeu no Teable
+    const agora = new Map((await linhasDa(registro.atracao)).map((l) => [l.id, l.modificado]));
+    for (const id of idsTocados(registro)) registro.modificados[id] = agora.get(id) ?? '';
+    await anotar(registro);
+  }
+
+  const idsTocados = (registro) => registro.lotes.flatMap((l) => l.registros.map((r) => r.id)).filter(Boolean);
+
+  /** O lote de criar que falhou pode ter gravado no Teable sem a resposta chegar: a linha nova da atração (fora das
+      que já estavam e das conhecidas) com a mesma arte e o mesmo tipo de um registro sem id é dele. */
+  function adotar(registro, linhas) {
+    const conhecidas = new Set([...registro.antesIds, ...idsTocados(registro)]);
+    for (const lote of registro.lotes.filter((l) => l.acao === 'criar' && l.estado !== 'gravado'))
+      for (const r of lote.registros.filter((x) => !x.id)) {
+        const achada = linhas.find((l) => !conhecidas.has(l.id) && l.chave === chaveDeArte(r.arte) && l.tipo === (r.tipo ?? ''));
+        if (achada) (r.id = achada.id, conhecidas.add(achada.id));
+      }
+  }
+
+  /**
+   * Retoma a importação interrompida (#61): os lotes que faltam, sem duplicar o que o lote que falhou já tinha criado.
+   * @returns { antes, depois, novas, ganharamTipo, renomeadas, semMudanca }
+   */
+  async function retomarImportacao(registro, { anotar = () => {} } = {}) {
+    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
+    esquecer();
+    adotar(registro, await linhasDa(registro.atracao));
+    await executar(registro, anotar);
+    return { antes: registro.antes, depois: (await linhasDa(registro.atracao)).length, ...registro.resumo };
+  }
+
+  /**
+   * Desfaz a importação (#61): apaga as linhas criadas e devolve o tipo e o nome antigos das alteradas. A linha que
+   * alguém mexeu no Teable depois (a data de modificação mudou; no lote sem a data, o valor não é o gravado) não volta:
+   * fica como está e vai na lista. A que já está como era fica quieta, então desfazer de novo depois de uma falha não
+   * repete nada.
+   * @returns { apagadas, devolvidas, naoVoltaram: [{ id, arte, tipo, motivo }], depois }; o motivo diz o que ficou
+   *   ("continua no acervo", "não voltou a “X”", "o tipo não voltou")
+   */
+  async function desfazerImportacao(registro) {
+    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
+    esquecer();
+    const linhas = await linhasDa(registro.atracao);
+    adotar(registro, linhas);
+    const atual = new Map(linhas.map((l) => [l.id, l]));
+    // mexeram depois: a data de modificação não é a de logo depois da importação; sem ela, o valor não é o gravado
+    const mexeram = (l, gravado) => (registro.modificados[l.id] ? l.modificado !== registro.modificados[l.id] : !gravado(l));
+    const naoVoltaram = [];
+    const fica = (l, motivo) => naoVoltaram.push({ id: l.id, arte: l.arte, tipo: l.tipo, motivo });
+    const apagar = [];
+    const devolver = [];
+    for (const lote of registro.lotes)
+      for (const r of lote.registros) {
+        const l = r.id && atual.get(r.id);
+        if (!l) continue; // já não está no acervo (ou nunca foi criada)
+        if (lote.acao === 'criar') {
+          if (mexeram(l, (x) => x.chave === chaveDeArte(r.arte) && x.tipo === (r.tipo ?? ''))) fica(l, 'continua no acervo');
+          else apagar.push(l.id);
+          continue;
+        }
+        const antes = { arte: lote.acao === 'renomear' ? r.antigo : l.arte, tipo: r.tipoAntigo ?? '' };
+        const depois = { arte: lote.acao === 'renomear' ? r.arte : l.arte, tipo: r.tipo ?? r.tipoAntigo ?? '' };
+        if (l.arte === antes.arte && l.tipo === antes.tipo) continue; // já está como era
+        if (mexeram(l, (x) => x.arte === depois.arte && x.tipo === depois.tipo)) fica(l, lote.acao === 'renomear' ? `não voltou a “${r.antigo}”` : 'o tipo não voltou');
+        else devolver.push({ id: l.id, fields: { ...(lote.acao === 'renomear' ? { arte: r.antigo } : {}), tipo: r.tipoAntigo || null } });
+      }
+    try {
+      await apagarLinhas(apagar);
+      for (let i = 0; i < devolver.length; i += 100) await teable('PATCH', '', { fieldKeyType: 'name', typecast: false, records: devolver.slice(i, i + 100) });
+    } finally {
+      esquecer();
+    }
+    return { apagadas: apagar.length, devolvidas: devolver.length, naoVoltaram, depois: (await linhasDa(registro.atracao)).length };
+  }
+
+  /** Apaga as linhas do acervo pelo id, em lotes de 100. */
+  async function apagarLinhas(ids) {
+    for (let i = 0; i < ids.length; i += 100)
+      await teable('DELETE', '?' + ids.slice(i, i + 100).map((id, n) => `recordIds[${n}]=${encodeURIComponent(id)}`).join('&'));
   }
 
   /** Pacote gráfico novo: todas as artes da atração saem do acervo (apagadas). @returns quantas */
@@ -415,11 +546,10 @@ export function criarAcervo(env, deps = {}) {
     esquecer();
     const n = nomeComparavel(atracao);
     const ids = (await todas()).filter((l) => !l.filmeId && nomeComparavel(l.atracao) === n).map((l) => l.id);
-    for (let i = 0; i < ids.length; i += 100)
-      await teable('DELETE', '?' + ids.slice(i, i + 100).map((id, n) => `recordIds[${n}]=${encodeURIComponent(id)}`).join('&'));
+    await apagarLinhas(ids);
     esquecer();
     return ids.length;
   }
 
-  return { ligado, grava, acervoDe, previaDaImportacao, gravarImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, acervoDe, previaDaImportacao, gravarImportacao, retomarImportacao, desfazerImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }

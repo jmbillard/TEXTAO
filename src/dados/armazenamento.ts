@@ -589,7 +589,51 @@ export interface ResultadoDaImportacao {
   /** as linhas do acervo renomeadas (o mesmo id), com o nome antigo */
   renomeadas: { id: string; antes: string; depois: string }[];
   semMudanca: number;
+  /** o id da importação no histórico (null quando nada mudou: não entra no histórico) */
+  importacao: string | null;
 }
+/** Uma linha que o desfazer não devolveu: alguém mexeu nela no Teable depois da importação. */
+export interface LinhaQueNaoVoltou {
+  id: string;
+  arte: string;
+  tipo: string;
+  /** o que ficou: "continua no acervo", "não voltou a “X”", "o tipo não voltou" */
+  motivo: string;
+}
+/** Uma importação no histórico da ficha: quando, o arquivo, quem e o que fez; desfaz e retoma por 7 dias. */
+export interface ImportacaoNoHistorico {
+  id: string;
+  em: string;
+  arquivo: string;
+  por: string;
+  /** gravada inteira, interrompida num lote (dá para retomar) ou desfeita */
+  estado: 'gravada' | 'interrompida' | 'desfeita';
+  antes: number;
+  novas: number;
+  /** das novas, quantas chegaram a ser criadas (na interrompida, menos que as novas) */
+  criadas: number;
+  ganharamTipo: number;
+  renomeadas: number;
+  semMudanca: number;
+  /** até quando dá para desfazer */
+  ate: string;
+  podeDesfazer: boolean;
+  podeRetomar: boolean;
+  desfeita?: { em: string; por: string; naoVoltaram: LinhaQueNaoVoltou[] };
+}
+/** O que o desfazer fez: o total antes da importação e agora, e as linhas que não voltaram. */
+export interface ImportacaoDesfeita {
+  antes: number;
+  depois: number;
+  apagadas: number;
+  devolvidas: number;
+  naoVoltaram: LinhaQueNaoVoltou[];
+}
+export const lerImportacoes = (atracao: string) => pedir<{ importacoes: ImportacaoNoHistorico[] }>(`/api/acervo/importacoes?atracao=${encodeURIComponent(atracao)}`);
+/** Desfaz a importação (só administradores, por 7 dias): apaga as criadas e devolve o tipo e o nome antigos. */
+export const desfazerImportacao = (id: string) => pedir<ImportacaoDesfeita>('/api/acervo/importacoes/desfazer', { method: 'POST', body: JSON.stringify({ id }) });
+/** Retoma a gravação interrompida no meio: os lotes que faltaram, sem duplicar. */
+export const retomarImportacao = (id: string) => pedir<ResultadoDaImportacao>('/api/acervo/importacoes/retomar', { method: 'POST', body: JSON.stringify({ id }) });
 /** A importação do acervo por CSV (só administradores, só acervo próprio): a prévia não grava nada. */
 export const preverImportacao = async (atracao: string, arquivo: string, csv: string): Promise<PreviaDaImportacao> => ({
   ...(await pedir<Omit<PreviaDaImportacao, 'csv'>>('/api/acervo/importar/previa', { method: 'POST', body: JSON.stringify({ atracao, arquivo, csv }) })),

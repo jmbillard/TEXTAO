@@ -3,7 +3,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
-import { webcrypto } from 'node:crypto';
+import { randomUUID, webcrypto } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import * as sinc from 'y-protocols/sync';
@@ -17,6 +17,7 @@ import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
 import { escolhasDoPedido } from './importacao-do-acervo.mjs';
+import { criarImportacoes, criarTabelaDasImportacoes } from './importacoes.mjs';
 import { criarRedatorProvavel } from './redator.mjs';
 import { criarFilmes } from './filmes.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
@@ -141,6 +142,8 @@ export function abrirBanco(caminho) {
     id TEXT PRIMARY KEY, claquete TEXT NOT NULL, por_nome TEXT NOT NULL, por_email TEXT NOT NULL, em TEXT NOT NULL,
     publico INTEGER NOT NULL DEFAULT 0, leitores TEXT NOT NULL DEFAULT '[]'
   )`);
+  // o histórico das importações do acervo por CSV, para desfazer e retomar (#61)
+  criarTabelaDasImportacoes(db);
   // a conta das artes pela lista sem repetição, uma vez: os roteiros guardados antes dela contavam as repetidas
   acertarNArtesUmaVez(db);
   return db;
@@ -398,6 +401,9 @@ export function copiarMetaParaYdoc(doc, meta) {
 
 export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }), redatorProvavel = criarRedatorProvavel(env) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
+  const importacoes = criarImportacoes(db);
+  // as importações que estão sendo desfeitas ou retomadas agora (o segundo clique espera o primeiro)
+  const mexendoNaImportacao = new Set();
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
   const gravarCopia = db.prepare('INSERT OR REPLACE INTO teable_copia (chave, dados, em) VALUES (?, ?, ?)');
   const copia = {
@@ -1356,15 +1362,68 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
           const arquivo = typeof corpo.arquivo === 'string' ? corpo.arquivo.slice(0, 200) : '';
           return json(res, 200, { atracao, arquivo, ...(await acervo.previaDaImportacao(atracao, corpo.csv)) });
         }
-        // o gravar recebe o mesmo CSV e as escolhas da conferência, e classifica de novo contra o acervo relido
-        const feito = await acervo.gravarImportacao(atracao, corpo.csv, escolhasDoPedido(corpo.escolhas));
-        console.log(
-          `[acervo] ${eu.email} importou ${String(corpo.arquivo ?? 'um CSV').slice(0, 200)} em ${atracao}: ${feito.novas} novas, ${feito.ganharamTipo} ganharam o tipo, ${feito.renomeadas.length} renomeadas (${feito.antes} → ${feito.depois})`,
-        );
-        return json(res, 200, feito);
+        // o gravar recebe o mesmo CSV e as escolhas da conferência, e classifica de novo contra o acervo relido; o
+        // registro de cada passo vai para o histórico (#61), para desfazer e para retomar se parar no meio
+        const arquivo = String(corpo.arquivo ?? '').slice(0, 200) || 'CSV';
+        const id = randomUUID();
+        const quem = { atracao, por: eu, arquivo, em: new Date().toISOString() };
+        const anotar = (registro) => importacoes.anotar(id, quem, registro);
+        try {
+          const { registro, ...feito } = await acervo.gravarImportacao(atracao, corpo.csv, escolhasDoPedido(corpo.escolhas), { anotar });
+          console.log(
+            `[acervo] ${eu.email} importou ${arquivo} em ${atracao}: ${feito.novas} novas, ${feito.ganharamTipo} ganharam o tipo, ${feito.renomeadas.length} renomeadas (${feito.antes} → ${feito.depois})`,
+          );
+          return json(res, 200, { ...feito, importacao: registro ? id : null });
+        } catch (e) {
+          if (!e?.interrompida) throw e;
+          console.warn(`[acervo] a importação de ${arquivo} em ${atracao} parou no meio: ${e.message}`);
+          return json(res, 502, { erro: e.message, importacao: id });
+        }
       } catch (e) {
         if (e?.status === 422) return json(res, 422, { erro: e.message });
         return json(res, 502, { erro: `Não consegui ${caminho.endsWith('previa') ? 'ler o acervo' : 'gravar no acervo'}: ${e instanceof Error ? e.message : e}` });
+      }
+    }
+    if (caminho === '/api/acervo/importacoes' && req.method === 'GET') {
+      // o histórico das importações da atração (a ficha): quando, o arquivo, quem e +N; todos veem, só administradores
+      // desfazem e retomam
+      const atracao = (new URL(req.url, 'http://x').searchParams.get('atracao') ?? '').slice(0, 200);
+      return json(res, 200, { importacoes: atracao ? importacoes.lista(atracao, { admin: cadastros.podeApagar(eu.email) }) : [] });
+    }
+    if (caminho === '/api/acervo/importacoes/desfazer' || caminho === '/api/acervo/importacoes/retomar') {
+      // desfazer (apaga as criadas, devolve o tipo e o nome antigos; a linha mexida depois não volta) ou retomar a
+      // gravação interrompida, por 7 dias. Só administradores.
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const desfazer = caminho.endsWith('desfazer');
+      if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: `Só administradores ${desfazer ? 'desfazem' : 'retomam'} a importação.` });
+      if (!acervo.ligado || !acervo.grava) return json(res, 503, { erro: 'O acervo de artes não está configurado para gravar (TEABLE_ACERVO e TEABLE_PG_ACERVO).' });
+      const corpo = (await lerCorpo(req)) ?? {};
+      const linha = typeof corpo.id === 'string' ? importacoes.uma(corpo.id) : null;
+      if (!linha) return json(res, 404, { erro: 'Essa importação não está no histórico.' });
+      const estado = importacoes.estado(linha);
+      if (estado === 'desfeita') return json(res, 409, { erro: 'Essa importação já foi desfeita.' });
+      if (!desfazer && estado !== 'interrompida') return json(res, 409, { erro: 'Essa importação já foi gravada inteira.' });
+      if (!importacoes.noPrazo(linha)) return json(res, 422, { erro: `Passou o prazo: a importação só pode ser ${desfazer ? 'desfeita' : 'retomada'} até 7 dias depois.` });
+      if (mexendoNaImportacao.has(linha.id)) return json(res, 409, { erro: 'Essa importação já está sendo desfeita ou retomada.' });
+      mexendoNaImportacao.add(linha.id);
+      const quem = { atracao: linha.atracao, por: { email: linha.por_email, nome: linha.por_nome }, arquivo: linha.arquivo, em: linha.em };
+      try {
+        if (desfazer) {
+          const feito = await acervo.desfazerImportacao(linha.registro);
+          // o registro guarda os ids que o desfazer achou (do lote que falhou no meio)
+          importacoes.anotar(linha.id, quem, linha.registro);
+          importacoes.desfeita(linha.id, eu.nome, feito.naoVoltaram);
+          console.log(`[acervo] ${eu.email} desfez a importação de ${linha.arquivo} em ${linha.atracao}: ${feito.apagadas} apagadas, ${feito.devolvidas} devolvidas, ${feito.naoVoltaram.length} não voltaram`);
+          return json(res, 200, { ...feito, antes: linha.registro.antes });
+        }
+        const feito = await acervo.retomarImportacao(linha.registro, { anotar: (registro) => importacoes.anotar(linha.id, quem, registro) });
+        console.log(`[acervo] ${eu.email} retomou a importação de ${linha.arquivo} em ${linha.atracao}`);
+        return json(res, 200, { ...feito, importacao: linha.id });
+      } catch (e) {
+        if (e?.interrompida) return json(res, 502, { erro: e.message, importacao: linha.id });
+        return json(res, 502, { erro: `Não consegui ${desfazer ? 'desfazer' : 'retomar'} a importação: ${e instanceof Error ? e.message : e}` });
+      } finally {
+        mexendoNaImportacao.delete(linha.id);
       }
     }
     if (caminho === '/api/acervo/zerar') {

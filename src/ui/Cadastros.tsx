@@ -7,7 +7,12 @@ import { acentuar } from '../modelo/acento';
 import {
   cadastrar,
   darKey,
+  desfazerImportacao,
   lerAcervoDaFicha,
+  lerImportacoes,
+  retomarImportacao,
+  type ImportacaoDesfeita,
+  type ImportacaoNoHistorico,
   lerCadastros,
   lerTotaisDoAcervo,
   mudarAcervo,
@@ -36,7 +41,7 @@ import { Marca } from './pecas';
 import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
-import { AreaDeImportar, ConferenciaDaImportacao, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
+import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
    (e redator/editor novo também para o Trello). O que está sendo cadastrado aparece na lista como
@@ -570,8 +575,16 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   useEffect(() => {
     void carregarTotais();
   }, []);
+  // o histórico das importações da atração aberta (some quando a leitura falha: a ficha continua)
+  const [historico, setHistorico] = useState<{ nome: string; lista: ImportacaoNoHistorico[] } | null>(null);
+  const lerHistorico = (nome: string) =>
+    lerImportacoes(nome).then(
+      (r) => setHistorico({ nome, lista: r.importacoes }),
+      () => setHistorico({ nome, lista: [] }),
+    );
   const lerFicha = (nome: string) => {
     setFicha((f) => (f?.nome === nome ? f : { nome, acervo: null, falha: '' }));
+    void lerHistorico(nome);
     return lerAcervoDaFicha(nome).then(
       (acervo) => setFicha((f) => (f?.nome === nome ? { nome, acervo, falha: '' } : f)),
       (e: Error) => setFicha((f) => (f?.nome === nome ? { nome, acervo: null, falha: e.message || 'Não consegui ler o acervo.' } : f)),
@@ -585,7 +598,66 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     if (celular) window.scrollTo(0, 0);
   };
   // a importação do acervo por CSV, da atração aberta: lendo o arquivo, conferindo a prévia ou com o resultado gravado
-  const [importacao, setImportacao] = useState<{ atracao: string; lendo: boolean; falha: string; previa?: PreviaDaImportacao; resultado?: ResultadoDaImportacao } | null>(null);
+  const [importacao, setImportacao] = useState<{
+    atracao: string;
+    lendo: boolean;
+    falha: string;
+    previa?: PreviaDaImportacao;
+    resultado?: ResultadoDaImportacao;
+    desfazendo?: boolean;
+    desfeita?: ImportacaoDesfeita;
+  } | null>(null);
+  const importacaoAgora = useRef(importacao);
+  importacaoAgora.current = importacao;
+  // a caixinha preta logo depois de gravar: "+N no acervo de X. Desfazer" por alguns segundos
+  const [caixinha, setCaixinha] = useState<{ id: string; atracao: string; novas: number } | null>(null);
+  const prazoDaCaixinha = useRef(0);
+  const fecharCaixinha = () => {
+    clearTimeout(prazoDaCaixinha.current);
+    setCaixinha(null);
+  };
+  useEffect(() => () => clearTimeout(prazoDaCaixinha.current), []);
+  const gravou = (atracao: string, resultado: ResultadoDaImportacao) => {
+    setImportacao((i) => (i ? { ...i, resultado } : i));
+    window.scrollTo(0, 0);
+    if (!resultado.importacao) return;
+    clearTimeout(prazoDaCaixinha.current);
+    setCaixinha({ id: resultado.importacao, atracao, novas: resultado.novas });
+    prazoDaCaixinha.current = window.setTimeout(() => setCaixinha(null), 8000);
+  };
+  /** Desfaz a importação (a caixinha preta, o resultado ou o histórico da ficha): a ficha e a lista releem o total. */
+  const desfazerAImportacao = async (id: string, atracao: string) => {
+    fecharCaixinha();
+    const naTela = () => importacaoAgora.current?.resultado?.importacao === id;
+    setImportacao((i) => (i?.resultado?.importacao === id ? { ...i, desfazendo: true } : i));
+    try {
+      const feito = await desfazerImportacao(id);
+      setImportacao((i) => (i?.resultado?.importacao === id ? { ...i, desfazendo: false, desfeita: feito } : i));
+      // no resultado, a tela mostra; na ficha, o aviso (as que não voltaram ficam no histórico)
+      if (!naTela())
+        avisar(
+          `Importação desfeita: o acervo de ${atracao} tem ${feito.depois}.` +
+            (feito.naoVoltaram.length ? ` ${plural(feito.naoVoltaram.length, 'linha não voltou', 'linhas não voltaram')}: veja em Importações.` : ''),
+        );
+      void lerFicha(atracao);
+      void carregarTotais();
+    } catch (e) {
+      setImportacao((i) => (i?.resultado?.importacao === id ? { ...i, desfazendo: false } : i));
+      avisar(e instanceof Error ? e.message : 'Não consegui desfazer a importação.');
+      void lerHistorico(atracao);
+    }
+  };
+  /** Retoma a gravação que parou no meio (o histórico da ficha). */
+  const retomarAImportacao = async (id: string, atracao: string) => {
+    try {
+      const r = await retomarImportacao(id);
+      avisar(`Importação retomada: o acervo de ${atracao} tem ${r.depois}.`);
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui retomar a importação.');
+    }
+    void lerFicha(atracao);
+    void carregarTotais();
+  };
   const importar = (atracao: string) => async (arquivo: File) => {
     setImportacao({ atracao, lendo: true, falha: '' });
     try {
@@ -598,12 +670,11 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   };
   /** Sai da conferência (ou do resultado) de volta à ficha; com o acervo gravado, a ficha e a lista releem o total. */
   const voltarDaImportacao = (atracao: string, ver = false) => {
-    if (importacao?.resultado) {
-      // o acervo antigo não aparece nem por um instante: a ficha relê
-      setFicha({ nome: atracao, acervo: null, falha: '' });
-      void lerFicha(atracao);
-      void carregarTotais();
-    }
+    // o acervo antigo não aparece nem por um instante: a ficha relê. Sem resultado também relê (a gravação que parou
+    // no meio mudou o acervo e está em Importações)
+    if (importacao?.resultado) setFicha({ nome: atracao, acervo: null, falha: '' });
+    void lerFicha(atracao);
+    void carregarTotais();
     setImportacao(null);
     setVerAcervo(ver);
   };
@@ -936,6 +1007,9 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
             <ResultadoDaImportacaoNaTela
               previa={importacao.previa}
               resultado={importacao.resultado}
+              desfeita={importacao.desfeita}
+              desfazendo={!!importacao.desfazendo}
+              desfazer={() => importacao.resultado?.importacao && void desfazerAImportacao(importacao.resultado.importacao, atracaoAberta.nome)}
               verFicha={() => voltarDaImportacao(atracaoAberta.nome)}
               verAcervo={() => voltarDaImportacao(atracaoAberta.nome, true)}
             />
@@ -943,10 +1017,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
             <ConferenciaDaImportacao
               previa={importacao.previa}
               cancelar={() => voltarDaImportacao(atracaoAberta.nome)}
-              gravado={(resultado) => {
-                setImportacao((i) => (i ? { ...i, resultado } : i));
-                window.scrollTo(0, 0);
-              }}
+              gravado={(resultado) => gravou(atracaoAberta.nome, resultado)}
             />
           )}
         </main>
@@ -1047,6 +1118,13 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                   lendo={importacao?.atracao === atracaoAberta.nome && importacao.lendo}
                   falha={importacao?.atracao === atracaoAberta.nome ? importacao.falha : ''}
                   abrir={importar(atracaoAberta.nome)}
+                />
+              )}
+              {historico?.nome === atracaoAberta.nome && (
+                <HistoricoDasImportacoes
+                  importacoes={historico.lista}
+                  desfazer={(id) => desfazerAImportacao(id, atracaoAberta.nome)}
+                  retomar={(id) => retomarAImportacao(id, atracaoAberta.nome)}
                 />
               )}
               {pode && atracaoAberta.acervo === 'proprio' && (
@@ -1195,6 +1273,14 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         <div className="desfazer" role="status" key={desfazer.id}>
           <span>{desfazer.texto}</span>
           <button className="botao-texto" onClick={desfazerAgora}>Desfazer</button>
+        </div>
+      )}
+      {caixinha && !desfazer && (
+        <div className="desfazer caixinha-importacao" role="status" key={caixinha.id}>
+          <span>
+            {caixinha.novas ? <><b>+{caixinha.novas}</b> no acervo de {caixinha.atracao}.</> : <>Importação gravada no acervo de {caixinha.atracao}.</>}
+          </span>
+          <button className="botao-texto" onClick={() => void desfazerAImportacao(caixinha.id, caixinha.atracao)}>Desfazer</button>
         </div>
       )}
     </div>

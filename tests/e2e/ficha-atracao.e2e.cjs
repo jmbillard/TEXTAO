@@ -23,6 +23,11 @@
 // as de uma sigla, dar o tipo às marcadas e tirar as marcadas) e o Gravar, travado com "Faltam N decisões" e liberado
 // com o que será feito; gravar cria as novas e renomeia no lugar a linha do acervo que estava errada.
 //
+// O histórico e o desfazer (#61), numa revista fictícia (uma por tema): gravar → a caixinha preta "+N no acervo" →
+// Desfazer → o resultado volta (6 → 4) e a ficha também, com a importação riscada em "Importações"; gravar de novo,
+// alguém mexe numa linha no Teable de mentira (a data de modificação muda), desfazer pelo histórico da ficha → o aviso
+// diz qual linha não voltou.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:ficha
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -69,7 +74,21 @@ const LINHAS = [
   { id: 'recOutra', arte: 'HOJE', tipo: 'RDP', atracao: [{ id: 'recNovela', title: 'Novela Fictícia' }], claquete: [], filme: null },
   { id: 'recFilme', arte: 'TÍTULO', tipo: null, atracao: [{ id: 'recSessao', title: 'Sessão Fictícia' }], claquete: [], filme: { id: 'recF', title: 'FILME FICTÍCIO (2020)' } },
 ];
+// as revistas (#61): o mesmo acervo, uma para cada tema
+const REVISTAS = { light: 'Revista Fictícia', dark: 'Revista Noturna' };
+const ARTES_DA_REVISTA = [
+  ['CAPA', 'CRT'],
+  ['ENTREVISTA', 'RDP'],
+  ['BASTIDORES', ''],
+  ['MODA NOVA', 'RDP'],
+];
+let relogio = 0;
+const carimbo = () => new Date(Date.UTC(2026, 10, 20, 12, 0, relogio++)).toISOString();
+for (const [tema, nome] of Object.entries(REVISTAS))
+  LINHAS.push(...ARTES_DA_REVISTA.map(([arte, tipo], i) => ({ id: `recRev${tema}${i}`, arte, tipo: tipo || null, atracao: [{ id: `recRev${tema}`, title: nome }], claquete: [], filme: null })));
+for (const l of LINHAS) l.modificado = carimbo();
 const ACERVOS = [
+  ...Object.values(REVISTAS).map((atracao) => ({ atracao, acervo: 'próprio' })),
   { atracao: PROGRAMA, acervo: 'próprio' },
   { atracao: 'Novela Fictícia', acervo: null },
   { atracao: 'Sessão Fictícia', acervo: 'do filme' },
@@ -106,6 +125,8 @@ const ROTEIROS = [
   { atracao: [{ id: 'recNovela', title: 'Novela Fictícia' }], artes: 'DUPLA FICTÍCIA | NÃO PERCA' },
   { atracao: [{ id: 'recAud', title: AUDITORIO }], artes: 'SORRISO FICTÍCIO | MÁRCIA UM | MÁRCIA DOIS | JOÃO TRÊS | JOÃO QUATRO' },
 ];
+// a revista (#61): ESTREIA nova, CAPA em lettering nova, BASTIDORES ganha o tipo, CAPA (CRT) já está
+const CSV_REVISTA = csv('REVISTA', ['RDP - BASTIDORES.mov', 'CRT - CAPA.mov', 'LETT - CAPA.mov', 'RDP - ESTREIA.mov']);
 const CSV_NOVELA = csv('NOVELA FICTICIA', ['RDP - HOJE.mov', 'CRT - HOJE.mov', 'CRT - AMANHA.mov', 'RDP - HOJE (1).mov']);
 // o CSV do Auditório (#60): cada pergunta, as que se editam na linha e as que vão em lote
 const CSV_AUDITORIO = csv('AUDITORIO FICTICIO', [
@@ -134,6 +155,8 @@ const CADASTROS = {
     atracao('recSessao', 'Sessão Fictícia', 'Filme', 'filme', ['SESSAO FICTICIA']),
     atracao('recShows', 'Shows Fictícios', 'Show', 'sem', ['SHOWS']),
     atracao('recAud', AUDITORIO, 'Programa', 'proprio', ['AUDITORIO FICTICIO']),
+    atracao('recRevlight', REVISTAS.light, 'Programa', 'proprio', ['REVISTA FICTICIA']),
+    atracao('recRevdark', REVISTAS.dark, 'Programa', 'proprio', ['REVISTA NOTURNA']),
   ],
   redatores: [],
   editores: [],
@@ -143,10 +166,11 @@ const CADASTROS = {
   podeApagar: true,
 };
 
-const ID_DA_ATRACAO = { [PROGRAMA]: 'recProg', 'Novela Fictícia': 'recNovela', 'Sessão Fictícia': 'recSessao', 'Shows Fictícios': 'recShows', [AUDITORIO]: 'recAud' };
+const ID_DA_ATRACAO = { [PROGRAMA]: 'recProg', 'Novela Fictícia': 'recNovela', 'Sessão Fictícia': 'recSessao', 'Shows Fictícios': 'recShows', [AUDITORIO]: 'recAud', [REVISTAS.light]: 'recRevlight', [REVISTAS.dark]: 'recRevdark' };
 const TIPOS = ['RDP', 'CRT', 'LETT', 'FOTO', 'MOLDURA'];
 
-/** O Teable de mentira: o Postgres (o acervo e as atrações) e a API (os campos e os registros, que mudam o acervo). */
+/** O Teable de mentira: o Postgres (o acervo e as atrações, com a data de modificação de cada linha) e a API (os campos
+    e os registros, que mudam o acervo e a data). */
 async function acervoFalso() {
   const { criarAcervo } = await import(join(RAIZ, 'servidor', 'acervo.mjs'));
   const env = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso', TEABLE_PG_ACERVO: 'acervo', TEABLE_PG_ATRACOES: 'atracoes', TEABLE_PG_ARTE: 'producao', TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'falso', TEABLE_ACERVO: 'tblFalso' };
@@ -166,11 +190,20 @@ async function acervoFalso() {
     let resposta = {};
     if (url.endsWith('/field')) resposta = [{ id: 'fldTipo', name: 'tipo', type: 'singleSelect', options: { choices: TIPOS.map((name) => ({ name })) } }];
     else if (metodo === 'POST')
-      for (const r of corpo.records) {
-        const nome = Object.keys(ID_DA_ATRACAO).find((n) => ID_DA_ATRACAO[n] === r.fields.atracao[0].id);
-        LINHAS.push({ id: `recNova${++novas}`, arte: r.fields.arte, tipo: r.fields.tipo ?? null, atracao: [{ id: r.fields.atracao[0].id, title: nome }], claquete: [], filme: null });
+      resposta = {
+        records: corpo.records.map((r) => {
+          const nome = Object.keys(ID_DA_ATRACAO).find((n) => ID_DA_ATRACAO[n] === r.fields.atracao[0].id);
+          const nova = { id: `recNova${++novas}`, arte: r.fields.arte, tipo: r.fields.tipo ?? null, atracao: [{ id: r.fields.atracao[0].id, title: nome }], claquete: [], filme: null, modificado: carimbo() };
+          LINHAS.push(nova);
+          return { id: nova.id, fields: r.fields };
+        }),
+      };
+    else if (metodo === 'PATCH') for (const r of corpo.records) Object.assign(LINHAS.find((l) => l.id === r.id), r.fields, { modificado: carimbo() });
+    else if (metodo === 'DELETE')
+      for (const [, id] of [...new URL(url).searchParams].filter(([k]) => /^recordIds\[\d+\]$/.test(k))) {
+        const i = LINHAS.findIndex((l) => l.id === id);
+        if (i >= 0) LINHAS.splice(i, 1);
       }
-    else if (metodo === 'PATCH') for (const r of corpo.records) Object.assign(LINHAS.find((l) => l.id === r.id), r.fields);
     return { ok: true, status: 200, json: async () => resposta, text: async () => '' };
   };
   return criarAcervo(env, { consultar, buscar });
@@ -580,6 +613,82 @@ async function decidirNoComputador(navegador, url, tema, { gravar }) {
   console.log(`ok: decidir ${nome}: as perguntas na linha, a edição, o lote e o Gravar travado → liberado${gravar ? ' → gravado (cria 5, renomeia 1 no lugar)' : ''}`);
 }
 
+/** O histórico e o desfazer (#61): gravar → a caixinha preta → Desfazer → o total volta, com a importação riscada no
+    histórico da ficha; gravar de novo, alguém mexe numa linha no Teable, desfazer pelo histórico → o aviso. */
+async function desfazerNoComputador(navegador, url, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  const revista = REVISTAS[tema];
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  await linha(p, revista).locator('.abrir-ficha').click();
+  const ficha = p.locator('.ficha-atr');
+  await ficha.locator('.total-acervo', { hasText: '4' }).waitFor();
+  assert.equal(await ficha.locator('.historico-importacoes').count(), 0, 'sem importação, sem histórico');
+  const importar = async (arquivo) => {
+    await ficha.locator('.area-importar input[type=file]').setInputFiles({ name: arquivo, mimeType: 'text/csv', buffer: Buffer.from(CSV_REVISTA) });
+    await p.locator('.conferencia').waitFor();
+    assert.equal(await placar(p), '2 novas · 1 completa o acervo · 1 já no acervo · 0 ficam de fora');
+    await p.locator('.conf-pe .botao').click();
+    await p.locator('.resultado-importacao').waitFor();
+  };
+
+  // gravar: o resultado com o desfazer, e a caixinha preta
+  await importar('REVISTA_SERVICO.csv');
+  const res = p.locator('.resultado-importacao');
+  assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '4→6');
+  assert.match(await res.locator('.nota-desfazer').textContent(), /^Desfazer apaga as 2 linhas criadas e devolve o tipo e o nome antigos das que mudaram\. Fica na ficha da atração, em “Importações”, por 7 dias\./);
+  const caixinha = p.locator('.caixinha-importacao');
+  assert.equal((await caixinha.locator('span').textContent()).trim(), `+2 no acervo de ${revista}.`);
+  await semRolagemDeLado(p, `desfazer ${nome}, gravado`);
+  await capturar(p, `desfazer-gravado-${nome}`);
+
+  // Desfazer na caixinha: o total volta (6 → 4); BASTIDORES volta a ficar sem tipo
+  await caixinha.locator('.botao-texto', { hasText: 'Desfazer' }).click();
+  await res.locator('.det-desfeita').waitFor();
+  assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '6→4');
+  assert.equal(await res.locator('.det-desfeita').textContent(), `Importação desfeita: o acervo de ${revista} voltou a 4.`);
+  assert.equal(await res.locator('.nao-voltaram').count(), 0);
+  assert.equal(await p.locator('.caixinha-importacao').count(), 0, 'a caixinha some ao desfazer');
+  assert.deepEqual(
+    LINHAS.filter((l) => l.atracao[0]?.title === revista).map((l) => `${l.arte} (${l.tipo ?? ''})`),
+    ['CAPA (CRT)', 'ENTREVISTA (RDP)', 'BASTIDORES ()', 'MODA NOVA (RDP)'],
+    'o acervo voltou ao que era',
+  );
+  await capturar(p, `desfazer-desfeito-${nome}`);
+  await res.locator('.botao', { hasText: 'Ver a ficha' }).click();
+  await ficha.locator('.total-acervo', { hasText: '4' }).waitFor();
+  await linha(p, revista).locator('.qtd-acervo', { hasText: '4 artes' }).waitFor();
+  const hist = ficha.locator('.historico-importacoes');
+  await hist.locator('li').first().waitFor();
+  assert.equal(await hist.locator('li').count(), 1);
+  assert.equal(await hist.locator('li .arq').textContent(), 'REVISTA_SERVICO.csv');
+  assert.equal(await hist.locator('li .q').textContent(), '+2');
+  assert.match(await hist.locator('li .meta').textContent(), /^Lia Moraes · 1 ganhou o tipo · desfeita por Lia Moraes em \d{2}\/\d{2}$/);
+  assert.ok(await hist.locator('li').evaluate((li) => li.classList.contains('imp-desfeita')), 'a desfeita vem riscada');
+  assert.equal(await hist.locator('li .acoes-imp').count(), 0, 'a desfeita não se desfaz de novo');
+
+  // gravar de novo; alguém corrige no Teable o tipo de uma das criadas; desfazer pelo histórico
+  await importar('REVISTA_SERVICO_2.csv');
+  await p.locator('.resultado-importacao .botao', { hasText: 'Ver a ficha' }).click();
+  await ficha.locator('.total-acervo', { hasText: '6' }).waitFor();
+  await hist.locator('li').nth(1).waitFor();
+  assert.deepEqual(await hist.locator('li .arq').allTextContents(), ['REVISTA_SERVICO_2.csv', 'REVISTA_SERVICO.csv'], 'a mais nova primeiro');
+  await capturar(p, `desfazer-historico-${nome}`);
+  Object.assign(LINHAS.find((l) => l.atracao[0]?.title === revista && l.arte === 'ESTREIA'), { tipo: 'CRT', modificado: carimbo() });
+  const nova = hist.locator('li').first();
+  await nova.locator('.acoes-imp .botao-texto', { hasText: 'desfazer' }).click();
+  await nova.locator('.remover-conferir .botao-texto', { hasText: 'Desfazer' }).click();
+  await nova.locator('.nao-voltaram').waitFor();
+  assert.match(await nova.locator('.nao-voltaram').textContent(), /^1 linha não voltou: alguém mexeu nela no Teable depois da importação\. Confira à mão\./);
+  assert.deepEqual(await nova.locator('.nao-voltaram li').evaluateAll((ls) => ls.map((l) => [...l.children].map((c) => c.textContent).join(' | '))), ['ESTREIA | CRT | continua no acervo']);
+  await ficha.locator('.total-acervo', { hasText: '5' }).waitFor();
+  await p.locator('.aviso, [role=status]', { hasText: '1 linha não voltou: veja em Importações.' }).first().waitFor();
+  await semRolagemDeLado(p, `desfazer ${nome}, aviso`);
+  await capturar(p, `desfazer-aviso-${nome}`);
+  assert.deepEqual(erros, [], `desfazer ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: desfazer ${nome}: gravar 4 → 6 → Desfazer na caixinha → 6 → 4; histórico na ficha; desfazer pelo histórico avisa a linha mexida no Teable`);
+}
+
 async function principal() {
   const s = await subir({ acervo: await acervoFalso(), env: { CADASTRO_ADMINS: LIA } });
   const navegador = await chromium.launch();
@@ -592,6 +701,7 @@ async function principal() {
     await soltarNoComputador(navegador, s.url, 'dark');
     await decidirNoComputador(navegador, s.url, 'dark', { gravar: false });
     await decidirNoComputador(navegador, s.url, 'light', { gravar: true });
+    for (const tema of ['light', 'dark']) await desfazerNoComputador(navegador, s.url, tema);
   } finally {
     await navegador.close();
     await s.descer();

@@ -18,3 +18,11 @@ Na conferência, o nome parecido com um do acervo pergunta de que lado está o e
 gravação renomeia a mesma linha (o mesmo id), em vez de criar outra e deixar a errada; a resposta do gravar devolve o
 nome antigo de cada linha renomeada. O gravar recebe o CSV e as escolhas de quem conferiu e classifica de novo contra o
 acervo relido: com decisão pendente, nada é gravado.
+
+Cada importação fica registrada no SQLite do PROMeiro (atração, quem, quando, o arquivo e, por lote, o que foi gravado:
+os ids criados, o tipo e o nome antigos das linhas alteradas), e por 7 dias pode ser desfeita. Desfazer não confia só no
+registro: a linha que alguém mexeu no Teable depois não volta. "Mexeu depois" é a data de modificação da linha
+(`__last_modified_time`, lida pelo Postgres do Teable como o resto do acervo) diferente da que ela tinha logo depois de
+gravada; a data é a do próprio Teable, então o relógio do servidor do PROMeiro não entra na conta. A gravação que para
+no meio fica registrada até onde foi: o lote que falhou pode ter gravado sem responder, e o que ele criou é achado pela
+arte e pelo tipo entre as linhas que não estavam lá antes, para retomar sem duplicar e para desfazer sem deixar sobra.

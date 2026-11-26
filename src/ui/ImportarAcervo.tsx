@@ -8,6 +8,9 @@ import {
   type LinhaDaImportacao,
   type MudancaDaImportacao,
   type PerguntaDaImportacao,
+  type ImportacaoDesfeita,
+  type ImportacaoNoHistorico,
+  type LinhaQueNaoVoltou,
   type PreviaDaImportacao,
   type ResultadoDaImportacao,
 } from '../dados/armazenamento';
@@ -16,7 +19,9 @@ import { chaveDeBusca, plural } from './util';
 
 /* A importação do acervo por CSV (ADR 0005), na ficha da atração: a área "Importar CSV" (o botão ou o arquivo solto),
    a conferência antes de gravar (o placar, os filtros por estado, a busca, o ✕ que tira e devolve uma linha, as
-   perguntas na linha, o nome e o tipo editáveis e as decisões em lote) e o resultado (o total antes → depois). Só administradores, só acervo próprio; no celular, só a nota. */
+   perguntas na linha, o nome e o tipo editáveis e as decisões em lote), o resultado (o total antes → depois, com o
+   desfazer) e o histórico das importações na ficha (desfazer e retomar por 7 dias). Só administradores, só acervo
+   próprio; no celular, só a nota. */
 
 /** A área da ficha que recebe o CSV: o botão ou o arquivo solto em cima. Quem não é administrador vê o botão travado. */
 export function AreaDeImportar({ pode, lendo, falha, abrir }: { pode: boolean; lendo: boolean; falha: string; abrir: (arquivo: File) => void }) {
@@ -404,7 +409,66 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
 }
 
 /** Depois de gravar: o total do acervo antes → depois e o resumo. */
-export function ResultadoDaImportacaoNaTela({ previa, resultado, verFicha, verAcervo }: { previa: PreviaDaImportacao; resultado: ResultadoDaImportacao; verFicha: () => void; verAcervo: () => void }) {
+/** As linhas que o desfazer não devolveu (alguém mexeu nelas no Teable depois da importação), para conferir à mão. */
+export function NaoVoltaram({ linhas }: { linhas: LinhaQueNaoVoltou[] }) {
+  if (!linhas.length) return null;
+  return (
+    <div className="nao-voltaram" role="note">
+      <b>{linhas.length === 1 ? '1 linha não voltou' : `${linhas.length} linhas não voltaram`}</b>: alguém mexeu {linhas.length === 1 ? 'nela' : 'nelas'} no Teable depois da importação. Confira à mão.
+      <ul>
+        {linhas.map((l) => (
+          <li key={l.id}>
+            <span className="t">{l.arte}</span>
+            {l.tipo && <span className="s">{l.tipo}</span>}
+            <small>{l.motivo}</small>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** O resultado da importação: o total antes → depois e o desfazer; desfeita, o total voltando e o que não voltou. */
+export function ResultadoDaImportacaoNaTela({
+  previa,
+  resultado,
+  desfeita,
+  desfazendo,
+  desfazer,
+  verFicha,
+  verAcervo,
+}: {
+  previa: PreviaDaImportacao;
+  resultado: ResultadoDaImportacao;
+  desfeita?: ImportacaoDesfeita;
+  desfazendo: boolean;
+  desfazer: () => void;
+  verFicha: () => void;
+  verAcervo: () => void;
+}) {
+  if (desfeita)
+    return (
+      <section className="resultado-importacao desfeita" aria-label="Importação desfeita">
+        <span className="conf-arquivo">
+          <Icone nome="arquivo" tam={14} />
+          {previa.arquivo || 'CSV'} · desfeita agora por você
+        </span>
+        <div className="grande">
+          <span className="de">{resultado.depois}</span>
+          <span className="seta">→</span>
+          <span className="ate">{desfeita.depois}</span>
+        </div>
+        <p className="det-desfeita">
+          {desfeita.depois === desfeita.antes ? `Importação desfeita: o acervo de ${previa.atracao} voltou a ${desfeita.antes}.` : `Importação desfeita: o acervo de ${previa.atracao} tem ${desfeita.depois} (eram ${desfeita.antes} antes da importação).`}
+        </p>
+        <NaoVoltaram linhas={desfeita.naoVoltaram} />
+        <div className="acoes">
+          <button type="button" className="botao primario" onClick={verFicha}>
+            Ver a ficha
+          </button>
+        </div>
+      </section>
+    );
   return (
     <section className="resultado-importacao" aria-label="Importação gravada">
       <span className="conf-arquivo">
@@ -428,6 +492,12 @@ export function ResultadoDaImportacaoNaTela({ previa, resultado, verFicha, verAc
         · {plural(resultado.semMudanca, 'linha', 'linhas')} sem mudança
       </p>
       <div className="acoes">
+        {resultado.importacao && (
+          <button type="button" className="botao" disabled={desfazendo} onClick={desfazer}>
+            <Icone nome="desfazer" tam={15} />
+            {desfazendo ? 'Desfazendo…' : 'Desfazer a importação'}
+          </button>
+        )}
         <button type="button" className="botao" onClick={verFicha}>
           Ver a ficha
         </button>
@@ -435,6 +505,83 @@ export function ResultadoDaImportacaoNaTela({ previa, resultado, verFicha, verAc
           Ver o acervo
         </button>
       </div>
+      {resultado.importacao && (
+        <p className="nota-desfazer">
+          Desfazer apaga as {plural(resultado.novas, 'linha criada', 'linhas criadas')} e devolve o tipo e o nome antigos das que mudaram. Fica na ficha da atração, em “Importações”, por 7 dias. Só não volta a linha que alguém mexeu
+          depois no Teable: essa fica, e o aviso diz qual.
+        </p>
+      )}
     </section>
+  );
+}
+
+const diaEMes = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+/** Uma importação no histórico: a data, o arquivo, quem, +N; para administradores, desfazer (com a confirmação) e
+    retomar a interrompida. */
+function ItemDoHistorico({ imp, desfazer, retomar }: { imp: ImportacaoNoHistorico; desfazer: () => Promise<void>; retomar: () => Promise<void> }) {
+  const [conferindo, setConferindo] = useState(false);
+  const [indo, setIndo] = useState(false);
+  const fazer = (acao: () => Promise<void>) => async () => {
+    setIndo(true);
+    await acao();
+    setIndo(false);
+    setConferindo(false);
+  };
+  const desfeita = imp.estado === 'desfeita';
+  const quanto = imp.estado === 'interrompida' ? `+${imp.criadas} de ${imp.novas}` : `+${imp.novas}`;
+  return (
+    <li className={`imp-${imp.estado}`}>
+      <span className="quando" title={new Date(imp.em).toLocaleString('pt-BR')}>{diaEMes(imp.em)}</span>
+      <span className="arq" title={imp.arquivo}>{imp.arquivo}</span>
+      <span className="q">{quanto}</span>
+      <span className="meta">
+        {imp.por}
+        {imp.ganharamTipo > 0 && ` · ${imp.ganharamTipo} ${imp.ganharamTipo === 1 ? 'ganhou' : 'ganharam'} o tipo`}
+        {imp.renomeadas > 0 && ` · ${imp.renomeadas} ${imp.renomeadas === 1 ? 'nome corrigido' : 'nomes corrigidos'}`}
+        {desfeita && <> · <b>desfeita</b> por {imp.desfeita!.por} em {diaEMes(imp.desfeita!.em)}</>}
+        {imp.estado === 'interrompida' && <> · <b>parou no meio</b></>}
+      </span>
+      {(imp.podeDesfazer || imp.podeRetomar) && (
+        <span className="acoes-imp">
+          {conferindo ? (
+            <span className="remover-conferir">
+              Desfazer?
+              <button type="button" className="botao-texto" onClick={() => setConferindo(false)}>Não</button>
+              <button type="button" className="botao-texto perigo" disabled={indo} onClick={fazer(desfazer)}>
+                {indo ? 'Desfazendo…' : 'Desfazer'}
+              </button>
+            </span>
+          ) : (
+            <>
+              {imp.podeRetomar && (
+                <button type="button" className="botao-texto" disabled={indo} onClick={fazer(retomar)}>
+                  {indo ? 'Retomando…' : 'retomar'}
+                </button>
+              )}
+              <button type="button" className="botao-texto" disabled={indo} onClick={() => setConferindo(true)} title={`Até ${new Date(imp.ate).toLocaleDateString('pt-BR')}`}>
+                desfazer
+              </button>
+            </>
+          )}
+        </span>
+      )}
+      {desfeita && imp.desfeita!.naoVoltaram.length > 0 && <NaoVoltaram linhas={imp.desfeita!.naoVoltaram} />}
+    </li>
+  );
+}
+
+/** "Importações" na ficha da atração: cada CSV importado, a mais nova primeiro. */
+export function HistoricoDasImportacoes({ importacoes, desfazer, retomar }: { importacoes: ImportacaoNoHistorico[]; desfazer: (id: string) => Promise<void>; retomar: (id: string) => Promise<void> }) {
+  if (!importacoes.length) return null;
+  return (
+    <div className="historico-importacoes">
+      <span className="rot">Importações</span>
+      <ul>
+        {importacoes.map((imp) => (
+          <ItemDoHistorico key={imp.id} imp={imp} desfazer={() => desfazer(imp.id)} retomar={() => retomar(imp.id)} />
+        ))}
+      </ul>
+    </div>
   );
 }
