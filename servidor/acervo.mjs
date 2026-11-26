@@ -611,6 +611,36 @@ export function criarAcervo(env, deps = {}) {
       await teable('DELETE', '?' + ids.slice(i, i + 100).map((id, n) => `recordIds[${n}]=${encodeURIComponent(id)}`).join('&'));
   }
 
+  /**
+   * Passa as artes ligadas a uma linha da produção da arte (o vínculo claquete) para outra: apagar uma duplicada (#67)
+   * religa as artes do card que sai ao card que fica (ADR 0003), e desfazer as devolve. Só as artes dadas em `ids`
+   * (as que estavam ligadas a `de` quando foram religadas), quando vierem; sem elas, todas as ligadas a `de` agora.
+   * @returns os ids das artes religadas
+   */
+  async function religar({ de, para, ids = null }) {
+    if (!ligado) return [];
+    if (!de || !para) throw new Error('Falta a linha da produção da arte de onde e para onde as artes vão.');
+    esquecer();
+    const escolhidas = ids ? new Set(ids) : null;
+    const mover = (await todas()).filter((l) => l.registro === de && (!escolhidas || escolhidas.has(l.id))).map((l) => l.id);
+    if (!mover.length) return [];
+    if (!grava) throw new Error('O acervo de artes não grava (TEABLE_URL, TEABLE_TOKEN e TEABLE_ACERVO).');
+    const feitas = [];
+    try {
+      for (let i = 0; i < mover.length; i += 100) {
+        const lote = mover.slice(i, i + 100);
+        await teable('PATCH', '', { fieldKeyType: 'name', typecast: true, records: lote.map((id) => ({ id, fields: { claquete: [{ id: para }] } })) });
+        feitas.push(...lote);
+      }
+    } catch (e) {
+      // o lote que falhou não passou; os de antes, sim: quem chama desfaz estes
+      throw Object.assign(e instanceof Error ? e : new Error(String(e)), { religadas: feitas });
+    } finally {
+      esquecer();
+    }
+    return feitas;
+  }
+
   /** Pacote gráfico novo: todas as artes da atração saem do acervo (apagadas). @returns quantas */
   async function zerar(atracao) {
     if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (a tabela ARTES_acervo na base do Teable).');
@@ -622,5 +652,5 @@ export function criarAcervo(env, deps = {}) {
     return ids.length;
   }
 
-  return { ligado, grava, artesPorRegistro, acervoDe, previaDaImportacao, gravarImportacao, retomarImportacao, desfazerImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, artesPorRegistro, religar, acervoDe, previaDaImportacao, gravarImportacao, retomarImportacao, desfazerImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }

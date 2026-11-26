@@ -973,7 +973,7 @@ export function criarTrello(env, deps = {}) {
     if (!t.producao || !consultar) return null;
     const ler = (tabela) =>
       sql(
-        `SELECT "__id" AS registro, "card_ID", "claquete", "praca", "data_entrada", "data_entrega", "status", "arquivado", "designers", "entregue", "filme", "artes_quantidade" FROM ${tabela}
+        `SELECT "__id" AS registro, "card_ID", "claquete", "praca", "data_entrada", "data_entrega", "status", "arquivado", "designers", "entregue", "filme", "artes_quantidade", "__last_modified_time" FROM ${tabela}
          WHERE "data_entrada" >= now() - ($1 || ' days')::interval AND "card_ID" IS NOT NULL AND "card_ID" <> ''`,
         [String(dias | 0)],
       );
@@ -992,8 +992,38 @@ export function criarTrello(env, deps = {}) {
       // para o caso aberto (só o que o Teable tem, ADR 0006)
       entrega: instante(l.data_entrega),
       artesQuantidade: numeroOuNada(l.artes_quantidade),
+      // a última mudança da linha no Teable: apagar uma duplicada (#67) confere que ela não mudou desde que a tela abriu
+      modificadoEm: instante(l.__last_modified_time),
     }));
   }
+
+  /**
+   * As linhas da produção da arte destes cards, lidas na hora (apagar uma duplicada, #67): o que o agrupamento precisa
+   * (LinhaDaProducao), a última mudança no Teable e a linha inteira como o Postgres tem (`inteira`, para a cópia).
+   * Sem a produção configurada, null; com o Postgres fora, lança.
+   */
+  async function producaoDosCards(ids) {
+    if (!t.producao || !consultar) return null;
+    const cards = [...new Set(ids.map((id) => String(id ?? '').trim()).filter(Boolean))];
+    if (!cards.length) return [];
+    const linhas = await sql(`SELECT ${COLUNAS_DA_CARGA}, to_jsonb(p) AS "inteira" FROM ${t.producao} p WHERE p."card_ID" = ANY($1::text[])`, [cards]);
+    return linhas
+      .filter((l) => l.__id)
+      .map((l) => {
+        const lida = linhaDaCarga(l);
+        return { ...lida, filme: !!lida.filme, inteira: l.inteira && typeof l.inteira === 'object' ? l.inteira : null };
+      });
+  }
+
+  /* ---------- apagar uma duplicada (#67): escritas no Trello, sem ler nada dele ---------- */
+  /** Comenta no card; devolve o id do comentário (a ação), para desfazer. */
+  async function comentar(card, texto) {
+    const acao = await trello('POST', `/cards/${encodeURIComponent(card)}/actions/comments`, { consulta: { text: texto } });
+    return acao?.id ? String(acao.id) : null;
+  }
+  const apagarComentario = (acao) => trello('DELETE', `/actions/${encodeURIComponent(acao)}`);
+  /** Apaga o card do Trello (não volta: recriar faz um card novo). */
+  const apagarCard = (card) => trello('DELETE', `/cards/${encodeURIComponent(card)}`);
 
   /** A linha da produção da arte como a carga e a releitura leem (src/modelo/eventosDoTeable.ts, LinhaRelida). */
   const linhaDaCarga = (l) => ({
@@ -1297,5 +1327,5 @@ export function criarTrello(env, deps = {}) {
     apagar: (id) => trello('DELETE', `/webhooks/${encodeURIComponent(id)}`),
   };
 
-  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

@@ -8,7 +8,9 @@
 // cards. Ignorar (#66) pela linha,
 // com o motivo: o caso sai da lista e do contador, vai para Resolvidas e para o Registro; Reabrir devolve. Quem não é
 // administrador não vê a aba. No celular, claro e escuro: a lista e o caso aberto com os cards empilhados, Resolvidas e
-// o Registro, só consulta (sem Ignorar nem Reabrir).
+// o Registro, só consulta (sem Ignorar nem Reabrir). Apagar (#67): no modo só olhar (o padrão) não há Apagar; liberado
+// no painel, apagar um card com a confirmação (Conferi + o código do card que sai, o aviso do card aberto): o resultado,
+// o caso sai da lista, o contador cai e o Registro mostra quem apagou. No Trello, só o comentário e o DELETE.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:duplicadas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -56,6 +58,7 @@ function card(numero, nome, criado, o = {}) {
     arquivado: c.closed,
     entregue: !!o.entregue,
     filme: o.filme ?? null,
+    __last_modified_time: new Date(criado + 2 * HORA).toISOString(),
   });
   return c;
 }
@@ -125,13 +128,19 @@ const FRASES_DO_SHOW = [`entrou ${diaHoraLocal(CRIADO_SHOW).join(' ')}`, '2 de 4
 const pedidosDaLinha = [];
 
 /** O Trello de mentira: a aba não lê o Trello (ADR 0006); o pedido que chegar fica anotado e o teste confere que não
-    chegou nenhum. */
+    chegou nenhum. Apagar (#67) só escreve: o comentário no card que fica e o DELETE do que sai. */
 const pedidosAoTrello = [];
+const ok = (dados = {}) => ({ ok: true, status: 200, json: async () => dados, text: async () => '' });
 async function buscar(url, init = {}) {
   const u = new URL(url);
   const metodo = init.method ?? 'GET';
   pedidosAoTrello.push(`${metodo} ${u.pathname}`);
-  if (metodo !== 'GET') throw new Error(`a aba Duplicadas só lê: ${metodo} ${u.pathname}`);
+  if (metodo === 'POST' && /^\/1\/cards\/[0-9a-f]{24}\/actions\/comments$/.test(u.pathname)) return ok({ id: 'acaoFalsa1' });
+  if (metodo === 'DELETE' && /^\/1\/cards\/[0-9a-f]{24}$/.test(u.pathname)) {
+    CARDS.splice(CARDS.findIndex((c) => u.pathname.endsWith(c.id)), 1);
+    return ok();
+  }
+  if (metodo !== 'GET') throw new Error(`pedido inesperado ao Trello: ${metodo} ${u.pathname}`);
   const umCard = /^\/1\/cards\/([0-9a-f]{24})$/.exec(u.pathname);
   if (!umCard) throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
   const x = CARDS.find((y) => y.id === umCard[1]);
@@ -159,7 +168,20 @@ async function consultar(sql, params = []) {
     const desde = Date.now() - Number(params[0]) * DIA;
     return PRODUCAO.filter((l) => l.card_ID && Date.parse(l.data_entrada) >= desde);
   }
+  // as linhas dos cards do caso, relidas na hora de apagar (#67)
+  if (sql.includes('"bseFalso"."producao"') && sql.includes('= ANY(')) return PRODUCAO.filter((l) => l.card_ID && params[0].includes(l.card_ID)).map((l) => ({ ...l, __id: l.registro, inteira: { ...l } }));
   return [];
+}
+/** O Teable de mentira (a API): o acervo religa as artes ao card que fica. */
+const ACERVO_GRAVA = { TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'falso', TEABLE_ACERVO: 'tblAcervo' };
+const pedidosAoTeable = [];
+async function buscarNoTeable(url, init = {}) {
+  const u = new URL(url);
+  pedidosAoTeable.push(`${init.method ?? 'GET'} ${u.pathname}`);
+  if (init.method !== 'PATCH') throw new Error(`pedido inesperado ao Teable: ${u.pathname}`);
+  const { records } = JSON.parse(init.body);
+  for (const r of records) ACERVO.find((a) => a.id === r.id).claquete = [{ id: r.fields.claquete[0].id, title: '' }];
+  return ok({ records });
 }
 
 /* ---------- o navegador ---------- */
@@ -188,11 +210,12 @@ const fundoEscuro = (p) =>
     const [r, g, b] = getComputedStyle(document.body).backgroundColor.match(/\d+/g).map(Number);
     return r + g + b < 200;
   });
-const capturar = async (p, nome) => {
+// `tela`: só o que cabe na janela (a confirmação fica por cima da página, num véu fixo)
+const capturar = async (p, nome, { tela = false } = {}) => {
   if (!CAPTURAS) return;
   mkdirSync(CAPTURAS, { recursive: true });
   await p.waitForTimeout(300);
-  await p.screenshot({ path: join(CAPTURAS, `${nome}.png`), fullPage: true });
+  await p.screenshot({ path: join(CAPTURAS, `${nome}.png`), fullPage: !tela });
 };
 /** O nome que o servidor deu à Lia (sai do e-mail). */
 const nomeDaLia = (p) => p.evaluate(() => fetch('/api/eu').then((r) => r.json()).then((d) => d.nome));
@@ -325,7 +348,8 @@ async function noComputador(navegador, url, tema) {
   await capturar(p, `04-ignorar-${nome}`);
   await dialogo.locator('.botao.primario', { hasText: 'Ignorar' }).click();
   await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 5);
-  assert.equal(await p.locator('.dialogo-dup').count(), 0);
+  // o diálogo fecha logo depois de a lista chegar (o registro é lido antes): espera, sem corrida
+  await p.locator('.dialogo-dup').waitFor({ state: 'detached' });
   assert.equal(await caso(p, 'Cozinha de Vó').count(), 0, 'o caso saiu da lista');
   assert.equal((await aba.locator('.rot').textContent()).trim(), 'Duplicadas 5', 'o contador da aba caiu');
   assert.deepEqual(await textos(p.locator('.vista-dup button')), ['Para olhar5', 'Resolvidas1']);
@@ -420,9 +444,89 @@ async function noCelular(navegador, url, tema) {
   console.log(`ok: celular ${nome}: lista → caso com os cards empilhados, Resolvidas e Registro, só consulta`);
 }
 
+/** Apagar (#67): o modo só olhar esconde o Apagar; liberado, apagar um card com a confirmação à prova de engano. */
+async function apagarNoComputador(navegador, url) {
+  pedidosAoTrello.length = 0;
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1500 }, colorScheme: 'light' });
+  const aba = p.locator('.abas-cad .aba-dup');
+  await aba.locator('sup', { hasText: '6' }).waitFor();
+  await aba.click();
+  await p.locator('.secao-dup').first().waitFor();
+  // no modo só olhar (sem a chave na configuração), o caso aberto não tem Apagar
+  const modo = p.locator('.painel-dup .modo-dup');
+  assert.match((await modo.textContent()).replace(/\s+/g, ' '), /^Só olhar O Apagar fica escondido/);
+  const show = caso(p, 'Show da Noite');
+  await show.locator('.linha-dup').click();
+  await show.locator('.tabela-dup').waitFor();
+  assert.deepEqual(await textos(show.locator('.acoes-dup .botao')), ['Ignorar'], 'só olhar: sem Apagar');
+  // liberar o Apagar no painel
+  await modo.locator('button', { hasText: 'Liberar o Apagar' }).click();
+  await modo.locator('text=Apagar liberado').waitFor();
+  const [primeiro, segundo] = [4790, 4795].map((n) => CARDS.find((x) => x.idShort === n).id);
+  const cod = (id) => id.slice(-4);
+  await show.locator('.apagar-dup').waitFor();
+  assert.deepEqual(await textos(show.locator('.acoes-dup .botao')), ['Ignorar', `Apagar …${cod(segundo)}`]);
+  // a pessoa troca: sai o primeiro (aberto, com designers e as três artes do acervo), fica o segundo
+  const cabeca = show.locator('.tabela-dup .cabeca .col-dup');
+  await cabeca.nth(1).locator('button', { hasText: 'Fica' }).click();
+  assert.deepEqual(await textos(show.locator('.acoes-dup .botao')), ['Ignorar', `Apagar …${cod(primeiro)}`]);
+  await show.locator('.apagar-dup').click();
+  const dialogo = p.locator('.dialogo-dup.largo');
+  await dialogo.waitFor();
+  assert.equal((await dialogo.locator('h2').textContent()).trim(), `Apagar o card …${cod(primeiro)}`);
+  assert.deepEqual(await textos(dialogo.locator('.comparar-dup .cabeca [role=columnheader]')), ['', `Fica …${cod(segundo)}`, `Sai …${cod(primeiro)}`]);
+  assert.match(await dialogo.locator('.aviso-dup').textContent(), /O card que sai está aberto \(não foi arquivado\), com Designer Um, Designer Dois/);
+  const diferentes = await textos(dialogo.locator('.comparar-dup .difere [role=rowheader]'));
+  for (const r of ['Estado', 'Designers', 'Acervo ligado']) assert.ok(diferentes.includes(r), `${r} difere na confirmação`);
+  assert.deepEqual(await textos(dialogo.locator('.efeitos-dup tbody th')), ['Trello', 'Produção da arte', 'Acervo', 'Roteiro no PROMeiro']);
+  assert.match(await dialogo.locator('.efeitos-dup tbody tr').nth(2).textContent(), /3 artes passam para o card que fica/);
+  assert.match(await dialogo.locator('.efeitos-dup tbody tr').nth(1).textContent(), /fluxo PROMO: DB do n8n/);
+  assert.equal((await dialogo.locator('.conferi-dup').textContent()).trim(), 'Conferi: é a mesma claquete, na mesma praça e na mesma versão, e o card que fica é o certo');
+  // o botão só acende com o Conferi e o código certo
+  const botao = dialogo.locator('.botao.perigo-cheio');
+  assert.equal(await botao.isDisabled(), true);
+  await dialogo.locator('.conferi-dup input').check();
+  assert.equal(await botao.isDisabled(), true, 'sem o código, apagado');
+  await dialogo.locator('.codigo-dup input').fill(cod(segundo));
+  assert.equal(await botao.isDisabled(), true, 'com o código do outro card, apagado');
+  await dialogo.locator('.codigo-dup input').fill(cod(primeiro).toUpperCase());
+  assert.equal(await botao.isDisabled(), false);
+  assert.deepEqual(pedidosAoTrello, [], 'nada no Trello antes de confirmar');
+  await semRolagemDeLado(p, 'computador, confirmação de apagar');
+  await capturar(p, '20-apagar-confirmacao-claro', { tela: true });
+  await botao.click();
+  await dialogo.locator('.resultado-dup').waitFor();
+  assert.equal((await dialogo.locator('h2').textContent()).trim(), `Card …${cod(primeiro)} apagado`);
+  assert.match(await dialogo.locator('.feito-dup').textContent(), /3 artes do acervo passaram para o card que fica/);
+  // no Trello, só escritas: o comentário no card que fica e o DELETE do que sai
+  assert.deepEqual(pedidosAoTrello, [`POST /1/cards/${segundo}/actions/comments`, `DELETE /1/cards/${primeiro}`]);
+  assert.deepEqual(pedidosAoTeable, ['PATCH /api/table/tblAcervo/record']);
+  assert.deepEqual(ACERVO.filter((a) => a.atracao[0].id === 'recShow').map((a) => a.claquete[0].id), ['rec4795', 'rec4795', 'rec4795']);
+  await capturar(p, '21-apagar-resultado-claro', { tela: true });
+  await dialogo.locator('button', { hasText: 'Fechar' }).click();
+  // o caso sai da lista e o contador cai (a linha ainda está na produção: o n8n tira depois); o Registro mostra quem apagou
+  await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 5);
+  assert.equal(await caso(p, 'Show da Noite').count(), 0);
+  assert.equal((await aba.locator('.rot').textContent()).trim(), 'Duplicadas 5');
+  const primeira = p.locator('.registro-dup li').first();
+  await primeira.locator('text=apagou').waitFor();
+  assert.match((await primeira.textContent()).replace(/\s+/g, ' '), new RegExp(`apagou o card …${cod(primeiro)} de Show da Noite 20/11 SP \\(ficou …${cod(segundo)}, que recebeu 3 artes\\)\\.agora$`));
+  await semRolagemDeLado(p, 'computador, depois de apagar');
+  await capturar(p, '22-apagar-registro-claro');
+  // volta ao só olhar (o Apagar some)
+  await modo.locator('button', { hasText: 'Voltar a só olhar' }).click();
+  await modo.locator('text=Só olhar').waitFor();
+  await caso(p, 'Festa na Praça').locator('.linha-dup').click();
+  await caso(p, 'Festa na Praça').locator('.tabela-dup').waitFor();
+  assert.equal(await p.locator('.apagar-dup').count(), 0);
+  assert.deepEqual(erros, [], 'apagar: erros na página');
+  await ctx.close();
+  console.log('ok: apagar: só olhar esconde o Apagar; liberado, a confirmação (aviso do card aberto, Conferi + código) apaga, religa o acervo, e o caso sai da lista e entra no Registro');
+}
+
 async function principal() {
   const { criarAcervo } = await import(join(RAIZ, 'servidor', 'acervo.mjs'));
-  const acervo = criarAcervo(ENV_TRELLO, { consultar });
+  const acervo = criarAcervo({ ...ENV_TRELLO, ...ACERVO_GRAVA }, { consultar, buscar: buscarNoTeable });
   const s = await subir({ trello: { env: ENV_TRELLO, buscar, consultar }, acervo, env: { CADASTRO_ADMINS: LIA } });
   const navegador = await chromium.launch();
   try {
@@ -430,6 +534,7 @@ async function principal() {
     await semSerAdministrador(navegador, s.url);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema);
     assert.deepEqual(pedidosAoTrello, [], 'nada lido no Trello (ADR 0006)');
+    await apagarNoComputador(navegador, s.url);
   } finally {
     await navegador.close();
     await s.descer();

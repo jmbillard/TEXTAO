@@ -222,6 +222,13 @@ Cada grupo é um **caso**, que a aba Duplicadas dos Cadastros mostra só para ad
 duplicada") tira o caso da lista sem mudar nada no Trello nem no Teable: ele vai para **Resolvidas** e para o
 **Registro** (quem fez o quê e quando, com o motivo), volta com **Reabrir** e volta sozinho quando entra card novo no
 grupo (a assinatura, os ids dos cards, mudou).
+**Apagar** (só administradores, no computador, fora do **modo só olhar**) tira um card do grupo por vez, com a
+confirmação: os dois cards lado a lado, o que acontece em cada sistema, "Conferi" e o **código do card** que sai
+digitado (os 4 últimos caracteres do card_ID, o fim do link; o número do card só o Trello tem). O PROMeiro relê as
+linhas no Teable (não no Trello) e para se algo mudou desde que a tela abriu; então guarda a **cópia** no Registro (a
+linha da produção inteira e o que o PROMeiro tem do card), passa as artes do acervo e o roteiro guardado ao card que
+fica, comenta nele e apaga o card no Trello. A linha da produção sai pelo n8n; o card apagado sai da lista na hora.
+O **modo só olhar** (ligado até um administrador liberar o Apagar no painel) é para comparar com o relatório do n8n.
 _Evitar_: card repetido, claquete duplicada (no envio, "duplicado" é a claquete que já tinha entrado hoje na produção)
 
 **Produção**:

@@ -216,3 +216,47 @@ export function duplicadasDaProducao(linhas: LinhaDaProducao[], { desde, pracas 
   }
   return casos.sort((a, b) => SECOES.indexOf(a.secao) - SECOES.indexOf(b.secao) || b.recente - a.recente);
 }
+
+/* ---------- apagar um card do caso (#67) ---------- */
+
+/** O código do card, que a confirmação pede para digitar: os 4 últimos caracteres do card_ID (o fim do link do card).
+    Sai do id, sem ler o Trello (o número do card só o Trello tem, ADR 0006). */
+export const codigoDoCard = (id: string) => String(id ?? '').trim().slice(-4).toLowerCase();
+
+/** O que a tela viu de um card quando o caso abriu, e o que o servidor relê na hora de apagar. */
+export interface CardVisto {
+  claquete: string;
+  arquivado: boolean;
+  status: string[];
+  designers: string[];
+  entrada: string | null;
+  entrega?: string | null;
+  artes?: number | null;
+  /** a última mudança da linha no Teable */
+  modificadoEm: string | null;
+}
+export interface Mudanca {
+  card: string;
+  campo: string;
+  antes: string;
+  depois: string;
+}
+const CAMPOS_VISTOS: { campo: string; valor: (c: CardVisto) => string }[] = [
+  { campo: 'Claquete', valor: (c) => c.claquete ?? '' },
+  { campo: 'Estado', valor: (c) => (c.arquivado ? 'arquivado' : 'aberto') },
+  { campo: 'Status', valor: (c) => (c.status ?? []).join(', ') },
+  { campo: 'Designers', valor: (c) => (c.designers ?? []).join(', ') },
+  { campo: 'Entrada', valor: (c) => c.entrada ?? '' },
+  { campo: 'Entrega', valor: (c) => c.entrega ?? '' },
+  { campo: 'Artes', valor: (c) => (c.artes == null ? '' : String(c.artes)) },
+];
+
+/**
+ * O que mudou num card desde que a tela abriu o caso: cada campo que a tela mostrou e está diferente agora. Se só a
+ * última mudança da linha no Teable é outra (mexeram em algo que a tela não mostra), ela mesma é a mudança.
+ */
+export function mudancasDoCard(card: string, visto: CardVisto, agora: CardVisto): Mudanca[] {
+  const mudou = CAMPOS_VISTOS.filter((c) => c.valor(visto) !== c.valor(agora)).map((c) => ({ card, campo: c.campo, antes: c.valor(visto), depois: c.valor(agora) }));
+  if (!mudou.length && (visto.modificadoEm ?? '') !== (agora.modificadoEm ?? '')) mudou.push({ card, campo: 'Linha da produção', antes: visto.modificadoEm ?? '', depois: agora.modificadoEm ?? '' });
+  return mudou;
+}

@@ -876,6 +876,8 @@ export interface ResumoDaDuplicada {
 export interface ListaDasDuplicadas {
   /** sem a produção da arte configurada (TEABLE_PG_URL e a ARTE_producao na base do Teable), false */
   ligado: boolean;
+  /** o modo só olhar (#67): a aba não apaga, para comparar com o relatório do n8n nos primeiros dias */
+  soOlhar: boolean;
   dias: number;
   /** quando a produção da arte foi lida (a lista não lê o Trello) */
   lidoEm: string | null;
@@ -901,7 +903,7 @@ export interface ResolvidaDaDuplicada {
   em: string;
   motivo: string;
 }
-/** Uma ação do Registro: quem ignorou ou reabriu (e, depois, apagou ou recriou) o quê e quando. */
+/** Uma ação do Registro: quem ignorou, reabriu ou apagou (e, depois, recriou) o quê e quando. */
 export interface AcaoDoRegistro {
   id: number;
   acao: 'ignorar' | 'reabrir' | 'apagar' | 'recriar';
@@ -909,11 +911,17 @@ export interface AcaoDoRegistro {
   claquete: string;
   praca: string;
   cards: string[];
+  /** apagar: o card que saiu e o que ficou */
+  card: string | null;
+  fica: string | null;
   por: string;
   em: string;
   motivo: string;
   /** a ignorada que vale agora: dá para reabrir */
   podeReabrir: boolean;
+  /** apagar (#67): em curso, feito (o card saiu do Trello) ou falhou (nada foi apagado) */
+  estado?: 'em-curso' | 'feito' | 'falhou';
+  apagado?: { codigo: string; religadas: number; roteiros: number; erro: string; naoDesfeito: string[] } | null;
 }
 /** Um card do caso aberto, como o detalhe compara: só o que a produção da arte do Teable tem (nada é lido do Trello). */
 export interface CardDaDuplicada {
@@ -937,6 +945,10 @@ export interface CardDaDuplicada {
   url: string;
   /** o motivo da sugestão para este card */
   motivo: string;
+  /** o código que a confirmação de apagar pede: os 4 últimos caracteres do card_ID (o fim do link) */
+  codigo: string;
+  /** a última mudança da linha no Teable: apagar confere que não mudou desde que a tela abriu */
+  modificadoEm: string | null;
 }
 export interface CasoDaDuplicada {
   id: string;
@@ -955,6 +967,43 @@ export const lerRegistroDasDuplicadas = () => pedir<{ registro: AcaoDoRegistro[]
 /** Ignora o caso: só o registro do PROMeiro muda (nada no Trello nem no Teable). */
 export const ignorarDuplicada = (id: string, dias: number, motivo: string) =>
   pedir<{ ok: true }>('/api/duplicadas/ignorar', { method: 'POST', body: JSON.stringify({ id, dias, motivo }) });
+/** O que mudou num card desde que o caso abriu (apagar para e devolve isto). */
+export interface MudancaNaDuplicada {
+  card: string;
+  codigo: string;
+  campo: string;
+  antes: string;
+  depois: string;
+}
+/** O card apagado: quantas artes do acervo e roteiros passaram para o card que fica. */
+export interface ApagadoDaDuplicada {
+  registro: number;
+  card: string;
+  codigo: string;
+  fica: string;
+  religadas: number;
+  roteiros: number;
+  comentou: boolean;
+}
+export type ApagarDuplicada = { ok: true; apagado: ApagadoDaDuplicada } | { ok: false; erro: string; mudou?: MudancaNaDuplicada[]; bloqueado?: boolean };
+/**
+ * Apaga um card do caso (#67): o servidor confere o código digitado e relê os cards na produção da arte; se algo mudou
+ * desde que a tela abriu, para e devolve o que mudou (nada é apagado).
+ */
+export async function apagarDuplicada(caso: CasoDaDuplicada, dias: number, sai: string, fica: string, codigo: string): Promise<ApagarDuplicada> {
+  const vistos = Object.fromEntries(caso.cards.map((c) => [c.id, c]));
+  const r = await fetch('/api/duplicadas/apagar', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', ...cabecalhos },
+    body: JSON.stringify({ caso: caso.id, dias, sai, fica, codigo, vistos }),
+  });
+  const corpo = (await r.json().catch(() => null)) as (ApagadoDaDuplicada & { erro?: string; mudou?: MudancaNaDuplicada[]; bloqueado?: boolean }) | null;
+  if (r.ok && corpo) return { ok: true, apagado: corpo };
+  return { ok: false, erro: corpo?.erro ?? `O servidor não respondeu (${r.status}).`, mudou: corpo?.mudou, bloqueado: corpo?.bloqueado };
+}
+/** Liga ou desliga o modo só olhar das Duplicadas (a chave DUPLICADAS_SO_OLHAR da configuração). */
+export const mudarModoDasDuplicadas = (soOlhar: boolean) => pedir<{ soOlhar: boolean }>('/api/duplicadas/modo', { method: 'POST', body: JSON.stringify({ soOlhar }) });
 /** A Linha do tempo (#89) da Produção de um card: o estado de agora e os eventos. Sem Produção, producao é null. */
 export interface LinhaDoTempo {
   producao: (ProducaoDaLinha & { id: string; claquete: string }) | null;

@@ -25,7 +25,11 @@ const ENV = {
   TEABLE_PG_URL: 'postgres://falso',
   TEABLE_PG_ESQUEMA: 'bseFalso',
   ...comTabelas({ ARTE_producao: 'producao', ARTES_acervo: 'acervo' }),
+  // apagar liberado (sem o modo só olhar, #67)
+  DUPLICADAS_SO_OLHAR: '0',
 };
+// o acervo grava pela API do Teable (de mentira): religar as artes ao card que fica
+const ENV_DO_ACERVO = { TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'token-falso', TEABLE_ACERVO: 'tblAcervo' };
 
 const DIA = 86_400_000;
 const PESSOAS: Record<string, string> = { m1: 'Pessoa Um', m2: 'Pessoa Dois' };
@@ -36,7 +40,10 @@ const haDias = (dias: number) => new Date(Date.now() - dias * DIA).toISOString()
 
 type CardFalso = { id: string; idShort: number; name: string; closed: boolean; idList: string; idMembers: string[]; due?: string; checkItems?: number; anexos?: string[] };
 /** Uma linha da produção da arte como sai do Postgres (status e designers em texto JSON ou lista). */
-type LinhaFalsa = { registro: string; card_ID: string | null; claquete: string; praca: string | null; data_entrada: string | null; data_entrega?: string | null; artes_quantidade?: number | null; status: unknown; designers: unknown; arquivado: boolean | null; entregue: boolean | null; filme: unknown };
+type LinhaFalsa = { registro: string; card_ID: string | null; claquete: string; praca: string | null; data_entrada: string | null; data_entrega?: string | null; artes_quantidade?: number | null; status: unknown; designers: unknown; arquivado: boolean | null; entregue: boolean | null; filme: unknown; __last_modified_time?: string };
+type ArteFalsa = { id: string; arte: string; tipo: string; atracao: unknown; claquete: { id: string; title: string }[]; filme: unknown };
+/** Onde o Trello ou o Teable de mentira falham (o passo do apagar que para no meio). */
+type Falha = 'religar' | 'comentar' | 'apagar';
 
 function falsos() {
   const noTrello: CardFalso[] = [];
@@ -44,7 +51,7 @@ function falsos() {
   /** Uma linha da produção que entrou há `dias`, com o card dela no Trello (a não ser que `card` diga outra coisa). */
   const linha = (dias: number, claquete: string, o: Partial<LinhaFalsa> = {}, t: Partial<CardFalso> | null = {}) => {
     const id = idCriadoHa(dias + 0.01);
-    const l: LinhaFalsa = { registro: `rec${sequencia}`, card_ID: id, claquete, praca: null, data_entrada: haDias(dias), status: '["PRODUZINDO"]', designers: '["Designer Um"]', arquivado: false, entregue: false, filme: null, ...o };
+    const l: LinhaFalsa = { registro: `rec${sequencia}`, card_ID: id, claquete, praca: null, data_entrada: haDias(dias), status: '["PRODUZINDO"]', designers: '["Designer Um"]', arquivado: false, entregue: false, filme: null, __last_modified_time: haDias(dias), ...o };
     producao.push(l);
     if (t && l.card_ID) noTrello.push({ id: l.card_ID, idShort: 1000 + sequencia, name: claquete, closed: !!l.arquivado, idList: 'entradaG5', idMembers: ['m1'], checkItems: 4, anexos: ['application/pdf'], ...t });
     return l;
@@ -75,11 +82,45 @@ function falsos() {
   /** Uma linha nova na produção (o reenvio que chega depois). */
   const novaLinha = (dias: number, claquete: string) => linha(dias, claquete, { designers: [] }, { idMembers: [] });
   const pedidos: string[] = [];
+  const falhar = new Set<Falha>();
+  const comentarios: { id: string; card: string; texto: string }[] = [];
+  const erro = (status: number) => ({ ok: false, status, json: async () => ({}), text: async () => 'falha de mentira' });
   const buscar = async (url: string, init: RequestInit = {}) => {
     const u = new URL(url);
     const metodo = init.method ?? 'GET';
+    // o Teable (a API): só o acervo grava, religando as artes ao card que fica
+    if (u.origin === ENV_DO_ACERVO.TEABLE_URL) {
+      pedidos.push(`${metodo} teable ${u.pathname}`);
+      if (metodo !== 'PATCH' || u.pathname !== `/api/table/${ENV_DO_ACERVO.TEABLE_ACERVO}/record`) throw new Error(`pedido inesperado ao Teable: ${metodo} ${u.pathname}`);
+      if (falhar.has('religar')) return erro(500);
+      const corpo = JSON.parse(String(init.body)) as { records: { id: string; fields: { claquete: { id: string }[] } }[] };
+      for (const r of corpo.records) {
+        const a = acervo.find((x) => x.id === r.id)!;
+        a.claquete = [{ id: r.fields.claquete[0].id, title: '' }];
+      }
+      return { ok: true, status: 200, json: async () => ({ records: corpo.records }), text: async () => '' };
+    }
     pedidos.push(`${metodo} ${u.pathname}`);
-    if (metodo !== 'GET') throw new Error(`a aba Duplicadas só lê: ${metodo} ${u.pathname}`);
+    // as escritas no Trello de apagar uma duplicada (#67): comentar, desfazer o comentário e apagar o card
+    const comentar = /^\/1\/cards\/([0-9a-f]{24})\/actions\/comments$/.exec(u.pathname);
+    if (metodo === 'POST' && comentar) {
+      if (falhar.has('comentar')) return erro(500);
+      const c = { id: `acao${comentarios.length + 1}`, card: comentar[1], texto: u.searchParams.get('text') ?? '' };
+      comentarios.push(c);
+      return { ok: true, status: 200, json: async () => ({ id: c.id }), text: async () => '' };
+    }
+    const umaAcao = /^\/1\/actions\/(\w+)$/.exec(u.pathname);
+    if (metodo === 'DELETE' && umaAcao) {
+      comentarios.splice(comentarios.findIndex((c) => c.id === umaAcao[1]), 1);
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
+    }
+    const apagar = /^\/1\/cards\/([0-9a-f]{24})$/.exec(u.pathname);
+    if (metodo === 'DELETE' && apagar) {
+      if (falhar.has('apagar')) return erro(500);
+      noTrello.splice(noTrello.findIndex((c) => c.id === apagar[1]), 1);
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
+    }
+    if (metodo !== 'GET') throw new Error(`pedido inesperado ao Trello: ${metodo} ${u.pathname}`);
     const umCard = /^\/1\/cards\/([0-9a-f]{24})$/.exec(u.pathname);
     if (!umCard) throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
     const x = noTrello.find((y) => y.id === umCard[1]);
@@ -102,7 +143,7 @@ function falsos() {
     return { ok: true, status: 200, json: async () => dados, text: async () => '' };
   };
   // o acervo: três artes ligadas à linha do primeiro show, uma à da novela
-  const acervo = [
+  const acervo: ArteFalsa[] = [
     ...['HOJE', 'AMANHÃ', 'SÁBADO'].map((arte, i) => ({ id: `recA${i}`, arte, tipo: 'RDP', atracao: [{ id: 'recShow', title: 'Show da Noite' }], claquete: [{ id: linhas.show1.registro, title: 'SHOW DA NOITE 20/11 SP' }], filme: null })),
     { id: 'recA9', arte: 'ABERTURA', tipo: 'CRT', atracao: [{ id: 'recNov', title: 'Novela Sinfonia' }], claquete: [{ id: linhas.novela1.registro, title: 'NOVELA SINFONIA 12/11' }], filme: null },
   ];
@@ -115,9 +156,16 @@ function falsos() {
       const desde = Date.now() - Number(params[0]) * DIA;
       return producao.filter((l) => l.card_ID && l.data_entrada && Date.parse(l.data_entrada) >= desde);
     }
+    // as linhas destes cards, relidas na hora de apagar (#67), com a linha inteira
+    if (sql.includes('"bseFalso"."producao"') && sql.includes('= ANY(')) {
+      const ids = params[0] as string[];
+      return producao.filter((l) => l.card_ID && ids.includes(l.card_ID)).map((l) => ({ ...l, __id: l.registro, inteira: { ...l } }));
+    }
     return [];
   };
-  return { linhas, buscar, consultar, pedidos, novaLinha, leituras: () => leiturasDaProducao };
+  /** O n8n (PROMO: DB) tira a linha da produção do card apagado. */
+  const tirarDaProducao = (l: LinhaFalsa) => producao.splice(producao.indexOf(l), 1);
+  return { linhas, acervo, buscar, consultar, pedidos, falhar, comentarios, noTrello, tirarDaProducao, novaLinha, leituras: () => leiturasDaProducao };
 }
 
 let parar: (() => Promise<void>) | null = null;
@@ -129,7 +177,7 @@ afterEach(async () => {
 async function comServidor(env: Record<string, string> = ENV) {
   const f = falsos();
   const trello = criarTrello(env, { buscar: f.buscar, consultar: f.consultar });
-  const acervo = criarAcervo(env, { consultar: f.consultar, buscar: f.buscar });
+  const acervo = criarAcervo({ ...env, ...ENV_DO_ACERVO }, { consultar: f.consultar, buscar: f.buscar });
   const app = criarApp({ db: abrirBanco(':memory:'), env, trello, acervo });
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
@@ -243,6 +291,9 @@ describe('o detalhe de um caso', () => {
       // o link do card é feito do card_ID
       url: `https://trello.com/c/${linhas.show1.card_ID}`,
       motivo: 'Não foi arquivado na entrada.',
+      // para apagar (#67): o código que a confirmação pede e a última mudança da linha no Teable
+      codigo: linhas.show1.card_ID!.slice(-4),
+      modificadoEm: linhas.show1.__last_modified_time,
     });
     expect(caso.cards[1]).toMatchObject({ id: linhas.show2.card_ID, arquivado: true, status: ['ENTRADA'], designers: [], artes: null, entrega: null, acervo: 0, roteiro: null, motivo: 'Arquivado sem sair da entrada.' });
     expect(Date.parse(caso.cards[1].criado) - Date.parse(caso.cards[0].criado)).toBeGreaterThan(0);
@@ -342,5 +393,202 @@ describe('ignorar e reabrir (#66)', () => {
     await app.mudarConfiguracao({ TRELLO_LISTA_SP: 'listaNovaSP' }).antigaFechada;
     const lista = (await (await chefe('/api/duplicadas')).json()) as ListaComResolvidas;
     expect(lista.resolvidas.map((r) => [r.id, r.motivo])).toEqual([[casos[0].id, 'Pedido de propósito']]);
+  });
+});
+
+type CardDoCaso = { id: string; codigo: string; modificadoEm: string | null; arquivado: boolean; status: string[]; acervo: number; roteiro: { id: string } | null };
+type Caso = { id: string; sugestao: { fica: string; saem: string[] }; cards: CardDoCaso[] };
+type AcaoApagar = Registro['registro'][number] & { id: number; card: string; fica: string; estado: string; apagado: { codigo: string; religadas: number; roteiros: number; erro: string; naoDesfeito: string[] } };
+
+describe('apagar um card do caso (#67)', () => {
+  type Pedir = (c: string, i?: RequestInit) => Promise<Response>;
+  const casoDe = async (chefe: Pedir, claquete: string) => {
+    const lista = (await (await chefe('/api/duplicadas')).json()) as Lista;
+    const id = lista.casos.find((c) => c.claquete === claquete)!.id;
+    return (await (await chefe(`/api/duplicadas/caso?id=${encodeURIComponent(id)}`)).json()) as Caso;
+  };
+  /** O pedido da confirmação: o card que sai, o que fica, o código digitado e o que a tela viu de cada card. */
+  const apagar = (pedir: Pedir, caso: Caso, sai: string, fica: string, codigo = caso.cards.find((c) => c.id === sai)!.codigo) =>
+    pedir('/api/duplicadas/apagar', { method: 'POST', body: JSON.stringify({ caso: caso.id, dias: 90, sai, fica, codigo, vistos: Object.fromEntries(caso.cards.map((c) => [c.id, c])) }) });
+  const escritas = (pedidos: string[]) => pedidos.filter((p) => !p.startsWith('GET '));
+  /** O roteiro guardado que foi para o primeiro show (o card que vai sair nos testes). */
+  const comRoteiro = async (chefe: Pedir, card: string) => {
+    await chefe('/api/roteiros/rot-show-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Show da Noite 20/11 SP' }, doc: { type: 'doc', content: [] } }, nArtes: 1 }) });
+    await chefe('/api/roteiros/rot-show-1/trello', { method: 'POST', body: JSON.stringify({ jaEsta: { card } }) });
+  };
+  const urlDoRoteiro = async (chefe: Pedir) => ((await (await chefe('/api/roteiros/rot-show-1/trello')).json()) as { url: string }).url;
+
+  it('na ordem: cópia, religar o acervo, reapontar o roteiro, comentar no que fica e só então o DELETE; o caso sai da lista', async () => {
+    const { chefe, linhas, acervo, pedidos, comentarios, noTrello } = await comServidor();
+    await comRoteiro(chefe, linhas.show1.card_ID!);
+    // a pessoa troca a sugestão: sai o primeiro show (aberto, com as três artes do acervo e o roteiro), fica o segundo
+    const caso = await casoDe(chefe, 'Show da Noite 20/11 SP');
+    const [sai, fica] = [linhas.show1.card_ID!, linhas.show2.card_ID!];
+    expect(caso.cards[0]).toMatchObject({ id: sai, codigo: sai.slice(-4), modificadoEm: linhas.show1.__last_modified_time, arquivado: false, acervo: 3 });
+    pedidos.length = 0;
+    const r = await apagar(chefe, caso, sai, fica);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ card: sai, codigo: sai.slice(-4), fica, religadas: 3, roteiros: 1, comentou: true });
+    // nada lido do Trello; o Teable (o acervo) antes do comentário, o comentário antes do DELETE
+    expect(pedidos.filter((p) => p.startsWith('GET /1/'))).toEqual([]);
+    expect(escritas(pedidos)).toEqual([`PATCH teable /api/table/tblAcervo/record`, `POST /1/cards/${fica}/actions/comments`, `DELETE /1/cards/${sai}`]);
+    expect(noTrello.some((c) => c.id === sai)).toBe(false);
+    expect(comentarios).toEqual([{ id: 'acao1', card: fica, texto: `Duplicado …${sai.slice(-4)} (Show da Noite 20/11 SP) apagado por Chefe pelo PROMeiro.` }]);
+    // as artes do acervo passaram para a linha do card que fica; o roteiro guardado aponta para ele
+    expect(acervo.filter((a) => a.claquete[0].id === linhas.show2.registro).map((a) => a.arte)).toEqual(['HOJE', 'AMANHÃ', 'SÁBADO']);
+    expect(await urlDoRoteiro(chefe)).toBe(`https://trello.com/c/${fica}`);
+    // o caso sai da lista e o contador cai, mesmo antes de o n8n tirar a linha da produção (e depois, também)
+    for (const renovar of ['', '?renovar=1']) {
+      const lista = (await (await chefe(`/api/duplicadas${renovar}`)).json()) as Lista;
+      expect(lista.pendentes).toBe(3);
+      expect(lista.casos.map((c) => c.claquete)).not.toContain('Show da Noite 20/11 SP');
+    }
+    // o Registro, com a cópia guardada: a linha da produção inteira e o que o PROMeiro tem do card
+    const { registro } = (await (await chefe('/api/duplicadas/registro')).json()) as { registro: AcaoApagar[] };
+    expect(registro[0]).toMatchObject({ acao: 'apagar', caso: caso.id, card: sai, fica, por: 'Chefe', estado: 'feito', apagado: { codigo: sai.slice(-4), religadas: 3, roteiros: 1, erro: '', naoDesfeito: [] } });
+    const { copia } = await (await chefe(`/api/duplicadas/copia?id=${registro[0].id}`)).json();
+    expect(copia).toMatchObject({
+      codigo: sai.slice(-4),
+      card: sai,
+      fica,
+      claquete: 'Show da Noite 20/11 SP',
+      registro: linhas.show1.registro,
+      producaoDaArte: { registro: linhas.show1.registro, card_ID: sai, claquete: 'Show da Noite 20/11 SP', status: '["FINALIZADO"]', artes_quantidade: 4 },
+      roteiros: [{ id: 'rot-show-1', card: sai, url: `https://trello.com/c/${sai}` }],
+      anexos: [],
+      feito: { religadas: ['recA0', 'recA1', 'recA2'], roteiros: [{ id: 'rot-show-1' }], comentario: 'acao1' },
+    });
+    // o n8n tira a linha da produção: nada muda no registro nem na lista
+    await apagar(chefe, caso, sai, fica);
+    expect((((await (await chefe('/api/duplicadas/registro')).json()) as { registro: AcaoApagar[] }).registro).filter((l) => l.acao === 'apagar')).toHaveLength(1);
+  });
+
+  it('o card aberto pode sair; com três cards, o caso fica com os dois que sobraram', async () => {
+    const { chefe, novaLinha, pedidos } = await comServidor();
+    const nova = novaLinha(0.5, 'COZINHA DE VÓ 18/11');
+    const lista = (await (await chefe('/api/duplicadas?renovar=1')).json()) as Lista;
+    const caso = (await (await chefe(`/api/duplicadas/caso?id=${encodeURIComponent(lista.casos.find((c) => c.claquete === 'Cozinha de Vó 18/11')!.id)}`)).json()) as Caso;
+    expect(caso.cards).toHaveLength(3);
+    expect((await apagar(chefe, caso, nova.card_ID!, caso.cards[0].id)).status).toBe(200);
+    // sem artes no acervo nem roteiro: só o comentário e o DELETE
+    expect(escritas(pedidos)).toEqual([`POST /1/cards/${caso.cards[0].id}/actions/comments`, `DELETE /1/cards/${nova.card_ID}`]);
+    const depois = (await (await chefe('/api/duplicadas')).json()) as Lista;
+    expect(depois.pendentes).toBe(4);
+    expect(depois.casos.find((c) => c.claquete === 'Cozinha de Vó 18/11')).toMatchObject({ cards: 2 });
+  });
+
+  it('só administradores; o código errado é recusado; nada é escrito', async () => {
+    const { chefe, ana, linhas, pedidos } = await comServidor();
+    const caso = await casoDe(chefe, 'Show da Noite 20/11 SP');
+    pedidos.length = 0;
+    expect((await apagar(ana, caso, linhas.show2.card_ID!, linhas.show1.card_ID!)).status).toBe(403);
+    const errado = await apagar(chefe, caso, linhas.show2.card_ID!, linhas.show1.card_ID!, linhas.show1.card_ID!.slice(-4));
+    expect(errado.status).toBe(400);
+    expect((await errado.json()).erro).toMatch(/código digitado não é o do card que sai/);
+    expect((await apagar(chefe, caso, linhas.show2.card_ID!, linhas.show2.card_ID!)).status).toBe(400);
+    expect((await apagar(chefe, caso, linhas.show2.card_ID!, linhas.festa1.card_ID!)).status).toBe(400);
+    expect((await chefe('/api/duplicadas/apagar')).status).toBe(405);
+    expect(pedidos).toEqual([]);
+    const { registro } = (await (await chefe('/api/duplicadas/registro')).json()) as Registro;
+    expect(registro).toEqual([]);
+  });
+
+  it('o card que mudou no Teable desde que a tela abriu para tudo e devolve o que mudou', async () => {
+    const { chefe, linhas, pedidos } = await comServidor();
+    const caso = await casoDe(chefe, 'Show da Noite 20/11 SP');
+    // alguém pegou o card que ia sair: o status e os designers mudaram (e a última mudança da linha)
+    Object.assign(linhas.show2, { status: ['PRODUZINDO'], designers: ['Designer Três'], __last_modified_time: new Date().toISOString() });
+    pedidos.length = 0;
+    const r = await apagar(chefe, caso, linhas.show2.card_ID!, linhas.show1.card_ID!);
+    expect(r.status).toBe(409);
+    const corpo = await r.json();
+    expect(corpo.erro).toMatch(/mudaram desde que o caso abriu\. Nada foi apagado/);
+    expect(corpo.mudou).toEqual([
+      { card: linhas.show2.card_ID, codigo: linhas.show2.card_ID!.slice(-4), campo: 'Status', antes: 'ENTRADA', depois: 'PRODUZINDO' },
+      { card: linhas.show2.card_ID, codigo: linhas.show2.card_ID!.slice(-4), campo: 'Designers', antes: '', depois: 'Designer Três' },
+    ]);
+    // o caso aberto de novo mostra o que a produção tem agora; só a última mudança da linha (mexeram no que a tela
+    // não mostra) também para, e a claquete que virou outra versão não é mais do grupo
+    const caso2 = await casoDe(chefe, 'Show da Noite 20/11 SP');
+    expect(caso2.cards.find((c) => c.id === linhas.show2.card_ID)).toMatchObject({ status: ['PRODUZINDO'] });
+    Object.assign(linhas.show1, { __last_modified_time: new Date(Date.now() + 1000).toISOString() });
+    Object.assign(linhas.show2, { claquete: 'Show da Noite 20/11 V2' });
+    const r2 = await apagar(chefe, caso2, linhas.show2.card_ID!, linhas.show1.card_ID!);
+    expect(r2.status).toBe(409);
+    expect((await r2.json()).mudou).toEqual([
+      expect.objectContaining({ card: linhas.show1.card_ID, campo: 'Linha da produção' }),
+      expect.objectContaining({ card: linhas.show2.card_ID, campo: 'Grupo' }),
+    ]);
+    expect(escritas(pedidos)).toEqual([]);
+  });
+
+  it('o único card do grupo com linha na produção não sai; o que já não está na produção também não', async () => {
+    const { chefe, linhas, pedidos, tirarDaProducao } = await comServidor();
+    const caso = await casoDe(chefe, 'Show da Noite 20/11 SP');
+    pedidos.length = 0;
+    // a linha do card que ia ficar sumiu da produção: o que sai é o único com linha
+    tirarDaProducao(linhas.show1);
+    const r = await apagar(chefe, caso, linhas.show2.card_ID!, linhas.show1.card_ID!);
+    expect(r.status).toBe(409);
+    expect(await r.json()).toMatchObject({ bloqueado: true, erro: expect.stringMatching(/único do grupo com linha na produção/) });
+    // a do card que ia sair sumiu (o card já foi apagado no Trello, à mão)
+    const outro = await casoDe(chefe, 'Festa na Praça 19/11 REDE');
+    tirarDaProducao(linhas.festa2);
+    const r2 = await apagar(chefe, outro, linhas.festa2.card_ID!, linhas.festa1.card_ID!);
+    expect(r2.status).toBe(409);
+    expect((await r2.json()).mudou).toEqual([expect.objectContaining({ card: linhas.festa2.card_ID, depois: 'não está mais na produção' })]);
+    expect(escritas(pedidos)).toEqual([]);
+  });
+
+  it.each([
+    ['religar', ['PATCH teable /api/table/tblAcervo/record']],
+    ['comentar', ['PATCH teable', 'POST comments', 'PATCH teable']],
+    ['apagar', ['PATCH teable', 'POST comments', 'DELETE card', 'DELETE comentário', 'PATCH teable']],
+  ] as const)('a falha ao %s para sem apagar: o que foi feito é desfeito e fica no registro', async (falha, esperado) => {
+    const { chefe, linhas, acervo, pedidos, falhar, comentarios, noTrello } = await comServidor();
+    await comRoteiro(chefe, linhas.show1.card_ID!);
+    const caso = await casoDe(chefe, 'Show da Noite 20/11 SP');
+    const [sai, fica] = [linhas.show1.card_ID!, linhas.show2.card_ID!];
+    falhar.add(falha);
+    pedidos.length = 0;
+    const r = await apagar(chefe, caso, sai, fica);
+    expect(r.status).toBe(502);
+    const corpo = await r.json();
+    expect(corpo.erro).toMatch(/Nada foi apagado\. O que tinha sido feito foi desfeito\./);
+    const curto = (p: string) =>
+      p.startsWith('PATCH teable') ? (esperado[0] === 'PATCH teable /api/table/tblAcervo/record' ? p : 'PATCH teable') : p.endsWith('/actions/comments') ? 'POST comments' : p.startsWith('DELETE /1/cards/') ? 'DELETE card' : p.startsWith('DELETE /1/actions/') ? 'DELETE comentário' : p;
+    expect(escritas(pedidos).map(curto)).toEqual(esperado);
+    // o card continua no Trello, sem comentário; as artes e o roteiro voltaram ao card que ia sair
+    expect(noTrello.some((c) => c.id === sai)).toBe(true);
+    expect(comentarios).toEqual([]);
+    expect(acervo.filter((a) => a.claquete[0].id === linhas.show1.registro)).toHaveLength(3);
+    expect(await urlDoRoteiro(chefe)).toBe(`https://trello.com/c/${sai}`);
+    // o caso continua na lista; o registro diz que parou e por quê, com a cópia guardada
+    expect(((await (await chefe('/api/duplicadas')).json()) as Lista).pendentes).toBe(4);
+    const { registro } = (await (await chefe('/api/duplicadas/registro')).json()) as { registro: AcaoApagar[] };
+    expect(registro[0]).toMatchObject({ acao: 'apagar', card: sai, estado: 'falhou', apagado: { erro: expect.any(String), naoDesfeito: [] } });
+    expect((await (await chefe(`/api/duplicadas/copia?id=${registro[0].id}`)).json()).copia).toMatchObject({ card: sai, producaoDaArte: { card_ID: sai } });
+    // e dá para tentar de novo
+    falhar.clear();
+    expect((await apagar(chefe, caso, sai, fica)).status).toBe(200);
+  });
+
+  it('o modo só olhar (sem a chave, ligado): a rota recusa; um administrador libera e volta, na configuração', async () => {
+    const { chefe, ana, linhas, pedidos } = await comServidor({ ...ENV, DUPLICADAS_SO_OLHAR: '' });
+    expect(((await (await chefe('/api/duplicadas')).json()) as { soOlhar: boolean }).soOlhar).toBe(true);
+    const caso = await casoDe(chefe, 'Show da Noite 20/11 SP');
+    pedidos.length = 0;
+    const r = await apagar(chefe, caso, linhas.show2.card_ID!, linhas.show1.card_ID!);
+    expect(r.status).toBe(403);
+    expect((await r.json()).erro).toMatch(/modo só olhar/);
+    expect(pedidos).toEqual([]);
+    // só administradores mudam o modo
+    expect((await ana('/api/duplicadas/modo', { method: 'POST', body: JSON.stringify({ soOlhar: false }) })).status).toBe(403);
+    expect((await chefe('/api/duplicadas/modo', { method: 'POST', body: JSON.stringify({ soOlhar: 'não' }) })).status).toBe(400);
+    expect((await chefe('/api/duplicadas/modo', { method: 'POST', body: JSON.stringify({ soOlhar: false }) })).status).toBe(200);
+    expect(((await (await chefe('/api/duplicadas')).json()) as { soOlhar: boolean }).soOlhar).toBe(false);
+    expect((await apagar(chefe, await casoDe(chefe, 'Show da Noite 20/11 SP'), linhas.show2.card_ID!, linhas.show1.card_ID!)).status).toBe(200);
+    await chefe('/api/duplicadas/modo', { method: 'POST', body: JSON.stringify({ soOlhar: true }) });
+    expect(((await (await chefe('/api/duplicadas')).json()) as { soOlhar: boolean }).soOlhar).toBe(true);
   });
 });

@@ -432,13 +432,16 @@ const FABRICAS = {
   acervo: (env, { abrirPg, trello }) => criarAcervo(env, { abrirPg, artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }),
   cadastros: (env, { vocabulario }) => criarCadastros(env, { vocabulario }),
   redatorProvavel: (env, { abrirPg }) => criarRedatorProvavel(env, { abrirPg }),
-  duplicadas: (_env, { trello, acervo, registro }) => criarDuplicadas({ trello, acervo, registro }),
+  duplicadas: (env, { trello, acervo, registro, promeiro }) => criarDuplicadas({ trello, acervo, registro, promeiro, soOlhar: soOlharNasDuplicadas(env) }),
   // a aba Filmes nasce uma vez (a fila de leitura da prévia não para); na mudança, só o envio e a conferência mudam
   filmes: (env, { db, trello, abrirPg, anexos }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg, anexos }),
 };
 /** Os módulos que são refeitos quando a configuração muda (e fechados, os antigos, quando terminam o que faziam). */
 const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas'];
 const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
+/** O modo só olhar das Duplicadas (#67): ligado até alguém desligar (DUPLICADAS_SO_OLHAR=0), para os primeiros dias
+    da comparação com o relatório do n8n. */
+export const soOlharNasDuplicadas = (env) => !/^(0|nao|não|false|off)$/i.test(String(env?.DUPLICADAS_SO_OLHAR ?? '').trim());
 
 /** De quanto em quanto tempo o servidor olha os membros do quadro (a seção Pessoas, #77): uma vez por dia. */
 const UM_DIA = 24 * 60 * 60 * 1000;
@@ -477,6 +480,34 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const producoes = criarProducoes(db);
   // os anexos guardados pelo PROMeiro (#90): o PDF do roteiro do envio e os pôsteres dos filmes, no SQLite (no backup)
   const anexos = criarAnexos(db, { buscar: buscarNoTeable });
+  /* O que o PROMeiro guarda de um card, para apagar uma duplicada (#67): a cópia leva os envios dos roteiros, a lista
+     dos anexos (o PDF continua guardado, pelo id) e as Produções com a linha do tempo; o envio do roteiro passa ao card
+     que fica (e volta, se o apagar parar antes do DELETE). Nada lido do Trello. */
+  const doCardNoPROMeiro = {
+    envios: db.prepare('SELECT roteiro_id, estado, card_id, url, em, por_nome FROM envios WHERE card_id = ? ORDER BY em'),
+    anexos: db.prepare('SELECT id, tipo, chave, nome, mime, em FROM anexos WHERE card = ? ORDER BY em'),
+    mudar: db.prepare('UPDATE envios SET card_id = ?, url = ? WHERE roteiro_id = ? AND card_id = ?'),
+    devolver: db.prepare('UPDATE envios SET card_id = ?, url = ? WHERE roteiro_id = ?'),
+  };
+  const emTransacao = (f) => {
+    db.exec('BEGIN');
+    try {
+      f();
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  };
+  const promeiroDasDuplicadas = {
+    doCard: (card) => ({
+      roteiros: doCardNoPROMeiro.envios.all(card).map((e) => ({ id: String(e.roteiro_id), estado: e.estado, card: e.card_id, url: e.url ?? null, em: e.em, por: e.por_nome ?? '' })),
+      anexos: doCardNoPROMeiro.anexos.all(card).map((a) => ({ id: a.id, tipo: a.tipo, chave: a.chave, nome: a.nome, mime: a.mime, em: a.em })),
+      producoes: producoes.buscar({ card }),
+    }),
+    reapontar: (roteiros, card) => emTransacao(() => roteiros.forEach((r) => doCardNoPROMeiro.mudar.run(card, `https://trello.com/c/${card}`, r.id, r.card))),
+    devolver: (roteiros) => emTransacao(() => roteiros.forEach((r) => doCardNoPROMeiro.devolver.run(r.card, r.url, r.id))),
+  };
   // as importações que estão sendo desfeitas ou retomadas agora (o segundo clique espera o primeiro)
   const mexendoNaImportacao = new Set();
   const lerCopia = db.prepare('SELECT dados, em FROM teable_copia WHERE chave = ?');
@@ -508,7 +539,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     g.pauta = criarPauta(env, g.vocabulario, abrir, cache, copia);
     g.cadastros = fazer(fabricas.cadastros, env, { vocabulario: g.vocabulario });
     g.redatorProvavel = fazer(fabricas.redatorProvavel, env, { abrirPg: abrir });
-    g.duplicadas = fazer(fabricas.duplicadas, env, { trello: g.trello, acervo: g.acervo, registro: registroDasDuplicadas });
+    g.duplicadas = fazer(fabricas.duplicadas, env, { trello: g.trello, acervo: g.acervo, registro: registroDasDuplicadas, promeiro: promeiroDasDuplicadas });
     return g;
   }
   let geracao = montar(configuracao.valores());
@@ -1804,9 +1835,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /**
    * Aba Duplicadas dos Cadastros (#65), só para administradores: a lista dos casos do período (?dias=, 1 a 730, 90 sem
-   * dizer; ?busca=; ?renovar=1 lê a produção da arte de novo), o detalhe de um caso (?id=, o único que lê o Trello) e o
-   * registro. Ignorar e reabrir (#66,
-   * POST { id, dias, motivo }) só anotam no registro do PROMeiro: nada muda no Trello nem no Teable.
+   * dizer; ?busca=; ?renovar=1 lê a produção da arte de novo), o detalhe de um caso (?id=) e o registro; nada é lido
+   * do Trello. Ignorar e reabrir (#66, POST { id, dias, motivo }) só anotam no registro do PROMeiro: nada muda no Trello
+   * nem no Teable. Apagar (#67, POST { caso, dias, sai, fica, codigo, vistos }) relê os cards no Teable e só escreve no
+   * Trello (o comentário e o DELETE); a cópia fica em GET /api/duplicadas/copia?id=; POST /api/duplicadas/modo
+   * { soOlhar } liga ou desliga o modo só olhar (DUPLICADAS_SO_OLHAR).
    */
   /**
    * As Produções (#86), só para administradores, para conferir a carga: GET /api/producoes dá quantas há em cada etapa
@@ -1837,10 +1870,44 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   async function rotaDasDuplicadas(req, res, eu, caminho) {
     const acao = caminho === '/api/duplicadas/ignorar' || caminho === '/api/duplicadas/reabrir';
-    if (req.method !== (acao ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
-    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: acao ? 'Só administradores ignoram e reabrem duplicadas.' : 'Só administradores veem as duplicadas.' });
+    const escreve = acao || caminho === '/api/duplicadas/apagar' || caminho === '/api/duplicadas/modo';
+    if (req.method !== (escreve ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
+    if (!cadastros.podeApagar(eu.email))
+      return json(res, 403, { erro: caminho === '/api/duplicadas/apagar' ? 'Só administradores apagam duplicadas.' : escreve ? 'Só administradores ignoram, reabrem e apagam duplicadas.' : 'Só administradores veem as duplicadas.' });
     if (caminho === '/api/duplicadas/registro') return json(res, 200, { registro: duplicadas.registro() });
     const busca = new URL(req.url, 'http://x').searchParams;
+    // a cópia guardada de um card apagado (#67), para conferir e para o #68 recriar
+    if (caminho === '/api/duplicadas/copia') {
+      const copia = /^\d{1,12}$/.test(busca.get('id') ?? '') ? duplicadas.copia(Number(busca.get('id'))) : null;
+      return copia ? json(res, 200, { copia }) : json(res, 404, { erro: 'Não há cópia guardada com este número.' });
+    }
+    // o modo só olhar (#67): a chave DUPLICADAS_SO_OLHAR da configuração (vale na hora e entra no histórico)
+    if (caminho === '/api/duplicadas/modo') {
+      const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
+      if (typeof corpo.soOlhar !== 'boolean') return json(res, 400, { erro: 'Diga se a aba fica só olhando (soOlhar: true ou false).' });
+      mudarConfiguracao({ DUPLICADAS_SO_OLHAR: corpo.soOlhar ? '1' : '0' }, { por: eu.email });
+      console.log(`[duplicadas] ${eu.email} ${corpo.soOlhar ? 'ligou o modo só olhar' : 'liberou o apagar'}`);
+      return json(res, 200, { soOlhar: corpo.soOlhar });
+    }
+    if (caminho === '/api/duplicadas/apagar') {
+      const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
+      const textoDias = corpo.dias == null ? '' : String(corpo.dias);
+      const dias = textoDias === '' ? DIAS_PADRAO : /^\d{1,4}$/.test(textoDias) ? Number(textoDias) : NaN;
+      if (!(dias >= 1 && dias <= DIAS_MAXIMO)) return json(res, 400, { erro: `O período vai de 1 a ${DIAS_MAXIMO} dias.` });
+      const id24 = (v) => typeof v === 'string' && /^[0-9a-f]{24}$/i.test(v);
+      if (typeof corpo.caso !== 'string' || !corpo.caso || corpo.caso.length > 400) return json(res, 400, { erro: 'Falta o caso.' });
+      if (!id24(corpo.sai) || !id24(corpo.fica)) return json(res, 400, { erro: 'Falta o card que sai ou o card que fica.' });
+      const vistos = corpo.vistos && typeof corpo.vistos === 'object' && !Array.isArray(corpo.vistos) ? corpo.vistos : {};
+      try {
+        const r = await duplicadas.apagar(corpo.caso, { dias, sai: corpo.sai, fica: corpo.fica, codigo: typeof corpo.codigo === 'string' ? corpo.codigo : '', vistos, por: { email: eu.email, nome: eu.nome } });
+        if (r.ok) return json(res, 200, r.resultado);
+        const { status, ...resto } = r;
+        return json(res, status, resto);
+      } catch (e) {
+        console.warn(`[duplicadas] ${e instanceof Error ? e.message : e}`);
+        return json(res, 502, { erro: `Não consegui reler os cards na produção da arte: ${e instanceof Error ? e.message : e}. Nada foi apagado.` });
+      }
+    }
     const corpo = acao ? ((await lerCorpo(req).catch(() => null)) ?? {}) : {};
     const textoDias = acao ? (corpo.dias == null ? null : String(corpo.dias)) : busca.get('dias');
     const dias = textoDias === null || textoDias === '' ? DIAS_PADRAO : /^\d{1,4}$/.test(textoDias) ? Number(textoDias) : NaN;
@@ -2340,7 +2407,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!card && !producao) return json(res, 400, { erro: 'Falta o card ou a Produção.' });
       return json(res, 200, producoes.linhaDoTempo({ card, producao }));
     }
-    if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
+    if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir', 'apagar', 'modo', 'copia'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 

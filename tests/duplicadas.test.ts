@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { duplicadasDaProducao, sugestaoDoCaso, type CardDoCaso, type LinhaDaProducao } from '../src/modelo/duplicadas';
+import { codigoDoCard, duplicadasDaProducao, mudancasDoCard, sugestaoDoCaso, type CardDoCaso, type CardVisto, type LinhaDaProducao } from '../src/modelo/duplicadas';
 
 /* Os casos fictícios das claquetes duplicadas: a função pura que agrupa as linhas da produção da arte (ARTE_producao)
    e sugere quem sai. Nada do Trello (#65; ADR 0006): só a produção, também no caso aberto. */
@@ -145,5 +145,30 @@ describe('a sugestão pelos sinais do card', () => {
   it('arquivado na entrada sai; arquivado depois de andar, não', () => {
     expect(sugestaoDoCaso([card('a', { arquivado: true, naEntrada: true }), card('b', { pessoas: 0, entrada: BASE + 1 })]).fica).toBe('b');
     expect(sugestaoDoCaso([card('a', { arquivado: true }), card('b', { pessoas: 0, entrada: BASE + 1 })]).fica).toBe('a');
+  });
+});
+
+describe('apagar um card (#67): o código e o que mudou desde que a tela abriu', () => {
+  const visto: CardVisto = { claquete: 'Show 20/11', arquivado: true, status: ['ENTRADA'], designers: [], entrada: '2026-11-20T12:00:00.000Z', entrega: null, artes: 3, modificadoEm: '2026-11-20T12:00:00.000Z' };
+
+  it('o código é o fim do card_ID, em minúsculas', () => {
+    expect(codigoDoCard('6B0095840000000000000A9F')).toBe('0a9f');
+  });
+
+  it('nada mudou: nenhuma mudança', () => {
+    expect(mudancasDoCard('c1', visto, { ...visto })).toEqual([]);
+  });
+
+  it('cada campo que a tela mostrou e mudou, com o antes e o depois', () => {
+    expect(mudancasDoCard('c1', visto, { ...visto, arquivado: false, designers: ['Designer Um'], modificadoEm: '2026-11-21T09:00:00.000Z' })).toEqual([
+      { card: 'c1', campo: 'Estado', antes: 'arquivado', depois: 'aberto' },
+      { card: 'c1', campo: 'Designers', antes: '', depois: 'Designer Um' },
+    ]);
+  });
+
+  it('só a última mudança da linha é outra: ela mesma é a mudança', () => {
+    expect(mudancasDoCard('c1', visto, { ...visto, modificadoEm: '2026-11-21T09:00:00.000Z' })).toEqual([
+      { card: 'c1', campo: 'Linha da produção', antes: '2026-11-20T12:00:00.000Z', depois: '2026-11-21T09:00:00.000Z' },
+    ]);
   });
 });

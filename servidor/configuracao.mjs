@@ -23,6 +23,8 @@ export const SALVAVEIS = new Set([
   'LIGADO_A_MAO',
   // os administradores salvos na tela (#77), em JSON (os e-mails); a chave-mestra CADASTRO_ADMINS fica no Portainer
   'ADMINISTRADORES',
+  // o modo só olhar da aba Duplicadas (#67): sem valor, ligado; '0' libera o apagar (a própria aba liga e desliga)
+  'DUPLICADAS_SO_OLHAR',
   // Filmes
   'TEABLE_FILMES', 'TEABLE_FILMES_POSTER', 'TEABLE_EXIBICOES', 'TRELLO_LISTA_FILMES', 'TRELLO_FILMES_ETIQUETAS',
   'TRELLO_FILMES_ETIQUETAS_SESSAO', 'TRELLO_FILMES_PRACA', 'FILMES_INTERVALO_MS', 'FILMES_TEMPO_MS',

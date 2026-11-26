@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  apagarDuplicada,
   ignorarDuplicada,
   lerCasoDeDuplicada,
   lerDuplicadas,
   lerRegistroDasDuplicadas,
+  mudarModoDasDuplicadas,
   reabrirDuplicada,
   type AcaoDoRegistro,
+  type ApagadoDaDuplicada,
+  type ApagarDuplicada,
   type CardDaDuplicada,
   type CasoDaDuplicada,
   type ListaDasDuplicadas,
@@ -13,6 +17,7 @@ import {
   type ResumoDaDuplicada,
   type SecaoDaDuplicada,
 } from '../dados/armazenamento';
+import { codigoDoCard } from '../modelo/duplicadas';
 import { Icone } from './icones';
 import { plural } from './util';
 import { LinhaDoTempoDoCard } from './LinhaDoTempo';
@@ -22,7 +27,9 @@ import { LinhaDoTempoDoCard } from './LinhaDoTempo';
    seção, com o período e a busca, e o caso aberto na própria lista, com os cards lado a lado (empilhados no celular),
    as diferenças destacadas e a sugestão de qual fica, que a pessoa troca.
    Ignorar (#66), na linha e no caso aberto, com motivo opcional: o caso vai para Resolvidas e para o Registro (o painel
-   da direita), e Reabrir devolve. Nada muda no Trello nem no Teable. No celular, só consulta (sem os botões). */
+   da direita), e Reabrir devolve. Nada muda no Trello nem no Teable. No celular, só consulta (sem os botões).
+   Apagar (#67), no caso aberto e fora do modo só olhar: um card por vez, com a confirmação à prova de engano (os dois
+   cards lado a lado, o que acontece em cada sistema, "Conferi" e o código do card que sai digitado). */
 
 export const PERIODOS = [30, 60, 90, 180, 365];
 const PERIODO_PADRAO = 90;
@@ -112,7 +119,17 @@ export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
     }
     await depoisDaAcao();
   };
-  return { dias, mudarDias, lista, falha, lendo, renovar: () => ler(true), registro, recente, ignorar, reabrir };
+  /** O modo só olhar (#67): liga ou desliga o Apagar (a chave da configuração) e lê a lista de novo. */
+  const mudarModo = async (soOlhar: boolean) => {
+    try {
+      await mudarModoDasDuplicadas(soOlhar);
+    } catch (e) {
+      setFalha(e instanceof Error ? e.message : 'Não consegui mudar o modo da aba.');
+      return;
+    }
+    ler();
+  };
+  return { dias, mudarDias, lista, falha, lendo, renovar: () => ler(true), registro, recente, ignorar, reabrir, depoisDeApagar: depoisDaAcao, mudarModo };
 }
 
 /* ---------- textos ---------- */
@@ -175,16 +192,20 @@ interface PropsDaLista {
   celular: boolean;
   ignorar: (id: string, motivo: string) => Promise<void>;
   reabrir: (id: string) => Promise<void>;
+  /** depois de apagar um card: a lista e o registro de novo */
+  depoisDeApagar: () => Promise<void>;
 }
 
 type Vista = 'pendentes' | 'resolvidas';
 
-export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renovar, busca, celular, ignorar, reabrir }: PropsDaLista) {
+export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renovar, busca, celular, ignorar, reabrir, depoisDeApagar }: PropsDaLista) {
   const [aberto, setAberto] = useState<string | null>(null);
   const [vista, setVista] = useState<Vista>('pendentes');
   // o caso que está sendo ignorado (o diálogo do motivo aberto)
   const [ignorando, setIgnorando] = useState<{ id: string; claquete: string } | null>(null);
   const pedirIgnorar = celular ? undefined : (c: { id: string; claquete: string }) => setIgnorando({ id: c.id, claquete: c.claquete });
+  // apagar só no computador e fora do modo só olhar; o caso apagado fecha (o de três cards abre de novo, com dois)
+  const apagar = celular || !lista || lista.soOlhar ? undefined : { depois: depoisDeApagar, fechar: () => setAberto(null) };
   // o "há N min" da leitura anda sozinho
   const agora = useAgora(lista?.lidoEm);
 
@@ -252,6 +273,7 @@ export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renova
                   dias={dias}
                   celular={celular}
                   ignorar={pedirIgnorar && (() => pedirIgnorar(c))}
+                  apagar={apagar}
                 />
               ))}
             </section>
@@ -385,7 +407,10 @@ function DialogoIgnorar({ claquete, fechar, confirmar }: { claquete: string; fec
   );
 }
 
-function LinhaDoCaso({ caso, aberto, alternar, dias, celular, ignorar }: { caso: ResumoDaDuplicada; aberto: boolean; alternar: () => void; dias: number; celular: boolean; ignorar?: () => void }) {
+/** O que o caso aberto precisa para apagar: depois de apagar (a lista e o registro de novo) e fechar o caso. */
+type ParaApagar = { depois: () => Promise<void>; fechar: () => void };
+
+function LinhaDoCaso({ caso, aberto, alternar, dias, celular, ignorar, apagar }: { caso: ResumoDaDuplicada; aberto: boolean; alternar: () => void; dias: number; celular: boolean; ignorar?: () => void; apagar?: ParaApagar }) {
   return (
     <div className={`caso-dup${aberto ? ' aberto' : ''}${ignorar ? ' com-acao' : ''}`}>
       <div className="envolta-dup">
@@ -411,7 +436,7 @@ function LinhaDoCaso({ caso, aberto, alternar, dias, celular, ignorar }: { caso:
           </button>
         )}
       </div>
-      {aberto && <DetalheDoCaso id={caso.id} dias={dias} celular={celular} ignorar={ignorar} />}
+      {aberto && <DetalheDoCaso id={caso.id} dias={dias} celular={celular} ignorar={ignorar} apagar={apagar} />}
     </div>
   );
 }
@@ -466,9 +491,12 @@ function useEscolha(caso: CasoDaDuplicada | null) {
   return { saem, ficar, sair };
 }
 
-function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: number; celular: boolean; ignorar?: () => void }) {
+function DetalheDoCaso({ id, dias, celular, ignorar, apagar }: { id: string; dias: number; celular: boolean; ignorar?: () => void; apagar?: ParaApagar }) {
   const [caso, setCaso] = useState<CasoDaDuplicada | null>(null);
   const [falha, setFalha] = useState('');
+  // o card que está sendo apagado (a confirmação aberta); `leitura` relê o caso depois de a confirmação fechar
+  const [apagando, setApagando] = useState<string | null>(null);
+  const [leitura, setLeitura] = useState(0);
   useEffect(() => {
     let vivo = true;
     setCaso(null);
@@ -480,7 +508,7 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
     return () => {
       vivo = false;
     };
-  }, [id, dias]);
+  }, [id, dias, leitura]);
   const { saem, ficar, sair } = useEscolha(caso);
   if (falha) return <p className="cad-falha dup-falha">{falha}</p>;
   if (!caso) return <p className="cad-vazio detalhe-dup carregando">Lendo o caso na produção…</p>;
@@ -499,6 +527,32 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
         <button type="button" className="botao" onClick={ignorar}>
           Ignorar
         </button>
+      )}
+      {apagar &&
+        saem.map((sai) => {
+          const c = caso.cards.find((x) => x.id === sai);
+          return (
+            c && (
+              <button key={sai} type="button" className="botao perigo apagar-dup" onClick={() => setApagando(sai)} title="Apagar este card do Trello, com confirmação">
+                Apagar …{c.codigo}
+              </button>
+            )
+          );
+        })}
+      {apagar && apagando && (
+        <DialogoApagar
+          caso={caso}
+          dias={dias}
+          sai={apagando}
+          fica={quemFica(caso, saem)}
+          depois={apagar.depois}
+          fechar={(apagou, mudou) => {
+            setApagando(null);
+            // apagou com dois cards: o caso sai da lista; com mais, ou se algo mudou, o caso é lido de novo
+            if (apagou && caso.cards.length === 2) apagar.fechar();
+            else if (apagou || mudou) setLeitura((n) => n + 1);
+          }}
+        />
       )}
     </div>
   );
@@ -564,6 +618,201 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
   );
 }
 
+/* ---------- apagar um card (#67) ---------- */
+
+/** O card que fica quando `saem` saem: a sugestão, se ela não sai; senão, o primeiro que não sai. */
+const quemFica = (caso: CasoDaDuplicada, saem: string[]) => (!saem.includes(caso.sugestao.fica) ? caso.sugestao.fica : caso.cards.find((c) => !saem.includes(c.id))?.id ?? caso.sugestao.fica);
+const CONFERI = 'Conferi: é a mesma claquete, na mesma praça e na mesma versão, e o card que fica é o certo';
+// na confirmação, os dois cards lado a lado: as linhas do caso sem a linha do tempo
+const LINHAS_DA_CONFIRMACAO = LINHAS.filter((l) => l.rotulo !== 'Linha do tempo');
+
+/**
+ * A confirmação de apagar, à prova de engano: o card que fica e o que sai lado a lado (as diferenças destacadas), o que
+ * acontece em cada sistema e o que dá ou não para desfazer, a caixa "Conferi" e o código do card que sai digitado. O
+ * botão só acende com as duas. O card aberto pode sair, com um aviso em vermelho. Depois: o resultado, ou o que mudou.
+ */
+function DialogoApagar({ caso, dias, sai, fica, depois, fechar }: { caso: CasoDaDuplicada; dias: number; sai: string; fica: string; depois: () => Promise<void>; fechar: (apagou: boolean, mudou: boolean) => void }) {
+  const [conferi, setConferi] = useState(false);
+  const [codigo, setCodigo] = useState('');
+  const [indo, setIndo] = useState(false);
+  const [resposta, setResposta] = useState<ApagarDuplicada | null>(null);
+  const caixa = useRef<HTMLInputElement>(null);
+  useEffect(() => caixa.current?.focus(), []);
+  const cSai = caso.cards.find((c) => c.id === sai)!;
+  const cFica = caso.cards.find((c) => c.id === fica)!;
+  const par = [cFica, cSai];
+  const pronto = conferi && codigo.trim().toLowerCase() === cSai.codigo && !indo;
+  const apagou = resposta?.ok ? resposta.apagado : null;
+  const recusa = resposta && !resposta.ok ? resposta : null;
+  const sair = () => {
+    if (indo) return;
+    fechar(!!apagou, !!recusa?.mudou?.length);
+    // a lista e o registro de novo só depois de fechar: com dois cards, o caso (e esta confirmação) sai da lista
+    if (apagou) void depois();
+  };
+  const ir = () => {
+    if (!pronto) return;
+    setIndo(true);
+    apagarDuplicada(caso, dias, sai, fica, codigo.trim()).then(
+      (r) => {
+        setResposta(r);
+        setIndo(false);
+      },
+      (e: unknown) => {
+        setResposta({ ok: false, erro: e instanceof Error ? e.message : 'Não consegui falar com o servidor. Nada foi apagado.' });
+        setIndo(false);
+      },
+    );
+  };
+  return (
+    <div className="veu-dup" onMouseDown={(e) => e.target === e.currentTarget && sair()} onKeyDown={(e) => e.key === 'Escape' && sair()}>
+      <div className="dialogo-dup largo" role="dialog" aria-modal="true" aria-labelledby="titulo-apagar">
+        {apagou ? (
+          <ResultadoDoApagar apagado={apagou} claquete={caso.claquete} fechar={sair} />
+        ) : (
+          <>
+            <h2 id="titulo-apagar">Apagar o card …{cSai.codigo}</h2>
+            <p className="dica">
+              <b className="claquete-dup">{caso.claquete}</b> {caso.praca && <span className="praca-dup">{caso.praca}</span>} Um card por vez. Confira os dois uma última vez.
+            </p>
+            {!cSai.arquivado && (
+              <p className="aviso-dup" role="alert">
+                <b>O card que sai está aberto</b> (não foi arquivado){cSai.designers.length ? `, com ${cSai.designers.join(', ')}` : ''}. Ele pode sair, mas confira se não é nele que estão trabalhando.
+              </p>
+            )}
+            <div className="comparar-dup" role="table" aria-label="O card que fica e o que sai">
+              <div role="row" className="cabeca">
+                <span role="columnheader" />
+                {par.map((c) => (
+                  <span key={c.id} role="columnheader" className={`col-dup ${c.id === sai ? 'sai' : 'fica'}`}>
+                    {c.id === sai ? 'Sai' : 'Fica'} <code>…{c.codigo}</code>
+                  </span>
+                ))}
+              </div>
+              {LINHAS_DA_CONFIRMACAO.map((l) => {
+                const d = difere(l, par);
+                return (
+                  <div key={l.rotulo} role="row" className={d ? 'difere' : undefined}>
+                    <span role="rowheader">{l.rotulo}</span>
+                    {par.map((c) => (
+                      <span key={c.id} role="cell" className={`col-dup ${c.id === sai ? 'sai' : 'fica'}`}>
+                        {l.valor(c, caso.cards.indexOf(c), caso.cards)}
+                        {d && <i className="ne" aria-label="diferente">≠</i>}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+            <h3 className="sub-dup">O que acontece</h3>
+            <table className="efeitos-dup">
+              <thead>
+                <tr>
+                  <th scope="col">Onde</th>
+                  <th scope="col">O que acontece</th>
+                  <th scope="col">Dá para desfazer?</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Trello</th>
+                  <td>
+                    O card …{cSai.codigo} é apagado. O card …{cFica.codigo}, que fica, ganha o comentário “Duplicado …{cSai.codigo} apagado por você pelo PROMeiro”.
+                  </td>
+                  <td className="nao">Não. Recriar da cópia faz um card novo, com outro número e link e sem o histórico.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Produção da arte</th>
+                  <td>A linha do card que sai é apagada pelo fluxo PROMO: DB do n8n quando o card some. O PROMeiro não apaga a linha: guarda uma cópia dela no Registro.</td>
+                  <td className="nao">Não a linha. A cópia fica guardada.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Acervo</th>
+                  <td>{cSai.acervo ? `${plural(cSai.acervo, 'arte passa', 'artes passam')} para o card que fica.` : 'Nenhuma arte do acervo está ligada ao card que sai.'}</td>
+                  <td className="sim">{cSai.acervo ? 'Sim: as artes só trocam de card.' : '—'}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Roteiro no PROMeiro</th>
+                  <td>{cSai.roteiro ? `O roteiro guardado (${cSai.roteiro.claquete}) passa a apontar para o card que fica.` : 'Nenhum roteiro guardado aponta para o card que sai.'}</td>
+                  <td className="sim">{cSai.roteiro ? 'Sim: o envio só troca de card.' : '—'}</td>
+                </tr>
+              </tbody>
+            </table>
+            <label className="conferi-dup">
+              <input type="checkbox" checked={conferi} onChange={(e) => setConferi(e.target.checked)} disabled={indo} />
+              <span>{CONFERI}</span>
+            </label>
+            <label className="codigo-dup">
+              <span>
+                Para confirmar, digite o código do card que sai: <code>{cSai.codigo}</code>
+              </span>
+              <input
+                ref={caixa}
+                value={codigo}
+                maxLength={8}
+                onChange={(e) => setCodigo(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && ir()}
+                disabled={indo}
+                autoComplete="off"
+                spellCheck={false}
+                aria-label="Código do card que sai"
+              />
+            </label>
+            {recusa && (
+              <div className="cad-falha recusa-dup" role="alert">
+                <p>{recusa.erro}</p>
+                {!!recusa.mudou?.length && (
+                  <ul>
+                    {recusa.mudou.map((m) => (
+                      <li key={`${m.card}-${m.campo}`}>
+                        <b>…{m.codigo}</b> {m.campo}: {m.campo === 'Grupo' || m.campo === 'Linha da produção' ? m.depois : `${m.antes || '—'} → ${m.depois || '—'}`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            <div className="rodape-dup">
+              <span className="quem-dup">Fica no Registro com o seu nome, a hora e a cópia do card.</span>
+              <button type="button" className="botao-texto" onClick={sair} disabled={indo}>
+                {recusa?.mudou?.length ? 'Fechar e ver de novo' : 'Cancelar'}
+              </button>
+              <button type="button" className="botao perigo-cheio" onClick={ir} disabled={!pronto || !!recusa?.mudou?.length || !!recusa?.bloqueado}>
+                {indo ? 'Apagando…' : `Apagar o card …${cSai.codigo}`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Depois de apagar: o que foi feito em cada sistema. */
+function ResultadoDoApagar({ apagado, claquete, fechar }: { apagado: ApagadoDaDuplicada; claquete: string; fechar: () => void }) {
+  const fechar1 = useRef<HTMLButtonElement>(null);
+  useEffect(() => fechar1.current?.focus(), []);
+  return (
+    <div className="resultado-dup" role="status">
+      <h2 id="titulo-apagar">Card …{apagado.codigo} apagado</h2>
+      <p className="dica">
+        <b className="claquete-dup">{claquete}</b>
+      </p>
+      <ul className="feito-dup">
+        <li>O card …{apagado.codigo} saiu do Trello{apagado.comentou ? `, e o card …${codigoDoCard(apagado.fica)} ganhou o comentário.` : '.'}</li>
+        <li>{apagado.religadas ? `${plural(apagado.religadas, 'arte do acervo passou', 'artes do acervo passaram')} para o card que fica.` : 'Nenhuma arte do acervo para religar.'}</li>
+        <li>{apagado.roteiros ? `${plural(apagado.roteiros, 'roteiro guardado aponta', 'roteiros guardados apontam')} para o card que fica.` : 'Nenhum roteiro guardado para reapontar.'}</li>
+        <li>A linha da produção sai pelo n8n. A cópia do card ficou no Registro.</li>
+      </ul>
+      <div className="rodape-dup">
+        <button ref={fechar1} type="button" className="botao primario" onClick={fechar}>
+          Fechar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Uma ação do registro em uma frase: quem fez o quê. */
 function fraseDoRegistro(a: AcaoDoRegistro) {
   const caso = <b>{a.claquete}</b>;
@@ -579,16 +828,61 @@ function fraseDoRegistro(a: AcaoDoRegistro) {
         <b>{a.por}</b> reabriu {caso}.
       </>
     );
+  if (a.acao === 'apagar') {
+    const codigo = a.apagado?.codigo ? `…${a.apagado.codigo}` : '';
+    const fica = a.fica ? `…${codigoDoCard(a.fica)}` : 'o outro';
+    if (a.estado === 'falhou')
+      return (
+        <>
+          <b>{a.por}</b> tentou apagar o card {codigo} de {caso} e parou{a.apagado?.erro ? ` ao ${a.apagado.erro}` : ''}. Nada foi apagado
+          {a.apagado?.naoDesfeito.length ? `; não deu para desfazer: ${a.apagado.naoDesfeito.join('; ')}` : ''}.
+        </>
+      );
+    if (a.estado === 'em-curso')
+      return (
+        <>
+          <b>{a.por}</b> está apagando o card {codigo} de {caso}.
+        </>
+      );
+    const passaram = [a.apagado?.religadas ? plural(a.apagado.religadas, 'arte', 'artes') : '', a.apagado?.roteiros ? plural(a.apagado.roteiros, 'roteiro', 'roteiros') : ''].filter(Boolean).join(' e ');
+    return (
+      <>
+        <b>{a.por}</b> apagou o card {codigo} de {caso} (ficou {fica}{passaram ? `, que recebeu ${passaram}` : ''}).
+      </>
+    );
+  }
   return (
     <>
-      <b>{a.por}</b> {a.acao === 'apagar' ? 'apagou um card de' : 'recriou um card de'} {caso}
+      <b>{a.por}</b> recriou um card de {caso}
       {a.motivo ? `: ${a.motivo}` : ''}.
     </>
   );
 }
 
+/** O modo só olhar (#67): nos primeiros dias, a aba não apaga, para comparar com o relatório do n8n. */
+function ModoSoOlhar({ soOlhar, mudar, celular }: { soOlhar: boolean; mudar: (soOlhar: boolean) => Promise<void>; celular: boolean }) {
+  const [indo, setIndo] = useState(false);
+  const trocar = () => {
+    setIndo(true);
+    void mudar(!soOlhar).finally(() => setIndo(false));
+  };
+  return (
+    <div className={`modo-dup${soOlhar ? ' so-olhar' : ''}`}>
+      <p>
+        <b>{soOlhar ? 'Só olhar' : 'Apagar liberado'}</b>{' '}
+        {soOlhar ? 'O Apagar fica escondido enquanto a aba é comparada com o relatório do n8n.' : 'Os administradores apagam pelo caso aberto, no computador.'}
+      </p>
+      {!celular && (
+        <button type="button" className="botao-texto" onClick={trocar} disabled={indo}>
+          {indo ? 'Mudando…' : soOlhar ? 'Liberar o Apagar' : 'Voltar a só olhar'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** O painel ao lado da lista: o Registro (quem ignorou ou reabriu o quê e quando) e como o PROMeiro acha as duplicadas. */
-export function PainelDasDuplicadas({ registro, recente, reabrir, celular }: { registro: AcaoDoRegistro[] | null; recente: number | null; reabrir: (id: string) => Promise<void>; celular: boolean }) {
+export function PainelDasDuplicadas({ registro, recente, reabrir, celular, soOlhar, mudarModo }: { registro: AcaoDoRegistro[] | null; recente: number | null; reabrir: (id: string) => Promise<void>; celular: boolean; soOlhar: boolean | null; mudarModo: (soOlhar: boolean) => Promise<void> }) {
   const agora = useAgora(registro);
   return (
     <aside className="form-cad painel-dup" aria-label="Registro das duplicadas">
@@ -598,7 +892,8 @@ export function PainelDasDuplicadas({ registro, recente, reabrir, celular }: { r
         </span>
         Registro
       </h2>
-      <p className="dica">Quem ignorou ou reabriu cada caso, e quando. Fica guardado no PROMeiro; nada disso muda o Trello nem o Teable.</p>
+      <p className="dica">Quem ignorou, reabriu ou apagou cada caso, e quando. Fica guardado no PROMeiro, com a cópia de cada card apagado.</p>
+      {soOlhar !== null && <ModoSoOlhar soOlhar={soOlhar} mudar={mudarModo} celular={celular} />}
       {registro === null ? (
         <p className="vazio-registro-dup">Lendo o registro…</p>
       ) : registro.length ? (
@@ -621,11 +916,11 @@ export function PainelDasDuplicadas({ registro, recente, reabrir, celular }: { r
           ))}
         </ul>
       ) : (
-        <p className="vazio-registro-dup">Nada ainda: quem ignorar um caso aparece aqui.</p>
+        <p className="vazio-registro-dup">Nada ainda: quem ignorar ou apagar aparece aqui.</p>
       )}
       <p className="regra-dup">
         <b>Como o PROMeiro acha:</b> as linhas da produção da arte com card (sem as de filme) que entraram no período, abertas e arquivadas, agrupadas
-        pela claquete sem acento, caixa e pontuação, pela praça e pela versão. O Trello só é lido no caso aberto, e só os cards dele. Versões diferentes (-2, V2, B, Opção) não contam como duplicadas. Só administradores veem esta aba.
+        pela claquete sem acento, caixa e pontuação, pela praça e pela versão. Nada é lido do Trello: apagar só escreve nele. Versões diferentes (-2, V2, B, Opção) não contam como duplicadas. Só administradores veem esta aba.
       </p>
     </aside>
   );

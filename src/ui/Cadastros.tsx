@@ -1140,7 +1140,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
           )}
 
           {dupAberta && pode ? (
-            <PainelDasDuplicadas registro={duplicadas.registro} recente={duplicadas.recente} reabrir={duplicadas.reabrir} celular={celular} />
+            <PainelDasDuplicadas registro={duplicadas.registro} recente={duplicadas.recente} reabrir={duplicadas.reabrir} celular={celular} soOlhar={duplicadas.lista?.ligado ? duplicadas.lista.soOlhar : null} mudarModo={duplicadas.mudarModo} />
           ) : atracaoAberta ? (
             <aside className="form-cad ficha-atr" aria-label={`Ficha de ${atracaoAberta.nome}`}>
               <button type="button" className="botao-texto volta-ficha" onClick={fecharFicha}>
