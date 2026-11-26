@@ -68,6 +68,90 @@ describe('claqueteComBarra: a data do nome da claquete sempre com "/"', () => {
   });
 });
 
+describe('claqueteComBarra: a data colada em outra barra', () => {
+  // "A/D-M": quando "A/D" não é data e "D-M" é, a "/" separava o número da data
+  it.each([
+    ['Copa Jogo 2 E 3/14-6', 'Copa Jogo 2 E 3 14/6'],
+    ['Copa Jogo 1 E 2/13-6', 'Copa Jogo 1 E 2 13/6'],
+    ['TORNEIO 2/15-3 SP', 'TORNEIO 2 15/3 SP'],
+    ['TORNEIO 4/20-11-2', 'TORNEIO 4 20/11-2'],
+  ])('%s → %s', (antes, depois) => {
+    expect(claqueteComBarra(antes)).toBe(depois);
+  });
+
+  it.each([
+    // "3/12" já é data: não mexe
+    'JOGO 3/12-6',
+    // "14-13" não é data
+    'JOGO 3/14-13',
+    // antes da barra não vem número
+    'JOGO X/14-6',
+  ])('fica igual: %s', (claquete) => {
+    expect(claqueteComBarra(claquete)).toBe(claquete);
+  });
+
+  it('a chave, a chave do n8n, a praça e a data ficam iguais', () => {
+    const hoje = new Date('2026-05-20T12:00:00');
+    for (const c of ['Copa Jogo 2 E 3/14-6', 'TORNEIO 2/15-3 SP']) {
+      const nova = claqueteComBarra(c);
+      expect(chaveDaClaquete(nova)).toBe(chaveDaClaquete(c));
+      expect(chaveN8n(nova)).toBe(chaveN8n(c));
+      expect(pracaDaClaquete(nova)).toBe(pracaDaClaquete(c));
+      expect(dataDaClaquete(nova, hoje)).toBe(dataDaClaquete(c, hoje));
+      expect(claqueteComBarra(nova)).toBe(nova);
+    }
+  });
+});
+
+describe('claqueteComBarra: a data separada por espaço no fim do nome', () => {
+  it.each([
+    ['Eliana(Reperc)7 6', 'Eliana(Reperc)7/6'],
+    ['ESPORTE 15 3 SP', 'ESPORTE 15/3 SP'],
+    ['DONA 27 11', 'DONA 27/11'],
+    ['NOVELA 5 12-V2', 'NOVELA 5/12-V2'],
+    ['FESTA (AH) 3 12 INTER', 'FESTA (AH) 3/12 INTER'],
+  ])('%s → %s', (antes, depois) => {
+    expect(claqueteComBarra(antes)).toBe(depois);
+  });
+
+  it.each([
+    // não é data válida
+    'TESTE 31 2',
+    'TESTE 5 13',
+    // depois de "/" ou de outro número
+    'SHOW 17/9 3',
+    'JOGO 1 2 3',
+    // o número colado na letra
+    'Nome7 6',
+    // depois do par, só a versão e a praça
+    'PRAIA 3 12 ESPECIAL',
+    // a atração com número no fim do nome: o primeiro número pode ser dela
+    'Viver Sertanejo 2 5',
+    // episódio, capítulo, temporada
+    'Novela Cap 3 5',
+    'Serie Ep 2 4',
+    'Serie Temp 1 3',
+  ])('fica igual: %s', (claquete) => {
+    expect(claqueteComBarra(claquete)).toBe(claquete);
+  });
+
+  it('a chave, a chave do n8n e a praça ficam iguais, e a data passa a ser lida', () => {
+    const hoje = new Date('2026-05-20T12:00:00');
+    for (const [c, data] of [['Eliana(Reperc)7 6', '2026-06-07'], ['ESPORTE 15 3 SP', '2026-03-15'], ['NOVELA 5 12-V2', '2026-12-05']]) {
+      const nova = claqueteComBarra(c);
+      expect(chaveDaClaquete(nova)).toBe(chaveDaClaquete(c));
+      expect(chaveN8n(nova)).toBe(chaveN8n(c));
+      expect(pracaDaClaquete(nova)).toBe(pracaDaClaquete(c));
+      expect(dataDaClaquete(nova, hoje)).toBe(data);
+      expect(claqueteComBarra(nova)).toBe(nova);
+    }
+  });
+
+  it('no padrão da casa, junto com os parênteses', () => {
+    expect(claquetePadrao('ELIANA (REPERC) 7 6')).toBe('ELIANA(REPERC)7/6');
+  });
+});
+
 describe('claquetePadrao: a barra na data e sem espaço em volta dos parênteses', () => {
   it.each([
     ['ELIANA (REPERC) 29-11', 'ELIANA(REPERC)29/11'],

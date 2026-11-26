@@ -115,16 +115,55 @@ export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete
   };
 }
 
+const DIAS_DO_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const dataValida = (dia: number, mes: number) => mes >= 1 && mes <= 12 && dia >= 1 && dia <= DIAS_DO_MES[mes - 1];
+// o último par "D M" do texto, depois de um nome (terminado em letra ou ")"), com a versão ("-2") e a praça opcionais
+const RE_DATA_COM_ESPACO = /^(.*?[\p{L})])(\s*)(\d{1,2}) (\d{1,2})((?:-[\p{L}\d]+)?)((?:\s+(?:SP|INTER(?:NACIONAL)?|REDE|G5|PRACAS))?\s*)$/iu;
+
+/** A data "D M" separada por espaço no fim do nome, com barra; null quando não é seguro dizer que é data. */
+function dataComEspacoComBarra(claquete: string): string | null {
+  const m = RE_DATA_COM_ESPACO.exec(claquete);
+  if (!m) return null;
+  const [, nome, espaco, dia, mes, versao, fim] = m;
+  // "Nome7 6": o número colado na letra não abre a data
+  if (!espaco && !nome.endsWith(')')) return null;
+  if (!dataValida(+dia, +mes)) return null;
+  const n = semAcento(nome);
+  // "Viver Sertanejo 2 5": o primeiro número pode ser da atração
+  const pistasComNumero = PROGRAMAS.flatMap((p) => p.pistas).filter((p) => /\d/.test(p));
+  if (pistasComNumero.some((p) => n.endsWith(p.replace(/\d+$/, '').trim()))) return null;
+  // "Cap 3 5", "Ep 2 4", "Temp 1 3": o número pode ser do episódio, do capítulo ou da temporada
+  if (/\b(ep|cap|episodio|capitulo|temp|t)\s*$/i.test(n)) return null;
+  return `${nome}${espaco}${dia}/${mes}${versao}${fim}`;
+}
+
 /**
  * A claquete com a data de exibição escrita com barra: "DONA 27-11" → "DONA 27/11", "TERRA 26-11-2" → "TERRA 26/11-2".
  * Lê a data como `lerDataDaClaquete` (a última "D-M", "D_M" ou "D.M"; com uma "D/M" já escrita, vale ela) e troca só o
  * separador entre o dia e o mês: a versão ("-2", "-V2", " B"), o período ("21 A 26-9") e os outros números ficam como
- * estão. A chave da claquete, a data e a praça não mudam: a pontuação não conta nelas.
+ * estão. Com a data colada em outra barra ("A/D-M"), a "/" só separava o número da data quando "A/D" não é data e
+ * "D-M" é: "JOGO 3/14-6" → "JOGO 3 14/6"; senão, fica como está.
+ * Sem data assim, a última "D M" separada por espaço no fim do nome também ganha a barra ("ESPORTE 15 3 SP" →
+ * "ESPORTE 15/3 SP"), só quando é seguro (veja `dataComEspacoComBarra`).
+ * A chave da claquete e a praça não mudam: a pontuação não conta nelas.
  */
 export function claqueteComBarra(claquete: string): string {
   const lida = lerDataDaClaquete(claquete, 'nome');
-  if (!lida || claquete[lida.separador] === '/') return claquete;
-  return claquete.slice(0, lida.separador) + '/' + claquete.slice(lida.separador + 1);
+  if (lida) {
+    if (claquete[lida.separador] === '/') return claquete;
+    const comBarra = (texto: string) => texto.slice(0, lida.separador) + '/' + texto.slice(lida.separador + 1);
+    if (claquete[lida.inicio - 1] === '/') {
+      // "JOGO 3/14-6": "3/14" não é data e "14-6" é, então a "/" separava o número da data → "JOGO 3 14/6"
+      const antes = /(?<!\d)(\d{1,2})\/$/.exec(claquete.slice(0, lida.inicio));
+      if (!antes || dataValida(+antes[1], lida.dia) || !/^\d+$/.test(claquete.slice(lida.inicio, lida.separador)) || !dataValida(lida.dia, lida.mes)) return claquete;
+      return comBarra(claquete.slice(0, lida.inicio - 1) + ' ' + claquete.slice(lida.inicio));
+    }
+    if (/\d/.test(claquete[lida.inicio - 1] ?? '')) return claquete;
+    return comBarra(claquete);
+  }
+  const comEspaco = dataComEspacoComBarra(claquete);
+  if (!comEspaco || chaveDaClaquete(comEspaco) !== chaveDaClaquete(claquete) || pracaDaClaquete(comEspaco) !== pracaDaClaquete(claquete)) return claquete;
+  return comEspaco;
 }
 
 /**
