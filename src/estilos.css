@@ -1360,6 +1360,55 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .form-cad .efeito { font: 400 12.5px/1.5 var(--sans); color: var(--tinta3); margin: 6px 0 0; }
 .form-cad .efeito b { color: var(--tinta2); font-weight: 600; }
 
+/* a ficha da atração: a linha abre a ficha no painel da direita (no lugar de "Nova atração"); o acervo dela fica ali,
+   só para consultar, e "Ver as N" troca a lista pelo acervo */
+.atracao-cad { cursor: pointer; transition: background 0.15s; }
+.atracao-cad:hover { background: color-mix(in srgb, var(--neutro) 45%, transparent); }
+.atracao-cad.aberta { background: color-mix(in srgb, var(--ultra) 7%, var(--papel)); box-shadow: inset 3px 0 0 var(--ultra); }
+.abrir-ficha { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.abrir-ficha:focus-visible { outline: 2px solid var(--ultra); outline-offset: 2px; border-radius: 3px; }
+.qtd-acervo { font: 500 12px var(--mono); color: var(--tinta3); white-space: nowrap; }
+.qtd-acervo b { color: var(--tinta2); font-weight: 500; }
+.ficha-atr .volta-ficha { display: inline-flex; margin: -4px 0 10px; }
+.ficha-atr .dica { margin-bottom: 14px; }
+.keys-ficha { display: flex; flex-wrap: wrap; gap: 6px; }
+.secao-acervo { border-top: 1px solid var(--regua); margin: 16px -20px 0; padding: 16px 20px 0; }
+.secao-acervo-tit { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.secao-acervo-tit .rot { font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta3); }
+.total-acervo { font: 400 34px/1 var(--serifa); color: var(--tinta); margin: 8px 0 12px; }
+.total-acervo small { font: 400 15px var(--sans); color: var(--tinta3); margin-left: 6px; }
+.nota-acervo { font: 400 13px/1.45 var(--sans); color: var(--tinta3); margin: 8px 0 4px; }
+.barra-tipos { display: flex; height: 8px; border-radius: 99px; overflow: hidden; gap: 2px; background: var(--neutro); }
+.barra-tipos i { display: block; height: 100%; min-width: 3px; }
+.legenda-tipos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 14px; margin: 10px 0 4px; font: 500 12.5px var(--sans); color: var(--tinta2); }
+.legenda-tipos span { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.legenda-tipos i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.legenda-tipos b { font: 500 12px var(--mono); color: var(--tinta); margin-left: auto; }
+.legenda-tipos .sem { color: var(--falta); font-weight: 600; }
+.legenda-tipos .sem b { color: var(--falta); font-weight: 600; }
+.rodape-ficha { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--regua); }
+.trilha-cad { display: flex; align-items: center; gap: 6px; font: 500 14px var(--sans); color: var(--tinta3); min-width: 0; }
+.trilha-cad b { color: var(--tinta); font-weight: 600; }
+.trilha-cad svg { flex: none; }
+.filtro-tipos { padding: 10px 18px; border-bottom: 1px solid var(--regua); }
+.filtro-tipos button { padding: 4px 10px; font-size: 12.5px; }
+.filtro-tipos button.sem:not([aria-pressed='true']) { color: var(--falta); }
+.arte-acervo { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 18px; border-top: 1px solid var(--regua); }
+.filtro-tipos + .arte-acervo { border-top: 0; }
+.arte-acervo .t { font: 600 14px var(--sans); color: var(--tinta); text-transform: uppercase; overflow-wrap: anywhere; }
+.arte-acervo .s { font: 600 11.5px var(--mono); color: var(--tinta3); white-space: nowrap; }
+.arte-acervo .s.falta { color: var(--falta); }
+
+/* a ficha no celular: só consulta, ocupando a tela */
+.ficha-celular h1 { font-size: 32px; margin: 0 0 4px; overflow-wrap: anywhere; }
+.ficha-celular .trilha-cad { margin: 0 0 6px; }
+.ficha-celular .total-acervo { margin-top: 2px; }
+.ficha-celular .cad-busca { max-width: none; margin: 14px 0 0; height: 44px; }
+.ficha-celular .lista-cad { margin-top: 10px; overflow: hidden; }
+.ficha-celular .lista-cad .arte-acervo:first-child { border-top: 0; }
+.ficha-celular .arte-acervo { padding: 10px 14px; grid-template-columns: 44px minmax(0, 1fr) auto; }
+.ficha-celular .mini { width: 44px; height: 25px; }
+
 /* os Cadastros no celular: as abas em cima e, se não couberem ao lado, a busca embaixo com a largura toda, na altura
    do toque; os campos em 16 px para o iOS não dar zoom */
 @media (max-width: 600px) {
@@ -2161,10 +2210,8 @@ html.com-cursor-meu { min-height: 100%; }
 .item-cad .keys { --vaga-gap: 6px; }
 .item-cad .keys .vaga-x { align-self: center; }
 @media (prefers-reduced-motion: reduce) { .vaga { animation: none; } }
-/* "novo pacote" só aparece ao passar o mouse na atração */
-.pacote-cad { opacity: 0; transition: opacity 0.15s; }
-.item-cad:hover .pacote-cad, .pacote-cad:focus-visible { opacity: 1; }
-@media (hover: none) { .pacote-cad { opacity: 1; } }
+/* "novo pacote" fica no rodapé da ficha da atração, em vermelho: apaga o acervo dela */
+.rodape-ficha .pacote-cad { font-size: 13px; color: var(--perigo); }
 /* "Ligar a…": o fundo do item vai de lado a lado do menu, como nas outras listas */
 .menu-ligar ul { margin-inline: -8px; }
 .escolha-nome-menu.menu-ligar li { padding-inline: 18px; border-radius: 0; }

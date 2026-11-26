@@ -48,9 +48,10 @@ const diaMais = (n) => {
 
 /**
  * Sobe o servidor (banco temporário) e o Vite; devolve os endereços e como derrubar tudo. Sem `trello`, o envio fica
- * desligado; com ele (as variáveis e o `buscar` falsos), o Trello e o Teable são os falsos de quem chama.
+ * desligado; com ele (as variáveis e o `buscar` falsos), o Trello e o Teable são os falsos de quem chama. Com `acervo`
+ * (um criarAcervo com o Postgres do Teable falso), o acervo de artes é o de quem chama.
  */
-async function subir({ trello: falso } = {}) {
+async function subir({ trello: falso, acervo } = {}) {
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-'));
   const { abrirBanco, criarApp } = await import(join(RAIZ, 'servidor', 'app.mjs'));
   const { criarTrello } = await import(join(RAIZ, 'servidor', 'trello.mjs'));
@@ -60,7 +61,7 @@ async function subir({ trello: falso } = {}) {
   const env = {};
   const trello = criarTrello(falso?.env ?? env, { buscar: falso?.buscar ?? semRede, consultar: async () => [], sftp: async () => {} });
   const db = abrirBanco(join(pasta, 'roteirista.db'));
-  const app = criarApp({ db, env, trello });
+  const app = criarApp({ db, env, trello, ...(acervo ? { acervo } : {}) });
   // sem o cabeçalho (o WebSocket do navegador não leva os extras), vale o cookie `e2e-email` do contexto, que o
   // WebSocket leva; sem ele, a Lia. É o que deixa duas pessoas no mesmo teste, cada uma na sua sala
   const comLia = (req) => {

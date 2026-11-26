@@ -7,11 +7,14 @@ import { acentuar } from '../modelo/acento';
 import {
   cadastrar,
   darKey,
+  lerAcervoDaFicha,
   lerCadastros,
+  lerTotaisDoAcervo,
   mudarAcervo,
   removerCadastro,
   zerarAcervo,
   type AcervoDaAtracao,
+  type AcervoDaFicha,
   type AtracaoCadastro,
   type Cadastros as DadosCadastros,
   type CampoCaminho,
@@ -28,6 +31,8 @@ import { SetaCurva } from './setaCurva';
 import { caminhoDoIcone, Icone } from './icones';
 import { Marca } from './pecas';
 import { plural } from './util';
+import { useTelaDeCelular } from './faixa';
+import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
    (e redator/editor novo também para o Trello). O que está sendo cadastrado aparece na lista como
@@ -363,7 +368,7 @@ function Remover({ pode, nome, remover }: { pode: boolean; nome: string; remover
 }
 
 /** Pacote gráfico novo: as artes da atração no acervo deixam de valer (só administradores). */
-function NovoPacote({ nome, avisar }: { nome: string; avisar: (t: string) => void }) {
+function NovoPacote({ nome, avisar, depois }: { nome: string; avisar: (t: string) => void; depois: () => void }) {
   const [conferindo, setConferindo] = useState(false);
   const [indo, setIndo] = useState(false);
   if (conferindo)
@@ -380,6 +385,7 @@ function NovoPacote({ nome, avisar }: { nome: string; avisar: (t: string) => voi
             try {
               const r = await zerarAcervo(nome);
               avisar(r.zeradas ? `${nome}: ${plural(r.zeradas, 'arte deixou', 'artes deixaram')} de valer. As próximas entram como novas.` : `${nome} não tinha artes no acervo.`);
+              depois();
             } catch (e) {
               avisar(e instanceof Error ? e.message : 'Não consegui trocar o pacote.');
             }
@@ -544,6 +550,41 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     void carregarSem();
   }, []);
 
+  // a ficha da atração: clicar na linha abre no lugar de "Nova atração"; "Ver as N" troca a lista pelo acervo dela
+  const celular = useTelaDeCelular();
+  const [aberta, setAberta] = useState<string | null>(null);
+  const [verAcervo, setVerAcervo] = useState(false);
+  const [ficha, setFicha] = useState<{ nome: string; acervo: AcervoDaFicha | null; falha: string } | null>(null);
+  // quantas artes cada atração tem no acervo (pelo nome sem acento nem caixa); null: o acervo não está ligado
+  const [noAcervo, setNoAcervo] = useState<Map<string, number> | null>(null);
+  const nomeComparavel = (nome: string) => semAcento(nome).toUpperCase().trim();
+  const carregarTotais = () =>
+    lerTotaisDoAcervo().then(
+      (r) => setNoAcervo(r.ligado ? new Map(Object.entries(r.totais).map(([nome, n]) => [nomeComparavel(nome), n])) : null),
+      () => setNoAcervo(null),
+    );
+  useEffect(() => {
+    void carregarTotais();
+  }, []);
+  const lerFicha = (nome: string) => {
+    setFicha((f) => (f?.nome === nome ? f : { nome, acervo: null, falha: '' }));
+    return lerAcervoDaFicha(nome).then(
+      (acervo) => setFicha((f) => (f?.nome === nome ? { nome, acervo, falha: '' } : f)),
+      (e: Error) => setFicha((f) => (f?.nome === nome ? { nome, acervo: null, falha: e.message || 'Não consegui ler o acervo.' } : f)),
+    );
+  };
+  const abrirFicha = (a: AtracaoCadastro) => {
+    setAberta(a.id);
+    setVerAcervo(false);
+    void lerFicha(a.nome);
+    if (celular) window.scrollTo(0, 0);
+  };
+  const fecharFicha = () => {
+    setAberta(null);
+    setVerAcervo(false);
+    setFicha(null);
+  };
+
   // formulários, um por aba
   const daClaquete = inicio?.claquete ? atracaoDaClaquete(inicio.claquete) : '';
   const nomeInicial = inicio?.nome ?? daClaquete;
@@ -645,6 +686,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     try {
       await mudarAcervo(a.id, acervo);
       await carregar(true);
+      if (a.id === aberta) void lerFicha(a.nome);
       avisar(`${a.nome}: acervo ${rotuloDoAcervo(acervo)}.`);
     } catch (e) {
       avisar(e instanceof Error ? e.message : 'Não consegui trocar o acervo.');
@@ -722,9 +764,14 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const totais = { atracoes: dados?.atracoes.length ?? 0, redatores: dados?.redatores.length ?? 0, editores: dados?.editores.length ?? 0 };
   const pode = !!dados?.podeApagar;
 
+  // a atração da ficha (a removida fecha a ficha); com ela aberta, o formulário e a folha de rascunho esperam
+  const atracaoAberta = aba === 'atracoes' && !semCad && aberta ? (dados?.atracoes.find((a) => a.id === aberta && !escondidos.includes(a.id)) ?? null) : null;
+  // o acervo lido para ela (o de outra atração, ainda chegando, não conta)
+  const fichaAberta = atracaoAberta && ficha?.nome === atracaoAberta.nome ? ficha : null;
   // o rascunho entra na ordem alfabética
   const rascunho =
-    aba === 'atracoes' ? (atr.nome || atr.keys.length ? { nome: atr.nome, categoria: atr.categoria, keys: atr.keys } : null)
+    atracaoAberta ? null
+    : aba === 'atracoes' ? (atr.nome || atr.keys.length ? { nome: atr.nome, categoria: atr.categoria, keys: atr.keys } : null)
     : aba === 'redatores' ? (red.nome || red.keys.length ? { nome: red.nome, keys: red.keys } : null)
     : edi.nome || edi.keys.length ? { nome: edi.nome, keys: edi.keys } : null;
   // o lugar segue o nome com um respiro: abre a vaga quando a pessoa para de digitar, não a cada letra
@@ -760,13 +807,29 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const listaRedatores = (dados?.redatores ?? []).filter((r) => !escondidos.includes(r.id) && casa(r.nome, ...r.keys.map((k) => k.key)));
   const listaEditores = (dados?.editores ?? []).filter((e) => !escondidos.includes(e.id) && casa(e.nome, ...e.keys.map((k) => k.key)));
   const itemAtracao = (a: AtracaoCadastro) => (
-    <div key={a.id} className={`item-cad ${recem.includes(a.id) ? 'chegou' : ''}`}>
+    <div
+      key={a.id}
+      className={`item-cad atracao-cad ${recem.includes(a.id) ? 'chegou' : ''} ${aberta === a.id ? 'aberta' : ''}`}
+      // a linha inteira abre a ficha; os botões, as keys e o "+ key" de dentro continuam fazendo o que fazem
+      onClick={(e) => !(e.target as HTMLElement).closest('button, input, .key, .acervo-trocar') && abrirFicha(a)}
+    >
       <div className="nome">
-        {a.nome} {a.categoria && <span className="cat">{a.categoria}</span>}
+        <button type="button" className="abrir-ficha" aria-current={aberta === a.id ? 'true' : undefined} title="Abrir a ficha da atração" onClick={() => abrirFicha(a)}>
+          {a.nome}
+        </button>{' '}
+        {a.categoria && <span className="cat">{a.categoria}</span>}
         <AcervoNaLista atracao={a} trocar={trocarAcervo(a)} />
       </div>
       <div className="lado-cad">
-        {pode && <NovoPacote nome={a.nome} avisar={avisar} />}
+        {noAcervo && a.acervo === 'proprio' && (() => {
+          const n = noAcervo.get(nomeComparavel(a.nome)) ?? 0;
+          return (
+            <span className="qtd-acervo">
+              <b>{n}</b> {n === 1 ? 'arte' : 'artes'}
+            </span>
+          );
+        })()}
+        {noAcervo && a.acervo === 'filme' && <span className="qtd-acervo">acervo do filme</span>}
         <Remover pode={pode} nome={a.nome} remover={remover('atracoes', a.id, a.nome)} />
       </div>
       <div className="keys">
@@ -827,6 +890,11 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         <Marca />
         <span />
       </header>
+      {celular && atracaoAberta ? (
+        <main className="cad">
+          <FichaNoCelular key={atracaoAberta.id} nome={atracaoAberta.nome} acervo={fichaAberta?.acervo ?? null} falha={fichaAberta?.falha ?? ''} voltar={fecharFicha} />
+        </main>
+      ) : (
       <main className="cad">
         <h1>Cadastros</h1>
         <p className="sub">O que o PROMeiro usa para reconhecer cada roteiro. Tudo aqui vai direto para o Teable e para o Trello.</p>
@@ -837,13 +905,16 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         )}
 
         <div className="cad-grade">
+          {atracaoAberta && verAcervo ? (
+            <ListaDoAcervo key={atracaoAberta.id} nome={atracaoAberta.nome} acervo={fichaAberta?.acervo ?? null} voltar={() => setVerAcervo(false)} />
+          ) : (
           <section ref={listaEl} className="lista-cad" aria-label={semCad ? 'Sem cadastro' : NOMES[aba]}>
             <div className="lista-topo">
               <Abas
                 aba={aba}
-                mudar={(a) => { setAba(a); setSemCad(false); setBusca(''); setFesta(null); }}
+                mudar={(a) => { setAba(a); setSemCad(false); setBusca(''); setFesta(null); fecharFicha(); }}
                 totais={totais}
-                sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setBusca(''); setFesta(null); } }}
+                sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setBusca(''); setFesta(null); fecharFicha(); } }}
               />
               <label className="cad-busca">
                 <Icone nome="lupa" />
@@ -892,7 +963,43 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               <p className="cad-vazio">Nada com “{busca}”.</p>
             )}
           </section>
+          )}
 
+          {atracaoAberta ? (
+            <aside className="form-cad ficha-atr" aria-label={`Ficha de ${atracaoAberta.nome}`}>
+              <button type="button" className="botao-texto volta-ficha" onClick={fecharFicha}>
+                + Nova atração
+              </button>
+              <h2>
+                <span className="bolha"><Desenho d={ICONES.atracoes} /></span>
+                {atracaoAberta.nome}
+              </h2>
+              <p className="dica">{[atracaoAberta.categoria, `acervo ${rotuloDoAcervo(atracaoAberta.acervo)}`].filter(Boolean).join(' · ')}</p>
+              <div className="campo-cad">
+                <span>Keys</span>
+                <div className="keys-ficha">
+                  <Vagas eixo="x" itens={atracaoAberta.keys.filter((k) => !escondidos.includes(`${atracaoAberta.id}:${k.id}`))} chave={(k) => k.id}>
+                    {(k) => <ChipKey k={k} recem={recem.includes(k.id)} remover={pode ? remover('atracoes', atracaoAberta.id, k.key, k.id) : undefined} />}
+                  </Vagas>
+                  <NovaKey salvar={novaKey('atracoes', atracaoAberta.id)} />
+                </div>
+              </div>
+              <SecaoAcervo acervo={fichaAberta?.acervo ?? null} falha={fichaAberta?.falha ?? ''} ver={() => setVerAcervo(true)} />
+              {pode && atracaoAberta.acervo === 'proprio' && (
+                <div className="rodape-ficha">
+                  <span className="qtd-acervo">só administradores</span>
+                  <NovoPacote
+                    nome={atracaoAberta.nome}
+                    avisar={avisar}
+                    depois={() => {
+                      void lerFicha(atracaoAberta.nome);
+                      void carregarTotais();
+                    }}
+                  />
+                </div>
+              )}
+            </aside>
+          ) : (
           <aside className="form-cad">
             <form
               onSubmit={(e) => {
@@ -1016,8 +1123,10 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               </div>
             </form>
           </aside>
+          )}
         </div>
       </main>
+      )}
       {desfazer && (
         <div className="desfazer" role="status" key={desfazer.id}>
           <span>{desfazer.texto}</span>

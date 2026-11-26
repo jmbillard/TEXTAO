@@ -196,6 +196,26 @@ export function criarAcervo(env, deps = {}) {
     return juntar((await todas()).filter((l) => !l.filmeId && nomeComparavel(l.atracao) === n).map(publica));
   }
 
+  /** A ficha da atração (Cadastros): o acervo dela linha a linha, sem juntar a mesma arte em tipos diferentes (em ordem
+      alfabética, sem caixa; o empate pelo tipo), com o total e a contagem por tipo (a maior primeiro; "sem tipo" no fim). A do filme e a sem acervo não guardam arte aqui. */
+  async function fichaDa(atracao) {
+    const acervo = await acervoDe(atracao);
+    const n = nomeComparavel(atracao);
+    const linhas = acervo === 'proprio' && n ? (await todas()).filter((l) => !l.filmeId && nomeComparavel(l.atracao) === n) : [];
+    const artes = linhas.map(({ id, arte, tipo }) => ({ id, arte, tipo })).sort((a, b) => a.arte.localeCompare(b.arte, 'pt-BR', { sensitivity: 'base' }) || a.tipo.localeCompare(b.tipo, 'pt-BR'));
+    const contagem = new Map();
+    for (const l of artes) contagem.set(l.tipo, (contagem.get(l.tipo) ?? 0) + 1);
+    const porTipo = [...contagem].map(([tipo, n]) => ({ tipo, n })).sort((a, b) => !a.tipo - !b.tipo || b.n - a.n || a.tipo.localeCompare(b.tipo, 'pt-BR'));
+    return { acervo, total: artes.length, porTipo, artes };
+  }
+
+  /** Quantas linhas cada atração tem no acervo, pelo nome do vínculo (a lista dos Cadastros); as dos filmes não contam. */
+  async function totais() {
+    const saida = {};
+    for (const l of await todas()) if (!l.filmeId && l.atracao) saida[l.atracao] = (saida[l.atracao] ?? 0) + 1;
+    return saida;
+  }
+
   /** O que já existe para o roteiro: o acervo da atração ou, numa sessão, o do filme daquele dia. */
   async function paraRevisao(atracao, data) {
     if (await semAcervo(atracao)) return [];
@@ -286,5 +306,5 @@ export function criarAcervo(env, deps = {}) {
     return ids.length;
   }
 
-  return { ligado, grava, acervoDe, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, acervoDe, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }

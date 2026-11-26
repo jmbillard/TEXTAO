@@ -1319,6 +1319,25 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       if (!acervo.ligado) return json(res, 200, { ligado: false, artes: [] });
       return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), artes: await acervo.paraRevisao(atracao, data).catch((e) => (console.warn(`[acervo] ${e instanceof Error ? e.message : e}`), [])) });
     }
+    if (caminho === '/api/acervo/totais') {
+      // a lista de atrações nos Cadastros: quantas artes cada uma tem no acervo
+      if (!acervo.ligado) return json(res, 200, { ligado: false, totais: {} });
+      try {
+        return json(res, 200, { ligado: true, totais: await acervo.totais() });
+      } catch (e) {
+        return json(res, 502, { erro: `Não consegui ler o acervo: ${e instanceof Error ? e.message : e}` });
+      }
+    }
+    if (caminho === '/api/acervo/atracao') {
+      // a ficha da atração nos Cadastros: o acervo dela linha a linha, com o total e a contagem por tipo (só consulta)
+      const atracao = (new URL(req.url, 'http://x').searchParams.get('atracao') ?? '').slice(0, 200);
+      if (!acervo.ligado) return json(res, 200, { ligado: false, acervo: 'proprio', podeZerar: false, total: 0, porTipo: [], artes: [] });
+      try {
+        return json(res, 200, { ligado: true, podeZerar: cadastros.podeApagar(eu.email), ...(await acervo.fichaDa(atracao)) });
+      } catch (e) {
+        return json(res, 502, { erro: `Não consegui ler o acervo: ${e instanceof Error ? e.message : e}` });
+      }
+    }
     if (caminho === '/api/acervo/zerar') {
       // pacote gráfico novo: as artes da atração deixam de valer. Só administradores (CADASTRO_ADMINS).
       if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });

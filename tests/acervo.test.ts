@@ -395,3 +395,75 @@ describe('a atração do envio ao registrar no acervo (#54)', () => {
     expect(procurados).toEqual([]);
   });
 });
+
+describe('a ficha da atração: o acervo dela, linha a linha (#57)', () => {
+  /** O servidor de verdade com o acervo de mentira; o chefe é administrador. */
+  async function comServidor(teste: (como: (email: string) => (caminho: string) => Promise<Response>) => Promise<void>) {
+    const { consultar } = falsos();
+    const acervo = criarAcervo(ENV, { consultar });
+    const servidor = createServer(criarApp({ db: abrirBanco(':memory:'), env: { CADASTRO_ADMINS: 'chefe@empresa.com' }, trello: { ligado: false, parar: async () => {} }, acervo }));
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    const como = (email: string) => (caminho: string) => fetch(base + caminho, { headers: { 'cf-access-authenticated-user-email': email } });
+    try {
+      await teste(como);
+    } finally {
+      servidor.close();
+    }
+  }
+
+  it('cada linha do acervo (arte, tipo, id), com o total e a contagem por tipo; "sem tipo" no fim', async () => {
+    await comServidor(async (como) => {
+      const r = await como('ana@empresa.com')('/api/acervo/atracao?atracao=encontro');
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual({
+        ligado: true,
+        acervo: 'proprio',
+        podeZerar: false,
+        total: 3,
+        // a mesma arte em dois tipos são duas linhas: a ficha conta linhas, não junta
+        porTipo: [
+          { tipo: 'CRT', n: 1 },
+          { tipo: 'Lettering com alpha', n: 1 },
+          { tipo: '', n: 1 },
+        ],
+        artes: [
+          { id: 'recA', arte: 'Amanhã!', tipo: '' },
+          { id: 'recH2', arte: 'Hoje', tipo: 'CRT' }, // a mesma arte: o empate vai pelo tipo
+          { id: 'recH', arte: 'HOJE', tipo: 'Lettering com alpha' },
+        ],
+      });
+      expect((await (await como('chefe@empresa.com')('/api/acervo/atracao?atracao=Encontro')).json()).podeZerar).toBe(true);
+    });
+  });
+
+  it('a sessão de filme e a atração sem acervo: a ficha diz o acervo e não lista arte (as do filme ficam com o filme)', async () => {
+    await comServidor(async (como) => {
+      const ana = como('ana@empresa.com');
+      const filme = await (await ana('/api/acervo/atracao?atracao=Tela%20Quente')).json();
+      expect(filme).toMatchObject({ acervo: 'filme', total: 0, porTipo: [], artes: [] });
+      const sem = await (await ana('/api/acervo/atracao?atracao=Shows%20Diversos')).json();
+      expect(sem).toMatchObject({ acervo: 'sem', total: 0, porTipo: [], artes: [] });
+    });
+  });
+
+  it('a lista de atrações: quantas artes cada uma tem no acervo (as linhas dos filmes ficam com os filmes)', async () => {
+    await comServidor(async (como) => {
+      const r = await como('ana@empresa.com')('/api/acervo/totais');
+      expect(await r.json()).toEqual({ ligado: true, totais: { Encontro: 3, 'Show da Noite': 1 } });
+    });
+  });
+
+  it('sem o acervo configurado: a ficha e a lista dizem que está desligado, sem erro', async () => {
+    const servidor = createServer(criarApp({ db: abrirBanco(':memory:'), env: {}, trello: { ligado: false, parar: async () => {} }, acervo: criarAcervo({}) }));
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    const ana = (caminho: string) => fetch(base + caminho, { headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } }).then((r) => r.json());
+    try {
+      expect(await ana('/api/acervo/atracao?atracao=Encontro')).toMatchObject({ ligado: false, total: 0, artes: [] });
+      expect(await ana('/api/acervo/totais')).toEqual({ ligado: false, totais: {} });
+    } finally {
+      servidor.close();
+    }
+  });
+});

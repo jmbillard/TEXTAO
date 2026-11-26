@@ -530,6 +530,26 @@ export async function palpitesDoRedator(meta: Pick<Meta, 'programa' | 'praca' | 
   return sugestoesDoRedator({ texto: redatorNoTexto(paragrafos, redatores), historico, atracao: meta.programa, redatores, recusados: meta.redatorRecusado });
 }
 
+/** Uma linha do acervo da atração, como a ficha mostra (a mesma arte em dois tipos são duas linhas). */
+export interface ArteDaFicha {
+  id: string;
+  arte: string;
+  /** a sigla do tipo ('' sem tipo) */
+  tipo: string;
+}
+/** O acervo na ficha da atração (Cadastros): as linhas, o total e quantas de cada tipo ('' é "sem tipo", no fim). */
+export interface AcervoDaFicha {
+  ligado: boolean;
+  acervo: AcervoDaAtracao;
+  podeZerar: boolean;
+  total: number;
+  porTipo: { tipo: string; n: number }[];
+  artes: ArteDaFicha[];
+}
+export const lerAcervoDaFicha = (atracao: string) => pedir<AcervoDaFicha>(`/api/acervo/atracao?atracao=${encodeURIComponent(atracao)}`);
+/** Quantas artes cada atração tem no acervo, pelo nome (a lista de atrações dos Cadastros). */
+export const lerTotaisDoAcervo = () => pedir<{ ligado: boolean; totais: Record<string, number> }>('/api/acervo/totais');
+
 /** Pacote gráfico novo: as artes da atração deixam de valer. */
 export const zerarAcervo = (atracao: string) => pedir<{ zeradas: number }>('/api/acervo/zerar', { method: 'POST', body: JSON.stringify({ atracao }) });
 
