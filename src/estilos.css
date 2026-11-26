@@ -1491,7 +1491,7 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .texto-maquina.selecionado { animation: selecionar-convite 0.45s cubic-bezier(0.45, 0, 0.3, 1) forwards; }
 @keyframes selecionar-convite { to { background-size: 100% 100%; } }
 /* um risco à mão embaixo dos formatos, desenhado quando o quadro aparece */
-/* o risco à mão sob um texto (os formatos do convite, a claquete prioridade) */
+/* o risco à mão sob um texto (os formatos do convite) */
 .riscado { position: relative; display: inline-block; }
 .riscado svg { position: absolute; left: -3px; top: calc(100% - 3px); width: calc(100% + 6px); height: 9px; overflow: visible; pointer-events: none; }
 .riscado path { fill: none; stroke: var(--ultra); stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
@@ -1499,11 +1499,44 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
 .formatos-riscados path { stroke-dasharray: 1; animation: rabiscar-aba 0.7s 0.4s var(--suave) both; }
 @media (prefers-reduced-motion: reduce) { .formatos-riscados path { animation: none; } }
 
-/* prioridade: a claquete na lista de prioridade ganha um risco à mão e, na fila de revisão, a palavra escrita ao lado */
+/* prioridade: a claquete na lista de prioridade ganha uma passada de marca-texto (os cards da agenda, a ficha da fila e o
+   topo da revisão) e, na fila e na revisão, a palavra escrita ao lado */
 .prio-nota { display: inline-block; margin-left: 12px; font: 700 20px/1 Caveat, cursive; letter-spacing: 0.01em; color: var(--ultra); white-space: nowrap; transform: rotate(-4deg) translateY(-1px); transform-origin: left; }
 .secao-trello-conta .prio-nota { margin-left: 2px; font-size: 18px; }
-.card-semana-claquete .riscado svg { top: calc(100% - 4px); height: 7px; }
-.ficha-claquete .riscado svg { top: calc(100% - 6px); }
+/* o marca-texto: uma pincelada amarela translúcida (um SVG esticado, de bordas irregulares e com o veio do pincel), só na
+   metade de baixo da letra. Em linha, com box-decoration-break: clone, cada linha que quebra ganha a sua passada. Três
+   formas, sorteadas pelo roteiro (tracoDe); no escuro, um âmbar baixo, para a letra clara continuar lendo. A passada
+   corre da esquerda para a direita quando a claquete aparece; com o movimento reduzido, já aparece pintada. */
+:root {
+  --marca-texto-0: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M4%207%20C%2040%203%2C%2090%206%2C%20130%204%20S%20186%203%2C%20196%206%20L%20199%2013%20L%20195%2020%20L%20198%2029%20C%20170%2035%2C%20120%2033%2C%2080%2035%20S%2020%2036%2C%205%2034%20L%201%2026%20L%204%2019%20L%202%2012%20Z%22%20fill%3D%22rgba(255%2C214%2C0%2C0.5)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C240%2C140%2C0.35)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C240%2C140%2C0.35)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+  --marca-texto-1: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M2%209%20C%2030%205%2C%2070%207%2C%20110%205%20S%20180%206%2C%20197%204%20L%20195%2012%20L%20199%2021%20L%20196%2031%20C%20150%2034%2C%20110%2036%2C%2070%2034%20S%2022%2033%2C%203%2035%20L%205%2027%20L%201%2018%20Z%22%20fill%3D%22rgba(255%2C214%2C0%2C0.5)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C240%2C140%2C0.35)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C240%2C140%2C0.35)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+  --marca-texto-2: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M5%205%20C%2050%207%2C%20100%203%2C%20140%206%20S%20185%207%2C%20198%208%20L%20196%2016%20L%20199%2024%20L%20195%2033%20C%20160%2031%2C%20120%2036%2C%2075%2033%20S%2025%2035%2C%202%2032%20L%204%2023%20L%201%2014%20Z%22%20fill%3D%22rgba(255%2C214%2C0%2C0.5)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C240%2C140%2C0.35)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C240%2C140%2C0.35)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --marca-texto-0: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M4%207%20C%2040%203%2C%2090%206%2C%20130%204%20S%20186%203%2C%20196%206%20L%20199%2013%20L%20195%2020%20L%20198%2029%20C%20170%2035%2C%20120%2033%2C%2080%2035%20S%2020%2036%2C%205%2034%20L%201%2026%20L%204%2019%20L%202%2012%20Z%22%20fill%3D%22rgba(255%2C205%2C60%2C0.30)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+    --marca-texto-1: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M2%209%20C%2030%205%2C%2070%207%2C%20110%205%20S%20180%206%2C%20197%204%20L%20195%2012%20L%20199%2021%20L%20196%2031%20C%20150%2034%2C%20110%2036%2C%2070%2034%20S%2022%2033%2C%203%2035%20L%205%2027%20L%201%2018%20Z%22%20fill%3D%22rgba(255%2C205%2C60%2C0.30)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+    --marca-texto-2: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M5%205%20C%2050%207%2C%20100%203%2C%20140%206%20S%20185%207%2C%20198%208%20L%20196%2016%20L%20199%2024%20L%20195%2033%20C%20160%2031%2C%20120%2036%2C%2075%2033%20S%2025%2035%2C%202%2032%20L%204%2023%20L%201%2014%20Z%22%20fill%3D%22rgba(255%2C205%2C60%2C0.30)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+  }
+}
+:root[data-theme='dark'] {
+  --marca-texto-0: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M4%207%20C%2040%203%2C%2090%206%2C%20130%204%20S%20186%203%2C%20196%206%20L%20199%2013%20L%20195%2020%20L%20198%2029%20C%20170%2035%2C%20120%2033%2C%2080%2035%20S%2020%2036%2C%205%2034%20L%201%2026%20L%204%2019%20L%202%2012%20Z%22%20fill%3D%22rgba(255%2C205%2C60%2C0.30)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+  --marca-texto-1: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M2%209%20C%2030%205%2C%2070%207%2C%20110%205%20S%20180%206%2C%20197%204%20L%20195%2012%20L%20199%2021%20L%20196%2031%20C%20150%2034%2C%20110%2036%2C%2070%2034%20S%2022%2033%2C%203%2035%20L%205%2027%20L%201%2018%20Z%22%20fill%3D%22rgba(255%2C205%2C60%2C0.30)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+  --marca-texto-2: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%2040%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M5%205%20C%2050%207%2C%20100%203%2C%20140%206%20S%20185%207%2C%20198%208%20L%20196%2016%20L%20199%2024%20L%20195%2033%20C%20160%2031%2C%20120%2036%2C%2075%2033%20S%2025%2035%2C%202%2032%20L%204%2023%20L%201%2014%20Z%22%20fill%3D%22rgba(255%2C205%2C60%2C0.30)%22%2F%3E%3Cpath%20d%3D%22M8%2012%20C%2060%2010%2C%20130%2013%2C%20192%2011%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M6%2026%20C%2070%2028%2C%20140%2025%2C%20193%2027%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C220%2C110%2C0.08)%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E");
+}
+.marca-texto { padding: 0 4px; margin: 0 -4px; background: var(--marca-texto-0) no-repeat 0 100% / 100% 58%; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  animation: passar-marca-texto 0.5s 0.15s cubic-bezier(0.45, 0, 0.3, 1) backwards; }
+.marca-texto.forma-1 { background-image: var(--marca-texto-1); }
+.marca-texto.forma-2 { background-image: var(--marca-texto-2); }
+@keyframes passar-marca-texto { from { background-size: 0% 58%; } }
+@media (prefers-reduced-motion: reduce) { .marca-texto { animation: none; } }
+/* na ficha revisada, o grifo neutro da claquete apagaria o marca-texto: fica só a passada (a orelha e a rubrica seguem) */
+.ficha.revisada .marca-texto .claquete-texto { background-image: none; }
+/* no topo da revisão: a claquete corta com reticências, então a folga do pincel fica dentro dela; a palavra vem logo depois */
+.trilha strong:has(> .marca-texto) { padding-inline: 4px; margin-inline: -4px; }
+/* (o ".trilha span:first-child" das telas estreitas esconde o rótulo da trilha, não a claquete) */
+.topo .trilha .marca-texto { display: inline; }
+.topo .trilha .prio-nota { flex: none; align-self: center; margin-left: 8px; font-size: 19px; }
 
 /* ---------- escolher redator/editor na claquete ---------- */
 .escolha-nome { position: relative; }
@@ -2464,7 +2497,6 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-abrir { position: relative; padding: 6px 10px; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   padding-bottom: 3px; margin-bottom: -3px; }
-.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete .riscado { display: inline; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete .seg { white-space: nowrap; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-linha, .secao-trello.encolhida .card-semana:not(.aberto) .card-outra { display: none; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-sinal { display: block; position: absolute; right: 8px; top: 50%; margin-top: -3px; width: 6px; height: 6px; border-radius: 50%; transition: opacity 0.15s; }

@@ -30,7 +30,7 @@ import { chaveDeArte } from '../modelo/diferencas';
 import {
   ETIQUETAS, juntarTipos, metaVazia, NOMES_COLUNAS, nomesDosTipos, normalizarSubtipo, tiposDaArte, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
-import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura, PalpiteAMao, TextoDaClaquete, useSaida, type PalpiteNoCampo } from './pecas';
+import { Claquete, EscolhaDeTipo, Marca, MarcaTexto, MenuDeOpcoes, NA_PRIORIDADE, Miniatura, PalpiteAMao, TextoDaClaquete, tracoDe, useSaida, type PalpiteNoCampo } from './pecas';
 import { estadoDoRedator, paragrafosDoDoc, recusarPalpite, sugeridosDoMenu } from '../modelo/redator';
 import { useTelaDeCelular } from './faixa';
 import { Icone, Selo, type NomeIcone } from './icones';
@@ -481,6 +481,17 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // nada ao servidor sobre ele (pauta, acervo)
   const doTour = ehDoTour(inicial.id);
   const comServidor = armazenamento.tipo === 'servidor' && !doTour;
+  // na lista de prioridade? O mesmo andamento que marca a ficha da fila e o card da agenda (o servidor guarda por 30 s):
+  // a claquete do topo ganha o marca-texto e a palavra ao lado
+  const [prioridade, setPrioridade] = useState(false);
+  useEffect(() => {
+    if (!comServidor) return;
+    let vivo = true;
+    void armazenamento.andamento().then((a) => vivo && setPrioridade(!!a[inicial.id]?.prioridade), () => {});
+    return () => {
+      vivo = false;
+    };
+  }, [comServidor, inicial.id]);
   // edição simultânea: só existe com servidor
   const [sala] = useState(() => (comServidor ? abrirSala(inicial.id) : null));
   const [sincronizado, setSincronizado] = useState(!sala);
@@ -1734,7 +1745,12 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
         {celular ? (
           <>
             <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
-            <span className="trilha"><strong><TextoDaClaquete texto={meta.claquete || meta.programa || 'Roteiro'} /></strong></span>
+            <span className="trilha">
+              <strong>
+                {prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}><TextoDaClaquete texto={meta.claquete || meta.programa || 'Roteiro'} /></MarcaTexto> : <TextoDaClaquete texto={meta.claquete || meta.programa || 'Roteiro'} />}
+                {prioridade && <span className="prio-nota" title={NA_PRIORIDADE}>prioridade</span>}
+              </strong>
+            </span>
             {menuMais}
           </>
         ) : (
@@ -1742,7 +1758,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             <div className="topo-esq">
               <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
               <Marca />
-              <span className="trilha"><strong>{meta.claquete || meta.programa || 'Roteiro'}</strong></span>
+              <span className="trilha">
+                <strong>{prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}>{meta.claquete || meta.programa || 'Roteiro'}</MarcaTexto> : meta.claquete || meta.programa || 'Roteiro'}</strong>
+                {prioridade && <span className="prio-nota" title={NA_PRIORIDADE}>prioridade</span>}
+              </span>
               {leitura ? (
                 <span className="salvo">somente leitura</span>
               ) : (

@@ -12,7 +12,7 @@ export const RABISCOS = [
   'M10 18 C 14 6, 36 2, 50 8 C 63 14, 58 34, 40 38 C 22 42, 4 34, 7 20 C 9 12, 18 7, 28 5',
 ];
 
-/** Os riscos à caneta sob um texto (viewBox 0 0 100 14, pathLength 1): os formatos do convite e a claquete prioridade. */
+/** Os riscos à caneta sob um texto (viewBox 0 0 100 14, pathLength 1): os formatos do convite. */
 export const RISCOS = ['M2 8 C 22 4, 52 5, 97 6 C 70 8, 38 10, 12 11', 'M3 6 C 30 9, 60 4, 98 7', 'M2 7 C 35 4, 70 9, 97 5 C 75 8, 40 9, 20 10'];
 
 /** Os riscos à caneta por cima de um texto riscado, um por linha (mesmo viewBox, o meio em y = 7, de um traço só): a arte
@@ -27,6 +27,18 @@ export function Riscado({ children, traco = 0, className = '' }: { children: Rea
       <svg viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true"><path pathLength={1} d={RISCOS[traco % RISCOS.length]} /></svg>
     </span>
   );
+}
+
+/** Qual das formas (do risco ou do marca-texto) vai na claquete: sempre a mesma para o mesmo roteiro. */
+export const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0);
+
+/** A dica da palavra "prioridade" ao lado da claquete marcada (a ficha da fila e o topo da revisão). */
+export const NA_PRIORIDADE = 'Na lista de prioridade: vai para o Trello com prioridade ALTA';
+
+/** A passada de marca-texto da claquete na lista de prioridade (a agenda, a fila e o topo da revisão): em linha, uma
+ *  passada por linha que quebra; `traco` escolhe qual das três formas do pincel (veja `.marca-texto` em estilos.css). */
+export function MarcaTexto({ children, traco = 0 }: { children: React.ReactNode; traco?: number }) {
+  return <span className={`marca-texto forma-${traco % 3}`}>{children}</span>;
 }
 
 export /** "???" escritos à mão, cada um meio torto e fora do lugar; sempre do mesmo jeito para o mesmo roteiro. */
