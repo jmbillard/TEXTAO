@@ -1,8 +1,9 @@
 /*
  * O histórico das importações do acervo por CSV (#61), no SQLite do PROMeiro: atração, quem, quando, o arquivo e o
  * registro do que a gravação fez (os lotes com o estado de cada um, os ids criados, o tipo e o nome antigos das linhas
- * alteradas e a data de modificação de cada linha logo depois). É dele que saem o desfazer (por 7 dias) e o retomar
- * da gravação interrompida; quem grava, desfaz e retoma no Teable é o acervo (servidor/acervo.mjs).
+ * alteradas, a data de modificação de cada linha logo depois e os caminhos do CSV, para o aviso de já importado, #62).
+ * É dele que saem o desfazer (por 7 dias) e o retomar da gravação interrompida; quem grava, desfaz e retoma no Teable é
+ * o acervo (servidor/acervo.mjs).
  */
 
 /** Por quanto tempo a importação pode ser desfeita (ou retomada). */
@@ -65,6 +66,17 @@ export function criarImportacoes(db) {
       q.anotar.run(id, atracao, por.email, por.nome, em, arquivo, JSON.stringify(registro));
     },
     uma: (id) => ler(q.uma.get(id)),
+    /** As importações da atração que não foram desfeitas, com os caminhos do CSV (os do registro e, nas anteriores ao
+        #62, os das linhas gravadas): o "já importado" da prévia. */
+    historicoDe: (atracao) =>
+      q.daAtracao
+        .all(atracao)
+        .filter((l) => !l.desfeita_em)
+        .map((l) => {
+          const { registro } = ler(l);
+          const caminhos = registro.caminhos ?? registro.lotes.flatMap((lote) => lote.registros.map((r) => r.caminho)).filter(Boolean);
+          return { em: l.em, arquivo: l.arquivo, caminhos };
+        }),
     lista: (atracao, opcoes) => q.daAtracao.all(atracao).map((l) => publica(ler(l), opcoes)),
     noPrazo: (linha, agora = Date.now()) => agora < Date.parse(linha.em) + PRAZO_DO_DESFAZER_MS,
     estado: (linha) => estadoDe(linha, linha.registro),

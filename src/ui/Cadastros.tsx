@@ -677,15 +677,24 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     void lerFicha(atracao);
     void carregarTotais();
   };
-  const importar = (atracao: string) => async (arquivo: File) => {
+  const importar = (atracao: string) => async (arquivo: File) => preverOCsv(atracao, arquivo.name, () => arquivo.text());
+  const preverOCsv = async (atracao: string, nome: string, ler: () => Promise<string>) => {
     setImportacao({ atracao, lendo: true, falha: '' });
     try {
-      const previa = await preverImportacao(atracao, arquivo.name, await arquivo.text());
+      const previa = await preverImportacao(atracao, nome, await ler());
       setImportacao((i) => (i?.atracao === atracao ? { atracao, lendo: false, falha: '', previa } : i));
       window.scrollTo(0, 0);
     } catch (e) {
       setImportacao((i) => (i?.atracao === atracao ? { atracao, lendo: false, falha: e instanceof Error ? e.message : 'Não consegui ler o CSV.' } : i));
     }
+  };
+  /** O CSV de outra atração (#62): o mesmo arquivo vai para a ficha da atração em cuja pasta de output estão os
+      caminhos, e a conferência recomeça lá. */
+  const importarEmOutra = (previa: PreviaDaImportacao) => (nome: string) => {
+    const a = dados?.atracoes.find((x) => x.nome.localeCompare(nome, 'pt-BR', { sensitivity: 'base' }) === 0);
+    if (!a) return;
+    abrirFicha(a);
+    void preverOCsv(a.nome, previa.arquivo, async () => previa.csv);
   };
   /** Sai da conferência (ou do resultado) de volta à ficha; com o acervo gravado, a ficha e a lista releem o total. */
   const voltarDaImportacao = (atracao: string, ver = false) => {
@@ -1037,6 +1046,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               previa={importacao.previa}
               cancelar={() => voltarDaImportacao(atracaoAberta.nome)}
               gravado={(resultado) => gravou(atracaoAberta.nome, resultado)}
+              importarEm={dados?.podeApagar ? importarEmOutra(importacao.previa) : undefined}
             />
           )}
         </main>

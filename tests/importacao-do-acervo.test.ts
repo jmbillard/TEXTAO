@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { criarAcervo } from '../servidor/acervo.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
-import { classificar, comoRegras, conferir, emLote, regrasDasDecisoes, type Escolhas, type LinhaDaImportacao, type RegraLembrada } from '../servidor/importacao-do-acervo.mjs';
+import { avisosDaImportacao, classificar, comoRegras, conferir, emLote, regrasDasDecisoes, type Escolhas, type LinhaDaImportacao, type RegraLembrada } from '../servidor/importacao-do-acervo.mjs';
 
 /* A importação do acervo por CSV (#58): a função pura que converte cada arquivo do CSV da pasta de output numa arte e
    classifica a linha contra o acervo da atração. Os casos são fictícios, no formato dos CSVs já importados à mão. */
@@ -326,7 +326,7 @@ describe('para decidir (#60): cada pergunta na linha', () => {
     expect(mudou(d.linhas[0] as LinhaComRegras)).toEqual(['BANDA MAR ABERTTO → BANDA MAR ABERTO · erro no arquivo']);
     const outra = conferido(r, { 2: { respostas: { parecida: 'outra' } } }, acervo);
     expect(outra.linhas[0]).toMatchObject({ estado: 'nova', arte: 'BANDA MAR ABERTTO' });
-    expect(outra.plano.criar).toContainEqual({ arte: 'BANDA MAR ABERTTO', tipo: 'RDP' });
+    expect(outra.plano.criar).toContainEqual({ arte: 'BANDA MAR ABERTTO', tipo: 'RDP', caminho: `${PASTA}/RDP - BANDA MAR ABERTTO.mov` });
   });
 
   it('o erro que está no próprio acervo: o roteiro escreve como o arquivo; "corrigir" renomeia a mesma linha do acervo', () => {
@@ -350,8 +350,8 @@ describe('para decidir (#60): cada pergunta na linha', () => {
       criar: [],
       tipar: [],
       renomear: [
-        { id: 'recSorisso', arte: 'SORRISO FICTÍCIO', antigo: 'SORISSO FICTICIO' },
-        { id: 'recTrio', arte: 'TRIO PÉ DE SERRA', antigo: 'TRIO PÉ DE SERA', tipo: 'RDP' },
+        { id: 'recSorisso', arte: 'SORRISO FICTÍCIO', antigo: 'SORISSO FICTICIO', caminho: `${PASTA}/RDP - SORRISO FICTICIO.mov` },
+        { id: 'recTrio', arte: 'TRIO PÉ DE SERRA', antigo: 'TRIO PÉ DE SERA', tipo: 'RDP', caminho: `${PASTA}/RDP - TRIO PE DE SERRA.mov` },
       ],
       semMudanca: 0,
     });
@@ -627,7 +627,7 @@ const ENV = {
   TEABLE_PG_ARTE: 'producao',
 };
 const PROGRAMA = { id: 'recProg', title: 'Programa Fictício' };
-type LinhaDoTeable = { id: string; arte: string; tipo: string | null; atracao: { id: string; title: string }[]; claquete: unknown[]; filme: null | { id: string; title: string }; modificado?: string };
+type LinhaDoTeable = { id: string; arte: string; tipo: string | null; caminho?: string | null; atracao: { id: string; title: string }[]; claquete: unknown[]; filme: null | { id: string; title: string }; modificado?: string };
 type Pedido = { metodo: string; url: string; corpo: null | { typecast?: boolean; records: { id?: string; fields: Record<string, unknown> }[] } };
 
 /** O Teable de mentira: o Postgres (o acervo, que muda com o que a API grava, e as atrações) e a API (os campos e os
@@ -642,8 +642,9 @@ function teableFalso() {
     { id: 'recDoFilme', arte: 'SESSÃO ÍNTIMA', tipo: 'CRT', atracao: [], claquete: [], filme: { id: 'recFilme', title: 'Filme Fictício' } },
   ];
   const atracoes = [
-    { id: 'recProg', atracao: 'Programa Fictício', acervo: 'próprio' },
-    { id: 'recNovela', atracao: 'Novela Fictícia', acervo: null },
+    // a pasta de output do cadastro: o caminho do Windows (o do card); o CSV vem do Mac
+    { id: 'recProg', atracao: 'Programa Fictício', acervo: 'próprio', output_win: '\\\\SERVIDOR\\PROMO\\output\\PROGRAMA FICTICIO' },
+    { id: 'recNovela', atracao: 'Novela Fictícia', acervo: null, output_win: '\\\\SERVIDOR\\PROMO\\output\\NOVELA FICTICIA' },
     { id: 'recSessao', atracao: 'Sessão Fictícia', acervo: 'do filme' },
     { id: 'recShows', atracao: 'Shows Fictícios', acervo: 'sem acervo' },
   ];
@@ -658,6 +659,7 @@ function teableFalso() {
     if (sql.includes('"bseBase"."acervo"')) return leituras.acervo++, linhas.map((l) => ({ ...l }));
     if (sql.includes('"bseBase"."producao"')) return roteiros;
     if (sql.includes('"atracoes"') && sql.includes('"acervo"')) return atracoes;
+    if (sql.includes('"atracoes"') && sql.includes('"output_win"')) return atracoes;
     if (sql.includes('"atracoes"')) return atracoes.filter((a) => a.atracao.toLowerCase() === String(params[0]).toLowerCase()).map(({ id }) => ({ id }));
     return [];
   };
@@ -683,7 +685,7 @@ function teableFalso() {
     else if (pedido.metodo === 'POST')
       resposta = {
         records: pedido.corpo!.records.map((r) => {
-          const nova = { id: `recNova${++novas}`, arte: String(r.fields.arte), tipo: (r.fields.tipo as string) ?? null, atracao: [PROGRAMA], claquete: [], filme: null, modificado: carimbo() };
+          const nova = { id: `recNova${++novas}`, arte: String(r.fields.arte), tipo: (r.fields.tipo as string) ?? null, caminho: (r.fields.caminho as string) ?? null, atracao: [PROGRAMA], claquete: [], filme: null, modificado: carimbo() };
           linhas.push(nova);
           return { id: nova.id, fields: r.fields };
         }),
@@ -825,10 +827,10 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
       expect(post[0].url).toBe('http://teable:3000/api/table/tblAcervo/record');
       expect(post[0].corpo!.typecast).toBe(false); // o tipo já foi conferido contra as opções do campo
       expect(post[0].corpo!.records.map((x) => x.fields)).toEqual([
-        { arte: 'VEM AÍ', tipo: 'LETT', atracao: [{ id: 'recProg' }] },
-        { arte: 'VEM AÍ', tipo: 'RDP', atracao: [{ id: 'recProg' }] },
+        { arte: 'VEM AÍ', tipo: 'LETT', atracao: [{ id: 'recProg' }], caminho: `${PASTA}/LETT - VEM AI.mov` },
+        { arte: 'VEM AÍ', tipo: 'RDP', atracao: [{ id: 'recProg' }], caminho: `${PASTA}/RDP - VEM AI.mov` },
       ]);
-      expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').map((p) => p.corpo!.records)).toEqual([[{ id: 'recA2', fields: { tipo: 'RDP' } }]]);
+      expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').map((p) => p.corpo!.records)).toEqual([[{ id: 'recA2', fields: { tipo: 'RDP', caminho: `${PASTA}/RDP - PLATEIA.mov` } }]]);
     });
   });
 
@@ -879,8 +881,8 @@ describe('gravar a importação (POST /api/acervo/importar)', () => {
         [
           false,
           [
-            { id: 'recSorisso', fields: { arte: 'SORRISO FICTICIO' } },
-            { id: 'recA2', fields: { arte: 'PLATEIAS', tipo: 'CRT' } }, // estava sem tipo: ganha o da linha
+            { id: 'recSorisso', fields: { arte: 'SORRISO FICTICIO', caminho: `${PASTA}/RDP - SORRISO FICTICIO.mov` } },
+            { id: 'recA2', fields: { arte: 'PLATEIAS', tipo: 'CRT', caminho: `${PASTA}/CRT - PLATEIAS.mov` } }, // estava sem tipo: ganha o da linha
           ],
         ],
       ]);
@@ -984,7 +986,7 @@ describe('o histórico das importações e o desfazer (#61)', () => {
       expect(await r.json()).toEqual({ antes: 4, depois: 4, apagadas: 3, devolvidas: 2, naoVoltaram: [] });
       expect(acervoDoPrograma(teable)).toEqual(antes);
       // PLATEIA estava sem tipo: o tipo é apagado (null), e a gravação nunca cria opção
-      expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').at(-1)!.corpo).toMatchObject({ typecast: false, records: expect.arrayContaining([{ id: 'recA2', fields: { tipo: null } }]) });
+      expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').at(-1)!.corpo).toMatchObject({ typecast: false, records: expect.arrayContaining([{ id: 'recA2', fields: { tipo: null, caminho: null } }]) });
       // no histórico, desfeita por quem; desfazer de novo é recusado
       const [h] = await historico(como);
       expect(h).toMatchObject({ estado: 'desfeita', podeDesfazer: false, desfeita: { por: 'Chefe', naoVoltaram: [] } });
@@ -1185,6 +1187,146 @@ describe('lembrar as decisões nas próximas desta atração (#63)', () => {
       await gravar(como, csv('CRT - DP.mov'), { 2: { arte: 'DEPOIS' } }, true);
       await gravar(como, csv('CRT - DP.mov'), { 2: { arte: 'DAQUI A POUCO' } }, true);
       expect((await (await regras(como)).json()).regras.map((x: { motivo: string }) => x.motivo)).toEqual(['DP = DAQUI A POUCO']);
+    });
+  });
+});
+
+/* ---------- os avisos da prévia (#62): a pasta de output e o já importado ---------- */
+
+describe('os avisos da importação: a pasta de output da atração e o arquivo já importado', () => {
+  const NOVELA = '/Volumes/SERVIDOR/PROMO/output/NOVELA FICTICIA';
+  const caminhos = (pasta: string, ...nomes: string[]) => nomes.map((n) => `${pasta}/${n}`);
+  // a pasta de output de cada atração, como o cadastro guarda (o caminho do Windows, o mesmo que vai no card)
+  const pastas = [
+    { atracao: 'Programa Fictício', pasta: '\\\\SERVIDOR\\PROMO\\output\\PROGRAMA FICTICIO', criterio: 'cadastro' as const },
+    { atracao: 'Novela Fictícia', pasta: '\\\\SERVIDOR\\PROMO\\output\\Novela Ficticia', criterio: 'cadastro' as const },
+  ];
+  const base = { atracao: 'Programa Fictício', arquivo: 'PROGRAMA_SERVICO.csv', pastas };
+
+  it('os caminhos na pasta de output desta atração (no Mac ou no Windows, sem caixa nem acento) e o arquivo novo: confere', () => {
+    const r = avisosDaImportacao({ ...base, caminhos: [...caminhos(PASTA, 'CRT - HOJE.mov'), ...caminhos('/Volumes/SERVIDOR/PROMO/output/Programa Fictício/2024', 'RDP - VEM AI.mov')] });
+    expect(r).toEqual({
+      pasta: { estado: 'confere', pasta: '\\\\SERVIDOR\\PROMO\\output\\PROGRAMA FICTICIO', criterio: 'cadastro', total: 2, fora: 0, outra: '' },
+      jaImportado: null,
+    });
+  });
+
+  it('os caminhos na pasta de output de outra atração: o aviso diz qual', () => {
+    const r = avisosDaImportacao({ ...base, caminhos: caminhos(NOVELA, 'CRT - HOJE.mov', 'RDP - VEM AI.mov', '_ANTIGOS') });
+    expect(r.pasta).toEqual({ estado: 'outra', pasta: '\\\\SERVIDOR\\PROMO\\output\\PROGRAMA FICTICIO', criterio: 'cadastro', total: 3, fora: 3, outra: 'Novela Fictícia' });
+  });
+
+  it('parte dos caminhos fora da pasta também avisa; o caminho vazio não conta', () => {
+    const r = avisosDaImportacao({ ...base, caminhos: [...caminhos(PASTA, 'CRT - HOJE.mov'), ...caminhos('/Users/fulano/Desktop', 'RDP - VEM AI.mov'), ''] });
+    expect(r.pasta).toMatchObject({ estado: 'outra', total: 2, fora: 1, outra: '' });
+  });
+
+  it('sem a pasta de output no cadastro, vale a pasta mais comum dos caminhos já gravados no acervo da atração', () => {
+    const semCadastro = [{ atracao: 'Programa Fictício', pasta: '', criterio: 'cadastro' as const }, pastas[1]];
+    const noAcervo = [...caminhos(`${PASTA}`, 'CRT - A.mov', 'CRT - B.mov'), ...caminhos('/Volumes/SERVIDOR/PROMO/output/PROGRAMA FICTICIO/2023', 'RDP - C.mov'), '/Users/fulano/Desktop/RDP - D.mov'];
+    const dentro = avisosDaImportacao({ ...base, pastas: semCadastro, noAcervo, caminhos: caminhos('/Volumes/SERVIDOR/PROMO/output/PROGRAMA FICTICIO/2025', 'CRT - HOJE.mov') });
+    expect(dentro.pasta).toEqual({ estado: 'confere', pasta: '/Volumes/SERVIDOR/PROMO/output/PROGRAMA FICTICIO', criterio: 'acervo', total: 1, fora: 0, outra: '' });
+    const fora = avisosDaImportacao({ ...base, pastas: semCadastro, noAcervo, caminhos: caminhos(NOVELA, 'CRT - HOJE.mov') });
+    expect(fora.pasta).toMatchObject({ estado: 'outra', criterio: 'acervo', outra: 'Novela Fictícia' });
+  });
+
+  it('sem pasta no cadastro nem caminho gravado (ou o CSV sem caminhos), não dá para conferir: sem aviso de outra atração', () => {
+    const semCadastro = [{ atracao: 'Programa Fictício', pasta: '', criterio: 'cadastro' as const }];
+    expect(avisosDaImportacao({ ...base, pastas: semCadastro, caminhos: caminhos(NOVELA, 'CRT - HOJE.mov') }).pasta).toEqual({ estado: 'sem', pasta: '', criterio: '', total: 1, fora: 0, outra: '' });
+    expect(avisosDaImportacao({ ...base, caminhos: ['', ''] }).pasta).toMatchObject({ estado: 'sem', total: 0 });
+  });
+
+  it('já importado pelo histórico: o mesmo arquivo, ou os mesmos caminhos, numa importação desta atração (a data da mais nova)', () => {
+    const historico = [
+      { em: '2026-10-05T14:00:00.000Z', arquivo: 'OUTRO.csv', caminhos: caminhos(PASTA, 'CRT - HOJE.mov') },
+      { em: '2026-11-02T14:00:00.000Z', arquivo: 'programa_servico.csv', caminhos: [] },
+    ];
+    const r = avisosDaImportacao({ ...base, historico, caminhos: caminhos(PASTA, 'CRT - HOJE.mov', 'RDP - VEM AI.mov') });
+    expect(r.jaImportado).toEqual({ em: '2026-11-02T14:00:00.000Z', mesmoArquivo: true, quantos: 1, total: 2 });
+    const porCaminho = avisosDaImportacao({ ...base, arquivo: 'NOVO.csv', historico, caminhos: caminhos(PASTA, 'CRT - HOJE.mov') });
+    expect(porCaminho.jaImportado).toEqual({ em: '2026-10-05T14:00:00.000Z', mesmoArquivo: false, quantos: 1, total: 1 });
+  });
+
+  it('já importado pelos caminhos gravados no acervo (o mesmo arquivo no Mac e no Windows), sem data quando o histórico não tem', () => {
+    const noAcervo = ['\\\\SERVIDOR\\PROMO\\output\\PROGRAMA FICTICIO\\_servico\\CRT - HOJE.mov'];
+    const r = avisosDaImportacao({ ...base, noAcervo, caminhos: caminhos(PASTA, 'CRT - HOJE.mov', 'RDP - VEM AI.mov', 'RDP - DOMINGO.mov') });
+    expect(r.jaImportado).toEqual({ em: '', mesmoArquivo: false, quantos: 1, total: 3 });
+  });
+});
+
+describe('os avisos na prévia e no gravar (#62): o caminho gravado, outra atração, já importado', () => {
+  type Como = (email: string) => (caminho: string, corpo?: unknown) => Promise<Response>;
+  const NOVELA = '/Volumes/SERVIDOR/PROMO/output/NOVELA FICTICIA/_servico';
+  const daNovela = (...nomes: string[]) => ['nome;caminho;criado em', ...nomes.map((n) => `${n};${NOVELA}/${n};2024-08-12 19:10`)].join('\n');
+  const previa = async (como: Como, texto: string, arquivo = 'PROGRAMA_SERVICO.csv') => (await (await como(CHEFE)('/api/acervo/importar/previa', { atracao: 'Programa Fictício', arquivo, csv: texto })).json());
+  const gravar = (como: Como, texto: string, corpo: Record<string, unknown> = {}) =>
+    como(CHEFE)('/api/acervo/importar', { atracao: 'Programa Fictício', arquivo: 'PROGRAMA_SERVICO.csv', csv: texto, escolhas: {}, ...corpo });
+
+  it('o caminho do arquivo vai em cada arte criada; a que ganha o tipo ganha também o caminho, se não tinha; desfazer tira', async () => {
+    await comServidor(async ({ como, teable }) => {
+      const r = await gravar(como, csv('LETT - VEM AI.mov', 'RDP - PLATEIA.mov'));
+      expect(r.status).toBe(200);
+      const post = teable.pedidos.filter((p) => p.metodo === 'POST');
+      expect(post[0].corpo!.records.map((x) => x.fields)).toEqual([{ arte: 'VEM AÍ', tipo: 'LETT', atracao: [{ id: 'recProg' }], caminho: `${PASTA}/LETT - VEM AI.mov` }]);
+      expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').map((p) => p.corpo!.records)).toEqual([[{ id: 'recA2', fields: { tipo: 'RDP', caminho: `${PASTA}/RDP - PLATEIA.mov` } }]]);
+      const { importacao } = await r.json();
+      expect((await como(CHEFE)('/api/acervo/importacoes/desfazer', { id: importacao })).status).toBe(200);
+      expect(teable.linhas.find((l) => l.id === 'recA2')).toMatchObject({ tipo: null, caminho: null });
+    });
+  });
+
+  it('a linha do acervo que já tem caminho fica com ele', async () => {
+    await comServidor(async ({ como, teable }) => {
+      teable.mexer('recA2', { caminho: '/Volumes/SERVIDOR/PROMO/output/PROGRAMA FICTICIO/2023/PLATEIA.mov' });
+      await gravar(como, csv('RDP - PLATEIA.mov'));
+      expect(teable.pedidos.filter((p) => p.metodo === 'PATCH').map((p) => p.corpo!.records)).toEqual([[{ id: 'recA2', fields: { tipo: 'RDP' } }]]);
+    });
+  });
+
+  it('os caminhos na pasta de output da atração e o arquivo novo: o aviso verde', async () => {
+    await comServidor(async ({ como }) => {
+      const p = await previa(como, csv('LETT - VEM AI.mov', 'RDP - PLATEIA.mov'));
+      expect(p.avisos).toEqual({
+        pasta: { estado: 'confere', pasta: '\\\\SERVIDOR\\PROMO\\output\\PROGRAMA FICTICIO', criterio: 'cadastro', total: 2, fora: 0, outra: '' },
+        jaImportado: null,
+      });
+    });
+  });
+
+  it('o CSV de outra atração: a prévia avisa qual, e o gravar recusa sem a confirmação (nada é gravado); com ela, grava', async () => {
+    await comServidor(async ({ como, teable }) => {
+      const texto = daNovela('LETT - VEM AI.mov');
+      expect((await previa(como, texto)).avisos.pasta).toMatchObject({ estado: 'outra', total: 1, fora: 1, outra: 'Novela Fictícia' });
+      const recusado = await gravar(como, texto);
+      expect(recusado.status).toBe(422);
+      expect((await recusado.json()).erro).toBe('Os caminhos deste CSV estão na pasta de output de Novela Fictícia, não na de Programa Fictício. Confirme que o CSV é de Programa Fictício para gravar: nada foi gravado.');
+      expect(teable.pedidos.filter((p) => p.metodo !== 'GET')).toEqual([]);
+      const confirmado = await gravar(como, texto, { confirmouAtracao: true });
+      expect(confirmado.status).toBe(200);
+      expect(await confirmado.json()).toMatchObject({ novas: 1 });
+    });
+  });
+
+  it('já importado: o histórico diz quando (o mesmo arquivo, ou os mesmos caminhos); a importação desfeita não conta', async () => {
+    await comServidor(async ({ como }) => {
+      const texto = csv('LETT - VEM AI.mov', 'RDP - DOMINGO.mov');
+      const { importacao } = await (await gravar(como, texto)).json();
+      const de = await previa(como, texto);
+      expect(de.avisos.jaImportado).toEqual({ em: expect.any(String), mesmoArquivo: true, quantos: 2, total: 2 });
+      expect(Date.parse(de.avisos.jaImportado.em)).toBeGreaterThan(Date.now() - 60_000);
+      // outro nome, com um arquivo daquela importação
+      expect((await previa(como, csv('RDP - DOMINGO.mov', 'CRT - NOVO.mov'), 'OUTRO.csv')).avisos.jaImportado).toMatchObject({ mesmoArquivo: false, quantos: 1, total: 2 });
+      await como(CHEFE)('/api/acervo/importacoes/desfazer', { id: importacao });
+      expect((await previa(como, texto)).avisos.jaImportado).toBeNull();
+    });
+  });
+
+  it('já importado pelos caminhos gravados no acervo (sem histórico: sem data)', async () => {
+    await comServidor(async ({ como, teable }) => {
+      teable.mexer('recA1', { caminho: '\\\\SERVIDOR\\PROMO\\output\\PROGRAMA FICTICIO\\_servico\\CRT - AMANHA DEPOIS DO SHOW.mov' });
+      const p = await previa(como, csv('CRT - AMANHA DEPOIS DO SHOW.mov', 'RDP - DOMINGO.mov'), 'OUTRO.csv');
+      expect(p.avisos.jaImportado).toEqual({ em: '', mesmoArquivo: false, quantos: 1, total: 2 });
+      expect(p.avisos.pasta.estado).toBe('confere');
     });
   });
 });

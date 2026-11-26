@@ -4,7 +4,8 @@
  *
  * Tabela ARTES_acervo: arte (texto), key (fórmula, só para ver: o app calcula a sua), tipo (seleção: a sigla; vem do
  * envio, da importação por CSV conferida na ficha da atração (ADR 0005) ou da mão; o PROMeiro só grava uma opção que o
- * campo já tem), atracao (vínculo → atracoes), claquete (vínculo → ARTE_producao), filme (vínculo → filmes).
+ * campo já tem), atracao (vínculo → atracoes), claquete (vínculo → ARTE_producao), filme (vínculo → filmes) e caminho
+ * (texto: o caminho do arquivo na pasta de output, gravado pela importação; reconhece o reimport, #62).
  *
  * O acervo da atração (campo acervo em atracoes) diz como o acervo funciona:
  *   próprio (vazio também vale próprio): as artes são da atração.
@@ -17,10 +18,10 @@
  * (__last_modified_time, que o Teable mantém em toda tabela) diz se alguém mexeu nela depois de uma importação.
  */
 import { acervoDaAtracao } from './cadastros.mjs';
-import { classificar } from './importacao-do-acervo.mjs';
+import { avisosDaImportacao, classificar, pastaMaisComum } from './importacao-do-acervo.mjs';
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
-import { nivelDeComplexidade } from './trello.mjs';
+import { nivelDeComplexidade, SEM_CAMINHO } from './trello.mjs';
 
 /** A arte do jeito de comparar: sem acento, sem caixa, sem pontuação nas pontas, espaços simples. */
 export function chaveDeArte(texto) {
@@ -99,7 +100,7 @@ export function criarAcervo(env, deps = {}) {
   async function todas() {
     if (!ligado) return [];
     if (memo.linhas && Date.now() - memo.em < 60_000) return memo.linhas;
-    const linhas = await consultar(`SELECT "__id" AS id, "arte", "tipo", "atracao", "claquete", "filme", "__last_modified_time" AS modificado FROM ${t.acervo} LIMIT 50000`);
+    const linhas = await consultar(`SELECT "__id" AS id, "arte", "tipo", "atracao", "claquete", "filme", "caminho", "__last_modified_time" AS modificado FROM ${t.acervo} LIMIT 50000`);
     memo = {
       em: Date.now(),
       linhas: linhas.map((l) => {
@@ -108,7 +109,7 @@ export function criarAcervo(env, deps = {}) {
         const fil = vinculos(l.filme)[0] ?? { id: '', title: '' };
         // a chave sai da arte, aqui: o key do Teable é só para ver na tabela
         const modificado = l.modificado ? new Date(l.modificado) : null;
-        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, claquete: prod.title, filmeId: fil.id, modificado: modificado && !isNaN(modificado) ? modificado.toISOString() : '' };
+        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, claquete: prod.title, filmeId: fil.id, caminho: String(l.caminho ?? '').trim(), modificado: modificado && !isNaN(modificado) ? modificado.toISOString() : '' };
       }),
     };
     return memo.linhas;
@@ -359,18 +360,65 @@ export function criarAcervo(env, deps = {}) {
   const paraConferir = (linhas) => linhas.map(({ id, arte, tipo }) => ({ id, arte, tipo }));
 
   /**
-   * A prévia da importação por CSV (ADR 0005): cada linha do CSV classificada contra o acervo da atração, com as
-   * regras de conversão (a grafia pelas fontes, na ordem), as perguntas para quem confere, o placar e as opções de
-   * tipo. Vai junto o acervo da atração, para a tela conferir de novo a cada escolha. Nada é gravado.
-   * @param regras as regras desta atração (as decisões lembradas, #63), que quem chama lê do SQLite
-   * @returns { antes, tipos, acervo, linhas, placar, faltam }
+   * A pasta de output de cada atração, para conferir os caminhos do CSV (#62): a do cadastro (output_win, a mesma que
+   * vai no campo Output do card) ou, sem ela, a pasta mais comum dos caminhos já gravados no acervo da atração.
+   * @returns [{ atracao, pasta, criterio: 'cadastro' | 'acervo' }]
    */
-  async function previaDaImportacao(atracao, csv, regras = {}) {
+  async function pastasDeOutput() {
+    let cadastro = [];
+    if (t.atracoes)
+      try {
+        cadastro = await consultar(`SELECT "atracao", "output_win" FROM ${t.atracoes}`);
+      } catch (e) {
+        console.warn(`[acervo] não li a pasta de output das atrações: ${e instanceof Error ? e.message : e}`);
+      }
+    const doAcervo = new Map();
+    for (const l of await todas())
+      if (!l.filmeId && l.atracao && l.caminho) {
+        const k = nomeComparavel(l.atracao);
+        if (!doAcervo.has(k)) doAcervo.set(k, []);
+        doAcervo.get(k).push(l.caminho);
+      }
+    const pastas = cadastro.map((a) => {
+      const out = String(a.output_win ?? '').trim();
+      if (out && !SEM_CAMINHO.test(out)) return { atracao: String(a.atracao ?? ''), pasta: out, criterio: 'cadastro' };
+      return { atracao: String(a.atracao ?? ''), pasta: pastaMaisComum(doAcervo.get(nomeComparavel(a.atracao)) ?? []), criterio: 'acervo' };
+    });
+    return pastas.filter((p) => p.pasta);
+  }
+
+  /** Os avisos da prévia (#62): a pasta de output e o já importado (pelo histórico, que quem chama lê do SQLite, e
+      pelos caminhos já gravados no acervo da atração). */
+  async function avisosPara(atracao, arquivo, linhas, historico, doAcervo) {
+    return avisosDaImportacao({ atracao, arquivo, caminhos: linhas.map((l) => l.caminho), pastas: await pastasDeOutput(), historico, noAcervo: doAcervo.map((l) => l.caminho).filter(Boolean) });
+  }
+  /** O erro do CSV de outra atração sem a confirmação de quem importa. */
+  function semConfirmacao(atracao, pasta) {
+    const onde = pasta.outra
+      ? `estão na pasta de output de ${pasta.outra}, não na de ${atracao}`
+      : pasta.fora === pasta.total
+        ? `não estão na pasta de output de ${atracao}`
+        : `${pasta.fora === 1 ? 'têm 1 arquivo' : `têm ${pasta.fora} arquivos`} fora da pasta de output de ${atracao}`;
+    return Object.assign(new Error(`Os caminhos deste CSV ${onde}. Confirme que o CSV é de ${atracao} para gravar: nada foi gravado.`), { status: 422 });
+  }
+
+  /**
+   * A prévia da importação por CSV (ADR 0005): cada linha do CSV classificada contra o acervo da atração, com as
+   * regras de conversão (a grafia pelas fontes, na ordem), as perguntas para quem confere, o placar, as opções de
+   * tipo e os avisos (#62: a pasta de output e o já importado). Vai junto o acervo da atração, para a tela conferir de
+   * novo a cada escolha. Nada é gravado.
+   * @param regras as regras desta atração (as decisões lembradas, #63), que quem chama lê do SQLite
+   * @param opcoes.arquivo o nome do CSV; opcoes.historico as importações desta atração que não foram desfeitas
+   *   ([{ em, arquivo, caminhos }], do SQLite)
+   * @returns { antes, tipos, acervo, linhas, placar, faltam, avisos }
+   */
+  async function previaDaImportacao(atracao, csv, regras = {}, { arquivo = '', historico = [] } = {}) {
     await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
-    const acervo = paraConferir(await linhasDa(atracao));
+    const doAcervo = await linhasDa(atracao);
+    const acervo = paraConferir(doAcervo);
     const { linhas, placar, faltam } = classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao), regras });
-    return { antes: acervo.length, tipos, acervo, linhas, placar, faltam };
+    return { antes: acervo.length, tipos, acervo, linhas, placar, faltam, avisos: await avisosPara(atracao, arquivo, linhas, historico, doAcervo) };
   }
 
   /**
@@ -387,9 +435,13 @@ export function criarAcervo(env, deps = {}) {
    * As regras desta atração (#63) valem como na prévia; lembrar(linhas), quando vem, recebe as linhas conferidas logo
    * depois de a conferência passar (sem decisão pendente, os tipos no campo) e antes do primeiro lote: as decisões
    * ficam lembradas mesmo se a gravação parar no meio.
+   *
+   * O caminho do arquivo (#62) vai em cada arte criada e na que ganha o tipo ou o nome quando ela ainda não tem um (a
+   * que já tem fica com o dela). O CSV cujos caminhos não estão na pasta de output da atração só grava com
+   * confirmouAtracao (quem importa disse que o CSV é desta atração mesmo).
    * @returns { antes, depois, novas, ganharamTipo, renomeadas: [{ id, antes, depois }], semMudanca }
    */
-  async function gravarImportacao(atracao, csv, escolhas = {}, { anotar = () => {}, regras = {}, lembrar = () => {} } = {}) {
+  async function gravarImportacao(atracao, csv, escolhas = {}, { anotar = () => {}, regras = {}, lembrar = () => {}, confirmouAtracao = false } = {}) {
     if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
     const id = await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
@@ -403,8 +455,14 @@ export function criarAcervo(env, deps = {}) {
     const invalidos = [...new Set([...Object.values(escolhas).map((e) => e.tipo), ...gravados].filter((tipo) => tipo && !tipos.includes(tipo)))];
     if (invalidos.length) throw Object.assign(new Error(`Tipo que não está no campo tipo do acervo: ${invalidos.join(', ')}. Nada foi gravado.`), { status: 422 });
     if (faltam) throw Object.assign(new Error(`${faltam === 1 ? 'Falta 1 decisão' : `Faltam ${faltam} decisões`} na conferência: nada foi gravado.`), { status: 422 });
+    if (!confirmouAtracao) {
+      const { pasta } = await avisosPara(atracao, '', conferidas, [], linhas);
+      if (pasta.estado === 'outra') throw semConfirmacao(atracao, pasta);
+    }
     await lembrar(conferidas);
     const tipoAntigo = (linha) => linhas.find((l) => l.id === linha)?.tipo ?? '';
+    // o caminho vai na linha que ainda não tem um; o desfazer tira o que foi posto
+    const caminhoNovo = (linha, caminho) => (caminho && !linhas.find((l) => l.id === linha)?.caminho ? { caminho } : {});
     const emLotes = (acao, lista) => Array.from({ length: Math.ceil(lista.length / 100) }, (_, i) => ({ acao, estado: 'pendente', registros: lista.slice(i * 100, i * 100 + 100) }));
     const registro = {
       atracao,
@@ -413,10 +471,12 @@ export function criarAcervo(env, deps = {}) {
       // as linhas que já estavam: o que aparecer além delas (e dos ids gravados) veio de um lote que falhou no meio
       antesIds: linhas.map((l) => l.id),
       lotes: [
-        ...emLotes('criar', plano.criar.map(({ arte, tipo }) => ({ arte, tipo }))),
-        ...emLotes('tipar', plano.tipar.map(({ id: linha, tipo }) => ({ id: linha, tipo, tipoAntigo: tipoAntigo(linha) }))),
-        ...emLotes('renomear', plano.renomear.map(({ id: linha, arte, antigo, tipo }) => ({ id: linha, arte, antigo, ...(tipo ? { tipo } : {}), tipoAntigo: tipoAntigo(linha) }))),
+        ...emLotes('criar', plano.criar.map(({ arte, tipo, caminho }) => ({ arte, tipo, ...(caminho ? { caminho } : {}) }))),
+        ...emLotes('tipar', plano.tipar.map(({ id: linha, tipo, caminho }) => ({ id: linha, tipo, tipoAntigo: tipoAntigo(linha), ...caminhoNovo(linha, caminho) }))),
+        ...emLotes('renomear', plano.renomear.map(({ id: linha, arte, antigo, tipo, caminho }) => ({ id: linha, arte, antigo, ...(tipo ? { tipo } : {}), tipoAntigo: tipoAntigo(linha), ...caminhoNovo(linha, caminho) }))),
       ],
+      // os caminhos do CSV inteiro (também as cópias e as que ficaram fora): o "já importado" da próxima prévia
+      caminhos: [...new Set(conferidas.map((l) => l.caminho).filter(Boolean))],
       modificados: {},
       resumo: {
         novas: plano.criar.length,
@@ -441,7 +501,7 @@ export function criarAcervo(env, deps = {}) {
           if (lote.acao === 'criar') {
             const faltam = lote.registros.filter((r) => !r.id);
             if (faltam.length) {
-              const r = await teable('POST', '', { fieldKeyType: 'name', typecast: false, records: faltam.map(({ arte, tipo }) => ({ fields: { arte, ...(tipo ? { tipo } : {}), atracao: [{ id: registro.atracaoId }] } })) });
+              const r = await teable('POST', '', { fieldKeyType: 'name', typecast: false, records: faltam.map(({ arte, tipo, caminho }) => ({ fields: { arte, ...(tipo ? { tipo } : {}), atracao: [{ id: registro.atracaoId }], ...(caminho ? { caminho } : {}) } })) });
               // o Teable devolve os registros criados na ordem do pedido
               (r.records ?? []).forEach((x, k) => faltam[k] && x?.id && (faltam[k].id = x.id));
             }
@@ -449,7 +509,7 @@ export function criarAcervo(env, deps = {}) {
             await teable('PATCH', '', {
               fieldKeyType: 'name',
               typecast: false,
-              records: lote.registros.map((r) => ({ id: r.id, fields: lote.acao === 'tipar' ? { tipo: r.tipo } : { arte: r.arte, ...(r.tipo ? { tipo: r.tipo } : {}) } })),
+              records: lote.registros.map((r) => ({ id: r.id, fields: { ...(lote.acao === 'tipar' ? { tipo: r.tipo } : { arte: r.arte, ...(r.tipo ? { tipo: r.tipo } : {}) }), ...(r.caminho ? { caminho: r.caminho } : {}) } })),
             });
           lote.estado = 'gravado';
           delete lote.erro;
@@ -529,7 +589,7 @@ export function criarAcervo(env, deps = {}) {
         const depois = { arte: lote.acao === 'renomear' ? r.arte : l.arte, tipo: r.tipo ?? r.tipoAntigo ?? '' };
         if (l.arte === antes.arte && l.tipo === antes.tipo) continue; // já está como era
         if (mexeram(l, (x) => x.arte === depois.arte && x.tipo === depois.tipo)) fica(l, lote.acao === 'renomear' ? `não voltou a “${r.antigo}”` : 'o tipo não voltou');
-        else devolver.push({ id: l.id, fields: { ...(lote.acao === 'renomear' ? { arte: r.antigo } : {}), tipo: r.tipoAntigo || null } });
+        else devolver.push({ id: l.id, fields: { ...(lote.acao === 'renomear' ? { arte: r.antigo } : {}), tipo: r.tipoAntigo || null, ...(r.caminho ? { caminho: null } : {}) } });
       }
     try {
       await apagarLinhas(apagar);

@@ -1364,10 +1364,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
         if (typeof corpo.csv !== 'string' || !corpo.csv.trim()) return json(res, 400, { erro: 'O CSV veio vazio.' });
         if (caminho === '/api/acervo/importar/previa') {
           const arquivo = typeof corpo.arquivo === 'string' ? corpo.arquivo.slice(0, 200) : '';
-          return json(res, 200, { atracao, arquivo, ...(await acervo.previaDaImportacao(atracao, corpo.csv, regrasDaAtracao.daAtracao(atracao))) });
+          // os avisos (#62): a pasta de output e o já importado, pelo histórico desta atração
+          return json(res, 200, { atracao, arquivo, ...(await acervo.previaDaImportacao(atracao, corpo.csv, regrasDaAtracao.daAtracao(atracao), { arquivo, historico: importacoes.historicoDe(atracao) })) });
         }
         // o gravar recebe o mesmo CSV e as escolhas da conferência, e classifica de novo contra o acervo relido; o
-        // registro de cada passo vai para o histórico (#61), para desfazer e para retomar se parar no meio
+        // registro de cada passo vai para o histórico (#61), para desfazer e para retomar se parar no meio. O CSV de
+        // fora da pasta de output da atração só grava com confirmouAtracao (#62)
         const arquivo = String(corpo.arquivo ?? '').slice(0, 200) || 'CSV';
         const id = randomUUID();
         const quem = { atracao, por: eu, arquivo, em: new Date().toISOString() };
@@ -1382,7 +1384,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
               }
             : undefined;
         try {
-          const { registro, ...feito } = await acervo.gravarImportacao(atracao, corpo.csv, escolhas, { anotar, regras: regrasDaAtracao.daAtracao(atracao), lembrar });
+          const { registro, ...feito } = await acervo.gravarImportacao(atracao, corpo.csv, escolhas, { anotar, regras: regrasDaAtracao.daAtracao(atracao), lembrar, confirmouAtracao: corpo.confirmouAtracao === true });
           console.log(
             `[acervo] ${eu.email} importou ${arquivo} em ${atracao}: ${feito.novas} novas, ${feito.ganharamTipo} ganharam o tipo, ${feito.renomeadas.length} renomeadas (${feito.antes} → ${feito.depois})`,
           );

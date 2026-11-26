@@ -63,7 +63,8 @@ export const chaveDaAtracao = (claquete) =>
 /** Comparação de claquetes escritas de jeitos diferentes ("Festa_19_11" e "Festa 19/11"). */
 const mesmaClaquete = (a, b) => chaveN8n(a).replace(/ /g, '') === chaveN8n(b).replace(/ /g, '');
 
-const SEM_CAMINHO = /^(cole_aqui_o_caminho|caminho_nao_encontrado)$/;
+/** O que o cadastro escreve quando não sabe o caminho (o card fica sem; a importação do acervo também ignora). */
+export const SEM_CAMINHO = /^(cole_aqui_o_caminho|caminho_nao_encontrado)$/;
 const caminho = (v) => (v && !SEM_CAMINHO.test(String(v).trim()) ? String(v).trim() : '');
 
 /** "G5=abc,SP=def" → { G5: 'abc', SP: 'def' } */

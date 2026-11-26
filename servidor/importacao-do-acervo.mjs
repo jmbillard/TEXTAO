@@ -466,8 +466,8 @@ const ordemDoOriginal = (x) => (x.copia ? 2 : x.versao ? 1 : 0);
  * @param acervo as linhas do acervo da atração ({ id, arte, tipo })
  * @param tipos as opções do campo tipo (o tipo fora delas fica para decidir)
  * @param escolhas { [n]: { arte?, tipo?, tirada?, respostas?: { [pergunta]: valor } } }
- * @returns { linhas, placar, faltam, plano: { criar: [{ arte, tipo }], tipar: [{ id, tipo }],
- *   renomear: [{ id, arte, antigo, tipo? }], semMudanca } }
+ * @returns { linhas, placar, faltam, plano: { criar: [{ arte, tipo, caminho }], tipar: [{ id, tipo, caminho }],
+ *   renomear: [{ id, arte, antigo, tipo?, caminho }], semMudanca } }
  */
 export function conferir({ linhas, acervo = [], tipos = [], escolhas = {} }) {
   const saida = linhas.map((l) => {
@@ -560,9 +560,10 @@ export function conferir({ linhas, acervo = [], tipos = [], escolhas = {} }) {
   const final = saida.map(({ naFonte, ...l }) => l);
   for (const l of final) {
     placar[l.estado]++;
-    if (l.estado === 'nova') plano.criar.push({ arte: l.arte, tipo: l.tipo });
-    else if (l.estado === 'completa') plano.tipar.push({ id: l.id, tipo: l.tipo });
-    else if (l.estado === 'corrige') plano.renomear.push({ id: l.id, arte: l.arte, antigo: l.antigo, ...(acervo.find((x) => x.id === l.id)?.tipo ? {} : { tipo: l.tipo }) });
+    // o caminho do arquivo vai junto (#62): gravado na arte, é o que reconhece o reimport
+    if (l.estado === 'nova') plano.criar.push({ arte: l.arte, tipo: l.tipo, caminho: l.caminho });
+    else if (l.estado === 'completa') plano.tipar.push({ id: l.id, tipo: l.tipo, caminho: l.caminho });
+    else if (l.estado === 'corrige') plano.renomear.push({ id: l.id, arte: l.arte, antigo: l.antigo, ...(acervo.find((x) => x.id === l.id)?.tipo ? {} : { tipo: l.tipo }), caminho: l.caminho });
     else plano.semMudanca++;
   }
   return { linhas: final, placar, faltam: placar.decidir, plano };
@@ -765,4 +766,107 @@ export function comoRegras(lista = []) {
   const onde = { troca: 'trocas', ignorar: 'ignorar', versao: 'versoes', copia: 'copias', semSigla: 'semSigla', tipo: 'tipos' };
   for (const { tipo, tipoDaArte, ...r } of lista) if (onde[tipo]) regras[onde[tipo]].push(tipoDaArte ? { ...r, tipo: tipoDaArte } : r);
   return regras;
+}
+
+/* ---------- os avisos da prévia (#62): a pasta de output da atração e o arquivo já importado ---------- */
+
+/** As partes de um caminho (Mac ou Windows), cada uma com onde termina no texto, sem a raiz que muda de máquina para
+    máquina: a letra do disco ("Z:"), o servidor do caminho de rede ("\\SERVIDOR") e o "/Volumes" do Mac. */
+function partesDoCaminho(caminho) {
+  const s = String(caminho ?? '').trim();
+  const partes = [...s.matchAll(/[^\\/]+/g)].map((m) => ({ chave: semAcento(m[0].normalize('NFC')).replace(/\s+/g, ' ').trim().toUpperCase(), fim: m.index + m[0].length }));
+  let pular = 0;
+  if (/^[a-z]:$/i.test(partes[0]?.chave ?? '')) pular = 1;
+  else if (/^[\\/]{2}[^\\/]/.test(s)) pular = 1;
+  else if (/^\/volumes\//i.test(s)) pular = 1;
+  return partes.slice(pular).filter((p) => p.chave);
+}
+
+/** O caminho está dentro da pasta: as duas últimas partes da pasta (a pasta de output e a da atração; uma, quando a
+    pasta é curta) aparecem seguidas entre as pastas do caminho. Assim o mesmo lugar no Mac e no Windows confere. */
+function naPasta(caminho, pasta) {
+  const p = partesDoCaminho(pasta).map((x) => x.chave);
+  if (!p.length) return false;
+  const fim = p.slice(-Math.min(2, p.length));
+  const c = partesDoCaminho(caminho).slice(0, -1).map((x) => x.chave);
+  for (let i = 0; i + fim.length <= c.length; i++) if (fim.every((x, k) => c[i + k] === x)) return true;
+  return false;
+}
+
+/** O mesmo arquivo em máquinas diferentes: as três últimas partes do caminho (a comparação é sempre dentro da mesma
+    atração, então a pasta dela, a subpasta e o arquivo bastam). */
+const chaveDoArquivo = (caminho) => partesDoCaminho(caminho).slice(-3).map((x) => x.chave).join('/');
+
+/**
+ * A pasta mais comum dos caminhos já gravados: a mais funda que tem mais da metade deles (os arquivos ficam em
+ * subpastas da pasta de output da atração). @returns o caminho da pasta como foi escrito, ou '' sem maioria
+ */
+export function pastaMaisComum(caminhos) {
+  const lista = caminhos.filter((c) => String(c ?? '').trim()).map((c) => ({ c: String(c).trim(), partes: partesDoCaminho(c).slice(0, -1) }));
+  const contagem = new Map();
+  for (const { partes } of lista) for (let k = 1; k <= partes.length; k++) {
+    const chave = partes.slice(0, k).map((x) => x.chave).join('/');
+    contagem.set(chave, (contagem.get(chave) ?? 0) + 1);
+  }
+  let melhor = null;
+  for (const { c, partes } of lista)
+    for (let k = partes.length; k >= 1; k--) {
+      const n = contagem.get(partes.slice(0, k).map((x) => x.chave).join('/'));
+      if (n * 2 > lista.length) {
+        if (!melhor || k > melhor.k) melhor = { k, pasta: c.slice(0, partes[k - 1].fim) };
+        break;
+      }
+    }
+  return melhor?.pasta ?? '';
+}
+
+/**
+ * Os avisos da prévia, para não importar errado (#62):
+ * - a pasta: os caminhos do CSV estão na pasta de output desta atração (confere), não estão (outra: o gravar pede a
+ *   confirmação; outra diz a atração em cuja pasta eles estão, quando há uma) ou não dá para conferir (sem: a atração
+ *   sem pasta conhecida, ou o CSV sem caminhos). A pasta da atração é a do cadastro (o campo output, o mesmo que vai no
+ *   card); sem ela, a pasta mais comum dos caminhos já gravados no acervo dela (criterio 'acervo');
+ * - o já importado: o mesmo arquivo (pelo nome) ou os mesmos caminhos numa importação desta atração que não foi
+ *   desfeita, ou os caminhos já gravados no acervo dela. em é a data da importação mais nova que bate ('' quando só o
+ *   acervo tem os caminhos); quantos, os caminhos do CSV que já entraram.
+ * @param caminhos os caminhos do CSV, um por linha
+ * @param pastas [{ atracao, pasta, criterio }]: a pasta de output de cada atração (a desta e as das outras)
+ * @param historico [{ em, arquivo, caminhos }]: as importações desta atração que não foram desfeitas
+ * @param noAcervo os caminhos já gravados no acervo desta atração
+ */
+export function avisosDaImportacao({ atracao, arquivo = '', caminhos = [], pastas = [], historico = [], noAcervo = [] }) {
+  const n = chaveDeArte(atracao);
+  const lista = caminhos.map((c) => String(c ?? '').trim()).filter(Boolean);
+  const daqui = pastas.find((p) => chaveDeArte(p.atracao) === n && String(p.pasta ?? '').trim());
+  const deAcervo = daqui ? '' : pastaMaisComum(noAcervo);
+  const pasta = daqui?.pasta.trim() ?? deAcervo;
+  const criterio = daqui ? daqui.criterio || 'cadastro' : deAcervo ? 'acervo' : '';
+  let avisoDaPasta;
+  if (!pasta || !lista.length) avisoDaPasta = { estado: 'sem', pasta: '', criterio: '', total: lista.length, fora: 0, outra: '' };
+  else {
+    const fora = lista.filter((c) => !naPasta(c, pasta));
+    // a outra atração é a que tem na pasta dela mais dos caminhos de fora
+    const outra = pastas
+      .filter((p) => chaveDeArte(p.atracao) !== n && String(p.pasta ?? '').trim())
+      .map((p) => ({ atracao: p.atracao, n: fora.filter((c) => naPasta(c, p.pasta)).length }))
+      .sort((a, b) => b.n - a.n)[0];
+    avisoDaPasta = { estado: fora.length ? 'outra' : 'confere', pasta, criterio, total: lista.length, fora: fora.length, outra: outra?.n ? outra.atracao : '' };
+  }
+  const chaves = new Set(lista.map(chaveDoArquivo));
+  const noHistorico = new Set();
+  let em = '';
+  let mesmoArquivo = false;
+  const nomeDoArquivo = String(arquivo).trim().toLowerCase();
+  for (const h of historico) {
+    const mesmo = !!nomeDoArquivo && String(h.arquivo ?? '').trim().toLowerCase() === nomeDoArquivo;
+    const deles = (h.caminhos ?? []).map(chaveDoArquivo).filter((k) => chaves.has(k));
+    if (!mesmo && !deles.length) continue;
+    deles.forEach((k) => noHistorico.add(k));
+    mesmoArquivo ||= mesmo;
+    if (h.em > em) em = h.em;
+  }
+  const doAcervo = new Set(noAcervo.map(chaveDoArquivo));
+  const quantos = [...chaves].filter((k) => noHistorico.has(k) || doAcervo.has(k)).length;
+  const jaImportado = mesmoArquivo || quantos ? { em, mesmoArquivo, quantos, total: chaves.size } : null;
+  return { pasta: avisoDaPasta, jaImportado };
 }

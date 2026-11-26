@@ -4,7 +4,7 @@ import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
-import type { Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
+import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
 import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro, SugestaoRedator } from '../modelo/tipos';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
@@ -554,6 +554,9 @@ export const lerTotaisDoAcervo = () => pedir<{ ligado: boolean; totais: Record<s
 /* A conferência da importação roda igual no servidor e aqui: os tipos e as funções puras são os do módulo do servidor
    (servidor/importacao-do-acervo.mjs, tipado em .d.mts), sem nada do servidor junto. */
 export type {
+  AvisoDaPasta,
+  AvisoDeJaImportado,
+  AvisosDaImportacao,
   EstadoDaImportacao,
   Escolha,
   Escolhas,
@@ -580,6 +583,8 @@ export interface PreviaDaImportacao {
   linhas: LinhaDaImportacao[];
   placar: PlacarDaImportacao;
   faltam: number;
+  /** a pasta de output (o CSV de outra atração pede confirmação para gravar) e o já importado (#62) */
+  avisos: AvisosDaImportacao;
 }
 /** O que a importação gravou: o total do acervo antes e depois, e os nomes do acervo corrigidos no lugar. */
 export interface ResultadoDaImportacao {
@@ -643,9 +648,9 @@ export const preverImportacao = async (atracao: string, arquivo: string, csv: st
   csv,
 });
 /** Grava o CSV com as escolhas da conferência; o servidor classifica de novo contra o acervo relido, não duplica e
-    recusa com decisão pendente. */
-export const gravarImportacao = (previa: Pick<PreviaDaImportacao, 'atracao' | 'arquivo' | 'csv'>, escolhas: Escolhas, lembrar = false) =>
-  pedir<ResultadoDaImportacao>('/api/acervo/importar', { method: 'POST', body: JSON.stringify({ atracao: previa.atracao, arquivo: previa.arquivo, csv: previa.csv, escolhas, lembrar }) });
+    recusa com decisão pendente. O CSV de fora da pasta de output da atração só grava com confirmouAtracao (#62). */
+export const gravarImportacao = (previa: Pick<PreviaDaImportacao, 'atracao' | 'arquivo' | 'csv'>, escolhas: Escolhas, lembrar = false, confirmouAtracao = false) =>
+  pedir<ResultadoDaImportacao>('/api/acervo/importar', { method: 'POST', body: JSON.stringify({ atracao: previa.atracao, arquivo: previa.arquivo, csv: previa.csv, escolhas, lembrar, ...(confirmouAtracao ? { confirmouAtracao } : {}) }) });
 
 /** Uma regra desta atração (#63): a decisão lembrada de uma importação, com quem a lembrou e quando. */
 export interface RegraDaAtracao extends RegraLembrada {

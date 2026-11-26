@@ -3005,6 +3005,16 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .conf-placar b { font-weight: 600; color: var(--tinta); }
 .conf-placar b.dec { color: var(--ultra); }
 .conf-placar i { font-style: normal; color: var(--regua-forte); margin: 0 3px; }
+/* os avisos da prévia (#62): a pasta de output e o já importado */
+.conf-aviso { grid-column: 1 / -1; display: flex; gap: 10px; align-items: flex-start; border-radius: 10px; padding: 9px 12px; font: 400 13px/1.45 var(--sans); }
+.conf-aviso svg { flex: none; margin-top: 2px; }
+.conf-aviso.ok { background: var(--ok-fundo); color: var(--ok); }
+.conf-aviso.ruim { background: var(--falta-fundo); color: var(--falta); }
+.conf-aviso.neutro { background: var(--neutro); color: var(--tinta2); }
+.conf-aviso b { font-weight: 600; }
+.conf-aviso .acoes-av { margin-left: auto; flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 14px; }
+.conf-aviso .botao-texto { color: inherit; white-space: nowrap; }
+@media (max-width: 720px) { .conf-aviso { flex-wrap: wrap; } .conf-aviso .acoes-av { margin-left: 26px; justify-content: flex-start; } }
 .conf-filtros { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px; border-bottom: 1px solid var(--regua); align-items: center; }
 .conf-filtros button { display: inline-flex; gap: 7px; align-items: center; font: 500 13px var(--sans); padding: 5px 11px; border-radius: 999px; border: 1px solid var(--regua-forte); background: none; color: var(--tinta2); cursor: pointer; }
 .conf-filtros button b { font: 600 11.5px var(--mono); color: var(--tinta3); }

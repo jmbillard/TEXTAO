@@ -90,9 +90,10 @@ export type PlacarDaImportacao = Record<EstadoDaImportacao, number>;
 
 /** O que gravar: criar as novas, dar o tipo às que completam e renomear as que corrigem o acervo. */
 export interface PlanoDeGravacao {
-  criar: { arte: string; tipo: string }[];
-  tipar: { id: string; tipo: string }[];
-  renomear: { id: string; arte: string; antigo: string; tipo?: string }[];
+  /** o caminho do arquivo no CSV (#62): gravado na arte criada, e na que ganha o tipo ou o nome quando ela não tem */
+  criar: { arte: string; tipo: string; caminho: string }[];
+  tipar: { id: string; tipo: string; caminho: string }[];
+  renomear: { id: string; arte: string; antigo: string; tipo?: string; caminho: string }[];
   semMudanca: number;
 }
 
@@ -149,3 +150,41 @@ export function regrasDasDecisoes(p: { linhas: LinhaDaImportacao[]; escolhas?: E
 
 /** As regras lembradas no formato das cargas à mão. */
 export function comoRegras(lista?: RegraLembrada[]): RegrasDaAtracao;
+
+/** O aviso da pasta de output (#62): os caminhos do CSV na pasta desta atração (confere), fora dela (outra: gravar pede a
+    confirmação) ou sem como conferir (sem). */
+export interface AvisoDaPasta {
+  estado: 'confere' | 'outra' | 'sem';
+  /** a pasta de output desta atração com que os caminhos foram conferidos ('' sem pasta conhecida) */
+  pasta: string;
+  /** de onde veio a pasta: o cadastro da atração (o campo output) ou a mais comum dos caminhos já gravados no acervo */
+  criterio: 'cadastro' | 'acervo' | '';
+  /** quantos caminhos o CSV tem, e quantos estão fora da pasta */
+  total: number;
+  fora: number;
+  /** a atração em cuja pasta de output estão os caminhos de fora ('' quando nenhuma) */
+  outra: string;
+}
+/** O aviso de já importado (#62): o mesmo arquivo ou os mesmos caminhos já entraram nesta atração. */
+export interface AvisoDeJaImportado {
+  /** a data da importação mais nova que bate ('' quando só o acervo tem os caminhos) */
+  em: string;
+  /** o mesmo nome de arquivo no histórico */
+  mesmoArquivo: boolean;
+  /** quantos arquivos do CSV já entraram, de quantos */
+  quantos: number;
+  total: number;
+}
+export interface AvisosDaImportacao {
+  pasta: AvisoDaPasta;
+  jaImportado: AvisoDeJaImportado | null;
+}
+export function avisosDaImportacao(p: {
+  atracao: string;
+  arquivo?: string;
+  caminhos?: string[];
+  pastas?: { atracao: string; pasta: string; criterio?: 'cadastro' | 'acervo' }[];
+  historico?: { em: string; arquivo: string; caminhos?: string[] }[];
+  noAcervo?: string[];
+}): AvisosDaImportacao;
+export function pastaMaisComum(caminhos: string[]): string;

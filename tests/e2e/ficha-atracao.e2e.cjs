@@ -32,6 +32,11 @@
 // decisões como regras da atração; importar o mesmo CSV de novo já vem decidido, cada linha com "regra desta atração",
 // e a ficha mostra "Regras desta atração"; apagar a regra da sigla COMP faz as linhas dela perguntarem de novo.
 //
+// Os avisos da prévia (#62): cada atração tem a pasta de output no cadastro (o caminho do Windows; o CSV vem do Mac).
+// O CSV da pasta da atração e novo dá o aviso verde; o mesmo arquivo de novo, "já foi importado aqui em DD/MM"; o CSV
+// da novela na ficha do programa, o aviso de outra atração, com o Gravar travado até "É de … mesmo" e o "Importar em
+// Novela Fictícia", que leva o CSV para a ficha da novela.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:ficha
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -91,13 +96,16 @@ const carimbo = () => new Date(Date.UTC(2026, 10, 20, 12, 0, relogio++)).toISOSt
 for (const [tema, nome] of Object.entries(REVISTAS))
   LINHAS.push(...ARTES_DA_REVISTA.map(([arte, tipo], i) => ({ id: `recRev${tema}${i}`, arte, tipo: tipo || null, atracao: [{ id: `recRev${tema}`, title: nome }], claquete: [], filme: null })));
 for (const l of LINHAS) l.modificado = carimbo();
+// a pasta de output de cada atração no cadastro (#62): o caminho do Windows; a revista noturna não tem
+const saida = (pasta) => `\\\\FICTICIO\\output\\${pasta}`;
 const ACERVOS = [
-  ...Object.values(REVISTAS).map((atracao) => ({ atracao, acervo: 'próprio' })),
-  { atracao: PROGRAMA, acervo: 'próprio' },
-  { atracao: 'Novela Fictícia', acervo: null },
-  { atracao: 'Sessão Fictícia', acervo: 'do filme' },
-  { atracao: 'Shows Fictícios', acervo: 'sem acervo' },
-  { atracao: AUDITORIO, acervo: 'próprio' },
+  { atracao: REVISTAS.light, acervo: 'próprio', output_win: saida('REVISTA') },
+  { atracao: REVISTAS.dark, acervo: 'próprio', output_win: 'cole_aqui_o_caminho' },
+  { atracao: PROGRAMA, acervo: 'próprio', output_win: saida('PROGRAMA FICTICIO') },
+  { atracao: 'Novela Fictícia', acervo: null, output_win: saida('NOVELA FICTICIA') },
+  { atracao: 'Sessão Fictícia', acervo: 'do filme', output_win: null },
+  { atracao: 'Shows Fictícios', acervo: 'sem acervo', output_win: null },
+  { atracao: AUDITORIO, acervo: 'próprio', output_win: saida('AUDITORIO FICTICIO') },
 ];
 // os CSVs fictícios da pasta de output (nome;caminho;criado em), um por atração
 const csv = (pasta, nomes) => ['"nome";"caminho";"criado em"', ...nomes.map((n, i) => `"${n}";"/Volumes/FICTICIO/output/${pasta}/${n}";"2024-08-12 19:${10 + i}"`)].join('\r\n');
@@ -197,7 +205,7 @@ async function acervoFalso() {
       resposta = {
         records: corpo.records.map((r) => {
           const nome = Object.keys(ID_DA_ATRACAO).find((n) => ID_DA_ATRACAO[n] === r.fields.atracao[0].id);
-          const nova = { id: `recNova${++novas}`, arte: r.fields.arte, tipo: r.fields.tipo ?? null, atracao: [{ id: r.fields.atracao[0].id, title: nome }], claquete: [], filme: null, modificado: carimbo() };
+          const nova = { id: `recNova${++novas}`, arte: r.fields.arte, tipo: r.fields.tipo ?? null, caminho: r.fields.caminho ?? null, atracao: [{ id: r.fields.atracao[0].id, title: nome }], claquete: [], filme: null, modificado: carimbo() };
           LINHAS.push(nova);
           return { id: nova.id, fields: r.fields };
         }),
@@ -419,6 +427,8 @@ async function importarNoComputador(navegador, url, tema) {
   assert.deepEqual(await regras('CANTORA DE EXEMPLO.mov'), [], 'sem regra, sem rodapé');
   assert.equal(await conf.locator('.conf-filtros button', { hasText: 'Para decidir' }).count(), 0, 'nesta fatia nada fica para decidir');
   assert.equal(await conf.locator('.conf-pe .botao').textContent(), 'Gravar 10 no acervo');
+  // os caminhos na pasta de output do programa e o arquivo novo: o aviso verde (#62)
+  assert.equal(await conf.locator('.conf-aviso.ok').textContent(), `Os 19 caminhos estão na pasta de output de ${PROGRAMA}. Este arquivo nunca foi importado aqui.`);
   await semRolagemDeLado(p, `importar ${nome}, conferência`);
 
   // os filtros e a busca
@@ -468,6 +478,75 @@ async function importarNoComputador(navegador, url, tema) {
   assert.deepEqual(erros, [], `importar ${nome}: erros na página`);
   await ctx.close();
   console.log(`ok: importar ${nome}: ficha → Importar CSV → conferir (placar, filtros, busca, tirar e devolver) → gravar → 24 → 31 na ficha`);
+}
+
+/** Os avisos da prévia (#62), depois de o programa gravar o PROGRAMA_SERVICO.csv: o verde (um CSV novo da pasta do
+    programa), o já importado (o mesmo arquivo de novo) e o de outra atração (o CSV da novela na ficha do programa), com
+    a confirmação e o "Importar em Novela Fictícia". Nada é gravado. */
+async function avisosNoComputador(navegador, url, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  await linha(p, PROGRAMA).locator('.abrir-ficha').click();
+  const ficha = p.locator('.ficha-atr');
+  await ficha.locator('.total-acervo').waitFor();
+  const conf = p.locator('.conferencia');
+  const importar = async (arquivo, texto) => {
+    await ficha.locator('.area-importar input[type=file]').setInputFiles({ name: arquivo, mimeType: 'text/csv', buffer: Buffer.from(texto) });
+    await conf.waitFor();
+  };
+  const cancelar = async () => {
+    await conf.locator('.conf-topo .botao', { hasText: 'Cancelar' }).click();
+    await ficha.locator('.total-acervo').waitFor();
+  };
+  const texto = async (sel) => (await conf.locator(sel).textContent()).replace(/\s+/g, ' ').trim();
+
+  // o verde: os caminhos na pasta do programa e o arquivo nunca importado
+  await importar('PROGRAMA_NOVIDADES.csv', csv('PROGRAMA FICTICIO', ['RDP - CONVIDADA NOVA.mov', 'CRT - ESTREIA.mov']));
+  assert.equal(await texto('.conf-aviso.ok'), `Os 2 caminhos estão na pasta de output de ${PROGRAMA}. Este arquivo nunca foi importado aqui.`);
+  assert.equal(await conf.locator('.conf-aviso.ruim').count(), 0);
+  await capturar(p, `avisos-verde-${nome}`);
+  await cancelar();
+
+  // o mesmo arquivo de novo: "já foi importado aqui em DD/MM"; a pasta confere, sem o verde
+  await importar('PROGRAMA_SERVICO.csv', CSV_PROGRAMA);
+  const hoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  assert.equal(await texto('.conf-aviso.ruim'), `Este arquivo já foi importado aqui em ${hoje}. O que já está no acervo vem como “já no acervo” e não é gravado de novo.`);
+  assert.equal(await conf.locator('.conf-aviso.ok').count(), 0);
+  // o já importado só avisa (o que já entrou vem "já no acervo"): não pede confirmação
+  assert.equal(await placar(p), '0 novas · 0 completam o acervo · 12 já no acervo · 7 ficam de fora');
+  assert.ok(!(await texto('.conf-pe')).includes('Confirme a atração'), 'o já importado não trava o Gravar');
+  await capturar(p, `avisos-ja-importado-${nome}`);
+  await cancelar();
+
+  // o CSV da novela na ficha do programa: o aviso de outra atração, e o Gravar travado até confirmar
+  await importar('NOVELA_CAPITULOS.csv', csv('NOVELA FICTICIA', ['RDP - CAPITULO FINAL.mov', 'CRT - REENCONTRO.mov']));
+  const aviso = conf.locator('.conf-aviso.ruim');
+  assert.equal(
+    (await aviso.locator('> span').first().textContent()).replace(/\s+/g, ' ').trim(),
+    `Estes caminhos estão na pasta de output de Novela Fictícia, não na de ${PROGRAMA}. Um CSV da atração errada enche o acervo de artes que nunca vão bater.`,
+  );
+  assert.deepEqual(await aviso.locator('.acoes-av button').allTextContents(), ['Importar em Novela Fictícia', `É de ${PROGRAMA} mesmo`]);
+  const gravar = conf.locator('.conf-pe .botao.primario');
+  assert.ok(await gravar.isDisabled(), 'sem a confirmação, o Gravar fica travado');
+  assert.ok((await texto('.conf-pe')).includes('Confirme a atração no aviso acima'));
+  await semRolagemDeLado(p, `avisos ${nome}, outra atração`);
+  await capturar(p, `avisos-outra-atracao-${nome}`);
+  await aviso.locator('button', { hasText: 'mesmo' }).click();
+  assert.equal(await texto('.conf-aviso.neutro > span:not(.acoes-av)'), `Confirmado: o CSV é de ${PROGRAMA}, mesmo com os caminhos fora da pasta de output.`);
+  assert.ok(await gravar.isEnabled(), 'confirmado, o Gravar libera');
+  await capturar(p, `avisos-outra-confirmada-${nome}`);
+  await conf.locator('.conf-aviso.neutro button', { hasText: 'mudar' }).click();
+  assert.ok(await gravar.isDisabled());
+  // "Importar em Novela Fictícia": o mesmo CSV vai para a ficha da novela, e a conferência recomeça lá
+  await conf.locator('.conf-aviso.ruim button', { hasText: 'Importar em Novela Fictícia' }).click();
+  await conf.locator('h2', { hasText: 'Novela Fictícia' }).waitFor();
+  assert.equal(await conf.locator('.conf-aviso', { hasText: 'outra atração' }).count(), 0);
+  assert.equal(await conf.locator('.conf-aviso button', { hasText: 'mesmo' }).count(), 0, 'na novela, os caminhos conferem');
+  assert.equal((await p.locator('.trilha-cad').textContent()).replace(/\s+/g, ' ').trim(), 'CadastrosNovela FictíciaImportar acervo', 'a trilha é a da novela');
+  await conf.locator('.conf-topo .botao', { hasText: 'Cancelar' }).click();
+  assert.deepEqual(erros, [], `avisos ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: avisos ${nome}: o verde, o já importado em ${hoje} e o CSV de outra atração (travado → confirmado; Importar em Novela Fictícia)`);
 }
 
 /** O CSV solto na área tracejada da ficha, de outra atração (a novela), até o resultado. */
@@ -774,6 +853,7 @@ async function principal() {
     // a importação muda o acervo de mentira: depois das telas que contam as 24
     await importarNoComputador(navegador, s.url, 'light');
     await soltarNoComputador(navegador, s.url, 'dark');
+    for (const tema of ['light', 'dark']) await avisosNoComputador(navegador, s.url, tema);
     await decidirNoComputador(navegador, s.url, 'dark', { gravar: false });
     await decidirNoComputador(navegador, s.url, 'light', { gravar: true });
     await lembrarNoComputador(navegador, s.url, 'light', { apagar: false });

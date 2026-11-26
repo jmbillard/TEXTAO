@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { conferir, emLote } from '../../servidor/importacao-do-acervo.mjs';
 import {
   gravarImportacao,
+  type AvisosDaImportacao,
   type Escolha,
   type Escolhas,
   type EstadoDaImportacao,
@@ -198,9 +199,124 @@ function PerguntasDaLinha({ linha, desligado, responder, mudar }: { linha: Linha
   );
 }
 
+/** Os avisos da prévia (#62), no topo da conferência: os caminhos fora da pasta de output desta atração (com a
+    confirmação, ou importar na atração em cuja pasta eles estão), o arquivo já importado aqui e, quando os caminhos
+    batem e o arquivo é novo, o aviso verde. */
+function AvisosDaConferencia({ avisos, atracao, confirmou, confirmar, importarEm }: { avisos: AvisosDaImportacao; atracao: string; confirmou: boolean; confirmar: (sim: boolean) => void; importarEm?: (atracao: string) => void }) {
+  const { pasta, jaImportado: ja } = avisos;
+  const daPasta = pasta.criterio === 'acervo' ? ' (a pasta mais comum dos caminhos já gravados no acervo)' : '';
+  return (
+    <>
+      {pasta.estado === 'confere' && !ja && (
+        <div className="conf-aviso ok" role="status">
+          <Icone nome="certo" tam={16} />
+          <span>
+            {pasta.total === 1 ? 'O caminho está' : `Os ${pasta.total} caminhos estão`} na pasta de output de <b>{atracao}</b>
+            {daPasta}. Este arquivo nunca foi importado aqui.
+          </span>
+        </div>
+      )}
+      {pasta.estado === 'outra' &&
+        (confirmou ? (
+          <div className="conf-aviso neutro" role="status">
+            <Icone nome="atencao" tam={16} />
+            <span>
+              Confirmado: o CSV é de <b>{atracao}</b>, mesmo com {pasta.fora === 1 ? 'o caminho' : 'os caminhos'} fora da pasta de output.
+            </span>
+            <span className="acoes-av">
+              <button type="button" className="botao-texto" onClick={() => confirmar(false)}>
+                mudar
+              </button>
+            </span>
+          </div>
+        ) : (
+          <div className="conf-aviso ruim" role="alert">
+            <Icone nome="atencao" tam={16} />
+            <span>
+              {pasta.outra && pasta.fora === pasta.total ? (
+                <>
+                  Estes caminhos estão na pasta de output de <b>{pasta.outra}</b>, não na de {atracao}.
+                </>
+              ) : (
+                <>
+                  {pasta.fora === pasta.total ? (pasta.total === 1 ? 'O caminho não está' : `Os ${pasta.total} caminhos não estão`) : `${pasta.fora} dos ${pasta.total} caminhos não estão`} na pasta de output de <b>{atracao}</b>
+                  {daPasta}
+                  {pasta.outra ? <>: estão na de <b>{pasta.outra}</b></> : ''}.
+                </>
+              )}{' '}
+              Um CSV da atração errada enche o acervo de artes que nunca vão bater.
+            </span>
+            <span className="acoes-av">
+              {pasta.outra && importarEm && (
+                <button type="button" className="botao-texto" onClick={() => importarEm(pasta.outra)}>
+                  Importar em {pasta.outra}
+                </button>
+              )}
+              <button type="button" className="botao-texto" onClick={() => confirmar(true)}>
+                É de {atracao} mesmo
+              </button>
+            </span>
+          </div>
+        ))}
+      {ja && (
+        <div className="conf-aviso ruim" role="alert">
+          <Icone nome="historico" tam={16} />
+          <span>
+            {ja.mesmoArquivo && ja.em ? (
+              <>
+                Este arquivo já foi importado aqui em <b>{diaEMes(ja.em)}</b>.
+              </>
+            ) : (
+              <>
+                {ja.quantos === ja.total ? (ja.total === 1 ? 'Este arquivo já foi importado aqui' : `Os ${ja.total} arquivos já foram importados aqui`) : `${ja.quantos} destes arquivos já foram importados aqui`}
+                {ja.em ? (
+                  <>
+                    {' '}em <b>{diaEMes(ja.em)}</b>
+                  </>
+                ) : (
+                  ' (o caminho está gravado no acervo)'
+                )}
+                .
+              </>
+            )}{' '}
+            O que já está no acervo vem como “já no acervo” e não é gravado de novo.
+          </span>
+        </div>
+      )}
+      {pasta.estado === 'sem' && (
+        <div className="conf-aviso neutro" role="status">
+          <Icone nome="atencao" tam={16} />
+          <span>
+            {pasta.total ? (
+              <>
+                O PROMeiro não sabe a pasta de output de <b>{atracao}</b> (o cadastro não tem, e o acervo ainda não tem caminhos): confira se o CSV é desta atração.
+              </>
+            ) : (
+              <>
+                O CSV não traz os caminhos dos arquivos: confira se ele é de <b>{atracao}</b>.
+              </>
+            )}
+          </span>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** A conferência antes de gravar: o placar, os filtros, a busca, o lote, as linhas (com as perguntas, o nome e o tipo
     editáveis) e o pé com o Gravar, que só libera sem decisão pendente. */
-export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa: PreviaDaImportacao; cancelar: () => void; gravado: (r: ResultadoDaImportacao) => void }) {
+export function ConferenciaDaImportacao({
+  previa,
+  cancelar,
+  gravado,
+  importarEm,
+}: {
+  previa: PreviaDaImportacao;
+  cancelar: () => void;
+  gravado: (r: ResultadoDaImportacao) => void;
+  /** importar o mesmo CSV na atração em cuja pasta de output os caminhos estão (#62) */
+  importarEm?: (atracao: string) => void;
+}) {
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [busca, setBusca] = useState('');
   const [escolhas, setEscolhas] = useState<Escolhas>({});
@@ -209,6 +325,9 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
   const [falha, setFalha] = useState('');
   // "lembrar as decisões nas próximas desta atração": marcado, como no protótipo
   const [lembrar, setLembrar] = useState(true);
+  // o CSV de fora da pasta de output desta atração só grava com a confirmação de quem importa (#62)
+  const [confirmou, setConfirmou] = useState(false);
+  const faltaConfirmar = previa.avisos?.pasta.estado === 'outra' && !confirmou;
 
   // a mesma conta do servidor, a cada escolha: o estado de cada linha recalculado pela chave
   const conf = useMemo(() => conferir({ linhas: previa.linhas, acervo: previa.acervo, tipos: previa.tipos, escolhas }), [previa, escolhas]);
@@ -259,7 +378,7 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
     setGravando(true);
     setFalha('');
     try {
-      gravado(await gravarImportacao(previa, escolhas, lembrar));
+      gravado(await gravarImportacao(previa, escolhas, lembrar, confirmou));
     } catch (e) {
       setFalha(e instanceof Error ? e.message : 'Não consegui gravar no acervo.');
       setGravando(false);
@@ -296,6 +415,7 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
             </>
           )}
         </p>
+        {previa.avisos && <AvisosDaConferencia avisos={previa.avisos} atracao={previa.atracao} confirmou={confirmou} confirmar={setConfirmou} importarEm={importarEm} />}
       </div>
       <div className="conf-filtros" role="toolbar" aria-label="Filtrar por estado">
         {FILTROS.filter(([v]) => v !== 'decidir' || perguntavam.size > 0).map(([v, rotulo]) => (
@@ -403,6 +523,7 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
       {visiveis.length > MAXIMO && <p className="conf-mais">E mais {visiveis.length - MAXIMO}: filtre ou busque para achar.</p>}
       <div className="conf-pe">
         {faltam > 0 && <span className="falta">{faltam === 1 ? 'Falta 1 decisão' : `Faltam ${faltam} decisões`}</span>}
+        {faltaConfirmar && <span className="falta">Confirme a atração no aviso acima</span>}
         <span className="efeito">
           Cria {criar.length} no acervo{tipar.length ? `, dá o tipo a ${tipar.length}` : ''}
           {renomear.length ? `, renomeia ${renomear.length} (o nome errado no acervo, na mesma linha)` : ''}. {outras === 1 ? 'A outra linha não muda' : `As ${outras} outras não mudam`} nada.
@@ -412,7 +533,7 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
           <input type="checkbox" checked={lembrar} disabled={gravando} onChange={(e) => setLembrar(e.target.checked)} />
           lembrar as decisões nas próximas de {previa.atracao}
         </label>
-        <button type="button" className="botao primario" disabled={gravando || faltam > 0 || !aGravar} onClick={() => void gravar()} title={faltam > 0 ? 'Decida as linhas que faltam para gravar.' : undefined}>
+        <button type="button" className="botao primario" disabled={gravando || faltam > 0 || !aGravar || faltaConfirmar} onClick={() => void gravar()} title={faltam > 0 ? 'Decida as linhas que faltam para gravar.' : faltaConfirmar ? `Confirme que o CSV é de ${previa.atracao} para gravar.` : undefined}>
           {gravando ? 'Gravando…' : faltam > 0 ? 'Gravar' : aGravar ? `Gravar ${aGravar} no acervo` : 'Nada a gravar'}
         </button>
       </div>

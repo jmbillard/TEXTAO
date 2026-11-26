@@ -173,7 +173,13 @@ As **regras de conversão** escrevem a arte como o roteiro escreve, e cada linha
 um dicionário fechado (NAO → NÃO) e a grafia da primeira fonte que tem a arte: o acervo da atração, os roteiros dela,
 os roteiros de todas, o acervo de todas.
 Gravar relê o acervo, cria as novas, dá o tipo às que completam e renomeia as que corrigem o acervo; o resultado é o
-total "antes → depois".
+total "antes → depois". Cada arte gravada leva o **caminho** do arquivo (o campo `caminho` de ARTES_acervo; a que só
+ganha o tipo ou o nome leva o caminho quando ainda não tem um).
+Os **avisos** da conferência: os caminhos fora da **pasta de output** da atração (a do cadastro, o mesmo Output do card;
+sem ela, a pasta mais comum dos caminhos já gravados no acervo dela) pedem a confirmação "É de … mesmo" para gravar, ou
+levam o CSV para a atração em cuja pasta eles estão; o arquivo **já importado** (o mesmo nome ou os mesmos caminhos numa
+importação não desfeita, ou os caminhos já gravados no acervo) diz quando, sem travar; com os caminhos na pasta e o
+arquivo novo, o aviso é verde.
 Cada importação gravada fica em **Importações**, na ficha (a data, o arquivo, quem e +N), e pode ser **desfeita** por
 7 dias: logo depois pela caixinha preta e, até o prazo, pelo histórico. Desfazer apaga as artes criadas e devolve o tipo
 e o nome antigos das que mudaram; a linha que alguém mexeu no Teable depois (a data de modificação dela mudou) não volta,
