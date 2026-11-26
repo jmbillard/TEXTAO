@@ -1,0 +1,31 @@
+/* As linhas das tabelas do .docx no visor do original.
+   O docx-editor desenha cada borda de tabela como uma faixa da espessura do Word na escala da página: a de 1/2 pt
+   (w:sz="4", a do Table Grid) fica com uns 0,5 px de tela. O navegador encaixa cada faixa nos pixels da tela, e o
+   Safari (como o Firefox) arredonda o começo e o fim: conforme a posição, a faixa fina fica com zero pixel e some.
+   Por isso cada roteiro perdia um pedaço diferente da grade (a de cima, a da direita, a que separa o cabeçalho...).
+   O Chrome garante um pixel e mostrava tudo. Aqui a faixa nunca é mais fina que um pixel da tela, em nenhum
+   navegador; as mais grossas ficam como estão. */
+.visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='top'], [data-edge='bottom']) {
+  min-height: 1px;
+}
+.visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='left'], [data-edge='right']) {
+  min-width: 1px;
+}
+/* na tela de alta densidade, um pixel da tela é meio (ou um terço) de px do CSS: a linha fina continua fina */
+@media (min-resolution: 2dppx) {
+  .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='top'], [data-edge='bottom']) { min-height: 0.5px; }
+  .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='left'], [data-edge='right']) { min-width: 0.5px; }
+}
+@media (min-resolution: 3dppx) {
+  .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='top'], [data-edge='bottom']) { min-height: 0.34px; }
+  .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='left'], [data-edge='right']) { min-width: 0.34px; }
+}
+/* com o zoom da página abaixo de 100%, um px do CSS dá menos de um pixel da tela */
+@media (max-resolution: 0.99dppx) {
+  .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='top'], [data-edge='bottom']) { min-height: 1.5px; }
+  .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='left'], [data-edge='right']) { min-width: 1.5px; }
+}
+@media (max-resolution: 0.66dppx) {
+  .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='top'], [data-edge='bottom']) { min-height: 2px; }
+  .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='left'], [data-edge='right']) { min-width: 2px; }
+}

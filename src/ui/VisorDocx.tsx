@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { DocxEditor, useHighlights } from '@docx-editor.dev/react';
 import '@docx-editor.dev/core/styles/editor.css';
+import './VisorDocx.css';
 
 type EditorComBusca = { findMatches(q: readonly string[], o?: { matchCase?: boolean; wholeWord?: boolean }): readonly (readonly unknown[])[] };
 

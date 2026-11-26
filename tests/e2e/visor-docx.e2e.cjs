@@ -8,7 +8,8 @@
 //   3. pelo estilo da tabela (w:tblStyle → "Table Grid", o caso mais comum do Word);
 //   4. pelo estilo, com a tabela dentro de uma caixa de texto do tamanho dela.
 // Para cada tabela, confere que as seis linhas que o Word desenha (cima, baixo, esquerda, direita, o divisor das
-// colunas e o das linhas) estão pintadas: há um traço de borda sobre cada ponto da linha, e nenhum recorte de um
+// colunas e o das linhas) estão pintadas: há um traço de borda sobre cada ponto da linha, com pelo menos um pixel da
+// tela de espessura depois do arredondamento que o Safari faz (a linha de 1/2 pt sumia lá), e nenhum recorte de um
 // elemento de cima (overflow) o esconde.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:visor
@@ -75,7 +76,15 @@ function medirBordas() {
     const xs = [...new Set(celulas.flatMap((c) => [Math.round(c.left * 4) / 4, Math.round(c.right * 4) / 4]))].sort((a, b) => a - b);
     const ys = [...new Set(celulas.flatMap((c) => [Math.round(c.top * 4) / 4, Math.round(c.bottom * 4) / 4]))].sort((a, b) => a - b);
     const [esq, dir, cima, baixo] = [xs[0], xs[xs.length - 1], ys[0], ys[ys.length - 1]];
-    const tracos = [...t.querySelectorAll('.docx-table-border-edge-stroke')].map(visivel).filter((v) => v.x1 > v.x0 && v.y1 > v.y0);
+    // O Safari e o Firefox encaixam a faixa nos pixels da tela arredondando o começo e o fim; a que fica com zero
+    // pixel não aparece (o Chrome garante um). Só conta o traço que sobra com pelo menos um pixel da tela.
+    const dpr = window.devicePixelRatio || 1;
+    const pixels = (a, b) => Math.round(b * dpr) - Math.round(a * dpr);
+    const inteiro = (el) => {
+      const r = el.getBoundingClientRect();
+      return el.dataset.edge === 'top' || el.dataset.edge === 'bottom' ? pixels(r.top, r.bottom) >= 1 : pixels(r.left, r.right) >= 1;
+    };
+    const tracos = [...t.querySelectorAll('.docx-table-border-edge-stroke')].filter(inteiro).map(visivel).filter((v) => v.x1 > v.x0 && v.y1 > v.y0);
     const coberto = (x, y) => tracos.some((v) => x >= v.x0 - FOLGA && x <= v.x1 + FOLGA && y >= v.y0 - FOLGA && y <= v.y1 + FOLGA);
     const pontos = (a, b) => [0.25, 0.5, 0.75].map((f) => a + (b - a) * f);
     const horizontal = (y) => xs.slice(0, -1).flatMap((x, i) => pontos(x, xs[i + 1]).map((px) => [px, y]));
@@ -103,9 +112,11 @@ async function principal() {
   };
   try {
     await semear(amb.api);
-    // dois zooms: a vista "Original" do editor larga e a página estreita, como num lado da comparação
-    for (const largura of [1680, 1100]) {
-      const ctx = await navegador.newContext({ viewport: { width: largura, height: 1050 }, extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA } });
+    // dois zooms: a vista "Original" do editor larga e a página estreita, como num lado da comparação; e a página
+    // estreita na tela Retina (2 pixels por px) e com o zoom do navegador em 90%
+    for (const [largura, dpr] of [[1680, 1], [1100, 1], [1100, 2], [1280, 0.9]]) {
+      const tela = `${largura}px${dpr === 1 ? '' : ` a ${dpr}x`}`;
+      const ctx = await navegador.newContext({ viewport: { width: largura, height: 1050 }, deviceScaleFactor: dpr, extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA } });
       await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
       const p = await ctx.newPage();
       const erros = [];
@@ -116,12 +127,12 @@ async function principal() {
       await p.waitForFunction((n) => document.querySelectorAll('.visor-docx .docx-table-fragment').length >= n, CASOS.length, { timeout: 60000 });
       await p.waitForTimeout(800);
       const tabelas = await p.evaluate(medirBordas);
-      conferir(tabelas.length === CASOS.length, `${largura}px: as ${CASOS.length} tabelas no visor (achei ${tabelas.length})`);
+      conferir(tabelas.length === CASOS.length, `${tela}: as ${CASOS.length} tabelas no visor (achei ${tabelas.length})`);
       tabelas.slice(0, CASOS.length).forEach((t, i) => {
         const sumidas = Object.entries(t.faltando).filter(([, f]) => f > 0);
-        conferir(t.colunas === 2 && t.linhas === 2 && sumidas.length === 0, `${largura}px, tabela ${i + 1} (${CASOS[i]}): ${t.colunas}×${t.linhas}, ${sumidas.length ? `sem ${sumidas.map(([n, f]) => `${n} (${Math.round(f * 100)}%)`).join(', ')}` : 'as seis linhas da grade desenhadas'}`);
+        conferir(t.colunas === 2 && t.linhas === 2 && sumidas.length === 0, `${tela}, tabela ${i + 1} (${CASOS[i]}): ${t.colunas}×${t.linhas}, ${sumidas.length ? `sem ${sumidas.map(([n, f]) => `${n} (${Math.round(f * 100)}%)`).join(', ')}` : 'as seis linhas da grade desenhadas'}`);
       });
-      conferir(erros.length === 0, `${largura}px: nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`);
+      conferir(erros.length === 0, `${tela}: nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`);
       await ctx.close();
     }
   } catch (e) {
