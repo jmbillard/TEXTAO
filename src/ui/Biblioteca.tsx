@@ -9,7 +9,7 @@ import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { agruparPorDia, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
+import { agruparPorDia, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
 import { AbasDoCriterio, Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
 import { useTrocaDeCriterio, useTrocaDeSemana } from './trocaDeSemana';
@@ -917,7 +917,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const [deOutros, setDeOutros] = useState<string[]>([]);
   const [colegas, setColegas] = useState<{ nome: string; email: string }[]>([]);
   const [noRoteiro, setNoRoteiro] = useState<Record<string, { nome: string; email: string }[]>>({});
-  // R: abre o próximo roteiro que pede revisão e que ninguém está vendo (o primeiro da fila, na ordem da tela)
+  // R: abre o próximo roteiro que pede revisão, que ninguém revisou e que ninguém está vendo (o primeiro da fila, na
+  // ordem da tela: proximoParaRevisar)
   const proximoParaRevisar = useRef<string | null>(null);
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
@@ -1123,8 +1124,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const { proximos, exibidos } = agruparPorDia(visiveis.filter((r) => !noTrello(r)));
   // os enviados vão para a seção No Trello: a busca vale para eles, os filtros de revisão não
   const enviados = todos.filter((r) => noTrello(r) && achado(r));
-  proximoParaRevisar.current =
-    proximos.flatMap((g) => g.itens).find((r) => pendente.has(r.id) && pedeRevisao(r) && !noTrello(r) && !noRoteiro[r.id]?.length)?.id ?? null;
+  proximoParaRevisar.current = proximoDaFila(visiveis, { email: eu }, noRoteiro)?.id ?? null;
   const porId = new Map(todos.map((r) => [r.id, r]));
   // durante o "desfazer" a fila já fica como vai ficar (sem trocar de tela de novo quando o prazo acaba)
   const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo;

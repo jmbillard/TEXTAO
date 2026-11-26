@@ -646,6 +646,16 @@ const doNavegador = comExemplo(noNavegador);
 const doServidor = comExemplo(noServidor);
 export let armazenamento: Armazenamento = doNavegador;
 
+/** Quem está com cada roteiro aberto agora (id → pessoas), como o servidor conta nas salas de edição simultânea. */
+export type PresencaNosRoteiros = Record<string, Pessoa[]>;
+
+/** Pergunta ao servidor, na hora, quem está em cada roteiro: o editor não ouve a fila ao vivo, então consulta antes de
+    escolher o próximo. Sem servidor (ou sem resposta), ninguém. */
+export async function quemNosRoteiros(): Promise<PresencaNosRoteiros> {
+  if (armazenamento.tipo !== 'servidor') return {};
+  return pedir<PresencaNosRoteiros>('/api/no-roteiro').catch(() => ({}));
+}
+
 /** A pessoa viu o tour da revisão (terminou, pulou ou disse "Agora não"): o servidor guarda e o convite não volta. */
 export async function marcarTourVisto() {
   if (armazenamento.tipo !== 'servidor') return;

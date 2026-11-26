@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agruparPorDia, filaVisivel, pendentes } from '../src/ui/fila';
+import { agruparPorDia, filaVisivel, pendentes, proximoParaRevisar } from '../src/ui/fila';
 import { herdarTipos, manterAsDuas, substituirVersao } from '../src/modelo/versoes';
 import { dataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
@@ -855,5 +855,49 @@ describe('No Trello: onde a claquete do card quebra', () => {
     expect(pedacosDaClaquete('25-11-2')).toEqual(['25-11-2']);
     expect(pedacosDaClaquete('CHAMADA_AUDITORIO_25/11')).toEqual(['CHAMADA_', 'AUDITORIO_', '25/11']);
     expect(pedacosDaClaquete('ELIANA29-11')).toEqual(['ELIANA', '29-11']);
+  });
+});
+
+describe('o próximo para revisar (proximoParaRevisar)', () => {
+  const agora = new Date(2026, 10, 19, 15, 0); // qui, 19/11
+  const EU = 'bia@exemplo.com';
+  const comRevisor = (r: Resumo, email: string): Resumo => ({ ...r, revisadoPor: { nome: 'Caio Prado', email } });
+  // a fila de hoje: 1, 2 e 3 pedem revisão, na ordem
+  const fila = [resumo('r1', '2026-11-19', ['Sem editor'], '2026-11-19T12:00:00Z'), resumo('r2', '2026-11-19', ['Sem editor'], '2026-11-19T11:00:00Z'), resumo('r3', '2026-11-20', ['Sem editor'])];
+  const proximo = (lista: Resumo[], presenca: Record<string, { nome: string; email: string }[]> = {}, atual = 'r1') =>
+    proximoParaRevisar(lista, { email: EU, roteiro: atual }, presenca, agora)?.id;
+
+  it('pula o roteiro atual e segue a ordem da fila', () => {
+    expect(proximo(fila)).toBe('r2');
+    expect(proximo(fila, {}, 'r2')).toBe('r1');
+  });
+
+  it('pula o roteiro aberto agora por outra pessoa', () => {
+    expect(proximo(fila, { r2: [{ nome: 'Ana Lima', email: 'ana@exemplo.com' }] })).toBe('r3');
+  });
+
+  it('o roteiro aberto só por mim (outra aba) não conta como ocupado', () => {
+    expect(proximo(fila, { r2: [{ nome: 'Bia Souza', email: 'Bia@Exemplo.com' }] })).toBe('r2');
+  });
+
+  it('pula o roteiro que alguém já revisou, eu inclusive', () => {
+    expect(proximo([fila[0], comRevisor(fila[1], 'ana@exemplo.com'), fila[2]])).toBe('r3');
+    expect(proximo([fila[0], comRevisor(fila[1], EU), fila[2]])).toBe('r3');
+  });
+
+  it('pula o que não pede revisão, o que já está no Trello e o que já foi ao ar', () => {
+    const lista = [
+      fila[0],
+      resumo('pronto', '2026-11-19'),
+      { ...resumo('enviado', '2026-11-19', ['Sem editor']), trello: { estado: 'enviado' as const, em: '2026-11-19T10:00:00Z' } },
+      resumo('ontem', '2026-11-18', ['Sem editor']),
+      fila[2],
+    ];
+    expect(proximo(lista)).toBe('r3');
+  });
+
+  it('ninguém sobrando: não há próximo', () => {
+    expect(proximo(fila, { r2: [{ nome: 'Ana Lima', email: 'ana@exemplo.com' }], r3: [{ nome: 'Caio Prado', email: 'caio@exemplo.com' }] })).toBeUndefined();
+    expect(proximo([fila[0]])).toBeUndefined();
   });
 });

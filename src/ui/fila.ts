@@ -1,4 +1,4 @@
-import type { Andamento, Resumo } from '../dados/armazenamento';
+import type { Andamento, PresencaNosRoteiros, Resumo } from '../dados/armazenamento';
 
 /* A fila organizada pela data de exibição: o que vai ao ar primeiro vem primeiro, e o que já foi ao ar
    desce para um grupo recolhido. Dentro de cada dia, o que pede revisão vem antes. */
@@ -46,6 +46,17 @@ export function filaVisivel(roteiros: Resumo[] | null, saindo: string | undefine
 export function pendentes(lista: Resumo[], agora = new Date()): Resumo[] {
   const hoje = isoLocal(agora);
   return lista.filter((r) => !noTrello(r) && !(ehData(r.meta.dataExibicao) && r.meta.dataExibicao < hoje));
+}
+
+/** O próximo roteiro para revisar, na ordem da fila (os dias, e no dia o que pede revisão): o que ainda pede revisão,
+    que ninguém revisou (nem eu) e que nenhuma outra pessoa está com aberto agora, fora o roteiro em que estou. Sem
+    nenhum, undefined: quem pediu volta para a fila. É o que o Enviar do editor e a tecla R da fila abrem. Abrir à mão
+    um roteiro em que alguém já está continua livre (é a edição simultânea); só a sugestão do próximo pula. */
+export function proximoParaRevisar(fila: Resumo[], eu: { email?: string; roteiro?: string }, presenca: PresencaNosRoteiros, agora = new Date()): Resumo | undefined {
+  const meu = (eu.email ?? '').toLowerCase();
+  const deOutro = (id: string) => (presenca[id] ?? []).some((p) => p.email.toLowerCase() !== meu);
+  const livres = pendentes(fila, agora).filter((r) => r.id !== eu.roteiro && pedeRevisao(r) && !r.revisadoPor && !deOutro(r.id));
+  return agruparPorDia(livres, agora).proximos.flatMap((g) => g.itens)[0];
 }
 
 /** diasExtras: dias que aparecem mesmo sem roteiro (os dias que só têm filme). */

@@ -185,6 +185,27 @@ describe('servidor', () => {
     expect(await fechou).toBe(1009);
   });
 
+  it('quem está em cada roteiro: o editor consulta na hora de escolher o próximo, só dos roteiros que a pessoa lê', async () => {
+    await salvar(ana, 'na-sala-publico', roteiro('A', true));
+    await salvar(ana, 'na-sala-privado', roteiro('B'));
+    const entrar = async (id: string) => {
+      const ws = new WebSocket(base.replace('http', 'ws') + `/api/colab/${id}`, { headers: { 'cf-access-authenticated-user-email': 'ana.lima@empresa.com' } });
+      await new Promise((ok) => ws.once('open', ok));
+      return ws;
+    };
+    const [a, b] = [await entrar('na-sala-publico'), await entrar('na-sala-privado')];
+    const ana_ = { nome: 'Ana Lima', email: 'ana.lima@empresa.com' };
+    expect(await (await beto('/api/no-roteiro')).json()).toEqual({ 'na-sala-publico': [ana_] });
+    expect(await (await ana('/api/no-roteiro')).json()).toMatchObject({ 'na-sala-publico': [ana_], 'na-sala-privado': [ana_] });
+    // saiu da sala: some da consulta
+    const fechou = new Promise((ok) => a.once('close', ok));
+    a.close();
+    await fechou;
+    await new Promise((ok) => setTimeout(ok, 50));
+    expect(await (await beto('/api/no-roteiro')).json()).toEqual({});
+    b.close();
+  });
+
   it('backup diário em arquivo próprio', () => {
     const pasta = mkdtempSync(join(tmpdir(), 'roteirista-'));
     expect(fazerBackup(db, pasta)).toMatch(/roteirista-\d{4}-\d{2}-\d{2}\.db$/);

@@ -24,6 +24,12 @@ A forma da arte (cartão, rodapé, lettering, foto…), guardada no acervo pela 
 **Fila**:
 A lista de roteiros por dia de exibição para revisar e mandar ao Trello. Só roteiros: os filmes da grade não entram.
 
+**Próximo para revisar**:
+O roteiro que o Enviar do editor e a tecla R da fila abrem: o primeiro da fila que pede revisão, que ninguém revisou e
+que nenhuma outra pessoa está com aberto agora. Sem nenhum, volta para a fila. Abrir à mão o roteiro de um colega
+continua livre (é a edição simultânea), com o aviso "Fulana está revisando este roteiro.".
+_Evitar_: seguinte (a seta que anda pela fila, sem pular ninguém)
+
 **Pendência**:
 Algo que impede ou pede atenção antes do envio (sem editor, sem data, claquete repetida…); algumas são dispensáveis.
 

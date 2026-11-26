@@ -61,8 +61,11 @@ async function subir({ trello: falso } = {}) {
   const trello = criarTrello(falso?.env ?? env, { buscar: falso?.buscar ?? semRede, consultar: async () => [], sftp: async () => {} });
   const db = abrirBanco(join(pasta, 'roteirista.db'));
   const app = criarApp({ db, env, trello });
+  // sem o cabeçalho (o WebSocket do navegador não leva os extras), vale o cookie `e2e-email` do contexto, que o
+  // WebSocket leva; sem ele, a Lia. É o que deixa duas pessoas no mesmo teste, cada uma na sua sala
   const comLia = (req) => {
-    if (!req.headers['cf-access-authenticated-user-email']) req.headers['cf-access-authenticated-user-email'] = LIA;
+    const cookie = /(?:^|;\s*)e2e-email=([^;]+)/.exec(req.headers.cookie ?? '')?.[1];
+    if (!req.headers['cf-access-authenticated-user-email']) req.headers['cf-access-authenticated-user-email'] = cookie ? decodeURIComponent(cookie) : LIA;
   };
   const servidor = createServer((req, res) => (comLia(req), app(req, res)));
   servidor.on('upgrade', (req, socket, head) => (comLia(req), app.upgrade(req, socket, head)));

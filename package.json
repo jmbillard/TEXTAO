@@ -13,6 +13,7 @@
     "e2e:tour": "node tests/e2e/tour.e2e.cjs",
     "e2e:agenda": "node tests/e2e/agenda-celular.e2e.cjs",
     "e2e:editor": "node tests/e2e/editor-celular.e2e.cjs",
+    "e2e:proximo": "node tests/e2e/proximo.e2e.cjs",
     "e2e:visor": "node tests/e2e/visor-docx.e2e.cjs",
     "servidor": "PORT=8787 PERFIL_LOCAL=1 node servidor/index.mjs",
     "start": "node servidor/index.mjs",

@@ -1250,6 +1250,12 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       const falhas = itens.filter((i) => !i.ok).length;
       return json(res, 200, { resumo: falhas ? `${falhas} de ${itens.length} itens com problema` : `tudo certo (${itens.length} itens)`, quando: new Date().toISOString(), itens });
     }
+    // quem está com cada roteiro aberto agora (as salas de edição simultânea desta instância, como o "no-roteiro" da
+    // fila): o editor consulta na hora de escolher o próximo, para não mandar a pessoa para o roteiro de um colega
+    if (caminho === '/api/no-roteiro') {
+      const salasAbertas = [...salas.keys()].map((id) => [id, quemNoRoteiro(id)]).filter(([id, pessoas]) => pessoas.length && acesso(id, eu).ler);
+      return json(res, 200, Object.fromEntries(salasAbertas));
+    }
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
     if (caminho === '/api/cores') return json(res, 200, q.cores.all());
     if (caminho === '/api/eu/cor') {

@@ -18,14 +18,14 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, palpitesDoRedator, roteiroDa, temTrello, type EnvioTrello, type Leitura, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, palpitesDoRedator, quemNosRoteiros, roteiroDa, temTrello, type EnvioTrello, type Leitura, type PresencaNosRoteiros, type Resumo, type Versao } from '../dados/armazenamento';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   marcarArte as marcarArteNoTexto, partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { alternarJaExiste, alvosDoTeclado, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
-import { agruparPorDia, pedeRevisao, pendentes } from './fila';
+import { agruparPorDia, pedeRevisao, pendentes, proximoParaRevisar } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import {
   ETIQUETAS, juntarTipos, metaVazia, NOMES_COLUNAS, nomesDosTipos, normalizarSubtipo, tiposDaArte, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
@@ -1111,15 +1111,38 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     return () => window.removeEventListener('keydown', ouvir);
   }, []);
 
-  // o próximo roteiro para revisar, na ordem da fila
+  // o próximo roteiro para revisar, na ordem da fila: o que ninguém revisou e ninguém está com aberto agora
+  // (proximoParaRevisar). O editor não ouve a fila ao vivo: quem está em cada roteiro vem de uma consulta ao servidor,
+  // ao abrir (para o rótulo do botão e o aviso) e de novo na hora de ir ao próximo
   const [fila, setFila] = useState<Resumo[]>([]);
+  const [presenca, setPresenca] = useState<PresencaNosRoteiros>({});
   useEffect(() => {
     armazenamento.listar().then(setFila, () => setFila([]));
   }, [meta.revisar?.length]);
+  useEffect(() => {
+    if (!doTour) void quemNosRoteiros().then(setPresenca);
+  }, [doTour]);
   const proximo = useMemo(() => {
     const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id !== inicial.id && pedeRevisao(r)));
-    return { r: proximos.flatMap((g) => g.itens)[0], total: proximos.reduce((n, g) => n + g.itens.length, 0) };
-  }, [fila, inicial.id]);
+    return { r: proximoParaRevisar(fila, { email: pessoa?.email, roteiro: inicial.id }, presenca), total: proximos.reduce((n, g) => n + g.itens.length, 0) };
+  }, [fila, presenca, inicial.id, pessoa?.email]);
+  /** Vai ao próximo para revisar, com a fila e a presença lidas agora (mudam enquanto se revisa: um colega pode ter
+      aberto o que era o próximo). Sem nenhum livre, volta para a fila, que comemora se tiver zerado. */
+  const irAoProximo = async () => {
+    const [agoraNaFila, agoraNosRoteiros] = await Promise.all([armazenamento.listar().catch(() => fila), quemNosRoteiros()]);
+    const r = proximoParaRevisar(agoraNaFila, { email: pessoa?.email, roteiro: inicial.id }, agoraNosRoteiros);
+    if (r) abrir(r.id);
+    else voltar();
+  };
+  // abrir à mão um roteiro em que um colega já está é livre (a edição simultânea): só um aviso discreto, uma vez
+  const avisouQuemEsta = useRef(false);
+  useEffect(() => {
+    const outros = (presenca[inicial.id] ?? []).filter((p) => p.email.toLowerCase() !== (pessoa?.email ?? '').toLowerCase());
+    if (avisouQuemEsta.current || !outros.length) return;
+    avisouQuemEsta.current = true;
+    const nomes = outros.map((p) => p.nome.split(/\s+/)[0]);
+    avisar(`${nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]} estão` : `${nomes[0]} está`} revisando este roteiro.`);
+  }, [presenca]); // eslint-disable-line react-hooks/exhaustive-deps
   // o acervo da atração: artes que ela já tem prontas (conferidas aqui, fora do checklist do Trello)
   const [acervo, setAcervo] = useState<{ ligado: boolean; artes: ArteDoAcervo[] }>({ ligado: false, artes: [] });
   useEffect(() => {
@@ -1342,10 +1365,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       setEnvio(simulado);
       return enviadoNoTour();
     }
-    if (!vaiMandar) return proximo.r && abrir(proximo.r.id);
+    if (!vaiMandar) return proximo.r && irAoProximo();
     if (perguntaProducao) return comparar(inicial.id);
     // nada impede o envio: as pendências ficam à vista ao lado, e o que faltar o n8n completa depois
-    if ((await mandarTrello()) && proximo.r) abrir(proximo.r.id);
+    if (await mandarTrello()) await irAoProximo();
   };
   const acaoRef = useRef(acaoPrincipal);
   acaoRef.current = acaoPrincipal;
