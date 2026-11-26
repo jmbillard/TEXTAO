@@ -243,13 +243,27 @@ filmes) são Entrada; as saídas das praças e a dos entregues, Entregue; qualqu
 _Evitar_: status, coluna, lista (a lista é do Trello)
 
 **Evento** (da Produção):
-O que aconteceu com a Produção, anotado no SQLite: **criada**, **mudou de etapa** (antes → depois), **arquivada** e
-**desarquivada**, com quem (o membro do Trello) e quando (a data da ação no Trello, não a da chegada). Vem do **aviso
-do Trello**: o webhook do quadro, que chama o PROMeiro direto (sem o n8n) na única rota fora do Cloudflare Access, e
-só vale com a assinatura do Trello. Cada evento guarda o id da ação do Trello, único: o mesmo aviso duas vezes não
-duplica. Card novo no quadro vira Produção; aviso de outro quadro, ou de um card que não é Produção, é ignorado. O
-aviso atrasado (mais velho que o último evento) entra no histórico, mas não volta a etapa. As Produções da carga não
-têm eventos passados.
+O que aconteceu com a Produção, anotado no SQLite, com quem (o membro do Trello) e quando (a data da ação no Trello,
+não a da chegada). Os tipos:
+- **criada**: card novo no quadro (criado, copiado ou trazido de outro quadro) vira Produção;
+- **mudou de etapa** (antes → depois): o card foi para uma lista de outra etapa, ou a entrega do card foi marcada como
+  concluída (Entregue; desmarcada, volta à etapa da lista);
+- **arquivada** e **desarquivada**;
+- **designer entrou** e **designer saiu**: os membros do card. O membro vira o designer da tabela designers pelo
+  designer_ID (o id do membro no Trello) ou, sem ele, pelo nome; sem ligação, fica o nome do membro. Muda os
+  designers da Produção;
+- **arte marcada** e **arte desmarcada**: o item do checklist, pelo nome. Muda as artes marcadas da Produção;
+- **campo mudado** (antes → depois): a **prioridade**, a **complexidade** e a **praça** (os campos do card ligados na
+  Configuração, com a opção pelo nome; a praça pela sigla, e ela muda a praça da Produção) e a **entrega** (o prazo do
+  card, a data de entrega no Trello; fica só no histórico, como a prioridade e a complexidade).
+Vem do **aviso do Trello**: o webhook do quadro, que chama o PROMeiro direto (sem o n8n) na única rota fora do
+Cloudflare Access, e só vale com a assinatura do Trello. Cada evento guarda o id da ação do Trello, único: o mesmo aviso
+duas vezes não duplica. Aviso de outro quadro, ou de um card que não é Produção, é ignorado. O aviso atrasado (mais
+velho que o último evento da mesma família: a etapa, o mesmo designer, a mesma arte, o mesmo campo) entra no histórico,
+mas não muda a Produção. **Recuperar o que faltou**: na subida e de hora em hora (junto da conferência do webhook), o
+PROMeiro lê as ações do quadro desde o último evento (nunca antes de 30 dias, até 10 páginas de 1000) e passa pela mesma
+tradução: o que ficou de fora enquanto ele esteve fora do ar entra, e o que já tinha entrado não duplica. As Produções
+da carga não têm eventos passados.
 _Evitar_: log, atividade, ação (a ação é do Trello)
 
 **Produção da arte (ARTE_producao)**:

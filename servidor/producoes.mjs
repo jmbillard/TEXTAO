@@ -17,11 +17,17 @@
  * arquivada, desarquivada), com quem e quando (a data da ação no Trello) e o id da ação do Trello, único: o mesmo
  * aviso duas vezes não vira dois eventos. O aviso muda a etapa da Produção, a não ser que chegue atrasado (mais velho
  * que o último evento dela): esse entra no histórico e não volta a etapa. O tipo, o antes e o depois são texto livre
- * (sem CHECK): os próximos tipos (designer, checklist, campos) guardam outros valores.
+ * (sem CHECK).
+ *
+ * #88: o designer que entra ou sai (designers), a arte marcada ou desmarcada no checklist (artes_marcadas), a praça
+ * mudada no campo do card e a entrega concluída (a etapa Entregue) também mudam a Produção; a prioridade, a
+ * complexidade e o prazo de entrega do card ficam só no histórico (a Produção não os guarda). O "atrasado" é contado
+ * dentro da mesma família: a etapa com a etapa, o mesmo designer com ele, a mesma arte com ela, o mesmo campo com ele.
  */
 import { randomUUID } from 'node:crypto';
 import { ETAPAS, producaoDaLinha } from '../src/modelo/producao.ts';
-import { pracasRegistradas, reconhecerPraca } from '../src/modelo/pracas.ts';
+import { normalizarPraca, pracasRegistradas, reconhecerPraca } from '../src/modelo/pracas.ts';
+import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 
 export function criarTabelaDasProducoes(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS producoes (
@@ -32,6 +38,7 @@ export function criarTabelaDasProducoes(db) {
     marcador TEXT NOT NULL DEFAULT '',
     designers TEXT NOT NULL DEFAULT '[]',
     artes TEXT NOT NULL DEFAULT '[]',
+    artes_marcadas TEXT NOT NULL DEFAULT '[]',
     artes_quantidade INTEGER,
     entrada_em TEXT,
     entrega_em TEXT,
@@ -51,6 +58,7 @@ export function criarTabelaDasProducoes(db) {
     id TEXT PRIMARY KEY,
     producao_id TEXT NOT NULL REFERENCES producoes (id) ON DELETE CASCADE,
     tipo TEXT NOT NULL,
+    campo TEXT,
     antes TEXT,
     depois TEXT,
     quem_id TEXT,
@@ -60,12 +68,42 @@ export function criarTabelaDasProducoes(db) {
     anotado_em TEXT NOT NULL
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS eventos_producao ON eventos (producao_id, quando)');
+  // as colunas que chegaram com o #88, no banco que já tinha as tabelas (a consulta vazia diz se a coluna existe, sem
+  // nada que só o SQLite tenha)
+  const tem = (tabela, coluna) => {
+    try {
+      db.prepare(`SELECT ${coluna} FROM ${tabela} LIMIT 0`).all();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!tem('producoes', 'artes_marcadas')) db.exec(`ALTER TABLE producoes ADD COLUMN artes_marcadas TEXT NOT NULL DEFAULT '[]'`);
+  if (!tem('eventos', 'campo')) db.exec('ALTER TABLE eventos ADD COLUMN campo TEXT');
+}
+
+/** As famílias de evento: o atrasado só não muda a Produção diante de um mais novo da mesma família. */
+const DA_ETAPA = ['criada', 'etapa', 'arquivada', 'desarquivada'];
+const DO_DESIGNER = ['designer-entrou', 'designer-saiu'];
+const DA_ARTE = ['arte-marcada', 'arte-desmarcada'];
+
+/** A lista guardada em JSON com o item (sem repetir pelo nome comparável) ou sem ele. */
+function comOuSem(json, item, com) {
+  let lista = [];
+  try {
+    lista = JSON.parse(json ?? '[]');
+  } catch {
+    lista = [];
+  }
+  const chave = nomeComparavel(item);
+  const sem = (Array.isArray(lista) ? lista : []).filter((x) => nomeComparavel(String(x)) !== chave);
+  return JSON.stringify(com ? [...sem, item] : sem);
 }
 
 const COLUNAS = ['claquete', 'praca', 'etapa', 'marcador', 'designers', 'artes', 'artes_quantidade', 'entrada_em', 'entrega_em', 'exibicao_em', 'card_id', 'roteiro_id', 'filme_id', 'filme_titulo', 'arquivada', 'atualizada_em'];
 
 /** O evento como a API mostra. */
-const doEvento = (e) => ({ tipo: e.tipo, antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null });
+const doEvento = (e) => ({ tipo: e.tipo, ...(e.campo ? { campo: e.campo } : {}), antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null });
 
 /** A Produção como a API mostra. */
 const daLinha = (l) => ({
@@ -76,6 +114,7 @@ const daLinha = (l) => ({
   marcador: l.marcador,
   designers: JSON.parse(l.designers),
   artes: JSON.parse(l.artes),
+  artesMarcadas: JSON.parse(l.artes_marcadas ?? '[]'),
   artesQuantidade: l.artes_quantidade ?? null,
   entradaEm: l.entrada_em ?? null,
   entregaEm: l.entrega_em ?? null,
@@ -122,12 +161,21 @@ export function criarProducoes(db) {
     temAcao: db.prepare('SELECT 1 FROM eventos WHERE trello_acao = ?'),
     // o card pode ter mais de uma Produção (linhas repetidas na produção da arte): vale a mais recente
     daUltimaDoCard: db.prepare('SELECT id FROM producoes WHERE card_id = ? ORDER BY COALESCE(entrada_em, criada_em) DESC, criada_em DESC LIMIT 1'),
-    ultimoQuando: db.prepare('SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ?'),
+    // o último evento da mesma família (a etapa; o mesmo designer ou a mesma arte; o mesmo campo)
+    ultimoDaEtapa: db.prepare(`SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo IN (${DA_ETAPA.map(() => '?').join(', ')})`),
+    ultimoDoItem: db.prepare('SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo IN (?, ?) AND COALESCE(depois, antes) = ?'),
+    ultimoDoCampo: db.prepare("SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo = 'campo' AND campo = ?"),
+    // o evento mais novo de todos: a recuperação lê o quadro desde ele
+    ultimoDeTodos: db.prepare('SELECT MAX(quando) AS quando FROM eventos'),
+    daProducao: db.prepare('SELECT designers, artes_marcadas FROM producoes WHERE id = ?'),
+    mudarDesigners: db.prepare('UPDATE producoes SET designers = ?, atualizada_em = ? WHERE id = ?'),
+    mudarArtesMarcadas: db.prepare('UPDATE producoes SET artes_marcadas = ?, atualizada_em = ? WHERE id = ?'),
+    mudarPraca: db.prepare('UPDATE producoes SET praca = ?, atualizada_em = ? WHERE id = ?'),
     criarDoAviso: db.prepare(
       `INSERT INTO producoes (id, claquete, praca, etapa, card_id, entrada_em, arquivada, criada_em, atualizada_em) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     ),
     anotar: db.prepare(
-      `INSERT INTO eventos (id, producao_id, tipo, antes, depois, quem_id, quem_nome, quando, trello_acao, anotado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, trello_acao, anotado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (trello_acao) DO NOTHING`,
     ),
     mudarEtapa: db.prepare(
@@ -202,10 +250,37 @@ export function criarProducoes(db) {
     return { total, porEtapa, comCard, semCard: total - comCard, comRoteiro: Number(c.com_roteiro ?? 0), comFilme: Number(c.com_filme ?? 0), carregando: !!emCurso, ultimaCarga: ultima };
   }
 
+  /** O último evento já anotado da família do evento (null sem nenhum). */
+  function ultimoDaFamilia(id, ev) {
+    if (DO_DESIGNER.includes(ev.tipo)) return q.ultimoDoItem.get(id, ...DO_DESIGNER, ev.depois ?? ev.antes)?.quando ?? null;
+    if (DA_ARTE.includes(ev.tipo)) return q.ultimoDoItem.get(id, ...DA_ARTE, ev.depois ?? ev.antes)?.quando ?? null;
+    if (ev.tipo === 'campo') return q.ultimoDoCampo.get(id, ev.campo)?.quando ?? null;
+    return q.ultimoDaEtapa.get(id, ...DA_ETAPA)?.quando ?? null;
+  }
+
+  /** O que o evento muda na Produção. "criada" de uma que já existia (a carga chegou antes) não muda nada; a
+      prioridade, a complexidade e o prazo de entrega ficam só no histórico. */
+  function mudarAProducao(id, ev, em, pracas) {
+    const atual = () => q.daProducao.get(id) ?? {};
+    if (['etapa', 'arquivada', 'desarquivada'].includes(ev.tipo)) q.mudarEtapa.run(ev.depois, ev.depois === 'arquivada' ? 1 : 0, ev.depois, ev.quando, em, id);
+    else if (DO_DESIGNER.includes(ev.tipo)) q.mudarDesigners.run(comOuSem(atual().designers, ev.depois ?? ev.antes, ev.tipo === 'designer-entrou'), em, id);
+    else if (DA_ARTE.includes(ev.tipo)) q.mudarArtesMarcadas.run(comOuSem(atual().artes_marcadas, ev.depois ?? ev.antes, ev.tipo === 'arte-marcada'), em, id);
+    // a praça vazia no card não apaga a da Produção (a claquete ainda diz qual é)
+    else if (ev.tipo === 'campo' && ev.campo === 'praca' && ev.depois) {
+      // só a opção que é uma das praças (pela sigla ou pelo "também lida como"): a desconhecida não vira a padrão
+      const sigla = normalizarPraca(ev.depois, pracas);
+      const p = pracas.find((x) => x.sigla === sigla);
+      const bate = (t) => nomeComparavel(t) === nomeComparavel(ev.depois);
+      if (p && (bate(p.sigla) || p.tambem.some(bate))) q.mudarPraca.run(sigla, em, id);
+    }
+  }
+
   /**
    * Anota os eventos do aviso do Trello (src/modelo/avisoDoTrello.ts), numa transação: "criada" faz a Produção do card
    * quando ainda não há nenhuma (a claquete é o nome do card; a praça, a que a claquete indica); os outros só valem
    * para o card que já é Produção (o resto é card fora do domínio e é ignorado). O id da ação do Trello não repete.
+   * Depois de anotado, o evento muda a Produção (se não é atrasado na família dele): a etapa, os designers, as artes
+   * marcadas, a praça.
    * @returns { anotados, repetidos, ignorados }
    */
   function anotar(eventos, pracas = pracasRegistradas()) {
@@ -229,11 +304,11 @@ export function criarProducoes(db) {
           const claquete = String(ev.claquete ?? '').trim();
           q.criarDoAviso.run(id, claquete, reconhecerPraca(claquete, pracas), ev.depois, ev.cardId, ev.quando, em, em);
         }
-        const ultimo = q.ultimoQuando.get(id)?.quando ?? null;
-        q.anotar.run(randomUUID(), id, ev.tipo, ev.antes ?? null, ev.depois ?? null, ev.quem?.id ?? null, ev.quem?.nome ?? null, ev.quando, ev.acao, em);
+        const ultimo = ultimoDaFamilia(id, ev);
+        q.anotar.run(randomUUID(), id, ev.tipo, ev.campo ?? null, ev.antes ?? null, ev.depois ?? null, ev.quem?.id ?? null, ev.quem?.nome ?? null, ev.quando, ev.acao, em);
         r.anotados++;
-        // "criada" de uma Produção que já existia (a carga chegou antes) não muda nada; o atrasado não volta a etapa
-        if (ev.tipo !== 'criada' && (!ultimo || ev.quando >= ultimo)) q.mudarEtapa.run(ev.depois, ev.depois === 'arquivada' ? 1 : 0, ev.depois, ev.quando, em, id);
+        // o atrasado (mais velho que o último da família) fica só no histórico
+        if (!ultimo || ev.quando >= ultimo) mudarAProducao(id, ev, em, pracas);
       }
       db.exec('COMMIT');
     } catch (e) {
@@ -245,6 +320,8 @@ export function criarProducoes(db) {
 
   return {
     vazia: () => Number(q.total.get().n) === 0,
+    /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */
+    ultimoEvento: () => q.ultimoDeTodos.get()?.quando ?? null,
     anotar,
     carregar,
     contagem,

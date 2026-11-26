@@ -4,8 +4,9 @@ Ferramenta de revisão de roteiros da Arte do Promo. Os roteiros chegam do Word 
 
 ## O aviso do Trello: a única rota fora do Cloudflare Access
 
-O Trello avisa o PROMeiro direto a cada mudança no quadro (card novo, mudou de lista, arquivado), e o PROMeiro anota
-os eventos da Produção. Para isso:
+O Trello avisa o PROMeiro direto a cada mudança no quadro (card novo, mudou de lista, arquivado, designer no card,
+arte marcada no checklist, prioridade, complexidade, praça e prazo de entrega), e o PROMeiro anota os eventos da
+Produção. Para isso:
 
 1. **No Portainer:** `TRELLO_SEGREDO` com o "Secret" da mesma API key do `TRELLO_KEY` (no admin de Power-Ups do
    Trello, a chave → Secret) e `PROMEIRO_URL` com o endereço público (ex.: `https://promeiro.exemplo.com`). O quadro
@@ -16,7 +17,9 @@ os eventos da Produção. Para isso:
    `ACCESS_AUD` preenchidas: com elas o PROMeiro confere a assinatura do login, e um cabeçalho de e-mail forjado por
    quem passou pelo Bypass não vale. O que estiver embaixo do caminho (`/api/trello/aviso/…`) responde 404.
 3. **Reinicie** o container. Na subida (e de hora em hora) o PROMeiro confere o webhook do quadro: registra se não
-   houver, liga de novo se o Trello desligou e tira o de um quadro antigo. O log diz `[aviso do trello]`.
+   houver, liga de novo se o Trello desligou e tira o de um quadro antigo. Logo depois, recupera o que faltou: lê as
+   ações do quadro desde o último evento guardado (no máximo 30 dias e 10 páginas de 1000 ações) e anota o que não
+   tinha chegado, sem duplicar. O log diz `[aviso do trello]`.
 
 O PROMeiro só aceita o aviso com a assinatura do Trello (o cabeçalho `X-Trello-Webhook`, o HMAC-SHA1 do corpo e do
 endereço com o Secret); o resto recebe 401 e não é processado. O `HEAD` na rota responde 200: é como o Trello confere

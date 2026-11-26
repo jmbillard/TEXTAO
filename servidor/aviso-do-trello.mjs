@@ -10,6 +10,7 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { configDoTrello } from './trello.mjs';
+import { TIPOS_DE_ACAO } from '../src/modelo/avisoDoTrello.ts';
 
 /** O caminho da rota do aviso: o único a liberar no Cloudflare Access (Bypass só para ele). */
 export const ROTA_DO_AVISO = '/api/trello/aviso';
@@ -71,6 +72,71 @@ export function listasDoQuadro(env) {
     entradas: limpas([...c.pracas.map((p) => p.entrada), c.listas.padrao, c.listas.VT, c.filmes.lista]),
     saidas: limpas([...c.pracas.map((p) => p.saida), c.entregues]),
   };
+}
+
+/** Os nomes das opções de fábrica, quando o quadro não foi lido: as da prioridade (ALTA, MÉDIA) e as da complexidade
+    (na ordem BAIXA, MÉDIA, ALTA, como TRELLO_COMPLEXIDADE_OPCOES). */
+const NIVEIS = ['BAIXA', 'MÉDIA', 'ALTA'];
+
+/**
+ * O que a tradução do aviso lê do quadro configurado (src/modelo/avisoDoTrello.ts): as listas, os campos ligados na
+ * Configuração (TRELLO_CAMPO_PRIORIDADE, _COMPLEXIDADE, _PRACA) com o nome de cada opção, e os designers.
+ * O nome da opção é o do quadro lido (os campos do quadro); sem ele, o que a configuração diz (ALTA e MÉDIA da
+ * prioridade, os níveis da complexidade). Na praça, a opção é a sigla da praça que a tem.
+ * @param o.camposDoQuadro os campos personalizados do quadro, como o Trello lista ([{ id, options: [{ id, value: { text } }] }])
+ * @param o.designers a tabela designers da última verificação das Pessoas ([{ nome, idNoTrello }])
+ */
+export function quadroDoAviso(env, { camposDoQuadro = [], designers = [] } = {}) {
+  const c = configDoTrello(env);
+  const doQuadro = (id) => {
+    const campo = (Array.isArray(camposDoQuadro) ? camposDoQuadro : []).find((x) => x?.id === id);
+    return Object.fromEntries((campo?.options ?? []).map((o) => [String(o?.id ?? ''), String(o?.value?.text ?? '').trim()]).filter(([k, v]) => k && v));
+  };
+  const so = (pares) => Object.fromEntries(pares.filter(([k]) => k));
+  /** O campo ligado com os nomes das opções: `antes` perde para o nome no quadro, `depois` vence. */
+  const ligado = (id, { antes = {}, depois = {} } = {}) => {
+    const limpo = String(id ?? '').trim();
+    return limpo ? { id: limpo, opcoes: { ...antes, ...doQuadro(limpo), ...depois } } : undefined;
+  };
+  return {
+    ...listasDoQuadro(env),
+    campos: {
+      prioridade: ligado(c.campos.prioridade, { antes: so([[c.prioridadeAlta, 'ALTA'], [c.filmes.prioridadeMedia, 'MÉDIA']]) }),
+      complexidade: ligado(c.campos.complexidade, { antes: so(c.complexidades.map((id, i) => [id, NIVEIS[i] ?? ''])) }),
+      // a sigla da praça vale por cima do nome no quadro (a Produção guarda a sigla)
+      praca: ligado(c.campos.praca, { depois: so(c.pracas.map((p) => [p.opcao, p.sigla])) }),
+    },
+    designers: (Array.isArray(designers) ? designers : []).map((d) => ({ nome: String(d?.nome ?? ''), idNoTrello: String(d?.idNoTrello ?? '') })),
+  };
+}
+
+/** A recuperação de fábrica: até 1000 ações por página (o máximo do Trello), até 10 páginas, nunca antes de 30 dias. */
+export const RECUPERACAO = Object.freeze({ porPagina: 1000, paginas: 10, dias: 30 });
+
+/**
+ * As ações do quadro desde `desde` (só os tipos que a tradução lê), da mais velha à mais nova. O Trello devolve da
+ * mais nova à mais velha: a próxima página é a de antes da mais velha desta (before = o id dela), até vir uma página
+ * incompleta ou acabar o limite de páginas (`noLimite`: as mais velhas ficaram de fora).
+ * @param trello o módulo do Trello (ler)
+ * @returns { acoes, paginas, noLimite }
+ */
+export async function acoesDesde(trello, { quadro, desde, porPagina = RECUPERACAO.porPagina, paginas = RECUPERACAO.paginas }) {
+  const todas = [];
+  let antes = null;
+  for (let i = 0; i < paginas; i++) {
+    const pagina = await trello.ler(`/boards/${encodeURIComponent(quadro)}/actions`, {
+      filter: TIPOS_DE_ACAO.join(','),
+      since: desde,
+      limit: String(porPagina),
+      ...(antes ? { before: antes } : {}),
+    });
+    const lidas = Array.isArray(pagina) ? pagina : [];
+    todas.push(...lidas);
+    if (lidas.length < porPagina) return { acoes: todas.reverse(), paginas: i + 1, noLimite: false };
+    antes = String(lidas[lidas.length - 1]?.id ?? '');
+    if (!antes) break;
+  }
+  return { acoes: todas.reverse(), paginas, noLimite: true };
 }
 
 /**

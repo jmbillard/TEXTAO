@@ -45,3 +45,16 @@ endereço na configuração do Padeiro (que já é configurável): uma integraç
 
 **Pergunta aberta:** como o Padeiro se identifica no PROMeiro. Hoje o PROMeiro fica atrás do Cloudflare Access e o n8n
 faz o meio; a escolha entre um token por designer e um token de serviço fica para antes da primeira rota.
+
+## A fundação (#86–#88): a Produção, os eventos e o aviso do Trello
+
+A spec #85 tirou a primeira etapa (o espelho). A unidade é a **Produção**, com id próprio do PROMeiro (UUID), no SQLite
+com SQL comum ao Postgres; o card do Trello e o registro do Teable são referências opcionais. A carga inicial vem só da
+produção da arte do Teable (o Trello tem muito lixo), idempotente pelo registro, sem eventos passados. O Trello avisa o
+PROMeiro direto, sem o n8n: um webhook que o PROMeiro registra e confere de hora em hora, na única rota fora do
+Cloudflare Access, só com a assinatura HMAC do Trello. A tradução da ação em **evento** é pura e cobre criada, etapa
+(pela lista; a entrega concluída é Entregue), arquivada, designer, arte do checklist e os campos (prioridade,
+complexidade, praça, prazo de entrega); uma ação vira no máximo um evento e o id dela não repete. Card que não é
+Produção é ignorado, salvo o criado; um card com várias Produções vale pela mais recente. O que o PROMeiro perdeu fora do
+ar ele recupera lendo as ações do quadro desde o último evento (na subida e de hora em hora; 30 dias e 10 páginas no
+máximo), pela mesma tradução. O n8n continua sincronizando em paralelo; o PROMeiro ainda não manda no Trello.

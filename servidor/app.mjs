@@ -26,7 +26,7 @@ import { criarFilmes } from './filmes.mjs';
 import { criarDuplicadas, DIAS_MAXIMO, DIAS_PADRAO } from './duplicadas.mjs';
 import { criarRegistroDasDuplicadas, MOTIVO_MAXIMO } from './registro-das-duplicadas.mjs';
 import { criarProducoes } from './producoes.mjs';
-import { ROTA_DO_AVISO, assinaturaConfere, enderecoDoAviso, faltasDoAviso, garantirWebhook, lerCorpoDoAviso, listasDoQuadro, segredoDoAviso } from './aviso-do-trello.mjs';
+import { RECUPERACAO, ROTA_DO_AVISO, acoesDesde, assinaturaConfere, enderecoDoAviso, faltasDoAviso, garantirWebhook, lerCorpoDoAviso, listasDoQuadro, quadroDoAviso, segredoDoAviso } from './aviso-do-trello.mjs';
 import { eventosDoAviso } from '../src/modelo/avisoDoTrello.ts';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
@@ -454,8 +454,9 @@ const DIAS_DA_CONTAGEM = 90;
  * @param agendar (f, ms) repete f de ms em ms (a verificação diária dos membros do quadro); os testes trocam
  * @param esperaDoAviso quanto esperar, na subida, antes de conferir o webhook do quadro (#87): o Trello confere o
  *   endereço com um HEAD ao registrar, e o servidor precisa já estar ouvindo
+ * @param recuperacao os limites da recuperação do que faltou (#88): { porPagina, paginas, dias }; os testes trocam
  */
-export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, buscarNoGitHub = fetch, agendar = (f, ms) => setInterval(f, ms), esperaDoAviso = 5000, ...modulos }) {
+export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, buscarNoGitHub = fetch, agendar = (f, ms) => setInterval(f, ms), esperaDoAviso = 5000, recuperacao: limitesDaRecuperacao = {}, ...modulos }) {
   const fabricas = { ...FABRICAS };
   for (const [nome, m] of Object.entries(modulos)) if (m !== undefined && m !== null) fabricas[nome] = m;
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
@@ -606,7 +607,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const primeiraVerificacao = primeiraDescoberta.then(() => verificarPessoas()).catch(() => null);
   // a carga inicial das Produções (#86): na subida, só quando não há nenhuma (depois de achar as tabelas); de novo,
   // só pela rota do administrador. Sem leitura periódica: o aviso do Trello (#87) é que mantém em dia
-  primeiraDescoberta
+  const cargaInicial = primeiraDescoberta
     .then(() => (producoes.vazia() ? producoes.carregar(trello, pracas) : null))
     .catch((e) => console.warn(`[producoes] a carga inicial não rodou: ${e instanceof Error ? e.message : e}`));
   const verificacaoDiaria = agendar(() => verificarPessoas(), UM_DIA);
@@ -642,10 +643,58 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     esperaDoWebhook = setTimeout(() => void garantirOAviso().then(ok), esperaDoAviso);
     esperaDoWebhook.unref?.();
   });
-  const conferenciaDoAviso = agendar(() => garantirOAviso(), UMA_HORA);
-  conferenciaDoAviso?.unref?.();
-  // os avisos aceitos são processados um de cada vez, na ordem em que chegaram, depois da resposta ao Trello
+  // os avisos aceitos (e o que a recuperação leu) são processados um de cada vez, na ordem em que chegaram
   let filaDosAvisos = Promise.resolve();
+  const naFilaDosAvisos = (f) => (filaDosAvisos = filaDosAvisos.then(f));
+
+  /* ---------- o que a tradução lê do quadro (#88): as listas, os campos ligados e os designers ---------- */
+  // os campos personalizados do quadro lidos por último (o nome de cada opção); sem eles, os nomes de fábrica
+  let camposDoQuadro = [];
+  const quadroDeAgora = () => quadroDoAviso(env, { camposDoQuadro, designers: pessoas.guardada()?.designers ?? [] });
+
+  /* ---------- recuperar o que faltou (#88): as ações do quadro desde o último evento ---------- */
+  const limites = { ...RECUPERACAO, ...limitesDaRecuperacao };
+  // desde quando ler: na subida, o evento mais novo guardado (antes de chegar qualquer aviso novo); depois, o começo
+  // da última recuperação que deu certo, com uma margem. Nunca antes da janela (limites.dias)
+  let desdeAMarca = producoes.ultimoEvento();
+  const MARGEM = 5 * 60 * 1000;
+  let recuperando = null;
+  let ultimaRecuperacao = null;
+  /**
+   * Lê as ações do quadro desde a marca (só os tipos que a tradução lê, paginando até o limite) e anota pela mesma
+   * tradução do aviso, na fila dos avisos: o id da ação não repete, então o que já chegou pelo aviso não duplica.
+   * Nunca lança. @returns { desde, lidas, paginas, noLimite, anotados, repetidos, ignorados } ou null (sem o Trello)
+   */
+  function recuperarOQueFaltou() {
+    recuperando ??= (async () => {
+      const quadro = listasDoQuadro(env).quadro;
+      if (!quadro || !trello.config?.chave || !trello.config?.token || !trello.ler) return null;
+      const inicio = Date.now();
+      const janela = new Date(inicio - limites.dias * UM_DIA).toISOString();
+      const desde = desdeAMarca && desdeAMarca > janela ? desdeAMarca : janela;
+      try {
+        // os nomes das opções dos campos (prioridade, complexidade, praça): sem o quadro, ficam os de antes
+        const campos = await Promise.resolve(trello.ler(`/boards/${encodeURIComponent(quadro)}/customFields`)).catch(() => null);
+        if (Array.isArray(campos)) camposDoQuadro = campos;
+        const { acoes, paginas, noLimite } = await acoesDesde(trello, { quadro, desde, porPagina: limites.porPagina, paginas: limites.paginas });
+        const doQuadro = quadroDeAgora();
+        const pracasDeAgora = pracas;
+        const r = await naFilaDosAvisos(() => producoes.anotar(acoes.flatMap((a) => eventosDoAviso(a, doQuadro)), pracasDeAgora));
+        desdeAMarca = new Date(inicio - MARGEM).toISOString();
+        ultimaRecuperacao = { em: new Date(inicio).toISOString(), desde, lidas: acoes.length, paginas, noLimite, ...r };
+        if (r.anotados || noLimite) console.log(`[aviso do trello] recuperei ${r.anotados} eventos de ${acoes.length} ações desde ${desde}${noLimite ? ` (parei no limite de ${paginas} páginas: as mais velhas ficaram de fora)` : ''}`);
+        return ultimaRecuperacao;
+      } catch (e) {
+        console.warn(`[aviso do trello] não consegui recuperar as ações do quadro: ${e instanceof Error ? e.message : e}`);
+        return null;
+      }
+    })().finally(() => (recuperando = null));
+    return recuperando;
+  }
+  // na subida (depois do webhook, da carga inicial e das Pessoas) e de hora em hora, junto da conferência do webhook
+  const recuperacaoPronta = Promise.all([avisoPronto, cargaInicial, primeiraVerificacao]).then(() => recuperarOQueFaltou());
+  const conferenciaDoAviso = agendar(() => garantirOAviso().then(() => recuperarOQueFaltou()), UMA_HORA);
+  conferenciaDoAviso?.unref?.();
   /**
    * A rota do aviso (pública: a única fora do Cloudflare Access). HEAD responde 200 (o Trello confere o endereço
    * assim); POST só com a assinatura certa, e responde 200 antes de processar.
@@ -665,14 +714,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 401, { erro: 'Assinatura inválida.' });
     }
     json(res, 200, { ok: true });
-    // a configuração de quando chegou: as listas do quadro e as praças
-    const listas = listasDoQuadro(env);
+    // a configuração de quando chegou: o quadro (listas, campos, designers) e as praças
+    const doQuadro = quadroDeAgora();
     const pracasDeAgora = pracas;
-    filaDosAvisos = filaDosAvisos.then(() => {
+    naFilaDosAvisos(() => {
       let acao = null;
       try {
         acao = JSON.parse(corpo.toString('utf8'))?.action ?? null;
-        const r = producoes.anotar(eventosDoAviso(acao, listas), pracasDeAgora);
+        const r = producoes.anotar(eventosDoAviso(acao, doQuadro), pracasDeAgora);
         if (r.anotados || r.ignorados) console.log(`[aviso do trello] ${String(acao?.type ?? '?').slice(0, 40)}: ${r.anotados} anotados, ${r.repetidos} repetidos, ${r.ignorados} fora do domínio`);
       } catch (e) {
         // só o tipo e o id da ação: o corpo não vai para o log
@@ -1732,7 +1781,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const card = (busca.get('card') ?? '').trim().slice(0, 100);
     const registro = (busca.get('registro') ?? '').trim().slice(0, 100);
     if (card || registro) return json(res, 200, { producoes: producoes.buscar({ card, registro }) });
-    return json(res, 200, { ligado, ...producoes.contagem() });
+    return json(res, 200, { ligado, ...producoes.contagem(), ultimaRecuperacao });
   }
 
   async function rotaDasDuplicadas(req, res, eu, caminho) {
@@ -2408,6 +2457,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   app.avisoPronto = avisoPronto;
   app.garantirOAviso = garantirOAviso;
   app.avisosEmDia = () => filaDosAvisos;
+  /** A primeira recuperação do que faltou (#88), e recuperar de novo. */
+  app.recuperacaoPronta = recuperacaoPronta;
+  app.recuperarOQueFaltou = recuperarOQueFaltou;
   app.fechar = async () => {
     clearInterval(batimento);
     clearInterval(verificacaoDiaria);
