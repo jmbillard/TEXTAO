@@ -63,6 +63,7 @@ button, select { font: inherit; color: inherit; }
 .ap .esc { margin-left: auto; color: var(--suave); }
 .ap .solto { color: var(--suave); text-decoration: none; padding: 0 2px; }
 .ap .solto:hover { color: var(--ciano); }
+.sem-hash .ap .solto { display: none; }
 .casco { background: #05070a; border: 1px solid var(--borda2); padding: 7px; box-shadow: 0 0 0 1px #000, 0 18px 40px rgb(0 0 0 / 45%); cursor: zoom-in; }
 .ap[data-ap='celular'] .casco { border-radius: 26px; padding: 9px; }
 .ap[data-ap='tablet'] .casco { border-radius: 20px; padding: 9px; }
@@ -128,8 +129,12 @@ const TELAS = MANIFESTO.telas, ALTS = MANIFESTO.alternativas || [];
 const estreita = matchMedia('(max-width: 760px)');
 const M = { tela: TELAS[0].id, alt: ALTS[0] ? ALTS[0].id : null, tema: 'claro', foco: '', captura: false };
 
+/* Num contexto restrito (iframe com sandbox, srcdoc, origem opaca, file:// no WebKit) history, storage e o acesso
+   entre janelas podem lançar SecurityError. Toda chamada a eles passa por aqui: se lançar, o estado fica em memória. */
+function seguro(fn, alt) { try { return fn(); } catch (e) { return alt; } }
+let hashVivo = true; // vira false na primeira vez que o replaceState for recusado; daí em diante o hash não é mais tocado
 function lerHash() {
-  const h = new URLSearchParams(location.hash.slice(1));
+  const h = new URLSearchParams(seguro(() => location.hash.slice(1), ''));
   if (h.get('tela') && TELAS.some((t) => t.id === h.get('tela'))) M.tela = h.get('tela');
   if (h.get('alt') && ALTS.some((a) => a.id === h.get('alt'))) M.alt = h.get('alt');
   if (['claro', 'escuro', 'ambos'].includes(h.get('tema'))) M.tema = h.get('tema');
@@ -142,7 +147,8 @@ function gravarHash() {
   if (M.alt) h.set('alt', M.alt);
   if (M.foco) h.set('foco', M.foco);
   if (M.captura) h.set('captura', '1');
-  history.replaceState(null, '', '#' + h.toString());
+  if (hashVivo) hashVivo = seguro(() => (history.replaceState(null, '', '#' + h.toString()), true), false);
+  if (!hashVivo) document.documentElement.classList.add('sem-hash');
 }
 
 /* O conteúdo com os parâmetros iniciais (o runtime lê window.__MOLDURA__). */
@@ -178,6 +184,8 @@ function iniciar() {
   addEventListener('resize', desenhar);
   estreita.addEventListener('change', desenhar);
   addEventListener('hashchange', () => { lerHash(); desenhar(); enviar(); });
+  // sem hash (contexto restrito), o ↗ abriria a página errada: some
+  if (!seguro(() => /^(file|https?):$/.test(location.protocol), false)) document.documentElement.classList.add('sem-hash');
   desenhar();
 }
 
@@ -276,7 +284,7 @@ function desenhar() {
   const ativo = document.querySelector('.chips-telas [aria-pressed="true"]');
   if (ativo && document.activeElement && document.activeElement.closest('.chips-telas')) ativo.focus();
 }
-function enviarPara(ifr) { if (ifr.contentWindow) ifr.contentWindow.postMessage({ moldura: { tela: M.tela, alt: M.alt } }, '*'); }
+function enviarPara(ifr) { seguro(() => ifr.contentWindow && ifr.contentWindow.postMessage({ moldura: { tela: M.tela, alt: M.alt } }, '*')); }
 function enviar() { for (const k in figs) enviarPara(figs[k].ifr); }
 function recado(e) {
   const d = e.data || {};

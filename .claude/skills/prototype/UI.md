@@ -36,6 +36,7 @@ Copie [`moldura/modelo.html`](moldura/modelo.html) para a pasta do assunto e esc
 - `Moldura.ao(desenhar)`: `desenhar({ tela, alt, tema, aparelho })` desenha a tela e roda de novo a cada troca na barra. Cada tela parte de um estado conhecido, para sair igual em todo aparelho.
 - `Moldura.ir(tela)` para um botão do próprio protótipo que leva a outra tela: a barra e os outros aparelhos acompanham.
 - `html.captura` está ligada durante as capturas: desligue ali animações e o que mais atrapalhar a foto.
+- Todo estado fica em memória (variáveis do script). O conteúdo **não usa** `localStorage`, `sessionStorage`, IndexedDB, cookies, `history`, `location` nem `parent`/`top`: o protótipo é aberto em visualizadores que o servem num iframe com sandbox ou em `srcdoc` (origem opaca), onde essas chamadas lançam `SecurityError` (no WebKit, "The operation is insecure"). Se for inevitável, envolva cada chamada em `try/catch` com alternativa em memória. Tela, alternativa e tema chegam só pela moldura (`Moldura.ao`), que já trata esses casos.
 
 As **telas** são todos os estados que o usuário precisa ver para julgar: o caminho calmo, os menus e modais abertos, o erro, o vazio, o cheio. As **alternativas** discordam sobre a estrutura: layout diferente, hierarquia de informação diferente, affordance principal diferente, e não só cores. Três grades de cards levemente ajustadas não são um protótipo de UI, são papel de parede. Se duas saírem parecidas demais, refaça uma com a orientação explícita "não use uma grade de cards".
 
@@ -62,7 +63,7 @@ A conferência termina quando:
 
 ### 5. Entregue
 
-Mande o caminho absoluto do HTML montado e as capturas da moldura. Para apontar um estado, use o hash: `prototipo.html#tela=conferir&alt=B&tema=ambos&foco=celular`. Na moldura: `←` `→` trocam a tela, `[` `]` a alternativa, `T` o tema, `0`–`3` o aparelho e `Esc` volta aos três; o `↗` de cada aparelho abre só o conteúdo em outra aba. O retorno interessante costuma ser **"quero o cabeçalho da B com a barra lateral da C"**, que é o design que ele de fato quer.
+Mande o caminho absoluto do HTML montado e as capturas da moldura. Para apontar um estado, use o hash: `prototipo.html#tela=conferir&alt=B&tema=ambos&foco=celular`. Na moldura: `←` `→` trocam a tela, `[` `]` a alternativa, `T` o tema, `0`–`3` o aparelho e `Esc` volta aos três; o `↗` de cada aparelho abre só o conteúdo em outra aba. Num visualizador restrito (sandbox, `srcdoc`) o hash não é atualizado e o `↗` some; o resto funciona em memória. O retorno interessante costuma ser **"quero o cabeçalho da B com a barra lateral da C"**, que é o design que ele de fato quer.
 
 ### 6. Registre a resposta
 
