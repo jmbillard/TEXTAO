@@ -22,10 +22,12 @@ O PDF do roteiro que vai ao card e os pôsteres dos filmes (#90) ficam no SQLite
 entra no backup com o resto do banco) e são servidos por endereço fixo:
 
 - **O PDF do roteiro:** o envio gera o PDF como sempre (o Stirling converte o Word; sem ele, `servidor/pdf.mjs`),
-  anexa ao card do Trello como antes e guarda uma cópia. O link `doc` da produção da arte passa a ser o do PROMeiro,
-  `PROMEIRO_URL/api/anexos/<id>/<nome>.pdf` (só para quem está logado); a versão nova (V2) também, e o link passa a
-  ser o dela. Comparar com o que está na produção lê o PDF do PROMeiro; só o link antigo, de antes disso, ainda baixa
-  do anexo do Trello. Sem o `PROMEIRO_URL`, o link continua o do Trello (a cópia fica guardada do mesmo jeito).
+  anexa ao card do Trello como antes e guarda uma cópia, ligada ao card da Produção; a versão nova (V2) também, no
+  mesmo card. Nenhum link do PDF vai ao Teable: o envio não escreve o campo `doc` da produção da arte, e a V2 não o
+  muda (o `doc` que já está lá fica como está). Comparar com o que está na produção lê o PDF mais recente guardado
+  para o card; só a Produção antiga, sem PDF guardado, ainda usa o `doc` do Teable (o endereço do PROMeiro é lido
+  daqui; o link do anexo do Trello, o último recurso, baixa do Trello). A cópia é servida em
+  `/api/anexos/<id>/<nome>.pdf`, só para quem está logado.
 - **Os pôsteres:** `/api/filmes/poster/<filme>` serve a cópia do PROMeiro. Sem ela, busca no Teable (campo `poster`
   da tabela de filmes) e guarda a cópia; a cópia é conferida com o Teable de 6 em 6 horas (um pôster novo posto lá à
   mão a substitui; o Teable sem o arquivo não apaga a cópia). Sem os dois, 404 limpo, e o "não tem" fica guardado

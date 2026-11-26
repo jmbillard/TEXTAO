@@ -48,7 +48,8 @@ export function posterPublico(caminho, consulta, token) {
 export function criarAnexos(db, { buscar = fetch, agora = () => Date.now() } = {}) {
   db.exec(`
     -- tipo: 'roteiro' (o PDF do envio) ou 'poster'; chave: o roteiro, ou o registro do filme no Teable; origem: de
-    -- onde veio o pôster (o token do anexo no Teable, ou 'previa'); conferido_em: a última conferência com o Teable
+    -- onde veio o pôster (o token do anexo no Teable, ou 'previa'); conferido_em: a última conferência com o Teable;
+    -- card: o card do Trello da Produção a que o PDF do roteiro pertence (a ligação do PROMeiro, sem o doc do Teable)
     CREATE TABLE IF NOT EXISTS anexos (
       id TEXT PRIMARY KEY,
       tipo TEXT NOT NULL,
@@ -62,9 +63,14 @@ export function criarAnexos(db, { buscar = fetch, agora = () => Date.now() } = {
     );
     CREATE INDEX IF NOT EXISTS anexos_chave ON anexos (tipo, chave);
   `);
+  // a ligação com a Produção (o card) veio depois da tabela: o banco que já tem a tabela ganha a coluna
+  if (!db.prepare('PRAGMA table_info(anexos)').all().some((c) => c.name === 'card')) db.exec('ALTER TABLE anexos ADD COLUMN card TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS anexos_card ON anexos (tipo, card)');
   const q = {
-    guardar: db.prepare('INSERT INTO anexos (id, tipo, chave, nome, mime, dados, origem, em, conferido_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+    guardar: db.prepare('INSERT INTO anexos (id, tipo, chave, nome, mime, dados, origem, em, conferido_em, card) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     pdf: db.prepare("SELECT nome, mime, dados FROM anexos WHERE id = ? AND tipo = 'roteiro'"),
+    // o mais recente do card: a versão nova (V2) vale no lugar da anterior
+    pdfDoCard: db.prepare("SELECT nome, mime, dados FROM anexos WHERE tipo = 'roteiro' AND card = ? ORDER BY em DESC LIMIT 1"),
     poster: db.prepare("SELECT id, mime, dados, origem, conferido_em FROM anexos WHERE tipo = 'poster' AND chave = ? ORDER BY em DESC LIMIT 1"),
     tirarPoster: db.prepare("DELETE FROM anexos WHERE tipo = 'poster' AND chave = ?"),
     conferido: db.prepare('UPDATE anexos SET conferido_em = ? WHERE id = ?'),
@@ -74,11 +80,14 @@ export function criarAnexos(db, { buscar = fetch, agora = () => Date.now() } = {
   const negativos = new Map();
   const conferindo = new Set();
 
-  /** Guarda o PDF do roteiro; o endereço (sem o servidor) vai para o Teable e para quem baixa. */
-  function guardarPdf({ chave, nome, dados }) {
+  /**
+   * Guarda o PDF do roteiro, ligado ao card da Produção (é por ele que a comparação acha o PDF; nada vai ao Teable).
+   * @returns { id, caminho }: o endereço (sem o servidor) para quem baixa
+   */
+  function guardarPdf({ chave, card = null, nome, dados }) {
     const id = randomUUID();
     const limpo = String(nome || 'roteiro.pdf').replace(/[\u0000-\u001f/\\]/g, '_').slice(0, 200);
-    q.guardar.run(id, 'roteiro', String(chave ?? '').slice(0, 200), limpo, 'application/pdf', Buffer.from(dados), null, iso(), null);
+    q.guardar.run(id, 'roteiro', String(chave ?? '').slice(0, 200), limpo, 'application/pdf', Buffer.from(dados), null, iso(), null, card ? String(card).slice(0, 64) : null);
     return { id, caminho: `${ROTA_DOS_ANEXOS}/${id}/${encodeURIComponent(limpo)}` };
   }
 
@@ -97,7 +106,7 @@ export function criarAnexos(db, { buscar = fetch, agora = () => Date.now() } = {
     db.exec('BEGIN');
     try {
       q.tirarPoster.run(rec);
-      q.guardar.run(randomUUID(), 'poster', rec, `${rec}.${mime.split('/')[1] || 'jpg'}`, mime, Buffer.from(dados), origem, iso(), iso());
+      q.guardar.run(randomUUID(), 'poster', rec, `${rec}.${mime.split('/')[1] || 'jpg'}`, mime, Buffer.from(dados), origem, iso(), iso(), null);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
@@ -175,7 +184,12 @@ export function criarAnexos(db, { buscar = fetch, agora = () => Date.now() } = {
   return {
     guardarPdf,
     pdf,
-    /** O PDF de um endereço do PROMeiro (o link `doc` da produção da arte), ou null quando não é daqui. */
+    /** O PDF mais recente guardado para o card da Produção (a V2 vale no lugar da anterior), ou null. */
+    pdfDoCard: (card) => {
+      const l = card ? q.pdfDoCard.get(String(card)) : null;
+      return l ? { nome: l.nome, mime: l.mime, dados: Buffer.from(l.dados) } : null;
+    },
+    /** O PDF de um endereço do PROMeiro no `doc` da produção da arte (os enviados antes da ligação com o card), ou null. */
     pdfDoEndereco: (url) => {
       const id = idDoEndereco(url);
       return id ? pdf(id) : null;

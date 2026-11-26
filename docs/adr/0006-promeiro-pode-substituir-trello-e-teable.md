@@ -83,8 +83,10 @@ checklist das prévias (os cards de filme não entram na produção da arte, ADR
 ## Os anexos (#90): o PROMeiro guarda o PDF e os pôsteres
 
 O PDF do roteiro que vai ao card e os pôsteres dos filmes ficam no SQLite do PROMeiro (no backup) e são servidos por
-endereço fixo; o Trello continua recebendo o PDF e o Teable, o pôster, mas o link `doc` da produção da arte é o do
-PROMeiro, e o PDF da comparação não é mais baixado do Trello (só o link antigo, de antes disso). O pôster que o Teable
+endereço fixo; o Trello continua recebendo o PDF e o Teable, o pôster. O PDF não vai ao Teable: nenhum link dele é
+escrito no `doc` da produção da arte (o que já está lá fica). O PROMeiro acha o PDF da comparação pela própria
+ligação, o card da Produção guardado com o anexo, e não o baixa mais do Trello; só a Produção antiga, sem PDF
+guardado, ainda usa o `doc` antigo do Teable como último recurso. O pôster que o Teable
 ainda tem vira cópia do PROMeiro no primeiro pedido; o que ele perdeu não volta. Para o Padeiro, que abre o pôster sem
 login, uma segunda exceção ao Access, só para `/api/publico/poster`, com um token de serviço fixo no endereço
 (`POSTER_PUBLICO_TOKEN`): o pôster é público por natureza e o fluxo filmes-recentes já é aberto, então um token só

@@ -177,9 +177,11 @@ describe('envio para o Trello', () => {
     expect(enviadosAoOneDrive).toEqual(['/PROMO/WORKFLOWS/ROTEIROS/2026-11-19/Festa_Na_Praca_19_11_SP.docx']);
     const registro = pedidos.find((p) => p.url.pathname === '/api/table/tblProducao/record')!.corpo as { records: { fields: Record<string, unknown> }[] };
     expect(registro.records[0].fields).toMatchObject({
-      claquete: 'Festa na Praça 19/11 SP', artes_quantidade: 2, artes: 'A GRANDE FESTA | SÁBADO', doc: 'https://trello.com/anexo.pdf',
+      claquete: 'Festa na Praça 19/11 SP', artes_quantidade: 2, artes: 'A GRANDE FESTA | SÁBADO',
       redator: 'Ana Lima', card_ID: 'card1', atracao: 'Festa na Praça', editor: 'Bruno Regis', key: 'FESTA NA PRACA 19 11 SP', praca: 'SP', prioridade: 'ALTA',
     });
+    // o link do PDF não vai ao Teable (#90): o PDF fica no card do Trello e no PROMeiro
+    expect(registro.records[0].fields).not.toHaveProperty('doc');
   });
 
   it('o card e a linha da produção nascem com a data em barra, com a mesma key', async () => {

@@ -95,9 +95,9 @@ async function subir({ db = abrirBanco(':memory:'), env = ENV as Record<string, 
 }
 
 describe('o PDF do roteiro guardado pelo PROMeiro', () => {
-  it('o envio guarda o PDF, o Teable recebe o endereço fixo do PROMeiro e o card do Trello continua com o anexo', async () => {
+  it('o envio guarda o PDF ligado ao card, o Teable não recebe link nenhum do PDF e o card do Trello continua com o anexo', async () => {
     const f = falsos();
-    const { base, ana } = await subir({ teable: semDescoberta, trello: trelloCom(f) });
+    const { base, ana, db } = await subir({ teable: semDescoberta, trello: trelloCom(f) });
     await ana('/api/roteiros/rot-anexo-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Festa 19/11' }, doc: { type: 'doc', content: [] } }, nArtes: 1 }) });
     await ana('/api/roteiros/rot-anexo-1/original', { method: 'PUT', body: PDF, headers: { 'content-type': 'application/pdf', 'x-arquivo': encodeURIComponent('Festa 19_11.pdf') } });
     const r = await (await ana('/api/roteiros/rot-anexo-1/trello', { method: 'POST', body: JSON.stringify({ artes: ['A GRANDE FESTA'], texto: 'x' }) })).json();
@@ -105,12 +105,14 @@ describe('o PDF do roteiro guardado pelo PROMeiro', () => {
 
     // o card recebe o PDF como antes
     expect(f.pedidos.find((p) => p.metodo === 'POST' && p.url.pathname === '/1/cards/card1/attachments')!.corpo).toMatchObject({ name: 'Festa 19_11.pdf', file: 'arquivo:Festa 19_11.pdf' });
-    // a produção da arte recebe o endereço do PROMeiro, não o do anexo do Trello
-    const doc = String(f.producao[0].doc);
-    expect(doc).toMatch(new RegExp(`^${PROMEIRO}/api/anexos/[0-9a-f-]{36}/Festa%2019_11\\.pdf$`));
+    // a produção da arte não recebe o campo doc: nem o endereço do PROMeiro, nem o do anexo do Trello
+    expect(f.producao).toHaveLength(1);
+    expect(f.producao[0]).not.toHaveProperty('doc');
 
-    // o endereço fixo serve o PDF para quem está logado, e só para quem está logado
-    const caminho = new URL(doc).pathname;
+    // o PDF fica guardado no PROMeiro, ligado ao card da Produção; o endereço fixo serve só para quem está logado
+    const { id, nome } = db.prepare("SELECT id, nome FROM anexos WHERE tipo = 'roteiro' AND card = ?").get('card1') as { id: string; nome: string };
+    expect(nome).toBe('Festa 19_11.pdf');
+    const caminho = `/api/anexos/${id}/${encodeURIComponent(nome)}`;
     const baixado = await ana(caminho);
     expect(baixado.status).toBe(200);
     expect(baixado.headers.get('content-type')).toBe('application/pdf');
@@ -118,7 +120,7 @@ describe('o PDF do roteiro guardado pelo PROMeiro', () => {
     expect((await fetch(base + caminho)).status).toBe(401);
     expect((await ana('/api/anexos/00000000-0000-4000-8000-000000000000/x.pdf')).status).toBe(404);
 
-    // comparar com o que está na produção: o PDF vem do PROMeiro, sem baixar nada do Trello
+    // comparar com o que está na produção: sem doc no Teable, o PDF vem do PROMeiro, sem baixar nada do Trello
     const antes = f.pedidos.length;
     const daProducao = await ana(`/api/producao/pdf?claquete=${encodeURIComponent('Festa 19/11')}`);
     expect(daProducao.status).toBe(200);
@@ -126,7 +128,7 @@ describe('o PDF do roteiro guardado pelo PROMeiro', () => {
     expect(f.pedidos.slice(antes)).toEqual([]);
   });
 
-  it('a produção com o link antigo (o anexo do Trello) ainda baixa do Trello', async () => {
+  it('a produção antiga, sem PDF guardado, com o link do anexo do Trello no doc: ainda baixa do Trello', async () => {
     const f = falsos();
     f.producao.push({ card_ID: 'cardVelho', claquete: 'Festa 19/11', key: chaveN8n('Festa 19/11'), artes: 'A', doc: 'https://trello.com/1/cards/cardVelho/attachments/x/download/roteiro.pdf' });
     const { ana } = await subir({ teable: semDescoberta, trello: trelloCom(f) });
@@ -136,7 +138,17 @@ describe('o PDF do roteiro guardado pelo PROMeiro', () => {
     expect(f.pedidos.map((p) => p.url.hostname)).toEqual(['trello.com']);
   });
 
-  it('a versão nova (V2) também fica no PROMeiro, e o Teable passa a apontar para ela', async () => {
+  it('a produção com o link do PROMeiro no doc (o PDF guardado antes da ligação com o card) ainda é lida do PROMeiro', async () => {
+    const f = falsos();
+    const anexos = criarAnexos(abrirBanco(':memory:'));
+    const { caminho } = anexos.guardarPdf({ chave: 'rot-velho', nome: 'Festa.pdf', dados: PDF });
+    f.producao.push({ card_ID: 'cardVelho', claquete: 'Festa 19/11', key: chaveN8n('Festa 19/11'), artes: 'A', doc: `${PROMEIRO}${caminho}` });
+    const t = criarTrello(ENV, { buscar: f.buscar, consultar: f.consultar, anexos });
+    expect((await t.pdfDaProducao('Festa 19/11'))?.dados.equals(PDF)).toBe(true);
+    expect(f.pedidos).toEqual([]);
+  });
+
+  it('a versão nova (V2) também fica no PROMeiro, ligada ao card, sem mexer no doc do Teable; a comparação acha ela', async () => {
     const f = falsos();
     const anexos = criarAnexos(abrirBanco(':memory:'));
     const buscar = async (endereco: string, init: RequestInit = {}) => {
@@ -150,10 +162,19 @@ describe('o PDF do roteiro guardado pelo PROMeiro', () => {
     await t.enviar({ meta, doc: { type: 'doc', content: [] }, artes: ['A'], texto: 'novo', original: { nome: 'Festa V2.pdf', tipo: 'application/pdf', dados: PDF } });
     // o card antigo recebe o roteiro novo, como antes
     expect((f.pedidos.find((p) => p.metodo === 'POST' && p.url.pathname.endsWith('/cards/cardVelho/attachments'))!.corpo as { name: string }).name).toBe('Festa V2 V2.pdf');
+    // a produção da arte é atualizada (artes, texto), mas o doc que já está lá fica como está
     const patch = f.pedidos.find((p) => p.metodo === 'PATCH' && p.url.host === 'teable:3000')!;
-    const doc = (patch.corpo as { record: { fields: { doc: string } } }).record.fields.doc;
-    expect(doc).toMatch(new RegExp(`^${PROMEIRO}/api/anexos/[0-9a-f-]{36}/`));
-    expect(anexos.pdfDoEndereco(doc)?.dados.equals(PDF)).toBe(true);
+    const campos = (patch.corpo as { record: { fields: Record<string, unknown> } }).record.fields;
+    expect(campos.texto).toBe('novo');
+    expect(campos).not.toHaveProperty('doc');
+
+    // a produção em andamento, com o doc antigo (o anexo do Trello): vale o PDF da V2 guardado, sem ir ao Trello
+    f.producao.push({ card_ID: 'cardVelho', claquete: 'Festa 19/11', key: chaveN8n('Festa 19/11'), artes: 'A', doc: 'https://trello.com/1/cards/cardVelho/attachments/x/download/roteiro.pdf' });
+    const antes = f.pedidos.length;
+    const pdf = await t.pdfDaProducao('Festa 19/11');
+    expect(pdf?.nome).toBe('Festa V2 V2.pdf');
+    expect(pdf?.dados.equals(PDF)).toBe(true);
+    expect(f.pedidos.slice(antes)).toEqual([]);
   });
 });
 

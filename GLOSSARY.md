@@ -289,8 +289,8 @@ _Evitar_: histórico (na tela), log, atividade. Não confundir com a linha do te
 
 **Anexo** (guardado pelo PROMeiro):
 Um arquivo que o PROMeiro guarda no próprio banco (entra no backup) e serve por endereço fixo, sem depender do Trello
-nem do Teable (#90): o **PDF do roteiro** que vai ao card no envio (o link `doc` da produção da arte é o do PROMeiro,
-`/api/anexos/<id>/<nome>.pdf`) e o **pôster do filme** (`/api/filmes/poster/<filme>`, a cópia do que estava no Teable
+nem do Teable (#90): o **PDF do roteiro** que vai ao card no envio (ligado ao card da Produção, servido em
+`/api/anexos/<id>/<nome>.pdf`; nenhum link dele vai ao Teable) e o **pôster do filme** (`/api/filmes/poster/<filme>`, a cópia do que estava no Teable
 ou do que a prévia pôs no cadastro). O card do Trello continua recebendo o PDF, e o cadastro do filme, o pôster: o
 PROMeiro guarda a cópia. O **pôster público** (`/api/publico/poster/<filme>?t=<token>`) é o mesmo pôster aberto sem
 login, para o Padeiro.
