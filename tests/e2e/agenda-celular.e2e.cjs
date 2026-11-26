@@ -393,17 +393,31 @@ const periodoDaSemana = (n) => periodoDesde(7 * n - 1);
 /** Os números das sete colunas da semana `n`. */
 const numerosDaSemana = (n) => Array.from({ length: 7 }, (_, i) => diaMais(7 * n - 1 + i).getDate()).join(' ');
 
-// a cada quadro: o período (e se algum mês está à vista), os números das colunas, as marcas, o resumo, as setas, os
-// cards meio transparentes e as animações em curso nas marcas do dia
+// a cada quadro: o instante, o período como se vê (o mês apagado, ou dentro de uma vaga que fecha transparente, não
+// conta: ele está na página, mas não à vista) e se algum mês está à vista, os números das colunas, as marcas, o resumo,
+// as setas, os cards meio transparentes e as animações em curso nas marcas do dia. Cada fase começa um laço novo, que
+// substitui o anterior: sem isso, a terceira fase gravaria cada quadro três vezes (e as cópias pareceriam quadros
+// parados no meio de um movimento)
 const QUADROS_DO_COMPUTADOR = () => {
   window.__log = [];
+  const laco = (window.__laco = (window.__laco ?? 0) + 1);
   const f = () => {
+    if (window.__laco !== laco) return;
     const sec = document.querySelector('.secao-trello');
     const b = sec.querySelector('.semana-nav b');
     const setas = [...sec.querySelectorAll('.semana-nav .botao-icone')].map((e) => Math.round(e.getBoundingClientRect().left * 10) / 10);
+    const aVista = (e) => {
+      for (let x = e; x && x !== b; x = x.parentElement) if (+getComputedStyle(x).opacity <= 0.05) return false;
+      return true;
+    };
+    const ocultos = [...b.querySelectorAll('.p-mes')].filter((m) => !aVista(m));
+    const textos = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+    let periodo = '';
+    for (let t = textos.nextNode(); t; t = textos.nextNode()) if (!ocultos.some((m) => m.contains(t))) periodo += t.textContent;
     window.__log.push({
-      periodo: b.textContent,
-      mesAVista: [...b.querySelectorAll('.p-mes')].some((m) => +getComputedStyle(m).opacity > 0.05),
+      t: performance.now(),
+      periodo,
+      mesAVista: [...b.querySelectorAll('.p-mes')].some((m) => aVista(m)),
       numeros: [...sec.querySelectorAll('.coluna .dia-num')].map((e) => e.textContent).join(' '),
       marcas: [...sec.querySelectorAll('.coluna .dia-rel')].map((e) => e.textContent).join(','),
       circulo: !!sec.querySelector('.coluna .dia-num svg'),
@@ -417,6 +431,35 @@ const QUADROS_DO_COMPUTADOR = () => {
   };
   requestAnimationFrame(f);
 };
+
+/**
+ * Onde a seta da esquerda salta, ou null. Mede por quadro, não por tempo: o passo de cada quadro é contado como se o
+ * quadro durasse 1/60 s (um quadro atrasado pela máquina não vira salto). A seta anda em movimentos (separados por
+ * dois quadros parados): o que muda a largura de uma vez (um algarismo a mais) anda no máximo 6 px por quadro; o que
+ * muda muito (o " de novembro" da esquerda abrindo ou fechando a vaga, ~90 px) pode andar mais por quadro, mas nunca
+ * mais que um terço do caminho num quadro só. Um salto de estalo (o caminho inteiro num quadro) falha nos dois casos.
+ */
+function saltoDaSeta(log) {
+  const movimentos = [];
+  let atual = null;
+  let parados = 0;
+  for (let k = 1; k < log.length; k++) {
+    const d = Math.abs(log[k].esquerda - log[k - 1].esquerda);
+    if (d < 0.05) {
+      if (++parados >= 2 && atual) movimentos.push(atual), (atual = null);
+      continue;
+    }
+    parados = 0;
+    (atual ??= []).push(d / Math.max(1, (log[k].t - log[k - 1].t) / (1000 / 60)));
+  }
+  if (atual) movimentos.push(atual);
+  for (const passos of movimentos) {
+    const caminho = passos.reduce((a, b) => a + b, 0);
+    const maior = Math.max(...passos);
+    if (maior > Math.max(6, caminho / 3)) return `maior passo ${maior.toFixed(1)} px de um caminho de ${caminho.toFixed(1)} px em ${passos.length} quadros`;
+  }
+  return null;
+}
 
 /** Anota cada animação feita por código dentro da agenda (o elemento), desde antes de a página carregar. */
 const ANOTAR_ANIMACOES = () => {
@@ -480,9 +523,8 @@ async function computador(navegador, url, conferir) {
         conferir(errado.length === 0, rotulo(`${n}: nenhum mês errado à vista${errado.length ? ` (${errado[0].periodo})` : ''}`));
         conferir(log.some((q) => q.transparentes > 0), rotulo(`${n}: os cards saem e entram, sem trocar de estalo`));
         conferir(distintos(log, 'direita').length === 1, rotulo(`${n}: a seta da direita não sai do lugar`));
-        let passo = 0;
-        for (let k = 1; k < log.length; k++) passo = Math.max(passo, Math.abs(log[k].esquerda - log[k - 1].esquerda));
-        conferir(passo <= 6, rotulo(`${n}: a seta da esquerda anda suave quando o período muda de largura (maior passo ${passo} px)`));
+        const salto = saltoDaSeta(log);
+        conferir(!salto, rotulo(`${n}: a seta da esquerda anda suave quando o período muda de largura${salto ? ` (${salto})` : ''}`));
       };
 
       let log = await fase(() => p.click('.secao-trello button[aria-label="Próxima semana"]'));

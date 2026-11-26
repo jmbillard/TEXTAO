@@ -70,6 +70,9 @@ export function ItemQueAbre({ ver, classe, ms = 300, opacidadeMs = 200, children
   // o elemento que já estava na tela: o que acabou de entrar abre do zero
   const naTela = useRef<HTMLSpanElement | null>(null);
   const primeira = useRef(true);
+  // o `ver` que o elemento na tela já mostra: o efeito que roda de novo sem mudança (o StrictMode monta duas vezes na
+  // primeira carga) não anima nada
+  const mostrado = useRef(ver);
   if (ver && !montado) setMontado(true);
   useLayoutEffect(() => {
     const e = el.current;
@@ -79,7 +82,8 @@ export function ItemQueAbre({ ver, classe, ms = 300, opacidadeMs = 200, children
       primeira.current = false;
       return;
     }
-    if (!e) return;
+    if (!e || (!novo && mostrado.current === ver)) return;
+    mostrado.current = ver;
     const largura = novo ? 0 : e.getBoundingClientRect().width;
     const opacidade = novo ? '0' : getComputedStyle(e).opacity;
     animacoes.current.forEach((a) => a.cancel());
