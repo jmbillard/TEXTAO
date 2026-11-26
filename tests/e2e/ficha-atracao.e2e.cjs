@@ -185,7 +185,7 @@ const TIPOS = ['RDP', 'CRT', 'LETT', 'FOTO', 'MOLDURA'];
     e os registros, que mudam o acervo e a data). */
 async function acervoFalso() {
   const { criarAcervo } = await import(join(RAIZ, 'servidor', 'acervo.mjs'));
-  const env = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso', TEABLE_PG_ACERVO: 'acervo', TEABLE_PG_ATRACOES: 'atracoes', TEABLE_PG_ARTE: 'producao', TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'falso', TEABLE_ACERVO: 'tblFalso' };
+  const env = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso', tabelas: { ARTES_acervo: { pg: 'acervo' }, atracoes: { pg: 'atracoes' }, ARTE_producao: { pg: 'producao' } }, TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'falso', TEABLE_ACERVO: 'tblFalso' };
   const consultar = async (sql, params = []) => {
     if (sql.includes('"bseFalso"."acervo"')) return LINHAS.map((l) => ({ ...l }));
     if (sql.includes('"bseFalso"."producao"')) return ROTEIROS;

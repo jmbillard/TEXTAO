@@ -7,6 +7,8 @@ import { abrirBanco, criarApp } from '../servidor/app.mjs';
 import { criarTrello } from '../servidor/trello.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { criarAcervo } from '../servidor/acervo.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 /* A aba Duplicadas pela API (#65, corrigido): a produção da arte (o Postgres do Teable) e o Trello de mentira, com
    linhas e cards fictícios. A lista e o contador saem só da produção; o Trello só é lido no caso aberto, e só os cards
@@ -22,8 +24,7 @@ const ENV = {
   TRELLO_LISTA_ENTREGUES: 'entregues',
   TEABLE_PG_URL: 'postgres://falso',
   TEABLE_PG_ESQUEMA: 'bseFalso',
-  TEABLE_PG_ARTE: 'producao',
-  TEABLE_PG_ACERVO: 'acervo',
+  ...comTabelas({ ARTE_producao: 'producao', ARTES_acervo: 'acervo' }),
 };
 
 const DIA = 86_400_000;
@@ -203,7 +204,7 @@ describe('a lista das duplicadas (só da produção da arte)', () => {
     const semTrello = await comServidor({ ...ENV, TRELLO_KEY: '', TRELLO_TOKEN: '' });
     expect(await (await semTrello.chefe('/api/duplicadas')).json()).toMatchObject({ ligado: true, pendentes: 4 });
     await parar?.();
-    const semProducao = await comServidor({ ...ENV, TEABLE_PG_ARTE: '' });
+    const semProducao = await comServidor({ ...ENV, tabelas: { ...ENV.tabelas, ARTE_producao: { pg: '' } } });
     expect(await (await semProducao.chefe('/api/duplicadas')).json()).toMatchObject({ ligado: false, pendentes: 0, casos: [] });
     expect(semProducao.leituras()).toBe(0);
   });

@@ -1,8 +1,9 @@
 /* O redator provável de um roteiro que chegou sem redator, pelas últimas claquetes da atração na produção da arte
    (ARTE_producao), lidas do Postgres do Teable (só leitura). É uma das duas fontes da sugestão de redator; a outra, o
-   texto do roteiro, fica no navegador (src/modelo/redator.ts). Sem TEABLE_PG_URL ou TEABLE_PG_ARTE, não sugere. */
+   texto do roteiro, fica no navegador (src/modelo/redator.ts). Sem TEABLE_PG_URL ou a ARTE_producao, não sugere. */
 
-import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
+import { tabelaNoPg } from './tabelas-do-teable.mjs';
+import { abrirPg, nomesDoPg } from './pauta.mjs';
 
 /** A regra: as últimas 5 claquetes da atração, na mesma praça, nos últimos 60 dias; sugere quem tiver pelo menos 3. */
 const ULTIMAS = 5;
@@ -48,12 +49,12 @@ export function redatorDoHistorico(linhas, { praca = '', hoje = new Date() } = {
 }
 
 /**
- * @param env TEABLE_PG_URL, TEABLE_PG_ESQUEMA e TEABLE_PG_ARTE (a ARTE_producao no Postgres)
+ * @param env TEABLE_PG_URL, TEABLE_PG_ESQUEMA e a ARTE_producao descoberta no Teable (env.tabelas)
  * @param deps.consultar (sql, params) => linhas; sem ele, abre o Postgres de TEABLE_PG_URL (com deps.abrirPg, se vier). deps.agora () => Date
  */
 export function criarRedatorProvavel(env, deps = {}) {
   const { esquema } = nomesDoPg(env, '');
-  const tabela = esquema && nomeLimpoPg(env.TEABLE_PG_ARTE) ? `"${esquema}"."${nomeLimpoPg(env.TEABLE_PG_ARTE)}"` : null;
+  const tabela = esquema && tabelaNoPg(env, 'ARTE_producao') ? `"${esquema}"."${tabelaNoPg(env, 'ARTE_producao')}"` : null;
   let banco = null;
   const consultar =
     deps.consultar ??

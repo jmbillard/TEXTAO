@@ -186,3 +186,41 @@ h3.cfg-modal-rotulo { margin: 22px 0 6px; }
 .cfg-num { display: inline-flex; align-items: center; gap: 6px; color: var(--tinta2); font: 400 13px var(--sans); }
 .cfg-num input { height: 30px; width: 84px; border-radius: 8px; border: 1px solid var(--regua-forte); background: var(--papel); color: var(--tinta); font: 600 12.5px var(--mono); padding: 0 9px; }
 .cfg-num input:focus { outline: 0; border-color: var(--ultra); }
+
+/* ---------- as Conexões (#76), recolhida no fim, e o aviso do topo ---------- */
+.cfg-aviso-topo { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--falta-fundo); color: var(--falta); font: 500 13.5px/1.45 var(--sans); margin: 0 0 16px; }
+.cfg-aviso-topo > svg { flex: none; margin-top: 2px; }
+.cfg-aviso-topo-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.cfg-aviso-topo-texto b { font-weight: 700; }
+.cfg-aviso-topo-texto ul { margin: 2px 0; padding-left: 18px; }
+.cfg-aviso-topo-texto small { font: 400 12.5px var(--sans); color: color-mix(in srgb, var(--falta) 80%, var(--tinta2)); }
+.cfg-aviso-topo .botao-texto { color: var(--falta); white-space: nowrap; }
+.cfg-secao.cfg-conexoes { background: transparent; border-style: dashed; }
+.cfg-conexoes .cfg-secao-topo h2 { font: 600 15px var(--sans); color: var(--tinta2); }
+.cfg-conexoes .cfg-estado { font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.cfg-con-l { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 6px 0; }
+.cfg-con-l + .cfg-con-l { border-top: 1px solid var(--regua); padding-top: 12px; }
+.cfg-con-ico { width: 30px; height: 30px; border-radius: 9px; background: var(--neutro); display: grid; place-items: center; color: var(--tinta2); }
+.cfg-con-texto { min-width: 0; display: flex; flex-direction: column; gap: 1px; font: 400 14px var(--sans); color: var(--tinta); }
+.cfg-con-texto b { font-weight: 600; }
+.cfg-con-texto small { font-size: 12.5px; color: var(--tinta3); overflow-wrap: anywhere; }
+.cfg-tabelas code { font: 500 12.5px var(--mono); color: var(--tinta2); overflow-wrap: anywhere; }
+.cfg-tabelas em { font-style: normal; color: var(--tinta3); }
+.cfg-tabelas .com-aviso .cfg-tudo-rotulo, .cfg-tabelas .com-aviso em { color: var(--falta); font-weight: 600; }
+.cfg-escolher-conexao { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cfg-escolher-conexao button { width: 100%; display: flex; align-items: center; gap: 10px; border: 1px solid var(--regua); background: var(--cartao); border-radius: 10px; padding: 10px 12px; font: 500 14.5px var(--sans); color: var(--tinta); cursor: pointer; text-align: left; }
+.cfg-escolher-conexao button:hover { border-color: var(--ultra); }
+.cfg-trocar h2 em { font-style: italic; }
+.cfg-digitar { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.cfg-digitar label { font: 400 13.5px var(--sans); color: var(--tinta2); }
+.cfg-digitar label b { color: var(--tinta); }
+.cfg-digitar input { height: 40px; border-radius: 10px; border: 1px solid var(--regua-forte); background: var(--cartao); color: var(--tinta); font: 400 15px var(--sans); padding: 0 12px; }
+.cfg-digitar input:focus { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.cfg-trocar .cfg-falha { margin: 14px 0 0; }
+.botao.perigoso { background: var(--falta); border-color: var(--falta); color: var(--papel); font-weight: 600; }
+.botao.perigoso:disabled { opacity: 0.45; }
+@media (max-width: 640px) {
+  .cfg-con-l { grid-template-columns: 30px minmax(0, 1fr); }
+  .cfg-tabelas .cfg-tudo-l { grid-template-columns: minmax(0, 1fr) auto; }
+  .cfg-tabelas .cfg-tudo-como { display: none; }
+}

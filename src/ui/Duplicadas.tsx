@@ -221,7 +221,7 @@ export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renova
       {!lista && !falha && <p className="cad-vazio">Lendo a produção da arte…</p>}
       {lista && !lista.ligado && (
         <p className="cad-vazio dup-desligada">
-          A aba Duplicadas ainda não está configurada: falta a produção da arte (<code>TEABLE_PG_URL</code> e <code>TEABLE_PG_ARTE</code>) no servidor.
+          A aba Duplicadas ainda não está configurada: falta a produção da arte (<code>TEABLE_PG_URL</code> e a tabela ARTE_producao na base do Teable) no servidor.
         </p>
       )}
       {lista?.ligado && vista === 'pendentes' && !lista.casos.length && (

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { criarTrello } from '../servidor/trello.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 import type { EstadoDoCard, LigacoesDoCard } from '../src/modelo/ligarOCard';
 
 /* A seção Card da Configuração (#74) pela API, com o Trello de mentira: os campos do card, as opções e a lista do VT
@@ -47,7 +49,7 @@ const PORTAINER = {
   TRELLO_CAMPO_BOT: 'cBot',
   // a lista de prioridade do dia está no Postgres do Teable
   TEABLE_PG_ESQUEMA: 'promo',
-  TEABLE_PG_PRIORIDADE: 'prioridade',
+  ...TEABLE_FALSO,
 };
 
 function trelloFalso() {
@@ -87,7 +89,8 @@ async function comServidor(env: Record<string, string> = PORTAINER) {
   const falso = trelloFalso();
   // toda claquete está na lista de prioridade de hoje em diante (e nenhuma foi exibida)
   const consultar = async (sql: string, params: unknown[] = []) => (/"prioridade"/.test(sql) ? (params[0] as string[]).map((key) => ({ key, claquete: '' })) : []);
-  const app = criarApp({ db: abrirBanco(':memory:'), env, trello: (e: Record<string, string>) => criarTrello(e, { buscar: falso.buscar, consultar }) });
+  const app = criarApp({ db: abrirBanco(':memory:'), env, buscarNoTeable: teableFalso({ prioridade: 'prioridade' }, { base: 'promo' }), trello: (e: Record<string, string>) => criarTrello(e, { buscar: falso.buscar, consultar }) });
+  await app.tabelasProntas;
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   fechar = async () => {

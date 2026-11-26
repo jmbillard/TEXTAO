@@ -2,7 +2,8 @@
    Só leitura. Sem configuração, ou se o Teable não responder, devolve o último resultado bom
    (ou listas vazias) e o app segue com o vocabulário embutido. */
 
-import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
+import { tabelaNoPg } from './tabelas-do-teable.mjs';
+import { abrirPg, nomesDoPg } from './pauta.mjs';
 
 const VALIDADE_MS = 10 * 60 * 1000;
 const POR_PAGINA = 1000;
@@ -42,7 +43,7 @@ const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ')
     no banco do app, para quando o Teable estiver fora do ar, inclusive logo depois de um reinício. */
 export function criarVocabulario(env, buscar = fetch, cache = null, copia = null, consultar = null, abrir = abrirPg) {
   const base = (env.TEABLE_URL || '').replace(/\/+$/, '');
-  const ligado = !!((base && env.TEABLE_TOKEN && (env.TEABLE_ATRACOES || env.TEABLE_REDATORES || env.TEABLE_EDITORES || env.TEABLE_PAUTA)) || (env.TEABLE_PG_URL && env.TEABLE_PG_ATRACOES));
+  const ligado = !!((base && env.TEABLE_TOKEN && (env.TEABLE_ATRACOES || env.TEABLE_REDATORES || env.TEABLE_EDITORES || env.TEABLE_PAUTA)) || (env.TEABLE_PG_URL && tabelaNoPg(env, 'atracoes')));
   const vazio = { programas: [], redatores: [], editores: [], pauta: [] };
   const daCopia = copia?.ler('vocabulario') ?? null;
   let guardado = daCopia ? { ...vazio, ...daCopia.dados } : vazio;
@@ -84,8 +85,8 @@ export function criarVocabulario(env, buscar = fetch, cache = null, copia = null
 
   // pelo Postgres do Teable (só leitura), quando há: não depende do token da API nem da paginação
   const esquema = nomesDoPg(env, '').esquema;
-  const tabelaPg = (v) => (esquema && nomeLimpoPg(v) ? `"${esquema}"."${nomeLimpoPg(v)}"` : null);
-  const pg = { atracoes: tabelaPg(env.TEABLE_PG_ATRACOES), redatores: tabelaPg(env.TEABLE_PG_REDATORES), editores: tabelaPg(env.TEABLE_PG_EDITORES) };
+  const tabelaPg = (nome) => (esquema && tabelaNoPg(env, nome) ? `"${esquema}"."${tabelaNoPg(env, nome)}"` : null);
+  const pg = { atracoes: tabelaPg('atracoes'), redatores: tabelaPg('redatores'), editores: tabelaPg('editores') };
   let banco = null;
   async function sql(texto) {
     if (consultar) return consultar(texto);

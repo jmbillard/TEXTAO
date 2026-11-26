@@ -43,10 +43,12 @@ describe('atração pela claquete', () => {
 
 // @ts-expect-error módulo JS sem tipos
 import { criarVocabulario } from '../servidor/vocabulario.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 describe('vocabulário pelo Postgres', () => {
   it('monta as atrações com as keys (pattern) e a categoria, sem passar pela API', async () => {
-    const env = { TEABLE_URL: 'http://teable', TEABLE_TOKEN: 't', TEABLE_ATRACOES: 'tblKey', TEABLE_PG_URL: 'pg', TEABLE_PG_ESQUEMA: 'bse', TEABLE_PG_ATRACOES: 'atracoes', TEABLE_PG_REDATORES: 'redatores' };
+    const env = { TEABLE_URL: 'http://teable', TEABLE_TOKEN: 't', TEABLE_ATRACOES: 'tblKey', TEABLE_PG_URL: 'pg', TEABLE_PG_ESQUEMA: 'bse', ...comTabelas({ atracoes: 'atracoes', redatores: 'redatores' }) };
     const api: string[] = [];
     const buscar = async (u: string) => (api.push(u), { ok: false, status: 403, json: async () => ({}) });
     const consultar = async (sql: string) =>

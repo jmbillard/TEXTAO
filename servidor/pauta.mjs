@@ -2,6 +2,7 @@
    Com TEABLE_PG_URL, pergunta direto ao Postgres do Teable (só leitura): uma consulta por chave, sem depender
    de visão nem de paginação. Se o banco não responder, vale a pauta lida pela API (vocabulario.mjs). */
 
+import { tabelaNoPg } from './tabelas-do-teable.mjs';
 import { MARCA_TODAS, pracasDaConfiguracao, semPracaNoFim } from '../src/modelo/pracas.ts';
 
 const NOME = /^[A-Za-z0-9_]+$/;
@@ -23,7 +24,7 @@ export function nomesDoPg(env, tabelaBruta) {
 }
 
 export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copia = null) {
-  const { esquema, tabela } = nomesDoPg(env, env.TEABLE_PG_PAUTA);
+  const { esquema, tabela } = nomesDoPg(env, tabelaNoPg(env, 'EDICAO_producao'));
   const comBanco = !!(env.TEABLE_PG_URL && NOME.test(esquema) && NOME.test(tabela));
   // a chave sem a praça do fim ("QUEM AMA 20 11 SP" → "QUEM AMA 20 11") ainda acha o editor
   const pracas = pracasDaConfiguracao(env);
@@ -115,7 +116,7 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
         if (!env.TEABLE_PG_URL) return null;
         const falta = [
           !NOME.test(esquema) && `TEABLE_PG_ESQUEMA ${esquema ? `inválido ("${esquema}")` : 'vazio'}`,
-          !NOME.test(tabela) && `TEABLE_PG_PAUTA ${tabela ? `inválido ("${tabela}")` : 'vazio'}`,
+          !NOME.test(tabela) && 'a tabela EDICAO_producao não foi achada na base do Teable',
         ].filter(Boolean);
         return `Postgres desligado: ${falta.join(' e ')}. Use só letras, números e _ (ex.: bseXXXX e demandasXXXX).`;
       }

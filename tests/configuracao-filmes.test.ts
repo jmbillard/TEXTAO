@@ -12,6 +12,8 @@ import { criarTrello } from '../servidor/trello.mjs';
 import { criarFilmes } from '../servidor/filmes.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { criarCadastros } from '../servidor/cadastros.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { teableFalso } from './fixtures/teable-falso.mjs';
 import type { EstadoDosFilmes, LigacoesDosFilmes } from '../src/modelo/ligarOsFilmes';
 
 /* A seção Filmes da Configuração (#75) pela API, com o Trello, o Teable, o Postgres e a leitura do n8n de mentira: as
@@ -62,11 +64,10 @@ const PORTAINER = {
   TEABLE_EXIBICOES: 'tblExibicoes',
   TEABLE_PG_URL: 'postgres://teste',
   TEABLE_PG_ESQUEMA: 'bse_teste',
-  TEABLE_PG_FILMES: 'filmes_teste',
-  TEABLE_PG_EXIBICOES: 'exibicoes_teste',
-  TEABLE_PG_ACERVO: 'acervo_teste',
-  TEABLE_PG_ATRACOES: 'atracoes_teste',
 };
+/** O Teable da descoberta (#76): as tabelas na base, com o nome no Postgres e os ids da API de sempre. */
+const TABELAS = { filmes: 'filmes_teste', exibicoes: 'exibicoes_teste', ARTES_acervo: 'acervo_teste', atracoes: 'atracoes_teste' };
+const teable = () => teableFalso(TABELAS, { base: 'bse_teste', url: 'http://teable:3000', ids: { filmes: 'tblFilmes', exibicoes: 'tblExibicoes' } });
 
 /** O Trello e o Teable falsos (um fetch só), e a leitura do n8n: guardam os cards criados e os campos de cada um. */
 function falsos() {
@@ -120,11 +121,13 @@ async function comServidor(env: Record<string, string> = PORTAINER) {
   const app = criarApp({
     db,
     env,
+    buscarNoTeable: teable(),
     trello: (e: Record<string, string>) => criarTrello(e, { buscar: f.buscar, consultar: f.consultar }),
     filmes: (e: Record<string, string>, { trello }: { trello: unknown }) => criarFilmes(e, { db, pasta, buscar: f.buscar, consultar: f.consultar, trello }),
     // o cadastro de atrações do Teable, de mentira: só a leitura
     cadastros: (e: Record<string, string>, deps: object) => ({ ...criarCadastros(e, deps), ler: async () => ({ ligado: true, atracoes: ATRACOES }) }),
   });
+  await app.tabelasProntas;
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   fechar = async () => {

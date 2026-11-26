@@ -12,6 +12,8 @@ import { criarConfiguracao } from '../servidor/configuracao.mjs';
 import { criarFilmes } from '../servidor/filmes.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { criarTrello } from '../servidor/trello.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 
 /* IDs inventados: o quadro de verdade fica só nas variáveis do servidor. */
 const PORTAINER = { TRELLO_KEY: 'k', TRELLO_TOKEN: 't', TRELLO_LISTA_SP: 'listaSP', TRELLO_LISTA_RJ: 'listaRJ' };
@@ -108,7 +110,7 @@ function bancoFalso() {
 }
 
 // com a produção da arte no Postgres, o envio confere a produção de hoje antes de escolher a lista
-const ENV = { TRELLO_KEY: 'k', TRELLO_TOKEN: 't', TRELLO_LISTA_SP: 'listaSP', TRELLO_LISTA_RJ: 'listaRJ', TEABLE_PG_ESQUEMA: 'bseBase', TEABLE_PG_ARTE: 'producao' };
+const ENV = { TRELLO_KEY: 'k', TRELLO_TOKEN: 't', TRELLO_LISTA_SP: 'listaSP', TRELLO_LISTA_RJ: 'listaRJ', TEABLE_PG_ESQUEMA: 'bseBase', ...TEABLE_FALSO };
 const DOC = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'VEM AÍ' }] }] };
 
 let fechar: (() => Promise<void>) | null = null;
@@ -120,7 +122,10 @@ afterEach(async () => {
 async function comServidor(env: Record<string, string> = ENV) {
   const falso = trelloFalso();
   const banco = bancoFalso();
-  const app = criarApp({ db: abrirBanco(':memory:'), env, trello: (e: Record<string, string>) => criarTrello(e, { buscar: falso.buscar, consultar: banco.consultar }) });
+  // a ARTE_producao é achada pelo nome na base (#76)
+  const teable = teableFalso({ ARTE_producao: 'producao' }, { base: 'bseBase' });
+  const app = criarApp({ db: abrirBanco(':memory:'), env, buscarNoTeable: teable, trello: (e: Record<string, string>) => criarTrello(e, { buscar: falso.buscar, consultar: banco.consultar }) });
+  await app.tabelasProntas;
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   fechar = async () => {
@@ -256,9 +261,12 @@ describe('a configuração muda: as conexões e a fila dos filmes', () => {
   it('as conexões antigas com o Postgres fecham; a página que estava sendo lida termina na mesma fila', async () => {
     const pg = postgresFalso();
     const n8n = n8nFalso();
-    const env = { N8N_FILMES_LER: 'http://n8n:5678/webhook/ler', FILMES_INTERVALO_MS: '0', TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseBase', TEABLE_PG_FILMES: 'filmes', TEABLE_PG_ARTE: 'producao' };
+    const env = { N8N_FILMES_LER: 'http://n8n:5678/webhook/ler', FILMES_INTERVALO_MS: '0', TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseBase', ...TEABLE_FALSO };
+    // as tabelas vêm do Teable (#76): na base de agora e na outra, com outros nomes no Postgres
+    const teable = teableFalso({ filmes: 'filmes', ARTE_producao: 'producao' }, { base: 'bseBase', bases: { bseOutra: { nome: 'Outra', nomes: { filmes: 'filmes_novos', ARTE_producao: 'producao_nova' } } } });
     const pasta = mkdtempSync(join(tmpdir(), 'previas-'));
-    const app = criarApp({ db: abrirBanco(':memory:'), env, abrirPg: pg.abrirPg, filmes: (e: object, d: object) => criarFilmes(e, { ...d, pasta, buscar: n8n.buscar }) });
+    const app = criarApp({ db: abrirBanco(':memory:'), env, abrirPg: pg.abrirPg, buscarNoTeable: teable, filmes: (e: object, d: object) => criarFilmes(e, { ...d, pasta, buscar: n8n.buscar }) });
+    await app.tabelasProntas;
     const servidor = createServer(app);
     await new Promise<void>((ok) => servidor.listen(0, ok));
     fechar = async () => {
@@ -290,8 +298,10 @@ describe('a configuração muda: as conexões e a fila dos filmes', () => {
     expect(antes.some((c) => c.sql.some((s) => s.includes('"bseBase"."filmes"')))).toBe(true);
     expect(antes.some((c) => c.sql.some((s) => s.includes('"bseBase"."producao"')))).toBe(true);
 
-    await app.mudarConfiguracao({ TEABLE_PG_FILMES: 'filmes_novos', TEABLE_PG_ARTE: 'producao_nova' }).antigaFechada;
+    // trocar a base: os módulos são refeitos na hora, e de novo quando a descoberta acha as tabelas da base nova
+    await app.mudarConfiguracao({ TEABLE_PG_ESQUEMA: 'bseOutra' }).antigaFechada;
     expect(antes.every((c) => c.fechada)).toBe(true);
+    await app.descobrirAsTabelas();
 
     // a leitura que estava indo termina na mesma fila, sem mandar a página de novo
     presa.soltar();
@@ -301,8 +311,8 @@ describe('a configuração muda: as conexões e a fila dos filmes', () => {
     // o que vem depois consulta pelas conexões novas, com os nomes novos
     await api('/api/redator-provavel?atracao=Festa');
     const novas = pg.conexoes.filter((c) => !antes.includes(c));
-    expect(novas.some((c) => c.sql.some((s) => s.includes('"bseBase"."filmes_novos"')))).toBe(true);
-    expect(novas.some((c) => c.sql.some((s) => s.includes('"bseBase"."producao_nova"')))).toBe(true);
+    expect(novas.some((c) => c.sql.some((s) => s.includes('"bseOutra"."filmes_novos"')))).toBe(true);
+    expect(novas.some((c) => c.sql.some((s) => s.includes('"bseOutra"."producao_nova"')))).toBe(true);
     expect(novas.every((c) => !c.fechada)).toBe(true);
   });
 });

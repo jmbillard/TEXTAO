@@ -17,6 +17,10 @@
 // etiqueta de todos, a de cada sessão e os números da leitura da prévia); a sessão nova no cadastro (Domingo Maior)
 // sem etiqueta é exceção, ligada à mão pelo "Escolher"; a praça trocada e a pausa mudada; conferir e salvar, que vale
 // na hora (a configuração viva tem a praça, a etiqueta da sessão e a pausa novas). No celular, só consulta.
+// As Conexões (#76), claro e escuro: recolhida no fim (o quadro e a base numa linha), aberta (as tabelas do Teable
+// achadas pelo nome, com o nome no Postgres que o Teable deu), trocar o quadro com o nome digitado (o errado não deixa)
+// e o PROMeiro ligando tudo de novo pelo nome no quadro novo (a INTER, que lá não tem listas, vira exceção); e o aviso
+// no topo quando uma tabela não tem uma coluna que o código usa.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:configuracao
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -133,6 +137,17 @@ const ENV_TRELLO = {
   // os filmes: idem
   ...FILMES_DO_PORTAINER,
 };
+// os quadros (#76): o de hoje e o novo, com os mesmos nomes e outros ids; no novo, a INTER não tem listas
+const comoNovo = (x) => ({ ...x, id: `n${x.id}` });
+const QUADROS = {
+  quadroFicticio: { nome: 'Arte · Promo', listas: () => (comDobro ? [...LISTAS, DOBRO] : LISTAS), campos: () => CAMPOS, etiquetas: () => ETIQUETAS },
+  quadroNovo: {
+    nome: 'Arte · Promo 2027',
+    listas: () => LISTAS.filter((l) => !/INTER/.test(l.name)).map(comoNovo),
+    campos: () => CAMPOS.map((c) => ({ ...comoNovo(c), options: c.options?.map(comoNovo) })),
+    etiquetas: () => ETIQUETAS.map(comoNovo),
+  },
+};
 const pedidosAoTrello = [];
 async function buscar(url, init = {}) {
   const u = new URL(url);
@@ -147,9 +162,16 @@ async function buscar(url, init = {}) {
   }
   if (metodo !== 'GET') throw new Error(`a Configuração só lê o Trello: ${metodo} ${u.pathname}`);
   if (/^\/1\/lists\/\w+$/.test(u.pathname)) return ok({ id: u.pathname.split('/')[3], idBoard: 'quadroFicticio' });
-  if (u.pathname === '/1/boards/quadroFicticio/lists') return ok(comDobro ? [...LISTAS, DOBRO] : LISTAS);
-  if (u.pathname === '/1/boards/quadroFicticio/customFields') return ok(CAMPOS);
-  if (u.pathname === '/1/boards/quadroFicticio/labels') return ok(ETIQUETAS);
+  // as Conexões (#76): os quadros que o token enxerga e o nome de cada um
+  if (u.pathname === '/1/members/me/boards') return ok(Object.entries(QUADROS).map(([id, q]) => ({ id, name: q.nome })));
+  const doQuadro = /^\/1\/boards\/(\w+)(\/\w+)?$/.exec(u.pathname);
+  if (doQuadro && QUADROS[doQuadro[1]]) {
+    const q = QUADROS[doQuadro[1]];
+    if (!doQuadro[2]) return ok({ id: doQuadro[1], name: q.nome });
+    if (doQuadro[2] === '/lists') return ok(q.listas());
+    if (doQuadro[2] === '/customFields') return ok(q.campos());
+    if (doQuadro[2] === '/labels') return ok(q.etiquetas());
+  }
   throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
 }
 
@@ -710,6 +732,89 @@ async function noCelular(navegador, url, tema) {
   console.log(`ok: celular ${nome}: a linha de estado, as exceções, as regras e o ver tudo, só consulta`);
 }
 
+/* ---------- as Conexões (#76) ---------- */
+
+const CONEXOES = '.cfg-secao[data-secao="conexoes"]';
+/** Volta tudo ao Portainer (nada salvo na tela) e o Teable sem coluna faltando. */
+async function voltarAoPortainer(app, teable) {
+  const { SALVAVEIS } = await import(join(RAIZ, 'servidor', 'configuracao.mjs'));
+  comDobro = false;
+  CAMPOS[0].options = [...OPCOES];
+  // o que as seções de antes mudaram no quadro e no cadastro (a ALTA em dobro, o Domingo Maior) volta ao começo
+  CAMPOS[1].options = [...PRIORIDADE];
+  sessoesDoCadastro.splice(0, sessoesDoCadastro.length, ...SESSOES);
+  for (const k of Object.keys(teable.faltando)) delete teable.faltando[k];
+  await app.mudarConfiguracao(Object.fromEntries([...SALVAVEIS].map((n) => [n, null]))).antigaFechada;
+  await app.descobrirAsTabelas();
+}
+
+async function conexoes(navegador, url, app, teable, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await voltarAoPortainer(app, teable);
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+  await p.locator(CONEXOES).waitFor();
+  // recolhida, no fim: o quadro e a base numa linha; sem aviso no topo
+  assert.equal(await resumo(p, CONEXOES), 'Trello: Arte · Promo · Teable: Base falsa');
+  assert.equal(await p.locator(`${CONEXOES} .cfg-con-l`).count(), 0);
+  assert.equal(await p.locator('.cfg-aviso-topo').count(), 0);
+  assert.equal(await p.locator('.cfg-secao').last().getAttribute('data-secao'), 'conexoes');
+  await semRolagemDeLado(p, `conexões ${nome}, recolhida`);
+  await p.locator(CONEXOES).scrollIntoViewIfNeeded();
+  await capturar(p, `40-conexoes-recolhida-${nome}`);
+
+  // aberta: o quadro, a base e as tabelas achadas pelo nome, com o nome no Postgres que o Teable deu
+  await p.locator(`${CONEXOES} .cfg-ver-tudo`).click();
+  assert.equal(await p.locator(`${CONEXOES} .cfg-con-l`).count(), 2);
+  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-con-texto small`)), ['Arte · Promo · achado pela lista de uma praça', 'Base falsa · 12 tabelas achadas pelo nome']);
+  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-tudo-l`, { hasText: 'Produção da arte' }).locator('> span')), ['Produção da arte', 'arte_producao_x6', 'achada pelo nome']);
+  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-tudo-l`, { hasText: 'Designers' }).locator('> span')), ['Designers', 'não há (não é usada)', '']);
+  await semRolagemDeLado(p, `conexões ${nome}, aberta`);
+  await capturar(p, `41-conexoes-aberta-${nome}`);
+
+  // trocar o quadro: escolher o novo e digitar o nome dele; o nome errado não deixa
+  await p.locator(`${CONEXOES} .cfg-con-l`, { hasText: 'Quadro do Trello' }).locator('.botao', { hasText: 'Trocar' }).click();
+  const dialogo = p.locator('.cfg-trocar');
+  await dialogo.locator('.cfg-escolher-conexao button').first().waitFor();
+  assert.deepEqual(await textos(dialogo.locator('.cfg-escolher-conexao button')), ['Arte · Promo 2027']);
+  await dialogo.locator('.cfg-escolher-conexao button').click();
+  assert.equal((await dialogo.locator('h2').textContent()).trim(), 'Para Arte · Promo 2027?');
+  const trocar = dialogo.locator('.botao.perigoso');
+  assert.equal(await trocar.isDisabled(), true);
+  await dialogo.locator('input').fill('Arte · Promo');
+  assert.equal(await trocar.isDisabled(), true);
+  await dialogo.locator('input').fill('arte promo 2027');
+  assert.equal(await trocar.isDisabled(), false);
+  await capturar(p, `42-trocar-quadro-${nome}`);
+  await trocar.click();
+  await p.locator('.aviso', { hasText: 'Quadro trocado' }).waitFor();
+  assert.equal(await dialogo.count(), 0);
+  // ligado de novo pelo nome: o quadro novo vale, e a INTER, sem listas lá, vira exceção
+  assert.equal(await resumo(p, CONEXOES), 'Trello: Arte · Promo 2027 · Teable: Base falsa');
+  assert.equal(app.modulos().env.TRELLO_QUADRO, 'quadroNovo');
+  assert.equal(app.modulos().env.TRELLO_LISTA_SP, 'lSP', 'a variável do Portainer fica; vale a coleção salva');
+  assert.equal(JSON.parse(app.modulos().env.PRACAS).find((x) => x.sigla === 'SP').entrada, 'nlSP');
+  assert.ok((await excecoes(p)).some((t) => /INTER/.test(t)), 'a INTER sem listas no quadro novo é exceção');
+  assert.equal(await barra(p), '', 'a troca já salvou: nada pendente');
+  await semRolagemDeLado(p, `conexões ${nome}, quadro trocado`);
+  await capturar(p, `43-quadro-trocado-${nome}`);
+
+  // o aviso no topo: o acervo sem a coluna complexidade (a gravação da complexidade não funciona)
+  teable.faltando.ARTES_acervo = ['complexidade'];
+  await p.reload();
+  await p.locator('.cfg-aviso-topo').waitFor();
+  assert.match(await p.locator('.cfg-aviso-topo b').textContent(), /^Acervo sem a coluna complexidade \(na API\)$/);
+  await p.locator('.cfg-aviso-topo .botao-texto').click();
+  assert.equal(await p.locator(`${CONEXOES} .cfg-tudo-l.com-aviso`).count(), 1);
+  await semRolagemDeLado(p, `conexões ${nome}, aviso`);
+  await p.evaluate(() => scrollTo(0, 0));
+  await capturar(p, `44-aviso-coluna-${nome}`);
+  assert.deepEqual(erros, [], `conexões ${nome}: erros na página`);
+  await ctx.close();
+  await voltarAoPortainer(app, teable);
+  console.log(`ok: conexões ${nome}: recolhida, aberta com as tabelas, trocar o quadro com o nome digitado e o aviso da coluna`);
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   // o cadastro de atrações do Teable, de mentira: só a leitura das sessões de filme (#75)
@@ -717,7 +822,13 @@ async function principal() {
     ...criarCadastros(e, deps),
     ler: async () => ({ ligado: true, atracoes: sessoesDoCadastro.map((nome, i) => ({ id: `recSessao${i}`, nome, acervo: 'filme', categoria: '', keys: [] })), redatores: [], editores: [], categorias: [], camposCaminho: [], formulas: {} }),
   });
-  const s = await subir({ trello: { env: ENV_TRELLO, buscar, viva: true }, env: { CADASTRO_ADMINS: LIA }, cadastros });
+  // o Teable da descoberta das tabelas (#76): todas as tabelas na base, menos a designers (que não é usada)
+  const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
+  const { TABELAS_DO_TEABLE } = await import(join(RAIZ, 'src', 'modelo', 'tabelasDoTeable.ts'));
+  const faltando = {};
+  const naBase = Object.fromEntries(TABELAS_DO_TEABLE.filter((t) => !t.opcional || t.nome === 'EDICAO_producao').map((t, i) => [t.nome, `${t.nome.toLowerCase()}_x${i}`]));
+  const teable = Object.assign(teableFalso(naBase, { faltando }), { faltando });
+  const s = await subir({ trello: { env: ENV_TRELLO, buscar, viva: true }, env: { CADASTRO_ADMINS: LIA, TEABLE_PG_ESQUEMA: 'bseFalso', ...TEABLE_FALSO }, cadastros, teable });
   // o convite do tour da revisão não aparece na fila (as duas já viram)
   for (const email of [LIA, OUTRA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
   const navegador = await chromium.launch();
@@ -741,6 +852,7 @@ async function principal() {
     for (const tema of ['light', 'dark']) await cardNoCelular(navegador, s.url, tema);
     for (const tema of ['light', 'dark']) await secaoFilmes(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await filmesNoCelular(navegador, s.url, tema);
+    for (const tema of ['light', 'dark']) await conexoes(navegador, s.url, s.app, teable, tema);
   } finally {
     await navegador.close();
     await s.descer();

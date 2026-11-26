@@ -7,6 +7,8 @@ import { chaveDeArte, criarAcervo } from '../servidor/acervo.mjs';
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { acervoDaAtracao } from '../servidor/cadastros.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 const ENV = {
   TEABLE_URL: 'http://teable:3000',
@@ -14,10 +16,7 @@ const ENV = {
   TEABLE_ACERVO: 'tblAcervo',
   TEABLE_PG_URL: 'postgres://x',
   TEABLE_PG_ESQUEMA: 'bseBase',
-  TEABLE_PG_ACERVO: 'acervo',
-  TEABLE_PG_ATRACOES: 'atracoes',
-  TEABLE_PG_ARTE: 'producao',
-  TEABLE_PG_EXIBICOES: 'exibicoes',
+  ...comTabelas({ ARTES_acervo: 'acervo', atracoes: 'atracoes', ARTE_producao: 'producao', exibicoes: 'exibicoes' }),
 };
 
 const RIVAIS = { id: 'recRivais', title: 'RIVAIS (2024)' };

@@ -5,12 +5,11 @@
 
 /** As variáveis que podem ser salvas no PROMeiro (as da tela, pelo levantamento da Configuração). */
 export const SALVAVEIS = new Set([
-  // Teable: as tabelas pela API e a base (o esquema do Postgres)
+  // Teable: a base (TEABLE_PG_ESQUEMA: o id da base, que é o esquema do Postgres) e as tabelas pela API (opcionais: o
+  // PROMeiro acha cada uma pelo nome na base)
   'TEABLE_PG_ESQUEMA', 'TEABLE_CADASTRO', 'TEABLE_ATRACOES', 'TEABLE_REDATORES', 'TEABLE_KEY_REDATORES', 'TEABLE_EDITORES',
   'TEABLE_KEY_EDITORES', 'TEABLE_PAUTA', 'TEABLE_ARTE_PRODUCAO', 'TEABLE_ACERVO',
-  // as tabelas no Postgres (até a tela descobrir o nome pela tabela escolhida)
-  'TEABLE_PG_ATRACOES', 'TEABLE_PG_REDATORES', 'TEABLE_PG_EDITORES', 'TEABLE_PG_PAUTA', 'TEABLE_PG_ARTE', 'TEABLE_PG_ARTE_LEITURA',
-  'TEABLE_PG_ACERVO', 'TEABLE_PG_FILMES', 'TEABLE_PG_EXIBICOES', 'TEABLE_PG_PRIORIDADE',
+  // (os nomes das tabelas no Postgres não são guardados: vêm do próprio Teable, #76, servidor/tabelas-do-teable.mjs)
   // Trello: o quadro, as praças (entrada, saída, opção), os campos e as opções do card
   'TRELLO_QUADRO', 'TRELLO_LISTA', 'TRELLO_LISTA_SP', 'TRELLO_LISTA_RJ', 'TRELLO_LISTA_G5', 'TRELLO_LISTA_INTER', 'TRELLO_LISTA_VT',
   'TRELLO_LISTA_ENTREGUES', 'TRELLO_SAIDA_SP', 'TRELLO_SAIDA_RJ', 'TRELLO_SAIDA_G5', 'TRELLO_SAIDA_INTER', 'TRELLO_CAMPO_PRACA',

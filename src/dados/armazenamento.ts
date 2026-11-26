@@ -865,7 +865,7 @@ export interface ResumoDaDuplicada {
   dias: number;
 }
 export interface ListaDasDuplicadas {
-  /** sem a produção da arte configurada (TEABLE_PG_URL e TEABLE_PG_ARTE), false */
+  /** sem a produção da arte configurada (TEABLE_PG_URL e a ARTE_producao na base do Teable), false */
   ligado: boolean;
   dias: number;
   /** quando a produção da arte foi lida (a lista não lê o Trello) */
@@ -986,10 +986,23 @@ export interface SecaoFilmes {
   avisoDasSessoes?: string;
   erro?: string;
 }
+/** As Conexões (#76): o quadro do Trello e a base do Teable de agora, as tabelas achadas pelo nome na base e o aviso
+    do topo (a tabela ou a coluna que falta). Com o Teable fora, `foraDoAr` e as tabelas da última leitura. */
+export interface ConexoesDaConfiguracao {
+  quadro: { id: string; nome: string; de: 'variavel' | 'lista' } | null;
+  erroDoQuadro?: string;
+  base: { id: string; nome: string } | null;
+  tabelas: { nome: string; id: string; pg: string; nomeLido: string; como: 'variavel' | 'lembrado' | 'nome' | ''; problema: '' | 'nenhum' | 'dobro' }[];
+  avisos: { tabela: string; texto: string }[];
+  lidasEm?: string;
+  foraDoAr?: string;
+  semTeable?: string;
+}
 export interface SecoesDaConfiguracao {
   pracas: SecaoPracas;
   card: SecaoCard;
   filmes: SecaoFilmes;
+  conexoes: ConexoesDaConfiguracao;
 }
 /** O que vai para conferir e salvar: só as seções que mudaram. */
 export interface MudancasDaConfiguracao {
@@ -998,16 +1011,25 @@ export interface MudancasDaConfiguracao {
   filmes?: LigacoesDosFilmes;
 }
 export const lerConfiguracao = () => pedir<SecoesDaConfiguracao>('/api/configuracao');
+/** Os quadros do Trello e as bases do Teable que os tokens enxergam (para trocar, em Conexões). */
+export const lerQuadrosDoTrello = () => pedir<{ quadros: { id: string; nome: string }[] }>('/api/configuracao/quadros').then((r) => r.quadros);
+export const lerBasesDoTeable = () => pedir<{ bases: { id: string; nome: string }[] }>('/api/configuracao/bases').then((r) => r.bases);
+/** Troca o quadro ou a base: o nome digitado confirma. Devolve as seções ligadas de novo pelo nome. */
+export async function trocarConexao(m: { quadro: string; confirmacao: string } | { base: string; confirmacao: string }): Promise<SecoesDaConfiguracao> {
+  const s = await pedir<SecoesDaConfiguracao>('/api/configuracao/trocar', { method: 'POST', body: JSON.stringify(m) });
+  registrarPracas(s.pracas.salvo.pracas);
+  return s;
+}
 /** Confere sem salvar nada. */
 export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify(m) });
 /** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */
 export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ secoes: SecoesDaConfiguracao } | { conferencia: ConferenciaDasPracas }> {
   const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify(m) });
   const corpo = (await r.json().catch(() => null)) as (Partial<SecoesDaConfiguracao> & { conferencia?: ConferenciaDasPracas; erro?: string }) | null;
-  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes) {
+  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);

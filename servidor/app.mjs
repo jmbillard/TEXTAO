@@ -13,6 +13,7 @@ import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
 import { criarConfiguracao } from './configuracao.mjs';
+import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
 import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
@@ -29,7 +30,8 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco } from '../src/modelo/pracas.ts';
 import { acertarNArtesUmaVez } from './artes.mjs';
-import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
+import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
+import { confirmaATroca, conexoesDaTela, lerQuadros, mudancasDaBaseNova, religarNoQuadroNovo } from './configuracao-conexoes.mjs';
 import { VARIAVEIS_DO_CARD, cardDoPedido, conferirSecaoDoCard, mudancasDoCard, secaoDoCard } from './configuracao-card.mjs';
 import { cardDaConfiguracao } from '../src/modelo/ligarOCard.ts';
 import { VARIAVEIS_DOS_FILMES, conferirSecaoDosFilmes, filmesDoPedido, filmesSalvos, mudancasDosFilmes, secaoDosFilmes, sessoesDoCadastro } from './configuracao-filmes.mjs';
@@ -434,7 +436,7 @@ const DIAS_DA_CONTAGEM = 90;
  * @param env as variáveis do Portainer; o que foi salvo na configuração do PROMeiro vale por cima delas
  * @param abrirPg abre o Postgres do Teable (os módulos abrem cada um a sua conexão, na primeira consulta)
  */
-export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, ...modulos }) {
+export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, ...modulos }) {
   const fabricas = { ...FABRICAS };
   for (const [nome, m] of Object.entries(modulos)) if (m !== undefined && m !== null) fabricas[nome] = m;
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
@@ -455,8 +457,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   };
 
   /* ---------- os módulos da configuração de agora ---------- */
+  // as tabelas do Teable (#76): achadas pelo nome na base; a última descoberta fica guardada (vale com o Teable fora)
+  const descoberta = criarDescoberta({ copia, buscar: buscarNoTeable });
+  let tabelas = descoberta.guardada(configuracao.valores());
   /** Uma geração: os módulos feitos de uma configuração, e quantos pedidos ainda estão usando ela. */
-  function montar(env) {
+  function montar(valores) {
+    const env = envDosModulos(valores, tabelas);
     // as praças da configuração (a coleção salva ou as de fábrica): o servidor passa estas a cada reconhecimento
     const g = { env, pracas: pracasDaConfiguracao(env), emCurso: 0, drenou: null };
     g.trello = fazer(fabricas.trello, env, { abrirPg: abrir });
@@ -481,7 +487,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * @returns { valores, antigaFechada }: os valores novos, e a promessa de quando a configuração antiga foi fechada
    */
   function mudarConfiguracao(mudancas, { por = '' } = {}) {
+    const antes = configuracao.valores().TEABLE_PG_ESQUEMA;
     const valores = configuracao.salvar(mudancas, { por });
+    // a base trocou: as tabelas guardadas são da outra (a descoberta nova vem em seguida)
+    if (valores.TEABLE_PG_ESQUEMA !== antes) tabelas = descoberta.guardada(valores);
+    const r = trocarGeracao(valores);
+    if (valores.TEABLE_PG_ESQUEMA !== antes) void redescobrir();
+    return r;
+  }
+  /** Refaz os módulos com estes valores (a configuração salva e as tabelas descobertas de agora). */
+  function trocarGeracao(valores) {
     const velha = geracao;
     geracao = montar(valores);
     ({ env, pracas, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao);
@@ -490,6 +505,34 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     void Promise.resolve(cache.guardar('vocabulario', null, 1)).catch(() => {});
     return { valores, antigaFechada: aposentar(velha, filmesVelho) };
   }
+  /**
+   * Descobre de novo as tabelas na base (na partida, ao abrir a Configuração, ao trocar a base). Se mudou o id ou o
+   * nome no Postgres de alguma, os módulos são refeitos (vale na hora, como salvar a configuração). Com o Teable fora,
+   * vale a última descoberta, e uma nova tentativa fica marcada para daqui a alguns minutos.
+   */
+  let descobrindo = null;
+  let tentarDeNovo = null;
+  function redescobrir() {
+    descobrindo ??= (async () => {
+      const daBase = (v) => String(v.TEABLE_PG_ESQUEMA ?? '').trim();
+      for (;;) {
+        const base = daBase(configuracao.valores());
+        const d = await descoberta.descobrir(configuracao.valores()).catch(() => null);
+        // a base trocou enquanto lia: descobre de novo, na nova
+        if (daBase(configuracao.valores()) !== base) continue;
+        if (d === null) return null;
+        const muda = !mesmasTabelas(d, tabelas);
+        tabelas = d;
+        // sem esperar a geração antiga fechar: quem pediu a descoberta pode ser um pedido dela
+        if (muda) trocarGeracao(configuracao.valores());
+        clearTimeout(tentarDeNovo);
+        if (d.foraDoAr) (tentarDeNovo = setTimeout(() => void redescobrir(), 5 * 60_000)).unref?.();
+        return d;
+      }
+    })().finally(() => (descobrindo = null));
+    return descobrindo;
+  }
+  const primeiraDescoberta = redescobrir();
   async function aposentar(velha, filmesVelho) {
     if (velha.emCurso) await new Promise((ok) => (velha.drenou = ok));
     await Promise.all([
@@ -1204,7 +1247,39 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const comErro = (secao) => (lido.erro ? { ...secao, erro: lido.erro } : secao);
     const card = secaoDoCard(env, lido.quadro, { primeiraVez: !VARIAVEIS_DO_CARD.some((n) => salvos.has(n)) });
     const filmes = secaoDosFilmes(env, lido.quadro, { primeiraVez: !VARIAVEIS_DOS_FILMES.some((n) => salvos.has(n)), pracas, sessoes: doCadastro.sessoes, erroDasSessoes: doCadastro.erro });
-    return { pracas: await lerSecaoPracas(trello, env, lido), card: comErro(card), filmes: comErro(filmes) };
+    return { pracas: await lerSecaoPracas(trello, env, lido), card: comErro(card), filmes: comErro(filmes), conexoes: conexoesDaTela(lido, tabelas, env) };
+  }
+
+  /**
+   * Trocar o quadro do Trello ou a base do Teable (#76): o nome do novo, digitado, confirma. O quadro novo fica salvo
+   * (TRELLO_QUADRO) e as seções são ligadas de novo pelo nome nele; a base nova (TEABLE_PG_ESQUEMA) tem as tabelas
+   * descobertas de novo. Devolve as seções, com as exceções do que o nome não achou.
+   */
+  async function trocarAConexao(res, eu, corpo) {
+    const confirmacao = String(corpo?.confirmacao ?? '');
+    const id = String(corpo?.quadro ?? corpo?.base ?? '').trim();
+    if (!id || !/^[\w-]{1,64}$/.test(id) || (corpo.quadro !== undefined) === (corpo.base !== undefined)) return json(res, 400, { erro: 'Diga o quadro ou a base nova.' });
+    if (corpo.quadro !== undefined) {
+      const novo = (await lerQuadros(trello)).find((q) => q.id === id);
+      if (!novo) return json(res, 404, { erro: 'Esse quadro não está entre os que o token do Trello enxerga.' });
+      if (!confirmaATroca(confirmacao, novo.nome)) return json(res, 422, { erro: `Para trocar, digite o nome do quadro novo: ${novo.nome}.` });
+      if (novo.id === String(env.TRELLO_QUADRO ?? '').trim()) return json(res, 200, await lerAsSecoes());
+      const velho = (await lerOQuadro(trello, env).catch(() => null))?.quadro ?? null;
+      const quadroNovo = await lerQuadro(trello, { ...env, TRELLO_QUADRO: id }, []);
+      const { sessoes } = await sessoesDoCadastro(cadastros);
+      mudarConfiguracao({ TRELLO_QUADRO: id, ...religarNoQuadroNovo(env, quadroNovo, velho, { sessoes }) }, { por: eu.email });
+      console.log(`[configuração] ${eu.email} trocou o quadro do Trello para "${novo.nome}": tudo ligado de novo pelo nome`);
+    } else {
+      const nova = (await descoberta.bases(configuracao.valores())).find((b) => b.id === id);
+      if (!nova) return json(res, 404, { erro: 'Essa base não está entre as que o token do Teable enxerga.' });
+      if (!confirmaATroca(confirmacao, nova.nome)) return json(res, 422, { erro: `Para trocar, digite o nome da base nova: ${nova.nome}.` });
+      if (nova.id !== String(env.TEABLE_PG_ESQUEMA ?? '').trim()) {
+        mudarConfiguracao(mudancasDaBaseNova(id, configuracao.salvos()), { por: eu.email });
+        await redescobrir();
+        console.log(`[configuração] ${eu.email} trocou a base do Teable para "${nova.nome}": tabelas achadas de novo pelo nome`);
+      }
+    }
+    return json(res, 200, await lerAsSecoes());
   }
 
   /**
@@ -1220,12 +1295,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    */
   async function rotaDaConfiguracao(req, res, eu, caminho) {
     const acao = caminho.slice('/api/configuracao'.length);
-    if (!['', '/conferir', '/salvar'].includes(acao)) return json(res, 404, { erro: 'Não encontrado.' });
-    if (req.method !== (acao ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
+    const leituras = ['', '/quadros', '/bases'];
+    if (![...leituras, '/conferir', '/salvar', '/trocar'].includes(acao)) return json(res, 404, { erro: 'Não encontrado.' });
+    if (req.method !== (leituras.includes(acao) ? 'GET' : 'POST')) return json(res, 405, { erro: 'Método não permitido.' });
     if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e mudam a Configuração.' });
     try {
-      if (!acao) return json(res, 200, await lerAsSecoes());
+      if (!acao) {
+        // abrir a Configuração descobre as tabelas de novo (com o Teable fora, vale a última descoberta)
+        await redescobrir();
+        return json(res, 200, await lerAsSecoes());
+      }
+      if (acao === '/quadros') return json(res, 200, { quadros: await lerQuadros(trello) });
+      if (acao === '/bases') return json(res, 200, { bases: await descoberta.bases(configuracao.valores()) });
       const corpo = await lerCorpo(req).catch(() => null);
+      if (acao === '/trocar') return await trocarAConexao(res, eu, corpo);
       if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
       const pracas = corpo.pracas === undefined ? null : secaoDoPedido(corpo);
       if (corpo.pracas !== undefined && !pracas) return json(res, 400, { erro: 'As praças vieram incompletas.' });
@@ -1447,7 +1530,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         relatosDoNavegador,
         exemplo: (voc.programas ?? []).filter((p) => /chef|eliana/i.test(p.nome)).map((p) => ({ nome: p.nome, chaves: p.chaves })),
         atracao: trello.diagnosticarAtracao ? await trello.diagnosticarAtracao(claquete) : null,
-        postgres: { esquema: env.TEABLE_PG_ESQUEMA || '', atracoes: env.TEABLE_PG_ATRACOES || '', url: env.TEABLE_PG_URL ? 'configurada' : 'faltando' },
+        postgres: { esquema: env.TEABLE_PG_ESQUEMA || '', atracoes: tabelaNoPg(env, 'atracoes'), url: env.TEABLE_PG_URL ? 'configurada' : 'faltando' },
       });
     }
     if (!eu) return json(res, 401, { erro: 'Entre com a sua conta para ver os roteiros.' });
@@ -1474,7 +1557,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           itens.push({ item: `API do Teable: ${nome}`, ok: false, detalhe: e instanceof Error ? e.message : String(e) });
         }
       }
-      itens.push({ item: 'Acervo de artes', ok: acervo.ligado && acervo.grava, detalhe: acervo.ligado ? (acervo.grava ? 'lê e grava' : 'só lê (falta TEABLE_ACERVO)') : 'desligado (falta TEABLE_PG_ACERVO)' });
+      itens.push({ item: 'Acervo de artes', ok: acervo.ligado && acervo.grava, detalhe: acervo.ligado ? (acervo.grava ? 'lê e grava' : 'só lê (falta TEABLE_ACERVO)') : 'desligado (falta a tabela ARTES_acervo na base do Teable)' });
       if (trello.conferir) itens.push(...(await trello.conferir()));
       // o reconhecimento de atração com dados reais: a mesma regra do navegador (key no começo; senão, o nome no meio)
       if (trello.ultimasClaquetes) {
@@ -1581,7 +1664,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // Só administradores (CADASTRO_ADMINS) e só atração de acervo próprio.
       if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
       if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores importam o acervo.' });
-      if (!acervo.ligado || !acervo.grava) return json(res, 503, { erro: 'O acervo de artes não está configurado para gravar (TEABLE_ACERVO e TEABLE_PG_ACERVO).' });
+      if (!acervo.ligado || !acervo.grava) return json(res, 503, { erro: 'O acervo de artes não está configurado para gravar (a tabela ARTES_acervo na base do Teable).' });
       const corpo = (await lerCorpo(req, LIMITE_CORPO, 'CSV')) ?? {};
       const atracao = typeof corpo.atracao === 'string' ? corpo.atracao.trim().slice(0, 200) : '';
       if (!atracao) return json(res, 400, { erro: 'Qual atração?' });
@@ -1653,7 +1736,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
       const desfazer = caminho.endsWith('desfazer');
       if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: `Só administradores ${desfazer ? 'desfazem' : 'retomam'} a importação.` });
-      if (!acervo.ligado || !acervo.grava) return json(res, 503, { erro: 'O acervo de artes não está configurado para gravar (TEABLE_ACERVO e TEABLE_PG_ACERVO).' });
+      if (!acervo.ligado || !acervo.grava) return json(res, 503, { erro: 'O acervo de artes não está configurado para gravar (a tabela ARTES_acervo na base do Teable).' });
       const corpo = (await lerCorpo(req)) ?? {};
       const linha = typeof corpo.id === 'string' ? importacoes.uma(corpo.id) : null;
       if (!linha) return json(res, 404, { erro: 'Essa importação não está no histórico.' });
@@ -1929,8 +2012,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   app.mudarConfiguracao = mudarConfiguracao;
   /** Os módulos de agora (para os avisos da partida). */
   app.modulos = () => ({ ...geracao, filmes });
+  /** A descoberta das tabelas do Teable feita na partida (os testes esperam por ela). */
+  app.tabelasProntas = primeiraDescoberta;
+  /** Descobre as tabelas de novo (ou espera a descoberta que já está indo). */
+  app.descobrirAsTabelas = redescobrir;
   app.fechar = async () => {
     clearInterval(batimento);
+    clearTimeout(tentarDeNovo);
     for (const n of RECRIADOS) await geracao[n]?.parar?.();
     for (const ws of naFila.keys()) ws.terminate();
     // o que foi digitado nos últimos instantes ainda não foi gravado: grava antes de desligar

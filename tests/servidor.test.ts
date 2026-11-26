@@ -11,6 +11,8 @@ import * as cod from 'lib0/encoding';
 import * as dec from 'lib0/decoding';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp, fazerBackup } from '../servidor/app.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 let servidor: Server;
 let base = '';
@@ -313,7 +315,7 @@ describe('pauta direto no Postgres do Teable', () => {
     // @ts-expect-error módulo JS sem tipos
     const { criarPauta } = await import('../servidor/pauta.mjs');
     const vocabulario = { ler: async () => ({ pauta: [{ chave: 'FESTA 26 10', editor: 'Pela Api', claquete: 'Festa 26/10' }] }) };
-    const env = { TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseABC', TEABLE_PG_PAUTA: 'demandasXYZ' };
+    const env = { TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseABC', ...comTabelas({ EDICAO_producao: 'demandasXYZ' }) };
     const consultas: unknown[][] = [];
     let fora = false;
     const abrir = async () => ({
@@ -333,7 +335,7 @@ describe('pauta direto no Postgres do Teable', () => {
     fora = true;
     expect(await pauta.achar('FESTA 26 10')).toEqual({ editor: 'Pela Api', claquete: 'Festa 26/10' });
     // nome de tabela que não é um identificador simples não entra na consulta
-    expect(criarPauta({ ...env, TEABLE_PG_PAUTA: 'x"; drop' }, vocabulario, abrir).comBanco).toBe(false);
+    expect(criarPauta({ ...env, ...comTabelas({ EDICAO_producao: 'x"; drop' }) }, vocabulario, abrir).comBanco).toBe(false);
   });
 });
 
@@ -443,7 +445,7 @@ describe('cópia local do Teable', () => {
       },
     });
     const vazio = { ler: async () => ({ pauta: [] }) };
-    const pauta = criarPauta({ TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseA', TEABLE_PG_PAUTA: 'demandasB' }, vazio, abrir, null, copia);
+    const pauta = criarPauta({ TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseA', ...comTabelas({ EDICAO_producao: 'demandasB' }) }, vazio, abrir, null, copia);
     try {
       expect(await pauta.achar('FESTA 26 10')).toEqual({ editor: 'Fulano Silva', claquete: 'Festa 26/10 (AH)' });
       expect(await pauta.achar('OUTRA 1 1')).toEqual({ editor: '', claquete: '' });

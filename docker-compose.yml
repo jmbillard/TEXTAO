@@ -39,6 +39,7 @@ services:
       - BACKUPS=${BACKUPS:-14}
 
       # ---- Teable: API (lê e grava com o mesmo token) ----
+      # os ids das tabelas são opcionais: o PROMeiro acha cada uma pelo nome na base (o id daqui vale, se for da base)
       - TEABLE_URL=${TEABLE_URL:-}
       - TEABLE_TOKEN=${TEABLE_TOKEN:-}
       - TEABLE_ATRACOES=${TEABLE_ATRACOES:-}
@@ -51,19 +52,10 @@ services:
       - TEABLE_ARTE_PRODUCAO=${TEABLE_ARTE_PRODUCAO:-}
       - TEABLE_ACERVO=${TEABLE_ACERVO:-}
 
-      # ---- Teable: Postgres (só leitura; nomes internos das tabelas) ----
+      # ---- Teable: Postgres (só leitura) ----
+      # a base (bse…, o esquema); os nomes das tabelas no Postgres vêm do próprio Teable (Configuração → Conexões)
       - TEABLE_PG_URL=${TEABLE_PG_URL:-}
       - TEABLE_PG_ESQUEMA=${TEABLE_PG_ESQUEMA:-}
-      - TEABLE_PG_PAUTA=${TEABLE_PG_PAUTA:-}
-      - TEABLE_PG_ARTE=${TEABLE_PG_ARTE:-}
-      - TEABLE_PG_ARTE_LEITURA=${TEABLE_PG_ARTE_LEITURA:-}
-      - TEABLE_PG_ACERVO=${TEABLE_PG_ACERVO:-}
-      - TEABLE_PG_REDATORES=${TEABLE_PG_REDATORES:-}
-      - TEABLE_PG_EDITORES=${TEABLE_PG_EDITORES:-}
-      - TEABLE_PG_ATRACOES=${TEABLE_PG_ATRACOES:-}
-      - TEABLE_PG_PRIORIDADE=${TEABLE_PG_PRIORIDADE:-}
-      - TEABLE_PG_EXIBICOES=${TEABLE_PG_EXIBICOES:-}
-      - TEABLE_PG_FILMES=${TEABLE_PG_FILMES:-}
       # tabela dos filmes (id da API): o pôster do filme aparece no card da fila
       - TEABLE_FILMES=${TEABLE_FILMES:-}
       # o campo do pôster nos filmes e a tabela de exibições (id da API): onde o envio da aba Filmes grava
@@ -85,7 +77,7 @@ services:
       - TRELLO_SAIDA_RJ=${TRELLO_SAIDA_RJ:-}
       - TRELLO_SAIDA_G5=${TRELLO_SAIDA_G5:-}
       - TRELLO_SAIDA_INTER=${TRELLO_SAIDA_INTER:-}
-      # o quadro da promo (opcional; a aba Duplicadas não precisa dele) e a lista dos projetos entregues
+      # o quadro da promo (opcional: a Configuração → Conexões escolhe e guarda) e a lista dos projetos entregues
       - TRELLO_QUADRO=${TRELLO_QUADRO:-}
       - TRELLO_LISTA_ENTREGUES=${TRELLO_LISTA_ENTREGUES:-}
       - TRELLO_LISTA_VT=${TRELLO_LISTA_VT:-}

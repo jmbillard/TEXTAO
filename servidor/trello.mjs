@@ -5,12 +5,15 @@
    Tudo o que é ID do quadro e das tabelas vem do ambiente: este repositório é público. */
 
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
+import { tabelaNoPg } from './tabelas-do-teable.mjs';
+import { TABELAS_DO_TEABLE } from '../src/modelo/tabelasDoTeable.ts';
 import { gerarPdf } from './pdf.mjs';
 import { normalizarKey } from './cadastros.mjs';
 import { claquetePadrao, jaFoiExibida } from '../src/modelo/vocabularios.ts';
 import { alternativa, palavrasDoComeco, palavrasDoFim, pracaDaSigla, pracaPadrao, pracasDaConfiguracao, pracasRegistradas } from '../src/modelo/pracas.ts';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { opcaoDaPracaDosFilmes } from '../src/modelo/ligarOsFilmes.ts';
+import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const API_PADRAO = 'https://api.trello.com/1';
@@ -141,6 +144,7 @@ export function configDoTrello(env) {
       token: env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '',
       producao: env.TEABLE_ARTE_PRODUCAO || '',
       redatores: env.TEABLE_REDATORES || '',
+      editores: env.TEABLE_EDITORES || '',
       keysRedatores: env.TEABLE_KEY_REDATORES || '',
       // os filmes (o cadastro e o campo do pôster, pelo ID) e as exibições: onde o envio da aba Filmes grava
       filmes: env.TEABLE_FILMES || '',
@@ -151,17 +155,14 @@ export function configDoTrello(env) {
       url: env.TEABLE_PG_URL || '',
       // limpos do mesmo jeito que a pauta (aspas, espaços, "esquema.tabela")
       esquema: nomesDoPg(env, '').esquema,
-      producao: nomeLimpoPg(env.TEABLE_PG_ARTE),
-      // de onde ler a produção (andamento, claquete repetida, "já entrou hoje"), quando não é a mesma em que o app grava:
-      // na convivência com o n8n, a base de produção (esquema.tabela); vazia = a mesma de TEABLE_PG_ARTE
-      leituraEsquema: env.TEABLE_PG_ARTE_LEITURA ? nomesDoPg(env, env.TEABLE_PG_ARTE_LEITURA).esquema : '',
-      leitura: env.TEABLE_PG_ARTE_LEITURA ? nomesDoPg(env, env.TEABLE_PG_ARTE_LEITURA).tabela : '',
-      redatores: nomeLimpoPg(env.TEABLE_PG_REDATORES),
-      editores: nomeLimpoPg(env.TEABLE_PG_EDITORES),
-      atracoes: nomeLimpoPg(env.TEABLE_PG_ATRACOES),
-      prioridade: nomeLimpoPg(env.TEABLE_PG_PRIORIDADE),
+      // os nomes no Postgres vêm do Teable (#76: as tabelas achadas pelo nome na base, servidor/tabelas-do-teable.mjs)
+      producao: tabelaNoPg(env, 'ARTE_producao'),
+      redatores: tabelaNoPg(env, 'redatores'),
+      editores: tabelaNoPg(env, 'editores'),
+      atracoes: tabelaNoPg(env, 'atracoes'),
+      prioridade: tabelaNoPg(env, 'prioridade'),
       // exibições de filme (filme + sessão + dia + card da prévia), na mesma base
-      exibicoes: nomeLimpoPg(env.TEABLE_PG_EXIBICOES),
+      exibicoes: tabelaNoPg(env, 'exibicoes'),
     },
     // conversão fiel do original (Word, RTF) para PDF, com LibreOffice; sem ele, o PDF sai do roteiro como chegou
     stirling: { url: (env.STIRLING_URL || '').replace(/\/+$/, ''), chave: env.STIRLING_CHAVE || '' },
@@ -247,7 +248,6 @@ export function criarTrello(env, deps = {}) {
   const tabela = (esquema, nome) => (esquema && nome ? `"${esquema}"."${nome}"` : null);
   const t = {
     producao: tabela(c.pg.esquema, c.pg.producao),
-    leitura: c.pg.leitura ? tabela(c.pg.leituraEsquema || c.pg.esquema, c.pg.leitura) : tabela(c.pg.esquema, c.pg.producao),
     redatores: tabela(c.pg.esquema, c.pg.redatores),
     editores: tabela(c.pg.esquema, c.pg.editores),
     atracoes: tabela(c.pg.esquema, c.pg.atracoes),
@@ -407,10 +407,10 @@ export function criarTrello(env, deps = {}) {
 
   /** Já entrou hoje na produção da arte (pelo PROMeiro ou pelo upload antigo)? */
   async function jaEntrouHoje(claquete) {
-    if (!t.leitura) return false;
+    if (!t.producao) return false;
     // "hoje" é o dia de Brasília, não o do relógio UTC do banco
     const linhas = await sql(
-      `SELECT "claquete" FROM ${t.leitura} WHERE ("data_entrada" AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date`,
+      `SELECT "claquete" FROM ${t.producao} WHERE ("data_entrada" AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date`,
     );
     return linhas.some((l) => mesmaClaquete(l.claquete, claquete));
   }
@@ -428,7 +428,10 @@ export function criarTrello(env, deps = {}) {
          ORDER BY ("redator_ID" IS NULL OR "redator_ID" = '') LIMIT 1`,
         [nome, normalizarKey(nome)],
       );
-      if (l?.redator_ID) return { idValue: l.redator_ID, nome: l.redator, campo: l.customField_ID || campoId };
+      if (l?.redator_ID) {
+        if (!deOutroCampo(l.customField_ID, c.campos.redator)) return { idValue: l.redator_ID, nome: l.redator, campo: l.customField_ID || campoId };
+        return recriarOpcao(c.campos.redator, l.redator, (op) => (l.id ? teableAtualizar(c.teable.redatores, l.id, { redator_ID: op, customField_ID: c.campos.redator }) : null));
+      }
       if (!campoId) campoId = (await sql(`SELECT MAX("customField_ID") AS id FROM ${t.redatores}`))[0]?.id || '';
       if (l) existente = l;
     }
@@ -448,8 +451,23 @@ export function criarTrello(env, deps = {}) {
 
   async function acharEditor(nome) {
     if (!nome || !t.editores) return null;
-    const [l] = await sql(`SELECT "editor", "editor_ID", "customField_ID" FROM ${t.editores} WHERE "editor" = $1 LIMIT 1`, [nome]);
-    return l?.editor_ID ? { idValue: l.editor_ID, nome: l.editor, campo: l.customField_ID || c.campos.editor } : null;
+    const [l] = await sql(`SELECT "__id" AS id, "editor", "editor_ID", "customField_ID" FROM ${t.editores} WHERE "editor" = $1 LIMIT 1`, [nome]);
+    if (!l?.editor_ID) return null;
+    if (!deOutroCampo(l.customField_ID, c.campos.editor)) return { idValue: l.editor_ID, nome: l.editor, campo: l.customField_ID || c.campos.editor };
+    return recriarOpcao(c.campos.editor, l.editor, (op) => (l.id && c.teable.editores ? teableAtualizar(c.teable.editores, l.id, { editor_ID: op, customField_ID: c.campos.editor }) : null));
+  }
+
+  /* Trocado o quadro (#76), o redator e o editor guardam no Teable a opção do campo do quadro velho (customField_ID
+     é outro campo). A opção é recriada no campo de agora quando a pessoa vai para um card (nada em massa): a que já
+     existe com o nome dela é usada; senão, o PROMeiro cria. A linha do Teable passa a guardar a opção nova. */
+  const deOutroCampo = (guardado, atual) => !!(atual && guardado && guardado !== atual);
+  async function recriarOpcao(campoId, nome, gravarNoTeable) {
+    const lido = await lerSeExistir(`/customFields/${campoId}`);
+    const igual = (lido?.options ?? []).filter((o) => nomeComparavel(o.value?.text) === nomeComparavel(nome));
+    const op = igual.length === 1 ? igual[0].id : (await criarOpcao(campoId, nome))?.id;
+    if (!op) return null;
+    await Promise.resolve(gravarNoTeable(op)).catch((e) => console.warn(`[trello] a opção nova de ${nome} não foi guardada no Teable: ${e instanceof Error ? e.message : e}`));
+    return { idValue: op, nome, campo: campoId };
   }
 
   async function acharAtracao(claquete, nome) {
@@ -748,16 +766,11 @@ export function criarTrello(env, deps = {}) {
     const complexidade = Math.max(complexidadeDoCard(listaDeArtes), nivelDoFilme(doFilme));
     if (c.teable.producao)
       await tentar('atualizar a produção da arte', async () => {
-        // lendo de outra base (convivência com o n8n), o registro dela não existe aqui: acha o daqui pelo card
-        const mesmaBase = t.leitura === t.producao;
-        if (mesmaBase && !r.v2De.registro) return;
-        // a leitura que falha vira aviso: na mesma base, as artes e o texto vão do mesmo jeito, só sem a complexidade
-        const [linha] =
-          (await tentar('ler a complexidade da produção da arte', () =>
-            sql(`SELECT "__id" AS id, "complexidade" FROM ${t.producao} WHERE ${mesmaBase ? '"__id"' : '"card_ID"'} = $1 LIMIT 1`, [mesmaBase ? r.v2De.registro : id]),
-          )) ?? [];
-        const registro = mesmaBase ? r.v2De.registro : linha?.id;
+        const registro = r.v2De.registro;
         if (!registro) return;
+        // a leitura que falha vira aviso: as artes e o texto vão do mesmo jeito, só sem a complexidade
+        const [linha] =
+          (await tentar('ler a complexidade da produção da arte', () => sql(`SELECT "__id" AS id, "complexidade" FROM ${t.producao} WHERE "__id" = $1 LIMIT 1`, [registro]))) ?? [];
         // a complexidade só é escrita quando muda em relação à da produção da arte (sem a linha lida, não há com o que
         // comparar, e nada de complexidade é escrito)
         const mudou = !!linha && Number(linha.complexidade) !== complexidade;
@@ -774,10 +787,10 @@ export function criarTrello(env, deps = {}) {
    * @returns { card, url, registro, claquete, entrada, status: string[], artes: number, listaDeArtes: string[], texto } | null
    */
   async function naProducao(claquete) {
-    if (!t.leitura || !claquete) return null;
+    if (!t.producao || !claquete) return null;
     const chave = chaveN8n(claquete);
     const linhas = await sql(
-      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc", "redator", "editor" FROM ${t.leitura}
+      `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc", "redator", "editor" FROM ${t.producao}
        WHERE "data_entrada" >= now() - interval '3 months' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 5000`,
     );
     const l = linhas.find((x) => x.key === chave) ?? linhas.find((x) => mesmaClaquete(x.claquete, claquete));
@@ -851,7 +864,6 @@ export function criarTrello(env, deps = {}) {
   let memo = { em: 0, chave: '', dados: {} };
   let avisouFalha = false;
   let avisouFalhaPrioridade = false;
-  let avisouLeituraParada = false;
 
   /**
    * @param itens [{ id, card, claquete, naFila? }]: os roteiros que já estão no Trello e, com `naFila`, os da fila de
@@ -881,7 +893,7 @@ export function criarTrello(env, deps = {}) {
 
   /** O andamento dos enviados na produção da arte; null quando a leitura falhou. */
   async function lerProducao(itens) {
-    if (!t.leitura || !itens.length) return {};
+    if (!t.producao || !itens.length) return {};
     try {
       const semCard = itens.some((i) => !i.card);
       const ler = (tabela, cards) =>
@@ -891,20 +903,7 @@ export function criarTrello(env, deps = {}) {
           [cards],
         );
       const cards = itens.map((i) => i.card).filter(Boolean);
-      const linhas = await ler(t.leitura, cards);
-      // lendo de outra base (TEABLE_PG_ARTE_LEITURA): o card que não está lá é procurado na produção do app. Sem isso,
-      // a base de leitura que parou (o n8n já grava na do PROMeiro) deixa todo card novo sem etapa e sem entrega
-      const faltam = t.producao && t.producao !== t.leitura ? cards.filter((id) => !linhas.some((x) => x.card_ID === id)) : [];
-      if (faltam.length) {
-        const doApp = (await ler(t.producao, faltam)).filter((x) => faltam.includes(x.card_ID));
-        if (doApp.length && !avisouLeituraParada)
-          console.warn(
-            `[andamento] ${doApp.length} de ${cards.length} cards não estão em ${t.leitura} (TEABLE_PG_ARTE_LEITURA), só em ${t.producao}: li de lá. ` +
-              'Se o n8n já grava na base do PROMeiro, deixe TEABLE_PG_ARTE_LEITURA vazia.',
-          );
-        avisouLeituraParada = doApp.length > 0;
-        linhas.push(...doApp);
-      }
+      const linhas = await ler(t.producao, cards);
       const dados = {};
       for (const i of itens) {
         const l = i.card
@@ -934,22 +933,17 @@ export function criarTrello(env, deps = {}) {
 
   /**
    * As linhas da produção da arte que entraram nos últimos `dias` dias e têm card (a aba Duplicadas): o que o
-   * agrupamento precisa, já lido (src/modelo/duplicadas.ts, LinhaDaProducao). Lê de onde vem o andamento e, lendo de
-   * outra base, junta as linhas do app cujo card não está lá. Sem a produção configurada, null.
+   * agrupamento precisa, já lido (src/modelo/duplicadas.ts, LinhaDaProducao). Sem a produção configurada, null.
    */
   async function producaoDoPeriodo(dias) {
-    if (!t.leitura || !consultar) return null;
+    if (!t.producao || !consultar) return null;
     const ler = (tabela) =>
       sql(
         `SELECT "__id" AS registro, "card_ID", "claquete", "praca", "data_entrada", "status", "arquivado", "designers", "entregue", "filme" FROM ${tabela}
          WHERE "data_entrada" >= now() - ($1 || ' days')::interval AND "card_ID" IS NOT NULL AND "card_ID" <> ''`,
         [String(dias | 0)],
       );
-    const linhas = await ler(t.leitura);
-    if (t.producao && t.producao !== t.leitura) {
-      const ja = new Set(linhas.map((l) => l.card_ID));
-      linhas.push(...(await ler(t.producao)).filter((l) => !ja.has(l.card_ID)));
-    }
+    const linhas = await ler(t.producao);
     const sim = (v) => v === true || v === 1 || /^(t|true|1|sim)$/i.test(String(v ?? '').trim());
     return linhas.map((l) => ({
       registro: String(l.registro ?? ''),
@@ -1071,10 +1065,10 @@ export function criarTrello(env, deps = {}) {
   let memoAtracoes = { em: 0, chave: '', dados: {} };
   async function atracoesDosCards(cards) {
     const ids = [...new Set(cards.filter(Boolean))].sort();
-    if (!t.leitura || !ids.length) return {};
+    if (!t.producao || !ids.length) return {};
     // o andamento é pedido por cada navegador aberto: o envio que espera a atração não relê a cada pedido
     if (memoAtracoes.chave === ids.join() && Date.now() - memoAtracoes.em < 30_000) return memoAtracoes.dados;
-    const linhas = await sql(`SELECT "card_ID", "atracao" FROM ${t.leitura} WHERE "card_ID" = ANY($1::text[])`, [ids]);
+    const linhas = await sql(`SELECT "card_ID", "atracao" FROM ${t.producao} WHERE "card_ID" = ANY($1::text[])`, [ids]);
     const dados = {};
     for (const l of linhas) {
       const nome = lerLista(l.atracao)[0];
@@ -1100,18 +1094,12 @@ export function criarTrello(env, deps = {}) {
         out.push({ item: nome, ok: false, detalhe: e instanceof Error ? e.message : String(e) });
       }
     };
-    const colunas = {
-      producao: ['card_ID', 'claquete', 'key', 'status', 'designers', 'entregue', 'data_entrega', 'data_entrada', 'artes', 'texto', 'doc', 'redator', 'editor', 'atracao', 'filme'],
-      leitura: ['card_ID', 'claquete', 'key', 'status', 'designers', 'entregue', 'data_entrega', 'data_entrada'],
-      redatores: ['redator', 'redator_ID', 'customField_ID'],
-      editores: ['editor', 'editor_ID', 'customField_ID'],
-      atracoes: ['atracao', 'pattern', 'projeto_win', 'output_win', 'acervo'],
-      prioridade: ['key'],
-      exibicoes: ['filme', 'sessao', 'data_de_exibicao', 'card_ID', 'output', 'labels'],
-    };
+    // as colunas do Postgres que o código usa: o mapa único (src/modelo/tabelasDoTeable.ts)
+    const doMapa = (n) => TABELAS_DO_TEABLE.find((x) => x.nome === n)?.pg ?? [];
+    const colunas = { producao: doMapa('ARTE_producao'), redatores: doMapa('redatores'), editores: doMapa('editores'), atracoes: doMapa('atracoes'), prioridade: doMapa('prioridade'), exibicoes: doMapa('exibicoes') };
     for (const [nome, cols] of Object.entries(colunas)) {
       if (!t[nome]) {
-        out.push({ item: `Postgres: ${nome}`, ok: nome === 'leitura' || nome === 'exibicoes' || nome === 'prioridade', detalhe: 'não configurada' });
+        out.push({ item: `Postgres: ${nome}`, ok: nome === 'exibicoes' || nome === 'prioridade', detalhe: 'não achada na base do Teable' });
         continue;
       }
       await item(`Postgres: ${nome}`, async () => {
@@ -1121,14 +1109,14 @@ export function criarTrello(env, deps = {}) {
         const faltam = cols.filter((c) => !tem.includes(c));
         const [{ n }] = await sql(`SELECT count(*)::int AS n FROM ${t[nome]}`);
         if (faltam.length) return { ok: false, detalhe: `faltam colunas: ${faltam.join(', ')}` };
-        // a produção que parou (a variável ainda na base de antes da virada): os cards novos ficam sem andamento
-        if (nome === 'leitura') {
-          const ultima = quando((await sql(`SELECT max("data_entrada") AS ultima FROM ${t.leitura}`))[0]?.ultima);
+        // a produção que parou (a base de antes da virada): os cards novos ficam sem andamento
+        if (nome === 'producao') {
+          const ultima = quando((await sql(`SELECT max("data_entrada") AS ultima FROM ${t.producao}`))[0]?.ultima);
           const dias = Math.floor((Date.now() - ultima) / 86_400_000);
           if (ultima && dias >= 3)
             return {
               ok: false,
-              detalhe: `a última entrada é de ${new Date(ultima).toISOString().slice(0, 10)}, há ${dias} dias: a produção da arte parou aqui? Aponte ${c.pg.leitura ? 'TEABLE_PG_ARTE_LEITURA (ou deixe-a vazia)' : 'TEABLE_PG_ESQUEMA e TEABLE_PG_ARTE'} para a base em que o n8n grava`,
+              detalhe: `a última entrada é de ${new Date(ultima).toISOString().slice(0, 10)}, há ${dias} dias: a produção da arte parou aqui? Escolha em Configuração → Conexões a base em que o n8n grava`,
             };
         }
         return `${n} linhas`;
@@ -1158,15 +1146,15 @@ export function criarTrello(env, deps = {}) {
 
   /** As claquetes que entraram na produção nos últimos `dias` dias (para a aba Sem cadastro). */
   async function claquetesRecentes(dias = 90) {
-    if (!t.leitura) return [];
-    const linhas = await sql(`SELECT "claquete", "data_entrada" FROM ${t.leitura} WHERE "data_entrada" >= now() - ($1 || ' days')::interval AND "claquete" IS NOT NULL`, [String(dias | 0)]);
+    if (!t.producao) return [];
+    const linhas = await sql(`SELECT "claquete", "data_entrada" FROM ${t.producao} WHERE "data_entrada" >= now() - ($1 || ' days')::interval AND "claquete" IS NOT NULL`, [String(dias | 0)]);
     return linhas.map((l) => ({ claquete: String(l.claquete ?? ''), em: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : '' }));
   }
 
   /** As últimas claquetes da produção com a atração registrada (para conferir o reconhecimento com dados reais). */
   async function ultimasClaquetes(n = 500) {
-    if (!t.leitura) return [];
-    const linhas = await sql(`SELECT "claquete", "atracao" FROM ${t.leitura} WHERE "claquete" IS NOT NULL ORDER BY "data_entrada" DESC NULLS LAST LIMIT ${Math.min(2000, Math.max(1, n | 0))}`);
+    if (!t.producao) return [];
+    const linhas = await sql(`SELECT "claquete", "atracao" FROM ${t.producao} WHERE "claquete" IS NOT NULL ORDER BY "data_entrada" DESC NULLS LAST LIMIT ${Math.min(2000, Math.max(1, n | 0))}`);
     return linhas.map((l) => ({ claquete: String(l.claquete ?? ''), atracao: lerLista(l.atracao)[0] ?? '' })).filter((l) => l.claquete && l.atracao);
   }
 
@@ -1182,5 +1170,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.leitura && consultar), producaoDoPeriodo, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

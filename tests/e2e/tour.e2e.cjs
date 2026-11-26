@@ -53,7 +53,7 @@ const diaMais = (n) => {
  * chama. Com `env`, as variáveis do servidor (CADASTRO_ADMINS, por exemplo). Com `filmes` (a fábrica (env, deps) =>
  * criarFilmes(...), com a leitura e o Postgres falsos de quem chama), a aba Filmes é a de quem chama.
  */
-async function subir({ trello: falso, acervo, filmes, cadastros, env: doTeste = {} } = {}) {
+async function subir({ trello: falso, acervo, filmes, cadastros, teable, env: doTeste = {} } = {}) {
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-'));
   const { abrirBanco, criarApp } = await import(join(RAIZ, 'servidor', 'app.mjs'));
   const { criarTrello } = await import(join(RAIZ, 'servidor', 'trello.mjs'));
@@ -66,7 +66,9 @@ async function subir({ trello: falso, acervo, filmes, cadastros, env: doTeste = 
   const deps = { buscar: falso?.buscar ?? semRede, consultar: falso?.consultar ?? (async () => []), sftp: async () => {} };
   const trello = falso?.viva ? (e) => criarTrello(e, deps) : criarTrello(falso?.env ?? env, deps);
   const db = abrirBanco(join(pasta, 'roteirista.db'));
-  const app = criarApp({ db, env, trello, ...(acervo ? { acervo } : {}), ...(filmes ? { filmes } : {}), ...(cadastros ? { cadastros } : {}) });
+  // `teable`: o Teable de mentira da descoberta das tabelas (#76, tests/fixtures/teable-falso.mjs)
+  const app = criarApp({ db, env, trello, ...(teable ? { buscarNoTeable: teable } : {}), ...(acervo ? { acervo } : {}), ...(filmes ? { filmes } : {}), ...(cadastros ? { cadastros } : {}) });
+  await app.tabelasProntas;
   // sem o cabeçalho (o WebSocket do navegador não leva os extras), vale o cookie `e2e-email` do contexto, que o
   // WebSocket leva; sem ele, a Lia. É o que deixa duas pessoas no mesmo teste, cada uma na sua sala
   const comLia = (req) => {

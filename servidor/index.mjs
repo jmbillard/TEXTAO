@@ -8,6 +8,7 @@ import { configDoTrello, faltasDoTrello } from './trello.mjs';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
+import { tabelaNoPg } from './tabelas-do-teable.mjs';
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const dados = process.env.DADOS ?? join(aqui, '..', 'dados');
@@ -31,17 +32,25 @@ const cache = criarCache(process.env);
 // da configuração (o Portainer com o que foi salvo no PROMeiro por cima) e os refaz quando ela muda
 const pasta = process.env.FILMES_PASTA ?? join(dados, 'previas');
 const app = criarApp({ db, cache, filmes: (env, deps) => criarFilmes(env, { ...deps, pasta }), estaticos: process.env.ESTATICOS ?? join(aqui, '..', 'dist') });
-// os avisos da partida falam da configuração de agora
-const { env, filmes } = app.modulos();
-console.log(
-  filmes.ligado
-    ? `[filmes] aba Filmes ligada${filmes.conferindo ? '' : ' (sem a conferência com o banco: falta TEABLE_PG_FILMES)'}${filmes.envio.ligado ? '' : `; envio desligado: falta ${filmes.envio.faltando.join(', ')}`}`
-    : `[filmes] aba Filmes desligada: falta ${filmes.faltando.join(', ')}`,
-);
 const servidor = createServer(app);
 servidor.on('upgrade', app.upgrade);
 servidor.listen(porta, () =>
   console.log(`PROMeiro em http://localhost:${porta} · dados em ${dados}`),
+);
+// os avisos da partida falam da configuração de agora, com as tabelas do Teable já descobertas (#76): o servidor já
+// atende enquanto isso; com o Teable fora, vale a última descoberta guardada
+{
+  const d = await app.tabelasProntas;
+  if (d)
+    console.log(
+      `[tabelas] ${d.tabelas.filter((t) => t.id).length} tabelas achadas pelo nome na base${d.foraDoAr ? ' (da última leitura: o Teable não respondeu)' : ''}${d.avisos.length ? `; ${d.avisos.map((a) => a.texto).join('; ')}` : ''}`,
+    );
+}
+const { env, filmes } = app.modulos();
+console.log(
+  filmes.ligado
+    ? `[filmes] aba Filmes ligada${filmes.conferindo ? '' : ' (sem a conferência com o banco: falta a tabela filmes na base do Teable)'}${filmes.envio.ligado ? '' : `; envio desligado: falta ${filmes.envio.faltando.join(', ')}`}`
+    : `[filmes] aba Filmes desligada: falta ${filmes.faltando.join(', ')}`,
 );
 // diz no log, logo na partida, se a ligação com o Teable está de pé
 {
@@ -67,7 +76,7 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
   else {
     const sem = [
       ...c.pracas.filter((p) => !p.entrada).map((p) => `TRELLO_LISTA_${p.sigla} (${p.sigla} vai ${c.listas.padrao ? 'para a TRELLO_LISTA' : 'falhar: sem lista'})`),
-      !c.pg.producao && 'TEABLE_PG_ARTE (sem conferir duplicados)',
+      !c.pg.producao && 'a tabela ARTE_producao na base do Teable (sem conferir duplicados)',
       !c.teable.producao && 'TEABLE_ARTE_PRODUCAO (sem registrar a entrada)',
       !c.sftp.host && 'SFTP_HOST (sem cópia no OneDrive)',
       c.pgInvalidos.length && `nomes inválidos no Postgres (${c.pgInvalidos.join(', ')}): use só letras, números e _`,
@@ -86,8 +95,9 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
       ? `[pdf] Word e RTF convertidos pelo Stirling em ${e.STIRLING_URL}${e.STIRLING_CHAVE ? ' (com chave)' : ' (sem STIRLING_CHAVE: se o Stirling pedir chave, a conversão falha e vai o PDF do texto do original)'}`
       : '[pdf] sem STIRLING_URL: o PDF do card sai do texto do original, com o sublinhado do redator',
   );
-  if (e.TEABLE_PG_ACERVO || e.TEABLE_ACERVO)
-    console.log(`[acervo] ${e.TEABLE_PG_ACERVO && e.TEABLE_ACERVO ? 'ligado' : `falta ${e.TEABLE_PG_ACERVO ? 'TEABLE_ACERVO (para gravar)' : 'TEABLE_PG_ACERVO (para ler)'}`}`);
+  const acervoNoPg = tabelaNoPg(e, 'ARTES_acervo');
+  if (acervoNoPg || e.TEABLE_ACERVO)
+    console.log(`[acervo] ${acervoNoPg && e.TEABLE_ACERVO ? 'ligado' : `falta ${acervoNoPg ? 'TEABLE_ACERVO (para gravar)' : 'a tabela ARTES_acervo no Postgres (para ler)'}`}`);
 }
 void criarPauta(env, criarVocabulario(env))
   .testar()

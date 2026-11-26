@@ -17,6 +17,7 @@
    card sai. Um segundo Envio na mesma semana (desta prévia ou de outra) acrescenta ao card que já existe, achado pelas
    exibições da semana. */
 
+import { tabelaNoPg } from './tabelas-do-teable.mjs';
 import { chaveDeArte, vinculos } from './acervo.mjs';
 import { nomesDoPg } from './pauta.mjs';
 import { diaDaPrevia } from './conferencia.mjs';
@@ -107,7 +108,7 @@ const nomeDeArquivo = (t) => String(t || 'poster').replace(/[\\/:*?"<>|]+/g, ' '
 const MARCA_DA_PREVIA = /\(prévia (\d{4}-\d{2})\)/;
 
 /**
- * @param env as variáveis do servidor (as do Trello e do Teable; TEABLE_PG_* para ler os filmes e as sessões)
+ * @param env as variáveis do servidor (as do Trello e do Teable; as tabelas descobertas, para ler os filmes e as sessões)
  * @param deps.trello o módulo do Trello (criarCard e a escrita no Teable)
  * @param deps.consultar (sql, params) => linhas, no Postgres do Teable
  */
@@ -118,7 +119,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     const nome = nomesDoPg(env, v).tabela;
     return esquema && NOME_SQL.test(esquema) && nome && NOME_SQL.test(nome) ? `"${esquema}"."${nome}"` : null;
   };
-  const t = { filmes: tabela(env.TEABLE_PG_FILMES), atracoes: tabela(env.TEABLE_PG_ATRACOES), exibicoes: tabela(env.TEABLE_PG_EXIBICOES) };
+  const t = { filmes: tabela(tabelaNoPg(env, 'filmes')), atracoes: tabela(tabelaNoPg(env, 'atracoes')), exibicoes: tabela(tabelaNoPg(env, 'exibicoes')) };
   const faltando = [
     !c?.chave && 'TRELLO_KEY',
     !c?.token && 'TRELLO_TOKEN',
@@ -127,7 +128,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar } = {}) {
     !c?.teable.token && 'TEABLE_TOKEN',
     !c?.teable.filmes && 'TEABLE_FILMES',
     !c?.teable.exibicoes && 'TEABLE_EXIBICOES',
-    (!consultar || !t.filmes) && 'TEABLE_PG_FILMES',
+    (!consultar || !t.filmes) && 'a tabela filmes no Postgres',
   ].filter(Boolean);
   if (faltando.length) return { ligado: false, faltando };
 

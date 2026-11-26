@@ -149,6 +149,16 @@ FILME no nome, a etiqueta "FILME" e a etiqueta de cada **sessão de filme** pelo
 sessão sem etiqueta também é exceção. A praça dos cards de filme não é pelo nome: é escolhida entre as praças.
 _Evitar_: mapeamento, vínculo automático
 
+**Conexões**:
+O quadro do Trello e a **base** do Teable em que o PROMeiro trabalha, recolhidos no fim da **Configuração**. Trocar um
+ou outro pede o nome do novo, digitado; depois o PROMeiro liga tudo de novo pelo nome (no quadro novo, as listas, os
+campos, as opções e as etiquetas; na base nova, as tabelas). As tabelas do Teable (atracoes, ARTE_producao, filmes…)
+são achadas pelo nome na base, e o nome delas no Postgres vem do próprio Teable; a que falta, ou a coluna que o
+código usa e a tabela não tem, aparece num aviso no topo da Configuração. Com o Teable fora do ar, valem as tabelas
+da última leitura. O redator ou editor guardado com a opção do quadro antigo ganha a opção no quadro novo quando vai
+para um card.
+_Evitar_: integrações, credenciais
+
 **Duplicada**:
 Duas ou mais linhas da produção da arte (ARTE_producao), cada uma de um card, com a mesma claquete (pela key, sem
 acento, caixa e pontuação), a mesma praça (a da coluna da linha; sem ela, a que a claquete indica) e a mesma versão: um

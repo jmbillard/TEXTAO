@@ -33,7 +33,7 @@ export function pracasSalvas(env) {
  * O quadro do Trello: o de TRELLO_QUADRO ou, sem ele, o da primeira lista já configurada (a entrada ou a saída de uma
  * praça, a reserva, o VT), pelo idBoard dela. Lê as listas (também as arquivadas), os campos personalizados e as
  * etiquetas (as dos cards de filme, #75).
- * @returns { id, de: 'variavel' | 'lista', listas, campos, etiquetas } ou null quando não há como saber o quadro
+ * @returns { id, de: 'variavel' | 'lista', nome, listas, campos, etiquetas } ou null quando não há como saber o quadro
  */
 export async function lerQuadro(trello, env, pracas) {
   let id = limpo(env.TRELLO_QUADRO);
@@ -50,14 +50,17 @@ export async function lerQuadro(trello, env, pracas) {
     }
   }
   if (!id || !ID_DO_TRELLO.test(id)) return null;
-  const [listas, campos, etiquetas] = await Promise.all([
+  const [listas, campos, etiquetas, doQuadro] = await Promise.all([
     trello.ler(`/boards/${id}/lists`, { filter: 'all', fields: 'name,closed' }),
     trello.ler(`/boards/${id}/customFields`),
     trello.lerSeExistir(`/boards/${id}/labels`, { fields: 'name,color', limit: '1000' }),
+    // o nome do quadro: para as Conexões (#76) e a confirmação da troca
+    trello.lerSeExistir(`/boards/${id}`, { fields: 'name' }).catch(() => null),
   ]);
   return {
     id,
     de,
+    nome: String(doQuadro?.name ?? ''),
     listas: (Array.isArray(listas) ? listas : []).map((l) => ({ id: String(l.id), nome: String(l.name ?? ''), arquivada: !!l.closed })),
     campos: (Array.isArray(campos) ? campos : []).map((c) => ({
       id: String(c.id),

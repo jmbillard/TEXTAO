@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { artesDaProducao, chaveDaAtracao, chaveN8n, criarTrello } from '../servidor/trello.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 /* IDs inventados: o quadro de verdade fica só nas variáveis do servidor. */
 const ENV = {
@@ -30,12 +32,7 @@ const ENV = {
   TEABLE_KEY_REDATORES: 'tblKeyRedatores',
   TEABLE_PG_URL: 'postgres://x',
   TEABLE_PG_ESQUEMA: 'bseBase',
-  TEABLE_PG_ARTE: 'producao',
-  TEABLE_PG_REDATORES: 'redatores',
-  TEABLE_PG_EDITORES: 'editores',
-  TEABLE_PG_ATRACOES: 'atracoes',
-  TEABLE_PG_PRIORIDADE: 'prioridade',
-  TEABLE_PG_EXIBICOES: 'exibicoes',
+  ...comTabelas({ ARTE_producao: 'producao', redatores: 'redatores', editores: 'editores', atracoes: 'atracoes', prioridade: 'prioridade', exibicoes: 'exibicoes' }),
   SFTP_HOST: 'onedrive',
 };
 
@@ -234,6 +231,41 @@ describe('envio para o Trello', () => {
     expect(patch.url.pathname).toBe('/api/table/tblRedatores/record/recAna');
     expect(patch.corpo).toMatchObject({ record: { fields: { redator_ID: 'opNovoRedator', customField_ID: 'cRedator' } } });
     expect(pedidos.some((p) => p.url.pathname === '/api/table/tblRedatores/record' && p.metodo === 'POST')).toBe(false);
+  });
+
+  it('o redator e o editor guardados com a opção do quadro antigo: a opção é recriada no campo de agora e o Teable atualizado', async () => {
+    // trocado o quadro (#76): a linha do Teable guarda a opção e o campo do quadro velho
+    const env = { ...ENV, TRELLO_CAMPO_EDITOR: 'cEditorNovo', TEABLE_EDITORES: 'tblEditores' };
+    const { buscar: base, pedidos } = falsos();
+    // o campo do editor no quadro novo já tem a opção com o nome dela: é usada, sem criar outra
+    const buscar = async (endereco: string, init: RequestInit = {}) =>
+      new URL(endereco).pathname === '/1/customFields/cEditorNovo' && (init.method ?? 'GET') === 'GET'
+        ? { ok: true, status: 200, json: async () => ({ id: 'cEditorNovo', options: [{ id: 'opBrunoJa', value: { text: 'BRUNO REGIS' } }] }), text: async () => '' }
+        : base(endereco, init);
+    const doBanco = banco();
+    const consultar = async (sql: string, params: unknown[] = []) => {
+      if (sql.includes('"redatores"') && !sql.includes('MAX(')) return [{ id: 'recAna', redator: 'Ana Lima', redator_ID: 'opAnaVelha', customField_ID: 'cRedatorVelho' }];
+      if (sql.includes('"editores"')) return [{ id: 'recBruno', editor: 'Bruno Regis', editor_ID: 'opBrunoVelho', customField_ID: 'cEditorVelho' }];
+      return doBanco.consultar(sql, params);
+    };
+    await criarTrello(env, { buscar, consultar }).enviar({ meta, artes: ['X'] });
+    expect(campoPut(pedidos, 'cRedator')).toEqual({ idValue: 'opNovoRedator' });
+    expect(campoPut(pedidos, 'cEditorNovo')).toEqual({ idValue: 'opBrunoJa' });
+    expect(pedidos.find((p) => p.url.pathname === '/1/customField/cRedator/options')!.corpo).toEqual({ pos: 'bottom', value: { text: 'Ana Lima' } });
+    expect(pedidos.some((p) => p.url.pathname === '/1/customField/cEditorNovo/options')).toBe(false);
+    const patch = (tabela: string) => pedidos.find((p) => p.metodo === 'PATCH' && p.url.pathname.startsWith(`/api/table/${tabela}/record/`));
+    expect(patch('tblRedatores')!.url.pathname).toBe('/api/table/tblRedatores/record/recAna');
+    expect(patch('tblRedatores')!.corpo).toMatchObject({ record: { fields: { redator_ID: 'opNovoRedator', customField_ID: 'cRedator' } } });
+    expect(patch('tblEditores')!.url.pathname).toBe('/api/table/tblEditores/record/recBruno');
+    expect(patch('tblEditores')!.corpo).toMatchObject({ record: { fields: { editor_ID: 'opBrunoJa', customField_ID: 'cEditorNovo' } } });
+  });
+
+  it('a opção guardada no mesmo campo de agora vale como está: nada é criado', async () => {
+    const { buscar, pedidos } = falsos();
+    await criarTrello({ ...ENV, TRELLO_CAMPO_EDITOR: 'cEditor' }, { buscar, consultar: banco().consultar }).enviar({ meta, artes: ['X'] });
+    expect(campoPut(pedidos, 'cRedator')).toEqual({ idValue: 'opAna' });
+    expect(campoPut(pedidos, 'cEditor')).toEqual({ idValue: 'opBruno' });
+    expect(pedidos.some((p) => p.url.pathname.endsWith('/options') || p.metodo === 'PATCH')).toBe(false);
   });
 
   it('sessão de filmes: liga ao card do filme, copia membros e os campos combinados', async () => {
@@ -466,7 +498,7 @@ describe('andamento na produção da arte', () => {
   });
 
   it('sem Postgres ou com erro, devolve vazio', async () => {
-    expect(await criarTrello({ ...ENV, TEABLE_PG_ARTE: '' }, { consultar: async () => [] }).andamento([{ id: 'r', card: 'c' }])).toEqual({});
+    expect(await criarTrello({ ...ENV, ...comTabelas({ ARTE_producao: '' }) }, { consultar: async () => [] }).andamento([{ id: 'r', card: 'c' }])).toEqual({});
     const t = criarTrello(ENV, { consultar: async () => { throw new Error('coluna não existe'); } });
     expect(await t.andamento([{ id: 'r', card: 'c', claquete: '' }])).toEqual({});
   });
@@ -492,7 +524,7 @@ describe('andamento na produção da arte', () => {
     expect(a.r4).toBeUndefined();
 
     // sem a tabela de prioridade, nada é destacado e o andamento continua
-    const sem = await criarTrello({ ...ENV, TEABLE_PG_PRIORIDADE: '' }, { consultar }).andamento(itens);
+    const sem = await criarTrello({ ...ENV, tabelas: { ...ENV.tabelas, prioridade: { pg: '' } } }, { consultar }).andamento(itens);
     expect(sem.r1).toEqual({ status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, entrada: null, claquete: 'SHOW DA NOITE 20/11 SP' });
     expect(Object.keys(sem)).toEqual(['r1', 'r2']);
 
@@ -708,27 +740,6 @@ describe('uma entrada por praça', () => {
   });
 });
 
-describe('convivência com o n8n: lê a produção de outra base, grava na sua', () => {
-  it('andamento, claquete repetida e "já entrou hoje" vêm de TEABLE_PG_ARTE_LEITURA; o registro vai para a tabela do app', async () => {
-    const lidas: string[] = [];
-    const consultar = async (sql: string) => {
-      lidas.push(sql);
-      if (sql.includes('"bseProd"."producaoViva"') && sql.includes('"designers"')) return [{ card_ID: 'cardN8n', claquete: 'X', status: '["FINALIZADO"]', designers: '[]', entregue: true, data_entrega: null, data_entrada: null }];
-      return [];
-    };
-    const env = { ...ENV, TEABLE_PG_ARTE_LEITURA: 'bseProd.producaoViva' };
-    const t = criarTrello(env, { consultar });
-    expect((await t.andamento([{ id: 'r1', card: 'cardN8n' }])).r1.status).toEqual(['FINALIZADO']);
-    await t.naProducao('Festa na Praça 19/11 SP');
-    expect(lidas.filter((s) => s.includes('"producao"'))).toHaveLength(0);
-    const { buscar, pedidos } = falsos();
-    const b = banco();
-    const consultar2 = async (sql: string, params: unknown[] = []) => (lidas.push(sql), b.consultar(sql, params));
-    await criarTrello(env, { buscar, consultar: consultar2, sftp: async () => {} }).enviar({ meta, doc: DOC, artes: ['X'], original });
-    expect(lidas.some((s) => s.includes('"bseProd"."producaoViva"') && s.includes('America/Sao_Paulo'))).toBe(true);
-    expect(pedidos.some((p) => p.url.pathname === '/api/table/tblProducao/record')).toBe(true);
-  });
-});
 
 describe('checklist com mais de um tipo', () => {
   it('a arte com dois tipos vira dois itens; com um tipo (ou sem), um item; a que já existe fica de fora', async () => {
@@ -995,13 +1006,10 @@ describe('complexidade da arte na versão nova (V2): recalcula a do card quando 
     expect(patch?.campos).toMatchObject({ artes: 'A GRANDE FESTA | SÁBADO' });
   });
 
-  it('o campo não configurado: só a produção da arte é atualizada (também lendo de outra base, pelo card)', async () => {
+  it('o campo não configurado: só a produção da arte é atualizada', async () => {
     const { pedidos, patch } = await enviarV2(ENV, 1, [{ texto: 'SÁBADO', complexidade: 3 }]);
     expect(pedidos.filter((p) => p.metodo === 'PUT' && p.url.pathname.includes('/customField/'))).toEqual([]);
     expect(patch?.campos).toMatchObject({ complexidade: 3 });
-    const outraBase = await enviarV2({ ...ENV, TEABLE_PG_ARTE_LEITURA: 'bseProd.producaoViva' }, 1, [{ texto: 'SÁBADO', complexidade: 2 }]);
-    expect(outraBase.patch?.rota).toContain('/record/recP1');
-    expect(outraBase.patch?.campos).toMatchObject({ complexidade: 2 });
   });
 
   it('sessão de filme: vale a maior entre a do card do filme e a da revisão', async () => {
@@ -1024,69 +1032,19 @@ describe('complexidade da arte na versão nova (V2): recalcula a do card quando 
   });
 });
 
-describe('agenda por entrega: o /api/andamento com a leitura apontada para a base que parou (bug do e93af72)', () => {
-  // o formato que a ARTE_producao devolve de verdade: status em lista, entregue booleano, as datas em UTC
-  const DONA = { card_ID: 'cardDona', claquete: 'DONA 25-11', status: ['FINALIZADO'], designers: null, entregue: true, data_entrega: new Date('2026-11-23T22:55:58Z'), data_entrada: new Date('2026-11-23T22:55:20.976Z') };
-  /** Duas bases: a velha (a do n8n antes da virada), que parou antes do card existir, e a do app, que tem o card. */
-  const duasBases = () => {
-    const lidas: string[] = [];
-    const consultar = async (sql: string, params: unknown[] = []) => {
-      lidas.push(sql);
-      if (sql.includes('"bseVelha"."producaoNQ"')) return [];
-      if (sql.includes('"bseBase"."producao"') && sql.includes('"designers"')) return [DONA].filter((l) => (params[0] as string[]).includes(l.card_ID));
-      return [];
-    };
-    return { consultar, lidas };
-  };
-
-  it('o card que não está na base de leitura é lido na produção do app, e o aviso diz o que mudar', async () => {
-    const { consultar, lidas } = duasBases();
-    const trello = criarTrello({ ...ENV, TEABLE_PG_ARTE_LEITURA: 'bseVelha.producaoNQ' }, { consultar });
-    const db = abrirBanco(':memory:');
-    const servidor = createServer(criarApp({ db, env: {}, trello }));
-    await new Promise<void>((ok) => servidor.listen(0, ok));
-    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
-    const ana = (caminho: string, init: RequestInit = {}) =>
-      fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com', 'content-type': 'application/json', ...init.headers } });
-    const avisos: string[] = [];
-    const warn = console.warn;
-    console.warn = (...a: unknown[]) => void avisos.push(a.join(' '));
-    try {
-      await ana('/api/roteiros/rot-dona', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'DONA 25-11', dataExibicao: '2026-11-25' }, doc: { type: 'doc', content: [] } }, nArtes: 1 }) });
-      db.prepare('INSERT INTO envios (roteiro_id, estado, card_id, url, em) VALUES (?, ?, ?, ?, ?)').run('rot-dona', 'enviado', 'cardDona', 'https://trello.com/c/cardDona', '2026-11-23T22:55:00Z');
-      const r = await ana('/api/andamento');
-      expect(r.status).toBe(200);
-      expect((await r.json())['rot-dona']).toEqual({ status: ['FINALIZADO'], designers: [], entregue: true, entrega: '2026-11-23T22:55:58.000Z', entrada: '2026-11-23T22:55:20.976Z', claquete: 'DONA 25-11' });
-      expect(lidas.some((s) => s.includes('"bseVelha"."producaoNQ"'))).toBe(true);
-      expect(avisos.join('\n')).toMatch(/TEABLE_PG_ARTE_LEITURA/);
-      // e a agenda por entrega, com a fila e o andamento como chegam ao navegador: o card fica no dia 23, entregue
-      const { montarSemana } = await import('../src/ui/fila');
-      const lista = await (await ana('/api/roteiros')).json();
-      const andamento = await (await ana('/api/andamento')).json();
-      // na quarta 25, a semana por entrega começa ontem (24): o dia 23 fica na semana anterior
-      const s = montarSemana(lista, andamento, new Date(2026, 10, 25, 15, 0), -1, 'entrega');
-      const dia = s.dias.find((d) => d.cards.some((c) => c.r.id === 'rot-dona'))!;
-      const card = dia.cards.find((c) => c.r.id === 'rot-dona')!;
-      expect([dia.iso, card.etapa, card.aEntregar, s.entregues, s.aEntregar]).toEqual(['2026-11-23', 'entregue', false, 1, 0]);
-    } finally {
-      console.warn = warn;
-      servidor.close();
-    }
-  });
-
-  it('a conferência acusa a base de leitura que parou', async () => {
-    const consultar = async (sql: string, params: unknown[] = []) => {
-      if (sql.includes('information_schema')) return ['card_ID', 'claquete', 'key', 'status', 'designers', 'entregue', 'data_entrega', 'data_entrada', 'artes', 'texto', 'doc', 'redator', 'editor', 'atracao', 'filme'].map((column_name) => ({ column_name, p: params }));
-      if (sql.includes('max("data_entrada")')) return [{ ultima: new Date(Date.now() - (sql.includes('bseVelha') ? 4 * 86_400_000 : 3600_000)) }];
+describe('a conferência da produção da arte', () => {
+  it('acusa a produção da arte que parou (a base escolhida não é a em que o n8n grava)', async () => {
+    const colunas = ['card_ID', 'claquete', 'key', 'status', 'data_entrada', 'artes_quantidade', 'artes', 'texto', 'doc', 'redator', 'editor', 'designers', 'entregue', 'data_entrega', 'praca', 'arquivado', 'filme', 'atracao', 'complexidade'];
+    const comUltima = (dias: number) => async (sql: string) => {
+      if (sql.includes('information_schema')) return colunas.map((column_name) => ({ column_name }));
+      if (sql.includes('max("data_entrada")')) return [{ ultima: new Date(Date.now() - dias * 86_400_000) }];
       if (sql.includes('count(*)')) return [{ n: 7 }];
       return [];
     };
-    const t = criarTrello({ ...ENV, TRELLO_KEY: '', TEABLE_PG_ARTE_LEITURA: 'bseVelha.producaoNQ' }, { consultar });
-    const leitura = (await t.conferir()).find((i: { item: string }) => i.item === 'Postgres: leitura');
-    expect(leitura.ok).toBe(false);
-    expect(leitura.detalhe).toMatch(/TEABLE_PG_ARTE_LEITURA/);
-    // a mesma base (variável vazia): nada a acusar
-    const mesma = (await criarTrello({ ...ENV, TRELLO_KEY: '' }, { consultar }).conferir()).find((i: { item: string }) => i.item === 'Postgres: leitura');
-    expect(mesma.ok).toBe(true);
+    const producao = async (dias: number) => (await criarTrello({ ...ENV, TRELLO_KEY: '' }, { consultar: comUltima(dias) }).conferir()).find((i: { item: string }) => i.item === 'Postgres: producao');
+    const parou = await producao(4);
+    expect(parou.ok).toBe(false);
+    expect(parou.detalhe).toMatch(/Conexões/);
+    expect((await producao(0.1)).ok).toBe(true);
   });
 });

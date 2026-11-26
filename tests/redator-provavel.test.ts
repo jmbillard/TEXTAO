@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { criarRedatorProvavel, redatorDoHistorico } from '../servidor/redator.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 /* O redator provável pelas últimas claquetes da atração (ARTE_producao): a regra e a rota. */
 
@@ -60,7 +62,7 @@ describe('a regra do histórico', () => {
   });
 });
 
-const ENV = { TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseBase', TEABLE_PG_ARTE: 'producao' };
+const ENV = { TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseBase', ...comTabelas({ ARTE_producao: 'producao' }) };
 
 /** O Postgres do Teable, de mentira: a ARTE_producao com o vínculo da atração em JSON, como o Teable grava. */
 function falso() {

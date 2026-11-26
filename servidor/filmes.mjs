@@ -3,6 +3,7 @@
    (em disco) e a fila de leitura, que manda uma página por vez para o mesmo webhook que o FilmeBOT usava,
    sem mudar o que ele recebe e devolve. O endereço do webhook vem do ambiente: este repositório é público. */
 
+import { tabelaNoPg } from './tabelas-do-teable.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -217,8 +218,8 @@ const diaEmBrasilia = (v) => {
 };
 
 /**
- * A conferência dos filmes lidos com o banco: TEABLE_PG_FILMES (a tabela de filmes) liga; TEABLE_PG_EXIBICOES
- * (o card que já existe) e TEABLE_PG_ACERVO (as artes que o filme já tem) completam.
+ * A conferência dos filmes lidos com o banco: a tabela filmes liga; a exibicoes (o card que já existe) e a
+ * ARTES_acervo (as artes que o filme já tem) completam. Os nomes no Postgres vêm do Teable (env.tabelas).
  * @param consultar (sql, params) => linhas, no Postgres do Teable
  */
 function criarConferencia(env, consultar) {
@@ -227,7 +228,7 @@ function criarConferencia(env, consultar) {
     const nome = nomesDoPg(env, v).tabela;
     return esquema && NOME_SQL.test(esquema) && nome && NOME_SQL.test(nome) ? `"${esquema}"."${nome}"` : null;
   };
-  const t = { filmes: tabela(env.TEABLE_PG_FILMES), exibicoes: tabela(env.TEABLE_PG_EXIBICOES), acervo: tabela(env.TEABLE_PG_ACERVO) };
+  const t = { filmes: tabela(tabelaNoPg(env, 'filmes')), exibicoes: tabela(tabelaNoPg(env, 'exibicoes')), acervo: tabela(tabelaNoPg(env, 'ARTES_acervo')) };
   if (!consultar || !t.filmes) return null;
 
   // o banco de filmes inteiro (alguns milhares), guardado por 1 min

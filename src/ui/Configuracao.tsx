@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { conferirConfiguracao, lerConfiguracao, salvarConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoFilmes, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
+import { conferirConfiguracao, lerBasesDoTeable, lerConfiguracao, lerQuadrosDoTrello, salvarConfiguracao, trocarConexao, type ConexoesDaConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoFilmes, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
 import {
   CHAVE_DO_CAMPO,
   FLUXOS_DO_N8N,
@@ -9,6 +9,7 @@ import {
   chaveDa,
   desfazerAMao,
   estadoDasPracas,
+  nomeComparavel,
   oQueMuda,
   pracasNovas,
   type ConferenciaDasPracas,
@@ -33,6 +34,7 @@ import {
   type NumeroDosFilmes,
 } from '../modelo/ligarOsFilmes';
 import { reconhecerPraca, type Praca, type RegraDaPraca } from '../modelo/pracas';
+import { TABELAS_DO_TEABLE } from '../modelo/tabelasDoTeable';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { useTelaDeCelular } from './faixa';
@@ -46,7 +48,10 @@ import './configuracao.css';
    do mesmo jeito: os campos do card, as opções da prioridade e da complexidade e a lista do VT, ligados pelo nome;
    trocar um campo limpa as opções dele (o nome liga as do campo novo). A seção Filmes (#75) também: a praça dos cards
    de filme é escolhida entre as praças; a lista, a etiqueta de todos e a de cada sessão ligam pelo nome; os números da
-   leitura da prévia ficam no "ver tudo". A barra salva as seções juntas. No celular, só consulta. */
+   leitura da prévia ficam no "ver tudo". A barra salva as seções juntas. Conexões (#76), recolhida no fim: o quadro do
+   Trello e a base do Teable; trocar pede o nome do novo, digitado, e o PROMeiro liga tudo de novo pelo nome. As
+   tabelas do Teable são achadas sozinhas: só a que falta (ou a coluna que falta) aparece, num aviso no topo. No
+   celular, só consulta. */
 
 interface Props {
   voltar: () => void;
@@ -133,6 +138,8 @@ export function Configuracao({ voltar, avisar }: Props) {
   const [nova, setNova] = useState<Nova | null>(null);
   // as praças salvas agora que o n8n ainda não conhece (o aviso fica até sair da tela)
   const [n8nPendente, setN8nPendente] = useState<string[]>([]);
+  const [conexoesAbertas, setConexoesAbertas] = useState(false);
+  const [trocando, setTrocando] = useState<'quadro' | 'base' | null>(null);
 
   const fecharEscolha = useCallback(() => setEscolha(null), []);
   const fecharEscolhaCard = useCallback(() => setEscolhaCard(null), []);
@@ -277,6 +284,7 @@ export function Configuracao({ voltar, avisar }: Props) {
           </span>
         </div>
         {celular && <p className="cfg-so-consulta">No celular, só consulta. Mudar é no computador.</p>}
+        {secoes && <AvisoDoTopo conexoes={secoes.conexoes} abrir={() => setConexoesAbertas(true)} />}
         {falha ? (
           <p className="cfg-falha" role="alert">
             {falha} <button className="botao-texto" onClick={carregar}>Tentar de novo</button>
@@ -331,6 +339,7 @@ export function Configuracao({ voltar, avisar }: Props) {
             desfazer={desfazerNosFilmes}
             mudar={mudarFilmes}
           />
+          <SecaoDasConexoes conexoes={secoes.conexoes} aberta={conexoesAbertas} alternar={() => setConexoesAbertas((v) => !v)} podeMudar={!celular} trocar={setTrocando} />
           </>
         )}
       </main>
@@ -362,6 +371,21 @@ export function Configuracao({ voltar, avisar }: Props) {
       )}
       {escolhaFilmes && quadro && rascunhoFilmes && (
         <EscolherNosFilmes escolha={escolhaFilmes} quadro={quadro} rascunho={rascunhoFilmes} estado={estadoFilmes} ligar={(id) => ligarNosFilmes(escolhaFilmes.chave, id)} fechar={fecharEscolhaFilmes} />
+      )}
+      {trocando && secoes && (
+        <DialogoDeTrocar
+          o={trocando}
+          conexoes={secoes.conexoes}
+          voltar={() => setTrocando(null)}
+          trocou={(s) => {
+            receber(s);
+            setTrocando(null);
+            setNova(null);
+            setEditando(null);
+            const excecoes = s.pracas.estado?.excecoes.length ?? 0;
+            avisar(trocando === 'quadro' ? `Quadro trocado: tudo ligado de novo pelo nome${excecoes ? '. Veja as exceções.' : '.'}` : 'Base trocada: as tabelas foram achadas de novo pelo nome.');
+          }}
+        />
       )}
       {conferencia && <DialogoDeConferir conferencia={conferencia} novas={novas} voltar={() => setConferencia(null)} salvar={() => void salvar()} />}
     </div>
@@ -1453,6 +1477,204 @@ function DialogoDeConferir({
           <button type="button" className="botao primario" disabled={!r?.ok || (conferencia.estado === 'pronta' && conferencia.salvando)} onClick={salvar}>
             {conferencia.estado === 'pronta' && conferencia.salvando ? 'Salvando…' : 'Salvar'}
           </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- as Conexões (#76) ---------- */
+
+/** O aviso do topo: a tabela que não está na base, ou a coluna que o código usa e a tabela não tem. */
+function AvisoDoTopo({ conexoes, abrir }: { conexoes: ConexoesDaConfiguracao; abrir: () => void }) {
+  if (!conexoes.avisos.length) return null;
+  return (
+    <div className="cfg-aviso-topo" role="alert">
+      <Icone nome="atencao" tam={16} traco={2.2} />
+      <span className="cfg-aviso-topo-texto">
+        <b>{conexoes.avisos.length === 1 ? conexoes.avisos[0].texto : `${conexoes.avisos.length} problemas nas tabelas do Teable`}</b>
+        {conexoes.avisos.length > 1 && (
+          <ul>
+            {conexoes.avisos.map((a) => (
+              <li key={a.tabela + a.texto}>{a.texto}</li>
+            ))}
+          </ul>
+        )}
+        <small>O que usa {conexoes.avisos.length === 1 ? 'essa tabela' : 'essas tabelas'} não funciona direito até o Teable ter o que falta.</small>
+      </span>
+      <button type="button" className="botao-texto" onClick={abrir}>
+        ver as tabelas
+      </button>
+    </div>
+  );
+}
+
+const AJUDA_DAS_CONEXOES =
+  'O quadro do Trello e a base do Teable em que o PROMeiro trabalha. As tabelas são achadas pelo nome na base; o nome delas no Postgres vem do próprio Teable. Trocar o quadro ou a base liga tudo de novo pelo nome. O n8n continua com os ids dele.';
+const COMO_A_TABELA: Record<string, string> = { variavel: 'pelo id do Portainer', lembrado: 'pelo id (renomeada no Teable)', nome: 'achada pelo nome' };
+
+function SecaoDasConexoes({ conexoes, aberta, alternar, podeMudar, trocar }: { conexoes: ConexoesDaConfiguracao; aberta: boolean; alternar: () => void; podeMudar: boolean; trocar: (o: 'quadro' | 'base') => void }) {
+  const achadas = conexoes.tabelas.filter((t) => t.id).length;
+  const resumo = [conexoes.quadro ? `Trello: ${conexoes.quadro.nome || 'quadro sem nome'}` : 'Trello: sem quadro', conexoes.base ? `Teable: ${conexoes.base.nome || conexoes.base.id}` : 'Teable: sem base'].join(' · ');
+  return (
+    <section className="cfg-secao cfg-conexoes" aria-labelledby="cfg-conexoes" data-secao="conexoes">
+      <header className="cfg-secao-topo">
+        <h2 id="cfg-conexoes">Conexões</h2>
+        <Ajuda texto={AJUDA_DAS_CONEXOES} />
+        <span className={`cfg-estado ${conexoes.avisos.length || conexoes.foraDoAr || !conexoes.quadro ? 'tem' : 'ok'}`}>{resumo}</span>
+        <span className="espaco" />
+        <button type="button" className="cfg-ver-tudo" aria-expanded={aberta} onClick={alternar}>
+          {aberta ? 'esconder' : 'abrir'} <Icone nome="baixo" tam={13} style={{ transform: aberta ? 'rotate(180deg)' : undefined }} />
+        </button>
+      </header>
+      {aberta && (
+        <div className="cfg-secao-corpo">
+          <div className="cfg-con-l">
+            <span className="cfg-con-ico" aria-hidden>
+              <Icone nome="quadro" tam={15} />
+            </span>
+            <span className="cfg-con-texto">
+              <b>Quadro do Trello</b>
+              <small>{conexoes.quadro ? `${conexoes.quadro.nome || conexoes.quadro.id}${conexoes.quadro.de === 'lista' ? ' · achado pela lista de uma praça' : ''}` : (conexoes.erroDoQuadro ?? 'não sei qual é o quadro')}</small>
+            </span>
+            {podeMudar && (
+              <button type="button" className="botao" onClick={() => trocar('quadro')}>
+                Trocar…
+              </button>
+            )}
+          </div>
+          <div className="cfg-con-l">
+            <span className="cfg-con-ico" aria-hidden>
+              <Icone nome="arquivo" tam={15} />
+            </span>
+            <span className="cfg-con-texto">
+              <b>Base do Teable</b>
+              <small>
+                {conexoes.semTeable ?? (conexoes.base ? `${conexoes.base.nome || conexoes.base.id} · ${plural(achadas, 'tabela achada', 'tabelas achadas')} pelo nome` : 'nenhuma base escolhida')}
+                {conexoes.foraDoAr && ` · o Teable não respondeu: valem as tabelas da última leitura${conexoes.lidasEm ? ` (${new Date(conexoes.lidasEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })})` : ''}`}
+              </small>
+            </span>
+            {podeMudar && (
+              <button type="button" className="botao" disabled={!!conexoes.foraDoAr || !!conexoes.semTeable} onClick={() => trocar('base')}>
+                Trocar…
+              </button>
+            )}
+          </div>
+          {conexoes.tabelas.length > 0 && (
+            <div className="cfg-tudo cfg-tabelas" role="list" aria-label="Tabelas do Teable">
+              {conexoes.tabelas.map((t) => {
+                const doMapa = TABELAS_DO_TEABLE.find((x) => x.nome === t.nome);
+                const aviso = conexoes.avisos.some((a) => a.tabela === t.nome);
+                return (
+                  <div className={`cfg-tudo-l ${aviso ? 'com-aviso' : ''}`} role="listitem" key={t.nome}>
+                    <span className="cfg-tudo-rotulo">{doMapa?.titulo ?? t.nome}</span>
+                    <span className="cfg-tudo-valor">{t.id ? <code>{t.pg || t.nomeLido}</code> : <em>{t.problema === 'dobro' ? 'em dobro' : doMapa?.opcional ? 'não há (não é usada)' : 'não achada'}</em>}</span>
+                    <span className="cfg-tudo-como">{t.id ? COMO_A_TABELA[t.como] : ''}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Trocar o quadro ou a base: escolher o novo e digitar o nome dele (a confirmação forte). */
+function DialogoDeTrocar({ o, conexoes, voltar, trocou }: { o: 'quadro' | 'base'; conexoes: ConexoesDaConfiguracao; voltar: () => void; trocou: (s: SecoesDaConfiguracao) => void }) {
+  const [opcoes, setOpcoes] = useState<{ id: string; nome: string }[] | null>(null);
+  const [falha, setFalha] = useState('');
+  const [escolhido, setEscolhido] = useState<{ id: string; nome: string } | null>(null);
+  const [digitado, setDigitado] = useState('');
+  const [trocandoAgora, setTrocandoAgora] = useState(false);
+  const atual = o === 'quadro' ? conexoes.quadro?.id : conexoes.base?.id;
+  useEffect(() => {
+    (o === 'quadro' ? lerQuadrosDoTrello() : lerBasesDoTeable()).then(setOpcoes, (e) => setFalha(e instanceof Error ? e.message : String(e)));
+  }, [o]);
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && !trocandoAgora && voltar();
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [voltar, trocandoAgora]);
+  const confere = !!escolhido && nomeComparavel(digitado) !== '' && nomeComparavel(digitado) === nomeComparavel(escolhido.nome);
+  const confirmar = async () => {
+    if (!escolhido || !confere) return;
+    setTrocandoAgora(true);
+    setFalha('');
+    try {
+      trocou(await trocarConexao(o === 'quadro' ? { quadro: escolhido.id, confirmacao: digitado } : { base: escolhido.id, confirmacao: digitado }));
+    } catch (e) {
+      setFalha(e instanceof Error ? e.message : String(e));
+      setTrocandoAgora(false);
+    }
+  };
+  const outras = (opcoes ?? []).filter((x) => x.id !== atual);
+  const qual = o === 'quadro' ? 'o quadro' : 'a base';
+  return (
+    <div className="cfg-veu">
+      <div className="cfg-modal cfg-trocar" role="dialog" aria-modal="true" aria-labelledby="cfg-trocar-titulo">
+        <div className="cfg-modal-corpo">
+          <span className="cfg-modal-rotulo">Trocar {qual}</span>
+          <h2 id="cfg-trocar-titulo">{escolhido ? <>Para <em>{escolhido.nome}</em>?</> : o === 'quadro' ? 'Qual quadro?' : 'Qual base?'}</h2>
+          {!opcoes && !falha && <p className="cfg-lendo">Lendo {o === 'quadro' ? 'os quadros do Trello' : 'as bases do Teable'}…</p>}
+          {opcoes && !escolhido && (
+            outras.length ? (
+              <ul className="cfg-escolher-conexao">
+                {outras.map((x) => (
+                  <li key={x.id}>
+                    <button type="button" onClick={() => setEscolhido(x)}>
+                      <Icone nome={o === 'quadro' ? 'quadro' : 'arquivo'} tam={15} /> {x.nome || x.id}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="cfg-lendo">{o === 'quadro' ? 'O token do Trello não enxerga outro quadro.' : 'O token do Teable não enxerga outra base.'}</p>
+            )
+          )}
+          {escolhido && (
+            <>
+              <p className="cfg-alerta" role="note">
+                {o === 'quadro' ? (
+                  <>
+                    <b>Tudo é ligado de novo pelo nome</b> no quadro novo: listas, campos, opções e etiquetas. O que o nome não achar vira exceção. O n8n continua no antigo.
+                  </>
+                ) : (
+                  <>
+                    <b>As tabelas são achadas de novo pelo nome</b> na base nova. A que faltar aparece no aviso do topo. O n8n continua na antiga.
+                  </>
+                )}
+              </p>
+              <div className="cfg-digitar">
+                <label htmlFor="cfg-digitar">
+                  Escreva <b>{escolhido.nome}</b> para confirmar
+                </label>
+                <input id="cfg-digitar" value={digitado} autoComplete="off" autoFocus onChange={(e) => setDigitado(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void confirmar()} />
+              </div>
+            </>
+          )}
+          {falha && (
+            <p className="cfg-falha" role="alert">
+              {falha}
+            </p>
+          )}
+        </div>
+        <footer>
+          {escolhido && !trocandoAgora && (
+            <button type="button" className="botao-texto" onClick={() => (setEscolhido(null), setDigitado(''))}>
+              escolher outro
+            </button>
+          )}
+          <span className="espaco" />
+          <button type="button" className="botao" disabled={trocandoAgora} onClick={voltar}>
+            Cancelar
+          </button>
+          {escolhido && (
+            <button type="button" className="botao perigoso" disabled={!confere || trocandoAgora} onClick={() => void confirmar()}>
+              {trocandoAgora ? 'Trocando…' : 'Trocar'}
+            </button>
+          )}
         </footer>
       </div>
     </div>

@@ -7,6 +7,8 @@ import { abrirBanco, criarApp } from '../servidor/app.mjs';
 import { criarTrello } from '../servidor/trello.mjs';
 import { normalizarPraca, reconhecerPraca, type Praca } from '../src/modelo/pracas';
 import type { Ligacao, LigacoesDasPracas } from '../src/modelo/ligarPeloNome';
+// @ts-expect-error módulo JS sem tipos
+import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 
 /* A seção Praças da Configuração (#72) pela API, com o Trello de mentira: o quadro, as listas e o campo Praça são
    fictícios. Só administradores (CADASTRO_ADMINS). Nada é salvo sem passar pela conferência. */
@@ -105,7 +107,9 @@ async function comServidor(env: Record<string, string> = PORTAINER, producao: Li
   const falso = trelloFalso();
   // só a leitura das claquetes recentes da produção responde; o resto (a produção de hoje, o redator) vem vazio
   const consultar = async (sql: string) => (/"claquete", "data_entrada" FROM/.test(sql) && /now\(\) -/.test(sql) ? producao : []);
-  const app = criarApp({ db: abrirBanco(':memory:'), env, trello: (e: Record<string, string>) => criarTrello(e, { buscar: falso.buscar, consultar }) });
+  // a ARTE_producao no Postgres vem do Teable (#76), quando o teste dá o endereço dele
+  const app = criarApp({ db: abrirBanco(':memory:'), env, buscarNoTeable: teableFalso({ ARTE_producao: 'producao' }, { base: 'promo' }), trello: (e: Record<string, string>) => criarTrello(e, { buscar: falso.buscar, consultar }) });
+  await app.tabelasProntas;
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   fechar = async () => {
@@ -281,7 +285,7 @@ describe('a praça nova', () => {
       { claquete: 'JOGO 2/12', data_entrada: diasAtras(2) },
       { claquete: 'FESTA 1/12 SP', data_entrada: diasAtras(1) },
     ];
-    const { chefe, falso, guardar } = await comServidor({ ...PORTAINER, TEABLE_PG_ESQUEMA: 'promo', TEABLE_PG_ARTE: 'producao' }, producao);
+    const { chefe, falso, guardar } = await comServidor({ ...PORTAINER, TEABLE_PG_ESQUEMA: 'promo', ...TEABLE_FALSO }, producao);
     await guardar('BAILE 3/12 MG'); // o mesmo da produção: conta uma vez só
     await guardar('RIO SHOW 4/12 MG'); // do Rio: a regra do RJ vem antes
     await guardar('CHEF 5/12 MG');

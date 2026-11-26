@@ -17,9 +17,10 @@
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN). A data de modificação de cada linha
  * (__last_modified_time, que o Teable mantém em toda tabela) diz se alguém mexeu nela depois de uma importação.
  */
+import { tabelaNoPg } from './tabelas-do-teable.mjs';
 import { acervoDaAtracao } from './cadastros.mjs';
 import { avisosDaImportacao, classificar, pastaMaisComum } from './importacao-do-acervo.mjs';
-import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
+import { abrirPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 import { nivelDeComplexidade, SEM_CAMINHO } from './trello.mjs';
 
@@ -63,9 +64,8 @@ function arteDoItem(item, filme) {
 }
 
 /**
- * @param env TEABLE_ACERVO (id da tabela, para gravar), TEABLE_PG_ACERVO (nome no Postgres, para ler),
- *   TEABLE_PG_URL, TEABLE_PG_ESQUEMA, TEABLE_PG_ATRACOES, TEABLE_PG_ARTE, TEABLE_URL, TEABLE_TOKEN,
- *   e TEABLE_PG_EXIBICOES (filme + sessão + dia + card da prévia), para as sessões de filme
+ * @param env TEABLE_ACERVO (id da tabela, para gravar), TEABLE_PG_URL, TEABLE_PG_ESQUEMA, TEABLE_URL, TEABLE_TOKEN e as
+ *   tabelas descobertas no Teable (env.tabelas: ARTES_acervo, atracoes, ARTE_producao e exibicoes, para as sessões)
  * @param deps.consultar (sql, params) => linhas (sem ele, abre o Postgres com deps.abrirPg ou abrirPg); deps.buscar fetch;
  *   deps.artesDoCard (card) => itens dos checklists
  */
@@ -73,15 +73,13 @@ export function criarAcervo(env, deps = {}) {
   const esquema = nomesDoPg(env, '').esquema;
   const tabela = (nome) => (esquema && nome ? `"${esquema}"."${nome}"` : null);
   const t = {
-    acervo: tabela(nomeLimpoPg(env.TEABLE_PG_ACERVO)),
-    atracoes: tabela(nomeLimpoPg(env.TEABLE_PG_ATRACOES)),
-    producao: tabela(nomeLimpoPg(env.TEABLE_PG_ARTE)),
-    exibicoes: tabela(nomeLimpoPg(env.TEABLE_PG_EXIBICOES)),
+    acervo: tabela(tabelaNoPg(env, 'ARTES_acervo')),
+    atracoes: tabela(tabelaNoPg(env, 'atracoes')),
+    producao: tabela(tabelaNoPg(env, 'ARTE_producao')),
+    exibicoes: tabela(tabelaNoPg(env, 'exibicoes')),
   };
-  // os roteiros enviados (as artes da produção da arte), para a grafia da importação: na convivência com o n8n, a
-  // base de leitura (TEABLE_PG_ARTE_LEITURA, "esquema.tabela"), como o andamento; sem ela, a produção do app
-  const leitura = env.TEABLE_PG_ARTE_LEITURA ? nomesDoPg(env, env.TEABLE_PG_ARTE_LEITURA) : null;
-  t.roteiros = leitura?.esquema && leitura.tabela ? `"${leitura.esquema}"."${leitura.tabela}"` : t.producao;
+  // os roteiros enviados (as artes da produção da arte), para a grafia da importação
+  t.roteiros = t.producao;
   const api = { url: (env.TEABLE_URL || '').replace(/\/+$/, ''), token: env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '', tabela: env.TEABLE_ACERVO || '' };
   const buscar = deps.buscar ?? fetch;
   let banco = null;
@@ -449,7 +447,7 @@ export function criarAcervo(env, deps = {}) {
    * @returns { antes, depois, novas, ganharamTipo, renomeadas: [{ id, antes, depois }], semMudanca }
    */
   async function gravarImportacao(atracao, csv, escolhas = {}, { anotar = () => {}, regras = {}, lembrar = () => {}, confirmouAtracao = false } = {}) {
-    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
+    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (a tabela ARTES_acervo na base do Teable).');
     const id = await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
     esquecer();
@@ -556,7 +554,7 @@ export function criarAcervo(env, deps = {}) {
    * @returns { antes, depois, novas, ganharamTipo, renomeadas, semMudanca }
    */
   async function retomarImportacao(registro, { anotar = () => {} } = {}) {
-    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
+    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (a tabela ARTES_acervo na base do Teable).');
     esquecer();
     adotar(registro, await linhasDa(registro.atracao));
     await executar(registro, anotar);
@@ -572,7 +570,7 @@ export function criarAcervo(env, deps = {}) {
    *   ("continua no acervo", "não voltou a “X”", "o tipo não voltou")
    */
   async function desfazerImportacao(registro) {
-    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
+    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (a tabela ARTES_acervo na base do Teable).');
     esquecer();
     const linhas = await linhasDa(registro.atracao);
     adotar(registro, linhas);
@@ -615,7 +613,7 @@ export function criarAcervo(env, deps = {}) {
 
   /** Pacote gráfico novo: todas as artes da atração saem do acervo (apagadas). @returns quantas */
   async function zerar(atracao) {
-    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
+    if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (a tabela ARTES_acervo na base do Teable).');
     esquecer();
     const n = nomeComparavel(atracao);
     const ids = (await todas()).filter((l) => !l.filmeId && nomeComparavel(l.atracao) === n).map((l) => l.id);

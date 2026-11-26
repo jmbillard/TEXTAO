@@ -6,6 +6,8 @@ import { criarAcervo } from '../servidor/acervo.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 import { avisosDaImportacao, classificar, comoRegras, conferir, emLote, regrasDasDecisoes, type Escolhas, type LinhaDaImportacao, type RegraLembrada } from '../servidor/importacao-do-acervo.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 /* A importação do acervo por CSV (#58): a função pura que converte cada arquivo do CSV da pasta de output numa arte e
    classifica a linha contra o acervo da atração. Os casos são fictícios, no formato dos CSVs já importados à mão. */
@@ -622,9 +624,7 @@ const ENV = {
   TEABLE_ACERVO: 'tblAcervo',
   TEABLE_PG_URL: 'postgres://x',
   TEABLE_PG_ESQUEMA: 'bseBase',
-  TEABLE_PG_ACERVO: 'acervo',
-  TEABLE_PG_ATRACOES: 'atracoes',
-  TEABLE_PG_ARTE: 'producao',
+  ...comTabelas({ ARTES_acervo: 'acervo', atracoes: 'atracoes', ARTE_producao: 'producao' }),
 };
 const PROGRAMA = { id: 'recProg', title: 'Programa Fictício' };
 type LinhaDoTeable = { id: string; arte: string; tipo: string | null; caminho?: string | null; atracao: { id: string; title: string }[]; claquete: unknown[]; filme: null | { id: string; title: string }; modificado?: string };

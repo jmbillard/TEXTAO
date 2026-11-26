@@ -31,7 +31,9 @@ const LIA = 'lia.moraes@exemplo.com';
 const BRUNO = 'bruno.teixeira@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 /** O Postgres do Teable falso, com os nomes de tabela inventados dos testes de tests/filmes.test.ts. */
-const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', TEABLE_PG_FILMES: 'filmes_teste', TEABLE_PG_EXIBICOES: 'exibicoes_teste', TEABLE_PG_ACERVO: 'acervo_teste' };
+// as tabelas no Postgres vêm do Teable (#76): o Teable de mentira da descoberta tem estas, com estes nomes
+const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'token-falso' };
+const NO_POSTGRES = { filmes: 'filmes_teste', exibicoes: 'exibicoes_teste', ARTES_acervo: 'acervo_teste' };
 const ENV = { N8N_FILMES_LER: 'http://n8n.falso/webhook/ler-pagina', FILMES_INTERVALO_MS: '0', ...PG };
 /** O banco de filmes fictício: o Kong bate (pronto), o Corvo tem dois candidatos (qual filme?) e o Rivais, outro ano. */
 const BANCO = [
@@ -296,7 +298,8 @@ async function principal() {
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-previas-'));
   const { criarFilmes } = await import(join(RAIZ, 'servidor', 'filmes.mjs'));
   const leitura = leituraFalsa(filmesDaPagina);
-  const s = await subir({ env: ENV, filmes: (env, deps) => criarFilmes(env, { ...deps, pasta, buscar: leitura.buscar, consultar }) });
+  const { teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
+  const s = await subir({ env: ENV, teable: teableFalso(NO_POSTGRES, { base: 'bse_teste' }), filmes: (env, deps) => criarFilmes(env, { ...deps, pasta, buscar: leitura.buscar, consultar }) });
   const navegador = await chromium.launch();
   try {
     const pdfA = await pdfDaPrevia([['KONG: ILHA DA CAVEIRA', 'O CORVO'], ['RIVAIS', 'FILME INEDITO FICTICIO']], 'A');

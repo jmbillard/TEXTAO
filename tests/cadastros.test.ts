@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarCadastros, normalizarKey } from '../servidor/cadastros.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 const ENV = {
   TEABLE_URL: 'http://teable:3000',
@@ -264,7 +266,7 @@ describe('Sem cadastro depois de cadastrar a atração', () => {
     ajeitar();
     const consultar = async () =>
       tabelas.tblAtr.map((r) => ({ atracao: r.fields.atracao, categoria: r.fields.categoria ?? null, pattern: espelho.get(r.id) ?? null }));
-    const env = { ...ENV, TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseX', TEABLE_PG_ATRACOES: 'atracoes' };
+    const env = { ...ENV, TEABLE_PG_URL: 'postgres://x', TEABLE_PG_ESQUEMA: 'bseX', ...comTabelas({ atracoes: 'atracoes' }) };
     const vocabulario = criarVocabulario(env, buscar, null, null, consultar);
     const c = criarCadastros(ENV, { buscar, vocabulario });
     const claquetes = [

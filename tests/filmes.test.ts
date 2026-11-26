@@ -12,6 +12,8 @@ import { criarFilmes } from '../servidor/filmes.mjs';
 import { criarTrello } from '../servidor/trello.mjs';
 import referencia from './fixtures/cards-de-filme.json';
 import referenciaDaTarde from './fixtures/card-da-sessao-da-tarde.json';
+// @ts-expect-error módulo JS sem tipos
+import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 /* A aba Filmes pela API do servidor: a leitura por IA do n8n é falsa; o resto é o de verdade (banco em memória,
    imagens numa pasta temporária). O endereço do n8n é inventado: o de verdade fica só nas variáveis do servidor. */
@@ -195,7 +197,7 @@ describe('aba Filmes: quando a leitura falha ou o servidor reinicia', () => {
 /* ---------- a conferência com o banco ---------- */
 /* O Postgres do Teable falso: responde pelo nome da tabela que aparece no SQL (nomes inventados). Devolve as linhas
    como o Teable guarda: vínculos como { id, title } e a data da exibição em UTC (meia-noite de Brasília = 03:00Z). */
-const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', TEABLE_PG_FILMES: 'filmes_teste', TEABLE_PG_EXIBICOES: 'exibicoes_teste', TEABLE_PG_ACERVO: 'acervo_teste' };
+const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', ...comTabelas({ filmes: 'filmes_teste', exibicoes: 'exibicoes_teste', ARTES_acervo: 'acervo_teste' }) };
 type FilmeDoBanco = { __id: string; titulo: string; ano_de_producao: number | null; projeto_win?: string; projeto_mac?: string; output_win?: string; output_mac?: string; poster?: { name: string; token: string }[] | null };
 type ExibicaoDoBanco = { filme: { id: string; title: string }; sessao: { id: string; title: string }; data_de_exibicao: string; card_ID: string; link: string; labels: string[] | null; exibicao?: string };
 type ArteDoAcervo = { arte: string; filme: { id: string; title: string } };
@@ -388,7 +390,7 @@ describe('aba Filmes: resolver o que pede atenção', () => {
    de referência gravado do fluxo CARDS (tests/fixtures/cards-de-filme.json). */
 const ENVIO = {
   ...PG,
-  TEABLE_PG_ATRACOES: 'atracoes_teste',
+  tabelas: { ...PG.tabelas, atracoes: { id: '', pg: 'atracoes_teste' } },
   TRELLO_KEY: 'k',
   TRELLO_TOKEN: 't',
   TRELLO_LISTA: 'listaRoteiros',

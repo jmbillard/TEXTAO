@@ -101,8 +101,8 @@ const ENV_TRELLO = {
   TRELLO_LISTA_ENTREGUES: 'entregues',
   TEABLE_PG_URL: 'postgres://falso',
   TEABLE_PG_ESQUEMA: 'bseFalso',
-  TEABLE_PG_ARTE: 'producao',
-  TEABLE_PG_ACERVO: 'acervo',
+  // os nomes no Postgres, como a descoberta das tabelas do Teable (#76) acharia
+  tabelas: { ARTE_producao: { id: '', pg: 'producao' }, ARTES_acervo: { id: '', pg: 'acervo' } },
 };
 /** O Trello de mentira: só o GET de um card (a lista não lê o Trello; qualquer outro pedido derruba o teste). */
 const pedidosAoTrello = [];
