@@ -18,11 +18,11 @@ const resposta = (status, dados) => ({ ok: status < 400, status, json: async () 
  *   opcoes.registros { [tabela]: [{ id, fields }] } as linhas (o array é o mesmo: o teste vê o que foi gravado)
  * @returns fetch, com `.estado` (`fora = true` derruba o Teable; `pedidos` guarda o que foi pedido), `.consultar` e
  *   `.abrirPg` (o Postgres do Teable: o SELECT de uma tabela da base devolve as linhas dela, com o "__id", sem olhar o
- *   WHERE; `estado.consultas` guarda o SQL)
+ *   WHERE; `estado.consultas` guarda o SQL e `estado.parametros`, os parâmetros de cada uma)
  */
 export function teableFalso(nomes, opcoes = {}) {
   const bases = { [opcoes.base ?? 'bseFalso']: { nome: opcoes.nomeDaBase ?? 'Base falsa', nomes, faltando: opcoes.faltando ?? {}, ids: opcoes.ids ?? {} }, ...(opcoes.bases ?? {}) };
-  const estado = { fora: false, pedidos: [], consultas: [] };
+  const estado = { fora: false, pedidos: [], consultas: [], parametros: [] };
   const idDe = (b, nome) => bases[b].ids?.[nome] ?? `tblFalso_${b}_${nome}`;
   const buscar = async (endereco, init = {}) => {
     const url = new URL(endereco);
@@ -84,14 +84,15 @@ export function teableFalso(nomes, opcoes = {}) {
     return resposta(404, { message: `rota falsa sem resposta: ${url.pathname}` });
   };
   buscar.estado = estado;
-  buscar.consultar = async (sql) => {
+  buscar.consultar = async (sql, params = []) => {
     estado.consultas.push(sql);
+    estado.parametros.push(params);
     if (estado.fora) throw new Error('connect ECONNREFUSED (Teable fora do ar)');
     const m = /FROM\s+"([^"]+)"\."([^"]+)"/i.exec(sql);
     const base = m && bases[m[1]];
     const nome = base && Object.keys(base.nomes).find((n) => base.nomes[n] === m[2]);
     return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...r.fields }));
   };
-  buscar.abrirPg = async () => ({ query: async (sql) => ({ rows: await buscar.consultar(sql) }), end: async () => {} });
+  buscar.abrirPg = async () => ({ query: async (sql, params) => ({ rows: await buscar.consultar(sql, params) }), end: async () => {} });
   return buscar;
 }

@@ -21,11 +21,11 @@
 // achadas pelo nome, com o nome no Postgres que o Teable deu), trocar o quadro com o nome digitado (o errado não deixa)
 // e o PROMeiro ligando tudo de novo pelo nome no quadro novo (a INTER, que lá não tem listas, vira exceção); e o aviso
 // no topo quando uma tabela não tem uma coluna que o código usa.
-// A seção Pessoas (#77), claro e escuro: o pontinho no menu do perfil quando há novidade no quadro; a nova no quadro
-// (os membros do quadro falso × a tabela designers do Teable falso) tornada administradora com o e-mail digitado e
-// cadastrada como designer (grava no Teable falso); os administradores no "ver tudo" (a chave-mestra, "você", não dá
-// para tirar a si mesmo); quem saiu do quadro ignorado (vai para o "ver tudo"), desfeito, tirado de administrador e
-// marcado inativo (grava no Teable falso). No celular, só consulta.
+// A seção Pessoas (#77), claro e escuro: o pontinho no menu do perfil quando há novidade; quem apareceu na produção
+// (os designers da produção da arte falsa × a tabela designers do Teable falso; nada do Trello, ADR 0006) tornada
+// administradora com o e-mail digitado e cadastrada como designer (grava no Teable falso); os administradores no "ver
+// tudo" (a chave-mestra, "você", não dá para tirar a si mesmo); o designer sem produção ignorado (vai para o "ver
+// tudo"), desfeito, tirado de administrador e marcado inativo (grava no Teable falso). No celular, só consulta.
 // O Histórico (#78), claro e escuro: pelo rodapé da Configuração; as mudanças (Pessoas e Praças, pela API como a tela
 // faz) com quem, quando e o antigo → o novo pelos nomes; voltar travado (a lista antiga foi arquivada) com o porquê;
 // voltar que vale na hora e entra no histórico. No celular, só consulta.
@@ -161,12 +161,9 @@ const QUADROS = {
     etiquetas: () => ETIQUETAS.map(comoNovo),
   },
 };
-// os membros do quadro (#77): nomes e e-mails fictícios; a tabela designers do Teable falso está em DESIGNERS
-const MEMBROS = [
-  { id: 'mLia', fullName: 'Lia Moraes' },
-  { id: 'mBia', fullName: 'Bia Sampaio' },
-  { id: 'mCaio', fullName: 'Caio Brandão' },
-];
+// quem aparece na produção da arte (#77, ADR 0006): nomes fictícios; a tabela designers do Teable falso está em DESIGNERS
+const NA_PRODUCAO = ['Lia Moraes', 'Bia Sampaio', 'Caio Brandão'];
+const BIA_ENTROU = 'entrou:BIA SAMPAIO';
 const OTAVIO = 'otavio.lins@exemplo.com';
 const BIA = 'bia.sampaio@exemplo.com';
 const designersDoComeco = () => [
@@ -202,7 +199,6 @@ async function buscar(url, init = {}) {
     if (doQuadro[2] === '/lists') return ok(q.listas());
     if (doQuadro[2] === '/customFields') return ok(q.campos());
     if (doQuadro[2] === '/labels') return ok(q.etiquetas());
-    if (doQuadro[2] === '/members') return ok(MEMBROS);
   }
   throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
 }
@@ -851,11 +847,11 @@ async function conexoes(navegador, url, app, teable, tema) {
 
 const PESSOAS = '.cfg-secao[data-secao="pessoas"]';
 const novidades = (p) => textos(p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto strong`));
-/** A tabela designers e os administradores do começo, nada ignorado, e o quadro olhado de novo. Otávio (que saiu do
-    quadro) é administrador salvo na tela. */
+/** A tabela designers e os administradores do começo, nada ignorado, e a produção olhada de novo. Otávio (sem
+    produção) é administrador salvo na tela. */
 async function recomecarPessoas(app, url) {
   DESIGNERS.splice(0, DESIGNERS.length, ...designersDoComeco());
-  for (const chave of ['entrou:mBia', 'saiu:recOtavio'])
+  for (const chave of [BIA_ENTROU, 'saiu:recOtavio'])
     await fetch(new URL('/api/configuracao/pessoas', url), { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ acao: 'desfazer', chave }) });
   await app.mudarConfiguracao({ ADMINISTRADORES: JSON.stringify([OTAVIO]) }).antigaFechada;
   await app.verificarPessoas();
@@ -867,21 +863,21 @@ async function pessoas(navegador, url, app, tema) {
   const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema }, { hash: '' });
   assert.equal(await fundoEscuro(p), tema === 'dark');
 
-  // o pontinho no menu do perfil: há novidade no quadro
+  // o pontinho no menu do perfil: há novidade nas Pessoas
   await p.locator('.perfil-botao.com-novidade').waitFor();
   await p.locator('.perfil-botao').click();
   const item = p.locator('.perfil-painel .perfil-link', { hasText: 'Configuração' });
   assert.equal(await item.locator('.perfil-ponto').count(), 1);
-  assert.equal((await item.locator('small').textContent()).trim(), '2 novidades no quadro');
+  assert.equal((await item.locator('small').textContent()).trim(), '2 novidades nas Pessoas');
   await capturar(p, `50-pessoas-pontinho-${nome}`);
   await item.click();
 
-  // as novidades: quem entrou no quadro e não é designer; o designer ativo que saiu (a inativa não conta)
+  // as novidades: quem aparece na produção e não é designer; o designer ativo sem produção (a inativa não conta)
   await p.locator(`${PESSOAS} .cfg-exc`).first().waitFor();
-  assert.equal(await resumo(p, PESSOAS), '2 administradores · 2 novidades no quadro');
-  assert.deepEqual(await novidades(p), ['Bia Sampaio entrou no quadro', 'Otávio Lins saiu do quadro']);
-  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto span`)), ['sem e-mail no Trello', `designer ativo · ${OTAVIO} · administrador`]);
-  const bia = p.locator(`${PESSOAS} .cfg-exc[data-chave="entrou:mBia"]`);
+  assert.equal(await resumo(p, PESSOAS), '2 administradores · 2 novidades');
+  assert.deepEqual(await novidades(p), ['Bia Sampaio apareceu na produção', 'Otávio Lins sem produção há 60 dias']);
+  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto span`)), ['não é designer', `designer ativo · ${OTAVIO} · administrador`]);
+  const bia = p.locator(`${PESSOAS} .cfg-exc[data-chave="${BIA_ENTROU}"]`);
   const otavio = p.locator(`${PESSOAS} .cfg-exc[data-chave="saiu:recOtavio"]`);
   assert.deepEqual(await textos(bia.locator('button')), ['Cadastrar como designer', 'Tornar admin', 'ignorar']);
   assert.deepEqual(await textos(otavio.locator('button')), ['Marcar inativo', 'Tirar de admin', 'ignorar']);
@@ -889,22 +885,22 @@ async function pessoas(navegador, url, app, tema) {
   await p.locator(PESSOAS).scrollIntoViewIfNeeded();
   await capturar(p, `51-pessoas-novidades-${nome}`);
 
-  // tornar administradora: o Trello não deu o e-mail, então ele é pedido
+  // tornar administradora: ninguém com o nome dela entrou no PROMeiro, então o e-mail é pedido
   await bia.locator('.botao', { hasText: 'Tornar admin' }).click();
   await bia.locator('input[type="email"]').fill(BIA);
   await capturar(p, `52-pessoas-email-${nome}`);
   await bia.locator('form .botao.primario').click();
   await p.locator('.aviso', { hasText: 'agora é administrador' }).waitFor();
-  assert.deepEqual(await textos(bia.locator('.cfg-exc-texto span')), ['sem e-mail no Trello · já é administrador']);
+  assert.deepEqual(await textos(bia.locator('.cfg-exc-texto span')), ['não é designer · já é administrador']);
   assert.equal(await bia.locator('.botao', { hasText: 'Tornar admin' }).count(), 0);
   // vale na hora no app inteiro (sem a Bia entrar no PROMeiro: entrando, o nome dela já daria o e-mail)
   assert.equal(app.modulos().cadastros.podeApagar(BIA), true, 'vale na hora no app inteiro');
 
-  // cadastrar como designer: grava no Teable (ativo, o id do membro, o nome e o e-mail digitado)
+  // cadastrar como designer: grava no Teable (ativo, o nome e o e-mail digitado)
   await bia.locator('.botao', { hasText: 'Cadastrar como designer' }).click();
   await p.locator('.aviso', { hasText: 'cadastrado como designer' }).waitFor();
-  assert.deepEqual(DESIGNERS.at(-1).fields, { designer: 'Bia Sampaio', status: 'ativo', designer_ID: 'mBia', email: BIA });
-  assert.deepEqual(await novidades(p), ['Otávio Lins saiu do quadro']);
+  assert.deepEqual(DESIGNERS.at(-1).fields, { designer: 'Bia Sampaio', status: 'ativo', email: BIA });
+  assert.deepEqual(await novidades(p), ['Otávio Lins sem produção há 60 dias']);
 
   // ver tudo: os administradores, com a chave-mestra e "você"; não dá para tirar a si mesmo
   await p.locator(`${PESSOAS} .cfg-ver-tudo`).click();
@@ -917,18 +913,18 @@ async function pessoas(navegador, url, app, tema) {
   await semRolagemDeLado(p, `pessoas ${nome}, ver tudo`);
   await capturar(p, `53-pessoas-administradores-${nome}`);
 
-  // ignorar quem saiu: sai das novidades e vai para o ver tudo, até desfazer
+  // ignorar quem está sem produção: sai das novidades e vai para o ver tudo, até desfazer
   await otavio.locator('.botao-texto', { hasText: 'ignorar' }).click();
   await p.locator('.aviso', { hasText: 'ignorado' }).waitFor();
   assert.equal(await p.locator(`${PESSOAS} .cfg-exc`).count(), 0);
   assert.equal(await resumo(p, PESSOAS), '3 administradores');
-  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-tudo-l[data-chave="saiu:recOtavio"] > span`)).then((t) => t.slice(0, 2)), ['Otávio Lins', 'saiu do quadro']);
+  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-tudo-l[data-chave="saiu:recOtavio"] > span`)).then((t) => t.slice(0, 2)), ['Otávio Lins', 'sem produção há 60 dias']);
   assert.equal((await p.evaluate(() => fetch('/api/eu').then((r) => r.json()))).novidades, 0, 'sem novidade, sem pontinho');
   await capturar(p, `54-pessoas-ignoradas-${nome}`);
   await p.locator(`${PESSOAS} .cfg-tudo-l[data-chave="saiu:recOtavio"] .botao-texto`, { hasText: 'desfazer' }).click();
   await otavio.waitFor();
 
-  // quem saiu: tirar de administrador e marcar inativo (grava no Teable)
+  // quem está sem produção: tirar de administrador e marcar inativo (grava no Teable)
   await otavio.locator('.botao', { hasText: 'Tirar de admin' }).click();
   await p.locator('.aviso', { hasText: 'não é mais administrador' }).waitFor();
   assert.equal(await otavio.locator('.botao', { hasText: 'Tirar de admin' }).count(), 0);
@@ -939,7 +935,7 @@ async function pessoas(navegador, url, app, tema) {
   assert.equal(await p.locator(`${PESSOAS} .cfg-exc`).count(), 0);
   assert.deepEqual(erros, [], `pessoas ${nome}: erros na página`);
   await ctx.close();
-  console.log(`ok: pessoas ${nome}: o pontinho, a nova no quadro tornada administradora e cadastrada, os administradores, ignorar e desfazer, tirar de administrador e marcar inativo`);
+  console.log(`ok: pessoas ${nome}: o pontinho, a que apareceu na produção tornada administradora e cadastrada, os administradores, ignorar e desfazer, tirar de administrador e marcar inativo`);
 }
 
 async function pessoasNoCelular(navegador, url, app, tema) {
@@ -948,7 +944,7 @@ async function pessoasNoCelular(navegador, url, app, tema) {
   const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
   const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema });
   await p.locator(`${PESSOAS} .cfg-exc`).first().waitFor();
-  assert.deepEqual(await novidades(p), ['Bia Sampaio entrou no quadro', 'Otávio Lins saiu do quadro']);
+  assert.deepEqual(await novidades(p), ['Bia Sampaio apareceu na produção', 'Otávio Lins sem produção há 60 dias']);
   // só consulta: nada de cadastrar, ignorar, tirar ou pôr administrador
   assert.equal(await p.locator(`${PESSOAS} button:not(.cfg-ver-tudo):not(.cfg-ajuda button)`).count(), 0);
   await p.locator(PESSOAS).scrollIntoViewIfNeeded();
@@ -1220,7 +1216,13 @@ async function principal() {
   const faltando = {};
   const naBase = Object.fromEntries(TABELAS_DO_TEABLE.filter((t) => !t.opcional || t.nome === 'EDICAO_producao').map((t, i) => [t.nome, `${t.nome.toLowerCase()}_x${i}`]));
   const teable = Object.assign(teableFalso(naBase, { faltando, registros: { designers: DESIGNERS } }), { faltando });
-  const s = await subir({ trello: { env: ENV_TRELLO, buscar, viva: true }, env: { CADASTRO_ADMINS: LIA, TEABLE_PG_ESQUEMA: 'bseFalso', ...TEABLE_FALSO }, cadastros, teable });
+  // o Postgres do Teable: só quem aparece na produção da arte (as Pessoas); o resto vem vazio, como antes
+  const recente = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const consultar = async (sql) => {
+    if (teable.estado.fora) throw new Error('connect ECONNREFUSED (Teable fora do ar)');
+    return /SELECT "designers", "data_entrada"/.test(sql) ? NA_PRODUCAO.map((nome) => ({ designers: JSON.stringify([nome]), data_entrada: recente })) : [];
+  };
+  const s = await subir({ trello: { env: ENV_TRELLO, buscar, viva: true, consultar }, env: { CADASTRO_ADMINS: LIA, TEABLE_PG_ESQUEMA: 'bseFalso', ...TEABLE_FALSO }, cadastros, teable });
   // o convite do tour da revisão não aparece na fila (as duas já viram)
   for (const email of [LIA, OUTRA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
   const navegador = await chromium.launch();

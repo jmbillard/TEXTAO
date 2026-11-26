@@ -48,6 +48,8 @@ faz o meio; a escolha entre um token por designer e um token de serviço fica pa
 
 ## A fundação (#86–#88): a Produção, os eventos e o aviso do Trello
 
+(O aviso do Trello e a recuperação estão desligados por enquanto: veja a última seção.)
+
 A spec #85 tirou a primeira etapa (o espelho). A unidade é a **Produção**, com id próprio do PROMeiro (UUID), no SQLite
 com SQL comum ao Postgres; o card do Trello e o registro do Teable são referências opcionais. A carga inicial vem só da
 produção da arte do Teable (o Trello tem muito lixo), idempotente pelo registro, sem eventos passados. O Trello avisa o
@@ -62,3 +64,18 @@ card avulso, e a carga vem do Teable), só o aviso ao vivo cria. O n8n continua 
 
 A **linha do tempo** (#89) é a leitura desses eventos, para qualquer pessoa logada (não só administradores: é o trabalho
 que a equipe toda já vê no card do Trello), sem os ids do Trello; a agenda e as Duplicadas a leem só quando o card abre.
+
+## Por enquanto, o PROMeiro só ESCREVE no Trello; lê do Teable
+
+Decisão do usuário, valendo já: "tudo enviado para o Trello, mas nada pego do Trello; tem que pegar do Teable", no que
+for viável sem impactar a produção. O envio continua igual (card, checklist, campos, anexos, o card da semana). O que o
+PROMeiro lê vem da produção da arte do Teable, a fonte oficial: os **eventos da Produção** nascem de uma releitura de
+minuto em minuto das linhas que o Teable mudou (`__last_modified_time`), comparadas com a Produção guardada, com uma
+chave estável por evento (registro + tipo + campo + valor + quando) e sem `quem` (o Teable não diz; quem grava lá é o
+n8n); as Duplicadas mostram só o que a produção tem; as novidades das **Pessoas** saem dos designers que aparecem na
+produção (e o "saiu" é o designer ativo sem produção há 60 dias). O aviso do Trello (#87) e a recuperação das ações do
+quadro (#88) ficam no código, **desligados** (`TRELLO_AVISO`): sem ele, nenhum webhook é registrado e a rota responde
+404; ligado, a releitura não roda (uma fonte de eventos por vez). Continuam lidas no Trello só as leituras de que o
+envio depende (as listas, os campos, as opções e as etiquetas do quadro; o card que o PROMeiro vai mudar; o card do
+filme de onde o card novo copia membros e campos) e, até o Teable ter o dado, o andamento dos cards de filme e o
+checklist das prévias (os cards de filme não entram na produção da arte, ADR 0001).

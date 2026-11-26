@@ -4,15 +4,15 @@
  *
  * A lista e o contador saem só da produção da arte (ARTE_producao, lida pelo Postgres do Teable como o andamento): as
  * linhas com card_ID que não são de filme e entraram no período (data_entrada), abertas e arquivadas (coluna
- * arquivado). A leitura fica guardada por alguns minutos. A lista não lê o Trello: um card qualquer do quadro, que não
- * é de roteiro, não vira caso. Só o caso aberto lê do Trello o que só ele tem (lista, membros, anexos, checklist, se
- * está arquivado), pelo card_ID de cada card do caso; o card que não existe mais lá aparece como "não está mais no
- * Trello". O agrupamento e a sugestão de quem sai são o módulo puro src/modelo/duplicadas.ts.
+ * arquivado). A leitura fica guardada por alguns minutos. Nada é lido do Trello (ADR 0006: por enquanto o PROMeiro só
+ * ESCREVE no Trello; lê do Teable): nem a lista (um card qualquer do quadro, que não é de roteiro, não vira caso) nem o
+ * caso aberto, que mostra só o que a produção da arte tem (e o link do card, feito do card_ID). O agrupamento e a
+ * sugestão de quem sai são o módulo puro src/modelo/duplicadas.ts.
  *
  * Ignorar e reabrir (#66) só anotam no registro do PROMeiro (servidor/registro-das-duplicadas.mjs): o caso ignorado
  * sai da lista e vai para Resolvidas, e volta sozinho quando entra card novo no grupo. Nada muda no Trello nem no Teable.
  */
-import { cardDaLinha, duplicadasDaProducao, linhasDoPeriodo, sugestaoDoCaso } from '../src/modelo/duplicadas.ts';
+import { duplicadasDaProducao, linhasDoPeriodo } from '../src/modelo/duplicadas.ts';
 import { chaveDaClaquete, semAcento } from '../src/modelo/vocabularios.ts';
 import { pracasDaConfiguracao } from '../src/modelo/pracas.ts';
 
@@ -24,34 +24,17 @@ const ID_DO_CARD = /^[0-9a-f]{24}$/i;
 /** Quando o card foi criado: os 8 primeiros caracteres do id são o segundo da criação (null quando não é id do Trello). */
 export const criadoEm = (id) => (ID_DO_CARD.test(String(id)) ? parseInt(String(id).slice(0, 8), 16) * 1000 : null);
 
-/** "1 PDF, 2 imagens" a partir dos tipos dos anexos; sem anexo, ''. */
-export function resumoDosAnexos(anexos) {
-  const n = { pdf: 0, imagem: 0, outro: 0 };
-  for (const a of anexos ?? []) {
-    const tipo = String(a?.mimeType ?? '');
-    const nome = String(a?.name ?? '');
-    if (/pdf/i.test(tipo) || /\.pdf$/i.test(nome)) n.pdf++;
-    else if (/^image\//i.test(tipo) || /\.(png|jpe?g|gif|webp)$/i.test(nome)) n.imagem++;
-    else n.outro++;
-  }
-  return [n.pdf && `${n.pdf} PDF`, n.imagem && `${n.imagem} ${n.imagem === 1 ? 'imagem' : 'imagens'}`, n.outro && `${n.outro} ${n.outro === 1 ? 'outro' : 'outros'}`].filter(Boolean).join(', ');
-}
-
 /**
- * @param deps.trello o cliente do Trello e da produção (`temProducao`, `producaoDoPeriodo`; `lerSeExistir` e `config` para
- *   o caso aberto)
+ * @param deps.trello o cliente da produção da arte (`temProducao`, `producaoDoPeriodo`; `config` para as praças)
  * @param deps.acervo o acervo de artes (`artesPorRegistro`)
  * @param deps.registro o registro das ações (servidor/registro-das-duplicadas.mjs): os casos ignorados saem da lista
  * @param deps.guardarMs por quanto tempo a leitura da produção vale (5 min)
  */
 export function criarDuplicadas({ trello, acervo, registro = null, guardarMs = 5 * 60_000 }) {
   const c = trello?.config ?? {};
-  // a aba precisa só da produção da arte; o Trello (chave e token) é só para o caso aberto
+  // a aba precisa só da produção da arte
   const ligado = !!(trello?.temProducao && trello.producaoDoPeriodo);
-  const leTrello = !!(c.chave && c.token && trello?.lerSeExistir);
   const pracas = c.pracas ?? pracasDaConfiguracao();
-  const entradas = new Set([...pracas.map((p) => p.entrada), ...Object.values(c.listas ?? {})].filter(Boolean));
-  const saidas = new Set([...pracas.map((p) => p.saida), c.entregues].filter(Boolean));
 
   /* ---------- a produção do período, guardada por alguns minutos (uma leitura por período) ---------- */
   const guardadas = new Map(); // dias → { em, linhas } ou a promessa da leitura em curso
@@ -169,79 +152,45 @@ export function criarDuplicadas({ trello, acervo, registro = null, guardarMs = 5
     }
   }
 
-  /** O card no Trello, com o que só ele tem; null quando não existe mais lá; undefined sem o Trello configurado. */
-  async function noTrello(cardId) {
-    if (!leTrello) return undefined;
-    if (!ID_DO_CARD.test(cardId)) return null;
-    return trello.lerSeExistir(`/cards/${cardId}`, {
-      fields: 'id,idShort,name,closed,idList,idMembers,due,shortUrl,badges',
-      list: 'true',
-      list_fields: 'name',
-      attachments: 'true',
-      attachment_fields: 'name,mimeType',
-      members: 'true',
-      member_fields: 'fullName',
-    });
-  }
-
   /**
-   * Um caso aberto: as linhas da produção do caso, cada card lido no Trello pelo card_ID (só os do caso: lista,
-   * estado, anexos, membros, checklist), o acervo e a sugestão refeita com o que veio do Trello. O card que não existe
-   * mais no Trello vem com noTrello: false. O roteiro guardado no PROMeiro vem de quem chama (`roteiroDoCard`).
-   * null: o caso não está no período.
+   * Um caso aberto: as linhas da produção do caso (só o que o Teable tem: a claquete, o estado, as datas, o status, os
+   * designers, as artes), o acervo, o link do card (feito do card_ID, sem ler o Trello) e a sugestão, a mesma da lista.
+   * O roteiro guardado no PROMeiro vem de quem chama (`roteiroDoCard`). null: o caso não está no período.
    */
   async function detalhe(id, { dias = DIAS_PADRAO, roteiroDoCard = () => null } = {}) {
     if (!ligado) return null;
     const { lido, casos, porId } = await casosDo(dias, false);
     const caso = casos.find((k) => k.id === id);
     if (!caso) return null;
-    const [artes, lidos] = await Promise.all([artesNoAcervo(), Promise.all(caso.cards.map(noTrello))]);
-    const cards = caso.cards.map((cardId, i) => {
+    const artes = await artesNoAcervo();
+    const cards = caso.cards.map((cardId) => {
       const l = porId.get(cardId);
-      const x = lidos[i];
-      const membros = (x?.members ?? []).map((m) => String(m?.fullName ?? '')).filter(Boolean);
       const criado = criadoEm(cardId);
-      const daLinha = cardDaLinha(l);
       return {
         id: cardId,
-        // null: sem o Trello configurado (chave e token), não deu para ler
-        noTrello: x === undefined ? null : !!x,
-        numero: x && Number.isFinite(Number(x.idShort)) && x.idShort != null ? Number(x.idShort) : null,
-        nome: String(x?.name ?? ''),
         claquete: l.claquete,
-        lista: String(x?.list?.name ?? ''),
-        // o estado do Trello, quando o card está lá; senão, o da coluna arquivado
-        arquivado: x ? !!x.closed : l.arquivado,
+        arquivado: l.arquivado,
         criado: criado ? new Date(criado).toISOString() : null,
         entrada: l.entrada,
-        exibicao: x?.due ?? null,
+        entrega: l.entrega ?? null,
         status: l.status,
         designers: l.designers,
-        membros,
-        checklist: Number(x?.badges?.checkItems ?? 0),
-        anexos: resumoDosAnexos(x?.attachments),
+        artes: l.artesQuantidade ?? null,
         acervo: artes[l.registro] ?? 0,
         roteiro: roteiroDoCard(cardId),
-        url: String(x?.shortUrl || `https://trello.com/c/${cardId}`),
-        // os sinais da sugestão: os da linha, com o que o Trello diz por cima
-        sinais: {
-          ...daLinha,
-          ...(x ? { arquivado: !!x.closed, naEntrada: entradas.has(x.idList), saiu: daLinha.saiu || saidas.has(x.idList) } : {}),
-          pessoas: l.designers.length + membros.length,
-          sumiu: x === null,
-        },
+        url: `https://trello.com/c/${encodeURIComponent(cardId)}`,
+        motivo: caso.sugestao.motivos[cardId],
       };
     });
-    const sugestao = sugestaoDoCaso(cards.map((k) => k.sinais));
     return {
       id: caso.id,
-      claquete: cards.find((k) => k.id === sugestao.fica)?.claquete ?? '',
+      claquete: porId.get(caso.sugestao.fica)?.claquete ?? '',
       praca: caso.praca,
       versao: caso.versao,
       secao: caso.secao,
       lidoEm: lido.em,
-      sugestao: { fica: sugestao.fica, saem: sugestao.saem },
-      cards: cards.map(({ sinais, ...k }) => ({ ...k, motivo: sugestao.motivos[k.id] })),
+      sugestao: { fica: caso.sugestao.fica, saem: caso.sugestao.saem },
+      cards,
     };
   }
 

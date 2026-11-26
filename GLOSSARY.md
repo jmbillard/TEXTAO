@@ -199,22 +199,25 @@ Quem vê a Configuração, as Duplicadas, importa acervo e remove cadastros. É 
 (escolhido entre quem já entrou no PROMeiro, ou por um e-mail digitado). Ninguém tira a si mesmo.
 _Evitar_: admin (na tela, só em botões curtos), superusuário
 
-**Novidade no quadro**:
-Na seção **Pessoas**: o membro do quadro do Trello que não está na tabela designers do Teable ("entrou no quadro":
-cadastrar como designer, tornar administrador ou ignorar) e o designer ativo que não está mais no quadro ("saiu do
-quadro": marcar inativo, tirar de administrador ou ignorar). O designer é o membro pelo designer_ID (o id do membro no
-Trello) ou, sem ele, pelo nome. O PROMeiro olha ao abrir a Configuração e uma vez por dia; havendo novidade, os
-administradores veem um pontinho no menu do perfil. **Ignorar** vale até desfazer no "ver tudo". Os membros do quadro
-são a fonte por enquanto (ADR 0006).
-_Evitar_: membro novo, alerta
+**Novidade nas Pessoas**:
+Na seção **Pessoas**: quem aparece na produção da arte (a coluna designers das linhas dos últimos 60 dias) e não está
+na tabela designers do Teable ("apareceu na produção": cadastrar como designer, tornar administrador ou ignorar) e o
+designer ativo que não aparece em nenhuma produção desses 60 dias, a não ser o cadastrado depois disso ("sem produção
+há 60 dias": marcar inativo, tirar de administrador ou ignorar). O designer é a pessoa pelo nome (sem caixa, acento e
+pontuação). O PROMeiro olha ao abrir a Configuração e uma vez por dia; havendo novidade, os administradores veem um
+pontinho no menu do perfil. **Ignorar** vale até desfazer no "ver tudo". Nada do Trello (ADR 0006): antes, a fonte
+eram os membros do quadro.
+_Evitar_: membro novo, alerta, novidade no quadro
 
 **Duplicada**:
 Duas ou mais linhas da produção da arte (ARTE_producao), cada uma de um card, com a mesma claquete (pela key, sem
 acento, caixa e pontuação), a mesma praça (a da coluna da linha; sem ela, a que a claquete indica) e a mesma versão: um
 reenvio, um card criado à mão em cima de outro. Versões diferentes (-2, V2, B, Opção N) não são duplicadas. Só contam
-as linhas com card_ID, que não são de filme e que entraram no período (data_entrada), abertas e arquivadas: a lista
-não lê o quadro do Trello, porque um card qualquer do quadro (que não é de roteiro) não é duplicada. Só o caso aberto
-lê do Trello o que só ele tem, pelo card_ID dos cards do caso; o card apagado lá aparece como "não está mais no Trello".
+as linhas com card_ID, que não são de filme e que entraram no período (data_entrada), abertas e arquivadas: nada é
+lido do Trello (ADR 0006), nem na lista (um card qualquer do quadro, que não é de roteiro, não é duplicada) nem no caso
+aberto, que mostra só o que a produção tem (claquete, estado, entrada, entrega, status, designers, artes) e o link do
+card, feito do card_ID. A sugestão de quem sai é a mesma nos dois: arquivado na entrada, sem designers, entrou depois,
+não saiu.
 Cada grupo é um **caso**, que a aba Duplicadas dos Cadastros mostra só para administradores. **Ignorar** ("não é
 duplicada") tira o caso da lista sem mudar nada no Trello nem no Teable: ele vai para **Resolvidas** e para o
 **Registro** (quem fez o quê e quando, com o motivo), volta com **Reabrir** e volta sozinho quando entra card novo no
@@ -238,34 +241,36 @@ Onde a Produção está no fluxo: **Entrada** → **Produzindo** → **Entregue*
 produção da arte: arquivada vence tudo; entregue (ou o status FINALIZADO) é Entregue; com designer ou status de
 trabalho, Produzindo; senão, Entrada. O status detalhado (aguardando material, em aprovação, pedido de alteração…) não
 é etapa: é o **marcador** dentro de Produzindo.
-Com o aviso do Trello, a lista para onde o card foi diz a etapa: as entradas (das praças, a reserva, a do VT, a dos
-filmes) são Entrada; as saídas das praças e a dos entregues, Entregue; qualquer outra lista do quadro, Produzindo.
+Com o aviso do Trello (desligado por padrão, ADR 0006), a lista para onde o card foi diz a etapa: as entradas (das
+praças, a reserva, a do VT, a dos filmes) são Entrada; as saídas das praças e a dos entregues, Entregue; qualquer outra
+lista do quadro, Produzindo.
 _Evitar_: status, coluna, lista (a lista é do Trello)
 
 **Evento** (da Produção):
-O que aconteceu com a Produção, anotado no SQLite, com quem (o membro do Trello) e quando (a data da ação no Trello,
-não a da chegada). Os tipos:
-- **criada**: card novo no quadro (criado, copiado ou trazido de outro quadro) vira Produção;
-- **mudou de etapa** (antes → depois): o card foi para uma lista de outra etapa, ou a entrega do card foi marcada como
-  concluída (Entregue; desmarcada, volta à etapa da lista);
-- **arquivada** e **desarquivada**;
-- **designer entrou** e **designer saiu**: os membros do card. O membro vira o designer da tabela designers pelo
-  designer_ID (o id do membro no Trello) ou, sem ele, pelo nome; sem ligação, fica o nome do membro. Muda os
-  designers da Produção;
-- **arte marcada** e **arte desmarcada**: o item do checklist, pelo nome. Muda as artes marcadas da Produção;
-- **campo mudado** (antes → depois): a **prioridade**, a **complexidade** e a **praça** (os campos do card ligados na
-  Configuração, com a opção pelo nome; a praça pela sigla, e ela muda a praça da Produção) e a **entrega** (o prazo do
-  card, a data de entrega no Trello; fica só no histórico, como a prioridade e a complexidade).
-Vem do **aviso do Trello**: o webhook do quadro, que chama o PROMeiro direto (sem o n8n) na única rota fora do
-Cloudflare Access, e só vale com a assinatura do Trello. Cada evento guarda o id da ação do Trello, único: o mesmo aviso
-duas vezes não duplica. Aviso de outro quadro, ou de um card que não é Produção, é ignorado. O aviso atrasado (mais
-velho que o último evento da mesma família: a etapa, o mesmo designer, a mesma arte, o mesmo campo) entra no histórico,
-mas não muda a Produção. **Recuperar o que faltou**: na subida e de hora em hora (junto da conferência do webhook), o
-PROMeiro lê as ações do quadro desde o último evento (nunca antes de 30 dias, até 10 páginas de 1000) e passa pela mesma
-tradução: o que ficou de fora enquanto ele esteve fora do ar entra, e o que já tinha entrado não duplica. A recuperação
-não cria Produção: o card criado (ou copiado, ou trazido de outro quadro) que ela lê é ignorado se ainda não é Produção,
-porque o quadro tem muito card avulso e a carga vem do Teable; as ações lidas só viram eventos das Produções que já
-existem. Só o aviso ao vivo cria a Produção do card novo. As Produções da carga não têm eventos passados.
+O que aconteceu com a Produção, anotado no SQLite, com quando e, se a fonte diz, quem. A fonte, por enquanto, é a
+**produção da arte do Teable** (ADR 0006: o PROMeiro só escreve no Trello; lê do Teable). A **releitura**: de minuto em
+minuto, o PROMeiro lê as linhas que o Teable mudou desde a última vez (pela coluna `__last_modified_time`, até 2000 por
+vez, nunca antes de 30 dias, com 2 minutos de margem; a marca fica guardada no SQLite) e compara cada uma com a Produção
+guardada. Os tipos:
+- **criada**: a linha nova na produção da arte vira Produção (quando: a data de entrada);
+- **mudou de etapa** (antes → depois): a etapa pela regra da etapa mudou (designer ou status de trabalho, entregue ou
+  FINALIZADO);
+- **arquivada** e **desarquivada**: a coluna arquivado;
+- **designer entrou** e **designer saiu**: os nomes da coluna designers (sem caixa nem acento). Muda os designers da
+  Produção;
+- **campo mudado** (antes → depois): a **praça** (pela sigla; muda a praça da Produção), a **prioridade** e a
+  **complexidade** (pelo nome do nível: BAIXA, MÉDIA, ALTA). A Produção que ainda não guardava a prioridade e a
+  complexidade não ganha evento delas na primeira releitura.
+O quando é a modificação da linha no Teable; o quem fica vazio (o Teable não diz: quem grava lá é o n8n). Cada evento
+tem uma **chave** estável (registro + tipo + campo + valor + quando): a mesma linha relida duas vezes não duplica. As
+**artes marcadas** não viram evento pelo Teable (ele não sabe do checklist). As Produções da carga não têm eventos
+passados.
+**O aviso do Trello** (#87, #88), desligado por padrão (`TRELLO_AVISO`): o webhook do quadro, que chamava o PROMeiro
+direto na única rota fora do Cloudflare Access, com a assinatura do Trello, e a recuperação das ações do quadro desde o
+último evento. Ligado, ele é a fonte (e a releitura não roda): o quem é o membro do Trello, o quando é a data da ação,
+o id da ação não repete, e ele também traz a **arte marcada** e **desmarcada** (o item do checklist) e a **entrega** (o
+prazo do card); o card novo vira Produção só pelo aviso ao vivo, e o aviso atrasado (mais velho que o último da mesma
+família) fica no histórico sem mudar a Produção.
 _Evitar_: log, atividade, ação (a ação é do Trello)
 
 **Linha do tempo** (da Produção):
@@ -276,7 +281,8 @@ etapa é "voltou para a produção" ou "voltou para a entrada"; os campos são "
 "praça SP", "prazo 27/11 18h00". A Produção que já estava lá antes do primeiro evento começa por "na produção desde
 20/11"; sem eventos, mostra só o estado atual (desde quando está na produção e, se saiu, a entrega), e sem nada, nada.
 Aparece, discreta e só de leitura, no card aberto da agenda No Trello e na linha "Linha do tempo" do caso aberto das
-Duplicadas, também no celular, lida só quando o card (ou o caso) abre. Qualquer pessoa logada lê (é o trabalho que a
+Duplicadas, também no celular, lida só quando o card (ou o caso) abre. Os eventos vêm da releitura do Teable, sem
+quem (só o designer, que é o nome da coluna). Qualquer pessoa logada lê (é o trabalho que a
 equipe toda já vê no card do Trello), sem os ids do Trello; as Produções inteiras continuam só para administradores.
 _Evitar_: histórico (na tela), log, atividade. Não confundir com a linha do tempo das edições, no editor do roteiro
 (as versões dele).

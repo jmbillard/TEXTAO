@@ -824,16 +824,16 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  /** O PDF que está no card da produção da arte: o do link guardado no Teable, ou o último PDF anexado ao card. */
+  /**
+   * O PDF que está no card da produção da arte: o do link guardado no Teable (a coluna doc). Sem o link, nada: os
+   * anexos do card não são lidos no Trello (ADR 0006: o PROMeiro lê do Teable). O arquivo em si mora no Trello, e o
+   * download vai lá.
+   */
   async function pdfDaProducao(claquete) {
     if (!c.ligado) return null;
     const p = await naProducao(claquete);
     if (!p) return null;
-    let url = p.doc && /\.pdf($|\?)/i.test(p.doc) ? p.doc : '';
-    if (!url) {
-      const anexos = (await trello('GET', `/cards/${p.card}/attachments`).catch(() => [])) ?? [];
-      url = [...anexos].reverse().find((a) => /pdf/i.test(a.mimeType ?? '') || /\.pdf$/i.test(a.name ?? ''))?.url ?? '';
-    }
+    const url = p.doc && /\.pdf($|\?)/i.test(p.doc) ? p.doc : '';
     if (!url || !anexoConfiavel(url)) return null;
     const r = await buscar(url, {
       headers: { authorization: `OAuth oauth_consumer_key="${c.chave}", oauth_token="${c.token}"` },
@@ -945,6 +945,8 @@ export function criarTrello(env, deps = {}) {
     return x && typeof x === 'object' && x.id ? { id: String(x.id), titulo: String(x.title ?? x.name ?? '').trim() } : null;
   };
   const instante = (v) => (quando(v) ? new Date(v).toISOString() : null);
+  /** Um número da coluna, ou null (vazia ou o que não é número). */
+  const numeroOuNada = (v) => (v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
   const sim = (v) => v === true || v === 1 || /^(t|true|1|sim)$/i.test(String(v ?? '').trim());
 
   /**
@@ -955,7 +957,7 @@ export function criarTrello(env, deps = {}) {
     if (!t.producao || !consultar) return null;
     const ler = (tabela) =>
       sql(
-        `SELECT "__id" AS registro, "card_ID", "claquete", "praca", "data_entrada", "status", "arquivado", "designers", "entregue", "filme" FROM ${tabela}
+        `SELECT "__id" AS registro, "card_ID", "claquete", "praca", "data_entrada", "data_entrega", "status", "arquivado", "designers", "entregue", "filme", "artes_quantidade" FROM ${tabela}
          WHERE "data_entrada" >= now() - ($1 || ' days')::interval AND "card_ID" IS NOT NULL AND "card_ID" <> ''`,
         [String(dias | 0)],
       );
@@ -971,8 +973,36 @@ export function criarTrello(env, deps = {}) {
       status: lerLista(l.status),
       designers: lerLista(l.designers),
       entregue: sim(l.entregue),
+      // para o caso aberto (só o que o Teable tem, ADR 0006)
+      entrega: instante(l.data_entrega),
+      artesQuantidade: numeroOuNada(l.artes_quantidade),
     }));
   }
+
+  /** A linha da produção da arte como a carga e a releitura leem (src/modelo/eventosDoTeable.ts, LinhaRelida). */
+  const linhaDaCarga = (l) => ({
+    registro: String(l.__id),
+    card: String(l.card_ID ?? '').trim(),
+    claquete: String(l.claquete ?? '').trim(),
+    praca: String(lerLista(l.praca)[0] ?? '').trim(),
+    status: lerLista(l.status).map((s) => String(s).trim()).filter(Boolean),
+    designers: lerLista(l.designers).map((s) => String(s).trim()).filter(Boolean),
+    entregue: sim(l.entregue),
+    arquivado: sim(l.arquivado),
+    entrada: instante(l.data_entrada),
+    entrega: instante(l.data_entrega),
+    // as artes como a coluna traz (separadas por | ou por linha)
+    artes: String(l.artes ?? '').split(/\s*\|\s*|\n+/).map((s) => s.trim()).filter(Boolean),
+    artesQuantidade: numeroOuNada(l.artes_quantidade),
+    filme: primeiroLigado(l.filme),
+    // a prioridade (seleção ou texto) e a complexidade (1 a 3), para os eventos da releitura
+    prioridade: String(lerLista(l.prioridade)[0] ?? '').trim(),
+    complexidade: String(l.complexidade ?? '').trim(),
+    modificadoEm: instante(l.__last_modified_time),
+  });
+  // a prioridade pelo to_jsonb (a coluna pode não existir na base: vem null); __last_modified_time é do Teable (toda
+  // tabela tem)
+  const COLUNAS_DA_CARGA = `p."__id", p."card_ID", p."claquete", p."praca", p."status", p."designers", p."entregue", p."arquivado", p."data_entrada", p."data_entrega", p."artes", p."artes_quantidade", p."filme", p."complexidade", to_jsonb(p)->>'prioridade' AS "prioridade", p."__last_modified_time"`;
 
   /**
    * A produção da arte INTEIRA (a carga das Produções, #86): todas as linhas, abertas e arquivadas, com e sem card,
@@ -980,28 +1010,41 @@ export function criarTrello(env, deps = {}) {
    */
   async function producaoInteira() {
     if (!t.producao || !consultar) return null;
+    const linhas = await sql(`SELECT ${COLUNAS_DA_CARGA} FROM ${t.producao} p`, []);
+    return linhas.filter((l) => l.__id).map(linhaDaCarga);
+  }
+
+  /**
+   * As linhas da produção da arte que o Teable mudou desde `desde` (ISO), das mais velhas às mais novas, até `limite`
+   * (a releitura, ADR 0006: os eventos da Produção nascem do Teable). A próxima releitura continua da última lida.
+   * Sem a produção configurada, null; com o Postgres fora, lança.
+   */
+  async function producaoAlteradaDesde(desde, limite = 2000) {
+    if (!t.producao || !consultar) return null;
     const linhas = await sql(
-      `SELECT "__id", "card_ID", "claquete", "praca", "status", "designers", "entregue", "arquivado", "data_entrada", "data_entrega", "artes", "artes_quantidade", "filme" FROM ${t.producao}`,
-      [],
+      `SELECT ${COLUNAS_DA_CARGA} FROM ${t.producao} p WHERE p."__last_modified_time" >= $1::timestamptz ORDER BY p."__last_modified_time" LIMIT ${Math.min(5000, Math.max(1, limite | 0))}`,
+      [desde],
     );
-    return linhas
-      .filter((l) => l.__id)
-      .map((l) => ({
-        registro: String(l.__id),
-        card: String(l.card_ID ?? '').trim(),
-        claquete: String(l.claquete ?? '').trim(),
-        praca: String(lerLista(l.praca)[0] ?? '').trim(),
-        status: lerLista(l.status).map((s) => String(s).trim()).filter(Boolean),
-        designers: lerLista(l.designers).map((s) => String(s).trim()).filter(Boolean),
-        entregue: sim(l.entregue),
-        arquivado: sim(l.arquivado),
-        entrada: instante(l.data_entrada),
-        entrega: instante(l.data_entrega),
-        // as artes como a coluna traz (separadas por | ou por linha)
-        artes: String(l.artes ?? '').split(/\s*\|\s*|\n+/).map((s) => s.trim()).filter(Boolean),
-        artesQuantidade: Number.isFinite(Number(l.artes_quantidade)) && l.artes_quantidade !== null && l.artes_quantidade !== '' ? Number(l.artes_quantidade) : null,
-        filme: primeiroLigado(l.filme),
-      }));
+    return linhas.filter((l) => l.__id).map(linhaDaCarga);
+  }
+
+  /**
+   * Os designers que aparecem na produção da arte das linhas que entraram nos últimos `dias` dias (a seção Pessoas:
+   * as novidades vêm do Teable, não do quadro do Trello), cada um com a entrada mais recente: [{ nome, ultima }].
+   * Sem a produção configurada, null; com o Postgres fora, lança.
+   */
+  async function designersDaProducao(dias) {
+    if (!t.producao || !consultar) return null;
+    const linhas = await sql(`SELECT "designers", "data_entrada" FROM ${t.producao} WHERE "data_entrada" >= now() - ($1 || ' days')::interval`, [String(dias | 0)]);
+    const porNome = new Map();
+    for (const l of linhas)
+      for (const nome of lerLista(l.designers).map((x) => String(x).trim()).filter(Boolean)) {
+        const chave = nomeComparavel(nome);
+        const ultima = instante(l.data_entrada);
+        const ja = porNome.get(chave);
+        if (!ja || (ultima && (!ja.ultima || ultima > ja.ultima))) porNome.set(chave, { nome, ultima });
+      }
+    return [...porNome.values()];
   }
 
   /** As exibições com card (a carga das Produções): card → { data, filme }. Sem a tabela, vazio. */
@@ -1238,5 +1281,5 @@ export function criarTrello(env, deps = {}) {
     apagar: (id) => trello('DELETE', `/webhooks/${encodeURIComponent(id)}`),
   };
 
-  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoInteira, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

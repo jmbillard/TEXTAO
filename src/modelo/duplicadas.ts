@@ -3,9 +3,9 @@ import { alternativa, normalizarPraca, palavrasDoFim, pracasRegistradas, reconhe
 
 /* Claquetes duplicadas: as linhas da produção da arte (ARTE_producao) com a mesma claquete, praça e versão. A regra do
    relatório "PROMO: CLAQUETES DUPLICADAS" do n8n, com a chave da claquete do PROMeiro (`chaveDaClaquete`, a da fórmula
-   do Teable). Versões diferentes (-2, V2, B, Opção N) não contam como duplicadas. A lista sai só da produção (não do
-   quadro do Trello: um card qualquer do quadro, que não é de roteiro, não é caso). Módulo puro: o servidor lê a
-   produção (e, no caso aberto, os cards dele no Trello) e chama daqui. */
+   do Teable). Versões diferentes (-2, V2, B, Opção N) não contam como duplicadas. A lista e o caso aberto saem só da
+   produção (não do quadro do Trello: um card qualquer do quadro, que não é de roteiro, não é caso; e o PROMeiro não lê
+   o Trello, ADR 0006). Módulo puro: o servidor lê a produção e chama daqui. */
 
 /** Uma linha da produção da arte, com o que o agrupamento e a sugestão precisam. */
 export interface LinhaDaProducao {
@@ -25,24 +25,25 @@ export interface LinhaDaProducao {
   status: string[];
   designers: string[];
   entregue: boolean;
+  /** data_entrega (ISO), para o caso aberto */
+  entrega?: string | null;
+  /** artes_quantidade, para o caso aberto */
+  artesQuantidade?: number | null;
 }
 
-/** Um card do caso, com os sinais da sugestão. Na lista, sai só da linha; no caso aberto, também do Trello. */
+/** Um card do caso, com os sinais da sugestão: saem da linha da produção. */
 export interface CardDoCaso {
   /** o card_ID */
   id: string;
   arquivado: boolean;
-  /** ainda na entrada: na lista, a linha sem andamento (sem status ou só ENTRADA/AGUARDANDO MATERIAL); no caso aberto,
-      o card numa lista de entrada do Trello */
+  /** ainda na entrada: a linha sem andamento (sem status ou só ENTRADA/AGUARDANDO MATERIAL) */
   naEntrada: boolean;
-  /** quantos designers (da linha) e membros (do card no Trello) */
+  /** quantos designers (da linha) */
   pessoas: number;
   /** quando entrou na produção (ms) */
   entrada: number;
-  /** saiu: entregue, finalizado ou (no caso aberto) numa lista de saída do Trello */
+  /** saiu: entregue ou finalizado */
   saiu: boolean;
-  /** o card não está mais no Trello (só no caso aberto) */
-  sumiu?: boolean;
 }
 
 /** As três seções da lista: com arquivado e aberto (o caso de sempre), todos abertos, todos arquivados. */
@@ -127,9 +128,8 @@ export function grupoDoCard(card: { nome: string; praca: string }, pracas: reado
 
 type Sinal = { sai: (c: CardDoCaso, outro: CardDoCaso) => boolean; motivo: string; fica: string };
 const SINAIS: Sinal[] = [
-  { sai: (c) => !!c.sumiu, motivo: 'Não está mais no Trello.', fica: 'está no Trello' },
   { sai: (c) => c.arquivado && c.naEntrada, motivo: 'Arquivado sem sair da entrada.', fica: 'não foi arquivado na entrada' },
-  { sai: (c) => c.pessoas === 0, motivo: 'Sem designers nem membros.', fica: 'tem designers ou membros' },
+  { sai: (c) => c.pessoas === 0, motivo: 'Sem designers.', fica: 'tem designers' },
   { sai: (c, outro) => c.entrada > outro.entrada, motivo: 'Entrou depois na produção.', fica: 'entrou primeiro na produção' },
   { sai: (c) => !c.saiu, motivo: 'Não saiu nem foi entregue.', fica: 'saiu ou foi entregue' },
 ];
@@ -164,7 +164,7 @@ export function sugestaoDoCaso(cards: CardDoCaso[]): CasoDeDuplicada['sugestao']
 const STATUS_DA_ENTRADA = new Set(['ENTRADA', 'AGUARDANDO MATERIAL']);
 const quando = (iso: string | null) => (iso ? Date.parse(iso) : NaN);
 
-/** Os sinais da linha, para a sugestão da lista (sem o Trello). */
+/** Os sinais da linha, para a sugestão (sem o Trello). */
 export function cardDaLinha(l: LinhaDaProducao): CardDoCaso {
   const status = l.status.map((s) => semAcentoMaiusculo(s).trim()).map((s) => (s === 'EM APROVACAO' ? 'EM APROVAÇÃO' : s));
   return {

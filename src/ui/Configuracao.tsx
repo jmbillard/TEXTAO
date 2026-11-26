@@ -52,8 +52,8 @@ import './configuracao.css';
    leitura da prévia ficam no "ver tudo". A barra salva as seções juntas. Conexões (#76), recolhida no fim: o quadro do
    Trello e a base do Teable; trocar pede o nome do novo, digitado, e o PROMeiro liga tudo de novo pelo nome. As
    tabelas do Teable são achadas sozinhas: só a que falta (ou a coluna que falta) aparece, num aviso no topo. Pessoas
-   (#77): os administradores (no "ver tudo") e as novidades do quadro (quem entrou, quem saiu), com ações que valem na
-   hora, sem passar pela barra de salvar. O Histórico (#78) é uma página à parte, ligada pelo rodapé
+   (#77): os administradores (no "ver tudo") e as novidades (quem entrou, quem saiu: a produção da arte do Teable),
+   com ações que valem na hora, sem passar pela barra de salvar. O Histórico (#78) é uma página à parte, ligada pelo rodapé
    (HistoricoDaConfiguracao.tsx), como "Pode apagar do Portainer" (#79, PortainerDaConfiguracao.tsx). Com o Trello ou o
    Teable fora do ar (#79), a seção que depende dele mostra o salvo com os nomes da última leitura, uma linha curta com
    desde quando, e fica travada. No celular, só consulta. */
@@ -169,7 +169,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
       .catch((e) => setFalha(e instanceof Error ? e.message : String(e)));
   }, [receber]);
   useEffect(carregar, [carregar]);
-  // as Pessoas vêm à parte: abrir a Configuração olha o quadro de novo, sem segurar as outras seções
+  // as Pessoas vêm à parte: abrir a Configuração olha a produção da arte de novo, sem segurar as outras seções
   useEffect(() => {
     lerPessoas()
       .then(setPessoas)
@@ -1743,7 +1743,7 @@ function DialogoDeTrocar({ o, conexoes, voltar, trocou }: { o: 'quadro' | 'base'
 /* ---------- a seção Pessoas (#77) ---------- */
 
 const AJUDA_DAS_PESSOAS =
-  'Quem administra o PROMeiro. Quem está no CADASTRO_ADMINS do Portainer é sempre administrador (chave-mestra) e ninguém tira a si mesmo. O PROMeiro olha os membros do quadro do Trello ao abrir a Configuração e uma vez por dia: quem entrou e não é designer, e o designer ativo que saiu, aparecem aqui. Ignorar vale até desfazer no "ver tudo".';
+  'Quem administra o PROMeiro. Quem está no CADASTRO_ADMINS do Portainer é sempre administrador (chave-mestra) e ninguém tira a si mesmo. O PROMeiro olha a produção da arte do Teable ao abrir a Configuração e uma vez por dia: quem aparece nela e não é designer, e o designer ativo sem nenhuma produção nos últimos 60 dias, aparecem aqui. Ignorar vale até desfazer no "ver tudo".';
 const iniciaisDe = (nome: string) =>
   nome
     .split(/\s+/)
@@ -1756,7 +1756,7 @@ const quando = (iso: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { d
 
 function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: PessoasDaConfiguracao | null; falha: string; podeMudar: boolean; mudar: (a: AcaoNasPessoas, feito: string) => Promise<boolean> }) {
   const [verTudo, setVerTudo] = useState(false);
-  // a novidade que pede o e-mail para tornar administrador (o Trello não deu e ninguém com o nome entrou no PROMeiro)
+  // a novidade que pede o e-mail para tornar administrador (ninguém com o nome entrou no PROMeiro)
   const [pedindoEmail, setPedindoEmail] = useState<string | null>(null);
   const [emailDigitado, setEmailDigitado] = useState('');
   const [pondo, setPondo] = useState(false);
@@ -1770,12 +1770,12 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
     return ok;
   };
   const n = pessoas?.novidades.length ?? 0;
-  // #79: com o Trello ou o Teable fora, cadastrar e marcar inativo (que leem e gravam neles) ficam travados
+  // #79: com o Teable fora, cadastrar e marcar inativo (que leem e gravam nele) ficam travados
   const travadaPeloForaDoAr = !!pessoas?.foraDoAr;
-  const resumo = pessoas ? `${plural(pessoas.administradores.length, 'administrador', 'administradores')}${n ? ` · ${plural(n, 'novidade', 'novidades')} no quadro` : ''}` : falha ? 'não consegui ler' : 'lendo…';
-  const titulo = (x: NovidadeDoQuadro) => (x.tipo === 'entrou' ? `${x.nome} entrou no quadro` : `${x.nome} saiu do quadro`);
+  const resumo = pessoas ? `${plural(pessoas.administradores.length, 'administrador', 'administradores')}${n ? ` · ${plural(n, 'novidade', 'novidades')}` : ''}` : falha ? 'não consegui ler' : 'lendo…';
+  const titulo = (x: NovidadeDoQuadro) => (x.tipo === 'entrou' ? `${x.nome} apareceu na produção` : `${x.nome} sem produção há 60 dias`);
   const detalhe = (x: NovidadeDoQuadro) =>
-    x.tipo === 'entrou' ? [x.email || 'sem e-mail no Trello', x.administrador && 'já é administrador'].filter(Boolean).join(' · ') : ['designer ativo', x.email, x.administrador && 'administrador'].filter(Boolean).join(' · ');
+    x.tipo === 'entrou' ? ['não é designer', x.administrador && 'já é administrador'].filter(Boolean).join(' · ') : ['designer ativo', x.email, x.administrador && 'administrador'].filter(Boolean).join(' · ');
   return (
     <section className="cfg-secao" aria-labelledby="cfg-pessoas" data-secao="pessoas">
       <TopoDaSecao id="cfg-pessoas" titulo="Pessoas" ajuda={AJUDA_DAS_PESSOAS} cor={falha || pessoas?.erro ? 'falta' : n ? 'tem' : 'ok'} resumo={comForaDoAr(resumo, pessoas?.foraDoAr ? { ...pessoas.foraDoAr, lidoEm: '' } : undefined)} verTudo={pessoas ? verTudo : null} alternarVerTudo={() => setVerTudo((v) => !v)} />
@@ -1844,7 +1844,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                       void fazer({ acao: 'administrador', email: emailDigitado, chave: x.chave }, `${x.nome} agora é administrador.`).then((ok) => ok && setPedindoEmail(null));
                     }}
                   >
-                    <label htmlFor={`email-${x.chave}`}>O Trello não dá o e-mail. Qual é o de {x.nome}?</label>
+                    <label htmlFor={`email-${x.chave}`}>Qual é o e-mail de {x.nome}?</label>
                     <input id={`email-${x.chave}`} type="email" value={emailDigitado} onChange={(e) => setEmailDigitado(e.target.value)} placeholder="nome@empresa.com" autoFocus />
                     <button className="botao primario" disabled={!emailDigitado.trim() || ocupado}>Tornar admin</button>
                     <button type="button" className="botao-texto" onClick={() => setPedindoEmail(null)}>cancelar</button>
@@ -1939,7 +1939,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                 {pessoas.ignoradas.map((x) => (
                   <div className="cfg-tudo-l" key={x.chave} data-chave={x.chave}>
                     <span className="cfg-tudo-rotulo">{x.nome}</span>
-                    <span className="cfg-tudo-valor">{x.tipo === 'entrou' ? 'entrou no quadro' : 'saiu do quadro'}</span>
+                    <span className="cfg-tudo-valor">{x.tipo === 'entrou' ? 'apareceu na produção' : 'sem produção há 60 dias'}</span>
                     <span className="cfg-tudo-como">
                       ignorada{x.em ? ` em ${quando(x.em)}` : ''}
                       {podeMudar && (

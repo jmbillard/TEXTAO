@@ -12,7 +12,9 @@ import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 /* O Trello avisa o PROMeiro direto (#87): a rota do aviso é pública (fora do Cloudflare Access), e só o aviso assinado
    com o segredo da aplicação do Trello é aceito. Card novo vira Produção, mudar de lista muda a etapa, arquivar
    arquiva; o mesmo aviso duas vezes não duplica. O PROMeiro registra o webhook no quadro (e re-registra se o Trello
-   desligou). Trello e Teable de mentira: ids, nomes e segredos inventados. */
+   desligou). Desligado por padrão (ADR 0006: por enquanto o PROMeiro só escreve no Trello e lê do Teable): estes
+   testes ligam com TRELLO_AVISO=1, e os do fim conferem que, sem ele, nada é lido do Trello e a rota não existe.
+   Trello e Teable de mentira: ids, nomes e segredos inventados. */
 
 const CHEFE = 'chefe@empresa.com';
 const SEGREDO = 'segredo-de-mentira';
@@ -21,6 +23,7 @@ const ROTA = '/api/trello/aviso';
 const CALLBACK = `${PROMEIRO}${ROTA}`;
 const QUADRO = 'quadroFalso';
 const ENV = {
+  TRELLO_AVISO: '1',
   CADASTRO_ADMINS: CHEFE,
   TRELLO_KEY: 'k',
   TRELLO_TOKEN: 't',
@@ -538,5 +541,26 @@ describe('a rota da linha do tempo', () => {
     expect((await fetch(`${base}/api/linha-do-tempo?card=cardLinha`)).status).toBe(401);
     expect((await ana(base)('/api/linha-do-tempo')).status).toBe(400);
     expect((await fetch(`${base}/api/linha-do-tempo?card=x`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } })).status).toBe(405);
+  });
+});
+
+describe('desligado por padrão (ADR 0006: o PROMeiro só escreve no Trello; lê do Teable)', () => {
+  const { TRELLO_AVISO: _ligado, ...semAviso } = ENV;
+
+  it('sem TRELLO_AVISO, a rota não existe (404, também no HEAD), nenhum webhook é registrado e nada do quadro é lido', async () => {
+    const { app, base, falso, avisar } = await comServidor({ env: semAviso, acoes: [{ id: 'acao1', type: 'createCard', date: '2026-11-26T12:00:00.000Z' }] });
+    expect((await fetch(base + ROTA, { method: 'HEAD' })).status).toBe(404);
+    expect((await avisar({ action: { id: 'acao2', type: 'createCard' } })).status).toBe(404);
+    expect(await app.garantirOAviso()).toBeNull();
+    expect(await app.recuperarOQueFaltou()).toBeNull();
+    // nenhum pedido ao Trello: nem os webhooks do token, nem as ações e os campos do quadro, nem os membros
+    expect(falso.pedidos).toEqual([]);
+    expect(falso.webhooks).toEqual([]);
+  });
+
+  it('com TRELLO_AVISO=0 (ou qualquer coisa que não seja 1, sim, true, ligado), também desligado', async () => {
+    const { base, falso } = await comServidor({ env: { ...semAviso, TRELLO_AVISO: '0' } });
+    expect((await fetch(base + ROTA, { method: 'HEAD' })).status).toBe(404);
+    expect(falso.pedidos).toEqual([]);
   });
 });

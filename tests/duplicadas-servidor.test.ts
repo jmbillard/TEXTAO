@@ -11,8 +11,8 @@ import { criarAcervo } from '../servidor/acervo.mjs';
 import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 /* A aba Duplicadas pela API (#65, corrigido): a produção da arte (o Postgres do Teable) e o Trello de mentira, com
-   linhas e cards fictícios. A lista e o contador saem só da produção; o Trello só é lido no caso aberto, e só os cards
-   dele. Só leitura: nenhum pedido que não seja GET sai para o Trello. */
+   linhas e cards fictícios. A lista, o contador e o caso aberto saem só da produção: nenhum pedido vai ao Trello
+   (ADR 0006: por enquanto o PROMeiro só escreve no Trello; lê do Teable). */
 
 const ENV = {
   CADASTRO_ADMINS: 'chefe@empresa.com',
@@ -36,7 +36,7 @@ const haDias = (dias: number) => new Date(Date.now() - dias * DIA).toISOString()
 
 type CardFalso = { id: string; idShort: number; name: string; closed: boolean; idList: string; idMembers: string[]; due?: string; checkItems?: number; anexos?: string[] };
 /** Uma linha da produção da arte como sai do Postgres (status e designers em texto JSON ou lista). */
-type LinhaFalsa = { registro: string; card_ID: string | null; claquete: string; praca: string | null; data_entrada: string | null; status: unknown; designers: unknown; arquivado: boolean | null; entregue: boolean | null; filme: unknown };
+type LinhaFalsa = { registro: string; card_ID: string | null; claquete: string; praca: string | null; data_entrada: string | null; data_entrega?: string | null; artes_quantidade?: number | null; status: unknown; designers: unknown; arquivado: boolean | null; entregue: boolean | null; filme: unknown };
 
 function falsos() {
   const noTrello: CardFalso[] = [];
@@ -50,7 +50,7 @@ function falsos() {
     return l;
   };
   const linhas = {
-    show1: linha(6.2, 'Show da Noite 20/11 SP', { status: '["FINALIZADO"]', designers: '["Designer Um","Designer Dois"]' }, { idShort: 4790, idList: 'saidaSP', idMembers: ['m1', 'm2'], due: '2026-11-20T23:00:00.000Z', anexos: ['application/pdf', 'image/png', 'image/jpeg'] }),
+    show1: linha(6.2, 'Show da Noite 20/11 SP', { status: '["FINALIZADO"]', designers: '["Designer Um","Designer Dois"]', data_entrega: '2026-11-20T18:00:00.000Z', artes_quantidade: 4 }, { idShort: 4790, idList: 'saidaSP', idMembers: ['m1', 'm2'], due: '2026-11-20T23:00:00.000Z', anexos: ['application/pdf', 'image/png', 'image/jpeg'] }),
     show2: linha(6, 'Show da Noite 20/11', { praca: 'SP', arquivado: true, status: ['ENTRADA'], designers: null }, { idShort: 4795, idList: 'entradaSP', idMembers: [], due: '2026-11-20T23:00:00.000Z' }),
     festa1: linha(4.5, 'Festa na Praça 19/11 REDE'),
     festa2: linha(4, 'FESTA NA PRACA 19/11', { arquivado: true, status: [], designers: [] }, { idMembers: [] }),
@@ -218,66 +218,42 @@ describe('o detalhe de um caso', () => {
     return r.json();
   };
 
-  it('lê do Trello só os cards do caso: a lista, o estado, os membros, os anexos; da produção, o resto', async () => {
+  it('o caso aberto mostra só o que a produção tem, sem nenhum pedido ao Trello', async () => {
     const { chefe, linhas, pedidos } = await comServidor();
     // o roteiro guardado no PROMeiro que foi para o primeiro show
     await chefe('/api/roteiros/rot-show-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Show da Noite 20/11 SP' }, doc: { type: 'doc', content: [] } }, nArtes: 1 }) });
     await chefe('/api/roteiros/rot-show-1/trello', { method: 'POST', body: JSON.stringify({ jaEsta: { card: linhas.show1.card_ID } }) });
     pedidos.length = 0;
     const caso = await abrir(chefe, 'Show da Noite 20/11 SP');
-    expect(pedidos).toEqual([`GET /1/cards/${linhas.show1.card_ID}`, `GET /1/cards/${linhas.show2.card_ID}`]);
+    expect(pedidos).toEqual([]);
     expect(caso.sugestao).toEqual({ fica: linhas.show1.card_ID, saem: [linhas.show2.card_ID] });
     expect(caso.cards).toHaveLength(2);
-    expect(caso.cards[0]).toMatchObject({
+    expect(caso.cards[0]).toEqual({
       id: linhas.show1.card_ID,
-      noTrello: true,
-      numero: 4790,
-      nome: 'Show da Noite 20/11 SP',
       claquete: 'Show da Noite 20/11 SP',
-      lista: 'SAÍDA SP',
       arquivado: false,
-      exibicao: '2026-11-20T23:00:00.000Z',
+      criado: expect.any(String),
       entrada: linhas.show1.data_entrada,
+      entrega: '2026-11-20T18:00:00.000Z',
       status: ['FINALIZADO'],
       designers: ['Designer Um', 'Designer Dois'],
-      membros: ['Pessoa Um', 'Pessoa Dois'],
-      checklist: 4,
-      anexos: '1 PDF, 2 imagens',
+      artes: 4,
       acervo: 3,
       roteiro: { id: 'rot-show-1', claquete: 'Show da Noite 20/11 SP', por: 'Chefe' },
-      url: `https://trello.com/c/${linhas.show1.card_ID!.slice(-8)}`,
+      // o link do card é feito do card_ID
+      url: `https://trello.com/c/${linhas.show1.card_ID}`,
       motivo: 'Não foi arquivado na entrada.',
     });
-    expect(caso.cards[1]).toMatchObject({ id: linhas.show2.card_ID, noTrello: true, numero: 4795, lista: 'ENTRADA SP', arquivado: true, status: ['ENTRADA'], designers: [], membros: [], anexos: '1 PDF', acervo: 0, roteiro: null, motivo: 'Arquivado sem sair da entrada.' });
+    expect(caso.cards[1]).toMatchObject({ id: linhas.show2.card_ID, arquivado: true, status: ['ENTRADA'], designers: [], artes: null, entrega: null, acervo: 0, roteiro: null, motivo: 'Arquivado sem sair da entrada.' });
     expect(Date.parse(caso.cards[1].criado) - Date.parse(caso.cards[0].criado)).toBeGreaterThan(0);
   });
 
-  it('o card que não existe mais no Trello aparece como fora do Trello e é o sugerido para sair', async () => {
-    const { chefe, linhas } = await comServidor();
+  it('a sugestão do caso aberto é a da lista: o card apagado no Trello não muda nada (o PROMeiro não lê o Trello)', async () => {
+    const { chefe, linhas, pedidos } = await comServidor();
     const caso = await abrir(chefe, 'Praia do Sol 22/11');
     expect(caso.sugestao).toEqual({ fica: linhas.praia1.card_ID, saem: [linhas.praia2.card_ID] });
-    expect(caso.cards[0]).toMatchObject({ noTrello: true, lista: 'ENTRADA G5', motivo: 'Está no Trello.' });
-    expect(caso.cards[1]).toMatchObject({
-      id: linhas.praia2.card_ID,
-      noTrello: false,
-      numero: null,
-      nome: '',
-      claquete: 'PRAIA DO SOL 22/11',
-      lista: '',
-      arquivado: false,
-      membros: [],
-      anexos: '',
-      designers: ['Designer Um'],
-      entrada: linhas.praia2.data_entrada,
-      motivo: 'Não está mais no Trello.',
-    });
-  });
-
-  it('sem o Trello configurado, o caso aberto mostra só o que a produção tem', async () => {
-    const { chefe, pedidos, linhas } = await comServidor({ ...ENV, TRELLO_KEY: '', TRELLO_TOKEN: '' });
-    const caso = await abrir(chefe, 'Show da Noite 20/11 SP');
+    expect(caso.cards[1]).toMatchObject({ id: linhas.praia2.card_ID, claquete: 'PRAIA DO SOL 22/11', arquivado: false, designers: ['Designer Um'], entrada: linhas.praia2.data_entrada, motivo: 'Entrou depois na produção.' });
     expect(pedidos).toEqual([]);
-    expect(caso.cards[1]).toMatchObject({ id: linhas.show2.card_ID, noTrello: null, arquivado: true, lista: '', status: ['ENTRADA'], motivo: 'Arquivado sem sair da entrada.' });
   });
 
   it('o caso que não existe mais no período responde 404', async () => {

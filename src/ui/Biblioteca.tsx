@@ -217,7 +217,7 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, an
         className={`perfil-botao ${identidade ? '' : 'falta'} ${novidade ? 'com-novidade' : ''}`}
         aria-haspopup="dialog"
         aria-expanded={aberto}
-        aria-label={novidade ? `${identidade?.nome ?? 'Perfil'} · ${novidade === 1 ? 'uma novidade' : `${novidade} novidades`} no quadro` : undefined}
+        aria-label={novidade ? `${identidade?.nome ?? 'Perfil'} · ${novidade === 1 ? 'uma novidade' : `${novidade} novidades`} nas Pessoas` : undefined}
         onClick={() => setAberto((v) => !v)}
       >
         {identidade ? (
@@ -267,7 +267,7 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, an
           )}
           {configuracao && (
             <button type="button" className="perfil-link" onClick={configuracao}>
-              <Icone nome="ajustes" tam={16} /> Configuração{novidade > 0 && <span className="perfil-ponto" aria-label="há novidade no quadro" />} <small>{novidade ? (novidade === 1 ? 'uma novidade no quadro' : `${novidade} novidades no quadro`) : 'praças e ligações'}</small>
+              <Icone nome="ajustes" tam={16} /> Configuração{novidade > 0 && <span className="perfil-ponto" aria-label="há novidade nas Pessoas" />} <small>{novidade ? (novidade === 1 ? 'uma novidade nas Pessoas' : `${novidade} novidades nas Pessoas`) : 'praças e ligações'}</small>
             </button>
           )}
           {andamentoDoProjeto && (

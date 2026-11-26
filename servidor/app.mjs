@@ -26,7 +26,7 @@ import { criarFilmes } from './filmes.mjs';
 import { criarDuplicadas, DIAS_MAXIMO, DIAS_PADRAO } from './duplicadas.mjs';
 import { criarRegistroDasDuplicadas, MOTIVO_MAXIMO } from './registro-das-duplicadas.mjs';
 import { criarProducoes } from './producoes.mjs';
-import { RECUPERACAO, ROTA_DO_AVISO, acoesDesde, assinaturaConfere, enderecoDoAviso, faltasDoAviso, garantirWebhook, lerCorpoDoAviso, listasDoQuadro, quadroDoAviso, segredoDoAviso } from './aviso-do-trello.mjs';
+import { RECUPERACAO, ROTA_DO_AVISO, acoesDesde, assinaturaConfere, avisoLigado, enderecoDoAviso, faltasDoAviso, garantirWebhook, lerCorpoDoAviso, listasDoQuadro, quadroDoAviso, segredoDoAviso } from './aviso-do-trello.mjs';
 import { eventosDoAviso } from '../src/modelo/avisoDoTrello.ts';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
@@ -445,6 +445,14 @@ const UM_DIA = 24 * 60 * 60 * 1000;
 /** De quanto em quanto tempo o servidor confere se o webhook do quadro (#87) existe e está ativo: uma vez por hora. */
 const UMA_HORA = 60 * 60 * 1000;
 
+/** A releitura da produção da arte (ADR 0006): de minuto em minuto, até 2000 linhas por vez, nunca antes de 30 dias,
+    e cada vez desde 2 minutos antes da modificação mais nova da anterior (a marca fica guardada no SQLite). */
+const UM_MINUTO = 60 * 1000;
+const LIMITE_DA_RELEITURA = 2000;
+const JANELA_DA_RELEITURA = 30 * UM_DIA;
+const MARGEM_DA_RELEITURA = 2 * 60 * 1000;
+const MARCA_DA_RELEITURA = 'releitura-da-producao';
+
 /** Os dias de claquetes recentes que a conferência das praças conta (os mesmos da aba Sem cadastro). */
 const DIAS_DA_CONTAGEM = 90;
 
@@ -588,16 +596,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
   const primeiraDescoberta = redescobrir();
 
-  /* ---------- a seção Pessoas (#77): os membros do quadro × a tabela designers ---------- */
+  /* ---------- a seção Pessoas (#77): os designers da produção da arte × a tabela designers (nada do Trello) ---------- */
   const pessoas = criarPessoas({ db, copia, buscar: buscarNoTeable });
-  /** Olha os membros do quadro e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
+  /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
   // a última verificação desta partida (com o erro e o que não respondeu); sem nenhuma, a guardada
   let ultimaVerificacao = null;
   const ultimaDasPessoas = () => ultimaVerificacao ?? pessoas.guardada();
   const verificarPessoas = async () => {
     const r = await pessoas.verificar(trello, env);
-    // #79: o Trello ou o Teable fora do ar ficam marcados (desde quando); o que respondeu, volta
-    for (const servico of ['trello', 'teable'])
+    // #79: o Teable fora do ar fica marcado (desde quando); respondeu, volta. As Pessoas não leem o Trello (ADR 0006)
+    for (const servico of ['teable'])
       if (r.falhou?.includes(servico)) fora.caiu(servico, r.motivo);
       else if (r.falhou) fora.voltou(servico);
     ultimaVerificacao = r;
@@ -606,12 +614,62 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   // na partida (depois de achar as tabelas) e uma vez por dia, sem depender de alguém abrir a Configuração
   const primeiraVerificacao = primeiraDescoberta.then(() => verificarPessoas()).catch(() => null);
   // a carga inicial das Produções (#86): na subida, só quando não há nenhuma (depois de achar as tabelas); de novo,
-  // só pela rota do administrador. Sem leitura periódica: o aviso do Trello (#87) é que mantém em dia
+  // pela rota do administrador. Quem mantém em dia é a releitura da produção da arte (logo abaixo), de minuto em minuto
   const cargaInicial = primeiraDescoberta
     .then(() => (producoes.vazia() ? producoes.carregar(trello, pracas) : null))
     .catch((e) => console.warn(`[producoes] a carga inicial não rodou: ${e instanceof Error ? e.message : e}`));
   const verificacaoDiaria = agendar(() => verificarPessoas(), UM_DIA);
   verificacaoDiaria?.unref?.();
+
+  /* ---------- a releitura da produção da arte (ADR 0006): os eventos da Produção nascem do Teable ---------- */
+  // por enquanto o PROMeiro só ESCREVE no Trello: o que ele lê vem do Teable. De minuto em minuto, as linhas que o
+  // Teable mudou desde a última releitura (__last_modified_time) são comparadas com as Produções guardadas. Com o
+  // aviso do Trello ligado (TRELLO_AVISO=1, o modo antigo), a releitura não roda: os eventos vêm de uma fonte só
+  let relendo = null;
+  let ultimaReleitura = null;
+  let cargaFeita = false;
+  /** Relê as linhas mudadas desde a marca guardada (nunca antes da janela) e anota o que mudou. Sem nenhuma Produção,
+      faz a carga inteira no lugar. Nunca lança. @returns { em, desde, lidas, novas, mudadas, anotados } ou null */
+  function relerAProducao() {
+    relendo ??= (async () => {
+      // com o aviso do Trello ligado (TRELLO_AVISO), a fonte dos eventos é ele: uma fonte por vez
+      if (!cargaFeita || !trello.producaoAlteradaDesde || avisoLigado(env)) return null;
+      const inicio = Date.now();
+      const janela = new Date(inicio - JANELA_DA_RELEITURA).toISOString();
+      const guardada = copia.ler(MARCA_DA_RELEITURA)?.dados?.ate ?? null;
+      const desde = guardada && guardada > janela ? guardada : janela;
+      try {
+        // nenhuma Produção e nenhuma carga que deu certo (a da subida falhou: o Teable estava fora): a carga inteira
+        if (producoes.vazia() && !producoes.contagem().ultimaCarga) {
+          const carga = await producoes.carregar(trello, pracas);
+          if (carga) copia.guardar(MARCA_DA_RELEITURA, { ate: new Date(inicio - MARGEM_DA_RELEITURA).toISOString() });
+          return carga ? (ultimaReleitura = { em: new Date(inicio).toISOString(), desde, lidas: carga.linhas, novas: carga.novas, mudadas: carga.atualizadas, anotados: 0 }) : null;
+        }
+        const linhas = await trello.producaoAlteradaDesde(desde, LIMITE_DA_RELEITURA);
+        if (!linhas) return null;
+        const r = producoes.reler(linhas, pracas);
+        // a próxima continua da modificação mais nova lida, com uma margem (a linha relida de novo, igual, não muda
+        // nada); no limite, dela mesma, para andar
+        const maisNova = linhas.reduce((m, l) => (l.modificadoEm && l.modificadoEm > m ? l.modificadoEm : m), '');
+        const ate = !maisNova ? desde : linhas.length >= LIMITE_DA_RELEITURA ? maisNova : new Date(Math.max(Date.parse(desde), Date.parse(maisNova) - MARGEM_DA_RELEITURA)).toISOString();
+        copia.guardar(MARCA_DA_RELEITURA, { ate });
+        ultimaReleitura = { em: new Date(inicio).toISOString(), desde, ...r };
+        if (r.novas || r.anotados) console.log(`[producoes] releitura do Teable: ${r.lidas} linhas mudadas, ${r.novas} Produções novas, ${r.anotados} eventos`);
+        return ultimaReleitura;
+      } catch (e) {
+        console.warn(`[producoes] não consegui reler a produção da arte: ${e instanceof Error ? e.message : e}`);
+        return null;
+      }
+    })().finally(() => (relendo = null));
+    return relendo;
+  }
+  // depois da carga inicial (a releitura não cria Produção antes dela: a carga só roda com nenhuma) e de minuto em minuto
+  const releituraPronta = cargaInicial.then(() => {
+    cargaFeita = true;
+    return relerAProducao();
+  });
+  const releitura = agendar(() => relerAProducao(), UM_MINUTO);
+  releitura?.unref?.();
 
   /* ---------- o aviso do Trello (#87): o webhook do quadro e a fila do que chegou ---------- */
   let garantindo = null;
@@ -619,6 +677,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /** Confere o webhook do PROMeiro no quadro (registra, liga de novo, tira o do quadro antigo). Nunca lança. */
   function garantirOAviso() {
     garantindo ??= (async () => {
+      // desligado por padrão (ADR 0006): sem TRELLO_AVISO, nenhum webhook é registrado nem conferido
+      if (!avisoLigado(env)) {
+        if (faltasAvisadas !== 'desligado') console.log('[aviso do trello] desligado (TRELLO_AVISO): os eventos vêm da releitura do Teable');
+        faltasAvisadas = 'desligado';
+        return null;
+      }
       const faltam = faltasDoAviso(env);
       if (faltam.length) {
         // o log diz o que falta uma vez (e de novo se mudar), não a cada hora
@@ -669,6 +733,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   function recuperarOQueFaltou() {
     recuperando ??= (async () => {
       const quadro = listasDoQuadro(env).quadro;
+      if (!avisoLigado(env)) return null;
       if (!quadro || !trello.config?.chave || !trello.config?.token || !trello.ler) return null;
       const inicio = Date.now();
       const janela = new Date(inicio - limites.dias * UM_DIA).toISOString();
@@ -701,6 +766,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * assim); POST só com a assinatura certa, e responde 200 antes de processar.
    */
   async function rotaDoAviso(req, res) {
+    // desligado (o padrão, ADR 0006): a rota não existe
+    if (!avisoLigado(env)) {
+      req.resume();
+      return json(res, 404, { erro: 'Não encontrado.' });
+    }
     if (req.method === 'HEAD') {
       res.writeHead(200, { 'cache-control': 'no-store' });
       return res.end();
@@ -1709,9 +1779,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
 
   /**
-   * A seção Pessoas da Configuração (#77), só para administradores. GET verifica de novo (os membros do quadro × a
-   * tabela designers) e devolve o estado. POST { acao, chave?, email? }: "administrador" e "tirar" mudam os
-   * administradores salvos na tela (vale na hora no app inteiro; a chave-mestra não sai e ninguém tira a si mesmo);
+   * A seção Pessoas da Configuração (#77), só para administradores. GET verifica de novo (os designers da produção da
+   * arte × a tabela designers, os dois no Teable) e devolve o estado. POST { acao, chave?, email? }: "administrador" e
+   * "tirar" mudam os administradores salvos na tela (vale na hora no app inteiro; a chave-mestra não sai e ninguém tira a si mesmo);
    * "cadastrar" (quem entrou vira designer ativo no Teable), "inativar" (quem saiu fica inativo), "ignorar" e
    * "desfazer". Cadastrar, inativar e ignorar valem só para a novidade de agora (404 se não é mais).
    */
@@ -1724,9 +1794,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (acao === 'administrador' || acao === 'tirar') {
       const r = acao === 'administrador' ? porAdministrador(env, String(corpo.email ?? '')) : tirarAdministrador(env, String(corpo.email ?? ''), eu.email);
       if ('erro' in r) return json(res, 422, r);
-      // tornar administrador quem entrou no quadro: o e-mail fica lembrado para o cadastro de designer
+      // tornar administrador quem entrou: o e-mail fica lembrado (pela chave) para o cadastro de designer
       const entrou = acao === 'administrador' && chave.startsWith('entrou:') ? (pessoas.guardada()?.novidades ?? []).find((n) => n.chave === chave) : null;
-      if (entrou) pessoas.lembrarEmail(entrou.membro, corpo.email);
+      if (entrou) pessoas.lembrarEmail(entrou.chave, corpo.email);
       mudarConfiguracao({ ADMINISTRADORES: JSON.stringify(r.salvos) }, { por: eu.email });
       console.log(`[pessoas] ${eu.email} ${acao === 'tirar' ? 'tirou' : 'pôs'} ${String(corpo.email).trim().toLowerCase()} ${acao === 'tirar' ? 'dos' : 'nos'} administradores`);
       return json(res, 200, estadoDasPessoas(eu, ultimaDasPessoas()));
@@ -1739,7 +1809,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const agora = await verificarPessoas();
     const novidade = agora.novidades.find((n) => n.chave === chave);
     const tipo = { cadastrar: 'entrou', inativar: 'saiu' }[acao];
-    if (!novidade || (tipo && novidade.tipo !== tipo)) return json(res, 404, { erro: 'Essa pessoa não é mais novidade no quadro.' });
+    if (!novidade || (tipo && novidade.tipo !== tipo)) return json(res, 404, { erro: 'Essa pessoa não é mais novidade.' });
     if (agora.erro && acao !== 'ignorar') return json(res, 502, { erro: agora.erro });
     try {
       if (acao === 'ignorar') pessoas.ignorar(novidade, eu.email);
@@ -1782,7 +1852,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const card = (busca.get('card') ?? '').trim().slice(0, 100);
     const registro = (busca.get('registro') ?? '').trim().slice(0, 100);
     if (card || registro) return json(res, 200, { producoes: producoes.buscar({ card, registro }) });
-    return json(res, 200, { ligado, ...producoes.contagem(), ultimaRecuperacao });
+    return json(res, 200, { ligado, ...producoes.contagem(), ultimaReleitura, ultimaRecuperacao });
   }
 
   async function rotaDasDuplicadas(req, res, eu, caminho) {
@@ -2472,7 +2542,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /** A primeira recuperação do que faltou (#88), e recuperar de novo. */
   app.recuperacaoPronta = recuperacaoPronta;
   app.recuperarOQueFaltou = recuperarOQueFaltou;
+  /** A primeira releitura da produção da arte (depois da carga inicial), e reler de novo. */
+  app.releituraPronta = releituraPronta;
+  app.relerAProducao = relerAProducao;
   app.fechar = async () => {
+    clearInterval(releitura);
     clearInterval(batimento);
     clearInterval(verificacaoDiaria);
     clearInterval(conferenciaDoAviso);

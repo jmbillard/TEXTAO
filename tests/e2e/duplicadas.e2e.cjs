@@ -1,10 +1,11 @@
 // Ponta a ponta da aba Duplicadas dos Cadastros (#65), rodado à parte do vitest: `npm run e2e:duplicadas`.
 //
 // Sobe o servidor e o Vite como os outros e2e (banco temporário, nada sai para a rede), com a produção da arte, o
-// Trello e o acervo falsos (linhas e cards fictícios): as rotas /api/duplicadas são as de verdade. A lista sai só da
-// produção (nenhum pedido ao Trello); o caso aberto lê do Trello só os cards dele. No computador, claro e escuro: a aba
-// com o número de casos, o período, "Lido da produção", a busca, as três seções; abrir um caso mostra os cards lado a
-// lado com as diferenças e a sugestão, que a pessoa troca; o card que não está mais no Trello; o caso de três cards. Ignorar (#66) pela linha,
+// Trello e o acervo falsos (linhas e cards fictícios): as rotas /api/duplicadas são as de verdade. A lista e o caso
+// aberto saem só da produção (nenhum pedido ao Trello, ADR 0006). No computador, claro e escuro: a aba com o número de
+// casos, o período, "Lido da produção", a busca, as três seções; abrir um caso mostra os cards lado a lado com as
+// diferenças e a sugestão, que a pessoa troca; o card apagado no Trello, que continua na produção; o caso de três
+// cards. Ignorar (#66) pela linha,
 // com o motivo: o caso sai da lista e do contador, vai para Resolvidas e para o Registro; Reabrir devolve. Quem não é
 // administrador não vê a aba. No celular, claro e escuro: a lista e o caso aberto com os cards empilhados, Resolvidas e
 // o Registro, só consulta (sem Ignorar nem Reabrir).
@@ -123,7 +124,8 @@ const LINHA_DO_SHOW = {
 const FRASES_DO_SHOW = [`entrou ${diaHoraLocal(CRIADO_SHOW).join(' ')}`, '2 de 4 artes'];
 const pedidosDaLinha = [];
 
-/** O Trello de mentira: só o GET de um card (a lista não lê o Trello; qualquer outro pedido derruba o teste). */
+/** O Trello de mentira: a aba não lê o Trello (ADR 0006); o pedido que chegar fica anotado e o teste confere que não
+    chegou nenhum. */
 const pedidosAoTrello = [];
 async function buscar(url, init = {}) {
   const u = new URL(url);
@@ -229,26 +231,24 @@ async function noComputador(navegador, url, tema) {
   await semRolagemDeLado(p, `computador ${nome}, lista`);
   await capturar(p, `01-lista-${nome}`);
 
-  // abrir um caso: os cards lado a lado, as diferenças e a sugestão; só os cards do caso são lidos no Trello
+  // abrir um caso: os cards lado a lado, as diferenças e a sugestão; só o que a produção tem, nada lido no Trello
   pedidosAoTrello.length = 0;
   assert.deepEqual(pedidosDaLinha, [], 'a lista não lê a linha do tempo');
   await caso(p, 'Show da Noite').locator('.linha-dup').click();
   const tabela = caso(p, 'Show da Noite').locator('.tabela-dup');
   await tabela.waitFor();
   assert.equal(await caso(p, 'Show da Noite').locator('.linha-dup').getAttribute('aria-expanded'), 'true');
-  assert.deepEqual(await textos(tabela.locator('.cabeca .numero-dup')), ['#4790', '#4795']);
-  // (o React do Vite, em modo estrito, pode pedir o caso duas vezes)
-  const doShow = CARDS.filter((x) => x.idShort === 4790 || x.idShort === 4795).map((x) => `GET /1/cards/${x.id}`);
-  assert.deepEqual([...new Set(pedidosAoTrello)].sort(), doShow.sort(), 'só os dois cards do caso');
+  assert.deepEqual(pedidosAoTrello, [], 'o caso aberto não lê o Trello');
   assert.deepEqual(await textos(tabela.locator('.cabeca .sugestao-dup')), ['Sugestão: fica. Não foi arquivado na entrada.', 'Provável duplicado. Arquivado sem sair da entrada.']);
+  const rotulos = await textos(tabela.locator('[role=rowheader]'));
+  for (const r of ['Nome no Trello', 'Lista', 'Membros', 'Anexos', 'Exibição']) assert.ok(!rotulos.includes(r), `sem a linha ${r} (era do Trello)`);
   const diferentes = await textos(tabela.locator('.difere [role=rowheader]'));
-  for (const r of ['Claquete na produção', 'Lista', 'Estado', 'Status', 'Designers', 'Membros', 'Anexos', 'Acervo ligado']) assert.ok(diferentes.includes(r), `${r} difere`);
-  for (const r of ['Exibição', 'Artes', 'Criado', 'Trello']) assert.ok(!diferentes.includes(r), `${r} não difere`);
+  for (const r of ['Claquete na produção', 'Estado', 'Status', 'Designers', 'Acervo ligado']) assert.ok(diferentes.includes(r), `${r} difere`);
+  for (const r of ['Entrega', 'Artes', 'Criado', 'Trello']) assert.ok(!diferentes.includes(r), `${r} não difere`);
   const linhaDe = async (rotulo) => textos(tabela.locator('[role=row]', { has: p.locator('[role=rowheader]', { hasText: new RegExp(`^${rotulo}$`) }) }).locator('[role=cell]'));
-  assert.deepEqual(await linhaDe('Lista'), ['SAÍDA SP≠', 'ENTRADA SP≠']);
-  assert.deepEqual(await linhaDe('Anexos'), ['1 PDF, 2 imagens≠', '1 PDF≠']);
   assert.match((await linhaDe('Criado'))[1], / · 3 h depois$/);
-  assert.deepEqual(await linhaDe('Trello'), ['trello.com/c/Ficti4790', 'trello.com/c/Ficti4795']);
+  const doShow = [4790, 4795].map((n) => CARDS.find((x) => x.idShort === n).id);
+  assert.deepEqual(await linhaDe('Trello'), doShow.map((id) => `trello.com/c/${id}`));
   // a Linha do tempo (#89) de cada card, discreta, só leitura; o card que não é Produção mostra "—"
   const linhaDoTempo = tabela.locator('[role=row]', { has: p.locator('[role=rowheader]', { hasText: /^Linha do tempo$/ }) }).locator('[role=cell]');
   await linhaDoTempo.nth(0).locator('.tempo-da-producao.chegou li').first().waitFor();
@@ -271,25 +271,22 @@ async function noComputador(navegador, url, tema) {
   await caso(p, 'Show da Noite').locator('.linha-dup').click();
   assert.equal(await p.locator('.tabela-dup').count(), 0);
 
-  // o card que não está mais no Trello: aparece assim e é o sugerido para sair
+  // o card apagado no Trello continua na produção: o caso mostra o que o Teable tem (o PROMeiro não lê o Trello)
   await caso(p, 'Jornal da Tarde').locator('.linha-dup').click();
   const sumido = caso(p, 'Jornal da Tarde').locator('.tabela-dup');
   await sumido.waitFor();
-  assert.deepEqual(await textos(sumido.locator('.cabeca .numero-dup')), ['#4760']);
-  assert.deepEqual(await textos(sumido.locator('.cabeca .fora-dup')), ['Não está mais no Trello']);
-  assert.deepEqual(await textos(sumido.locator('.cabeca .sugestao-dup')), ['Sugestão: fica. Está no Trello.', 'Provável duplicado. Não está mais no Trello.']);
+  assert.deepEqual(await textos(sumido.locator('.cabeca .sugestao-dup')), ['Sugestão: fica. Tem designers.', 'Provável duplicado. Sem designers.']);
   const linhaDoSumido = async (rotulo) => textos(sumido.locator('[role=row]', { has: p.locator('[role=rowheader]', { hasText: new RegExp(`^${rotulo}$`) }) }).locator('[role=cell]'));
-  assert.deepEqual(await linhaDoSumido('Nome no Trello'), ['Jornal da Tarde(Chamada)21/11 SP≠', 'não está mais no Trello≠']);
-  assert.deepEqual(await linhaDoSumido('Trello'), ['trello.com/c/Ficti4760', 'não está mais no Trello']);
-  await semRolagemDeLado(p, `computador ${nome}, card fora do Trello`);
-  await capturar(p, `02b-detalhe-fora-do-trello-${nome}`);
+  assert.deepEqual(await linhaDoSumido('Designers'), ['Designer Dois≠', '—≠']);
+  assert.deepEqual(pedidosAoTrello, [], 'nada lido no Trello');
+  await semRolagemDeLado(p, `computador ${nome}, card apagado no Trello`);
+  await capturar(p, `02b-detalhe-card-apagado-${nome}`);
   await caso(p, 'Jornal da Tarde').locator('.linha-dup').click();
 
   // três cards: fica um, saem dois; com três, o último que fica não sai
   await caso(p, 'Arena do Domingo').locator('.linha-dup').click();
   const tres = caso(p, 'Arena do Domingo').locator('.tabela-dup');
   await tres.waitFor();
-  assert.deepEqual(await textos(tres.locator('.cabeca .numero-dup')), ['#4840', '#4843', '#4851']);
   assert.deepEqual(await tres.locator('.cabeca .col-dup').evaluateAll((cs) => cs.map((c) => (c.classList.contains('fica') ? 'fica' : 'sai'))), ['fica', 'sai', 'sai']);
   await tres.locator('.cabeca .col-dup').nth(0).locator('button', { hasText: 'Sai' }).click();
   assert.deepEqual(await tres.locator('.cabeca .col-dup').evaluateAll((cs) => cs.map((c) => (c.classList.contains('fica') ? 'fica' : 'sai'))), ['fica', 'sai', 'sai']);
@@ -392,7 +389,7 @@ async function noCelular(navegador, url, tema) {
   // os cards empilhados, sem o Fica/Sai: no celular, só consulta
   assert.deepEqual(await textos(detalhe.locator('.card-dup .selo-dup')), ['Sugestão: fica', 'Sugestão: duplicado']);
   assert.equal(await p.locator('.fica-sai, .tabela-dup').count(), 0, 'no celular, só consulta');
-  assert.ok((await textos(detalhe.locator('.card-dup').nth(1).locator('.difere dt'))).includes('Lista'));
+  assert.ok((await textos(detalhe.locator('.card-dup').nth(1).locator('.difere dt'))).includes('Estado'));
   const linhaNoCelular = detalhe.locator('.card-dup').nth(0).locator('div', { has: p.locator('dt', { hasText: /^Linha do tempo$/ }) }).locator('dd');
   await linhaNoCelular.locator('.tempo-da-producao.chegou li').first().waitFor();
   assert.deepEqual(await linhaNoCelular.locator('li').allTextContents(), FRASES_DO_SHOW, 'a linha do tempo também no celular');
@@ -432,7 +429,7 @@ async function principal() {
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema);
     await semSerAdministrador(navegador, s.url);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema);
-    assert.deepEqual([...new Set(pedidosAoTrello.map((x) => x.split(' ')[0]))], ['GET'], 'só leitura no Trello');
+    assert.deepEqual(pedidosAoTrello, [], 'nada lido no Trello (ADR 0006)');
   } finally {
     await navegador.close();
     await s.descer();

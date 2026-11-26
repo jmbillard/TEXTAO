@@ -621,6 +621,13 @@ describe('PDF do card que já está na produção', () => {
     expect(pdf?.dados.toString()).toBe('%PDF-1.4');
     expect(pedidos[0].auth).toMatch(/^OAuth oauth_consumer_key="k", oauth_token="t"$/);
   });
+  it('sem o link do PDF no Teable, nada: os anexos do card não são lidos no Trello (ADR 0006)', async () => {
+    const pedidos: string[] = [];
+    const buscar = async (url: string) => (pedidos.push(url), { ok: true, status: 200, json: async () => [{ url: 'https://trello.com/1/cards/x/attachments/y/download/a.pdf', mimeType: 'application/pdf' }], arrayBuffer: async () => new ArrayBuffer(0), text: async () => '' });
+    const t = criarTrello(ENV, { buscar, consultar: linha('') });
+    expect(await t.pdfDaProducao('Festa na Praça 19/11 SP')).toBeNull();
+    expect(pedidos).toEqual([]);
+  });
   it('não busca endereço que não seja do Trello', async () => {
     const pedidos: string[] = [];
     const buscar = async (url: string) => (pedidos.push(url), { ok: true, status: 200, json: async () => [], arrayBuffer: async () => new ArrayBuffer(0), text: async () => '' });

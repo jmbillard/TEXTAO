@@ -15,6 +15,8 @@ const INFRAESTRUTURA = [
   'REDIS_URL', 'COMPOSE_PROFILES', 'TEABLE_URL', 'SFTP_HOST', 'SFTP_USUARIO', 'STIRLING_URL', 'N8N_FILMES_LER', 'FILMES_PASTA',
   // o Andamento do projeto (#92): o repositório e a branch lidos no GitHub
   'GITHUB_REPO', 'GITHUB_BRANCH',
+  // o aviso do Trello (#87), desligado por padrão (ADR 0006: o PROMeiro só escreve no Trello; lê do Teable)
+  'TRELLO_AVISO',
   // só no código, com padrão (aparecem se alguém pôs no Portainer)
   'SFTP_PASTA', 'SFTP_PORTA', 'TRELLO_API', 'CONFERIR_ORIGEM', 'FILMES_PRESENCA_MS', 'TEABLE_CAMPO_NOME', 'TEABLE_CAMPO_CATEGORIA',
   'TEABLE_CAMPO_ATRACAO', 'TEABLE_CAMPO_CHAVE', 'TEABLE_CAMPO_REDATOR', 'TEABLE_CAMPO_EDITOR', 'TEABLE_CAMPOS_CAMINHO',

@@ -10,8 +10,13 @@
  * A carga inicial lê a produção da arte INTEIRA (todas as linhas: abertas e arquivadas, com e sem card, filmes
  * incluídos; nada do Trello) e grava uma Produção por linha, pela chave natural (o registro do Teable): rodar de novo
  * atualiza, não duplica, e a Produção guarda o seu id. Roda na subida, quando não há nenhuma Produção, e quando um
- * administrador pede "recarregar". Não há leitura periódica: quem mantém em dia é o aviso do Trello (#87). As
- * Produções carregadas entram com o estado de agora, sem eventos passados.
+ * administrador pede "recarregar". As Produções carregadas entram com o estado de agora, sem eventos passados.
+ *
+ * A releitura (ADR 0006: por enquanto o PROMeiro só ESCREVE no Trello; lê do Teable) mantém em dia: de minuto em
+ * minuto, o servidor relê as linhas da produção da arte que o Teable mudou desde a última vez (__last_modified_time) e
+ * passa cada uma por `reler`: a linha nova vira Produção ("criada"), e o que mudou na que já existe vira evento
+ * (src/modelo/eventosDoTeable.ts) e muda a Produção. A chave do evento (registro + tipo + campo + valor + quando) não
+ * repete. O aviso do Trello (#87, #88) fica desligado por padrão (TRELLO_AVISO).
  *
  * Os eventos (#87) são a memória da Produção: o que o aviso do Trello disse que aconteceu (criada, mudou de etapa,
  * arquivada, desarquivada), com quem e quando (a data da ação no Trello) e o id da ação do Trello, único: o mesmo
@@ -28,6 +33,7 @@ import { randomUUID } from 'node:crypto';
 import { ETAPAS, producaoDaLinha } from '../src/modelo/producao.ts';
 import { normalizarPraca, pracasRegistradas, reconhecerPraca } from '../src/modelo/pracas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
+import { eventosDaReleitura } from '../src/modelo/eventosDoTeable.ts';
 
 export function criarTabelaDasProducoes(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS producoes (
@@ -49,6 +55,8 @@ export function criarTabelaDasProducoes(db) {
     filme_id TEXT,
     filme_titulo TEXT,
     arquivada INTEGER NOT NULL DEFAULT 0,
+    prioridade TEXT,
+    complexidade TEXT,
     criada_em TEXT NOT NULL,
     atualizada_em TEXT NOT NULL
   )`);
@@ -65,6 +73,7 @@ export function criarTabelaDasProducoes(db) {
     quem_nome TEXT,
     quando TEXT NOT NULL,
     trello_acao TEXT UNIQUE,
+    chave TEXT,
     anotado_em TEXT NOT NULL
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS eventos_producao ON eventos (producao_id, quando)');
@@ -80,6 +89,11 @@ export function criarTabelaDasProducoes(db) {
   };
   if (!tem('producoes', 'artes_marcadas')) db.exec(`ALTER TABLE producoes ADD COLUMN artes_marcadas TEXT NOT NULL DEFAULT '[]'`);
   if (!tem('eventos', 'campo')) db.exec('ALTER TABLE eventos ADD COLUMN campo TEXT');
+  // a releitura do Teable: a prioridade e a complexidade guardadas (null: ainda não lidas) e a chave do evento
+  if (!tem('producoes', 'prioridade')) db.exec('ALTER TABLE producoes ADD COLUMN prioridade TEXT');
+  if (!tem('producoes', 'complexidade')) db.exec('ALTER TABLE producoes ADD COLUMN complexidade TEXT');
+  if (!tem('eventos', 'chave')) db.exec('ALTER TABLE eventos ADD COLUMN chave TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS eventos_chave ON eventos (chave)');
 }
 
 /** As famílias de evento: o atrasado só não muda a Produção diante de um mais novo da mesma família. */
@@ -100,7 +114,13 @@ function comOuSem(json, item, com) {
   return JSON.stringify(com ? [...sem, item] : sem);
 }
 
-const COLUNAS = ['claquete', 'praca', 'etapa', 'marcador', 'designers', 'artes', 'artes_quantidade', 'entrada_em', 'entrega_em', 'exibicao_em', 'card_id', 'roteiro_id', 'filme_id', 'filme_titulo', 'arquivada', 'atualizada_em'];
+const COLUNAS = ['claquete', 'praca', 'etapa', 'marcador', 'designers', 'artes', 'artes_quantidade', 'entrada_em', 'entrega_em', 'exibicao_em', 'card_id', 'roteiro_id', 'filme_id', 'filme_titulo', 'arquivada', 'prioridade', 'complexidade', 'atualizada_em'];
+/** As colunas que a releitura do Teable muda (a exibição, o Roteiro e o filme ficam se a linha não trouxer). */
+const DA_RELEITURA = ['claquete', 'praca', 'etapa', 'marcador', 'designers', 'artes', 'artes_quantidade', 'entrada_em', 'entrega_em', 'card_id', 'arquivada', 'prioridade', 'complexidade'];
+/** A prioridade e a complexidade como a Produção guarda ('' sem nada; a linha sem a coluna, null). */
+const texto = (v) => (v === undefined || v === null ? null : String(v).trim());
+/** As colunas da Produção (COLUNAS) de uma linha da produção da arte: a da carga e a da releitura. */
+const colunasDa = (p, l, em) => ({ claquete: p.claquete, praca: p.praca, etapa: p.etapa, marcador: p.marcador, designers: JSON.stringify(p.designers), artes: JSON.stringify(p.artes), artes_quantidade: p.artesQuantidade, entrada_em: p.entradaEm, entrega_em: p.entregaEm, exibicao_em: p.exibicaoEm, card_id: p.cardId, roteiro_id: p.roteiroId, filme_id: p.filmeId, filme_titulo: p.filmeTitulo, arquivada: p.arquivada ? 1 : 0, prioridade: texto(l.prioridade), complexidade: texto(l.complexidade), atualizada_em: em });
 
 /** O evento como a API mostra. */
 const doEvento = (e) => ({ tipo: e.tipo, ...(e.campo ? { campo: e.campo } : {}), antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null });
@@ -182,6 +202,16 @@ export function criarProducoes(db) {
     mudarEtapa: db.prepare(
       `UPDATE producoes SET etapa = ?, arquivada = ?, entrega_em = CASE WHEN ? = 'entregue' AND entrega_em IS NULL THEN ? ELSE entrega_em END, atualizada_em = ? WHERE id = ?`,
     ),
+    /* ---------- a releitura do Teable ---------- */
+    // a Produção relida: o que o Teable diz vale; a exibição, o Roteiro e o filme só mudam se a linha trouxer
+    relida: db.prepare(
+      `INSERT INTO producoes (id, teable_registro, criada_em, ${COLUNAS.join(', ')}) VALUES (?, ?, ?, ${COLUNAS.map(() => '?').join(', ')})
+       ON CONFLICT (teable_registro) DO UPDATE SET ${[...DA_RELEITURA.map((c) => `${c} = excluded.${c}`), ...['roteiro_id', 'exibicao_em', 'filme_id', 'filme_titulo'].map((c) => `${c} = COALESCE(excluded.${c}, producoes.${c})`), 'atualizada_em = excluded.atualizada_em'].join(', ')}`,
+    ),
+    anotarDoTeable: db.prepare(
+      `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, chave, anotado_em) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+       ON CONFLICT DO NOTHING`,
+    ),
   };
 
   /** card → { id, exibicao }: o Roteiro guardado que foi enviado para o card, e a data de exibição dele. */
@@ -226,7 +256,7 @@ export function criarProducoes(db) {
           const p = producaoDaLinha(l, { roteiro: l.card ? roteiros.get(l.card) : null, exibicao: l.card ? exibicoes.get(l.card) : null }, pracas);
           if (p.cardId && !q.existe.get(p.teableRegistro)) q.adotar.run(p.teableRegistro, p.cardId);
           if (!q.existe.get(p.teableRegistro)) novas++;
-          const valores = { claquete: p.claquete, praca: p.praca, etapa: p.etapa, marcador: p.marcador, designers: JSON.stringify(p.designers), artes: JSON.stringify(p.artes), artes_quantidade: p.artesQuantidade, entrada_em: p.entradaEm, entrega_em: p.entregaEm, exibicao_em: p.exibicaoEm, card_id: p.cardId, roteiro_id: p.roteiroId, filme_id: p.filmeId, filme_titulo: p.filmeTitulo, arquivada: p.arquivada ? 1 : 0, atualizada_em: em };
+          const valores = colunasDa(p, l, em);
           q.gravar.run(randomUUID(), p.teableRegistro, em, ...COLUNAS.map((c) => valores[c]));
         }
         db.exec('COMMIT');
@@ -322,6 +352,46 @@ export function criarProducoes(db) {
   }
 
   /**
+   * A releitura da produção da arte (ADR 0006: lê do Teable): cada linha relida é comparada com a Produção guardada
+   * (src/modelo/eventosDoTeable.ts), numa transação. A linha nova vira Produção, com o evento "criada"; a que já existe
+   * recebe os eventos do que mudou e passa a ser o que o Teable diz (a linha igual não é regravada). A chave do evento
+   * não repete: a mesma linha relida duas vezes não duplica.
+   * @param linhas as linhas da produção da arte relidas (servidor/trello.mjs, producaoAlteradaDesde)
+   * @returns { lidas, novas, mudadas, anotados }
+   */
+  function reler(linhas, pracas = pracasRegistradas(), agora = new Date().toISOString()) {
+    const r = { lidas: linhas?.length ?? 0, novas: 0, mudadas: 0, anotados: 0 };
+    if (!linhas?.length) return r;
+    const roteiros = roteirosDosCards();
+    db.exec('BEGIN');
+    try {
+      for (const l of linhas) {
+        if (!l?.registro) continue;
+        const p = producaoDaLinha(l, { roteiro: l.card ? roteiros.get(l.card) : null }, pracas);
+        if (p.cardId && !q.existe.get(p.teableRegistro)) q.adotar.run(p.teableRegistro, p.cardId);
+        const atual = q.doRegistro.get(p.teableRegistro);
+        const antes = atual ? { etapa: atual.etapa, designers: JSON.parse(atual.designers ?? '[]'), praca: atual.praca, prioridade: atual.prioridade ?? null, complexidade: atual.complexidade ?? null } : null;
+        const eventos = eventosDaReleitura(antes, l, { pracas, agora });
+        const valores = colunasDa(p, l, agora);
+        // a linha igual à guardada (a releitura pega de novo as do fim da janela) não é regravada
+        const igual = atual && DA_RELEITURA.every((c) => (atual[c] ?? null) === (valores[c] ?? null)) && (!valores.filme_id || atual.filme_id === valores.filme_id);
+        if (!igual) {
+          q.relida.run(randomUUID(), p.teableRegistro, agora, ...COLUNAS.map((c) => valores[c]));
+          if (atual) r.mudadas++;
+          else r.novas++;
+        }
+        const id = atual?.id ?? q.doRegistro.get(p.teableRegistro)?.id;
+        for (const ev of eventos) r.anotados += Number(q.anotarDoTeable.run(randomUUID(), id, ev.tipo, ev.campo ?? null, ev.antes ?? null, ev.depois ?? null, ev.quando, ev.chave, agora).changes ?? 0);
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return r;
+  }
+
+  /**
    * A Linha do tempo (#89) de uma Produção, pelo id dela ou pelo card (o card com mais de uma: a mais recente, como o
    * aviso). Só o que a leitura precisa, para qualquer pessoa logada: o estado de agora e os eventos em ordem, com o
    * nome de quem fez; sem os ids do Trello (o do membro e o da ação).
@@ -347,6 +417,7 @@ export function criarProducoes(db) {
     /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */
     ultimoEvento: () => q.ultimoDeTodos.get()?.quando ?? null,
     anotar,
+    reler,
     carregar,
     contagem,
     /** As Produções de um card ou de um registro do Teable, com os eventos de cada uma (do mais velho ao mais novo). */

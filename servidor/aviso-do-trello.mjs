@@ -7,6 +7,11 @@
  * manda no cabeçalho X-Trello-Webhook o base64 do HMAC-SHA1 do corpo + o endereço do webhook (callbackURL), com o
  * segredo da aplicação (o "OAuth secret" da chave do Trello, TRELLO_SEGREDO no Portainer). O corpo tem tamanho máximo
  * e nunca vai inteiro para o log.
+ *
+ * DESLIGADO POR PADRÃO (ADR 0006: por enquanto o PROMeiro só ESCREVE no Trello; o que ele lê vem do Teable). Só com
+ * TRELLO_AVISO=1 no Portainer o webhook é registrado, a recuperação das ações do quadro roda e a rota responde; sem
+ * ela, a rota responde 404 e nada é pedido ao Trello. Os eventos da Produção nascem da releitura da produção da arte
+ * do Teable (servidor/producoes.mjs, reler).
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { configDoTrello } from './trello.mjs';
@@ -20,6 +25,9 @@ export const LIMITE_DO_AVISO = 256 * 1024;
 
 /** A descrição do webhook no Trello (para reconhecer quem registrou). */
 const DESCRICAO = 'PROMeiro: o aviso das mudanças do quadro';
+
+/** O aviso do Trello está ligado? Só com TRELLO_AVISO=1 (ou sim, true, ligado); vazio ou qualquer outro, desligado. */
+export const avisoLigado = (env) => /^(1|sim|true|ligado)$/i.test(String(env?.TRELLO_AVISO ?? '').trim());
 
 /** O endereço do webhook: PROMEIRO_URL + a rota (vazio sem PROMEIRO_URL). É também parte do que o Trello assina. */
 export const enderecoDoAviso = (env) => {

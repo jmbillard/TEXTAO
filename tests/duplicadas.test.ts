@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { duplicadasDaProducao, sugestaoDoCaso, type CardDoCaso, type LinhaDaProducao } from '../src/modelo/duplicadas';
 
 /* Os casos fictícios das claquetes duplicadas: a função pura que agrupa as linhas da produção da arte (ARTE_producao)
-   e sugere quem sai. A lista não lê o Trello (#65, corrigido): só a produção. */
+   e sugere quem sai. Nada do Trello (#65; ADR 0006): só a produção, também no caso aberto. */
 
 let n = 0;
 const BASE = Date.UTC(2026, 10, 10, 12);
@@ -115,7 +115,7 @@ describe('a sugestão de quem fica e quem sai, só com a linha', () => {
   it('a arquivada que já andou não conta como arquivada na entrada', () => {
     const s = sugestao([linha('Caso 5/11', { arquivado: true, status: ['FINALIZADO'] }), linha('Caso 5/11', { designers: [] })]);
     expect(s).toMatchObject({ fica: 0, saem: [1] });
-    expect(s.motivos[1]).toBe('Sem designers nem membros.');
+    expect(s.motivos[1]).toBe('Sem designers.');
   });
 
   it('depois, a que entrou depois; por fim, a que não saiu (nem entregue nem finalizada)', () => {
@@ -135,19 +135,14 @@ describe('a sugestão de quem fica e quem sai, só com a linha', () => {
       linha('ARENA DO DOMINGO_23_11', { designers: [] }),
     ]);
     expect(s).toMatchObject({ fica: 1, saem: [0, 2] });
-    expect(s.motivos).toEqual(['Arquivado sem sair da entrada.', 'Não foi arquivado na entrada; tem designers ou membros.', 'Sem designers nem membros.']);
+    expect(s.motivos).toEqual(['Arquivado sem sair da entrada.', 'Não foi arquivado na entrada; tem designers.', 'Sem designers.']);
   });
 });
 
-describe('a sugestão do caso aberto, com o que só o Trello tem', () => {
+describe('a sugestão pelos sinais do card', () => {
   const card = (id: string, o: Partial<CardDoCaso> = {}): CardDoCaso => ({ id, arquivado: false, naEntrada: false, pessoas: 1, entrada: BASE, saiu: false, ...o });
 
-  it('o card que não está mais no Trello sai antes de tudo', () => {
-    const s = sugestaoDoCaso([card('a', { sumiu: true }), card('b', { arquivado: true, naEntrada: true, pessoas: 0 })]);
-    expect(s).toEqual({ fica: 'b', saem: ['a'], motivos: { a: 'Não está mais no Trello.', b: 'Está no Trello.' } });
-  });
-
-  it('arquivado numa lista de entrada do Trello sai; fora dela, não', () => {
+  it('arquivado na entrada sai; arquivado depois de andar, não', () => {
     expect(sugestaoDoCaso([card('a', { arquivado: true, naEntrada: true }), card('b', { pessoas: 0, entrada: BASE + 1 })]).fica).toBe('b');
     expect(sugestaoDoCaso([card('a', { arquivado: true }), card('b', { pessoas: 0, entrada: BASE + 1 })]).fica).toBe('a');
   });

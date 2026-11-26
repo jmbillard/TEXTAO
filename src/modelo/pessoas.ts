@@ -1,15 +1,16 @@
-/* A seção Pessoas da Configuração (#77), as regras sem rede: quem entrou e quem saiu do quadro (os membros do quadro
-   do Trello comparados com a tabela designers do Teable) e quem é administrador. A regra de administrador do app
-   inteiro é esta: quem está no CADASTRO_ADMINS do Portainer (a chave-mestra, sempre administrador) mais quem foi
-   salvo na tela (ADMINISTRADORES, em JSON). Os membros do quadro são a fonte por enquanto (ADR 0006): o resto do
-   PROMeiro só vê "designer" e "administrador", nunca o Trello. O mesmo módulo serve ao servidor e ao navegador. */
+/* A seção Pessoas da Configuração (#77), as regras sem rede: quem entrou e quem saiu (os designers que aparecem na
+   produção da arte do Teable comparados com a tabela designers) e quem é administrador. A regra de administrador do
+   app inteiro é esta: quem está no CADASTRO_ADMINS do Portainer (a chave-mestra, sempre administrador) mais quem foi
+   salvo na tela (ADMINISTRADORES, em JSON). Nada do Trello (ADR 0006: por enquanto o PROMeiro só ESCREVE no Trello;
+   lê do Teable): o resto do PROMeiro só vê "designer" e "administrador". O mesmo módulo serve ao servidor e ao
+   navegador. */
 import { nomeComparavel } from './ligarPeloNome.ts';
 
-/** Um membro do quadro, como o Trello lista (o e-mail só quando o Trello dá). */
-export interface MembroDoQuadro {
-  id: string;
+/** Um designer que aparece na produção da arte (a coluna designers), com a entrada mais recente em que aparece. */
+export interface DesignerNaProducao {
   nome: string;
-  email: string;
+  /** a data_entrada mais recente (ISO) da linha em que aparece */
+  ultima: string | null;
 }
 /** Uma linha da tabela designers: o registro no Teable, o nome, o status, o e-mail e o id do membro no Trello. */
 export interface Designer {
@@ -18,33 +19,42 @@ export interface Designer {
   ativo: boolean;
   email: string;
   idNoTrello: string;
+  /** quando o registro foi criado no Teable (ISO), quando a API diz */
+  criadoEm?: string | null;
 }
-/** O que mudou no quadro: "Fulana é nova no quadro" (entrou) ou "Fulano saiu do quadro" (saiu). */
+/** O que mudou: "Fulana apareceu na produção" (entrou) ou "Fulano sem produção há N dias" (saiu). */
 export interface Novidade {
-  /** a chave com que se ignora (e desfaz): entrou:<membro> ou saiu:<registro> */
+  /** a chave com que se ignora (e desfaz): entrou:<nome comparável> ou saiu:<registro> */
   chave: string;
   tipo: 'entrou' | 'saiu';
   nome: string;
   email: string;
-  /** o id do membro no Trello ('' no designer sem o id, que contou pelo nome) */
+  /** o id do membro no Trello, quando a tabela designers tem (só em quem saiu; '' em quem entrou) */
   membro: string;
   /** o registro do designer na tabela (só em quem saiu) */
   registro?: string;
 }
 
-/** O designer é este membro: pelo id do Trello; sem o id na tabela, pelo nome (sem caixa, acento e pontuação). */
-const eOMembro = (d: Designer, m: MembroDoQuadro) => (d.idNoTrello ? d.idNoTrello === m.id : !!nomeComparavel(d.nome) && nomeComparavel(d.nome) === nomeComparavel(m.nome));
+/** Os dias que contam: quem apareceu na produção da arte nesses dias entrou; o designer ativo sem nenhuma, saiu. */
+export const DIAS_DAS_PESSOAS = 60;
+
+const mesmoNome = (a: string, b: string) => !!nomeComparavel(a) && nomeComparavel(a) === nomeComparavel(b);
 
 /**
- * Os membros do quadro × a tabela designers. Entrou: o membro que não está na tabela (nem como inativo). Saiu: o
- * designer ativo que não está mais no quadro. Na ordem: quem entrou, depois quem saiu.
+ * Os designers da produção da arte × a tabela designers. Entrou: o nome que aparece na produção (nos últimos dias) e
+ * não está na tabela (nem como inativo), pelo nome sem caixa, acento e pontuação. Saiu: o designer ativo que não
+ * aparece em nenhuma produção desde `desde` (o cadastrado depois disso ainda não conta). Na ordem: quem entrou,
+ * depois quem saiu.
+ * @param naProducao os designers das linhas que entraram desde `desde`
+ * @param o.desde o começo da janela (ms)
  */
-export function novidadesDoQuadro(membros: readonly MembroDoQuadro[], designers: readonly Designer[]): Novidade[] {
-  const entrou = membros
-    .filter((m) => !designers.some((d) => eOMembro(d, m)))
-    .map((m): Novidade => ({ chave: `entrou:${m.id}`, tipo: 'entrou', nome: m.nome, email: m.email, membro: m.id }));
+export function novidadesDaProducao(naProducao: readonly DesignerNaProducao[], designers: readonly Designer[], { desde }: { desde: number }): Novidade[] {
+  const entrou = naProducao
+    .filter((p) => !designers.some((d) => mesmoNome(d.nome, p.nome)))
+    .map((p): Novidade => ({ chave: `entrou:${nomeComparavel(p.nome)}`, tipo: 'entrou', nome: p.nome, email: '', membro: '' }));
+  const novoNaTabela = (d: Designer) => !!d.criadoEm && Date.parse(d.criadoEm) >= desde;
   const saiu = designers
-    .filter((d) => d.ativo && !membros.some((m) => eOMembro(d, m)))
+    .filter((d) => d.ativo && !novoNaTabela(d) && !naProducao.some((p) => mesmoNome(d.nome, p.nome)))
     .map((d): Novidade => ({ chave: `saiu:${d.registro}`, tipo: 'saiu', nome: d.nome, email: d.email, membro: d.idNoTrello, registro: d.registro }));
   return [...entrou, ...saiu];
 }

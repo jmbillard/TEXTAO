@@ -50,7 +50,9 @@ services:
       # ---- Trello ----
       - TRELLO_KEY=${TRELLO_KEY:-}
       - TRELLO_TOKEN=${TRELLO_TOKEN:-}
-      # o Secret da API key: confere a assinatura do aviso do Trello (a rota /api/trello/aviso, fora do Access)
+      # o aviso do Trello (#87) fica DESLIGADO: por enquanto o PROMeiro só escreve no Trello e lê do Teable (ADR 0006).
+      # Só com TRELLO_AVISO=1 o webhook é registrado e a rota /api/trello/aviso responde (aí, com o Secret da API key)
+      - TRELLO_AVISO=${TRELLO_AVISO:-}
       - TRELLO_SEGREDO=${TRELLO_SEGREDO:-}
 
       # ---- OneDrive (cópia do arquivo original, por SFTP) ----

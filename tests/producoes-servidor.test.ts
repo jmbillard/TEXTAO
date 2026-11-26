@@ -46,11 +46,14 @@ async function comServidor({ db = abrirBanco(':memory:'), registros = { ARTE_pro
   const app = criarApp({ db, env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg });
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
-  parar = () => new Promise<void>((ok) => servidor.close(() => ok()));
+  parar = async () => {
+    await app.fechar();
+    await new Promise<void>((ok) => servidor.close(() => ok()));
+  };
   const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
   const como = (email: string) => (caminho: string, init: RequestInit = {}) =>
     fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json', ...init.headers } });
-  return { db, teable, registros, chefe: como('chefe@empresa.com'), ana: como('ana@empresa.com') };
+  return { app, db, teable, registros, chefe: como('chefe@empresa.com'), ana: como('ana@empresa.com') };
 }
 
 type Contagem = { ligado: boolean; carregando: boolean; total: number; porEtapa: Record<string, number>; comCard: number; semCard: number; comRoteiro: number; comFilme: number; ultimaCarga: { linhas: number; novas: number; atualizadas: number } | null };
@@ -112,7 +115,7 @@ describe('a carga inicial das Produções', () => {
     expect(depois[0]).toMatchObject({ id: antes.id, etapa: 'produzindo', designers: ['Designer Um'] });
   });
 
-  it('roda sozinha na subida quando não há nenhuma Produção; com Produções guardadas, não lê o Teable de novo', async () => {
+  it('roda sozinha na subida quando não há nenhuma Produção; com Produções guardadas, não lê a tabela inteira de novo', async () => {
     const db = abrirBanco(':memory:');
     const primeira = await comServidor({ db });
     let c = await ler(await primeira.chefe('/api/producoes'));
@@ -124,8 +127,11 @@ describe('a carga inicial das Produções', () => {
     await parar?.();
     parar = null;
     const segunda = await comServidor({ db });
-    await new Promise((ok) => setTimeout(ok, 100));
-    expect(segunda.teable.estado.consultas.filter((s: string) => s.includes('"arte_producao_pg"'))).toEqual([]);
+    await segunda.app.releituraPronta;
+    // só a releitura (as linhas mudadas desde a marca), nunca a carga inteira
+    const lidas = segunda.teable.estado.consultas.filter((s: string) => s.includes('"arte_producao_pg"'));
+    expect(lidas.length).toBeGreaterThan(0);
+    for (const s of lidas) expect(s).toMatch(/WHERE p\."__last_modified_time" >= \$1/);
     expect(await ler(await segunda.chefe('/api/producoes'))).toMatchObject({ total: 6, ultimaCarga: null });
   });
 
@@ -144,5 +150,84 @@ describe('a carga inicial das Produções', () => {
     expect((await ana('/api/producoes')).status).toBe(403);
     expect((await ana('/api/producoes/recarregar', { method: 'POST' })).status).toBe(403);
     expect((await ana('/api/producoes?registro=recLinha1')).status).toBe(403);
+  });
+});
+
+/* A releitura (ADR 0006: o PROMeiro só escreve no Trello; lê do Teable): as linhas que o Teable mudou viram eventos da
+   Produção, sem o Trello. O Postgres de mentira devolve a tabela inteira a cada releitura (não olha o WHERE): o que
+   não mudou não vira nada. */
+describe('a releitura da produção da arte: os eventos nascem do Teable', () => {
+  type Evento = { tipo: string; campo?: string; antes: string | null; depois: string | null; quem: unknown; quando: string; acao: string | null };
+  const eventosDe = async (chefe: (c: string, i?: RequestInit) => Promise<Response>, rec: string) =>
+    ((await (await chefe(`/api/producoes?registro=${rec}`)).json()) as { producoes: (Producao & { eventos: Evento[] })[] }).producoes[0];
+
+  async function carregado() {
+    const s = await comServidor();
+    await s.app.releituraPronta;
+    return s;
+  }
+
+  it('a linha que não mudou não vira evento', async () => {
+    const { app, chefe } = await carregado();
+    expect(await app.relerAProducao()).toMatchObject({ lidas: 6, novas: 0, mudadas: 0, anotados: 0 });
+    expect((await eventosDe(chefe, 'recLinha1')).eventos).toEqual([]);
+  });
+
+  it('o designer que entrou, a etapa, a prioridade e a complexidade mudadas viram eventos e mudam a Produção', async () => {
+    const { app, chefe, registros } = await carregado();
+    const quando = '2026-11-26T13:05:00.000Z';
+    Object.assign(registros.ARTE_producao[2].fields, { designers: '["Designer Um"]', complexidade: 2, __last_modified_time: quando });
+    Object.assign(registros.ARTE_producao[0].fields, { entregue: true, data_entrega: '2026-11-26T15:20:00.000Z', prioridade: 'ALTA', __last_modified_time: '2026-11-26T15:20:30.000Z' });
+    expect(await app.relerAProducao()).toMatchObject({ mudadas: 2, novas: 0, anotados: 5 });
+    const cozinha = await eventosDe(chefe, 'recLinha3');
+    expect(cozinha).toMatchObject({ etapa: 'produzindo', designers: ['Designer Um'] });
+    expect(cozinha.eventos.map((e) => [e.tipo, e.campo ?? '', e.antes, e.depois, e.quando])).toEqual([
+      ['etapa', '', 'entrada', 'produzindo', quando],
+      ['designer-entrou', '', null, 'Designer Um', quando],
+      ['campo', 'complexidade', null, 'MÉDIA', quando],
+    ]);
+    // sem quem (o Teable não diz) e sem id de ação do Trello
+    expect(cozinha.eventos.every((e) => e.quem === null && e.acao === null)).toBe(true);
+    const show = await eventosDe(chefe, 'recLinha1');
+    expect(show).toMatchObject({ etapa: 'entregue', entregaEm: '2026-11-26T15:20:00.000Z' });
+    expect(show.eventos.map((e) => [e.tipo, e.campo ?? '', e.antes, e.depois])).toEqual([
+      ['etapa', '', 'produzindo', 'entregue'],
+      ['campo', 'prioridade', null, 'ALTA'],
+    ]);
+  });
+
+  it('a mesma mudança relida de novo não duplica; a linha nova vira Produção com "criada"', async () => {
+    const { app, chefe, registros } = await carregado();
+    Object.assign(registros.ARTE_producao[2].fields, { designers: '["Designer Um"]', __last_modified_time: '2026-11-26T13:05:00.000Z' });
+    await app.relerAProducao();
+    expect(await app.relerAProducao()).toMatchObject({ mudadas: 0, anotados: 0 });
+    expect((await eventosDe(chefe, 'recLinha3')).eventos).toHaveLength(2);
+    registros.ARTE_producao.push(registro('recLinha7', { card_ID: card(7), claquete: 'Praia do Sol 22/11', data_entrada: '2026-11-26T16:00:00.000Z', __last_modified_time: '2026-11-26T16:00:05.000Z' }));
+    expect(await app.relerAProducao()).toMatchObject({ novas: 1, anotados: 1 });
+    const praia = await eventosDe(chefe, 'recLinha7');
+    expect(praia).toMatchObject({ claquete: 'Praia do Sol 22/11', etapa: 'entrada', cardId: card(7) });
+    expect(praia.eventos.map((e) => [e.tipo, e.depois, e.quando])).toEqual([['criada', 'entrada', '2026-11-26T16:00:00.000Z']]);
+    // a linha do tempo (#89) lê esses eventos
+    const linha = (await (await chefe(`/api/linha-do-tempo?card=${card(7)}`)).json()) as { eventos: { tipo: string; quem: string | null }[] };
+    expect(linha.eventos).toEqual([{ tipo: 'criada', antes: null, depois: 'entrada', quem: null, quando: '2026-11-26T16:00:00.000Z' }]);
+  });
+
+  it('a próxima releitura pede desde a modificação mais nova lida (menos 2 minutos), guardada no SQLite; o Roteiro ligado fica', async () => {
+    const db = abrirBanco(':memory:');
+    roteiroEnviado(db, 'roteiro-show-1', card(1), '2026-11-20');
+    const { app, teable, registros, chefe } = await comServidor({ db });
+    await app.releituraPronta;
+    Object.assign(registros.ARTE_producao[0].fields, { designers: '["Designer Dois"]', __last_modified_time: '2026-11-26T13:05:00.000Z' });
+    await app.relerAProducao();
+    await app.relerAProducao();
+    expect(teable.estado.parametros.at(-1)).toEqual(['2026-11-26T13:03:00.000Z']);
+    expect((await porRegistro(chefe, 'recLinha1'))[0]).toMatchObject({ designers: ['Designer Dois'], roteiroId: 'roteiro-show-1', exibicaoEm: '2026-11-20' });
+    expect((await ler(await chefe('/api/producoes'))) as unknown).toMatchObject({ ultimaReleitura: { desde: '2026-11-26T13:03:00.000Z' } });
+  });
+
+  it('com o Teable fora do ar, a releitura não muda nada e tenta de novo na próxima', async () => {
+    const { app, teable } = await carregado();
+    teable.estado.fora = true;
+    expect(await app.relerAProducao()).toBeNull();
   });
 });

@@ -421,31 +421,24 @@ function LinhaDoCaso({ caso, aberto, alternar, dias, celular, ignorar }: { caso:
 type Linha = { rotulo: string; valor: (c: CardDaDuplicada, i: number, todos: CardDaDuplicada[]) => React.ReactNode; texto?: (c: CardDaDuplicada) => string; compara?: boolean };
 const LINHAS: Linha[] = [
   { rotulo: 'Claquete na produção', valor: (c) => c.claquete || '—', texto: (c) => c.claquete },
-  { rotulo: 'Nome no Trello', valor: (c) => (c.noTrello === false ? <span className="sem-dup">não está mais no Trello</span> : c.nome || '—'), texto: (c) => `${c.noTrello}|${c.nome}` },
-  { rotulo: 'Lista', valor: (c) => c.lista || '—', texto: (c) => c.lista },
   { rotulo: 'Estado', valor: (c) => (c.arquivado ? 'arquivado' : 'aberto'), texto: (c) => String(c.arquivado) },
   { rotulo: 'Criado', valor: (c, i, todos) => (c.criado ? [diaHora(c.criado), i > 0 && todos[0].criado ? depois(todos[0].criado, c.criado) : ''].filter(Boolean).join(' · ') : '—'), compara: false },
   { rotulo: 'Entrada', valor: (c) => diaMes(c.entrada), texto: (c) => diaMes(c.entrada) },
-  { rotulo: 'Exibição', valor: (c) => diaMes(c.exibicao), texto: (c) => diaMes(c.exibicao) },
+  { rotulo: 'Entrega', valor: (c) => diaMes(c.entrega), texto: (c) => diaMes(c.entrega) },
   { rotulo: 'Status', valor: (c) => (c.status.length ? c.status.map((s) => <span key={s} className="status-dup">{s}</span>) : '—'), texto: (c) => c.status.join() },
   { rotulo: 'Designers', valor: (c) => c.designers.join(', ') || '—', texto: (c) => c.designers.join() },
-  { rotulo: 'Membros', valor: (c) => c.membros.join(', ') || '—', texto: (c) => c.membros.join() },
-  { rotulo: 'Artes', valor: (c) => (c.checklist ? `${c.checklist} no checklist` : '—'), texto: (c) => String(c.checklist) },
-  { rotulo: 'Anexos', valor: (c) => c.anexos || '—', texto: (c) => c.anexos },
+  { rotulo: 'Artes', valor: (c) => (c.artes ? `${c.artes} na produção` : '—'), texto: (c) => String(c.artes ?? '') },
   { rotulo: 'Acervo ligado', valor: (c) => (c.acervo ? plural(c.acervo, 'arte', 'artes') : '—'), texto: (c) => String(c.acervo) },
   // a Linha do tempo da Produção do card (#89), lida quando o caso abre
   { rotulo: 'Linha do tempo', valor: (c) => <LinhaDoTempoDoCard card={c.id} vazio="—" />, compara: false },
   { rotulo: 'Roteiro no PROMeiro', valor: (c) => (c.roteiro ? [c.roteiro.claquete, c.roteiro.por].filter(Boolean).join(' · ') : '—'), texto: (c) => c.roteiro?.id ?? '' },
   {
     rotulo: 'Trello',
-    valor: (c) =>
-      c.noTrello === false ? (
-        <span className="sem-dup">não está mais no Trello</span>
-      ) : (
-        <a href={c.url} target="_blank" rel="noreferrer" className="link-dup">
-          {c.url.replace(/^https?:\/\//, '')}
-        </a>
-      ),
+    valor: (c) => (
+      <a href={c.url} target="_blank" rel="noreferrer" className="link-dup">
+        {c.url.replace(/^https?:\/\//, '')}
+      </a>
+    ),
     compara: false,
   },
 ];
@@ -490,7 +483,7 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
   }, [id, dias]);
   const { saem, ficar, sair } = useEscolha(caso);
   if (falha) return <p className="cad-falha dup-falha">{falha}</p>;
-  if (!caso) return <p className="cad-vazio detalhe-dup carregando">Lendo os cards no Trello…</p>;
+  if (!caso) return <p className="cad-vazio detalhe-dup carregando">Lendo o caso na produção…</p>;
   const sugestao = (c: CardDaDuplicada) => (
     <p className="sugestao-dup">
       <b>{caso.sugestao.fica === c.id ? 'Sugestão: fica.' : 'Provável duplicado.'}</b> {c.motivo === 'Sugestão: fica.' ? '' : c.motivo}
@@ -499,7 +492,7 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
   const rodape = (
     <div className="acoes-dup">
       <p className="explica-dup">
-        A sugestão usa os sinais do relatório do n8n: fora do Trello, arquivado na entrada, designers e membros, quem entrou primeiro na produção, saída ou entregue.
+        A sugestão usa os sinais da produção da arte: arquivado na entrada, designers, quem entrou primeiro na produção, saída ou entregue.
         {celular ? ' Ignorar só no computador.' : ' Você pode trocar.'}
       </p>
       {ignorar && (
@@ -513,10 +506,8 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
     return (
       <div className="detalhe-dup empilhado">
         {caso.cards.map((c, i) => (
-          <article key={c.id} className={`card-dup ${caso.sugestao.fica === c.id ? 'fica' : 'sai'}`} aria-label={`Card ${c.numero ? `#${c.numero}` : c.nome}`}>
+          <article key={c.id} className={`card-dup ${caso.sugestao.fica === c.id ? 'fica' : 'sai'}`} aria-label={`Card ${i + 1}: ${c.claquete}`}>
             <span className="selo-dup">{caso.sugestao.fica === c.id ? 'Sugestão: fica' : 'Sugestão: duplicado'}</span>
-            {c.numero != null && <b className="numero-dup">#{c.numero}</b>}
-            {c.noTrello === false && <span className="fora-dup">Não está mais no Trello</span>}
             {sugestao(c)}
             <dl>
               {LINHAS.map((l) => (
@@ -536,11 +527,11 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
       <div className="tabela-dup" role="table" aria-label={`Cards de ${caso.claquete}`} style={{ gridTemplateColumns: `minmax(120px, 0.8fr) repeat(${caso.cards.length}, minmax(0, 1fr))` }}>
         <div role="row" className="cabeca">
           <span role="columnheader" />
-          {caso.cards.map((c) => {
+          {caso.cards.map((c, i) => {
             const sai = saem.includes(c.id);
             return (
               <div key={c.id} role="columnheader" className={`col-dup ${sai ? 'sai' : 'fica'}`}>
-                <div className="fica-sai" role="radiogroup" aria-label={`O card ${c.numero ? `#${c.numero}` : c.nome}`}>
+                <div className="fica-sai" role="radiogroup" aria-label={`O card ${i + 1}: ${c.claquete}`}>
                   <button type="button" role="radio" aria-checked={!sai} onClick={() => ficar(c.id)}>
                     Fica
                   </button>
@@ -548,8 +539,6 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
                     Sai
                   </button>
                 </div>
-                {c.numero != null && <b className="numero-dup">#{c.numero}</b>}
-                {c.noTrello === false && <span className="fora-dup">Não está mais no Trello</span>}
                 {sugestao(c)}
               </div>
             );

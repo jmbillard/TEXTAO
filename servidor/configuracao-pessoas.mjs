@@ -1,13 +1,14 @@
-/* A seção Pessoas da Configuração (#77): os membros do quadro do Trello comparados com a tabela designers do Teable
-   (quem entrou, quem saiu), cadastrar como designer, marcar inativo, ignorar e desfazer. As regras sem rede ficam em
-   src/modelo/pessoas.ts; aqui, a leitura e a gravação. A última verificação fica guardada no SQLite (o pontinho do menu
-   do perfil sai dela, sem ir ao Trello a cada pedido), e o que foi ignorado também, até alguém desfazer. Os membros do
-   quadro são a fonte por enquanto (ADR 0006): o que sai daqui é "designer", não "membro do Trello". */
+/* A seção Pessoas da Configuração (#77): os designers que aparecem na produção da arte do Teable comparados com a
+   tabela designers (quem entrou, quem saiu), cadastrar como designer, marcar inativo, ignorar e desfazer. As regras sem
+   rede ficam em src/modelo/pessoas.ts; aqui, a leitura e a gravação. A última verificação fica guardada no SQLite (o
+   pontinho do menu do perfil sai dela, sem ler o Teable a cada pedido), e o que foi ignorado também, até alguém
+   desfazer. Nada do Trello (ADR 0006: por enquanto o PROMeiro só ESCREVE no Trello; lê do Teable): antes eram os
+   membros do quadro. */
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
-import { novidadesDoQuadro } from '../src/modelo/pessoas.ts';
-import { lerIdDoQuadro, pracasSalvas } from './configuracao-pracas.mjs';
+import { DIAS_DAS_PESSOAS, novidadesDaProducao } from '../src/modelo/pessoas.ts';
 import { opcaoDe } from './cadastros.mjs';
 
+// (a chave guardada é a de antes, quando a fonte era o quadro: a última verificação continua valendo na subida)
 const GUARDADA = 'pessoas-do-quadro';
 const POR_PAGINA = 1000;
 const limpo = (v) => String(v ?? '').trim().replace(/^["'`]+|["'`]+$/g, '');
@@ -19,7 +20,7 @@ const limpo = (v) => String(v ?? '').trim().replace(/^["'`]+|["'`]+$/g, '');
  */
 export function criarPessoas({ db, copia, buscar = fetch }) {
   db.exec('CREATE TABLE IF NOT EXISTS pessoas_ignoradas (chave TEXT PRIMARY KEY, nome TEXT NOT NULL, por TEXT, em TEXT NOT NULL)');
-  // o e-mail digitado para quem o Trello não dá (ao tornar administrador): vai junto no cadastro de designer
+  // o e-mail digitado ao tornar administrador quem entrou (pela chave da novidade): vai junto no cadastro de designer
   db.exec('CREATE TABLE IF NOT EXISTS pessoas_emails (membro TEXT PRIMARY KEY, email TEXT NOT NULL)');
   const q = {
     ignoradas: db.prepare('SELECT chave, nome, por, em FROM pessoas_ignoradas'),
@@ -53,7 +54,8 @@ export function criarPessoas({ db, copia, buscar = fetch }) {
       todos.push(
         ...pagina.map((x) => {
           const f = x.fields ?? {};
-          return { registro: String(x.id ?? ''), nome: String(f.designer ?? '').trim(), ativo: nomeComparavel(opcaoDe(f.status)) !== 'INATIVO', email: String(f.email ?? '').trim().toLowerCase(), idNoTrello: String(f.designer_ID ?? '').trim() };
+          const criadoEm = Date.parse(String(x.createdTime ?? '')) ? new Date(String(x.createdTime)).toISOString() : null;
+          return { registro: String(x.id ?? ''), nome: String(f.designer ?? '').trim(), ativo: nomeComparavel(opcaoDe(f.status)) !== 'INATIVO', email: String(f.email ?? '').trim().toLowerCase(), idNoTrello: String(f.designer_ID ?? '').trim(), criadoEm };
         }),
       );
       if (pagina.length < POR_PAGINA) break;
@@ -61,14 +63,11 @@ export function criarPessoas({ db, copia, buscar = fetch }) {
     return todos;
   }
 
-  /** Os membros do quadro de agora: [{ id, nome, email }] (o e-mail só quando o Trello dá). */
-  async function lerMembros(trello, env) {
-    const id = await lerIdDoQuadro(trello, env, pracasSalvas(env).pracas);
-    if (!id) throw new Error('não sei qual é o quadro do Trello (falta TRELLO_QUADRO ou uma lista configurada)');
-    const lidos = await trello.ler(`/boards/${id}/members`, { fields: 'fullName,username,email' });
-    return (Array.isArray(lidos) ? lidos : [])
-      .map((m) => ({ id: String(m.id ?? ''), nome: String(m.fullName || m.username || '').trim(), email: String(m.email ?? '').trim().toLowerCase() }))
-      .filter((m) => m.id && m.nome);
+  /** Os designers que aparecem na produção da arte dos últimos dias: [{ nome, ultima }] (servidor/trello.mjs). */
+  async function lerDaProducao(trello) {
+    const lidos = await trello.designersDaProducao(DIAS_DAS_PESSOAS);
+    if (!lidos) throw new Error('a produção da arte do Teable não está configurada');
+    return lidos;
   }
 
   /** O que falta para verificar ('' quando dá). */
@@ -76,38 +75,39 @@ export function criarPessoas({ db, copia, buscar = fetch }) {
     const { url, token, tabela } = doTeable(env);
     if (!url || !token) return 'O Teable não está configurado (TEABLE_URL e TEABLE_TOKEN).';
     if (!tabela) return 'Não achei a tabela designers na base do Teable.';
-    if (!(trello?.ler && trello.config?.chave && trello.config?.token)) return 'O Trello não está configurado (TRELLO_KEY e TRELLO_TOKEN no Portainer).';
+    if (!(trello?.designersDaProducao && trello.temProducao)) return 'A produção da arte do Teable não está configurada (TEABLE_PG_URL e a ARTE_producao na base).';
     return '';
   }
 
   const ignoradas = () => new Map(q.ignoradas.all().map((l) => [l.chave, l]));
-  /** O e-mail de quem entrou: o do Trello ou o digitado ao tornar administrador ('' sem nenhum). */
-  const emailDe = (novidade) => novidade.email || (novidade.membro ? (q.email.get(novidade.membro)?.email ?? '') : '');
+  /** O e-mail de quem entrou: o que veio na novidade ou o digitado ao tornar administrador ('' sem nenhum). */
+  const emailDe = (novidade) => novidade.email || (q.email.get(novidade.chave)?.email ?? (novidade.membro ? (q.email.get(novidade.membro)?.email ?? '') : ''));
 
   return {
     /**
-     * Lê os membros do quadro e a tabela designers e guarda o que mudou. Com o Trello ou o Teable fora, guarda o erro
-     * e mantém as novidades da última verificação que deu certo; `falhou` diz qual não respondeu ('trello', 'teable').
+     * Lê os designers da produção da arte e a tabela designers (os dois no Teable) e guarda o que mudou. Com o Teable
+     * fora, guarda o erro e mantém as novidades da última verificação que deu certo; `falhou` diz que foi o Teable.
      * @returns { em, novidades, designers, falhou, erro?, motivo? }
      */
     async verificar(trello, env) {
       const antes = copia.ler(GUARDADA)?.dados ?? null;
       const semPoder = falta(trello, env);
       if (semPoder) return { em: '', novidades: [], designers: [], erro: semPoder };
-      const [membros, designers] = await Promise.allSettled([lerMembros(trello, env), lerDesigners(env)]);
-      if (membros.status === 'fulfilled' && designers.status === 'fulfilled') {
-        const feita = { em: new Date().toISOString(), novidades: novidadesDoQuadro(membros.value, designers.value), designers: designers.value };
+      const agora = Date.now();
+      const [naProducao, designers] = await Promise.allSettled([lerDaProducao(trello), lerDesigners(env)]);
+      if (naProducao.status === 'fulfilled' && designers.status === 'fulfilled') {
+        const desde = agora - DIAS_DAS_PESSOAS * 86_400_000;
+        const feita = { em: new Date(agora).toISOString(), novidades: novidadesDaProducao(naProducao.value, designers.value, { desde }), designers: designers.value };
         copia.guardar(GUARDADA, feita);
         return { ...feita, falhou: [] };
       }
-      // #79: qual não respondeu (o Trello, o Teable ou os dois), para a tela dizer desde quando e travar o que grava
-      const falhou = [membros.status === 'rejected' && 'trello', designers.status === 'rejected' && 'teable'].filter(Boolean);
-      const e = membros.status === 'rejected' ? membros.reason : designers.reason;
+      // #79: o Teable não respondeu, para a tela dizer desde quando e travar o que grava
+      const e = naProducao.status === 'rejected' ? naProducao.reason : designers.reason;
       const motivo = e instanceof Error ? e.message : String(e);
-      console.warn(`[pessoas] não consegui ver os membros do quadro: ${motivo}`);
-      return { ...(antes ?? { em: '', novidades: [], designers: [] }), erro: `Não consegui ver o quadro do Trello e a tabela designers do Teable: ${motivo}.`, falhou, motivo };
+      console.warn(`[pessoas] não consegui ver os designers: ${motivo}`);
+      return { ...(antes ?? { em: '', novidades: [], designers: [] }), erro: `Não consegui ver a produção da arte e a tabela designers do Teable: ${motivo}.`, falhou: ['teable'], motivo };
     },
-    /** A última verificação guardada (sem ir ao Trello). */
+    /** A última verificação guardada (sem ler o Teable). */
     guardada: () => copia.ler(GUARDADA)?.dados ?? null,
     /** As novidades, separadas em pendentes e ignoradas. */
     separar(novidades) {
@@ -118,20 +118,21 @@ export function criarPessoas({ db, copia, buscar = fetch }) {
       };
     },
     emailDe,
-    lembrarEmail: (membro, email) => membro && q.lembrarEmail.run(membro, String(email).trim().toLowerCase()),
+    /** Lembra o e-mail digitado para quem entrou, pela chave da novidade. */
+    lembrarEmail: (chave, email) => chave && q.lembrarEmail.run(chave, String(email).trim().toLowerCase()),
     ignorar: (novidade, por) => q.ignorar.run(novidade.chave, novidade.nome, por, new Date().toISOString()),
     desfazer: (chave) => q.desfazer.run(chave),
 
-    /** Cadastra quem entrou no quadro como designer: ativo, o id do membro, o nome e o e-mail (o do Trello ou o
-        digitado ao tornar administrador), quando há. */
+    /** Cadastra quem entrou como designer: ativo, o nome (como aparece na produção da arte) e o e-mail digitado ao
+        tornar administrador, quando há. O id do membro no Trello, só quando a novidade tem (a produção não diz). */
     async cadastrar(env, novidade) {
       const email = emailDe(novidade);
-      const fields = { designer: novidade.nome, status: 'ativo', designer_ID: novidade.membro, ...(email ? { email } : {}) };
+      const fields = { designer: novidade.nome, status: 'ativo', ...(novidade.membro ? { designer_ID: novidade.membro } : {}), ...(email ? { email } : {}) };
       await teable(env, 'POST', `/table/${encodeURIComponent(doTeable(env).tabela)}/record`, { fieldKeyType: 'name', typecast: true, records: [{ fields }] });
       // cadastrado como designer, o e-mail está na tabela: não precisa mais ser lembrado aqui
-      q.esquecerEmail.run(novidade.membro);
+      q.esquecerEmail.run(novidade.chave);
     },
-    /** Marca como inativo o designer que saiu do quadro. */
+    /** Marca como inativo o designer que saiu (sem produção nos últimos dias). */
     async inativar(env, novidade) {
       await teable(env, 'PATCH', `/table/${encodeURIComponent(doTeable(env).tabela)}/record/${encodeURIComponent(novidade.registro)}`, { fieldKeyType: 'name', typecast: true, record: { fields: { status: 'inativo' } } });
     },

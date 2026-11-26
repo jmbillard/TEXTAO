@@ -915,30 +915,25 @@ export interface AcaoDoRegistro {
   /** a ignorada que vale agora: dá para reabrir */
   podeReabrir: boolean;
 }
-/** Um card do caso aberto, como o detalhe compara: a linha da produção e o que só o Trello tem (lido só no caso aberto). */
+/** Um card do caso aberto, como o detalhe compara: só o que a produção da arte do Teable tem (nada é lido do Trello). */
 export interface CardDaDuplicada {
   /** o card_ID */
   id: string;
-  /** false: o card não existe mais no Trello; null: o Trello não está configurado (não deu para ler) */
-  noTrello: boolean | null;
-  numero: number | null;
-  /** o nome no Trello ('' fora do Trello) */
-  nome: string;
   /** a claquete na produção da arte */
   claquete: string;
-  lista: string;
-  /** o estado no Trello; fora dele, o da coluna arquivado */
+  /** a coluna arquivado */
   arquivado: boolean;
+  /** quando o card foi criado (do próprio card_ID) */
   criado: string | null;
   entrada: string | null;
-  exibicao: string | null;
+  entrega: string | null;
   status: string[];
   designers: string[];
-  membros: string[];
-  checklist: number;
-  anexos: string;
+  /** artes_quantidade (null sem a coluna preenchida) */
+  artes: number | null;
   acervo: number;
   roteiro: { id: string; claquete: string; por: string } | null;
+  /** o link do card no Trello, feito do card_ID */
   url: string;
   /** o motivo da sugestão para este card */
   motivo: string;
