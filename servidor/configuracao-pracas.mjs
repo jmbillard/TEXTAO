@@ -29,17 +29,10 @@ export function pracasSalvas(env) {
   };
 }
 
-/**
- * O quadro do Trello: o de TRELLO_QUADRO ou, sem ele, o da primeira lista já configurada (a entrada ou a saída de uma
- * praça, a reserva, o VT), pelo idBoard dela. Lê as listas (também as arquivadas), os campos personalizados e as
- * etiquetas (as dos cards de filme, #75).
- * @returns { id, de: 'variavel' | 'lista', nome, listas, campos, etiquetas } ou null quando não há como saber o quadro
- */
-export async function lerQuadro(trello, env, pracas) {
+/** Só o id do quadro (o de TRELLO_QUADRO ou o idBoard da primeira lista configurada); '' quando não há como saber. */
+export async function lerIdDoQuadro(trello, env, pracas) {
   let id = limpo(env.TRELLO_QUADRO);
-  let de = 'variavel';
   if (!id) {
-    de = 'lista';
     const configuradas = [...pracas.flatMap((p) => [p.entrada, p.saida]), limpo(env.TRELLO_LISTA), limpo(env.TRELLO_LISTA_VT)].filter((x) => ID_DO_TRELLO.test(x));
     for (const lista of [...new Set(configuradas)]) {
       const l = await trello.lerSeExistir(`/lists/${lista}`, { fields: 'idBoard' });
@@ -49,7 +42,19 @@ export async function lerQuadro(trello, env, pracas) {
       }
     }
   }
-  if (!id || !ID_DO_TRELLO.test(id)) return null;
+  return id && ID_DO_TRELLO.test(id) ? id : '';
+}
+
+/**
+ * O quadro do Trello: o de TRELLO_QUADRO ou, sem ele, o da primeira lista já configurada (a entrada ou a saída de uma
+ * praça, a reserva, o VT), pelo idBoard dela. Lê as listas (também as arquivadas), os campos personalizados e as
+ * etiquetas (as dos cards de filme, #75).
+ * @returns { id, de: 'variavel' | 'lista', nome, listas, campos, etiquetas } ou null quando não há como saber o quadro
+ */
+export async function lerQuadro(trello, env, pracas) {
+  const de = limpo(env.TRELLO_QUADRO) ? 'variavel' : 'lista';
+  const id = await lerIdDoQuadro(trello, env, pracas);
+  if (!id) return null;
   const [listas, campos, etiquetas, doQuadro] = await Promise.all([
     trello.ler(`/boards/${id}/lists`, { filter: 'all', fields: 'name,closed' }),
     trello.ler(`/boards/${id}/customFields`),

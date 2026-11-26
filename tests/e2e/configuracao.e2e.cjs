@@ -21,6 +21,11 @@
 // achadas pelo nome, com o nome no Postgres que o Teable deu), trocar o quadro com o nome digitado (o errado não deixa)
 // e o PROMeiro ligando tudo de novo pelo nome no quadro novo (a INTER, que lá não tem listas, vira exceção); e o aviso
 // no topo quando uma tabela não tem uma coluna que o código usa.
+// A seção Pessoas (#77), claro e escuro: o pontinho no menu do perfil quando há novidade no quadro; a nova no quadro
+// (os membros do quadro falso × a tabela designers do Teable falso) tornada administradora com o e-mail digitado e
+// cadastrada como designer (grava no Teable falso); os administradores no "ver tudo" (a chave-mestra, "você", não dá
+// para tirar a si mesmo); quem saiu do quadro ignorado (vai para o "ver tudo"), desfeito, tirado de administrador e
+// marcado inativo (grava no Teable falso). No celular, só consulta.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:configuracao
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -148,6 +153,21 @@ const QUADROS = {
     etiquetas: () => ETIQUETAS.map(comoNovo),
   },
 };
+// os membros do quadro (#77): nomes e e-mails fictícios; a tabela designers do Teable falso está em DESIGNERS
+const MEMBROS = [
+  { id: 'mLia', fullName: 'Lia Moraes' },
+  { id: 'mBia', fullName: 'Bia Sampaio' },
+  { id: 'mCaio', fullName: 'Caio Brandão' },
+];
+const OTAVIO = 'otavio.lins@exemplo.com';
+const BIA = 'bia.sampaio@exemplo.com';
+const designersDoComeco = () => [
+  { id: 'recLia', fields: { designer: 'Lia Moraes', status: 'ativo', email: LIA, designer_ID: 'mLia' } },
+  { id: 'recCaio', fields: { designer: 'Caio Brandão', status: 'ativo', designer_ID: 'mCaio' } },
+  { id: 'recOtavio', fields: { designer: 'Otávio Lins', status: 'ativo', email: OTAVIO, designer_ID: 'mOtavio' } },
+  { id: 'recEva', fields: { designer: 'Eva Luz', status: 'inativo', designer_ID: 'mEva' } },
+];
+const DESIGNERS = designersDoComeco();
 const pedidosAoTrello = [];
 async function buscar(url, init = {}) {
   const u = new URL(url);
@@ -171,6 +191,7 @@ async function buscar(url, init = {}) {
     if (doQuadro[2] === '/lists') return ok(q.listas());
     if (doQuadro[2] === '/customFields') return ok(q.campos());
     if (doQuadro[2] === '/labels') return ok(q.etiquetas());
+    if (doQuadro[2] === '/members') return ok(MEMBROS);
   }
   throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
 }
@@ -265,7 +286,7 @@ async function noComputador(navegador, url, app, tema) {
   await p.locator(`${PRACAS} .cfg-exc`).first().waitFor();
   assert.equal(await resumo(p), '4 praças · 1 em dobro · 2 à mão');
   assert.deepEqual(await excecoes(p), ['G5 usa as listas do RJ', 'INTER: duas listas de saída']);
-  assert.deepEqual(await textos(p.locator('.cfg-exc .cfg-exc-texto span')), ['ligada à mão · dividida com RJ', '"INTER ENTREGUE" e "INTER ENTREGUE (2025)". Qual vale?']);
+  assert.deepEqual(await textos(p.locator(`${PRACAS} .cfg-exc .cfg-exc-texto span`)), ['ligada à mão · dividida com RJ', '"INTER ENTREGUE" e "INTER ENTREGUE (2025)". Qual vale?']);
   assert.equal(await regra(p, 'G5').locator('.cfg-marca.mao').count(), 1);
   await semRolagemDeLado(p, `computador ${nome}, com exceções`);
   await capturar(p, `03-com-excecoes-${nome}`);
@@ -766,9 +787,9 @@ async function conexoes(navegador, url, app, teable, tema) {
   // aberta: o quadro, a base e as tabelas achadas pelo nome, com o nome no Postgres que o Teable deu
   await p.locator(`${CONEXOES} .cfg-ver-tudo`).click();
   assert.equal(await p.locator(`${CONEXOES} .cfg-con-l`).count(), 2);
-  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-con-texto small`)), ['Arte · Promo · achado pela lista de uma praça', 'Base falsa · 12 tabelas achadas pelo nome']);
-  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-tudo-l`, { hasText: 'Produção da arte' }).locator('> span')), ['Produção da arte', 'arte_producao_x6', 'achada pelo nome']);
-  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-tudo-l`, { hasText: 'Designers' }).locator('> span')), ['Designers', 'não há (não é usada)', '']);
+  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-con-texto small`)), ['Arte · Promo · achado pela lista de uma praça', 'Base falsa · 13 tabelas achadas pelo nome']);
+  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-tudo-l`, { hasText: 'Produção da arte' }).locator('> span')), ['Produção da arte', 'arte_producao_x7', 'achada pelo nome']);
+  assert.deepEqual(await textos(p.locator(`${CONEXOES} .cfg-tudo-l`, { hasText: 'Designers' }).locator('> span')), ['Designers', 'designers_x6', 'achada pelo nome']);
   await semRolagemDeLado(p, `conexões ${nome}, aberta`);
   await capturar(p, `41-conexoes-aberta-${nome}`);
 
@@ -815,6 +836,124 @@ async function conexoes(navegador, url, app, teable, tema) {
   console.log(`ok: conexões ${nome}: recolhida, aberta com as tabelas, trocar o quadro com o nome digitado e o aviso da coluna`);
 }
 
+/* ---------- a seção Pessoas (#77) ---------- */
+
+const PESSOAS = '.cfg-secao[data-secao="pessoas"]';
+const novidades = (p) => textos(p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto strong`));
+/** A tabela designers e os administradores do começo, nada ignorado, e o quadro olhado de novo. Otávio (que saiu do
+    quadro) é administrador salvo na tela. */
+async function recomecarPessoas(app, url) {
+  DESIGNERS.splice(0, DESIGNERS.length, ...designersDoComeco());
+  for (const chave of ['entrou:mBia', 'saiu:recOtavio'])
+    await fetch(new URL('/api/configuracao/pessoas', url), { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ acao: 'desfazer', chave }) });
+  await app.mudarConfiguracao({ ADMINISTRADORES: JSON.stringify([OTAVIO]) }).antigaFechada;
+  await app.verificarPessoas();
+}
+
+async function pessoas(navegador, url, app, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await recomecarPessoas(app, url);
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema }, { hash: '' });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+
+  // o pontinho no menu do perfil: há novidade no quadro
+  await p.locator('.perfil-botao.com-novidade').waitFor();
+  await p.locator('.perfil-botao').click();
+  const item = p.locator('.perfil-painel .perfil-link', { hasText: 'Configuração' });
+  assert.equal(await item.locator('.perfil-ponto').count(), 1);
+  assert.equal((await item.locator('small').textContent()).trim(), '2 novidades no quadro');
+  await capturar(p, `50-pessoas-pontinho-${nome}`);
+  await item.click();
+
+  // as novidades: quem entrou no quadro e não é designer; o designer ativo que saiu (a inativa não conta)
+  await p.locator(`${PESSOAS} .cfg-exc`).first().waitFor();
+  assert.equal(await resumo(p, PESSOAS), '2 administradores · 2 novidades no quadro');
+  assert.deepEqual(await novidades(p), ['Bia Sampaio entrou no quadro', 'Otávio Lins saiu do quadro']);
+  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto span`)), ['sem e-mail no Trello', `designer ativo · ${OTAVIO} · administrador`]);
+  const bia = p.locator(`${PESSOAS} .cfg-exc[data-chave="entrou:mBia"]`);
+  const otavio = p.locator(`${PESSOAS} .cfg-exc[data-chave="saiu:recOtavio"]`);
+  assert.deepEqual(await textos(bia.locator('button')), ['Cadastrar como designer', 'Tornar admin', 'ignorar']);
+  assert.deepEqual(await textos(otavio.locator('button')), ['Marcar inativo', 'Tirar de admin', 'ignorar']);
+  await semRolagemDeLado(p, `pessoas ${nome}, novidades`);
+  await p.locator(PESSOAS).scrollIntoViewIfNeeded();
+  await capturar(p, `51-pessoas-novidades-${nome}`);
+
+  // tornar administradora: o Trello não deu o e-mail, então ele é pedido
+  await bia.locator('.botao', { hasText: 'Tornar admin' }).click();
+  await bia.locator('input[type="email"]').fill(BIA);
+  await capturar(p, `52-pessoas-email-${nome}`);
+  await bia.locator('form .botao.primario').click();
+  await p.locator('.aviso', { hasText: 'agora é administrador' }).waitFor();
+  assert.deepEqual(await textos(bia.locator('.cfg-exc-texto span')), ['sem e-mail no Trello · já é administrador']);
+  assert.equal(await bia.locator('.botao', { hasText: 'Tornar admin' }).count(), 0);
+  // vale na hora no app inteiro (sem a Bia entrar no PROMeiro: entrando, o nome dela já daria o e-mail)
+  assert.equal(app.modulos().cadastros.podeApagar(BIA), true, 'vale na hora no app inteiro');
+
+  // cadastrar como designer: grava no Teable (ativo, o id do membro, o nome e o e-mail digitado)
+  await bia.locator('.botao', { hasText: 'Cadastrar como designer' }).click();
+  await p.locator('.aviso', { hasText: 'cadastrado como designer' }).waitFor();
+  assert.deepEqual(DESIGNERS.at(-1).fields, { designer: 'Bia Sampaio', status: 'ativo', designer_ID: 'mBia', email: BIA });
+  assert.deepEqual(await novidades(p), ['Otávio Lins saiu do quadro']);
+
+  // ver tudo: os administradores, com a chave-mestra e "você"; não dá para tirar a si mesmo
+  await p.locator(`${PESSOAS} .cfg-ver-tudo`).click();
+  const admins = p.locator(`${PESSOAS} .cfg-pessoa`);
+  assert.deepEqual(await admins.evaluateAll((ls) => ls.map((l) => l.dataset.email)), [BIA, LIA, OTAVIO]);
+  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-pessoa[data-email="${LIA}"] .cfg-pessoa-selos > span`)), ['você', 'chave-mestra']);
+  await p.locator(`${PESSOAS} .cfg-pessoa[data-email="${LIA}"] .cfg-tirar`).click({ force: true }); // aria-disabled: o Playwright não clica sem força; a pessoa clica e lê o porquê
+  assert.equal((await p.locator(`${PESSOAS} .cfg-dica-pessoas`).textContent()).trim(), 'Não dá para tirar você mesmo.');
+  assert.equal(await admins.count(), 3);
+  await semRolagemDeLado(p, `pessoas ${nome}, ver tudo`);
+  await capturar(p, `53-pessoas-administradores-${nome}`);
+
+  // ignorar quem saiu: sai das novidades e vai para o ver tudo, até desfazer
+  await otavio.locator('.botao-texto', { hasText: 'ignorar' }).click();
+  await p.locator('.aviso', { hasText: 'ignorado' }).waitFor();
+  assert.equal(await p.locator(`${PESSOAS} .cfg-exc`).count(), 0);
+  assert.equal(await resumo(p, PESSOAS), '3 administradores');
+  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-tudo-l[data-chave="saiu:recOtavio"] > span`)).then((t) => t.slice(0, 2)), ['Otávio Lins', 'saiu do quadro']);
+  assert.equal((await p.evaluate(() => fetch('/api/eu').then((r) => r.json()))).novidades, 0, 'sem novidade, sem pontinho');
+  await capturar(p, `54-pessoas-ignoradas-${nome}`);
+  await p.locator(`${PESSOAS} .cfg-tudo-l[data-chave="saiu:recOtavio"] .botao-texto`, { hasText: 'desfazer' }).click();
+  await otavio.waitFor();
+
+  // quem saiu: tirar de administrador e marcar inativo (grava no Teable)
+  await otavio.locator('.botao', { hasText: 'Tirar de admin' }).click();
+  await p.locator('.aviso', { hasText: 'não é mais administrador' }).waitFor();
+  assert.equal(await otavio.locator('.botao', { hasText: 'Tirar de admin' }).count(), 0);
+  assert.equal(await admins.count(), 2);
+  await otavio.locator('.botao', { hasText: 'Marcar inativo' }).click();
+  await p.locator('.aviso', { hasText: 'marcado como inativo' }).waitFor();
+  assert.equal(DESIGNERS.find((d) => d.id === 'recOtavio').fields.status, 'inativo');
+  assert.equal(await p.locator(`${PESSOAS} .cfg-exc`).count(), 0);
+  assert.deepEqual(erros, [], `pessoas ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: pessoas ${nome}: o pontinho, a nova no quadro tornada administradora e cadastrada, os administradores, ignorar e desfazer, tirar de administrador e marcar inativo`);
+}
+
+async function pessoasNoCelular(navegador, url, app, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await recomecarPessoas(app, url);
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema });
+  await p.locator(`${PESSOAS} .cfg-exc`).first().waitFor();
+  assert.deepEqual(await novidades(p), ['Bia Sampaio entrou no quadro', 'Otávio Lins saiu do quadro']);
+  // só consulta: nada de cadastrar, ignorar, tirar ou pôr administrador
+  assert.equal(await p.locator(`${PESSOAS} button:not(.cfg-ver-tudo):not(.cfg-ajuda button)`).count(), 0);
+  await p.locator(PESSOAS).scrollIntoViewIfNeeded();
+  await semRolagemDeLado(p, `pessoas no celular ${nome}`);
+  await capturar(p, `55-pessoas-celular-${nome}`);
+  await p.locator(`${PESSOAS} .cfg-ver-tudo`).tap();
+  assert.equal(await p.locator(`${PESSOAS} .cfg-pessoa`).count(), 2);
+  assert.equal(await p.locator(`${PESSOAS} .cfg-tirar, ${PESSOAS} .cfg-mais-admin`).count(), 0);
+  await semRolagemDeLado(p, `pessoas no celular ${nome}, ver tudo`);
+  await p.locator(PESSOAS).scrollIntoViewIfNeeded();
+  await capturar(p, `56-pessoas-celular-ver-tudo-${nome}`);
+  assert.deepEqual(erros, [], `pessoas no celular ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: pessoas no celular ${nome}: as novidades e os administradores, só consulta`);
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   // o cadastro de atrações do Teable, de mentira: só a leitura das sessões de filme (#75)
@@ -827,7 +966,7 @@ async function principal() {
   const { TABELAS_DO_TEABLE } = await import(join(RAIZ, 'src', 'modelo', 'tabelasDoTeable.ts'));
   const faltando = {};
   const naBase = Object.fromEntries(TABELAS_DO_TEABLE.filter((t) => !t.opcional || t.nome === 'EDICAO_producao').map((t, i) => [t.nome, `${t.nome.toLowerCase()}_x${i}`]));
-  const teable = Object.assign(teableFalso(naBase, { faltando }), { faltando });
+  const teable = Object.assign(teableFalso(naBase, { faltando, registros: { designers: DESIGNERS } }), { faltando });
   const s = await subir({ trello: { env: ENV_TRELLO, buscar, viva: true }, env: { CADASTRO_ADMINS: LIA, TEABLE_PG_ESQUEMA: 'bseFalso', ...TEABLE_FALSO }, cadastros, teable });
   // o convite do tour da revisão não aparece na fila (as duas já viram)
   for (const email of [LIA, OUTRA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
@@ -853,6 +992,8 @@ async function principal() {
     for (const tema of ['light', 'dark']) await secaoFilmes(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await filmesNoCelular(navegador, s.url, tema);
     for (const tema of ['light', 'dark']) await conexoes(navegador, s.url, s.app, teable, tema);
+    for (const tema of ['light', 'dark']) await pessoas(navegador, s.url, s.app, tema);
+    for (const tema of ['light', 'dark']) await pessoasNoCelular(navegador, s.url, s.app, tema);
   } finally {
     await navegador.close();
     await s.descer();

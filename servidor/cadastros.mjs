@@ -11,6 +11,8 @@
      TEABLE_EDITORES      editores (editor, editor_ID, customField_ID)
      TEABLE_KEY_EDITORES  KEY_editores (key, editor → link para o editor) */
 
+import { ehAdministrador } from '../src/modelo/pessoas.ts';
+
 const POR_PAGINA = 1000;
 const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ') : v == null ? '' : String(typeof v === 'object' ? (v.title ?? v.name ?? '') : v)).trim();
 const links = (v) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => (typeof x === 'object' ? x?.id : null)).filter(Boolean);
@@ -33,7 +35,7 @@ export const ACERVOS = ['proprio', 'filme', 'sem'];
 const OPCOES_DO_ACERVO = { proprio: 'próprio', filme: 'do filme', sem: 'sem acervo' };
 const semAcentoMinusculo = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 // singleSelect: texto, ou lista (ou lista em JSON) com uma opção
-const opcaoDe = (v) => {
+export const opcaoDe = (v) => {
   if (Array.isArray(v)) return opcaoDe(v[0]);
   if (typeof v === 'string' && v.startsWith('[')) {
     try {
@@ -73,7 +75,6 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
   const campoCategoria = env.TEABLE_CAMPO_CATEGORIA || 'categoria';
   const campoKeyLink = env.TEABLE_CAMPO_ATRACAO || 'atracoes';
   const caminhos = (env.TEABLE_CAMPOS_CAMINHO || 'projeto_win,output_win').split(',').map((s) => s.trim()).filter(Boolean);
-  const admins = new Set(String(env.CADASTRO_ADMINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
   const trello = { chave: env.TRELLO_KEY || '', token: env.TRELLO_TOKEN || '', api: (env.TRELLO_API || 'https://api.trello.com/1').replace(/\/+$/, '') };
   const ligado = !!(base && leitura && (t.atracoes || t.redatores || t.editores));
 
@@ -224,7 +225,8 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
 
   return {
     ligado,
-    podeApagar: (email) => admins.has(String(email || '').toLowerCase()),
+    /** A regra de administrador do PROMeiro inteiro (#77): a chave-mestra CADASTRO_ADMINS ou o salvo na tela. */
+    podeApagar: (email) => ehAdministrador(email, env),
     ler,
 
     async novaAtracao({ nome, categoria, acervo: qual = 'proprio', keys = [], campos: extra = {} }) {

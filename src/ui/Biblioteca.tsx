@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, roteiroDa, souAdministrador, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
+import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, novidadesNoQuadro, roteiroDa, souAdministrador, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
 import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, TEXTO_SEM_REDATOR, travamTrello } from '../modelo/exportar';
@@ -190,6 +190,8 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, ao
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const caixa = useRef<HTMLDivElement>(null);
+  // o pontinho: há novidade no quadro (quem entrou, quem saiu), só para administradores (#77)
+  const novidade = configuracao ? novidadesNoQuadro() : 0;
   useEffect(() => {
     setNome(identidade?.nome ?? '');
     setEmail(identidade?.email ?? '');
@@ -208,7 +210,13 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, ao
 
   return (
     <div className="perfil" ref={caixa}>
-      <button className={`perfil-botao ${identidade ? '' : 'falta'}`} aria-haspopup="dialog" aria-expanded={aberto} onClick={() => setAberto((v) => !v)}>
+      <button
+        className={`perfil-botao ${identidade ? '' : 'falta'} ${novidade ? 'com-novidade' : ''}`}
+        aria-haspopup="dialog"
+        aria-expanded={aberto}
+        aria-label={novidade ? `${identidade?.nome ?? 'Perfil'} · ${novidade === 1 ? 'uma novidade' : `${novidade} novidades`} no quadro` : undefined}
+        onClick={() => setAberto((v) => !v)}
+      >
         {identidade ? (
           <>
             <span className="perfil-avatar">{iniciais(identidade.nome)}</span>
@@ -256,7 +264,7 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, ao
           )}
           {configuracao && (
             <button type="button" className="perfil-link" onClick={configuracao}>
-              <Icone nome="ajustes" tam={16} /> Configuração <small>praças e ligações</small>
+              <Icone nome="ajustes" tam={16} /> Configuração{novidade > 0 && <span className="perfil-ponto" aria-label="há novidade no quadro" />} <small>{novidade ? (novidade === 1 ? 'uma novidade no quadro' : `${novidade} novidades no quadro`) : 'praças e ligações'}</small>
             </button>
           )}
           <EscolhaDeTema />

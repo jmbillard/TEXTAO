@@ -634,6 +634,10 @@ kbd {
 }
 .perfil-botao:hover { border-color: var(--tinta3); }
 .perfil-botao.falta { padding: 0 14px; border-style: dashed; border-color: var(--falta); color: var(--falta); }
+/* o pontinho do menu do perfil: há novidade no quadro (#77) */
+.perfil-botao.com-novidade { position: relative; }
+.perfil-botao.com-novidade::after { content: ''; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--falta); border: 2px solid var(--papel); }
+.perfil-link .perfil-ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--falta); margin-left: 4px; vertical-align: 1px; }
 .perfil-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--neutro); color: var(--tinta); font: 600 11px/28px var(--sans); text-align: center; flex-shrink: 0; }
 .perfil-nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .perfil-painel {

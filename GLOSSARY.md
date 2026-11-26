@@ -159,6 +159,21 @@ da última leitura. O redator ou editor guardado com a opção do quadro antigo 
 para um card.
 _Evitar_: integrações, credenciais
 
+**Administrador**:
+Quem vê a Configuração, as Duplicadas, importa acervo e remove cadastros. É quem está no CADASTRO_ADMINS do Portainer
+(a **chave-mestra**: sempre administrador, só sai por lá) mais quem foi posto na seção **Pessoas** da Configuração
+(escolhido entre quem já entrou no PROMeiro, ou por um e-mail digitado). Ninguém tira a si mesmo.
+_Evitar_: admin (na tela, só em botões curtos), superusuário
+
+**Novidade no quadro**:
+Na seção **Pessoas**: o membro do quadro do Trello que não está na tabela designers do Teable ("entrou no quadro":
+cadastrar como designer, tornar administrador ou ignorar) e o designer ativo que não está mais no quadro ("saiu do
+quadro": marcar inativo, tirar de administrador ou ignorar). O designer é o membro pelo designer_ID (o id do membro no
+Trello) ou, sem ele, pelo nome. O PROMeiro olha ao abrir a Configuração e uma vez por dia; havendo novidade, os
+administradores veem um pontinho no menu do perfil. **Ignorar** vale até desfazer no "ver tudo". Os membros do quadro
+são a fonte por enquanto (ADR 0006).
+_Evitar_: membro novo, alerta
+
 **Duplicada**:
 Duas ou mais linhas da produção da arte (ARTE_producao), cada uma de um card, com a mesma claquete (pela key, sem
 acento, caixa e pontuação), a mesma praça (a da coluna da linha; sem ela, a que a claquete indica) e a mesma versão: um

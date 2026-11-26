@@ -21,6 +21,8 @@ export const SALVAVEIS = new Set([
   'PRACAS',
   // o que a tela ligou à mão (#72), em JSON: as chaves ("campo", "G5.entrada"); o resto foi achado pelo nome
   'LIGADO_A_MAO',
+  // os administradores salvos na tela (#77), em JSON (os e-mails); a chave-mestra CADASTRO_ADMINS fica no Portainer
+  'ADMINISTRADORES',
   // Filmes
   'TEABLE_FILMES', 'TEABLE_FILMES_POSTER', 'TEABLE_EXIBICOES', 'TRELLO_LISTA_FILMES', 'TRELLO_FILMES_ETIQUETAS',
   'TRELLO_FILMES_ETIQUETAS_SESSAO', 'TRELLO_FILMES_PRACA', 'FILMES_INTERVALO_MS', 'FILMES_TEMPO_MS',

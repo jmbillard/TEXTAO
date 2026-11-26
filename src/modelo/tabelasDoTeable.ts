@@ -42,8 +42,8 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
   { nome: 'KEY_redatores', titulo: 'Keys dos redatores', variavel: 'TEABLE_KEY_REDATORES', api: ['key', 'redator'], pg: [] },
   { nome: 'editores', titulo: 'Editores', variavel: 'TEABLE_EDITORES', api: ['editor', 'editor_ID', 'customField_ID'], pg: ['editor', 'editor_ID', 'customField_ID'] },
   { nome: 'KEY_editores', titulo: 'Keys dos editores', variavel: 'TEABLE_KEY_EDITORES', api: ['key', 'editor'], pg: [] },
-  // a seção Pessoas vai usar (os membros do quadro); hoje o código não lê
-  { nome: 'designers', titulo: 'Designers', variavel: '', api: [], pg: [], opcional: true },
+  // configuracao-pessoas.mjs (#77): quem entrou e quem saiu do quadro, cadastrar como designer e marcar inativo
+  { nome: 'designers', titulo: 'Designers', variavel: '', api: ['designer', 'status', 'email', 'designer_ID'], pg: [] },
   {
     nome: 'ARTE_producao',
     titulo: 'Produção da arte',

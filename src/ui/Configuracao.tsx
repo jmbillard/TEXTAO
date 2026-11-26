@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { conferirConfiguracao, lerBasesDoTeable, lerConfiguracao, lerQuadrosDoTrello, salvarConfiguracao, trocarConexao, type ConexoesDaConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoFilmes, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
+import { conferirConfiguracao, lerBasesDoTeable, lerConfiguracao, lerPessoas, lerQuadrosDoTrello, mudarPessoas, salvarConfiguracao, trocarConexao, type AcaoNasPessoas, type ConexoesDaConfiguracao, type NovidadeDoQuadro, type PessoasDaConfiguracao, type MudancasDaConfiguracao, type SecaoCard, type SecaoFilmes, type SecaoPracas, type SecoesDaConfiguracao } from '../dados/armazenamento';
 import {
   CHAVE_DO_CAMPO,
   FLUXOS_DO_N8N,
@@ -50,8 +50,9 @@ import './configuracao.css';
    de filme é escolhida entre as praças; a lista, a etiqueta de todos e a de cada sessão ligam pelo nome; os números da
    leitura da prévia ficam no "ver tudo". A barra salva as seções juntas. Conexões (#76), recolhida no fim: o quadro do
    Trello e a base do Teable; trocar pede o nome do novo, digitado, e o PROMeiro liga tudo de novo pelo nome. As
-   tabelas do Teable são achadas sozinhas: só a que falta (ou a coluna que falta) aparece, num aviso no topo. No
-   celular, só consulta. */
+   tabelas do Teable são achadas sozinhas: só a que falta (ou a coluna que falta) aparece, num aviso no topo. Pessoas
+   (#77): os administradores (no "ver tudo") e as novidades do quadro (quem entrou, quem saiu), com ações que valem na
+   hora, sem passar pela barra de salvar. No celular, só consulta. */
 
 interface Props {
   voltar: () => void;
@@ -140,6 +141,8 @@ export function Configuracao({ voltar, avisar }: Props) {
   const [n8nPendente, setN8nPendente] = useState<string[]>([]);
   const [conexoesAbertas, setConexoesAbertas] = useState(false);
   const [trocando, setTrocando] = useState<'quadro' | 'base' | null>(null);
+  const [pessoas, setPessoas] = useState<PessoasDaConfiguracao | null>(null);
+  const [falhaDasPessoas, setFalhaDasPessoas] = useState('');
 
   const fecharEscolha = useCallback(() => setEscolha(null), []);
   const fecharEscolhaCard = useCallback(() => setEscolhaCard(null), []);
@@ -158,6 +161,23 @@ export function Configuracao({ voltar, avisar }: Props) {
       .catch((e) => setFalha(e instanceof Error ? e.message : String(e)));
   }, [receber]);
   useEffect(carregar, [carregar]);
+  // as Pessoas vêm à parte: abrir a Configuração olha o quadro de novo, sem segurar as outras seções
+  useEffect(() => {
+    lerPessoas()
+      .then(setPessoas)
+      .catch((e) => setFalhaDasPessoas(e instanceof Error ? e.message : String(e)));
+  }, []);
+  /** Uma ação em Pessoas: vale na hora (sem a barra de salvar). */
+  const mudarAsPessoas = async (a: AcaoNasPessoas, feito: string) => {
+    try {
+      setPessoas(await mudarPessoas(a));
+      avisar(feito);
+      return true;
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+  };
 
   const quadro = secao?.quadro ?? null;
   // o rascunho com a praça nova (o que vai para a conferência)
@@ -339,6 +359,7 @@ export function Configuracao({ voltar, avisar }: Props) {
             desfazer={desfazerNosFilmes}
             mudar={mudarFilmes}
           />
+          <SecaoDasPessoas pessoas={pessoas} falha={falhaDasPessoas} podeMudar={!celular} mudar={mudarAsPessoas} />
           <SecaoDasConexoes conexoes={secoes.conexoes} aberta={conexoesAbertas} alternar={() => setConexoesAbertas((v) => !v)} podeMudar={!celular} trocar={setTrocando} />
           </>
         )}
@@ -1678,5 +1699,222 @@ function DialogoDeTrocar({ o, conexoes, voltar, trocou }: { o: 'quadro' | 'base'
         </footer>
       </div>
     </div>
+  );
+}
+
+/* ---------- a seção Pessoas (#77) ---------- */
+
+const AJUDA_DAS_PESSOAS =
+  'Quem administra o PROMeiro. Quem está no CADASTRO_ADMINS do Portainer é sempre administrador (chave-mestra) e ninguém tira a si mesmo. O PROMeiro olha os membros do quadro do Trello ao abrir a Configuração e uma vez por dia: quem entrou e não é designer, e o designer ativo que saiu, aparecem aqui. Ignorar vale até desfazer no "ver tudo".';
+const iniciaisDe = (nome: string) =>
+  nome
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((x) => x[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+const quando = (iso: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
+
+function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: PessoasDaConfiguracao | null; falha: string; podeMudar: boolean; mudar: (a: AcaoNasPessoas, feito: string) => Promise<boolean> }) {
+  const [verTudo, setVerTudo] = useState(false);
+  // a novidade que pede o e-mail para tornar administrador (o Trello não deu e ninguém com o nome entrou no PROMeiro)
+  const [pedindoEmail, setPedindoEmail] = useState<string | null>(null);
+  const [emailDigitado, setEmailDigitado] = useState('');
+  const [pondo, setPondo] = useState(false);
+  const [novoAdmin, setNovoAdmin] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [dica, setDica] = useState('');
+  const fazer = async (a: AcaoNasPessoas, feito: string) => {
+    setOcupado(true);
+    const ok = await mudar(a, feito);
+    setOcupado(false);
+    return ok;
+  };
+  const n = pessoas?.novidades.length ?? 0;
+  const resumo = pessoas ? `${plural(pessoas.administradores.length, 'administrador', 'administradores')}${n ? ` · ${plural(n, 'novidade', 'novidades')} no quadro` : ''}` : falha ? 'não consegui ler' : 'lendo…';
+  const titulo = (x: NovidadeDoQuadro) => (x.tipo === 'entrou' ? `${x.nome} entrou no quadro` : `${x.nome} saiu do quadro`);
+  const detalhe = (x: NovidadeDoQuadro) =>
+    x.tipo === 'entrou' ? [x.email || 'sem e-mail no Trello', x.administrador && 'já é administrador'].filter(Boolean).join(' · ') : ['designer ativo', x.email, x.administrador && 'administrador'].filter(Boolean).join(' · ');
+  return (
+    <section className="cfg-secao" aria-labelledby="cfg-pessoas" data-secao="pessoas">
+      <TopoDaSecao id="cfg-pessoas" titulo="Pessoas" ajuda={AJUDA_DAS_PESSOAS} cor={falha || pessoas?.erro ? 'falta' : n ? 'tem' : 'ok'} resumo={resumo} verTudo={pessoas ? verTudo : null} alternarVerTudo={() => setVerTudo((v) => !v)} />
+      <div className="cfg-secao-corpo">
+        {falha && <p className="cfg-falha">{falha}</p>}
+        {pessoas?.erro && <p className="cfg-falha">{pessoas.erro}{pessoas.verificadoEm ? ` Valem as novidades de ${quando(pessoas.verificadoEm)}.` : ''}</p>}
+        {pessoas && n > 0 && (
+          <ul className="cfg-excecoes">
+            {pessoas.novidades.map((x) => (
+              <li key={x.chave} className={`cfg-exc pessoa ${x.tipo}`} data-chave={x.chave}>
+                <span className="cfg-exc-ico" aria-hidden>
+                  <Icone nome="pessoa" tam={14} traco={2.2} />
+                </span>
+                <span className="cfg-exc-texto">
+                  <strong>{titulo(x)}</strong>
+                  <span>{detalhe(x)}</span>
+                </span>
+                {podeMudar && (
+                  <span className="cfg-exc-acoes">
+                    {x.tipo === 'entrou' ? (
+                      <>
+                        <button type="button" className="botao" disabled={ocupado} onClick={() => void fazer({ acao: 'cadastrar', chave: x.chave }, `${x.nome} cadastrado como designer.`)}>
+                          Cadastrar como designer
+                        </button>
+                        {!x.administrador && (
+                          <button
+                            type="button"
+                            className="botao"
+                            disabled={ocupado}
+                            onClick={() => {
+                              if (x.emailSugerido) return void fazer({ acao: 'administrador', email: x.emailSugerido, chave: x.chave }, `${x.nome} agora é administrador.`);
+                              setEmailDigitado('');
+                              setPedindoEmail(x.chave);
+                            }}
+                          >
+                            Tornar admin
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" className="botao" disabled={ocupado} onClick={() => void fazer({ acao: 'inativar', chave: x.chave }, `${x.nome} marcado como inativo.`)}>
+                          Marcar inativo
+                        </button>
+                        {x.salvo && (
+                          <button type="button" className="botao" disabled={ocupado} onClick={() => void fazer({ acao: 'tirar', email: x.emailSugerido }, `${x.nome} não é mais administrador.`)}>
+                            Tirar de admin
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <button type="button" className="botao-texto" disabled={ocupado} onClick={() => void fazer({ acao: 'ignorar', chave: x.chave }, `${x.nome} ignorado. Desfaz no "ver tudo".`)}>
+                      ignorar
+                    </button>
+                  </span>
+                )}
+                {pedindoEmail === x.chave && (
+                  <form
+                    className="cfg-pessoa-email"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void fazer({ acao: 'administrador', email: emailDigitado, chave: x.chave }, `${x.nome} agora é administrador.`).then((ok) => ok && setPedindoEmail(null));
+                    }}
+                  >
+                    <label htmlFor={`email-${x.chave}`}>O Trello não dá o e-mail. Qual é o de {x.nome}?</label>
+                    <input id={`email-${x.chave}`} type="email" value={emailDigitado} onChange={(e) => setEmailDigitado(e.target.value)} placeholder="nome@empresa.com" autoFocus />
+                    <button className="botao primario" disabled={!emailDigitado.trim() || ocupado}>Tornar admin</button>
+                    <button type="button" className="botao-texto" onClick={() => setPedindoEmail(null)}>cancelar</button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {verTudo && pessoas && (
+          <div className="cfg-tudo cfg-pessoas" aria-label="Administradores e novidades ignoradas">
+            <div className="cfg-tudo-praca">
+              <h3>ADMINISTRADORES</h3>
+              <ul className="cfg-lista-pessoas">
+                {pessoas.administradores.map((a) => {
+                  const eu = a.email === pessoas.eu;
+                  const travado = eu || a.mestra;
+                  return (
+                    <li key={a.email} className="cfg-pessoa" data-email={a.email}>
+                      <span className="cfg-pessoa-av" aria-hidden>{iniciaisDe(a.nome || a.email)}</span>
+                      <span className="cfg-pessoa-n">
+                        <b>{a.nome || a.email}</b>
+                        {a.nome && <small>{a.email}</small>}
+                      </span>
+                      <span className="cfg-pessoa-selos">
+                        {eu && <span className="cfg-selo-voce">você</span>}
+                        {a.mestra && (
+                          <span className="cfg-selo-mestra" title="no CADASTRO_ADMINS do Portainer: sempre administrador">
+                            <Icone nome="chave" tam={12} /> chave-mestra
+                          </span>
+                        )}
+                        {podeMudar && (
+                          <button
+                            type="button"
+                            className="cfg-tirar"
+                            aria-label={`Tirar ${a.nome || a.email} dos administradores`}
+                            aria-disabled={travado}
+                            disabled={ocupado}
+                            onClick={() => {
+                              if (travado) return setDica(eu ? 'Não dá para tirar você mesmo.' : 'Chave-mestra: só sai pelo CADASTRO_ADMINS do Portainer.');
+                              void fazer({ acao: 'tirar', email: a.email }, `${a.nome || a.email} não é mais administrador.`);
+                            }}
+                            onBlur={() => setDica('')}
+                          >
+                            <Icone nome="fechar" tam={14} />
+                          </button>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              {dica && (
+                <p className="cfg-nota cfg-dica-pessoas" role="status">
+                  {dica}
+                </p>
+              )}
+              {podeMudar &&
+                (pondo ? (
+                  <form
+                    className="cfg-pessoa-email"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void fazer({ acao: 'administrador', email: novoAdmin }, `${novoAdmin.trim()} agora é administrador.`).then((ok) => {
+                        if (!ok) return;
+                        setPondo(false);
+                        setNovoAdmin('');
+                      });
+                    }}
+                  >
+                    <label htmlFor="cfg-novo-admin">Quem já entrou no PROMeiro, ou um e-mail</label>
+                    <input id="cfg-novo-admin" list="cfg-quem-ja-entrou" type="email" value={novoAdmin} onChange={(e) => setNovoAdmin(e.target.value)} placeholder="nome@empresa.com" autoFocus />
+                    <datalist id="cfg-quem-ja-entrou">
+                      {pessoas.quemJaEntrou.map((u) => (
+                        <option key={u.email} value={u.email}>
+                          {u.nome}
+                        </option>
+                      ))}
+                    </datalist>
+                    <button className="botao primario" disabled={!novoAdmin.trim() || ocupado}>Pôr</button>
+                    <button type="button" className="botao-texto" onClick={() => setPondo(false)}>cancelar</button>
+                  </form>
+                ) : (
+                  <button type="button" className="botao-texto cfg-mais-admin" onClick={() => setPondo(true)}>
+                    + administrador
+                  </button>
+                ))}
+            </div>
+            {pessoas.ignoradas.length > 0 && (
+              <div className="cfg-tudo-praca">
+                <h3>IGNORADAS</h3>
+                {pessoas.ignoradas.map((x) => (
+                  <div className="cfg-tudo-l" key={x.chave} data-chave={x.chave}>
+                    <span className="cfg-tudo-rotulo">{x.nome}</span>
+                    <span className="cfg-tudo-valor">{x.tipo === 'entrou' ? 'entrou no quadro' : 'saiu do quadro'}</span>
+                    <span className="cfg-tudo-como">
+                      ignorada{x.em ? ` em ${quando(x.em)}` : ''}
+                      {podeMudar && (
+                        <>
+                          {' · '}
+                          <button type="button" className="botao-texto" disabled={ocupado} onClick={() => void fazer({ acao: 'desfazer', chave: x.chave }, `${x.nome} voltou para as novidades.`)}>
+                            desfazer
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {pessoas.verificadoEm && <p className="cfg-nota">Quadro olhado em {quando(pessoas.verificadoEm)}; o PROMeiro olha de novo uma vez por dia.</p>}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

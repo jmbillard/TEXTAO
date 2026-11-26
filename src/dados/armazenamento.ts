@@ -247,8 +247,12 @@ export async function consultarPauta(claquete: string): Promise<{ editor: string
 let trelloLigado = false;
 let filmesLigado = false;
 let souAdmin = false;
-/** Quem está usando é administrador (CADASTRO_ADMINS): o menu do perfil mostra a Configuração. */
+let novidades = 0;
+/** Quem está usando é administrador (a chave-mestra CADASTRO_ADMINS ou o salvo na Configuração): o menu do perfil
+    mostra a Configuração. */
 export const souAdministrador = () => armazenamento.tipo === 'servidor' && souAdmin;
+/** Quantas novidades há no quadro (quem entrou, quem saiu), da última verificação: o pontinho no menu do perfil. */
+export const novidadesNoQuadro = () => (souAdministrador() ? novidades : 0);
 /** O servidor sabe mandar para o Trello (TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA configurados). */
 export const temTrello = () => armazenamento.tipo === 'servidor' && trelloLigado;
 
@@ -822,7 +826,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; novidades?: number };
     if (d.email) {
       armazenamento = doServidor;
       // as praças da Configuração, antes de qualquer roteiro ser lido (até aqui, e sem servidor, valem as de fábrica)
@@ -830,6 +834,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
       trelloLigado = !!d.trello;
       filmesLigado = !!d.filmes;
       souAdmin = !!d.admin;
+      novidades = Number(d.novidades ?? 0) || 0;
       // as cores que cada um escolheu, para a orelha, o grifo e os cursores saírem certos
       await pedir<{ email: string; cor: string }[]>('/api/cores').then(registrarCores, () => {});
       // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable
@@ -1020,6 +1025,41 @@ export async function trocarConexao(m: { quadro: string; confirmacao: string } |
   registrarPracas(s.pracas.salvo.pracas);
   return s;
 }
+/** Uma novidade do quadro (#77): quem entrou e não é designer, ou o designer ativo que saiu. */
+export interface NovidadeDoQuadro {
+  chave: string;
+  tipo: 'entrou' | 'saiu';
+  nome: string;
+  /** o e-mail da tabela designers ou do Trello */
+  email: string;
+  /** o e-mail para tornar administrador: o do Trello ou o de quem já entrou no PROMeiro com o mesmo nome */
+  emailSugerido: string;
+  /** é administrador (pela chave-mestra ou pelo salvo) */
+  administrador: boolean;
+  /** está nos administradores salvos na tela (dá para tirar) */
+  salvo: boolean;
+  por?: string;
+  em?: string;
+}
+/** A seção Pessoas (#77): os administradores, quem já entrou no PROMeiro, as novidades do quadro e as ignoradas. */
+export interface PessoasDaConfiguracao {
+  eu: string;
+  administradores: { email: string; nome: string; mestra: boolean }[];
+  quemJaEntrou: { email: string; nome: string }[];
+  novidades: NovidadeDoQuadro[];
+  ignoradas: NovidadeDoQuadro[];
+  verificadoEm: string;
+  erro?: string;
+}
+export type AcaoNasPessoas =
+  | { acao: 'administrador'; email: string; chave?: string }
+  | { acao: 'tirar'; email: string }
+  | { acao: 'cadastrar' | 'inativar' | 'ignorar' | 'desfazer'; chave: string };
+const comNovidades = (p: PessoasDaConfiguracao) => ((novidades = p.novidades.length), p);
+/** Verifica de novo o quadro e lê a seção Pessoas. */
+export const lerPessoas = () => pedir<PessoasDaConfiguracao>('/api/configuracao/pessoas').then(comNovidades);
+/** Uma ação na seção Pessoas (vale na hora); devolve a seção de novo. */
+export const mudarPessoas = (a: AcaoNasPessoas) => pedir<PessoasDaConfiguracao>('/api/configuracao/pessoas', { method: 'POST', body: JSON.stringify(a) }).then(comNovidades);
 /** Confere sem salvar nada. */
 export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify(m) });
 /** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */

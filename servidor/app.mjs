@@ -31,6 +31,9 @@ import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco } from '../src/modelo/pracas.ts';
 import { acertarNArtesUmaVez } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
+import { criarPessoas } from './configuracao-pessoas.mjs';
+import { administradoresDaTela, administradoresSalvos, ehAdministrador, porAdministrador, tirarAdministrador } from '../src/modelo/pessoas.ts';
+import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { confirmaATroca, conexoesDaTela, lerQuadros, mudancasDaBaseNova, religarNoQuadroNovo } from './configuracao-conexoes.mjs';
 import { VARIAVEIS_DO_CARD, cardDoPedido, conferirSecaoDoCard, mudancasDoCard, secaoDoCard } from './configuracao-card.mjs';
 import { cardDaConfiguracao } from '../src/modelo/ligarOCard.ts';
@@ -429,14 +432,18 @@ const FABRICAS = {
 const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas'];
 const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
 
+/** De quanto em quanto tempo o servidor olha os membros do quadro (a seção Pessoas, #77): uma vez por dia. */
+const UM_DIA = 24 * 60 * 60 * 1000;
+
 /** Os dias de claquetes recentes que a conferência das praças conta (os mesmos da aba Sem cadastro). */
 const DIAS_DA_CONTAGEM = 90;
 
 /**
  * @param env as variáveis do Portainer; o que foi salvo na configuração do PROMeiro vale por cima delas
  * @param abrirPg abre o Postgres do Teable (os módulos abrem cada um a sua conexão, na primeira consulta)
+ * @param agendar (f, ms) repete f de ms em ms (a verificação diária dos membros do quadro); os testes trocam
  */
-export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, ...modulos }) {
+export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, agendar = (f, ms) => setInterval(f, ms), ...modulos }) {
   const fabricas = { ...FABRICAS };
   for (const [nome, m] of Object.entries(modulos)) if (m !== undefined && m !== null) fabricas[nome] = m;
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
@@ -533,6 +540,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return descobrindo;
   }
   const primeiraDescoberta = redescobrir();
+
+  /* ---------- a seção Pessoas (#77): os membros do quadro × a tabela designers ---------- */
+  const pessoas = criarPessoas({ db, copia, buscar: buscarNoTeable });
+  /** Olha os membros do quadro e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
+  const verificarPessoas = () => pessoas.verificar(trello, env);
+  // na partida (depois de achar as tabelas) e uma vez por dia, sem depender de alguém abrir a Configuração
+  const primeiraVerificacao = primeiraDescoberta.then(() => verificarPessoas()).catch(() => null);
+  const verificacaoDiaria = agendar(() => verificarPessoas(), UM_DIA);
+  verificacaoDiaria?.unref?.();
   async function aposentar(velha, filmesVelho) {
     if (velha.emCurso) await new Promise((ok) => (velha.drenou = ok));
     await Promise.all([
@@ -608,6 +624,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
        ON CONFLICT (email) DO UPDATE SET nome = excluded.nome, visto_em = excluded.visto_em`,
     ),
     usuarios: db.prepare('SELECT email, nome FROM usuarios WHERE email <> ? ORDER BY nome COLLATE NOCASE LIMIT 1000'),
+    todosOsUsuarios: db.prepare('SELECT email, nome FROM usuarios ORDER BY nome COLLATE NOCASE LIMIT 1000'),
     cores: db.prepare("SELECT email, cor FROM usuarios WHERE cor IS NOT NULL AND cor <> '' LIMIT 2000"),
     mudarCor: db.prepare('UPDATE usuarios SET cor = ? WHERE email = ?'),
     tourDe: db.prepare('SELECT tour_revisao_em FROM usuarios WHERE email = ?'),
@@ -1365,6 +1382,78 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
 
   /**
+   * A seção Pessoas como a tela lê: os administradores (a chave-mestra marcada), quem já entrou no PROMeiro (para
+   * escolher), as novidades do quadro (as pendentes e as ignoradas), quando foi a verificação e o erro dela. Cada
+   * novidade diz se a pessoa é administradora (pelo e-mail da tabela, do Trello ou de quem entrou com o mesmo nome).
+   */
+  function estadoDasPessoas(eu, verificacao) {
+    const usuarios = q.todosOsUsuarios.all();
+    // o nome de cada administrador: o de quem já entrou no PROMeiro ou, senão, o da tabela designers (pelo e-mail)
+    const designers = (verificacao?.designers ?? []).filter((d) => d.email && d.nome).map((d) => ({ email: d.email, nome: d.nome }));
+    const administradores = administradoresDaTela(env, [...usuarios, ...designers]);
+    const salvos = administradoresSalvos(env);
+    const peloNome = (nome) => usuarios.find((u) => nomeComparavel(u.nome) === nomeComparavel(nome))?.email ?? '';
+    const comoATelaVe = (n) => {
+      const email = n.tipo === 'entrou' ? pessoas.emailDe(n) || peloNome(n.nome) : n.email;
+      return { ...n, emailSugerido: email, administrador: !!email && ehAdministrador(email, env), salvo: salvos.includes(email) };
+    };
+    const { pendentes, ignoradas } = pessoas.separar(verificacao?.novidades ?? []);
+    return {
+      eu: eu.email,
+      administradores,
+      quemJaEntrou: usuarios.filter((u) => !administradores.some((a) => a.email === u.email)).map((u) => ({ email: u.email, nome: u.nome })),
+      novidades: pendentes.map(comoATelaVe),
+      ignoradas: ignoradas.map(comoATelaVe),
+      verificadoEm: verificacao?.em ?? '',
+      ...(verificacao?.erro ? { erro: verificacao.erro } : {}),
+    };
+  }
+
+  /**
+   * A seção Pessoas da Configuração (#77), só para administradores. GET verifica de novo (os membros do quadro × a
+   * tabela designers) e devolve o estado. POST { acao, chave?, email? }: "administrador" e "tirar" mudam os
+   * administradores salvos na tela (vale na hora no app inteiro; a chave-mestra não sai e ninguém tira a si mesmo);
+   * "cadastrar" (quem entrou vira designer ativo no Teable), "inativar" (quem saiu fica inativo), "ignorar" e
+   * "desfazer". Cadastrar, inativar e ignorar valem só para a novidade de agora (404 se não é mais).
+   */
+  async function rotaDasPessoas(req, res, eu) {
+    if (req.method === 'GET') return json(res, 200, estadoDasPessoas(eu, await verificarPessoas()));
+    if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
+    const acao = String(corpo.acao ?? '');
+    const chave = String(corpo.chave ?? '').slice(0, 200);
+    if (acao === 'administrador' || acao === 'tirar') {
+      const r = acao === 'administrador' ? porAdministrador(env, String(corpo.email ?? '')) : tirarAdministrador(env, String(corpo.email ?? ''), eu.email);
+      if ('erro' in r) return json(res, 422, r);
+      // tornar administrador quem entrou no quadro: o e-mail fica lembrado para o cadastro de designer
+      const entrou = acao === 'administrador' && chave.startsWith('entrou:') ? (pessoas.guardada()?.novidades ?? []).find((n) => n.chave === chave) : null;
+      if (entrou) pessoas.lembrarEmail(entrou.membro, corpo.email);
+      mudarConfiguracao({ ADMINISTRADORES: JSON.stringify(r.salvos) }, { por: eu.email });
+      console.log(`[pessoas] ${eu.email} ${acao === 'tirar' ? 'tirou' : 'pôs'} ${String(corpo.email).trim().toLowerCase()} ${acao === 'tirar' ? 'dos' : 'nos'} administradores`);
+      return json(res, 200, estadoDasPessoas(eu, pessoas.guardada()));
+    }
+    if (acao === 'desfazer') {
+      pessoas.desfazer(chave);
+      return json(res, 200, estadoDasPessoas(eu, pessoas.guardada()));
+    }
+    if (!['cadastrar', 'inativar', 'ignorar'].includes(acao)) return json(res, 400, { erro: 'Ação desconhecida.' });
+    const agora = await verificarPessoas();
+    const novidade = agora.novidades.find((n) => n.chave === chave);
+    const tipo = { cadastrar: 'entrou', inativar: 'saiu' }[acao];
+    if (!novidade || (tipo && novidade.tipo !== tipo)) return json(res, 404, { erro: 'Essa pessoa não é mais novidade no quadro.' });
+    if (agora.erro && acao !== 'ignorar') return json(res, 502, { erro: agora.erro });
+    try {
+      if (acao === 'ignorar') pessoas.ignorar(novidade, eu.email);
+      else await pessoas[acao](env, novidade);
+    } catch (e) {
+      console.warn(`[pessoas] ${e instanceof Error ? e.message : e}`);
+      return json(res, 502, { erro: `Não consegui gravar na tabela designers do Teable: ${e instanceof Error ? e.message : e}.` });
+    }
+    console.log(`[pessoas] ${eu.email} ${{ cadastrar: 'cadastrou como designer', inativar: 'marcou como inativo', ignorar: 'ignorou' }[acao]} ${novidade.nome}`);
+    return json(res, 200, estadoDasPessoas(eu, acao === 'ignorar' ? agora : await verificarPessoas()));
+  }
+
+  /**
    * Aba Duplicadas dos Cadastros (#65), só para administradores: a lista dos casos do período (?dias=, 1 a 730, 90 sem
    * dizer; ?busca=; ?renovar=1 lê a produção da arte de novo), o detalhe de um caso (?id=, o único que lê o Trello) e o
    * registro. Ignorar e reabrir (#66,
@@ -1492,8 +1581,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
         const tour = { revisao: q.tourDe.get(eu.email)?.tour_revisao_em ?? null };
         // as praças vão junto: o navegador reconhece a praça da claquete com elas (sem os ids do Trello)
-        // admin: o menu do perfil mostra a Configuração (só para administradores, CADASTRO_ADMINS)
-        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin: cadastros.podeApagar(eu.email) });
+        // admin: o menu do perfil mostra a Configuração (só para administradores: a chave-mestra ou o salvo na tela);
+        // novidades: quantas há no quadro (o pontinho no menu), da última verificação, sem ir ao Trello
+        const admin = cadastros.podeApagar(eu.email);
+        const novidades = admin ? pessoas.separar(pessoas.guardada()?.novidades ?? []).pendentes.length : undefined;
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin, ...(admin ? { novidades } : {}) });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -1839,6 +1931,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       q.designorar.run(decodeURIComponent(caminho.slice('/api/cadastros/ignorar/'.length)).toUpperCase());
       return json(res, 200, { ok: true });
     }
+    if (caminho === '/api/configuracao/pessoas') {
+      if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e mudam as pessoas.' });
+      return rotaDasPessoas(req, res, eu);
+    }
     if (caminho === '/api/configuracao' || caminho.startsWith('/api/configuracao/')) return rotaDaConfiguracao(req, res, eu, caminho);
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
@@ -2016,8 +2112,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   app.tabelasProntas = primeiraDescoberta;
   /** Descobre as tabelas de novo (ou espera a descoberta que já está indo). */
   app.descobrirAsTabelas = redescobrir;
+  /** A verificação dos membros do quadro feita na partida (os testes esperam por ela); e verificar de novo. */
+  app.pessoasProntas = primeiraVerificacao;
+  app.verificarPessoas = verificarPessoas;
   app.fechar = async () => {
     clearInterval(batimento);
+    clearInterval(verificacaoDiaria);
     clearTimeout(tentarDeNovo);
     for (const n of RECRIADOS) await geracao[n]?.parar?.();
     for (const ws of naFila.keys()) ws.terminate();

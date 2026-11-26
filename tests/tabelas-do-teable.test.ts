@@ -90,7 +90,7 @@ describe('o aviso no topo', () => {
 
   it('a coluna que falta e a tabela que não achou viram aviso; a tabela opcional que falta, não', () => {
     const semComplexidade = { ...camposDe, ARTES_acervo: camposDe.ARTES_acervo.filter((c) => c.name !== 'complexidade') };
-    const avisos = avisosDasTabelas(ligarAsTabelas(lidas.filter((l) => l.nome !== 'filmes' && l.nome !== 'designers'), {}), semComplexidade);
+    const avisos = avisosDasTabelas(ligarAsTabelas(lidas.filter((l) => l.nome !== 'filmes' && l.nome !== 'EDICAO_producao'), {}), semComplexidade);
     expect(avisos).toEqual([
       { tabela: 'ARTES_acervo', texto: 'Acervo sem a coluna complexidade (na API)' },
       { tabela: 'filmes', texto: 'Não achei a tabela filmes na base' },

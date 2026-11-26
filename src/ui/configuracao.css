@@ -224,3 +224,41 @@ h3.cfg-modal-rotulo { margin: 22px 0 6px; }
   .cfg-tabelas .cfg-tudo-l { grid-template-columns: minmax(0, 1fr) auto; }
   .cfg-tabelas .cfg-tudo-como { display: none; }
 }
+
+/* ---------- a seção Pessoas (#77) ---------- */
+.cfg-exc.pessoa { flex-wrap: wrap; background: color-mix(in srgb, var(--edicao) 7%, var(--cartao)); border-color: color-mix(in srgb, var(--edicao) 30%, var(--regua)); }
+.cfg-exc.pessoa .cfg-exc-ico { background: var(--edicao); color: var(--papel); }
+.cfg-exc.pessoa.saiu { background: var(--cartao); border-color: var(--regua); }
+.cfg-exc.pessoa.saiu .cfg-exc-ico { background: var(--neutro); color: var(--tinta2); }
+.cfg-exc-acoes { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.cfg-exc-acoes .botao { height: 32px; font-size: 13px; padding: 0 11px; }
+.cfg-exc-acoes .botao-texto { font-size: 13px; }
+.cfg-pessoa-email { flex-basis: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-left: 36px; }
+.cfg-tudo .cfg-pessoa-email { padding-left: 0; margin-top: 6px; }
+.cfg-pessoa-email label { flex-basis: 100%; font: 400 13px var(--sans); color: var(--tinta2); }
+.cfg-pessoa-email input { height: 34px; flex: 1 1 220px; max-width: 340px; border-radius: 9px; border: 1px solid var(--regua-forte); background: var(--papel); color: var(--tinta); font: 400 14px var(--sans); padding: 0 10px; }
+.cfg-pessoa-email input:focus { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.cfg-pessoa-email .botao { height: 34px; }
+.cfg-lista-pessoas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.cfg-pessoa { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 7px 0; }
+.cfg-pessoa + .cfg-pessoa { border-top: 1px solid var(--regua); }
+.cfg-pessoa-av { width: 34px; height: 34px; border-radius: 50%; background: var(--neutro); color: var(--tinta2); font: 600 12px/34px var(--sans); text-align: center; }
+.cfg-pessoa-n { min-width: 0; display: flex; flex-direction: column; font: 400 14px var(--sans); color: var(--tinta); }
+.cfg-pessoa-n b { font-weight: 600; overflow-wrap: anywhere; }
+.cfg-pessoa-n small { font-size: 12.5px; color: var(--tinta3); overflow-wrap: anywhere; }
+.cfg-pessoa-selos { display: flex; align-items: center; gap: 8px; }
+.cfg-selo-mestra { display: inline-flex; align-items: center; gap: 5px; font: 600 11.5px var(--sans); color: var(--producao); background: color-mix(in srgb, var(--producao) 12%, transparent); padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.cfg-selo-voce { font: 600 11.5px var(--sans); color: var(--tinta2); background: var(--neutro); padding: 3px 9px; border-radius: 99px; }
+.cfg-tirar { border: 0; background: none; color: var(--tinta3); width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; cursor: pointer; }
+.cfg-tirar:hover { color: var(--perigo); background: var(--neutro); }
+.cfg-tirar[aria-disabled='true'] { opacity: 0.35; cursor: default; }
+.cfg-tirar[aria-disabled='true']:hover { color: var(--tinta3); background: none; }
+.cfg-dica-pessoas { margin-top: 4px; color: var(--tinta2); }
+.cfg-mais-admin { align-self: flex-start; margin-top: 6px; font-weight: 600; }
+@media (max-width: 600px) {
+  .cfg-exc.pessoa { align-items: flex-start; }
+  .cfg-pessoa { grid-template-columns: 34px minmax(0, 1fr); }
+  .cfg-pessoa-selos { grid-column: 2; flex-wrap: wrap; }
+  .cfg-pessoa-email { padding-left: 0; }
+}
+

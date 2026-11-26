@@ -1,6 +1,7 @@
 /* Um Teable de mentira para a descoberta das tabelas (#76): as bases, as tabelas da base (com o nome no Postgres) e os
    campos de cada uma (por padrão, todas as colunas que o PROMeiro usa, do mapa src/modelo/tabelasDoTeable.ts). Os ids
-   e nomes são inventados. Serve aos testes do Vitest e aos e2e (import dinâmico). */
+   e nomes são inventados. Serve aos testes do Vitest e aos e2e (import dinâmico). Com `opcoes.registros`, as tabelas
+   dadas também têm linhas, que se leem, criam e mudam pela API (a tabela designers da seção Pessoas, #77). */
 import { TABELAS_DO_TEABLE } from '../../src/modelo/tabelasDoTeable.ts';
 
 /** O endereço e o token do Teable falso (vão no env do teste). */
@@ -12,7 +13,8 @@ const resposta = (status, dados) => ({ ok: status < 400, status, json: async () 
  * @param nomes { [tabela do PROMeiro]: nome no Postgres } (as tabelas que existem na base)
  * @param opcoes.base o id da base (o esquema); opcoes.nomeDaBase; opcoes.bases as outras bases ({ [id]: { nome, nomes } });
  *   opcoes.faltando { [tabela]: [colunas que não existem] }; opcoes.ids { [tabela]: id na API } (padrão tblFalso_<tabela>);
- *   opcoes.url o endereço (padrão o de TEABLE_FALSO); opcoes.outro o fetch para o que não é do Teable
+ *   opcoes.url o endereço (padrão o de TEABLE_FALSO); opcoes.outro o fetch para o que não é do Teable;
+ *   opcoes.registros { [tabela]: [{ id, fields }] } as linhas (o array é o mesmo: o teste vê o que foi gravado)
  * @returns fetch, com `.estado` (`fora = true` derruba o Teable; `pedidos` guarda o que foi pedido)
  */
 export function teableFalso(nomes, opcoes = {}) {
@@ -28,6 +30,30 @@ export function teableFalso(nomes, opcoes = {}) {
     const metodo = init.method ?? 'GET';
     estado.pedidos.push(`${metodo} ${url.pathname}`);
     if (estado.fora) throw new Error('fetch failed (Teable fora do ar)');
+    const deRegistros = /^\/api\/table\/([^/]+)\/record(?:\/([^/]+))?$/.exec(url.pathname);
+    if (deRegistros) {
+      const id = decodeURIComponent(deRegistros[1]);
+      const nome = Object.entries(bases).flatMap(([b, base]) => Object.keys(base.nomes).filter((n) => idDe(b, n) === id))[0];
+      const linhas = nome && opcoes.registros?.[nome];
+      if (!linhas) return resposta(404, { message: 'tabela sem registros no Teable falso' });
+      if (metodo === 'GET' && !deRegistros[2]) {
+        const pular = Number(url.searchParams.get('skip') ?? 0);
+        const tomar = Number(url.searchParams.get('take') ?? 100);
+        return resposta(200, { records: linhas.slice(pular, pular + tomar) });
+      }
+      const corpo = JSON.parse(String(init.body ?? '{}'));
+      if (metodo === 'POST' && !deRegistros[2]) {
+        const novos = (corpo.records ?? []).map((r) => ({ id: `recFalso${linhas.length + 1}`, fields: { ...r.fields } }));
+        linhas.push(...novos);
+        return resposta(200, { records: novos });
+      }
+      if (metodo === 'PATCH' && deRegistros[2]) {
+        const linha = linhas.find((l) => l.id === decodeURIComponent(deRegistros[2]));
+        if (!linha) return resposta(404, { message: 'registro não encontrado' });
+        Object.assign(linha.fields, corpo.record?.fields ?? {});
+        return resposta(200, linha);
+      }
+    }
     if (metodo !== 'GET') throw new Error(`a descoberta só lê: ${metodo} ${url.pathname}`);
     if (url.pathname === '/api/base/access/all') return resposta(200, Object.entries(bases).map(([id, b]) => ({ id, name: b.nome })));
     let m = /^\/api\/base\/([^/]+)\/table$/.exec(url.pathname);
