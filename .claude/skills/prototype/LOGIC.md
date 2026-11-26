@@ -55,7 +55,7 @@ Envie o arquivo ou abra-o para a pessoa. Ela vai clicar pelos roteiros e pelo us
 
 ### 5. Registre a resposta e o protótipo
 
-Depois que o protótipo tiver respondido à sua pergunta, registre a resposta e depois registre o protótipo do jeito que a [SKILL](SKILL.md) descreve. O mapeamento específico da lógica: o reducer / máquina / conjunto de funções validado passa para o módulo real (a decisão, absorvida); a casca HTML vai junto para o branch descartável que guarda o protótipo como fonte primária e, por ser um único arquivo autocontido, continua trivial de rodar de novo lá.
+Depois que o protótipo tiver respondido à sua pergunta, registre a resposta do jeito que a [SKILL](SKILL.md) descreve. O mapeamento específico da lógica: o reducer / máquina / conjunto de funções validado passa para o módulo real (a decisão, absorvida); a casca HTML fica no scratchpad e, por ser um único arquivo autocontido, continua trivial de rodar de novo.
 
 ## Antipadrões
 

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modelo de conteúdo</title>
+<!-- O montar.mjs injeta aqui: o runtime da moldura, as fontes do app e o src/estilos.css inteiro (tokens e classes). -->
+<style>
+body { background: var(--mesa); color: var(--tinta); font: 400 14px/1.45 var(--sans); margin: 0; }
+.pr-topo { display: flex; align-items: center; height: 64px; padding: 0 32px; }
+.pr-pagina { max-width: 1040px; margin: 0 auto; padding: 8px 32px 64px; }
+.pr-pagina h1 { font: 400 40px/1.1 var(--serifa); margin: 0 0 16px; }
+.pr-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.pr-lista { display: flex; flex-direction: column; gap: 8px; }
+.pr-item { background: var(--papel); border: 1px solid var(--regua); border-radius: 14px; padding: 14px 16px; }
+.pr-nota { font: 600 20px Caveat, cursive; color: var(--ultra); }
+@media (max-width: 1000px) { .pr-grade { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px) { .pr-topo, .pr-pagina { padding-left: 16px; padding-right: 16px; } .pr-grade { grid-template-columns: 1fr; } .pr-pagina h1 { font-size: 32px; } }
+</style>
+</head>
+<body>
+<!-- O manifesto monta a barra do topo da moldura: as telas (estados) e, quando houver, as alternativas. -->
+<script type="application/json" id="manifesto">
+{
+  "nome": "Modelo",
+  "telas": [{ "id": "vazio", "rotulo": "Vazio" }, { "id": "cheio", "rotulo": "Com itens" }],
+  "alternativas": [{ "id": "A", "rotulo": "Grade" }, { "id": "B", "rotulo": "Lista" }]
+}
+</script>
+<div class="pr-topo"><span class="logo-app"><b>PROM</b>eiro</span></div>
+<main class="pr-pagina" id="tela"></main>
+<script>
+// dados fictícios
+const ITENS = ['CHEF(FUT) 3/11 SP', 'RIO NOBREZA 27/10', 'FESTIVAL 3/11 INTER', 'SUPERCINE 8/11'];
+function desenhar({ tela, alt }) {
+  const itens = tela === 'cheio' ? ITENS : [];
+  const caixa = alt === 'A' ? 'pr-grade' : 'pr-lista';
+  document.getElementById('tela').innerHTML = `<h1>Fila</h1>
+    ${itens.length ? `<div class="${caixa}">${itens.map((t) => `<div class="pr-item">${t}</div>`).join('')}</div>`
+      : '<p class="suave">Nada na fila. <span class="pr-nota">tudo em dia!</span></p>'}
+    <p><button class="botao" onclick="Moldura.ir('${tela === 'cheio' ? 'vazio' : 'cheio'}')">Trocar de tela por dentro</button></p>`;
+}
+Moldura.ao(desenhar);
+</script>
+</body>
+</html>

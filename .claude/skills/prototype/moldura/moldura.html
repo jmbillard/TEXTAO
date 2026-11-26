@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__NOME__ · protótipo</title>
+<style>
+/* Moldura de protótipo: a "bancada técnica". De propósito, nada aqui lembra o app (papel creme, serifas, laranja):
+   grafite, grade fina, monoespaçada e ciano. O app aparece só dentro das molduras dos aparelhos. */
+:root {
+  --fundo: #121619; --painel: #191e23; --painel2: #20262c; --borda: #2b333b; --borda2: #3a444e;
+  --texto: #cfd8e0; --suave: #7f8c98; --ciano: #34d6e8; --ciano-esc: #0b2a30; --vidro: #0a0d10;
+  --mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background-color: var(--fundo);
+  background-image: linear-gradient(rgb(52 214 232 / 5%) 1px, transparent 1px), linear-gradient(90deg, rgb(52 214 232 / 5%) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--texto); font: 400 12px/1.4 var(--mono); min-height: 100vh; overflow-x: hidden;
+}
+button, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ciano); outline-offset: 2px; }
+
+/* ---------- barra do topo ---------- */
+.mb { position: sticky; top: 0; z-index: 10; background: rgb(18 22 25 / 94%); backdrop-filter: blur(6px); border-bottom: 1px solid var(--borda); padding: 10px 16px 8px; display: flex; flex-direction: column; gap: 8px; }
+.mb-linha { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; min-width: 0; }
+.mb-nome { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-right: auto; }
+.mb-selo { flex: none; font-weight: 700; font-size: 10.5px; letter-spacing: .14em; color: var(--fundo); background: var(--ciano); padding: 2px 6px; border-radius: 3px; }
+.mb-nome h1 { font: 600 14px var(--mono); margin: 0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mb-nome small { color: var(--suave); white-space: nowrap; }
+.mb-grupo { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mb-rot { color: var(--suave); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; flex: none; }
+.seg { display: inline-flex; border: 1px solid var(--borda2); border-radius: 6px; overflow: hidden; flex: none; }
+.seg button { border: 0; background: none; padding: 5px 9px; cursor: pointer; color: var(--suave); white-space: nowrap; }
+.seg button + button { border-left: 1px solid var(--borda2); }
+.seg button:hover { color: var(--texto); background: var(--painel2); }
+.seg button[aria-pressed='true'] { background: var(--ciano); color: var(--fundo); font-weight: 700; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.chips button { border: 1px solid var(--borda); background: var(--painel); border-radius: 5px; padding: 4px 8px; cursor: pointer; color: var(--texto); white-space: nowrap; }
+.chips button:hover { border-color: var(--borda2); background: var(--painel2); }
+.chips button[aria-pressed='true'] { border-color: var(--ciano); background: var(--ciano-esc); color: var(--ciano); font-weight: 700; }
+.chips .n { color: var(--suave); margin-right: 5px; }
+.chips button[aria-pressed='true'] .n { color: var(--ciano); }
+.seta { border: 1px solid var(--borda); background: var(--painel); border-radius: 5px; width: 28px; height: 26px; cursor: pointer; flex: none; color: var(--texto); }
+.seta:hover { border-color: var(--borda2); }
+.mb-sel { display: none; flex: 1; min-width: 0; background: var(--painel); border: 1px solid var(--borda2); border-radius: 5px; padding: 4px 6px; height: 28px; }
+.mb-atalhos { color: var(--suave); font-size: 10.5px; }
+.mb-atalhos kbd { font: inherit; color: var(--texto); border: 1px solid var(--borda2); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; }
+
+/* ---------- bancada ---------- */
+.bancada { padding: 22px 16px 48px; display: grid; justify-content: center; align-items: start; gap: 14px 24px; }
+.faixa-tema { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; color: var(--suave); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; }
+.faixa-tema::after { content: ''; flex: 1; height: 1px; background: var(--borda); }
+.faixa-tema b { color: var(--ciano); font-weight: 700; }
+.ap { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ap figcaption { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; color: var(--suave); white-space: nowrap; min-height: 17px; }
+.ap .focar { border: 0; background: none; padding: 0; cursor: pointer; color: var(--ciano); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.ap .focar:hover { text-decoration: underline; }
+.ap .esc { margin-left: auto; color: var(--suave); }
+.ap .solto { color: var(--suave); text-decoration: none; padding: 0 2px; }
+.ap .solto:hover { color: var(--ciano); }
+.casco { background: #05070a; border: 1px solid var(--borda2); padding: 7px; box-shadow: 0 0 0 1px #000, 0 18px 40px rgb(0 0 0 / 45%); cursor: zoom-in; }
+.ap[data-ap='celular'] .casco { border-radius: 26px; padding: 9px; }
+.ap[data-ap='tablet'] .casco { border-radius: 20px; padding: 9px; }
+.ap[data-ap='computador'] .casco { border-radius: 10px; padding: 18px 6px 6px; position: relative; }
+.ap[data-ap='computador'] .casco::before { content: '● ● ●'; position: absolute; top: 3px; left: 10px; font-size: 7px; letter-spacing: 2px; color: var(--borda2); }
+.focado .casco { cursor: default; }
+.vidro { overflow: hidden; background: var(--vidro); }
+.ap[data-ap='celular'] .vidro { border-radius: 18px; }
+.ap[data-ap='tablet'] .vidro { border-radius: 12px; }
+.ap[data-ap='computador'] .vidro { border-radius: 4px; }
+.vidro iframe { display: block; border: 0; transform-origin: 0 0; background: #fff; }
+
+/* celular: um aparelho por vez, seletor de tela compacto */
+@media (max-width: 760px) {
+  .mb { padding: 8px 16px; gap: 6px; }
+  .mb-nome small, .mb-atalhos, .mb .chips-telas, .op-todos { display: none; }
+  .mb-sel { display: block; }
+  .mb-grupo.telas { width: 100%; }
+  .mb-linha.ctl { flex-wrap: nowrap; justify-content: space-between; gap: 8px; }
+  .mb-linha.ctl .mb-rot { display: none; }
+  .seg button { padding: 5px 6px; font-size: 11px; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .bancada { padding: 14px 16px 40px; }
+}
+</style>
+</head>
+<body>
+<header class="mb" role="toolbar" aria-label="Moldura do protótipo">
+  <div class="mb-linha">
+    <div class="mb-nome"><span class="mb-selo">PROTÓTIPO</span><h1 id="nome"></h1><small>rascunho descartável · dados fictícios</small></div>
+  </div>
+  <div class="mb-linha">
+    <div class="mb-grupo telas" role="group" aria-label="Telas">
+      <span class="mb-rot">Telas</span>
+      <button class="seta" data-passo="-1" aria-label="Tela anterior">←</button>
+      <select class="mb-sel" id="sel-tela" aria-label="Tela"></select>
+      <div class="chips chips-telas" id="telas"></div>
+      <button class="seta" data-passo="1" aria-label="Próxima tela">→</button>
+    </div>
+  </div>
+  <div class="mb-linha" id="linha-alt" hidden>
+    <div class="mb-grupo" role="group" aria-label="Alternativas"><span class="mb-rot">Alternativas</span><div class="chips" id="alts"></div></div>
+  </div>
+  <div class="mb-linha ctl">
+    <div class="mb-grupo" role="group" aria-label="Tema"><span class="mb-rot">Tema</span>
+      <span class="seg" id="seg-tema"><button data-tema="claro">claro</button><button data-tema="escuro">escuro</button><button data-tema="ambos">ambos</button></span></div>
+    <div class="mb-grupo" role="group" aria-label="Aparelho"><span class="mb-rot">Aparelho</span>
+      <span class="seg" id="seg-ap"><button data-foco="" class="op-todos">os três</button><button data-foco="celular">celular</button><button data-foco="tablet">tablet</button><button data-foco="computador">computador</button></span></div>
+    <span class="mb-atalhos"><kbd>←</kbd><kbd>→</kbd> telas · <kbd>[</kbd><kbd>]</kbd> alternativas · <kbd>T</kbd> tema · <kbd>0</kbd>–<kbd>3</kbd> aparelho · <kbd>Esc</kbd> os três</span>
+  </div>
+</header>
+<main class="bancada" id="bancada"></main>
+<script>
+// Tudo dentro de uma função: no modo cru o conteúdo é escrito nesta mesma janela e não pode colidir com nomes daqui.
+(() => {
+/*__DADOS__*/
+const APS = [
+  { id: 'celular', rot: 'Celular', w: 390, h: 844 },
+  { id: 'tablet', rot: 'Tablet', w: 820, h: 1180 },
+  { id: 'computador', rot: 'Computador', w: 1440, h: 900 },
+];
+const TELAS = MANIFESTO.telas, ALTS = MANIFESTO.alternativas || [];
+const estreita = matchMedia('(max-width: 760px)');
+const M = { tela: TELAS[0].id, alt: ALTS[0] ? ALTS[0].id : null, tema: 'claro', foco: '', captura: false };
+
+function lerHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('tela') && TELAS.some((t) => t.id === h.get('tela'))) M.tela = h.get('tela');
+  if (h.get('alt') && ALTS.some((a) => a.id === h.get('alt'))) M.alt = h.get('alt');
+  if (['claro', 'escuro', 'ambos'].includes(h.get('tema'))) M.tema = h.get('tema');
+  if (h.has('foco')) M.foco = APS.some((a) => a.id === h.get('foco')) ? h.get('foco') : '';
+  M.captura = h.get('captura') === '1';
+  return h;
+}
+function gravarHash() {
+  const h = new URLSearchParams({ tela: M.tela, tema: M.tema });
+  if (M.alt) h.set('alt', M.alt);
+  if (M.foco) h.set('foco', M.foco);
+  if (M.captura) h.set('captura', '1');
+  history.replaceState(null, '', '#' + h.toString());
+}
+
+/* O conteúdo com os parâmetros iniciais (o runtime lê window.__MOLDURA__). */
+function conteudoCom(params) {
+  return CONTEUDO.replace('<!--MOLDURA-PARAMS-->', '<script>window.__MOLDURA__=' + JSON.stringify(params) + ';<\/script>');
+}
+
+function iniciar() {
+  document.getElementById('nome').textContent = MANIFESTO.nome;
+  const telas = document.getElementById('telas'), sel = document.getElementById('sel-tela');
+  TELAS.forEach((t, i) => {
+    telas.insertAdjacentHTML('beforeend', `<button data-tela="${t.id}"><span class="n">${String(i + 1).padStart(2, '0')}</span>${esc(t.rotulo)}</button>`);
+    sel.insertAdjacentHTML('beforeend', `<option value="${t.id}">${String(i + 1).padStart(2, '0')} · ${esc(t.rotulo)}</option>`);
+  });
+  if (ALTS.length) {
+    document.getElementById('linha-alt').hidden = false;
+    document.getElementById('alts').innerHTML = ALTS.map((a) => `<button data-alt="${a.id}"><span class="n">${esc(a.id)}</span>${esc(a.rotulo)}</button>`).join('');
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button, .casco');
+    if (!b) return;
+    const d = b.dataset;
+    if (d.tela) mudar({ tela: d.tela });
+    else if (d.alt) mudar({ alt: d.alt });
+    else if (d.tema) mudar({ tema: d.tema });
+    else if (d.foco !== undefined) mudar({ foco: d.foco });
+    else if (d.passo) passoTela(+d.passo);
+    else if (d.focarAp) mudar({ foco: d.focarAp });
+  });
+  sel.addEventListener('change', () => mudar({ tela: sel.value }));
+  document.addEventListener('keydown', teclas);
+  addEventListener('message', recado);
+  addEventListener('resize', desenhar);
+  estreita.addEventListener('change', desenhar);
+  addEventListener('hashchange', () => { lerHash(); desenhar(); enviar(); });
+  desenhar();
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+function passoTela(n) { const i = TELAS.findIndex((t) => t.id === M.tela); mudar({ tela: TELAS[(i + n + TELAS.length) % TELAS.length].id }); }
+function passoAlt(n) { if (!ALTS.length) return; const i = ALTS.findIndex((a) => a.id === M.alt); mudar({ alt: ALTS[(i + n + ALTS.length) % ALTS.length].id }); }
+function mudar(o) {
+  const conteudo = ('tela' in o && o.tela !== M.tela) || ('alt' in o && o.alt !== M.alt);
+  Object.assign(M, o);
+  gravarHash();
+  desenhar();
+  if (conteudo) enviar();
+}
+function teclas(e) {
+  if (e.target.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if (k === 'ArrowRight' || k === 'ArrowLeft') { e.preventDefault(); return passoTela(k === 'ArrowRight' ? 1 : -1); }
+  if (k === ']' || k === '[') return passoAlt(k === ']' ? 1 : -1);
+  if (k === 't' || k === 'T') { const o = ['claro', 'escuro', 'ambos']; return mudar({ tema: o[(o.indexOf(M.tema) + 1) % 3] }); }
+  if (k >= '0' && k <= '3') return mudar({ foco: k === '0' ? '' : APS[+k - 1].id });
+  if (k === 'Escape') return mudar({ foco: '' });
+}
+
+/* ---------- molduras dos aparelhos ---------- */
+const figs = {};
+function figura(ap, tema) {
+  const k = ap.id + '-' + tema;
+  if (figs[k]) return figs[k];
+  const f = document.createElement('figure');
+  f.className = 'ap';
+  f.dataset.ap = ap.id;
+  f.innerHTML = `<figcaption><button class="focar" data-focar-ap="${ap.id}" title="Ver em tamanho real">${ap.rot}</button><span>${ap.w} × ${ap.h}</span><span class="esc"></span></figcaption>
+    <div class="casco" data-focar-ap="${ap.id}" title="Clique para ver em tamanho real"><div class="vidro"><iframe title="${ap.rot}, tema ${tema}" loading="eager"></iframe></div></div>`;
+  const ifr = f.querySelector('iframe');
+  ifr.style.width = ap.w + 'px';
+  ifr.style.height = ap.h + 'px';
+  ifr.srcdoc = conteudoCom({ tela: M.tela, alt: M.alt, tema, aparelho: ap.id, captura: M.captura });
+  document.getElementById('bancada').appendChild(f);
+  figs[k] = { f, ifr, ap, tema };
+  return figs[k];
+}
+function faixa(tema) {
+  const id = 'faixa-' + tema;
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    el.className = 'faixa-tema';
+    el.innerHTML = `tema <b>${tema}</b>`;
+    document.getElementById('bancada').appendChild(el);
+  }
+  return el;
+}
+function desenhar() {
+  const cel = estreita.matches;
+  if (cel && !M.foco) M.foco = 'celular';
+  const aps = M.foco ? APS.filter((a) => a.id === M.foco) : APS;
+  const temas = M.tema === 'ambos' ? ['claro', 'escuro'] : [M.tema];
+  const banc = document.getElementById('bancada');
+  const W = banc.clientWidth - 32; // 16px de cada lado
+  const casco = (a) => (a.id === 'computador' ? 12 : 18) + 2;
+  const gap = 24;
+  let s;
+  if (aps.length > 1) s = (W - gap * (aps.length - 1) - aps.reduce((n, a) => n + casco(a), 0)) / aps.reduce((n, a) => n + a.w, 0);
+  else s = Math.min(1, (W - casco(aps[0])) / aps[0].w);
+  s = Math.max(0.1, s);
+  banc.style.gridTemplateColumns = `repeat(${aps.length}, max-content)`;
+  for (const k in figs) figs[k].f.style.display = 'none';
+  ['claro', 'escuro'].forEach((t) => (faixa(t).style.display = 'none'));
+  let linha = 1;
+  temas.forEach((tema) => {
+    const fx = faixa(tema);
+    fx.style.display = temas.length > 1 || M.foco ? '' : 'none';
+    if (fx.style.display === '') fx.style.gridRow = String(linha++);
+    aps.forEach((ap, c) => {
+      const g = figura(ap, tema);
+      g.f.style.display = '';
+      g.f.style.gridRow = String(linha);
+      g.f.style.gridColumn = String(c + 1);
+      g.f.classList.toggle('focado', !!M.foco);
+      const vid = g.f.querySelector('.vidro');
+      vid.style.width = Math.round(ap.w * s) + 'px';
+      g.f.style.width = Math.round(ap.w * s) + casco(ap) + 'px';
+      vid.style.height = Math.round(ap.h * s) + 'px';
+      g.ifr.style.transform = `scale(${s})`;
+      const pct = Math.round(s * 100);
+      g.f.querySelector('.esc').innerHTML = `${pct === 100 ? 'real' : pct + '%'} <a class="solto" target="_blank" title="Abrir só o conteúdo, em outra aba" aria-label="Abrir só o conteúdo, em outra aba" href="#cru&tela=${encodeURIComponent(M.tela)}${M.alt ? '&alt=' + encodeURIComponent(M.alt) : ''}&tema=${tema}&aparelho=${ap.id}">↗</a>`;
+    });
+    linha++;
+  });
+  document.querySelectorAll('[data-tela]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tela === M.tela));
+  document.querySelectorAll('[data-alt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.alt === M.alt));
+  document.querySelectorAll('[data-tema]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tema === M.tema));
+  document.querySelectorAll('[data-foco]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.foco === M.foco));
+  document.getElementById('sel-tela').value = M.tela;
+  const ativo = document.querySelector('.chips-telas [aria-pressed="true"]');
+  if (ativo && document.activeElement && document.activeElement.closest('.chips-telas')) ativo.focus();
+}
+function enviarPara(ifr) { if (ifr.contentWindow) ifr.contentWindow.postMessage({ moldura: { tela: M.tela, alt: M.alt } }, '*'); }
+function enviar() { for (const k in figs) enviarPara(figs[k].ifr); }
+function recado(e) {
+  const d = e.data || {};
+  if (d.molduraPronta) { for (const k in figs) if (figs[k].ifr.contentWindow === e.source) enviarPara(figs[k].ifr); }
+  if (d.molduraIr) {
+    const o = {};
+    if (TELAS.some((t) => t.id === d.molduraIr.tela)) o.tela = d.molduraIr.tela;
+    if (d.molduraIr.alt && ALTS.some((a) => a.id === d.molduraIr.alt)) o.alt = d.molduraIr.alt;
+    Object.assign(M, o);
+    gravarHash();
+    desenhar();
+    enviar();
+  }
+}
+/* Modo cru: só o conteúdo, na janela inteira (para as capturas e para abrir sozinho). */
+const h0 = lerHash();
+if (h0.has('cru')) {
+  // document.open só substitui a página depois que o parser terminou
+  document.documentElement.style.visibility = 'hidden';
+  addEventListener('DOMContentLoaded', () => {
+    document.open();
+    document.write(conteudoCom({ tela: M.tela, alt: M.alt, tema: h0.get('tema') === 'escuro' ? 'escuro' : 'claro', aparelho: h0.get('aparelho') || null, captura: M.captura }));
+    document.close();
+  });
+} else {
+  iniciar();
+}
+})();
+</script>
+</body>
+</html>

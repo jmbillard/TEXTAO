@@ -1,6 +1,6 @@
 # Protótipo de UI
 
-Gere **várias variações de UI radicalmente diferentes** numa única rota, alternáveis por uma barra flutuante na parte de baixo. O usuário alterna entre as variantes no navegador, escolhe uma (ou rouba pedaços de cada) e depois joga o resto fora.
+Gere **várias variações de UI radicalmente diferentes** num único arquivo HTML, apresentado na **moldura** ([`moldura/`](moldura/)): uma barra fixa no topo com as telas e as alternativas, os três aparelhos (celular, tablet, computador) lado a lado e o tema claro, escuro ou os dois. O usuário alterna entre as variantes, escolhe uma (ou rouba pedaços de cada) e depois joga o resto fora.
 
 Se a pergunta for sobre lógica/estado, e não sobre a aparência de algo, este é o ramo errado. Use [LOGIC.md](LOGIC.md).
 
@@ -11,102 +11,66 @@ Se a pergunta for sobre lógica/estado, e não sobre a aparência de algo, este 
 - "Tente um layout diferente para a tela de configurações."
 - Qualquer situação em que o usuário, de outro jeito, passaria um dia escolhendo entre três mockups vagos na cabeça.
 
-## Dois subformatos: prefira fortemente o subformato A
+## O padrão (decidido pelo usuário, vale para todo protótipo de UI)
 
-Um protótipo de UI é muito mais fácil de julgar quando está **encostado no resto do app**: cabeçalho de verdade, barra lateral de verdade, dados de verdade, densidade de verdade. Uma rota descartável isolada é um vácuo: toda variante parece boa no isolamento. Vá pelo subformato A sempre que houver uma página existente plausível para hospedar as variantes. Só recorra ao subformato B se o protótipo realmente não tiver uma casa por perto.
-
-### Subformato A: ajuste numa página existente (preferido)
-
-A rota já existe. As variantes são renderizadas **na mesma rota**, controladas por um parâmetro de busca `?variant=` na URL. A busca de dados, os parâmetros e a autenticação existentes continuam todos. Só a renderização é trocada. Este é o padrão; escolha-o a menos que haja um motivo específico para não escolher.
-
-Se o protótipo for de algo que ainda não tem página, mas *naturalmente viveria dentro de uma* (uma nova seção do dashboard, um novo card na tela de configurações, um novo passo num fluxo existente), continua sendo o subformato A. Monte as variantes dentro da página hospedeira.
-
-### Subformato B: uma página nova (último recurso)
-
-Use só quando a coisa sendo prototipada realmente não tiver uma página existente onde viver (por exemplo, uma superfície de nível superior inteiramente nova, ou um fluxo que não dá para embutir em nenhum lugar sensato).
-
-Crie uma **rota descartável** seguindo a convenção de rotas que o projeto já usa. Não invente uma nova estrutura de nível superior. Dê a ela um nome que deixe óbvio que é um protótipo (por exemplo, inclua a palavra `prototype` no caminho ou no nome do arquivo). Mesmo padrão `?variant=`.
-
-Antes de se comprometer com o subformato B, confira: não existe mesmo nenhuma página onde isso possa ser embutido? Uma rota vazia esconde problemas de design que uma rota cheia exporia.
-
-Nos dois subformatos a barra flutuante de baixo é idêntica.
+- **Sempre na moldura.** O conteúdo não tem barra, faixa nem botão de tema próprios: a barra do topo da moldura é o único seletor. A moldura é a "bancada técnica" (grafite, grade, monoespaçada, ciano) de propósito, para não se confundir com o app.
+- **O conteúdo tem o visual do app.** O `montar.mjs` injeta o `src/estilos.css` inteiro e as fontes do app em base64 (inclusive a manuscrita Caveat). Use os tokens (`--papel`, `--tinta`, `--ultra`, `--serifa`…) e as classes do app (`.botao`, `.rotulo`, `.logo-app`…), e encoste a variante no resto do app: cabeçalho de verdade, vizinhos de verdade, densidade de verdade. Uma tela solta no vácuo faz toda variante parecer boa. As classes próprias do protótipo levam o prefixo `pr-`: o conteúdo divide o espaço de nomes com o `estilos.css` (um `.item` do protótipo herda o `.item` do app).
+- **Dados fictícios.** Nomes, e-mails `@exemplo.com`, claquetes e listas inventados, plausíveis para o domínio. Nada copiado do Trello, do Teable ou do n8n.
+- **As três larguras e os dois temas, sempre.** Celular 390, tablet 820 e computador 1440 px, cada um num iframe da largura real: os `@media` do conteúdo valem como no aparelho. O layout se adapta por media query, nunca por largura fixa. O escuro é o do app (`data-theme`), aplicado pela moldura.
+- **Opções no topo.** As telas (estados) e as alternativas A/B/C são declaradas no manifesto e viram botões da barra.
+- **Fora do repositório.** O protótipo fica no scratchpad da sessão, numa pasta do assunto (`<scratchpad>/<assunto>/`). No repositório fica só a moldura.
 
 ## Processo
 
 ### 1. Declare a pergunta e escolha N
 
-Por padrão, **3 variantes**. Mais de 5 deixa de ser radicalmente diferente e começa a ser ruído, então pare aí.
+Por padrão, **3 alternativas**. Mais de 5 deixa de ser radicalmente diferente e começa a ser ruído, então pare aí. Anote o plano em uma linha num comentário no topo do conteúdo:
 
-Anote o plano em uma linha, no local do protótipo ou num comentário no topo do arquivo:
+> "Três alternativas da tela de Configuração, com os estados calmo, com exceções e conferir."
 
-> "Três variantes da página de configurações, alternáveis por `?variant=`, na rota existente `/settings`."
+### 2. Escreva o conteúdo
 
-Isso funciona esteja o usuário aqui para discordar ou não.
+Copie [`moldura/modelo.html`](moldura/modelo.html) para a pasta do assunto e escreva em cima dele. O contrato com a moldura:
 
-### 2. Gere variantes radicalmente diferentes
+- `<script type="application/json" id="manifesto">` com `nome`, `telas` (`[{ id, rotulo }]`, na ordem em que o usuário vai percorrer) e, quando houver, `alternativas` (`[{ id: 'A', rotulo }]`).
+- `Moldura.ao(desenhar)`: `desenhar({ tela, alt, tema, aparelho })` desenha a tela e roda de novo a cada troca na barra. Cada tela parte de um estado conhecido, para sair igual em todo aparelho.
+- `Moldura.ir(tela)` para um botão do próprio protótipo que leva a outra tela: a barra e os outros aparelhos acompanham.
+- `html.captura` está ligada durante as capturas: desligue ali animações e o que mais atrapalhar a foto.
 
-Faça um rascunho de cada variante. Mantenha cada uma presa a:
+As **telas** são todos os estados que o usuário precisa ver para julgar: o caminho calmo, os menus e modais abertos, o erro, o vazio, o cheio. As **alternativas** discordam sobre a estrutura: layout diferente, hierarquia de informação diferente, affordance principal diferente, e não só cores. Três grades de cards levemente ajustadas não são um protótipo de UI, são papel de parede. Se duas saírem parecidas demais, refaça uma com a orientação explícita "não use uma grade de cards".
 
-- O propósito da página e os dados a que ela tem acesso.
-- A biblioteca de componentes / sistema de estilo do projeto (TailwindCSS, shadcn, MUI, CSS puro, o que for).
-- Um nome de componente exportado claro, por exemplo `VariantA`, `VariantB`, `VariantC`.
+### 3. Monte
 
-As variantes têm de ser **estruturalmente diferentes**: layout diferente, hierarquia de informação diferente, affordance principal diferente, e não só cores diferentes. Três grades de cards levemente ajustadas não são um protótipo de UI, são papel de parede. Se dois rascunhos saírem parecidos demais, refaça um com a orientação explícita "não use uma grade de cards".
-
-### 3. Ligue tudo
-
-Crie um único componente seletor na rota:
-
-```tsx
-// pseudocódigo, adapte ao framework do projeto
-const variant = searchParams.get('variant') ?? 'A';
-return (
-  <>
-    {variant === 'A' && <VariantA {...data} />}
-    {variant === 'B' && <VariantB {...data} />}
-    {variant === 'C' && <VariantC {...data} />}
-    <PrototypeSwitcher variants={['A','B','C']} current={variant} />
-  </>
-);
+```sh
+node .claude/skills/prototype/moldura/montar.mjs <pasta>/conteudo.html <pasta>/prototipo.html
 ```
 
-No subformato A (página existente): mantenha toda a busca de dados existente acima do seletor; só a subárvore renderizada muda por variante.
+Sai um único HTML autocontido (cerca de 1 MB): dá para mandar ao usuário e abrir com dois cliques, inclusive no celular. Monte de novo a cada mudança no conteúdo ou no `src/estilos.css`.
 
-No subformato B (página nova): a rota descartável em `/prototype/<name>` monta o mesmo seletor.
+### 4. Capture e confira
 
-### 4. Monte o seletor flutuante
+```sh
+node .claude/skills/prototype/moldura/capturar.cjs <pasta>/prototipo.html <pasta>/capturas --moldura
+```
 
-Uma barra pequena de posição fixa, centralizada na parte de baixo da tela, com três peças:
+O script usa o Playwright já instalado (`require('playwright')`; nunca `playwright install`) e grava `<aparelho>/<nn>-<tela>[-<alt>]-<tema>.png` para cada tela × alternativa × aparelho × tema, em tamanho real e `deviceScaleFactor` 2, mais a própria moldura em `moldura/` (os três aparelhos, "ambos", um aparelho focado, a moldura num celular). `--telas=`, `--alts=` e `--so-moldura` encurtam a volta enquanto você itera.
 
-- **Seta da esquerda**: vai para a variante anterior (dá a volta).
-- **Rótulo da variante**: mostra a chave da variante atual e, se a variante exportar um nome, esse nome também. Por exemplo, `B (Sidebar layout)`.
-- **Seta da direita**: avança (dá a volta).
+A conferência termina quando:
 
-Comportamento:
-
-- Clicar numa seta atualiza o parâmetro de busca da URL (use o roteador do framework, por exemplo `router.replace` no Next, `navigate` no React Router etc.) para que a variante possa ser compartilhada e se mantenha ao recarregar.
-- Teclado: as setas `←` e `→` também alternam. Não intercepte as setas quando um `<input>`, `<textarea>` ou `[contenteditable]` estiver com foco.
-- Visualmente distinta da página (por exemplo, uma pílula de alto contraste, sombra sutil), para que fique óbvio que não faz parte do design sendo avaliado.
-- Escondida nos builds de produção: condicione a `process.env.NODE_ENV !== 'production'` ou a uma verificação equivalente, para que um merge de protótipo perdido não leve a barra aos usuários.
-
-Coloque o seletor num único componente compartilhado para que os dois subformatos possam reutilizá-lo. Coloque-o onde a UI compartilhada vive no projeto.
+- o script diz **"sem erros e nada vazando"** (erros de JavaScript e elementos que passam da largura do aparelho);
+- você abriu (Read) toda captura de celular e de computador, nos dois temas, e as de tablet de cada tela que muda de layout entre 700 e 1000 px, e não há texto cortado, sobreposição, contraste ruim no escuro nem fonte trocada, que o script não pega.
 
 ### 5. Entregue
 
-Mostre a URL (e as chaves de `?variant=`). O usuário vai alternar entre elas quando puder. O retorno interessante costuma ser **"quero o cabeçalho da B com a barra lateral da C"**, que é o design que ele de fato quer.
+Mande o caminho absoluto do HTML montado e as capturas da moldura. Para apontar um estado, use o hash: `prototipo.html#tela=conferir&alt=B&tema=ambos&foco=celular`. Na moldura: `←` `→` trocam a tela, `[` `]` a alternativa, `T` o tema, `0`–`3` o aparelho e `Esc` volta aos três; o `↗` de cada aparelho abre só o conteúdo em outra aba. O retorno interessante costuma ser **"quero o cabeçalho da B com a barra lateral da C"**, que é o design que ele de fato quer.
 
-### 6. Registre a resposta e faça a limpeza
+### 6. Registre a resposta
 
-Depois que uma variante vencer, registre a resposta (qual variante e por quê) e depois registre o protótipo do jeito que a [SKILL](SKILL.md) descreve. Incorpore a vencedora ao código real e mova o resto para o branch descartável, não para a main:
-
-- **Subformato A**: incorpore a vencedora à página existente; tire da main as variantes perdedoras e o seletor.
-- **Subformato B**: promova a variante vencedora a uma rota de verdade; tire da main a rota descartável e o seletor.
-
-O conjunto completo de variantes é a fonte primária, então ele vai para o branch descartável, não para o lixo, já que componentes de variante e o seletor deixados no branch main apodrecem rápido e confundem o próximo leitor.
+Depois que uma alternativa vencer, registre a resposta (qual alternativa, por quê, e a pergunta que ela resolveu) do jeito que a [SKILL](SKILL.md) descreve, e reescreva a vencedora direito no código real. O protótipo continua no scratchpad.
 
 ## Antipadrões
 
-- **Variantes que só diferem em cor ou texto.** Isso é um ajuste, não um protótipo. Variantes de verdade discordam sobre a estrutura.
-- **Compartilhar código demais entre variantes.** Um `<Header>` compartilhado tudo bem; um `<Layout>` compartilhado anula o propósito. Cada variante deve ter liberdade para jogar fora o layout.
-- **Ligar variantes a mutações reais.** Protótipos só de leitura tudo bem. Se uma variante precisar alterar dados, aponte-a para um stub: a pergunta é "como isso deveria ficar", não "o backend funciona".
-- **Promover o protótipo direto para produção.** O código da variante foi escrito sob as restrições de protótipo (sem testes, tratamento de erros mínimo). Reescreva-o direito quando for incorporá-lo.
+- **Alternativas que só diferem em cor ou texto.** Isso é um ajuste, não um protótipo. Alternativas de verdade discordam sobre a estrutura.
+- **Compartilhar código demais entre alternativas.** Um cabeçalho compartilhado tudo bem; um layout compartilhado anula o propósito. Cada alternativa deve ter liberdade para jogar fora o layout.
+- **Ligar o protótipo a dados ou serviços reais.** A pergunta é "como isso deveria ficar", não "o backend funciona".
+- **Promover o protótipo direto para produção.** O código foi escrito sob as restrições de protótipo (sem testes, tratamento de erros mínimo). Reescreva-o direito quando for incorporá-lo.
