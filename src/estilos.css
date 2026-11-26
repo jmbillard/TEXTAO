@@ -1011,6 +1011,10 @@ kbd {
 .convite-compacto-acoes { flex: none; display: flex; align-items: center; gap: 8px; }
 .convite-compacto .botao { height: 36px; padding: 0 12px; border-radius: 10px; font-size: 13px; gap: 6px; }
 .convite-compacto .botao kbd { font-size: 11px; padding: 0 5px; }
+/* a frase mais longa ("Vamos revisar o que vem aí?") não cabia ao lado dos botões e encostava no "Escolher
+   arquivos": no convite estreito, o atalho do Colar do Word (que continua valendo) sai do botão e a frase ganha o lugar */
+.convite-compacto { container: compacto / inline-size; }
+@container compacto (max-width: 615px) { .convite-compacto .botao kbd { display: none; } }
 /* sem espaço (com a contagem de roteiros ao lado), a frase encolhe e os formatos ficam só com os formatos */
 @container convite (max-width: 275px) { .formatos-resto { display: none; } }
 @container convite (max-width: 225px) { .convite-compacto-texto .titulo-serifa { font-size: 16.5px; } }

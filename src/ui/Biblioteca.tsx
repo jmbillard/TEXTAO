@@ -16,6 +16,8 @@ import { useTrocaDeCriterio, useTrocaDeSemana } from './trocaDeSemana';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { avisarCursorMudou, CURSORES, Cursor, cursorNoMouse, escolherCursor, meuCursor, usarCursorNoMouse, usarVerPonteiros, verPonteiros } from './cursores';
 import { aplicarTema, temaSalvo, type Tema } from './tema';
+import { AnoNovoNaAgenda, Enfeites, useTemaDaData } from './Enfeites';
+import { enfeitesLigados, ligarEnfeites, ouvirEnfeites, type TemaDeFimDeAno } from './regrasDosEnfeites';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { avisoDaSubstituicao } from './Comparar';
@@ -161,8 +163,24 @@ function EscolhaDeTema() {
   );
 }
 
+/** Os enfeites de fim de ano (só aparece quando a data tem tema): ligados ou não, guardado neste navegador. */
+function EscolhaDeEnfeites({ tema, ligados }: { tema: TemaDeFimDeAno; ligados: boolean }) {
+  return (
+    <div className="escolha-tema escolha-enfeites">
+      <div className="rotulo">Enfeites {tema === 'natal' ? 'de Natal' : 'de Ano Novo'}</div>
+      <div className="escolha-tema-opcoes" role="radiogroup" aria-label="Enfeites">
+        {[true, false].map((v) => (
+          <button key={String(v)} type="button" role="radio" aria-checked={ligados === v} onClick={() => ligarEnfeites(v)}>
+            {v ? 'Ligados' : 'Desligados'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
-function Perfil({ identidade, definirPerfil, cadastros, filmes, aoMudarCor }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; aoMudarCor?: () => void }) {
+function Perfil({ identidade, definirPerfil, cadastros, filmes, aoMudarCor, enfeites }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; aoMudarCor?: () => void; enfeites?: { tema: TemaDeFimDeAno; ligados: boolean } }) {
   const meuEmail = identidade?.email ?? '';
   const [minhaCor, setMinhaCor] = useState(() => corDe(meuEmail));
   useEffect(() => setMinhaCor(corDe(meuEmail)), [meuEmail]);
@@ -235,6 +253,7 @@ function Perfil({ identidade, definirPerfil, cadastros, filmes, aoMudarCor }: Pi
             </button>
           )}
           <EscolhaDeTema />
+          {enfeites && <EscolhaDeEnfeites {...enfeites} />}
           {meuEmail && (
             <EscolhaDeCor
               email={meuEmail}
@@ -896,6 +915,11 @@ const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, buscaInicial = '' }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
+  // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
+  const temaDaData = useTemaDaData();
+  const [enfeitesSim, setEnfeitesSim] = useState(enfeitesLigados);
+  useEffect(() => ouvirEnfeites(setEnfeitesSim), []);
+  const enfeite = enfeitesSim && !aoFundo ? temaDaData : null;
   // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
   const [saindo, setSaindo] = useState<Resumo | null>(null);
   const prazoSaida = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -1229,7 +1253,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
             <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
           </div>
         )}
-        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} aoMudarCor={() => setCores((n) => n + 1)} />
+        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} aoMudarCor={() => setCores((n) => n + 1)} enfeites={temaDaData ? { tema: temaDaData.tema, ligados: enfeitesSim } : undefined} />
       </header>
       <main className="biblioteca fila" data-ancora="pagina">
         {EXEMPLOS.length > 0 && (
@@ -1353,7 +1377,11 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           )
         )}
       </main>
-      {!vazio && roteiros && enviados.length > 0 && <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} />}
+      {!vazio && roteiros && enviados.length > 0 && (
+        <AnoNovoNaAgenda.Provider value={enfeite?.anoNovo ?? null}>
+          <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} />
+        </AnoNovoNaAgenda.Provider>
+      )}
       {saindo && (
         <div className="desfazer" role="status">
           <span><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</span>
@@ -1361,6 +1389,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         </div>
       )}
       <Ponteiros lista={Object.values(ponteiros)} />
+      {enfeite && <Enfeites tema={enfeite} />}
     </div>
   );
 }

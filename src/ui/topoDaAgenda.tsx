@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { CRITERIOS, duracaoDoPeriodo, NOME_DO_CRITERIO, periodoNaContagem, valorNaContagem, type CriterioDaAgenda, type DiaDaSemana, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
 import { RABISCO } from './cena';
 import { RABISCOS } from './pecas';
 import { semMovimento } from './util';
+import { AnoNovoNaAgenda } from './Enfeites';
 
 /* O topo da agenda No Trello, no celular (#41) e no computador: o período do seletor, o resumo dos dias à vista, o
    "voltar para hoje" e, no computador, o cabeçalho de cada dia. Quando os dias à vista mudam, os números contam do
@@ -349,6 +350,9 @@ export function Periodo({ dia1, mes1, dia2, mes2, mesesApagados, largura }: Part
     termina (`marcas`); então se escrevem à mão (`escrever`): o círculo primeiro, a palavra logo atrás. */
 export function TopoDoDia({ d, numero = d.numero, marcas = true, escrever: escreve = false }: { d: DiaDaSemana; numero?: number; marcas?: boolean; escrever?: boolean }) {
   const marca = marcas ? d.marca : '';
+  // os enfeites de Ano Novo: o dia 1º, quando é "amanhã" (no dia 31) ou "hoje", vira "2027!" à mão
+  const anoNovo = useContext(AnoNovoNaAgenda);
+  const virada = anoNovo && d.iso === `${anoNovo}-01-01` && (marca === 'amanhã' || marca === 'hoje') ? `${anoNovo}!` : undefined;
   const circulo = useRef<SVGPathElement>(null);
   const rel = useRef<HTMLSpanElement>(null);
   const antes = useRef(marca);
@@ -370,7 +374,11 @@ export function TopoDoDia({ d, numero = d.numero, marcas = true, escrever: escre
           {numero}
           {marca === 'hoje' && <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true"><path ref={circulo} pathLength={1} d={RABISCOS[1]} /></svg>}
         </span>
-        {marca && <span ref={rel} className="dia-rel">{marca}</span>}
+        {marca && (
+          <span ref={rel} className={`dia-rel${virada ? ' virada' : ''}`} data-virada={virada}>
+            {marca}
+          </span>
+        )}
       </div>
     </div>
   );

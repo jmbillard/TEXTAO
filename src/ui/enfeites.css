@@ -1,0 +1,118 @@
+/* Os enfeites de fim de ano da tela inicial (Enfeites.tsx): uma camada por cima da página, que não recebe o mouse
+   (só as bolas e as taças, para o balanço e o brinde). Nada fica sobre os cards nem sobre o texto; nada muda o
+   layout; nada pisca rápido. Traço à mão nos tokens do app, sem sombra. */
+:root { --fio: #9b968b; --neve: #fffefb; --halo-lampada: 0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { --fio: #6d685f; --neve: #ece8df; --halo-lampada: 0.2; }
+}
+:root[data-theme='dark'] { --fio: #6d685f; --neve: #ece8df; --halo-lampada: 0.2; }
+
+.pagina:has(> .enfeites) { position: relative; }
+/* a camada acompanha a altura da página na hora (inset) e o que passa dela é cortado: ela nunca estica a rolagem */
+.enfeites { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.enfeites > svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.enfeites path, .enfeites line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+/* no celular, a busca aberta cobre o logo: o que mora na barra do topo sai junto */
+@media (max-width: 600px) {
+  .pagina:has(.busca.lupa.aberta) .enfeites .no-topo { display: none; }
+}
+
+/* ---------- o varal de pisca-pisca ---------- */
+.enfeites .varal .fio { stroke: var(--fio); stroke-width: 1.2; }
+.enfeites .varal .bocal { fill: var(--fio); }
+.enfeites .lampada { opacity: 0.9; animation: enfeite-acende var(--ciclo, 9s) ease-in-out infinite; animation-delay: var(--atraso, 0s); }
+.enfeites .lampada .vidro { stroke: none; }
+.enfeites .lampada .reflexo { stroke: var(--neve); stroke-width: 0.9; opacity: 0.75; }
+/* o halo leve só no escuro */
+.enfeites .lampada .halo { opacity: var(--halo-lampada); }
+/* acende devagar, fica um pouco e apaga devagar: a onda corre o fio num ciclo lento */
+@keyframes enfeite-acende { 0%, 100% { opacity: 0.42; } 18% { opacity: 1; } 34% { opacity: 1; } 52% { opacity: 0.42; } }
+
+/* ---------- as bolas penduradas ---------- */
+.enfeites .bola .cordao { stroke: var(--fio); stroke-width: 1; }
+.enfeites .bola .tampa { fill: var(--fio); }
+.enfeites .bola .globo { stroke-width: 1.4; }
+.enfeites .bola .faixa { stroke-width: 1; }
+.enfeites .bola .brilho { stroke: var(--neve); stroke-width: 1.2; opacity: 0.85; }
+.enfeites .bola .alvo, .enfeites .tacas .alvo { fill: transparent; stroke: none; pointer-events: all; }
+.enfeites .bola.balanca { animation: enfeite-balanca 1.9s cubic-bezier(0.3, 0.6, 0.35, 1); }
+@keyframes enfeite-balanca { 0% { transform: rotate(0); } 18% { transform: rotate(9deg); } 42% { transform: rotate(-6deg); } 66% { transform: rotate(3deg); } 84% { transform: rotate(-1deg); } 100% { transform: rotate(0); } }
+
+/* ---------- o gorro e a neve ---------- */
+.enfeites .gorro .corpo { fill: var(--ultra); stroke: var(--ultra-tinta); stroke-width: 0.9; }
+.enfeites .gorro .aba, .enfeites .gorro .pompom { fill: var(--neve); stroke: var(--tinta3); stroke-width: 1; }
+.enfeites .floco path { stroke: var(--tinta3); stroke-width: 1.1; }
+.enfeites .floco { opacity: 0; animation: enfeite-cai var(--dur, 36s) linear infinite; animation-delay: var(--atraso, 0s); }
+@keyframes enfeite-cai {
+  0% { transform: translate(0, 0) rotate(0); opacity: 0; }
+  6% { opacity: 0.42; }
+  25% { transform: translate(6px, calc(var(--queda) * 0.25)) rotate(40deg); }
+  50% { transform: translate(-4px, calc(var(--queda) * 0.5)) rotate(90deg); }
+  75% { transform: translate(5px, calc(var(--queda) * 0.75)) rotate(140deg); }
+  92% { opacity: 0.42; }
+  100% { transform: translate(0, var(--queda)) rotate(180deg); opacity: 0; }
+}
+
+/* ---------- Ano Novo: taças, fogos, confete e contagem ---------- */
+.enfeites .tacas .copo { fill: none; stroke: var(--tinta2); stroke-width: 1.2; }
+.enfeites .tacas .bebida { fill: color-mix(in srgb, var(--producao) 45%, transparent); stroke: none; }
+.enfeites .tacas .tinim { stroke: var(--producao); stroke-width: 1.2; }
+.enfeites .tacas .bolha { fill: var(--producao); opacity: 0; animation: enfeite-bolha 3.6s ease-in infinite; animation-delay: var(--atraso, 0s); }
+@keyframes enfeite-bolha { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 0.9; } 100% { transform: translateY(-5px); opacity: 0; } }
+.enfeites .tacas .esq, .enfeites .tacas .dir { transform-box: fill-box; transform-origin: 50% 100%; }
+/* o brinde da chegada, e de novo a cada vez que o mouse passa */
+.enfeites .tacas.brinda .esq { animation: enfeite-brinda-esq 0.9s cubic-bezier(0.3, 0.6, 0.35, 1); }
+.enfeites .tacas.brinda .dir { animation: enfeite-brinda-dir 0.9s cubic-bezier(0.3, 0.6, 0.35, 1); }
+.enfeites .tacas.brinda .tinim { animation: enfeite-tinim 0.9s ease-out; }
+@keyframes enfeite-brinda-esq { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-9deg); } 55% { transform: rotate(3deg); } }
+@keyframes enfeite-brinda-dir { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(9deg); } 55% { transform: rotate(-3deg); } }
+@keyframes enfeite-tinim { 0%, 45% { opacity: 0; } 60%, 100% { opacity: 1; } }
+
+.enfeites .estouro { opacity: 0; animation: enfeite-estouro var(--ciclo, 30s) linear infinite; animation-delay: var(--atraso, 0s); }
+.enfeites .estouro .raio { stroke-width: 1.4; stroke-dasharray: 1 1.02; animation: enfeite-raio var(--ciclo, 30s) linear infinite; animation-delay: var(--atraso, 0s); }
+.enfeites .estouro .rastro { stroke-width: 1.2; stroke-dasharray: 0.25 2; animation: enfeite-rastro var(--ciclo, 30s) linear infinite; animation-delay: var(--atraso, 0s); }
+.enfeites .estouro .ponta { stroke-width: 1.1; vector-effect: non-scaling-stroke; opacity: 0; animation: enfeite-ponta var(--ciclo, 30s) linear infinite; animation-delay: var(--atraso, 0s); }
+/* um rojão por vez: sobe, estoura devagar e some; depois o céu fica quieto um bom tempo */
+@keyframes enfeite-estouro { 0% { opacity: 0; } 0.5% { opacity: 1; } 9% { opacity: 1; } 13% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes enfeite-rastro { 0% { stroke-dashoffset: 0.25; } 3% { stroke-dashoffset: -1; } 100% { stroke-dashoffset: -1; } }
+@keyframes enfeite-raio { 0%, 2.6% { stroke-dashoffset: 1.01; } 6.5% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes enfeite-ponta { 0%, 5% { opacity: 0; } 7% { opacity: 1; } 100% { opacity: 1; } }
+
+.enfeites .confete .papel { stroke: none; }
+.enfeites .confete .risco { stroke-width: 1.2; }
+.enfeites .confete .pedaco { opacity: 0; animation: enfeite-confete-cai var(--dur, 50s) linear infinite; animation-delay: var(--atraso, 0s); }
+@keyframes enfeite-confete-cai {
+  0% { transform: translate(0, 0) rotate(0); opacity: 0; }
+  8% { opacity: 0.85; }
+  33% { transform: translate(5px, calc(var(--queda) * 0.33)) rotate(calc(var(--giro) * 0.33)); }
+  66% { transform: translate(-4px, calc(var(--queda) * 0.66)) rotate(calc(var(--giro) * 0.66)); }
+  88% { opacity: 0.85; }
+  100% { transform: translate(0, var(--queda)) rotate(var(--giro)); opacity: 0; }
+}
+
+.enfeites .contagem-mao { position: absolute; font: 600 20px/1 Caveat, cursive; color: var(--ultra); white-space: nowrap; transform: rotate(-2deg); transform-origin: right center; }
+.enfeites .contagem-mao svg { position: absolute; left: -2px; top: calc(100% - 1px); width: calc(100% + 4px); height: 7px; overflow: visible; }
+.enfeites .contagem-mao svg path { stroke: var(--ultra); stroke-width: 1.6; vector-effect: non-scaling-stroke; opacity: 0.7; }
+
+/* o dia 1º na agenda: "2027!" à mão, em dourado, no lugar do "amanhã" (dia 31) ou do "hoje" (dia 1º). A palavra fica
+   na página, transparente, e guarda o lugar: o layout não muda */
+.coluna .dia-rel.virada { position: relative; color: transparent; }
+.coluna .dia-rel.virada::after { content: attr(data-virada); position: absolute; left: 0; top: 0; color: var(--producao); white-space: nowrap; }
+
+/* ---------- movimento reduzido: tudo parado ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .enfeites, .enfeites * { animation: none !important; }
+  .enfeites .lampada:nth-of-type(3n) { opacity: 0.55; }
+  .enfeites .floco { opacity: 0.4; }
+  .enfeites .confete .pedaco { opacity: 0.85; }
+  .enfeites .estouro { opacity: 0.8; }
+  .enfeites .estouro.quieto { opacity: 0; }
+  .enfeites .estouro .rastro { display: none; }
+  .enfeites .estouro .ponta { opacity: 1; }
+  .enfeites .estouro .raio { stroke-dashoffset: 0; }
+  .enfeites .tacas .bolha { opacity: 0.7; }
+}
+
+/* a escolha no perfil, logo abaixo do tema: duas opções em vez de três */
+.escolha-enfeites .escolha-tema-opcoes { grid-template-columns: repeat(2, 1fr); }
+.escolha-enfeites .escolha-tema-opcoes button { padding: 8px 4px; }
