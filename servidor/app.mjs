@@ -21,6 +21,7 @@ import { criarFilmes } from './filmes.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
+import { acertarNArtesUmaVez } from './artes.mjs';
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
@@ -139,6 +140,8 @@ export function abrirBanco(caminho) {
     id TEXT PRIMARY KEY, claquete TEXT NOT NULL, por_nome TEXT NOT NULL, por_email TEXT NOT NULL, em TEXT NOT NULL,
     publico INTEGER NOT NULL DEFAULT 0, leitores TEXT NOT NULL DEFAULT '[]'
   )`);
+  // a conta das artes pela lista sem repetição, uma vez: os roteiros guardados antes dela contavam as repetidas
+  acertarNArtesUmaVez(db);
   return db;
 }
 
