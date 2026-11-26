@@ -2,7 +2,7 @@
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
-import { chaveDaAtracao, chaveN8n, criarTrello } from '../servidor/trello.mjs';
+import { artesDaProducao, chaveDaAtracao, chaveN8n, criarTrello } from '../servidor/trello.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 
@@ -380,7 +380,7 @@ describe('andamento na produção da arte', () => {
       { id: 'r4', card: 'sumiu', claquete: 'X' },
     ];
     const a = await t.andamento(itens);
-    expect(a.r1).toEqual({ status: ['EM APROVAÇÃO'], designers: ['Rafa Lins'], entregue: false, entrega: '2026-11-21T03:00:00.000Z', entrada: '2026-11-20T10:00:00.000Z' });
+    expect(a.r1).toEqual({ status: ['EM APROVAÇÃO'], designers: ['Rafa Lins'], entregue: false, entrega: '2026-11-21T03:00:00.000Z', entrada: '2026-11-20T10:00:00.000Z', claquete: 'SHOW DA NOITE 20/11 SP' });
     expect(a.r2).toMatchObject({ status: ['FINALIZADO'], designers: ['Bia Costa', 'Rafa Lins'], entregue: true, entrega: null });
     expect(a.r3.status).toEqual(['CAIU']); // a linha mais recente com a mesma claquete
     expect(a.r4).toBeUndefined();
@@ -408,6 +408,61 @@ describe('andamento na produção da arte', () => {
     expect(await t.atracoesDosCards([])).toEqual({});
     expect(await t.atracoesDosCards(['sumiu', 'c3', 'c2', 'c1'])).toEqual({ c1: 'Encontro', c2: 'Show da Noite' }); // guardado por 30 s
     expect(consultas).toHaveLength(1);
+  });
+
+  it('devolve a claquete como está hoje na produção da arte (o nome do card renomeado)', async () => {
+    const consultas: { sql: string; params: unknown[] }[] = [];
+    const consultar = async (sql: string, params: unknown[] = []) => {
+      consultas.push({ sql, params });
+      if (!sql.includes('"card_ID"')) return [];
+      return [
+        { card_ID: 'c1', claquete: 'Eliana(Reperc)7/6', status: null, designers: null, entregue: false, data_entrega: null, data_entrada: null },
+        { card_ID: 'c2', claquete: '  ', status: null, designers: null, entregue: false, data_entrega: null, data_entrada: null },
+        { card_ID: 'c3', claquete: null, status: null, designers: null, entregue: false, data_entrega: null, data_entrada: null },
+      ].filter((l) => (params[0] as string[]).includes(l.card_ID));
+    };
+    const a = await criarTrello(ENV, { consultar }).andamento([
+      { id: 'r1', card: 'c1', claquete: 'Eliana (Reperc) 7-6' },
+      { id: 'r2', card: 'c2', claquete: 'NOME 14-6' },
+      { id: 'r3', card: 'c3', claquete: 'NOME 15-6' },
+    ]);
+    expect(a.r1.claquete).toBe('Eliana(Reperc)7/6');
+    // sem nome na produção da arte, nada: a tela usa o guardado no padrão
+    expect(a.r2).not.toHaveProperty('claquete');
+    expect(a.r3).not.toHaveProperty('claquete');
+  });
+
+  it('conta as artes da produção da arte uma vez cada, como a lista do editor (artesUnicas)', () => {
+    expect(artesDaProducao('VEM AI | HOJE | AMANHA')).toBe(3);
+    // a mesma arte escrita de outro jeito (acento, caixa, pontuação) conta uma vez
+    expect(artesDaProducao('Vem aí | VEM AI! | hoje')).toBe(2);
+    // a arte com mais de um tipo vai ao checklist uma vez por tipo, mas é uma arte só
+    expect(artesDaProducao('HOJE (RDP) | HOJE (CRT) | AMANHA')).toBe(2);
+    // parênteses que são do texto da arte (um tipo só não ganha sufixo): ficam como estão
+    expect(artesDaProducao('ELIANA (AO VIVO) | ELIANA')).toBe(2);
+    // uma por linha também vale; vazio ou nulo não dá contagem
+    expect(artesDaProducao('VEM AI\nHOJE')).toBe(2);
+    expect(artesDaProducao('')).toBeNull();
+    expect(artesDaProducao('  |  ')).toBeNull();
+    expect(artesDaProducao(null)).toBeNull();
+  });
+
+  it('o andamento traz a contagem de artes da produção da arte, sem as repetidas; sem a coluna preenchida, não traz', async () => {
+    const consultar = async (sql: string, params: unknown[] = []) => {
+      if (!sql.includes('"card_ID"')) return [];
+      return [
+        { card_ID: 'c1', claquete: 'NOME 14/6', artes: 'HOJE (RDP) | HOJE (CRT) | VEM AI | Vem aí', status: null, designers: null, entregue: false, data_entrega: null, data_entrada: null },
+        { card_ID: 'c2', claquete: 'NOME 15/6', artes: null, status: null, designers: null, entregue: false, data_entrega: null, data_entrada: null },
+      ].filter((l) => (params[0] as string[]).includes(l.card_ID));
+    };
+    const consultas: string[] = [];
+    const a = await criarTrello(ENV, { consultar: (sql: string, p?: unknown[]) => (consultas.push(sql), consultar(sql, p)) }).andamento([
+      { id: 'r1', card: 'c1', claquete: 'NOME 14-6' },
+      { id: 'r2', card: 'c2', claquete: 'NOME 15-6' },
+    ]);
+    expect(consultas.some((q) => q.includes('"artes"'))).toBe(true);
+    expect(a.r1.artes).toBe(2);
+    expect(a.r2).not.toHaveProperty('artes');
   });
 
   it('sem Postgres ou com erro, devolve vazio', async () => {
@@ -438,7 +493,7 @@ describe('andamento na produção da arte', () => {
 
     // sem a tabela de prioridade, nada é destacado e o andamento continua
     const sem = await criarTrello({ ...ENV, TEABLE_PG_PRIORIDADE: '' }, { consultar }).andamento(itens);
-    expect(sem.r1).toEqual({ status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, entrada: null });
+    expect(sem.r1).toEqual({ status: ['PRODUZINDO'], designers: [], entregue: false, entrega: null, entrada: null, claquete: 'SHOW DA NOITE 20/11 SP' });
     expect(Object.keys(sem)).toEqual(['r1', 'r2']);
 
     // a lista de prioridade fora do ar não derruba o andamento
@@ -1001,7 +1056,7 @@ describe('agenda por entrega: o /api/andamento com a leitura apontada para a bas
       db.prepare('INSERT INTO envios (roteiro_id, estado, card_id, url, em) VALUES (?, ?, ?, ?, ?)').run('rot-dona', 'enviado', 'cardDona', 'https://trello.com/c/cardDona', '2026-11-23T22:55:00Z');
       const r = await ana('/api/andamento');
       expect(r.status).toBe(200);
-      expect((await r.json())['rot-dona']).toEqual({ status: ['FINALIZADO'], designers: [], entregue: true, entrega: '2026-11-23T22:55:58.000Z', entrada: '2026-11-23T22:55:20.976Z' });
+      expect((await r.json())['rot-dona']).toEqual({ status: ['FINALIZADO'], designers: [], entregue: true, entrega: '2026-11-23T22:55:58.000Z', entrada: '2026-11-23T22:55:20.976Z', claquete: 'DONA 25-11' });
       expect(lidas.some((s) => s.includes('"bseVelha"."producaoNQ"'))).toBe(true);
       expect(avisos.join('\n')).toMatch(/TEABLE_PG_ARTE_LEITURA/);
       // e a agenda por entrega, com a fila e o andamento como chegam ao navegador: o card fica no dia 23, entregue

@@ -25,7 +25,7 @@ import {
   marcarArte as marcarArteNoTexto, partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { alternarJaExiste, alvosDoTeclado, artesUnicas, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
-import { agruparPorDia, pedeRevisao, pendentes, proximoParaRevisar } from './fila';
+import { agruparPorDia, claqueteParaMostrar, pedeRevisao, pendentes, proximoParaRevisar } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import {
   ETIQUETAS, juntarTipos, metaVazia, NOMES_COLUNAS, nomesDosTipos, normalizarSubtipo, tiposDaArte, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
@@ -482,12 +482,18 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const doTour = ehDoTour(inicial.id);
   const comServidor = armazenamento.tipo === 'servidor' && !doTour;
   // na lista de prioridade? O mesmo andamento que marca a ficha da fila e o card da agenda (o servidor guarda por 30 s):
-  // a claquete do topo ganha o marca-texto e a palavra ao lado
+  // a claquete do topo ganha o marca-texto e a palavra ao lado. O mesmo andamento traz o nome de hoje na produção da
+  // arte (o card no Trello): o topo mostra esse, como a agenda, para o roteiro não aparecer com dois nomes
   const [prioridade, setPrioridade] = useState(false);
+  const [nomeNaProducao, setNomeNaProducao] = useState<string | undefined>();
   useEffect(() => {
     if (!comServidor) return;
     let vivo = true;
-    void armazenamento.andamento().then((a) => vivo && setPrioridade(!!a[inicial.id]?.prioridade), () => {});
+    void armazenamento.andamento().then((a) => {
+      if (!vivo) return;
+      setPrioridade(!!a[inicial.id]?.prioridade);
+      setNomeNaProducao(a[inicial.id]?.claquete);
+    }, () => {});
     return () => {
       vivo = false;
     };
@@ -1737,6 +1743,8 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       <Icone nome="seta" tam={17} traco={2.2} />
     </button>
   ) : null;
+  // a claquete do topo: a regra da agenda (o nome de hoje na produção da arte; senão o guardado no padrão da casa)
+  const claqueteNoTopo = claqueteParaMostrar(meta, nomeNaProducao ? { claquete: nomeNaProducao } : null) || meta.programa || 'Roteiro';
 
   return (
     <div className="pagina editor">
@@ -1747,7 +1755,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
             <span className="trilha">
               <strong>
-                {prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}><TextoDaClaquete texto={meta.claquete || meta.programa || 'Roteiro'} /></MarcaTexto> : <TextoDaClaquete texto={meta.claquete || meta.programa || 'Roteiro'} />}
+                {prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}><TextoDaClaquete texto={claqueteNoTopo} /></MarcaTexto> : <TextoDaClaquete texto={claqueteNoTopo} />}
                 {prioridade && <span className="prio-nota" title={NA_PRIORIDADE}>prioridade</span>}
               </strong>
             </span>
@@ -1759,7 +1767,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
               <Marca />
               <span className="trilha">
-                <strong>{prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}>{meta.claquete || meta.programa || 'Roteiro'}</MarcaTexto> : meta.claquete || meta.programa || 'Roteiro'}</strong>
+                <strong>{prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}>{claqueteNoTopo}</MarcaTexto> : claqueteNoTopo}</strong>
                 {prioridade && <span className="prio-nota" title={NA_PRIORIDADE}>prioridade</span>}
               </span>
               {leitura ? (

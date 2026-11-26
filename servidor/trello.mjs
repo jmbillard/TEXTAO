@@ -8,6 +8,7 @@ import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { gerarPdf } from './pdf.mjs';
 import { normalizarKey } from './cadastros.mjs';
 import { claquetePadrao, jaFoiExibida } from '../src/modelo/vocabularios.ts';
+import { chaveDeArte } from '../src/modelo/diferencas.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const API_PADRAO = 'https://api.trello.com/1';
@@ -188,6 +189,22 @@ export const complexidadeDoCard = (lista) => Math.max(1, ...lista.filter((a) => 
     porque cada tipo é uma produção. A que já existe fica de fora. */
 export function itensDoChecklist(lista) {
   return lista.filter((a) => !a.existe).flatMap((a) => (a.tipos?.length > 1 ? a.tipos.map((t) => `${a.texto} (${t})`) : [a.texto]));
+}
+
+/**
+ * Quantas artes a coluna "artes" da produção da arte tem, cada uma uma vez (a conta de `artesUnicas`, a da lista do
+ * editor): a mesma chave de arte (`chaveDeArte`: sem acento, caixa e pontuação) conta uma vez, e a arte com mais de um
+ * tipo, que o envio escreve uma vez por tipo ("HOJE (RDP) | HOJE (CRT)", veja `itensDoChecklist`), também. Os
+ * parênteses só são tipo quando o mesmo começo aparece com dois ou mais: "ELIANA (AO VIVO)" sozinho é o texto da arte.
+ * Vazio ou nulo: null (fica a contagem do PROMeiro).
+ */
+export function artesDaProducao(texto) {
+  const itens = String(texto ?? '').split(/\s*\|\s*|\n+/).map((a) => a.trim()).filter((a) => chaveDeArte(a));
+  if (!itens.length) return null;
+  const comTipo = itens.map((a) => /^(.*\S)\s*\([^()]*\)$/.exec(a)?.[1]).map((b) => (b ? chaveDeArte(b) : ''));
+  const vezes = new Map();
+  for (const b of comTipo) if (b) vezes.set(b, (vezes.get(b) ?? 0) + 1);
+  return new Set(itens.map((a, i) => (comTipo[i] && vezes.get(comTipo[i]) > 1 ? comTipo[i] : chaveDeArte(a)))).size;
 }
 
 /**
@@ -812,7 +829,9 @@ export function criarTrello(env, deps = {}) {
   /**
    * @param itens [{ id, card, claquete, naFila? }]: os roteiros que já estão no Trello e, com `naFila`, os da fila de
    *   revisão (só para a prioridade). Enviado sem card (veio pelo upload antigo): procura pela claquete nos últimos 30 dias.
-   * @returns { [id]: { status: string[], designers: string[], entregue: boolean, entrega: string|null, prioridade?: true } }
+   * @returns { [id]: { status: string[], designers: string[], entregue: boolean, entrega: string|null, entrada: string|null, claquete?: string, artes?: number, prioridade?: true } }
+   *   `artes`: quantas artes foram para a produção, sem as repetidas (`artesDaProducao`).
+   *   `claquete`: o nome de hoje na produção da arte, só para mostrar (a chave da prioridade é a da claquete guardada).
    *   `prioridade`: a claquete está na lista de prioridade (a mesma que dá a prioridade ALTA no envio). O roteiro da fila
    *   que é prioridade vem com o andamento vazio.
    */
@@ -840,7 +859,7 @@ export function criarTrello(env, deps = {}) {
       const semCard = itens.some((i) => !i.card);
       const ler = (tabela, cards) =>
         sql(
-          `SELECT "card_ID", "claquete", "status", "designers", "entregue", "data_entrega", "data_entrada" FROM ${tabela}
+          `SELECT "card_ID", "claquete", "artes", "status", "designers", "entregue", "data_entrega", "data_entrada" FROM ${tabela}
          WHERE "card_ID" = ANY($1::text[])${semCard ? ` OR "data_entrada" >= now() - interval '30 days'` : ''}`,
           [cards],
         );
@@ -871,6 +890,10 @@ export function criarTrello(env, deps = {}) {
           entregue: !!l.entregue,
           entrega: quando(l.data_entrega) ? new Date(l.data_entrega).toISOString() : null,
           entrada: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : null,
+          // o nome de hoje na produção da arte (o card renomeado para o padrão): é o que a agenda mostra
+          ...(typeof l.claquete === 'string' && l.claquete.trim() ? { claquete: l.claquete.trim() } : {}),
+          // e quantas artes foram para a produção, cada uma uma vez; sem a coluna preenchida, fica a do PROMeiro
+          ...(artesDaProducao(l.artes) !== null ? { artes: artesDaProducao(l.artes) } : {}),
         };
       }
       avisouFalha = false;

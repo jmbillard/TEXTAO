@@ -1,4 +1,17 @@
 import type { Andamento, PresencaNosRoteiros, Resumo } from '../dados/armazenamento';
+import type { Meta } from '../modelo/tipos';
+import { claquetePadrao } from '../modelo/vocabularios';
+
+/**
+ * A claquete que a tela mostra (agenda, ficha da fila, topo do editor): o nome de hoje na produção da arte (Teable),
+ * quando o andamento traz; senão, a guardada no PROMeiro no padrão da casa (`claquetePadrao`). Só para mostrar: o nome
+ * guardado não muda. Vazia quando não há claquete (quem chama põe o título ou "Sem claquete").
+ */
+export const claqueteParaMostrar = (meta: Pick<Meta, 'claquete'>, andamento?: Partial<Andamento> | null): string =>
+  andamento?.claquete?.trim() || claquetePadrao(meta.claquete ?? '');
+
+/** As artes que o card da agenda mostra: a contagem da produção da arte (Teable), quando o andamento traz; senão a do PROMeiro. */
+export const artesParaMostrar = (r: Pick<Resumo, 'nArtes'>, andamento?: Andamento | null): number => andamento?.artes ?? r.nArtes;
 
 /* A fila organizada pela data de exibição: o que vai ao ar primeiro vem primeiro, e o que já foi ao ar
    desce para um grupo recolhido. Dentro de cada dia, o que pede revisão vem antes. */

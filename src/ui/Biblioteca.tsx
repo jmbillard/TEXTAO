@@ -9,7 +9,7 @@ import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { agruparPorDia, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, soAsPrioridades, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
+import { agruparPorDia, artesParaMostrar, claqueteParaMostrar, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, soAsPrioridades, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
 import { AbasDoCriterio, ItemQueAbre, Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
 import { useTrocaDeCriterio, useTrocaDeSemana } from './trocaDeSemana';
@@ -345,7 +345,8 @@ interface RedatorNaFicha {
 
 function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou, redator }: { r: Resumo; nova: boolean; ordem: number; prioridade?: boolean; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: (nova?: AtracaoNova) => void; avisar?: (t: string) => void; ligou?: () => void; redator?: RedatorNaFicha }) {
   const [ligando, setLigando] = useState(false);
-  const claquete = r.meta.claquete || r.meta.titulo || r.meta.programa || 'Sem claquete';
+  // no padrão da casa, mesmo o roteiro guardado antes dele (só a exibição; o nome guardado fica)
+  const claquete = claqueteParaMostrar(r.meta) || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   // o que já está no Trello não vira ficha: vai para a seção No Trello
   const revisarAgora = r.meta.revisar ?? [];
@@ -538,7 +539,8 @@ function OutraData({ pe }: { pe: PeDoCard }) {
     não se repete na ficha. */
 function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
   const { r, etapa, andamento } = c;
-  const claquete = r.meta.claquete || r.meta.titulo || 'Sem claquete';
+  // o nome de hoje na produção da arte (o card no Trello); sem ele, o guardado no padrão da casa
+  const claquete = claqueteParaMostrar(r.meta, andamento) || r.meta.titulo || 'Sem claquete';
   const idMais = `card-mais-${r.id}`;
   // o card simulado do roteiro de exemplo, no fim do tour: não é um card do Trello
   const doTour = ehDoTour(r.id);
@@ -549,7 +551,7 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
         <span className="card-semana-linha">
           <span className="card-quem">
             {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
-            <span className="card-semana-artes">{plural(r.nArtes, 'arte', 'artes')}</span>
+            <span className="card-semana-artes">{plural(artesParaMostrar(r, andamento), 'arte', 'artes')}</span>
           </span>
           {etapa && (
             <span key={etapa} className={`card-semana-etapa ${etapa}`}>

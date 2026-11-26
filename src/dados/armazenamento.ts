@@ -97,6 +97,12 @@ export interface Andamento {
   entrega: string | null;
   /** Quando o card entrou na produção da arte (a data_entrada da ARTE_producao, ISO). */
   entrada?: string | null;
+  /** A claquete como está hoje na produção da arte (o nome do card no Trello): é a que a tela mostra. Só para mostrar;
+      o nome guardado no PROMeiro não muda. Ausente quando a produção não tem o nome. */
+  claquete?: string;
+  /** Quantas artes foram para a produção da arte, cada uma uma vez (a coluna "artes" do Teable). Ausente quando a
+      coluna está vazia: vale a contagem do PROMeiro (`Resumo.nArtes`). */
+  artes?: number;
   /** A claquete está na lista de prioridade (a mesma que dá a prioridade ALTA no envio). Vem também para os roteiros
       da fila de revisão, com o andamento vazio. */
   prioridade?: true;

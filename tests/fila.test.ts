@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agruparPorDia, filaVisivel, pendentes, proximoParaRevisar } from '../src/ui/fila';
+import { agruparPorDia, artesParaMostrar, claqueteParaMostrar, filaVisivel, pendentes, proximoParaRevisar } from '../src/ui/fila';
 import { herdarTipos, manterAsDuas, substituirVersao } from '../src/modelo/versoes';
 import { dataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
@@ -951,5 +951,28 @@ describe('No Trello: o filtro das prioridades', () => {
     const s = montarSemana(lista, andamento, agora);
     const so = soAsPrioridades(s);
     expect([so.periodo, so.total, so.entregues, so.comPrioridade]).toEqual([s.periodo, s.total, s.entregues, s.comPrioridade]);
+  });
+});
+
+describe('a claquete mostrada (agenda, ficha da fila, topo do editor)', () => {
+  const meta = (claquete: string) => ({ ...metaVazia(), claquete });
+  const anda = (claquete?: string): Andamento => ({ status: [], designers: [], entregue: false, entrega: null, ...(claquete ? { claquete } : {}) });
+  it('o nome de hoje na produção da arte (Teable) vence o guardado no PROMeiro', () => {
+    expect(claqueteParaMostrar(meta('Eliana (Reperc) 7-6'), anda('ELIANA(REPERC)7/6 RJ'))).toBe('ELIANA(REPERC)7/6 RJ');
+  });
+  it('sem o Teable, o guardado no padrão da casa', () => {
+    expect(claqueteParaMostrar(meta('NOME 14-6'))).toBe('NOME 14/6');
+    expect(claqueteParaMostrar(meta('Eliana (Reperc) 7-6'), anda())).toBe('Eliana(Reperc)7/6');
+    expect(claqueteParaMostrar(meta('NOME 14/6'))).toBe('NOME 14/6');
+    expect(claqueteParaMostrar(meta(''))).toBe('');
+  });
+});
+
+describe('as artes mostradas no card da agenda', () => {
+  const r = { ...resumo('a', '2026-11-21'), nArtes: 5 };
+  it('a contagem da produção da arte (Teable) quando houver; senão a do PROMeiro', () => {
+    expect(artesParaMostrar(r, { status: [], designers: [], entregue: false, entrega: null, artes: 3 })).toBe(3);
+    expect(artesParaMostrar(r, { status: [], designers: [], entregue: false, entrega: null })).toBe(5);
+    expect(artesParaMostrar(r)).toBe(5);
   });
 });
