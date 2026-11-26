@@ -16,6 +16,7 @@
     "e2e:proximo": "node tests/e2e/proximo.e2e.cjs",
     "e2e:visor": "node tests/e2e/visor-docx.e2e.cjs",
     "e2e:ficha": "node tests/e2e/ficha-atracao.e2e.cjs",
+    "e2e:duplicadas": "node tests/e2e/duplicadas.e2e.cjs",
     "servidor": "PORT=8787 PERFIL_LOCAL=1 node servidor/index.mjs",
     "start": "node servidor/index.mjs",
     "corrigir-datas": "node --experimental-strip-types servidor/corrigir-datas.mjs"

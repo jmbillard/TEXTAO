@@ -109,12 +109,18 @@ export function criarAcervo(env, deps = {}) {
         const fil = vinculos(l.filme)[0] ?? { id: '', title: '' };
         // a chave sai da arte, aqui: o key do Teable é só para ver na tabela
         const modificado = l.modificado ? new Date(l.modificado) : null;
-        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, claquete: prod.title, filmeId: fil.id, caminho: String(l.caminho ?? '').trim(), modificado: modificado && !isNaN(modificado) ? modificado.toISOString() : '' };
+        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, claquete: prod.title, registro: prod.id, filmeId: fil.id, caminho: String(l.caminho ?? '').trim(), modificado: modificado && !isNaN(modificado) ? modificado.toISOString() : '' };
       }),
     };
     return memo.linhas;
   }
   const esquecer = () => (memo = { em: 0, linhas: null });
+  /** Quantas artes do acervo estão ligadas a cada linha da produção da arte (o vínculo claquete): { registro: n }. */
+  async function artesPorRegistro() {
+    const n = {};
+    for (const l of await todas()) if (l.registro) n[l.registro] = (n[l.registro] ?? 0) + 1;
+    return n;
+  }
   const publica = ({ arte, chave, tipo, claquete }) => ({ arte, chave, tipo, claquete });
   // a mesma arte pode estar em mais de um tipo (HOJE em rodapé e em cartão): uma entrada só, com os tipos juntos
   const juntar = (lista) => {
@@ -617,5 +623,5 @@ export function criarAcervo(env, deps = {}) {
     return ids.length;
   }
 
-  return { ligado, grava, acervoDe, previaDaImportacao, gravarImportacao, retomarImportacao, desfazerImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, artesPorRegistro, acervoDe, previaDaImportacao, gravarImportacao, retomarImportacao, desfazerImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }

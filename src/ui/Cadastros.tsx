@@ -44,6 +44,7 @@ import { Marca } from './pecas';
 import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
+import { ComoAchaAsDuplicadas, ListaDeDuplicadas, useDuplicadas } from './Duplicadas';
 import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, RegrasDaAtracaoNaFicha, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
@@ -133,13 +134,15 @@ export function previaDoCaminho(formula: string, valores: Record<string, string>
 
 /* ---------- pedaços ---------- */
 
-function Abas({ aba, mudar, totais, sem }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: { ativa: boolean; total: number; abrir: () => void } }) {
+type AbaExtra = { ativa: boolean; total: number; abrir: () => void };
+function Abas({ aba, mudar, totais, sem, dup }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: AbaExtra; dup: AbaExtra | null }) {
+  const outra = sem.ativa || !!dup?.ativa;
   return (
     <div className="abas-cad" role="tablist" aria-label="Cadastros">
       {(Object.keys(NOMES) as TipoCadastro[]).map((a) => (
-        <button key={a} role="tab" aria-selected={aba === a && !sem.ativa} title={aba === a && !sem.ativa ? undefined : NOMES[a]} onClick={() => mudar(a)}>
+        <button key={a} role="tab" aria-selected={aba === a && !outra} title={aba === a && !outra ? undefined : NOMES[a]} onClick={() => mudar(a)}>
           <Desenho d={ICONES[a]} />
-          {aba === a && !sem.ativa ? (
+          {aba === a && !outra ? (
             <span className="rot">
               {NOMES[a]} <b>{totais[a]}</b>
               <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
@@ -152,20 +155,29 @@ function Abas({ aba, mudar, totais, sem }: { aba: TipoCadastro; mudar: (a: TipoC
         </button>
       ))}
       {/* as keys que aparecem nas claquetes e nenhuma atração reconhece */}
-      <button role="tab" aria-selected={sem.ativa} title={sem.ativa ? undefined : 'Sem cadastro'} onClick={sem.abrir}>
-        <Desenho d={ICONE_SEM} />
-        {sem.ativa ? (
-          <span className="rot">
-            Sem cadastro <b>{sem.total}</b>
-            <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
-              <path pathLength={1} d={RABISCO} />
-            </svg>
-          </span>
-        ) : (
-          <sup>{sem.total}</sup>
-        )}
-      </button>
+      <AbaDeFora nome="Sem cadastro" icone={<Desenho d={ICONE_SEM} />} aba={sem} />
+      {/* os cards repetidos no quadro do Trello: só administradores (o número são todos os casos pendentes) */}
+      {dup && <AbaDeFora nome="Duplicadas" icone={<Icone nome="duplicar" tam={18} />} aba={dup} classe="aba-dup" />}
     </div>
+  );
+}
+
+/** Uma aba que não é de cadastro (Sem cadastro, Duplicadas): o nome sublinhado quando ativa; fechada, só o número. */
+function AbaDeFora({ nome, icone, aba, classe }: { nome: string; icone: React.ReactNode; aba: AbaExtra; classe?: string }) {
+  return (
+    <button role="tab" className={classe} aria-selected={aba.ativa} title={aba.ativa ? undefined : nome} onClick={aba.abrir}>
+      {icone}
+      {aba.ativa ? (
+        <span className="rot">
+          {nome} <b>{aba.total}</b>
+          <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
+            <path pathLength={1} d={RABISCO} />
+          </svg>
+        </span>
+      ) : (
+        <sup>{aba.total}</sup>
+      )}
+    </button>
   );
 }
 
@@ -512,6 +524,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   // a aba "Sem cadastro": as keys das claquetes que nenhuma atração reconhece (o formulário da direita é o de atração;
   // a folha de rascunho toma o lugar da linha da key que leva)
   const [semCad, setSemCad] = useState(false);
+  // a aba Duplicadas (só administradores, só consulta)
+  const [dupAberta, setDupAberta] = useState(false);
   // onde a tira de rascunho abre a vaga na lista
   const [nomeVaga, setNomeVaga] = useState<string | null>(null);
   const vaga = useRef<HTMLDivElement>(null);
@@ -891,6 +905,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const casa = (...partes: string[]) => !termo || semAcento(partes.join(' ')).includes(termo);
   const totais = { atracoes: dados?.atracoes.length ?? 0, redatores: dados?.redatores.length ?? 0, editores: dados?.editores.length ?? 0 };
   const pode = !!dados?.podeApagar;
+  const duplicadas = useDuplicadas(pode, dupAberta, busca);
 
   // a atração da ficha (a removida fecha a ficha); com ela aberta, o formulário e a folha de rascunho esperam
   const atracaoAberta = aba === 'atracoes' && !semCad && aberta ? (dados?.atracoes.find((a) => a.id === aberta && !escondidos.includes(a.id)) ?? null) : null;
@@ -1064,21 +1079,25 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
           {atracaoAberta && verAcervo ? (
             <ListaDoAcervo key={atracaoAberta.id} nome={atracaoAberta.nome} acervo={fichaAberta?.acervo ?? null} voltar={() => setVerAcervo(false)} />
           ) : (
-          <section ref={listaEl} className="lista-cad" aria-label={semCad ? 'Sem cadastro' : NOMES[aba]}>
+          <section ref={listaEl} className="lista-cad" aria-label={dupAberta ? 'Duplicadas' : semCad ? 'Sem cadastro' : NOMES[aba]}>
             <div className="lista-topo">
               <Abas
                 aba={aba}
-                mudar={(a) => { setAba(a); setSemCad(false); setBusca(''); setFesta(null); fecharFicha(); }}
+                mudar={(a) => { setAba(a); setSemCad(false); setDupAberta(false); setBusca(''); setFesta(null); fecharFicha(); }}
                 totais={totais}
-                sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setBusca(''); setFesta(null); fecharFicha(); } }}
+                sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setDupAberta(false); setBusca(''); setFesta(null); fecharFicha(); } }}
+                dup={pode ? { ativa: dupAberta, total: duplicadas.lista?.pendentes ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(true); setBusca(''); setFesta(null); fecharFicha(); } } : null}
               />
               <label className="cad-busca">
                 <Icone nome="lupa" />
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator ou key' : 'Buscar editor ou key'} />
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator ou key' : 'Buscar editor ou key'} />
               </label>
             </div>
             {!dados && !falha && <p className="cad-vazio">Carregando…</p>}
-            {semCad && dados && sem && (() => {
+            {dupAberta && pode && (
+              <ListaDeDuplicadas {...duplicadas} busca={busca} celular={celular} />
+            )}
+            {!dupAberta && semCad && dados && sem && (() => {
               const lista = sem.filter((k) => !escondidos.includes(`sem:${k.key}`) && casa(k.key, ...k.exemplos));
               const nomes = dados.atracoes.map((x) => x.nome).sort((x, y) => x.localeCompare(y, 'pt-BR'));
               // a lista vazia: a mensagem entra depois que a última linha (ou a folha) sai
@@ -1111,17 +1130,19 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                 </Vagas>
               );
             })()}
-            {semCad && !sem && <p className="cad-vazio">Procurando nas claquetes…</p>}
-            {!semCad && dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
-            {!semCad && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
-            {!semCad && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
-            {!semCad && dados && termo && !rascunho && !(aba === 'atracoes' ? listaAtracoes : aba === 'redatores' ? listaRedatores : listaEditores).length && (
+            {!dupAberta && semCad && !sem && <p className="cad-vazio">Procurando nas claquetes…</p>}
+            {!dupAberta && !semCad && dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
+            {!dupAberta && !semCad && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
+            {!dupAberta && !semCad && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
+            {!dupAberta && !semCad && dados && termo && !rascunho && !(aba === 'atracoes' ? listaAtracoes : aba === 'redatores' ? listaRedatores : listaEditores).length && (
               <p className="cad-vazio">Nada com “{busca}”.</p>
             )}
           </section>
           )}
 
-          {atracaoAberta ? (
+          {dupAberta && pode ? (
+            <ComoAchaAsDuplicadas />
+          ) : atracaoAberta ? (
             <aside className="form-cad ficha-atr" aria-label={`Ficha de ${atracaoAberta.nome}`}>
               <button type="button" className="botao-texto volta-ficha" onClick={fecharFicha}>
                 + Nova atração

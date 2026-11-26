@@ -21,6 +21,7 @@ import { criarImportacoes, criarTabelaDasImportacoes } from './importacoes.mjs';
 import { criarRegrasDaAtracao, criarTabelaDasRegras } from './regras-da-atracao.mjs';
 import { criarRedatorProvavel } from './redator.mjs';
 import { criarFilmes } from './filmes.mjs';
+import { criarDuplicadas, DIAS_MAXIMO, DIAS_PADRAO } from './duplicadas.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
@@ -402,7 +403,7 @@ export function copiarMetaParaYdoc(doc, meta) {
 
 /* ---------- aplicação ---------- */
 
-export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }), redatorProvavel = criarRedatorProvavel(env) }) {
+export function criarApp({ db, env = process.env, estaticos = null, cache = criarCache(env), trello = criarTrello(env), cadastros = null, acervo = criarAcervo(env, { artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }), filmes = criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello }), redatorProvavel = criarRedatorProvavel(env), duplicadas = criarDuplicadas({ trello, acervo }) }) {
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
   const importacoes = criarImportacoes(db);
   const regrasDaAtracao = criarRegrasDaAtracao(db);
@@ -493,6 +494,11 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     temAcesso: db.prepare('SELECT pode_editar FROM compartilhamentos WHERE roteiro_id = ? AND email = ?'),
     limparCompartilhamento: db.prepare('DELETE FROM compartilhamentos WHERE roteiro_id = ?'),
     compartilhar: db.prepare('INSERT OR REPLACE INTO compartilhamentos (roteiro_id, email, pode_editar) VALUES (?, ?, ?)'),
+    // o roteiro guardado que foi para este card (a aba Duplicadas)
+    roteiroDoCard: db.prepare(
+      `SELECT e.roteiro_id AS id, json_extract(r.meta, '$.claquete') AS claquete, e.por_nome AS por
+       FROM envios e JOIN roteiros r ON r.id = e.roteiro_id WHERE e.card_id = ? ORDER BY e.em DESC LIMIT 1`,
+    ),
   };
 
   // Por enquanto a ferramenta é da Arte: todo mundo que entra vê e edita todos os roteiros.
@@ -1097,6 +1103,32 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
     }
   }
 
+  /**
+   * Aba Duplicadas dos Cadastros (#65), só para administradores e só leitura: a lista dos casos do período (?dias=,
+   * 1 a 730, 90 sem dizer; ?busca=; ?renovar=1 lê o Trello de novo) e o detalhe de um caso (?id=).
+   */
+  async function rotaDasDuplicadas(req, res, eu, caminho) {
+    if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem as duplicadas.' });
+    const busca = new URL(req.url, 'http://x').searchParams;
+    const textoDias = busca.get('dias');
+    const dias = textoDias === null || textoDias === '' ? DIAS_PADRAO : /^\d{1,4}$/.test(textoDias) ? Number(textoDias) : NaN;
+    if (!(dias >= 1 && dias <= DIAS_MAXIMO)) return json(res, 400, { erro: `O período vai de 1 a ${DIAS_MAXIMO} dias.` });
+    try {
+      if (caminho === '/api/duplicadas')
+        return json(res, 200, await duplicadas.listar({ dias, busca: (busca.get('busca') ?? '').slice(0, 200), renovar: busca.get('renovar') === '1' }));
+      const roteiroDoCard = (card) => {
+        const l = q.roteiroDoCard.get(card);
+        return l ? { id: String(l.id), claquete: String(l.claquete ?? ''), por: String(l.por ?? '') } : null;
+      };
+      const caso = await duplicadas.detalhe((busca.get('id') ?? '').slice(0, 400), { dias, roteiroDoCard });
+      return caso ? json(res, 200, caso) : json(res, 404, { erro: 'Este caso não está mais entre as duplicadas do período.' });
+    } catch (e) {
+      console.warn(`[duplicadas] ${e instanceof Error ? e.message : e}`);
+      return json(res, 502, { erro: `Não consegui ler as duplicadas (Trello ou produção da arte): ${e instanceof Error ? e.message : e}` });
+    }
+  }
+
   /* ---------- aba Filmes: as prévias de filmes ---------- */
   // Quem está em cada prévia: a tela aberta avisa a cada poucos segundos (e diz o card em que mexe); quem para de
   // avisar (a aba fechou, o notebook dormiu) sai sozinho. Fica na memória desta instância, como a sala de um roteiro.
@@ -1529,6 +1561,7 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       q.designorar.run(decodeURIComponent(caminho.slice('/api/cadastros/ignorar/'.length)).toUpperCase());
       return json(res, 200, { ok: true });
     }
+    if (caminho === '/api/duplicadas' || caminho === '/api/duplicadas/caso') return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 

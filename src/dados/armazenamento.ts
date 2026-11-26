@@ -836,3 +836,69 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     return { eu: null, pedePerfil: false };
   }
 }
+
+/* ---------- aba Duplicadas dos Cadastros (só administradores, só consulta) ---------- */
+
+import type { SecaoDaDuplicada } from '../modelo/duplicadas';
+export type { SecaoDaDuplicada };
+/** Um caso na lista: os cards com a mesma claquete, praça e versão. */
+export interface ResumoDaDuplicada {
+  id: string;
+  /** o nome do card que a sugestão deixa ficar */
+  claquete: string;
+  praca: string;
+  versao: string;
+  secao: SecaoDaDuplicada;
+  cards: number;
+  abertos: number;
+  arquivados: number;
+  comProducao: number;
+  artesNoAcervo: number;
+  /** há quantos dias o card mais novo do caso foi criado */
+  dias: number;
+}
+export interface ListaDasDuplicadas {
+  /** sem o quadro do Trello configurado (TRELLO_QUADRO), false */
+  ligado: boolean;
+  dias: number;
+  lidoEm: string | null;
+  cardsLidos: number;
+  /** todos os casos do período, sem a busca */
+  pendentes: number;
+  casos: ResumoDaDuplicada[];
+}
+/** Um card do caso aberto, como o detalhe compara. */
+export interface CardDaDuplicada {
+  id: string;
+  numero: number | null;
+  nome: string;
+  lista: string;
+  arquivado: boolean;
+  criado: string;
+  entrada: string | null;
+  exibicao: string | null;
+  status: string[];
+  designers: string[];
+  membros: string[];
+  checklist: number;
+  anexos: string;
+  producao: boolean;
+  acervo: number;
+  roteiro: { id: string; claquete: string; por: string } | null;
+  url: string;
+  /** o motivo da sugestão para este card */
+  motivo: string;
+}
+export interface CasoDaDuplicada {
+  id: string;
+  claquete: string;
+  praca: string;
+  versao: string;
+  secao: SecaoDaDuplicada;
+  lidoEm: string;
+  sugestao: { fica: string; saem: string[] };
+  cards: CardDaDuplicada[];
+}
+export const lerDuplicadas = (dias: number, busca = '', renovar = false) =>
+  pedir<ListaDasDuplicadas>(`/api/duplicadas?dias=${dias}${busca.trim() ? `&busca=${encodeURIComponent(busca.trim())}` : ''}${renovar ? '&renovar=1' : ''}`);
+export const lerCasoDeDuplicada = (id: string, dias: number) => pedir<CasoDaDuplicada>(`/api/duplicadas/caso?id=${encodeURIComponent(id)}&dias=${dias}`);

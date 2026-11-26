@@ -92,6 +92,9 @@ export function configDoTrello(env) {
     },
     // saída de cada praça (para onde o card vai quando a arte fica pronta)
     saidas: { SP: env.TRELLO_SAIDA_SP || '', RJ: env.TRELLO_SAIDA_RJ || '', G5: env.TRELLO_SAIDA_G5 || '', INTER: env.TRELLO_SAIDA_INTER || '' },
+    // o quadro da promo (a aba Duplicadas lê os cards dele) e a lista dos projetos entregues, que conta como saída
+    quadro: nomeLimpoPg(env.TRELLO_QUADRO),
+    entregues: nomeLimpoPg(env.TRELLO_LISTA_ENTREGUES),
     campos: {
       praca: env.TRELLO_CAMPO_PRACA || '',
       redator: env.TRELLO_CAMPO_REDATOR || '',
@@ -906,6 +909,29 @@ export function criarTrello(env, deps = {}) {
     }
   }
 
+  /**
+   * A linha da produção da arte de cada card (a aba Duplicadas): { card: { registro, status, designers, entrada } },
+   * só os cards que têm. Lê de onde vem o andamento e, lendo de outra base, procura na do app o que faltar.
+   */
+  async function producaoDosCards(cards) {
+    const ids = [...new Set(cards.filter(Boolean))];
+    if (!t.leitura || !ids.length) return {};
+    const ler = (tabela, lista) =>
+      sql(`SELECT "__id" AS registro, "card_ID", "status", "designers", "data_entrada" FROM ${tabela} WHERE "card_ID" = ANY($1::text[])`, [lista]);
+    const linhas = await ler(t.leitura, ids);
+    const faltam = t.producao && t.producao !== t.leitura ? ids.filter((id) => !linhas.some((x) => x.card_ID === id)) : [];
+    if (faltam.length) linhas.push(...(await ler(t.producao, faltam)).filter((x) => faltam.includes(x.card_ID)));
+    const dados = {};
+    for (const l of linhas)
+      dados[l.card_ID] ??= {
+        registro: String(l.registro ?? ''),
+        status: lerLista(l.status),
+        designers: lerLista(l.designers),
+        entrada: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : null,
+      };
+    return dados;
+  }
+
   /** As chaves (dentre estas) que são prioridade (veja chavesPrioritarias); sem a lista configurada ou fora do ar, nenhuma. */
   async function listaDePrioridade(chaves) {
     const validas = [...new Set(chaves.filter(Boolean))];
@@ -1116,5 +1142,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, ler: (rota, consulta) => trello('GET', rota, { consulta }), producaoDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

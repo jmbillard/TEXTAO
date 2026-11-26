@@ -1,0 +1,356 @@
+import { useEffect, useRef, useState } from 'react';
+import { lerCasoDeDuplicada, lerDuplicadas, type CardDaDuplicada, type CasoDaDuplicada, type ListaDasDuplicadas, type ResumoDaDuplicada, type SecaoDaDuplicada } from '../dados/armazenamento';
+import { Icone } from './icones';
+import { plural } from './util';
+
+/* Aba Duplicadas dos Cadastros (#65): os cards do quadro do Trello com a mesma claquete, praça e versão. Só
+   administradores, só consulta: a lista por seção, com o período e a busca, e o caso aberto na própria lista, com os
+   cards lado a lado (empilhados no celular), as diferenças destacadas e a sugestão de qual fica, que a pessoa troca. */
+
+export const PERIODOS = [30, 60, 90, 180, 365];
+const PERIODO_PADRAO = 90;
+const CHAVE_DO_PERIODO = 'promeiro:duplicadas-dias';
+
+const lerPeriodo = () => {
+  try {
+    const n = Number(localStorage.getItem(CHAVE_DO_PERIODO));
+    return PERIODOS.includes(n) ? n : PERIODO_PADRAO;
+  } catch {
+    return PERIODO_PADRAO;
+  }
+};
+
+/**
+ * A lista das duplicadas: lida quando a pessoa é administradora (o número de casos vai na aba mesmo com ela fechada),
+ * de novo quando muda o período ou a busca (com a aba aberta) e quando pede para ler o Trello de novo.
+ */
+export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
+  const [dias, setDias] = useState(lerPeriodo);
+  const [lista, setLista] = useState<ListaDasDuplicadas | null>(null);
+  const [falha, setFalha] = useState('');
+  const [lendo, setLendo] = useState(false);
+  const termo = aberta ? busca.trim() : '';
+  const pedido = useRef(0);
+  const ler = (renovar = false) => {
+    const n = ++pedido.current;
+    setLendo(true);
+    lerDuplicadas(dias, termo, renovar).then(
+      (l) => {
+        if (n !== pedido.current) return;
+        setLista(l);
+        setFalha('');
+        setLendo(false);
+      },
+      (e: Error) => {
+        if (n !== pedido.current) return;
+        setFalha(e.message);
+        setLendo(false);
+      },
+    );
+  };
+  useEffect(() => {
+    if (!pode) return;
+    // a busca espera a pessoa parar de digitar
+    const t = setTimeout(() => ler(), termo ? 250 : 0);
+    return () => clearTimeout(t);
+  }, [pode, dias, termo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mudarDias = (d: number) => {
+    setDias(d);
+    try {
+      localStorage.setItem(CHAVE_DO_PERIODO, String(d));
+    } catch {
+      /* sem o armazenamento do navegador, o período vale só agora */
+    }
+  };
+  return { dias, mudarDias, lista, falha, lendo, renovar: () => ler(true) };
+}
+
+/* ---------- textos ---------- */
+
+const SECOES: { id: SecaoDaDuplicada; titulo: string; nota: string }[] = [
+  { id: 'misto', titulo: 'Com arquivado e aberto', nota: 'O caso de sempre: um reenvio arquivado na entrada.' },
+  { id: 'abertos', titulo: 'Todos abertos', nota: 'Ainda estão todos no quadro.' },
+  { id: 'arquivados', titulo: 'Todos arquivados', nota: 'Já saíram do quadro.' },
+];
+
+const quantoTempo = (iso: string | null, agora: number) => {
+  if (!iso) return '';
+  const min = Math.floor((agora - Date.parse(iso)) / 60_000);
+  return min < 1 ? 'agora' : min < 60 ? `há ${min} min` : `há ${Math.floor(min / 60)} h`;
+};
+const haDias = (n: number) => (n <= 0 ? 'hoje' : n === 1 ? 'ontem' : `há ${n} dias`);
+const diaMes = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—');
+const diaHora = (iso: string) => `${diaMes(iso)} ${new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+/** "26 min depois", "3 h depois", "2 dias depois" (do primeiro card do caso). */
+function depois(de: string, ate: string) {
+  const min = Math.round((Date.parse(ate) - Date.parse(de)) / 60_000);
+  if (min <= 0) return '';
+  if (min < 60) return `${min} min depois`;
+  if (min < 48 * 60) return `${Math.round(min / 60)} h depois`;
+  return `${Math.round(min / 1440)} dias depois`;
+}
+
+/* ---------- a lista ---------- */
+
+interface PropsDaLista {
+  lista: ListaDasDuplicadas | null;
+  falha: string;
+  lendo: boolean;
+  dias: number;
+  mudarDias: (d: number) => void;
+  renovar: () => void;
+  busca: string;
+  celular: boolean;
+}
+
+export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renovar, busca, celular }: PropsDaLista) {
+  const [aberto, setAberto] = useState<string | null>(null);
+  // o "há N min" da leitura anda sozinho
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setAgora(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => setAgora(Date.now()), [lista?.lidoEm]);
+
+  return (
+    <>
+      <div className="filtros-dup">
+        <span className="rotulo-dup">Cards criados em</span>
+        <div className="periodo-dup" role="radiogroup" aria-label="Período">
+          {PERIODOS.map((d, i) => (
+            <button key={d} type="button" role="radio" aria-checked={dias === d} onClick={() => mudarDias(d)}>
+              {i === 0 ? `${d} dias` : d}
+            </button>
+          ))}
+        </div>
+        {lista?.ligado && lista.lidoEm && (
+          <p className="lido-dup">
+            Lido do Trello {quantoTempo(lista.lidoEm, agora)} · {lista.cardsLidos.toLocaleString('pt-BR')} {lista.cardsLidos === 1 ? 'card' : 'cards'}
+            <button type="button" className="botao-texto" onClick={renovar} disabled={lendo} title="Ler o quadro do Trello de novo">
+              {lendo ? 'lendo…' : 'ler de novo'}
+            </button>
+          </p>
+        )}
+      </div>
+      {falha && <p className="cad-falha dup-falha">{falha}</p>}
+      {!lista && !falha && <p className="cad-vazio">Lendo o quadro do Trello…</p>}
+      {lista && !lista.ligado && (
+        <p className="cad-vazio dup-desligada">
+          A aba Duplicadas ainda não está configurada: falta o quadro do Trello (<code>TRELLO_QUADRO</code>) no servidor.
+        </p>
+      )}
+      {lista?.ligado && !lista.casos.length && (
+        <p className="cad-vazio">{busca.trim() ? `Nenhuma duplicada com “${busca.trim()}”.` : `Nenhuma duplicada nos cards criados em ${dias} dias.`}</p>
+      )}
+      {lista?.ligado &&
+        SECOES.map((s) => {
+          const casos = lista.casos.filter((c) => c.secao === s.id);
+          if (!casos.length) return null;
+          const cards = casos.reduce((n, c) => n + c.cards, 0);
+          return (
+            <section key={s.id} className="secao-dup" aria-label={s.titulo}>
+              <header>
+                <h3>{s.titulo}</h3>
+                <span className="qtd">
+                  {plural(casos.length, 'caso', 'casos')} · {plural(cards, 'card', 'cards')}
+                </span>
+                <span className="nota">{s.nota}</span>
+              </header>
+              {casos.map((c) => (
+                <LinhaDoCaso key={c.id} caso={c} aberto={aberto === c.id} alternar={() => setAberto((a) => (a === c.id ? null : c.id))} dias={dias} celular={celular} />
+              ))}
+            </section>
+          );
+        })}
+    </>
+  );
+}
+
+function LinhaDoCaso({ caso, aberto, alternar, dias, celular }: { caso: ResumoDaDuplicada; aberto: boolean; alternar: () => void; dias: number; celular: boolean }) {
+  return (
+    <div className={`caso-dup${aberto ? ' aberto' : ''}`}>
+      <button type="button" className="linha-dup" aria-expanded={aberto} onClick={alternar}>
+        <span className="topo-dup">
+          <span className="claquete-dup">{caso.claquete}</span>
+          <span className="praca-dup">{caso.praca}</span>
+          <span className="lado-dup">
+            <span>{plural(caso.cards, 'card', 'cards')}</span>
+            <span>{haDias(caso.dias)}</span>
+            <Icone nome={aberto ? 'baixo' : 'direita'} tam={15} />
+          </span>
+        </span>
+        <span className="sinais-dup">
+          {caso.abertos > 0 && <span className="s aberto">{plural(caso.abertos, 'aberto', 'abertos')}</span>}
+          {caso.arquivados > 0 && <span className="s arquivado">{plural(caso.arquivados, 'arquivado', 'arquivados')}</span>}
+          {caso.comProducao > 0 && <span className="s">{caso.comProducao} com linha na produção</span>}
+          {caso.artesNoAcervo > 0 && <span className="s">{plural(caso.artesNoAcervo, 'arte', 'artes')} no acervo</span>}
+        </span>
+      </button>
+      {aberto && <DetalheDoCaso id={caso.id} dias={dias} celular={celular} />}
+    </div>
+  );
+}
+
+/* ---------- o caso aberto ---------- */
+
+type Linha = { rotulo: string; valor: (c: CardDaDuplicada, i: number, todos: CardDaDuplicada[]) => React.ReactNode; texto?: (c: CardDaDuplicada) => string; compara?: boolean };
+const LINHAS: Linha[] = [
+  { rotulo: 'Nome no Trello', valor: (c) => c.nome, texto: (c) => c.nome },
+  { rotulo: 'Lista', valor: (c) => c.lista || '—', texto: (c) => c.lista },
+  { rotulo: 'Estado', valor: (c) => (c.arquivado ? 'arquivado' : 'aberto'), texto: (c) => String(c.arquivado) },
+  { rotulo: 'Criado', valor: (c, i, todos) => [diaHora(c.criado), i > 0 ? depois(todos[0].criado, c.criado) : ''].filter(Boolean).join(' · '), compara: false },
+  { rotulo: 'Entrada', valor: (c) => diaMes(c.entrada), texto: (c) => diaMes(c.entrada) },
+  { rotulo: 'Exibição', valor: (c) => diaMes(c.exibicao), texto: (c) => diaMes(c.exibicao) },
+  { rotulo: 'Status', valor: (c) => (c.status.length ? c.status.map((s) => <span key={s} className="status-dup">{s}</span>) : '—'), texto: (c) => c.status.join() },
+  { rotulo: 'Designers', valor: (c) => c.designers.join(', ') || '—', texto: (c) => c.designers.join() },
+  { rotulo: 'Membros', valor: (c) => c.membros.join(', ') || '—', texto: (c) => c.membros.join() },
+  { rotulo: 'Artes', valor: (c) => (c.checklist ? `${c.checklist} no checklist` : '—'), texto: (c) => String(c.checklist) },
+  { rotulo: 'Anexos', valor: (c) => c.anexos || '—', texto: (c) => c.anexos },
+  { rotulo: 'Produção da arte', valor: (c) => <span className={c.producao ? 'tem-dup' : 'sem-dup'}>{c.producao ? 'tem linha' : 'sem linha'}</span>, texto: (c) => String(c.producao) },
+  { rotulo: 'Acervo ligado', valor: (c) => (c.acervo ? plural(c.acervo, 'arte', 'artes') : '—'), texto: (c) => String(c.acervo) },
+  { rotulo: 'Roteiro no PROMeiro', valor: (c) => (c.roteiro ? [c.roteiro.claquete, c.roteiro.por].filter(Boolean).join(' · ') : '—'), texto: (c) => c.roteiro?.id ?? '' },
+  {
+    rotulo: 'Trello',
+    valor: (c) => (
+      <a href={c.url} target="_blank" rel="noreferrer" className="link-dup">
+        {c.url.replace(/^https?:\/\//, '')}
+      </a>
+    ),
+    compara: false,
+  },
+];
+/** A linha difere entre os cards? (a criação e o link sempre diferem: não contam) */
+const difere = (l: Linha, cards: CardDaDuplicada[]) => l.compara !== false && !!l.texto && new Set(cards.map(l.texto)).size > 1;
+
+/** Quem fica e quem sai, começando pela sugestão; a pessoa troca. Sempre fica um. */
+function useEscolha(caso: CasoDaDuplicada | null) {
+  const [saem, setSaem] = useState<string[]>([]);
+  useEffect(() => setSaem(caso?.sugestao.saem ?? []), [caso]);
+  const ficar = (id: string) =>
+    setSaem((s) => {
+      if (!caso || !s.includes(id)) return s;
+      // com dois cards, ficar com um é tirar o outro
+      return caso.cards.length === 2 ? caso.cards.filter((c) => c.id !== id).map((c) => c.id) : s.filter((x) => x !== id);
+    });
+  const sair = (id: string) =>
+    setSaem((s) => {
+      if (!caso || s.includes(id)) return s;
+      const novo = [...s, id];
+      if (novo.length < caso.cards.length) return novo;
+      // sempre fica um: com dois cards, tirar um é ficar com o outro; com mais, o último que fica não sai
+      return caso.cards.length === 2 ? [id] : s;
+    });
+  return { saem, ficar, sair };
+}
+
+function DetalheDoCaso({ id, dias, celular }: { id: string; dias: number; celular: boolean }) {
+  const [caso, setCaso] = useState<CasoDaDuplicada | null>(null);
+  const [falha, setFalha] = useState('');
+  useEffect(() => {
+    let vivo = true;
+    setCaso(null);
+    setFalha('');
+    lerCasoDeDuplicada(id, dias).then(
+      (c) => vivo && setCaso(c),
+      (e: Error) => vivo && setFalha(e.message),
+    );
+    return () => {
+      vivo = false;
+    };
+  }, [id, dias]);
+  const { saem, ficar, sair } = useEscolha(caso);
+  if (falha) return <p className="cad-falha dup-falha">{falha}</p>;
+  if (!caso) return <p className="cad-vazio detalhe-dup carregando">Lendo os cards no Trello…</p>;
+  const sugestao = (c: CardDaDuplicada) => (
+    <p className="sugestao-dup">
+      <b>{caso.sugestao.fica === c.id ? 'Sugestão: fica.' : 'Provável duplicado.'}</b> {c.motivo === 'Sugestão: fica.' ? '' : c.motivo}
+    </p>
+  );
+  const rodape = (
+    <p className="explica-dup">
+      A sugestão usa os mesmos sinais do relatório do n8n: arquivado na entrada, linha na produção, membros, quem foi criado primeiro, lista de saída.
+      {celular ? '' : ' Você pode trocar.'}
+    </p>
+  );
+  if (celular)
+    return (
+      <div className="detalhe-dup empilhado">
+        {caso.cards.map((c, i) => (
+          <article key={c.id} className={`card-dup ${caso.sugestao.fica === c.id ? 'fica' : 'sai'}`} aria-label={`Card ${c.numero ? `#${c.numero}` : c.nome}`}>
+            <span className="selo-dup">{caso.sugestao.fica === c.id ? 'Sugestão: fica' : 'Sugestão: duplicado'}</span>
+            {c.numero != null && <b className="numero-dup">#{c.numero}</b>}
+            {sugestao(c)}
+            <dl>
+              {LINHAS.map((l) => (
+                <div key={l.rotulo} className={difere(l, caso.cards) ? 'difere' : undefined}>
+                  <dt>{l.rotulo}</dt>
+                  <dd>{l.valor(c, i, caso.cards)}</dd>
+                </div>
+              ))}
+            </dl>
+          </article>
+        ))}
+        {rodape}
+      </div>
+    );
+  return (
+    <div className="detalhe-dup">
+      <div className="tabela-dup" role="table" aria-label={`Cards de ${caso.claquete}`} style={{ gridTemplateColumns: `minmax(120px, 0.8fr) repeat(${caso.cards.length}, minmax(0, 1fr))` }}>
+        <div role="row" className="cabeca">
+          <span role="columnheader" />
+          {caso.cards.map((c) => {
+            const sai = saem.includes(c.id);
+            return (
+              <div key={c.id} role="columnheader" className={`col-dup ${sai ? 'sai' : 'fica'}`}>
+                <div className="fica-sai" role="radiogroup" aria-label={`O card ${c.numero ? `#${c.numero}` : c.nome}`}>
+                  <button type="button" role="radio" aria-checked={!sai} onClick={() => ficar(c.id)}>
+                    Fica
+                  </button>
+                  <button type="button" role="radio" aria-checked={sai} onClick={() => sair(c.id)}>
+                    Sai
+                  </button>
+                </div>
+                {c.numero != null && <b className="numero-dup">#{c.numero}</b>}
+                {sugestao(c)}
+              </div>
+            );
+          })}
+        </div>
+        {LINHAS.map((l) => {
+          const d = difere(l, caso.cards);
+          return (
+            <div key={l.rotulo} role="row" className={d ? 'difere' : undefined}>
+              <span role="rowheader">{l.rotulo}</span>
+              {caso.cards.map((c, i) => (
+                <span key={c.id} role="cell" className={`col-dup ${saem.includes(c.id) ? 'sai' : 'fica'}`}>
+                  {l.valor(c, i, caso.cards)}
+                  {d && <i className="ne" aria-label="diferente">≠</i>}
+                </span>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      {rodape}
+    </div>
+  );
+}
+
+/** O painel ao lado da lista: como o PROMeiro acha as duplicadas. */
+export function ComoAchaAsDuplicadas() {
+  return (
+    <aside className="form-cad painel-dup" aria-label="Como o PROMeiro acha as duplicadas">
+      <h2>
+        <span className="bolha">
+          <Icone nome="duplicar" tam={18} />
+        </span>
+        Duplicadas
+      </h2>
+      <p className="dica">
+        <b>Como o PROMeiro acha:</b> todos os cards do quadro (abertos e arquivados) criados no período, agrupados pela claquete sem acento, caixa e
+        pontuação, pela praça e pela versão. Versões diferentes (-2, V2, B, Opção) não contam como duplicadas. Só administradores veem esta aba.
+      </p>
+    </aside>
+  );
+}
