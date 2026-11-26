@@ -1,9 +1,10 @@
 // Ponta a ponta da aba Duplicadas dos Cadastros (#65), rodado à parte do vitest: `npm run e2e:duplicadas`.
 //
-// Sobe o servidor e o Vite como os outros e2e (banco temporário, nada sai para a rede), com o quadro do Trello, a
-// produção da arte e o acervo falsos (cards fictícios): as rotas /api/duplicadas são as de verdade. No computador, claro
-// e escuro: a aba com o número de casos, o período, "Lido do Trello", a busca, as três seções; abrir um caso mostra os
-// cards lado a lado com as diferenças e a sugestão, que a pessoa troca; o caso de três cards. Ignorar (#66) pela linha,
+// Sobe o servidor e o Vite como os outros e2e (banco temporário, nada sai para a rede), com a produção da arte, o
+// Trello e o acervo falsos (linhas e cards fictícios): as rotas /api/duplicadas são as de verdade. A lista sai só da
+// produção (nenhum pedido ao Trello); o caso aberto lê do Trello só os cards dele. No computador, claro e escuro: a aba
+// com o número de casos, o período, "Lido da produção", a busca, as três seções; abrir um caso mostra os cards lado a
+// lado com as diferenças e a sugestão, que a pessoa troca; o card que não está mais no Trello; o caso de três cards. Ignorar (#66) pela linha,
 // com o motivo: o caso sai da lista e do contador, vai para Resolvidas e para o Registro; Reabrir devolve. Quem não é
 // administrador não vê a aba. No celular, claro e escuro: a lista e o caso aberto com os cards empilhados, Resolvidas e
 // o Registro, só consulta (sem Ignorar nem Reabrir).
@@ -29,7 +30,7 @@ const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 const CADASTROS = { ligado: true, atracoes: [], redatores: [], editores: [], categorias: [], camposCaminho: [], formulas: {}, podeApagar: true };
 
-/* ---------- o quadro fictício ---------- */
+/* ---------- a produção da arte e o Trello fictícios ---------- */
 const DIA = 86_400_000;
 const HORA = 3_600_000;
 const AGORA = Date.now();
@@ -39,93 +40,104 @@ const LISTAS = { entradaSP: 'ENTRADA SP', entradaG5: 'ENTRADA G5', saidaSP: 'SA�
 const PESSOAS = { m1: 'Pessoa Um', m2: 'Pessoa Dois', m3: 'Pessoa Três' };
 const CARDS = [];
 const PRODUCAO = [];
+/** Uma linha da produção (que entrou uma hora depois de o card ser criado) e o card dela no Trello (sem ele com sumiu). */
 function card(numero, nome, criado, o = {}) {
   const c = { id: idCriadoEm(criado), idShort: numero, name: nome, closed: false, idList: 'entradaG5', idMembers: ['m1'], due: null, checkItems: 4, anexos: ['application/pdf'], ...o };
-  CARDS.push(c);
-  if (o.producao) PRODUCAO.push({ registro: `rec${numero}`, card_ID: c.id, status: o.producao.status ?? [], designers: o.producao.designers ?? [], data_entrada: new Date(criado + HORA).toISOString() });
+  if (!o.sumiu) CARDS.push(c);
+  PRODUCAO.push({
+    registro: `rec${numero}`,
+    card_ID: o.semCard ? null : c.id,
+    claquete: nome,
+    praca: o.praca ?? null,
+    data_entrada: new Date(criado + HORA).toISOString(),
+    status: o.status ?? [],
+    designers: o.designers ?? [],
+    arquivado: c.closed,
+    entregue: !!o.entregue,
+    filme: o.filme ?? null,
+  });
   return c;
 }
 const exibicao = (dias) => new Date(AGORA + dias * DIA).toISOString();
 // com arquivado e aberto
-card(4681, 'Festa na Praça 19/11 REDE', AGORA - 4.4 * DIA, { producao: { status: ['PRODUZINDO'], designers: ['Designer Um'] }, due: exibicao(1) });
+card(4681, 'Festa na Praça 19/11 REDE', AGORA - 4.4 * DIA, { status: ['PRODUZINDO'], designers: ['Designer Um'], due: exibicao(1) });
 card(4686, 'FESTA NA PRACA 19/11', AGORA - 4.2 * DIA, { closed: true, idMembers: [], due: exibicao(1) });
-card(4790, 'Show da Noite 20/11 SP', AGORA - 6.3 * DIA, { idList: 'saidaSP', idMembers: ['m1', 'm2'], anexos: ['application/pdf', 'image/png', 'image/jpeg'], producao: { status: ['FINALIZADO'], designers: ['Designer Um', 'Designer Dois'] }, due: exibicao(2) });
-card(4795, 'Show da Noite 20/11', AGORA - 6.3 * DIA + 3 * HORA, { closed: true, idList: 'entradaSP', praca: 'opSP', idMembers: [], producao: { status: ['ENTRADA'] }, due: exibicao(2) });
-card(4840, 'Arena do Domingo 23/11', AGORA - 2.4 * DIA, { checkItems: 3, producao: { status: ['PRODUZINDO'], designers: ['Designer Três'] }, due: exibicao(4) });
+card(4790, 'Show da Noite 20/11 SP', AGORA - 6.3 * DIA, { idList: 'saidaSP', idMembers: ['m1', 'm2'], anexos: ['application/pdf', 'image/png', 'image/jpeg'], status: ['FINALIZADO'], designers: ['Designer Um', 'Designer Dois'], due: exibicao(2) });
+card(4795, 'Show da Noite 20/11', AGORA - 6.3 * DIA + 3 * HORA, { closed: true, idList: 'entradaSP', praca: 'SP', idMembers: [], status: ['ENTRADA'], due: exibicao(2) });
+card(4840, 'Arena do Domingo 23/11', AGORA - 2.4 * DIA, { checkItems: 3, status: ['PRODUZINDO'], designers: ['Designer Três'], due: exibicao(4) });
 card(4843, 'Arena do Domingo 23/11', AGORA - 2.4 * DIA + 26 * 60_000, { closed: true, idMembers: [], checkItems: 3, due: exibicao(4) });
 card(4851, 'ARENA DO DOMINGO_23_11', AGORA - 2.4 * DIA + 8 * HORA, { closed: true, idMembers: [], checkItems: 2, anexos: [], due: exibicao(4) });
-// todos abertos
-card(4700, 'Cozinha de Vó 18/11', AGORA - 9.5 * DIA, { producao: { status: ['FINALIZADO'] }, idList: 'saidaG5' });
-card(4702, 'Cozinha de Vo 18/11', AGORA - 9.2 * DIA, { producao: { status: ['ENTRADA'] } });
-card(4760, 'Jornal da Tarde(Chamada)21/11 SP', AGORA - 5.5 * DIA, { idList: 'entradaSP', producao: {} });
-card(4763, 'JORNAL DA TARDE(CHAMADA)21/11 SP', AGORA - 5.3 * DIA, { idList: 'entradaSP', producao: {} });
+// todos abertos; o segundo card do Jornal não existe mais no Trello
+card(4700, 'Cozinha de Vó 18/11', AGORA - 9.5 * DIA, { status: ['FINALIZADO'], idList: 'saidaG5' });
+card(4702, 'Cozinha de Vo 18/11', AGORA - 9.2 * DIA, { status: ['ENTRADA'] });
+card(4760, 'Jornal da Tarde(Chamada)21/11 SP', AGORA - 5.5 * DIA, { idList: 'entradaSP', designers: ['Designer Dois'] });
+card(4763, 'JORNAL DA TARDE(CHAMADA)21/11 SP', AGORA - 5.3 * DIA, { idList: 'entradaSP', sumiu: true });
 // todos arquivados
-card(4600, 'Novela Sinfonia 12/11', AGORA - 15.5 * DIA, { closed: true, idList: 'entregues', producao: { status: ['FINALIZADO'] } });
+card(4600, 'Novela Sinfonia 12/11', AGORA - 15.5 * DIA, { closed: true, idList: 'entregues', status: ['FINALIZADO'], entregue: true });
 card(4604, 'Novela Sinfonia 12/11', AGORA - 15.2 * DIA, { closed: true });
-// versões diferentes não contam; e um caso só com mais de 90 dias
+// versões diferentes não contam; um caso só com mais de 90 dias; a linha sem card e as de filme não contam
 card(4720, 'Terra 20/11', AGORA - 3 * DIA);
 card(4722, 'Terra 20/11 V2', AGORA - 2.9 * DIA);
 card(4200, 'Verão Antigo 10/07', AGORA - 120 * DIA, { closed: true });
 card(4201, 'Verao Antigo 10/07', AGORA - 119 * DIA, { closed: true });
+card(4300, 'DIA 24', AGORA - 1.5 * DIA);
+card(4301, 'DIA 24', AGORA - 1.4 * DIA, { semCard: true });
+card(4310, 'Filme da Tarde 21/11', AGORA - 2 * DIA, { filme: [{ id: 'recFilme', title: 'Filme da Tarde' }] });
+card(4311, 'Filme da Tarde 21/11', AGORA - 1.9 * DIA, { filme: '[{"id":"recFilme","title":"Filme da Tarde"}]' });
 // as artes do acervo ligadas às linhas da produção
 const ACERVO = [
   ...['HOJE', 'AMANHÃ', 'SÁBADO'].map((arte, i) => ({ id: `recS${i}`, arte, tipo: 'RDP', atracao: [{ id: 'recShow', title: 'Show da Noite' }], claquete: [{ id: 'rec4790', title: 'SHOW DA NOITE 20/11 SP' }], filme: null })),
   ...['ABERTURA', 'ELENCO', 'ESTREIA', 'HOJE', 'FINAL'].map((arte, i) => ({ id: `recN${i}`, arte, tipo: 'CRT', atracao: [{ id: 'recNov', title: 'Novela Sinfonia' }], claquete: [{ id: 'rec4600', title: 'NOVELA SINFONIA 12/11' }], filme: null })),
 ];
 
+// sem TRELLO_QUADRO: a aba não precisa dele
 const ENV_TRELLO = {
   TRELLO_KEY: 'falsa',
   TRELLO_TOKEN: 'falso',
-  TRELLO_QUADRO: 'quadroFicticio',
   TRELLO_LISTA_SP: 'entradaSP',
   TRELLO_LISTA_G5: 'entradaG5',
   TRELLO_SAIDA_SP: 'saidaSP',
   TRELLO_SAIDA_G5: 'saidaG5',
   TRELLO_LISTA_ENTREGUES: 'entregues',
-  TRELLO_CAMPO_PRACA: 'campoPraca',
-  TRELLO_PRACAS: 'G5=opG5,SP=opSP,RJ=opRJ',
   TEABLE_PG_URL: 'postgres://falso',
   TEABLE_PG_ESQUEMA: 'bseFalso',
   TEABLE_PG_ARTE: 'producao',
   TEABLE_PG_ACERVO: 'acervo',
 };
-const criado = (id) => parseInt(id.slice(0, 8), 16) * 1000;
-const comoTrello = (x) => ({
-  id: x.id,
-  idShort: x.idShort,
-  name: x.name,
-  closed: x.closed,
-  idList: x.idList,
-  idMembers: x.idMembers,
-  due: x.due,
-  shortUrl: `https://trello.com/c/Ficti${x.idShort}`,
-  dateLastActivity: new Date(criado(x.id)).toISOString(),
-  badges: { checkItems: x.checkItems, attachments: x.anexos.length },
-  customFieldItems: x.praca ? [{ idCustomField: 'campoPraca', idValue: x.praca }] : [],
-});
-/** O Trello de mentira: só leitura (qualquer outro método derruba o teste). */
+/** O Trello de mentira: só o GET de um card (a lista não lê o Trello; qualquer outro pedido derruba o teste). */
 const pedidosAoTrello = [];
 async function buscar(url, init = {}) {
   const u = new URL(url);
   const metodo = init.method ?? 'GET';
   pedidosAoTrello.push(`${metodo} ${u.pathname}`);
   if (metodo !== 'GET') throw new Error(`a aba Duplicadas só lê: ${metodo} ${u.pathname}`);
-  const ok = (dados) => ({ ok: true, status: 200, json: async () => dados, text: async () => '' });
-  if (u.pathname === '/1/boards/quadroFicticio/cards/all') {
-    const desde = Date.parse(u.searchParams.get('since') ?? '') || 0;
-    const antes = u.searchParams.get('before');
-    return ok(CARDS.filter((x) => criado(x.id) >= desde && (!antes || x.id < antes)).sort((a, b) => b.id.localeCompare(a.id)).slice(0, 5).map(comoTrello));
-  }
-  if (u.pathname === '/1/boards/quadroFicticio/customFields') return ok([{ id: 'campoPraca', name: 'PRAÇA', options: ['G5', 'SP', 'RJ'].map((p) => ({ id: `op${p}`, value: { text: p } })) }]);
-  if (u.pathname === '/1/boards/quadroFicticio/lists') return ok(Object.entries(LISTAS).map(([id, name]) => ({ id, name, closed: false })));
   const umCard = /^\/1\/cards\/([0-9a-f]{24})$/.exec(u.pathname);
-  const x = umCard && CARDS.find((y) => y.id === umCard[1]);
-  if (x) return ok({ ...comoTrello(x), attachments: x.anexos.map((mimeType, i) => ({ id: `a${i}`, name: `anexo${i}`, mimeType })), members: x.idMembers.map((id) => ({ id, fullName: PESSOAS[id] })) });
-  throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
+  if (!umCard) throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
+  const x = CARDS.find((y) => y.id === umCard[1]);
+  if (!x) return { ok: false, status: 404, json: async () => ({}), text: async () => 'The requested resource was not found.' };
+  const dados = {
+    id: x.id,
+    idShort: x.idShort,
+    name: x.name,
+    closed: x.closed,
+    idList: x.idList,
+    idMembers: x.idMembers,
+    due: x.due,
+    shortUrl: `https://trello.com/c/Ficti${x.idShort}`,
+    badges: { checkItems: x.checkItems, attachments: x.anexos.length },
+    list: { id: x.idList, name: LISTAS[x.idList] },
+    attachments: x.anexos.map((mimeType, i) => ({ id: `a${i}`, name: `anexo${i}`, mimeType })),
+    members: x.idMembers.map((id) => ({ id, fullName: PESSOAS[id] })),
+  };
+  return { ok: true, status: 200, json: async () => dados, text: async () => '' };
 }
 async function consultar(sql, params = []) {
   if (sql.includes('"bseFalso"."acervo"')) return ACERVO;
-  if (sql.includes('"bseFalso"."producao"') && sql.includes('card_ID')) return PRODUCAO.filter((l) => (params[0] ?? []).includes(l.card_ID));
+  // a produção do período, como o Postgres responde: entrou nos últimos N dias e tem card
+  if (sql.includes('"bseFalso"."producao"') && sql.includes('"data_entrada" >=')) {
+    const desde = Date.now() - Number(params[0]) * DIA;
+    return PRODUCAO.filter((l) => l.card_ID && Date.parse(l.data_entrada) >= desde);
+  }
   return [];
 }
 
@@ -164,6 +176,7 @@ const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s
 
 async function noComputador(navegador, url, tema) {
   const nome = tema === 'dark' ? 'escuro' : 'claro';
+  pedidosAoTrello.length = 0;
   const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
   assert.equal(await fundoEscuro(p), tema === 'dark');
   // o número de casos já vem na aba, antes de abrir
@@ -175,33 +188,39 @@ async function noComputador(navegador, url, tema) {
   assert.equal(await p.locator('.cad-busca input').getAttribute('placeholder'), 'Buscar claquete');
   assert.deepEqual(await p.locator('.periodo-dup button').allTextContents(), ['30 dias', '60', '90', '180', '365']);
   assert.equal(await p.locator('.periodo-dup [aria-checked=true]').textContent(), '90');
-  assert.match((await p.locator('.lido-dup').textContent()).replace(/\s+/g, ' '), /^Lido do Trello agora · 15 cards/);
+  assert.match((await p.locator('.lido-dup').textContent()).replace(/\s+/g, ' '), /^Lido da produção agora · 16 linhas/);
   assert.deepEqual(await p.locator('.secao-dup > header').evaluateAll((hs) => hs.map((h) => [...h.children].map((c) => c.textContent.trim()).join(' '))), [
     'Com arquivado e aberto 3 casos · 7 cards O caso de sempre: um reenvio arquivado na entrada.',
-    'Todos abertos 2 casos · 4 cards Ainda estão todos no quadro.',
-    'Todos arquivados 1 caso · 2 cards Já saíram do quadro.',
+    'Todos abertos 2 casos · 4 cards Nenhum foi arquivado.',
+    'Todos arquivados 1 caso · 2 cards Já foram todos arquivados.',
   ]);
   assert.deepEqual(await claquetes(p), ['Arena do Domingo 23/11', 'Festa na Praça 19/11 REDE', 'Show da Noite 20/11 SP', 'Jornal da Tarde(Chamada)21/11 SP', 'Cozinha de Vó 18/11', 'Novela Sinfonia 12/11']);
-  assert.deepEqual(await textos(caso(p, 'Show da Noite').locator('.sinais-dup .s')), ['1 aberto', '1 arquivado', '2 com linha na produção', '3 artes no acervo']);
+  assert.deepEqual(await textos(caso(p, 'Show da Noite').locator('.sinais-dup .s')), ['1 aberto', '1 arquivado', '3 artes no acervo']);
   assert.deepEqual(await textos(caso(p, 'Show da Noite').locator('.lado-dup span')), ['2 cards', 'há 6 dias']);
   assert.equal(await caso(p, 'Terra').count(), 0, 'versões diferentes não contam');
+  assert.equal(await caso(p, 'DIA 24').count(), 0, 'a linha sem card não conta');
+  assert.equal(await caso(p, 'Filme da Tarde').count(), 0, 'as linhas de filme não contam');
+  assert.deepEqual(pedidosAoTrello, [], 'a lista não lê o Trello');
   await semRolagemDeLado(p, `computador ${nome}, lista`);
   await capturar(p, `01-lista-${nome}`);
 
-  // abrir um caso: os cards lado a lado, as diferenças e a sugestão
+  // abrir um caso: os cards lado a lado, as diferenças e a sugestão; só os cards do caso são lidos no Trello
+  pedidosAoTrello.length = 0;
   await caso(p, 'Show da Noite').locator('.linha-dup').click();
   const tabela = caso(p, 'Show da Noite').locator('.tabela-dup');
   await tabela.waitFor();
   assert.equal(await caso(p, 'Show da Noite').locator('.linha-dup').getAttribute('aria-expanded'), 'true');
   assert.deepEqual(await textos(tabela.locator('.cabeca .numero-dup')), ['#4790', '#4795']);
-  assert.deepEqual(await textos(tabela.locator('.cabeca .sugestao-dup')), ['Sugestão: fica. Não foi arquivado na entrada.', 'Provável duplicado. Arquivado na lista de entrada.']);
+  // (o React do Vite, em modo estrito, pode pedir o caso duas vezes)
+  const doShow = CARDS.filter((x) => x.idShort === 4790 || x.idShort === 4795).map((x) => `GET /1/cards/${x.id}`);
+  assert.deepEqual([...new Set(pedidosAoTrello)].sort(), doShow.sort(), 'só os dois cards do caso');
+  assert.deepEqual(await textos(tabela.locator('.cabeca .sugestao-dup')), ['Sugestão: fica. Não foi arquivado na entrada.', 'Provável duplicado. Arquivado sem sair da entrada.']);
   const diferentes = await textos(tabela.locator('.difere [role=rowheader]'));
-  for (const r of ['Lista', 'Estado', 'Status', 'Designers', 'Membros', 'Anexos', 'Acervo ligado']) assert.ok(diferentes.includes(r), `${r} difere`);
-  for (const r of ['Exibição', 'Artes', 'Produção da arte', 'Criado', 'Trello']) assert.ok(!diferentes.includes(r), `${r} não difere`);
+  for (const r of ['Claquete na produção', 'Lista', 'Estado', 'Status', 'Designers', 'Membros', 'Anexos', 'Acervo ligado']) assert.ok(diferentes.includes(r), `${r} difere`);
+  for (const r of ['Exibição', 'Artes', 'Criado', 'Trello']) assert.ok(!diferentes.includes(r), `${r} não difere`);
   const linhaDe = async (rotulo) => textos(tabela.locator('[role=row]', { has: p.locator('[role=rowheader]', { hasText: new RegExp(`^${rotulo}$`) }) }).locator('[role=cell]'));
   assert.deepEqual(await linhaDe('Lista'), ['SAÍDA SP≠', 'ENTRADA SP≠']);
   assert.deepEqual(await linhaDe('Anexos'), ['1 PDF, 2 imagens≠', '1 PDF≠']);
-  assert.deepEqual(await linhaDe('Produção da arte'), ['tem linha', 'tem linha']);
   assert.match((await linhaDe('Criado'))[1], / · 3 h depois$/);
   assert.deepEqual(await linhaDe('Trello'), ['trello.com/c/Ficti4790', 'trello.com/c/Ficti4795']);
   // Ignorar também no caso aberto (onde ficará o Apagar)
@@ -218,6 +237,20 @@ async function noComputador(navegador, url, tema) {
   // fechar o caso
   await caso(p, 'Show da Noite').locator('.linha-dup').click();
   assert.equal(await p.locator('.tabela-dup').count(), 0);
+
+  // o card que não está mais no Trello: aparece assim e é o sugerido para sair
+  await caso(p, 'Jornal da Tarde').locator('.linha-dup').click();
+  const sumido = caso(p, 'Jornal da Tarde').locator('.tabela-dup');
+  await sumido.waitFor();
+  assert.deepEqual(await textos(sumido.locator('.cabeca .numero-dup')), ['#4760']);
+  assert.deepEqual(await textos(sumido.locator('.cabeca .fora-dup')), ['Não está mais no Trello']);
+  assert.deepEqual(await textos(sumido.locator('.cabeca .sugestao-dup')), ['Sugestão: fica. Está no Trello.', 'Provável duplicado. Não está mais no Trello.']);
+  const linhaDoSumido = async (rotulo) => textos(sumido.locator('[role=row]', { has: p.locator('[role=rowheader]', { hasText: new RegExp(`^${rotulo}$`) }) }).locator('[role=cell]'));
+  assert.deepEqual(await linhaDoSumido('Nome no Trello'), ['Jornal da Tarde(Chamada)21/11 SP≠', 'não está mais no Trello≠']);
+  assert.deepEqual(await linhaDoSumido('Trello'), ['trello.com/c/Ficti4760', 'não está mais no Trello']);
+  await semRolagemDeLado(p, `computador ${nome}, card fora do Trello`);
+  await capturar(p, `02b-detalhe-fora-do-trello-${nome}`);
+  await caso(p, 'Jornal da Tarde').locator('.linha-dup').click();
 
   // três cards: fica um, saem dois; com três, o último que fica não sai
   await caso(p, 'Arena do Domingo').locator('.linha-dup').click();
@@ -243,7 +276,7 @@ async function noComputador(navegador, url, tema) {
   await p.locator('.periodo-dup button', { hasText: '180' }).click();
   await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 7);
   assert.equal((await aba.locator('.rot').textContent()).trim(), 'Duplicadas 7');
-  assert.match((await p.locator('.lido-dup').textContent()).replace(/\s+/g, ' '), /· 17 cards/);
+  assert.match((await p.locator('.lido-dup').textContent()).replace(/\s+/g, ' '), /· 18 linhas/);
   await p.locator('.periodo-dup button', { hasText: '90' }).click();
   await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 6);
 

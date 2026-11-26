@@ -3216,7 +3216,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .sugestao-dup { margin: 0; font: 400 13px/1.45 var(--sans); color: var(--tinta2); }
 .sugestao-dup b { color: var(--tinta); font-weight: 650; }
 .status-dup { display: inline-block; font: 600 10.5px var(--mono); color: var(--tinta2); background: var(--neutro); border-radius: 4px; padding: 2px 7px; margin: 0 4px 2px 0; }
-.tem-dup { color: var(--ok); font-weight: 600; }
+.fora-dup { display: inline-block; margin: 10px 0 4px; font: 600 10.5px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--perigo); border: 1px solid color-mix(in srgb, var(--perigo) 45%, transparent); border-radius: 4px; padding: 2px 7px; }
+.card-dup .fora-dup { display: table; margin-top: 6px; }
 .sem-dup { color: var(--tinta3); }
 .link-dup { font: 500 12.5px var(--mono); color: var(--ultra-tinta); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--ultra) 50%, transparent); text-underline-offset: 3px; overflow-wrap: anywhere; }
 .explica-dup { margin: 12px 0 0; font: 400 12.5px/1.5 var(--sans); color: var(--tinta3); }

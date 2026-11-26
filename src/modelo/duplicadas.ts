@@ -1,27 +1,48 @@
 import { chaveDaClaquete } from './vocabularios.ts';
 import { alternativa, normalizarPraca, palavrasDoFim, pracasRegistradas, reconhecerPraca, semPracaNoComeco, type Praca } from './pracas.ts';
 
-/* Claquetes duplicadas (#65): os cards do quadro do Trello com a mesma claquete, praça e versão. A mesma regra do
+/* Claquetes duplicadas: as linhas da produção da arte (ARTE_producao) com a mesma claquete, praça e versão. A regra do
    relatório "PROMO: CLAQUETES DUPLICADAS" do n8n, com a chave da claquete do PROMeiro (`chaveDaClaquete`, a da fórmula
-   do Teable). Versões diferentes (-2, V2, B, Opção N) não contam como duplicadas. Módulo puro: o servidor lê o Trello e
-   a produção da arte e chama daqui. */
+   do Teable). Versões diferentes (-2, V2, B, Opção N) não contam como duplicadas. A lista sai só da produção (não do
+   quadro do Trello: um card qualquer do quadro, que não é de roteiro, não é caso). Módulo puro: o servidor lê a
+   produção (e, no caso aberto, os cards dele no Trello) e chama daqui. */
 
-/** Um card do quadro, com o que o agrupamento e a sugestão precisam. */
-export interface CardDoQuadro {
-  id: string;
-  /** o nome do card no Trello */
-  nome: string;
-  /** a praça do campo PRAÇA do card ('' quando o card não tem): vale mais que a do nome */
+/** Uma linha da produção da arte, com o que o agrupamento e a sugestão precisam. */
+export interface LinhaDaProducao {
+  /** o id da linha no Teable (liga as artes do acervo) */
+  registro: string;
+  /** o card_ID ('' quando a linha não tem card) */
+  card: string;
+  claquete: string;
+  /** a praça da coluna praca ('' quando a linha não tem): vale mais que a da claquete */
   praca: string;
+  /** data_entrada (ISO); sem ela, a linha fica fora do período */
+  entrada: string | null;
+  /** a coluna arquivado */
   arquivado: boolean;
-  /** o tipo da lista em que o card está: a entrada de uma praça, a saída (ou os projetos entregues) ou outra */
-  lista: 'entrada' | 'saida' | 'outra';
-  /** quando o card foi criado (ms; vem do id do card) */
-  criado: number;
-  /** quantos membros o card tem */
-  membros: number;
-  /** o card tem linha na produção da arte (ARTE_producao) */
-  temProducao: boolean;
+  /** a linha é de filme (a coluna filme preenchida): não entra */
+  filme: boolean;
+  status: string[];
+  designers: string[];
+  entregue: boolean;
+}
+
+/** Um card do caso, com os sinais da sugestão. Na lista, sai só da linha; no caso aberto, também do Trello. */
+export interface CardDoCaso {
+  /** o card_ID */
+  id: string;
+  arquivado: boolean;
+  /** ainda na entrada: na lista, a linha sem andamento (sem status ou só ENTRADA/AGUARDANDO MATERIAL); no caso aberto,
+      o card numa lista de entrada do Trello */
+  naEntrada: boolean;
+  /** quantos designers (da linha) e membros (do card no Trello) */
+  pessoas: number;
+  /** quando entrou na produção (ms) */
+  entrada: number;
+  /** saiu: entregue, finalizado ou (no caso aberto) numa lista de saída do Trello */
+  saiu: boolean;
+  /** o card não está mais no Trello (só no caso aberto) */
+  sumiu?: boolean;
 }
 
 /** As três seções da lista: com arquivado e aberto (o caso de sempre), todos abertos, todos arquivados. */
@@ -35,10 +56,10 @@ export interface CasoDeDuplicada {
   praca: string;
   /** '' para a primeira; '2', 'B', 'OPCAO 2'… */
   versao: string;
-  /** os ids dos cards, do mais antigo ao mais novo */
+  /** os card_IDs, da linha que entrou primeiro à mais nova */
   cards: string[];
   secao: SecaoDaDuplicada;
-  /** quando o card mais novo do caso foi criado (ms) */
+  /** quando a linha mais nova do caso entrou na produção (ms) */
   recente: number;
   /** qual fica e quais saem, com o motivo de cada um; a pessoa pode trocar */
   sugestao: { fica: string; saem: string[]; motivos: Record<string, string> };
@@ -95,7 +116,7 @@ export function versaoDaClaquete(nome: string, pracas: readonly Praca[] = pracas
 }
 
 /** O grupo do card: a chave da claquete (sem a versão, a praça do fim e a do começo, "RIO"), a praça e a versão. */
-export function grupoDoCard(card: Pick<CardDoQuadro, 'nome' | 'praca'>, pracas: readonly Praca[] = pracasRegistradas()): { id: string; chave: string; praca: string; versao: string } {
+export function grupoDoCard(card: { nome: string; praca: string }, pracas: readonly Praca[] = pracasRegistradas()): { id: string; chave: string; praca: string; versao: string } {
   const { base, versao } = versaoDaClaquete(card.nome, pracas);
   const chave = semPracaNoComeco(chaveDaClaquete(base), pracas);
   const praca = card.praca ? normalizarPraca(card.praca, pracas) : reconhecerPraca(card.nome, pracas);
@@ -104,16 +125,16 @@ export function grupoDoCard(card: Pick<CardDoQuadro, 'nome' | 'praca'>, pracas: 
 
 /* ---------- a sugestão: do sinal mais forte ao mais fraco ---------- */
 
-type Sinal = { sai: (c: CardDoQuadro, outro: CardDoQuadro) => boolean; motivo: string; fica: string };
+type Sinal = { sai: (c: CardDoCaso, outro: CardDoCaso) => boolean; motivo: string; fica: string };
 const SINAIS: Sinal[] = [
-  { sai: (c) => c.arquivado && c.lista === 'entrada', motivo: 'Arquivado na lista de entrada.', fica: 'não foi arquivado na entrada' },
-  { sai: (c) => !c.temProducao, motivo: 'Sem linha na produção da arte.', fica: 'tem linha na produção da arte' },
-  { sai: (c) => c.membros === 0, motivo: 'Sem membros.', fica: 'tem membros' },
-  { sai: (c, outro) => c.criado > outro.criado, motivo: 'Criado depois.', fica: 'foi criado primeiro' },
-  { sai: (c) => c.lista !== 'saida', motivo: 'Fora das listas de saída.', fica: 'está na saída' },
+  { sai: (c) => !!c.sumiu, motivo: 'Não está mais no Trello.', fica: 'está no Trello' },
+  { sai: (c) => c.arquivado && c.naEntrada, motivo: 'Arquivado sem sair da entrada.', fica: 'não foi arquivado na entrada' },
+  { sai: (c) => c.pessoas === 0, motivo: 'Sem designers nem membros.', fica: 'tem designers ou membros' },
+  { sai: (c, outro) => c.entrada > outro.entrada, motivo: 'Entrou depois na produção.', fica: 'entrou primeiro na produção' },
+  { sai: (c) => !c.saiu, motivo: 'Não saiu nem foi entregue.', fica: 'saiu ou foi entregue' },
 ];
 /** O primeiro sinal (o mais forte) em que `a` e `b` se separam, e qual dos dois ele manda sair. */
-function decisivo(a: CardDoQuadro, b: CardDoQuadro): { sinal: Sinal; sai: CardDoQuadro } | null {
+function decisivo(a: CardDoCaso, b: CardDoCaso): { sinal: Sinal; sai: CardDoCaso } | null {
   for (const sinal of SINAIS) {
     const saiA = sinal.sai(a, b);
     const saiB = sinal.sai(b, a);
@@ -123,8 +144,9 @@ function decisivo(a: CardDoQuadro, b: CardDoQuadro): { sinal: Sinal; sai: CardDo
 }
 const frase = (partes: string[]) => (partes.length ? `${partes.join('; ').replace(/^./, (l) => l.toUpperCase())}.` : 'Sugestão: fica.');
 
-function sugerir(cards: CardDoQuadro[]): CasoDeDuplicada['sugestao'] {
-  // fica o card que nenhum outro manda sair; no empate, o mais antigo
+/** Qual card fica e quais saem, com o motivo de cada um. `cards` na ordem do caso: no empate, fica o primeiro. */
+export function sugestaoDoCaso(cards: CardDoCaso[]): CasoDeDuplicada['sugestao'] {
+  // fica o card que nenhum outro manda sair; no empate, o primeiro
   const fica = cards.reduce((melhor, c) => (decisivo(melhor, c)?.sai === melhor ? c : melhor));
   const saem = cards.filter((c) => c !== fica);
   const motivos: Record<string, string> = {};
@@ -138,30 +160,58 @@ function sugerir(cards: CardDoQuadro[]): CasoDeDuplicada['sugestao'] {
   return { fica: fica.id, saem: saem.map((c) => c.id), motivos };
 }
 
+// o andamento que ainda é a entrada: a linha sem status, ou só com estes
+const STATUS_DA_ENTRADA = new Set(['ENTRADA', 'AGUARDANDO MATERIAL']);
+const quando = (iso: string | null) => (iso ? Date.parse(iso) : NaN);
+
+/** Os sinais da linha, para a sugestão da lista (sem o Trello). */
+export function cardDaLinha(l: LinhaDaProducao): CardDoCaso {
+  const status = l.status.map((s) => semAcentoMaiusculo(s).trim()).map((s) => (s === 'EM APROVACAO' ? 'EM APROVAÇÃO' : s));
+  return {
+    id: l.card,
+    arquivado: l.arquivado,
+    naEntrada: !l.entregue && status.every((s) => STATUS_DA_ENTRADA.has(s)),
+    pessoas: l.designers.length,
+    entrada: quando(l.entrada),
+    saiu: l.entregue || status.includes('FINALIZADO'),
+  };
+}
+
+/** As linhas que contam: com card, que não são de filme e que entraram desde `desde`; uma por card (a primeira). */
+export function linhasDoPeriodo(linhas: LinhaDaProducao[], desde: number): LinhaDaProducao[] {
+  const vistos = new Set<string>();
+  return linhas.filter((l) => {
+    if (!l.card || l.filme || vistos.has(l.card) || !(quando(l.entrada) >= desde)) return false;
+    vistos.add(l.card);
+    return true;
+  });
+}
+
 /**
- * Os casos de duplicada: os cards com o mesmo grupo (chave + praça + versão), dois ou mais. Em ordem: as seções (com
- * arquivado e aberto, todos abertos, todos arquivados) e, em cada uma, o caso mais recente primeiro.
+ * Os casos de duplicada da produção da arte: as linhas com card, que não são de filme e que entraram desde `desde`,
+ * com o mesmo grupo (chave + praça + versão), duas ou mais. Em ordem: as seções (com arquivado e aberto, todos
+ * abertos, todos arquivados) e, em cada uma, o caso mais recente primeiro.
  */
-export function agruparDuplicadas(cards: CardDoQuadro[], pracas: readonly Praca[] = pracasRegistradas()): CasoDeDuplicada[] {
-  const porGrupo = new Map<string, { grupo: ReturnType<typeof grupoDoCard>; cards: CardDoQuadro[] }>();
-  for (const c of cards) {
-    const grupo = grupoDoCard(c, pracas);
+export function duplicadasDaProducao(linhas: LinhaDaProducao[], { desde, pracas = pracasRegistradas() }: { desde: number; pracas?: readonly Praca[] }): CasoDeDuplicada[] {
+  const porGrupo = new Map<string, { grupo: ReturnType<typeof grupoDoCard>; linhas: LinhaDaProducao[] }>();
+  for (const l of linhasDoPeriodo(linhas, desde)) {
+    const grupo = grupoDoCard({ nome: l.claquete, praca: l.praca }, pracas);
     if (!grupo.chave) continue;
     const ja = porGrupo.get(grupo.id);
-    if (ja) ja.cards.push(c);
-    else porGrupo.set(grupo.id, { grupo, cards: [c] });
+    if (ja) ja.linhas.push(l);
+    else porGrupo.set(grupo.id, { grupo, linhas: [l] });
   }
   const casos: CasoDeDuplicada[] = [];
-  for (const { grupo, cards: doGrupo } of porGrupo.values()) {
+  for (const { grupo, linhas: doGrupo } of porGrupo.values()) {
     if (doGrupo.length < 2) continue;
-    const ordem = [...doGrupo].sort((a, b) => a.criado - b.criado || a.id.localeCompare(b.id));
+    const ordem = doGrupo.map(cardDaLinha).sort((a, b) => a.entrada - b.entrada || a.id.localeCompare(b.id));
     const arquivados = ordem.filter((c) => c.arquivado).length;
     casos.push({
       ...grupo,
       cards: ordem.map((c) => c.id),
       secao: arquivados === 0 ? 'abertos' : arquivados === ordem.length ? 'arquivados' : 'misto',
-      recente: ordem[ordem.length - 1].criado,
-      sugestao: sugerir(ordem),
+      recente: ordem[ordem.length - 1].entrada,
+      sugestao: sugestaoDoCaso(ordem),
     });
   }
   return casos.sort((a, b) => SECOES.indexOf(a.secao) - SECOES.indexOf(b.secao) || b.recente - a.recente);

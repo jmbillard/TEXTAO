@@ -16,9 +16,10 @@ import {
 import { Icone } from './icones';
 import { plural } from './util';
 
-/* Aba Duplicadas dos Cadastros (#65): os cards do quadro do Trello com a mesma claquete, praça e versão. Só
-   administradores: a lista por seção, com o período e a busca, e o caso aberto na própria lista, com os cards lado a
-   lado (empilhados no celular), as diferenças destacadas e a sugestão de qual fica, que a pessoa troca.
+/* Aba Duplicadas dos Cadastros (#65): as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça
+   e versão. A lista sai só da produção; só o caso aberto lê do Trello os cards dele. Só administradores: a lista por
+   seção, com o período e a busca, e o caso aberto na própria lista, com os cards lado a lado (empilhados no celular),
+   as diferenças destacadas e a sugestão de qual fica, que a pessoa troca.
    Ignorar (#66), na linha e no caso aberto, com motivo opcional: o caso vai para Resolvidas e para o Registro (o painel
    da direita), e Reabrir devolve. Nada muda no Trello nem no Teable. No celular, só consulta (sem os botões). */
 
@@ -37,7 +38,7 @@ const lerPeriodo = () => {
 
 /**
  * A lista das duplicadas: lida quando a pessoa é administradora (o número de casos vai na aba mesmo com ela fechada),
- * de novo quando muda o período ou a busca (com a aba aberta) e quando pede para ler o Trello de novo.
+ * de novo quando muda o período ou a busca (com a aba aberta) e quando pede para ler a produção de novo.
  */
 export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
   const [dias, setDias] = useState(lerPeriodo);
@@ -88,7 +89,7 @@ export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
       /* sem o armazenamento do navegador, o período vale só agora */
     }
   };
-  /** Depois de ignorar ou reabrir: a lista (do que já foi lido do Trello) e o registro de novo. */
+  /** Depois de ignorar ou reabrir: a lista (do que já foi lido da produção) e o registro de novo. */
   const depoisDaAcao = async () => {
     ler();
     const antes = registro?.[0]?.id ?? 0;
@@ -117,8 +118,8 @@ export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
 
 const SECOES: { id: SecaoDaDuplicada; titulo: string; nota: string }[] = [
   { id: 'misto', titulo: 'Com arquivado e aberto', nota: 'O caso de sempre: um reenvio arquivado na entrada.' },
-  { id: 'abertos', titulo: 'Todos abertos', nota: 'Ainda estão todos no quadro.' },
-  { id: 'arquivados', titulo: 'Todos arquivados', nota: 'Já saíram do quadro.' },
+  { id: 'abertos', titulo: 'Todos abertos', nota: 'Nenhum foi arquivado.' },
+  { id: 'arquivados', titulo: 'Todos arquivados', nota: 'Já foram todos arquivados.' },
 ];
 
 const quantoTempo = (iso: string | null, agora: number) => {
@@ -189,7 +190,7 @@ export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renova
   return (
     <>
       <div className="filtros-dup">
-        <span className="rotulo-dup">Cards criados em</span>
+        <span className="rotulo-dup">Entraram na produção em</span>
         <div className="periodo-dup" role="radiogroup" aria-label="Período">
           {PERIODOS.map((d, i) => (
             <button key={d} type="button" role="radio" aria-checked={dias === d} onClick={() => mudarDias(d)}>
@@ -209,22 +210,22 @@ export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renova
         )}
         {lista?.ligado && lista.lidoEm && (
           <p className="lido-dup">
-            Lido do Trello {quantoTempo(lista.lidoEm, agora)} · {lista.cardsLidos.toLocaleString('pt-BR')} {lista.cardsLidos === 1 ? 'card' : 'cards'}
-            <button type="button" className="botao-texto" onClick={renovar} disabled={lendo} title="Ler o quadro do Trello de novo">
+            Lido da produção {quantoTempo(lista.lidoEm, agora)} · {lista.linhasLidas.toLocaleString('pt-BR')} {lista.linhasLidas === 1 ? 'linha' : 'linhas'}
+            <button type="button" className="botao-texto" onClick={renovar} disabled={lendo} title="Ler a produção da arte de novo">
               {lendo ? 'lendo…' : 'ler de novo'}
             </button>
           </p>
         )}
       </div>
       {falha && <p className="cad-falha dup-falha">{falha}</p>}
-      {!lista && !falha && <p className="cad-vazio">Lendo o quadro do Trello…</p>}
+      {!lista && !falha && <p className="cad-vazio">Lendo a produção da arte…</p>}
       {lista && !lista.ligado && (
         <p className="cad-vazio dup-desligada">
-          A aba Duplicadas ainda não está configurada: falta o quadro do Trello (<code>TRELLO_QUADRO</code>) no servidor.
+          A aba Duplicadas ainda não está configurada: falta a produção da arte (<code>TEABLE_PG_URL</code> e <code>TEABLE_PG_ARTE</code>) no servidor.
         </p>
       )}
       {lista?.ligado && vista === 'pendentes' && !lista.casos.length && (
-        <p className="cad-vazio">{busca.trim() ? `Nenhuma duplicada com “${busca.trim()}”.` : `Nenhuma duplicada nos cards criados em ${dias} dias.`}</p>
+        <p className="cad-vazio">{busca.trim() ? `Nenhuma duplicada com “${busca.trim()}”.` : `Nenhuma duplicada nas linhas que entraram em ${dias} dias.`}</p>
       )}
       {lista?.ligado &&
         vista === 'pendentes' &&
@@ -266,7 +267,7 @@ export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renova
             <LinhaResolvida key={r.id} r={r} agora={agora} reabrir={celular ? undefined : () => reabrir(r.id)} />
           ))}
           {!lista.resolvidas.length && (
-            <p className="cad-vazio">{busca.trim() ? `Nenhuma resolvida com “${busca.trim()}”.` : `Nenhum caso ignorado nos cards criados em ${dias} dias.`}</p>
+            <p className="cad-vazio">{busca.trim() ? `Nenhuma resolvida com “${busca.trim()}”.` : `Nenhum caso ignorado nas linhas que entraram em ${dias} dias.`}</p>
           )}
         </section>
       )}
@@ -400,7 +401,6 @@ function LinhaDoCaso({ caso, aberto, alternar, dias, celular, ignorar }: { caso:
           <span className="sinais-dup">
             {caso.abertos > 0 && <span className="s aberto">{plural(caso.abertos, 'aberto', 'abertos')}</span>}
             {caso.arquivados > 0 && <span className="s arquivado">{plural(caso.arquivados, 'arquivado', 'arquivados')}</span>}
-            {caso.comProducao > 0 && <span className="s">{caso.comProducao} com linha na produção</span>}
             {caso.artesNoAcervo > 0 && <span className="s">{plural(caso.artesNoAcervo, 'arte', 'artes')} no acervo</span>}
           </span>
         </button>
@@ -419,10 +419,11 @@ function LinhaDoCaso({ caso, aberto, alternar, dias, celular, ignorar }: { caso:
 
 type Linha = { rotulo: string; valor: (c: CardDaDuplicada, i: number, todos: CardDaDuplicada[]) => React.ReactNode; texto?: (c: CardDaDuplicada) => string; compara?: boolean };
 const LINHAS: Linha[] = [
-  { rotulo: 'Nome no Trello', valor: (c) => c.nome, texto: (c) => c.nome },
+  { rotulo: 'Claquete na produção', valor: (c) => c.claquete || '—', texto: (c) => c.claquete },
+  { rotulo: 'Nome no Trello', valor: (c) => (c.noTrello === false ? <span className="sem-dup">não está mais no Trello</span> : c.nome || '—'), texto: (c) => `${c.noTrello}|${c.nome}` },
   { rotulo: 'Lista', valor: (c) => c.lista || '—', texto: (c) => c.lista },
   { rotulo: 'Estado', valor: (c) => (c.arquivado ? 'arquivado' : 'aberto'), texto: (c) => String(c.arquivado) },
-  { rotulo: 'Criado', valor: (c, i, todos) => [diaHora(c.criado), i > 0 ? depois(todos[0].criado, c.criado) : ''].filter(Boolean).join(' · '), compara: false },
+  { rotulo: 'Criado', valor: (c, i, todos) => (c.criado ? [diaHora(c.criado), i > 0 && todos[0].criado ? depois(todos[0].criado, c.criado) : ''].filter(Boolean).join(' · ') : '—'), compara: false },
   { rotulo: 'Entrada', valor: (c) => diaMes(c.entrada), texto: (c) => diaMes(c.entrada) },
   { rotulo: 'Exibição', valor: (c) => diaMes(c.exibicao), texto: (c) => diaMes(c.exibicao) },
   { rotulo: 'Status', valor: (c) => (c.status.length ? c.status.map((s) => <span key={s} className="status-dup">{s}</span>) : '—'), texto: (c) => c.status.join() },
@@ -430,16 +431,18 @@ const LINHAS: Linha[] = [
   { rotulo: 'Membros', valor: (c) => c.membros.join(', ') || '—', texto: (c) => c.membros.join() },
   { rotulo: 'Artes', valor: (c) => (c.checklist ? `${c.checklist} no checklist` : '—'), texto: (c) => String(c.checklist) },
   { rotulo: 'Anexos', valor: (c) => c.anexos || '—', texto: (c) => c.anexos },
-  { rotulo: 'Produção da arte', valor: (c) => <span className={c.producao ? 'tem-dup' : 'sem-dup'}>{c.producao ? 'tem linha' : 'sem linha'}</span>, texto: (c) => String(c.producao) },
   { rotulo: 'Acervo ligado', valor: (c) => (c.acervo ? plural(c.acervo, 'arte', 'artes') : '—'), texto: (c) => String(c.acervo) },
   { rotulo: 'Roteiro no PROMeiro', valor: (c) => (c.roteiro ? [c.roteiro.claquete, c.roteiro.por].filter(Boolean).join(' · ') : '—'), texto: (c) => c.roteiro?.id ?? '' },
   {
     rotulo: 'Trello',
-    valor: (c) => (
-      <a href={c.url} target="_blank" rel="noreferrer" className="link-dup">
-        {c.url.replace(/^https?:\/\//, '')}
-      </a>
-    ),
+    valor: (c) =>
+      c.noTrello === false ? (
+        <span className="sem-dup">não está mais no Trello</span>
+      ) : (
+        <a href={c.url} target="_blank" rel="noreferrer" className="link-dup">
+          {c.url.replace(/^https?:\/\//, '')}
+        </a>
+      ),
     compara: false,
   },
 ];
@@ -493,7 +496,7 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
   const rodape = (
     <div className="acoes-dup">
       <p className="explica-dup">
-        A sugestão usa os mesmos sinais do relatório do n8n: arquivado na entrada, linha na produção, membros, quem foi criado primeiro, lista de saída.
+        A sugestão usa os sinais do relatório do n8n: fora do Trello, arquivado na entrada, designers e membros, quem entrou primeiro na produção, saída ou entregue.
         {celular ? ' Ignorar só no computador.' : ' Você pode trocar.'}
       </p>
       {ignorar && (
@@ -510,6 +513,7 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
           <article key={c.id} className={`card-dup ${caso.sugestao.fica === c.id ? 'fica' : 'sai'}`} aria-label={`Card ${c.numero ? `#${c.numero}` : c.nome}`}>
             <span className="selo-dup">{caso.sugestao.fica === c.id ? 'Sugestão: fica' : 'Sugestão: duplicado'}</span>
             {c.numero != null && <b className="numero-dup">#{c.numero}</b>}
+            {c.noTrello === false && <span className="fora-dup">Não está mais no Trello</span>}
             {sugestao(c)}
             <dl>
               {LINHAS.map((l) => (
@@ -542,6 +546,7 @@ function DetalheDoCaso({ id, dias, celular, ignorar }: { id: string; dias: numbe
                   </button>
                 </div>
                 {c.numero != null && <b className="numero-dup">#{c.numero}</b>}
+                {c.noTrello === false && <span className="fora-dup">Não está mais no Trello</span>}
                 {sugestao(c)}
               </div>
             );
@@ -627,8 +632,8 @@ export function PainelDasDuplicadas({ registro, recente, reabrir, celular }: { r
         <p className="vazio-registro-dup">Nada ainda: quem ignorar um caso aparece aqui.</p>
       )}
       <p className="regra-dup">
-        <b>Como o PROMeiro acha:</b> todos os cards do quadro (abertos e arquivados) criados no período, agrupados pela claquete sem acento, caixa e
-        pontuação, pela praça e pela versão. Versões diferentes (-2, V2, B, Opção) não contam como duplicadas. Só administradores veem esta aba.
+        <b>Como o PROMeiro acha:</b> as linhas da produção da arte com card (sem as de filme) que entraram no período, abertas e arquivadas, agrupadas
+        pela claquete sem acento, caixa e pontuação, pela praça e pela versão. O Trello só é lido no caso aberto, e só os cards dele. Versões diferentes (-2, V2, B, Opção) não contam como duplicadas. Só administradores veem esta aba.
       </p>
     </aside>
   );

@@ -105,7 +105,8 @@ export function configDoTrello(env) {
     pracas: pracasDaConfiguracao(env),
     // a reserva de quem não tiver entrada (TRELLO_LISTA) e a lista do VT
     listas: { padrao: env.TRELLO_LISTA || '', VT: env.TRELLO_LISTA_VT || '' },
-    // o quadro da promo (a aba Duplicadas lê os cards dele) e a lista dos projetos entregues, que conta como saída
+    // o quadro da promo (opcional: a aba Duplicadas não precisa dele) e a lista dos projetos entregues, que no caso
+    // aberto da aba Duplicadas conta como saída
     quadro: nomeLimpoPg(env.TRELLO_QUADRO),
     entregues: nomeLimpoPg(env.TRELLO_LISTA_ENTREGUES),
     campos: {
@@ -268,6 +269,15 @@ export function criarTrello(env, deps = {}) {
     });
     if (!r.ok) throw new Error(`Trello respondeu ${r.status} em ${metodo} ${rota.replace(/\/[0-9a-f]{24}/g, '/…')}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
     return r.json().catch(() => ({}));
+  }
+  /** Um GET que devolve null quando o Trello não tem mais o que foi pedido (o card apagado: 404; o id que não vale: 400). */
+  async function lerSeExistir(rota, consulta) {
+    try {
+      return await trello('GET', rota, { consulta });
+    } catch (e) {
+      if (/^Trello respondeu (404|400) /.test(e instanceof Error ? e.message : '')) return null;
+      throw e;
+    }
   }
   const campo = (card, idCampo, corpo) => (idCampo ? trello('PUT', `/cards/${card}/customField/${idCampo}/item`, { corpo }) : null);
   // a sessão de filme copia o campo Complexidade do card do filme (TRELLO_CAMPOS_FILME)?
@@ -921,26 +931,36 @@ export function criarTrello(env, deps = {}) {
   }
 
   /**
-   * A linha da produção da arte de cada card (a aba Duplicadas): { card: { registro, status, designers, entrada } },
-   * só os cards que têm. Lê de onde vem o andamento e, lendo de outra base, procura na do app o que faltar.
+   * As linhas da produção da arte que entraram nos últimos `dias` dias e têm card (a aba Duplicadas): o que o
+   * agrupamento precisa, já lido (src/modelo/duplicadas.ts, LinhaDaProducao). Lê de onde vem o andamento e, lendo de
+   * outra base, junta as linhas do app cujo card não está lá. Sem a produção configurada, null.
    */
-  async function producaoDosCards(cards) {
-    const ids = [...new Set(cards.filter(Boolean))];
-    if (!t.leitura || !ids.length) return {};
-    const ler = (tabela, lista) =>
-      sql(`SELECT "__id" AS registro, "card_ID", "status", "designers", "data_entrada" FROM ${tabela} WHERE "card_ID" = ANY($1::text[])`, [lista]);
-    const linhas = await ler(t.leitura, ids);
-    const faltam = t.producao && t.producao !== t.leitura ? ids.filter((id) => !linhas.some((x) => x.card_ID === id)) : [];
-    if (faltam.length) linhas.push(...(await ler(t.producao, faltam)).filter((x) => faltam.includes(x.card_ID)));
-    const dados = {};
-    for (const l of linhas)
-      dados[l.card_ID] ??= {
-        registro: String(l.registro ?? ''),
-        status: lerLista(l.status),
-        designers: lerLista(l.designers),
-        entrada: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : null,
-      };
-    return dados;
+  async function producaoDoPeriodo(dias) {
+    if (!t.leitura || !consultar) return null;
+    const ler = (tabela) =>
+      sql(
+        `SELECT "__id" AS registro, "card_ID", "claquete", "praca", "data_entrada", "status", "arquivado", "designers", "entregue", "filme" FROM ${tabela}
+         WHERE "data_entrada" >= now() - ($1 || ' days')::interval AND "card_ID" IS NOT NULL AND "card_ID" <> ''`,
+        [String(dias | 0)],
+      );
+    const linhas = await ler(t.leitura);
+    if (t.producao && t.producao !== t.leitura) {
+      const ja = new Set(linhas.map((l) => l.card_ID));
+      linhas.push(...(await ler(t.producao)).filter((l) => !ja.has(l.card_ID)));
+    }
+    const sim = (v) => v === true || v === 1 || /^(t|true|1|sim)$/i.test(String(v ?? '').trim());
+    return linhas.map((l) => ({
+      registro: String(l.registro ?? ''),
+      card: String(l.card_ID ?? '').trim(),
+      claquete: String(l.claquete ?? '').trim(),
+      praca: String(lerLista(l.praca)[0] ?? '').trim(),
+      entrada: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : null,
+      arquivado: sim(l.arquivado),
+      filme: lerLista(l.filme).some((f) => String(f).trim()),
+      status: lerLista(l.status),
+      designers: lerLista(l.designers),
+      entregue: sim(l.entregue),
+    }));
   }
 
   /** As chaves (dentre estas) que são prioridade (veja chavesPrioritarias); sem a lista configurada ou fora do ar, nenhuma. */
@@ -1157,5 +1177,5 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, ler: (rota, consulta) => trello('GET', rota, { consulta }), producaoDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, temProducao: !!(t.leitura && consultar), producaoDoPeriodo, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

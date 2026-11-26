@@ -85,7 +85,7 @@ services:
       - TRELLO_SAIDA_RJ=${TRELLO_SAIDA_RJ:-}
       - TRELLO_SAIDA_G5=${TRELLO_SAIDA_G5:-}
       - TRELLO_SAIDA_INTER=${TRELLO_SAIDA_INTER:-}
-      # o quadro da promo (a aba Duplicadas lê os cards dele; vazio = não configurado) e a lista dos projetos entregues
+      # o quadro da promo (opcional; a aba Duplicadas não precisa dele) e a lista dos projetos entregues
       - TRELLO_QUADRO=${TRELLO_QUADRO:-}
       - TRELLO_LISTA_ENTREGUES=${TRELLO_LISTA_ENTREGUES:-}
       - TRELLO_LISTA_VT=${TRELLO_LISTA_VT:-}

@@ -844,28 +844,30 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 export type { SecaoDaDuplicada };
-/** Um caso na lista: os cards com a mesma claquete, praça e versão. */
+/** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {
   id: string;
-  /** o nome do card que a sugestão deixa ficar */
+  /** a claquete (na produção) do card que a sugestão deixa ficar */
   claquete: string;
   praca: string;
   versao: string;
   secao: SecaoDaDuplicada;
   cards: number;
+  /** pela coluna arquivado da produção */
   abertos: number;
   arquivados: number;
-  comProducao: number;
   artesNoAcervo: number;
-  /** há quantos dias o card mais novo do caso foi criado */
+  /** há quantos dias a linha mais nova do caso entrou na produção */
   dias: number;
 }
 export interface ListaDasDuplicadas {
-  /** sem o quadro do Trello configurado (TRELLO_QUADRO), false */
+  /** sem a produção da arte configurada (TEABLE_PG_URL e TEABLE_PG_ARTE), false */
   ligado: boolean;
   dias: number;
+  /** quando a produção da arte foi lida (a lista não lê o Trello) */
   lidoEm: string | null;
-  cardsLidos: number;
+  /** as linhas da produção que contaram: com card, sem filme, no período */
+  linhasLidas: number;
   /** todos os casos pendentes do período, sem a busca (os ignorados não contam) */
   pendentes: number;
   casos: ResumoDaDuplicada[];
@@ -900,14 +902,21 @@ export interface AcaoDoRegistro {
   /** a ignorada que vale agora: dá para reabrir */
   podeReabrir: boolean;
 }
-/** Um card do caso aberto, como o detalhe compara. */
+/** Um card do caso aberto, como o detalhe compara: a linha da produção e o que só o Trello tem (lido só no caso aberto). */
 export interface CardDaDuplicada {
+  /** o card_ID */
   id: string;
+  /** false: o card não existe mais no Trello; null: o Trello não está configurado (não deu para ler) */
+  noTrello: boolean | null;
   numero: number | null;
+  /** o nome no Trello ('' fora do Trello) */
   nome: string;
+  /** a claquete na produção da arte */
+  claquete: string;
   lista: string;
+  /** o estado no Trello; fora dele, o da coluna arquivado */
   arquivado: boolean;
-  criado: string;
+  criado: string | null;
   entrada: string | null;
   exibicao: string | null;
   status: string[];
@@ -915,7 +924,6 @@ export interface CardDaDuplicada {
   membros: string[];
   checklist: number;
   anexos: string;
-  producao: boolean;
   acervo: number;
   roteiro: { id: string; claquete: string; por: string } | null;
   url: string;

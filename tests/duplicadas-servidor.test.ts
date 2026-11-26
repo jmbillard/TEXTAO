@@ -8,21 +8,18 @@ import { criarTrello } from '../servidor/trello.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { criarAcervo } from '../servidor/acervo.mjs';
 
-/* A aba Duplicadas pela API (#65): o quadro do Trello e a produção da arte (o Postgres do Teable) de mentira, com
-   cards fictícios. Só leitura: nenhum pedido que não seja GET sai para o Trello. */
+/* A aba Duplicadas pela API (#65, corrigido): a produção da arte (o Postgres do Teable) e o Trello de mentira, com
+   linhas e cards fictícios. A lista e o contador saem só da produção; o Trello só é lido no caso aberto, e só os cards
+   dele. Só leitura: nenhum pedido que não seja GET sai para o Trello. */
 
 const ENV = {
   CADASTRO_ADMINS: 'chefe@empresa.com',
   TRELLO_KEY: 'k',
   TRELLO_TOKEN: 't',
-  TRELLO_QUADRO: 'quadroFicticio',
   TRELLO_LISTA_SP: 'entradaSP',
   TRELLO_LISTA_G5: 'entradaG5',
   TRELLO_SAIDA_SP: 'saidaSP',
   TRELLO_LISTA_ENTREGUES: 'entregues',
-  TRELLO_CAMPO_PRACA: 'campoPraca',
-  TRELLO_PRACAS: 'G5=opG5,SP=opSP,RJ=opRJ',
-  TRELLO_CAMPO_ENTRADA: 'campoEntrada',
   TEABLE_PG_URL: 'postgres://falso',
   TEABLE_PG_ESQUEMA: 'bseFalso',
   TEABLE_PG_ARTE: 'producao',
@@ -34,44 +31,60 @@ const PESSOAS: Record<string, string> = { m1: 'Pessoa Um', m2: 'Pessoa Dois' };
 let sequencia = 0;
 /** Um id de card do Trello criado há `dias` (os 8 primeiros caracteres são o segundo da criação). */
 const idCriadoHa = (dias: number) => Math.floor((Date.now() - dias * DIA) / 1000).toString(16).padStart(8, '0') + (++sequencia).toString(16).padStart(16, '0');
+const haDias = (dias: number) => new Date(Date.now() - dias * DIA).toISOString();
 
-type CardFalso = { id: string; idShort: number; name: string; closed: boolean; idList: string; idMembers: string[]; praca?: string; due?: string; checkItems?: number; anexos?: string[] };
-const quadro = () => {
-  const c = (dias: number, name: string, o: Partial<CardFalso> = {}): CardFalso => ({ id: idCriadoHa(dias), idShort: 1000 + sequencia, name, closed: false, idList: 'entradaG5', idMembers: ['m1'], checkItems: 4, anexos: ['application/pdf'], ...o });
-  const cards = {
-    show1: c(6.2, 'Show da Noite 20/11 SP', { idShort: 4790, idList: 'saidaSP', idMembers: ['m1', 'm2'], due: '2026-11-20T23:00:00.000Z', anexos: ['application/pdf', 'image/png', 'image/jpeg'] }),
-    show2: c(6, 'Show da Noite 20/11', { idShort: 4795, praca: 'opSPdoQuadro', closed: true, idList: 'entradaSP', idMembers: [], due: '2026-11-20T23:00:00.000Z' }),
-    festa1: c(4.5, 'Festa na Praça 19/11 REDE'),
-    festa2: c(4, 'FESTA NA PRACA 19/11', { closed: true, idMembers: [] }),
-    cozinha1: c(9.5, 'Cozinha de Vó 18/11'),
-    cozinha2: c(9, 'Cozinha de Vo 18/11', { idList: 'entregues' }),
-    novela1: c(120, 'Novela Sinfonia 12/11', { closed: true }),
-    novela2: c(119, 'Novela Sinfonia 12/11', { closed: true }),
-    terra: c(3, 'Terra 20/11'),
-    terraV2: c(2, 'Terra 20/11 V2'),
-    sozinho: c(1, 'Sozinho 25/11'),
-  };
-  return cards;
-};
+type CardFalso = { id: string; idShort: number; name: string; closed: boolean; idList: string; idMembers: string[]; due?: string; checkItems?: number; anexos?: string[] };
+/** Uma linha da produção da arte como sai do Postgres (status e designers em texto JSON ou lista). */
+type LinhaFalsa = { registro: string; card_ID: string | null; claquete: string; praca: string | null; data_entrada: string | null; status: unknown; designers: unknown; arquivado: boolean | null; entregue: boolean | null; filme: unknown };
 
 function falsos() {
-  const cards = quadro();
-  const todos = Object.values(cards);
-  /** Um card novo no quadro (o reenvio que chega depois). */
-  const novoCard = (dias: number, name: string): CardFalso => {
-    const x: CardFalso = { id: idCriadoHa(dias), idShort: 5000 + sequencia, name, closed: false, idList: 'entradaG5', idMembers: [] };
-    todos.push(x);
-    return x;
+  const noTrello: CardFalso[] = [];
+  const producao: LinhaFalsa[] = [];
+  /** Uma linha da produção que entrou há `dias`, com o card dela no Trello (a não ser que `card` diga outra coisa). */
+  const linha = (dias: number, claquete: string, o: Partial<LinhaFalsa> = {}, t: Partial<CardFalso> | null = {}) => {
+    const id = idCriadoHa(dias + 0.01);
+    const l: LinhaFalsa = { registro: `rec${sequencia}`, card_ID: id, claquete, praca: null, data_entrada: haDias(dias), status: '["PRODUZINDO"]', designers: '["Designer Um"]', arquivado: false, entregue: false, filme: null, ...o };
+    producao.push(l);
+    if (t && l.card_ID) noTrello.push({ id: l.card_ID, idShort: 1000 + sequencia, name: claquete, closed: !!l.arquivado, idList: 'entradaG5', idMembers: ['m1'], checkItems: 4, anexos: ['application/pdf'], ...t });
+    return l;
   };
+  const linhas = {
+    show1: linha(6.2, 'Show da Noite 20/11 SP', { status: '["FINALIZADO"]', designers: '["Designer Um","Designer Dois"]' }, { idShort: 4790, idList: 'saidaSP', idMembers: ['m1', 'm2'], due: '2026-11-20T23:00:00.000Z', anexos: ['application/pdf', 'image/png', 'image/jpeg'] }),
+    show2: linha(6, 'Show da Noite 20/11', { praca: 'SP', arquivado: true, status: ['ENTRADA'], designers: null }, { idShort: 4795, idList: 'entradaSP', idMembers: [], due: '2026-11-20T23:00:00.000Z' }),
+    festa1: linha(4.5, 'Festa na Praça 19/11 REDE'),
+    festa2: linha(4, 'FESTA NA PRACA 19/11', { arquivado: true, status: [], designers: [] }, { idMembers: [] }),
+    praia1: linha(3.5, 'Praia do Sol 22/11'),
+    // o card desta linha não existe mais no Trello
+    praia2: linha(3.4, 'PRAIA DO SOL 22/11', {}, null),
+    cozinha1: linha(9.5, 'Cozinha de Vó 18/11'),
+    cozinha2: linha(9, 'Cozinha de Vo 18/11', { entregue: true }, { idList: 'entregues' }),
+    novela1: linha(120, 'Novela Sinfonia 12/11', { arquivado: true }),
+    novela2: linha(119, 'Novela Sinfonia 12/11', { arquivado: true }),
+    terra: linha(3, 'Terra 20/11'),
+    terraV2: linha(2, 'Terra 20/11 V2'),
+    sozinho: linha(1, 'Sozinho 25/11'),
+    // "DIA 24": só uma das linhas tem card (a outra não conta); os dois cards de filme não contam
+    dia24: linha(2.5, 'DIA 24'),
+    dia24SemCard: linha(2.4, 'DIA 24', { card_ID: '' }),
+    filme1: linha(5, 'Filme da Tarde 21/11', { filme: '[{"id":"recFilme","title":"Filme da Tarde"}]' }),
+    filme2: linha(4.9, 'Filme da Tarde 21/11', { filme: [{ id: 'recFilme', title: 'Filme da Tarde' }] }),
+  };
+  // e, no quadro, cards que não estão na produção (um card qualquer do quadro): a lista não os vê
+  for (const closed of [false, true]) noTrello.push({ id: idCriadoHa(2), idShort: 9000 + sequencia, name: 'DIA 24', closed, idList: 'entradaG5', idMembers: [] });
+  /** Uma linha nova na produção (o reenvio que chega depois). */
+  const novaLinha = (dias: number, claquete: string) => linha(dias, claquete, { designers: [] }, { idMembers: [] });
   const pedidos: string[] = [];
   const buscar = async (url: string, init: RequestInit = {}) => {
     const u = new URL(url);
     const metodo = init.method ?? 'GET';
     pedidos.push(`${metodo} ${u.pathname}`);
     if (metodo !== 'GET') throw new Error(`a aba Duplicadas só lê: ${metodo} ${u.pathname}`);
-    const resposta = (dados: unknown) => ({ ok: true, status: 200, json: async () => dados, text: async () => '' });
-    const criado = (id: string) => parseInt(id.slice(0, 8), 16) * 1000;
-    const comoTrello = (x: CardFalso) => ({
+    const umCard = /^\/1\/cards\/([0-9a-f]{24})$/.exec(u.pathname);
+    if (!umCard) throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
+    const x = noTrello.find((y) => y.id === umCard[1]);
+    if (!x) return { ok: false, status: 404, json: async () => ({}), text: async () => 'The requested resource was not found.' };
+    const listas: Record<string, string> = { entradaSP: 'ENTRADA SP', entradaG5: 'ENTRADA G5', saidaSP: 'SAÍDA SP', entregues: 'PROJETOS ENTREGUES' };
+    const dados = {
       id: x.id,
       idShort: x.idShort,
       name: x.name,
@@ -80,64 +93,30 @@ function falsos() {
       idMembers: x.idMembers,
       due: x.due ?? null,
       shortUrl: `https://trello.com/c/${x.id.slice(-8)}`,
-      dateLastActivity: new Date(criado(x.id)).toISOString(),
       badges: { checkItems: x.checkItems ?? 0, attachments: x.anexos?.length ?? 0 },
-      customFieldItems: [
-        ...(x.praca ? [{ idCustomField: 'campoPraca', idValue: x.praca }] : []),
-        { idCustomField: 'campoEntrada', value: { date: new Date(criado(x.id)).toISOString() } },
-      ],
-    });
-    if (u.pathname === '/1/boards/quadroFicticio/cards/all') {
-      // de duas em duas, do mais novo ao mais antigo, como a paginação do Trello pelo `before`
-      const desde = Date.parse(u.searchParams.get('since') ?? '') || 0;
-      const antes = u.searchParams.get('before');
-      const pagina = todos
-        .filter((x) => criado(x.id) >= desde && (!antes || x.id < antes))
-        .sort((a, b) => b.id.localeCompare(a.id))
-        .slice(0, 2);
-      return resposta(pagina.map(comoTrello));
-    }
-    // a opção do campo PRAÇA que TRELLO_PRACAS não tem: vale o texto dela no quadro
-    if (u.pathname === '/1/boards/quadroFicticio/customFields')
-      return resposta([{ id: 'campoPraca', name: 'PRAÇA', options: [{ id: 'opSP', value: { text: 'SP' } }, { id: 'opSPdoQuadro', value: { text: 'SP' } }] }]);
-    if (u.pathname === '/1/boards/quadroFicticio/lists')
-      return resposta([
-        { id: 'entradaSP', name: 'ENTRADA SP', closed: false },
-        { id: 'entradaG5', name: 'ENTRADA G5', closed: false },
-        { id: 'saidaSP', name: 'SAÍDA SP', closed: false },
-        { id: 'entregues', name: 'PROJETOS ENTREGUES', closed: false },
-      ]);
-    const umCard = /^\/1\/cards\/([0-9a-f]{24})$/.exec(u.pathname);
-    if (umCard) {
-      const x = todos.find((y) => y.id === umCard[1]);
-      if (!x) return { ok: false, status: 404, json: async () => ({}), text: async () => 'not found' };
-      return resposta({ ...comoTrello(x), attachments: (x.anexos ?? []).map((mimeType, i) => ({ id: `a${i}`, name: `anexo${i}`, mimeType })), members: x.idMembers.map((id) => ({ id, fullName: PESSOAS[id] })) });
-    }
-    throw new Error(`pedido inesperado ao Trello: ${u.pathname}`);
+      list: { id: x.idList, name: listas[x.idList] },
+      attachments: (x.anexos ?? []).map((mimeType, i) => ({ id: `a${i}`, name: `anexo${i}`, mimeType })),
+      members: x.idMembers.map((id) => ({ id, fullName: PESSOAS[id] })),
+    };
+    return { ok: true, status: 200, json: async () => dados, text: async () => '' };
   };
-  // a produção da arte: o show tem as duas linhas; a festa e a cozinha, uma; a novela, uma
-  const producao = [
-    { registro: 'recShow1', card_ID: cards.show1.id, status: '["FINALIZADO"]', designers: '["Designer Um","Designer Dois"]', data_entrada: '2026-11-13T12:00:00.000Z', artes: 'HOJE | AMANHÃ' },
-    { registro: 'recShow2', card_ID: cards.show2.id, status: ['ENTRADA'], designers: null, data_entrada: '2026-11-13T15:00:00.000Z', artes: '' },
-    { registro: 'recFesta1', card_ID: cards.festa1.id, status: [], designers: [], data_entrada: null, artes: '' },
-    { registro: 'recCozinha1', card_ID: cards.cozinha1.id, status: [], designers: [], data_entrada: null, artes: '' },
-    { registro: 'recCozinha2', card_ID: cards.cozinha2.id, status: [], designers: [], data_entrada: null, artes: '' },
-    { registro: 'recNovela1', card_ID: cards.novela1.id, status: [], designers: [], data_entrada: null, artes: '' },
-  ];
   // o acervo: três artes ligadas à linha do primeiro show, uma à da novela
   const acervo = [
-    ...['HOJE', 'AMANHÃ', 'SÁBADO'].map((arte, i) => ({ id: `recA${i}`, arte, tipo: 'RDP', atracao: [{ id: 'recShow', title: 'Show da Noite' }], claquete: [{ id: 'recShow1', title: 'SHOW DA NOITE 20/11 SP' }], filme: null })),
-    { id: 'recA9', arte: 'ABERTURA', tipo: 'CRT', atracao: [{ id: 'recNov', title: 'Novela Sinfonia' }], claquete: [{ id: 'recNovela1', title: 'NOVELA SINFONIA 12/11' }], filme: null },
+    ...['HOJE', 'AMANHÃ', 'SÁBADO'].map((arte, i) => ({ id: `recA${i}`, arte, tipo: 'RDP', atracao: [{ id: 'recShow', title: 'Show da Noite' }], claquete: [{ id: linhas.show1.registro, title: 'SHOW DA NOITE 20/11 SP' }], filme: null })),
+    { id: 'recA9', arte: 'ABERTURA', tipo: 'CRT', atracao: [{ id: 'recNov', title: 'Novela Sinfonia' }], claquete: [{ id: linhas.novela1.registro, title: 'NOVELA SINFONIA 12/11' }], filme: null },
   ];
+  let leiturasDaProducao = 0;
   const consultar = async (sql: string, params: unknown[] = []) => {
     if (sql.includes('"bseFalso"."acervo"')) return acervo;
-    if (sql.includes('"bseFalso"."producao"') && sql.includes('card_ID')) {
-      const ids = (params[0] as string[]) ?? [];
-      return producao.filter((l) => ids.includes(l.card_ID));
+    // a produção do período, como o Postgres responde: entrou nos últimos N dias e tem card
+    if (sql.includes('"bseFalso"."producao"') && sql.includes('"data_entrada" >=')) {
+      leiturasDaProducao++;
+      const desde = Date.now() - Number(params[0]) * DIA;
+      return producao.filter((l) => l.card_ID && l.data_entrada && Date.parse(l.data_entrada) >= desde);
     }
     return [];
   };
-  return { cards, buscar, consultar, pedidos, novoCard };
+  return { linhas, buscar, consultar, pedidos, novaLinha, leituras: () => leiturasDaProducao };
 }
 
 let parar: (() => Promise<void>) | null = null;
@@ -160,99 +139,144 @@ async function comServidor(env: Record<string, string> = ENV) {
   return { ...f, app, chefe: como('chefe@empresa.com'), ana: como('ana@empresa.com') };
 }
 
-type Resumo = { id: string; claquete: string; praca: string; secao: string; cards: number; abertos: number; arquivados: number; comProducao: number; artesNoAcervo: number; dias: number };
-type Lista = { ligado: boolean; lidoEm: string; cardsLidos: number; pendentes: number; dias: number; casos: Resumo[] };
+type Resumo = { id: string; claquete: string; praca: string; secao: string; cards: number; abertos: number; arquivados: number; artesNoAcervo: number; dias: number };
+type Lista = { ligado: boolean; lidoEm: string; linhasLidas: number; pendentes: number; dias: number; casos: Resumo[] };
 
-describe('a lista das duplicadas', () => {
-  it('agrupa os cards do período, com o contador, a data da leitura e o que cada caso tem', async () => {
-    const { chefe } = await comServidor();
+describe('a lista das duplicadas (só da produção da arte)', () => {
+  it('agrupa as linhas com card e sem filme que entraram no período, sem nenhum pedido ao Trello', async () => {
+    const { chefe, pedidos } = await comServidor();
     const r = await chefe('/api/duplicadas');
     expect(r.status).toBe(200);
     const lista = (await r.json()) as Lista;
-    expect(lista).toMatchObject({ ligado: true, dias: 90, pendentes: 3, cardsLidos: 9 });
+    // 12 linhas: as 17 menos as duas da novela (fora dos 90 dias), a sem card e as duas de filme
+    expect(lista).toMatchObject({ ligado: true, dias: 90, pendentes: 4, linhasLidas: 12 });
     expect(Date.now() - Date.parse(lista.lidoEm)).toBeLessThan(60_000);
     expect(lista.casos.map((c) => [c.claquete, c.praca, c.secao])).toEqual([
       ['Festa na Praça 19/11 REDE', 'G5', 'misto'],
       ['Show da Noite 20/11 SP', 'SP', 'misto'],
+      ['Praia do Sol 22/11', 'G5', 'abertos'],
       ['Cozinha de Vó 18/11', 'G5', 'abertos'],
     ]);
     const show = lista.casos[1];
-    expect(show).toMatchObject({ cards: 2, abertos: 1, arquivados: 1, comProducao: 2, artesNoAcervo: 3, dias: 6 });
-    expect(lista.casos[0]).toMatchObject({ comProducao: 1, artesNoAcervo: 0, dias: 4 });
+    expect(show).toMatchObject({ cards: 2, abertos: 1, arquivados: 1, artesNoAcervo: 3, dias: 6 });
+    expect(lista.casos[0]).toMatchObject({ artesNoAcervo: 0, dias: 4 });
+    expect(pedidos).toEqual([]);
   });
 
-  it('o período escolhe os cards (30 a 730 dias); a busca filtra pela claquete sem mudar o contador', async () => {
-    const { chefe } = await comServidor();
+  it('o período é o da entrada na produção (1 a 730 dias); a busca filtra pela claquete sem mudar o contador', async () => {
+    const { chefe, pedidos } = await comServidor();
     const longe = (await (await chefe('/api/duplicadas?dias=180')).json()) as Lista;
-    expect(longe).toMatchObject({ dias: 180, pendentes: 4, cardsLidos: 11 });
-    expect(longe.casos.at(-1)).toMatchObject({ claquete: 'Novela Sinfonia 12/11', secao: 'arquivados', comProducao: 1, artesNoAcervo: 1 });
+    expect(longe).toMatchObject({ dias: 180, pendentes: 5, linhasLidas: 14 });
+    expect(longe.casos.at(-1)).toMatchObject({ claquete: 'Novela Sinfonia 12/11', secao: 'arquivados', artesNoAcervo: 1 });
     const busca = (await (await chefe('/api/duplicadas?busca=cozinha%20de%20vo')).json()) as Lista;
-    expect(busca.pendentes).toBe(3);
+    expect(busca.pendentes).toBe(4);
     expect(busca.casos.map((c) => c.claquete)).toEqual(['Cozinha de Vó 18/11']);
     for (const dias of ['0', '731', 'abc']) expect((await chefe(`/api/duplicadas?dias=${dias}`)).status).toBe(400);
+    expect(pedidos).toEqual([]);
   });
 
-  it('a leitura do Trello é paginada e guardada por alguns minutos; "renovar" lê de novo', async () => {
-    const { chefe, pedidos } = await comServidor();
+  it('a leitura da produção é guardada por alguns minutos; "renovar" lê de novo', async () => {
+    const { chefe, leituras } = await comServidor();
     await chefe('/api/duplicadas');
-    const paginas = pedidos.filter((p) => p.endsWith('/cards/all')).length;
-    expect(paginas).toBeGreaterThanOrEqual(5);
+    expect(leituras()).toBe(1);
     const antes = (await (await chefe('/api/duplicadas')).json()) as Lista;
-    expect(pedidos.filter((p) => p.endsWith('/cards/all')).length).toBe(paginas);
+    expect(leituras()).toBe(1);
     await new Promise((ok) => setTimeout(ok, 5));
     const depois = (await (await chefe('/api/duplicadas?renovar=1')).json()) as Lista;
-    expect(pedidos.filter((p) => p.endsWith('/cards/all')).length).toBe(paginas * 2);
+    expect(leituras()).toBe(2);
     expect(Date.parse(depois.lidoEm)).toBeGreaterThan(Date.parse(antes.lidoEm));
   });
 
   it('só administradores', async () => {
-    const { ana, pedidos } = await comServidor();
+    const { ana, pedidos, leituras } = await comServidor();
     const r = await ana('/api/duplicadas');
     expect(r.status).toBe(403);
     expect((await ana('/api/duplicadas/caso?id=x')).status).toBe(403);
     expect(pedidos).toEqual([]);
+    expect(leituras()).toBe(0);
   });
 
-  it('sem o quadro configurado, a aba diz que não está ligada', async () => {
-    const { chefe, pedidos } = await comServidor({ ...ENV, TRELLO_QUADRO: '' });
-    expect(await (await chefe('/api/duplicadas')).json()).toMatchObject({ ligado: false, pendentes: 0, casos: [] });
-    expect(pedidos).toEqual([]);
+  it('funciona sem o quadro do Trello (TRELLO_QUADRO) e até sem o Trello; sem a produção da arte, não está ligada', async () => {
+    const semQuadro = await comServidor({ ...ENV, TRELLO_QUADRO: '' });
+    expect(await (await semQuadro.chefe('/api/duplicadas')).json()).toMatchObject({ ligado: true, pendentes: 4 });
+    await parar?.();
+    const semTrello = await comServidor({ ...ENV, TRELLO_KEY: '', TRELLO_TOKEN: '' });
+    expect(await (await semTrello.chefe('/api/duplicadas')).json()).toMatchObject({ ligado: true, pendentes: 4 });
+    await parar?.();
+    const semProducao = await comServidor({ ...ENV, TEABLE_PG_ARTE: '' });
+    expect(await (await semProducao.chefe('/api/duplicadas')).json()).toMatchObject({ ligado: false, pendentes: 0, casos: [] });
+    expect(semProducao.leituras()).toBe(0);
   });
 });
 
 describe('o detalhe de um caso', () => {
-  it('os cards lado a lado, com a lista, o estado, a produção, o acervo, o roteiro no PROMeiro e a sugestão', async () => {
-    const { chefe, cards } = await comServidor();
+  const abrir = async (chefe: (c: string, i?: RequestInit) => Promise<Response>, claquete: string) => {
+    const lista = (await (await chefe('/api/duplicadas')).json()) as Lista;
+    const r = await chefe(`/api/duplicadas/caso?id=${encodeURIComponent(lista.casos.find((c) => c.claquete === claquete)!.id)}`);
+    expect(r.status).toBe(200);
+    return r.json();
+  };
+
+  it('lê do Trello só os cards do caso: a lista, o estado, os membros, os anexos; da produção, o resto', async () => {
+    const { chefe, linhas, pedidos } = await comServidor();
     // o roteiro guardado no PROMeiro que foi para o primeiro show
     await chefe('/api/roteiros/rot-show-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Show da Noite 20/11 SP' }, doc: { type: 'doc', content: [] } }, nArtes: 1 }) });
-    await chefe('/api/roteiros/rot-show-1/trello', { method: 'POST', body: JSON.stringify({ jaEsta: { card: cards.show1.id } }) });
-    const lista = (await (await chefe('/api/duplicadas')).json()) as Lista;
-    const r = await chefe(`/api/duplicadas/caso?id=${encodeURIComponent(lista.casos[1].id)}`);
-    expect(r.status).toBe(200);
-    const caso = await r.json();
-    expect(caso.sugestao).toEqual({ fica: cards.show1.id, saem: [cards.show2.id] });
+    await chefe('/api/roteiros/rot-show-1/trello', { method: 'POST', body: JSON.stringify({ jaEsta: { card: linhas.show1.card_ID } }) });
+    pedidos.length = 0;
+    const caso = await abrir(chefe, 'Show da Noite 20/11 SP');
+    expect(pedidos).toEqual([`GET /1/cards/${linhas.show1.card_ID}`, `GET /1/cards/${linhas.show2.card_ID}`]);
+    expect(caso.sugestao).toEqual({ fica: linhas.show1.card_ID, saem: [linhas.show2.card_ID] });
     expect(caso.cards).toHaveLength(2);
     expect(caso.cards[0]).toMatchObject({
-      id: cards.show1.id,
+      id: linhas.show1.card_ID,
+      noTrello: true,
       numero: 4790,
       nome: 'Show da Noite 20/11 SP',
+      claquete: 'Show da Noite 20/11 SP',
       lista: 'SAÍDA SP',
       arquivado: false,
       exibicao: '2026-11-20T23:00:00.000Z',
-      entrada: '2026-11-13T12:00:00.000Z',
+      entrada: linhas.show1.data_entrada,
       status: ['FINALIZADO'],
       designers: ['Designer Um', 'Designer Dois'],
       membros: ['Pessoa Um', 'Pessoa Dois'],
       checklist: 4,
       anexos: '1 PDF, 2 imagens',
-      producao: true,
       acervo: 3,
       roteiro: { id: 'rot-show-1', claquete: 'Show da Noite 20/11 SP', por: 'Chefe' },
-      url: `https://trello.com/c/${cards.show1.id.slice(-8)}`,
+      url: `https://trello.com/c/${linhas.show1.card_ID!.slice(-8)}`,
       motivo: 'Não foi arquivado na entrada.',
     });
-    expect(caso.cards[1]).toMatchObject({ id: cards.show2.id, numero: 4795, lista: 'ENTRADA SP', arquivado: true, status: ['ENTRADA'], designers: [], membros: [], anexos: '1 PDF', producao: true, acervo: 0, roteiro: null, motivo: 'Arquivado na lista de entrada.' });
+    expect(caso.cards[1]).toMatchObject({ id: linhas.show2.card_ID, noTrello: true, numero: 4795, lista: 'ENTRADA SP', arquivado: true, status: ['ENTRADA'], designers: [], membros: [], anexos: '1 PDF', acervo: 0, roteiro: null, motivo: 'Arquivado sem sair da entrada.' });
     expect(Date.parse(caso.cards[1].criado) - Date.parse(caso.cards[0].criado)).toBeGreaterThan(0);
+  });
+
+  it('o card que não existe mais no Trello aparece como fora do Trello e é o sugerido para sair', async () => {
+    const { chefe, linhas } = await comServidor();
+    const caso = await abrir(chefe, 'Praia do Sol 22/11');
+    expect(caso.sugestao).toEqual({ fica: linhas.praia1.card_ID, saem: [linhas.praia2.card_ID] });
+    expect(caso.cards[0]).toMatchObject({ noTrello: true, lista: 'ENTRADA G5', motivo: 'Está no Trello.' });
+    expect(caso.cards[1]).toMatchObject({
+      id: linhas.praia2.card_ID,
+      noTrello: false,
+      numero: null,
+      nome: '',
+      claquete: 'PRAIA DO SOL 22/11',
+      lista: '',
+      arquivado: false,
+      membros: [],
+      anexos: '',
+      designers: ['Designer Um'],
+      entrada: linhas.praia2.data_entrada,
+      motivo: 'Não está mais no Trello.',
+    });
+  });
+
+  it('sem o Trello configurado, o caso aberto mostra só o que a produção tem', async () => {
+    const { chefe, pedidos, linhas } = await comServidor({ ...ENV, TRELLO_KEY: '', TRELLO_TOKEN: '' });
+    const caso = await abrir(chefe, 'Show da Noite 20/11 SP');
+    expect(pedidos).toEqual([]);
+    expect(caso.cards[1]).toMatchObject({ id: linhas.show2.card_ID, noTrello: null, arquivado: true, lista: '', status: ['ENTRADA'], motivo: 'Arquivado sem sair da entrada.' });
   });
 
   it('o caso que não existe mais no período responde 404', async () => {
@@ -270,14 +294,14 @@ describe('ignorar e reabrir (#66)', () => {
     pedir('/api/duplicadas/ignorar', { method: 'POST', body: JSON.stringify({ id, dias: 90, ...(motivo === undefined ? {} : { motivo }) }) });
 
   it('ignorar tira o caso da lista e do contador, põe em Resolvidas e no Registro, sem escrever no Trello nem no Teable', async () => {
-    const { chefe, cards, pedidos } = await comServidor();
+    const { chefe, linhas, pedidos } = await comServidor();
     const antes = (await (await chefe('/api/duplicadas')).json()) as ListaComResolvidas;
     const cozinha = antes.casos.find((c) => c.claquete === 'Cozinha de Vó 18/11')!;
     expect(antes.resolvidas).toEqual([]);
     const r = await ignorar(chefe, cozinha.id, '  São exibições diferentes  ');
     expect(r.status).toBe(200);
     const depois = (await (await chefe('/api/duplicadas')).json()) as ListaComResolvidas;
-    expect(depois.pendentes).toBe(2);
+    expect(depois.pendentes).toBe(3);
     expect(depois.casos.map((c) => c.claquete)).not.toContain('Cozinha de Vó 18/11');
     expect(depois.resolvidas).toEqual([
       expect.objectContaining({ id: cozinha.id, claquete: 'Cozinha de Vó 18/11', praca: 'G5', cards: 2, por: 'Chefe', motivo: 'São exibições diferentes' }),
@@ -285,7 +309,7 @@ describe('ignorar e reabrir (#66)', () => {
     expect(Date.now() - Date.parse(depois.resolvidas[0].em)).toBeLessThan(60_000);
     const { registro } = (await (await chefe('/api/duplicadas/registro')).json()) as Registro;
     expect(registro).toEqual([
-      expect.objectContaining({ acao: 'ignorar', caso: cozinha.id, claquete: 'Cozinha de Vó 18/11', praca: 'G5', cards: [cards.cozinha1.id, cards.cozinha2.id], por: 'Chefe', motivo: 'São exibições diferentes', podeReabrir: true }),
+      expect.objectContaining({ acao: 'ignorar', caso: cozinha.id, claquete: 'Cozinha de Vó 18/11', praca: 'G5', cards: [linhas.cozinha1.card_ID, linhas.cozinha2.card_ID], por: 'Chefe', motivo: 'São exibições diferentes', podeReabrir: true }),
     ]);
     expect(pedidos.filter((p) => !p.startsWith('GET '))).toEqual([]);
   });
@@ -299,7 +323,7 @@ describe('ignorar e reabrir (#66)', () => {
     const r = await chefe('/api/duplicadas/reabrir', { method: 'POST', body: JSON.stringify({ id: festa.id }) });
     expect(r.status).toBe(200);
     const lista = (await (await chefe('/api/duplicadas')).json()) as ListaComResolvidas;
-    expect(lista).toMatchObject({ pendentes: 3, resolvidas: [], totalResolvidas: 0 });
+    expect(lista).toMatchObject({ pendentes: 4, resolvidas: [], totalResolvidas: 0 });
     expect(lista.casos[0].id).toBe(festa.id);
     const { registro } = (await (await chefe('/api/duplicadas/registro')).json()) as Registro;
     expect(registro.map((l) => [l.acao, l.claquete, l.motivo, l.podeReabrir])).toEqual([
@@ -310,15 +334,15 @@ describe('ignorar e reabrir (#66)', () => {
     expect((await chefe('/api/duplicadas/reabrir', { method: 'POST', body: JSON.stringify({ id: festa.id }) })).status).toBe(404);
   });
 
-  it('o caso ignorado volta sozinho quando entra um card novo no grupo', async () => {
-    const { chefe, novoCard } = await comServidor();
+  it('o caso ignorado volta sozinho quando entra uma linha (um card) nova no grupo', async () => {
+    const { chefe, novaLinha } = await comServidor();
     const { casos } = (await (await chefe('/api/duplicadas')).json()) as Lista;
     const cozinha = casos.find((c) => c.claquete === 'Cozinha de Vó 18/11')!;
     await ignorar(chefe, cozinha.id, 'Exibições diferentes');
-    expect(((await (await chefe('/api/duplicadas')).json()) as Lista).pendentes).toBe(2);
-    novoCard(0.5, 'COZINHA DE VÓ 18/11');
+    expect(((await (await chefe('/api/duplicadas')).json()) as Lista).pendentes).toBe(3);
+    novaLinha(0.5, 'COZINHA DE VÓ 18/11');
     const lista = (await (await chefe('/api/duplicadas?renovar=1')).json()) as ListaComResolvidas;
-    expect(lista.pendentes).toBe(3);
+    expect(lista.pendentes).toBe(4);
     expect(lista.casos.find((c) => c.id === cozinha.id)).toMatchObject({ cards: 3 });
     expect(lista.resolvidas).toEqual([]);
   });

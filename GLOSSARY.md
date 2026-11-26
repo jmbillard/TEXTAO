@@ -126,8 +126,12 @@ nenhuma bate. Sem nada salvo na Configuração, valem as **praças de fábrica**
 _Evitar_: região, emissora
 
 **Duplicada**:
-Dois ou mais cards do quadro com a mesma claquete (pela key, sem acento, caixa e pontuação), a mesma praça e a mesma
-versão: um reenvio, um card criado à mão em cima de outro. Versões diferentes (-2, V2, B, Opção N) não são duplicadas.
+Duas ou mais linhas da produção da arte (ARTE_producao), cada uma de um card, com a mesma claquete (pela key, sem
+acento, caixa e pontuação), a mesma praça (a da coluna da linha; sem ela, a que a claquete indica) e a mesma versão: um
+reenvio, um card criado à mão em cima de outro. Versões diferentes (-2, V2, B, Opção N) não são duplicadas. Só contam
+as linhas com card_ID, que não são de filme e que entraram no período (data_entrada), abertas e arquivadas: a lista
+não lê o quadro do Trello, porque um card qualquer do quadro (que não é de roteiro) não é duplicada. Só o caso aberto
+lê do Trello o que só ele tem, pelo card_ID dos cards do caso; o card apagado lá aparece como "não está mais no Trello".
 Cada grupo é um **caso**, que a aba Duplicadas dos Cadastros mostra só para administradores. **Ignorar** ("não é
 duplicada") tira o caso da lista sem mudar nada no Trello nem no Teable: ele vai para **Resolvidas** e para o
 **Registro** (quem fez o quê e quando, com o motivo), volta com **Reabrir** e volta sozinho quando entra card novo no

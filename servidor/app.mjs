@@ -1178,7 +1178,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /**
    * Aba Duplicadas dos Cadastros (#65), só para administradores: a lista dos casos do período (?dias=, 1 a 730, 90 sem
-   * dizer; ?busca=; ?renovar=1 lê o Trello de novo), o detalhe de um caso (?id=) e o registro. Ignorar e reabrir (#66,
+   * dizer; ?busca=; ?renovar=1 lê a produção da arte de novo), o detalhe de um caso (?id=, o único que lê o Trello) e o
+   * registro. Ignorar e reabrir (#66,
    * POST { id, dias, motivo }) só anotam no registro do PROMeiro: nada muda no Trello nem no Teable.
    */
   async function rotaDasDuplicadas(req, res, eu, caminho) {
@@ -1212,7 +1213,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return caso ? json(res, 200, caso) : json(res, 404, { erro: 'Este caso não está mais entre as duplicadas do período.' });
     } catch (e) {
       console.warn(`[duplicadas] ${e instanceof Error ? e.message : e}`);
-      return json(res, 502, { erro: `Não consegui ler as duplicadas (Trello ou produção da arte): ${e instanceof Error ? e.message : e}` });
+      return json(res, 502, { erro: `Não consegui ler as duplicadas (produção da arte ou Trello): ${e instanceof Error ? e.message : e}` });
     }
   }
 
