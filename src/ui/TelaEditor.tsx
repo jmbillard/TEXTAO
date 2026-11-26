@@ -27,7 +27,7 @@ import {
 import { alternarJaExiste, alvosDoTeclado, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
 import { agruparPorDia, pedeRevisao, pendentes } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
-import { nomeDaSigla,
+import {
   ETIQUETAS, juntarTipos, metaVazia, NOMES_COLUNAS, nomesDosTipos, normalizarSubtipo, tiposDaArte, novoId, SUBTIPOS_ARTE, type ArteDoAcervo, type Meta, type Pessoa, type Roteiro, type SubtipoArte,
 } from '../modelo/tipos';
 import { Claquete, EscolhaDeTipo, Marca, MenuDeOpcoes, Miniatura, PalpiteAMao, TextoDaClaquete, useSaida, type PalpiteNoCampo } from './pecas';
@@ -1139,7 +1139,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     const chaves = (l: ArteDoAcervo[] | undefined) => (l ?? []).map((a) => a.chave).sort().join('|');
     if (chaves(ja) !== chaves(meta.jaExistem)) mudarMeta({ jaExistem: ja.length ? ja : undefined }, true);
   }, [acervo, saida.artes, liberado]); // eslint-disable-line react-hooks/exhaustive-deps
-  const doAcervo = useMemo(() => new Map((meta.jaExistem ?? []).map((a) => [a.chave, a])), [meta.jaExistem]);
   // anterior e seguinte na ordem da fila de revisão (este roteiro incluído), para andar por ela
   const vizinhos = useMemo(() => {
     const { proximos } = agruparPorDia(pendentes(fila).filter((r) => r.id === inicial.id || pedeRevisao(r)));
@@ -1532,16 +1531,14 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
           <Vagas itens={artes} chave={(a) => a.id}>
           {(a) => {
             const k = chaveDeArte(a.texto);
-            const ja = doAcervo.get(k);
             const marcada = marcadasJa.has(k) ? 'existe' : marcadasFora.has(k) ? 'fora' : null;
             const cx = complexidadeDaArte(meta, k);
             return (
             <li
               key={a.id}
               data-id={a.id}
-              className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id || arteDoBalao?.id === a.id ? 'realcada' : ''} ${ja || marcada === 'existe' ? 'existe' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
+              className={`${ativa?.id === a.id ? 'ativa' : ''} ${realce === a.id || arteDoBalao?.id === a.id ? 'realcada' : ''} ${marcada ? `marcada ${marcada}` : ''} ${selecionadas.includes(a.id) ? 'selecionada' : ''}`}
               aria-selected={selecionadas.length ? selecionadas.includes(a.id) : undefined}
-              title={ja ? `Já existe: ${ja.claquete || 'acervo da atração'}${ja.tipo ? ` · ${ja.tipo.split(', ').map(nomeDaSigla).join(', ')}` : ''}` : undefined}
               // no celular não há mouse: o realce é o do toque no nome (apontarNoTexto)
               {...(!celular && {
                 onMouseEnter: () => {

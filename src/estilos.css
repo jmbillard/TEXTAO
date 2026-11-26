@@ -1952,7 +1952,8 @@ a.ficha-marca.trello { text-decoration: none; }
 .artes li + li { box-shadow: none; }
 .artes.so-lista li { border-radius: 6px; }
 
-/* acervo: a arte que a atração já tem fica com o número apagado (a claquete de onde veio, na dica) */
+/* a arte marcada como já existe (à mão ou pelo acervo) fica com o número apagado. A que só está no acervo, sem a
+   marca, vai ser produzida de novo: fica igual às outras a produzir, sem sinal na linha */
 .artes li.existe .b { background: var(--neutro); color: var(--tinta3); }
 .pacote-cad { font-size: 12px; color: var(--tinta3); }
 /* realce dos itens de ponta a ponta do cartão, sem o recorte arredondado */
