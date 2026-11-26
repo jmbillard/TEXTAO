@@ -75,6 +75,10 @@ export function criarAcervo(env, deps = {}) {
     producao: tabela(nomeLimpoPg(env.TEABLE_PG_ARTE)),
     exibicoes: tabela(nomeLimpoPg(env.TEABLE_PG_EXIBICOES)),
   };
+  // os roteiros enviados (as artes da produção da arte), para a grafia da importação: na convivência com o n8n, a
+  // base de leitura (TEABLE_PG_ARTE_LEITURA, "esquema.tabela"), como o andamento; sem ela, a produção do app
+  const leitura = env.TEABLE_PG_ARTE_LEITURA ? nomesDoPg(env, env.TEABLE_PG_ARTE_LEITURA) : null;
+  t.roteiros = leitura?.esquema && leitura.tabela ? `"${leitura.esquema}"."${leitura.tabela}"` : t.producao;
   const api = { url: (env.TEABLE_URL || '').replace(/\/+$/, ''), token: env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '', tabela: env.TEABLE_ACERVO || '' };
   const buscar = deps.buscar ?? fetch;
   let banco = null;
@@ -312,15 +316,53 @@ export function criarAcervo(env, deps = {}) {
   /** As linhas do acervo próprio da atração (sem as de filme), com o id. */
   const linhasDa = async (atracao) => (await todas()).filter((l) => !l.filmeId && nomeComparavel(l.atracao) === nomeComparavel(atracao));
 
+  // as artes de cada roteiro enviado, com a atração, guardadas por 10 min (só para a grafia da importação)
+  let memoRoteiros = { em: 0, linhas: null };
+  async function artesDosRoteiros() {
+    if (!t.roteiros || !consultar) return [];
+    if (memoRoteiros.linhas && Date.now() - memoRoteiros.em < 600_000) return memoRoteiros.linhas;
+    let linhas = [];
+    try {
+      linhas = (await consultar(`SELECT "atracao", "artes" FROM ${t.roteiros} WHERE "artes" IS NOT NULL`)).map((l) => ({
+        atracao: titulo(l.atracao),
+        // "A | B"; a arte de dois tipos vem uma vez por tipo, com a sigla entre parênteses no fim ("HOJE (RDP)"): vale
+        // também o texto sem ela ("ELIANA (AO VIVO)" fica com as duas formas: a grafia só casa pela chave inteira)
+        artes: String(l.artes ?? '')
+          .split(/\s*\|\s*|\n+/)
+          .flatMap((a) => [...new Set([a.trim(), a.replace(/\s*\([A-Z]{2,}(?: [A-Z]+)*\)$/, '').trim()])])
+          .filter(Boolean),
+      }));
+    } catch (e) {
+      console.warn(`[acervo] não li os roteiros para a grafia: ${e instanceof Error ? e.message : e}`);
+    }
+    memoRoteiros = { em: Date.now(), linhas };
+    return linhas;
+  }
+
   /**
-   * A prévia da importação por CSV (ADR 0005): cada linha do CSV classificada contra o acervo da atração, o placar e
-   * as opções de tipo. Nada é gravado. @returns { antes, tipos, linhas, placar }
+   * As fontes da grafia da importação, além do acervo da atração: as artes dos roteiros dela, as dos roteiros das
+   * outras e o acervo das outras (os filmes também).
+   */
+  async function grafiasPara(atracao) {
+    const n = nomeComparavel(atracao);
+    const roteiros = await artesDosRoteiros();
+    return {
+      roteirosDaAtracao: roteiros.filter((r) => nomeComparavel(r.atracao) === n).flatMap((r) => r.artes),
+      roteiros: roteiros.filter((r) => nomeComparavel(r.atracao) !== n).flatMap((r) => r.artes),
+      acervo: (await todas()).filter((l) => l.filmeId || nomeComparavel(l.atracao) !== n).map((l) => l.arte),
+    };
+  }
+
+  /**
+   * A prévia da importação por CSV (ADR 0005): cada linha do CSV classificada contra o acervo da atração, com as
+   * regras de conversão (a grafia pelas fontes, na ordem), o placar e as opções de tipo. Nada é gravado.
+   * @returns { antes, tipos, linhas, placar }
    */
   async function previaDaImportacao(atracao, csv) {
     await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
     const acervo = await linhasDa(atracao);
-    return { antes: acervo.length, tipos, ...classificar({ csv, acervo, tipos }) };
+    return { antes: acervo.length, tipos, ...classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao) }) };
   }
 
   /**

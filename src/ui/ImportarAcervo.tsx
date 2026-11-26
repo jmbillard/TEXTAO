@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { gravarImportacao, type EstadoDaImportacao, type LinhaDaImportacao, type PreviaDaImportacao, type ResultadoDaImportacao } from '../dados/armazenamento';
+import { gravarImportacao, type EstadoDaImportacao, type LinhaDaImportacao, type MudancaDaImportacao, type PreviaDaImportacao, type ResultadoDaImportacao } from '../dados/armazenamento';
 import { Icone } from './icones';
 import { chaveDeBusca, plural } from './util';
 
@@ -86,6 +86,28 @@ const FILTROS: [Filtro, string][] = [
 const MAXIMO = 400;
 /** O que a linha faz no acervo ao gravar: só a nova e a que completa o acervo gravam; essas a pessoa pode tirar. */
 const grava = (e: EstadoDaImportacao) => e === 'nova' || e === 'completa';
+
+/** O que as regras de conversão mudaram do nome para a arte: "antes → depois · regra", uma depois da outra. */
+function RegrasDaLinha({ mudancas }: { mudancas: MudancaDaImportacao[] }) {
+  return (
+    <span className="regras">
+      {mudancas.map((m, i) => (
+        <span key={i} className="regra">
+          {m.depois ? (
+            <>
+              {m.antes} → <i>{m.depois}</i>
+            </>
+          ) : (
+            <>
+              <i>{m.antes}</i> sai
+            </>
+          )}{' '}
+          · {m.regra}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 /** A conferência antes de gravar: o placar, os filtros, a busca, as linhas e o pé com o Gravar. */
 export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa: PreviaDaImportacao; cancelar: () => void; gravado: (r: ResultadoDaImportacao) => void }) {
@@ -185,10 +207,13 @@ export function ConferenciaDaImportacao({ previa, cancelar, gravado }: { previa:
               {l.nome}
             </span>
             <span className="seta">→</span>
-            <span className="arte">{l.arte || '—'}</span>
+            <span className="arte-col">
+              <span className="arte">{l.arte || '—'}</span>
+              {l.mudancas.length > 0 && <RegrasDaLinha mudancas={l.mudancas} />}
+            </span>
             <span className="tipo">{l.tipo}</span>
             <span className="est">
-              <span className={`etq ${e}`}>{ROTULO[e]}</span>
+              <span className={`etq ${e}`}>{e === 'copia' && l.versao ? 'versão' : ROTULO[e]}</span>
               {(tirada ? 'tirada da importação' : l.motivo) && <span className="mot">{tirada ? 'tirada da importação' : l.motivo}</span>}
             </span>
             {grava(l.estado) ? (

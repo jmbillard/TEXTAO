@@ -564,6 +564,16 @@ export interface LinhaDaImportacao {
   tipo: string;
   estado: EstadoDaImportacao;
   motivo: string;
+  /** a marca de versão tirada do fim do nome ("VERT", "D", "6S"; '' sem versão): a versão é a mesma arte */
+  versao: string;
+  /** o que as regras de conversão mudaram do nome para a arte, na ordem: "antes → depois · regra" (depois '' é o que saiu) */
+  mudancas: MudancaDaImportacao[];
+}
+/** Uma regra de conversão aplicada: hora, abreviação, acento, versão ou a grafia de uma fonte. */
+export interface MudancaDaImportacao {
+  antes: string;
+  depois: string;
+  regra: string;
 }
 /** A prévia da importação: o que o CSV faria no acervo da atração, antes de gravar. */
 export interface PreviaDaImportacao {

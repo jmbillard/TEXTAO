@@ -156,9 +156,14 @@ gravar, na ficha da atração. Só administradores e só atração de acervo pr�
 - **nova**: a arte não está no acervo da atração;
 - **completa o acervo**: a mesma arte está lá sem tipo, e só ganha o tipo;
 - **já no acervo**: a mesma arte (pela chave) com o mesmo tipo; não muda nada;
-- **cópia**: o arquivo copiado ("- Copy", "(1)") ou a mesma arte repetida no CSV; conta uma vez;
+- **cópia** (o filtro "Versões e cópias"): o arquivo copiado ("- Copy", "(1)"), a versão da mesma arte (D/E, VERT,
+  6S…) ou a mesma arte repetida no CSV; conta uma vez e não é gravada;
 - **fora**: a pasta, o nome sem "SIGLA - ", ou a linha que quem confere tirou;
 - **para decidir**: a pergunta que a conferência faz antes de gravar.
+As **regras de conversão** escrevem a arte como o roteiro escreve, e cada linha mostra o "antes → depois · regra": a hora
+("2 10" → "2:10", com o dia junto e o período no texto), PROX → PRÓXIMO (PRÓXIMA antes do dia da semana), os acentos de
+um dicionário fechado (NAO → NÃO) e a grafia da primeira fonte que tem a arte: o acervo da atração, os roteiros dela,
+os roteiros de todas, o acervo de todas.
 Gravar relê o acervo, cria as novas e dá o tipo às que completam; o resultado é o total "antes → depois".
 _Evitar_: carga, upload, sincronizar
 

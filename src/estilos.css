@@ -3021,6 +3021,10 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .conf-linha .seta { color: var(--tinta3); }
 .conf-linha .arte { font: 600 14px var(--sans); color: var(--tinta); overflow-wrap: anywhere; }
 .conf-linha .tipo { font: 600 12px var(--mono); color: var(--tinta2); }
+/* o rodapé da arte: o que as regras de conversão mudaram ("antes → depois · regra"), o depois em destaque */
+.conf-linha .arte-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.conf-linha .regras { display: flex; flex-wrap: wrap; column-gap: 10px; font: 400 11.5px/1.35 var(--sans); color: var(--tinta3); }
+.conf-linha .regra i { font-style: normal; color: var(--ultra-tinta); background: var(--ultra-suave); border-radius: 3px; padding: 0 3px; }
 .conf-linha.e-ja .arte, .conf-linha.e-copia .arte, .conf-linha.e-fora .arte { color: var(--tinta3); text-decoration: line-through; text-decoration-color: var(--regua-forte); }
 .conf-linha.e-decidir { background: color-mix(in srgb, var(--ultra) 6%, var(--papel)); }
 .conf-linha .est { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

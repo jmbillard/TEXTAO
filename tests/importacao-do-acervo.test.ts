@@ -22,7 +22,17 @@ describe('classificar o CSV da pasta de output', () => {
   it('cada arquivo vira uma arte: "SIGLA - " é o tipo e o resto é o texto', () => {
     const r = classificar({ csv: csv('CRT - AMANHA DEPOIS DO SHOW.mov'), acervo: [], tipos: TIPOS });
     expect(r.linhas).toEqual([
-      { n: 2, nome: 'CRT - AMANHA DEPOIS DO SHOW.mov', caminho: `${PASTA}/CRT - AMANHA DEPOIS DO SHOW.mov`, arte: 'AMANHA DEPOIS DO SHOW', tipo: 'CRT', estado: 'nova', motivo: '' },
+      {
+        n: 2,
+        nome: 'CRT - AMANHA DEPOIS DO SHOW.mov',
+        caminho: `${PASTA}/CRT - AMANHA DEPOIS DO SHOW.mov`,
+        arte: 'AMANHÃ DEPOIS DO SHOW',
+        tipo: 'CRT',
+        estado: 'nova',
+        motivo: '',
+        versao: '',
+        mudancas: [{ antes: 'AMANHA', depois: 'AMANHÃ', regra: 'acento' }],
+      },
     ]);
     expect(r.placar).toEqual({ nova: 1, completa: 0, ja: 0, copia: 0, fora: 0, decidir: 0 });
   });
@@ -115,7 +125,7 @@ describe('classificar o CSV da pasta de output', () => {
       { id: 'recA2', arte: 'SÁBADO', tipo: 'RDP' },
     ];
     const r = classificar({ csv: csv('CRT - AMANHA DEPOIS DO SHOW.mov', 'CRT - SABADO.mov'), acervo, tipos: TIPOS });
-    expect(resumo(r.linhas)).toEqual(['CRT - AMANHA DEPOIS DO SHOW.mov → ja AMANHA DEPOIS DO SHOW (CRT)', 'CRT - SABADO.mov → nova SABADO (CRT)']);
+    expect(resumo(r.linhas)).toEqual(['CRT - AMANHA DEPOIS DO SHOW.mov → ja AMANHÃ DEPOIS DO SHOW (CRT)', 'CRT - SABADO.mov → nova SÁBADO (CRT)']);
     expect(r.linhas[0].motivo).toBe('“Amanhã depois do show” (CRT)');
     expect(r.placar).toMatchObject({ nova: 1, ja: 1 });
   });
@@ -129,6 +139,109 @@ describe('classificar o CSV da pasta de output', () => {
   });
 });
 
+type Mudanca = { antes: string; depois: string; regra: string };
+type LinhaComRegras = Linha & { mudancas: Mudanca[]; versao: string };
+/** O que mudou na linha, como a conferência mostra: "antes → depois · regra". */
+const mudou = (l: LinhaComRegras) => l.mudancas.map((m) => `${m.antes} → ${m.depois} · ${m.regra}`);
+
+describe('as regras de conversão (#59): cada linha diz o antes → depois e a regra', () => {
+  it('a hora "2 10" vira "2:10"; o dia fica junto ("HOJE 3:00") e o período fica no texto', () => {
+    const r = classificar({ csv: csv('RDP - 2 10.mov', 'CRT - HOJE 3 00.mov', 'CRT - 3 40 DA TARDE.mov', 'CRT - DOMINGO 10H.mov', 'RDP - 11h30.mov'), acervo: [], tipos: TIPOS });
+    expect(r.linhas.map((l: LinhaComRegras) => [l.arte, mudou(l)])).toEqual([
+      ['2:10', ['2 10 → 2:10 · hora']],
+      ['HOJE 3:00', ['3 00 → 3:00 · hora']],
+      ['3:40 DA TARDE', ['3 40 → 3:40 · hora']],
+      ['DOMINGO 10:00', ['10H → 10:00 · hora']],
+      ['11:30', ['11H30 → 11:30 · hora']],
+    ]);
+  });
+
+  it('o número que não é hora fica como está (25 99, DIA 5)', () => {
+    const r = classificar({ csv: csv('RDP - 25 99.mov', 'CRT - DIA 5.mov', 'CRT - TEMPORADA 2024.mov'), acervo: [], tipos: TIPOS });
+    expect(r.linhas.map((l: LinhaComRegras) => [l.arte, l.mudancas])).toEqual([
+      ['25 99', []],
+      ['DIA 5', []],
+      ['TEMPORADA 2024', []],
+    ]);
+  });
+
+  it('PROX vira PRÓXIMO; antes do dia da semana (e de SEMANA), PRÓXIMA', () => {
+    const r = classificar({ csv: csv('CRT - PROX SABADO.mov', 'CRT - PROX SEGUNDA.mov', 'CRT - PROX. SEMANA.mov', 'RDP - PROX CAPITULO.mov', 'CRT - PROX SEXTA 9 30.mov'), acervo: [], tipos: TIPOS });
+    expect(r.linhas.map((l: LinhaComRegras) => [l.arte, mudou(l)])).toEqual([
+      ['PRÓXIMO SÁBADO', ['PROX → PRÓXIMO · abreviação', 'SABADO → SÁBADO · acento']],
+      ['PRÓXIMA SEGUNDA', ['PROX → PRÓXIMA · abreviação']],
+      ['PRÓXIMA SEMANA', ['PROX → PRÓXIMA · abreviação']],
+      ['PRÓXIMO CAPÍTULO', ['PROX → PRÓXIMO · abreviação', 'CAPITULO → CAPÍTULO · acento']],
+      ['PRÓXIMA SEXTA 9:30', ['PROX → PRÓXIMA · abreviação', '9 30 → 9:30 · hora']],
+    ]);
+  });
+
+  it('os acentos do dicionário (NAO, AMANHA, SABADO…), palavra a palavra; a palavra fora do dicionário fica como está', () => {
+    const r = classificar({ csv: csv('RDP - TEM OU NAO TEM.mov', 'CRT - AMANHA 2 10.mov', 'CRT - TODO SABADO 10 DA NOITE.mov', 'RDP - JOSE DA SILVA.mov', 'CRT - QUAL E.mov', 'CRT - JÁ É SÁBADO.mov'), acervo: [], tipos: TIPOS });
+    expect(r.linhas.map((l: LinhaComRegras) => [l.arte, mudou(l)])).toEqual([
+      ['TEM OU NÃO TEM', ['NAO → NÃO · acento']],
+      ['AMANHÃ 2:10', ['2 10 → 2:10 · hora', 'AMANHA → AMANHÃ · acento']],
+      ['TODO SÁBADO 10 DA NOITE', ['SABADO → SÁBADO · acento']], // "10" sozinho não é hora
+      ['JOSE DA SILVA', []], // o acento de nome próprio vem das fontes da grafia, não do dicionário
+      ['QUAL É', ['QUAL E → QUAL É · acento']],
+      ['JÁ É SÁBADO', []], // o que já vem com acento não muda
+    ]);
+  });
+
+  it('as versões (D/E, VERT, 6S…) são a mesma arte: vão para "Versões e cópias", e a primeira sem versão é a que vale', () => {
+    const r = classificar({
+      csv: csv('CRT - TODO SABADO VERT.mov', 'CRT - TODO SABADO 6S.mov', 'CRT - TODO SABADO.mov', 'RDP - 10 50 DA NOITE D.mov', 'RDP - 10 50 DA NOITE E.mov', 'RDP - HOJE VERT 15S.mov', 'RDP - D.mov'),
+      acervo: [],
+      tipos: TIPOS,
+    });
+    expect(r.linhas.map((l: LinhaComRegras) => [l.arte, l.estado, l.versao, l.motivo])).toEqual([
+      ['TODO SÁBADO', 'copia', 'VERT', 'versão VERT da linha 4 (CRT - TODO SABADO.mov)'],
+      ['TODO SÁBADO', 'copia', '6S', 'versão 6S da linha 4 (CRT - TODO SABADO.mov)'],
+      ['TODO SÁBADO', 'nova', '', ''],
+      ['10:50 DA NOITE', 'nova', 'D', 'versão D sem o original no CSV: vale como a arte'],
+      ['10:50 DA NOITE', 'copia', 'E', 'versão E da linha 5 (RDP - 10 50 DA NOITE D.mov)'],
+      ['HOJE', 'nova', 'VERT 15S', 'versão VERT 15S sem o original no CSV: vale como a arte'],
+      ['D', 'nova', '', ''], // a marca sozinha é o texto, não uma versão
+    ]);
+    // o texto que uma fonte da grafia escreve inteiro não tem versão
+    const vitamina = classificar({ csv: csv('RDP - VITAMINA D.mov'), acervo: [], tipos: TIPOS, grafias: { roteiros: ['VITAMINA D'] } });
+    expect(vitamina.linhas.map((l: LinhaComRegras) => [l.arte, l.estado, l.versao])).toEqual([['VITAMINA D', 'nova', '']]);
+    expect(mudou(r.linhas[0])).toEqual(['VERT →  · versão', 'SABADO → SÁBADO · acento']);
+    expect(r.placar).toMatchObject({ nova: 4, copia: 3 });
+  });
+
+  it('a grafia vem da primeira fonte que tem a arte: acervo da atração, roteiros da atração, roteiros de todas, acervo de todas', () => {
+    const nomes = ['RDP - CAUA FICTICIO.mov', 'RDP - BANDA DO ZE.mov', 'RDP - JOAO DA FICCAO.mov', 'RDP - MARIA INVENTADA.mov', 'RDP - NINGUEM SABE.mov'];
+    const acervo = [{ id: 'rec1', arte: 'Cauã Fictício', tipo: 'CRT' }];
+    const grafias = {
+      roteirosDaAtracao: ['CAUA FICTICIO', 'BANDA DO ZÉ', 'BANDA DO ZÉ'],
+      roteiros: ['CAUÃ FICTÍCIO!', 'BANDA DO ZÉ!', 'JOÃO DA FICÇÃO', 'JOAO DA FICCAO', 'JOAO DA FICCAO'],
+      acervo: ['CAUÃ FICTICIO', 'JOAO DA FICCAO', 'MARIA INVENTADA (CRT)', 'Maria Inventadá'],
+    };
+    const r = classificar({ csv: csv(...nomes), acervo, tipos: TIPOS, grafias });
+    expect(r.linhas.map((l: LinhaComRegras) => [l.arte, mudou(l)])).toEqual([
+      ['CAUÃ FICTÍCIO', ['CAUA FICTICIO → CAUÃ FICTÍCIO · grafia do acervo da atração']],
+      ['BANDA DO ZÉ', ['BANDA DO ZE → BANDA DO ZÉ · grafia dos roteiros da atração']],
+      ['JOÃO DA FICÇÃO', ['JOAO DA FICCAO → JOÃO DA FICÇÃO · grafia dos roteiros']], // a forma com acento ganha da mais escrita
+      ['MARIA INVENTADÁ', ['MARIA INVENTADA → MARIA INVENTADÁ · grafia do acervo']],
+      ['NINGUEM SABE', []],
+    ]);
+  });
+
+  it('a grafia passa por cima do dicionário: a fonte que escreve sem acento decide, e nada muda', () => {
+    const r = classificar({ csv: csv('CRT - NAO PERCA.mov', 'CRT - SABADO DE SOL.mov'), acervo: [{ id: 'rec1', arte: 'NAO PERCA', tipo: 'RDP' }], tipos: TIPOS, grafias: { roteiros: ['SÁBADO DE SOL!'] } });
+    expect(r.linhas.map((l: LinhaComRegras) => [l.arte, mudou(l)])).toEqual([
+      ['NAO PERCA', []],
+      ['SÁBADO DE SOL!', ['SABADO DE SOL → SÁBADO DE SOL! · grafia dos roteiros']],
+    ]);
+  });
+
+  it('o nome do Mac (acento decomposto, NFD) é lido como o mesmo texto', () => {
+    const r = classificar({ csv: csv('CRT - SÁBADO 2 10.mov'), acervo: [], tipos: TIPOS });
+    expect(r.linhas.map((l: LinhaComRegras) => [l.arte, mudou(l)])).toEqual([['SÁBADO 2:10', ['2 10 → 2:10 · hora']]]);
+  });
+});
+
 /* ---------- a API: a prévia e o gravar, com o Teable de mentira ---------- */
 
 const ENV = {
@@ -139,9 +252,10 @@ const ENV = {
   TEABLE_PG_ESQUEMA: 'bseBase',
   TEABLE_PG_ACERVO: 'acervo',
   TEABLE_PG_ATRACOES: 'atracoes',
+  TEABLE_PG_ARTE: 'producao',
 };
 const PROGRAMA = { id: 'recProg', title: 'Programa Fictício' };
-type LinhaDoTeable = { id: string; arte: string; tipo: string | null; atracao: { id: string; title: string }[]; claquete: unknown[]; filme: null };
+type LinhaDoTeable = { id: string; arte: string; tipo: string | null; atracao: { id: string; title: string }[]; claquete: unknown[]; filme: null | { id: string; title: string } };
 type Pedido = { metodo: string; url: string; corpo: null | { typecast?: boolean; records: { id?: string; fields: Record<string, unknown> }[] } };
 
 /** O Teable de mentira: o Postgres (o acervo, que muda com o que a API grava, e as atrações) e a API (os campos e os
@@ -152,6 +266,7 @@ function teableFalso() {
     { id: 'recA2', arte: 'PLATEIA', tipo: null, atracao: [PROGRAMA], claquete: [], filme: null },
     { id: 'recA3', arte: 'SÁBADO', tipo: 'RDP', atracao: [PROGRAMA], claquete: [], filme: null },
     { id: 'recOutra', arte: 'HOJE', tipo: 'RDP', atracao: [{ id: 'recNovela', title: 'Novela Fictícia' }], claquete: [], filme: null },
+    { id: 'recDoFilme', arte: 'SESSÃO ÍNTIMA', tipo: 'CRT', atracao: [], claquete: [], filme: { id: 'recFilme', title: 'Filme Fictício' } },
   ];
   const atracoes = [
     { id: 'recProg', atracao: 'Programa Fictício', acervo: 'próprio' },
@@ -159,9 +274,16 @@ function teableFalso() {
     { id: 'recSessao', atracao: 'Sessão Fictícia', acervo: 'do filme' },
     { id: 'recShows', atracao: 'Shows Fictícios', acervo: 'sem acervo' },
   ];
+  // a produção da arte: as artes de cada roteiro enviado ("A | B", a de dois tipos uma vez por tipo), com a atração
+  const roteiros = [
+    { atracao: JSON.stringify([PROGRAMA]), artes: 'VEM AÍ (RDP) | VEM AÍ (LETT) | PLATEIA' },
+    { atracao: [{ id: 'recNovela', title: 'Novela Fictícia' }], artes: 'VEM AÍ! | JOÃO FICTÍCIO' },
+    { atracao: null, artes: null },
+  ];
   const leituras = { acervo: 0 };
   const consultar = async (sql: string, params: unknown[] = []) => {
     if (sql.includes('"bseBase"."acervo"')) return leituras.acervo++, linhas.map((l) => ({ ...l }));
+    if (sql.includes('"bseBase"."producao"')) return roteiros;
     if (sql.includes('"atracoes"') && sql.includes('"acervo"')) return atracoes;
     if (sql.includes('"atracoes"')) return atracoes.filter((a) => a.atracao.toLowerCase() === String(params[0]).toLowerCase()).map(({ id }) => ({ id }));
     return [];
@@ -218,14 +340,34 @@ describe('a prévia da importação (POST /api/acervo/importar/previa)', () => {
       expect(previa).toMatchObject({ atracao: 'Programa Fictício', arquivo: 'PROGRAMA_SERVICO.csv', antes: 3, tipos: ['CRT', 'RDP', 'LETT', 'FOTO', 'LOGO', 'LOGO GLOBO'] });
       expect(previa.placar).toEqual({ nova: 2, completa: 1, ja: 1, copia: 1, fora: 2, decidir: 0 });
       expect(resumo(previa.linhas)).toEqual([
-        'CRT - AMANHA DEPOIS DO SHOW.mov → ja AMANHA DEPOIS DO SHOW (CRT)',
+        'CRT - AMANHA DEPOIS DO SHOW.mov → ja AMANHÃ DEPOIS DO SHOW (CRT)',
         'RDP - PLATEIA.mov → completa PLATEIA (RDP)',
-        'LETT - VEM AI.mov → nova VEM AI (LETT)',
-        'RDP - VEM AI - Copy.mov → copia VEM AI (RDP)',
-        'RDP - VEM AI.mov → nova VEM AI (RDP)',
+        'LETT - VEM AI.mov → nova VEM AÍ (LETT)',
+        'RDP - VEM AI - Copy.mov → copia VEM AÍ (RDP)',
+        'RDP - VEM AI.mov → nova VEM AÍ (RDP)',
         '_ARQUIVOS VELHOS → fora',
         'COMP - ABERTURA.mov → fora',
       ]);
+    });
+  });
+});
+
+describe('a prévia com as regras de conversão (#59)', () => {
+  it('a grafia vem do acervo da atração, dos roteiros dela, dos roteiros de todas e do acervo de todas, nessa ordem', async () => {
+    await comServidor(async ({ como }) => {
+      const texto = csv('RDP - VEM AI.mov', 'CRT - JOAO FICTICIO.mov', 'RDP - HOJE 3 00.mov', 'RDP - HOJE 3 00 VERT.mov', 'CRT - PROX SABADO.mov', 'CRT - SESSAO INTIMA.mov');
+      const r = await como(CHEFE)('/api/acervo/importar/previa', { atracao: 'Programa Fictício', arquivo: 'x.csv', csv: texto });
+      expect(r.status).toBe(200);
+      const previa = await r.json();
+      expect(previa.linhas.map((l: LinhaComRegras) => [l.arte, l.estado, mudou(l)])).toEqual([
+        ['VEM AÍ', 'nova', ['VEM AI → VEM AÍ · grafia dos roteiros da atração']], // o "(RDP)" do envio não é o texto
+        ['JOÃO FICTÍCIO', 'nova', ['JOAO FICTICIO → JOÃO FICTÍCIO · grafia dos roteiros']],
+        ['HOJE 3:00', 'nova', ['3 00 → 3:00 · hora']],
+        ['HOJE 3:00', 'copia', ['VERT →  · versão', '3 00 → 3:00 · hora']],
+        ['PRÓXIMO SÁBADO', 'nova', ['PROX → PRÓXIMO · abreviação', 'SABADO → SÁBADO · acento']],
+        ['SESSÃO ÍNTIMA', 'nova', ['SESSAO INTIMA → SESSÃO ÍNTIMA · grafia do acervo']],
+      ]);
+      expect(previa.placar).toEqual({ nova: 5, completa: 0, ja: 0, copia: 1, fora: 0, decidir: 0 });
     });
   });
 });

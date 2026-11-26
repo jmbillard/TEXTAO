@@ -13,6 +13,10 @@
 // conferência (placar, filtros por estado, busca, ✕ que tira e devolve a linha) → Gravar → o resultado antes → depois
 // → a ficha com o total novo. Quem não é administrador vê o botão travado; a sessão de filme não mostra a importação.
 //
+// As regras de conversão (#59): a hora ("7 15" → "7:15"), PROX → PRÓXIMA, os acentos do dicionário, a grafia pelas
+// fontes (o acervo da atração, os roteiros dela, os de todas, o acervo de todas: a produção da arte também é falsa) e
+// as versões (VERT, 6S) em "Versões e cópias"; cada linha mostra o "antes → depois · regra".
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:ficha
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -73,7 +77,18 @@ const CSV_PROGRAMA = csv('PROGRAMA FICTICIO', [
   'COMP - ABERTURA EP 12.mov', // sem o prefixo do tipo
   'RDP - GRUPO DE TESTE.mov', // a conferência tira
   'FOTO - PALCO (1).png', // cópia sem o original: já no acervo
+  // as regras de conversão (#59)
+  'CRT - DOMINGO 7 15.mov', // hora
+  'RDP - PROX SEXTA 9 30.mov', // PROX antes do dia da semana, e hora
+  'CRT - NAO PERCA.mov', // acento do dicionário
+  'RDP - CANTORA DE EXEMPLO VERT.mov', // versão
+  'RDP - CANTORA DE EXEMPLO 6S.mov', // versão
 ]);
+// a produção da arte de mentira: as artes dos roteiros enviados ("A | B"), com a atração, para a grafia
+const ROTEIROS = [
+  { atracao: [{ id: 'recProg', title: PROGRAMA }], artes: 'CANTORA DE EXEMPLO | GRUPO DE TESTE (RDP) | GRUPO DE TESTE (CRT)' },
+  { atracao: [{ id: 'recNovela', title: 'Novela Fictícia' }], artes: 'DUPLA FICTÍCIA | NÃO PERCA' },
+];
 const CSV_NOVELA = csv('NOVELA FICTICIA', ['RDP - HOJE.mov', 'CRT - HOJE.mov', 'CRT - AMANHA.mov', 'RDP - HOJE (1).mov']);
 
 const atracao = (id, nome, categoria, acervo, keys) => ({ id, nome, categoria, acervo, keys: keys.map((key, i) => ({ id: `${id}k${i}`, key })), caminhos: {}, campos: {} });
@@ -99,9 +114,10 @@ const TIPOS = ['RDP', 'CRT', 'LETT', 'FOTO', 'MOLDURA'];
 /** O Teable de mentira: o Postgres (o acervo e as atrações) e a API (os campos e os registros, que mudam o acervo). */
 async function acervoFalso() {
   const { criarAcervo } = await import(join(RAIZ, 'servidor', 'acervo.mjs'));
-  const env = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso', TEABLE_PG_ACERVO: 'acervo', TEABLE_PG_ATRACOES: 'atracoes', TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'falso', TEABLE_ACERVO: 'tblFalso' };
+  const env = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso', TEABLE_PG_ACERVO: 'acervo', TEABLE_PG_ATRACOES: 'atracoes', TEABLE_PG_ARTE: 'producao', TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'falso', TEABLE_ACERVO: 'tblFalso' };
   const consultar = async (sql, params = []) => {
     if (sql.includes('"bseFalso"."acervo"')) return LINHAS.map((l) => ({ ...l }));
+    if (sql.includes('"bseFalso"."producao"')) return ROTEIROS;
     if (sql.includes('"atracoes"') && sql.includes('__id')) {
       const nome = Object.keys(ID_DA_ATRACAO).find((n) => n.toLowerCase() === String(params[0]).toLowerCase());
       return nome ? [{ id: ID_DA_ATRACAO[nome] }] : [];
@@ -295,36 +311,57 @@ async function importarNoComputador(navegador, url, tema) {
   const conf = p.locator('.conferencia');
   await conf.waitFor();
   assert.equal(await conf.locator('h2').textContent(), `Conferir antes de gravar no acervo de ${PROGRAMA}`);
-  assert.equal((await conf.locator('.conf-arquivo').textContent()).trim(), 'PROGRAMA_SERVICO.csv · 14 linhas');
-  assert.equal(await placar(p), '5 novas · 2 completam o acervo · 3 já no acervo · 4 ficam de fora');
+  assert.equal((await conf.locator('.conf-arquivo').textContent()).trim(), 'PROGRAMA_SERVICO.csv · 19 linhas');
+  assert.equal(await placar(p), '8 novas · 2 completam o acervo · 3 já no acervo · 6 ficam de fora');
   assert.deepEqual(await linhasDaConferencia(p), [
-    'RDP - BANDA FICTICIA.mov → já no acervo BANDA FICTICIA (RDP)',
+    'RDP - BANDA FICTICIA.mov → já no acervo BANDA FICTÍCIA (RDP)',
     'RDP - PLATEIA.mov → ganha o tipo PLATEIA (RDP)',
-    'CRT - VEM AI.mov → ganha o tipo VEM AI (CRT)',
+    'CRT - VEM AI.mov → ganha o tipo VEM AÍ (CRT)',
     'RDP - CANTORA DE EXEMPLO.mov → nova CANTORA DE EXEMPLO (RDP)',
     'RDP - CANTORA DE EXEMPLO - Copy.mov → cópia CANTORA DE EXEMPLO (RDP)',
     'CRT - QUARTA.mov → nova QUARTA (CRT)',
     'CRT - QUINTA_alfa.mov → nova QUINTA (LETT)',
     'LETT - AO VIVO.mov → já no acervo AO VIVO (LETT)',
-    'RDP - DUPLA FICTICIA.mov → nova DUPLA FICTICIA (RDP)',
-    'RDP - DUPLA FICTICIA.mxf → cópia DUPLA FICTICIA (RDP)',
+    'RDP - DUPLA FICTICIA.mov → nova DUPLA FICTÍCIA (RDP)',
+    'RDP - DUPLA FICTICIA.mxf → cópia DUPLA FICTÍCIA (RDP)',
     '_EPISODIOS → fora —',
     'COMP - ABERTURA EP 12.mov → fora —',
     'RDP - GRUPO DE TESTE.mov → nova GRUPO DE TESTE (RDP)',
     'FOTO - PALCO (1).png → já no acervo PALCO (FOTO)',
+    'CRT - DOMINGO 7 15.mov → nova DOMINGO 7:15 (CRT)',
+    'RDP - PROX SEXTA 9 30.mov → nova PRÓXIMA SEXTA 9:30 (RDP)',
+    'CRT - NAO PERCA.mov → nova NÃO PERCA (CRT)',
+    'RDP - CANTORA DE EXEMPLO VERT.mov → versão CANTORA DE EXEMPLO (RDP)',
+    'RDP - CANTORA DE EXEMPLO 6S.mov → versão CANTORA DE EXEMPLO (RDP)',
   ]);
+  // cada linha diz o que as regras mudaram: "antes → depois · regra"
+  const regras = (texto) => conf.locator('.conf-linha', { hasText: texto }).first().locator('.regra').allTextContents();
+  assert.deepEqual(await regras('VEM AI.mov'), ['VEM AI → VEM AÍ · grafia do acervo da atração']);
+  assert.deepEqual(await regras('DUPLA FICTICIA.mov'), ['DUPLA FICTICIA → DUPLA FICTÍCIA · grafia dos roteiros']);
+  assert.deepEqual(await regras('DOMINGO 7 15'), ['7 15 → 7:15 · hora']);
+  assert.deepEqual(await regras('PROX SEXTA'), ['PROX → PRÓXIMA · abreviação', '9 30 → 9:30 · hora']);
+  assert.deepEqual(await regras('NAO PERCA'), ['NAO → NÃO · acento']);
+  assert.deepEqual(await regras('EXEMPLO VERT'), ['VERT sai · versão']);
+  assert.deepEqual(await regras('CANTORA DE EXEMPLO.mov'), [], 'sem regra, sem rodapé');
   assert.equal(await conf.locator('.conf-filtros button', { hasText: 'Para decidir' }).count(), 0, 'nesta fatia nada fica para decidir');
-  assert.equal(await conf.locator('.conf-pe .botao').textContent(), 'Gravar 7 no acervo');
+  assert.equal(await conf.locator('.conf-pe .botao').textContent(), 'Gravar 10 no acervo');
   await semRolagemDeLado(p, `importar ${nome}, conferência`);
 
   // os filtros e a busca
   await conf.locator('.conf-filtros button', { hasText: 'Já no acervo' }).click();
   assert.equal(await conf.locator('.conf-linha').count(), 3);
   await conf.locator('.conf-filtros button', { hasText: 'Versões e cópias' }).click();
-  assert.deepEqual(await conf.locator('.conf-linha .mot').allTextContents(), ['cópia da linha 5 (RDP - CANTORA DE EXEMPLO.mov)', 'a mesma arte da linha 10 (RDP - DUPLA FICTICIA.mov)']);
+  assert.deepEqual(await conf.locator('.conf-linha .mot').allTextContents(), [
+    'cópia da linha 5 (RDP - CANTORA DE EXEMPLO.mov)',
+    'a mesma arte da linha 10 (RDP - DUPLA FICTICIA.mov)',
+    'versão VERT da linha 5 (RDP - CANTORA DE EXEMPLO.mov)',
+    'versão 6S da linha 5 (RDP - CANTORA DE EXEMPLO.mov)',
+  ]);
+  assert.equal(await conf.locator('.conf-linha .tirar').count(), 0, 'versão e cópia não são gravadas: não há o que tirar');
+  await capturar(p, `importar-versoes-${nome}`);
   await conf.locator('.conf-filtros button', { hasText: 'Todas' }).click();
   await conf.locator('.conf-busca').fill('cantora');
-  assert.equal(await conf.locator('.conf-linha').count(), 2);
+  assert.equal(await conf.locator('.conf-linha').count(), 4, 'a arte, a cópia e as duas versões');
   await conf.locator('.conf-busca').fill('');
 
   // o ✕ tira a linha (vira "fora"); o ↺ devolve
@@ -332,31 +369,31 @@ async function importarNoComputador(navegador, url, tema) {
   await grupo.locator('.tirar').click();
   assert.equal(await grupo.locator('.etq').textContent(), 'fora');
   assert.equal(await grupo.locator('.mot').textContent(), 'tirada da importação');
-  assert.equal(await placar(p), '4 novas · 2 completam o acervo · 3 já no acervo · 5 ficam de fora');
+  assert.equal(await placar(p), '7 novas · 2 completam o acervo · 3 já no acervo · 7 ficam de fora');
   await grupo.locator('.tirar').click();
-  assert.equal(await placar(p), '5 novas · 2 completam o acervo · 3 já no acervo · 4 ficam de fora');
+  assert.equal(await placar(p), '8 novas · 2 completam o acervo · 3 já no acervo · 6 ficam de fora');
   await grupo.locator('.tirar').click();
-  assert.equal(await conf.locator('.conf-pe .botao').textContent(), 'Gravar 6 no acervo');
-  assert.equal((await conf.locator('.conf-pe .efeito').textContent()).trim(), 'Cria 4 no acervo, dá o tipo a 2. As 8 outras não mudam nada.');
+  assert.equal(await conf.locator('.conf-pe .botao').textContent(), 'Gravar 9 no acervo');
+  assert.equal((await conf.locator('.conf-pe .efeito').textContent()).trim(), 'Cria 7 no acervo, dá o tipo a 2. As 10 outras não mudam nada.');
   await capturar(p, `importar-conferir-${nome}`);
 
   // gravar: o resultado antes → depois
   await conf.locator('.conf-pe .botao').click();
   const res = p.locator('.resultado-importacao');
   await res.waitFor();
-  assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '24→28');
-  assert.equal((await res.locator('.det').textContent()).replace(/\s+/g, ' ').trim(), `artes no acervo de ${PROGRAMA}+4 novas · 2 ganharam o tipo · 8 linhas sem mudança`);
+  assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '24→31');
+  assert.equal((await res.locator('.det').textContent()).replace(/\s+/g, ' ').trim(), `artes no acervo de ${PROGRAMA}+7 novas · 2 ganharam o tipo · 10 linhas sem mudança`);
   await semRolagemDeLado(p, `importar ${nome}, resultado`);
   await capturar(p, `importar-gravado-${nome}`);
 
   // a ficha com o total novo, a lista também
   await res.locator('.botao', { hasText: 'Ver a ficha' }).click();
-  await ficha.locator('.total-acervo', { hasText: '28' }).waitFor();
+  await ficha.locator('.total-acervo', { hasText: '31' }).waitFor();
   assert.equal(await ficha.locator('.legenda-tipos .sem').textContent(), 'sem tipo1', 'as que estavam sem tipo ganharam o tipo');
-  await linha(p, PROGRAMA).locator('.qtd-acervo', { hasText: '28 artes' }).waitFor();
+  await linha(p, PROGRAMA).locator('.qtd-acervo', { hasText: '31 artes' }).waitFor();
   assert.deepEqual(erros, [], `importar ${nome}: erros na página`);
   await ctx.close();
-  console.log(`ok: importar ${nome}: ficha → Importar CSV → conferir (placar, filtros, busca, tirar e devolver) → gravar → 24 → 28 na ficha`);
+  console.log(`ok: importar ${nome}: ficha → Importar CSV → conferir (placar, filtros, busca, tirar e devolver) → gravar → 24 → 31 na ficha`);
 }
 
 /** O CSV solto na área tracejada da ficha, de outra atração (a novela), até o resultado. */
@@ -386,7 +423,7 @@ async function soltarNoComputador(navegador, url, tema) {
   await capturar(p, `importar-gravado-novela-${nome}`);
   await p.locator('.resultado-importacao .botao', { hasText: 'Ver o acervo' }).click();
   await p.locator('.lista-acervo .arte-acervo').nth(2).waitFor();
-  assert.deepEqual(await p.locator('.lista-acervo .arte-acervo .t').allTextContents(), ['AMANHA', 'HOJE', 'HOJE'], '"Ver o acervo" abre a lista com as novas');
+  assert.deepEqual(await p.locator('.lista-acervo .arte-acervo .t').allTextContents(), ['AMANHÃ', 'HOJE', 'HOJE'], '"Ver o acervo" abre a lista com as novas (AMANHA ganhou o acento)');
   assert.deepEqual(erros, [], `soltar ${nome}: erros na página`);
   await ctx.close();
   console.log(`ok: soltar ${nome}: o CSV solto na área tracejada → conferir → gravar → 1 → 3 → Ver o acervo`);
