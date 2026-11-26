@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chaveDaClaquete, claqueteComBarra, claqueteDoArquivo, claquetePadrao, dataDaClaquete, lerDataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
+import { chaveDaClaquete, claqueteComBarra, claqueteDoArquivo, claquetePadrao, dataDaClaquete, lerDataDaClaquete } from '../src/modelo/vocabularios';
+import { reconhecerPraca as pracaDaClaquete } from '../src/modelo/pracas';
 // @ts-expect-error módulo JS sem tipos
 import { chaveN8n } from '../servidor/trello.mjs';
 

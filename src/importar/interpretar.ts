@@ -1,7 +1,8 @@
 import { indiceDaMarca, semMarcasDeImagem, textoDoPar, type DocBruto, type Par } from './bruto';
 import { analisarSonoras, ehCaixaAlta, ehLocucao, RE_LINHA_LOC } from '../modelo/sonora';
 import { metaVazia, novoId, type Layout, type Meta, type NoJSON, type MarcaJSON, type SubtipoArte, type TipoEtiqueta } from '../modelo/tipos';
-import { acharPrograma, claqueteDoArquivo, LOCUTORES, normalizarPraca, pracaDaClaquete, PRACAS_LIDAS as PRACAS, redatoresDoCadastro, semAcento, lerDataDaClaquete } from '../modelo/vocabularios';
+import { acharPrograma, claqueteDoArquivo, LOCUTORES, redatoresDoCadastro, semAcento, lerDataDaClaquete } from '../modelo/vocabularios';
+import { comoAsPracasAparecem, normalizarPraca, pracasRegistradas, reconhecerPraca } from '../modelo/pracas';
 import { autorEhRedator } from '../modelo/redator';
 
 /* Interpretação do arquivo: do "o que estava escrito" para "o que isso significa".
@@ -82,6 +83,8 @@ function nomearCor(hexOuNome: string): [string, string] {
 
 /* ---------- cabeçalho ---------- */
 
+/** O texto como literal de regex (a praça "lida como" pode ter ponto, parêntese…). */
+const escaparRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const ASPAS = String.raw`[”"'’′″“]`;
 const RE_LOC = /^\**\s*LOC(?:UTOR[A]?|U[CÇ][AÃ]O)?\s*[:-]?\s+(.+?)\s*\**$/i;
 /** "LOC SERVIÇO: DIRCEU VIRTUAL": uma palavra entre o LOC e os dois-pontos. Só vale com um locutor da lista. */
@@ -271,14 +274,14 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     if (duracao) definir('duracaoAlvoSeg', parseInt(duracao[1], 10) * 60 + parseInt(duracao[2], 10));
     if (data && !dataExib) dataExib = lerData(data);
     if (cap) definir('capitulo', parseInt(cap[1], 10));
-    const praca = PRACAS.find((p) => new RegExp(`\\b${p}\\b`).test(s));
+    const praca = comoAsPracasAparecem(pracasRegistradas()).find((p) => new RegExp(`\\b${escaparRegex(p)}\\b`).test(s));
     if (praca) definir('praca', normalizarPraca(praca));
     // o que sobra da linha, tirando data, capítulo, praça e duração, é o nome do programa e/ou da chamada
     let resto = s.replace(/^PGM\s*:\s*/i, '');
     if (duracao) resto = resto.replace(duracao[0], ' ');
     if (data) resto = resto.replace(data[0], ' ');
     resto = resto.replace(/\(?\s*CAP(?:[IÍ]TULO)?\.?\s*\d+\s*\)?/gi, ' ');
-    if (praca) resto = resto.replace(new RegExp(`\\b${praca}\\b`), ' ');
+    if (praca) resto = resto.replace(new RegExp(`\\b${escaparRegex(praca)}\\b`), ' ');
     const entre = [...resto.matchAll(/\(([^()]+)\)/g)].map((m) => m[1].trim()).filter(Boolean);
     resto = resto.replace(/\([^()]*\)/g, ' ').replace(/\s+/g, ' ').replace(/^[\s–—-]+|[\s–—.-]+$/g, '');
     const [antes, ...depois] = resto.split(/\s+[–—-]\s+/);
@@ -450,7 +453,7 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     }
   }
   if (!meta.praca) {
-    const p = PRACAS.find((x) => new RegExp(`(^|[ _])${x}($|[ _.])`, 'i').test(bruto.arquivo.replace(/\.[^.]+$/, '')));
+    const p = comoAsPracasAparecem(pracasRegistradas()).find((x) => new RegExp(`(^|[ _])${escaparRegex(x)}($|[ _.])`, 'i').test(bruto.arquivo.replace(/\.[^.]+$/, '')));
     if (p) {
       meta.praca = normalizarPraca(p);
       anotar('Praça tirada do nome do arquivo');
@@ -461,8 +464,8 @@ export function interpretar(bruto: DocBruto, opcoes: OpcoesImportacao = {}): Imp
     const ano = exib.ano ?? (dataRedacao as { ano?: number } | null)?.ano ?? opcoes.anoPadrao ?? new Date().getFullYear();
     meta.dataExibicao = iso(ano, exib.mes, exib.dia);
   }
-  // claquete do Rio começa por "RIO", a de São Paulo termina em "SP"; o resto é G5
-  if (!meta.praca) meta.praca = pracaDaClaquete(meta.claquete);
+  // a praça pela regra de cada uma no nome da claquete (o Rio começa por "RIO", SP termina em "SP"…); senão, a padrão
+  if (!meta.praca) meta.praca = reconhecerPraca(meta.claquete);
   // o autor do arquivo só vale quando é um redator do cadastro: o estagiário que salvou, o dono do modelo do Word
   // não são quem escreveu. Fora do cadastro, o roteiro fica sem redator e o PROMeiro sugere um (redator.ts).
   const autor = bruto.autor.replace(/_[A-Z0-9]+$/, '').trim();

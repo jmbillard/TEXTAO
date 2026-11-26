@@ -77,7 +77,12 @@ function trelloFalso() {
     if (rota === '/cards' && metodo === 'POST') return ok({ id: 'card' + ++n, shortUrl: `https://trello.com/c/CARD${n}` });
     return ok({});
   };
-  return { buscar, listasDosCards: () => pedidos.filter((p) => p.rota === '/cards' && p.metodo === 'POST').map((p) => p.corpo?.idList) };
+  return {
+    buscar,
+    listasDosCards: () => pedidos.filter((p) => p.rota === '/cards' && p.metodo === 'POST').map((p) => p.corpo?.idList),
+    /** A opção que cada card levou no campo `campo` (a praça). */
+    opcoesDoCampo: (campo: string) => pedidos.filter((p) => p.metodo === 'PUT' && p.rota.endsWith(`/customField/${campo}/item`)).map((p) => p.corpo?.idValue),
+  };
 }
 
 /** Um pedido preso: `chegou` diz que ele chegou ao falso; ele só responde depois de `soltar()`. */
@@ -126,13 +131,15 @@ async function comServidor(env: Record<string, string> = ENV) {
   const ana = (caminho: string, init: RequestInit = {}) =>
     fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com', 'content-type': 'application/json', ...init.headers } });
   let n = 0;
-  /** Um roteiro de SP novo, mandado para o Trello. @returns a resposta do envio */
-  const enviarRoteiroDeSP = async () => {
+  /** Um roteiro novo, mandado para o Trello, com a praça que a revisão deu. @returns a resposta do envio */
+  const enviarRoteiro = async (claquete: string, praca: string) => {
     const id = `rot-config-${++n}`;
-    await ana(`/api/roteiros/${id}`, { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: `Festa ${n}/11 SP`, praca: 'SP' }, doc: DOC }, nArtes: 0 }) });
+    await ana(`/api/roteiros/${id}`, { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete, praca }, doc: DOC }, nArtes: 0 }) });
     return ana(`/api/roteiros/${id}/trello`, { method: 'POST', body: JSON.stringify({ artes: [], texto: 'x' }) }).then((r) => r.json());
   };
-  return { app, falso, banco, enviarRoteiroDeSP };
+  /** Um roteiro de SP novo, mandado para o Trello. @returns a resposta do envio */
+  const enviarRoteiroDeSP = () => enviarRoteiro(`Festa ${n + 1}/11 SP`, 'SP');
+  return { app, falso, banco, ana, enviarRoteiro, enviarRoteiroDeSP };
 }
 
 describe('a configuração vale na hora', () => {
@@ -160,6 +167,39 @@ describe('a configuração vale na hora', () => {
     expect((await primeiro).estado).toBe('enviado');
     await antigaFechada;
     expect(falso.listasDosCards()).toEqual(['listaNovaSP', 'listaSP']);
+  });
+});
+
+/* ---------- as praças fazem parte da configuração ---------- */
+
+describe('as praças da configuração', () => {
+  const COM_PRACA = { ...ENV, TRELLO_LISTA_G5: 'listaRJ', TRELLO_CAMPO_PRACA: 'cPraca', TRELLO_PRACAS: 'G5=opG5,SP=opSP,RJ=opRJ' };
+  /** As praças de fábrica com MG: "termina em MG", com a entrada e a opção dela; MG sai do "também lida como" da G5. */
+  const COM_MG = [
+    { sigla: 'G5', nome: 'Rede', padrao: true, tambem: ['REDE', 'DF', 'PE'], entrada: 'listaRJ', opcao: 'opG5' },
+    { sigla: 'RJ', nome: 'Rio', regra: { onde: 'comeco', palavras: ['RIO'] }, entrada: 'listaRJ', opcao: 'opRJ' },
+    { sigla: 'SP', nome: 'São Paulo', regra: { onde: 'fim', palavras: ['SP'] }, entrada: 'listaSP', opcao: 'opSP' },
+    { sigla: 'MG', nome: 'Minas', regra: { onde: 'fim', palavras: ['MG'] }, entrada: 'listaMG', opcao: 'opMG' },
+  ];
+
+  it('sem coleção salva, valem as de fábrica: o navegador as recebe no /api/eu, sem os ids do Trello', async () => {
+    const { ana } = await comServidor(COM_PRACA);
+    const eu = await ana('/api/eu').then((r) => r.json());
+    expect(eu.pracas.map((p: { sigla: string }) => p.sigla)).toEqual(['G5', 'RJ', 'SP', 'INTER']);
+    expect(eu.pracas.find((p: { sigla: string }) => p.sigla === 'RJ')).toMatchObject({ regra: { onde: 'comeco', palavras: ['RIO'] }, entrada: '', saida: '', opcao: '' });
+    expect(eu.pracas.find((p: { padrao: boolean }) => p.padrao).tambem).toEqual(['REDE', 'MG', 'DF', 'PE']);
+  });
+
+  it('uma praça nova salva vale na hora: o navegador recebe e o envio vai para a entrada dela, com a opção dela', async () => {
+    const { app, ana, falso, enviarRoteiro } = await comServidor(COM_PRACA);
+    expect((await enviarRoteiro('Festa 3/12 MG', 'MG')).estado).toBe('enviado'); // antes, MG não é praça: vai como a padrão
+    app.mudarConfiguracao({ PRACAS: JSON.stringify(COM_MG) }, { por: 'chefe@empresa.com' });
+    const eu = await ana('/api/eu').then((r) => r.json());
+    expect(eu.pracas.map((p: { sigla: string }) => p.sigla)).toEqual(['G5', 'RJ', 'SP', 'MG']);
+    expect((await enviarRoteiro('Festa 4/12 MG', 'MG')).estado).toBe('enviado');
+    expect((await enviarRoteiro('Festa 4/12 SP', 'SP')).estado).toBe('enviado');
+    expect(falso.listasDosCards()).toEqual(['listaRJ', 'listaMG', 'listaSP']);
+    expect(falso.opcoesDoCampo('cPraca')).toEqual(['opG5', 'opMG', 'opSP']);
   });
 });
 

@@ -11,7 +11,8 @@
  * sai da lista e vai para Resolvidas, e volta sozinho quando entra card novo no grupo. Nada muda no Trello nem no Teable.
  */
 import { agruparDuplicadas } from '../src/modelo/duplicadas.ts';
-import { chaveDaClaquete, normalizarPraca, semAcento } from '../src/modelo/vocabularios.ts';
+import { chaveDaClaquete, semAcento } from '../src/modelo/vocabularios.ts';
+import { normalizarPraca, pracasDaConfiguracao } from '../src/modelo/pracas.ts';
 
 const DIA = 86_400_000;
 export const DIAS_PADRAO = 90;
@@ -46,10 +47,11 @@ export function resumoDosAnexos(anexos) {
 export function criarDuplicadas({ trello, acervo, registro = null, guardarMs = 5 * 60_000 }) {
   const c = trello?.config ?? {};
   const ligado = !!(c.quadro && c.chave && c.token && trello?.ler);
-  const entradas = new Set(Object.values(c.listas ?? {}).filter(Boolean));
-  const saidas = new Set([...Object.values(c.saidas ?? {}), c.entregues].filter(Boolean));
-  // a opção do campo PRAÇA → a praça (TRELLO_PRACAS: "G5=id,SP=id")
-  const pracaDaOpcao = Object.fromEntries(Object.entries(c.pracas ?? {}).map(([praca, id]) => [id, praca]));
+  const pracas = c.pracas ?? pracasDaConfiguracao();
+  const entradas = new Set([...pracas.map((p) => p.entrada), ...Object.values(c.listas ?? {})].filter(Boolean));
+  const saidas = new Set([...pracas.map((p) => p.saida), c.entregues].filter(Boolean));
+  // a opção do campo PRAÇA → a praça (a opção de cada praça)
+  const pracaDaOpcao = Object.fromEntries(pracas.filter((p) => p.opcao).map((p) => [p.opcao, p.sigla]));
   const tipoDaLista = (id) => (saidas.has(id) ? 'saida' : entradas.has(id) ? 'entrada' : 'outra');
 
   /* ---------- o quadro, guardado por alguns minutos (uma leitura por período) ---------- */
@@ -77,13 +79,13 @@ export function criarDuplicadas({ trello, acervo, registro = null, guardarMs = 5
       trello.ler(`/boards/${c.quadro}/lists`, { filter: 'all', fields: 'name,closed' }),
       c.campos?.praca ? trello.ler(`/boards/${c.quadro}/customFields`) : [],
     ]);
-    // as opções do campo PRAÇA pelo texto ("SP", "REDE"…), para a opção que TRELLO_PRACAS não diz
+    // as opções do campo PRAÇA pelo texto ("SP", "REDE"…), para a opção que nenhuma praça diz
     const opcoes = (Array.isArray(campos) ? campos : []).find((f) => f?.id === c.campos.praca)?.options ?? [];
     return {
       em: new Date().toISOString(),
       cards: [...cards.values()].filter((x) => criadoEm(x.id) >= desde.getTime()),
       listas: new Map((Array.isArray(listas) ? listas : []).map((l) => [l.id, String(l.name ?? '')])),
-      pracas: new Map(opcoes.filter((o) => o?.value?.text).map((o) => [o.id, normalizarPraca(String(o.value.text).trim())])),
+      pracas: new Map(opcoes.filter((o) => o?.value?.text).map((o) => [o.id, normalizarPraca(String(o.value.text).trim(), pracas)])),
     };
   }
   async function quadro(dias, renovar) {
@@ -116,10 +118,10 @@ export function criarDuplicadas({ trello, acervo, registro = null, guardarMs = 5
       temProducao: !!producao?.[x.id],
     });
     // primeiro sem a produção, para ler só a dos cards que estão em algum caso
-    const candidatos = agruparDuplicadas(lido.cards.map((x) => comoCard(x, null))).flatMap((k) => k.cards);
+    const candidatos = agruparDuplicadas(lido.cards.map((x) => comoCard(x, null)), pracas).flatMap((k) => k.cards);
     const producao = candidatos.length ? await trello.producaoDosCards(candidatos) : {};
     const porId = new Map(lido.cards.map((x) => [x.id, x]));
-    const casos = agruparDuplicadas(candidatos.map((id) => comoCard(porId.get(id), producao)));
+    const casos = agruparDuplicadas(candidatos.map((id) => comoCard(porId.get(id), producao)), pracas);
     return { lido, casos, producao, porId };
   }
 

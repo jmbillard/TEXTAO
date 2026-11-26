@@ -8,6 +8,7 @@ import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { gerarPdf } from './pdf.mjs';
 import { normalizarKey } from './cadastros.mjs';
 import { claquetePadrao, jaFoiExibida } from '../src/modelo/vocabularios.ts';
+import { alternativa, palavrasDoComeco, palavrasDoFim, pracaDaSigla, pracaPadrao, pracasDaConfiguracao, pracasRegistradas } from '../src/modelo/pracas.ts';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
@@ -25,14 +26,32 @@ export const chaveN8n = (claquete) =>
     .replaceAll(/\s+/g, ' ')
     .trim();
 
+/** As regex da praça na claquete, para a chave da atração: a do começo com a atração no parêntese ("RIO(CHEF)") e a do
+    começo ou do fim ("RIO CHEF", "RIO-CHEF", "CHEF SP"). Uma vez por lista de praças. */
+const pracaNaAtracao = new WeakMap();
+function regexDaPracaNaAtracao(pracas) {
+  let re = pracaNaAtracao.get(pracas);
+  if (!re) {
+    const comeco = alternativa(palavrasDoComeco(pracas));
+    const fim = alternativa(palavrasDoFim(pracas));
+    const nada = /(?!)/;
+    re = {
+      parentese: comeco ? new RegExp(`^(?:${comeco})\\s*\\(([^)]*)\\)\\s*`) : nada,
+      pontas: new RegExp([comeco && `^(?:${comeco})[\\s-]+`, fim && `\\s+(?:${fim})$`].filter(Boolean).join('|') || nada.source),
+    };
+    pracaNaAtracao.set(pracas, re);
+  }
+  return re;
+}
+
 /** A atração dentro da claquete, para casar com os padrões do cadastro (a mesma regra do n8n). */
-export const chaveDaAtracao = (claquete) =>
+export const chaveDaAtracao = (claquete, pracas = pracasRegistradas()) =>
   String(claquete || '')
     .toUpperCase()
     .replaceAll(/_/g, ' ')
-    // a praça do Rio na frente: "RIO CHEF...", "RIO-CHEF..." ou com a atração no parêntese, "RIO(CHEF)MANUT"
-    .replace(/^RIO\s*\(([^)]*)\)\s*/, '$1 ')
-    .replace(/^RIO[\s-]+|\s+SP$/, '')
+    // a praça na frente: "RIO CHEF...", "RIO-CHEF..." ou com a atração no parêntese, "RIO(CHEF)MANUT"; ou no fim, "CHEF SP"
+    .replace(regexDaPracaNaAtracao(pracas).parentese, '$1 ')
+    .replace(regexDaPracaNaAtracao(pracas).pontas, '')
     .replace(/\sOPÇÃO|\sOPCAO/, ' ')
     .replace(/\).*$/, ')')
     .replace(/FUT[\s(]+COPA BR.*/, 'FUT COPA BR')
@@ -81,17 +100,11 @@ export function configDoTrello(env) {
     // colado com espaço, quebra de linha ou aspas no Portainer: vale só o valor
     chave: nomeLimpoPg(env.TRELLO_KEY),
     token: nomeLimpoPg(env.TRELLO_TOKEN),
-    // entrada de cada praça (RJ e G5 podem repetir a mesma lista); TRELLO_LISTA é a reserva de quem não tiver a sua
-    listas: {
-      padrao: env.TRELLO_LISTA || '',
-      SP: env.TRELLO_LISTA_SP || '',
-      RJ: env.TRELLO_LISTA_RJ || '',
-      G5: env.TRELLO_LISTA_G5 || '',
-      INTER: env.TRELLO_LISTA_INTER || '',
-      VT: env.TRELLO_LISTA_VT || '',
-    },
-    // saída de cada praça (para onde o card vai quando a arte fica pronta)
-    saidas: { SP: env.TRELLO_SAIDA_SP || '', RJ: env.TRELLO_SAIDA_RJ || '', G5: env.TRELLO_SAIDA_G5 || '', INTER: env.TRELLO_SAIDA_INTER || '' },
+    // as praças, cada uma com a sua entrada, a sua saída e a sua opção do campo Praça (RJ e G5 podem repetir a mesma
+    // lista): a coleção salva na Configuração ou, sem ela, as de fábrica com as variáveis de hoje
+    pracas: pracasDaConfiguracao(env),
+    // a reserva de quem não tiver entrada (TRELLO_LISTA) e a lista do VT
+    listas: { padrao: env.TRELLO_LISTA || '', VT: env.TRELLO_LISTA_VT || '' },
     // o quadro da promo (a aba Duplicadas lê os cards dele) e a lista dos projetos entregues, que conta como saída
     quadro: nomeLimpoPg(env.TRELLO_QUADRO),
     entregues: nomeLimpoPg(env.TRELLO_LISTA_ENTREGUES),
@@ -108,7 +121,6 @@ export function configDoTrello(env) {
       // campos copiados do card do filme (complexidade, uso de IA)
       doFilme: String(env.TRELLO_CAMPOS_FILME || '').split(',').map((s) => s.trim()).filter(Boolean),
     },
-    pracas: pares(env.TRELLO_PRACAS),
     prioridadeAlta: env.TRELLO_PRIORIDADE_ALTA || '',
     // as opções do campo Complexidade, na ordem BAIXA, MÉDIA, ALTA (o nível 1 é a primeira)
     complexidades: String(env.TRELLO_COMPLEXIDADE_OPCOES || '').split(',').map((s) => s.trim()),
@@ -159,7 +171,7 @@ export function configDoTrello(env) {
     },
     endereco: (env.PROMEIRO_URL || '').replace(/\/+$/, ''),
   };
-  c.ligado = !!(c.chave && c.token && (c.listas.padrao || PRACAS_TRELLO.some((p) => c.listas[p])));
+  c.ligado = !!(c.chave && c.token && (c.listas.padrao || c.pracas.some((p) => p.entrada)));
   // nomes que entram no SQL: só letras, números e _; o que sobrar inválido é avisado na partida
   c.pgInvalidos = [];
   for (const k of Object.keys(c.pg))
@@ -171,15 +183,12 @@ export function configDoTrello(env) {
 }
 
 /** O que falta configurar, para o log da partida. */
-/** As praças do quadro, cada uma com a sua entrada e a sua saída. */
-export const PRACAS_TRELLO = ['SP', 'RJ', 'G5', 'INTER'];
-
 export function faltasDoTrello(c) {
   if (!c.chave && !c.token) return null;
   const f = [];
   if (!c.chave) f.push('TRELLO_KEY');
   if (!c.token) f.push('TRELLO_TOKEN');
-  if (!c.listas.padrao && !PRACAS_TRELLO.some((p) => c.listas[p])) f.push('TRELLO_LISTA_SP / _RJ / _G5 / _INTER (ao menos uma entrada)');
+  if (!c.listas.padrao && !c.pracas.some((p) => p.entrada)) f.push(`a entrada de uma praça (${c.pracas.map((p) => `TRELLO_LISTA_${p.sigla}`).join(', ')})`);
   return f;
 }
 
@@ -438,7 +447,7 @@ export function criarTrello(env, deps = {}) {
       const [n] = await sql(`SELECT "atracao", "projeto_win", "output_win" FROM ${t.atracoes} WHERE LOWER("atracao") = LOWER($1) LIMIT 1`, [nome]);
       if (n) return { nome: n.atracao, projeto: caminho(n.projeto_win), output: caminho(n.output_win) };
     }
-    const chave = chaveDaAtracao(claquete);
+    const chave = chaveDaAtracao(claquete, c.pracas);
     if (!chave) return null;
     const [l] = await sql(
       `SELECT "atracao", "projeto_win", "output_win" FROM ${t.atracoes}
@@ -553,7 +562,7 @@ export function criarTrello(env, deps = {}) {
     const m = r.meta;
     // sem claquete, o card leva o título ou o nome do arquivo: nada impede o envio. A data vai sempre com barra
     // ("DONA 27-11" → "DONA 27/11"), no card e na produção da arte; a chave não muda com isso
-    const claquete = claquetePadrao(String(m.claquete || m.titulo || (r.original?.nome ?? '').replace(/\.[^.]+$/, '').replace(/_/g, ' ') || 'Roteiro sem claquete').trim());
+    const claquete = claquetePadrao(String(m.claquete || m.titulo || (r.original?.nome ?? '').replace(/\.[^.]+$/, '').replace(/_/g, ' ') || 'Roteiro sem claquete').trim(), c.pracas);
     const avisos = [];
     const tentar = async (o_que, f) => {
       try {
@@ -581,11 +590,13 @@ export function criarTrello(env, deps = {}) {
 
     const hoje = agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
     const chave = chaveN8n(claquete);
-    const praca = PRACAS_TRELLO.includes(m.praca) ? m.praca : 'G5';
+    // a praça que a revisão escolheu; a que não é de nenhuma (ou falta) vai como a padrão
+    const daPraca = pracaDaSigla(c.pracas, m.praca) ?? pracaPadrao(c.pracas);
+    const praca = daPraca.sigla;
     const vt = /\bVt\b/i.test(claquete) || /\bVt\b/i.test(r.original?.nome ?? '');
-    const lista = (vt && c.listas.VT) || c.listas[praca] || c.listas.padrao;
+    const lista = (vt && c.listas.VT) || daPraca.entrada || c.listas.padrao;
     if (!lista) throw new Error(`Não há lista de entrada para ${praca} no Trello (TRELLO_LISTA_${praca}).`);
-    if (!(vt && c.listas.VT) && !c.listas[praca]) avisos.push(`sem TRELLO_LISTA_${praca}: o card de ${praca} foi para a lista padrão (TRELLO_LISTA)`);
+    if (!(vt && c.listas.VT) && !daPraca.entrada) avisos.push(`sem TRELLO_LISTA_${praca}: o card de ${praca} foi para a lista padrão (TRELLO_LISTA)`);
 
     const [redator, editor, atracao, alta] = await Promise.all([
       tentar('achar o redator', () => acharRedator(m.redator)),
@@ -619,7 +630,7 @@ export function criarTrello(env, deps = {}) {
     const opcaoDaComplexidade = c.campos.complexidade ? c.complexidades[complexidade - 1] : '';
     await Promise.all([
       tentar('marcar o BOT', () => campo(card.id, c.campos.bot, { value: { checked: 'true' } })),
-      c.pracas[praca] && tentar('preencher a praça', () => campo(card.id, c.campos.praca, { idValue: c.pracas[praca] })),
+      daPraca.opcao && tentar('preencher a praça', () => campo(card.id, c.campos.praca, { idValue: daPraca.opcao })),
       redator && tentar('preencher o redator', () => campo(card.id, redator.campo, { idValue: redator.idValue })),
       editor && tentar('preencher o editor', () => campo(card.id, editor.campo, { idValue: editor.idValue })),
       alta && tentar('preencher a prioridade', () => campo(card.id, c.campos.prioridade, { idValue: c.prioridadeAlta })),
@@ -1104,7 +1115,11 @@ export function criarTrello(env, deps = {}) {
     if (!c.chave || !c.token) out.push({ item: 'Trello', ok: false, detalhe: 'sem TRELLO_KEY ou TRELLO_TOKEN' });
     else {
       await item('Trello: chave e token', async () => `conta ${(await trello('GET', '/members/me', { consulta: { fields: 'username' } })).username}`);
-      const listas = { ...Object.fromEntries(Object.entries(c.listas).map(([k, v]) => [`lista ${k}`, v])), ...Object.fromEntries(Object.entries(c.saidas ?? {}).map(([k, v]) => [`saída ${k}`, v])) };
+      const listas = {
+        ...Object.fromEntries(c.pracas.map((p) => [`lista ${p.sigla}`, p.entrada])),
+        ...Object.fromEntries(Object.entries(c.listas).map(([k, v]) => [`lista ${k}`, v])),
+        ...Object.fromEntries(c.pracas.map((p) => [`saída ${p.sigla}`, p.saida])),
+      };
       for (const [nome, idLista] of Object.entries(listas))
         if (idLista) await item(`Trello: ${nome}`, async () => `"${(await trello('GET', `/lists/${idLista}`, { consulta: { fields: 'name,closed' } })).name}"`);
       const campos = Object.entries(c.campos).filter(([, v]) => typeof v === 'string' && v);
@@ -1136,9 +1151,9 @@ export function criarTrello(env, deps = {}) {
   /** Para o diagnóstico: a busca da atração com a chave usada e o erro, se houver. */
   const diagnosticarAtracao = async (claquete) => {
     try {
-      return { chave: chaveDaAtracao(claquete), tabela: t.atracoes ?? null, atracao: (await acharAtracao(claquete))?.nome ?? '' };
+      return { chave: chaveDaAtracao(claquete, c.pracas), tabela: t.atracoes ?? null, atracao: (await acharAtracao(claquete))?.nome ?? '' };
     } catch (e) {
-      return { chave: chaveDaAtracao(claquete), tabela: t.atracoes ?? null, erro: e instanceof Error ? e.message : String(e) };
+      return { chave: chaveDaAtracao(claquete, c.pracas), tabela: t.atracoes ?? null, erro: e instanceof Error ? e.message : String(e) };
     }
   };
 

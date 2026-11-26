@@ -27,6 +27,7 @@ import { criarRegistroDasDuplicadas, MOTIVO_MAXIMO } from './registro-das-duplic
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
+import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco } from '../src/modelo/pracas.ts';
 import { acertarNArtesUmaVez } from './artes.mjs';
 
 const MSG_SINC = 0;
@@ -250,13 +251,13 @@ const semAcentoMin = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g,
 
 /**
  * A atração que a claquete reconhece pelas keys dos cadastros, com a regra do navegador (`acharPrograma`): a key mais
- * longa no começo (também depois da praça do Rio na frente); sem key, o nome da atração (8 letras ou mais) no meio.
+ * longa no começo (também depois da praça escrita na frente, "RIO"); sem key, o nome da atração (8 letras ou mais) no meio.
  * @param programas [{ nome, chaves }]  @returns o nome, ou '' se nenhuma reconhece
  */
-export function atracaoPelaClaquete(claquete, programas) {
+export function atracaoPelaClaquete(claquete, programas, pracas = pracasRegistradas()) {
   const n = semAcentoMin(claquete);
   if (!n) return '';
-  const comeco = [n, n.replace(/^rio /, '')];
+  const comeco = [n, semPracaNoComeco(n, pracas)];
   let melhor = null;
   for (const p of programas)
     for (const c of (p.chaves ?? []).map(semAcentoMin).filter(Boolean))
@@ -292,8 +293,8 @@ export function sugerirAtracao(key, programas) {
   return melhor?.nome ?? '';
 }
 
-export function keysSemCadastro(claquetes, programas, ignoradas = new Set()) {
-  return semCadastro(claquetes, programas, ignoradas).keys;
+export function keysSemCadastro(claquetes, programas, ignoradas = new Set(), pracas = pracasRegistradas()) {
+  return semCadastro(claquetes, programas, ignoradas, pracas).keys;
 }
 
 /** Quantas claquetes reconhecidas a amostra leva (as mais recentes): as tiras da comemoração do Sem cadastro zerado. */
@@ -305,12 +306,12 @@ const AMOSTRA_RECONHECIDAS = 20;
  * ignoradas não são de nenhuma atração: ficam fora das duas.
  * @returns {{ keys: object[], reconhecidas: { total: number, amostra: string[] } }}
  */
-export function semCadastro(claquetes, programas, ignoradas = new Set()) {
+export function semCadastro(claquetes, programas, ignoradas = new Set(), pracas = pracasRegistradas()) {
   const lista = programas.map((p) => ({ nome: p.nome, n: semAcentoMin(p.nome), chaves: (p.chaves ?? []).map(semAcentoMin).filter(Boolean) }));
   // compara a claquete inteira e também a key dela (sem a praça na frente: "Rio Fut(...)" → FUT)
   const reconhece = (claquete) => {
     const n = semAcentoMin(claquete);
-    const k = semAcentoMin(chaveDaAtracao(claquete));
+    const k = semAcentoMin(chaveDaAtracao(claquete, pracas));
     const comeca = (x, c) => !!x && (x === c || x.startsWith(c + ' '));
     return lista.some((p) => p.chaves.some((c) => comeca(n, c) || comeca(k, c)) || (p.n.length >= 8 && ` ${n} `.includes(` ${p.n} `)));
   };
@@ -322,7 +323,7 @@ export function semCadastro(claquetes, programas, ignoradas = new Set()) {
       if (c && (!reconhecidas.has(c) || reconhecidas.get(c) < em)) reconhecidas.set(c, em);
       continue;
     }
-    const key = semAcentoMin(chaveDaAtracao(claquete)).toUpperCase();
+    const key = semAcentoMin(chaveDaAtracao(claquete, pracas)).toUpperCase();
     if (!key || key.length < 2 || /^[\d ]+$/.test(key) || ignoradas.has(key)) continue;
     const g = grupos.get(key) ?? { key, claquetes: new Map() };
     if (!g.claquetes.has(c) || g.claquetes.get(c) < em) g.claquetes.set(c, em);
@@ -449,7 +450,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /* ---------- os módulos da configuração de agora ---------- */
   /** Uma geração: os módulos feitos de uma configuração, e quantos pedidos ainda estão usando ela. */
   function montar(env) {
-    const g = { env, emCurso: 0, drenou: null };
+    // as praças da configuração (a coleção salva ou as de fábrica): o servidor passa estas a cada reconhecimento
+    const g = { env, pracas: pracasDaConfiguracao(env), emCurso: 0, drenou: null };
     g.trello = fazer(fabricas.trello, env, { abrirPg: abrir });
     g.acervo = fazer(fabricas.acervo, env, { abrirPg: abrir, trello: g.trello });
     g.vocabulario = criarVocabulario(env, fetch, cache, copia, null, abrir);
@@ -460,7 +462,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return g;
   }
   let geracao = montar(configuracao.valores());
-  let { env, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao;
+  let { env, pracas, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao;
   const filmes = fazer(fabricas.filmes, env, { db, trello, abrirPg: abrir });
 
   /**
@@ -475,7 +477,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const valores = configuracao.salvar(mudancas, { por });
     const velha = geracao;
     geracao = montar(valores);
-    ({ env, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao);
+    ({ env, pracas, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao);
     const filmesVelho = filmes.reconfigurar?.(env, { trello }) ?? null;
     // a lista de atrações guardada é da configuração antiga: a próxima leitura vai ao Teable
     void Promise.resolve(cache.guardar('vocabulario', null, 1)).catch(() => {});
@@ -1092,7 +1094,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       ? await trello.atracoesDosCards(envios.map((e) => e.card_id)).catch((erro) => (console.warn(`[acervo] não li a atração na produção da arte: ${erro instanceof Error ? erro.message : erro}`), {}))
       : {};
     const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
-    return (e) => ligadas[e.card_id] || atracaoPelaClaquete(e.claquete ?? '', programas);
+    return (e) => ligadas[e.card_id] || atracaoPelaClaquete(e.claquete ?? '', programas, pracas);
   }
 
   let registrando = false;
@@ -1300,7 +1302,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // quem entra passa a constar na lista de pessoas com quem se pode compartilhar
         q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
         const tour = { revisao: q.tourDe.get(eu.email)?.tour_revisao_em ?? null };
-        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour });
+        // as praças vão junto: o navegador reconhece a praça da claquete com elas (sem os ids do Trello)
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas) });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -1369,7 +1372,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // o reconhecimento de atração com dados reais: a mesma regra do navegador (key no começo; senão, o nome no meio)
       if (trello.ultimasClaquetes) {
         try {
-          const achar = (claquete) => atracaoPelaClaquete(claquete, voc.programas ?? []);
+          const achar = (claquete) => atracaoPelaClaquete(claquete, voc.programas ?? [], pracas);
           const casos = await trello.ultimasClaquetes(500);
           const errados = casos.map((c) => ({ ...c, achou: achar(c.claquete) })).filter((c) => c.achou !== c.atracao);
           const pct = casos.length ? Math.round((100 * (casos.length - errados.length)) / casos.length) : 0;
@@ -1618,7 +1621,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/cadastros/sugerir' && req.method === 'GET') {
       // a key de uma claquete e a atração parecida, para ligar sem sair da revisão
       const claquete = String(new URL(req.url, 'http://x').searchParams.get('claquete') ?? '').slice(0, 200);
-      const key = semAcentoMin(chaveDaAtracao(claquete)).toUpperCase();
+      const key = semAcentoMin(chaveDaAtracao(claquete, pracas)).toUpperCase();
       const voc = await vocabulario.ler();
       return json(res, 200, { key, sugestao: key ? sugerirAtracao(key, voc.programas ?? []) : '' });
     }
@@ -1632,7 +1635,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         ...q.claquetesDaFila.all(desde).map((l) => ({ claquete: String(l.claquete ?? ''), em: String(l.em ?? '') })),
         ...((await trello.claquetesRecentes?.(90).catch(() => [])) ?? []),
       ].filter((c) => c.claquete.trim());
-      const r = semCadastro(claquetes, voc.programas ?? [], new Set(q.ignoradas.all().map((l) => l.key)));
+      const r = semCadastro(claquetes, voc.programas ?? [], new Set(q.ignoradas.all().map((l) => l.key)), pracas);
       const comReconhecidas = new URL(req.url, 'http://x').searchParams.get('com') === 'reconhecidas';
       return json(res, 200, comReconhecidas ? r : r.keys);
     }

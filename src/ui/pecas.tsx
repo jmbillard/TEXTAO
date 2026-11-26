@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte, type SugestaoRedator } from '../modelo/tipos';
 import type { EstadoDoRedator } from '../modelo/redator';
-import { PRACAS, claquetePadrao, editoresConhecidos, seloCurto, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
+import { claquetePadrao, editoresConhecidos, seloCurto, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
+import { pracasRegistradas, siglasDasPracas } from '../modelo/pracas';
 import { atalho, dataCurtaComDia, dataPorExtenso, ehMac } from './util';
 import { Icone } from './icones';
 
@@ -418,7 +419,7 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, b
               </span>
             )}
             <span className="pracas-c" role="radiogroup" aria-label="Praça">
-              {PRACAS.map((p) => (
+              {siglasDasPracas(pracasRegistradas()).map((p) => (
                 <button key={p} role="radio" aria-checked={dados.praca === p} disabled={!mudar} onClick={() => mudar?.({ praca: p })}>{p}</button>
               ))}
             </span>

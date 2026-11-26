@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { abrirBanco, criarApp, fazerBackup } from './app.mjs';
 import { criarFilmes } from './filmes.mjs';
-import { configDoTrello, faltasDoTrello, PRACAS_TRELLO } from './trello.mjs';
+import { configDoTrello, faltasDoTrello } from './trello.mjs';
 import { criarVocabulario } from './vocabulario.mjs';
 import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
@@ -66,7 +66,7 @@ if (!process.env.REDIS_URL) console.log('[cache] sem REDIS_URL: cache e avisos d
   else if (faltam.length) console.log(`[trello] envio desligado: falta ${faltam.join(', ')}`);
   else {
     const sem = [
-      ...PRACAS_TRELLO.filter((p) => !c.listas[p]).map((p) => `TRELLO_LISTA_${p} (${p} vai ${c.listas.padrao ? 'para a TRELLO_LISTA' : 'falhar: sem lista'})`),
+      ...c.pracas.filter((p) => !p.entrada).map((p) => `TRELLO_LISTA_${p.sigla} (${p.sigla} vai ${c.listas.padrao ? 'para a TRELLO_LISTA' : 'falhar: sem lista'})`),
       !c.pg.producao && 'TEABLE_PG_ARTE (sem conferir duplicados)',
       !c.teable.producao && 'TEABLE_ARTE_PRODUCAO (sem registrar a entrada)',
       !c.sftp.host && 'SFTP_HOST (sem cópia no OneDrive)',

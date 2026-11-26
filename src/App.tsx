@@ -19,7 +19,8 @@ import { TourDaRevisao } from './tour/TourDaRevisao';
 import { passoAtual, pular, recomecar, tourNaEntrada, type Tour } from './tour/passos';
 import { ehCelular } from './ui/util';
 import { colocarExemplo, exemploNoTrello, ID_DO_EXEMPLO, roteiroDeExemplo } from './tour/exemplo';
-import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, claquetePadrao, dataDaClaquete, pracaDaClaquete, refazerPelaAtracao } from './modelo/vocabularios';
+import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, claquetePadrao, dataDaClaquete, refazerPelaAtracao } from './modelo/vocabularios';
+import { reconhecerPraca } from './modelo/pracas';
 
 /** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
     tudo passa pela revisão e vai pelo botão Enviar. */
@@ -359,7 +360,7 @@ export function App() {
         ...metaVazia(),
         claquete: claquetePadrao(pauta.claquete || claquete),
         editor: pauta.editor,
-        praca: pracaDaClaquete(claquete),
+        praca: reconhecerPraca(claquete),
         dataExibicao: dataDaClaquete(claquete),
         programa: programa?.nome ?? '',
         tipoPrograma: programa?.tipo ?? 'outro',

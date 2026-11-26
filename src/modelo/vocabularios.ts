@@ -1,5 +1,6 @@
 import type { TipoPrograma } from './tipos';
 import type { RedatorVocab } from './redator';
+import { MARCA_TODAS, alternativa, palavrasDoFim, pracasRegistradas, reconhecerPraca, semPracaNoComeco, semPracaNoFim, type Praca } from './pracas.ts';
 
 /* Vocabulários padrão. Servem de sugestão nos campos do cabeçalho e de
    dicionário para o importador reconhecer o programa pelo texto ou pelo nome do arquivo. */
@@ -41,18 +42,6 @@ export const SELOS = ['Verifique a classificação indicativa', 'Sem selo', 'Liv
 /** A forma curta do selo, para a ficha (a coluna do selo é estreita). O que não tem forma curta fica como está. */
 const SELOS_CURTOS: Record<string, string> = { 'Verifique a classificação indicativa': 'Verifique' };
 export const seloCurto = (selo: string) => SELOS_CURTOS[selo] ?? selo;
-/** Praças oferecidas no app. "REDE" nos roteiros e nos nomes de arquivo é a G5. */
-export const PRACAS = ['G5', 'SP', 'RJ', 'INTER'];
-/** Como a praça aparece escrita nos arquivos. */
-export const PRACAS_LIDAS = ['REDE', 'G5', 'SP', 'RJ', 'INTER', 'INTERNACIONAL', 'MG', 'DF', 'PE'];
-/** Só existem três praças: o que não é Rio nem São Paulo é G5. */
-export const normalizarPraca = (p: string) => (/^(SP|RJ)$/i.test(p) ? p.toUpperCase() : /^INTER/i.test(p) ? 'INTER' : 'G5');
-
-/** Claquete do Rio começa por "RIO" e um separador ("RIO ", "Rio(", "Rio_"; não "RIOS"); a de São Paulo termina em
-    "SP"; o resto é G5. */
-export const pracaDaClaquete = (claquete: string) =>
-  /^RIO[^\p{L}\d]/iu.test(claquete.trim()) ? 'RJ' : / SP$/i.test(claquete.trim()) ? 'SP' : / INTER(?:NACIONAL)?$/i.test(claquete.trim()) ? 'INTER' : 'G5';
-
 /** A data achada numa claquete ou num nome de arquivo, e onde ela está no texto. */
 export interface DataLida {
   /** O dia da exibição: num período ("8 a 20/9"), o primeiro dia. */
@@ -117,12 +106,21 @@ export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete
 
 const DIAS_DO_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const dataValida = (dia: number, mes: number) => mes >= 1 && mes <= 12 && dia >= 1 && dia <= DIAS_DO_MES[mes - 1];
-// o último par "D M" do texto, depois de um nome (terminado em letra ou ")"), com a versão ("-2") e a praça opcionais
-const RE_DATA_COM_ESPACO = /^(.*?[\p{L})])(\s*)(\d{1,2}) (\d{1,2})((?:-[\p{L}\d]+)?)((?:\s+(?:SP|INTER(?:NACIONAL)?|REDE|G5|PRACAS))?\s*)$/iu;
+// o último par "D M" do texto, depois de um nome (terminado em letra ou ")"), com a versão ("-2") e a praça (ou a
+// marca de todas as praças) opcionais; montada das praças, uma vez por lista de praças
+const reDataComEspaco = new WeakMap<readonly Praca[], RegExp>();
+function dataComEspacoDas(pracas: readonly Praca[]): RegExp {
+  let re = reDataComEspaco.get(pracas);
+  if (!re) {
+    re = new RegExp(String.raw`^(.*?[\p{L})])(\s*)(\d{1,2}) (\d{1,2})((?:-[\p{L}\d]+)?)((?:\s+(?:${alternativa([...palavrasDoFim(pracas), MARCA_TODAS])}))?\s*)$`, 'iu');
+    reDataComEspaco.set(pracas, re);
+  }
+  return re;
+}
 
 /** A data "D M" separada por espaço no fim do nome, com barra; null quando não é seguro dizer que é data. */
-function dataComEspacoComBarra(claquete: string): string | null {
-  const m = RE_DATA_COM_ESPACO.exec(claquete);
+function dataComEspacoComBarra(claquete: string, pracas: readonly Praca[]): string | null {
+  const m = dataComEspacoDas(pracas).exec(claquete);
   if (!m) return null;
   const [, nome, espaco, dia, mes, versao, fim] = m;
   // "Nome7 6": o número colado na letra não abre a data
@@ -147,7 +145,7 @@ function dataComEspacoComBarra(claquete: string): string | null {
  * "ESPORTE 15/3 SP"), só quando é seguro (veja `dataComEspacoComBarra`).
  * A chave da claquete e a praça não mudam: a pontuação não conta nelas.
  */
-export function claqueteComBarra(claquete: string): string {
+export function claqueteComBarra(claquete: string, pracas: readonly Praca[] = pracasRegistradas()): string {
   const lida = lerDataDaClaquete(claquete, 'nome');
   if (lida) {
     if (claquete[lida.separador] === '/') return claquete;
@@ -161,8 +159,8 @@ export function claqueteComBarra(claquete: string): string {
     if (/\d/.test(claquete[lida.inicio - 1] ?? '')) return claquete;
     return comBarra(claquete);
   }
-  const comEspaco = dataComEspacoComBarra(claquete);
-  if (!comEspaco || chaveDaClaquete(comEspaco) !== chaveDaClaquete(claquete) || pracaDaClaquete(comEspaco) !== pracaDaClaquete(claquete)) return claquete;
+  const comEspaco = dataComEspacoComBarra(claquete, pracas);
+  if (!comEspaco || chaveDaClaquete(comEspaco) !== chaveDaClaquete(claquete) || reconhecerPraca(comEspaco, pracas) !== reconhecerPraca(claquete, pracas)) return claquete;
   return comEspaco;
 }
 
@@ -172,11 +170,11 @@ export function claqueteComBarra(claquete: string): string {
  * praça: "FESTA (AH) SP" fica "FESTA(AH) SP" (sem o espaço, o "SP" deixaria de ser a praça), e "FESTA (AH) 3/12" fica
  * "FESTA(AH) 3/12" (a chave tira o "(AH)" e colaria o nome na data).
  */
-export function claqueteSemEspacoNosParenteses(claquete: string): string {
+export function claqueteSemEspacoNosParenteses(claquete: string, pracas: readonly Praca[] = pracasRegistradas()): string {
   const igual = (a: string, b: string) => {
     const da = lerDataDaClaquete(a);
     const db = lerDataDaClaquete(b);
-    return chaveDaClaquete(a) === chaveDaClaquete(b) && pracaDaClaquete(a) === pracaDaClaquete(b) && da?.dia === db?.dia && da?.mes === db?.mes;
+    return chaveDaClaquete(a) === chaveDaClaquete(b) && reconhecerPraca(a, pracas) === reconhecerPraca(b, pracas) && da?.dia === db?.dia && da?.mes === db?.mes;
   };
   let texto = claquete;
   const re = /(\s*)(\([^()]*\))(\s*)/g;
@@ -198,7 +196,8 @@ export function claqueteSemEspacoNosParenteses(claquete: string): string {
  * (`claqueteComBarra`) e sem espaço em volta dos parênteses (`claqueteSemEspacoNosParenteses`).
  * "ELIANA (REPERC) 29-11" → "ELIANA(REPERC)29/11".
  */
-export const claquetePadrao = (claquete: string): string => claqueteSemEspacoNosParenteses(claqueteComBarra(claquete));
+export const claquetePadrao = (claquete: string, pracas: readonly Praca[] = pracasRegistradas()): string =>
+  claqueteSemEspacoNosParenteses(claqueteComBarra(claquete, pracas), pracas);
 
 /** A data da claquete, no ano corrente (ou no seguinte, se já passou há mais de seis meses). */
 export function dataDaClaquete(claquete: string, hoje = new Date(), atracoes: string[] = []): string {
@@ -356,7 +355,7 @@ export function naPauta(claquete: string): { editor: string; claquete: string } 
   const exata = pauta.get(chave);
   if (exata) return exata;
   // sem a praça no fim, ainda serve para achar o editor, mas a grafia já não é desta claquete
-  return { editor: pauta.get(chave.replace(/ (?:REDE|G5|SP|PRACAS)$/, ''))?.editor ?? '', claquete: '' };
+  return { editor: pauta.get(semPracaNoFim(chave, pracasRegistradas(), [MARCA_TODAS]))?.editor ?? '', claquete: '' };
 }
 export const editorDaPauta = (claquete: string): string => naPauta(claquete).editor;
 
@@ -367,7 +366,7 @@ export const editorDaPauta = (claquete: string): string => naPauta(claquete).edi
  */
 function fimDosNumerosDaAtracao(texto: string, extras: string[] = []): number {
   const n = normal(texto);
-  const comeco = [n, n.replace(/^rio /, '')];
+  const comeco = [n, semPracaNoComeco(n)];
   const trechos = [...externos.flatMap((e) => [e.nome, ...e.chaves]), ...PROGRAMAS.flatMap((p) => [p.nome, ...p.pistas]), ...extras].map(normal);
   // vale o trecho mais longo que abre o texto; só os com número importam
   const numeros = Math.max(
@@ -389,7 +388,7 @@ export function acharPrograma(texto: string): ProgramaVocab | null {
   // a key no começo da claquete decide: o que vem nos parênteses é detalhe ("CHEF(QUEM AMA)17-11" é do Chef,
   // numa chamada que fala de Quem Ama); só sem key no começo vale procurar o nome no meio do texto
   // a praça do Rio vem na frente ("Rio Fut(Brasileirao)21/11"): a key vale também depois dela
-  const comeco = [n, n.replace(/^rio /, '')];
+  const comeco = [n, semPracaNoComeco(n)];
   for (const e of externos)
     for (const c of e.chaves)
       if (comeco.some((x) => x === c || x.startsWith(c + ' ')) && (!melhor || c.length > melhor.tam)) melhor = { p: e.p, tam: c.length };

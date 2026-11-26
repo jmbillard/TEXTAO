@@ -117,6 +117,14 @@ _Evitar_: FilmeBOT (o site avulso que ela substitui)
 **Card**:
 O cartão no Trello de uma claquete (ou de um filme), com o checklist das artes.
 
+**Praça**:
+Para quem é a claquete (G5, SP, RJ, INTER) e, por isso, para onde vai o card: cada praça tem a sua entrada, a sua
+saída e a sua opção no campo Praça. A praça é dado, não código: cada uma diz como aparece no nome da claquete (termina
+em " SP"; começa com "RIO " e um separador) e como pode vir escrita (o **também lida como**: "REDE" é a G5). A ordem
+das praças decide quando duas regras batem ("RIO SHOW SP" é do Rio) e uma é a **praça padrão**, a que vale quando
+nenhuma bate. Sem nada salvo na Configuração, valem as **praças de fábrica** (as de sempre).
+_Evitar_: região, emissora
+
 **Duplicada**:
 Dois ou mais cards do quadro com a mesma claquete (pela key, sem acento, caixa e pontuação), a mesma praça e a mesma
 versão: um reenvio, um card criado à mão em cima de outro. Versões diferentes (-2, V2, B, Opção N) não são duplicadas.

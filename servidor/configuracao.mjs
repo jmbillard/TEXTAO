@@ -17,6 +17,9 @@ export const SALVAVEIS = new Set([
   'TRELLO_PRACAS', 'TRELLO_CAMPO_REDATOR', 'TRELLO_CAMPO_EDITOR', 'TRELLO_CAMPO_PRIORIDADE', 'TRELLO_PRIORIDADE_ALTA',
   'TRELLO_PRIORIDADE_MEDIA', 'TRELLO_CAMPO_COMPLEXIDADE', 'TRELLO_COMPLEXIDADE_OPCOES', 'TRELLO_CAMPO_PROJETO', 'TRELLO_CAMPO_OUTPUT',
   'TRELLO_CAMPO_BOT', 'TRELLO_CAMPO_ENTRADA', 'TRELLO_CAMPOS_FILME',
+  // as praças como dado (#71): a coleção inteira, em JSON (sigla, nome, regra, também lida como, entrada, saída, opção,
+  // padrão), na ordem em que as regras são conferidas; sem ela, valem as de fábrica com as variáveis acima
+  'PRACAS',
   // Filmes
   'TEABLE_FILMES', 'TEABLE_FILMES_POSTER', 'TEABLE_EXIBICOES', 'TRELLO_LISTA_FILMES', 'TRELLO_FILMES_ETIQUETAS',
   'TRELLO_FILMES_ETIQUETAS_SESSAO', 'TRELLO_FILMES_PRACA', 'FILMES_INTERVALO_MS', 'FILMES_TEMPO_MS',

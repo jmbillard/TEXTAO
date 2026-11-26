@@ -2,9 +2,10 @@
    Com TEABLE_PG_URL, pergunta direto ao Postgres do Teable (só leitura): uma consulta por chave, sem depender
    de visão nem de paginação. Se o banco não responder, vale a pauta lida pela API (vocabulario.mjs). */
 
+import { MARCA_TODAS, pracasDaConfiguracao, semPracaNoFim } from '../src/modelo/pracas.ts';
+
 const NOME = /^[A-Za-z0-9_]+$/;
 const DIAS = 45; // a mesma chave volta a existir no ano seguinte ("QUEM AMA 20 11"); só vale a pauta recente
-const semPraca = (chave) => chave.replace(/ (?:REDE|G5|SP|PRACAS)$/, '');
 
 export async function abrirPg(url) {
   const { default: pg } = await import('pg');
@@ -24,6 +25,9 @@ export function nomesDoPg(env, tabelaBruta) {
 export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copia = null) {
   const { esquema, tabela } = nomesDoPg(env, env.TEABLE_PG_PAUTA);
   const comBanco = !!(env.TEABLE_PG_URL && NOME.test(esquema) && NOME.test(tabela));
+  // a chave sem a praça do fim ("QUEM AMA 20 11 SP" → "QUEM AMA 20 11") ainda acha o editor
+  const pracas = pracasDaConfiguracao(env);
+  const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
   let banco = null;
 
   // to_jsonb: se a coluna "claquete" mudar de nome numa atualização do Teable, o editor continua vindo

@@ -38,6 +38,7 @@ import {
   type KeySemCadastro,
 } from '../dados/armazenamento';
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
+import { semPracaNoComeco, semPracaNoFim } from '../modelo/pracas';
 import { SetaCurva } from './setaCurva';
 import { caminhoDoIcone, Icone } from './icones';
 import { Marca } from './pecas';
@@ -87,11 +88,9 @@ const caixaDeTitulo = (s: string) =>
 
 /** "Festa na Praça 19/11 Rede" → "Festa na Praça": o que vem antes da data. */
 export const atracaoDaClaquete = (claquete: string) =>
-  caixaDeTitulo(claquete
-    .replace(/^\s*rio\s+/i, '')
-    .split(/\s*\(|\s+\d{1,2}\s*\/\s*\d{1,2}|\s+\d{1,2}[_ ]\d{1,2}\b/)[0]
-    .replace(/\s+(sp|rede|g5|rj)$/i, '')
-    .trim());
+  caixaDeTitulo(
+    semPracaNoFim(semPracaNoComeco(claquete.trimStart()).split(/\s*\(|\s+\d{1,2}\s*\/\s*\d{1,2}|\s+\d{1,2}[_ ]\d{1,2}\b/)[0]).trim(),
+  );
 
 /** A atração nova que o "+ Nova atração" do balão manda para os cadastros: o nome inicial e a key a ligar. */
 export interface AtracaoNova {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { agruparPorDia, artesParaMostrar, claqueteParaMostrar, filaVisivel, pendentes, proximoParaRevisar } from '../src/ui/fila';
 import { herdarTipos, manterAsDuas, substituirVersao } from '../src/modelo/versoes';
-import { dataDaClaquete, pracaDaClaquete } from '../src/modelo/vocabularios';
+import { dataDaClaquete } from '../src/modelo/vocabularios';
+import { reconhecerPraca as pracaDaClaquete } from '../src/modelo/pracas';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
 import { metaVazia, type Meta, type NoJSON, type Roteiro } from '../src/modelo/tipos';
 import type { Andamento, Resumo } from '../src/dados/armazenamento';

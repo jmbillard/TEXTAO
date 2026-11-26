@@ -1,4 +1,5 @@
-import { chaveDaClaquete, normalizarPraca, pracaDaClaquete } from './vocabularios.ts';
+import { chaveDaClaquete } from './vocabularios.ts';
+import { alternativa, normalizarPraca, palavrasDoFim, pracasRegistradas, reconhecerPraca, semPracaNoComeco, type Praca } from './pracas.ts';
 
 /* Claquetes duplicadas (#65): os cards do quadro do Trello com a mesma claquete, praça e versão. A mesma regra do
    relatório "PROMO: CLAQUETES DUPLICADAS" do n8n, com a chave da claquete do PROMeiro (`chaveDaClaquete`, a da fórmula
@@ -52,15 +53,21 @@ const DATA = String.raw`\d{1,2}\/\d{1,2}(?:\/\d{2,4})?`;
 // as marcas do fim da claquete que não mudam o caso: "(AH)", "(N)", "(DIA)", "(MES)"
 const MARCA_NO_FIM = /\s*\((?:[PNAH/+D\s]+|DIA|MES)\)\s*$/;
 // a praça escrita no fim do nome: entra pelo campo ou pelo nome, não pela chave
-const PRACA_NO_FIM = /[\s_]+(?:SP|RJ|REDE|G5|INTER|INTERNACIONAL)$/;
+const pracaNoFimDas = new WeakMap<readonly Praca[], RegExp>();
+const pracaNoFim = (pracas: readonly Praca[]) => {
+  let re = pracaNoFimDas.get(pracas);
+  if (!re) pracaNoFimDas.set(pracas, (re = new RegExp(`[\\s_]+(?:${alternativa(palavrasDoFim(pracas)) || '(?!)'})$`, 'i')));
+  return re;
+};
 
 /**
  * A versão escrita no nome e o nome sem ela: "-2", "V2" e o "2" depois da data são a versão 2; "B", "C"… depois da
  * data são outra versão; "Opção N", em qualquer lugar, também. A versão 1 é a primeira (''). As marcas "(AH)" e a
  * praça no fim saem junto.
  */
-export function versaoDaClaquete(nome: string): { base: string; versao: string } {
+export function versaoDaClaquete(nome: string, pracas: readonly Praca[] = pracasRegistradas()): { base: string; versao: string } {
   let s = semAcentoMaiusculo(nome).trim();
+  const praca = pracaNoFim(pracas);
   let versao = '';
   const opcao = /\bOPCAO[\s_]*(\d+)\b/.exec(s);
   if (opcao) {
@@ -69,7 +76,7 @@ export function versaoDaClaquete(nome: string): { base: string; versao: string }
   }
   for (let volta = 0; volta < 4; volta++) {
     const antes = s;
-    s = s.replace(MARCA_NO_FIM, '').replace(PRACA_NO_FIM, '').trim();
+    s = s.replace(MARCA_NO_FIM, '').replace(praca, '').trim();
     if (!versao) {
       const hifen = /^(.*?)\s*-\s*(\d)$/.exec(s);
       // "19-1" é uma data, não a versão 1 de "19"
@@ -87,11 +94,11 @@ export function versaoDaClaquete(nome: string): { base: string; versao: string }
   return { base: s, versao };
 }
 
-/** O grupo do card: a chave da claquete (sem a versão, a praça do fim e o "RIO" do começo), a praça e a versão. */
-export function grupoDoCard(card: Pick<CardDoQuadro, 'nome' | 'praca'>): { id: string; chave: string; praca: string; versao: string } {
-  const { base, versao } = versaoDaClaquete(card.nome);
-  const chave = chaveDaClaquete(base).replace(/^RIO /, '');
-  const praca = card.praca ? normalizarPraca(card.praca) : pracaDaClaquete(card.nome);
+/** O grupo do card: a chave da claquete (sem a versão, a praça do fim e a do começo, "RIO"), a praça e a versão. */
+export function grupoDoCard(card: Pick<CardDoQuadro, 'nome' | 'praca'>, pracas: readonly Praca[] = pracasRegistradas()): { id: string; chave: string; praca: string; versao: string } {
+  const { base, versao } = versaoDaClaquete(card.nome, pracas);
+  const chave = semPracaNoComeco(chaveDaClaquete(base), pracas);
+  const praca = card.praca ? normalizarPraca(card.praca, pracas) : reconhecerPraca(card.nome, pracas);
   return { id: `${chave}|${praca}|${versao}`, chave, praca, versao };
 }
 
@@ -135,10 +142,10 @@ function sugerir(cards: CardDoQuadro[]): CasoDeDuplicada['sugestao'] {
  * Os casos de duplicada: os cards com o mesmo grupo (chave + praça + versão), dois ou mais. Em ordem: as seções (com
  * arquivado e aberto, todos abertos, todos arquivados) e, em cada uma, o caso mais recente primeiro.
  */
-export function agruparDuplicadas(cards: CardDoQuadro[]): CasoDeDuplicada[] {
+export function agruparDuplicadas(cards: CardDoQuadro[], pracas: readonly Praca[] = pracasRegistradas()): CasoDeDuplicada[] {
   const porGrupo = new Map<string, { grupo: ReturnType<typeof grupoDoCard>; cards: CardDoQuadro[] }>();
   for (const c of cards) {
-    const grupo = grupoDoCard(c);
+    const grupo = grupoDoCard(c, pracas);
     if (!grupo.chave) continue;
     const ja = porGrupo.get(grupo.id);
     if (ja) ja.cards.push(c);
