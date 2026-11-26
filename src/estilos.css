@@ -3012,7 +3012,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .conf-filtros button[aria-pressed='true'] b { color: var(--papel); opacity: 0.8; }
 .conf-filtros button.dec b { color: var(--ultra); }
 .conf-busca { margin-left: auto; flex: 0 1 240px; height: 32px; border-radius: 9px; background: var(--neutro); border: 0; padding: 0 10px; font: 400 13px var(--sans); color: var(--tinta); min-width: 140px; }
-.conf-cab, .conf-linha { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1.1fr) 92px minmax(0, 1fr) 28px; gap: 10px; align-items: center; padding: 8px 20px; }
+.conf-cab, .conf-linha { display: grid; grid-template-columns: 18px minmax(0, 1fr) 16px minmax(0, 1.1fr) 108px minmax(0, 1fr) 28px; gap: 10px; align-items: center; padding: 8px 20px; }
 .conf-cab { font: 600 10.5px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta3); border-bottom: 1px solid var(--regua); padding-top: 10px; }
 .conf-linha { border-top: 1px solid var(--regua); }
 .conf-cab + .conf-linha { border-top: 0; }
@@ -3020,6 +3020,29 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .conf-linha .arq .n { color: var(--regua-forte); margin-right: 6px; }
 .conf-linha .seta { color: var(--tinta3); }
 .conf-linha .arte { font: 600 14px var(--sans); color: var(--tinta); overflow-wrap: anywhere; }
+/* o nome editável na linha (#60): parece texto até passar o mouse ou entrar no campo */
+.conf-linha input.arte { width: 100%; min-width: 0; border: 1px solid transparent; border-radius: 7px; background: none; padding: 4px 6px; margin-left: -7px; text-transform: uppercase; outline: 0; }
+.conf-linha input.arte:hover:not(:disabled) { border-color: var(--regua); }
+.conf-linha input.arte:focus { border-color: var(--ultra); background: var(--cartao); }
+.conf-linha .tipo select { width: 100%; font: 600 12px var(--mono); border: 1px solid var(--regua-forte); border-radius: 7px; padding: 4px; background: var(--cartao); color: var(--tinta); }
+.conf-linha .tipo select.vazio { border-style: dashed; color: var(--falta); }
+.conf-cab .marcar, .conf-linha .marcar { width: 16px; height: 16px; margin: 0; accent-color: var(--ultra); }
+.conf-linha.marcada { background: color-mix(in srgb, var(--ultra) 4%, var(--papel)); }
+/* as perguntas da linha "para decidir", embaixo dela */
+.conf-perguntas { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 4px; padding: 0 0 4px; }
+.conf-perguntas .conf-pergunta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.conf-perguntas .q { font: 600 13px var(--sans); color: var(--ultra-tinta); }
+.conf-perguntas .cats button { padding: 4px 10px; font-size: 12.5px; background: var(--cartao); }
+.conf-perguntas .dica-tipo { font: 400 12px var(--sans); color: var(--tinta3); }
+.conf-perguntas .resolvida { font: 400 12.5px var(--sans); color: var(--tinta3); }
+.conf-perguntas .resolvida b { color: var(--tinta2); font-weight: 600; }
+/* as decisões em lote */
+.conf-lote { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--regua); background: color-mix(in srgb, var(--ultra) 5%, var(--papel)); font: 400 13px var(--sans); color: var(--tinta2); }
+.conf-lote b { color: var(--tinta); font-weight: 600; }
+.conf-lote .rot { font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ultra); }
+.conf-lote .pilula { border: 1px solid var(--regua-forte); background: var(--cartao); color: var(--tinta); border-radius: 999px; padding: 4px 11px; font: 500 12.5px var(--sans); cursor: pointer; }
+.conf-lote .pilula:hover { border-color: var(--ultra); color: var(--ultra); }
+.conf-lote select { font: 500 12.5px var(--sans); border-radius: 8px; border: 1px solid var(--regua-forte); background: var(--cartao); color: var(--tinta); padding: 3px 6px; }
 .conf-linha .tipo { font: 600 12px var(--mono); color: var(--tinta2); }
 /* o rodapé da arte: o que as regras de conversão mudaram ("antes → depois · regra"), o depois em destaque */
 .conf-linha .arte-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -3030,7 +3053,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .conf-linha .est { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .conf-linha .etq { align-self: flex-start; font: 600 10.5px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 .conf-linha .etq.nova { background: var(--ok-fundo); color: var(--ok); }
-.conf-linha .etq.completa { background: var(--ok-fundo); color: var(--ok); outline: 1px dashed currentColor; outline-offset: -1px; }
+.conf-linha .etq.completa, .conf-linha .etq.corrige { background: var(--ok-fundo); color: var(--ok); outline: 1px dashed currentColor; outline-offset: -1px; }
 .conf-linha .etq.ja, .conf-linha .etq.copia { background: var(--neutro); color: var(--tinta3); }
 .conf-linha .etq.fora { border: 1px solid var(--regua-forte); color: var(--tinta3); }
 .conf-linha .etq.decidir { background: var(--ultra); color: var(--no-ultra); }
@@ -3053,6 +3076,6 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .resultado-importacao .det b { font: 600 13px var(--mono); color: var(--ok); }
 .resultado-importacao .acoes { display: flex; justify-content: center; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
 @media (max-width: 1000px) {
-  .conf-cab, .conf-linha { grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr) 28px; }
-  .conf-cab > :nth-child(1), .conf-cab > :nth-child(2), .conf-linha .arq, .conf-linha .seta { display: none; }
+  .conf-cab, .conf-linha { grid-template-columns: 18px minmax(0, 1fr) 92px minmax(0, 1fr) 28px; }
+  .conf-cab > :nth-child(2), .conf-cab > :nth-child(3), .conf-linha .arq, .conf-linha .seta { display: none; }
 }

@@ -17,6 +17,12 @@
 // fontes (o acervo da atração, os roteiros dela, os de todas, o acervo de todas: a produção da arte também é falsa) e
 // as versões (VERT, 6S) em "Versões e cópias"; cada linha mostra o "antes → depois · regra".
 //
+// As linhas para decidir (#60), noutra atração fictícia: as perguntas na linha (o nome parecido com um do acervo, o
+// erro que está no próprio acervo, o acento sugerido, o tipo tirado do começo do nome, a sigla que não é tipo e o
+// rodapé composto), o nome e o tipo editados na linha (o estado recalculado), o lote (aceitar os acentos, deixar fora
+// as de uma sigla, dar o tipo às marcadas e tirar as marcadas) e o Gravar, travado com "Faltam N decisões" e liberado
+// com o que será feito; gravar cria as novas e renomeia no lugar a linha do acervo que estava errada.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:ficha
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -49,8 +55,17 @@ const ARTES = [
   ['VEM AÍ', ''],
   ['PLATEIA', ''],
 ];
+// o Auditório Fictício (#60): o acervo com um nome errado (SORISSO) e os que o CSV escreve quase igual
+const AUDITORIO = 'Auditório Fictício';
+const ARTES_DO_AUDITORIO = [
+  ['BANDA MAR ABERTO', 'RDP'],
+  ['SORISSO FICTICIO', 'RDP'],
+  ['HOJE', 'CRT'],
+  ['PLATEIA', 'LETT'],
+];
 const LINHAS = [
   ...ARTES.map(([arte, tipo], i) => ({ id: `recArte${i}`, arte, tipo: tipo || null, atracao: [{ id: 'recProg', title: PROGRAMA }], claquete: [], filme: null })),
+  ...ARTES_DO_AUDITORIO.map(([arte, tipo], i) => ({ id: `recAud${i}`, arte, tipo, atracao: [{ id: 'recAud', title: AUDITORIO }], claquete: [], filme: null })),
   { id: 'recOutra', arte: 'HOJE', tipo: 'RDP', atracao: [{ id: 'recNovela', title: 'Novela Fictícia' }], claquete: [], filme: null },
   { id: 'recFilme', arte: 'TÍTULO', tipo: null, atracao: [{ id: 'recSessao', title: 'Sessão Fictícia' }], claquete: [], filme: { id: 'recF', title: 'FILME FICTÍCIO (2020)' } },
 ];
@@ -59,6 +74,7 @@ const ACERVOS = [
   { atracao: 'Novela Fictícia', acervo: null },
   { atracao: 'Sessão Fictícia', acervo: 'do filme' },
   { atracao: 'Shows Fictícios', acervo: 'sem acervo' },
+  { atracao: AUDITORIO, acervo: 'próprio' },
 ];
 // os CSVs fictícios da pasta de output (nome;caminho;criado em), um por atração
 const csv = (pasta, nomes) => ['"nome";"caminho";"criado em"', ...nomes.map((n, i) => `"${n}";"/Volumes/FICTICIO/output/${pasta}/${n}";"2024-08-12 19:${10 + i}"`)].join('\r\n');
@@ -74,7 +90,7 @@ const CSV_PROGRAMA = csv('PROGRAMA FICTICIO', [
   'RDP - DUPLA FICTICIA.mov',
   'RDP - DUPLA FICTICIA.mxf', // repetida
   '_EPISODIOS', // pasta
-  'COMP - ABERTURA EP 12.mov', // sem o prefixo do tipo
+  'ABERTURA EP 12.mov', // sem o prefixo do tipo
   'RDP - GRUPO DE TESTE.mov', // a conferência tira
   'FOTO - PALCO (1).png', // cópia sem o original: já no acervo
   // as regras de conversão (#59)
@@ -88,8 +104,26 @@ const CSV_PROGRAMA = csv('PROGRAMA FICTICIO', [
 const ROTEIROS = [
   { atracao: [{ id: 'recProg', title: PROGRAMA }], artes: 'CANTORA DE EXEMPLO | GRUPO DE TESTE (RDP) | GRUPO DE TESTE (CRT)' },
   { atracao: [{ id: 'recNovela', title: 'Novela Fictícia' }], artes: 'DUPLA FICTÍCIA | NÃO PERCA' },
+  { atracao: [{ id: 'recAud', title: AUDITORIO }], artes: 'SORRISO FICTÍCIO | MÁRCIA UM | MÁRCIA DOIS | JOÃO TRÊS | JOÃO QUATRO' },
 ];
 const CSV_NOVELA = csv('NOVELA FICTICIA', ['RDP - HOJE.mov', 'CRT - HOJE.mov', 'CRT - AMANHA.mov', 'RDP - HOJE (1).mov']);
+// o CSV do Auditório (#60): cada pergunta, as que se editam na linha e as que vão em lote
+const CSV_AUDITORIO = csv('AUDITORIO FICTICIO', [
+  'RDP - BANDA MAR ABERTTO.mov', // parecida com BANDA MAR ABERTO: é a mesma
+  'RDP - SORRISO FICTICIO.mov', // o acervo escreve SORISSO, o roteiro SORRISO: corrigir o acervo
+  'RDP - MARCIA DO VALE.mov', // acento sugerido (em lote)
+  'RDP - JOAO PEDREIRA.mov', // acento sugerido (em lote)
+  'MOLDURA VIDEO.png', // o tipo do começo do nome: confirmar
+  'COMP - ABERTURA EP 12.mov', // COMP não é tipo (em lote: ficam fora)
+  'COMP - ENCERRAMENTO EP 12.mov',
+  'RDP - ANA LUZ E BENTO LUZ.mov', // rodapé composto: fica fora
+  'CRT - HOJ.mov', // o nome editado na linha: HOJE já está no acervo
+  'CRT - PLATEIA.mov', // o tipo trocado na linha: PLATEIA (LETT) já está no acervo
+  'CRT - DOMINGO.mov', // marcadas: ganham o tipo LETT
+  'CRT - SEGUNDA.mov',
+  'CRT - VINHETA 1.mov', // marcadas: não importar
+  'CRT - VINHETA 2.mov',
+]);
 
 const atracao = (id, nome, categoria, acervo, keys) => ({ id, nome, categoria, acervo, keys: keys.map((key, i) => ({ id: `${id}k${i}`, key })), caminhos: {}, campos: {} });
 const CADASTROS = {
@@ -99,6 +133,7 @@ const CADASTROS = {
     atracao('recProg', PROGRAMA, 'Programa', 'proprio', ['PROGRAMA FICTICIO', 'PROG FICT']),
     atracao('recSessao', 'Sessão Fictícia', 'Filme', 'filme', ['SESSAO FICTICIA']),
     atracao('recShows', 'Shows Fictícios', 'Show', 'sem', ['SHOWS']),
+    atracao('recAud', AUDITORIO, 'Programa', 'proprio', ['AUDITORIO FICTICIO']),
   ],
   redatores: [],
   editores: [],
@@ -108,7 +143,7 @@ const CADASTROS = {
   podeApagar: true,
 };
 
-const ID_DA_ATRACAO = { [PROGRAMA]: 'recProg', 'Novela Fictícia': 'recNovela', 'Sessão Fictícia': 'recSessao', 'Shows Fictícios': 'recShows' };
+const ID_DA_ATRACAO = { [PROGRAMA]: 'recProg', 'Novela Fictícia': 'recNovela', 'Sessão Fictícia': 'recSessao', 'Shows Fictícios': 'recShows', [AUDITORIO]: 'recAud' };
 const TIPOS = ['RDP', 'CRT', 'LETT', 'FOTO', 'MOLDURA'];
 
 /** O Teable de mentira: o Postgres (o acervo e as atrações) e a API (os campos e os registros, que mudam o acervo). */
@@ -291,7 +326,9 @@ const linhasDaConferencia = (p) =>
   p.locator('.conf-linha').evaluateAll((ls) =>
     ls.map((l) => {
       const t = (s) => l.querySelector(s)?.textContent.trim() ?? '';
-      return `${l.querySelector('.arq').lastChild.textContent} → ${t('.etq')} ${t('.arte')}${t('.tipo') ? ` (${t('.tipo')})` : ''}`;
+      const arte = l.querySelector('input.arte')?.value ?? t('.arte');
+      const tipo = l.querySelector('.tipo select')?.value ?? '';
+      return `${l.querySelector('.arq').lastChild.textContent} → ${t('.etq')} ${arte}${tipo ? ` (${tipo})` : ''}`;
     }),
   );
 const placar = async (p) => (await p.locator('.conf-placar').textContent()).replace(/\s+/g, ' ').trim();
@@ -325,7 +362,7 @@ async function importarNoComputador(navegador, url, tema) {
     'RDP - DUPLA FICTICIA.mov → nova DUPLA FICTÍCIA (RDP)',
     'RDP - DUPLA FICTICIA.mxf → cópia DUPLA FICTÍCIA (RDP)',
     '_EPISODIOS → fora —',
-    'COMP - ABERTURA EP 12.mov → fora —',
+    'ABERTURA EP 12.mov → fora —',
     'RDP - GRUPO DE TESTE.mov → nova GRUPO DE TESTE (RDP)',
     'FOTO - PALCO (1).png → já no acervo PALCO (FOTO)',
     'CRT - DOMINGO 7 15.mov → nova DOMINGO 7:15 (CRT)',
@@ -429,6 +466,120 @@ async function soltarNoComputador(navegador, url, tema) {
   console.log(`ok: soltar ${nome}: o CSV solto na área tracejada → conferir → gravar → 1 → 3 → Ver o acervo`);
 }
 
+/** As linhas para decidir (#60): as perguntas na linha, a edição, o lote e o Gravar travado e liberado. Com gravar,
+    vai até o resultado (o acervo de mentira muda); sem, cancela depois das capturas. */
+async function decidirNoComputador(navegador, url, tema, { gravar }) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  // alta o bastante para a conferência inteira caber: o pé (fixo embaixo) não cobre linhas na captura
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1800 }, colorScheme: tema });
+  await linha(p, AUDITORIO).locator('.abrir-ficha').click();
+  await p.locator('.ficha-atr .area-importar input[type=file]').setInputFiles({ name: 'AUDITORIO_SERVICO.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV_AUDITORIO) });
+  const conf = p.locator('.conferencia');
+  await conf.waitFor();
+  const pe = conf.locator('.conf-pe');
+  // pelo nome do arquivo (o texto da linha inteira tem as opções do tipo)
+  const da = (arquivo) => conf.locator('.conf-linha', { has: p.locator('.arq', { hasText: arquivo }) });
+  const estado = async (arquivo) => `${(await da(arquivo).locator('.etq').textContent()).trim()} ${await da(arquivo).locator('input.arte').inputValue()} (${await da(arquivo).locator('.tipo select').inputValue()})`;
+  assert.equal(await placar(p), '6 novas · 0 completam o acervo · 0 já no acervo · 0 ficam de fora · 8 para decidir');
+  // as "para decidir" vêm primeiro, cada uma com a pergunta na linha
+  assert.deepEqual((await linhasDaConferencia(p)).slice(0, 8), [
+    'RDP - BANDA MAR ABERTTO.mov → decidir BANDA MAR ABERTTO (RDP)',
+    'RDP - SORRISO FICTICIO.mov → decidir SORRISO FICTÍCIO (RDP)',
+    'RDP - MARCIA DO VALE.mov → decidir MARCIA DO VALE (RDP)',
+    'RDP - JOAO PEDREIRA.mov → decidir JOAO PEDREIRA (RDP)',
+    'MOLDURA VIDEO.png → decidir MOLDURA VÍDEO (MOLDURA)',
+    'COMP - ABERTURA EP 12.mov → decidir ABERTURA EP 12',
+    'COMP - ENCERRAMENTO EP 12.mov → decidir ENCERRAMENTO EP 12',
+    'RDP - ANA LUZ E BENTO LUZ.mov → decidir ANA LUZ E BENTO LUZ (RDP)',
+  ]);
+  const pergunta = (arquivo) => da(arquivo).locator('.conf-perguntas .conf-pergunta').evaluate((q) => [q.querySelector('.q').textContent, ...[...q.querySelectorAll('button')].map((b) => b.textContent)].join(' | '));
+  assert.equal(await pergunta('BANDA MAR ABERTTO'), 'Parece BANDA MAR ABERTO (RDP), que já está no acervo. | É a mesma: erro no arquivo | O do acervo está errado: corrigir | É outra arte');
+  assert.equal(await pergunta('SORRISO'), 'O acervo tem SORISSO FICTICIO (RDP), quase igual. | O do acervo está errado: corrigir | É a mesma: erro no arquivo | São artes diferentes');
+  assert.equal(await pergunta('MARCIA'), 'Acento? | MÁRCIA DO VALE | Como está');
+  assert.equal(await pergunta('MOLDURA'), 'Sem “SIGLA - ”: o tipo saiu do começo do nome. | MOLDURA está certo | Fica fora');
+  assert.equal(await pergunta('ABERTURA EP 12'), 'COMP não é tipo do acervo. | Fica fora');
+  assert.equal(await pergunta('ANA LUZ'), 'Dois nomes num rodapé. O roteiro escreve assim? | Sim, importar | Fica fora');
+  assert.equal((await pe.locator('.falta').textContent()).trim(), 'Faltam 8 decisões');
+  assert.ok(await pe.locator('.botao').isDisabled(), 'o Gravar travado com decisão pendente');
+  assert.equal(await pe.locator('.botao').textContent(), 'Gravar');
+  await conf.locator('.conf-filtros button', { hasText: 'Para decidir' }).click();
+  assert.equal(await conf.locator('.conf-linha').count(), 8);
+  await semRolagemDeLado(p, `decidir ${nome}`);
+  await capturar(p, `decidir-perguntas-${nome}`);
+  await conf.locator('.conf-filtros button', { hasText: 'Todas' }).click();
+
+  // decidir na linha: a pergunta some e fica "Decidido: … mudar"; o estado é recalculado
+  await da('BANDA MAR ABERTTO').locator('.conf-perguntas button', { hasText: 'É a mesma: erro no arquivo' }).click();
+  assert.equal(await estado('BANDA MAR ABERTTO'), 'já no acervo BANDA MAR ABERTO (RDP)');
+  assert.equal((await da('BANDA MAR ABERTTO').locator('.resolvida').textContent()).replace(/\s+/g, ' ').trim(), 'Decidido: É a mesma: erro no arquivo mudar');
+  await da('SORRISO').locator('.conf-perguntas button', { hasText: 'O do acervo está errado: corrigir' }).click();
+  assert.equal(await estado('SORRISO'), 'corrige o acervo SORRISO FICTÍCIO (RDP)');
+  assert.equal(await da('SORRISO').locator('.mot').textContent(), '“SORISSO FICTICIO” no acervo vira “SORRISO FICTÍCIO” (a mesma linha)');
+  await da('MOLDURA').locator('.conf-perguntas button', { hasText: 'MOLDURA está certo' }).click();
+  assert.equal(await estado('MOLDURA'), 'nova MOLDURA VÍDEO (MOLDURA)');
+  await da('ANA LUZ').locator('.conf-perguntas button', { hasText: 'Fica fora' }).click();
+  assert.equal((await da('ANA LUZ').locator('.etq').textContent()).trim(), 'fora');
+  // "mudar" devolve a pergunta; decidir de novo
+  await da('ANA LUZ').locator('.resolvida .botao-texto').click();
+  assert.equal((await da('ANA LUZ').locator('.etq').textContent()).trim(), 'decidir');
+  await da('ANA LUZ').locator('.conf-perguntas button', { hasText: 'Fica fora' }).click();
+  assert.equal((await pe.locator('.falta').textContent()).trim(), 'Faltam 4 decisões');
+  assert.ok(await pe.locator('.botao').isDisabled());
+  await capturar(p, `decidir-travado-${nome}`);
+
+  // a edição na linha: o nome e o tipo, com o estado recalculado pela chave
+  await da('CRT - HOJ.mov').locator('input.arte').fill('hoje');
+  await da('CRT - HOJ.mov').locator('input.arte').press('Enter');
+  assert.equal(await estado('CRT - HOJ.mov'), 'já no acervo HOJE (CRT)');
+  await da('CRT - PLATEIA').locator('.tipo select').selectOption('LETT');
+  assert.equal(await estado('CRT - PLATEIA'), 'já no acervo PLATEIA (LETT)');
+
+  // em lote: marcar linhas, dar o tipo, tirar; aceitar os acentos; as de uma sigla ficam fora
+  const lote = conf.locator('.conf-lote');
+  await da('CRT - DOMINGO').locator('.marcar').check();
+  await da('CRT - SEGUNDA').locator('.marcar').check();
+  assert.deepEqual(await lote.locator('.pilula').allTextContents(), ['Aceitar os 2 acentos sugeridos', 'As 2 com COMP ficam fora', 'não importar']);
+  assert.equal((await lote.locator('span').nth(1).textContent()).replace(/\s+/g, ' ').trim(), '2 marcadas:');
+  await capturar(p, `decidir-lote-${nome}`);
+  await lote.locator('select').selectOption('LETT');
+  assert.equal(await estado('CRT - DOMINGO'), 'nova DOMINGO (LETT)');
+  assert.equal(await estado('CRT - SEGUNDA'), 'nova SEGUNDA (LETT)');
+  await da('VINHETA 1').locator('.marcar').check();
+  await da('VINHETA 2').locator('.marcar').check();
+  await lote.locator('.pilula', { hasText: 'não importar' }).click();
+  assert.equal(await da('VINHETA 2').locator('.mot').textContent(), 'tirada da importação');
+  await lote.locator('.pilula', { hasText: 'Aceitar os 2 acentos sugeridos' }).click();
+  assert.equal(await estado('MARCIA'), 'nova MÁRCIA DO VALE (RDP)');
+  assert.equal(await estado('JOAO'), 'nova JOÃO PEDREIRA (RDP)');
+  await lote.locator('.pilula', { hasText: 'As 2 com COMP ficam fora' }).click();
+  assert.equal(await conf.locator('.conf-linha.e-decidir').count(), 0);
+
+  // sem decisão pendente, o Gravar libera e diz o que será feito
+  assert.equal(await placar(p), '5 novas · 1 completa o acervo · 3 já no acervo · 5 ficam de fora · 0 para decidir');
+  assert.equal(await pe.locator('.falta').count(), 0);
+  assert.equal((await pe.locator('.efeito').textContent()).replace(/\s+/g, ' ').trim(), 'Cria 5 no acervo, renomeia 1 (o nome errado no acervo, na mesma linha). As 8 outras não mudam nada.');
+  assert.equal(await pe.locator('.botao').textContent(), 'Gravar 6 no acervo');
+  assert.ok(await pe.locator('.botao').isEnabled());
+  await semRolagemDeLado(p, `decidir ${nome}, liberado`);
+  await capturar(p, `decidir-liberado-${nome}`);
+
+  if (gravar) {
+    await pe.locator('.botao').click();
+    const res = p.locator('.resultado-importacao');
+    await res.waitFor();
+    assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '4→9');
+    assert.equal((await res.locator('.det').textContent()).replace(/\s+/g, ' ').trim(), `artes no acervo de ${AUDITORIO}+5 novas · 0 ganharam o tipo · 1 nome corrigido · 8 linhas sem mudança`);
+    assert.equal(LINHAS.find((l) => l.id === 'recAud1').arte, 'SORRISO FICTÍCIO', 'o nome errado do acervo foi corrigido na mesma linha (o mesmo id)');
+    await capturar(p, `decidir-gravado-${nome}`);
+    await res.locator('.botao', { hasText: 'Ver o acervo' }).click();
+    await p.locator('.lista-acervo .arte-acervo').nth(8).waitFor();
+    assert.deepEqual(await p.locator('.lista-acervo .arte-acervo .t').allTextContents(), ['BANDA MAR ABERTO', 'DOMINGO', 'HOJE', 'JOÃO PEDREIRA', 'MÁRCIA DO VALE', 'MOLDURA VÍDEO', 'PLATEIA', 'SEGUNDA', 'SORRISO FICTÍCIO']);
+  } else await conf.locator('.conf-topo .botao', { hasText: 'Cancelar' }).click();
+  assert.deepEqual(erros, [], `decidir ${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: decidir ${nome}: as perguntas na linha, a edição, o lote e o Gravar travado → liberado${gravar ? ' → gravado (cria 5, renomeia 1 no lugar)' : ''}`);
+}
+
 async function principal() {
   const s = await subir({ acervo: await acervoFalso(), env: { CADASTRO_ADMINS: LIA } });
   const navegador = await chromium.launch();
@@ -439,6 +590,8 @@ async function principal() {
     // a importação muda o acervo de mentira: depois das telas que contam as 24
     await importarNoComputador(navegador, s.url, 'light');
     await soltarNoComputador(navegador, s.url, 'dark');
+    await decidirNoComputador(navegador, s.url, 'dark', { gravar: false });
+    await decidirNoComputador(navegador, s.url, 'light', { gravar: true });
   } finally {
     await navegador.close();
     await s.descer();

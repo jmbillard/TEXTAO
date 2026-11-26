@@ -13,3 +13,8 @@ Teable.
 Com isso, o tipo da arte passa a ser gravado também pelo PROMeiro, e não só à mão. Para o campo de seleção não ganhar
 opções por engano, o tipo é sempre conferido contra as opções do campo antes de gravar: o que não é opção é recusado
 e nada é gravado. Só a atração de acervo próprio importa; a de acervo do filme e a sem acervo, não.
+
+Na conferência, o nome parecido com um do acervo pergunta de que lado está o erro. Quando o erro está no acervo, a
+gravação renomeia a mesma linha (o mesmo id), em vez de criar outra e deixar a errada; a resposta do gravar devolve o
+nome antigo de cada linha renomeada. O gravar recebe o CSV e as escolhas de quem conferiu e classifica de novo contra o
+acervo relido: com decisão pendente, nada é gravado.

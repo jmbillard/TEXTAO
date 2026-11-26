@@ -15,7 +15,8 @@ import { criarPauta } from './pauta.mjs';
 import { criarCache } from './cache.mjs';
 import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
 import { criarCadastros } from './cadastros.mjs';
-import { chaveDeArte, criarAcervo } from './acervo.mjs';
+import { criarAcervo } from './acervo.mjs';
+import { escolhasDoPedido } from './importacao-do-acervo.mjs';
 import { criarRedatorProvavel } from './redator.mjs';
 import { criarFilmes } from './filmes.mjs';
 import { ehSessaoDaTarde } from './exibicao.mjs';
@@ -1350,17 +1351,16 @@ export function criarApp({ db, env = process.env, estaticos = null, cache = cria
       try {
         const qual = await acervo.acervoDe(atracao);
         if (qual !== 'proprio') return json(res, 422, { erro: `${atracao} não tem acervo próprio: a importação é só para atração de acervo próprio.` });
+        if (typeof corpo.csv !== 'string' || !corpo.csv.trim()) return json(res, 400, { erro: 'O CSV veio vazio.' });
         if (caminho === '/api/acervo/importar/previa') {
-          if (typeof corpo.csv !== 'string' || !corpo.csv.trim()) return json(res, 400, { erro: 'O CSV veio vazio.' });
           const arquivo = typeof corpo.arquivo === 'string' ? corpo.arquivo.slice(0, 200) : '';
           return json(res, 200, { atracao, arquivo, ...(await acervo.previaDaImportacao(atracao, corpo.csv)) });
         }
-        const linhas = Array.isArray(corpo.linhas)
-          ? corpo.linhas.map((l) => ({ arte: typeof l?.arte === 'string' ? l.arte.trim().slice(0, 300) : '', tipo: typeof l?.tipo === 'string' ? l.tipo.trim() : '' }))
-          : [];
-        if (!linhas.length || linhas.length > 20_000 || linhas.some((l) => !chaveDeArte(l.arte))) return json(res, 400, { erro: 'As linhas da importação vieram malformadas.' });
-        const feito = await acervo.gravarImportacao(atracao, linhas);
-        console.log(`[acervo] ${eu.email} importou ${String(corpo.arquivo ?? 'um CSV').slice(0, 200)} em ${atracao}: ${feito.novas} novas, ${feito.ganharamTipo} ganharam o tipo (${feito.antes} → ${feito.depois})`);
+        // o gravar recebe o mesmo CSV e as escolhas da conferência, e classifica de novo contra o acervo relido
+        const feito = await acervo.gravarImportacao(atracao, corpo.csv, escolhasDoPedido(corpo.escolhas));
+        console.log(
+          `[acervo] ${eu.email} importou ${String(corpo.arquivo ?? 'um CSV').slice(0, 200)} em ${atracao}: ${feito.novas} novas, ${feito.ganharamTipo} ganharam o tipo, ${feito.renomeadas.length} renomeadas (${feito.antes} → ${feito.depois})`,
+        );
         return json(res, 200, feito);
       } catch (e) {
         if (e?.status === 422) return json(res, 422, { erro: e.message });

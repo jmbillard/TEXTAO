@@ -16,7 +16,7 @@
  * Lê pelo Postgres do Teable (só leitura) e grava pela API (TEABLE_TOKEN).
  */
 import { acervoDaAtracao } from './cadastros.mjs';
-import { classificar, planoDeGravacao } from './importacao-do-acervo.mjs';
+import { classificar } from './importacao-do-acervo.mjs';
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
 import { nivelDeComplexidade } from './trello.mjs';
@@ -353,42 +353,60 @@ export function criarAcervo(env, deps = {}) {
     };
   }
 
+  /** O acervo da atração para a conferência: { id, arte, tipo } de cada linha. */
+  const paraConferir = (linhas) => linhas.map(({ id, arte, tipo }) => ({ id, arte, tipo }));
+
   /**
    * A prévia da importação por CSV (ADR 0005): cada linha do CSV classificada contra o acervo da atração, com as
-   * regras de conversão (a grafia pelas fontes, na ordem), o placar e as opções de tipo. Nada é gravado.
-   * @returns { antes, tipos, linhas, placar }
+   * regras de conversão (a grafia pelas fontes, na ordem), as perguntas para quem confere, o placar e as opções de
+   * tipo. Vai junto o acervo da atração, para a tela conferir de novo a cada escolha. Nada é gravado.
+   * @returns { antes, tipos, acervo, linhas, placar, faltam }
    */
   async function previaDaImportacao(atracao, csv) {
     await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
-    const acervo = await linhasDa(atracao);
-    return { antes: acervo.length, tipos, ...classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao) }) };
+    const acervo = paraConferir(await linhasDa(atracao));
+    const { linhas, placar, faltam } = classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao) });
+    return { antes: acervo.length, tipos, acervo, linhas, placar, faltam };
   }
 
   /**
-   * Grava a importação conferida (ADR 0005): as linhas decididas ({ arte, tipo }) entram no acervo da atração. O tipo
-   * tem de ser uma opção do campo (sem ele, nada é gravado: o typecast nunca cria opção nova); o acervo é relido logo
-   * antes, e a comparação é a da prévia: a mesma arte e tipo não muda nada, a mesma arte sem tipo só ganha o tipo, o
-   * resto é criado, em lotes de 100. @returns { antes, depois, novas, ganharamTipo, semMudanca }
+   * Grava a importação conferida (ADR 0005, #60): o CSV é classificado de novo contra o acervo relido logo antes, com
+   * as escolhas de quem conferiu (o nome e o tipo editados, as respostas, as linhas tiradas). Com decisão pendente,
+   * nada é gravado. O tipo tem de ser uma opção do campo (o typecast nunca cria opção nova). Cria as novas, dá o tipo
+   * às que completam e renomeia no lugar (o mesmo id) a linha do acervo que estava errada, em lotes de 100.
+   * @returns { antes, depois, novas, ganharamTipo, renomeadas: [{ id, antes, depois }], semMudanca }
    */
-  async function gravarImportacao(atracao, linhas) {
+  async function gravarImportacao(atracao, csv, escolhas = {}) {
     if (!ligado || !grava) throw new Error('O acervo de artes não está configurado (TEABLE_ACERVO e TEABLE_PG_ACERVO).');
     const id = await idDaAtracao(atracao);
     const tipos = await tiposDoAcervo();
-    const invalidos = [...new Set(linhas.map((l) => l.tipo).filter((tipo) => tipo && !tipos.includes(tipo)))];
-    if (invalidos.length) throw Object.assign(new Error(`Tipo que não está no campo tipo do acervo: ${invalidos.join(', ')}. Nada foi gravado.`), { status: 422 });
     esquecer();
-    const acervo = await linhasDa(atracao);
-    const plano = planoDeGravacao(linhas, acervo);
+    const acervo = paraConferir(await linhasDa(atracao));
+    const { faltam, plano } = classificar({ csv, acervo, tipos, grafias: await grafiasPara(atracao), escolhas });
+    // o tipo escolhido (e o que vai ser gravado) que não é opção do campo: o erro diz qual, antes da decisão pendente
+    // que ele mesmo causa
+    const gravados = [...plano.criar, ...plano.tipar, ...plano.renomear].map((x) => x.tipo);
+    const invalidos = [...new Set([...Object.values(escolhas).map((e) => e.tipo), ...gravados].filter((tipo) => tipo && !tipos.includes(tipo)))];
+    if (invalidos.length) throw Object.assign(new Error(`Tipo que não está no campo tipo do acervo: ${invalidos.join(', ')}. Nada foi gravado.`), { status: 422 });
+    if (faltam) throw Object.assign(new Error(`${faltam === 1 ? 'Falta 1 decisão' : `Faltam ${faltam} decisões`} na conferência: nada foi gravado.`), { status: 422 });
     const criar = plano.criar.map(({ arte, tipo }) => ({ fields: { arte, ...(tipo ? { tipo } : {}), atracao: [{ id }] } }));
     const tipar = plano.tipar.map(({ id: linha, tipo }) => ({ id: linha, fields: { tipo } }));
+    const renomear = plano.renomear.map(({ id: linha, arte, tipo }) => ({ id: linha, fields: { arte, ...(tipo ? { tipo } : {}) } }));
     try {
       for (let i = 0; i < criar.length; i += 100) await teable('POST', '', { fieldKeyType: 'name', typecast: false, records: criar.slice(i, i + 100) });
-      for (let i = 0; i < tipar.length; i += 100) await teable('PATCH', '', { fieldKeyType: 'name', typecast: false, records: tipar.slice(i, i + 100) });
+      for (const lista of [tipar, renomear]) for (let i = 0; i < lista.length; i += 100) await teable('PATCH', '', { fieldKeyType: 'name', typecast: false, records: lista.slice(i, i + 100) });
     } finally {
       esquecer();
     }
-    return { antes: acervo.length, depois: acervo.length + criar.length, novas: criar.length, ganharamTipo: tipar.length, semMudanca: plano.semMudanca };
+    return {
+      antes: acervo.length,
+      depois: acervo.length + criar.length,
+      novas: criar.length,
+      ganharamTipo: tipar.length,
+      renomeadas: plano.renomear.map((x) => ({ id: x.id, antes: x.antigo, depois: x.arte })),
+      semMudanca: plano.semMudanca,
+    };
   }
 
   /** Pacote gráfico novo: todas as artes da atração saem do acervo (apagadas). @returns quantas */

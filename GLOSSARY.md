@@ -155,16 +155,25 @@ gravar, na ficha da atração. Só administradores e só atração de acervo pr�
 "SIGLA - " é o tipo da arte (a sigla mais longa primeiro) e `_alfa`/`_alpha` é lettering. Cada linha vem com um estado:
 - **nova**: a arte não está no acervo da atração;
 - **completa o acervo**: a mesma arte está lá sem tipo, e só ganha o tipo;
+- **corrige o acervo**: o nome do acervo é que estava errado (quase igual ao do arquivo): a mesma linha do acervo é
+  renomeada, com o mesmo id;
 - **já no acervo**: a mesma arte (pela chave) com o mesmo tipo; não muda nada;
 - **cópia** (o filtro "Versões e cópias"): o arquivo copiado ("- Copy", "(1)"), a versão da mesma arte (D/E, VERT,
   6S…) ou a mesma arte repetida no CSV; conta uma vez e não é gravada;
-- **fora**: a pasta, o nome sem "SIGLA - ", ou a linha que quem confere tirou;
-- **para decidir**: a pergunta que a conferência faz antes de gravar.
+- **fora**: a pasta, o nome sem "SIGLA - ", ou a linha que quem confere tirou ou decidiu deixar fora;
+- **para decidir**: a pergunta que a conferência faz antes de gravar, na própria linha: o nome parecido com um do
+  acervo ("é a mesma: erro no arquivo", "o do acervo está errado: corrigir" ou "é outra arte"), o acento sugerido pelas
+  palavras das fontes (o sugerido ou como está), o tipo tirado do começo do nome sem "SIGLA - " (confirmar ou fica
+  fora), a sigla que não é tipo, como COMP (fica fora ou ganha um tipo do campo, nunca uma opção nova) e o rodapé
+  composto (dois nomes num rodapé). Nome e tipo também se editam na linha, e o estado é recalculado pela chave; em
+  lote: aceitar os acentos sugeridos, deixar fora as de uma sigla, dar um tipo às marcadas e tirar as marcadas. O
+  Gravar só libera sem decisão pendente ("Faltam N decisões"), e o servidor também recusa.
 As **regras de conversão** escrevem a arte como o roteiro escreve, e cada linha mostra o "antes → depois · regra": a hora
 ("2 10" → "2:10", com o dia junto e o período no texto), PROX → PRÓXIMO (PRÓXIMA antes do dia da semana), os acentos de
 um dicionário fechado (NAO → NÃO) e a grafia da primeira fonte que tem a arte: o acervo da atração, os roteiros dela,
 os roteiros de todas, o acervo de todas.
-Gravar relê o acervo, cria as novas e dá o tipo às que completam; o resultado é o total "antes → depois".
+Gravar relê o acervo, cria as novas, dá o tipo às que completam e renomeia as que corrigem o acervo; o resultado é o
+total "antes → depois".
 _Evitar_: carga, upload, sincronizar
 
 **Pacote gráfico novo**:

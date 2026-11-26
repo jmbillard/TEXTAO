@@ -4,6 +4,7 @@ import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
+import type { Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao } from '../../servidor/importacao-do-acervo.mjs';
 import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro, SugestaoRedator } from '../modelo/tipos';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
@@ -550,56 +551,54 @@ export const lerAcervoDaFicha = (atracao: string) => pedir<AcervoDaFicha>(`/api/
 /** Quantas artes cada atração tem no acervo, pelo nome (a lista de atrações dos Cadastros). */
 export const lerTotaisDoAcervo = () => pedir<{ ligado: boolean; totais: Record<string, number> }>('/api/acervo/totais');
 
-/** O estado de uma linha do CSV na conferência da importação: nova · completa o acervo (só ganha o tipo) · já no
-    acervo · cópia (ou a mesma arte repetida no CSV) · fica de fora · para decidir (a pergunta da conferência). */
-export type EstadoDaImportacao = 'nova' | 'completa' | 'ja' | 'copia' | 'fora' | 'decidir';
-/** Uma linha do CSV, convertida numa arte e classificada contra o acervo da atração. */
-export interface LinhaDaImportacao {
-  /** a linha no arquivo (o cabeçalho é a 1) */
-  n: number;
-  nome: string;
-  caminho: string;
-  arte: string;
-  /** a sigla do tipo ('' sem tipo) */
-  tipo: string;
-  estado: EstadoDaImportacao;
-  motivo: string;
-  /** a marca de versão tirada do fim do nome ("VERT", "D", "6S"; '' sem versão): a versão é a mesma arte */
-  versao: string;
-  /** o que as regras de conversão mudaram do nome para a arte, na ordem: "antes → depois · regra" (depois '' é o que saiu) */
-  mudancas: MudancaDaImportacao[];
-}
-/** Uma regra de conversão aplicada: hora, abreviação, acento, versão ou a grafia de uma fonte. */
-export interface MudancaDaImportacao {
-  antes: string;
-  depois: string;
-  regra: string;
-}
+/* A conferência da importação roda igual no servidor e aqui: os tipos e as funções puras são os do módulo do servidor
+   (servidor/importacao-do-acervo.mjs, tipado em .d.mts), sem nada do servidor junto. */
+export type {
+  EstadoDaImportacao,
+  Escolha,
+  Escolhas,
+  LinhaDaImportacao,
+  LinhaDoAcervo,
+  MudancaDaImportacao,
+  PerguntaDaImportacao,
+  PlacarDaImportacao,
+} from '../../servidor/importacao-do-acervo.mjs';
+
 /** A prévia da importação: o que o CSV faria no acervo da atração, antes de gravar. */
 export interface PreviaDaImportacao {
   atracao: string;
   arquivo: string;
+  /** o CSV lido, que volta ao servidor no gravar */
+  csv: string;
   /** quantas linhas o acervo da atração tem agora */
   antes: number;
   /** as opções do campo tipo do acervo */
   tipos: string[];
+  /** o acervo da atração, para conferir de novo a cada escolha */
+  acervo: LinhaDoAcervo[];
   linhas: LinhaDaImportacao[];
-  placar: Record<EstadoDaImportacao, number>;
+  placar: PlacarDaImportacao;
+  faltam: number;
 }
-/** O que a importação gravou: o total do acervo antes e depois. */
+/** O que a importação gravou: o total do acervo antes e depois, e os nomes do acervo corrigidos no lugar. */
 export interface ResultadoDaImportacao {
   antes: number;
   depois: number;
   novas: number;
   ganharamTipo: number;
+  /** as linhas do acervo renomeadas (o mesmo id), com o nome antigo */
+  renomeadas: { id: string; antes: string; depois: string }[];
   semMudanca: number;
 }
 /** A importação do acervo por CSV (só administradores, só acervo próprio): a prévia não grava nada. */
-export const preverImportacao = (atracao: string, arquivo: string, csv: string) =>
-  pedir<PreviaDaImportacao>('/api/acervo/importar/previa', { method: 'POST', body: JSON.stringify({ atracao, arquivo, csv }) });
-/** Grava as linhas que a conferência decidiu; o servidor relê o acervo antes e não duplica. */
-export const gravarImportacao = (atracao: string, arquivo: string, linhas: Pick<LinhaDaImportacao, 'arte' | 'tipo'>[]) =>
-  pedir<ResultadoDaImportacao>('/api/acervo/importar', { method: 'POST', body: JSON.stringify({ atracao, arquivo, linhas }) });
+export const preverImportacao = async (atracao: string, arquivo: string, csv: string): Promise<PreviaDaImportacao> => ({
+  ...(await pedir<Omit<PreviaDaImportacao, 'csv'>>('/api/acervo/importar/previa', { method: 'POST', body: JSON.stringify({ atracao, arquivo, csv }) })),
+  csv,
+});
+/** Grava o CSV com as escolhas da conferência; o servidor classifica de novo contra o acervo relido, não duplica e
+    recusa com decisão pendente. */
+export const gravarImportacao = (previa: Pick<PreviaDaImportacao, 'atracao' | 'arquivo' | 'csv'>, escolhas: Escolhas) =>
+  pedir<ResultadoDaImportacao>('/api/acervo/importar', { method: 'POST', body: JSON.stringify({ atracao: previa.atracao, arquivo: previa.arquivo, csv: previa.csv, escolhas }) });
 
 /** Pacote gráfico novo: as artes da atração deixam de valer. */
 export const zerarAcervo = (atracao: string) => pedir<{ zeradas: number }>('/api/acervo/zerar', { method: 'POST', body: JSON.stringify({ atracao }) });
