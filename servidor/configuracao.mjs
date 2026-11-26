@@ -34,32 +34,70 @@ export const SALVAVEIS = new Set([
  * @returns
  *   valores() — o objeto de configuração de agora (congelado): o Portainer com o salvo por cima;
  *   salvos() — os nomes que têm valor salvo no PROMeiro (o resto vem do Portainer);
- *   salvar(mudancas, { por }) — grava { NOME: 'valor' } (null tira o salvo e volta o Portainer) e devolve os valores
- *   novos; um nome que não é da tela (segredo, infraestrutura, desconhecido) recusa a mudança inteira.
+ *   salvar(mudancas, { por, descrever, voltouDe }) — grava { NOME: 'valor' } (null tira o salvo e volta o Portainer) e
+ *   devolve os valores novos; um nome que não é da tela (segredo, infraestrutura, desconhecido) recusa a mudança
+ *   inteira. Toda gravação que muda alguma coisa entra no histórico (#78), junto, na mesma transação: quem, quando, o
+ *   antigo → o novo de cada variável (o valor salvo; null quando valia o Portainer) e as linhas legíveis que
+ *   `descrever(antes, depois, nomes)` dá com os valores de antes e de depois (sem ele, o nome e o valor crus);
+ *   `voltouDe` marca a gravação que voltou a uma linha do histórico;
+ *   simular(mudancas) — os valores que valeriam com a mudança, sem gravar nada;
+ *   historico({ limite }) — as gravações, da mais nova para a mais velha: { id, em, por, mudancas, linhas, voltouDe };
+ *   entradaDoHistorico(id) — uma delas (ou null).
  */
 export function criarConfiguracao(db, portainer = process.env) {
   db.exec('CREATE TABLE IF NOT EXISTS configuracao (nome TEXT PRIMARY KEY, valor TEXT NOT NULL, por TEXT, em TEXT NOT NULL)');
+  db.exec(`CREATE TABLE IF NOT EXISTS configuracao_historico (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, em TEXT NOT NULL, por TEXT NOT NULL, mudancas TEXT NOT NULL, linhas TEXT NOT NULL, voltou_de INTEGER
+  )`);
   const q = {
     todos: db.prepare('SELECT nome, valor FROM configuracao'),
     gravar: db.prepare('INSERT OR REPLACE INTO configuracao (nome, valor, por, em) VALUES (?, ?, ?, ?)'),
     tirar: db.prepare('DELETE FROM configuracao WHERE nome = ?'),
+    anotar: db.prepare('INSERT INTO configuracao_historico (em, por, mudancas, linhas, voltou_de) VALUES (?, ?, ?, ?, ?)'),
+    historico: db.prepare('SELECT * FROM configuracao_historico ORDER BY id DESC LIMIT ?'),
+    entrada: db.prepare('SELECT * FROM configuracao_historico WHERE id = ?'),
   };
-  const montar = () => {
-    // um nome que deixou de ser da tela (guardado por uma versão antiga) não passa por cima do Portainer
-    const salvos = Object.fromEntries(q.todos.all().filter((l) => SALVAVEIS.has(l.nome)).map((l) => [l.nome, l.valor]));
-    return Object.freeze({ ...portainer, ...salvos });
-  };
+  /** O que está salvo no PROMeiro, só os nomes da tela (um nome que deixou de ser, guardado por uma versão antiga,
+      não passa por cima do Portainer). */
+  const guardados = () => Object.fromEntries(q.todos.all().filter((l) => SALVAVEIS.has(l.nome)).map((l) => [l.nome, l.valor]));
+  const montar = (salvos = guardados()) => Object.freeze({ ...portainer, ...salvos });
   let atuais = montar();
+  const valorSalvo = (v) => (v === null || v === undefined ? null : String(v));
+  /** O salvo com a mudança por cima (null tira). */
+  function comAMudanca(mudancas) {
+    const salvos = guardados();
+    for (const [nome, valor] of Object.entries(mudancas)) {
+      if (valorSalvo(valor) === null) delete salvos[nome];
+      else salvos[nome] = String(valor);
+    }
+    return salvos;
+  }
+  const comoEntrada = (l) => l && { id: l.id, em: l.em, por: l.por, mudancas: JSON.parse(l.mudancas), linhas: JSON.parse(l.linhas), voltouDe: l.voltou_de ?? null };
 
-  /** Tudo ou nada: a mudança de várias variáveis entra junta. */
-  function gravarTudo(mudancas, por) {
+  /** Tudo ou nada: a mudança de várias variáveis entra junta, com a linha do histórico. */
+  function gravarTudo(mudancas, { por, descrever, voltouDe }) {
+    const antes = guardados();
+    const mudadas = Object.entries(mudancas)
+      .map(([nome, valor]) => ({ nome, antes: antes[nome] ?? null, depois: valorSalvo(valor) }))
+      .filter((m) => m.antes !== m.depois);
+    if (!mudadas.length) return;
+    const depois = montar(comAMudanca(mudancas));
+    const nomes = mudadas.map((m) => m.nome);
+    let linhas = null;
+    try {
+      linhas = descrever?.(atuais, depois, nomes) ?? null;
+    } catch (e) {
+      console.warn(`[configuração] não consegui descrever a mudança para o histórico: ${e instanceof Error ? e.message : e}`);
+    }
+    if (!Array.isArray(linhas)) linhas = mudadas.map((m) => ({ oque: m.nome, antes: m.antes ?? '—', depois: m.depois ?? '—' }));
     const em = new Date().toISOString();
     db.exec('BEGIN');
     try {
       for (const [nome, valor] of Object.entries(mudancas)) {
-        if (valor === null || valor === undefined) q.tirar.run(nome);
+        if (valorSalvo(valor) === null) q.tirar.run(nome);
         else q.gravar.run(nome, String(valor), por, em);
       }
+      q.anotar.run(em, por, JSON.stringify(mudadas), JSON.stringify(linhas), voltouDe ?? null);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
@@ -71,12 +109,15 @@ export function criarConfiguracao(db, portainer = process.env) {
     valores: () => atuais,
     /** Os nomes que têm valor salvo no PROMeiro (o resto vem do Portainer). */
     salvos: () => new Set(q.todos.all().filter((l) => SALVAVEIS.has(l.nome)).map((l) => l.nome)),
-    salvar(mudancas, { por = '' } = {}) {
+    salvar(mudancas, { por = '', descrever = null, voltouDe = null } = {}) {
       const recusados = Object.keys(mudancas).filter((n) => !SALVAVEIS.has(n));
       if (recusados.length) throw new Error(`Não se guarda no PROMeiro (fica no Portainer): ${recusados.join(', ')}.`);
-      gravarTudo(mudancas, por);
+      gravarTudo(mudancas, { por, descrever, voltouDe });
       atuais = montar();
       return atuais;
     },
+    simular: (mudancas) => montar(comAMudanca(mudancas)),
+    historico: ({ limite = 50 } = {}) => q.historico.all(limite).map(comoEntrada),
+    entradaDoHistorico: (id) => comoEntrada(q.entrada.get(id)) ?? null,
   };
 }

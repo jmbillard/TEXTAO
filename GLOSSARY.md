@@ -134,7 +134,10 @@ _Evitar_: região, emissora
 A tela, no menu do perfil e só de administradores, onde se muda o que antes só mudava no Portainer: onde as coisas
 estão no Trello e no Teable, e as praças. O que é salvo nela vale por cima do Portainer e vale na hora; salvar passa
 sempre pela **conferência** (a lista existe e não está arquivada, a opção existe, o campo é do tipo certo) e, com
-erro, nada é salvo. Segredos e infraestrutura ficam no Portainer. No celular, só consulta.
+erro, nada é salvo. Segredos e infraestrutura ficam no Portainer. No celular, só consulta. Toda gravação (de qualquer
+seção, também as ações de Pessoas e a troca do quadro ou da base) entra no **histórico**: quem, quando, o antigo → o
+novo pelos nomes. **Voltar** a uma linha aplica na hora os valores de antes dela, depois da mesma conferência; o que
+não passa (a lista antiga foi arquivada) fica travado, com o porquê.
 _Evitar_: ajustes, painel de controle
 
 **Ligado pelo nome**:

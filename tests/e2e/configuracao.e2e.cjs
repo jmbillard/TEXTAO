@@ -26,6 +26,9 @@
 // cadastrada como designer (grava no Teable falso); os administradores no "ver tudo" (a chave-mestra, "você", não dá
 // para tirar a si mesmo); quem saiu do quadro ignorado (vai para o "ver tudo"), desfeito, tirado de administrador e
 // marcado inativo (grava no Teable falso). No celular, só consulta.
+// O Histórico (#78), claro e escuro: pelo rodapé da Configuração; as mudanças (Pessoas e Praças, pela API como a tela
+// faz) com quem, quando e o antigo → o novo pelos nomes; voltar travado (a lista antiga foi arquivada) com o porquê;
+// voltar que vale na hora e entra no histórico. No celular, só consulta.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:configuracao
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -954,6 +957,105 @@ async function pessoasNoCelular(navegador, url, app, tema) {
   console.log(`ok: pessoas no celular ${nome}: as novidades e os administradores, só consulta`);
 }
 
+/* ---------- o Histórico (#78) ---------- */
+
+const HIST = '.cfg-hist';
+const linhaDoHistorico = (p, n) => p.locator(`${HIST} tr`).nth(n);
+const comoLia = (url, caminho, corpo) =>
+  fetch(new URL(caminho, url), {
+    method: corpo === undefined ? 'GET' : 'POST',
+    headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' },
+    body: corpo === undefined ? undefined : JSON.stringify(corpo),
+  }).then(async (r) => {
+    assert.equal(r.status, 200, `${caminho}: ${await r.clone().text()}`);
+    return r.json();
+  });
+/** Três mudanças, pela API como a tela faz: Otávio administrador (Pessoas), a G5 na entrada do RJ à mão e a ordem
+    das praças (SP antes do RJ); depois a G5 ENTRADA é arquivada no Trello: voltar à G5 nela fica travado. */
+async function prepararHistorico(app, url, teable) {
+  await voltarAoPortainer(app, teable);
+  await comoLia(url, '/api/configuracao/pessoas', { acao: 'administrador', email: OTAVIO });
+  const { pracas } = await comoLia(url, '/api/configuracao');
+  const g5NoRio = { ...pracas.proposta, aMao: [...pracas.proposta.aMao, 'G5.entrada'], pracas: pracas.proposta.pracas.map((x) => (x.sigla === 'G5' ? { ...x, entrada: 'lRJ' } : x)) };
+  await comoLia(url, '/api/configuracao/salvar', { pracas: g5NoRio });
+  const praca = (sigla) => g5NoRio.pracas.find((x) => x.sigla === sigla);
+  await comoLia(url, '/api/configuracao/salvar', { pracas: { ...g5NoRio, pracas: ['G5', 'SP', 'RJ', 'INTER'].map(praca) } });
+  LISTAS.find((l) => l.id === 'lG5').closed = true;
+}
+
+async function historico(navegador, url, app, teable, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await prepararHistorico(app, url, teable);
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+  // ligado pelo rodapé da Configuração
+  await p.locator('.cfg-rodape button', { hasText: 'Histórico' }).click();
+  await p.locator(`${HIST} tr`).first().waitFor();
+  assert.equal(new URL(p.url()).hash, '#/configuracao/historico');
+  assert.equal((await p.locator('.cfg-cabeca h1').textContent()).trim(), 'Histórico');
+
+  // a mais nova primeiro: quem, quando e o antigo → o novo com os nomes (não os ids)
+  const ordem = linhaDoHistorico(p, 0);
+  assert.match((await ordem.locator('.cfg-hist-q').textContent()).replace(/\s+/g, ' '), /^hoje, \d\d:\d\d Lia Moraes$/);
+  assert.deepEqual(await textos(ordem.locator('.cfg-hist-l')), ['Praças · Ordem G5, RJ, SP, INTER → G5, SP, RJ, INTER']);
+  assert.equal(await ordem.locator('.botao', { hasText: 'Voltar' }).isDisabled(), false);
+  const g5 = linhaDoHistorico(p, 1);
+  assert.deepEqual(await textos(g5.locator('.cfg-hist-l')), ['Praças · G5: entrada G5 ENTRADA → RIO ENTRADA (à mão)']);
+  const admin = linhaDoHistorico(p, 2);
+  assert.deepEqual(await textos(admin.locator('.cfg-hist-l')), ['Administradores — → + Otávio Lins']);
+  assert.equal(await p.locator(`${HIST}`).evaluate((t) => /\b(lG5|lRJ|oG5)\b/.test(t.textContent)), false, 'nenhum id à mostra');
+
+  // travado: a G5 ENTRADA foi arquivada; diz o porquê
+  assert.equal(await g5.locator('.botao', { hasText: 'Voltar' }).isDisabled(), true);
+  assert.match(await g5.locator('.cfg-hist-motivo').textContent(), /G5: entrada: "G5 ENTRADA" está arquivada no Trello/);
+  assert.match(await p.locator('.cfg-hist-nota').textContent(), /travado/);
+  await semRolagemDeLado(p, `histórico ${nome}`);
+  await capturar(p, `60-historico-${nome}`);
+  await g5.hover();
+  await capturar(p, `61-historico-travado-${nome}`);
+
+  // voltar: aplica na hora (a ordem de antes vale no app inteiro) e entra no histórico, marcada
+  await ordem.locator('.botao', { hasText: 'Voltar' }).click();
+  await p.locator('.aviso', { hasText: 'Voltou' }).waitFor();
+  assert.deepEqual(JSON.parse(app.modulos().env.PRACAS).map((x) => x.sigla), ['G5', 'RJ', 'SP', 'INTER']);
+  const voltou = linhaDoHistorico(p, 0);
+  assert.equal(await voltou.getAttribute('class'), 'voltou');
+  assert.deepEqual(await textos(voltou.locator('.cfg-hist-l')), ['Praças · Ordem G5, SP, RJ, INTER → G5, RJ, SP, INTER']);
+  assert.match(await voltou.locator('.cfg-hist-etq').textContent(), /^voltou a hoje, \d\d:\d\d$/);
+  // a linha de que voltou já é o que vale
+  assert.equal((await linhaDoHistorico(p, 1).locator('.cfg-hist-acao').textContent()).trim(), 'vale agora');
+  await semRolagemDeLado(p, `histórico ${nome}, voltou`);
+  await capturar(p, `62-historico-voltou-${nome}`);
+
+  // de volta à Configuração pelo topo
+  await p.locator('.voltar-cad', { hasText: 'Configuração' }).click();
+  await p.locator('.cfg-praca').first().waitFor();
+  assert.equal(new URL(p.url()).hash, '#/configuracao');
+  assert.deepEqual(erros, [], `histórico ${nome}: erros na página`);
+  await ctx.close();
+  LISTAS.find((l) => l.id === 'lG5').closed = false;
+  console.log(`ok: histórico ${nome}: pelo rodapé, quem/quando/antigo → novo com os nomes, voltar travado com o porquê, voltar que vale na hora`);
+}
+
+async function historicoNoCelular(navegador, url, app, teable, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await prepararHistorico(app, url, teable);
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema }, { hash: '#/configuracao/historico' });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+  await p.locator(`${HIST} tr`).first().waitFor();
+  assert.match(await p.locator('.cfg-so-consulta').textContent(), /só consulta/);
+  assert.deepEqual(await textos(linhaDoHistorico(p, 0).locator('.cfg-hist-l')), ['Praças · Ordem G5, RJ, SP, INTER → G5, SP, RJ, INTER']);
+  // só consulta: nada de voltar
+  assert.equal(await p.locator(`${HIST} button, .cfg-hist-acao`).count(), 0);
+  await semRolagemDeLado(p, `histórico no celular ${nome}`);
+  await capturar(p, `63-historico-celular-${nome}`);
+  assert.deepEqual(erros, [], `histórico no celular ${nome}: erros na página`);
+  await ctx.close();
+  LISTAS.find((l) => l.id === 'lG5').closed = false;
+  console.log(`ok: histórico no celular ${nome}: as mudanças, só consulta`);
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   // o cadastro de atrações do Teable, de mentira: só a leitura das sessões de filme (#75)
@@ -994,6 +1096,8 @@ async function principal() {
     for (const tema of ['light', 'dark']) await conexoes(navegador, s.url, s.app, teable, tema);
     for (const tema of ['light', 'dark']) await pessoas(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await pessoasNoCelular(navegador, s.url, s.app, tema);
+    for (const tema of ['light', 'dark']) await historico(navegador, s.url, s.app, teable, tema);
+    for (const tema of ['light', 'dark']) await historicoNoCelular(navegador, s.url, s.app, teable, tema);
   } finally {
     await navegador.close();
     await s.descer();

@@ -57,6 +57,52 @@ describe('configuração: o salvo vale, senão o Portainer', () => {
   });
 });
 
+describe('configuração: o histórico', () => {
+  it('cada gravação entra no histórico: quem, quando e o antigo → o novo de cada variável; a mais nova primeiro', () => {
+    const config = criarConfiguracao(abrirBanco(':memory:'), PORTAINER);
+    config.salvar({ TRELLO_LISTA_SP: 'listaNovaSP' }, { por: 'chefe@empresa.com' });
+    config.salvar({ TRELLO_LISTA_SP: null, TRELLO_LISTA_INTER: 'listaINTER' }, { por: 'lia@empresa.com' });
+    const [segunda, primeira] = config.historico();
+    expect(primeira).toMatchObject({ por: 'chefe@empresa.com', mudancas: [{ nome: 'TRELLO_LISTA_SP', antes: null, depois: 'listaNovaSP' }] });
+    expect(segunda.por).toBe('lia@empresa.com');
+    expect(segunda.mudancas).toEqual([
+      { nome: 'TRELLO_LISTA_SP', antes: 'listaNovaSP', depois: null },
+      { nome: 'TRELLO_LISTA_INTER', antes: null, depois: 'listaINTER' },
+    ]);
+    expect(Date.parse(segunda.em)).toBeGreaterThanOrEqual(Date.parse(primeira.em));
+    expect(config.entradaDoHistorico(primeira.id)).toEqual(primeira);
+  });
+
+  it('o que não muda não entra; gravar sem nenhuma mudança não deixa linha', () => {
+    const config = criarConfiguracao(abrirBanco(':memory:'), PORTAINER);
+    config.salvar({ TRELLO_LISTA_SP: 'listaNovaSP' });
+    config.salvar({ TRELLO_LISTA_SP: 'listaNovaSP', TRELLO_LISTA_RJ: 'listaRJ2' });
+    config.salvar({ TRELLO_LISTA_SP: 'listaNovaSP' });
+    expect(config.historico().map((h: { mudancas: { nome: string }[] }) => h.mudancas.map((m) => m.nome))).toEqual([['TRELLO_LISTA_RJ'], ['TRELLO_LISTA_SP']]);
+  });
+
+  it('a descrição legível vem de quem grava (com os valores de antes e de depois), e a recusa não deixa linha', () => {
+    const config = criarConfiguracao(abrirBanco(':memory:'), PORTAINER);
+    const descrever = (antes: Record<string, string>, depois: Record<string, string>) => [{ oque: 'SP: entrada', antes: antes.TRELLO_LISTA_SP, depois: depois.TRELLO_LISTA_SP }];
+    config.salvar({ TRELLO_LISTA_SP: 'listaNovaSP' }, { descrever });
+    expect(() => config.salvar({ TRELLO_TOKEN: 'x' }, { descrever })).toThrow();
+    expect(config.historico().map((h: { linhas: unknown }) => h.linhas)).toEqual([[{ oque: 'SP: entrada', antes: 'listaSP', depois: 'listaNovaSP' }]]);
+  });
+
+  it('o histórico fica no SQLite: continua ao abrir de novo', () => {
+    const db = abrirBanco(':memory:');
+    criarConfiguracao(db, PORTAINER).salvar({ TRELLO_LISTA_SP: 'listaNovaSP' }, { por: 'chefe@empresa.com' });
+    expect(criarConfiguracao(db, PORTAINER).historico()).toHaveLength(1);
+  });
+
+  it('simular diz os valores que valeriam com uma mudança, sem gravar nada', () => {
+    const config = criarConfiguracao(abrirBanco(':memory:'), PORTAINER);
+    config.salvar({ TRELLO_LISTA_SP: 'listaNovaSP' });
+    expect(config.simular({ TRELLO_LISTA_SP: null }).TRELLO_LISTA_SP).toBe('listaSP');
+    expect(config.valores().TRELLO_LISTA_SP).toBe('listaNovaSP');
+  });
+});
+
 /* ---------- a configuração vale na hora, no servidor ---------- */
 
 interface Pedido {

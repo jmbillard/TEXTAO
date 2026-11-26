@@ -52,10 +52,13 @@ import './configuracao.css';
    Trello e a base do Teable; trocar pede o nome do novo, digitado, e o PROMeiro liga tudo de novo pelo nome. As
    tabelas do Teable são achadas sozinhas: só a que falta (ou a coluna que falta) aparece, num aviso no topo. Pessoas
    (#77): os administradores (no "ver tudo") e as novidades do quadro (quem entrou, quem saiu), com ações que valem na
-   hora, sem passar pela barra de salvar. No celular, só consulta. */
+   hora, sem passar pela barra de salvar. O Histórico (#78) é uma página à parte, ligada pelo rodapé
+   (HistoricoDaConfiguracao.tsx). No celular, só consulta. */
 
 interface Props {
   voltar: () => void;
+  /** abre o Histórico (#78), a página ligada pelo rodapé */
+  historico: () => void;
   avisar: (texto: string) => void;
 }
 
@@ -120,7 +123,7 @@ interface Escolha {
   ancora: DOMRect;
 }
 
-export function Configuracao({ voltar, avisar }: Props) {
+export function Configuracao({ voltar, historico, avisar }: Props) {
   const celular = useTelaDeCelular();
   const [secoes, setSecoes] = useState<SecoesDaConfiguracao | null>(null);
   const secao = secoes?.pracas ?? null;
@@ -361,6 +364,11 @@ export function Configuracao({ voltar, avisar }: Props) {
           />
           <SecaoDasPessoas pessoas={pessoas} falha={falhaDasPessoas} podeMudar={!celular} mudar={mudarAsPessoas} />
           <SecaoDasConexoes conexoes={secoes.conexoes} aberta={conexoesAbertas} alternar={() => setConexoesAbertas((v) => !v)} podeMudar={!celular} trocar={setTrocando} />
+          <nav className="cfg-rodape" aria-label="Mais da Configuração">
+            <button type="button" onClick={historico}>
+              <Icone nome="historico" tam={14} /> Histórico
+            </button>
+          </nav>
           </>
         )}
       </main>

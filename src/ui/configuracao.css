@@ -262,3 +262,37 @@ h3.cfg-modal-rotulo { margin: 22px 0 6px; }
   .cfg-pessoa-email { padding-left: 0; }
 }
 
+
+/* ---------- o rodapé e o Histórico (#78) ---------- */
+.cfg-rodape { display: flex; gap: 18px; justify-content: center; margin: 6px 0 0; }
+.cfg-rodape button { border: 0; background: none; color: var(--tinta3); font: 500 13px var(--sans); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; padding: 6px 8px; border-radius: 8px; }
+.cfg-rodape button:hover { color: var(--tinta); background: var(--neutro); }
+.cfg-historico { padding: 6px 0; overflow: hidden; }
+.cfg-hist { width: 100%; border-collapse: collapse; }
+.cfg-hist td { padding: 12px 16px; border-top: 1px solid var(--regua); vertical-align: top; font: 400 14px var(--sans); color: var(--tinta); }
+.cfg-hist tr:first-child td { border-top: 0; }
+.cfg-hist td:first-child { padding-left: 22px; width: 150px; white-space: nowrap; color: var(--tinta2); }
+.cfg-hist td:last-child.cfg-hist-acao { padding-right: 22px; text-align: right; white-space: nowrap; width: 1%; }
+.cfg-hist-q small { display: block; color: var(--tinta3); font-size: 12.5px; margin-top: 2px; }
+.cfg-hist-l + .cfg-hist-l { margin-top: 8px; }
+.cfg-hist-l b { font-weight: 600; display: block; }
+.cfg-hist-l small { display: block; color: var(--tinta2); font-size: 13px; overflow-wrap: anywhere; }
+.cfg-hist-l .velho { color: var(--tinta3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--tinta3) 60%, transparent); }
+.cfg-hist-l .seta { color: var(--ultra); margin: 0 6px; }
+.cfg-hist tr.voltou td { background: color-mix(in srgb, var(--ok) 6%, var(--papel)); }
+.cfg-hist-etq { display: inline-block; margin-top: 8px; font: 600 10.5px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta3); background: var(--neutro); border-radius: 99px; padding: 2px 8px; }
+.cfg-hist-acao .cfg-hist-etq { margin-top: 6px; }
+.cfg-hist-acao .botao { height: 32px; display: inline-flex; align-items: center; gap: 6px; }
+.cfg-hist-motivo { display: flex; gap: 6px; align-items: baseline; margin: 8px 0 0; font: 400 12.5px/1.45 var(--sans); color: var(--tinta3); }
+.cfg-hist-motivo svg { flex: none; transform: translateY(1px); }
+.cfg-hist-nota { display: flex; gap: 6px; align-items: center; margin: 4px 0 0; font: 400 12.5px var(--sans); color: var(--tinta3); }
+.no-celular .cfg-hist, .no-celular .cfg-hist tbody, .no-celular .cfg-hist tr, .no-celular .cfg-hist td { display: block; width: 100%; }
+.no-celular .cfg-historico { padding: 0; }
+.no-celular .cfg-hist tr { padding: 12px 16px; border-top: 1px solid var(--regua); }
+.no-celular .cfg-hist tr:first-child { border-top: 0; }
+.no-celular .cfg-hist td { border: 0; padding: 0 !important; width: auto; white-space: normal; }
+.no-celular .cfg-hist-q { display: flex !important; gap: 6px; font-size: 12.5px; color: var(--tinta3); margin-bottom: 4px; }
+.no-celular .cfg-hist-q small { display: inline; margin: 0; }
+.no-celular .cfg-hist-q small::before { content: '· '; }
+.no-celular .cfg-hist tr.voltou { background: color-mix(in srgb, var(--ok) 6%, var(--papel)); }
+.no-celular .cfg-hist tr.voltou td { background: none; }

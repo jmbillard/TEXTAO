@@ -1060,6 +1060,27 @@ const comNovidades = (p: PessoasDaConfiguracao) => ((novidades = p.novidades.len
 export const lerPessoas = () => pedir<PessoasDaConfiguracao>('/api/configuracao/pessoas').then(comNovidades);
 /** Uma ação na seção Pessoas (vale na hora); devolve a seção de novo. */
 export const mudarPessoas = (a: AcaoNasPessoas) => pedir<PessoasDaConfiguracao>('/api/configuracao/pessoas', { method: 'POST', body: JSON.stringify(a) }).then(comNovidades);
+/** Uma linha do histórico da Configuração (#78): quem, quando, o antigo → o novo legível, e se dá para voltar. */
+export interface EntradaDoHistorico {
+  id: number;
+  em: string;
+  por: string;
+  /** o nome de quem mudou ('sistema' quando não foi pela tela) */
+  quem: string;
+  linhas: { oque: string; antes: string; depois: string }[];
+  /** a linha de que esta voltou */
+  voltouDe: number | null;
+  /** jaVale: os valores de antes dela já são os de agora */
+  voltar: { pode: boolean; jaVale?: boolean; motivo?: string };
+}
+export const lerHistoricoDaConfiguracao = () => pedir<{ entradas: EntradaDoHistorico[] }>('/api/configuracao/historico').then((r) => r.entradas);
+/** Volta a uma linha do histórico (vale na hora); devolve o histórico de novo. */
+export async function voltarNoHistorico(id: number): Promise<EntradaDoHistorico[]> {
+  const r = await pedir<{ entradas: EntradaDoHistorico[]; pracas?: unknown[] }>('/api/configuracao/voltar', { method: 'POST', body: JSON.stringify({ id }) });
+  // as praças de antes valem na hora também neste navegador
+  if (r.pracas) registrarPracas(r.pracas);
+  return r.entradas;
+}
 /** Confere sem salvar nada. */
 export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify(m) });
 /** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */

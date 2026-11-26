@@ -37,6 +37,7 @@ import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { confirmaATroca, conexoesDaTela, lerQuadros, mudancasDaBaseNova, religarNoQuadroNovo } from './configuracao-conexoes.mjs';
 import { VARIAVEIS_DO_CARD, cardDoPedido, conferirSecaoDoCard, mudancasDoCard, secaoDoCard } from './configuracao-card.mjs';
 import { cardDaConfiguracao } from '../src/modelo/ligarOCard.ts';
+import { conferirAVolta, descreverMudanca, secoesDe } from './configuracao-historico.mjs';
 import { VARIAVEIS_DOS_FILMES, conferirSecaoDosFilmes, filmesDoPedido, filmesSalvos, mudancasDosFilmes, secaoDosFilmes, sessoesDoCadastro } from './configuracao-filmes.mjs';
 
 const MSG_SINC = 0;
@@ -485,17 +486,41 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   let { env, pracas, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao;
   const filmes = fazer(fabricas.filmes, env, { db, trello, abrirPg: abrir });
 
+  /* Os nomes conhecidos para o histórico (#78): o último quadro lido (as listas, os campos, as opções e as
+     etiquetas) e os nomes dos quadros e das bases que o PROMeiro já leu. */
+  const conhecidos = { quadro: null, quadros: new Map(), bases: new Map() };
+  const conhecerQuadro = (lido) => {
+    if (lido?.quadro) {
+      conhecidos.quadro = lido.quadro;
+      if (lido.quadro.nome) conhecidos.quadros.set(lido.quadro.id, lido.quadro.nome);
+    }
+    return lido;
+  };
+  const conhecer = (mapa, itens) => {
+    for (const x of itens ?? []) if (x?.id && x.nome) mapa.set(x.id, x.nome);
+    return itens;
+  };
+  const nomeDoUsuario = db.prepare('SELECT nome FROM usuarios WHERE email = ?');
+  /** O nome de quem já entrou no PROMeiro ou, senão, o da tabela designers (a última verificação); ou o e-mail. */
+  const nomeDaPessoa = (email) => {
+    const e = String(email ?? '').trim().toLowerCase();
+    const designer = () => pessoas.guardada()?.designers?.find((d) => String(d.email ?? '').trim().toLowerCase() === e)?.nome;
+    return nomeDoUsuario.get(e)?.nome || designer() || email;
+  };
   /**
    * Muda a configuração e ela vale na hora, sem reiniciar: os módulos são refeitos com os valores novos, e o próximo
    * pedido já usa eles. O que estava em curso (um envio ao Trello, os filmes que estão indo) termina com a
    * configuração antiga; depois disso os módulos antigos são fechados (e a conexão deles com o Postgres).
    * A fila de leitura da prévia dos filmes continua a mesma.
    * @param mudancas { NOME: 'valor' | null } (null volta ao Portainer)
+   * @param voltouDe a linha do histórico de que esta gravação voltou; quadro o quadro lido, para os nomes do histórico
    * @returns { valores, antigaFechada }: os valores novos, e a promessa de quando a configuração antiga foi fechada
    */
-  function mudarConfiguracao(mudancas, { por = '' } = {}) {
+  function mudarConfiguracao(mudancas, { por = '', voltouDe = null, quadro = null } = {}) {
     const antes = configuracao.valores().TEABLE_PG_ESQUEMA;
-    const valores = configuracao.salvar(mudancas, { por });
+    // o histórico (#78): toda gravação entra, com os nomes do quadro lido por último (ou o dado por quem grava)
+    const descrever = (a, d, nomes) => descreverMudanca(a, d, nomes, { quadro: quadro ?? conhecidos.quadro, nomeDaPessoa, nomeDoQuadro: (id) => conhecidos.quadros.get(id) ?? '', nomeDaBase: (id) => conhecidos.bases.get(id) ?? '' });
+    const valores = configuracao.salvar(mudancas, { por, voltouDe, descrever });
     // a base trocou: as tabelas guardadas são da outra (a descoberta nova vem em seguida)
     if (valores.TEABLE_PG_ESQUEMA !== antes) tabelas = descoberta.guardada(valores);
     const r = trocarGeracao(valores);
@@ -1259,7 +1284,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /** As seções da tela de Configuração como a tela lê, com o quadro do Trello lido uma vez só. */
   async function lerAsSecoes() {
-    const [lido, doCadastro] = await Promise.all([lerOQuadro(trello, env), sessoesDoCadastro(cadastros)]);
+    const [lido, doCadastro] = await Promise.all([lerOQuadro(trello, env).then(conhecerQuadro), sessoesDoCadastro(cadastros)]);
     const salvos = configuracao.salvos();
     const comErro = (secao) => (lido.erro ? { ...secao, erro: lido.erro } : secao);
     const card = secaoDoCard(env, lido.quadro, { primeiraVez: !VARIAVEIS_DO_CARD.some((n) => salvos.has(n)) });
@@ -1277,17 +1302,17 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const id = String(corpo?.quadro ?? corpo?.base ?? '').trim();
     if (!id || !/^[\w-]{1,64}$/.test(id) || (corpo.quadro !== undefined) === (corpo.base !== undefined)) return json(res, 400, { erro: 'Diga o quadro ou a base nova.' });
     if (corpo.quadro !== undefined) {
-      const novo = (await lerQuadros(trello)).find((q) => q.id === id);
+      const novo = conhecer(conhecidos.quadros, await lerQuadros(trello)).find((q) => q.id === id);
       if (!novo) return json(res, 404, { erro: 'Esse quadro não está entre os que o token do Trello enxerga.' });
       if (!confirmaATroca(confirmacao, novo.nome)) return json(res, 422, { erro: `Para trocar, digite o nome do quadro novo: ${novo.nome}.` });
       if (novo.id === String(env.TRELLO_QUADRO ?? '').trim()) return json(res, 200, await lerAsSecoes());
       const velho = (await lerOQuadro(trello, env).catch(() => null))?.quadro ?? null;
       const quadroNovo = await lerQuadro(trello, { ...env, TRELLO_QUADRO: id }, []);
       const { sessoes } = await sessoesDoCadastro(cadastros);
-      mudarConfiguracao({ TRELLO_QUADRO: id, ...religarNoQuadroNovo(env, quadroNovo, velho, { sessoes }) }, { por: eu.email });
+      mudarConfiguracao({ TRELLO_QUADRO: id, ...religarNoQuadroNovo(env, quadroNovo, velho, { sessoes }) }, { por: eu.email, quadro: velho });
       console.log(`[configuração] ${eu.email} trocou o quadro do Trello para "${novo.nome}": tudo ligado de novo pelo nome`);
     } else {
-      const nova = (await descoberta.bases(configuracao.valores())).find((b) => b.id === id);
+      const nova = conhecer(conhecidos.bases, await descoberta.bases(configuracao.valores())).find((b) => b.id === id);
       if (!nova) return json(res, 404, { erro: 'Essa base não está entre as que o token do Teable enxerga.' });
       if (!confirmaATroca(confirmacao, nova.nome)) return json(res, 422, { erro: `Para trocar, digite o nome da base nova: ${nova.nome}.` });
       if (nova.id !== String(env.TEABLE_PG_ESQUEMA ?? '').trim()) {
@@ -1297,6 +1322,69 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       }
     }
     return json(res, 200, await lerAsSecoes());
+  }
+
+  /**
+   * O histórico (#78) e, para cada linha, se dá para voltar: os valores de antes dela passam pela mesma conferência da
+   * seção que ela mexe (com o quadro do Trello que valeria, os quadros e as bases que o token enxerga, as sessões do
+   * cadastro e quem está voltando). As leituras são feitas uma vez só para todas as linhas.
+   */
+  function lerParaVoltar() {
+    const uma = (f) => {
+      let p = null;
+      return () => (p ??= f().catch(() => null));
+    };
+    const lidos = new Map();
+    return {
+      quadros: uma(async () => conhecer(conhecidos.quadros, await lerQuadros(trello))),
+      bases: uma(async () => conhecer(conhecidos.bases, await descoberta.bases(configuracao.valores()))),
+      sessoes: uma(async () => (await sessoesDoCadastro(cadastros)).sessoes),
+      quadro(alvo) {
+        const chave = String(alvo.TRELLO_QUADRO ?? '').trim();
+        if (!lidos.has(chave)) lidos.set(chave, lerOQuadro(trello, alvo).catch((e) => ({ quadro: null, erro: `não consegui ler o quadro do Trello (${e instanceof Error ? e.message : e}).` })));
+        return lidos.get(chave);
+      },
+    };
+  }
+  /** Os valores que valeriam voltando à linha, e a conferência deles. */
+  async function aVoltaDe(entrada, eu, leitura) {
+    const mudancas = Object.fromEntries(entrada.mudancas.map((m) => [m.nome, m.antes]));
+    const nomes = Object.keys(mudancas);
+    const alvo = configuracao.simular(mudancas);
+    const s = secoesDe(nomes);
+    const doQuadro = s.pracas || s.card || s.filmes;
+    const [quadros, bases, sessoes, lido] = await Promise.all([
+      s.quadro ? leitura.quadros() : null,
+      s.base ? leitura.bases() : null,
+      s.filmes ? leitura.sessoes() : null,
+      doQuadro ? leitura.quadro(alvo) : null,
+    ]);
+    return { mudancas, lido, voltar: conferirAVolta(configuracao.valores(), alvo, nomes, { lido, quadros, bases, sessoes, eu: eu.email }) };
+  }
+  async function historicoDaTela(eu) {
+    const leitura = lerParaVoltar();
+    return Promise.all(
+      configuracao.historico({ limite: 50 }).map(async (e) => ({
+        id: e.id,
+        em: e.em,
+        por: e.por,
+        quem: e.por ? nomeDaPessoa(e.por) : 'sistema',
+        linhas: e.linhas,
+        voltouDe: e.voltouDe,
+        voltar: (await aVoltaDe(e, eu, leitura)).voltar,
+      })),
+    );
+  }
+  /** Voltar a uma linha: aplica na hora os valores de antes dela (se a conferência passa) e entra no histórico. */
+  async function voltarNoHistorico(res, eu, corpo) {
+    const entrada = configuracao.entradaDoHistorico(Number(corpo?.id));
+    if (!entrada) return json(res, 404, { erro: 'Essa linha não está no histórico.' });
+    const { mudancas, lido, voltar } = await aVoltaDe(entrada, eu, lerParaVoltar());
+    if (!voltar.pode) return json(res, 422, { erro: `Não dá para voltar: ${voltar.motivo}` });
+    mudarConfiguracao(mudancas, { por: eu.email, voltouDe: entrada.id, quadro: lido?.quadro ?? null });
+    console.log(`[configuração] ${eu.email} voltou à linha ${entrada.id} do histórico (${entrada.linhas.map((l) => l.oque).join(', ')})`);
+    // as praças de agora vão junto: o navegador reconhece a praça da claquete com elas
+    return json(res, 200, { entradas: await historicoDaTela(eu), pracas: pracasParaONavegador(pracas) });
   }
 
   /**
@@ -1312,8 +1400,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    */
   async function rotaDaConfiguracao(req, res, eu, caminho) {
     const acao = caminho.slice('/api/configuracao'.length);
-    const leituras = ['', '/quadros', '/bases'];
-    if (![...leituras, '/conferir', '/salvar', '/trocar'].includes(acao)) return json(res, 404, { erro: 'Não encontrado.' });
+    const leituras = ['', '/quadros', '/bases', '/historico'];
+    if (![...leituras, '/conferir', '/salvar', '/trocar', '/voltar'].includes(acao)) return json(res, 404, { erro: 'Não encontrado.' });
     if (req.method !== (leituras.includes(acao) ? 'GET' : 'POST')) return json(res, 405, { erro: 'Método não permitido.' });
     if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e mudam a Configuração.' });
     try {
@@ -1322,10 +1410,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         await redescobrir();
         return json(res, 200, await lerAsSecoes());
       }
-      if (acao === '/quadros') return json(res, 200, { quadros: await lerQuadros(trello) });
-      if (acao === '/bases') return json(res, 200, { bases: await descoberta.bases(configuracao.valores()) });
+      if (acao === '/quadros') return json(res, 200, { quadros: conhecer(conhecidos.quadros, await lerQuadros(trello)) });
+      if (acao === '/bases') return json(res, 200, { bases: conhecer(conhecidos.bases, await descoberta.bases(configuracao.valores())) });
+      if (acao === '/historico') return json(res, 200, { entradas: await historicoDaTela(eu) });
       const corpo = await lerCorpo(req).catch(() => null);
       if (acao === '/trocar') return await trocarAConexao(res, eu, corpo);
+      if (acao === '/voltar') return await voltarNoHistorico(res, eu, corpo);
       if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
       const pracas = corpo.pracas === undefined ? null : secaoDoPedido(corpo);
       if (corpo.pracas !== undefined && !pracas) return json(res, 400, { erro: 'As praças vieram incompletas.' });
@@ -1333,7 +1423,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (corpo.card !== undefined && !card) return json(res, 400, { erro: 'O card veio incompleto.' });
       const filmesNovos = corpo.filmes === undefined ? null : filmesDoPedido(corpo);
       if (corpo.filmes !== undefined && !filmesNovos) return json(res, 400, { erro: 'Os filmes vieram incompletos.' });
-      const lido = await lerOQuadro(trello, env);
+      const lido = conhecerQuadro(await lerOQuadro(trello, env));
       const daPraca = pracas && (await conferirSecaoPracas(trello, env, pracas, await claquetesParaConferir(), lido));
       const doCard = card && conferirSecaoDoCard(env, lido.quadro, card);
       // a praça dos filmes é uma das praças que vão valer: as do pedido, quando as praças mudam junto
@@ -1370,7 +1460,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           ...(filmesNovos ? mudancasDosFilmes(filmesNovos) : {}),
           LIGADO_A_MAO: JSON.stringify(aMao),
         },
-        { por: eu.email },
+        { por: eu.email, quadro: lido.quadro },
       );
       const criadas = completa?.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
       console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
