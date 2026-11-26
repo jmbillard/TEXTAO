@@ -185,6 +185,21 @@ describe('envio para o Trello', () => {
     });
   });
 
+  it('o card e a linha da produção nascem com a data em barra, com a mesma key', async () => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, consultar: banco().consultar });
+    await t.enviar({ meta: { ...meta, claquete: 'Festa na Praça 19-11-2 SP' }, artes: ['X'], original }, new Date('2026-11-19T12:00:00Z'));
+    expect(pedidos.find((p) => p.url.pathname === '/1/cards' && p.metodo === 'POST')!.corpo).toMatchObject({ name: 'Festa na Praça 19/11-2 SP' });
+    const registro = pedidos.find((p) => p.url.pathname === '/api/table/tblProducao/record')!.corpo as { records: { fields: Record<string, unknown> }[] };
+    expect(registro.records[0].fields).toMatchObject({ claquete: 'Festa na Praça 19/11-2 SP', key: chaveN8n('Festa na Praça 19-11-2 SP') });
+  });
+
+  it('a claquete com traço ainda acha a que já entrou hoje com outra grafia', async () => {
+    const { buscar } = falsos();
+    const t = criarTrello(ENV, { buscar, consultar: banco({ duplicado: true }).consultar });
+    expect(await t.enviar({ meta: { ...meta, claquete: 'Festa na Praça 19-11 SP' }, artes: [], original })).toMatchObject({ duplicado: true });
+  });
+
   it('a claquete já exibida não leva a prioridade ALTA, mesmo na lista de hoje', async () => {
     const { buscar, pedidos } = falsos();
     const { consultar } = banco({ prioridade: [{ claquete: 'Festa na Praça 19/11 SP', data: '2026-11-21' }] });

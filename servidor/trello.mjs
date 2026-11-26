@@ -7,7 +7,7 @@
 import { abrirPg, nomeLimpoPg, nomesDoPg } from './pauta.mjs';
 import { gerarPdf } from './pdf.mjs';
 import { normalizarKey } from './cadastros.mjs';
-import { jaFoiExibida } from '../src/modelo/vocabularios.ts';
+import { claquetePadrao, jaFoiExibida } from '../src/modelo/vocabularios.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const API_PADRAO = 'https://api.trello.com/1';
@@ -530,8 +530,9 @@ export function criarTrello(env, deps = {}) {
   async function enviar(r, agora = new Date()) {
     if (!c.ligado) throw new Error('O Trello não está configurado (TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA).');
     const m = r.meta;
-    // sem claquete, o card leva o título ou o nome do arquivo: nada impede o envio
-    const claquete = String(m.claquete || m.titulo || (r.original?.nome ?? '').replace(/\.[^.]+$/, '').replace(/_/g, ' ') || 'Roteiro sem claquete').trim();
+    // sem claquete, o card leva o título ou o nome do arquivo: nada impede o envio. A data vai sempre com barra
+    // ("DONA 27-11" → "DONA 27/11"), no card e na produção da arte; a chave não muda com isso
+    const claquete = claquetePadrao(String(m.claquete || m.titulo || (r.original?.nome ?? '').replace(/\.[^.]+$/, '').replace(/_/g, ' ') || 'Roteiro sem claquete').trim());
     const avisos = [];
     const tentar = async (o_que, f) => {
       try {

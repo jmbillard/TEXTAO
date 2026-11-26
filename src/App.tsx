@@ -19,7 +19,7 @@ import { TourDaRevisao } from './tour/TourDaRevisao';
 import { passoAtual, pular, recomecar, tourNaEntrada, type Tour } from './tour/passos';
 import { ehCelular } from './ui/util';
 import { colocarExemplo, exemploNoTrello, ID_DO_EXEMPLO, roteiroDeExemplo } from './tour/exemplo';
-import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, dataDaClaquete, pracaDaClaquete, refazerPelaAtracao } from './modelo/vocabularios';
+import { quantasAtracoes, atracaoCadastrada, programasConhecidos, acharPrograma, chaveDaClaquete, claquetePadrao, dataDaClaquete, pracaDaClaquete, refazerPelaAtracao } from './modelo/vocabularios';
 
 /** Envio automático ao Trello do roteiro que chega sem pendência. Desligado durante a conferência do acervo:
     tudo passa pela revisão e vai pelo botão Enviar. */
@@ -211,7 +211,7 @@ export function App() {
       const pauta = await consultarPauta(imp.meta.claquete);
       if (!imp.meta.editor) imp.meta.editor = pauta.editor;
       // quando a claquete bate com a pauta, vale a grafia de lá: "Quem Ama(Prologo)26/10 Rede"
-      if (pauta.claquete) imp.meta.claquete = pauta.claquete;
+      if (pauta.claquete) imp.meta.claquete = claquetePadrao(pauta.claquete);
       // quem sobe o arquivo não é o redator: sem redator, o login não entra no lugar dele (a fila sugere um nome)
       const agora = new Date().toISOString();
       // o roteiro é sempre texto corrido; as cores do Word ficam com o significado que o app deduziu
@@ -357,7 +357,7 @@ export function App() {
       const programa = acharPrograma(claquete);
       const meta = {
         ...metaVazia(),
-        claquete: pauta.claquete || claquete,
+        claquete: claquetePadrao(pauta.claquete || claquete),
         editor: pauta.editor,
         praca: pracaDaClaquete(claquete),
         dataExibicao: dataDaClaquete(claquete),

@@ -62,6 +62,8 @@ export interface DataLida {
   fim: number;
   /** O trecho reescrito com a barra, em caixa alta: "5/12-2", "8 A 20/9-2". */
   comBarra: string;
+  /** Onde está, no texto, o separador entre o dia e o mês (a barra, o traço…). */
+  separador: number;
 }
 
 /* A claquete original é "D/M", com a versão opcional "-V" ("5/12-2"), ou um período "D a D/M" ("8 a 20/9-2").
@@ -79,10 +81,10 @@ const RE_PAR =
  * - Os números do nome da atração no começo do texto não entram na data: com "Fórmula 1" cadastrada,
  *   "FORMULA 1 5-12-2" é 5/12, versão 2 (sem o cadastro, vale a regra dos primeiros números: 1/5).
  * @param semBarra se o traço, o underline, o espaço e o ponto também separam dia e mês (nome de arquivo); na
- *   claquete digitada, só o traço.
+ *   claquete digitada, só o traço; no nome do card ('nome'), o traço, o underline e o ponto, mas não o espaço.
  * @param atracoes nomes de atração além dos cadastros que o navegador já tem (a que o servidor achou depois da leitura).
  */
-export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete' = 'claquete', atracoes: string[] = []): DataLida | null {
+export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete' | 'nome' = 'claquete', atracoes: string[] = []): DataLida | null {
   const depoisDaAtracao = fimDosNumerosDaAtracao(texto, atracoes);
   const cands = [...texto.matchAll(RE_PAR)].filter((m) => m.index! >= depoisDaAtracao).map((m) => {
     const [, todo, periodo = '', ini, d, sep, mes, versao = '', versaoSolta] = m;
@@ -93,7 +95,7 @@ export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete
     (c) =>
       c.d >= 1 && c.d <= 31 && c.mes >= 1 && c.mes <= 12 &&
       (!c.ini || (+c.ini >= 1 && +c.ini <= 31)) &&
-      (c.sep === '/' || c.sep === '-' || semBarra === 'arquivo') &&
+      (c.sep === '/' || c.sep === '-' || semBarra === 'arquivo' || (semBarra === 'nome' && c.sep !== ' ')) &&
       // a versão solta (sem hífen) só existe no nome do arquivo, onde o hífen pode ter virado underline ou espaço
       (!c.versaoSolta || semBarra === 'arquivo') &&
       (c.sep === '/' || !/\p{L}/u.test(texto[(c.periodo ? c.m.index! : c.posDia) - 1] ?? '')),
@@ -109,8 +111,55 @@ export function lerDataDaClaquete(texto: string, semBarra: 'arquivo' | 'claquete
     inicio: c.m.index!,
     fim: c.m.index! + c.todo.length,
     comBarra: `${c.ini ? `${c.ini} A ` : ''}${c.dTexto}/${c.mesTexto}${c.versaoSolta ? `-${c.versaoSolta}` : c.versao}`,
+    separador: c.posMes - 1,
   };
 }
+
+/**
+ * A claquete com a data de exibição escrita com barra: "DONA 27-11" → "DONA 27/11", "TERRA 26-11-2" → "TERRA 26/11-2".
+ * Lê a data como `lerDataDaClaquete` (a última "D-M", "D_M" ou "D.M"; com uma "D/M" já escrita, vale ela) e troca só o
+ * separador entre o dia e o mês: a versão ("-2", "-V2", " B"), o período ("21 A 26-9") e os outros números ficam como
+ * estão. A chave da claquete, a data e a praça não mudam: a pontuação não conta nelas.
+ */
+export function claqueteComBarra(claquete: string): string {
+  const lida = lerDataDaClaquete(claquete, 'nome');
+  if (!lida || claquete[lida.separador] === '/') return claquete;
+  return claquete.slice(0, lida.separador) + '/' + claquete.slice(lida.separador + 1);
+}
+
+/**
+ * A claquete sem o espaço antes do "(" e depois do ")": "ELIANA (REPERC) 29/11" → "ELIANA(REPERC)29/11". O espaço de
+ * dentro dos parênteses fica ("(PROLOGO DO CAP 1)"). Só tira o espaço que não muda a chave da claquete, a data nem a
+ * praça: "FESTA (AH) SP" fica "FESTA(AH) SP" (sem o espaço, o "SP" deixaria de ser a praça), e "FESTA (AH) 3/12" fica
+ * "FESTA(AH) 3/12" (a chave tira o "(AH)" e colaria o nome na data).
+ */
+export function claqueteSemEspacoNosParenteses(claquete: string): string {
+  const igual = (a: string, b: string) => {
+    const da = lerDataDaClaquete(a);
+    const db = lerDataDaClaquete(b);
+    return chaveDaClaquete(a) === chaveDaClaquete(b) && pracaDaClaquete(a) === pracaDaClaquete(b) && da?.dia === db?.dia && da?.mes === db?.mes;
+  };
+  let texto = claquete;
+  const re = /(\s*)(\([^()]*\))(\s*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(texto))) {
+    const [todo, antes, par, depois] = m;
+    const ini = m.index;
+    // tira os dois espaços; se não der, só o de antes ou só o de depois
+    const resto = texto.slice(ini + todo.length);
+    const trecho = [par, par + depois, antes + par].find((o) => o !== todo && igual(texto.slice(0, ini) + o + resto, claquete)) ?? todo;
+    texto = texto.slice(0, ini) + trecho + resto;
+    re.lastIndex = ini + trecho.length;
+  }
+  return texto;
+}
+
+/**
+ * O nome da claquete no padrão da casa, como vai para o card do Trello e para a produção da arte: a data com barra
+ * (`claqueteComBarra`) e sem espaço em volta dos parênteses (`claqueteSemEspacoNosParenteses`).
+ * "ELIANA (REPERC) 29-11" → "ELIANA(REPERC)29/11".
+ */
+export const claquetePadrao = (claquete: string): string => claqueteSemEspacoNosParenteses(claqueteComBarra(claquete));
 
 /** A data da claquete, no ano corrente (ou no seguinte, se já passou há mais de seis meses). */
 export function dataDaClaquete(claquete: string, hoje = new Date(), atracoes: string[] = []): string {
@@ -139,7 +188,8 @@ export function jaFoiExibida(claquete: string, agora = new Date()): boolean {
 
 const diaIso = (ano: number, mes: number, dia: number) => `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 
-/** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. */
+/** "Expedicao_Rio_11_07_Rede.docx" → "EXPEDICAO RIO 11/07 REDE": a barra da data não cabe em nome de arquivo. Sai no
+    padrão da casa (`claquetePadrao`): "Eliana_(Reperc)_29_11.docx" → "ELIANA(REPERC)29/11". */
 export function claqueteDoArquivo(arquivo: string, atracoes: string[] = []): string {
   const texto = arquivo
     .replace(/\.[^.]+$/, '')
@@ -149,7 +199,7 @@ export function claqueteDoArquivo(arquivo: string, atracoes: string[] = []): str
     .trim()
     .toUpperCase();
   const data = lerDataDaClaquete(texto, 'arquivo', atracoes);
-  return data ? texto.slice(0, data.inicio) + data.comBarra + texto.slice(data.fim) : texto;
+  return claqueteSemEspacoNosParenteses(data ? texto.slice(0, data.inicio) + data.comBarra + texto.slice(data.fim) : texto);
 }
 
 /**

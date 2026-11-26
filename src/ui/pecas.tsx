@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { SUBTIPOS_ARTE, normalizarSubtipo, type Meta, type SubtipoArte, type SugestaoRedator } from '../modelo/tipos';
 import type { EstadoDoRedator } from '../modelo/redator';
-import { PRACAS, editoresConhecidos, seloCurto, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
+import { PRACAS, claquetePadrao, editoresConhecidos, seloCurto, programasConhecidos, redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { atalho, dataCurtaComDia, dataPorExtenso, ehMac } from './util';
 import { Icone } from './icones';
 
@@ -286,6 +286,8 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, b
         autoComplete="off"
         spellCheck={false}
         onChange={(e) => mudar({ [chave]: e.target.value })}
+        // a data da claquete vai com barra ("DONA 27-11" → "DONA 27/11"): ao sair do campo, para não pular o cursor
+        onBlur={chave === 'claquete' ? (e) => claquetePadrao(e.target.value) !== e.target.value && mudar({ claquete: claquetePadrao(e.target.value) }) : undefined}
       />
     ) : (
       <div>{dados[chave]}</div>
