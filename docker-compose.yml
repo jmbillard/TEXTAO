@@ -50,6 +50,8 @@ services:
       # ---- Trello ----
       - TRELLO_KEY=${TRELLO_KEY:-}
       - TRELLO_TOKEN=${TRELLO_TOKEN:-}
+      # o Secret da API key: confere a assinatura do aviso do Trello (a rota /api/trello/aviso, fora do Access)
+      - TRELLO_SEGREDO=${TRELLO_SEGREDO:-}
 
       # ---- OneDrive (cópia do arquivo original, por SFTP) ----
       - SFTP_HOST=${SFTP_HOST:-}

@@ -269,7 +269,8 @@ export function criarTrello(env, deps = {}) {
       body: form ?? (corpo ? JSON.stringify(corpo) : undefined),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!r.ok) throw new Error(`Trello respondeu ${r.status} em ${metodo} ${rota.replace(/\/[0-9a-f]{24}/g, '/…')}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
+    // a rota pode ter o token (os webhooks do token, #87): nem ele nem os ids vão para a mensagem
+    if (!r.ok) throw new Error(`Trello respondeu ${r.status} em ${metodo} ${(c.token ? rota.split(c.token).join('…') : rota).replace(/\/[0-9a-f]{24}/g, '/…')}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
     return r.json().catch(() => ({}));
   }
   /** Um GET que devolve null quando o Trello não tem mais o que foi pedido (o card apagado: 404; o id que não vale: 400). */
@@ -1226,5 +1227,16 @@ export function criarTrello(env, deps = {}) {
     }
   };
 
-  return { ligado: c.ligado, config: c, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoInteira, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  /* ---------- o webhook do quadro (#87): o Trello avisa o PROMeiro direto ---------- */
+  const webhooks = {
+    /** Os webhooks deste token (de todos os quadros): { id, callbackURL, idModel, active }. */
+    listar: () => trello('GET', `/tokens/${encodeURIComponent(c.token)}/webhooks`),
+    /** Registra um (o Trello confere o endereço com um HEAD antes de aceitar). */
+    criar: ({ callbackURL, idModel, description }) => trello('POST', '/webhooks', { corpo: { callbackURL, idModel, description } }),
+    /** Liga de novo o que o Trello desligou (depois de muitas falhas de entrega). */
+    ligar: (id) => trello('PUT', `/webhooks/${encodeURIComponent(id)}`, { corpo: { active: true } }),
+    apagar: (id) => trello('DELETE', `/webhooks/${encodeURIComponent(id)}`),
+  };
+
+  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoInteira, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

@@ -26,6 +26,8 @@ import { criarFilmes } from './filmes.mjs';
 import { criarDuplicadas, DIAS_MAXIMO, DIAS_PADRAO } from './duplicadas.mjs';
 import { criarRegistroDasDuplicadas, MOTIVO_MAXIMO } from './registro-das-duplicadas.mjs';
 import { criarProducoes } from './producoes.mjs';
+import { ROTA_DO_AVISO, assinaturaConfere, enderecoDoAviso, faltasDoAviso, garantirWebhook, lerCorpoDoAviso, listasDoQuadro, segredoDoAviso } from './aviso-do-trello.mjs';
+import { eventosDoAviso } from '../src/modelo/avisoDoTrello.ts';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
@@ -440,6 +442,9 @@ const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
 /** De quanto em quanto tempo o servidor olha os membros do quadro (a seção Pessoas, #77): uma vez por dia. */
 const UM_DIA = 24 * 60 * 60 * 1000;
 
+/** De quanto em quanto tempo o servidor confere se o webhook do quadro (#87) existe e está ativo: uma vez por hora. */
+const UMA_HORA = 60 * 60 * 1000;
+
 /** Os dias de claquetes recentes que a conferência das praças conta (os mesmos da aba Sem cadastro). */
 const DIAS_DA_CONTAGEM = 90;
 
@@ -447,8 +452,10 @@ const DIAS_DA_CONTAGEM = 90;
  * @param env as variáveis do Portainer; o que foi salvo na configuração do PROMeiro vale por cima delas
  * @param abrirPg abre o Postgres do Teable (os módulos abrem cada um a sua conexão, na primeira consulta)
  * @param agendar (f, ms) repete f de ms em ms (a verificação diária dos membros do quadro); os testes trocam
+ * @param esperaDoAviso quanto esperar, na subida, antes de conferir o webhook do quadro (#87): o Trello confere o
+ *   endereço com um HEAD ao registrar, e o servidor precisa já estar ouvindo
  */
-export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, buscarNoGitHub = fetch, agendar = (f, ms) => setInterval(f, ms), ...modulos }) {
+export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, buscarNoGitHub = fetch, agendar = (f, ms) => setInterval(f, ms), esperaDoAviso = 5000, ...modulos }) {
   const fabricas = { ...FABRICAS };
   for (const [nome, m] of Object.entries(modulos)) if (m !== undefined && m !== null) fabricas[nome] = m;
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
@@ -542,6 +549,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const velha = geracao;
     geracao = montar(valores);
     ({ env, pracas, trello, acervo, vocabulario, pauta, cadastros, redatorProvavel, duplicadas } = geracao);
+    // o quadro trocou: o webhook vai para o novo (o do quadro antigo sai)
+    if (String(velha.env.TRELLO_QUADRO ?? '').trim() !== String(env.TRELLO_QUADRO ?? '').trim()) void garantirOAviso();
     const filmesVelho = filmes.reconfigurar?.(env, { trello }) ?? null;
     // a lista de atrações guardada é da configuração antiga: a próxima leitura vai ao Teable
     void Promise.resolve(cache.guardar('vocabulario', null, 1)).catch(() => {});
@@ -602,6 +611,75 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     .catch((e) => console.warn(`[producoes] a carga inicial não rodou: ${e instanceof Error ? e.message : e}`));
   const verificacaoDiaria = agendar(() => verificarPessoas(), UM_DIA);
   verificacaoDiaria?.unref?.();
+
+  /* ---------- o aviso do Trello (#87): o webhook do quadro e a fila do que chegou ---------- */
+  let garantindo = null;
+  let faltasAvisadas = '';
+  /** Confere o webhook do PROMeiro no quadro (registra, liga de novo, tira o do quadro antigo). Nunca lança. */
+  function garantirOAviso() {
+    garantindo ??= (async () => {
+      const faltam = faltasDoAviso(env);
+      if (faltam.length) {
+        // o log diz o que falta uma vez (e de novo se mudar), não a cada hora
+        if (faltam.join() !== faltasAvisadas) console.log(`[aviso do trello] desligado: falta ${faltam.join(', ')}`);
+        faltasAvisadas = faltam.join();
+        return null;
+      }
+      faltasAvisadas = '';
+      try {
+        const r = await garantirWebhook(trello.webhooks, { callbackURL: enderecoDoAviso(env), quadro: listasDoQuadro(env).quadro });
+        if (r.feito !== 'existe') console.log(`[aviso do trello] webhook do quadro ${r.feito === 'criado' ? 'registrado' : 'ligado de novo'}`);
+        return r;
+      } catch (e) {
+        console.warn(`[aviso do trello] não consegui conferir o webhook: ${e instanceof Error ? e.message : e}`);
+        return null;
+      }
+    })().finally(() => (garantindo = null));
+    return garantindo;
+  }
+  let esperaDoWebhook = null;
+  const avisoPronto = new Promise((ok) => {
+    esperaDoWebhook = setTimeout(() => void garantirOAviso().then(ok), esperaDoAviso);
+    esperaDoWebhook.unref?.();
+  });
+  const conferenciaDoAviso = agendar(() => garantirOAviso(), UMA_HORA);
+  conferenciaDoAviso?.unref?.();
+  // os avisos aceitos são processados um de cada vez, na ordem em que chegaram, depois da resposta ao Trello
+  let filaDosAvisos = Promise.resolve();
+  /**
+   * A rota do aviso (pública: a única fora do Cloudflare Access). HEAD responde 200 (o Trello confere o endereço
+   * assim); POST só com a assinatura certa, e responde 200 antes de processar.
+   */
+  async function rotaDoAviso(req, res) {
+    if (req.method === 'HEAD') {
+      res.writeHead(200, { 'cache-control': 'no-store' });
+      return res.end();
+    }
+    if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    const segredo = segredoDoAviso(env);
+    const callbackURL = enderecoDoAviso(env);
+    const corpo = await lerCorpoDoAviso(req);
+    if (!segredo || !callbackURL) return json(res, 503, { erro: 'O aviso do Trello não está configurado.' });
+    if (!assinaturaConfere(corpo, req.headers['x-trello-webhook'], segredo, callbackURL)) {
+      console.warn('[aviso do trello] aviso recusado: assinatura ausente ou errada');
+      return json(res, 401, { erro: 'Assinatura inválida.' });
+    }
+    json(res, 200, { ok: true });
+    // a configuração de quando chegou: as listas do quadro e as praças
+    const listas = listasDoQuadro(env);
+    const pracasDeAgora = pracas;
+    filaDosAvisos = filaDosAvisos.then(() => {
+      let acao = null;
+      try {
+        acao = JSON.parse(corpo.toString('utf8'))?.action ?? null;
+        const r = producoes.anotar(eventosDoAviso(acao, listas), pracasDeAgora);
+        if (r.anotados || r.ignorados) console.log(`[aviso do trello] ${String(acao?.type ?? '?').slice(0, 40)}: ${r.anotados} anotados, ${r.repetidos} repetidos, ${r.ignorados} fora do domínio`);
+      } catch (e) {
+        // só o tipo e o id da ação: o corpo não vai para o log
+        console.warn(`[aviso do trello] não processei ${String(acao?.type ?? 'o aviso').slice(0, 40)} ${String(acao?.id ?? '').slice(0, 40)}: ${e instanceof Error ? e.message : e}`);
+      }
+    });
+  }
   async function aposentar(velha, filmesVelho) {
     if (velha.emCurso) await new Promise((ok) => (velha.drenou = ok));
     await Promise.all([
@@ -2298,7 +2376,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const g = geracao;
     g.emCurso += 1;
     try {
-      if (caminho.startsWith('/api/')) await api(req, res, caminho);
+      // o aviso do Trello (#87) é a única rota fora do login (o Cloudflare Access): confere a assinatura dele
+      if (caminho === ROTA_DO_AVISO) await rotaDoAviso(req, res);
+      // o que está embaixo dela também pode ter passado pelo Bypass do Access (o caminho cobre os de baixo): não é nada,
+      // e nunca chega às rotas com login (o cabeçalho do Access, ali, pode ter vindo de qualquer um)
+      else if (caminho.startsWith(`${ROTA_DO_AVISO}/`)) json(res, 404, { erro: 'Não encontrado.' });
+      else if (caminho.startsWith('/api/')) await api(req, res, caminho);
       else arquivo(req, res, caminho);
     } catch (e) {
       if (!res.headersSent) json(res, e.status ?? 500, { erro: e.status ? e.message : 'Algo deu errado no servidor.' });
@@ -2321,9 +2404,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /** A verificação dos membros do quadro feita na partida (os testes esperam por ela); e verificar de novo. */
   app.pessoasProntas = primeiraVerificacao;
   app.verificarPessoas = verificarPessoas;
+  /** A primeira conferência do webhook do quadro (#87), e conferir de novo; a fila dos avisos aceitos (os testes esperam). */
+  app.avisoPronto = avisoPronto;
+  app.garantirOAviso = garantirOAviso;
+  app.avisosEmDia = () => filaDosAvisos;
   app.fechar = async () => {
     clearInterval(batimento);
     clearInterval(verificacaoDiaria);
+    clearInterval(conferenciaDoAviso);
+    clearTimeout(esperaDoWebhook);
     clearTimeout(tentarDeNovo);
     for (const n of RECRIADOS) await geracao[n]?.parar?.();
     for (const ws of naFila.keys()) ws.terminate();

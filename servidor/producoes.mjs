@@ -12,9 +12,16 @@
  * atualiza, não duplica, e a Produção guarda o seu id. Roda na subida, quando não há nenhuma Produção, e quando um
  * administrador pede "recarregar". Não há leitura periódica: quem mantém em dia é o aviso do Trello (#87). As
  * Produções carregadas entram com o estado de agora, sem eventos passados.
+ *
+ * Os eventos (#87) são a memória da Produção: o que o aviso do Trello disse que aconteceu (criada, mudou de etapa,
+ * arquivada, desarquivada), com quem e quando (a data da ação no Trello) e o id da ação do Trello, único: o mesmo
+ * aviso duas vezes não vira dois eventos. O aviso muda a etapa da Produção, a não ser que chegue atrasado (mais velho
+ * que o último evento dela): esse entra no histórico e não volta a etapa. O tipo, o antes e o depois são texto livre
+ * (sem CHECK): os próximos tipos (designer, checklist, campos) guardam outros valores.
  */
 import { randomUUID } from 'node:crypto';
 import { ETAPAS, producaoDaLinha } from '../src/modelo/producao.ts';
+import { pracasRegistradas, reconhecerPraca } from '../src/modelo/pracas.ts';
 
 export function criarTabelaDasProducoes(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS producoes (
@@ -40,9 +47,25 @@ export function criarTabelaDasProducoes(db) {
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS producoes_card ON producoes (card_id)');
   db.exec('CREATE INDEX IF NOT EXISTS producoes_etapa ON producoes (etapa)');
+  db.exec(`CREATE TABLE IF NOT EXISTS eventos (
+    id TEXT PRIMARY KEY,
+    producao_id TEXT NOT NULL REFERENCES producoes (id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL,
+    antes TEXT,
+    depois TEXT,
+    quem_id TEXT,
+    quem_nome TEXT,
+    quando TEXT NOT NULL,
+    trello_acao TEXT UNIQUE,
+    anotado_em TEXT NOT NULL
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS eventos_producao ON eventos (producao_id, quando)');
 }
 
 const COLUNAS = ['claquete', 'praca', 'etapa', 'marcador', 'designers', 'artes', 'artes_quantidade', 'entrada_em', 'entrega_em', 'exibicao_em', 'card_id', 'roteiro_id', 'filme_id', 'filme_titulo', 'arquivada', 'atualizada_em'];
+
+/** O evento como a API mostra. */
+const doEvento = (e) => ({ tipo: e.tipo, antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null });
 
 /** A Produção como a API mostra. */
 const daLinha = (l) => ({
@@ -90,6 +113,26 @@ export function criarProducoes(db) {
     envios: db.prepare(`SELECT e.card_id, e.roteiro_id, r.meta FROM envios e JOIN roteiros r ON r.id = e.roteiro_id WHERE e.card_id IS NOT NULL AND e.card_id <> '' ORDER BY e.em`),
     doCard: db.prepare('SELECT * FROM producoes WHERE card_id = ? ORDER BY entrada_em'),
     doRegistro: db.prepare('SELECT * FROM producoes WHERE teable_registro = ?'),
+    // a carga adota a Produção que o aviso do Trello criou para o card (ainda sem o registro do Teable): não duplica
+    adotar: db.prepare(
+      `UPDATE producoes SET teable_registro = ? WHERE id = (SELECT id FROM producoes WHERE card_id = ? AND teable_registro IS NULL ORDER BY criada_em LIMIT 1)`,
+    ),
+    /* ---------- os eventos (#87) ---------- */
+    eventosDe: db.prepare('SELECT * FROM eventos WHERE producao_id = ? ORDER BY quando, anotado_em'),
+    temAcao: db.prepare('SELECT 1 FROM eventos WHERE trello_acao = ?'),
+    // o card pode ter mais de uma Produção (linhas repetidas na produção da arte): vale a mais recente
+    daUltimaDoCard: db.prepare('SELECT id FROM producoes WHERE card_id = ? ORDER BY COALESCE(entrada_em, criada_em) DESC, criada_em DESC LIMIT 1'),
+    ultimoQuando: db.prepare('SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ?'),
+    criarDoAviso: db.prepare(
+      `INSERT INTO producoes (id, claquete, praca, etapa, card_id, entrada_em, arquivada, criada_em, atualizada_em) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    ),
+    anotar: db.prepare(
+      `INSERT INTO eventos (id, producao_id, tipo, antes, depois, quem_id, quem_nome, quando, trello_acao, anotado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (trello_acao) DO NOTHING`,
+    ),
+    mudarEtapa: db.prepare(
+      `UPDATE producoes SET etapa = ?, arquivada = ?, entrega_em = CASE WHEN ? = 'entregue' AND entrega_em IS NULL THEN ? ELSE entrega_em END, atualizada_em = ? WHERE id = ?`,
+    ),
   };
 
   /** card → { id, exibicao }: o Roteiro guardado que foi enviado para o card, e a data de exibição dele. */
@@ -132,6 +175,7 @@ export function criarProducoes(db) {
       try {
         for (const l of linhas) {
           const p = producaoDaLinha(l, { roteiro: l.card ? roteiros.get(l.card) : null, exibicao: l.card ? exibicoes.get(l.card) : null }, pracas);
+          if (p.cardId && !q.existe.get(p.teableRegistro)) q.adotar.run(p.teableRegistro, p.cardId);
           if (!q.existe.get(p.teableRegistro)) novas++;
           const valores = { claquete: p.claquete, praca: p.praca, etapa: p.etapa, marcador: p.marcador, designers: JSON.stringify(p.designers), artes: JSON.stringify(p.artes), artes_quantidade: p.artesQuantidade, entrada_em: p.entradaEm, entrega_em: p.entregaEm, exibicao_em: p.exibicaoEm, card_id: p.cardId, roteiro_id: p.roteiroId, filme_id: p.filmeId, filme_titulo: p.filmeTitulo, arquivada: p.arquivada ? 1 : 0, atualizada_em: em };
           q.gravar.run(randomUUID(), p.teableRegistro, em, ...COLUNAS.map((c) => valores[c]));
@@ -158,11 +202,53 @@ export function criarProducoes(db) {
     return { total, porEtapa, comCard, semCard: total - comCard, comRoteiro: Number(c.com_roteiro ?? 0), comFilme: Number(c.com_filme ?? 0), carregando: !!emCurso, ultimaCarga: ultima };
   }
 
+  /**
+   * Anota os eventos do aviso do Trello (src/modelo/avisoDoTrello.ts), numa transação: "criada" faz a Produção do card
+   * quando ainda não há nenhuma (a claquete é o nome do card; a praça, a que a claquete indica); os outros só valem
+   * para o card que já é Produção (o resto é card fora do domínio e é ignorado). O id da ação do Trello não repete.
+   * @returns { anotados, repetidos, ignorados }
+   */
+  function anotar(eventos, pracas = pracasRegistradas()) {
+    const r = { anotados: 0, repetidos: 0, ignorados: 0 };
+    if (!eventos?.length) return r;
+    const em = new Date().toISOString();
+    db.exec('BEGIN');
+    try {
+      for (const ev of eventos) {
+        if (q.temAcao.get(ev.acao)) {
+          r.repetidos++;
+          continue;
+        }
+        let id = q.daUltimaDoCard.get(ev.cardId)?.id;
+        if (!id && ev.tipo !== 'criada') {
+          r.ignorados++;
+          continue;
+        }
+        if (!id) {
+          id = randomUUID();
+          const claquete = String(ev.claquete ?? '').trim();
+          q.criarDoAviso.run(id, claquete, reconhecerPraca(claquete, pracas), ev.depois, ev.cardId, ev.quando, em, em);
+        }
+        const ultimo = q.ultimoQuando.get(id)?.quando ?? null;
+        q.anotar.run(randomUUID(), id, ev.tipo, ev.antes ?? null, ev.depois ?? null, ev.quem?.id ?? null, ev.quem?.nome ?? null, ev.quando, ev.acao, em);
+        r.anotados++;
+        // "criada" de uma Produção que já existia (a carga chegou antes) não muda nada; o atrasado não volta a etapa
+        if (ev.tipo !== 'criada' && (!ultimo || ev.quando >= ultimo)) q.mudarEtapa.run(ev.depois, ev.depois === 'arquivada' ? 1 : 0, ev.depois, ev.quando, em, id);
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return r;
+  }
+
   return {
     vazia: () => Number(q.total.get().n) === 0,
+    anotar,
     carregar,
     contagem,
-    /** As Produções de um card ou de um registro do Teable. */
-    buscar: ({ card, registro }) => (card ? q.doCard.all(card) : registro ? q.doRegistro.all(registro) : []).map(daLinha),
+    /** As Produções de um card ou de um registro do Teable, com os eventos de cada uma (do mais velho ao mais novo). */
+    buscar: ({ card, registro }) => (card ? q.doCard.all(card) : registro ? q.doRegistro.all(registro) : []).map((l) => ({ ...daLinha(l), eventos: q.eventosDe.all(l.id).map(doEvento) })),
   };
 }

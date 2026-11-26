@@ -238,7 +238,19 @@ Onde a Produção está no fluxo: **Entrada** → **Produzindo** → **Entregue*
 produção da arte: arquivada vence tudo; entregue (ou o status FINALIZADO) é Entregue; com designer ou status de
 trabalho, Produzindo; senão, Entrada. O status detalhado (aguardando material, em aprovação, pedido de alteração…) não
 é etapa: é o **marcador** dentro de Produzindo.
+Com o aviso do Trello, a lista para onde o card foi diz a etapa: as entradas (das praças, a reserva, a do VT, a dos
+filmes) são Entrada; as saídas das praças e a dos entregues, Entregue; qualquer outra lista do quadro, Produzindo.
 _Evitar_: status, coluna, lista (a lista é do Trello)
+
+**Evento** (da Produção):
+O que aconteceu com a Produção, anotado no SQLite: **criada**, **mudou de etapa** (antes → depois), **arquivada** e
+**desarquivada**, com quem (o membro do Trello) e quando (a data da ação no Trello, não a da chegada). Vem do **aviso
+do Trello**: o webhook do quadro, que chama o PROMeiro direto (sem o n8n) na única rota fora do Cloudflare Access, e
+só vale com a assinatura do Trello. Cada evento guarda o id da ação do Trello, único: o mesmo aviso duas vezes não
+duplica. Card novo no quadro vira Produção; aviso de outro quadro, ou de um card que não é Produção, é ignorado. O
+aviso atrasado (mais velho que o último evento) entra no histórico, mas não volta a etapa. As Produções da carga não
+têm eventos passados.
+_Evitar_: log, atividade, ação (a ação é do Trello)
 
 **Produção da arte (ARTE_producao)**:
 A tabela do Teable com o registro de cada card (status, designers, entrega), que o n8n sincroniza com o Trello. É de
