@@ -960,7 +960,8 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
   // #156: sem versão, a Produção aberta não mostra a linha das versões nem as dá; o apelido continua
   assert.equal(await apelido.locator('small', { hasText: 'versões' }).count(), 0, 'a Produção aberta sem a seção das versões');
   assert.equal(await aberta.getByRole('button', { name: /Editar as versões|dar as versões/ }).count(), 0, '"dar as versões" escondido');
-  assert.ok(await apelido.getByRole('button', { name: 'dar um apelido' }).isVisible(), 'o apelido continua na Produção aberta');
+  // #160: o apelido se dá pelo lápis, ao lado da versão
+  assert.ok(await aberta.getByRole('button', { name: /^Dar um apelido/ }).isVisible(), 'o apelido continua na Produção aberta, pelo lápis');
   // as versões à mão guardadas pela rota, como antes (a Produção do card)
   const producao = await show.getAttribute('data-producao');
   const guardar = (versoes) => p.evaluate(async ([id, v]) => (await fetch('/api/apelidos', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ producao: id, versoes: v }) })).status, [producao, versoes]);
@@ -974,7 +975,7 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
   await aberta.waitFor();
   await aberta.locator('#prod-aberta-titulo .sufixo-versoes').waitFor();
   assert.equal((await aberta.locator('#prod-aberta-titulo').textContent()).replace(/\s+/g, ' ').trim(), `Show da Noite ${dm(3)} SP (PN)`, 'a Produção aberta: o código no fim do nome');
-  assert.equal(await apelido.evaluate((e) => getComputedStyle(e).borderLeftWidth), '0px', 'sem unha');
+  assert.equal(await aberta.locator('.pa-topo').evaluate((e) => getComputedStyle(e).borderLeftWidth), '0px', 'sem unha');
   await capturar(p, '18-producao-aberta-versoes-a-mao');
   // tiradas: o nome volta sem código
   assert.equal(await guardar(''), 200);
