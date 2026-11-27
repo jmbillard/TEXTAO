@@ -308,6 +308,23 @@ equipe toda já vê no card do Trello), sem os ids do Trello; as Produções int
 _Evitar_: histórico (na tela), log, atividade. Não confundir com a linha do tempo das edições, no editor do roteiro
 (as versões dele).
 
+**Tela de produções**:
+A tela das Produções abertas por etapa, para qualquer designer (ADR 0006, interrogatório de 27/11): uma **faixa da
+praça** por praça, cada uma com as colunas Entrada · Produzindo · Entregue. Mudar a etapa (arrastando ou com um botão)
+move o card no Trello; ao marcar Entregue, avisa se falta arte, mas deixa entregar. Se o PROMeiro e o Trello discordam,
+vale o último que aconteceu, e os dois viram evento na linha do tempo. Fica ao lado da agenda No Trello, que continua.
+_Evitar_: quadro, kanban, board (o quadro é do Trello)
+
+**Aviso do Padeiro**:
+O Padeiro avisando o PROMeiro direto, sem o n8n, quando o designer abre ou cria o projeto pelo card ou pela Produção:
+a Produção passa a Produzindo, com esse designer. Vem pela **chave do Padeiro**.
+_Evitar_: webhook do projeto (é a rota do n8n de hoje). Não confundir com o **aviso** da pauta nem com o aviso do Trello.
+
+**Chave do Padeiro**:
+O que identifica o Padeiro no PROMeiro: uma chave por usuário do computador, que o designer pede pelo próprio Padeiro.
+O cadastro nasce **pendente** e só vale depois que um administrador aprova e liga a um designer.
+_Evitar_: token de serviço, senha, login
+
 **Anexo** (guardado pelo PROMeiro):
 Um arquivo que o PROMeiro guarda no próprio banco (entra no backup) e serve por endereço fixo, sem depender do Trello
 nem do Teable (#90): o **PDF do roteiro** que vai ao card no envio (ligado ao card da Produção, servido em
@@ -397,12 +414,20 @@ _Evitar_: carga, upload, sincronizar, reverter
 **Pacote gráfico novo**:
 Quando a atração troca a identidade: as artes do acervo dela deixam de valer (zerar o acervo).
 
+**Correção de grafia**:
+A troca de uma grafia antiga pelo padrão nos dados que o PROMeiro não gravou (a pauta da edição, as atrações, o
+acervo), numa tela de manutenção só de administradores: lista as correções "de → para" para conferir, aplica no Teable
+e guarda o valor antigo para desfazer. Na entrada não precisa: o PROMeiro aceita qualquer grafia e grava sempre no
+padrão. É a única escrita do PROMeiro na pauta da edição.
+_Evitar_: normalização, limpeza, saneamento
+
 ## Pauta da edição
 
 **Pauta da edição**:
 A tabela do Teable (EDICAO_producao) que diz quem edita cada claquete, em que dia e em que turno; os coordenadores
-escrevem nela, o PROMeiro só lê. É também a página do PROMeiro, aberta a qualquer pessoa logada, com a **Semana**
-(um editor por linha, um dia por coluna). Cada linha é uma claquete, uma **tarefa** ou um **aviso**.
+escrevem nela, o PROMeiro só lê (a exceção é a **correção de grafia**). É também a página do PROMeiro, aberta a
+qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna). Cada linha é uma claquete, uma
+**tarefa** ou um **aviso**.
 _Evitar_: escala, grade da edição
 
 **Tarefa** (da pauta):

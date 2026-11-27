@@ -92,3 +92,45 @@ login, uma segunda exceção ao Access, só para `/api/publico/poster`, com um t
 (`POSTER_PUBLICO_TOKEN`): o pôster é público por natureza e o fluxo filmes-recentes já é aberto, então um token só
 basta para não deixar o caminho aberto a qualquer um. Não responde a pergunta de como o Padeiro se identifica para o
 resto da API: o token do pôster só abre o pôster.
+
+## Rumo do produto (interrogatório de 27/11/2026)
+
+O interrogatório que a primeira seção deixou para depois foi feito. Decisões:
+
+- **Para quem é:** o PROMeiro é de toda a Promo (arte, redação, edição e coordenação), cada um na sua **área de
+  trabalho**.
+- **Meta de 6 meses:** o PROMeiro vira o lugar de trabalho da arte. O designer pega, produz e entrega pelo PROMeiro, e
+  o Trello vira um espelho que ninguém precisa abrir.
+- **Aparelho:** o trabalho é no computador; o celular serve para acompanhar e responder rápido.
+- **As dores que guiam as prioridades:** ninguém atualiza nada; os dados não têm padrão; há ferramentas demais.
+
+**O andamento sem depender de lembrar.** Duas frentes:
+
+1. **O aviso do Padeiro:** o Padeiro avisa o PROMeiro direto, sem o n8n. Abrir ou criar o projeto pelo card ou pela
+   Produção conta como Produzindo, com o designer. O designer se cadastra pelo próprio Padeiro e ganha uma **chave do
+   Padeiro**, ligada ao usuário do computador; o cadastro fica pendente até um administrador aprovar e ligar ao
+   designer. Isto responde a pergunta aberta da segunda seção: uma chave por usuário do computador, ligada ao designer, e não um
+   token de serviço.
+2. **A tela de produções:** uma faixa por praça, com as colunas Entrada · Produzindo · Entregue. Qualquer designer muda
+   a etapa (arrastando ou com um botão), e o PROMeiro move o card no Trello. Ao marcar Entregue, avisa se falta arte,
+   mas deixa entregar. A agenda No Trello continua existindo ao lado dela.
+
+**Conflito PROMeiro × Trello:** vale o último que aconteceu, e os dois viram evento na linha do tempo.
+
+**O padrão dos dados.** O PROMeiro aceita qualquer grafia na entrada e grava sempre no padrão. As grafias antigas da
+pauta da edição, das atrações e do acervo serão corrigidas por uma tela de manutenção, só de administradores (a
+**correção de grafia**): ela lista as correções "de → para" para conferir, aplica no Teable e guarda o valor antigo para
+desfazer. Isto muda a regra de que o PROMeiro só lê a pauta da edição: a correção é a exceção autorizada. Escrever a
+pauta, pela coordenação, só vem quando o Teable sair.
+
+**As ferramentas.** Cada fluxo do n8n é desligado assim que o PROMeiro o cobre, como já foi feito com as Duplicadas e o
+FilmeBOT. A ordem geral continua: Trello, depois Teable, depois n8n.
+
+**O fim do Trello.** O Trello é pago pela empresa, que tira dele os dados de produtividade da equipe, e esses dados são
+imprecisos. Ele só sai quando ninguém mais mexer nele e o PROMeiro oferecer à empresa dados precisos.
+
+**Para depois.** O relatório de produtividade e o registro do uso de IA esperam a empresa padronizar os dados pedidos a
+todas as equipes da pós e do design. Hoje ela olha o número de peças, a complexidade das peças e o uso de IA em cada
+produção.
+
+**A ordem das próximas frentes:** a tela de produções e a correção de grafia, em paralelo; depois, o aviso do Padeiro.
