@@ -21,6 +21,7 @@ import { corDe, iniciais, nomesCurtos, primeiroNome as primeiro } from "../dados
 import { montarFileiras, podeSubir, type ItemDaFileira } from "../filmes/fileiras";
 import { useTelaDeCelular } from "./faixa";
 import { EntradaDoCelular } from "./FilmesCelular";
+import { SequenciaDeFilmes } from "./SequenciaDeFilmes";
 import { Icone } from "./icones";
 import { LinkQuebrado } from "./LinkQuebrado";
 import { Duvida, Marca, RABISCOS } from "./pecas";
@@ -85,7 +86,7 @@ export function Presentes({ pessoas, texto }: { pessoas: PessoaNaPrevia[]; texto
 }
 
 /** A anotação à mão logo abaixo do título do card que pede atenção: a pergunta do ! ou o envio que não foi. */
-const anotacao = (f: FilmeLido) => {
+export const anotacao = (f: FilmeLido) => {
   const c = f.conferencia;
   // o que a leitura nova não achou pede a decisão mesmo depois de enviado
   if (c?.pergunta === "nao-achado") return "não achado";
@@ -100,7 +101,7 @@ const anotacao = (f: FilmeLido) => {
 };
 
 /** O círculo à caneta em volta do pôster da página (os traços da contagem de artes da fila). */
-const Circulo = ({ traco, className }: { traco: number; className: string }) => (
+export const Circulo = ({ traco, className }: { traco: number; className: string }) => (
   <svg className={className} viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true">
     <path pathLength={1} d={RABISCOS[traco % RABISCOS.length]} />
   </svg>
@@ -111,19 +112,27 @@ const temBalao = (f?: FilmeLido) =>
   !!f?.conferencia?.pergunta || f?.envio?.estado === "erro";
 
 export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
-  // no celular (até 600px), a entrada é a das prévias empilhadas com o "Subir prévia" (#80). A revisão ainda é a do
-  // computador: a sequência de filmes do celular é o próximo passo (#81)
+  // no celular (até 600px), a entrada é a das prévias empilhadas com o "Subir prévia" (#80), e a prévia aberta é a
+  // sequência de filmes (#81)
   const celular = useTelaDeCelular();
-  if (celular && !aberta)
+  if (celular)
     return (
-      <div className="pagina filmes filmes-no-celular">
+      <div className={`pagina filmes filmes-no-celular ${aberta ? "na-sequencia" : ""}`}>
         <header className="topo-filmes-celular">
-          <button className="voltar-celular" onClick={voltar} aria-label="Voltar para a fila">
+          <button
+            className="voltar-celular"
+            onClick={aberta ? () => abrir() : voltar}
+            aria-label={aberta ? "Voltar para as prévias" : "Voltar para a fila"}
+          >
             <Icone nome="voltar" tam={20} traco={2} />
           </button>
           <Marca />
         </header>
-        <EntradaDoCelular abrir={abrir} avisar={avisar} />
+        {aberta ? (
+          <SequenciaDeFilmes id={aberta} avisar={avisar} verPrevias={() => abrir()} voltar={voltar} />
+        ) : (
+          <EntradaDoCelular abrir={abrir} avisar={avisar} />
+        )}
       </div>
     );
   return (
@@ -262,23 +271,14 @@ function ListaDePrevias({
   );
 }
 
-function PreviaAberta({
-  id,
-  avisar,
-  verPrevias,
-  voltar,
-}: {
-  id: string;
-  avisar: (t: string) => void;
-  verPrevias: () => void;
-  voltar: () => void;
-}) {
+/**
+ * A prévia aberta, do computador e do celular: abre, reabre quando a versão dela muda no servidor (a batida, que também
+ * diz quem mais está nela e o card em que esta pessoa mexe) e grava as mudanças nos filmes.
+ */
+export function usePreviaAberta(id: string, avisar: (t: string) => void) {
   const [previa, setPrevia] = useState<Previa | null>(null);
   // o link não abriu: a prévia vencida (o servidor já apagou) ou o servidor fora do ar
   const [falha, setFalha] = useState<"vencida" | "erro" | null>(null);
-  const [pag, setPag] = useState(0);
-  const [destaque, setDestaque] = useState<number | null>(null);
-  const [mandando, setMandando] = useState(false);
   // quem mais está na prévia, e o card em que eu estou mexendo (vai no aviso, para os outros verem)
   const [pessoas, setPessoas] = useState<PessoaNaPrevia[]>([]);
   const [meuCard, setMeuCard] = useState<CardDaPrevia | null>(null);
@@ -369,6 +369,24 @@ function PreviaAberta({
   }, [id, carregar]);
   // mexi em outro card: os outros ficam sabendo já, sem esperar a próxima batida
   useEffect(() => bater.current(), [meuCard?.numero, meuCard?.i]);
+  return { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard };
+}
+
+function PreviaAberta({
+  id,
+  avisar,
+  verPrevias,
+  voltar,
+}: {
+  id: string;
+  avisar: (t: string) => void;
+  verPrevias: () => void;
+  voltar: () => void;
+}) {
+  const { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard } = usePreviaAberta(id, avisar);
+  const [pag, setPag] = useState(0);
+  const [destaque, setDestaque] = useState<number | null>(null);
+  const [mandando, setMandando] = useState(false);
   const algumEnviando = !!previa?.paginas.some((g) =>
     g.filmes.some((f) => f.envio?.estado === "enviando"),
   );

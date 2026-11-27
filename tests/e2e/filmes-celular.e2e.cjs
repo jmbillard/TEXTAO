@@ -7,8 +7,11 @@
 // "subindo", "na fila", "lendo" e "lida", e "pode fechar a aba" aparece quando tudo chegou ao servidor. No iPhone, a
 // primeira subida cai no meio (a página 2 não chega, como a aba fechando): a ficha diz o que falta, e subir o mesmo PDF
 // de novo só manda a página que faltou. No fim, a ficha mostra o andamento (páginas lidas, prontos, com pergunta) e quem
-// mais está na prévia, e tocar nela abre a revisão. Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=
-// <pasta>, guarda as telas nos temas claro e escuro, e a entrada do computador (que não muda).
+// mais está na prévia, e tocar nela abre a revisão: a sequência de filmes (#81), as sessões próprias por data e depois a
+// Sessão da Tarde, arrastada com o dedo (o arrasto que não passa da metade volta; o que passa, ou o gesto rápido, troca de
+// filme), com a imagem de cima deslizando entre pôsteres da mesma página e esmaecendo entre páginas (sem movimento, só
+// esmaece) e a barra "1/4" fixa embaixo. Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=<pasta>,
+// guarda as telas nos temas claro e escuro, e a entrada do computador (que não muda).
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:filmes
 const assert = require('node:assert/strict');
@@ -293,6 +296,138 @@ async function noAndroid(navegador, s, leitura, pdf) {
   return { ctx, p, erros, f };
 }
 
+/* ---------- a sequência de filmes (#81) ---------- */
+/** A prévia A em sequência: as sessões próprias por data (todas aqui), cada filme com a página dele. */
+const SEQUENCIA_A = ['KONG: ILHA DA CAVEIRA', 'O CORVO', 'RIVAIS', 'FILME INEDITO FICTICIO'];
+
+/**
+ * Arrasta o dedo na faixa, de verdade (os toques passam pelo navegador e viram a rolagem nativa): `dx` em proporção da
+ * largura (negativo vai para o próximo filme), em `passos` movimentos de `ms` cada. `segurando` roda com o dedo ainda
+ * na tela, no fim do caminho.
+ */
+async function arrastar(p, dx, { passos = 12, ms = 30, segurando } = {}) {
+  const cdp = await p.context().newCDPSession(p);
+  const caixa = await p.locator('.sequencia-faixa').boundingBox();
+  const y = caixa.y + caixa.height * 0.6;
+  const x0 = caixa.x + caixa.width * (dx < 0 ? 0.85 : 0.15);
+  const toque = (x) => [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: toque(x0) });
+  for (let k = 1; k <= passos; k++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: toque(x0 + (dx * caixa.width * k) / passos) });
+    await p.waitForTimeout(ms);
+  }
+  if (segurando) {
+    await p.waitForTimeout(150);
+    await segurando();
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+  await paradaNoFilme(p);
+}
+
+/** Espera a faixa parar encaixada num filme. */
+async function paradaNoFilme(p) {
+  let antes = -1;
+  for (let t = Date.now(); Date.now() - t < 10000; ) {
+    const { x, w } = await p.locator('.sequencia-faixa').evaluate((el) => ({ x: el.scrollLeft, w: el.clientWidth }));
+    if (x === antes && Math.abs(x / w - Math.round(x / w)) < 0.01) return;
+    antes = x;
+    await p.waitForTimeout(120);
+  }
+  throw new Error('a faixa não parou num filme');
+}
+
+/** O filme à vista: a posição na barra e o título do card atual. */
+async function filmeAVista(p) {
+  await p.waitForTimeout(100);
+  const posicao = (await p.locator('.sequencia-barra .posicao').textContent()).trim();
+  const titulo = (await p.locator('.sequencia-item[aria-current] .cc-titulo').textContent()).trim();
+  return [posicao, titulo];
+}
+
+/** A imagem de cima agora: o modo (desliza ou esmaece), a escala e o deslocamento da primeira camada, e a opacidade de cada uma. */
+const imagemAgora = (p) =>
+  p.locator('.sequencia-imagem').evaluate((el) => {
+    const [a, b] = el.querySelectorAll('.camada');
+    const m = new DOMMatrix(getComputedStyle(a.firstElementChild).transform);
+    return { modo: el.dataset.modo, zoom: m.a, x: m.e, y: m.f, a: Number(a.style.opacity), b: Number(b.style.opacity) };
+  });
+
+/** iPhone: abrir a prévia pela lista e arrastar entre os filmes. */
+async function naSequencia(p) {
+  await p.locator('.sequencia-faixa').waitFor({ timeout: 30000 });
+  assert.deepEqual(await filmeAVista(p), ['1/4', SEQUENCIA_A[0]]);
+  const titulos = await p.locator('.sequencia-item .cc-titulo').allTextContents();
+  assert.deepEqual(titulos, SEQUENCIA_A, 'a ordem: as sessões próprias por data');
+  // a imagem de cima está ampliada no pôster do Kong, com o contorno à mão
+  await p.waitForFunction(() => [...document.querySelectorAll('.sequencia-imagem img')].every((i) => i.complete && i.naturalWidth > 0), null, { timeout: 15000 });
+  const parado = await imagemAgora(p);
+  assert.ok(parado.zoom > 1.5, `a imagem amplia o pôster (zoom ${parado.zoom})`);
+  assert.equal(await p.locator('.sequencia-imagem .camada').first().locator('.contorno').count(), 1, 'o contorno no pôster atual');
+  await semRolagemDeLado(p, 'iPhone, a sequência');
+  await alvosDe44(p, 'iPhone, a sequência');
+  // a barra fica embaixo, colada na borda (com a margem do sistema, quando há)
+  const barra = await p.locator('.sequencia-barra').boundingBox();
+  assert.equal(Math.round(barra.y + barra.height), await p.evaluate(() => innerHeight), 'a barra fica embaixo');
+  await capturar(p, 'iphone-04-sequencia');
+
+  // o arrasto que não passa da metade volta; no meio do caminho, a imagem desliza até o próximo pôster (a mesma página)
+  await arrastar(p, -0.35, {
+    segurando: async () => {
+      const meio = await imagemAgora(p);
+      assert.equal(meio.modo, 'deslizar', 'na mesma página, a imagem desliza');
+      assert.ok(Math.abs(meio.x - parado.x) > 10, `a imagem acompanha o dedo (${parado.x} → ${meio.x})`);
+      assert.equal(meio.b, 0, 'deslizando, uma imagem só');
+      if (CAPTURAS) await p.screenshot({ path: join(CAPTURAS, 'iphone-05-arrastando.png') });
+    },
+  });
+  assert.deepEqual(await filmeAVista(p), ['1/4', SEQUENCIA_A[0]], 'o arrasto curto volta');
+  // passou da metade: o próximo
+  await arrastar(p, -0.6);
+  assert.deepEqual(await filmeAVista(p), ['2/4', SEQUENCIA_A[1]], 'o arrasto que passa da metade troca de filme');
+  // do Corvo (página 1) ao Rivais (página 2): a imagem esmaece entre as páginas
+  await arrastar(p, -0.6, {
+    segurando: async () => {
+      const meio = await imagemAgora(p);
+      assert.equal(meio.modo, 'esmaecer', 'entre páginas, a imagem esmaece');
+      assert.ok(meio.a > 0.15 && meio.a < 0.85 && meio.b > 0.15 && meio.b < 0.85, `as duas páginas no meio do esmaecer (${meio.a}, ${meio.b})`);
+    },
+  });
+  assert.deepEqual(await filmeAVista(p), ['3/4', SEQUENCIA_A[2]]);
+  // o gesto rápido e curto troca de filme (um só, mesmo rápido)
+  const [pos] = await filmeAVista(p);
+  await arrastar(p, -0.22, { passos: 4, ms: 8 });
+  const depois = await filmeAVista(p);
+  assert.equal(Number(depois[0].split('/')[0]), Number(pos.split('/')[0]) + 1, `o gesto rápido troca de filme (${pos} → ${depois[0]})`);
+  assert.deepEqual(depois, ['4/4', SEQUENCIA_A[3]]);
+  await capturar(p, 'iphone-06-sequencia-pagina-2');
+  // e volta, também com o gesto rápido
+  await arrastar(p, 0.22, { passos: 4, ms: 8 });
+  assert.deepEqual(await filmeAVista(p), ['3/4', SEQUENCIA_A[2]]);
+  await semRolagemDeLado(p, 'iPhone, depois de arrastar');
+}
+
+/** Sem movimento (o sistema pede menos animação): até na mesma página, a imagem só esmaece. */
+async function semMovimentoNaSequencia(navegador, url, id) {
+  const ctx = await navegador.newContext({ ...aparelho('Pixel 7'), reducedMotion: 'reduce', extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA } });
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto(`${url}#/filmes/${encodeURIComponent(id)}`);
+  await p.locator('.sequencia-faixa').waitFor({ timeout: 30000 });
+  assert.deepEqual(await filmeAVista(p), ['1/4', SEQUENCIA_A[0]]);
+  await arrastar(p, -0.6, {
+    segurando: async () => {
+      const meio = await imagemAgora(p);
+      assert.equal(meio.modo, 'esmaecer', 'sem movimento, só esmaece');
+      assert.ok(meio.b > 0, 'a próxima aparece esmaecendo');
+    },
+  });
+  assert.deepEqual(await filmeAVista(p), ['2/4', SEQUENCIA_A[1]]);
+  assert.deepEqual(erros, [], 'sem movimento: erros na página');
+  await ctx.close();
+}
+
 async function principal() {
   if (CAPTURAS) mkdirSync(CAPTURAS, { recursive: true });
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-previas-'));
@@ -320,10 +455,12 @@ async function principal() {
     await capturar(iphone.p, 'iphone-01-lista');
     await capturar(android.p, 'android-01-lista');
 
-    // tocar na ficha abre a revisão da prévia (a do computador, até a sequência de filmes do celular)
+    // tocar na ficha abre a sequência de filmes (#81): arrastar entre os filmes, com a imagem acompanhando
     await iphone.f.tap();
     await iphone.p.waitForFunction(() => /^#\/filmes\/.+/.test(location.hash), null, { timeout: 10000 });
-    await iphone.p.locator('.previa-cab').waitFor({ timeout: 30000 });
+    const idDaPrevia = decodeURIComponent((await iphone.p.evaluate(() => location.hash)).replace(/^#\/filmes\//, ''));
+    await naSequencia(iphone.p);
+    await semMovimentoNaSequencia(navegador, s.url, idDaPrevia);
 
     // o computador não muda: a entrada larga, com o "Solte aqui o PDF da prévia"
     await pc.goto(`${s.url}#/filmes`);
@@ -335,7 +472,7 @@ async function principal() {
     assert.deepEqual(iphone.erros, [], 'iPhone: erros na página');
     assert.deepEqual(android.erros, [], 'Android: erros na página');
     await Promise.all([iphone.ctx.close(), android.ctx.close(), outro.close()]);
-    console.log('ok: a entrada da aba Filmes no celular (iPhone 13 e Pixel 7): a subida, a retomada e o andamento');
+    console.log('ok: a aba Filmes no celular (iPhone 13 e Pixel 7): a subida, a retomada, o andamento e a sequência de filmes');
   } finally {
     await navegador.close();
     await s.descer();
