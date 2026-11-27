@@ -53,7 +53,7 @@ interface Props {
   /** o dia como a tela escreve ("hoje", "ontem", "qua 25/11") e o prazo como o card mostra */
   diaEscrito: (dia: string) => string;
   prazoEscrito: (prazo: string) => string;
-  abrir: (c: CardDaProducao) => void;
+  abrir: (c: CardDaProducao, origem: HTMLElement) => void;
 }
 
 export function BuscaDasProducoes({ termo, saindo, diaEscrito, prazoEscrito, abrir }: Props) {
@@ -140,7 +140,7 @@ export function BuscaDasProducoes({ termo, saindo, diaEscrito, prazoEscrito, abr
           const quando = c.etapa === 'entregue' ? (c.entregaEm ? `entregue ${diaEscrito(diaDoPrazo(c.entregaEm))}` : 'entregue') : c.prazo ? `ao ar ${prazoEscrito(c.prazo)}` : 'sem prazo';
           return (
             <li key={c.id} className="prod-achado" data-achado={c.id} data-etapa={c.etapa} style={{ '--atraso': `${atrasos.current.get(c.id) ?? 0}ms` } as CSSProperties}>
-              <button type="button" className="prod-achado-abrir" aria-haspopup="dialog" onClick={() => abrir(c)}>
+              <button type="button" className="prod-achado-abrir" aria-haspopup="dialog" onClick={(e) => abrir(c, e.currentTarget)}>
                 <span className="prod-achado-etapa">
                   <i aria-hidden="true" />
                   {ROTULO_DA_COLUNA[c.etapa]}

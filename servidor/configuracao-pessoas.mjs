@@ -132,6 +132,8 @@ export function criarPessoas({ db, copia, buscar = fetch }) {
       const d = (e && ativos.find((x) => x.email === e)) || (chave && ativos.find((x) => `entrou:${nomeComparavel(x.nome)}` === chave));
       return d ? { nome: d.nome, membro: d.idNoTrello || '' } : null;
     },
+    /** Os designers ativos (a última verificação guardada), para atribuir no card aberto (#160): [{ nome, membro }]. */
+    designersAtivos: () => (copia.ler(GUARDADA)?.dados?.designers ?? []).filter((d) => d.ativo !== false && d.nome).map((d) => ({ nome: d.nome, membro: d.idNoTrello || '' })),
     /** Lembra o e-mail digitado para quem entrou, pela chave da novidade. */
     lembrarEmail: (chave, email) => chave && q.lembrarEmail.run(chave, String(email).trim().toLowerCase()),
     ignorar: (novidade, por) => q.ignorar.run(novidade.chave, novidade.nome, por, new Date().toISOString()),
