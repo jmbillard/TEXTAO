@@ -1,0 +1,32 @@
+/* A lista dos achados da lupa (ui/ListaDeAchados.tsx): a da busca de Produções (#161) e a da agenda de filmes (#182). O
+   lugar dela fica com cada tela; aqui, o topo, o fio, as linhas e os movimentos. O estado vai na bolinha. */
+@keyframes chegar-busca { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes sair-busca { to { opacity: 0; transform: translateY(-6px); } }
+.prod-busca-topo { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 2px 2px 10px; background: var(--mesa); }
+.prod-busca-topo h2 { margin: 0; font: 400 24px/1.2 var(--serifa); color: var(--tinta); }
+.prod-busca-topo q { font-style: italic; }
+.prod-busca-falha { color: var(--falta); font: 500 14px/1.45 var(--sans); }
+.prod-busca-dica { font: 500 12px var(--sans); color: var(--tinta3); }
+/* o fio embaixo do topo: parado, uma régua; buscando, um brilho que corre por ele */
+.prod-busca-fio { position: absolute; left: 2px; right: 2px; bottom: 0; height: 1px; overflow: hidden; background: var(--regua); }
+.prod-busca-fio::after { content: ''; position: absolute; inset: 0; width: 30%; background: linear-gradient(90deg, transparent, var(--ultra), transparent); opacity: 0; transform: translateX(-100%); }
+.prod-busca.buscando .prod-busca-fio::after { opacity: 1; animation: correr-fio 0.9s var(--suave) infinite; }
+@keyframes correr-fio { to { transform: translateX(340%); } }
+.prod-busca-nada { margin: 6px 4px; }
+.prod-achados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; transition: opacity 0.18s; }
+/* buscando um termo novo, os achados de antes ficam à vista, mais apagados, até chegarem os novos */
+.prod-busca.buscando .prod-achados { opacity: 0.6; }
+.prod-achado { animation: surgir-achado var(--dur) var(--suave) backwards; animation-delay: var(--atraso, 0ms); }
+.prod-achado.deslizando { position: relative; z-index: 1; }
+@keyframes surgir-achado { from { opacity: 0; transform: translateY(8px) scale(0.985); } }
+.prod-achado-abrir {
+  width: 100%; box-sizing: border-box; display: grid; grid-template-columns: 112px minmax(0, 1.7fr) 52px minmax(0, 1fr) 150px; align-items: center; gap: 4px 16px;
+  padding: 10px 14px; border-radius: 10px; border: 1px solid var(--regua); background: var(--papel); color: var(--tinta); text-align: left; cursor: pointer; font: inherit;
+  transition: border-color 0.18s, box-shadow 0.18s var(--suave), transform 0.18s var(--suave);
+}
+.prod-achado-abrir:hover { border-color: var(--regua-forte); transform: translateY(-1px); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 4px 10px rgb(26 25 22 / 7%); }
+.prod-achado-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+/* a etapa numa bolinha, com as cores das colunas */
+.prod-achado-etapa { display: inline-flex; align-items: center; gap: 7px; font: 600 11px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2); white-space: nowrap; }
+.prod-achado-etapa i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
+.prod-busca-mais { align-self: center; margin-top: 6px; animation: surgir-achado var(--dur) var(--suave) backwards; }
