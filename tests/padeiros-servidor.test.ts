@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { abrirBanco, criarApp, fazerBackup } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { criarPadeiros } from '../servidor/padeiros.mjs';
 
 /* O caminho do Padeiro (#137): as rotas embaixo de /api/padeiro/ só respondem com a chave do Padeiro num cabeçalho e
    nunca aceitam o login do Access. O cadastro devolve a chave (pendente), o administrador liga a um designer cadastrado
@@ -284,8 +286,12 @@ describe('a aba Padeiros: ligar e revogar a chave', () => {
   });
 
   it('o caminho é aberto: passados 500 cadastros, um par novo é recusado (429); o mesmo par ainda troca a chave', async () => {
-    const { cadastrar } = await comServidor();
-    for (let i = 1; i < 500; i++) expect((await cadastrar({ usuario: `robo${i}` })).status).toBe(201);
+    // os 499 primeiros entram direto pelo módulo (o mesmo cadastrar da rota): 499 idas e voltas HTTP só gastavam tempo
+    // e estouravam os 5 s com a máquina carregada; o limite que vale continua o de verdade, e o 500º vai pela rota
+    const db = abrirBanco(':memory:');
+    const direto = criarPadeiros(db);
+    for (let i = 1; i < 500; i++) direto.cadastrar({ usuario: `robo${i}`, computador: 'MAC-ARTE-07', sistema: 'macOS 15.1', sigla: 'ANA' });
+    const { cadastrar } = await comServidor({ db });
     expect((await cadastrar()).status).toBe(201);
     expect((await cadastrar({ usuario: 'mais.um' })).status).toBe(429);
     expect((await cadastrar()).status).toBe(201);
