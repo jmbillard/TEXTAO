@@ -422,32 +422,73 @@ Quando a atração troca a identidade: as artes do acervo dela deixam de valer (
 A troca de uma grafia antiga pelo padrão nos dados que o PROMeiro não gravou (a pauta da edição, as atrações, o
 acervo), numa tela de manutenção só de administradores: lista as correções "de → para" para conferir, aplica no Teable
 e guarda o valor antigo para desfazer. Na entrada não precisa: o PROMeiro aceita qualquer grafia e grava sempre no
-padrão. É a única escrita do PROMeiro na pauta da edição.
+padrão. Na pauta da edição, é a única escrita do PROMeiro além do **publicar** da coordenação.
 _Evitar_: normalização, limpeza, saneamento
 
 ## Pauta da edição
 
 **Pauta da edição**:
-A tabela do Teable (EDICAO_producao) que diz quem edita cada claquete, em que dia e em que turno; os coordenadores
-escrevem nela, o PROMeiro só lê (a exceção é a **correção de grafia**). É também a página do PROMeiro, aberta a
-qualquer pessoa logada, com a **Semana** e o **Dia** (um editor por coluna, na ordem de início do turno). Cada visão tem
-dois **arranjos**, à escolha de cada pessoa: a Semana editor × dia (um editor por linha, um dia por coluna) ou um dia
-por coluna (os cards por período do turno); o Dia empilhado ou por hora. Cada linha é uma claquete, uma **tarefa** ou
-um **aviso**.
-_Evitar_: escala, grade da edição
+O que cada editor vai editar em cada dia: as claquetes, as **tarefas** e os **avisos** de cada **posição** da
+**escala**, mais o **recado do dia**. Mora na tabela do Teable (EDICAO_producao), que diz quem edita cada claquete, em
+que dia e em que turno; a **coordenação** monta e publica a pauta no PROMeiro, que grava no Teable ao **publicar**, no
+lugar da planilha da edição (ADR 0006). A **correção de grafia** também escreve nela. É também a página do PROMeiro,
+aberta a qualquer pessoa logada, com a **Semana** e o **Dia** (um editor por coluna, na ordem de início do turno). Cada
+visão tem dois **arranjos**, à escolha de cada pessoa: a Semana editor × dia (um editor por linha, um dia por coluna)
+ou um dia por coluna (os cards por período do turno); o Dia empilhado ou por hora. Cada linha é uma claquete, uma
+**tarefa** ou um **aviso**.
+_Evitar_: escala (a escala é quem trabalha, não o que edita), grade da edição
+
+**Escala da edição**:
+Quem trabalha em cada dia, em que turno e em que ilha, e quem está fora: as **posições** do dia e as **ausências**. Não
+é a pauta: a escala diz onde cada um está; a pauta, o que cada um edita.
+_Evitar_: pauta, plantão
+
+**Posição** (na escala):
+O lugar de um editor num turno do dia, com ilha e horário próprios. É a ela que se prendem as claquetes, as tarefas e
+os avisos do dia.
+_Evitar_: vaga, slot
+
+**Ilha**:
+A sala de edição, com número e tipo (AVID, VDI…). Fica nos Cadastros.
+_Evitar_: sala, estação
+
+**Ausência**:
+O período em que uma pessoa está fora: férias, folga, DM ou licença. Todos veem só "fora"; o motivo, só a coordenação.
+_Evitar_: falta, afastamento
+
+**Coordenação**:
+O papel de quem monta e publica a pauta da edição.
+_Evitar_: coordenador (é a pessoa; o papel é a coordenação), chefia
 
 **Tarefa** (da pauta):
-A linha da pauta que não tem a forma de claquete (o nome da atração e a data) e não é aviso: COMUNICAÇÃO, CALHAUS.
+A linha da pauta que não tem a forma de claquete (o nome da atração e a data) e não é aviso: COMUNICAÇÃO, CALHAUS. A
+**tarefa fixa** é a que se repete toda semana na mesma posição.
 
 **Aviso** (da pauta):
-A linha com a caixinha de anotação marcada: um recado do coordenador para o editor, não um item da pauta. Na Semana,
-só o ⚑ com o número; o texto abre ao passar o mouse ou ao tocar. No Dia, um balão "aviso" no topo da coluna do editor.
+Um recado da coordenação para o editor de uma **posição**, preso a ela; não é um item da pauta. No Teable, é a linha
+com a caixinha de anotação marcada. Na Semana, só o ⚑ com o número; o texto abre ao passar o mouse ou ao tocar. No Dia,
+um balão "aviso" no topo da coluna do editor. O recado para todos é o **recado do dia**.
 _Evitar_: nota, observação
 
+**Recado do dia**:
+Um aviso para todos naquele dia, sem posição.
+_Evitar_: aviso geral, mural
+
+**Rascunho** e **Publicar** (da pauta):
+A pauta que a coordenação monta fica em rascunho, que só ela vê, até publicar; publicar é o que a equipe passa a ver.
+Cada dia está **vazio** (nada montado), em **rascunho** (montado e não publicado), **publicado** ou **alterado**
+(publicado e mudado depois, à espera de publicar de novo).
+_Evitar_: salvar, enviar, liberar
+
+**Repetir** (a escala):
+Copiar para outros dias a escala e as tarefas fixas de um dia; nunca as claquetes, que mudam todo dia.
+_Evitar_: duplicar, clonar
+
 **Turno**:
-O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. O que passa da meia-noite (22–06)
-conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores na
-Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior. Na Semana
+O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. Os turnos são uma lista na
+**Configuração**, cada um com o seu horário padrão; cada **posição** pode ter o seu horário. O que passa da meia-noite
+(22–06) conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores
+na Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior. Na Semana
 com um dia por coluna, os cards se agrupam pelo **período** em que o turno começa: manhã (6h–12h), tarde (12h–18h),
 noite (18h–0h) e madrugada (0h–6h).
 

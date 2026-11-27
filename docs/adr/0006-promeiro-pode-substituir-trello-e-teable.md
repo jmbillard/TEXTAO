@@ -134,3 +134,24 @@ todas as equipes da pós e do design. Hoje ela olha o número de peças, a compl
 produção.
 
 **A ordem das próximas frentes:** a tela de produções e a correção de grafia, em paralelo; depois, o aviso do Padeiro.
+
+## A coordenação monta a pauta (interrogatório de 27/11/2026)
+
+Esta decisão revê a anterior ("escrever a pauta, pela coordenação, só vem quando o Teable sair"): a **coordenação**
+passa a montar e publicar a pauta da edição no PROMeiro já, com o Teable ainda no lugar. Decisões:
+
+- **Substitui a planilha da edição.** Antes, uma semana lado a lado: o PROMeiro mostra a foto crua da planilha e as
+  diferenças com a pauta dele. Passada a semana, o fluxo do n8n que lê a planilha é desligado.
+- **Grava no Teable só ao publicar**, de forma compatível com o que o Teable já tem: os avisos viram linhas com a
+  caixinha de anotação marcada. O rascunho fica só no PROMeiro.
+- **O cartão da pauta no Teams.** O PROMeiro manda o cartão em horários configuráveis, pelo mesmo endereço do Power
+  Automate que o n8n usa (guardado como segredo). O cartão leva a pauta por turno, os avisos e o recado do dia;
+  republicar manda "pauta alterada".
+- **Edição simultânea, com presença:** mais de uma pessoa da coordenação monta ao mesmo tempo, e cada uma vê quem mais
+  está ali.
+- **Editor novo:** um nome que não está nos cadastros entra como pendente, e um administrador confirma.
+- **Publica mesmo com pendências** da conferência: elas avisam, não travam.
+- **Ausência num dia publicado:** marcar a ausência de quem está escalado num dia já publicado oferece tirar a pessoa
+  e republicar.
+- **A tela é um híbrido:** a grade, como a planilha; a coluna lateral, com quem falta distribuir, quem está sem escala
+  e quem está fora; e o colar da planilha, para trazer o que já foi escrito lá.
