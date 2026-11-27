@@ -45,7 +45,7 @@ import { criarApelidos } from './apelidos.mjs';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
-import { DIAS_DO_ENTREGUE, blocosDasProducoes } from '../src/modelo/producoesPorPraca.ts';
+import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
@@ -2272,7 +2272,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/eu/preferencias') {
       // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' } ou a exibição de uma área dos
       // roteiros (#103): { 'exibicao.redator': 'quadro' }, ou a visão e os arranjos da Pauta da edição (#98), que é de
-      // todo mundo: { 'pauta.visao': 'dia' }. Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
+      // todo mundo: { 'pauta.visao': 'dia' }, ou os blocos recolhidos da tela de produções (#113), também de todo mundo:
+      // { 'producoes.recolhidos': ['RJ'] }. Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
       const entradas = Object.entries(typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : {});
@@ -2281,6 +2282,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       for (const [chave, valor] of entradas) {
         if (ehChaveDaPauta(chave)) {
           const recusa = recusaDaPreferenciaDaPauta(chave, valor);
+          if (recusa) return json(res, 400, { erro: recusa });
+          continue;
+        }
+        if (chave === CHAVE_DOS_RECOLHIDOS) {
+          const recusa = recusaDosRecolhidos(valor);
           if (recusa) return json(res, 400, { erro: recusa });
           continue;
         }
@@ -2632,6 +2638,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const aTela = (id) => producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
       const r = await etapaDaProducao.desfazer({ producao: corpo.producao }, { trello, pracas, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela });
       return json(res, r.status, r.corpo);
+    }
+    if (caminho === '/api/producoes/aberta') {
+      // abrir a Produção na tela de produções (#113): a linha do tempo, as artes do checklist e o link do card no Trello,
+      // para qualquer pessoa logada (é o trabalho que a equipe toda vê no card). Só o que o PROMeiro guarda: nada do Trello
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      const id = (new URL(req.url, 'http://x').searchParams.get('producao') ?? '').trim().slice(0, 100);
+      if (!id) return json(res, 400, { erro: 'Falta a Produção.' });
+      const aberta = producoes.aberta(id);
+      return aberta ? json(res, 200, aberta) : json(res, 404, { erro: 'Essa Produção não existe mais.' });
     }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
     if (caminho === '/api/linha-do-tempo') {

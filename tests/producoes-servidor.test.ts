@@ -736,4 +736,85 @@ describe('a tela de produções: pegar, voltar para a Entrada e entregar', () =>
     expect((await desfazer('nao-existe')).status).toBe(404);
     expect((await ana('/api/producoes/desfazer')).status).toBe(405);
   });
+
+  /* Abrir a Produção (#113): um clique no card da tela mostra a linha do tempo, as artes do checklist (marcadas ou não)
+     e o link do card no Trello, para qualquer pessoa logada; só o que o PROMeiro guarda, nada lido do Trello. */
+  it('abrir a Produção: a linha do tempo, as artes do checklist e o link do card no Trello', async () => {
+    const { idDe, mudar, marcar, bia, ana, trello } = await preparado();
+    const id = await idDe('Novela Sinfonia');
+    marcar(id, ['HOJE (RDP)']);
+    expect((await mudar(id, 'entrada')).status).toBe(200);
+    trello.pedidos.length = 0;
+    // quem não está ligado a um designer também abre (é a leitura do trabalho, como o card no Trello)
+    const r = await bia(`/api/producoes/aberta?producao=${id}`);
+    expect(r.status).toBe(200);
+    const aberta = await r.json();
+    expect(aberta).toMatchObject({
+      producao: { id, claquete: 'Novela Sinfonia 20/12 SP', etapa: 'entrada' },
+      artes: [
+        { nome: 'HOJE (RDP)', marcada: true },
+        { nome: 'HOJE (CRT)', marcada: false },
+        { nome: 'AMANHÃ', marcada: false },
+      ],
+      trello: `https://trello.com/c/${card(25)}`,
+    });
+    expect(resumo(aberta.eventos)).toEqual([
+      ['etapa', 'produzindo', 'entrada', 'Ana Souza', 'PROMeiro'],
+      ['designer-saiu', 'Ana Souza', null, 'Ana Souza', 'PROMeiro'],
+    ]);
+    // a sem card: sem o link, e sem a lista de artes
+    const cozinha = await (await ana(`/api/producoes/aberta?producao=${await idDe('Cozinha de Vó')}`)).json();
+    expect(cozinha).toMatchObject({ producao: { claquete: 'Cozinha de Vó 20/12 SP' }, artes: [], trello: null, eventos: [] });
+    // abrir não pede nada ao Trello
+    expect(trello.pedidos).toEqual([]);
+  });
+
+  it('abrir a Produção mal pedida: sem login, sem a Produção, a que não existe e o método', async () => {
+    const { ana } = await preparado();
+    expect((await ana('/api/producoes/aberta?producao=x', { headers: { 'cf-access-authenticated-user-email': '' } })).status).toBe(401);
+    expect((await ana('/api/producoes/aberta')).status).toBe(400);
+    expect((await ana('/api/producoes/aberta?producao=nao-existe')).status).toBe(404);
+    expect((await ana('/api/producoes/aberta?producao=x', { method: 'POST' })).status).toBe(405);
+  });
+});
+
+/* Os blocos recolhidos (#113): as praças que cada pessoa recolheu na tela de produções ficam nas preferências dela
+   (no SQLite, pela rota de quem está logado), com a chave `producoes.recolhidos`, e valem em qualquer aparelho. */
+describe('a tela de produções: os blocos recolhidos, lembrados por pessoa', () => {
+  const CHAVE = 'producoes.recolhidos';
+  type Servidor = Awaited<ReturnType<typeof comServidor>>;
+  const lembradas = async (s: Servidor, quem: 'ana' | 'chefe') => ((await (await s[quem]('/api/eu')).json()) as { preferencias: Record<string, unknown> }).preferencias;
+  const recolher = (s: Servidor, quem: 'ana' | 'chefe', corpo: unknown) => s[quem]('/api/eu/preferencias', { method: 'PUT', body: JSON.stringify(corpo) });
+
+  it('grava e lê as praças recolhidas; vale de novo com o servidor reiniciado, e a outra pessoa não é afetada', async () => {
+    const db = abrirBanco(':memory:');
+    let s = await comServidor({ db });
+    expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
+    const r = await recolher(s, 'ana', { [CHAVE]: ['RJ', 'INTER'] });
+    expect(r.status).toBe(200);
+    expect((await r.json()).preferencias).toMatchObject({ [CHAVE]: ['RJ', 'INTER'] });
+    // a outra pessoa continua com todos os blocos abertos, e recolhe os dela
+    expect(await lembradas(s, 'chefe')).not.toHaveProperty(CHAVE);
+    expect((await recolher(s, 'chefe', { [CHAVE]: ['SP'] })).status).toBe(200);
+    // com o servidor de novo, no mesmo SQLite: em qualquer aparelho
+    await parar?.();
+    s = await comServidor({ db });
+    expect(await lembradas(s, 'ana')).toMatchObject({ [CHAVE]: ['RJ', 'INTER'] });
+    expect(await lembradas(s, 'chefe')).toMatchObject({ [CHAVE]: ['SP'] });
+    // mostrar todos de novo: a lista vazia
+    expect((await recolher(s, 'ana', { [CHAVE]: [] })).status).toBe(200);
+    expect(await lembradas(s, 'ana')).toMatchObject({ [CHAVE]: [] });
+    expect(await lembradas(s, 'chefe')).toMatchObject({ [CHAVE]: ['SP'] });
+  });
+
+  it('recusa o que não é uma lista de praças, e uma ruim recusa o pedido inteiro', async () => {
+    const s = await comServidor();
+    for (const valor of ['RJ', null, [1], [''.padEnd(41, 'X')], Array.from({ length: 101 }, (_, i) => `P${i}`)]) {
+      const r = await recolher(s, 'ana', { [CHAVE]: valor });
+      expect(r.status).toBe(400);
+      expect((await r.json()).erro).toBe('Blocos recolhidos inválidos: mande a lista das siglas das praças.');
+    }
+    expect((await recolher(s, 'ana', { [CHAVE]: ['RJ'], 'pauta.visao': 'mes' })).status).toBe(400);
+    expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
+  });
 });

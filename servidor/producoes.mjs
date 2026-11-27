@@ -35,6 +35,7 @@ import { normalizarPraca, pracasRegistradas, reconhecerPraca } from '../src/mode
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { eventosDaReleitura } from '../src/modelo/eventosDoTeable.ts';
 import { artesDaProducao } from './trello.mjs';
+import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { dataDaClaquete } from '../src/modelo/vocabularios.ts';
 
 export function criarTabelaDasProducoes(db) {
@@ -141,6 +142,19 @@ const DA_TELA = `SELECT p.id, p.claquete, p.praca, p.etapa, p.marcador, p.design
 
 /** O evento como a API mostra. */
 const doEvento = (e) => ({ tipo: e.tipo, ...(e.campo ? { campo: e.campo } : {}), antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null, ...(e.origem ? { origem: e.origem } : {}), ...(e.desfaz ? { desfez: true } : {}) });
+
+/** As artes do checklist da Produção (#111, #113): os itens da coluna de artes, cada um uma vez e na ordem, e se já
+    estão nas artes marcadas, comparados sem caixa, acento e pontuação. */
+export function artesDoChecklist({ artes, artesMarcadas }) {
+  const marcadas = new Set(artesMarcadas.map(chaveDeArte));
+  const vistas = new Set();
+  return artes.flatMap((a) => {
+    const k = chaveDeArte(a);
+    if (!k || vistas.has(k)) return [];
+    vistas.add(k);
+    return [{ nome: a.trim(), marcada: marcadas.has(k) }];
+  });
+}
 
 /** A origem dos eventos feitos na tela de produções (#110). */
 export const ORIGEM_PROMEIRO = 'PROMeiro';
@@ -526,6 +540,19 @@ export function criarProducoes(db) {
   }
 
   /**
+   * A Produção aberta na tela de produções (#113): a linha do tempo (o estado de agora e os eventos, como em
+   * `linhaDoTempo`), as artes do checklist (marcadas ou não) e o link do card no Trello (o endereço pelo id do card,
+   * sem ler o Trello; null sem card). Para qualquer pessoa logada, como a linha do tempo.
+   * @returns { producao, eventos, artes, trello } | null sem a Produção
+   */
+  function aberta(id) {
+    const l = id ? q.doId.get(id) : null;
+    if (!l) return null;
+    const p = daLinha(l);
+    return { ...linhaDoTempo({ producao: l.id }), artes: artesDoChecklist(p), trello: p.cardId ? `https://trello.com/c/${encodeURIComponent(p.cardId)}` : null };
+  }
+
+  /**
    * As Produções que entraram desde `desde` (ISO), como a pauta da edição mostra (#96, src/modelo/pauta.ts,
    * ProducaoNaPauta): as artes a produzir sem repetir (a conta da agenda, `artesDaProducao`; sem a lista, a quantidade
    * da coluna) e a prioridade ALTA da produção da arte.
@@ -629,6 +656,7 @@ export function criarProducoes(db) {
 
   return {
     linhaDoTempo,
+    aberta,
     doRoteiro,
     naTela,
     umaNaTela,

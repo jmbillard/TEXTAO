@@ -34,6 +34,13 @@
 // quando o Trello recusa o desfazer, o card volta para onde a mudança o deixou, com o motivo. No celular, o card não se
 // arrasta: a mudança é pelos botões, e a caixinha de desfazer tem os botões de 44px.
 //
+// #113, recolher e abrir: a Lia recolhe o bloco do RJ e o do G5, e cada um vira uma coluna estreita com a sigla e a
+// contagem de cada coluna, e os outros blocos ficam com a largura; o servidor guarda (a preferência da pessoa), e depois
+// de recarregar continuam recolhidos; a outra pessoa vê todos abertos; no celular, o recolhido é uma linha. Mostrar o
+// bloco de novo também fica guardado. Um clique no card abre a Produção na própria tela: a linha do tempo (com o que a
+// Lia fez), as artes do checklist e o link do card no Trello (a sem card, sem o link); fecha no ×, no Esc e fora, e o
+// foco volta para o card. O clique num botão do card e o arrasto não abrem. Nada é lido do Trello.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:producoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -579,6 +586,138 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   console.log('ok: celular: sem arrastar, a mudança pelos botões e a caixinha de desfazer com 44px');
 }
 
+/** Os blocos recolhidos, na ordem da tela. */
+const recolhidos = (p) => p.locator('.prod-bloco.recolhido').evaluateAll((bs) => bs.map((b) => b.dataset.praca));
+/** As contagens do bloco recolhido: Entrada, Produzindo e Entregue. */
+const contasRecolhido = async (p, praca) => (await textos(p.locator(`.prod-bloco[data-praca="${praca}"] .prod-contas-recolhido .prod-conta`))).map(Number);
+
+async function recolherEAbrir(navegador, url, chamadasAoTrello) {
+  const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
+  await p.locator('.prod-bloco').first().waitFor();
+  chamadasAoTrello.splice(0);
+  assert.deepEqual(await recolhidos(p), [], 'sem escolha, todos os blocos abertos');
+  const g5 = await contas(p, 'G5');
+  const guardou = () => p.waitForResponse((r) => new URL(r.url()).pathname === '/api/eu/preferencias' && r.request().method() === 'PUT' && r.ok());
+
+  // recolher o RJ e o G5: uma coluna estreita com a sigla e as contagens; os outros blocos ficam com a largura
+  let gravou = guardou();
+  await p.getByRole('button', { name: 'Recolher o bloco RJ' }).click();
+  assert.deepEqual(JSON.parse((await gravou).request().postData()), { 'producoes.recolhidos': ['RJ'] });
+  gravou = guardou();
+  await p.getByRole('button', { name: 'Recolher o bloco G5' }).click();
+  await gravou;
+  assert.deepEqual(await recolhidos(p), ['G5', 'RJ']);
+  assert.deepEqual(await contasRecolhido(p, 'G5'), g5, 'o recolhido mostra a contagem de cada coluna');
+  assert.deepEqual(await contasRecolhido(p, 'RJ'), [0, 0, 0]);
+  assert.equal((await p.locator('.prod-bloco[data-praca="G5"] .prod-sigla').textContent()).trim(), 'G5');
+  assert.equal(await p.locator('.prod-bloco[data-praca="G5"] .prod-card').count(), 0, 'o recolhido não mostra os cards');
+  const m = await medidasDosBlocos(p);
+  const largura = (praca) => m.blocos.find((b) => b.praca === praca).width;
+  assert.ok(largura('G5') < 100 && largura('RJ') < 100, `o recolhido é uma coluna estreita (${largura('G5')}px)`);
+  assert.ok(m.rolaDeLado <= 1, `com dois recolhidos, os blocos cabem sem rolar para o lado (${m.rolaDeLado}px)`);
+  assert.ok(Math.abs(m.area.right - m.blocos.at(-1).right) <= 1 && largura('SP') > 448, `os abertos ficam com a largura (${largura('SP')}px)`);
+  await capturar(p, '13-producoes-recolhidos');
+
+  // recarregada, os dois continuam recolhidos (o servidor guardou)
+  await p.reload();
+  await p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await recolhidos(p), ['G5', 'RJ'], 'depois de recarregar, os blocos continuam recolhidos');
+  // a outra pessoa vê todos abertos
+  const outra = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/designer/producoes', { email: RUI });
+  await outra.p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await recolhidos(outra.p), [], 'a outra pessoa vê todos os blocos abertos');
+  await outra.ctx.close();
+  // no celular (outro aparelho), o recolhido é uma linha só, com a sigla e as contagens
+  const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await cel.p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await recolhidos(cel.p), ['G5', 'RJ'], 'no celular, os mesmos recolhidos');
+  const linha = await cel.p.locator('.prod-bloco[data-praca="G5"]').evaluate((b) => b.getBoundingClientRect().height);
+  assert.ok(linha < 80, `no celular, o recolhido é uma linha (${linha}px)`);
+  const toque = await cel.p.getByRole('button', { name: 'Mostrar o bloco G5' }).evaluate((b) => b.getBoundingClientRect().height);
+  assert.ok(toque >= 44, 'no celular, o botão de mostrar tem 44px');
+  await semRolagemDeLado(cel.p, 'celular com os recolhidos');
+  await capturar(cel.p, '14-producoes-celular-recolhidos');
+  assert.deepEqual(cel.erros, []);
+  await cel.ctx.close();
+
+  // mostrar o G5 de novo (um clique na coluna estreita): fica guardado também
+  gravou = guardou();
+  await p.locator('.prod-bloco[data-praca="G5"]').click();
+  await gravou;
+  await p.locator('.prod-bloco[data-praca="G5"] .prod-card').first().waitFor();
+  assert.deepEqual(await contas(p, 'G5'), g5);
+  await p.reload();
+  await p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await recolhidos(p), ['RJ'], 'depois de recarregar, só o RJ recolhido');
+  console.log('ok: recolher: a coluna estreita com a sigla e as contagens, guardada por pessoa (recarregar, outro aparelho), e a outra pessoa com todos abertos');
+
+  // abrir a Produção: a linha do tempo, as artes do checklist e o link do card no Trello
+  const novela = cardDe(p, 'Novela Sinfonia');
+  await novela.locator('.prod-atracao').click();
+  const painel = p.getByRole('dialog');
+  await painel.locator('.prod-aberta-tempo li').first().waitFor();
+  assert.equal((await painel.locator('h2').textContent()).trim(), `Novela Sinfonia ${dm(2)}`);
+  assert.equal((await painel.locator('.prod-aberta-rotulo').textContent()).replace(/\s+/g, ' ').trim(), 'G5 · Entrada');
+  const frases = await textos(painel.locator('.prod-aberta-tempo li'));
+  assert.ok(frases.some((f) => /^Lia Moraes pegou /.test(f)) && frases.some((f) => /^entregue /.test(f)), `a linha do tempo diz o que a Lia fez (${frases.join(' · ')})`);
+  assert.deepEqual(await textos(painel.locator('.prod-aberta-artes .nome')), ['HOJE', 'AMANHÃ']);
+  assert.deepEqual(await textos(painel.locator('.prod-aberta-artes .estado')), ['falta', 'falta']);
+  const link = painel.getByRole('link', { name: /Abrir o card no Trello/ });
+  assert.equal(await link.getAttribute('href'), `https://trello.com/c/${card(4)}`);
+  assert.equal(await link.getAttribute('target'), '_blank');
+  await capturar(p, '15-producoes-aberta');
+  // fecha no Esc, e o foco volta para o card
+  await p.keyboard.press('Escape');
+  assert.equal(await painel.count(), 0);
+  await p.waitForFunction(() => document.activeElement?.matches('.prod-card') && document.activeElement.textContent.includes('Novela Sinfonia'));
+  // o Enter no card em foco abre de novo; o clique fora fecha
+  await p.keyboard.press('Enter');
+  await painel.waitFor();
+  await p.mouse.click(40, 500);
+  assert.equal(await painel.count(), 0, 'o clique fora fecha');
+  // a sem card: sem o link
+  await cardDe(p, 'Cozinha de Vó').locator('.prod-claquete').click();
+  await painel.locator('.prod-aberta-sem-card').waitFor();
+  assert.equal(await painel.getByRole('link').count(), 0);
+  await painel.getByRole('button', { name: 'Fechar' }).click();
+  assert.equal(await painel.count(), 0);
+
+  // o clique num botão do card e o arrasto não abrem a Produção
+  await cardDe(p, 'Cozinha de Vó').locator('.prod-mudar').click();
+  await coluna(p, 'SP', 'entrada').locator('.prod-card', { hasText: 'Cozinha de Vó' }).waitFor();
+  await calmo(p);
+  const jogo = cardDe(p, 'Jogo Final');
+  const ondeEsta = await jogo.getAttribute('data-etapa');
+  await arrastar(p, jogo, coluna(p, 'G5', ondeEsta === 'entrada' ? 'produzindo' : 'entrada'));
+  await coluna(p, 'G5', ondeEsta === 'entrada' ? 'produzindo' : 'entrada').locator('.prod-card', { hasText: 'Jogo Final' }).waitFor();
+  await calmo(p);
+  await p.waitForTimeout(200);
+  assert.equal(await p.getByRole('dialog').count(), 0, 'o botão e o arrasto não abrem a Produção');
+  assert.ok(chamadasAoTrello.every((c) => !c.startsWith('GET')), 'nada é lido do Trello');
+  chamadasAoTrello.splice(0);
+  assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+
+  // no celular, a Produção aberta ocupa a tela
+  const celular = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await celular.p.locator('.prod-bloco').first().waitFor();
+  await cardDe(celular.p, 'Novela Sinfonia').locator('.prod-claquete').tap();
+  const noCel = celular.p.getByRole('dialog');
+  await noCel.locator('.prod-aberta-tempo li').first().waitFor();
+  await noCel.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)));
+  const caixa = await noCel.boundingBox();
+  assert.ok(caixa.x <= 1 && Math.abs(caixa.width - 390) <= 1, `no celular, a Produção aberta ocupa a tela (${JSON.stringify(caixa)})`);
+  await semRolagemDeLado(celular.p, 'celular com a Produção aberta');
+  await capturar(celular.p, '16-producoes-celular-aberta');
+  await noCel.getByRole('button', { name: 'Fechar' }).tap();
+  assert.equal(await noCel.count(), 0);
+  assert.deepEqual(celular.aoTrello, []);
+  assert.deepEqual(celular.erros, []);
+  await celular.ctx.close();
+  console.log('ok: abrir a Produção: a linha do tempo, as artes e o link do Trello (a sem card sem ele); fecha no ×, no Esc e fora; o botão e o arrasto não abrem; no celular, a tela toda');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -619,6 +758,7 @@ async function principal() {
     await entradaNoCelular(navegador, s.url);
     await osBotoes(navegador, s.url, chamadasAoTrello);
     await arrastarEDesfazer(navegador, s.url, chamadasAoTrello, trelloFalso);
+    await recolherEAbrir(navegador, s.url, chamadasAoTrello);
   } catch (e) {
     falhou = true;
     console.error(e);

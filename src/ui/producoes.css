@@ -4,9 +4,12 @@
    No computador e no tablet, a página tem a altura da janela e os blocos ficam lado a lado na largura toda: cada um tem
    ao menos --bloco-min de largura e cresce para ocupar a sobra. Quando não cabem, a área dos blocos rola para o lado (e
    para baixo, por dentro), e o topo de cada bloco e o das colunas ficam presos em cima. No celular, como antes: as
-   praças e as etapas uma embaixo da outra, a página rolando inteira. */
+   praças e as etapas uma embaixo da outra, a página rolando inteira.
+   #113: o bloco recolhido é uma coluna estreita (--bloco-recolhido) com a sigla e as contagens, e a largura dele fica
+   para os outros (a lista das larguras vem da tela, no estilo da área dos blocos); no celular, uma linha. A Produção
+   aberta é um painel à direita, por cima da tela (no celular, a tela toda). */
 
-.pagina.producoes { --bloco-min: 448px; --topo-do-bloco: 54px; --margem: 24px; display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
+.pagina.producoes { --bloco-min: 448px; --bloco-recolhido: 76px; --topo-do-bloco: 54px; --margem: 24px; display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
 /* a linha do logo acompanha a largura toda dos blocos */
 .pagina.producoes .barra-topo { flex: none; width: 100%; max-width: none; padding: 0 var(--margem); }
 .prod-pagina { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 14px var(--margem) 0; }
@@ -19,7 +22,7 @@
 /* ---------- os blocos lado a lado ---------- */
 .prod-pagina > .prod-blocos {
   flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior-x: contain;
-  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(var(--bloco-min), 1fr); gap: 12px;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(var(--bloco-min), 1fr); gap: 12px; align-items: stretch;
   margin: 0 calc(-1 * var(--margem)); padding: 0 var(--margem) 24px; scroll-padding-inline: var(--margem);
 }
 
@@ -34,7 +37,26 @@
 .prod-bloco-topo h2 { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin: 0; }
 .prod-sigla { font: 400 28px/1 var(--serifa); color: var(--tinta); }
 .prod-nome { font: 500 13px var(--sans); color: var(--tinta3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.prod-total { font: 500 12.5px var(--sans); color: var(--tinta3); white-space: nowrap; }
+.prod-total { margin-left: auto; font: 500 12.5px var(--sans); color: var(--tinta3); white-space: nowrap; }
+
+/* ---------- recolher o bloco (#113) ---------- */
+.prod-recolher, .prod-mostrar {
+  flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; margin: -6px -4px 0 0; padding: 0;
+  border: 0; border-radius: 8px; background: none; color: var(--tinta3); cursor: pointer; align-self: center;
+}
+.prod-recolher:hover, .prod-mostrar:hover { background: var(--neutro); color: var(--tinta); }
+.prod-bloco.recolhido { cursor: pointer; transition: border-color 0.2s; }
+.prod-bloco.recolhido:hover { border-color: var(--regua-forte); }
+.prod-recolhido { position: sticky; top: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 6px 14px; }
+.prod-recolhido .prod-mostrar { margin: 0; }
+.prod-recolhido h2 { margin: 0; max-width: 100%; }
+.prod-recolhido .prod-sigla { display: block; font-size: 19px; overflow-wrap: anywhere; text-align: center; }
+.prod-contas-recolhido { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.prod-contas-recolhido li { display: flex; align-items: center; gap: 5px; }
+.prod-contas-recolhido i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
+.prod-contas-recolhido [data-coluna='produzindo'] i { background: var(--ultra); }
+.prod-contas-recolhido [data-coluna='entregue'] i { background: var(--ok); }
+.prod-contas-recolhido .prod-conta { background: var(--neutro); }
 
 .prod-colunas { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 8px 8px; }
 .prod-coluna { min-width: 0; border-radius: 10px; background: var(--neutro); padding: 0 6px 8px; }
@@ -58,6 +80,9 @@
 .prod-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .prod-card { display: flex; flex-direction: column; gap: 3px; padding: 8px 9px 8px; border-radius: 9px; background: var(--papel); border: 1px solid var(--regua); transition: border-color 0.2s; }
 .prod-card:hover { border-color: var(--regua-forte); }
+/* o card abre a Produção (#113) */
+.prod-card { cursor: pointer; }
+.prod-card:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
 /* a claquete quebra a linha onde precisar: nunca é cortada */
 .prod-claquete { font: 600 12.5px/1.3 var(--mono); letter-spacing: -0.01em; color: var(--tinta); overflow-wrap: anywhere; }
 .prod-atracao { font: 500 12px/1.3 var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
@@ -111,6 +136,42 @@
 .prod-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
 .prod-desfazer-fechar:hover { opacity: 1; }
 
+/* ---------- a Produção aberta (#113): o painel à direita, por cima da tela ---------- */
+.prod-veu { position: fixed; inset: 0; z-index: 25; background: color-mix(in srgb, var(--mesa) 55%, transparent); animation: surgir-veu 0.15s; }
+.prod-aberta {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); box-sizing: border-box; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 22px; padding: 22px 24px 28px;
+  background: var(--papel); box-shadow: var(--sombra-menu); animation: chegar-painel 0.2s var(--suave);
+}
+@keyframes surgir-veu { from { opacity: 0; } }
+@keyframes chegar-painel { from { transform: translateX(24px); opacity: 0; } }
+.prod-aberta-topo { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px; }
+.prod-aberta-rotulo { font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta3); }
+.prod-aberta-fechar { display: inline-grid; place-items: center; width: 36px; height: 36px; margin: -6px -10px -6px 0; padding: 0; border-radius: 10px; color: var(--tinta2); text-decoration: none; }
+.prod-aberta-fechar:hover { background: var(--neutro); }
+.prod-aberta-topo h2 { grid-column: 1 / -1; margin: 0; font: 600 19px/1.3 var(--mono); letter-spacing: -0.01em; color: var(--tinta); overflow-wrap: anywhere; }
+.prod-aberta-sobre { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 2px 0 0; font: 500 13px/1.4 var(--sans); color: var(--tinta2); }
+.prod-aberta-lendo, .prod-aberta-nada { margin: 0; color: var(--tinta3); font: 400 14px var(--sans); }
+.prod-aberta-nada { font: 600 18px/1 Caveat, cursive; transform: rotate(-1deg); transform-origin: left; }
+.prod-aberta-falha { margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 13.5px/1.45 var(--sans); }
+.prod-aberta-parte h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; font: 600 11.5px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta2); }
+.prod-aberta-parte h3 small { font: 500 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--tinta3); }
+/* a linha do tempo, uma frase embaixo da outra, com o fio do tempo à esquerda */
+.prod-aberta-tempo { list-style: none; margin: 0; padding: 0 0 0 16px; border-left: 2px solid var(--regua); display: flex; flex-direction: column; gap: 8px; font: 400 14px/1.4 var(--sans); color: var(--tinta); }
+.prod-aberta-tempo li { position: relative; }
+.prod-aberta-tempo li::before { content: ''; position: absolute; left: -21px; top: 0.5em; width: 8px; height: 8px; border-radius: 50%; background: var(--papel); box-shadow: inset 0 0 0 2px var(--tinta3); }
+.prod-aberta-tempo li:last-child::before { background: var(--tinta); box-shadow: none; }
+.prod-aberta-artes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.prod-aberta-artes li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; background: var(--neutro); }
+.prod-arte-marca { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--regua-forte); color: var(--papel); }
+.prod-aberta-artes li.marcada .prod-arte-marca { background: var(--ok); box-shadow: none; }
+.prod-aberta-artes .nome { font: 500 13px/1.35 var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
+.prod-aberta-artes .estado { font: 500 12px var(--sans); color: var(--falta); }
+.prod-aberta-artes li.marcada .estado { color: var(--tinta3); }
+.prod-aberta-pe { margin-top: auto; padding-top: 4px; }
+.prod-aberta-trello { color: var(--tinta); display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.prod-aberta-sem-card { font: 400 13px/1.45 var(--sans); color: var(--tinta3); }
+
 /* ---------- tablet: ao menos um bloco inteiro, e a área rola para o lado de praça em praça ---------- */
 @media (max-width: 900px) {
   .pagina.producoes { --margem: 16px; }
@@ -146,4 +207,17 @@
   .prod-desfazer-botao { height: 44px; padding: 0 18px; font-size: 14px; }
   .prod-desfazer-fechar { min-width: 44px; height: 44px; }
   .prod-aviso-artes { font-size: 12.5px; }
+  /* o bloco recolhido (#113): uma linha só, com a sigla e as contagens */
+  .prod-bloco.recolhido { padding: 0; }
+  .prod-recolhido { position: static; flex-direction: row; gap: 12px; padding: 10px 12px; }
+  .prod-recolhido h2 { flex: 1; }
+  .prod-recolhido .prod-sigla { font-size: 22px; text-align: left; }
+  .prod-contas-recolhido { flex-direction: row; gap: 12px; }
+  .prod-recolher, .prod-mostrar { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
+  .prod-recolher svg, .prod-mostrar svg { transform: rotate(90deg); }
+  .prod-recolhido .prod-mostrar { order: 3; margin: -10px -10px -10px 0; }
+  /* a Produção aberta ocupa a tela */
+  .prod-aberta { width: 100vw; padding: 16px 16px 28px; }
+  .prod-aberta-fechar { width: 44px; height: 44px; }
+  .prod-aberta-trello { width: 100%; justify-content: center; height: 44px; }
 }
