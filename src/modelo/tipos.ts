@@ -95,6 +95,9 @@ export interface Meta {
   naProducao?: NaProducao;
   /** Respondido "é v2": o envio atualiza este card em vez de criar outro. */
   v2De?: { card: string; url: string; registro?: string | null };
+  /** A versão do roteiro (#156), da V2 em diante: a versão nova que substituiu a anterior na fila fica com a dela mais
+      um. Ausente, vale a resposta "é v2" (a V2) ou a V1 (versaoDoRoteiro). */
+  versao?: number;
   /** Respondido "é outro roteiro": vai como card novo, mesmo com a claquete parecida. */
   outroRoteiro?: boolean;
   /** Artes do roteiro que a atração já tem prontas (acervo do Teable): aviso para quem revisa decidir. */

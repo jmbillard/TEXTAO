@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apelidoDaProducao, apelidoDoRoteiro, doAlvo, mudarApelido, mudarVersoes, useApelidos, versoesAMaoDaProducao, versoesAMaoDoRoteiro } from '../dados/apelidos';
 import { diaDoPrazo, type CardDaProducao } from '../modelo/producoesPorPraca';
 import { semPracaNoFim } from '../modelo/pracas';
@@ -57,19 +57,31 @@ export function ConflitoDoCard({ versoes }: { versoes?: VersoesDaChamada }) {
   return <span className="conflito-versoes conflito-do-card">{textoDoConflito(versoes.conflito, versoes.de)}</span>;
 }
 
+/** "dar as versões" à mão (#152, #154) fica escondido até a coordenação esclarecer o assunto (#156): as fichas só mostram
+    as versões que a claquete sabe (e o aviso do conflito), sem editar nem usar as do roteiro; as já dadas à mão ainda
+    voltam ao inicial. O código continua no fim do nome, pela opção do perfil. */
+const DAR_AS_VERSOES = false;
+
 /**
  * O apelido editável da claquete e as versões que a claquete sabe: o código e de onde veio, editável à mão (as vazias
- * voltam ao valor inicial) e, num conflito com o roteiro, a opção de usar as dele. Sem `podeMudar` (fora do servidor, o
- * roteiro de exemplo), só mostra.
+ * voltam ao valor inicial) e, num conflito com o roteiro, a opção de usar as dele (as duas escondidas por enquanto,
+ * DAR_AS_VERSOES). Sem `podeMudar` (fora do servidor, o roteiro de exemplo), só mostra.
  * @param alvo o roteiro, a Produção ou a claquete (a da pauta, sem roteiro): dá a chave da claquete (#154)
  * @param claquete a claquete original, como a tela a conhece
  * @param versoes as versões lidas do roteiro (vazia sem roteiro)
  * @param dia AAAA-MM-DD, a exibição: o dia das etiquetas sem data na claquete
+ * @param pedidoDoLapis no card da agenda (#156), o apelido se dá pelo lápis e pelo menu de contexto, sem o link de
+ *   texto, e as versões não aparecem (o código fica no nome): cada pedido novo (maior que zero) abre o campo do apelido
  */
-export function ApelidoDaClaquete({ alvo, claquete, versoes, podeMudar, dia = '' }: { alvo: AlvoDoApelido; claquete: string; versoes: readonly Versao[]; podeMudar: boolean; dia?: string }) {
+export function ApelidoDaClaquete({ alvo, claquete, versoes, podeMudar, dia = '', pedidoDoLapis }: { alvo: AlvoDoApelido; claquete: string; versoes: readonly Versao[]; podeMudar: boolean; dia?: string; pedidoDoLapis?: number }) {
   useApelidos();
   const { apelido, mao: aMao } = doAlvo(alvo);
   const [editando, setEditando] = useState<string | null>(null);
+  const peloLapis = pedidoDoLapis !== undefined;
+  useEffect(() => {
+    if (pedidoDoLapis && podeMudar) setEditando(apelido || claquete);
+    // só o pedido novo abre o campo: o apelido que muda enquanto ele está aberto não o reescreve
+  }, [pedidoDoLapis]); // eslint-disable-line react-hooks/exhaustive-deps
   const [editandoVersoes, setEditandoVersoes] = useState<string | null>(null);
   const [erro, setErro] = useState('');
   const valem = versoesDaChamada({ lidas: versoes, claquete, apelido, mao: aMao, dia });
@@ -89,7 +101,9 @@ export function ApelidoDaClaquete({ alvo, claquete, versoes, podeMudar, dia = ''
     if ('recusa' in lido) return void setErro(lido.recusa);
     void guardar(() => mudarVersoes(alvo, lido.codigo), () => setEditandoVersoes(null), 'as versões');
   };
-  if (!claquete.trim() || (!podeMudar && !apelido && !valem.lista.length)) return null;
+  const comVersoes = !peloLapis && (valem.lista.length > 0 || (DAR_AS_VERSOES && podeMudar));
+  // pelo lápis, sem apelido e sem as versões, não há o que mostrar até o campo abrir
+  if (!claquete.trim() || (!apelido && editando === null && !comVersoes && (peloLapis || !podeMudar))) return null;
   const tecla = (fechar: () => void) => (e: React.KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     e.stopPropagation();
@@ -131,7 +145,8 @@ export function ApelidoDaClaquete({ alvo, claquete, versoes, podeMudar, dia = ''
           )}
         </span>
       ) : (
-        podeMudar && (
+        podeMudar &&
+        !peloLapis && (
           <span className="apelido-linha">
             <button type="button" className="apelido-botao" title="O nome que o PROMeiro mostra; o Trello e o Teable continuam com a claquete" onClick={() => setEditando(claquete)}>
               dar um apelido
@@ -164,7 +179,7 @@ export function ApelidoDaClaquete({ alvo, claquete, versoes, podeMudar, dia = ''
           <button type="button" className="apelido-botao" onClick={() => setEditandoVersoes(null)}>cancelar</button>
         </form>
       ) : (
-        (valem.lista.length > 0 || podeMudar) && (
+        comVersoes && (
           <span className="apelido-linha">
             <small>versões</small>
             {valem.lista.length ? (
@@ -179,9 +194,11 @@ export function ApelidoDaClaquete({ alvo, claquete, versoes, podeMudar, dia = ''
             )}
             {podeMudar && (
               <>
-                <button type="button" className="apelido-botao" aria-label="Editar as versões" onClick={() => setEditandoVersoes(aMao || codigoDasVersoes(valem.lista).slice(1, -1))}>
-                  {valem.lista.length ? 'editar' : 'dar as versões'}
-                </button>
+                {DAR_AS_VERSOES && (
+                  <button type="button" className="apelido-botao" aria-label="Editar as versões" onClick={() => setEditandoVersoes(aMao || codigoDasVersoes(valem.lista).slice(1, -1))}>
+                    {valem.lista.length ? 'editar' : 'dar as versões'}
+                  </button>
+                )}
                 {aMao && (
                   <button type="button" className="apelido-botao" title="O código do nome ou, sem ele, as artes do roteiro" onClick={() => guardarVersoes('')}>
                     voltar ao inicial
@@ -192,7 +209,7 @@ export function ApelidoDaClaquete({ alvo, claquete, versoes, podeMudar, dia = ''
             {conflito && (
               <span className="conflito-versoes">
                 {textoDoConflito(conflito, valem.de)}
-                {podeMudar && (
+                {podeMudar && DAR_AS_VERSOES && (
                   <button type="button" className="apelido-botao" onClick={() => guardarVersoes(conflito.doRoteiro)}>
                     usar {conflito.doRoteiro} do roteiro
                   </button>

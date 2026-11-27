@@ -456,8 +456,8 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
 /**
  * As versões lidas do roteiro e o apelido da claquete (#120): um roteiro com "HOJE, 22H30" e "AMANHÃ" nas artes (e o
  * "SÁBADO, DEPOIS DO JORNAL" do roteiro fictício, só o dia: "(AHN)?", a conferir) e a claquete "(A)", para o sábado
- * que vem. A ficha mostra só o código, o aviso "o roteiro diz (AHN), a claquete diz (A)" e a opção de usar as do roteiro no apelido; o
- * apelido aparece no topo (a original, ao passar o mouse), é editado e volta ao original. Marcar "NESTE SÁBADO" com o
+ * que vem. A ficha mostra só o código e o aviso "o roteiro diz (AHN), a claquete diz (A)", sem dar as versões (#156: as
+ * à mão vêm pela rota); o apelido aparece no topo (a original, ao passar o mouse), é editado e volta ao original. Marcar "NESTE SÁBADO" com o
  * dedo troca o "?" pela versão escrita, na hora. A claquete da ficha (a que vai ao Trello) continua a original.
  */
 async function versoesEApelido(navegador, url, api) {
@@ -488,8 +488,14 @@ async function versoesEApelido(navegador, url, api) {
   assert.equal(await p.locator('.codigo-versoes').count(), 0, 'nenhuma etiqueta separada');
   await semRolagemDeLado(p, 'Galaxy S24, com o apelido na ficha');
 
-  // usar as do roteiro: viram as versões à mão; o topo mostra o código delas; a claquete da ficha continua a original
-  await ficha.getByRole('button', { name: `usar (AH${letra}) do roteiro` }).tap();
+  // "dar as versões" está escondido (#156): nem editar, nem usar as do roteiro
+  assert.equal(await ficha.getByRole('button', { name: /Editar as versões|dar as versões|do roteiro$/ }).count(), 0, 'a ficha não dá as versões');
+  // as versões à mão guardadas pela rota, como antes: o topo mostra o código delas; a claquete da ficha continua a original
+  const deu = await fetch(`${api}/apelidos`, { method: 'PUT', headers: h, body: JSON.stringify({ roteiro: id, versoes: `AH${letra}` }) });
+  assert.ok(deu.ok, 'as versões à mão pela rota');
+  await p.reload();
+  await p.locator('.ficha-resumo').tap();
+  await p.waitForTimeout(400);
   await ficha.locator('.apelido-versoes', { hasText: `(AH${letra})` }).waitFor({ timeout: 5000 });
   assert.match(await ficha.innerText(), /feitas à mão no apelido/, 'as versões à mão');
   assert.equal(await ficha.locator('.conflito-versoes').count(), 0, 'com as do roteiro à mão, o aviso sai');

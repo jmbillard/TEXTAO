@@ -35,6 +35,10 @@ const D = {
   calendario: 'M4.5 5.5h15v14h-15z M4.5 10h15 M8.5 3v4 M15.5 3v4',
   lista: 'M9 6h11 M9 12h11 M9 18h11 M4.5 6h.01 M4.5 12h.01 M4.5 18h.01',
   quadro: 'M5 3.5h14a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5z M8.6 7.6v8.4 M15.4 7.6v4.6',
+  // a aba Filmes (#156): a tira de filme, com os furos dos dois lados
+  filme: 'M5 3.5h14a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5z M7.5 3.5v17 M16.5 3.5v17 M3.5 8h4 M3.5 12h4 M3.5 16h4 M16.5 8h4 M16.5 12h4 M16.5 16h4',
+  // o lápis do apelido (#156)
+  lapis: 'M4 20l1.1-4.6L15.6 4.9a2.1 2.1 0 0 1 3 3L8.1 18.4z M13.6 6.9l3 3',
   lixo: 'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13',
   duplicar: 'M8 8h11a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z M4 16V4a1 1 0 0 1 1-1h11',
   fechar: 'M6 6l12 12 M18 6L6 18',

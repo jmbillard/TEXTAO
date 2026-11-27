@@ -20,7 +20,7 @@
 // colunas rolam para o lado e abrem em hoje.
 // Os filtros, o resumo e a cópia de reserva (#99): a Carla (editora, com o e-mail no cadastro de editores) filtra "Só as
 // minhas" na Semana e no Dia, e a releitura a cada minuto mantém o filtro; a Dora (designer, pela tabela designers)
-// filtra "Com arte minha"; a Lia não tem filtro nenhum; só o administrador vê o resumo; com o banco do Teable fora do
+// não tem filtro (o "Com arte minha" saiu da tela no #156), nem a Lia; só o administrador vê o resumo; com o banco do Teable fora do
 // ar, a página mostra a última cópia da pauta e a hora dela.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:pauta
@@ -677,21 +677,18 @@ async function osFiltros(navegador, url, teable) {
   assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
   await ctx.close();
 
-  // a Dora, designer: "Com arte minha" deixa só a claquete com a arte dela
-  ({ ctx, p, erros } = await abrir(navegador, url, tela, '#/pauta', null, DORA));
-  await p.locator('.pauta-grade').waitFor();
-  assert.deepEqual(await textos(p.getByRole('radiogroup', { name: 'Filtro da pauta' }).getByRole('radio')), ['Todas', 'Com arte minha']);
-  lida = leu(p, 'arte');
-  await p.getByRole('radio', { name: 'Com arte minha' }).click();
-  await lida;
-  await p.waitForFunction(() => document.querySelectorAll('.pauta-grade tbody tr').length === 1);
-  assert.deepEqual(await nomesDaGrade(p), ['Bruno Teixeira']);
-  assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-texto')), [`Show da Tarde ${diaMes(hoje)}`]);
-  // na semana anterior, nada dela
-  await p.getByRole('button', { name: 'Semana anterior' }).click();
-  await p.locator('.pauta-vazia', { hasText: 'Nada seu na pauta desta semana.' }).waitFor();
-  assert.deepEqual(erros, [], 'filtro da Dora: erros na página');
-  await ctx.close();
+  // a Dora, designer: o "Com arte minha" saiu da tela (#156); sem ser editora, ela fica sem filtro, no computador e no
+  // celular, claro e escuro
+  for (const [onde, opcoes] of [['computador', tela], ['celular', devices['iPhone 13']]])
+    for (const tema of ['light', 'dark']) {
+      ({ ctx, p, erros } = await abrir(navegador, url, { ...opcoes, colorScheme: tema }, '#/pauta', null, DORA));
+      await p.locator('.pagina.pauta .pauta-texto').first().waitFor();
+      assert.equal(await p.getByRole('radiogroup', { name: 'Filtro da pauta' }).count(), 0, `a designer sem o filtro (${onde})`);
+      assert.equal(await p.getByText('Com arte minha').count(), 0, `nada de "Com arte minha" (${onde})`);
+      await capturar(p, `pauta-sem-com-arte-minha-${onde}-${tema === 'light' ? 'claro' : 'escuro'}`, false);
+      assert.deepEqual(erros, [], 'a Dora: erros na página');
+      await ctx.close();
+    }
 
   // a Lia, sem cadastro de editor nem de designer: sem filtro
   ({ ctx, p, erros } = await abrir(navegador, url, tela));
@@ -722,7 +719,7 @@ async function osFiltros(navegador, url, teable) {
   }
   assert.deepEqual(erros, [], 'resumo e cópia: erros na página');
   await ctx.close();
-  console.log('ok: os filtros "Só as minhas" e "Com arte minha", a releitura, o resumo do administrador e a cópia de reserva');
+  console.log('ok: o filtro "Só as minhas" (sem o "Com arte minha"), a releitura, o resumo do administrador e a cópia de reserva');
 }
 
 /**
@@ -785,9 +782,9 @@ async function oCodigoDasVersoes(navegador, url) {
 }
 
 /**
- * As versões à mão da claquete sem roteiro no PROMeiro (#154): o apelido é da claquete. Na ficha da Pauta, a Novela Sol
- * de amanhã (sem código no nome e sem roteiro) recebe as versões à mão; o sufixo aparece no fim do nome, na ficha e na
- * Semana, com a origem "à mão" na dica. "voltar ao inicial" tira, e a claquete volta sem código.
+ * As versões à mão da claquete sem roteiro no PROMeiro (#154): o apelido é da claquete. "dar as versões" está escondido
+ * (#156): a ficha da Pauta não edita as versões (a claquete sem versão nem mostra a linha delas). As versões guardadas à mão (pela rota, como antes) continuam no
+ * fim do nome, na ficha e na Semana, com a origem "à mão" na dica; tiradas, a claquete volta sem código.
  */
 async function asVersoesAMaoSemRoteiro(navegador, url) {
   const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } });
@@ -800,36 +797,36 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
   const ficha = p.locator('.pauta-ficha');
   await ficha.waitFor();
   const apelido = ficha.locator('.apelido-claquete');
-  assert.match(await apelido.textContent(), /o nome e o roteiro não dizem/, 'a ficha: a claquete não sabe as versões');
-  await apelido.getByRole('button', { name: 'Editar as versões' }).click();
-  await apelido.getByRole('textbox', { name: 'Código das versões' }).fill('ah');
-  const gravou = p.waitForResponse((r) => r.url().endsWith('/api/apelidos') && r.request().method() === 'PUT' && r.ok());
-  await apelido.getByRole('button', { name: 'guardar' }).click();
-  const corpo = JSON.parse((await gravou).request().postData());
-  assert.deepEqual(corpo, { claquete: novela, versoes: 'AH' }, 'gravou pela claquete, sem roteiro');
-  // o sufixo no fim do nome, na ficha e na Semana, com a origem "à mão"
+  // #156: sem versão, a ficha não mostra a linha das versões nem as dá; o apelido continua
+  assert.equal(await apelido.locator('small', { hasText: 'versões' }).count(), 0, 'a ficha sem a seção das versões');
+  assert.equal(await ficha.getByRole('button', { name: /Editar as versões|dar as versões/ }).count(), 0, '"dar as versões" escondido');
+  assert.ok(await apelido.getByRole('button', { name: 'dar um apelido' }).isVisible(), 'o apelido continua na ficha');
+  await p.keyboard.press('Escape');
+  // as versões à mão guardadas pela rota, como antes: o sufixo no fim do nome, na ficha e na Semana, com a origem "à mão"
+  const guardar = (versoes) => p.evaluate(async ([claquete, v]) => (await fetch('/api/apelidos', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ claquete, versoes: v }) })).status, [novela, versoes]);
+  assert.equal(await guardar('AH'), 200, 'gravou pela claquete, sem roteiro');
+  await p.reload();
+  await p.locator('.pauta-grade').waitFor();
+  assert.deepEqual(await nomesComVersoes(item), [`${novela} (AH)`], 'a Semana: o código no fim do nome');
+  assert.match((await dicas(item))[0], /feitas à mão/, 'a Semana: a dica diz à mão');
+  await item.locator('.pauta-claquete-botao').click();
+  await ficha.waitFor();
   await ficha.locator('#pauta-ficha-titulo .sufixo-versoes').waitFor();
   assert.equal((await ficha.locator('#pauta-ficha-titulo').textContent()).replace(/\s+/g, ' ').trim(), `${novela} (AH)`, 'a ficha: o código no fim do nome');
   assert.match(await ficha.locator('#pauta-ficha-titulo .sufixo-versoes').getAttribute('title'), /feitas à mão/, 'a dica: à mão');
-  assert.match(await apelido.textContent(), /\(AH\)\s*feitas à mão no apelido/, 'a ficha: as versões e de onde vieram');
+  // a ficha sem "unha": nada de faixa colorida na borda esquerda do apelido
+  assert.equal(await apelido.evaluate((e) => getComputedStyle(e).borderLeftWidth), '0px', 'sem unha');
   await capturar(p, 'ficha-versoes-a-mao-sem-roteiro', false);
   await p.keyboard.press('Escape');
-  assert.deepEqual(await nomesComVersoes(item), [`${novela} (AH)`], 'a Semana: o código no fim do nome');
-  assert.match((await dicas(item))[0], /feitas à mão/, 'a Semana: a dica diz à mão');
-  // a ficha sem "unha": nada de faixa colorida na borda esquerda do apelido
-  await item.locator('.pauta-claquete-botao').click();
-  await ficha.waitFor();
-  const borda = await apelido.evaluate((e) => getComputedStyle(e).borderLeftWidth);
-  assert.equal(borda, '0px', 'sem unha');
-  // voltar ao inicial: a claquete volta sem código (e os outros passos ficam como estavam)
-  await apelido.getByRole('button', { name: 'voltar ao inicial' }).click();
-  await p.waitForFunction(() => !document.querySelector('#pauta-ficha-titulo .sufixo-versoes'));
-  await p.keyboard.press('Escape');
+  // tiradas: a claquete volta sem código
+  assert.equal(await guardar(''), 200);
+  await p.reload();
+  await p.locator('.pauta-grade').waitFor();
   assert.deepEqual(await nomesComVersoes(item), [novela], 'voltou ao inicial');
   assert.deepEqual(erros, []);
   assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
   await ctx.close();
-  console.log('ok: a claquete sem roteiro recebe as versões à mão na ficha da Pauta: o sufixo no fim do nome, com a origem "à mão" (#154)');
+  console.log('ok: a ficha da Pauta sem "dar as versões" (#156); as versões à mão da claquete sem roteiro no fim do nome, com a origem "à mão" (#154)');
 }
 
 async function principal() {
