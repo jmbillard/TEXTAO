@@ -47,8 +47,8 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
   pauta: {
     titulo: 'Pauta da edição',
     linhas: [
-      ['← →', 'Semana anterior e próxima'],
-      ['Esc', 'Fecha o balão do aviso'],
+      ['← →', 'Semana (ou dia) anterior e próxima'],
+      ['Esc', 'Fecha o balão do aviso e a ficha'],
     ],
   },
   configuracao: {

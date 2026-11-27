@@ -4,7 +4,7 @@
 
 import { tabelaNoPg } from './tabelas-do-teable.mjs';
 import { MARCA_TODAS, pracasDaConfiguracao, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { diasDaSemana, linhaDaPauta, ordemDosEditores, periodoDaSemana } from '../src/modelo/pauta.ts';
+import { colunasDoDia, diasDaSemana, linhaDaPauta, ordemDosEditores, periodoDosDias } from '../src/modelo/pauta.ts';
 
 const NOME = /^[A-Za-z0-9_]+$/;
 const DIAS = 45; // a mesma chave volta a existir no ano seguinte ("QUEM AMA 20 11"); só vale a pauta recente
@@ -89,43 +89,54 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
     return naApi(chave);
   }
 
-  /* A Semana (#94): as linhas da pauta de segunda a domingo, direto do Postgres (só leitura), com o editor do link,
+  /* A Semana (#94) e o Dia (#97): as linhas da pauta do período, direto do Postgres (só leitura), com o editor do link,
      o expediente e a caixinha de anotação. O Postgres de mentira dos testes não olha o WHERE: o filtro vale de novo
      aqui, pelo dia da pauta. */
-  const sqlDaSemana = `SELECT t."__id" AS id, to_jsonb(t)->>'claquete' AS claquete, t."editor", t."data", t."expediente_inicio",
+  const sqlDoPeriodo = `SELECT t."__id" AS id, to_jsonb(t)->>'claquete' AS claquete, t."editor", t."data", t."expediente_inicio",
       t."expediente_fim", t."anotacao", t."alterado_em"
     FROM "${esquema}"."${tabela}" t
     WHERE t."data" >= $1::timestamptz AND t."data" < $2::timestamptz
     ORDER BY t."data", t."expediente_inicio" NULLS LAST, t."__auto_number"`;
-  async function semana(segunda) {
+  /** As linhas da pauta de alguns dias seguidos, já lidas (#94, #97), e a hora da última alteração entre elas. */
+  async function lerDias(dias) {
     if (!comBanco) throw new ForaDaPauta('A pauta da edição é lida do Postgres do Teable, que não está ligado (TEABLE_PG_URL e a tabela EDICAO_producao na base).');
     let rows;
     try {
       banco ??= await abrir(env.TEABLE_PG_URL);
-      ({ rows } = await banco.query(sqlDaSemana, periodoDaSemana(segunda)));
+      ({ rows } = await banco.query(sqlDoPeriodo, periodoDosDias(dias[0], dias.length)));
     } catch (e) {
-      console.error('[pauta] o Postgres não respondeu à Semana:', e.message);
+      console.error('[pauta] o Postgres não respondeu à pauta:', e.message);
       throw new ForaDaPauta('O Postgres do Teable não respondeu. Tente de novo em instantes.');
     }
-    const dias = diasDaSemana(segunda);
-    const naSemana = new Set(dias);
+    const noPeriodo = new Set(dias);
     const linhas = [];
     let alteradoEm = null;
     for (const bruta of rows) {
       const l = linhaDaPauta({ ...bruta, id: bruta.id ?? bruta.__id });
-      if (!l || !naSemana.has(l.dia)) continue;
+      if (!l || !noPeriodo.has(l.dia)) continue;
       linhas.push(l);
       const alterada = bruta.alterado_em ? new Date(bruta.alterado_em) : null;
       if (alterada && !Number.isNaN(alterada.getTime()) && (!alteradoEm || alterada > alteradoEm)) alteradoEm = alterada;
     }
     // na ordem dos dias; dentro do dia, a da pauta (a ordenação é estável)
     linhas.sort((a, b) => a.dia.localeCompare(b.dia));
-    return { inicio: segunda, dias, editores: ordemDosEditores(linhas), linhas, alteradoEm: alteradoEm?.toISOString() ?? null };
+    return { linhas, alteradoEm: alteradoEm?.toISOString() ?? null };
+  }
+  async function semana(segunda) {
+    const dias = diasDaSemana(segunda);
+    const { linhas, alteradoEm } = await lerDias(dias);
+    return { inicio: segunda, dias, editores: ordemDosEditores(linhas), linhas, alteradoEm };
+  }
+  /* O Dia (#97): as linhas de um dia só, com os editores na ordem de início do turno daquele dia. */
+  async function dia(qual) {
+    const { linhas, alteradoEm } = await lerDias([qual]);
+    return { dia: qual, editores: colunasDoDia(linhas).map((c) => c.editor), linhas, alteradoEm };
   }
 
   return {
     comBanco,
     semana,
+    dia,
     parar: () => {
       clearTimeout(primeira);
       clearInterval(relogio);

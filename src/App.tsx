@@ -8,6 +8,7 @@ import { HistoricoDaConfiguracao } from './ui/HistoricoDaConfiguracao';
 import { PortainerDaConfiguracao } from './ui/PortainerDaConfiguracao';
 import { Andamento } from './ui/Andamento';
 import { Pauta } from './ui/Pauta';
+import { enderecoDaPauta, hashDaPauta } from './ui/pecasDaPauta';
 import { Producoes } from './ui/Producoes';
 import { MeusRoteiros } from './ui/MeusRoteiros';
 import { SeletorDeArea } from './ui/SeletorDeArea';
@@ -37,7 +38,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'pauta'; semana?: string } | { t: 'area'; area: AreaDosRoteiros } | { t: 'producoes' };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'area'; area: AreaDosRoteiros } | { t: 'producoes' };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -70,9 +71,9 @@ const telaDoHash = (): Tela => {
   // as áreas de trabalho (#101): cada uma com o seu endereço; a Designer é a fila
   const a = /^#\/(designer|redator|editor)\/?$/.exec(location.hash);
   if (a) return ehAreaDosRoteiros(a[1]) ? { t: 'area', area: a[1] } : { t: 'biblioteca' };
-  // a pauta da edição (#94): a semana de hoje, ou a da segunda-feira do endereço
-  const p = /^#\/pauta(?:\/semana\/(\d{4}-\d{2}-\d{2}))?\/?$/.exec(location.hash);
-  if (p) return { t: 'pauta', semana: p[1] };
+  // a pauta da edição: a Semana (#94) de hoje ou da segunda-feira do endereço; o Dia (#97) de hoje ou da data
+  const p = enderecoDaPauta(location.hash);
+  if (p) return { t: 'pauta', ...p };
   const c = /^#\/cadastros(?:\/(atracoes|redatores|editores))?$/.exec(location.hash);
   return c ? { t: 'cadastros', aba: (c[1] as TipoCadastro | undefined) ?? 'atracoes' } : { t: 'biblioteca' };
 };
@@ -200,7 +201,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'pauta' ? `#/pauta${nova.semana ? `/semana/${nova.semana}` : ''}` : nova.t === 'area' ? `#/${nova.area}` : nova.t === 'producoes' ? '#/designer/producoes' : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'area' ? `#/${nova.area}` : nova.t === 'producoes' ? '#/designer/producoes' : '#/';
     try {
       if (location.hash !== hash) history.pushState(null, '', hash);
     } catch {
@@ -552,7 +553,7 @@ export function App() {
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && !tela.pagina && <Configuracao voltar={() => ir({ t: 'biblioteca' })} historico={() => ir({ t: 'configuracao', pagina: 'historico' })} portainer={() => ir({ t: 'configuracao', pagina: 'portainer' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'historico' && <HistoricoDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
-      {tela.t === 'pauta' && <Pauta semana={tela.semana} irPara={(semana) => ir({ t: 'pauta', semana })} voltar={() => ir({ t: 'biblioteca' })} />}
+      {tela.t === 'pauta' && <Pauta semana={tela.semana} dia={tela.dia} irPara={(e) => ir({ t: 'pauta', ...e })} voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'andamento' && souAdministrador() && <Andamento voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'portainer' && <PortainerDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key }} />}

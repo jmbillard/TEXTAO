@@ -76,6 +76,13 @@ const somarDias = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:
 export const diaEmSaoPaulo = (instante: Date | number = Date.now()) => new Date(instante).toLocaleDateString('en-CA', { timeZone: FUSO });
 const horaEmSaoPaulo = (instante: Date) => instante.toLocaleTimeString('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
+/** O dia (AAAA-MM-DD) pedido; um dia que não é data vale hoje. */
+export function diaOuHoje(dia: string, hoje = diaEmSaoPaulo()): string {
+  const d = DIA_ISO.test(dia) ? new Date(`${dia}T12:00:00Z`) : null;
+  // "2026-02-30" não é data (o Date passaria para março)
+  return d && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === dia ? dia : hoje;
+}
+
 /** A segunda-feira da semana de um dia (AAAA-MM-DD); um dia que não é data vale hoje. */
 export function segundaDaSemana(dia: string, hoje = diaEmSaoPaulo()): string {
   const iso = DIA_ISO.test(dia) && !Number.isNaN(Date.parse(`${dia}T12:00:00Z`)) ? dia : hoje;
@@ -87,8 +94,11 @@ export function segundaDaSemana(dia: string, hoje = diaEmSaoPaulo()): string {
 export const diasDaSemana = (segunda: string) => Array.from({ length: 7 }, (_, i) => somarDias(segunda, i));
 export const semanaVizinha = (segunda: string, n: number) => somarDias(segunda, 7 * n);
 
+/** O período de alguns dias para a consulta: [00:00 do primeiro, 00:00 do dia depois do último), em São Paulo, como ISO. */
+export const periodoDosDias = (primeiro: string, n: number): [string, string] => [new Date(`${primeiro}T00:00:00${DESLOCAMENTO}`).toISOString(), new Date(`${somarDias(primeiro, n)}T00:00:00${DESLOCAMENTO}`).toISOString()];
 /** O período da semana para a consulta: [00:00 de segunda, 00:00 da segunda seguinte), em São Paulo, como ISO. */
-export const periodoDaSemana = (segunda: string): [string, string] => [new Date(`${segunda}T00:00:00${DESLOCAMENTO}`).toISOString(), new Date(`${somarDias(segunda, 7)}T00:00:00${DESLOCAMENTO}`).toISOString()];
+export const periodoDaSemana = (segunda: string) => periodoDosDias(segunda, 7);
+export const diaVizinho = (dia: string, n: number) => somarDias(dia, n);
 
 /**
  * Claquete é a linha com a forma de claquete: o nome da atração e, depois dele, a data ("Terra 24/11-2",
@@ -184,7 +194,7 @@ const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const semAcento = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
 /** Uma combinação de letras, cada uma uma versão, sem repetir. */
-const LETRAS = /^(?!.*(.).*\1)[AHNPD]{1,5}$/;
+const LETRAS = /^(?!.*(.).*\1)[AHNPDM]{1,6}$/;
 const INTEIROS = new Set(['DIA', 'MES', 'MNT']);
 const conhecido = (bruto: string) => LETRAS.test(semAcento(bruto)) || INTEIROS.has(semAcento(bruto));
 
@@ -222,6 +232,7 @@ function rotuloDaVersao(codigo: string, data: Date | null): string {
       return `${masculino ? 'neste' : 'nesta'} ${semana}`;
     case 'P':
       return `${masculino ? 'próximo' : 'próxima'} ${semana}`;
+    case 'M':
     case 'MES':
       return `em ${data ? MESES[data.getUTCMonth()] : '…'}`;
     case 'MNT':
@@ -235,8 +246,8 @@ function rotuloDaVersao(codigo: string, data: Date | null): string {
  * As versões da chamada no fim da claquete, na ordem em que aparecem, e a claquete sem o código.
  * - O código vem entre parênteses no fim ("(AH)", "( AH )"); depois da data, também sem parênteses ("4/12 NAH"), mas
  *   aí só um código conhecido (a praça e a versão da arte no fim, "SP", "B", não são código).
- * - Cada letra é uma versão: A amanhã, H hoje, N nesta <dia da semana>, P próxima <dia da semana>, D dia X. DIA (= D),
- *   MES/MÊS ("em <mês>") e MNT (manutenção da grade) são inteiros. Em qualquer caixa, com ou sem acento.
+ * - Cada letra é uma versão: A amanhã, H hoje, N nesta <dia da semana>, P próxima <dia da semana>, D dia X, M em <mês>
+ *   (#114). DIA (= D), MES/MÊS (= M) e MNT (manutenção da grade) são inteiros. Em qualquer caixa, com ou sem acento.
  * - O dia da semana, o número e o mês saem da data escrita na claquete; sem ela, do dia da linha da pauta.
  * - Um código entre parênteses que não é nada disso aparece cru (conhecida: false).
  */
@@ -315,6 +326,71 @@ export function gradeDaSemana(s: Pick<SemanaDaPauta, 'dias' | 'editores' | 'linh
       return { dia, turno, itens: doDia.filter((l) => l.tipo !== 'aviso'), avisos: doDia.filter((l) => l.tipo === 'aviso') };
     }),
   }));
+}
+
+/* ---------- o Dia (#97): cada editor numa coluna ---------- */
+
+/** O Dia da pauta: a rota GET /api/pauta/dia. */
+export interface DiaDaPauta {
+  /** o dia (AAAA-MM-DD) */
+  dia: string;
+  /** na ordem de início do turno daquele dia; '' (sem editor) no fim, quando há */
+  editores: string[];
+  linhas: LinhaDaPauta[];
+  /** a hora da última alteração da pauta no dia (ISO), ou null */
+  alteradoEm: string | null;
+}
+
+/** Uma coluna do Dia: o editor, o turno dele naquele dia, as claquetes e tarefas e, à parte, os avisos. */
+export interface ColunaDoDia {
+  editor: string;
+  turno: Turno | null;
+  itens: LinhaDaPauta[];
+  avisos: LinhaDaPauta[];
+}
+
+/** Quantos minutos depois das 6h da régua do Dia (das 6h às 6h) fica uma hora ("05:00" vem no fim, às 23h da régua). */
+export const naRegua = (hora: string) => minutosNoDia(hora);
+/** O fim do turno na régua: o que passa das 6h do dia seguinte (ou não tem fim) para no fim da régua. */
+export const fimNaRegua = (t: Turno) => {
+  const fim = t.fim ? minutosNoDia(t.fim) : 24 * 60;
+  return fim > minutosNoDia(t.inicio) ? fim : 24 * 60;
+};
+
+/**
+ * As colunas do Dia: uma por editor, na ordem de início do turno daquele dia (o dia começa às 6h, a madrugada vem
+ * depois da noite); no empate, quem sai antes, depois pelo nome. Quem não tem turno vem depois; sem editor (''), no fim.
+ */
+export function colunasDoDia(linhas: readonly LinhaDaPauta[]): ColunaDoDia[] {
+  const doEditor = new Map<string, LinhaDaPauta[]>();
+  for (const l of linhas) doEditor.set(l.editor, [...(doEditor.get(l.editor) ?? []), l]);
+  const colunas = [...doEditor].map(([editor, ls]) => ({
+    editor,
+    turno: turnoQueMaisSeRepete(ls.flatMap((l) => (l.turno ? [l.turno] : []))),
+    itens: ls.filter((l) => l.tipo !== 'aviso'),
+    avisos: ls.filter((l) => l.tipo === 'aviso'),
+  }));
+  return colunas.sort((a, b) => {
+    if (!a.editor || !b.editor) return a.editor ? -1 : b.editor ? 1 : 0;
+    if (!a.turno || !b.turno) return a.turno ? -1 : b.turno ? 1 : a.editor.localeCompare(b.editor, 'pt-BR');
+    return naRegua(a.turno.inicio) - naRegua(b.turno.inicio) || fimNaRegua(a.turno) - fimNaRegua(b.turno) || a.editor.localeCompare(b.editor, 'pt-BR');
+  });
+}
+
+/** Quantos minutos da régua do Dia (das 6h às 6h do dia seguinte, em São Paulo) já passaram; null fora dela. */
+export function agoraNaRegua(dia: string, agora: Date | number = Date.now()): number | null {
+  const seis = Date.parse(`${dia}T06:00:00${DESLOCAMENTO}`);
+  const minutos = (new Date(agora).getTime() - seis) / 60_000;
+  return Number.isNaN(minutos) || minutos < 0 || minutos >= 24 * 60 ? null : minutos;
+}
+
+/** O dia da pauta de agora: o da régua que está correndo (antes das 6h, a madrugada ainda é do dia anterior). */
+export const diaDaPautaAgora = (agora: Date | number = Date.now()) => diaEmSaoPaulo(new Date(agora).getTime() - 6 * 3_600_000);
+
+/** O turno está no ar agora (na régua do dia: das 6h às 6h). */
+export function noArAgora(dia: string, turno: Turno | null, agora: Date | number = Date.now()): boolean {
+  const m = agoraNaRegua(dia, agora);
+  return !!turno && m !== null && m >= naRegua(turno.inicio) && m < fimNaRegua(turno);
 }
 
 /* ---------- o cruzamento com a produção da arte (#96) ---------- */

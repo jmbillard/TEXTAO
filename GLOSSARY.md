@@ -426,8 +426,8 @@ _Evitar_: normalização, limpeza, saneamento
 **Pauta da edição**:
 A tabela do Teable (EDICAO_producao) que diz quem edita cada claquete, em que dia e em que turno; os coordenadores
 escrevem nela, o PROMeiro só lê (a exceção é a **correção de grafia**). É também a página do PROMeiro, aberta a
-qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna). Cada linha é uma claquete, uma
-**tarefa** ou um **aviso**.
+qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna) e o **Dia** (um editor por coluna,
+na ordem de início do turno). Cada linha é uma claquete, uma **tarefa** ou um **aviso**.
 _Evitar_: escala, grade da edição
 
 **Tarefa** (da pauta):
@@ -435,12 +435,13 @@ A linha da pauta que não tem a forma de claquete (o nome da atração e a data)
 
 **Aviso** (da pauta):
 A linha com a caixinha de anotação marcada: um recado do coordenador para o editor, não um item da pauta. Na Semana,
-só o ⚑ com o número; o texto abre ao passar o mouse ou ao tocar.
+só o ⚑ com o número; o texto abre ao passar o mouse ou ao tocar. No Dia, um balão "aviso" no topo da coluna do editor.
 _Evitar_: nota, observação
 
 **Turno**:
 O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. O que passa da meia-noite (22–06)
-conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores.
+conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores na
+Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior.
 
 **Versão da chamada** (na pauta):
 O código no fim da claquete da pauta, entre parênteses ou, depois da data, sem eles, em qualquer caixa e com ou sem

@@ -134,3 +134,69 @@
   .pauta-ficha-tabela { font-size: 13px; }
   .pauta-ficha-tabela th, .pauta-ficha-tabela td { padding: 8px; }
 }
+
+/* ---------- a troca da visão e o dia clicável na Semana (#97) ---------- */
+.pauta-controles { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+.pauta-dia-link { display: block; margin: -12px -12px -10px; padding: 12px 12px 10px; color: inherit; text-decoration: none; border-radius: 0; }
+.pauta-dia-link:hover .pauta-dia-num { text-decoration: underline; text-decoration-color: var(--regua-forte); text-underline-offset: 4px; }
+.pauta-dia-link:focus-visible { outline: 2px solid var(--ultra); outline-offset: -2px; }
+.pauta-periodo-dia { min-width: 11ch; }
+/* os segmentos da pauta são palavras, também na tela estreita (onde o .segmento vira só ícone) */
+.pauta-controles .segmento button { font-size: 13px; gap: 6px; padding: 0 12px; }
+
+/* ---------- o Dia (#97): cada editor numa coluna ---------- */
+.pauta-faixa { overflow-x: auto; overscroll-behavior-x: contain; margin: 0 -8px; padding: 0 8px 8px; scroll-padding-left: 8px; }
+/* as colunas dividem as linhas (o topo, os avisos, o corpo) para que os corpos comecem juntos e a régua se alinhe */
+.pauta-colunas { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); grid-template-rows: auto auto 1fr; column-gap: 12px; width: max-content; min-width: 100%; }
+.pauta-colunas.por-hora { grid-template-columns: 52px; grid-auto-columns: minmax(230px, 1fr); }
+.pauta-coluna, .pauta-regua { grid-row: 1 / span 3; display: grid; grid-template-rows: subgrid; min-width: 0; }
+/* empilhado, cada coluna corre sozinha: o aviso empurra só os cards dela */
+.pauta-colunas.empilhado .pauta-coluna { display: flex; flex-direction: column; }
+.pauta-colunas.empilhado .pauta-coluna-avisos:empty { display: none; }
+.pauta-coluna { border-radius: 14px; background: color-mix(in srgb, var(--neutro) 70%, transparent); padding-bottom: 10px; }
+.pauta-coluna.no-ar { background: color-mix(in srgb, var(--ultra-suave) 55%, var(--mesa)); }
+.pauta-coluna-topo { display: flex; flex-direction: column; gap: 6px; padding: 12px 12px 10px; border-bottom: 2px solid var(--regua-forte); }
+.pauta-coluna.no-ar .pauta-coluna-topo { border-bottom-color: var(--ultra); }
+.pauta-regua .pauta-coluna-topo { border: 0; padding: 0; }
+.pauta-coluna-nome { display: flex; align-items: center; min-width: 0; font: 600 14px/1.25 var(--sans); color: var(--tinta); }
+.pauta-coluna-nome .pauta-avatar { flex: none; background: var(--cartao); }
+.pauta-coluna-nome .pauta-nome { max-width: none; }
+.pauta-coluna.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--tinta3); }
+.pauta-coluna-linha { display: flex; align-items: center; min-height: 20px; justify-content: space-between; gap: 8px; }
+.pauta-coluna-linha .pauta-turno { font-size: 12.5px; color: var(--tinta2); }
+.pauta-no-ar { font: 600 18px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-2deg); white-space: nowrap; }
+.pauta-coluna-total { font: 400 12px var(--sans); color: var(--tinta3); text-align: right; }
+
+/* o balão do aviso, no topo da coluna, separado da pauta */
+.pauta-coluna-avisos { padding: 0 10px; }
+.pauta-balao-aviso { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; padding: 8px 12px 9px; border-radius: 10px; background: var(--ultra-suave); color: var(--ultra-tinta); font: italic 400 14px/1.35 var(--serifa); }
+.pauta-balao-titulo { font: normal 600 10.5px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ultra-tinta); }
+
+/* os cards: a claquete num cartão, a tarefa tracejada */
+.pauta-coluna-corpo { padding: 10px 10px 0; min-width: 0; }
+.pauta-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pauta-cards .pauta-item { border-radius: 10px; padding: 10px 12px; }
+.pauta-cards .pauta-item.pauta-claquete { background: var(--cartao); box-shadow: var(--claquete-borda), 0 1px 2px rgb(26 25 22 / 6%); font-size: 13.5px; }
+.pauta-cards .pauta-item.pauta-claquete::before { display: none; }
+.pauta-cards .pauta-item.pauta-tarefa { border: 1px dashed var(--regua-forte); font-size: 15px; }
+.pauta-cards .pauta-producao { margin-top: 5px; font-size: 12px; }
+.pauta-cards .pauta-versoes { margin-top: 5px; }
+
+/* o arranjo por hora: a régua das 6h às 6h, o turno como um bloco, a linha do "agora" */
+.pauta-horas { position: relative; padding: 0; margin: 10px 10px 0; }
+.pauta-hora-traco { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--regua); pointer-events: none; }
+.pauta-regua { position: sticky; left: 0; z-index: 3; background: var(--mesa); }
+.pauta-regua .pauta-coluna-corpo { position: relative; padding: 0; margin-top: 10px; }
+.pauta-hora { position: absolute; right: 8px; transform: translateY(-50%); font: 500 11px var(--mono); color: var(--tinta3); font-variant-numeric: tabular-nums; }
+.pauta-hora.agora { z-index: 1; padding: 0 2px; background: var(--mesa); font: 600 15px/1 Caveat, cursive; color: var(--ultra); }
+.pauta-agora { position: absolute; left: -10px; right: -10px; z-index: 2; height: 0; border-top: 2px solid var(--ultra); pointer-events: none; }
+.pauta-bloco { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 24px; border: 1px solid color-mix(in srgb, var(--ultra) 45%, var(--regua)); border-radius: 12px; background: color-mix(in srgb, var(--mesa) 55%, var(--cartao)); }
+.pauta-coluna.sem-editor .pauta-bloco, .pauta-coluna:not(.no-ar) .pauta-bloco { border-color: var(--regua-forte); }
+.pauta-ate { position: absolute; right: 10px; bottom: 6px; font: 500 11px var(--mono); color: var(--tinta3); }
+
+@media (max-width: 600px) {
+  .pauta-controles { align-self: stretch; }
+  .pauta-controles .segmento button { height: 36px; }
+  .pauta-colunas { grid-auto-columns: calc(100vw - 72px); }
+  .pauta-colunas.por-hora { grid-template-columns: 44px; grid-auto-columns: calc(100vw - 110px); }
+}

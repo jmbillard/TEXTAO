@@ -182,6 +182,66 @@ describe('a Semana da pauta da edição', () => {
   });
 });
 
+/* O Dia da pauta (#97) pela API: um dia só, com a mesma leitura da Semana (cada linha classificada, o turno, as
+   versões) e os editores na ordem de início do turno daquele dia; sem editor, no fim. */
+type Dia = { dia: string; editores: string[]; linhas: (Linha & { producoes?: unknown[] })[]; alteradoEm: string | null };
+const diaDaPauta = async (r: Response) => {
+  expect(r.status).toBe(200);
+  return (await r.json()) as Dia;
+};
+
+describe('o Dia da pauta da edição (#97)', () => {
+  it('lê só o dia pedido, de 00:00 a 00:00 em São Paulo; o turno que passa da meia-noite fica no dia em que começou', async () => {
+    const { ana, teable } = await comServidor();
+    const d = await diaDaPauta(await ana('/api/pauta/dia?dia=2026-11-24'));
+    expect(d.dia).toBe('2026-11-24');
+    expect(d.linhas.map((l) => l.id).sort()).toEqual(['recP1', 'recP2', 'recP3']);
+    expect(d.linhas.find((l) => l.id === 'recP1')).toMatchObject({ tipo: 'claquete', editor: 'Carla Noite', turno: { inicio: '22:00', fim: '06:00' }, versoes: [{ rotulo: 'amanhã' }, { rotulo: 'hoje' }] });
+    expect(d.linhas.find((l) => l.id === 'recP2')).toMatchObject({ tipo: 'tarefa', texto: 'COMUNICAÇÃO' });
+    const consultas: string[] = teable.estado.consultas;
+    const i = consultas.map((sql, j) => (sql.includes('"bseFalso"."pauta_pg"') && sql.includes('expediente_inicio') ? j : -1)).reduce((a, b) => Math.max(a, b), -1);
+    expect(teable.estado.consultas[i]).toMatch(/^\s*SELECT/);
+    expect(teable.estado.parametros[i]).toEqual(['2026-11-24T03:00:00.000Z', '2026-11-25T03:00:00.000Z']);
+    expect(d.alteradoEm).toBe('2026-11-24T12:00:00.000Z');
+  });
+
+  it('os editores vêm na ordem de início do turno daquele dia (não o de costume); sem editor, no fim', async () => {
+    const { ana } = await comServidor({
+      registros: { EDICAO_producao: [...PAUTA(), linha('recD1', 'Novela Sol 28/11', 'Ana Manhã', '2026-11-27', ['14:00', '22:53']), linha('recD2', 'Show da Tarde 28/11 (H)', 'Carla Noite', '2026-11-27', ['10:00', '18:00'])] },
+    });
+    // Beto pegou a manhã de sexta (06:00), Carla entrou às 10:00 e Ana à tarde
+    expect((await diaDaPauta(await ana('/api/pauta/dia?dia=2026-11-27'))).editores).toEqual(['Beto Tarde', 'Carla Noite', 'Ana Manhã']);
+    // a CALHAUS sem editor começa às 08:00, mas fica no fim
+    expect((await diaDaPauta(await ana('/api/pauta/dia?dia=2026-11-26'))).editores).toEqual(['Beto Tarde', '']);
+  });
+
+  it('o aviso vem no dia, preso ao editor e ao turno, separado da pauta', async () => {
+    const { ana } = await comServidor();
+    const d = await diaDaPauta(await ana('/api/pauta/dia?dia=2026-11-23'));
+    expect(d.editores).toEqual(['Ana Manhã']);
+    expect(d.linhas.find((l) => l.id === 'recP6')).toMatchObject({ tipo: 'aviso', editor: 'Ana Manhã', texto: 'REDATOR VEM ACOMPANHAR', turno: { inicio: '06:00', fim: '15:00' } });
+  });
+
+  it('sem dia (ou com um dia que não é data), vale hoje; quem não entrou não vê', async () => {
+    const { ana, ninguem } = await comServidor({ registros: { EDICAO_producao: [] } });
+    const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    expect(await diaDaPauta(await ana('/api/pauta/dia'))).toEqual({ dia: hoje, editores: [], linhas: [], alteradoEm: null });
+    expect((await diaDaPauta(await ana('/api/pauta/dia?dia=2026-13-45'))).dia).toBe(hoje);
+    expect((await ninguem('/api/pauta/dia')).status).toBe(401);
+  });
+
+  it('sem o Postgres do Teable, ou com ele fora do ar, a página fica sabendo', async () => {
+    const sem = await comServidor({ env: { ...TEABLE_FALSO, TEABLE_PG_ESQUEMA: 'bseFalso' } });
+    const r = await sem.ana('/api/pauta/dia?dia=2026-11-24');
+    expect(r.status).toBe(503);
+    expect(((await r.json()) as { erro: string }).erro).toMatch(/Postgres do Teable/);
+    await parar?.();
+    const fora = await comServidor();
+    fora.teable.estado.fora = true;
+    expect((await fora.ana('/api/pauta/dia?dia=2026-11-24')).status).toBe(503);
+  });
+});
+
 /* O cruzamento com a produção da arte (#96): as Produções do PROMeiro (a carga da produção da arte do Teable de
    mentira) achadas pela chave da claquete da pauta, em três tentativas: a chave exata, sem a versão no fim, sem a
    praça. Nada do Trello e nenhuma leitura nova do Teable na rota da Semana. */
@@ -208,7 +268,7 @@ describe('a claquete da pauta com a produção da arte (#96)', () => {
   type Producao = { praca: string; etapa: string; artes: number | null; designers: string[]; alta: boolean };
   type LinhaComArte = Linha & { chave?: string; producoes?: Producao[] };
 
-  async function semanaComArte() {
+  async function semanaComArte(caminho = '/api/pauta/semana?inicio=2026-11-23') {
     const teable = teableFalso({ ...NOMES, ...NOMES_COM_ARTE }, { registros: { EDICAO_producao: PAUTA_COM_ARTE(), ARTE_producao: PRODUCAO() } });
     const app = criarApp({ db: abrirBanco(':memory:'), env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg });
     await app.tabelasProntas;
@@ -223,7 +283,7 @@ describe('a claquete da pauta com a produção da arte (#96)', () => {
     const carga = await fetch(`${base}/api/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': 'chefe@empresa.com' } });
     expect(carga.status).toBe(200);
     const antes = teable.estado.consultas.length;
-    const r = await fetch(`${base}/api/pauta/semana?inicio=2026-11-23`, { headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } });
+    const r = await fetch(`${base}${caminho}`, { headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } });
     const s = (await semana(r)) as unknown as { linhas: LinhaComArte[] };
     // a Semana só lê a pauta: a produção da arte não é lida de novo do Teable
     expect(teable.estado.consultas.slice(antes).every((sql: string) => sql.includes('pauta_pg'))).toBe(true);
@@ -260,5 +320,11 @@ describe('a claquete da pauta com a produção da arte (#96)', () => {
     expect(por('recP1').chave).toBeTruthy();
     expect(por('recC4').chave).toBe(por('recP1').chave);
     expect(por('recC3').chave).not.toBe(por('recP1').chave);
+  });
+
+  it('o Dia também traz a claquete com a produção da arte (#97)', async () => {
+    const por = await semanaComArte('/api/pauta/dia?dia=2026-11-24');
+    expect(por('recP3').producoes).toEqual([expect.objectContaining({ praca: 'G5', etapa: 'entregue', artes: 2, alta: true })]);
+    expect(por('recP1').producoes).toEqual([]);
   });
 });
