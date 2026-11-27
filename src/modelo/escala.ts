@@ -9,6 +9,7 @@ import { dataDaVersao, lerVersoes, tipoDaLinha, type Versao } from './pauta.ts';
 import { lerDataDaClaquete } from './vocabularios.ts';
 import type { Ilha } from './ilhas.ts';
 import type { DemandaParaDistribuir } from './ausencias.ts';
+import type { OpcoesDoRepetir, RepeticaoDoDia, VagaDoRepetir } from './repetir.ts';
 
 /** O id de um turno: os de fábrica (madrugada, manha, tarde, noite) e os criados na Configuração (#124). */
 export type IdDoTurno = string;
@@ -65,6 +66,9 @@ export interface PosicaoDaEscala {
   demandas: DemandaDaEscala[];
   /** os avisos (⚑) para o editor da posição, à parte das demandas (#125) */
   avisos: AvisoDaEscala[];
+  /** a posição que o Repetir deixou vaga, com o motivo ("Elis Furtado está de férias até 4/12", #129); sai quando ganha
+      editor. Só a coordenação vê: não vai para a Pauta da edição. */
+  vaga?: string;
 }
 /** O dia como a rota devolve (GET e PUT /api/montar-pauta). */
 export interface DiaDaEscala {
@@ -97,6 +101,10 @@ export interface DiaDaEscala {
   dispensadas: string[];
   /** a lista "Para distribuir" do dia, à espera de ir para uma posição (#126, #128) */
   paraDistribuir: DemandaParaDistribuir[];
+  /** o que cada opção do Repetir traz (#129), só no dia vazio (null no que já tem escala) */
+  repetir?: OpcoesDoRepetir | null;
+  /** depois de Repetir: um item por dia preenchido, com quem ficou de fora */
+  repetido?: (RepeticaoDoDia & { posicoes: number; vagas: VagaDoRepetir[] })[];
 }
 
 /* ---------- o horário ---------- */

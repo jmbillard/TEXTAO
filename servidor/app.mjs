@@ -53,6 +53,7 @@ import { designerSugerido } from '../src/modelo/padeiros.ts';
 import { ausenciaDoPedido, criarAusencias } from './ausencias.mjs';
 import { foraNaPauta, motivoDaAusencia } from '../src/modelo/ausencias.ts';
 import { criarDistribuicao } from './distribuir.mjs';
+import { diasDoRepetir, ehDeOndeRepetir, opcoesDoRepetir, repetirODia } from '../src/modelo/repetir.ts';
 import { conferirODia, pendenciasQueFicaram } from '../src/modelo/conferenciaDaEscala.ts';
 import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
@@ -1623,6 +1624,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * leva uma claquete da lista para a posição; /mover { demanda, posicao, antesDe } move a demanda; /devolver
    * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno } escala quem está sem escala
    * (numa posição, ou numa nova do turno), e recusa quem está fora no dia.
+   * Repetir (#129): POST /repetir { de } copia para o dia vazio a escala do mesmo dia na semana passada ('semana-passada'),
+   * a de ontem ('ontem') ou, em cada dia vazio da semana, a do mesmo dia na semana passada ('semana-inteira'): a ilha
+   * (a que ainda está no cadastro), o editor, o horário e as tarefas, nunca as claquetes, os avisos nem o recado. Quem
+   * está fora no dia de destino vira vaga, com o motivo. Devolve o mesmo que o GET e `repetido`, um item por dia
+   * preenchido, com as vagas. O dia vazio vem com `repetir`, o que cada opção traz (null no dia que já tem escala).
    * O colar da planilha (#130) é lido no navegador; o GET traz as keys de cada editor (`apelidos`) para ele reconhecer
    * o apelido da planilha, e o aplicar usa o PUT e as ausências.
    */
@@ -1635,6 +1641,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (!dia) return json(res, 400, { erro: 'Dia inválido.' });
     const editores = (await areas.nomesDosCadastros(cadastros)).editor.sort((a, b) => a.localeCompare(b, 'pt-BR'));
     const turnos = turnosDaConfiguracao(configuracao.valores());
+    let repetido;
     try {
       if (req.method === 'PUT') {
         const antes = escala.lerDia(dia).posicoes;
@@ -1660,6 +1667,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // republicar o dia que já foi ao Teams manda a "pauta alterada" (#135), sem segurar a resposta
         if (publicacao) void cartaoDoTeams.republicado(dia);
       }
+      if (acao === 'repetir') {
+        const { de } = (await lerCorpo(req)) ?? {};
+        if (!ehDeOndeRepetir(de)) throw Object.assign(new Error('Repetir de onde?'), { status: 400 });
+        repetido = repetirAEscala(dia, de, eu.email);
+        console.log(`[montar-pauta] ${eu.email} repetiu a escala em ${repetido.map((r) => r.destino).join(', ')}`);
+      }
       if (acao === 'desfazer') {
         escala.desfazer(dia);
         console.log(`[montar-pauta] ${eu.email} desfez a publicação de ${dia}`);
@@ -1683,10 +1696,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
     }
     const lido = escala.lerDia(dia);
+    const semana = escala.estados(diasDaSemana(segundaDaSemana(dia)));
     return json(res, 200, {
       dia,
       ...lido,
-      semana: escala.estados(diasDaSemana(segundaDaSemana(dia))),
+      semana,
+      // o que cada opção do Repetir traz (#129), só no dia vazio
+      repetir: lido.estado === 'vazio' ? opcoesDoRepetir(dia, semana, escala.quantas) : null,
+      ...(repetido ? { repetido } : {}),
       turnos: turnosDoDia(turnos, lido.posicoes),
       editores,
       // as keys dos editores, para reconhecer o apelido no colar da planilha (#130)
@@ -1695,6 +1712,28 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       costume: ilhas.deCostume(dia),
       ocupadas: ilhasOcupadas(lido.posicoes),
       paraDistribuir: distribuicao.paraDistribuir(dia),
+    });
+  }
+
+  /**
+   * Repetir (#129): a escala de outro dia nos dias de destino, cada um gravado como rascunho. Lança (400) o dia que já
+   * tem escala e a origem sem nada montado; na semana inteira, esses dias ficam de fora (e lança se nenhum sobrar).
+   */
+  function repetirAEscala(dia, de, por) {
+    const semana = escala.estados(diasDaSemana(segundaDaSemana(dia)));
+    const recusa = (mensagem) => Object.assign(new Error(mensagem), { status: 400 });
+    const dias = diasDoRepetir(dia, de, semana);
+    if (de !== 'semana-inteira') {
+      if (escala.lerDia(dia).estado !== 'vazio') throw recusa('O dia já tem escala: o Repetir só preenche o dia vazio.');
+      if (!escala.quantas(dias[0].origem)) throw recusa(`Nada montado em ${Number(dias[0].origem.slice(8))}/${Number(dias[0].origem.slice(5, 7))} para repetir.`);
+    }
+    const comOrigem = dias.filter((r) => escala.quantas(r.origem) > 0);
+    if (!comOrigem.length) throw recusa('Nada montado na semana passada para repetir nos dias vazios.');
+    const cadastradas = new Set(ilhas.todas().map((i) => i.id));
+    return comOrigem.map(({ origem, destino }) => {
+      const { posicoes, vagas } = repetirODia(escala.lerDia(origem).posicoes, destino, ausencias.noPeriodo(destino, destino), (prefixo) => `${prefixo}-${randomUUID()}`, { ilhaVale: (id) => cadastradas.has(id) });
+      escala.gravarDia(destino, posicoes, por, undefined);
+      return { origem, destino, posicoes: posicoes.length, vagas };
     });
   }
 
@@ -3001,7 +3040,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
     const acaoDasAusencias = /^\/api\/montar-pauta\/(ausencias|ausencias\/onde|ausencias\/historico|ausencias\/apagar|tirar|para-distribuir\/tirar)$/.exec(caminho);
     if (acaoDasAusencias) return rotaDasAusencias(req, res, eu, acaoDasAusencias[1]);
-    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|para-distribuir|levar|mover|devolver|escalar)$/.exec(caminho);
+    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar)$/.exec(caminho);
     if (acaoDoMontar) return rotaDeMontarAPauta(req, res, eu, acaoDoMontar[1]);
     if (caminho === '/api/correcoes/pauta') {
       // a correção de grafia da pauta da edição (#114), só para administradores e só leitura: uma página das propostas

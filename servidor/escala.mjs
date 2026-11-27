@@ -17,14 +17,15 @@
    - escala_avisos: os avisos (⚑) de cada posição, na ordem, como foram escritos, à parte das demandas (a ausência que
      tira a pessoa leva as demandas para distribuir; os avisos ficam na posição);
    - o recado do dia, para todos, numa coluna de escala_dias; a publicação guarda o dela. Publicado e alterado olham
-     também os avisos e o recado. */
+     também os avisos e o recado.
+   Repetir (#129): a posição que o Repetir deixou vaga guarda o motivo (escala_posicoes.vaga), até ganhar editor. */
 import { demandaNoPadrao, estadoDoDia, ehTurno, horarioNoPadrao } from '../src/modelo/escala.ts';
 import { randomUUID } from 'node:crypto';
 
 const ID = /^[\w-]{1,40}$/;
 const EMAIL = /^[^\s@,;"]+@[^\s@,;"]+$/;
 /** Os limites do dia: bem acima de um dia de verdade, para um pedido errado não encher o banco. */
-const LIMITES = { posicoes: 80, demandas: 60, avisos: 20, editor: 80, horario: 40, texto: 200, recado: 500 };
+const LIMITES = { posicoes: 80, demandas: 60, avisos: 20, editor: 80, horario: 40, texto: 200, recado: 500, vaga: 200 };
 
 const erro = (mensagem) => Object.assign(new Error(mensagem), { status: 400 });
 const minusculo = (email) => String(email ?? '').trim().toLowerCase();
@@ -61,6 +62,9 @@ export function posicoesDoPedido(posicoes, dia, { turnos = null, ilhaVale = null
   };
   return posicoes.map((p) => {
     if (!p || typeof p !== 'object') throw erro('Posição inválida.');
+    const editor = texto(p.editor, LIMITES.editor, 'Editor').replace(/\s+/g, ' ');
+    // o motivo da vaga (#129) só fica na posição sem editor
+    const vaga = editor ? '' : texto(p.vaga, LIMITES.vaga, 'Vaga');
     if (turnos ? !turnos.has(p.turno) : !ehTurno(p.turno)) throw erro('Turno desconhecido.');
     const ilha = p.ilha ?? '';
     if (typeof ilha !== 'string' || (ilha && (!ID.test(ilha) || (ilhaVale && !ilhaVale(ilha, p.id))))) throw erro('Ilha desconhecida.');
@@ -71,7 +75,7 @@ export function posicoesDoPedido(posicoes, dia, { turnos = null, ilhaVale = null
     return {
       id: unico(p.id),
       turno: p.turno,
-      editor: texto(p.editor, LIMITES.editor, 'Editor').replace(/\s+/g, ' '),
+      editor,
       ilha,
       horario: horarioNoPadrao(texto(p.horario, LIMITES.horario, 'Horário')),
       demandas: demandas
@@ -87,6 +91,7 @@ export function posicoesDoPedido(posicoes, dia, { turnos = null, ilhaVale = null
           return { id: unico(a.id), texto: texto(a.texto, LIMITES.texto, 'Aviso') };
         })
         .filter((a) => a.texto),
+      ...(vaga ? { vaga } : {}),
     };
   });
 }
@@ -153,6 +158,8 @@ export function criarEscala(db) {
   // o recado do dia (#125), no rascunho e na publicação, nos bancos de antes dele
   if (!temColuna('escala_dias', 'recado')) db.exec("ALTER TABLE escala_dias ADD COLUMN recado TEXT NOT NULL DEFAULT ''");
   if (!temColuna('escala_publicacoes', 'recado')) db.exec("ALTER TABLE escala_publicacoes ADD COLUMN recado TEXT NOT NULL DEFAULT ''");
+  // o motivo da vaga que o Repetir deixou (#129), nos bancos de antes dele
+  if (!temColuna('escala_posicoes', 'vaga')) db.exec("ALTER TABLE escala_posicoes ADD COLUMN vaga TEXT NOT NULL DEFAULT ''");
   const q = {
     coordenacao: db.prepare('SELECT email FROM coordenacao ORDER BY email'),
     ehCoordenacao: db.prepare('SELECT 1 AS sim FROM coordenacao WHERE email = ?'),
@@ -160,7 +167,8 @@ export function criarEscala(db) {
     tirar: db.prepare('DELETE FROM coordenacao WHERE email = ?'),
     dia: db.prepare('SELECT estado, gravado_por, gravado_em, recado FROM escala_dias WHERE dia = ?'),
     estados: db.prepare('SELECT dia, estado FROM escala_dias WHERE dia >= ? AND dia <= ?'),
-    posicoes: db.prepare('SELECT id, turno, editor, ilha, horario FROM escala_posicoes WHERE dia = ? ORDER BY ordem'),
+    posicoes: db.prepare('SELECT id, turno, editor, ilha, horario, vaga FROM escala_posicoes WHERE dia = ? ORDER BY ordem'),
+    quantas: db.prepare('SELECT COUNT(*) AS n FROM escala_posicoes WHERE dia = ?'),
     demandas: db.prepare('SELECT d.id, d.posicao, d.texto FROM escala_demandas d JOIN escala_posicoes p ON p.id = d.posicao WHERE p.dia = ? ORDER BY d.ordem'),
     avisos: db.prepare('SELECT a.id, a.posicao, a.texto FROM escala_avisos a JOIN escala_posicoes p ON p.id = a.posicao WHERE p.dia = ? ORDER BY a.ordem'),
     gravarDia: db.prepare('INSERT INTO escala_dias (dia, estado, gravado_por, gravado_em, recado) VALUES (?, ?, ?, ?, ?) ON CONFLICT (dia) DO UPDATE SET estado = excluded.estado, gravado_por = excluded.gravado_por, gravado_em = excluded.gravado_em, recado = excluded.recado'),
@@ -169,7 +177,7 @@ export function criarEscala(db) {
     posicaoDeOutroDia: db.prepare('SELECT dia FROM escala_posicoes WHERE id = ? AND dia <> ?'),
     demandaDeOutroDia: db.prepare('SELECT p.dia FROM escala_demandas d JOIN escala_posicoes p ON p.id = d.posicao WHERE d.id = ? AND p.dia <> ?'),
     avisoDeOutroDia: db.prepare('SELECT p.dia FROM escala_avisos a JOIN escala_posicoes p ON p.id = a.posicao WHERE a.id = ? AND p.dia <> ?'),
-    posicao: db.prepare('INSERT INTO escala_posicoes (id, dia, ordem, turno, editor, ilha, horario) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    posicao: db.prepare('INSERT INTO escala_posicoes (id, dia, ordem, turno, editor, ilha, horario, vaga) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     demanda: db.prepare('INSERT INTO escala_demandas (id, posicao, ordem, texto) VALUES (?, ?, ?, ?)'),
     aviso: db.prepare('INSERT INTO escala_avisos (id, posicao, ordem, texto) VALUES (?, ?, ?, ?)'),
     conferidas: db.prepare('SELECT chave FROM escala_conferidas WHERE dia = ? ORDER BY chave'),
@@ -186,11 +194,11 @@ export function criarEscala(db) {
     for (const l of linhas) m.set(l.posicao, [...(m.get(l.posicao) ?? []), { id: l.id, texto: l.texto }]);
     return m;
   };
-  /** As posições do dia, como o rascunho as guarda (as mesmas que a publicação guarda). */
+  /** As posições do dia, como o rascunho as guarda (as mesmas que a publicação guarda); o motivo da vaga, só quando há. */
   const posicoesDoDia = (dia) => {
     const demandas = porPosicao(q.demandas.all(dia));
     const avisos = porPosicao(q.avisos.all(dia));
-    return q.posicoes.all(dia).map((p) => ({ id: p.id, turno: p.turno, editor: p.editor, ilha: p.ilha, horario: p.horario, demandas: demandas.get(p.id) ?? [], avisos: avisos.get(p.id) ?? [] }));
+    return q.posicoes.all(dia).map((p) => ({ id: p.id, turno: p.turno, editor: p.editor, ilha: p.ilha, horario: p.horario, demandas: demandas.get(p.id) ?? [], avisos: avisos.get(p.id) ?? [], ...(p.vaga ? { vaga: p.vaga } : {}) }));
   };
   /** As posições como foram publicadas; as de antes do #125 ganham os avisos vazios (não tinham). */
   const posicoesPublicadas = (json) => JSON.parse(json).map((p) => ({ ...p, avisos: p.avisos ?? [] }));
@@ -243,6 +251,8 @@ export function criarEscala(db) {
         dispensadas: q.conferidas.all(dia).map((l) => l.chave),
       };
     },
+    /** Quantas posições o dia tem montadas. */
+    quantas: (dia) => q.quantas.get(dia).n,
     /** O estado de cada um dos dias (em ordem; os sem nada gravado são vazios). */
     estados(dias) {
       const gravados = new Set(q.estados.all(dias[0], dias.at(-1)).map((l) => l.dia));
@@ -292,7 +302,7 @@ export function criarEscala(db) {
         q.gravarDia.run(dia, estadoDoDia(posicoes), minusculo(por), new Date().toISOString(), recado ?? q.dia.get(dia)?.recado ?? '');
         q.apagarPosicoes.run(dia);
         posicoes.forEach((p, i) => {
-          q.posicao.run(p.id, dia, i, p.turno, p.editor, p.ilha, p.horario);
+          q.posicao.run(p.id, dia, i, p.turno, p.editor, p.ilha, p.horario, p.editor ? '' : (p.vaga ?? ''));
           p.demandas.forEach((d, j) => q.demanda.run(d.id, p.id, j, d.texto));
           (p.avisos ?? []).forEach((a, j) => q.aviso.run(a.id, p.id, j, a.texto));
         });
