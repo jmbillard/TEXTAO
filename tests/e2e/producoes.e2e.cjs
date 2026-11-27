@@ -289,16 +289,44 @@ async function topoPreso(p, largura) {
     assert.ok(Math.abs(b.topo.top - topo) <= 1, `o topo do bloco fica em cima (${b.topo.top} e ${topo})`);
     assert.ok(Math.abs(b.coluna.top - b.topo.bottom) <= 1, 'o nome da coluna fica logo abaixo do topo do bloco');
   }
-  // #159, os cantos com a área rolando: os topos presos são retos (o arredondado é o do bloco e o da coluna, que cortam o
-  // que passa da borda), e o bloco e a coluna não criam rolagem (o topo continua preso)
+  // #159 e #167, os cantos com a área rolando: os topos presos levam o canto arredondado do bloco e da coluna (a quina
+  // não fica pontuda), e o bloco e a coluna cortam sem criar rolagem (o topo continua preso)
   const cantos = await p.locator('.prod-bloco:not(.recolhido)').first().evaluate((b) => {
     const e = (s) => getComputedStyle(b.querySelector(s));
-    return { topo: e('.prod-bloco-topo').borderTopLeftRadius, nome: e('.prod-coluna h3').borderTopLeftRadius, bloco: getComputedStyle(b).overflow, coluna: e('.prod-coluna').overflow, raio: getComputedStyle(b).borderTopLeftRadius };
+    return { topo: e('.prod-bloco-topo').borderTopLeftRadius, nome: e('.prod-coluna h3').borderTopLeftRadius, coluna: e('.prod-coluna').borderTopLeftRadius, bloco: getComputedStyle(b).overflow, corte: e('.prod-coluna').overflow, raio: getComputedStyle(b).borderTopLeftRadius };
   });
-  assert.deepEqual(cantos, { topo: '0px', nome: '0px', bloco: 'clip', coluna: 'clip', raio: '14px' }, 'os cantos certos com a área rolando');
+  assert.deepEqual(cantos, { topo: '13px', nome: '10px', coluna: '10px', bloco: 'clip', corte: 'clip', raio: '14px' }, 'os cantos redondos com a área rolando');
+  // #167: rolada, o "últimos dias" some (a altura fecha), o cabeçalho da coluna baixa e a fenda aparece onde há card
+  // passando por baixo; de volta ao topo, tudo volta
+  await p.waitForTimeout(350);
+  const rolada = await p.evaluate(() => {
+    const a = document.querySelector('.prod-blocos');
+    const recente = document.querySelector('.prod-coluna[data-coluna="entregue"] .prod-recente');
+    const cobertas = [...document.querySelectorAll('.prod-coluna[data-coberta]')];
+    return {
+      marcada: a.hasAttribute('data-rolada'),
+      recente: recente.getBoundingClientRect().height,
+      cabeca: parseFloat(getComputedStyle(document.querySelector('.prod-coluna:not(.fina) h3')).paddingTop),
+      cobertas: cobertas.length,
+      fenda: cobertas.map((c) => getComputedStyle(c.querySelector('h3'), '::after').opacity),
+      semFenda: [...document.querySelectorAll('.prod-coluna:not([data-coberta]) h3')].map((h) => getComputedStyle(h, '::after').opacity),
+    };
+  });
+  assert.ok(rolada.marcada && rolada.recente < 1 && rolada.cabeca === 6, `rolada: o "últimos dias" some e o cabeçalho baixa (${JSON.stringify(rolada)})`);
+  assert.ok(rolada.cobertas > 0 && rolada.fenda.every((o) => o === '1') && rolada.semFenda.every((o) => o === '0'), `a fenda só onde há card por baixo (${JSON.stringify(rolada)})`);
   await capturar(p, `01b-producoes-${largura}-rolada`);
   assert.ok(await p.evaluate(() => scrollY === 0), 'quem rola é a área dos blocos, não a página');
+  // #167: o hover do card é o da agenda: só a borda, sem subir nem sombra
+  const card = p.locator('.prod-card').first();
+  await card.hover();
+  await p.waitForTimeout(250);
+  const hover = await card.evaluate((c) => ({ transform: getComputedStyle(c).transform, sombra: getComputedStyle(c).boxShadow }));
+  assert.deepEqual(hover, { transform: 'none', sombra: 'none' }, 'o hover não levanta o card');
+  await p.mouse.move(2, 2);
   await area.evaluate((a) => (a.scrollTop = 0));
+  await p.waitForTimeout(350);
+  const noTopo = await p.evaluate(() => ({ marcada: document.querySelector('.prod-blocos').hasAttribute('data-rolada'), recente: document.querySelector('.prod-coluna[data-coluna="entregue"] .prod-recente').getBoundingClientRect().height, cobertas: document.querySelectorAll('.prod-coluna[data-coberta]').length }));
+  assert.ok(!noTopo.marcada && noTopo.recente > 10 && noTopo.cobertas === 0, `no topo, o "últimos dias" volta e a fenda some (${JSON.stringify(noTopo)})`);
   await p.setViewportSize({ width: largura, height: 1000 });
 }
 
@@ -330,7 +358,9 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.deepEqual(await contasRecolhido(p, 'INTER'), [0, 0, 0], 'a fechada com o resumo das contagens');
   // a Produzindo vazia é fina; a com card, não
   const larguraDa = (praca, k) => coluna(p, praca, k).evaluate((c) => c.getBoundingClientRect().width);
-  assert.ok((await larguraDa('SP', 'produzindo')) < 50 && (await larguraDa('SP', 'entrada')) > 150, 'a Produzindo vazia fica fina');
+  // #167: só quando falta largura (a 1440 px, com três praças); a 1920 px, com espaço, ela divide com as outras
+  if (largura >= 1920) assert.ok((await larguraDa('SP', 'produzindo')) > 150, 'com espaço, a Produzindo vazia é larga');
+  else assert.ok((await larguraDa('SP', 'produzindo')) < 50 && (await larguraDa('SP', 'entrada')) > 150, 'apertada, a Produzindo vazia fica fina');
   assert.ok((await larguraDa('G5', 'produzindo')) > 100, 'a Produzindo com card, não');
   // as divisórias por dia no Entregue: o Jogo Final, entregue ontem
   assert.deepEqual(await textos(coluna(p, 'G5', 'entregue').locator('.prod-dia-nome')), ['ontem'], 'as divisórias por dia no Entregue');
@@ -444,6 +474,13 @@ async function noCelular(navegador, url, tema, chamadasAoTrello) {
   await versoesNosCards(p, `celular ${nome}`);
   await semRolagemDeLado(p, `celular ${nome}`);
   await capturar(p, `03-producoes-celular-${nome}`);
+  // #167: rolada, no celular (a página rola; o cabeçalho da coluna não fica preso ali)
+  if (CAPTURAS) {
+    await p.evaluate(() => scrollTo(0, 700));
+    await p.waitForTimeout(300);
+    await p.screenshot({ path: join(CAPTURAS, `03b-producoes-celular-${nome}-rolada.png`) });
+    await p.evaluate(() => scrollTo(0, 0));
+  }
   assert.deepEqual(aoTrello, []);
   assert.deepEqual(chamadasAoTrello, []);
   assert.deepEqual(erros, []);
@@ -1605,6 +1642,83 @@ async function filmarOCardAberto(navegador, url, db) {
   console.log(`ok: o vídeo do card aberto em ${VIDEO}`);
 }
 
+/**
+ * #167: a Produzindo vazia só fica fina quando falta largura na praça. A 1920 px com duas praças abertas (o RJ e o SP),
+ * ela é larga, com o "nada aqui" à mão; a 1280 px com três, fina; e a troca desliza quando a janela muda de tamanho.
+ */
+async function produzindoComEspaco(navegador, url, db, api) {
+  db.prepare("UPDATE producoes SET etapa = 'entrada', designers = '[]' WHERE claquete LIKE 'Festa na Praça%' OR claquete LIKE 'Show da Noite%'").run();
+  const preferir = (recolhidos) => fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ 'producoes.recolhidos': recolhidos, 'producoes.ordem': [] }) });
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    await preferir(['G5', 'INTER']);
+    const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1920, height: 1000 }, colorScheme: tema });
+    await p.locator('.prod-bloco').first().waitFor();
+    await quieta(p);
+    const largura = (praca) => coluna(p, praca, 'produzindo').evaluate((c) => ({ w: c.getBoundingClientRect().width, fina: c.classList.contains('fina'), nada: c.querySelector('.prod-nada') ? getComputedStyle(c.querySelector('.prod-nada')).display : '' }));
+    const larga = await largura('RJ');
+    assert.ok(!larga.fina && larga.w > 150 && larga.nada !== 'none', `1920 px, duas praças: a Produzindo vazia larga, com o "nada aqui" (${JSON.stringify(larga)})`);
+    await capturar(p, `30-producoes-1920-duas-pracas-${nome}`);
+    // a janela encolhe: a Produzindo vazia fica fina, deslizando
+    await gravarMovimento(p);
+    await p.setViewportSize({ width: 1100, height: 1000 });
+    await p.waitForFunction(() => document.querySelector('.prod-bloco[data-praca="RJ"] .prod-coluna[data-coluna="produzindo"]').classList.contains('fina'));
+    assert.ok((await movimento(p)).includes('transição grid-template-columns prod-colunas fina'), 'a troca de larga para fina desliza');
+    await ctx.close();
+    assert.deepEqual(erros, []);
+    await preferir(['INTER']);
+    const tres = await abrir(navegador, url, { viewport: { width: 1280, height: 1000 }, colorScheme: tema });
+    await tres.p.locator('.prod-bloco').first().waitFor();
+    await quieta(tres.p);
+    const fina = await coluna(tres.p, 'RJ', 'produzindo').evaluate((c) => ({ w: c.getBoundingClientRect().width, fina: c.classList.contains('fina') }));
+    assert.ok(fina.fina && fina.w < 50, `1280 px, três praças: a Produzindo vazia fina (${JSON.stringify(fina)})`);
+    await capturar(tres.p, `31-producoes-1280-tres-pracas-${nome}`);
+    assert.deepEqual(tres.erros, []);
+    await tres.ctx.close();
+  }
+  await preferir([]);
+  console.log('ok: a Produzindo vazia só fica fina quando falta largura (1920 px com duas praças: larga; 1280 px com três: fina), deslizando');
+}
+
+/** #167: o vídeo do acabamento (VIDEO=pasta): o hover dos cards (só a borda), a área rolando (o "últimos dias" some,
+    o cabeçalho baixa, a fenda aparece) e voltando, e a janela que alarga (a Produzindo vazia se abre). */
+async function filmarOAcabamento(navegador, url, api) {
+  if (!VIDEO) return;
+  mkdirSync(VIDEO, { recursive: true });
+  const { renameSync } = require('node:fs');
+  await fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ 'producoes.recolhidos': [], 'producoes.ordem': [] }) });
+  for (const tema of ['light', 'dark']) {
+    const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, viewport: { width: 1440, height: 560 }, recordVideo: { dir: VIDEO, size: { width: 1440, height: 560 } }, colorScheme: tema });
+    await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(LIA), url }]);
+    await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+    await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+    const p = await ctx.newPage();
+    await p.goto(`${url}#/designer/producoes`);
+    await p.locator('.prod-card').first().waitFor();
+    await p.waitForTimeout(1000);
+    for (const c of ['Festa na Praça', 'Show da Noite', 'Novela Sinfonia']) {
+      await cardDe(p, c).locator('.prod-atracao').hover();
+      await p.waitForTimeout(500);
+    }
+    await p.mouse.move(700, 300);
+    for (let y = 0; y <= 360; y += 20) {
+      await p.mouse.wheel(0, 20);
+      await p.waitForTimeout(40);
+    }
+    await p.waitForTimeout(900);
+    for (let y = 0; y <= 380; y += 20) {
+      await p.mouse.wheel(0, -20);
+      await p.waitForTimeout(40);
+    }
+    await p.waitForTimeout(900);
+    await p.setViewportSize({ width: 1440, height: 560 });
+    const video = p.video();
+    await ctx.close();
+    renameSync(await video.path(), join(VIDEO, `acabamento-${tema === 'dark' ? 'escuro' : 'claro'}.webm`));
+  }
+  console.log(`ok: o vídeo do acabamento em ${VIDEO}`);
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -1671,7 +1785,11 @@ async function principal() {
   let falhou = false;
   try {
     // SO=card-aberto roda só o card aberto (#160) e o vídeo dele
-    if (process.env.SO === 'card-aberto') {
+    if (process.env.SO === 'acabamento') {
+      await produzindoComEspaco(navegador, s.url, s.db, s.api);
+      await filmarOAcabamento(navegador, s.url, s.api);
+    }
+    else if (process.env.SO === 'card-aberto') {
       await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
       await filmarOCardAberto(navegador, s.url, s.db);
     } else await tudo();
@@ -1699,6 +1817,8 @@ async function principal() {
     await arrumarAsPracas(navegador, s.url);
     await divisoriasPorDia(navegador, s.url, s.db);
     await espacoEBusca(navegador, s.url, s.db, s.api, chamadasAoTrello);
+    await produzindoComEspaco(navegador, s.url, s.db, s.api);
+    await filmarOAcabamento(navegador, s.url, s.api);
     await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
     await filmarOCardAberto(navegador, s.url, s.db);
     await filmar(navegador, s.url, s.db, s.api);

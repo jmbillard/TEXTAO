@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type PointerEvent as PointerDoReact, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as PointerDoReact, type RefObject } from 'react';
 import { moverAPraca } from '../modelo/producoesPorPraca';
 import { semMovimento } from './util';
 
@@ -192,4 +192,45 @@ export function useReordenar(area: RefObject<HTMLElement | null>, ordem: readonl
     [area],
   );
   return { levantada, iniciar };
+}
+
+/**
+ * A rolagem da área dos blocos (#167), sem renderizar de novo: a área ganha `data-rolada` quando desceu (o "últimos
+ * dias" do Entregue some e o cabeçalho das colunas baixa, pelo CSS), e cada coluna ganha `data-coberta` quando há card
+ * passando por baixo do cabeçalho preso dela (a sombra da fenda). Na rolagem e quando a tela muda de tamanho.
+ */
+export function useRolagemDosBlocos(area: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    let quadro = 0;
+    const medir = () => {
+      quadro = 0;
+      const rolada = el.scrollTop > 2;
+      if (rolada) el.dataset.rolada = '';
+      else delete el.dataset.rolada;
+      for (const c of el.querySelectorAll<HTMLElement>('.prod-coluna')) {
+        const h3 = c.querySelector('h3');
+        const fim = h3?.getBoundingClientRect().bottom ?? 0;
+        // um card (ou a divisória do dia) começa acima do pé do cabeçalho e ainda aparece embaixo dele
+        const coberta = rolada && [...c.querySelectorAll('.prod-card, .prod-dia-nome')].some((x) => {
+          const r = x.getBoundingClientRect();
+          return r.top < fim - 1 && r.bottom > fim;
+        });
+        if (coberta) c.dataset.coberta = '';
+        else delete c.dataset.coberta;
+      }
+    };
+    const pedir = () => {
+      if (!quadro) quadro = requestAnimationFrame(medir);
+    };
+    el.addEventListener('scroll', pedir, { passive: true });
+    window.addEventListener('resize', pedir);
+    medir();
+    return () => {
+      cancelAnimationFrame(quadro);
+      el.removeEventListener('scroll', pedir);
+      window.removeEventListener('resize', pedir);
+    };
+  });
 }

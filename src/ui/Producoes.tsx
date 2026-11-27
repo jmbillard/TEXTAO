@@ -5,11 +5,11 @@ import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, abert
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
-import { MarcaTexto, tracoDe } from './pecas';
+import { MarcaTexto, RABISCOS, tracoDe } from './pecas';
 import { ProducaoAberta } from './ProducaoAberta';
 import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
 import { BuscaDasProducoes, usePresenca } from './BuscaDasProducoes';
-import { useDeslize, useReordenar } from './movimentoDasProducoes';
+import { useDeslize, useReordenar, useRolagemDosBlocos } from './movimentoDasProducoes';
 import { plural } from './util';
 import { ConflitoDoCard, NomeDaClaquete, versoesDoCard } from './Apelido';
 import './producoes.css';
@@ -159,7 +159,7 @@ function AvisoDeFalta({ aviso, indo }: { aviso: NonNullable<Acoes['aviso']>; ind
 }
 
 /** A contagem da coluna: quando muda, o número pula de leve (#159), para o olho ver onde o card foi. */
-function Conta({ n, rotulo }: { n: number; rotulo: string }) {
+function Conta({ n, rotulo, traco = 0 }: { n: number; rotulo: string; traco?: number }) {
   const antes = useRef(n);
   const [vez, setVez] = useState(0);
   const [pulando, setPulando] = useState(false);
@@ -175,6 +175,10 @@ function Conta({ n, rotulo }: { n: number; rotulo: string }) {
   return (
     <span key={vez} className={`prod-conta${pulando ? ' mudou' : ''}`} aria-label={rotulo}>
       {n}
+      {/* o número circulado à caneta (#167), como o dia de hoje na agenda; muda, e o círculo se escreve de novo */}
+      <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true">
+        <path pathLength={1} d={RABISCOS[traco % RABISCOS.length]} />
+      </svg>
     </span>
   );
 }
@@ -334,7 +338,7 @@ function BlocoRecolhido({ b, id, bloco }: { b: BlocoDaPraca; id: string; bloco: 
           {COLUNAS_DO_BLOCO.map((k) => (
             <li key={k} data-coluna={k} title={ROTULO_DA_COLUNA[k]}>
               <i aria-hidden="true" />
-              <Conta n={b.colunas[k].length} rotulo={`${ROTULO_DA_COLUNA[k]}: ${plural(b.colunas[k].length, 'card', 'cards')}`} />
+              <Conta n={b.colunas[k].length} traco={tracoDe(b.praca) + COLUNAS_DO_BLOCO.indexOf(k)} rotulo={`${ROTULO_DA_COLUNA[k]}: ${plural(b.colunas[k].length, 'card', 'cards')}`} />
             </li>
           ))}
         </ul>
@@ -358,6 +362,27 @@ function Bloco(props: PropsDoBloco) {
   return props.bloco.recolhido ? <BlocoRecolhido b={props.b} id={idDoBloco(props.b)} bloco={props.bloco} /> : <BlocoAberto {...props} />;
 }
 
+/** A largura de leitura de uma coluna (#167): com menos que isso para cada uma das três, a Produzindo vazia fica fina. */
+const COLUNA_DE_LEITURA = 160;
+/** As margens do bloco por dentro (o padding das colunas e os dois vãos entre elas). */
+const POR_DENTRO_DO_BLOCO = 16 + 12 + 2;
+/** O bloco está apertado (#167): as três colunas não cabem na largura de leitura. Acompanha a largura do bloco (abrir e
+    fechar praças, a janela). No celular, a coluna nunca fica fina por isso (uma embaixo da outra). */
+function useApertado(caixa: React.RefObject<HTMLElement | null>) {
+  const [apertado, setApertado] = useState(true);
+  useLayoutEffect(() => {
+    const el = caixa.current;
+    if (!el) return;
+    const medir = () => setApertado((el.clientWidth - POR_DENTRO_DO_BLOCO) / 3 < COLUNA_DE_LEITURA);
+    medir();
+    if (typeof ResizeObserver !== 'function') return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [caixa]);
+  return apertado;
+}
+
 function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloco) {
   const arrasto = solta.arrasto?.card.praca === b.praca ? solta.arrasto : null;
   const aceita = (k: ColunaDoBloco) => !!arrasto && ARRASTA_PARA[arrasto.card.etapa].includes(k);
@@ -365,7 +390,10 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
   const id = idDoBloco(b);
   const chegando = useChegando();
   // a Produzindo vazia fica fina (#159), e se abre quando um card do bloco que pode ir para ela está no ar
-  const fina = !b.colunas.produzindo.length && !aceita('produzindo');
+  // #167: só quando falta largura (as três colunas não cabem na largura de leitura); com espaço, ela divide com as outras
+  const caixa = useRef<HTMLElement>(null);
+  const apertado = useApertado(caixa);
+  const fina = apertado && !b.colunas.produzindo.length && !aceita('produzindo');
   const cardsDe = (cs: CardDaProducao[]) => (
     <ul className="prod-cards">
       {cs.map((c) => (
@@ -374,7 +402,7 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
     </ul>
   );
   return (
-    <section className={`prod-bloco${bloco.levantado ? ' levantado' : ''}${chegando ? ' chegando' : ''}`} data-praca={b.praca} aria-labelledby={id}>
+    <section ref={caixa} className={`prod-bloco${bloco.levantado ? ' levantado' : ''}${chegando ? ' chegando' : ''}`} data-praca={b.praca} aria-labelledby={id}>
       <header className="prod-bloco-topo" onPointerDown={bloco.arrastar}>
         <Alca />
         <h2 id={id}>
@@ -412,8 +440,13 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
             <h3>
               <i aria-hidden="true" />
               <span className="prod-coluna-nome">{ROTULO_DA_COLUNA[k]}</span>
-              <Conta n={b.colunas[k].length} rotulo={plural(b.colunas[k].length, 'card', 'cards')} />
-              {k === 'entregue' && <small className="prod-recente">últimos {entregueDias} dias</small>}
+              <Conta n={b.colunas[k].length} traco={tracoDe(b.praca) + i} rotulo={plural(b.colunas[k].length, 'card', 'cards')} />
+              {/* a anotação à mão (#167), que some quando a área rola */}
+              {k === 'entregue' && (
+                <small className="prod-recente">
+                  <span>últimos {entregueDias} dias</span>
+                </small>
+              )}
             </h3>
             {!b.colunas[k].length ? (
               <p className="prod-nada">nada aqui</p>
@@ -421,7 +454,8 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
               // as divisórias por dia (#159): o dia da entrega, do mais novo para o mais velho
               diasDoEntregue(b.colunas[k], hoje).map((d) => (
                 <div key={d.dia} className="prod-dia" data-dia={d.dia}>
-                  <h4 className="prod-dia-nome">{diaEscrito(d.dia, hoje)}</h4>
+                  {/* "hoje" e "ontem" à mão (#167); os outros dias, curtos */}
+                  <h4 className={`prod-dia-nome${d.dia === hoje ? ' mao hoje' : d.dia === vizinho(hoje, -1) ? ' mao' : ''}`}>{diaEscrito(d.dia, hoje)}</h4>
                   {cardsDe(d.cards)}
                 </div>
               ))
@@ -626,6 +660,8 @@ export function Producoes({ topo }: Props) {
     setOrdem(o);
     void lembrarOrdemDasPracas(o);
   });
+  // a rolagem da área (#167): o "últimos dias" some, o cabeçalho da coluna baixa e a fenda aparece sobre o que rolou
+  useRolagemDosBlocos(area);
   // o deslize (#159): a praça que muda de lugar, e o card que muda de coluna (e os vizinhos que abrem o espaço)
   useDeslize(area, ':scope > .prod-bloco:not(.levantado)', 'data-praca', pracas.join('\n'));
   useDeslize(area, '.prod-card', 'data-producao', blocos.map((b) => (abertasAgora.includes(b.praca) ? COLUNAS_DO_BLOCO.map((k) => b.colunas[k].map((c) => c.id).join(',')).join('/') : '')).join('|'));

@@ -11,9 +11,13 @@
    #159: o topo é o da fila, no mesmo lugar em todas as telas. O movimento: a largura dos blocos e a das colunas deslizam
    (a lista das larguras tem sempre o mesmo jeito, o mínimo e a fração, para o navegador interpolar), o nome da praça
    gira para a vertical ao fechar, a Produzindo vazia fica fina e se abre com fôlego, as colunas chegam em cascata, o card
-   levanta de leve no hover, e a caixinha sobe. Tudo de 150 a 250 ms, na curva --suave; com prefers-reduced-motion, só
+   muda a borda no hover como o da agenda (#167: sem subir), e a caixinha sobe. Tudo de 150 a 250 ms, na curva --suave; com prefers-reduced-motion, só
    esmaecer. Os cantos: o bloco e a coluna cortam o que passa da borda arredondada (overflow: clip, que não cria rolagem
-   e deixa o topo preso), e os topos presos são retos; o contorno da coluna-alvo é uma camada por cima do nome dela. */
+   e deixa o topo preso); o contorno da coluna-alvo é uma camada por cima do nome dela.
+   #167, o acabamento: os topos presos têm o canto arredondado do bloco e da coluna (com a área rolada, a quina não fica
+   pontuda); as contagens são números à mão, circulados à caneta; "hoje" e "ontem" nas divisórias e o "últimos dias" do
+   Entregue à mão. Com a área rolada, o "últimos dias" some, o cabeçalho da coluna baixa, e uma sombra bem leve embaixo
+   dele (a fenda) aparece onde há card passando por baixo. */
 
 .pagina.producoes { --bloco-min: 448px; --bloco-recolhido: 64px; --dur: 240ms; --topo-do-bloco: 54px; --margem: 24px; display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
 /* a linha do logo é a da fila (#159): a mesma largura e as mesmas margens, para nada pular ao trocar de tela */
@@ -51,6 +55,8 @@
   position: sticky; top: 0; z-index: 2; box-sizing: border-box; height: var(--topo-do-bloco);
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 14px 0;
   background: var(--cartao); cursor: grab; user-select: none; -webkit-user-select: none;
+  /* preso em cima com a área rolada, o topo leva o canto do bloco (#167) */
+  border-radius: 13px 13px 0 0;
 }
 .prod-bloco-topo button { cursor: pointer; }
 body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
@@ -109,7 +115,7 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .prod-coluna:has(.prod-card.deslizando) { overflow: visible; }
 @keyframes surgir-coluna { from { opacity: 0; transform: translateY(8px); } }
 .prod-coluna.fina { padding: 0; }
-.prod-coluna.fina h3 { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0; }
+.prod-coluna.fina h3 { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0; padding: 10px 0; }
 .prod-coluna.fina .prod-conta { order: -1; min-width: 20px; padding: 0 4px; }
 .prod-coluna.fina h3 i { order: -2; }
 .prod-coluna.fina .prod-coluna-nome { writing-mode: vertical-rl; transform: rotate(180deg); overflow: visible; }
@@ -119,20 +125,49 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   position: sticky; top: var(--topo-do-bloco); z-index: 1;
   /* o nome e a contagem sempre na mesma linha (o nome encolhe com reticências se faltar lugar); o "últimos dias" embaixo */
   display: grid; grid-template-columns: 7px minmax(0, max-content) auto; justify-content: start; align-items: center; gap: 2px 6px;
-  margin: 0; padding: 9px 2px 8px; background: var(--neutro);
+  margin: 0 -6px; padding: 9px 8px 8px; background: var(--neutro);
   font: 600 11.5px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2);
+  /* o canto da coluna (#167): preso em cima, a quina continua redonda */
+  border-radius: 10px 10px 0 0; transition: padding 0.2s var(--suave);
 }
+/* a fenda (#167): uma sombra bem leve embaixo do cabeçalho preso, só onde há card passando por baixo dele */
+.prod-coluna h3::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 10px; pointer-events: none;
+  background: linear-gradient(var(--fenda), transparent); opacity: 0; transition: opacity 0.2s var(--suave);
+}
+.prod-coluna[data-coberta] h3::after { opacity: 1; }
+/* com a área rolada, o cabeçalho baixa */
+.prod-blocos[data-rolada] .prod-coluna h3 { padding-top: 6px; padding-bottom: 6px; }
+.pagina.producoes { --fenda: rgb(26 25 22 / 9%); }
+:root[data-theme='dark'] .pagina.producoes { --fenda: rgb(0 0 0 / 42%); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .pagina.producoes { --fenda: rgb(0 0 0 / 42%); } }
 .prod-coluna-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prod-coluna h3 i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
 .prod-coluna[data-coluna='produzindo'] h3 i { background: var(--ultra); }
 .prod-coluna[data-coluna='entregue'] h3 i { background: var(--ok); }
 .prod-conta { min-width: 22px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--cartao); color: var(--tinta); font: 600 12px/20px var(--sans); letter-spacing: 0; text-align: center; font-variant-numeric: tabular-nums; }
-.prod-recente { grid-column: 1 / -1; font: 500 11px var(--sans); letter-spacing: 0; text-transform: none; color: var(--tinta3); }
+/* #167: a contagem é o número à mão, circulado à caneta (o círculo do dia de hoje na agenda) */
+.prod-conta { position: relative; display: inline-block; min-width: 20px; padding: 0 3px; background: none; font: 600 17px/20px Caveat, cursive; color: var(--tinta); }
+.prod-conta svg { position: absolute; left: -5px; top: -4px; width: calc(100% + 10px); height: calc(100% + 8px); overflow: visible; pointer-events: none; }
+.prod-conta path { fill: none; stroke: var(--ultra); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+/* sem exagero: só o número da Produzindo (o que está em produção agora) leva o círculo; os outros ficam só à mão */
+.prod-conta svg { display: none; }
+.prod-coluna[data-coluna='produzindo'] .prod-conta svg, .prod-contas-recolhido [data-coluna='produzindo'] .prod-conta svg { display: block; }
+/* a contagem que mudou: o círculo se escreve de novo */
+.prod-conta.mudou path { stroke-dasharray: 1; animation: circular 0.45s var(--suave) both; }
+@keyframes circular { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+/* "últimos 3 dias" à mão (#167); some com a área rolada (a altura fecha) e volta no topo */
+.prod-recente { grid-column: 1 / -1; display: grid; grid-template-rows: 1fr; font: 600 15px/1 Caveat, cursive; letter-spacing: 0; text-transform: none; color: var(--tinta3); transition: grid-template-rows 0.22s var(--suave), opacity 0.18s; }
+.prod-recente > span { min-height: 0; overflow: hidden; display: block; line-height: 1.2; transform: rotate(-1.5deg); transform-origin: left; }
+.prod-blocos[data-rolada] .prod-recente { grid-template-rows: 0fr; opacity: 0; }
 .prod-nada { margin: 2px 4px; font: 600 17px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); }
 /* as divisórias por dia no Entregue (#159): o dia curto e um fio até a borda */
 .prod-dia + .prod-dia { margin-top: 10px; }
 .prod-dia-nome { display: flex; align-items: center; gap: 8px; margin: 2px 2px 6px; font: 600 11px var(--sans); color: var(--tinta3); }
 .prod-dia-nome::after { content: ''; flex: 1; height: 1px; background: var(--regua-forte); }
+/* "hoje" e "ontem" à mão (#167); o hoje na cor de destaque, como na agenda */
+.prod-dia-nome.mao { font: 600 17px/1 Caveat, cursive; color: var(--tinta2); }
+.prod-dia-nome.mao.hoje { color: var(--ultra); }
 /* a contagem que mudou pula de leve */
 .prod-conta.mudou { animation: pular-conta 0.24s var(--suave); }
 @keyframes pular-conta { 40% { transform: scale(1.22); background: var(--ultra-suave); color: var(--ultra-tinta); } }
@@ -143,10 +178,10 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .prod-coluna[data-coluna='produzindo'] .prod-cards { min-width: 116px; }
 .prod-card {
   display: flex; flex-direction: column; gap: 3px; padding: 8px 9px 8px; border-radius: 9px; background: var(--papel); border: 1px solid var(--regua);
-  transition: border-color 0.18s, box-shadow 0.18s var(--suave), transform 0.18s var(--suave);
+  transition: border-color 0.2s, background-color 0.2s;
 }
-/* o hover levanta o card de leve (#159) */
-.prod-card:hover { border-color: var(--regua-forte); transform: translateY(-1px); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 4px 10px rgb(26 25 22 / 7%); }
+/* o hover é o da agenda (#167): só a borda, sem subir */
+.prod-card:hover { border-color: var(--regua-forte); }
 .prod-card.deslizando { position: relative; z-index: 1; }
 /* o card abre a Produção (#113) */
 .prod-card { cursor: pointer; }
@@ -472,6 +507,10 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .prod-achado-abrir:hover { transform: none; }
   .pagina.producoes .prod-conta.mudou { animation: none !important; }
   .prod-card:hover { transform: none; }
+  /* #167: o "últimos dias" só esmaece; o cabeçalho não baixa; o círculo não se escreve */
+  .prod-recente, .prod-coluna h3 { transition: opacity 0.18s ease-out !important; }
+  .prod-blocos[data-rolada] .prod-coluna h3 { padding-top: 9px; padding-bottom: 8px; }
+  .prod-conta.mudou path { animation: none; }
 }
 @keyframes esmaecer { from { opacity: 0; } }
 @keyframes sumir { to { opacity: 0; } }
