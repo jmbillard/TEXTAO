@@ -3405,7 +3405,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // o card aberto (#160), para quem está ligado a um designer: o prazo { producao, prazo }, a atração { producao,
       // atracao ('' desliga) }, o designer { producao, designer, entra }, a arte { producao, arte, acao (marcar,
       // desmarcar, apagar, voltar, incluir) } e o fogo { producao, arte, nivel? }. Escreve no Trello (o prazo, o membro,
-      // o checklist; a única leitura é a do checklist do card que muda), grava os eventos; nada vai ao Teable. Responde
+      // o checklist; a única leitura é a do checklist do card que muda), grava os eventos; só a atração vai ao Teable (#173,
+      // o link da linha do card na produção da arte). Responde
       // { feito, producao (o card da tela), aberta (como /api/producoes/aberta) }
       if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
@@ -3415,7 +3416,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const o = doCardAberto[1];
       let r;
       if (o === 'prazo') r = await cardDaProducao.prazo(corpo, ctx);
-      else if (o === 'atracao') r = await cardDaProducao.atracao(corpo, { ...ctx, atracoes: (await atracoesDoCadastro()).map((a) => a.nome) });
+      else if (o === 'atracao')
+        r = await cardDaProducao.atracao(corpo, {
+          ...ctx,
+          atracoes: (await atracoesDoCadastro()).map((a) => ({ nome: a.nome, id: a.id })),
+          // o link `atracao` da linha do card no Teable (#173), pela escrita do projeto do Padeiro (#144)
+          atracaoNoTeable: (cardId, mudanca) => projetoDoPadeiro.ligarAAtracao(env, trello, cardId, mudanca),
+        });
       else if (o === 'designer') r = await cardDaProducao.designer(corpo, { ...ctx, designers: pessoas.designersAtivos() });
       else if (o === 'arte') r = await cardDaProducao.arte(corpo, ctx);
       else r = fogoNaTela(corpo, ctx);

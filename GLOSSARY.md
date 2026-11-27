@@ -362,8 +362,9 @@ clicado e volta para ele ao fechar (no celular, a tela toda). Ali ficam a versã
 detalhe), o apelido pelo lápis, a atração (a busca do cadastro), o prazo e os designers (atribuir e tirar), que gravam
 na hora, vão ao Trello (o prazo do card, o membro) e viram evento; as artes no esquema da janela do After (a bolinha
 numerada, a feita riscada, o fogo), que se marcam, apagam (com desfazer) e incluem, com o checklist do card espelhando;
-e a linha do tempo, fechada num link. A atração escolhida fica só no PROMeiro (o card do Trello não tem o campo). Fica ao lado da agenda No
-Trello, que continua, com a mesma linha do logo, parada entre as telas (#159).
+e a linha do tempo, fechada num link. A atração escolhida vai ao link `atracao` da linha do card na produção da arte
+do Teable (#173), não ao Trello (o card não tem o campo). Fica ao lado da agenda No Trello, que continua, com a mesma
+linha do logo, parada entre as telas (#159).
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 
 **Aviso do Padeiro**:
