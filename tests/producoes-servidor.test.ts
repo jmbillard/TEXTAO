@@ -331,6 +331,82 @@ describe('a tela de produções: as Produções abertas por praça e etapa', () 
   });
 });
 
+/* A busca da tela de produções (#161): por claquete, atração e pessoa, sem diferença de caixa e acento, no histórico
+   todo (também os entregues de mais de 3 dias, que a tela não mostra), das mais recentes para as mais antigas, em
+   páginas. As arquivadas ficam de fora. */
+describe('a tela de produções: a busca no histórico', () => {
+  const DIA = 86_400_000;
+  const ha = (n: number) => new Date(Date.now() - n * DIA).toISOString();
+  const linhas = () => [
+    registro('recBusca1', { card_ID: card(31), claquete: 'Show da Noite 20/11 SP', status: '[]', designers: null, data_entrada: ha(1) }),
+    registro('recBusca2', { card_ID: card(32), claquete: 'Festa na Praça 19/11 SP', status: '["PRODUZINDO"]', designers: '["Ana Souza"]', data_entrada: ha(2) }),
+    // entregue há 20 dias: fora da tela, dentro da busca
+    registro('recBusca3', { card_ID: card(33), claquete: 'Jogo Antigo 01/11', status: '["FINALIZADO"]', designers: '["Designer Dois","João Conceição"]', entregue: true, data_entrada: ha(25), data_entrega: ha(20) }),
+    registro('recBusca4', { card_ID: card(34), claquete: 'Jogo Final 25/11', status: '["FINALIZADO"]', designers: '["Designer Um"]', entregue: true, data_entrada: ha(3), data_entrega: ha(1) }),
+    // arquivada: fora da busca
+    registro('recBusca5', { card_ID: card(35), claquete: 'Jogo Arquivado 10/11', status: '["PRODUZINDO"]', designers: '["João Conceição"]', arquivado: true, data_entrada: ha(15) }),
+  ];
+  type Achado = { id: string; claquete: string; atracao: string; etapa: string; designers: string[]; entregaEm: string | null };
+  type Busca = { cards: Achado[]; total: number; pagina: number; mais: boolean };
+  async function busca(db = abrirBanco(':memory:'), registros = linhas()) {
+    const s = await comServidor({ db, registros: { ARTE_producao: registros, exibicoes: [] } });
+    await s.app.releituraPronta;
+    const buscar = async (termo: string, pagina?: number) => {
+      const r = await s.ana(`/api/producoes/busca?q=${encodeURIComponent(termo)}${pagina === undefined ? '' : `&pagina=${pagina}`}`);
+      return { status: r.status, corpo: (await r.json()) as Busca };
+    };
+    return { ...s, buscar };
+  }
+  const claquetes = (b: Busca) => b.cards.map((c) => c.claquete);
+
+  it('acha pela claquete, sem diferença de caixa e acento, e inclui os entregues antigos', async () => {
+    const { buscar } = await busca();
+    const { status, corpo } = await buscar('jogo');
+    expect(status).toBe(200);
+    // as mais recentes primeiro (pela entrega, ou pela entrada); a arquivada fica de fora
+    expect(claquetes(corpo)).toEqual(['Jogo Final 25/11', 'Jogo Antigo 01/11']);
+    expect(corpo.cards[1]).toMatchObject({ etapa: 'entregue', entregaEm: expect.any(String) });
+    expect(claquetes((await buscar('FESTA NA PRACA')).corpo)).toEqual(['Festa na Praça 19/11 SP']);
+  });
+
+  it('acha pela pessoa (os designers e o redator e o editor do Roteiro) e pela atração', async () => {
+    const db = abrirBanco(':memory:');
+    const em = new Date().toISOString();
+    db.prepare('INSERT INTO roteiros (id, dono_email, dono_nome, meta, doc, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?)').run('roteiro-show', 'ana@empresa.com', 'Ana', JSON.stringify({ claquete: 'Show da Noite 20/11 SP', programa: 'Conversa Fiada', redator: 'Lúcia Redatora', editor: 'Pedro Editor' }), '{}', em, em);
+    db.prepare("INSERT INTO envios (roteiro_id, estado, card_id, em) VALUES (?, 'ok', ?, ?)").run('roteiro-show', card(31), em);
+    const { buscar } = await busca(db);
+    expect(claquetes((await buscar('joao conceicao')).corpo)).toEqual(['Jogo Antigo 01/11']);
+    expect(claquetes((await buscar('lucia')).corpo)).toEqual(['Show da Noite 20/11 SP']);
+    expect(claquetes((await buscar('pedro')).corpo)).toEqual(['Show da Noite 20/11 SP']);
+    const [show] = (await buscar('conversa fiada')).corpo.cards;
+    expect(show).toMatchObject({ claquete: 'Show da Noite 20/11 SP', atracao: 'Conversa Fiada' });
+    // as palavras juntas: todas têm de estar, cada uma pelo começo de uma palavra
+    expect(claquetes((await buscar('ana festa')).corpo)).toEqual(['Festa na Praça 19/11 SP']);
+    expect(claquetes((await buscar('ana jogo')).corpo)).toEqual([]);
+    // nenhum id do Trello nem do Teable vai para a tela
+    expect(JSON.stringify((await buscar('jogo')).corpo)).not.toMatch(/c0ffee|recBusca/);
+  });
+
+  it('em páginas: a primeira, a seguinte e se há mais', async () => {
+    const muitas = Array.from({ length: 45 }, (_, i) => registro(`recMuitas${i}`, { card_ID: card(100 + i), claquete: `Novela Sinfonia ${String((i % 28) + 1).padStart(2, '0')}/10`, status: '["FINALIZADO"]', designers: null, entregue: true, data_entrada: ha(60 + i), data_entrega: ha(50 + i) }));
+    const { buscar } = await busca(abrirBanco(':memory:'), muitas);
+    const um = (await buscar('novela')).corpo;
+    expect(um).toMatchObject({ total: 45, pagina: 0, mais: true });
+    expect(um.cards).toHaveLength(30);
+    const dois = (await buscar('novela', 1)).corpo;
+    expect(dois).toMatchObject({ total: 45, pagina: 1, mais: false });
+    expect(dois.cards).toHaveLength(15);
+    // nada repetido entre as páginas
+    expect(new Set([...um.cards, ...dois.cards].map((c) => c.id)).size).toBe(45);
+  });
+
+  it('sem termo, nada; só GET', async () => {
+    const { buscar, ana } = await busca();
+    expect((await buscar('  ')).corpo).toEqual({ cards: [], total: 0, pagina: 0, mais: false });
+    expect((await ana('/api/producoes/busca?q=jogo', { method: 'POST' })).status).toBe(405);
+  });
+});
+
 /* Pegar e voltar para a Entrada (#110): a rota de mudar a etapa, para quem está ligado a um designer (pelo e-mail no
    cadastro de designers, o mesmo que a Configuração · Pessoas lê), com o Trello e o Teable de mentira. O PROMeiro só
    ESCREVE no Trello (o membro do card, mover de lista), nunca lê; a Produção muda na hora, e nada vai para o Teable. */

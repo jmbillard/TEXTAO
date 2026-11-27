@@ -19,8 +19,10 @@ const animacoes = new WeakMap<Element, Animation>();
  * a nova (o card que vai de uma coluna para outra, os vizinhos que abrem ou fecham o espaço), e o que chegou agora
  * aparece subindo de leve (com prefers-reduced-motion, os dois só esmaecem). A foto de antes é tirada na renderização,
  * antes de o React mexer na tela. A primeira disposição (a tela que acabou de ler) não anima.
+ * @param chegada o que chegou agora aparece subindo (padrão); sem ela, só o que mudou de lugar desliza (a chegada fica
+ *   com o CSS, como a cascata da busca, #161)
  */
-export function useDeslize(raiz: RefObject<HTMLElement | null>, seletor: string, atributo: string, disposicao: string) {
+export function useDeslize(raiz: RefObject<HTMLElement | null>, seletor: string, atributo: string, disposicao: string, { chegada = true } = {}) {
   const ultima = useRef('');
   const fotografar = () => {
     const el = raiz.current;
@@ -39,6 +41,7 @@ export function useDeslize(raiz: RefObject<HTMLElement | null>, seletor: string,
     const mudancas = agora.flatMap((e): { e: HTMLElement; quadros: Keyframe[] }[] => {
       const de = antes.get(e.getAttribute(atributo) ?? '');
       const para = e.getBoundingClientRect();
+      if (!de && !chegada) return [];
       const mudou = !de || Math.abs(de.left - para.left) > 0.5 || Math.abs(de.top - para.top) > 0.5;
       if (parado) return mudou ? [{ e, quadros: [{ opacity: 0 }, { opacity: 1 }] }] : [];
       if (!de) return [{ e, quadros: [{ opacity: 0, transform: 'translateY(6px) scale(0.98)' }, { opacity: 1, transform: 'none' }] }];
