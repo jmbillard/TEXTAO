@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { gravarRascunhoDoDia, lerRascunhoDoDia } from '../dados/armazenamento';
+import { desfazerAPublicacao, gravarRascunhoDoDia, lerRascunhoDoDia, marcarPendencia, publicarODia } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
 import { Icone } from './icones';
 import { Marca } from './pecas';
+import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
 import './pauta.css';
 import './montarPauta.css';
@@ -16,7 +17,10 @@ import './montarPauta.css';
    o horário (escrito de qualquer jeito, gravado no padrão) e as demandas, texto livre: cada linha mostra na hora o que o
    PROMeiro entendeu (a atração, a data, as versões como etiquetas e, discretamente, a grafia no padrão). Tudo pelo
    teclado: Tab, Enter cria uma linha, as setas andam entre as linhas, Backspace na linha vazia apaga. O rascunho é
-   gravado sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable. */
+   gravado sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable.
+   Conferir e publicar (#127): "Conferir e publicar" leva à conferência (ConferirPauta.tsx), em que cada pendência tem
+   o "Corrigir", que volta à grade com o foco no campo, e o "está certo"; publicar mostra a tela "publicada". Na grade,
+   a faixa da publicação diz se o dia está publicado ou alterado, com o Desfazer e o histórico. */
 
 interface Props {
   /** o dia (AAAA-MM-DD); '' é amanhã */
@@ -57,6 +61,10 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [erroAoGravar, setErroAoGravar] = useState('');
   const [foco, setFoco] = useState<Foco>(null);
   const grade = useRef<HTMLDivElement>(null);
+  // a tela: a grade, a conferência ou a pauta recém-publicada (#127)
+  const [vista, setVista] = useState<'montar' | 'conferir' | 'publicada'>('montar');
+  const [publicando, setPublicando] = useState(false);
+  const [erroAoPublicar, setErroAoPublicar] = useState('');
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
   const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[] } | null>(null);
@@ -109,6 +117,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const carregar = useCallback(() => {
     let vivo = true;
     setFalha('');
+    setVista('montar');
     void gravarAgora()
       .then(() => lerRascunhoDoDia(dia))
       .then((d) => {
@@ -172,6 +181,45 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     return () => window.removeEventListener('keydown', tecla);
   }, [segunda, dados, irPara]);
 
+  /** O que o servidor diz da publicação, sem mexer nas posições da tela. */
+  const daPublicacao = (d: DiaDaEscala) => setDados((antes) => (antes?.dia === d.dia ? { ...antes, estado: d.estado, semana: d.semana, publicacao: d.publicacao, historico: d.historico, dispensadas: d.dispensadas } : antes));
+  const conferir = async () => {
+    setErroAoPublicar('');
+    await gravarAgora();
+    setVista('conferir');
+    window.scrollTo(0, 0);
+  };
+  const publicar = async () => {
+    if (!dados) return;
+    setPublicando(true);
+    setErroAoPublicar('');
+    try {
+      // publica o que está gravado: o que falta gravar vai antes
+      await gravarAgora();
+      daPublicacao(await publicarODia(dados.dia));
+      setVista('publicada');
+      window.scrollTo(0, 0);
+    } catch (e) {
+      setErroAoPublicar(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPublicando(false);
+    }
+  };
+  const desfazer = async () => {
+    if (!dados) return;
+    try {
+      daPublicacao(await desfazerAPublicacao(dados.dia));
+      setVista('montar');
+    } catch (e) {
+      setErroAoGravar(e instanceof Error ? e.message : String(e));
+      setGravacao('erro');
+    }
+  };
+  const marcar = (chave: string, certo: boolean) => {
+    if (!dados) return;
+    marcarPendencia(dados.dia, chave, certo).then(daPublicacao, (e) => setErroAoPublicar(e instanceof Error ? e.message : String(e)));
+  };
+
   const atual = dados && (!dia || dados.dia === dia) ? dados : null;
   const rel = atual ? perto(atual.dia, hoje) : '';
   return (
@@ -195,10 +243,22 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
             <>
               <span className="ponto" aria-hidden="true" /> rascunho guardado · só a coordenação vê
             </>
+          ) : atual?.estado === 'publicado' ? (
+            <>
+              <span className="ponto" aria-hidden="true" /> publicada
+            </>
+          ) : atual?.estado === 'alterado' ? (
+            'alterada depois de publicar'
           ) : null}
         </span>
       </header>
       <main className="pauta-pagina montar-pagina">
+        {atual && vista === 'conferir' ? (
+          <ConferirODia dados={atual} posicoes={posicoes} hoje={hoje} publicando={publicando} erro={erroAoPublicar} voltar={() => setVista('montar')} corrigir={(alvo) => (setVista('montar'), setFoco(alvo))} marcar={marcar} publicar={() => void publicar()} />
+        ) : atual && vista === 'publicada' ? (
+          <DiaPublicado dados={atual} posicoes={posicoes} voltar={() => setVista('montar')} desfazer={() => void desfazer()} irPara={irPara} />
+        ) : (
+        <>
         <div className="pauta-cabeca montar-cabeca">
           <div>
             <h1>Montar a pauta</h1>
@@ -212,12 +272,18 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
                   </>
                 )}
                 {' · '}
-                {atual.estado === 'rascunho' ? <span className="montar-rascunho">rascunho</span> : 'vazio'}
+                {atual.estado === 'vazio' ? 'vazio' : <span className={`montar-${atual.estado}`}>{atual.estado}</span>}
               </p>
             )}
           </div>
+          {atual && posicoes.length > 0 && (
+            <button type="button" className="botao primario" onClick={() => void conferir()}>
+              Conferir e publicar →
+            </button>
+          )}
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
+        {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}
@@ -271,6 +337,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
               <span><kbd>⌫</kbd> na linha vazia apaga</span>
             </p>
           </div>
+        )}
+        </>
         )}
       </main>
     </div>

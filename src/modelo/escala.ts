@@ -25,9 +25,20 @@ export const TURNOS_DE_FABRICA: readonly TurnoDaEscala[] = [
 ];
 export const ehTurno = (x: unknown): x is IdDoTurno => TURNOS_DE_FABRICA.some((t) => t.id === x);
 
-/** Cada dia está vazio (nada montado) ou em rascunho (montado e não publicado). Publicar vem depois. */
-export type EstadoDoDia = 'vazio' | 'rascunho';
+/**
+ * Cada dia está vazio (nada montado), em rascunho (montado e não publicado), publicado ou alterado (publicado e mudado
+ * depois, à espera de publicar de novo, #127).
+ */
+export type EstadoDoDia = 'vazio' | 'rascunho' | 'publicado' | 'alterado';
+/** O estado do dia que nunca foi publicado (o servidor diz publicado e alterado). */
 export const estadoDoDia = (posicoes: readonly unknown[]): EstadoDoDia => (posicoes.length ? 'rascunho' : 'vazio');
+
+/** Uma publicação do dia (#127): quando, por quem e quantas pendências "para olhar" ficaram. */
+export interface PublicacaoDoDia {
+  em: string;
+  por: string | null;
+  pendencias: number;
+}
 
 /** Uma demanda da posição: uma claquete ou uma tarefa, como foi escrita (a claquete, no padrão). */
 export interface DemandaDaEscala {
@@ -57,6 +68,12 @@ export interface DiaDaEscala {
   /** quando o rascunho foi gravado por último, e por quem (null: nunca) */
   gravadoEm: string | null;
   gravadoPor: string | null;
+  /** a publicação que vale (a última não desfeita); null: nenhuma (#127) */
+  publicacao: PublicacaoDoDia | null;
+  /** todas as publicações do dia, a mais nova primeiro; a desfeita diz quando */
+  historico: (PublicacaoDoDia & { desfeitaEm: string | null })[];
+  /** as chaves das pendências da conferência que a coordenação disse que estão certas */
+  dispensadas: string[];
 }
 
 /* ---------- o horário ---------- */
