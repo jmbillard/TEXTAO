@@ -52,7 +52,7 @@ const filme = (id: string, titulo: string, ano: number | null, nomeDaPasta: stri
   });
 
 const filmes = () => [
-  filme('recFilmeA', 'Viagem ao Farol', 2021, 'VIAGEM AO FAROL', { poster: [{ name: 'farol.jpg', token: 'x' }] }),
+  filme('recFilmeA', 'Viagem ao Farol', 2021, 'VIAGEM AO FAROL', { poster: [{ name: 'farol.jpg', token: 'x', mimetype: 'image/jpeg', presignedUrl: 'https://teable-publico.exemplo.com/api/attachments/read/private/x?token=assinado' }] }),
   filme('recFilmeB', 'Corrida no Gelo', 2019, 'CORRIDA NO GELO (2019)'),
   filme('recFilmeC', 'Fora da Janela', 2020, 'FORA DA JANELA'),
 ];
@@ -64,12 +64,13 @@ const exibicoes = () => [
   // B: ontem (fica: a agenda vai de 2 dias atrás a 45 à frente) e amanhã, com o card só no link
   exibicao('recExB1', 'recFilmeB', -1),
   exibicao('recExB2', 'recFilmeB', 1, { link: 'https://trello.com/c/cardFalsoB/12-corrida' }),
-  // C: fora da janela
-  exibicao('recExC1', 'recFilmeC', -3),
+  // C: fora da janela (a agenda volta 14 dias, #182)
+  exibicao('recExC1', 'recFilmeC', -15),
   exibicao('recExC2', 'recFilmeC', 46),
 ];
 
 let parar: (() => Promise<void>) | null = null;
+let baseAtual = '';
 afterEach(async () => {
   await parar?.();
   parar = null;
@@ -84,7 +85,17 @@ async function preparado(env: Record<string, string> = ENV) {
     pedidosAoTrello.push(endereco);
     return Response.json({});
   };
-  const app = criarApp({ db, env, buscarNoTeable: teable, abrirPg: teable.abrirPg, trello: (e: unknown, deps: Record<string, unknown>) => criarTrello(e, { ...deps, buscar: buscarNoTrello }) });
+  // os arquivos dos anexos (#182): o link assinado que o Teable escreve no endereço público dele (de dentro do PROMeiro,
+  // o login do Access) e o mesmo caminho no TEABLE_URL, que entrega a imagem
+  const arquivos = async (endereco: string, init?: RequestInit) => {
+    const url = new URL(endereco);
+    if (url.pathname.startsWith('/api/attachments/read/'))
+      return url.origin === new URL(TEABLE_FALSO.TEABLE_URL).origin
+        ? { ok: true, status: 200, headers: new Headers({ 'content-type': 'image/jpeg' }), arrayBuffer: async () => new TextEncoder().encode('jpg-do-farol').buffer }
+        : { ok: true, status: 200, headers: new Headers({ 'content-type': 'text/html' }), arrayBuffer: async () => new TextEncoder().encode('<html>entrar</html>').buffer };
+    return teable(endereco, init);
+  };
+  const app = criarApp({ db, env, buscarNoTeable: arquivos, abrirPg: teable.abrirPg, trello: (e: unknown, deps: Record<string, unknown>) => criarTrello(e, { ...deps, buscar: buscarNoTrello }) });
   await app.releituraPronta;
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
@@ -93,6 +104,7 @@ async function preparado(env: Record<string, string> = ENV) {
     await new Promise<void>((ok) => servidor.close(() => ok()));
   };
   const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+  baseAtual = base;
   const ler = async (headers: Record<string, string> = { 'cf-access-authenticated-user-email': ANA }) => {
     const r = await fetch(`${base}/api/filmes/agenda`, { headers });
     return { status: r.status, corpo: (await r.json()) as { hoje?: string; filmes?: Filme[]; erro?: string } };
@@ -186,5 +198,17 @@ describe('a agenda de filmes da aba Filmes (#169)', () => {
     expect((await eu())['filmes.agenda']).toBe('sessao');
     expect((await preferir('quadro')).status).toBe(400);
     expect((await eu())['filmes.agenda']).toBe('sessao');
+  });
+
+  it('o caminho real do pôster (#182): o endereço que a agenda manda abre a imagem com login, sem token e sem o PROMEIRO_URL', async () => {
+    const { ler } = await preparado({ ...ENV, TEABLE_FILMES: 'tblFalso_bseFalso_filmes', POSTER_PUBLICO_TOKEN: 'token-do-padeiro', PROMEIRO_URL: 'https://promeiro.exemplo.com' });
+    const { corpo } = await ler();
+    const farol = corpo.filmes!.find((f) => f.id === 'recFilmeA')!;
+    // relativo, do próprio PROMeiro (o <img> leva o cookie do login): nem o endereço público, nem o token do Padeiro
+    expect(farol.poster).toBe('/api/filmes/poster/recFilmeA');
+    const r = await fetch(`${baseAtual}${farol.poster}`, { headers: { 'cf-access-authenticated-user-email': ANA } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toBe('image/jpeg');
+    expect(await r.text()).toBe('jpg-do-farol');
   });
 });

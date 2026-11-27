@@ -5,7 +5,7 @@
 // (tests/fixtures/teable-falso.mjs): a tabela EDICAO_producao achada pelo nome e o Postgres dele respondendo as linhas
 // da pauta, fictícias, da semana de hoje e da anterior. Nada vai ao Trello.
 // - A Semana (computador, claro e escuro, pela Lia, que não é editora): sem o texto embaixo do título; um editor por
-//   linha, "sem editor · sobrou" no fim; o código das versões no fim do nome; a tarefa com outro visual; o ⚑ do aviso
+//   linha ("sem editor · sobrou" no fim, só para a coordenação e os editores, #172); o código das versões no fim do nome; a tarefa com outro visual; o ⚑ do aviso
 //   com o balão; o recado do dia e quem está fora (o que sobrou, só a coordenação e os editores, #172); a claquete com a produção da arte (#96); o hover da
 //   agenda sem sublinhado, o lápis do apelido e o clique direito; a ficha no card aberto do centro (#160, alternativa
 //   A); a busca por claquete, atração e editor, nas semanas vizinhas também; o interruptor do código; anterior,
@@ -213,10 +213,11 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(await p.locator('th.pauta-dia.hoje').evaluateAll((ths) => ths.map((t) => t.dataset.dia)), [hoje]);
   assert.equal((await p.locator('th.pauta-dia.hoje .pauta-dia-rel').textContent()).trim(), 'hoje');
 
-  // um editor por linha, na ordem do turno de costume; "sem editor · sobrou" no fim
-  assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+  // um editor por linha, na ordem do turno de costume
+  assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte']);
   assert.equal((await fileira(p, 'Carla Duarte').locator('.pauta-editor-meta').textContent()).trim(), '7 claquetes');
-  assert.equal((await fileira(p, 'sem editor').locator('.pauta-editor-meta').textContent()).trim(), 'sobrou');
+  // sem "sem editor · sobrou": a Lia não é da coordenação nem editora (#172; oSobrouPorPerfil)
+  assert.equal(await p.locator('.pauta-grade tr.sem-editor').count(), 0);
   // a Lia não é editora: nenhuma linha "você", sem "Minha pauta"
   assert.equal(await p.locator('tr.eu, .pauta-minha').count(), 0);
 
@@ -248,7 +249,7 @@ async function noComputador(navegador, url, tema) {
   const estilo = (l) => l.evaluate((e) => [getComputedStyle(e).fontStyle, getComputedStyle(e).fontFamily].join('|'));
   assert.notEqual(await estilo(tarefa.locator('.pauta-nome-com-versoes')), await estilo(claquete.locator('.pauta-nome-com-versoes')));
   assert.match(await estilo(tarefa.locator('.pauta-nome-com-versoes')), /^italic/);
-  assert.deepEqual(await textos(celula(p, 'sem editor', hoje).locator('.pauta-item.pauta-tarefa .pauta-texto')), ['CALHAUS']);
+  
 
   // a produção da arte aparece só na coluna de hoje; nos outros dias, só o nome
   assert.ok((await celula(p, 'Ana Ribeiro', hoje).locator('.pauta-producao').count()) > 0);
@@ -519,7 +520,7 @@ async function aSemanaNoSafari(navegador, url) {
   await p.waitForTimeout(400);
   let vista = await semanaAVista(p);
   assert.deepEqual(vista.dias, diasDe(segunda), `a semana de hoje inteira à vista (${JSON.stringify(vista)})`);
-  assert.deepEqual(vista.nomes, ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+  assert.deepEqual(vista.nomes, ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte']);
   assert.ok(vista.grade <= 1600 && vista.maiorDia < 400, `a grade cabe na tela (${JSON.stringify(vista)})`);
   // a semana na forma da pauta real
   await p.goto(`${url}#/pauta/semana/${DEPOIS}`);
@@ -528,7 +529,7 @@ async function aSemanaNoSafari(navegador, url) {
   await p.waitForTimeout(400);
   vista = await semanaAVista(p);
   assert.deepEqual(vista.dias, diasDe(DEPOIS), `a semana da forma real inteira à vista (${JSON.stringify(vista)})`);
-  assert.deepEqual([...vista.nomes].sort(), [...DA_FORMA_REAL, 'sem editor'].sort(), 'o nome de cada editor à vista');
+  assert.deepEqual([...vista.nomes].sort(), [...DA_FORMA_REAL].sort(), 'o nome de cada editor à vista');
   assert.ok(vista.grade <= 1600 && vista.maiorDia < 400, `a grade cabe na tela (${JSON.stringify(vista)})`);
   // o fim de semana sem ninguém: o traço em cada linha
   assert.deepEqual(await textos(fileira(p, 'Rita Fontes').locator(`td[data-dia="${mais(DEPOIS, 5)}"], td[data-dia="${mais(DEPOIS, 6)}"]`)), ['–', '–']);
@@ -562,13 +563,25 @@ async function oSobrouPorPerfil(navegador, url, api) {
     await p.locator('.pauta-fora').waitFor();
     const sobrou = p.locator('.pauta-sobrou');
     ve[quem] = (await sobrou.count()) ? await textos(sobrou.locator('.pauta-texto')) : null;
-    if (ve[quem]) assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
+    // a linha "sem editor · sobrou" da Semana vai junto com a folha
+    const linha = (await p.locator('.pauta-grade tr.sem-editor').count()) ? await textos(celula(p, 'sem editor', hoje).locator('.pauta-item.pauta-tarefa .pauta-texto')) : null;
+    assert.deepEqual(linha, ve[quem], `${quem}: a linha da Semana e a folha do que sobrou juntas`);
+    if (ve[quem]) {
+      assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
+      assert.equal((await fileira(p, 'sem editor').locator('.pauta-editor-meta').textContent()).trim(), 'sobrou');
+    }
+    // e a coluna do Dia
+    await p.getByRole('radio', { name: 'Dia', exact: true }).click();
+    await p.locator('.pauta-colunas').waitFor();
+    assert.equal(await p.locator('.pauta-coluna.sobra').count(), ve[quem] ? 1 : 0, `${quem}: a coluna do que sobrou no Dia`);
+    await p.getByRole('radio', { name: 'Semana', exact: true }).click();
+    await p.locator('.pauta-grade').waitFor();
     if (CAPTURAS && quem !== 'editora') await capturar(p, `00-sobrou-${quem.replace(/\s+/g, '-')}`, false);
     assert.deepEqual(erros, []);
     await ctx.close();
   }
   assert.deepEqual(ve, { coordenação: ['CALHAUS'], editora: ['CALHAUS'], designer: null, 'sem perfil': null });
-  console.log('ok: o "Sobrou · sem editor" só para a coordenação e os editores; a designer e quem não tem perfil não veem');
+  console.log('ok: o "Sobrou · sem editor" (a folha, a linha da Semana e a coluna do Dia) só para a coordenação e os editores; a designer e quem não tem perfil não veem');
 }
 
 /**
@@ -633,7 +646,7 @@ async function entradaNoCelular(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, iphone, '');
   const entrada = p.locator('.barra-topo .topo-pauta');
   await entrada.waitFor();
-  assert.equal(await entrada.locator('span').isVisible(), false);
+  assert.equal(await entrada.locator('.caminho-nome').isVisible(), false, 'no celular, só o ícone');
   await semRolagemDeLado(p, 'fila no celular');
   await entrada.tap();
   await p.locator('.pauta-grade').waitFor();
@@ -875,7 +888,7 @@ async function oResumoEACopia(navegador, url, teable) {
     await p.locator('.pauta-grade').waitFor();
     await p.locator('.pauta-copia').waitFor();
     assert.match(await p.locator('.pauta-copia').textContent(), /O banco do Teable não respondeu: esta é a cópia da pauta das \d{2}:\d{2}/);
-    assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+    assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte']);
     await capturar(p, '11-semana-copia-e-resumo-escuro');
   } finally {
     teable.estado.fora = false;

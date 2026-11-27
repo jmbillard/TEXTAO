@@ -3,6 +3,7 @@
    a ordem dos cards (o prazo e, no mesmo prazo, a prioridade ALTA primeiro). O servidor monta a lista a partir das
    Produções do PROMeiro, sem ler o Trello; o navegador só desenha. O mesmo módulo serve aos dois: só sintaxe que o
    Node apaga. */
+import type { CampanhaDoCard } from './campanhas.ts';
 import type { Praca } from './pracas.ts';
 import type { VersoesDaChamada } from './versoesDoRoteiro.ts';
 import type { Versao } from './pauta.ts';
@@ -42,6 +43,8 @@ export interface CardDaProducao {
   versoesLidas?: Versao[];
   /** a letra e a versão do roteiro dela (#166), como o título mostra ("B", "V2", "B V2"); ausente na A V1 e sem roteiro */
   letraEVersao?: string;
+  /** as campanhas da Produção (#178), a primeira ligada primeiro (a etiqueta mostra ela e "+N") */
+  campanhas?: CampanhaDoCard[];
 }
 
 export interface BlocoDaPraca {

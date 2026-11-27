@@ -189,6 +189,8 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 /* a claquete quebra a linha onde precisar: nunca é cortada */
 .prod-claquete { font: 600 12.5px/1.3 var(--mono); letter-spacing: -0.01em; color: var(--tinta); overflow-wrap: anywhere; }
 .prod-atracao { font: 500 12px/1.3 var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
+/* a etiqueta da campanha (#178), embaixo da atração */
+.prod-card > .campanhas { display: flex; min-width: 0; }
 .prod-linha { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 8px; font-size: 11.5px; color: var(--tinta3); }
 .prod-artes { font: 600 16px/1.1 Caveat, cursive; color: var(--tinta2); letter-spacing: 0.01em; }
 .prod-prazo b { font-weight: 600; color: var(--tinta2); white-space: nowrap; }
@@ -249,35 +251,6 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   animation: chegar-busca var(--dur) var(--suave) both;
 }
 .prod-pagina > .prod-busca.saindo { animation: sair-busca 0.2s var(--suave) both; pointer-events: none; }
-@keyframes chegar-busca { from { opacity: 0; transform: translateY(-8px); } }
-@keyframes sair-busca { to { opacity: 0; transform: translateY(-6px); } }
-.prod-busca-topo { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 2px 2px 10px; background: var(--mesa); }
-.prod-busca-topo h2 { margin: 0; font: 400 24px/1.2 var(--serifa); color: var(--tinta); }
-.prod-busca-topo q { font-style: italic; }
-.prod-busca-falha { color: var(--falta); font: 500 14px/1.45 var(--sans); }
-.prod-busca-dica { font: 500 12px var(--sans); color: var(--tinta3); }
-/* o fio embaixo do topo: parado, uma régua; buscando, um brilho que corre por ele */
-.prod-busca-fio { position: absolute; left: 2px; right: 2px; bottom: 0; height: 1px; overflow: hidden; background: var(--regua); }
-.prod-busca-fio::after { content: ''; position: absolute; inset: 0; width: 30%; background: linear-gradient(90deg, transparent, var(--ultra), transparent); opacity: 0; transform: translateX(-100%); }
-.prod-busca.buscando .prod-busca-fio::after { opacity: 1; animation: correr-fio 0.9s var(--suave) infinite; }
-@keyframes correr-fio { to { transform: translateX(340%); } }
-.prod-busca-nada { margin: 6px 4px; }
-.prod-achados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; transition: opacity 0.18s; }
-/* buscando um termo novo, os achados de antes ficam à vista, mais apagados, até chegarem os novos */
-.prod-busca.buscando .prod-achados { opacity: 0.6; }
-.prod-achado { animation: surgir-achado var(--dur) var(--suave) backwards; animation-delay: var(--atraso, 0ms); }
-.prod-achado.deslizando { position: relative; z-index: 1; }
-@keyframes surgir-achado { from { opacity: 0; transform: translateY(8px) scale(0.985); } }
-.prod-achado-abrir {
-  width: 100%; box-sizing: border-box; display: grid; grid-template-columns: 112px minmax(0, 1.7fr) 52px minmax(0, 1fr) 150px; align-items: center; gap: 4px 16px;
-  padding: 10px 14px; border-radius: 10px; border: 1px solid var(--regua); background: var(--papel); color: var(--tinta); text-align: left; cursor: pointer; font: inherit;
-  transition: border-color 0.18s, box-shadow 0.18s var(--suave), transform 0.18s var(--suave);
-}
-.prod-achado-abrir:hover { border-color: var(--regua-forte); transform: translateY(-1px); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 4px 10px rgb(26 25 22 / 7%); }
-.prod-achado-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
-/* a etapa numa bolinha, com as cores das colunas */
-.prod-achado-etapa { display: inline-flex; align-items: center; gap: 7px; font: 600 11px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2); white-space: nowrap; }
-.prod-achado-etapa i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
 .prod-achado[data-etapa='produzindo'] .prod-achado-etapa i { background: var(--ultra); }
 .prod-achado[data-etapa='entregue'] .prod-achado-etapa i { background: var(--ok); }
 .prod-achado-nome { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -287,7 +260,6 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .prod-achado-designers { font: 500 12px/1.35 var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
 .prod-achado-quando { font: 500 12px/1.35 var(--sans); color: var(--tinta3); text-align: right; }
 .prod-achado-quando.entregue { color: var(--tinta2); }
-.prod-busca-mais { align-self: center; margin-top: 6px; animation: surgir-achado var(--dur) var(--suave) backwards; }
 
 /* ---------- o card aberto (#113, #160): a Produção no CardAberto (src/ui/cardAberto.css), no centro ---------- */
 .pa { display: flex; flex-direction: column; gap: 20px; }
@@ -411,9 +383,20 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 }
 @keyframes pa-desfazer-sobe { from { opacity: 0; transform: translateY(14px) scale(0.97); } }
 .pa-desfazer-botao { flex: none; background: var(--papel); border-color: var(--papel); color: var(--tinta); font-weight: 600; }
+/* o × da caixinha (CaixinhaDoDesfazer), o mesmo nas duas */
+.pa-desfazer-texto { min-width: 0; overflow-wrap: anywhere; }
+.pa-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
+.pa-desfazer-fechar:hover { opacity: 1; }
+/* as campanhas no card aberto (#178): as etiquetas, o "+" que abre a busca e a busca embaixo */
+.pa-campo.campanhas-do-card { grid-column: 1 / -1; }
+.pa-campo.campanhas-do-card .pa-chips { gap: 4px; }
+.pa-campo.campanhas-do-card .campanha { height: 24px; font-size: 12px; }
+.pa-menu-campanha { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; transform-origin: top left; animation: pa-menu-campanha-abre 0.22s var(--suave) both; }
+.pa-menu-campanha .escolha-nome-menu { position: static; width: 300px; max-width: calc(100vw - 32px); }
+@keyframes pa-menu-campanha-abre { from { opacity: 0; transform: translateY(-6px) scale(0.97); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .pa-valor.trocou, .pa-valor.trocou > span, .pa-artes li.marcada .b svg, .pa-artes > .vaga-y .pa-arte, .pa-desfazer, .pa-recusa, .pa-nova-arte-campo { animation: none; }
+  .pa-valor.trocou, .pa-valor.trocou > span, .pa-artes li.marcada .b svg, .pa-artes > .vaga-y .pa-arte, .pa-desfazer, .pa-recusa, .pa-nova-arte-campo, .pa-menu-campanha { animation: none; }
 }
 @media (max-width: 600px) {
   .artes.so-lista.pa-artes { margin: 0 -16px; }

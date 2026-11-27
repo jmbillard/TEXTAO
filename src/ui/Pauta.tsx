@@ -62,7 +62,8 @@ function ContagemDaSemana({ segunda, children }: { segunda: string; children: Re
     o movimento reduzido, só esmaece. O texto parado vai para o leitor de tela à parte (a contagem não é anunciada). */
 function PeriodoDaPauta({ visao, dia }: { visao: 'semana' | 'dia'; dia: string }) {
   const semana = useContext(SemanaQueConta);
-  const doDia = useContagemDoPeriodo(EIXO_DO_DIA, numeroDoDia(dia));
+  // na Semana, a contagem do dia fica parada (o período conta pela da semana)
+  const doDia = useContagemDoPeriodo(EIXO_DO_DIA, visao === 'dia' ? numeroDoDia(dia) : 0);
   const c = visao === 'dia' || !semana ? doDia : semana.contagem;
   const el = useRef<HTMLSpanElement>(null);
   useEsmaeceAoMudar(el, dia);
@@ -180,10 +181,11 @@ function TopoDoDiaDaGrade({ d, i, hoje, irPara }: { d: string; i: number; hoje: 
 }
 
 /** A Semana editor × dia, como no mock-up: a pessoa com "você" e a linha tingida; "sem editor · sobrou" no fim. */
-function GradeDaSemana({ dados, hoje, voce, irPara, abrir }: { dados: Semana; hoje: string; voce: string | null | undefined; irPara: Props['irPara']; abrir: AbrirClaquete }) {
+function GradeDaSemana({ dados, hoje, voce, irPara, abrir, comSobra }: { dados: Semana; hoje: string; voce: string | null | undefined; irPara: Props['irPara']; abrir: AbrirClaquete; comSobra: boolean }) {
   const rolagem = useRef<HTMLDivElement>(null);
   const grade = gradeDaSemana(dados);
-  const comSobra = grade.some((f) => !f.editor) ? grade : [...grade, { editor: '', celulas: dados.dias.map((dia) => ({ dia, turno: null, itens: [], infos: [], avisos: [] })) }];
+  // "sem editor · sobrou" no fim, só para a coordenação e os editores (#172, veOQueSobrou)
+  const fileiras = !comSobra ? grade.filter((f) => f.editor) : grade.some((f) => !f.editor) ? grade : [...grade, { editor: '', celulas: dados.dias.map((dia) => ({ dia, turno: null, itens: [], infos: [], avisos: [] })) }];
   const fora = (editor: string, dia: string) => (dados.fora ?? []).some((f) => f.dia === dia && ehDaPessoa(f.editor, editor));
   // a grade mais larga que a tela (celular, tablet): abre em hoje, logo depois da coluna dos nomes
   useLayoutEffect(() => {
@@ -208,7 +210,7 @@ function GradeDaSemana({ dados, hoje, voce, irPara, abrir }: { dados: Semana; ho
           </tr>
         </thead>
         <tbody>
-          {comSobra.map((f, i) => {
+          {fileiras.map((f, i) => {
             const eu = ehDaPessoa(f.editor, voce);
             const claquetes = f.celulas.reduce((n, c) => n + c.itens.filter((l) => l.tipo === 'claquete').length, 0);
             return (
@@ -307,6 +309,8 @@ function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir, 
   }, [dados]); // eslint-disable-line react-hooks/exhaustive-deps
   // o dia da mesa: no Dia, o dia aberto; na Semana, hoje (quando é da semana) ou a segunda
   const dia = visao === 'dia' ? mostrado : diasDaSemana(segunda).includes(hoje) ? hoje : segunda;
+  // o que sobrou sem editor (a folha, a linha da Semana e a coluna do Dia), só para a coordenação e os editores (#172)
+  const comSobra = !!dados && veOQueSobrou({ coordenacao: souCoordenacao(), editor: dados.voce.editor });
   return (
     <div className={`pauta-corpo pauta-corpo-${visao}${estreia === 'depois' ? '' : ' estreia'}`} ref={raiz}>
       {visao === 'dia' && <FitaDosDias dia={mostrado} hoje={hoje} ir={(d) => irPara({ dia: d })} />}
@@ -315,13 +319,13 @@ function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir, 
       ) : (
         <>
           <RecadoDoDia linhas={dados.linhas} dia={dia} hoje={hoje} />
-          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} abrir={abrir} comSobra={veOQueSobrou({ coordenacao: souCoordenacao(), editor: dados.voce.editor })} />
+          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} abrir={abrir} comSobra={comSobra} />
           {visao === 'dia' ? (
-            <ColunasDoDia linhas={dados.linhas} dia={mostrado} voce={dados.voce.editor} abrir={abrir} />
+            <ColunasDoDia linhas={dados.linhas} dia={mostrado} voce={dados.voce.editor} abrir={abrir} comSobra={comSobra} />
           ) : !dados.linhas.length ? (
             <p className="pauta-vazia desliza">Nada na pauta desta semana.</p>
           ) : (
-            <GradeDaSemana dados={dados} hoje={hojeDaGrade} voce={dados.voce.editor} irPara={irPara} abrir={abrir} />
+            <GradeDaSemana dados={dados} hoje={hojeDaGrade} voce={dados.voce.editor} irPara={irPara} abrir={abrir} comSobra={comSobra} />
           )}
         </>
       )}
