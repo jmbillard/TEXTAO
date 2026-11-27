@@ -35,6 +35,9 @@ import {
 } from '../modelo/ligarOsFilmes';
 import { reconhecerPraca, type Praca, type RegraDaPraca } from '../modelo/pracas';
 import { TABELAS_DO_TEABLE } from '../modelo/tabelasDoTeable';
+import { oQueMudaNosTurnos, turnosArrumados } from '../modelo/turnos';
+import type { TurnoDaEscala } from '../modelo/escala';
+import { ListaDosTurnos } from './TurnosDaConfiguracao';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { useTelaDeCelular } from './faixa';
@@ -150,6 +153,8 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
   const [conexoesAbertas, setConexoesAbertas] = useState(false);
   const [trocando, setTrocando] = useState<'quadro' | 'base' | null>(null);
   const [pessoas, setPessoas] = useState<PessoasDaConfiguracao | null>(null);
+  // os turnos da montagem da pauta (#124): o rascunho, como o das praças
+  const [rascunhoTurnos, setRascunhoTurnos] = useState<TurnoDaEscala[] | null>(null);
   const [falhaDasPessoas, setFalhaDasPessoas] = useState('');
 
   const fecharEscolha = useCallback(() => setEscolha(null), []);
@@ -161,6 +166,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
     setRascunho(s.pracas.proposta);
     setRascunhoCard(s.card.proposta);
     setRascunhoFilmes(s.filmes.proposta);
+    setRascunhoTurnos(s.turnos.salvo);
   }, []);
   const carregar = useCallback(() => {
     setFalha('');
@@ -200,7 +206,15 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
   // a praça dos filmes é uma das praças do rascunho (a nova junto)
   const estadoFilmes = useMemo(() => (rascunhoFilmes && quadro && completo ? estadoDosFilmes(rascunhoFilmes, quadro, completo.pracas) : null), [rascunhoFilmes, quadro, completo]);
   const mudouFilmes = useMemo(() => (rascunhoFilmes && secoes && quadro ? oQueMudaNosFilmes(rascunhoFilmes, secoes.filmes.salvo, quadro).length : 0), [rascunhoFilmes, secoes, quadro]);
-  const nMudancas = mudouPracas + mudouCard + mudouFilmes;
+  // os turnos não dependem do Trello: mudam mesmo sem o quadro (só não no celular)
+  const mudouTurnos = useMemo(() => {
+    if (!rascunhoTurnos || !secoes) return 0;
+    const arrumados = turnosArrumados(rascunhoTurnos);
+    if (JSON.stringify(arrumados) === JSON.stringify(secoes.turnos.salvo)) return 0;
+    return Math.max(1, oQueMudaNosTurnos(arrumados, secoes.turnos.salvo).length);
+  }, [rascunhoTurnos, secoes]);
+  const podeMudarTurnos = !celular;
+  const nMudancas = mudouPracas + mudouCard + mudouFilmes + mudouTurnos;
   // no celular, só consulta: nada muda; com o Trello fora do ar (#79), Praças, Card e Filmes ficam travados
   const podeMudar = !celular && !!quadro && !secao?.foraDoAr;
 
@@ -264,6 +278,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
     ...(mudouPracas && completo ? { pracas: completo } : {}),
     ...(mudouCard && rascunhoCard ? { card: rascunhoCard } : {}),
     ...(mudouFilmes && rascunhoFilmes ? { filmes: rascunhoFilmes } : {}),
+    ...(mudouTurnos && rascunhoTurnos ? { turnos: rascunhoTurnos } : {}),
   });
 
   const conferir = async () => {
@@ -367,6 +382,22 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
             desfazer={desfazerNosFilmes}
             mudar={mudarFilmes}
           />
+          {rascunhoTurnos && (
+            <section className="cfg-secao" aria-labelledby="cfg-turnos">
+              <TopoDaSecao
+                id="cfg-turnos"
+                titulo="Turnos"
+                ajuda={AJUDA_DOS_TURNOS}
+                cor="ok"
+                resumo={`${plural(secoes.turnos.salvo.length, 'turno', 'turnos')}${secoes.turnos.deFabrica ? ' · os de fábrica' : ''}`}
+                verTudo={null}
+                alternarVerTudo={() => {}}
+              />
+              <div className="cfg-secao-corpo">
+                <ListaDosTurnos turnos={rascunhoTurnos} podeMudar={podeMudarTurnos} mudar={setRascunhoTurnos} />
+              </div>
+            </section>
+          )}
           <SecaoDasPessoas pessoas={pessoas} falha={falhaDasPessoas} podeMudar={!celular} mudar={mudarAsPessoas} />
           <SecaoDasConexoes conexoes={secoes.conexoes} aberta={conexoesAbertas} alternar={() => setConexoesAbertas((v) => !v)} podeMudar={!celular} trocar={setTrocando} />
           <nav className="cfg-rodape" aria-label="Mais da Configuração">
@@ -381,7 +412,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
         )}
       </main>
 
-      {podeMudar && nMudancas > 0 && !conferencia && (
+      {((podeMudar && nMudancas > 0) || (podeMudarTurnos && mudouTurnos > 0)) && !conferencia && (
         <div className="cfg-barra" role="region" aria-label="Mudanças">
           <span className="cfg-barra-n">{plural(nMudancas, 'mudança', 'mudanças')}</span>
           <button
@@ -391,6 +422,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
               setRascunho(secao?.proposta ?? null);
               setRascunhoCard(secoes?.card.proposta ?? null);
               setRascunhoFilmes(secoes?.filmes.proposta ?? null);
+              setRascunhoTurnos(secoes?.turnos.salvo ?? null);
               setEditando(null);
               setNova(null);
             }}
@@ -456,6 +488,9 @@ interface PropsDaSecao {
   escolher: (e: Escolha) => void;
   desfazer: (chaves: string[]) => void;
 }
+
+const AJUDA_DOS_TURNOS =
+  'Os turnos da montagem da pauta, na ordem da grade, cada um com o horário padrão de uma posição nova (a posição pode ter o seu). Sem nada salvo, valem os de fábrica. Tirar um turno não apaga nada: os dias já montados continuam com as posições dele.';
 
 const AJUDA_DAS_PRACAS =
   'O PROMeiro liga pelo nome a entrada de cada praça (a sigla ou uma palavra da regra + ENTRADA), a saída (+ SAÍDA, ENTREGUE ou PRONTO) e a opção no campo Praça. Aqui só aparece o que precisa de você. A ordem decide quando duas regras batem; a padrão vale quando a claquete não diz a praça.';

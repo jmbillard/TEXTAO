@@ -452,7 +452,9 @@ os avisos do dia.
 _Evitar_: vaga, slot
 
 **Ilha**:
-A sala de edição, com número e tipo (AVID, VDI…). Fica nos Cadastros.
+A sala de edição, com tipo (AVID, VDI…), número e nome opcional. Fica nos Cadastros (guardada no PROMeiro). AVID e
+ILHA com o mesmo número são duas ilhas, como estão escritas. A **ilha de costume** do editor é a que mais se repete nas
+posições dele nas oito semanas antes do dia; a ilha está **ocupada** quando outra posição do mesmo turno já está nela.
 _Evitar_: sala, estação
 
 **Ausência**:

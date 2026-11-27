@@ -43,7 +43,9 @@ import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs
 import { criarPreferencias } from './preferencias.mjs';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { criarEscala, posicoesDoPedido } from './escala.mjs';
-import { TURNOS_DE_FABRICA } from '../src/modelo/escala.ts';
+import { criarIlhas } from './ilhas.mjs';
+import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
+import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
@@ -701,6 +703,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const areas = criarAreas();
   // montar a pauta (#123): o papel de coordenação e o rascunho do dia, no SQLite (nada vai ao Teable)
   const escala = criarEscala(db);
+  // o cadastro das ilhas (#124), também no SQLite: a montagem da pauta é quem usa
+  const ilhas = criarIlhas(db);
   /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
   const daPessoa = (email, admin) => areas.daPessoa(email, { cadastros, admin, preferencias, coordenacao: escala.ehCoordenacao(email) });
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
@@ -1547,7 +1551,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * Montar a pauta (#123), só para a coordenação: GET /api/montar-pauta?dia= (sem ele, amanhã, em São Paulo) lê o
    * rascunho do dia, com as abas da semana (o estado de cada dia), os turnos e a lista dos editores cadastrados; PUT
    * { posicoes } troca o rascunho do dia inteiro (o horário e a claquete vão para o padrão) e devolve o mesmo que o GET.
-   * Fica no SQLite do PROMeiro: nada vai ao Teable.
+   * Fica no SQLite do PROMeiro: nada vai ao Teable. Os turnos são os da Configuração (#124) e, no fim, os que saíram
+   * dela e ainda têm posição no dia; a ilha sai do cadastro das ilhas (a que já estava na posição continua, mesmo
+   * removida do cadastro); vêm junto as ilhas, a de costume de cada editor e as ilhas ocupadas naquele turno.
    */
   async function rotaDeMontarAPauta(req, res, eu) {
     if (req.method !== 'GET' && req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
@@ -1555,16 +1561,68 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const pedido = new URL(req.url, 'http://x').searchParams.get('dia') ?? '';
     const dia = pedido ? diaOuHoje(pedido, '') : diaVizinho(diaEmSaoPaulo(), 1);
     if (!dia) return json(res, 400, { erro: 'Dia inválido.' });
+    const turnos = turnosDaConfiguracao(configuracao.valores());
     if (req.method === 'PUT') {
       try {
-        const posicoes = posicoesDoPedido(((await lerCorpo(req)) ?? {}).posicoes, dia);
+        const antes = escala.lerDia(dia).posicoes;
+        // a ilha do cadastro; a que saiu dele, só na posição que já a tinha
+        const cadastradas = new Set(ilhas.todas().map((i) => i.id));
+        const validos = {
+          turnos: new Set(turnosDoDia(turnos, antes).map((t) => t.id)),
+          ilhaVale: (ilha, posicao) => cadastradas.has(ilha) || antes.some((p) => p.id === posicao && p.ilha === ilha),
+        };
+        const posicoes = posicoesDoPedido(((await lerCorpo(req)) ?? {}).posicoes, dia, validos);
         escala.gravarDia(dia, posicoes, eu.email);
       } catch (e) {
         return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
       }
     }
     const editores = (await areas.nomesDosCadastros(cadastros)).editor.sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    return json(res, 200, { dia, ...escala.lerDia(dia), semana: escala.estados(diasDaSemana(segundaDaSemana(dia))), turnos: TURNOS_DE_FABRICA, editores });
+    const lido = escala.lerDia(dia);
+    return json(res, 200, {
+      dia,
+      ...lido,
+      semana: escala.estados(diasDaSemana(segundaDaSemana(dia))),
+      turnos: turnosDoDia(turnos, lido.posicoes),
+      editores,
+      ilhas: ilhas.todas(),
+      costume: ilhas.deCostume(dia),
+      ocupadas: ilhasOcupadas(lido.posicoes),
+    });
+  }
+
+  /**
+   * O cadastro das ilhas (#124), no SQLite do PROMeiro: GET para qualquer pessoa logada (com o que ela pode fazer);
+   * POST { tipo, numero, nome } cadastra e PUT /:id muda, pela coordenação e pelos administradores; DELETE /:id tira,
+   * só administradores (as posições que já tinham a ilha continuam com ela).
+   */
+  async function rotaDasIlhas(req, res, eu, caminho) {
+    const id = decodeURIComponent(caminho.slice('/api/cadastros/ilhas/'.length));
+    const admin = cadastros.podeApagar(eu.email);
+    const podeCadastrar = admin || escala.ehCoordenacao(eu.email);
+    try {
+      if (caminho === '/api/cadastros/ilhas') {
+        if (req.method === 'GET') return json(res, 200, { ilhas: ilhas.todas(), podeCadastrar, podeRemover: admin });
+        if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+        if (!podeCadastrar) return json(res, 403, { erro: 'Só a coordenação e os administradores cadastram ilhas.' });
+        const ilha = ilhas.criar((await lerCorpo(req)) ?? {}, eu.email);
+        console.log(`[cadastros] ${eu.email} cadastrou a ilha ${ilha.tipo} ${ilha.numero}`);
+        return json(res, 201, { ilha });
+      }
+      if (req.method === 'PUT') {
+        if (!podeCadastrar) return json(res, 403, { erro: 'Só a coordenação e os administradores mudam ilhas.' });
+        return json(res, 200, { ilha: ilhas.mudar(id, (await lerCorpo(req)) ?? {}, eu.email) });
+      }
+      if (req.method === 'DELETE') {
+        if (!admin) return json(res, 403, { erro: 'Só administradores removem ilhas.' });
+        ilhas.remover(id);
+        console.log(`[cadastros] ${eu.email} removeu a ilha ${id}`);
+        return json(res, 200, { ok: true });
+      }
+      return json(res, 405, { erro: 'Método não permitido.' });
+    } catch (e) {
+      return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
+    }
   }
 
   /** Cadastros de atrações, redatores e editores: todos cadastram; só CADASTRO_ADMINS removem. */
@@ -1690,6 +1748,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const daPraca = await lerSecaoPracas(trello, env, lido);
     const teable = teableForaDoAr();
     return {
+      // os turnos (#124): não dependem do Trello, nem travam com ele fora
+      turnos: { salvo: turnosDaConfiguracao(configuracao.valores()), deFabrica: !salvos.has('TURNOS') },
       pracas: travada(daPraca),
       card: travada(card),
       filmes: travada(filmes),
@@ -1839,7 +1899,19 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const corpo = await lerCorpo(req).catch(() => null);
       if (acao === '/trocar') return await trocarAConexao(res, eu, corpo);
       if (acao === '/voltar') return await voltarNoHistorico(res, eu, corpo);
-      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
+      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined && corpo?.turnos === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
+      // os turnos (#124): sem o Trello; vindo só eles, o quadro nem é lido
+      if (corpo.turnos !== undefined && !Array.isArray(corpo.turnos)) return json(res, 400, { erro: 'Os turnos vieram incompletos.' });
+      const turnosNovos = corpo.turnos === undefined ? null : turnosArrumados(corpo.turnos.slice(0, 20));
+      const dosTurnos = turnosNovos && conferirTurnos(turnosNovos, turnosDaConfiguracao(configuracao.valores()));
+      const soTurnos = corpo.pracas === undefined && corpo.card === undefined && corpo.filmes === undefined;
+      if (soTurnos) {
+        if (acao === '/conferir') return json(res, 200, dosTurnos);
+        if (!dosTurnos.ok) return json(res, 422, { erro: 'A conferência não passou: nada foi salvo.', conferencia: dosTurnos });
+        mudarConfiguracao({ TURNOS: JSON.stringify(turnosNovos) }, { por: eu.email });
+        console.log(`[configuração] ${eu.email} salvou os turnos: ${dosTurnos.muda.map((m) => m.oque).join(', ') || 'sem mudança'}`);
+        return json(res, 200, await lerAsSecoes());
+      }
       const pracas = corpo.pracas === undefined ? null : secaoDoPedido(corpo);
       if (corpo.pracas !== undefined && !pracas) return json(res, 400, { erro: 'As praças vieram incompletas.' });
       const card = corpo.card === undefined ? null : cardDoPedido(corpo);
@@ -1854,7 +1926,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // a praça dos filmes é uma das praças que vão valer: as do pedido, quando as praças mudam junto
       const sessoes = filmesNovos && (await sessoesDoCadastro(cadastros)).sessoes;
       const dosFilmes = filmesNovos && conferirSecaoDosFilmes(env, lido.quadro, filmesNovos, { pracas: pracas ? pracas.pracas : geracao.pracas, sessoes });
-      const partes = [daPraca, doCard?.conferencia, dosFilmes].filter(Boolean);
+      const partes = [daPraca, doCard?.conferencia, dosFilmes, dosTurnos].filter(Boolean);
       const conferencia = {
         ok: partes.every((c) => c.ok),
         itens: partes.flatMap((c) => c.itens),
@@ -1883,12 +1955,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           ...(completa ? mudancasDaSecao(completa.secao) : {}),
           ...(doCard ? mudancasDoCard(doCard.secao) : {}),
           ...(filmesNovos ? mudancasDosFilmes(filmesNovos) : {}),
+          ...(turnosNovos ? { TURNOS: JSON.stringify(turnosNovos) } : {}),
           LIGADO_A_MAO: JSON.stringify(aMao),
         },
         { por: eu.email, quadro: lido.quadro },
       );
       const criadas = completa?.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
-      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
+      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes', turnosNovos && 'os turnos'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
       return json(res, 200, await lerAsSecoes());
     } catch (e) {
       console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);
@@ -2681,6 +2754,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, producoes.linhaDoTempo({ card, producao }));
     }
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir', 'apagar', 'modo', 'copia', 'recriar'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
+    if (caminho === '/api/cadastros/ilhas' || caminho.startsWith('/api/cadastros/ilhas/')) return rotaDasIlhas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta/semana' || caminho === '/api/pauta/dia') {
       // a Semana (#94) e o Dia (#97) da pauta da edição, para qualquer pessoa logada: lidos do Postgres do Teable (só

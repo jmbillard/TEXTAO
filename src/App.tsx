@@ -40,7 +40,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'correcoes' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'montar'; dia: string } | { t: 'area'; area: AreaDosRoteiros; roteiro?: string } | { t: 'producoes' };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string; ilhas?: boolean } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'correcoes' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'montar'; dia: string } | { t: 'area'; area: AreaDosRoteiros; roteiro?: string } | { t: 'producoes' };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -83,7 +83,8 @@ const telaDoHash = (): Tela => {
   if (mp) return { t: 'montar', dia: mp[1] ?? '' };
   const p = enderecoDaPauta(location.hash);
   if (p) return { t: 'pauta', ...p };
-  const c = /^#\/cadastros(?:\/(atracoes|redatores|editores))?$/.exec(location.hash);
+  const c = /^#\/cadastros(?:\/(atracoes|redatores|editores|ilhas))?$/.exec(location.hash);
+  if (c?.[1] === 'ilhas') return { t: 'cadastros', aba: 'atracoes', ilhas: true };
   return c ? { t: 'cadastros', aba: (c[1] as TipoCadastro | undefined) ?? 'atracoes' } : { t: 'biblioteca' };
 };
 /** O endereço aponta para uma tela que o app não conhece (e caiu na fila). */
@@ -223,7 +224,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'correcoes' ? '#/correcoes' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'montar' ? `#/pauta/montar${nova.dia ? `/${nova.dia}` : ''}` : nova.t === 'area' ? `#/${nova.area}${nova.roteiro ? `/r/${encodeURIComponent(nova.roteiro)}` : ''}` : nova.t === 'producoes' ? '#/designer/producoes' : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.ilhas ? 'ilhas' : (nova.aba ?? 'atracoes')}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'correcoes' ? '#/correcoes' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'montar' ? `#/pauta/montar${nova.dia ? `/${nova.dia}` : ''}` : nova.t === 'area' ? `#/${nova.area}${nova.roteiro ? `/r/${encodeURIComponent(nova.roteiro)}` : ''}` : nova.t === 'producoes' ? '#/designer/producoes' : '#/';
     try {
       if (location.hash !== hash) history.pushState(null, '', hash);
     } catch {
@@ -580,7 +581,7 @@ export function App() {
       {tela.t === 'andamento' && souAdministrador() && <Andamento voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'correcoes' && souAdministrador() && <CorrecaoDeGrafia voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'portainer' && <PortainerDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
-      {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key }} />}
+      {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.ilhas ? 'ilhas' : ''}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key, ilhas: tela.ilhas }} />}
 
       <DesenhosDeCursor />
       {soltando && (

@@ -7,16 +7,17 @@ import { claqueteNoPadrao } from './correcaoDeGrafia.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
 import { dataDaVersao, lerVersoes, tipoDaLinha, type Versao } from './pauta.ts';
 import { lerDataDaClaquete } from './vocabularios.ts';
+import type { Ilha } from './ilhas.ts';
 
-/** Os turnos do dia, na ordem da grade. */
-export type IdDoTurno = 'madrugada' | 'manha' | 'tarde' | 'noite';
+/** O id de um turno: os de fábrica (madrugada, manha, tarde, noite) e os criados na Configuração (#124). */
+export type IdDoTurno = string;
 export interface TurnoDaEscala {
   id: IdDoTurno;
   nome: string;
   /** o horário padrão de uma posição nova do turno, já no padrão */
   horario: string;
 }
-/** Os quatro de fábrica (a Configuração dos turnos vem depois), na ordem da planilha. */
+/** Os quatro de fábrica, na ordem da planilha: valem sem nada salvo na Configuração (src/modelo/turnos.ts). */
 export const TURNOS_DE_FABRICA: readonly TurnoDaEscala[] = [
   { id: 'madrugada', nome: 'Madrugada', horario: '22h às 6h' },
   { id: 'manha', nome: 'Manhã', horario: '6h às 15h' },
@@ -40,6 +41,8 @@ export interface PosicaoDaEscala {
   turno: IdDoTurno;
   /** o nome como escrito ou escolhido da lista; '' sem editor */
   editor: string;
+  /** o id da ilha, da lista das ilhas cadastradas; '' sem ilha */
+  ilha: string;
   /** no padrão quando o PROMeiro entende; senão, como foi escrito */
   horario: string;
   demandas: DemandaDaEscala[];
@@ -54,6 +57,12 @@ export interface DiaDaEscala {
   turnos: TurnoDaEscala[];
   /** os nomes dos editores cadastrados, para a lista */
   editores: string[];
+  /** as ilhas cadastradas, para a lista (#124) */
+  ilhas: Ilha[];
+  /** a ilha de costume de cada editor (pelo nome comparável), tirada do histórico das posições */
+  costume: Record<string, string>;
+  /** as posições cuja ilha já está ocupada naquele turno, com as outras que dividem a ilha */
+  ocupadas: { posicao: string; ilha: string; com: string[] }[];
   /** quando o rascunho foi gravado por último, e por quem (null: nunca) */
   gravadoEm: string | null;
   gravadoPor: string | null;

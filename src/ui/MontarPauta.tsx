@@ -4,6 +4,8 @@ import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
+import { CampoDaIlha } from './CampoDaIlha';
+import type { Ilha } from '../modelo/ilhas';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
@@ -46,7 +48,7 @@ const nomeDoTurno = (turnos: readonly TurnoDaEscala[], id: string) => turnos.fin
 const textoDaSituacao = (s: SituacaoNoDia, turnos: readonly TurnoDaEscala[]) => (s.tipo === 'livre' ? 'livre' : `já na ${s.turnos.map((t) => nomeDoTurno(turnos, t)).join(' e na ')}`);
 
 /** Onde o foco vai depois de desenhar: um campo de uma posição (e, nas demandas, a linha). */
-type Foco = { posicao: string; campo: 'editor' | 'horario' | 'demanda'; demanda?: string; fim?: boolean } | null;
+type Foco = { posicao: string; campo: 'editor' | 'ilha' | 'horario' | 'demanda'; demanda?: string; fim?: boolean } | null;
 
 export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [hoje] = useState(() => diaEmSaoPaulo());
@@ -149,7 +151,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const editores = dados?.editores ?? [];
   const daPosicao = (id: string, f: (p: PosicaoDaEscala) => PosicaoDaEscala) => mudar((ps) => ps.map((p) => (p.id === id ? f(p) : p)));
   const novaPosicao = (turno: TurnoDaEscala) => {
-    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', horario: turno.horario, demandas: [linhaVazia()] };
+    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', ilha: '', horario: turno.horario, demandas: [linhaVazia()] };
     // a posição nova entra depois da última do turno (a ordem da grade é a dos turnos)
     mudar((ps) => {
       const ultima = ps.map((x) => x.turno).lastIndexOf(turno.id);
@@ -254,6 +256,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
                           posicoes={posicoes}
                           turnos={turnos}
                           editores={editores}
+                          ilhas={atual.ilhas}
+                          costume={atual.costume}
                           mudar={(f) => daPosicao(p.id, f)}
                           tirar={() => tirarPosicao(p.id)}
                           focar={setFoco}
@@ -316,13 +320,15 @@ interface PropsDaCelula {
   posicoes: PosicaoDaEscala[];
   turnos: readonly TurnoDaEscala[];
   editores: readonly string[];
+  ilhas: readonly Ilha[];
+  costume: Readonly<Record<string, string>>;
   mudar: (f: (p: PosicaoDaEscala) => PosicaoDaEscala) => void;
   tirar: () => void;
   focar: (f: Foco) => void;
 }
 
 /** Uma posição: o editor, o horário e as demandas, cada campo com o que o PROMeiro entendeu embaixo. */
-function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, focar }: PropsDaCelula) {
+function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, mudar, tirar, focar }: PropsDaCelula) {
   const horario = lerHorario(p.horario);
   const situacao = p.editor.trim() ? situacaoNoDia(p.editor, posicoes, p.id) : null;
   const naLista = !p.editor.trim() || editores.some((e) => nomeComparavel(e) === nomeComparavel(p.editor));
@@ -357,7 +363,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, foc
   return (
     <div className="montar-celula" data-posicao-id={p.id}>
       <div className="montar-celula-topo">
-        <CampoDoEditor p={p} posicoes={posicoes} turnos={turnos} editores={editores} mudar={(editor) => mudar((x) => ({ ...x, editor }))} depois={() => focar({ posicao: p.id, campo: 'horario' })} />
+        <CampoDoEditor p={p} posicoes={posicoes} turnos={turnos} editores={editores} mudar={(editor) => mudar((x) => ({ ...x, editor }))} depois={() => focar({ posicao: p.id, campo: 'ilha' })} />
         {/* fora do Tab: do editor, o Tab vai direto ao horário */}
         <button type="button" tabIndex={-1} className="botao-icone pequeno montar-tirar" title="Tirar esta posição" aria-label="Tirar esta posição" onClick={tirar}>
           <Icone nome="fechar" tam={13} />
@@ -367,6 +373,16 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, foc
         {situacao?.tipo === 'escalado' && <span className="montar-alerta">{textoDaSituacao(situacao, turnos)}</span>}
         {!naLista && <span className="montar-tag">nome novo</span>}
       </div>
+      <CampoDaIlha
+        p={p}
+        posicoes={posicoes}
+        turnos={turnos}
+        ilhas={ilhas}
+        costume={costume}
+        mudar={(ilha) => mudar((x) => ({ ...x, ilha }))}
+        depois={() => focar({ posicao: p.id, campo: 'horario' })}
+        antes={() => focar({ posicao: p.id, campo: 'editor' })}
+      />
       <input
         className="montar-in hora"
         data-posicao={p.id}
@@ -384,7 +400,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, foc
             focar({ posicao: p.id, campo: 'demanda', demanda: p.demandas[0]?.id });
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            focar({ posicao: p.id, campo: 'editor' });
+            focar({ posicao: p.id, campo: 'ilha' });
           }
         }}
       />
