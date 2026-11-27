@@ -29,13 +29,19 @@ afterEach(() => {
 const nada = () => {};
 const todos = { agenda: nada, producoes: nada, filmes: nada, pauta: nada };
 type Props = Parameters<typeof CaminhosDoTopo>[0];
+/** Espera os quadros da troca do aberto (para a largura animar) e a resposta da lista das prévias. */
+async function quadros(ate: () => boolean = () => false) {
+  for (let i = 0; i < 40 && !ate(); i++) await act(async () => new Promise((r) => setTimeout(r, 20)));
+}
 async function montar(props: Props) {
   await act(async () => raiz.render(createElement(CaminhosDoTopo, props)));
-  // a troca do aberto espera um quadro (para a largura animar), e a lista das prévias responde
-  await act(async () => new Promise((r) => setTimeout(r, 60)));
+  await quadros(() => abertos()[0] === (props.atual ? `topo-${props.atual}` : undefined) && caixa.querySelector('nav') !== null);
+  await act(async () => new Promise((r) => setTimeout(r, 30)));
 }
 const filhos = () => [...caixa.querySelectorAll('nav > *')].map((e) => (e.tagName === 'A' ? e.classList[0] : '•'));
-const abertos = () => [...caixa.querySelectorAll('nav a.aberto')].map((e) => e.classList[0]);
+function abertos() {
+  return [...caixa.querySelectorAll('nav a.aberto')].map((e) => e.classList[0]);
+}
 
 describe('os caminhos do topo', () => {
   it('ficam sempre na mesma ordem, com o da tela atual no lugar e marcado', async () => {
@@ -68,7 +74,7 @@ describe('os caminhos do topo', () => {
     raiz = createRoot(caixa);
     await act(async () => raiz.render(createElement(CaminhosDoTopo, { ...todos, atual: 'pauta' })));
     expect(abertos()).toEqual(['topo-producoes']);
-    await act(async () => new Promise((r) => setTimeout(r, 60)));
+    await quadros(() => abertos()[0] === 'topo-pauta');
     expect(abertos()).toEqual(['topo-pauta']);
   });
 
