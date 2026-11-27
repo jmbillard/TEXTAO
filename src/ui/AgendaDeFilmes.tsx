@@ -6,6 +6,7 @@ import type { DiaDaSemana } from './fila';
 import { CardAberto, FecharOCardAberto } from './CardAberto';
 import { RABISCO } from './cena';
 import { Icone } from './icones';
+import { relativoA } from './pecasDaPauta';
 import { TopoDoDia } from './topoDaAgenda';
 import { copiarTexto, dataCurtaComDia, dataPorExtenso, ehMac } from './util';
 import './agendaDeFilmes.css';
@@ -22,9 +23,8 @@ const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 /** Quantos pôsteres entram em cascata, um atrás do outro; os de depois chegam com o último. */
 const CASCATA_MAX = 16;
 
-const vizinho = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-/** "hoje", "amanhã", "ontem" ou '' (a marca à mão da agenda). */
-const marcaDoDia = (hoje: string, dia: string): DiaDaSemana['marca'] => (dia === hoje ? 'hoje' : dia === vizinho(hoje, 1) ? 'amanhã' : dia === vizinho(hoje, -1) ? 'ontem' : '');
+/** "hoje", "amanhã", "ontem" ou '' (a marca à mão da agenda), como na Pauta. */
+const marcaDoDia = (hoje: string, dia: string) => relativoA(hoje, dia) as DiaDaSemana['marca'];
 /** O cabeçalho do dia da agenda (TopoDoDia) para um dia da agenda de filmes. */
 function diaDaSemana(hoje: string, iso: string): DiaDaSemana {
   const d = new Date(`${iso}T12:00:00`);
@@ -246,7 +246,6 @@ function Caminho({ rotulo, caminho, avisar }: { rotulo: string; caminho: string;
 
 /** O card aberto do filme: o pôster, o título e o ano, as exibições (a clicada em destaque), as pastas e a Produção. */
 function FichaDoFilme({ filme, exibicao, hoje, avisar }: { filme: FilmeDaAgenda; exibicao: ExibicaoDoFilme; hoje: string; avisar: (t: string) => void }) {
-  const mac = ehMac;
   return (
     <div className="ficha-filme">
       <div className="pauta-ficha-topo">
@@ -287,8 +286,8 @@ function FichaDoFilme({ filme, exibicao, hoje, avisar }: { filme: FilmeDaAgenda;
       </div>
       <h3>Pastas</h3>
       <div className="ficha-filme-pastas">
-        <Caminho rotulo="Projeto" caminho={caminhoNoSistema(filme.projeto, mac)} avisar={avisar} />
-        <Caminho rotulo="Output" caminho={caminhoNoSistema(filme.output, mac)} avisar={avisar} />
+        <Caminho rotulo="Projeto" caminho={caminhoNoSistema(filme.projeto, ehMac)} avisar={avisar} />
+        <Caminho rotulo="Output" caminho={caminhoNoSistema(filme.output, ehMac)} avisar={avisar} />
       </div>
     </div>
   );

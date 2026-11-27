@@ -219,7 +219,8 @@ function ListaDePrevias({
   }, [avisar]);
 
   const subir = async (arquivo?: File) => {
-    if (!arquivo) return;
+    // uma prévia por vez: o arquivo solto na janela durante a subida fica de fora
+    if (!arquivo || subindo) return;
     if (!/\.pdf$/i.test(arquivo.name) && arquivo.type !== "application/pdf")
       return avisar("A prévia é um PDF.");
     setSubindo({ nome: arquivo.name, feito: 0, total: 0 });
