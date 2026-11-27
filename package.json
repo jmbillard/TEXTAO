@@ -18,6 +18,7 @@
     "e2e:ficha": "node tests/e2e/ficha-atracao.e2e.cjs",
     "e2e:duplicadas": "node tests/e2e/duplicadas.e2e.cjs",
     "e2e:filmes": "node tests/e2e/filmes-celular.e2e.cjs",
+    "e2e:filmes-agenda": "node tests/e2e/filmes.e2e.cjs",
     "e2e:configuracao": "node tests/e2e/configuracao.e2e.cjs",
     "e2e:andamento": "node tests/e2e/andamento.e2e.cjs",
     "e2e:areas": "node tests/e2e/areas.e2e.cjs",

@@ -1397,12 +1397,13 @@ export function criarTrello(env, deps = {}) {
   /**
    * As linhas dos filmes recentes do Padeiro (#142, servidor/filmes-recentes.mjs): as exibições de `de` a `ate` (dias de
    * Brasília, AAAA-MM-DD) e os filmes delas, do Postgres do Teable. A regra (a cancelada, um por filme, a ordem) fica
-   * em filmesRecentes. null sem as tabelas exibicoes e filmes. Lança com o Postgres fora.
+   * em filmesRecentes; a agenda de filmes da aba Filmes (#169, agendaDeFilmes) lê as mesmas, com o card_ID para achar a
+   * Produção. null sem as tabelas exibicoes e filmes. Lança com o Postgres fora.
    */
   async function linhasDosFilmesRecentes(de, ate) {
     if (!t.exibicoes || !t.filmes || !consultar) return null;
     const exibicoes = await sql(
-      `SELECT "__id", "filme", "data_de_exibicao", "sessao", "inedito", "link", "labels" FROM ${t.exibicoes}
+      `SELECT "__id", "filme", "data_de_exibicao", "sessao", "inedito", "link", "card_ID", "labels" FROM ${t.exibicoes}
        WHERE ("data_de_exibicao" AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $1::date AND $2::date`,
       [de, ate],
     );

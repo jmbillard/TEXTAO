@@ -1002,6 +1002,16 @@ export const ordemDasPracas = (): string[] => ordemDe(minhasPreferencias);
 /** A pessoa arrumou as praças: como os recolhidos, vale na hora e o servidor guarda, por pessoa, para qualquer aparelho. */
 export const lembrarOrdemDasPracas = (pracas: readonly string[]): Promise<boolean> => guardarPreferencia(CHAVE_DA_ORDEM, [...pracas]);
 
+/** A forma de ver a agenda de filmes da aba Filmes (#169): por data de exibição (sem escolha) ou por sessão. */
+export const formaDaAgendaDeFilmes = (): FormaDaAgenda => formaDaAgenda(minhasPreferencias);
+
+/** A pessoa trocou a forma de ver a agenda de filmes: vale na hora e o servidor guarda, por pessoa, para qualquer
+    aparelho. Devolve se ficou guardada. */
+export const lembrarFormaDaAgendaDeFilmes = (forma: FormaDaAgenda): Promise<boolean> => guardarPreferencia(CHAVE_DA_AGENDA_DE_FILMES, forma);
+
+/** A agenda de filmes (#169): os filmes com exibição perto de hoje, com todas as exibições, o pôster e a Produção. */
+export const lerAgendaDeFilmes = () => pedir<AgendaDeFilmes>('/api/filmes/agenda');
+
 /** Guarda uma preferência da pessoa: vale na hora (também fora do servidor, até recarregar) e o servidor grava. Devolve
     se ficou guardada; a que não ficou volta à de antes na próxima visita (se nenhuma escolha mais nova passou na frente). */
 async function guardarPreferencia(chave: string, valor: unknown): Promise<boolean> {
@@ -1138,6 +1148,7 @@ import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, JuncaoDeAtracoes, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, ordemDe, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { CHAVE_DA_AGENDA_DE_FILMES, formaDaAgenda, type AgendaDeFilmes, type FormaDaAgenda } from '../filmes/agenda';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {
