@@ -1,13 +1,28 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { iniciais } from '../dados/colaboracao';
 import { colunasDoDia, diasDaSemana, ehDaPessoa, noArAgora, segundaDaSemana, type ColunaDoDia, type LinhaDaPauta } from '../modelo/pauta';
+import { BalaoDeInfo } from './BalaoDeInfo';
 import { ContaDoDia, ListaDaPauta } from './MesaDaPauta';
 import { Avisos, DIAS_DA_SEMANA, partes, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
+import { useDiaQueConta } from './trocaDaPauta';
 
 /* O Dia da Pauta da edição (#97, no desenho do #162): a fita com os dias da semana e, embaixo, cada editor numa
    coluna. A coluna de quem vê vem primeiro ("você"), depois a do que sobrou sem editor ("quem puder") e então a equipe,
    na ordem de início do turno daquele dia. No topo da coluna, o nome, o turno com a contagem "N de M" e, quando o turno
    está no ar, "no ar agora" à mão; os avisos ficam no ⚑. No celular e no tablet, as colunas rolam para o lado. */
+
+/** Uma aba da fita: "SEG 16/11". Na troca de semana, a aba fica no lugar e o número conta junto com o período
+    (SemanaQueConta, #170), como as colunas da agenda; a pinta de hoje volta quando a contagem termina. */
+function DiaDaFita({ d, i, aberto, hoje, ir }: { d: string; i: number; aberto: boolean; hoje: boolean; ir: (d: string) => void }) {
+  const { contado, contando } = useDiaQueConta(d, i);
+  const p = partes(contado);
+  return (
+    <button type="button" className={hoje && !contando ? 'hoje' : ''} aria-current={aberto} data-dia={d} onClick={() => !aberto && ir(d)}>
+      <span className="pauta-fita-pinta" aria-hidden="true" />
+      {DIAS_DA_SEMANA[partes(d).semana]} <span className="pauta-fita-num">{`${String(p.dia).padStart(2, '0')}/${String(p.mes + 1).padStart(2, '0')}`}</span>
+    </button>
+  );
+}
 
 /** A fita dos dias da semana (só no Dia): a aba do dia aberto, a bolinha laranja em hoje. */
 export function FitaDosDias({ dia, hoje, ir }: { dia: string; hoje: string; ir: (d: string) => void }) {
@@ -21,15 +36,9 @@ export function FitaDosDias({ dia, hoje, ir }: { dia: string; hoje: string; ir: 
   }, [dia]);
   return (
     <nav className="pauta-fita" aria-label="Dias da semana" ref={fita}>
-      {dias.map((d) => {
-        const p = partes(d);
-        return (
-          <button key={d} type="button" className={d === hoje ? 'hoje' : ''} aria-current={d === dia} data-dia={d} onClick={() => d !== dia && ir(d)}>
-            <span className="pauta-fita-pinta" aria-hidden="true" />
-            {DIAS_DA_SEMANA[p.semana]} <span className="pauta-fita-num">{`${String(p.dia).padStart(2, '0')}/${String(p.mes + 1).padStart(2, '0')}`}</span>
-          </button>
-        );
-      })}
+      {dias.map((d, i) => (
+        <DiaDaFita key={i} d={d} i={i} aberto={d === dia} hoje={d === hoje} ir={ir} />
+      ))}
     </nav>
   );
 }
@@ -54,10 +63,14 @@ function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string
           <span className="pauta-turno">{sobra ? 'quem puder' : turnoEscrito(c.turno) || 'sem horário'}</span>
           {sobra ? <span className="pauta-coluna-conta">{c.itens.length}</span> : <ContaDoDia itens={c.itens} rotulo={false} />}
         </span>
-        {(noAr || c.avisos.length > 0) && (
+        {(noAr || c.avisos.length > 0 || (!sobra && c.infos.length > 0)) && (
           <span className="pauta-coluna-linha">
             {noAr ? <span className="pauta-no-ar">no ar agora</span> : <span />}
-            {c.avisos.length > 0 && <Avisos avisos={c.avisos} rotulo={c.editor || 'sem editor'} />}
+            <span className="pauta-coluna-recados">
+              {c.avisos.length > 0 && <Avisos avisos={c.avisos} rotulo={c.editor || 'sem editor'} />}
+              {/* a info que não é de claquete fica na posição (#172) */}
+              {!sobra && c.infos.length > 0 && <BalaoDeInfo textos={c.infos} rotulo={c.editor} />}
+            </span>
           </span>
         )}
       </header>
@@ -72,7 +85,7 @@ function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string
  * As colunas do Dia: você, o que sobrou e a equipe.
  * @param linhas as linhas da semana (ficam as do dia)
  */
-export function ColunasDoDia({ linhas, dia, voce, abrir }: { linhas: readonly LinhaDaPauta[]; dia: string; voce: string | null | undefined; abrir: AbrirClaquete }) {
+export function ColunasDoDia({ linhas, dia, voce, abrir, comSobra = true }: { linhas: readonly LinhaDaPauta[]; dia: string; voce: string | null | undefined; abrir: AbrirClaquete; comSobra?: boolean }) {
   const [agora, setAgora] = useState(() => Date.now());
   // o "agora" anda: o "no ar agora" a cada minuto
   useEffect(() => {
@@ -82,10 +95,11 @@ export function ColunasDoDia({ linhas, dia, voce, abrir }: { linhas: readonly Li
   const faixa = useRef<HTMLDivElement>(null);
   const doDia = linhas.filter((l) => l.dia === dia);
   // o recado do dia (o aviso sem editor) não é da coluna do que sobrou: vai no alto, no recado
-  const todas = colunasDoDia(doDia).map((c) => (c.editor ? c : { ...c, avisos: [] }));
+  const todas = colunasDoDia(doDia).map((c) => (c.editor ? c : { ...c, avisos: [], infos: [] }));
   const eu = todas.filter((c) => ehDaPessoa(c.editor, voce));
-  const sobra = todas.find((c) => !c.editor) ?? { editor: '', turno: null, itens: [], avisos: [] };
-  const colunas = [...eu, sobra, ...todas.filter((c) => c.editor && !ehDaPessoa(c.editor, voce))];
+  const sobra = todas.find((c) => !c.editor) ?? { editor: '', turno: null, itens: [], infos: [], avisos: [] };
+  // o que sobrou, só para a coordenação e os editores (#172, veOQueSobrou)
+  const colunas = [...eu, ...(comSobra ? [sobra] : []), ...todas.filter((c) => c.editor && !ehDaPessoa(c.editor, voce))];
   const temPauta = doDia.some((l) => l.tipo !== 'aviso');
 
   // a faixa mais larga que a tela (celular, tablet): começa em você ou, sem você, no turno que está no ar

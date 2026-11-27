@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { lembrarCodigoDasVersoes, lerSemanaDaPauta } from '../dados/armazenamento';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { lembrarCodigoDasVersoes, lerSemanaDaPauta, souCoordenacao } from '../dados/armazenamento';
 import { apelidoDaClaquete, useApelidos } from '../dados/apelidos';
 import { iniciais } from '../dados/colaboracao';
-import { buscarNaPauta, diaDaPautaAgora, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehDaPessoa, gradeDaSemana, segundaDaSemana, semanaVizinha, type CelulaDaSemana, type LeituraDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { buscarNaPauta, diaDaPautaAgora, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehDaPessoa, gradeDaSemana, segundaDaSemana, semanaVizinha, veOQueSobrou, type CelulaDaSemana, type LeituraDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { BalaoDeInfo } from './BalaoDeInfo';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { useCodigoDasVersoes } from './CodigoDasVersoes';
 import { Icone } from './icones';
 import { ListaDaPauta, MesaDaPauta, RecadoDoDia } from './MesaDaPauta';
 import { ColunasDoDia, FitaDosDias } from './PautaDoDia';
 import { Marca, useSaida } from './pecas';
+import { posicaoNaContagem } from './fila';
+import { escrever, Periodo, useContagemDoPeriodo, useEsmaeceAoMudar } from './topoDaAgenda';
+import { semMovimento } from './util';
 import { Avisos, ClaqueteAberta, DIAS_DA_SEMANA, MESES, SobreALeitura, VisaoDaPauta, diaEscrito, diaPorExtenso, hashDaPauta, partes, relativoA, turnoEscrito, useReleitura, type AbrirClaquete, type ClaqueteNaTela, type EnderecoDaPauta } from './pecasDaPauta';
-import { diaDoNumero, numeroDoDia, useTrocaDaPauta } from './trocaDaPauta';
+import { diaDoNumero, EIXO_DA_SEMANA, EIXO_DO_DIA, numeroDoDia, periodoDaPautaNaContagem, SemanaQueConta, useDiaQueConta, useTrocaDaPauta } from './trocaDaPauta';
 import './pauta.css';
 
 /* A Pauta da edição (#94), no desenho do mock-up que o usuário aprovou (#162). No alto, o título e os controles: a
@@ -40,6 +44,39 @@ function periodoEscrito(dias: string[]) {
   const a = partes(dias[0]);
   const b = partes(dias[dias.length - 1]);
   return a.mes === b.mes ? `${a.dia} a ${b.dia} de ${MESES[b.mes]}` : `${a.dia} de ${MESES[a.mes]} a ${b.dia} de ${MESES[b.mes]}`;
+}
+
+/** A semana na tela conta até `segunda` (SemanaQueConta): o período da Semana, os números do cabeçalho da grade e os
+    da fita do Dia contam juntos, como o período e os dias da agenda no computador (#170). Só quem lê a contagem
+    renderiza a cada quadro; o resto da página não. */
+function ContagemDaSemana({ segunda, children }: { segunda: string; children: ReactNode }) {
+  const contagem = useContagemDoPeriodo(EIXO_DA_SEMANA, numeroDoDia(segunda));
+  const { de, para, p } = contagem;
+  const valor = useMemo(() => ({ contagem: { de, para, p }, inicio: posicaoNaContagem(EIXO_DA_SEMANA, de, para, p), contando: p < 1 }), [de, para, p]);
+  return <SemanaQueConta.Provider value={valor}>{children}</SemanaQueConta.Provider>;
+}
+
+/** O seletor de datas da Pauta, com o período da agenda (topoDaAgenda.tsx: Periodo): na Semana, "16 a 22 de
+    novembro", contando junto com a grade; no Dia, "sexta, 27 de novembro", com o dia contando. Os dias contam pelas
+    datas; na virada do mês, os meses apagam e voltam; a largura acompanha o texto, e as setas andam até o lugar. Com
+    o movimento reduzido, só esmaece. O texto parado vai para o leitor de tela à parte (a contagem não é anunciada). */
+function PeriodoDaPauta({ visao, dia }: { visao: 'semana' | 'dia'; dia: string }) {
+  const semana = useContext(SemanaQueConta);
+  // na Semana, a contagem do dia fica parada (o período conta pela da semana)
+  const doDia = useContagemDoPeriodo(EIXO_DO_DIA, visao === 'dia' ? numeroDoDia(dia) : 0);
+  const c = visao === 'dia' || !semana ? doDia : semana.contagem;
+  const el = useRef<HTMLSpanElement>(null);
+  useEsmaeceAoMudar(el, dia);
+  return (
+    <>
+      <span ref={el} className="pauta-periodo" aria-hidden="true">
+        <Periodo {...periodoDaPautaNaContagem(visao, c.de, c.para, c.p)} largura="suave" entre=" a " />
+      </span>
+      <span className="pauta-leitor" aria-live="polite">
+        {visao === 'dia' ? diaPorExtenso(dia) : periodoEscrito(diasDaSemana(dia))}
+      </span>
+    </>
+  );
 }
 
 /** A pauta lida por semana: a semana à vista e, para a busca e a troca sem espera, as vizinhas. A releitura (#99) não
@@ -85,7 +122,8 @@ function useSemanas(segunda: string) {
 function Celula({ c, editor, hoje, foraNoDia, abrir }: { c: CelulaDaSemana; editor: string; hoje: boolean; foraNoDia: boolean; abrir: AbrirClaquete }) {
   const { dia, semana } = partes(c.dia);
   const avisos = editor ? c.avisos : [];
-  const vazia = !c.turno && !c.itens.length && !avisos.length;
+  const infos = editor ? c.infos : [];
+  const vazia = !c.turno && !c.itens.length && !avisos.length && !infos.length;
   return (
     <td className={`pauta-celula${hoje ? ' hoje' : ''}`} data-dia={c.dia}>
       <div className="desliza">
@@ -95,10 +133,12 @@ function Celula({ c, editor, hoje, foraNoDia, abrir }: { c: CelulaDaSemana; edit
           editor ? <span className="pauta-cel-fora" aria-label="sem pauta">–</span> : hoje ? <span className="pauta-nada">nada sobrando</span> : null
         ) : (
           <>
-            {(c.turno || avisos.length > 0) && (
+            {(c.turno || avisos.length > 0 || infos.length > 0) && (
               <div className="pauta-celula-topo">
                 {c.turno && <span className="pauta-turno">{turnoEscrito(c.turno)}</span>}
                 {avisos.length > 0 && <Avisos avisos={avisos} rotulo={`${editor || 'sem editor'}, ${DIAS_DA_SEMANA[semana]} ${dia}`} />}
+                {/* a info que não é de claquete fica na posição (#172) */}
+                {infos.length > 0 && <BalaoDeInfo textos={infos} rotulo={`${editor}, ${DIAS_DA_SEMANA[semana]} ${dia}`} />}
               </div>
             )}
             <ListaDaPauta itens={c.itens} abrir={abrir} compacta comProducao={hoje} />
@@ -109,11 +149,43 @@ function Celula({ c, editor, hoje, foraNoDia, abrir }: { c: CelulaDaSemana; edit
   );
 }
 
+/** O cabeçalho de um dia da Semana: "SEG 16", e "hoje" à mão. Como as colunas da agenda no computador (#170), ele
+    fica no lugar quando a semana troca: o número conta junto com o período (SemanaQueConta) e o "hoje" (com o fundo
+    da coluna) só volta quando a contagem termina, escrevendo-se à mão. */
+function TopoDoDiaDaGrade({ d, i, hoje, irPara }: { d: string; i: number; hoje: boolean; irPara: Props['irPara'] }) {
+  const { contado, contando } = useDiaQueConta(d, i);
+  const ehHoje = hoje && !contando;
+  const marca = useRef<HTMLSpanElement>(null);
+  const antes = useRef(ehHoje);
+  useLayoutEffect(() => {
+    const era = antes.current;
+    antes.current = ehHoje;
+    if (!ehHoje || era || !marca.current || semMovimento()) return;
+    const a = escrever(marca.current);
+    return () => a.cancel();
+  }, [ehHoje]);
+  return (
+    <th scope="col" className={`pauta-dia${ehHoje ? ' hoje' : ''}`} data-dia={d}>
+      {/* um clique no dia abre aquele Dia (#97) */}
+      <a className="pauta-dia-link" href={hashDaPauta({ dia: d })} title="Abrir o dia, com cada editor numa coluna" onClick={(e) => (e.preventDefault(), irPara({ dia: d }))}>
+        <span className="pauta-dia-sem">{DIAS_DA_SEMANA[partes(d).semana]}</span> <span className="pauta-dia-num">{Number(contado.slice(8))}</span>
+        {ehHoje && (
+          <span ref={marca} className="pauta-dia-rel">
+            {' '}
+            hoje
+          </span>
+        )}
+      </a>
+    </th>
+  );
+}
+
 /** A Semana editor × dia, como no mock-up: a pessoa com "você" e a linha tingida; "sem editor · sobrou" no fim. */
-function GradeDaSemana({ dados, hoje, voce, irPara, abrir }: { dados: Semana; hoje: string; voce: string | null | undefined; irPara: Props['irPara']; abrir: AbrirClaquete }) {
+function GradeDaSemana({ dados, hoje, voce, irPara, abrir, comSobra }: { dados: Semana; hoje: string; voce: string | null | undefined; irPara: Props['irPara']; abrir: AbrirClaquete; comSobra: boolean }) {
   const rolagem = useRef<HTMLDivElement>(null);
   const grade = gradeDaSemana(dados);
-  const comSobra = grade.some((f) => !f.editor) ? grade : [...grade, { editor: '', celulas: dados.dias.map((dia) => ({ dia, turno: null, itens: [], avisos: [] })) }];
+  // "sem editor · sobrou" no fim, só para a coordenação e os editores (#172, veOQueSobrou)
+  const fileiras = !comSobra ? grade.filter((f) => f.editor) : grade.some((f) => !f.editor) ? grade : [...grade, { editor: '', celulas: dados.dias.map((dia) => ({ dia, turno: null, itens: [], infos: [], avisos: [] })) }];
   const fora = (editor: string, dia: string) => (dados.fora ?? []).some((f) => f.dia === dia && ehDaPessoa(f.editor, editor));
   // a grade mais larga que a tela (celular, tablet): abre em hoje, logo depois da coluna dos nomes
   useLayoutEffect(() => {
@@ -132,23 +204,13 @@ function GradeDaSemana({ dados, hoje, voce, irPara, abrir }: { dados: Semana; ho
             <th className="pauta-canto" scope="col">
               <span className="rotulo">Editor</span>
             </th>
-            {dados.dias.map((d) => {
-              const p = partes(d);
-              const ehHoje = d === hoje;
-              return (
-                <th key={d} scope="col" className={`pauta-dia${ehHoje ? ' hoje' : ''}`} data-dia={d}>
-                  {/* um clique no dia abre aquele Dia (#97) */}
-                  <a className="pauta-dia-link desliza" href={hashDaPauta({ dia: d })} title="Abrir o dia, com cada editor numa coluna" onClick={(e) => (e.preventDefault(), irPara({ dia: d }))}>
-                    <span className="pauta-dia-sem">{DIAS_DA_SEMANA[p.semana]}</span> <span className="pauta-dia-num">{p.dia}</span>
-                    {ehHoje && <span className="pauta-dia-rel"> hoje</span>}
-                  </a>
-                </th>
-              );
-            })}
+            {dados.dias.map((d, i) => (
+              <TopoDoDiaDaGrade key={i} d={d} i={i} hoje={d === hoje} irPara={irPara} />
+            ))}
           </tr>
         </thead>
         <tbody>
-          {comSobra.map((f, i) => {
+          {fileiras.map((f, i) => {
             const eu = ehDaPessoa(f.editor, voce);
             const claquetes = f.celulas.reduce((n, c) => n + c.itens.filter((l) => l.tipo === 'claquete').length, 0);
             return (
@@ -230,9 +292,11 @@ function AchadosDaBusca({ termo, linhas, hoje, irPara, abrir }: { termo: string;
 }
 
 /** O que desliza na troca de dia ou de semana: a mesa do dia e a visão, do período `mostrado`. */
-function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir }: { visao: 'semana' | 'dia'; alvo: string; semanas: Record<string, Semana>; hojeDaGrade: string; hoje: string; irPara: Props['irPara']; abrir: AbrirClaquete }) {
+function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir, aoMostrar }: { visao: 'semana' | 'dia'; alvo: string; semanas: Record<string, Semana>; hojeDaGrade: string; hoje: string; irPara: Props['irPara']; abrir: AbrirClaquete; aoMostrar: (dia: string) => void }) {
   const raiz = useRef<HTMLDivElement>(null);
   const mostrado = diaDoNumero(useTrocaDaPauta(raiz, numeroDoDia(alvo)));
+  // o período e o resumo do alto contam quando o período novo entra (como a agenda: depois que o antigo sai)
+  useLayoutEffect(() => aoMostrar(mostrado), [mostrado, aoMostrar]);
   const segunda = segundaDaSemana(mostrado, hoje);
   const dados = semanas[segunda];
   // a estreia (a pauta que chega, a troca de visão): os cards em cascata pelo CSS; depois, quem mexe é a troca
@@ -245,6 +309,8 @@ function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir }
   }, [dados]); // eslint-disable-line react-hooks/exhaustive-deps
   // o dia da mesa: no Dia, o dia aberto; na Semana, hoje (quando é da semana) ou a segunda
   const dia = visao === 'dia' ? mostrado : diasDaSemana(segunda).includes(hoje) ? hoje : segunda;
+  // o que sobrou sem editor (a folha, a linha da Semana e a coluna do Dia), só para a coordenação e os editores (#172)
+  const comSobra = !!dados && veOQueSobrou({ coordenacao: souCoordenacao(), editor: dados.voce.editor });
   return (
     <div className={`pauta-corpo pauta-corpo-${visao}${estreia === 'depois' ? '' : ' estreia'}`} ref={raiz}>
       {visao === 'dia' && <FitaDosDias dia={mostrado} hoje={hoje} ir={(d) => irPara({ dia: d })} />}
@@ -253,13 +319,13 @@ function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir }
       ) : (
         <>
           <RecadoDoDia linhas={dados.linhas} dia={dia} hoje={hoje} />
-          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} abrir={abrir} />
+          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} abrir={abrir} comSobra={comSobra} />
           {visao === 'dia' ? (
-            <ColunasDoDia linhas={dados.linhas} dia={mostrado} voce={dados.voce.editor} abrir={abrir} />
+            <ColunasDoDia linhas={dados.linhas} dia={mostrado} voce={dados.voce.editor} abrir={abrir} comSobra={comSobra} />
           ) : !dados.linhas.length ? (
             <p className="pauta-vazia desliza">Nada na pauta desta semana.</p>
           ) : (
-            <GradeDaSemana dados={dados} hoje={hojeDaGrade} voce={dados.voce.editor} irPara={irPara} abrir={abrir} />
+            <GradeDaSemana dados={dados} hoje={hojeDaGrade} voce={dados.voce.editor} irPara={irPara} abrir={abrir} comSobra={comSobra} />
           )}
         </>
       )}
@@ -316,6 +382,16 @@ export function Pauta({ semana, dia, irPara, voltar, topo }: Props) {
   }, [ir, aberta]);
 
   const atual = semanas[segunda] ?? null;
+  // o período na tela (o que a troca já mostra, #170): o seletor de datas e o resumo contam até ele quando o novo
+  // entra. A troca de visão monta o corpo de novo, já no período pedido
+  const [naTela, setNaTela] = useState({ visao, dia: qual });
+  const aoMostrar = useCallback((d: string) => setNaTela((t) => (t.visao === visao && t.dia === d ? t : { visao, dia: d })), [visao]);
+  const diaNaTela = !falha && naTela.visao === visao ? naTela.dia : qual;
+  const segundaNaTela = segundaDaSemana(diaNaTela, hoje);
+  // o resumo é o da semana na tela; enquanto ela ainda não chegou, o de antes fica (e conta quando ela chega)
+  const ultimaLida = useRef<Semana | null>(null);
+  const lidaNaTela = semanas[segundaNaTela] ?? ultimaLida.current;
+  ultimaLida.current = lidaNaTela;
   // a busca e a ficha olham a pauta lida: a semana à vista e as vizinhas
   const lidas = useMemo(() => [-1, 0, 1].flatMap((n) => semanas[semanaVizinha(segunda, n)]?.linhas ?? []), [semanas, segunda]);
   const ehHoje = visao === 'dia' ? qual === hoje : segunda === desta;
@@ -332,41 +408,41 @@ export function Pauta({ semana, dia, irPara, voltar, topo }: Props) {
         </header>
       )}
       <main className="pauta-pagina">
-        <div className="pauta-cabeca">
-          <h1>Pauta da edição</h1>
-          <div className="pauta-controles">
-            {/* o Dia abre em hoje, quando hoje é desta semana; senão, na segunda */}
-            <VisaoDaPauta visao={visao} semana={() => irPara({ semana: segunda === desta ? undefined : segunda })} dia={() => irPara({ dia: visao === 'dia' ? qual : diasDaSemana(segunda).includes(hoje) ? '' : segunda })} />
-            <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou editor" rotulo="Buscar na pauta" />
-            <InterruptorDoCodigo />
-            <nav className="pauta-nav" aria-label={visao === 'dia' ? 'Dia' : 'Semana'}>
-              <button type="button" className="botao pauta-hoje" disabled={ehHoje} onClick={() => irPara(visao === 'dia' ? { dia: '' } : {})}>
-                Hoje
-              </button>
-              <button type="button" className="botao-icone" aria-label={visao === 'dia' ? 'Dia anterior' : 'Semana anterior'} title={`${visao === 'dia' ? 'Dia anterior' : 'Semana anterior'} (←)`} onClick={() => ir(-1)}>
-                <Icone nome="voltar" tam={16} traco={2.2} />
-              </button>
-              <span className="pauta-periodo" aria-live="polite" key={qual}>
-                {visao === 'dia' ? diaPorExtenso(qual) : periodoEscrito(atual?.dias ?? diasDaSemana(segunda))}
-              </span>
-              <button type="button" className="botao-icone" aria-label={visao === 'dia' ? 'Próximo dia' : 'Próxima semana'} title={`${visao === 'dia' ? 'Próximo dia' : 'Próxima semana'} (→)`} onClick={() => ir(1)}>
-                <Icone nome="direita" tam={16} traco={2.2} />
-              </button>
-            </nav>
+        <ContagemDaSemana segunda={segundaNaTela}>
+          <div className="pauta-cabeca">
+            <h1>Pauta da edição</h1>
+            <div className="pauta-controles">
+              {/* o Dia abre em hoje, quando hoje é desta semana; senão, na segunda */}
+              <VisaoDaPauta visao={visao} semana={() => irPara({ semana: segunda === desta ? undefined : segunda })} dia={() => irPara({ dia: visao === 'dia' ? qual : diasDaSemana(segunda).includes(hoje) ? '' : segunda })} />
+              <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou editor" rotulo="Buscar na pauta" />
+              <InterruptorDoCodigo />
+              <nav className="pauta-nav" aria-label={visao === 'dia' ? 'Dia' : 'Semana'}>
+                <button type="button" className="botao pauta-hoje" disabled={ehHoje} onClick={() => irPara(visao === 'dia' ? { dia: '' } : {})}>
+                  Hoje
+                </button>
+                <button type="button" className="botao-icone" aria-label={visao === 'dia' ? 'Dia anterior' : 'Semana anterior'} title={`${visao === 'dia' ? 'Dia anterior' : 'Semana anterior'} (←)`} onClick={() => ir(-1)}>
+                  <Icone nome="voltar" tam={16} traco={2.2} />
+                </button>
+                <PeriodoDaPauta key={visao} visao={visao} dia={visao === 'dia' ? diaNaTela : segundaNaTela} />
+                <button type="button" className="botao-icone" aria-label={visao === 'dia' ? 'Próximo dia' : 'Próxima semana'} title={`${visao === 'dia' ? 'Próximo dia' : 'Próxima semana'} (→)`} onClick={() => ir(1)}>
+                  <Icone nome="direita" tam={16} traco={2.2} />
+                </button>
+              </nav>
+            </div>
           </div>
-        </div>
-        {!falha && <SobreALeitura leitura={atual} />}
-        <AchadosDaBusca termo={busca} linhas={lidas} hoje={hoje} irPara={irPara} abrir={abrir} />
-        {falha ? (
-          <p className="pauta-falha" role="alert">
-            {falha}{' '}
-            <button className="botao-texto" onClick={tentar}>
-              Tentar de novo
-            </button>
-          </p>
-        ) : (
-          <CorpoDaPauta key={visao} visao={visao} alvo={qual} semanas={semanas} hojeDaGrade={hojeDaGrade} hoje={hoje} irPara={irPara} abrir={abrir} />
-        )}
+          {!falha && <SobreALeitura leitura={lidaNaTela} />}
+          <AchadosDaBusca termo={busca} linhas={lidas} hoje={hoje} irPara={irPara} abrir={abrir} />
+          {falha ? (
+            <p className="pauta-falha" role="alert">
+              {falha}{' '}
+              <button className="botao-texto" onClick={tentar}>
+                Tentar de novo
+              </button>
+            </p>
+          ) : (
+            <CorpoDaPauta key={visao} visao={visao} alvo={qual} semanas={semanas} hojeDaGrade={hojeDaGrade} hoje={hoje} irPara={irPara} abrir={abrir} aoMostrar={aoMostrar} />
+          )}
+        </ContagemDaSemana>
       </main>
       {aberta && <ClaqueteAberta aberta={aberta} linhas={lidas.length ? lidas : [aberta.linha]} hoje={hoje} voce={atual?.voce.editor} fechar={fecharFicha} />}
     </div>

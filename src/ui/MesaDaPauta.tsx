@@ -1,10 +1,11 @@
 import { colunasDoDia, contaDoEditor, ehDaPessoa, recadoDoDia, type LeituraDaPauta, type LinhaDaPauta } from '../modelo/pauta';
 import { ForaNaPautaTela } from './ForaNaPauta';
+import { BalaoDeInfo } from './BalaoDeInfo';
 import { Avisos, DIAS_DA_SEMANA, ItemDaPauta, MESES, partes, relativoA, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
 
 /* A mesa do dia da Pauta da edição (#162, o mock-up aprovado): o recado do dia e, no alto, o "Minha pauta" de quem é
    editor (o turno, os avisos ⚑ e a contagem do dia), com o que sobrou sem editor e quem está fora ao lado. Quem não é
-   editor vê só o que sobrou e quem está fora. As folhas andam junto com a troca de dia ou de semana (`desliza`). */
+   editor vê só o que sobrou e quem está fora; o que sobrou, só a coordenação e os editores (#172). As folhas andam junto com a troca de dia ou de semana (`desliza`). */
 
 /** "hoje, 27 de novembro", "28 de novembro". */
 function diaDaFolha(hoje: string, dia: string) {
@@ -70,20 +71,23 @@ export function ListaDaPauta({ itens, abrir, vazio, compacta = false, comProduca
  * @param linhas as linhas da pauta do dia (as de outros dias ficam de fora)
  * @param voce o editor ligado ao e-mail da pessoa (null: ela não é editora)
  */
-export function MesaDaPauta({ linhas, dia, hoje, voce, fora, abrir }: { linhas: readonly LinhaDaPauta[]; dia: string; hoje: string; voce: string | null | undefined; fora: LeituraDaPauta['fora']; abrir: AbrirClaquete }) {
+export function MesaDaPauta({ linhas, dia, hoje, voce, fora, abrir, comSobra = true }: { linhas: readonly LinhaDaPauta[]; dia: string; hoje: string; voce: string | null | undefined; fora: LeituraDaPauta['fora']; abrir: AbrirClaquete; comSobra?: boolean }) {
   const doDia = linhas.filter((l) => l.dia === dia);
   const colunas = colunasDoDia(doDia);
   const sobrou = colunas.find((c) => !c.editor)?.itens ?? [];
   const lateral = (
-    <div className="pauta-lateral">
-      <section className="pauta-folha pauta-sobrou desliza" aria-label="Sobrou, sem editor">
-        <div className="pauta-folha-topo">
-          <span className="rotulo">
-            Sobrou · sem editor <span className="pauta-qtd">{sobrou.length}</span>
-          </span>
-        </div>
-        <ListaDaPauta itens={sobrou} abrir={abrir} vazio="nada sobrando" />
-      </section>
+    <div className={`pauta-lateral${comSobra ? '' : ' so-fora'}`}>
+      {/* o que sobrou, só para a coordenação e os editores (#172, veOQueSobrou) */}
+      {comSobra && (
+        <section className="pauta-folha pauta-sobrou desliza" aria-label="Sobrou, sem editor">
+          <div className="pauta-folha-topo">
+            <span className="rotulo">
+              Sobrou · sem editor <span className="pauta-qtd">{sobrou.length}</span>
+            </span>
+          </div>
+          <ListaDaPauta itens={sobrou} abrir={abrir} vazio="nada sobrando" />
+        </section>
+      )}
       <ForaNaPautaTela fora={fora} dia={dia} />
     </div>
   );
@@ -100,6 +104,8 @@ export function MesaDaPauta({ linhas, dia, hoje, voce, fora, abrir }: { linhas: 
             <div className="pauta-minha-meta">
               {estaFora ? <span>fora</span> : !minha ? <span>sem pauta neste dia</span> : <span>{turnoEscrito(minha.turno) || 'sem horário'}</span>}
               {minha && minha.avisos.length > 0 && <Avisos avisos={minha.avisos} rotulo={`você, ${diaDaFolha(hoje, dia)}`} />}
+              {/* a info que não é de claquete fica na posição (#172) */}
+              {minha && minha.infos.length > 0 && <BalaoDeInfo textos={minha.infos} rotulo={`você, ${diaDaFolha(hoje, dia)}`} />}
             </div>
           </div>
           {minha && <ContaDoDia itens={minha.itens} />}

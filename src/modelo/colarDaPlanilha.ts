@@ -11,6 +11,7 @@
 import { demandaNoPadrao, horarioEntendido, lerDemanda, lerHorario, type IdDoTurno, type PosicaoDaEscala, type TurnoDaEscala } from './escala.ts';
 import type { Ausencia, TipoDeAusencia } from './ausencias.ts';
 import { TIPOS_DE_ILHA, emOrdem, reconhecerIlha, rotuloDaIlha, salaDaIlha, salaDe, type Ilha } from './ilhas.ts';
+import { continua } from './frasePartida.ts';
 import { nomeComparavel, umaLetraDeDiferenca } from './ligarPeloNome.ts';
 
 /** O que a regra precisa saber do dia: os turnos, os editores (com os apelidos) e as ilhas cadastradas. */
@@ -233,17 +234,7 @@ const TAREFAS_EM_MAIUSCULAS = new Set(['COMUNICACAO', 'CALHAUS', 'VINHETAS', 'AR
 const ehLinhaDeIlha = (t: string) => t.length < 26 && /^(AVID|ILHA|VDI)\b\s*(\d|COMUNIC)/.test(semAcento(t));
 /** Em maiúsculas: as letras todas maiúsculas, e ao menos três. */
 const emMaiusculas = (t: string) => (t.match(/\p{L}/gu) ?? []).length >= 3 && t === t.toLocaleUpperCase('pt-BR');
-/** As palavras que deixam a frase pela metade (a linha de baixo continua a frase). */
-const PARADAS = new Set(['A', 'O', 'AS', 'OS', 'DE', 'DA', 'DO', 'DAS', 'DOS', 'E', 'QUE', 'PARA', 'COM', 'EM', 'NA', 'NO', 'POR', 'SEGUNDO', 'QUAIS', 'QUAL', 'SEM', 'AO', 'AOS']);
-/** A linha de baixo continua o aviso de cima: a de cima termina em vírgula ou numa palavra que pede continuação, ou
-    a de baixo começa por uma; ou a de cima é uma linha só, comprida, e a de baixo tem mais de uma palavra. É um
-    palpite: a planilha não diz onde a frase acaba. */
-function continua(cima: string, baixo: string, umaLinha: boolean): boolean {
-  if (/[.!?]$/.test(cima)) return false;
-  const pc = nomeComparavel(cima).split(' ');
-  const pb = nomeComparavel(baixo).split(' ');
-  return /[,;:\-–]$/.test(cima) || PARADAS.has(pc.at(-1) ?? '') || PARADAS.has(pb[0] ?? '') || (umaLinha && pc.length >= 4 && pb.length >= 2);
-}
+/* A frase partida em duas linhas (continua): em frasePartida.ts, a mesma regra da info da pauta (#172). */
 
 /* ---------- a leitura ---------- */
 

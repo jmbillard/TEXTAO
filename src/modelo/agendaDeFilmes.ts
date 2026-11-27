@@ -64,17 +64,74 @@ function daquiEmDiante(filmes: readonly FilmeDaAgenda[], hoje: string): FilmeNaA
   return filmes.flatMap((filme) => filme.exibicoes.filter((e) => e.dia >= hoje).map((exibicao) => ({ filme, exibicao })));
 }
 
+/** A ordem no dia: as com hora primeiro, pela hora; a sem hora (só o dia) vai pela sessão, depois das que têm hora. */
+const ordemNoDia = (a: FilmeNaAgenda, b: FilmeNaAgenda) =>
+  Number(!a.exibicao.hora) - Number(!b.exibicao.hora) || comparar(a.exibicao.hora, b.exibicao.hora) || comparar(a.exibicao.sessao, b.exibicao.sessao) || comparar(a.filme.titulo, b.filme.titulo);
+
 /** Por data de exibição: um dia por coluna, só os dias com filme, de hoje em diante; no dia, pela hora e pela sessão. */
 export function porData(filmes: readonly FilmeDaAgenda[], hoje: string): { dia: string; itens: FilmeNaAgenda[] }[] {
   const dias = new Map<string, FilmeNaAgenda[]>();
   for (const x of daquiEmDiante(filmes, hoje)) dias.set(x.exibicao.dia, [...(dias.get(x.exibicao.dia) ?? []), x]);
-  return [...dias]
-    .sort(([a], [b]) => comparar(a, b))
-    .map(([dia, itens]) => ({
-      dia,
-      // a sem hora (só o dia) vai pela sessão, depois das que têm hora
-      itens: itens.sort((a, b) => Number(!a.exibicao.hora) - Number(!b.exibicao.hora) || comparar(a.exibicao.hora, b.exibicao.hora) || comparar(a.exibicao.sessao, b.exibicao.sessao) || comparar(a.filme.titulo, b.filme.titulo)),
-    }));
+  return [...dias].sort(([a], [b]) => comparar(a, b)).map(([dia, itens]) => ({ dia, itens: itens.sort(ordemNoDia) }));
+}
+
+/** O dia AAAA-MM-DD somado de `n` dias (só o calendário, sem fuso). */
+export function somarDias(dia: string, n: number): string {
+  const d = new Date(`${dia}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** O dia da exibição diante de hoje: já passou, passa hoje ou ainda vai passar. */
+export type QuandoPassa = 'passou' | 'hoje' | 'vai-passar';
+export const quandoPassa = (dia: string, hoje: string): QuandoPassa => (dia < hoje ? 'passou' : dia === hoje ? 'hoje' : 'vai-passar');
+
+/** Uma semana da agenda de filmes (#182): os sete dias, cada um com as exibições, e o resumo dela. */
+export interface SemanaDeFilmes {
+  dias: { dia: string; itens: FilmeNaAgenda[] }[];
+  /** quantas exibições a semana tem e quantas são inéditas */
+  exibicoes: number;
+  ineditas: number;
+}
+
+/**
+ * A semana da agenda de filmes, igual à semana da agenda No Trello (#182): sete dias a partir de `inicio` dias contados
+ * de hoje (o `inicioDaSemana` da agenda: a de agora começa ontem), todos, com filme ou sem. Os dias que já passaram
+ * ficam, com o que passou neles; no dia, pela hora e pela sessão.
+ */
+export function semanaDosFilmes(filmes: readonly FilmeDaAgenda[], hoje: string, inicio: number): SemanaDeFilmes {
+  const dias = Array.from({ length: 7 }, (_, i) => somarDias(hoje, inicio + i));
+  const porDia = new Map<string, FilmeNaAgenda[]>(dias.map((d) => [d, []]));
+  for (const filme of filmes) for (const exibicao of filme.exibicoes) porDia.get(exibicao.dia)?.push({ filme, exibicao });
+  const semana = dias.map((dia) => ({ dia, itens: (porDia.get(dia) ?? []).sort(ordemNoDia) }));
+  const todas = semana.flatMap((d) => d.itens);
+  return { dias: semana, exibicoes: todas.length, ineditas: todas.filter((x) => x.exibicao.inedito).length };
+}
+
+/** O texto do jeito de buscar: sem acento, sem caixa, a pontuação vira espaço. */
+const paraBuscar = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+
+/**
+ * A busca da lupa na agenda de filmes (#182): as exibições cujo filme ou sessão têm todas as palavras do termo (no
+ * título, no ano ou na sessão), sem diferença de caixa e acento, em todas as semanas que a agenda leu. Em ordem de dia
+ * e, no dia, como na agenda. Sem termo, nada.
+ */
+export function buscarNaAgenda(filmes: readonly FilmeDaAgenda[], termo: string): FilmeNaAgenda[] {
+  const palavras = paraBuscar(termo).split(' ').filter(Boolean);
+  if (!palavras.length) return [];
+  const achados: FilmeNaAgenda[] = [];
+  for (const filme of filmes)
+    for (const exibicao of filme.exibicoes) {
+      const texto = ` ${paraBuscar([filme.titulo, filme.ano ?? '', exibicao.sessao].join(' '))} `;
+      if (palavras.every((p) => texto.includes(p))) achados.push({ filme, exibicao });
+    }
+  return achados.sort((a, b) => comparar(a.exibicao.dia, b.exibicao.dia) || ordemNoDia(a, b));
 }
 
 /** Por sessão ou atração: uma faixa por sessão, na ordem da próxima exibição dela; na faixa, por dia e hora. */

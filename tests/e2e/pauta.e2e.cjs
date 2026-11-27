@@ -5,8 +5,8 @@
 // (tests/fixtures/teable-falso.mjs): a tabela EDICAO_producao achada pelo nome e o Postgres dele respondendo as linhas
 // da pauta, fictícias, da semana de hoje e da anterior. Nada vai ao Trello.
 // - A Semana (computador, claro e escuro, pela Lia, que não é editora): sem o texto embaixo do título; um editor por
-//   linha, "sem editor · sobrou" no fim; o código das versões no fim do nome; a tarefa com outro visual; o ⚑ do aviso
-//   com o balão; o recado do dia, o que sobrou e quem está fora; a claquete com a produção da arte (#96); o hover da
+//   linha ("sem editor · sobrou" no fim, só para a coordenação e os editores, #172); o código das versões no fim do nome; a tarefa com outro visual; o ⚑ do aviso
+//   com o balão; o recado do dia e quem está fora (o que sobrou, só a coordenação e os editores, #172); a claquete com a produção da arte (#96); o hover da
 //   agenda sem sublinhado, o lápis do apelido e o clique direito; a ficha no card aberto do centro (#160, alternativa
 //   A); a busca por claquete, atração e editor, nas semanas vizinhas também; o interruptor do código; anterior,
 //   próxima e Hoje. No tablet e no celular: a grade rola com os nomes fixos e abre em hoje; a ficha na tela toda.
@@ -15,6 +15,7 @@
 //   relógio do navegador às 15:30 de hoje ("no ar agora"); no celular, o Dia abre na coluna dela.
 // - A visão lembrada (#98); o resumo do administrador e a cópia de reserva (#99); o código das versões (#152); as
 //   versões à mão (#154).
+// - Os contadores da agenda (#170): o seletor de datas, o cabeçalho da grade, a fita e o resumo contam juntos.
 // - O movimento: a troca de semana e de dia desliza para o lado da navegação, a ficha cresce do card e volta; com o
 //   movimento reduzido, só esmaece. Com VIDEO=pasta, grava o vídeo das transições.
 //
@@ -43,6 +44,8 @@ const CARLA = 'carla.duarte@exemplo.com';
 const DORA = 'dora.lima@exemplo.com';
 // a opção do código das versões (#152), de outra pessoa: a escolha é de cada um
 const RUI = 'rui.costa@exemplo.com';
+// a coordenação (#123), marcada no e2e por um administrador: vê o que sobrou (#172)
+const COORD = 'cora.nunes@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 
@@ -99,6 +102,8 @@ for (let i = 0; i < 5; i++) {
   const d = mais(DEPOIS, i);
   DA_FORMA_REAL.forEach((editor, j) => {
     const turno = j < 4 ? ['06:00', '15:00'] : j === 4 ? ['14:00', '20:00'] : ['22:00', '06:00'];
+    // a info sem claquete antes fica na posição (#172)
+    if (j === 3) PAUTA.push(linha('REDATOR VAI ACOMPANHAR', editor, d, turno));
     PAUTA.push(linha(j === 4 ? 'COMUNICAÇÃO' : `Atração ${j + 1}(Prologo)${diaMes(mais(d, 1))} (AH)`, editor, d, turno));
     if (j === 1) PAUTA.push(linha('TRANSFORMAR DA A B', editor, d, turno));
     if (j === 2) PAUTA.push(linha('VEM PRONTA', editor, d, turno, true));
@@ -208,10 +213,11 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(await p.locator('th.pauta-dia.hoje').evaluateAll((ths) => ths.map((t) => t.dataset.dia)), [hoje]);
   assert.equal((await p.locator('th.pauta-dia.hoje .pauta-dia-rel').textContent()).trim(), 'hoje');
 
-  // um editor por linha, na ordem do turno de costume; "sem editor · sobrou" no fim
-  assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+  // um editor por linha, na ordem do turno de costume
+  assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte']);
   assert.equal((await fileira(p, 'Carla Duarte').locator('.pauta-editor-meta').textContent()).trim(), '7 claquetes');
-  assert.equal((await fileira(p, 'sem editor').locator('.pauta-editor-meta').textContent()).trim(), 'sobrou');
+  // sem "sem editor · sobrou": a Lia não é da coordenação nem editora (#172; oSobrouPorPerfil)
+  assert.equal(await p.locator('.pauta-grade tr.sem-editor').count(), 0);
   // a Lia não é editora: nenhuma linha "você", sem "Minha pauta"
   assert.equal(await p.locator('tr.eu, .pauta-minha').count(), 0);
 
@@ -243,7 +249,7 @@ async function noComputador(navegador, url, tema) {
   const estilo = (l) => l.evaluate((e) => [getComputedStyle(e).fontStyle, getComputedStyle(e).fontFamily].join('|'));
   assert.notEqual(await estilo(tarefa.locator('.pauta-nome-com-versoes')), await estilo(claquete.locator('.pauta-nome-com-versoes')));
   assert.match(await estilo(tarefa.locator('.pauta-nome-com-versoes')), /^italic/);
-  assert.deepEqual(await textos(celula(p, 'sem editor', hoje).locator('.pauta-item.pauta-tarefa .pauta-texto')), ['CALHAUS']);
+  
 
   // a produção da arte aparece só na coluna de hoje; nos outros dias, só o nome
   assert.ok((await celula(p, 'Ana Ribeiro', hoje).locator('.pauta-producao').count()) > 0);
@@ -260,14 +266,14 @@ async function noComputador(navegador, url, tema) {
   await p.mouse.move(5, 5);
   await p.locator('.pauta-aviso-balao').waitFor({ state: 'detached' });
 
-  // o recado do dia (o aviso sem editor), no alto; a mesa da produção: o que sobrou e quem está fora
+  // o recado do dia (o aviso sem editor), no alto; a mesa da produção: quem está fora (o que sobrou, a Lia não vê:
+  // não é da coordenação nem editora, #172)
   const recado = p.locator('.pauta-recado');
   assert.match(await recado.locator('.rotulo').textContent(), /Recado do dia · hoje/);
   assert.equal((await recado.locator('p').textContent()).trim(), 'Reunião geral às 10h na ilha 4');
   assert.equal(await p.locator('.pauta-mesa.so-lateral').count(), 1);
-  const sobrou = p.locator('.pauta-sobrou');
-  assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
-  assert.deepEqual(await textos(sobrou.locator('.pauta-texto')), ['CALHAUS']);
+  assert.equal(await p.locator('.pauta-sobrou').count(), 0, 'a Lia não vê o que sobrou');
+  assert.equal(await p.locator('.pauta-lateral.so-fora').count(), 1);
   const fora = p.locator('.pauta-fora');
   assert.match(await fora.locator('.rotulo').textContent(), /Fora no dia\s*1/);
   assert.deepEqual(await textos(fora.locator('.pauta-fora-nome')), ['Elis Furtado']);
@@ -280,6 +286,13 @@ async function noComputador(navegador, url, tema) {
   assert.equal(await show.locator('.marca-texto').count(), 1);
   const novela = cardDe(celula(p, 'Ana Ribeiro', hoje), 'Novela Sol');
   assert.equal((await novela.locator('.pauta-producao').textContent()).trim(), 'sem card');
+  // a bolinha do "sem card" é a bolinha de estado da agenda (BolinhaDeEstado, #172): o pontinho cheio e neutro, sem anel
+  const bolinha = (l) => l.locator('.pauta-nome-com-versoes > .bolinha-estado').evaluate((e) => ({ estado: e.dataset.estado, cor: getComputedStyle(e).backgroundColor, anel: getComputedStyle(e).boxShadow, w: getComputedStyle(e).width, raio: getComputedStyle(e).borderRadius }));
+  const semCard = await bolinha(novela);
+  const tinta3 = await p.evaluate(() => { const e = document.createElement('i'); e.style.color = 'var(--tinta3)'; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
+  assert.deepEqual(semCard, { estado: 'sem-card', cor: tinta3, anel: 'none', w: '6px', raio: '50%' }, 'sem card: a bolinha neutra da agenda');
+  assert.equal((await bolinha(show)).estado, 'entregue');
+  assert.notEqual((await bolinha(show)).cor, tinta3, 'entregue: a bolinha com a cor da etapa');
   // o hover da agenda (#162): o realce, sem sublinhado; o lápis do apelido aparece no canto
   const lapis = show.locator('.pauta-lapis');
   assert.equal(await lapis.evaluate((e) => getComputedStyle(e).opacity), '0');
@@ -507,7 +520,7 @@ async function aSemanaNoSafari(navegador, url) {
   await p.waitForTimeout(400);
   let vista = await semanaAVista(p);
   assert.deepEqual(vista.dias, diasDe(segunda), `a semana de hoje inteira à vista (${JSON.stringify(vista)})`);
-  assert.deepEqual(vista.nomes, ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+  assert.deepEqual(vista.nomes, ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte']);
   assert.ok(vista.grade <= 1600 && vista.maiorDia < 400, `a grade cabe na tela (${JSON.stringify(vista)})`);
   // a semana na forma da pauta real
   await p.goto(`${url}#/pauta/semana/${DEPOIS}`);
@@ -516,7 +529,7 @@ async function aSemanaNoSafari(navegador, url) {
   await p.waitForTimeout(400);
   vista = await semanaAVista(p);
   assert.deepEqual(vista.dias, diasDe(DEPOIS), `a semana da forma real inteira à vista (${JSON.stringify(vista)})`);
-  assert.deepEqual([...vista.nomes].sort(), [...DA_FORMA_REAL, 'sem editor'].sort(), 'o nome de cada editor à vista');
+  assert.deepEqual([...vista.nomes].sort(), [...DA_FORMA_REAL].sort(), 'o nome de cada editor à vista');
   assert.ok(vista.grade <= 1600 && vista.maiorDia < 400, `a grade cabe na tela (${JSON.stringify(vista)})`);
   // o fim de semana sem ninguém: o traço em cada linha
   assert.deepEqual(await textos(fileira(p, 'Rita Fontes').locator(`td[data-dia="${mais(DEPOIS, 5)}"], td[data-dia="${mais(DEPOIS, 6)}"]`)), ['–', '–']);
@@ -534,6 +547,97 @@ async function aSemanaNoSafari(navegador, url) {
   await cel.ctx.close();
   await ctx.close();
   console.log('ok: a Semana no Safari (#172): os 7 dias e os nomes à vista, na semana de hoje e na da forma real; no celular, a grade rola sem ir ao limite');
+}
+
+/**
+ * Quem vê o "Sobrou · sem editor" (#172): a coordenação (marcada por um administrador) e os editores (a Carla); a Lia e
+ * a designer (a Dora), não.
+ */
+async function oSobrouPorPerfil(navegador, url, api) {
+  const marcar = await fetch(`${api}/cadastros/coordenacao`, { method: 'POST', headers: { 'content-type': 'application/json', 'cf-access-authenticated-user-email': CHEFE }, body: JSON.stringify({ email: COORD }) });
+  assert.equal(marcar.status, 200, 'a coordenação marcada');
+  const ve = {};
+  for (const [quem, email] of [['coordenação', COORD], ['editora', CARLA], ['designer', DORA], ['sem perfil', LIA]]) {
+    const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/pauta', null, email);
+    await p.locator('.pauta-grade').waitFor();
+    await p.locator('.pauta-fora').waitFor();
+    const sobrou = p.locator('.pauta-sobrou');
+    ve[quem] = (await sobrou.count()) ? await textos(sobrou.locator('.pauta-texto')) : null;
+    // a linha "sem editor · sobrou" da Semana vai junto com a folha
+    const linha = (await p.locator('.pauta-grade tr.sem-editor').count()) ? await textos(celula(p, 'sem editor', hoje).locator('.pauta-item.pauta-tarefa .pauta-texto')) : null;
+    assert.deepEqual(linha, ve[quem], `${quem}: a linha da Semana e a folha do que sobrou juntas`);
+    if (ve[quem]) {
+      assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
+      assert.equal((await fileira(p, 'sem editor').locator('.pauta-editor-meta').textContent()).trim(), 'sobrou');
+    }
+    // e a coluna do Dia
+    await p.getByRole('radio', { name: 'Dia', exact: true }).click();
+    await p.locator('.pauta-colunas').waitFor();
+    assert.equal(await p.locator('.pauta-coluna.sobra').count(), ve[quem] ? 1 : 0, `${quem}: a coluna do que sobrou no Dia`);
+    await p.getByRole('radio', { name: 'Semana', exact: true }).click();
+    await p.locator('.pauta-grade').waitFor();
+    if (CAPTURAS && quem !== 'editora') await capturar(p, `00-sobrou-${quem.replace(/\s+/g, '-')}`, false);
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  }
+  assert.deepEqual(ve, { coordenação: ['CALHAUS'], editora: ['CALHAUS'], designer: null, 'sem perfil': null });
+  console.log('ok: o "Sobrou · sem editor" (a folha, a linha da Semana e a coluna do Dia) só para a coordenação e os editores; a designer e quem não tem perfil não veem');
+}
+
+/**
+ * A info (#172): a instrução para o editor sai da lista (não é tarefa) e fica escondida num balão. A da claquete, no
+ * canto do card; a que não tem claquete antes, no alto da posição. Com info, o balão é cheio e laranja; o clique abre o
+ * texto ali mesmo (sem abrir a ficha), e Esc, outro clique ou um clique fora fecham.
+ */
+async function aInfoNoBalao(navegador, url) {
+  for (const [onde, opcoes] of [
+    ['computador', { viewport: { width: 1440, height: 1000 } }],
+    ['celular', { ...devices['iPhone 13'] }],
+  ]) {
+    for (const tema of ['light', 'dark']) {
+      const nome = `${onde}-${tema === 'dark' ? 'escuro' : 'claro'}`;
+      const { ctx, p, erros } = await abrir(navegador, url, { ...opcoes, colorScheme: tema }, `#/pauta/semana/${DEPOIS}`);
+      await p.locator(`th.pauta-dia[data-dia="${DEPOIS}"]`).waitFor();
+      const otto = celula(p, 'Otto Lemos', DEPOIS);
+      // a instrução não é item da lista nem "tarefa"
+      const daLista = await textos(otto.locator('.pauta-texto'));
+      assert.ok(daLista.length === 1 && daLista[0].startsWith('Atração 2(Prologo)'), `${nome}: só a claquete na lista (${daLista})`);
+      assert.equal(await otto.locator('.pauta-producao', { hasText: 'tarefa' }).count(), 0);
+      const card = cardDe(otto, 'Atração 2');
+      const botao = card.locator('.balao-info-botao');
+      assert.equal(await botao.getAttribute('aria-expanded'), 'false');
+      assert.equal(await card.locator('.balao-info-texto').count(), 0, `${nome}: a info escondida`);
+      const ultra = await p.evaluate(() => { const e = document.createElement('i'); e.style.color = 'var(--ultra)'; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
+      assert.equal(await botao.evaluate((b) => getComputedStyle(b).color), ultra, `${nome}: com info, o balão laranja`);
+      assert.equal(await botao.locator('path').getAttribute('fill'), 'currentColor', `${nome}: o balão cheio`);
+      await botao.scrollIntoViewIfNeeded();
+      await botao.click();
+      await card.locator('.balao-info-texto').waitFor();
+      assert.equal(await botao.getAttribute('aria-expanded'), 'true');
+      assert.deepEqual(await textos(card.locator('.balao-info-texto p')), ['TRANSFORMAR DA A B']);
+      assert.equal(await p.locator('.card-aberto').count(), 0, `${nome}: o balão não abre a ficha`);
+      await p.waitForTimeout(300);
+      await capturar(p, `08-info-${nome}`, false);
+      // Esc fecha
+      await p.keyboard.press('Escape');
+      await card.locator('.balao-info-texto').waitFor({ state: 'detached' });
+      // a info sem claquete antes: no alto da posição
+      const igor = celula(p, 'Igor Matos', DEPOIS);
+      assert.equal(await igor.locator('.pauta-texto', { hasText: 'REDATOR' }).count(), 0);
+      const daPosicao = igor.locator('.pauta-celula-topo .balao-info-botao.tem');
+      await daPosicao.scrollIntoViewIfNeeded();
+      await daPosicao.click();
+      await igor.locator('.pauta-celula-topo .balao-info-texto').waitFor();
+      assert.deepEqual(await textos(igor.locator('.balao-info-texto p')), ['REDATOR VAI ACOMPANHAR']);
+      // um clique fora fecha
+      await p.locator('.pauta-cabeca h1').click();
+      await igor.locator('.balao-info-texto').waitFor({ state: 'detached' });
+      await semRolagemDeLado(p, nome);
+      assert.deepEqual(erros, [], `${nome}: erros na página`);
+      await ctx.close();
+    }
+  }
+  console.log('ok: a info (#172): fora da lista, no balão da claquete ou da posição; laranja e cheio; o clique abre ali mesmo, Esc e o clique fora fecham (computador e celular, claro e escuro)');
 }
 
 /** Na fila do celular, a entrada da pauta é só o ícone, e cabe no topo. */
@@ -784,7 +888,7 @@ async function oResumoEACopia(navegador, url, teable) {
     await p.locator('.pauta-grade').waitFor();
     await p.locator('.pauta-copia').waitFor();
     assert.match(await p.locator('.pauta-copia').textContent(), /O banco do Teable não respondeu: esta é a cópia da pauta das \d{2}:\d{2}/);
-    assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+    assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte']);
     await capturar(p, '11-semana-copia-e-resumo-escuro');
   } finally {
     teable.estado.fora = false;
@@ -978,6 +1082,147 @@ async function oMovimento(navegador, url) {
   console.log(`ok: o movimento: a troca de semana e de dia desliza para o lado da navegação, a ficha cresce do card e volta; reduzido, só esmaece${VIDEO ? ` (vídeo em ${VIDEO})` : ''}`);
 }
 
+/** O período escrito da Semana, como a Pauta escreve: "16 a 22 de novembro", "30 de novembro a 6 de dezembro". */
+const periodoDaSemana = (seg) => {
+  const fim = mais(seg, 6);
+  const [a, b] = [Number(seg.slice(5, 7)) - 1, Number(fim.slice(5, 7)) - 1];
+  return a === b ? `${Number(seg.slice(8))} a ${Number(fim.slice(8))} de ${MESES[b]}` : `${Number(seg.slice(8))} de ${MESES[a]} a ${Number(fim.slice(8))} de ${MESES[b]}`;
+};
+
+/** Grava, a cada quadro, o que o seletor de datas, o resumo e o cabeçalho da grade (ou a fita) mostram, enquanto `agir`
+    troca de semana ou de dia, até o seletor chegar a `alvo` e tudo parar por um tempo; devolve os quadros, sem
+    repetidos seguidos. */
+async function quadrosDaTroca(p, agir, alvo, parado = 400) {
+  await p.evaluate(() => {
+    window.__quadros = [];
+    window.__gravando = true;
+    const ler = () => {
+      const txt = (sel) => [...document.querySelectorAll(sel)].map((e) => e.textContent.replace(/\s+/g, ' ').trim()).join('|');
+      const q = { periodo: txt('.pauta-periodo'), resumo: txt('.pauta-resumo .ct-num'), dias: txt('th.pauta-dia .pauta-dia-num, .pauta-fita .pauta-fita-num'), t: performance.now() };
+      const u = window.__quadros.at(-1);
+      if (!u || u.periodo !== q.periodo || u.resumo !== q.resumo || u.dias !== q.dias) window.__quadros.push(q);
+      if (window.__gravando) requestAnimationFrame(ler);
+    };
+    requestAnimationFrame(ler);
+  });
+  await agir();
+  await p.waitForFunction(
+    ([a, ms]) => {
+      const u = window.__quadros.at(-1);
+      return u && u.periodo === a && performance.now() - u.t > ms;
+    },
+    [alvo, parado],
+    { timeout: 8000 },
+  );
+  return p.evaluate(() => ((window.__gravando = false), window.__quadros));
+}
+
+/**
+ * Os contadores da agenda na Pauta (#170): o seletor de datas ("16 a 22 de novembro", "sexta, 27 de novembro") e os
+ * números do resumo do administrador ("1 linha sem editor · 15 claquetes sem card") contam como os da agenda (No
+ * Trello) quando a semana ou o dia muda: o período e os números do cabeçalho da grade (e da fita do Dia) contam juntos,
+ * pelas datas, e o "hoje" volta à mão no fim. Com o movimento reduzido, nada conta: só esmaece. Com VIDEO=pasta, grava
+ * o vídeo da troca de semana.
+ */
+async function osContadores(navegador, url) {
+  const VIDEO = process.env.VIDEO || '';
+  const tela = { viewport: { width: 1440, height: 900 }, colorScheme: 'light', ...(VIDEO ? { recordVideo: { dir: join(VIDEO, 'contadores'), size: { width: 1440, height: 900 } } } : {}) };
+  const { ctx, p, erros } = await abrir(navegador, url, tela, '#/pauta', null, CHEFE);
+  await p.locator('.pauta-grade').waitFor();
+  await p.locator('.pauta-resumo').waitFor();
+  const devagar = (ms) => (VIDEO ? p.waitForTimeout(ms) : Promise.resolve());
+  const periodo = () => p.locator('.pauta-periodo').textContent().then((t) => t.replace(/\s+/g, ' ').trim());
+  // o período da agenda: o mesmo componente (os dias com algarismos de largura fixa), escrito como a Pauta escreve
+  assert.equal(await periodo(), periodoDaSemana(segunda));
+  assert.equal(await p.locator('.pauta-periodo b .p-dia').count(), 2, 'o período da agenda: dois dias que contam');
+  assert.equal(await p.locator('.pauta-periodo b .p-dia').first().evaluate((e) => getComputedStyle(e).fontVariantNumeric), 'tabular-nums');
+  // o leitor de tela ouve o período parado, não a contagem
+  assert.equal(await p.locator('.pauta-periodo').getAttribute('aria-hidden'), 'true');
+  assert.equal((await p.locator('.pauta-leitor').textContent()).trim(), periodoDaSemana(segunda));
+  const resumo = async () => (await p.locator('.pauta-resumo').textContent()).replace(/\s+/g, ' ');
+  const [semEditor, semCard] = (await p.locator('.pauta-resumo .ct-num').allTextContents()).map(Number);
+  assert.match(await resumo(), /^1 linha sem editor/);
+  assert.ok(semCard > 3, `claquetes sem card (${semCard})`);
+  await capturar(p, '12-contadores-semana', false);
+  await devagar(900);
+
+  // a semana anterior: o período e os números do cabeçalho contam para trás, pelas datas, e o resumo conta junto
+  const indo = await quadrosDaTroca(p, () => p.getByRole('button', { name: 'Semana anterior' }).click(), periodoDaSemana(anterior));
+  const finalAnterior = indo.at(-1);
+  assert.equal(finalAnterior.periodo, periodoDaSemana(anterior));
+  const primeiros = indo.map((q) => Number(q.dias.split('|')[0]));
+  const contados = [...new Set(primeiros)];
+  assert.ok(contados.length >= 3, `o cabeçalho conta (${contados})`);
+  const [ini, fim] = [Number(segunda.slice(8)), Number(anterior.slice(8))];
+  // o primeiro número passa por dias entre a partida e o alvo (pelas datas: a virada do mês volta a 31)
+  assert.ok(contados.includes(ini) && contados.at(-1) === fim, `o cabeçalho sai de ${ini} e chega em ${fim} (${contados})`);
+  const noMeio = indo.filter((q) => q.periodo !== periodoDaSemana(segunda) && q.periodo !== periodoDaSemana(anterior));
+  assert.ok(noMeio.length >= 1, `o período conta, passando pelas datas do meio (${indo.map((q) => q.periodo)})`);
+  const cards = [...new Set(indo.map((q) => Number(q.resumo.split('|')[1])))];
+  assert.equal(cards[0], semCard);
+  assert.ok(cards.length >= 3 && cards.some((c) => c < semCard && c > cards.at(-1)), `as claquetes sem card contam (${cards})`);
+  // as contas param certas: o período, o resumo (a palavra acompanha) e o hoje fora desta semana
+  assert.equal(await periodo(), periodoDaSemana(anterior));
+  assert.equal(await p.locator('th.pauta-dia.hoje').count(), 0);
+  assert.match(await resumo(), /^0 linhas sem editor1 claquete sem card/);
+  await capturar(p, '13-contadores-semana-anterior', false);
+  await devagar(700);
+
+  // de volta: hoje volta ao cabeçalho depois da contagem, escrevendo-se à mão
+  const voltando = await quadrosDaTroca(p, () => p.getByRole('button', { name: 'Próxima semana' }).click(), periodoDaSemana(segunda));
+  assert.equal(voltando.at(-1).periodo, periodoDaSemana(segunda));
+  await p.locator('th.pauta-dia.hoje .pauta-dia-rel').waitFor();
+  assert.equal((await p.locator('th.pauta-dia.hoje').getAttribute('data-dia')), hoje);
+  assert.deepEqual((await p.locator('.pauta-resumo .ct-num').allTextContents()).map(Number), [semEditor, semCard]);
+  await devagar(700);
+  // a semana seguinte, sem pauta, e a volta pelo Hoje: as contas param certas
+  await p.keyboard.press('ArrowRight');
+  await p.locator('.pauta-vazia').waitFor();
+  await p.waitForFunction((t) => document.querySelector('.pauta-periodo')?.textContent.replace(/\s+/g, ' ').trim() === t, periodoDaSemana(proxima));
+  await devagar(800);
+  await p.locator('.pauta-hoje').click();
+  await p.waitForFunction((t) => document.querySelector('.pauta-periodo')?.textContent.replace(/\s+/g, ' ').trim() === t, periodoDaSemana(segunda));
+  await devagar(800);
+
+  // o Dia: o período conta o dia ("sexta, 27 de novembro"), e a fita conta quando a semana muda
+  await p.getByRole('radio', { name: 'Dia', exact: true }).click();
+  await p.locator('.pauta-colunas').waitFor();
+  assert.equal(await periodo(), porExtenso(hoje));
+  await devagar(700);
+  const dia = await quadrosDaTroca(p, () => p.getByRole('button', { name: 'Próximo dia' }).click(), porExtenso(mais(hoje, 1)));
+  assert.equal(dia.at(-1).periodo, porExtenso(mais(hoje, 1)));
+  await capturar(p, '14-contadores-dia', false);
+  await devagar(500);
+  // a fita: ir para a segunda e voltar um dia troca de semana; os números da fita contam
+  await p.locator(`.pauta-fita [data-dia="${segunda}"]`).click();
+  await p.waitForFunction((t) => document.querySelector('.pauta-periodo')?.textContent.replace(/\s+/g, ' ').trim() === t, porExtenso(segunda));
+  await devagar(500);
+  const fita = await quadrosDaTroca(p, () => p.getByRole('button', { name: 'Dia anterior' }).click(), porExtenso(mais(segunda, -1)));
+  assert.equal(fita.at(-1).periodo, porExtenso(mais(segunda, -1)));
+  const daFita = [...new Set(fita.map((q) => q.dias.split('|')[0]))];
+  assert.ok(daFita.length >= 3, `a fita conta (${daFita})`);
+  assert.equal(daFita.at(-1), `${anterior.slice(8)}/${anterior.slice(5, 7)}`);
+  await devagar(900);
+  assert.deepEqual(erros, [], 'os contadores: erros na página');
+  await ctx.close();
+
+  // o movimento reduzido: nada conta (o período e os números trocam de uma vez) e só esmaece
+  const reduzido = await abrir(navegador, url, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' }, '#/pauta', null, CHEFE);
+  const q = reduzido.p;
+  await q.locator('.pauta-resumo').waitFor();
+  const troca = await quadrosDaTroca(q, () => q.getByRole('button', { name: 'Semana anterior' }).click(), periodoDaSemana(anterior));
+  const periodos = [...new Set(troca.map((x) => x.periodo))];
+  assert.deepEqual(periodos, [periodoDaSemana(segunda), periodoDaSemana(anterior)], `reduzido: o período só troca (${periodos})`);
+  assert.equal(new Set(troca.map((x) => x.resumo)).size, 2, 'reduzido: o resumo só troca');
+  await q.getByRole('button', { name: 'Próxima semana' }).click();
+  await q.waitForFunction(() => document.querySelector('.pauta-periodo').getAnimations().length > 0);
+  const anima = await q.locator('.pauta-periodo').evaluate((e) => e.getAnimations().map((a) => Object.keys(a.effect.getKeyframes()[0]).filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).join(',')));
+  assert.ok(anima.every((k) => k === 'opacity'), `reduzido: o período só esmaece (${anima})`);
+  assert.deepEqual(reduzido.erros, []);
+  await reduzido.ctx.close();
+  console.log(`ok: os contadores da agenda na Pauta: o seletor de datas (Semana e Dia), o cabeçalho da grade, a fita e o resumo contam juntos; reduzido, só esmaece${VIDEO ? ` (vídeo em ${join(VIDEO, 'contadores')})` : ''}`);
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -999,11 +1244,13 @@ async function principal() {
   const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros, env });
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
-  for (const quem of [LIA, TOM, CARLA, DORA, RUI]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
+  for (const quem of [LIA, TOM, CARLA, DORA, RUI, COORD]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
   let falhou = false;
   try {
     await aSemanaNoSafari(navegador, s.url);
+    await oSobrouPorPerfil(navegador, s.url, s.api);
+    await aInfoNoBalao(navegador, s.url);
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema);
     await naTelaPequena(navegador, s.url, 'iPad (gen 7)', 'tablet', 'light');
     for (const tema of ['light', 'dark']) await naTelaPequena(navegador, s.url, 'iPhone 13', 'celular', tema);
@@ -1015,6 +1262,7 @@ async function principal() {
     await oCodigoDasVersoes(navegador, s.url);
     await asVersoesAMaoSemRoteiro(navegador, s.url);
     await oMovimento(navegador, s.url);
+    await osContadores(navegador, s.url);
   } catch (e) {
     falhou = true;
     console.error(e);

@@ -296,6 +296,59 @@ describe('os pôsteres guardados pelo PROMeiro', () => {
     expect((await fetch(`${base}/api/publico/poster/recFilme0001?t=token-do-padeiro`)).status).toBe(404);
   });
 
+  it('o caminho de produção (#182): o link assinado do Teable no endereço público dele (fora do alcance do PROMeiro) é lido pelo TEABLE_URL', async () => {
+    // o Teable escreve o link assinado no endereço público (PUBLIC_ORIGIN); de dentro do PROMeiro, esse endereço cai no
+    // login do Access (uma página, não a imagem). O mesmo caminho, no TEABLE_URL, entrega o arquivo
+    const pedidos: string[] = [];
+    const buscar = async (endereco: string) => {
+      const url = new URL(endereco);
+      pedidos.push(url.host + url.pathname);
+      if (url.host === 'teable:3000' && url.pathname === '/api/table/tblFilmes/record/recFilme0001')
+        return { ok: true, status: 200, json: async () => ({ fields: { poster: [{ token: 'tokP', name: 'poster.jpg', mimetype: 'image/jpeg', presignedUrl: 'https://teable.exemplo.com/api/attachments/read/private/tokP?token=assinado' }] } }) };
+      if (url.host === 'teable:3000' && url.pathname === '/api/attachments/read/private/tokP' && url.searchParams.get('token') === 'assinado')
+        return { ok: true, status: 200, headers: new Headers({ 'content-type': 'image/jpeg' }), arrayBuffer: async () => new Uint8Array(IMAGEM).buffer };
+      if (url.host === 'teable.exemplo.com') return { ok: true, status: 200, headers: new Headers({ 'content-type': 'text/html' }), arrayBuffer: async () => new TextEncoder().encode('<html>entrar</html>').buffer };
+      return { ok: false, status: 404, json: async () => ({}), headers: new Headers() };
+    };
+    const { ana } = await subir({ env: ENV_DOS_FILMES, teable: buscar });
+    const r = await ana('/api/filmes/poster/recFilme0001');
+    expect(r.status).toBe(200);
+    expect(Buffer.from(await r.arrayBuffer()).equals(IMAGEM)).toBe(true);
+    expect(pedidos).toContain('teable:3000/api/attachments/read/private/tokP');
+  });
+
+  it('o link assinado de outro servidor de arquivos (o S3 do Teable) é lido como veio', async () => {
+    const buscar = async (endereco: string) => {
+      const url = new URL(endereco);
+      if (url.pathname === '/api/table/tblFilmes/record/recFilme0001')
+        return { ok: true, status: 200, json: async () => ({ fields: { poster: [{ token: 'tokS', mimetype: 'image/jpeg', presignedUrl: 'https://arquivos.exemplo.com/bucket/tokS?X-Amz-Signature=x' }] } }) };
+      if (url.host === 'arquivos.exemplo.com') return { ok: true, status: 200, headers: new Headers({ 'content-type': 'image/jpeg' }), arrayBuffer: async () => new Uint8Array(IMAGEM).buffer };
+      return { ok: false, status: 404, json: async () => ({}), headers: new Headers() };
+    };
+    const anexos = criarAnexos(abrirBanco(':memory:'), { buscar });
+    expect((await anexos.poster('recFilme0001', ENV_DOS_FILMES))?.dados.equals(IMAGEM)).toBe(true);
+  });
+
+  it('o campo do pôster com outro nome ("Pôster"): vale o campo que a descoberta achou (TEABLE_FILMES_POSTER), pelo id', async () => {
+    const consultas: string[] = [];
+    const buscar = async (endereco: string) => {
+      const url = new URL(endereco);
+      if (url.pathname === '/api/table/tblFilmes/record/recFilme0001') {
+        consultas.push(url.searchParams.get('fieldKeyType') ?? '');
+        const anexo = [{ token: 'tokN', mimetype: 'image/jpeg', presignedUrl: '/api/attachments/read/tokN' }];
+        return { ok: true, status: 200, json: async () => ({ fields: url.searchParams.get('fieldKeyType') === 'id' ? { fldPoster0001: anexo } : { 'Pôster': anexo } }) };
+      }
+      if (url.pathname === '/api/attachments/read/tokN') return { ok: true, status: 200, headers: new Headers({ 'content-type': 'image/jpeg' }), arrayBuffer: async () => new Uint8Array(IMAGEM).buffer };
+      return { ok: false, status: 404, json: async () => ({}), headers: new Headers() };
+    };
+    const comId = criarAnexos(abrirBanco(':memory:'), { buscar });
+    expect((await comId.poster('recFilme0001', { ...ENV_DOS_FILMES, TEABLE_FILMES_POSTER: 'fldPoster0001' }))?.dados.equals(IMAGEM)).toBe(true);
+    expect(consultas).toEqual(['id']);
+    // sem o id, o campo pelo nome, sem diferença de caixa e acento
+    const peloNome = criarAnexos(abrirBanco(':memory:'), { buscar });
+    expect((await peloNome.poster('recFilme0001', ENV_DOS_FILMES))?.dados.equals(IMAGEM)).toBe(true);
+  });
+
   it('um pôster novo posto no Teable substitui a cópia na conferência (de 6 em 6 horas)', async () => {
     const teable = teableDosPosteres();
     let agora = Date.parse('2026-11-26T12:00:00Z');

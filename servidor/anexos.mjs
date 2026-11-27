@@ -40,6 +40,17 @@ export function posterPublico(caminho, consulta, token) {
   return timingSafeEqual(Buffer.from(veio), Buffer.from(esperado)) ? rec : null;
 }
 
+/** O texto do jeito de comparar o nome de um campo: sem acento, sem caixa. */
+const comparavel = (s) => String(s ?? '').normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
+
+/** O anexo do pôster nos campos do registro: o do id (`campo`), ou o chamado "poster" (sem caixa nem acento). */
+function campoDoPoster(fields, campo) {
+  if (!fields || typeof fields !== 'object') return undefined;
+  if (campo && fields[campo]) return fields[campo];
+  if (fields.poster) return fields.poster;
+  return Object.entries(fields).find(([nome]) => comparavel(nome) === 'poster')?.[1];
+}
+
 /**
  * @param db o SQLite do PROMeiro
  * @param deps.buscar fetch, para o Teable (o pôster que ainda está lá)
@@ -118,30 +129,59 @@ export function criarAnexos(db, { buscar = fetch, agora = () => Date.now() } = {
   }
 
   /**
-   * O pôster no Teable (campo poster da tabela de filmes).
+   * O pôster no Teable (o campo do pôster da tabela de filmes: o que a descoberta achou, TEABLE_FILMES_POSTER, pelo id;
+   * sem ele, o chamado "poster", sem diferença de caixa e acento).
    * @param jaTenho a origem da cópia do PROMeiro: se o anexo do Teable é o mesmo, nem baixa
    * @returns { img, origem } | { mesmo: true } | { semArquivo: true } | { falhou: motivo } | null (sem o Teable)
    */
   async function doTeable(rec, env, jaTenho) {
     const base = String(env.TEABLE_URL || '').replace(/\/+$/, '');
     if (!base || !env.TEABLE_FILMES || !env.TEABLE_TOKEN) return null;
+    const campo = String(env.TEABLE_FILMES_POSTER ?? '').trim();
     try {
-      const r = await buscar(`${base}/api/table/${encodeURIComponent(env.TEABLE_FILMES)}/record/${rec}?fieldKeyType=name`, { headers: { authorization: `Bearer ${env.TEABLE_TOKEN}` }, signal: AbortSignal.timeout(8000) });
+      const r = await buscar(`${base}/api/table/${encodeURIComponent(env.TEABLE_FILMES)}/record/${rec}?fieldKeyType=${campo ? 'id' : 'name'}`, { headers: { authorization: `Bearer ${env.TEABLE_TOKEN}` }, signal: AbortSignal.timeout(8000) });
       if (r.status === 404) return { semArquivo: true };
       if (!r.ok) return { falhou: `o Teable respondeu ${r.status}` };
-      const anexo = (await r.json())?.fields?.poster?.[0];
+      const anexo = campoDoPoster((await r.json())?.fields, campo)?.[0];
       const origem = String(anexo?.token || anexo?.id || anexo?.path || '');
       if (!anexo?.presignedUrl || !/^image\//.test(anexo.mimetype ?? 'image/')) return { semArquivo: true };
       if (jaTenho && origem && origem === jaTenho) return { mesmo: true };
-      // o armazenamento do Teable pode ter perdido o arquivo ("Could not find attachment"): sem imagem, não tem
-      const f = await buscar(new URL(anexo.presignedUrl, base).toString(), { signal: AbortSignal.timeout(10000) });
-      const tipo = String(f.headers?.get?.('content-type') || anexo.mimetype || '').split(';')[0].trim();
-      if (!f.ok || !/^image\//.test(tipo)) return { semArquivo: true };
-      const dados = Buffer.from(await f.arrayBuffer());
-      return dados.length ? { img: { mime: tipo, dados }, origem: origem || 'teable' } : { semArquivo: true };
+      const lido = await arquivoDoTeable(anexo, base);
+      if (lido.motivo) console.warn(`[pôster] ${rec}: o anexo está no cadastro, mas o arquivo não veio (${lido.motivo})`);
+      return lido.img ? { img: lido.img, origem: origem || 'teable' } : { semArquivo: true };
     } catch (e) {
       return { falhou: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /**
+   * O arquivo do anexo, pelo link assinado (#182). O Teable escreve o link do arquivo guardado por ele no endereço
+   * público dele (o PUBLIC_ORIGIN), que de dentro do PROMeiro pode nem responder ou cair no login do Access: o mesmo
+   * caminho é lido primeiro pelo TEABLE_URL, e só depois como veio. O link de outro servidor (o S3) é lido como veio.
+   * O armazenamento do Teable pode ter perdido o arquivo ("Could not find attachment"): sem imagem, não tem.
+   * @returns { img } | { motivo } (o arquivo não veio de nenhum dos endereços) | {} (veio vazio)
+   */
+  async function arquivoDoTeable(anexo, base) {
+    const link = new URL(anexo.presignedUrl, base);
+    const doTeable = new URL(base);
+    const enderecos = link.origin !== doTeable.origin && link.pathname.startsWith('/api/attachments/') ? [`${base}${link.pathname}${link.search}`, link.toString()] : [link.toString()];
+    const motivos = [];
+    for (const endereco of enderecos) {
+      try {
+        const f = await buscar(endereco, { signal: AbortSignal.timeout(10000) });
+        const tipo = String(f.headers?.get?.('content-type') || anexo.mimetype || '').split(';')[0].trim();
+        if (!f.ok || !/^image\//.test(tipo)) {
+          motivos.push(`${new URL(endereco).host} respondeu ${f.status}${f.ok ? ` com ${tipo || 'outro tipo'}` : ''}`);
+          continue;
+        }
+        const dados = Buffer.from(await f.arrayBuffer());
+        return dados.length ? { img: { mime: tipo, dados } } : {};
+      } catch (e) {
+        motivos.push(`${new URL(endereco).host}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    // o arquivo perdido pelo armazenamento (404 em todos) é o caso conhecido: não é preciso avisar
+    return motivos.every((m) => / respondeu 404$/.test(m)) ? {} : { motivo: motivos.join('; ') };
   }
 
   /** Confere a cópia com o Teable, sem atrasar quem pediu: um pôster novo lá substitui; sem o arquivo, a cópia fica. */

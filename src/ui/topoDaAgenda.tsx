@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { CRITERIOS, duracaoDoPeriodo, NOME_DO_CRITERIO, periodoNaContagem, valorNaContagem, type CriterioDaAgenda, type DiaDaSemana, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
 import { RABISCO } from './cena';
 import { RABISCOS } from './pecas';
@@ -58,6 +58,21 @@ export function useContagem(alvo: number, duracao: (de: number, para: number) =>
     // a duração é lida na troca do alvo: só ela começa uma contagem
   }, [alvo]); // eslint-disable-line react-hooks/exhaustive-deps
   return c;
+}
+
+const ESMAECE_MS = 140;
+
+/** Com o movimento reduzido, o que conta só troca; com este gancho, `el` esmaece de volta quando `chave` muda (fora da
+    primeira vez). Com o movimento, nada: quem anima é a contagem. A Pauta usa no período e no resumo (#170). */
+export function useEsmaeceAoMudar(el: RefObject<HTMLElement | null>, chave: unknown) {
+  const antes = useRef(chave);
+  useLayoutEffect(() => {
+    if (antes.current === chave) return;
+    antes.current = chave;
+    if (!semMovimento() || !el.current || typeof el.current.animate !== 'function') return;
+    const a = el.current.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ESMAECE_MS, easing: 'ease-out' });
+    return () => a.cancel();
+  }, [chave]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** Um item que abre a vaga de lado ao aparecer e a fecha ao sair, com opacidade, sem a linha pular. Enquanto fecha,
@@ -124,8 +139,9 @@ export function ItemQueAbre({ ver, classe, ms = 300, opacidadeMs = 200, children
   );
 }
 
-/** O número que conta, com algarismos de largura fixa, e a palavra que acompanha o número à vista ("1 card", "2 cards"). */
-function NumeroQueConta({ valor, um, varios }: { valor: number; um: string; varios: string }) {
+/** O número que conta, com algarismos de largura fixa, e a palavra que acompanha o número à vista ("1 card", "2 cards").
+    A Pauta conta o resumo por ele também ("1 linha sem editor", #170). */
+export function NumeroQueConta({ valor, um, varios }: { valor: number; um: string; varios: string }) {
   const c = useContagem(valor, () => CONTA_RESUMO_MS);
   // com o movimento reduzido, o número novo já sai junto com a palavra nova (a contagem só troca um quadro depois)
   const v = semMovimento() ? valor : valorNaContagem(c.de, c.para, c.p);
@@ -140,8 +156,9 @@ function NumeroQueConta({ valor, um, varios }: { valor: number; um: string; vari
 const ESCREVER_MS = 360;
 const CANETA = 'cubic-bezier(0.45, 0, 0.3, 1)';
 
-/** A escrita à mão: o traço aparece da esquerda para a direita, como a caneta (depois de `atraso` ms). */
-const escrever = (e: HTMLElement, atraso = 0) =>
+/** A escrita à mão: o traço aparece da esquerda para a direita, como a caneta (depois de `atraso` ms). A Pauta escreve o
+    "hoje" da grade por ela (#170). */
+export const escrever = (e: HTMLElement, atraso = 0) =>
   e.animate([{ clipPath: 'inset(-40% 100% -40% -8%)' }, { clipPath: 'inset(-40% -8% -40% -8%)' }], { duration: ESCREVER_MS, delay: atraso, easing: CANETA, fill: 'backwards' });
 
 /** A prioridade à mão: ao aparecer (`escreverAoAparecer`), se escreve; quando só o número muda, apaga rápido e se
@@ -183,8 +200,10 @@ function PrioridadeAMao({ n, escreverAoAparecer }: { n: number; escreverAoAparec
   );
 }
 
-/** As palavras do resumo em cada critério: o primeiro número e o segundo (que só aparece quando não é zero). */
-const PALAVRAS: Record<CriterioDaAgenda, [[string, string], [string, string]]> = {
+/** As palavras do resumo: o primeiro número e o segundo (que só aparece quando não é zero), no singular e no plural. */
+export type PalavrasDoResumo = [[string, string], [string, string]];
+/** As palavras do resumo em cada critério da agenda No Trello. */
+const PALAVRAS: Record<CriterioDaAgenda, PalavrasDoResumo> = {
   exibicao: [['card', 'cards'], ['entregue', 'entregues']],
   entrada: [['entrou', 'entraram'], ['já saiu', 'já saíram']],
   entrega: [['entregue', 'entregues'], ['a entregar', 'a entregar']],
@@ -200,13 +219,14 @@ export interface FiltroDasPrioridades {
 /** O resumo dos dias à vista, no critério da agenda: "17 cards · 9 entregues · 2 prioridades" (por exibição), "22
     entraram · 12 já saíram" (por entrada), "10 entregues · 7 a entregar" (por entrega). Os números contam; os itens que
     aparecem ou somem abrem ou fecham a vaga; a prioridade se escreve. Com o `filtro`, a prioridade é o botão que mostra
-    só os cards de prioridade; o resumo continua contando todos os cards dos dias à vista. */
-export function ResumoQueConta({ total, entregues, aEntregar = 0, comPrioridade, criterio = 'exibicao', filtro }: { total: number; entregues: number; aEntregar?: number; comPrioridade: number; criterio?: CriterioDaAgenda; filtro?: FiltroDasPrioridades }) {
+    só os cards de prioridade; o resumo continua contando todos os cards dos dias à vista. Outra agenda (a de filmes,
+    #182) dá as `palavras` dela: "12 exibições · 3 inéditas". */
+export function ResumoQueConta({ total, entregues, aEntregar = 0, comPrioridade, criterio = 'exibicao', filtro, palavras }: { total: number; entregues: number; aEntregar?: number; comPrioridade: number; criterio?: CriterioDaAgenda; filtro?: FiltroDasPrioridades; palavras?: PalavrasDoResumo }) {
   const montado = useRef(false);
   useEffect(() => {
     montado.current = true;
   }, []);
-  const [[um1, varios1], [um2, varios2]] = PALAVRAS[criterio];
+  const [[um1, varios1], [um2, varios2]] = palavras ?? PALAVRAS[criterio];
   const [primeiro, segundo] = criterio === 'entrega' ? [entregues, aEntregar] : [total, entregues];
   return (
     <span>
@@ -289,8 +309,10 @@ export function PeriodoQueConta({ isos, k }: { isos: string[]; k: number }) {
 /** O período em partes, enquanto conta (ou parado): os dias com algarismos de largura fixa, os meses apagados durante
     a virada e o mês da esquerda, que abre ou fecha a vaga. A largura: "fixa" é a do maior período do celular, para as
     setas nunca se mexerem; "suave" (o computador, onde o período é por extenso e varia muito) acompanha o texto, e o
-    que muda de uma vez (um algarismo a mais, o nome do mês) não empurra as setas de estalo: elas andam até o lugar. */
-export function Periodo({ dia1, mes1, dia2, mes2, mesesApagados, largura }: PartesDoPeriodo & { mesesApagados: boolean; largura: 'fixa' | 'suave' }) {
+    que muda de uma vez (um algarismo a mais, o nome do mês) não empurra as setas de estalo: elas andam até o lugar.
+    A Pauta (#170) escreve "16 a 22 de novembro" (`entre`) e, no Dia, um dia só, com o dia da semana (`semana`: "sexta,
+    27 de novembro"; os dois lados do período são o mesmo dia). */
+export function Periodo({ dia1, mes1, dia2, mes2, mesesApagados, largura, entre = ' – ', semana }: PartesDoPeriodo & { mesesApagados: boolean; largura: 'fixa' | 'suave'; entre?: string; semana?: string }) {
   const el = useRef<HTMLElement>(null);
   const [fixa, setFixa] = useState<number>();
   useLayoutEffect(() => {
@@ -334,11 +356,17 @@ export function Periodo({ dia1, mes1, dia2, mes2, mesesApagados, largura }: Part
   const apagado = mesesApagados ? ' apagado' : '';
   return (
     <b ref={el} style={fixa ? { width: fixa } : undefined}>
-      <span className="p-dia p-d1">{dia1}</span>
-      <ItemQueAbre ver={!!mes1} classe="p-m1">
-        <span className={`p-mes${apagado}`}>{mes1}</span>
-      </ItemQueAbre>
-      {' – '}
+      {semana !== undefined ? (
+        <span className="p-sem">{`${semana}, `}</span>
+      ) : (
+        <>
+          <span className="p-dia p-d1">{dia1}</span>
+          <ItemQueAbre ver={!!mes1} classe="p-m1">
+            <span className={`p-mes${apagado}`}>{mes1}</span>
+          </ItemQueAbre>
+          {entre}
+        </>
+      )}
       <span className="p-dia p-d2">{dia2}</span>
       <span className={`p-mes${apagado}`}>{mes2}</span>
     </b>
