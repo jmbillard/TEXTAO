@@ -51,8 +51,9 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     variavel: 'TEABLE_ARTE_PRODUCAO',
     // trello.mjs (o registro do envio e a versão nova)
     api: ['claquete', 'artes_quantidade', 'artes', 'artes_existentes', 'doc', 'redator', 'card_ID', 'data_entrada', 'texto', 'atracao', 'editor', 'key', 'filme', 'praca', 'prioridade', 'workflow', 'urgencia', 'complexidade'],
-    // trello.mjs (andamento, duplicadas, já entrou hoje, a carga das Produções), acervo.mjs, redator.mjs
-    pg: ['card_ID', 'claquete', 'key', 'status', 'data_entrada', 'artes_quantidade', 'artes', 'texto', 'doc', 'redator', 'editor', 'designers', 'entregue', 'data_entrega', 'praca', 'arquivado', 'filme', 'atracao', 'complexidade'],
+    // trello.mjs (andamento, duplicadas, já entrou hoje, a carga das Produções), acervo.mjs, redator.mjs. Os designers
+    // não estão aqui: vêm do campo de lista ou de link que a descoberta acha (colunasDosDesigners, #176)
+    pg: ['card_ID', 'claquete', 'key', 'status', 'data_entrada', 'artes_quantidade', 'artes', 'texto', 'doc', 'redator', 'editor', 'entregue', 'data_entrega', 'praca', 'arquivado', 'filme', 'atracao', 'complexidade'],
   },
   // pauta.mjs e vocabulario.mjs (quem está com a claquete); pauta.mjs (a Semana da pauta, #94)
   { nome: 'EDICAO_producao', titulo: 'Pauta da edição', variavel: 'TEABLE_PAUTA', api: ['key', 'data', 'editor', 'claquete'], pg: ['key', 'editor', 'data', 'expediente_inicio', 'expediente_fim', 'anotacao', 'alterado_em'], opcional: true },
@@ -115,6 +116,40 @@ export interface CampoLido {
   dbFieldName: string;
   type?: string;
   id?: string;
+  /** o campo de link: o id da tabela a que liga (options.foreignTableId) */
+  ligaA?: string;
+}
+
+/** O campo de texto dos designers na produção da arte: os nomes juntados por vírgula (o de antes, para o Metabase). */
+export const CAMPO_DOS_DESIGNERS = 'designers';
+
+/** Onde a produção da arte tem os designers: a lista (o link ou a lista) e o texto juntado, que fica de reserva. */
+export interface ColunasDosDesigners {
+  /** o nome no Postgres do campo de lista ou de link ('' sem ele) */
+  lista: string;
+  /** o nome no Postgres do texto juntado ('' sem ele) */
+  texto: string;
+}
+
+// os tipos do Teable que guardam uma lista de nomes (o link guarda { id, title } de cada um)
+const DE_LISTA = new Set(['link', 'user', 'multipleSelect']);
+
+/**
+ * #176: os designers da produção da arte vêm do campo de lista ou de link, não do texto com os nomes juntados (que era
+ * para o Metabase). A lista é o link para a tabela designers; sem ele, o campo de lista ou de link chamado designer(s).
+ * O texto (o campo designers que não é de lista) fica de reserva, para a linha com a lista vazia. Sem nenhum dos dois
+ * (os campos não foram lidos), vale o texto, como antes.
+ * @param campos os campos da ARTE_producao, como a descoberta leu
+ * @param idDosDesigners o id da tabela designers na API ('' quando não achou)
+ */
+export function colunasDosDesigners(campos: readonly CampoLido[] | undefined, idDosDesigners: string): ColunasDosDesigners {
+  const lidos = campos ?? [];
+  const chamado = (c: CampoLido) => /^DESIGNERS?$/.test(nomeComparavel(c.name));
+  const deLista = (c: CampoLido) => DE_LISTA.has(c.type ?? '');
+  const lista = (idDosDesigners && lidos.find((c) => c.type === 'link' && c.ligaA === idDosDesigners)) || lidos.find((c) => deLista(c) && chamado(c));
+  const texto = lidos.find((c) => c !== lista && !deLista(c) && nomeComparavel(c.name) === nomeComparavel(CAMPO_DOS_DESIGNERS));
+  if (!lista && !texto) return { lista: '', texto: CAMPO_DOS_DESIGNERS };
+  return { lista: lista?.dbFieldName ?? '', texto: texto?.dbFieldName ?? '' };
 }
 
 export interface TabelaLigada {

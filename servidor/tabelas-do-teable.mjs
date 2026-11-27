@@ -3,7 +3,7 @@
    o id da API e o nome no Postgres (o dbTableName). Os módulos do servidor leem o nome no Postgres por `tabelaNoPg`,
    nunca de uma variável de ambiente. A descoberta acontece por geração da configuração (na partida, ao abrir a
    Configuração, ao trocar a base) e fica guardada no SQLite: com o Teable fora do ar, vale a última. */
-import { CAMPO_DO_POSTER, TABELAS_DO_TEABLE, avisosDasTabelas, ligarAsTabelas } from '../src/modelo/tabelasDoTeable.ts';
+import { CAMPO_DO_POSTER, TABELAS_DO_TEABLE, avisosDasTabelas, colunasDosDesigners, ligarAsTabelas } from '../src/modelo/tabelasDoTeable.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
@@ -29,6 +29,8 @@ export function envDosModulos(valores, descoberta) {
   for (const t of descoberta?.tabelas ?? []) if (t.id || t.pg) tabelas[t.nome] = Object.freeze({ id: t.id, pg: t.pg, esquema: t.esquema ?? '' });
   for (const t of TABELAS_DO_TEABLE) if (t.variavel && tabelas[t.nome]?.id) env[t.variavel] = tabelas[t.nome].id;
   if (descoberta?.poster) env.TEABLE_FILMES_POSTER = descoberta.poster;
+  // #176: onde a produção da arte tem os designers (a lista e o texto de reserva); sem descoberta, o texto, como antes
+  if (descoberta?.designers) env.colunasDosDesigners = Object.freeze({ ...descoberta.designers });
   env.tabelas = Object.freeze(tabelas);
   return Object.freeze(env);
 }
@@ -87,7 +89,7 @@ export function criarDescoberta({ copia, buscar = fetch }) {
             .map(async (t) => {
               try {
                 const lista = await pedir(valores, `/table/${encodeURIComponent(t.id)}/field`);
-                campos[t.nome] = (Array.isArray(lista) ? lista : []).map((c) => ({ id: String(c.id ?? ''), name: String(c.name ?? ''), dbFieldName: String(c.dbFieldName ?? ''), type: String(c.type ?? '') }));
+                campos[t.nome] = (Array.isArray(lista) ? lista : []).map((c) => ({ id: String(c.id ?? ''), name: String(c.name ?? ''), dbFieldName: String(c.dbFieldName ?? ''), type: String(c.type ?? ''), ligaA: String(c.options?.foreignTableId ?? '') }));
               } catch (e) {
                 console.warn(`[tabelas] não li os campos de ${t.nome}: ${e instanceof Error ? e.message : e}`);
               }
@@ -97,13 +99,15 @@ export function criarDescoberta({ copia, buscar = fetch }) {
         const doPoster = (campos.filmes ?? []).filter((c) => c.type === 'attachment');
         const posterPeloNome = doPoster.find((c) => nomeComparavel(c.name) === nomeComparavel(CAMPO_DO_POSTER))?.id ?? '';
         const poster = doPoster.find((c) => c.id === limpo(valores.TEABLE_FILMES_POSTER))?.id ?? posterPeloNome;
+        // #176: os designers da produção da arte, pelo campo de lista ou de link (o texto juntado fica de reserva)
+        const designers = colunasDosDesigners(campos.ARTE_producao, tabelas.find((t) => t.nome === 'designers')?.id ?? '');
         let nomeDaBase = antes?.nomeDaBase ?? '';
         try {
           nomeDaBase = (await pedir(valores, `/base/${encodeURIComponent(base)}`))?.name ?? nomeDaBase;
         } catch {
           // o nome da base é só para a tela
         }
-        const feita = { base, nomeDaBase: String(nomeDaBase), tabelas, avisos: avisosDasTabelas(tabelas, campos), poster, posterPeloNome, em: new Date().toISOString() };
+        const feita = { base, nomeDaBase: String(nomeDaBase), tabelas, avisos: avisosDasTabelas(tabelas, campos), poster, posterPeloNome, designers, em: new Date().toISOString() };
         for (const t of tabelas) if (t.variavelFora) console.warn(`[tabelas] ${TABELAS_DO_TEABLE.find((x) => x.nome === t.nome).variavel} aponta para uma tabela que não está na base: ${t.id ? 'achei pelo nome' : 'não achei'} a ${t.nome}.`);
         copia?.guardar(GUARDADA, feita);
         return feita;
@@ -117,5 +121,5 @@ export function criarDescoberta({ copia, buscar = fetch }) {
 }
 
 /** A mesma descoberta (os mesmos ids e nomes no Postgres)? Então a geração dos módulos não precisa ser refeita. */
-export const mesmasTabelas = (a, b) =>
-  JSON.stringify((a?.tabelas ?? []).map((t) => [t.nome, t.id, t.pg]).concat([[a?.poster ?? '']])) === JSON.stringify((b?.tabelas ?? []).map((t) => [t.nome, t.id, t.pg]).concat([[b?.poster ?? '']]));
+const doQueOsModulosUsam = (d) => JSON.stringify((d?.tabelas ?? []).map((t) => [t.nome, t.id, t.pg]).concat([[d?.poster ?? ''], [d?.designers?.lista ?? '', d?.designers?.texto ?? '']]));
+export const mesmasTabelas = (a, b) => doQueOsModulosUsam(a) === doQueOsModulosUsam(b);
