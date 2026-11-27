@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { juntarAPublicada } from '../src/modelo/pautaPublicada';
+import { juntarAPublicada, registrosDoDia } from '../src/modelo/pautaPublicada';
 import { linhaDaPauta, type LinhaDaPauta } from '../src/modelo/pauta';
 import type { PosicaoDaEscala } from '../src/modelo/escala';
 
@@ -103,4 +103,36 @@ describe('juntarAPublicada: o Teable e o dia publicado no PROMeiro', () => {
       '2026-11-28 Gil Moura 06:00-15:00 tarefa: COMUNICAÇÃO',
     ]);
   });
+
+  it('depois da virada (#134), no dia que o PROMeiro grava no Teable vale o publicado: o Teable daquele dia é o espelho', () => {
+    const teable = [
+      // o que o Teable tem no dia gravado: o espelho (e o que sobrou de antes), que não aparece de novo
+      doTeable('rec1', 'Noite de Gala 27/11 (DP)', 'Rui Teixeira', SEXTA, '22:00', '06:00'),
+      doTeable('rec2', 'Corujão 28/11', 'Gil Moura', SEXTA, '06:00', '15:00'),
+      // o dia que o PROMeiro não gravou continua com o Teable
+      doTeable('rec3', 'Corujão 29/11', 'Gil Moura', SABADO, '06:00', '15:00'),
+    ];
+    const publicadas = [{ dia: SEXTA, vale: true as const, posicoes: [pos('p1', 'madrugada', 'Rui Teixeira', '22h às 6h', ['Noite de Gala 27/11 (DP)']), pos('p2', 'tarde', 'Elis Furtado', '14h às 22h53', ['Corujão 28/11'])] }];
+    expect(resumo(juntarAPublicada(teable, publicadas))).toEqual([
+      '2026-11-27 Rui Teixeira 22:00-06:00 claquete: Noite de Gala 27/11 (DP)',
+      // a claquete que mudou de editor no PROMeiro fica com o editor publicado
+      '2026-11-27 Elis Furtado 14:00-22:53 claquete: Corujão 28/11',
+      '2026-11-28 Gil Moura 06:00-15:00 claquete: Corujão 29/11',
+    ]);
+  });
 });
+
+describe('registrosDoDia: o dia publicado como o Teable grava (#134)', () => {
+  it('uma linha por demanda e por aviso, com o editor, a data e o expediente da posição; o recado sem editor e sem expediente', () => {
+    const publicado = { dia: SEXTA, recado: 'Reunião geral às 15h', posicoes: [pos('p1', 'madrugada', 'Rui Teixeira', '22h às 6h', ['Noite de Gala 27/11 (DP)', 'COMUNICAÇÃO'], ['VEM PRONTA']), pos('p2', 'tarde', '', 'quando der', ['Mundo Animal 30/11 (P)'])] };
+    expect(registrosDoDia(publicado)).toEqual([
+      { item: 'p1-d1', claquete: 'Noite de Gala 27/11 (DP)', editor: 'Rui Teixeira', data: '2026-11-27T03:00:00.000Z', expediente_inicio: '2026-11-28T01:00:00.000Z', expediente_fim: '2026-11-28T09:00:00.000Z', anotacao: false },
+      { item: 'p1-d2', claquete: 'COMUNICAÇÃO', editor: 'Rui Teixeira', data: '2026-11-27T03:00:00.000Z', expediente_inicio: '2026-11-28T01:00:00.000Z', expediente_fim: '2026-11-28T09:00:00.000Z', anotacao: false },
+      { item: 'p1-a1', claquete: 'VEM PRONTA', editor: 'Rui Teixeira', data: '2026-11-27T03:00:00.000Z', expediente_inicio: '2026-11-28T01:00:00.000Z', expediente_fim: '2026-11-28T09:00:00.000Z', anotacao: true },
+      // o horário que o PROMeiro não entendeu vai sem expediente
+      { item: 'p2-d1', claquete: 'Mundo Animal 30/11 (P)', editor: '', data: '2026-11-27T03:00:00.000Z', expediente_inicio: null, expediente_fim: null, anotacao: false },
+      { item: `recado:${SEXTA}`, claquete: 'Reunião geral às 15h', editor: '', data: '2026-11-27T03:00:00.000Z', expediente_inicio: null, expediente_fim: null, anotacao: true },
+    ]);
+  });
+});
+

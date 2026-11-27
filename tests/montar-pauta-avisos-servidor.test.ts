@@ -163,6 +163,6 @@ describe('a publicação de antes do #125', () => {
     const antiga = [{ id: 'pos-1', turno: 'manha', editor: 'Rui Teixeira', ilha: '', horario: '6h às 15h', demandas: [{ id: 'd-1', texto: 'COMUNICAÇÃO' }] }];
     db.prepare('INSERT INTO escala_publicacoes (id, dia, em, por, pendencias, posicoes) VALUES (?, ?, ?, ?, 0, ?)').run('pub-1', SEXTA, '2026-11-26T13:00:00.000Z', BIA, JSON.stringify(antiga));
     expect(escala.lerDia(SEXTA)).toMatchObject({ estado: 'publicado', recado: '', posicoes: [{ avisos: [] }] });
-    expect(escala.publicadas(SEXTA, SEXTA)).toEqual([{ dia: SEXTA, posicoes: antiga, recado: '' }]);
+    expect(escala.publicadas(SEXTA, SEXTA)).toEqual([{ dia: SEXTA, posicoes: antiga, recado: '', em: '2026-11-26T13:00:00.000Z' }]);
   });
 });

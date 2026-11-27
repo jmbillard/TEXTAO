@@ -50,6 +50,11 @@
 .pub-faixa.alterado, .pub-faixa.rascunho { background: var(--cartao); border: 1px solid var(--regua); color: var(--tinta2); }
 .pub-faixa.alterado b { color: var(--falta); }
 .pub-faixa .botao-texto { color: inherit; }
+/* a virada (#134): quando o dia foi gravado no Teable, ou o erro (no fundo tingido, sem faixa na borda) */
+.pub-teable { margin: 0; font: 400 12.5px/1.4 var(--sans); color: inherit; opacity: .85; }
+.pub-teable.falha { opacity: 1; padding: 6px 10px; border-radius: 8px; background: var(--falta-fundo, var(--cartao)); color: var(--falta); }
+.pub-cabeca .pub-teable { margin-top: 4px; color: var(--tinta2); }
+.pub-cabeca .pub-teable.falha { color: var(--falta); }
 .pub-historico { flex-basis: 100%; }
 .pub-historico summary { cursor: pointer; font-weight: 600; }
 .pub-historico ol { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }

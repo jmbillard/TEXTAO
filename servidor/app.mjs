@@ -75,6 +75,7 @@ import { confirmaATroca, conexoesDaTela, lerQuadros, mudancasDaBaseNova, religar
 import { VARIAVEIS_DO_CARD, cardDoPedido, conferirSecaoDoCard, mudancasDoCard, secaoDoCard } from './configuracao-card.mjs';
 import { cardDaConfiguracao } from '../src/modelo/ligarOCard.ts';
 import { conferirAVolta, descreverMudanca, secoesDe } from './configuracao-historico.mjs';
+import { CHAVE_DA_VIRADA, criarPautaNoTeable } from './pauta-no-teable.mjs';
 import { VARIAVEIS_DOS_FILMES, conferirSecaoDosFilmes, filmesDoPedido, filmesSalvos, mudancasDosFilmes, secaoDosFilmes, sessoesDoCadastro } from './configuracao-filmes.mjs';
 
 const MSG_SINC = 0;
@@ -762,6 +763,22 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const cartaoDoTeams = criarCartaoDoTeams({ db, escala, ilhas, valores: () => configuracao.valores(), enviar: buscarNoTeams, relogio });
   // a semana lado a lado com a planilha (#133): a foto crua das abas, que o n8n manda, no SQLite (só quando a aba muda)
   const fotosDaEdicao = criarFotosDaEdicao(db, { agora: relogio });
+  // a virada (#134): com a chave da Configuração ligada, publicar grava o dia na pauta da edição do Teable (o vínculo de
+  // cada item com o registro fica no SQLite); os editores do cadastro dão o link, e o Postgres, as linhas do dia
+  const pautaNoTeable = criarPautaNoTeable(db, {
+    escala,
+    env: () => env,
+    buscar: buscarNoTeable,
+    editores: async () => {
+      const lido = await cadastros.ler();
+      if (!lido?.ligado) throw new Error('não li os editores do cadastro');
+      return lido.editores;
+    },
+    idsDoDia: async (dia) => {
+      const lido = await pauta.dia(dia);
+      return lido.origem === 'banco' ? lido.linhas.map((l) => l.id).filter(Boolean) : null;
+    },
+  });
   const conferenciaDoCartao = agendar(() => cartaoDoTeams.conferir(), 30 * 1000);
   conferenciaDoCartao?.unref?.();
   /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
@@ -1645,9 +1662,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * posição e o recado do dia, #125, como foram escritos) e devolve o mesmo que o GET.
    * Conferir e publicar (#127), todos POST e devolvendo o mesmo que o GET: /conferida { chave, certo } dispensa (ou
    * reabre) uma pendência da conferência; /publicar publica o rascunho gravado, mesmo com pendências, e guarda quantas
-   * "para olhar" ficaram; /desfazer tira a última publicação. Fica no SQLite do PROMeiro: nada vai ao Teable (a virada
-   * é o #134); o dia publicado aparece na Pauta da edição junto com a do Teable.
-   * Fica no SQLite do PROMeiro: nada vai ao Teable. Os turnos são os da Configuração (#124) e, no fim, os que saíram
+   * "para olhar" ficaram; /desfazer tira a última publicação. Fica no SQLite do PROMeiro; com a chave da virada ligada
+   * (#134), publicar e desfazer também deixam o dia no Teable igual à publicação que vale (`noTeable` diz como foi).
+   * O rascunho nunca vai ao Teable. Os turnos são os da Configuração (#124) e, no fim, os que saíram
    * dela e ainda têm posição no dia; a ilha sai do cadastro das ilhas (a que já estava na posição continua, mesmo
    * removida do cadastro); vêm junto as ilhas, a de costume de cada editor e as ilhas ocupadas naquele turno.
    * A coluna lateral (#126), todos POST e devolvendo o mesmo que o GET (que traz também a lista "Para distribuir"):
@@ -1742,6 +1759,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const { posicoes, dispensadas, publicacao } = escala.lerDia(dia);
         escala.publicar(dia, pendenciasQueFicaram(conferirODia({ dia, posicoes, editores, turnos: turnosDoDia(turnos, posicoes) }), dispensadas), eu.email);
         console.log(`[montar-pauta] ${eu.email} publicou ${dia}`);
+        // com a chave da virada ligada (#134), o dia vai ao Teable; o erro fica no dia, a publicação vale mesmo assim
+        await pautaNoTeable.gravar(dia);
         // republicar o dia que já foi ao Teams manda a "pauta alterada" (#135), sem segurar a resposta
         if (publicacao) void cartaoDoTeams.republicado(dia);
       }
@@ -1754,6 +1773,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (acao === 'desfazer') {
         escala.desfazer(dia);
         console.log(`[montar-pauta] ${eu.email} desfez a publicação de ${dia}`);
+        // o Teable volta para a publicação anterior, ou o dia sai dele (#134, com a chave ligada)
+        await pautaNoTeable.gravar(dia);
       }
       if (['para-distribuir', 'levar', 'mover', 'devolver', 'escalar'].includes(acao)) {
         const corpo = (await lerCorpo(req)) ?? {};
@@ -1793,6 +1814,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       costume: ilhas.deCostume(dia),
       ocupadas: ilhasOcupadas(lido.posicoes),
       paraDistribuir: distribuicao.paraDistribuir(dia),
+      // a virada (#134): a chave, quando o dia foi gravado no Teable e o erro da última vez
+      noTeable: pautaNoTeable.estado(dia),
     });
   }
 
@@ -2094,6 +2117,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       turnos: { salvo: turnosDaConfiguracao(configuracao.valores()), deFabrica: !salvos.has('TURNOS') },
       // o cartão da pauta no Teams (#135): os horários, o segredo que falta no Portainer e o último envio
       teams: { horarios: horariosDaConfiguracao(configuracao.valores()), deFabrica: !salvos.has('TEAMS_HORARIOS'), ...cartaoDoTeams.secao() },
+      // a virada (#134): a chave e se a tabela da pauta foi achada na base
+      virada: secaoDaVirada(),
       pracas: travada(daPraca),
       card: travada(card),
       filmes: travada(filmes),
@@ -2223,10 +2248,24 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * campo Praça do Trello depois da conferência e antes de salvar: se o Trello recusa, 502 e nada salvo. No card, a
    * opção que não é do campo ligado (o campo foi trocado) sai e o nome liga a do campo novo, antes da conferência.
    */
+  const secaoDaVirada = () => ({ ligada: pautaNoTeable.ligada(), tabela: pautaNoTeable.temTabela() });
+  /**
+   * A chave da virada (#134), POST /api/configuracao/virada { ligada }: liga (ou desliga) a gravação da pauta publicada
+   * no Teable. Vale na hora e entra no histórico; não grava nada agora (só a próxima publicação vai). Ligar sem a tabela
+   * da pauta na base é recusado. Devolve { virada }.
+   */
+  function mudarAVirada(res, eu, corpo) {
+    if (typeof corpo?.ligada !== 'boolean') return json(res, 400, { erro: 'Diga se a chave fica ligada ou desligada.' });
+    if (corpo.ligada && !pautaNoTeable.temTabela()) return json(res, 422, { erro: 'A tabela da pauta da edição (EDICAO_producao) não foi achada na base do Teable: nada foi ligado.' });
+    mudarConfiguracao({ [CHAVE_DA_VIRADA]: corpo.ligada ? '1' : '0' }, { por: eu.email });
+    console.log(`[configuração] ${eu.email} ${corpo.ligada ? 'ligou' : 'desligou'} a gravação da pauta no Teable (a virada)`);
+    return json(res, 200, { virada: secaoDaVirada() });
+  }
+
   async function rotaDaConfiguracao(req, res, eu, caminho) {
     const acao = caminho.slice('/api/configuracao'.length);
     const leituras = ['', '/quadros', '/bases', '/historico', '/portainer'];
-    if (![...leituras, '/conferir', '/salvar', '/trocar', '/voltar'].includes(acao)) return json(res, 404, { erro: 'Não encontrado.' });
+    if (![...leituras, '/conferir', '/salvar', '/trocar', '/voltar', '/virada'].includes(acao)) return json(res, 404, { erro: 'Não encontrado.' });
     if (req.method !== (leituras.includes(acao) ? 'GET' : 'POST')) return json(res, 405, { erro: 'Método não permitido.' });
     if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e mudam a Configuração.' });
     try {
@@ -2243,6 +2282,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const corpo = await lerCorpo(req).catch(() => null);
       if (acao === '/trocar') return await trocarAConexao(res, eu, corpo);
       if (acao === '/voltar') return await voltarNoHistorico(res, eu, corpo);
+      if (acao === '/virada') return mudarAVirada(res, eu, corpo);
       if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined && corpo?.turnos === undefined && corpo?.teams === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
       // os turnos (#124): sem o Trello; vindo só eles, o quadro nem é lido
       if (corpo.turnos !== undefined && !Array.isArray(corpo.turnos)) return json(res, 400, { erro: 'Os turnos vieram incompletos.' });
@@ -3132,11 +3172,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const busca = new URL(req.url, 'http://x').searchParams;
       const ehDia = caminho === '/api/pauta/dia';
       const doTeable = ehDia ? await pauta.dia(diaOuHoje(busca.get('dia') ?? '')) : await pauta.semana(segundaDaSemana(busca.get('inicio') ?? ''));
-      // o dia publicado no PROMeiro (#127) entra junto: a do Teable fica inteira (vale até a virada, #134), e do
-      // publicado entra só o que o Teable ainda não tem no dia (a regra em src/modelo/pautaPublicada.ts)
+      // o dia publicado no PROMeiro (#127) entra junto (a regra em src/modelo/pautaPublicada.ts): antes da virada, a do
+      // Teable fica inteira e do publicado entra só o que o Teable ainda não tem no dia; depois (#134), no dia que o
+      // PROMeiro gravou no Teable vale o publicado, e as linhas do Teable daquele dia (o espelho) saem
       const dias = ehDia ? [doTeable.dia] : doTeable.dias;
-      const juntas = juntarAPublicada(doTeable.linhas, escala.publicadas(dias[0], dias.at(-1)));
-      const s = juntas.length === doTeable.linhas.length ? doTeable : { ...doTeable, linhas: juntas, editores: ehDia ? colunasDoDia(juntas).map((c) => c.editor) : ordemDosEditores(juntas) };
+      const gravados = pautaNoTeable.gravados(dias[0], dias.at(-1));
+      const publicadas = escala.publicadas(dias[0], dias.at(-1)).map((p) => (gravados.has(p.dia) ? { ...p, vale: true } : p));
+      const juntas = juntarAPublicada(doTeable.linhas, publicadas);
+      const s = !publicadas.length ? doTeable : { ...doTeable, linhas: juntas, editores: ehDia ? colunasDoDia(juntas).map((c) => c.editor) : ordemDosEditores(juntas) };
       // a claquete com a produção da arte (#96): as Produções do PROMeiro (sem ler o Teable de novo), pela chave, com a
       // tolerância da busca do editor (sem a versão, sem a praça)
       const desde = new Date(Date.parse(`${s.inicio ?? s.dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();

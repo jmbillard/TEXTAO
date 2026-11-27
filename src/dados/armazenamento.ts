@@ -1334,7 +1334,15 @@ export interface SecoesDaConfiguracao {
   turnos: { salvo: TurnoDaEscala[]; deFabrica: boolean };
   /** o cartão da pauta no Teams (#135): os horários, o segredo que falta no Portainer e o último envio */
   teams: CartaoDoTeamsDaConfiguracao;
+  /** a chave da virada (#134): publicar grava a pauta no Teable; `tabela`: a tabela da pauta foi achada na base */
+  virada?: ViradaDaPauta;
 }
+export interface ViradaDaPauta {
+  ligada: boolean;
+  tabela: boolean;
+}
+/** Liga ou desliga a chave da virada (#134): vale na hora e entra no histórico. */
+export const mudarAVirada = (ligada: boolean) => pedir<{ virada: ViradaDaPauta }>('/api/configuracao/virada', { method: 'POST', body: JSON.stringify({ ligada }) }).then((r) => r.virada);
 export interface CartaoDoTeamsDaConfiguracao {
   horarios: HorarioDoCartao[];
   deFabrica: boolean;
@@ -1535,7 +1543,7 @@ export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ s
   if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos && corpo.teams) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, teams: corpo.teams } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, teams: corpo.teams, virada: corpo.virada } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);

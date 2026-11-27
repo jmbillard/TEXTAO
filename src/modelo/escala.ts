@@ -107,6 +107,8 @@ export interface DiaDaEscala {
   repetido?: (RepeticaoDoDia & { posicoes: number; vagas: VagaDoRepetir[] })[];
   /** a versão de montar a pauta quando o dia foi lido (#131): só cresce; a sala do dia avisa a nova */
   versao?: number;
+  /** a virada (#134): a chave da Configuração, quando o dia foi gravado no Teable e o erro da última vez */
+  noTeable?: { ligada: boolean; gravadoEm: string | null; erro: string | null };
 }
 
 /* ---------- o horário ---------- */
