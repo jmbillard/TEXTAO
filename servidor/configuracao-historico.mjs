@@ -8,6 +8,7 @@ import { conferirFilmes, oQueMudaNosFilmes } from '../src/modelo/ligarOsFilmes.t
 import { pracasDaConfiguracao } from '../src/modelo/pracas.ts';
 import { administradoresSalvos, ehAdministrador } from '../src/modelo/pessoas.ts';
 import { oQueMudaNosTurnos, turnosDaConfiguracao } from '../src/modelo/turnos.ts';
+import { horariosDaConfiguracao, oQueMudaNosHorarios } from '../src/modelo/horariosDoCartao.ts';
 import { pracasSalvas } from './configuracao-pracas.mjs';
 import { VARIAVEIS_DO_CARD } from './configuracao-card.mjs';
 import { VARIAVEIS_DOS_FILMES, filmesSalvos } from './configuracao-filmes.mjs';
@@ -61,6 +62,7 @@ export function descreverMudanca(antes, depois, nomes, { quadro = null, nomeDaPe
     linhas.push(...prefixar('Filmes', oQueMudaNosFilmes(filmes(depois), filmes(antes), q)));
   }
   if (s.turnos) linhas.push(...prefixar('Turnos', oQueMudaNosTurnos(turnosDaConfiguracao(depois), turnosDaConfiguracao(antes))));
+  if (s.teams) linhas.push(...prefixar('Cartão do Teams', oQueMudaNosHorarios(horariosDaConfiguracao(depois), horariosDaConfiguracao(antes))));
   if (s.pessoas) {
     const a = administradoresSalvos(antes);
     const d = administradoresSalvos(depois);
@@ -74,7 +76,7 @@ export function descreverMudanca(antes, depois, nomes, { quadro = null, nomeDaPe
     return id ? (q.listas.find((l) => l.id === id)?.nome ?? q.campos.find((c) => c.id === id)?.nome ?? id) : '—';
   };
   for (const n of nomes)
-    if (!DO_QUADRO(n) && n !== 'ADMINISTRADORES' && n !== 'TURNOS' && limpo(antes[n]) !== limpo(depois[n])) linhas.push({ oque: ROTULOS[n] ?? n, antes: valor(antes[n]), depois: valor(depois[n]) });
+    if (!DO_QUADRO(n) && n !== 'ADMINISTRADORES' && n !== 'TURNOS' && n !== 'TEAMS_HORARIOS' && limpo(antes[n]) !== limpo(depois[n])) linhas.push({ oque: ROTULOS[n] ?? n, antes: valor(antes[n]), depois: valor(depois[n]) });
   // nada mudou no que vale (o valor do Portainer passou a ser guardado na tela, ou só a marca do ligado à mão)
   if (!linhas.length) linhas.push({ oque: 'Guardado na tela', antes: 'Portainer', depois: 'os mesmos valores' });
   return linhas;
@@ -90,6 +92,7 @@ export function secoesDe(nomes) {
     filmes: nomes.some((n) => DOS_FILMES.has(n) || n === 'LIGADO_A_MAO' || DAS_PRACAS.has(n)),
     pessoas: nomes.includes('ADMINISTRADORES'),
     turnos: nomes.includes('TURNOS'),
+    teams: nomes.includes('TEAMS_HORARIOS'),
   };
 }
 

@@ -25,6 +25,9 @@ export const SALVAVEIS = new Set([
   'ADMINISTRADORES',
   // os turnos da montagem da pauta (#124), em JSON (id, nome, horário padrão), na ordem da grade; sem ela, os de fábrica
   'TURNOS',
+  // os horários do cartão da pauta no Teams (#135), em JSON (hora, dias da semana, a pauta de hoje ou de amanhã); sem
+  // ela, os do n8n. O endereço do Power Automate é segredo: fica no Portainer (TEAMS_PAUTA_URL)
+  'TEAMS_HORARIOS',
   // o modo só olhar da aba Duplicadas (#67): sem valor, ligado; '0' libera o apagar (a própria aba liga e desliga)
   'DUPLICADAS_SO_OLHAR',
   // Filmes

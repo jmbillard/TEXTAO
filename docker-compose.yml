@@ -73,6 +73,7 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_REPO=${GITHUB_REPO:-}
       - GITHUB_BRANCH=${GITHUB_BRANCH:-}
+      - TEAMS_PAUTA_URL=${TEAMS_PAUTA_URL:-}
 
       # ---- Opcionais: pode ficar vazia: a Configuração do app guarda ----
       # Cada uma vale só enquanto a tela não tiver um valor salvo para ela (na primeira vez, a tela começa com estas).

@@ -9,7 +9,7 @@ import { SALVAVEIS } from './configuracao.mjs';
 import { VARIAVEIS_DO_CARD } from './configuracao-card.mjs';
 import { VARIAVEIS_DOS_FILMES } from './configuracao-filmes.mjs';
 
-const SEGREDOS = ['TEABLE_TOKEN', 'TEABLE_PG_URL', 'TRELLO_KEY', 'TRELLO_TOKEN', 'TRELLO_SEGREDO', 'SFTP_SENHA', 'STIRLING_CHAVE', 'TUNNEL_TOKEN', 'GITHUB_TOKEN', 'POSTER_PUBLICO_TOKEN'];
+const SEGREDOS = ['TEABLE_TOKEN', 'TEABLE_PG_URL', 'TRELLO_KEY', 'TRELLO_TOKEN', 'TRELLO_SEGREDO', 'SFTP_SENHA', 'STIRLING_CHAVE', 'TUNNEL_TOKEN', 'GITHUB_TOKEN', 'POSTER_PUBLICO_TOKEN', 'TEAMS_PAUTA_URL'];
 const INFRAESTRUTURA = [
   'ACCESS_TEAM_DOMAIN', 'ACCESS_AUD', 'PERFIL_LOCAL', 'ACESSO', 'PROMEIRO_URL', 'PORTA', 'BACKUPS', 'REDE_TEABLE', 'REDE_N8N',
   'REDIS_URL', 'COMPOSE_PROFILES', 'TEABLE_URL', 'SFTP_HOST', 'SFTP_USUARIO', 'STIRLING_URL', 'N8N_FILMES_LER', 'FILMES_PASTA',
@@ -41,7 +41,7 @@ const DAS_PRACAS = new Set(['TRELLO_PRACAS', 'TRELLO_CAMPO_PRACA', ...PRACAS_DE_
 const DO_CARD = new Set(VARIAVEIS_DO_CARD);
 const DOS_FILMES = new Set(VARIAVEIS_DOS_FILMES);
 const DA_TABELA = new Map(TABELAS_DO_TEABLE.filter((t) => t.variavel).map((t) => [t.variavel, t.nome]));
-const secaoDa = (nome) => (DO_CARD.has(nome) ? 'Card' : DOS_FILMES.has(nome) ? 'Filmes' : nome === 'ADMINISTRADORES' ? 'Pessoas' : nome === 'DUPLICADAS_SO_OLHAR' ? 'Duplicadas (Cadastros)' : 'Conexões');
+const secaoDa = (nome) => (DO_CARD.has(nome) ? 'Card' : DOS_FILMES.has(nome) ? 'Filmes' : nome === 'ADMINISTRADORES' ? 'Pessoas' : nome === 'DUPLICADAS_SO_OLHAR' ? 'Duplicadas (Cadastros)' : nome === 'TEAMS_HORARIOS' ? 'Cartão do Teams' : nome === 'TURNOS' ? 'Turnos' : 'Conexões');
 /** Por que a salvável ainda não pode sair (o salvo ainda não existe): o que a guarda na tela. */
 const semValor = (nome) =>
   nome === 'TRELLO_QUADRO' || nome === 'TEABLE_PG_ESQUEMA'

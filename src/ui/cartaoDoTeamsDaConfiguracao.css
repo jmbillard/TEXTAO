@@ -1,0 +1,21 @@
+/* A seção Cartão do Teams da Configuração (#135): a linha de estado e a lista dos horários, com as peças da
+   configuracao.css (como a dos turnos). */
+.cfg-teams-estado { margin: 0 0 10px; font: 500 13px var(--sans); color: var(--tinta2); display: flex; align-items: center; gap: 6px; }
+.cfg-teams-estado.falta { color: var(--falta); font-weight: 600; }
+.cfg-teams { list-style: none; margin: 0; padding: 0; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); }
+.cfg-teams-h { display: grid; grid-template-columns: 86px auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; }
+.cfg-teams-h + .cfg-teams-h { border-top: 1px solid var(--regua); }
+.cfg-teams-h .entrada-cad { height: 32px; }
+.cfg-teams-hora { font: 600 14px var(--mono); color: var(--tinta); }
+.cfg-teams-dias { display: flex; gap: 3px; flex-wrap: wrap; font: 500 13px var(--sans); color: var(--tinta2); }
+.cfg-teams-dia { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--regua); background: transparent; color: var(--tinta3); font: 600 12px var(--sans); cursor: pointer; padding: 0; }
+.cfg-teams-dia[aria-pressed='true'] { background: color-mix(in srgb, var(--ultra) 16%, var(--cartao)); border-color: color-mix(in srgb, var(--ultra) 45%, var(--regua)); color: var(--tinta); }
+.cfg-teams-pauta { font: 500 13px var(--sans); color: var(--tinta2); min-width: 0; }
+.cfg-teams-vazio { margin: 0; font: 500 13px var(--sans); color: var(--tinta3); }
+.no-celular .cfg-teams-h { grid-template-columns: 60px minmax(0, 1fr) auto; }
+@media (max-width: 640px) {
+  .cfg-teams-h { grid-template-columns: 80px minmax(0, 1fr) auto; padding: 8px 10px; }
+  .cfg-teams-dias { grid-column: 1 / -1; grid-row: 2; }
+}
+.cfg-teams-mais { margin-top: -2px; }
+.cfg-teams-mais .botao-texto { font-weight: 600; }

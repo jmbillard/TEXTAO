@@ -497,6 +497,12 @@ Cada dia está **vazio** (nada montado), em **rascunho** (montado e não publica
 (publicado e mudado depois, à espera de publicar de novo).
 _Evitar_: salvar, enviar, liberar
 
+**Cartão da pauta** (no Teams):
+O resumo da pauta publicada que o PROMeiro manda ao canal da edição no Teams, nos horários da Configuração: a pauta do
+dia por turno (editor, ilha, horário, claquetes e avisos), o recado do dia e o link para a Pauta. Republicar um dia que
+já foi ao Teams manda a **pauta alterada**, com o que mudou desde o último cartão daquele dia.
+_Evitar_: mensagem, notificação, card (card é o do Trello)
+
 **Repetir** (a escala):
 Copiar para outros dias a escala e as tarefas fixas de um dia; nunca as claquetes, que mudam todo dia.
 _Evitar_: duplicar, clonar
@@ -521,7 +527,9 @@ As **versões lidas** do roteiro saem das artes marcadas na revisão que dizem q
 QUARTA" é N, "AMANHÃ, 22H30" é A, "DIA 28" é D, "EM JANEIRO" é M), na ordem das letras, com o dia da semana conferido
 pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai nos próximos 7 dias e P se cai depois,
 com um "?" para conferir; o horário sozinho não é versão. Quando discordam do código da claquete, vale o roteiro, com
-um aviso discreto e a opção de usá-las no **apelido**.
+um aviso discreto e a opção de usá-las no **apelido**. No card da agenda e no da tela de produções, as etiquetas são as
+do roteiro, quando ele está no PROMeiro e as artes dizem; senão, as do código no fim do apelido ou, sem código nele, as
+da claquete.
 _Evitar_: sufixo, tipo da chamada
 
 **Ficha da claquete** (na pauta):

@@ -9,6 +9,7 @@ import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import type { EventoDaLinha, ProducaoDaLinha } from '../modelo/linhaDoTempo';
 import type { Versao as VersaoDaChamada } from '../modelo/pauta';
+import type { VersoesDaChamada } from '../modelo/versoesDoRoteiro';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
@@ -25,6 +26,8 @@ export interface Resumo {
   nArtes: number;
   /** As versões da chamada lidas nas artes do roteiro guardado (#120), na ordem do padrão; ausente fora do servidor. */
   versoesLidas?: VersaoDaChamada[];
+  /** As versões da chamada do card da agenda (#121), prontas: as do roteiro, ou o código do apelido ou da claquete. */
+  versoesDaChamada?: VersoesDaChamada;
   atualizadoEm: string;
   dono: Pessoa | null;
   publico: boolean;
@@ -1049,6 +1052,7 @@ import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import type { DiaDaEscala, PosicaoDaEscala, TurnoDaEscala } from '../modelo/escala';
+import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DOS_RECOLHIDOS, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
@@ -1307,6 +1311,15 @@ export interface SecoesDaConfiguracao {
   conexoes: ConexoesDaConfiguracao;
   /** os turnos da montagem da pauta (#124): os salvos, ou os de fábrica */
   turnos: { salvo: TurnoDaEscala[]; deFabrica: boolean };
+  /** o cartão da pauta no Teams (#135): os horários, o segredo que falta no Portainer e o último envio */
+  teams: CartaoDoTeamsDaConfiguracao;
+}
+export interface CartaoDoTeamsDaConfiguracao {
+  horarios: HorarioDoCartao[];
+  deFabrica: boolean;
+  /** os segredos que faltam no Portainer (sem eles, nada é mandado) */
+  falta: string[];
+  ultimo: { dia: string; tipo: 'pauta' | 'alterada'; em: string; ok: boolean; erro?: string } | null;
 }
 /** O que vai para conferir e salvar: só as seções que mudaram. */
 export interface MudancasDaConfiguracao {
@@ -1314,6 +1327,7 @@ export interface MudancasDaConfiguracao {
   card?: LigacoesDoCard;
   filmes?: LigacoesDosFilmes;
   turnos?: TurnoDaEscala[];
+  teams?: HorarioDoCartao[];
 }
 export const lerConfiguracao = () => pedir<SecoesDaConfiguracao>('/api/configuracao');
 /** Os quadros do Trello e as bases do Teable que os tokens enxergam (para trocar, em Conexões). */
@@ -1488,10 +1502,10 @@ export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<Confere
 export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ secoes: SecoesDaConfiguracao } | { conferencia: ConferenciaDasPracas }> {
   const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify(m) });
   const corpo = (await r.json().catch(() => null)) as (Partial<SecoesDaConfiguracao> & { conferencia?: ConferenciaDasPracas; erro?: string }) | null;
-  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos) {
+  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos && corpo.teams) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, teams: corpo.teams } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);

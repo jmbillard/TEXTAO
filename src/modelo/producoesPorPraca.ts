@@ -4,6 +4,7 @@
    Produções do PROMeiro, sem ler o Trello; o navegador só desenha. O mesmo módulo serve aos dois: só sintaxe que o
    Node apaga. */
 import type { Praca } from './pracas.ts';
+import type { VersoesDaChamada } from './versoesDoRoteiro.ts';
 
 /** As colunas do bloco, na ordem do fluxo. */
 export const COLUNAS_DO_BLOCO = ['entrada', 'produzindo', 'entregue'] as const;
@@ -33,6 +34,8 @@ export interface CardDaProducao {
   /** sem card no Trello (a linha sem card, o filme sem card) */
   semCard: boolean;
   entregaEm: string | null;
+  /** as versões da chamada (#121), prontas: as do roteiro dela, ou o código do apelido ou da claquete */
+  versoesDaChamada?: VersoesDaChamada;
 }
 
 export interface BlocoDaPraca {

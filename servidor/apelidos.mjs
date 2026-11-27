@@ -28,6 +28,9 @@ export function criarApelidos(db) {
          ON CONFLICT (roteiro_id) DO UPDATE SET apelido = excluded.apelido, por_email = excluded.por_email, por_nome = excluded.por_nome, em = excluded.em`,
       ),
       tirar: db.prepare('DELETE FROM apelidos WHERE roteiro_id = ?'),
+      soOsApelidos: db.prepare('SELECT roteiro_id, apelido FROM apelidos'),
+      // a Produção com o roteiro dela (#121): as versões lidas dele e o apelido
+      roteiroDaProducao: db.prepare('SELECT r.versoes_lidas, a.apelido FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id LEFT JOIN apelidos a ON a.roteiro_id = p.roteiro_id WHERE p.id = ?'),
     });
   const claqueteDe = (meta) => {
     try {
@@ -55,6 +58,15 @@ export function criarApelidos(db) {
         .all()
         .filter((l) => podeLer(l.roteiro_id))
         .map((l) => ({ roteiro: l.roteiro_id, original: claqueteDe(l.meta), apelido: l.apelido, por: l.por_nome, em: l.em, producoes: producoes.get(l.roteiro_id) ?? [], cards: cards.get(l.roteiro_id) ?? [] }));
+    },
+    /** Os apelidos por roteiro (id → apelido), sem mais nada: as versões do card da agenda (#121). */
+    porRoteiro() {
+      return new Map(consultas().soOsApelidos.all().map((l) => [l.roteiro_id, l.apelido]));
+    },
+    /** O roteiro da Produção (#121): as versões lidas dele (vazia sem roteiro) e o apelido ('' sem apelido). */
+    roteiroDaProducao(id) {
+      const l = consultas().roteiroDaProducao.get(id);
+      return { lidas: l?.versoes_lidas ? JSON.parse(l.versoes_lidas) : [], apelido: l?.apelido ?? '' };
     },
     /**
      * Dá (ou troca) o apelido do roteiro; o apelido vazio, ou igual à claquete original, volta ao original (tira).

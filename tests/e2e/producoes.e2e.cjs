@@ -87,7 +87,7 @@ const ARTE = [
   linha('recProdE2e2', { card_ID: card(2), claquete: `Festa na Praça ${dm(3)} SP`, artes: 'HOJE', prioridade: 'ALTA', data_entrada: ha(1) }),
   linha('recProdE2e3', { card_ID: '', claquete: `Cozinha de Vó ${dm(1)} SP`, data_entrada: ha(2) }),
   // G5: produzindo, entregue ontem (fica), entregue há 5 dias (sai) e um filme sem card
-  linha('recProdE2e4', { card_ID: card(4), claquete: `Novela Sinfonia ${dm(2)}`, status: '["PRODUZINDO","AGUARDANDO MATERIAL"]', designers: '["Dora Lima","Enzo Prado"]', artes: 'HOJE | AMANHÃ', data_entrada: ha(2) }),
+  linha('recProdE2e4', { card_ID: card(4), claquete: `Novela Sinfonia ${dm(2)} (AH)`, status: '["PRODUZINDO","AGUARDANDO MATERIAL"]', designers: '["Dora Lima","Enzo Prado"]', artes: 'HOJE | AMANHÃ', data_entrada: ha(2) }),
   linha('recProdE2e5', { card_ID: card(5), claquete: `Jogo Final ${dm(0)}`, status: '["FINALIZADO"]', designers: '["Dora Lima"]', entregue: true, data_entrada: ha(3), data_entrega: ha(1) }),
   linha('recProdE2e6', { card_ID: card(6), claquete: `Jogo Antigo ${dm(-4)}`, status: '["FINALIZADO"]', designers: '["Enzo Prado"]', entregue: true, data_entrada: ha(8), data_entrega: ha(5) }),
   linha('recProdE2e8', { card_ID: '', claquete: `Filme da Tarde ${dm(4)}`, status: '["FILME"]', filme: [{ id: 'recFilmeE2e', title: 'Filme da Tarde' }], data_entrada: ha(1) }),
@@ -158,6 +158,26 @@ const passamDaBorda = (p) =>
       }).map((e) => `${c.querySelector('.prod-claquete').textContent} · ${e.className}`);
     }),
   );
+
+/** As versões da chamada nos cards (#121), prontas da API: as do Roteiro da Festa (com o aviso: a claquete não diz a
+    versão), o código da claquete da Novela, nada no Show da Noite. Numa linha própria, embaixo da claquete inteira. */
+async function versoesNosCards(p, onde) {
+  const versoes = (claquete) => cardDe(p, claquete).locator('.versoes-do-card');
+  assert.deepEqual(await textos(versoes('Festa na Praça').locator('.versao-lida')), ['amanhã'], `${onde}: a Festa com a versão do roteiro`);
+  assert.equal((await versoes('Festa na Praça').locator('.conflito-versoes').textContent()).trim(), 'a claquete não diz a versão', `${onde}: e o aviso de conflito`);
+  assert.deepEqual(await textos(versoes('Novela Sinfonia').locator('.versao-lida')), ['amanhã', 'hoje'], `${onde}: a Novela com o código da claquete`);
+  assert.equal(await versoes('Novela Sinfonia').locator('.conflito-versoes').count(), 0, `${onde}: o código da claquete não tem aviso`);
+  assert.equal(await versoes('Show da Noite').count(), 0, `${onde}: sem versão, sem a linha`);
+  const arranjo = await p.locator('.prod-card:has(.versoes-do-card)').evaluateAll((cs) =>
+    cs.map((c) => {
+      const q = c.querySelector('.prod-claquete').getBoundingClientRect();
+      const v = c.querySelector('.versoes-do-card').getBoundingClientRect();
+      const dentro = c.clientWidth - parseFloat(getComputedStyle(c).paddingLeft) - parseFloat(getComputedStyle(c).paddingRight);
+      return { abaixo: v.top >= q.bottom - 0.5, larga: q.width >= dentro - 1, q: Math.round(q.width), dentro };
+    }),
+  );
+  assert.ok(arranjo.length >= 2 && arranjo.every((a) => a.abaixo && a.larga), `${onde}: a claquete com a largura toda do card e as etiquetas embaixo (${JSON.stringify(arranjo)})`);
+}
 
 /** Os blocos lado a lado: a 1920px cabem todos e usam a largura toda; a 1440px, a área rola para o lado. */
 async function blocosLadoALado(p, largura) {
@@ -249,6 +269,7 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.equal((await novela.locator('.prod-designers').textContent()).trim(), 'Dora Lima, Enzo Prado');
   assert.equal((await novela.locator('.prod-marcador').textContent()).trim(), 'Aguardando material');
   assert.equal((await novela.locator('.prod-artes').textContent()).trim(), '2 artes');
+  await versoesNosCards(p, `computador ${largura}px`);
 
   // o Entregue: só os dos últimos 3 dias; a arquivada não aparece
   assert.deepEqual(await claquetes(p, 'G5', 'entregue'), [`Jogo Final ${dm(0)}`]);
@@ -298,6 +319,7 @@ async function noTablet(navegador, url) {
   const topos = await p.locator('.prod-bloco[data-praca="G5"] .prod-coluna').evaluateAll((cs) => cs.map((c) => Math.round(c.getBoundingClientRect().top)));
   assert.equal(new Set(topos).size, 1, 'tablet: no bloco, as colunas lado a lado');
   assert.deepEqual(await passamDaBorda(p), [], 'tablet: nada passa da borda do card');
+  await versoesNosCards(p, 'tablet');
   await semRolagemDeLado(p, 'tablet');
   await capturar(p, '02-producoes-tablet');
   assert.deepEqual(erros, []);
@@ -318,6 +340,7 @@ async function noCelular(navegador, url, tema, chamadasAoTrello) {
   assert.ok(caixas[0].bottom <= caixas[1].top && caixas[1].bottom <= caixas[2].top, 'no celular, Entrada, Produzindo e Entregue uma embaixo da outra');
   assert.equal(new Set(caixas.map((c) => c.left)).size, 1);
   assert.deepEqual(await claquetes(p, 'SP', 'entrada'), [`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`, `Show da Noite ${dm(3)} SP`]);
+  await versoesNosCards(p, `celular ${nome}`);
   await semRolagemDeLado(p, `celular ${nome}`);
   await capturar(p, `03-producoes-celular-${nome}`);
   assert.deepEqual(aoTrello, []);
@@ -656,7 +679,7 @@ async function recolherEAbrir(navegador, url, chamadasAoTrello) {
   await novela.locator('.prod-atracao').click();
   const painel = p.getByRole('dialog');
   await painel.locator('.prod-aberta-tempo li').first().waitFor();
-  assert.equal((await painel.locator('h2').textContent()).trim(), `Novela Sinfonia ${dm(2)}`);
+  assert.equal((await painel.locator('h2').textContent()).trim(), `Novela Sinfonia ${dm(2)} (AH)`);
   assert.equal((await painel.locator('.prod-aberta-rotulo').textContent()).replace(/\s+/g, ' ').trim(), 'G5 · Entrada');
   const frases = await textos(painel.locator('.prod-aberta-tempo li'));
   assert.ok(frases.some((f) => /^Lia Moraes pegou /.test(f)) && frases.some((f) => /^entregue /.test(f)), `a linha do tempo diz o que a Lia fez (${frases.join(' · ')})`);
@@ -745,6 +768,8 @@ async function principal() {
   // o Roteiro (fictício) enviado para o card da Festa diz a atração
   const em = new Date().toISOString();
   s.db.prepare('INSERT INTO roteiros (id, dono_email, dono_nome, meta, doc, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?)').run('roteiro-festa-e2e', CHEFE, 'Chefe', JSON.stringify({ claquete: `Festa na Praça ${dm(3)} SP`, programa: 'Festa na Praça' }), '{}', em, em);
+  // #121: as artes do Roteiro da Festa dizem "AMANHÃ" (as versões lidas, como o servidor guarda ao gravar)
+  s.db.prepare('UPDATE roteiros SET versoes_lidas = ? WHERE id = ?').run(JSON.stringify([{ codigo: 'A', rotulo: 'amanhã', conhecida: true }]), 'roteiro-festa-e2e');
   s.db.prepare("INSERT INTO envios (roteiro_id, estado, card_id, em) VALUES (?, 'ok', ?, ?)").run('roteiro-festa-e2e', card(2), em);
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
