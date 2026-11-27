@@ -450,6 +450,14 @@ da semana, o número e o mês saem da data da claquete; sem ela, do dia da linha
 ("nesta sex", "neste sáb") com o código pequeno ao lado; um código desconhecido aparece cru.
 _Evitar_: sufixo, tipo da chamada
 
+**Ficha da claquete** (na pauta):
+O que abre por cima da pauta com um clique numa claquete: as linhas da mesma atração com versões diferentes juntas (a
+mesma chave, sem a versão e sem a praça), os dias e turnos em que ela aparece na semana e a Produção de cada praça. Na
+própria claquete ficam a etapa, as artes a produzir (sem repetir), os designers, a praça e o marca-texto da prioridade
+ALTA da produção da arte, ou "sem card". O cruzamento é pela chave da claquete, com a tolerância da busca do editor:
+a exata, sem a versão no fim, sem a praça; só as Produções que entraram perto do dia da linha, uma por praça.
+_Evitar_: detalhe, modal
+
 **Ligação pelo e-mail** (pessoa e cadastro):
 O e-mail do login guardado no cadastro de redator ou de editor (no Teable): é ele que diz que quem entra no PROMeiro é
 aquele redator ou editor. O administrador preenche à mão nos Cadastros ou pela **sugestão "É Fulana, dos

@@ -34,6 +34,7 @@ import { ETAPAS, producaoDaLinha } from '../src/modelo/producao.ts';
 import { normalizarPraca, pracasRegistradas, reconhecerPraca } from '../src/modelo/pracas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { eventosDaReleitura } from '../src/modelo/eventosDoTeable.ts';
+import { artesDaProducao } from './trello.mjs';
 
 export function criarTabelaDasProducoes(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS producoes (
@@ -173,6 +174,8 @@ export function criarProducoes(db) {
     doCard: db.prepare('SELECT * FROM producoes WHERE card_id = ? ORDER BY entrada_em'),
     doRegistro: db.prepare('SELECT * FROM producoes WHERE teable_registro = ?'),
     doId: db.prepare('SELECT * FROM producoes WHERE id = ?'),
+    // a pauta da edição (#96): as que entraram desde a data (e as sem data de entrada)
+    daPauta: db.prepare('SELECT id, claquete, praca, etapa, designers, artes, artes_quantidade, prioridade, entrada_em, entrega_em FROM producoes WHERE entrada_em IS NULL OR entrada_em >= ?'),
     // a carga adota a Produção que o aviso do Trello criou para o card (ainda sem o registro do Teable): não duplica
     adotar: db.prepare(
       `UPDATE producoes SET teable_registro = ? WHERE id = (SELECT id FROM producoes WHERE card_id = ? AND teable_registro IS NULL ORDER BY criada_em LIMIT 1)`,
@@ -411,8 +414,31 @@ export function criarProducoes(db) {
     };
   }
 
+  /**
+   * As Produções que entraram desde `desde` (ISO), como a pauta da edição mostra (#96, src/modelo/pauta.ts,
+   * ProducaoNaPauta): as artes a produzir sem repetir (a conta da agenda, `artesDaProducao`; sem a lista, a quantidade
+   * da coluna) e a prioridade ALTA da produção da arte.
+   */
+  function naPauta(desde) {
+    return q.daPauta.all(desde).map((l) => {
+      const artes = JSON.parse(l.artes ?? '[]');
+      return {
+        id: l.id,
+        claquete: l.claquete,
+        praca: l.praca ?? '',
+        etapa: l.etapa,
+        artes: artesDaProducao(artes.join(' | ')) ?? l.artes_quantidade ?? null,
+        designers: JSON.parse(l.designers ?? '[]'),
+        alta: String(l.prioridade ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase() === 'ALTA',
+        entradaEm: l.entrada_em ?? null,
+        entregaEm: l.entrega_em ?? null,
+      };
+    });
+  }
+
   return {
     linhaDoTempo,
+    naPauta,
     vazia: () => Number(q.total.get().n) === 0,
     /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */
     ultimoEvento: () => q.ultimoDeTodos.get()?.quando ?? null,

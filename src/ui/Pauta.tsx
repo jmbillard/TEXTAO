@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { lerSemanaDaPauta } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
-import { diaEmSaoPaulo, diasDaSemana, gradeDaSemana, segundaDaSemana, semanaVizinha, type CelulaDaSemana, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { ROTULO_DA_ETAPA, diaEmSaoPaulo, diasDaSemana, gradeDaSemana, resumoDaProducao, segundaDaSemana, semanaVizinha, type CelulaDaSemana, type LinhaDaPauta, type ProducaoNaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import { Icone } from './icones';
-import { Marca } from './pecas';
+import { Marca, MarcaTexto, tracoDe } from './pecas';
 import './pauta.css';
 
 /* A Pauta da edição (#94): a Semana editor × dia, para qualquer pessoa logada. Uma linha por editor (na ordem do turno
    de costume; "sem editor" no fim), uma coluna por dia, de segunda a domingo. A célula traz o turno e as linhas da
    pauta daquele editor naquele dia: as claquetes, as tarefas (com outro visual) e, no lugar dos avisos, só o ⚑ com o
    número deles, que abre o texto ao passar o mouse ou ao tocar. As versões da chamada (#95) viram etiquetas legíveis,
-   com o código pequeno ao lado. Lida do Teable pelo servidor (nada do Trello). No
+   com o código pequeno ao lado. A claquete traz o que o PROMeiro sabe da produção da arte dela (#96): a etapa, as
+   artes, os designers, a praça e o marca-texto da prioridade ALTA, ou "sem card"; um clique abre a ficha da claquete,
+   por cima da Semana. Lida do Teable pelo servidor (nada do Trello). No
    celular e no tablet, a grade rola para o lado com a coluna dos nomes fixa e abre em hoje. */
 
 interface Props {
@@ -119,7 +121,32 @@ function Versoes({ linha }: { linha: LinhaDaPauta }) {
   );
 }
 
-function Celula({ c, editor, hoje }: { c: CelulaDaSemana; editor: string; hoje: boolean }) {
+/** "2 artes", "1 arte"; sem a lista, nada. */
+const artesEscritas = (n: number | null) => (n === null ? '' : `${n} ${n === 1 ? 'arte' : 'artes'}`);
+
+/** O que o PROMeiro sabe da produção da arte da claquete (#96): a etapa, as artes, os designers e a praça; ou "sem card". */
+function ProducaoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
+  const r = resumoDaProducao(linha.producoes);
+  if (!r) return <span className="pauta-producao sem-card">sem card</span>;
+  const partes = [artesEscritas(r.artes), r.designers.join(', '), r.pracas.join(' · ')].filter(Boolean);
+  return (
+    <span className="pauta-producao" data-etapa={r.etapa}>
+      <span className="pauta-etapa">{ROTULO_DA_ETAPA[r.etapa]}</span>
+      {partes.map((p, i) => (
+        <span key={i}> · {p}</span>
+      ))}
+    </span>
+  );
+}
+
+/** O texto da claquete, com o marca-texto da prioridade ALTA da produção da arte (como na agenda). */
+function TextoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
+  const alta = !!resumoDaProducao(linha.producoes)?.alta;
+  const texto = <span className="pauta-texto">{linha.semVersao}</span>;
+  return alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{texto}</MarcaTexto> : texto;
+}
+
+function Celula({ c, editor, hoje, abrir }: { c: CelulaDaSemana; editor: string; hoje: boolean; abrir: (l: LinhaDaPauta) => void }) {
   const vazia = !c.turno && !c.itens.length && !c.avisos.length;
   const { dia, semana } = partes(c.dia);
   return (
@@ -138,9 +165,19 @@ function Celula({ c, editor, hoje }: { c: CelulaDaSemana; editor: string; hoje: 
           {c.itens.length > 0 && (
             <ul className="pauta-itens">
               {c.itens.map((l) => (
-                <li key={l.id} className={`pauta-item pauta-${l.tipo}`} data-tipo={l.tipo}>
-                  <span className="pauta-texto">{l.semVersao}</span>
-                  <Versoes linha={l} />
+                <li key={l.id} className={`pauta-item pauta-${l.tipo}`} data-tipo={l.tipo} data-etapa={l.tipo === 'claquete' ? (resumoDaProducao(l.producoes)?.etapa ?? 'sem-card') : undefined}>
+                  {l.tipo === 'claquete' ? (
+                    <button type="button" className="pauta-claquete-botao" aria-haspopup="dialog" onClick={() => abrir(l)}>
+                      <TextoDaClaquete linha={l} />
+                      <Versoes linha={l} />
+                      <ProducaoDaClaquete linha={l} />
+                    </button>
+                  ) : (
+                    <>
+                      <span className="pauta-texto">{l.semVersao}</span>
+                      <Versoes linha={l} />
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
@@ -151,12 +188,125 @@ function Celula({ c, editor, hoje }: { c: CelulaDaSemana; editor: string; hoje: 
   );
 }
 
+/** "qua, 25/11". */
+function diaEscrito(iso: string) {
+  const p = partes(iso);
+  return `${DIAS_DA_SEMANA[p.semana]}, ${String(p.dia).padStart(2, '0')}/${String(p.mes + 1).padStart(2, '0')}`;
+}
+/** "24/11 21:46", no fuso de São Paulo. */
+const instanteEscrito = (iso: string) =>
+  new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+const vizinho = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * A ficha da claquete (#96), por cima da Semana: as linhas da mesma atração com versões diferentes juntas (a mesma
+ * chave), os dias em que ela aparece na pauta da semana e a produção da arte de cada praça.
+ */
+function FichaDaClaquete({ linha, semana, hoje, fechar }: { linha: LinhaDaPauta; semana: SemanaDaPauta; hoje: string; fechar: () => void }) {
+  const linhas = semana.linhas.filter((l) => l.tipo === 'claquete' && (l.id === linha.id || (!!linha.chave && l.chave === linha.chave)));
+  const producoes = [...new Map(linhas.flatMap((l) => l.producoes ?? []).map((p) => [p.id, p])).values()].sort((a, b) => a.praca.localeCompare(b.praca));
+  const versoes = [...new Map(linhas.flatMap((l) => l.versoes).map((v) => [`${v.codigo.toUpperCase()}|${v.rotulo}`, v])).values()];
+  const resumo = resumoDaProducao(producoes);
+  const corpo = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    corpo.current?.focus();
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && fechar();
+    document.addEventListener('keydown', tecla);
+    return () => document.removeEventListener('keydown', tecla);
+  }, [fechar]);
+  const relativo = (d: string) => (d === hoje ? 'hoje' : d === vizinho(hoje, -1) ? 'ontem' : d === vizinho(hoje, 1) ? 'amanhã' : '');
+  const titulo = <span>{linha.semVersao}</span>;
+  return (
+    <div className="pauta-veu" onClick={fechar}>
+      <div className="pauta-ficha" role="dialog" aria-modal="true" aria-labelledby="pauta-ficha-titulo" tabIndex={-1} ref={corpo} onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="botao-texto pauta-ficha-voltar" onClick={fechar}>
+          <Icone nome="voltar" tam={14} /> Pauta da edição
+        </button>
+        <h2 id="pauta-ficha-titulo">{resumo?.alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{titulo}</MarcaTexto> : titulo}</h2>
+        {versoes.length > 0 && (
+          <p className="pauta-ficha-versoes">
+            {versoes.length} {versoes.length === 1 ? 'versão' : 'versões'} na pauta:{' '}
+            {versoes.map((v, i) => (
+              <span key={i} className={`pauta-versao${v.conhecida ? '' : ' desconhecida'}`}>
+                {v.conhecida ? v.rotulo : v.codigo}
+                {v.conhecida && <small>{v.codigo}</small>}
+              </span>
+            ))}
+          </p>
+        )}
+        <p className="pauta-producao" data-etapa={resumo?.etapa ?? 'sem-card'}>
+          {resumo ? <span className="pauta-etapa">{ROTULO_DA_ETAPA[resumo.etapa]}</span> : 'sem card na produção da arte'}
+        </p>
+
+        <h3>Na pauta</h3>
+        <table className="pauta-ficha-tabela">
+          <thead>
+            <tr>
+              <th scope="col">Dia</th>
+              <th scope="col">Versão</th>
+              <th scope="col">Turno</th>
+              <th scope="col">Editor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((l) => (
+              <tr key={l.id} className={l.dia === hoje ? 'hoje' : ''}>
+                <td>
+                  {diaEscrito(l.dia)} {relativo(l.dia) && <span className="pauta-dia-rel">{relativo(l.dia)}</span>}
+                </td>
+                <td>{l.versoes.length ? <Versoes linha={l} /> : '—'}</td>
+                <td className="pauta-turno">{l.turno ? `${l.turno.inicio}${l.turno.fim ? `–${l.turno.fim}` : ''}` : '—'}</td>
+                <td>{l.editor || <em>sem editor</em>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <h3>Produção da arte</h3>
+        {producoes.length ? (
+          <table className="pauta-ficha-tabela">
+            <thead>
+              <tr>
+                <th scope="col">Praça</th>
+                <th scope="col">Etapa</th>
+                <th scope="col">Artes</th>
+                <th scope="col">Designer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {producoes.map((p: ProducaoNaPauta) => (
+                <tr key={p.id} data-praca={p.praca}>
+                  <td className="pauta-ficha-praca">{p.praca || '—'}</td>
+                  <td>
+                    <span className="pauta-producao" data-etapa={p.etapa}>
+                      <span className="pauta-etapa">{ROTULO_DA_ETAPA[p.etapa]}</span>
+                    </span>
+                    {p.etapa === 'entregue' && p.entregaEm && <small className="pauta-ficha-quando">{instanteEscrito(p.entregaEm)}</small>}
+                    {p.alta && <small className="pauta-ficha-quando">prioridade ALTA</small>}
+                  </td>
+                  <td>{p.artes ?? '—'}</td>
+                  <td>{p.designers.join(', ') || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="pauta-ficha-sem-card">Nenhuma Produção achada pela claquete: sem card.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Pauta({ semana, irPara, voltar }: Props) {
   const [hoje, setHoje] = useState(() => diaEmSaoPaulo());
   const segunda = segundaDaSemana(semana ?? '', hoje);
   const [dados, setDados] = useState<SemanaDaPauta | null>(null);
   const [falha, setFalha] = useState('');
   const rolagem = useRef<HTMLDivElement>(null);
+  // a ficha da claquete aberta (#96), pelo id da linha
+  const [ficha, setFicha] = useState<string | null>(null);
+  const fecharFicha = useCallback(() => setFicha(null), []);
 
   const carregar = useCallback(() => {
     setFalha('');
@@ -172,13 +322,13 @@ export function Pauta({ semana, irPara, voltar }: Props) {
   const ir = useCallback((s: string) => irPara(s === desta ? undefined : s), [irPara, desta]);
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
+      if (ficha || e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
       if (e.key === 'ArrowLeft') ir(semanaVizinha(segunda, -1));
       if (e.key === 'ArrowRight') ir(semanaVizinha(segunda, 1));
     };
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
-  }, [ir, segunda]);
+  }, [ir, segunda, ficha]);
 
   const atual = dados?.inicio === segunda ? dados : null;
   // a grade mais larga que a tela (celular, tablet): abre em hoje, logo depois da coluna dos nomes
@@ -191,6 +341,7 @@ export function Pauta({ semana, irPara, voltar }: Props) {
   }, [atual]);
 
   const grade = atual ? gradeDaSemana(atual) : [];
+  const aberta = ficha ? (atual?.linhas.find((l) => l.id === ficha) ?? null) : null;
   return (
     <div className="pagina pauta">
       <header className="cad-topo">
@@ -264,7 +415,7 @@ export function Pauta({ semana, irPara, voltar }: Props) {
                       <span className="pauta-nome">{f.editor || 'sem editor'}</span>
                     </th>
                     {f.celulas.map((c) => (
-                      <Celula key={c.dia} c={c} editor={f.editor} hoje={c.dia === hoje} />
+                      <Celula key={c.dia} c={c} editor={f.editor} hoje={c.dia === hoje} abrir={(l) => setFicha(l.id)} />
                     ))}
                   </tr>
                 ))}
@@ -273,6 +424,7 @@ export function Pauta({ semana, irPara, voltar }: Props) {
           </div>
         )}
       </main>
+      {atual && aberta && <FichaDaClaquete linha={aberta} semana={atual} hoje={hoje} fechar={fecharFicha} />}
     </div>
   );
 }

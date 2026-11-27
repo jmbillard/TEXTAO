@@ -7,7 +7,9 @@
 // editor por linha na ordem do turno, "sem editor" no fim, o turno que passa da meia-noite no dia em que começou), as
 // tarefas com outro visual, as versões da chamada como etiquetas (#95), o aviso só como ⚑ com o número e o texto no
 // balão ao passar o mouse; a semana anterior e a próxima pelo endereço, e o endereço da semana aberto direto. No tablet e no celular: a grade rola para o lado com os
-// nomes fixos, abre em hoje, e o toque abre o aviso. Nada vai ao Trello.
+// nomes fixos, abre em hoje, e o toque abre o aviso. A claquete com a produção da arte (#96): as Produções carregadas da
+// produção da arte do Teable falso (fictícias), a etapa, as artes, os designers, a praça, o marca-texto da prioridade
+// ALTA ou "sem card"; um clique (ou toque) abre a ficha da claquete. Nada vai ao Trello.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:pauta
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -67,7 +69,15 @@ PAUTA.push(linha(`Grade da Noite ${diaMes(hoje)} (MNT)`, 'Bruno Teixeira', hoje,
 PAUTA.push(linha(`Show Extra ${diaMes(hoje)} (XYZ)`, 'Bruno Teixeira', hoje, ['14:00', '22:53']));
 PAUTA.push(linha('CALHAUS', null, hoje, ['08:00', '17:00']));
 PAUTA.push(linha('Redator vem acompanhar a edição', 'Carla Duarte', hoje, ['22:00', '06:00'], true));
+// a mesma atração em outra praça e com versão (#96): a ficha junta as duas linhas
+PAUTA.push(linha(`Show da Tarde ${diaMes(hoje)} SP (H)`, 'Ana Ribeiro', hoje, ['06:00', '15:00']));
 PAUTA.push(linha(`Esporte Antigo ${diaMes(mais(anterior, 3))}`, 'Ana Ribeiro', mais(anterior, 2), ['06:00', '15:00']));
+
+/** A produção da arte (fictícia) do Show da Tarde de hoje: a G5 entregue, com prioridade ALTA, e a de SP produzindo. */
+const ARTE = [
+  { id: 'recArteE2e1', fields: { card_ID: '', claquete: `Show da Tarde ${diaMes(hoje)}`, status: '["FINALIZADO"]', entregue: true, arquivado: false, designers: '["Dora Lima"]', artes: 'HOJE | AMANHÃ | hoje', prioridade: 'ALTA', praca: null, filme: null, data_entrada: sp(mais(hoje, -3), '10:00'), data_entrega: sp(mais(hoje, -1), '18:30') } },
+  { id: 'recArteE2e2', fields: { card_ID: '', claquete: `Show da Tarde ${diaMes(hoje)} SP`, status: '["PRODUZINDO"]', entregue: false, arquivado: false, designers: '["Enzo Prado"]', artes: 'HOJE', praca: null, filme: null, data_entrada: sp(mais(hoje, -2), '10:00') } },
+];
 
 async function abrir(navegador, url, opcoes, hash = '#/pauta') {
   const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
@@ -159,11 +169,35 @@ async function noComputador(navegador, url, tema) {
   await p.mouse.move(5, 5);
   await p.locator('.pauta-aviso-balao').waitFor({ state: 'detached' });
 
+  // a claquete com a produção da arte (#96): a etapa, as artes sem repetir, o designer, a praça e o marca-texto da
+  // prioridade ALTA; a claquete sem produção diz "sem card"
+  const show = itemDo(`Show da Tarde ${diaMes(hoje)}`).first();
+  assert.equal((await show.locator('.pauta-producao').textContent()).replace(/\s+/g, ' ').trim(), 'Entregue · 2 artes · Dora Lima · G5');
+  assert.equal(await show.locator('.marca-texto').count(), 1);
+  const novela = celula(p, 'Ana Ribeiro', hoje).locator('.pauta-item', { has: p.locator('.pauta-texto', { hasText: 'Novela Sol' }) });
+  assert.equal((await novela.locator('.pauta-producao').textContent()).trim(), 'sem card');
+  assert.equal(await novela.locator('.marca-texto').count(), 0);
+  // um clique abre a ficha: as duas linhas da atração (versões diferentes), os dias e a produção de cada praça
+  await show.locator('.pauta-claquete-botao').click();
+  const ficha = p.getByRole('dialog', { name: `Show da Tarde ${diaMes(hoje)}` });
+  await ficha.waitFor();
+  const tabelas = ficha.locator('.pauta-ficha-tabela');
+  assert.equal(await tabelas.nth(0).locator('tbody tr').count(), 2);
+  assert.deepEqual((await textos(tabelas.nth(0).locator('tbody td:last-child'))).sort(), ['Ana Ribeiro', 'Bruno Teixeira']);
+  assert.match((await tabelas.nth(0).locator('tbody tr').first().textContent()) ?? '', /hoje/);
+  assert.deepEqual(await etiquetas(ficha.locator('.pauta-ficha-versoes')), [['hoje', 'H']]);
+  assert.deepEqual(await tabelas.nth(1).locator('tbody tr').evaluateAll((trs) => trs.map((t) => t.dataset.praca)), ['G5', 'SP']);
+  assert.match(await tabelas.nth(1).locator('tr[data-praca="SP"]').textContent(), /Produzindo.*1.*Enzo Prado/);
+  assert.match(await tabelas.nth(1).locator('tr[data-praca="G5"]').textContent(), /Entregue.*2.*Dora Lima/);
+  await capturar(p, `03-ficha-${nome}`);
+  await p.keyboard.press('Escape');
+  await ficha.waitFor({ state: 'detached' });
+
   // a semana anterior e a próxima: o endereço muda e a grade também
   await p.getByRole('button', { name: 'Semana anterior' }).click();
   await p.locator(`th.pauta-dia[data-dia="${anterior}"]`).waitFor();
   assert.equal(hash(p), `#/pauta/semana/${anterior}`);
-  assert.deepEqual(await textos(p.locator('.pauta-item')), [`Esporte Antigo ${diaMes(mais(anterior, 3))}`]);
+  assert.deepEqual(await textos(p.locator('.pauta-item .pauta-texto')), [`Esporte Antigo ${diaMes(mais(anterior, 3))}`]);
   assert.equal(await p.locator('th.pauta-dia.hoje').count(), 0);
   await p.getByRole('button', { name: 'Próxima semana' }).click();
   await p.locator(`th.pauta-dia[data-dia="${segunda}"]`).waitFor();
@@ -189,7 +223,7 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(erros, [], `computador ${nome}: erros na página`);
   assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
   await ctx.close();
-  console.log(`ok: computador ${nome}: entrada no topo → a semana de hoje, editores na ordem, tarefa, as versões como etiquetas, aviso no balão → semana anterior, próxima e o endereço`);
+  console.log(`ok: computador ${nome}: entrada no topo → a semana de hoje, editores na ordem, tarefa, as versões como etiquetas, aviso no balão, a claquete com a produção e a ficha → semana anterior, próxima e o endereço`);
 }
 
 /** No tablet e no celular: a grade rola para o lado, os nomes ficam e ela abre em hoje; o toque abre o aviso. */
@@ -225,9 +259,19 @@ async function naTelaPequena(navegador, url, aparelho, rotulo, tema) {
   await capturar(p, `02-${nome}`);
   await p.locator('.pauta-cabeca h1').tap();
   await p.locator('.pauta-aviso-balao').waitFor({ state: 'detached' });
+  // o toque na claquete abre a ficha, que cabe na tela; o voltar dela fecha
+  const show = celula(p, 'Bruno Teixeira', hoje).locator('.pauta-claquete-botao', { hasText: `Show da Tarde ${diaMes(hoje)}` }).first();
+  await show.scrollIntoViewIfNeeded();
+  await show.tap();
+  const ficha = p.locator('.pauta-ficha');
+  await ficha.waitFor();
+  assert.ok(await ficha.evaluate((f) => f.scrollWidth <= innerWidth + 1), `${nome}: a ficha cabe na tela`);
+  await capturar(p, `04-ficha-${nome}`);
+  await ficha.locator('.pauta-ficha-voltar').tap();
+  await ficha.waitFor({ state: 'detached' });
   assert.deepEqual(erros, [], `${nome}: erros na página`);
   await ctx.close();
-  console.log(`ok: ${nome}: a grade rola para o lado com os nomes fixos, abre em hoje, o toque abre o aviso`);
+  console.log(`ok: ${nome}: a grade rola para o lado com os nomes fixos, abre em hoje, o toque abre o aviso e a ficha`);
 }
 
 /** Na fila do celular, a entrada da pauta é só o ícone, e cabe no topo. */
@@ -248,8 +292,14 @@ async function entradaNoCelular(navegador, url) {
 
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
-  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e' }, { registros: { EDICAO_producao: PAUTA } });
-  const s = await subir({ teable, pg: teable.abrirPg, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' } });
+  const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
+  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e', ARTE_producao: 'arte_e2e' }, { registros: { EDICAO_producao: PAUTA, ARTE_producao: ARTE } });
+  const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
+  // a produção da arte do mesmo Teable falso, para a carga das Produções (#96)
+  const trello = { env: { ...PG, ...comTabelas({ ARTE_producao: 'arte_e2e' }) }, consultar: teable.consultar };
+  const s = await subir({ teable, pg: teable.abrirPg, trello, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG } });
+  const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
+  assert.equal(carga.status, 200, 'a carga das Produções');
   await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
   const navegador = await chromium.launch();
   let falhou = false;

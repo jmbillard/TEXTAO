@@ -2,8 +2,10 @@
    apaga). Cada linha da tabela EDICAO_producao do Teable vira uma claquete, uma tarefa ou um aviso; o turno sai do
    início e do fim do expediente, no fuso de São Paulo; o dia da pauta é o campo data (um turno que passa da
    meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. As versões
-   da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. */
-import { lerDataDaClaquete } from './vocabularios.ts';
+   da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. A claquete cruza com as
+   Produções (#96) pela chave. */
+import type { Etapa } from './producao.ts';
+import { chaveDaClaquete, lerDataDaClaquete } from './vocabularios.ts';
 
 export type TipoDaLinha = 'claquete' | 'tarefa' | 'aviso';
 
@@ -28,6 +30,26 @@ export interface LinhaDaPauta {
   versoes: Versao[];
   /** o texto sem o código das versões (o texto inteiro, sem versões) */
   semVersao: string;
+  /** só na claquete (#96): a chave da ficha, a mesma nas linhas da mesma atração com versões diferentes */
+  chave?: string;
+  /** só na claquete (#96): as Produções achadas pela chave, uma por praça; [] é "sem card" */
+  producoes?: ProducaoNaPauta[];
+}
+
+/** O que a pauta mostra de uma Produção (#96). */
+export interface ProducaoNaPauta {
+  id: string;
+  claquete: string;
+  /** a sigla da praça ('' sem ela) */
+  praca: string;
+  etapa: Etapa;
+  /** quantas artes a produzir, cada uma uma vez; null sem a lista */
+  artes: number | null;
+  designers: string[];
+  /** a prioridade ALTA da produção da arte (o marca-texto, como na agenda) */
+  alta: boolean;
+  entradaEm: string | null;
+  entregaEm: string | null;
 }
 
 /** A Semana da pauta: a rota GET /api/pauta/semana. */
@@ -294,3 +316,84 @@ export function gradeDaSemana(s: Pick<SemanaDaPauta, 'dias' | 'editores' | 'linh
     }),
   }));
 }
+
+/* ---------- o cruzamento com a produção da arte (#96) ---------- */
+
+/** Até quantos dias antes do dia da pauta a Produção ainda é desta claquete (a mesma chave volta no ano seguinte), e
+    quantos depois (a arte que entrou depois da edição marcada). */
+const ANTES = 90;
+const DEPOIS = 14;
+const DIA_MS = 86_400_000;
+
+/** A chave da claquete sem o código das versões no fim ("Novela Sol 27/11 NAH" → "NOVELA SOL 27 11"). */
+const chaveSemVersao = (l: Pick<LinhaDaPauta, 'semVersao'>) => chaveDaClaquete(l.semVersao);
+
+/**
+ * As claquetes da pauta com as Produções delas, pela chave da claquete, com a tolerância da busca do editor pela
+ * pauta, nesta ordem: a chave exata; a chave sem a versão no fim; a chave sem a praça (dos dois lados: a pauta escreve
+ * "Rede", a produção tem uma linha por praça). Vale a primeira tentativa que acha. Só as Produções que entraram perto
+ * do dia da linha, e uma por praça (a que entrou por último). A tarefa e o aviso ficam como estão.
+ * @param semPraca a chave sem a praça escrita no fim (as praças da configuração)
+ */
+export function cruzarComAProducao(linhas: readonly LinhaDaPauta[], producoes: readonly ProducaoNaPauta[], semPraca: (chave: string) => string): LinhaDaPauta[] {
+  const exatas = new Map<string, ProducaoNaPauta[]>();
+  const semAPraca = new Map<string, ProducaoNaPauta[]>();
+  const juntar = (mapa: Map<string, ProducaoNaPauta[]>, chave: string, p: ProducaoNaPauta) => chave && mapa.set(chave, [...(mapa.get(chave) ?? []), p]);
+  for (const p of producoes) {
+    const chave = chaveDaClaquete(p.claquete);
+    juntar(exatas, chave, p);
+    juntar(semAPraca, semPraca(chave), p);
+  }
+  const perto = (dia: string) => (p: ProducaoNaPauta) => {
+    const entrada = p.entradaEm ? Date.parse(p.entradaEm) : NaN;
+    if (Number.isNaN(entrada)) return true;
+    const doDia = Date.parse(`${dia}T12:00:00Z`);
+    return entrada >= doDia - ANTES * DIA_MS && entrada <= doDia + DEPOIS * DIA_MS;
+  };
+  /** Uma por praça: a que entrou por último. */
+  const umaPorPraca = (lista: ProducaoNaPauta[]) => {
+    const porPraca = new Map<string, ProducaoNaPauta>();
+    for (const p of lista) {
+      const ja = porPraca.get(p.praca);
+      if (!ja || (p.entradaEm ?? '') > (ja.entradaEm ?? '')) porPraca.set(p.praca, p);
+    }
+    return [...porPraca.values()].sort((a, b) => a.praca.localeCompare(b.praca));
+  };
+  return linhas.map((l) => {
+    if (l.tipo !== 'claquete') return l;
+    const exata = chaveDaClaquete(l.texto);
+    const curta = chaveSemVersao(l);
+    const tentativas: [Map<string, ProducaoNaPauta[]>, string][] = [
+      [exatas, exata],
+      [exatas, curta],
+      [semAPraca, semPraca(curta)],
+    ];
+    let achadas: ProducaoNaPauta[] = [];
+    for (const [mapa, chave] of tentativas) {
+      achadas = umaPorPraca((mapa.get(chave) ?? []).filter(perto(l.dia)));
+      if (achadas.length) break;
+    }
+    return { ...l, chave: semPraca(curta), producoes: achadas };
+  });
+}
+
+const ORDEM_DA_ETAPA: Etapa[] = ['entrada', 'produzindo', 'entregue'];
+
+/** O resumo das Produções de uma claquete, para a célula: a etapa mais atrasada (Arquivada só quando todas estão),
+    as artes somadas, os designers e as praças sem repetir e a prioridade ALTA de alguma. null: sem card. */
+export function resumoDaProducao(producoes: readonly ProducaoNaPauta[] | undefined) {
+  if (!producoes?.length) return null;
+  const abertas = producoes.filter((p) => p.etapa !== 'arquivada');
+  const etapa: Etapa = abertas.length ? ORDEM_DA_ETAPA[Math.min(...abertas.map((p) => ORDEM_DA_ETAPA.indexOf(p.etapa)))] : 'arquivada';
+  const comArtes = producoes.filter((p) => p.artes !== null);
+  return {
+    etapa,
+    artes: comArtes.length ? comArtes.reduce((n, p) => n + (p.artes ?? 0), 0) : null,
+    designers: [...new Set(producoes.flatMap((p) => p.designers))],
+    pracas: [...new Set(producoes.map((p) => p.praca).filter(Boolean))],
+    alta: producoes.some((p) => p.alta),
+  };
+}
+
+/** A etapa por extenso, como a pauta mostra. */
+export const ROTULO_DA_ETAPA: Record<Etapa, string> = { entrada: 'Entrada', produzindo: 'Produzindo', entregue: 'Entregue', arquivada: 'Arquivada' };

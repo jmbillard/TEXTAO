@@ -181,3 +181,84 @@ describe('a Semana da pauta da edição', () => {
     expect(((await r.json()) as { erro: string }).erro).toMatch(/não respondeu/);
   });
 });
+
+/* O cruzamento com a produção da arte (#96): as Produções do PROMeiro (a carga da produção da arte do Teable de
+   mentira) achadas pela chave da claquete da pauta, em três tentativas: a chave exata, sem a versão no fim, sem a
+   praça. Nada do Trello e nenhuma leitura nova do Teable na rota da Semana. */
+describe('a claquete da pauta com a produção da arte (#96)', () => {
+  const NOMES_COM_ARTE = { ARTE_producao: 'arte_producao_pg' };
+  const arte = (id: string, fields: Campos) => ({ id, fields: { card_ID: '', status: '[]', designers: null, arquivado: false, entregue: false, praca: null, filme: null, ...fields } });
+  const PRODUCAO = () => [
+    // exata: entregue, com a mesma arte duas vezes (conta uma) e a prioridade ALTA
+    arte('recA1', { claquete: 'Show da Tarde 25/11', status: '["FINALIZADO"]', entregue: true, designers: '["Designer Um"]', artes: 'HOJE | AMANHÃ | Hoje', prioridade: 'ALTA', data_entrada: '2026-11-20T12:00:00.000Z', data_entrega: '2026-11-23T18:00:00.000Z' }),
+    // a mesma chave um ano antes: não é desta pauta
+    arte('recA0', { claquete: 'Show da Tarde 25/11', status: '["FINALIZADO"]', arquivado: true, designers: '["Designer Antigo"]', data_entrada: '2025-11-20T12:00:00.000Z' }),
+    // sem a versão: a pauta escreve "NAH" sem parênteses
+    arte('recA2', { claquete: 'Novela Sol 27/11', status: '["PRODUZINDO"]', designers: '["Designer Dois"]', artes: 'VEM AI', prioridade: 'MÉDIA', data_entrada: '2026-11-22T12:00:00.000Z' }),
+    // sem a praça: a pauta escreve "Rede"; a produção tem SP e a G5
+    arte('recA3', { claquete: 'Quem Ama 28/11 SP', artes: 'HOJE\nAMANHÃ', data_entrada: '2026-11-23T12:00:00.000Z' }),
+    arte('recA4', { claquete: 'Quem Ama 28/11', status: '["PRODUZINDO"]', designers: '["Designer Um","Designer Dois"]', artes: 'HOJE', data_entrada: '2026-11-23T12:00:00.000Z' }),
+  ];
+  const PAUTA_COM_ARTE = () => [
+    ...PAUTA(),
+    linha('recC2', 'Novela Sol 27/11 NAH', 'Ana Manhã', '2026-11-26', ['06:00', '15:00']),
+    linha('recC3', 'Quem Ama 28/11 Rede', 'Carla Noite', '2026-11-27', ['22:00', '06:00']),
+    linha('recC4', 'Festa do Bairro(Prologo)26/11 (H)', 'Beto Tarde', '2026-11-26', ['14:00', '22:53']),
+  ];
+  type Producao = { praca: string; etapa: string; artes: number | null; designers: string[]; alta: boolean };
+  type LinhaComArte = Linha & { chave?: string; producoes?: Producao[] };
+
+  async function semanaComArte() {
+    const teable = teableFalso({ ...NOMES, ...NOMES_COM_ARTE }, { registros: { EDICAO_producao: PAUTA_COM_ARTE(), ARTE_producao: PRODUCAO() } });
+    const app = criarApp({ db: abrirBanco(':memory:'), env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg });
+    await app.tabelasProntas;
+    const servidor = createServer(app);
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    parar = async () => {
+      await app.fechar();
+      await new Promise<void>((ok) => servidor.close(() => ok()));
+    };
+    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    // a carga das Produções (a da subida pode já ter rodado: rodar de novo atualiza, não duplica)
+    const carga = await fetch(`${base}/api/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': 'chefe@empresa.com' } });
+    expect(carga.status).toBe(200);
+    const antes = teable.estado.consultas.length;
+    const r = await fetch(`${base}/api/pauta/semana?inicio=2026-11-23`, { headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } });
+    const s = (await semana(r)) as unknown as { linhas: LinhaComArte[] };
+    // a Semana só lê a pauta: a produção da arte não é lida de novo do Teable
+    expect(teable.estado.consultas.slice(antes).every((sql: string) => sql.includes('pauta_pg'))).toBe(true);
+    return (id: string) => s.linhas.find((l) => l.id === id)!;
+  }
+
+  it('pela chave exata: a etapa, as artes sem repetir, os designers, a praça e a prioridade ALTA', async () => {
+    const por = await semanaComArte();
+    expect(por('recP3').producoes).toEqual([expect.objectContaining({ praca: 'G5', etapa: 'entregue', artes: 2, designers: ['Designer Um'], alta: true })]);
+  });
+
+  it('sem a versão no fim, quando a exata não acha', async () => {
+    const por = await semanaComArte();
+    expect(por('recC2').producoes).toEqual([expect.objectContaining({ praca: 'G5', etapa: 'produzindo', artes: 1, designers: ['Designer Dois'], alta: false })]);
+  });
+
+  it('sem a praça, quando nem a exata nem a sem versão acham: a produção de cada praça', async () => {
+    const por = await semanaComArte();
+    const producoes = por('recC3').producoes!;
+    expect(producoes.map((p) => p.praca).sort()).toEqual(['G5', 'SP']);
+    expect(producoes.find((p) => p.praca === 'SP')).toMatchObject({ etapa: 'entrada', artes: 2, designers: [] });
+    expect(producoes.find((p) => p.praca === 'G5')).toMatchObject({ etapa: 'produzindo', designers: ['Designer Um', 'Designer Dois'] });
+  });
+
+  it('a claquete sem produção vem sem card; a tarefa e o aviso não cruzam', async () => {
+    const por = await semanaComArte();
+    expect(por('recP8').producoes).toEqual([]);
+    expect(por('recP2').producoes).toBeUndefined();
+    expect(por('recP6').producoes).toBeUndefined();
+  });
+
+  it('as linhas da mesma atração com versões diferentes têm a mesma chave (a ficha junta)', async () => {
+    const por = await semanaComArte();
+    expect(por('recP1').chave).toBeTruthy();
+    expect(por('recC4').chave).toBe(por('recP1').chave);
+    expect(por('recC3').chave).not.toBe(por('recP1').chave);
+  });
+});

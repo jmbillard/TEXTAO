@@ -12,7 +12,7 @@ import * as cod from 'lib0/encoding';
 import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
-import { segundaDaSemana } from '../src/modelo/pauta.ts';
+import { cruzarComAProducao, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
@@ -33,7 +33,7 @@ import { eventosDoAviso } from '../src/modelo/avisoDoTrello.ts';
 import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
-import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco } from '../src/modelo/pracas.ts';
+import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
 import { acertarNArtesUmaVez } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
@@ -2513,7 +2513,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // a Semana da pauta da edição (#94), para qualquer pessoa logada: lida do Postgres do Teable (só leitura), nada do
       // Trello; ?inicio= é qualquer dia da semana (sem ele, a de hoje, em São Paulo)
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
-      return json(res, 200, await pauta.semana(segundaDaSemana(new URL(req.url, 'http://x').searchParams.get('inicio') ?? '')));
+      const s = await pauta.semana(segundaDaSemana(new URL(req.url, 'http://x').searchParams.get('inicio') ?? ''));
+      // a claquete com a produção da arte (#96): as Produções do PROMeiro (sem ler o Teable de novo), pela chave, com a
+      // tolerância da busca do editor (sem a versão, sem a praça)
+      const desde = new Date(Date.parse(`${s.inicio}T12:00:00Z`) - 120 * 86_400_000).toISOString();
+      const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
+      return json(res, 200, { ...s, linhas: cruzarComAProducao(s.linhas, producoes.naPauta(desde), semPraca) });
     }
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
