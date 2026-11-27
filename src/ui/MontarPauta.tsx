@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { desfazerAPublicacao, gravarRascunhoDoDia, lerRascunhoDoDia, marcarPendencia, publicarODia, repetirAEscala } from '../dados/armazenamento';
+import { desfazerAPublicacao, devolverADemanda, escalarNoDia, gravarRascunhoDoDia, jaDistribuida, juntarParaDistribuir, lerRascunhoDoDia, levarParaAPosicao, marcarPendencia, moverADemanda, publicarODia, repetirAEscala } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
+import { acrescentarDemanda, escalarNa, moverDemanda, semEscala, tirarDemanda } from '../modelo/distribuir';
+import type { DemandaParaDistribuir } from '../modelo/ausencias';
+import { useArrastar, type ItemArrastado, type LugarDeSoltar } from './arrastar';
+import { Alca, EscolherDestino, ParaDistribuir, SemEscala, type Arraste, type Destino } from './ColunaDaPauta';
 import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
 import { CampoDaIlha } from './CampoDaIlha';
 import type { Ilha } from '../modelo/ilhas';
@@ -29,6 +33,12 @@ import './montarPauta.css';
    Os avisos e o recado do dia (#125): cada posição tem os seus avisos (⚑), linhas à parte das demandas, abertas pelo
    "+ aviso" (Enter cria outra, Backspace na vazia apaga); o recado do dia, para todos, fica num campo próprio, acima da
    grade. Os dois são gravados com o rascunho e, publicados, aparecem na Pauta como os avisos de hoje.
+   A coluna lateral (#126, a alternativa B do protótipo): ao lado da grade (em cima, no tablet em pé; embaixo, no
+   celular), as caixas "Para distribuir" (escrever ou colar as claquetes), "Sem escala" (quem não está em nenhuma
+   posição nem fora) e "Fora" (as ausências do dia). Arrasta-se a claquete da lista para uma posição, a demanda de uma
+   posição para outra (ou de volta para a lista) e a pessoa para uma posição ou para um turno (uma posição nova); no
+   celular e pelo teclado, o "Mover para…" e o "Escalar na…". Cada uma dessas ações vai ao servidor, que grava o dia;
+   a tela já mostra o resultado antes da resposta e fica com o que o servidor gravou.
    O dia vazio (#129, DiaVazio.tsx) oferece Repetir a escala de outro dia, Colar da planilha (o #130) ou Começar do
    zero; a posição que o Repetir deixou vaga diz o motivo, até ganhar editor. */
 
@@ -80,6 +90,9 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [vista, setVista] = useState<'montar' | 'conferir' | 'publicada'>('montar');
   const [publicando, setPublicando] = useState(false);
   const [erroAoPublicar, setErroAoPublicar] = useState('');
+  // a coluna lateral (#126): quem está fora no dia (da caixa "Fora") e o erro da última ação dela
+  const [foraNoDia, setForaNoDia] = useState<string[]>([]);
+  const [erroDaColuna, setErroDaColuna] = useState('');
   // depois de Repetir (#129): o que veio e quem ficou de fora; sai ao trocar de dia
   const [repetido, setRepetido] = useState('');
   useEffect(() => setRepetido(''), [dia]);
@@ -218,6 +231,99 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     setFoco({ posicao: novas[0].id, campo: 'editor' });
   };
 
+  /* ---------- a coluna lateral (#126) ---------- */
+  /**
+   * Uma ação da coluna: grava antes o que falta, mostra já o resultado (`local`, nas posições sem as linhas vazias;
+   * `lista`, em "Para distribuir") e vai ao servidor; fica com o dia que ele gravou (ou volta ao de antes, no erro).
+   */
+  const naColuna = async (local: ((ps: PosicaoDaEscala[]) => PosicaoDaEscala[] | null) | null, lista: ((l: DemandaParaDistribuir[]) => DemandaParaDistribuir[]) | null, servidor: (dia: string) => Promise<DiaDaEscala>) => {
+    if (!dados) return false;
+    const dia = dados.dia;
+    setErroDaColuna('');
+    await gravarAgora();
+    const antes = { posicoes: posicoesAgora.current, lista: dados.paraDistribuir ?? [] };
+    const novas = local?.(posicoesAgora.current.map((p) => ({ ...p, demandas: p.demandas.filter((d) => d.texto.trim()) })));
+    if (novas) {
+      posicoesAgora.current = novas.map(comLinha);
+      setPosicoes(posicoesAgora.current);
+    }
+    if (lista) setDados((d) => (d?.dia === dia ? { ...d, paraDistribuir: lista(d.paraDistribuir ?? []) } : d));
+    try {
+      const d = await servidor(dia);
+      setDados((x) => (x?.dia === d.dia ? { ...x, estado: d.estado, semana: d.semana, turnos: d.turnos, ocupadas: d.ocupadas, publicacao: d.publicacao, historico: d.historico, dispensadas: d.dispensadas, gravadoEm: d.gravadoEm, gravadoPor: d.gravadoPor, paraDistribuir: d.paraDistribuir } : x));
+      // quem digitou enquanto isso fica com o que digitou (a gravação seguinte leva tudo, com a ação)
+      if (!pendente.current && !prazo.current) {
+        posicoesAgora.current = d.posicoes.map(comLinha);
+        setPosicoes(posicoesAgora.current);
+      }
+      return true;
+    } catch (e) {
+      if (!pendente.current) {
+        posicoesAgora.current = antes.posicoes;
+        setPosicoes(antes.posicoes);
+      }
+      setDados((d) => (d?.dia === dia ? { ...d, paraDistribuir: antes.lista } : d));
+      setErroDaColuna(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+  };
+  const listaDoDia = dados?.paraDistribuir ?? [];
+  const escalar = (editor: string, alvo: { posicao: string } | { turno: string }) => {
+    const t = 'turno' in alvo ? turnos.find((x) => x.id === alvo.turno) : null;
+    const local = (ps: PosicaoDaEscala[]) =>
+      'posicao' in alvo ? escalarNa(ps, editor, alvo) : t ? escalarNa(ps, editor, { turno: t.id, nova: { id: novoId('p'), turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } }) : null;
+    void naColuna(local, null, (dia) => escalarNoDia(dia, editor, alvo));
+  };
+  const levar = (id: string, posicao: string, antesDe: string | null) => {
+    const item = listaDoDia.find((d) => d.id === id);
+    if (!item) return;
+    void naColuna((ps) => acrescentarDemanda(ps, posicao, { id: item.id, texto: item.texto }, antesDe), (l) => l.filter((d) => d.id !== id), (dia) => levarParaAPosicao(dia, id, posicao, antesDe));
+  };
+  const mover = (id: string, posicao: string, antesDe: string | null) => void naColuna((ps) => moverDemanda(ps, id, posicao, antesDe), null, (dia) => moverADemanda(dia, id, posicao, antesDe));
+  const devolver = (id: string) => {
+    const tirada = tirarDemanda(posicoesAgora.current, id);
+    if (!tirada) return;
+    void naColuna((ps) => tirarDemanda(ps, id)?.posicoes ?? null, (l) => [...l, { id, texto: tirada.demanda.texto, deQuem: tirada.de }], (dia) => devolverADemanda(dia, id));
+  };
+  const tirarDaLista = (id: string) => void naColuna(null, (l) => l.filter((d) => d.id !== id), (dia) => jaDistribuida(dia, id).then(() => lerRascunhoDoDia(dia)));
+  const juntar = (texto: string) => naColuna(null, null, (dia) => juntarParaDistribuir(dia, texto));
+
+  const { arrastado, sobre, iniciar } = useArrastar(
+    (item, lugar) => (item.tipo === 'pessoa' ? lugar.tipo !== 'lista' : item.tipo === 'lista' ? lugar.tipo === 'posicao' : lugar.tipo === 'lista' || (lugar.tipo === 'posicao' && lugar.antesDe !== item.id)),
+    (item: ItemArrastado, lugar: LugarDeSoltar) => {
+      if (item.tipo === 'pessoa') escalar(item.id, lugar.tipo === 'turno' ? { turno: lugar.id } : { posicao: lugar.id });
+      else if (item.tipo === 'lista') levar(item.id, lugar.id, lugar.antesDe);
+      else if (lugar.tipo === 'lista') devolver(item.id);
+      else mover(item.id, lugar.id, lugar.antesDe);
+    },
+  );
+  /** Os destinos de uma demanda: as posições do dia, por turno (sem a dela) e, para a demanda, a volta à lista. */
+  const destinosDaDemanda = (fora: string | null, comLista: boolean): Destino[] => [
+    ...turnos.flatMap((t) => posicoes.filter((p) => p.turno === t.id && p.id !== fora).map((p) => ({ valor: `posicao:${p.id}`, grupo: t.nome, rotulo: `${t.nome}: ${p.editor.trim() || 'vaga'}` }))),
+    ...(comLista ? [{ valor: 'lista', grupo: 'Coluna', rotulo: 'Para distribuir' }] : []),
+  ];
+  /** Os destinos de quem está sem escala: as vagas de cada turno e uma posição nova nele. */
+  const destinosDaPessoa: Destino[] = turnos.flatMap((t) => [
+    ...posicoes.filter((p) => p.turno === t.id && !p.editor.trim()).map((p, i, vagas) => ({ valor: `posicao:${p.id}`, grupo: t.nome, rotulo: `${t.nome}: vaga${vagas.length > 1 ? ` ${i + 1}` : ''}` })),
+    { valor: `turno:${t.id}`, grupo: t.nome, rotulo: `${t.nome}: nova posição` },
+  ]);
+  /** O destino escolhido no "Escalar na…" ou no "Mover para…": "posicao:id", "turno:id" ou "lista". */
+  const lerDestino = (valor: string) => {
+    const [tipo, id = ''] = valor.split(':');
+    return { tipo, id };
+  };
+  const escalarPeloMenu = (editor: string, valor: string) => {
+    const d = lerDestino(valor);
+    escalar(editor, d.tipo === 'turno' ? { turno: d.id } : { posicao: d.id });
+  };
+  const moverPeloMenu = (tipo: 'lista' | 'demanda', id: string, valor: string) => {
+    const d = lerDestino(valor);
+    if (tipo === 'lista') levar(id, d.id, null);
+    else if (d.tipo === 'lista') devolver(id);
+    else mover(id, d.id, null);
+  };
+  const pessoasSemEscala = semEscala(editores, posicoes, foraNoDia);
+
   // ← e → trocam de semana, fora dos campos
   const segunda = dados?.semana[0]?.dia ?? '';
   useEffect(() => {
@@ -333,8 +439,6 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
         {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
-        {/* as ausências (#128): quem está fora no dia, marcar, a oferta de tirar do dia publicado e o para distribuir */}
-        {atual && <AusenciasDoDia dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}
@@ -347,6 +451,18 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
         ) : (
           <>
           <RecadoDoDia texto={recado} mudar={mudarRecado} />
+          <div className={`montar-corpo${arrastado ? ` arrastando-${arrastado.tipo}` : ''}`}>
+          {/* a coluna lateral (#126): para distribuir, sem escala e fora (as ausências, #128) */}
+          <aside className="montar-coluna" aria-label="Coluna lateral">
+            {erroDaColuna && (
+              <p className="aus-erro" role="alert">
+                {erroDaColuna}
+              </p>
+            )}
+            <ParaDistribuir dia={atual.dia} itens={listaDoDia} juntar={juntar} tirar={tirarDaLista} destinos={destinosDaDemanda(null, false)} mover={(id, v) => moverPeloMenu('lista', id, v)} arraste={{ iniciar, arrastado, sobre }} />
+            <SemEscala pessoas={pessoasSemEscala} destinos={destinosDaPessoa} escalar={escalarPeloMenu} arraste={{ iniciar, arrastado, sobre }} />
+            <AusenciasDoDia dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={setForaNoDia} />
+          </aside>
           <div className="montar-grade" ref={grade}>
             {repetido && (
               <p className="repetido" role="status">
@@ -357,7 +473,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
             {turnos.map((t) => {
               const doTurno = posicoes.filter((p) => p.turno === t.id);
               return (
-                <section key={t.id} className="montar-turno" aria-label={t.nome}>
+                <section key={t.id} className={`montar-turno${sobre === `turno:${t.id}` ? ' sobre' : ''}`} aria-label={t.nome} data-solta={`turno:${t.id}`}>
                   <div className="montar-turno-cab">
                     <h2>{t.nome}</h2>
                     <span className="montar-turno-h">
@@ -383,10 +499,12 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
                           mudar={(f) => daPosicao(p.id, f)}
                           tirar={() => tirarPosicao(p.id)}
                           focar={setFoco}
+                          arraste={{ iniciar, sobre, arrastado, destinos: destinosDaDemanda(p.id, true), mover: (id, v) => moverPeloMenu('demanda', id, v) }}
                         />
                       ))}
                     </div>
                   )}
+                  {arrastado?.tipo === 'pessoa' && <p className="montar-solte">solte aqui: uma posição nova na {t.nome.toLowerCase()}</p>}
                 </section>
               );
             })}
@@ -395,7 +513,9 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
               <span><kbd>Enter</kbd> nova linha</span>
               <span><kbd>↑</kbd> <kbd>↓</kbd> entre as linhas</span>
               <span><kbd>⌫</kbd> na linha vazia apaga</span>
+              <span><Alca /> arraste para outra posição</span>
             </p>
+          </div>
           </div>
           </>
         )}
@@ -467,10 +587,12 @@ interface PropsDaCelula {
   mudar: (f: (p: PosicaoDaEscala) => PosicaoDaEscala) => void;
   tirar: () => void;
   focar: (f: Foco) => void;
+  /** o arrastar (#126): quem arrasta, onde está, e o "Mover para…" das demandas (no celular) */
+  arraste: Arraste & { destinos: readonly Destino[]; mover: (id: string, destino: string) => void };
 }
 
 /** Uma posição: o editor, o horário e as demandas, cada campo com o que o PROMeiro entendeu embaixo. */
-function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, mudar, tirar, focar }: PropsDaCelula) {
+function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, mudar, tirar, focar, arraste }: PropsDaCelula) {
   const horario = lerHorario(p.horario);
   const situacao = p.editor.trim() ? situacaoNoDia(p.editor, posicoes, p.id) : null;
   const naLista = !p.editor.trim() || editores.some((e) => nomeComparavel(e) === nomeComparavel(p.editor));
@@ -530,7 +652,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
   };
 
   return (
-    <div className="montar-celula" data-posicao-id={p.id}>
+    <div className={`montar-celula${arraste.sobre.split(':')[1] === p.id && /^(posicao|demanda):/.test(arraste.sobre) ? ' sobre' : ''}`} data-posicao-id={p.id} data-solta={`posicao:${p.id}`}>
       <div className="montar-celula-topo">
         {/* a vaga que o Repetir deixou (#129) perde o motivo quando ganha editor */}
         <CampoDoEditor p={p} posicoes={posicoes} turnos={turnos} editores={editores} mudar={(editor) => mudar(({ vaga, ...x }) => (editor.trim() ? { ...x, editor } : { ...x, editor, ...(vaga ? { vaga } : {}) }))} depois={() => focar({ posicao: p.id, campo: 'ilha' })} />
@@ -598,7 +720,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
       </div>
       <ul className="montar-demandas" aria-label="Demandas">
         {p.demandas.map((d, i) => (
-          <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} />
+          <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} arraste={arraste} />
         ))}
       </ul>
       {p.avisos.length > 0 && (
@@ -633,10 +755,14 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
 }
 
 /** Uma linha de demanda: o texto livre e, embaixo, o que o PROMeiro entendeu. Ao sair, a claquete vai para o padrão. */
-function LinhaDaDemanda({ posicao, id, texto, dia, mudar, tecla }: { posicao: string; id: string; texto: string; dia: string; mudar: (t: string) => void; tecla: (e: React.KeyboardEvent<HTMLInputElement>) => void }) {
+function LinhaDaDemanda({ posicao, id, texto, dia, mudar, tecla, arraste }: { posicao: string; id: string; texto: string; dia: string; mudar: (t: string) => void; tecla: (e: React.KeyboardEvent<HTMLInputElement>) => void; arraste: PropsDaCelula['arraste'] }) {
   const l = lerDemanda(texto, dia);
+  const preenchida = !!texto.trim();
+  const indo = arraste.arrastado?.tipo === 'demanda' && arraste.arrastado.id === id;
   return (
-    <li className={`montar-demanda t-${l.tipo}`}>
+    <li className={`montar-demanda t-${l.tipo}${preenchida ? ' arrastavel' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}`} data-solta={`demanda:${posicao}:${id}`} data-demanda-id={id} onPointerDown={preenchida ? arraste.iniciar({ tipo: 'demanda', id }) : undefined}>
+      {preenchida && <Alca />}
+      {preenchida && <EscolherDestino className="montar-mover" rotulo="⋯" titulo={`Mover ${texto.trim()} para…`} destinos={arraste.destinos} escolher={(v) => arraste.mover(id, v)} />}
       <input
         className="montar-in"
         data-posicao={posicao}

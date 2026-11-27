@@ -51,7 +51,8 @@ import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } fr
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
 import { ausenciaDoPedido, criarAusencias } from './ausencias.mjs';
-import { foraNaPauta } from '../src/modelo/ausencias.ts';
+import { foraNaPauta, motivoDaAusencia } from '../src/modelo/ausencias.ts';
+import { criarDistribuicao } from './distribuir.mjs';
 import { diasDoRepetir, ehDeOndeRepetir, opcoesDoRepetir, repetirODia } from '../src/modelo/repetir.ts';
 import { conferirODia, pendenciasQueFicaram } from '../src/modelo/conferenciaDaEscala.ts';
 import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
@@ -749,6 +750,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const padeiros = criarPadeiros(db);
   // as ausências com período (#128) e as demandas para distribuir, no SQLite, junto da escala
   const ausencias = criarAusencias(db);
+  // a coluna lateral (#126): "Para distribuir", mover a demanda e escalar quem está sem escala
+  const distribuicao = criarDistribuicao(db, escala);
   // o cartão da pauta no Teams (#135): nos horários da Configuração e ao republicar; o último envio fica no SQLite
   const cartaoDoTeams = criarCartaoDoTeams({ db, escala, ilhas, valores: () => configuracao.valores(), enviar: buscarNoTeams, relogio });
   const conferenciaDoCartao = agendar(() => cartaoDoTeams.conferir(), 30 * 1000);
@@ -1616,6 +1619,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * Fica no SQLite do PROMeiro: nada vai ao Teable. Os turnos são os da Configuração (#124) e, no fim, os que saíram
    * dela e ainda têm posição no dia; a ilha sai do cadastro das ilhas (a que já estava na posição continua, mesmo
    * removida do cadastro); vêm junto as ilhas, a de costume de cada editor e as ilhas ocupadas naquele turno.
+   * A coluna lateral (#126), todos POST e devolvendo o mesmo que o GET (que traz também a lista "Para distribuir"):
+   * /para-distribuir { texto } junta a lista escrita ou colada (uma claquete por linha); /levar { id, posicao, antesDe }
+   * leva uma claquete da lista para a posição; /mover { demanda, posicao, antesDe } move a demanda; /devolver
+   * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno } escala quem está sem escala
+   * (numa posição, ou numa nova do turno), e recusa quem está fora no dia.
    * Repetir (#129): POST /repetir { de } copia para o dia vazio a escala do mesmo dia na semana passada ('semana-passada'),
    * a de ontem ('ontem') ou, em cada dia vazio da semana, a do mesmo dia na semana passada ('semana-inteira'): a ilha
    * (a que ainda está no cadastro), o editor, o horário e as tarefas, nunca as claquetes, os avisos nem o recado. Quem
@@ -1667,6 +1675,21 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         escala.desfazer(dia);
         console.log(`[montar-pauta] ${eu.email} desfez a publicação de ${dia}`);
       }
+      if (['para-distribuir', 'levar', 'mover', 'devolver', 'escalar'].includes(acao)) {
+        const corpo = (await lerCorpo(req)) ?? {};
+        if (acao === 'para-distribuir') distribuicao.acrescentar(dia, corpo.texto, eu.email);
+        if (acao === 'levar') distribuicao.levar(dia, corpo.id, corpo.posicao, corpo.antesDe, eu.email);
+        if (acao === 'mover') distribuicao.mover(dia, corpo.demanda, corpo.posicao, corpo.antesDe, eu.email);
+        if (acao === 'devolver') distribuicao.devolver(dia, corpo.demanda, eu.email);
+        if (acao === 'escalar') {
+          const foraNoDia = ausencias.noPeriodo(dia, dia);
+          const fora = (nome) => {
+            const a = foraNoDia.find((x) => nomeComparavel(x.editor) === nomeComparavel(nome));
+            return a ? motivoDaAusencia(a) : '';
+          };
+          distribuicao.escalar(dia, corpo, { turnos: turnosDoDia(turnos, escala.lerDia(dia).posicoes), fora }, eu.email);
+        }
+      }
     } catch (e) {
       return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
     }
@@ -1684,6 +1707,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       ilhas: ilhas.todas(),
       costume: ilhas.deCostume(dia),
       ocupadas: ilhasOcupadas(lido.posicoes),
+      paraDistribuir: distribuicao.paraDistribuir(dia),
     });
   }
 
@@ -3012,7 +3036,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
     const acaoDasAusencias = /^\/api\/montar-pauta\/(ausencias|ausencias\/onde|ausencias\/historico|ausencias\/apagar|tirar|para-distribuir\/tirar)$/.exec(caminho);
     if (acaoDasAusencias) return rotaDasAusencias(req, res, eu, acaoDasAusencias[1]);
-    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir)$/.exec(caminho);
+    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar)$/.exec(caminho);
     if (acaoDoMontar) return rotaDeMontarAPauta(req, res, eu, acaoDoMontar[1]);
     if (caminho === '/api/correcoes/pauta') {
       // a correção de grafia da pauta da edição (#114), só para administradores e só leitura: uma página das propostas

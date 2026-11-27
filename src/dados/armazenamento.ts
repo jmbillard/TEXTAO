@@ -1466,6 +1466,18 @@ export const marcarPendencia = (dia: string, chave: string, certo: boolean) => p
 export const publicarODia = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/publicar?dia=${dia}`, { method: 'POST' });
 /** Desfaz a última publicação do dia (vale a anterior, ou nenhuma) (#127); devolve o dia. */
 export const desfazerAPublicacao = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/desfazer?dia=${dia}`, { method: 'POST' });
+/* A coluna lateral (#126): cada ação devolve o dia, como o GET. */
+const naColuna = (dia: string, acao: string, corpo: unknown) => pedir<DiaDaEscala>(`/api/montar-pauta/${acao}?dia=${dia}`, { method: 'POST', body: JSON.stringify(corpo) });
+/** Junta a lista escrita ou colada em "Para distribuir" (uma claquete por linha, no padrão). */
+export const juntarParaDistribuir = (dia: string, texto: string) => naColuna(dia, 'para-distribuir', { texto });
+/** Leva uma claquete de "Para distribuir" para a posição (antes de `antesDe`, ou no fim). */
+export const levarParaAPosicao = (dia: string, id: string, posicao: string, antesDe: string | null = null) => naColuna(dia, 'levar', { id, posicao, antesDe });
+/** Move a demanda para a posição (antes de `antesDe`, ou no fim). */
+export const moverADemanda = (dia: string, demanda: string, posicao: string, antesDe: string | null = null) => naColuna(dia, 'mover', { demanda, posicao, antesDe });
+/** Devolve a demanda para "Para distribuir", com de quem era. */
+export const devolverADemanda = (dia: string, demanda: string) => naColuna(dia, 'devolver', { demanda });
+/** Escala quem está sem escala numa posição, ou numa posição nova do turno. */
+export const escalarNoDia = (dia: string, editor: string, alvo: { posicao: string } | { turno: string }) => naColuna(dia, 'escalar', { editor, ...alvo });
 /** Repetir (#129): copia para o dia vazio a escala de outro dia (ou, na semana inteira, para cada dia vazio). */
 export const repetirAEscala = (dia: string, de: DeOndeRepetir) => pedir<DiaDaEscala>(`/api/montar-pauta/repetir?dia=${dia}`, { method: 'POST', body: JSON.stringify({ de }) });
 /** O painel das ausências do dia (#128): as que valem a partir da semana, as do dia, a oferta de tirar e o para distribuir. */
