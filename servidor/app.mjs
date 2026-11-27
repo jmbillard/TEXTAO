@@ -59,6 +59,8 @@ import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, recusaDosRe
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
+import { criarCartaoDoTeams } from './cartao-do-teams.mjs';
+import { conferirHorarios, horariosArrumados, horariosDaConfiguracao } from '../src/modelo/horariosDoCartao.ts';
 import { criarAndamento } from './andamento.mjs';
 import { administradoresDaTela, administradoresSalvos, ehAdministrador, porAdministrador, tirarAdministrador } from '../src/modelo/pessoas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
@@ -509,8 +511,10 @@ const DIAS_DA_CONTAGEM = 90;
  * @param esperaDoAviso quanto esperar, na subida, antes de conferir o webhook do quadro (#87): o Trello confere o
  *   endereço com um HEAD ao registrar, e o servidor precisa já estar ouvindo
  * @param recuperacao os limites da recuperação do que faltou (#88): { porPagina, paginas, dias }; os testes trocam
+ * @param buscarNoTeams o fetch do cartão da pauta no Teams (#135); relogio () => o instante de agora, para os horários
+ *   dele: os testes trocam pelo Teams falso e por um relógio parado
  */
-export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, buscarNoGitHub = fetch, agendar = (f, ms) => setInterval(f, ms), esperaDoAviso = 5000, recuperacao: limitesDaRecuperacao = {}, ...modulos }) {
+export function criarApp({ db, env: portainer = process.env, estaticos = null, cache = criarCache(portainer), configuracao = criarConfiguracao(db, portainer), abrirPg: abrir = abrirPg, buscarNoTeable = fetch, buscarNoGitHub = fetch, agendar = (f, ms) => setInterval(f, ms), esperaDoAviso = 5000, recuperacao: limitesDaRecuperacao = {}, buscarNoTeams = fetch, relogio = () => new Date(), ...modulos }) {
   const fabricas = { ...FABRICAS };
   for (const [nome, m] of Object.entries(modulos)) if (m !== undefined && m !== null) fabricas[nome] = m;
   // cópia local do Teable: o que foi lido por último continua valendo com ele fora do ar, mesmo depois de reiniciar
@@ -739,6 +743,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const padeiros = criarPadeiros(db);
   // as ausências com período (#128) e as demandas para distribuir, no SQLite, junto da escala
   const ausencias = criarAusencias(db);
+  // o cartão da pauta no Teams (#135): nos horários da Configuração e ao republicar; o último envio fica no SQLite
+  const cartaoDoTeams = criarCartaoDoTeams({ db, escala, ilhas, valores: () => configuracao.valores(), enviar: buscarNoTeams, relogio });
+  const conferenciaDoCartao = agendar(() => cartaoDoTeams.conferir(), 30 * 1000);
+  conferenciaDoCartao?.unref?.();
   /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
   const daPessoa = (email, admin) => areas.daPessoa(email, { cadastros, admin, preferencias, coordenacao: escala.ehCoordenacao(email) });
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
@@ -1623,9 +1631,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         escala.conferida(dia, chave, !!certo, eu.email);
       }
       if (acao === 'publicar') {
-        const { posicoes, dispensadas } = escala.lerDia(dia);
+        const { posicoes, dispensadas, publicacao } = escala.lerDia(dia);
         escala.publicar(dia, pendenciasQueFicaram(conferirODia({ dia, posicoes, editores, turnos: turnosDoDia(turnos, posicoes) }), dispensadas), eu.email);
         console.log(`[montar-pauta] ${eu.email} publicou ${dia}`);
+        // republicar o dia que já foi ao Teams manda a "pauta alterada" (#135), sem segurar a resposta
+        if (publicacao) void cartaoDoTeams.republicado(dia);
       }
       if (acao === 'desfazer') {
         escala.desfazer(dia);
@@ -1886,6 +1896,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return {
       // os turnos (#124): não dependem do Trello, nem travam com ele fora
       turnos: { salvo: turnosDaConfiguracao(configuracao.valores()), deFabrica: !salvos.has('TURNOS') },
+      // o cartão da pauta no Teams (#135): os horários, o segredo que falta no Portainer e o último envio
+      teams: { horarios: horariosDaConfiguracao(configuracao.valores()), deFabrica: !salvos.has('TEAMS_HORARIOS'), ...cartaoDoTeams.secao() },
       pracas: travada(daPraca),
       card: travada(card),
       filmes: travada(filmes),
@@ -2035,17 +2047,23 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const corpo = await lerCorpo(req).catch(() => null);
       if (acao === '/trocar') return await trocarAConexao(res, eu, corpo);
       if (acao === '/voltar') return await voltarNoHistorico(res, eu, corpo);
-      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined && corpo?.turnos === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
+      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined && corpo?.turnos === undefined && corpo?.teams === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
       // os turnos (#124): sem o Trello; vindo só eles, o quadro nem é lido
       if (corpo.turnos !== undefined && !Array.isArray(corpo.turnos)) return json(res, 400, { erro: 'Os turnos vieram incompletos.' });
       const turnosNovos = corpo.turnos === undefined ? null : turnosArrumados(corpo.turnos.slice(0, 20));
       const dosTurnos = turnosNovos && conferirTurnos(turnosNovos, turnosDaConfiguracao(configuracao.valores()));
-      const soTurnos = corpo.pracas === undefined && corpo.card === undefined && corpo.filmes === undefined;
-      if (soTurnos) {
-        if (acao === '/conferir') return json(res, 200, dosTurnos);
-        if (!dosTurnos.ok) return json(res, 422, { erro: 'A conferência não passou: nada foi salvo.', conferencia: dosTurnos });
-        mudarConfiguracao({ TURNOS: JSON.stringify(turnosNovos) }, { por: eu.email });
-        console.log(`[configuração] ${eu.email} salvou os turnos: ${dosTurnos.muda.map((m) => m.oque).join(', ') || 'sem mudança'}`);
+      // os horários do cartão do Teams (#135): também sem o Trello
+      if (corpo.teams !== undefined && !Array.isArray(corpo.teams)) return json(res, 400, { erro: 'Os horários do cartão vieram incompletos.' });
+      const horariosNovos = corpo.teams === undefined ? null : horariosArrumados(corpo.teams.slice(0, 40));
+      const dosHorarios = horariosNovos && conferirHorarios(horariosNovos, horariosDaConfiguracao(configuracao.valores()));
+      const semTrello = corpo.pracas === undefined && corpo.card === undefined && corpo.filmes === undefined;
+      if (semTrello) {
+        const partes = [dosTurnos, dosHorarios].filter(Boolean);
+        const conferencia = partes.length === 1 ? partes[0] : { ok: partes.every((c) => c.ok), itens: partes.flatMap((c) => c.itens), muda: partes.flatMap((c) => c.muda) };
+        if (acao === '/conferir') return json(res, 200, conferencia);
+        if (!conferencia.ok) return json(res, 422, { erro: 'A conferência não passou: nada foi salvo.', conferencia });
+        mudarConfiguracao({ ...(turnosNovos ? { TURNOS: JSON.stringify(turnosNovos) } : {}), ...(horariosNovos ? { TEAMS_HORARIOS: JSON.stringify(horariosNovos) } : {}) }, { por: eu.email });
+        console.log(`[configuração] ${eu.email} salvou ${[turnosNovos && 'os turnos', horariosNovos && 'os horários do cartão do Teams'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}`);
         return json(res, 200, await lerAsSecoes());
       }
       const pracas = corpo.pracas === undefined ? null : secaoDoPedido(corpo);
@@ -2062,7 +2080,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // a praça dos filmes é uma das praças que vão valer: as do pedido, quando as praças mudam junto
       const sessoes = filmesNovos && (await sessoesDoCadastro(cadastros)).sessoes;
       const dosFilmes = filmesNovos && conferirSecaoDosFilmes(env, lido.quadro, filmesNovos, { pracas: pracas ? pracas.pracas : geracao.pracas, sessoes });
-      const partes = [daPraca, doCard?.conferencia, dosFilmes, dosTurnos].filter(Boolean);
+      const partes = [daPraca, doCard?.conferencia, dosFilmes, dosTurnos, dosHorarios].filter(Boolean);
       const conferencia = {
         ok: partes.every((c) => c.ok),
         itens: partes.flatMap((c) => c.itens),
@@ -2092,12 +2110,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           ...(doCard ? mudancasDoCard(doCard.secao) : {}),
           ...(filmesNovos ? mudancasDosFilmes(filmesNovos) : {}),
           ...(turnosNovos ? { TURNOS: JSON.stringify(turnosNovos) } : {}),
+          ...(horariosNovos ? { TEAMS_HORARIOS: JSON.stringify(horariosNovos) } : {}),
           LIGADO_A_MAO: JSON.stringify(aMao),
         },
         { por: eu.email, quadro: lido.quadro },
       );
       const criadas = completa?.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
-      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes', turnosNovos && 'os turnos'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
+      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes', turnosNovos && 'os turnos', horariosNovos && 'os horários do cartão do Teams'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
       return json(res, 200, await lerAsSecoes());
     } catch (e) {
       console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);
@@ -3237,11 +3256,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /** A primeira releitura da produção da arte (depois da carga inicial), e reler de novo. */
   app.releituraPronta = releituraPronta;
   app.relerAProducao = relerAProducao;
+  /** O cartão da pauta no Teams (#135): conferir os horários agora, e esperar os envios em curso. */
+  app.conferirOCartao = () => cartaoDoTeams.conferir();
+  app.cartaoEmDia = () => cartaoDoTeams.emDia();
   app.fechar = async () => {
     clearInterval(releitura);
     clearInterval(batimento);
     clearInterval(verificacaoDiaria);
     clearInterval(conferenciaDoAviso);
+    clearInterval(conferenciaDoCartao);
     clearTimeout(esperaDoWebhook);
     clearTimeout(tentarDeNovo);
     for (const n of RECRIADOS) await geracao[n]?.parar?.();

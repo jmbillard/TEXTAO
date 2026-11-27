@@ -497,6 +497,12 @@ Cada dia está **vazio** (nada montado), em **rascunho** (montado e não publica
 (publicado e mudado depois, à espera de publicar de novo).
 _Evitar_: salvar, enviar, liberar
 
+**Cartão da pauta** (no Teams):
+O resumo da pauta publicada que o PROMeiro manda ao canal da edição no Teams, nos horários da Configuração: a pauta do
+dia por turno (editor, ilha, horário, claquetes e avisos), o recado do dia e o link para a Pauta. Republicar um dia que
+já foi ao Teams manda a **pauta alterada**, com o que mudou desde o último cartão daquele dia.
+_Evitar_: mensagem, notificação, card (card é o do Trello)
+
 **Repetir** (a escala):
 Copiar para outros dias a escala e as tarefas fixas de um dia; nunca as claquetes, que mudam todo dia.
 _Evitar_: duplicar, clonar

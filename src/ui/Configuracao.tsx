@@ -38,6 +38,8 @@ import { TABELAS_DO_TEABLE } from '../modelo/tabelasDoTeable';
 import { oQueMudaNosTurnos, turnosArrumados } from '../modelo/turnos';
 import type { TurnoDaEscala } from '../modelo/escala';
 import { ListaDosTurnos } from './TurnosDaConfiguracao';
+import { horariosArrumados, oQueMudaNosHorarios, type HorarioDoCartao } from '../modelo/horariosDoCartao';
+import { EstadoDoCartao, ListaDosHorarios } from './CartaoDoTeamsDaConfiguracao';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { useTelaDeCelular } from './faixa';
@@ -155,6 +157,8 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
   const [pessoas, setPessoas] = useState<PessoasDaConfiguracao | null>(null);
   // os turnos da montagem da pauta (#124): o rascunho, como o das praças
   const [rascunhoTurnos, setRascunhoTurnos] = useState<TurnoDaEscala[] | null>(null);
+  // os horários do cartão da pauta no Teams (#135): o rascunho, como o dos turnos
+  const [rascunhoTeams, setRascunhoTeams] = useState<HorarioDoCartao[] | null>(null);
   const [falhaDasPessoas, setFalhaDasPessoas] = useState('');
 
   const fecharEscolha = useCallback(() => setEscolha(null), []);
@@ -167,6 +171,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
     setRascunhoCard(s.card.proposta);
     setRascunhoFilmes(s.filmes.proposta);
     setRascunhoTurnos(s.turnos.salvo);
+    setRascunhoTeams(s.teams.horarios);
   }, []);
   const carregar = useCallback(() => {
     setFalha('');
@@ -213,8 +218,16 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
     if (JSON.stringify(arrumados) === JSON.stringify(secoes.turnos.salvo)) return 0;
     return Math.max(1, oQueMudaNosTurnos(arrumados, secoes.turnos.salvo).length);
   }, [rascunhoTurnos, secoes]);
+  // os horários do cartão também não dependem do Trello
+  const mudouTeams = useMemo(() => {
+    if (!rascunhoTeams || !secoes) return 0;
+    const arrumados = horariosArrumados(rascunhoTeams);
+    if (JSON.stringify(arrumados) === JSON.stringify(secoes.teams.horarios)) return 0;
+    return Math.max(1, oQueMudaNosHorarios(arrumados, secoes.teams.horarios).length);
+  }, [rascunhoTeams, secoes]);
   const podeMudarTurnos = !celular;
-  const nMudancas = mudouPracas + mudouCard + mudouFilmes + mudouTurnos;
+  const semTrello = mudouTurnos + mudouTeams;
+  const nMudancas = mudouPracas + mudouCard + mudouFilmes + semTrello;
   // no celular, só consulta: nada muda; com o Trello fora do ar (#79), Praças, Card e Filmes ficam travados
   const podeMudar = !celular && !!quadro && !secao?.foraDoAr;
 
@@ -279,6 +292,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
     ...(mudouCard && rascunhoCard ? { card: rascunhoCard } : {}),
     ...(mudouFilmes && rascunhoFilmes ? { filmes: rascunhoFilmes } : {}),
     ...(mudouTurnos && rascunhoTurnos ? { turnos: rascunhoTurnos } : {}),
+    ...(mudouTeams && rascunhoTeams ? { teams: rascunhoTeams } : {}),
   });
 
   const conferir = async () => {
@@ -398,6 +412,23 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
               </div>
             </section>
           )}
+          {rascunhoTeams && (
+            <section className="cfg-secao" aria-labelledby="cfg-teams">
+              <TopoDaSecao
+                id="cfg-teams"
+                titulo="Cartão do Teams"
+                ajuda={AJUDA_DO_TEAMS}
+                cor={secoes.teams.falta.length || (secoes.teams.ultimo && !secoes.teams.ultimo.ok) ? 'falta' : 'ok'}
+                resumo={`${plural(secoes.teams.horarios.length, 'horário', 'horários')}${secoes.teams.deFabrica ? ' · os do n8n' : ''}`}
+                verTudo={null}
+                alternarVerTudo={() => {}}
+              />
+              <div className="cfg-secao-corpo">
+                <EstadoDoCartao teams={secoes.teams} />
+                <ListaDosHorarios horarios={rascunhoTeams} podeMudar={podeMudarTurnos} mudar={setRascunhoTeams} />
+              </div>
+            </section>
+          )}
           <SecaoDasPessoas pessoas={pessoas} falha={falhaDasPessoas} podeMudar={!celular} mudar={mudarAsPessoas} />
           <SecaoDasConexoes conexoes={secoes.conexoes} aberta={conexoesAbertas} alternar={() => setConexoesAbertas((v) => !v)} podeMudar={!celular} trocar={setTrocando} />
           <nav className="cfg-rodape" aria-label="Mais da Configuração">
@@ -412,7 +443,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
         )}
       </main>
 
-      {((podeMudar && nMudancas > 0) || (podeMudarTurnos && mudouTurnos > 0)) && !conferencia && (
+      {((podeMudar && nMudancas > 0) || (podeMudarTurnos && semTrello > 0)) && !conferencia && (
         <div className="cfg-barra" role="region" aria-label="Mudanças">
           <span className="cfg-barra-n">{plural(nMudancas, 'mudança', 'mudanças')}</span>
           <button
@@ -423,6 +454,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
               setRascunhoCard(secoes?.card.proposta ?? null);
               setRascunhoFilmes(secoes?.filmes.proposta ?? null);
               setRascunhoTurnos(secoes?.turnos.salvo ?? null);
+              setRascunhoTeams(secoes?.teams.horarios ?? null);
               setEditando(null);
               setNova(null);
             }}
@@ -491,6 +523,9 @@ interface PropsDaSecao {
 
 const AJUDA_DOS_TURNOS =
   'Os turnos da montagem da pauta, na ordem da grade, cada um com o horário padrão de uma posição nova (a posição pode ter o seu). Sem nada salvo, valem os de fábrica. Tirar um turno não apaga nada: os dias já montados continuam com as posições dele.';
+
+const AJUDA_DO_TEAMS =
+  'O PROMeiro manda ao Teams o cartão da pauta publicada nestes horários (no relógio de São Paulo): a pauta por turno, os avisos, o recado do dia e o link para a Pauta. Republicar um dia que já foi manda "pauta alterada", com o que mudou. O endereço do Power Automate é segredo e fica no Portainer (TEAMS_PAUTA_URL); sem ele, nada é mandado. Sem nada salvo, valem os horários do n8n.';
 
 const AJUDA_DAS_PRACAS =
   'O PROMeiro liga pelo nome a entrada de cada praça (a sigla ou uma palavra da regra + ENTRADA), a saída (+ SAÍDA, ENTREGUE ou PRONTO) e a opção no campo Praça. Aqui só aparece o que precisa de você. A ordem decide quando duas regras batem; a padrão vale quando a claquete não diz a praça.';
