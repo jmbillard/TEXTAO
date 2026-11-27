@@ -23,7 +23,10 @@ import './montarPauta.css';
    gravado sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable.
    Conferir e publicar (#127): "Conferir e publicar" leva à conferência (ConferirPauta.tsx), em que cada pendência tem
    o "Corrigir", que volta à grade com o foco no campo, e o "está certo"; publicar mostra a tela "publicada". Na grade,
-   a faixa da publicação diz se o dia está publicado ou alterado, com o Desfazer e o histórico. */
+   a faixa da publicação diz se o dia está publicado ou alterado, com o Desfazer e o histórico.
+   Os avisos e o recado do dia (#125): cada posição tem os seus avisos (⚑), linhas à parte das demandas, abertas pelo
+   "+ aviso" (Enter cria outra, Backspace na vazia apaga); o recado do dia, para todos, fica num campo próprio, acima da
+   grade. Os dois são gravados com o rascunho e, publicados, aparecem na Pauta como os avisos de hoje. */
 
 interface Props {
   /** o dia (AAAA-MM-DD); '' é amanhã */
@@ -35,6 +38,7 @@ interface Props {
 const GRAVAR_DEPOIS_MS = 600;
 const novoId = (prefixo: string) => `${prefixo}-${(crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 24)}`;
 const linhaVazia = () => ({ id: novoId('d'), texto: '' });
+const avisoVazio = () => ({ id: novoId('a'), texto: '' });
 /** Toda posição mostra ao menos uma linha de demanda, para digitar; a vazia não é gravada. */
 const comLinha = (p: PosicaoDaEscala): PosicaoDaEscala => (p.demandas.length ? p : { ...p, demandas: [linhaVazia()] });
 
@@ -53,12 +57,16 @@ const nomeDoTurno = (turnos: readonly TurnoDaEscala[], id: string) => turnos.fin
 const textoDaSituacao = (s: SituacaoNoDia, turnos: readonly TurnoDaEscala[]) => (s.tipo === 'livre' ? 'livre' : `já na ${s.turnos.map((t) => nomeDoTurno(turnos, t)).join(' e na ')}`);
 
 /** Onde o foco vai depois de desenhar: um campo de uma posição (e, nas demandas, a linha). */
-type Foco = { posicao: string; campo: 'editor' | 'ilha' | 'horario' | 'demanda'; demanda?: string; fim?: boolean } | null;
+type Foco = { posicao: string; campo: 'editor' | 'ilha' | 'horario' | 'demanda' | 'aviso'; demanda?: string; aviso?: string; fim?: boolean } | null;
 
 export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [hoje] = useState(() => diaEmSaoPaulo());
   const [dados, setDados] = useState<DiaDaEscala | null>(null);
   const [posicoes, setPosicoes] = useState<PosicaoDaEscala[]>([]);
+  // o recado do dia (#125); os dois refs são o que há de mais novo, para a gravação levar os dois juntos
+  const [recado, setRecado] = useState('');
+  const posicoesAgora = useRef<PosicaoDaEscala[]>([]);
+  const recadoAgora = useRef('');
   const [falha, setFalha] = useState('');
   const [gravacao, setGravacao] = useState<'gravado' | 'esperando' | 'gravando' | 'erro'>('gravado');
   const [erroAoGravar, setErroAoGravar] = useState('');
@@ -70,7 +78,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [erroAoPublicar, setErroAoPublicar] = useState('');
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
-  const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[] } | null>(null);
+  const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[]; recado: string } | null>(null);
   const prazo = useRef<ReturnType<typeof setTimeout> | null>(null);
   const emCurso = useRef<Promise<void> | null>(null);
 
@@ -83,7 +91,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     if (!p) return;
     pendente.current = null;
     setGravacao('gravando');
-    emCurso.current = gravarRascunhoDoDia(p.dia, p.posicoes)
+    emCurso.current = gravarRascunhoDoDia(p.dia, p.posicoes, p.recado)
       .then((d) => {
         // as posições na tela continuam as de quem digita; o resto (as abas, o estado) vem do servidor
         setDados((antes) => (antes?.dia === d.dia ? { ...antes, estado: d.estado, semana: d.semana, gravadoEm: d.gravadoEm, gravadoPor: d.gravadoPor } : antes));
@@ -100,21 +108,33 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     await emCurso.current;
   }, []);
 
-  /** Muda as posições do dia e grava daqui a pouco (ou na hora, com `agora`). */
-  const mudar = useCallback(
-    (f: (ps: PosicaoDaEscala[]) => PosicaoDaEscala[], agora = false) => {
-      if (!dados) return;
-      setPosicoes((antes) => {
-        const novas = f(antes);
-        pendente.current = { dia: dados.dia, posicoes: novas };
-        return novas;
-      });
+  /** Grava o que há de mais novo (as posições e o recado) daqui a pouco, ou na hora, com `agora`. */
+  const gravarDepois = useCallback(
+    (dia: string, agora: boolean) => {
+      pendente.current = { dia, posicoes: posicoesAgora.current, recado: recadoAgora.current };
       setGravacao('esperando');
       if (prazo.current) clearTimeout(prazo.current);
       prazo.current = setTimeout(() => void gravarAgora(), agora ? 0 : GRAVAR_DEPOIS_MS);
     },
-    [dados, gravarAgora],
+    [gravarAgora],
   );
+  /** Muda as posições do dia e grava daqui a pouco (ou na hora, com `agora`). */
+  const mudar = useCallback(
+    (f: (ps: PosicaoDaEscala[]) => PosicaoDaEscala[], agora = false) => {
+      if (!dados) return;
+      posicoesAgora.current = f(posicoesAgora.current);
+      setPosicoes(posicoesAgora.current);
+      gravarDepois(dados.dia, agora);
+    },
+    [dados, gravarDepois],
+  );
+  /** Muda o recado do dia e grava daqui a pouco. */
+  const mudarRecado = (texto: string) => {
+    if (!dados) return;
+    recadoAgora.current = texto;
+    setRecado(texto);
+    gravarDepois(dados.dia, false);
+  };
 
   // o dia: o que falta gravar do outro vai antes; depois, lê
   const carregar = useCallback(() => {
@@ -126,7 +146,10 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
       .then((d) => {
         if (!vivo) return;
         setDados(d);
-        setPosicoes(d.posicoes.map(comLinha));
+        posicoesAgora.current = d.posicoes.map(comLinha);
+        setPosicoes(posicoesAgora.current);
+        recadoAgora.current = d.recado ?? '';
+        setRecado(recadoAgora.current);
         setGravacao('gravado');
       })
       .catch((e) => vivo && setFalha(e instanceof Error ? e.message : String(e)));
@@ -148,7 +171,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   // o foco pedido, depois de desenhar (a linha nova, a posição nova, a linha de cima depois de apagar)
   useLayoutEffect(() => {
     if (!foco) return;
-    const sel = `[data-posicao="${foco.posicao}"][data-campo="${foco.campo}"]${foco.demanda ? `[data-demanda="${foco.demanda}"]` : ''}`;
+    const sel = `[data-posicao="${foco.posicao}"][data-campo="${foco.campo}"]${foco.demanda ? `[data-demanda="${foco.demanda}"]` : ''}${foco.aviso ? `[data-aviso="${foco.aviso}"]` : ''}`;
     const el = grade.current?.querySelector<HTMLInputElement>(sel);
     if (el) {
       el.focus();
@@ -161,7 +184,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const editores = dados?.editores ?? [];
   const daPosicao = (id: string, f: (p: PosicaoDaEscala) => PosicaoDaEscala) => mudar((ps) => ps.map((p) => (p.id === id ? f(p) : p)));
   const novaPosicao = (turno: TurnoDaEscala) => {
-    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', ilha: '', horario: turno.horario, demandas: [linhaVazia()] };
+    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', ilha: '', horario: turno.horario, demandas: [linhaVazia()], avisos: [] };
     // a posição nova entra depois da última do turno (a ordem da grade é a dos turnos)
     mudar((ps) => {
       const ultima = ps.map((x) => x.turno).lastIndexOf(turno.id);
@@ -257,9 +280,9 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
       </header>
       <main className="pauta-pagina montar-pagina">
         {atual && vista === 'conferir' ? (
-          <ConferirODia dados={atual} posicoes={posicoes} hoje={hoje} publicando={publicando} erro={erroAoPublicar} voltar={() => setVista('montar')} corrigir={(alvo) => (setVista('montar'), setFoco(alvo))} marcar={marcar} publicar={() => void publicar()} />
+          <ConferirODia dados={atual} posicoes={posicoes} recado={recado} hoje={hoje} publicando={publicando} erro={erroAoPublicar} voltar={() => setVista('montar')} corrigir={(alvo) => (setVista('montar'), setFoco(alvo))} marcar={marcar} publicar={() => void publicar()} />
         ) : atual && vista === 'publicada' ? (
-          <DiaPublicado dados={atual} posicoes={posicoes} voltar={() => setVista('montar')} desfazer={() => void desfazer()} irPara={irPara} />
+          <DiaPublicado dados={atual} posicoes={posicoes} recado={recado} voltar={() => setVista('montar')} desfazer={() => void desfazer()} irPara={irPara} />
         ) : (
         <>
         <div className="pauta-cabeca montar-cabeca">
@@ -299,6 +322,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
         ) : !atual ? (
           <p className="pauta-lendo">Lendo o rascunho…</p>
         ) : (
+          <>
+          <RecadoDoDia texto={recado} mudar={mudarRecado} />
           <div className="montar-grade" ref={grade}>
             {!posicoes.length && <p className="montar-vazio">Nada montado para {diaEscrito(atual.dia).split(',')[0]} ainda. Comece por uma posição num turno.</p>}
             {turnos.map((t) => {
@@ -344,11 +369,29 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
               <span><kbd>⌫</kbd> na linha vazia apaga</span>
             </p>
           </div>
+          </>
         )}
         </>
         )}
       </main>
     </div>
+  );
+}
+
+/** O recado do dia (#125): um aviso para todos naquele dia, sem posição, num campo próprio acima da grade. */
+function RecadoDoDia({ texto, mudar }: { texto: string; mudar: (t: string) => void }) {
+  return (
+    <label className="montar-recado">
+      <span className="montar-recado-rotulo">Recado do dia</span>
+      <textarea
+        className="montar-recado-in"
+        value={texto}
+        rows={Math.min(4, Math.max(1, texto.split('\n').length))}
+        maxLength={500}
+        placeholder="um recado para todos neste dia (aparece na Pauta, como aviso)"
+        onChange={(e) => mudar(e.target.value)}
+      />
+    </label>
   );
 }
 
@@ -419,15 +462,42 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       focar(i > 0 ? { posicao: p.id, campo: 'demanda', demanda: p.demandas[i - 1].id } : { posicao: p.id, campo: 'horario' });
-    } else if (e.key === 'ArrowDown' && i < p.demandas.length - 1) {
+    } else if (e.key === 'ArrowDown' && (i < p.demandas.length - 1 || p.avisos.length)) {
       e.preventDefault();
-      focar({ posicao: p.id, campo: 'demanda', demanda: p.demandas[i + 1].id });
+      focar(i < p.demandas.length - 1 ? { posicao: p.id, campo: 'demanda', demanda: p.demandas[i + 1].id } : { posicao: p.id, campo: 'aviso', aviso: p.avisos[0].id });
     } else if (e.key === 'Backspace' && !e.currentTarget.value && p.demandas.length > 1) {
       // Backspace na linha vazia apaga a linha; o foco sobe (ou desce, na primeira)
       e.preventDefault();
       const vai = p.demandas[i - 1] ?? p.demandas[i + 1];
       mudar((x) => ({ ...x, demandas: x.demandas.filter((y) => y.id !== d.id) }));
       focar({ posicao: p.id, campo: 'demanda', demanda: vai.id });
+    }
+  };
+
+  /** Os avisos da posição (#125): Enter cria outro, as setas andam (de cima, as demandas), Backspace na vazia apaga. */
+  const textoDoAviso = (id: string, texto: string) => mudar((x) => ({ ...x, avisos: x.avisos.map((a) => (a.id === id ? { ...a, texto } : a)) }));
+  const novoAviso = (depois = p.avisos.length - 1) => {
+    const novo = avisoVazio();
+    mudar((x) => ({ ...x, avisos: [...x.avisos.slice(0, depois + 1), novo, ...x.avisos.slice(depois + 1)] }));
+    focar({ posicao: p.id, campo: 'aviso', aviso: novo.id });
+  };
+  const teclaNoAviso = (e: React.KeyboardEvent<HTMLInputElement>, i: number) => {
+    const a = p.avisos[i];
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      novoAviso(i);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      focar(i > 0 ? { posicao: p.id, campo: 'aviso', aviso: p.avisos[i - 1].id } : { posicao: p.id, campo: 'demanda', demanda: p.demandas.at(-1)?.id });
+    } else if (e.key === 'ArrowDown' && i < p.avisos.length - 1) {
+      e.preventDefault();
+      focar({ posicao: p.id, campo: 'aviso', aviso: p.avisos[i + 1].id });
+    } else if (e.key === 'Backspace' && !e.currentTarget.value) {
+      // a vazia sai; o foco vai ao aviso de cima (ou ao de baixo; sem nenhum, à última demanda)
+      e.preventDefault();
+      const vai = p.avisos[i - 1] ?? p.avisos[i + 1];
+      mudar((x) => ({ ...x, avisos: x.avisos.filter((y) => y.id !== a.id) }));
+      focar(vai ? { posicao: p.id, campo: 'aviso', aviso: vai.id } : { posicao: p.id, campo: 'demanda', demanda: p.demandas.at(-1)?.id });
     }
   };
 
@@ -497,6 +567,33 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
           <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} />
         ))}
       </ul>
+      {p.avisos.length > 0 && (
+        <ul className="montar-avisos" aria-label="Avisos">
+          {p.avisos.map((a, i) => (
+            <li key={a.id} className="montar-aviso">
+              <span className="montar-aviso-marca" aria-hidden="true">
+                ⚑
+              </span>
+              <input
+                className="montar-in"
+                data-posicao={p.id}
+                data-campo="aviso"
+                data-aviso={a.id}
+                value={a.texto}
+                placeholder="aviso para o editor, Enter"
+                autoComplete="off"
+                aria-label="Aviso"
+                maxLength={200}
+                onChange={(e) => textoDoAviso(a.id, e.target.value)}
+                onKeyDown={(e) => teclaNoAviso(e, i)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" className="botao-texto montar-mais-aviso" onClick={() => novoAviso()}>
+        + aviso
+      </button>
     </div>
   );
 }

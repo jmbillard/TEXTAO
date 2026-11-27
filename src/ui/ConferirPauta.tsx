@@ -9,7 +9,8 @@ import './conferirPauta.css';
    publicação na tela de montar (o estado, o Desfazer da última e o histórico). A conferência é a regra pura de
    src/modelo/conferenciaDaEscala.ts, sobre o que está na tela; as pendências avisam, não travam: publicar funciona com
    elas e guarda quantas "para olhar" ficaram. Publicar ainda não grava no Teable (a virada, #134): o dia publicado
-   aparece na Pauta da edição junto com a do Teable. */
+   aparece na Pauta da edição junto com a do Teable. Os avisos de cada posição e o recado do dia (#125) entram no placar
+   e na tela "publicada". */
 
 /** "sexta, 27 de novembro". */
 export function diaPorExtenso(iso: string) {
@@ -23,13 +24,13 @@ const hora = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { timeZo
 const quando = (iso: string) => `${diaMes(new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))} às ${hora(iso)}`;
 const quantas = (n: number, uma: string, varias: string) => `${n} ${n === 1 ? uma : varias}`;
 
-/** As posições como o servidor grava: sem as linhas de demanda vazias. */
-const semLinhaVazia = (ps: readonly PosicaoDaEscala[]) => ps.map((p) => ({ ...p, demandas: p.demandas.filter((d) => d.texto.trim()) }));
+/** As posições como o servidor grava: sem as linhas de demanda e de aviso vazias. */
+const semLinhaVazia = (ps: readonly PosicaoDaEscala[]) => ps.map((p) => ({ ...p, demandas: p.demandas.filter((d) => d.texto.trim()), avisos: p.avisos.filter((a) => a.texto.trim()) }));
 
-/** O placar do dia: posições, editores (cada nome uma vez) e demandas. */
-function placar(posicoes: readonly PosicaoDaEscala[]) {
+/** O placar do dia: posições, editores (cada nome uma vez), demandas e avisos (o recado do dia conta como um). */
+function placar(posicoes: readonly PosicaoDaEscala[], recado: string) {
   const editores = new Set(posicoes.map((p) => nomeComparavel(p.editor)).filter(Boolean));
-  return { posicoes: posicoes.length, editores: editores.size, demandas: posicoes.reduce((n, p) => n + p.demandas.length, 0) };
+  return { posicoes: posicoes.length, editores: editores.size, demandas: posicoes.reduce((n, p) => n + p.demandas.length, 0), avisos: posicoes.reduce((n, p) => n + p.avisos.length, 0) + (recado.trim() ? 1 : 0) };
 }
 
 /** A conferência do que está na tela, com as dispensadas separadas. */
@@ -42,6 +43,7 @@ export function conferenciaDaTela(dados: DiaDaEscala, posicoes: readonly Posicao
 interface PropsDoConferir {
   dados: DiaDaEscala;
   posicoes: readonly PosicaoDaEscala[];
+  recado: string;
   hoje: string;
   publicando: boolean;
   erro: string;
@@ -52,9 +54,9 @@ interface PropsDoConferir {
 }
 
 /** Conferir antes de publicar: o placar, as pendências em dois grupos (e as conferidas) e o botão de publicar. */
-export function ConferirODia({ dados, posicoes, hoje, publicando, erro, voltar, corrigir, marcar, publicar }: PropsDoConferir) {
+export function ConferirODia({ dados, posicoes, recado, hoje, publicando, erro, voltar, corrigir, marcar, publicar }: PropsDoConferir) {
   const c = conferenciaDaTela(dados, posicoes);
-  const n = placar(semLinhaVazia(posicoes));
+  const n = placar(semLinhaVazia(posicoes), recado);
   const nome = dados.dia === diaVizinho(hoje, 1) ? 'amanhã' : dados.dia === hoje ? 'hoje' : diaMes(dados.dia);
   const item = (p: Pendencia, grupo: 'olhar' | 'saber' | 'conferida') => (
     <li key={p.chave} className={`conf-prob ${grupo}`} data-chave={p.chave}>
@@ -94,6 +96,7 @@ export function ConferirODia({ dados, posicoes, hoje, publicando, erro, voltar, 
         <span><b>{n.posicoes}</b>{n.posicoes === 1 ? 'posição' : 'posições'}</span>
         <span><b>{n.editores}</b>{n.editores === 1 ? 'editor' : 'editores'}</span>
         <span><b>{n.demandas}</b>{n.demandas === 1 ? 'demanda' : 'demandas'}</span>
+        {n.avisos > 0 && <span><b>{n.avisos}</b>{n.avisos === 1 ? 'aviso' : 'avisos'}</span>}
       </div>
       <div className="conf-corpo">
         <section className="conf-lista" aria-label="Pendências">
@@ -134,15 +137,16 @@ export function ConferirODia({ dados, posicoes, hoje, publicando, erro, voltar, 
 interface PropsDaPublicada {
   dados: DiaDaEscala;
   posicoes: readonly PosicaoDaEscala[];
+  recado: string;
   voltar: () => void;
   desfazer: () => void;
   irPara: (dia: string) => void;
 }
 
 /** Depois de publicar: o carimbo, o resumo do que foi publicado, o Desfazer e a pauta do dia por turno. */
-export function DiaPublicado({ dados, posicoes, voltar, desfazer, irPara }: PropsDaPublicada) {
+export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara }: PropsDaPublicada) {
   const ps = semLinhaVazia(posicoes);
-  const n = placar(ps);
+  const n = placar(ps, recado);
   const semEditor = ps.filter((p) => !p.editor.trim()).reduce((k, p) => k + p.demandas.length, 0);
   const pub = dados.publicacao;
   const proximo = diaVizinho(dados.dia, 1);
@@ -169,6 +173,12 @@ export function DiaPublicado({ dados, posicoes, voltar, desfazer, irPara }: Prop
           Montar {diaPorExtenso(proximo).split(',')[0]}, {diaMes(proximo)} →
         </button>
       </div>
+      {recado.trim() && (
+        <div className="pauta-balao-aviso pub-recado" role="note" aria-label="Recado do dia">
+          <span className="pauta-balao-titulo">recado do dia</span>
+          <span className="pauta-aviso-texto">{recado.trim()}</span>
+        </div>
+      )}
       <div className="pub-grade">
         {dados.turnos.map((t) => {
           const doTurno = ps.filter((p) => p.turno === t.id);
@@ -179,6 +189,15 @@ export function DiaPublicado({ dados, posicoes, voltar, desfazer, irPara }: Prop
                 doTurno.map((p) => (
                   <div key={p.id} className="pub-pos">
                     <strong>{p.editor.trim() || 'sem editor'}</strong> <span className="pauta-turno">{horarioNoPadrao(p.horario)}</span>
+                    {p.avisos.length > 0 && (
+                      <ul className="pub-avisos" aria-label={`Avisos para ${p.editor.trim() || 'sem editor'}`}>
+                        {p.avisos.map((a) => (
+                          <li key={a.id}>
+                            <span aria-hidden="true">⚑</span> {a.texto}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <ul className="pauta-itens">
                       {p.demandas.map((d) => {
                         const l = lerDemanda(d.texto, dados.dia);

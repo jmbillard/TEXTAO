@@ -14,7 +14,7 @@ const sp = (dia: string, hora: string) => new Date(`${dia}T${hora}:00-03:00`).to
 /** Uma linha do Teable, já lida como a Pauta lê. */
 const doTeable = (id: string, claquete: string, editor: string, dia: string, inicio: string, fim: string, anotacao = false) =>
   linhaDaPauta({ id, claquete, editor: { title: editor }, data: sp(dia, '00:00'), expediente_inicio: sp(dia, inicio), expediente_fim: sp(fim < inicio ? '2026-11-28' : dia, fim), anotacao }) as LinhaDaPauta;
-const pos = (id: string, turno: PosicaoDaEscala['turno'], editor: string, horario: string, demandas: string[]): PosicaoDaEscala => ({ id, turno, editor, ilha: '', horario, demandas: demandas.map((texto, i) => ({ id: `${id}-d${i + 1}`, texto })) });
+const pos = (id: string, turno: PosicaoDaEscala['turno'], editor: string, horario: string, demandas: string[], avisos: string[] = []): PosicaoDaEscala => ({ id, turno, editor, ilha: '', horario, demandas: demandas.map((texto, i) => ({ id: `${id}-d${i + 1}`, texto })), avisos: avisos.map((texto, i) => ({ id: `${id}-a${i + 1}`, texto })) });
 const resumo = (ls: LinhaDaPauta[]) => ls.map((l) => `${l.dia} ${l.editor || '—'} ${l.turno ? `${l.turno.inicio}-${l.turno.fim}` : 'sem turno'} ${l.tipo}: ${l.texto}`);
 
 describe('juntarAPublicada: o Teable e o dia publicado no PROMeiro', () => {
@@ -72,5 +72,35 @@ describe('juntarAPublicada: o Teable e o dia publicado no PROMeiro', () => {
     const teable = [doTeable('rec1', 'Corujão 28/11', 'Gil Moura', SEXTA, '06:00', '15:00')];
     const linhas = juntarAPublicada(teable, [{ dia: SABADO, posicoes: [pos('p1', 'manha', 'Gil Moura', '6h às 15h', ['Corujão 28/11'])] }]);
     expect(resumo(linhas)).toEqual(['2026-11-27 Gil Moura 06:00-15:00 claquete: Corujão 28/11', '2026-11-28 Gil Moura 06:00-15:00 claquete: Corujão 28/11']);
+  });
+
+  it('os avisos da posição (#125) entram como avisos do editor, com o turno dele; o recado do dia, como aviso sem editor', () => {
+    const publicadas = [{ dia: SABADO, recado: 'Reunião geral às 15h', posicoes: [pos('p1', 'madrugada', 'Rui Teixeira', '22h às 6h', ['Noite de Gala 28/11 (DP)'], ['REDATOR VEM ACOMPANHAR']), pos('p2', 'manha', 'Gil Moura', '6h às 15h', [], ['Trocar a ilha às 10h'])] }];
+    const linhas = juntarAPublicada([], publicadas);
+    expect(resumo(linhas)).toEqual([
+      '2026-11-28 Rui Teixeira 22:00-06:00 claquete: Noite de Gala 28/11 (DP)',
+      '2026-11-28 Rui Teixeira 22:00-06:00 aviso: REDATOR VEM ACOMPANHAR',
+      // a posição só com aviso também aparece: o aviso é do editor dela
+      '2026-11-28 Gil Moura 06:00-15:00 aviso: Trocar a ilha às 10h',
+      '2026-11-28 — sem turno aviso: Reunião geral às 15h',
+    ]);
+    // o aviso é um recado: não tem versão
+    expect(linhas[1].versoes).toEqual([]);
+    expect(linhas.map((l) => l.id)).toEqual(['promeiro:p1-d1', 'promeiro:p1-a1', 'promeiro:p2-a1', `promeiro:recado:${SABADO}`]);
+  });
+
+  it('o aviso e o recado que o Teable já tem no dia não dobram; o dia publicado antes do #125 (sem avisos nem recado) vale como era', () => {
+    const teable = [doTeable('rec1', 'REDATOR VEM ACOMPANHAR', 'Rui Teixeira', SEXTA, '22:00', '06:00', true), linhaDaPauta({ id: 'rec2', claquete: 'Reunião geral às 15h', editor: null, data: sp(SEXTA, '00:00'), anotacao: true }) as LinhaDaPauta];
+    const publicadas = [
+      { dia: SEXTA, recado: 'reunião geral às 15h', posicoes: [pos('p1', 'madrugada', 'Rui Teixeira', '22h às 6h', [], ['Redator vem acompanhar', 'Chega mais cedo'])] },
+      // como estava gravado antes do #125: sem os avisos e sem o recado
+      { dia: SABADO, posicoes: [{ id: 'p9', turno: 'manha', editor: 'Gil Moura', ilha: '', horario: '6h às 15h', demandas: [{ id: 'd9', texto: 'COMUNICAÇÃO' }] } as unknown as PosicaoDaEscala] },
+    ];
+    expect(resumo(juntarAPublicada(teable, publicadas))).toEqual([
+      '2026-11-27 Rui Teixeira 22:00-06:00 aviso: REDATOR VEM ACOMPANHAR',
+      '2026-11-27 — sem turno aviso: Reunião geral às 15h',
+      '2026-11-27 Rui Teixeira 22:00-06:00 aviso: Chega mais cedo',
+      '2026-11-28 Gil Moura 06:00-15:00 tarefa: COMUNICAÇÃO',
+    ]);
   });
 });

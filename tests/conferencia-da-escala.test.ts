@@ -13,7 +13,7 @@ let n = 0;
 /** Uma posição, com as demandas pelo texto (os ids saem em ordem). */
 function pos(turno: PosicaoDaEscala['turno'], editor: string, horario: string, demandas: string[] = []): PosicaoDaEscala {
   n += 1;
-  return { id: `p${n}`, turno, editor, ilha: '', horario, demandas: demandas.map((texto, i) => ({ id: `p${n}-d${i + 1}`, texto })) };
+  return { id: `p${n}`, turno, editor, ilha: '', horario, demandas: demandas.map((texto, i) => ({ id: `p${n}-d${i + 1}`, texto })), avisos: [] };
 }
 const conferir = (posicoes: PosicaoDaEscala[]) => conferirODia({ dia: DIA, posicoes, editores: EDITORES, turnos: TURNOS_DE_FABRICA });
 const tipos = (ps: Pendencia[]) => ps.map((p) => p.tipo);
