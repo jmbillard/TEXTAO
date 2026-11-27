@@ -663,7 +663,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
       </div>
       <div className="montar-sob">
         {situacao?.tipo === 'escalado' && <span className="montar-alerta">{textoDaSituacao(situacao, turnos)}</span>}
-        {!naLista && <span className="montar-tag">nome novo</span>}
+        {!naLista && <span className="montar-tag" title="Não está nos Cadastros: fica pendente, para um administrador cadastrar ou ligar a quem já existe">nome novo</span>}
         {p.vaga && !p.editor.trim() && (
           <span className="montar-vaga">
             <b>vaga</b> · {p.vaga}
@@ -817,14 +817,23 @@ function opcoesDoEditor(escrito: string, p: PosicaoDaEscala, posicoes: readonly 
     .sort((a, b) => Number(a.situacao.tipo !== 'livre') - Number(b.situacao.tipo !== 'livre'));
 }
 
-/** O editor da posição: o campo com a lista dos cadastrados (a situação de cada um no dia), pelo teclado. */
+/**
+ * O editor da posição: o campo com a lista dos cadastrados (a situação de cada um no dia), pelo teclado. O nome que não
+ * está na lista ganha, no fim dela, o "usar como nome novo" (#132): fica como foi escrito, publica assim e aparece nos
+ * Cadastros como pendente, para um administrador cadastrar ou ligar a quem já existe.
+ */
 function CampoDoEditor({ p, posicoes, turnos, editores, mudar, depois }: { p: PosicaoDaEscala; posicoes: PosicaoDaEscala[]; turnos: readonly TurnoDaEscala[]; editores: readonly string[]; mudar: (editor: string) => void; depois: () => void }) {
   const [aberta, setAberta] = useState(false);
   // filtrar: a pessoa digitou desde que entrou no campo (antes disso, a lista mostra todos)
   const [filtrar, setFiltrar] = useState(false);
   const [ativo, setAtivo] = useState(0);
   const opcoes = aberta ? opcoesDoEditor(filtrar ? p.editor : '', p, posicoes, editores) : [];
-  const i = Math.min(ativo, Math.max(0, opcoes.length - 1));
+  const escrito = p.editor.trim().replace(/\s+/g, ' ');
+  const nomeNovo = aberta && filtrar && !!escrito && !editores.some((e) => nomeComparavel(e) === nomeComparavel(escrito));
+  // a última opção, depois dos cadastrados, é o nome novo
+  const total = opcoes.length + (nomeNovo ? 1 : 0);
+  const i = Math.min(ativo, Math.max(0, total - 1));
+  const noNomeNovo = nomeNovo && i === opcoes.length;
   const escolher = (nome: string) => {
     mudar(nome);
     setAberta(false);
@@ -843,7 +852,7 @@ function CampoDoEditor({ p, posicoes, turnos, editores, mudar, depois }: { p: Po
         autoComplete="off"
         aria-label="Editor"
         role="combobox"
-        aria-expanded={aberta && opcoes.length > 0}
+        aria-expanded={aberta && total > 0}
         aria-controls={lista}
         aria-autocomplete="list"
         onFocus={() => (setAberta(true), setFiltrar(false), setAtivo(0))}
@@ -853,20 +862,20 @@ function CampoDoEditor({ p, posicoes, turnos, editores, mudar, depois }: { p: Po
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             if (!aberta) return setAberta(true);
-            setAtivo(Math.max(0, Math.min(opcoes.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1))));
+            setAtivo(Math.max(0, Math.min(total - 1, i + (e.key === 'ArrowDown' ? 1 : -1))));
           } else if (e.key === 'Escape') {
             setAberta(false);
           } else if (e.key === 'Enter') {
             e.preventDefault();
-            if (aberta && opcoes.length && (filtrar || !p.editor)) escolher(opcoes[i].nome);
+            if (aberta && total && (filtrar || !p.editor)) escolher(noNomeNovo ? escrito : opcoes[i].nome);
             depois();
-          } else if (e.key === 'Tab' && !e.shiftKey && aberta && filtrar && p.editor.trim() && opcoes.length && nomeComparavel(opcoes[i].nome) !== nomeComparavel(p.editor)) {
-            // Tab completa com a opção da lista (e segue para o horário)
-            escolher(opcoes[i].nome);
+          } else if (e.key === 'Tab' && !e.shiftKey && aberta && filtrar && escrito && total && (noNomeNovo || nomeComparavel(opcoes[i].nome) !== nomeComparavel(p.editor))) {
+            // Tab completa com a opção da lista (e segue para o horário); no nome novo, fica o escrito
+            escolher(noNomeNovo ? escrito : opcoes[i].nome);
           }
         }}
       />
-      {aberta && opcoes.length > 0 && (
+      {aberta && total > 0 && (
         <div className="menu montar-lista" id={lista} role="listbox" aria-label="Editores cadastrados">
           {opcoes.map((o, k) => (
             <div
@@ -884,6 +893,20 @@ function CampoDoEditor({ p, posicoes, turnos, editores, mudar, depois }: { p: Po
               </span>
             </div>
           ))}
+          {nomeNovo && (
+            <div
+              role="option"
+              aria-selected={noNomeNovo}
+              className={`menu-item montar-nome-novo${noNomeNovo ? ' ativo' : ''}`}
+              onMouseDown={(e) => (e.preventDefault(), escolher(escrito))}
+            >
+              <span className="pauta-avatar">+</span>
+              <span className="menu-texto">
+                <strong>usar “{escrito}” como nome novo</strong>
+                <small>fica pendente nos Cadastros</small>
+              </span>
+            </div>
+          )}
           <p className="montar-lista-pe">
             <kbd>↑</kbd> <kbd>↓</kbd> escolhe · <kbd>Enter</kbd> ou <kbd>Tab</kbd> confirma · <kbd>Esc</kbd> fecha
           </p>

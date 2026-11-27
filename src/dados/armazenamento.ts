@@ -516,6 +516,17 @@ export interface Cadastros {
   sugestoes: SugestaoDeEmail[];
   /** os e-mails de quem é da coordenação (#123), que monta a pauta */
   coordenacao?: string[];
+  /** os nomes novos da pauta, pendentes (#132): só para administradores */
+  nomesNovos?: NomeNovoDaPauta[];
+}
+/** Um editor que a coordenação escreveu na pauta e não está nos Cadastros (#132), pendente de um administrador. */
+export interface NomeNovoDaPauta {
+  /** como foi escrito */
+  nome: string;
+  /** os dias em que está na escala; publicado: na publicação que vale */
+  dias: { dia: string; publicado: boolean }[];
+  /** "é a mesma pessoa?": o editor que tem o nome como key, ou o que parece pelo nome */
+  sugestao: { id: string; nome: string; por: 'key' | 'parecido' } | null;
 }
 export type TipoCadastro = 'atracoes' | 'redatores' | 'editores';
 
@@ -548,6 +559,14 @@ export const marcarCoordenacao = (email: string, marcar: boolean) =>
   marcar
     ? pedir<{ ok: true; coordenacao: string[] }>('/api/cadastros/coordenacao', { method: 'POST', body: JSON.stringify({ email }) })
     : pedir<{ ok: true; coordenacao: string[] }>(`/api/cadastros/coordenacao?${new URLSearchParams({ email })}`, { method: 'DELETE' });
+/** Liga o nome novo da pauta ao editor que já existe (#132): o nome vira key dele e a pauta passa a mostrar o dele. */
+export const ligarNomeNovo = (nome: string, editor: string) =>
+  pedir<{ ok: true; nome: string; trocas: number }>('/api/cadastros/nomes-novos/ligar', { method: 'POST', body: JSON.stringify({ nome, editor }) });
+/** Ignora o nome novo (não volta para a lista); `desfazer` o traz de volta. */
+export const ignorarNomeNovo = (nome: string, desfazer = false) =>
+  desfazer
+    ? pedir<{ ok: true }>(`/api/cadastros/nomes-novos/ignorar?${new URLSearchParams({ nome })}`, { method: 'DELETE' })
+    : pedir<{ ok: true }>('/api/cadastros/nomes-novos/ignorar', { method: 'POST', body: JSON.stringify({ nome }) });
 export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
   pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });
 
