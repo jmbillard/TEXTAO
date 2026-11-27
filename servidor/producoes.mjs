@@ -231,6 +231,8 @@ export function criarProducoes(db) {
     mudarEtapa: db.prepare(
       `UPDATE producoes SET etapa = ?, arquivada = ?, entrega_em = CASE WHEN ? = 'entregue' AND entrega_em IS NULL THEN ? ELSE entrega_em END, atualizada_em = ? WHERE id = ?`,
     ),
+    // a entrega feita na tela (#111) é a de agora, também a de novo depois de voltar para a Entrada
+    entregueAgora: db.prepare('UPDATE producoes SET entrega_em = ? WHERE id = ?'),
     /* ---------- a releitura do Teable ---------- */
     // a Produção relida: o que o Teable diz vale; a exibição, o Roteiro e o filme só mudam se a linha trouxer
     relida: db.prepare(
@@ -425,6 +427,7 @@ export function criarProducoes(db) {
       for (const ev of mudancas) {
         q.anotarDoPROMeiro.run(randomUUID(), id, ev.tipo, ev.antes ?? null, ev.depois ?? null, quem.email, quem.nome, em, ORIGEM_PROMEIRO, em);
         mudarAProducao(id, { ...ev, quando: em }, em, []);
+        if (ev.tipo === 'etapa' && ev.depois === 'entregue') q.entregueAgora.run(em, id);
       }
       db.exec('COMMIT');
     } catch (e) {

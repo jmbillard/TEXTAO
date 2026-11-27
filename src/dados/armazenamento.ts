@@ -1332,9 +1332,14 @@ export interface AndamentoDoProjeto {
 /** A Semana da pauta da edição (#94): qualquer dia da semana (sem ele, a de hoje). Sem o Postgres do Teable, o erro diz. */
 /** A tela de produções (#109): as Produções abertas num bloco por praça (nada do Trello). */
 export const lerProducoesPorPraca = () => pedir<TelaDeProducoes>('/api/producoes/por-praca');
-/** Pegar ou voltar para a Entrada (#110): o que foi feito e a Produção como a tela mostra agora. O erro traz o motivo. */
-export const mudarEtapaDaProducao = (producao: string, etapa: 'produzindo' | 'entrada') =>
-  pedir<{ feito: { antes: string; depois: string; semCard: boolean }; producao: CardDaProducao | null }>('/api/producoes/etapa', { method: 'POST', body: JSON.stringify({ producao, etapa }) });
+/** Pegar, voltar para a Entrada (#110) ou entregar (#111): o que foi feito e a Produção como a tela mostra agora. A
+    entrega com arte do checklist faltando, sem `assimMesmo`, não muda nada e volta com as que faltam (sem `feito`). O
+    erro traz o motivo. */
+export const mudarEtapaDaProducao = (producao: string, etapa: 'produzindo' | 'entrada' | 'entregue', assimMesmo = false) =>
+  pedir<{ feito?: { antes: string; depois: string; semCard: boolean }; faltam?: string[]; producao: CardDaProducao | null }>('/api/producoes/etapa', {
+    method: 'POST',
+    body: JSON.stringify({ producao, etapa, ...(assimMesmo ? { assimMesmo: true } : {}) }),
+  });
 /** O pedido da pauta com o filtro pessoal (#99), quando há. */
 const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
   const q = new URLSearchParams(Object.entries({ ...busca, ...(filtro ? { filtro } : {}) }).filter(([, v]) => v)).toString();

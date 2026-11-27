@@ -2591,13 +2591,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, { entregueDias: DIAS_DO_ENTREGUE, blocos: blocosDasProducoes(cards, pracas), voce });
     }
     if (caminho === '/api/producoes/etapa') {
-      // pegar e voltar para a Entrada (#110), para quem está ligado a um designer: { producao, etapa } (produzindo ou
-      // entrada). Escreve no Trello (o membro do card, mover de lista), nunca lê; nada vai ao Teable
+      // pegar, voltar para a Entrada (#110) e entregar (#111), para quem está ligado a um designer: { producao, etapa
+      // (produzindo, entrada ou entregue), assimMesmo }. Entregar com arte faltando, sem assimMesmo, devolve as que
+      // faltam e nada muda. Escreve no Trello (o membro do card, mover de lista), nunca lê; nada vai ao Teable
       if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
       const aTela = (id) => producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
-      const r = await etapaDaProducao.mudar({ producao: corpo.producao, etapa: corpo.etapa }, { trello, pracas, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela });
+      const r = await etapaDaProducao.mudar({ producao: corpo.producao, etapa: corpo.etapa, assimMesmo: corpo.assimMesmo === true }, { trello, pracas, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela });
       return json(res, r.status, r.corpo);
     }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);

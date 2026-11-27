@@ -21,6 +21,11 @@
 // volta atrás e mostra o motivo; a Produção sem card muda sem ir ao Trello. Quem não está ligado vê a tela sem os
 // botões, com a explicação de a quem pedir. No celular, os botões têm 44px.
 //
+// #111, entregar: o card de Produzindo tem "Entreguei". A Festa (1 arte, nenhuma marcada no checklist) mostra o aviso
+// com a arte que falta, "Entregar assim mesmo" e "Voltar": "Voltar" fecha o aviso e nada muda (nem no Trello);
+// "Entregar assim mesmo" leva o card para Entregue e, no Trello, para a saída da praça. A Cozinha (sem card, sem a
+// lista de artes) é entregue direto, sem aviso e sem ir ao Trello. Com o aviso aberto, nada passa da borda do card.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:producoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -333,9 +338,9 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
   await p.locator('.prod-bloco').first().waitFor();
   assert.equal(await p.locator('.prod-sem-ligacao').count(), 0, 'a Lia está ligada a um designer');
-  // da Entrada, "Peguei"; de Produzindo e de Entregue, a volta para a Entrada
+  // da Entrada, "Peguei"; de Produzindo, "Entreguei" e a volta para a Entrada; de Entregue, a volta para a Entrada
   assert.deepEqual(await textos(coluna(p, 'SP', 'entrada').locator('.prod-mudar')), ['Peguei', 'Peguei', 'Peguei']);
-  assert.deepEqual(await textos(coluna(p, 'G5', 'produzindo').locator('.prod-mudar')), ['Voltar para a Entrada']);
+  assert.deepEqual(await textos(coluna(p, 'G5', 'produzindo').locator('.prod-mudar')), ['Entreguei', 'Voltar para a Entrada']);
   assert.deepEqual(await textos(coluna(p, 'G5', 'entregue').locator('.prod-mudar')), ['Voltar para a Entrada']);
 
   // "Peguei": o card vai para Produzindo com a Lia; no Trello, a Lia entra no card (o card fica na lista)
@@ -343,7 +348,7 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   await coluna(p, 'SP', 'produzindo').locator('.prod-card', { hasText: 'Festa na Praça' }).waitFor();
   assert.deepEqual(await contas(p, 'SP'), [2, 1, 0]);
   assert.equal(await designersDe(cardDe(p, 'Festa na Praça')), 'Lia Moraes');
-  assert.deepEqual(await textos(cardDe(p, 'Festa na Praça').locator('.prod-mudar')), ['Voltar para a Entrada']);
+  assert.deepEqual(await textos(cardDe(p, 'Festa na Praça').locator('.prod-mudar')), ['Entreguei', 'Voltar para a Entrada']);
   await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
   assert.deepEqual(chamadasAoTrello.splice(0), [`POST /cards/${card(2)}/idMembers ?value=membroLia`]);
   await capturar(p, '04-producoes-peguei');
@@ -362,7 +367,7 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   assert.equal(await recusa.count(), 0);
 
   // voltar para a Entrada: de Produzindo (a Lia não estava: os outros ficam) e de Entregue (o card sai da saída)
-  await cardDe(p, 'Novela Sinfonia').locator('.prod-mudar').click();
+  await cardDe(p, 'Novela Sinfonia').locator('.prod-mudar.voltar').click();
   await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
   assert.equal(await designersDe(cardDe(p, 'Novela Sinfonia')), 'Dora Lima, Enzo Prado');
   await cardDe(p, 'Jogo Final').locator('.prod-mudar').click();
@@ -382,10 +387,49 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   await p.locator('.prod-bloco').first().waitFor();
   assert.deepEqual(await claquetes(p, 'SP', 'produzindo'), [`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`]);
   assert.deepEqual(await contas(p, 'G5'), [3, 0, 0]);
+  console.log('ok: os botões: Peguei, Voltar para a Entrada (de Produzindo e de Entregue), a recusa do Trello desfeita na tela, a sem card só no PROMeiro');
+
+  // "Entreguei" com arte faltando (#111): o card fica em Produzindo, com o aviso das que faltam; nada vai ao Trello
+  const festaNoSP = cardDe(p, 'Festa na Praça');
+  await festaNoSP.locator('.prod-mudar.entregar').click();
+  const aviso = festaNoSP.locator('.prod-aviso');
+  await aviso.waitFor();
+  assert.match(await aviso.locator('.prod-aviso-texto').textContent(), /Falta marcar 1 arte no checklist/);
+  assert.deepEqual(await textos(aviso.locator('.prod-aviso-artes li')), ['HOJE']);
+  assert.deepEqual(await textos(aviso.locator('button')), ['Entregar assim mesmo', 'Voltar']);
+  assert.deepEqual(await claquetes(p, 'SP', 'produzindo'), [`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`]);
+  assert.equal(await festaNoSP.locator('.prod-mudar').count(), 0, 'o aviso fica no lugar dos botões');
+  assert.deepEqual(await passamDaBorda(p), [], 'com o aviso, nada passa da borda do card');
+  assert.deepEqual(chamadasAoTrello, [], 'o aviso não vai ao Trello');
+  await capturar(p, '08-producoes-aviso-arte-faltando');
+  // "Voltar": fecha o aviso, e nada muda
+  await aviso.getByRole('button', { name: 'Voltar' }).click();
+  assert.equal(await aviso.count(), 0);
+  assert.deepEqual(await textos(festaNoSP.locator('.prod-mudar')), ['Entreguei', 'Voltar para a Entrada']);
+  assert.deepEqual(await contas(p, 'SP'), [1, 2, 0]);
+  // "Entregar assim mesmo": o card vai para Entregue e, no Trello, para a saída da praça
+  await festaNoSP.locator('.prod-mudar.entregar').click();
+  await aviso.waitFor();
+  await aviso.getByRole('button', { name: 'Entregar assim mesmo' }).click();
+  await coluna(p, 'SP', 'entregue').locator('.prod-card', { hasText: 'Festa na Praça' }).waitFor();
+  await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled, .prod-aviso'));
+  assert.deepEqual(chamadasAoTrello.splice(0), [`PUT /cards/${card(2)} ?idList=saidaSP`]);
+  // a sem card, sem a lista de artes: entregue direto, sem aviso, só no PROMeiro
+  await cardDe(p, 'Cozinha de Vó').locator('.prod-mudar.entregar').click();
+  await coluna(p, 'SP', 'entregue').locator('.prod-card', { hasText: 'Cozinha de Vó' }).waitFor();
+  await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
+  assert.equal(await p.locator('.prod-aviso').count(), 0);
+  assert.deepEqual(chamadasAoTrello, [], 'a entrega sem card não vai ao Trello');
+  assert.deepEqual(await contas(p, 'SP'), [1, 0, 2]);
+  await capturar(p, '09-producoes-entregues');
+  // recarregada, as duas ficam no Entregue
+  await p.reload();
+  await p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await claquetes(p, 'SP', 'entregue'), [`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`]);
   assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
   assert.deepEqual(erros, []);
   await ctx.close();
-  console.log('ok: os botões: Peguei, Voltar para a Entrada (de Produzindo e de Entregue), a recusa do Trello desfeita na tela, a sem card só no PROMeiro');
+  console.log('ok: Entreguei: o aviso da arte faltando (Voltar e Entregar assim mesmo), o card na saída da praça, a sem card só no PROMeiro');
 
   // no celular, os botões no tamanho do dedo
   const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
-import { COLUNAS_DO_BLOCO, ETAPA_DO_BOTAO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, type CardDaProducao, type BlocoDaPraca, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, faltaArte, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
 import { MarcaTexto, tracoDe } from './pecas';
@@ -17,8 +17,11 @@ import './producoes.css';
    baixo. No celular, as praças e as etapas ficam uma embaixo da outra.
    #110: quem está ligado a um designer pega o card da Entrada ("Peguei") e volta o de Produzindo ou de Entregue para a
    Entrada. A mudança aparece na hora; se o servidor (o Trello) recusa, a tela volta atrás e diz o motivo. Quem não
-   está ligado vê a tela, sem os botões, e a explicação de a quem pedir. Entregar, arrastar e recolher o bloco vêm
-   depois (#111 a #113). */
+   está ligado vê a tela, sem os botões, e a explicação de a quem pedir.
+   #111: o card de Produzindo ganha "Entreguei": o card vai para Entregue (e, no Trello, para a saída da praça). Se
+   alguma arte do checklist não está marcada, o card fica onde está e mostra o aviso com as que faltam, com "Entregar
+   assim mesmo" e "Voltar". O card que já mostra arte faltando (a conta das artes) espera o servidor antes de mudar,
+   para não ir e voltar; o resto muda na hora. Arrastar e recolher o bloco vêm depois (#112, #113). */
 
 interface Props {
   /** a linha do logo: o caminho "PROMeiro / designer ▾", a agenda No Trello, a Pauta da edição e o perfil */
@@ -45,14 +48,47 @@ function artesEscritas({ aProduzir, entregues }: CardDaProducao['artes']) {
   return entregues ? `${entregues} de ${plural(aProduzir, 'arte', 'artes')}` : plural(aProduzir, 'arte', 'artes');
 }
 
-/** O botão do card: para onde ele leva e o que fazer. */
-interface Botao {
-  rotulo: string;
+/** O que o botão diz e a classe dele, pela etapa para onde leva. */
+const DO_BOTAO: Record<ColunaDoBloco, { rotulo: string; classe: string }> = {
+  produzindo: { rotulo: 'Peguei', classe: 'pegar' },
+  entregue: { rotulo: 'Entreguei', classe: 'entregar' },
+  entrada: { rotulo: 'Voltar para a Entrada', classe: 'voltar' },
+};
+
+/** Os botões do card (para onde cada um leva), com a mudança a caminho, e o aviso de arte faltando aberto. */
+interface Acoes {
+  para: readonly ColunaDoBloco[];
   indo: boolean;
-  fazer: () => void;
+  fazer: (etapa: ColunaDoBloco) => void;
+  aviso: { faltam: string[]; entregar: () => void; voltar: () => void } | null;
 }
 
-function CardDaTela({ c, hoje, botao }: { c: CardDaProducao; hoje: string; botao: Botao | null }) {
+/** O aviso ao entregar (#111): as artes do checklist que não estão marcadas, e as duas saídas. */
+function AvisoDeFalta({ aviso, indo }: { aviso: NonNullable<Acoes['aviso']>; indo: boolean }) {
+  const n = aviso.faltam.length;
+  return (
+    <div className="prod-aviso" role="alert" aria-label="Arte faltando no checklist">
+      <p className="prod-aviso-texto">
+        {n === 1 ? 'Falta marcar 1 arte no checklist:' : `Faltam marcar ${n} artes no checklist:`}
+      </p>
+      <ul className="prod-aviso-artes">
+        {aviso.faltam.map((a) => (
+          <li key={a}>{a}</li>
+        ))}
+      </ul>
+      <span className="prod-aviso-botoes">
+        <button type="button" className="botao prod-aviso-botao assim-mesmo" disabled={indo} onClick={aviso.entregar}>
+          Entregar assim mesmo
+        </button>
+        <button type="button" className="botao prod-aviso-botao" disabled={indo} onClick={aviso.voltar}>
+          Voltar
+        </button>
+      </span>
+    </div>
+  );
+}
+
+function CardDaTela({ c, hoje, acoes }: { c: CardDaProducao; hoje: string; acoes: Acoes | null }) {
   const claquete = <span className="prod-claquete-texto">{c.claquete || 'Sem claquete'}</span>;
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
@@ -77,18 +113,24 @@ function CardDaTela({ c, hoje, botao }: { c: CardDaProducao; hoje: string; botao
           {c.semCard && <span className="prod-sem-card">sem card</span>}
         </span>
       )}
-      {botao && (
-        <span className="prod-acoes">
-          <button type="button" className={`botao prod-mudar${c.etapa === 'entrada' ? ' pegar' : ' voltar'}`} disabled={botao.indo} onClick={botao.fazer}>
-            {botao.rotulo}
-          </button>
-        </span>
+      {acoes?.aviso ? (
+        <AvisoDeFalta aviso={acoes.aviso} indo={acoes.indo} />
+      ) : (
+        acoes && (
+          <span className="prod-acoes">
+            {acoes.para.map((etapa) => (
+              <button key={etapa} type="button" className={`botao prod-mudar ${DO_BOTAO[etapa].classe}`} disabled={acoes.indo} onClick={() => acoes.fazer(etapa)}>
+                {DO_BOTAO[etapa].rotulo}
+              </button>
+            ))}
+          </span>
+        )
       )}
     </li>
   );
 }
 
-function Bloco({ b, entregueDias, hoje, botao }: { b: BlocoDaPraca; entregueDias: number; hoje: string; botao: (c: CardDaProducao) => Botao | null }) {
+function Bloco({ b, entregueDias, hoje, acoes }: { b: BlocoDaPraca; entregueDias: number; hoje: string; acoes: (c: CardDaProducao) => Acoes | null }) {
   const total = COLUNAS_DO_BLOCO.reduce((n, k) => n + b.colunas[k].length, 0);
   const id = `bloco-${b.praca || 'sem-praca'}`;
   return (
@@ -114,7 +156,7 @@ function Bloco({ b, entregueDias, hoje, botao }: { b: BlocoDaPraca; entregueDias
             {b.colunas[k].length ? (
               <ul className="prod-cards">
                 {b.colunas[k].map((c) => (
-                  <CardDaTela key={c.id} c={c} hoje={hoje} botao={botao(c)} />
+                  <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} />
                 ))}
               </ul>
             ) : (
@@ -134,6 +176,8 @@ export function Producoes({ topo }: Props) {
   // a recusa da última mudança (o motivo), e os cards com a mudança a caminho do servidor
   const [recusa, setRecusa] = useState('');
   const [indo, setIndo] = useState<ReadonlySet<string>>(new Set());
+  // o aviso de arte faltando (#111) aberto em cada card: as artes que faltam
+  const [avisos, setAvisos] = useState<ReadonlyMap<string, string[]>>(new Map());
   const reler = useRef<() => void>(() => {});
   useEffect(() => {
     let vivo = true;
@@ -166,20 +210,36 @@ export function Producoes({ topo }: Props) {
   }, []);
 
   const designer = lido?.voce.designer ?? null;
-  /** Pegar ou voltar: a tela muda na hora; com a resposta, fica o card que o servidor diz; recusado, volta atrás. */
+  const comAviso = (id: string, faltam: string[] | null) =>
+    setAvisos((m) => {
+      const n = new Map(m);
+      if (faltam) n.set(id, faltam);
+      else n.delete(id);
+      return n;
+    });
+  /** Pegar, voltar ou entregar: a tela muda na hora; com a resposta, fica o card que o servidor diz; recusado, volta
+      atrás. A entrega com arte faltando volta com as que faltam: o card fica onde estava, com o aviso. */
   const mudar = useCallback(
-    (c: CardDaProducao) => {
+    (c: CardDaProducao, etapa: ColunaDoBloco, assimMesmo = false) => {
       if (!designer) return;
-      const etapa = ETAPA_DO_BOTAO[c.etapa];
       const eu = nomeComparavel(designer);
       const outros = c.designers.filter((d) => nomeComparavel(d) !== eu);
-      const naHora: CardDaProducao = { ...c, etapa, designers: etapa === 'produzindo' ? [...outros, designer] : outros };
+      const designers = etapa === 'produzindo' ? [...outros, designer] : etapa === 'entrada' ? outros : c.designers;
+      const naHora: CardDaProducao = { ...c, etapa, designers };
+      // o card que já mostra arte faltando espera o servidor (que pode devolver o aviso), para não ir e voltar
+      const naHoraMesmo = etapa !== 'entregue' || assimMesmo || !faltaArte(c);
       setRecusa('');
+      comAviso(c.id, null);
       setIndo((s) => new Set(s).add(c.id));
-      setLido((t) => t && comOCard(t, naHora));
-      mudarEtapaDaProducao(c.id, etapa)
+      if (naHoraMesmo) setLido((t) => t && comOCard(t, naHora));
+      mudarEtapaDaProducao(c.id, etapa, assimMesmo)
         .then(
-          (r) => setLido((t) => t && comOCard(t, r.producao ?? naHora)),
+          (r) => {
+            if (r.faltam?.length) {
+              setLido((t) => t && comOCard(t, r.producao ?? c));
+              comAviso(c.id, r.faltam);
+            } else setLido((t) => t && comOCard(t, r.producao ?? naHora));
+          },
           (e) => {
             setLido((t) => t && comOCard(t, c));
             setRecusa(`Não mudou ${c.claquete || 'a Produção'}: ${e instanceof Error ? e.message : 'o servidor não respondeu.'}`);
@@ -197,7 +257,17 @@ export function Producoes({ topo }: Props) {
     },
     [designer],
   );
-  const botao = (c: CardDaProducao): Botao | null => (designer ? { rotulo: c.etapa === 'entrada' ? 'Peguei' : 'Voltar para a Entrada', indo: indo.has(c.id), fazer: () => mudar(c) } : null);
+  const acoes = (c: CardDaProducao): Acoes | null => {
+    if (!designer) return null;
+    // o aviso fica só enquanto o card não foi entregue (a releitura pode trazer a entrega feita por outra pessoa)
+    const faltam = c.etapa === 'entregue' ? undefined : avisos.get(c.id);
+    return {
+      para: BOTOES_DO_CARD[c.etapa],
+      indo: indo.has(c.id),
+      fazer: (etapa) => mudar(c, etapa),
+      aviso: faltam ? { faltam, entregar: () => mudar(c, 'entregue', true), voltar: () => comAviso(c.id, null) } : null,
+    };
+  };
 
   return (
     <div className="pagina producoes">
@@ -230,7 +300,7 @@ export function Producoes({ topo }: Props) {
             )}
             <div className="prod-blocos">
               {lido.blocos.map((b) => (
-                <Bloco key={b.praca || '—'} b={b} entregueDias={lido.entregueDias} hoje={hoje} botao={botao} />
+                <Bloco key={b.praca || '—'} b={b} entregueDias={lido.entregueDias} hoje={hoje} acoes={acoes} />
               ))}
             </div>
           </>

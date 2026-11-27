@@ -53,8 +53,13 @@ export interface TelaDeProducoes {
   voce: VoceNaTela;
 }
 
-/** Para onde o botão do card leva (#110): da Entrada, "Peguei"; de Produzindo e de Entregue, a volta para a Entrada. */
-export const ETAPA_DO_BOTAO: Record<ColunaDoBloco, 'produzindo' | 'entrada'> = { entrada: 'produzindo', produzindo: 'entrada', entregue: 'entrada' };
+/** Para onde os botões do card levam, na ordem: da Entrada, "Peguei" (#110); de Produzindo, "Entreguei" (#111) e a volta
+    para a Entrada; de Entregue, a volta para a Entrada. */
+export const BOTOES_DO_CARD: Record<ColunaDoBloco, readonly ColunaDoBloco[]> = { entrada: ['produzindo'], produzindo: ['entregue', 'entrada'], entregue: ['entrada'] };
+
+/** O card mostra arte do checklist ainda não marcada? (Sem a lista de artes, não.) Entregar esse card pode trazer o
+    aviso das que faltam (#111), que o servidor confere. */
+export const faltaArte = (c: CardDaProducao) => c.artes.aProduzir !== null && c.artes.entregues < c.artes.aProduzir;
 
 const SO_O_DIA = /^\d{4}-\d{2}-\d{2}$/;
 /** O dia do prazo (AAAA-MM-DD), em São Paulo quando o prazo é um instante. */

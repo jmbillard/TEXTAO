@@ -72,11 +72,20 @@
 .prod-marcador { background: var(--ultra-suave); color: var(--ultra-tinta); }
 .prod-sem-card { box-shadow: inset 0 0 0 1px var(--regua-forte); color: var(--tinta3); white-space: nowrap; }
 
-/* ---------- pegar e voltar para a Entrada (#110) ---------- */
-.prod-acoes { display: flex; margin-top: 5px; }
+/* ---------- pegar, entregar e voltar para a Entrada (#110, #111) ---------- */
+/* no card estreito, um botão embaixo do outro */
+.prod-acoes { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
 .prod-mudar { width: 100%; justify-content: center; height: auto; min-height: 28px; padding: 4px 8px; font-size: 12px; line-height: 1.25; text-align: center; white-space: normal; }
-.prod-mudar.pegar { background: var(--tinta); border-color: var(--tinta); color: var(--papel); font-weight: 600; }
-.prod-mudar.pegar:hover { opacity: 0.9; }
+.prod-mudar.pegar, .prod-mudar.entregar { background: var(--tinta); border-color: var(--tinta); color: var(--papel); font-weight: 600; }
+.prod-mudar.pegar:hover, .prod-mudar.entregar:hover { opacity: 0.9; }
+/* o aviso de arte faltando (#111), no lugar dos botões */
+.prod-aviso { display: flex; flex-direction: column; gap: 6px; margin-top: 5px; padding: 8px 9px 9px; border-radius: 8px; background: var(--falta-fundo); color: var(--falta); font: 400 12px/1.35 var(--sans); }
+.prod-aviso-texto { margin: 0; font-weight: 600; }
+.prod-aviso-artes { margin: 0; padding: 0 0 0 16px; color: var(--tinta); font: 500 11.5px/1.4 var(--mono); overflow-wrap: anywhere; }
+.prod-aviso-botoes { display: flex; flex-direction: column; gap: 5px; }
+.prod-aviso-botao { width: 100%; justify-content: center; height: auto; min-height: 28px; padding: 4px 8px; font-size: 12px; line-height: 1.25; text-align: center; white-space: normal; }
+.prod-aviso-botao.assim-mesmo { background: var(--falta); border-color: var(--falta); color: var(--papel); font-weight: 600; }
+.prod-aviso-botao.assim-mesmo:hover { opacity: 0.9; }
 .prod-sem-ligacao, .prod-recusa { margin: 0; padding: 10px 14px; border-radius: 10px; font: 400 13.5px/1.45 var(--sans); }
 .prod-sem-ligacao { background: var(--neutro); color: var(--tinta2); }
 .prod-recusa { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; background: var(--falta-fundo); color: var(--falta); }
@@ -108,6 +117,9 @@
   .prod-linha, .prod-pe { font-size: 12px; }
   .prod-artes { font-size: 17px; }
   /* no celular, o botão do card no tamanho do dedo */
-  .prod-acoes { justify-content: flex-end; margin-top: 6px; }
-  .prod-mudar { height: 44px; font-size: 14px; }
+  .prod-acoes, .prod-aviso-botoes { flex-direction: row; justify-content: flex-end; gap: 8px; }
+  .prod-acoes { margin-top: 6px; }
+  .prod-mudar, .prod-aviso-botao { flex: 1 1 0; height: 44px; font-size: 14px; }
+  .prod-aviso { font-size: 13px; }
+  .prod-aviso-artes { font-size: 12.5px; }
 }
