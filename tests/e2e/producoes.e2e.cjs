@@ -97,7 +97,13 @@ const prazo = (n) => {
 
 // ids de card fictícios (24 caracteres hexadecimais)
 const card = (n) => `c0ffee${String(n).padStart(18, '0')}`;
-const linha = (id, fields) => ({ id, fields: { status: '[]', designers: null, arquivado: false, entregue: false, praca: null, filme: null, ...fields } });
+// a hora da última mudança no Teable (a entrada ou a entrega, a mais nova): a releitura do servidor, a cada minuto,
+// só traz de novo o que mudou depois da carga, como no Teable; sem ela, trazia tudo e desfazia o que o teste mudou (#183)
+const linha = (id, fields) => ({
+  id,
+  fields: { status: '[]', designers: null, arquivado: false, entregue: false, praca: null, filme: null, ...fields },
+  lastModifiedTime: [fields.data_entrada, fields.data_entrega].filter(Boolean).sort().pop() ?? ha(1),
+});
 /** A produção da arte (fictícia). */
 const ARTE = [
   // SP: duas no mesmo prazo (a ALTA primeiro) e uma sem card com o prazo mais perto
