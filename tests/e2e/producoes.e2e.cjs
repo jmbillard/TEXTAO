@@ -1767,8 +1767,17 @@ async function asCampanhas(navegador, url, chamadasAoTrello, db) {
       await p.waitForTimeout(600);
       await capturar(p, `41-campanha-${nome}-card-aberto`);
       // tirar: a vaga fecha e a caixinha de desfazer abre; "Desfazer" liga de novo
+      // a vaga que fecha dura 220 ms: um observador anota se ela apareceu, sem depender de pegar o instante
+      await p.evaluate(() => {
+        window.__fechou = false;
+        const o = new MutationObserver(() => {
+          if ([...document.querySelectorAll('.campanhas-do-card .vaga-x.saindo .campanha')].some((e) => e.textContent.includes('AESP Verão'))) (window.__fechou = true), o.disconnect();
+        });
+        o.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+      });
       await painel.getByRole('button', { name: 'Tirar da campanha AESP Verão' }).click();
-      await painel.locator('.vaga-x.saindo .campanha', { hasText: 'AESP Verão' }).waitFor();
+      await p.waitForFunction(() => window.__fechou === true);
+      await painel.locator('.campanhas-do-card .campanha', { hasText: 'AESP Verão' }).waitFor({ state: 'detached' });
       await painel.locator('.pa-desfazer', { hasText: 'Tirou da campanha AESP Verão' }).waitFor();
       await festa.locator('.campanha-mais', { hasText: '+1' }).waitFor();
       await capturar(p, `42-campanha-${nome}-tirou`);
