@@ -1052,6 +1052,7 @@ import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import type { DiaDaEscala, PosicaoDaEscala, TurnoDaEscala } from '../modelo/escala';
+import type { DeOndeRepetir } from '../modelo/repetir';
 import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
@@ -1465,6 +1466,8 @@ export const marcarPendencia = (dia: string, chave: string, certo: boolean) => p
 export const publicarODia = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/publicar?dia=${dia}`, { method: 'POST' });
 /** Desfaz a última publicação do dia (vale a anterior, ou nenhuma) (#127); devolve o dia. */
 export const desfazerAPublicacao = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/desfazer?dia=${dia}`, { method: 'POST' });
+/** Repetir (#129): copia para o dia vazio a escala de outro dia (ou, na semana inteira, para cada dia vazio). */
+export const repetirAEscala = (dia: string, de: DeOndeRepetir) => pedir<DiaDaEscala>(`/api/montar-pauta/repetir?dia=${dia}`, { method: 'POST', body: JSON.stringify({ de }) });
 /** O painel das ausências do dia (#128): as que valem a partir da semana, as do dia, a oferta de tirar e o para distribuir. */
 export const lerAusencias = (dia: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/ausencias?dia=${dia}`);
 /** Onde a pessoa está escalada no período, antes de marcar a ausência. */

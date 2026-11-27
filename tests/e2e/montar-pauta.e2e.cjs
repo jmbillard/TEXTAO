@@ -40,6 +40,14 @@
 // Pauta da edição, a Lia vê os avisos no balão do Rui e o recado no da coluna "sem editor"; o aviso que o Teable já tem
 // não dobra. Desfeita a publicação, a Pauta volta a ser só a do Teable.
 //
+// Repetir (#129): numa semana adiante, com a semana anterior montada (o Rui com claquete e COMUNICAÇÃO; a Elis com
+// CALHAUS) e a Elis de férias na segunda e na terça, o dia vazio oferece Repetir (o mesmo dia na semana passada, o de
+// ontem, que está vazio e fica desligado, e a semana passada inteira), Colar da planilha (desligado, é o #130) e
+// Começar do zero. Repetir a segunda traz a ilha, o editor, o horário e as tarefas, nunca as claquetes; a posição da
+// Elis vira vaga, com o motivo, que sai quando a vaga ganha editor. Na terça, "a semana passada inteira" só preenche
+// os dias vazios: a quarta, já montada, fica como estava. Na quinta, "Começar do zero" abre uma posição por turno,
+// com o foco no editor.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:montar-pauta
 // Com CAPTURAS=pasta, grava as capturas (densidade 2).
 const assert = require('node:assert/strict');
@@ -306,7 +314,8 @@ async function montarPeloTeclado(navegador, url) {
   await p.waitForFunction((d) => location.hash === `#/pauta/montar/${d}`, outro);
   await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'vazio');
   assert.equal(await p.locator('.montar-celula').count(), 0, 'o outro dia não tem posição');
-  await p.getByText(/Nada montado para/).waitFor();
+  // o dia vazio oferece Repetir, Colar da planilha e Começar do zero (#129)
+  await p.locator('.dia-vazio').getByText(/ainda vazio/).waitFor();
   assert.equal(escritasNoTeable.length, 0, 'nada foi escrito no Teable');
   assert.deepEqual(erros, [], 'Bia: erros na página');
   await ctx.close();
@@ -632,6 +641,80 @@ async function ausencias(navegador, url, api) {
   console.log('ok: marcar a ausência, a vaga nos rascunhos, tirar do dia publicado e o "fora" na Pauta');
 }
 
+/* ---------- Repetir (#129) ---------- */
+async function repetir(navegador, url, api) {
+  const h = { 'cf-access-authenticated-user-email': BIA, 'content-type': 'application/json' };
+  const { ilhas } = await (await fetch(`${api}/cadastros/ilhas`, { headers: h })).json();
+  const avid = ilhas.find((i) => i.tipo === 'AVID' && i.numero === '46').id;
+  // a semana de antes, montada; a nova, adiante, com a quarta já montada
+  const antes = mais(segunda, 21);
+  const nova = mais(antes, 7);
+  const montada = (dia) => [
+    { id: `rep-${dia}-1`, turno: 'madrugada', editor: 'Rui Teixeira', ilha: avid, horario: '22h às 6h', demandas: [{ id: `rep-${dia}-d1`, texto: `Noite de Gala ${diaMes(dia)} (DP)` }, { id: `rep-${dia}-d2`, texto: 'COMUNICAÇÃO' }] },
+    { id: `rep-${dia}-2`, turno: 'tarde', editor: 'Elis Furtado', ilha: '', horario: '14h às 22h53', demandas: [{ id: `rep-${dia}-d3`, texto: 'CALHAUS' }] },
+  ];
+  const gravar = async (dia, posicoes) => assert.equal((await fetch(`${api}/montar-pauta?dia=${dia}`, { method: 'PUT', headers: h, body: JSON.stringify({ posicoes }) })).status, 200);
+  for (const n of [0, 1, 2]) await gravar(mais(antes, n), montada(mais(antes, n)));
+  await gravar(mais(nova, 2), [{ id: 'rep-quarta', turno: 'noite', editor: 'Gil Moura', ilha: '', horario: '20h às 2h', demandas: [] }]);
+  const r = await fetch(`${api}/montar-pauta/ausencias?dia=${nova}`, { method: 'POST', headers: h, body: JSON.stringify({ editor: 'Elis Furtado', tipo: 'ferias', de: nova, ate: mais(nova, 1), observacao: '' }) });
+  assert.equal(r.status, 200);
+
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${nova}`);
+  const vazio = p.locator('.dia-vazio');
+  await vazio.waitFor();
+  const opcao = (nome) => vazio.getByRole('button', { name: nome });
+  const semanaPassada = opcao(new RegExp(`A escala de ${curto(antes)}`));
+  assert.match(await semanaPassada.innerText(), /o mesmo dia, na semana passada · 2 posições/);
+  assert.ok(await opcao(new RegExp(`A escala de ${curto(mais(nova, -1))}`)).isDisabled(), 'ontem (domingo) está vazio: desligado');
+  assert.match(await opcao(/A semana passada inteira/).innerText(), new RegExp(`preenche os dias vazios: ${curto(nova)}, ${curto(mais(nova, 1))}$`, 'm'));
+  assert.ok(await opcao(/Colar da planilha/).isDisabled(), 'o colar é o #130');
+  await capturar(p, '11-repetir-dia-vazio');
+
+  // o mesmo dia na semana passada: a escala e as tarefas, nunca as claquetes; a Elis de férias vira vaga
+  await semanaPassada.click();
+  await p.locator('.repetido').getByText(`Escala de ${curto(antes)} repetida: 2 posições. Elis Furtado está fora: ficou a vaga.`).waitFor();
+  const madrugada = turno(p, 'Madrugada').locator('.montar-celula').first();
+  assert.equal(await madrugada.locator('[data-campo="editor"]').inputValue(), 'Rui Teixeira');
+  assert.equal(await madrugada.locator('[data-campo="ilha"]').inputValue(), 'AVID 46');
+  assert.equal(await madrugada.locator('[data-campo="horario"]').inputValue(), '22h às 6h');
+  assert.deepEqual(await madrugada.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), ['COMUNICAÇÃO'], 'a claquete fica');
+  const tarde = turno(p, 'Tarde').locator('.montar-celula').first();
+  assert.equal(await tarde.locator('[data-campo="editor"]').inputValue(), '');
+  await tarde.locator('.montar-vaga').getByText(`Elis Furtado está de férias até ${diaMes(mais(nova, 1))}`).waitFor();
+  assert.deepEqual(await tarde.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), ['CALHAUS']);
+  assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
+  assert.equal(await p.locator('.dia-vazio').count(), 0, 'o dia deixou de estar vazio');
+  await semRolagemDeLado(p, 'repetir');
+  await capturar(p, '12-repetir-vaga-com-motivo', { fullPage: true });
+  // recarregada, a vaga continua com o motivo; com editor, o motivo sai
+  await p.reload();
+  await tarde.locator('.montar-vaga').waitFor();
+  await tarde.locator('[data-campo="editor"]').fill('Gil Moura');
+  assert.equal(await tarde.locator('.montar-vaga').count(), 0, 'com editor, a vaga sai');
+
+  // na terça, a semana passada inteira: só os dias vazios
+  await p.locator('.montar-aba', { hasText: diaMes(mais(nova, 1)) }).click();
+  await p.waitForFunction((d) => location.hash === `#/pauta/montar/${d}`, mais(nova, 1));
+  await opcao(/A semana passada inteira/).click();
+  await p.locator('.repetido').getByText(`Semana passada repetida em ${curto(mais(nova, 1))}. Elis Furtado está fora: ficou a vaga.`).waitFor();
+  const quarta = await (await fetch(`${api}/montar-pauta?dia=${mais(nova, 2)}`, { headers: h })).json();
+  assert.deepEqual(quarta.posicoes.map((x) => x.id), ['rep-quarta'], 'a quarta, já montada, fica como estava');
+  const segundaNova = await (await fetch(`${api}/montar-pauta?dia=${nova}`, { headers: h })).json();
+  assert.deepEqual(segundaNova.posicoes.map((x) => x.editor), ['Rui Teixeira', 'Gil Moura'], 'a segunda também fica como estava');
+
+  // na quinta, começar do zero: uma posição por turno, com o foco no editor da primeira
+  await p.locator('.montar-aba', { hasText: diaMes(mais(nova, 3)) }).click();
+  await opcao(/Começar do zero/).click();
+  await p.waitForFunction(() => document.querySelectorAll('.montar-celula').length === 4);
+  assert.equal((await focado(p)).campo, 'editor', 'o foco no editor');
+  assert.deepEqual(await p.locator('[data-campo="horario"]').evaluateAll((els) => els.map((e) => e.value)), ['22h às 6h', '6h às 15h', '14h às 23h', '20h às 2h']);
+
+  assert.equal(escritasNoTeable.length, 0, 'nada foi escrito nos cadastros');
+  assert.deepEqual(erros, [], 'repetir: erros na página');
+  await ctx.close();
+  console.log('ok: Repetir a escala (as tarefas sem as claquetes, a vaga com o motivo, a semana inteira nos vazios) e começar do zero');
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   const cadastros = criarCadastros({ ...ENV_CADASTROS, CADASTRO_ADMINS: CHEFE }, { buscar: buscarNoTeable });
@@ -654,6 +737,7 @@ async function principal() {
     await turnosDaConfiguracao(navegador, s.url, s.app);
     await avisosERecado(navegador, s.url);
     await ausencias(navegador, s.url, s.api);
+    await repetir(navegador, s.url, s.api);
   } catch (e) {
     falhou = true;
     console.error(e);

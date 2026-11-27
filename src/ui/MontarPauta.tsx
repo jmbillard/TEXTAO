@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { desfazerAPublicacao, gravarRascunhoDoDia, lerRascunhoDoDia, marcarPendencia, publicarODia } from '../dados/armazenamento';
+import { desfazerAPublicacao, gravarRascunhoDoDia, lerRascunhoDoDia, marcarPendencia, publicarODia, repetirAEscala } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
@@ -10,6 +10,8 @@ import { Icone } from './icones';
 import { Marca } from './pecas';
 import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { AusenciasDoDia } from './AusenciasDaPauta';
+import { DiaVazio, textoDoRepetido } from './DiaVazio';
+import type { DeOndeRepetir } from '../modelo/repetir';
 import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
 import './pauta.css';
 import './montarPauta.css';
@@ -26,7 +28,9 @@ import './montarPauta.css';
    a faixa da publicação diz se o dia está publicado ou alterado, com o Desfazer e o histórico.
    Os avisos e o recado do dia (#125): cada posição tem os seus avisos (⚑), linhas à parte das demandas, abertas pelo
    "+ aviso" (Enter cria outra, Backspace na vazia apaga); o recado do dia, para todos, fica num campo próprio, acima da
-   grade. Os dois são gravados com o rascunho e, publicados, aparecem na Pauta como os avisos de hoje. */
+   grade. Os dois são gravados com o rascunho e, publicados, aparecem na Pauta como os avisos de hoje.
+   O dia vazio (#129, DiaVazio.tsx) oferece Repetir a escala de outro dia, Colar da planilha (o #130) ou Começar do
+   zero; a posição que o Repetir deixou vaga diz o motivo, até ganhar editor. */
 
 interface Props {
   /** o dia (AAAA-MM-DD); '' é amanhã */
@@ -76,6 +80,9 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [vista, setVista] = useState<'montar' | 'conferir' | 'publicada'>('montar');
   const [publicando, setPublicando] = useState(false);
   const [erroAoPublicar, setErroAoPublicar] = useState('');
+  // depois de Repetir (#129): o que veio e quem ficou de fora; sai ao trocar de dia
+  const [repetido, setRepetido] = useState('');
+  useEffect(() => setRepetido(''), [dia]);
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
   const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[]; recado: string } | null>(null);
@@ -136,6 +143,15 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     gravarDepois(dados.dia, false);
   };
 
+  /** O dia como veio do servidor, na tela: as posições, o recado e o resto. */
+  const mostrar = useCallback((d: DiaDaEscala) => {
+    setDados(d);
+    posicoesAgora.current = d.posicoes.map(comLinha);
+    setPosicoes(posicoesAgora.current);
+    recadoAgora.current = d.recado ?? '';
+    setRecado(recadoAgora.current);
+    setGravacao('gravado');
+  }, []);
   // o dia: o que falta gravar do outro vai antes; depois, lê
   const carregar = useCallback(() => {
     let vivo = true;
@@ -143,20 +159,12 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     setVista('montar');
     void gravarAgora()
       .then(() => lerRascunhoDoDia(dia))
-      .then((d) => {
-        if (!vivo) return;
-        setDados(d);
-        posicoesAgora.current = d.posicoes.map(comLinha);
-        setPosicoes(posicoesAgora.current);
-        recadoAgora.current = d.recado ?? '';
-        setRecado(recadoAgora.current);
-        setGravacao('gravado');
-      })
+      .then((d) => vivo && mostrar(d))
       .catch((e) => vivo && setFalha(e instanceof Error ? e.message : String(e)));
     return () => {
       vivo = false;
     };
-  }, [dia, gravarAgora]);
+  }, [dia, gravarAgora, mostrar]);
   useEffect(() => carregar(), [carregar]);
   // ao sair da tela (ou fechar a aba), o que falta vai na hora
   useEffect(() => {
@@ -194,6 +202,21 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     setFoco({ posicao: p.id, campo: 'editor' });
   };
   const tirarPosicao = (id: string) => mudar((ps) => ps.filter((p) => p.id !== id), true);
+  /** Repetir (#129): a escala de outro dia no dia vazio (ou nos vazios da semana); o que falta gravar vai antes. */
+  const repetir = async (de: DeOndeRepetir) => {
+    if (!dados) return;
+    await gravarAgora();
+    const d = await repetirAEscala(dados.dia, de);
+    mostrar(d);
+    setRepetido(d.repetido?.length ? textoDoRepetido(d.repetido, de) : '');
+  };
+  /** Começar do zero: uma posição vazia em cada turno, com o foco no editor da primeira. */
+  const doZero = () => {
+    const novas = turnos.map((t): PosicaoDaEscala => ({ id: novoId('p'), turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [linhaVazia()], avisos: [] }));
+    if (!novas.length) return;
+    mudar((ps) => [...ps, ...novas], true);
+    setFoco({ posicao: novas[0].id, campo: 'editor' });
+  };
 
   // ← e → trocam de semana, fora dos campos
   const segunda = dados?.semana[0]?.dia ?? '';
@@ -325,7 +348,12 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
           <>
           <RecadoDoDia texto={recado} mudar={mudarRecado} />
           <div className="montar-grade" ref={grade}>
-            {!posicoes.length && <p className="montar-vazio">Nada montado para {diaEscrito(atual.dia).split(',')[0]} ainda. Comece por uma posição num turno.</p>}
+            {repetido && (
+              <p className="repetido" role="status">
+                {repetido}
+              </p>
+            )}
+            {!posicoes.length && (atual.repetir ? <DiaVazio dados={atual} repetir={repetir} doZero={doZero} /> : <p className="montar-vazio">Nada montado para {diaEscrito(atual.dia).split(',')[0]} ainda. Comece por uma posição num turno.</p>)}
             {turnos.map((t) => {
               const doTurno = posicoes.filter((p) => p.turno === t.id);
               return (
@@ -504,7 +532,8 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
   return (
     <div className="montar-celula" data-posicao-id={p.id}>
       <div className="montar-celula-topo">
-        <CampoDoEditor p={p} posicoes={posicoes} turnos={turnos} editores={editores} mudar={(editor) => mudar((x) => ({ ...x, editor }))} depois={() => focar({ posicao: p.id, campo: 'ilha' })} />
+        {/* a vaga que o Repetir deixou (#129) perde o motivo quando ganha editor */}
+        <CampoDoEditor p={p} posicoes={posicoes} turnos={turnos} editores={editores} mudar={(editor) => mudar(({ vaga, ...x }) => (editor.trim() ? { ...x, editor } : { ...x, editor, ...(vaga ? { vaga } : {}) }))} depois={() => focar({ posicao: p.id, campo: 'ilha' })} />
         {/* fora do Tab: do editor, o Tab vai direto ao horário */}
         <button type="button" tabIndex={-1} className="botao-icone pequeno montar-tirar" title="Tirar esta posição" aria-label="Tirar esta posição" onClick={tirar}>
           <Icone nome="fechar" tam={13} />
@@ -513,6 +542,11 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
       <div className="montar-sob">
         {situacao?.tipo === 'escalado' && <span className="montar-alerta">{textoDaSituacao(situacao, turnos)}</span>}
         {!naLista && <span className="montar-tag">nome novo</span>}
+        {p.vaga && !p.editor.trim() && (
+          <span className="montar-vaga">
+            <b>vaga</b> · {p.vaga}
+          </span>
+        )}
       </div>
       <CampoDaIlha
         p={p}
