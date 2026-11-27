@@ -1052,6 +1052,7 @@ import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import type { DiaDaEscala, PosicaoDaEscala, TurnoDaEscala } from '../modelo/escala';
+import type { FotoDoDia } from '../modelo/fotoDaPlanilha';
 import type { DeOndeRepetir } from '../modelo/repetir';
 import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
@@ -1464,6 +1465,8 @@ export const gravarRascunhoDoDia = (dia: string, posicoes: PosicaoDaEscala[], re
 export const marcarPendencia = (dia: string, chave: string, certo: boolean) => pedir<DiaDaEscala>(`/api/montar-pauta/conferida?dia=${dia}`, { method: 'POST', body: JSON.stringify({ chave, certo }) });
 /** Publica o rascunho gravado do dia, mesmo com pendências (#127); devolve o dia, com a publicação. */
 export const publicarODia = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/publicar?dia=${dia}`, { method: 'POST' });
+/** A foto mais nova da planilha da edição para o dia, o que o PROMeiro leu dela e as diferenças com o rascunho gravado (#133). */
+export const lerAFotoDoDia = (dia: string) => pedir<FotoDoDia>(`/api/montar-pauta/foto?dia=${dia}`);
 /** Desfaz a última publicação do dia (vale a anterior, ou nenhuma) (#127); devolve o dia. */
 export const desfazerAPublicacao = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/desfazer?dia=${dia}`, { method: 'POST' });
 /* A coluna lateral (#126): cada ação devolve o dia, como o GET. */

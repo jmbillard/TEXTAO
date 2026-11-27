@@ -1,0 +1,29 @@
+/* A semana lado a lado com a planilha (#133): a faixa acima da grade. O estado vai na bolinha e nas etiquetas, nunca
+   numa faixa colorida na borda. */
+.lado { margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); font: 400 13px/1.4 var(--sans); color: var(--tinta2); }
+.lado.com-diferencas { background: color-mix(in srgb, var(--falta) 5%, var(--cartao)); }
+.lado-sem, .lado-falha { color: var(--tinta3); }
+.lado-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.lado-texto { flex: 1; min-width: 0; }
+.lado-texto b { color: var(--tinta); }
+.lado-ponto { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.lado-ponto.difere { background: var(--falta); }
+.lado-conta { font-weight: 600; color: var(--falta); }
+.lado-corpo { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.lado-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 8px; }
+.lado-pos { min-width: 0; padding: 8px 10px; border: 1px solid var(--regua); border-radius: 10px; background: var(--cartao); }
+.lado-pos-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 4px; }
+.lado-pos-cab b { font: 600 14px var(--sans); color: var(--tinta); }
+.lado-turno { font: 500 11.5px var(--mono); color: var(--tinta3); }
+.lado-onde { display: inline-block; padding: 0 6px; border-radius: 6px; font: 600 10.5px/17px var(--sans); background: var(--ultra-suave); color: var(--ultra); }
+.lado-onde.planilha { background: color-mix(in srgb, var(--falta) 12%, transparent); color: var(--falta); }
+.lado-campos { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12.5px; }
+.lado-campos th, .lado-campos td { padding: 3px 6px 3px 0; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.lado-campos thead th { white-space: nowrap; overflow-wrap: normal; font: 600 10.5px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta3); }
+.lado-campos tbody th { width: 76px; font-weight: 600; color: var(--tinta3); }
+.lado-campos td { font-family: var(--mono); color: var(--tinta); }
+.lado-fora { margin: 0; }
+.lado-foto summary { cursor: pointer; font-weight: 600; }
+.lado-grade { max-height: 360px; margin-top: 6px; overflow: auto; border: 1px solid var(--regua); border-radius: 8px; }
+.lado-grade table { border-collapse: collapse; font: 400 11.5px var(--mono); }
+.lado-grade td { min-width: 24px; max-width: 220px; padding: 2px 6px; border: 1px solid var(--regua); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--tinta2); }

@@ -56,6 +56,12 @@
 // horários e as claquetes no padrão, o aviso quebrado juntado, e a folga da Bia vira ausência, na caixa "Fora".
 // Colado de novo só um turno, "Juntar ao rascunho" acrescenta à Elis só a claquete que faltava. Recarregada, fica.
 //
+// A semana lado a lado com a planilha (#133): no dia colado, sem foto, a faixa diz que ainda não chegou. O n8n de
+// mentira manda a mesma aba como foto crua (sem o token, 401; a mesma de novo só confirma); a faixa diz de quando é a
+// foto e mostra 1 diferença (a claquete que o "Juntar" deu à Elis, que a planilha não tem), com o "ELIZ" casado com a
+// Elis escalada; a foto crua abre à parte. Mudar o horário do Rui na grade vira diferença na hora, e voltar a tira.
+// No celular (escuro), a faixa aberta cabe na tela.
+//
 // Repetir (#129): numa semana adiante, com a semana anterior montada (o Rui com claquete e COMUNICAÇÃO; a Elis com
 // CALHAUS) e a Elis de férias na segunda e na terça, o dia vazio oferece Repetir (o mesmo dia na semana passada, o de
 // ontem, que está vazio e fica desligado, e a semana passada inteira), Colar da planilha (o #130) e
@@ -901,6 +907,65 @@ async function colarDaPlanilha(navegador, url) {
   console.log('ok: colar da planilha (o resumo, as notas, a pergunta do nome, pôr no dia, a ausência e juntar)');
 }
 
+/* ---------- A semana lado a lado com a planilha (#133) ---------- */
+const TOKEN_DA_FOTO = 'token-da-foto-e2e';
+/** O n8n de mentira: manda a foto crua (formato 1) de uma aba, como a API do Google devolve a grade. */
+const mandarAFoto = (api, aba, texto) =>
+  fetch(`${api}/publico/edicao/foto`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${TOKEN_DA_FOTO}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ formato: 1, origem: { fluxo: 'fluxo-e2e', execucao: '1' }, lida_em: new Date().toISOString(), todas_as_abas: [aba], abas: [{ aba, intervalo: `'${aba}'!A1:AD80`, sheetId: 1, data_da_aba: null, linhas: texto.split('\n').map((l) => l.split('\t')), mesclas: [] }] }),
+  });
+
+async function ladoALado(navegador, url, api) {
+  // sem foto do dia: a faixa só diz que ainda não chegou
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${colarDia}`);
+  await p.locator('.montar-celula').first().waitFor();
+  await p.getByText('ainda não chegou foto da planilha para este dia', { exact: false }).waitFor();
+  // sem o token, a rota recusa; com ele, guarda a aba (e a mesma de novo só confirma)
+  assert.equal((await fetch(`${api}/publico/edicao/foto`, { method: 'POST', body: '{}' })).status, 401);
+  assert.deepEqual(await (await mandarAFoto(api, 'SEXTA', ABA)).json(), { gravadas: 1, iguais: 0 });
+  assert.deepEqual(await (await mandarAFoto(api, 'SEXTA', ABA)).json(), { gravadas: 0, iguais: 1 });
+
+  // a foto é a aba que a Bia colou; depois, o "Juntar" deu à Elis uma claquete que a planilha não tem
+  await p.reload();
+  const lado = p.getByRole('region', { name: 'Lado a lado com a planilha' });
+  await lado.getByText('1 diferença', { exact: true }).waitFor();
+  await lado.getByText('3 posições iguais', { exact: false }).waitFor();
+  await lado.getByRole('button', { name: 'ver as diferenças' }).click();
+  const lista = lado.getByRole('list', { name: 'Diferenças por posição' });
+  const textos = async () => (await lista.locator('.lado-pos').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+  assert.deepEqual(await textos(), [`Elis Furtado Manhã PROMEIRO PLANILHA Demandas Cozinha de Raiz ${dm(colarDia)} (AH) —`]);
+  await lado.getByText('A foto crua da aba SEXTA').click();
+  await lado.locator('.lado-grade td', { hasText: 'TOMÁS NOVO' }).waitFor();
+  await semRolagemDeLado(p, 'lado a lado');
+  await capturar(p, '20-lado-a-lado');
+
+  // a comparação acompanha o que está sendo digitado: o horário do Rui, mudado, vira diferença
+  const rui = p.locator('.montar-celula').filter({ has: p.locator('[data-campo="editor"][value="Rui Teixeira"]') });
+  const hora = rui.locator('[data-campo="horario"]');
+  await hora.fill('22 as 5');
+  await hora.press('Tab');
+  await lado.getByText('2 diferenças', { exact: true }).waitFor();
+  await ate(async () => assert.deepEqual((await textos())[0], 'Rui Teixeira Madrugada PROMEIRO PLANILHA Horário 22h às 5h 22h às 6h'));
+  await hora.fill('22h às 6h');
+  await hora.press('Tab');
+  await lado.getByText('1 diferença', { exact: true }).waitFor();
+  assert.deepEqual(erros, [], 'lado a lado: erros na página');
+  await ctx.close();
+
+  // no celular (escuro), a faixa aberta cabe na tela
+  const cel = await abrir(navegador, url, BIA, `#/pauta/montar/${colarDia}`, { viewport: { width: 390, height: 844 }, colorScheme: 'dark', hasTouch: true, isMobile: true });
+  const ladoCel = cel.p.getByRole('region', { name: 'Lado a lado com a planilha' });
+  await ladoCel.getByRole('button', { name: 'ver as diferenças' }).click();
+  await ladoCel.getByText('A foto crua da aba SEXTA').click();
+  await semRolagemDeLado(cel.p, 'lado a lado no celular');
+  await capturar(cel.p, '21-lado-a-lado-celular');
+  assert.deepEqual(cel.erros, [], 'lado a lado no celular: erros na página');
+  await cel.ctx.close();
+  console.log('ok: a semana lado a lado (a foto com token, guardada só quando muda, e as diferenças posição por posição)');
+}
+
 /* ---------- Repetir (#129) ---------- */
 async function repetir(navegador, url, api) {
   const h = { 'cf-access-authenticated-user-email': BIA, 'content-type': 'application/json' };
@@ -981,7 +1046,7 @@ async function principal() {
   // o Teable falso da descoberta e do Postgres da pauta (#127), só leitura
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const teable = teableFalso({ EDICAO_producao: 'pauta_e2e' }, { registros: { EDICAO_producao: PAUTA_DO_TEABLE } });
-  const s = await subir({ cadastros, teable, pg: teable.abrirPg, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG } });
+  const s = await subir({ cadastros, teable, pg: teable.abrirPg, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG, EDICAO_FOTO_TOKEN: TOKEN_DA_FOTO } });
   // o convite do tour não atrapalha
   for (const quem of [LIA, BIA, CHEFE]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
@@ -1000,6 +1065,7 @@ async function principal() {
     await colunaEArrastar(navegador, s.url);
     await repetir(navegador, s.url, s.api);
     await colarDaPlanilha(navegador, s.url);
+    await ladoALado(navegador, s.url, s.api);
   } catch (e) {
     falhou = true;
     console.error(e);

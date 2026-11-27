@@ -78,6 +78,90 @@ Delete). O caminho volta para trás do login, como o resto do domínio: o Padeir
 segue pelo n8n, como antes), e as chaves continuam guardadas, sem valer para nada até o Bypass voltar. Para cortar um
 Padeiro só, sem mexer no Access, revogue a chave dele nos Cadastros.
 
+## A semana lado a lado com a planilha (a foto da edição)
+
+Durante a transição da pauta da edição (#133, ADR 0006), a coordenação monta nas duas: no PROMeiro e na planilha. O
+n8n manda ao PROMeiro, de hora em hora, a **foto crua** das abas da planilha, e a tela **Montar a pauta** mostra, acima
+da grade, as diferenças entre o dia montado e a foto do mesmo dia, posição por posição. O fluxo do n8n que grava a
+pauta no Teable continua como está; a foto é um ramo à parte, que nunca para nem muda a pauta.
+
+**A rota:** `POST /api/publico/edicao/foto`, fora do login, com o cabeçalho `Authorization: Bearer <EDICAO_FOTO_TOKEN>`
+e o corpo JSON (até 1 MB) no **formato 1**:
+
+```json
+{
+  "formato": 1,
+  "origem": { "fluxo": "<id do fluxo>", "execucao": "<id da execução>" },
+  "lida_em": "2026-11-27T10:15:04.120-03:00",
+  "todas_as_abas": ["SEGUNDA", "TERÇA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO", "DOMINGO"],
+  "abas": [
+    {
+      "aba": "SEXTA",
+      "intervalo": "'SEXTA'!A1:AD80",
+      "sheetId": 0,
+      "data_da_aba": "2026-11-27",
+      "linhas": [["", "SEXTA", "27/11/2026"], [], ["", "EDITOR: ", "<nome>"], ["", "HORÁRIO: ", "22H AS 6H"]],
+      "mesclas": [[3, 1, 4, 17]]
+    }
+  ]
+}
+```
+
+- `linhas` é a grade como a API do Google devolve (`FORMATTED_VALUE`), célula por célula, como texto; `mesclas` vem
+  em `[linha inicial, coluna inicial, linha final, coluna final)`, contando a partir de 0; `data_da_aba` é só uma
+  pista (o PROMeiro lê o dia na própria grade).
+- A resposta é `{ "gravadas": n, "iguais": m }`. O PROMeiro guarda no SQLite (a tabela `edicao_fotos`, que entra no
+  backup) só a aba que mudou desde a última foto dela; a igual só ganha a hora da confirmação. Passados 180 dias, fica
+  só a última foto de cada aba em cada dia.
+- Sem o token, ou com o errado, `401`; sem `EDICAO_FOTO_TOKEN` no Portainer, a rota fica desligada (`404`); a foto
+  fora do formato, `400`; maior que 1 MB, `413`. O caminho torto (`%2e%2e`, barras repetidas, outra caixa) é `404` e
+  nunca chega às rotas com login.
+- **A leitura:** a grade da foto vira o mesmo texto que a pessoa colaria da planilha e passa pelo leitor do **Colar da
+  planilha** (#130). A comparação casa cada posição pelo editor e pelo turno (a vaga, pelo turno e pela ilha) e mostra
+  o turno, a ilha, o horário, as demandas e os avisos que diferem, e quem está fora só de um lado. A grafia (`Dp` ×
+  `(DP)`, caixa, acento) não é diferença.
+
+**O seu lado** (o PROMeiro não mexe no n8n):
+
+1. **No Portainer:** gere o token (`openssl rand -hex 24`), ponha em `EDICAO_FOTO_TOKEN` e atualize a stack.
+2. **No n8n, a credencial:** Credentials → New → **Header Auth**, nome "PROMeiro - foto da edição", com o *Name*
+   `Authorization` e o *Value* `Bearer <o mesmo token>`.
+3. **No n8n, o ramo da foto**, no fluxo da esteira de pós dos editores, saindo do nó `Globals` (ao lado do ramo da
+   pauta, que não muda). O `Globals` ganha duas constantes: `planilha_edicao` (o id da planilha, o mesmo do nó
+   `Get data`) e `promeiro_foto` (`http://promeiro/api/publico/edicao/foto`). Os quatro nós, todos com
+   *On Error* → **Continue** (`continueRegularOutput`); os HTTP com 3 tentativas (*Retry On Fail*) e 30 s de timeout:
+   1. **`Foto: lê as abas`** (HTTP Request, GET, *Predefined Credential Type* → Google Sheets, a mesma credencial do
+      `Get data`): `https://sheets.googleapis.com/v4/spreadsheets/{{ $json.constants.planilha_edicao }}/values:batchGet?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE&ranges='SEGUNDA'!A1:AD80&ranges='TERÇA'!A1:AD80&…&ranges='DOMINGO'!A1:AD80`
+      (as 7 faixas numa chamada só).
+   2. **`Foto: lê as mesclas`** (HTTP Request, GET, a mesma credencial):
+      `https://sheets.googleapis.com/v4/spreadsheets/{{ id }}?fields=sheets(properties(sheetId,title),merges)`.
+   3. **`Foto: monta o pacote`** (Code, *Run Once for All Items*): monta o JSON do formato 1 acima, com `lida_em:
+      $now.toISO()`, `origem: { fluxo: $workflow.id, execucao: $execution.id }`, `todas_as_abas` (os títulos de
+      `sheets`) e, para cada uma das 7 abas, `linhas` (os `values` da faixa, cada célula como texto), `mesclas` (os
+      `merges` da aba, em `[startRowIndex, startColumnIndex, endRowIndex, endColumnIndex]`) e a pista `data_da_aba`.
+      Sem a leitura das abas, não devolve nada (o ramo para ali).
+   4. **`Foto: manda ao PROMeiro`** (HTTP Request, POST, *Generic Credential Type* → Header Auth "PROMeiro - foto da
+      edição"): o endereço `{{ $('Globals').first().json.constants.promeiro_foto }}`, *Body* JSON com
+      `{{ JSON.stringify($json) }}`.
+4. **A rede:** o PROMeiro está na rede do n8n (`REDE_N8N`), e por ali o pedido nem passa pelo Cloudflare. Se o nome
+   `promeiro` não resolver no n8n, use o endereço público (`PROMEIRO_URL/api/publico/edicao/foto`); aí é preciso uma
+   aplicação no Cloudflare Access **só para o caminho `api/publico/edicao`**, com a política **Bypass** para Everyone
+   (como a do pôster público).
+5. **Confira** de dentro do container do n8n (ou troque o endereço pelo público), com o token no lugar de `<token>`:
+
+   ```sh
+   curl -i -X POST http://promeiro/api/publico/edicao/foto \
+     -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+     -d '{"formato":1,"lida_em":"2026-11-27T10:15:00-03:00","abas":[{"aba":"TESTE","linhas":[["","SEXTA","27/11/2026"]],"mesclas":[]}]}'
+   ```
+
+   A resposta é `200 {"gravadas":1,"iguais":0}`; o mesmo pedido de novo dá `{"gravadas":0,"iguais":1}`. Sem o
+   cabeçalho, `401`; `404` quer dizer que o `EDICAO_FOTO_TOKEN` está vazio no PROMeiro. Depois da primeira rodada do
+   fluxo, a tela **Montar a pauta** mostra, acima da grade, "Lado a lado com a planilha · aba …, lida …" no dia da aba.
+
+**Para desligar:** desligue o nó `Foto: manda ao PROMeiro` no n8n, ou esvazie o `EDICAO_FOTO_TOKEN` (a rota volta a
+responder 404). As fotos guardadas ficam no SQLite; o ramo da pauta do n8n não depende delas.
+
 ## O aviso do Trello: desligado
 
 O aviso do Trello (#87, o webhook do quadro, e a recuperação das ações do quadro, #88) está **desligado por padrão** e

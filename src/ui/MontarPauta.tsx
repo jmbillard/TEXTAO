@@ -15,6 +15,7 @@ import { Marca } from './pecas';
 import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { AusenciasDoDia } from './AusenciasDaPauta';
 import { ColarDaPlanilha, type ColadoParaAplicar } from './ColarDaPlanilha';
+import { LadoALado } from './LadoALado';
 import { DiaVazio, textoDoRepetido } from './DiaVazio';
 import type { DeOndeRepetir } from '../modelo/repetir';
 import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
@@ -44,7 +45,8 @@ import './montarPauta.css';
    as posições do rascunho, grava, marca as ausências lidas e lê o dia de novo.
 
    O dia vazio (#129, DiaVazio.tsx) oferece Repetir a escala de outro dia, Colar da planilha (o mesmo diálogo) ou Começar do
-   zero; a posição que o Repetir deixou vaga diz o motivo, até ganhar editor. */
+   zero; a posição que o Repetir deixou vaga diz o motivo, até ganhar editor.
+   A semana lado a lado (#133, LadoALado.tsx): acima da grade, as diferenças entre o dia montado e a foto da planilha. */
 
 interface Props {
   /** o dia (AAAA-MM-DD); '' é amanhã */
@@ -470,6 +472,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
         {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
+        {/* a semana lado a lado com a planilha (#133): as diferenças com a foto do mesmo dia */}
+        {atual && <LadoALado dados={atual} posicoes={posicoes} foraNoDia={foraNoDia} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}
