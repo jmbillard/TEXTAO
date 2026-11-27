@@ -89,6 +89,8 @@ const ARTIGOS = new Set(['A', 'O', 'AS', 'OS', 'UM', 'UMA', 'UNS', 'UMAS', 'THE'
 /** Palavra curta ("Gol", "Casa") só vale igual: uma letra de diferença nela já é outro nome. */
 const PALAVRA_LONGA = 5;
 const palavrasDoNome = (nome: string) => nomeComparavel(nome).split(' ').filter((p) => p && !ARTIGOS.has(p));
+/** O nome sem caixa, acento, pontuação e artigos ("A Cozinha Mágica" é "COZINHA MAGICA"): a ligação da atração pelo nome. */
+export const nomeSemArtigos = (nome: string) => palavrasDoNome(nome).join(' ');
 
 /** A ordem das fichas: pelo nome, e o empate pelo id. */
 const ordem = (a: { id: string; nome: string }, b: { id: string; nome: string }) => a.nome.localeCompare(b.nome, 'pt-BR') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
