@@ -68,7 +68,7 @@ import { DIAS_DA_CONTINUIDADE, historicoDaPauta } from '../src/modelo/distribuir
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { CHAVE_DA_AGENDA_DE_FILMES, recusaDaFormaDaAgenda } from '../src/modelo/agendaDeFilmes.ts';
-import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDaOrdem, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
+import { CHAVE_DA_ORDEM, CHAVE_DO_FILTRO, CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDaOrdem, recusaDoFiltro, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarCardDaProducao } from './card-da-producao.mjs';
 import { SEM_PAPEL as SEM_PAPEL_NAS_CAMPANHAS, criarCampanhas } from './campanhas.mjs';
@@ -3038,7 +3038,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // roteiros (#103): { 'exibicao.redator': 'quadro' }, ou a visão e os arranjos da Pauta da edição (#98), que é de
       // todo mundo: { 'pauta.visao': 'dia' }, ou os blocos recolhidos da tela de produções (#113), também de todo mundo:
       // { 'producoes.recolhidos': ['RJ'] }, a ordem das praças arrumada arrastando (#159): { 'producoes.ordem': ['SP', 'RJ'] },
-      // e a forma de ver a agenda de filmes (#169): { 'filmes.agenda': 'sessao' }.
+      // a forma de ver a agenda de filmes (#169): { 'filmes.agenda': 'sessao' }, e a campanha que filtra a tela de
+      // produções (#179): { 'producoes.campanha': { id, nome } } (null tira).
       // Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
@@ -3060,6 +3061,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         if (chave === CHAVE_DA_AGENDA_DE_FILMES) {
           // a forma de ver a agenda de filmes (#169), de todo mundo: { 'filmes.agenda': 'data' | 'sessao' }
           const recusa = recusaDaFormaDaAgenda(valor);
+          if (recusa) return json(res, 400, { erro: recusa });
+          continue;
+        }
+        if (chave === CHAVE_DO_FILTRO) {
+          // a campanha que filtra a tela de produções (#179), de todo mundo: { 'producoes.campanha': { id, nome } | null }
+          const recusa = recusaDoFiltro(valor);
           if (recusa) return json(res, 400, { erro: recusa });
           continue;
         }

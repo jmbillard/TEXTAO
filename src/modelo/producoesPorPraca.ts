@@ -190,6 +190,46 @@ export function moverAPraca(ordem: readonly string[], praca: string, para: numbe
   return [...resto.slice(0, i), praca, ...resto.slice(i)];
 }
 
+/* ---------- o filtro por campanha (#179) ---------- */
+
+/** A chave das preferências da pessoa com a campanha que filtra a tela de produções ({ id, nome }); sem a chave (ou
+    null), sem filtro. O nome vai junto para o topo dizer a campanha antes de a tela ler. */
+export const CHAVE_DO_FILTRO = 'producoes.campanha';
+/** O tamanho máximo do id e do nome da campanha lembrada (o nome é o da campanha, servidor/campanhas.mjs). */
+const ID_NO_MAXIMO = 64;
+const NOME_NO_MAXIMO = 80;
+const ehFiltro = (valor: unknown): valor is CampanhaDoCard => {
+  const v = valor as Partial<CampanhaDoCard> | null;
+  return !!v && typeof v === 'object' && typeof v.id === 'string' && !!v.id && v.id.length <= ID_NO_MAXIMO && typeof v.nome === 'string' && v.nome.length <= NOME_NO_MAXIMO;
+};
+
+/** A recusa do filtro: '' quando vale (a campanha ou null, para tirar). */
+export const recusaDoFiltro = (valor: unknown): string => (valor === null || ehFiltro(valor) ? '' : 'Filtro da campanha inválido: mande a campanha ({ id, nome }) ou null.');
+
+/** A campanha que a pessoa deixou filtrando; a lembrada que já não vale conta como nenhuma. */
+export const filtroDe = (preferencias: Record<string, unknown> | undefined): CampanhaDoCard | null => {
+  const lembrado = preferencias?.[CHAVE_DO_FILTRO];
+  return ehFiltro(lembrado) ? { id: lembrado.id, nome: lembrado.nome } : null;
+};
+
+const daCampanha = (c: CardDaProducao, id: string) => !!c.campanhas?.some((x) => x.id === id);
+
+/** A tela só com as Produções da campanha, nas praças de sempre (a praça sem nenhuma fica, vazia); sem filtro, a tela
+    como veio. As contagens saem das colunas, então acompanham. */
+export function soDaCampanha<T extends TelaDeProducoes>(tela: T, id: string | null): T {
+  if (!id) return tela;
+  return { ...tela, blocos: tela.blocos.map((b) => ({ ...b, colunas: Object.fromEntries(COLUNAS_DO_BLOCO.map((k) => [k, b.colunas[k].filter((c) => daCampanha(c, id))])) as BlocoDaPraca['colunas'] })) };
+}
+
+/** O nome da campanha do filtro: o das etiquetas da tela (vale a renomeada), ou, sem nenhuma, o lembrado. */
+export function nomeDoFiltro(filtro: CampanhaDoCard, tela: TelaDeProducoes | null): string {
+  for (const b of tela?.blocos ?? []) for (const k of COLUNAS_DO_BLOCO) for (const c of b.colunas[k]) {
+    const achada = c.campanhas?.find((x) => x.id === filtro.id);
+    if (achada) return achada.nome;
+  }
+  return filtro.nome;
+}
+
 /* ---------- as divisórias por dia no Entregue (#159) ---------- */
 
 /** O Entregue agrupado pelo dia da entrega (em São Paulo), do mais novo para o mais velho; em cada dia, a ordem dos cards.

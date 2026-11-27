@@ -937,3 +937,32 @@ describe('a tela de produções: a ordem das praças, lembrada por pessoa', () =
     expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
   });
 });
+
+/* O filtro por campanha (#179): a campanha que filtra a tela de produções fica nas preferências da pessoa, com a chave
+   `producoes.campanha` ({ id, nome }; null tira), como os recolhidos e a ordem. */
+describe('a tela de produções: o filtro por campanha, lembrado por pessoa', () => {
+  const CHAVE = 'producoes.campanha';
+  type Servidor = Awaited<ReturnType<typeof comServidor>>;
+  const lembradas = async (s: Servidor, quem: 'ana' | 'chefe') => ((await (await s[quem]('/api/eu')).json()) as { preferencias: Record<string, unknown> }).preferencias;
+  const filtrar = (s: Servidor, quem: 'ana' | 'chefe', corpo: unknown) => s[quem]('/api/eu/preferencias', { method: 'PUT', body: JSON.stringify(corpo) });
+
+  it('grava, lê e tira o filtro de cada pessoa', async () => {
+    const s = await comServidor();
+    const campanha = { id: 'cp-ficticia', nome: 'Lançamento Fictício' };
+    expect((await filtrar(s, 'ana', { [CHAVE]: campanha })).status).toBe(200);
+    expect(await lembradas(s, 'ana')).toMatchObject({ [CHAVE]: campanha });
+    expect(await lembradas(s, 'chefe')).not.toHaveProperty(CHAVE);
+    expect((await filtrar(s, 'ana', { [CHAVE]: null })).status).toBe(200);
+    expect((await lembradas(s, 'ana'))[CHAVE]).toBeNull();
+  });
+
+  it('recusa o que não é uma campanha', async () => {
+    const s = await comServidor();
+    for (const valor of ['cp-ficticia', { id: '' , nome: 'x' }, { id: 'x' }, ['x']]) {
+      const r = await filtrar(s, 'ana', { [CHAVE]: valor });
+      expect(r.status).toBe(400);
+      expect((await r.json()).erro).toBe('Filtro da campanha inválido: mande a campanha ({ id, nome }) ou null.');
+    }
+    expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
+  });
+});

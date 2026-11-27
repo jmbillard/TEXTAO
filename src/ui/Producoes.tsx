@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as PointerDoReact, type ReactNode } from 'react';
 import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
-import { blocosRecolhidos, lerProducaoAberta, type ProducaoAberta as ProducaoLida, desfazerEtapaDaProducao, lembrarOrdemDasPracas, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao, ordemDasPracas } from '../dados/armazenamento';
-import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, abertasNoComeco, abrirAPraca, comOCard, diaDoPrazo, diasDoEntregue, faltaArte, naOrdem, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { blocosRecolhidos, campanhaDoFiltro, lembrarFiltroDaCampanha, lerCampanhas, lerProducaoAberta, type ProducaoAberta as ProducaoLida, desfazerEtapaDaProducao, lembrarOrdemDasPracas, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao, ordemDasPracas } from '../dados/armazenamento';
+import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, abertasNoComeco, abrirAPraca, comOCard, diaDoPrazo, diasDoEntregue, faltaArte, naOrdem, nomeDoFiltro, soDaCampanha, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
+import type { CampanhaDoCard } from '../modelo/campanhas';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, RABISCOS, tracoDe } from './pecas';
 import { CaixinhaDoDesfazer } from './CaixinhaDoDesfazer';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
+import { CampanhaDoFiltro, EscolherCampanha } from './FiltroDaCampanha';
 import { ProducaoAberta } from './ProducaoAberta';
 import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
 import { BuscaDasProducoes, usePresenca } from './BuscaDasProducoes';
 import { useDeslize, useReordenar, useRolagemDosBlocos } from './movimentoDasProducoes';
-import { plural } from './util';
+import { plural, semMovimento } from './util';
 import { ConflitoDoCard, NomeDaClaquete, versoesDoCard } from './Apelido';
 import './producoes.css';
 
@@ -48,7 +50,11 @@ import './producoes.css';
    #161: com o mouse sobre um card, o espaço faz o mesmo que o "Peguei" (como no Trello), com a caixinha de desfazer; no
    card que não tem o "Peguei" (o que já é da pessoa, o de Produzindo, o entregue), nada; num campo de texto, nada. E a
    lupa do topo busca no histórico todo, também os entregues antigos (src/ui/BuscaDasProducoes.tsx), numa lista no lugar
-   dos blocos. */
+   dos blocos.
+   #179: o filtro por campanha. O botão "Campanha" ao lado da lupa (ou um clique na etiqueta de um card) escolhe a
+   campanha, e as praças de sempre mostram só as Produções dela, com as contagens acompanhando; o nome fica ao lado do
+   título ("só" e a etiqueta), e o × dele ou o Esc tiram o filtro. Os cards que saem esmaecem, os que ficam deslizam
+   (o FLIP) e os que chegam vêm em cascata, de coluna em coluna. A escolha fica lembrada por pessoa. */
 
 interface Props {
   /** a linha do logo: o caminho "PROMeiro / designer ▾", a agenda No Trello, a Pauta da edição e o perfil */
@@ -208,7 +214,14 @@ const Alca = () => (
 /** O clique que abre a Produção (#113): no card, fora dos botões, do link e do aviso de arte faltando. */
 const cliqueDeAbrir = (e: { target: EventTarget }) => !(e.target as Element).closest('button, a, .prod-aviso');
 
-function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: (el: HTMLElement) => void }) {
+/** O que o card faz com o filtro por campanha (#179): filtrar pela etiqueta, e se ele está saindo (fora da campanha
+    escolhida, esmaecendo antes de o filtro valer). */
+interface NoFiltro {
+  filtrar: (c: CampanhaDoCard) => void;
+  saindo: (c: CardDaProducao) => boolean;
+}
+
+function CardDaTela({ c, hoje, acoes, abrir, filtro }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: (el: HTMLElement) => void; filtro: NoFiltro }) {
   // o apelido da claquete da Produção (#120, #154) no lugar da claquete: só para mostrar; a original, ao passar o mouse
   useApelidos();
   const apelido = apelidoDaProducao(c.id);
@@ -220,7 +233,7 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
   const arrastar = acoes?.arrastar ?? null;
   return (
     <li
-      className={`prod-card${c.alta ? ' alta' : ''}${arrastar ? ' arrastavel' : ''}`}
+      className={`prod-card${c.alta ? ' alta' : ''}${arrastar ? ' arrastavel' : ''}${filtro.saindo(c) ? ' saindo-do-filtro' : ''}`}
       data-producao={c.id}
       data-etapa={c.etapa}
       draggable={!!arrastar}
@@ -250,8 +263,9 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
       {/* as versões da chamada (#121, #152) vão no fim do nome; aqui, só o aviso quando o roteiro diz outra coisa */}
       <ConflitoDoCard versoes={versoes} />
       <span className="prod-atracao">{c.atracao || 'sem atração'}</span>
-      {/* a etiqueta da campanha (#178): a primeira ligada e "+N" das outras; sempre montada, para a que chega carimbar */}
-      <EtiquetaDaCampanha campanhas={c.campanhas} />
+      {/* a etiqueta da campanha (#178): a primeira ligada e "+N" das outras; sempre montada, para a que chega carimbar.
+          #179: o clique nela filtra a tela pela campanha (enquanto a página da campanha não existe) */}
+      <EtiquetaDaCampanha campanhas={c.campanhas} abrir={filtro.filtrar} rotuloDoAbrir={(x) => `Só a campanha ${x.nome}`} />
       <span className="prod-linha">
         {artes && <span className="prod-artes">{artes}</span>}
         {c.prazo ? (
@@ -318,9 +332,23 @@ interface DoBloco {
   arrastar: (e: PointerDoReact<HTMLElement>) => void;
   /** a vez do bloco na cascata da primeira carga (#159): as colunas chegam uma depois da outra, de bloco em bloco */
   cascata: number;
+  /** o lugar do bloco na tela, para a cascata dos cards que chegam com o filtro por campanha (#179) */
+  vez: number;
+  filtro: NoFiltro;
 }
 /** O intervalo da cascata, de coluna em coluna. */
 const CASCATA_MS = 35;
+/** O filtro por campanha (#179): quanto os cards de fora esmaecem antes de o filtro valer (o CSS tem o mesmo tempo), e
+    o passo da cascata de card em card numa coluna (até o 8º). */
+const SAIDA_DO_FILTRO_MS = 160;
+const CASCATA_DO_CARD_MS = 20;
+/** A espera do card que chega com o filtro: a vez da coluna (a cascata de sempre) e a dele na coluna. */
+function atrasoDaCascata(e: HTMLElement) {
+  const coluna = e.closest<HTMLElement>('[data-vez]');
+  if (!coluna) return 0;
+  const i = [...coluna.querySelectorAll('.prod-card')].indexOf(e);
+  return Number(coluna.dataset.vez ?? 0) * CASCATA_MS + Math.min(Math.max(0, i), 8) * CASCATA_DO_CARD_MS;
+}
 
 /** O bloco recolhido (#113): uma coluna estreita com a sigla e o nome na vertical (#159) e a contagem de cada coluna;
     um clique mostra de novo. */
@@ -401,7 +429,7 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
   const cardsDe = (cs: CardDaProducao[]) => (
     <ul className="prod-cards">
       {cs.map((c) => (
-        <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} abrir={(el) => bloco.abrir(c, el)} />
+        <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} abrir={(el) => bloco.abrir(c, el)} filtro={bloco.filtro} />
       ))}
     </ul>
   );
@@ -425,6 +453,7 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
             style={{ '--atraso': `${(bloco.cascata + i) * CASCATA_MS}ms` } as CSSProperties}
             className={`prod-coluna${k === 'produzindo' && fina ? ' fina' : ''}${aceita(k) ? ' aceita' : ''}${aceita(k) && arrasto?.sobre === k ? ' sobre' : ''}`}
             data-coluna={k}
+            data-vez={bloco.vez + i}
             aria-label={`${b.praca} · ${ROTULO_DA_COLUNA[k]}`}
             onDragOver={(e) => {
               if (!aceita(k)) return;
@@ -501,6 +530,47 @@ export function Producoes({ topo }: Props) {
   // a busca no histórico (#161): com o termo, a lista dos achados fica no lugar dos blocos (e sai animando)
   const [busca, setBusca] = useState('');
   const buscaAtiva = !!busca.trim();
+  /* o filtro por campanha (#179), lembrado por pessoa. Escolhida a campanha, os cards de fora esmaecem (`indo`) e só
+     então o filtro vale; `refiltrou` é o instante em que vale, com o FLIP de todos e a cascata de quem chega */
+  const [filtro, setFiltro] = useState<CampanhaDoCard | null>(campanhaDoFiltro);
+  const [indoPara, setIndoPara] = useState<CampanhaDoCard | null>(null);
+  const [refiltrou, setRefiltrou] = useState(false);
+  const filtroAgora = useRef(filtro);
+  filtroAgora.current = filtro;
+  const esperaDoFiltro = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const aplicarOFiltro = useCallback((c: CampanhaDoCard | null) => {
+    clearTimeout(esperaDoFiltro.current);
+    setIndoPara(null);
+    setFiltro(c);
+    setRefiltrou(true);
+    void lembrarFiltroDaCampanha(c);
+  }, []);
+  /** Filtrar pela campanha (ou tirar o filtro, null). Tirar não tem quem saia: os que voltam chegam em cascata. */
+  const filtrar = useCallback(
+    (c: CampanhaDoCard | null) => {
+      clearTimeout(esperaDoFiltro.current);
+      if ((c?.id ?? null) === (filtroAgora.current?.id ?? null)) return setIndoPara(null);
+      if (!c || semMovimento()) return aplicarOFiltro(c);
+      setIndoPara(c);
+      esperaDoFiltro.current = setTimeout(() => aplicarOFiltro(c), SAIDA_DO_FILTRO_MS);
+    },
+    [aplicarOFiltro],
+  );
+  useEffect(() => () => clearTimeout(esperaDoFiltro.current), []);
+  useEffect(() => {
+    if (!refiltrou) return;
+    const t = setTimeout(() => setRefiltrou(false), CHEGADA_MS);
+    return () => clearTimeout(t);
+  }, [refiltrou]);
+  // a campanha lembrada que foi apagada (a página da campanha, #180) não filtra mais
+  useEffect(() => {
+    const lembrada = filtroAgora.current;
+    if (!lembrada) return;
+    lerCampanhas().then(
+      (l) => !l.some((c) => c.id === lembrada.id) && filtroAgora.current?.id === lembrada.id && aplicarOFiltro(null),
+      () => {},
+    );
+  }, [aplicarOFiltro]);
   const presenca = usePresenca(buscaAtiva);
   // fechada a busca, os blocos voltam subindo de leve (só nessa volta, não na primeira carga)
   const [voltando, setVoltando] = useState(false);
@@ -648,7 +718,11 @@ export function Producoes({ topo }: Props) {
       arrastar: noCelular || vai || faltam ? null : (sim) => setArrasto(sim ? { card: c, sobre: null } : null),
     };
   };
-  const blocos = lido ? naOrdem(lido.blocos, ordem) : [];
+  // o filtro por campanha (#179): as praças de sempre, só com as Produções dela; o nome, o das etiquetas (a renomeada)
+  const vista = lido && soDaCampanha(lido, filtro?.id ?? null);
+  const filtroVisto = filtro && { id: filtro.id, nome: nomeDoFiltro(filtro, lido) };
+  const noFiltro: NoFiltro = { filtrar, saindo: (c) => !!indoPara && !c.campanhas?.some((x) => x.id === indoPara.id) };
+  const blocos = vista ? naOrdem(vista.blocos, ordem) : [];
   const pracas = blocos.map((b) => b.praca);
   // (a praça que saiu da tela, numa releitura, não conta entre as abertas)
   const abertasAgora = (abertas ?? abertasNoComeco(pracas, recolhidosLembrados)).filter((p) => pracas.includes(p));
@@ -668,7 +742,14 @@ export function Producoes({ topo }: Props) {
   useRolagemDosBlocos(area);
   // o deslize (#159): a praça que muda de lugar, e o card que muda de coluna (e os vizinhos que abrem o espaço)
   useDeslize(area, ':scope > .prod-bloco:not(.levantado)', 'data-praca', pracas.join('\n'));
-  useDeslize(area, '.prod-card', 'data-producao', blocos.map((b) => (abertasAgora.includes(b.praca) ? COLUNAS_DO_BLOCO.map((k) => b.colunas[k].map((c) => c.id).join(',')).join('/') : '')).join('|'));
+  // #179: no filtro por campanha, que é um gesto da pessoa, todos deslizam, e quem chega vem em cascata
+  useDeslize(
+    area,
+    '.prod-card',
+    'data-producao',
+    blocos.map((b) => (abertasAgora.includes(b.praca) ? COLUNAS_DO_BLOCO.map((k) => b.colunas[k].map((c) => c.id).join(',')).join('/') : '')).join('|'),
+    refiltrou ? { maximo: Infinity, atraso: atrasoDaCascata } : {},
+  );
   // a Produção aberta acompanha a tela (a mudança e a releitura); a que saiu da tela fica como estava
   const cardAberto = aberta && (lido?.blocos.flatMap((b) => COLUNAS_DO_BLOCO.flatMap((k) => b.colunas[k])).find((c) => c.id === aberta.card.id) ?? aberta.card);
   // o card aberto volta para o card da tela (#160): o que mudou de coluna é outro elemento, achado de novo
@@ -704,6 +785,14 @@ export function Producoes({ topo }: Props) {
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
   }, []);
+  // com o filtro por campanha (#179), o Esc fora de um campo tira o filtro (com a busca aberta, o Esc é dela; com a
+  // Produção aberta, só fecha ela)
+  useEffect(() => {
+    if (!filtro || buscaAtiva || aberta) return;
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && !emCampo(e) && filtrar(null);
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [filtro, buscaAtiva, aberta, filtrar]);
   // com a busca aberta, o Esc fora do campo também limpa (o do campo já limpa, e o da Produção aberta só fecha ela)
   useEffect(() => {
     if (!buscaAtiva || aberta) return;
@@ -726,8 +815,17 @@ export function Producoes({ topo }: Props) {
       {topo}
       <main className="prod-pagina">
         <div className="prod-cabeca">
-          <h1>Produções</h1>
-          {lido && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou pessoa" rotulo="Buscar nas produções" />}
+          {/* o título e, com o filtro por campanha (#179), "só" e a etiqueta da campanha, com o × que tira */}
+          <div className="prod-titulo">
+            <h1>Produções</h1>
+            <CampanhaDoFiltro filtro={filtroVisto} tirar={() => filtrar(null)} />
+          </div>
+          {lido && (
+            <span className="prod-ferramentas">
+              <EscolherCampanha filtro={filtroVisto} filtrar={filtrar} />
+              <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou pessoa" rotulo="Buscar nas produções" />
+            </span>
+          )}
         </div>
         {erro ? (
           <p className="prod-falha" role="alert">
@@ -767,7 +865,7 @@ export function Producoes({ topo }: Props) {
                   hoje={hoje}
                   acoes={acoes}
                   solta={solta}
-                  bloco={{ recolhido: !abertasAgora.includes(b.praca), alternar: () => alternar(b.praca), abrir: abrirAProducao, levantado: reordenar.levantada === b.praca, arrastar: reordenar.iniciar(b.praca), cascata: chegando ? i : 0 }}
+                  bloco={{ recolhido: !abertasAgora.includes(b.praca), alternar: () => alternar(b.praca), abrir: abrirAProducao, levantado: reordenar.levantada === b.praca, arrastar: reordenar.iniciar(b.praca), cascata: chegando ? i : 0, vez: i, filtro: noFiltro }}
                 />
               ))}
             </div>

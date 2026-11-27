@@ -27,6 +27,28 @@
 .prod-cabeca h1 { font: 400 42px/1.05 var(--serifa); letter-spacing: -0.01em; margin: 0; color: var(--tinta); }
 /* a lupa da busca (#161), à direita do título, na mesma linha */
 .prod-cabeca { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; }
+/* o filtro por campanha (#179): "só" e a etiqueta ao lado do título; o botão "Campanha" ao lado da lupa */
+.prod-titulo { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.prod-ferramentas { flex: none; display: flex; align-items: center; gap: 6px; }
+.prod-filtro { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.prod-filtro-so { font: italic 400 17px var(--serifa); color: var(--tinta3); animation: pa-surgir 0.24s var(--suave) both; }
+.prod-filtro .campanha { height: 28px; padding: 0 3px 0 11px; gap: 7px; font-size: 13px; }
+.prod-filtro .campanha-abrir { gap: 7px; }
+.prod-filtro .campanha-bolinha { width: 9px; height: 9px; }
+.prod-filtro .campanha-tirar { width: 22px; height: 22px; }
+.prod-escolher-campanha { position: relative; }
+.prod-campanha-botao { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--tinta2); font: 500 13.5px var(--sans); cursor: pointer; transition: background-color 0.15s, color 0.15s; }
+.prod-campanha-botao:hover, .prod-campanha-botao[aria-expanded='true'] { background: var(--neutro); color: var(--tinta); }
+.prod-campanha-botao svg { transition: transform 0.2s var(--suave); }
+.prod-campanha-botao[aria-expanded='true'] svg { transform: rotate(180deg); }
+/* duas bolinhas nos tons das campanhas: o sinal da etiqueta */
+.prod-campanha-bolinhas { flex: none; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: var(--campanha-1); box-shadow: 5px 0 0 var(--campanha-0); }
+.prod-menu-campanha { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; transform-origin: top right; animation: pa-menu-campanha-abre 0.22s var(--suave) both; }
+.prod-menu-campanha .escolha-nome-menu { position: static; width: 300px; max-width: calc(100vw - 32px); }
+.prod-menu-lendo { display: block; padding: 12px 14px; color: var(--tinta3); font: 400 13.5px var(--sans); }
+/* o card de fora da campanha escolhida esmaece antes de o filtro valer; os que ficam deslizam (o FLIP) */
+.prod-card.saindo-do-filtro { animation: sair-do-filtro 0.16s var(--suave) forwards; pointer-events: none; }
+@keyframes sair-do-filtro { to { opacity: 0; transform: scale(0.96); } }
 .prod-lendo { color: var(--tinta3); font: 400 14px var(--sans); }
 .prod-falha { padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
 
@@ -462,7 +484,16 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .prod-recolher svg, .prod-mostrar svg { transform: rotate(90deg); }
   .prod-recolhido .prod-mostrar { order: 3; margin: -10px -10px -10px 0; }
   /* a busca (#161): a lupa aberta toma a linha do título; cada achado em duas linhas */
-  .prod-cabeca:has(.busca.lupa.aberta) h1 { display: none; }
+  .prod-cabeca:has(.busca.lupa.aberta) .prod-titulo, .prod-cabeca:has(.busca.lupa.aberta) .prod-escolher-campanha { display: none; }
+  .prod-cabeca:has(.busca.lupa.aberta) .prod-ferramentas { flex: 1; }
+  /* #179: no celular, o botão da campanha é só o sinal, no tamanho do dedo; o nome da campanha quebra a linha do título */
+  .prod-cabeca { gap: 8px; }
+  .prod-titulo { flex-wrap: wrap; gap: 4px 10px; }
+  .prod-campanha-botao { width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 12px; }
+  .prod-campanha-botao > span, .prod-campanha-botao svg { display: none; }
+  .prod-campanha-bolinhas { margin-right: 5px; }
+  .prod-filtro .campanha { height: 32px; }
+  .prod-filtro .campanha-tirar { width: 28px; height: 28px; }
   .prod-cabeca .busca.lupa { flex: none; width: 44px; height: 44px; border-radius: 12px; }
   .prod-cabeca .busca.lupa.aberta { flex: 1; width: auto; }
   .prod-cabeca .busca.lupa input { font-size: 16px; }
@@ -490,6 +521,8 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .prod-achado-abrir:hover { transform: none; }
   .pagina.producoes .prod-conta.mudou { animation: none !important; }
   .prod-card:hover { transform: none; }
+  .prod-filtro-so { animation: esmaecer 0.18s ease-out both; }
+  .prod-card.saindo-do-filtro { animation: sumir 0.16s ease-out forwards; }
   /* #167: o "últimos dias" só esmaece; o cabeçalho não baixa; o círculo não se escreve */
   .prod-recente, .prod-coluna h3 { transition: opacity 0.18s ease-out !important; }
   .prod-blocos[data-rolada] .prod-coluna h3 { padding-top: 9px; padding-bottom: 8px; }

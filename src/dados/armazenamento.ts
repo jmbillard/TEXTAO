@@ -1020,6 +1020,18 @@ export const ordemDasPracas = (): string[] => ordemDe(minhasPreferencias);
 /** A pessoa arrumou as praças: como os recolhidos, vale na hora e o servidor guarda, por pessoa, para qualquer aparelho. */
 export const lembrarOrdemDasPracas = (pracas: readonly string[]): Promise<boolean> => guardarPreferencia(CHAVE_DA_ORDEM, [...pracas]);
 
+/** A campanha que filtra a tela de produções (#179); sem escolha, nenhuma. */
+export const campanhaDoFiltro = (): CampanhaDoCard | null => filtroDe(minhasPreferencias);
+
+/** A pessoa filtrou por uma campanha (ou tirou o filtro, null): como os recolhidos, vale na hora e o servidor guarda, por
+    pessoa, para qualquer aparelho. Devolve se ficou guardada. */
+export const lembrarFiltroDaCampanha = (c: CampanhaDoCard | null): Promise<boolean> => guardarPreferencia(CHAVE_DO_FILTRO, c && { id: c.id, nome: c.nome });
+
+/** As campanhas (#178), as mexidas por último primeiro, com quantas Produções cada uma tem; com o termo, só as que
+    casam pelo nome (sem caixa e acento). */
+export const lerCampanhas = async (q = ''): Promise<(CampanhaDoCard & { producoes: number; mexidaEm: string })[]> =>
+  (await pedir<{ campanhas: (CampanhaDoCard & { producoes: number; mexidaEm: string })[] }>(`/api/campanhas${q ? `?q=${encodeURIComponent(q)}` : ''}`)).campanhas;
+
 /** A forma de ver a agenda de filmes da aba Filmes (#169): por data de exibição (sem escolha) ou por sessão. */
 export const formaDaAgendaDeFilmes = (): FormaDaAgenda => formaDaAgenda(minhasPreferencias);
 
@@ -1165,7 +1177,7 @@ import type { DeOndeRepetir } from '../modelo/repetir';
 import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, JuncaoDeAtracoes, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
-import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, ordemDe, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { CHAVE_DA_ORDEM, CHAVE_DO_FILTRO, CHAVE_DOS_RECOLHIDOS, filtroDe, ordemDe, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import type { CampanhaDoCard } from '../modelo/campanhas';
 import { CHAVE_DA_AGENDA_DE_FILMES, formaDaAgenda, type AgendaDeFilmes, type FormaDaAgenda } from '../modelo/agendaDeFilmes';
 export type { SecaoDaDuplicada };

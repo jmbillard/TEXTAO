@@ -58,6 +58,10 @@
 // acento, e acha também o entregue de 5 dias atrás, que os blocos não mostram, com o dia da entrega; a lista chega em
 // cascata e sai esmaecendo, e os blocos voltam; um clique abre a Produção. No celular, a lupa toma a linha do título.
 //
+// #179, o filtro por campanha: pelo botão "Campanha" (a busca sem acento) e pela etiqueta do card; as praças de sempre
+// só com as Produções da campanha, e as contagens acompanham; o nome ao lado do título; o Esc e o × tiram; lembrado por
+// pessoa; a campanha renomeada mostra o nome novo e a apagada não filtra mais. No celular, o botão tem 44px.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:producoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2). Com VIDEO=pasta, grava o vídeo do movimento (#159).
 const assert = require('node:assert/strict');
@@ -1913,6 +1917,173 @@ async function asCampanhas(navegador, url, chamadasAoTrello, db) {
   console.log('ok: as campanhas (#178)');
 }
 
+/* ---------- #179: o filtro por campanha ---------- */
+/** Ligar o filtro pelo botão "Campanha" (a busca das campanhas, sem acento) e pela etiqueta do card; as praças de
+    sempre com só as Produções da campanha, as contagens acompanhando; o nome ao lado do título; tirar pelo × e pelo Esc;
+    lembrado por pessoa (depois de recarregar continua; a outra pessoa não filtra). No computador e no celular, claro e
+    escuro, e o vídeo do filtro entrando e saindo. Nada vai ao Trello. */
+async function oFiltroDaCampanha(navegador, url, chamadasAoTrello, db, api) {
+  const como = (email) => (caminho, corpo, metodo = 'POST') => fetch(`${api}${caminho}`, { method: metodo, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json' }, body: JSON.stringify(corpo) });
+  const lia = como(LIA);
+  // um palco arrumado: a Festa, o Show e a Cozinha na Entrada do SP, a Novela na Produzindo da G5; nada recolhido
+  db.prepare("UPDATE producoes SET etapa = 'entrada', designers = '[]' WHERE claquete LIKE 'Festa na Praça%' OR claquete LIKE 'Show da Noite%' OR claquete LIKE 'Cozinha de Vó%'").run();
+  db.prepare("UPDATE producoes SET etapa = 'produzindo' WHERE claquete LIKE 'Novela Sinfonia%'").run();
+  db.prepare('DELETE FROM campanhas_producoes').run();
+  db.prepare('DELETE FROM campanhas').run();
+  for (const quem of [LIA, CHEFE]) await como(quem)('/eu/preferencias', { 'producoes.recolhidos': [], 'producoes.ordem': [], 'producoes.campanha': null }, 'PUT');
+  const idDe = (inicio) => db.prepare('SELECT id FROM producoes WHERE claquete LIKE ?').get(`${inicio}%`).id;
+  const ligar = async (claquete, nome) => assert.equal((await lia('/producoes/campanha', { producao: idDe(claquete), nova: nome })).status, 200, `ligar ${claquete} a ${nome}`);
+  await ligar('Festa na Praça', 'Lançamento Domingo');
+  await ligar('Novela Sinfonia', 'Lançamento Domingo');
+  await ligar('Show da Noite', 'AESP Verão');
+  const pracasDe = (p) => p.locator('.prod-blocos > .prod-bloco').evaluateAll((bs) => bs.map((b) => b.dataset.praca));
+  const todas = async (p) => Object.fromEntries(await Promise.all(['SP', 'G5'].map(async (pr) => [pr, await Promise.all(['entrada', 'produzindo', 'entregue'].map((k) => claquetes(p, pr, k)))])));
+  const filtroNoTopo = (p) => p.locator('.prod-cabeca .prod-filtro .campanha');
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+    await cardDe(p, 'Festa na Praça').waitFor();
+    chamadasAoTrello.splice(0);
+    const pracas = await pracasDe(p);
+    const antes = await todas(p);
+    const contasAntes = await contas(p, 'SP');
+    assert.equal(await filtroNoTopo(p).count(), 0, 'sem filtro, sem etiqueta no topo');
+    // escolher pelo botão "Campanha": a busca das campanhas, sem acento
+    await p.getByRole('button', { name: 'Campanha', exact: true }).click();
+    await p.getByRole('textbox', { name: 'Buscar campanha' }).fill('lancamento');
+    assert.deepEqual(await textos(p.locator('.prod-menu-campanha [role="option"]')), ['Lançamento Domingo'], 'a busca acha sem acento');
+    await capturar(p, `46-filtro-${nome}-escolher`);
+    await p.getByRole('option', { name: 'Lançamento Domingo' }).click();
+    await filtroNoTopo(p).filter({ hasText: 'Lançamento Domingo' }).waitFor();
+    await cardDe(p, 'Show da Noite').waitFor({ state: 'detached' });
+    // as praças de sempre, só com as Produções da campanha, e as contagens acompanham
+    assert.deepEqual(await pracasDe(p), pracas, 'as praças continuam as mesmas');
+    const so = await todas(p);
+    assert.deepEqual(so.SP, [[antes.SP[0].find((c) => c.startsWith('Festa na Praça'))], [], []], `no SP, só a Festa (${JSON.stringify(so.SP)})`);
+    assert.deepEqual(so.G5, [[], [antes.G5[1].find((c) => c.startsWith('Novela Sinfonia'))], []], `na G5, só a Novela (${JSON.stringify(so.G5)})`);
+    assert.deepEqual(await contas(p, 'SP'), [1, 0, 0], 'as contagens do SP acompanham');
+    assert.deepEqual(await contas(p, 'G5'), [0, 1, 0], 'as da G5 também');
+    assert.ok(contasAntes[0] > 1, 'antes, o SP tinha mais na Entrada');
+    assert.equal(await p.locator('.prod-cabeca .prod-filtro-so').textContent(), 'só');
+    // sem "unha" na etiqueta do topo
+    const unha = await filtroNoTopo(p).evaluate((e) => { const c = getComputedStyle(e); return { borda: parseFloat(c.borderLeftWidth), sombra: c.boxShadow }; });
+    assert.ok(unha.borda === 0 && !/inset/.test(unha.sombra), `a etiqueta do filtro não tem unha (${JSON.stringify(unha)})`);
+    await p.waitForTimeout(500);
+    await semRolagemDeLado(p, `filtro ${nome}`);
+    await capturar(p, `47-filtro-${nome}-ligado`);
+    if (tema === 'light') {
+      // lembrado por pessoa: depois de recarregar continua; a outra pessoa vê tudo
+      await p.reload();
+      await filtroNoTopo(p).filter({ hasText: 'Lançamento Domingo' }).waitFor();
+      await cardDe(p, 'Festa na Praça').waitFor();
+      assert.equal(await cardDe(p, 'Show da Noite').count(), 0, 'depois de recarregar, continua filtrado');
+      const outra = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/designer/producoes', { email: CHEFE });
+      await cardDe(outra.p, 'Show da Noite').waitFor();
+      assert.equal(await filtroNoTopo(outra.p).count(), 0, 'a outra pessoa não filtra');
+      await outra.ctx.close();
+      // o Esc tira o filtro: tudo volta, com as contagens
+      await p.locator('.prod-titulo h1').click();
+      await p.keyboard.press('Escape');
+      await cardDe(p, 'Show da Noite').waitFor();
+      await filtroNoTopo(p).waitFor({ state: 'detached' });
+      assert.deepEqual(await todas(p), antes, 'sem o filtro, as praças completas');
+      assert.deepEqual(await contas(p, 'SP'), contasAntes, 'e as contagens de antes');
+      // o clique na etiqueta do card filtra pela campanha dela, sem abrir a Produção
+      await cardDe(p, 'Show da Noite').getByRole('button', { name: 'Só a campanha AESP Verão' }).click();
+      await filtroNoTopo(p).filter({ hasText: 'AESP Verão' }).waitFor();
+      await cardDe(p, 'Festa na Praça').waitFor({ state: 'detached' });
+      assert.equal(await p.getByRole('dialog').count(), 0, 'o clique na etiqueta não abre a Produção');
+      assert.deepEqual(await contas(p, 'SP'), [1, 0, 0], 'só o Show no SP');
+      // o × tira o filtro, e tirado fica lembrado
+      await p.getByRole('button', { name: 'Tirar o filtro da campanha AESP Verão (Esc)' }).click();
+      await cardDe(p, 'Festa na Praça').waitFor();
+      await filtroNoTopo(p).waitFor({ state: 'detached' });
+      await p.waitForFunction(async () => (await (await fetch('/api/eu')).json()).preferencias['producoes.campanha'] === null);
+      await p.reload();
+      await cardDe(p, 'Show da Noite').waitFor();
+      assert.equal(await filtroNoTopo(p).count(), 0, 'tirado, fica tirado');
+      // a campanha renomeada no servidor: o topo diz o nome das etiquetas, não o lembrado
+      await lia('/eu/preferencias', { 'producoes.campanha': { id: db.prepare("SELECT id FROM campanhas WHERE nome = 'AESP Verão'").get().id, nome: 'Nome Velho' } }, 'PUT');
+      await p.reload();
+      await filtroNoTopo(p).filter({ hasText: 'AESP Verão' }).waitFor();
+      await p.getByRole('button', { name: /^Tirar o filtro/ }).click();
+      await filtroNoTopo(p).waitFor({ state: 'detached' });
+      // a campanha apagada não filtra mais
+      await lia('/eu/preferencias', { 'producoes.campanha': { id: 'cp-apagada-e2e', nome: 'Apagada' } }, 'PUT');
+      await p.reload();
+      await cardDe(p, 'Show da Noite').waitFor();
+      await p.waitForFunction(() => !document.querySelector('.prod-cabeca .prod-filtro .campanha'));
+      await p.waitForFunction(async () => (await (await fetch('/api/eu')).json()).preferencias['producoes.campanha'] === null);
+    } else {
+      await p.getByRole('button', { name: /^Tirar o filtro/ }).click();
+      await filtroNoTopo(p).waitFor({ state: 'detached' });
+    }
+    assert.deepEqual(chamadasAoTrello, [], 'o filtro não vai ao Trello');
+    assert.deepEqual(aoTrello, [], 'nem o navegador pede ao Trello');
+    assert.deepEqual(erros, [], `${nome}: sem erros na página`);
+    await ctx.close();
+  }
+  // no celular: o botão no tamanho do dedo, o nome no topo, sem rolar para o lado
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    const { ctx, p, erros } = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: tema });
+    await cardDe(p, 'Festa na Praça').waitFor();
+    const botao = p.getByRole('button', { name: 'Filtrar por uma campanha' });
+    const caixa = await botao.boundingBox();
+    assert.ok(caixa.width >= 44 && caixa.height >= 44, `o botão no tamanho do dedo (${caixa.width}×${caixa.height})`);
+    await botao.tap();
+    await p.getByRole('option', { name: 'Lançamento Domingo' }).tap();
+    await filtroNoTopo(p).filter({ hasText: 'Lançamento Domingo' }).waitFor();
+    await cardDe(p, 'Show da Noite').waitFor({ state: 'detached' });
+    await p.waitForTimeout(500);
+    await semRolagemDeLado(p, `filtro no celular ${nome}`);
+    await capturar(p, `48-filtro-celular-${nome}`);
+    await p.getByRole('button', { name: /^Tirar o filtro/ }).tap();
+    await cardDe(p, 'Show da Noite').waitFor();
+    assert.deepEqual(erros, [], `celular ${nome}: sem erros na página`);
+    await ctx.close();
+  }
+  await filmarOFiltro(navegador, url, api);
+  console.log('ok: o filtro por campanha (#179)');
+}
+
+/** O vídeo do filtro por campanha (#179), com VIDEO=pasta: escolher pelo botão (os de fora esmaecem, os que ficam
+    deslizam, as contagens pulam), tirar pelo Esc (os que voltam chegam em cascata), filtrar pela etiqueta do card e
+    tirar pelo ×; e o mesmo com prefers-reduced-motion (só esmaecer). */
+async function filmarOFiltro(navegador, url, api) {
+  if (!VIDEO) return;
+  mkdirSync(VIDEO, { recursive: true });
+  const { renameSync } = require('node:fs');
+  for (const [nome, movimento] of [['filtro', 'no-preference'], ['filtro-reduzido', 'reduce']]) {
+    await fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ 'producoes.campanha': null }) });
+    const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, viewport: { width: 1440, height: 860 }, recordVideo: { dir: VIDEO, size: { width: 1440, height: 860 } }, reducedMotion: movimento, colorScheme: 'light' });
+    await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(LIA), url }]);
+    await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+    await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+    const p = await ctx.newPage();
+    await p.goto(`${url}#/designer/producoes`);
+    await cardDe(p, 'Festa na Praça').waitFor();
+    await p.waitForTimeout(1000);
+    await p.getByRole('button', { name: 'Campanha', exact: true }).click();
+    await p.waitForTimeout(500);
+    await p.getByRole('textbox', { name: 'Buscar campanha' }).pressSequentially('lanç', { delay: 90 });
+    await p.waitForTimeout(400);
+    await p.getByRole('option', { name: 'Lançamento Domingo' }).click();
+    await p.waitForTimeout(1500);
+    await p.locator('.prod-titulo h1').click();
+    await p.keyboard.press('Escape');
+    await p.waitForTimeout(1500);
+    await cardDe(p, 'Show da Noite').getByRole('button', { name: 'Só a campanha AESP Verão' }).click();
+    await p.waitForTimeout(1500);
+    await p.getByRole('button', { name: /^Tirar o filtro/ }).click();
+    await p.waitForTimeout(1500);
+    const video = p.video();
+    await ctx.close();
+    renameSync(await video.path(), join(VIDEO, `producoes-${nome}.webm`));
+  }
+  console.log(`ok: o vídeo do filtro em ${VIDEO}`);
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -1991,6 +2162,8 @@ async function principal() {
     }
     // SO=campanhas roda só as campanhas (#178)
     else if (process.env.SO === 'campanhas') await asCampanhas(navegador, s.url, chamadasAoTrello, s.db);
+    // SO=filtro roda só o filtro por campanha (#179) e o vídeo dele
+    else if (process.env.SO === 'filtro') await oFiltroDaCampanha(navegador, s.url, chamadasAoTrello, s.db, s.api);
     else if (process.env.SO === 'card-aberto') {
       await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
       await filmarOCardAberto(navegador, s.url, s.db);
@@ -2024,6 +2197,7 @@ async function principal() {
     await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
     await filmarOCardAberto(navegador, s.url, s.db);
     await asCampanhas(navegador, s.url, chamadasAoTrello, s.db);
+    await oFiltroDaCampanha(navegador, s.url, chamadasAoTrello, s.db, s.api);
     await filmar(navegador, s.url, s.db, s.api);
   }
 }
