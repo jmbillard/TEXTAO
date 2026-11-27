@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { gravarRascunhoDoDia, lerRascunhoDoDia } from '../dados/armazenamento';
+import { desfazerAPublicacao, gravarRascunhoDoDia, lerRascunhoDoDia, marcarPendencia, publicarODia } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
+import { CampoDaIlha } from './CampoDaIlha';
+import type { Ilha } from '../modelo/ilhas';
 import { Icone } from './icones';
 import { Marca } from './pecas';
+import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
 import './pauta.css';
 import './montarPauta.css';
@@ -16,7 +19,10 @@ import './montarPauta.css';
    o horário (escrito de qualquer jeito, gravado no padrão) e as demandas, texto livre: cada linha mostra na hora o que o
    PROMeiro entendeu (a atração, a data, as versões como etiquetas e, discretamente, a grafia no padrão). Tudo pelo
    teclado: Tab, Enter cria uma linha, as setas andam entre as linhas, Backspace na linha vazia apaga. O rascunho é
-   gravado sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable. */
+   gravado sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable.
+   Conferir e publicar (#127): "Conferir e publicar" leva à conferência (ConferirPauta.tsx), em que cada pendência tem
+   o "Corrigir", que volta à grade com o foco no campo, e o "está certo"; publicar mostra a tela "publicada". Na grade,
+   a faixa da publicação diz se o dia está publicado ou alterado, com o Desfazer e o histórico. */
 
 interface Props {
   /** o dia (AAAA-MM-DD); '' é amanhã */
@@ -46,7 +52,7 @@ const nomeDoTurno = (turnos: readonly TurnoDaEscala[], id: string) => turnos.fin
 const textoDaSituacao = (s: SituacaoNoDia, turnos: readonly TurnoDaEscala[]) => (s.tipo === 'livre' ? 'livre' : `já na ${s.turnos.map((t) => nomeDoTurno(turnos, t)).join(' e na ')}`);
 
 /** Onde o foco vai depois de desenhar: um campo de uma posição (e, nas demandas, a linha). */
-type Foco = { posicao: string; campo: 'editor' | 'horario' | 'demanda'; demanda?: string; fim?: boolean } | null;
+type Foco = { posicao: string; campo: 'editor' | 'ilha' | 'horario' | 'demanda'; demanda?: string; fim?: boolean } | null;
 
 export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [hoje] = useState(() => diaEmSaoPaulo());
@@ -57,6 +63,10 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [erroAoGravar, setErroAoGravar] = useState('');
   const [foco, setFoco] = useState<Foco>(null);
   const grade = useRef<HTMLDivElement>(null);
+  // a tela: a grade, a conferência ou a pauta recém-publicada (#127)
+  const [vista, setVista] = useState<'montar' | 'conferir' | 'publicada'>('montar');
+  const [publicando, setPublicando] = useState(false);
+  const [erroAoPublicar, setErroAoPublicar] = useState('');
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
   const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[] } | null>(null);
@@ -109,6 +119,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const carregar = useCallback(() => {
     let vivo = true;
     setFalha('');
+    setVista('montar');
     void gravarAgora()
       .then(() => lerRascunhoDoDia(dia))
       .then((d) => {
@@ -149,7 +160,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const editores = dados?.editores ?? [];
   const daPosicao = (id: string, f: (p: PosicaoDaEscala) => PosicaoDaEscala) => mudar((ps) => ps.map((p) => (p.id === id ? f(p) : p)));
   const novaPosicao = (turno: TurnoDaEscala) => {
-    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', horario: turno.horario, demandas: [linhaVazia()] };
+    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', ilha: '', horario: turno.horario, demandas: [linhaVazia()] };
     // a posição nova entra depois da última do turno (a ordem da grade é a dos turnos)
     mudar((ps) => {
       const ultima = ps.map((x) => x.turno).lastIndexOf(turno.id);
@@ -171,6 +182,45 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
   }, [segunda, dados, irPara]);
+
+  /** O que o servidor diz da publicação, sem mexer nas posições da tela. */
+  const daPublicacao = (d: DiaDaEscala) => setDados((antes) => (antes?.dia === d.dia ? { ...antes, estado: d.estado, semana: d.semana, publicacao: d.publicacao, historico: d.historico, dispensadas: d.dispensadas } : antes));
+  const conferir = async () => {
+    setErroAoPublicar('');
+    await gravarAgora();
+    setVista('conferir');
+    window.scrollTo(0, 0);
+  };
+  const publicar = async () => {
+    if (!dados) return;
+    setPublicando(true);
+    setErroAoPublicar('');
+    try {
+      // publica o que está gravado: o que falta gravar vai antes
+      await gravarAgora();
+      daPublicacao(await publicarODia(dados.dia));
+      setVista('publicada');
+      window.scrollTo(0, 0);
+    } catch (e) {
+      setErroAoPublicar(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPublicando(false);
+    }
+  };
+  const desfazer = async () => {
+    if (!dados) return;
+    try {
+      daPublicacao(await desfazerAPublicacao(dados.dia));
+      setVista('montar');
+    } catch (e) {
+      setErroAoGravar(e instanceof Error ? e.message : String(e));
+      setGravacao('erro');
+    }
+  };
+  const marcar = (chave: string, certo: boolean) => {
+    if (!dados) return;
+    marcarPendencia(dados.dia, chave, certo).then(daPublicacao, (e) => setErroAoPublicar(e instanceof Error ? e.message : String(e)));
+  };
 
   const atual = dados && (!dia || dados.dia === dia) ? dados : null;
   const rel = atual ? perto(atual.dia, hoje) : '';
@@ -195,10 +245,22 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
             <>
               <span className="ponto" aria-hidden="true" /> rascunho guardado · só a coordenação vê
             </>
+          ) : atual?.estado === 'publicado' ? (
+            <>
+              <span className="ponto" aria-hidden="true" /> publicada
+            </>
+          ) : atual?.estado === 'alterado' ? (
+            'alterada depois de publicar'
           ) : null}
         </span>
       </header>
       <main className="pauta-pagina montar-pagina">
+        {atual && vista === 'conferir' ? (
+          <ConferirODia dados={atual} posicoes={posicoes} hoje={hoje} publicando={publicando} erro={erroAoPublicar} voltar={() => setVista('montar')} corrigir={(alvo) => (setVista('montar'), setFoco(alvo))} marcar={marcar} publicar={() => void publicar()} />
+        ) : atual && vista === 'publicada' ? (
+          <DiaPublicado dados={atual} posicoes={posicoes} voltar={() => setVista('montar')} desfazer={() => void desfazer()} irPara={irPara} />
+        ) : (
+        <>
         <div className="pauta-cabeca montar-cabeca">
           <div>
             <h1>Montar a pauta</h1>
@@ -212,12 +274,18 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
                   </>
                 )}
                 {' · '}
-                {atual.estado === 'rascunho' ? <span className="montar-rascunho">rascunho</span> : 'vazio'}
+                {atual.estado === 'vazio' ? 'vazio' : <span className={`montar-${atual.estado}`}>{atual.estado}</span>}
               </p>
             )}
           </div>
+          {atual && posicoes.length > 0 && (
+            <button type="button" className="botao primario" onClick={() => void conferir()}>
+              Conferir e publicar →
+            </button>
+          )}
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
+        {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}
@@ -254,6 +322,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
                           posicoes={posicoes}
                           turnos={turnos}
                           editores={editores}
+                          ilhas={atual.ilhas}
+                          costume={atual.costume}
                           mudar={(f) => daPosicao(p.id, f)}
                           tirar={() => tirarPosicao(p.id)}
                           focar={setFoco}
@@ -271,6 +341,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
               <span><kbd>⌫</kbd> na linha vazia apaga</span>
             </p>
           </div>
+        )}
+        </>
         )}
       </main>
     </div>
@@ -316,13 +388,15 @@ interface PropsDaCelula {
   posicoes: PosicaoDaEscala[];
   turnos: readonly TurnoDaEscala[];
   editores: readonly string[];
+  ilhas: readonly Ilha[];
+  costume: Readonly<Record<string, string>>;
   mudar: (f: (p: PosicaoDaEscala) => PosicaoDaEscala) => void;
   tirar: () => void;
   focar: (f: Foco) => void;
 }
 
 /** Uma posição: o editor, o horário e as demandas, cada campo com o que o PROMeiro entendeu embaixo. */
-function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, focar }: PropsDaCelula) {
+function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, mudar, tirar, focar }: PropsDaCelula) {
   const horario = lerHorario(p.horario);
   const situacao = p.editor.trim() ? situacaoNoDia(p.editor, posicoes, p.id) : null;
   const naLista = !p.editor.trim() || editores.some((e) => nomeComparavel(e) === nomeComparavel(p.editor));
@@ -357,7 +431,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, foc
   return (
     <div className="montar-celula" data-posicao-id={p.id}>
       <div className="montar-celula-topo">
-        <CampoDoEditor p={p} posicoes={posicoes} turnos={turnos} editores={editores} mudar={(editor) => mudar((x) => ({ ...x, editor }))} depois={() => focar({ posicao: p.id, campo: 'horario' })} />
+        <CampoDoEditor p={p} posicoes={posicoes} turnos={turnos} editores={editores} mudar={(editor) => mudar((x) => ({ ...x, editor }))} depois={() => focar({ posicao: p.id, campo: 'ilha' })} />
         {/* fora do Tab: do editor, o Tab vai direto ao horário */}
         <button type="button" tabIndex={-1} className="botao-icone pequeno montar-tirar" title="Tirar esta posição" aria-label="Tirar esta posição" onClick={tirar}>
           <Icone nome="fechar" tam={13} />
@@ -367,6 +441,16 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, foc
         {situacao?.tipo === 'escalado' && <span className="montar-alerta">{textoDaSituacao(situacao, turnos)}</span>}
         {!naLista && <span className="montar-tag">nome novo</span>}
       </div>
+      <CampoDaIlha
+        p={p}
+        posicoes={posicoes}
+        turnos={turnos}
+        ilhas={ilhas}
+        costume={costume}
+        mudar={(ilha) => mudar((x) => ({ ...x, ilha }))}
+        depois={() => focar({ posicao: p.id, campo: 'horario' })}
+        antes={() => focar({ posicao: p.id, campo: 'editor' })}
+      />
       <input
         className="montar-in hora"
         data-posicao={p.id}
@@ -384,7 +468,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, foc
             focar({ posicao: p.id, campo: 'demanda', demanda: p.demandas[0]?.id });
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            focar({ posicao: p.id, campo: 'editor' });
+            focar({ posicao: p.id, campo: 'ilha' });
           }
         }}
       />

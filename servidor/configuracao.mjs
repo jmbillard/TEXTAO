@@ -23,6 +23,8 @@ export const SALVAVEIS = new Set([
   'LIGADO_A_MAO',
   // os administradores salvos na tela (#77), em JSON (os e-mails); a chave-mestra CADASTRO_ADMINS fica no Portainer
   'ADMINISTRADORES',
+  // os turnos da montagem da pauta (#124), em JSON (id, nome, horário padrão), na ordem da grade; sem ela, os de fábrica
+  'TURNOS',
   // o modo só olhar da aba Duplicadas (#67): sem valor, ligado; '0' libera o apagar (a própria aba liga e desliga)
   'DUPLICADAS_SO_OLHAR',
   // Filmes

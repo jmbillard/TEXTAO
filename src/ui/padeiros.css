@@ -1,0 +1,35 @@
+/* Aba Padeiros dos Cadastros (#137): as linhas usam o .item-cad da lista; aqui, o estado da chave e as ações. */
+.item-pad .nome { gap: 6px 8px; }
+.item-pad .nome svg { color: var(--tinta3); flex: none; }
+.usuario-pad { font: 600 15px var(--sans); color: var(--tinta); overflow-wrap: anywhere; }
+.computador-pad { font: 400 13.5px var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
+.estado-pad { font: 600 10.5px var(--sans); letter-spacing: 0.09em; text-transform: uppercase; border-radius: 999px; padding: 3px 8px; }
+.estado-pad.pendente { color: var(--falta); background: var(--falta-fundo); }
+.estado-pad.ligada { color: var(--ok); background: var(--ok-fundo); }
+.estado-pad.revogada { color: var(--tinta3); background: var(--neutro); }
+.aviso-pad { font: 400 12.5px var(--sans); color: var(--tinta3); text-align: right; }
+.detalhe-pad { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 14px; font: 400 12.5px var(--sans); color: var(--tinta3); }
+.sigla-pad { font: 500 12.5px var(--mono); color: var(--tinta); }
+.acoes-pad { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.escolha-pad { display: flex; align-items: center; gap: 8px; font: 500 12.5px var(--sans); color: var(--tinta2); min-width: 0; }
+.escolha-pad select { font: 500 13.5px var(--sans); color: var(--tinta); background: var(--cartao); border: 1px solid var(--regua-forte); border-radius: 8px; padding: 6px 8px; max-width: 100%; min-width: 0; }
+.sugestao-pad { font: 600 17px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-2deg); }
+.pequeno-pad { padding: 6px 12px; font-size: 13px; }
+.perigo-pad { color: var(--perigo); border-color: var(--perigo); font-weight: 600; }
+.confirmar-pad { display: inline-flex; align-items: center; gap: 10px; }
+.revogar-pad { color: var(--tinta3); }
+.designer-pad { font: 500 13px var(--sans); color: var(--tinta2); }
+.novo-pad { font: 600 17px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-2deg); }
+.pad-novo { background: var(--realce); }
+.troca-pad { grid-column: 1 / -1; margin: 0; font: 400 12.5px var(--sans); color: var(--tinta2); }
+.dica-pad { font: 400 12.5px var(--sans); color: var(--tinta3); }
+.pad-revogada .usuario-pad, .pad-revogada .computador-pad { color: var(--tinta3); text-decoration: line-through; text-decoration-color: var(--regua-forte); }
+.contagem-pad { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 16px; padding: 0; font: 400 13px var(--sans); color: var(--tinta2); }
+.contagem-pad b { font: 600 20px var(--serifa); color: var(--tinta); margin-right: 3px; }
+
+@media (max-width: 640px) {
+  .item-pad { grid-template-columns: minmax(0, 1fr); }
+  .aviso-pad { text-align: left; }
+  .escolha-pad { flex: 1 1 100%; }
+  .escolha-pad select { flex: 1; }
+}

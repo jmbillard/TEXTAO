@@ -422,7 +422,7 @@ kbd {
 
 .texto .p-loc { font-size: 17px; font-weight: 500; line-height: 1.75; letter-spacing: 0.02em; padding: 10px 0; }
 .texto .p-nota { color: var(--tinta2); }
-.texto .p-sonora { font-size: 16.5px; line-height: 1.6; padding: 10px 0 10px 14px; box-shadow: inset 2px 0 0 var(--regua-forte); }
+.texto .p-sonora { font-size: 16.5px; line-height: 1.6; padding: 10px 14px; margin: 4px 0; border-radius: 8px; background: color-mix(in srgb, var(--neutro) 55%, transparent); }
 .texto .p-sonora strong { font-weight: 600; }
 .texto .tc { display: block; font: 400 12px/1.7 var(--mono); color: var(--tinta3); letter-spacing: 0.01em; }
 .texto .quem { font-size: 11.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta2); }
@@ -1371,7 +1371,7 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
    só para consultar, e "Ver as N" troca a lista pelo acervo */
 .atracao-cad { cursor: pointer; transition: background 0.15s; }
 .atracao-cad:hover { background: color-mix(in srgb, var(--neutro) 45%, transparent); }
-.atracao-cad.aberta { background: color-mix(in srgb, var(--ultra) 7%, var(--papel)); box-shadow: inset 3px 0 0 var(--ultra); }
+.atracao-cad.aberta { background: color-mix(in srgb, var(--ultra) 10%, var(--papel)); }
 .abrir-ficha { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 .abrir-ficha:focus-visible { outline: 2px solid var(--ultra); outline-offset: 2px; border-radius: 3px; }
 .qtd-acervo { font: 500 12px var(--mono); color: var(--tinta3); white-space: nowrap; }
@@ -3307,8 +3307,10 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .tabela-dup [role='cell'], .tabela-dup [role='rowheader'] { padding: 9px 12px; border-top: 1px solid var(--regua); font: 400 13.5px/1.4 var(--sans); color: var(--tinta); min-width: 0; overflow-wrap: anywhere; }
 .tabela-dup [role='rowheader'] { font: 600 10.5px/1.5 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta3); background: color-mix(in srgb, var(--neutro) 50%, var(--papel)); padding-top: 11px; }
 .tabela-dup .cabeca > * { padding: 12px; }
-.tabela-dup .col-dup { border-left: 3px solid var(--ok); }
-.tabela-dup .col-dup.sai { border-left-color: var(--perigo); }
+/* as colunas dos cards: um fio neutro entre elas; o que fica e o que sai vem no cabeçalho tingido e no Fica/Sai */
+.tabela-dup .col-dup { border-left: 1px solid var(--regua); }
+.tabela-dup .cabeca .col-dup.fica { background: color-mix(in srgb, var(--ok-fundo) 60%, var(--papel)); }
+.tabela-dup .cabeca .col-dup.sai { background: color-mix(in srgb, var(--perigo) 9%, var(--papel)); }
 .tabela-dup .difere > * { background: color-mix(in srgb, var(--ultra-suave) 55%, var(--papel)); }
 .tabela-dup .ne { font-style: normal; font-weight: 700; color: var(--ultra); margin-left: 5px; }
 .fica-sai { display: inline-flex; background: var(--neutro); border-radius: 8px; padding: 2px; }
@@ -3322,10 +3324,10 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .status-dup { display: inline-block; font: 600 10.5px var(--mono); color: var(--tinta2); background: var(--neutro); border-radius: 4px; padding: 2px 7px; margin: 0 4px 2px 0; }
 .link-dup { font: 500 12.5px var(--mono); color: var(--ultra-tinta); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--ultra) 50%, transparent); text-underline-offset: 3px; overflow-wrap: anywhere; }
 .explica-dup { margin: 12px 0 0; font: 400 12.5px/1.5 var(--sans); color: var(--tinta3); }
-.card-dup { border: 1px solid var(--regua); border-left: 3px solid var(--ok); border-radius: 12px; padding: 12px 14px; margin: 10px 0; background: var(--papel); }
-.card-dup.sai { border-left-color: var(--perigo); }
-.card-dup .selo-dup { font: 600 10.5px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ok); }
+.card-dup { border: 1px solid var(--regua); border-radius: 12px; padding: 12px 14px; margin: 10px 0; background: var(--papel); }
+.card-dup .selo-dup { display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ok); }
 .card-dup.sai .selo-dup { color: var(--perigo); }
+.card-dup .selo-dup::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .card-dup dl { margin: 8px 0 0; }
 .card-dup dl > div { padding: 5px 8px; margin: 0 -8px; border-radius: 6px; }
 .card-dup dl > .difere { background: color-mix(in srgb, var(--ultra-suave) 55%, var(--papel)); }
@@ -3348,10 +3350,9 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .comparar-dup [role='cell'], .comparar-dup [role='rowheader'], .comparar-dup [role='columnheader'] { padding: 7px 10px; border-top: 1px solid var(--regua); font: 400 13px/1.4 var(--sans); color: var(--tinta); min-width: 0; overflow-wrap: anywhere; }
 .comparar-dup .cabeca > * { border-top: 0; font: 650 12px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; }
 .comparar-dup [role='rowheader'] { font: 600 10px/1.5 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta3); background: color-mix(in srgb, var(--neutro) 50%, var(--papel)); }
-.comparar-dup .col-dup { border-left: 3px solid var(--ok); }
-.comparar-dup .col-dup.sai { border-left-color: var(--perigo); }
-.comparar-dup .cabeca .col-dup.fica { color: var(--ok); }
-.comparar-dup .cabeca .col-dup.sai { color: var(--perigo); }
+.comparar-dup .col-dup { border-left: 1px solid var(--regua); }
+.comparar-dup .cabeca .col-dup.fica { color: var(--ok); background: color-mix(in srgb, var(--ok-fundo) 60%, var(--papel)); }
+.comparar-dup .cabeca .col-dup.sai { color: var(--perigo); background: color-mix(in srgb, var(--perigo) 9%, var(--papel)); }
 .comparar-dup .difere > * { background: color-mix(in srgb, var(--ultra-suave) 55%, var(--papel)); }
 .comparar-dup .ne { font-style: normal; font-weight: 700; color: var(--ultra); margin-left: 5px; }
 .sub-dup { margin: 18px 0 8px; font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta2); }

@@ -336,7 +336,9 @@ _Evitar_: webhook do projeto (é a rota do n8n de hoje). Não confundir com o **
 **Chave do Padeiro**:
 O que identifica o Padeiro no PROMeiro: uma chave por usuário e por computador. O Padeiro se cadastra com o usuário do
 computador e a sigla do designer; o cadastro fica **pendente** até um administrador ligar a chave ao designer. A chave
-pode ser revogada.
+pode ser revogada. Se o mesmo usuário, no mesmo computador, se cadastra de novo com a chave já ligada, ela não cai: o
+cadastro vira um **pedido novo**, pendente, e a chave ligada vale até um administrador aprovar o pedido (aí ela é
+trocada) ou recusá-lo (aí ela fica). Com a chave pendente ou revogada, o cadastro novo a troca na hora.
 _Evitar_: token de serviço, senha, login
 
 **Anexo** (guardado pelo PROMeiro):
@@ -459,7 +461,9 @@ os avisos do dia.
 _Evitar_: vaga, slot
 
 **Ilha**:
-A sala de edição, com número e tipo (AVID, VDI…). Fica nos Cadastros.
+A sala de edição, com tipo (AVID, VDI…), número e nome opcional. Fica nos Cadastros (guardada no PROMeiro). AVID e
+ILHA com o mesmo número são duas ilhas, como estão escritas. A **ilha de costume** do editor é a que mais se repete nas
+posições dele nas oito semanas antes do dia; a ilha está **ocupada** quando outra posição do mesmo turno já está nela.
 _Evitar_: sala, estação
 
 **Ausência**:

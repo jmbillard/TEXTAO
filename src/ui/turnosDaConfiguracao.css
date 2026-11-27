@@ -1,0 +1,20 @@
+/* A seção Turnos da Configuração (#124): a lista, com as peças da configuracao.css. */
+.cfg-turnos { list-style: none; margin: 0; padding: 0; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); }
+.cfg-turno { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: 10px; align-items: center; padding: 8px 12px; }
+.cfg-turno + .cfg-turno { border-top: 1px solid var(--regua); }
+.cfg-turno.novo { background: color-mix(in srgb, var(--ultra) 5%, var(--cartao)); }
+.cfg-turno-ordem { display: flex; gap: 2px; }
+.cfg-turno .entrada-cad { height: 32px; }
+.cfg-turno-nome { font: 600 14.5px var(--sans); color: var(--tinta); }
+.cfg-turno-h { display: flex; flex-direction: column; gap: 2px; min-width: 0; font: 500 13px var(--mono); color: var(--tinta2); }
+.cfg-turno-h .entrada-cad { font: 500 13px var(--mono); }
+.cfg-turno-h small { font: 400 11px var(--sans); color: var(--tinta3); min-height: 13px; }
+.cfg-turno-h small.erro { color: var(--falta); font-weight: 600; }
+.no-celular .cfg-turno { grid-template-columns: minmax(0, 1fr) auto; }
+@media (max-width: 640px) {
+  .cfg-turno { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 8px 10px; }
+  .cfg-turno-ordem { grid-column: 1 / -1; }
+}
+/* como o "+ Nova praça" (sem a classe dele: o e2e das praças conta os .cfg-mais) */
+.cfg-turnos-mais { margin-top: -2px; }
+.cfg-turnos-mais .botao-texto { font-weight: 600; }

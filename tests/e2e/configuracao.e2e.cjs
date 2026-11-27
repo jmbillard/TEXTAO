@@ -26,6 +26,9 @@
 // administradora com o e-mail digitado e cadastrada como designer (grava no Teable falso); os administradores no "ver
 // tudo" (a chave-mestra, "você", não dá para tirar a si mesmo); o designer sem produção ignorado (vai para o "ver
 // tudo"), desfeito, tirado de administrador e marcado inativo (grava no Teable falso). No celular, só consulta.
+// Os Turnos (#124), claro e escuro: os de fábrica; o horário da Manhã escrito de qualquer jeito (vai para o padrão),
+// um turno novo, a Noite tirada e a ordem mudada; conferir (o que muda e o aviso do turno que sai) e salvar, que vale
+// na hora sem pedir nada ao Trello.
 // O Histórico (#78), claro e escuro: pelo rodapé da Configuração; as mudanças (Pessoas e Praças, pela API como a tela
 // faz) com quem, quando e o antigo → o novo pelos nomes; voltar travado (a lista antiga foi arquivada) com o porquê;
 // voltar que vale na hora e entra no histórico. No celular, só consulta.
@@ -1203,6 +1206,64 @@ async function portainerNoCelular(navegador, url, app, teable, tema) {
   console.log(`ok: portainer no celular ${nome}: os três grupos, sem rolar para o lado`);
 }
 
+/* ---------- os turnos (#124) ---------- */
+
+const TURNOS = '.cfg-secao[aria-labelledby="cfg-turnos"]';
+const linhasDosTurnos = (p) =>
+  p.locator(`${TURNOS} .cfg-turno`).evaluateAll((ls) => ls.map((l) => [...l.querySelectorAll('input')].map((i) => i.value).join(' | ') || l.textContent.trim()));
+
+async function secaoTurnos(navegador, url, app, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await app.mudarConfiguracao({ TURNOS: null }).antigaFechada;
+  pedidosAoTrello.length = 0;
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  const turnos = p.locator(TURNOS);
+  await turnos.waitFor();
+  // sem nada salvo: os de fábrica, na ordem da grade
+  assert.equal(await resumo(p, TURNOS), '4 turnos · os de fábrica');
+  assert.deepEqual(await linhasDosTurnos(p), ['Madrugada | 22h às 6h', 'Manhã | 6h às 15h', 'Tarde | 14h às 23h', 'Noite | 20h às 2h']);
+  assert.equal(await barra(p), '');
+
+  // o horário da Manhã escrito de qualquer jeito, um turno novo, a Noite tirada e o Plantão subido
+  const manha = turnos.getByLabel('Horário padrão de Manhã');
+  await manha.fill('7 AS 16');
+  await turnos.locator('.cfg-turno', { has: p.locator('input[value="Manhã"]') }).getByText('grava 7h às 16h').waitFor();
+  await manha.blur();
+  assert.equal(await manha.inputValue(), '7h às 16h', 'ao sair, o horário vai para o padrão');
+  await turnos.getByRole('button', { name: '+ Novo turno' }).click();
+  const novo = turnos.locator('.cfg-turno.novo');
+  await novo.getByLabel('Nome do turno').fill('Plantão');
+  await novo.getByLabel('Horário padrão de Plantão').fill('10 as 19');
+  await turnos.getByRole('button', { name: 'Tirar Noite' }).click();
+  await turnos.getByRole('button', { name: 'Subir Plantão' }).click();
+  assert.deepEqual(await linhasDosTurnos(p), ['Madrugada | 22h às 6h', 'Manhã | 7h às 16h', 'Plantão | 10h às 19h', 'Tarde | 14h às 23h']);
+  assert.equal(await barra(p), '3 mudanças');
+  await semRolagemDeLado(p, `turnos ${nome}`);
+  await turnos.scrollIntoViewIfNeeded();
+  await capturar(p, `36-turnos-rascunho-${nome}`);
+
+  // conferir: o que muda; salvar vale na hora (sem pedir nada ao Trello)
+  await p.locator('.cfg-barra-salvar').click();
+  const dialogo = p.locator('.cfg-modal');
+  await dialogo.locator('h2', { hasText: 'Tudo confere' }).waitFor();
+  assert.deepEqual(await linhasDoQueMuda(dialogo), ['Manhã | 6h às 15h | 7h às 16h', 'Plantão | — | 10h às 19h', 'Noite | 20h às 2h | —']);
+  assert.match(await dialogo.locator('.cfg-checks li.aviso').textContent(), /Noite sai da grade/);
+  await dialogo.locator('.botao.primario', { hasText: 'Salvar' }).click();
+  await p.locator('.aviso', { hasText: 'Salvo. Já vale.' }).waitFor();
+  assert.equal(await barra(p), '');
+  assert.equal(await resumo(p, TURNOS), '4 turnos');
+  assert.deepEqual(JSON.parse(app.modulos().env.TURNOS).map((t) => t.id), ['madrugada', 'manha', 'plantao', 'tarde']);
+  await p.reload();
+  await turnos.waitFor();
+  assert.deepEqual(await linhasDosTurnos(p), ['Madrugada | 22h às 6h', 'Manhã | 7h às 16h', 'Plantão | 10h às 19h', 'Tarde | 14h às 23h']);
+  assert.equal(pedidosAoTrello.filter((x) => !x.startsWith('GET')).length, 0, 'os turnos não escrevem no Trello');
+  assert.deepEqual(erros, [], `turnos ${nome}: erros na página`);
+  await ctx.close();
+  // volta aos de fábrica, para os passos seguintes
+  await app.mudarConfiguracao({ TURNOS: null }).antigaFechada;
+  console.log(`ok: turnos ${nome}: os de fábrica → horário no padrão, turno novo, tirar e subir → conferir e salvar, vale na hora`);
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   // o cadastro de atrações do Teable, de mentira: só a leitura das sessões de filme (#75)
@@ -1246,6 +1307,7 @@ async function principal() {
     for (const tema of ['light', 'dark']) await cardNoCelular(navegador, s.url, tema);
     for (const tema of ['light', 'dark']) await secaoFilmes(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await filmesNoCelular(navegador, s.url, tema);
+    for (const tema of ['light', 'dark']) await secaoTurnos(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await conexoes(navegador, s.url, s.app, teable, tema);
     for (const tema of ['light', 'dark']) await pessoas(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await pessoasNoCelular(navegador, s.url, s.app, tema);

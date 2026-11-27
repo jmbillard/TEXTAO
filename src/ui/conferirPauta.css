@@ -1,0 +1,72 @@
+/* Montar a pauta, conferir e publicar (#127): as telas "conferir" e "publicada" do protótipo aprovado e a faixa da
+   publicação na tela de montar. Usa as peças da pauta.css (o cabeçalho, o item da pauta, as versões). */
+.conf-voltar { margin: 0 0 6px -2px; }
+.conf-rotulo { margin: 14px 0 6px; font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta3); }
+.conf-rotulo:first-child { margin-top: 0; }
+.conf-placar { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0 0 18px; font: 400 13.5px var(--sans); color: var(--tinta3); }
+.conf-placar b { display: block; font: 400 30px/1 var(--serifa); color: var(--tinta); font-variant-numeric: tabular-nums; }
+.conf-corpo { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+.conf-lista ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.conf-nada { margin: 0 0 6px; font: 600 19px/1.1 Caveat, cursive; color: var(--ok); }
+.conf-prob { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; padding: 12px 14px; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); }
+/* o estado vem na bolinha antes do tipo e, para olhar, no fundo tingido (sem faixa na borda: veja Regras de UI) */
+.conf-prob.olhar { background: color-mix(in srgb, var(--falta-fundo) 70%, var(--cartao)); border-color: color-mix(in srgb, var(--falta) 30%, var(--regua)); }
+.conf-prob.conferida { opacity: 0.7; }
+.conf-prob-tipo { grid-column: 1; display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta3); }
+.conf-prob-tipo::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--regua-forte); }
+.conf-prob.olhar .conf-prob-tipo { color: var(--falta); }
+.conf-prob.olhar .conf-prob-tipo::before { background: var(--falta); }
+.conf-prob.saber .conf-prob-tipo::before { background: var(--ok); }
+.conf-prob strong { grid-column: 1; font: 600 14.5px/1.3 var(--sans); overflow-wrap: anywhere; }
+.conf-prob strong.mono { font: 600 13.5px var(--mono); }
+.conf-prob-det { grid-column: 1; font: 400 13px/1.4 var(--sans); color: var(--tinta3); overflow-wrap: anywhere; }
+.conf-prob-acoes { grid-column: 2; grid-row: 1 / span 3; display: flex; align-items: center; gap: 12px; }
+.conf-prob-acoes .botao { height: 32px; }
+.conf-lado { position: sticky; top: 12px; }
+.conf-publicar { display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 14px; background: var(--papel); border: 1px solid var(--regua); box-shadow: var(--sombra-folha); }
+.conf-publicar .botao { height: 46px; justify-content: center; font-size: 15px; border-radius: 12px; }
+.conf-publicar p { margin: 0; font: 400 13px/1.45 var(--sans); color: var(--tinta3); }
+.conf-publicar .conf-erro { color: var(--falta); font-weight: 600; }
+.conf-pend { font: 600 19px/1.1 Caveat, cursive; color: var(--falta); }
+.conf-pend.ok { color: var(--ok); }
+
+.pub-cabeca { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 18px 0 16px; }
+.pub-carimbo { display: inline-block; font: 600 34px/1 Caveat, cursive; color: var(--ok); transform: rotate(-3deg); }
+.pub-cabeca h1 { margin: 0; font: 400 40px/1.08 var(--serifa); }
+.pub-cartoes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.pub-cartoes > div { padding: 14px 16px; border-radius: 12px; background: var(--cartao); border: 1px solid var(--regua); font: 400 13px/1.4 var(--sans); color: var(--tinta3); }
+.pub-cartoes b { display: block; margin-bottom: 4px; font: 400 28px/1 var(--serifa); color: var(--tinta); }
+.pub-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+.pub-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.pub-turno { padding: 10px 12px 12px; border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); }
+.pub-turno h2 { margin: 0 0 6px; font: 400 19px/1 var(--serifa); }
+.pub-pos { padding: 6px 0; border-top: 1px solid var(--regua); }
+.pub-pos strong { font: 600 13px var(--sans); }
+.pub-ninguem { margin: 0; font: italic 400 13px var(--serifa); color: var(--tinta3); }
+
+.pub-faixa { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; background: var(--ok-fundo); color: var(--ok); font: 400 13px/1.4 var(--sans); }
+.pub-faixa.alterado, .pub-faixa.rascunho { background: var(--cartao); border: 1px solid var(--regua); color: var(--tinta2); }
+.pub-faixa.alterado b { color: var(--falta); }
+.pub-faixa .botao-texto { color: inherit; }
+.pub-historico { flex-basis: 100%; }
+.pub-historico summary { cursor: pointer; font-weight: 600; }
+.pub-historico ol { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
+.pub-historico li.desfeita { text-decoration: line-through; text-decoration-color: var(--regua-forte); }
+
+/* os estados nas abas */
+.montar-aba .est-publicado { background: var(--ok); box-shadow: none; }
+.montar-aba .est-alterado { background: var(--falta); box-shadow: none; }
+.montar-publicado { display: inline-block; font: 600 17px/1 Caveat, cursive; color: var(--ok); transform: rotate(-2deg); }
+.montar-alterado { display: inline-block; font: 600 17px/1 Caveat, cursive; color: var(--falta); transform: rotate(-2deg); }
+
+@media (max-width: 1100px) {
+  .conf-corpo { grid-template-columns: minmax(0, 1fr); }
+  .conf-lado { position: static; }
+  .pub-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .conf-prob { grid-template-columns: minmax(0, 1fr); }
+  .conf-prob-acoes { grid-column: 1; grid-row: auto; margin-top: 6px; }
+  .pub-cabeca h1 { font-size: 30px; }
+  .pub-cartoes, .pub-grade { grid-template-columns: minmax(0, 1fr); }
+}

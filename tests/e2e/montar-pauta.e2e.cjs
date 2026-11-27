@@ -13,6 +13,20 @@
 // completa "eli" com a Elis. O rascunho é gravado sozinho: a aba de amanhã passa a rascunho e, recarregada a página,
 // tudo volta como foi gravado (o horário e a claquete no padrão). Outro dia da semana continua vazio. No celular
 // (escuro), o rascunho cabe na tela, sem rolar para o lado.
+// As ilhas e os turnos (#124): a Bia cadastra as ilhas na aba Ilhas dos Cadastros (AVID 46, VDI 7 com nome e ILHA 46,
+// que fica como está escrita); a Lia vê a lista, sem cadastrar. Com o histórico de uma semana antes (o Rui na AVID 46),
+// escolher o Rui leva à ilha, com a AVID 46 "de costume" no alto da lista, e Enter a confirma; "avid46" e Tab acham a
+// ilha da Elis; o Gil na mesma ilha da Elis, na Tarde, mostra "ocupada". Recarregada, a ilha volta como foi gravada.
+// Os turnos vêm da Configuração: com um turno salvo a mais (Plantão), a grade ganha o bloco dele.
+//
+// Conferir e publicar (#127): o Teable falso também tem o Postgres da pauta, com duas linhas de amanhã (uma delas a
+// mesma claquete que a Bia montou). A Bia abre uma posição vazia na Noite e escreve uma claquete sem data; "Conferir e
+// publicar" mostra o placar e as pendências: "Turno sem editor" e "Claquete sem data" para olhar. O "Corrigir" da
+// claquete volta à grade com o foco na linha; corrigida, sai da conferência. O "está certo" do turno o leva para as
+// conferidas, e publicar mostra "publicada!", com a aba de amanhã publicada. Na Pauta da edição, a Lia vê o dia com a
+// do Teable inteira e o que só o PROMeiro tem, sem a claquete em dobro. Mexer depois deixa o dia "alterado"; publicar
+// de novo entra no histórico; Desfazer volta à publicação anterior e, de novo, tira a publicação: a Pauta volta a ser
+// só a do Teable.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:montar-pauta
 // Com CAPTURAS=pasta, grava as capturas (densidade 2).
@@ -154,7 +168,18 @@ async function montarPeloTeclado(navegador, url) {
   assert.match(await lista.locator('[role="option"] small').first().innerText(), /livre/);
   await p.keyboard.press('Enter');
   let f = await focado(p);
-  assert.deepEqual([f.campo, f.valor], ['horario', '22h às 6h'], 'Enter escolhe o editor e vai ao horário, que vem do turno');
+  assert.equal(f.campo, 'ilha', 'Enter escolhe o editor e vai à ilha');
+  // a ilha de costume do Rui (do histórico) vem no alto da lista, já escolhida: Enter a confirma
+  const ilhas = p.locator('.lista-ilhas');
+  await ilhas.waitFor();
+  const primeira = ilhas.locator('[role="option"]').first();
+  assert.match(await primeira.innerText(), /AVID 46[\s\S]*livre[\s\S]*de costume/);
+  assert.equal(await primeira.getAttribute('aria-selected'), 'true');
+  await capturar(p, '08-montar-ilha-de-costume');
+  await p.keyboard.press('Enter');
+  f = await focado(p);
+  assert.deepEqual([f.campo, f.valor], ['horario', '22h às 6h'], 'Enter confirma a ilha e vai ao horário, que vem do turno');
+  assert.equal(await turno(p, 'Madrugada').locator('[data-campo="ilha"]').first().inputValue(), 'AVID 46');
   await p.keyboard.press('ControlOrMeta+a');
   await p.keyboard.type('22 AS 06');
   const celula = turno(p, 'Madrugada').locator('.montar-celula').first();
@@ -205,12 +230,40 @@ async function montarPeloTeclado(navegador, url) {
   f = await focado(p);
   const tarde = turno(p, 'Tarde').locator('.montar-celula').first();
   assert.equal(await tarde.locator('[data-campo="editor"]').inputValue(), 'Elis Furtado', 'Tab completa o editor');
+  assert.equal(f.campo, 'ilha', 'e vai à ilha');
+  // a ilha escrita de qualquer jeito: "avid46" e o Tab acham a AVID 46
+  await p.keyboard.type('avid46');
+  await p.keyboard.press('Tab');
+  f = await focado(p);
+  assert.equal(await tarde.locator('[data-campo="ilha"]').inputValue(), 'AVID 46', 'Tab completa a ilha');
   assert.equal(f.campo, 'horario', 'e vai ao horário');
   await p.keyboard.press('ControlOrMeta+a');
   await p.keyboard.type('14 as 22:53');
   await p.keyboard.press('Enter');
   assert.equal((await focado(p)).campo, 'demanda', 'Enter no horário vai à demanda');
   await p.keyboard.type('Mundo Animal 30/11 (P)');
+
+  // o Gil na mesma ilha da Elis, na Tarde: a lista diz com quem está, e a escolhida avisa "ocupada"
+  await turno(p, 'Tarde').getByRole('button', { name: '+ posição' }).click();
+  await p.keyboard.type('gil');
+  await p.keyboard.press('Enter');
+  assert.equal((await focado(p)).campo, 'ilha');
+  await p.keyboard.type('avid 4');
+  const avid = ilhas.locator('[role="option"]', { hasText: 'AVID 46' });
+  await avid.waitFor();
+  assert.match(await avid.locator('small').innerText(), /com Elis Furtado/);
+  await p.keyboard.press('Enter');
+  const gil = turno(p, 'Tarde').locator('.montar-celula').nth(1);
+  await gil.getByText('ocupada: Elis Furtado na tarde').waitFor();
+  await tarde.getByText('ocupada: Gil Moura na tarde').waitFor();
+  await capturar(p, '09-montar-ilha-ocupada');
+  // a Madrugada tem a AVID 46 também, mas em outro turno: não está ocupada
+  assert.equal(await turno(p, 'Madrugada').getByText(/ocupada/).count(), 0);
+  // o Gil sai: a Elis volta a ter a ilha só para ela (e o resto do teste segue com as posições de antes)
+  await gil.locator('[data-campo="horario"]').focus();
+  await gil.getByRole('button', { name: 'Tirar esta posição' }).click();
+  await p.waitForFunction(() => !document.body.textContent?.includes('ocupada:'));
+  await tarde.locator('[data-campo="demanda"]').first().focus();
 
   // gravado sozinho: a aba de amanhã passa a rascunho
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
@@ -225,10 +278,12 @@ async function montarPeloTeclado(navegador, url) {
   await p.locator('.montar-celula').first().waitFor();
   const madrugada = turno(p, 'Madrugada').locator('.montar-celula').first();
   assert.equal(await madrugada.locator('[data-campo="editor"]').inputValue(), 'Rui Teixeira');
+  assert.equal(await madrugada.locator('[data-campo="ilha"]').inputValue(), 'AVID 46');
   assert.equal(await madrugada.locator('[data-campo="horario"]').inputValue(), '22h às 6h');
   assert.deepEqual(await madrugada.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), [`Noite de Gala ${diaMes(amanha)} (DP)`, 'COMUNICAÇÃO']);
   const tardeDeNovo = turno(p, 'Tarde').locator('.montar-celula').first();
   assert.equal(await tardeDeNovo.locator('[data-campo="editor"]').inputValue(), 'Elis Furtado');
+  assert.equal(await tardeDeNovo.locator('[data-campo="ilha"]').inputValue(), 'AVID 46');
   assert.equal(await tardeDeNovo.locator('[data-campo="horario"]').inputValue(), '14h às 22h53');
   assert.deepEqual(await tardeDeNovo.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), ['Mundo Animal 30/11 (P)']);
   assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
@@ -257,10 +312,181 @@ async function noCelular(navegador, url) {
   console.log('ok: no celular (escuro), o rascunho cabe na tela');
 }
 
+async function cadastrarAsIlhas(navegador, url) {
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, '#/cadastros/ilhas');
+  const lista = p.locator('.lista-cad[aria-label="Ilhas"]');
+  await lista.getByText('Nenhuma ilha cadastrada ainda.').waitFor();
+  const form = p.locator('.form-ilha');
+  const cadastrar = async (tipo, numero, nome = '') => {
+    await form.getByRole('radio', { name: tipo }).click();
+    await form.getByLabel('Número').fill(numero);
+    await form.getByLabel('Nome').fill(nome);
+    await form.getByRole('button', { name: 'Cadastrar' }).click();
+    await p.locator('.aviso', { hasText: `${tipo} ${numero} cadastrada.` }).waitFor();
+  };
+  await cadastrar('AVID', '46');
+  await cadastrar('VDI', '7', 'Sala da esquina');
+  // AVID e ILHA com o mesmo número ficam como estão escritas
+  await cadastrar('ILHA', '46');
+  // a mesma ilha de novo é recusada
+  await form.getByRole('radio', { name: 'AVID' }).click();
+  await form.getByLabel('Número').fill('46');
+  await form.getByRole('button', { name: 'Cadastrar' }).click();
+  await p.locator('.aviso', { hasText: 'Já existe a AVID 46.' }).waitFor();
+  await form.getByLabel('Número').fill('');
+  const linhas = () => lista.locator('.item-ilha .nome').allInnerTexts();
+  assert.deepEqual((await linhas()).map((t) => t.replace(/\s+/g, ' ').trim()), ['AVID 46', 'ILHA 46', 'VDI 7 Sala da esquina']);
+  // a coordenação não remove (só administradores)
+  assert.equal(await lista.locator('.lixo-cad.travado').count(), 3);
+  await capturar(p, '10-cadastros-ilhas');
+  assert.deepEqual(erros, [], 'ilhas: erros na página');
+  await ctx.close();
+
+  // a Lia vê a lista, sem cadastrar
+  const lia = await abrir(navegador, url, LIA, '#/cadastros/ilhas');
+  await lia.p.locator('.item-ilha').first().waitFor();
+  assert.equal(await lia.p.locator('.item-ilha').count(), 3);
+  assert.ok(await lia.p.locator('.form-ilha').getByRole('button', { name: 'Cadastrar' }).isDisabled(), 'a Lia não cadastra');
+  assert.deepEqual(lia.erros, [], 'ilhas (Lia): erros na página');
+  await lia.ctx.close();
+  console.log('ok: a coordenação cadastra as ilhas nos Cadastros; quem não é só vê');
+}
+
+/** O histórico: uma semana antes de amanhã, o Rui na AVID 46 (a ilha de costume dele). */
+async function umaSemanaAntes(api) {
+  const h = { 'cf-access-authenticated-user-email': BIA, 'content-type': 'application/json' };
+  const { ilhas } = await (await fetch(`${api}/cadastros/ilhas`, { headers: h })).json();
+  const avid = ilhas.find((i) => i.tipo === 'AVID' && i.numero === '46').id;
+  const r = await fetch(`${api}/montar-pauta?dia=${mais(amanha, -7)}`, { method: 'PUT', headers: h, body: JSON.stringify({ posicoes: [{ id: 'hist-1', turno: 'manha', editor: 'Rui Teixeira', ilha: avid, horario: '6h às 15h', demandas: [] }] }) });
+  assert.equal(r.status, 200);
+}
+
+async function turnosDaConfiguracao(navegador, url, app) {
+  await app.mudarConfiguracao({ TURNOS: JSON.stringify([{ id: 'madrugada', nome: 'Madrugada', horario: '22h às 6h' }, { id: 'manha', nome: 'Manhã', horario: '6h às 15h' }, { id: 'plantao', nome: 'Plantão', horario: '10h às 19h' }, { id: 'tarde', nome: 'Tarde', horario: '14h às 23h' }, { id: 'noite', nome: 'Noite', horario: '20h às 2h' }]) }).antigaFechada;
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`);
+  await p.locator('.montar-celula').first().waitFor();
+  assert.deepEqual(await p.locator('.montar-turno h2').allInnerTexts(), ['Madrugada', 'Manhã', 'Plantão', 'Tarde', 'Noite']);
+  assert.match(await turno(p, 'Plantão').locator('.montar-turno-h').innerText(), /10h às 19h/);
+  await turno(p, 'Plantão').getByRole('button', { name: '+ posição' }).click();
+  await p.keyboard.press('Escape');
+  assert.equal(await turno(p, 'Plantão').locator('[data-campo="horario"]').inputValue(), '10h às 19h', 'o horário vem do turno da Configuração');
+  assert.deepEqual(erros, [], 'turnos: erros na página');
+  await ctx.close();
+  await app.mudarConfiguracao({ TURNOS: null }).antigaFechada;
+  console.log('ok: os turnos vêm da Configuração (o Plantão, com o horário dele)');
+}
+
+/* ---------- conferir e publicar (#127) ---------- */
+const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
+/** Uma linha da pauta do Teable (EDICAO_producao), no fuso de São Paulo. */
+function linhaDoTeable(id, claquete, quem, dia, [inicio, fim]) {
+  const sp = (d, h) => new Date(`${d}T${h}:00-03:00`).toISOString();
+  return { id, fields: { claquete, key: claquete.toUpperCase(), editor: { id: `rec${quem.replace(/\W/g, '')}`, title: quem }, data: sp(dia, '00:00'), expediente_inicio: sp(dia, inicio), expediente_fim: sp(fim < inicio ? mais(dia, 1) : dia, fim), anotacao: null, alterado_em: new Date().toISOString() } };
+}
+const PAUTA_DO_TEABLE = [linhaDoTeable('recT1', `Noite de Gala ${diaMes(amanha)} Dp`, 'Rui Teixeira', amanha, ['22:00', '06:00']), linhaDoTeable('recT2', `Corujão ${diaMes(amanha)}`, 'Gil Moura', amanha, ['06:00', '15:00'])];
+
+async function conferirEPublicar(navegador, url, teable) {
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`);
+  await p.locator('.montar-celula').first().waitFor();
+  // uma posição vazia na Noite; uma claquete sem data na Tarde
+  await turno(p, 'Noite').getByRole('button', { name: '+ posição' }).click();
+  await p.keyboard.press('Escape');
+  const tarde = turno(p, 'Tarde').locator('.montar-celula').first();
+  await tarde.locator('[data-campo="demanda"]').last().click();
+  await p.keyboard.press('End');
+  await p.keyboard.press('Enter');
+  await p.keyboard.type('Vale a Pena Rever (AH)');
+  await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
+
+  // a conferência: o placar e as pendências
+  await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
+  await p.getByRole('heading', { name: 'Conferir antes de publicar' }).waitFor();
+  assert.deepEqual(await p.locator('.conf-placar span').allInnerTexts().then((t) => t.map((x) => x.replace(/\s+/g, ' '))), ['3 posições', '2 editores', '4 demandas']);
+  assert.deepEqual(await p.locator('.conf-prob.olhar .conf-prob-tipo').allInnerTexts(), ['CLAQUETE SEM DATA', 'TURNO SEM EDITOR']);
+  await p.getByText('2 itens para olhar; dá para publicar assim mesmo').waitFor();
+  await capturar(p, '05-conferir', { fullPage: true });
+
+  // "Corrigir" volta à grade, com o foco na linha da claquete
+  await p.locator('.conf-prob', { hasText: 'Claquete sem data' }).getByRole('button', { name: 'Corrigir' }).click();
+  await p.waitForFunction(() => document.activeElement?.getAttribute('data-campo') === 'demanda');
+  assert.equal((await focado(p)).valor, 'Vale a Pena Rever (AH)', 'o foco vai à linha da claquete sem data');
+  await p.keyboard.press('ControlOrMeta+a');
+  await p.keyboard.type(`Vale a Pena Rever ${diaMes(amanha)} (AH)`);
+  await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
+  await p.getByRole('heading', { name: 'Conferir antes de publicar' }).waitFor();
+  assert.deepEqual(await p.locator('.conf-prob.olhar .conf-prob-tipo').allInnerTexts(), ['TURNO SEM EDITOR'], 'corrigida, a claquete sai da conferência');
+
+  // "está certo" leva o turno para as conferidas
+  await p.locator('.conf-prob.olhar', { hasText: 'Turno sem editor' }).getByRole('button', { name: 'está certo' }).click();
+  await p.locator('.conf-prob.conferida', { hasText: 'Turno sem editor' }).waitFor();
+  await p.getByText('tudo conferido').waitFor();
+
+  // publicar
+  await p.getByRole('button', { name: 'Publicar a pauta de amanhã' }).click();
+  await p.getByText('publicada!').waitFor();
+  await p.getByRole('heading', { name: /está no ar$/ }).waitFor();
+  assert.match(await p.locator('.pub-cartoes').innerText(), /0\s*pendências ficaram/);
+  await capturar(p, '06-publicada', { fullPage: true });
+
+  // na Pauta da edição (a Lia): a do Teable inteira e o que só o PROMeiro tem, sem dobrar
+  const lia = await abrir(navegador, url, LIA, `#/pauta/dia/${amanha}`);
+  await lia.p.locator('.pauta-colunas').waitFor();
+  const naPauta = async () => lia.p.locator('.pauta-cards .pauta-item').allInnerTexts().then((t) => t.join('\n'));
+  let texto = await naPauta();
+  assert.equal((texto.match(/Noite de Gala/g) ?? []).length, 1, 'a mesma claquete aparece uma vez');
+  assert.match(texto, /Corujão/, 'a do Teable continua');
+  assert.match(texto, /Mundo Animal/, 'o que só o PROMeiro tem aparece');
+  assert.match(texto, /Vale a Pena Rever/);
+  assert.ok((await lia.p.locator('.pauta-coluna-topo .pauta-nome').allInnerTexts()).includes('Elis Furtado'), 'a Elis ganha a coluna dela');
+  await capturar(lia.p, '07-pauta-com-o-publicado', { fullPage: true });
+
+  // de volta à grade: a aba de amanhã publicada; mexer depois de publicar deixa alterado
+  await p.getByRole('button', { name: 'Voltar a mexer' }).click();
+  assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'publicado');
+  await p.locator('.pub-faixa', { hasText: 'Publicada' }).waitFor();
+  const tardeDeNovo = turno(p, 'Tarde').locator('.montar-celula').first();
+  await tardeDeNovo.locator('[data-campo="demanda"]').last().click();
+  await p.keyboard.press('End');
+  await p.keyboard.press('Enter');
+  await p.keyboard.type('CALHAUS');
+  await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'alterado');
+  await p.locator('.pub-faixa', { hasText: 'Alterada depois de publicar' }).waitFor();
+  // publicar de novo: duas no histórico
+  await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
+  await p.getByRole('button', { name: 'Publicar de novo a pauta de amanhã' }).click();
+  await p.getByText('publicada!').waitFor();
+  await p.getByRole('button', { name: 'Voltar a mexer' }).click();
+  await p.locator('.pub-historico summary', { hasText: 'Histórico · 2' }).waitFor();
+
+  // Desfazer: volta a valer a anterior (o rascunho tem a CALHAUS a mais: alterado); de novo, nenhuma
+  await p.getByRole('button', { name: 'Desfazer a publicação' }).click();
+  await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'alterado');
+  await p.getByRole('button', { name: 'Desfazer a publicação' }).click();
+  await p.locator('.pub-faixa', { hasText: 'Publicação desfeita' }).waitFor();
+  assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
+  await lia.p.reload();
+  await lia.p.locator('.pauta-colunas').waitFor();
+  texto = await naPauta();
+  assert.doesNotMatch(texto, /Mundo Animal/, 'desfeita, a Pauta volta a ser só a do Teable');
+  assert.match(texto, /Noite de Gala/);
+  assert.match(texto, /Corujão/);
+
+  assert.ok(teable.estado.pedidos.every((x) => x.startsWith('GET ')), 'nada foi escrito no Teable');
+  assert.equal(escritasNoTeable.length, 0, 'nada foi escrito nos cadastros');
+  assert.deepEqual(erros, [], 'conferir: erros na página');
+  assert.deepEqual(lia.erros, [], 'pauta: erros na página');
+  await lia.ctx.close();
+  await ctx.close();
+  console.log('ok: conferir, corrigir, "está certo", publicar, a Pauta sem dobrar, alterado, republicar e desfazer');
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   const cadastros = criarCadastros({ ...ENV_CADASTROS, CADASTRO_ADMINS: CHEFE }, { buscar: buscarNoTeable });
-  const s = await subir({ cadastros, env: { CADASTRO_ADMINS: CHEFE } });
+  // o Teable falso da descoberta e do Postgres da pauta (#127), só leitura
+  const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
+  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e' }, { registros: { EDICAO_producao: PAUTA_DO_TEABLE } });
+  const s = await subir({ cadastros, teable, pg: teable.abrirPg, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG } });
   // o convite do tour não atrapalha
   for (const quem of [LIA, BIA, CHEFE]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
@@ -268,8 +494,12 @@ async function principal() {
   try {
     await marcarACoordenacao(navegador, s.url);
     await quemNaoEDaCoordenacao(navegador, s.url, s.api);
+    await cadastrarAsIlhas(navegador, s.url);
+    await umaSemanaAntes(s.api);
     await montarPeloTeclado(navegador, s.url);
     await noCelular(navegador, s.url);
+    await conferirEPublicar(navegador, s.url, teable);
+    await turnosDaConfiguracao(navegador, s.url, s.app);
   } catch (e) {
     falhou = true;
     console.error(e);

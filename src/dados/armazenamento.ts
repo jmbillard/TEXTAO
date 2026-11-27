@@ -547,6 +547,36 @@ export const marcarCoordenacao = (email: string, marcar: boolean) =>
 export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
   pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });
 
+/* ---------- a aba Padeiros (#137): a chave do Padeiro, só para administradores ---------- */
+export type EstadoDaChave = 'pendente' | 'ligada' | 'revogada';
+export interface DesignerDoPadeiro {
+  registro: string;
+  nome: string;
+}
+/** Um Padeiro cadastrado: um usuário num computador, com a chave (que nunca vem ao navegador) e o estado dela. */
+export interface Padeiro {
+  id: string;
+  usuario: string;
+  computador: string;
+  sistema: string;
+  sigla: string;
+  estado: EstadoDaChave;
+  designer: DesignerDoPadeiro | null;
+  /** O pedido novo do mesmo computador: a chave que, aprovada, troca a ligada (`substitui`, o id dela). */
+  pedidoNovo: boolean;
+  substitui: string | null;
+  /** O designer sugerido (só nos pendentes): o da chave que o pedido novo troca ou, senão, o que a sigla indica. */
+  sugestao: DesignerDoPadeiro | null;
+  mudadoPor: string | null;
+  mudadoEm: string | null;
+  criadoEm: string;
+  ultimoAviso: string | null;
+}
+export const lerPadeiros = () => pedir<{ padeiros: Padeiro[]; designers: DesignerDoPadeiro[] }>('/api/cadastros/padeiros');
+export const ligarPadeiro = (id: string, designer: string) =>
+  pedir<{ padeiro: Padeiro }>(`/api/cadastros/padeiros/${encodeURIComponent(id)}/ligar`, { method: 'POST', body: JSON.stringify({ designer }) });
+export const revogarPadeiro = (id: string) => pedir<{ padeiro: Padeiro }>(`/api/cadastros/padeiros/${encodeURIComponent(id)}/revogar`, { method: 'POST' });
+
 /** Uma key que aparece nas claquetes e nenhuma atração reconhece. */
 export interface KeySemCadastro {
   key: string;
@@ -1017,7 +1047,8 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
-import type { DiaDaEscala, PosicaoDaEscala } from '../modelo/escala';
+import type { DiaDaEscala, PosicaoDaEscala, TurnoDaEscala } from '../modelo/escala';
+import type { Ilha } from '../modelo/ilhas';
 import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DOS_RECOLHIDOS, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
@@ -1273,12 +1304,15 @@ export interface SecoesDaConfiguracao {
   card: SecaoCard;
   filmes: SecaoFilmes;
   conexoes: ConexoesDaConfiguracao;
+  /** os turnos da montagem da pauta (#124): os salvos, ou os de fábrica */
+  turnos: { salvo: TurnoDaEscala[]; deFabrica: boolean };
 }
 /** O que vai para conferir e salvar: só as seções que mudaram. */
 export interface MudancasDaConfiguracao {
   pracas?: LigacoesDasPracas;
   card?: LigacoesDoCard;
   filmes?: LigacoesDosFilmes;
+  turnos?: TurnoDaEscala[];
 }
 export const lerConfiguracao = () => pedir<SecoesDaConfiguracao>('/api/configuracao');
 /** Os quadros do Trello e as bases do Teable que os tokens enxergam (para trocar, em Conexões). */
@@ -1410,6 +1444,12 @@ export const lerDiaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => 
 export const lerRascunhoDoDia = (dia = '') => pedir<DiaDaEscala>(`/api/montar-pauta${dia ? `?dia=${dia}` : ''}`);
 /** Troca o rascunho do dia pelas posições (o servidor grava o horário e a claquete no padrão) e devolve o dia gravado. */
 export const gravarRascunhoDoDia = (dia: string, posicoes: PosicaoDaEscala[]) => pedir<DiaDaEscala>(`/api/montar-pauta?dia=${dia}`, { method: 'PUT', body: JSON.stringify({ posicoes }) });
+/** Diz que uma pendência da conferência está certa (ou a reabre), pela chave (#127); devolve o dia. */
+export const marcarPendencia = (dia: string, chave: string, certo: boolean) => pedir<DiaDaEscala>(`/api/montar-pauta/conferida?dia=${dia}`, { method: 'POST', body: JSON.stringify({ chave, certo }) });
+/** Publica o rascunho gravado do dia, mesmo com pendências (#127); devolve o dia, com a publicação. */
+export const publicarODia = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/publicar?dia=${dia}`, { method: 'POST' });
+/** Desfaz a última publicação do dia (vale a anterior, ou nenhuma) (#127); devolve o dia. */
+export const desfazerAPublicacao = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/desfazer?dia=${dia}`, { method: 'POST' });
 /** Lê o Andamento (guardado alguns minutos no servidor); `deNovo` vai ao GitHub. */
 export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** A correção de grafia (#114, só administradores): uma página das propostas da pauta de um grupo, e o resumo. */
@@ -1424,11 +1464,25 @@ export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<Confere
 export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ secoes: SecoesDaConfiguracao } | { conferencia: ConferenciaDasPracas }> {
   const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify(m) });
   const corpo = (await r.json().catch(() => null)) as (Partial<SecoesDaConfiguracao> & { conferencia?: ConferenciaDasPracas; erro?: string }) | null;
-  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes) {
+  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);
 }
+
+/* ---------- as ilhas (#124), no SQLite do PROMeiro ---------- */
+
+/** O cadastro das ilhas, com o que quem está logado pode fazer nele. */
+export interface CadastroDasIlhas {
+  ilhas: Ilha[];
+  podeCadastrar: boolean;
+  podeRemover: boolean;
+}
+export type IlhaNova = Pick<Ilha, 'tipo' | 'numero' | 'nome'>;
+export const lerIlhas = () => pedir<CadastroDasIlhas>('/api/cadastros/ilhas');
+export const cadastrarIlha = (i: IlhaNova) => pedir<{ ilha: Ilha }>('/api/cadastros/ilhas', { method: 'POST', body: JSON.stringify(i) }).then((r) => r.ilha);
+export const mudarIlha = (id: string, i: IlhaNova) => pedir<{ ilha: Ilha }>(`/api/cadastros/ilhas/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(i) }).then((r) => r.ilha);
+export const removerIlha = (id: string) => pedir<{ ok: true }>(`/api/cadastros/ilhas/${encodeURIComponent(id)}`, { method: 'DELETE' });
