@@ -2333,6 +2333,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return {
       // os turnos (#124): não dependem do Trello, nem travam com ele fora
       turnos: { salvo: turnosDaConfiguracao(configuracao.valores()), deFabrica: !salvos.has('TURNOS') },
+      // os turnos da arte (#175): as mesmas regras, guardados à parte
+      turnosDaArte: { salvo: turnosDaConfiguracao(configuracao.valores(), 'arte'), deFabrica: !salvos.has('TURNOS_DA_ARTE') },
       // o cartão da pauta no Teams (#135): os horários, o segredo que falta no Portainer e o último envio
       teams: { horarios: horariosDaConfiguracao(configuracao.valores()), deFabrica: !salvos.has('TEAMS_HORARIOS'), ...cartaoDoTeams.secao() },
       // a virada (#134): a chave e se a tabela da pauta foi achada na base
@@ -2501,23 +2503,29 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (acao === '/trocar') return await trocarAConexao(res, eu, corpo);
       if (acao === '/voltar') return await voltarNoHistorico(res, eu, corpo);
       if (acao === '/virada') return mudarAVirada(res, eu, corpo);
-      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined && corpo?.turnos === undefined && corpo?.teams === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
+      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined && corpo?.turnos === undefined && corpo?.turnosDaArte === undefined && corpo?.teams === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
       // os turnos (#124): sem o Trello; vindo só eles, o quadro nem é lido
       if (corpo.turnos !== undefined && !Array.isArray(corpo.turnos)) return json(res, 400, { erro: 'Os turnos vieram incompletos.' });
       const turnosNovos = corpo.turnos === undefined ? null : turnosArrumados(corpo.turnos.slice(0, 20));
       const dosTurnos = turnosNovos && conferirTurnos(turnosNovos, turnosDaConfiguracao(configuracao.valores()));
+      // os turnos da arte (#175): as mesmas regras, também sem o Trello
+      if (corpo.turnosDaArte !== undefined && !Array.isArray(corpo.turnosDaArte)) return json(res, 400, { erro: 'Os turnos da arte vieram incompletos.' });
+      const daArteNovos = corpo.turnosDaArte === undefined ? null : turnosArrumados(corpo.turnosDaArte.slice(0, 20));
+      const dosDaArte = daArteNovos && conferirTurnos(daArteNovos, turnosDaConfiguracao(configuracao.valores(), 'arte'), 'arte');
+      const comOsTurnos = { ...(turnosNovos ? { TURNOS: JSON.stringify(turnosNovos) } : {}), ...(daArteNovos ? { TURNOS_DA_ARTE: JSON.stringify(daArteNovos) } : {}) };
+      const nomesDosTurnos = [turnosNovos && 'os turnos da edição', daArteNovos && 'os turnos da arte'];
       // os horários do cartão do Teams (#135): também sem o Trello
       if (corpo.teams !== undefined && !Array.isArray(corpo.teams)) return json(res, 400, { erro: 'Os horários do cartão vieram incompletos.' });
       const horariosNovos = corpo.teams === undefined ? null : horariosArrumados(corpo.teams.slice(0, 40));
       const dosHorarios = horariosNovos && conferirHorarios(horariosNovos, horariosDaConfiguracao(configuracao.valores()));
       const semTrello = corpo.pracas === undefined && corpo.card === undefined && corpo.filmes === undefined;
       if (semTrello) {
-        const partes = [dosTurnos, dosHorarios].filter(Boolean);
+        const partes = [dosTurnos, dosDaArte, dosHorarios].filter(Boolean);
         const conferencia = partes.length === 1 ? partes[0] : { ok: partes.every((c) => c.ok), itens: partes.flatMap((c) => c.itens), muda: partes.flatMap((c) => c.muda) };
         if (acao === '/conferir') return json(res, 200, conferencia);
         if (!conferencia.ok) return json(res, 422, { erro: 'A conferência não passou: nada foi salvo.', conferencia });
-        mudarConfiguracao({ ...(turnosNovos ? { TURNOS: JSON.stringify(turnosNovos) } : {}), ...(horariosNovos ? { TEAMS_HORARIOS: JSON.stringify(horariosNovos) } : {}) }, { por: eu.email });
-        console.log(`[configuração] ${eu.email} salvou ${[turnosNovos && 'os turnos', horariosNovos && 'os horários do cartão do Teams'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}`);
+        mudarConfiguracao({ ...comOsTurnos, ...(horariosNovos ? { TEAMS_HORARIOS: JSON.stringify(horariosNovos) } : {}) }, { por: eu.email });
+        console.log(`[configuração] ${eu.email} salvou ${[...nomesDosTurnos, horariosNovos && 'os horários do cartão do Teams'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}`);
         return json(res, 200, await lerAsSecoes());
       }
       const pracas = corpo.pracas === undefined ? null : secaoDoPedido(corpo);
@@ -2534,7 +2542,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // a praça dos filmes é uma das praças que vão valer: as do pedido, quando as praças mudam junto
       const sessoes = filmesNovos && (await sessoesDoCadastro(cadastros)).sessoes;
       const dosFilmes = filmesNovos && conferirSecaoDosFilmes(env, lido.quadro, filmesNovos, { pracas: pracas ? pracas.pracas : geracao.pracas, sessoes });
-      const partes = [daPraca, doCard?.conferencia, dosFilmes, dosTurnos, dosHorarios].filter(Boolean);
+      const partes = [daPraca, doCard?.conferencia, dosFilmes, dosTurnos, dosDaArte, dosHorarios].filter(Boolean);
       const conferencia = {
         ok: partes.every((c) => c.ok),
         itens: partes.flatMap((c) => c.itens),
@@ -2563,14 +2571,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           ...(completa ? mudancasDaSecao(completa.secao) : {}),
           ...(doCard ? mudancasDoCard(doCard.secao) : {}),
           ...(filmesNovos ? mudancasDosFilmes(filmesNovos) : {}),
-          ...(turnosNovos ? { TURNOS: JSON.stringify(turnosNovos) } : {}),
+          ...comOsTurnos,
           ...(horariosNovos ? { TEAMS_HORARIOS: JSON.stringify(horariosNovos) } : {}),
           LIGADO_A_MAO: JSON.stringify(aMao),
         },
         { por: eu.email, quadro: lido.quadro },
       );
       const criadas = completa?.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
-      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes', turnosNovos && 'os turnos', horariosNovos && 'os horários do cartão do Teams'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
+      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes', ...nomesDosTurnos, horariosNovos && 'os horários do cartão do Teams'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
       return json(res, 200, await lerAsSecoes());
     } catch (e) {
       console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);
