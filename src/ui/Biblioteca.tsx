@@ -9,7 +9,7 @@ import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { ApelidoDaClaquete, ConflitoDoCard, SufixoDaClaquete, versoesDoResumo } from './Apelido';
+import { ApelidoDaClaquete, ConflitoDoCard, MarcaDaLetraEVersao, SufixoDaClaquete, versoesDoResumo } from './Apelido';
 import { useCodigoDasVersoes } from './CodigoDasVersoes';
 import { nomeSemAsVersoes } from '../modelo/pauta';
 import { apelidoDoRoteiro, relerApelidos, useApelidos } from '../dados/apelidos';
@@ -24,7 +24,7 @@ import { AnoNovoNaAgenda, Enfeites, useTemaDaData } from './Enfeites';
 import { enfeitesLigados, ligarEnfeites, ouvirEnfeites, type TemaDeFimDeAno } from './regrasDosEnfeites';
 import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
-import { avisoDaSubstituicao } from './Comparar';
+import { avisoDaSubstituicao, PerguntaDaLiberacao } from './Comparar';
 import { Icone } from './icones';
 import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
 import { AREAS } from '../modelo/areas';
@@ -36,7 +36,7 @@ import { dataCurtaComDia, ehCelular, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
 import { LinhaDoTempoDoCard } from './LinhaDoTempo';
 import { MenuDeContexto } from './MenuDeContexto';
-import { versaoDoRoteiro } from '../modelo/versoes';
+import { corrigirLiberacao, letraEVersaoDoRoteiro, marcaDaLetraEVersao } from '../modelo/letraEVersao';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
 const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
@@ -417,7 +417,8 @@ function AvisoTrello({ r, mandar }: { r: Resumo; mandar?: () => Promise<void> })
 interface VersaoNova {
   anterior: Resumo;
   comparar: () => void;
-  substituir: () => void;
+  /** a resposta de "Essa chamada já foi liberada para exibição?" (#166) */
+  substituir: (liberada: boolean) => void;
   manter: () => void;
 }
 
@@ -433,6 +434,8 @@ interface RedatorNaFicha {
 
 function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou, redator }: { r: Resumo; nova: boolean; ordem: number; prioridade?: boolean; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: (nova?: AtracaoNova) => void; avisar?: (t: string) => void; ligou?: () => void; redator?: RedatorNaFicha }) {
   const [ligando, setLigando] = useState(false);
+  // "Substituir a anterior" (no celular) pergunta antes se a chamada já foi liberada para exibição (#166)
+  const [perguntando, setPerguntando] = useState(false);
   // no padrão da casa, mesmo o roteiro guardado antes dele (só a exibição; o nome guardado fica)
   // o código de versão sai do nome e volta, uma vez só e no padrão, como o sufixo das versões (#152), se a pessoa liga
   const claquete = nomeSemAsVersoes(claqueteParaMostrar(r.meta, null, r.id)) || r.meta.titulo || r.meta.programa || 'Sem claquete';
@@ -482,6 +485,8 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
           <span className="claquete-alvo" title={apelidoDoRoteiro(r.id) ? `Claquete: ${r.meta.claquete}` : undefined}>
             {prioridade && terminou ? <MarcaTexto traco={tracoDe(r.id)}><span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span></MarcaTexto> : <span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span>}
             {terminou && <SufixoDaClaquete versoes={versoes} />}
+            {/* a letra e a versão do roteiro (#166), só o que não é o início */}
+            {terminou && <MarcaDaLetraEVersao marca={marcaDaLetraEVersao(letraEVersaoDoRoteiro(r.meta))} nome={claquete} />}
             {ocupada && <svg className="ibeam" viewBox="0 0 12 28" aria-hidden="true"><path d="M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5" /></svg>}
           </span>
           {nova && !terminou && <i className="cursor" />}
@@ -547,8 +552,16 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
             <Icone nome="duplicar" tam={14} /> Versão nova de <b>{versao.anterior.meta.claquete || 'um roteiro'}</b>, que já está na fila.
           </span>
           {/* só no celular: no computador, a decisão fica na comparação */}
-          <button className="botao-texto so-celular" onClick={versao.manter}>Manter as duas</button>
-          <button className="botao primario so-celular" onClick={versao.substituir}>Substituir a anterior</button>
+          {perguntando ? (
+            <span className="so-celular">
+              <PerguntaDaLiberacao anterior={versao.anterior.meta} responder={(liberada) => (setPerguntando(false), versao.substituir(liberada))} cancelar={() => setPerguntando(false)} />
+            </span>
+          ) : (
+            <>
+              <button className="botao-texto so-celular" onClick={versao.manter}>Manter as duas</button>
+              <button className="botao primario so-celular" onClick={() => setPerguntando(true)}>Substituir a anterior</button>
+            </>
+          )}
         </span>
       )}
       {np && producao && !versao && (
@@ -607,6 +620,24 @@ function DadoNoCard({ rotulo, nome, falta }: { rotulo: string; nome: string; fal
   );
 }
 
+/** A resposta de "Essa chamada já foi liberada para exibição?" (#166), corrigida no detalhe do card: o roteiro que
+    substituiu outro na fila refaz a letra e a versão a partir das da anterior. */
+function CorrigirLiberacao({ liberada, mudar }: { liberada: boolean; mudar: (liberada: boolean) => void }) {
+  return (
+    <div className="card-semana-liberacao">
+      <span>Já tinha sido liberada para exibição?</span>
+      <div className="segmento" role="radiogroup" aria-label="A versão anterior já tinha sido liberada para exibição?">
+        <button type="button" role="radio" aria-checked={!liberada} title="Um ajuste antes de liberar: a versão seguinte, na mesma letra" onClick={() => liberada && mudar(false)}>
+          Não
+        </button>
+        <button type="button" role="radio" aria-checked={liberada} title="Um ajuste depois de liberada: a letra seguinte, de volta à V1" onClick={() => !liberada && mudar(true)}>
+          Sim
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** A outra data no pé do card (peDoCard): "entrou ter 24", "21h59 · ao ar dom 29", "22h09 · ao ar ter 1 depois do ar". */
 function OutraData({ pe }: { pe: PeDoCard }) {
   // cada pedaço traz o "·" antes dele; o do começo de cada linha fica escondido (estilos.css), e a linha que quebra
@@ -629,15 +660,16 @@ function OutraData({ pe }: { pe: PeDoCard }) {
     a etapa (se não couber, ela desce); no pé, a outra data do critério (OutraData). Por entrega, o card que ainda não
     saiu fica tracejado, como um prazo. Um clique abre (com animação de altura) a ficha do card: uma pessoa por linha
     (redator, editor, designer), a Linha do tempo da Produção (lida só quando o card abre), a rubrica de quem revisou e
-    os atalhos para o roteiro e para o card no Trello. A etapa não se repete na ficha. A versão do roteiro (#156) fica
-    sempre na ficha (V1 sem versão nova) e, da V2 em diante, também no fim da claquete. O apelido se dá pelo lápis, que
+    os atalhos para o roteiro e para o card no Trello. A etapa não se repete na ficha. A letra e a versão do roteiro
+    (#156, #166) ficam sempre na ficha (A sem letra, V1 sem versão nova), com a correção da resposta da liberação para
+    exibição, e no fim da claquete só o que não é o início ("B", "V2", "B V2"). O apelido se dá pelo lápis, que
     aparece ao lado da claquete com o mouse (no celular, sempre, no card aberto), e pelo menu do clique direito. */
-function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
+function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void; corrigirLiberacao?: (liberada: boolean) => void }) {
   const { r, etapa, andamento } = c;
   // o nome de hoje na produção da arte (o card no Trello); sem ele, o guardado no padrão da casa
   const claquete = nomeSemAsVersoes(claqueteParaMostrar(r.meta, andamento, r.id)) || r.meta.titulo || 'Sem claquete';
   const versoes = versoesDoResumo(r);
-  const versao = versaoDoRoteiro(r.meta);
+  const letraEVersao = letraEVersaoDoRoteiro(r.meta);
   const idMais = `card-mais-${r.id}`;
   // o card simulado do roteiro de exemplo, no fim do tour: não é um card do Trello
   const doTour = ehDoTour(r.id);
@@ -680,8 +712,8 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
           {c.prioridade ? <MarcaTexto traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></MarcaTexto> : <TextoDaClaquete texto={claquete} quebras />}
           {/* as versões que a claquete sabe (#121, #152): o sufixo colado no fim do nome, se a pessoa liga */}
           <SufixoDaClaquete versoes={versoes} />
-          {/* a versão do roteiro (#156), só da V2 em diante (e não de novo, se o nome já diz) */}
-          {versao > 1 && !new RegExp(`\\bV${versao}\\b`, 'i').test(claquete) && <span className="card-semana-versao" title={`Versão ${versao} do roteiro`}> V{versao}</span>}
+          {/* a letra e a versão do roteiro (#156, #166), só o que não é o início (e não de novo, se o nome já diz) */}
+          <MarcaDaLetraEVersao marca={marcaDaLetraEVersao(letraEVersao)} nome={claquete} />
         </span>
         <ConflitoDoCard versoes={versoes} />
         <span className="card-semana-linha">
@@ -708,8 +740,11 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
               <DadoNoCard rotulo="redator" nome={r.meta.redator} falta="sem redator" />
               <DadoNoCard rotulo="editor" nome={r.meta.editor} falta="sem editor" />
               {!!andamento?.designers.length && <DadoNoCard rotulo="designer" nome={andamento.designers.join(', ')} />}
-              <DadoNoCard rotulo="versão" nome={`V${versao}`} />
+              {/* a letra e a versão do roteiro (#166), sempre: sem letra, a A; sem versão nova, a V1 */}
+              <DadoNoCard rotulo="letra" nome={letraEVersao.letra} />
+              <DadoNoCard rotulo="versão" nome={`V${letraEVersao.versao}`} />
             </dl>
+            {r.meta.substituiu && corrigirLiberacao && <CorrigirLiberacao liberada={r.meta.substituiu.liberada} mudar={corrigirLiberacao} />}
             {!doTour && aberto && <ApelidoDaClaquete alvo={{ roteiro: r.id }} claquete={r.meta.claquete} versoes={r.versoesLidas ?? []} dia={r.meta.dataExibicao ?? ''} podeMudar pedidoDoLapis={pedidoDoLapis} />}
             {!doTour && <LinhaDoTempoDoCard card={r.trello?.card} aberto={aberto} />}
             <div className="card-semana-pe">
@@ -752,7 +787,7 @@ const CHAVE_CRITERIO = 'promeiro:criterio';
 /** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de ontem. Com roteiros
     para revisar na fila, a semana encolhe; "ver a semana inteira" volta ao tamanho normal (a escolha fica no navegador).
     No celular (até 600px), a semana vira a faixa de dias arrastada com o dedo, dois dias à vista, abrindo em hoje. */
-function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; fila: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void }) {
+function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir }: { lista: Resumo[]; fila: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void; corrigir?: (r: Resumo) => ((liberada: boolean) => void) | undefined }) {
   const [inteira, setInteira] = useState(() => {
     try {
       return localStorage.getItem(CHAVE_SEMANA) === 'inteira';
@@ -888,6 +923,7 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
       alternar={() => setAberto((a) => (a === c.r.id ? null : c.r.id))}
       abrir={() => abrir(c.r.id)}
       tirar={() => tirar(c.r)}
+      corrigirLiberacao={corrigir?.(c.r)}
     />
   );
   const abas = <AbasDoCriterio criterio={criterio} mudar={mudarCriterio} />;
@@ -1233,10 +1269,24 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
     void carregar();
   };
 
-  /** Versão nova de uma claquete que já estava na fila (o aviso da ficha, no celular): fica a nova, com o trabalho da anterior. */
-  const substituir = async (nova: Resumo) => {
+  /** A resposta de "Essa chamada já foi liberada para exibição?" corrigida no detalhe do card da agenda (#166): o card
+      muda na hora; o roteiro é gravado com a letra e a versão refeitas a partir das da anterior. */
+  const corrigirALiberacao = async (r: Resumo, liberada: boolean) => {
+    setRoteiros((l) => l?.map((x) => (x.id === r.id ? { ...x, meta: corrigirLiberacao(x.meta, liberada) } : x)) ?? l);
     try {
-      const feito = await versaoNova.substituir(nova.id);
+      const completo = roteiroDa(await armazenamento.ler(r.id));
+      if (!completo) throw new Error('Roteiro não encontrado.');
+      await armazenamento.salvar({ ...completo, meta: corrigirLiberacao(completo.meta, liberada) }, liberada ? 'a anterior já tinha sido liberada para exibição: letra nova' : 'a anterior ainda não tinha sido liberada para exibição: versão nova');
+    } catch (e) {
+      avisar(`Não consegui corrigir a letra e a versão: ${e instanceof Error ? e.message : 'o servidor não respondeu'}`);
+    }
+    void carregar();
+  };
+
+  /** Versão nova de uma claquete que já estava na fila (o aviso da ficha, no celular): fica a nova, com o trabalho da anterior. */
+  const substituir = async (nova: Resumo, liberada: boolean) => {
+    try {
+      const feito = await versaoNova.substituir(nova.id, liberada);
       if (!feito) return;
       const { roteiro, cardHerdado } = feito;
       avisar(avisoDaSubstituicao(feito));
@@ -1289,7 +1339,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         ordem={ordem++}
         prioridade={!!andamento[r.id]?.prioridade}
         abrir={() => abrir(r.id)}
-        versao={anterior ? { anterior, comparar: () => comparar(r.id), substituir: () => substituir(r), manter: () => manterAsDuas(r) } : undefined}
+        versao={anterior ? { anterior, comparar: () => comparar(r.id), substituir: (liberada) => substituir(r, liberada), manter: () => manterAsDuas(r) } : undefined}
         producao={r.meta.naProducao && (r.podeEditar || r.meu || aberto) ? { comparar: () => comparar(r.id) } : undefined}
         mandar={temTrello() && (r.podeEditar || r.meu || aberto) ? () => mandar(r) : undefined}
         cadastrarAtracao={temCadastros() && r.meta.claquete ? (nova) => cadastros({ aba: 'atracoes', claquete: r.meta.claquete, ...nova }) : undefined}
@@ -1490,7 +1540,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
       </main>
       {!vazio && roteiros && enviados.length > 0 && (
         <AnoNovoNaAgenda.Provider value={enfeite?.anoNovo ?? null}>
-          <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} />
+          <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} corrigir={(r) => ((r.podeEditar || r.meu || aberto) && !ehDoTour(r.id) ? (liberada) => void corrigirALiberacao(r, liberada) : undefined)} />
         </AnoNovoNaAgenda.Provider>
       )}
       {saindo && (

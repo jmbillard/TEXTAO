@@ -40,6 +40,8 @@ export interface CardDaProducao {
   /** as versões lidas do roteiro dela (#152), vazia sem roteiro: a conta das versões refeita na tela quando o apelido
       muda (#154) */
   versoesLidas?: Versao[];
+  /** a letra e a versão do roteiro dela (#166), como o título mostra ("B", "V2", "B V2"); ausente na A V1 e sem roteiro */
+  letraEVersao?: string;
 }
 
 export interface BlocoDaPraca {

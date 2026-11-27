@@ -9,7 +9,7 @@ import { BalaoDeInfo } from './BalaoDeInfo';
 import { BolinhaDeEstado, MarcaTexto, tracoDe } from './pecas';
 import { apelidoDaClaquete, apelidoDaProducao, useApelidos, versoesAMaoDaClaquete, versoesAMaoDaProducao } from '../dados/apelidos';
 import { armazenamento } from '../dados/armazenamento';
-import { ApelidoDaClaquete } from './Apelido';
+import { ApelidoDaClaquete, MarcaDaLetraEVersao } from './Apelido';
 import { DE_ONDE, dicaDasVersoes, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
 import { sufixoDasVersoes, versoesDaChamada, type FonteDasVersoes } from '../modelo/versoesDoRoteiro';
 
@@ -95,6 +95,8 @@ export function TextoDaClaquete({ linha }: { linha: LinhaNaTela }) {
       <BolinhaDeEstado estado={resumo?.etapa ?? 'sem-card'} className="pauta-bolinha" />
       {alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{texto}</MarcaTexto> : texto}
       <Versoes linha={linha} />
+      {/* a letra e a versão do roteiro da Produção (#166), só o que não é o início */}
+      <MarcaDaLetraEVersao marca={resumo?.letraEVersao ?? ''} nome={linha.semVersao} />
     </span>
   );
 }
@@ -292,6 +294,7 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
     <span>
       {linha.semVersao}
       <Versoes linha={linha} />
+      <MarcaDaLetraEVersao marca={resumo?.letraEVersao ?? ''} nome={linha.semVersao} />
     </span>
   );
   const lapis = nomeDoLapis(daPauta);

@@ -57,6 +57,8 @@ export interface ProducaoNaPauta {
   entregaEm: string | null;
   /** as versões lidas do roteiro da Produção (#152), quando ele está no PROMeiro e as artes dizem */
   versoesLidas?: Versao[];
+  /** a letra e a versão do roteiro da Produção (#166), como o título mostra ("B", "V2", "B V2"); ausente na A V1 */
+  letraEVersao?: string;
 }
 
 /** A Semana da pauta: a rota GET /api/pauta/semana. */
@@ -575,6 +577,8 @@ export function resumoDaProducao(producoes: readonly ProducaoNaPauta[] | undefin
     designers: [...new Set(producoes.flatMap((p) => p.designers))],
     pracas: [...new Set(producoes.map((p) => p.praca).filter(Boolean))],
     alta: producoes.some((p) => p.alta),
+    // a letra e a versão do roteiro (#166): as da Produção que entrou por último ('' na A V1)
+    letraEVersao: [...producoes].sort((a, b) => (b.entradaEm ?? '').localeCompare(a.entradaEm ?? ''))[0].letraEVersao ?? '',
   };
 }
 

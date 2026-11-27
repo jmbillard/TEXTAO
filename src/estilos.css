@@ -1172,6 +1172,11 @@ kbd {
 /* no computador, a decisão da versão nova fica na comparação: o aviso é só informação */
 .ficha-versao .so-celular { display: none; }
 @media (max-width: 600px) { .ficha-versao .so-celular { display: inline-flex; } }
+/* "Substituir a anterior" pergunta se a chamada já foi liberada para exibição (#166): a pergunta e os três botões
+   numa linha, que quebra se não couber */
+.pergunta-liberacao { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.pergunta-liberacao-texto { font-weight: 600; color: var(--tinta); }
+.ficha-versao .pergunta-liberacao-texto { flex: 1 1 100%; }
 
 /* tirar da fila com desfazer */
 .desfazer {
@@ -1809,6 +1814,10 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-dados dt { flex: none; color: var(--tinta3); }
 .card-semana-dados dd { flex: 1; margin: 0; color: var(--tinta); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-semana-dados dd small { color: var(--tinta3); font-size: 11.5px; }
+/* a resposta da liberação para exibição, corrigida no card aberto (#166): a pergunta e o Não/Sim, pequenos */
+.card-semana-liberacao { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; font-size: 12px; color: var(--tinta3); }
+.card-semana-liberacao .segmento { padding: 2px; border-radius: 9px; }
+.card-semana-liberacao .segmento button { height: 24px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
 /* a Linha do tempo da Produção (#89), discreta, embaixo das pessoas: as frases em ordem, separadas por "·" (o do começo
    de cada linha fica escondido, como na outra data do pé); chega abrindo a vaga, depois que o card abriu */
 .tempo-da-producao { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.34s var(--suave), opacity 0.24s 0.06s; }
@@ -2209,8 +2218,8 @@ html.com-cursor-meu { min-height: 100%; }
   .card-lapis { display: none; }
   .card-semana-links .card-lapis-toque { display: inline-grid; }
 }
-/* a versão do roteiro no fim da claquete (#156), da V2 em diante: discreta, como o código das versões */
-.card-semana-versao { font-weight: 500; color: var(--tinta2); white-space: nowrap; }
+/* a letra e a versão do roteiro depois do nome (#156, #166): "B", "V2", "B V2", discretas como o código das versões */
+.marca-letra-versao { font-weight: 500; color: var(--tinta2); white-space: nowrap; }
 /* o menu do clique direito do card (#156): no ponto do clique, por cima de tudo */
 .menu.menu-de-contexto { position: fixed; z-index: 60; min-width: 190px; }
 .menu-de-contexto .menu-item { color: var(--tinta); font: 500 13.5px var(--sans); cursor: pointer; }
