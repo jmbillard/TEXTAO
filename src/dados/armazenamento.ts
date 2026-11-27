@@ -875,8 +875,21 @@ export const escolhaLembradaDaPauta = (): EscolhaDaPauta => escolhaDaPauta(minha
     visita (se nenhuma escolha mais nova passou na frente). */
 export async function lembrarNaPauta<K extends keyof EscolhaDaPauta>(parte: K, valor: EscolhaDaPauta[K]): Promise<boolean> {
   const chave = CHAVE_DA_ESCOLHA[parte];
+  if (minhasPreferencias[chave] === valor) return true;
+  return guardarPreferencia(chave, valor);
+}
+
+/** As praças dos blocos que a pessoa recolheu na tela de produções (#113); sem escolha, nenhuma. */
+export const blocosRecolhidos = (): string[] => recolhidosDe(minhasPreferencias);
+
+/** A pessoa recolheu ou abriu um bloco da tela de produções: como a escolha da pauta, vale na hora e o servidor guarda,
+    por pessoa, para qualquer aparelho. Devolve se ficou guardada. */
+export const lembrarRecolhidos = (pracas: readonly string[]): Promise<boolean> => guardarPreferencia(CHAVE_DOS_RECOLHIDOS, [...pracas]);
+
+/** Guarda uma preferência da pessoa: vale na hora (também fora do servidor, até recarregar) e o servidor grava. Devolve
+    se ficou guardada; a que não ficou volta à de antes na próxima visita (se nenhuma escolha mais nova passou na frente). */
+async function guardarPreferencia(chave: string, valor: unknown): Promise<boolean> {
   const antes = minhasPreferencias[chave];
-  if (antes === valor) return true;
   minhasPreferencias = { ...minhasPreferencias, [chave]: valor };
   if (armazenamento.tipo !== 'servidor') return false;
   try {
@@ -975,7 +988,7 @@ import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
-import type { CardDaProducao, TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { CHAVE_DOS_RECOLHIDOS, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {
@@ -1347,6 +1360,13 @@ export const desfazerEtapaDaProducao = (producao: string) =>
     method: 'POST',
     body: JSON.stringify({ producao }),
   });
+/** A Produção aberta na tela de produções (#113): a linha do tempo, as artes do checklist (marcadas ou não) e o link
+    do card no Trello (null sem card). */
+export interface ProducaoAberta extends LinhaDoTempo {
+  artes: { nome: string; marcada: boolean }[];
+  trello: string | null;
+}
+export const lerProducaoAberta = (producao: string) => pedir<ProducaoAberta>(`/api/producoes/aberta?producao=${encodeURIComponent(producao)}`);
 /** O pedido da pauta com o filtro pessoal (#99), quando há. */
 const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
   const q = new URLSearchParams(Object.entries({ ...busca, ...(filtro ? { filtro } : {}) }).filter(([, v]) => v)).toString();

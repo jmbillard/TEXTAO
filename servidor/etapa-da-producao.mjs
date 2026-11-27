@@ -23,9 +23,8 @@
  * ou no Teable) mudou a etapa depois, não desfaz. No Trello, o contrário do que a mudança fez: o card volta para a lista
  * de onde saiu e quem entrou sai (ou quem saiu entra de novo).
  */
-import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
-import { ORIGEM_PROMEIRO } from './producoes.mjs';
+import { ORIGEM_PROMEIRO, artesDoChecklist } from './producoes.mjs';
 
 /** As etapas para onde a tela leva, e de onde cada uma sai. */
 const DE_ONDE = { produzindo: ['entrada'], entrada: ['produzindo', 'entregue'], entregue: ['entrada', 'produzindo'] };
@@ -37,18 +36,8 @@ const SEM_MEMBRO = 'O seu cadastro de designer não tem o id do seu membro no Tr
 
 const motivo = (e) => (e instanceof Error ? e.message : String(e));
 
-/** As artes do checklist ainda não marcadas: os itens da coluna de artes (cada um uma vez, na ordem) que não estão nas
-    marcadas, comparados sem caixa, acento e pontuação. */
-export function artesQueFaltam({ artes, artesMarcadas }) {
-  const marcadas = new Set(artesMarcadas.map(chaveDeArte));
-  const vistas = new Set();
-  return artes.filter((a) => {
-    const k = chaveDeArte(a);
-    if (!k || marcadas.has(k) || vistas.has(k)) return false;
-    vistas.add(k);
-    return true;
-  }).map((a) => a.trim());
-}
+/** As artes do checklist ainda não marcadas (#111), na ordem. */
+export const artesQueFaltam = (p) => artesDoChecklist(p).filter((a) => !a.marcada).map((a) => a.nome);
 
 /**
  * @param producoes o módulo das Produções (servidor/producoes.mjs)

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { desfazerEtapaDaProducao, lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
+import { blocosRecolhidos, desfazerEtapaDaProducao, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
 import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, faltaArte, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
+import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
+import { ProducaoAberta } from './ProducaoAberta';
 import { plural } from './util';
 import './producoes.css';
 
@@ -25,7 +27,11 @@ import './producoes.css';
    #112: no computador e no tablet, o card também muda arrastando, entre as colunas do mesmo bloco, com o mesmo efeito
    dos botões (e o mesmo aviso de arte faltando). Depois de cada mudança, a caixinha de desfazer: desfazer é a ação
    contrária, no servidor, só da última mudança da pessoa; a tela mostra na hora e volta atrás se o servidor recusa. No
-   celular, nada de arrastar: os botões, no tamanho do dedo. Recolher o bloco vem depois (#113). */
+   celular, nada de arrastar: os botões, no tamanho do dedo.
+   #113: cada bloco se recolhe numa coluna estreita, só com a sigla e a contagem de cada coluna (no celular, uma linha);
+   o PROMeiro lembra os recolhidos por pessoa, em qualquer aparelho (as preferências da pessoa). Um clique no card (fora
+   dos botões; o arrasto não conta) abre a Produção na própria tela: a linha do tempo, as artes e o link do card no
+   Trello (src/ui/ProducaoAberta.tsx). */
 
 interface Props {
   /** a linha do logo: o caminho "PROMeiro / designer ▾", a agenda No Trello, a Pauta da edição e o perfil */
@@ -131,7 +137,10 @@ function AvisoDeFalta({ aviso, indo }: { aviso: NonNullable<Acoes['aviso']>; ind
   );
 }
 
-function CardDaTela({ c, hoje, acoes }: { c: CardDaProducao; hoje: string; acoes: Acoes | null }) {
+/** O clique que abre a Produção (#113): no card, fora dos botões, do link e do aviso de arte faltando. */
+const cliqueDeAbrir = (e: { target: EventTarget }) => !(e.target as Element).closest('button, a, .prod-aviso');
+
+function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: () => void }) {
   const claquete = <span className="prod-claquete-texto">{c.claquete || 'Sem claquete'}</span>;
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
@@ -152,6 +161,16 @@ function CardDaTela({ c, hoje, acoes }: { c: CardDaProducao; hoje: string; acoes
           : undefined
       }
       onDragEnd={arrastar ? () => arrastar(false) : undefined}
+      // abrir a Produção (#113): o clique no card (o arrasto não vira clique) e o Enter com o card em foco
+      tabIndex={0}
+      aria-haspopup="dialog"
+      onClick={(e) => cliqueDeAbrir(e) && abrir()}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          abrir();
+        }
+      }}
     >
       <span className="prod-claquete" title={c.alta ? 'prioridade ALTA' : undefined}>{c.alta ? <MarcaTexto traco={tracoDe(c.id)}>{claquete}</MarcaTexto> : claquete}</span>
       <span className="prod-atracao">{c.atracao || 'sem atração'}</span>
@@ -196,11 +215,46 @@ interface Soltar {
   soltar: (k: ColunaDoBloco) => void;
 }
 
-function Bloco({ b, entregueDias, hoje, acoes, solta }: { b: BlocoDaPraca; entregueDias: number; hoje: string; acoes: (c: CardDaProducao) => Acoes | null; solta: Soltar }) {
+/** Recolher e mostrar o bloco (#113), e abrir a Produção de um card. */
+interface DoBloco {
+  recolhido: boolean;
+  alternar: () => void;
+  abrir: (c: CardDaProducao) => void;
+}
+
+/** O bloco recolhido (#113): uma coluna estreita com a sigla e a contagem de cada coluna; um clique mostra de novo. */
+function BlocoRecolhido({ b, id, alternar }: { b: BlocoDaPraca; id: string; alternar: () => void }) {
+  const sigla = b.praca || '—';
+  return (
+    <section className="prod-bloco recolhido" data-praca={b.praca} aria-labelledby={id} onClick={alternar} title={`Mostrar ${b.nome}`}>
+      <div className="prod-recolhido">
+        <button type="button" className="prod-mostrar" aria-expanded={false} aria-label={`Mostrar o bloco ${sigla}`}>
+          <Icone nome="direita" tam={16} traco={2.2} />
+        </button>
+        <h2 id={id}>
+          <span className="prod-sigla">{sigla}</span>
+        </h2>
+        <ul className="prod-contas-recolhido" aria-label={`Os cards de ${sigla} em cada coluna`}>
+          {COLUNAS_DO_BLOCO.map((k) => (
+            <li key={k} data-coluna={k} title={ROTULO_DA_COLUNA[k]}>
+              <i aria-hidden="true" />
+              <span className="prod-conta" aria-label={`${ROTULO_DA_COLUNA[k]}: ${plural(b.colunas[k].length, 'card', 'cards')}`}>
+                {b.colunas[k].length}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+function Bloco({ b, entregueDias, hoje, acoes, solta, bloco }: { b: BlocoDaPraca; entregueDias: number; hoje: string; acoes: (c: CardDaProducao) => Acoes | null; solta: Soltar; bloco: DoBloco }) {
   const arrasto = solta.arrasto?.card.praca === b.praca ? solta.arrasto : null;
   const aceita = (k: ColunaDoBloco) => !!arrasto && ARRASTA_PARA[arrasto.card.etapa].includes(k);
   const total = COLUNAS_DO_BLOCO.reduce((n, k) => n + b.colunas[k].length, 0);
   const id = `bloco-${b.praca || 'sem-praca'}`;
+  if (bloco.recolhido) return <BlocoRecolhido b={b} id={id} alternar={bloco.alternar} />;
   return (
     <section className="prod-bloco" data-praca={b.praca} aria-labelledby={id}>
       <header className="prod-bloco-topo">
@@ -209,6 +263,9 @@ function Bloco({ b, entregueDias, hoje, acoes, solta }: { b: BlocoDaPraca; entre
           {b.nome !== b.praca && <span className="prod-nome">{b.nome}</span>}
         </h2>
         <span className="prod-total">{plural(total, 'produção', 'produções')}</span>
+        <button type="button" className="prod-recolher" aria-expanded={true} aria-label={`Recolher o bloco ${b.praca || '—'}`} title="Recolher" onClick={bloco.alternar}>
+          <Icone nome="voltar" tam={16} traco={2.2} />
+        </button>
       </header>
       <div className="prod-colunas">
         {COLUNAS_DO_BLOCO.map((k) => (
@@ -243,7 +300,7 @@ function Bloco({ b, entregueDias, hoje, acoes, solta }: { b: BlocoDaPraca; entre
             {b.colunas[k].length ? (
               <ul className="prod-cards">
                 {b.colunas[k].map((c) => (
-                  <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} />
+                  <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} abrir={() => bloco.abrir(c)} />
                 ))}
               </ul>
             ) : (
@@ -268,6 +325,9 @@ export function Producoes({ topo }: Props) {
   // o arrasto em curso e a caixinha de desfazer (#112)
   const [arrasto, setArrasto] = useState<Arrasto | null>(null);
   const [desfazivel, setDesfazivel] = useState<Desfazivel | null>(null);
+  // os blocos recolhidos (#113), lembrados por pessoa, e a Produção aberta (o card como estava ao abrir)
+  const [recolhidos, setRecolhidos] = useState<ReadonlySet<string>>(() => new Set(blocosRecolhidos()));
+  const [aberta, setAberta] = useState<CardDaProducao | null>(null);
   const noCelular = useNoCelular();
   const reler = useRef<() => void>(() => {});
   useEffect(() => {
@@ -392,6 +452,23 @@ export function Producoes({ topo }: Props) {
       arrastar: noCelular || vai || faltam ? null : (sim) => setArrasto(sim ? { card: c, sobre: null } : null),
     };
   };
+  /** Recolher ou mostrar o bloco da praça (#113): muda na hora, e o servidor guarda para a pessoa. */
+  const alternar = (praca: string) => {
+    const n = new Set(recolhidos);
+    if (n.has(praca)) n.delete(praca);
+    else n.add(praca);
+    setRecolhidos(n);
+    void lembrarRecolhidos([...n]);
+  };
+  // a Produção aberta acompanha a tela (a mudança e a releitura); a que saiu da tela fica como estava
+  const cardAberto = aberta && (lido?.blocos.flatMap((b) => COLUNAS_DO_BLOCO.flatMap((k) => b.colunas[k])).find((c) => c.id === aberta.id) ?? aberta);
+  const fecharAberta = useCallback(() => {
+    setAberta((a) => {
+      // o foco volta para o card que abriu
+      if (a) requestAnimationFrame(() => document.querySelector<HTMLElement>(`.prod-card[data-producao="${CSS.escape(a.id)}"]`)?.focus());
+      return null;
+    });
+  }, []);
   const solta: Soltar = {
     arrasto,
     sobre: (k) => setArrasto((a) => a && { ...a, sobre: k }),
@@ -431,11 +508,21 @@ export function Producoes({ topo }: Props) {
                 </button>
               </p>
             )}
-            <div className="prod-blocos">
+            {/* a largura de cada bloco: o aberto cresce para ocupar a sobra; o recolhido, uma coluna estreita (#113) */}
+            <div className="prod-blocos" style={{ gridTemplateColumns: lido.blocos.map((b) => (recolhidos.has(b.praca) ? 'var(--bloco-recolhido)' : 'minmax(var(--bloco-min), 1fr)')).join(' ') }}>
               {lido.blocos.map((b) => (
-                <Bloco key={b.praca || '—'} b={b} entregueDias={lido.entregueDias} hoje={hoje} acoes={acoes} solta={solta} />
+                <Bloco
+                  key={b.praca || '—'}
+                  b={b}
+                  entregueDias={lido.entregueDias}
+                  hoje={hoje}
+                  acoes={acoes}
+                  solta={solta}
+                  bloco={{ recolhido: recolhidos.has(b.praca), alternar: () => alternar(b.praca), abrir: setAberta }}
+                />
               ))}
             </div>
+            {cardAberto && <ProducaoAberta card={cardAberto} prazo={cardAberto.prazo ? prazoEscrito(cardAberto.prazo, hoje) : null} fechar={fecharAberta} />}
             {desfazivel && (
               <div className="prod-desfazer" role="status">
                 <span className="prod-desfazer-texto">{desfazivel.texto}</span>

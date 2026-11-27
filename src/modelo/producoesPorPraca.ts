@@ -110,3 +110,24 @@ export function comOCard(tela: TelaDeProducoes, card: CardDaProducao): TelaDePro
   });
   return { ...tela, blocos };
 }
+
+/* ---------- os blocos recolhidos (#113) ---------- */
+
+/** A chave das preferências da pessoa (no SQLite, pela rota de quem está logado) com as siglas das praças dos blocos
+    que ela recolheu; sem a chave, todos abertos. */
+export const CHAVE_DOS_RECOLHIDOS = 'producoes.recolhidos';
+/** Quantas siglas a lista aceita e o tamanho de cada uma (a do bloco "sem praça" é ''). */
+const RECOLHIDOS_NO_MAXIMO = 100;
+const SIGLA_NO_MAXIMO = 40;
+
+/** A recusa da lista de blocos recolhidos: '' quando vale (uma lista de siglas, também vazia). */
+export const recusaDosRecolhidos = (valor: unknown): string =>
+  Array.isArray(valor) && valor.length <= RECOLHIDOS_NO_MAXIMO && valor.every((s) => typeof s === 'string' && s.length <= SIGLA_NO_MAXIMO)
+    ? ''
+    : 'Blocos recolhidos inválidos: mande a lista das siglas das praças.';
+
+/** As praças que a pessoa deixou recolhidas; a lembrada que já não vale conta como nenhuma. */
+export const recolhidosDe = (preferencias: Record<string, unknown> | undefined): string[] => {
+  const lembrados = preferencias?.[CHAVE_DOS_RECOLHIDOS];
+  return recusaDosRecolhidos(lembrados) ? [] : (lembrados as string[]);
+};

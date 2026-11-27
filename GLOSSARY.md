@@ -313,7 +313,10 @@ A tela das Produções abertas por etapa, para qualquer designer (ADR 0006, inte
 praça** por praça, cada um com as colunas Entrada · Produzindo · Entregue dentro. No computador, os blocos ficam lado
 a lado na largura toda (#119); no celular, um embaixo do outro. Mudar a etapa (arrastando ou com um botão)
 move o card no Trello; ao marcar Entregue, avisa se falta arte, mas deixa entregar. Se o PROMeiro e o Trello discordam,
-vale o último que aconteceu, e os dois viram evento na linha do tempo. Fica ao lado da agenda No Trello, que continua.
+vale o último que aconteceu, e os dois viram evento na linha do tempo. Cada bloco se recolhe numa coluna estreita, só
+com a sigla e a contagem de cada coluna, e o PROMeiro lembra os recolhidos por pessoa (#113). Um clique no card abre a
+Produção na própria tela: a linha do tempo, as artes do checklist e o link do card no Trello. Fica ao lado da agenda No
+Trello, que continua.
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 
 **Aviso do Padeiro**:
@@ -510,5 +513,6 @@ _Evitar_: tela do roteiro, detalhe
 
 **Preferências da pessoa**:
 O que o PROMeiro lembra por pessoa, em qualquer aparelho (a última área usada, a **exibição** de cada área, e a visão
-e o **arranjo** de cada visão da Pauta da edição): no SQLite, uma chave por linha, gravada pela rota de quem está logado.
+e o **arranjo** de cada visão da Pauta da edição, os blocos recolhidos da tela de produções): no SQLite, uma chave por
+linha, gravada pela rota de quem está logado.
 _Evitar_: configurações (a Configuração é a tela dos administradores)
