@@ -14,7 +14,7 @@ import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
 import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES } from './correcoes.mjs';
 import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
-import { cruzarComAProducao, diaOuHoje, segundaDaSemana } from '../src/modelo/pauta.ts';
+import { cruzarComAProducao, diaOuHoje, ehChaveDaPauta, recusaDaPreferenciaDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
@@ -2249,13 +2249,19 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
     if (caminho === '/api/eu/preferencias') {
       // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' } ou a exibição de uma área dos
-      // roteiros (#103): { 'exibicao.redator': 'quadro' }. Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
+      // roteiros (#103): { 'exibicao.redator': 'quadro' }, ou a visão e os arranjos da Pauta da edição (#98), que é de
+      // todo mundo: { 'pauta.visao': 'dia' }. Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
       const entradas = Object.entries(typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : {});
       if (!entradas.length) return json(res, 400, { erro: 'Nenhuma preferência para guardar.' });
       const minhas = (await areas.daPessoa(eu.email, { cadastros, admin: cadastros.podeApagar(eu.email), preferencias })).areas;
       for (const [chave, valor] of entradas) {
+        if (ehChaveDaPauta(chave)) {
+          const recusa = recusaDaPreferenciaDaPauta(chave, valor);
+          if (recusa) return json(res, 400, { erro: recusa });
+          continue;
+        }
         const daExibicao = areaDaChaveDeExibicao(chave);
         if (daExibicao) {
           if (!ehExibicao(valor)) return json(res, 400, { erro: 'Exibição desconhecida: escolha por dia, quadro ou por estado.' });

@@ -9,7 +9,7 @@ import { PortainerDaConfiguracao } from './ui/PortainerDaConfiguracao';
 import { Andamento } from './ui/Andamento';
 import { CorrecaoDeGrafia } from './ui/CorrecaoDeGrafia';
 import { Pauta } from './ui/Pauta';
-import { enderecoDaPauta, hashDaPauta } from './ui/pecasDaPauta';
+import { enderecoDaPauta, entradaDaPauta, hashDaPauta } from './ui/pecasDaPauta';
 import { Producoes } from './ui/Producoes';
 import { MeusRoteiros } from './ui/MeusRoteiros';
 import { DeTodoMundo, SeletorDeArea } from './ui/SeletorDeArea';
@@ -508,7 +508,7 @@ export function App() {
 
   return (
     <>
-      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} andamentoDoProjeto={() => ir({ t: 'andamento' })} correcoes={() => ir({ t: 'correcoes' })} pauta={() => ir({ t: 'pauta' })} producoes={() => ir({ t: 'producoes' })} avisar={avisar} identidade={identidade} definirPerfil={definirPerfil} seletorDeArea={seletorDeArea} />}
+      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} andamentoDoProjeto={() => ir({ t: 'andamento' })} correcoes={() => ir({ t: 'correcoes' })} pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })} producoes={() => ir({ t: 'producoes' })} avisar={avisar} identidade={identidade} definirPerfil={definirPerfil} seletorDeArea={seletorDeArea} />}
       {tela.t === 'area' && (
         <MeusRoteiros
           key={tela.area}
@@ -521,7 +521,7 @@ export function App() {
             <header className="barra-topo">
               <h1 className="bib-marca"><Marca /></h1>
               {seletorDeArea}
-              <DeTodoMundo pauta={() => ir({ t: 'pauta' })} />
+              <DeTodoMundo pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })} />
               <span className="espaco" />
               <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
             </header>
@@ -538,7 +538,7 @@ export function App() {
                 <Icone nome="quadro" tam={17} traco={1.7} />
                 <span>No Trello</span>
               </a>
-              <DeTodoMundo pauta={() => ir({ t: 'pauta' })} />
+              <DeTodoMundo pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })} />
               <span className="espaco" />
               <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
             </header>

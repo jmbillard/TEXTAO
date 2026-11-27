@@ -58,9 +58,9 @@ afterEach(async () => {
   parar = null;
 });
 
-async function comServidor({ env = ENV, registros = { EDICAO_producao: PAUTA() } }: { env?: Record<string, string>; registros?: Record<string, unknown[]> } = {}) {
+async function comServidor({ env = ENV, registros = { EDICAO_producao: PAUTA() }, db = abrirBanco(':memory:') }: { env?: Record<string, string>; registros?: Record<string, unknown[]>; db?: unknown } = {}) {
   const teable = teableFalso(NOMES, { registros });
-  const app = criarApp({ db: abrirBanco(':memory:'), env, buscarNoTeable: teable, abrirPg: teable.abrirPg });
+  const app = criarApp({ db, env, buscarNoTeable: teable, abrirPg: teable.abrirPg });
   await app.tabelasProntas;
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
@@ -70,7 +70,7 @@ async function comServidor({ env = ENV, registros = { EDICAO_producao: PAUTA() }
   };
   const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
   const como = (email: string) => (caminho: string) => fetch(base + caminho, { headers: email ? { 'cf-access-authenticated-user-email': email } : {} });
-  return { teable, ana: como('ana@empresa.com'), chefe: como('chefe@empresa.com'), ninguem: como('') };
+  return { base, teable, ana: como('ana@empresa.com'), chefe: como('chefe@empresa.com'), ninguem: como('') };
 }
 
 type Linha = { id: string; dia: string; editor: string; tipo: string; texto: string; turno: { inicio: string; fim: string } | null };
@@ -326,5 +326,52 @@ describe('a claquete da pauta com a produção da arte (#96)', () => {
     const por = await semanaComArte('/api/pauta/dia?dia=2026-11-24');
     expect(por('recP3').producoes).toEqual([expect.objectContaining({ praca: 'G5', etapa: 'entregue', artes: 2, alta: true })]);
     expect(por('recP1').producoes).toEqual([]);
+  });
+});
+
+describe('a escolha da visão e do arranjo, lembrada por pessoa (#98)', () => {
+  const PREFERENCIAS = '/api/eu/preferencias';
+  type Servidor = Awaited<ReturnType<typeof comServidor>>;
+  /** As preferências da pessoa, pela rota de quem está logado. */
+  const lembradas = async (email: string, s: Servidor) => {
+    const r = await fetch(`${s.base}/api/eu`, { headers: { 'cf-access-authenticated-user-email': email } });
+    return (await r.json()).preferencias as Record<string, unknown>;
+  };
+  const lembrar = (s: Servidor, email: string, corpo: unknown) =>
+    fetch(`${s.base}${PREFERENCIAS}`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json' }, body: JSON.stringify(corpo) });
+
+  it('grava e lê a visão e o arranjo de cada visão; vale de novo com o servidor reiniciado, e a outra pessoa não é afetada', async () => {
+    const db = abrirBanco(':memory:');
+    let s = await comServidor({ db });
+    expect(await lembradas('ana@empresa.com', s)).toEqual({});
+    const r = await lembrar(s, 'ana@empresa.com', { 'pauta.visao': 'dia', 'pauta.arranjo.semana': 'dia-por-coluna', 'pauta.arranjo.dia': 'por-hora' });
+    expect(r.status).toBe(200);
+    expect((await r.json()).preferencias).toEqual({ 'pauta.visao': 'dia', 'pauta.arranjo.semana': 'dia-por-coluna', 'pauta.arranjo.dia': 'por-hora' });
+    // uma chave por vez troca só aquela
+    expect((await lembrar(s, 'ana@empresa.com', { 'pauta.visao': 'semana' })).status).toBe(200);
+    // a outra pessoa continua sem escolha (o padrão: Semana editor × dia e Dia empilhado)
+    expect(await lembradas('chefe@empresa.com', s)).toEqual({});
+    expect((await lembrar(s, 'chefe@empresa.com', { 'pauta.arranjo.semana': 'editor-dia' })).status).toBe(200);
+    // com o servidor de novo, no mesmo SQLite: em qualquer aparelho
+    await parar?.();
+    s = await comServidor({ db });
+    expect(await lembradas('ana@empresa.com', s)).toEqual({ 'pauta.visao': 'semana', 'pauta.arranjo.semana': 'dia-por-coluna', 'pauta.arranjo.dia': 'por-hora' });
+    expect(await lembradas('chefe@empresa.com', s)).toEqual({ 'pauta.arranjo.semana': 'editor-dia' });
+  });
+
+  it('recusa a visão ou o arranjo desconhecido, e o arranjo de uma visão no lugar da outra', async () => {
+    const s = await comServidor();
+    const recusa = async (corpo: unknown, erro: string) => {
+      const r = await lembrar(s, 'ana@empresa.com', corpo);
+      expect(r.status).toBe(400);
+      expect((await r.json()).erro).toBe(erro);
+    };
+    await recusa({ 'pauta.visao': 'mes' }, 'Visão da pauta desconhecida: escolha Semana ou Dia.');
+    await recusa({ 'pauta.arranjo.semana': 'por-hora' }, 'Arranjo da Semana desconhecido: escolha editor × dia ou um dia por coluna.');
+    await recusa({ 'pauta.arranjo.dia': 'dia-por-coluna' }, 'Arranjo do Dia desconhecido: escolha empilhado ou por hora.');
+    await recusa({ 'pauta.arranjo.mes': 'empilhado' }, 'Preferência desconhecida: pauta.arranjo.mes.');
+    // uma ruim recusa o pedido inteiro
+    await recusa({ 'pauta.visao': 'dia', 'pauta.arranjo.dia': null }, 'Arranjo do Dia desconhecido: escolha empilhado ou por hora.');
+    expect(await lembradas('ana@empresa.com', s)).toEqual({});
   });
 });

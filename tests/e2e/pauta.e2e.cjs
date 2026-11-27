@@ -14,6 +14,10 @@
 // editor numa coluna (o nome, o turno, "no ar agora" ou o total de artes), o aviso como balão no topo da coluna; o
 // anterior, o próximo e a volta à Semana; a troca entre empilhado e por hora (a régua das 6h às 6h e a linha do
 // "agora"). No celular, o Dia abre em hoje e a faixa começa no turno que está no ar, nos dois arranjos.
+// A Semana com um dia por coluna (#98), com outras pessoas (a escolha de cada uma começa vazia): a troca do arranjo, os
+// cards agrupados por turno com o editor e o ⚑ do aviso, a ficha; a escolha da visão e dos arranjos lembrada depois de
+// recarregar e em outro navegador (a entrada no topo abre a visão escolhida), e a da Lia não muda. No celular, as
+// colunas rolam para o lado e abrem em hoje.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:pauta
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -32,6 +36,9 @@ try {
 }
 
 const LIA = 'lia.moraes@exemplo.com';
+// a escolha lembrada (#98), de outras pessoas (uma por tema, cada uma começando sem escolha): a da Lia continua a dela
+const TOM = 'tom.vieira@exemplo.com';
+const IVO = 'ivo.santos@exemplo.com';
 const CHEFE = 'chefe.ficticia@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
@@ -83,9 +90,9 @@ const ARTE = [
   { id: 'recArteE2e2', fields: { card_ID: '', claquete: `Show da Tarde ${diaMes(hoje)} SP`, status: '["PRODUZINDO"]', entregue: false, arquivado: false, designers: '["Enzo Prado"]', artes: 'HOJE', praca: null, filme: null, data_entrada: sp(mais(hoje, -2), '10:00') } },
 ];
 
-async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null) {
-  const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
-  await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(LIA), url }]);
+async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null, quem = LIA) {
+  const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': quem }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
+  await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(quem), url }]);
   await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
   await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
   const p = await ctx.newPage();
@@ -405,11 +412,11 @@ async function oDia(navegador, url, tema) {
   await p.locator('.pauta-cabeca h1', { hasText: porExtenso(mais(segunda, 1)) }).waitFor();
   await p.locator('.pauta-colunas').waitFor();
   // a volta à Semana: a semana do dia
-  await p.getByRole('radio', { name: 'Semana' }).click();
+  await p.getByRole('radio', { name: 'Semana', exact: true }).click();
   await p.locator('.pauta-grade').waitFor();
   assert.equal(hash(p), '#/pauta');
   // e da Semana ao Dia pela troca da visão: hoje
-  await p.getByRole('radio', { name: 'Dia' }).click();
+  await p.getByRole('radio', { name: 'Dia', exact: true }).click();
   await p.locator('.pauta-cabeca h1', { hasText: porExtenso(hoje) }).waitFor();
   assert.equal(hash(p), '#/pauta/dia');
   assert.deepEqual(erros, [], `dia ${nome}: erros na página`);
@@ -449,9 +456,141 @@ async function oDiaNoCelular(navegador, url, tema) {
   const regua = await p.locator('.pauta-regua').evaluate((e) => e.getBoundingClientRect().left);
   const faixa = await p.locator('.pauta-faixa').evaluate((e) => e.getBoundingClientRect().left + parseFloat(getComputedStyle(e).paddingLeft));
   assert.ok(Math.abs(regua - faixa) <= 2, `${nome}: a régua fica fixa (${regua}, ${faixa})`);
+  // a escolha fica lembrada (#98): de volta ao empilhado, para o próximo tema abrir nele
+  await p.getByRole('radio', { name: 'Empilhado' }).tap();
+  await p.locator('.pauta-colunas[data-arranjo="empilhado"]').waitFor();
+  await p.waitForLoadState('networkidle');
   assert.deepEqual(erros, [], `dia ${nome}: erros na página`);
   await ctx.close();
   console.log(`ok: ${nome}: o Dia abre em hoje, as colunas rolam para o lado e a faixa começa no turno no ar (empilhado e por hora)`);
+}
+
+/* ---------- a Semana com um dia por coluna e a escolha lembrada (#98) ---------- */
+const colunaDoDia = (p, dia) => p.locator(`.pauta-dia-coluna[data-dia="${dia}"]`);
+/** Espera o servidor guardar a escolha (o PUT das preferências). */
+const guardou = (p) => p.waitForResponse((r) => r.url().endsWith('/api/eu/preferencias') && r.request().method() === 'PUT' && r.ok());
+
+async function aEscolhaLembrada(navegador, url, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  const quem = tema === 'dark' ? IVO : TOM;
+  const tela = { viewport: { width: 1440, height: 1000 }, colorScheme: tema };
+  let { ctx, p, erros, aoTrello } = await abrir(navegador, url, tela, '', AS_15_30, quem);
+
+  // sem escolha: a entrada no topo abre a Semana editor × dia
+  await p.locator('.barra-topo .topo-pauta').click();
+  await p.locator('.pauta-grade').waitFor();
+  assert.equal(hash(p), '#/pauta');
+  assert.equal(await p.locator('.pauta-arranjo-semana [aria-checked="true"]').textContent(), 'Editor × dia');
+
+  // a troca para um dia por coluna: sete colunas, de segunda a domingo, hoje marcado
+  const salvo = guardou(p);
+  await p.getByRole('radio', { name: 'Um dia por coluna' }).click();
+  await salvo;
+  await p.locator('.pauta-dias').waitFor();
+  assert.equal(await p.locator('.pauta-grade').count(), 0);
+  assert.equal(hash(p), '#/pauta');
+  assert.deepEqual(await p.locator('.pauta-dia-coluna').evaluateAll((cs) => cs.map((c) => c.dataset.dia)), Array.from({ length: 7 }, (_, i) => mais(segunda, i)));
+  assert.deepEqual(await p.locator('.pauta-dia-coluna.hoje').evaluateAll((cs) => cs.map((c) => c.dataset.dia)), [hoje]);
+  // no topo do dia: quantos editores e quantas claquetes
+  const deHoje = colunaDoDia(p, hoje);
+  assert.equal((await deHoje.locator('.pauta-dia-conta').textContent()).trim(), '3 editores · 8 claquetes');
+  // os cards agrupados por turno: manhã, tarde, noite (ninguém de madrugada); cada card com o editor
+  assert.deepEqual(await textos(deHoje.locator('.pauta-periodo-nome')), ['manhã', 'tarde', 'noite']);
+  const periodo = (id) => deHoje.locator(`.pauta-periodo[data-periodo="${id}"]`);
+  assert.deepEqual(await textos(periodo('manha').locator('.pauta-card-editor')), ['Ana Ribeiro', 'Ana Ribeiro', 'sem editor']);
+  assert.deepEqual(await textos(periodo('manha').locator('.pauta-texto')), [`Novela Sol ${diaMes(mais(hoje, 1))}`, `Show da Tarde ${diaMes(hoje)} SP`, 'CALHAUS']);
+  assert.equal(await periodo('tarde').locator('.pauta-item.pauta-tarefa', { hasText: 'COMUNICAÇÃO' }).count(), 1);
+  assert.deepEqual(await textos(periodo('noite').locator('.pauta-card-editor')), ['Carla Duarte']);
+  // a claquete com a produção da arte, como no editor × dia
+  const show = periodo('tarde').locator('.pauta-item', { has: p.locator('.pauta-texto', { hasText: new RegExp(`^Show da Tarde ${diaMes(hoje)}$`) }) });
+  assert.equal((await show.locator('.pauta-producao').textContent()).replace(/\s+/g, ' ').trim(), 'Entregue · 2 artes · Dora Lima · G5');
+  // o aviso: só o ⚑ com o número, preso ao editor, e o texto ao passar o mouse
+  assert.equal(await p.locator('.pauta-item', { hasText: 'Redator vem acompanhar' }).count(), 0);
+  const aviso = periodo('noite').locator('.pauta-aviso-botao');
+  assert.equal((await aviso.textContent()).replace(/\s+/g, ' ').trim(), '⚑ 1');
+  await aviso.hover();
+  await p.locator('.pauta-aviso-balao').waitFor();
+  assert.match(await p.locator('.pauta-aviso-balao').textContent(), /Redator vem acompanhar a edição/);
+  await capturar(p, `09-semana-dia-por-coluna-${nome}`);
+  await p.mouse.move(5, 5);
+  // a ficha abre por cima
+  await show.locator('.pauta-claquete-botao').click();
+  await p.getByRole('dialog', { name: `Show da Tarde ${diaMes(hoje)}` }).waitFor();
+  await p.keyboard.press('Escape');
+  await semRolagemDeLado(p, `dia por coluna ${nome}`);
+
+  // recarregada, a Semana continua um dia por coluna; a semana anterior também
+  await p.reload();
+  await p.locator('.pauta-dias').waitFor();
+  await p.getByRole('button', { name: 'Semana anterior' }).click();
+  await colunaDoDia(p, anterior).waitFor();
+  assert.equal(await p.locator('.pauta-grade').count(), 0);
+
+  // um clique no dia abre aquele Dia; o arranjo do Dia e a visão ficam lembrados
+  await p.getByRole('button', { name: 'Próxima semana' }).click();
+  await colunaDoDia(p, hoje).locator('.pauta-dia-link').click();
+  await p.locator('.pauta-colunas[data-arranjo="empilhado"]').waitFor();
+  assert.equal(hash(p), `#/pauta/dia/${hoje}`);
+  let salvou = guardou(p);
+  await p.getByRole('radio', { name: 'Por hora' }).click();
+  await salvou;
+  salvou = guardou(p);
+  await p.getByRole('radio', { name: 'Semana', exact: true }).click();
+  await salvou;
+  await p.locator('.pauta-dias').waitFor();
+  salvou = guardou(p);
+  await p.getByRole('radio', { name: 'Dia', exact: true }).click();
+  await salvou;
+  await p.locator('.pauta-colunas[data-arranjo="por-hora"]').waitFor();
+  await p.reload();
+  await p.locator('.pauta-colunas[data-arranjo="por-hora"]').waitFor();
+  assert.deepEqual(erros, [], `escolha ${nome}: erros na página`);
+  assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
+  await ctx.close();
+
+  // em outro aparelho (outro navegador, nada guardado nele): a entrada no topo abre o Dia por hora, e a Semana, um dia
+  // por coluna
+  ({ ctx, p, erros } = await abrir(navegador, url, tela, '', AS_15_30, quem));
+  await p.locator('.barra-topo .topo-pauta').click();
+  await p.locator('.pauta-colunas[data-arranjo="por-hora"]').waitFor();
+  assert.equal(hash(p), '#/pauta/dia');
+  salvou = guardou(p);
+  await p.getByRole('radio', { name: 'Semana', exact: true }).click();
+  await salvou;
+  await p.locator('.pauta-dias').waitFor();
+  // e a entrada volta a abrir a Semana
+  await p.goto(`${url}#/`);
+  await p.locator('.barra-topo .topo-pauta').click();
+  await p.locator('.pauta-dias').waitFor();
+  assert.equal(hash(p), '#/pauta');
+  assert.deepEqual(erros, [], `escolha ${nome}, outro aparelho: erros na página`);
+  await ctx.close();
+
+  // a escolha é de cada pessoa: a Lia continua na Semana editor × dia
+  ({ ctx, p, erros } = await abrir(navegador, url, tela, '#/pauta', AS_15_30));
+  await p.locator('.pauta-grade').waitFor();
+  assert.equal(await p.locator('.pauta-dias').count(), 0);
+  await ctx.close();
+  console.log(`ok: computador ${nome}: a Semana com um dia por coluna (os turnos, o editor no card, o aviso, a ficha), a escolha lembrada depois de recarregar e em outro aparelho, e a de outra pessoa não muda`);
+}
+
+/** No celular, a Semana com um dia por coluna rola para o lado e abre em hoje. */
+async function oDiaPorColunaNoCelular(navegador, url) {
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: 'dark' }, '#/pauta', AS_15_30, TOM);
+  await p.locator('.pauta-dias').waitFor();
+  await semRolagemDeLado(p, 'dia por coluna no celular');
+  const m = await p.evaluate(() => {
+    const r = document.querySelector('.pauta-faixa');
+    const hoje = document.querySelector('.pauta-dia-coluna.hoje').getBoundingClientRect();
+    return { rola: r.scrollWidth > r.clientWidth, scrollLeft: r.scrollLeft, maximo: r.scrollWidth - r.clientWidth, hoje: hoje.left, direita: hoje.right, inicio: r.getBoundingClientRect().left, largura: innerWidth };
+  });
+  assert.ok(m.rola, `celular: as colunas rolam para o lado (${JSON.stringify(m)})`);
+  assert.ok(m.hoje >= m.inicio - 2 && m.direita <= m.largura + 1, `celular: abre em hoje (${JSON.stringify(m)})`);
+  await capturar(p, '10-semana-dia-por-coluna-celular-escuro', false);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: celular escuro: a Semana com um dia por coluna rola para o lado e abre em hoje');
 }
 
 async function principal() {
@@ -464,7 +603,7 @@ async function principal() {
   const s = await subir({ teable, pg: teable.abrirPg, trello, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG } });
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
-  await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
+  for (const quem of [LIA, TOM, IVO]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
   let falhou = false;
   try {
@@ -474,6 +613,8 @@ async function principal() {
     await entradaNoCelular(navegador, s.url);
     for (const tema of ['light', 'dark']) await oDia(navegador, s.url, tema);
     for (const tema of ['light', 'dark']) await oDiaNoCelular(navegador, s.url, tema);
+    for (const tema of ['light', 'dark']) await aEscolhaLembrada(navegador, s.url, tema);
+    await oDiaPorColunaNoCelular(navegador, s.url);
   } catch (e) {
     falhou = true;
     console.error(e);

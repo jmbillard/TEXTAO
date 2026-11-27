@@ -1,22 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { lerDiaDaPauta } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
-import { agoraNaRegua, colunasDoDia, diaDaPautaAgora, diaOuHoje, diaVizinho, fimNaRegua, naRegua, noArAgora, resumoDaProducao, segundaDaSemana, type ColunaDoDia, type DiaDaPauta, type LinhaDaPauta } from '../modelo/pauta';
+import { agoraNaRegua, colunasDoDia, diaDaPautaAgora, diaOuHoje, diaVizinho, fimNaRegua, naRegua, noArAgora, resumoDaProducao, segundaDaSemana, type ArranjoDoDia as Arranjo, type ColunaDoDia, type DiaDaPauta, type LinhaDaPauta } from '../modelo/pauta';
 import { Icone } from './icones';
 import { Marca } from './pecas';
-import { DIAS_DA_SEMANA, FichaDaClaquete, ItemDaPauta, MESES, VisaoDaPauta, artesEscritas, partes, type EnderecoDaPauta } from './pecasDaPauta';
+import { DIAS_DA_SEMANA, FichaDaClaquete, ItemDaPauta, MESES, VisaoDaPauta, artesEscritas, contagem, partes, type EnderecoDaPauta } from './pecasDaPauta';
 
 /* O Dia da pauta da edição (#97): um dia só, com cada editor numa coluna, na ordem de início do turno daquele dia
    ("sem editor" no fim). No topo da coluna, o nome, o horário do turno e "no ar agora" ou o total de artes; logo
-   abaixo, os avisos daquele turno num balão "aviso", separados da pauta. Dois arranjos, trocados na página:
+   abaixo, os avisos daquele turno num balão "aviso", separados da pauta. Dois arranjos, trocados na página (e
+   lembrados por pessoa, #98):
    - empilhado: os cards de altura livre, um embaixo do outro;
    - por hora: as colunas alinhadas numa régua das 6h às 6h do dia seguinte, o turno como um bloco do início ao fim,
      com a linha do "agora" quando o dia está no ar.
    Anterior e próximo (← →) trocam de dia; o endereço é #/pauta/dia/AAAA-MM-DD (sem a data, hoje: o dia da pauta que
    está correndo, que antes das 6h ainda é o anterior). No celular e no
    tablet as colunas rolam para o lado e a faixa começa no turno que está no ar. */
-
-export type Arranjo = 'empilhado' | 'por-hora';
 
 interface Props {
   /** o dia do endereço; '' é hoje */
@@ -44,7 +43,6 @@ function diaCurto(iso: string) {
   const p = partes(iso);
   return `${DIAS_DA_SEMANA[p.semana]}, ${p.dia}/${doisDigitos(p.mes + 1)}`;
 }
-const contagem = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
 /** O resumo do topo da coluna fora do ar: o total de artes e quantas claquetes já têm a arte entregue. */
 function totalDaColuna(c: ColunaDoDia) {

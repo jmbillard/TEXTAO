@@ -473,3 +473,92 @@ export function resumoDaProducao(producoes: readonly ProducaoNaPauta[] | undefin
 
 /** A etapa por extenso, como a pauta mostra. */
 export const ROTULO_DA_ETAPA: Record<Etapa, string> = { entrada: 'Entrada', produzindo: 'Produzindo', entregue: 'Entregue', arquivada: 'Arquivada' };
+
+/* ---------- a escolha da visão e do arranjo, lembrada por pessoa (#98) ---------- */
+
+export type VisaoDaPauta = 'semana' | 'dia';
+/** Os arranjos da Semana: editor × dia (uma linha por editor) ou um dia por coluna (os cards agrupados por turno). */
+export type ArranjoDaSemana = 'editor-dia' | 'dia-por-coluna';
+/** Os arranjos do Dia: empilhado (cards de altura livre) ou por hora (a régua das 6h às 6h). */
+export type ArranjoDoDia = 'empilhado' | 'por-hora';
+
+/** A escolha de cada pessoa: a visão em que a pauta abre e o arranjo de cada visão. */
+export interface EscolhaDaPauta {
+  visao: VisaoDaPauta;
+  semana: ArranjoDaSemana;
+  dia: ArranjoDoDia;
+}
+
+/** As chaves das preferências da pessoa (no SQLite, pela rota de quem está logado), cada uma com os valores que valem,
+    o padrão de quem não escolheu (a Semana editor × dia e o Dia empilhado) e a recusa do valor desconhecido. */
+const CHAVES_DA_PAUTA = {
+  'pauta.visao': { campo: 'visao', valores: ['semana', 'dia'], recusa: 'Visão da pauta desconhecida: escolha Semana ou Dia.' },
+  'pauta.arranjo.semana': { campo: 'semana', valores: ['editor-dia', 'dia-por-coluna'], recusa: 'Arranjo da Semana desconhecido: escolha editor × dia ou um dia por coluna.' },
+  'pauta.arranjo.dia': { campo: 'dia', valores: ['empilhado', 'por-hora'], recusa: 'Arranjo do Dia desconhecido: escolha empilhado ou por hora.' },
+} as const satisfies Record<string, { campo: keyof EscolhaDaPauta; valores: readonly string[]; recusa: string }>;
+export type ChaveDaPauta = keyof typeof CHAVES_DA_PAUTA;
+/** A chave de cada parte da escolha. */
+export const CHAVE_DA_ESCOLHA = { visao: 'pauta.visao', semana: 'pauta.arranjo.semana', dia: 'pauta.arranjo.dia' } as const satisfies Record<keyof EscolhaDaPauta, ChaveDaPauta>;
+
+export const ehChaveDaPauta = (chave: string): chave is ChaveDaPauta => Object.hasOwn(CHAVES_DA_PAUTA, chave);
+
+/** A recusa de uma preferência da pauta: '' quando o valor vale para a chave. */
+export const recusaDaPreferenciaDaPauta = (chave: ChaveDaPauta, valor: unknown): string => ((CHAVES_DA_PAUTA[chave].valores as readonly unknown[]).includes(valor) ? '' : CHAVES_DA_PAUTA[chave].recusa);
+
+/** A escolha lembrada da pessoa; o que ela não escolheu (ou já não vale) fica no padrão. */
+export function escolhaDaPauta(preferencias: Record<string, unknown> | undefined): EscolhaDaPauta {
+  const parte = <K extends keyof EscolhaDaPauta>(campo: K): EscolhaDaPauta[K] => {
+    const chave = CHAVE_DA_ESCOLHA[campo];
+    const lembrada = preferencias?.[chave];
+    return (recusaDaPreferenciaDaPauta(chave, lembrada) ? CHAVES_DA_PAUTA[chave].valores[0] : lembrada) as EscolhaDaPauta[K];
+  };
+  return { visao: parte('visao'), semana: parte('semana'), dia: parte('dia') };
+}
+
+/* ---------- a Semana com um dia por coluna (#98) ---------- */
+
+/** O período do dia em que o turno começa: manhã (6h–12h), tarde (12h–18h), noite (18h–0h), madrugada (0h–6h); o
+    editor sem horário fica à parte. */
+export type PeriodoDoTurno = 'manha' | 'tarde' | 'noite' | 'madrugada' | 'sem-horario';
+/** Os períodos na ordem do dia da pauta (que começa às 6h), com o nome que a Semana mostra. */
+export const PERIODOS: readonly { id: PeriodoDoTurno; nome: string }[] = [
+  { id: 'manha', nome: 'manhã' },
+  { id: 'tarde', nome: 'tarde' },
+  { id: 'noite', nome: 'noite' },
+  { id: 'madrugada', nome: 'madrugada' },
+  { id: 'sem-horario', nome: 'sem horário' },
+];
+/** O período do turno, pela hora de início. */
+export function periodoDoTurno(turno: Turno | null): PeriodoDoTurno {
+  if (!turno) return 'sem-horario';
+  const h = Number(turno.inicio.split(':')[0]);
+  return h < 6 ? 'madrugada' : h < 12 ? 'manha' : h < 18 ? 'tarde' : 'noite';
+}
+
+/** Um dia da Semana com um dia por coluna: os editores daquele dia agrupados pelo período do turno, e a conta do dia. */
+export interface ColunaDaSemana {
+  dia: string;
+  /** quantos editores (sem contar "sem editor") e quantas claquetes no dia */
+  editores: number;
+  claquetes: number;
+  /** só os períodos com alguém, na ordem do dia da pauta */
+  turnos: { periodo: PeriodoDoTurno; editores: ColunaDoDia[] }[];
+}
+
+/**
+ * A Semana com um dia por coluna: um dia por coluna, na ordem da semana; em cada dia, os editores (como as colunas do
+ * Dia: o turno, as claquetes e tarefas e, à parte, os avisos) agrupados pelo período em que o turno começa. No período,
+ * pela hora de entrada; "sem editor" no fim dele.
+ */
+export function colunasDaSemana(s: Pick<SemanaDaPauta, 'dias' | 'linhas'>): ColunaDaSemana[] {
+  return s.dias.map((dia) => {
+    const doDia = s.linhas.filter((l) => l.dia === dia);
+    const editores = colunasDoDia(doDia);
+    return {
+      dia,
+      editores: editores.filter((e) => e.editor).length,
+      claquetes: doDia.filter((l) => l.tipo === 'claquete').length,
+      turnos: PERIODOS.map(({ id }) => ({ periodo: id, editores: editores.filter((e) => periodoDoTurno(e.turno) === id) })).filter((t) => t.editores.length),
+    };
+  });
+}

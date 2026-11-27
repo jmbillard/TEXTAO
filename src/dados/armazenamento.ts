@@ -866,6 +866,28 @@ export async function lembrarExibicao(area: AreaDosRoteiros, exibicao: Exibicao)
   }
 }
 
+/** A escolha da Pauta da edição (#98): a visão em que ela abre e o arranjo de cada visão; sem escolha, a Semana editor ×
+    dia e o Dia empilhado. */
+export const escolhaLembradaDaPauta = (): EscolhaDaPauta => escolhaDaPauta(minhasPreferencias);
+
+/** A pessoa escolheu a visão ou o arranjo da pauta: vale na hora (também fora do servidor, até recarregar) e o servidor
+    guarda, por pessoa, para qualquer aparelho. Devolve se ficou guardada; o que não ficou volta ao de antes na próxima
+    visita (se nenhuma escolha mais nova passou na frente). */
+export async function lembrarNaPauta<K extends keyof EscolhaDaPauta>(parte: K, valor: EscolhaDaPauta[K]): Promise<boolean> {
+  const chave = CHAVE_DA_ESCOLHA[parte];
+  const antes = minhasPreferencias[chave];
+  if (antes === valor) return true;
+  minhasPreferencias = { ...minhasPreferencias, [chave]: valor };
+  if (armazenamento.tipo !== 'servidor') return false;
+  try {
+    await pedir('/api/eu/preferencias', { method: 'PUT', body: JSON.stringify({ [chave]: valor }) });
+    return true;
+  } catch {
+    if (minhasPreferencias[chave] === valor) minhasPreferencias = { ...minhasPreferencias, [chave]: antes };
+    return false;
+  }
+}
+
 /** "Meus roteiros" do Redator ou do Editor: os roteiros em que a pessoa é o redator (ou o editor), pelo nome do
     cadastro ligado ao e-mail dela; `nome` vazio quando o e-mail não está em nenhum cadastro da área. */
 export interface MeusRoteiros {
@@ -951,7 +973,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
-import type { DiaDaPauta, SemanaDaPauta } from '../modelo/pauta';
+import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
 import type { CardDaProducao, TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };

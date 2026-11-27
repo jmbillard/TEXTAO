@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { escolhaLembradaDaPauta, lembrarNaPauta } from '../dados/armazenamento';
 import { ROTULO_DA_ETAPA, resumoDaProducao, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
@@ -37,6 +38,9 @@ export function Versoes({ linha }: { linha: LinhaDaPauta }) {
   );
 }
 
+/** "1 editor", "3 editores". */
+export const contagem = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+
 /** "2 artes", "1 arte"; sem a lista, nada. */
 export const artesEscritas = (n: number | null) => (n === null ? '' : `${n} ${n === 1 ? 'arte' : 'artes'}`);
 
@@ -62,8 +66,9 @@ export function TextoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
   return alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{texto}</MarcaTexto> : texto;
 }
 
-/** Um item da pauta: a claquete (que abre a ficha), com as versões e a produção da arte; ou a tarefa, com outro visual. */
-export function ItemDaPauta({ linha: l, abrir }: { linha: LinhaDaPauta; abrir: (l: LinhaDaPauta) => void }) {
+/** Um item da pauta: a claquete (que abre a ficha), com as versões e a produção da arte; ou a tarefa, com outro visual.
+    O `pe` vem no fim do card, fora do botão da claquete (na Semana com um dia por coluna, o editor e os avisos). */
+export function ItemDaPauta({ linha: l, abrir, pe }: { linha: LinhaDaPauta; abrir: (l: LinhaDaPauta) => void; pe?: ReactNode }) {
   return (
     <li className={`pauta-item pauta-${l.tipo}`} data-tipo={l.tipo} data-etapa={l.tipo === 'claquete' ? (resumoDaProducao(l.producoes)?.etapa ?? 'sem-card') : undefined}>
       {l.tipo === 'claquete' ? (
@@ -78,6 +83,7 @@ export function ItemDaPauta({ linha: l, abrir }: { linha: LinhaDaPauta; abrir: (
           <Versoes linha={l} />
         </>
       )}
+      {pe}
     </li>
   );
 }
@@ -206,14 +212,22 @@ export function enderecoDaPauta(hash: string): EnderecoDaPauta | null {
 }
 export const hashDaPauta = (e: EnderecoDaPauta) => (e.dia !== undefined ? `#/pauta/dia${e.dia ? `/${e.dia}` : ''}` : `#/pauta${e.semana ? `/semana/${e.semana}` : ''}`);
 
-/** A Semana e o Dia (#97): a troca da visão, no topo das duas. */
+/** Onde a entrada da pauta (no topo do PROMeiro) leva: a visão que a pessoa escolheu por último (#98), hoje. O endereço
+    continua valendo como está: #/pauta é sempre a Semana, para o link mandado a um colega abrir igual. */
+export const entradaDaPauta = (): EnderecoDaPauta => (escolhaLembradaDaPauta().visao === 'dia' ? { dia: '' } : {});
+
+/** A Semana e o Dia (#97): a troca da visão, no topo das duas. A troca é a escolha da pessoa: o PROMeiro lembra (#98). */
 export function VisaoDaPauta({ visao, semana, dia }: { visao: 'semana' | 'dia'; semana: () => void; dia: () => void }) {
+  const escolher = (v: 'semana' | 'dia', ir: () => void) => {
+    void lembrarNaPauta('visao', v);
+    ir();
+  };
   return (
     <div className="segmento pauta-visao" role="radiogroup" aria-label="Visão da pauta">
-      <button type="button" role="radio" aria-checked={visao === 'semana'} onClick={semana}>
+      <button type="button" role="radio" aria-checked={visao === 'semana'} onClick={() => escolher('semana', semana)}>
         Semana
       </button>
-      <button type="button" role="radio" aria-checked={visao === 'dia'} onClick={dia}>
+      <button type="button" role="radio" aria-checked={visao === 'dia'} onClick={() => escolher('dia', dia)}>
         Dia
       </button>
     </div>

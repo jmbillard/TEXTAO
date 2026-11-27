@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { lerSemanaDaPauta } from '../dados/armazenamento';
+import { escolhaLembradaDaPauta, lembrarNaPauta, lerSemanaDaPauta } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
-import { diaEmSaoPaulo, diasDaSemana, gradeDaSemana, segundaDaSemana, semanaVizinha, type CelulaDaSemana, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { PERIODOS, colunasDaSemana, diaEmSaoPaulo, diasDaSemana, gradeDaSemana, segundaDaSemana, semanaVizinha, type ArranjoDaSemana, type ArranjoDoDia, type CelulaDaSemana, type ColunaDaSemana, type ColunaDoDia, type EscolhaDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import { Icone } from './icones';
 import { Marca } from './pecas';
-import { DIAS_DA_SEMANA, FichaDaClaquete, ItemDaPauta, MESES, VisaoDaPauta, hashDaPauta, partes, type EnderecoDaPauta } from './pecasDaPauta';
-import { PautaDoDia, type Arranjo } from './PautaDoDia';
+import { DIAS_DA_SEMANA, FichaDaClaquete, ItemDaPauta, MESES, VisaoDaPauta, contagem, hashDaPauta, partes, type EnderecoDaPauta } from './pecasDaPauta';
+import { PautaDoDia } from './PautaDoDia';
 import './pauta.css';
 
 /* A Pauta da edição (#94): a Semana editor × dia, para qualquer pessoa logada. Uma linha por editor (na ordem do turno
@@ -16,7 +16,10 @@ import './pauta.css';
    artes, os designers, a praça e o marca-texto da prioridade ALTA, ou "sem card"; um clique abre a ficha da claquete,
    por cima da Semana. Lida do Teable pelo servidor (nada do Trello). No
    celular e no tablet, a grade rola para o lado com a coluna dos nomes fixa e abre em hoje. Um clique num dia abre o
-   Dia (#97, em PautaDoDia.tsx), com cada editor numa coluna. */
+   Dia (#97, em PautaDoDia.tsx), com cada editor numa coluna.
+   A Semana tem um segundo arranjo (#98), um dia por coluna: em cada dia, os cards agrupados pelo período do turno
+   (manhã, tarde, noite, madrugada), cada card com o editor e, no primeiro dele, o ⚑ dos avisos. A visão e o arranjo de
+   cada uma ficam lembrados por pessoa, em qualquer aparelho. */
 
 interface Props extends EnderecoDaPauta {
   /** vai para outra semana ou outro dia (sem a data: a de hoje) */
@@ -33,7 +36,7 @@ function periodoEscrito(dias: string[]) {
 }
 
 /** O ⚑ com o número de avisos daquele editor naquele dia; o texto abre ao passar o mouse ou ao tocar. */
-function Avisos({ avisos, rotulo }: { avisos: CelulaDaSemana['avisos']; rotulo: string }) {
+function Avisos({ avisos, rotulo }: { avisos: LinhaDaPauta[]; rotulo: string }) {
   const [aberto, setAberto] = useState(false);
   const [fixo, setFixo] = useState(false);
   const caixa = useRef<HTMLSpanElement>(null);
@@ -129,15 +132,83 @@ function Celula({ c, editor, hoje, abrir }: { c: CelulaDaSemana; editor: string;
   );
 }
 
-/** A Pauta da edição: a Semana ou o Dia (#97), pelo endereço. O arranjo do Dia vale enquanto a página está aberta
-    (a escolha lembrada por pessoa vem no #98). */
+/** A Pauta da edição: a Semana ou o Dia (#97), pelo endereço, cada uma no arranjo que a pessoa escolheu (#98; sem
+    escolha, a Semana editor × dia e o Dia empilhado). A troca vale na hora e o servidor guarda. */
 export function Pauta({ semana, dia, irPara, voltar }: Props) {
-  const [arranjo, setArranjo] = useState<Arranjo>('empilhado');
-  if (dia !== undefined) return <PautaDoDia dia={dia} arranjo={arranjo} mudarArranjo={setArranjo} irPara={irPara} voltar={voltar} />;
-  return <SemanaDaPautaTela semana={semana} irPara={irPara} voltar={voltar} />;
+  const [escolha, setEscolha] = useState<EscolhaDaPauta>(() => escolhaLembradaDaPauta());
+  const mudar = <K extends 'semana' | 'dia'>(parte: K, valor: EscolhaDaPauta[K]) => {
+    setEscolha((e) => ({ ...e, [parte]: valor }));
+    void lembrarNaPauta(parte, valor);
+  };
+  if (dia !== undefined) return <PautaDoDia dia={dia} arranjo={escolha.dia} mudarArranjo={(a: ArranjoDoDia) => mudar('dia', a)} irPara={irPara} voltar={voltar} />;
+  return <SemanaDaPautaTela semana={semana} arranjo={escolha.semana} mudarArranjo={(a) => mudar('semana', a)} irPara={irPara} voltar={voltar} />;
 }
 
-function SemanaDaPautaTela({ semana, irPara, voltar }: Omit<Props, 'dia'>) {
+/** O card do arranjo um dia por coluna: o editor no pé e, no primeiro card dele no período, o ⚑ dos avisos. Quem só tem
+    aviso naquele dia aparece só com o pé. */
+function CardsDoEditor({ e, dia, abrir }: { e: ColunaDoDia; dia: string; abrir: (l: LinhaDaPauta) => void }) {
+  const { dia: num, semana } = partes(dia);
+  const nome = e.editor || 'sem editor';
+  const pe = (comAvisos: boolean) => (
+    <span className={`pauta-card-pe${e.editor ? '' : ' sem-editor'}`} title={e.turno ? `${e.turno.inicio}${e.turno.fim ? `–${e.turno.fim}` : ''}` : 'sem horário'}>
+      <span className="pauta-card-editor">{nome}</span>
+      {comAvisos && e.avisos.length > 0 && <Avisos avisos={e.avisos} rotulo={`${nome}, ${DIAS_DA_SEMANA[semana]} ${num}`} />}
+    </span>
+  );
+  if (!e.itens.length)
+    return (
+      <li className="pauta-item pauta-so-aviso" data-tipo="aviso">
+        {pe(true)}
+      </li>
+    );
+  return (
+    <>
+      {e.itens.map((l, i) => (
+        <ItemDaPauta key={l.id} linha={l} abrir={abrir} pe={pe(i === 0)} />
+      ))}
+    </>
+  );
+}
+
+/** Um dia da Semana no arranjo um dia por coluna: no topo, o dia (que abre o Dia) e a conta; os cards por turno. */
+function DiaEmColuna({ c, hoje, irPara, abrir }: { c: ColunaDaSemana; hoje: boolean; irPara: Props['irPara']; abrir: (l: LinhaDaPauta) => void }) {
+  const p = partes(c.dia);
+  return (
+    <section className={`pauta-dia-coluna${hoje ? ' hoje' : ''}`} data-dia={c.dia} aria-label={`${DIAS_DA_SEMANA[p.semana]} ${p.dia}`}>
+      <header className="pauta-dia-coluna-topo">
+        <a className="pauta-dia-link" href={hashDaPauta({ dia: c.dia })} title="Abrir o dia, com cada editor numa coluna" onClick={(e) => (e.preventDefault(), irPara({ dia: c.dia }))}>
+          <span className="pauta-dia-sem">{DIAS_DA_SEMANA[p.semana]}</span> <span className="pauta-dia-num">{p.dia}</span>
+          {hoje && <span className="pauta-dia-rel"> hoje</span>}
+          <span className="pauta-dia-ver" aria-hidden="true">
+            ver o dia →
+          </span>
+        </a>
+        {c.turnos.length > 0 && <span className="pauta-dia-conta">{[contagem(c.editores, 'editor', 'editores'), contagem(c.claquetes, 'claquete', 'claquetes')].join(' · ')}</span>}
+      </header>
+      {c.turnos.length ? (
+        c.turnos.map((t) => (
+          <section key={t.periodo} className="pauta-periodo" data-periodo={t.periodo}>
+            <h3 className="pauta-periodo-nome">{PERIODOS.find((x) => x.id === t.periodo)?.nome}</h3>
+            <ul className="pauta-cards">
+              {t.editores.map((e) => (
+                <CardsDoEditor key={e.editor || '(sem editor)'} e={e} dia={c.dia} abrir={abrir} />
+              ))}
+            </ul>
+          </section>
+        ))
+      ) : (
+        <p className="pauta-dia-sem-pauta">sem pauta</p>
+      )}
+    </section>
+  );
+}
+
+const ARRANJOS_DA_SEMANA: readonly { id: ArranjoDaSemana; nome: string; dica: string; sub: string }[] = [
+  { id: 'editor-dia', nome: 'Editor × dia', dica: 'Um editor por linha, um dia por coluna', sub: 'A semana inteira: um editor por linha, um dia por coluna.' },
+  { id: 'dia-por-coluna', nome: 'Um dia por coluna', dica: 'Os cards de cada dia agrupados por turno', sub: 'A semana inteira: um dia por coluna, os cards por turno.' },
+];
+
+function SemanaDaPautaTela({ semana, arranjo, mudarArranjo, irPara, voltar }: Omit<Props, 'dia'> & { arranjo: ArranjoDaSemana; mudarArranjo: (a: ArranjoDaSemana) => void }) {
   const [hoje, setHoje] = useState(() => diaEmSaoPaulo());
   const segunda = segundaDaSemana(semana ?? '', hoje);
   const [dados, setDados] = useState<SemanaDaPauta | null>(null);
@@ -170,16 +241,18 @@ function SemanaDaPautaTela({ semana, irPara, voltar }: Omit<Props, 'dia'>) {
   }, [ir, segunda, ficha]);
 
   const atual = dados?.inicio === segunda ? dados : null;
-  // a grade mais larga que a tela (celular, tablet): abre em hoje, logo depois da coluna dos nomes
+  // a grade mais larga que a tela (celular, tablet): abre em hoje, logo depois da coluna dos nomes (no arranjo um dia por
+  // coluna, logo na borda)
   useLayoutEffect(() => {
     const r = rolagem.current;
     if (!r || !atual) return;
-    const coluna = r.querySelector<HTMLElement>('th.pauta-dia.hoje');
+    const coluna = r.querySelector<HTMLElement>('th.pauta-dia.hoje, .pauta-dia-coluna.hoje');
     const nomes = r.querySelector<HTMLElement>('th.pauta-canto');
-    r.scrollLeft = coluna && r.scrollWidth > r.clientWidth ? coluna.offsetLeft - (nomes?.offsetWidth ?? 0) : 0;
-  }, [atual]);
+    const borda = nomes ? nomes.getBoundingClientRect().right : r.getBoundingClientRect().left + parseFloat(getComputedStyle(r).paddingLeft);
+    r.scrollLeft = coluna && r.scrollWidth > r.clientWidth ? r.scrollLeft + coluna.getBoundingClientRect().left - borda : 0;
+  }, [atual, arranjo]);
 
-  const grade = atual ? gradeDaSemana(atual) : [];
+  const grade = atual && arranjo === 'editor-dia' ? gradeDaSemana(atual) : [];
   const aberta = ficha ? (atual?.linhas.find((l) => l.id === ficha) ?? null) : null;
   return (
     <div className="pagina pauta">
@@ -194,11 +267,18 @@ function SemanaDaPautaTela({ semana, irPara, voltar }: Omit<Props, 'dia'>) {
         <div className="pauta-cabeca">
           <div>
             <h1>Pauta da edição</h1>
-            <p className="pauta-sub">A semana inteira: um editor por linha, um dia por coluna.</p>
+            <p className="pauta-sub">{ARRANJOS_DA_SEMANA.find((a) => a.id === arranjo)?.sub}</p>
           </div>
           {/* o Dia abre em hoje, quando hoje é desta semana; senão, na segunda */}
           <div className="pauta-controles">
             <VisaoDaPauta visao="semana" semana={() => undefined} dia={() => irPara({ dia: segunda === desta ? '' : segunda })} />
+            <div className="segmento pauta-arranjo pauta-arranjo-semana" role="radiogroup" aria-label="Arranjo da semana">
+              {ARRANJOS_DA_SEMANA.map((a) => (
+                <button key={a.id} type="button" role="radio" aria-checked={arranjo === a.id} title={a.dica} onClick={() => mudarArranjo(a.id)}>
+                  {a.nome}
+                </button>
+              ))}
+            </div>
             <nav className="pauta-nav" aria-label="Semana">
               {segunda !== desta && (
                 <button type="button" className="botao-texto pauta-hoje" onClick={() => irPara({})}>
@@ -226,8 +306,16 @@ function SemanaDaPautaTela({ semana, irPara, voltar }: Omit<Props, 'dia'>) {
           </p>
         ) : !atual ? (
           <p className="pauta-lendo">Lendo a pauta…</p>
-        ) : !grade.length ? (
+        ) : !atual.linhas.length ? (
           <p className="pauta-vazia">Nada na pauta desta semana.</p>
+        ) : arranjo === 'dia-por-coluna' ? (
+          <div className="pauta-faixa" ref={rolagem}>
+            <div className="pauta-dias">
+              {colunasDaSemana(atual).map((c) => (
+                <DiaEmColuna key={c.dia} c={c} hoje={c.dia === hoje} irPara={irPara} abrir={(l) => setFicha(l.id)} />
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="pauta-rolagem" ref={rolagem}>
             <table className="pauta-grade">

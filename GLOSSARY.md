@@ -426,8 +426,10 @@ _Evitar_: normalização, limpeza, saneamento
 **Pauta da edição**:
 A tabela do Teable (EDICAO_producao) que diz quem edita cada claquete, em que dia e em que turno; os coordenadores
 escrevem nela, o PROMeiro só lê (a exceção é a **correção de grafia**). É também a página do PROMeiro, aberta a
-qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna) e o **Dia** (um editor por coluna,
-na ordem de início do turno). Cada linha é uma claquete, uma **tarefa** ou um **aviso**.
+qualquer pessoa logada, com a **Semana** e o **Dia** (um editor por coluna, na ordem de início do turno). Cada visão tem
+dois **arranjos**, à escolha de cada pessoa: a Semana editor × dia (um editor por linha, um dia por coluna) ou um dia
+por coluna (os cards por período do turno); o Dia empilhado ou por hora. Cada linha é uma claquete, uma **tarefa** ou
+um **aviso**.
 _Evitar_: escala, grade da edição
 
 **Tarefa** (da pauta):
@@ -441,7 +443,9 @@ _Evitar_: nota, observação
 **Turno**:
 O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. O que passa da meia-noite (22–06)
 conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores na
-Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior.
+Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior. Na Semana
+com um dia por coluna, os cards se agrupam pelo **período** em que o turno começa: manhã (6h–12h), tarde (12h–18h),
+noite (18h–0h) e madrugada (0h–6h).
 
 **Versão da chamada** (na pauta):
 O código no fim da claquete da pauta, entre parênteses ou, depois da data, sem eles, em qualquer caixa e com ou sem
@@ -504,6 +508,6 @@ revisão e da Produção, nada do Trello.
 _Evitar_: tela do roteiro, detalhe
 
 **Preferências da pessoa**:
-O que o PROMeiro lembra por pessoa, em qualquer aparelho (a última área usada, a **exibição** de cada área e, depois,
-o arranjo da Pauta da edição): no SQLite, uma chave por linha, gravada pela rota de quem está logado.
+O que o PROMeiro lembra por pessoa, em qualquer aparelho (a última área usada, a **exibição** de cada área, e a visão
+e o **arranjo** de cada visão da Pauta da edição): no SQLite, uma chave por linha, gravada pela rota de quem está logado.
 _Evitar_: configurações (a Configuração é a tela dos administradores)
