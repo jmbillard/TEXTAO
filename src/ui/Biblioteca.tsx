@@ -9,7 +9,7 @@ import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { ApelidoDaClaquete, AvisoDasVersoes, EtiquetasDasVersoes } from './Apelido';
+import { ApelidoDaClaquete, AvisoDasVersoes, EtiquetasDasVersoes, VersoesDoCard } from './Apelido';
 import { apelidoDoRoteiro, relerApelidos, useApelidos } from '../dados/apelidos';
 import { agruparPorDia, artesParaMostrar, LER_ANDAMENTO_MS, claqueteParaMostrar, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, soAsPrioridades, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
@@ -614,6 +614,8 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
     <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''} ${c.aEntregar ? 'a-entregar' : ''}`} data-card={r.id}>
       <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
         <span className="card-semana-claquete" title={apelidoDoRoteiro(r.id) ? `Claquete: ${r.meta.claquete}` : undefined}>{c.prioridade ? <MarcaTexto traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></MarcaTexto> : <TextoDaClaquete texto={claquete} quebras />}</span>
+        {/* as versões da chamada (#121), prontas da API: as do roteiro, ou o código do apelido ou da claquete */}
+        <VersoesDoCard versoes={r.versoesDaChamada} />
         <span className="card-semana-linha">
           <span className="card-quem">
             {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
@@ -1064,7 +1066,11 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         registrarCores([{ email: e.por, cor: e.cor }]);
         return setCores((n) => n + 1);
       }
-      if (e.tipo === 'apelido') return void relerApelidos();
+      if (e.tipo === 'apelido') {
+        // o apelido muda as versões do card da agenda (#121), que vêm prontas com a lista
+        recarregar();
+        return void relerApelidos();
+      }
       if (e.tipo === 'ponteiro') {
         if (e.por === eu) return;
         return setPonteiros((atual) => {

@@ -527,7 +527,9 @@ As **versões lidas** do roteiro saem das artes marcadas na revisão que dizem q
 QUARTA" é N, "AMANHÃ, 22H30" é A, "DIA 28" é D, "EM JANEIRO" é M), na ordem das letras, com o dia da semana conferido
 pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai nos próximos 7 dias e P se cai depois,
 com um "?" para conferir; o horário sozinho não é versão. Quando discordam do código da claquete, vale o roteiro, com
-um aviso discreto e a opção de usá-las no **apelido**.
+um aviso discreto e a opção de usá-las no **apelido**. No card da agenda e no da tela de produções, as etiquetas são as
+do roteiro, quando ele está no PROMeiro e as artes dizem; senão, as do código no fim do apelido ou, sem código nele, as
+da claquete.
 _Evitar_: sufixo, tipo da chamada
 
 **Ficha da claquete** (na pauta):

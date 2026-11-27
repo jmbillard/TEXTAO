@@ -9,6 +9,7 @@ import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import type { EventoDaLinha, ProducaoDaLinha } from '../modelo/linhaDoTempo';
 import type { Versao as VersaoDaChamada } from '../modelo/pauta';
+import type { VersoesDaChamada } from '../modelo/versoesDoRoteiro';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
@@ -25,6 +26,8 @@ export interface Resumo {
   nArtes: number;
   /** As versões da chamada lidas nas artes do roteiro guardado (#120), na ordem do padrão; ausente fora do servidor. */
   versoesLidas?: VersaoDaChamada[];
+  /** As versões da chamada do card da agenda (#121), prontas: as do roteiro, ou o código do apelido ou da claquete. */
+  versoesDaChamada?: VersoesDaChamada;
   atualizadoEm: string;
   dono: Pessoa | null;
   publico: boolean;
