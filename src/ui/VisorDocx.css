@@ -29,3 +29,16 @@
   .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='top'], [data-edge='bottom']) { min-height: 2px; }
   .visor-docx :is(.docx-table-border-edge-stroke, .docx-table-border-double-stroke, .docx-table-border-triple-stroke):is([data-edge='left'], [data-edge='right']) { min-width: 2px; }
 }
+/* O canto de baixo à direita (#51). A linha vertical fica centrada na beirada da célula, metade para fora; a
+   horizontal termina na beirada. Encaixadas nos pixels da tela, a vertical acabava uma fileira acima da de baixo, e a
+   de baixo uma coluna antes da vertical: o canto ficava aberto. Onde há linha à direita, a horizontal segue meia
+   espessura (a dela, que é a da grade) até a beirada de fora da vertical, como o Word desenha o canto. */
+.visor-docx .docx-table-border-edge:has(> .docx-table-border-edge-stroke[data-edge='right']) > .docx-table-border-edge-stroke:is([data-edge='top'], [data-edge='bottom'])::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  top: 0;
+  height: 100%;
+  aspect-ratio: 1 / 2;
+  background: inherit;
+}

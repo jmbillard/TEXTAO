@@ -102,6 +102,77 @@ function medirBordas() {
   });
 }
 
+/**
+ * Os quatro cantos de cada tabela fecham (#51): numa captura de perto de cada canto, a linha vertical desce (ou sobe)
+ * até a última fileira de pixels da horizontal, e a horizontal vai até a última coluna da vertical, com folga de 0,5 px
+ * do CSS (meio pixel da tela não conta; na tela Retina, um). Devolve, por tabela, os cantos abertos e quanto faltou.
+ */
+async function medirCantos(p) {
+  const dpr = await p.evaluate(() => window.devicePixelRatio || 1);
+  const folga = Math.floor(0.5 * dpr + 1e-6);
+  const caixas = await p.evaluate(() =>
+    [...document.querySelectorAll('.visor-docx .docx-table-fragment')]
+      .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
+      .map((t) => {
+        const cs = [...t.querySelectorAll('.docx-table-cell')].map((c) => c.getBoundingClientRect());
+        return { esq: Math.min(...cs.map((c) => c.left)), dir: Math.max(...cs.map((c) => c.right)), cima: Math.min(...cs.map((c) => c.top)), baixo: Math.max(...cs.map((c) => c.bottom)) };
+      }),
+  );
+  const R = 4;
+  const resultado = [];
+  for (const c of caixas) {
+    const abertos = [];
+    for (const [nome, x, y, dx, dy] of [
+      ['de cima à esquerda', c.esq, c.cima, -1, -1],
+      ['de cima à direita', c.dir, c.cima, 1, -1],
+      ['de baixo à esquerda', c.esq, c.baixo, -1, 1],
+      ['de baixo à direita', c.dir, c.baixo, 1, 1],
+    ]) {
+      const png = await p.screenshot({ clip: { x: x - R, y: y - R, width: 2 * R, height: 2 * R } });
+      // os pixels escuros da captura, lidos no próprio navegador (sem decodificador de PNG no Node)
+      const escuros = await p.evaluate(async (b64) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const cv = document.createElement('canvas');
+        cv.width = img.width;
+        cv.height = img.height;
+        const g = cv.getContext('2d');
+        g.drawImage(img, 0, 0);
+        const d = g.getImageData(0, 0, img.width, img.height).data;
+        const m = [];
+        for (let yy = 0; yy < img.height; yy++) {
+          const linha = [];
+          for (let xx = 0; xx < img.width; xx++) {
+            const i = (yy * img.width + xx) * 4;
+            linha.push((d[i] + d[i + 1] + d[i + 2]) / 3 < 110);
+          }
+          m.push(linha);
+        }
+        return m;
+      }, png.toString('base64'));
+      const h = escuros.length;
+      const w = escuros[0]?.length ?? 0;
+      const linhas = [...Array(h).keys()].filter((yy) => escuros[yy].some(Boolean));
+      const colunas = [...Array(w).keys()].filter((xx) => escuros.some((l) => l[xx]));
+      if (!linhas.length || !colunas.length) {
+        abertos.push(`${nome} (sem linha)`);
+        continue;
+      }
+      // a fileira e a coluna de fora (a última na direção do canto) e até onde cada linha chega nelas
+      const fora = dy > 0 ? Math.max(...linhas) : Math.min(...linhas);
+      const lado = dx > 0 ? Math.max(...colunas) : Math.min(...colunas);
+      const naColuna = [...Array(h).keys()].filter((yy) => escuros[yy][lado]);
+      const naFileira = [...Array(w).keys()].filter((xx) => escuros[fora][xx]);
+      const faltaV = dy > 0 ? fora - Math.max(...naColuna) : Math.min(...naColuna) - fora;
+      const faltaH = dx > 0 ? lado - Math.max(...naFileira) : Math.min(...naFileira) - lado;
+      if (faltaV > folga || faltaH > folga) abertos.push(`${nome} (falta ${Math.max(faltaV, faltaH)} pixel da tela)`);
+    }
+    resultado.push(abertos);
+  }
+  return resultado;
+}
+
 async function principal() {
   const amb = await subir();
   const navegador = await chromium.launch();
@@ -132,6 +203,10 @@ async function principal() {
         const sumidas = Object.entries(t.faltando).filter(([, f]) => f > 0);
         conferir(t.colunas === 2 && t.linhas === 2 && sumidas.length === 0, `${tela}, tabela ${i + 1} (${CASOS[i]}): ${t.colunas}×${t.linhas}, ${sumidas.length ? `sem ${sumidas.map(([n, f]) => `${n} (${Math.round(f * 100)}%)`).join(', ')}` : 'as seis linhas da grade desenhadas'}`);
       });
+      const cantos = await medirCantos(p);
+      cantos.slice(0, CASOS.length).forEach((abertos, i) => {
+        conferir(abertos.length === 0, `${tela}, tabela ${i + 1}: ${abertos.length ? `canto aberto ${abertos.join(', ')}` : 'os quatro cantos fecham'}`);
+      });
       conferir(erros.length === 0, `${tela}: nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`);
       await ctx.close();
     }
@@ -144,4 +219,5 @@ async function principal() {
   process.exit(falhou ? 1 : 0);
 }
 
+module.exports = { medirCantos };
 if (require.main === module) void principal();
