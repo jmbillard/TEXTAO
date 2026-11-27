@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
+import { criarCadastros } from '../servidor/cadastros.mjs';
+// @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 
 /* A Semana da pauta da edição (#94) pela API: a tabela EDICAO_producao do Teable de mentira (achada pelo nome, o
@@ -225,7 +227,7 @@ describe('o Dia da pauta da edição (#97)', () => {
   it('sem dia (ou com um dia que não é data), vale hoje; quem não entrou não vê', async () => {
     const { ana, ninguem } = await comServidor({ registros: { EDICAO_producao: [] } });
     const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-    expect(await diaDaPauta(await ana('/api/pauta/dia'))).toEqual({ dia: hoje, editores: [], linhas: [], alteradoEm: null });
+    expect(await diaDaPauta(await ana('/api/pauta/dia'))).toMatchObject({ dia: hoje, editores: [], linhas: [], alteradoEm: null });
     expect((await diaDaPauta(await ana('/api/pauta/dia?dia=2026-13-45'))).dia).toBe(hoje);
     expect((await ninguem('/api/pauta/dia')).status).toBe(401);
   });
@@ -373,5 +375,127 @@ describe('a escolha da visão e do arranjo, lembrada por pessoa (#98)', () => {
     // uma ruim recusa o pedido inteiro
     await recusa({ 'pauta.visao': 'dia', 'pauta.arranjo.dia': null }, 'Arranjo do Dia desconhecido: escolha empilhado ou por hora.');
     expect(await lembradas('ana@empresa.com', s)).toEqual({});
+  });
+});
+
+/* Os filtros pessoais, o resumo do administrador e a cópia de reserva (#99). "Só as minhas": o editor ligado ao e-mail
+   da pessoa (o cadastro de editores do Teable de mentira, com o e-mail). "Com arte minha": as claquetes em que o
+   designer da pessoa (a tabela designers, pelo e-mail) está na produção da arte. O resumo (linhas sem editor, claquetes
+   sem card e a hora da última alteração) só vem para administradores. Com o Postgres do Teable fora do ar, a Semana e
+   o Dia saem da última cópia local da pauta, com a hora dela. Nomes e e-mails fictícios. */
+describe('os filtros, o resumo do administrador e a cópia de reserva (#99)', () => {
+  type Voce = { editor: string | null; designer: string | null };
+  type Resumo = { semEditor: number; semCard: number; alteradoEm: string | null };
+  type Lida = Semana & { filtro: string | null; voce: Voce; resumo?: Resumo; origem: string; copiaEm: string | null };
+  const lida = async (r: Response) => (await semana(r)) as Lida;
+  const ids = (s: { linhas: { id: string }[] }) => s.linhas.map((l) => l.id).sort();
+
+  const NOMES_COMPLETOS = { ...NOMES, editores: 'editores_pg', KEY_editores: 'key_editores_pg', ARTE_producao: 'arte_producao_pg', designers: 'designers_pg' };
+  const arte = (id: string, fields: Campos) => ({ id, fields: { card_ID: '', status: '[]', designers: null, arquivado: false, entregue: false, praca: null, filme: null, ...fields } });
+  const REGISTROS = () => ({
+    EDICAO_producao: [...PAUTA(), linha('recC3', 'Quem Ama 28/11 Rede', 'Carla Noite', '2026-11-27', ['22:00', '06:00'])],
+    // a Carla tem o e-mail no cadastro de editores; o Beto, não
+    editores: [
+      { id: 'recE1', fields: { editor: 'Carla Noite', email: 'carla@empresa.com' } },
+      { id: 'recE2', fields: { editor: 'Beto Tarde' } },
+    ],
+    KEY_editores: [],
+    // a Dani é a "Designer Um" da tabela designers
+    designers: [{ id: 'recD1', fields: { designer: 'Designer Um', email: 'dani@empresa.com', status: 'ativo' } }],
+    ARTE_producao: [
+      arte('recA1', { claquete: 'Show da Tarde 25/11', status: '["FINALIZADO"]', entregue: true, designers: '["Designer Um"]', artes: 'HOJE', data_entrada: '2026-11-20T12:00:00.000Z' }),
+      arte('recA2', { claquete: 'Novela Sol 24/11-2', status: '["PRODUZINDO"]', designers: '["Designer Dois"]', artes: 'HOJE', data_entrada: '2026-11-20T12:00:00.000Z' }),
+      arte('recA3', { claquete: 'Quem Ama 28/11 SP', status: '["PRODUZINDO"]', designers: '["designer um"]', artes: 'HOJE', data_entrada: '2026-11-23T12:00:00.000Z' }),
+    ],
+  });
+
+  async function completo(db: unknown = abrirBanco(':memory:')) {
+    const teable = teableFalso(NOMES_COMPLETOS, { registros: REGISTROS() });
+    // os Cadastros leem o mesmo Teable de mentira (a tabela de editores, com o e-mail)
+    const cadastros = criarCadastros({ ...ENV, TEABLE_EDITORES: 'tblFalso_bseFalso_editores', TEABLE_KEY_EDITORES: 'tblFalso_bseFalso_KEY_editores' }, { buscar: teable });
+    const app = criarApp({ db, env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg, cadastros });
+    await app.tabelasProntas;
+    const servidor = createServer(app);
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    parar = async () => {
+      await app.fechar();
+      await new Promise<void>((ok) => servidor.close(() => ok()));
+    };
+    const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    const carga = await fetch(`${base}/api/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': 'chefe@empresa.com' } });
+    expect(carga.status).toBe(200);
+    // a verificação das pessoas (a tabela designers, com o e-mail), a mesma das Produções
+    await app.pessoasProntas;
+    const como = (email: string) => (caminho: string) => fetch(base + caminho, { headers: { 'cf-access-authenticated-user-email': email } });
+    return { teable, carla: como('carla@empresa.com'), dani: como('dani@empresa.com'), ana: como('ana@empresa.com'), chefe: como('chefe@empresa.com') };
+  }
+
+  it('"Só as minhas": só as linhas do editor ligado ao e-mail da pessoa, na Semana e no Dia', async () => {
+    const { carla } = await completo();
+    const todas = await lida(await carla('/api/pauta/semana?inicio=2026-11-23'));
+    expect(todas).toMatchObject({ filtro: null, voce: { editor: 'Carla Noite', designer: null } });
+    expect(todas.linhas.length).toBe(11);
+    const minhas = await lida(await carla('/api/pauta/semana?inicio=2026-11-23&filtro=minhas'));
+    expect(minhas.filtro).toBe('minhas');
+    expect(ids(minhas)).toEqual(['recC3', 'recP1', 'recP2']);
+    expect(minhas.editores).toEqual(['Carla Noite']);
+    const dia = (await lida(await carla('/api/pauta/dia?dia=2026-11-24&filtro=minhas'))) as unknown as Lida & { dia: string };
+    expect(ids(dia)).toEqual(['recP1', 'recP2']);
+    expect(dia.editores).toEqual(['Carla Noite']);
+  });
+
+  it('"Com arte minha": só as claquetes em que o designer da pessoa está na produção da arte', async () => {
+    const { dani } = await completo();
+    const s = await lida(await dani('/api/pauta/semana?inicio=2026-11-23&filtro=arte'));
+    expect(s.voce).toEqual({ editor: null, designer: 'Designer Um' });
+    // o Show da Tarde 25/11 pela chave exata e o Quem Ama pela chave sem a praça (o nome sem caixa); a Novela Sol é de outro
+    expect(ids(s)).toEqual(['recC3', 'recP3']);
+    expect(s.linhas.every((l) => l.tipo === 'claquete')).toBe(true);
+    expect(s.editores).toEqual(['Beto Tarde', 'Carla Noite']);
+  });
+
+  it('sem a ligação, o filtro não acha nada; um filtro desconhecido vale como sem filtro', async () => {
+    const { ana } = await completo();
+    const s = await lida(await ana('/api/pauta/semana?inicio=2026-11-23&filtro=minhas'));
+    expect(s).toMatchObject({ filtro: 'minhas', voce: { editor: null, designer: null }, linhas: [], editores: [] });
+    expect((await lida(await ana('/api/pauta/semana?inicio=2026-11-23&filtro=arte'))).linhas).toEqual([]);
+    const outro = await lida(await ana('/api/pauta/semana?inicio=2026-11-23&filtro=tudo'));
+    expect(outro.filtro).toBeNull();
+    expect(outro.linhas.length).toBe(11);
+  });
+
+  it('o resumo só vem para o administrador: linhas sem editor, claquetes sem card e a última alteração, da pauta inteira', async () => {
+    const { ana, chefe } = await completo();
+    const doChefe = await lida(await chefe('/api/pauta/semana?inicio=2026-11-23'));
+    // sem editor: a CALHAUS; sem card: as 8 claquetes menos o Show da Tarde 25/11, a Novela Sol 24/11 e o Quem Ama
+    expect(doChefe.resumo).toEqual({ semEditor: 1, semCard: 5, alteradoEm: '2026-11-26T15:30:00.000Z' });
+    // com um filtro, o resumo continua o da pauta inteira
+    expect((await lida(await chefe('/api/pauta/semana?inicio=2026-11-23&filtro=minhas'))).resumo).toEqual(doChefe.resumo);
+    expect((await lida(await chefe('/api/pauta/dia?dia=2026-11-26'))).resumo).toEqual({ semEditor: 1, semCard: 1, alteradoEm: '2026-11-26T15:30:00.000Z' });
+    expect('resumo' in (await lida(await ana('/api/pauta/semana?inicio=2026-11-23')))).toBe(false);
+    expect('resumo' in (await lida(await ana('/api/pauta/dia?dia=2026-11-26')))).toBe(false);
+  });
+
+  it('com o Postgres fora do ar, a Semana e o Dia saem da última cópia local da pauta, com a hora dela', async () => {
+    const { ana, teable } = await completo();
+    const doBanco = await lida(await ana('/api/pauta/semana?inicio=2026-11-23'));
+    expect(doBanco).toMatchObject({ origem: 'banco', copiaEm: null });
+    teable.estado.fora = true;
+    const daCopia = await lida(await ana('/api/pauta/semana?inicio=2026-11-23'));
+    expect(daCopia.origem).toBe('copia');
+    expect(Date.parse(daCopia.copiaEm!)).toBeLessThanOrEqual(Date.now());
+    expect(Date.now() - Date.parse(daCopia.copiaEm!)).toBeLessThan(60_000);
+    // a mesma pauta: as linhas, os editores, a produção da arte e a última alteração
+    expect(daCopia.linhas).toEqual(doBanco.linhas);
+    expect(daCopia.editores).toEqual(doBanco.editores);
+    expect(daCopia.alteradoEm).toBe(doBanco.alteradoEm);
+    // o Dia de um dia já copiado também; com o filtro, igual
+    const dia = (await lida(await ana('/api/pauta/dia?dia=2026-11-24'))) as unknown as Lida;
+    expect(dia).toMatchObject({ origem: 'copia', copiaEm: daCopia.copiaEm });
+    expect(ids(dia)).toEqual(['recP1', 'recP2', 'recP3']);
+    // uma semana que nunca foi copiada: a página fica sabendo que o banco não respondeu
+    const nunca = await ana('/api/pauta/semana?inicio=2027-03-01');
+    expect(nunca.status).toBe(503);
+    expect(((await nunca.json()) as { erro: string }).erro).toMatch(/não respondeu/);
   });
 });

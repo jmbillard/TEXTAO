@@ -14,7 +14,7 @@ import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
 import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES } from './correcoes.mjs';
 import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
-import { cruzarComAProducao, diaOuHoje, ehChaveDaPauta, recusaDaPreferenciaDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
+import { colunasDoDia, cruzarComAProducao, diaOuHoje, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
@@ -2616,15 +2616,25 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta/semana' || caminho === '/api/pauta/dia') {
       // a Semana (#94) e o Dia (#97) da pauta da edição, para qualquer pessoa logada: lidos do Postgres do Teable (só
-      // leitura), nada do Trello. Na Semana, ?inicio= é qualquer dia dela; no Dia, ?dia= (sem eles, hoje, em São Paulo)
+      // leitura), nada do Trello. Na Semana, ?inicio= é qualquer dia dela; no Dia, ?dia= (sem eles, hoje, em São Paulo).
+      // Com o banco fora do ar, da última cópia local (#99: `origem` e `copiaEm` dizem)
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const busca = new URL(req.url, 'http://x').searchParams;
-      const s = caminho === '/api/pauta/dia' ? await pauta.dia(diaOuHoje(busca.get('dia') ?? '')) : await pauta.semana(segundaDaSemana(busca.get('inicio') ?? ''));
+      const ehDia = caminho === '/api/pauta/dia';
+      const s = ehDia ? await pauta.dia(diaOuHoje(busca.get('dia') ?? '')) : await pauta.semana(segundaDaSemana(busca.get('inicio') ?? ''));
       // a claquete com a produção da arte (#96): as Produções do PROMeiro (sem ler o Teable de novo), pela chave, com a
       // tolerância da busca do editor (sem a versão, sem a praça)
       const desde = new Date(Date.parse(`${s.inicio ?? s.dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();
       const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
-      return json(res, 200, { ...s, linhas: cruzarComAProducao(s.linhas, producoes.naPauta(desde), semPraca) });
+      const linhas = cruzarComAProducao(s.linhas, producoes.naPauta(desde), semPraca);
+      // os filtros pessoais (#99): "Só as minhas" pelo editor ligado ao e-mail (#106), "Com arte minha" pelo designer
+      // do e-mail (#110); o resumo, da pauta inteira, só para administradores
+      const voce = { editor: (await areas.quemE(eu.email, cadastros)).editor?.nome ?? null, designer: pessoas.designerDoEmail(eu.email)?.nome ?? null };
+      const filtro = ehFiltroDaPauta(busca.get('filtro')) ? busca.get('filtro') : null;
+      const vistas = filtro ? filtrarAPauta(linhas, filtro, voce) : linhas;
+      const editores = !filtro ? s.editores : ehDia ? colunasDoDia(vistas).map((c) => c.editor) : ordemDosEditores(vistas);
+      const resumo = cadastros.podeApagar(eu.email) ? { resumo: resumoDaPauta(linhas, s.alteradoEm) } : {};
+      return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, ...resumo });
     }
     if (caminho === '/api/correcoes/pauta') {
       // a correção de grafia da pauta da edição (#114), só para administradores e só leitura: uma página das propostas

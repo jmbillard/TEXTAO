@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { lerDiaDaPauta } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
-import { agoraNaRegua, colunasDoDia, diaDaPautaAgora, diaOuHoje, diaVizinho, fimNaRegua, naRegua, noArAgora, resumoDaProducao, segundaDaSemana, type ArranjoDoDia as Arranjo, type ColunaDoDia, type DiaDaPauta, type LinhaDaPauta } from '../modelo/pauta';
+import { agoraNaRegua, colunasDoDia, diaDaPautaAgora, diaOuHoje, diaVizinho, fimNaRegua, naRegua, noArAgora, resumoDaProducao, segundaDaSemana, type ArranjoDoDia as Arranjo, type ColunaDoDia, type DiaDaPauta, type LeituraDaPauta, type LinhaDaPauta } from '../modelo/pauta';
 import { Icone } from './icones';
 import { Marca } from './pecas';
-import { DIAS_DA_SEMANA, FichaDaClaquete, ItemDaPauta, MESES, VisaoDaPauta, artesEscritas, contagem, partes, type EnderecoDaPauta } from './pecasDaPauta';
+import { DIAS_DA_SEMANA, FichaDaClaquete, FiltroDaPautaTela, ItemDaPauta, MESES, SobreALeitura, VisaoDaPauta, artesEscritas, contagem, partes, useReleitura, type EnderecoDaPauta } from './pecasDaPauta';
+import type { FiltroNaTela } from './Pauta';
 
 /* O Dia da pauta da edição (#97): um dia só, com cada editor numa coluna, na ordem de início do turno daquele dia
    ("sem editor" no fim). No topo da coluna, o nome, o horário do turno e "no ar agora" ou o total de artes; logo
@@ -15,9 +16,10 @@ import { DIAS_DA_SEMANA, FichaDaClaquete, ItemDaPauta, MESES, VisaoDaPauta, arte
      com a linha do "agora" quando o dia está no ar.
    Anterior e próximo (← →) trocam de dia; o endereço é #/pauta/dia/AAAA-MM-DD (sem a data, hoje: o dia da pauta que
    está correndo, que antes das 6h ainda é o anterior). No celular e no
-   tablet as colunas rolam para o lado e a faixa começa no turno que está no ar. */
+   tablet as colunas rolam para o lado e a faixa começa no turno que está no ar. O filtro pessoal, o resumo do
+   administrador, a cópia de reserva e a releitura a cada minuto (#99) são os mesmos da Semana. */
 
-interface Props {
+interface Props extends FiltroNaTela {
   /** o dia do endereço; '' é hoje */
   dia: string;
   arranjo: Arranjo;
@@ -136,25 +138,30 @@ function Regua({ dia, agora }: { dia: string; agora: number }) {
   );
 }
 
-export function PautaDoDia({ dia, arranjo, mudarArranjo, irPara, voltar }: Props) {
+export function PautaDoDia({ dia, arranjo, mudarArranjo, irPara, voltar, filtro, mudarFiltro }: Props) {
   // "hoje" é o dia da pauta que está correndo: às 2h, ainda o de ontem, com o turno da noite no ar
   const [hoje, setHoje] = useState(() => diaDaPautaAgora());
   const [agora, setAgora] = useState(() => Date.now());
   const qual = diaOuHoje(dia, hoje);
-  const [dados, setDados] = useState<DiaDaPauta | null>(null);
+  const [dados, setDados] = useState<(DiaDaPauta & LeituraDaPauta) | null>(null);
   const [falha, setFalha] = useState('');
   const faixa = useRef<HTMLDivElement>(null);
   const [ficha, setFicha] = useState<string | null>(null);
   const fecharFicha = useCallback(() => setFicha(null), []);
 
-  const carregar = useCallback(() => {
-    setFalha('');
-    setHoje(diaDaPautaAgora());
-    lerDiaDaPauta(qual)
-      .then(setDados)
-      .catch((e) => setFalha(e instanceof Error ? e.message : String(e)));
-  }, [qual]);
+  // na releitura (#99), o erro não apaga a pauta que já está à vista
+  const carregar = useCallback(
+    (releitura = false) => {
+      if (!releitura) setFalha('');
+      setHoje(diaDaPautaAgora());
+      lerDiaDaPauta(qual, filtro)
+        .then((d) => (setDados(d), setFalha('')))
+        .catch((e) => releitura || setFalha(e instanceof Error ? e.message : String(e)));
+    },
+    [qual, filtro],
+  );
   useEffect(() => carregar(), [carregar]);
+  useReleitura(useCallback(() => carregar(true), [carregar]));
   // o "agora" anda: a linha da régua e o "no ar agora" a cada minuto
   useEffect(() => {
     const relogio = setInterval(() => setAgora(Date.now()), 60_000);
@@ -175,7 +182,7 @@ export function PautaDoDia({ dia, arranjo, mudarArranjo, irPara, voltar }: Props
     return () => window.removeEventListener('keydown', tecla);
   }, [ir, qual, ficha]);
 
-  const atual = dados?.dia === qual ? dados : null;
+  const atual = dados?.dia === qual && dados.filtro === filtro ? dados : null;
   const colunas = atual ? colunasDoDia(atual.linhas) : [];
   // a faixa mais larga que a tela (celular, tablet): começa no turno que está no ar (no por hora, depois da régua)
   useLayoutEffect(() => {
@@ -212,6 +219,7 @@ export function PautaDoDia({ dia, arranjo, mudarArranjo, irPara, voltar }: Props
           </div>
           <div className="pauta-controles">
             <VisaoDaPauta visao="dia" semana={semanaDoDia} dia={() => undefined} />
+            <FiltroDaPautaTela voce={dados?.voce} filtro={filtro} mudar={mudarFiltro} />
             <div className="segmento pauta-arranjo" role="radiogroup" aria-label="Arranjo do dia">
               <button type="button" role="radio" aria-checked={arranjo === 'empilhado'} title="Os cards um embaixo do outro" onClick={() => mudarArranjo('empilhado')}>
                 Empilhado
@@ -239,17 +247,18 @@ export function PautaDoDia({ dia, arranjo, mudarArranjo, irPara, voltar }: Props
             </nav>
           </div>
         </div>
+        {!falha && <SobreALeitura leitura={atual} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}
-            <button className="botao-texto" onClick={carregar}>
+            <button className="botao-texto" onClick={() => carregar()}>
               Tentar de novo
             </button>
           </p>
         ) : !atual ? (
           <p className="pauta-lendo">Lendo a pauta…</p>
         ) : !colunas.length ? (
-          <p className="pauta-vazia">Nada na pauta deste dia.</p>
+          <p className="pauta-vazia">{filtro ? 'Nada seu na pauta deste dia.' : 'Nada na pauta deste dia.'}</p>
         ) : (
           <div className="pauta-faixa" ref={faixa}>
             <div className={`pauta-colunas ${arranjo}`} data-arranjo={arranjo}>

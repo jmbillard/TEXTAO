@@ -4,10 +4,16 @@
 
 import { tabelaNoPg } from './tabelas-do-teable.mjs';
 import { MARCA_TODAS, pracasDaConfiguracao, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { colunasDoDia, diasDaSemana, linhaDaPauta, ordemDosEditores, periodoDosDias } from '../src/modelo/pauta.ts';
+import { colunasDoDia, diaEmSaoPaulo, diaVizinho, diasDaSemana, linhaDaPauta, ordemDosEditores, periodoDosDias } from '../src/modelo/pauta.ts';
 
 const NOME = /^[A-Za-z0-9_]+$/;
 const DIAS = 45; // a mesma chave volta a existir no ano seguinte ("QUEM AMA 20 11"); só vale a pauta recente
+/* A cópia de reserva da Semana e do Dia (#99): as linhas da pauta, como vieram do Postgres, de cada dia copiado, com a
+   hora em que cada dia foi copiado. Cobre de DIAS antes de hoje até ADIANTE dias depois (a pauta publicada), e cada
+   leitura boa de um período renova os dias dele que têm mais de RENOVAR. */
+const COPIA_DAS_LINHAS = 'pauta-pg-linhas';
+const ADIANTE = 21;
+const RENOVAR = 5 * 60 * 1000;
 
 export async function abrirPg(url) {
   const { default: pg } = await import('pg');
@@ -60,7 +66,41 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
     const porChave = new Map();
     for (const l of r.rows) if (l.chave && l.editor) porChave.set(l.chave, { editor: l.editor, claquete: l.claquete ?? '' });
     copia.guardar('pauta-pg', [...porChave].map(([chave, v]) => ({ chave, ...v })));
+    // e as linhas inteiras dos dias recentes e dos já publicados, para a Semana e o Dia (#99)
+    const primeiro = diaVizinho(diaEmSaoPaulo(), -DIAS);
+    const dias = Array.from({ length: DIAS + ADIANTE + 1 }, (_, i) => diaVizinho(primeiro, i));
+    const { rows } = await banco.query(sqlDoPeriodo, periodoDosDias(primeiro, dias.length));
+    copiarDias(dias, rows);
     return porChave.size;
+  }
+  /** Guarda as linhas brutas destes dias na cópia, no lugar das de antes, com a hora de agora; esquece os dias velhos. */
+  function copiarDias(dias, rows) {
+    if (!copia) return;
+    const antes = copia.ler(COPIA_DAS_LINHAS)?.dados ?? { dias: {}, linhas: [] };
+    const em = new Date().toISOString();
+    const cobertos = new Set(dias);
+    const desde = diaVizinho(diaEmSaoPaulo(), -DIAS - 7);
+    const novas = rows.flatMap((bruta) => {
+      const dia = linhaDaPauta({ ...bruta, id: bruta.id ?? bruta.__id })?.dia;
+      return dia && cobertos.has(dia) ? [{ ...bruta, dia }] : [];
+    });
+    const linhas = [...antes.linhas.filter((l) => !cobertos.has(l.dia) && l.dia >= desde), ...novas];
+    const copiados = Object.fromEntries(Object.entries(antes.dias).filter(([d]) => d >= desde));
+    for (const d of dias) copiados[d] = em;
+    copia.guardar(COPIA_DAS_LINHAS, { dias: copiados, linhas });
+  }
+  /** As linhas brutas destes dias na cópia e a hora da cópia (a do dia copiado há mais tempo); null se falta um dia. */
+  function linhasDaCopia(dias) {
+    const guardada = copia?.ler(COPIA_DAS_LINHAS)?.dados;
+    if (!guardada || !dias.every((d) => guardada.dias[d])) return null;
+    const noPeriodo = new Set(dias);
+    const copiaEm = dias.map((d) => guardada.dias[d]).sort()[0];
+    return { rows: guardada.linhas.filter((l) => noPeriodo.has(l.dia)), copiaEm };
+  }
+  /** Uma leitura boa renova a cópia dos dias dela que estão faltando ou velhos. */
+  function renovarACopia(dias, rows) {
+    const copiados = copia?.ler(COPIA_DAS_LINHAS)?.dados?.dias ?? {};
+    if (dias.some((d) => !copiados[d] || Date.now() - Date.parse(copiados[d]) > RENOVAR)) copiarDias(dias, rows);
   }
   let relogio = null;
   let primeira = null;
@@ -97,17 +137,24 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
     FROM "${esquema}"."${tabela}" t
     WHERE t."data" >= $1::timestamptz AND t."data" < $2::timestamptz
     ORDER BY t."data", t."expediente_inicio" NULLS LAST, t."__auto_number"`;
-  /** As linhas da pauta de alguns dias seguidos, já lidas (#94, #97), e a hora da última alteração entre elas. */
+  /**
+   * As linhas da pauta de alguns dias seguidos, já lidas (#94, #97), a hora da última alteração entre elas e de onde
+   * vieram (#99): do banco ou, com ele fora do ar, da última cópia local daqueles dias, com a hora dela.
+   */
   async function lerDias(dias) {
     if (!comBanco) throw new ForaDaPauta('A pauta da edição é lida do Postgres do Teable, que não está ligado (TEABLE_PG_URL e a tabela EDICAO_producao na base).');
     let rows;
+    let copiaEm = null;
     try {
       banco ??= await abrir(env.TEABLE_PG_URL);
       ({ rows } = await banco.query(sqlDoPeriodo, periodoDosDias(dias[0], dias.length)));
     } catch (e) {
       console.error('[pauta] o Postgres não respondeu à pauta:', e.message);
-      throw new ForaDaPauta('O Postgres do Teable não respondeu. Tente de novo em instantes.');
+      const guardada = linhasDaCopia(dias);
+      if (!guardada) throw new ForaDaPauta('O Postgres do Teable não respondeu, e não há cópia local destes dias. Tente de novo em instantes.');
+      ({ rows, copiaEm } = guardada);
     }
+    if (!copiaEm) renovarACopia(dias, rows);
     const noPeriodo = new Set(dias);
     const linhas = [];
     let alteradoEm = null;
@@ -120,17 +167,17 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
     }
     // na ordem dos dias; dentro do dia, a da pauta (a ordenação é estável)
     linhas.sort((a, b) => a.dia.localeCompare(b.dia));
-    return { linhas, alteradoEm: alteradoEm?.toISOString() ?? null };
+    return { linhas, alteradoEm: alteradoEm?.toISOString() ?? null, origem: copiaEm ? 'copia' : 'banco', copiaEm };
   }
   async function semana(segunda) {
     const dias = diasDaSemana(segunda);
-    const { linhas, alteradoEm } = await lerDias(dias);
-    return { inicio: segunda, dias, editores: ordemDosEditores(linhas), linhas, alteradoEm };
+    const { linhas, ...resto } = await lerDias(dias);
+    return { inicio: segunda, dias, editores: ordemDosEditores(linhas), linhas, ...resto };
   }
   /* O Dia (#97): as linhas de um dia só, com os editores na ordem de início do turno daquele dia. */
   async function dia(qual) {
-    const { linhas, alteradoEm } = await lerDias([qual]);
-    return { dia: qual, editores: colunasDoDia(linhas).map((c) => c.editor), linhas, alteradoEm };
+    const { linhas, ...resto } = await lerDias([qual]);
+    return { dia: qual, editores: colunasDoDia(linhas).map((c) => c.editor), linhas, ...resto };
   }
 
   return {

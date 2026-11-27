@@ -1,12 +1,13 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { escolhaLembradaDaPauta, lembrarNaPauta } from '../dados/armazenamento';
-import { ROTULO_DA_ETAPA, resumoDaProducao, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
+import { ROTULO_DA_ETAPA, diaEmSaoPaulo, resumoDaProducao, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
+import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
 
 /* As peças da Pauta da edição que a Semana (#94) e o Dia (#97) usam igual: as datas escritas, as versões da chamada
-   como etiquetas (#95), a claquete com a produção da arte (#96), o item da pauta (claquete ou tarefa) e a ficha da
-   claquete. */
+   como etiquetas (#95), a claquete com a produção da arte (#96), o item da pauta (claquete ou tarefa), a ficha da
+   claquete e, do #99, o filtro pessoal, o aviso da cópia de reserva, o resumo do administrador e a releitura. */
 
 export const DIAS_DA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 export const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -232,4 +233,74 @@ export function VisaoDaPauta({ visao, semana, dia }: { visao: 'semana' | 'dia'; 
       </button>
     </div>
   );
+}
+
+/* ---------- os filtros pessoais, a cópia de reserva, o resumo do administrador e a releitura (#99) ---------- */
+
+/** "14:20" hoje; "14:20 de 26/11" em outro dia (em São Paulo). */
+export function horaEscrita(iso: string) {
+  const d = new Date(iso);
+  const hora = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const dia = diaEmSaoPaulo(d);
+  return dia === diaEmSaoPaulo() ? hora : `${hora} de ${Number(dia.slice(8))}/${dia.slice(5, 7)}`;
+}
+
+/** "Todas", "Só as minhas" (quem tem o cadastro de editor ligado ao e-mail) e "Com arte minha" (quem é designer). Só
+    aparece para quem tem pelo menos um dos dois. */
+export function FiltroDaPautaTela({ voce, filtro, mudar }: { voce: LeituraDaPauta['voce'] | undefined; filtro: FiltroDaPauta | null; mudar: (f: FiltroDaPauta | null) => void }) {
+  const opcoes: { id: FiltroDaPauta | null; nome: string; dica: string }[] = [
+    { id: null, nome: 'Todas', dica: 'A pauta inteira' },
+    ...(voce?.editor ? [{ id: 'minhas' as const, nome: 'Só as minhas', dica: `Só as linhas de ${voce.editor}` }] : []),
+    ...(voce?.designer ? [{ id: 'arte' as const, nome: 'Com arte minha', dica: `Só as claquetes em que ${voce.designer} está na produção da arte` }] : []),
+  ];
+  if (opcoes.length < 2) return null;
+  return (
+    <div className="segmento pauta-filtro" role="radiogroup" aria-label="Filtro da pauta">
+      {opcoes.map((o) => (
+        <button key={o.id ?? 'todas'} type="button" role="radio" aria-checked={filtro === o.id} title={o.dica} onClick={() => mudar(o.id)}>
+          {o.nome}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** O aviso da cópia de reserva (o banco do Teable não respondeu) e, para o administrador, o resumo discreto. */
+export function SobreALeitura({ leitura }: { leitura: (LeituraDaPauta & { alteradoEm: string | null }) | null }) {
+  if (!leitura) return null;
+  const r = leitura.resumo;
+  return (
+    <>
+      {leitura.origem === 'copia' && leitura.copiaEm && (
+        <p className="pauta-copia" role="status">
+          O banco do Teable não respondeu: esta é a cópia da pauta das {horaEscrita(leitura.copiaEm)}. A página tenta de novo a cada minuto.
+        </p>
+      )}
+      {r && (
+        <p className="pauta-resumo" aria-label="Resumo do administrador">
+          <span className={r.semEditor ? 'pauta-resumo-conta falta' : 'pauta-resumo-conta'}>{contagem(r.semEditor, 'linha sem editor', 'linhas sem editor')}</span>
+          <span className={r.semCard ? 'pauta-resumo-conta falta' : 'pauta-resumo-conta'}>{contagem(r.semCard, 'claquete sem card', 'claquetes sem card')}</span>
+          <span>{r.alteradoEm ? `pauta alterada às ${horaEscrita(r.alteradoEm)}` : 'sem alteração registrada'}</span>
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Relê a pauta a cada minuto com a aba à vista (a cadência da agenda), e de novo quando a aba volta à vista ou ganha
+    o foco. */
+export function useReleitura(reler: () => void) {
+  useEffect(() => {
+    const deNovo = () => {
+      if (document.visibilityState === 'visible') reler();
+    };
+    const t = setInterval(deNovo, LER_ANDAMENTO_MS);
+    document.addEventListener('visibilitychange', deNovo);
+    window.addEventListener('focus', deNovo);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', deNovo);
+      window.removeEventListener('focus', deNovo);
+    };
+  }, [reler]);
 }

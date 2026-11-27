@@ -3,7 +3,8 @@
    início e do fim do expediente, no fuso de São Paulo; o dia da pauta é o campo data (um turno que passa da
    meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. As versões
    da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. A claquete cruza com as
-   Produções (#96) pela chave. */
+   Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
+import { nomeComparavel } from './ligarPeloNome.ts';
 import type { Etapa } from './producao.ts';
 import { chaveDaClaquete, lerDataDaClaquete } from './vocabularios.ts';
 
@@ -63,6 +64,19 @@ export interface SemanaDaPauta {
   linhas: LinhaDaPauta[];
   /** a hora da última alteração da pauta na semana (ISO), ou null */
   alteradoEm: string | null;
+}
+
+/** O que a rota da pauta devolve além do período (#99): o filtro, quem a pessoa é, o resumo e de onde veio a pauta. */
+export interface LeituraDaPauta {
+  /** o filtro aplicado (null: todas as linhas) */
+  filtro: FiltroDaPauta | null;
+  /** o editor ligado ao e-mail da pessoa e o designer dela (null: sem ligação); dizem que filtros ela tem */
+  voce: { editor: string | null; designer: string | null };
+  /** só para administradores: da pauta inteira do período, sem o filtro */
+  resumo?: ResumoDaPauta;
+  /** 'copia': o Postgres do Teable não respondeu, e a pauta saiu da última cópia local, tirada em `copiaEm` */
+  origem: 'banco' | 'copia';
+  copiaEm: string | null;
 }
 
 const FUSO = 'America/Sao_Paulo';
@@ -561,4 +575,40 @@ export function colunasDaSemana(s: Pick<SemanaDaPauta, 'dias' | 'linhas'>): Colu
       turnos: PERIODOS.map(({ id }) => ({ periodo: id, editores: editores.filter((e) => periodoDoTurno(e.turno) === id) })).filter((t) => t.editores.length),
     };
   });
+}
+
+/* ---------- os filtros pessoais e o resumo do administrador (#99) ---------- */
+
+/** "Só as minhas" (as linhas do editor ligado ao e-mail da pessoa) e "Com arte minha" (as claquetes em que o designer
+    da pessoa está na produção da arte). */
+export type FiltroDaPauta = 'minhas' | 'arte';
+export const ehFiltroDaPauta = (v: unknown): v is FiltroDaPauta => v === 'minhas' || v === 'arte';
+
+/**
+ * As linhas do filtro, comparando os nomes sem caixa, acento e pontuação. "Só as minhas" fica com tudo do editor (as
+ * claquetes, as tarefas e os avisos dele); "Com arte minha", só com as claquetes em que o designer está em alguma
+ * Produção. Sem o editor (ou o designer) da pessoa, nada.
+ */
+export function filtrarAPauta(linhas: readonly LinhaDaPauta[], filtro: FiltroDaPauta, voce: LeituraDaPauta['voce']): LinhaDaPauta[] {
+  const alvo = nomeComparavel((filtro === 'minhas' ? voce.editor : voce.designer) ?? '');
+  if (!alvo) return [];
+  if (filtro === 'minhas') return linhas.filter((l) => nomeComparavel(l.editor) === alvo);
+  return linhas.filter((l) => l.tipo === 'claquete' && (l.producoes ?? []).some((p) => p.designers.some((d) => nomeComparavel(d) === alvo)));
+}
+
+/** O resumo discreto do administrador. */
+export interface ResumoDaPauta {
+  /** as claquetes e as tarefas sem editor (o aviso não conta: é um recado) */
+  semEditor: number;
+  /** as claquetes sem nenhuma Produção achada pela chave */
+  semCard: number;
+  /** a hora da última alteração da pauta (ISO), ou null */
+  alteradoEm: string | null;
+}
+export function resumoDaPauta(linhas: readonly LinhaDaPauta[], alteradoEm: string | null): ResumoDaPauta {
+  return {
+    semEditor: linhas.filter((l) => l.tipo !== 'aviso' && !l.editor).length,
+    semCard: linhas.filter((l) => l.tipo === 'claquete' && !l.producoes?.length).length,
+    alteradoEm,
+  };
 }

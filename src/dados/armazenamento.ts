@@ -973,7 +973,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
-import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
 import type { CardDaProducao, TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
@@ -1335,9 +1335,14 @@ export const lerProducoesPorPraca = () => pedir<TelaDeProducoes>('/api/producoes
 /** Pegar ou voltar para a Entrada (#110): o que foi feito e a Produção como a tela mostra agora. O erro traz o motivo. */
 export const mudarEtapaDaProducao = (producao: string, etapa: 'produzindo' | 'entrada') =>
   pedir<{ feito: { antes: string; depois: string; semCard: boolean }; producao: CardDaProducao | null }>('/api/producoes/etapa', { method: 'POST', body: JSON.stringify({ producao, etapa }) });
-export const lerSemanaDaPauta = (dia = '') => pedir<SemanaDaPauta>(`/api/pauta/semana${dia ? `?inicio=${encodeURIComponent(dia)}` : ''}`);
+/** O pedido da pauta com o filtro pessoal (#99), quando há. */
+const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
+  const q = new URLSearchParams(Object.entries({ ...busca, ...(filtro ? { filtro } : {}) }).filter(([, v]) => v)).toString();
+  return q ? `?${q}` : '';
+};
+export const lerSemanaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => pedir<SemanaDaPauta & LeituraDaPauta>(`/api/pauta/semana${comFiltro({ inicio: dia }, filtro)}`);
 /** O Dia da pauta da edição (#97): um dia (AAAA-MM-DD; sem ele, hoje), com cada editor numa coluna. */
-export const lerDiaDaPauta = (dia = '') => pedir<DiaDaPauta>(`/api/pauta/dia${dia ? `?dia=${encodeURIComponent(dia)}` : ''}`);
+export const lerDiaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => pedir<DiaDaPauta & LeituraDaPauta>(`/api/pauta/dia${comFiltro({ dia }, filtro)}`);
 /** Lê o Andamento (guardado alguns minutos no servidor); `deNovo` vai ao GitHub. */
 export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** A correção de grafia (#114, só administradores): uma página das propostas da pauta de um grupo, e o resumo. */

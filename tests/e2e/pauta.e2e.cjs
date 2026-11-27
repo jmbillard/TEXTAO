@@ -18,6 +18,10 @@
 // cards agrupados por turno com o editor e o ⚑ do aviso, a ficha; a escolha da visão e dos arranjos lembrada depois de
 // recarregar e em outro navegador (a entrada no topo abre a visão escolhida), e a da Lia não muda. No celular, as
 // colunas rolam para o lado e abrem em hoje.
+// Os filtros, o resumo e a cópia de reserva (#99): a Carla (editora, com o e-mail no cadastro de editores) filtra "Só as
+// minhas" na Semana e no Dia, e a releitura a cada minuto mantém o filtro; a Dora (designer, pela tabela designers)
+// filtra "Com arte minha"; a Lia não tem filtro nenhum; só o administrador vê o resumo; com o banco do Teable fora do
+// ar, a página mostra a última cópia da pauta e a hora dela.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:pauta
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -40,6 +44,9 @@ const LIA = 'lia.moraes@exemplo.com';
 const TOM = 'tom.vieira@exemplo.com';
 const IVO = 'ivo.santos@exemplo.com';
 const CHEFE = 'chefe.ficticia@exemplo.com';
+// os filtros (#99): a Carla é editora (o cadastro de editores tem o e-mail dela) e a Dora, designer (a tabela designers)
+const CARLA = 'carla.duarte@exemplo.com';
+const DORA = 'dora.lima@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 
@@ -90,7 +97,7 @@ const ARTE = [
   { id: 'recArteE2e2', fields: { card_ID: '', claquete: `Show da Tarde ${diaMes(hoje)} SP`, status: '["PRODUZINDO"]', entregue: false, arquivado: false, designers: '["Enzo Prado"]', artes: 'HOJE', praca: null, filme: null, data_entrada: sp(mais(hoje, -2), '10:00') } },
 ];
 
-async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null, quem = LIA) {
+async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null, quem = LIA, relogio = false) {
   const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': quem }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
   await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(quem), url }]);
   await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
@@ -102,6 +109,8 @@ async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null, que
   p.on('request', (r) => /trello/i.test(r.url()) && aoTrello.push(r.url()));
   // o relógio do navegador parado (os timers andam): o "agora" do Dia
   if (agora) await p.clock.setFixedTime(agora);
+  // o relógio do navegador nas mãos do teste: o minuto da releitura passa na hora (#99)
+  if (relogio) await p.clock.install();
   await p.goto(`${url}${hash}`);
   return { ctx, p, erros, aoTrello };
 }
@@ -593,17 +602,128 @@ async function oDiaPorColunaNoCelular(navegador, url) {
   console.log('ok: celular escuro: a Semana com um dia por coluna rola para o lado e abre em hoje');
 }
 
+/** Espera a leitura da pauta (a Semana ou o Dia) com este filtro (ou sem nenhum). */
+const leu = (p, filtro = null) =>
+  p.waitForResponse((r) => /\/api\/pauta\/(semana|dia)/.test(r.url()) && new URL(r.url()).searchParams.get('filtro') === filtro && r.ok());
+const nomesDaGrade = (p) => textos(p.locator('.pauta-grade tbody .pauta-nome'));
+
+async function osFiltros(navegador, url, teable) {
+  const tela = { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' };
+
+  // a Carla, editora: "Só as minhas" na Semana; "Com arte minha" não aparece (ela não é designer)
+  let { ctx, p, erros, aoTrello } = await abrir(navegador, url, tela, '#/pauta', null, CARLA, true);
+  await p.locator('.pauta-grade').waitFor();
+  const filtro = p.getByRole('radiogroup', { name: 'Filtro da pauta' });
+  assert.deepEqual(await textos(filtro.getByRole('radio')), ['Todas', 'Só as minhas']);
+  assert.equal(await filtro.getByRole('radio', { name: 'Todas' }).getAttribute('aria-checked'), 'true');
+  assert.deepEqual(await nomesDaGrade(p), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+  // o resumo é só do administrador
+  assert.equal(await p.locator('.pauta-resumo').count(), 0);
+  let lida = leu(p, 'minhas');
+  await filtro.getByRole('radio', { name: 'Só as minhas' }).click();
+  await lida;
+  await p.waitForFunction(() => document.querySelectorAll('.pauta-grade tbody tr').length === 1);
+  assert.deepEqual(await nomesDaGrade(p), ['Carla Duarte']);
+  assert.equal(await filtro.getByRole('radio', { name: 'Só as minhas' }).getAttribute('aria-checked'), 'true');
+  assert.equal(await celula(p, 'Carla Duarte', hoje).locator('.pauta-aviso-botao').count(), 1);
+  await capturar(p, '11-semana-so-as-minhas-claro');
+
+  // a releitura a cada minuto, com o filtro
+  lida = leu(p, 'minhas');
+  await p.clock.runFor(61_000);
+  await lida;
+  assert.deepEqual(await nomesDaGrade(p), ['Carla Duarte']);
+
+  // no Dia, o filtro continua: só a coluna dela, com o balão do aviso
+  lida = leu(p, 'minhas');
+  await p.getByRole('radio', { name: 'Dia', exact: true }).click();
+  await lida;
+  await p.locator('.pauta-colunas').waitFor();
+  assert.deepEqual(await textos(p.locator('.pauta-coluna .pauta-nome')), ['Carla Duarte']);
+  assert.match(await p.locator('.pauta-balao-aviso').textContent(), /Redator vem acompanhar a edição/);
+  // "Todas" volta a pauta inteira
+  lida = leu(p, null);
+  await filtro.getByRole('radio', { name: 'Todas' }).click();
+  await lida;
+  await p.waitForFunction(() => document.querySelectorAll('.pauta-coluna').length > 1);
+  assert.deepEqual(await textos(p.locator('.pauta-coluna .pauta-nome')), ['Ana Ribeiro', 'sem editor', 'Bruno Teixeira', 'Carla Duarte']);
+  // de volta à Semana, para a próxima vez
+  await p.getByRole('radio', { name: 'Semana', exact: true }).click();
+  await p.locator('.pauta-grade').waitFor();
+  assert.deepEqual(erros, [], 'filtro da Carla: erros na página');
+  assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
+  await ctx.close();
+
+  // a Dora, designer: "Com arte minha" deixa só a claquete com a arte dela
+  ({ ctx, p, erros } = await abrir(navegador, url, tela, '#/pauta', null, DORA));
+  await p.locator('.pauta-grade').waitFor();
+  assert.deepEqual(await textos(p.getByRole('radiogroup', { name: 'Filtro da pauta' }).getByRole('radio')), ['Todas', 'Com arte minha']);
+  lida = leu(p, 'arte');
+  await p.getByRole('radio', { name: 'Com arte minha' }).click();
+  await lida;
+  await p.waitForFunction(() => document.querySelectorAll('.pauta-grade tbody tr').length === 1);
+  assert.deepEqual(await nomesDaGrade(p), ['Bruno Teixeira']);
+  assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-texto')), [`Show da Tarde ${diaMes(hoje)}`]);
+  // na semana anterior, nada dela
+  await p.getByRole('button', { name: 'Semana anterior' }).click();
+  await p.locator('.pauta-vazia', { hasText: 'Nada seu na pauta desta semana.' }).waitFor();
+  assert.deepEqual(erros, [], 'filtro da Dora: erros na página');
+  await ctx.close();
+
+  // a Lia, sem cadastro de editor nem de designer: sem filtro
+  ({ ctx, p, erros } = await abrir(navegador, url, tela));
+  await p.locator('.pauta-grade').waitFor();
+  assert.equal(await p.getByRole('radiogroup', { name: 'Filtro da pauta' }).count(), 0);
+  await ctx.close();
+
+  // o administrador vê o resumo discreto: as linhas sem editor, as claquetes sem card e a última alteração
+  ({ ctx, p, erros } = await abrir(navegador, url, { ...tela, colorScheme: 'dark' }, '#/pauta', null, CHEFE));
+  await p.locator('.pauta-grade').waitFor();
+  const resumo = (await p.locator('.pauta-resumo').textContent()).replace(/\s+/g, ' ');
+  assert.match(resumo, /^1 linha sem editor/);
+  assert.match(resumo, /\d+ claquetes sem card/);
+  assert.match(resumo, /pauta alterada às 08:00/);
+  assert.equal(await p.locator('.pauta-copia').count(), 0);
+
+  // o banco do Teable cai: a página relida mostra a última cópia, com a hora dela
+  teable.estado.fora = true;
+  try {
+    await p.reload();
+    await p.locator('.pauta-grade').waitFor();
+    await p.locator('.pauta-copia').waitFor();
+    assert.match(await p.locator('.pauta-copia').textContent(), /O banco do Teable não respondeu: esta é a cópia da pauta das \d{2}:\d{2}/);
+    assert.deepEqual(await nomesDaGrade(p), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+    await capturar(p, '12-semana-copia-e-resumo-escuro');
+  } finally {
+    teable.estado.fora = false;
+  }
+  assert.deepEqual(erros, [], 'resumo e cópia: erros na página');
+  await ctx.close();
+  console.log('ok: os filtros "Só as minhas" e "Com arte minha", a releitura, o resumo do administrador e a cópia de reserva');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
-  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e', ARTE_producao: 'arte_e2e' }, { registros: { EDICAO_producao: PAUTA, ARTE_producao: ARTE } });
+  const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
+  // os filtros (#99): o cadastro de editores com o e-mail da Carla e a tabela designers com o da Dora (fictícios)
+  const registros = {
+    EDICAO_producao: PAUTA,
+    ARTE_producao: ARTE,
+    editores: [{ id: 'recEdCarla', fields: { editor: 'Carla Duarte', email: CARLA } }],
+    KEY_editores: [],
+    designers: [{ id: 'recDesDora', fields: { designer: 'Dora Lima', email: DORA, status: 'ativo' } }],
+  };
+  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e', ARTE_producao: 'arte_e2e', editores: 'editores_e2e', KEY_editores: 'key_editores_e2e', designers: 'designers_e2e' }, { registros });
   const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
   // a produção da arte do mesmo Teable falso, para a carga das Produções (#96)
   const trello = { env: { ...PG, ...comTabelas({ ARTE_producao: 'arte_e2e' }) }, consultar: teable.consultar };
-  const s = await subir({ teable, pg: teable.abrirPg, trello, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG } });
+  const env = { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG };
+  const cadastros = criarCadastros({ ...env, TEABLE_EDITORES: 'tblFalso_bseFalso_editores', TEABLE_KEY_EDITORES: 'tblFalso_bseFalso_KEY_editores' }, { buscar: teable });
+  const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros, env });
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
-  for (const quem of [LIA, TOM, IVO]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
+  for (const quem of [LIA, TOM, IVO, CARLA, DORA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
   let falhou = false;
   try {
@@ -615,6 +735,7 @@ async function principal() {
     for (const tema of ['light', 'dark']) await oDiaNoCelular(navegador, s.url, tema);
     for (const tema of ['light', 'dark']) await aEscolhaLembrada(navegador, s.url, tema);
     await oDiaPorColunaNoCelular(navegador, s.url);
+    await osFiltros(navegador, s.url, teable);
   } catch (e) {
     falhou = true;
     console.error(e);

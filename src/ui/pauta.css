@@ -232,3 +232,10 @@
   .pauta-dias { grid-template-columns: repeat(7, calc(100vw - 72px)); }
   .pauta-dia-ver { font-size: 17px; }
 }
+
+/* ---------- o filtro pessoal, a cópia de reserva e o resumo do administrador (#99) ---------- */
+.pauta-copia { margin: -8px 0 16px; padding: 10px 14px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 13.5px/1.45 var(--sans); }
+.pauta-resumo { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: -10px 0 16px; font: 400 12.5px var(--sans); color: var(--tinta3); }
+.pauta-resumo > span + span::before { content: '·'; margin-right: 14px; color: var(--regua-forte); }
+.pauta-resumo-conta { font-variant-numeric: tabular-nums; }
+.pauta-resumo-conta.falta { color: var(--falta); }
