@@ -287,6 +287,7 @@ export async function consultarPauta(claquete: string): Promise<{ editor: string
 
 let trelloLigado = false;
 let filmesLigado = false;
+let porPreparar = 0;
 let souAdmin = false;
 let souDaCoordenacao = false;
 let novidades = 0;
@@ -321,6 +322,9 @@ export async function guardarOriginal(id: string, arquivo: File, texto?: TextoOr
 
 /** O servidor lê as prévias de filmes (N8N_FILMES_LER configurado). */
 export const temFilmes = () => armazenamento.tipo === 'servidor' && filmesLigado;
+/** Quantas prévias chegaram por e-mail e esperam a preparação no navegador (#157): a bolinha do Filmes no topo acende
+    com elas. Vem do /api/eu na entrada e é refeito a cada lista das prévias. */
+export const previasPorPreparar = () => (temFilmes() ? porPreparar : 0);
 
 export interface CaixaDaPagina {
   x: number;
@@ -417,7 +421,12 @@ export interface Previa {
   erroDaConferencia?: string;
   /** o envio ao Trello está configurado? (sem a lista dos filmes, por exemplo, não está) */
   envio?: { ligado: boolean; faltando: string[] };
+  /** de onde veio (#157): a subida à mão ou o e-mail (o n8n mandou o PDF inteiro) */
+  origem?: OrigemDaPrevia;
+  /** chegou por e-mail e ainda não foi preparada (sem páginas, ou com página que não chegou): o navegador prepara */
+  porPreparar?: boolean;
 }
+export type OrigemDaPrevia = 'navegador' | 'email';
 export interface PreviaNaLista {
   id: string;
   nome: string;
@@ -428,6 +437,8 @@ export interface PreviaNaLista {
   diasParaApagar?: number | null;
   /** quem está com ela aberta agora (sem a própria pessoa) */
   pessoas?: PessoaNaPrevia[];
+  origem?: OrigemDaPrevia;
+  porPreparar?: boolean;
 }
 export interface PaginaPreparada {
   pdf: string;
@@ -438,7 +449,14 @@ export interface PaginaPreparada {
   vagas: { caixa: CaixaDaPagina; texto: string }[];
 }
 
-export const listarPrevias = () => pedir<PreviaNaLista[]>('/api/filmes/previas');
+export const listarPrevias = () =>
+  pedir<PreviaNaLista[]>('/api/filmes/previas').then((l) => ((porPreparar = l.filter((p) => p.porPreparar).length), l));
+/** O PDF inteiro da prévia que chegou por e-mail (#157), como um arquivo, para preparar como na subida à mão. */
+export async function baixarPdfDaPrevia(id: string, nome: string) {
+  const r = await fetch(`/api/filmes/previas/${encodeURIComponent(id)}/pdf`, { credentials: 'same-origin', headers: cabecalhos });
+  if (!r.ok) throw new Error(`Não consegui baixar o PDF da prévia (${r.status}).`);
+  return new File([await r.blob()], nome, { type: 'application/pdf' });
+}
 export const criarPrevia = (nome: string, hash: string, paginas: number[]) =>
   pedir<{ id: string; existente: boolean }>('/api/filmes/previas', { method: 'POST', body: JSON.stringify({ nome, hash, paginas }) });
 export const abrirPrevia = (id: string) => pedir<Previa>(`/api/filmes/previas/${encodeURIComponent(id)}`);
@@ -1075,13 +1093,14 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; coordenacao?: boolean; novidades?: number; areas?: unknown[]; area?: unknown; preferencias?: Record<string, unknown> };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; filmesPorPreparar?: number; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; coordenacao?: boolean; novidades?: number; areas?: unknown[]; area?: unknown; preferencias?: Record<string, unknown> };
     if (d.email) {
       armazenamento = doServidor;
       // as praças da Configuração, antes de qualquer roteiro ser lido (até aqui, e sem servidor, valem as de fábrica)
       registrarPracas(d.pracas);
       trelloLigado = !!d.trello;
       filmesLigado = !!d.filmes;
+      porPreparar = Number(d.filmesPorPreparar ?? 0) || 0;
       souAdmin = !!d.admin;
       souDaCoordenacao = !!d.coordenacao;
       novidades = Number(d.novidades ?? 0) || 0;

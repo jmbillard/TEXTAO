@@ -19,7 +19,8 @@
 // resumo ("N prontos · M com pergunta", quantos já estão no Trello, as pendências tocáveis que voltam ao filme) e o
 // Enviar, que leva só os prontos de todas as páginas ao Trello falso; o resultado em cada filme (enviando, enviado e o
 // erro com o motivo, que vai de novo no próximo Enviar). Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=<pasta>,
-// guarda as telas nos temas claro e escuro, e a entrada do computador (que não muda).
+// guarda as telas nos temas claro e escuro, e a entrada do computador (que não muda). Por último, a prévia que chega
+// por e-mail (#157): o n8n falso manda o PDF com o token, a lista mostra "prévia nova · chegou por e-mail" e abrir prepara.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:filmes
 const assert = require('node:assert/strict');
@@ -45,7 +46,9 @@ const CAPTURAS = process.env.CAPTURAS || '';
 // as tabelas no Postgres vêm do Teable (#76): o Teable de mentira da descoberta tem estas, com estes nomes
 const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'token-falso' };
 const NO_POSTGRES = { filmes: 'filmes_teste', exibicoes: 'exibicoes_teste', ARTES_acervo: 'acervo_teste' };
-const ENV = { N8N_FILMES_LER: 'http://n8n.falso/webhook/ler-pagina', FILMES_INTERVALO_MS: '0', ...PG };
+/** O token da prévia que chega por e-mail (#157): inventado, como o resto. */
+const TOKEN_DA_PREVIA = 'token-da-previa-ficticio';
+const ENV = { N8N_FILMES_LER: 'http://n8n.falso/webhook/ler-pagina', FILMES_INTERVALO_MS: '0', FILMES_PREVIA_TOKEN: TOKEN_DA_PREVIA, ...PG };
 /** O banco de filmes fictício: o Kong bate (pronto), o Corvo tem dois candidatos (qual filme?) e o Rivais, outro ano. O
     filme de cima da prévia C já tem card no Trello (a exibição na mesma sessão e no mesmo dia). */
 const BANCO = [
@@ -236,6 +239,11 @@ const FILMES = {
       { titulo: 'FILME INEDITO FICTICIO', ano_de_producao: 2026, inedito: true, sessao: 'SUPERCINE', data: '21/12/2026' },
       { titulo: 'FILME SEM POSTER FICTICIO', ano_de_producao: 2015, sessao: 'TELA QUENTE', data: '22/12/2026' },
     ],
+  },
+  // a que chega por e-mail (#157)
+  'PREVIA_FILMES_FICTICIA_EMAIL.pdf': {
+    2: [{ titulo: 'KONG: ILHA DA CAVEIRA', ano_de_producao: 2017, sessao: 'SUPERCINE', data: '02/01/2027' }],
+    3: [{ titulo: 'RIVAIS', ano_de_producao: 2023, sessao: 'CORUJÃO', data: '03/01/2027' }],
   },
   'PREVIA_FILMES_FICTICIA_C.pdf': {
     2: [
@@ -895,6 +903,58 @@ async function enviarNoAndroid(p, trello) {
   await alvosDe44(p, 'Android, tudo enviado');
 }
 
+/**
+ * A prévia que chega por e-mail (#157), no computador: o n8n (aqui, um fetch com o token) manda o PDF; o mesmo PDF de
+ * novo é "repetida". A lista mostra "prévia nova · chegou por e-mail" e a bolinha do Filmes tem o que contar; abrir a
+ * prévia prepara no navegador, pela mesma subida da mão (a mesma impressão: o servidor acha a mesma prévia), e as
+ * páginas vão para a leitura como sempre.
+ */
+async function porEmail(pc, url, leitura, pdf) {
+  const mandar = () => {
+    const form = new FormData();
+    form.append('pdf', new Blob([pdf], { type: 'application/pdf' }), 'PREVIA_FILMES_FICTICIA_EMAIL.pdf');
+    form.append('chegou_em', new Date().toISOString());
+    return fetch(new URL('/api/publico/filmes/previa', url), { method: 'POST', headers: { authorization: `Bearer ${TOKEN_DA_PREVIA}` }, body: form }).then((r) => r.json());
+  };
+  const nova = await mandar();
+  assert.equal(nova.existente, false, 'a prévia do e-mail é nova');
+  assert.deepEqual(await mandar(), { ...nova, existente: true }, 'o mesmo PDF de novo é repetida');
+  const eu = () => pc.evaluate(async () => (await (await fetch('/api/eu')).json()).filmesPorPreparar);
+  assert.equal(await eu(), 1, 'a bolinha do Filmes: uma prévia por preparar');
+
+  await pc.goto(`${url}#/filmes`);
+  const f = pc.locator('.ficha-previa', { hasText: 'PREVIA FILMES FICTICIA EMAIL' });
+  await f.waitFor({ timeout: 30000 });
+  assert.match((await f.locator('.some').textContent()).replace(/\s+/g, ' '), /^prévia nova · chegou por e-mail em \d\d\/\d\d\/\d{4}$/);
+  await pc.waitForTimeout(500);
+  if (CAPTURAS) await pc.screenshot({ path: join(CAPTURAS, 'computador-email-01-lista.png') });
+
+  // abrir prepara: o PDF baixado vira as páginas úteis, que sobem e vão para a leitura
+  await f.click();
+  await pc.waitForFunction((id) => location.hash === `#/filmes/${id}`, nova.id, { timeout: 10000 });
+  await pc.locator('.aviso-do-preparo').waitFor({ timeout: 10000 });
+  if (CAPTURAS) await pc.screenshot({ path: join(CAPTURAS, 'computador-email-02-preparando.png') });
+  await leitura.soltar();
+  await leitura.soltar();
+  for (let t = Date.now(); ; ) {
+    const p = await previaNoServidor(pc, nova.id);
+    if (p.paginas.length === 2 && p.paginas.every((g) => g.estado === 'lida')) {
+      assert.deepEqual(p.paginas.map((g) => g.numero), [2, 3], 'as páginas úteis, como na subida à mão');
+      assert.equal(p.porPreparar, false);
+      break;
+    }
+    if (Date.now() - t > 30000) throw new Error('a prévia do e-mail não ficou lida');
+    await pc.waitForTimeout(100);
+  }
+  await pc.locator('.aviso-do-preparo').waitFor({ state: 'detached', timeout: 10000 });
+  assert.equal(await eu(), 0, 'preparada, a bolinha apaga');
+  await pc.waitForTimeout(800);
+  if (CAPTURAS) await pc.screenshot({ path: join(CAPTURAS, 'computador-email-03-preparada.png') });
+  await pc.goto(`${url}#/filmes`);
+  await f.waitFor({ timeout: 30000 });
+  assert.match((await f.locator('.some').textContent()).replace(/\s+/g, ' '), /^2 páginas · chegou por e-mail em /);
+}
+
 async function principal() {
   if (CAPTURAS) mkdirSync(CAPTURAS, { recursive: true });
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-previas-'));
@@ -948,6 +1008,8 @@ async function principal() {
     assert.equal(await pc.locator('.previa-celular, .subir-previa').count(), 0, 'o computador não mostra a entrada do celular');
     await pc.waitForTimeout(800);
     if (CAPTURAS) await pc.screenshot({ path: join(CAPTURAS, 'computador-entrada.png') });
+    // a prévia que chega por e-mail (#157), por último: a leitura falsa já soltou as outras
+    await porEmail(pc, s.url, leitura, await pdfDaPrevia([['KONG: ILHA DA CAVEIRA'], ['RIVAIS']], 'EMAIL'));
 
     assert.deepEqual(iphone.erros, [], 'iPhone: erros na página');
     assert.deepEqual(android.erros, [], 'Android: erros na página');

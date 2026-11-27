@@ -38,6 +38,8 @@ services:
       - POSTER_PUBLICO_TOKEN=${POSTER_PUBLICO_TOKEN:-}
       # a foto crua da planilha da edição, que o n8n manda (#133): POST /api/publico/edicao/foto. Vazia: desligada
       - EDICAO_FOTO_TOKEN=${EDICAO_FOTO_TOKEN:-}
+      # a prévia de filmes em PDF que o n8n pega do e-mail (#157): POST /api/publico/filmes/previa. Vazia: desligada
+      - FILMES_PREVIA_TOKEN=${FILMES_PREVIA_TOKEN:-}
 
       # ---- Servidor ----
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}

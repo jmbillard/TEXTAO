@@ -23,7 +23,7 @@ import {
   transformar,
   type FilmeNaSequencia,
 } from '../filmes/sequencia';
-import { anotacao, Circulo, Presentes, taoVendo, Titulo, usePreviaAberta } from './Filmes';
+import { anotacao, AvisoDoPreparo, Circulo, Presentes, taoVendo, Titulo, usePreviaAberta } from './Filmes';
 import { Icone } from './icones';
 import { LinkQuebrado } from './LinkQuebrado';
 import { semMovimento } from './util';
@@ -62,7 +62,7 @@ export function SequenciaDeFilmes({
   verPrevias: () => void;
   voltar: () => void;
 }) {
-  const { previa, falha, carregar, pessoas, mudar, mexer, enviar, mandando } = usePreviaAberta(id, avisar);
+  const { previa, falha, carregar, pessoas, mudar, mexer, enviar, mandando, preparo, preparar } = usePreviaAberta(id, avisar);
   const [seq, setSeq] = useState<FilmeNaSequencia[] | null>(null);
   // a primeira abertura monta a sequência; as reaberturas (a versão mudou) atualizam cada filme no lugar
   useEffect(() => {
@@ -74,6 +74,8 @@ export function SequenciaDeFilmes({
   if (!seq.length)
     return (
       <main className="sequencia vazia">
+        {/* a que chegou por e-mail (#157) se prepara aqui, ao abrir */}
+        {preparo || previa.porPreparar ? <AvisoDoPreparo preparo={preparo ?? { feito: 0, total: 0 }} preparar={() => void preparar()} /> : null}
         <p>Nenhum filme lido nesta prévia ainda.</p>
       </main>
     );

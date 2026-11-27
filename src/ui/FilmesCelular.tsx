@@ -171,6 +171,17 @@ function FichaDaPrevia({
       <span className="rubrica agora">{taoVendo(p.pessoas)}</span>
     </span>
   );
+  // a que chegou por e-mail e espera a preparação (#157): abrir prepara, pela mesma subida da mão
+  if (p.porPreparar && !passos)
+    return (
+      <button className="previa-celular por-preparar" onClick={abrir}>
+        <b>{semPdf(p.nome)}</b>
+        <span className="linha">
+          <span className="etiqueta-nova">prévia nova</span> · chegou por e-mail em {diaEMes(p.criada)}
+        </span>
+        {gente}
+      </button>
+    );
   if (paginas && (passos || !subidaTerminada(paginas))) {
     const ps = paginasNaSubida(paginas, passos);
     const r = resumoDaSubida(ps);
@@ -207,7 +218,7 @@ function FichaDaPrevia({
     <button className="previa-celular" onClick={abrir}>
       <b>{semPdf(p.nome)}</b>
       <span className="linha">
-        {p.paginas} {p.paginas === 1 ? 'página' : 'páginas'} · subida {p.por ? `por ${p.por} ` : ''}em {diaEMes(p.criada)}
+        {p.paginas} {p.paginas === 1 ? 'página' : 'páginas'} · {p.origem === 'email' ? 'chegou por e-mail ' : `subida ${p.por ? `por ${p.por} ` : ''}`}em {diaEMes(p.criada)}
       </span>
       {a && (
         <span className="andamento">

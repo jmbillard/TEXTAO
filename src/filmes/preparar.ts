@@ -3,7 +3,7 @@
    texto e as vagas canceladas. Quem lê com a IA é o servidor; aqui só se prepara e se sobe. */
 import { PDFDocument } from 'pdf-lib';
 import { acharPosteres } from './posteres';
-import { abrirPrevia, criarPrevia, mandarPagina, type PaginaPreparada } from '../dados/armazenamento';
+import { abrirPrevia, baixarPdfDaPrevia, criarPrevia, mandarPagina, type PaginaPreparada } from '../dados/armazenamento';
 import type { PassoNoNavegador } from './andamento';
 
 const ESCALA = 2;
@@ -49,6 +49,21 @@ export async function subirPrevia(
     aoPasso({ tipo: 'subiu', numero: n });
     aoAndar(i + 1, faltam.length);
   }
+  return id;
+}
+
+/**
+ * A prévia que chegou por e-mail (#157): o servidor só guardou o PDF. O navegador baixa e prepara pela mesma subida da
+ * mão; a impressão é a mesma, então o servidor acha a prévia (e cria as páginas dela na primeira vez).
+ */
+export async function prepararPreviaDoEmail(
+  previa: { id: string; nome: string },
+  aoAndar?: (feito: number, total: number) => void,
+  aoPasso?: (passo: PassoDaSubida) => void,
+): Promise<string> {
+  const arquivo = await baixarPdfDaPrevia(previa.id, previa.nome);
+  const id = await subirPrevia(arquivo, aoAndar, aoPasso);
+  if (id !== previa.id) throw new Error('O PDF baixado não bateu com a prévia que chegou por e-mail.');
   return id;
 }
 

@@ -5,7 +5,7 @@
 
 import { tabelaNoPg } from './tabelas-do-teable.mjs';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vinculos } from './acervo.mjs';
 import { conferirFilme, diaDaPrevia } from './conferencia.mjs';
@@ -339,15 +339,18 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       PRIMARY KEY (previa_id, numero)
     );
   `);
+  // a origem da prévia (#157): 'navegador' (a subida à mão) ou 'email' (a que o n8n mandou, guardada inteira)
+  if (!db.prepare('PRAGMA table_info(previas)').all().some((c) => c.name === 'origem')) db.exec("ALTER TABLE previas ADD COLUMN origem TEXT NOT NULL DEFAULT 'navegador'");
   const q = {
-    porHash: db.prepare('SELECT id FROM previas WHERE hash = ?'),
-    criar: db.prepare('INSERT INTO previas (id, hash, nome, por_email, por_nome, criada_em) VALUES (?, ?, ?, ?, ?, ?)'),
+    porHash: db.prepare('SELECT p.id, p.nome, (SELECT COUNT(*) FROM previa_paginas g WHERE g.previa_id = p.id) AS paginas FROM previas p WHERE p.hash = ?'),
+    criar: db.prepare('INSERT INTO previas (id, hash, nome, por_email, por_nome, criada_em, origem) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     criarPagina: db.prepare('INSERT INTO previa_paginas (previa_id, numero, util) VALUES (?, ?, ?)'),
     lista: db.prepare(
-      `SELECT p.id, p.nome, p.por_nome, p.criada_em, COUNT(g.numero) AS paginas
+      `SELECT p.id, p.nome, p.por_nome, p.criada_em, p.origem, COUNT(g.numero) AS paginas, SUM(g.estado = 'esperando') AS esperando
        FROM previas p LEFT JOIN previa_paginas g ON g.previa_id = p.id GROUP BY p.id ORDER BY p.criada_em DESC`,
     ),
-    previa: db.prepare('SELECT id, nome, por_nome, criada_em FROM previas WHERE id = ?'),
+    previa: db.prepare('SELECT id, nome, por_nome, criada_em, origem FROM previas WHERE id = ?'),
+    porPreparar: db.prepare("SELECT COUNT(*) AS paginas, SUM(estado = 'esperando') AS esperando FROM previa_paginas WHERE previa_id = ?"),
     paginas: db.prepare('SELECT numero, util, estado, erro, dados, filmes, sessoes FROM previa_paginas WHERE previa_id = ? ORDER BY util'),
     pagina: db.prepare('SELECT p.nome, g.numero, g.util, g.estado, g.dados, (SELECT COUNT(*) FROM previa_paginas x WHERE x.previa_id = g.previa_id) AS total FROM previa_paginas g JOIN previas p ON p.id = g.previa_id WHERE g.previa_id = ? AND g.numero = ?'),
     receber: db.prepare("UPDATE previa_paginas SET dados = ?, estado = 'fila', erro = NULL, filmes = NULL WHERE previa_id = ? AND numero = ?"),
@@ -377,15 +380,56 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
   let espera = esperaDe(env);
   const dir = (id) => join(pasta, id);
   const arquivo = (id, n, k = 0) => join(dir(id), k ? `p${n}_${k}.jpg` : `p${n}.jpg`);
+  /** O PDF inteiro da prévia que chegou por e-mail (#157); a subida à mão não guarda o inteiro. */
+  const pdfInteiro = (id) => join(dir(id), 'previa.pdf');
 
+  /** A prévia que chegou por e-mail e ainda não foi preparada no navegador: sem páginas, ou com página que não chegou. */
+  const porPrepararDe = (id, origem, { paginas, esperando }) => origem === 'email' && (!paginas || esperando > 0) && existsSync(pdfInteiro(id));
+
+  /**
+   * A subida à mão (e a preparação da que chegou por e-mail): a mesma impressão acha a prévia que já existe. A que chegou
+   * por e-mail nasce sem páginas: as páginas úteis entram aqui, na primeira preparação.
+   */
   function criar({ nome, hash, paginas }, eu) {
     const ja = q.porHash.get(hash);
-    if (ja) return { id: ja.id, existente: true };
+    if (ja) {
+      if (!ja.paginas) paginas.forEach((numero, i) => q.criarPagina.run(ja.id, numero, i + 1));
+      return { id: ja.id, existente: true };
+    }
     const id = randomUUID();
-    q.criar.run(id, hash, nome, eu?.email ?? '', eu?.nome ?? '', agoraISO());
+    q.criar.run(id, hash, nome, eu?.email ?? '', eu?.nome ?? '', agoraISO(), 'navegador');
     paginas.forEach((numero, i) => q.criarPagina.run(id, numero, i + 1));
     return { id, existente: false };
   }
+
+  /**
+   * A prévia que o n8n mandou do e-mail (#157): guarda o PDF inteiro e cria a prévia sem páginas ("por preparar"). O
+   * mesmo PDF (a mesma impressão SHA-256 do navegador), venha por e-mail ou subido à mão, não cria outra.
+   * @returns { id, existente, nome } (o nome da prévia que ficou)
+   */
+  function receberPorEmail({ nome, pdf, chegouEm }) {
+    const hash = createHash('sha256').update(pdf).digest('hex');
+    const ja = q.porHash.get(hash);
+    if (ja) return { id: ja.id, existente: true, nome: ja.nome };
+    const id = randomUUID();
+    mkdirSync(dir(id), { recursive: true });
+    writeFileSync(pdfInteiro(id), pdf);
+    q.criar.run(id, hash, nome, '', '', chegouEm ?? agoraISO(), 'email');
+    return { id, existente: false, nome };
+  }
+
+  /** O PDF inteiro da prévia que chegou por e-mail, para o navegador preparar; null na subida à mão. */
+  function pdf(id) {
+    if (!q.previa.get(id)) return null;
+    try {
+      return readFileSync(pdfInteiro(id));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Quantas prévias chegaram por e-mail e esperam a preparação (a bolinha do Filmes no topo). */
+  const quantasPorPreparar = () => q.lista.all().filter((l) => porPrepararDe(l.id, l.origem, l)).length;
 
   /** A versão da prévia: muda quando muda qualquer coisa dela no banco local (a leitura, o título, as escolhas, o envio).
       É barata (não consulta o Postgres): a tela aberta pergunta por ela a cada poucos segundos e só reabre a prévia
@@ -405,7 +449,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     for (const l of q.lista.all()) {
       const em = await todaEnviada(l.id).catch(() => null);
       const diasParaApagar = em === null ? null : Math.max(0, Math.ceil((em + PRAZO_DA_PREVIA_DIAS * DIA - agora()) / DIA));
-      lista.push({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas, diasParaApagar });
+      lista.push({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas, diasParaApagar, origem: l.origem, porPreparar: porPrepararDe(l.id, l.origem, l) });
     }
     return lista;
   }
@@ -508,6 +552,8 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       nome: p.nome,
       por: p.por_nome,
       criada: p.criada_em,
+      origem: p.origem,
+      porPreparar: porPrepararDe(p.id, p.origem, q.porPreparar.get(id)),
       versao: v,
       paginas,
       envio: { ligado: lado.envio.ligado, faltando: lado.envio.faltando },
@@ -818,6 +864,9 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     },
     reconfigurar,
     criar,
+    receberPorEmail,
+    pdf,
+    quantasPorPreparar,
     listar,
     versao,
     abrir,

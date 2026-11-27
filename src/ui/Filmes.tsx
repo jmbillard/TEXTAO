@@ -252,8 +252,18 @@ function ListaDePrevias({
         <button key={p.id} className="ficha-previa" onClick={() => abrir(p.id)}>
           <b>{p.nome.replace(/\.pdf$/i, "").replaceAll("_", " ")}</b>
           <span className="some">
-            {p.paginas} {p.paginas === 1 ? "página" : "páginas"} · subida por{" "}
-            {p.por || "—"} em {new Date(p.criada).toLocaleDateString("pt-BR")}
+            {p.porPreparar ? (
+              <>
+                <span className="etiqueta-nova">prévia nova</span> · chegou por e-mail em{" "}
+                {new Date(p.criada).toLocaleDateString("pt-BR")}
+              </>
+            ) : (
+              <>
+                {p.paginas} {p.paginas === 1 ? "página" : "páginas"} ·{" "}
+                {p.origem === "email" ? "chegou por e-mail" : `subida por ${p.por || "—"}`} em{" "}
+                {new Date(p.criada).toLocaleDateString("pt-BR")}
+              </>
+            )}
             {typeof p.diasParaApagar === "number" &&
               ` · toda enviada, some ${quandoSome(p.diasParaApagar)}`}
           </span>
@@ -385,7 +395,63 @@ export function usePreviaAberta(id: string, avisar: (t: string) => void) {
       setMandando(false);
     }
   };
-  return { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard, enviar, mandando };
+  // a prévia que chegou por e-mail (#157): a primeira tela que abre prepara, pela mesma subida da mão (baixa o PDF
+  // inteiro e manda página por página). Uma preparação por tela; a que parou no meio tenta de novo pelo botão.
+  const [preparo, setPreparo] = useState<Preparo | null>(null);
+  const preparando = useRef(false);
+  const preparar = useCallback(async () => {
+    if (!previa || preparando.current) return;
+    preparando.current = true;
+    setPreparo({ feito: 0, total: 0 });
+    try {
+      const { prepararPreviaDoEmail } = await import("../filmes/preparar");
+      await prepararPreviaDoEmail(previa, (feito, total) => setPreparo({ feito, total }));
+      setPreparo(null);
+    } catch (e) {
+      setPreparo({ feito: 0, total: 0, parou: true });
+      avisar(`Não deu para preparar a prévia: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      preparando.current = false;
+      void carregar();
+    }
+  }, [previa, avisar, carregar]);
+  const porPreparar = !!previa?.porPreparar;
+  const tentou = useRef(false);
+  useEffect(() => {
+    if (!porPreparar || tentou.current) return;
+    tentou.current = true;
+    void preparar();
+  }, [porPreparar, preparar]);
+  return { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard, enviar, mandando, preparo, preparar };
+}
+
+/** A preparação da prévia que chegou por e-mail, nesta tela: as páginas feitas, o total e se parou no meio. */
+export interface Preparo {
+  feito: number;
+  total: number;
+  parou?: boolean;
+}
+
+/** O aviso da preparação da prévia que chegou por e-mail (#157), no computador e no celular. */
+export function AvisoDoPreparo({ preparo, preparar }: { preparo: Preparo; preparar: () => void }) {
+  return (
+    <div className={`aviso-do-preparo ${preparo.parou ? "parou" : ""}`} role="status" aria-live="polite">
+      <span className="etiqueta-email">chegou por e-mail</span>
+      {preparo.parou ? (
+        <>
+          <span>A preparação parou no meio.</span>
+          <button className="botao" onClick={preparar}>
+            Preparar de novo
+          </button>
+        </>
+      ) : (
+        <span>
+          Preparando no navegador ·{" "}
+          {preparo.total ? `página ${Math.min(preparo.feito + 1, preparo.total)} de ${preparo.total}` : "abrindo o PDF…"}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function PreviaAberta({
@@ -399,7 +465,7 @@ function PreviaAberta({
   verPrevias: () => void;
   voltar: () => void;
 }) {
-  const { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard, enviar, mandando } = usePreviaAberta(id, avisar);
+  const { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard, enviar, mandando, preparo, preparar } = usePreviaAberta(id, avisar);
   const [pag, setPag] = useState(0);
   const [destaque, setDestaque] = useState<number | null>(null);
   const algumEnviando = !!previa?.paginas.some((g) =>
@@ -430,6 +496,16 @@ function PreviaAberta({
       />
     );
   if (!previa) return <main className="previa" />;
+  // a que chegou por e-mail, ainda sem páginas: só o aviso da preparação
+  if (!previa.paginas.length)
+    return (
+      <main className="previa">
+        <div className="previa-cab">
+          <h1>{previa.nome.replace(/\.pdf$/i, "").replaceAll("_", " ").toUpperCase()}</h1>
+        </div>
+        <AvisoDoPreparo preparo={preparo ?? { feito: 0, total: 0 }} preparar={() => void preparar()} />
+      </main>
+    );
   const p = previa.paginas[Math.min(pag, previa.paginas.length - 1)];
   const algumPronto = previa.paginas.some(
     (g) => g.estado === "lida" && g.filmes.some(vaiNoEnvio),
@@ -475,6 +551,7 @@ function PreviaAberta({
           </button>
         </nav>
         <Presentes pessoas={pessoas} texto />
+        {preparo && <AvisoDoPreparo preparo={preparo} preparar={() => void preparar()} />}
         {p.estado === "lida" && (
           <button
             className="botao reler-pagina"
@@ -509,6 +586,7 @@ function PreviaAberta({
         outros={pessoas}
         mexer={setMeuCard}
         reler={() => void relerEsta()}
+        preparando={!!preparo && !preparo.parou}
       />
     </main>
   );
@@ -523,9 +601,12 @@ function Pagina({
   mexer,
   reler,
   mudar,
+  preparando,
 }: {
   previaId: string;
   p: PaginaDaPrevia;
+  /** a prévia que chegou por e-mail está sendo preparada nesta tela (#157): a página que espera ainda vai subir */
+  preparando?: boolean;
   destaque: number | null;
   destacar: (i: number | null) => void;
   /** quem mais está na prévia, com o card em que mexe */
@@ -697,6 +778,11 @@ function Pagina({
           <div className="fileira baixo">
             {f.baixo.map((it) => card(it, true))}
           </div>
+        </div>
+      ) : p.estado === "esperando" && preparando ? (
+        <div className="fileiras esperando" aria-label="Preparando esta página">
+          <div className="fileira cima" />
+          <div className="fileira baixo" />
         </div>
       ) : p.estado === "esperando" ? (
         <div className="pagina-erro">

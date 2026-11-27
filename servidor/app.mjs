@@ -67,6 +67,7 @@ import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuraca
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarCartaoDoTeams } from './cartao-do-teams.mjs';
 import { LIMITE_DA_FOTO, ROTA_DA_FOTO, criarFotosDaEdicao, fotoDoPedido, tokenDaFotoConfere } from './foto-da-edicao.mjs';
+import { LIMITE_DA_PREVIA, ROTA_DA_PREVIA, linkDaAbaFilmes, previaDoPedido } from './previa-por-email.mjs';
 import { diferencasDaFoto, lerAFoto } from '../src/modelo/fotoDaPlanilha.ts';
 import { conferirHorarios, horariosArrumados, horariosDaConfiguracao } from '../src/modelo/horariosDoCartao.ts';
 import { criarAndamento } from './andamento.mjs';
@@ -446,7 +447,7 @@ const lerCorpo = (req, LIMITE = LIMITE_CORPO, oQue = 'Roteiro') =>
     para a resposta 413 chegar a quem enviou. */
 const lerBinario = (req, limite) =>
   new Promise((ok, erro) => {
-    const grandeDemais = () => Object.assign(new Error('Arquivo grande demais para guardar (até 30 MB).'), { status: 413 });
+    const grandeDemais = () => Object.assign(new Error(`Arquivo grande demais para guardar (até ${Math.round(limite / 1048576)} MB).`), { status: 413 });
     if (Number(req.headers['content-length']) > limite) {
       req.resume();
       return erro(grandeDemais());
@@ -2689,6 +2690,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const r = await filmes.mudar(id, Number(numero), Number(i), (await lerCorpo(req)) ?? {});
       return r.erro ? json(res, r.status ?? 400, { erro: r.erro }) : json(res, 200, r);
     }
+    // o PDF inteiro da prévia que chegou por e-mail (#157): o navegador baixa para preparar
+    const doPdf = /^\/api\/filmes\/previas\/([\w-]{6,80})\/pdf$/.exec(caminho);
+    if (doPdf && req.method === 'GET') {
+      const dados = filmes.pdf(doPdf[1]);
+      if (!dados) return json(res, 404, { erro: 'Esta prévia não tem o PDF inteiro guardado.' });
+      res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': dados.length, 'cache-control': 'private, no-store' });
+      return res.end(dados);
+    }
     const daPagina = /^\/api\/filmes\/previas\/([\w-]{6,80})\/paginas\/(\d{1,3})(?:\/(imagem|poster\/(\d{1,3})|reler))?$/.exec(caminho);
     if (daPagina) {
       const [, id, numero, extra, k] = daPagina;
@@ -2739,7 +2748,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // as áreas de trabalho (#101): as da pessoa (pelo e-mail nos cadastros), a de entrada e as preferências
         // coordenacao: a pessoa monta a pauta (#123); a entrada "Montar a pauta" só aparece para ela
         const dela = await daPessoa(eu.email, admin);
-        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin, coordenacao: escala.ehCoordenacao(eu.email), ...(admin ? { novidades } : {}), ...dela });
+        // filmesPorPreparar (#157): as prévias que chegaram por e-mail e esperam a preparação (a bolinha do Filmes)
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, ...(filmes.ligado ? { filmesPorPreparar: filmes.quantasPorPreparar() } : {}), tour, pracas: pracasParaONavegador(pracas), admin, coordenacao: escala.ehCoordenacao(eu.email), ...(admin ? { novidades } : {}), ...dela });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -3471,10 +3481,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /**
    * O que está embaixo de /api/publico/ (#90): fora do login. O pôster com o token certo, para o Padeiro; a foto da
-   * planilha da edição (#133), para o n8n; o resto, 404.
+   * planilha da edição (#133) e a prévia de filmes do e-mail (#157), para o n8n; o resto, 404.
    */
   async function rotaPublica(req, res, url) {
     if (req.method === 'POST' && url.pathname === ROTA_DA_FOTO) return rotaDaFoto(req, res);
+    if (req.method === 'POST' && url.pathname === ROTA_DA_PREVIA) return rotaDaPrevia(req, res);
     const rec = req.method === 'GET' ? posterPublico(url.pathname, url.searchParams, env.POSTER_PUBLICO_TOKEN) : null;
     if (!rec) return json(res, 404, { erro: 'Não encontrado.' });
     return servirPoster(res, await anexos.poster(rec, env), 'public');
@@ -3497,6 +3508,30 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const r = fotosDaEdicao.receber(foto);
     console.log(`[foto da edição] ${r.gravadas} ${r.gravadas === 1 ? 'aba nova' : 'abas novas'}, ${r.iguais} ${r.iguais === 1 ? 'igual' : 'iguais'} (execução ${foto.origem.execucao || '?'})`);
     return json(res, 200, r);
+  }
+
+  /**
+   * A prévia de filmes que chegou por e-mail (#157): POST /api/publico/filmes/previa, com `Authorization: Bearer
+   * <FILMES_PREVIA_TOKEN>` e o multipart do n8n (o campo `pdf`, até 30 MB, e o `chegou_em`). Só guarda o PDF, como prévia
+   * por preparar (o navegador prepara ao abrir), e responde { id, existente, nome, link }: o mesmo PDF de novo é
+   * `existente: true` e não cria nada. Sem o FILMES_PREVIA_TOKEN, a rota fica desligada (404); sem o token, ou com o
+   * errado, 401; com a aba Filmes desligada, 503. O caminho tem de vir exatamente assim (o torto é 404).
+   */
+  async function rotaDaPrevia(req, res) {
+    const esperado = String(env.FILMES_PREVIA_TOKEN ?? '').trim();
+    if (!esperado || String(req.url ?? '').split(/[?#]/)[0] !== ROTA_DA_PREVIA) return json(res, 404, { erro: 'Não encontrado.' });
+    if (!tokenDaFotoConfere(req.headers.authorization, esperado)) {
+      req.resume();
+      return json(res, 401, { erro: 'Token da prévia de filmes errado.' });
+    }
+    if (!filmes.ligado) {
+      req.resume();
+      return json(res, 503, { erro: `A aba Filmes está desligada: falta ${filmes.faltando.join(', ')}.` });
+    }
+    const previa = await previaDoPedido(await lerBinario(req, LIMITE_DA_PREVIA), req.headers['content-type']);
+    const r = filmes.receberPorEmail(previa);
+    console.log(`[filmes] prévia por e-mail ${r.existente ? 'repetida' : 'nova'}: ${previa.nome} (${Math.round(previa.pdf.length / 1024)} KB)`);
+    return json(res, 200, { ...r, link: linkDaAbaFilmes(env) });
   }
 
   /** O Padeiro da chave do pedido, quando ela está ligada a um designer: só a ligada lê (a lista e a Produção) e age

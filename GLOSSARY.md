@@ -121,7 +121,15 @@ Um filme numa sessão num dia, com o card do Trello dele e as artes do card. É 
 _Evitar_: produção (a exibição é o filme na grade; o trabalho da arte do card dele é a Produção)
 
 **Prévia**:
-O PDF mensal da programação de filmes, lido na aba Filmes, que vira os cards de filme.
+O PDF mensal da programação de filmes, lido na aba Filmes, que vira os cards de filme. Chega **subida à mão** ou **por
+e-mail** (a origem dela); o mesmo PDF (a mesma impressão SHA-256) é sempre a mesma prévia, e um PDF diferente do mesmo
+mês (a prévia corrigida) é outra prévia, ao lado.
+
+**Prévia por preparar**:
+A prévia que chegou por e-mail (o n8n mandou o PDF ao PROMeiro) e que nenhum navegador preparou ainda: o PROMeiro só
+guardou o arquivo. A primeira pessoa que abre prepara, pela mesma subida da mão. Ela aparece como "prévia nova · chegou
+por e-mail" e acende a bolinha do Filmes no topo.
+_Evitar_: prévia pendente (pendente é a que ainda tem filme por revisar ou mandar)
 
 **Sequência de filmes**:
 A prévia aberta no celular: os filmes um atrás do outro, sem paginar o PDF, cada um com a página ampliada no pôster

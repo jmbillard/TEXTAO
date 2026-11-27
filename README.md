@@ -162,6 +162,68 @@ e o corpo JSON (até 1 MB) no **formato 1**:
 **Para desligar:** desligue o nó `Foto: manda ao PROMeiro` no n8n, ou esvazie o `EDICAO_FOTO_TOKEN` (a rota volta a
 responder 404). As fotos guardadas ficam no SQLite; o ramo da pauta do n8n não depende delas.
 
+## A prévia de filmes que chega por e-mail
+
+A prévia mensal de filmes em PDF chega por e-mail ao mesmo gatilho do n8n que recebe as alterações da grade (#157). O
+n8n manda o anexo ao PROMeiro, que **só guarda o arquivo**, como prévia **por preparar**: ela aparece na aba **Filmes**
+como "prévia nova · chegou por e-mail", e a bolinha do Filmes no topo acende. A primeira pessoa que abrir a prévia
+dispara o preparo no navegador, o mesmo da subida à mão (as páginas úteis, os pôsteres e a leitura pela IA). O aviso no
+Teams é do n8n, depois da resposta do PROMeiro.
+
+**A rota:** `POST /api/publico/filmes/previa`, fora do login, com o cabeçalho
+`Authorization: Bearer <FILMES_PREVIA_TOKEN>` e o corpo `multipart/form-data` (até 30 MB):
+
+- `pdf`: o arquivo, com o nome original (obrigatório; tem de começar com `%PDF-`);
+- `chegou_em`: a hora em que o e-mail chegou, ISO (opcional; sem ela, vale a hora da chegada ao PROMeiro).
+
+A resposta (`200`):
+
+```json
+{ "id": "<id da prévia>", "existente": false, "nome": "PRÉVIA <MÊS> <ANO>.pdf", "link": "<PROMEIRO_URL>/#/filmes" }
+```
+
+- **O mesmo PDF não se repete:** o PROMeiro calcula a impressão SHA-256 do arquivo, a mesma que o navegador calcula na
+  subida à mão. O mesmo PDF de novo, por e-mail ou subido à mão, responde `"existente": true`, com o id e o nome da
+  prévia que já existe, e não cria nada: o n8n só avisa no Teams quando `existente` é `false`.
+- **Um PDF diferente** (a prévia corrigida do mesmo mês) vira **outra prévia, ao lado**; a antiga continua.
+- Sem o token, ou com o errado, `401`; sem o `FILMES_PREVIA_TOKEN` no Portainer, a rota fica desligada (`404`); com a
+  aba Filmes desligada (sem `N8N_FILMES_LER` ou `FILMES_PASTA`), `503`; o corpo que não é multipart, sem o campo `pdf`
+  ou com um arquivo que não é PDF, `400`; maior que 30 MB, `413`. O caminho torto (`%2e%2e`, barras repetidas, outra
+  caixa) é `404` e nunca chega às rotas com login.
+- O PDF inteiro fica em `FILMES_PASTA/<id>/previa.pdf`; a leitura das páginas é a de sempre (`N8N_FILMES_LER`).
+
+**O seu lado** (o PROMeiro não mexe no n8n):
+
+1. **No Portainer:** gere o token (`openssl rand -hex 24`), ponha em `FILMES_PREVIA_TOKEN` e atualize a stack. Use um
+   token só desta rota (não o da foto da edição).
+2. **No n8n, a credencial:** Credentials → New → **Header Auth**, nome "PROMeiro - prévia de filmes", com o *Name*
+   `Authorization` e o *Value* `Bearer <o mesmo token>`.
+3. **No n8n, o ramo do PDF**, no fluxo da programação de filmes, saindo do nó que separa os anexos, em paralelo ao filtro
+   do `.xlsx`: um filtro (extensão `pdf`, tamanho > 0 e o nome do anexo começando com "PRÉVIA", sem ligar para caixa e
+   acento) e um **HTTP Request** (POST, *Generic Credential Type* → Header Auth "PROMeiro - prévia de filmes", *Body*
+   **Form-Data**: `pdf` do tipo *n8n Binary File* com o binário do anexo, e `chegou_em` com a data do e-mail). Depois,
+   um IF em `existente == false` antes do cartão do Teams, com o `link` da resposta.
+4. **A rede:** pelo nome interno (`http://promeiro/api/publico/filmes/previa`, na `REDE_N8N`), o pedido nem passa pelo
+   Cloudflare, e não é preciso Bypass. **Só se o n8n usar o endereço público** (`PROMEIRO_URL/api/publico/filmes/previa`)
+   é preciso uma aplicação no Cloudflare Access **só para o caminho `api/publico/filmes`**, com a política **Bypass**
+   para Everyone (como a do pôster público e a da foto da edição).
+5. **Confira** de dentro do container do n8n (ou troque o endereço pelo público), com o token no lugar de `<token>` e um
+   PDF qualquer de teste no lugar de `teste.pdf`:
+
+   ```sh
+   curl -i -X POST http://promeiro/api/publico/filmes/previa \
+     -H 'Authorization: Bearer <token>' \
+     -F 'pdf=@teste.pdf;type=application/pdf' -F 'chegou_em=2026-11-27T09:00:00-03:00'
+   ```
+
+   A resposta é `200` com `"existente": false`; o mesmo pedido de novo dá `"existente": true`, com o mesmo `id`. Sem o
+   cabeçalho, `401`; `404` quer dizer que o `FILMES_PREVIA_TOKEN` está vazio no PROMeiro. Com o endereço público, confira
+   também que `curl -i PROMEIRO_URL/api/eu` continua pedindo o login. A prévia de teste aparece na aba Filmes; abri-la
+   dispara o preparo e a leitura pela IA.
+
+**Para desligar:** desligue o nó HTTP do ramo do PDF no n8n, ou esvazie o `FILMES_PREVIA_TOKEN` (a rota volta a
+responder 404). As prévias que já chegaram ficam na aba Filmes, como as subidas à mão.
+
 ## A virada da pauta: o PROMeiro grava no Teable
 
 Passada a semana lado a lado (#134, ADR 0006), a pauta da edição passa a sair do PROMeiro: publicar grava o dia na
