@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp, fazerBackup } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
@@ -72,25 +72,26 @@ const darApelido = (quem: (c: string, i?: RequestInit) => Promise<Response>, rot
 const darVersoes = (quem: (c: string, i?: RequestInit) => Promise<Response>, roteiroId: string, versoes: string) => quem('/api/apelidos', { method: 'PUT', body: JSON.stringify({ roteiro: roteiroId, versoes }) });
 const guardar = (quem: (c: string, i?: RequestInit) => Promise<Response>, id: string, claquete: string, artes: string[] = []) => quem(`/api/roteiros/${id}`, { method: 'PUT', body: JSON.stringify(roteiro(claquete, artes)) });
 
-describe('o apelido da claquete, um por roteiro', () => {
+describe('o apelido da claquete, um por claquete (#154)', () => {
   it('qualquer pessoa logada dá o apelido; todos leem, com a claquete original do roteiro; quem não entrou não vê', async () => {
     const { base, ana, beto } = await subir();
     await guardar(ana, 'rot-apelido-1', 'Show Fictício 25/11 (A)');
     expect(await (await ana('/api/apelidos')).json()).toEqual([]);
     expect((await darApelido(beto, 'rot-apelido-1', 'Show Fictício 25/11 (H)')).status).toBe(200);
-    expect(await (await ana('/api/apelidos')).json()).toMatchObject([{ roteiro: 'rot-apelido-1', original: 'Show Fictício 25/11 (A)', apelido: 'Show Fictício 25/11 (H)', por: 'Beto', producoes: [], cards: [] }]);
+    expect(await (await ana('/api/apelidos')).json()).toMatchObject([{ chave: 'SHOW FICTICIO 25 11', roteiros: ['rot-apelido-1'], original: 'Show Fictício 25/11 (A)', apelido: 'Show Fictício 25/11 (H)', por: 'Beto', producoes: [], cards: [] }]);
     expect((await fetch(`${base}/api/apelidos`)).status).toBe(401);
   });
 
-  it('dois roteiros com a mesma claquete têm cada um o seu apelido', async () => {
+  it('dois roteiros com a mesma claquete, em qualquer grafia e código, têm o mesmo apelido', async () => {
     const { ana } = await subir();
     await guardar(ana, 'rot-apelido-1', 'Show Fictício 25/11 (A)');
-    await guardar(ana, 'rot-apelido-2', 'Show Fictício 25/11 (A)');
+    await guardar(ana, 'rot-apelido-2', 'SHOW FICTICIO 25/11 (H)');
+    await guardar(ana, 'rot-apelido-3', 'Outro Show 25/11');
     await darApelido(ana, 'rot-apelido-1', 'Um');
-    expect((await (await ana('/api/apelidos')).json()).map((a: { roteiro: string; apelido: string }) => [a.roteiro, a.apelido])).toEqual([['rot-apelido-1', 'Um']]);
+    expect((await (await ana('/api/apelidos')).json()).map((a: { roteiros: string[]; apelido: string }) => [a.roteiros, a.apelido])).toEqual([[['rot-apelido-1', 'rot-apelido-2'], 'Um']]);
   });
 
-  it('trocar grava por cima; "voltar ao original" (o apelido vazio ou igual à claquete) tira; apagar o roteiro leva junto', async () => {
+  it('trocar grava por cima; "voltar ao original" (o apelido vazio ou igual à claquete) tira; apagar o roteiro não leva junto', async () => {
     const { ana } = await subir();
     await guardar(ana, 'rot-apelido-1', 'Show Fictício 25/11 (A)');
     await darApelido(ana, 'rot-apelido-1', 'Primeiro');
@@ -103,10 +104,11 @@ describe('o apelido da claquete, um por roteiro', () => {
     expect(await (await ana('/api/apelidos')).json()).toEqual([]);
     await darApelido(ana, 'rot-apelido-1', 'Quarto');
     await ana('/api/roteiros/rot-apelido-1', { method: 'DELETE' });
-    expect(await (await ana('/api/apelidos')).json()).toEqual([]);
+    // o apelido é da claquete: fica, sem o roteiro
+    expect(await (await ana('/api/apelidos')).json()).toMatchObject([{ apelido: 'Quarto', original: 'Show Fictício 25/11 (A)', roteiros: [] }]);
   });
 
-  it('vale para todas as Produções do roteiro, de todas as praças', async () => {
+  it('vale para todas as Produções da claquete, de todas as praças, com ou sem o roteiro', async () => {
     const db = abrirBanco(':memory:');
     const { ana } = await subir({ db });
     await guardar(ana, 'rot-apelido-1', 'Show Fictício 25/11 (A)');
@@ -114,9 +116,10 @@ describe('o apelido da claquete, um por roteiro', () => {
     const producao = db.prepare("INSERT INTO producoes (id, claquete, praca, etapa, roteiro_id, criada_em, atualizada_em) VALUES (?, 'Show Fictício 25/11 (A)', ?, 'entrada', ?, ?, ?)");
     producao.run('prod-rj', 'RJ', 'rot-apelido-1', agora, agora);
     producao.run('prod-sp', 'SP', 'rot-apelido-1', agora, agora);
-    producao.run('prod-outra', 'SP', null, agora, agora);
+    producao.run('prod-sem-roteiro', 'SP', null, agora, agora);
+    db.prepare("INSERT INTO producoes (id, claquete, praca, etapa, roteiro_id, criada_em, atualizada_em) VALUES ('prod-outra', 'Outra Festa 25/11', 'SP', 'entrada', NULL, ?, ?)").run(agora, agora);
     await darApelido(ana, 'rot-apelido-1', 'Show Fictício, a estreia');
-    expect((await (await ana('/api/apelidos')).json())[0].producoes).toEqual(['prod-rj', 'prod-sp']);
+    expect((await (await ana('/api/apelidos')).json())[0].producoes).toEqual(['prod-rj', 'prod-sem-roteiro', 'prod-sp']);
   });
 
   it('o pedido mal feito: o roteiro que não existe, o apelido longo demais e o método', async () => {
@@ -134,7 +137,7 @@ describe('o apelido da claquete, um por roteiro', () => {
     await darApelido(ana, 'rot-apelido-1', 'Show Fictício 25/11 (H)');
     const destino = fazerBackup(db, mkdtempSync(join(tmpdir(), 'promeiro-apelido-')));
     const copia = new DatabaseSync(destino);
-    expect(copia.prepare('SELECT roteiro_id, apelido FROM apelidos').all()).toEqual([{ roteiro_id: 'rot-apelido-1', apelido: 'Show Fictício 25/11 (H)' }]);
+    expect(copia.prepare('SELECT chave, original, apelido FROM apelidos').all()).toEqual([{ chave: 'SHOW FICTICIO 25 11', original: 'Show Fictício 25/11 (A)', apelido: 'Show Fictício 25/11 (H)' }]);
     copia.close();
   });
 
@@ -152,7 +155,7 @@ describe('o apelido da claquete, um por roteiro', () => {
     expect(registro.records[0].fields.claquete).toMatch(/^Festa Fictícia 19\/11 ?\(A\)$/);
     // o apelido continua só no PROMeiro, e vale também para o card do envio
     expect(JSON.stringify(f.pedidos)).not.toContain('19/11 (H)');
-    expect((await (await ana('/api/apelidos')).json())[0]).toMatchObject({ roteiro: 'rot-apelido-1', cards: ['card1'] });
+    expect((await (await ana('/api/apelidos')).json())[0]).toMatchObject({ roteiros: ['rot-apelido-1'], cards: ['card1'] });
   });
 });
 
@@ -162,7 +165,7 @@ describe('as versões à mão no apelido (#152)', () => {
     await guardar(ana, 'rot-mao-1', 'Show Fictício 27/11', ['AO VIVO']);
     expect((await darVersoes(beto, 'rot-mao-1', '(ah)')).status).toBe(200);
     const [a] = await (await ana('/api/apelidos')).json();
-    expect(a).toMatchObject({ roteiro: 'rot-mao-1', apelido: '', versoes: 'AH', por: 'Beto' });
+    expect(a).toMatchObject({ roteiros: ['rot-mao-1'], apelido: '', versoes: 'AH', por: 'Beto' });
     expect(a.versoesDaChamada).toMatchObject({ de: 'mao', conflito: null });
   });
 
@@ -198,18 +201,10 @@ describe('as versões à mão no apelido (#152)', () => {
     await darVersoes(ana, 'rot-mao-4', 'H');
     const destino = fazerBackup(db, mkdtempSync(join(tmpdir(), 'promeiro-versoes-')));
     const copia = new DatabaseSync(destino);
-    expect(copia.prepare('SELECT roteiro_id, apelido, versoes FROM apelidos').all()).toEqual([{ roteiro_id: 'rot-mao-4', apelido: '', versoes: 'H' }]);
+    expect(copia.prepare('SELECT chave, apelido, versoes FROM apelidos').all()).toEqual([{ chave: 'SHOW FICTICIO 27 11', apelido: '', versoes: 'H' }]);
     copia.close();
     // a claquete guardada não muda
     expect((await (await ana('/api/roteiros')).json())[0].meta.claquete).toBe('Show Fictício 27/11 (A)');
-  });
-
-  it('o banco de antes (a tabela sem a coluna das versões) ganha a coluna sem perder os apelidos', async () => {
-    const db = abrirBanco(':memory:');
-    db.exec("CREATE TABLE apelidos (roteiro_id TEXT PRIMARY KEY, apelido TEXT NOT NULL, por_email TEXT NOT NULL, por_nome TEXT NOT NULL, em TEXT NOT NULL)");
-    db.exec("INSERT INTO apelidos VALUES ('rot-velho', 'Nome velho', 'ana@empresa.com', 'Ana', '2026-11-01T00:00:00Z')");
-    await subir({ db });
-    expect(db.prepare('SELECT apelido, versoes FROM apelidos').all()).toEqual([{ apelido: 'Nome velho', versoes: null }]);
   });
 });
 
@@ -282,7 +277,8 @@ describe('as versões da chamada nos cards (#121), prontas da API', () => {
     await comData(ana, 'rot-card-3', 'Show Fictício 27/11 (H)', ['AMANHÃ']);
     await darApelido(ana, 'rot-card-3', 'Show Fictício 27/11 (A)');
     expect((await daAgenda(ana, 'rot-card-3')).conflito).toBeNull();
-    await comData(ana, 'rot-card-4', 'Show Fictício 27/11', ['AO VIVO']);
+    // outra claquete: o apelido é da claquete (#154)
+    await comData(ana, 'rot-card-4', 'Festa Fictícia 27/11', ['AO VIVO']);
     expect(await daAgenda(ana, 'rot-card-4')).toEqual({ lista: [], de: null, conflito: null });
   });
 
@@ -331,5 +327,108 @@ describe('as versões da chamada nos cards (#121), prontas da API', () => {
     await darApelido(ana, 'rot-card-6', 'Show Fictício 27/11 (P)');
     const v = await daTela(ana, 'prod-apelido');
     expect([rotulos(v), v.de]).toEqual([['próxima sex'], 'apelido']);
+  });
+});
+
+describe('o apelido pela claquete, com ou sem roteiro (#154)', () => {
+  const pelaClaquete = (quem: (c: string, i?: RequestInit) => Promise<Response>, claquete: string, mudanca: { apelido?: string; versoes?: string }) =>
+    quem('/api/apelidos', { method: 'PUT', body: JSON.stringify({ claquete, ...mudanca }) });
+  const producao = (db: { prepare: (s: string) => { run: (...a: unknown[]) => void } }, id: string, claquete: string, roteiroId: string | null = null) => {
+    const agora = new Date().toISOString();
+    db.prepare("INSERT INTO producoes (id, claquete, praca, etapa, roteiro_id, exibicao_em, criada_em, atualizada_em) VALUES (?, ?, 'RJ', 'entrada', ?, '2026-11-28', ?, ?)").run(id, claquete, roteiroId, agora, agora);
+  };
+  const daTela = async (quem: (c: string, i?: RequestInit) => Promise<Response>, id: string) =>
+    ((await (await quem('/api/producoes/por-praca')).json()) as { blocos: { colunas: Record<string, { id: string; versoesDaChamada: { lista: { codigo: string }[]; de: string | null } }[]> }[] }).blocos
+      .flatMap((b) => Object.values(b.colunas).flat())
+      .find((c) => c.id === id)!.versoesDaChamada;
+  const codigo = (v: { lista: { codigo: string }[] }) => v.lista.map((x) => x.codigo).join('');
+
+  it('a claquete sem roteiro recebe as versões à mão, e a Produção dela mostra o código, com a origem à mão', async () => {
+    const db = abrirBanco(':memory:');
+    const { ana, beto } = await subir({ db });
+    producao(db, 'prod-sem-roteiro', 'Festa Fictícia 28/11 RJ');
+    expect((await pelaClaquete(beto, 'Festa Fictícia 28/11', { versoes: 'pn' })).status).toBe(200);
+    expect(await (await ana('/api/apelidos')).json()).toMatchObject([{ chave: 'FESTA FICTICIA 28 11', original: 'Festa Fictícia 28/11', apelido: '', versoes: 'PN', roteiros: [], producoes: ['prod-sem-roteiro'], por: 'Beto' }]);
+    const v = await daTela(ana, 'prod-sem-roteiro');
+    expect([codigo(v), v.de]).toEqual(['PN', 'mao']);
+  });
+
+  it('pela Produção: o apelido vai para a claquete dela; a que não existe é 404; sem alvo, 400', async () => {
+    const db = abrirBanco(':memory:');
+    const { ana } = await subir({ db });
+    producao(db, 'prod-alvo', 'Festa Fictícia 28/11 (A) RJ');
+    expect((await ana('/api/apelidos', { method: 'PUT', body: JSON.stringify({ producao: 'prod-alvo', apelido: 'A festa' }) })).status).toBe(200);
+    expect(await (await ana('/api/apelidos')).json()).toMatchObject([{ chave: 'FESTA FICTICIA 28 11', apelido: 'A festa', producoes: ['prod-alvo'] }]);
+    expect((await ana('/api/apelidos', { method: 'PUT', body: JSON.stringify({ producao: 'prod-nao-existe', apelido: 'X' }) })).status).toBe(404);
+    expect((await ana('/api/apelidos', { method: 'PUT', body: JSON.stringify({ apelido: 'X' }) })).status).toBe(400);
+    expect((await pelaClaquete(ana, '  ', { apelido: 'X' })).status).toBe(400);
+  });
+
+  it('quando o roteiro chega, ele usa o apelido que já existe, e o aviso de conflito com o roteiro aparece como antes', async () => {
+    const { ana } = await subir();
+    await pelaClaquete(ana, 'Show Fictício 27/11', { versoes: 'H' });
+    await guardar(ana, 'rot-chegou', 'SHOW FICTÍCIO 27/11', ['AMANHÃ, 22H']);
+    expect(await (await ana('/api/apelidos')).json()).toMatchObject([{ versoes: 'H', roteiros: ['rot-chegou'] }]);
+    const [r] = await (await ana('/api/roteiros')).json();
+    expect([codigo(r.versoesDaChamada), r.versoesDaChamada.de]).toEqual(['H', 'mao']);
+    expect(r.versoesDaChamada.conflito).toMatchObject({ daClaquete: '(H)', doRoteiro: '(A)' });
+    // a claquete guardada não muda
+    expect(r.meta.claquete).toBe('SHOW FICTÍCIO 27/11');
+  });
+});
+
+describe('a migração dos apelidos por roteiro para a claquete (#154)', () => {
+  /** O banco de antes do #154: o apelido por roteiro, com as versões à mão do #152 (ou sem a coluna, o de antes dele). */
+  function bancoAntigo({ comVersoes = true } = {}) {
+    const db = abrirBanco(':memory:');
+    db.exec(`CREATE TABLE apelidos (roteiro_id TEXT PRIMARY KEY REFERENCES roteiros (id) ON DELETE CASCADE, apelido TEXT NOT NULL, por_email TEXT NOT NULL, por_nome TEXT NOT NULL, em TEXT NOT NULL${comVersoes ? ', versoes TEXT' : ''})`);
+    const rot = db.prepare("INSERT INTO roteiros (id, dono_email, dono_nome, meta, doc, criado_em, atualizado_em) VALUES (?, 'ana@empresa.com', 'Ana', ?, '{}', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z')");
+    rot.run('rot-velho', JSON.stringify({ claquete: 'Show Fictício 27/11 (A)' }));
+    rot.run('rot-novo', JSON.stringify({ claquete: 'SHOW FICTICIO 27/11 (H) RJ' }));
+    rot.run('rot-festa', JSON.stringify({ claquete: 'Festa Fictícia 28/11' }));
+    rot.run('rot-sem-claquete', JSON.stringify({}));
+    const apelido = db.prepare(`INSERT INTO apelidos (roteiro_id, apelido, por_email, por_nome, em${comVersoes ? ', versoes' : ''}) VALUES (?, ?, 'ana@empresa.com', 'Ana', ?${comVersoes ? ', ?' : ''})`);
+    const dar = (id: string, nome: string, em: string, versoes: string | null) => (comVersoes ? apelido.run(id, nome, em, versoes) : apelido.run(id, nome, em));
+    dar('rot-velho', 'O velho', '2026-11-02T00:00:00Z', 'A');
+    dar('rot-novo', 'O novo', '2026-11-05T00:00:00Z', null);
+    dar('rot-festa', '', '2026-11-03T00:00:00Z', 'NP');
+    dar('rot-sem-claquete', 'Sem lugar', '2026-11-04T00:00:00Z', null);
+    return db;
+  }
+
+  it('cada apelido vai para a chave da claquete do roteiro; dois na mesma claquete, vale o mais recente, e o outro vai ao log', async () => {
+    const avisos = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const db = bancoAntigo();
+      const { ana } = await subir({ db });
+      expect(db.prepare('SELECT chave, original, apelido, versoes FROM apelidos ORDER BY chave').all()).toEqual([
+        { chave: 'FESTA FICTICIA 28 11', original: 'Festa Fictícia 28/11', apelido: '', versoes: 'NP' },
+        { chave: 'SHOW FICTICIO 27 11', original: 'SHOW FICTICIO 27/11 (H) RJ', apelido: 'O novo', versoes: null },
+      ]);
+      const log = avisos.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(log).toContain('rot-velho');
+      expect(log).toContain('O velho');
+      expect(log).toContain('rot-sem-claquete');
+      // os dois roteiros da mesma claquete ficam com o apelido mais recente
+      expect((await (await ana('/api/apelidos')).json()).find((a: { chave: string }) => a.chave === 'SHOW FICTICIO 27 11')).toMatchObject({ apelido: 'O novo', roteiros: ['rot-novo', 'rot-velho'] });
+      // a tabela por roteiro some, e a migração não roda de novo
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'apelidos%'").all()).toEqual([{ name: 'apelidos' }]);
+    } finally {
+      avisos.mockRestore();
+    }
+  });
+
+  it('o banco de antes do #152 (sem a coluna das versões) também passa, sem perder os apelidos', async () => {
+    const avisos = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const db = bancoAntigo({ comVersoes: false });
+      await subir({ db });
+      expect(db.prepare('SELECT chave, apelido, versoes FROM apelidos ORDER BY chave').all()).toEqual([
+        { chave: 'FESTA FICTICIA 28 11', apelido: '', versoes: null },
+        { chave: 'SHOW FICTICIO 27 11', apelido: 'O novo', versoes: null },
+      ]);
+    } finally {
+      avisos.mockRestore();
+    }
   });
 });

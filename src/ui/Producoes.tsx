@@ -8,7 +8,7 @@ import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
 import { ProducaoAberta } from './ProducaoAberta';
 import { plural } from './util';
-import { ConflitoDoCard, NomeDaClaquete } from './Apelido';
+import { ConflitoDoCard, NomeDaClaquete, versoesDoCard } from './Apelido';
 import './producoes.css';
 
 /* A tela de produções (#109), na área Designer, ao lado da agenda No Trello: um bloco por praça (na ordem das praças
@@ -143,10 +143,12 @@ function AvisoDeFalta({ aviso, indo }: { aviso: NonNullable<Acoes['aviso']>; ind
 const cliqueDeAbrir = (e: { target: EventTarget }) => !(e.target as Element).closest('button, a, .prod-aviso');
 
 function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: () => void }) {
-  // o apelido do roteiro da Produção (#120) no lugar da claquete: só para mostrar; a original, ao passar o mouse
+  // o apelido da claquete da Produção (#120, #154) no lugar da claquete: só para mostrar; a original, ao passar o mouse
   useApelidos();
   const apelido = apelidoDaProducao(c.id);
-  const claquete = <span className="prod-claquete-texto" title={apelido ? `Claquete: ${c.claquete}` : undefined}>{apelido || c.claquete ? <NomeDaClaquete nome={apelido || c.claquete} versoes={c.versoesDaChamada} /> : 'Sem claquete'}</span>;
+  // as versões refeitas com o apelido de agora (#154): a edição à mão na Produção aberta vale na hora
+  const versoes = versoesDoCard(c);
+  const claquete = <span className="prod-claquete-texto" title={apelido ? `Claquete: ${c.claquete}` : undefined}>{apelido || c.claquete ? <NomeDaClaquete nome={apelido || c.claquete} versoes={versoes} /> : 'Sem claquete'}</span>;
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
   const arrastar = acoes?.arrastar ?? null;
@@ -179,7 +181,7 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
     >
       <span className="prod-claquete" title={c.alta ? 'prioridade ALTA' : undefined}>{c.alta ? <MarcaTexto traco={tracoDe(c.id)}>{claquete}</MarcaTexto> : claquete}</span>
       {/* as versões da chamada (#121, #152) vão no fim do nome; aqui, só o aviso quando o roteiro diz outra coisa */}
-      <ConflitoDoCard versoes={c.versoesDaChamada} />
+      <ConflitoDoCard versoes={versoes} />
       <span className="prod-atracao">{c.atracao || 'sem atração'}</span>
       <span className="prod-linha">
         {artes && <span className="prod-artes">{artes}</span>}

@@ -1467,7 +1467,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       }
       recolhivel={celular ? { aberta: fichaAberta, mudar: setFichaAberta } : undefined}
       palpiteRedator={palpiteRedator}
-      apelido={<ApelidoDaClaquete roteiro={inicial.id} claquete={meta.claquete} versoes={versoesLidas} dia={meta.dataExibicao ?? ''} podeMudar={comServidor} />}
+      apelido={<ApelidoDaClaquete alvo={{ roteiro: inicial.id }} claquete={meta.claquete} versoes={versoesLidas} dia={meta.dataExibicao ?? ''} podeMudar={comServidor} />}
     />
   );
   const avisosDoTrello = (

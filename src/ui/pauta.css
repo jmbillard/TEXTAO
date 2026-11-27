@@ -229,3 +229,5 @@
 .pauta-resumo > span + span::before { content: '·'; margin-right: 14px; color: var(--regua-forte); }
 .pauta-resumo-conta { font-variant-numeric: tabular-nums; }
 .pauta-resumo-conta.falta { color: var(--falta); }
+/* o apelido e as versões à mão da claquete (#154), na ficha */
+.pauta-ficha .apelido-claquete { color: var(--tinta2); }

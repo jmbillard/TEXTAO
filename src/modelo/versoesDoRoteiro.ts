@@ -6,12 +6,12 @@
    (GLOSSARY, "Versão da chamada"). O dia sozinho ("SÁBADO, 22H") é N ou P pela data da claquete, a conferir; o horário
    sozinho ("22H30") não é versão. Quando o roteiro e o código da claquete discordam, vale o roteiro.
 
-   O apelido é o nome que o PROMeiro mostra no lugar da claquete, só dentro dele, um por roteiro: o Trello e o Teable
-   continuam com a claquete original, e o apelido nunca entra na chave dos cruzamentos (a pauta com as Produções, as
-   Duplicadas). */
+   O apelido é o nome que o PROMeiro mostra no lugar da claquete, só dentro dele, um por claquete (#154): o Trello e o
+   Teable continuam com a claquete original, e o apelido nunca entra na chave dos cruzamentos (a pauta com as Produções,
+   as Duplicadas). */
 import { codigoDasVersoes, dataDaVersao, lerVersoes, MESES, SEMANA_CURTA, type Versao } from './pauta.ts';
 import { claqueteNoPadrao } from './correcaoDeGrafia.ts';
-import { semPracaNoFim } from './pracas.ts';
+import { MARCA_TODAS, pracasRegistradas, semPracaNoFim, type Praca } from './pracas.ts';
 import { chaveDaClaqueteNoPadrao, lerDataDaClaquete } from './vocabularios.ts';
 
 /** A ordem das letras do padrão: as versões lidas vêm sempre nela. */
@@ -145,16 +145,56 @@ export function claqueteComAsVersoes(claquete: string, codigo: string): string {
 }
 
 /**
- * A chave do apelido pela claquete, para a tela que não sabe o roteiro (a lista das Duplicadas): a claquete original do
- * roteiro sem pontuação, caixa e acento (a chave do PROMeiro) e o código de versão no padrão. Junta as grafias da mesma
- * claquete, mas versões diferentes são claquetes diferentes. Só acha o apelido: os cruzamentos continuam pela chave da
- * claquete original.
+ * A chave do apelido (#154): a claquete no padrão, a mesma chave que a pauta e as Produções usam para cruzar
+ * (`chaveDaClaqueteNoPadrao`, sem o código das versões e sem a praça no fim). O apelido é da claquete, com ou sem roteiro
+ * no PROMeiro: junta as grafias, as praças e os códigos da mesma claquete, porque a claquete sabe as versões dela (o
+ * código no nome é só uma leitura delas). Só acha o apelido: os cruzamentos continuam pelas chaves deles.
+ * @param pracas as praças da configuração (a do fim sai da chave)
  */
-export function chaveDoApelido(claquete: string): string {
+export function chaveDoApelido(claquete: string, pracas: readonly Praca[] = pracasRegistradas()): string {
   const texto = claqueteNoPadrao(claquete.trim());
   if (!texto) return '';
-  const codigo = lerVersoes(texto, '').versoes.map((v) => comparavel(v.codigo));
-  return `${chaveDaClaqueteNoPadrao(texto)}|${[...codigo].sort().join('')}`;
+  return semPracaNoFim(chaveDaClaqueteNoPadrao(lerVersoes(texto, '').semVersao), pracas, [MARCA_TODAS]);
+}
+
+/** Um apelido guardado: pela chave da claquete (#154), com a claquete como estava escrita quando ele foi dado. */
+export interface ApelidoPelaClaquete {
+  chave: string;
+  original: string;
+  apelido: string;
+  versoes: string | null;
+  porEmail: string;
+  porNome: string;
+  em: string;
+}
+
+/** Um apelido de antes, guardado por roteiro (#120, #152), com a claquete do roteiro ('' sem ela). */
+export interface ApelidoPorRoteiro extends Omit<ApelidoPelaClaquete, 'chave' | 'original'> {
+  roteiro: string;
+  claquete: string;
+}
+
+/**
+ * A migração dos apelidos guardados por roteiro para a chave da claquete do roteiro (#154). Dois apelidos na mesma
+ * claquete: vale o mais recente (`em`), e o outro fica em `deixados`, com o motivo, para o log; o do roteiro sem
+ * claquete também. `ficam` vem na ordem da chave.
+ */
+export function juntarApelidosPelaClaquete(antigos: readonly ApelidoPorRoteiro[], pracas: readonly Praca[] = pracasRegistradas()) {
+  const porChave = new Map<string, ApelidoPelaClaquete & { roteiro: string }>();
+  const deixados: { roteiro: string; apelido: string; versoes: string | null; motivo: string }[] = [];
+  const deixar = (a: Pick<ApelidoPorRoteiro, 'roteiro' | 'apelido' | 'versoes'>, motivo: string) => deixados.push({ roteiro: a.roteiro, apelido: a.apelido, versoes: a.versoes, motivo });
+  for (const a of [...antigos].sort((x, y) => x.em.localeCompare(y.em) || x.roteiro.localeCompare(y.roteiro))) {
+    const chave = chaveDoApelido(a.claquete, pracas);
+    if (!chave) {
+      deixar(a, 'o roteiro não tem claquete');
+      continue;
+    }
+    const antes = porChave.get(chave);
+    porChave.set(chave, { chave, original: a.claquete, apelido: a.apelido, versoes: a.versoes, porEmail: a.porEmail, porNome: a.porNome, em: a.em, roteiro: a.roteiro });
+    if (antes) deixar(antes, `a claquete ${chave} ficou com o apelido mais recente, do roteiro ${a.roteiro}`);
+  }
+  const ficam = [...porChave.values()].sort((x, y) => x.chave.localeCompare(y.chave)).map(({ roteiro: _, ...a }) => a);
+  return { ficam, deixados };
 }
 
 /** O nome que o PROMeiro mostra: o apelido da claquete, quando há; senão, a claquete como está. */

@@ -246,10 +246,12 @@ export async function atualizarVocabulario() {
   if (v) registrarVocabulario(v);
 }
 
-/** O apelido de um roteiro guardado no servidor (#120), com a claquete original, as Produções do roteiro (de todas as
-    praças) e os cards do envio: só dentro do PROMeiro, o envio leva a original. */
+/** O apelido de uma claquete guardado no servidor (#120, #154), pela chave da claquete no padrão, com a claquete
+    original, os roteiros com ela, as Produções dela (de todas as praças) e os cards do envio: só dentro do PROMeiro, o
+    envio leva a original. */
 export interface ApelidoGuardado {
-  roteiro: string;
+  /** a chave da claquete (chaveDoApelido) */
+  chave: string;
   original: string;
   /** o nome novo; '' no apelido só com as versões à mão (a tela mostra a claquete original) */
   apelido: string;
@@ -259,14 +261,18 @@ export interface ApelidoGuardado {
   versoesDaChamada?: VersoesDaChamada;
   por: string;
   em: string;
+  /** os roteiros com a claquete que a pessoa lê; vazia na claquete sem roteiro no PROMeiro */
+  roteiros: string[];
   producoes: string[];
   cards: string[];
 }
-/** Os apelidos dos roteiros; fora do servidor, nenhum. */
+/** De quem é o apelido: do roteiro, da Produção (a chave da claquete deles) ou da claquete (a da pauta, sem roteiro). */
+export type AlvoDoApelido = { roteiro: string } | { producao: string } | { claquete: string };
+/** Os apelidos das claquetes; fora do servidor, nenhum. */
 export const lerApelidos = async (): Promise<ApelidoGuardado[]> => (armazenamento.tipo === 'servidor' ? pedir<ApelidoGuardado[]>('/api/apelidos') : []);
-/** Dá, troca ou tira o nome do apelido do roteiro (o vazio: "voltar ao original") ou as versões à mão (#152; as vazias
+/** Dá, troca ou tira o nome do apelido da claquete (o vazio: "voltar ao original") ou as versões à mão (#152; as vazias
     voltam ao valor inicial); o que não vem fica como está. Devolve os apelidos de agora. */
-export const gravarApelido = (roteiro: string, mudanca: { apelido?: string; versoes?: string }) => pedir<ApelidoGuardado[]>('/api/apelidos', { method: 'PUT', body: JSON.stringify({ roteiro, ...mudanca }) });
+export const gravarApelido = (alvo: AlvoDoApelido, mudanca: { apelido?: string; versoes?: string }) => pedir<ApelidoGuardado[]>('/api/apelidos', { method: 'PUT', body: JSON.stringify({ ...alvo, ...mudanca }) });
 
 /** Quem está com a claquete na pauta da edição. Pergunta ao servidor; sem resposta, usa a pauta que já veio no vocabulário. */
 export async function consultarPauta(claquete: string): Promise<{ editor: string; claquete: string }> {

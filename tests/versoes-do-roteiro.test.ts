@@ -152,14 +152,9 @@ describe('o apelido: só para mostrar, nunca a chave dos cruzamentos', () => {
     expect(chaveDoApelido('Show 25/11 AH')).toBe(chaveDoApelido('Show 25/11 (AH)'));
   });
 
-  it('versões diferentes são claquetes diferentes: o apelido de uma não vale para a outra', () => {
-    expect(chaveDoApelido('Show 25/11 (A)')).not.toBe(chaveDoApelido('Show 25/11 (H)'));
-    expect(chaveDoApelido('Show 25/11 (A)')).not.toBe(chaveDoApelido('Show 25/11'));
-    expect(chaveDoApelido('')).toBe('');
-  });
-
   it('nomeComApelido mostra o apelido no lugar da claquete; sem apelido, a claquete como está', () => {
     const apelidos = new Map([[chaveDoApelido('Show 25/11 (A)'), 'Show 25/11 (H)']]);
+    // a chave é a da claquete, sem o código (#154): as versões diferentes são a mesma claquete
     expect(nomeComApelido('SHOW 25/11 (A)', apelidos)).toBe('Show 25/11 (H)');
     expect(nomeComApelido('Outro 25/11', apelidos)).toBe('Outro 25/11');
     expect(nomeComApelido('', apelidos)).toBe('');

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { apelidoDaProducao } from '../dados/apelidos';
-import { lerProducaoAberta, type ProducaoAberta as Lida } from '../dados/armazenamento';
+import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
+import { armazenamento, lerProducaoAberta, type ProducaoAberta as Lida } from '../dados/armazenamento';
+import { ApelidoDaClaquete, NomeDaClaquete, versoesDoCard } from './Apelido';
 import { frasesDaLinhaDoTempo } from '../modelo/linhaDoTempo';
-import { ROTULO_DA_COLUNA, type CardDaProducao } from '../modelo/producoesPorPraca';
+import { ROTULO_DA_COLUNA, diaDoPrazo, type CardDaProducao } from '../modelo/producoesPorPraca';
 import { Icone } from './icones';
 
 /* A Produção aberta na tela de produções (#113): um clique no card abre, na própria tela, o painel da Produção, com a
    linha do tempo (as frases do dia a dia, src/modelo/linhaDoTempo.ts), as artes do checklist (marcadas ou não) e o link
-   do card no Trello. O topo (a claquete, a atração, a praça e a etapa, os designers e o prazo) vem do card, na hora; o
+   do card no Trello. O apelido da claquete e as versões à mão (#154) se editam aqui, com ou sem roteiro. O topo (a claquete, a atração, a praça e a etapa, os designers e o prazo) vem do card, na hora; o
    resto é lido do PROMeiro quando abre, e de novo quando o card muda de etapa ou de designers. Nada é lido do Trello.
    Fecha pelo ×, pelo Esc ou clicando fora. No celular, o painel ocupa a tela. */
 
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function ProducaoAberta({ card, prazo, fechar }: Props) {
+  useApelidos();
   const [lida, setLida] = useState<Lida | null>(null);
   const [erro, setErro] = useState('');
   const fecho = useRef<HTMLButtonElement>(null);
@@ -58,13 +60,16 @@ export function ProducaoAberta({ card, prazo, fechar }: Props) {
           <button ref={fecho} type="button" className="botao-texto prod-aberta-fechar" aria-label="Fechar" onClick={fechar}>
             <Icone nome="fechar" tam={18} />
           </button>
-          <h2 id="prod-aberta-titulo" title={apelidoDaProducao(card.id) ? `Claquete: ${card.claquete}` : undefined}>{apelidoDaProducao(card.id) || card.claquete || 'Sem claquete'}</h2>
+          <h2 id="prod-aberta-titulo" title={apelidoDaProducao(card.id) ? `Claquete: ${card.claquete}` : undefined}>
+            {apelidoDaProducao(card.id) || card.claquete ? <NomeDaClaquete nome={apelidoDaProducao(card.id) || card.claquete} versoes={versoesDoCard(card)} /> : 'Sem claquete'}
+          </h2>
           <p className="prod-aberta-sobre">
             <span>{card.atracao || 'sem atração'}</span>
             <span>{prazo ? `ao ar ${prazo}` : 'sem prazo'}</span>
             {card.designers.length > 0 && <span>{card.designers.join(', ')}</span>}
             {card.marcador && <span className="prod-marcador">{card.marcador}</span>}
           </p>
+          <ApelidoDaClaquete alvo={{ producao: card.id }} claquete={card.claquete} versoes={card.versoesLidas ?? []} dia={card.prazo ? diaDoPrazo(card.prazo) : ''} podeMudar={armazenamento.tipo === 'servidor'} />
         </header>
         {erro ? (
           <p className="prod-aberta-falha" role="alert">

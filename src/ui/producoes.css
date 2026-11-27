@@ -221,3 +221,5 @@
   .prod-aberta-fechar { width: 44px; height: 44px; }
   .prod-aberta-trello { width: 100%; justify-content: center; height: 44px; }
 }
+/* o apelido e as versões à mão da claquete (#154), na Produção aberta: a largura toda do topo */
+.prod-aberta-topo .apelido-claquete { grid-column: 1 / -1; color: var(--tinta2); }

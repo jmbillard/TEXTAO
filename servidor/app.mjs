@@ -741,13 +741,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const atracoesParecidas = criarAtracoesParecidas({ db });
   // as preferências de cada pessoa (#101), no SQLite: a última área usada, o arranjo da Pauta da edição…
   const preferencias = criarPreferencias(db);
-  // o apelido da claquete (#120), um por roteiro, no SQLite: só para mostrar, o envio continua com a claquete original
-  const apelidos = criarApelidos(db);
-  /** O card da tela de produções com as versões da chamada (#121), prontas: as à mão no apelido (#152), ou o código do
-      apelido ou da claquete (sem a praça no fim), ou as do roteiro dele; o dia das etiquetas sem data na claquete é o do
-      prazo. */
-  const comAsVersoes = (card) =>
-    card && { ...card, versoesDaChamada: versoesDaChamada({ ...apelidos.roteiroDaProducao(card.id), claquete: semPracaNoFim(card.claquete ?? '', pracas), dia: card.prazo ? diaDoPrazo(card.prazo) : '' }) };
+  // o apelido da claquete (#120), um por claquete (#154), no SQLite: só para mostrar, o envio continua com a claquete
+  // original; a chave tira a praça do fim, com as praças de agora
+  const apelidos = criarApelidos(db, () => pracas);
+  /** O card da tela de produções com as versões da chamada (#121), prontas: as à mão no apelido da claquete (#152, #154),
+      ou o código do apelido ou da claquete (sem a praça no fim), ou as do roteiro dele; o dia das etiquetas sem data na
+      claquete é o do prazo. */
+  const comAsVersoes = (card) => {
+    if (!card) return card;
+    const doRoteiro = apelidos.roteiroDaProducao(card.id);
+    // as versões lidas vão junto (#154): a Produção aberta edita as versões à mão e refaz a conta na hora
+    return { ...card, versoesLidas: doRoteiro.lidas, versoesDaChamada: versoesDaChamada({ ...doRoteiro, claquete: semPracaNoFim(card.claquete ?? '', pracas), dia: card.prazo ? diaDoPrazo(card.prazo) : '' }) };
+  };
   // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
   const areas = criarAreas();
   // montar a pauta (#123): o papel de coordenação e o rascunho do dia, no SQLite (nada vai ao Teable)
@@ -1100,7 +1105,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /** Os roteiros que esta pessoa vê, como a fila os recebe (o mesmo para "meus roteiros", #101). */
   const resumosPara = (eu) => {
-    const apelidoDe = apelidos.porRoteiro();
+    const apelidoDe = apelidos.porChave();
     return (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).map((l) => {
       const meta = JSON.parse(l.meta);
       const lidas = l.versoes_lidas ? JSON.parse(l.versoes_lidas) : [];
@@ -1108,7 +1113,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         id: l.id, meta, nArtes: l.n_artes, versoesLidas: lidas, atualizadoEm: l.atualizado_em,
         // as versões da chamada do card da agenda (#121), prontas: as à mão (#152), ou o código do apelido ou da claquete,
         // ou as do roteiro
-        versoesDaChamada: versoesDaChamada({ lidas, claquete: String(meta?.claquete ?? ''), apelido: apelidoDe.get(l.id)?.apelido ?? '', mao: apelidoDe.get(l.id)?.mao ?? '', dia: String(meta?.dataExibicao ?? '') }),
+        versoesDaChamada: (() => {
+          // o apelido pela claquete do roteiro (#154)
+          const a = apelidoDe.get(apelidos.chave(meta?.claquete));
+          return versoesDaChamada({ lidas, claquete: String(meta?.claquete ?? ''), apelido: a?.apelido ?? '', mao: a?.mao ?? '', dia: String(meta?.dataExibicao ?? '') });
+        })(),
         dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
         compartilhado: !!l.compartilhado,
         podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
@@ -2820,17 +2829,25 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
     if (caminho === '/api/cores') return json(res, 200, q.cores.all());
     if (caminho === '/api/apelidos') {
-      // o apelido da claquete (#120), um por roteiro: qualquer pessoa logada que lê o roteiro lê, dá, troca e tira o
-      // apelido ("voltar ao original", o apelido vazio) e as versões à mão (#152, as vazias voltam ao valor inicial);
-      // o que não vem no pedido fica como está
+      // o apelido da claquete (#120), um por claquete (#154): qualquer pessoa logada lê, dá, troca e tira o apelido
+      // ("voltar ao original", o apelido vazio) e as versões à mão (#152, as vazias voltam ao valor inicial); o que não
+      // vem no pedido fica como está. O alvo é o roteiro (que a pessoa lê), a Produção ou a claquete (a da pauta, sem
+      // roteiro no PROMeiro): todos dão a chave da claquete
       const lidos = () => apelidos.todos((id) => acesso(id, eu).ler);
       if (req.method === 'GET') return json(res, 200, lidos());
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
-      const id = typeof corpo.roteiro === 'string' ? corpo.roteiro : '';
-      const { linha, ler } = ID_VALIDO.test(id) ? acesso(id, eu) : { linha: null, ler: false };
-      if (!linha || !ler) return json(res, 404, { erro: 'Roteiro não encontrado.' });
-      const recusa = apelidos.gravar(id, JSON.parse(linha.meta)?.claquete, { apelido: corpo.apelido, versoes: corpo.versoes }, eu);
+      let claquete;
+      if (typeof corpo.roteiro === 'string') {
+        const { linha, ler } = ID_VALIDO.test(corpo.roteiro) ? acesso(corpo.roteiro, eu) : { linha: null, ler: false };
+        if (!linha || !ler) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+        claquete = JSON.parse(linha.meta)?.claquete;
+      } else if (typeof corpo.producao === 'string') {
+        claquete = apelidos.claqueteDaProducao(corpo.producao);
+        if (claquete === null) return json(res, 404, { erro: 'Produção não encontrada.' });
+      } else if (typeof corpo.claquete === 'string') claquete = corpo.claquete;
+      else return json(res, 400, { erro: 'Falta o roteiro, a Produção ou a claquete.' });
+      const recusa = apelidos.gravar(claquete, { apelido: corpo.apelido, versoes: corpo.versoes }, eu);
       if (recusa) return json(res, 400, { erro: recusa });
       // os colegas com a fila aberta passam a ver o apelido na hora
       void cache.publicar(FILA, { tipo: 'apelido', por: eu.email }).catch(() => {});

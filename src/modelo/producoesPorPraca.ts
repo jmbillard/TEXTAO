@@ -5,6 +5,7 @@
    Node apaga. */
 import type { Praca } from './pracas.ts';
 import type { VersoesDaChamada } from './versoesDoRoteiro.ts';
+import type { Versao } from './pauta.ts';
 
 /** As colunas do bloco, na ordem do fluxo. */
 export const COLUNAS_DO_BLOCO = ['entrada', 'produzindo', 'entregue'] as const;
@@ -36,6 +37,9 @@ export interface CardDaProducao {
   entregaEm: string | null;
   /** as versões da chamada (#121), prontas: as do roteiro dela, ou o código do apelido ou da claquete */
   versoesDaChamada?: VersoesDaChamada;
+  /** as versões lidas do roteiro dela (#152), vazia sem roteiro: a conta das versões refeita na tela quando o apelido
+      muda (#154) */
+  versoesLidas?: Versao[];
 }
 
 export interface BlocoDaPraca {

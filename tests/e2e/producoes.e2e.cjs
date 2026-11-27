@@ -788,6 +788,48 @@ async function oCodigoDesligado(navegador, url, api) {
   console.log('ok: "Mostrar o código das versões" desligado: a tela de produções só com o nome, no computador e no celular');
 }
 
+/**
+ * As versões à mão da claquete sem roteiro no PROMeiro (#154): o apelido é da claquete. O Show da Noite (sem código no
+ * nome e sem roteiro) recebe as versões à mão na Produção aberta; o sufixo aparece no fim do nome, no topo dela e no
+ * card, com a origem "à mão" na dica. "voltar ao inicial" tira.
+ */
+async function asVersoesAMaoSemRoteiro(navegador, url) {
+  const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
+  const show = cardDe(p, 'Show da Noite');
+  await show.waitFor();
+  const nome = async () => (await show.locator('.prod-claquete').textContent()).replace(/\s+/g, ' ').trim();
+  assert.equal(await nome(), `Show da Noite ${dm(3)} SP`, 'antes: sem código no nome');
+  await show.locator('.prod-atracao').click();
+  const aberta = p.locator('.prod-aberta');
+  await aberta.waitFor();
+  const apelido = aberta.locator('.apelido-claquete');
+  assert.match(await apelido.textContent(), /o nome e o roteiro não dizem/, 'a Produção aberta: a claquete não sabe as versões');
+  await apelido.getByRole('button', { name: 'Editar as versões' }).click();
+  await apelido.getByRole('textbox', { name: 'Código das versões' }).fill('pn');
+  const gravou = p.waitForResponse((r) => r.url().endsWith('/api/apelidos') && r.request().method() === 'PUT' && r.ok());
+  await apelido.getByRole('button', { name: 'guardar' }).click();
+  const corpo = JSON.parse((await gravou).request().postData());
+  assert.deepEqual(Object.keys(corpo), ['producao', 'versoes'], 'gravou pela Produção, sem roteiro');
+  assert.equal(corpo.versoes, 'PN');
+  await aberta.locator('#prod-aberta-titulo .sufixo-versoes').waitFor();
+  assert.equal((await aberta.locator('#prod-aberta-titulo').textContent()).replace(/\s+/g, ' ').trim(), `Show da Noite ${dm(3)} SP (PN)`, 'a Produção aberta: o código no fim do nome');
+  assert.match(await apelido.textContent(), /\(PN\)\s*feitas à mão no apelido/, 'a Produção aberta: as versões e de onde vieram');
+  assert.equal(await apelido.evaluate((e) => getComputedStyle(e).borderLeftWidth), '0px', 'sem unha');
+  await capturar(p, '18-producao-aberta-versoes-a-mao');
+  // o card, na hora: o sufixo no fim do nome, com a dica "à mão"
+  assert.equal(await nome(), `Show da Noite ${dm(3)} SP (PN)`, 'o card: o código no fim do nome');
+  assert.match(await show.locator('.sufixo-versoes').getAttribute('title'), /feitas à mão/, 'o card: a dica diz à mão');
+  // voltar ao inicial: a claquete volta sem código
+  await apelido.getByRole('button', { name: 'voltar ao inicial' }).click();
+  await p.waitForFunction(() => !document.querySelector('#prod-aberta-titulo .sufixo-versoes'));
+  await p.keyboard.press('Escape');
+  assert.equal(await nome(), `Show da Noite ${dm(3)} SP`, 'voltou ao inicial');
+  assert.deepEqual(erros, []);
+  assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
+  await ctx.close();
+  console.log('ok: a claquete sem roteiro recebe as versões à mão na Produção aberta: o sufixo no fim do nome, no topo e no card, com a origem "à mão" (#154)');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -833,6 +875,7 @@ async function principal() {
     await recolherEAbrir(navegador, s.url, chamadasAoTrello);
     await artesFeitas(navegador, s.url, s.db);
     await oCodigoDesligado(navegador, s.url, s.api);
+    await asVersoesAMaoSemRoteiro(navegador, s.url);
   } catch (e) {
     falhou = true;
     console.error(e);

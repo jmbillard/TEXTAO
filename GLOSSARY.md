@@ -11,14 +11,18 @@ Ganhar claquete própria é o que faz de algo uma atração.
 _Evitar_: título, nome do roteiro
 
 **Apelido** (da claquete):
-O nome que o PROMeiro mostra no lugar da claquete de um roteiro, em todas as telas e em todas as Produções dele, de
-todas as praças, e as **versões** que a claquete sabe. Um por roteiro, dado por qualquer pessoa logada. Vale só
-dentro do PROMeiro: o Trello e o Teable continuam com a claquete original, que aparece ao passar o mouse e na ficha,
-com "voltar ao original". As versões ficam no apelido como dado, com a origem: o valor inicial é o código no fim do
-nome (o do apelido ou, sem código nele, o da claquete) ou, se o nome não tem código, as **versões lidas** do roteiro;
-editadas à mão (na ficha da revisão e no editor, onde se edita o apelido), valem sobre as duas leituras, e "voltar ao
-inicial" as tira. O apelido pode ter só as versões, sem nome novo (a claquete sem código e sem versão no roteiro
-recebe as dela assim).
+O nome que o PROMeiro mostra no lugar da claquete, em todas as telas, e as **versões** que a claquete sabe. Um por
+claquete, com ou sem roteiro no PROMeiro: a chave é a claquete no padrão, a mesma da pauta e das Produções (sem caixa,
+acento, pontuação, o código das versões e a praça no fim), e por isso vale para os roteiros com ela, para todas as
+Produções dela, de todas as praças, e para as linhas da pauta. O roteiro que chega depois usa o apelido que já existe.
+Dado por qualquer pessoa logada. Vale só dentro do PROMeiro: o Trello e o Teable continuam com a claquete original,
+que aparece ao passar o mouse e na ficha, com "voltar ao original". As versões ficam no apelido como dado, com a
+origem: o valor inicial é o código no fim do nome (o do apelido ou, sem código nele, o da claquete) ou, se o nome não
+tem código, as **versões lidas** do roteiro; editadas à mão (na ficha da revisão, no editor, na ficha da Pauta e na
+Produção aberta da tela de produções), valem sobre as duas leituras, e "voltar ao inicial" as tira. O apelido pode ter
+só as versões, sem nome novo (a claquete sem código e sem versão no roteiro, ou sem roteiro, recebe as dela assim).
+Os apelidos de antes, guardados por roteiro, passaram para a chave da claquete do roteiro; dois na mesma claquete,
+ficou o mais recente, e o outro foi para o log.
 _Evitar_: alias, nome novo, key (a key é da atração)
 
 **Roteiro**:

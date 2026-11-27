@@ -4,7 +4,9 @@ import { ROTULO_DA_ETAPA, diaEmSaoPaulo, lerVersoes, nomeSemAsVersoes, resumoDaP
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
-import { apelidoDaProducao, useApelidos, versoesAMaoDaProducao } from '../dados/apelidos';
+import { apelidoDaClaquete, apelidoDaProducao, useApelidos, versoesAMaoDaClaquete, versoesAMaoDaProducao } from '../dados/apelidos';
+import { armazenamento } from '../dados/armazenamento';
+import { ApelidoDaClaquete } from './Apelido';
 import { DE_ONDE, dicaDasVersoes, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
 import { sufixoDasVersoes, versoesDaChamada, type FonteDasVersoes } from '../modelo/versoesDoRoteiro';
 
@@ -35,17 +37,21 @@ export function Versoes({ linha }: { linha: LinhaNaTela }) {
   return <SufixoDasVersoes versoes={linha.versoes} de={deOndeNaLinha(linha)} />;
 }
 
+/** As versões lidas do roteiro das Produções da linha (#152), a primeira que diz alguma; vazia sem roteiro. */
+const lidasDaLinha = (l: LinhaDaPauta) => (l.producoes ?? []).map((p) => p.versoesLidas ?? []).find((v) => v.length) ?? [];
+
 /**
- * A linha com o apelido do roteiro (#120) das Produções dela no lugar do texto e as versões que a claquete sabe (#152):
- * as feitas à mão no apelido, o código do nome (o do apelido ou o da claquete) ou as lidas do roteiro. Só para mostrar:
- * a chave e as Produções achadas por ela ficam as da claquete da pauta; a original fica em `original`.
+ * A linha com o apelido da claquete (#120, #154) no lugar do texto e as versões que a claquete sabe (#152): as feitas à
+ * mão no apelido, o código do nome (o do apelido ou o da claquete) ou as lidas do roteiro. O apelido é o da claquete da
+ * pauta, com ou sem roteiro; sem ele, o das Produções achadas (pela tolerância da busca). Só para mostrar: a chave e as
+ * Produções achadas por ela ficam as da claquete da pauta; a original fica em `original`.
  */
 function comApelidoNaPauta(l: LinhaDaPauta): LinhaNaTela {
   if (l.tipo !== 'claquete') return l;
   const producoes = l.producoes ?? [];
-  const apelido = producoes.map((p) => apelidoDaProducao(p.id)).find(Boolean) ?? '';
-  const mao = producoes.map((p) => versoesAMaoDaProducao(p.id)).find(Boolean) ?? '';
-  const lidas = producoes.map((p) => p.versoesLidas ?? []).find((v) => v.length) ?? [];
+  const apelido = apelidoDaClaquete(l.texto) || (producoes.map((p) => apelidoDaProducao(p.id)).find(Boolean) ?? '');
+  const mao = versoesAMaoDaClaquete(l.texto) || (producoes.map((p) => versoesAMaoDaProducao(p.id)).find(Boolean) ?? '');
+  const lidas = lidasDaLinha(l);
   const v = versoesDaChamada({ lidas, claquete: l.texto, apelido, mao, dia: l.dia });
   const texto = apelido || l.texto;
   return { ...l, texto, semVersao: lerVersoes(texto, l.dia).semVersao, versoes: v.lista, de: v.de, ...(apelido ? { original: l.texto } : {}) };
@@ -75,7 +81,7 @@ export function ProducaoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
 /** O texto da claquete, com o marca-texto da prioridade ALTA da produção da arte (como na agenda). */
 export function TextoDaClaquete({ linha }: { linha: LinhaNaTela }) {
   const alta = !!resumoDaProducao(linha.producoes)?.alta;
-  // com o apelido do roteiro (#120), a claquete da pauta aparece ao passar o mouse
+  // com o apelido da claquete (#120, #154), a claquete da pauta aparece ao passar o mouse
   const texto = <span className="pauta-texto" title={linha.original ? `Claquete: ${linha.original}` : undefined}>{linha.semVersao}</span>;
   // o código das versões colado no fim do nome (#152), fora do marca-texto
   return (
@@ -156,6 +162,8 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }:
         <p className="pauta-producao" data-etapa={resumo?.etapa ?? 'sem-card'}>
           {resumo ? <span className="pauta-etapa">{ROTULO_DA_ETAPA[resumo.etapa]}</span> : 'sem card na produção da arte'}
         </p>
+        {/* o apelido e as versões à mão da claquete (#154), com ou sem roteiro no PROMeiro */}
+        <ApelidoDaClaquete alvo={{ claquete: daPauta.texto }} claquete={daPauta.texto} versoes={lidasDaLinha(daPauta)} dia={daPauta.dia} podeMudar={armazenamento.tipo === 'servidor'} />
 
         <h3>Na pauta</h3>
         <table className="pauta-ficha-tabela">

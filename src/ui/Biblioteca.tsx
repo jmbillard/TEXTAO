@@ -669,7 +669,7 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
               <PessoaNoCard rotulo="editor" nome={r.meta.editor} falta="sem editor" />
               {!!andamento?.designers.length && <PessoaNoCard rotulo="designer" nome={andamento.designers.join(', ')} />}
             </dl>
-            {!doTour && aberto && <ApelidoDaClaquete roteiro={r.id} claquete={r.meta.claquete} versoes={r.versoesLidas ?? []} dia={r.meta.dataExibicao ?? ''} podeMudar />}
+            {!doTour && aberto && <ApelidoDaClaquete alvo={{ roteiro: r.id }} claquete={r.meta.claquete} versoes={r.versoesLidas ?? []} dia={r.meta.dataExibicao ?? ''} podeMudar />}
             {!doTour && <LinhaDoTempoDoCard card={r.trello?.card} aberto={aberto} />}
             <div className="card-semana-pe">
               {r.revisadoPor && (

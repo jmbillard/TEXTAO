@@ -784,6 +784,54 @@ async function oCodigoDasVersoes(navegador, url) {
   console.log('ok: "Mostrar o código das versões" no menu do perfil: ligada, o código no fim do nome; desligada, só o nome na Semana e na ficha; lembrada por pessoa');
 }
 
+/**
+ * As versões à mão da claquete sem roteiro no PROMeiro (#154): o apelido é da claquete. Na ficha da Pauta, a Novela Sol
+ * de amanhã (sem código no nome e sem roteiro) recebe as versões à mão; o sufixo aparece no fim do nome, na ficha e na
+ * Semana, com a origem "à mão" na dica. "voltar ao inicial" tira, e a claquete volta sem código.
+ */
+async function asVersoesAMaoSemRoteiro(navegador, url) {
+  const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } });
+  await p.locator('.pauta-grade').waitFor();
+  const novela = `Novela Sol ${diaMes(mais(hoje, 1))}`;
+  const daAna = celula(p, 'Ana Ribeiro', hoje);
+  const item = daAna.locator('.pauta-item', { has: p.locator('.pauta-texto', { hasText: novela }) });
+  assert.deepEqual(await nomesComVersoes(item), [novela], 'antes: sem código no nome');
+  await item.locator('.pauta-claquete-botao').click();
+  const ficha = p.locator('.pauta-ficha');
+  await ficha.waitFor();
+  const apelido = ficha.locator('.apelido-claquete');
+  assert.match(await apelido.textContent(), /o nome e o roteiro não dizem/, 'a ficha: a claquete não sabe as versões');
+  await apelido.getByRole('button', { name: 'Editar as versões' }).click();
+  await apelido.getByRole('textbox', { name: 'Código das versões' }).fill('ah');
+  const gravou = p.waitForResponse((r) => r.url().endsWith('/api/apelidos') && r.request().method() === 'PUT' && r.ok());
+  await apelido.getByRole('button', { name: 'guardar' }).click();
+  const corpo = JSON.parse((await gravou).request().postData());
+  assert.deepEqual(corpo, { claquete: novela, versoes: 'AH' }, 'gravou pela claquete, sem roteiro');
+  // o sufixo no fim do nome, na ficha e na Semana, com a origem "à mão"
+  await ficha.locator('#pauta-ficha-titulo .sufixo-versoes').waitFor();
+  assert.equal((await ficha.locator('#pauta-ficha-titulo').textContent()).replace(/\s+/g, ' ').trim(), `${novela} (AH)`, 'a ficha: o código no fim do nome');
+  assert.match(await ficha.locator('#pauta-ficha-titulo .sufixo-versoes').getAttribute('title'), /feitas à mão/, 'a dica: à mão');
+  assert.match(await apelido.textContent(), /\(AH\)\s*feitas à mão no apelido/, 'a ficha: as versões e de onde vieram');
+  await capturar(p, 'ficha-versoes-a-mao-sem-roteiro', false);
+  await p.keyboard.press('Escape');
+  assert.deepEqual(await nomesComVersoes(item), [`${novela} (AH)`], 'a Semana: o código no fim do nome');
+  assert.match((await dicas(item))[0], /feitas à mão/, 'a Semana: a dica diz à mão');
+  // a ficha sem "unha": nada de faixa colorida na borda esquerda do apelido
+  await item.locator('.pauta-claquete-botao').click();
+  await ficha.waitFor();
+  const borda = await apelido.evaluate((e) => getComputedStyle(e).borderLeftWidth);
+  assert.equal(borda, '0px', 'sem unha');
+  // voltar ao inicial: a claquete volta sem código (e os outros passos ficam como estavam)
+  await apelido.getByRole('button', { name: 'voltar ao inicial' }).click();
+  await p.waitForFunction(() => !document.querySelector('#pauta-ficha-titulo .sufixo-versoes'));
+  await p.keyboard.press('Escape');
+  assert.deepEqual(await nomesComVersoes(item), [novela], 'voltou ao inicial');
+  assert.deepEqual(erros, []);
+  assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
+  await ctx.close();
+  console.log('ok: a claquete sem roteiro recebe as versões à mão na ficha da Pauta: o sufixo no fim do nome, com a origem "à mão" (#154)');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -819,6 +867,7 @@ async function principal() {
     await oDiaPorColunaNoCelular(navegador, s.url);
     await osFiltros(navegador, s.url, teable);
     await oCodigoDasVersoes(navegador, s.url);
+    await asVersoesAMaoSemRoteiro(navegador, s.url);
   } catch (e) {
     falhou = true;
     console.error(e);

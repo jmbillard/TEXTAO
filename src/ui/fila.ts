@@ -4,7 +4,7 @@ import { claquetePadrao } from '../modelo/vocabularios';
 import { apelidoDoRoteiro } from '../dados/apelidos';
 
 /**
- * A claquete que a tela mostra (agenda, ficha da fila, topo do editor): o apelido do roteiro (#120), quando há; senão, o nome
+ * A claquete que a tela mostra (agenda, ficha da fila, topo do editor): o apelido da claquete do roteiro (#120, #154), quando há; senão, o nome
  * de hoje na produção da arte (Teable), quando o andamento traz; senão, a guardada no PROMeiro no padrão da casa
  * (`claquetePadrao`). Só para mostrar: o nome guardado e o enviado não mudam. Vazia quando não há claquete (quem chama
  * põe o título ou "Sem claquete").

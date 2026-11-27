@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { apelidoDoRoteiro, mudarApelido, mudarVersoes, useApelidos, versoesAMaoDoRoteiro } from '../dados/apelidos';
+import { apelidoDaProducao, apelidoDoRoteiro, doAlvo, mudarApelido, mudarVersoes, useApelidos, versoesAMaoDaProducao, versoesAMaoDoRoteiro } from '../dados/apelidos';
+import { diaDoPrazo, type CardDaProducao } from '../modelo/producoesPorPraca';
+import { semPracaNoFim } from '../modelo/pracas';
 import { codigoAMao, nomeSemOCodigo, sufixoDasVersoes, versoesDaChamada, type ConflitoDasVersoes, type FonteDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
-import type { Resumo } from '../dados/armazenamento';
+import type { AlvoDoApelido, Resumo } from '../dados/armazenamento';
 import { codigoDasVersoes, type Versao } from '../modelo/pauta';
 import { DE_ONDE, dicaDasVersoes, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
 import './apelido.css';
 
-/* O apelido da claquete e as versões que ela sabe (#120, #152), na ficha da revisão e no editor. O apelido é um por
-   roteiro e vale só dentro do PROMeiro: o Trello e o Teable continuam com a claquete original, que fica guardada (e o
-   campo Claquete da ficha continua sendo ela). As versões ficam no apelido: o valor inicial é o código do nome (o do
+/* O apelido da claquete e as versões que ela sabe (#120, #152), na ficha da revisão, no editor, na ficha da Pauta e na
+   Produção aberta da tela de produções (#154). O apelido é um por claquete, com ou sem roteiro no PROMeiro, e vale só
+   dentro dele: o Trello e o Teable continuam com a claquete original, que fica guardada (e o campo Claquete da ficha
+   continua sendo ela). As versões ficam no apelido: o valor inicial é o código do nome (o do
    apelido ou o da claquete) ou, sem ele, as artes do roteiro; o que foi feito à mão vale sobre os dois. */
 
 /** O texto do aviso discreto do conflito, com os dois códigos: o roteiro diz uma coisa, o que vale diz outra. */
@@ -20,6 +23,13 @@ const textoDoConflito = (c: ConflitoDasVersoes, de: FonteDasVersoes | null) =>
 export function versoesDoResumo(r: Pick<Resumo, 'id' | 'meta' | 'versoesLidas' | 'versoesDaChamada'>): VersoesDaChamada {
   if (!r.versoesLidas && r.versoesDaChamada) return r.versoesDaChamada;
   return versoesDaChamada({ lidas: r.versoesLidas ?? [], claquete: r.meta.claquete ?? '', apelido: apelidoDoRoteiro(r.id), mao: versoesAMaoDoRoteiro(r.id), dia: r.meta.dataExibicao ?? '' });
+}
+
+/** As versões que a claquete da Produção sabe, como o card da tela de produções mostra (#121, #154): pela mesma regra do
+    servidor, com as versões lidas do roteiro que vêm no card, na hora em que o apelido da claquete muda. */
+export function versoesDoCard(c: Pick<CardDaProducao, 'id' | 'claquete' | 'prazo' | 'versoesLidas' | 'versoesDaChamada'>): VersoesDaChamada | undefined {
+  if (!c.versoesLidas) return c.versoesDaChamada;
+  return versoesDaChamada({ lidas: c.versoesLidas, claquete: semPracaNoFim(c.claquete ?? ''), apelido: apelidoDaProducao(c.id), mao: versoesAMaoDaProducao(c.id), dia: c.prazo ? diaDoPrazo(c.prazo) : '' });
 }
 
 /** O nome da claquete com o sufixo das versões que ela sabe (#152), colado no fim: o código uma vez só, no padrão, com a
@@ -48,16 +58,17 @@ export function ConflitoDoCard({ versoes }: { versoes?: VersoesDaChamada }) {
 }
 
 /**
- * O apelido editável do roteiro e as versões que a claquete sabe: o código e de onde veio, editável à mão (as vazias
+ * O apelido editável da claquete e as versões que a claquete sabe: o código e de onde veio, editável à mão (as vazias
  * voltam ao valor inicial) e, num conflito com o roteiro, a opção de usar as dele. Sem `podeMudar` (fora do servidor, o
  * roteiro de exemplo), só mostra.
- * @param versoes as versões lidas do roteiro
+ * @param alvo o roteiro, a Produção ou a claquete (a da pauta, sem roteiro): dá a chave da claquete (#154)
+ * @param claquete a claquete original, como a tela a conhece
+ * @param versoes as versões lidas do roteiro (vazia sem roteiro)
  * @param dia AAAA-MM-DD, a exibição: o dia das etiquetas sem data na claquete
  */
-export function ApelidoDaClaquete({ roteiro, claquete, versoes, podeMudar, dia = '' }: { roteiro: string; claquete: string; versoes: readonly Versao[]; podeMudar: boolean; dia?: string }) {
+export function ApelidoDaClaquete({ alvo, claquete, versoes, podeMudar, dia = '' }: { alvo: AlvoDoApelido; claquete: string; versoes: readonly Versao[]; podeMudar: boolean; dia?: string }) {
   useApelidos();
-  const apelido = apelidoDoRoteiro(roteiro);
-  const aMao = versoesAMaoDoRoteiro(roteiro);
+  const { apelido, mao: aMao } = doAlvo(alvo);
   const [editando, setEditando] = useState<string | null>(null);
   const [editandoVersoes, setEditandoVersoes] = useState<string | null>(null);
   const [erro, setErro] = useState('');
@@ -72,11 +83,11 @@ export function ApelidoDaClaquete({ roteiro, claquete, versoes, podeMudar, dia =
       setErro(`Não guardou ${oQue}: ${e instanceof Error ? e.message : 'o servidor não respondeu.'}`);
     }
   };
-  const guardarNome = (novo: string) => guardar(() => mudarApelido(roteiro, novo), () => setEditando(null), 'o apelido');
+  const guardarNome = (novo: string) => guardar(() => mudarApelido(alvo, novo), () => setEditando(null), 'o apelido');
   const guardarVersoes = (novo: string) => {
     const lido = codigoAMao(novo);
     if ('recusa' in lido) return void setErro(lido.recusa);
-    void guardar(() => mudarVersoes(roteiro, lido.codigo), () => setEditandoVersoes(null), 'as versões');
+    void guardar(() => mudarVersoes(alvo, lido.codigo), () => setEditandoVersoes(null), 'as versões');
   };
   if (!claquete.trim() || (!podeMudar && !apelido && !valem.lista.length)) return null;
   const tecla = (fechar: () => void) => (e: React.KeyboardEvent) => {
