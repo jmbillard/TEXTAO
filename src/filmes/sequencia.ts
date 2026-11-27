@@ -2,6 +2,7 @@
    os de sessão própria (Supercine, Tela Quente, Corujão…) por data, depois os da Sessão da Tarde por data; no mesmo
    dia, a ordem da página (a página no PDF e o filme nela). Os dados lidos não têm hora. */
 import type { CaixaDaPagina, FilmeLido, MudancaNoFilme, PaginaDaPrevia } from '../dados/armazenamento';
+import { contaDoFilme } from './andamento';
 import { ehSessaoDaTarde } from './fileiras';
 
 export interface FilmeNaSequencia {
@@ -147,6 +148,34 @@ export function paginaInteira(seq: FilmeNaSequencia[], k: number) {
     )
     .sort((a, b) => seq[a.k].i - seq[b.k].i);
   return { semPoster: !!atual && !atual.caixa, posteres };
+}
+
+/** O resultado do envio num filme da sequência (a posição dele): indo agora, enviado (com o link do card) ou o erro. */
+export interface EnvioNaTelaFinal {
+  k: number;
+  estado: 'enviando' | 'enviado' | 'erro';
+  link?: string;
+  erro?: string;
+}
+
+/**
+ * A tela final (#84), o último item da sequência: a conta (os prontos que vão no Enviar, os com pergunta e os que já
+ * estão no Trello, a mesma da ficha da prévia), as pendências (a posição de cada uma, para o toque voltar ao filme) e o
+ * resultado do envio em cada filme. O que saiu da prévia durante a revisão fica de fora.
+ */
+export function telaFinal(seq: FilmeNaSequencia[]) {
+  const conta = { prontos: 0, pergunta: 0, trello: 0 };
+  const pendencias: number[] = [];
+  const envio: EnvioNaTelaFinal[] = [];
+  seq.forEach((s, k) => {
+    if (s.saiu) return;
+    const onde = contaDoFilme(s.filme);
+    if (onde) conta[onde]++;
+    if (s.pendente) pendencias.push(k);
+    const e = s.filme.envio;
+    if (e) envio.push({ k, estado: e.estado, ...(e.link ? { link: e.link } : {}), ...(e.erro ? { erro: e.erro } : {}) });
+  });
+  return { ...conta, pendencias, envio };
 }
 
 /** O que a imagem de cima mostra numa posição da rolagem (em filmes: 2,5 é o meio do caminho entre o 3º e o 4º). */

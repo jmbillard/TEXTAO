@@ -370,7 +370,22 @@ export function usePreviaAberta(id: string, avisar: (t: string) => void) {
   }, [id, carregar]);
   // mexi em outro card: os outros ficam sabendo já, sem esperar a próxima batida
   useEffect(() => bater.current(), [meuCard?.numero, meuCard?.i]);
-  return { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard };
+  // o Enviar, o mesmo no computador e no celular (#84): os prontos de toda a prévia passam a "enviando" e a prévia é
+  // reaberta; o resultado de cada filme (enviado ou o erro) chega pela batida, quando a versão muda
+  const [mandando, setMandando] = useState(false);
+  const enviar = async () => {
+    if (mandando) return;
+    setMandando(true);
+    try {
+      await enviarPrevia(id);
+      await carregar();
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMandando(false);
+    }
+  };
+  return { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard, enviar, mandando };
 }
 
 function PreviaAberta({
@@ -384,25 +399,12 @@ function PreviaAberta({
   verPrevias: () => void;
   voltar: () => void;
 }) {
-  const { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard } = usePreviaAberta(id, avisar);
+  const { previa, falha, pessoas, carregar, mudar, mexer: setMeuCard, enviar, mandando } = usePreviaAberta(id, avisar);
   const [pag, setPag] = useState(0);
   const [destaque, setDestaque] = useState<number | null>(null);
-  const [mandando, setMandando] = useState(false);
   const algumEnviando = !!previa?.paginas.some((g) =>
     g.filmes.some((f) => f.envio?.estado === "enviando"),
   );
-  const enviar = async () => {
-    if (mandando) return;
-    setMandando(true);
-    try {
-      await enviarPrevia(id);
-      await carregar();
-    } catch (e) {
-      avisar(e instanceof Error ? e.message : String(e));
-    } finally {
-      setMandando(false);
-    }
-  };
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       if (

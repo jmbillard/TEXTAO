@@ -6,6 +6,7 @@ import {
   type MudancaNoFilme,
   type PaginaDaPrevia,
   type PessoaNaPrevia,
+  type Previa,
 } from '../dados/armazenamento';
 import { corDe } from '../dados/colaboracao';
 import { podeSubir } from '../filmes/fileiras';
@@ -18,6 +19,7 @@ import {
   PAGINA_INTEIRA,
   paginaInteira,
   quadroNaRolagem,
+  telaFinal,
   transformar,
   type FilmeNaSequencia,
 } from '../filmes/sequencia';
@@ -40,7 +42,11 @@ import './sequenciaDeFilmes.css';
    está (o filme à vista, para quem está no celular) com o título grifado na cor da pessoa e a rubrica.
    A página inteira (#83): um toque na imagem de cima mostra a página do filme atual inteira, com ele contornado e os
    outros pendentes da página com o círculo menor; tocar num pôster leva até o filme dele, tocar fora volta ao atual. O
-   filme sem pôster já mostra a página inteira, com a nota à mão "sem pôster": um aviso só, sem pergunta. */
+   filme sem pôster já mostra a página inteira, com a nota à mão "sem pôster": um aviso só, sem pergunta.
+   A tela final (#84): depois do último filme, o resumo, que é o último item da faixa (cobre a imagem de cima ao entrar):
+   "N prontos · M com pergunta", quantos já estão no Trello, as pendências (tocadas, voltam ao filme), o resultado do
+   envio em cada filme e o Enviar embaixo, ao alcance do polegar, o mesmo do computador: leva os prontos de todas as
+   páginas, e os com pergunta ficam para o próximo envio. A barra diz "resumo". */
 
 /** Quanto tempo a marca nova fica à vista antes de a sequência andar sozinha. */
 const MARCA_MS = 550;
@@ -56,7 +62,7 @@ export function SequenciaDeFilmes({
   verPrevias: () => void;
   voltar: () => void;
 }) {
-  const { previa, falha, carregar, pessoas, mudar, mexer } = usePreviaAberta(id, avisar);
+  const { previa, falha, carregar, pessoas, mudar, mexer, enviar, mandando } = usePreviaAberta(id, avisar);
   const [seq, setSeq] = useState<FilmeNaSequencia[] | null>(null);
   // a primeira abertura monta a sequência; as reaberturas (a versão mudou) atualizam cada filme no lugar
   useEffect(() => {
@@ -71,7 +77,19 @@ export function SequenciaDeFilmes({
         <p>Nenhum filme lido nesta prévia ainda.</p>
       </main>
     );
-  return <Sequencia previaId={previa.id} paginas={previa.paginas} seq={seq} pessoas={pessoas} mudar={mudar} mexer={mexer} />;
+  return (
+    <Sequencia
+      previaId={previa.id}
+      paginas={previa.paginas}
+      seq={seq}
+      pessoas={pessoas}
+      mudar={mudar}
+      mexer={mexer}
+      envio={previa.envio}
+      enviar={enviar}
+      mandando={mandando}
+    />
+  );
 }
 
 function Sequencia({
@@ -81,6 +99,9 @@ function Sequencia({
   pessoas,
   mudar,
   mexer,
+  envio,
+  enviar,
+  mandando,
 }: {
   previaId: string;
   paginas: PaginaDaPrevia[];
@@ -90,11 +111,16 @@ function Sequencia({
   mudar: (numero: number, i: number, m: MudancaNoFilme) => Promise<void>;
   /** o card em que esta pessoa está: o filme à vista */
   mexer: (card: CardDaPrevia | null) => void;
+  /** o envio ao Trello está ligado? (o que falta, quando não está) */
+  envio: Previa['envio'];
+  enviar: () => Promise<void>;
+  mandando: boolean;
 }) {
   const faixa = useRef<HTMLDivElement>(null);
   const imagem = useRef<HTMLDivElement>(null);
-  // o filme da barra ("12/34"): o que está mais à vista
+  // o filme da barra ("12/34"): o que está mais à vista; seq.length é a tela final ("resumo")
   const [atual, setAtual] = useState(0);
+  const noFim = atual === seq.length;
   // os dois filmes entre os quais a rolagem está: as duas camadas da imagem mostram as páginas deles
   const [par, setPar] = useState<[number, number]>([0, 0]);
   const tamanhoDe = useCallback((numero: number) => paginas.find((p) => p.numero === numero)?.tamanho ?? null, [paginas]);
@@ -114,8 +140,8 @@ function Sequencia({
     setInteira(false);
     if (k !== undefined && k !== atual) irPara(k, true);
   };
-  /** Grava a resposta no filme k; depois do instante da marca nova, anda se ele parou de perguntar e se a pessoa ainda
-      está nele. */
+  /** Grava a resposta no filme k; depois do instante da marca nova, anda (do último, para a tela final) se ele parou de
+      perguntar e se a pessoa ainda está nele. */
   const responder = async (k: number, m: MudancaNoFilme) => {
     const antes = agora.current.seq[k];
     if (!antes || antes.saiu) return;
@@ -123,7 +149,7 @@ function Sequencia({
     window.clearTimeout(avanco.current);
     avanco.current = window.setTimeout(() => {
       const { seq: s, atual: a } = agora.current;
-      if (a === k && k + 1 < s.length && avancaDepoisDaResposta(antes, s[k], m)) irPara(k + 1);
+      if (a === k && avancaDepoisDaResposta(antes, s[k], m)) irPara(k + 1);
     }, MARCA_MS);
   };
   // o filme à vista é o card em que esta pessoa está: os outros veem o título grifado na cor dela
@@ -138,7 +164,7 @@ function Sequencia({
     if (!el || !caixa || !el.clientWidth) return;
     const pos = el.scrollLeft / el.clientWidth;
     const q = quadroNaRolagem(seq, pos, semMovimento());
-    setAtual(Math.min(seq.length - 1, Math.max(0, Math.round(pos))));
+    setAtual(Math.min(seq.length, Math.max(0, Math.round(pos))));
     if (q.de !== par[0] || q.para !== par[1]) return setPar([q.de, q.para]); // o efeito depois do render pinta de novo
     caixa.dataset.modo = q.modo;
     const [w, h] = [caixa.clientWidth, caixa.clientHeight];
@@ -227,6 +253,15 @@ function Sequencia({
             </section>
           );
         })}
+        <TelaFinal
+          previaId={previaId}
+          seq={seq}
+          atual={noFim}
+          envio={envio}
+          enviar={enviar}
+          mandando={mandando}
+          voltar={(k) => irPara(k, true)}
+        />
       </div>
       <div className="sequencia-gente">
         <Presentes pessoas={pessoas} />
@@ -236,7 +271,7 @@ function Sequencia({
       )}
       <footer className="sequencia-barra">
         <span className="posicao" aria-live="polite">
-          {atual + 1}/{seq.length}
+          {noFim ? 'resumo' : `${atual + 1}/${seq.length}`}
         </span>
       </footer>
     </main>
@@ -317,6 +352,107 @@ function PaginaInteira({
       </div>
       <p className="pi-dica">Toque num pôster para ir até o filme. Fora, volta.</p>
     </div>
+  );
+}
+
+const prontos = (n: number) => `${n} ${n === 1 ? 'pronto' : 'prontos'}`;
+
+/**
+ * A tela final, o último item da faixa: a conta, as pendências (o toque volta ao filme, de um pulo), o resultado do
+ * envio em cada filme e o Enviar embaixo. O Enviar é o do computador: os prontos de todas as páginas.
+ */
+function TelaFinal({
+  previaId,
+  seq,
+  atual,
+  envio,
+  enviar,
+  mandando,
+  voltar,
+}: {
+  previaId: string;
+  seq: FilmeNaSequencia[];
+  /** a tela final está à vista */
+  atual: boolean;
+  envio: Previa['envio'];
+  enviar: () => Promise<void>;
+  mandando: boolean;
+  voltar: (k: number) => void;
+}) {
+  const fim = telaFinal(seq);
+  const ligado = envio?.ligado !== false;
+  const indo = mandando || fim.envio.some((e) => e.estado === 'enviando');
+  const titulo = (k: number) => seq[k].filme.titulo || 'sem título';
+  return (
+    <section className="sequencia-fim" aria-label="O resumo da prévia" aria-current={atual || undefined}>
+      <div className="sf-corpo">
+        <h2 className="sf-conta">
+          {prontos(fim.prontos)} · {fim.pergunta} com pergunta
+        </h2>
+        <p className="sf-trello">
+          <Icone nome="quadro" tam={15} traco={2.2} />
+          {fim.trello ? `${fim.trello} já no Trello` : 'nenhum no Trello ainda'}
+        </p>
+        {fim.pendencias.length > 0 && (
+          <>
+            <h3 className="sf-sub">Com pergunta</h3>
+            <ul className="sf-pendencias">
+              {fim.pendencias.map((k) => {
+                const f = seq[k].filme;
+                return (
+                  <li key={k}>
+                    <button type="button" onClick={() => voltar(k)} aria-label={`${titulo(k)}: ${anotacao(f) ?? 'pede atenção'}`}>
+                      {f.poster !== null ? <img src={imagemDaPagina(previaId, seq[k].numero, f.poster + 1)} alt="" /> : <span className="sem" />}
+                      <span className="sf-titulo">{titulo(k)}</span>
+                      <span className="sf-nota">{anotacao(f)}</span>
+                      <span className="sf-ir" aria-hidden="true">
+                        ›
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+        {fim.envio.length > 0 && (
+          <>
+            <h3 className="sf-sub">O envio</h3>
+            <ul className="sf-envio">
+              {fim.envio.map((e) => (
+                <li key={e.k} data-estado={e.estado}>
+                  <span className="sf-titulo">{titulo(e.k)}</span>
+                  {e.estado === 'enviando' ? (
+                    <span className="sf-estado">enviando…</span>
+                  ) : e.estado === 'enviado' ? (
+                    e.link ? (
+                      <a className="sf-estado" href={e.link} target="_blank" rel="noreferrer">
+                        enviado
+                      </a>
+                    ) : (
+                      <span className="sf-estado">enviado</span>
+                    )
+                  ) : (
+                    <span className="sf-estado">não foi: {e.erro || 'erro sem motivo'}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+      <div className="sf-enviar">
+        {!ligado ? (
+          <p className="sf-dica">O envio está desligado: falta {envio?.faltando.join(', ')}</p>
+        ) : (
+          fim.pergunta > 0 && <p className="sf-dica">Os com pergunta ficam para o próximo envio.</p>
+        )}
+        <button className="botao primario" disabled={!ligado || !fim.prontos || indo} onClick={() => void enviar()}>
+          <Icone nome="quadro" tam={17} traco={2.2} />
+          {indo ? 'Mandando…' : fim.prontos ? `Enviar ${prontos(fim.prontos)}` : 'Enviar'}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -422,6 +558,9 @@ function CardDoFilme({
         </p>
       )}
       {!s.saiu && pergunta === 'sem-titulo' && <p className="cc-explica">Toque no título para escrever.</p>}
+      {!s.saiu && !pergunta && f.envio?.estado === 'erro' && (
+        <p className="cc-explica">Não foi para o Trello: {f.envio.erro || 'erro sem motivo'}. Vai no próximo Enviar.</p>
+      )}
       {opcoes.length > 0 && (
         <div className={`cc-opcoes ${pergunta}`} role="group" aria-label={nota ?? 'A pergunta'}>
           {opcoes.map((o, k) => (

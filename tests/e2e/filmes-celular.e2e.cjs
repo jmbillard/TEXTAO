@@ -15,7 +15,10 @@
 // corrige num campo de 16px; o filme da Sessão da Tarde sobe pelo "Subir para a vaga"; o link do card do Trello; e a
 // presença dos dois lados, com o Bruno no computador. A página inteira (#83): um toque na imagem mostra a página do
 // filme atual inteira, com ele contornado e os pendentes com o círculo menor; o pôster leva ao filme, o toque fora volta;
-// e o filme sem pôster mostra a página inteira com a nota "sem pôster". Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=<pasta>,
+// e o filme sem pôster mostra a página inteira com a nota "sem pôster". A tela final (#84): depois do último filme, o
+// resumo ("N prontos · M com pergunta", quantos já estão no Trello, as pendências tocáveis que voltam ao filme) e o
+// Enviar, que leva só os prontos de todas as páginas ao Trello falso; o resultado em cada filme (enviando, enviado e o
+// erro com o motivo, que vai de novo no próximo Enviar). Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=<pasta>,
 // guarda as telas nos temas claro e escuro, e a entrada do computador (que não muda).
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:filmes
@@ -60,6 +63,61 @@ const EXIBICOES = [
 const diaDe = (e) => new Date(e.data_de_exibicao).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 const consultar = async (sql, params = []) =>
   sql.includes('"filmes_teste"') ? BANCO : sql.includes('"exibicoes_teste"') ? EXIBICOES.filter((e) => (params[0] ?? []).includes(diaDe(e))) : [];
+
+/* ---------- o Trello falso (e a escrita no Teable que o envio faz) ---------- */
+/** As variáveis do envio dos filmes, com ids inventados: a lista dos filmes e as tabelas do cadastro e das exibições. */
+const ENV_TRELLO = {
+  ...ENV,
+  TRELLO_KEY: 'chave-falsa',
+  TRELLO_TOKEN: 'token-falso',
+  TRELLO_LISTA_FILMES: 'listaFilmesFalsa',
+  TEABLE_FILMES: 'tblFilmesFalso',
+  TEABLE_FILMES_POSTER: 'fldPosterFalso',
+  TEABLE_EXIBICOES: 'tblExibicoesFalso',
+};
+/**
+ * O Trello e o Teable falsos do envio, num fetch só: guardam os cards criados. `segurar()` prende a criação dos próximos
+ * cards até o teste soltar (para ver o "enviando"); `recusar(trecho)` faz o Trello recusar o card cujo nome tem o trecho,
+ * uma vez.
+ */
+function trelloFalso() {
+  const cards = [];
+  let preso = null;
+  const recusados = new Set();
+  let n = 0;
+  const ok = (dados) => ({ ok: true, status: 200, json: async () => dados, text: async () => JSON.stringify(dados) });
+  const buscar = async (endereco, init = {}) => {
+    const url = new URL(endereco);
+    const metodo = init.method ?? 'GET';
+    if (url.origin === ENV_TRELLO.TEABLE_URL) {
+      if (/\/uploadAttachment$/.test(url.pathname)) return ok({ id: url.pathname.split('/')[5], fields: { [ENV_TRELLO.TEABLE_FILMES_POSTER]: [{ name: 'poster.jpg', token: `tokFalso${++n}` }] } });
+      const corpo = typeof init.body === 'string' ? JSON.parse(init.body) : {};
+      return ok({ records: (corpo.records ?? [{}]).map((r) => ({ id: `recFalsoNovo${++n}`, fields: r.fields ?? {} })) });
+    }
+    if (url.host !== 'api.trello.com') throw new Error(`o teste não sai para a rede: ${endereco}`);
+    const rota = url.pathname.replace(/^\/1/, '');
+    if (rota === '/cards' && metodo === 'POST') {
+      if (preso) await preso.promessa;
+      const corpo = JSON.parse(init.body);
+      const recusa = [...recusados].find((t) => corpo.name.includes(t));
+      if (recusa) {
+        recusados.delete(recusa);
+        return { ok: false, status: 401, json: async () => ({}), text: async () => 'invalid token' };
+      }
+      const id = `cardFalso${++n}`;
+      cards.push({ id, nome: corpo.name, lista: corpo.idList });
+      return ok({ id, shortUrl: `https://trello.com/c/${id}` });
+    }
+    if (/^\/cards\/\w+\/checklists$/.test(rota)) return ok([]);
+    return ok({ id: `x${++n}` });
+  };
+  const segurar = () => {
+    let soltar;
+    preso = { promessa: new Promise((ok) => (soltar = ok)) };
+    return () => ((preso = null), soltar());
+  };
+  return { buscar, cards, segurar, recusar: (trecho) => recusados.add(trecho) };
+}
 
 /* ---------- a prévia fictícia em PDF ---------- */
 /** Um PNG de uma cor só (o pôster fictício). */
@@ -729,13 +787,123 @@ async function naTarde(navegador, s, leitura, pdf) {
   await ctx.close();
 }
 
+/* ---------- a tela final e o Enviar (#84) ---------- */
+/** A tela final à vista: a conta, o "no Trello", as pendências e o resultado do envio (o título e o estado de cada um). */
+async function telaFinalAgora(p) {
+  const fim = p.locator('.sequencia-fim');
+  const texto = async (sel) => (await fim.locator(sel).innerText()).replace(/\s+/g, ' ').trim();
+  return {
+    conta: await texto('.sf-conta'),
+    trello: await texto('.sf-trello'),
+    pendencias: await fim.locator('.sf-pendencias .sf-titulo').allTextContents(),
+    envio: await fim.locator('.sf-envio li').evaluateAll((lis) => lis.map((li) => [li.querySelector('.sf-titulo').textContent, li.dataset.estado])),
+  };
+}
+const botaoEnviar = (p) => p.locator('.sequencia-fim .sf-enviar button');
+
+/** iPhone, na prévia A (no último filme, 4/4): depois do último, o resumo; tudo respondido, nada com pergunta. */
+async function naTelaFinal(p) {
+  assert.deepEqual(await filmeAVista(p), ['4/4', 'FILME INEDITO FICTICIO DOIS']);
+  await arrastar(p, -0.6);
+  assert.equal((await p.locator('.sequencia-barra .posicao').textContent()).trim(), 'resumo', 'a barra diz "resumo" no fim');
+  assert.equal(await p.locator('.sequencia-fim[aria-current]').count(), 1);
+  assert.deepEqual(await telaFinalAgora(p), { conta: '4 prontos · 0 com pergunta', trello: 'nenhum no Trello ainda', pendencias: [], envio: [] });
+  assert.equal((await botaoEnviar(p).innerText()).trim(), 'Enviar 4 prontos');
+  assert.ok(await botaoEnviar(p).isEnabled());
+  assert.equal(await p.locator('.sequencia-fim .sf-dica').count(), 0, 'nada com pergunta, nada fica para depois');
+  // o Enviar fica embaixo, logo acima da barra, ao alcance do polegar
+  const [botao, barra] = await Promise.all([botaoEnviar(p).boundingBox(), p.locator('.sequencia-barra').boundingBox()]);
+  assert.ok(barra.y - (botao.y + botao.height) < 40, `o Enviar fica embaixo (${botao.y + botao.height} e a barra em ${barra.y})`);
+  await semRolagemDeLado(p, 'iPhone, a tela final');
+  await alvosDe44(p, 'iPhone, a tela final');
+  await capturar(p, 'iphone-09-tela-final');
+  // e volta ao último filme
+  await arrastar(p, 0.6);
+  assert.deepEqual(await filmeAVista(p), ['4/4', 'FILME INEDITO FICTICIO DOIS']);
+}
+
+/**
+ * Android, na prévia B (no último filme, 4/4), com o Trello falso: o resumo com a pendência (o ano do Rivais), que
+ * tocada volta ao filme; o Enviar leva só os três prontos, de três páginas: "enviando" em cada um, e o card que o Trello
+ * recusa volta com o motivo e vai no próximo Enviar. O Rivais (com pergunta) fica para o próximo envio.
+ */
+async function enviarNoAndroid(p, trello) {
+  assert.deepEqual(await filmeAVista(p), ['4/4', 'FILME SEM POSTER FICTICIO']);
+  await arrastar(p, -0.6);
+  assert.equal((await p.locator('.sequencia-barra .posicao').textContent()).trim(), 'resumo');
+  assert.deepEqual(await telaFinalAgora(p), { conta: '3 prontos · 1 com pergunta', trello: 'nenhum no Trello ainda', pendencias: ['RIVAIS'], envio: [] });
+  assert.equal((await p.locator('.sequencia-fim .sf-dica').textContent()).trim(), 'Os com pergunta ficam para o próximo envio.');
+  assert.equal((await botaoEnviar(p).innerText()).trim(), 'Enviar 3 prontos');
+  await semRolagemDeLado(p, 'Android, a tela final');
+  await alvosDe44(p, 'Android, a tela final');
+  await capturar(p, 'android-10-tela-final');
+
+  // a pendência tocada volta ao filme dela (de um pulo); e de lá, de novo até o fim
+  await p.locator('.sf-pendencias button', { hasText: 'RIVAIS' }).tap();
+  await paradaNoFilme(p);
+  assert.deepEqual(await filmeAVista(p), ['2/4', 'RIVAIS'], 'a pendência volta ao filme');
+  for (let k = 0; k < 3; k++) await arrastar(p, -0.6);
+  assert.equal((await p.locator('.sequencia-barra .posicao').textContent()).trim(), 'resumo');
+
+  // o Enviar: os três prontos passam a "enviando" (o Trello falso segura os cards); o do sem pôster o Trello recusa
+  const soltar = trello.segurar();
+  trello.recusar('FILME SEM POSTER FICTICIO');
+  await botaoEnviar(p).tap();
+  await p.locator('.sf-envio li[data-estado="enviando"]').nth(2).waitFor({ timeout: 15000 });
+  assert.deepEqual((await telaFinalAgora(p)).envio, [
+    ['KONG: ILHA DA CAVEIRA', 'enviando'],
+    ['FILME INEDITO FICTICIO', 'enviando'],
+    ['FILME SEM POSTER FICTICIO', 'enviando'],
+  ]);
+  assert.equal((await botaoEnviar(p).innerText()).trim(), 'Mandando…');
+  assert.ok(await botaoEnviar(p).isDisabled(), 'enviando, o Enviar espera');
+  assert.equal(await cardNa(p, 0).locator('.ficha-marca').getAttribute('aria-label'), 'Indo para o Trello');
+  soltar();
+  // o resultado chega pela batida: dois enviados e o erro com o motivo
+  await p.waitForFunction(() => !document.querySelector('.sf-envio li[data-estado="enviando"]') && document.querySelectorAll('.sf-envio li').length === 3, null, { timeout: 30000 });
+  const depois = await telaFinalAgora(p);
+  assert.deepEqual(depois.envio, [
+    ['KONG: ILHA DA CAVEIRA', 'enviado'],
+    ['FILME INEDITO FICTICIO', 'enviado'],
+    ['FILME SEM POSTER FICTICIO', 'erro'],
+  ]);
+  assert.match(await p.locator('.sf-envio li[data-estado="erro"] .sf-estado').textContent(), /^não foi: Trello respondeu 401 .*invalid token/);
+  assert.equal(await p.locator('.sf-envio li[data-estado="enviado"] a').first().getAttribute('href'), `https://trello.com/c/${trello.cards[0].id}`);
+  assert.deepEqual([depois.conta, depois.trello, depois.pendencias], ['1 pronto · 1 com pergunta', '2 já no Trello', ['RIVAIS']]);
+  assert.equal((await botaoEnviar(p).innerText()).trim(), 'Enviar 1 pronto');
+  await semRolagemDeLado(p, 'Android, o resultado do envio');
+  await capturar(p, 'android-11-resultado-do-envio');
+  // o motivo também no card do filme
+  assert.match(await cardNa(p, 3).locator('.cc-explica').textContent(), /^Não foi para o Trello: Trello respondeu 401 .*Vai no próximo Enviar\.$/);
+
+  // o próximo Enviar leva só o que deu erro; o Rivais continua com a pergunta
+  await botaoEnviar(p).tap();
+  await p.waitForFunction(() => document.querySelectorAll('.sf-envio li[data-estado="enviado"]').length === 3, null, { timeout: 30000 });
+  const fim = await telaFinalAgora(p);
+  assert.deepEqual([fim.conta, fim.trello, fim.pendencias], ['0 prontos · 1 com pergunta', '3 já no Trello', ['RIVAIS']]);
+  assert.ok(await botaoEnviar(p).isDisabled(), 'sem prontos, nada a enviar');
+  // o que chegou ao Trello falso: um card por pronto, na lista dos filmes, e nada do Rivais
+  assert.deepEqual(
+    trello.cards.map((c) => [c.lista, /KONG|FILME INEDITO FICTICIO|FILME SEM POSTER FICTICIO|RIVAIS/.exec(c.nome)?.[0]]),
+    [
+      ['listaFilmesFalsa', 'KONG'],
+      ['listaFilmesFalsa', 'FILME INEDITO FICTICIO'],
+      ['listaFilmesFalsa', 'FILME SEM POSTER FICTICIO'],
+    ],
+  );
+  await semRolagemDeLado(p, 'Android, tudo enviado');
+  await alvosDe44(p, 'Android, tudo enviado');
+}
+
 async function principal() {
   if (CAPTURAS) mkdirSync(CAPTURAS, { recursive: true });
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-previas-'));
   const { criarFilmes } = await import(join(RAIZ, 'servidor', 'filmes.mjs'));
   const leitura = leituraFalsa(filmesDaPagina);
   const { teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
-  const s = await subir({ env: ENV, teable: teableFalso(NO_POSTGRES, { base: 'bse_teste' }), filmes: (env, deps) => criarFilmes(env, { ...deps, pasta, buscar: leitura.buscar, consultar }) });
+    // o Trello falso (#84): o Enviar da tela final vai até ele
+  const trello = trelloFalso();
+  const s = await subir({ env: ENV, trello: { env: ENV_TRELLO, buscar: trello.buscar, consultar }, teable: teableFalso(NO_POSTGRES, { base: 'bse_teste' }), filmes: (env, deps) => criarFilmes(env, { ...deps, pasta, buscar: leitura.buscar, consultar }) });
   const navegador = await chromium.launch();
   try {
     const pdfA = await pdfDaPrevia([['KONG: ILHA DA CAVEIRA', 'O CORVO'], ['RIVAIS', 'FILME INEDITO FICTICIO']], 'A');
@@ -765,10 +933,14 @@ async function principal() {
     await naPaginaInteira(navegador, s.url, idDaPrevia);
     // responder no card (#82): com o Bruno ainda na prévia A, no computador
     await responderNoCard(iphone.p, pc, idDaPrevia, mudancas);
+    // a tela final (#84), depois do último filme
+    await naTelaFinal(iphone.p);
     await semMovimentoNaSequencia(navegador, s.url, idDaPrevia);
     await naTarde(navegador, s, leitura, await pdfDaTarde());
     // o filme sem pôster (#83), no Android, depois dos gestos do iPhone
     await semPosterNoAndroid(android.p, android.f);
+    // a tela final e o Enviar (#84), na prévia B: até o Trello falso
+    await enviarNoAndroid(android.p, trello);
 
     // o computador não muda: a entrada larga, com o "Solte aqui o PDF da prévia"
     await pc.goto(`${s.url}#/filmes`);
@@ -780,7 +952,7 @@ async function principal() {
     assert.deepEqual(iphone.erros, [], 'iPhone: erros na página');
     assert.deepEqual(android.erros, [], 'Android: erros na página');
     await Promise.all([iphone.ctx.close(), android.ctx.close(), outro.close()]);
-    console.log('ok: a aba Filmes no celular (iPhone 13 e Pixel 7): a subida, a retomada, o andamento, a sequência de filmes, responder no card e a página inteira');
+    console.log('ok: a aba Filmes no celular (iPhone 13 e Pixel 7): a subida, a retomada, o andamento, a sequência de filmes, responder no card, a página inteira, a tela final e o Enviar');
   } finally {
     await navegador.close();
     await s.descer();

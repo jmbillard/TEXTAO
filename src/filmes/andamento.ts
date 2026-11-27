@@ -1,7 +1,7 @@
 /* O andamento da prévia na entrada do celular (#80): o que a ficha de cada prévia conta e o estado de cada página
    na subida, do navegador (preparando, subindo) ao servidor (na fila, lendo, lida). A subida é a mesma do computador
    (preparar.ts): aqui só se junta o que esta tela está mandando com o que o servidor diz de cada página. */
-import type { PaginaDaPrevia } from '../dados/armazenamento';
+import type { FilmeLido, PaginaDaPrevia } from '../dados/armazenamento';
 
 export interface AndamentoDaPrevia {
   lidas: number;
@@ -14,6 +14,15 @@ export interface AndamentoDaPrevia {
   trello: number;
 }
 
+/** Onde o filme entra na conta: com pergunta (!), no Trello (enviado ou indo agora), pronto (✓, o que deu erro vai de
+    novo) ou em nenhuma (sem conferência). A mesma conta da ficha da prévia e da tela final da sequência (#84). */
+export function contaDoFilme(f: FilmeLido): 'pergunta' | 'trello' | 'prontos' | null {
+  const marca = f.conferencia?.marca;
+  if (marca === 'atencao') return 'pergunta';
+  if (marca === 'trello' || f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado') return 'trello';
+  return marca === 'ok' ? 'prontos' : null;
+}
+
 /** O que a ficha da prévia conta: as páginas lidas e, nelas, os prontos, os com pergunta e os que já estão no Trello. */
 export function andamentoDaPrevia(paginas: PaginaDaPrevia[]): AndamentoDaPrevia {
   const a: AndamentoDaPrevia = { lidas: 0, total: paginas.length, prontos: 0, pergunta: 0, trello: 0 };
@@ -21,10 +30,8 @@ export function andamentoDaPrevia(paginas: PaginaDaPrevia[]): AndamentoDaPrevia 
     if (p.estado !== 'lida') continue;
     a.lidas++;
     for (const f of p.filmes) {
-      const marca = f.conferencia?.marca;
-      if (marca === 'atencao') a.pergunta++;
-      else if (marca === 'trello' || f.envio?.estado === 'enviando' || f.envio?.estado === 'enviado') a.trello++;
-      else if (marca === 'ok') a.prontos++;
+      const conta = contaDoFilme(f);
+      if (conta) a[conta]++;
     }
   }
   return a;

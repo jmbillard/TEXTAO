@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { atualizarSequencia, avancaDepoisDaResposta, montarSequencia, paginaInteira, quadroNaRolagem } from '../src/filmes/sequencia';
+import { atualizarSequencia, avancaDepoisDaResposta, montarSequencia, paginaInteira, quadroNaRolagem, telaFinal } from '../src/filmes/sequencia';
 import { opcoesDaPergunta } from '../src/filmes/perguntas';
 import type { Conferencia, FilmeLido, PaginaDaPrevia } from '../src/dados/armazenamento';
 
@@ -278,5 +278,51 @@ describe('responder no card', () => {
     // e a sessão escolhida responde: anda
     const comSessao = atualizarSequencia([subiu], [pagina(2, [filme('DA TARDE', 'SUPERCINE', '01/12/2026', { poster: 0, subiu: true })])])[0];
     expect(avancaDepoisDaResposta(subiu, comSessao, { sessao: 'SUPERCINE' })).toBe(true);
+  });
+});
+
+/* A tela final (#84): o último item da sequência, com a conta, as pendências (tocadas, voltam ao filme), o Enviar
+   (leva os prontos de todas as páginas) e o resultado do envio em cada filme. */
+describe('a tela final', () => {
+  const seq = () =>
+    montarSequencia([
+      pagina(2, [
+        filme('PRONTO DA PÁGINA 1', 'SUPERCINE', '01/12/2026'),
+        filme('QUAL FILME', 'TELA QUENTE', '02/12/2026', { conferencia: conf('atencao', 'qual-filme') }),
+        filme('ENVIADO', 'SUPERCINE', '03/12/2026', { conferencia: conf('trello'), envio: { estado: 'enviado', link: 'https://trello.com/c/FICTICIO1' } }),
+        filme('JÁ TINHA CARD', 'CORUJÃO', '04/12/2026', { conferencia: conf('trello') }),
+      ]),
+      pagina(3, [
+        filme('INDO AGORA', 'SUPERCINE', '05/12/2026', { envio: { estado: 'enviando' } }),
+        filme('NÃO FOI', 'SUPERCINE', '06/12/2026', { envio: { estado: 'erro', erro: 'o Trello recusou o card (401)' } }),
+        filme('QUAL ANO', 'SUPERCINE', '07/12/2026', { conferencia: conf('atencao', 'ano-diferente') }),
+        filme('DA TARDE PRONTO', 'SESSÃO DA TARDE', '01/12/2026'),
+      ]),
+    ]);
+
+  it('a conta: os prontos que vão no Enviar (o que deu erro vai de novo), os com pergunta e os que já estão no Trello', () => {
+    expect(telaFinal(seq())).toMatchObject({ prontos: 3, pergunta: 2, trello: 3 });
+  });
+
+  it('as pendências, na ordem da sequência, com a posição do filme (o toque volta até ele)', () => {
+    const s = seq();
+    const fim = telaFinal(s);
+    expect(fim.pendencias.map((k) => s[k].filme.titulo)).toEqual(['QUAL FILME', 'QUAL ANO']);
+  });
+
+  it('o resultado do envio em cada filme: enviando, enviado (com o link) e o erro com o motivo', () => {
+    const s = seq();
+    expect(telaFinal(s).envio.map((e) => [s[e.k].filme.titulo, e.estado, e.erro ?? e.link ?? null])).toEqual([
+      ['ENVIADO', 'enviado', 'https://trello.com/c/FICTICIO1'],
+      ['INDO AGORA', 'enviando', null],
+      ['NÃO FOI', 'erro', 'o Trello recusou o card (401)'],
+    ]);
+  });
+
+  it('o que saiu da prévia durante a revisão não conta nem fica pendente', () => {
+    const s = seq().map((x) => (x.filme.titulo === 'QUAL ANO' || x.filme.titulo === 'PRONTO DA PÁGINA 1' ? { ...x, saiu: true } : x));
+    const fim = telaFinal(s);
+    expect(fim).toMatchObject({ prontos: 2, pergunta: 1, trello: 3 });
+    expect(fim.pendencias.map((k) => s[k].filme.titulo)).toEqual(['QUAL FILME']);
   });
 });
