@@ -163,9 +163,10 @@ const passamDaBorda = (p) =>
     versão), o código da claquete da Novela, nada no Show da Noite. Numa linha própria, embaixo da claquete inteira. */
 async function versoesNosCards(p, onde) {
   const versoes = (claquete) => cardDe(p, claquete).locator('.versoes-do-card');
-  assert.deepEqual(await textos(versoes('Festa na Praça').locator('.versao-lida')), ['amanhã'], `${onde}: a Festa com a versão do roteiro`);
-  assert.equal((await versoes('Festa na Praça').locator('.conflito-versoes').textContent()).trim(), 'a claquete não diz a versão', `${onde}: e o aviso de conflito`);
-  assert.deepEqual(await textos(versoes('Novela Sinfonia').locator('.versao-lida')), ['amanhã', 'hoje'], `${onde}: a Novela com o código da claquete`);
+  assert.deepEqual(await textos(versoes('Festa na Praça').locator('.codigo-versoes')), ['(A)'], `${onde}: a Festa com a versão do roteiro, só o código`);
+  assert.equal((await versoes('Festa na Praça').locator('.conflito-versoes').textContent()).trim(), 'o roteiro diz (A), a claquete não diz a versão', `${onde}: e o aviso de conflito`);
+  assert.deepEqual(await textos(versoes('Novela Sinfonia').locator('.codigo-versoes')), ['(AH)'], `${onde}: a Novela com o código da claquete`);
+  assert.equal(await versoes('Novela Sinfonia').locator('.codigo-versoes').getAttribute('title'), 'amanhã e hoje, do código da claquete', `${onde}: a dica diz o que quer dizer`);
   assert.equal(await versoes('Novela Sinfonia').locator('.conflito-versoes').count(), 0, `${onde}: o código da claquete não tem aviso`);
   assert.equal(await versoes('Show da Noite').count(), 0, `${onde}: sem versão, sem a linha`);
   const arranjo = await p.locator('.prod-card:has(.versoes-do-card)').evaluateAll((cs) =>

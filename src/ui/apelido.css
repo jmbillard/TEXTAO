@@ -8,19 +8,16 @@
 .apelido-botao { border: 0; background: none; padding: 2px 0; font: 500 12px var(--sans); color: inherit; opacity: 0.75; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; cursor: pointer; min-height: 24px; }
 .apelido-botao:hover { opacity: 1; }
 .apelido-linha input { flex: 1 1 160px; min-width: 0; border: 0; border-bottom: 1px dashed currentColor; background: none; color: inherit; font: 600 13.5px/1.3 var(--mono); padding: 2px 0; outline: 0; }
-.versoes-lidas { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.versao-lida { border: 1px solid currentColor; border-radius: 999px; padding: 0 7px; font: 500 11.5px/18px var(--sans); opacity: 0.85; white-space: nowrap; }
+.versoes-lidas { display: inline-flex; }
 .conflito-versoes { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-style: italic; opacity: 0.75; }
 .claquete .conflito-versoes { color: #f5d400; opacity: 1; }
 .apelido-erro { color: var(--perigo, #e5262b); }
-/* na ficha da fila: as etiquetas discretas ao lado da atração */
+/* na ficha da fila: o código discreto ao lado da atração */
 .ficha .versoes-lidas { margin-left: 6px; vertical-align: 1px; }
-.ficha .versao-lida { font-size: 10.5px; line-height: 16px; padding: 0 6px; opacity: 0.7; }
+.ficha .codigo-versoes { line-height: 16px; opacity: 0.7; }
 .ficha .conflito-versoes { margin-left: 6px; font-size: 11.5px; }
-/* a versão que veio só do dia da semana: tracejada, com o "?" */
-.versao-lida.a-conferir { border-style: dashed; }
 /* no card da agenda e no da tela de produções (#121): numa linha própria, abaixo da claquete, que quebra */
 .versoes-do-card { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; margin-top: 3px; min-width: 0; color: var(--tinta2); }
-.versoes-do-card .versao-lida { font-size: 10.5px; line-height: 16px; padding: 0 6px; opacity: 0.8; }
+.versoes-do-card .codigo-versoes { line-height: 16px; }
 .versoes-do-card .conflito-versoes { font-size: 11px; color: var(--tinta3); }
 .secao-trello.encolhida .card-semana:not(.aberto) .versoes-do-card { display: none; }

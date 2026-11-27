@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerVersoes } from '../src/modelo/pauta';
+import { codigoDasVersoes, leituraDasVersoes, lerVersoes } from '../src/modelo/pauta';
 
 /* As versões da chamada na pauta da edição (#95): o código no fim da claquete, uma letra por versão (A amanhã, H hoje,
    N nesta <dia>, P próxima <dia>, D dia X) ou um código inteiro (DIA, MES/MÊS, MNT). O dia da semana, o número e o
@@ -148,5 +148,34 @@ describe('lerVersoes: o código desconhecido aparece cru', () => {
   it('com um dia da linha que não é data, ainda responde', () => {
     expect(rotulos('Especial (N)', '')).toEqual(['nesta …']);
     expect(rotulos('Especial (AH)', 'xx')).toEqual(['amanhã', 'hoje']);
+  });
+});
+
+describe('codigoDasVersoes: a tela mostra só o código no padrão', () => {
+  const codigo = (claquete: string) => codigoDasVersoes(lerVersoes(claquete, '2026-11-26').versoes);
+
+  it('uma letra maiúscula por versão, na ordem escrita, entre parênteses', () => {
+    expect(codigo('Show da Tarde 27/11 (AH)')).toBe('(AH)');
+    expect(codigo('Show da Tarde 27/11 (pnah)')).toBe('(PNAH)');
+    expect(codigo('Show da Tarde 27/11 ( há )')).toBe('(HA)');
+    expect(codigo('Show da Tarde 27/11 nah')).toBe('(NAH)');
+  });
+
+  it('DIA vira D, MES e MÊS viram M, MNT fica inteiro', () => {
+    expect(codigo('Show da Tarde 27/11 (dia)')).toBe('(D)');
+    expect(codigo('Festival 3/1 (MÊS)')).toBe('(M)');
+    expect(codigo('Festival 3/1 (mes)')).toBe('(M)');
+    expect(codigo('Grade da Noite 27/11 (mnt)')).toBe('(MNT)');
+  });
+
+  it('o desconhecido aparece cru; sem versão, nada', () => {
+    expect(codigo('Show da Tarde 28/11 (XyZ)')).toBe('(XyZ)');
+    expect(codigo('Show da Tarde 28/11')).toBe('');
+  });
+
+  it('a dica diz o que o código quer dizer', () => {
+    expect(leituraDasVersoes(lerVersoes('Show da Tarde 27/11 (AH)', '2026-11-26').versoes)).toBe('amanhã e hoje');
+    expect(leituraDasVersoes(lerVersoes('Show da Tarde 27/11 (AHN)', '2026-11-26').versoes)).toBe('amanhã, hoje e nesta sex');
+    expect(leituraDasVersoes(lerVersoes('Show da Tarde 27/11 (MNT)', '2026-11-26').versoes)).toBe('manutenção da grade');
   });
 });

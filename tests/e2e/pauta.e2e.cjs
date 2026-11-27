@@ -127,8 +127,9 @@ const capturar = async (p, nome, fullPage = true) => {
   await p.waitForTimeout(300);
   await p.screenshot({ path: join(CAPTURAS, `${nome}.png`), fullPage });
 };
-/** As etiquetas das versões: [o rótulo, o código pequeno]. */
-const etiquetas = (l) => l.locator('.pauta-versao').evaluateAll((es) => es.map((e) => [e.firstChild.textContent.trim(), e.querySelector('small')?.textContent ?? '']));
+/** As versões: só o código no padrão, uma etiqueta por claquete, e a dica dela ao passar o mouse. */
+const etiquetas = (l) => l.locator('.codigo-versoes').evaluateAll((es) => es.map((e) => e.textContent.trim()));
+const dicas = (l) => l.locator('.codigo-versoes').evaluateAll((es) => es.map((e) => e.title));
 const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
 const fileira = (p, nome) => p.locator('.pauta-grade tbody tr', { has: p.locator('.pauta-nome', { hasText: new RegExp(`^${nome}$`) }) });
 const celula = (p, nome, dia) => fileira(p, nome).locator(`td[data-dia="${dia}"]`);
@@ -159,14 +160,20 @@ async function noComputador(navegador, url, tema) {
   assert.equal((await daCarla.locator('.pauta-turno').textContent()).trim(), '22:00–06:00');
   assert.deepEqual(await textos(daCarla.locator('.pauta-texto')), [`Festa da Vila(Prologo)${diaMes(mais(segunda, 2))}`]);
 
-  // as versões viram etiquetas, cada uma com o código original pequeno ao lado; o desconhecido aparece cru
-  assert.deepEqual(await etiquetas(daCarla), [['amanhã', 'A'], ['hoje', 'H']]);
+  // as versões aparecem só como o código no padrão, uma etiqueta por claquete; o que ele quer dizer fica na dica; o
+  // desconhecido aparece cru
+  assert.deepEqual(await etiquetas(daCarla), ['(AH)']);
+  assert.match((await dicas(daCarla))[0], /^amanhã e hoje, da claquete /);
   const itemDo = (texto) => celula(p, 'Bruno Teixeira', hoje).locator('.pauta-item', { has: p.locator('.pauta-texto', { hasText: texto }) });
   const jogo = new Date(`${JOGO}T12:00:00Z`).getUTCDay();
-  assert.deepEqual(await etiquetas(itemDo('Jogo Final')), [[`dia ${Number(JOGO.slice(8))}`, 'D'], [`${jogo % 6 === 0 ? 'próximo' : 'próxima'} ${SEMANA[jogo]}`, 'p']]);
-  assert.deepEqual(await etiquetas(itemDo('Festival')), [[`em ${MESES[Number(FESTIVAL.slice(5, 7)) - 1]}`, 'MÊS']]);
-  assert.deepEqual(await etiquetas(itemDo('Grade da Noite')), [['manutenção da grade', 'MNT']]);
-  assert.deepEqual(await textos(itemDo('Show Extra').locator('.pauta-versao.desconhecida')), ['XYZ']);
+  assert.deepEqual(await etiquetas(itemDo('Jogo Final')), ['(DP)']);
+  assert.match((await dicas(itemDo('Jogo Final')))[0], new RegExp(`^dia ${Number(JOGO.slice(8))} e ${jogo % 6 === 0 ? 'próximo' : 'próxima'} ${SEMANA[jogo]}, `));
+  assert.deepEqual(await etiquetas(itemDo('Festival')), ['(M)']);
+  assert.match((await dicas(itemDo('Festival')))[0], new RegExp(`^em ${MESES[Number(FESTIVAL.slice(5, 7)) - 1]}, `));
+  assert.deepEqual(await etiquetas(itemDo('Grade da Noite')), ['(MNT)']);
+  assert.deepEqual(await textos(itemDo('Show Extra').locator('.codigo-versoes.desconhecido')), ['(XYZ)']);
+  // nenhum rótulo legível na tela: "amanhã", "nesta sex" e o código pequeno ao lado saíram
+  assert.equal(await p.locator('.pauta-versoes small').count(), 0);
   assert.deepEqual(await textos(itemDo('Show Extra').locator('.pauta-texto')), [`Show Extra ${diaMes(hoje)}`]);
 
   // a tarefa tem outro visual que a claquete
@@ -208,7 +215,7 @@ async function noComputador(navegador, url, tema) {
   assert.equal(await tabelas.nth(0).locator('tbody tr').count(), 2);
   assert.deepEqual((await textos(tabelas.nth(0).locator('tbody td:last-child'))).sort(), ['Ana Ribeiro', 'Bruno Teixeira']);
   assert.match((await tabelas.nth(0).locator('tbody tr').first().textContent()) ?? '', /hoje/);
-  assert.deepEqual(await etiquetas(ficha.locator('.pauta-ficha-versoes')), [['hoje', 'H']]);
+  assert.deepEqual(await etiquetas(ficha.locator('.pauta-ficha-versoes')), ['(H)']);
   assert.deepEqual(await tabelas.nth(1).locator('tbody tr').evaluateAll((trs) => trs.map((t) => t.dataset.praca)), ['G5', 'SP']);
   assert.match(await tabelas.nth(1).locator('tr[data-praca="SP"]').textContent(), /Produzindo.*1.*Enzo Prado/);
   assert.match(await tabelas.nth(1).locator('tr[data-praca="G5"]').textContent(), /Entregue.*2.*Dora Lima/);

@@ -84,15 +84,8 @@
   .pauta-aviso-botao { height: 28px; padding: 0 10px; font-size: 12px; }
 }
 
-/* ---------- as versões da chamada (#95): etiquetas legíveis, o código pequeno ao lado ---------- */
-.pauta-versoes { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
-.pauta-versao {
-  display: inline-block; padding: 0 6px; border-radius: 6px;
-  background: var(--neutro); color: var(--tinta2); font: normal 500 11.5px/18px var(--sans); text-transform: none;
-  max-width: 100%;
-}
-.pauta-versao small { margin-left: 4px; white-space: nowrap; font: 500 9.5px var(--mono); color: var(--tinta3); letter-spacing: 0.03em; }
-.pauta-versao.desconhecida { background: transparent; box-shadow: inset 0 0 0 1px var(--regua-forte); font-family: var(--mono); font-size: 10.5px; color: var(--tinta3); }
+/* ---------- as versões da chamada (#95): só o código no padrão, numa etiqueta (CodigoDasVersoes) ---------- */
+.pauta-versoes { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; color: var(--tinta2); }
 
 /* ---------- a claquete com a produção da arte (#96): a etapa, as artes, os designers e a praça; um clique abre a ficha ---------- */
 .pauta-claquete-botao { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: 4px; }
@@ -121,7 +114,7 @@
 .pauta-ficha-tabela td { padding: 10px 14px; vertical-align: top; border-bottom: 1px solid var(--regua); }
 .pauta-ficha-tabela tbody tr:last-child td { border-bottom: 0; }
 .pauta-ficha-tabela tr.hoje td { background: color-mix(in srgb, var(--ultra-suave) 45%, transparent); }
-.pauta-ficha-tabela .pauta-versoes { margin-top: 0; }
+.pauta-ficha-tabela .pauta-versoes, .pauta-ficha-versoes .pauta-versoes { margin-top: 0; }
 .pauta-ficha-tabela .pauta-producao { margin: 0; font-size: 13.5px; }
 .pauta-ficha-praca { font-family: var(--mono); }
 .pauta-ficha-quando { display: block; color: var(--tinta3); font-size: 12px; }

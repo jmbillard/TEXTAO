@@ -1,4 +1,5 @@
 import { conferirODia, type AlvoDaPendencia, type Pendencia } from '../modelo/conferenciaDaEscala';
+import { CodigoDasVersoes } from './CodigoDasVersoes';
 import { horarioNoPadrao, lerDemanda, type DiaDaEscala, type PosicaoDaEscala, type PublicacaoDoDia } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { diaVizinho } from '../modelo/pauta';
@@ -220,12 +221,7 @@ export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara
                             {l.padrao}
                             {l.versoes.length > 0 && (
                               <span className="pauta-versoes">
-                                {l.versoes.map((v, i) => (
-                                  <span key={i} className={`pauta-versao${v.conhecida ? '' : ' desconhecida'}`}>
-                                    {v.rotulo}
-                                    {v.conhecida && <small>{v.codigo.toUpperCase()}</small>}
-                                  </span>
-                                ))}
+                                <CodigoDasVersoes versoes={l.versoes} de="da claquete" />
                               </span>
                             )}
                           </li>

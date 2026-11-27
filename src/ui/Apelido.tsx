@@ -2,38 +2,33 @@ import { useState } from 'react';
 import { apelidoDoRoteiro, mudarApelido, useApelidos } from '../dados/apelidos';
 import { conflitoDasVersoes, type ConflitoDasVersoes, type FonteDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
 import type { Versao } from '../modelo/pauta';
+import { CodigoDasVersoes } from './CodigoDasVersoes';
 import './apelido.css';
 
 /* O apelido da claquete e as versões lidas do roteiro (#120), na ficha da revisão e no card da agenda. O apelido é um
    por roteiro e vale só dentro do PROMeiro: o Trello e o Teable continuam com a claquete original, que fica guardada (e
    o campo Claquete da ficha continua sendo ela). */
 
-/** De onde vieram as versões: na dica de cada etiqueta e no nome do grupo. */
-const DE_ONDE: Record<FonteDasVersoes, { dica: string; grupo: string }> = {
-  roteiro: { dica: 'lida nas artes do roteiro', grupo: 'lidas do roteiro' },
-  apelido: { dica: 'do código do apelido', grupo: 'do apelido' },
-  claquete: { dica: 'do código da claquete', grupo: 'da claquete' },
+/** De onde vieram as versões: no fim da dica do código. */
+const DE_ONDE: Record<FonteDasVersoes, string> = {
+  roteiro: 'das artes do roteiro',
+  apelido: 'do código do apelido',
+  claquete: 'do código da claquete',
 };
 
-/** As versões da chamada como etiquetas ("amanhã", "hoje", "nesta qua"), com o código e de onde vieram na dica (as
-    lidas do roteiro, sem `de`). A que veio só do dia da semana ("SÁBADO, 22H") leva um "?": a pessoa confere se é
-    "nesta" ou "próxima". */
+/** As versões da chamada só como o código no padrão ("(AH)"), com o que ele quer dizer e de onde veio na dica (as lidas
+    do roteiro, sem `de`). A que veio só do dia da semana ("SÁBADO, 22H") leva um "?". */
 export function EtiquetasDasVersoes({ versoes, de = 'roteiro' }: { versoes: readonly Versao[]; de?: FonteDasVersoes }) {
   if (!versoes.length) return null;
   return (
-    <span className="versoes-lidas" aria-label={`Versões ${DE_ONDE[de].grupo}: ${versoes.map((v) => v.rotulo).join(', ')}`}>
-      {versoes.map((v) => (
-        <span key={v.codigo} className={`versao-lida${v.aConferir ? ' a-conferir' : ''}`} title={v.aConferir ? `(${v.codigo})? O roteiro diz só o dia da semana: confira se é "nesta" ou "próxima"` : `(${v.codigo}), ${DE_ONDE[de].dica}`}>
-          {v.rotulo}
-          {v.aConferir && '?'}
-        </span>
-      ))}
+    <span className="versoes-lidas">
+      <CodigoDasVersoes versoes={versoes} de={DE_ONDE[de]} />
     </span>
   );
 }
 
-/** O texto do aviso discreto do conflito: vale o roteiro; a claquete diz outra coisa. */
-const textoDoConflito = (c: ConflitoDasVersoes) => (c.daClaquete ? `a claquete diz ${c.daClaquete}` : 'a claquete não diz a versão');
+/** O texto do aviso discreto do conflito, com os dois códigos: vale o roteiro; a claquete diz outra coisa. */
+const textoDoConflito = (c: ConflitoDasVersoes) => `o roteiro diz ${c.doRoteiro}, ${c.daClaquete ? `a claquete diz ${c.daClaquete}` : 'a claquete não diz a versão'}`;
 
 /** O aviso discreto do conflito: vale o roteiro; a claquete diz outra coisa. */
 export function AvisoDasVersoes({ claquete, versoes }: { claquete: string; versoes: readonly Versao[] }) {
@@ -41,7 +36,7 @@ export function AvisoDasVersoes({ claquete, versoes }: { claquete: string; verso
   return conflito && <span className="conflito-versoes">{textoDoConflito(conflito)}</span>;
 }
 
-/** As versões da chamada no card da agenda e no da tela de produções (#121), como a API manda: as etiquetas e, num
+/** As versões da chamada no card da agenda e no da tela de produções (#121), como a API manda: o código e, num
     conflito com o código do nome, o aviso discreto. Numa linha própria, que quebra: a claquete nunca encolhe por elas. */
 export function VersoesDoCard({ versoes }: { versoes?: VersoesDaChamada }) {
   if (!versoes?.lista.length) return null;

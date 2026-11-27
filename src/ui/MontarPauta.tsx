@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CodigoDasVersoes } from './CodigoDasVersoes';
 import { desfazerAPublicacao, devolverADemanda, escalarNoDia, gravarRascunhoDoDia, jaDistribuida, juntarParaDistribuir, lerRascunhoDoDia, levarParaAPosicao, marcarAusencia, marcarPendencia, moverADemanda, publicarODia, repetirAEscala } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
@@ -939,12 +940,7 @@ function LinhaDaDemanda({ posicao, id, texto, dia, mudar, tecla, arraste }: { po
           )}
           {l.versoes.length > 0 && (
             <span className="pauta-versoes">
-              {l.versoes.map((v, i) => (
-                <span key={i} className={`pauta-versao${v.conhecida ? '' : ' desconhecida'}`}>
-                  {v.rotulo}
-                  {v.conhecida && <small>{v.codigo.toUpperCase()}</small>}
-                </span>
-              ))}
+              <CodigoDasVersoes versoes={l.versoes} de="da claquete" />
             </span>
           )}
           {l.mudou && (

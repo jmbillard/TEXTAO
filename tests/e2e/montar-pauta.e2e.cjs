@@ -237,10 +237,10 @@ async function montarPeloTeclado(navegador, url) {
   await p.keyboard.type(claquete);
   const leitura = celula.locator('.montar-demanda').first().locator('.montar-leitura');
   await leitura.getByText(`Noite de Gala · ${semanaDe(amanha)} ${diaMes(amanha)}`).waitFor();
-  const versoes = await leitura.locator('.pauta-versao').allInnerTexts();
-  assert.equal(versoes.length, 2, 'as duas versões como etiquetas');
-  assert.match(versoes[0], new RegExp(`^dia ${Number(amanha.slice(8))}\\s*D$`));
-  assert.match(versoes[1], new RegExp(`^próxim[ao] ${semanaDe(amanha)}\\s*P$`));
+  // as versões só como o código no padrão, numa etiqueta; o que ele quer dizer fica na dica
+  const versoes = leitura.locator('.codigo-versoes');
+  assert.deepEqual(await versoes.allInnerTexts(), ['(DP)'], 'as duas versões num código só, no padrão');
+  assert.match(await versoes.getAttribute('title'), new RegExp(`^dia ${Number(amanha.slice(8))} e próxim[ao] ${semanaDe(amanha)}, da claquete$`));
   await leitura.getByText(`grava Noite de Gala ${diaMes(amanha)} (DP)`).waitFor();
   await capturar(p, '01-montar-digitando');
 

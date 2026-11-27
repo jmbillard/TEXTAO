@@ -197,7 +197,8 @@ export function linhaDaPauta(b: LinhaBruta): LinhaDaPauta | null {
 
 /* ---------- as versões da chamada (#95) ---------- */
 
-/** Uma versão da chamada, como a pauta mostra: a etiqueta legível e o código dela, como está escrito na claquete. */
+/** Uma versão da chamada: o código dela, como está escrito na claquete, e o que ele quer dizer (a tela mostra só o
+    código no padrão, codigoDasVersoes; o rótulo vai na dica). */
 export interface Versao {
   /** a letra ("A", "p") ou o código inteiro ("DIA", "MÊS", "MNT"), na grafia da claquete */
   codigo: string;
@@ -289,6 +290,24 @@ export function lerVersoes(claquete: string, diaDaLinha: string): { versoes: Ver
   const quando = dataDaVersao(texto, diaDaLinha);
   if (INTEIROS.has(codigo)) return { versoes: [{ codigo: bruto, rotulo: rotuloDaVersao(codigo, quando), conhecida: true }], semVersao };
   return { versoes: [...bruto].map((letra) => ({ codigo: letra, rotulo: rotuloDaVersao(semAcento(letra), quando), conhecida: true })), semVersao };
+}
+
+/**
+ * O código das versões como o PROMeiro mostra: o do padrão, uma letra maiúscula por versão, na ordem escrita, entre
+ * parênteses ("(AH)", "(PNAH)"); DIA vira D, MES e MÊS viram M, MNT fica inteiro. O código desconhecido aparece cru,
+ * entre parênteses. '' sem versão.
+ */
+export function codigoDasVersoes(versoes: readonly Versao[]): string {
+  if (!versoes.length) return '';
+  if (versoes.some((v) => !v.conhecida)) return `(${versoes.map((v) => v.codigo).join('')})`;
+  const letra = (c: string) => (c === 'DIA' ? 'D' : c === 'MES' ? 'M' : c);
+  return `(${versoes.map((v) => letra(semAcento(v.codigo))).join('')})`;
+}
+
+/** O que o código quer dizer, para a dica ao passar o mouse: "amanhã e hoje", "amanhã, hoje e nesta sex". */
+export function leituraDasVersoes(versoes: readonly Versao[]): string {
+  const rotulos = versoes.map((v) => (v.conhecida ? `${v.rotulo}${v.aConferir ? '?' : ''}` : `${v.codigo}, que o PROMeiro não conhece`));
+  return rotulos.length > 1 ? `${rotulos.slice(0, -1).join(', ')} e ${rotulos[rotulos.length - 1]}` : (rotulos[0] ?? '');
 }
 
 /** Os minutos do início do turno, num dia que começa às 6h (a madrugada vem depois da noite). */

@@ -1,13 +1,14 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { escolhaLembradaDaPauta, lembrarNaPauta } from '../dados/armazenamento';
-import { ROTULO_DA_ETAPA, diaEmSaoPaulo, lerVersoes, resumoDaProducao, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
+import { ROTULO_DA_ETAPA, codigoDasVersoes, diaEmSaoPaulo, lerVersoes, resumoDaProducao, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
 import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
+import { CodigoDasVersoes } from './CodigoDasVersoes';
 
 /* As peças da Pauta da edição que a Semana (#94) e o Dia (#97) usam igual: as datas escritas, as versões da chamada
-   como etiquetas (#95), a claquete com a produção da arte (#96), o item da pauta (claquete ou tarefa), a ficha da
+   como o código no padrão (#95), a claquete com a produção da arte (#96), o item da pauta (claquete ou tarefa), a ficha da
    claquete e, do #99, o filtro pessoal, o aviso da cópia de reserva, o resumo do administrador e a releitura. */
 
 export const DIAS_DA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -17,25 +18,14 @@ export const partes = (iso: string) => {
   return { dia: d.getUTCDate(), mes: d.getUTCMonth(), semana: d.getUTCDay() };
 };
 
-/** As versões da chamada como etiquetas ("amanhã", "nesta sex"), cada uma com o código pequeno ao lado; o código
-    desconhecido aparece cru. */
+/** As versões da chamada só como o código no padrão ("(AH)"), numa etiqueta; o que ele quer dizer e a grafia da
+    claquete ficam na dica. O código desconhecido aparece cru. */
 export function Versoes({ linha }: { linha: LinhaDaPauta }) {
   if (!linha.versoes.length) return null;
   const original = linha.texto.slice(linha.semVersao.length).trim();
   return (
-    <span className="pauta-versoes" title={`versões da chamada: ${original}`}>
-      {linha.versoes.map((v, i) =>
-        v.conhecida ? (
-          <span key={i} className="pauta-versao">
-            {v.rotulo}
-            <small>{v.codigo}</small>
-          </span>
-        ) : (
-          <span key={i} className="pauta-versao desconhecida" title={`código ${v.codigo}: o PROMeiro não conhece`}>
-            {v.codigo}
-          </span>
-        ),
-      )}
+    <span className="pauta-versoes">
+      <CodigoDasVersoes versoes={linha.versoes} de={`da claquete ${original}`} />
     </span>
   );
 }
@@ -118,7 +108,8 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }:
   const linha = comApelidoNaPauta(daPauta);
   const linhas = todas.filter((l) => l.tipo === 'claquete' && (l.id === linha.id || (!!linha.chave && l.chave === linha.chave))).map(comApelidoNaPauta);
   const producoes = [...new Map(linhas.flatMap((l) => l.producoes ?? []).map((p) => [p.id, p])).values()].sort((a, b) => a.praca.localeCompare(b.praca));
-  const versoes = [...new Map(linhas.flatMap((l) => l.versoes).map((v) => [`${v.codigo.toUpperCase()}|${v.rotulo}`, v])).values()];
+  // um código por claquete: as linhas com o mesmo código no padrão contam uma vez
+  const versoes = [...new Map(linhas.filter((l) => l.versoes.length).map((l) => [codigoDasVersoes(l.versoes), l])).values()];
   const resumo = resumoDaProducao(producoes);
   const corpo = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -138,12 +129,9 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }:
         <h2 id="pauta-ficha-titulo">{resumo?.alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{titulo}</MarcaTexto> : titulo}</h2>
         {versoes.length > 0 && (
           <p className="pauta-ficha-versoes">
-            {versoes.length} {versoes.length === 1 ? 'versão' : 'versões'} na pauta:{' '}
-            {versoes.map((v, i) => (
-              <span key={i} className={`pauta-versao${v.conhecida ? '' : ' desconhecida'}`}>
-                {v.conhecida ? v.rotulo : v.codigo}
-                {v.conhecida && <small>{v.codigo}</small>}
-              </span>
+            Versões na pauta:{' '}
+            {versoes.map((l) => (
+              <Versoes key={l.id} linha={l} />
             ))}
           </p>
         )}

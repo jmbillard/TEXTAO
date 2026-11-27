@@ -533,14 +533,17 @@ acento. Cada letra é uma versão, na ordem em que aparece: A amanhã, H hoje, N
 semana>, D dia X, M em <mês> (AH = amanhã e hoje). DIA (= D), MES/MÊS (= M) e MNT (manutenção da grade) são
 inteiros. O dia da semana, o número e o mês saem da data da claquete; sem ela, do dia da linha. O padrão, para onde a
 **correção de grafia** leva as outras grafias, é uma letra por versão, maiúscula, entre parênteses ("(DP)", "(M)"), e
-(MNT). Na pauta, cada versão é uma etiqueta
-("nesta sex", "neste sáb") com o código pequeno ao lado; um código desconhecido aparece cru.
+(MNT). Em todo o PROMeiro (a pauta, a agenda, a tela de produções, a revisão e o editor), as versões aparecem só
+como esse código no padrão, numa etiqueta discreta, um código por claquete ("(AH)", "(PNAH)"); o que ele quer dizer e
+de onde veio ficam na dica ao passar o mouse ("amanhã e hoje, das artes do roteiro"). Um código desconhecido aparece
+cru, entre parênteses.
 As **versões lidas** do roteiro saem das artes marcadas na revisão que dizem quando o programa vai ao ar ("NESTA
 QUARTA" é N, "AMANHÃ, 22H30" é A, "DIA 28" é D, "EM JANEIRO" é M), na ordem das letras, com o dia da semana conferido
 pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai nos próximos 7 dias e P se cai depois,
 com um "?" para conferir; o horário sozinho não é versão. Quando discordam do código da claquete, vale o roteiro, com
-um aviso discreto e a opção de usá-las no **apelido**. No card da agenda e no da tela de produções, as etiquetas são as
-do roteiro, quando ele está no PROMeiro e as artes dizem; senão, as do código no fim do apelido ou, sem código nele, as
+um aviso discreto que compara os dois códigos ("o roteiro diz (AH), a claquete diz (A)") e a opção de usá-las no
+**apelido**; a que veio só do dia leva o "?" depois do código ("(AN)?"). No card da agenda e no da tela de produções, o
+código é o do roteiro, quando ele está no PROMeiro e as artes dizem; senão, o do fim do apelido ou, sem código nele, o
 da claquete.
 _Evitar_: sufixo, tipo da chamada
 

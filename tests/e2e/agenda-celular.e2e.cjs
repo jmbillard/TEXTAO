@@ -927,7 +927,7 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     const nome = async () => (await card.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
     // #121: o card fechado mostra as versões da chamada, prontas da API, numa linha embaixo da claquete inteira
     const versoes = (c) => c.locator('.card-semana-abrir .versoes-do-card');
-    // com revisão na fila, a agenda encolhe: o card fica só com a claquete, sem as etiquetas
+    // com revisão na fila, a agenda encolhe: o card fica só com a claquete, sem o código
     if (await p.isVisible('.secao-trello.encolhida')) {
       await card.waitFor({ state: 'visible', timeout: 5000 });
       conferir(!(await versoes(card).isVisible()), rotulo('#121: na agenda encolhida, o card fechado fica sem as etiquetas'));
@@ -935,8 +935,8 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
       await p.waitForTimeout(400);
     }
     await versoes(card).waitFor({ state: 'visible', timeout: 5000 });
-    conferir(JSON.stringify(await versoes(card).locator('.versao-lida').allInnerTexts()) === '["hoje"]', rotulo('#121: o card fechado mostra a versão lida do roteiro'));
-    conferir((await versoes(card).locator('.conflito-versoes').innerText()) === 'a claquete não diz a versão', rotulo('#121: e o aviso de conflito, como no #120'));
+    conferir(JSON.stringify(await versoes(card).locator('.codigo-versoes').allInnerTexts()) === '["(H)"]', rotulo('#121: o card fechado mostra a versão lida do roteiro, só o código'));
+    conferir((await versoes(card).locator('.conflito-versoes').innerText()) === 'o roteiro diz (H), a claquete não diz a versão', rotulo('#121: e o aviso de conflito, como no #120'));
     const arranjo = await card.evaluate((c) => {
       const q = c.querySelector('.card-semana-claquete');
       const v = c.querySelector('.card-semana-abrir .versoes-do-card').getBoundingClientRect();
@@ -947,9 +947,9 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     conferir(arranjo.abaixo && arranjo.inteira && arranjo.dentro, rotulo(`#121: a claquete inteira, as etiquetas embaixo e dentro do card (${JSON.stringify(arranjo)})`));
     const doCodigo = p.locator('.secao-trello .semana [data-card="agdhoje4"]');
     if (await doCodigo.count()) {
-      conferir(JSON.stringify(await versoes(doCodigo).locator('.versao-lida').allInnerTexts()) === '["amanhã","hoje"]', rotulo('#121: sem versão nas artes, o código da claquete'));
+      conferir(JSON.stringify(await versoes(doCodigo).locator('.codigo-versoes').allInnerTexts()) === '["(AH)"]', rotulo('#121: sem versão nas artes, o código da claquete'));
       conferir((await versoes(doCodigo).locator('.conflito-versoes').count()) === 0, rotulo('#121: o código da claquete não tem conflito'));
-      conferir((await versoes(doCodigo).locator('.versao-lida').first().getAttribute('title')) === '(A), do código da claquete', rotulo('#121: a dica diz de onde veio'));
+      conferir((await versoes(doCodigo).locator('.codigo-versoes').getAttribute('title')) === 'amanhã e hoje, do código da claquete', rotulo('#121: a dica diz o que quer dizer e de onde veio'));
     } else conferir(false, rotulo('#121: o card do código da claquete está na agenda'));
     if (CAPTURAS) {
       await card.scrollIntoViewIfNeeded();
@@ -958,8 +958,8 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     await card.locator('.card-semana-abrir').tap();
     await p.waitForTimeout(900);
     const apelido = card.locator('.apelido-claquete');
-    conferir(JSON.stringify(await apelido.locator('.versao-lida').allInnerTexts()) === '["hoje"]', rotulo('o card aberto mostra a versão lida do roteiro'));
-    conferir(/a claquete não diz a versão/.test(await apelido.locator('.conflito-versoes').innerText()), rotulo('e o aviso discreto: a claquete não diz'));
+    conferir(JSON.stringify(await apelido.locator('.codigo-versoes').allInnerTexts()) === '["(H)"]', rotulo('o card aberto mostra a versão lida do roteiro'));
+    conferir(/o roteiro diz \(H\), a claquete não diz a versão/.test(await apelido.locator('.conflito-versoes').innerText()), rotulo('e o aviso discreto: a claquete não diz'));
     await apelido.getByRole('button', { name: 'usar (H) no apelido' }).tap();
     await apelido.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
     conferir((await nome()).endsWith('(H)'), rotulo(`o card mostra o apelido com a versão do roteiro (${await nome()})`));

@@ -455,8 +455,8 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
 
 /**
  * As versões lidas do roteiro e o apelido da claquete (#120): um roteiro com "HOJE, 22H30" e "AMANHÃ" nas artes (e o
- * "SÁBADO, DEPOIS DO JORNAL" do roteiro fictício, só o dia: "neste sáb?", a conferir) e a claquete "(A)", para o sábado
- * que vem. A ficha mostra as etiquetas, o aviso "a claquete diz (A)" e a opção de usar as do roteiro no apelido; o
+ * "SÁBADO, DEPOIS DO JORNAL" do roteiro fictício, só o dia: "(AHN)?", a conferir) e a claquete "(A)", para o sábado
+ * que vem. A ficha mostra só o código, o aviso "o roteiro diz (AHN), a claquete diz (A)" e a opção de usar as do roteiro no apelido; o
  * apelido aparece no topo (a original, ao passar o mouse), é editado e volta ao original. Marcar "NESTE SÁBADO" com o
  * dedo troca o "?" pela versão escrita, na hora. A claquete da ficha (a que vai ao Trello) continua a original.
  */
@@ -480,8 +480,9 @@ async function versoesEApelido(navegador, url, api) {
   await p.waitForTimeout(400);
   const ficha = p.locator('.claquete .apelido-claquete');
   // as etiquetas, calculadas das artes marcadas, e o aviso discreto: vale o roteiro
-  assert.deepEqual(await ficha.locator('.versao-lida').allInnerTexts(), ['amanhã', 'hoje', `${sab}?`], 'a ficha mostra as versões lidas do roteiro, o dia sozinho a conferir');
-  assert.match(await ficha.locator('.conflito-versoes').innerText(), /a claquete diz \(A\)/, 'o aviso diz o que a claquete diz');
+  assert.deepEqual(await ficha.locator('.codigo-versoes').allInnerTexts(), [`(AH${letra})?`], 'a ficha mostra as versões lidas do roteiro só como o código, o dia sozinho a conferir');
+  assert.match(await ficha.locator('.codigo-versoes').getAttribute('title'), new RegExp(`^amanhã, hoje e ${sab}\\?, das artes do roteiro`), 'a dica diz o que o código quer dizer');
+  assert.match(await ficha.locator('.conflito-versoes').innerText(), new RegExp(`^o roteiro diz \\(AH${letra}\\), a claquete diz \\(A\\)`), 'o aviso compara os dois códigos');
   await semRolagemDeLado(p, 'Galaxy S24, com o apelido na ficha');
 
   // usar as do roteiro no apelido: o topo mostra o apelido; a claquete da ficha continua a original
@@ -507,7 +508,7 @@ async function versoesEApelido(navegador, url, api) {
   if (letra === 'N') {
     await selecionarNoTexto(p, 1, LOC_ABERTURA.indexOf('NESTE'), LOC_ABERTURA.indexOf(','));
     await p.locator(BALAO).getByRole('button', { name: 'Arte', exact: true }).tap();
-    await p.waitForFunction(() => [...document.querySelectorAll('.claquete .versao-lida')].map((e) => e.textContent).join('|') === 'amanhã|hoje|neste sáb', null, { timeout: 5000 });
+    await p.waitForFunction(() => [...document.querySelectorAll('.claquete .codigo-versoes')].map((e) => e.textContent).join('|') === '(AHN)', null, { timeout: 5000 });
   }
 
   // voltar ao original
