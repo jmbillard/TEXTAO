@@ -150,7 +150,8 @@ passa a montar e publicar a pauta da edição no PROMeiro já, com o Teable aind
 - **Edição simultânea, com presença:** mais de uma pessoa da coordenação monta ao mesmo tempo, e cada uma vê quem mais
   está ali.
 - **Editor novo:** um nome que não está nos cadastros entra como pendente, e um administrador confirma.
-- **Publica mesmo com pendências** da conferência: elas avisam, não travam.
+- **Publica mesmo com pendências** da conferência: elas avisam, não travam. (Confirmado por um produtor da edição,
+  em 27/11/2026: "pode, avisando".)
 - **Ausência num dia publicado:** marcar a ausência de quem está escalado num dia já publicado oferece tirar a pessoa
   e republicar.
 - **A tela é um híbrido:** a grade, como a planilha; a coluna lateral, com quem falta distribuir, quem está sem escala

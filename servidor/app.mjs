@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createReadStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { randomUUID, webcrypto } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import * as sinc from 'y-protocols/sync';
@@ -52,6 +53,7 @@ import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
 import { DIAS_ANTES, DIAS_DEPOIS, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
+import { DIAS_DO_TRELLO, criarIndiceDoBuscar, dasAtracoes, doTrello, montarIndice } from './indice-do-buscar.mjs';
 import { criarProjetoDoPadeiro } from './projeto-do-padeiro.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
 import { ausenciaDoPedido, criarAusencias } from './ausencias.mjs';
@@ -420,6 +422,12 @@ const json = (res, status, corpo) => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(corpo));
 };
+/** O JSON grande (o índice do buscar do Padeiro, #143), comprimido em gzip para quem aceita. */
+const jsonComprimido = (req, res, status, corpo) => {
+  if (!/\bgzip\b/i.test(String(req.headers['accept-encoding'] ?? ''))) return json(res, status, corpo);
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'content-encoding': 'gzip', vary: 'accept-encoding' });
+  res.end(gzipSync(JSON.stringify(corpo)));
+};
 /** Corpo JSON. Grande demais: o resto é lido e descartado, sem derrubar a conexão, para a resposta 413 chegar. */
 const lerCorpo = (req, LIMITE = LIMITE_CORPO, oQue = 'Roteiro') =>
   new Promise((ok, erro) => {
@@ -494,7 +502,7 @@ const FABRICAS = {
   filmes: (env, { db, trello, abrirPg, anexos }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg, anexos }),
 };
 /** Os módulos que são refeitos quando a configuração muda (e fechados, os antigos, quando terminam o que faziam). */
-const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas', 'correcoes'];
+const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas', 'correcoes', 'indiceDoBuscar'];
 const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
 /** O modo só olhar das Duplicadas (#67): ligado até alguém desligar (DUPLICADAS_SO_OLHAR=0), para os primeiros dias
     da comparação com o relatório do n8n. */
@@ -612,6 +620,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     g.pauta = criarPauta(env, g.vocabulario, abrir, cache, copia);
     // a correção de grafia (#114): a pauta inteira, lida do Postgres do Teable (só leitura)
     g.correcoes = criarCorrecoes(env, abrir);
+    // o índice do buscar do Padeiro (#143): os filmes e as mensagens do Teams, do Postgres do Teable (só leitura)
+    g.indiceDoBuscar = criarIndiceDoBuscar(env, { abrirPg: abrir });
     g.cadastros = fazer(fabricas.cadastros, env, { vocabulario: g.vocabulario });
     g.redatorProvavel = fazer(fabricas.redatorProvavel, env, { abrirPg: abrir });
     g.duplicadas = fazer(fabricas.duplicadas, env, { trello: g.trello, acervo: g.acervo, registro: registroDasDuplicadas, promeiro: promeiroDasDuplicadas });
@@ -3871,6 +3881,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       } else padeiros.soltarAviso(p.id, aviso);
       return json(res, r.status, r.corpo);
     }
+    if (caminho === '/api/padeiro/buscar' && req.method === 'GET') {
+      const p = padeiroLigado(req, res);
+      if (!p) return;
+      return jsonComprimido(req, res, 200, await indiceDoBuscar());
+    }
     if (caminho === '/api/padeiro/projeto' && req.method === 'POST') {
       const p = padeiroLigado(req, res);
       if (!p) return;
@@ -3883,6 +3898,28 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, { itens });
     }
     return json(res, 404, { erro: 'Não encontrado.' });
+  }
+
+  /**
+   * O índice do buscar do Padeiro (#143, servidor/indice-do-buscar.mjs), no formato do fluxo PROMO - BUSCAR do n8n: as
+   * atrações do cadastro, as Produções dos últimos 15 dias e, do Postgres do Teable, os filmes e as pastas citadas no
+   * Teams. Sem o cadastro das atrações, ou com o Teable fora do ar, 503: o Padeiro fica com o webhook do n8n ou com a
+   * cópia que já tem.
+   */
+  async function indiceDoBuscar() {
+    const indisponivel = (motivo) => Object.assign(new Error(`O índice do buscar não está disponível agora: ${motivo}`), { status: 503 });
+    const lido = await cadastros.ler().catch((e) => {
+      throw indisponivel(e instanceof Error ? e.message : String(e));
+    });
+    if (!lido?.ligado) throw indisponivel('falta o cadastro das atrações (o Teable).');
+    const doTeable = await geracao.indiceDoBuscar.doTeable().catch((e) => {
+      console.warn(`[padeiro] não li o Postgres do Teable para o índice do buscar: ${e instanceof Error ? e.message : e}`);
+      throw indisponivel('o Teable não respondeu.');
+    });
+    const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+    const desde = new Date(Date.now() - DIAS_DO_TRELLO * 86_400_000).toISOString();
+    const lista = producoes.noIndice(desde, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
+    return montarIndice({ teams: doTeable.teams, trello: doTrello(lista, lido.atracoes), atracoes: dasAtracoes(lido.atracoes), filmes: doTeable.filmes });
   }
 
   const app = async (req, res) => {

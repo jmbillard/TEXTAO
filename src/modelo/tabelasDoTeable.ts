@@ -94,6 +94,9 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     // trello.mjs (também a carga das Produções), exibicao.mjs, acervo.mjs, filmes.mjs
     pg: ['card_ID', 'sessao', 'exibicao', 'labels', 'filme', 'data_de_exibicao', 'link', 'inedito', 'output', 'artes', 'artes_existentes'],
   },
+  // indice-do-buscar.mjs (#143): as pastas citadas no Teams, para o índice do buscar do Padeiro. Quem grava é o fluxo
+  // PROMO: MENSAGENS NO TEAMS do n8n; sem a tabela, o índice vem sem o teams
+  { nome: 'mensagens', titulo: 'Mensagens do Teams', variavel: '', api: [], pg: ['receivedDateTime', 'from', 'jobTitle', 'groupID', 'messageID', 'content'], opcional: true },
 ];
 
 /** O campo do pôster na tabela filmes (TEABLE_FILMES_POSTER): o de anexo com este nome. */
