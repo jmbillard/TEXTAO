@@ -108,7 +108,7 @@ export function criarAcervo(env, deps = {}) {
         const fil = vinculos(l.filme)[0] ?? { id: '', title: '' };
         // a chave sai da arte, aqui: o key do Teable é só para ver na tabela
         const modificado = l.modificado ? new Date(l.modificado) : null;
-        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, claquete: prod.title, registro: prod.id, filmeId: fil.id, caminho: String(l.caminho ?? '').trim(), modificado: modificado && !isNaN(modificado) ? modificado.toISOString() : '' };
+        return { id: l.id, arte: String(l.arte ?? ''), chave: chaveDeArte(l.arte), tipo: String(lerTipo(l.tipo) ?? ''), atracao: atr.title, atracaoId: atr.id, claquete: prod.title, registro: prod.id, filmeId: fil.id, caminho: String(l.caminho ?? '').trim(), modificado: modificado && !isNaN(modificado) ? modificado.toISOString() : '' };
       }),
     };
     return memo.linhas;
@@ -227,6 +227,14 @@ export function criarAcervo(env, deps = {}) {
   async function totais() {
     const saida = {};
     for (const l of await todas()) if (!l.filmeId && l.atracao) saida[l.atracao] = (saida[l.atracao] ?? 0) + 1;
+    return saida;
+  }
+
+  /** Quantas linhas cada ficha de atração tem no acervo, pelo id do vínculo (a correção de grafia, #116: duas fichas
+      com o mesmo nome contam cada uma as suas); as dos filmes não contam. */
+  async function totaisPorFicha() {
+    const saida = {};
+    for (const l of await todas()) if (!l.filmeId && l.atracaoId) saida[l.atracaoId] = (saida[l.atracaoId] ?? 0) + 1;
     return saida;
   }
 
@@ -652,5 +660,5 @@ export function criarAcervo(env, deps = {}) {
     return ids.length;
   }
 
-  return { ligado, grava, artesPorRegistro, religar, acervoDe, previaDaImportacao, gravarImportacao, retomarImportacao, desfazerImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado, grava, artesPorRegistro, religar, acervoDe, previaDaImportacao, gravarImportacao, retomarImportacao, desfazerImportacao, semAcervo, ehSessao, esquecerAcervos, filmeDe, doFilme, daAtracao, fichaDa, totais, totaisPorFicha, paraRevisao, registrar, zerar, parar: () => banco?.end?.().catch(() => {}) };
 }

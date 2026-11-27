@@ -202,6 +202,8 @@ export function criarProducoes(db) {
     naTela: db.prepare(`${DA_TELA} WHERE p.arquivada = 0 AND (p.etapa IN ('entrada', 'produzindo') OR (p.etapa = 'entregue' AND p.entrega_em >= ?))`),
     // a Produção mudada na tela (#110), para a tela mostrar sem reler tudo
     umaNaTela: db.prepare(`${DA_TELA} WHERE p.id = ? AND p.arquivada = 0`),
+    // a correção de grafia (#116): todas as Produções, para contar as de cada atração
+    paraContar: db.prepare('SELECT p.claquete, r.meta AS roteiro_meta FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id'),
     /* ---------- os eventos (#87) ---------- */
     eventosDe: db.prepare('SELECT * FROM eventos WHERE producao_id = ? ORDER BY quando, anotado_em'),
     temAcao: db.prepare('SELECT 1 FROM eventos WHERE trello_acao = ?'),
@@ -517,6 +519,27 @@ export function criarProducoes(db) {
   }
 
   /**
+   * Quantas Produções cada atração tem (a correção de grafia, #116), todas (as arquivadas também): a atração vem do
+   * Roteiro ligado ou, sem ele, de `atracaoDaClaquete`.
+   * @param atracaoDaClaquete (claquete) => nome, ou ''
+   * @returns { [nome da atração]: n }
+   */
+  function porAtracao(atracaoDaClaquete = () => '') {
+    const saida = {};
+    for (const l of q.paraContar.all()) {
+      let programa = '';
+      try {
+        programa = String(JSON.parse(l.roteiro_meta ?? 'null')?.programa ?? '').trim();
+      } catch {
+        // meta ilegível: a atração sai da claquete
+      }
+      const nome = programa || atracaoDaClaquete(l.claquete);
+      if (nome) saida[nome] = (saida[nome] ?? 0) + 1;
+    }
+    return saida;
+  }
+
+  /**
    * As Produções da tela de produções (#109, src/modelo/producoesPorPraca.ts, CardDaProducao): as de Entrada e
    * Produzindo e as entregues desde `desde` (ISO), sem as arquivadas. As artes a produzir são a conta da agenda
    * (`artesDaProducao`; sem a lista, a quantidade da coluna); o prazo é a exibição ou, sem ela, o dia da claquete. A
@@ -587,6 +610,7 @@ export function criarProducoes(db) {
       return l ? daLinha(l) : null;
     },
     naPauta,
+    porAtracao,
     vazia: () => Number(q.total.get().n) === 0,
     /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */
     ultimoEvento: () => q.ultimoDeTodos.get()?.quando ?? null,

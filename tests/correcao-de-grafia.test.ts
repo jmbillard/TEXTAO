@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { propostaDaClaquete } from '../src/modelo/correcaoDeGrafia';
+import { atracoesParecidas, parDeFichas, propostaDaClaquete } from '../src/modelo/correcaoDeGrafia';
 import { lerVersoes } from '../src/modelo/pauta';
 
 /* A correção de grafia da pauta da edição (#114): o código de versão no fim da claquete passa para o padrão, uma letra
@@ -103,5 +103,90 @@ describe('propostaDaClaquete: o código desconhecido não é corrigido', () => {
   it('fica sem correção e é apontado como não reconhecido, cru', () => {
     expect(propostaDaClaquete('Show da Tarde 28/11 (XYZ)')).toEqual({ tipo: 'nao-reconhecido', de: 'Show da Tarde 28/11 (XYZ)', codigo: 'XYZ' });
     expect(propostaDaClaquete('Show da Tarde 28/11 (aa)')).toEqual({ tipo: 'nao-reconhecido', de: 'Show da Tarde 28/11 (aa)', codigo: 'aa' });
+  });
+});
+
+/* As atrações parecidas (#116): as fichas que parecem a mesma atração, juntas num grupo com o motivo. A comparação é a
+   da busca de atração: sem caixa, acento e artigos, com uma letra de diferença numa palavra longa. Nomes fictícios. */
+
+const ficha = (id: string, nome: string) => ({ id, nome });
+/** Os grupos como os ids de cada um, e o motivo. */
+const grupos = (fichas: { id: string; nome: string }[], diferentes?: Set<string>) => atracoesParecidas(fichas, diferentes).map((g) => ({ motivo: g.motivo, ids: g.fichas.map((f) => f.id) }));
+
+describe('atracoesParecidas: o mesmo nome sem caixa, acento e artigos', () => {
+  it('o acento e a caixa não contam', () => {
+    expect(grupos([ficha('rec1', 'Clínica Geral'), ficha('rec2', 'CLINICA GERAL'), ficha('rec3', 'Novela Sol')])).toEqual([{ motivo: 'mesmo-nome', ids: ['rec2', 'rec1'] }]);
+  });
+
+  it('o artigo não conta, no começo ou no meio', () => {
+    expect(grupos([ficha('rec1', 'A Clínica'), ficha('rec2', 'Clínica')])).toEqual([{ motivo: 'mesmo-nome', ids: ['rec1', 'rec2'] }]);
+    expect(grupos([ficha('rec1', 'Os Donos da Bola'), ficha('rec2', 'Donos da Bola')])).toEqual([{ motivo: 'mesmo-nome', ids: ['rec2', 'rec1'] }]);
+  });
+
+  it('a pontuação e os espaços a mais não contam', () => {
+    expect(grupos([ficha('rec1', 'Show - da Tarde'), ficha('rec2', 'Show da  Tarde')])).toEqual([{ motivo: 'mesmo-nome', ids: ['rec1', 'rec2'] }]);
+  });
+
+  it('a mesma atração cadastrada duas vezes com o mesmo nome também é um grupo', () => {
+    expect(grupos([ficha('rec1', 'Festival de Verão'), ficha('rec2', 'Festival de Verão')])).toEqual([{ motivo: 'mesmo-nome', ids: ['rec1', 'rec2'] }]);
+  });
+});
+
+describe('atracoesParecidas: uma letra de diferença numa palavra longa', () => {
+  it('uma letra trocada, a mais ou a menos', () => {
+    expect(grupos([ficha('rec1', 'Antártida'), ficha('rec2', 'Antartica')])).toEqual([{ motivo: 'uma-letra', ids: ['rec2', 'rec1'] }]);
+    expect(grupos([ficha('rec1', 'Festival de Verão'), ficha('rec2', 'Festivall de Verão')])).toEqual([{ motivo: 'uma-letra', ids: ['rec1', 'rec2'] }]);
+    expect(grupos([ficha('rec1', 'Marta e o Mar'), ficha('rec2', 'Mart e o Mar')])).toEqual([]);
+    expect(grupos([ficha('rec1', 'Cozinha da Vila'), ficha('rec2', 'Cozina da Vila')])).toEqual([{ motivo: 'uma-letra', ids: ['rec2', 'rec1'] }]);
+  });
+
+  it('duas letras de diferença, ou uma letra em duas palavras, já é outra atração', () => {
+    expect(grupos([ficha('rec1', 'Antártida'), ficha('rec2', 'Antartiko')])).toEqual([]);
+    expect(grupos([ficha('rec1', 'Festival de Verão'), ficha('rec2', 'Festivai de Verao Rio')])).toEqual([]);
+    expect(grupos([ficha('rec1', 'Cozinha Nobre'), ficha('rec2', 'Cozinho Nobra')])).toEqual([]);
+  });
+});
+
+describe('atracoesParecidas: nomes curtos e diferentes não se juntam', () => {
+  it('uma letra de diferença numa palavra curta é outro nome', () => {
+    expect(grupos([ficha('rec1', 'Gol'), ficha('rec2', 'Sol')])).toEqual([]);
+    expect(grupos([ficha('rec1', 'Casa'), ficha('rec2', 'Caso')])).toEqual([]);
+    expect(grupos([ficha('rec1', 'Mais Você'), ficha('rec2', 'Mais Voz')])).toEqual([]);
+  });
+
+  it('o nome que só tem artigo não junta com nada', () => {
+    expect(grupos([ficha('rec1', 'A'), ficha('rec2', 'O')])).toEqual([]);
+  });
+});
+
+describe('atracoesParecidas: os grupos', () => {
+  it('três fichas parecidas viram um grupo só; o motivo é o mais fraco (uma letra) quando não são todas o mesmo nome', () => {
+    expect(grupos([ficha('rec3', 'Antartica'), ficha('rec1', 'Antártida'), ficha('rec2', 'A Antártida'), ficha('rec9', 'Novela Sol')])).toEqual([{ motivo: 'uma-letra', ids: ['rec2', 'rec3', 'rec1'] }]);
+  });
+
+  it('cada grupo em ordem de nome (o empate pelo id), e os grupos também', () => {
+    const g = atracoesParecidas([ficha('rec4', 'Zebra Show'), ficha('rec3', 'ZEBRA SHOW'), ficha('rec2', 'Bela Tarde'), ficha('rec1', 'Belá Tarde')]);
+    expect(g.map((x) => x.fichas.map((f) => f.nome))).toEqual([
+      ['Bela Tarde', 'Belá Tarde'],
+      ['Zebra Show', 'ZEBRA SHOW'],
+    ]);
+  });
+
+  it('as outras informações da ficha vêm junto', () => {
+    const [g] = atracoesParecidas([{ id: 'rec1', nome: 'Clínica', artes: 3 }, { id: 'rec2', nome: 'Clinica', artes: 0 }]);
+    expect(g.fichas).toEqual([{ id: 'rec2', nome: 'Clinica', artes: 0 }, { id: 'rec1', nome: 'Clínica', artes: 3 }]);
+  });
+});
+
+describe('atracoesParecidas: "não são a mesma"', () => {
+  it('o par marcado não junta, nos dois sentidos', () => {
+    const fichas = [ficha('rec1', 'Clínica'), ficha('rec2', 'Clinica')];
+    expect(grupos(fichas, new Set([parDeFichas('rec2', 'rec1')]))).toEqual([]);
+    expect(parDeFichas('rec2', 'rec1')).toBe(parDeFichas('rec1', 'rec2'));
+  });
+
+  it('a ficha nova parecida com uma marcada volta num grupo novo, só com ela', () => {
+    const fichas = [ficha('rec1', 'Clínica'), ficha('rec2', 'Clinica'), ficha('rec3', 'A Clínica')];
+    expect(grupos(fichas, new Set([parDeFichas('rec1', 'rec2')]))).toEqual([{ motivo: 'mesmo-nome', ids: ['rec3', 'rec2', 'rec1'] }]);
   });
 });

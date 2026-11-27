@@ -2,7 +2,7 @@
    nome, ser um redator ou editor dos cadastros que ainda não tem e-mail vira a sugestão "É Fulana, dos
    redatores?" nos Cadastros, só para administradores. "É" grava o e-mail no Teable (cadastros.mudarEmail); "Não é"
    fica guardado aqui, no SQLite, e a mesma sugestão não volta (até alguém desfazer). */
-import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
+import { nomeComparavel, umaLetraDeDiferenca } from '../src/modelo/ligarPeloNome.ts';
 
 /** Os tipos de cadastro que têm e-mail, como na rota (/api/cadastros/redatores…). */
 export const TIPOS_COM_EMAIL = ['redatores', 'editores'];
@@ -11,16 +11,6 @@ export const TIPOS_COM_EMAIL = ['redatores', 'editores'];
 const PARTICULAS = new Set(['DA', 'DE', 'DO', 'DAS', 'DOS', 'E']);
 const palavras = (nome) => nomeComparavel(nome).split(' ').filter((p) => p && !PARTICULAS.has(p));
 
-/** As duas palavras são iguais ou diferem numa letra só (uma a mais, a menos ou trocada). */
-function umaLetraDeDiferenca(a, b) {
-  if (a === b) return true;
-  if (Math.abs(a.length - b.length) > 1) return false;
-  const [curta, longa] = a.length <= b.length ? [a, b] : [b, a];
-  let i = 0;
-  while (i < curta.length && curta[i] === longa[i]) i++;
-  // trocada: o resto bate depois da letra; a mais: o resto da curta bate com o da longa depois dela
-  return curta.length === longa.length ? curta.slice(i + 1) === longa.slice(i + 1) : curta.slice(i) === longa.slice(i + 1);
-}
 // palavra curta ("Ana", "Leo") só vale igual: uma letra de diferença nela já é outro nome
 const quase = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 && umaLetraDeDiferenca(a, b));
 

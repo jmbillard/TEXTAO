@@ -22,6 +22,7 @@ export function criarRegrasDaAtracao(db) {
        ON CONFLICT (atracao, tipo, re) DO UPDATE SET regra = excluded.regra, por_nome = excluded.por_nome, em = excluded.em`,
     ),
     daAtracao: db.prepare('SELECT * FROM regras_do_acervo WHERE atracao = ? ORDER BY id'),
+    porAtracao: db.prepare('SELECT atracao, COUNT(*) AS n FROM regras_do_acervo GROUP BY atracao'),
     uma: db.prepare('SELECT * FROM regras_do_acervo WHERE id = ?'),
     apagar: db.prepare('DELETE FROM regras_do_acervo WHERE id = ?'),
   };
@@ -36,6 +37,8 @@ export function criarRegrasDaAtracao(db) {
     },
     /** As regras da atração, uma a uma, na ordem em que foram lembradas. */
     lista: (atracao) => q.daAtracao.all(atracao).map(ler),
+    /** Quantas regras cada atração tem, pelo nome: { [atração]: n } (a correção de grafia, #116). */
+    porAtracao: () => Object.fromEntries(q.porAtracao.all().map((l) => [l.atracao, Number(l.n)])),
     /** As regras da atração no formato das cargas à mão, o que a prévia aplica. */
     daAtracao: (atracao) => comoRegras(q.daAtracao.all(atracao).map(ler)),
     /** Apaga a regra lembrada errada: devolve a que foi apagada (com a atração), ou null quando ela não existe. */

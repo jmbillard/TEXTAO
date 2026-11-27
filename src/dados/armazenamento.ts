@@ -952,7 +952,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import type { DiaDaPauta, SemanaDaPauta } from '../modelo/pauta';
-import type { GrupoDaPauta, PaginaDaCorrecao } from '../modelo/correcaoDeGrafia';
+import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
 import type { CardDaProducao, TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
@@ -1320,6 +1320,10 @@ export const lerDiaDaPauta = (dia = '') => pedir<DiaDaPauta>(`/api/pauta/dia${di
 export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** A correção de grafia (#114, só administradores): uma página das propostas da pauta de um grupo, e o resumo. */
 export const lerCorrecoesDaPauta = (grupo: GrupoDaPauta, pagina = 1) => pedir<PaginaDaCorrecao>(`/api/correcoes/pauta?grupo=${grupo}&pagina=${pagina}`);
+/** As atrações parecidas (#116, só administradores): uma página dos grupos de fichas que parecem a mesma atração. */
+export const lerAtracoesParecidas = (pagina = 1) => pedir<PaginaDasAtracoes>(`/api/correcoes/atracoes?pagina=${pagina}`);
+/** "Não são a mesma": o grupo destas fichas não aparece de novo. */
+export const naoSaoAMesma = (ids: string[]) => pedir<{ ok: true }>('/api/correcoes/atracoes/nao-sao-a-mesma', { method: 'POST', body: JSON.stringify({ ids }) });
 /** Confere sem salvar nada. */
 export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify(m) });
 /** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */

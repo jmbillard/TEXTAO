@@ -13,6 +13,7 @@ import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
 import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES } from './correcoes.mjs';
+import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
 import { cruzarComAProducao, diaOuHoje, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
@@ -655,10 +656,43 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
   const primeiraDescoberta = redescobrir();
 
+  /**
+   * A correção de grafia das atrações (#116), só para administradores: GET /api/correcoes/atracoes?pagina= devolve uma
+   * página dos grupos de fichas que parecem a mesma atração, cada ficha com quantas artes do acervo, Produções e regras
+   * tem; POST /api/correcoes/atracoes/nao-sao-a-mesma { ids } guarda "não são a mesma" para as fichas de um grupo. Nada
+   * é gravado no Teable.
+   */
+  async function rotaDasAtracoesParecidas(req, res, eu, caminho) {
+    const marcar = caminho.endsWith('/nao-sao-a-mesma');
+    if (req.method !== (marcar ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
+    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem a correção de grafia.' });
+    const corpo = marcar ? ((await lerCorpo(req)) ?? {}) : null;
+    const ids = marcar ? idsDoGrupo(corpo.ids) : null;
+    if (marcar && !ids) return json(res, 400, { erro: 'Quais fichas do grupo?' });
+    const lido = await cadastros.ler();
+    if (!lido.ligado) return json(res, 503, { erro: 'Os cadastros de atrações não estão ligados ao Teable.' });
+    const fichas = lido.atracoes.map(({ id, nome, categoria }) => ({ id, nome, categoria }));
+    if (marcar) {
+      const grupo = atracoesParecidas.naoSaoAMesma(fichas, ids, eu.email);
+      if (!grupo) return json(res, 409, { erro: 'O grupo mudou desde que a tela leu as atrações. Leia de novo.' });
+      console.log(`[correcoes] ${eu.email} disse que não são a mesma: ${grupo.fichas.map((f) => f.nome).join(', ')}`);
+      return json(res, 200, { ok: true });
+    }
+    const busca = new URL(req.url, 'http://x').searchParams;
+    const pagina = /^\d{1,5}$/.test(busca.get('pagina') ?? '') ? Math.max(1, Number(busca.get('pagina'))) : 1;
+    // as Produções pela atração do Roteiro ou pela key da claquete, com as keys destas fichas
+    const programas = lido.atracoes.map((a) => ({ nome: a.nome, chaves: a.keys.map((k) => k.key) }));
+    const artes = acervo.ligado ? await acervo.totaisPorFicha().catch((e) => (console.warn(`[correcoes] não li o acervo: ${e instanceof Error ? e.message : e}`), null)) : null;
+    const contas = { artes, producoes: producoes.porAtracao((claquete) => atracaoPelaClaquete(claquete, programas, pracas)), regras: regrasDaAtracao.porAtracao() };
+    return json(res, 200, atracoesParecidas.grupos(fichas, contas, pagina));
+  }
+
   /* ---------- a seção Pessoas (#77): os designers da produção da arte × a tabela designers (nada do Trello) ---------- */
   const pessoas = criarPessoas({ db, copia, buscar: buscarNoTeable });
   // ligar pessoa e cadastro pelo e-mail (#106): as sugestões "É" e o "Não é" guardado
   const ligacaoDePessoas = criarLigacaoDePessoas({ db });
+  // as atrações parecidas da correção de grafia (#116): o "não são a mesma" guardado
+  const atracoesParecidas = criarAtracoesParecidas({ db });
   // as preferências de cada pessoa (#101), no SQLite: a última área usada, o arranjo da Pauta da edição…
   const preferencias = criarPreferencias(db);
   // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
@@ -2596,6 +2630,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const pagina = /^\d{1,5}$/.test(busca.get('pagina') ?? '') ? Math.max(1, Number(busca.get('pagina'))) : 1;
       return json(res, 200, await geracao.correcoes.propostas({ grupo, pagina }));
     }
+    if (caminho === '/api/correcoes/atracoes' || caminho === '/api/correcoes/atracoes/nao-sao-a-mesma') return rotaDasAtracoesParecidas(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
     const extra = /^\/api\/roteiros\/([^/]+)\/(original|original-texto|trello|pdf)$/.exec(caminho);

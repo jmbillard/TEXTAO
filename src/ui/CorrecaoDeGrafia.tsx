@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { lerCorrecoesDaPauta } from "../dados/armazenamento";
+import {
+  lerAtracoesParecidas,
+  lerCorrecoesDaPauta,
+  naoSaoAMesma,
+} from "../dados/armazenamento";
 import type {
+  FichaParecida,
   GrupoDaPauta,
+  MotivoDoGrupo,
   PaginaDaCorrecao,
+  PaginaDasAtracoes,
   PropostaDaPauta,
 } from "../modelo/correcaoDeGrafia";
 import { Icone } from "./icones";
@@ -14,7 +21,10 @@ import "./correcoes.css";
 /* A correção de grafia (#114), só para administradores (menu do perfil, junto de Cadastros e Configuração): as
    claquetes da pauta da edição inteira com o código de versão fora do padrão, "de → para", com o dia e o editor da
    linha, em páginas; os códigos que a pauta não reconhece, à parte, sem correção. Nesta fatia, só para conferir. No
-   computador e no celular (no celular, cada linha vira um cartão). */
+   computador e no celular (no celular, cada linha vira um cartão).
+   As atrações (#116): as fichas que parecem ser a mesma atração, juntas num grupo com o motivo e, em cada ficha,
+   quantas artes do acervo, Produções e regras ela tem. "Não são a mesma" guarda a decisão e o grupo sai (no
+   computador; no celular, a tela só mostra). */
 
 interface Props {
   voltar: () => void;
@@ -101,6 +111,18 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
   const resumo =
     dados.corrigir?.resumo ?? dados["nao-reconhecido"]?.resumo ?? null;
 
+  // as atrações parecidas: lidas dos cadastros, à parte da pauta (uma não espera a outra)
+  const [paginaAtr, setPaginaAtr] = useState(1);
+  const [atracoes, setAtracoes] = useState<PaginaDasAtracoes | null>(null);
+  const [falhaAtr, setFalhaAtr] = useState("");
+  const carregarAtracoes = useCallback((pagina: number) => {
+    setFalhaAtr("");
+    lerAtracoesParecidas(pagina)
+      .then(setAtracoes)
+      .catch((e) => setFalhaAtr(e instanceof Error ? e.message : String(e)));
+  }, []);
+  useEffect(() => carregarAtracoes(paginaAtr), [carregarAtracoes, paginaAtr]);
+
   return (
     <div
       className={`pagina configuracao correcoes ${celular ? "no-celular" : ""}`}
@@ -156,13 +178,32 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
                 </>
               )}
               .
+              {atracoes && (
+                <>
+                  {" "}
+                  {atracoes.total ? (
+                    <>
+                      <b>
+                        {plural(
+                          atracoes.total,
+                          "grupo de atrações parecidas",
+                          "grupos de atrações parecidas",
+                        )}
+                      </b>
+                      .
+                    </>
+                  ) : (
+                    "Nenhuma atração parecida com outra."
+                  )}
+                </>
+              )}
             </p>
             <p className="cor-linha">
               A pauta inteira, lida do Teable. O padrão das versões é uma letra
               por versão, maiúscula, entre parênteses, no fim da claquete: (A)
               amanhã, (H) hoje, (N) nesta, (P) próxima, (D) dia, (M) mês, e
               (MNT) manutenção da grade. Só o código muda; o resto da claquete
-              fica como está. Por enquanto, só para conferir.
+              fica como está. Por enquanto, a pauta é só para conferir.
             </p>
             <Grupo
               grupo="corrigir"
@@ -184,8 +225,239 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
             )}
           </>
         )}
+        <Atracoes
+          dados={atracoes}
+          falha={falhaAtr}
+          celular={celular}
+          irPara={setPaginaAtr}
+          tentarDeNovo={() => carregarAtracoes(paginaAtr)}
+          marcada={(id) => {
+            // o grupo sai da lista; a página relê para trazer o próximo
+            setAtracoes((d) =>
+              d
+                ? {
+                    ...d,
+                    total: d.total - 1,
+                    grupos: d.grupos.filter((g) => g.id !== id),
+                  }
+                : d,
+            );
+            carregarAtracoes(paginaAtr);
+          }}
+        />
       </main>
     </div>
+  );
+}
+
+/** As páginas de uma lista: "Anteriores", "página N de M" e "Próximas" (nada com uma página só). */
+function Paginas({
+  titulo,
+  pagina,
+  paginas,
+  irPara,
+}: {
+  titulo: string;
+  pagina: number;
+  paginas: number;
+  irPara: (n: number) => void;
+}) {
+  if (paginas <= 1) return null;
+  return (
+    <nav className="cor-paginas" aria-label={`Páginas: ${titulo}`}>
+      <button
+        type="button"
+        className="botao"
+        disabled={pagina <= 1}
+        onClick={() => irPara(pagina - 1)}
+      >
+        Anteriores
+      </button>
+      <span className="cor-pagina">
+        página {pagina} de {paginas}
+      </span>
+      <button
+        type="button"
+        className="botao"
+        disabled={pagina >= paginas}
+        onClick={() => irPara(pagina + 1)}
+      >
+        Próximas
+      </button>
+    </nav>
+  );
+}
+
+/** Por que as fichas parecem a mesma, na tela. */
+const MOTIVO: Record<MotivoDoGrupo, string> = {
+  "mesmo-nome": "O mesmo nome sem maiúsculas, acentos e artigos",
+  "uma-letra": "Uma letra de diferença no nome",
+};
+
+/** Uma conta da ficha: o número, com o zero apagado; sem o acervo ligado, "—". */
+const Conta = ({ n }: { n: number | null }) =>
+  n === null ? (
+    <span className="cor-sem">—</span>
+  ) : (
+    <span className={n ? "" : "cor-zero"}>{n.toLocaleString("pt-BR")}</span>
+  );
+
+function Atracoes({
+  dados,
+  falha,
+  celular,
+  irPara,
+  tentarDeNovo,
+  marcada,
+}: {
+  dados: PaginaDasAtracoes | null;
+  falha: string;
+  celular: boolean;
+  irPara: (n: number) => void;
+  tentarDeNovo: () => void;
+  marcada: (id: string) => void;
+}) {
+  // o grupo que está sendo marcado agora, e o erro de um grupo
+  const [marcando, setMarcando] = useState("");
+  const [erro, setErro] = useState<{ id: string; texto: string } | null>(null);
+  const [guardado, setGuardado] = useState("");
+  const marcar = (id: string, fichas: FichaParecida[]) => {
+    setMarcando(id);
+    setErro(null);
+    naoSaoAMesma(fichas.map((f) => f.id))
+      .then(() => {
+        setGuardado(
+          `Guardado: ${fichas.map((f) => f.nome).join(", ")} não são a mesma atração.`,
+        );
+        marcada(id);
+      })
+      .catch((e) =>
+        setErro({ id, texto: e instanceof Error ? e.message : String(e) }),
+      )
+      .finally(() => setMarcando(""));
+  };
+  const paginas = dados
+    ? Math.max(1, Math.ceil(dados.total / dados.porPagina))
+    : 1;
+  return (
+    <section
+      className="cfg-secao cor-secao"
+      aria-labelledby="cor-atracoes"
+      data-grupo="atracoes"
+    >
+      <div className="cfg-secao-topo">
+        <h2 id="cor-atracoes">Atrações</h2>
+        {dados && (
+          <span className="cor-conta">
+            {dados.total.toLocaleString("pt-BR")}
+          </span>
+        )}
+      </div>
+      <p className="cor-linha">
+        As fichas que parecem ser a mesma atração: o mesmo nome sem maiúsculas,
+        acentos e artigos, ou uma letra de diferença numa palavra longa. Cada
+        ficha mostra quantas artes do acervo, Produções e regras ela tem.
+        {!celular &&
+          " Quando não forem a mesma, diga “Não são a mesma”, e o grupo não volta."}
+      </p>
+      {guardado && (
+        <p className="cor-guardado" role="status">
+          {guardado}
+        </p>
+      )}
+      {falha ? (
+        <p className="cfg-falha" role="alert">
+          {falha}{" "}
+          <button className="botao-texto" onClick={tentarDeNovo}>
+            Tentar de novo
+          </button>
+        </p>
+      ) : !dados ? (
+        <p className="cfg-lendo">Lendo as atrações…</p>
+      ) : !dados.total ? (
+        <p className="cor-linha cor-vazio">
+          Nenhuma ficha parece ser a mesma atração que outra.
+        </p>
+      ) : (
+        <>
+          <ul className="cor-grupos">
+            {dados.grupos.map((g) => (
+              <li key={g.id} className="cor-grupo" data-id={g.id}>
+                <div className="cor-grupo-topo">
+                  <span className="cor-motivo" data-motivo={g.motivo}>
+                    {MOTIVO[g.motivo]}
+                  </span>
+                  {!celular && (
+                    <button
+                      type="button"
+                      className="botao"
+                      disabled={!!marcando}
+                      onClick={() => marcar(g.id, g.fichas)}
+                    >
+                      {marcando === g.id ? "Guardando…" : "Não são a mesma"}
+                    </button>
+                  )}
+                </div>
+                {erro?.id === g.id && (
+                  <p className="cfg-falha" role="alert">
+                    {erro.texto}
+                  </p>
+                )}
+                <table className="cor-tabela cor-fichas">
+                  <thead>
+                    <tr>
+                      <th>Ficha</th>
+                      <th className="cor-num">Artes do acervo</th>
+                      <th className="cor-num">Produções</th>
+                      <th className="cor-num">Regras</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.fichas.map((f) => (
+                      <tr key={f.id} data-id={f.id}>
+                        <td className="cor-ficha">
+                          <span className="cor-nome">{f.nome}</span>{" "}
+                          {f.categoria && (
+                            <span className="cor-categoria">{f.categoria}</span>
+                          )}
+                        </td>
+                        <td
+                          className="cor-num"
+                          data-conta="artes"
+                          data-rotulo="Artes"
+                        >
+                          <Conta n={f.artes} />
+                        </td>
+                        <td
+                          className="cor-num"
+                          data-conta="producoes"
+                          data-rotulo="Produções"
+                        >
+                          <Conta n={f.producoes} />
+                        </td>
+                        <td
+                          className="cor-num"
+                          data-conta="regras"
+                          data-rotulo="Regras"
+                        >
+                          <Conta n={f.regras} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </li>
+            ))}
+          </ul>
+          <Paginas
+            titulo="Atrações"
+            pagina={dados.pagina}
+            paginas={paginas}
+            irPara={irPara}
+          />
+        </>
+      )}
+    </section>
   );
 }
 
@@ -263,29 +535,12 @@ function Grupo({
               })}
             </tbody>
           </table>
-          {paginas > 1 && (
-            <nav className="cor-paginas" aria-label={`Páginas: ${titulo}`}>
-              <button
-                type="button"
-                className="botao"
-                disabled={pagina <= 1}
-                onClick={() => irPara(pagina - 1)}
-              >
-                Anteriores
-              </button>
-              <span className="cor-pagina">
-                página {pagina} de {paginas}
-              </span>
-              <button
-                type="button"
-                className="botao"
-                disabled={pagina >= paginas}
-                onClick={() => irPara(pagina + 1)}
-              >
-                Próximas
-              </button>
-            </nav>
-          )}
+          <Paginas
+            titulo={titulo}
+            pagina={pagina}
+            paginas={paginas}
+            irPara={irPara}
+          />
         </>
       )}
     </section>

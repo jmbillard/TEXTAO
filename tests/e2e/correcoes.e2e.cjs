@@ -1,4 +1,4 @@
-// Ponta a ponta da Correção de grafia (#114), rodado à parte do vitest: `npm run e2e:correcoes`.
+// Ponta a ponta da Correção de grafia (#114, #116), rodado à parte do vitest: `npm run e2e:correcoes`.
 //
 // Sobe o servidor e o Vite como os outros e2e (banco temporário, nada sai para a rede), com o Teable falso
 // (tests/fixtures/teable-falso.mjs): a tabela EDICAO_producao achada pelo nome e o Postgres dele respondendo a pauta
@@ -7,6 +7,9 @@
 // com o dia e o editor e o código destacado; os códigos que a pauta não reconhece, à parte; nada é gravado no Teable.
 // As páginas: com mais propostas do que cabem, "Próximas" pede a página seguinte. Quem não é administrador não vê o
 // item nem abre a página. No celular, claro e escuro: só mostra, cada linha um cartão, sem rolar para o lado.
+// As atrações (#116): as fichas dos cadastros do Teable falso que parecem a mesma, num grupo com o motivo, e em cada
+// ficha quantas artes do acervo, Produções e regras ela tem; os nomes curtos e diferentes não juntam; "Não são a mesma"
+// tira o grupo, e ele não volta ao reabrir a página. No celular, sem o botão.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:correcoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -39,6 +42,24 @@ function linha(claquete, editor, dia, anotacao = null) {
     fields: { claquete, key: claquete.toUpperCase(), editor: editor ? { id: `rec${editor.replace(/\W/g, '')}`, title: editor } : null, data: meiaNoite, expediente_inicio: meiaNoite, expediente_fim: null, anotacao, alterado_em: meiaNoite },
   };
 }
+/** As fichas de atração dos cadastros (fictícias): duas com o mesmo nome sem o artigo e o acento, duas com uma letra
+    de diferença e duas curtas e diferentes. */
+const vinculo = (id, title) => [{ id, title }];
+const ATRACOES = [
+  { id: 'recAtrE2e1', fields: { atracao: 'A Clínica', categoria: 'Novelas' } },
+  { id: 'recAtrE2e2', fields: { atracao: 'Clinica', categoria: 'Novelas' } },
+  { id: 'recAtrE2e3', fields: { atracao: 'Antártida', categoria: 'Filmes' } },
+  { id: 'recAtrE2e4', fields: { atracao: 'Antartica', categoria: 'Filmes' } },
+  { id: 'recAtrE2e5', fields: { atracao: 'Gol', categoria: 'Esportes' } },
+  { id: 'recAtrE2e6', fields: { atracao: 'Sol', categoria: 'Shows' } },
+];
+const KEYS = [{ id: 'recKeyE2e1', fields: { key: 'A CLINICA', atracoes: vinculo('recAtrE2e1', 'A Clínica') } }];
+const ACERVO = [
+  { id: 'recArteE2e1', fields: { arte: 'HOJE', tipo: 'RODAPE', atracao: vinculo('recAtrE2e1', 'A Clínica') } },
+  { id: 'recArteE2e2', fields: { arte: 'AMANHÃ', tipo: 'RODAPE', atracao: vinculo('recAtrE2e1', 'A Clínica') } },
+  { id: 'recArteE2e3', fields: { arte: 'ESTREIA', tipo: 'CARTAO', atracao: vinculo('recAtrE2e3', 'Antártida') } },
+];
+
 const PAUTA = [
   // fora do padrão: minúsculas sem parênteses, o código inteiro, a letra solta
   linha('Jogo Final 4/12 Dp', 'Bruno Teixeira', '2026-11-27'),
@@ -81,6 +102,10 @@ const capturar = async (p, nome) => {
 };
 const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
 const grupo = (p, g) => p.locator(`.cor-secao[data-grupo="${g}"]`);
+const grupoDeAtracoes = (p, id) => p.locator(`.cor-grupo[data-id="${id}"]`);
+/** As fichas de um grupo: o nome e as três contas (artes, Produções, regras). */
+const fichasDe = (g) =>
+  g.locator('.cor-fichas tbody tr').evaluateAll((trs) => trs.map((tr) => [tr.querySelector('.cor-nome').textContent, ...[...tr.querySelectorAll('.cor-num')].map((td) => td.textContent.replace(/[^\d—]/g, ''))].join(' ')));
 const linhaDe = (p, id) => p.locator(`.cor-tabela tr[data-id="${id}"]`);
 
 async function noComputador(navegador, url, teable, tema) {
@@ -95,11 +120,12 @@ async function noComputador(navegador, url, teable, tema) {
   assert.ok(i > 0 && itens.slice(0, i).some((t) => t.startsWith('Configuração')) && itens.some((t) => t.startsWith('Cadastros')), `Correção de grafia junto de Cadastros e Configuração: ${itens.join(' | ')}`);
   await p.locator('.perfil-painel .perfil-link', { hasText: 'Correção de grafia' }).click();
   await grupo(p, 'corrigir').locator('.cor-tabela').waitFor();
+  await grupo(p, 'atracoes').locator('.cor-grupo').first().waitFor();
   assert.equal(new URL(p.url()).hash, '#/correcoes');
   assert.equal((await p.locator('.cfg-cabeca h1').textContent()).trim(), 'Correção de grafia');
 
-  // o resumo no topo
-  assert.equal((await p.locator('.cor-resumo').textContent()).replace(/\s+/g, ' ').trim(), '3 propostas de correção na pauta da edição e 1 código não reconhecido.');
+  // o resumo no topo: a pauta e as atrações
+  assert.equal((await p.locator('.cor-resumo').textContent()).replace(/\s+/g, ' ').trim(), '3 propostas de correção na pauta da edição e 1 código não reconhecido. 2 grupos de atrações parecidas.');
 
   // "de → para", com o dia e o editor; a mais recente primeiro; só o código muda
   const corrigir = grupo(p, 'corrigir');
@@ -123,6 +149,16 @@ async function noComputador(navegador, url, teable, tema) {
   // nem a tarefa, nem o aviso, nem o que já está no padrão
   for (const texto of ['CALHAUS', 'Trocar a grade', 'Novela Sol 28/11', 'Grade da Noite', 'Quem Ama']) assert.equal(await p.locator('.cor-tabela', { hasText: texto }).count(), 0, texto);
 
+  // as atrações parecidas: cada grupo com o motivo e as fichas, com as contas; os nomes curtos e diferentes, não
+  const atracoes = grupo(p, 'atracoes');
+  assert.equal((await atracoes.locator('.cor-conta').textContent()).trim(), '2');
+  assert.deepEqual(await textos(atracoes.locator('.cor-grupo .cor-motivo')), ['O mesmo nome sem maiúsculas, acentos e artigos', 'Uma letra de diferença no nome']);
+  assert.deepEqual(await fichasDe(grupoDeAtracoes(p, 'recAtrE2e1+recAtrE2e2')), ['A Clínica 2 0 1', 'Clinica 0 0 0']);
+  assert.deepEqual(await fichasDe(grupoDeAtracoes(p, 'recAtrE2e3+recAtrE2e4')), ['Antartica 0 0 0', 'Antártida 1 0 0']);
+  assert.deepEqual(await textos(grupoDeAtracoes(p, 'recAtrE2e1+recAtrE2e2').locator('.cor-categoria')), ['Novelas', 'Novelas']);
+  for (const nome of ['Gol', 'Sol']) assert.equal(await atracoes.locator('.cor-nome', { hasText: new RegExp(`^${nome}$`) }).count(), 0, nome);
+  assert.equal(await atracoes.getByRole('button', { name: 'Não são a mesma' }).count(), 2);
+
   await semRolagemDeLado(p, `computador ${nome}`);
   await capturar(p, `01-computador-${nome}`);
   // só leitura: nada foi ao Teable para gravar
@@ -130,6 +166,27 @@ async function noComputador(navegador, url, teable, tema) {
   assert.deepEqual(erros, [], `computador ${nome}: erros na página`);
   await ctx.close();
   console.log(`ok: computador ${nome}: menu do perfil → resumo, "de → para" com o dia e o editor, não reconhecido à parte`);
+}
+
+/** "Não são a mesma": o grupo sai na hora, fica guardado e não volta ao reabrir; o outro continua. */
+async function naoSaoAMesma(navegador, url, teable) {
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } });
+  const antartida = grupoDeAtracoes(p, 'recAtrE2e3+recAtrE2e4');
+  await antartida.waitFor();
+  await antartida.getByRole('button', { name: 'Não são a mesma' }).click();
+  await antartida.waitFor({ state: 'detached' });
+  assert.equal((await p.locator('.cor-guardado').textContent()).trim(), 'Guardado: Antartica, Antártida não são a mesma atração.');
+  assert.equal((await grupo(p, 'atracoes').locator('.cor-conta').textContent()).trim(), '1');
+  await capturar(p, '03-nao-sao-a-mesma');
+  await p.reload();
+  await grupoDeAtracoes(p, 'recAtrE2e1+recAtrE2e2').waitFor();
+  assert.equal(await antartida.count(), 0, 'o grupo marcado não volta');
+  assert.match((await p.locator('.cor-resumo').textContent()).replace(/\s+/g, ' '), /1 grupo de atrações parecidas\./);
+  // guardado no PROMeiro: nada foi ao Teable para gravar
+  assert.deepEqual(teable.estado.pedidos.filter((x) => !x.startsWith('GET ')), []);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: "Não são a mesma" tira o grupo, e ele não volta ao reabrir');
 }
 
 /** As páginas: a resposta do servidor de mentira tem 120 propostas; "Próximas" pede a página 2 e mostra ela. */
@@ -184,6 +241,9 @@ async function semSerAdministrador(navegador, url, api, teable) {
   assert.equal(new URL(p.url()).hash, '#/');
   const r = await fetch(`${api}/correcoes/pauta`, { headers: { 'cf-access-authenticated-user-email': OUTRA } });
   assert.equal(r.status, 403);
+  assert.equal((await fetch(`${api}/correcoes/atracoes`, { headers: { 'cf-access-authenticated-user-email': OUTRA } })).status, 403);
+  const marcar = await fetch(`${api}/correcoes/atracoes/nao-sao-a-mesma`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': OUTRA, 'content-type': 'application/json' }, body: JSON.stringify({ ids: ['recAtrE2e1', 'recAtrE2e2'] }) });
+  assert.equal(marcar.status, 403);
   assert.equal(teable.estado.consultas.slice(antes).some((sql) => sql.includes('grupo')), false, 'quem não é administrador não leva ao Postgres');
   assert.deepEqual(erros, []);
   await ctx.close();
@@ -199,6 +259,9 @@ async function noCelular(navegador, url, tema) {
   // cada linha um cartão: sem o cabeçalho da tabela, a claquete embaixo do dia e do editor
   assert.equal(await p.locator('.cor-tabela thead').first().isVisible(), false);
   assert.deepEqual(await textos(grupo(p, 'corrigir').locator('mark.cor-depois')), ['(DP)', '(M)', '(H)']);
+  // as atrações: só mostra, sem o botão
+  await grupo(p, 'atracoes').locator('.cor-grupo').first().waitFor();
+  assert.equal(await grupo(p, 'atracoes').getByRole('button', { name: 'Não são a mesma' }).count(), 0);
   await semRolagemDeLado(p, `celular ${nome}`);
   await capturar(p, `02-celular-${nome}`);
   assert.deepEqual(erros, [], `celular ${nome}: erros na página`);
@@ -208,15 +271,22 @@ async function noCelular(navegador, url, tema) {
 
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
-  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e' }, { registros: { EDICAO_producao: PAUTA } });
+  const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
+  const { criarRegrasDaAtracao } = await import(join(RAIZ, 'servidor', 'regras-da-atracao.mjs'));
+  const nomes = { EDICAO_producao: 'pauta_e2e', atracoes: 'atracoes_e2e', KEY_atracoes: 'keys_e2e', ARTES_acervo: 'acervo_e2e' };
+  const teable = teableFalso(nomes, { registros: { EDICAO_producao: PAUTA, atracoes: ATRACOES, KEY_atracoes: KEYS, ARTES_acervo: ACERVO } });
   const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
-  const s = await subir({ teable, pg: teable.abrirPg, env: { CADASTRO_ADMINS: LIA, ...TEABLE_FALSO, ...PG } });
+  // os cadastros leem as atrações pela API do Teable falso
+  const s = await subir({ teable, pg: teable.abrirPg, cadastros: (e) => criarCadastros(e, { buscar: teable }), env: { CADASTRO_ADMINS: LIA, ...TEABLE_FALSO, ...PG } });
+  // uma regra lembrada da ficha A Clínica
+  criarRegrasDaAtracao(s.db).lembrar('A Clínica', [{ tipo: 'trocas', re: '^ESTREIA$', motivo: 'troca de exemplo' }], 'Lia Moraes');
   // o convite do tour da revisão não aparece na fila (as duas já viram)
   for (const email of [LIA, OUTRA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
   const navegador = await chromium.launch();
   let falhou = false;
   try {
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, teable, tema);
+    await naoSaoAMesma(navegador, s.url, teable);
     await asPaginas(navegador, s.url);
     await semSerAdministrador(navegador, s.url, s.api, teable);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema);

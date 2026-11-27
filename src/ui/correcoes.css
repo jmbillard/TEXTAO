@@ -27,6 +27,21 @@
 .cor-paginas .botao { height: 30px; font-size: 13px; }
 .cor-pagina { font: 500 13px var(--sans); color: var(--tinta3); font-variant-numeric: tabular-nums; }
 
+/* ---------- as atrações parecidas (#116): um cartão por grupo, com o motivo e as fichas ---------- */
+.cor-guardado { margin: 0 0 12px; font: 500 13.5px/1.5 var(--sans); color: var(--ok); background: var(--ok-fundo); border-radius: 8px; padding: 8px 12px; max-width: 86ch; }
+.cor-grupos { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.cor-grupo { border: 1px solid var(--regua); border-radius: 10px; padding: 10px 14px 4px; }
+.cor-grupo-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
+.cor-grupo-topo .botao { height: 30px; font-size: 13px; flex: none; }
+.cor-motivo { font: 500 12.5px var(--sans); color: var(--tinta2); background: var(--neutro); border-radius: 99px; padding: 3px 10px; }
+.cor-motivo[data-motivo="uma-letra"] { background: var(--falta-fundo); color: var(--falta); }
+.cor-fichas .cor-num { width: 150px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cor-fichas th.cor-num { text-align: right; }
+.cor-fichas td.cor-num { color: var(--tinta); font-weight: 600; }
+.cor-zero { color: var(--tinta3); font-weight: 400; }
+.cor-nome { font: 600 14.5px var(--sans); color: var(--tinta); }
+.cor-categoria { margin-left: 6px; font: 400 12.5px var(--sans); color: var(--tinta3); }
+
 /* ---------- no celular ---------- */
 .no-celular .cor-resumo { font-size: 15.5px; }
 .no-celular .cor-tabela thead { display: none; }
@@ -39,3 +54,8 @@
 .no-celular .cor-tabela .cor-claquetes { grid-column: 1 / -1; }
 .no-celular .cor-de-para { flex-direction: column; gap: 2px; }
 .no-celular .cor-paginas { justify-content: space-between; }
+.no-celular .cor-grupo { padding: 8px 12px 2px; }
+.no-celular .cor-fichas tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.no-celular .cor-fichas .cor-ficha { grid-column: 1 / -1; }
+.no-celular .cor-fichas td.cor-num { width: auto; text-align: left; font-size: 13px; }
+.no-celular .cor-fichas td.cor-num::before { content: attr(data-rotulo) " "; font-weight: 400; color: var(--tinta3); }

@@ -51,6 +51,17 @@ export const nomeComparavel = (s: string) =>
 
 const palavrasDe = (s: string) => nomeComparavel(s).split(' ').filter(Boolean);
 
+/** As duas palavras são iguais ou diferem numa letra só (uma a mais, a menos ou trocada). */
+export function umaLetraDeDiferenca(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  const [curta, longa] = a.length <= b.length ? [a, b] : [b, a];
+  let i = 0;
+  while (i < curta.length && curta[i] === longa[i]) i++;
+  // trocada: o resto bate depois da letra; a mais: o resto da curta bate com o da longa depois dela
+  return curta.length === longa.length ? curta.slice(i + 1) === longa.slice(i + 1) : curta.slice(i) === longa.slice(i + 1);
+}
+
 /** Um só que aceita: liga; nenhum ou mais de um: exceção. */
 export function casar<T extends { id: string }>(itens: readonly T[], aceita: (item: T) => boolean): Achado {
   const ids = itens.filter(aceita).map((i) => i.id);
