@@ -62,7 +62,8 @@ function ContagemDaSemana({ segunda, children }: { segunda: string; children: Re
     o movimento reduzido, só esmaece. O texto parado vai para o leitor de tela à parte (a contagem não é anunciada). */
 function PeriodoDaPauta({ visao, dia }: { visao: 'semana' | 'dia'; dia: string }) {
   const semana = useContext(SemanaQueConta);
-  const doDia = useContagemDoPeriodo(EIXO_DO_DIA, numeroDoDia(dia));
+  // na Semana, a contagem do dia fica parada (o período conta pela da semana)
+  const doDia = useContagemDoPeriodo(EIXO_DO_DIA, visao === 'dia' ? numeroDoDia(dia) : 0);
   const c = visao === 'dia' || !semana ? doDia : semana.contagem;
   const el = useRef<HTMLSpanElement>(null);
   useEsmaeceAoMudar(el, dia);
