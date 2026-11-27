@@ -1,6 +1,6 @@
 /* As atrações parecidas da correção de grafia (#116): as fichas de atração dos cadastros que parecem ser a mesma
    atração, juntas num grupo com o motivo (a regra pura atracoesParecidas) e, em cada ficha, quantas artes do acervo,
-   Produções e regras ela tem, para o administrador escolher a que fica (juntar é o #117). "Não são a mesma" fica
+   Produções e regras ela tem, para o administrador escolher a que fica (juntar é o #117, juntar-atracoes.mjs). "Não são a mesma" fica
    guardado aqui, no SQLite do PROMeiro (e por isso no backup), par a par: o grupo não aparece de novo, a não ser que
    chegue uma ficha nova parecida. O SQL é o comum ao SQLite e ao Postgres (texto, PRIMARY KEY composta e
    INSERT … ON CONFLICT … DO NOTHING). */
@@ -53,14 +53,23 @@ export function criarAtracoesParecidas({ db }) {
   }
 
   /**
+   * O grupo que a tela mostra agora com exatamente estas fichas (os pares de "não são a mesma" fora), ou null: o que
+   * mudou desde que a tela leu não vale (para marcar e para juntar, #117).
+   * @param fichas as atrações dos cadastros de agora; pedidas os ids das fichas do grupo
+   */
+  function grupoAtual(fichas, pedidas) {
+    const alvo = [...new Set(pedidas)].sort().join('+');
+    return atracoesParecidas(fichas, diferentes()).find((g) => ids(g).join('+') === alvo) ?? null;
+  }
+
+  /**
    * "Não são a mesma": guarda cada par do grupo, e ele não volta. Só vale um grupo que a tela mostra agora (as mesmas
    * fichas): o que mudou desde então devolve null.
    * @param fichas as atrações dos cadastros de agora; pedidas os ids das fichas do grupo
    * @returns o grupo marcado, ou null
    */
   function naoSaoAMesma(fichas, pedidas, por, em = new Date().toISOString()) {
-    const alvo = [...new Set(pedidas)].sort().join('+');
-    const grupo = atracoesParecidas(fichas, diferentes()).find((g) => ids(g).join('+') === alvo);
+    const grupo = grupoAtual(fichas, pedidas);
     if (!grupo) return null;
     db.exec('BEGIN');
     try {
@@ -78,7 +87,7 @@ export function criarAtracoesParecidas({ db }) {
     return grupo;
   }
 
-  return { grupos, naoSaoAMesma };
+  return { grupos, grupoAtual, naoSaoAMesma };
 }
 
 /** Os ids do pedido de "não são a mesma": de 2 a 50 ids de ficha, ou null. */

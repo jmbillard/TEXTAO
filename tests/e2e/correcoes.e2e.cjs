@@ -15,6 +15,9 @@
 // "mudou desde a proposta" e o resultado "1 deu certo e 1 falhou"; a caixinha de desfazer devolve a claquete antiga; o
 // registro das correções aplicadas, com o desfazer de cada uma e o "mudou desde então". Com a tabela da pauta fora da
 // base do PROMeiro, só o aviso, sem marcar.
+// Juntar (#117), no computador: "Juntar…" abre a escolha da ficha que fica (a sugerida é a com mais artes) e do nome
+// final; juntar passa as artes do acervo, a key e a regra para a que fica, renomeia e apaga a que sai, no Teable falso;
+// o grupo sai, a caixinha de desfazer e o registro mostram o resumo; desfazer recria a ficha que saiu e religa as artes.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:correcoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -353,6 +356,67 @@ async function aplicarEDesfazer(navegador, url, teable) {
   console.log('ok: aplicar e desfazer: marcar, aplicar só as marcadas, "mudou desde a proposta", a caixinha e o registro');
 }
 
+/** Juntar (#117): escolher a ficha que fica e o nome final, juntar, e desfazer pela caixinha. */
+async function juntarEDesfazer(navegador, url, teable) {
+  const antes = teable.estado.pedidos.length;
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } });
+  const clinica = grupoDeAtracoes(p, 'recAtrE2e1+recAtrE2e2');
+  await clinica.waitFor();
+  await clinica.getByRole('button', { name: 'Juntar…' }).click();
+  // a sugerida é a com mais artes do acervo, e o nome final é o dela
+  const nomeFinal = clinica.getByRole('combobox');
+  assert.equal(await clinica.getByRole('radio', { name: 'Fica A Clínica' }).isChecked(), true);
+  assert.equal(await nomeFinal.inputValue(), 'A Clínica');
+  assert.equal(await clinica.getByRole('button', { name: 'Não são a mesma' }).count(), 0);
+  // fica a outra, e o nome segue a escolha até alguém mudar à mão
+  await clinica.getByRole('radio', { name: 'Fica Clinica' }).check();
+  assert.equal(await nomeFinal.inputValue(), 'Clinica');
+  assert.equal((await clinica.locator('.cor-juntar-texto').textContent()).trim(), 'A Clínica sai: as artes do acervo, as keys, as regras e as ligações passam para a que fica.');
+  await nomeFinal.fill('A Clínica');
+  await semRolagemDeLado(p, 'juntar');
+  await capturar(p, '08-juntar');
+  // cancelar fecha a escolha sem gravar
+  await clinica.getByRole('button', { name: 'Cancelar' }).click();
+  assert.equal(await clinica.locator('.cor-juntar').count(), 0);
+  assert.deepEqual(teable.estado.pedidos.slice(antes).filter((x) => !x.startsWith('GET ')), []);
+  await clinica.getByRole('button', { name: 'Juntar…' }).click();
+  await clinica.getByRole('radio', { name: 'Fica Clinica' }).check();
+  await nomeFinal.fill('A Clínica');
+  await clinica.getByRole('button', { name: 'Juntar', exact: true }).click();
+  await clinica.waitFor({ state: 'detached' });
+  // no Teable falso: as artes e a key passaram, a que fica foi renomeada e a que sai foi apagada
+  assert.deepEqual(ATRACOES.map((a) => [a.id, a.fields.atracao]).filter(([id]) => /E2e[12]$/.test(id)), [['recAtrE2e2', 'A Clínica']]);
+  assert.deepEqual(ACERVO.filter((a) => a.id !== 'recArteE2e3').map((a) => a.fields.atracao.map((v) => v.id)), [['recAtrE2e2'], ['recAtrE2e2']]);
+  assert.deepEqual(KEYS[0].fields.atracoes.map((v) => v.id), ['recAtrE2e2']);
+  const caixinha = p.locator('.cor-desfazer');
+  assert.equal((await caixinha.locator('.cor-desfazer-texto').textContent()).trim(), 'Atrações juntadas em A Clínica.');
+  assert.equal((await p.locator('.cor-resultado').textContent()).trim(), 'Juntadas: A Clínica + Clinica → A Clínica: 2 artes do acervo, 1 key e 1 regra.');
+  const registro = grupo(p, 'registro');
+  await registro.locator('tbody tr', { hasText: '→ A Clínica' }).waitFor();
+  assert.equal((await registro.locator('tbody tr .cor-de-para').first().textContent()).trim(), 'A Clínica + Clinica → A Clínica: 2 artes do acervo, 1 key e 1 regra');
+  assert.match((await p.locator('.cor-resumo').textContent()).replace(/\s+/g, ' '), /Nenhuma atração parecida com outra\./);
+  await capturar(p, '09-juntadas');
+  // desfazer: a ficha que saiu volta (com outro id), com as artes e a key; a que ficou volta ao nome de antes
+  await caixinha.getByRole('button', { name: 'Desfazer' }).click();
+  await caixinha.waitFor({ state: 'detached' });
+  assert.equal((await p.locator('.cor-resultado').textContent()).trim(), '1 correção desfeita: a ficha que saiu voltou, com as artes e as ligações.');
+  const recriada = ATRACOES.find((a) => a.fields.atracao === 'A Clínica');
+  assert.ok(recriada && recriada.id !== 'recAtrE2e1', 'a ficha recriada, com outro id');
+  assert.equal(ATRACOES.find((a) => a.id === 'recAtrE2e2').fields.atracao, 'Clinica');
+  assert.deepEqual(ACERVO.filter((a) => a.id !== 'recArteE2e3').map((a) => a.fields.atracao.map((v) => v.id)), [[recriada.id], [recriada.id]]);
+  assert.deepEqual(KEYS[0].fields.atracoes.map((v) => v.id), [recriada.id]);
+  // o grupo volta à lista, e o registro marca a junção como desfeita
+  await p.locator('.cor-grupo', { hasText: 'Clinica' }).waitFor();
+  await registro.locator('.cor-etiqueta[data-motivo="desfeita"]').first().waitFor();
+  await capturar(p, '10-juntada-desfeita');
+  // tudo na base do PROMeiro: só as tabelas das atrações, das keys e do acervo
+  const gravacoes = teable.estado.pedidos.slice(antes).filter((x) => !x.startsWith('GET '));
+  assert.ok(gravacoes.length && gravacoes.every((x) => /^(PATCH|POST|DELETE) \/api\/table\/tblFalso_bseFalso_(atracoes|KEY_atracoes|ARTES_acervo)\/record/.test(x)), gravacoes.join(' | '));
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: juntar: a ficha que fica e o nome final, as artes passam, o grupo sai, e desfazer recria a ficha');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
@@ -375,6 +439,7 @@ async function principal() {
     await semSerAdministrador(navegador, s.url, s.api, teable);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema);
     await aplicarEDesfazer(navegador, s.url, teable);
+    await juntarEDesfazer(navegador, s.url, teable);
   } catch (e) {
     falhou = true;
     console.error(e);

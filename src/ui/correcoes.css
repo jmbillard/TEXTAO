@@ -33,6 +33,15 @@
 .cor-grupo { border: 1px solid var(--regua); border-radius: 10px; padding: 10px 14px 4px; }
 .cor-grupo-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
 .cor-grupo-topo .botao { height: 30px; font-size: 13px; flex: none; }
+.cor-grupo-acoes { display: flex; align-items: center; gap: 8px; flex: none; }
+.cor-juntar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 10px; padding: 10px 12px; border-radius: 8px; background: var(--ultra-suave); }
+.cor-juntar .botao { height: 32px; font-size: 13px; }
+.cor-nome-final { display: flex; align-items: center; gap: 8px; font: 600 11px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); }
+.cor-nome-final input { width: 260px; height: 32px; padding: 0 10px; border: 1px solid var(--regua); border-radius: 6px; background: var(--papel); color: var(--tinta); font: 500 14px var(--sans); letter-spacing: 0; text-transform: none; }
+.cor-juntar-texto { flex: 1 1 260px; margin: 0; font: 400 13px/1.45 var(--sans); color: var(--tinta2); }
+.cor-juntar .cor-grupo-acoes { margin-left: auto; }
+.cor-fichas tr.marcada td { background: var(--ultra-suave); }
+.cor-fichas .cor-marcar input { accent-color: var(--ultra); }
 .cor-motivo { font: 500 12.5px var(--sans); color: var(--tinta2); background: var(--neutro); border-radius: 99px; padding: 3px 10px; }
 .cor-motivo[data-motivo="uma-letra"] { background: var(--falta-fundo); color: var(--falta); }
 .cor-fichas .cor-num { width: 150px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -90,3 +99,4 @@
 .no-celular .cor-registro .cor-estado { grid-column: 1 / -1; width: auto; text-align: left; }
 .no-celular .cor-fichas td.cor-num::before { content: attr(data-rotulo) " "; font-weight: 400; color: var(--tinta3); }
 .cor-etiquetas:not(:empty) { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.cor-fichas .cor-marcar { width: 44px; }

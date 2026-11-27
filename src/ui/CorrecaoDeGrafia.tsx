@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   aplicarCorrecoes,
   desfazerCorrecoes,
+  juntarAtracoes,
   lerAtracoesParecidas,
   lerCorrecoesDaPauta,
   lerRegistroDeCorrecoes,
@@ -12,6 +13,7 @@ import type {
   FalhaDaCorrecao,
   FichaParecida,
   GrupoDaPauta,
+  JuncaoDeAtracoes,
   MotivoDoGrupo,
   PaginaDaCorrecao,
   PaginaDasAtracoes,
@@ -34,7 +36,10 @@ import "./correcoes.css";
    Aplicar e desfazer (#115), no computador: marcar uma proposta por vez ou todas da página e aplicar só as marcadas
    (o resultado diz quantas deram certo e quantas falharam, e a linha que falhou ganha a etiqueta do motivo); depois, a
    caixinha de desfazer. O registro das correções aplicadas fica embaixo, e cada uma pode ser desfeita mais tarde. Com a
-   tabela da pauta fora da base do PROMeiro, a tela só mostra as propostas, com o aviso. */
+   tabela da pauta fora da base do PROMeiro, a tela só mostra as propostas, com o aviso.
+   Juntar (#117), no computador: num grupo de atrações, "Juntar…" abre a escolha da ficha que fica e do nome final;
+   juntar passa para ela as artes do acervo, as keys, as regras e as ligações das outras, que saem. O grupo sai da
+   lista, e a caixinha de desfazer (e o registro) recria as fichas que saíram. */
 
 interface Props {
   voltar: () => void;
@@ -87,6 +92,10 @@ const fraseDoResultado = (certas: number, falhas: number) =>
   ]
     .filter(Boolean)
     .join(" e ") + ".";
+
+/** O que o desfazer devolve, na frase do resultado. */
+const VOLTOU_DA_PAUTA = "a claquete antiga voltou";
+const VOLTOU_DAS_ATRACOES = "a ficha que saiu voltou, com as artes e as ligações";
 
 /** Quanto tempo a caixinha de desfazer fica aberta. */
 const DESFAZER_MS = 15_000;
@@ -167,6 +176,7 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
   const [desfazivel, setDesfazivel] = useState<{
     ids: string[];
     texto: string;
+    voltou?: string;
   } | null>(null);
   const [desfazendo, setDesfazendo] = useState(false);
   // o registro relê quando muda (uma aplicação, um desfazer)
@@ -181,6 +191,7 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
   const reler = () => {
     carregar("corrigir", paginas.corrigir);
     carregar("nao-reconhecido", paginas["nao-reconhecido"]);
+    carregarAtracoes(paginaAtr);
     setMudou((n) => n + 1);
   };
 
@@ -215,7 +226,7 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
       .finally(() => setAplicando(false));
   };
   /** Desfaz pela caixinha ou pelo registro; o resultado vai para a mesma frase. */
-  const desfazer = (ids: string[]) => {
+  const desfazer = (ids: string[], voltou = VOLTOU_DA_PAUTA) => {
     setDesfazendo(true);
     return desfazerCorrecoes(ids)
       .then((r) => {
@@ -223,7 +234,7 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
         setResultado({
           texto: r.falhas.length
             ? `${r.certas.length ? `${plural(r.certas.length, "desfeita", "desfeitas")}; ` : ""}${plural(r.falhas.length, "não foi desfeita", "não foram desfeitas")}: ${r.falhas[0].texto}`
-            : `${plural(r.certas.length, "correção desfeita", "correções desfeitas")}: a claquete antiga voltou.`,
+            : `${plural(r.certas.length, "correção desfeita", "correções desfeitas")}: ${voltou}.`,
           falhas: [],
         });
         reler();
@@ -376,7 +387,7 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
               type="button"
               className="botao cor-desfazer-botao"
               disabled={desfazendo}
-              onClick={() => void desfazer(desfazivel.ids).catch((e) => setResultado({ texto: e instanceof Error ? e.message : String(e), falhas: [] }))}
+              onClick={() => void desfazer(desfazivel.ids, desfazivel.voltou).catch((e) => setResultado({ texto: e instanceof Error ? e.message : String(e), falhas: [] }))}
             >
               {desfazendo ? "Desfazendo…" : "Desfazer"}
             </button>
@@ -408,6 +419,26 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
                 : d,
             );
             carregarAtracoes(paginaAtr);
+          }}
+          juntada={(id, j) => {
+            // o grupo sai da lista, e a caixinha de desfazer recria as fichas que saíram
+            setAtracoes((d) =>
+              d
+                ? {
+                    ...d,
+                    total: d.total - 1,
+                    grupos: d.grupos.filter((g) => g.id !== id),
+                  }
+                : d,
+            );
+            setResultado({ texto: `Juntadas: ${j.resumo}.`, falhas: [] });
+            setDesfazivel({
+              ids: [j.registro],
+              texto: `Atrações juntadas em ${j.nome}.`,
+              voltou: VOLTOU_DAS_ATRACOES,
+            });
+            carregarAtracoes(paginaAtr);
+            setMudou((n) => n + 1);
           }}
         />
         <Registro
@@ -480,6 +511,7 @@ function Atracoes({
   irPara,
   tentarDeNovo,
   marcada,
+  juntada,
 }: {
   dados: PaginaDasAtracoes | null;
   falha: string;
@@ -487,6 +519,7 @@ function Atracoes({
   irPara: (n: number) => void;
   tentarDeNovo: () => void;
   marcada: (id: string) => void;
+  juntada: (id: string, j: JuncaoDeAtracoes) => void;
 }) {
   // o grupo que está sendo marcado agora, e o erro de um grupo
   const [marcando, setMarcando] = useState("");
@@ -506,6 +539,56 @@ function Atracoes({
         setErro({ id, texto: e instanceof Error ? e.message : String(e) }),
       )
       .finally(() => setMarcando(""));
+  };
+  // juntar (#117): o grupo aberto para juntar, a ficha que fica e o nome final
+  const [escolha, setEscolha] = useState<{
+    id: string;
+    fica: string;
+    nome: string;
+  } | null>(null);
+  const [juntando, setJuntando] = useState("");
+  const abrirJuntar = (id: string, fichas: FichaParecida[]) => {
+    // sugere a ficha com mais artes do acervo e Produções
+    const fica = [...fichas].sort(
+      (a, b) =>
+        (b.artes ?? 0) + b.producoes - ((a.artes ?? 0) + a.producoes),
+    )[0];
+    setErro(null);
+    setEscolha({ id, fica: fica.id, nome: fica.nome });
+  };
+  const escolherFica = (f: FichaParecida, fichas: FichaParecida[]) =>
+    setEscolha((e) =>
+      e
+        ? {
+            ...e,
+            fica: f.id,
+            // o nome segue a ficha escolhida, até alguém mudar à mão
+            nome:
+              e.nome === fichas.find((x) => x.id === e.fica)?.nome
+                ? f.nome
+                : e.nome,
+          }
+        : e,
+    );
+  const juntar = (fichas: FichaParecida[]) => {
+    if (!escolha) return;
+    const { id, fica, nome } = escolha;
+    setJuntando(id);
+    setErro(null);
+    juntarAtracoes(
+      fichas.map((f) => f.id),
+      fica,
+      nome,
+    )
+      .then((j) => {
+        setEscolha(null);
+        setGuardado("");
+        juntada(id, j);
+      })
+      .catch((e) =>
+        setErro({ id, texto: e instanceof Error ? e.message : String(e) }),
+      )
+      .finally(() => setJuntando(""));
   };
   const paginas = dados
     ? Math.max(1, Math.ceil(dados.total / dados.porPagina))
@@ -529,7 +612,7 @@ function Atracoes({
         acentos e artigos, ou uma letra de diferença numa palavra longa. Cada
         ficha mostra quantas artes do acervo, Produções e regras ela tem.
         {!celular &&
-          " Quando não forem a mesma, diga “Não são a mesma”, e o grupo não volta."}
+          " Quando forem a mesma, junte: escolha a ficha que fica e o nome final, e as artes, as keys, as regras e as ligações das outras passam para ela. Quando não forem, diga “Não são a mesma”, e o grupo não volta."}
       </p>
       {guardado && (
         <p className="cor-guardado" role="status">
@@ -558,15 +641,25 @@ function Atracoes({
                   <span className="cor-motivo" data-motivo={g.motivo}>
                     {MOTIVO[g.motivo]}
                   </span>
-                  {!celular && (
-                    <button
-                      type="button"
-                      className="botao"
-                      disabled={!!marcando}
-                      onClick={() => marcar(g.id, g.fichas)}
-                    >
-                      {marcando === g.id ? "Guardando…" : "Não são a mesma"}
-                    </button>
+                  {!celular && escolha?.id !== g.id && (
+                    <span className="cor-grupo-acoes">
+                      <button
+                        type="button"
+                        className="botao"
+                        disabled={!!marcando || !!juntando}
+                        onClick={() => abrirJuntar(g.id, g.fichas)}
+                      >
+                        Juntar…
+                      </button>
+                      <button
+                        type="button"
+                        className="botao"
+                        disabled={!!marcando || !!juntando}
+                        onClick={() => marcar(g.id, g.fichas)}
+                      >
+                        {marcando === g.id ? "Guardando…" : "Não são a mesma"}
+                      </button>
+                    </span>
                   )}
                 </div>
                 {erro?.id === g.id && (
@@ -577,6 +670,9 @@ function Atracoes({
                 <table className="cor-tabela cor-fichas">
                   <thead>
                     <tr>
+                      {escolha?.id === g.id && (
+                        <th className="cor-marcar">Fica</th>
+                      )}
                       <th>Ficha</th>
                       <th className="cor-num">Artes do acervo</th>
                       <th className="cor-num">Produções</th>
@@ -585,7 +681,27 @@ function Atracoes({
                   </thead>
                   <tbody>
                     {g.fichas.map((f) => (
-                      <tr key={f.id} data-id={f.id}>
+                      <tr
+                        key={f.id}
+                        data-id={f.id}
+                        className={
+                          escolha?.id === g.id && escolha.fica === f.id
+                            ? "marcada"
+                            : ""
+                        }
+                      >
+                        {escolha?.id === g.id && (
+                          <td className="cor-marcar">
+                            <input
+                              type="radio"
+                              name={`fica-${g.id}`}
+                              aria-label={`Fica ${f.nome}`}
+                              checked={escolha.fica === f.id}
+                              disabled={!!juntando}
+                              onChange={() => escolherFica(f, g.fichas)}
+                            />
+                          </td>
+                        )}
                         <td className="cor-ficha">
                           <span className="cor-nome">{f.nome}</span>{" "}
                           {f.categoria && (
@@ -617,6 +733,54 @@ function Atracoes({
                     ))}
                   </tbody>
                 </table>
+                {escolha?.id === g.id && (
+                  <div className="cor-juntar">
+                    <label className="cor-nome-final">
+                      <span>Nome final</span>
+                      <input
+                        type="text"
+                        list={`nomes-${g.id}`}
+                        value={escolha.nome}
+                        maxLength={80}
+                        disabled={!!juntando}
+                        onChange={(e) =>
+                          setEscolha({ ...escolha, nome: e.target.value })
+                        }
+                      />
+                      <datalist id={`nomes-${g.id}`}>
+                        {g.fichas.map((f) => (
+                          <option key={f.id} value={f.nome} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <p className="cor-juntar-texto">
+                      {(() => {
+                        const saem = g.fichas.filter(
+                          (f) => f.id !== escolha.fica,
+                        );
+                        return `${saem.map((f) => f.nome).join(", ")} ${saem.length === 1 ? "sai" : "saem"}: as artes do acervo, as keys, as regras e as ligações passam para a que fica.`;
+                      })()}
+                    </p>
+                    <span className="cor-grupo-acoes">
+                      <button
+                        type="button"
+                        className="botao-texto"
+                        disabled={!!juntando}
+                        onClick={() => setEscolha(null)}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="botao primario"
+                        disabled={!!juntando || !escolha.nome.trim()}
+                        onClick={() => juntar(g.fichas)}
+                      >
+                        {juntando === g.id ? "Juntando…" : "Juntar"}
+                      </button>
+                    </span>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -835,7 +999,7 @@ function Registro({
 }: {
   mudou: number;
   celular: boolean;
-  desfazer: (ids: string[]) => Promise<{ falhas: FalhaDaCorrecao[] }>;
+  desfazer: (ids: string[], voltou?: string) => Promise<{ falhas: FalhaDaCorrecao[] }>;
   ocupado: boolean;
 }) {
   const [pagina, setPagina] = useState(1);
@@ -852,7 +1016,7 @@ function Registro({
   const desfazerUma = (c: CorrecaoAplicada) => {
     setIndo(c.id);
     setErro(null);
-    desfazer([c.id])
+    desfazer([c.id], c.tipo === "pauta" ? VOLTOU_DA_PAUTA : VOLTOU_DAS_ATRACOES)
       .then((r) => r.falhas.length && setErro({ id: c.id, texto: r.falhas[0].texto }))
       .catch((e) => setErro({ id: c.id, texto: e instanceof Error ? e.message : String(e) }))
       .finally(() => setIndo(""));
@@ -866,7 +1030,7 @@ function Registro({
       </div>
       <p className="cor-linha">
         O registro de cada correção gravada no Teable: o que era, o que ficou, quem aplicou e quando.
-        {!celular && " Desfazer grava o valor antigo de volta, se a linha não mudou desde então."}
+        {!celular && " Desfazer grava o valor antigo de volta, se a linha não mudou desde então; numa junção de atrações, recria a ficha que saiu e religa as artes."}
       </p>
       {falha ? (
         <p className="cfg-falha" role="alert">

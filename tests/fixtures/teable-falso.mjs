@@ -5,7 +5,9 @@
    Postgres de mentira (`.consultar`, ou `.abrirPg` para o criarApp) devolve inteiras (a carga das Produções, #86).
    Apagar um registro (DELETE) também vale, para a pauta que o PROMeiro grava depois da virada (#134). Cada registro
    pode ter a hora da última mudança (`lastModifiedTime`): a API devolve, o PATCH renova (com a hora de agora) e o
-   Postgres de mentira mostra como "__last_modified_time" (a conferência da correção de grafia, #115). */
+   Postgres de mentira mostra como "__last_modified_time" (a conferência da correção de grafia, #115). O PATCH de
+   vários registros de uma vez (`records`) também vale, e `estado.falhar(metodo, caminho, corpo)` faz um pedido
+   responder 500 (juntar atrações, #117: a falha no meio). */
 import { TABELAS_DO_TEABLE } from '../../src/modelo/tabelasDoTeable.ts';
 
 /** O endereço e o token do Teable falso (vão no env do teste). */
@@ -21,13 +23,14 @@ const resposta = (status, dados) => ({ ok: status < 400, status, json: async () 
  *   opcoes.registros { [tabela]: [{ id, fields, lastModifiedTime? }] } as linhas (o array é o mesmo: o teste vê o que foi
  *   gravado); opcoes.esquemas { [tabela]: esquema } o esquema do dbTableName, quando não é o da base (uma tabela que
  *   não é da base do PROMeiro)
- * @returns fetch, com `.estado` (`fora = true` derruba o Teable; `pedidos` guarda o que foi pedido), `.consultar` e
+ * @returns fetch, com `.estado` (`fora = true` derruba o Teable; `pedidos` guarda o que foi pedido; `falhar`, quando
+ *   dado, responde 500 ao pedido em que devolve true), `.consultar` e
  *   `.abrirPg` (o Postgres do Teable: o SELECT de uma tabela da base devolve as linhas dela, com o "__id", sem olhar o
  *   WHERE; `estado.consultas` guarda o SQL e `estado.parametros`, os parâmetros de cada uma)
  */
 export function teableFalso(nomes, opcoes = {}) {
   const bases = { [opcoes.base ?? 'bseFalso']: { nome: opcoes.nomeDaBase ?? 'Base falsa', nomes, faltando: opcoes.faltando ?? {}, ids: opcoes.ids ?? {} }, ...(opcoes.bases ?? {}) };
-  const estado = { fora: false, pedidos: [], consultas: [], parametros: [] };
+  const estado = { fora: false, pedidos: [], consultas: [], parametros: [], falhar: null };
   // os ids dos registros criados, sem repetir (mesmo com vários no mesmo POST, ou depois de apagar)
   let criados = 0;
   const idDe = (b, nome) => bases[b].ids?.[nome] ?? `tblFalso_${b}_${nome}`;
@@ -40,6 +43,7 @@ export function teableFalso(nomes, opcoes = {}) {
     const metodo = init.method ?? 'GET';
     estado.pedidos.push(`${metodo} ${url.pathname}`);
     if (estado.fora) throw new Error('fetch failed (Teable fora do ar)');
+    if (estado.falhar?.(metodo, url.pathname, init.body ? JSON.parse(String(init.body)) : null)) return resposta(500, { message: 'falha de mentira' });
     const deRegistros = /^\/api\/table\/([^/]+)\/record(?:\/([^/]+))?$/.exec(url.pathname);
     if (deRegistros) {
       const id = decodeURIComponent(deRegistros[1]);
@@ -66,6 +70,13 @@ export function teableFalso(nomes, opcoes = {}) {
         const novos = (corpo.records ?? []).map((r) => ({ id: `recFalso${++criados}`, fields: { ...r.fields } }));
         linhas.push(...novos);
         return resposta(200, { records: novos });
+      }
+      if (metodo === 'PATCH' && !deRegistros[2]) {
+        // tudo ou nada, como o Teable
+        const mudados = (corpo.records ?? []).map((r) => [linhas.find((l) => l.id === r.id), r.fields ?? {}]);
+        if (mudados.some(([l]) => !l)) return resposta(404, { message: 'registro não encontrado' });
+        for (const [l, f] of mudados) Object.assign(l.fields, f);
+        return resposta(200, mudados.map(([l]) => l));
       }
       if (metodo === 'PATCH' && deRegistros[2]) {
         const linha = linhas.find((l) => l.id === decodeURIComponent(deRegistros[2]));
@@ -114,7 +125,9 @@ export function teableFalso(nomes, opcoes = {}) {
     const inteira = /AS\s+"inteira"/i.test(sql);
     // a hora da última mudança, quando o registro tem (a correção de grafia confere, #115)
     const hora = (r) => ('lastModifiedTime' in r ? { __last_modified_time: r.lastModifiedTime ? new Date(r.lastModifiedTime) : null } : {});
-    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...hora(r), ...r.fields, ...(inteira ? { inteira: { __id: r.id, ...r.fields } } : {}) }));
+    // o id com o nome que o SQL dá ("__id" AS id, como o acervo lê)
+    const comoId = /"__id"\s+AS\s+id\b/i.test(sql);
+    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...(comoId ? { id: r.id } : {}), ...hora(r), ...r.fields, ...(inteira ? { inteira: { __id: r.id, ...r.fields } } : {}) }));
   };
   buscar.abrirPg = async () => ({ query: async (sql, params) => ({ rows: await buscar.consultar(sql, params) }), end: async () => {} });
   return buscar;

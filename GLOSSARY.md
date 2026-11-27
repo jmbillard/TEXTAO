@@ -483,6 +483,9 @@ padrão. Na pauta da edição, é a única escrita do PROMeiro além do **public
 PROMeiro (a tabela da pauta de outra base só mostra as propostas). A linha que mudou no Teable depois da proposta não é
 gravada ("mudou desde a proposta"). Cada correção aplicada fica no registro (o que era, o que ficou, quem, quando) e
 pode ser desfeita, se a linha não mudou desde então. A correção que daria (M) espera a fórmula nova da key no Teable.
+Nas atrações, a correção é **juntar**: o administrador escolhe a ficha que fica e o nome final; as artes do acervo, as
+keys, as regras e as ligações (roteiros e filmes) das outras passam para ela, e as outras são apagadas. Desfazer recria
+a ficha que saiu (com outro id) e religa a ela o que tinha passado.
 _Evitar_: normalização, limpeza, saneamento
 
 ## Pauta da edição

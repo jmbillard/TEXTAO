@@ -208,6 +208,17 @@ export interface FichaParecida {
   producoes: number;
   regras: number;
 }
+/** O resultado de juntar um grupo (#117): POST /api/correcoes/atracoes/juntar. */
+export interface JuncaoDeAtracoes {
+  /** o id da junção no registro das correções (para desfazer) */
+  registro: string;
+  /** a ficha que ficou e o nome final */
+  fica: string;
+  nome: string;
+  /** "Clinica → A Clínica: 2 artes do acervo e 1 key" */
+  resumo: string;
+  passaram: { artes: number; keys: number; regras: number; roteiros: number; filmes: number };
+}
 /** Uma página dos grupos de atrações parecidas: a rota GET /api/correcoes/atracoes. */
 export interface PaginaDasAtracoes {
   /** a partir de 1 */

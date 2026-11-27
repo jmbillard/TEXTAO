@@ -16,6 +16,7 @@ import { abrirPg, criarPauta } from './pauta.mjs';
 import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES, TIPO_DA_PAUTA, propostasParaAplicar } from './correcoes.mjs';
 import { criarRegistroDeCorrecoes, idsParaDesfazer } from './registro-de-correcoes.mjs';
 import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
+import { criarJuntarAtracoes, TIPO_DAS_ATRACOES } from './juntar-atracoes.mjs';
 import { codigoDasVersoes, colunasDoDia, cruzarComAProducao, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
@@ -495,7 +496,7 @@ export function copiarMetaParaYdoc(doc, meta) {
  */
 const FABRICAS = {
   trello: (env, { abrirPg, anexos }) => criarTrello(env, { abrirPg, anexos }),
-  acervo: (env, { abrirPg, trello }) => criarAcervo(env, { abrirPg, artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }),
+  acervo: (env, { abrirPg, trello, buscar }) => criarAcervo(env, { abrirPg, buscar, artesDoCard: (card) => trello.artesDoCard?.(card) ?? [] }),
   cadastros: (env, { vocabulario }) => criarCadastros(env, { vocabulario }),
   redatorProvavel: (env, { abrirPg }) => criarRedatorProvavel(env, { abrirPg }),
   duplicadas: (env, { trello, acervo, registro, promeiro }) => criarDuplicadas({ trello, acervo, registro, promeiro, soOlhar: soOlharNasDuplicadas(env) }),
@@ -503,7 +504,7 @@ const FABRICAS = {
   filmes: (env, { db, trello, abrirPg, anexos }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg, anexos }),
 };
 /** Os módulos que são refeitos quando a configuração muda (e fechados, os antigos, quando terminam o que faziam). */
-const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas', 'correcoes', 'indiceDoBuscar'];
+const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas', 'correcoes', 'juntarAtracoes', 'indiceDoBuscar'];
 const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
 /** O modo só olhar das Duplicadas (#67): ligado até alguém desligar (DUPLICADAS_SO_OLHAR=0), para os primeiros dias
     da comparação com o relatório do n8n. */
@@ -616,11 +617,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     // as praças da configuração (a coleção salva ou as de fábrica): o servidor passa estas a cada reconhecimento
     const g = { env, pracas: pracasDaConfiguracao(env), emCurso: 0, drenou: null };
     g.trello = fazer(fabricas.trello, env, { abrirPg: abrir, anexos });
-    g.acervo = fazer(fabricas.acervo, env, { abrirPg: abrir, trello: g.trello });
+    g.acervo = fazer(fabricas.acervo, env, { abrirPg: abrir, trello: g.trello, buscar: buscarNoTeable });
     g.vocabulario = criarVocabulario(env, fetch, cache, copia, null, abrir);
     g.pauta = criarPauta(env, g.vocabulario, abrir, cache, copia);
     // a correção de grafia (#114): a pauta inteira, lida do Postgres do Teable; aplicar e desfazer pela API (#115)
     g.correcoes = criarCorrecoes(env, abrir, { buscar: buscarNoTeable });
+    // juntar atrações (#117): a escrita no Teable (só na base do PROMeiro), pelo caminho das Duplicadas para o acervo
+    g.juntarAtracoes = criarJuntarAtracoes(env, { buscar: buscarNoTeable, abrir, acervo: g.acervo, regras: regrasDaAtracao });
     // o índice do buscar do Padeiro (#143): os filmes e as mensagens do Teams, do Postgres do Teable (só leitura)
     g.indiceDoBuscar = criarIndiceDoBuscar(env, { abrirPg: abrir });
     g.cadastros = fazer(fabricas.cadastros, env, { vocabulario: g.vocabulario });
@@ -719,16 +722,19 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /**
    * A correção de grafia das atrações (#116), só para administradores: GET /api/correcoes/atracoes?pagina= devolve uma
    * página dos grupos de fichas que parecem a mesma atração, cada ficha com quantas artes do acervo, Produções e regras
-   * tem; POST /api/correcoes/atracoes/nao-sao-a-mesma { ids } guarda "não são a mesma" para as fichas de um grupo. Nada
-   * é gravado no Teable.
+   * tem; POST /api/correcoes/atracoes/nao-sao-a-mesma { ids } guarda "não são a mesma" para as fichas de um grupo (nada
+   * é gravado no Teable); POST /api/correcoes/atracoes/juntar { ids, fica, nome } junta o grupo (#117) na ficha que fica,
+   * com o nome final, e responde o id da junção no registro das correções (para desfazer).
    */
   async function rotaDasAtracoesParecidas(req, res, eu, caminho) {
     const marcar = caminho.endsWith('/nao-sao-a-mesma');
-    if (req.method !== (marcar ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
+    const juntar = caminho.endsWith('/juntar');
+    if (req.method !== (marcar || juntar ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
     if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem a correção de grafia.' });
-    const corpo = marcar ? ((await lerCorpo(req)) ?? {}) : null;
-    const ids = marcar ? idsDoGrupo(corpo.ids) : null;
-    if (marcar && !ids) return json(res, 400, { erro: 'Quais fichas do grupo?' });
+    const corpo = marcar || juntar ? ((await lerCorpo(req)) ?? {}) : null;
+    const ids = corpo ? idsDoGrupo(corpo.ids) : null;
+    if (corpo && !ids) return json(res, 400, { erro: 'Quais fichas do grupo?' });
+    if (juntar) return juntarAtracoes(res, eu, ids, corpo);
     const lido = await cadastros.ler();
     if (!lido.ligado) return json(res, 503, { erro: 'Os cadastros de atrações não estão ligados ao Teable.' });
     const fichas = lido.atracoes.map(({ id, nome, categoria }) => ({ id, nome, categoria }));
@@ -745,6 +751,48 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const artes = acervo.ligado ? await acervo.totaisPorFicha().catch((e) => (console.warn(`[correcoes] não li o acervo: ${e instanceof Error ? e.message : e}`), null)) : null;
     const contas = { artes, producoes: producoes.porAtracao((claquete) => atracaoPelaClaquete(claquete, programas, pracas)), regras: regrasDaAtracao.porAtracao() };
     return json(res, 200, atracoesParecidas.grupos(fichas, contas, pagina));
+  }
+
+  /** As fichas sendo juntadas agora (dois pedidos ao mesmo tempo não juntam a mesma ficha duas vezes). */
+  const juntando = new Set();
+  /** Depois de juntar ou desfazer: os cadastros e o reconhecimento das atrações leem o Teable de novo. */
+  const depoisDeJuntar = async () => {
+    await cadastros.ler(true).catch(() => {});
+    await vocabulario.renovar?.(null).catch(() => {});
+  };
+  /**
+   * Juntar atrações (#117): o grupo tem de ser o que a tela mostra agora (as mesmas fichas, lidas de novo do Teable), a
+   * ficha que fica é dele e o nome final não é de outra atração. Só na base do PROMeiro (de outra, 409).
+   */
+  async function juntarAtracoes(res, eu, ids, corpo) {
+    const nome = String(corpo.nome ?? '').replace(/\s+/g, ' ').trim();
+    if (!nome || nome.length > 80) return json(res, 400, { erro: 'Qual o nome final da atração? (até 80 letras)' });
+    if (typeof corpo.fica !== 'string' || !ids.includes(corpo.fica)) return json(res, 400, { erro: 'A ficha que fica tem de ser do grupo.' });
+    const junta = geracao.juntarAtracoes;
+    const pode = junta.escrita();
+    if (!pode.pode) return json(res, 409, { erro: pode.aviso });
+    if (ids.some((id) => juntando.has(id))) return json(res, 409, { erro: 'Já há uma junção destas fichas em curso.' });
+    ids.forEach((id) => juntando.add(id));
+    try {
+      const lido = await cadastros.ler(true);
+      if (!lido.ligado) return json(res, 503, { erro: 'Os cadastros de atrações não estão ligados ao Teable.' });
+      const fichas = lido.atracoes.map(({ id, nome: n, categoria }) => ({ id, nome: n, categoria }));
+      if (!atracoesParecidas.grupoAtual(fichas, ids)) return json(res, 409, { erro: 'O grupo mudou desde que a tela leu as atrações. Leia de novo.' });
+      const outra = lido.atracoes.find((a) => !ids.includes(a.id) && a.nome.toLowerCase() === nome.toLowerCase());
+      if (outra) return json(res, 409, { erro: `${outra.nome} é o nome de outra atração.` });
+      const doGrupo = (id) => lido.atracoes.find((a) => a.id === id);
+      const r = await junta.juntar({ fica: doGrupo(corpo.fica), saem: ids.filter((id) => id !== corpo.fica).map(doGrupo), nome, por: eu.email, registro: registroDeCorrecoes });
+      await depoisDeJuntar();
+      if (!r.ok) {
+        console.warn(`[correcoes] ${eu.email} não juntou ${ids.join(', ')}: ${r.erro}`);
+        const nao = r.naoDesfeito.length ? ` Não consegui desfazer: ${r.naoDesfeito.join('; ')}.` : ' O que tinha sido feito foi desfeito.';
+        return json(res, 502, { erro: `Parei ao ${r.erro}. Nada foi juntado.${nao}`, naoDesfeito: r.naoDesfeito });
+      }
+      console.log(`[correcoes] ${eu.email} juntou atrações: ${r.resumo}`);
+      return json(res, 200, { registro: r.registro, fica: corpo.fica, nome, resumo: r.resumo, passaram: r.passaram });
+    } finally {
+      ids.forEach((id) => juntando.delete(id));
+    }
   }
 
   /**
@@ -789,9 +837,19 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const ligacaoDePessoas = criarLigacaoDePessoas({ db });
   // as atrações parecidas da correção de grafia (#116): o "não são a mesma" guardado
   const atracoesParecidas = criarAtracoesParecidas({ db });
-  // o registro da correção de grafia (#115): cada correção aplicada, para desfazer; cada tipo dá o seu desfazer
-  // (juntar atrações, #117, entra aqui com o dele)
-  const registroDeCorrecoes = criarRegistroDeCorrecoes({ db, desfazedores: { [TIPO_DA_PAUTA]: (c) => geracao.correcoes.desfazer(c) } });
+  // o registro da correção de grafia (#115): cada correção aplicada, para desfazer; cada tipo dá o seu desfazer (a
+  // pauta e juntar atrações, #117)
+  const registroDeCorrecoes = criarRegistroDeCorrecoes({
+    db,
+    desfazedores: {
+      [TIPO_DA_PAUTA]: (c) => geracao.correcoes.desfazer(c),
+      [TIPO_DAS_ATRACOES]: async (c) => {
+        const r = await geracao.juntarAtracoes.desfazer(c);
+        await depoisDeJuntar();
+        return r;
+      },
+    },
+  });
   // as preferências de cada pessoa (#101), no SQLite: a última área usada, o arranjo da Pauta da edição…
   const preferencias = criarPreferencias(db);
   // o apelido da claquete (#120), um por claquete (#154), no SQLite: só para mostrar, o envio continua com a claquete
@@ -3380,7 +3438,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const pagina = /^\d{1,5}$/.test(busca.get('pagina') ?? '') ? Math.max(1, Number(busca.get('pagina'))) : 1;
       return json(res, 200, await geracao.correcoes.propostas({ grupo, pagina }));
     }
-    if (caminho === '/api/correcoes/atracoes' || caminho === '/api/correcoes/atracoes/nao-sao-a-mesma') return rotaDasAtracoesParecidas(req, res, eu, caminho);
+    if (caminho === '/api/correcoes/atracoes' || caminho === '/api/correcoes/atracoes/nao-sao-a-mesma' || caminho === '/api/correcoes/atracoes/juntar') return rotaDasAtracoesParecidas(req, res, eu, caminho);
     if (caminho === '/api/correcoes/pauta/aplicar' || caminho === '/api/correcoes/registro' || caminho === '/api/correcoes/desfazer') return rotaDoRegistroDeCorrecoes(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 

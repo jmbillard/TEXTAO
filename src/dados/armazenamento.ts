@@ -1130,7 +1130,7 @@ import type { FotoDoDia } from '../modelo/fotoDaPlanilha';
 import type { DeOndeRepetir } from '../modelo/repetir';
 import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
-import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
+import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, JuncaoDeAtracoes, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DOS_RECOLHIDOS, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
@@ -1593,6 +1593,8 @@ export const lerCorrecoesDaPauta = (grupo: GrupoDaPauta, pagina = 1) => pedir<Pa
 export const lerAtracoesParecidas = (pagina = 1) => pedir<PaginaDasAtracoes>(`/api/correcoes/atracoes?pagina=${pagina}`);
 /** "Não são a mesma": o grupo destas fichas não aparece de novo. */
 export const naoSaoAMesma = (ids: string[]) => pedir<{ ok: true }>('/api/correcoes/atracoes/nao-sao-a-mesma', { method: 'POST', body: JSON.stringify({ ids }) });
+/** Juntar atrações (#117): as fichas do grupo, a que fica e o nome final. */
+export const juntarAtracoes = (ids: string[], fica: string, nome: string) => pedir<JuncaoDeAtracoes>('/api/correcoes/atracoes/juntar', { method: 'POST', body: JSON.stringify({ ids, fica, nome }) });
 /** Aplica as propostas marcadas da pauta (#115): o servidor confere cada linha e grava no Teable. */
 export const aplicarCorrecoes = (propostas: { id: string; de: string; mudouEm: string | null }[]) => pedir<AplicacaoDaCorrecao>('/api/correcoes/pauta/aplicar', { method: 'POST', body: JSON.stringify({ propostas }) });
 /** Uma página do registro das correções aplicadas (#115). */
