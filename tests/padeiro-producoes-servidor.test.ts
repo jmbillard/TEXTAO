@@ -30,8 +30,9 @@ const linhas = () => [
   // Entregue e arquivada: ficam de fora
   registro('recPad3', { card_ID: card(3), claquete: 'Jogo Final 20/12 SP', status: '["FINALIZADO"]', designers: '["Ana Souza"]', entregue: true, data_entrada: ha(3), data_entrega: ha(1), __last_modified_time: ha(1) }),
   registro('recPad4', { card_ID: card(4), claquete: 'Novela Sinfonia 12/12 SP', status: '["PRODUZINDO"]', designers: '["Ana Souza"]', arquivado: true, data_entrada: ha(4), __last_modified_time: ha(4) }),
-  // o filme, sem card
-  registro('recPad5', { card_ID: '', claquete: 'Filme da Tarde 21/12', status: '["FILME"]', designers: null, filme: [{ id: 'recFilme1', title: 'Filme da Tarde' }], data_entrada: ha(1), __last_modified_time: ha(1) }),
+  // o filme, sem card. Entra um pouco antes do Show (um dia e meio): com o mesmo `ha(1)`, a ordem entre os dois dependia
+  // de o relógio ter virado o milissegundo entre as duas chamadas
+  registro('recPad5', { card_ID: '', claquete: 'Filme da Tarde 21/12', status: '["FILME"]', designers: null, filme: [{ id: 'recFilme1', title: 'Filme da Tarde' }], data_entrada: ha(1.5), __last_modified_time: ha(1.5) }),
 ];
 const designers = () => [
   registro('recDesignerAna', { designer: 'Ana Souza', email: 'ana.souza@empresa.com', designer_ID: 'membroAna', status: 'ativo' }),
