@@ -1,0 +1,31 @@
+/* Ligar pessoa e cadastro pelo e-mail (#106): a sugestão "É a redatora?" e o e-mail na linha do cadastro */
+.sugestao-email {
+  margin: 12px 12px 4px; padding: 14px 16px; border-radius: 12px;
+  background: color-mix(in srgb, var(--ultra) 6%, var(--papel)); border: 1px solid color-mix(in srgb, var(--ultra) 30%, var(--regua));
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; animation: surgir 0.25s var(--suave);
+}
+.sugestao-email + .sugestao-email { margin-top: 8px; }
+.sugestao-email > .perfil-avatar { grid-row: 1 / 3; grid-column: 1; align-self: start; width: 36px; height: 36px; line-height: 36px; background: var(--cartao); }
+.sugestao-email p { grid-column: 2; margin: 0; font-size: 13px; color: var(--tinta2); overflow-wrap: anywhere; }
+.sugestao-email p b { color: var(--tinta); font-weight: 600; }
+.sugestao-email p.pergunta-sugestao { font: 400 19px/1.25 var(--serifa); color: var(--tinta); }
+.sugestao-email .acoes-sugestao { grid-row: 1 / 3; grid-column: 3; display: flex; gap: 6px; }
+.sugestao-email .acoes-sugestao .botao { height: 34px; font-size: 13px; }
+
+.email-cad { font: 500 12px var(--mono); color: var(--tinta3); overflow-wrap: anywhere; }
+button.email-cad { border: 0; background: none; padding: 2px 4px; margin: -2px -4px; border-radius: 6px; cursor: pointer; text-align: left; }
+button.email-cad:hover, button.email-cad:focus-visible { background: var(--neutro); color: var(--tinta); }
+.email-cad.falta { font-family: var(--sans); color: var(--falta); }
+.entrada-email-cad {
+  height: 28px; min-width: 0; width: min(280px, 100%); padding: 0 8px; border: 1px solid var(--ultra); border-radius: 8px;
+  background: var(--cartao); color: var(--tinta); font: 500 12.5px var(--mono); outline: 0;
+}
+
+@media (max-width: 640px) {
+  .sugestao-email { grid-template-columns: 36px minmax(0, 1fr); }
+  .sugestao-email .acoes-sugestao { grid-row: auto; grid-column: 1 / -1; }
+  .sugestao-email .acoes-sugestao .botao { flex: 1; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sugestao-email { animation: none; }
+}

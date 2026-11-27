@@ -19,6 +19,9 @@ import {
   lerCadastros,
   lerTotaisDoAcervo,
   mudarAcervo,
+  mudarEmailDoCadastro,
+  responderNaoE,
+  type SugestaoDeEmail,
   preverImportacao,
   removerCadastro,
   zerarAcervo,
@@ -46,6 +49,7 @@ import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
 import { ListaDeDuplicadas, PainelDasDuplicadas, useDuplicadas } from './Duplicadas';
+import { EmailNaLinha, quemNoCadastro, SugestaoDeEmailNaLista } from './EmailDoCadastro';
 import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, RegrasDaAtracaoNaFicha, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
@@ -899,6 +903,53 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       }
     });
 
+  // o e-mail do login (#106): grava na hora e a caixinha preta oferece desfazer (que grava o de antes)
+  const [gravado, setGravado] = useState<{ id: string; texto: React.ReactNode; voltar: () => Promise<void> } | null>(null);
+  const prazoDoGravado = useRef(0);
+  useEffect(() => () => clearTimeout(prazoDoGravado.current), []);
+  const mostrarGravado = (id: string, texto: React.ReactNode, voltar: () => Promise<void>) => {
+    clearTimeout(prazoDoGravado.current);
+    setGravado({ id, texto, voltar });
+    prazoDoGravado.current = window.setTimeout(() => setGravado(null), 6000);
+  };
+  const voltarGravado = async () => {
+    const g = gravado;
+    if (!g) return;
+    clearTimeout(prazoDoGravado.current);
+    setGravado(null);
+    try {
+      await g.voltar();
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui desfazer.');
+    }
+    await carregar(true);
+  };
+  /** Grava o e-mail do cadastro (à mão ou pelo "É ela"); `texto` é o que a caixinha diz. */
+  const gravarEmail = async (tipo: SugestaoDeEmail['tipo'], id: string, email: string, texto: (e: string) => React.ReactNode) => {
+    try {
+      const r = await mudarEmailDoCadastro(tipo, id, email);
+      await carregar(true);
+      marcarRecem([id]);
+      mostrarGravado(`email:${id}:${r.email}`, texto(r.email), async () => void (await mudarEmailDoCadastro(tipo, id, r.antes)));
+      return true;
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui gravar o e-mail.');
+      return false;
+    }
+  };
+  const emailAMao = (tipo: SugestaoDeEmail['tipo'], c: RedatorCadastro | EditorCadastro) => (email: string) =>
+    gravarEmail(tipo, c.id, email, (e) => (e ? <><b>{e}</b> agora é o e-mail de {c.nome}.</> : <>{c.nome} ficou sem e-mail.</>));
+  const eEla = (s: SugestaoDeEmail) => void gravarEmail(s.tipo, s.id, s.email, (e) => <><b>{e}</b> agora é {quemNoCadastro(s.tipo, s.nome)}.</>);
+  const naoE = async (s: SugestaoDeEmail) => {
+    try {
+      await responderNaoE(s);
+      await carregar(true);
+      mostrarGravado(`nao-e:${s.id}:${s.email}`, <><b>{s.email}</b> não é {quemNoCadastro(s.tipo, s.nome)}. O PROMeiro não pergunta de novo.</>, async () => void (await responderNaoE(s, true)));
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui guardar a resposta.');
+    }
+  };
+
   // lista da aba, filtrada pela busca
   const termo = semAcento(busca.trim());
   const casa = (...partes: string[]) => !termo || semAcento(partes.join(' ')).includes(termo);
@@ -946,8 +997,10 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   };
 
   const listaAtracoes = (dados?.atracoes ?? []).filter((a) => !escondidos.includes(a.id) && casa(a.nome, a.categoria, ...a.keys.map((k) => k.key)));
-  const listaRedatores = (dados?.redatores ?? []).filter((r) => !escondidos.includes(r.id) && casa(r.nome, ...r.keys.map((k) => k.key)));
-  const listaEditores = (dados?.editores ?? []).filter((e) => !escondidos.includes(e.id) && casa(e.nome, ...e.keys.map((k) => k.key)));
+  const listaRedatores = (dados?.redatores ?? []).filter((r) => !escondidos.includes(r.id) && casa(r.nome, r.email, ...r.keys.map((k) => k.key)));
+  const listaEditores = (dados?.editores ?? []).filter((e) => !escondidos.includes(e.id) && casa(e.nome, e.email, ...e.keys.map((k) => k.key)));
+  // as sugestões "É a redatora?" da aba (só administradores recebem)
+  const sugestoesDaAba = (dados?.sugestoes ?? []).filter((x) => x.tipo === aba);
   const itemAtracao = (a: AtracaoCadastro) => (
     <div
       key={a.id}
@@ -984,7 +1037,9 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   );
   const itemRedator = (r: RedatorCadastro) => (
     <div key={r.id} className={`item-cad ${recem.includes(r.id) ? 'chegou' : ''}`}>
-      <div className="nome">{r.nome}</div>
+      <div className="nome">
+        {r.nome} <EmailNaLinha email={r.email} pode={pode} salvar={emailAMao('redatores', r)} />
+      </div>
       <div className="lado-cad">
         {r.trello && <span className="no-trello"><Icone nome="quadro" tam={14} /> no Trello</span>}
         <Remover pode={pode} nome={r.nome} remover={remover('redatores', r.id, r.nome)} />
@@ -999,7 +1054,9 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   );
   const itemEditor = (e: EditorCadastro) => (
     <div key={e.id} className={`item-cad ${recem.includes(e.id) ? 'chegou' : ''}`}>
-      <div className="nome">{e.nome}</div>
+      <div className="nome">
+        {e.nome} <EmailNaLinha email={e.email} pode={pode} salvar={emailAMao('editores', e)} />
+      </div>
       <div className="lado-cad">
         {e.trello && <span className="no-trello"><Icone nome="quadro" tam={14} /> no Trello</span>}
         <Remover pode={pode} nome={e.nome} remover={remover('editores', e.id, e.nome)} />
@@ -1067,7 +1124,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       ) : (
       <main className="cad">
         <h1>Cadastros</h1>
-        <p className="sub">O que o PROMeiro usa para reconhecer cada roteiro. Tudo aqui vai direto para o Teable e para o Trello.</p>
+        <p className="sub">O que o PROMeiro usa para reconhecer cada roteiro e cada pessoa. Tudo aqui vai direto para o Teable e para o Trello.</p>
 
         {falha && <p className="cad-falha">{falha}</p>}
         {dados && !dados.ligado && (
@@ -1089,7 +1146,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               />
               <label className="cad-busca">
                 <Icone nome="lupa" />
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator ou key' : 'Buscar editor ou key'} />
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'} />
               </label>
             </div>
             {!dados && !falha && <p className="cad-vazio">Carregando…</p>}
@@ -1130,6 +1187,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               );
             })()}
             {!dupAberta && semCad && !sem && <p className="cad-vazio">Procurando nas claquetes…</p>}
+            {!dupAberta && !semCad && dados && sugestoesDaAba.map((x) => <SugestaoDeEmailNaLista key={`${x.id}:${x.email}`} s={x} eEla={() => eEla(x)} naoE={() => void naoE(x)} />)}
             {!dupAberta && !semCad && dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
             {!dupAberta && !semCad && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
             {!dupAberta && !semCad && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
@@ -1323,6 +1381,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         <div className="desfazer" role="status" key={desfazer.id}>
           <span>{desfazer.texto}</span>
           <button className="botao-texto" onClick={desfazerAgora}>Desfazer</button>
+        </div>
+      )}
+      {gravado && !desfazer && !caixinha && (
+        <div className="desfazer" role="status" key={gravado.id}>
+          <span>{gravado.texto}</span>
+          <button className="botao-texto" onClick={() => void voltarGravado()}>Desfazer</button>
         </div>
       )}
       {caixinha && !desfazer && (

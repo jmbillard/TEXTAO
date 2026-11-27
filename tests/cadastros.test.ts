@@ -290,3 +290,90 @@ describe('Sem cadastro depois de cadastrar a atração', () => {
     expect(keysSemCadastro(comNoite, (await vocabulario.renovar()).programas)).toEqual([]);
   });
 });
+
+describe('ligar pessoa e cadastro pelo e-mail ("É ela", #106)', () => {
+  /* Os usuários do PROMeiro (a tabela usuarios do SQLite, de quem já entrou) e os redatores e editores do Teable
+     falso, ligados pelo campo e-mail. Nomes e e-mails inventados. */
+  let servidor: Server;
+  let base = '';
+  let tabelas: ReturnType<typeof falso>['tabelas'];
+  let db: unknown;
+  const como = (email: string) => (caminho: string, init: RequestInit = {}) =>
+    fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json', ...init.headers } });
+  const chefe = como('chefe@empresa.com');
+  const ana = como('ana@empresa.com');
+  const subir = async (banco: unknown) => {
+    const f = falso();
+    tabelas = f.tabelas;
+    // a Marina sem e-mail; o Paulo já ligado; o editor Bruno Regis (do falso) sem e-mail
+    tabelas.tblRed.push({ id: 'recR2', fields: { redator: 'Marina Teles' } }, { id: 'recR3', fields: { redator: 'Paulo Nunes', email: 'paulo.nunes@empresa.com' } });
+    const app = criarApp({ db: banco, env: {}, cadastros: criarCadastros(ENV, { buscar: f.buscar }) });
+    servidor = createServer(app);
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+  };
+  const sugestoes = async (quem = chefe) => ((await (await quem('/api/cadastros?renovar=1')).json()).sugestoes ?? []) as { tipo: string; id: string; nome: string; email: string; usuario: string }[];
+  beforeAll(async () => {
+    db = abrirBanco(':memory:');
+    await subir(db);
+    // quem já entrou no PROMeiro (o nome vem do e-mail)
+    for (const email of ['mariana.telles@empresa.com', 'bruno.regis@empresa.com', 'paulo.nunes@empresa.com', 'carla.souza@empresa.com']) await como(email)('/api/eu');
+  });
+  afterAll(() => servidor.close());
+
+  it('o e-mail de redatores e editores vem nos Cadastros; o administrador edita à mão, e só ele', async () => {
+    const d = await (await ana('/api/cadastros')).json();
+    expect(d.redatores.map((r: { nome: string; email: string }) => [r.nome, r.email])).toEqual([
+      ['Ana Lima', ''],
+      ['Marina Teles', ''],
+      ['Paulo Nunes', 'paulo.nunes@empresa.com'],
+    ]);
+    expect(d.editores[0]).toMatchObject({ nome: 'Bruno Regis', email: '' });
+    const corpo = (email: string) => ({ method: 'PATCH', body: JSON.stringify({ email }) });
+    expect((await ana('/api/cadastros/redatores/recR1', corpo('ana.lima@empresa.com'))).status).toBe(403);
+    const ruim = await chefe('/api/cadastros/redatores/recR1', corpo('ana lima'));
+    expect(ruim.status).toBe(400);
+    expect((await ruim.json()).erro).toBe('Escreva um e-mail.');
+    const repetido = await chefe('/api/cadastros/redatores/recR1', corpo('Paulo.Nunes@empresa.com'));
+    expect(repetido.status).toBe(409);
+    expect((await repetido.json()).erro).toBe('paulo.nunes@empresa.com já é de Paulo Nunes.');
+    const r = await chefe('/api/cadastros/redatores/recR1', corpo(' Ana.Lima@Empresa.com '));
+    expect(await r.json()).toEqual({ id: 'recR1', nome: 'Ana Lima', email: 'ana.lima@empresa.com', antes: '' });
+    expect(tabelas.tblRed[0].fields.email).toBe('ana.lima@empresa.com');
+    // vazio apaga
+    await chefe('/api/cadastros/redatores/recR1', corpo(''));
+    expect(tabelas.tblRed[0].fields.email ?? '').toBe('');
+  });
+
+  it('a sugestão pelo nome: quem já entrou e parece ser um redator ou editor sem e-mail; só o administrador vê', async () => {
+    expect(await sugestoes()).toEqual([
+      { tipo: 'editores', id: 'recE1', nome: 'Bruno Regis', email: 'bruno.regis@empresa.com', usuario: 'Bruno Regis' },
+      // sem caixa e acento, e uma letra de diferença em cada nome
+      { tipo: 'redatores', id: 'recR2', nome: 'Marina Teles', email: 'mariana.telles@empresa.com', usuario: 'Mariana Telles' },
+    ]);
+    expect(await sugestoes(ana)).toEqual([]);
+  });
+
+  it('"É ela" grava o e-mail no Teable na hora; desfazer apaga, e a sugestão volta', async () => {
+    const r = await chefe('/api/cadastros/redatores/recR2', { method: 'PATCH', body: JSON.stringify({ email: 'mariana.telles@empresa.com' }) });
+    expect(r.status).toBe(200);
+    expect(tabelas.tblRed.find((x) => x.id === 'recR2')!.fields.email).toBe('mariana.telles@empresa.com');
+    expect((await sugestoes()).map((s) => s.nome)).toEqual(['Bruno Regis']);
+    // desfazer: o e-mail de antes (vazio)
+    await chefe('/api/cadastros/redatores/recR2', { method: 'PATCH', body: JSON.stringify({ email: (await r.json()).antes }) });
+    expect((await sugestoes()).map((s) => s.nome)).toEqual(['Bruno Regis', 'Marina Teles']);
+  });
+
+  it('"Não é" fica guardado no SQLite e a sugestão não volta (nem com o servidor de novo); desfazer traz de volta', async () => {
+    const naoE = { tipo: 'editores', id: 'recE1', email: 'bruno.regis@empresa.com' };
+    expect((await ana('/api/cadastros/nao-e', { method: 'POST', body: JSON.stringify(naoE) })).status).toBe(403);
+    expect((await chefe('/api/cadastros/nao-e', { method: 'POST', body: JSON.stringify(naoE) })).status).toBe(200);
+    expect((await sugestoes()).map((s) => s.nome)).toEqual(['Marina Teles']);
+    servidor.close();
+    await subir(db);
+    expect((await sugestoes()).map((s) => s.nome)).toEqual(['Marina Teles']);
+    const de = new URLSearchParams(naoE).toString();
+    expect((await chefe(`/api/cadastros/nao-e?${de}`, { method: 'DELETE' })).status).toBe(200);
+    expect((await sugestoes()).map((s) => s.nome)).toEqual(['Bruno Regis', 'Marina Teles']);
+  });
+});

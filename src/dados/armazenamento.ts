@@ -446,6 +446,8 @@ export interface AtracaoCadastro {
 export interface RedatorCadastro {
   id: string;
   nome: string;
+  /** o e-mail do login (#106): liga quem entra no PROMeiro a este cadastro; '' sem nenhum */
+  email: string;
   /** como aparece nos roteiros: o autor do Word, o login */
   keys: KeyCadastro[];
   trello: boolean;
@@ -453,8 +455,19 @@ export interface RedatorCadastro {
 export interface EditorCadastro {
   id: string;
   nome: string;
+  email: string;
   keys: KeyCadastro[];
   trello: boolean;
+}
+/** "É a redatora?" (#106): quem já entrou no PROMeiro e parece, pelo nome, ser este cadastro sem e-mail. */
+export interface SugestaoDeEmail {
+  tipo: 'redatores' | 'editores';
+  /** o cadastro */
+  id: string;
+  nome: string;
+  /** o e-mail e o nome de quem entrou */
+  email: string;
+  usuario: string;
 }
 export interface CampoCaminho {
   nome: string;
@@ -470,6 +483,8 @@ export interface Cadastros {
   camposCaminho: CampoCaminho[];
   formulas: Record<string, string>;
   podeApagar: boolean;
+  /** só para administradores (vazio para os outros) */
+  sugestoes: SugestaoDeEmail[];
 }
 export type TipoCadastro = 'atracoes' | 'redatores' | 'editores';
 
@@ -489,6 +504,14 @@ export const darKey = (tipo: TipoCadastro, id: string, key: string) =>
   pedir<KeyCadastro>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}/keys`, { method: 'POST', body: JSON.stringify({ key }) });
 export const mudarAcervo = (id: string, acervo: AcervoDaAtracao) =>
   pedir<{ id: string; nome: string; acervo: AcervoDaAtracao }>(`/api/cadastros/atracoes/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ acervo }) });
+/** Grava o e-mail do login no redator ou editor ('' apaga); devolve o de antes, para o desfazer (só administradores). */
+export const mudarEmailDoCadastro = (tipo: SugestaoDeEmail['tipo'], id: string, email: string) =>
+  pedir<{ id: string; nome: string; email: string; antes: string }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ email }) });
+/** "Não é": a sugestão não volta (guardado no servidor); `desfazer` traz de volta. */
+export const responderNaoE = (s: Pick<SugestaoDeEmail, 'tipo' | 'id' | 'email'>, desfazer = false) =>
+  desfazer
+    ? pedir<{ ok: true }>(`/api/cadastros/nao-e?${new URLSearchParams({ tipo: s.tipo, id: s.id, email: s.email })}`, { method: 'DELETE' })
+    : pedir<{ ok: true }>('/api/cadastros/nao-e', { method: 'POST', body: JSON.stringify({ tipo: s.tipo, id: s.id, email: s.email }) });
 export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
   pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });
 

@@ -36,6 +36,7 @@ import { pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPraca
 import { acertarNArtesUmaVez } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
+import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarAndamento } from './andamento.mjs';
@@ -644,6 +645,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /* ---------- a seção Pessoas (#77): os designers da produção da arte × a tabela designers (nada do Trello) ---------- */
   const pessoas = criarPessoas({ db, copia, buscar: buscarNoTeable });
+  // ligar pessoa e cadastro pelo e-mail (#106): as sugestões "É ela" e o "Não é" guardado
+  const ligacaoDePessoas = criarLigacaoDePessoas({ db });
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
   // a última verificação desta partida (com o erro e o que não respondeu); sem nenhuma, a guardada
   let ultimaVerificacao = null;
@@ -1479,7 +1482,21 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!partes.length || !partes[0]) {
         if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
         const forcar = new URL(req.url, 'http://x').searchParams.has('renovar');
-        return json(res, 200, { ...(await cadastros.ler(forcar)), podeApagar: cadastros.podeApagar(eu.email) });
+        const lido = await cadastros.ler(forcar);
+        const admin = cadastros.podeApagar(eu.email);
+        // as sugestões "É a redatora?" (#106): só para administradores
+        return json(res, 200, { ...lido, podeApagar: admin, sugestoes: admin ? ligacaoDePessoas.sugestoes(q.todosOsUsuarios.all(), lido) : [] });
+      }
+      if (tipo === 'nao-e' && !id) {
+        // "Não é" (#106): guardado no SQLite, a sugestão não volta; DELETE desfaz
+        if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores ligam pessoas e cadastros.' });
+        const de = req.method === 'DELETE' ? Object.fromEntries(new URL(req.url, 'http://x').searchParams) : req.method === 'POST' ? ((await lerCorpo(req)) ?? {}) : null;
+        if (!de) return json(res, 405, { erro: 'Método não permitido.' });
+        if (!TIPOS_COM_EMAIL.includes(de.tipo) || !REC.test(String(de.id ?? '')) || !String(de.email ?? '').includes('@')) return json(res, 400, { erro: 'Faltam o cadastro e o e-mail.' });
+        if (req.method === 'POST') ligacaoDePessoas.naoE(de.tipo, de.id, de.email, eu.email);
+        else ligacaoDePessoas.desfazer(de.tipo, de.id, de.email);
+        console.log(`[cadastros] ${eu.email} ${req.method === 'POST' ? 'disse que não é' : 'desfez o "não é" de'} ${de.email} (${de.tipo} ${de.id})`);
+        return json(res, 200, { ok: true });
       }
       if (!singular) return json(res, 404, { erro: 'Não encontrado.' });
       if (req.method === 'POST' && !id) {
@@ -1496,6 +1513,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const feito = await cadastros.mudarAcervo(id, corpo.acervo);
         acervo.esquecerAcervos?.();
         console.log(`[cadastros] ${eu.email} mudou o acervo de ${feito.nome}: ${feito.acervo}`);
+        return json(res, 200, feito);
+      }
+      if (req.method === 'PATCH' && tipo !== 'atracoes' && id && !sub) {
+        // o e-mail do login no cadastro (#106): à mão ou pelo "É ela"; o desfazer grava o de antes
+        const corpo = (await lerCorpo(req)) ?? {};
+        if (!('email' in corpo)) return json(res, 405, { erro: 'Método não permitido.' });
+        if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores mudam o e-mail dos cadastros.' });
+        const feito = await cadastros.mudarEmail(singular, id, corpo.email);
+        console.log(`[cadastros] ${eu.email} mudou o e-mail de ${feito.nome}: ${feito.antes || '(nenhum)'} → ${feito.email || '(nenhum)'}`);
         return json(res, 200, feito);
       }
       if (req.method === 'POST' && sub === 'keys' && !keyId) {

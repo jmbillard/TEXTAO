@@ -6,15 +6,18 @@
    Tabelas (IDs tbl… da API):
      TEABLE_CADASTRO      atrações (atracao, categoria, campos dos caminhos)
      TEABLE_ATRACOES      KEY_atracoes (key, atracoes → link para a atração)
-     TEABLE_REDATORES     redatores (redator, redator_ID, customField_ID)
+     TEABLE_REDATORES     redatores (redator, redator_ID, customField_ID, email: o do login, que liga a pessoa ao cadastro)
      TEABLE_KEY_REDATORES KEY_redatores (key, redator → link para o redator): o autor do Word ou o login
-     TEABLE_EDITORES      editores (editor, editor_ID, customField_ID)
+     TEABLE_EDITORES      editores (editor, editor_ID, customField_ID, email)
      TEABLE_KEY_EDITORES  KEY_editores (key, editor → link para o editor) */
 
 import { ehAdministrador } from '../src/modelo/pessoas.ts';
 
 const POR_PAGINA = 1000;
 const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ') : v == null ? '' : String(typeof v === 'object' ? (v.title ?? v.name ?? '') : v)).trim();
+/** O e-mail do login guardado no cadastro de redator ou de editor (#106), minúsculo; '' sem nenhum. */
+const emailDe = (f) => texto(f.email).toLowerCase();
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const links = (v) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => (typeof x === 'object' ? x?.id : null)).filter(Boolean);
 /** Key como o n8n e a pauta escrevem: maiúsculas, sem acento, espaços simples. */
 export const normalizarKey = (k) =>
@@ -190,11 +193,11 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
         .filter((a) => a.nome)
         .sort(porNome),
       redatores: red
-        .map((l) => ({ id: l.id, nome: texto(l.f.redator), keys: (kR.get(l.id) ?? []).filter((k) => k.key), trello: !!texto(l.f.redator_ID), campoTrello: texto(l.f.customField_ID) }))
+        .map((l) => ({ id: l.id, nome: texto(l.f.redator), email: emailDe(l.f), keys: (kR.get(l.id) ?? []).filter((k) => k.key), trello: !!texto(l.f.redator_ID), campoTrello: texto(l.f.customField_ID) }))
         .filter((r) => r.nome)
         .sort(porNome),
       editores: edi
-        .map((l) => ({ id: l.id, nome: texto(l.f.editor), keys: (kE.get(l.id) ?? []).filter((k) => k.key), trello: !!texto(l.f.editor_ID), campoTrello: texto(l.f.customField_ID) }))
+        .map((l) => ({ id: l.id, nome: texto(l.f.editor), email: emailDe(l.f), keys: (kE.get(l.id) ?? []).filter((k) => k.key), trello: !!texto(l.f.editor_ID), campoTrello: texto(l.f.customField_ID) }))
         .filter((e) => e.nome)
         .sort(porNome),
       ...esquema,
@@ -310,6 +313,24 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
       for (const k of lista) await criar(t.keysEditores, { key: k, editor: [{ id: rec.id }] });
       await depois();
       return { id: rec.id, nome, keys: lista, trello: !!opcao };
+    },
+
+    /** Grava (ou apaga, com '') o e-mail do login no cadastro de redator ou de editor (#106): é ele que liga a pessoa
+        que entra no PROMeiro ao cadastro. O mesmo e-mail não fica em dois cadastros do mesmo tipo. Devolve o de antes,
+        para o desfazer. */
+    async mudarEmail(tipo, id, email) {
+      const tabela = { redator: t.redatores, editor: t.editores }[tipo];
+      exigir(tabela, 'Só redatores e editores têm e-mail.');
+      email = String(email ?? '').trim().toLowerCase();
+      exigir(!email || EMAIL.test(email), 'Escreva um e-mail.');
+      const lista = (await ler())[tipo === 'redator' ? 'redatores' : 'editores'];
+      const item = lista.find((x) => x.id === id);
+      exigir(item, 'Este cadastro não está mais no Teable.');
+      const dono = email && lista.find((x) => x.id !== id && x.email === email);
+      if (dono) throw erro(`${email} já é de ${dono.nome}.`, 409);
+      await teable('PATCH', `/table/${encodeURIComponent(tabela)}/record/${encodeURIComponent(id)}`, { fieldKeyType: 'name', typecast: true, record: { fields: { email: email || null } } });
+      await depois();
+      return { id, nome: item.nome, email, antes: item.email };
     },
 
     /** Remove do Teable (só administradores). A opção no Trello fica, para os cards antigos. */
