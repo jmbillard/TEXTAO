@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { lembrarCodigoDasVersoes, lerSemanaDaPauta } from '../dados/armazenamento';
 import { apelidoDaClaquete, useApelidos } from '../dados/apelidos';
 import { iniciais } from '../dados/colaboracao';
@@ -29,6 +29,8 @@ interface Props extends EnderecoDaPauta {
   /** vai para outra semana ou outro dia (sem a data: a de hoje) */
   irPara: (e: EnderecoDaPauta) => void;
   voltar: () => void;
+  /** a linha do logo (#159), a mesma da fila; sem ela, o "Fila" de volta */
+  topo?: ReactNode;
 }
 
 type Semana = SemanaDaPauta & LeituraDaPauta;
@@ -277,7 +279,7 @@ function InterruptorDoCodigo() {
 }
 
 /** A Pauta da edição: a Semana ou o Dia (#97), pelo endereço. */
-export function Pauta({ semana, dia, irPara, voltar }: Props) {
+export function Pauta({ semana, dia, irPara, voltar, topo }: Props) {
   const visao = dia !== undefined ? 'dia' : 'semana';
   // "hoje" do Dia é o dia da pauta que está correndo (às 2h, ainda o de ontem); a grade da Semana marca o do calendário
   const [hojeDaGrade, setHojeDaGrade] = useState(() => diaEmSaoPaulo());
@@ -319,13 +321,16 @@ export function Pauta({ semana, dia, irPara, voltar }: Props) {
   const ehHoje = visao === 'dia' ? qual === hoje : segunda === desta;
   return (
     <div className="pagina pauta">
-      <header className="cad-topo">
-        <button className="voltar-cad" onClick={voltar}>
-          <Icone nome="voltar" tam={16} /> Fila
-        </button>
-        <Marca />
-        <span />
-      </header>
+      {/* a linha do logo da fila, parada entre as telas (#159); sem ela, a volta para a fila */}
+      {topo ?? (
+        <header className="cad-topo">
+          <button className="voltar-cad" onClick={voltar}>
+            <Icone nome="voltar" tam={16} /> Fila
+          </button>
+          <Marca />
+          <span />
+        </header>
+      )}
       <main className="pauta-pagina">
         <div className="pauta-cabeca">
           <h1>Pauta da edição</h1>

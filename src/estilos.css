@@ -157,6 +157,9 @@ kbd {
 }
 
 .pagina { min-height: 100vh; animation: surgir 0.28s var(--suave); }
+/* a linha do logo fica parada ao trocar de tela (#159): só o que vem embaixo dela surge */
+.pagina:has(> .barra-topo) { animation: none; }
+.pagina:has(> .barra-topo) > :not(.barra-topo) { animation: surgir 0.28s var(--suave) backwards; }
 @keyframes surgir { from { opacity: 0; transform: translateY(4px); } }
 
 .rotulo { font: 600 11px/1.4 var(--sans); letter-spacing: 0.13em; text-transform: uppercase; color: var(--tinta3); }
@@ -2450,6 +2453,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
    ========================================================= */
 .pagina.filmes { min-height: 100vh; }
 .pagina.filmes .cad-topo { max-width: 1640px; }
+/* com a linha do logo da fila (#159), a volta para as prévias fica embaixo dela, na largura da prévia */
+.filmes-volta { max-width: 1640px; margin: 0 auto; padding: 4px 32px 0; }
 .filmes-inicio { max-width: 1060px; margin: 0 auto; padding: 26px 28px 60px; display: grid; gap: 10px; }
 .filmes-inicio h1 { font: 400 34px/1.1 var(--serifa); margin: 0 0 10px; }
 .solta-previa { border: 1.5px dashed var(--regua-forte); border-radius: 14px; background: var(--papel); padding: 28px; display: grid; gap: 4px; color: var(--tinta); font: inherit; cursor: pointer; margin-bottom: 14px; transition: border-color 0.2s, background 0.2s; }

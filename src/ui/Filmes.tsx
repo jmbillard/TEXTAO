@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   abrirPrevia,
   avisarNaPrevia,
@@ -45,6 +45,8 @@ interface Props {
   abrir: (id?: string) => void;
   voltar: () => void;
   avisar: (t: string) => void;
+  /** a linha do logo (#159), a mesma da fila, no computador; sem ela, o "Fila" de volta */
+  topo?: ReactNode;
 }
 
 // a página que ainda não chegou (a aba fechou no meio da subida) não está sendo lida: não adianta esperar
@@ -112,7 +114,7 @@ export const Circulo = ({ traco, className }: { traco: number; className: string
 const temBalao = (f?: FilmeLido) =>
   !!f?.conferencia?.pergunta || f?.envio?.estado === "erro";
 
-export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
+export function Filmes({ aberta, abrir, voltar, avisar, topo }: Props) {
   // no celular (até 600px), a entrada é a das prévias empilhadas com o "Subir prévia" (#80), e a prévia aberta é a
   // sequência de filmes (#81)
   const celular = useTelaDeCelular();
@@ -138,16 +140,30 @@ export function Filmes({ aberta, abrir, voltar, avisar }: Props) {
     );
   return (
     <div className="pagina filmes">
-      <header className="cad-topo">
-        <button
-          className="voltar-cad"
-          onClick={aberta ? () => abrir() : voltar}
-        >
-          <Icone nome="voltar" tam={16} /> {aberta ? "Prévias" : "Fila"}
-        </button>
-        <Marca />
-        <span />
-      </header>
+      {/* a linha do logo da fila, parada entre as telas (#159); com a prévia aberta, a volta para as prévias embaixo */}
+      {topo ? (
+        <>
+          {topo}
+          {aberta && (
+            <nav className="filmes-volta">
+              <button className="voltar-cad" onClick={() => abrir()}>
+                <Icone nome="voltar" tam={16} /> Prévias
+              </button>
+            </nav>
+          )}
+        </>
+      ) : (
+        <header className="cad-topo">
+          <button
+            className="voltar-cad"
+            onClick={aberta ? () => abrir() : voltar}
+          >
+            <Icone nome="voltar" tam={16} /> {aberta ? "Prévias" : "Fila"}
+          </button>
+          <Marca />
+          <span />
+        </header>
+      )}
       {aberta ? (
         <PreviaAberta id={aberta} avisar={avisar} verPrevias={() => abrir()} voltar={voltar} />
       ) : (

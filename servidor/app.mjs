@@ -67,7 +67,7 @@ import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
 import { DIAS_DA_CONTINUIDADE, historicoDaPauta } from '../src/modelo/distribuir.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
-import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
+import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDaOrdem, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
@@ -3005,7 +3005,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' } ou a exibição de uma área dos
       // roteiros (#103): { 'exibicao.redator': 'quadro' }, ou a visão e os arranjos da Pauta da edição (#98), que é de
       // todo mundo: { 'pauta.visao': 'dia' }, ou os blocos recolhidos da tela de produções (#113), também de todo mundo:
-      // { 'producoes.recolhidos': ['RJ'] }. Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
+      // { 'producoes.recolhidos': ['RJ'] }, e a ordem das praças arrumada arrastando (#159): { 'producoes.ordem': ['SP', 'RJ'] }.
+      // Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
       const entradas = Object.entries(typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : {});
@@ -3023,8 +3024,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           if (recusa) return json(res, 400, { erro: recusa });
           continue;
         }
-        if (chave === CHAVE_DOS_RECOLHIDOS) {
-          const recusa = recusaDosRecolhidos(valor);
+        if (chave === CHAVE_DOS_RECOLHIDOS || chave === CHAVE_DA_ORDEM) {
+          const recusa = chave === CHAVE_DA_ORDEM ? recusaDaOrdem(valor) : recusaDosRecolhidos(valor);
           if (recusa) return json(res, 400, { erro: recusa });
           continue;
         }

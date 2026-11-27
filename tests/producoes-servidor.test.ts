@@ -818,3 +818,29 @@ describe('a tela de produções: os blocos recolhidos, lembrados por pessoa', ()
     expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
   });
 });
+
+/* A ordem das praças (#159): a pessoa arruma os blocos arrastando, e a ordem fica nas preferências dela, com a chave
+   `producoes.ordem`, como os recolhidos. */
+describe('a tela de produções: a ordem das praças, lembrada por pessoa', () => {
+  const CHAVE = 'producoes.ordem';
+  type Servidor = Awaited<ReturnType<typeof comServidor>>;
+  const lembradas = async (s: Servidor, quem: 'ana' | 'chefe') => ((await (await s[quem]('/api/eu')).json()) as { preferencias: Record<string, unknown> }).preferencias;
+  const arrumar = (s: Servidor, quem: 'ana' | 'chefe', corpo: unknown) => s[quem]('/api/eu/preferencias', { method: 'PUT', body: JSON.stringify(corpo) });
+
+  it('grava e lê a ordem de cada pessoa', async () => {
+    const s = await comServidor();
+    expect((await arrumar(s, 'ana', { [CHAVE]: ['SP', 'G5', 'RJ'] })).status).toBe(200);
+    expect(await lembradas(s, 'ana')).toMatchObject({ [CHAVE]: ['SP', 'G5', 'RJ'] });
+    expect(await lembradas(s, 'chefe')).not.toHaveProperty(CHAVE);
+  });
+
+  it('recusa o que não é uma lista de praças', async () => {
+    const s = await comServidor();
+    for (const valor of ['SP', null, [1], [''.padEnd(41, 'X')]]) {
+      const r = await arrumar(s, 'ana', { [CHAVE]: valor });
+      expect(r.status).toBe(400);
+      expect((await r.json()).erro).toBe('Ordem das praças inválida: mande a lista das siglas das praças.');
+    }
+    expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
+  });
+});

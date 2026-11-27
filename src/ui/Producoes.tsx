@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as PointerDoReact, type ReactNode } from 'react';
 import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
-import { blocosRecolhidos, desfazerEtapaDaProducao, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
-import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, faltaArte, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { blocosRecolhidos, desfazerEtapaDaProducao, lembrarOrdemDasPracas, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao, ordemDasPracas } from '../dados/armazenamento';
+import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, abertasNoComeco, abrirAPraca, comOCard, diaDoPrazo, diasDoEntregue, faltaArte, naOrdem, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
 import { ProducaoAberta } from './ProducaoAberta';
+import { useDeslize, useReordenar } from './movimentoDasProducoes';
 import { plural } from './util';
 import { ConflitoDoCard, NomeDaClaquete, versoesDoCard } from './Apelido';
 import './producoes.css';
@@ -33,7 +34,12 @@ import './producoes.css';
    #113: cada bloco se recolhe numa coluna estreita, só com a sigla e a contagem de cada coluna (no celular, uma linha);
    o PROMeiro lembra os recolhidos por pessoa, em qualquer aparelho (as preferências da pessoa). Um clique no card (fora
    dos botões; o arrasto não conta) abre a Produção na própria tela: a linha do tempo, as artes e o link do card no
-   Trello (src/ui/ProducaoAberta.tsx). */
+   Trello (src/ui/ProducaoAberta.tsx).
+   #159: o topo é o mesmo das outras telas e não se mexe; sem o texto de explicação. No máximo 3 praças abertas: abrir
+   mais uma fecha a aberta há mais tempo. A pessoa arruma as praças arrastando pela faixa do nome, e a ordem fica
+   lembrada como os recolhidos. A praça fechada mostra o nome na vertical. A Produzindo vazia fica fina e se abre com um
+   card no ar (ou com o "Peguei"); o Entregue tem as divisórias por dia. E movimento em tudo: a praça que abre e fecha,
+   o card que muda de coluna, a coluna que se abre e a ordem das praças deslizam (src/ui/movimentoDasProducoes.ts). */
 
 interface Props {
   /** a linha do logo: o caminho "PROMeiro / designer ▾", a agenda No Trello, a Pauta da edição e o perfil */
@@ -44,11 +50,15 @@ const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const hojeEmSaoPaulo = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 const vizinho = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
+/** O dia como a tela escreve: "hoje", "amanhã", "ontem", "qua 25/11". */
+function diaEscrito(dia: string, hoje: string) {
+  const d = new Date(`${dia}T12:00:00Z`);
+  return dia === hoje ? 'hoje' : dia === vizinho(hoje, 1) ? 'amanhã' : dia === vizinho(hoje, -1) ? 'ontem' : `${DIAS_CURTOS[d.getUTCDay()]} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+}
+
 /** O prazo como o card mostra: "hoje", "amanhã", "sex 20/11"; com a hora quando a exibição traz ("sex 20/11 21h30"). */
 function prazoEscrito(prazo: string, hoje = hojeEmSaoPaulo()) {
-  const dia = diaDoPrazo(prazo);
-  const d = new Date(`${dia}T12:00:00Z`);
-  const nome = dia === hoje ? 'hoje' : dia === vizinho(hoje, 1) ? 'amanhã' : dia === vizinho(hoje, -1) ? 'ontem' : `${DIAS_CURTOS[d.getUTCDay()]} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+  const nome = diaEscrito(diaDoPrazo(prazo), hoje);
   if (/^\d{4}-\d{2}-\d{2}$/.test(prazo)) return nome;
   const [h, m] = new Date(prazo).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).split(':');
   return `${nome} ${Number(h)}h${m}`;
@@ -139,6 +149,47 @@ function AvisoDeFalta({ aviso, indo }: { aviso: NonNullable<Acoes['aviso']>; ind
   );
 }
 
+/** A contagem da coluna: quando muda, o número pula de leve (#159), para o olho ver onde o card foi. */
+function Conta({ n, rotulo }: { n: number; rotulo: string }) {
+  const antes = useRef(n);
+  const [vez, setVez] = useState(0);
+  const [pulando, setPulando] = useState(false);
+  useEffect(() => {
+    if (antes.current === n) return;
+    antes.current = n;
+    setVez((v) => v + 1);
+    setPulando(true);
+    // a classe sai depois do pulo: a praça que muda de lugar (o nó que anda no DOM) não pula de novo
+    const t = setTimeout(() => setPulando(false), CHEGADA_MS);
+    return () => clearTimeout(t);
+  }, [n]);
+  return (
+    <span key={vez} className={`prod-conta${pulando ? ' mudou' : ''}`} aria-label={rotulo}>
+      {n}
+    </span>
+  );
+}
+
+/** Quanto dura a chegada de um bloco (as colunas em cascata, o nome girando). */
+const CHEGADA_MS = 600;
+/** O bloco que acabou de aparecer (#159): a classe da chegada fica só o tempo dela. O navegador recomeça a animação de
+    CSS do nó que muda de lugar no DOM (a praça arrastada), e a classe que já saiu não tem o que recomeçar. */
+function useChegando() {
+  const [sim, setSim] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setSim(false), CHEGADA_MS);
+    return () => clearTimeout(t);
+  }, []);
+  return sim;
+}
+
+/** A alça da faixa do nome (#159): por ela a praça se arrasta no dedo; no mouse, a faixa toda. */
+const Alca = () => (
+  <span className="prod-alca" aria-hidden="true" title="Arraste para mudar a ordem das praças">
+    ⠿
+  </span>
+);
+
 /** O clique que abre a Produção (#113): no card, fora dos botões, do link e do aviso de arte faltando. */
 const cliqueDeAbrir = (e: { target: EventTarget }) => !(e.target as Element).closest('button, a, .prod-aviso');
 
@@ -224,32 +275,40 @@ interface Soltar {
   soltar: (k: ColunaDoBloco) => void;
 }
 
-/** Recolher e mostrar o bloco (#113), e abrir a Produção de um card. */
+/** Recolher e mostrar o bloco (#113), abrir a Produção de um card, e arrastar a praça pela faixa do nome (#159). */
 interface DoBloco {
   recolhido: boolean;
   alternar: () => void;
   abrir: (c: CardDaProducao) => void;
+  levantado: boolean;
+  arrastar: (e: PointerDoReact<HTMLElement>) => void;
+  /** a vez do bloco na cascata da primeira carga (#159): as colunas chegam uma depois da outra, de bloco em bloco */
+  cascata: number;
 }
+/** O intervalo da cascata, de coluna em coluna. */
+const CASCATA_MS = 35;
 
-/** O bloco recolhido (#113): uma coluna estreita com a sigla e a contagem de cada coluna; um clique mostra de novo. */
-function BlocoRecolhido({ b, id, alternar }: { b: BlocoDaPraca; id: string; alternar: () => void }) {
+/** O bloco recolhido (#113): uma coluna estreita com a sigla e o nome na vertical (#159) e a contagem de cada coluna;
+    um clique mostra de novo. */
+function BlocoRecolhido({ b, id, bloco }: { b: BlocoDaPraca; id: string; bloco: DoBloco }) {
   const sigla = b.praca || '—';
+  const chegando = useChegando();
   return (
-    <section className="prod-bloco recolhido" data-praca={b.praca} aria-labelledby={id} onClick={alternar} title={`Mostrar ${b.nome}`}>
-      <div className="prod-recolhido">
+    <section className={`prod-bloco recolhido${bloco.levantado ? ' levantado' : ''}${chegando ? ' chegando' : ''}`} data-praca={b.praca} aria-labelledby={id} onClick={bloco.alternar} title={`Mostrar ${b.nome}`}>
+      <div className="prod-recolhido" onPointerDown={bloco.arrastar}>
+        <Alca />
         <button type="button" className="prod-mostrar" aria-expanded={false} aria-label={`Mostrar o bloco ${sigla}`}>
           <Icone nome="direita" tam={16} traco={2.2} />
         </button>
         <h2 id={id}>
           <span className="prod-sigla">{sigla}</span>
+          {b.nome !== b.praca && <span className="prod-nome">{b.nome}</span>}
         </h2>
         <ul className="prod-contas-recolhido" aria-label={`Os cards de ${sigla} em cada coluna`}>
           {COLUNAS_DO_BLOCO.map((k) => (
             <li key={k} data-coluna={k} title={ROTULO_DA_COLUNA[k]}>
               <i aria-hidden="true" />
-              <span className="prod-conta" aria-label={`${ROTULO_DA_COLUNA[k]}: ${plural(b.colunas[k].length, 'card', 'cards')}`}>
-                {b.colunas[k].length}
-              </span>
+              <Conta n={b.colunas[k].length} rotulo={`${ROTULO_DA_COLUNA[k]}: ${plural(b.colunas[k].length, 'card', 'cards')}`} />
             </li>
           ))}
         </ul>
@@ -258,15 +317,40 @@ function BlocoRecolhido({ b, id, alternar }: { b: BlocoDaPraca; id: string; alte
   );
 }
 
-function Bloco({ b, entregueDias, hoje, acoes, solta, bloco }: { b: BlocoDaPraca; entregueDias: number; hoje: string; acoes: (c: CardDaProducao) => Acoes | null; solta: Soltar; bloco: DoBloco }) {
+interface PropsDoBloco {
+  b: BlocoDaPraca;
+  entregueDias: number;
+  hoje: string;
+  acoes: (c: CardDaProducao) => Acoes | null;
+  solta: Soltar;
+  bloco: DoBloco;
+}
+const idDoBloco = (b: BlocoDaPraca) => `bloco-${b.praca || 'sem-praca'}`;
+
+/** O bloco da praça: o recolhido ou o aberto (cada um com a chegada dele, #159). */
+function Bloco(props: PropsDoBloco) {
+  return props.bloco.recolhido ? <BlocoRecolhido b={props.b} id={idDoBloco(props.b)} bloco={props.bloco} /> : <BlocoAberto {...props} />;
+}
+
+function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloco) {
   const arrasto = solta.arrasto?.card.praca === b.praca ? solta.arrasto : null;
   const aceita = (k: ColunaDoBloco) => !!arrasto && ARRASTA_PARA[arrasto.card.etapa].includes(k);
   const total = COLUNAS_DO_BLOCO.reduce((n, k) => n + b.colunas[k].length, 0);
-  const id = `bloco-${b.praca || 'sem-praca'}`;
-  if (bloco.recolhido) return <BlocoRecolhido b={b} id={id} alternar={bloco.alternar} />;
+  const id = idDoBloco(b);
+  const chegando = useChegando();
+  // a Produzindo vazia fica fina (#159), e se abre quando um card do bloco que pode ir para ela está no ar
+  const fina = !b.colunas.produzindo.length && !aceita('produzindo');
+  const cardsDe = (cs: CardDaProducao[]) => (
+    <ul className="prod-cards">
+      {cs.map((c) => (
+        <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} abrir={() => bloco.abrir(c)} />
+      ))}
+    </ul>
+  );
   return (
-    <section className="prod-bloco" data-praca={b.praca} aria-labelledby={id}>
-      <header className="prod-bloco-topo">
+    <section className={`prod-bloco${bloco.levantado ? ' levantado' : ''}${chegando ? ' chegando' : ''}`} data-praca={b.praca} aria-labelledby={id}>
+      <header className="prod-bloco-topo" onPointerDown={bloco.arrastar}>
+        <Alca />
         <h2 id={id}>
           <span className="prod-sigla">{b.praca || '—'}</span>
           {b.nome !== b.praca && <span className="prod-nome">{b.nome}</span>}
@@ -276,11 +360,12 @@ function Bloco({ b, entregueDias, hoje, acoes, solta, bloco }: { b: BlocoDaPraca
           <Icone nome="voltar" tam={16} traco={2.2} />
         </button>
       </header>
-      <div className="prod-colunas">
-        {COLUNAS_DO_BLOCO.map((k) => (
+      <div className={`prod-colunas${fina ? ' fina' : ''}`}>
+        {COLUNAS_DO_BLOCO.map((k, i) => (
           <section
             key={k}
-            className={`prod-coluna${aceita(k) ? ' aceita' : ''}${aceita(k) && arrasto?.sobre === k ? ' sobre' : ''}`}
+            style={{ '--atraso': `${(bloco.cascata + i) * CASCATA_MS}ms` } as CSSProperties}
+            className={`prod-coluna${k === 'produzindo' && fina ? ' fina' : ''}${aceita(k) ? ' aceita' : ''}${aceita(k) && arrasto?.sobre === k ? ' sobre' : ''}`}
             data-coluna={k}
             aria-label={`${b.praca} · ${ROTULO_DA_COLUNA[k]}`}
             onDragOver={(e) => {
@@ -301,19 +386,21 @@ function Bloco({ b, entregueDias, hoje, acoes, solta, bloco }: { b: BlocoDaPraca
             <h3>
               <i aria-hidden="true" />
               <span className="prod-coluna-nome">{ROTULO_DA_COLUNA[k]}</span>
-              <span className="prod-conta" aria-label={plural(b.colunas[k].length, 'card', 'cards')}>
-                {b.colunas[k].length}
-              </span>
+              <Conta n={b.colunas[k].length} rotulo={plural(b.colunas[k].length, 'card', 'cards')} />
               {k === 'entregue' && <small className="prod-recente">últimos {entregueDias} dias</small>}
             </h3>
-            {b.colunas[k].length ? (
-              <ul className="prod-cards">
-                {b.colunas[k].map((c) => (
-                  <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} abrir={() => bloco.abrir(c)} />
-                ))}
-              </ul>
-            ) : (
+            {!b.colunas[k].length ? (
               <p className="prod-nada">nada aqui</p>
+            ) : k === 'entregue' ? (
+              // as divisórias por dia (#159): o dia da entrega, do mais novo para o mais velho
+              diasDoEntregue(b.colunas[k], hoje).map((d) => (
+                <div key={d.dia} className="prod-dia" data-dia={d.dia}>
+                  <h4 className="prod-dia-nome">{diaEscrito(d.dia, hoje)}</h4>
+                  {cardsDe(d.cards)}
+                </div>
+              ))
+            ) : (
+              cardsDe(b.colunas[k])
             )}
           </section>
         ))}
@@ -334,9 +421,21 @@ export function Producoes({ topo }: Props) {
   // o arrasto em curso e a caixinha de desfazer (#112)
   const [arrasto, setArrasto] = useState<Arrasto | null>(null);
   const [desfazivel, setDesfazivel] = useState<Desfazivel | null>(null);
-  // os blocos recolhidos (#113), lembrados por pessoa, e a Produção aberta (o card como estava ao abrir)
-  const [recolhidos, setRecolhidos] = useState<ReadonlySet<string>>(() => new Set(blocosRecolhidos()));
+  // os blocos recolhidos (#113), lembrados por pessoa; as praças abertas (no máximo 3, #159), da aberta há mais tempo
+  // para a mais nova, que valem depois do primeiro clique; e a Produção aberta (o card como estava ao abrir)
+  const [recolhidosLembrados] = useState(blocosRecolhidos);
+  const [abertas, setAbertas] = useState<readonly string[] | null>(null);
   const [aberta, setAberta] = useState<CardDaProducao | null>(null);
+  // a ordem das praças, arrumada arrastando (#159) e lembrada por pessoa
+  const [ordem, setOrdem] = useState<readonly string[]>(ordemDasPracas);
+  const area = useRef<HTMLDivElement>(null);
+  // a primeira carga (#159): as colunas chegam em cascata curta; depois, cada bloco que abre só com a dele
+  const [chegando, setChegando] = useState(true);
+  useEffect(() => {
+    if (!lido || !chegando) return;
+    const t = setTimeout(() => setChegando(false), CHEGADA_MS);
+    return () => clearTimeout(t);
+  }, [lido, chegando]);
   const noCelular = useNoCelular();
   const reler = useRef<() => void>(() => {});
   useEffect(() => {
@@ -461,14 +560,25 @@ export function Producoes({ topo }: Props) {
       arrastar: noCelular || vai || faltam ? null : (sim) => setArrasto(sim ? { card: c, sobre: null } : null),
     };
   };
-  /** Recolher ou mostrar o bloco da praça (#113): muda na hora, e o servidor guarda para a pessoa. */
+  const blocos = lido ? naOrdem(lido.blocos, ordem) : [];
+  const pracas = blocos.map((b) => b.praca);
+  // (a praça que saiu da tela, numa releitura, não conta entre as abertas)
+  const abertasAgora = (abertas ?? abertasNoComeco(pracas, recolhidosLembrados)).filter((p) => pracas.includes(p));
+  /** Recolher ou mostrar o bloco da praça (#113): muda na hora, e o servidor guarda para a pessoa. Abrir a quarta fecha
+      a aberta há mais tempo (#159); as fechadas são as recolhidas. */
   const alternar = (praca: string) => {
-    const n = new Set(recolhidos);
-    if (n.has(praca)) n.delete(praca);
-    else n.add(praca);
-    setRecolhidos(n);
-    void lembrarRecolhidos([...n]);
+    const n = abertasAgora.includes(praca) ? abertasAgora.filter((p) => p !== praca) : abrirAPraca(abertasAgora, praca);
+    setAbertas(n);
+    void lembrarRecolhidos(pracas.filter((p) => !n.includes(p)));
   };
+  // arrumar as praças arrastando (#159): a ordem muda na hora; solta, o servidor guarda
+  const reordenar = useReordenar(area, pracas, noCelular ? 'y' : 'x', setOrdem, (o) => {
+    setOrdem(o);
+    void lembrarOrdemDasPracas(o);
+  });
+  // o deslize (#159): a praça que muda de lugar, e o card que muda de coluna (e os vizinhos que abrem o espaço)
+  useDeslize(area, ':scope > .prod-bloco:not(.levantado)', 'data-praca', pracas.join('\n'));
+  useDeslize(area, '.prod-card', 'data-producao', blocos.map((b) => (abertasAgora.includes(b.praca) ? COLUNAS_DO_BLOCO.map((k) => b.colunas[k].map((c) => c.id).join(',')).join('/') : '')).join('|'));
   // a Produção aberta acompanha a tela (a mudança e a releitura); a que saiu da tela fica como estava
   const cardAberto = aberta && (lido?.blocos.flatMap((b) => COLUNAS_DO_BLOCO.flatMap((k) => b.colunas[k])).find((c) => c.id === aberta.id) ?? aberta);
   const fecharAberta = useCallback(() => {
@@ -494,7 +604,6 @@ export function Producoes({ topo }: Props) {
       <main className="prod-pagina">
         <div className="prod-cabeca">
           <h1>Produções</h1>
-          <p className="prod-sub">Um bloco por praça: o que entrou, o que está em produção e o que saiu nos últimos {lido?.entregueDias ?? 3} dias.</p>
         </div>
         {erro ? (
           <p className="prod-falha" role="alert">
@@ -517,9 +626,14 @@ export function Producoes({ topo }: Props) {
                 </button>
               </p>
             )}
-            {/* a largura de cada bloco: o aberto cresce para ocupar a sobra; o recolhido, uma coluna estreita (#113) */}
-            <div className="prod-blocos" style={{ gridTemplateColumns: lido.blocos.map((b) => (recolhidos.has(b.praca) ? 'var(--bloco-recolhido)' : 'minmax(var(--bloco-min), 1fr)')).join(' ') }}>
-              {lido.blocos.map((b) => (
+            {/* a largura de cada bloco: o aberto cresce para ocupar a sobra; o recolhido, uma coluna estreita (#113). As
+                duas formas têm o mesmo jeito (o mínimo e a fração), para a largura deslizar ao abrir e fechar (#159) */}
+            <div
+              ref={area}
+              className={`prod-blocos${reordenar.levantada ? ' reordenando' : ''}`}
+              style={{ gridTemplateColumns: blocos.map((b) => (abertasAgora.includes(b.praca) ? 'minmax(var(--bloco-min), 1fr)' : 'minmax(var(--bloco-recolhido), 0fr)')).join(' ') }}
+            >
+              {blocos.map((b, i) => (
                 <Bloco
                   key={b.praca || '—'}
                   b={b}
@@ -527,7 +641,7 @@ export function Producoes({ topo }: Props) {
                   hoje={hoje}
                   acoes={acoes}
                   solta={solta}
-                  bloco={{ recolhido: recolhidos.has(b.praca), alternar: () => alternar(b.praca), abrir: setAberta }}
+                  bloco={{ recolhido: !abertasAgora.includes(b.praca), alternar: () => alternar(b.praca), abrir: setAberta, levantado: reordenar.levantada === b.praca, arrastar: reordenar.iniciar(b.praca), cascata: chegando ? i : 0 }}
                 />
               ))}
             </div>

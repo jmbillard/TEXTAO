@@ -523,6 +523,24 @@ export function App() {
   // a entrada "Montar a pauta" (#123), nos caminhos do topo, só para a coordenação
   const montarAPauta = souCoordenacao() ? () => ir({ t: 'montar', dia: '' }) : undefined;
   const seletorDeArea = <SeletorDeArea areas={areas} atual={areaAgora ?? 'designer'} admin={souAdministrador()} trocar={irParaArea} />;
+  /** A linha do logo das telas da Designer fora da fila (#159): Produções, Filmes e a Pauta da edição. É a mesma da fila
+      (o logo, o seletor de área, os caminhos e o perfil, nos mesmos lugares), para nada pular ao trocar de tela; os
+      caminhos são os da Designer, menos o da tela em que a pessoa está. */
+  const topoDaDesigner = (atual: 'producoes' | 'filmes' | 'pauta') => (
+    <header className="barra-topo">
+      <h1 className="bib-marca"><Marca /></h1>
+      {seletorDeArea}
+      <CaminhosDoTopo
+        producoes={atual !== 'producoes' ? () => ir({ t: 'producoes' }) : undefined}
+        agenda={() => irParaArea('designer')}
+        filmes={atual !== 'filmes' && temFilmes() ? () => ir({ t: 'filmes' }) : undefined}
+        pauta={atual !== 'pauta' ? () => ir({ t: 'pauta', ...entradaDaPauta() }) : undefined}
+        montar={montarAPauta}
+      />
+      <span className="espaco" />
+      <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
+    </header>
+  );
 
   return (
     <>
@@ -547,17 +565,7 @@ export function App() {
         />
       )}
       {tela.t === 'producoes' && (
-        <Producoes
-          topo={
-            <header className="barra-topo">
-              <h1 className="bib-marca"><Marca /></h1>
-              {seletorDeArea}
-              <CaminhosDoTopo agenda={() => irParaArea('designer')} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })} montar={montarAPauta} />
-              <span className="espaco" />
-              <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
-            </header>
-          }
-        />
+        <Producoes topo={topoDaDesigner('producoes')} />
       )}
       {semLogin && (
         <div className="faixa-sem-login" role="alert">
@@ -568,11 +576,11 @@ export function App() {
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} buscar={buscarNaFila} />}
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
       {tela.t !== 'area' && tela.t !== 'producoes' && <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />}
-      {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
+      {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} topo={topoDaDesigner('filmes')} />}
       {tela.t === 'configuracao' && souAdministrador() && !tela.pagina && <Configuracao voltar={() => ir({ t: 'biblioteca' })} historico={() => ir({ t: 'configuracao', pagina: 'historico' })} portainer={() => ir({ t: 'configuracao', pagina: 'portainer' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'historico' && <HistoricoDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
       {tela.t === 'montar' && souCoordenacao() && <MontarPauta dia={tela.dia} pessoa={pessoa} irPara={(dia) => ir({ t: 'montar', dia })} voltar={() => ir({ t: 'pauta', ...entradaDaPauta() })} />}
-      {tela.t === 'pauta' && <Pauta semana={tela.semana} dia={tela.dia} irPara={(e) => ir({ t: 'pauta', ...e })} voltar={() => ir({ t: 'biblioteca' })} />}
+      {tela.t === 'pauta' && <Pauta semana={tela.semana} dia={tela.dia} irPara={(e) => ir({ t: 'pauta', ...e })} voltar={() => ir({ t: 'biblioteca' })} topo={topoDaDesigner('pauta')} />}
       {tela.t === 'andamento' && souAdministrador() && <Andamento voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'correcoes' && souAdministrador() && <CorrecaoDeGrafia voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'portainer' && <PortainerDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}

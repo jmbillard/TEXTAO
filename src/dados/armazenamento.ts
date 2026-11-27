@@ -996,6 +996,12 @@ export const blocosRecolhidos = (): string[] => recolhidosDe(minhasPreferencias)
     por pessoa, para qualquer aparelho. Devolve se ficou guardada. */
 export const lembrarRecolhidos = (pracas: readonly string[]): Promise<boolean> => guardarPreferencia(CHAVE_DOS_RECOLHIDOS, [...pracas]);
 
+/** A ordem em que a pessoa arrumou as praças da tela de produções, arrastando (#159); sem escolha, a da Configuração. */
+export const ordemDasPracas = (): string[] => ordemDe(minhasPreferencias);
+
+/** A pessoa arrumou as praças: como os recolhidos, vale na hora e o servidor guarda, por pessoa, para qualquer aparelho. */
+export const lembrarOrdemDasPracas = (pracas: readonly string[]): Promise<boolean> => guardarPreferencia(CHAVE_DA_ORDEM, [...pracas]);
+
 /** Guarda uma preferência da pessoa: vale na hora (também fora do servidor, até recarregar) e o servidor grava. Devolve
     se ficou guardada; a que não ficou volta à de antes na próxima visita (se nenhuma escolha mais nova passou na frente). */
 async function guardarPreferencia(chave: string, valor: unknown): Promise<boolean> {
@@ -1131,7 +1137,7 @@ import type { DeOndeRepetir } from '../modelo/repetir';
 import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, JuncaoDeAtracoes, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
-import { CHAVE_DOS_RECOLHIDOS, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, ordemDe, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {

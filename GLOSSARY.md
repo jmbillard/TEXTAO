@@ -353,9 +353,12 @@ praça** por praça, cada um com as colunas Entrada · Produzindo · Entregue de
 a lado na largura toda (#119); no celular, um embaixo do outro. Mudar a etapa (arrastando ou com um botão)
 move o card no Trello; ao marcar Entregue, avisa se falta arte, mas deixa entregar. Se o PROMeiro e o Trello discordam,
 vale o último que aconteceu, e os dois viram evento na linha do tempo. Cada bloco se recolhe numa coluna estreita, só
-com a sigla e a contagem de cada coluna, e o PROMeiro lembra os recolhidos por pessoa (#113). Um clique no card abre a
+com a sigla e a contagem de cada coluna, e o PROMeiro lembra os recolhidos por pessoa (#113). No máximo 3 praças
+ficam abertas: abrir a quarta fecha a aberta há mais tempo; a fechada mostra o nome na vertical (#159). A pessoa arruma
+a ordem das praças arrastando pela faixa do nome, e o PROMeiro lembra a ordem por pessoa (#159). A Produzindo vazia
+fica fina e se abre com um card no ar; o Entregue se divide por dia da entrega (#159). Um clique no card abre a
 Produção na própria tela: a linha do tempo, as artes do checklist e o link do card no Trello. Fica ao lado da agenda No
-Trello, que continua.
+Trello, que continua, com a mesma linha do logo, parada entre as telas (#159).
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 
 **Aviso do Padeiro**:

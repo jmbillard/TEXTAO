@@ -124,17 +124,76 @@ export function comOCard(tela: TelaDeProducoes, card: CardDaProducao): TelaDePro
     que ela recolheu; sem a chave, todos abertos. */
 export const CHAVE_DOS_RECOLHIDOS = 'producoes.recolhidos';
 /** Quantas siglas a lista aceita e o tamanho de cada uma (a do bloco "sem praça" é ''). */
-const RECOLHIDOS_NO_MAXIMO = 100;
+const SIGLAS_NO_MAXIMO = 100;
 const SIGLA_NO_MAXIMO = 40;
+const ehListaDeSiglas = (valor: unknown): valor is string[] =>
+  Array.isArray(valor) && valor.length <= SIGLAS_NO_MAXIMO && valor.every((s) => typeof s === 'string' && s.length <= SIGLA_NO_MAXIMO);
 
 /** A recusa da lista de blocos recolhidos: '' quando vale (uma lista de siglas, também vazia). */
-export const recusaDosRecolhidos = (valor: unknown): string =>
-  Array.isArray(valor) && valor.length <= RECOLHIDOS_NO_MAXIMO && valor.every((s) => typeof s === 'string' && s.length <= SIGLA_NO_MAXIMO)
-    ? ''
-    : 'Blocos recolhidos inválidos: mande a lista das siglas das praças.';
+export const recusaDosRecolhidos = (valor: unknown): string => (ehListaDeSiglas(valor) ? '' : 'Blocos recolhidos inválidos: mande a lista das siglas das praças.');
 
 /** As praças que a pessoa deixou recolhidas; a lembrada que já não vale conta como nenhuma. */
 export const recolhidosDe = (preferencias: Record<string, unknown> | undefined): string[] => {
   const lembrados = preferencias?.[CHAVE_DOS_RECOLHIDOS];
-  return recusaDosRecolhidos(lembrados) ? [] : (lembrados as string[]);
+  return ehListaDeSiglas(lembrados) ? lembrados : [];
 };
+
+/* ---------- no máximo 3 praças abertas (#159) ---------- */
+
+/** Quantas praças ficam abertas ao mesmo tempo: abrir mais uma fecha a que foi aberta há mais tempo. */
+export const PRACAS_ABERTAS_NO_MAXIMO = 3;
+
+/** As praças abertas ao abrir a tela, da aberta há mais tempo para a mais nova: as que a pessoa não recolheu, na ordem
+    da tela, até o máximo (as de depois ficam fechadas). */
+export const abertasNoComeco = (pracas: readonly string[], recolhidos: readonly string[], maximo = PRACAS_ABERTAS_NO_MAXIMO): string[] =>
+  pracas.filter((p) => !recolhidos.includes(p)).slice(0, maximo);
+
+/** Abrir a praça: ela vira a mais nova; passando do máximo, fecha a aberta há mais tempo. */
+export function abrirAPraca(abertas: readonly string[], praca: string, maximo = PRACAS_ABERTAS_NO_MAXIMO): string[] {
+  const nova = [...abertas.filter((p) => p !== praca), praca];
+  return nova.slice(Math.max(0, nova.length - maximo));
+}
+
+/* ---------- a ordem das praças, arrastando (#159) ---------- */
+
+/** A chave das preferências da pessoa com a ordem em que ela arrumou as praças; sem a chave, a ordem da Configuração. */
+export const CHAVE_DA_ORDEM = 'producoes.ordem';
+
+/** A recusa da ordem das praças: '' quando vale (uma lista de siglas, também vazia). */
+export const recusaDaOrdem = (valor: unknown): string => (ehListaDeSiglas(valor) ? '' : 'Ordem das praças inválida: mande a lista das siglas das praças.');
+
+/** A ordem que a pessoa deixou; a lembrada que já não vale conta como nenhuma. */
+export const ordemDe = (preferencias: Record<string, unknown> | undefined): string[] => {
+  const lembrada = preferencias?.[CHAVE_DA_ORDEM];
+  return ehListaDeSiglas(lembrada) ? lembrada : [];
+};
+
+/** Os blocos na ordem da pessoa: os da lista, na ordem dela; os que ela não arrumou (uma praça nova), no fim, na ordem
+    da Configuração. A sigla da lista que não tem mais bloco não conta. */
+export function naOrdem<T extends { praca: string }>(blocos: readonly T[], ordem: readonly string[]): T[] {
+  const lugar = (b: T) => {
+    const i = ordem.indexOf(b.praca);
+    return i < 0 ? ordem.length : i;
+  };
+  return blocos.map((b, i) => ({ b, i })).sort((x, y) => lugar(x.b) - lugar(y.b) || x.i - y.i).map((x) => x.b);
+}
+
+/** A praça levada para o lugar `para` (0 é o primeiro), com as outras na mesma ordem. */
+export function moverAPraca(ordem: readonly string[], praca: string, para: number): string[] {
+  const resto = ordem.filter((p) => p !== praca);
+  const i = Math.max(0, Math.min(resto.length, para));
+  return [...resto.slice(0, i), praca, ...resto.slice(i)];
+}
+
+/* ---------- as divisórias por dia no Entregue (#159) ---------- */
+
+/** O Entregue agrupado pelo dia da entrega (em São Paulo), do mais novo para o mais velho; em cada dia, a ordem dos cards.
+    O card sem o instante da entrega (o que acabou de ir, antes da resposta do servidor) fica em `hoje`. */
+export function diasDoEntregue(cards: readonly CardDaProducao[], hoje: string): { dia: string; cards: CardDaProducao[] }[] {
+  const dias = new Map<string, CardDaProducao[]>();
+  for (const c of cards) {
+    const dia = c.entregaEm ? diaDoPrazo(c.entregaEm) : hoje;
+    dias.set(dia, [...(dias.get(dia) ?? []), c]);
+  }
+  return [...dias.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([dia, cs]) => ({ dia, cards: cs.sort(ordemDosCards) }));
+}

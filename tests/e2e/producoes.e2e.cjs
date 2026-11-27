@@ -44,8 +44,16 @@
 // #146, a contagem das artes feitas: a arte marcada pela janela do After (aqui, já guardada na Produção) aparece no
 // card como "1 de 3 artes", pela mesma regra da janela, sem faixa colorida na borda esquerda.
 //
+// #159, o topo, as praças e o movimento: o logo, o seletor de área e o perfil ficam no mesmo lugar (no máximo 1 px) na
+// fila, nas Produções, nos Filmes e na Pauta, também no meio da troca de tela; sem o texto de explicação. No máximo 3
+// praças abertas (a G5, o RJ e o SP; o INTER fechado, com o nome na vertical): abrir a quarta fecha a aberta há mais
+// tempo, com a largura deslizando. A Produzindo vazia é fina e se abre ao arrastar e ao "Peguei", deslizando. O Entregue
+// tem as divisórias por dia ("hoje", "ontem", "qua 25/11"). O contorno da coluna-alvo fica por cima do nome dela, e os
+// cantos ficam certos com a área rolando. As praças se arrumam arrastando (mouse e toque), as vizinhas deslizando, e a
+// ordem fica guardada por pessoa. Nada de "unha".
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:producoes
-// Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
+// Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2). Com VIDEO=pasta, grava o vídeo do movimento (#159).
 const assert = require('node:assert/strict');
 const { mkdirSync } = require('node:fs');
 const { join } = require('node:path');
@@ -65,6 +73,7 @@ const LIA = 'lia.moraes@exemplo.com';
 const RUI = 'rui.sem.cadastro@exemplo.com';
 const CHEFE = 'chefe.ficticia@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
+const VIDEO = process.env.VIDEO || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 
 /* ---------- as datas, sempre em São Paulo ---------- */
@@ -139,6 +148,27 @@ const claquetes = (p, praca, k) =>
 const contas = async (p, praca) => Promise.all(['entrada', 'produzindo', 'entregue'].map(async (k) => Number(await coluna(p, praca, k).locator('.prod-conta').textContent())));
 const cardDe = (p, claquete) => p.locator('.prod-card', { has: p.locator('.prod-claquete', { hasText: claquete }) });
 
+/* ---------- #159: o topo parado ---------- */
+/** O logo, o seletor de área (para quem tem mais de uma) e o perfil: onde cada um está, em px da janela. */
+const PECAS_DO_TOPO = ['.barra-topo .bib-marca', '.barra-topo .seletor-area', '.barra-topo .perfil'];
+const posicoesDoTopo = (p) =>
+  p.evaluate((pecas) => pecas.map((s) => {
+    const e = document.querySelector(s);
+    if (!e) return null;
+    const r = e.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  }), PECAS_DO_TOPO);
+/** O topo no mesmo lugar de antes: no máximo 1 px em cada lado de cada peça. */
+async function topoParado(p, antes, onde) {
+  const agora = await posicoesDoTopo(p);
+  PECAS_DO_TOPO.forEach((peca, i) => {
+    assert.equal(!!agora[i], !!antes[i], `${onde}: ${peca} ${antes[i] ? 'continua' : 'não aparece'}`);
+    if (!antes[i]) return;
+    const anda = Math.max(...['left', 'top', 'right', 'bottom'].map((k) => Math.abs(agora[i][k] - antes[i][k])));
+    assert.ok(anda <= 1, `${onde}: ${peca} parado (andou ${anda.toFixed(1)}px: ${JSON.stringify(antes[i])} → ${JSON.stringify(agora[i])})`);
+  });
+}
+
 /** Onde estão os blocos e a área deles (em px da janela), e quanto a área rola. */
 const medidasDosBlocos = (p) =>
   p.locator('.prod-blocos').evaluate((a) => {
@@ -186,8 +216,32 @@ async function versoesNosCards(p, onde, ligado = true) {
   assert.equal(await cardDe(p, 'Show da Noite').locator('.sufixo-versoes').count(), 0, `${onde}: sem versão, sem sufixo`);
 }
 
+/**
+ * O movimento que começou (#159), gravado pela página enquanto acontece (a medida depois do clique chega tarde numa
+ * máquina ocupada): as transições de largura (o elemento e a propriedade) e as animações do deslize (o card pela
+ * data-producao, o bloco pela data-praca). `gravarMovimento` zera e começa; `movimento` devolve o que houve.
+ */
+const gravarMovimento = (p) =>
+  p.evaluate(() => {
+    window.__movimento = [];
+    if (window.__gravando) return;
+    window.__gravando = true;
+    const nome = (e) => (e.dataset?.producao ? `card ${e.querySelector('.prod-claquete-texto')?.textContent.trim()}` : e.dataset?.praca !== undefined && e.classList.contains('prod-bloco') ? `bloco ${e.dataset.praca}` : e.className);
+    document.addEventListener('transitionrun', (ev) => window.__movimento.push(`transição ${ev.propertyName} ${nome(ev.target)}`), true);
+    const animar = Element.prototype.animate;
+    Element.prototype.animate = function (...args) {
+      window.__movimento.push(`deslize ${nome(this)}`);
+      return animar.apply(this, args);
+    };
+  });
+const movimento = (p) => p.evaluate(() => window.__movimento);
+
+/** Espera o movimento da tela parar (#159): as animações que têm fim. */
+const quieta = (p) => p.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))));
+
 /** Os blocos lado a lado: a 1920px cabem todos e usam a largura toda; a 1440px, a área rola para o lado. */
 async function blocosLadoALado(p, largura) {
+  await quieta(p);
   const m = await medidasDosBlocos(p);
   assert.deepEqual(m.blocos.map((b) => b.praca), ['G5', 'RJ', 'SP', 'INTER']);
   assert.equal(new Set(m.blocos.map((b) => b.top)).size, 1, `${largura}: os blocos ficam lado a lado`);
@@ -197,12 +251,12 @@ async function blocosLadoALado(p, largura) {
   assert.equal(new Set(topos).size, 1, `${largura}: no bloco, as colunas ficam lado a lado`);
   assert.deepEqual(await passamDaBorda(p), [], `${largura}: nada passa da borda do card`);
   // no topo de cada coluna, o nome inteiro e a contagem na mesma linha
-  const nomes = await p.locator('.prod-coluna h3').evaluateAll((hs) =>
+  const nomes = await p.locator('.prod-coluna:not(.fina) h3').evaluateAll((hs) =>
     hs.map((h) => ({ cortado: h.querySelector('.prod-coluna-nome').scrollWidth > h.querySelector('.prod-coluna-nome').clientWidth, linha: Math.abs(h.querySelector('.prod-conta').getBoundingClientRect().top - h.querySelector('i').getBoundingClientRect().top) < 12 })),
   );
   assert.ok(nomes.every((n) => !n.cortado && n.linha), `${largura}: o nome da coluna e a contagem na mesma linha (${JSON.stringify(nomes)})`);
   if (largura >= 1920) {
-    assert.ok(m.rolaDeLado <= 1, `1920: os quatro blocos cabem (${m.rolaDeLado}px a rolar)`);
+    assert.ok(m.rolaDeLado <= 1, `1920: os três abertos e o fechado cabem (${m.rolaDeLado}px a rolar)`);
     assert.ok(m.blocos[0].left - m.area.left <= 1 && m.area.right - m.blocos.at(-1).right <= 1, `1920: os blocos usam a largura toda (${JSON.stringify(m.area)})`);
   } else {
     // três inteiros à vista; o quarto aparece rolando a área para o lado (a página não rola)
@@ -222,13 +276,21 @@ async function topoPreso(p, largura) {
   const { rola, topo } = await area.evaluate((a) => ({ rola: a.scrollHeight - a.clientHeight, topo: a.getBoundingClientRect().top }));
   assert.ok(rola > 80, `numa janela baixa, a área dos blocos rola para baixo (${rola}px)`);
   await area.evaluate((a) => (a.scrollTop = a.scrollHeight));
-  const presos = await p.locator('.prod-bloco').evaluateAll((bs) =>
+  const presos = await p.locator('.prod-bloco:not(.recolhido)').evaluateAll((bs) =>
     bs.map((b) => ({ topo: b.querySelector('.prod-bloco-topo').getBoundingClientRect(), coluna: b.querySelector('.prod-coluna h3').getBoundingClientRect() })),
   );
   for (const b of presos) {
     assert.ok(Math.abs(b.topo.top - topo) <= 1, `o topo do bloco fica em cima (${b.topo.top} e ${topo})`);
     assert.ok(Math.abs(b.coluna.top - b.topo.bottom) <= 1, 'o nome da coluna fica logo abaixo do topo do bloco');
   }
+  // #159, os cantos com a área rolando: os topos presos são retos (o arredondado é o do bloco e o da coluna, que cortam o
+  // que passa da borda), e o bloco e a coluna não criam rolagem (o topo continua preso)
+  const cantos = await p.locator('.prod-bloco:not(.recolhido)').first().evaluate((b) => {
+    const e = (s) => getComputedStyle(b.querySelector(s));
+    return { topo: e('.prod-bloco-topo').borderTopLeftRadius, nome: e('.prod-coluna h3').borderTopLeftRadius, bloco: getComputedStyle(b).overflow, coluna: e('.prod-coluna').overflow, raio: getComputedStyle(b).borderTopLeftRadius };
+  });
+  assert.deepEqual(cantos, { topo: '0px', nome: '0px', bloco: 'clip', coluna: 'clip', raio: '14px' }, 'os cantos certos com a área rolando');
+  await capturar(p, `01b-producoes-${largura}-rolada`);
   assert.ok(await p.evaluate(() => scrollY === 0), 'quem rola é a área dos blocos, não a página');
   await area.evaluate((a) => (a.scrollTop = 0));
   await p.setViewportSize({ width: largura, height: 1000 });
@@ -242,10 +304,30 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.equal(await fundoEscuro(p), tema === 'dark');
 
   // a entrada no topo da fila, ao lado da agenda No Trello; o endereço próprio, na área Designer
+  await p.locator('.barra-topo .perfil').waitFor();
+  const naFila = await posicoesDoTopo(p);
   await p.locator('.barra-topo .topo-producoes').click();
+  await p.locator('.prod-pagina').waitFor();
+  await topoParado(p, naFila, `${largura}: da fila para as Produções, logo depois do clique`);
   await p.locator('.prod-bloco').first().waitFor();
+  await topoParado(p, naFila, `${largura}: nas Produções`);
+  await quieta(p);
   assert.equal(hash(p), '#/designer/producoes');
   assert.equal((await p.locator('.prod-cabeca h1').textContent()).trim(), 'Produções');
+  // sem o texto de explicação (#159)
+  assert.equal(await p.locator('.prod-sub').count(), 0, 'sem o texto de explicação');
+  assert.equal(await p.getByText(/Um bloco por praça/).count(), 0, 'sem o texto de explicação');
+  // no máximo 3 praças abertas: a quarta (o INTER) fechada, com o nome na vertical, menor
+  assert.deepEqual(await recolhidos(p), ['INTER'], 'sem escolha, as três primeiras abertas');
+  const inter = await p.locator('.prod-bloco[data-praca="INTER"] h2').evaluate((h) => ({ modo: getComputedStyle(h).writingMode, alto: h.getBoundingClientRect().height > h.getBoundingClientRect().width, tam: parseFloat(getComputedStyle(h.querySelector('.prod-sigla')).fontSize) }));
+  assert.ok(inter.modo === 'vertical-rl' && inter.alto && inter.tam < 28, `a praça fechada com o nome na vertical, menor (${JSON.stringify(inter)})`);
+  assert.deepEqual(await contasRecolhido(p, 'INTER'), [0, 0, 0], 'a fechada com o resumo das contagens');
+  // a Produzindo vazia é fina; a com card, não
+  const larguraDa = (praca, k) => coluna(p, praca, k).evaluate((c) => c.getBoundingClientRect().width);
+  assert.ok((await larguraDa('SP', 'produzindo')) < 50 && (await larguraDa('SP', 'entrada')) > 150, 'a Produzindo vazia fica fina');
+  assert.ok((await larguraDa('G5', 'produzindo')) > 100, 'a Produzindo com card, não');
+  // as divisórias por dia no Entregue: o Jogo Final, entregue ontem
+  assert.deepEqual(await textos(coluna(p, 'G5', 'entregue').locator('.prod-dia-nome')), ['ontem'], 'as divisórias por dia no Entregue');
 
   // um bloco por praça, na ordem das praças (a que não tem nada também), com as três colunas dentro dele
   assert.deepEqual(await p.locator('.prod-bloco').evaluateAll((fs) => fs.map((f) => f.dataset.praca)), ['G5', 'RJ', 'SP', 'INTER']);
@@ -259,7 +341,6 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.deepEqual(await contas(p, 'SP'), [3, 0, 0]);
   assert.deepEqual(await contas(p, 'G5'), [1, 1, 1]);
   assert.deepEqual(await contas(p, 'RJ'), [0, 0, 0]);
-  assert.deepEqual(await contas(p, 'INTER'), [0, 0, 0]);
 
   // a ordem do prazo; no mesmo prazo, a ALTA primeiro, com o marca-texto da agenda
   assert.deepEqual(await claquetes(p, 'SP', 'entrada'), [`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`, `Show da Noite ${dm(3)} SP`]);
@@ -309,9 +390,10 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.deepEqual((await caminhos.locator('a span').allTextContents()).slice(0, 2), ['No Trello', 'Pauta da edição']);
   assert.equal(await caminhos.locator('.caminho-bolinha').count() >= 1, true, 'a bolinha entre os caminhos');
   assert.equal(await p.locator('.barra-topo', { hasText: /de todo mundo/i }).count(), 0, 'sem o "De todo mundo"');
-  // a volta para a agenda No Trello
+  // a volta para a agenda No Trello, com o topo parado
   await p.locator('.barra-topo .topo-agenda').click();
   await p.locator('.barra-topo .topo-producoes').waitFor();
+  await topoParado(p, naFila, `${largura}: das Produções para a fila`);
   assert.equal(hash(p), '#/designer');
 
   assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
@@ -324,6 +406,7 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
 async function noTablet(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, { ...devices['iPad Mini'], colorScheme: 'light' });
   await p.locator('.prod-bloco').first().waitFor();
+  await quieta(p);
   const m = await medidasDosBlocos(p);
   assert.equal(new Set(m.blocos.map((b) => b.top)).size, 1, 'tablet: os blocos lado a lado');
   assert.ok(m.blocos[0].right <= m.area.right + 1, `tablet: cabe um bloco inteiro (${m.blocos[0].width}px em ${m.largura}px)`);
@@ -393,8 +476,17 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   assert.deepEqual(await textos(coluna(p, 'G5', 'produzindo').locator('.prod-mudar')), ['Entreguei', 'Voltar para a Entrada']);
   assert.deepEqual(await textos(coluna(p, 'G5', 'entregue').locator('.prod-mudar')), ['Voltar para a Entrada']);
 
-  // "Peguei": o card vai para Produzindo com a Lia; no Trello, a Lia entra no card (o card fica na lista)
+  // "Peguei": o card vai para Produzindo com a Lia; no Trello, a Lia entra no card (o card fica na lista). A Produzindo,
+  // fina, se abre deslizando (#159), e o card desliza para ela
+  const produzindoSP = coluna(p, 'SP', 'produzindo');
+  assert.ok((await produzindoSP.evaluate((c) => c.getBoundingClientRect().width)) < 50, 'a Produzindo do SP, vazia, é fina');
+  await gravarMovimento(p);
   await cardDe(p, 'Festa na Praça').locator('.prod-mudar').click();
+  await p.waitForTimeout(350);
+  const aberta = await produzindoSP.evaluate((c) => c.getBoundingClientRect().width);
+  const abrindo = await movimento(p);
+  assert.ok(abrindo.includes('transição grid-template-columns prod-colunas') && aberta > 100, `com o Peguei, a Produzindo se abre deslizando (${abrindo} → ${aberta}px)`);
+  assert.ok(abrindo.some((m) => m.startsWith('deslize card Festa na Praça')), `o card desliza para a Produzindo (${abrindo})`);
   await coluna(p, 'SP', 'produzindo').locator('.prod-card', { hasText: 'Festa na Praça' }).waitFor();
   assert.deepEqual(await contas(p, 'SP'), [2, 1, 0]);
   assert.equal(await designersDe(cardDe(p, 'Festa na Praça')), 'Lia Moraes');
@@ -471,6 +563,8 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   assert.equal(await p.locator('.prod-aviso').count(), 0);
   assert.deepEqual(chamadasAoTrello, [], 'a entrega sem card não vai ao Trello');
   assert.deepEqual(await contas(p, 'SP'), [1, 0, 2]);
+  // as divisórias por dia: as duas, entregues hoje
+  assert.deepEqual(await textos(coluna(p, 'SP', 'entregue').locator('.prod-dia-nome')), ['hoje']);
   await capturar(p, '09-producoes-entregues');
   // recarregada, as duas ficam no Entregue
   await p.reload();
@@ -484,8 +578,9 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   // no celular, os botões no tamanho do dedo
   const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
   await cel.p.locator('.prod-bloco').first().waitFor();
+  await quieta(cel.p);
   const alturas = await cel.p.locator('.prod-mudar').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
-  assert.ok(alturas.length > 0 && alturas.every((h) => h >= 44), 'no celular, os botões têm 44px');
+  assert.ok(alturas.length > 0 && alturas.every((h) => h >= 44), `no celular, os botões têm 44px (${alturas})`);
   await semRolagemDeLado(cel.p, 'celular com os botões');
   await capturar(cel.p, '06-producoes-celular-botoes');
   assert.deepEqual(cel.erros, []);
@@ -505,8 +600,12 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
 
 /** Arrasta o card até a coluna com o mouse (o arrastar do navegador); `antes` olha a tela com o card no ar. */
 async function arrastar(p, cardLoc, destino, antes = async () => {}) {
+  const pega = await cardLoc.locator('.prod-claquete').boundingBox();
   await cardLoc.locator('.prod-claquete').hover();
   await p.mouse.down();
+  // o card sai do lugar e a Produzindo vazia se abre (#159): o destino é medido depois que ela se abriu
+  await p.mouse.move(pega.x + pega.width / 2 + 12, pega.y + pega.height / 2 + 4, { steps: 2 });
+  await p.waitForTimeout(280);
   const caixa = await destino.boundingBox();
   await p.mouse.move(caixa.x + caixa.width / 2, caixa.y + Math.min(caixa.height / 2, 60), { steps: 8 });
   await antes();
@@ -522,8 +621,18 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   assert.equal(await novela().getAttribute('draggable'), 'true', 'no computador, o card se arrasta');
   assert.deepEqual(await contas(p, 'G5'), [3, 0, 0]);
 
-  // arrastar da Entrada para Produzindo é pegar: no ar, só as colunas do bloco dele para onde ele pode ir ficam marcadas
-  await arrastar(p, novela(), coluna(p, 'G5', 'produzindo'), async () => {
+  // arrastar da Entrada para Produzindo é pegar: no ar, só as colunas do bloco dele para onde ele pode ir ficam marcadas.
+  // A Produzindo, fina, se abre ao começar o arrasto (#159), e o contorno da coluna-alvo fica por cima do nome dela
+  const produzindoG5 = coluna(p, 'G5', 'produzindo');
+  assert.ok(await produzindoG5.evaluate((c) => c.classList.contains('fina') && c.getBoundingClientRect().width < 50), 'a Produzindo vazia, fina');
+  await arrastar(p, novela(), produzindoG5, async () => {
+    assert.ok(await produzindoG5.evaluate((c) => !c.classList.contains('fina') && c.getBoundingClientRect().width > 100), 'com o card no ar, a Produzindo se abre');
+    const contorno = await produzindoG5.evaluate((c) => {
+      const depois = getComputedStyle(c, '::after');
+      const h3 = getComputedStyle(c.querySelector('h3'));
+      return { sombra: depois.boxShadow, camada: Number(depois.zIndex) >= Number(h3.zIndex), cobre: depois.position === 'absolute' && depois.top === '0px' };
+    });
+    assert.ok(/inset/.test(contorno.sombra) && contorno.camada && contorno.cobre, `o contorno da coluna-alvo por cima do nome, sem corte (${JSON.stringify(contorno)})`);
     const marcadas = await p.locator('.prod-coluna.aceita').evaluateAll((cs) => cs.map((c) => `${c.closest('.prod-bloco').dataset.praca} ${c.dataset.coluna}${c.classList.contains('sobre') ? ' (sobre)' : ''}`));
     assert.deepEqual(marcadas, ['G5 produzindo (sobre)', 'G5 entregue']);
     await capturar(p, '10-producoes-arrastando');
@@ -533,6 +642,7 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   assert.equal(await designersDe(novela()), 'Dora Lima, Enzo Prado, Lia Moraes');
   assert.deepEqual(chamadasAoTrello.splice(0), [`POST /cards/${card(4)}/idMembers ?value=membroLia`]);
   assert.equal(await p.locator('.prod-coluna.aceita').count(), 0, 'solto, nenhuma coluna fica marcada');
+  // soltar fora não deixa a Produzindo aberta: vazia de novo (depois do desfazer), ela se recolhe
   // a caixinha de desfazer
   const caixinha = p.locator('.prod-desfazer');
   await caixinha.waitFor();
@@ -548,6 +658,7 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   await p.reload();
   await p.locator('.prod-bloco').first().waitFor();
   assert.deepEqual(await contas(p, 'G5'), [3, 0, 0], 'o desfeito fica depois de recarregar');
+  assert.ok(await produzindoG5.evaluate((c) => c.classList.contains('fina')), 'vazia de novo, a Produzindo se recolhe');
 
   // soltar no bloco de outra praça não muda nada
   await arrastar(p, novela(), coluna(p, 'SP', 'produzindo'), async () => {
@@ -608,6 +719,7 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   const caixa = cel.p.locator('.prod-desfazer');
   await caixa.waitFor();
   assert.match(await caixa.textContent(), /Jogo Final .* voltou para a Entrada/);
+  await quieta(cel.p);
   const alturas = await caixa.locator('button').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
   assert.ok(alturas.length === 2 && alturas.every((h) => h >= 44), `no celular, os botões da caixinha têm 44px (${alturas})`);
   await semRolagemDeLado(cel.p, 'celular com a caixinha de desfazer');
@@ -630,42 +742,43 @@ async function recolherEAbrir(navegador, url, chamadasAoTrello) {
   const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
   await p.locator('.prod-bloco').first().waitFor();
   chamadasAoTrello.splice(0);
-  assert.deepEqual(await recolhidos(p), [], 'sem escolha, todos os blocos abertos');
+  assert.deepEqual(await recolhidos(p), ['INTER'], 'sem escolha, as três primeiras abertas (#159)');
   const g5 = await contas(p, 'G5');
   const guardou = () => p.waitForResponse((r) => new URL(r.url()).pathname === '/api/eu/preferencias' && r.request().method() === 'PUT' && r.ok());
 
   // recolher o RJ e o G5: uma coluna estreita com a sigla e as contagens; os outros blocos ficam com a largura
   let gravou = guardou();
   await p.getByRole('button', { name: 'Recolher o bloco RJ' }).click();
-  assert.deepEqual(JSON.parse((await gravou).request().postData()), { 'producoes.recolhidos': ['RJ'] });
+  assert.deepEqual(JSON.parse((await gravou).request().postData()), { 'producoes.recolhidos': ['RJ', 'INTER'] });
   gravou = guardou();
   await p.getByRole('button', { name: 'Recolher o bloco G5' }).click();
   await gravou;
-  assert.deepEqual(await recolhidos(p), ['G5', 'RJ']);
+  assert.deepEqual(await recolhidos(p), ['G5', 'RJ', 'INTER']);
   assert.deepEqual(await contasRecolhido(p, 'G5'), g5, 'o recolhido mostra a contagem de cada coluna');
   assert.deepEqual(await contasRecolhido(p, 'RJ'), [0, 0, 0]);
   assert.equal((await p.locator('.prod-bloco[data-praca="G5"] .prod-sigla').textContent()).trim(), 'G5');
   assert.equal(await p.locator('.prod-bloco[data-praca="G5"] .prod-card').count(), 0, 'o recolhido não mostra os cards');
+  await quieta(p);
   const m = await medidasDosBlocos(p);
   const largura = (praca) => m.blocos.find((b) => b.praca === praca).width;
   assert.ok(largura('G5') < 100 && largura('RJ') < 100, `o recolhido é uma coluna estreita (${largura('G5')}px)`);
-  assert.ok(m.rolaDeLado <= 1, `com dois recolhidos, os blocos cabem sem rolar para o lado (${m.rolaDeLado}px)`);
+  assert.ok(m.rolaDeLado <= 1, `com três recolhidos, os blocos cabem sem rolar para o lado (${m.rolaDeLado}px)`);
   assert.ok(Math.abs(m.area.right - m.blocos.at(-1).right) <= 1 && largura('SP') > 448, `os abertos ficam com a largura (${largura('SP')}px)`);
   await capturar(p, '13-producoes-recolhidos');
 
   // recarregada, os dois continuam recolhidos (o servidor guardou)
   await p.reload();
   await p.locator('.prod-bloco').first().waitFor();
-  assert.deepEqual(await recolhidos(p), ['G5', 'RJ'], 'depois de recarregar, os blocos continuam recolhidos');
+  assert.deepEqual(await recolhidos(p), ['G5', 'RJ', 'INTER'], 'depois de recarregar, os blocos continuam recolhidos');
   // a outra pessoa vê todos abertos
   const outra = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/designer/producoes', { email: RUI });
   await outra.p.locator('.prod-bloco').first().waitFor();
-  assert.deepEqual(await recolhidos(outra.p), [], 'a outra pessoa vê todos os blocos abertos');
+  assert.deepEqual(await recolhidos(outra.p), ['INTER'], 'a outra pessoa vê as três primeiras abertas');
   await outra.ctx.close();
   // no celular (outro aparelho), o recolhido é uma linha só, com a sigla e as contagens
   const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
   await cel.p.locator('.prod-bloco').first().waitFor();
-  assert.deepEqual(await recolhidos(cel.p), ['G5', 'RJ'], 'no celular, os mesmos recolhidos');
+  assert.deepEqual(await recolhidos(cel.p), ['G5', 'RJ', 'INTER'], 'no celular, os mesmos recolhidos');
   const linha = await cel.p.locator('.prod-bloco[data-praca="G5"]').evaluate((b) => b.getBoundingClientRect().height);
   assert.ok(linha < 80, `no celular, o recolhido é uma linha (${linha}px)`);
   const toque = await cel.p.getByRole('button', { name: 'Mostrar o bloco G5' }).evaluate((b) => b.getBoundingClientRect().height);
@@ -683,8 +796,35 @@ async function recolherEAbrir(navegador, url, chamadasAoTrello) {
   assert.deepEqual(await contas(p, 'G5'), g5);
   await p.reload();
   await p.locator('.prod-bloco').first().waitFor();
-  assert.deepEqual(await recolhidos(p), ['RJ'], 'depois de recarregar, só o RJ recolhido');
-  console.log('ok: recolher: a coluna estreita com a sigla e as contagens, guardada por pessoa (recarregar, outro aparelho), e a outra pessoa com todos abertos');
+  assert.deepEqual(await recolhidos(p), ['RJ', 'INTER'], 'depois de recarregar, o RJ e o INTER recolhidos');
+
+  // #159, no máximo 3 abertas: com a G5 e o SP abertos, abrir o RJ deixa três; abrir o INTER fecha a aberta há mais
+  // tempo (a G5), com a largura deslizando
+  await p.locator('.prod-bloco[data-praca="RJ"]').click();
+  await p.locator('.prod-bloco[data-praca="RJ"]:not(.recolhido)').waitFor();
+  assert.deepEqual(await recolhidos(p), ['INTER']);
+  const larguraDe = (praca) => p.locator(`.prod-bloco[data-praca="${praca}"]`).evaluate((b) => b.getBoundingClientRect().width);
+  const antesDeFechar = await larguraDe('G5');
+  gravou = guardou();
+  await gravarMovimento(p);
+  await p.locator('.prod-bloco[data-praca="INTER"]').click();
+  assert.deepEqual(JSON.parse((await gravou).request().postData()), { 'producoes.recolhidos': ['G5'] });
+  await p.waitForTimeout(350);
+  const fechada = await larguraDe('G5');
+  assert.deepEqual(await recolhidos(p), ['G5'], 'abrir a quarta fecha a aberta há mais tempo');
+  const fechando = await movimento(p);
+  assert.ok(fechando.includes('transição grid-template-columns prod-blocos') && fechada < 100 && antesDeFechar > 400, `a mais antiga fecha deslizando (${antesDeFechar}px → ${fechada}px, ${fechando})`);
+  assert.ok(await p.locator('.prod-bloco').evaluateAll((bs) => bs.filter((b) => !b.classList.contains('recolhido')).length === 3), 'nunca mais de 3 abertas');
+  await capturar(p, '13b-producoes-tres-abertas');
+  // a G5 de volta (fecha o RJ) e o SP também, para o resto: abertas a G5, o SP e o INTER
+  await p.locator('.prod-bloco[data-praca="G5"]').click();
+  await p.locator('.prod-bloco[data-praca="G5"]:not(.recolhido)').waitFor();
+  assert.deepEqual(await recolhidos(p), ['SP'], 'a G5 de volta fecha o SP, o aberto há mais tempo');
+  await p.locator('.prod-bloco[data-praca="SP"]').click();
+  await p.locator('.prod-bloco[data-praca="SP"]:not(.recolhido)').waitFor();
+  assert.deepEqual(await recolhidos(p), ['RJ']);
+  await p.waitForTimeout(300);
+  console.log('ok: recolher: a coluna estreita com a sigla e as contagens, guardada por pessoa (recarregar, outro aparelho); no máximo 3 abertas, a mais antiga fecha deslizando');
 
   // abrir a Produção: a linha do tempo, as artes do checklist e o link do card no Trello
   const novela = cardDe(p, 'Novela Sinfonia');
@@ -818,7 +958,7 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
   assert.equal(await guardar('PN'), 200, 'gravou pela Produção, sem roteiro');
   await p.keyboard.press('Escape');
   await p.reload();
-  await show.waitFor();
+  await show.locator('.sufixo-versoes').waitFor();
   assert.equal(await nome(), `Show da Noite ${dm(3)} SP (PN)`, 'o card: o código no fim do nome');
   assert.match(await show.locator('.sufixo-versoes').getAttribute('title'), /feitas à mão/, 'o card: a dica diz à mão');
   await show.locator('.prod-atracao').click();
@@ -837,6 +977,263 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
   assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
   await ctx.close();
   console.log('ok: a Produção aberta sem "dar as versões" (#156); as versões à mão da claquete sem roteiro no fim do nome, no topo e no card, com a origem "à mão" (#154)');
+}
+
+/**
+ * #159: o topo parado entre as telas, para quem tem as três áreas (o seletor aparece) e a aba Filmes: o logo, o seletor e
+ * o perfil no mesmo lugar (no máximo 1 px) na fila, nas Produções, nos Filmes e na Pauta, logo depois do clique (no meio
+ * da troca) e depois; no computador e no celular (ali, sem os Filmes, que têm a entrada própria das prévias, #80).
+ */
+async function topoEntreAsTelas(navegador, url) {
+  for (const [onde, opcoes] of [['computador', { viewport: { width: 1440, height: 900 } }], ['celular', { ...devices['iPhone 13'] }]]) {
+    const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': CHEFE }, ...opcoes });
+    await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+    await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+    // a aba Filmes ligada (o servidor do teste não tem a leitura) e a lista das prévias vazia
+    await ctx.route((u) => u.pathname === '/api/eu', async (r) => r.fulfill({ json: { ...(await (await r.fetch()).json()), filmes: true } }));
+    await ctx.route((u) => u.pathname === '/api/filmes/previas', (r) => r.fulfill({ json: [] }));
+    const p = await ctx.newPage();
+    const erros = [];
+    p.on('pageerror', (e) => erros.push(String(e)));
+    await p.goto(`${url}#/designer`);
+    await p.locator('.barra-topo .topo-filmes').waitFor();
+    await p.locator('.barra-topo .seletor-area').waitFor();
+    const naFila = await posicoesDoTopo(p);
+    const ir = async (caminho, chegou, tela) => {
+      await p.locator(`.barra-topo ${caminho}`).click();
+      await p.locator(chegou).first().waitFor();
+      await topoParado(p, naFila, `${onde}: ${tela}, logo depois do clique`);
+      await p.waitForTimeout(400);
+      await topoParado(p, naFila, `${onde}: ${tela}`);
+    };
+    await ir('.topo-producoes', '.prod-pagina', 'Produções');
+    // no celular, a aba Filmes é a entrada das prévias (#80), com o topo próprio dela: fica de fora
+    if (onde === 'computador') {
+      await ir('.topo-filmes', '.pagina.filmes', 'Filmes');
+      await capturar(p, '19-topo-filmes');
+    }
+    await ir('.topo-pauta', '.pagina.pauta', 'Pauta');
+    if (onde === 'computador') await capturar(p, '20-topo-pauta');
+    await ir('.topo-producoes', '.prod-pagina', 'Produções de novo');
+    await ir('.topo-agenda', '.barra-topo .topo-producoes', 'a fila de novo');
+    await semRolagemDeLado(p, `${onde}: o topo`);
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  }
+  console.log('ok: o topo parado (no máximo 1 px) na fila, nas Produções, nos Filmes e na Pauta, no meio da troca e depois, no computador e no celular');
+}
+
+/** As praças na ordem da tela. */
+const ordemNaTela = (p) => p.locator('.prod-bloco').evaluateAll((bs) => bs.map((b) => b.dataset.praca));
+/** Arrasta a praça pela faixa do nome com o mouse até o meio do bloco de destino; `antes` olha a tela com ela no ar. */
+async function arrastarPraca(p, praca, destino, antes = async () => {}) {
+  const faixa = p.locator(`.prod-bloco[data-praca="${praca}"]`).locator('.prod-bloco-topo, .prod-recolhido').first();
+  const de = await faixa.boundingBox();
+  await p.mouse.move(de.x + 40, de.y + 20);
+  await p.mouse.down();
+  const para = await p.locator(`.prod-bloco[data-praca="${destino}"]`).boundingBox();
+  await p.mouse.move(para.x + 30, de.y + 20, { steps: 12 });
+  await antes();
+  await p.mouse.up();
+}
+/** Arrasta a praça pela alça com o dedo (os toques do Chromium): encosta, anda, espera `segurar` ms (perto da borda, a
+    área rola sozinha) e solta. */
+async function arrastarPracaNoDedo(p, praca, dx, dy, segurar = 0) {
+  const cdp = await p.context().newCDPSession(p);
+  const alca = await p.locator(`.prod-bloco[data-praca="${praca}"] .prod-alca`).boundingBox();
+  const x = alca.x + alca.width / 2;
+  const y = alca.y + alca.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let i = 1; i <= 12; i++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + (dx * i) / 12, y: y + (dy * i) / 12 }] });
+    await p.waitForTimeout(16);
+  }
+  await p.waitForTimeout(segurar);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
+/**
+ * #159, arrumar as praças arrastando: no mouse, pela faixa do nome, o SP vai para antes da G5, e a vizinha abre o espaço
+ * deslizando; a ordem fica guardada (recarregar, outro aparelho) e a outra pessoa não é afetada; Esc cancela. No dedo
+ * (o tablet e o celular), pela alça. Por fim, a ordem de fábrica de volta.
+ */
+async function arrumarAsPracas(navegador, url) {
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
+  await p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await ordemNaTela(p), ['G5', 'RJ', 'SP', 'INTER']);
+  const guardou = () => p.waitForResponse((r) => new URL(r.url()).pathname === '/api/eu/preferencias' && r.request().method() === 'PUT' && r.ok());
+  // a G5 aberta, o RJ fechado: o SP (aberto) vai para o começo
+  let gravou = guardou();
+  await gravarMovimento(p);
+  await arrastarPraca(p, 'SP', 'G5', async () => {
+    const noAr = await p.locator('.prod-bloco.levantado').evaluateAll((bs) => bs.map((b) => b.dataset.praca));
+    assert.deepEqual(noAr, ['SP'], 'a praça no ar, levantada');
+    assert.deepEqual(await ordemNaTela(p), ['SP', 'G5', 'RJ', 'INTER'], 'as outras abrem o lugar dela na hora');
+    const houve = await movimento(p);
+    assert.ok(houve.includes('deslize bloco G5') && !houve.includes('deslize bloco SP'), `a vizinha desliza para abrir o espaço (${houve})`);
+    await capturar(p, '21-producoes-arrumando');
+  });
+  assert.deepEqual(JSON.parse((await gravou).request().postData()), { 'producoes.ordem': ['SP', 'G5', 'RJ', 'INTER'] });
+  assert.equal(await p.locator('.prod-bloco.levantado').count(), 0, 'solta, ela assenta');
+  assert.equal(await p.getByRole('dialog').count(), 0, 'o arrasto não abre nada');
+  // Esc cancela: a ordem volta
+  await arrastarPraca(p, 'G5', 'INTER', async () => {
+    assert.notDeepEqual(await ordemNaTela(p), ['SP', 'G5', 'RJ', 'INTER']);
+    await p.keyboard.press('Escape');
+  });
+  await p.waitForTimeout(300);
+  assert.deepEqual(await ordemNaTela(p), ['SP', 'G5', 'RJ', 'INTER'], 'o Esc cancela');
+  // a praça fechada também se arrasta, e o clique do fim do arrasto não a abre
+  gravou = guardou();
+  await arrastarPraca(p, 'RJ', 'SP');
+  await gravou;
+  assert.deepEqual(await ordemNaTela(p), ['RJ', 'SP', 'G5', 'INTER']);
+  assert.deepEqual(await recolhidos(p), ['RJ'], 'o arrasto da fechada não a abre');
+  await p.reload();
+  await p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await ordemNaTela(p), ['RJ', 'SP', 'G5', 'INTER'], 'depois de recarregar, a ordem continua');
+  const outra = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/designer/producoes', { email: RUI });
+  await outra.p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await ordemNaTela(outra.p), ['G5', 'RJ', 'SP', 'INTER'], 'a outra pessoa, na ordem de fábrica');
+  await outra.ctx.close();
+  assert.deepEqual(erros, []);
+  await ctx.close();
+
+  // no dedo (o tablet, no mesmo aparelho da pessoa): pela alça, o RJ (fechado) para depois do SP
+  const tab = await abrir(navegador, url, { ...devices['iPad Mini'], colorScheme: 'dark' });
+  await tab.p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await ordemNaTela(tab.p), ['RJ', 'SP', 'G5', 'INTER'], 'no outro aparelho, a mesma ordem');
+  await tab.p.locator('.prod-blocos').evaluate((a) => (a.scrollLeft = 0));
+  const alca = await tab.p.locator('.prod-bloco[data-praca="RJ"] .prod-alca').boundingBox();
+  const sp = await tab.p.locator('.prod-bloco[data-praca="SP"]').boundingBox();
+  const g = tab.p.waitForResponse((r) => new URL(r.url()).pathname === '/api/eu/preferencias' && r.request().method() === 'PUT');
+  await arrastarPracaNoDedo(tab.p, 'RJ', sp.x + sp.width / 2 + 60 - alca.x, 0);
+  assert.deepEqual(JSON.parse((await g).request().postData()), { 'producoes.ordem': ['SP', 'RJ', 'G5', 'INTER'] }, 'no dedo, pela alça');
+  assert.deepEqual(await recolhidos(tab.p), ['RJ'], 'o toque do arrasto não abre a fechada');
+  await capturar(tab.p, '22-producoes-tablet-arrumada');
+  assert.deepEqual(tab.erros, []);
+  await tab.ctx.close();
+  // no celular, as praças uma embaixo da outra: pela alça, o RJ sobe para antes do SP (a página rola sozinha)
+  const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'light' });
+  await cel.p.locator('.prod-bloco').first().waitFor();
+  await quieta(cel.p);
+  assert.deepEqual(await ordemNaTela(cel.p), ['SP', 'RJ', 'G5', 'INTER']);
+  await cel.p.locator('.prod-bloco[data-praca="RJ"]').evaluate((b) => b.scrollIntoView({ block: 'center' }));
+  const rjNoCel = await cel.p.locator('.prod-bloco[data-praca="RJ"] .prod-alca').boundingBox();
+  const gc = cel.p.waitForResponse((r) => new URL(r.url()).pathname === '/api/eu/preferencias' && r.request().method() === 'PUT');
+  await arrastarPracaNoDedo(cel.p, 'RJ', 0, 30 - rjNoCel.y, 1200);
+  await cel.p.waitForTimeout(300);
+  assert.deepEqual(JSON.parse((await gc).request().postData()), { 'producoes.ordem': ['RJ', 'SP', 'G5', 'INTER'] }, 'no celular, pela alça, de baixo para cima');
+  await semRolagemDeLado(cel.p, 'celular arrumando');
+  assert.deepEqual(cel.erros, []);
+  await cel.ctx.close();
+  // a ordem de fábrica de volta, pela rota
+  const volta = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } });
+  await volta.p.locator('.prod-bloco').first().waitFor();
+  assert.equal(await volta.p.evaluate(async () => (await fetch('/api/eu/preferencias', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ 'producoes.ordem': [] }) })).status), 200);
+  await volta.ctx.close();
+  console.log('ok: arrumar as praças arrastando: pela faixa do nome (mouse) e pela alça (dedo), as vizinhas deslizando, o Esc cancela, a ordem guardada por pessoa');
+}
+
+/** #159, as divisórias por dia no Entregue: hoje, ontem e o dia curto ("qua 25/11"), do mais novo para o mais velho. */
+async function divisoriasPorDia(navegador, url, db) {
+  db.prepare("UPDATE producoes SET etapa = 'entregue', entrega_em = ? WHERE claquete LIKE 'Festa na Praça%'").run(new Date().toISOString());
+  db.prepare("UPDATE producoes SET etapa = 'entregue', entrega_em = ? WHERE claquete LIKE 'Show da Noite%'").run(ha(2));
+  db.prepare("UPDATE producoes SET etapa = 'entregue', entrega_em = ? WHERE claquete LIKE 'Cozinha de Vó%'").run(ha(1));
+  for (const [tema, opcoes] of [['claro', { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' }], ['escuro', { ...devices['iPhone 13'], colorScheme: 'dark' }]]) {
+    const { ctx, p, erros } = await abrir(navegador, url, opcoes);
+    await p.locator('.prod-bloco').first().waitFor();
+    const dias = coluna(p, 'SP', 'entregue').locator('.prod-dia');
+    assert.deepEqual(await textos(dias.locator('.prod-dia-nome')), ['hoje', 'ontem', prazo(-2)], `${tema}: as divisórias por dia`);
+    assert.deepEqual((await textos(dias.nth(0).locator('.prod-claquete-texto'))).map((t) => t.replace(/ \([A-Z]+\)$/, '')), [`Festa na Praça ${dm(3)} SP`]);
+    assert.deepEqual((await textos(dias.nth(1).locator('.prod-claquete-texto'))).map((t) => t.replace(/ \([A-Z]+\)$/, '')), [`Cozinha de Vó ${dm(1)} SP`]);
+    assert.deepEqual((await textos(dias.nth(2).locator('.prod-claquete-texto'))).map((t) => t.replace(/ \([A-Z]+\)$/, '')), [`Show da Noite ${dm(3)} SP`]);
+    // nada de unha nas divisórias
+    const borda = await dias.evaluateAll((ds) => ds.map((d) => parseFloat(getComputedStyle(d).borderLeftWidth)));
+    assert.ok(borda.every((w) => w <= 1));
+    await semRolagemDeLado(p, `${tema}: as divisórias`);
+    await capturar(p, `23-producoes-divisorias-${tema}`);
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  }
+  console.log('ok: o Entregue com as divisórias por dia (hoje, ontem, o dia curto), no computador e no celular');
+}
+
+/**
+ * O vídeo do movimento (#159), com VIDEO=pasta: a primeira carga (as colunas em cascata), o hover do card, o Peguei (a
+ * Produzindo se abre, o card desliza, a contagem pula, a caixinha sobe), o arrasto (a Produzindo se abre com o card no
+ * ar), fechar e abrir praça (a quarta fecha a mais antiga, o nome gira), arrumar as praças; e o mesmo com
+ * prefers-reduced-motion (só esmaecer). Cada vídeo vai como .webm para a pasta.
+ */
+async function filmar(navegador, url, db, api) {
+  if (!VIDEO) return;
+  mkdirSync(VIDEO, { recursive: true });
+  const { renameSync } = require('node:fs');
+  // um palco arrumado: a Festa e o Show na Entrada do SP, a Novela na da G5, a ordem de fábrica, nada recolhido
+  db.prepare("UPDATE producoes SET etapa = 'entrada', designers = '[]' WHERE claquete LIKE 'Festa na Praça%' OR claquete LIKE 'Show da Noite%' OR claquete LIKE 'Novela Sinfonia%'").run();
+  for (const [nome, movimento] of [['movimento', 'no-preference'], ['movimento-reduzido', 'reduce']]) {
+    const ctx = await navegador.newContext({
+      extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA },
+      viewport: { width: 1440, height: 860 },
+      recordVideo: { dir: VIDEO, size: { width: 1440, height: 860 } },
+      reducedMotion: movimento,
+      colorScheme: 'light',
+    });
+    await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(LIA), url }]);
+    await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+    await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+    await fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ 'producoes.recolhidos': [], 'producoes.ordem': [] }) });
+    const p = await ctx.newPage();
+    await p.goto(`${url}#/designer`);
+    await p.locator('.barra-topo .topo-producoes').waitFor();
+    await p.waitForTimeout(700);
+    // a troca de tela (o topo parado) e a primeira carga
+    await p.locator('.barra-topo .topo-producoes').click();
+    await p.locator('.prod-bloco').first().waitFor();
+    await p.waitForTimeout(1100);
+    // o hover dos cards
+    for (const c of ['Festa na Praça', 'Show da Noite', 'Cozinha de Vó']) {
+      await cardDe(p, c).locator('.prod-atracao').hover();
+      await p.waitForTimeout(450);
+    }
+    // o Peguei: a Produzindo se abre, o card desliza, a contagem pula, a caixinha sobe
+    await cardDe(p, 'Festa na Praça').locator('.prod-mudar').click();
+    await p.waitForTimeout(1400);
+    // desfazer: o card volta deslizando, e a Produzindo se recolhe
+    await p.locator('.prod-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+    await p.waitForTimeout(1300);
+    // o arrasto: a Produzindo se abre com o card no ar; o card cai nela
+    const novela = cardDe(p, 'Novela Sinfonia');
+    const pega = await novela.locator('.prod-claquete').boundingBox();
+    await novela.locator('.prod-claquete').hover();
+    await p.mouse.down();
+    await p.mouse.move(pega.x + pega.width / 2 + 10, pega.y + pega.height / 2 + 4, { steps: 3 });
+    await p.waitForTimeout(450);
+    const caixa = await coluna(p, 'G5', 'produzindo').boundingBox();
+    await p.mouse.move(caixa.x + caixa.width / 2, caixa.y + 90, { steps: 25 });
+    await p.waitForTimeout(500);
+    await p.mouse.up();
+    await p.waitForTimeout(1300);
+    // abrir a quarta praça: a mais antiga fecha, deslizando, e o nome gira para a vertical
+    await p.locator('.prod-bloco[data-praca="INTER"]').click();
+    await p.waitForTimeout(1300);
+    await p.getByRole('button', { name: 'Recolher o bloco RJ' }).click();
+    await p.waitForTimeout(1100);
+    await p.locator('.prod-bloco[data-praca="G5"]').click();
+    await p.waitForTimeout(1300);
+    // arrumar as praças: o SP vai para o começo, as vizinhas deslizam
+    const faixa = await p.locator('.prod-bloco[data-praca="SP"] .prod-bloco-topo').boundingBox();
+    await p.mouse.move(faixa.x + 60, faixa.y + 22);
+    await p.mouse.down();
+    await p.mouse.move(40, faixa.y + 22, { steps: 40 });
+    await p.waitForTimeout(400);
+    await p.mouse.up();
+    await p.waitForTimeout(1200);
+    const video = p.video();
+    await ctx.close();
+    renameSync(await video.path(), join(VIDEO, `producoes-${nome}.webm`));
+  }
+  console.log(`ok: o vídeo do movimento em ${VIDEO}`);
 }
 
 async function principal() {
@@ -872,6 +1269,7 @@ async function principal() {
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
   await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
+  await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   const navegador = await chromium.launch();
   let falhou = false;
   try {
@@ -885,6 +1283,10 @@ async function principal() {
     await artesFeitas(navegador, s.url, s.db);
     await oCodigoDesligado(navegador, s.url, s.api);
     await asVersoesAMaoSemRoteiro(navegador, s.url);
+    await topoEntreAsTelas(navegador, s.url);
+    await arrumarAsPracas(navegador, s.url);
+    await divisoriasPorDia(navegador, s.url, s.db);
+    await filmar(navegador, s.url, s.db, s.api);
   } catch (e) {
     falhou = true;
     console.error(e);

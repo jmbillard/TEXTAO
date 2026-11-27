@@ -7,15 +7,20 @@
    praças e as etapas uma embaixo da outra, a página rolando inteira.
    #113: o bloco recolhido é uma coluna estreita (--bloco-recolhido) com a sigla e as contagens, e a largura dele fica
    para os outros (a lista das larguras vem da tela, no estilo da área dos blocos); no celular, uma linha. A Produção
-   aberta é um painel à direita, por cima da tela (no celular, a tela toda). */
+   aberta é um painel à direita, por cima da tela (no celular, a tela toda).
+   #159: o topo é o da fila, no mesmo lugar em todas as telas. O movimento: a largura dos blocos e a das colunas deslizam
+   (a lista das larguras tem sempre o mesmo jeito, o mínimo e a fração, para o navegador interpolar), o nome da praça
+   gira para a vertical ao fechar, a Produzindo vazia fica fina e se abre com fôlego, as colunas chegam em cascata, o card
+   levanta de leve no hover, e a caixinha sobe. Tudo de 150 a 250 ms, na curva --suave; com prefers-reduced-motion, só
+   esmaecer. Os cantos: o bloco e a coluna cortam o que passa da borda arredondada (overflow: clip, que não cria rolagem
+   e deixa o topo preso), e os topos presos são retos; o contorno da coluna-alvo é uma camada por cima do nome dela. */
 
-.pagina.producoes { --bloco-min: 448px; --bloco-recolhido: 76px; --topo-do-bloco: 54px; --margem: 24px; display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
-/* a linha do logo acompanha a largura toda dos blocos */
-.pagina.producoes .barra-topo { flex: none; width: 100%; max-width: none; padding: 0 var(--margem); }
+.pagina.producoes { --bloco-min: 448px; --bloco-recolhido: 64px; --dur: 240ms; --topo-do-bloco: 54px; --margem: 24px; display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
+/* a linha do logo é a da fila (#159): a mesma largura e as mesmas margens, para nada pular ao trocar de tela */
+.pagina.producoes .barra-topo { flex: none; box-sizing: border-box; width: 100%; }
 .prod-pagina { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 14px var(--margem) 0; }
 .prod-pagina > * { flex: none; }
 .prod-cabeca h1 { font: 400 42px/1.05 var(--serifa); letter-spacing: -0.01em; margin: 0; color: var(--tinta); }
-.prod-sub { margin: 6px 0 0; font: 400 13.5px var(--sans); color: var(--tinta3); }
 .prod-lendo { color: var(--tinta3); font: 400 14px var(--sans); }
 .prod-falha { padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
 
@@ -24,16 +29,32 @@
   flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior-x: contain;
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(var(--bloco-min), 1fr); gap: 12px; align-items: stretch;
   margin: 0 calc(-1 * var(--margem)); padding: 0 var(--margem) 24px; scroll-padding-inline: var(--margem);
+  position: relative; transition: grid-template-columns var(--dur) var(--suave);
 }
+/* arrumando as praças, a largura muda junto com a ordem, sem deslizar: quem desliza é o bloco */
+.prod-pagina > .prod-blocos.reordenando { transition: none; scroll-snap-type: none; }
 
 /* ---------- o bloco da praça ---------- */
-.prod-bloco { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha); }
+.prod-bloco { display: flex; flex-direction: column; min-width: 0; overflow: clip; border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha); transition: box-shadow var(--dur) var(--suave), border-color 0.2s; }
+/* a praça no ar (#159): por cima das outras, levantada */
+.prod-bloco.levantado { position: relative; z-index: 5; box-shadow: var(--sombra-menu); border-color: var(--regua-forte); }
+/* no computador, o miolo do bloco aberto não encolhe com a largura que desliza: ele se revela, sem quebrar as linhas */
+.prod-bloco:not(.recolhido) > .prod-bloco-topo, .prod-bloco:not(.recolhido) > .prod-colunas { min-width: calc(var(--bloco-min) - 2px); }
 /* o topo do bloco fica em cima ao rolar para baixo (na área dos blocos) */
 .prod-bloco-topo {
   position: sticky; top: 0; z-index: 2; box-sizing: border-box; height: var(--topo-do-bloco);
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 14px 0;
-  border-radius: 13px 13px 0 0; background: var(--cartao);
+  background: var(--cartao); cursor: grab; user-select: none; -webkit-user-select: none;
 }
+.prod-bloco-topo button { cursor: pointer; }
+body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+/* a alça (⠿): no dedo, a praça se arrasta por ela; no mouse, a faixa toda */
+.prod-alca { flex: none; align-self: center; width: 14px; margin: 0 -6px 0 -4px; color: var(--tinta3); font-size: 13px; line-height: 20px; text-align: center; cursor: grab; touch-action: none; opacity: 0.45; transition: opacity 0.15s; }
+.prod-bloco-topo:hover .prod-alca, .prod-recolhido:hover .prod-alca, .prod-bloco.levantado .prod-alca { opacity: 1; }
+@media (hover: none) { .prod-alca { opacity: 0.8; width: 24px; font-size: 16px; } }
+/* o nome da praça aberta chega deitando, de onde estava em pé na fechada */
+.prod-bloco.chegando:not(.recolhido) .prod-bloco-topo h2 { animation: deitar-nome var(--dur) var(--suave) both; transform-origin: 0 50%; }
+@keyframes deitar-nome { from { opacity: 0; transform: rotate(-90deg) translateX(-12px); } 60% { opacity: 1; } }
 .prod-bloco-topo h2 { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin: 0; }
 .prod-sigla { font: 400 28px/1 var(--serifa); color: var(--tinta); }
 .prod-nome { font: 500 13px var(--sans); color: var(--tinta3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -45,12 +66,21 @@
   border: 0; border-radius: 8px; background: none; color: var(--tinta3); cursor: pointer; align-self: center;
 }
 .prod-recolher:hover, .prod-mostrar:hover { background: var(--neutro); color: var(--tinta); }
-.prod-bloco.recolhido { cursor: pointer; transition: border-color 0.2s; }
-.prod-bloco.recolhido:hover { border-color: var(--regua-forte); }
-.prod-recolhido { position: sticky; top: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 6px 14px; }
+.prod-bloco.recolhido { cursor: pointer; }
+.prod-bloco.recolhido:hover { border-color: var(--regua-forte); background: color-mix(in srgb, var(--cartao) 70%, var(--neutro)); }
+.prod-recolhido { position: sticky; top: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 10px 6px 14px; user-select: none; -webkit-user-select: none; }
+.prod-recolhido .prod-alca { margin: 0 0 -6px; }
 .prod-recolhido .prod-mostrar { margin: 0; }
-.prod-recolhido h2 { margin: 0; max-width: 100%; }
-.prod-recolhido .prod-sigla { display: block; font-size: 19px; overflow-wrap: anywhere; text-align: center; }
+/* fechada, o nome vai para a vertical (lido de baixo para cima) e fica menor (#159); chega girando, de onde estava deitado */
+.prod-recolhido h2 {
+  display: flex; align-items: center; gap: 8px; margin: 0; max-height: 220px; overflow: hidden;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+}
+.prod-bloco.chegando .prod-recolhido h2 { animation: levantar-nome var(--dur) var(--suave) both; }
+.prod-recolhido .prod-sigla { display: block; font-size: 17px; white-space: nowrap; }
+.prod-recolhido .prod-nome { font-size: 11.5px; }
+@keyframes levantar-nome { from { opacity: 0.2; transform: rotate(270deg) translateY(10px); } 60% { opacity: 1; } }
+@keyframes surgir-recolhido { from { opacity: 0; } }
 .prod-contas-recolhido { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .prod-contas-recolhido li { display: flex; align-items: center; gap: 5px; }
 .prod-contas-recolhido i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
@@ -58,14 +88,32 @@
 .prod-contas-recolhido [data-coluna='entregue'] i { background: var(--ok); }
 .prod-contas-recolhido .prod-conta { background: var(--neutro); }
 
-.prod-colunas { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 8px 8px; }
-.prod-coluna { min-width: 0; border-radius: 10px; background: var(--neutro); padding: 0 6px 8px; }
+.prod-colunas {
+  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 0 8px 8px;
+  transition: grid-template-columns var(--dur) var(--suave);
+}
+/* a Produzindo vazia fica fina (#159): a mesma lista de larguras, com a fração zerada, para deslizar ao abrir */
+.prod-colunas.fina { grid-template-columns: minmax(0, 1fr) minmax(34px, 0fr) minmax(0, 1fr); }
+.prod-coluna {
+  position: relative; min-width: 0; overflow: clip; border-radius: 10px; background: var(--neutro); padding: 0 6px 8px;
+}
+/* as colunas do bloco que chegou surgem em cascata (a classe da chegada sai logo: a praça arrastada não surge de novo) */
+.prod-bloco.chegando .prod-coluna { animation: surgir-coluna var(--dur) var(--suave) backwards; animation-delay: var(--atraso, 0ms); }
+/* o card que chega deslizando de outra coluna aparece no caminho todo, sem ser cortado pela coluna nova */
+.prod-coluna:has(.prod-card.deslizando) { overflow: visible; }
+@keyframes surgir-coluna { from { opacity: 0; transform: translateY(8px); } }
+.prod-coluna.fina { padding: 0; }
+.prod-coluna.fina h3 { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0; }
+.prod-coluna.fina .prod-conta { order: -1; min-width: 20px; padding: 0 4px; }
+.prod-coluna.fina h3 i { order: -2; }
+.prod-coluna.fina .prod-coluna-nome { writing-mode: vertical-rl; transform: rotate(180deg); overflow: visible; }
+.prod-coluna.fina .prod-nada { display: none; }
 /* o nome da coluna também fica em cima, logo abaixo do topo do bloco */
 .prod-coluna h3 {
   position: sticky; top: var(--topo-do-bloco); z-index: 1;
   /* o nome e a contagem sempre na mesma linha (o nome encolhe com reticências se faltar lugar); o "últimos dias" embaixo */
   display: grid; grid-template-columns: 7px minmax(0, max-content) auto; justify-content: start; align-items: center; gap: 2px 6px;
-  margin: 0; padding: 9px 2px 8px; border-radius: 10px 10px 0 0; background: var(--neutro);
+  margin: 0; padding: 9px 2px 8px; background: var(--neutro);
   font: 600 11.5px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2);
 }
 .prod-coluna-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -75,11 +123,25 @@
 .prod-conta { min-width: 22px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--cartao); color: var(--tinta); font: 600 12px/20px var(--sans); letter-spacing: 0; text-align: center; font-variant-numeric: tabular-nums; }
 .prod-recente { grid-column: 1 / -1; font: 500 11px var(--sans); letter-spacing: 0; text-transform: none; color: var(--tinta3); }
 .prod-nada { margin: 2px 4px; font: 600 17px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); }
+/* as divisórias por dia no Entregue (#159): o dia curto e um fio até a borda */
+.prod-dia + .prod-dia { margin-top: 10px; }
+.prod-dia-nome { display: flex; align-items: center; gap: 8px; margin: 2px 2px 6px; font: 600 11px var(--sans); color: var(--tinta3); }
+.prod-dia-nome::after { content: ''; flex: 1; height: 1px; background: var(--regua-forte); }
+/* a contagem que mudou pula de leve */
+.prod-conta.mudou { animation: pular-conta 0.24s var(--suave); }
+@keyframes pular-conta { 40% { transform: scale(1.22); background: var(--ultra-suave); color: var(--ultra-tinta); } }
 
 /* ---------- o card (como o da agenda), estreito para caber três colunas por bloco ---------- */
 .prod-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.prod-card { display: flex; flex-direction: column; gap: 3px; padding: 8px 9px 8px; border-radius: 9px; background: var(--papel); border: 1px solid var(--regua); transition: border-color 0.2s; }
-.prod-card:hover { border-color: var(--regua-forte); }
+/* o card que chega na Produzindo enquanto ela se abre (#159) não se espreme na coluna fina: tem a largura de um card */
+.prod-coluna[data-coluna='produzindo'] .prod-cards { min-width: 116px; }
+.prod-card {
+  display: flex; flex-direction: column; gap: 3px; padding: 8px 9px 8px; border-radius: 9px; background: var(--papel); border: 1px solid var(--regua);
+  transition: border-color 0.18s, box-shadow 0.18s var(--suave), transform 0.18s var(--suave);
+}
+/* o hover levanta o card de leve (#159) */
+.prod-card:hover { border-color: var(--regua-forte); transform: translateY(-1px); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 4px 10px rgb(26 25 22 / 7%); }
+.prod-card.deslizando { position: relative; z-index: 1; }
 /* o card abre a Produção (#113) */
 .prod-card { cursor: pointer; }
 .prod-card:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
@@ -119,18 +181,21 @@
 /* ---------- arrastar e desfazer (#112) ---------- */
 .prod-card.arrastavel { cursor: grab; }
 .prod-card.arrastavel:active { cursor: grabbing; }
-/* com um card no ar, as colunas do bloco para onde ele pode ir ficam marcadas; a de baixo do cursor, mais forte */
-.prod-coluna { transition: box-shadow 0.15s, background-color 0.15s; }
-.prod-coluna.aceita { box-shadow: inset 0 0 0 1.5px var(--regua-forte); }
-.prod-coluna.sobre { box-shadow: inset 0 0 0 2px var(--ultra); background: var(--ultra-suave); }
-.prod-coluna.sobre h3 { background: var(--ultra-suave); }
+/* com um card no ar, as colunas do bloco para onde ele pode ir ficam marcadas; a de baixo do cursor, mais forte. O
+   contorno é uma camada por cima de tudo da coluna (também do nome preso em cima), para não ser cortado (#159) */
+.prod-coluna, .prod-coluna h3 { transition: background-color 0.15s; }
+.prod-coluna::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 0 transparent; transition: box-shadow 0.15s var(--suave); }
+.prod-coluna.aceita::after { box-shadow: inset 0 0 0 1.5px var(--regua-forte); }
+.prod-coluna.sobre::after { box-shadow: inset 0 0 0 2px var(--ultra); }
+.prod-coluna.sobre, .prod-coluna.sobre h3 { background: var(--ultra-suave); }
 /* a caixinha de desfazer, embaixo, no meio da janela */
 .prod-desfazer {
   position: fixed; left: 50%; bottom: 24px; z-index: 30; transform: translateX(-50%);
   display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px)); box-sizing: border-box;
   padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--tinta); color: var(--papel); box-shadow: var(--sombra-folha);
-  font: 500 13.5px/1.35 var(--sans);
+  font: 500 13.5px/1.35 var(--sans); animation: subir-caixinha var(--dur) var(--suave) both;
 }
+@keyframes subir-caixinha { from { opacity: 0; transform: translate(-50%, 14px); } }
 .prod-desfazer-texto { min-width: 0; overflow-wrap: anywhere; }
 .prod-desfazer-botao { flex: none; background: var(--papel); border-color: var(--papel); color: var(--tinta); font-weight: 600; }
 .prod-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
@@ -203,15 +268,25 @@
   .prod-mudar, .prod-aviso-botao { flex: 1 1 0; height: 44px; font-size: 14px; }
   .prod-aviso { font-size: 13px; }
   /* a caixinha de desfazer na largura da tela, com os botões no tamanho do dedo */
-  .prod-desfazer { left: 16px; right: 16px; bottom: 16px; transform: none; max-width: none; }
+  .prod-desfazer { left: 16px; right: 16px; bottom: 16px; transform: none; max-width: none; animation-name: subir-caixinha-celular; }
   .prod-desfazer-botao { height: 44px; padding: 0 18px; font-size: 14px; }
   .prod-desfazer-fechar { min-width: 44px; height: 44px; }
   .prod-aviso-artes { font-size: 12.5px; }
   /* o bloco recolhido (#113): uma linha só, com a sigla e as contagens */
   .prod-bloco.recolhido { padding: 0; }
   .prod-recolhido { position: static; flex-direction: row; gap: 12px; padding: 10px 12px; }
-  .prod-recolhido h2 { flex: 1; }
+  .prod-recolhido .prod-alca { margin: 0; }
+  .prod-recolhido h2 { flex: 1; writing-mode: horizontal-tb; transform: none; max-height: none; }
+  .prod-bloco.chegando .prod-recolhido h2 { animation-name: surgir-recolhido; }
   .prod-recolhido .prod-sigla { font-size: 22px; text-align: left; }
+  .prod-recolhido .prod-nome { font-size: 13px; }
+  .prod-bloco.chegando:not(.recolhido) .prod-bloco-topo h2 { animation-name: surgir-recolhido; }
+  .prod-bloco:not(.recolhido) > .prod-bloco-topo, .prod-bloco:not(.recolhido) > .prod-colunas { min-width: 0; }
+  .prod-colunas, .prod-colunas.fina { grid-template-columns: minmax(0, 1fr); }
+  .prod-coluna.fina { padding: 8px 10px; }
+  .prod-coluna.fina h3 { flex-direction: row; padding: 0; margin: 0 2px; }
+  .prod-coluna.fina .prod-coluna-nome { writing-mode: horizontal-tb; transform: none; }
+  .prod-coluna.fina .prod-conta, .prod-coluna.fina h3 i { order: 0; }
   .prod-contas-recolhido { flex-direction: row; gap: 12px; }
   .prod-recolher, .prod-mostrar { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
   .prod-recolher svg, .prod-mostrar svg { transform: rotate(90deg); }
@@ -223,3 +298,17 @@
 }
 /* o apelido e as versões à mão da claquete (#154), na Produção aberta: a largura toda do topo */
 .prod-aberta-topo .apelido-claquete { grid-column: 1 / -1; color: var(--tinta2); }
+
+@keyframes subir-caixinha-celular { from { opacity: 0; transform: translateY(14px); } }
+
+/* ---------- prefers-reduced-motion (#159): nada desliza nem gira; o que muda só esmaece ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .prod-pagina > .prod-blocos, .prod-colunas, .prod-card { transition: none !important; }
+  .pagina.producoes .prod-bloco.chegando .prod-coluna, .pagina.producoes .prod-bloco.chegando .prod-recolhido h2, .pagina.producoes .prod-bloco.chegando .prod-bloco-topo h2,
+  .pagina.producoes .prod-desfazer {
+    animation: esmaecer 0.18s ease-out both !important; animation-delay: 0ms !important;
+  }
+  .pagina.producoes .prod-conta.mudou { animation: none !important; }
+  .prod-card:hover { transform: none; }
+}
+@keyframes esmaecer { from { opacity: 0; } }
