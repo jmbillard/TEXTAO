@@ -5,7 +5,7 @@
 //
 // O papel: a administradora marca a Bia como coordenação nos Editores dos Cadastros. A Lia (que não é da coordenação)
 // não vê a entrada "Montar a pauta" no topo, e o endereço da tela a leva para a Pauta, com o aviso; a rota recusa.
-// A Bia vê a entrada ao lado da Pauta, no grupo "De todo mundo", e abre a tela em amanhã, com as abas da semana (o dia
+// A Bia vê a entrada ao lado da Pauta, nos caminhos do topo, e abre a tela em amanhã, com as abas da semana (o dia
 // vazio). Tudo pelo teclado: "+ posição" na Madrugada põe o foco no editor; "rui" mostra o Rui na lista (livre) e Enter
 // escolhe e vai ao horário; "22 AS 06" mostra "grava 22h às 6h" e, ao sair, vira o padrão; a demanda mostra o que o
 // PROMeiro entendeu (a atração, a data, as versões como etiquetas e a grafia no padrão); Enter cria uma linha, Backspace
@@ -177,7 +177,7 @@ async function marcarACoordenacao(navegador, url) {
 
 async function quemNaoEDaCoordenacao(navegador, url, api) {
   const { ctx, p, erros } = await abrir(navegador, url, LIA, '');
-  await p.locator('.de-todo-mundo .topo-pauta').first().waitFor();
+  await p.locator('.caminhos-do-topo .topo-pauta').first().waitFor();
   assert.equal(await p.locator('.topo-montar').count(), 0, 'a Lia não vê a entrada');
   await p.goto(`${url}#/pauta/montar`);
   await p.waitForFunction(() => location.hash === '#/pauta');
@@ -192,8 +192,8 @@ async function quemNaoEDaCoordenacao(navegador, url, api) {
 
 async function montarPeloTeclado(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, BIA, '');
-  // a entrada, ao lado da Pauta, no grupo De todo mundo
-  const entrada = p.locator('.de-todo-mundo .topo-montar');
+  // a entrada, ao lado da Pauta, nos caminhos do topo
+  const entrada = p.locator('.caminhos-do-topo .topo-montar');
   await entrada.waitFor();
   await entrada.click();
   await p.waitForFunction(() => location.hash === '#/pauta/montar');

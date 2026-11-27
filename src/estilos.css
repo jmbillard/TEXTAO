@@ -221,8 +221,8 @@ kbd {
 .barra-topo .bib-marca .logo-app { font-size: 28px; }
 .barra-topo .na-fila { margin-right: 6px; }
 /* a entrada da Pauta da edição (#94), ao lado do logo; no celular, só o ícone */
-.topo-pauta, .topo-producoes, .topo-agenda { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; margin-left: 8px; border-radius: 10px; color: var(--tinta2); font: 500 14px var(--sans); text-decoration: none; white-space: nowrap; }
-.topo-pauta:hover, .topo-producoes:hover, .topo-agenda:hover { background: var(--neutro); color: var(--tinta); }
+.topo-pauta, .topo-producoes, .topo-agenda, .topo-filmes { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; margin-left: 8px; border-radius: 10px; color: var(--tinta2); font: 500 14px var(--sans); text-decoration: none; white-space: nowrap; }
+.topo-pauta:hover, .topo-producoes:hover, .topo-agenda:hover, .topo-filmes:hover { background: var(--neutro); color: var(--tinta); }
 .biblioteca.fila { padding-top: 44px; }
 .marca {
   width: 40px; height: 40px; border-radius: 11px; background: var(--tinta); color: var(--papel); flex-shrink: 0;
@@ -2183,6 +2183,24 @@ html.com-cursor-meu { min-height: 100%; }
 .card-semana:hover .card-lixo, .card-lixo:focus-visible { opacity: 1; }
 .card-lixo:hover { color: var(--perigo); background: var(--papel); }
 @media (hover: none) { .card-lixo { opacity: 1; } }
+/* o lápis do apelido (#156): com o mouse, ao lado da claquete, à esquerda do x (quando há), no fundo do card (cobre o
+   fim da claquete longa, sem mexer nela); no toque, no pé do card aberto, com os outros atalhos */
+.card-lapis { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: inherit; display: grid; place-items: center; color: var(--tinta3); opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s; }
+.card-semana:has(.card-lixo) .card-lapis { right: 28px; }
+.card-semana:hover .card-lapis, .card-lapis:focus-visible { opacity: 1; }
+.card-lapis:hover { color: var(--tinta); background: var(--neutro); }
+.card-lapis:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.card-semana-links .card-lapis-toque { display: none; }
+@media (hover: none) {
+  .card-lapis { display: none; }
+  .card-semana-links .card-lapis-toque { display: inline-grid; }
+}
+/* a versão do roteiro no fim da claquete (#156), da V2 em diante: discreta, como o código das versões */
+.card-semana-versao { font-weight: 500; color: var(--tinta2); white-space: nowrap; }
+/* o menu do clique direito do card (#156): no ponto do clique, por cima de tudo */
+.menu.menu-de-contexto { position: fixed; z-index: 60; min-width: 190px; }
+.menu-de-contexto .menu-item { color: var(--tinta); font: 500 13.5px var(--sans); cursor: pointer; }
+.menu-de-contexto .menu-item svg { color: var(--tinta2); flex: none; }
 /* a fila vazia entra devagar, sem a tela pular */
 @keyframes entrar-suave { from { opacity: 0; transform: translateY(6px); } }
 .entra-suave { animation: entrar-suave 0.35s var(--suave) both; }
@@ -2653,8 +2671,11 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .card-semana-sinal.entregue { background: var(--ok); }
 /* o x de tirar da fila aparece no lugar do pontinho */
 .secao-trello.encolhida .card-semana:not(.aberto) .card-lixo { top: 3px; right: 4px; }
+.secao-trello.encolhida .card-semana:not(.aberto) .card-lapis { top: 3px; right: 4px; }
+.secao-trello.encolhida .card-semana:not(.aberto):has(.card-lixo) .card-lapis { right: 26px; }
 .secao-trello.encolhida .card-semana:not(.aberto):hover .card-semana-sinal,
-.secao-trello.encolhida .card-semana:not(.aberto):has(.card-lixo:focus-visible) .card-semana-sinal { opacity: 0; }
+.secao-trello.encolhida .card-semana:not(.aberto):has(.card-lixo:focus-visible) .card-semana-sinal,
+.secao-trello.encolhida .card-semana:not(.aberto):has(.card-lapis:focus-visible) .card-semana-sinal { opacity: 0; }
 
 /* =========================================================
    Tour da revisão: o balão de papel, o laço à mão, o véu leve e a seta
@@ -2709,9 +2730,9 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .barra-topo .bib-marca .logo-app { font-size: 24px; }
   .barra-topo .na-fila { flex: none; margin: 0 4px; max-width: 80px; overflow: hidden; transition: max-width 0.28s var(--suave), opacity 0.2s, margin 0.28s var(--suave); }
   .barra-topo .na-fila .presente { width: 30px; height: 30px; font-size: 11px; }
-  .topo-pauta, .topo-producoes, .topo-agenda { flex: none; width: 44px; height: 44px; padding: 0; margin: 0; justify-content: center; }
-  .topo-pauta span, .topo-producoes span, .topo-agenda span { display: none; }
-  .barra-topo:has(.busca.lupa.aberta) :is(.topo-pauta, .topo-producoes, .topo-agenda) { display: none; }
+  .topo-pauta, .topo-producoes, .topo-agenda, .topo-filmes { flex: none; width: 44px; height: 44px; padding: 0; margin: 0; justify-content: center; }
+  .topo-pauta span, .topo-producoes span, .topo-agenda span, .topo-filmes span { display: none; }
+  .barra-topo:has(.busca.lupa.aberta) .caminhos-do-topo { display: none; }
   /* a lupa cresce por cima do logo: o logo e os presentes recolhem, e a altura do topo não muda */
   .busca.lupa { flex: none; width: 44px; height: 44px; border-radius: 12px; }
   .busca.lupa.aberta { width: calc(100% - 52px); }

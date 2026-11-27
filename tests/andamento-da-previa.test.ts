@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { andamentoDaPrevia, paginasNaSubida, resumoDaSubida, subidaTerminada } from '../src/filmes/andamento';
+import { andamentoDaPrevia, haFilmeParaRevisar, paginasNaSubida, resumoDaSubida, subidaTerminada } from '../src/filmes/andamento';
 import type { Conferencia, FilmeLido, PaginaDaPrevia } from '../src/dados/armazenamento';
 
 /* O andamento da prévia na entrada do celular (#80): o que a ficha conta e o estado de cada página na subida. */
@@ -110,5 +110,17 @@ describe('a subida terminou', () => {
     expect(subidaTerminada([pagina(2, 'lida'), pagina(3, 'esperando')])).toBe(false);
     // a prévia que acabou de ser criada ainda não tem página nenhuma lida
     expect(subidaTerminada([])).toBe(false);
+  });
+});
+
+describe('há filme para revisar (#156): a bolinha junto de Filmes, no topo', () => {
+  it('laranja enquanto alguma prévia não está toda enviada', () => {
+    expect(haFilmeParaRevisar([{ paginas: 4, diasParaApagar: 12 }, { paginas: 2, diasParaApagar: null }])).toBe(true);
+  });
+  it('neutra sem prévia, com todas enviadas, com a prévia sem página e com o servidor que não diz', () => {
+    expect(haFilmeParaRevisar([])).toBe(false);
+    expect(haFilmeParaRevisar([{ paginas: 4, diasParaApagar: 0 }, { paginas: 1, diasParaApagar: 60 }])).toBe(false);
+    expect(haFilmeParaRevisar([{ paginas: 0, diasParaApagar: null }])).toBe(false);
+    expect(haFilmeParaRevisar([{ paginas: 3 }])).toBe(false);
   });
 });

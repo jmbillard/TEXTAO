@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
 import { apagarAoSair, armazenamento, escolherMinhaCor, lembrarCodigoDasVersoes, mandarParaTrello, minhasAreasDeTrabalho, novidadesNoQuadro, roteiroDa, souAdministrador, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
 import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
@@ -27,13 +27,15 @@ import type { Pessoa } from '../modelo/tipos';
 import { avisoDaSubstituicao } from './Comparar';
 import { Icone } from './icones';
 import { AREAS } from '../modelo/areas';
-import { DeTodoMundo } from './SeletorDeArea';
+import { CaminhosDoTopo } from './SeletorDeArea';
 import { CenaDaFilaZerada, TituloEmDia, useFilaZerada } from './FilaZerada';
 import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, EscolhaDeNome, Marca, MarcaTexto, NA_PRIORIDADE, RABISCOS, TextoDaClaquete, tracoDe, useSaida } from './pecas';
 import { redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, ehCelular, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
 import { LinhaDoTempoDoCard } from './LinhaDoTempo';
+import { MenuDeContexto } from './MenuDeContexto';
+import { versaoDoRoteiro } from '../modelo/versoes';
 
 /** Roteiros de demonstração, lidos de ./exemplos.json (arquivo → base64) quando o build é feito com VITE_EXEMPLOS=1. */
 const EXEMPLOS: [string, string][] = import.meta.env.VITE_EXEMPLOS
@@ -593,9 +595,9 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
 
 const ETAPA_NO_CARD: Record<NonNullable<EtapaDoCard>, string> = { produzindo: 'produzindo', aprovacao: 'em aprovação', entregue: 'entregue', caiu: 'caiu' };
 
-/** Uma pessoa no card aberto: o rótulo discreto e o nome lado a lado, numa linha só; o nome longo termina em
-    reticências e vai inteiro na dica. Sem nome, fica a falta ("sem editor"). */
-function PessoaNoCard({ rotulo, nome, falta }: { rotulo: string; nome: string; falta?: string }) {
+/** Um dado no card aberto (a pessoa, a versão do roteiro): o rótulo discreto e o valor lado a lado, numa linha só; o
+    valor longo termina em reticências e vai inteiro na dica. Sem valor, fica a falta ("sem editor"). */
+function DadoNoCard({ rotulo, nome, falta }: { rotulo: string; nome: string; falta?: string }) {
   return (
     <div className="card-semana-pessoa">
       <dt>{rotulo}</dt>
@@ -626,22 +628,59 @@ function OutraData({ pe }: { pe: PeDoCard }) {
     a etapa (se não couber, ela desce); no pé, a outra data do critério (OutraData). Por entrega, o card que ainda não
     saiu fica tracejado, como um prazo. Um clique abre (com animação de altura) a ficha do card: uma pessoa por linha
     (redator, editor, designer), a Linha do tempo da Produção (lida só quando o card abre), a rubrica de quem revisou e
-    os atalhos para o roteiro e para o card no Trello. A etapa não se repete na ficha. */
+    os atalhos para o roteiro e para o card no Trello. A etapa não se repete na ficha. A versão do roteiro (#156) fica
+    sempre na ficha (V1 sem versão nova) e, da V2 em diante, também no fim da claquete. O apelido se dá pelo lápis, que
+    aparece ao lado da claquete com o mouse (no celular, sempre, no card aberto), e pelo menu do clique direito. */
 function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
   const { r, etapa, andamento } = c;
   // o nome de hoje na produção da arte (o card no Trello); sem ele, o guardado no padrão da casa
   const claquete = nomeSemAsVersoes(claqueteParaMostrar(r.meta, andamento, r.id)) || r.meta.titulo || 'Sem claquete';
   const versoes = versoesDoResumo(r);
+  const versao = versaoDoRoteiro(r.meta);
   const idMais = `card-mais-${r.id}`;
   // o card simulado do roteiro de exemplo, no fim do tour: não é um card do Trello
   const doTour = ehDoTour(r.id);
+  // o apelido pelo lápis e pelo clique direito (#156): cada pedido abre o card, se fechado, e o campo do apelido
+  const podeApelidar = !doTour && !!r.meta.claquete.trim();
+  const [pedidoDoLapis, setPedidoDoLapis] = useState(0);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const fecharMenu = useCallback(() => setMenu(null), []);
+  // o card que fecha esquece o pedido: ao abrir de novo, o campo não abre sozinho
+  useEffect(() => {
+    if (!aberto) setPedidoDoLapis(0);
+  }, [aberto]);
+  const nomeDoLapis = apelidoDoRoteiro(r.id) ? 'Editar o apelido' : 'Dar um apelido';
+  const darApelido = () => {
+    if (!aberto) alternar();
+    setPedidoDoLapis((n) => n + 1);
+  };
+  const lapis = (classe: string) => (
+    <button type="button" className={classe} title={nomeDoLapis} aria-label={`${nomeDoLapis}: ${claquete}`} onClick={darApelido}>
+      <Icone nome="lapis" tam={classe === 'card-lapis' ? 13 : 15} traco={1.9} />
+    </button>
+  );
   return (
-    <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''} ${c.aEntregar ? 'a-entregar' : ''}`} data-card={r.id}>
+    <div
+      className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''} ${c.aEntregar ? 'a-entregar' : ''}`}
+      data-card={r.id}
+      onContextMenu={
+        podeApelidar
+          ? (e) => {
+              // dentro do campo do apelido, o menu do navegador (colar, corrigir)
+              if ((e.target as HTMLElement).closest('input, textarea')) return;
+              e.preventDefault();
+              setMenu({ x: e.clientX, y: e.clientY });
+            }
+          : undefined
+      }
+    >
       <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
         <span className="card-semana-claquete" title={apelidoDoRoteiro(r.id) ? `Claquete: ${r.meta.claquete}` : undefined}>
           {c.prioridade ? <MarcaTexto traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></MarcaTexto> : <TextoDaClaquete texto={claquete} quebras />}
           {/* as versões que a claquete sabe (#121, #152): o sufixo colado no fim do nome, se a pessoa liga */}
           <SufixoDaClaquete versoes={versoes} />
+          {/* a versão do roteiro (#156), só da V2 em diante (e não de novo, se o nome já diz) */}
+          {versao > 1 && !new RegExp(`\\bV${versao}\\b`, 'i').test(claquete) && <span className="card-semana-versao" title={`Versão ${versao} do roteiro`}> V{versao}</span>}
         </span>
         <ConflitoDoCard versoes={versoes} />
         <span className="card-semana-linha">
@@ -665,11 +704,12 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
         <div>
           <div className="card-semana-mais-dentro">
             <dl className="card-semana-dados">
-              <PessoaNoCard rotulo="redator" nome={r.meta.redator} falta="sem redator" />
-              <PessoaNoCard rotulo="editor" nome={r.meta.editor} falta="sem editor" />
-              {!!andamento?.designers.length && <PessoaNoCard rotulo="designer" nome={andamento.designers.join(', ')} />}
+              <DadoNoCard rotulo="redator" nome={r.meta.redator} falta="sem redator" />
+              <DadoNoCard rotulo="editor" nome={r.meta.editor} falta="sem editor" />
+              {!!andamento?.designers.length && <DadoNoCard rotulo="designer" nome={andamento.designers.join(', ')} />}
+              <DadoNoCard rotulo="versão" nome={`V${versao}`} />
             </dl>
-            {!doTour && aberto && <ApelidoDaClaquete alvo={{ roteiro: r.id }} claquete={r.meta.claquete} versoes={r.versoesLidas ?? []} dia={r.meta.dataExibicao ?? ''} podeMudar />}
+            {!doTour && aberto && <ApelidoDaClaquete alvo={{ roteiro: r.id }} claquete={r.meta.claquete} versoes={r.versoesLidas ?? []} dia={r.meta.dataExibicao ?? ''} podeMudar pedidoDoLapis={pedidoDoLapis} />}
             {!doTour && <LinhaDoTempoDoCard card={r.trello?.card} aberto={aberto} />}
             <div className="card-semana-pe">
               {r.revisadoPor && (
@@ -678,6 +718,8 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
                 </span>
               )}
               <span className="card-semana-links">
+                {/* no toque, o lápis fica aqui, sempre à vista no card aberto */}
+                {podeApelidar && lapis('card-lapis-toque')}
                 <button type="button" onClick={abrir} title="Abrir o roteiro" aria-label={`Abrir o roteiro ${claquete}`}>
                   <Icone nome="arquivo" tam={15} traco={1.9} />
                 </button>
@@ -691,11 +733,14 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
           </div>
         </div>
       </div>
+      {/* com o mouse, o lápis aparece ao lado da claquete */}
+      {podeApelidar && lapis('card-lapis')}
       {tirar && (
         <button type="button" className="card-lixo" title="Tirar da fila (o card no Trello continua lá)" aria-label={`Tirar ${claquete} da fila`} onClick={tirar}>
           <Icone nome="fechar" tam={11} traco={2.4} />
         </button>
       )}
+      {menu && <MenuDeContexto x={menu.x} y={menu.y} rotulo={`O card ${claquete}`} itens={[{ nome: nomeDoLapis, icone: 'lapis', fazer: darApelido }]} fechar={fecharMenu} />}
     </div>
   );
 }
@@ -1345,15 +1390,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
       <header className="barra-topo">
         <h1 className="bib-marca"><Marca /></h1>
         {seletorDeArea}
-        {/* a tela de produções (#109): as Produções por praça, ao lado da agenda No Trello */}
-        {producoes && (
-          <a className="topo-producoes" href="#/designer/producoes" aria-label="Produções" onClick={(e) => (e.preventDefault(), producoes())}>
-            <Icone nome="colunas" tam={17} traco={1.7} />
-            <span>Produções</span>
-          </a>
-        )}
-        {/* a Pauta da edição (#94), no grupo "De todo mundo" (#105), o mesmo em todas as áreas */}
-        {pauta && <DeTodoMundo pauta={pauta} montar={montarPauta} />}
+        {/* os caminhos (#156): a tela de produções (#109), a aba Filmes e a Pauta da edição (#94) */}
+        <CaminhosDoTopo producoes={producoes} filmes={temFilmes() ? filmes : undefined} pauta={pauta} montar={pauta && montarPauta} />
         <span className="espaco" />
         {(todos.length > 6 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
         {colegas.length > 0 && (
@@ -1365,7 +1403,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
             <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
           </div>
         )}
-        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} configuracao={souAdministrador() && configuracao ? configuracao : undefined} andamentoDoProjeto={souAdministrador() && andamentoDoProjeto ? andamentoDoProjeto : undefined} correcoes={souAdministrador() && correcoes ? correcoes : undefined} aoMudarCor={() => setCores((n) => n + 1)} enfeites={temaDaData ? { tema: temaDaData.tema, ligados: enfeitesSim } : undefined} />
+        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} configuracao={souAdministrador() && configuracao ? configuracao : undefined} andamentoDoProjeto={souAdministrador() && andamentoDoProjeto ? andamentoDoProjeto : undefined} correcoes={souAdministrador() && correcoes ? correcoes : undefined} aoMudarCor={() => setCores((n) => n + 1)} enfeites={temaDaData ? { tema: temaDaData.tema, ligados: enfeitesSim } : undefined} />
       </header>
       <main className="biblioteca fila" data-ancora="pagina">
         {EXEMPLOS.length > 0 && (

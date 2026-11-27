@@ -13,7 +13,7 @@ import { MontarPauta } from './ui/MontarPauta';
 import { enderecoDaPauta, entradaDaPauta, hashDaPauta } from './ui/pecasDaPauta';
 import { Producoes } from './ui/Producoes';
 import { MeusRoteiros } from './ui/MeusRoteiros';
-import { DeTodoMundo, SeletorDeArea } from './ui/SeletorDeArea';
+import { CaminhosDoTopo, SeletorDeArea } from './ui/SeletorDeArea';
 import { ehAreaDosRoteiros, type Area, type AreaDosRoteiros } from './modelo/areas';
 import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, souCoordenacao, temTrello, temFilmes, lembrarArea, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
@@ -23,7 +23,6 @@ import type { DocBruto } from './importar/bruto';
 import { exportar, pendencias, roteiroDoJson, travamTrello } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type ArteDoAcervo, type Pessoa, type Roteiro } from './modelo/tipos';
 import { Marca } from './ui/pecas';
-import { Icone } from './ui/icones';
 import { chaveDeArte } from './modelo/diferencas';
 import { Biblioteca, Perfil } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
@@ -521,7 +520,7 @@ export function App() {
 
   if (!pronto) return <div className="pagina" />;
 
-  // a entrada "Montar a pauta" (#123), no grupo De todo mundo, só para a coordenação
+  // a entrada "Montar a pauta" (#123), nos caminhos do topo, só para a coordenação
   const montarAPauta = souCoordenacao() ? () => ir({ t: 'montar', dia: '' }) : undefined;
   const seletorDeArea = <SeletorDeArea areas={areas} atual={areaAgora ?? 'designer'} admin={souAdministrador()} trocar={irParaArea} />;
 
@@ -540,7 +539,7 @@ export function App() {
             <header className="barra-topo">
               <h1 className="bib-marca"><Marca /></h1>
               {seletorDeArea}
-              <DeTodoMundo pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })} montar={montarAPauta} />
+              <CaminhosDoTopo pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })} montar={montarAPauta} />
               <span className="espaco" />
               <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
             </header>
@@ -553,13 +552,9 @@ export function App() {
             <header className="barra-topo">
               <h1 className="bib-marca"><Marca /></h1>
               {seletorDeArea}
-              <a className="topo-agenda" href="#/designer" aria-label="No Trello" onClick={(e) => (e.preventDefault(), irParaArea('designer'))}>
-                <Icone nome="quadro" tam={17} traco={1.7} />
-                <span>No Trello</span>
-              </a>
-              <DeTodoMundo pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })} montar={montarAPauta} />
+              <CaminhosDoTopo agenda={() => irParaArea('designer')} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })} montar={montarAPauta} />
               <span className="espaco" />
-              <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
+              <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
             </header>
           }
         />

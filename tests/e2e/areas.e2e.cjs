@@ -38,9 +38,14 @@
 // O administrador (#105): a administradora sem cadastro vê no Redator e no Editor os roteiros de todos ("Roteiros", "de
 // todos os redatores"), cada um com o redator e a edição, e o filtro "de quem" (de todos, com quantos, e cada pessoa,
 // pelo nome do cadastro); escolher a Marina mostra só os dela, também na navegação do roteiro aberto, e o filtro
-// continua ao voltar. O grupo "De todo mundo" leva à Pauta em todas as áreas; o menu do perfil mostra as áreas e, fora
+// continua ao voltar. Os caminhos do topo levam à Pauta em todas as áreas; o menu do perfil mostra as áreas e, fora
 // delas, Cadastros e Configuração. Quem não é administrador vê só os seus, sem o filtro, e a rota recusa "de todos". No
 // celular (escuro), o filtro e o perfil cabem na tela.
+//
+// Os caminhos do topo (#156), sem o "De todo mundo" e sem o traço que o separava: na Designer, "Produções · Filmes ·
+// Pauta da edição", com bolinhas entre eles; a de depois de Filmes fica laranja só quando há filme esperando revisão na
+// aba Filmes (a lista das prévias, de mentira aqui) e volta a ser neutra quando não há. No computador e no celular,
+// claro e escuro; no celular, só os ícones, sem rolar para o lado.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:areas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -236,9 +241,9 @@ const iso = (dias) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 const ROTEIROS = [
-  { id: 'areas-chef', meta: { claquete: 'CHEF(FUT) SP', programa: 'Chef do Futuro', praca: 'SP', dataExibicao: iso(1), redator: 'Caio Brandão', editor: 'Bruno Regis' } },
-  { id: 'areas-fest', meta: { claquete: 'FESTIVAL(VER) REDE', programa: 'Festival de Verão', praca: 'G5', dataExibicao: iso(3), redator: 'Marina Teles', editor: 'Caio Brandão' } },
-  { id: 'areas-nov', meta: { claquete: 'NOVELA7(CAP) SP', programa: 'Sete Mares', praca: 'SP', dataExibicao: iso(3), redator: 'Caio Brandao', editor: 'Bruno Regis' } },
+  { id: 'areas-chef', meta: { claquete: 'CHEF_FUTURO SP', programa: 'Chef do Futuro', praca: 'SP', dataExibicao: iso(1), redator: 'Caio Brandão', editor: 'Bruno Regis' } },
+  { id: 'areas-fest', meta: { claquete: 'FESTIVAL_VER REDE', programa: 'Festival de Verão', praca: 'G5', dataExibicao: iso(3), redator: 'Marina Teles', editor: 'Caio Brandão' } },
+  { id: 'areas-nov', meta: { claquete: 'NOVELA7_CAP SP', programa: 'Sete Mares', praca: 'SP', dataExibicao: iso(3), redator: 'Caio Brandao', editor: 'Bruno Regis' } },
 ];
 async function semearRoteiros(api) {
   const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'LOC: HOJE' }] }] };
@@ -292,14 +297,14 @@ async function trocarDeArea(navegador, url) {
   assert.equal(await nomeDaArea(p), 'redator');
   await p.locator('.meus-roteiros .ficha').first().waitFor();
   // os roteiros em que o Caio é o redator (o nome sem acento também é ele), por dia
-  assert.deepEqual(await claquetes(p), ['CHEF(FUT) SP', 'NOVELA7(CAP) SP']);
+  assert.deepEqual(await claquetes(p), ['CHEF_FUTURO SP', 'NOVELA7_CAP SP']);
   assert.deepEqual((await p.locator('.meus-roteiros .dia-topo h3').allInnerTexts()).map((t) => t.split('\n')[0].trim()).slice(0, 1), ['Amanhã']);
   assert.match(await p.locator('.meus-roteiros .fila-conta').innerText(), /como redator: Caio Brandão/);
   await capturar(p, '05-meus-roteiros-do-redator-claro');
   await escolherArea(p, 'Editor');
   await p.locator('.meus-roteiros .ficha').first().waitFor();
   assert.equal(hashDe(p), '#/editor');
-  assert.deepEqual(await claquetes(p), ['FESTIVAL(VER) REDE']);
+  assert.deepEqual(await claquetes(p), ['FESTIVAL_VER REDE']);
   // de volta à Designer, pelo seletor: o endereço dela e a fila
   await escolherArea(p, 'Designer');
   assert.equal(hashDe(p), '#/designer');
@@ -345,21 +350,21 @@ async function cicloNaLista(navegador, url, db) {
   producao(db, 'prod-areas-chef', 'cardareaschef', { etapa: 'produzindo', designers: ['Tânia Arruda'] });
   const { ctx, p, erros, aoTrello } = await entrar(navegador, url, '#/redator', CAIO, { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
   await p.locator('.meus-roteiros .ficha').first().waitFor();
-  assert.equal(await estadoDe(p, 'CHEF(FUT) SP'), 'Produzindo');
-  assert.equal(await estadoDe(p, 'NOVELA7(CAP) SP'), 'Em revisão');
-  const passosDoChef = (await fichaDe(p, 'CHEF(FUT) SP').locator('.passos-ciclo').innerText()).trim();
+  assert.equal(await estadoDe(p, 'CHEF_FUTURO SP'), 'Produzindo');
+  assert.equal(await estadoDe(p, 'NOVELA7_CAP SP'), 'Em revisão');
+  const passosDoChef = (await fichaDe(p, 'CHEF_FUTURO SP').locator('.passos-ciclo').innerText()).trim();
   assert.match(passosDoChef, /^chegou \d+\/\d+, \d+h\d\d · no Trello \d+\/\d+, \d+h\d\d$/);
-  assert.equal((await fichaDe(p, 'CHEF(FUT) SP').locator('.com-quem').innerText()).trim(), 'com Tânia Arruda', 'quem da arte está com o roteiro');
-  assert.match((await fichaDe(p, 'NOVELA7(CAP) SP').locator('.passos-ciclo').innerText()).trim(), /^chegou \d+\/\d+, \d+h\d\d$/);
-  assert.equal(await fichaDe(p, 'NOVELA7(CAP) SP').locator('.com-quem').count(), 0, 'na revisão, ninguém da arte');
+  assert.equal((await fichaDe(p, 'CHEF_FUTURO SP').locator('.com-quem').innerText()).trim(), 'com Tânia Arruda', 'quem da arte está com o roteiro');
+  assert.match((await fichaDe(p, 'NOVELA7_CAP SP').locator('.passos-ciclo').innerText()).trim(), /^chegou \d+\/\d+, \d+h\d\d$/);
+  assert.equal(await fichaDe(p, 'NOVELA7_CAP SP').locator('.com-quem').count(), 0, 'na revisão, ninguém da arte');
   await capturar(p, '08-ciclo-na-lista-claro');
   console.log('ok: cada roteiro mostra o estado do ciclo, os passos com data e quem da arte está com ele');
 
   // a Produção foi entregue: a lista se lê de novo sozinha (aqui, ao ganhar o foco, como na agenda)
   producao(db, 'prod-areas-chef', 'cardareaschef', { etapa: 'entregue', designers: ['Tânia Arruda'], entregaEm: new Date().toISOString() });
   await p.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await fichaDe(p, 'CHEF(FUT) SP').locator('.estado-nome', { hasText: 'Entregue' }).waitFor();
-  assert.match((await fichaDe(p, 'CHEF(FUT) SP').locator('.passos-ciclo').innerText()).trim(), / · entregue \d+\/\d+, \d+h\d\d$/);
+  await fichaDe(p, 'CHEF_FUTURO SP').locator('.estado-nome', { hasText: 'Entregue' }).waitFor();
+  assert.match((await fichaDe(p, 'CHEF_FUTURO SP').locator('.passos-ciclo').innerText()).trim(), / · entregue \d+\/\d+, \d+h\d\d$/);
   console.log('ok: a lista se atualiza sozinha quando o estado muda (Produzindo → Entregue)');
   await semRolagemDeLado(p, 'ciclo no computador');
   assert.deepEqual(erros, [], 'ciclo: erros na página');
@@ -368,7 +373,7 @@ async function cicloNaLista(navegador, url, db) {
 
   // no celular (escuro), o ciclo cabe na ficha
   const cel = await entrar(navegador, url, '#/redator', CAIO, { ...devices['iPhone 13'], colorScheme: 'dark' });
-  await fichaDe(cel.p, 'CHEF(FUT) SP').locator('.estado-nome', { hasText: 'Entregue' }).waitFor();
+  await fichaDe(cel.p, 'CHEF_FUTURO SP').locator('.estado-nome', { hasText: 'Entregue' }).waitFor();
   await semRolagemDeLado(cel.p, 'ciclo no celular');
   await capturar(cel.p, '09-ciclo-no-celular-escuro');
   assert.deepEqual(cel.erros, [], 'ciclo no celular: erros na página');
@@ -400,8 +405,8 @@ async function tresExibicoes(navegador, url) {
   // quadro: uma coluna por estado do ciclo; os passos de antes, "em breve", numa coluna apagada
   await exibir(p, 'quadro');
   assert.deepEqual((await p.locator('.coluna-meus h4').allInnerTexts()).map((t) => t.split('\n')[0].trim().toLowerCase()), ['antes', 'em revisão', 'produzindo', 'entregue', 'exibido']);
-  assert.deepEqual(await cartoesDa(p, 'Em revisão'), ['NOVELA7(CAP) SP']);
-  assert.deepEqual(await cartoesDa(p, 'Entregue'), ['CHEF(FUT) SP']);
+  assert.deepEqual(await cartoesDa(p, 'Em revisão'), ['NOVELA7_CAP SP']);
+  assert.deepEqual(await cartoesDa(p, 'Entregue'), ['CHEF_FUTURO SP']);
   assert.deepEqual(await cartoesDa(p, 'Produzindo'), []);
   assert.match(await coluna(p, 'Entregue').locator('.cartao-meu').innerText(), /2 artes · edição: Bruno Regis/);
   assert.match(await coluna(p, 'Entregue').locator('.com-quem').innerText(), /com Tânia Arruda/);
@@ -417,7 +422,7 @@ async function tresExibicoes(navegador, url) {
   const faixa = async () => Object.fromEntries(await p.locator('button.seg-ciclo').evaluateAll((bs) => bs.map((b) => [b.dataset.estado, b.querySelector('b').textContent])));
   assert.deepEqual(await faixa(), { revisao: '1', produzindo: '0', entregue: '1', exibido: '0' });
   assert.deepEqual(await p.locator('.grupo-estado').evaluateAll((g) => g.map((x) => x.dataset.estado)), ['revisao', 'entregue']);
-  assert.deepEqual((await p.locator('.grupo-estado[data-estado="entregue"] .linha-meu b').allInnerTexts()).map((t) => t.trim()), ['CHEF(FUT) SP']);
+  assert.deepEqual((await p.locator('.grupo-estado[data-estado="entregue"] .linha-meu b').allInnerTexts()).map((t) => t.trim()), ['CHEF_FUTURO SP']);
   assert.match(await p.locator('.grupo-estado[data-estado="revisao"] .linha-meu-dia').innerText(), /^\w{3}, \d+\/\d+$/);
   await p.locator('button.seg-ciclo[data-estado="entregue"]').click();
   assert.deepEqual(await p.locator('.grupo-estado').evaluateAll((g) => g.map((x) => x.dataset.estado)), ['entregue']);
@@ -491,10 +496,10 @@ const artesAbertas = (p) => p.locator('.arte-aberta').evaluateAll((as) => as.map
 async function roteiroAberto(navegador, url, db) {
   const { ctx, p, erros, aoTrello } = await entrar(navegador, url, '#/redator', CAIO, { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
   // a lista do Redator está por dia (a última escolha das exibições, acima): um toque na ficha abre o roteiro
-  await fichaDe(p, 'CHEF(FUT) SP').click();
+  await fichaDe(p, 'CHEF_FUTURO SP').click();
   await p.locator('.roteiro-aberto .folha-aberta .texto').waitFor();
   assert.equal(hashDe(p), '#/redator/r/areas-chef', 'o roteiro aberto tem endereço próprio');
-  assert.equal((await p.locator('.aberto-claquete').innerText()).trim(), 'CHEF(FUT) SP');
+  assert.equal((await p.locator('.aberto-claquete').innerText()).trim(), 'CHEF_FUTURO SP');
   assert.equal((await p.locator('.folha-aberta .texto').innerText()).trim(), 'LOC: HOJE');
   assert.equal(await p.locator('.folha-aberta .texto').getAttribute('contenteditable'), 'false', 'o texto é só para leitura');
   await p.locator('.folha-aberta .texto').click();
@@ -512,16 +517,16 @@ async function roteiroAberto(navegador, url, db) {
   await capturar(p, '13-roteiro-aberto-redator-claro');
   // o próximo e o anterior, sem voltar à lista
   await p.locator('button[aria-label="Próximo roteiro"]').click();
-  await p.locator('.aberto-claquete', { hasText: 'NOVELA7(CAP) SP' }).waitFor();
+  await p.locator('.aberto-claquete', { hasText: 'NOVELA7_CAP SP' }).waitFor();
   assert.equal(hashDe(p), '#/redator/r/areas-nov');
   assert.equal((await p.locator('.ciclo-em-pe li[aria-current="step"] .nome').innerText()).trim(), 'Em revisão');
   assert.equal(await p.locator('.meus-roteiros, .lista-meus').count(), 0, 'não passou pela lista');
   await p.locator('button[aria-label="Roteiro anterior"]').click();
-  await p.locator('.aberto-claquete', { hasText: 'CHEF(FUT) SP' }).waitFor();
+  await p.locator('.aberto-claquete', { hasText: 'CHEF_FUTURO SP' }).waitFor();
   assert.equal(hashDe(p), '#/redator/r/areas-chef');
   // o endereço recarregado abre o mesmo roteiro; "Roteiros" volta à lista
   await p.reload();
-  await p.locator('.aberto-claquete', { hasText: 'CHEF(FUT) SP' }).waitFor();
+  await p.locator('.aberto-claquete', { hasText: 'CHEF_FUTURO SP' }).waitFor();
   await p.locator('.ciclo-em-pe').waitFor();
   await p.locator('.aberto-voltar').click();
   await p.locator('.meus-roteiros .ficha').first().waitFor();
@@ -530,14 +535,14 @@ async function roteiroAberto(navegador, url, db) {
 
   // no Editor: um roteiro com artes, enviado e com a Produção em Produzindo; o designer pôs uma arte direto na produção
   const doc = { type: 'doc', content: [comArte('NESTA QUARTA', 'rodape', 'a1'), comArte('12 COZINHEIROS', 'cartao', 'a2'), comArte('CHEF DO FUTURO', 'lettering', 'a3')] };
-  const meta = { titulo: '', tipoPrograma: 'outro', capitulo: null, edicao: '', locutor: '', selo: '', duracaoAlvoSeg: null, claquete: 'CHEF(FUT) 2 SP', programa: 'Chef do Futuro', praca: 'SP', dataExibicao: iso(2), redator: 'Beatriz Lins', editor: 'Caio Brandão', jaExiste: ['CHEF DO FUTURO'] };
+  const meta = { titulo: '', tipoPrograma: 'outro', capitulo: null, edicao: '', locutor: '', selo: '', duracaoAlvoSeg: null, claquete: 'CHEF_FUTURO 2 SP', programa: 'Chef do Futuro', praca: 'SP', dataExibicao: iso(2), redator: 'Beatriz Lins', editor: 'Caio Brandão', jaExiste: ['CHEF DO FUTURO'] };
   const resp = await fetch(`${url.replace(/\/$/, '')}/api/roteiros/areas-artes`, { method: 'PUT', headers: { 'content-type': 'application/json', 'cf-access-authenticated-user-email': OUTRA }, body: JSON.stringify({ roteiro: { meta, doc }, nArtes: 2 }) });
   assert.equal(resp.status, 200);
   enviar(db, 'areas-artes', 'cardareasartes', new Date().toISOString());
   producao(db, 'prod-areas-artes', 'cardareasartes', { etapa: 'produzindo', designers: ['Tânia Arruda'] });
   db.prepare("UPDATE producoes SET artes = ?, artes_marcadas = ? WHERE id = 'prod-areas-artes'").run(JSON.stringify(['NESTA QUARTA', '12 COZINHEIROS', 'SELO AO VIVO']), JSON.stringify(['NESTA QUARTA']));
   await escolherArea(p, 'Editor');
-  await p.locator('.meus-roteiros .linha-meu', { hasText: 'CHEF(FUT) 2 SP' }).click();
+  await p.locator('.meus-roteiros .linha-meu', { hasText: 'CHEF_FUTURO 2 SP' }).click();
   await p.locator('.arte-aberta').first().waitFor();
   assert.equal(hashDe(p), '#/editor/r/areas-artes');
   assert.deepEqual(await artesAbertas(p), [
@@ -552,7 +557,7 @@ async function roteiroAberto(navegador, url, db) {
   await capturar(p, '14-roteiro-aberto-editor-claro');
   // o próximo do Editor é o Festival, sem artes marcadas
   await p.locator('button[aria-label="Próximo roteiro"]').click();
-  await p.locator('.aberto-claquete', { hasText: 'FESTIVAL(VER) REDE' }).waitFor();
+  await p.locator('.aberto-claquete', { hasText: 'FESTIVAL_VER REDE' }).waitFor();
   assert.equal(hashDe(p), '#/editor/r/areas-fest');
   assert.equal((await p.locator('.artes-entregues').innerText()).trim(), 'nenhuma a produzir');
   console.log('ok: no Editor, as artes do roteiro com o estado, a origem e quantas já foram entregues');
@@ -602,9 +607,9 @@ async function administradora(navegador, url) {
   assert.match(await p.locator('.meus-roteiros .fila-conta').innerText(), /de todos os redatores/);
   assert.equal(await p.locator('.aviso-meus').count(), 0, 'sem o aviso do e-mail não ligado');
   const todos = await claquetes(p);
-  for (const c of ['CHEF(FUT) SP', 'FESTIVAL(VER) REDE', 'NOVELA7(CAP) SP']) assert.ok(todos.includes(c), `de todos: ${c} em ${todos.join(', ')}`);
+  for (const c of ['CHEF_FUTURO SP', 'FESTIVAL_VER REDE', 'NOVELA7_CAP SP']) assert.ok(todos.includes(c), `de todos: ${c} em ${todos.join(', ')}`);
   // de todos, cada roteiro diz também quem é o redator
-  assert.match(await fichaDe(p, 'FESTIVAL(VER) REDE').locator('.ficha-de').innerText(), /^redator: Marina Teles · edição: Caio Brandão$/);
+  assert.match(await fichaDe(p, 'FESTIVAL_VER REDE').locator('.ficha-de').innerText(), /^redator: Marina Teles · edição: Caio Brandão$/);
   // o filtro "de quem": de todos, com quantos, e cada redator (o nome do cadastro, também para "Caio Brandao")
   assert.match(await p.locator('.de-quem').innerText(), /de\s+todos/);
   await p.locator('.de-quem').click();
@@ -619,14 +624,14 @@ async function administradora(navegador, url) {
   await capturar(p, '16-de-quem-aberto-claro');
   await p.keyboard.press('Escape');
   await escolherDeQuem(p, 'Marina Teles');
-  assert.deepEqual(await claquetes(p), ['FESTIVAL(VER) REDE']);
+  assert.deepEqual(await claquetes(p), ['FESTIVAL_VER REDE']);
   assert.match(await p.locator('.meus-roteiros .fila-conta').innerText(), /redator: Marina Teles/);
   assert.match(await p.locator('.de-quem').innerText(), /de\s+Marina Teles/);
   // na lista de uma pessoa, a ficha volta a mostrar só a edição
-  assert.equal((await fichaDe(p, 'FESTIVAL(VER) REDE').locator('.ficha-de').innerText()).trim(), 'edição: Caio Brandão');
+  assert.equal((await fichaDe(p, 'FESTIVAL_VER REDE').locator('.ficha-de').innerText()).trim(), 'edição: Caio Brandão');
   // o roteiro aberto navega na lista filtrada
-  await fichaDe(p, 'FESTIVAL(VER) REDE').click();
-  await p.locator('.aberto-claquete', { hasText: 'FESTIVAL(VER) REDE' }).waitFor();
+  await fichaDe(p, 'FESTIVAL_VER REDE').click();
+  await p.locator('.aberto-claquete', { hasText: 'FESTIVAL_VER REDE' }).waitFor();
   assert.equal(await p.locator('button[aria-label="Próximo roteiro"]').isDisabled(), true, 'só um roteiro da Marina');
   await p.locator('.aberto-voltar').click();
   await p.locator('.meus-roteiros .ficha').first().waitFor();
@@ -638,17 +643,18 @@ async function administradora(navegador, url) {
   await p.locator('.meus-roteiros .ficha').first().waitFor();
   assert.match(await p.locator('.meus-roteiros .fila-conta').innerText(), /de todos os editores/);
   await escolherDeQuem(p, 'Bruno Regis');
-  for (const c of await claquetes(p)) assert.ok(c !== 'FESTIVAL(VER) REDE', 'o Festival é do Caio, não do Bruno');
+  for (const c of await claquetes(p)) assert.ok(c !== 'FESTIVAL_VER REDE', 'o Festival é do Caio, não do Bruno');
   console.log('ok: a administradora vê os roteiros de todos no Redator e no Editor, com o filtro "de quem"');
 
-  // "De todo mundo" no topo, em todas as áreas: leva à Pauta da edição
-  const grupo = p.locator('.barra-topo nav.de-todo-mundo');
-  assert.equal((await grupo.getAttribute('aria-label')), 'De todo mundo');
-  assert.ok(await grupo.locator('.topo-pauta').isVisible(), 'a Pauta no grupo, no Editor');
+  // os caminhos do topo, em todas as áreas: levam à Pauta da edição; o "De todo mundo" saiu (#156)
+  const grupo = p.locator('.barra-topo nav.caminhos-do-topo');
+  assert.equal((await grupo.getAttribute('aria-label')), 'Caminhos');
+  assert.ok(await grupo.locator('.topo-pauta').isVisible(), 'a Pauta nos caminhos, no Editor');
+  assert.equal(await p.locator('.barra-topo', { hasText: /de todo mundo/i }).count(), 0, 'sem o "De todo mundo"');
   await escolherArea(p, 'Designer');
   await p.locator('.biblioteca.fila').waitFor();
-  assert.ok(await p.locator('.barra-topo nav.de-todo-mundo .topo-pauta').isVisible(), 'a Pauta no grupo, na Designer');
-  await capturar(p, '17-de-todo-mundo-claro');
+  assert.ok(await p.locator('.barra-topo nav.caminhos-do-topo .topo-pauta').isVisible(), 'a Pauta nos caminhos, na Designer');
+  await capturar(p, '17-caminhos-do-topo-claro');
 
   // o menu do perfil: as áreas, administrador e, fora das áreas, Cadastros e Configuração
   await p.locator('.perfil-botao').click();
@@ -664,13 +670,13 @@ async function administradora(navegador, url) {
   await p.locator('.pagina.cadastros').waitFor();
   assert.match(hashDe(p), /^#\/cadastros/);
   await p.goto(`${url}#/redator`);
-  await p.locator('.barra-topo nav.de-todo-mundo .topo-pauta').click();
+  await p.locator('.barra-topo nav.caminhos-do-topo .topo-pauta').click();
   await p.locator('.pagina.pauta').waitFor();
   assert.equal(hashDe(p), '#/pauta');
   assert.deepEqual(erros, [], 'administradora: erros na página');
   assert.deepEqual(aoTrello, [], 'nada é lido do Trello');
   await ctx.close();
-  console.log('ok: Cadastros e Configuração no menu do perfil, fora das áreas; "De todo mundo" leva à Pauta');
+  console.log('ok: Cadastros e Configuração no menu do perfil, fora das áreas; os caminhos do topo levam à Pauta');
 }
 
 async function soOsSeus(navegador, url) {
@@ -679,7 +685,7 @@ async function soOsSeus(navegador, url) {
   await p.locator('.meus-roteiros .ficha').first().waitFor();
   assert.equal((await p.locator('.meus-roteiros h2').innerText()).trim(), 'Meus roteiros');
   assert.equal(await p.locator('.de-quem').count(), 0, 'sem o filtro "de quem"');
-  assert.ok(await p.locator('.barra-topo nav.de-todo-mundo .topo-pauta').isVisible());
+  assert.ok(await p.locator('.barra-topo nav.caminhos-do-topo .topo-pauta').isVisible());
   await p.locator('.perfil-botao').click();
   assert.deepEqual(await p.locator('.perfil-areas span').allInnerTexts(), ['Designer', 'Redator', 'Editor']);
   assert.equal(await p.locator('.perfil-painel .perfil-link', { hasText: 'Configuração' }).count(), 0);
@@ -699,7 +705,7 @@ async function administradoraNoCelular(navegador, url) {
   await semRolagemDeLado(p, 'filtro de quem no celular');
   await capturar(p, '19-de-quem-no-celular-escuro');
   await p.keyboard.press('Escape');
-  assert.equal(await p.locator('.de-todo-mundo-rotulo').isVisible(), false, 'no celular, só o ícone da Pauta');
+  assert.equal(await p.locator('.barra-topo .topo-pauta span').isVisible(), false, 'no celular, só o ícone da Pauta');
   await p.locator('.perfil-botao').click();
   await p.locator('.perfil-fora').waitFor();
   await semRolagemDeLado(p, 'perfil no celular');
@@ -712,7 +718,7 @@ async function administradoraNoCelular(navegador, url) {
 async function areasNoCelular(navegador, url) {
   const { ctx, p, erros } = await entrar(navegador, url, '#/redator', MARIANA, { ...devices['iPhone 13'], colorScheme: 'dark' });
   await p.locator('.meus-roteiros .ficha').first().waitFor();
-  assert.deepEqual(await claquetes(p), ['FESTIVAL(VER) REDE'], 'a Mariana, ligada pelo "É", é a redatora Marina Teles');
+  assert.deepEqual(await claquetes(p), ['FESTIVAL_VER REDE'], 'a Mariana, ligada pelo "É", é a redatora Marina Teles');
   await semRolagemDeLado(p, 'áreas no celular');
   await capturar(p, '06-meus-roteiros-no-celular-escuro');
   await p.locator('.seletor-area').click();
@@ -725,6 +731,76 @@ async function areasNoCelular(navegador, url) {
   assert.deepEqual(erros, [], 'celular: erros na página');
   await ctx.close();
   console.log('ok: no celular, "meus roteiros" cabe na tela e o seletor troca de área');
+}
+
+/* ---------- os caminhos do topo (#156) ---------- */
+
+/** O topo da Designer com a aba Filmes ligada e a lista das prévias de mentira (`pendente`: uma ainda não toda enviada). */
+async function comFilmes(navegador, url, opcoes, estado) {
+  const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
+  await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+  await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+  // a aba Filmes ligada (o servidor do teste não tem a leitura): o resto do /api/eu é o de verdade
+  await ctx.route((u) => u.pathname === '/api/eu', async (r) => r.fulfill({ json: { ...(await (await r.fetch()).json()), filmes: true } }));
+  await ctx.route((u) => u.pathname === '/api/filmes/previas', (r) =>
+    r.fulfill({ json: [{ id: 'previaficticia1', nome: 'previa_ficticia.pdf', por: 'Lia', criada: new Date().toISOString(), paginas: 4, diasParaApagar: estado.pendente ? null : 30, pessoas: [] }] }),
+  );
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto(`${url}#/designer`);
+  await p.locator('.barra-topo nav.caminhos-do-topo .topo-filmes').waitFor();
+  return { ctx, p, erros };
+}
+
+async function caminhosDoTopo(navegador, url) {
+  for (const [onde, opcoes] of [['computador', { viewport: { width: 1440, height: 900 } }], ['celular', { ...devices['iPhone 13'] }]])
+    for (const tema of ['light', 'dark']) {
+      const estado = { pendente: true };
+      const { ctx, p, erros } = await comFilmes(navegador, url, { ...opcoes, colorScheme: tema }, estado);
+      const nav = p.locator('.barra-topo nav.caminhos-do-topo');
+      const nomes = await nav.locator('a').evaluateAll((as) => as.map((a) => a.querySelector('span').textContent));
+      assert.deepEqual(nomes.slice(0, 3), ['Produções', 'Filmes', 'Pauta da edição'], `${onde}: Produções · Filmes · Pauta da edição`);
+      // uma bolinha entre cada dois caminhos; a de depois de Filmes é a dele
+      const filhos = await nav.evaluate((n) => [...n.children].map((e) => (e.tagName === 'A' ? e.className : `• ${e.className}`)));
+      assert.deepEqual(filhos.slice(0, 5), ['topo-producoes', '• caminho-bolinha', 'topo-filmes', '• caminho-bolinha de-filmes revisar', 'topo-pauta'], `${onde}: as bolinhas entre os caminhos`);
+      assert.equal(await p.locator('.barra-topo', { hasText: /de todo mundo/i }).count(), 0, `${onde}: sem o "De todo mundo"`);
+      assert.equal(await nav.evaluate((n) => getComputedStyle(n).borderLeftWidth), '0px', `${onde}: sem a linha vertical`);
+      const bolinha = nav.locator('.caminho-bolinha.de-filmes');
+      const cor = () => bolinha.evaluate((e) => getComputedStyle(e).backgroundColor);
+      const laranja = await p.evaluate(() => {
+        const e = document.createElement('i');
+        e.style.color = 'var(--ultra)';
+        document.body.append(e);
+        const c = getComputedStyle(e).color;
+        e.remove();
+        return c;
+      });
+      // a cor troca com uma transição curta: espera ela terminar
+      await p.waitForFunction((c) => getComputedStyle(document.querySelector('.caminho-bolinha.de-filmes')).backgroundColor === c, laranja, { timeout: 3000 }).catch(() => {});
+      assert.equal(await cor(), laranja, `${onde}, ${tema}: com filme para revisar, a bolinha é laranja`);
+      assert.equal(await nav.locator('.topo-filmes').getAttribute('aria-label'), 'Filmes, com filme para revisar');
+      if (onde === 'celular') {
+        assert.equal(await nav.locator('.topo-filmes span').isVisible(), false, 'no celular, só o ícone');
+        await semRolagemDeLado(p, 'caminhos no celular');
+      }
+      await capturar(p, `21-caminhos-${onde}-${tema === 'light' ? 'claro' : 'escuro'}-revisar`);
+      // a prévia toda enviada: na próxima pergunta (a página recarrega), a bolinha volta a ser neutra
+      estado.pendente = false;
+      await p.reload();
+      await nav.locator('.topo-filmes').waitFor();
+      await p.waitForFunction(() => !document.querySelector('.caminho-bolinha.revisar'));
+      await p.waitForTimeout(400);
+      assert.notEqual(await cor(), laranja, `${onde}, ${tema}: sem filme para revisar, a bolinha é neutra`);
+      assert.equal(await nav.locator('.topo-filmes').getAttribute('aria-label'), 'Filmes');
+      await capturar(p, `22-caminhos-${onde}-${tema === 'light' ? 'claro' : 'escuro'}-neutra`);
+      // Filmes leva à aba Filmes
+      await nav.locator('.topo-filmes').click();
+      await p.waitForFunction(() => location.hash === '#/filmes');
+      assert.deepEqual(erros, [], `${onde}, ${tema}: erros na página`);
+      await ctx.close();
+    }
+  console.log('ok: o topo da Designer é "Produções · Filmes · Pauta da edição", com a bolinha de Filmes laranja só quando há filme para revisar');
 }
 
 async function principal() {
@@ -750,6 +826,7 @@ async function principal() {
     await soOsSeus(navegador, s.url);
     await administradoraNoCelular(navegador, s.url);
     await areasNoCelular(navegador, s.url);
+    await caminhosDoTopo(navegador, s.url);
     assert.ok(pedidosAoTeable.every((x) => /^(GET|PATCH) /.test(x)), 'no Teable, só leitura e o e-mail');
   } finally {
     await navegador.close();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { agruparPorDia, artesParaMostrar, claqueteParaMostrar, filaVisivel, pendentes, proximoParaRevisar } from '../src/ui/fila';
-import { herdarTipos, manterAsDuas, substituirVersao } from '../src/modelo/versoes';
+import { herdarTipos, manterAsDuas, substituirVersao, versaoDoRoteiro } from '../src/modelo/versoes';
 import { dataDaClaquete } from '../src/modelo/vocabularios';
 import { reconhecerPraca as pracaDaClaquete } from '../src/modelo/pracas';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
@@ -109,6 +109,21 @@ describe('versão nova de um roteiro', () => {
   it('substituir: sem marcas na anterior, a nova fica sem marcas', () => {
     const { roteiro: r } = substituirVersao(roteiro('n', [['HOJE', '']], { substitui: 'a' }), roteiro('a', [['HOJE', '']]));
     expect([r.meta.jaExiste, r.meta.naoProduzir, r.meta.produzir, r.meta.complexidade]).toEqual([undefined, undefined, undefined, undefined]);
+  });
+
+  it('a versão do roteiro (#156): V1 sem nada, V2 na resposta "é v2", a guardada valendo sobre as duas', () => {
+    expect(versaoDoRoteiro(metaVazia())).toBe(1);
+    expect(versaoDoRoteiro({ v2De: { card: 'c', url: 'u' } })).toBe(2);
+    expect(versaoDoRoteiro({ versao: 3, v2De: { card: 'c', url: 'u' } })).toBe(3);
+  });
+
+  it('substituir: a nova fica com a versão seguinte à da anterior (#156)', () => {
+    const v2 = substituirVersao(roteiro('n', [['HOJE', '']], { substitui: 'a' }), roteiro('a', [['HOJE', '']])).roteiro;
+    expect(versaoDoRoteiro(v2.meta)).toBe(2);
+    const v3 = substituirVersao(roteiro('m', [['HOJE', '']], { substitui: 'n' }), v2).roteiro;
+    expect(v3.meta.versao).toBe(3);
+    // a anterior que respondeu "é v2" já é a V2: a nova é a V3
+    expect(substituirVersao(roteiro('n', [['HOJE', '']], { substitui: 'a' }), roteiro('a', [['HOJE', '']], { v2De: { card: 'c', url: 'u' } })).roteiro.meta.versao).toBe(3);
   });
 
   it('manter as duas: a nova só perde a pergunta', () => {

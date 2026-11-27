@@ -1,7 +1,7 @@
 /* O andamento da prévia na entrada do celular (#80): o que a ficha de cada prévia conta e o estado de cada página
    na subida, do navegador (preparando, subindo) ao servidor (na fila, lendo, lida). A subida é a mesma do computador
    (preparar.ts): aqui só se junta o que esta tela está mandando com o que o servidor diz de cada página. */
-import type { FilmeLido, PaginaDaPrevia } from '../dados/armazenamento';
+import type { FilmeLido, PaginaDaPrevia, PreviaNaLista } from '../dados/armazenamento';
 
 export interface AndamentoDaPrevia {
   lidas: number;
@@ -36,6 +36,10 @@ export function andamentoDaPrevia(paginas: PaginaDaPrevia[]): AndamentoDaPrevia 
   }
   return a;
 }
+
+/** Há filme esperando revisão na aba Filmes (#156): alguma prévia da lista ainda não está toda enviada (o servidor diz
+    `diasParaApagar` null enquanto falta ler uma página, responder um ! ou enviar um ✓). A prévia sem página não conta. */
+export const haFilmeParaRevisar = (previas: readonly Pick<PreviaNaLista, 'paginas' | 'diasParaApagar'>[]) => previas.some((p) => p.paginas > 0 && p.diasParaApagar === null);
 
 /** Onde está a página que esta tela está subindo: sendo preparada, subindo ou já entregue ao servidor. */
 export type PassoNoNavegador = 'preparando' | 'subindo' | 'subiu';

@@ -61,11 +61,16 @@ function herdarMarcas(nova: Roteiro, anterior: Roteiro): Marcas {
   };
 }
 
+/** A versão do roteiro (#156): a guardada (a versão nova que substituiu a anterior na fila), senão a V2 do roteiro que
+    respondeu "é v2" (atualiza o card que já estava na produção da arte), senão a V1. */
+export const versaoDoRoteiro = (meta: Pick<Meta, 'versao' | 'v2De'>): number => Math.max(meta.versao ?? 1, meta.v2De ? 2 : 1);
+
 /** "Substituir a anterior": fica a nova, sem a pergunta, com o trabalho já feito na anterior (os tipos e as
- *  observações das artes, o editor e as marcas da revisão). As pendências são recalculadas. */
+ *  observações das artes, o editor e as marcas da revisão) e a versão seguinte à dela. As pendências são recalculadas. */
 export function substituirVersao(nova: Roteiro, anterior: Roteiro): { roteiro: Roteiro; herdadas: number } {
   const { doc, herdadas } = herdarTipos(nova.doc, anterior.doc);
-  const roteiro: Roteiro = { ...nova, doc, meta: { ...nova.meta, ...herdarMarcas(nova, anterior), substitui: undefined, editor: nova.meta.editor || anterior.meta.editor } };
+  const versao = Math.max(versaoDoRoteiro(nova.meta), versaoDoRoteiro(anterior.meta) + 1);
+  const roteiro: Roteiro = { ...nova, doc, meta: { ...nova.meta, ...herdarMarcas(nova, anterior), substitui: undefined, editor: nova.meta.editor || anterior.meta.editor, versao } };
   roteiro.meta.revisar = pendencias(exportar(roteiro));
   return { roteiro, herdadas };
 }

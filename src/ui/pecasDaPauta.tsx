@@ -277,13 +277,12 @@ export function horaEscrita(iso: string) {
   return dia === diaEmSaoPaulo() ? hora : `${hora} de ${Number(dia.slice(8))}/${dia.slice(5, 7)}`;
 }
 
-/** "Todas", "Só as minhas" (quem tem o cadastro de editor ligado ao e-mail) e "Com arte minha" (quem é designer). Só
-    aparece para quem tem pelo menos um dos dois. */
+/** "Todas" e "Só as minhas" (quem tem o cadastro de editor ligado ao e-mail). Só aparece para quem é editor: o "Com arte
+    minha" do designer saiu da tela (#156). */
 export function FiltroDaPautaTela({ voce, filtro, mudar }: { voce: LeituraDaPauta['voce'] | undefined; filtro: FiltroDaPauta | null; mudar: (f: FiltroDaPauta | null) => void }) {
   const opcoes: { id: FiltroDaPauta | null; nome: string; dica: string }[] = [
     { id: null, nome: 'Todas', dica: 'A pauta inteira' },
     ...(voce?.editor ? [{ id: 'minhas' as const, nome: 'Só as minhas', dica: `Só as linhas de ${voce.editor}` }] : []),
-    ...(voce?.designer ? [{ id: 'arte' as const, nome: 'Com arte minha', dica: `Só as claquetes em que ${voce.designer} está na produção da arte` }] : []),
   ];
   if (opcoes.length < 2) return null;
   return (

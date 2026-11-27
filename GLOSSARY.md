@@ -18,8 +18,10 @@ Produções dela, de todas as praças, e para as linhas da pauta. O roteiro que 
 Dado por qualquer pessoa logada. Vale só dentro do PROMeiro: o Trello e o Teable continuam com a claquete original,
 que aparece ao passar o mouse e na ficha, com "voltar ao original". As versões ficam no apelido como dado, com a
 origem: o valor inicial é o código no fim do nome (o do apelido ou, sem código nele, o da claquete) ou, se o nome não
-tem código, as **versões lidas** do roteiro; editadas à mão (na ficha da revisão, no editor, na ficha da Pauta e na
-Produção aberta da tela de produções), valem sobre as duas leituras, e "voltar ao inicial" as tira. O apelido pode ter
+tem código, as **versões lidas** do roteiro; editadas à mão, valem sobre as duas leituras, e "voltar ao inicial" as
+tira. Editar as versões à mão ("dar as versões") está escondido em todas as telas até a coordenação esclarecer o
+assunto; as já guardadas continuam valendo. No card da agenda, o apelido se dá pelo **lápis** ao lado da claquete (com
+o mouse; no celular, sempre, no card aberto) e pelo menu do clique direito, sem o link de texto. O apelido pode ter
 só as versões, sem nome novo (a claquete sem código e sem versão no roteiro, ou sem roteiro, recebe as dela assim).
 Os apelidos de antes, guardados por roteiro, passaram para a chave da claquete do roteiro; dois na mesma claquete,
 ficou o mais recente, e o outro foi para o log.
@@ -28,6 +30,13 @@ _Evitar_: alias, nome novo, key (a key é da atração)
 **Roteiro**:
 O texto que chega (Word, RTF, PDF ou colado) com a claquete, o redator, a data e as artes sublinhadas.
 _Evitar_: script, documento
+
+**Versão do roteiro** (V1, V2…):
+Quantas vezes o roteiro da claquete chegou: a **versão nova** que substitui a anterior na fila fica com a versão
+seguinte à dela, e o roteiro respondido "é v2" (o que atualiza o card que já estava na produção da arte) é a V2; o
+resto é a V1. O card aberto da agenda sempre diz a versão; a claquete do card só a mostra da V2 em diante. Não é a
+**versão da chamada** (o código "(AH)" no fim do nome).
+_Evitar_: revisão, histórico de versões (o que o editor guarda a cada mudança)
 
 **Arte**:
 Um trecho sublinhado do roteiro que vira uma peça a produzir (cartão, rodapé, lettering…), com um ou mais tipos.
@@ -597,10 +606,11 @@ logo, como o caminho **"PROMeiro / designer ▾"** (o **seletor de área**), que
 tem o seu endereço; a raiz abre a última usada. No Redator e no Editor, a pessoa escolhe no topo da lista a
 **exibição** de "meus roteiros": **por dia** (pela data de exibição), **quadro** (uma coluna por estado do ciclo) ou
 **por estado** (uma lista agrupada, boa no celular), lembrada por pessoa e por área. O administrador vê no Redator e no
-Editor os roteiros **de todos**, com o filtro **"de quem"** (uma pessoa, pelo nome do cadastro). O que não é de uma área
-só fica no grupo **De todo mundo**, na linha do logo, igual em todas (hoje, a Pauta da edição); Cadastros e
-Configuração ficam no menu do perfil, **fora das áreas**.
-_Evitar_: perfil, papel, permissão
+Editor os roteiros **de todos**, com o filtro **"de quem"** (uma pessoa, pelo nome do cadastro). Na linha do logo, os
+**caminhos do topo**, separados por bolinhas: na Designer, **Produções · Filmes · Pauta da edição** (a bolinha de
+depois de Filmes fica laranja quando há filme esperando revisão na aba Filmes); no Redator e no Editor, a Pauta da
+edição. Cadastros e Configuração ficam no menu do perfil, **fora das áreas**.
+_Evitar_: perfil, papel, permissão, De todo mundo (o grupo que virou os caminhos do topo)
 
 **Ciclo do roteiro**:
 O estado de um roteiro do ponto de vista de quem escreve ou edita, num ciclo único: Escrevendo → Em aprovação →

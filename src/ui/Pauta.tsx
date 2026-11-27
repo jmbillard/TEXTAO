@@ -21,8 +21,8 @@ import './pauta.css';
    A Semana tem um segundo arranjo (#98), um dia por coluna: em cada dia, os cards agrupados pelo período do turno
    (manhã, tarde, noite, madrugada), cada card com o editor e, no primeiro dele, o ⚑ dos avisos. A visão e o arranjo de
    cada uma ficam lembrados por pessoa, em qualquer aparelho.
-   O #99: o filtro "Só as minhas" (o editor ligado ao e-mail) e "Com arte minha" (o designer), que vale nas duas
-   visões enquanto a página está aberta; o resumo discreto do administrador; a cópia de reserva quando o banco do
+   O #99: o filtro "Só as minhas" (o editor ligado ao e-mail; o "Com arte minha" do designer saiu da tela no #156), que
+   vale nas duas visões enquanto a página está aberta; o resumo discreto do administrador; a cópia de reserva quando o banco do
    Teable não responde, com a hora dela; e a releitura a cada minuto. */
 
 interface Props extends EnderecoDaPauta {
