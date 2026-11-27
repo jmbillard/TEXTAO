@@ -393,14 +393,14 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   };
   const levar = (id: string, posicao: string, antesDe: string | null) => {
     const item = listaDoDia.find((d) => d.id === id);
-    if (!item) return;
-    void naColuna((ps) => acrescentarDemanda(ps, posicao, { id: item.id, texto: item.texto }, antesDe), (l) => l.filter((d) => d.id !== id), (dia) => levarParaAPosicao(dia, id, posicao, antesDe));
+    if (!item) return Promise.resolve(false);
+    return naColuna((ps) => acrescentarDemanda(ps, posicao, { id: item.id, texto: item.texto }, antesDe), (l) => l.filter((d) => d.id !== id), (dia) => levarParaAPosicao(dia, id, posicao, antesDe));
   };
-  const mover = (id: string, posicao: string, antesDe: string | null) => void naColuna((ps) => moverDemanda(ps, id, posicao, antesDe), null, (dia) => moverADemanda(dia, id, posicao, antesDe));
+  const mover = (id: string, posicao: string, antesDe: string | null) => naColuna((ps) => moverDemanda(ps, id, posicao, antesDe), null, (dia) => moverADemanda(dia, id, posicao, antesDe));
   const devolver = (id: string) => {
     const tirada = tirarDemanda(posicoesAgora.current, id);
-    if (!tirada) return;
-    void naColuna((ps) => tirarDemanda(ps, id)?.posicoes ?? null, (l) => [...l, { id, texto: tirada.demanda.texto, deQuem: tirada.de }], (dia) => devolverADemanda(dia, id));
+    if (!tirada) return Promise.resolve(false);
+    return naColuna((ps) => tirarDemanda(ps, id)?.posicoes ?? null, (l) => [...l, { id, texto: tirada.demanda.texto, deQuem: tirada.de }], (dia) => devolverADemanda(dia, id));
   };
   const tirarDaLista = (id: string) => void naColuna(null, (l) => l.filter((d) => d.id !== id), (dia) => jaDistribuida(dia, id).then(() => lerRascunhoDoDia(dia)));
   const juntar = (texto: string) => naColuna(null, null, (dia) => juntarParaDistribuir(dia, texto));
@@ -435,9 +435,9 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     (item, lugar) => (item.tipo === 'pessoa' ? lugar.tipo !== 'lista' : item.tipo === 'lista' ? lugar.tipo === 'posicao' : lugar.tipo === 'lista' || (lugar.tipo === 'posicao' && lugar.antesDe !== item.id)),
     (item: ItemArrastado, lugar: LugarDeSoltar) => {
       if (item.tipo === 'pessoa') escalar(item.id, lugar.tipo === 'turno' ? { turno: lugar.id } : { posicao: lugar.id });
-      else if (item.tipo === 'lista') levar(item.id, lugar.id, lugar.antesDe);
-      else if (lugar.tipo === 'lista') devolver(item.id);
-      else mover(item.id, lugar.id, lugar.antesDe);
+      else if (item.tipo === 'lista') void levar(item.id, lugar.id, lugar.antesDe);
+      else if (lugar.tipo === 'lista') void devolver(item.id);
+      else void mover(item.id, lugar.id, lugar.antesDe);
     },
   );
   /** Os destinos de uma demanda: as posições do dia, por turno (sem a dela) e, para a demanda, a volta à lista. */
@@ -471,13 +471,15 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     const texto = item?.texto ?? posicoesAgora.current.flatMap((p) => p.demandas).find((x) => x.id === id)?.texto ?? '';
     const alvo = posicoesAgora.current.find((p) => p.id === d.id);
     const para = d.tipo === 'lista' ? 'Para distribuir' : alvo?.editor.trim() || 'a vaga';
-    if (tipo === 'lista') levar(id, d.id, null);
-    else if (d.tipo === 'lista') devolver(id);
-    else mover(id, d.id, null);
     const de = item ? { lista: item.deQuem } : lugar;
-    if (!de || !texto.trim()) return;
-    setMovida({ dia: dados.dia, id, texto: texto.trim(), para, de });
-    setDistribuicao((x) => x && { ...x, caixinha: false });
+    const dia = dados.dia;
+    const feito = tipo === 'lista' ? levar(id, d.id, null) : d.tipo === 'lista' ? devolver(id) : mover(id, d.id, null);
+    // a caixinha só depois de o servidor gravar: se não deu, não há o que desfazer
+    void feito.then((ok) => {
+      if (!ok || !de || !texto.trim()) return;
+      setMovida({ dia, id, texto: texto.trim(), para, de });
+      setDistribuicao((x) => x && { ...x, caixinha: false });
+    });
   };
   /** Desfazer o "Mover para…" (#163): a claquete volta para onde estava (a lista, no fim, com de quem era). */
   const desfazerAMovida = () => {
@@ -485,8 +487,8 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     const { id, texto, de } = movida;
     setMovida(null);
     if ('lista' in de) void naColuna((ps) => tirarDemanda(ps, id)?.posicoes ?? null, (l) => [...l, { id, texto, deQuem: de.lista }], (dia) => desfazerADistribuicao(dia, [{ id, deQuem: de.lista }]));
-    else if (listaDoDia.some((x) => x.id === id)) levar(id, de.posicao, de.antesDe);
-    else mover(id, de.posicao, de.antesDe);
+    else if (listaDoDia.some((x) => x.id === id)) void levar(id, de.posicao, de.antesDe);
+    else void mover(id, de.posicao, de.antesDe);
   };
   // só com o "Fora" deste dia lido: antes disso, quem está fora apareceria como sem escala (e daria para escalar)
   const foraNoDia = dados && fora?.dia === dados.dia ? fora.nomes : null;
@@ -727,30 +729,14 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
               );
             })}
             {movida && movida.dia === atual.dia && (
-              <div className="desfazer montar-movida" role="status">
-                <span>
-                  <b>{movida.texto}</b> foi para {movida.para}
-                </span>
-                <button type="button" className="botao-texto" onClick={desfazerAMovida}>
-                  Desfazer
-                </button>
-                <button type="button" className="botao-texto" aria-label="Fechar" onClick={() => setMovida(null)}>
-                  ×
-                </button>
-              </div>
+              <CaixinhaDoDesfazer className="montar-movida" desfazer={desfazerAMovida} fechar={() => setMovida(null)}>
+                <b>{movida.texto}</b> foi para {movida.para}
+              </CaixinhaDoDesfazer>
             )}
             {distribuicao?.caixinha && distribuicao.dia === atual.dia && (
-              <div className="desfazer" role="status">
-                <span>
-                  <b>{distribuicao.itens.length}</b> {distribuicao.itens.length === 1 ? 'claquete distribuída' : 'claquetes distribuídas'} · confira e arraste o que quiser
-                </span>
-                <button type="button" className="botao-texto" onClick={desfazerADistribuicaoDoDia}>
-                  Desfazer
-                </button>
-                <button type="button" className="botao-texto" aria-label="Fechar" onClick={() => setDistribuicao((x) => x && { ...x, caixinha: false })}>
-                  ×
-                </button>
-              </div>
+              <CaixinhaDoDesfazer desfazer={desfazerADistribuicaoDoDia} fechar={() => setDistribuicao((x) => x && { ...x, caixinha: false })}>
+                <b>{distribuicao.itens.length}</b> {distribuicao.itens.length === 1 ? 'claquete distribuída' : 'claquetes distribuídas'} · confira e arraste o que quiser
+              </CaixinhaDoDesfazer>
             )}
             <p className="montar-teclas">
               <span><kbd>Tab</kbd> próximo campo</span>
@@ -771,6 +757,21 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
 }
 
 /** O recado do dia (#125): um aviso para todos naquele dia, sem posição, num campo próprio acima da grade. */
+/** A caixinha embaixo da tela, com o Desfazer e o fechar: a do Distribuir (#151) e a do "Mover para…" (#163). */
+function CaixinhaDoDesfazer({ className = '', desfazer, fechar, children }: { className?: string; desfazer: () => void; fechar: () => void; children: React.ReactNode }) {
+  return (
+    <div className={`desfazer ${className}`.trim()} role="status">
+      <span>{children}</span>
+      <button type="button" className="botao-texto" onClick={desfazer}>
+        Desfazer
+      </button>
+      <button type="button" className="botao-texto" aria-label="Fechar" onClick={fechar}>
+        ×
+      </button>
+    </div>
+  );
+}
+
 function RecadoDoDia({ texto, mudar }: { texto: string; mudar: (t: string) => void }) {
   return (
     <label className="montar-recado">
