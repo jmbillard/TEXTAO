@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { desfazerAPublicacao, devolverADemanda, escalarNoDia, gravarRascunhoDoDia, jaDistribuida, juntarParaDistribuir, lerRascunhoDoDia, levarParaAPosicao, marcarPendencia, moverADemanda, publicarODia } from '../dados/armazenamento';
+import { desfazerAPublicacao, devolverADemanda, escalarNoDia, gravarRascunhoDoDia, jaDistribuida, juntarParaDistribuir, lerRascunhoDoDia, levarParaAPosicao, marcarAusencia, marcarPendencia, moverADemanda, publicarODia } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
@@ -14,6 +14,7 @@ import { Icone } from './icones';
 import { Marca } from './pecas';
 import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { AusenciasDoDia } from './AusenciasDaPauta';
+import { ColarDaPlanilha, type ColadoParaAplicar } from './ColarDaPlanilha';
 import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
 import './pauta.css';
 import './montarPauta.css';
@@ -36,7 +37,9 @@ import './montarPauta.css';
    posição nem fora) e "Fora" (as ausências do dia). Arrasta-se a claquete da lista para uma posição, a demanda de uma
    posição para outra (ou de volta para a lista) e a pessoa para uma posição ou para um turno (uma posição nova); no
    celular e pelo teclado, o "Mover para…" e o "Escalar na…". Cada uma dessas ações vai ao servidor, que grava o dia;
-   a tela já mostra o resultado antes da resposta e fica com o que o servidor gravou. */
+   a tela já mostra o resultado antes da resposta e fica com o que o servidor gravou.
+   Colar da planilha (#130): o "⎘ Colar da planilha" abre o diálogo (ColarDaPlanilha.tsx); aplicar troca (ou junta)
+   as posições do rascunho, grava, marca as ausências lidas e lê o dia de novo. */
 
 interface Props {
   /** o dia (AAAA-MM-DD); '' é amanhã */
@@ -89,6 +92,10 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   // a coluna lateral (#126): quem está fora no dia (da caixa "Fora") e o erro da última ação dela
   const [foraNoDia, setForaNoDia] = useState<string[]>([]);
   const [erroDaColuna, setErroDaColuna] = useState('');
+  // colar da planilha (#130): o diálogo aberto, o que foi aplicado e a releitura da caixa "Fora" depois de marcar
+  const [colando, setColando] = useState(false);
+  const [colado, setColado] = useState('');
+  const [leituraDoFora, setLeituraDoFora] = useState(0);
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
   const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[]; recado: string } | null>(null);
@@ -301,6 +308,22 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   };
   const pessoasSemEscala = semEscala(editores, posicoes, foraNoDia);
 
+  /** Aplica o colado: as posições vão para o rascunho (gravado na hora), as ausências são marcadas e o dia é lido de novo. */
+  const aplicarOColado = async (r: ColadoParaAplicar) => {
+    if (!dados) return;
+    const dia = dados.dia;
+    posicoesAgora.current = r.posicoes.map(comLinha);
+    setPosicoes(posicoesAgora.current);
+    gravarDepois(dia, true);
+    await gravarAgora();
+    if (pendente.current) throw new Error('Não consegui gravar o rascunho; nada foi marcado.');
+    for (const a of r.ausencias) await marcarAusencia(dia, a);
+    setColando(false);
+    setColado(`Colado da planilha: ${r.resumo}.`);
+    setLeituraDoFora((n) => n + 1);
+    carregar();
+  };
+
   // ← e → trocam de semana, fora dos campos
   const segunda = dados?.semana[0]?.dia ?? '';
   useEffect(() => {
@@ -408,11 +431,18 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
               </p>
             )}
           </div>
-          {atual && posicoes.length > 0 && (
-            <button type="button" className="botao primario" onClick={() => void conferir()}>
-              Conferir e publicar →
-            </button>
-          )}
+          <div className="montar-acoes">
+            {atual && (
+              <button type="button" className="botao" onClick={() => (setColado(''), setColando(true))}>
+                ⎘ Colar da planilha
+              </button>
+            )}
+            {atual && posicoes.length > 0 && (
+              <button type="button" className="botao primario" onClick={() => void conferir()}>
+                Conferir e publicar →
+              </button>
+            )}
+          </div>
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
         {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
@@ -428,6 +458,15 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
         ) : (
           <>
           <RecadoDoDia texto={recado} mudar={mudarRecado} />
+          {colado && (
+            <p className="colar-feito" role="status">
+              {colado}
+              <button type="button" className="botao-texto" onClick={() => setColado('')}>
+                ok
+              </button>
+            </p>
+          )}
+          {colando && <ColarDaPlanilha dados={atual} posicoes={posicoes} jaFora={foraNoDia} novoId={novoId} fechar={() => setColando(false)} aplicar={aplicarOColado} />}
           <div className={`montar-corpo${arrastado ? ` arrastando-${arrastado.tipo}` : ''}`}>
           {/* a coluna lateral (#126): para distribuir, sem escala e fora (as ausências, #128) */}
           <aside className="montar-coluna" aria-label="Coluna lateral">
@@ -438,7 +477,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
             )}
             <ParaDistribuir dia={atual.dia} itens={listaDoDia} juntar={juntar} tirar={tirarDaLista} destinos={destinosDaDemanda(null, false)} mover={(id, v) => moverPeloMenu('lista', id, v)} arraste={{ iniciar, arrastado, sobre }} />
             <SemEscala pessoas={pessoasSemEscala} destinos={destinosDaPessoa} escalar={escalarPeloMenu} arraste={{ iniciar, arrastado, sobre }} />
-            <AusenciasDoDia dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={setForaNoDia} />
+            <AusenciasDoDia key={leituraDoFora} dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={setForaNoDia} />
           </aside>
           <div className="montar-grade" ref={grade}>
             {!posicoes.length && <p className="montar-vazio">Nada montado para {diaEscrito(atual.dia).split(',')[0]} ainda. Comece por uma posição num turno.</p>}

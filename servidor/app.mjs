@@ -1623,6 +1623,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * leva uma claquete da lista para a posição; /mover { demanda, posicao, antesDe } move a demanda; /devolver
    * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno } escala quem está sem escala
    * (numa posição, ou numa nova do turno), e recusa quem está fora no dia.
+   * O colar da planilha (#130) é lido no navegador; o GET traz as keys de cada editor (`apelidos`) para ele reconhecer
+   * o apelido da planilha, e o aplicar usa o PUT e as ausências.
    */
   async function rotaDeMontarAPauta(req, res, eu, acao = '') {
     const metodos = acao ? ['POST'] : ['GET', 'PUT'];
@@ -1687,6 +1689,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       semana: escala.estados(diasDaSemana(segundaDaSemana(dia))),
       turnos: turnosDoDia(turnos, lido.posicoes),
       editores,
+      // as keys dos editores, para reconhecer o apelido no colar da planilha (#130)
+      apelidos: await areas.apelidosDosEditores(cadastros),
       ilhas: ilhas.todas(),
       costume: ilhas.deCostume(dia),
       ocupadas: ilhasOcupadas(lido.posicoes),

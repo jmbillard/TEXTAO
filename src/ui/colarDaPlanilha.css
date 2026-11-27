@@ -1,0 +1,71 @@
+/* Montar a pauta, colar da planilha (#130): o diálogo largo, com o colado à esquerda e o que o PROMeiro entendeu à
+   direita (no celular, um embaixo do outro). Os estados vão em texto, etiqueta ou fundo levemente tingido (nada de
+   faixa colorida na borda). */
+.colar-veu { padding-top: 5vh; }
+.colar-dlg { width: min(1080px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.colar-dlg .aus-dlg-topo { margin-bottom: 0; }
+.colar-ajuda { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--tinta2); }
+.colar-grade { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 14px; min-height: 420px; }
+.colar-texto {
+  width: 100%;
+  min-height: 420px;
+  resize: none;
+  padding: 12px;
+  border: 1px dashed var(--regua-forte);
+  border-radius: 12px;
+  background: var(--cartao);
+  color: var(--tinta2);
+  font: 400 11.5px/1.5 var(--mono);
+  white-space: pre;
+  overflow: auto;
+  outline: 0;
+  tab-size: 14;
+}
+.colar-texto:focus { border-color: var(--ultra); }
+.colar-lido {
+  min-width: 0;
+  max-height: 62vh;
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--regua);
+  border-radius: 12px;
+  background: var(--cartao);
+}
+.colar-nada { margin: 18px 4px; font-size: 13px; color: var(--tinta3); }
+.colar-resumo { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; color: var(--tinta); }
+.colar-resumo b { font-weight: 600; }
+.colar-alerta { margin: 0 0 8px; padding: 6px 10px; border-radius: 8px; background: var(--falta-fundo); color: var(--falta); font-size: 13px; line-height: 1.45; }
+.colar-turno h3 { margin: 12px 0 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta3); }
+.colar-pos { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--regua); }
+.colar-pos-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13.5px; }
+.colar-pos-cab strong { font-weight: 600; }
+.colar-fora { color: var(--falta); font-weight: 500; }
+.colar-onde { font: 500 11.5px var(--mono); color: var(--tinta3); }
+.colar-itens { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.colar-itens span { padding: 1px 7px; border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.colar-claquete { background: var(--neutro); color: var(--tinta2); font: 600 11.5px var(--mono); }
+.colar-tarefa { color: var(--tinta2); font-style: italic; box-shadow: inset 0 0 0 1px var(--regua-forte); }
+.colar-aviso { background: var(--ultra-suave); color: var(--ultra-tinta); font-style: italic; }
+.colar-pergunta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px; background: var(--falta-fundo); font-size: 13px; color: var(--tinta); }
+.colar-opcao {
+  padding: 3px 10px;
+  border: 1px solid var(--regua-forte);
+  border-radius: 999px;
+  background: var(--cartao);
+  color: var(--tinta);
+  font: 500 12.5px var(--sans);
+  cursor: pointer;
+}
+.colar-opcao[aria-pressed='true'] { background: var(--tinta); border-color: var(--tinta); color: var(--papel); }
+.colar-notas { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; }
+.colar-notas li { font-size: 12px; color: var(--tinta3); overflow-wrap: anywhere; }
+.colar-notas li::before { content: '· '; }
+.colar-feito { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--ultra-suave); color: var(--tinta); font-size: 13.5px; }
+
+@media (max-width: 760px) {
+  .colar-veu { padding: 12px; }
+  .colar-dlg { padding: 14px; }
+  .colar-grade { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .colar-texto { min-height: 140px; height: 140px; }
+  .colar-lido { max-height: none; }
+}
