@@ -466,7 +466,10 @@ Quando a atração troca a identidade: as artes do acervo dela deixam de valer (
 A troca de uma grafia antiga pelo padrão nos dados que o PROMeiro não gravou (a pauta da edição, as atrações, o
 acervo), numa tela de manutenção só de administradores: lista as correções "de → para" para conferir, aplica no Teable
 e guarda o valor antigo para desfazer. Na entrada não precisa: o PROMeiro aceita qualquer grafia e grava sempre no
-padrão. Na pauta da edição, é a única escrita do PROMeiro além do **publicar** da coordenação.
+padrão. Na pauta da edição, é a única escrita do PROMeiro além do **publicar** da coordenação, e só na base do
+PROMeiro (a tabela da pauta de outra base só mostra as propostas). A linha que mudou no Teable depois da proposta não é
+gravada ("mudou desde a proposta"). Cada correção aplicada fica no registro (o que era, o que ficou, quem, quando) e
+pode ser desfeita, se a linha não mudou desde então. A correção que daria (M) espera a fórmula nova da key no Teable.
 _Evitar_: normalização, limpeza, saneamento
 
 ## Pauta da edição

@@ -25,7 +25,8 @@ export const tabelaNoPg = (env, nome) => {
 export function envDosModulos(valores, descoberta) {
   const tabelas = {};
   const env = { ...valores };
-  for (const t of descoberta?.tabelas ?? []) if (t.id || t.pg) tabelas[t.nome] = Object.freeze({ id: t.id, pg: t.pg });
+  // o esquema é a base de onde a tabela veio (a correção de grafia só grava na base do PROMeiro, #115)
+  for (const t of descoberta?.tabelas ?? []) if (t.id || t.pg) tabelas[t.nome] = Object.freeze({ id: t.id, pg: t.pg, esquema: t.esquema ?? '' });
   for (const t of TABELAS_DO_TEABLE) if (t.variavel && tabelas[t.nome]?.id) env[t.variavel] = tabelas[t.nome].id;
   if (descoberta?.poster) env.TEABLE_FILMES_POSTER = descoberta.poster;
   env.tabelas = Object.freeze(tabelas);
