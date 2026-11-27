@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apagarAusencia, lerAusencias, marcarAusencia, ondeEstaEscalada, tirarDoDia } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { motivoDaAusencia, nomeDoTipo, temPeriodo, TIPOS_DE_AUSENCIA, type Ausencia, type EscaladaNoDia, type PainelDasAusencias, type TipoDeAusencia } from '../modelo/ausencias';
@@ -21,8 +21,8 @@ interface Props {
   antes: () => Promise<void>;
   /** o servidor mexeu nos rascunhos: a tela lê o dia de novo */
   mudou: () => void;
-  /** quem está fora no dia, a cada leitura (para a caixa "Sem escala") */
-  foraNoDia: (nomes: string[]) => void;
+  /** quem está fora no dia, a cada leitura, com o dia lido (para a caixa "Sem escala") */
+  foraNoDia: (dia: string, nomes: string[]) => void;
 }
 
 type Formulario = Omit<Ausencia, 'id'>;
@@ -43,18 +43,24 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia 
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
-  const ler = useCallback(() => {
-    lerAusencias(dia).then(setPainel, (e) => setErro(erroDe(e)));
-  }, [dia]);
+  // a leitura do dia; a de um dia anterior que chega depois (trocou de dia no meio) é jogada fora
   useEffect(() => {
+    let vivo = true;
     setAviso('');
     setErro('');
-    ler();
-  }, [ler]);
-  const nomesFora = painel?.dia === dia ? painel.fora.map((a) => a.editor).join('\n') : null;
+    lerAusencias(dia).then(
+      (p) => vivo && setPainel(p),
+      (e) => vivo && setErro(erroDe(e)),
+    );
+    return () => {
+      vivo = false;
+    };
+  }, [dia]);
+  const doDia = painel?.dia === dia ? painel : null;
+  const nomesFora = doDia ? doDia.fora.map((a) => a.editor).join('\n') : null;
   useEffect(() => {
-    if (nomesFora !== null) foraNoDia(nomesFora ? nomesFora.split('\n') : []);
-  }, [nomesFora, foraNoDia]);
+    if (nomesFora !== null) foraNoDia(dia, nomesFora ? nomesFora.split('\n') : []);
+  }, [dia, nomesFora, foraNoDia]);
 
   /** Uma ação no servidor: grava o rascunho antes, e depois a tela lê o dia de novo. */
   const fazer = async (f: () => Promise<PainelDasAusencias>, depois?: (p: PainelDasAusencias) => string) => {
@@ -94,15 +100,15 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia 
     if (feito) setForm(null);
   };
 
-  if (!painel) return erro ? <p className="aus-erro" role="alert">{erro}</p> : null;
+  if (!doDia) return erro ? <p className="aus-erro" role="alert">{erro}</p> : null;
   return (
     <section className="coluna-caixa coluna-fora aus-painel" aria-label="Fora">
       <h2 className="coluna-rotulo">
-        Fora no dia <span className="coluna-n">{painel.fora.length}</span>
+        Fora no dia <span className="coluna-n">{doDia.fora.length}</span>
       </h2>
-      {painel.fora.length ? (
+      {doDia.fora.length ? (
         <ul className="aus-fora">
-          {painel.fora.map((a) => (
+          {doDia.fora.map((a) => (
             <li key={a.id} className="aus-pessoa">
               <span className="pauta-avatar" aria-hidden="true">
                 {iniciais(a.editor)}
@@ -130,7 +136,7 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia 
           {erro}
         </p>
       )}
-      {painel.noPublicado.map((o) => (
+      {doDia.noPublicado.map((o) => (
         <div key={`${o.ausencia}:${o.dia}`} className="aus-oferta">
           <span>
             <strong>{o.editor}</strong> está fora, mas está na pauta publicada de {diaCurto(o.dia)} ({o.turnos.map((t) => nomeDoTurno(turnos, t)).join(' e ')}).
@@ -150,7 +156,7 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia 
           dia={dia}
           turnos={turnos}
           editores={editores}
-          marcadas={painel.ausencias}
+          marcadas={doDia.ausencias}
           ocupado={ocupado}
           erro={erro}
           fechar={() => setForm(null)}

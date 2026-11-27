@@ -131,7 +131,8 @@ export function ParaDistribuir({ dia, itens, juntar, tirar, destinos, mover, arr
 }
 
 interface PropsDoSemEscala {
-  pessoas: readonly string[];
+  /** null enquanto não se sabe quem está fora no dia: até lá, ninguém aparece como sem escala */
+  pessoas: readonly string[] | null;
   destinos: readonly Destino[];
   escalar: (editor: string, destino: string) => void;
   arraste: Arraste;
@@ -142,9 +143,11 @@ export function SemEscala({ pessoas, destinos, escalar, arraste: { iniciar, arra
   return (
     <section className="coluna-caixa coluna-sem-escala" aria-label="Sem escala">
       <h2 className="coluna-rotulo">
-        Sem escala <span className="coluna-n">{pessoas.length}</span>
+        Sem escala {pessoas && <span className="coluna-n">{pessoas.length}</span>}
       </h2>
-      {pessoas.length ? (
+      {!pessoas ? (
+        <p className="coluna-ninguem">lendo quem está fora…</p>
+      ) : pessoas.length ? (
         <ul className="coluna-itens">
           {pessoas.map((nome) => (
             <li key={nome} className={`coluna-pessoa${arrastado?.tipo === 'pessoa' && arrastado.id === nome ? ' indo' : ''}`} onPointerDown={iniciar({ tipo: 'pessoa', id: nome })}>

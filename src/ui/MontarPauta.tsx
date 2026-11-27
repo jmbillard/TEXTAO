@@ -94,8 +94,9 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [vista, setVista] = useState<'montar' | 'conferir' | 'publicada'>('montar');
   const [publicando, setPublicando] = useState(false);
   const [erroAoPublicar, setErroAoPublicar] = useState('');
-  // a coluna lateral (#126): quem está fora no dia (da caixa "Fora") e o erro da última ação dela
-  const [foraNoDia, setForaNoDia] = useState<string[]>([]);
+  // a coluna lateral (#126): quem está fora (da caixa "Fora"), com o dia dessa leitura, e o erro da última ação dela
+  const [fora, setFora] = useState<{ dia: string; nomes: string[] } | null>(null);
+  const avisarFora = useCallback((dia: string, nomes: string[]) => setFora({ dia, nomes }), []);
   const [erroDaColuna, setErroDaColuna] = useState('');
   // colar da planilha (#130): o diálogo aberto, o que foi aplicado e a releitura da caixa "Fora" depois de marcar
   const [colando, setColando] = useState(false);
@@ -330,7 +331,9 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     else if (d.tipo === 'lista') devolver(id);
     else mover(id, d.id, null);
   };
-  const pessoasSemEscala = semEscala(editores, posicoes, foraNoDia);
+  // só com o "Fora" deste dia lido: antes disso, quem está fora apareceria como sem escala (e daria para escalar)
+  const foraNoDia = dados && fora?.dia === dados.dia ? fora.nomes : null;
+  const pessoasSemEscala = foraNoDia && semEscala(editores, posicoes, foraNoDia);
 
   /** Aplica o colado: as posições vão para o rascunho (gravado na hora), as ausências são marcadas e o dia é lido de novo. */
   const aplicarOColado = async (r: ColadoParaAplicar) => {
@@ -490,7 +493,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
               </button>
             </p>
           )}
-          {colando && <ColarDaPlanilha dados={atual} posicoes={posicoes} jaFora={foraNoDia} novoId={novoId} fechar={() => setColando(false)} aplicar={aplicarOColado} />}
+          {colando && <ColarDaPlanilha dados={atual} posicoes={posicoes} jaFora={foraNoDia ?? []} novoId={novoId} fechar={() => setColando(false)} aplicar={aplicarOColado} />}
           <div className={`montar-corpo${arrastado ? ` arrastando-${arrastado.tipo}` : ''}`}>
           {/* a coluna lateral (#126): para distribuir, sem escala e fora (as ausências, #128) */}
           <aside className="montar-coluna" aria-label="Coluna lateral">
@@ -501,7 +504,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
             )}
             <ParaDistribuir dia={atual.dia} itens={listaDoDia} juntar={juntar} tirar={tirarDaLista} destinos={destinosDaDemanda(null, false)} mover={(id, v) => moverPeloMenu('lista', id, v)} arraste={{ iniciar, arrastado, sobre }} />
             <SemEscala pessoas={pessoasSemEscala} destinos={destinosDaPessoa} escalar={escalarPeloMenu} arraste={{ iniciar, arrastado, sobre }} />
-            <AusenciasDoDia key={leituraDoFora} dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={setForaNoDia} />
+            <AusenciasDoDia key={leituraDoFora} dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={avisarFora} />
           </aside>
           <div className="montar-grade" ref={grade}>
             {repetido && (
