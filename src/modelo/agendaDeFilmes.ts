@@ -108,7 +108,8 @@ export function semanaDosFilmes(filmes: readonly FilmeDaAgenda[], hoje: string, 
   return { dias: semana, exibicoes: todas.length, ineditas: todas.filter((x) => x.exibicao.inedito).length };
 }
 
-/** O texto do jeito de buscar: sem acento, sem caixa, a pontuação vira espaço. */
+/** O texto do jeito de buscar: sem acento, sem caixa, a pontuação vira espaço. Sem importar nada: o servidor lê este
+    módulo direto pelo node (servidor/app.mjs). */
 const paraBuscar = (s: string) =>
   s
     .normalize('NFD')

@@ -159,9 +159,9 @@ async function noComputador(navegador, s, video) {
   await p.getByRole('button', { name: 'escolher o arquivo' }).waitFor();
   assert.equal(await zona.evaluate((z) => getComputedStyle(z).borderTopStyle), 'dashed', 'a borda tracejada da fila');
 
-  // a agenda chega em cascata: o primeiro pôster começa antes dos de depois
+  // a agenda chega em cascata, os cartazes sendo colados (#184): o primeiro começa antes dos de depois
   await p.locator('.poster-filme').first().waitFor({ timeout: 15000 });
-  const atrasos = await p.locator('.filmes-dias .poster-filme').evaluateAll((ls) => ls.map((l) => parseFloat(getComputedStyle(l).animationDelay)));
+  const atrasos = await p.locator('.filmes-dias .poster-filme .lambe').evaluateAll((ls) => ls.map((l) => parseFloat(getComputedStyle(l).animationDelay)));
   assert.ok(atrasos.length >= 6, `os pôsteres de hoje em diante (${atrasos.length})`);
   assert.ok(atrasos[0] < atrasos[atrasos.length - 1], 'os pôsteres chegam em cascata');
   // por data (#182): a semana da agenda No Trello, sete colunas a partir de ontem; ontem, com o que passou esmaecido; hoje
@@ -174,7 +174,7 @@ async function noComputador(navegador, s, video) {
   assert.equal(await colunas.nth(0).getAttribute('class').then((c) => c.includes('passou')), true, 'ontem já passou');
   const passou = colunas.nth(0).locator('.poster-filme', { hasText: 'A Sala Escura' });
   assert.equal(await passou.getAttribute('data-quando'), 'passou');
-  assert.ok(Number(await passou.locator('.poster-filme-capa').evaluate((c) => getComputedStyle(c).opacity)) < 0.8, 'o que passou fica esmaecido');
+  assert.ok(Number(await passou.locator('.papel img').evaluate((c) => getComputedStyle(c).opacity)) < 0.8, 'o que passou fica esmaecido');
   assert.equal(await colunas.nth(1).locator('.poster-filme.hoje').count(), 2, 'o que passa hoje, em destaque');
   // o topo da agenda: o período e o resumo que contam, sem o "voltar para hoje" na semana de agora
   assert.match(await p.locator('.agenda-filmes .semana-nav b').textContent(), /\d+.*–.*\d+/);
@@ -186,7 +186,7 @@ async function noComputador(navegador, s, video) {
   assert.match(await p.locator('.poster-filme', { hasText: 'A Casa de Vidro' }).locator('.capa-sem-poster').textContent(), /A Casa de Vidro/);
   assert.match(await p.locator('.poster-filme', { hasText: 'Noite Antiga' }).locator('.capa-sem-poster').textContent(), /Noite Antiga/);
   assert.equal(await p.locator('.poster-filme', { hasText: 'Corrida no Gelo' }).first().locator('img.carregou').count(), 1, 'o pôster guardado carrega');
-  assert.equal(await p.locator('.poster-filme', { hasText: 'Corrida no Gelo' }).first().locator('.etiqueta-inedito').count(), 1, 'a etiqueta de inédito');
+  assert.equal(await p.locator('.poster-filme', { hasText: 'Corrida no Gelo' }).first().locator('.selo').count(), 1, 'o selo de inédito');
   await capturar(p, 'filmes-01-computador');
 
   // a troca de semana (as setas), como a agenda No Trello: a semana que sai some, a nova chega e os números contam; o
@@ -231,15 +231,57 @@ async function noComputador(navegador, s, video) {
   assert.equal(await p.locator('.agenda-filmes-corpo').isVisible(), true);
   await p.waitForTimeout(500);
 
-  // o hover da agenda: só a borda acende
+  // o lambe-lambe (#184): o muro, o cartaz rasgado e sem dobra, a tarja da data (HOJE em laranja), a fita sem sombra e
+  // nenhuma sombra projetada
+  const lambe = await p.evaluate(() => {
+    const corpo = document.querySelector('.agenda-filmes-corpo');
+    const cartaz = document.querySelector('.filmes-dias .coluna.hoje .lambe');
+    const papel = cartaz.querySelector('.papel');
+    const fitas = [...document.querySelectorAll('.lambe .fita')];
+    return {
+      muro: corpo.classList.contains('muro') && getComputedStyle(corpo).backgroundImage.includes('url('),
+      rasgo: getComputedStyle(papel).clipPath.startsWith('polygon('),
+      tarja: cartaz.querySelector('.tarja').textContent,
+      tarjaHoje: getComputedStyle(cartaz.querySelector('.tarja')).backgroundColor,
+      filtro: getComputedStyle(cartaz).filter,
+      fitas: fitas.length,
+      sombraNaFita: fitas.some((f) => getComputedStyle(f).boxShadow !== 'none' || getComputedStyle(f).filter !== 'none'),
+      restos: document.querySelectorAll('.resto, .orelha').length,
+      letra: document.fonts.check('18px "Bebas Neue"'),
+    };
+  });
+  assert.ok(lambe.muro, 'o muro atrás da agenda');
+  assert.ok(lambe.rasgo, 'o papel rasgado');
+  assert.match(lambe.tarja, /^HOJE · 22:30$/);
+  assert.equal(lambe.tarjaHoje, 'rgb(226, 83, 43)', 'HOJE em destaque');
+  // os únicos drop-shadow são os contornos de 1,2px da borda do hover (sem desfoque): nenhuma sombra projetada
+  const sombras = [...lambe.filtro.matchAll(/(-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px/g)].map((m) => m.slice(1).map(Number));
+  assert.ok(sombras.length && sombras.every(([x, y, desfoque]) => desfoque === 0 && Math.abs(x) <= 1.2 && Math.abs(y) <= 1.2), `sem sombra projetada (${lambe.filtro})`);
+  assert.ok(lambe.fitas > 0 && !lambe.sombraNaFita, 'a fita, sem sombra');
+  assert.equal(lambe.restos, 0, 'sem dobra e sem restos de cartaz');
+  assert.ok(lambe.letra, 'a letra do lambe (Bebas Neue) carregou');
+  // nenhum pôster escondido: cada cartaz à vista na semana tem o centro dele por cima de tudo
+  const escondidos = await p.evaluate(() =>
+    [...document.querySelectorAll('.filmes-dias .lambe')]
+      .filter((l) => {
+        const r = l.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > innerHeight) return false;
+        const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !l.contains(e);
+      })
+      .map((l) => l.getAttribute('aria-label')),
+  );
+  assert.deepEqual(escondidos, [], 'nenhum pôster escondido');
+
+  // o hover da agenda: só a borda acende, pela silhueta do papel
   const card = p.locator('.poster-filme', { hasText: 'Ponte Sobre o Rio' });
-  const borda = () => card.evaluate((c) => getComputedStyle(c).borderTopColor);
+  const borda = () => card.locator('.lambe').evaluate((c) => getComputedStyle(c).filter);
   await p.mouse.move(5, 5);
   await p.waitForTimeout(300);
   const antes = await borda();
   await card.hover();
   await p.waitForTimeout(300);
-  assert.notEqual(await borda(), antes, 'o hover acende a borda, como o card da agenda');
+  assert.notEqual(await borda(), antes, 'o hover acende a borda do cartaz');
 
   // arrastar um arquivo pela janela: a camada "Pode soltar" da fila, para a prévia (e não a dos roteiros)
   await arrastarArquivo(p, 'dragenter');
@@ -305,6 +347,9 @@ async function noComputador(navegador, s, video) {
   await p.reload();
   await p.locator('.poster-filme').first().waitFor({ timeout: 15000 });
   assert.equal(await p.locator('.poster-filme').first().evaluate((l) => getComputedStyle(l).animationName), 'none', 'sem cascata no movimento reduzido');
+  // o cartaz não é colado (nada se mexe) e a cola não passa
+  assert.deepEqual(await p.locator('.poster-filme .lambe').first().evaluate((l) => [getComputedStyle(l).animationName, getComputedStyle(l.querySelector('.cola')).display]), ['none', 'none']);
+  await capturar(p, 'filmes-09-reduzido');
   await p.emulateMedia({ reducedMotion: 'no-preference' });
 
   assert.deepEqual(erros, [], 'sem erros na página');
