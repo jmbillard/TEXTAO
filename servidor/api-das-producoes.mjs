@@ -98,9 +98,9 @@ export function diaNoAr(exibicaoEm, claquete, entradaEm) {
  * @param o.atracao a atração (a do card da tela de produções)
  * @param o.eventos a linha do tempo
  * @param o.campanhas as campanhas da Produção (#178), [{ id, nome }]
+ * @param tempos os de `temposDaLinhaDoTempo` (quem já calculou passa, para não refazer)
  */
-export function producaoDaApi({ producao: p, meta = {}, artes, atracao, eventos, campanhas = [] }) {
-  const tempos = temposDaLinhaDoTempo(p, eventos);
+export function producaoDaApi({ producao: p, meta = {}, artes, atracao, eventos, campanhas = [] }, tempos = temposDaLinhaDoTempo(p, eventos)) {
   const lv = p.roteiroId ? letraEVersaoDoRoteiro(meta ?? {}) : null;
   const conta = (n) => artes.filter((a) => a.fogo === n).length;
   return {
@@ -128,7 +128,7 @@ export function producoesDoPeriodo(itens, periodo) {
     .map((i) => ({ i, tempos: temposDaLinhaDoTempo(i.producao, i.eventos) }))
     .filter(({ tempos }) => esteveNoPeriodo(tempos, periodo))
     .sort((a, b) => Date.parse(a.tempos.entrouEm) - Date.parse(b.tempos.entrouEm) || String(a.i.producao.id).localeCompare(String(b.i.producao.id)))
-    .map(({ i }) => producaoDaApi(i));
+    .map(({ i, tempos }) => producaoDaApi(i, tempos));
 }
 
 /** A margem da consulta no SQLite (um dia de cada lado): a linha do tempo pode dizer outra hora que as colunas. */
