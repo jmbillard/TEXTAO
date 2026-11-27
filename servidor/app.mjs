@@ -40,7 +40,7 @@ import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
 import { criarPreferencias } from './preferencias.mjs';
 import { criarAreas, dosMeusRoteiros } from './areas.mjs';
-import { ehArea, ehAreaDosRoteiros } from '../src/modelo/areas.ts';
+import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
@@ -2207,13 +2207,21 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, { ok: true, cor });
     }
     if (caminho === '/api/eu/preferencias') {
-      // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' }. Cada chave é conferida aqui
+      // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' } ou a exibição de uma área dos
+      // roteiros (#103): { 'exibicao.redator': 'quadro' }. Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
       const entradas = Object.entries(typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : {});
       if (!entradas.length) return json(res, 400, { erro: 'Nenhuma preferência para guardar.' });
       const minhas = (await areas.daPessoa(eu.email, { cadastros, admin: cadastros.podeApagar(eu.email), preferencias })).areas;
       for (const [chave, valor] of entradas) {
+        const daExibicao = areaDaChaveDeExibicao(chave);
+        if (daExibicao) {
+          if (!ehExibicao(valor)) return json(res, 400, { erro: 'Exibição desconhecida: escolha por dia, quadro ou por estado.' });
+          // como a área: a exibição da área que a pessoa não tem não é guardada
+          if (!minhas.includes(daExibicao)) return json(res, 400, { erro: `Você não tem a área ${daExibicao}.` });
+          continue;
+        }
         if (chave !== 'area') return json(res, 400, { erro: `Preferência desconhecida: ${chave}.` });
         if (!ehArea(valor)) return json(res, 400, { erro: 'Área desconhecida.' });
         if (!minhas.includes(valor)) return json(res, 400, { erro: `Você não tem a área ${valor}.` });

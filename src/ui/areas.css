@@ -1,5 +1,5 @@
 /* As áreas de trabalho (#101): o caminho "PROMeiro / designer ▾" na linha do logo e "meus roteiros" do Redator e do
-   Editor, com o ciclo de cada roteiro (#102). A referência é o protótipo aprovado das áreas; as cores são as do tema (claro e escuro). */
+   Editor, com o ciclo de cada roteiro (#102) e as três exibições (#103). A referência é o protótipo aprovado das áreas; as cores são as do tema (claro e escuro). */
 
 /* ---------- o caminho e o seletor ---------- */
 .caminho-area { position: relative; display: inline-flex; align-items: center; flex: none; min-width: 0; margin-left: -8px; }
@@ -56,6 +56,60 @@
 .aviso-meus { margin: 8px 0 0; padding: 18px 20px; border-radius: 14px; background: var(--neutro); color: var(--tinta2); font-size: 14.5px; line-height: 1.55; max-width: 620px; }
 .aviso-meus.erro { color: var(--perigo); }
 
+/* ---------- as três exibições (#103): a escolha no topo da lista, o quadro e a lista por estado ---------- */
+.biblioteca.meus-roteiros.exibe-quadro { max-width: 1240px; }
+.lista-meus { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.lista-meus-topo { display: flex; align-items: center; justify-content: flex-end; gap: 8px 16px; flex-wrap: wrap; padding: 0 0 10px; border-bottom: 1px solid var(--regua); margin-top: -12px; }
+.exibir { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; color: var(--tinta3); }
+.exibir-rotulo { margin-right: 4px; }
+.exibir button {
+  display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 0; border-radius: 8px; background: none;
+  color: var(--tinta3); font: 500 12.5px var(--sans); transition: background 0.12s, color 0.12s;
+}
+.exibir button:hover { color: var(--tinta); }
+.exibir button[aria-pressed='true'] { background: var(--neutro); color: var(--tinta); font-weight: 600; }
+.exibir-lembrado { font: 600 16px/1 Caveat, cursive; color: var(--ultra); margin-left: 6px; animation: surgir-nota 0.3s var(--suave); }
+
+/* quadro: uma coluna por estado; os passos de antes do PROMeiro numa coluna tracejada, "em breve". Na tela que não cabe
+   as cinco colunas, o quadro rola para o lado dentro dele (a página não) */
+.quadro-rolar { overflow-x: auto; margin: 0 -24px; padding: 0 24px 8px; }
+.quadro-meus { display: grid; grid-template-columns: 120px repeat(4, minmax(190px, 1fr)); gap: 10px; min-width: 900px; align-items: start; }
+.coluna-meus { background: var(--neutro); border-radius: 12px; padding: 10px 8px 8px; display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 120px; }
+.coluna-meus h4 { margin: 0 4px 2px; font: 600 11px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta2); display: flex; justify-content: space-between; }
+.coluna-meus h4 span { color: var(--tinta3); letter-spacing: 0; font-weight: 500; }
+.coluna-meus.antes { background: none; border: 1.5px dashed var(--regua-forte); opacity: 0.75; }
+.coluna-meus.antes p { margin: 0 4px; font-size: 12px; line-height: 1.4; color: var(--tinta3); }
+.coluna-meus.antes ol { margin: 0; padding: 0 4px; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--tinta3); }
+.coluna-meus.antes ol li::before { content: '○ '; }
+.cartoes-meus { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cartao-meu { background: var(--papel); border: 1px solid var(--regua); border-radius: 10px; padding: 9px 10px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cartao-meu b { font: 600 13px/1.3 var(--mono); overflow-wrap: anywhere; }
+.cartao-meu span { font-size: 12px; line-height: 1.4; color: var(--tinta2); overflow-wrap: anywhere; }
+.coluna-vazia { padding: 0 4px; font-size: 12.5px; color: var(--tinta3); }
+
+/* por estado: a faixa do ciclo (quantos em cada estado; um toque mostra só aquele) e a lista agrupada */
+.faixa-ciclo { display: grid; grid-template-columns: 1.3fr repeat(4, 1fr); gap: 4px; margin: 0 0 -16px; }
+.seg-ciclo {
+  border: 0; background: var(--papel); border-radius: 10px; padding: 10px 12px 9px; text-align: left; color: inherit;
+  box-shadow: inset 0 0 0 1px var(--regua); display: flex; flex-direction: column; gap: 2px; min-width: 0; transition: box-shadow 0.12s;
+}
+button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
+.seg-ciclo b { font: 400 26px/1 var(--serifa); }
+.seg-ciclo span { font-size: 12px; color: var(--tinta2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg-ciclo.antes { background: none; box-shadow: inset 0 0 0 1.5px var(--regua); }
+.seg-ciclo.antes b { color: var(--regua-forte); }
+.seg-ciclo.antes span { color: var(--tinta3); }
+.seg-ciclo[aria-pressed='true'] { box-shadow: inset 0 0 0 1.5px var(--ultra); background: color-mix(in srgb, var(--ultra) 5%, var(--papel)); }
+.seg-ciclo[aria-pressed='true'] b { color: var(--ultra); }
+.faixa-nota { margin: 0; font-size: 12px; color: var(--tinta3); }
+.grupo-estado .dia-topo { margin-bottom: 0; }
+.linhas-meus { list-style: none; margin: 0; padding: 0; }
+.linha-meu { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 16px; align-items: center; padding: 11px 6px; border-bottom: 1px solid var(--regua); }
+.linha-meu-quem { min-width: 0; }
+.linha-meu b { font: 600 14.5px var(--mono); overflow-wrap: anywhere; }
+.linha-meu small { display: block; font-size: 12.5px; color: var(--tinta2); }
+.linha-meu-dia { min-width: 86px; font-size: 13px; color: var(--tinta2); white-space: nowrap; text-align: right; }
+
 @media (max-width: 600px) {
   .caminho-area { margin-left: -2px; }
   .caminho-area-barra { font-size: 24px; margin-right: 0; }
@@ -66,6 +120,25 @@
   .ficha.ficha-minha .ficha-claquete { grid-area: claquete; min-height: 0; }
   .ficha.ficha-minha .ficha-ciclo { grid-area: ciclo; }
   .ficha.ficha-minha .ficha-artes-minha { grid-area: artes; align-self: start; }
+  /* a escolha da exibição: só os ícones, e o nome da escolhida */
+  .lista-meus-topo { margin-top: -4px; }
+  .exibir-rotulo { display: none; }
+  .exibir button { height: 36px; padding: 0 9px; }
+  .exibir button[aria-pressed='false'] .exibir-nome { display: none; }
+  /* o quadro vira colunas umas embaixo das outras, sem rolar para o lado */
+  .quadro-rolar { overflow: visible; margin: 0; padding: 0; }
+  .quadro-meus { display: flex; flex-direction: column; min-width: 0; }
+  .coluna-meus { min-height: 0; }
+  .coluna-meus.antes ol { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
+  /* a faixa: os de antes numa linha só, por cima dos quatro estados */
+  .faixa-ciclo { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .seg-ciclo.antes { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: 8px; padding: 7px 12px; }
+  .seg-ciclo.antes b { font-size: 18px; }
+  .seg-ciclo { padding: 8px 8px 7px; }
+  .seg-ciclo b { font-size: 22px; }
+  .seg-ciclo span { font-size: 11px; }
+  .linha-meu { grid-template-columns: minmax(0, 1fr) auto; }
+  .linha-meu .trilha-ciclo { display: none; }
   /* a lista das áreas desce inteira na largura da tela, abaixo do topo */
   .areas-menu { position: fixed; top: 64px; left: 16px; right: 16px; width: auto; max-width: none; }
 }

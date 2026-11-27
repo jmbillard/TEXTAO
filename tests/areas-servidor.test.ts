@@ -174,6 +174,41 @@ describe('áreas de trabalho (#101)', () => {
     expect(teable.pedidos.every((p) => p.startsWith('GET '))).toBe(true);
   });
 
+  /* ---------- as três exibições do Redator e do Editor (#103) ---------- */
+
+  it('a exibição fica lembrada por pessoa e por área, junto da última área, também com o servidor de novo', async () => {
+    // o Júlio é redator e editor: uma exibição em cada área
+    const r = await lembrar(julio, { 'exibicao.redator': 'quadro' });
+    expect(r.status).toBe(200);
+    expect((await r.json()).preferencias).toEqual({ 'exibicao.redator': 'quadro' });
+    expect((await lembrar(julio, { 'exibicao.editor': 'estado', area: 'editor' })).status).toBe(200);
+    expect((await eu(julio)).preferencias).toEqual({ area: 'editor', 'exibicao.redator': 'quadro', 'exibicao.editor': 'estado' });
+    // trocar a de uma área não mexe na outra
+    expect((await lembrar(julio, { 'exibicao.redator': 'dia' })).status).toBe(200);
+    // a de cada um: a Marina não herda a do Júlio
+    expect((await eu(marina)).preferencias).toEqual({ area: 'redator' });
+    servidor.close();
+    await subir(db);
+    expect((await eu(julio)).preferencias).toEqual({ area: 'editor', 'exibicao.redator': 'dia', 'exibicao.editor': 'estado' });
+  });
+
+  it('a exibição inválida é recusada, e nada é gravado', async () => {
+    const antes = (await eu(marina)).preferencias;
+    const recusa = async (p: Record<string, unknown>, erro: string) => {
+      const r = await lembrar(marina, p);
+      expect(r.status).toBe(400);
+      expect((await r.json()).erro).toBe(erro);
+    };
+    await recusa({ 'exibicao.redator': 'mural' }, 'Exibição desconhecida: escolha por dia, quadro ou por estado.');
+    await recusa({ 'exibicao.redator': null }, 'Exibição desconhecida: escolha por dia, quadro ou por estado.');
+    // a Designer não tem exibições; a área que a pessoa não tem também não guarda a exibição
+    await recusa({ 'exibicao.designer': 'quadro' }, 'Preferência desconhecida: exibicao.designer.');
+    await recusa({ 'exibicao.editor': 'quadro' }, 'Você não tem a área editor.');
+    // uma chave ruim recusa o pedido inteiro: a boa que veio junto também não é gravada
+    await recusa({ 'exibicao.redator': 'estado', area: 'mural' }, 'Área desconhecida.');
+    expect((await eu(marina)).preferencias).toEqual(antes);
+  });
+
   /* ---------- o ciclo do roteiro (#102) ---------- */
 
   type Banco = { prepare: (s: string) => { run: (...a: unknown[]) => void } };

@@ -1,6 +1,6 @@
 import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { registrarPracas } from '../modelo/pracas';
-import { areaDeEntrada, ehArea, type Area, type AreaDosRoteiros } from '../modelo/areas';
+import { areaDeEntrada, chaveDaExibicao, ehArea, exibicaoDaArea, type Area, type AreaDosRoteiros, type Exibicao } from '../modelo/areas';
 import type { CicloDoRoteiro } from '../modelo/cicloDoRoteiro';
 import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../modelo/redator';
 import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo/exportar';
@@ -831,6 +831,8 @@ export async function quemNosRoteiros(): Promise<PresencaNosRoteiros> {
 
 let minhasAreas: Area[] = ['designer'];
 let areaLembrada: Area = 'designer';
+/** As preferências da pessoa como o servidor devolveu (e o que ela gravou desde então): a exibição de cada área (#103). */
+let minhasPreferencias: Record<string, unknown> = {};
 
 /** A pessoa entrou numa área: o servidor guarda, e o PROMeiro abre nela da próxima vez, em qualquer aparelho. A área
     que ela não tem não é guardada (o endereço abre, mas não conta como a dela). */
@@ -838,6 +840,27 @@ export async function lembrarArea(area: Area) {
   if (armazenamento.tipo !== 'servidor' || area === areaLembrada || !minhasAreas.includes(area)) return;
   areaLembrada = area;
   await pedir('/api/eu/preferencias', { method: 'PUT', body: JSON.stringify({ area }) });
+}
+
+/** A exibição de "meus roteiros" que a pessoa escolheu na área (#103); sem escolha, por dia. */
+export const exibicaoLembrada = (area: AreaDosRoteiros): Exibicao => exibicaoDaArea(minhasPreferencias, area);
+
+/** A pessoa escolheu a exibição da área: o servidor guarda, por pessoa e por área, e ela vale em qualquer aparelho.
+    Como a área, a exibição da área que a pessoa não tem não é guardada (a lista troca, mas só nesta visita). Devolve se
+    ficou guardada. */
+export async function lembrarExibicao(area: AreaDosRoteiros, exibicao: Exibicao): Promise<boolean> {
+  if (armazenamento.tipo !== 'servidor' || !minhasAreas.includes(area)) return false;
+  const chave = chaveDaExibicao(area);
+  const antes = minhasPreferencias[chave];
+  minhasPreferencias = { ...minhasPreferencias, [chave]: exibicao };
+  try {
+    await pedir('/api/eu/preferencias', { method: 'PUT', body: JSON.stringify({ [chave]: exibicao }) });
+    return true;
+  } catch (e) {
+    // não guardou: a próxima visita volta à de antes (se nenhuma escolha mais nova passou na frente)
+    if (minhasPreferencias[chave] === exibicao) minhasPreferencias = { ...minhasPreferencias, [chave]: antes };
+    throw e;
+  }
 }
 
 /** "Meus roteiros" do Redator ou do Editor: os roteiros em que a pessoa é o redator (ou o editor), pelo nome do
@@ -887,7 +910,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; novidades?: number; areas?: unknown[]; area?: unknown };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; novidades?: number; areas?: unknown[]; area?: unknown; preferencias?: Record<string, unknown> };
     if (d.email) {
       armazenamento = doServidor;
       // as praças da Configuração, antes de qualquer roteiro ser lido (até aqui, e sem servidor, valem as de fábrica)
@@ -903,6 +926,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
       minhasAreas = (d.areas ?? []).filter(ehArea);
       if (!minhasAreas.includes('designer')) minhasAreas.unshift('designer');
       areaLembrada = areaDeEntrada(d.area, minhasAreas);
+      minhasPreferencias = d.preferencias && typeof d.preferencias === 'object' ? d.preferencias : {};
       return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false, tourRevisao: d.tour?.revisao ?? null, areas: minhasAreas, area: areaLembrada };
     }
     armazenamento = doNavegador;

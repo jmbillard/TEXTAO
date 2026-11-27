@@ -31,6 +31,9 @@ const D = {
   copiar: 'M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1z M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1',
   imprimir: 'M6 9V3h12v6 M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2 M6 14h12v7H6z',
   // o quadro do Trello: duas colunas, a da esquerda mais comprida
+  // as exibições de "meus roteiros" (#103): por dia, quadro e por estado
+  calendario: 'M4.5 5.5h15v14h-15z M4.5 10h15 M8.5 3v4 M15.5 3v4',
+  lista: 'M9 6h11 M9 12h11 M9 18h11 M4.5 6h.01 M4.5 12h.01 M4.5 18h.01',
   quadro: 'M5 3.5h14a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5z M8.6 7.6v8.4 M15.4 7.6v4.6',
   lixo: 'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13',
   duplicar: 'M8 8h11a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z M4 16V4a1 1 0 0 1 1-1h11',

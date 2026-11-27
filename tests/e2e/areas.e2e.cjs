@@ -23,6 +23,12 @@
 // "com Tânia Arruda", e a Novela, "Em revisão". A Produção entregue: ao ganhar o foco, a lista se lê de novo e o Chef
 // passa a "Entregue". No celular (escuro), o ciclo cabe na ficha.
 //
+// As três exibições (#103): o Caio escolhe no topo de "meus roteiros" por dia, quadro (uma coluna por estado do ciclo,
+// os passos de antes numa coluna "em breve") ou por estado (a faixa com quantos em cada estado, um toque mostra só um,
+// e a lista agrupada). A escolha fica guardada por pessoa e por área (o Redator em quadro, o Editor por estado) e volta
+// depois de recarregar e em outro navegador. No tablet, o quadro rola dentro dele; no celular (escuro), as colunas
+// empilham, por estado cabe na tela e a escolha volta depois de recarregar.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:areas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -357,6 +363,112 @@ async function cicloNaLista(navegador, url, db) {
   console.log('ok: no celular, o ciclo cabe na ficha');
 }
 
+/* ---------- as três exibições (#103) ---------- */
+
+const exibicaoAtual = async (p) => (await p.locator('.exibir button[aria-pressed="true"]').getAttribute('data-exibir'));
+async function exibir(p, id) {
+  await p.locator(`.exibir button[data-exibir="${id}"]`).click();
+  await p.locator(`.meus-roteiros.exibe-${id}`).waitFor();
+}
+const coluna = (p, nome) => p.locator('.coluna-meus', { has: p.locator('h4', { hasText: nome }) });
+const cartoesDa = async (p, nome) => (await coluna(p, nome).locator('.cartao-meu b').allInnerTexts()).map((t) => t.trim());
+const exibicoesGuardadas = async (url) => {
+  const d = await (await fetch(`${url.replace(/\/$/, '')}/api/eu`, { headers: { 'cf-access-authenticated-user-email': CAIO } })).json();
+  return { redator: d.preferencias['exibicao.redator'], editor: d.preferencias['exibicao.editor'] };
+};
+
+async function tresExibicoes(navegador, url) {
+  // o Caio, redator: o Chef já foi entregue (o ciclo acima) e a Novela está na revisão
+  const { ctx, p, erros, aoTrello } = await entrar(navegador, url, '#/redator', CAIO, { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.equal(await exibicaoAtual(p), 'dia', 'sem escolha, a lista é por dia');
+  assert.deepEqual((await p.locator('.exibir button').allInnerTexts()).map((t) => t.trim()), ['por dia', 'quadro', 'por estado']);
+
+  // quadro: uma coluna por estado do ciclo; os passos de antes, "em breve", numa coluna apagada
+  await exibir(p, 'quadro');
+  assert.deepEqual((await p.locator('.coluna-meus h4').allInnerTexts()).map((t) => t.split('\n')[0].trim().toLowerCase()), ['antes', 'em revisão', 'produzindo', 'entregue', 'exibido']);
+  assert.deepEqual(await cartoesDa(p, 'Em revisão'), ['NOVELA7(CAP) SP']);
+  assert.deepEqual(await cartoesDa(p, 'Entregue'), ['CHEF(FUT) SP']);
+  assert.deepEqual(await cartoesDa(p, 'Produzindo'), []);
+  assert.match(await coluna(p, 'Entregue').locator('.cartao-meu').innerText(), /2 artes · edição: Bruno Regis/);
+  assert.match(await coluna(p, 'Entregue').locator('.com-quem').innerText(), /com Tânia Arruda/);
+  assert.match(await coluna(p, 'Antes').innerText(), /Escrevendo[\s\S]*Em aprovação[\s\S]*Aprovado[\s\S]*em breve/);
+  await p.locator('.exibir-lembrado').waitFor();
+  assert.equal((await exibicoesGuardadas(url)).redator, 'quadro', 'o servidor guardou o quadro do Redator');
+  await semRolagemDeLado(p, 'quadro no computador');
+  await capturar(p, '10-exibir-em-quadro-claro');
+  console.log('ok: o quadro tem uma coluna por estado do ciclo, e a escolha fica guardada');
+
+  // por estado: a faixa com quantos em cada estado e a lista agrupada; um toque num estado mostra só ele
+  await exibir(p, 'estado');
+  const faixa = async () => Object.fromEntries(await p.locator('button.seg-ciclo').evaluateAll((bs) => bs.map((b) => [b.dataset.estado, b.querySelector('b').textContent])));
+  assert.deepEqual(await faixa(), { revisao: '1', produzindo: '0', entregue: '1', exibido: '0' });
+  assert.deepEqual(await p.locator('.grupo-estado').evaluateAll((g) => g.map((x) => x.dataset.estado)), ['revisao', 'entregue']);
+  assert.deepEqual((await p.locator('.grupo-estado[data-estado="entregue"] .linha-meu b').allInnerTexts()).map((t) => t.trim()), ['CHEF(FUT) SP']);
+  assert.match(await p.locator('.grupo-estado[data-estado="revisao"] .linha-meu-dia').innerText(), /^\w{3}, \d+\/\d+$/);
+  await p.locator('button.seg-ciclo[data-estado="entregue"]').click();
+  assert.deepEqual(await p.locator('.grupo-estado').evaluateAll((g) => g.map((x) => x.dataset.estado)), ['entregue']);
+  await capturar(p, '11-exibir-por-estado-claro');
+  await p.locator('button.seg-ciclo[data-estado="entregue"]').click();
+  assert.equal(await p.locator('.grupo-estado').count(), 2, 'o segundo toque mostra todos de novo');
+  console.log('ok: por estado, a faixa conta cada estado, a lista vem agrupada e um toque mostra só um estado');
+
+  // a exibição é por área: o Editor do Caio continua por dia; ele escolhe por estado lá, e o quadro no Redator
+  await escolherArea(p, 'Editor');
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.equal(await exibicaoAtual(p), 'dia', 'o Editor tem a sua exibição');
+  await exibir(p, 'estado');
+  await p.locator('.exibir-lembrado').waitFor();
+  await escolherArea(p, 'Redator');
+  await p.locator('.meus-roteiros.exibe-estado').waitFor();
+  await exibir(p, 'quadro');
+  await p.locator('.exibir-lembrado').waitFor();
+  assert.deepEqual(await exibicoesGuardadas(url), { redator: 'quadro', editor: 'estado' });
+
+  // recarregada, cada área volta na sua exibição; em outro navegador (outro aparelho), também
+  await p.reload();
+  await p.locator('.meus-roteiros.exibe-quadro .cartao-meu').first().waitFor();
+  assert.equal(await exibicaoAtual(p), 'quadro');
+  await escolherArea(p, 'Editor');
+  await p.locator('.meus-roteiros.exibe-estado .linha-meu').first().waitFor();
+  assert.equal(await exibicaoAtual(p), 'estado');
+  const outro = await entrar(navegador, url, '#/redator', CAIO, { viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  await outro.p.locator('.meus-roteiros.exibe-quadro .cartao-meu').first().waitFor();
+  await outro.ctx.close();
+  console.log('ok: a exibição fica lembrada por pessoa e por área, depois de recarregar e em outro navegador');
+  assert.deepEqual(erros, [], 'exibições: erros na página');
+  assert.deepEqual(aoTrello, [], 'as exibições não leem o Trello');
+  await ctx.close();
+
+  // no tablet, o quadro rola para o lado dentro dele, e a página não
+  const tab = await entrar(navegador, url, '#/redator', CAIO, { ...devices['iPad Mini'], colorScheme: 'dark' });
+  await tab.p.locator('.meus-roteiros.exibe-quadro .cartao-meu').first().waitFor();
+  await semRolagemDeLado(tab.p, 'quadro no tablet');
+  assert.deepEqual(tab.erros, [], 'tablet: erros na página');
+  await tab.ctx.close();
+
+  // no celular (escuro): o quadro vira colunas empilhadas; por estado cabe na tela, e a escolha volta depois de recarregar
+  const cel = await entrar(navegador, url, '#/redator', CAIO, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await cel.p.locator('.meus-roteiros.exibe-quadro .cartao-meu').first().waitFor();
+  await semRolagemDeLado(cel.p, 'quadro no celular');
+  const [revisao, entregue] = await Promise.all(['Em revisão', 'Entregue'].map((n) => coluna(cel.p, n).boundingBox()));
+  assert.ok(entregue.y > revisao.y + revisao.height - 1, 'no celular, as colunas do quadro ficam umas embaixo das outras');
+  assert.deepEqual((await cel.p.locator('.exibir button').allInnerTexts()).map((t) => t.trim()), ['', 'quadro', ''], 'no celular, só o nome da escolhida');
+  await exibir(cel.p, 'estado');
+  await cel.p.locator('.exibir-lembrado').waitFor();
+  await semRolagemDeLado(cel.p, 'por estado no celular');
+  await capturar(cel.p, '12-exibir-por-estado-no-celular-escuro');
+  await cel.p.reload();
+  await cel.p.locator('.meus-roteiros.exibe-estado .linha-meu').first().waitFor();
+  assert.equal(await exibicaoAtual(cel.p), 'estado');
+  await exibir(cel.p, 'dia');
+  await cel.p.locator('.exibir-lembrado').waitFor();
+  await semRolagemDeLado(cel.p, 'por dia no celular');
+  assert.deepEqual(cel.erros, [], 'exibições no celular: erros na página');
+  await cel.ctx.close();
+  console.log('ok: no tablet e no celular, as três exibições cabem na tela e a escolha fica lembrada');
+}
+
 async function umaAreaSo(navegador, url) {
   const { ctx, p, erros } = await entrar(navegador, url, '', OUTRA, { viewport: { width: 1440, height: 900 } });
   await p.locator('.biblioteca.fila').waitFor();
@@ -414,6 +526,7 @@ async function principal() {
     await noCelular(navegador, s.url);
     await trocarDeArea(navegador, s.url);
     await cicloNaLista(navegador, s.url, s.db);
+    await tresExibicoes(navegador, s.url);
     await umaAreaSo(navegador, s.url);
     await administradoraSemCadastro(navegador, s.url);
     await areasNoCelular(navegador, s.url);
