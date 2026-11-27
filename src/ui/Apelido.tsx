@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { apelidoDoRoteiro, mudarApelido, useApelidos } from '../dados/apelidos';
-import { conflitoDasVersoes, type ConflitoDasVersoes, type FonteDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
+import { conflitoDasVersoes, versoesDaChamada, type ConflitoDasVersoes, type FonteDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
+import type { Resumo } from '../dados/armazenamento';
 import type { Versao } from '../modelo/pauta';
 import { CodigoDasVersoes } from './CodigoDasVersoes';
 import './apelido.css';
@@ -30,10 +31,10 @@ export function EtiquetasDasVersoes({ versoes, de = 'roteiro' }: { versoes: read
 /** O texto do aviso discreto do conflito, com os dois códigos: vale o roteiro; a claquete diz outra coisa. */
 const textoDoConflito = (c: ConflitoDasVersoes) => `o roteiro diz ${c.doRoteiro}, ${c.daClaquete ? `a claquete diz ${c.daClaquete}` : 'a claquete não diz a versão'}`;
 
-/** O aviso discreto do conflito: vale o roteiro; a claquete diz outra coisa. */
-export function AvisoDasVersoes({ claquete, versoes }: { claquete: string; versoes: readonly Versao[] }) {
-  const conflito = conflitoDasVersoes(claquete, versoes);
-  return conflito && <span className="conflito-versoes">{textoDoConflito(conflito)}</span>;
+/** As versões do roteiro como o card mostra: as prontas da API; fora do servidor (o roteiro de exemplo), calculadas
+    aqui com a mesma regra (versoesDaChamada). Com o código fora do nome, a etiqueta é o único lugar dele. */
+export function versoesDoResumo(r: Pick<Resumo, 'id' | 'meta' | 'versoesLidas' | 'versoesDaChamada'>): VersoesDaChamada {
+  return r.versoesDaChamada ?? versoesDaChamada({ lidas: r.versoesLidas ?? [], claquete: r.meta.claquete ?? '', apelido: apelidoDoRoteiro(r.id), dia: r.meta.dataExibicao ?? '' });
 }
 
 /** As versões da chamada no card da agenda e no da tela de produções (#121), como a API manda: o código e, num

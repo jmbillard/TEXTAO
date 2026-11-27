@@ -949,6 +949,8 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     if (await doCodigo.count()) {
       conferir(JSON.stringify(await versoes(doCodigo).locator('.codigo-versoes').allInnerTexts()) === '["(AH)"]', rotulo('#121: sem versão nas artes, o código da claquete'));
       conferir((await versoes(doCodigo).locator('.conflito-versoes').count()) === 0, rotulo('#121: o código da claquete não tem conflito'));
+      const nomeDoCodigo = (await doCodigo.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
+      conferir(!nomeDoCodigo.includes('(AH)'), rotulo(`o nome sai sem o código, que fica só na etiqueta (${nomeDoCodigo})`));
       conferir((await versoes(doCodigo).locator('.codigo-versoes').getAttribute('title')) === 'amanhã e hoje, do código da claquete', rotulo('#121: a dica diz o que quer dizer e de onde veio'));
     } else conferir(false, rotulo('#121: o card do código da claquete está na agenda'));
     if (CAPTURAS) {
@@ -962,7 +964,7 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     conferir(/o roteiro diz \(H\), a claquete não diz a versão/.test(await apelido.locator('.conflito-versoes').innerText()), rotulo('e o aviso discreto: a claquete não diz'));
     await apelido.getByRole('button', { name: 'usar (H) no apelido' }).tap();
     await apelido.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
-    conferir((await nome()).endsWith('(H)'), rotulo(`o card mostra o apelido com a versão do roteiro (${await nome()})`));
+    conferir(!(await nome()).endsWith('(H)') && JSON.stringify(await versoes(card).locator('.codigo-versoes').allInnerTexts()) === '["(H)"]', rotulo(`o card mostra o apelido sem o código no nome; o código fica só na etiqueta (${await nome()})`));
     // #121: o apelido com as versões do roteiro desfaz o aviso também no card fechado (a lista se lê de novo)
     await versoes(card).locator('.conflito-versoes').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
     conferir((await versoes(card).locator('.conflito-versoes').count()) === 0, rotulo('#121: o apelido com as versões do roteiro desfaz o aviso no card'));

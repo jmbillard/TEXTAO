@@ -304,6 +304,11 @@ export function codigoDasVersoes(versoes: readonly Versao[]): string {
   return `(${versoes.map((v) => letra(semAcento(v.codigo))).join('')})`;
 }
 
+/** O nome que a tela mostra, sem o código de versão no fim (a mesma leitura da Pauta, lerVersoes): o código vai só
+    na etiqueta (codigoDasVersoes). Só para mostrar: a claquete guardada, a chave e o que vai ao Trello e ao Teable não
+    mudam. Sem código, o nome como está. */
+export const nomeSemAsVersoes = (nome: string): string => lerVersoes(nome, '').semVersao;
+
 /** O que o código quer dizer, para a dica ao passar o mouse: "amanhã e hoje", "amanhã, hoje e nesta sex". */
 export function leituraDasVersoes(versoes: readonly Versao[]): string {
   const rotulos = versoes.map((v) => (v.conhecida ? `${v.rotulo}${v.aConferir ? '?' : ''}` : `${v.codigo}, que o PROMeiro não conhece`));

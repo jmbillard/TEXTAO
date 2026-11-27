@@ -168,6 +168,7 @@ async function versoesNosCards(p, onde) {
   assert.deepEqual(await textos(versoes('Novela Sinfonia').locator('.codigo-versoes')), ['(AH)'], `${onde}: a Novela com o código da claquete`);
   assert.equal(await versoes('Novela Sinfonia').locator('.codigo-versoes').getAttribute('title'), 'amanhã e hoje, do código da claquete', `${onde}: a dica diz o que quer dizer`);
   assert.equal(await versoes('Novela Sinfonia').locator('.conflito-versoes').count(), 0, `${onde}: o código da claquete não tem aviso`);
+  assert.equal((await cardDe(p, 'Novela Sinfonia').locator('.prod-claquete').textContent()).trim(), `Novela Sinfonia ${dm(2)}`, `${onde}: o nome sai sem o código, que fica só na etiqueta`);
   assert.equal(await versoes('Show da Noite').count(), 0, `${onde}: sem versão, sem a linha`);
   const arranjo = await p.locator('.prod-card:has(.versoes-do-card)').evaluateAll((cs) =>
     cs.map((c) => {

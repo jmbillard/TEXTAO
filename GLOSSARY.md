@@ -536,7 +536,8 @@ inteiros. O dia da semana, o número e o mês saem da data da claquete; sem ela,
 (MNT). Em todo o PROMeiro (a pauta, a agenda, a tela de produções, a revisão e o editor), as versões aparecem só
 como esse código no padrão, numa etiqueta discreta, um código por claquete ("(AH)", "(PNAH)"); o que ele quer dizer e
 de onde veio ficam na dica ao passar o mouse ("amanhã e hoje, das artes do roteiro"). Um código desconhecido aparece
-cru, entre parênteses.
+cru, entre parênteses. O nome mostrado da claquete (ou do apelido) sai sem o código no fim: ele fica só na etiqueta.
+Só a tela muda; a claquete guardada, a chave e o que vai ao Trello e ao Teable continuam com ele.
 As **versões lidas** do roteiro saem das artes marcadas na revisão que dizem quando o programa vai ao ar ("NESTA
 QUARTA" é N, "AMANHÃ, 22H30" é A, "DIA 28" é D, "EM JANEIRO" é M), na ordem das letras, com o dia da semana conferido
 pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai nos próximos 7 dias e P se cai depois,

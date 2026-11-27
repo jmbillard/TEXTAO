@@ -12,12 +12,12 @@
 .conflito-versoes { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-style: italic; opacity: 0.75; }
 .claquete .conflito-versoes { color: #f5d400; opacity: 1; }
 .apelido-erro { color: var(--perigo, #e5262b); }
-/* na ficha da fila: o código discreto ao lado da atração */
-.ficha .versoes-lidas { margin-left: 6px; vertical-align: 1px; }
-.ficha .codigo-versoes { line-height: 16px; opacity: 0.7; }
-.ficha .conflito-versoes { margin-left: 6px; font-size: 11.5px; }
 /* no card da agenda e no da tela de produções (#121): numa linha própria, abaixo da claquete, que quebra */
 .versoes-do-card { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; margin-top: 3px; min-width: 0; color: var(--tinta2); }
 .versoes-do-card .codigo-versoes { line-height: 16px; }
 .versoes-do-card .conflito-versoes { font-size: 11px; color: var(--tinta3); }
 .secao-trello.encolhida .card-semana:not(.aberto) .versoes-do-card { display: none; }
+/* na ficha da fila (a revisão): na mesma linha da atração, discreto */
+.ficha .versoes-do-card { display: inline-flex; margin: 0 0 0 6px; vertical-align: 1px; color: inherit; }
+.ficha .codigo-versoes { line-height: 16px; opacity: 0.7; }
+.ficha .conflito-versoes { font-size: 11.5px; color: inherit; }

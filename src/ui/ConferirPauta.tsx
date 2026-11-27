@@ -2,7 +2,7 @@ import { conferirODia, type AlvoDaPendencia, type Pendencia } from '../modelo/co
 import { CodigoDasVersoes } from './CodigoDasVersoes';
 import { horarioNoPadrao, lerDemanda, type DiaDaEscala, type PosicaoDaEscala, type PublicacaoDoDia } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
-import { diaVizinho } from '../modelo/pauta';
+import { diaVizinho, nomeSemAsVersoes } from '../modelo/pauta';
 import { MESES, partes } from './pecasDaPauta';
 import './conferirPauta.css';
 
@@ -218,7 +218,7 @@ export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara
                         const l = lerDemanda(d.texto, dados.dia);
                         return l.tipo === 'claquete' ? (
                           <li key={d.id} className="pauta-item pauta-claquete">
-                            {l.padrao}
+                            {nomeSemAsVersoes(l.padrao)}
                             {l.versoes.length > 0 && (
                               <span className="pauta-versoes">
                                 <CodigoDasVersoes versoes={l.versoes} de="da claquete" />

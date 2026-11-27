@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codigoDasVersoes, leituraDasVersoes, lerVersoes } from '../src/modelo/pauta';
+import { codigoDasVersoes, leituraDasVersoes, lerVersoes, nomeSemAsVersoes } from '../src/modelo/pauta';
 
 /* As versões da chamada na pauta da edição (#95): o código no fim da claquete, uma letra por versão (A amanhã, H hoje,
    N nesta <dia>, P próxima <dia>, D dia X) ou um código inteiro (DIA, MES/MÊS, MNT). O dia da semana, o número e o
@@ -177,5 +177,20 @@ describe('codigoDasVersoes: a tela mostra só o código no padrão', () => {
     expect(leituraDasVersoes(lerVersoes('Show da Tarde 27/11 (AH)', '2026-11-26').versoes)).toBe('amanhã e hoje');
     expect(leituraDasVersoes(lerVersoes('Show da Tarde 27/11 (AHN)', '2026-11-26').versoes)).toBe('amanhã, hoje e nesta sex');
     expect(leituraDasVersoes(lerVersoes('Show da Tarde 27/11 (MNT)', '2026-11-26').versoes)).toBe('manutenção da grade');
+  });
+});
+
+describe('nomeSemAsVersoes: o nome mostrado sai sem o código, que fica só na etiqueta', () => {
+  it('tira o código no fim, com ou sem parênteses, pela mesma leitura da Pauta', () => {
+    expect(nomeSemAsVersoes('Novela Sinfonia 4/12 (AH)')).toBe('Novela Sinfonia 4/12');
+    expect(nomeSemAsVersoes('CHAMADA_CODIGO_27/11(AH)')).toBe('CHAMADA_CODIGO_27/11');
+    expect(nomeSemAsVersoes('Jogo Final 30/11 Dp')).toBe('Jogo Final 30/11');
+    expect(nomeSemAsVersoes('Show da Tarde 28/11 (XYZ)')).toBe('Show da Tarde 28/11');
+  });
+
+  it('sem código, o nome como está; a praça no fim não é código', () => {
+    expect(nomeSemAsVersoes('Festa na Praça 4/12 SP')).toBe('Festa na Praça 4/12 SP');
+    expect(nomeSemAsVersoes('SÉRIE FICTÍCIA, O FINAL')).toBe('SÉRIE FICTÍCIA, O FINAL');
+    expect(nomeSemAsVersoes('')).toBe('');
   });
 });
