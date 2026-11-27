@@ -937,3 +937,54 @@ describe('a tela de produções: a ordem das praças, lembrada por pessoa', () =
     expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
   });
 });
+
+/* O filtro por campanha (#179): a campanha que filtra a tela de produções fica nas preferências da pessoa, com a chave
+   `producoes.campanha` ({ id, nome }; null tira), como os recolhidos e a ordem. */
+describe('a tela de produções: o filtro por campanha, lembrado por pessoa', () => {
+  const CHAVE = 'producoes.campanha';
+  type Servidor = Awaited<ReturnType<typeof comServidor>>;
+  const lembradas = async (s: Servidor, quem: 'ana' | 'chefe') => ((await (await s[quem]('/api/eu')).json()) as { preferencias: Record<string, unknown> }).preferencias;
+  const filtrar = (s: Servidor, quem: 'ana' | 'chefe', corpo: unknown) => s[quem]('/api/eu/preferencias', { method: 'PUT', body: JSON.stringify(corpo) });
+
+  it('grava, lê e tira o filtro de cada pessoa', async () => {
+    const s = await comServidor();
+    const campanha = { id: 'cp-ficticia', nome: 'Lançamento Fictício' };
+    expect((await filtrar(s, 'ana', { [CHAVE]: campanha })).status).toBe(200);
+    expect(await lembradas(s, 'ana')).toMatchObject({ [CHAVE]: campanha });
+    expect(await lembradas(s, 'chefe')).not.toHaveProperty(CHAVE);
+    expect((await filtrar(s, 'ana', { [CHAVE]: null })).status).toBe(200);
+    expect((await lembradas(s, 'ana'))[CHAVE]).toBeNull();
+  });
+
+  it('recusa o que não é uma campanha', async () => {
+    const s = await comServidor();
+    for (const valor of ['cp-ficticia', { id: '' , nome: 'x' }, { id: 'x' }, ['x']]) {
+      const r = await filtrar(s, 'ana', { [CHAVE]: valor });
+      expect(r.status).toBe(400);
+      expect((await r.json()).erro).toBe('Filtro da campanha inválido: mande a campanha ({ id, nome }) ou null.');
+    }
+    expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
+  });
+});
+
+describe('os designers guardados juntados se separam por pessoa (#176)', () => {
+  it('na partida, "Ana Prado, Bruno Sá" guardado como um designer vira dois; o resto fica; a segunda partida não muda nada', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarProducoes } = await import('../servidor/producoes.mjs');
+    const db = abrirBanco(':memory:');
+    criarProducoes(db);
+    const agora = new Date().toISOString();
+    const pôr = db.prepare("INSERT INTO producoes (id, claquete, praca, etapa, designers, criada_em, atualizada_em) VALUES (?, 'Claquete Fictícia 20/11', 'SP', 'entrada', ?, ?, ?)");
+    pôr.run('p1', JSON.stringify(['Ana Prado, Bruno Sá e Caio Reis']), agora, agora);
+    pôr.run('p2', JSON.stringify(['Ana Prado', 'Bruno Sá']), agora, agora);
+    pôr.run('p3', JSON.stringify(['Dora Lis; ana prado', 'Ana Prado']), agora, agora);
+    criarProducoes(db);
+    const designers = (id: string) => JSON.parse(db.prepare('SELECT designers FROM producoes WHERE id = ?').get(id).designers);
+    expect(designers('p1')).toEqual(['Ana Prado', 'Bruno Sá', 'Caio Reis']);
+    expect(designers('p2')).toEqual(['Ana Prado', 'Bruno Sá']);
+    expect(designers('p3')).toEqual(['Dora Lis', 'ana prado']);
+    const antes = db.prepare('SELECT id, designers, atualizada_em FROM producoes ORDER BY id').all();
+    criarProducoes(db);
+    expect(db.prepare('SELECT id, designers, atualizada_em FROM producoes ORDER BY id').all()).toEqual(antes);
+  });
+});

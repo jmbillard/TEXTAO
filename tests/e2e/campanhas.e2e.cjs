@@ -245,11 +245,15 @@ async function naPagina(navegador, url, ids, video = '') {
 async function pelaEtiqueta(navegador, url, ids) {
   const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 900 } }, '#/designer/producoes');
   try {
+    // no card da tela, a etiqueta filtra (#179); no card aberto, ela leva à página da campanha
     const cozinha = p.locator('.prod-card', { has: p.locator('.prod-claquete', { hasText: 'Cozinha de Vó' }) });
-    await cozinha.locator('.campanha-abrir').first().click();
-    await p.locator('.camp-titulo-nome').waitFor();
+    await cozinha.locator('.prod-atracao').click();
+    await p.locator('.card-aberto[role="dialog"]').waitFor();
+    await p.locator('.card-aberto').getByRole('button', { name: 'Abrir a campanha AESP Verão' }).click();
+    await p.locator('.camp-titulo-nome', { hasText: 'AESP Verão' }).waitFor();
     assert.equal(hashDe(p), `#/campanhas/${ids.aesp}`, 'a etiqueta leva à página da campanha');
-    assert.equal(await p.locator('.card-aberto').count(), 0, 'o clique na etiqueta não abre a Produção');
+    assert.equal(await p.locator('.card-aberto').count(), 0, 'o card aberto fechou com a troca de tela');
+    assert.equal(await p.evaluate(() => document.documentElement.style.overflow), '', 'a página rola de novo');
     assert.deepEqual(erros, []);
   } finally {
     await ctx.close();

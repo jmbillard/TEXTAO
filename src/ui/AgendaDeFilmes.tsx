@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { formaDaAgendaDeFilmes, lembrarFormaDaAgendaDeFilmes, lerAgendaDeFilmes } from '../dados/armazenamento';
 import { FORMAS_DA_AGENDA, buscarNaAgenda, caminhoNoSistema, porSessao, quandoPassa, semanaDosFilmes, type AgendaDeFilmes as Agenda, type ExibicaoDoFilme, type FilmeDaAgenda, type FilmeNaAgenda, type FormaDaAgenda, type QuandoPassa } from '../modelo/agendaDeFilmes';
 import { ROTULO_DA_ETAPA } from '../modelo/pauta';
-import { eixoDaSemana, inicioDaSemana, periodoNaContagem, posicaoNaContagem, type DiaDaSemana } from './fila';
+import { eixoDaSemana, inicioDaSemana, isoLocal, periodoNaContagem, posicaoNaContagem, type DiaDaSemana } from './fila';
 import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
 import { usePresenca } from './BuscaDasProducoes';
 import { CardAberto, FecharOCardAberto } from './CardAberto';
 import { RABISCO } from './cena';
 import { Icone } from './icones';
+import { lambeDe } from './lambe';
 import { ListaDeAchados } from './ListaDeAchados';
 import { relativoA } from './pecasDaPauta';
 import { ItemQueAbre, Periodo, ResumoQueConta, TopoDoDia, VoltarParaHoje, useContagemDoPeriodo, type PalavrasDoResumo } from './topoDaAgenda';
 import { useTrocaDeSemana } from './trocaDeSemana';
 import { copiarTexto, dataCurtaComDia, dataPorExtenso, ehMac, plural } from './util';
+import './fontes/bebas-neue/bebas-neue.css';
 import './agendaDeFilmes.css';
 
 /* A agenda de filmes da aba Filmes (#169), embaixo das prévias, no padrão da agenda No Trello (as colunas dos dias, o
@@ -23,7 +25,12 @@ import './agendaDeFilmes.css';
    passou esmaecido; o que passa hoje fica em destaque. A lupa (BuscaNaLupa) acha pelo título, pelo ano e pela sessão,
    em todas as semanas lidas, numa lista no lugar da agenda (ListaDeAchados, a mesma da busca de Produções). Os pôsteres
    chegam em cascata, pelo caminho com login (/api/filmes/poster); um clique abre o card no centro (CardAberto), que
-   cresce a partir do pôster. O filme sem pôster ganha uma capa com o título, nunca a imagem quebrada. */
+   cresce a partir do pôster. O filme sem pôster ganha uma capa com o título, nunca a imagem quebrada.
+   O visual (#184) é o lambe-lambe colado no muro (a variação A aprovada, com os ajustes do usuário): o muro atrás da
+   agenda, cada pôster um cartaz de papel com textura leve e rasgadinhas, às vezes uma fita, a rotação pequena, a tarja
+   da data ("HOJE" em destaque), o selo "inédito" e o nome da sessão em estêncil. Sem dobra, sem sombra projetada (só
+   uma linha fraquinha embaixo), sem sombra na fita. O cartaz entra "sendo colado"; o hover só acende a borda, pela
+   silhueta do papel. */
 
 const NOME_DA_FORMA: Record<FormaDaAgenda, string> = { data: 'por data', sessao: 'por sessão' };
 const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -49,12 +56,6 @@ function diaDaSemana(hoje: string, iso: string): DiaDaSemana {
   const d = new Date(`${iso}T12:00:00`);
   return { iso, diaDaSemana: DIAS_CURTOS[d.getDay()], numero: d.getDate(), marca: marcaDoDia(hoje, iso), fimDeSemana: d.getDay() === 0 || d.getDay() === 6, cards: [] };
 }
-/** O dia de hoje no navegador, até a agenda dizer o de Brasília. */
-const hojeAqui = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
 /** O filme aberto no card do centro: a exibição clicada e o pôster de onde o card cresce. */
 interface FilmeAberto {
   filme: FilmeDaAgenda;
@@ -104,7 +105,7 @@ export function AgendaDeFilmes({ avisar }: { avisar: (t: string) => void }) {
   }, [buscaAtiva, aberto]);
 
   // a semana, como a agenda No Trello: as setas pedem, e a semana na tela chega lá quando a anterior sai
-  const hoje = agenda?.hoje ?? hojeAqui();
+  const hoje = agenda?.hoje ?? isoLocal(new Date());
   const [deslocamento, setDeslocamento] = useState(0);
   const grade = useRef<HTMLDivElement>(null);
   const troca = useTrocaDeSemana(grade, deslocamento, SAI_DA_SEMANA, ENTRA_NA_SEMANA, true);
@@ -183,7 +184,7 @@ export function AgendaDeFilmes({ avisar }: { avisar: (t: string) => void }) {
           linha={(x) => <AchadoDoFilme x={x} hoje={hoje} abrir={abrir} />}
         />
       )}
-      <div className={`agenda-filmes-corpo${voltando ? ' voltando' : ''}`} hidden={presenca.montado}>
+      <div className={`agenda-filmes-corpo${agenda ? ' muro' : ''}${voltando ? ' voltando' : ''}`} hidden={presenca.montado}>
         {falha ? (
           <p className="agenda-filmes-falha">Não deu para ler a agenda de filmes: {falha}</p>
         ) : !agenda ? (
@@ -202,7 +203,7 @@ export function AgendaDeFilmes({ avisar }: { avisar: (t: string) => void }) {
                   <TopoDoDia d={dia} numero={Number(eixo.dia(inicioNaContagem + k).slice(8))} marcas={!contando} escrever />
                   <ul className="coluna-corpo">
                     {d.itens.map((x, i) => (
-                      <PosterNaAgenda key={x.exibicao.id} x={x} ordem={k + i} quando={quandoPassa(d.dia, hoje)} linha={[x.exibicao.sessao, x.exibicao.hora].filter(Boolean).join(' · ')} abrir={abrir} />
+                      <PosterNaAgenda key={x.exibicao.id} x={x} ordem={k + i} hoje={hoje} linha={[x.exibicao.sessao, x.exibicao.hora].filter(Boolean).join(' · ')} abrir={abrir} />
                     ))}
                     {!d.itens.length && <li className="nada entra-suave">nenhum filme</li>}
                   </ul>
@@ -223,7 +224,7 @@ export function AgendaDeFilmes({ avisar }: { avisar: (t: string) => void }) {
                 <ul>
                   {s.itens.map((x, i) => {
                     const marca = marcaDoDia(hoje, x.exibicao.dia);
-                    return <PosterNaAgenda key={x.exibicao.id} x={x} ordem={k * 2 + i} quando={quandoPassa(x.exibicao.dia, hoje)} marca={marca} linha={[dataCurtaComDia(x.exibicao.dia), x.exibicao.hora].filter(Boolean).join(' · ')} abrir={abrir} />;
+                    return <PosterNaAgenda key={x.exibicao.id} x={x} ordem={k * 2 + i} hoje={hoje} marca={marca} linha={[dataCurtaComDia(x.exibicao.dia), x.exibicao.hora].filter(Boolean).join(' · ')} abrir={abrir} />;
                   })}
                 </ul>
               </section>
@@ -316,19 +317,51 @@ export function CapaDoFilme({ filme, grande = false }: { filme: FilmeDaAgenda; g
   return <img className={carregou ? 'carregou' : ''} src={filme.poster} alt="" loading="lazy" decoding="async" onLoad={() => setCarregou(true)} onError={() => setQuebrou(true)} />;
 }
 
+/** A tarja da data colada no cartaz, como o lambe de evento: "HOJE · 22:30", "SEX 27 · 15:00"; sem hora, só o dia. */
+export function tarjaDaExibicao(e: ExibicaoDoFilme, marca: DiaDaSemana['marca']): string {
+  const d = new Date(`${e.dia}T12:00:00`);
+  const dia = marca || `${DIAS_CURTOS[d.getDay()]} ${d.getDate()}`;
+  return [dia.toUpperCase(), e.hora].filter(Boolean).join(' · ');
+}
+
+/** O cartaz lambe-lambe (#184): o papel rasgado com a capa (o pôster, ou a capa reserva no mesmo papel), a textura, o
+    selo "inédito", a fita e a tarja da data. Na agenda é o botão que abre o card (o card cresce dele); no card aberto,
+    `grande`, só o cartaz. O sorteio é pelo filme e pela exibição: o mesmo pôster é sempre o mesmo cartaz. */
+const CartazDoFilme = forwardRef<HTMLButtonElement, { filme: FilmeDaAgenda; exibicao: ExibicaoDoFilme; tarja?: string; hoje?: boolean; grande?: boolean; rotulo?: string; abrir?: (origem: HTMLElement) => void }>(function CartazDoFilme({ filme, exibicao, tarja, hoje = false, grande = false, rotulo, abrir }, ref) {
+  const l = useMemo(() => lambeDe(`${filme.id}|${exibicao.id}`), [filme.id, exibicao.id]);
+  const estilo = { '--r': `${l.rot}deg`, '--y': `${grande ? 0 : l.y}px` } as React.CSSProperties;
+  const miolo = (
+    <>
+      <span className="papel" style={{ clipPath: l.clip }}>
+        <CapaDoFilme filme={filme} grande={grande} />
+        <span className="grao amassado" aria-hidden="true" />
+        <span className="grao fibras" aria-hidden="true" />
+        {exibicao.inedito && <span className="selo">inédito</span>}
+        {!grande && <span className="cola" aria-hidden="true" />}
+      </span>
+      {l.fita && <span className={`fita ${l.fita}`} aria-hidden="true" />}
+      {tarja && <span className={`tarja${hoje ? ' hoje' : ''}`}>{tarja}</span>}
+    </>
+  );
+  if (grande) return <span className="lambe grande" style={estilo}>{miolo}</span>;
+  return (
+    <button ref={ref} type="button" className="poster-filme-capa lambe" style={estilo} aria-label={rotulo} title={rotulo} onClick={(e) => abrir?.(e.currentTarget)}>
+      {miolo}
+    </button>
+  );
+});
+
 /** Um pôster na agenda: o card de borda fina da agenda, com a capa, o título e a linha da sessão (ou do dia). O botão é a
     capa (o card aberto cresce dela); o clique no resto do card também abre. O que já passou fica esmaecido; o que passa
     hoje, em destaque (`quando`). */
-function PosterNaAgenda({ x, ordem, linha, marca = '', quando, abrir }: { x: FilmeNaAgenda; ordem: number; linha: string; marca?: DiaDaSemana['marca']; quando: QuandoPassa; abrir: (x: FilmeNaAgenda, origem: HTMLElement | null) => void }) {
+function PosterNaAgenda({ x, ordem, linha, marca = '', hoje, abrir }: { x: FilmeNaAgenda; ordem: number; linha: string; marca?: DiaDaSemana['marca']; hoje: string; abrir: (x: FilmeNaAgenda, origem: HTMLElement | null) => void }) {
   const capa = useRef<HTMLButtonElement>(null);
   const { filme, exibicao } = x;
   const rotulo = `${filme.titulo}${filme.ano !== null ? ` (${filme.ano})` : ''}, ${dataPorExtenso(exibicao.dia)}${exibicao.sessao ? `, ${exibicao.sessao}` : ''}`;
+  const quando = quandoPassa(exibicao.dia, hoje);
   return (
     <li className={`poster-filme ${quando}`} data-quando={quando} style={{ '--i': Math.min(ordem, CASCATA_MAX) } as React.CSSProperties} onClick={(e: MouseEvent) => !(e.target as HTMLElement).closest('button') && capa.current?.click()}>
-      <button ref={capa} type="button" className="poster-filme-capa" aria-label={rotulo} title={rotulo} onClick={(e) => abrir(x, e.currentTarget)}>
-        <CapaDoFilme filme={filme} />
-        {exibicao.inedito && <span className="etiqueta-inedito">inédito</span>}
-      </button>
+      <CartazDoFilme ref={capa} filme={filme} exibicao={exibicao} tarja={tarjaDaExibicao(exibicao, marcaDoDia(hoje, exibicao.dia))} hoje={quando === 'hoje'} rotulo={rotulo} abrir={(origem) => abrir(x, origem)} />
       <span className="poster-filme-titulo">{filme.titulo}</span>
       <span className="poster-filme-linha">
         {marca && <span className="poster-filme-rel">{marca}</span>}
@@ -404,7 +437,7 @@ function FichaDoFilme({ filme, exibicao, hoje, avisar }: { filme: FilmeDaAgenda;
       </div>
       <div className="ficha-filme-corpo">
         <div className="ficha-filme-capa">
-          <CapaDoFilme filme={filme} grande />
+          <CartazDoFilme filme={filme} exibicao={exibicao} grande />
         </div>
         <div className="ficha-filme-dados">
           <h2 id="ficha-filme-titulo">

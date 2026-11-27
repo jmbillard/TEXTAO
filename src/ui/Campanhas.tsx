@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { apagarCampanha, buscarProducoes, criarCampanha, desfazerApagarCampanha, ligarNaCampanha, lerCampanhas, lerPaginaDaCampanha, lerProducaoAberta, renomearCampanha, type CardDaCampanha, type ClaqueteNaPautaDaCampanha, type PaginaDaCampanha as Pagina, type ProducaoAberta as ProducaoLida } from '../dados/armazenamento';
+import { apagarCampanha, buscarProducoes, criarCampanha, desfazerApagarCampanha, ligarNaCampanha, lerListaDasCampanhas, lerPaginaDaCampanha, lerProducaoAberta, renomearCampanha, type CardDaCampanha, type ClaqueteNaPautaDaCampanha, type PaginaDaCampanha as Pagina, type ProducaoAberta as ProducaoLida } from '../dados/armazenamento';
 import { ETAPAS_DA_CAMPANHA, HASH_DAS_CAMPANHAS, campanhaCombina, hashDaCampanha, mexidaEscrita, tomDaCampanha, type CampanhaNaLista, type ContagensDaCampanha } from '../modelo/campanhas';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { ROTULO_DA_COLUNA, type CardDaProducao } from '../modelo/producoesPorPraca';
@@ -114,7 +114,7 @@ export function ListaDasCampanhas({ topo, abrir }: { topo: ReactNode; abrir: (id
   const desfazer = useCaixinha();
   const ler = useCallback(
     () =>
-      lerCampanhas().then(
+      lerListaDasCampanhas().then(
         (r) => {
           setLidas(r.campanhas);
           setPodeCriar(r.voce.podeMudar);

@@ -44,7 +44,8 @@ const recente = new Date(Date.now() - 3 * 86_400_000).toISOString();
 const linhaDaProducao = (id: string, designers: string[]) => ({ id, fields: { card_ID: '', claquete: `Claquete ${id} 20/11`, designers: JSON.stringify(designers), data_entrada: recente } });
 const NA_PRODUCAO = ['Ana Prado', 'Bia Sampaio', 'Caio Reis'];
 
-async function comServidor({ naProducao = NA_PRODUCAO, designers = [] as Linha[], db = abrirBanco(':memory:') } = {}) {
+type CampoAMais = { name: string; type: string; ligaA?: string };
+async function comServidor({ naProducao = NA_PRODUCAO, designers = [] as Linha[], db = abrirBanco(':memory:'), producao: linhasDaProducao = null as Linha[] | null, campos = {} as Record<string, CampoAMais[]> } = {}) {
   const falso = trelloFalso();
   const linhas: Linha[] = designers.length
     ? designers
@@ -54,8 +55,8 @@ async function comServidor({ naProducao = NA_PRODUCAO, designers = [] as Linha[]
         { id: 'recOtavio', fields: { designer: 'Otávio Lins', status: 'ativo', email: 'otavio@empresa.com', designer_ID: 'mOtavio' } },
         { id: 'recEva', fields: { designer: 'Eva Luz', status: 'inativo', designer_ID: 'mEva' } },
       ];
-  const producao = naProducao.map((nome, i) => linhaDaProducao(`recP${i}`, [nome]));
-  const teable = teableFalso({ designers: 'designers_d1', ARTE_producao: 'producao_p1' }, { base: 'bseFalso', registros: { designers: linhas, ARTE_producao: producao } });
+  const producao = linhasDaProducao ?? naProducao.map((nome, i) => linhaDaProducao(`recP${i}`, [nome]));
+  const teable = teableFalso({ designers: 'designers_d1', ARTE_producao: 'producao_p1' }, { base: 'bseFalso', registros: { designers: linhas, ARTE_producao: producao }, campos });
   const agendados: { f: () => unknown; ms: number }[] = [];
   const env = { CADASTRO_ADMINS: CHEFE, TRELLO_KEY: 'k', TRELLO_TOKEN: 't', TRELLO_QUADRO: 'qFalso', TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso', ...TEABLE_FALSO };
   const app = criarApp({
@@ -85,7 +86,7 @@ async function comServidor({ naProducao = NA_PRODUCAO, designers = [] as Linha[]
 
 type Pessoas = {
   administradores: { email: string; nome: string; mestra: boolean }[];
-  novidades: { chave: string; tipo: string; nome: string; email: string; administrador?: boolean }[];
+  novidades: { chave: string; tipo: string; nome: string; email: string; administrador?: boolean; vezes?: number }[];
   ignoradas: { chave: string; nome: string }[];
   quemJaEntrou: { email: string; nome: string }[];
   verificadoEm: string;
@@ -120,7 +121,8 @@ describe('quem entrou e quem saiu, pela produção da arte', () => {
     let p = await ler(chefe('/api/configuracao/pessoas'));
     expect(p.novidades.find((n) => n.chave === 'entrou:DUDA LIMA')).toMatchObject({ email: '', emailSugerido: '', administrador: false });
     p = await ler(chefe('/api/configuracao/pessoas', { acao: 'administrador', chave: 'entrou:DUDA LIMA', email: 'duda@empresa.com' }));
-    expect(p.novidades.find((n) => n.chave === 'entrou:DUDA LIMA')).toMatchObject({ emailSugerido: 'duda@empresa.com', administrador: true });
+    // #176: administradora sai da lista; o cadastro de designer (pela chave) ainda leva o e-mail
+    expect(p.novidades.find((n) => n.chave === 'entrou:DUDA LIMA')).toBeUndefined();
     await chefe('/api/configuracao/pessoas', { acao: 'cadastrar', chave: 'entrou:DUDA LIMA' });
     expect(linhas.at(-1)?.fields).toEqual({ designer: 'Duda Lima', status: 'ativo', email: 'duda@empresa.com' });
   });
@@ -183,6 +185,42 @@ describe('quem entrou e quem saiu, pela produção da arte', () => {
   });
 });
 
+describe('cada pessoa uma vez, pela lista dos designers (#176)', () => {
+  const linha = (id: string, fields: Record<string, unknown>) => ({ id, fields: { card_ID: '', claquete: `Claquete ${id} 20/11`, data_entrada: recente, ...fields } });
+
+  it('o texto com os nomes juntados (dados antigos) vira pessoas: cada uma uma vez, com quantas vezes apareceu; a designer não', async () => {
+    const producao = [linha('recP1', { designers: 'Bia Sampaio, Duda Lima' }), linha('recP2', { designers: 'Duda Lima e Bia Sampaio' }), linha('recP3', { designers: 'ana prado; Duda Lima' })];
+    const { chefe } = await comServidor({ producao });
+    const p = await ler(chefe('/api/configuracao/pessoas'));
+    expect(p.novidades.filter((n) => n.tipo === 'entrou').map((n) => [n.nome, n.vezes])).toEqual([
+      ['Bia Sampaio', 2],
+      ['Duda Lima', 3],
+    ]);
+    // o pontinho do menu conta as pessoas, não as combinações: Bia e Duda, mais Caio e Otávio sem produção
+    expect(titulos(p)).toEqual(['entrou Bia Sampaio', 'entrou Duda Lima', 'saiu Caio Reis', 'saiu Otávio Lins']);
+    expect(((await (await chefe('/api/eu')).json()) as { novidades: number }).novidades).toBe(4);
+  });
+
+  it('o link para a tabela designers vale antes do texto juntado; o texto só na linha com a lista vazia', async () => {
+    const campos = { ARTE_producao: [{ name: 'designers', type: 'formula' }, { name: 'designers_link', type: 'link', ligaA: 'designers' }] };
+    const producao = [
+      linha('recP1', { designers_link: JSON.stringify([{ id: 'recX1', title: 'Bia Sampaio' }, { id: 'recX2', title: 'Duda Lima' }]), designers: 'Nome Velho Errado' }),
+      linha('recP2', { designers_link: null, designers: 'Gil Novo, Ana Prado' }),
+    ];
+    const { chefe, teable } = await comServidor({ producao, campos });
+    const p = await ler(chefe('/api/configuracao/pessoas'));
+    expect(p.novidades.filter((n) => n.tipo === 'entrou').map((n) => n.nome)).toEqual(['Bia Sampaio', 'Duda Lima', 'Gil Novo']);
+    expect(teable.estado.consultas.some((x: string) => x.includes('"designers_link", "designers", "data_entrada"'))).toBe(true);
+  });
+
+  it('ignorar tira a pessoa da lista inteira (ela é uma só)', async () => {
+    const producao = [linha('recP1', { designers: 'Bia Sampaio, Duda Lima' }), linha('recP2', { designers: 'Bia Sampaio' })];
+    const { chefe } = await comServidor({ producao });
+    const p = await ler(chefe('/api/configuracao/pessoas', { acao: 'ignorar', chave: BIA_ENTROU }));
+    expect(titulos(p).filter((t) => t.startsWith('entrou'))).toEqual(['entrou Duda Lima']);
+  });
+});
+
 describe('os administradores', () => {
   it('pôr pelo e-mail vale na hora no app inteiro; a chave-mestra fica sempre', async () => {
     const { chefe, ana } = await comServidor();
@@ -218,8 +256,8 @@ describe('os administradores', () => {
     const { chefe } = await comServidor();
     let p = await ler(chefe('/api/configuracao/pessoas', { acao: 'administrador', chave: BIA_ENTROU, email: BIA }));
     expect(p.administradores.map((a) => a.email)).toContain(BIA);
-    // continua novidade: ser administradora não é ser designer
-    expect(titulos(p)).toEqual(['entrou Bia Sampaio', 'saiu Otávio Lins']);
+    // #176: quem já é administradora sai da lista (tornar admin a tira, como cadastrar)
+    expect(titulos(p)).toEqual(['saiu Otávio Lins']);
     await chefe('/api/configuracao/pessoas', { acao: 'administrador', email: 'otavio@empresa.com' });
     p = await ler(chefe('/api/configuracao/pessoas'));
     expect(p.novidades.find((n) => n.tipo === 'saiu')).toMatchObject({ administrador: true });

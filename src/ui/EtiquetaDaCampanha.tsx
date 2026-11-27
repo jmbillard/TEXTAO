@@ -20,8 +20,14 @@ interface Props {
   modo?: 'compacta' | 'todas';
   /** tirar a Produção da campanha (só no modo 'todas', para quem pode) */
   tirar?: (c: CampanhaDoCard) => void;
-  /** abrir a campanha: por padrão, a página dela (#180), em qualquer tela; false deixa a pílula só para ler */
+  /** abrir a campanha: por padrão, a página dela (#180), em qualquer tela; false deixa a pílula só para ler. O filtro
+      de Produções (#179) dá o dele */
   abrir?: ((c: CampanhaDoCard) => void) | false;
+  /** o que o × diz (padrão: "Tirar da campanha X"); o filtro de Produções (#179) diz "Tirar o filtro da campanha X" */
+  rotuloDoTirar?: (c: CampanhaDoCard) => string;
+  /** o que a pílula com `abrir` diz (o título e o rótulo do botão), como "Só a campanha X" no filtro (#179); padrão:
+      "Abrir a campanha X" */
+  rotuloDoAbrir?: (c: CampanhaDoCard) => string;
 }
 
 /** Ir para a página da campanha (#180) de qualquer tela: o endereço muda e o app troca de tela, como no voltar do
@@ -38,6 +44,8 @@ export function abrirACampanha(c: Pick<CampanhaDoCard, 'id'>) {
   window.scrollTo(0, 0);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
+const TIRAR_DA_CAMPANHA = (c: CampanhaDoCard) => `Tirar da campanha ${c.nome}`;
+const ABRIR_A_CAMPANHA = (c: CampanhaDoCard) => `Abrir a campanha ${c.nome}`;
 
 /** As campanhas que chegaram depois da montagem: só elas entram carimbadas (a tela que abre não carimba tudo). */
 function useChegadas(ids: readonly string[]) {
@@ -60,11 +68,12 @@ function useChegadas(ids: readonly string[]) {
   return chegadas;
 }
 
-export function EtiquetaDaCampanha({ campanhas, modo = 'compacta', tirar, abrir: abrirPedido }: Props) {
+export function EtiquetaDaCampanha({ campanhas, modo = 'compacta', tirar, abrir: abrirPedido, rotuloDoTirar = TIRAR_DA_CAMPANHA, rotuloDoAbrir: rotuloPedido }: Props) {
   const abrir = abrirPedido === false ? undefined : (abrirPedido ?? abrirACampanha);
+  const rotuloDoAbrir = rotuloPedido ?? (abrirPedido ? undefined : ABRIR_A_CAMPANHA);
   const todas = campanhas ?? [];
   const chegadas = useChegadas(todas.map((c) => c.id));
-  const pilula = (c: CampanhaDoCard) => <Pilula key={c.id} c={c} chegou={chegadas.has(c.id)} tirar={modo === 'todas' ? tirar : undefined} abrir={abrir} />;
+  const pilula = (c: CampanhaDoCard) => <Pilula key={c.id} c={c} chegou={chegadas.has(c.id)} tirar={modo === 'todas' ? tirar : undefined} abrir={abrir} rotuloDoTirar={rotuloDoTirar} rotuloDoAbrir={rotuloDoAbrir} />;
   if (modo === 'todas')
     return (
       <span className="campanhas todas">
@@ -87,7 +96,7 @@ export function EtiquetaDaCampanha({ campanhas, modo = 'compacta', tirar, abrir:
   );
 }
 
-function Pilula({ c, chegou, tirar, abrir }: { c: CampanhaDoCard; chegou: boolean; tirar?: (c: CampanhaDoCard) => void; abrir?: (c: CampanhaDoCard) => void }) {
+function Pilula({ c, chegou, tirar, abrir, rotuloDoTirar, rotuloDoAbrir }: { c: CampanhaDoCard; chegou: boolean; tirar?: (c: CampanhaDoCard) => void; abrir?: (c: CampanhaDoCard) => void; rotuloDoTirar: (c: CampanhaDoCard) => string; rotuloDoAbrir?: (c: CampanhaDoCard) => string }) {
   const classe = `campanha${chegou ? ' chegou' : ''}${tirar ? ' com-tirar' : ''}`;
   const dentro = (
     <>
@@ -96,16 +105,16 @@ function Pilula({ c, chegou, tirar, abrir }: { c: CampanhaDoCard; chegou: boolea
     </>
   );
   return (
-    <span className={classe} data-campanha={c.id} data-tom={tomDaCampanha(c.id)} title={c.nome}>
+    <span className={classe} data-campanha={c.id} data-tom={tomDaCampanha(c.id)} title={abrir && rotuloDoAbrir ? rotuloDoAbrir(c) : c.nome}>
       {abrir ? (
-        <button type="button" className="campanha-abrir" title={`Abrir a campanha ${c.nome}`} onClick={() => abrir(c)}>
+        <button type="button" className="campanha-abrir" aria-label={rotuloDoAbrir?.(c)} onClick={() => abrir(c)}>
           {dentro}
         </button>
       ) : (
         dentro
       )}
       {tirar && (
-        <button type="button" className="campanha-tirar" aria-label={`Tirar da campanha ${c.nome}`} title={`Tirar da campanha ${c.nome}`} onClick={() => tirar(c)}>
+        <button type="button" className="campanha-tirar" aria-label={rotuloDoTirar(c)} title={rotuloDoTirar(c)} onClick={() => tirar(c)}>
           <Icone nome="fechar" tam={10} traco={2.4} />
         </button>
       )}

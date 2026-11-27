@@ -21,8 +21,17 @@ const animacoes = new WeakMap<Element, Animation>();
  * antes de o React mexer na tela. A primeira disposição (a tela que acabou de ler) não anima.
  * @param chegada o que chegou agora aparece subindo (padrão); sem ela, só o que mudou de lugar desliza (a chegada fica
  *   com o CSS, como a cascata da busca, #161)
+ * @param maximo quantos animam de uma vez (padrão: 30); o filtro por campanha (#179), que é um gesto da pessoa, anima
+ *   todos
+ * @param atraso a espera de quem chega (a cascata do filtro por campanha, #179); sem ele, chegam juntos
  */
-export function useDeslize(raiz: RefObject<HTMLElement | null>, seletor: string, atributo: string, disposicao: string, { chegada = true } = {}) {
+export function useDeslize(
+  raiz: RefObject<HTMLElement | null>,
+  seletor: string,
+  atributo: string,
+  disposicao: string,
+  { chegada = true, maximo = MAX_DESLIZANDO, atraso }: { chegada?: boolean; maximo?: number; atraso?: (e: HTMLElement) => number } = {},
+) {
   const ultima = useRef('');
   const fotografar = () => {
     const el = raiz.current;
@@ -38,21 +47,22 @@ export function useDeslize(raiz: RefObject<HTMLElement | null>, seletor: string,
     for (const e of agora) animacoes.get(e)?.cancel();
     // com prefers-reduced-motion, nada desliza: o que mudou de lugar ou chegou só esmaece no lugar novo
     const parado = semMovimento();
-    const mudancas = agora.flatMap((e): { e: HTMLElement; quadros: Keyframe[] }[] => {
+    const mudancas = agora.flatMap((e): { e: HTMLElement; quadros: Keyframe[]; espera?: number }[] => {
       const de = antes.get(e.getAttribute(atributo) ?? '');
       const para = e.getBoundingClientRect();
       if (!de && !chegada) return [];
       const mudou = !de || Math.abs(de.left - para.left) > 0.5 || Math.abs(de.top - para.top) > 0.5;
       if (parado) return mudou ? [{ e, quadros: [{ opacity: 0 }, { opacity: 1 }] }] : [];
-      if (!de) return [{ e, quadros: [{ opacity: 0, transform: 'translateY(6px) scale(0.98)' }, { opacity: 1, transform: 'none' }] }];
+      if (!de) return [{ e, quadros: [{ opacity: 0, transform: 'translateY(6px) scale(0.98)' }, { opacity: 1, transform: 'none' }], espera: atraso?.(e) ?? 0 }];
       const dx = de.left - para.left;
       const dy = de.top - para.top;
       return Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5 ? [{ e, quadros: [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }] }] : [];
     });
-    if (mudancas.length > MAX_DESLIZANDO) return;
-    for (const { e, quadros } of mudancas) {
+    if (mudancas.length > maximo) return;
+    for (const { e, quadros, espera = 0 } of mudancas) {
       e.classList.add('deslizando');
-      const a = e.animate(quadros, { duration: DURACAO_DO_DESLIZE, easing: SUAVE });
+      // quem espera a vez na cascata fica escondido até ela (o primeiro quadro vale antes de começar)
+      const a = e.animate(quadros, { duration: DURACAO_DO_DESLIZE, easing: SUAVE, delay: espera, fill: espera ? 'backwards' : 'none' });
       animacoes.set(e, a);
       const fim = () => animacoes.get(e) === a && e.classList.remove('deslizando');
       a.onfinish = fim;

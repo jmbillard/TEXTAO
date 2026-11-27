@@ -55,19 +55,7 @@
 /* por data: a semana da agenda No Trello (.semana, as sete colunas; estreita, ela rola de lado). As colunas ficam no
    lugar quando a semana troca (ui/trocaDeSemana.ts); depois da primeira troca, o pôster entra com ela, não em cascata */
 .filmes-dias .coluna-corpo { min-height: 300px; gap: 7px; }
-.filmes-dias.trocou .poster-filme { animation: none; }
-/* os dias que já passaram: o fundo mais apagado e os pôsteres esmaecidos (o hover devolve a cor) */
-.filmes-dias .coluna.passou .coluna-corpo { background: color-mix(in srgb, var(--tinta) 2%, var(--mesa)); }
-.filmes-dias .coluna.passou .dia-num, .filmes-dias .coluna.passou .dia-sem { color: var(--tinta3); }
-.poster-filme.passou { background: transparent; }
-.poster-filme.passou .poster-filme-capa, .poster-filme.passou .poster-filme-titulo { opacity: 0.55; filter: saturate(0.45); transition: opacity 0.25s var(--suave), filter 0.25s var(--suave); }
-.poster-filme.passou:hover .poster-filme-capa, .poster-filme.passou:hover .poster-filme-titulo { opacity: 1; filter: none; }
-/* o que passa hoje: em destaque, com a borda acesa em volta toda e o pôster um pouco à frente */
-.poster-filme.hoje { border-color: color-mix(in srgb, var(--ultra) 45%, var(--regua)); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 6px 16px color-mix(in srgb, var(--ultra) 14%, transparent); }
-.poster-filme.hoje:hover { border-color: var(--ultra); }
-.filmes-dias .poster-filme.hoje .poster-filme-capa { transition: transform 0.3s var(--suave); }
-.filmes-dias .poster-filme.hoje:hover .poster-filme-capa { transform: scale(1.015); }
-
+.filmes-dias.trocou .poster-filme, .filmes-dias.trocou .lambe, .filmes-dias.trocou .cola { animation: none; }
 /* a busca (ui/ListaDeAchados.tsx, a mesma de Produções): no lugar da agenda; cada linha com a capa pequena, o título,
    a sessão, o dia e, na bolinha, se já passou, se passa hoje ou se vai passar */
 .agenda-filmes > .filmes-busca { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; animation: chegar-busca var(--dur) var(--suave) both; }
@@ -218,3 +206,111 @@
 }
 @keyframes esmaecer-filmes { from { opacity: 0; } }
 @keyframes sumir-filmes { to { opacity: 0; } }
+
+/* ================= o lambe-lambe (#184): a variação A do protótipo aprovado, com os ajustes do usuário =================
+   O muro atrás da agenda; cada pôster é um cartaz de papel colado, com textura leve, rasgadinhas discretas na borda
+   (o clip-path de ui/lambe.ts), às vezes um pedaço de fita, a rotação pequena, a tarja da data ("HOJE" em destaque), o
+   selo "inédito" e, por sessão, o nome em estêncil. Sem dobra nem canto descolando, sem sombra projetada (só uma linha
+   fraquinha embaixo), sem os restos de cartaz no muro e sem sombra na fita. Entra "sendo colado"; o hover só acende a
+   borda, pela silhueta do papel. Nada de faixa na borda esquerda. */
+.agenda-filmes {
+  --muro: #d8d2c6; --muro-mancha: rgb(90 70 40 / 9%); --muro-tinta: rgb(40 34 26 / 55%);
+  --lambe-papel: #f4efe3; --papel-luz: none; --aceso: rgb(26 25 22 / 78%); --linha-lambe: rgb(40 30 10 / 16%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .agenda-filmes {
+    --muro: #262320; --muro-mancha: rgb(0 0 0 / 28%); --muro-tinta: rgb(236 232 223 / 40%);
+    --lambe-papel: #e6dfd0; --papel-luz: brightness(0.86) saturate(0.92); --aceso: rgb(236 232 223 / 85%); --linha-lambe: rgb(0 0 0 / 45%);
+  }
+}
+:root[data-theme='dark'] .agenda-filmes {
+  --muro: #262320; --muro-mancha: rgb(0 0 0 / 28%); --muro-tinta: rgb(236 232 223 / 40%);
+  --lambe-papel: #e6dfd0; --papel-luz: brightness(0.86) saturate(0.92); --aceso: rgb(236 232 223 / 85%); --linha-lambe: rgb(0 0 0 / 45%);
+}
+@property --borda { syntax: '<color>'; inherits: true; initial-value: transparent; }
+
+/* o muro: o reboco com grão e duas manchas escuras, sem restos de cartaz */
+.agenda-filmes-corpo.muro { border-radius: 18px; padding: 22px 18px 26px; background-color: var(--muro);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .46 0 0 0 0 .4 0 0 0 .7 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E"), radial-gradient(60% 40% at 18% 30%, var(--muro-mancha), transparent 70%), radial-gradient(50% 50% at 82% 70%, var(--muro-mancha), transparent 70%);
+  background-size: 300px 300px, 100% 100%, 100% 100%; }
+/* na semana, as colunas ficam no muro: sem a caixa tingida; hoje, um véu leve do laranja; o que passou, mais apagado */
+.muro .filmes-dias .coluna-corpo { background: transparent; box-shadow: none; padding: 10px 6px 14px; gap: 18px; }
+.muro .filmes-dias .coluna.hoje .coluna-corpo { background: color-mix(in srgb, var(--ultra) 7%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ultra) 22%, transparent); }
+.muro .filmes-dias .coluna.passou .dia-num, .muro .filmes-dias .coluna.passou .dia-sem { color: var(--tinta3); }
+.muro .filmes-dias .nada { color: var(--muro-tinta); }
+/* por sessão: o nome em estêncil no muro; os cartazes lado a lado, se tocando pouco (nenhum fica escondido) */
+.muro .faixa-sessao h3 { margin: 0 0 6px 4px; font: 400 32px/0.95 'Bebas Neue', sans-serif; letter-spacing: 0.02em; color: var(--muro-tinta); text-shadow: 0 0 2px var(--muro-tinta), 0 0 7px color-mix(in srgb, var(--muro-tinta) 50%, transparent); }
+.muro .faixa-sessao-conta { font: 600 20px/1 Caveat, cursive; letter-spacing: 0; text-shadow: none; color: var(--muro-tinta); }
+.muro .faixa-sessao ul { background: transparent; padding: 12px 10px 14px 4px; grid-auto-columns: 168px; gap: 0; }
+.muro .faixa-sessao li { margin-right: -6px; z-index: 1; }
+.muro .faixa-sessao li:hover, .muro .faixa-sessao li:focus-within { z-index: 3; }
+
+/* o cartaz na agenda: sem a moldura do card; o título e a linha embaixo, no muro */
+.muro .poster-filme { padding: 0; border: 0; border-radius: 0; background: transparent; animation: none; }
+.muro .poster-filme:hover { border-color: transparent; }
+.muro .poster-filme-titulo { margin: 9px 4px 0; }
+.muro .poster-filme-linha { margin: 0 4px; color: var(--tinta2); }
+.lambe { position: relative; display: block; width: 100%; aspect-ratio: 2 / 3; padding: 0; border: 0; border-radius: 0; overflow: visible; background: none; cursor: pointer;
+  transform: translateY(var(--y, 0)) rotate(var(--r, 0deg));
+  /* a borda que acende é a silhueta do papel (rasgado), em quatro contornos de 1px; nada de sombra projetada */
+  --borda: transparent;
+  filter: drop-shadow(1.2px 0 0 var(--borda)) drop-shadow(-1.2px 0 0 var(--borda)) drop-shadow(0 1.2px 0 var(--borda)) drop-shadow(0 -1.2px 0 var(--borda));
+  transition: --borda 0.2s; animation: colar 0.5s var(--suave) both; animation-delay: calc(var(--i, 0) * 55ms); }
+.poster-filme:hover .lambe { --borda: var(--aceso); }
+.lambe:focus-visible { outline: none; --borda: var(--ultra); }
+/* a única sombra: uma linha bem fraquinha embaixo do papel */
+.lambe::after { content: ''; position: absolute; left: 4%; right: 4%; bottom: -2px; height: 2px; border-radius: 50%; background: var(--linha-lambe); filter: blur(0.6px); pointer-events: none; }
+@keyframes colar {
+  0% { opacity: 0; transform: translateY(calc(var(--y, 0px) - 14px)) rotate(calc(var(--r, 0deg) + 5deg)) scale(1.09); }
+  55% { opacity: 1; transform: translateY(var(--y, 0)) rotate(calc(var(--r, 0deg) - 0.7deg)) scale(0.985); }
+  100% { transform: translateY(var(--y, 0)) rotate(var(--r, 0deg)) scale(1); }
+}
+.lambe .papel { position: absolute; inset: 0; overflow: hidden; background: var(--lambe-papel); filter: var(--papel-luz); }
+.lambe .papel img { position: absolute; inset: 0; }
+/* as texturas do papel: o amassado (relevo leve) e as fibras */
+.lambe .grao { position: absolute; inset: 0; pointer-events: none; }
+.lambe .amassado { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='390'%3E%3Cfilter id='a' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.011 .017' numOctaves='4' seed='7'/%3E%3CfeDiffuseLighting surfaceScale='3.2' lighting-color='%23fff'%3E%3CfeDistantLight azimuth='225' elevation='52'/%3E%3C/feDiffuseLighting%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='1.7' intercept='-.86'/%3E%3CfeFuncG type='linear' slope='1.7' intercept='-.86'/%3E%3CfeFuncB type='linear' slope='1.7' intercept='-.86'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23a)'/%3E%3C/svg%3E"); background-size: 100% 100%; mix-blend-mode: overlay; opacity: 0.75; }
+.lambe .fibras { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32 0 0 0 0 .27 0 0 0 0 .2 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E"); mix-blend-mode: multiply; opacity: 0.5; }
+.lambe .amassado { opacity: 0.5; }
+.lambe .fibras { opacity: 0.4; }
+/* a cola passando: o brilho molhado que corre uma vez quando o cartaz é colado */
+.lambe .cola { position: absolute; inset: -10%; pointer-events: none; background: linear-gradient(100deg, transparent 35%, rgb(255 255 255 / 55%) 48%, rgb(255 255 255 / 15%) 56%, transparent 66%); opacity: 0; animation: passar-cola 0.75s ease-out both; animation-delay: calc(var(--i, 0) * 55ms + 0.18s); }
+@keyframes passar-cola { 0% { opacity: 1; transform: translateX(-70%); } 80% { opacity: 0.8; } 100% { opacity: 0; transform: translateX(70%); } }
+/* a fita crepe, sem sombra nenhuma */
+.lambe .fita { position: absolute; width: 58px; height: 20px; background: rgb(236 222 186 / 78%); clip-path: polygon(3% 0, 97% 4%, 100% 30%, 96% 55%, 100% 80%, 97% 100%, 2% 96%, 0 70%, 4% 45%, 0 18%); pointer-events: none; z-index: 2; }
+.lambe .fita::after { content: ''; position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, rgb(0 0 0 / 4%) 0 1px, transparent 1px 4px); }
+.lambe .fita.topo-meio { top: -8px; left: calc(50% - 29px); transform: rotate(-3deg); }
+.lambe .fita.topo-esq { top: -4px; left: -16px; transform: rotate(-38deg); }
+.lambe .fita.topo-dir { top: -4px; right: -16px; transform: rotate(36deg); }
+/* a tarja da data colada por cima, como o lambe de evento; "HOJE" em laranja */
+.lambe .tarja { position: absolute; left: 8%; right: 8%; bottom: 6%; z-index: 2; padding: 4px 8px 3px; background: #f7f3ea; color: #1c1a17; font: 400 18px/1 'Bebas Neue', sans-serif; letter-spacing: 0.04em; text-align: center; transform: rotate(-2.5deg); clip-path: polygon(0 6%, 2% 0, 98% 5%, 100% 0, 99% 50%, 100% 100%, 1% 95%, 0 100%); filter: var(--papel-luz); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lambe .tarja.hoje { background: #e2532b; color: #fff; }
+/* o selo "inédito" na diagonal do canto */
+.lambe .selo { position: absolute; top: 14px; right: -32px; width: 120px; padding: 3px 0 2px; transform: rotate(38deg); background: #e2532b; color: #fff; text-align: center; font: 400 14px/1 'Bebas Neue', sans-serif; letter-spacing: 0.12em; }
+/* sem pôster: a capa reserva no mesmo papel (o título em cima do papel, nunca a imagem quebrada) */
+.lambe .capa-sem-poster { background: none; padding-bottom: 22%; }
+.lambe .capa-sem-poster-titulo { font: 400 26px/0.95 'Bebas Neue', sans-serif; letter-spacing: 0.02em; color: #1c1a17; -webkit-line-clamp: 4; }
+.lambe .capa-sem-poster-ano { color: #5f5b53; }
+.lambe .capa-sem-poster svg { color: #77736a; }
+.lambe.grande .capa-sem-poster-titulo { font-size: 38px; }
+/* o que já passou: o cartaz esmaecido (o hover devolve); o título embaixo também */
+.poster-filme.passou .lambe .papel > *, .poster-filme.passou .lambe .tarja { opacity: 0.55; filter: saturate(0.4); transition: opacity 0.25s var(--suave), filter 0.25s var(--suave); }
+.poster-filme.passou .poster-filme-titulo { opacity: 0.6; }
+.poster-filme.passou:hover .lambe .papel > *, .poster-filme.passou:hover .lambe .tarja { opacity: 1; filter: none; }
+/* no card aberto: o mesmo cartaz, parado, sem a moldura da capa */
+.ficha-filme-capa:has(.lambe) { border-radius: 0; overflow: visible; background: none; box-shadow: none; }
+.lambe.grande { animation: none; cursor: default; }
+.ficha-filme-capa .lambe img { opacity: 1; }
+
+@media (max-width: 600px) {
+  .agenda-filmes-corpo.muro { margin-inline: -8px; padding: 16px 10px 20px; border-radius: 14px; }
+  .muro .filmes-dias { margin: 0; padding: 0 0 8px; }
+  .muro .faixa-sessao ul { grid-auto-columns: 146px; }
+  .muro .faixa-sessao h3 { font-size: 28px; }
+  .lambe .tarja { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lambe, .lambe .cola { animation: none !important; }
+  .lambe .cola { display: none; }
+  .lambe { transition: none; }
+}
