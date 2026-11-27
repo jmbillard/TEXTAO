@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ilhasDeCostume, ilhasOcupadas, ilhasQueCasam, ilhasRepetidas, mesmaIlha, reconhecerIlha, salaDaIlha, salaPeloId, type Ilha } from '../src/modelo/ilhas';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos';
+import { lerHorario } from '../src/modelo/escala';
 
 /* Montar a pauta: ilhas e turnos (#124), as regras puras. Ilhas e nomes fictícios. */
 
@@ -181,6 +182,33 @@ describe('os turnos da Configuração', () => {
       { oque: 'Nome de Madrugada', antes: 'Madrugada', depois: 'Corujão' },
       { oque: 'Ordem', antes: 'Madrugada, Manhã, Tarde, Noite', depois: 'Manhã, Corujão, Tarde, Noite' },
     ]);
+  });
+
+  it('os turnos da arte (#175): outra lista, com a manhã e a noite de fábrica, guardada em TURNOS_DA_ARTE', () => {
+    expect(turnosDaConfiguracao({}, 'arte')).toEqual([
+      { id: 'manha', nome: 'Manhã', horario: '7h às 16h' },
+      { id: 'noite', nome: 'Noite', horario: '16h às 0h30' },
+    ]);
+    expect(lerHorario(turnosDaConfiguracao({}, 'arte')[1].horario)).toMatchObject({ viraODia: true });
+    // uma lista não lê a variável da outra
+    const plantao = JSON.stringify([{ id: 'plantao', nome: 'Plantão', horario: '10h às 19h' }]);
+    expect(turnosDaConfiguracao({ TURNOS: plantao }, 'arte')).toHaveLength(2);
+    expect(turnosDaConfiguracao({ TURNOS_DA_ARTE: plantao })).toHaveLength(4);
+    expect(turnosDaConfiguracao({ TURNOS_DA_ARTE: plantao }, 'arte').map((t) => t.nome)).toEqual(['Plantão']);
+  });
+
+  it('a conferência dos turnos da arte: as mesmas regras, com o nome da seção; tirar não avisa (nenhum dia usa)', () => {
+    const fabrica = turnosDaConfiguracao({}, 'arte');
+    expect(conferirTurnos([{ id: 'x', nome: 'Extra', horario: 'cedo' }], fabrica, 'arte').itens[0]).toEqual({ tipo: 'erro', titulo: 'Turnos da arte', detalhe: 'o horário do turno Extra não é um horário ("cedo").' });
+    const c = conferirTurnos([{ ...fabrica[0], horario: '8h às 17h' }], fabrica, 'arte');
+    expect(c.ok).toBe(true);
+    expect(c.itens.map((i) => i.tipo)).toEqual(['ok']);
+    expect(c.muda).toEqual([
+      { oque: 'Turnos da arte · Manhã', antes: '7h às 16h', depois: '8h às 17h' },
+      { oque: 'Turnos da arte · Noite', antes: '16h às 0h30', depois: '—' },
+    ]);
+    // os da edição ficam como eram, com o nome novo da seção
+    expect(conferirTurnos([], turnosDaConfiguracao()).itens[0].titulo).toBe('Turnos da edição');
   });
 
   it('o turno que saiu da Configuração continua no dia que tem posição nele', () => {

@@ -387,8 +387,9 @@ clicado e volta para ele ao fechar (no celular, a tela toda). Ali ficam a versã
 detalhe), o apelido pelo lápis, a atração (a busca do cadastro), o prazo e os designers (atribuir e tirar), que gravam
 na hora, vão ao Trello (o prazo do card, o membro) e viram evento; as artes no esquema da janela do After (a bolinha
 numerada, a feita riscada, o fogo), que se marcam, apagam (com desfazer) e incluem, com o checklist do card espelhando;
-e a linha do tempo, fechada num link. A atração escolhida fica só no PROMeiro (o card do Trello não tem o campo). Fica ao lado da agenda No
-Trello, que continua, com a mesma linha do logo, parada entre as telas (#159).
+e a linha do tempo, fechada num link. A atração escolhida vai ao link `atracao` da linha do card na produção da arte
+do Teable (#173), não ao Trello (o card não tem o campo). Fica ao lado da agenda No Trello, que continua, com a mesma
+linha do logo, parada entre as telas (#159).
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 
 **Aviso do Padeiro**:
@@ -619,14 +620,22 @@ _Evitar_: mensagem, notificação, card (card é o do Trello)
 Copiar para outros dias a escala e as tarefas fixas de um dia; nunca as claquetes, que mudam todo dia.
 _Evitar_: duplicar, clonar
 
-**Turno**:
-O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. Os turnos são uma lista na
-**Configuração**, cada um com o seu horário padrão; cada **posição** pode ter o seu horário. O que passa da meia-noite
-(22–06) conta no dia em que começou. O bloco das 20h às 2h, sem nome na planilha, é a **noite** (confirmado por um
+**Turno** (da edição):
+O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. Os turnos da edição são uma lista
+na **Configuração** (a seção "Turnos da edição"), cada um com o seu horário padrão; são os da escala, do Montar a pauta
+e da Pauta, e cada **posição** pode ter o seu horário. O que passa da meia-noite (22–06) conta no dia em que começou. O bloco das 20h às 2h, sem nome na planilha, é a **noite** (confirmado por um
 produtor da edição, em 27/11/2026). O **turno de costume** é o que mais se repete na semana: é a ordem dos editores
 na Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior. Na Semana
 com um dia por coluna, os cards se agrupam pelo **período** em que o turno começa: manhã (6h–12h), tarde (12h–18h),
-noite (18h–0h) e madrugada (0h–6h).
+noite (18h–0h) e madrugada (0h–6h). Não é o **turno da arte**.
+_Evitar_: turno da arte (é outro)
+
+**Turno da arte**:
+O expediente da equipe de arte, que é outro: a Manhã, das 7h às 16h, e a Noite, das 16h às 0h30, que vira o dia
+(confirmado pelo usuário em 27/11/2026). É uma segunda lista na **Configuração** (a seção "Turnos da arte"), com as
+mesmas regras e a mesma edição dos turnos da edição, guardada à parte. Por enquanto só fica guardada: nenhuma tela a
+usa ainda.
+_Evitar_: turno da edição, período
 
 **Versões da chamada** (o código de dia, na pauta):
 É assim que a equipe chama o código de dia (AH, NAH, PNAH): o código no fim da claquete da pauta, entre parênteses ou, depois da data, sem eles, em qualquer caixa e com ou sem

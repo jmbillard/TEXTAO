@@ -35,7 +35,7 @@ import {
 } from '../modelo/ligarOsFilmes';
 import { reconhecerPraca, type Praca, type RegraDaPraca } from '../modelo/pracas';
 import { TABELAS_DO_TEABLE } from '../modelo/tabelasDoTeable';
-import { oQueMudaNosTurnos, turnosArrumados } from '../modelo/turnos';
+import { DOS_TURNOS, oQueMudaNosTurnos, turnosArrumados, type QualTurno } from '../modelo/turnos';
 import type { TurnoDaEscala } from '../modelo/escala';
 import { ListaDosTurnos } from './TurnosDaConfiguracao';
 import { horariosArrumados, oQueMudaNosHorarios, type HorarioDoCartao } from '../modelo/horariosDoCartao';
@@ -156,8 +156,10 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
   const [conexoesAbertas, setConexoesAbertas] = useState(false);
   const [trocando, setTrocando] = useState<'quadro' | 'base' | null>(null);
   const [pessoas, setPessoas] = useState<PessoasDaConfiguracao | null>(null);
-  // os turnos da montagem da pauta (#124): o rascunho, como o das praças
+  // os turnos da edição (#124), os da montagem da pauta: o rascunho, como o das praças
   const [rascunhoTurnos, setRascunhoTurnos] = useState<TurnoDaEscala[] | null>(null);
+  // os turnos da arte (#175): o rascunho, como o dos turnos da edição
+  const [rascunhoDaArte, setRascunhoDaArte] = useState<TurnoDaEscala[] | null>(null);
   // os horários do cartão da pauta no Teams (#135): o rascunho, como o dos turnos
   const [rascunhoTeams, setRascunhoTeams] = useState<HorarioDoCartao[] | null>(null);
   const [falhaDasPessoas, setFalhaDasPessoas] = useState('');
@@ -172,6 +174,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
     setRascunhoCard(s.card.proposta);
     setRascunhoFilmes(s.filmes.proposta);
     setRascunhoTurnos(s.turnos.salvo);
+    setRascunhoDaArte(s.turnosDaArte.salvo);
     setRascunhoTeams(s.teams.horarios);
   }, []);
   const carregar = useCallback(() => {
@@ -213,12 +216,8 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
   const estadoFilmes = useMemo(() => (rascunhoFilmes && quadro && completo ? estadoDosFilmes(rascunhoFilmes, quadro, completo.pracas) : null), [rascunhoFilmes, quadro, completo]);
   const mudouFilmes = useMemo(() => (rascunhoFilmes && secoes && quadro ? oQueMudaNosFilmes(rascunhoFilmes, secoes.filmes.salvo, quadro).length : 0), [rascunhoFilmes, secoes, quadro]);
   // os turnos não dependem do Trello: mudam mesmo sem o quadro (só não no celular)
-  const mudouTurnos = useMemo(() => {
-    if (!rascunhoTurnos || !secoes) return 0;
-    const arrumados = turnosArrumados(rascunhoTurnos);
-    if (JSON.stringify(arrumados) === JSON.stringify(secoes.turnos.salvo)) return 0;
-    return Math.max(1, oQueMudaNosTurnos(arrumados, secoes.turnos.salvo).length);
-  }, [rascunhoTurnos, secoes]);
+  const mudouTurnos = useMemo(() => mudancasNosTurnos(rascunhoTurnos, secoes?.turnos.salvo), [rascunhoTurnos, secoes]);
+  const mudouDaArte = useMemo(() => mudancasNosTurnos(rascunhoDaArte, secoes?.turnosDaArte.salvo), [rascunhoDaArte, secoes]);
   // os horários do cartão também não dependem do Trello
   const mudouTeams = useMemo(() => {
     if (!rascunhoTeams || !secoes) return 0;
@@ -227,7 +226,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
     return Math.max(1, oQueMudaNosHorarios(arrumados, secoes.teams.horarios).length);
   }, [rascunhoTeams, secoes]);
   const podeMudarTurnos = !celular;
-  const semTrello = mudouTurnos + mudouTeams;
+  const semTrello = mudouTurnos + mudouDaArte + mudouTeams;
   const nMudancas = mudouPracas + mudouCard + mudouFilmes + semTrello;
   // no celular, só consulta: nada muda; com o Trello fora do ar (#79), Praças, Card e Filmes ficam travados
   const podeMudar = !celular && !!quadro && !secao?.foraDoAr;
@@ -293,6 +292,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
     ...(mudouCard && rascunhoCard ? { card: rascunhoCard } : {}),
     ...(mudouFilmes && rascunhoFilmes ? { filmes: rascunhoFilmes } : {}),
     ...(mudouTurnos && rascunhoTurnos ? { turnos: rascunhoTurnos } : {}),
+    ...(mudouDaArte && rascunhoDaArte ? { turnosDaArte: rascunhoDaArte } : {}),
     ...(mudouTeams && rascunhoTeams ? { teams: rascunhoTeams } : {}),
   });
 
@@ -397,22 +397,8 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
             desfazer={desfazerNosFilmes}
             mudar={mudarFilmes}
           />
-          {rascunhoTurnos && (
-            <section className="cfg-secao" aria-labelledby="cfg-turnos">
-              <TopoDaSecao
-                id="cfg-turnos"
-                titulo="Turnos"
-                ajuda={AJUDA_DOS_TURNOS}
-                cor="ok"
-                resumo={`${plural(secoes.turnos.salvo.length, 'turno', 'turnos')}${secoes.turnos.deFabrica ? ' · os de fábrica' : ''}`}
-                verTudo={null}
-                alternarVerTudo={() => {}}
-              />
-              <div className="cfg-secao-corpo">
-                <ListaDosTurnos turnos={rascunhoTurnos} podeMudar={podeMudarTurnos} mudar={setRascunhoTurnos} />
-              </div>
-            </section>
-          )}
+          {rascunhoTurnos && <SecaoDosTurnos qual="edicao" secao={secoes.turnos} rascunho={rascunhoTurnos} podeMudar={podeMudarTurnos} mudar={setRascunhoTurnos} />}
+          {rascunhoDaArte && <SecaoDosTurnos qual="arte" secao={secoes.turnosDaArte} rascunho={rascunhoDaArte} podeMudar={podeMudarTurnos} mudar={setRascunhoDaArte} />}
           {rascunhoTeams && (
             <section className="cfg-secao" aria-labelledby="cfg-teams">
               <TopoDaSecao
@@ -471,6 +457,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
               setRascunhoCard(secoes?.card.proposta ?? null);
               setRascunhoFilmes(secoes?.filmes.proposta ?? null);
               setRascunhoTurnos(secoes?.turnos.salvo ?? null);
+              setRascunhoDaArte(secoes?.turnosDaArte.salvo ?? null);
               setRascunhoTeams(secoes?.teams.horarios ?? null);
               setEditando(null);
               setNova(null);
@@ -538,8 +525,40 @@ interface PropsDaSecao {
   desfazer: (chaves: string[]) => void;
 }
 
-const AJUDA_DOS_TURNOS =
-  'Os turnos da montagem da pauta, na ordem da grade, cada um com o horário padrão de uma posição nova (a posição pode ter o seu). Sem nada salvo, valem os de fábrica. Tirar um turno não apaga nada: os dias já montados continuam com as posições dele.';
+const AJUDA_DOS_TURNOS: Record<QualTurno, string> = {
+  edicao:
+    'Os turnos da edição: os da escala, do Montar a pauta e da Pauta, na ordem da grade, cada um com o horário padrão de uma posição nova (a posição pode ter o seu). Sem nada salvo, valem os de fábrica. Tirar um turno não apaga nada: os dias já montados continuam com as posições dele.',
+  arte: 'Os turnos da arte, que são outros: cada um com o seu horário. Sem nada salvo, valem os de fábrica (Manhã, das 7h às 16h, e Noite, das 16h às 0h30). Por enquanto ficam só guardados: nenhuma tela usa ainda.',
+};
+
+/** Quantas mudanças o rascunho de uma lista de turnos tem diante da salva (0: nenhuma). */
+function mudancasNosTurnos(rascunho: TurnoDaEscala[] | null, salvo: TurnoDaEscala[] | undefined) {
+  if (!rascunho || !salvo) return 0;
+  const arrumados = turnosArrumados(rascunho);
+  if (JSON.stringify(arrumados) === JSON.stringify(salvo)) return 0;
+  return Math.max(1, oQueMudaNosTurnos(arrumados, salvo).length);
+}
+
+/** Uma das duas seções de turnos (#124, #175): o mesmo topo e a mesma lista, com o nome e a ajuda de cada uma. */
+function SecaoDosTurnos({ qual, secao, rascunho, podeMudar, mudar }: { qual: QualTurno; secao: { salvo: TurnoDaEscala[]; deFabrica: boolean }; rascunho: TurnoDaEscala[]; podeMudar: boolean; mudar: (t: TurnoDaEscala[]) => void }) {
+  const id = qual === 'edicao' ? 'cfg-turnos' : 'cfg-turnos-arte';
+  return (
+    <section className="cfg-secao" aria-labelledby={id}>
+      <TopoDaSecao
+        id={id}
+        titulo={DOS_TURNOS[qual].titulo}
+        ajuda={AJUDA_DOS_TURNOS[qual]}
+        cor="ok"
+        resumo={`${plural(secao.salvo.length, 'turno', 'turnos')}${secao.deFabrica ? ' · os de fábrica' : ''}`}
+        verTudo={null}
+        alternarVerTudo={() => {}}
+      />
+      <div className="cfg-secao-corpo">
+        <ListaDosTurnos qual={qual} turnos={rascunho} podeMudar={podeMudar} mudar={mudar} />
+      </div>
+    </section>
+  );
+}
 
 const AJUDA_DO_TEAMS =
   'O PROMeiro manda ao Teams o cartão da pauta publicada nestes horários (no relógio de São Paulo): a pauta por turno, os avisos, o recado do dia e o link para a Pauta. Republicar um dia que já foi manda "pauta alterada", com o que mudou. O endereço do Power Automate é segredo e fica no Portainer (TEAMS_PAUTA_URL); sem ele, nada é mandado. Sem nada salvo, valem os horários do n8n.';
