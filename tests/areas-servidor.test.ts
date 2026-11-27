@@ -173,4 +173,65 @@ describe('áreas de trabalho (#101)', () => {
     // nada foi escrito no Teable
     expect(teable.pedidos.every((p) => p.startsWith('GET '))).toBe(true);
   });
+
+  /* ---------- o ciclo do roteiro (#102) ---------- */
+
+  type Banco = { prepare: (s: string) => { run: (...a: unknown[]) => void } };
+  /** O envio ao Trello e a Produção do card, como o envio e a releitura da produção da arte deixam no SQLite. */
+  const enviar = (id: string, card: string, em: string) => (db as Banco).prepare("INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, em) VALUES (?, 'enviado', ?, ?)").run(id, card, em);
+  const producao = (id: string, card: string, p: { etapa: string; designers?: string[]; entregaEm?: string | null; roteiro?: string | null }) =>
+    (db as Banco)
+      .prepare(
+        `INSERT INTO producoes (id, claquete, etapa, designers, card_id, roteiro_id, entrada_em, entrega_em, arquivada, criada_em, atualizada_em) VALUES (?, 'X', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET etapa = excluded.etapa, designers = excluded.designers, entrega_em = excluded.entrega_em, arquivada = excluded.arquivada`,
+      )
+      .run(id, p.etapa, JSON.stringify(p.designers ?? []), card, p.roteiro ?? null, '2026-11-26T14:03:00.000Z', p.entregaEm ?? null, p.etapa === 'arquivada' ? 1 : 0, '2026-11-26T14:03:00.000Z', '2026-11-26T14:03:00.000Z');
+  type Meu = { id: string; ciclo: { estado: string; passos: { id: string; situacao: string; quando: string | null }[] }; daArte: string[] };
+  const meus = async (quem: ReturnType<typeof como>, area: string) => ((await (await quem(`/api/meus-roteiros?area=${area}`)).json()) as { roteiros: Meu[] }).roteiros;
+  const doRoteiro = async (quem: ReturnType<typeof como>, area: string, id: string) => (await meus(quem, area)).find((r) => r.id === id)!;
+  const passo = (r: Meu, id: string) => r.ciclo.passos.find((p) => p.id === id)!;
+
+  it('o ciclo: o roteiro que chegou à fila e não foi enviado está Em revisão, com quando chegou e sem ninguém da arte', async () => {
+    const r = await doRoteiro(marina, 'redator', 'rot-chef-1');
+    expect(r.ciclo.estado).toBe('revisao');
+    expect(r.ciclo.passos.map((p) => p.situacao)).toEqual(['em-breve', 'em-breve', 'em-breve', 'agora', 'depois', 'depois', 'depois']);
+    expect(Date.parse(passo(r, 'revisao').quando ?? '')).toBeGreaterThan(0);
+    expect(r.daArte).toEqual([]);
+  });
+
+  it('o ciclo: enviado, com a Produção do card em Produzindo, está Produzindo, com o designer da Produção', async () => {
+    enviar('rot-chef-1', 'cardchef', '2026-11-26T14:02:00.000Z');
+    // ainda sem Produção (a produção da arte não foi relida): já está Produzindo
+    expect((await doRoteiro(marina, 'redator', 'rot-chef-1')).ciclo.estado).toBe('produzindo');
+    producao('prod-chef', 'cardchef', { etapa: 'produzindo', designers: ['Tânia Arruda'] });
+    const r = await doRoteiro(marina, 'redator', 'rot-chef-1');
+    expect(r.ciclo.estado).toBe('produzindo');
+    expect(passo(r, 'produzindo').quando).toBe('2026-11-26T14:02:00.000Z');
+    expect(r.daArte).toEqual(['Tânia Arruda']);
+  });
+
+  it('o ciclo: a Produção Entregue (ou arquivada) deixa o roteiro Entregue, com quando foi entregue', async () => {
+    producao('prod-chef', 'cardchef', { etapa: 'entregue', designers: ['Tânia Arruda'], entregaEm: '2026-11-27T19:20:00.000Z' });
+    let r = await doRoteiro(marina, 'redator', 'rot-chef-1');
+    expect(r.ciclo.estado).toBe('entregue');
+    expect(passo(r, 'entregue').quando).toBe('2026-11-27T19:20:00.000Z');
+    producao('prod-chef', 'cardchef', { etapa: 'arquivada', designers: ['Tânia Arruda'], entregaEm: '2026-11-27T19:20:00.000Z' });
+    r = await doRoteiro(marina, 'redator', 'rot-chef-1');
+    expect(r.ciclo.estado).toBe('entregue');
+  });
+
+  it('o ciclo: a Produção ligada pelo Roteiro (sem o card do envio) também vale', async () => {
+    enviar('rot-fest-1', '', '2026-11-26T15:00:00.000Z');
+    producao('prod-fest', 'outrocard', { etapa: 'entrada', roteiro: 'rot-fest-1' });
+    expect((await doRoteiro(marina, 'redator', 'rot-fest-1')).ciclo.estado).toBe('produzindo');
+    // o mesmo roteiro, visto pelo editor
+    expect((await doRoteiro(julio, 'editor', 'rot-fest-1')).ciclo.estado).toBe('produzindo');
+  });
+
+  it('o ciclo: a data da claquete que já passou deixa o roteiro Exibido', async () => {
+    await guardar(davi, 'rot-velho-1', { claquete: 'CHEF(FUT) 3/1 SP', programa: 'Chef do Futuro', dataExibicao: '2026-01-03', redator: 'Marina Teles' });
+    const r = await doRoteiro(marina, 'redator', 'rot-velho-1');
+    expect(r.ciclo.estado).toBe('exibido');
+    expect(passo(r, 'exibido').quando).toBe('2026-01-03');
+  });
 });

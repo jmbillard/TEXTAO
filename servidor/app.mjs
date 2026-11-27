@@ -41,6 +41,7 @@ import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs
 import { criarPreferencias } from './preferencias.mjs';
 import { criarAreas, dosMeusRoteiros } from './areas.mjs';
 import { ehArea, ehAreaDosRoteiros } from '../src/modelo/areas.ts';
+import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarAndamento } from './andamento.mjs';
@@ -890,6 +891,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     guardarOriginal: db.prepare('INSERT OR REPLACE INTO originais (roteiro_id, nome, tipo, dados, em) VALUES (?, ?, ?, ?, ?)'),
     infoOriginal: db.prepare('SELECT nome, tipo, length(dados) AS tamanho, em FROM originais WHERE roteiro_id = ?'),
     envio: db.prepare('SELECT estado, card_id, url, erro, avisos, em, por_nome FROM envios WHERE roteiro_id = ?'),
+    // o ciclo do roteiro (#102): quando o roteiro chegou à fila
+    chegou: db.prepare('SELECT criado_em FROM roteiros WHERE id = ?'),
     guardarArtesNovas: db.prepare('UPDATE envios SET artes_novas = ?, atracao = ?, exibicao = ?, acervo_em = NULL WHERE roteiro_id = ?'),
     paraOAcervo: db.prepare(
       `SELECT e.roteiro_id, e.card_id, e.artes_novas, e.atracao, e.exibicao, json_extract(r.meta, '$.claquete') AS claquete
@@ -2225,7 +2228,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const area = new URL(req.url, 'http://x').searchParams.get('area');
       if (!ehAreaDosRoteiros(area)) return json(res, 400, { erro: 'Escolha a área: redator ou editor.' });
       const nome = (await areas.quemE(eu.email, cadastros))[area]?.nome ?? null;
-      return json(res, 200, { area, nome, roteiros: nome ? dosMeusRoteiros(resumosPara(eu), area, nome) : [] });
+      // cada um com o ciclo (#102): o estado e os passos com data, e quem da arte está com ele (os designers da Produção)
+      const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
+      const comOCiclo = (r) => {
+        const enviado = r.trello?.estado === 'enviado' || r.trello?.estado === 'duplicado' ? r.trello : null;
+        const producao = producoes.doRoteiro({ roteiro: r.id, card: enviado?.card });
+        const fatos = { chegouEm: q.chegou.get(r.id)?.criado_em ?? null, enviadoEm: enviado?.em ?? null, producao, dataExibicao: r.meta?.dataExibicao };
+        return { ...r, ciclo: cicloDoRoteiro(fatos, hoje), daArte: producao?.designers ?? [] };
+      };
+      return json(res, 200, { area, nome, roteiros: nome ? dosMeusRoteiros(resumosPara(eu), area, nome).map(comOCiclo) : [] });
     }
     if (caminho === '/api/eu/tour') {
       // a pessoa viu o tour da revisão: o convite não aparece mais, em nenhum navegador

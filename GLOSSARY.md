@@ -477,6 +477,15 @@ logo, como o caminho **"PROMeiro / designer ▾"** (o **seletor de área**), que
 tem o seu endereço; a raiz abre a última usada.
 _Evitar_: perfil, papel, permissão
 
+**Ciclo do roteiro**:
+O estado de um roteiro do ponto de vista de quem escreve ou edita, num ciclo único: Escrevendo → Em aprovação →
+Aprovado (os de antes do PROMeiro, sempre "em breve") → **Em revisão** (chegou à fila) → **Produzindo** (foi enviado;
+a Produção, se já existe, está em Entrada ou Produzindo) → **Entregue** (a Produção está Entregue ou arquivada) →
+**Exibido** (a data da claquete já passou; sem data, o roteiro fica no último estado conhecido). Cada passo tem a sua
+data ("chegou 26/11, 9h40 · no Trello 26/11, 11h02 · entregue 27/11, 16h20 · foi ao ar 3/12"). Sai do que o PROMeiro
+já sabe (o roteiro, o envio e a Produção), nada do Trello. Não confundir com a **etapa** da Produção.
+_Evitar_: status, fase
+
 **Preferências da pessoa**:
 O que o PROMeiro lembra por pessoa, em qualquer aparelho (a última área usada; depois, a exibição de cada área e o
 arranjo da Pauta da edição): no SQLite, uma chave por linha, gravada pela rota de quem está logado.

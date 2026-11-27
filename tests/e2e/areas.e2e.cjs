@@ -18,6 +18,11 @@
 // cadastro, tem uma área só e não vê o seletor. A administradora sem cadastro vê as três e o aviso de "meus roteiros"
 // vazio. No celular (escuro), a Mariana (redatora, ligada pelo "É") troca de área pelo seletor.
 //
+// O ciclo do roteiro (#102): o Chef do Caio foi para o Trello e está com a Tânia (o envio e a Produção arrumados no
+// SQLite, como o envio e a releitura da produção da arte deixam); a lista mostra "Produzindo", os passos com a data e
+// "com Tânia Arruda", e a Novela, "Em revisão". A Produção entregue: ao ganhar o foco, a lista se lê de novo e o Chef
+// passa a "Entregue". No celular (escuro), o ciclo cabe na ficha.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:areas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -301,6 +306,57 @@ async function trocarDeArea(navegador, url) {
   await ctx.close();
 }
 
+/* ---------- o ciclo do roteiro (#102) ---------- */
+
+/** O envio ao Trello e a Produção do card, como o envio e a releitura da produção da arte deixam no SQLite. */
+const enviar = (db, id, card, em) => db.prepare("INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, em) VALUES (?, 'enviado', ?, ?)").run(id, card, em);
+const producao = (db, id, card, { etapa, designers = [], entregaEm = null }) =>
+  db
+    .prepare(
+      `INSERT INTO producoes (id, claquete, etapa, designers, card_id, entrada_em, entrega_em, arquivada, criada_em, atualizada_em) VALUES (?, 'X', ?, ?, ?, ?, ?, 0, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET etapa = excluded.etapa, designers = excluded.designers, entrega_em = excluded.entrega_em`,
+    )
+    .run(id, etapa, JSON.stringify(designers), card, new Date().toISOString(), entregaEm, new Date().toISOString(), new Date().toISOString());
+const fichaDe = (p, claquete) => p.locator('.meus-roteiros .ficha', { has: p.locator('.ficha-claquete b', { hasText: claquete }) });
+const estadoDe = async (p, claquete) => (await fichaDe(p, claquete).locator('.estado-nome').innerText()).trim();
+
+async function cicloNaLista(navegador, url, db) {
+  // o Chef foi para o Trello e a Tânia pegou; a Novela ainda está na revisão
+  enviar(db, 'areas-chef', 'cardareaschef', new Date().toISOString());
+  producao(db, 'prod-areas-chef', 'cardareaschef', { etapa: 'produzindo', designers: ['Tânia Arruda'] });
+  const { ctx, p, erros, aoTrello } = await entrar(navegador, url, '#/redator', CAIO, { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.equal(await estadoDe(p, 'CHEF(FUT) SP'), 'Produzindo');
+  assert.equal(await estadoDe(p, 'NOVELA7(CAP) SP'), 'Em revisão');
+  const passosDoChef = (await fichaDe(p, 'CHEF(FUT) SP').locator('.passos-ciclo').innerText()).trim();
+  assert.match(passosDoChef, /^chegou \d+\/\d+, \d+h\d\d · no Trello \d+\/\d+, \d+h\d\d$/);
+  assert.equal((await fichaDe(p, 'CHEF(FUT) SP').locator('.com-quem').innerText()).trim(), 'com Tânia Arruda', 'quem da arte está com o roteiro');
+  assert.match((await fichaDe(p, 'NOVELA7(CAP) SP').locator('.passos-ciclo').innerText()).trim(), /^chegou \d+\/\d+, \d+h\d\d$/);
+  assert.equal(await fichaDe(p, 'NOVELA7(CAP) SP').locator('.com-quem').count(), 0, 'na revisão, ninguém da arte');
+  await capturar(p, '08-ciclo-na-lista-claro');
+  console.log('ok: cada roteiro mostra o estado do ciclo, os passos com data e quem da arte está com ele');
+
+  // a Produção foi entregue: a lista se lê de novo sozinha (aqui, ao ganhar o foco, como na agenda)
+  producao(db, 'prod-areas-chef', 'cardareaschef', { etapa: 'entregue', designers: ['Tânia Arruda'], entregaEm: new Date().toISOString() });
+  await p.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await fichaDe(p, 'CHEF(FUT) SP').locator('.estado-nome', { hasText: 'Entregue' }).waitFor();
+  assert.match((await fichaDe(p, 'CHEF(FUT) SP').locator('.passos-ciclo').innerText()).trim(), / · entregue \d+\/\d+, \d+h\d\d$/);
+  console.log('ok: a lista se atualiza sozinha quando o estado muda (Produzindo → Entregue)');
+  await semRolagemDeLado(p, 'ciclo no computador');
+  assert.deepEqual(erros, [], 'ciclo: erros na página');
+  assert.deepEqual(aoTrello, [], 'o ciclo não lê o Trello');
+  await ctx.close();
+
+  // no celular (escuro), o ciclo cabe na ficha
+  const cel = await entrar(navegador, url, '#/redator', CAIO, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await fichaDe(cel.p, 'CHEF(FUT) SP').locator('.estado-nome', { hasText: 'Entregue' }).waitFor();
+  await semRolagemDeLado(cel.p, 'ciclo no celular');
+  await capturar(cel.p, '09-ciclo-no-celular-escuro');
+  assert.deepEqual(cel.erros, [], 'ciclo no celular: erros na página');
+  await cel.ctx.close();
+  console.log('ok: no celular, o ciclo cabe na ficha');
+}
+
 async function umaAreaSo(navegador, url) {
   const { ctx, p, erros } = await entrar(navegador, url, '', OUTRA, { viewport: { width: 1440, height: 900 } });
   await p.locator('.biblioteca.fila').waitFor();
@@ -357,6 +413,7 @@ async function principal() {
     await semSerAdministrador(navegador, s.url);
     await noCelular(navegador, s.url);
     await trocarDeArea(navegador, s.url);
+    await cicloNaLista(navegador, s.url, s.db);
     await umaAreaSo(navegador, s.url);
     await administradoraSemCadastro(navegador, s.url);
     await areasNoCelular(navegador, s.url);

@@ -1,5 +1,5 @@
 /* As áreas de trabalho (#101): o caminho "PROMeiro / designer ▾" na linha do logo e "meus roteiros" do Redator e do
-   Editor. A referência é o protótipo aprovado das áreas; as cores são as do tema (claro e escuro). */
+   Editor, com o ciclo de cada roteiro (#102). A referência é o protótipo aprovado das áreas; as cores são as do tema (claro e escuro). */
 
 /* ---------- o caminho e o seletor ---------- */
 .caminho-area { position: relative; display: inline-flex; align-items: center; flex: none; min-width: 0; margin-left: -8px; }
@@ -29,8 +29,30 @@
 .areas-menu-pe { margin: 4px 6px 2px; padding: 9px 4px 3px; border-top: 1px solid var(--regua); font-size: 12px; line-height: 1.45; color: var(--tinta3); }
 
 /* ---------- meus roteiros ---------- */
-.ficha.ficha-minha { grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) auto; }
+.ficha.ficha-minha { grid-template-columns: minmax(0, 2fr) minmax(0, 1.6fr) auto; }
 .ficha-artes-minha { font-size: 13px; color: var(--tinta2); white-space: nowrap; }
+.ficha-claquete > span.ficha-de { font-size: 12.5px; color: var(--tinta3); }
+
+/* ---------- o ciclo do roteiro (#102): a trilha curta, o estado, os passos com data e quem da arte ---------- */
+.ficha-ciclo { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.estado-ciclo { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.trilha-ciclo { display: inline-flex; align-items: center; }
+.trilha-passo { display: inline-flex; align-items: center; gap: 3px; margin-left: 3px; }
+.trilha-passo:first-child { margin-left: 0; }
+.trilha-ciclo i { width: 9px; height: 9px; border-radius: 50%; background: var(--regua-forte); flex: none; }
+.trilha-ciclo i.em-breve { background: none; box-shadow: inset 0 0 0 1.2px var(--regua-forte); opacity: 0.7; width: 7px; height: 7px; }
+.trilha-ciclo i.feito { background: var(--tinta3); }
+.trilha-ciclo i.agora { background: var(--ultra); box-shadow: 0 0 0 3px var(--ultra-suave); }
+.trilha-ciclo u { width: 6px; height: 1.5px; background: var(--regua-forte); text-decoration: none; flex: none; }
+.trilha-ciclo u.feito { background: var(--tinta3); }
+.estado-nome { font: 600 13px var(--sans); }
+.estado-nome.e-revisao { color: var(--falta); }
+.estado-nome.e-produzindo { color: var(--ultra); }
+.estado-nome.e-entregue { color: var(--ok); }
+.estado-nome.e-exibido { color: var(--tinta2); }
+.passos-ciclo, .com-quem { font-size: 12px; line-height: 1.4; color: var(--tinta3); }
+.com-quem { color: var(--tinta2); }
+.passo-ciclo { white-space: nowrap; }
 .aviso-meus { margin: 8px 0 0; padding: 18px 20px; border-radius: 14px; background: var(--neutro); color: var(--tinta2); font-size: 14.5px; line-height: 1.55; max-width: 620px; }
 .aviso-meus.erro { color: var(--perigo); }
 
@@ -40,10 +62,10 @@
   .seletor-area { font-size: 20px; height: 44px; padding: 0 6px; }
   .biblioteca.meus-roteiros { padding: 18px 16px 28px; gap: 20px; }
   /* a fila do celular arruma a ficha por áreas (marca, claquete, gente…): a de "meus roteiros" tem as suas */
-  .ficha.ficha-minha { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'claquete artes' 'gente gente'; padding: 12px 14px; }
+  .ficha.ficha-minha { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'claquete artes' 'ciclo ciclo'; padding: 12px 14px; }
   .ficha.ficha-minha .ficha-claquete { grid-area: claquete; min-height: 0; }
-  .ficha.ficha-minha .ficha-gente { grid-area: gente; gap: 6px; align-items: baseline; }
-  .ficha.ficha-minha .ficha-artes-minha { grid-area: artes; }
+  .ficha.ficha-minha .ficha-ciclo { grid-area: ciclo; }
+  .ficha.ficha-minha .ficha-artes-minha { grid-area: artes; align-self: start; }
   /* a lista das áreas desce inteira na largura da tela, abaixo do topo */
   .areas-menu { position: fixed; top: 64px; left: 16px; right: 16px; width: auto; max-width: none; }
 }

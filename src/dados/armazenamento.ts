@@ -1,6 +1,7 @@
 import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { registrarPracas } from '../modelo/pracas';
 import { areaDeEntrada, ehArea, type Area, type AreaDosRoteiros } from '../modelo/areas';
+import type { CicloDoRoteiro } from '../modelo/cicloDoRoteiro';
 import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../modelo/redator';
 import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
@@ -844,7 +845,12 @@ export async function lembrarArea(area: Area) {
 export interface MeusRoteiros {
   area: AreaDosRoteiros;
   nome: string | null;
-  roteiros: Resumo[];
+  roteiros: MeuRoteiro[];
+}
+/** O roteiro de "meus roteiros", com o ciclo (#102) e quem da arte está com ele (os designers da Produção). */
+export interface MeuRoteiro extends Resumo {
+  ciclo: CicloDoRoteiro;
+  daArte: string[];
 }
 export async function lerMeusRoteiros(area: AreaDosRoteiros): Promise<MeusRoteiros> {
   if (armazenamento.tipo !== 'servidor') return { area, nome: null, roteiros: [] };

@@ -63,6 +63,8 @@ export function criarTabelaDasProducoes(db) {
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS producoes_card ON producoes (card_id)');
   db.exec('CREATE INDEX IF NOT EXISTS producoes_etapa ON producoes (etapa)');
+  // o ciclo do roteiro (#102) procura a Produção pelo Roteiro
+  db.exec('CREATE INDEX IF NOT EXISTS producoes_roteiro ON producoes (roteiro_id)');
   db.exec(`CREATE TABLE IF NOT EXISTS eventos (
     id TEXT PRIMARY KEY,
     producao_id TEXT NOT NULL REFERENCES producoes (id) ON DELETE CASCADE,
@@ -185,6 +187,8 @@ export function criarProducoes(db) {
     temAcao: db.prepare('SELECT 1 FROM eventos WHERE trello_acao = ?'),
     // o card pode ter mais de uma Produção (linhas repetidas na produção da arte): vale a mais recente
     daUltimaDoCard: db.prepare('SELECT id FROM producoes WHERE card_id = ? ORDER BY COALESCE(entrada_em, criada_em) DESC, criada_em DESC LIMIT 1'),
+    // o ciclo do roteiro (#102): a Produção mais recente ligada ao Roteiro (o envio liga pelo card; a carga, pelo Roteiro)
+    daUltimaDoRoteiro: db.prepare('SELECT * FROM producoes WHERE roteiro_id = ? ORDER BY COALESCE(entrada_em, criada_em) DESC, criada_em DESC LIMIT 1'),
     // o último evento da mesma família (a etapa; o mesmo designer ou a mesma arte; o mesmo campo)
     ultimoDaEtapa: db.prepare(`SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo IN (${DA_ETAPA.map(() => '?').join(', ')})`),
     ultimoDoItem: db.prepare('SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo IN (?, ?) AND COALESCE(depois, antes) = ?'),
@@ -436,8 +440,22 @@ export function criarProducoes(db) {
     });
   }
 
+  /**
+   * O que o ciclo do roteiro (#102) lê da Produção do Roteiro: pelo card do envio (o mais recente, como o aviso) ou,
+   * sem ele, pelo Roteiro ligado. null sem nenhuma.
+   * @returns { etapa, entradaEm, entregaEm, designers } | null
+   */
+  function doRoteiro({ roteiro, card }) {
+    const id = card ? q.daUltimaDoCard.get(card)?.id : null;
+    const l = (id ? q.doId.get(id) : null) ?? (roteiro ? q.daUltimaDoRoteiro.get(roteiro) : null);
+    if (!l) return null;
+    const p = daLinha(l);
+    return { etapa: p.etapa, entradaEm: p.entradaEm, entregaEm: p.entregaEm, designers: p.designers };
+  }
+
   return {
     linhaDoTempo,
+    doRoteiro,
     naPauta,
     vazia: () => Number(q.total.get().n) === 0,
     /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */

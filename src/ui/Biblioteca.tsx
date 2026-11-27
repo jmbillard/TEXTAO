@@ -9,7 +9,7 @@ import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { agruparPorDia, artesParaMostrar, claqueteParaMostrar, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, soAsPrioridades, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
+import { agruparPorDia, artesParaMostrar, LER_ANDAMENTO_MS, claqueteParaMostrar, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, soAsPrioridades, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
 import { AbasDoCriterio, ItemQueAbre, Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
 import { useTrocaDeCriterio, useTrocaDeSemana } from './trocaDeSemana';
@@ -632,8 +632,6 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
 
 const CHAVE_SEMANA = 'promeiro:semana';
 const CHAVE_CRITERIO = 'promeiro:criterio';
-/** De quanto em quanto tempo a etapa dos cards é lida de novo, com a aba à vista. */
-const LER_ANDAMENTO_MS = 60_000;
 
 /** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de ontem. Com roteiros
     para revisar na fila, a semana encolhe; "ver a semana inteira" volta ao tamanho normal (a escolha fica no navegador).

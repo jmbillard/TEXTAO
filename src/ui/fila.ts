@@ -72,6 +72,10 @@ export function proximoParaRevisar(fila: Resumo[], eu: { email?: string; roteiro
   return agruparPorDia(livres, agora).proximos.flatMap((g) => g.itens)[0];
 }
 
+/** De quanto em quanto tempo a etapa dos cards (a agenda) e o ciclo de "meus roteiros" (#102) são lidos de novo, com a
+    aba à vista. */
+export const LER_ANDAMENTO_MS = 60_000;
+
 /** diasExtras: dias que aparecem mesmo sem roteiro (os dias que só têm filme). */
 export function agruparPorDia(lista: Resumo[], agora = new Date(), diasExtras: string[] = []): { proximos: GrupoDia[]; exibidos: GrupoDia[] } {
   const hoje = isoLocal(agora);

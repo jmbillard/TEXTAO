@@ -99,6 +99,8 @@ async function subir({ trello: falso, acervo, filmes, cadastros, teable, pg, git
     url: `http://localhost:${portaVite}/`,
     api,
     app,
+    // o SQLite do servidor, para o teste arrumar o que vem de fora (o envio, a Produção relida)
+    db,
     async descer() {
       await vite.close();
       await new Promise((ok) => servidor.close(ok));
