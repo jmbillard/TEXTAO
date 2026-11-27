@@ -131,7 +131,18 @@
 .montar-demanda { position: relative; }
 .montar-demanda > .arrasto-alca { position: absolute; left: -13px; top: 2px; opacity: 0; }
 .montar-demanda.arrastavel:hover > .arrasto-alca, .montar-demanda.arrastavel:focus-within > .arrasto-alca { opacity: 1; }
-.montar-mover { display: none; }
+/* o "Mover para…" (⇄, #163): nas claquetes atribuídas e nas de "Para distribuir", em qualquer largura. Discreto: sem
+   borda e sem fundo, em cinza claro; acende no mouse e no foco. A área de toque é de 44 px, no meio da claquete, à
+   direita (o texto deixa o lugar dele). */
+.coluna-destino.mover-menu { position: absolute; top: 50%; right: 0; z-index: 1; width: 44px; max-width: 44px; height: 44px; padding: 0; transform: translateY(-50%); border: 0; border-radius: 10px; background: transparent; color: var(--tinta3); opacity: 0.5; font: 400 15px/1 var(--sans); text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; cursor: pointer; transition: opacity 0.15s, background 0.15s, color 0.15s; }
+.coluna-claquete:hover > .mover-menu, .montar-demanda:hover > .mover-menu, .coluna-destino.mover-menu:focus-visible { opacity: 1; }
+.coluna-destino.mover-menu:hover, .coluna-destino.mover-menu:focus { border: 0; background: color-mix(in srgb, var(--tinta) 6%, transparent); color: var(--tinta); }
+@media (hover: none) { .coluna-destino.mover-menu { opacity: 0.7; } }
+.coluna-claquete { padding-right: 44px; }
+/* a caixinha do Desfazer do ⇄: a largura do texto (no celular, até a beira da tela), não metade da tela */
+.desfazer.montar-movida { width: max-content; }
+.montar-demanda.arrastavel .montar-in { width: calc(100% - 44px); }
+.montar-demanda.arrastavel .montar-leitura { padding-right: 44px; }
 .montar-teclas .arrasto-alca { display: inline-block; width: auto; line-height: 1; touch-action: auto; cursor: default; }
 @media (pointer: coarse) {
   .montar-demanda > .arrasto-alca { opacity: 1; }
@@ -157,11 +168,9 @@ body.arrastando, body.arrastando * { cursor: grabbing !important; user-select: n
   /* a linha do logo aperta: o "rascunho guardado" sai (o erro ao gravar continua) */
   .montar-estado:not(:has(.montar-erro)) { display: none; }
   .montar-turno-cab { flex-wrap: wrap; row-gap: 2px; }
-  /* no celular, a coluna vai para baixo, uma caixa embaixo da outra; o "Mover para…" de cada demanda aparece */
+  /* no celular, a coluna vai para baixo, uma caixa embaixo da outra; a demanda muda de lugar pelo "Mover para…" (⇄), sem a alça */
   .montar-coluna { order: 2; grid-template-columns: minmax(0, 1fr); }
   .coluna-distribuir .coluna-itens { display: flex; }
-  .montar-mover { display: block; position: absolute; right: 0; top: 0; width: 30px; max-width: 30px; padding: 0; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; font-size: 15px; line-height: 1; }
-  .montar-demanda.arrastavel .montar-in { padding-right: 34px; }
   .montar-demanda > .arrasto-alca { display: none; }
 }
 

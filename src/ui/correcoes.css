@@ -42,6 +42,35 @@
 .cor-nome { font: 600 14.5px var(--sans); color: var(--tinta); }
 .cor-categoria { margin-left: 6px; font: 400 12.5px var(--sans); color: var(--tinta3); }
 
+/* ---------- aplicar e desfazer (#115): marcar, o resultado, as etiquetas, a caixinha de desfazer e o registro ---------- */
+.cor-aviso { margin: 0 0 14px; max-width: 86ch; padding: 8px 12px; border-radius: 8px; background: var(--neutro); color: var(--tinta2); font: 500 13.5px/1.5 var(--sans); }
+.cor-resultado { margin: 0 0 14px; max-width: 86ch; font: 500 14px/1.5 var(--sans); color: var(--tinta); }
+.cor-aplicar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 0 0 8px; }
+.cor-aplicar .botao { height: 32px; font-size: 13px; }
+.cor-marcadas { margin-right: auto; font: 500 13px var(--sans); color: var(--tinta3); font-variant-numeric: tabular-nums; }
+.cor-tabela .cor-marcar { width: 28px; padding-right: 8px; }
+.cor-marcar input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--ultra); }
+.cor-tabela tr.marcada td { background: var(--ultra-suave); }
+.cor-etiqueta { font: 500 12px var(--sans); border-radius: 99px; padding: 2px 9px; background: var(--falta-fundo); color: var(--falta); white-space: nowrap; }
+.cor-etiqueta[data-motivo="key"], .cor-etiqueta[data-motivo="desfeita"] { background: var(--neutro); color: var(--tinta2); }
+.cor-etiqueta[data-motivo="desfeita"] { white-space: normal; }
+.cor-da-linha { display: block; margin-top: 3px; font: 400 12.5px var(--sans); color: var(--tinta3); }
+.cor-registro .cor-estado { width: 210px; text-align: right; }
+.cor-registro .cor-estado .botao { height: 30px; font-size: 13px; }
+.cor-registro tr.desfeita .cor-claquete { color: var(--tinta3); }
+.cor-registro .cfg-falha { margin: 6px 0 0; }
+/* a caixinha de desfazer, embaixo, no meio da janela (a mesma das Produções) */
+.cor-desfazer {
+  position: fixed; left: 50%; bottom: 24px; z-index: 30; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px)); box-sizing: border-box;
+  padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--tinta); color: var(--papel); box-shadow: var(--sombra-folha);
+  font: 500 13.5px/1.35 var(--sans);
+}
+.cor-desfazer-texto { min-width: 0; overflow-wrap: anywhere; }
+.cor-desfazer-botao { flex: none; background: var(--papel); border-color: var(--papel); color: var(--tinta); font-weight: 600; }
+.cor-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
+.cor-desfazer-fechar:hover { opacity: 1; }
+
 /* ---------- no celular ---------- */
 .no-celular .cor-resumo { font-size: 15.5px; }
 .no-celular .cor-tabela thead { display: none; }
@@ -58,4 +87,6 @@
 .no-celular .cor-fichas tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .no-celular .cor-fichas .cor-ficha { grid-column: 1 / -1; }
 .no-celular .cor-fichas td.cor-num { width: auto; text-align: left; font-size: 13px; }
+.no-celular .cor-registro .cor-estado { grid-column: 1 / -1; width: auto; text-align: left; }
 .no-celular .cor-fichas td.cor-num::before { content: attr(data-rotulo) " "; font-weight: 400; color: var(--tinta3); }
+.cor-etiquetas:not(:empty) { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }

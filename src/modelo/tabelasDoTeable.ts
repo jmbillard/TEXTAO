@@ -73,8 +73,8 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     variavel: 'TEABLE_FILMES',
     // exibicao.mjs (o filme novo, o ano, o pôster)
     api: ['titulo', 'cadastrado_em', 'ano_de_producao', 'poster'],
-    // exibicao.mjs, filmes.mjs (a conferência)
-    pg: ['titulo', 'ano_de_producao', 'projeto_win', 'projeto_mac', 'output_win', 'output_mac', 'poster'],
+    // exibicao.mjs, filmes.mjs (a conferência), trello.mjs (os filmes recentes do Padeiro, #142: o nome_da_pasta)
+    pg: ['titulo', 'ano_de_producao', 'projeto_win', 'projeto_mac', 'output_win', 'output_mac', 'poster', 'nome_da_pasta'],
   },
   // projeto-do-padeiro.mjs (#144): o registro de cada projeto criado, aberto ou alterado pelo Padeiro (o que o fluxo
   // "PROMO - PROJETO" do n8n gravava)
@@ -94,6 +94,9 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     // trello.mjs (também a carga das Produções), exibicao.mjs, acervo.mjs, filmes.mjs
     pg: ['card_ID', 'sessao', 'exibicao', 'labels', 'filme', 'data_de_exibicao', 'link', 'inedito', 'output', 'artes', 'artes_existentes'],
   },
+  // indice-do-buscar.mjs (#143): as pastas citadas no Teams, para o índice do buscar do Padeiro. Quem grava é o fluxo
+  // PROMO: MENSAGENS NO TEAMS do n8n; sem a tabela, o índice vem sem o teams
+  { nome: 'mensagens', titulo: 'Mensagens do Teams', variavel: '', api: [], pg: ['receivedDateTime', 'from', 'jobTitle', 'groupID', 'messageID', 'content'], opcional: true },
 ];
 
 /** O campo do pôster na tabela filmes (TEABLE_FILMES_POSTER): o de anexo com este nome. */

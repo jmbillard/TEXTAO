@@ -119,6 +119,8 @@ export function ParaDistribuir({ dia, itens, juntar, tirar, destinos, mover, arr
             return (
               <li key={d.id} className={`coluna-claquete${arrastado?.tipo === 'lista' && arrastado.id === d.id ? ' indo' : ''}`} data-id={d.id} onPointerDown={iniciar({ tipo: 'lista', id: d.id })}>
                 <Alca />
+                {/* o ⇄ discreto, à direita, no meio da claquete (#163): o mesmo das demandas da grade */}
+                <EscolherDestino className="mover-menu" rotulo="⇄" titulo={`Mover ${d.texto} para…`} destinos={destinos} escolher={(v) => mover(d.id, v)} />
                 <span className="coluna-claquete-corpo">
                   <span className="mono">{d.texto}</span>
                   <span className="coluna-leitura">
@@ -126,7 +128,6 @@ export function ParaDistribuir({ dia, itens, juntar, tirar, destinos, mover, arr
                     {d.deQuem && <span className="coluna-de"> era de {primeiroNome(d.deQuem)}</span>}
                   </span>
                   <span className="coluna-acoes">
-                    <EscolherDestino rotulo="Mover para…" titulo={`Mover ${d.texto} para…`} destinos={destinos} escolher={(v) => mover(d.id, v)} />
                     <button type="button" className="botao-texto" onClick={() => tirar(d.id)}>
                       {d.deQuem ? 'já distribuí' : 'tirar'}
                     </button>

@@ -10,6 +10,11 @@
 // As atrações (#116): as fichas dos cadastros do Teable falso que parecem a mesma, num grupo com o motivo, e em cada
 // ficha quantas artes do acervo, Produções e regras ela tem; os nomes curtos e diferentes não juntam; "Não são a mesma"
 // tira o grupo, e ele não volta ao reabrir a página. No celular, sem o botão.
+// Aplicar e desfazer (#115), no computador: a proposta com o (M) espera a key nova e não se marca; marcar todas da
+// página e uma por vez; aplicar só as marcadas, com a linha que mudou no Teable depois da proposta voltando como
+// "mudou desde a proposta" e o resultado "1 deu certo e 1 falhou"; a caixinha de desfazer devolve a claquete antiga; o
+// registro das correções aplicadas, com o desfazer de cada uma e o "mudou desde então". Com a tabela da pauta fora da
+// base do PROMeiro, só o aviso, sem marcar.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:correcoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -39,6 +44,7 @@ function linha(claquete, editor, dia, anotacao = null) {
   const meiaNoite = new Date(`${dia}T00:00:00-03:00`).toISOString();
   return {
     id: `recCorrecaoE2e${n}`,
+    lastModifiedTime: '2026-11-20T12:00:00.000Z',
     fields: { claquete, key: claquete.toUpperCase(), editor: editor ? { id: `rec${editor.replace(/\W/g, '')}`, title: editor } : null, data: meiaNoite, expediente_inicio: meiaNoite, expediente_fim: null, anotacao, alterado_em: meiaNoite },
   };
 }
@@ -199,9 +205,11 @@ async function asPaginas(navegador, url) {
     const pagina = Number(busca.get('pagina'));
     pedidas.push(`${busca.get('grupo')}:${pagina}`);
     const resumo = { corrigir: 120, naoReconhecido: 0 };
-    if (busca.get('grupo') !== 'corrigir') return r.fulfill({ json: { grupo: busca.get('grupo'), pagina, porPagina: 50, resumo, propostas: [] } });
+    // a tabela da pauta fora da base do PROMeiro: a tela só mostra
+    const escrita = { pode: false, aviso: 'A tabela da pauta da edição não está na base do PROMeiro: a correção só mostra as propostas.' };
+    if (busca.get('grupo') !== 'corrigir') return r.fulfill({ json: { grupo: busca.get('grupo'), pagina, porPagina: 50, resumo, escrita, propostas: [] } });
     const quantas = pagina === 3 ? 20 : 50;
-    return r.fulfill({ json: { grupo: 'corrigir', pagina, porPagina: 50, resumo, propostas: Array.from({ length: quantas }, (_, i) => proposta(pagina, i)) } });
+    return r.fulfill({ json: { grupo: 'corrigir', pagina, porPagina: 50, resumo, escrita, propostas: Array.from({ length: quantas }, (_, i) => proposta(pagina, i)) } });
   });
   // o endereço próprio, aberto direto (com a resposta de mentira já no lugar)
   await p.goto(`${url}#/correcoes`);
@@ -211,6 +219,9 @@ async function asPaginas(navegador, url) {
   assert.equal((await corrigir.locator('.cor-pagina').textContent()).trim(), 'página 1 de 3');
   assert.equal(await corrigir.getByRole('button', { name: 'Anteriores' }).isDisabled(), true);
   assert.equal(await corrigir.locator('.cor-tabela tbody tr').count(), 50);
+  assert.equal((await p.locator('.cor-aviso').textContent()).trim(), 'A tabela da pauta da edição não está na base do PROMeiro: a correção só mostra as propostas.');
+  assert.equal(await p.locator('.cor-marcar input').count(), 0, 'fora da base do PROMeiro: sem marcar');
+  assert.equal(await p.getByRole('button', { name: /^Aplicar/ }).count(), 0);
   await corrigir.getByRole('button', { name: 'Próximas' }).click();
   await linhaDe(p, 'recPag2_0').waitFor();
   assert.equal((await corrigir.locator('.cor-pagina').textContent()).trim(), 'página 2 de 3');
@@ -269,6 +280,79 @@ async function noCelular(navegador, url, tema) {
   console.log(`ok: celular ${nome}: só mostra, cada linha um cartão, sem rolar para o lado`);
 }
 
+/** Aplicar e desfazer (#115): marcar, aplicar, a linha que mudou, a caixinha de desfazer e o registro. */
+async function aplicarEDesfazer(navegador, url, teable) {
+  const daPauta = (claquete) => PAUTA.find((l) => l.fields.claquete === claquete);
+  const jogo = daPauta('Jogo Final 4/12 Dp');
+  const novela = daPauta('Novela Sol 28/9 H');
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } });
+  const corrigir = grupo(p, 'corrigir');
+  await corrigir.locator('.cor-marcar input').first().waitFor();
+  assert.equal(await p.locator('.cor-aviso').count(), 0, 'na base do PROMeiro: sem o aviso');
+  // a do (M) espera a fórmula nova da key no Teable: não se marca
+  const festival = linhaDe(p, daPauta('Festival 3/1 (MÊS)').id);
+  assert.equal(await festival.locator('.cor-marcar input').isDisabled(), true);
+  assert.equal((await festival.locator('.cor-etiqueta').textContent()).trim(), 'espera a key nova');
+  // todas da página (as que se marcam), e uma por vez
+  await corrigir.getByRole('checkbox', { name: 'Marcar todas da página' }).check();
+  assert.equal((await corrigir.locator('.cor-marcadas').textContent()).trim(), '2 marcadas');
+  await linhaDe(p, novela.id).locator('.cor-marcar input').uncheck();
+  assert.equal((await corrigir.locator('.cor-marcadas').textContent()).trim(), '1 marcada');
+  assert.equal(await corrigir.getByRole('checkbox', { name: 'Marcar todas da página' }).isChecked(), false);
+  await linhaDe(p, novela.id).locator('.cor-marcar input').check();
+  await capturar(p, '04-marcadas');
+  // alguém muda a linha da Novela no Teable depois da tela ler: ela não é gravada
+  novela.lastModifiedTime = '2026-11-27T09:00:00.000Z';
+  await corrigir.getByRole('button', { name: 'Aplicar 2 marcadas' }).click();
+  await p.locator('.cor-resultado', { hasText: 'falhou' }).waitFor();
+  assert.equal((await p.locator('.cor-resultado').textContent()).trim(), '1 deu certo e 1 falhou.');
+  assert.equal(jogo.fields.claquete, 'Jogo Final 4/12 (DP)');
+  assert.equal(novela.fields.claquete, 'Novela Sol 28/9 H');
+  await linhaDe(p, jogo.id).waitFor({ state: 'detached' });
+  assert.equal((await linhaDe(p, novela.id).locator('.cor-etiqueta').textContent()).trim(), 'mudou desde a proposta');
+  // a caixinha de desfazer e o registro
+  const caixinha = p.locator('.cor-desfazer');
+  assert.equal((await caixinha.locator('.cor-desfazer-texto').textContent()).trim(), '1 correção aplicada na pauta.');
+  const registro = grupo(p, 'registro');
+  await registro.locator('tbody tr').first().waitFor();
+  assert.deepEqual(await textos(registro.locator('tbody tr .cor-de-para')), ['Jogo Final 4/12 Dp → Jogo Final 4/12 (DP)']);
+  await semRolagemDeLado(p, 'aplicar');
+  await capturar(p, '05-aplicada');
+  await caixinha.getByRole('button', { name: 'Desfazer' }).click();
+  await caixinha.waitFor({ state: 'detached' });
+  assert.match(await p.locator('.cor-resultado').textContent(), /1 correção desfeita/);
+  assert.equal(jogo.fields.claquete, 'Jogo Final 4/12 Dp');
+  await linhaDe(p, jogo.id).waitFor();
+  await registro.locator('.cor-etiqueta[data-motivo="desfeita"]').waitFor();
+  assert.match(await registro.locator('.cor-etiqueta[data-motivo="desfeita"]').textContent(), /^desfeita por /);
+  await capturar(p, '06-desfeita');
+
+  // pelo registro, mais tarde: aplica de novo, fecha a caixinha; a linha mudou desde então e não é desfeita
+  await linhaDe(p, jogo.id).locator('.cor-marcar input').check();
+  await corrigir.getByRole('button', { name: 'Aplicar 1 marcada' }).click();
+  await caixinha.waitFor();
+  await caixinha.getByRole('button', { name: 'Fechar' }).click();
+  assert.equal(jogo.fields.claquete, 'Jogo Final 4/12 (DP)');
+  const ativa = registro.locator('tbody tr:not(.desfeita)');
+  await ativa.waitFor();
+  jogo.fields.claquete = 'Jogo Final 5/12 (DP)';
+  await ativa.getByRole('button', { name: 'Desfazer' }).click();
+  await ativa.locator('.cfg-falha', { hasText: 'mudou desde então' }).waitFor();
+  assert.equal(jogo.fields.claquete, 'Jogo Final 5/12 (DP)');
+  // volta como a correção deixou: agora desfaz
+  jogo.fields.claquete = 'Jogo Final 4/12 (DP)';
+  await ativa.getByRole('button', { name: 'Desfazer' }).click();
+  await registro.locator('tbody tr:not(.desfeita)').waitFor({ state: 'detached' });
+  assert.equal(jogo.fields.claquete, 'Jogo Final 4/12 Dp');
+  await capturar(p, '07-registro');
+  // só a claquete foi gravada, sempre na tabela da pauta da base do PROMeiro
+  const gravacoes = teable.estado.pedidos.filter((x) => !x.startsWith('GET '));
+  assert.ok(gravacoes.length === 4 && gravacoes.every((x) => x.startsWith('PATCH /api/table/tblFalso_bseFalso_EDICAO_producao/record/')), gravacoes.join(' | '));
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: aplicar e desfazer: marcar, aplicar só as marcadas, "mudou desde a proposta", a caixinha e o registro');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
@@ -290,6 +374,7 @@ async function principal() {
     await asPaginas(navegador, s.url);
     await semSerAdministrador(navegador, s.url, s.api, teable);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema);
+    await aplicarEDesfazer(navegador, s.url, teable);
   } catch (e) {
     falhou = true;
     console.error(e);

@@ -1130,7 +1130,7 @@ import type { FotoDoDia } from '../modelo/fotoDaPlanilha';
 import type { DeOndeRepetir } from '../modelo/repetir';
 import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
-import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
+import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DOS_RECOLHIDOS, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
@@ -1593,6 +1593,12 @@ export const lerCorrecoesDaPauta = (grupo: GrupoDaPauta, pagina = 1) => pedir<Pa
 export const lerAtracoesParecidas = (pagina = 1) => pedir<PaginaDasAtracoes>(`/api/correcoes/atracoes?pagina=${pagina}`);
 /** "Não são a mesma": o grupo destas fichas não aparece de novo. */
 export const naoSaoAMesma = (ids: string[]) => pedir<{ ok: true }>('/api/correcoes/atracoes/nao-sao-a-mesma', { method: 'POST', body: JSON.stringify({ ids }) });
+/** Aplica as propostas marcadas da pauta (#115): o servidor confere cada linha e grava no Teable. */
+export const aplicarCorrecoes = (propostas: { id: string; de: string; mudouEm: string | null }[]) => pedir<AplicacaoDaCorrecao>('/api/correcoes/pauta/aplicar', { method: 'POST', body: JSON.stringify({ propostas }) });
+/** Uma página do registro das correções aplicadas (#115). */
+export const lerRegistroDeCorrecoes = (pagina = 1) => pedir<PaginaDoRegistro>(`/api/correcoes/registro?pagina=${pagina}`);
+/** Desfaz as correções do registro (#115), com a conferência de "mudou desde então". */
+export const desfazerCorrecoes = (ids: string[]) => pedir<Desfeitas>('/api/correcoes/desfazer', { method: 'POST', body: JSON.stringify({ ids }) });
 /** Confere sem salvar nada. */
 export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<ConferenciaDasPracas>('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify(m) });
 /** Confere de novo e salva (vale na hora). Com erro na conferência, nada é salvo: volta a conferência. */

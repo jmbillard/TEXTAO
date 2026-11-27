@@ -380,6 +380,12 @@ cadastro vira um **pedido novo**, pendente, e a chave ligada vale até um admini
 trocada) ou recusá-lo (aí ela fica). Com a chave pendente ou revogada, o cadastro novo a troca na hora.
 _Evitar_: token de serviço, senha, login
 
+**Índice do buscar**:
+O que a busca do Padeiro (o acessorista e a claquete) procura: as atrações com as pastas e os padrões, as Produções
+recentes, os filmes e as pastas citadas no Teams, num JSON só (`{ v: 2, … }`). Vinha do fluxo PROMO - BUSCAR do n8n;
+com a **chave do Padeiro** ligada, vem do PROMeiro (`/api/padeiro/buscar`, #143), no mesmo formato.
+_Evitar_: índice de caminhos (é o antigo, do path-search), índice local (o das pastas de um computador, no Padeiro)
+
 **Anexo** (guardado pelo PROMeiro):
 Um arquivo que o PROMeiro guarda no próprio banco (entra no backup) e serve por endereço fixo, sem depender do Trello
 nem do Teable (#90): o **PDF do roteiro** que vai ao card no envio (ligado ao card da Produção, servido em
@@ -473,7 +479,10 @@ Quando a atração troca a identidade: as artes do acervo dela deixam de valer (
 A troca de uma grafia antiga pelo padrão nos dados que o PROMeiro não gravou (a pauta da edição, as atrações, o
 acervo), numa tela de manutenção só de administradores: lista as correções "de → para" para conferir, aplica no Teable
 e guarda o valor antigo para desfazer. Na entrada não precisa: o PROMeiro aceita qualquer grafia e grava sempre no
-padrão. Na pauta da edição, é a única escrita do PROMeiro além do **publicar** da coordenação.
+padrão. Na pauta da edição, é a única escrita do PROMeiro além do **publicar** da coordenação, e só na base do
+PROMeiro (a tabela da pauta de outra base só mostra as propostas). A linha que mudou no Teable depois da proposta não é
+gravada ("mudou desde a proposta"). Cada correção aplicada fica no registro (o que era, o que ficou, quem, quando) e
+pode ser desfeita, se a linha não mudou desde então. A correção que daria (M) espera a fórmula nova da key no Teable.
 _Evitar_: normalização, limpeza, saneamento
 
 ## Pauta da edição

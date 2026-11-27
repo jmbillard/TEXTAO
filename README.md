@@ -38,8 +38,9 @@ entra no backup com o resto do banco) e são servidos por endereço fixo:
   Portainer, `PROMEIRO_URL/api/publico/poster/<filme>?t=<token>` serve o mesmo pôster fora do login; precisa de uma
   aplicação no Cloudflare Access só para o caminho `/api/publico/poster`, com uma política **Bypass** (como a do aviso
   do Trello). Sem o token, ou com o errado, 404; o que mais estiver embaixo de `/api/publico/` também responde 404 e
-  nunca chega às rotas com login, nem com o caminho torto (`%2e%2e`, barras repetidas, outra caixa; #145). O fluxo `filmes-recentes` do n8n passa a mandar esse endereço no lugar do link
-  temporário do Teable.
+  nunca chega às rotas com login, nem com o caminho torto (`%2e%2e`, barras repetidas, outra caixa; #145). É esse o endereço que vai nos filmes recentes do Padeiro
+  (veja "Os filmes recentes do Padeiro"), no lugar do link temporário do Teable que o fluxo `filmes-recentes` do n8n
+  manda.
 
 ## O caminho do Padeiro (a chave do Padeiro)
 
@@ -78,6 +79,41 @@ Delete). O caminho volta para trás do login, como o resto do domínio: o Padeir
 segue pelo n8n, como antes), e as chaves continuam guardadas, sem valer para nada até o Bypass voltar. Para cortar um
 Padeiro só, sem mexer no Access, revogue a chave dele nos Cadastros.
 
+### O índice do buscar (#143)
+
+`GET /api/padeiro/buscar`, com a chave **ligada** (a pendente e a revogada, `403 { estado }`; sem chave ou com a errada,
+`401`), devolve o índice da busca do Padeiro (a busca de caminhos e a claquete) no mesmo formato do fluxo
+**PROMO - BUSCAR** do n8n (`GET …/webhook/buscar`): `{ v: 2, stamp, generated, teams, trello, atracoes, filmes }`.
+Com `Accept-Encoding: gzip`, vai comprimido. O `stamp` muda só quando o conteúdo muda.
+
+- **atracoes:** o cadastro das atrações (os Cadastros): `{ name, cat, pattern, proj, out }`. As keys viram os padrões,
+  e as pastas são os campos de `TEABLE_CAMPOS_CAMINHO` que começam com `projeto` e `output`; a atração sem pasta fica
+  de fora.
+- **trello:** as Produções do PROMeiro que entraram nos últimos 15 dias, as mais novas primeiro (`claq`, `red`, `ed`,
+  `card`, `atr`, `at`, `des`, `fim`, `fil` e a `producao`). A Entregue e a arquivada vêm com `fim: true`.
+- **filmes:** o cadastro dos filmes (o Postgres do Teable), um por título: `{ name, year, out }`.
+- **teams:** as pastas citadas nas mensagens do Teams dos últimos 30 dias (a tabela **mensagens** da base, que o fluxo
+  **PROMO: MENSAGENS NO TEAMS** grava), cada pasta uma vez. Sem a tabela na base, o `teams` vem vazio.
+- Sem o cadastro das atrações, ou com o Teable fora do ar, `503`: o Padeiro fica com o webhook do n8n ou com a cópia
+  que já tem.
+
+**Para desligar o fluxo PROMO - BUSCAR do n8n** (o passo é seu, depois de conferir):
+
+1. **Os Padeiros:** todos os computadores com a versão do Padeiro que lê o índice do PROMeiro, e todas as chaves
+   **ligadas** nos Cadastros › Padeiros. O Padeiro sem chave, com a pendente, ou de antes, continua lendo o webhook do
+   n8n: com o fluxo desligado, ele fica só com a última cópia do índice.
+2. **Confira** com uma chave ligada: `curl -s -H 'X-Chave-Do-Padeiro: <chave>' https://<promeiro>/api/padeiro/buscar`
+   responde `{"v":2,…}`, e as contagens de `atracoes`, `filmes` e `teams` batem com as do
+   `curl -s https://<n8n>/webhook/buscar` (o `trello` do PROMeiro vem das Produções: pode ter outros cards).
+3. **As mensagens do Teams:** o PROMO - BUSCAR chamava o **PROMO: MENSAGENS NO TEAMS** a cada busca; sem ele, as
+   mensagens só entram pelo agendamento do próprio fluxo (hoje, de 3 em 3 horas). Diminua o intervalo do Schedule
+   Trigger dele (por exemplo, de 15 em 15 minutos) **antes** de desligar o BUSCAR. Ele continua ligado.
+4. **Desligue** o PROMO - BUSCAR no n8n (o interruptor Active do fluxo; não apague). Abra o acessorista e a claquete
+   num Padeiro ligado e confira as atrações, os filmes e as pastas do Teams.
+
+**Para voltar atrás:** ligue o fluxo de novo (o Padeiro sem a chave ligada volta a ler na hora) e, se tiver mudado,
+volte o intervalo do MENSAGENS NO TEAMS.
+
 ### O projeto criado no Padeiro (no lugar do fluxo "PROMO - PROJETO" do n8n)
 
 `POST /api/padeiro/projeto` (#144), com a chave **ligada**, recebe o mesmo envio que o Padeiro mandava ao webhook do
@@ -115,6 +151,43 @@ Sem a chave, ou com ela pendente ou revogada, a rota recusa (401 ou 403) e o Pad
    fluxo fica como referência e para voltar atrás). O endereço `/webhook/projeto` passa a responder 404, e o Padeiro
    sem a chave mostra o aviso amarelo de "o n8n não respondeu" (o projeto continua sendo criado).
 5. **Para voltar atrás:** ligue o interruptor **Active** de novo. Nada no PROMeiro precisa mudar.
+
+## Os filmes recentes do Padeiro
+
+A claquete do Padeiro, com o campo vazio, mostra os filmes com exibição perto de hoje (#142). Com a chave do Padeiro
+(pendente ou ligada), eles vêm do PROMeiro; sem a chave, com a revogada, com o Padeiro de antes ou com o PROMeiro fora
+do ar, continuam vindo do fluxo `filmes-recentes` do n8n (PROMO: FILMES PARA O PADEIRO).
+
+- `GET /api/padeiro/filmes`, com a chave: `{ atualizado_em, filmes: [...] }`, no mesmo formato do n8n. Um item por
+  filme com exibição não cancelada de 2 dias atrás a 45 dias à frente (a próxima exibição; sem ela, a mais recente), os
+  próximos primeiro e depois os dos últimos dias. Cada um leva `exibicao_id`, `filme_id`, `titulo`, `ano`, `pasta`
+  ("TÍTULO (ANO)"), `projeto` e `output` (`{ win, mac }`, com essa pasta no último nível), `exibicao` (AAAA-MM-DD),
+  `sessao`, `inedito`, `trello` (o card) e `poster`. Lê do Postgres do Teable (as tabelas `exibicoes` e `filmes`, com o
+  `nome_da_pasta`); nada vem do Trello.
+- **O pôster** é o endereço público do PROMeiro (`PROMEIRO_URL/api/publico/poster/<filme>?t=<POSTER_PUBLICO_TOKEN>`),
+  quando o filme tem pôster no Teable ou a cópia do PROMeiro. Sem o `PROMEIRO_URL` ou sem o `POSTER_PUBLICO_TOKEN`, o
+  filme vem sem pôster (`null`). O endereço é fixo: não expira como o link do Teable.
+- A chave pendente também lê, porque o n8n já dava a mesma lista sem chave nenhuma. A revogada, `403`; sem a chave, ou
+  com uma que não vale, `401`. Com o Postgres do Teable fora, `503`, e o Padeiro volta ao n8n.
+
+**Para desligar o fluxo `filmes-recentes` do n8n** (o passo é seu, depois de conferir):
+
+1. **O Padeiro novo em todos os computadores**, com o endereço do PROMeiro na configuração. Nos Cadastros ›
+   Padeiros, cada computador da equipe aparece com a chave (pendente serve; revogada, não).
+2. **Confira com a chave:** `curl -s -H "X-Chave-Do-Padeiro: <chave>" https://<promeiro>/api/padeiro/filmes` traz os
+   mesmos filmes que `curl -s https://<n8n>/webhook/filmes-recentes` (os pôsteres em endereços diferentes, e o
+   `atualizado_em`). Abra um pôster da lista do PROMeiro num navegador anônimo: a imagem abre sem login.
+3. **Confira no Padeiro:** a claquete com o campo vazio mostra os filmes, com o pôster, a exibição e a etiqueta (A
+   PRODUZIR ou JÁ TEM PROJETO), como antes.
+4. **Confira no n8n:** em Executions, filtrando o fluxo "PROMO: FILMES PARA O PADEIRO", as chamadas param de chegar
+   (o Padeiro com a chave não chama mais o webhook). As que ainda chegam são de um Padeiro sem a chave, de antes ou
+   com o PROMeiro fora do ar naquela hora: atualize esse computador antes de seguir.
+5. **Desligue:** no n8n, abra o fluxo, baixe uma cópia (… → Download) e desative o fluxo (o botão Active). Não apague.
+   Daí em diante, o Padeiro sem a chave fica com a lista dos filmes vazia (a claquete continua funcionando, só sem os
+   filmes recentes).
+
+**Para voltar atrás:** ative o fluxo de novo no n8n. O Padeiro sem a chave volta a usar o webhook na hora; o com a
+chave continua no PROMeiro (e cai no webhook quando o PROMeiro não responde).
 
 ## A semana lado a lado com a planilha (a foto da edição)
 

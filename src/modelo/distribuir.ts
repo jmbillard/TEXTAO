@@ -35,6 +35,19 @@ export function tirarDemanda(posicoes: readonly PosicaoDaEscala[], demanda: stri
   };
 }
 
+/**
+ * Onde a demanda está: a posição e a demanda seguinte (sem contar as linhas vazias), ou `null` no fim. É o lugar que o
+ * Desfazer do "Mover para…" (#163) usa para pô-la de volta; `null` se ela não está no dia.
+ */
+export function lugarDaDemanda(posicoes: readonly PosicaoDaEscala[], demanda: string): { posicao: string; antesDe: string | null } | null {
+  for (const p of posicoes) {
+    const cheias = p.demandas.filter((d) => d.texto.trim() || d.id === demanda);
+    const i = cheias.findIndex((d) => d.id === demanda);
+    if (i >= 0) return { posicao: p.id, antesDe: cheias[i + 1]?.id ?? null };
+  }
+  return null;
+}
+
 /** Move a demanda para a posição (pode ser a mesma), antes de `antesDe` ou no fim. */
 export function moverDemanda(posicoes: readonly PosicaoDaEscala[], demanda: string, posicao: string, antesDe: string | null = null): PosicaoDaEscala[] | null {
   if (antesDe === demanda) return posicoes.slice();
