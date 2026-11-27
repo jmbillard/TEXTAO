@@ -41,6 +41,9 @@
 // Lia fez), as artes do checklist e o link do card no Trello (a sem card, sem o link); fecha no ×, no Esc e fora, e o
 // foco volta para o card. O clique num botão do card e o arrasto não abrem. Nada é lido do Trello.
 //
+// #146, a contagem das artes feitas: a arte marcada pela janela do After (aqui, já guardada na Produção) aparece no
+// card como "1 de 3 artes", pela mesma regra da janela, sem faixa colorida na borda esquerda.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:producoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -742,6 +745,21 @@ async function recolherEAbrir(navegador, url, chamadasAoTrello) {
   console.log('ok: abrir a Produção: a linha do tempo, as artes e o link do Trello (a sem card sem ele); fecha no ×, no Esc e fora; o botão e o arrasto não abrem; no celular, a tela toda');
 }
 
+/** #146: a arte feita (marcada pela janela do After) conta no card da tela: "1 de 3 artes", sem unha. */
+async function artesFeitas(navegador, url, db) {
+  db.prepare("UPDATE producoes SET artes_marcadas = ? WHERE claquete LIKE 'Show da Noite%'").run(JSON.stringify(['AMANHÃ']));
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
+  const show = cardDe(p, 'Show da Noite');
+  await show.waitFor();
+  assert.equal((await show.locator('.prod-artes').textContent()).trim(), '1 de 3 artes');
+  const borda = await show.evaluate((el) => [el, el.querySelector('.prod-artes')].map((x) => getComputedStyle(x).borderLeftWidth));
+  assert.ok(borda.every((w) => parseFloat(w) <= 1), `sem faixa na borda esquerda (${borda.join(', ')})`);
+  await capturar(p, '17-producoes-artes-feitas');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: a arte feita pela janela do After conta no card ("1 de 3 artes"), sem unha');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -785,6 +803,7 @@ async function principal() {
     await osBotoes(navegador, s.url, chamadasAoTrello);
     await arrastarEDesfazer(navegador, s.url, chamadasAoTrello, trelloFalso);
     await recolherEAbrir(navegador, s.url, chamadasAoTrello);
+    await artesFeitas(navegador, s.url, s.db);
   } catch (e) {
     falhou = true;
     console.error(e);

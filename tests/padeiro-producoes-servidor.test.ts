@@ -158,17 +158,17 @@ describe('o Padeiro: a lista das Produções para o grupo NO TRELLO', () => {
     expect(lista[2].artes).toEqual({ feitas: [], aFazer: [] });
   });
 
-  it('só a chave ligada lê: a pendente e a revogada são recusadas (403, com o estado); sem chave ou com a errada, 401', async () => {
+  it('a ligada e a pendente leem (#146: a janela do After mostra com a pendente); a revogada é recusada (403, com o estado); sem chave ou com a errada, 401', async () => {
     const { padeiro, cadastrar, ligar, revogar } = await preparado();
     const { chave, id } = await cadastrar();
-    expect(await ler(padeiro, chave)).toMatchObject({ status: 403, corpo: { estado: 'pendente' } });
+    expect((await ler(padeiro, chave)).status).toBe(200);
     await ligar(id);
     expect((await ler(padeiro, chave)).status).toBe(200);
     await revogar(id);
     expect(await ler(padeiro, chave)).toMatchObject({ status: 403, corpo: { estado: 'revogada' } });
     expect((await ler(padeiro)).status).toBe(401);
     expect((await ler(padeiro, 'chave-inventada')).status).toBe(401);
-    // a pendente e a revogada não veem nenhuma Produção
+    // a revogada não vê nenhuma Produção
     expect(JSON.stringify((await ler(padeiro, chave)).corpo)).not.toMatch(/Show da Noite/);
   });
 

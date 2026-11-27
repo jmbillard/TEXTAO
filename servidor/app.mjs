@@ -14,7 +14,7 @@ import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
 import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES } from './correcoes.mjs';
 import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
-import { colunasDoDia, cruzarComAProducao, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
+import { codigoDasVersoes, colunasDoDia, cruzarComAProducao, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
@@ -71,6 +71,7 @@ import { conferirHorarios, horariosArrumados, horariosDaConfiguracao } from '../
 import { criarAndamento } from './andamento.mjs';
 import { administradoresDaTela, administradoresSalvos, ehAdministrador, porAdministrador, tirarAdministrador } from '../src/modelo/pessoas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
+import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { confirmaATroca, conexoesDaTela, lerQuadros, mudancasDaBaseNova, religarNoQuadroNovo } from './configuracao-conexoes.mjs';
 import { VARIAVEIS_DO_CARD, cardDoPedido, conferirSecaoDoCard, mudancasDoCard, secaoDoCard } from './configuracao-card.mjs';
 import { cardDaConfiguracao } from '../src/modelo/ligarOCard.ts';
@@ -3404,6 +3405,78 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return null;
   }
 
+  /** O Padeiro da chave do pedido, quando ela lê (#146): a ligada e a pendente (a janela do After mostra, mas não age);
+      senão, responde a recusa como `padeiroLigado` e devolve null. */
+  function padeiroQueLe(req, res) {
+    const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
+    if (!p) json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
+    else if (p.estado === 'revogada') json(res, 403, { erro: 'A chave do Padeiro foi revogada: faça o cadastro de novo.', estado: p.estado });
+    else return p;
+    return null;
+  }
+
+  /** O designer da chave ligada como a tabela designers diz agora (o membro do Trello vem dela). */
+  const designerDoPadeiro = (p) => {
+    const doCadastro = (pessoas.guardada()?.designers ?? []).find((d) => d.registro === p.designer.registro);
+    return { nome: doCadastro?.nome || p.designer.nome, membro: doCadastro?.idNoTrello || '' };
+  };
+
+  /** As atrações do cadastro (o Teable), para o "pronto para abrir"; [] com o Teable fora (fica "sem atração"). */
+  const atracoesDoCadastro = async () => {
+    const lido = await cadastros.ler().catch((e) => (console.warn(`[padeiro] não li o cadastro das atrações: ${e instanceof Error ? e.message : e}`), null));
+    return lido?.ligado ? lido.atracoes : [];
+  };
+  /**
+   * O "pronto para abrir" da janela do After (#146): a atração da Produção (a do card da tela de produções) está no
+   * cadastro e tem todos os caminhos (TEABLE_CAMPOS_CAMINHO: a pasta do projeto e a dos templates) definidos. Senão,
+   * "sem atração" ou "sem pasta".
+   */
+  function prontoParaAbrir(atracao, cadastro) {
+    const a = atracao ? cadastro.find((x) => nomeComparavel(x.nome) === nomeComparavel(atracao)) : null;
+    if (!a) return { pronto: false, estado: 'sem atração' };
+    const caminhos = Object.values(a.caminhos ?? {});
+    if (!caminhos.length || caminhos.some((c) => !String(c ?? '').trim())) return { pronto: false, estado: 'sem pasta' };
+    return { pronto: true, estado: 'pronto para abrir' };
+  }
+
+  /**
+   * A Produção como a janela do After mostra (#146): a praça e a etapa, a claquete, a versão da chamada só como o código
+   * (a do card da tela de produções), o "pronto para abrir", os designers (e se o da chave está entre eles) e as artes
+   * (`producoes.naJanela`), cada uma com o fogo da complexidade que o editor marcou no Roteiro ligado (BAIXA sem marca;
+   * null sem Roteiro), se está feita e quem marcou, e a contagem. null sem a Produção (ou arquivada).
+   */
+  async function producaoDaJanela(id, padeiro) {
+    const j = producoes.naJanela(id);
+    if (!j) return null;
+    const { producao: p, meta, artes } = j;
+    const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+    const card = comAsVersoes(producoes.umaNaTela(p.id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
+    const nome = padeiro.designer ? designerDoPadeiro(padeiro).nome : '';
+    const complexidade = meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
+    const fogo = (a) => (p.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
+    return {
+      id: p.id,
+      praca: p.praca,
+      etapa: p.etapa,
+      claquete: p.claquete,
+      versao: codigoDasVersoes(card?.versoesDaChamada?.lista ?? []),
+      ...prontoParaAbrir(card?.atracao ?? '', await atracoesDoCadastro()),
+      designers: p.designers,
+      comVoce: !!nome && p.designers.some((d) => nomeComparavel(d) === nomeComparavel(nome)),
+      artes: artes.map((a) => ({ nome: a.nome, fogo: fogo(a), feita: a.feita, marcada: a.marcada })),
+      contagem: { feitas: artes.filter((a) => a.feita).length, total: artes.length },
+    };
+  }
+
+  /** O identificador da ação do Padeiro (o aviso, a arte marcada): '' quando não serve. */
+  const identificador = (v) => (typeof v === 'string' && /^[\w.:-]{1,100}$/.test(v.trim()) ? v.trim() : '');
+  /** A hora da ação do Padeiro (ISO): o relógio adiantado do computador não passa à frente do que acontecer depois;
+      null quando não é uma hora. */
+  const horaDoPadeiro = (v) => {
+    const t = Date.parse(typeof v === 'string' ? v.trim() : '');
+    return Number.isNaN(t) ? null : new Date(Math.min(t, Date.now())).toISOString();
+  };
+
   /**
    * O caminho do Padeiro (#137), embaixo de /api/padeiro/: fora do login (o Padeiro roda dentro do After Effects, sem o
    * Cloudflare Access, que tem um Bypass só para este caminho). Só vale a chave do Padeiro no cabeçalho; o cabeçalho do
@@ -3411,7 +3484,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * - POST /api/padeiro/cadastro { usuario, computador, sistema, sigla } (a única sem chave): 201 { chave, estado }
    * - GET /api/padeiro/eu: { estado, usuario, computador, sigla, designer } da chave; sem ela, ou com a errada, 401
    * - GET /api/padeiro/producoes (#138): { trello: [...] }, as Produções em Entrada e Produzindo no formato `trello` do
-   *   Padeiro (producoes.paraOPadeiro). Só com a chave ligada: a pendente e a revogada, 403 { erro, estado }
+   *   Padeiro (producoes.paraOPadeiro), cada uma com o "pronto para abrir" (#146: `pronto`, `estado`). A ligada e a
+   *   pendente leem (a janela do After mostra, mas não age); a revogada, 403 { erro, estado }
+   * - GET /api/padeiro/producoes/<id> (#146): { producao }, a Produção como a janela do After mostra
+   *   (producaoDaJanela). Lê como a lista; a que não existe (ou arquivada), 404
+   * - POST /api/padeiro/arte (#146) { acao, feitaEm, producao, arte, feita }: marca (feita: true) ou desmarca a arte da
+   *   Produção, só com a chave ligada e só para o designer que está na Produção (senão, 403). `acao` é o identificador
+   *   (a repetida responde { repetido: true } e não grava de novo); `feitaEm`, a hora (a atrasada segue a regra do
+   *   conflito: vale o mais recente). Responde { feito: { eventos }, producao }
    * - POST /api/padeiro/aviso (#139) { aviso, abertoEm, producao | card | filme }: o aviso do Padeiro, o Peguei feito
    *   ao abrir ou criar o projeto (etapaDaProducao.peloPadeiro). `aviso` é o identificador (o repetido responde
    *   { repetido: true } e não grava de novo); `abertoEm`, a hora da abertura (ISO; a do futuro vale como agora). Só
@@ -3429,30 +3509,65 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, { estado: p.estado, usuario: p.usuario, computador: p.computador, sigla: p.sigla, designer: p.designer ? { nome: p.designer.nome } : null });
     }
     if (caminho === '/api/padeiro/producoes' && req.method === 'GET') {
-      const p = padeiroLigado(req, res);
+      const p = padeiroQueLe(req, res);
       if (!p) return;
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
-      return json(res, 200, { trello: producoes.paraOPadeiro((claquete) => atracaoPelaClaquete(claquete, programas, pracas)) });
+      const cadastro = await atracoesDoCadastro();
+      const lista = producoes.paraOPadeiro((claquete) => atracaoPelaClaquete(claquete, programas, pracas));
+      return json(res, 200, { trello: lista.map((c) => ({ ...c, ...prontoParaAbrir(c.atr, cadastro) })) });
+    }
+    const daJanela = /^\/api\/padeiro\/producoes\/([^/]{1,100})$/.exec(caminho);
+    if (daJanela && req.method === 'GET') {
+      const p = padeiroQueLe(req, res);
+      if (!p) return;
+      const producao = await producaoDaJanela(decodeURIComponent(daJanela[1]), p);
+      return producao ? json(res, 200, { producao }) : json(res, 404, { erro: 'Essa Produção não está mais aberta no PROMeiro.' });
+    }
+    if (caminho === '/api/padeiro/arte' && req.method === 'POST') {
+      const p = padeiroLigado(req, res);
+      if (!p) return;
+      const corpo = (await lerCorpo(req, 4096, 'Arte')) ?? {};
+      const acao = identificador(corpo.acao);
+      if (!acao) return json(res, 400, { erro: 'Falta o identificador da ação (até 100 letras, números, ponto, dois-pontos, hífen ou sublinhado).' });
+      const quando = horaDoPadeiro(corpo.feitaEm);
+      if (!quando) return json(res, 400, { erro: 'Falta a hora em que a arte foi marcada (ISO).' });
+      if (typeof corpo.feita !== 'boolean') return json(res, 400, { erro: 'Falta dizer se a arte está feita (true ou false).' });
+      if (typeof corpo.arte !== 'string' || !corpo.arte.trim()) return json(res, 400, { erro: 'Falta a arte.' });
+      const producao = typeof corpo.producao === 'string' ? producoes.uma(corpo.producao.trim().slice(0, 100)) : null;
+      if (!producao || producao.arquivada) return json(res, 404, { erro: 'Essa Produção não está mais aberta no PROMeiro.' });
+      const designer = designerDoPadeiro(p);
+      if (!producao.designers.some((d) => nomeComparavel(d) === nomeComparavel(designer.nome))) return json(res, 403, { erro: 'Só quem está na Produção marca as artes dela.' });
+      if (!padeiros.reservarAviso(p.id, acao, producao.id, quando)) return json(res, 200, { repetido: true, producao: await producaoDaJanela(producao.id, p) });
+      let eventos;
+      try {
+        eventos = producoes.arteDoPadeiro(producao.id, corpo.arte, corpo.feita, { id: `padeiro:${p.id}`, nome: designer.nome }, quando);
+      } catch (e) {
+        padeiros.soltarAviso(p.id, acao);
+        throw e;
+      }
+      if (!eventos) {
+        padeiros.soltarAviso(p.id, acao);
+        return json(res, 404, { erro: 'Essa arte não está na Produção.' });
+      }
+      padeiros.avisou(p.id);
+      console.log(`[padeiro] ${p.usuario} em ${p.computador} ${corpo.feita ? 'marcou' : 'desmarcou'} uma arte de ${producao.claquete} (${eventos.join(', ') || 'nada novo'})`);
+      return json(res, 200, { feito: { eventos }, producao: await producaoDaJanela(producao.id, p) });
     }
     if (caminho === '/api/padeiro/aviso' && req.method === 'POST') {
       const p = padeiroLigado(req, res);
       if (!p) return;
       const corpo = (await lerCorpo(req, 4096, 'Aviso')) ?? {};
       const texto = (v) => (typeof v === 'string' ? v.trim() : '');
-      const aviso = texto(corpo.aviso);
-      if (!/^[\w.:-]{1,100}$/.test(aviso)) return json(res, 400, { erro: 'Falta o identificador do aviso (até 100 letras, números, ponto, dois-pontos, hífen ou sublinhado).' });
-      const aberto = Date.parse(texto(corpo.abertoEm));
-      if (Number.isNaN(aberto)) return json(res, 400, { erro: 'Falta a hora da abertura do projeto (ISO).' });
-      // o relógio adiantado do computador não passa à frente do que acontecer depois
-      const quando = new Date(Math.min(aberto, Date.now())).toISOString();
+      const aviso = identificador(corpo.aviso);
+      if (!aviso) return json(res, 400, { erro: 'Falta o identificador do aviso (até 100 letras, números, ponto, dois-pontos, hífen ou sublinhado).' });
+      const quando = horaDoPadeiro(corpo.abertoEm);
+      if (!quando) return json(res, 400, { erro: 'Falta a hora da abertura do projeto (ISO).' });
       const qual = { producao: texto(corpo.producao).slice(0, 100), card: texto(corpo.card).slice(0, 100), filme: texto(corpo.filme).slice(0, 100) };
       if (!qual.producao && !qual.card && !qual.filme) return json(res, 400, { erro: 'Falta a Produção (ou o card, ou o filme).' });
       const producao = producoes.doAviso(qual);
       if (!producao) return json(res, 404, { erro: 'Essa Produção não existe no PROMeiro.' });
       if (!padeiros.reservarAviso(p.id, aviso, producao.id, quando)) return json(res, 200, { repetido: true, producao: producao.id });
-      // o designer da chave como a tabela designers diz agora (o membro do Trello vem dela)
-      const doCadastro = (pessoas.guardada()?.designers ?? []).find((d) => d.registro === p.designer.registro);
-      const designer = { nome: doCadastro?.nome || p.designer.nome, membro: doCadastro?.idNoTrello || '' };
+      const designer = designerDoPadeiro(p);
       let r;
       try {
         r = await etapaDaProducao.peloPadeiro({ producao, quando }, { trello, designer, quem: { id: `padeiro:${p.id}`, nome: designer.nome } });

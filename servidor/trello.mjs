@@ -240,12 +240,29 @@ export function itensDoChecklist(lista) {
  * Vazio ou nulo: null (fica a contagem do PROMeiro).
  */
 export function artesDaProducao(texto) {
-  const itens = String(texto ?? '').split(/\s*\|\s*|\n+/).map((a) => a.trim()).filter((a) => chaveDeArte(a));
-  if (!itens.length) return null;
-  const comTipo = itens.map((a) => /^(.*\S)\s*\([^()]*\)$/.exec(a)?.[1]).map((b) => (b ? chaveDeArte(b) : ''));
+  const itens = String(texto ?? '').split(/\s*\|\s*|\n+/);
+  return artesAgrupadas(itens).length || null;
+}
+
+/**
+ * As artes dos itens da coluna "artes" (ou do checklist), cada uma uma vez, na ordem, pela regra de `artesDaProducao`
+ * (#146): a arte de vários tipos ("HOJE (RDP)", "HOJE (CRT)") é uma só, com o nome sem o tipo e os itens dela.
+ * @returns [{ nome, itens }]
+ */
+export function artesAgrupadas(itens) {
+  const lista = (itens ?? []).map((a) => String(a ?? '').trim()).filter((a) => chaveDeArte(a));
+  const comTipo = lista.map((a) => /^(.*\S)\s*\([^()]*\)$/.exec(a)?.[1] ?? '');
   const vezes = new Map();
-  for (const b of comTipo) if (b) vezes.set(b, (vezes.get(b) ?? 0) + 1);
-  return new Set(itens.map((a, i) => (comTipo[i] && vezes.get(comTipo[i]) > 1 ? comTipo[i] : chaveDeArte(a)))).size;
+  for (const b of comTipo) if (b) vezes.set(chaveDeArte(b), (vezes.get(chaveDeArte(b)) ?? 0) + 1);
+  const grupos = new Map();
+  lista.forEach((a, i) => {
+    const junta = comTipo[i] && vezes.get(chaveDeArte(comTipo[i])) > 1;
+    const k = junta ? chaveDeArte(comTipo[i]) : chaveDeArte(a);
+    if (!grupos.has(k)) grupos.set(k, { nome: junta ? comTipo[i] : a, itens: [] });
+    const g = grupos.get(k);
+    if (!g.itens.some((x) => chaveDeArte(x) === chaveDeArte(a))) g.itens.push(a);
+  });
+  return [...grupos.values()];
 }
 
 /**
