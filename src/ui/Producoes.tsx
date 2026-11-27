@@ -7,6 +7,8 @@ import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
 import { ProducaoAberta } from './ProducaoAberta';
+import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
+import { BuscaDasProducoes, usePresenca } from './BuscaDasProducoes';
 import { useDeslize, useReordenar } from './movimentoDasProducoes';
 import { plural } from './util';
 import { ConflitoDoCard, NomeDaClaquete, versoesDoCard } from './Apelido';
@@ -39,7 +41,11 @@ import './producoes.css';
    mais uma fecha a aberta há mais tempo. A pessoa arruma as praças arrastando pela faixa do nome, e a ordem fica
    lembrada como os recolhidos. A praça fechada mostra o nome na vertical. A Produzindo vazia fica fina e se abre com um
    card no ar (ou com o "Peguei"); o Entregue tem as divisórias por dia. E movimento em tudo: a praça que abre e fecha,
-   o card que muda de coluna, a coluna que se abre e a ordem das praças deslizam (src/ui/movimentoDasProducoes.ts). */
+   o card que muda de coluna, a coluna que se abre e a ordem das praças deslizam (src/ui/movimentoDasProducoes.ts).
+   #161: com o mouse sobre um card, o espaço faz o mesmo que o "Peguei" (como no Trello), com a caixinha de desfazer; no
+   card que não tem o "Peguei" (o que já é da pessoa, o de Produzindo, o entregue), nada; num campo de texto, nada. E a
+   lupa do topo busca no histórico todo, também os entregues antigos (src/ui/BuscaDasProducoes.tsx), numa lista no lugar
+   dos blocos. */
 
 interface Props {
   /** a linha do logo: o caminho "PROMeiro / designer ▾", a agenda No Trello, a Pauta da edição e o perfil */
@@ -224,7 +230,8 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
       aria-haspopup="dialog"
       onClick={(e) => cliqueDeAbrir(e) && abrir()}
       onKeyDown={(e) => {
-        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+        // o espaço com o mouse sobre o card é o "Peguei" (#161), não abrir
+        if (e.target === e.currentTarget && (e.key === 'Enter' || (e.key === ' ' && !e.currentTarget.matches(':hover')))) {
           e.preventDefault();
           abrir();
         }
@@ -428,6 +435,24 @@ export function Producoes({ topo }: Props) {
   const [aberta, setAberta] = useState<CardDaProducao | null>(null);
   // a ordem das praças, arrumada arrastando (#159) e lembrada por pessoa
   const [ordem, setOrdem] = useState<readonly string[]>(ordemDasPracas);
+  // a busca no histórico (#161): com o termo, a lista dos achados fica no lugar dos blocos (e sai animando)
+  const [busca, setBusca] = useState('');
+  const buscaAtiva = !!busca.trim();
+  const presenca = usePresenca(buscaAtiva);
+  // fechada a busca, os blocos voltam subindo de leve (só nessa volta, não na primeira carga)
+  const [voltando, setVoltando] = useState(false);
+  const buscouAntes = useRef(false);
+  useEffect(() => {
+    if (presenca.montado) {
+      buscouAntes.current = true;
+      return;
+    }
+    if (!buscouAntes.current) return;
+    buscouAntes.current = false;
+    setVoltando(true);
+    const t = setTimeout(() => setVoltando(false), CHEGADA_MS);
+    return () => clearTimeout(t);
+  }, [presenca.montado]);
   const area = useRef<HTMLDivElement>(null);
   // a primeira carga (#159): as colunas chegam em cascata curta; depois, cada bloco que abre só com a dele
   const [chegando, setChegando] = useState(true);
@@ -583,11 +608,41 @@ export function Producoes({ topo }: Props) {
   const cardAberto = aberta && (lido?.blocos.flatMap((b) => COLUNAS_DO_BLOCO.flatMap((k) => b.colunas[k])).find((c) => c.id === aberta.id) ?? aberta);
   const fecharAberta = useCallback(() => {
     setAberta((a) => {
-      // o foco volta para o card que abriu
-      if (a) requestAnimationFrame(() => document.querySelector<HTMLElement>(`.prod-card[data-producao="${CSS.escape(a.id)}"]`)?.focus());
+      // o foco volta para o card que abriu (ou para a linha da busca que abriu, #161)
+      if (a) requestAnimationFrame(() => document.querySelector<HTMLElement>(`.prod-card[data-producao="${CSS.escape(a.id)}"], .prod-achado[data-achado="${CSS.escape(a.id)}"] button`)?.focus());
       return null;
     });
   }, []);
+  /* O espaço pega o card (#161): o card sob o mouse, se ele tem o "Peguei" à mão (a pessoa ligada a um designer, o card
+     na Entrada, sem mudança a caminho nem aviso aberto). Num campo de texto, num diálogo (a Produção aberta) ou com o
+     foco num botão ou num link, o espaço é do que tem o foco. */
+  const pegarPeloEspaco = useRef<(id: string) => void>(() => {});
+  pegarPeloEspaco.current = (id) => {
+    const c = lido?.blocos.flatMap((b) => b.colunas.entrada).find((x) => x.id === id);
+    const a = c && acoes(c);
+    if (c && a && !a.indo && !a.aviso && a.para.includes('produzindo')) mudar(c, 'produzindo');
+  };
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== ' ' || e.metaKey || e.ctrlKey || e.altKey || emCampo(e)) return;
+      const sob = [...document.querySelectorAll<HTMLElement>('.prod-card:hover')].pop();
+      if (!sob) return;
+      // com o foco num botão ou num link, o espaço aperta ele, como sempre
+      if ((e.target as HTMLElement | null)?.closest?.('button, a, summary')) return;
+      // a página não rola: o espaço é o "Peguei"
+      e.preventDefault();
+      if (!e.repeat) pegarPeloEspaco.current(sob.dataset.producao ?? '');
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, []);
+  // com a busca aberta, o Esc fora do campo também limpa (o do campo já limpa, e o da Produção aberta só fecha ela)
+  useEffect(() => {
+    if (!buscaAtiva || aberta) return;
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && !emCampo(e) && setBusca('');
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [buscaAtiva, aberta]);
   const solta: Soltar = {
     arrasto,
     sobre: (k) => setArrasto((a) => a && { ...a, sobre: k }),
@@ -604,6 +659,7 @@ export function Producoes({ topo }: Props) {
       <main className="prod-pagina">
         <div className="prod-cabeca">
           <h1>Produções</h1>
+          {lido && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou pessoa" rotulo="Buscar nas produções" />}
         </div>
         {erro ? (
           <p className="prod-falha" role="alert">
@@ -628,9 +684,11 @@ export function Producoes({ topo }: Props) {
             )}
             {/* a largura de cada bloco: o aberto cresce para ocupar a sobra; o recolhido, uma coluna estreita (#113). As
                 duas formas têm o mesmo jeito (o mínimo e a fração), para a largura deslizar ao abrir e fechar (#159) */}
+            {presenca.montado && <BuscaDasProducoes termo={busca} saindo={presenca.saindo} diaEscrito={(d) => diaEscrito(d, hoje)} prazoEscrito={(p) => prazoEscrito(p, hoje)} abrir={setAberta} />}
             <div
               ref={area}
-              className={`prod-blocos${reordenar.levantada ? ' reordenando' : ''}`}
+              hidden={presenca.montado}
+              className={`prod-blocos${reordenar.levantada ? ' reordenando' : ''}${voltando ? ' voltando' : ''}`}
               style={{ gridTemplateColumns: blocos.map((b) => (abertasAgora.includes(b.praca) ? 'minmax(var(--bloco-min), 1fr)' : 'minmax(var(--bloco-recolhido), 0fr)')).join(' ') }}
             >
               {blocos.map((b, i) => (

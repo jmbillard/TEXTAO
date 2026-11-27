@@ -1515,6 +1515,10 @@ export interface AndamentoDoProjeto {
 /** A Semana da pauta da edição (#94): qualquer dia da semana (sem ele, a de hoje). Sem o Postgres do Teable, o erro diz. */
 /** A tela de produções (#109): as Produções abertas num bloco por praça (nada do Trello). */
 export const lerProducoesPorPraca = () => pedir<TelaDeProducoes>('/api/producoes/por-praca');
+/** A busca da tela de produções (#161): no histórico todo (também os entregues antigos), pela claquete, pela atração e
+    pelas pessoas, uma página por vez (de 0), das mais recentes para as mais antigas. */
+export const buscarProducoes = (termo: string, pagina = 0, sinal?: AbortSignal) =>
+  pedir<{ cards: CardDaProducao[]; total: number; pagina: number; mais: boolean }>(`/api/producoes/busca?q=${encodeURIComponent(termo)}&pagina=${pagina}`, sinal ? { signal: sinal } : undefined);
 /** Pegar, voltar para a Entrada (#110) ou entregar (#111): o que foi feito e a Produção como a tela mostra agora. A
     entrega com arte do checklist faltando, sem `assimMesmo`, não muda nada e volta com as que faltam (sem `feito`). O
     erro traz o motivo. */

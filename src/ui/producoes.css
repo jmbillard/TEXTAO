@@ -21,6 +21,8 @@
 .prod-pagina { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 14px var(--margem) 0; }
 .prod-pagina > * { flex: none; }
 .prod-cabeca h1 { font: 400 42px/1.05 var(--serifa); letter-spacing: -0.01em; margin: 0; color: var(--tinta); }
+/* a lupa da busca (#161), à direita do título, na mesma linha */
+.prod-cabeca { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; }
 .prod-lendo { color: var(--tinta3); font: 400 14px var(--sans); }
 .prod-falha { padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
 
@@ -31,6 +33,10 @@
   margin: 0 calc(-1 * var(--margem)); padding: 0 var(--margem) 24px; scroll-padding-inline: var(--margem);
   position: relative; transition: grid-template-columns var(--dur) var(--suave);
 }
+/* com a busca aberta (#161), a lista dos achados fica no lugar dos blocos; fechada, eles voltam subindo de leve */
+.prod-pagina > .prod-blocos[hidden] { display: none; }
+.prod-pagina > .prod-blocos.voltando { animation: voltar-blocos 0.3s var(--suave) both; }
+@keyframes voltar-blocos { from { opacity: 0; transform: translateY(10px) scale(0.99); } }
 /* arrumando as praças, a largura muda junto com a ordem, sem deslizar: quem desliza é o bloco */
 .prod-pagina > .prod-blocos.reordenando { transition: none; scroll-snap-type: none; }
 
@@ -201,6 +207,53 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .prod-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
 .prod-desfazer-fechar:hover { opacity: 1; }
 
+/* ---------- a busca no histórico (#161): a lista dos achados, no lugar dos blocos ---------- */
+.prod-pagina > .prod-busca {
+  flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px;
+  margin: 0 calc(-1 * var(--margem)); padding: 0 var(--margem) 28px;
+  animation: chegar-busca var(--dur) var(--suave) both;
+}
+.prod-pagina > .prod-busca.saindo { animation: sair-busca 0.2s var(--suave) both; pointer-events: none; }
+@keyframes chegar-busca { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes sair-busca { to { opacity: 0; transform: translateY(-6px); } }
+.prod-busca-topo { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 2px 2px 10px; background: var(--mesa); }
+.prod-busca-topo h2 { margin: 0; font: 400 24px/1.2 var(--serifa); color: var(--tinta); }
+.prod-busca-topo q { font-style: italic; }
+.prod-busca-falha { color: var(--falta); font: 500 14px/1.45 var(--sans); }
+.prod-busca-dica { font: 500 12px var(--sans); color: var(--tinta3); }
+/* o fio embaixo do topo: parado, uma régua; buscando, um brilho que corre por ele */
+.prod-busca-fio { position: absolute; left: 2px; right: 2px; bottom: 0; height: 1px; overflow: hidden; background: var(--regua); }
+.prod-busca-fio::after { content: ''; position: absolute; inset: 0; width: 30%; background: linear-gradient(90deg, transparent, var(--ultra), transparent); opacity: 0; transform: translateX(-100%); }
+.prod-busca.buscando .prod-busca-fio::after { opacity: 1; animation: correr-fio 0.9s var(--suave) infinite; }
+@keyframes correr-fio { to { transform: translateX(340%); } }
+.prod-busca-nada { margin: 6px 4px; }
+.prod-achados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; transition: opacity 0.18s; }
+/* buscando um termo novo, os achados de antes ficam à vista, mais apagados, até chegarem os novos */
+.prod-busca.buscando .prod-achados { opacity: 0.6; }
+.prod-achado { animation: surgir-achado var(--dur) var(--suave) backwards; animation-delay: var(--atraso, 0ms); }
+.prod-achado.deslizando { position: relative; z-index: 1; }
+@keyframes surgir-achado { from { opacity: 0; transform: translateY(8px) scale(0.985); } }
+.prod-achado-abrir {
+  width: 100%; box-sizing: border-box; display: grid; grid-template-columns: 112px minmax(0, 1.7fr) 52px minmax(0, 1fr) 150px; align-items: center; gap: 4px 16px;
+  padding: 10px 14px; border-radius: 10px; border: 1px solid var(--regua); background: var(--papel); color: var(--tinta); text-align: left; cursor: pointer; font: inherit;
+  transition: border-color 0.18s, box-shadow 0.18s var(--suave), transform 0.18s var(--suave);
+}
+.prod-achado-abrir:hover { border-color: var(--regua-forte); transform: translateY(-1px); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 4px 10px rgb(26 25 22 / 7%); }
+.prod-achado-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+/* a etapa numa bolinha, com as cores das colunas */
+.prod-achado-etapa { display: inline-flex; align-items: center; gap: 7px; font: 600 11px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2); white-space: nowrap; }
+.prod-achado-etapa i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
+.prod-achado[data-etapa='produzindo'] .prod-achado-etapa i { background: var(--ultra); }
+.prod-achado[data-etapa='entregue'] .prod-achado-etapa i { background: var(--ok); }
+.prod-achado-nome { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.prod-achado-claquete { font: 600 13px/1.3 var(--mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.prod-achado-atracao { font: 500 12px/1.3 var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
+.prod-achado-praca { font: 400 17px/1 var(--serifa); color: var(--tinta); }
+.prod-achado-designers { font: 500 12px/1.35 var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
+.prod-achado-quando { font: 500 12px/1.35 var(--sans); color: var(--tinta3); text-align: right; }
+.prod-achado-quando.entregue { color: var(--tinta2); }
+.prod-busca-mais { align-self: center; margin-top: 6px; animation: surgir-achado var(--dur) var(--suave) backwards; }
+
 /* ---------- a Produção aberta (#113): o painel à direita, por cima da tela ---------- */
 .prod-veu { position: fixed; inset: 0; z-index: 25; background: color-mix(in srgb, var(--mesa) 55%, transparent); animation: surgir-veu 0.15s; }
 .prod-aberta {
@@ -242,6 +295,8 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .pagina.producoes { --margem: 16px; }
   .prod-pagina { padding-top: 12px; }
   .prod-cabeca h1 { font-size: 34px; }
+  .prod-achado-abrir { grid-template-columns: 104px minmax(0, 1fr) 44px 120px; }
+  .prod-achado-designers { display: none; }
   .prod-pagina > .prod-blocos { scroll-snap-type: x proximity; }
   .prod-bloco { scroll-snap-align: start; }
 }
@@ -291,6 +346,19 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .prod-recolher, .prod-mostrar { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
   .prod-recolher svg, .prod-mostrar svg { transform: rotate(90deg); }
   .prod-recolhido .prod-mostrar { order: 3; margin: -10px -10px -10px 0; }
+  /* a busca (#161): a lupa aberta toma a linha do título; cada achado em duas linhas */
+  .prod-cabeca:has(.busca.lupa.aberta) h1 { display: none; }
+  .prod-cabeca .busca.lupa { flex: none; width: 44px; height: 44px; border-radius: 12px; }
+  .prod-cabeca .busca.lupa.aberta { flex: 1; width: auto; }
+  .prod-cabeca .busca.lupa input { font-size: 16px; }
+  .prod-pagina > .prod-busca { overflow: visible; margin: 0; padding: 0; }
+  .prod-busca-topo { position: relative; }
+  .prod-achado-abrir { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px; }
+  .prod-achado-nome { grid-column: 1 / -1; order: -1; }
+  .prod-achado-claquete { font-size: 14px; }
+  .prod-achado-praca { font-size: 15px; text-align: right; }
+  .prod-achado-designers { display: block; grid-column: 1 / -1; }
+  .prod-achado-quando { grid-column: 1 / -1; text-align: left; }
   /* a Produção aberta ocupa a tela */
   .prod-aberta { width: 100vw; padding: 16px 16px 28px; }
   .prod-aberta-fechar { width: 44px; height: 44px; }
@@ -305,10 +373,14 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 @media (prefers-reduced-motion: reduce) {
   .prod-pagina > .prod-blocos, .prod-colunas, .prod-card { transition: none !important; }
   .pagina.producoes .prod-bloco.chegando .prod-coluna, .pagina.producoes .prod-bloco.chegando .prod-recolhido h2, .pagina.producoes .prod-bloco.chegando .prod-bloco-topo h2,
-  .pagina.producoes .prod-desfazer {
+  .pagina.producoes .prod-desfazer, .pagina.producoes .prod-busca, .pagina.producoes .prod-achado, .pagina.producoes .prod-busca-mais, .pagina.producoes .prod-blocos.voltando {
     animation: esmaecer 0.18s ease-out both !important; animation-delay: 0ms !important;
   }
+  .pagina.producoes .prod-busca.saindo { animation: sumir 0.18s ease-out both !important; }
+  .pagina.producoes .prod-busca.buscando .prod-busca-fio::after { animation: none; opacity: 0.6; transform: none; width: 100%; }
+  .prod-achado-abrir:hover { transform: none; }
   .pagina.producoes .prod-conta.mudou { animation: none !important; }
   .prod-card:hover { transform: none; }
 }
 @keyframes esmaecer { from { opacity: 0; } }
+@keyframes sumir { to { opacity: 0; } }

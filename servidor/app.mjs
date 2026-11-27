@@ -3357,6 +3357,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const voce = designer ? { designer: designer.nome } : { designer: null, porQue: SEM_LIGACAO };
       return json(res, 200, { entregueDias: DIAS_DO_ENTREGUE, blocos: blocosDasProducoes(cards, pracas), voce });
     }
+    if (caminho === '/api/producoes/busca') {
+      // a busca da tela de produções (#161): para qualquer pessoa logada, ?q=<termo>&pagina=<n, de 0>, no histórico
+      // todo (também os entregues que a tela já não mostra), pela claquete, pela atração e pelas pessoas, em páginas.
+      // Só o que o PROMeiro guarda: nada do Trello
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      const busca = new URL(req.url, 'http://x').searchParams;
+      const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+      const r = producoes.naBusca((busca.get('q') ?? '').slice(0, 100), { pagina: busca.get('pagina') ?? 0, atracaoDaClaquete: (claquete) => atracaoPelaClaquete(claquete, programas, pracas) });
+      return json(res, 200, { ...r, cards: r.cards.map(comAsVersoes) });
+    }
     if (caminho === '/api/producoes/etapa') {
       // pegar, voltar para a Entrada (#110) e entregar (#111), para quem está ligado a um designer: { producao, etapa
       // (produzindo, entrada ou entregue), assimMesmo }. Entregar com arte faltando, sem assimMesmo, devolve as que

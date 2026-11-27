@@ -52,6 +52,12 @@
 // cantos ficam certos com a área rolando. As praças se arrumam arrastando (mouse e toque), as vizinhas deslizando, e a
 // ordem fica guardada por pessoa. Nada de "unha".
 //
+// #161, o espaço e a busca: com o mouse sobre o card da Entrada, o espaço faz o mesmo que o "Peguei" (o card desliza
+// para a Produzindo, a Lia entra no card do Trello, a caixinha de desfazer abre); de novo, no card que já é dela, nada; com
+// o foco na lupa, o espaço é do campo. A lupa do topo busca pela claquete, pela atração e pela pessoa, sem caixa nem
+// acento, e acha também o entregue de 5 dias atrás, que os blocos não mostram, com o dia da entrega; a lista chega em
+// cascata e sai esmaecendo, e os blocos voltam; um clique abre a Produção. No celular, a lupa toma a linha do título.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:producoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2). Com VIDEO=pasta, grava o vídeo do movimento (#159).
 const assert = require('node:assert/strict');
@@ -1159,6 +1165,123 @@ async function divisoriasPorDia(navegador, url, db) {
   console.log('ok: o Entregue com as divisórias por dia (hoje, ontem, o dia curto), no computador e no celular');
 }
 
+/** O espaço pega o card e a busca no histórico (#161). */
+async function espacoEBusca(navegador, url, db, api, chamadasAoTrello) {
+  // o palco: a Novela na Entrada da G5, sem ninguém
+  db.prepare("UPDATE producoes SET etapa = 'entrada', designers = '[]' WHERE claquete LIKE 'Novela Sinfonia%'").run();
+  await fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ 'producoes.recolhidos': [], 'producoes.ordem': [] }) });
+  const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
+  await p.locator('.prod-bloco').first().waitFor();
+  await quieta(p);
+  chamadasAoTrello.splice(0);
+  const novela = cardDe(p, 'Novela Sinfonia');
+  const lupa = p.getByRole('searchbox', { name: 'Buscar nas produções' });
+
+  // com o foco no campo da busca, o espaço é do campo: nada muda
+  await lupa.focus();
+  await novela.locator('.prod-atracao').hover();
+  await p.keyboard.press(' ');
+  await p.waitForTimeout(300);
+  assert.equal(await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).count(), 1, 'no campo de texto, o espaço não pega');
+  assert.equal(await p.locator('.prod-desfazer').count(), 0);
+  assert.deepEqual(chamadasAoTrello, []);
+  await lupa.press('Escape');
+
+  // o espaço sobre o card: o "Peguei", com o deslize para a Produzindo e a caixinha de desfazer
+  await novela.locator('.prod-atracao').hover();
+  await gravarMovimento(p);
+  await p.keyboard.press(' ');
+  await coluna(p, 'G5', 'produzindo').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
+  assert.ok((await movimento(p)).some((m) => m.startsWith('deslize card Novela Sinfonia')), 'o card pego pelo espaço desliza para a Produzindo');
+  const caixinha = p.locator('.prod-desfazer');
+  await caixinha.waitFor();
+  assert.match(await caixinha.textContent(), /Você pegou Novela Sinfonia/);
+  assert.equal(await designersDe(cardDe(p, 'Novela Sinfonia')), 'Lia Moraes');
+  await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
+  assert.deepEqual(chamadasAoTrello.splice(0), [`POST /cards/${card(4)}/idMembers ?value=membroLia`]);
+  assert.equal(await p.locator('[role="dialog"]').count(), 0, 'o espaço sobre o card não abre a Produção');
+  await capturar(p, '24-producoes-espaco-pegou');
+  // de novo, no card que já é dela: nada
+  await quieta(p);
+  await cardDe(p, 'Novela Sinfonia').locator('.prod-atracao').hover();
+  await p.keyboard.press(' ');
+  await p.waitForTimeout(400);
+  assert.equal(await coluna(p, 'G5', 'produzindo').locator('.prod-card', { hasText: 'Novela Sinfonia' }).count(), 1);
+  assert.deepEqual(chamadasAoTrello, [], 'o espaço no card que já é da pessoa não faz nada');
+  assert.equal(await p.evaluate(() => scrollY + (document.querySelector('.prod-blocos')?.scrollTop ?? 0)), 0, 'o espaço não rola a página');
+  // o Desfazer da caixinha, como no Peguei
+  await caixinha.getByRole('button', { name: 'Desfazer' }).click();
+  await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
+  await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
+  assert.deepEqual(chamadasAoTrello.splice(0), [`DELETE /cards/${card(4)}/idMembers/membroLia`]);
+  console.log('ok: o espaço sobre o card pega (o deslize, a caixinha, o Desfazer); no card que já é da pessoa e no campo de texto, nada');
+
+  // a busca: o entregue de 5 dias atrás, que os blocos não mostram, sem caixa nem acento
+  assert.equal(await cardDe(p, 'Jogo Antigo').count(), 0, 'o Jogo Antigo não está nos blocos');
+  await p.keyboard.press('/');
+  await p.keyboard.type('JOGO antígo');
+  const busca = p.locator('.prod-busca');
+  const achados = busca.locator('.prod-achado');
+  await achados.first().waitFor();
+  await p.waitForFunction(() => document.querySelectorAll('.prod-achado').length === 1 && !document.querySelector('.prod-busca.buscando'));
+  assert.equal(await p.locator('.prod-blocos').isVisible(), false, 'a lista fica no lugar dos blocos');
+  assert.equal(await achados.evaluate((l) => getComputedStyle(l).animationName), 'surgir-achado', 'o achado chega subindo');
+  const jogo = achados.first();
+  assert.match(await jogo.locator('.prod-achado-claquete').textContent(), new RegExp(`^Jogo Antigo ${dm(-4)}`));
+  assert.equal((await jogo.locator('.prod-achado-etapa').textContent()).trim(), 'Entregue');
+  assert.equal(await jogo.locator('.prod-achado-quando').textContent(), `entregue ${prazo(-5)}`);
+  assert.equal(await jogo.locator('.prod-achado-designers').textContent(), 'Enzo Prado');
+  assert.match(await busca.locator('.prod-busca-topo h2').textContent(), /1 produção com/);
+  await semRolagemDeLado(p, 'a busca');
+  await capturar(p, '25-producoes-busca');
+  // pela pessoa e pela atração
+  await lupa.fill('dora');
+  await p.waitForFunction(() => [...document.querySelectorAll('.prod-achado-claquete')].some((e) => e.textContent.startsWith('Jogo Final')));
+  await lupa.fill('ENZO');
+  await p.waitForFunction(() => [...document.querySelectorAll('.prod-achado-claquete')].map((e) => e.textContent.slice(0, 11)).join('|') === 'Jogo Antigo');
+  await lupa.fill('festa na praca');
+  await p.waitForFunction(() => [...document.querySelectorAll('.prod-achado-claquete')].map((e) => e.textContent).join('|').startsWith('Festa na Praça'));
+  // um clique abre a Produção; o Esc fecha, e o foco volta para a linha
+  await lupa.fill('jogo antigo');
+  await p.waitForFunction(() => document.querySelectorAll('.prod-achado').length === 1 && document.querySelector('.prod-achado-claquete')?.textContent.startsWith('Jogo Antigo'));
+  await quieta(p);
+  await achados.first().locator('button').click();
+  const dialogo = p.locator('[role="dialog"]');
+  await dialogo.waitFor();
+  assert.match(await dialogo.textContent(), /Jogo Antigo/);
+  await capturar(p, '26-producoes-busca-aberta');
+  await p.keyboard.press('Escape');
+  await dialogo.waitFor({ state: 'detached' });
+  assert.equal(await busca.count(), 1, 'o Esc da Produção aberta só fecha ela');
+  await p.waitForFunction(() => document.activeElement?.closest('.prod-achado'));
+  // o Esc fora do campo limpa a busca: a lista sai esmaecendo, e os blocos voltam
+  await p.keyboard.press('Escape');
+  await p.locator('.prod-busca.saindo').waitFor();
+  await busca.waitFor({ state: 'detached' });
+  await p.locator('.prod-blocos.voltando').waitFor();
+  assert.equal(await lupa.inputValue(), '');
+  assert.ok(await p.locator('.prod-blocos').isVisible());
+  assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+
+  // no celular: a lupa toma a linha do título, e a lista cabe sem rolar para o lado
+  const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await cel.p.locator('.prod-bloco').first().waitFor();
+  await cel.p.locator('.prod-cabeca .busca.lupa').click();
+  await cel.p.keyboard.type('jogo');
+  await cel.p.locator('.prod-achado').first().waitFor();
+  await cel.p.waitForFunction(() => !document.querySelector('.prod-busca.buscando'));
+  assert.ok((await textos(cel.p.locator('.prod-achado-claquete'))).some((t) => t.startsWith('Jogo Antigo')));
+  const borda = await cel.p.locator('.prod-achado-abrir').evaluateAll((bs) => bs.map((b) => parseFloat(getComputedStyle(b).borderLeftWidth)));
+  assert.ok(borda.every((w) => w <= 1), 'nada de unha nos achados');
+  await semRolagemDeLado(cel.p, 'celular: a busca');
+  await capturar(cel.p, '27-producoes-busca-celular');
+  assert.deepEqual(cel.erros, []);
+  await cel.ctx.close();
+  console.log('ok: a busca: pela claquete, pela pessoa e pela atração, sem caixa nem acento, com o entregue antigo e o dia da entrega; chega e sai animando; o clique abre a Produção; no celular, cabe');
+}
+
 /**
  * O vídeo do movimento (#159), com VIDEO=pasta: a primeira carga (as colunas em cascata), o hover do card, o Peguei (a
  * Produzindo se abre, o card desliza, a contagem pula, a caixinha sobe), o arrasto (a Produzindo se abre com o card no
@@ -1286,6 +1409,7 @@ async function principal() {
     await topoEntreAsTelas(navegador, s.url);
     await arrumarAsPracas(navegador, s.url);
     await divisoriasPorDia(navegador, s.url, s.db);
+    await espacoEBusca(navegador, s.url, s.db, s.api, chamadasAoTrello);
     await filmar(navegador, s.url, s.db, s.api);
   } catch (e) {
     falhou = true;

@@ -172,6 +172,9 @@ export function artesFeitas({ artes, artesMarcadas }) {
   return artesAgrupadas(artes).map((a) => ({ ...a, feita: marcadas.has(chaveDeArte(a.nome)) || a.itens.every((i) => marcadas.has(chaveDeArte(i))) }));
 }
 
+/** Quantas Produções cada página da busca da tela de produções traz (#161). */
+export const POR_PAGINA_DA_BUSCA = 30;
+
 /** A origem dos eventos feitos na tela de produções (#110). */
 export const ORIGEM_PROMEIRO = 'PROMeiro';
 /** A origem dos eventos do aviso do Padeiro (#139). */
@@ -250,6 +253,9 @@ export function criarProducoes(db) {
     ),
     // o aviso do Padeiro (#139) pelo filme: a Produção mais recente dele, sem as arquivadas
     daUltimaDoFilme: db.prepare('SELECT id FROM producoes WHERE filme_id = ? AND arquivada = 0 ORDER BY COALESCE(entrada_em, criada_em) DESC, criada_em DESC LIMIT 1'),
+    // a busca da tela de produções (#161): o histórico todo, também os entregues antigos, sem as arquivadas, das mais
+    // recentes (pela entrega ou, sem ela, pela entrada) para as mais antigas
+    daBusca: db.prepare(`${DA_TELA} WHERE p.arquivada = 0 ORDER BY COALESCE(p.entrega_em, p.entrada_em, p.criada_em) DESC, p.criada_em DESC`),
     // a Produção mudada na tela (#110), para a tela mostrar sem reler tudo
     umaNaTela: db.prepare(`${DA_TELA} WHERE p.id = ? AND p.arquivada = 0`),
     // a correção de grafia (#116): todas as Produções, para contar as de cada atração
@@ -753,6 +759,39 @@ export function criarProducoes(db) {
     return l ? paraATela(atracaoDaClaquete)(l) : null;
   }
 
+  /**
+   * A busca da tela de produções (#161): as Produções do histórico todo (também as entregues há mais de 3 dias, que a
+   * tela não mostra; sem as arquivadas) que têm todas as palavras do termo na claquete, na atração ou numa pessoa (os
+   * designers, e o redator e o editor do Roteiro ligado), cada palavra pelo começo de uma palavra e sem diferença de
+   * caixa, acento e pontuação (`nomeComparavel`). As mais recentes primeiro, em páginas de `porPagina`, como o card da
+   * tela mostra (o de `naTela`, com o dia da entrega em `entregaEm`).
+   * @returns { cards, total (as achadas, em todas as páginas), pagina, mais (há a página seguinte) }
+   */
+  function naBusca(termo, { pagina = 0, porPagina = POR_PAGINA_DA_BUSCA, atracaoDaClaquete = () => '' } = {}) {
+    const palavras = nomeComparavel(termo).split(' ').filter(Boolean);
+    const n = Math.max(0, Math.floor(Number(pagina)) || 0);
+    if (!palavras.length) return { cards: [], total: 0, pagina: 0, mais: false };
+    const aTela = paraATela(atracaoDaClaquete);
+    const achadas = q.daBusca.all().flatMap((l) => {
+      const c = aTela(l);
+      const meta = metaDaLinha(l);
+      const onde = ` ${nomeComparavel([c.claquete, c.atracao, ...c.designers, meta.redator, meta.editor].join(' '))}`;
+      return palavras.every((p) => onde.includes(` ${p}`)) ? [c] : [];
+    });
+    const cards = achadas.slice(n * porPagina, (n + 1) * porPagina);
+    return { cards, total: achadas.length, pagina: n, mais: (n + 1) * porPagina < achadas.length };
+  }
+
+  /** O redator e o editor do Roteiro ligado ('' sem eles, ou com a meta ilegível). */
+  function metaDaLinha(l) {
+    try {
+      const m = JSON.parse(l.roteiro_meta ?? 'null') ?? {};
+      return { redator: String(m.redator ?? '').trim(), editor: String(m.editor ?? '').trim() };
+    } catch {
+      return { redator: '', editor: '' };
+    }
+  }
+
   /** A linha de `naTela` como o card mostra. */
   function paraATela(atracaoDaClaquete) {
     return (l) => {
@@ -853,6 +892,7 @@ export function criarProducoes(db) {
     doRoteiro,
     naTela,
     umaNaTela,
+    naBusca,
     paraOPadeiro,
     noIndice,
     doPROMeiro,
