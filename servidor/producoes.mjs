@@ -102,6 +102,9 @@ export function criarTabelaDasProducoes(db) {
   if (!tem('eventos', 'origem')) db.exec('ALTER TABLE eventos ADD COLUMN origem TEXT');
   // o desfazer da tela de produções (#112): o id do evento da etapa que o evento desfez; vazio nos outros
   if (!tem('eventos', 'desfaz')) db.exec('ALTER TABLE eventos ADD COLUMN desfaz TEXT');
+  // as ações da janela do After (#147): o identificador da ação do Padeiro que gravou o evento (o mesmo nos eventos de
+  // uma ação, com o quem_id da chave), para o desfazer achar a última; vazio nos outros
+  if (!tem('eventos', 'acao_do_padeiro')) db.exec('ALTER TABLE eventos ADD COLUMN acao_do_padeiro TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS eventos_chave ON eventos (chave)');
 }
 
@@ -109,6 +112,11 @@ export function criarTabelaDasProducoes(db) {
 const DA_ETAPA = ['criada', 'etapa', 'arquivada', 'desarquivada'];
 const DO_DESIGNER = ['designer-entrou', 'designer-saiu'];
 const DA_ARTE = ['arte-marcada', 'arte-desmarcada'];
+/** O fogo da arte mudado pela janela do After (#147): `campo` é a arte; antes e depois, o nível (1, 2 ou 3). A família
+    é a mesma arte. */
+const DO_FOGO = 'fogo';
+/** O que o desfazer da janela do After (#147) olha: a etapa e os designers. */
+const DO_DESFAZER = [...DA_ETAPA, ...DO_DESIGNER];
 
 /** A lista guardada em JSON com o item (sem repetir pelo nome comparável) ou sem ele. */
 function comOuSem(json, item, com) {
@@ -250,6 +258,7 @@ export function criarProducoes(db) {
     ultimoDaEtapa: db.prepare(`SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo IN (${DA_ETAPA.map(() => '?').join(', ')})`),
     ultimoDoItem: db.prepare('SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo IN (?, ?) AND COALESCE(depois, antes) = ?'),
     ultimoDoCampo: db.prepare("SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo = 'campo' AND campo = ?"),
+    ultimoDoFogo: db.prepare(`SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND tipo = '${DO_FOGO}' AND campo = ?`),
     // o evento mais novo de todos: a recuperação lê o quadro desde ele
     ultimoDeTodos: db.prepare('SELECT MAX(quando) AS quando FROM eventos'),
     daProducao: db.prepare('SELECT designers, artes_marcadas FROM producoes WHERE id = ?'),
@@ -283,6 +292,13 @@ export function criarProducoes(db) {
     ultimaDaEtapa: db.prepare(`SELECT * FROM eventos WHERE producao_id = ? AND tipo IN (${DA_ETAPA.map(() => '?').join(', ')}) ORDER BY quando DESC, anotado_em DESC LIMIT 1`),
     juntoCom: db.prepare('SELECT * FROM eventos WHERE producao_id = ? AND origem = ? AND quem_id = ? AND quando = ? ORDER BY anotado_em'),
     ultimoDoPROMeiro: db.prepare('SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND origem = ?'),
+    // o que o Padeiro fez (#139, #146, #147): com o identificador da ação
+    anotarDoPadeiro: db.prepare(
+      `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, origem, desfaz, acao_do_padeiro, anotado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    // o desfazer da janela do After (#147): o último evento da etapa ou dos designers, de onde vier, e os da mesma ação
+    ultimoDoDesfazer: db.prepare(`SELECT * FROM eventos WHERE producao_id = ? AND tipo IN (${DO_DESFAZER.map(() => '?').join(', ')}) ORDER BY quando DESC, anotado_em DESC LIMIT 1`),
+    daAcao: db.prepare(`SELECT * FROM eventos WHERE producao_id = ? AND quem_id = ? AND acao_do_padeiro = ? AND tipo IN (${DO_DESFAZER.map(() => '?').join(', ')})`),
     // a janela do After (#146): a meta do Roteiro ligado (a complexidade das artes) e quem marcou cada arte, e quando
     metaDoRoteiro: db.prepare('SELECT meta FROM roteiros WHERE id = ?'),
     marcadasDe: db.prepare("SELECT depois, quem_nome, quando FROM eventos WHERE producao_id = ? AND tipo = 'arte-marcada' ORDER BY quando, anotado_em"),
@@ -364,6 +380,7 @@ export function criarProducoes(db) {
     if (DO_DESIGNER.includes(ev.tipo)) return q.ultimoDoItem.get(id, ...DO_DESIGNER, ev.depois ?? ev.antes)?.quando ?? null;
     if (DA_ARTE.includes(ev.tipo)) return q.ultimoDoItem.get(id, ...DA_ARTE, ev.depois ?? ev.antes)?.quando ?? null;
     if (ev.tipo === 'campo') return q.ultimoDoCampo.get(id, ev.campo)?.quando ?? null;
+    if (ev.tipo === DO_FOGO) return q.ultimoDoFogo.get(id, ev.campo)?.quando ?? null;
     return q.ultimoDaEtapa.get(id, ...DA_ETAPA)?.quando ?? null;
   }
 
@@ -490,17 +507,21 @@ export function criarProducoes(db) {
    * quem (o Padeiro e o nome do designer da chave), a hora da abertura (`quando`) e a origem Padeiro. A regra do
    * conflito é a da releitura e do aviso do Trello: o evento mais velho que o último da mesma família fica só no
    * histórico; os outros mudam a Produção. Nada vai ao Teable.
-   * @param mudancas [{ tipo: 'etapa' | 'designer-entrou' | 'abriu-o-projeto', antes, depois }]
+   * As ações da janela do After (#147) também passam por aqui: o fogo (que fica só no evento; o Roteiro muda fora), a
+   * entrega (a data da entrega é a da ação), a volta e o desfazer (`desfaz`: o id do evento desfeito). `acao` é o
+   * identificador da ação do Padeiro, o mesmo nos eventos dela.
+   * @param mudancas [{ tipo: 'etapa' | 'designer-entrou' | 'designer-saiu' | 'abriu-o-projeto' | 'arte-…' | 'fogo', campo?, antes, depois }]
    * @param quem { id, nome }
    */
-  function doPadeiro(id, mudancas, quem, quando) {
+  function doPadeiro(id, mudancas, quem, quando, { acao = null, desfaz = null } = {}) {
     const em = new Date().toISOString();
     db.exec('BEGIN');
     try {
       for (const ev of mudancas) {
         const vale = ev.tipo !== 'abriu-o-projeto' && !atrasado(id, { ...ev, quando });
-        q.anotarDoPROMeiro.run(randomUUID(), id, ev.tipo, ev.antes ?? null, ev.depois ?? null, quem.id, quem.nome, quando, ORIGEM_PADEIRO, null, em);
+        q.anotarDoPadeiro.run(randomUUID(), id, ev.tipo, ev.campo ?? null, ev.antes ?? null, ev.depois ?? null, quem.id, quem.nome, quando, ORIGEM_PADEIRO, desfaz, acao, em);
         if (vale) mudarAProducao(id, { ...ev, quando }, em, []);
+        if (vale && ev.tipo === 'etapa' && ev.depois === 'entregue' && !desfaz) q.entregueAgora.run(quando, id);
       }
       db.exec('COMMIT');
     } catch (e) {
@@ -540,7 +561,7 @@ export function criarProducoes(db) {
    * origem Padeiro, a regra do conflito na família de cada item). Nada vai ao Trello nem ao Teable.
    * @returns os eventos gravados ([] quando a arte já estava assim), ou null quando a Produção não tem essa arte
    */
-  function arteDoPadeiro(id, nome, feita, quem, quando) {
+  function arteDoPadeiro(id, nome, feita, quem, quando, acao = null) {
     const p = q.doId.get(id) ? daLinha(q.doId.get(id)) : null;
     const arte = p && artesFeitas(p).find((a) => chaveDeArte(a.nome) === chaveDeArte(String(nome ?? '')));
     if (!arte) return null;
@@ -548,7 +569,7 @@ export function criarProducoes(db) {
     const desmarcar = [...new Set([arte.nome, ...arte.itens])].filter((x) => marcadas.has(chaveDeArte(x)));
     const itens = feita ? arte.itens.filter((x) => !marcadas.has(chaveDeArte(x))) : desmarcar;
     const mudancas = itens.map((x) => (feita ? { tipo: 'arte-marcada', antes: null, depois: x } : { tipo: 'arte-desmarcada', antes: x, depois: null }));
-    if (mudancas.length) doPadeiro(p.id, mudancas, quem, quando);
+    if (mudancas.length) doPadeiro(p.id, mudancas, quem, quando, { acao });
     return mudancas.map((m) => m.tipo);
   }
 
@@ -571,6 +592,21 @@ export function criarProducoes(db) {
     const junto = e.origem === ORIGEM_PROMEIRO && e.quem_id ? q.juntoCom.all(id, ORIGEM_PROMEIRO, e.quem_id, e.quando) : [e];
     const doEv = (x) => ({ tipo: x.tipo, antes: x.antes ?? null, depois: x.depois ?? null });
     return { id: e.id, ...doEv(e), quem: e.quem_id ?? null, origem: e.origem ?? null, desfaz: e.desfaz ?? null, quando: e.quando, junto: junto.map(doEv) };
+  }
+
+  /**
+   * A última mudança da etapa ou dos designers da Produção (#147), para o desfazer da janela do After: o evento mais
+   * recente dessas famílias, de onde vier, e os da mesma ação do Padeiro (quando é dele). null sem nenhum.
+   * @returns { id, quem, origem, acao, desfaz, quando, junto: [{ tipo, antes, depois }] } ou null
+   */
+  function ultimaDaJanela(id) {
+    const e = q.ultimoDoDesfazer.get(id, ...DO_DESFAZER);
+    if (!e) return null;
+    const doEv = (x) => ({ tipo: x.tipo, antes: x.antes ?? null, depois: x.depois ?? null });
+    const junto = e.origem === ORIGEM_PADEIRO && e.quem_id && e.acao_do_padeiro ? q.daAcao.all(id, e.quem_id, e.acao_do_padeiro, ...DO_DESFAZER) : [e];
+    // a etapa primeiro, como a ação gravou
+    junto.sort((a, b) => Number(b.tipo === 'etapa') - Number(a.tipo === 'etapa'));
+    return { id: e.id, quem: e.quem_id ?? null, origem: e.origem ?? null, acao: e.acao_do_padeiro ?? null, desfaz: e.desfaz ?? null, quando: e.quando, junto: junto.map(doEv) };
   }
 
   /**
@@ -802,9 +838,10 @@ export function criarProducoes(db) {
     doAviso,
     naJanela,
     arteDoPadeiro,
-    /** O evento ({ tipo, antes, depois, quando }) é mais velho que o último já anotado da família dele (#139)? */
+    /** O evento ({ tipo, campo, antes, depois, quando }) é mais velho que o último já anotado da família dele (#139)? */
     atrasado,
     ultimaMudanca,
+    ultimaDaJanela,
     /** A Produção pelo id (como a API mostra), ou null. */
     uma: (id) => {
       const l = q.doId.get(id);
