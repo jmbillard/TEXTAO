@@ -877,6 +877,68 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const campanhasDe = campanhas.porProducao();
     return cards.map((c) => comAsVersoes(c, campanhasDe));
   };
+  /**
+   * A página da campanha (#180), para qualquer pessoa logada: GET /api/campanhas/<id> (a página). Para o administrador,
+   * a coordenação, o designer e o redator: POST …/nome { nome } (renomear), POST …/producoes { producoes: [ids], liga }
+   * (ligar ou tirar várias). Só o administrador e quem criou: POST …/apagar e …/desfazer-apagar. Só o PROMeiro: nada vai
+   * ao Trello nem ao Teable (a Pauta da edição é só lida).
+   */
+  async function rotaDaCampanha(req, res, eu, id, acao) {
+    const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+    const atracaoDaClaquete = (claquete) => atracaoPelaClaquete(claquete, programas, pracas);
+    const papel = await papelNasCampanhas(eu);
+    const ctx = {
+      ...papel,
+      admin: cadastros.podeApagar(eu.email),
+      cardDe: (pid) => comAsVersoes(producoes.daCampanha(pid, atracaoDaClaquete)),
+      candidatas: () => comAsVersoesDeTodos(producoes.naTela(new Date(Date.now() - DIAS_DO_ENTREGUE * 86_400_000).toISOString(), atracaoDaClaquete)),
+      pautaDe: pautaDasProducoes,
+    };
+    if (!acao) {
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      const p = await campanhas.pagina(id, ctx);
+      return p ? json(res, 200, p) : json(res, 404, { erro: 'Essa campanha não existe mais.' });
+    }
+    if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    const corpo = (await lerCorpo(req, 64 * 1024, 'Pedido')) ?? {};
+    const r =
+      acao === 'nome' ? await campanhas.renomear(id, corpo.nome, ctx) : acao === 'producoes' ? await campanhas.varias(id, corpo, ctx) : acao === 'apagar' ? campanhas.apagar(id, ctx) : await campanhas.desfazerApagar(id, ctx);
+    return json(res, r.status, r.corpo);
+  }
+
+  /** Quantos dias da Pauta a página da campanha lê, no máximo (#180). */
+  const DIAS_DA_PAUTA_DA_CAMPANHA = 42;
+  /**
+   * As claquetes da Pauta da edição das Produções (#180, a página da campanha): a mesma junção da Pauta (a do Teable e
+   * a publicada no PROMeiro) e o mesmo cruzamento com a Produção (`cruzarComAProducao`). Os dias: da entrada mais velha
+   * ao prazo mais longe (no máximo os últimos 42). Com a Pauta fora do ar, só a publicada, e o motivo em `erro`.
+   * @returns { linhas: [{ producao, dia, editor, claquete, turno }], erro? }
+   */
+  async function pautaDasProducoes(cards) {
+    const ids = new Set(cards.map((c) => c.id));
+    const naPauta = producoes.naPauta('').filter((p) => ids.has(p.id));
+    const hoje = diaEmSaoPaulo(Date.now());
+    const inicios = naPauta.map((p) => (p.entradaEm ? diaEmSaoPaulo(Date.parse(p.entradaEm)) : hoje));
+    const fins = cards.map((c) => (c.prazo ? diaDoPrazo(c.prazo) : hoje));
+    let ate = [...fins, ...inicios].sort().at(-1) ?? hoje;
+    let de = [...inicios, ...fins].sort()[0] ?? hoje;
+    if (Date.parse(`${ate}T12:00:00Z`) - Date.parse(`${de}T12:00:00Z`) >= DIAS_DA_PAUTA_DA_CAMPANHA * 86_400_000) de = diaVizinho(ate, 1 - DIAS_DA_PAUTA_DA_CAMPANHA);
+    const dias = [de];
+    while (dias.at(-1) < ate) dias.push(diaVizinho(dias.at(-1), 1));
+    let erro;
+    const doTeable = await pauta.dias(dias).then(
+      (r) => r.linhas,
+      (e) => ((erro = e instanceof Error ? e.message : 'A Pauta da edição não respondeu.'), []),
+    );
+    const gravados = pautaNoTeable.gravados(dias[0], dias.at(-1));
+    const publicadas = escala.publicadas(dias[0], dias.at(-1)).map((p) => (gravados.has(p.dia) ? { ...p, vale: true } : p));
+    const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
+    const linhas = cruzarComAProducao(publicadas.length ? juntarAPublicada(doTeable, publicadas) : doTeable, naPauta, semPraca).flatMap((l) =>
+      (l.producoes ?? []).filter((p) => ids.has(p.id)).map((p) => ({ producao: p.id, dia: l.dia, editor: l.editor, claquete: l.texto, turno: l.turno })),
+    );
+    return erro ? { linhas, erro } : { linhas };
+  }
+
   /** Quem cria, liga e tira Produções das campanhas (#178): o administrador, a coordenação, o designer e o redator. O
       nome de quem fez é o do cadastro de designer ou de redator ou, sem eles, o do login. */
   async function papelNasCampanhas(eu) {
@@ -3479,6 +3541,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const r = campanhas.criar(((await lerCorpo(req, 4096, 'Pedido')) ?? {}).nome, papel.quem);
       return r.erro ? json(res, 400, { erro: r.erro }) : json(res, r.nova ? 201 : 200, r);
     }
+    const daCampanha = /^\/api\/campanhas\/([^/]+)(?:\/(nome|producoes|apagar|desfazer-apagar))?$/.exec(caminho);
+    if (daCampanha) return rotaDaCampanha(req, res, eu, decodeURIComponent(daCampanha[1]), daCampanha[2] ?? '');
     const doCardAberto = /^\/api\/producoes\/(prazo|atracao|designer|arte|fogo)$/.exec(caminho);
     if (doCardAberto) {
       // o card aberto (#160), para quem está ligado a um designer: o prazo { producao, prazo }, a atração { producao,

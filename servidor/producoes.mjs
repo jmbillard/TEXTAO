@@ -320,6 +320,8 @@ export function criarProducoes(db) {
     daBusca: db.prepare(`${DA_TELA} WHERE p.arquivada = 0 ORDER BY COALESCE(p.entrega_em, p.entrada_em, p.criada_em) DESC, p.criada_em DESC`),
     // a Produção mudada na tela (#110), para a tela mostrar sem reler tudo
     umaNaTela: db.prepare(`${DA_TELA} WHERE p.id = ? AND p.arquivada = 0`),
+    // a Produção da campanha (#180): como o card da tela, também a arquivada (que continua na campanha)
+    umaDaCampanha: db.prepare(`${DA_TELA.replace('r.meta AS roteiro_meta', 'r.meta AS roteiro_meta, p.arquivada')} WHERE p.id = ?`),
     // a correção de grafia (#116): todas as Produções, para contar as de cada atração
     paraContar: db.prepare('SELECT p.claquete, r.meta AS roteiro_meta FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id'),
     /* ---------- os eventos (#87) ---------- */
@@ -908,6 +910,13 @@ export function criarProducoes(db) {
     return l ? paraATela(atracaoDaClaquete)(l) : null;
   }
 
+  /** Uma Produção como o card da tela mostra, também a arquivada (#180: a página da campanha), com `arquivada`; null
+      sem ela. */
+  function daCampanha(id, atracaoDaClaquete = () => '') {
+    const l = q.umaDaCampanha.get(id);
+    return l ? { ...paraATela(atracaoDaClaquete)(l), arquivada: !!l.arquivada || l.etapa === 'arquivada' } : null;
+  }
+
   /**
    * A busca da tela de produções (#161): as Produções do histórico todo (também as entregues há mais de 3 dias, que a
    * tela não mostra; sem as arquivadas) que têm todas as palavras do termo na claquete, na atração ou numa pessoa (os
@@ -1044,6 +1053,7 @@ export function criarProducoes(db) {
     doRoteiro,
     naTela,
     umaNaTela,
+    daCampanha,
     naBusca,
     paraOPadeiro,
     noIndice,
