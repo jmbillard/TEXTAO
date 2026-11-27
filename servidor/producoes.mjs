@@ -237,7 +237,7 @@ export function criarProducoes(db) {
     // a lista do Padeiro (#138): as abertas (Entrada e Produzindo), sem as arquivadas, as mais novas primeiro, com o
     // Roteiro ligado (a atração, o redator e o editor)
     doPadeiro: db.prepare(
-      `SELECT p.id, p.claquete, p.praca, p.etapa, p.artes, p.artes_marcadas, p.entrada_em, p.card_id, p.filme_id, p.filme_titulo, r.meta AS roteiro_meta
+      `SELECT p.id, p.claquete, p.praca, p.etapa, p.designers, p.artes, p.artes_marcadas, p.entrada_em, p.card_id, p.filme_id, p.filme_titulo, r.meta AS roteiro_meta
        FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id
        WHERE p.arquivada = 0 AND p.etapa IN ('entrada', 'produzindo') ORDER BY COALESCE(p.entrada_em, p.criada_em) DESC, p.criada_em DESC`,
     ),
@@ -781,7 +781,7 @@ export function criarProducoes(db) {
    * só as abertas), a atração (`atr`: a do Roteiro, o título do filme ou a da claquete; '' sem nenhuma) e se é filme
    * (`fil`). A mais, que o Padeiro de antes ignora: o filme do cadastro (`filme`, o id; '' sem ele), a praça, a Produção
    * (o id, para o aviso do Padeiro, #139), a etapa e as artes do checklist (`artes`: as feitas e as a fazer, na ordem
-   * do checklist). Nada do Trello.
+   * do checklist) e os designers (`designers`, os nomes da coluna, #153). Nada do Trello.
    * @param atracaoDaClaquete (claquete) => nome, ou ''
    */
   function paraOPadeiro(atracaoDaClaquete = () => '') {
@@ -807,6 +807,7 @@ export function criarProducoes(db) {
         praca: l.praca ?? '',
         producao: l.id,
         etapa: l.etapa,
+        designers: JSON.parse(l.designers ?? '[]'),
         artes: { feitas: artes.filter((a) => a.marcada).map((a) => a.nome), aFazer: artes.filter((a) => !a.marcada).map((a) => a.nome) },
       };
     });

@@ -115,7 +115,7 @@ async function preparado() {
   return { db, app, registros, teable, trello: t, padeiro, chefe, cadastrar, ligar, revogar, daAna, daClaquete };
 }
 
-type DoPadeiro = { claq: string; red: string; ed: string; card: string; at: string | null; fim: boolean; atr: string; fil: boolean; praca: string; producao: string; etapa: string; artes: { feitas: string[]; aFazer: string[] } };
+type DoPadeiro = { claq: string; red: string; ed: string; card: string; at: string | null; fim: boolean; atr: string; fil: boolean; praca: string; producao: string; etapa: string; artes: { feitas: string[]; aFazer: string[] }; designers: string[]; comVoce: boolean };
 
 describe('o Padeiro: a lista das Produções para o grupo NO TRELLO', () => {
   const ler = async (padeiro: (c: string, i?: RequestInit & { chave?: string }) => Promise<Response>, chave?: string) => {
@@ -156,6 +156,27 @@ describe('o Padeiro: a lista das Produções para o grupo NO TRELLO', () => {
     const lista = (await ler(padeiro, chave)).corpo.trello!;
     expect(lista[0].artes).toEqual({ feitas: ['AMANHÃ'], aFazer: ['HOJE', 'DOMINGO'] });
     expect(lista[2].artes).toEqual({ feitas: [], aFazer: [] });
+  });
+
+  it('os designers de cada Produção e se a pessoa da chave está nela (comVoce) vão em campos a mais, como na rota da Produção', async () => {
+    const { padeiro, daAna, cadastrar, ligar } = await preparado();
+    const { chave } = await daAna();
+    const lista = (await ler(padeiro, chave)).corpo.trello!;
+    const de = (inicio: string) => lista.find((c) => c.claq.startsWith(inicio))!;
+    expect(de('Show da Noite')).toMatchObject({ designers: [], comVoce: false });
+    expect(de('Festa na Praça')).toMatchObject({ designers: ['Caio Prates'], comVoce: false });
+    // o mesmo formato da rota da Produção (#146)
+    const daJanela = (await (await padeiro(`/api/padeiro/producoes/${de('Festa na Praça').producao}`, { chave })).json()) as { producao: { designers: string[]; comVoce: boolean } };
+    expect({ designers: de('Festa na Praça').designers, comVoce: de('Festa na Praça').comVoce }).toEqual({ designers: daJanela.producao.designers, comVoce: daJanela.producao.comVoce });
+    // a chave do Caio: a Festa é dele
+    const caio = await cadastrar({ usuario: 'caio.prates', sigla: 'CAI' });
+    expect((await ligar(caio.id, 'recDesignerCaio')).status).toBe(200);
+    const doCaio = (await ler(padeiro, caio.chave)).corpo.trello!;
+    expect(doCaio.map((c) => [c.claq, c.comVoce])).toEqual([
+      ['Show da Noite 20/12 SP', false],
+      ['Filme da Tarde 21/12', false],
+      ['Festa na Praça 20/12 SP', true],
+    ]);
   });
 
   it('só a ligada lê: a pendente é recusada (403) com o aviso de que espera o administrador ligar; a revogada, 403 com o estado; sem chave ou com a errada, 401', async () => {
