@@ -769,8 +769,13 @@ async function colunaEArrastar(navegador, url) {
   const tablet = await abrir(navegador, url, BIA, `#/pauta/montar/${depois}`, { viewport: { width: 834, height: 1194 }, hasTouch: true });
   const tColuna = tablet.p.getByRole('region', { name: 'Para distribuir' });
   await tColuna.locator('.coluna-claquete').first().waitFor();
+  // no tablet a coluna fica em cima da grade, e o "Fora" e o "Sem escala" chegam depois do dia, empurrando a grade
+  // para baixo: o dedo só arrasta com os dois na tela, senão a soltura cai fora da célula do Rui
+  await tablet.p.getByRole('region', { name: 'Fora' }).waitFor();
+  await tablet.p.getByRole('region', { name: 'Sem escala' }).locator('.coluna-pessoa').first().waitFor();
   // a tela mostra o levar antes de o servidor gravar: fechar o tablet antes da resposta pode cortar o pedido
   const levado = tablet.p.waitForResponse((r) => new URL(r.url()).pathname === '/api/montar-pauta/levar' && r.request().method() === 'POST');
+  levado.catch(() => {});
   await arrastarComODedo(tablet.p, tColuna.locator('.coluna-claquete', { hasText: 'Mundo Animal' }), tablet.p.locator(`.montar-celula[data-posicao-id="${rui}"]`));
   await ate(async () => assert.deepEqual((await aGrade(tablet.p)).map((x) => x.demandas), [[`Mundo Animal ${diaMes(depois)} (P)`], [`Noite de Gala ${diaMes(depois)} (DP)`]]));
   assert.deepEqual(await daLista(tablet.p), ['CALHAUS']);
