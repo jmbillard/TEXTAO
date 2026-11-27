@@ -41,6 +41,41 @@ entra no backup com o resto do banco) e são servidos por endereço fixo:
   nunca chega às rotas com login. O fluxo `filmes-recentes` do n8n passa a mandar esse endereço no lugar do link
   temporário do Teable.
 
+## O caminho do Padeiro (a chave do Padeiro)
+
+O Padeiro (a extensão do After Effects) roda fora do Cloudflare Access e fala com o PROMeiro por um caminho só dele,
+embaixo de `/api/padeiro/` (#137). Ali só vale a **chave do Padeiro**, no cabeçalho `X-Chave-Do-Padeiro`; o login do
+Access nunca é lido, e o que não é uma rota do Padeiro responde 404, sem chegar às rotas com login (vale também para
+`/api/padeiros`, barras repetidas e `%2e%2e` no caminho).
+
+- `POST /api/padeiro/cadastro` `{ usuario, computador, sistema, sigla }` (a única rota sem chave): devolve
+  `201 { chave, estado: "pendente" }`. Uma chave por usuário e por computador: o cadastro de novo do mesmo par troca a
+  chave (a antiga deixa de valer) e volta a pendente. O PROMeiro guarda só o hash (SHA-256) da chave, no SQLite (a
+  tabela `padeiros`, que entra no backup).
+- `GET /api/padeiro/eu`, com a chave: `{ estado, usuario, computador, sigla, designer }`, com o estado `pendente`,
+  `ligada` ou `revogada`. Sem a chave, ou com uma que não vale mais, `401`.
+- Nos **Cadastros › Padeiros** (só administradores), a lista com usuário, computador, sigla, designer ligado e último
+  aviso; ligar a um designer da tabela designers do Teable (a sigla sugere qual), trocar o designer e revogar.
+
+Para liberar o caminho no Cloudflare Access (o passo é seu; sem ele, o Padeiro recebe a tela de login do Access e não
+se cadastra, e nada mais muda):
+
+1. **No Cloudflare Zero Trust (Access → Applications → Add an application → Self-hosted):** o mesmo domínio do
+   PROMeiro, **só com o caminho `api/padeiro`** (o Access cobre o que está embaixo dele). Nome sugerido:
+   "PROMeiro · Padeiro".
+2. **A política:** uma só, com a ação **Bypass** e a regra **Everyone** (como a do pôster público e a do aviso do
+   Trello). Não ponha outra política nessa aplicação.
+3. **Confira** de fora, sem login: `curl -i https://<promeiro>/api/padeiro/eu` responde `401` com
+   `{"erro":"Chave do Padeiro desconhecida…"}` (o PROMeiro respondeu); a tela de login do Access (302 ou 403) quer
+   dizer que o Bypass não pegou. `curl -i https://<promeiro>/api/eu` continua pedindo o login do Access.
+4. **No Padeiro:** o endereço do PROMeiro na configuração; ele pede a chave sozinho, e ela aparece pendente nos
+   Cadastros › Padeiros até um administrador ligar.
+
+**Para voltar atrás:** apague a aplicação "PROMeiro · Padeiro" no Access (Access → Applications → a aplicação →
+Delete). O caminho volta para trás do login, como o resto do domínio: o Padeiro deixa de falar com o PROMeiro (e
+segue pelo n8n, como antes), e as chaves continuam guardadas, sem valer para nada até o Bypass voltar. Para cortar um
+Padeiro só, sem mexer no Access, revogue a chave dele nos Cadastros.
+
 ## O aviso do Trello: desligado
 
 O aviso do Trello (#87, o webhook do quadro, e a recuperação das ações do quadro, #88) está **desligado por padrão** e

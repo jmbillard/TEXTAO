@@ -43,6 +43,8 @@ import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs
 import { criarPreferencias } from './preferencias.mjs';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { criarEscala, posicoesDoPedido } from './escala.mjs';
+import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
+import { designerSugerido } from '../src/modelo/padeiros.ts';
 import { TURNOS_DE_FABRICA } from '../src/modelo/escala.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
@@ -370,6 +372,23 @@ export function semCadastro(claquetes, programas, ignoradas = new Set(), pracas 
 }
 
 /* ---------- utilidades HTTP ---------- */
+
+/**
+ * O pedido é do caminho do Padeiro (#137)? Vale o que o Bypass do Access pode ter deixado passar: o caminho como veio
+ * (com %2e%2e, barras repetidas ou outra caixa, que o endereço já arrumado esconderia: /api/padeiro/%2e%2e/roteiros
+ * vira /api/roteiros) e o arrumado, os dois sem a barra no fim (/api/padeiro, /api/padeiros…). Nada disso pode chegar
+ * às rotas com login, onde o cabeçalho do Access que veio junto valeria.
+ */
+function doCaminhoDoPadeiro(cru, caminho) {
+  const comeco = (c) => c.replace(/\/+/g, '/').toLowerCase().startsWith('/api/padeiro');
+  let veio = String(cru ?? '').split(/[?#]/)[0];
+  try {
+    veio = decodeURIComponent(veio);
+  } catch {
+    /* um % solto: vale o que veio */
+  }
+  return comeco(veio) || comeco(String(caminho ?? ''));
+}
 
 const json = (res, status, corpo) => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -701,6 +720,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const areas = criarAreas();
   // montar a pauta (#123): o papel de coordenação e o rascunho do dia, no SQLite (nada vai ao Teable)
   const escala = criarEscala(db);
+  // o caminho do Padeiro (#137): a chave do Padeiro (só o hash), no SQLite
+  const padeiros = criarPadeiros(db);
   /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
   const daPessoa = (email, admin) => areas.daPessoa(email, { cadastros, admin, preferencias, coordenacao: escala.ehCoordenacao(email) });
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
@@ -1565,6 +1586,45 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
     const editores = (await areas.nomesDosCadastros(cadastros)).editor.sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return json(res, 200, { dia, ...escala.lerDia(dia), semana: escala.estados(diasDaSemana(segundaDaSemana(dia))), turnos: TURNOS_DE_FABRICA, editores });
+  }
+
+  /**
+   * A aba Padeiros dos Cadastros (#137), só para administradores. GET /api/cadastros/padeiros: os Padeiros (usuário,
+   * computador, sistema, sigla, estado, designer ligado, a sugestão pela sigla e o último aviso) e os designers
+   * cadastrados ativos (a tabela designers da última verificação das Pessoas). POST …/<id>/ligar { designer: registro }
+   * liga a chave (ou troca o designer); POST …/<id>/revogar revoga. A chave nunca sai daqui.
+   */
+  async function rotaDosPadeiros(req, res, eu, caminho) {
+    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem e mudam os Padeiros.' });
+    const ativos = (pessoas.guardada()?.designers ?? []).filter((d) => d.ativo !== false && d.nome && d.registro);
+    const designers = ativos.map((d) => ({ registro: d.registro, nome: d.nome })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    if (caminho === '/api/cadastros/padeiros') {
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      const comSugestao = padeiros.lista().map((p) => {
+        const s = p.estado === 'pendente' ? designerSugerido(p.sigla, p.usuario, ativos) : null;
+        return { ...p, sugestao: s ? { registro: s.registro, nome: s.nome } : null };
+      });
+      return json(res, 200, { padeiros: comSugestao, designers });
+    }
+    const [, id, acao] = /^\/api\/cadastros\/padeiros\/([\w-]{1,64})\/(ligar|revogar)$/.exec(caminho) ?? [];
+    if (!id) return json(res, 404, { erro: 'Não encontrado.' });
+    if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    try {
+      if (acao === 'revogar') {
+        const feito = padeiros.revogar(id, eu.email);
+        console.log(`[padeiros] ${eu.email} revogou a chave de ${feito.usuario} em ${feito.computador}`);
+        return json(res, 200, { padeiro: feito });
+      }
+      const registro = String(((await lerCorpo(req)) ?? {}).designer ?? '');
+      const designer = designers.find((d) => d.registro === registro);
+      if (!designer) return json(res, 400, { erro: 'Escolha um designer cadastrado (e ativo) na tabela designers.' });
+      const feito = padeiros.ligar(id, designer, eu.email);
+      console.log(`[padeiros] ${eu.email} ligou a chave de ${feito.usuario} em ${feito.computador} a ${designer.nome}`);
+      return json(res, 200, { padeiro: feito });
+    } catch (e) {
+      if (!e.status) throw e;
+      return json(res, e.status, { erro: e.message });
+    }
   }
 
   /** Cadastros de atrações, redatores e editores: todos cadastram; só CADASTRO_ADMINS removem. */
@@ -2681,6 +2741,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, producoes.linhaDoTempo({ card, producao }));
     }
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir', 'apagar', 'modo', 'copia', 'recriar'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
+    if (caminho === '/api/cadastros/padeiros' || caminho.startsWith('/api/cadastros/padeiros/')) return rotaDosPadeiros(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta/semana' || caminho === '/api/pauta/dia') {
       // a Semana (#94) e o Dia (#97) da pauta da edição, para qualquer pessoa logada: lidos do Postgres do Teable (só
@@ -2872,6 +2933,27 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return servirPoster(res, await anexos.poster(rec, env), 'public');
   }
 
+  /**
+   * O caminho do Padeiro (#137), embaixo de /api/padeiro/: fora do login (o Padeiro roda dentro do After Effects, sem o
+   * Cloudflare Access, que tem um Bypass só para este caminho). Só vale a chave do Padeiro no cabeçalho; o cabeçalho do
+   * Access, aqui, pode ter vindo de qualquer um e nunca é lido. O que não é uma rota daqui responde 404.
+   * - POST /api/padeiro/cadastro { usuario, computador, sistema, sigla } (a única sem chave): 201 { chave, estado }
+   * - GET /api/padeiro/eu: { estado, usuario, computador, sigla, designer } da chave; sem ela, ou com a errada, 401
+   */
+  async function rotaDoPadeiro(req, res, caminho) {
+    if (caminho === '/api/padeiro/cadastro' && req.method === 'POST') {
+      const feito = padeiros.cadastrar(await lerCorpo(req, 16_384, 'Cadastro'));
+      console.log(`[padeiro] cadastro pendente: ${feito.usuario} em ${feito.computador}`);
+      return json(res, 201, { chave: feito.chave, estado: feito.estado });
+    }
+    if (caminho === '/api/padeiro/eu' && req.method === 'GET') {
+      const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
+      if (!p) return json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
+      return json(res, 200, { estado: p.estado, usuario: p.usuario, computador: p.computador, sigla: p.sigla, designer: p.designer ? { nome: p.designer.nome } : null });
+    }
+    return json(res, 404, { erro: 'Não encontrado.' });
+  }
+
   const app = async (req, res) => {
     const url = new URL(req.url, 'http://x');
     const caminho = url.pathname;
@@ -2886,6 +2968,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       else if (caminho.startsWith(`${ROTA_DO_AVISO}/`)) json(res, 404, { erro: 'Não encontrado.' });
       // o pôster público (#90): outra exceção ao Access, só com o token do Padeiro; nada daqui chega às rotas com login
       else if (caminho.startsWith(ROTA_PUBLICA)) await rotaPublica(req, res, url);
+      // o caminho do Padeiro (#137): também fora do login, só com a chave do Padeiro
+      else if (doCaminhoDoPadeiro(req.url, caminho)) await rotaDoPadeiro(req, res, caminho);
       else if (caminho.startsWith('/api/')) await api(req, res, caminho);
       else arquivo(req, res, caminho);
     } catch (e) {

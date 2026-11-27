@@ -528,6 +528,33 @@ export const marcarCoordenacao = (email: string, marcar: boolean) =>
 export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
   pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });
 
+/* ---------- a aba Padeiros (#137): a chave do Padeiro, só para administradores ---------- */
+export type EstadoDaChave = 'pendente' | 'ligada' | 'revogada';
+export interface DesignerDoPadeiro {
+  registro: string;
+  nome: string;
+}
+/** Um Padeiro cadastrado: um usuário num computador, com a chave (que nunca vem ao navegador) e o estado dela. */
+export interface Padeiro {
+  id: string;
+  usuario: string;
+  computador: string;
+  sistema: string;
+  sigla: string;
+  estado: EstadoDaChave;
+  designer: DesignerDoPadeiro | null;
+  /** O designer que a sigla indica (só nos pendentes, e só quando é um só). */
+  sugestao: DesignerDoPadeiro | null;
+  mudadoPor: string | null;
+  mudadoEm: string | null;
+  criadoEm: string;
+  ultimoAviso: string | null;
+}
+export const lerPadeiros = () => pedir<{ padeiros: Padeiro[]; designers: DesignerDoPadeiro[] }>('/api/cadastros/padeiros');
+export const ligarPadeiro = (id: string, designer: string) =>
+  pedir<{ padeiro: Padeiro }>(`/api/cadastros/padeiros/${encodeURIComponent(id)}/ligar`, { method: 'POST', body: JSON.stringify({ designer }) });
+export const revogarPadeiro = (id: string) => pedir<{ padeiro: Padeiro }>(`/api/cadastros/padeiros/${encodeURIComponent(id)}/revogar`, { method: 'POST' });
+
 /** Uma key que aparece nas claquetes e nenhuma atração reconhece. */
 export interface KeySemCadastro {
   key: string;
