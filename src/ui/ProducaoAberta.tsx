@@ -158,12 +158,12 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
     void agir('devolveu a arte', () => mudarArteDaProducao(card.id, d.arte.nome, 'voltar'), comArtes((l) => [...l.slice(0, d.lugar), d.arte, ...l.slice(d.lugar)]));
   };
   const subirFogo = (a: ArteDoCard) =>
-    void agir('mudou o fogo', () => subirFogoDaProducao(card.id, a.nome), comArtes((l) => l.map((x) => (x.nome === a.nome && x.fogo ? { ...x, fogo: x.fogo === 3 ? 1 : ((x.fogo + 1) as 2 | 3) } : x))));
+    void agir('mudou o fogo', () => subirFogoDaProducao(card.id, a.nome), comArtes((l) => l.map((x) => (x.nome === a.nome ? { ...x, fogo: x.fogo === 3 ? 1 : ((x.fogo + 1) as 2 | 3) } : x))));
   const incluir = (nome: string) => {
     const n = nome.trim();
     if (!n) return void setNovaArte(null);
     setNovaArte(null);
-    void agir('incluiu a arte', () => mudarArteDaProducao(card.id, n, 'incluir'), comArtes((l) => [...l, { nome: n, itens: [n], feita: false, fogo: lida?.roteiro ? 1 : null }]));
+    void agir('incluiu a arte', () => mudarArteDaProducao(card.id, n, 'incluir'), comArtes((l) => [...l, { nome: n, itens: [n], feita: false, fogo: 1 }]));
   };
   const ligarAtracao = (nome: string) => {
     setMenu(null);
@@ -384,20 +384,16 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
                             </b>
                           </span>
                         </button>
-                        {a.fogo ? (
-                          <button
-                            type="button"
-                            className="cx"
-                            disabled={!podeMudar || card.etapa === 'entregue'}
-                            aria-label={`Complexidade ${NIVEL[a.fogo]}`}
-                            title={`Complexidade: ${NIVEL[a.fogo]}${podeMudar && card.etapa !== 'entregue' ? ' · clique sobe um nível' : ''}`}
-                            onClick={() => subirFogo(a)}
-                          >
-                            <FogoComTroca n={a.fogo} />
-                          </button>
-                        ) : (
-                          <span className="cx-vaga" aria-hidden="true" />
-                        )}
+                        <button
+                          type="button"
+                          className="cx"
+                          disabled={!podeMudar || card.etapa === 'entregue'}
+                          aria-label={`Complexidade ${NIVEL[a.fogo]}`}
+                          title={`Complexidade: ${NIVEL[a.fogo]}${podeMudar && card.etapa !== 'entregue' ? ' · clique sobe um nível' : ''}`}
+                          onClick={() => subirFogo(a)}
+                        >
+                          <FogoComTroca n={a.fogo} />
+                        </button>
                         {podeMudar && (
                           <button type="button" className="tirar-arte" aria-label={`Apagar ${a.nome}`} title="Apagar a arte (sai do checklist)" onClick={() => apagar(a)}>
                             <Icone nome="lixo" tam={15} traco={1.7} />

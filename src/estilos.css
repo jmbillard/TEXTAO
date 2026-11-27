@@ -2457,11 +2457,6 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .filmes-volta { max-width: 1640px; margin: 0 auto; padding: 4px 32px 0; }
 .filmes-inicio { max-width: 1060px; margin: 0 auto; padding: 26px 28px 60px; display: grid; gap: 10px; }
 .filmes-inicio h1 { font: 400 34px/1.1 var(--serifa); margin: 0 0 10px; }
-.solta-previa { border: 1.5px dashed var(--regua-forte); border-radius: 14px; background: var(--papel); padding: 28px; display: grid; gap: 4px; color: var(--tinta); font: inherit; cursor: pointer; margin-bottom: 14px; transition: border-color 0.2s, background 0.2s; }
-.solta-previa strong { font-size: 15px; }
-.solta-previa span { color: var(--tinta3); font-size: 13px; }
-.solta-previa.soltando, .solta-previa:hover:not(:disabled) { border-color: var(--ultra); }
-.solta-previa:disabled { cursor: progress; }
 .ficha-previa { display: grid; gap: 3px; text-align: left; border: 1px solid var(--regua); border-radius: 14px; background: var(--papel); box-shadow: 0 1px 2px rgb(26 25 22 / 5%); padding: 14px 18px; font: inherit; color: inherit; cursor: pointer; transition: border-color 0.15s; }
 .ficha-previa:hover { border-color: var(--regua-forte); }
 .ficha-previa b { font: 600 16px/1.35 var(--mono); }

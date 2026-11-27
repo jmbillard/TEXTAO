@@ -166,12 +166,22 @@ describe('a Produção como a janela do After mostra', () => {
 });
 
 describe('o "pronto para abrir": a atração ligada e a pasta do projeto definida', () => {
-  it('sem a pasta do projeto no cadastro (vazia ou "cole_aqui_o_caminho"), "sem pasta", mesmo com a do output; sem Roteiro, as artes ficam sem fogo', async () => {
+  it('sem a pasta do projeto no cadastro (vazia ou "cole_aqui_o_caminho"), "sem pasta", mesmo com a do output', async () => {
     const { padeiro, ligado, idDe } = await preparado();
     const { chave } = await ligado();
     expect((await lerProducao(padeiro, idDe('Festa na Praça'), chave)).corpo.producao).toMatchObject({ pronto: false, estado: 'sem pasta', designers: ['Ana Souza'], comVoce: true });
     const filme = (await lerProducao(padeiro, idDe('Filme da Tarde'), chave)).corpo.producao!;
     expect(filme).toMatchObject({ versao: '', artes: [], contagem: { feitas: 0, total: 0 } });
+  });
+
+  it('sem Roteiro ligado, as artes têm fogo do mesmo jeito: começam na vela (#174)', async () => {
+    const { padeiro, ligado, idDe, db } = await preparado();
+    const { chave } = await ligado();
+    db.prepare('UPDATE producoes SET roteiro_id = NULL WHERE id = ?').run(idDe('Festa na Praça'));
+    expect((await lerProducao(padeiro, idDe('Festa na Praça'), chave)).corpo.producao!.artes.map((a) => [a.nome, a.fogo])).toEqual([
+      ['LETTERING', 1],
+      ['CARTÃO', 1],
+    ]);
   });
 
   it('o filme usa os caminhos do filme (o cadastro de filmes), não o de atrações: com a pasta do projeto, "pronto para abrir"; sem ela, "sem pasta"', async () => {

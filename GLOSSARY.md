@@ -79,7 +79,9 @@ _Evitar_: concluída, repetida
 **Complexidade da arte**:
 BAIXA, MÉDIA ou ALTA (1, 2, 3), marcada na revisão para cada arte a produzir; a não marcada é BAIXA. O card leva a
 maior complexidade das artes dele, na mesma escala do campo do Trello e da produção da arte, e a arte entra no acervo
-com a sua. A arte que já existe (✓) fica com a complexidade que o acervo já tem.
+com a sua. A arte que já existe (✓) fica com a complexidade que o acervo já tem. Nas Produções (o card aberto, a
+janela do After), o **fogo** é essa complexidade, em toda arte, com ou sem roteiro (#174): com Roteiro ligado, fica nele;
+sem roteiro, fica na própria Produção, e passa para o Roteiro quando ele for ligado (o que o Roteiro já marcou vale).
 _Evitar_: dificuldade, peso
 
 **Não produzir (✕)**:
@@ -152,6 +154,12 @@ _Evitar_: fila (a fila é a das claquetes), conferido (não existe: passar pela 
 **Aba Filmes**:
 A tela do PROMeiro que lê a prévia, confere cada filme com o banco e cria os cards de filme.
 _Evitar_: FilmeBOT (o site avulso que ela substitui)
+
+**Agenda de filmes**:
+A parte de baixo da aba Filmes: os filmes com exibição de hoje em diante, com os pôsteres, por data de exibição ou por
+sessão (a escolha fica lembrada por pessoa). Lê as exibições e o cadastro de filmes, nunca o Trello; um clique abre o
+card do filme no centro, com as exibições, as pastas e a Produção de cada card.
+_Evitar_: grade (a grade é a programação da emissora; a agenda é o recorte dela que a arte acompanha)
 
 ## Produção e acervo
 
