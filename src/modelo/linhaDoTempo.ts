@@ -167,6 +167,10 @@ function fraseDoEvento(e: EventoDaLinha, itens: string): string | null {
       return por(`apagou ${itens}`);
     case 'arte-incluida':
       return por(e.desfez ? `devolveu ${itens} ao checklist` : `incluiu ${itens}`);
+    case 'campanha-ligada':
+      return por(`ligou à campanha ${e.depois ?? ''}`.trim());
+    case 'campanha-tirada':
+      return por(`tirou da campanha ${e.antes ?? ''}`.trim());
     case 'fogo':
       return por(`mudou o fogo de ${e.campo ?? 'uma arte'} para ${NIVEL_DO_FOGO[String(e.depois)] ?? e.depois}`);
     case 'campo':

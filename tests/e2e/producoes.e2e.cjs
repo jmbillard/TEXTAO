@@ -1728,6 +1728,129 @@ async function filmarOAcabamento(navegador, url, api) {
   console.log(`ok: o vídeo do acabamento em ${VIDEO}`);
 }
 
+/* ---------- #178: as campanhas ---------- */
+/** O "+N" e a etiqueta no card de Produções, ligar e criar pelo card aberto, tirar com a caixinha de desfazer, a linha
+    do tempo, e quem não tem o papel só vê. Nada vai ao Trello. Sem "unha": o tom vai na bolinha e no fundo. */
+async function asCampanhas(navegador, url, chamadasAoTrello, db) {
+  db.prepare('DELETE FROM campanhas_producoes').run();
+  db.prepare('DELETE FROM campanhas').run();
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+    const festa = cardDe(p, 'Festa na Praça');
+    await festa.waitFor();
+    await calmo(p);
+    chamadasAoTrello.splice(0);
+    const painel = p.getByRole('dialog');
+    if (tema === 'light') {
+      assert.equal(await festa.locator('.campanha').count(), 0, 'sem campanha, sem etiqueta');
+      await festa.locator('.prod-atracao').click();
+      await painel.locator('.pa-arte').first().waitFor();
+      // criar pela busca: "+ Nova campanha" com o nome buscado
+      for (const [i, n] of ['Lançamento Domingo', 'AESP Verão', 'Chamadas de elenco'].entries()) {
+        await painel.getByRole('button', { name: 'Ligar a uma campanha' }).click();
+        await painel.getByRole('textbox', { name: 'Buscar campanha' }).fill(n);
+        await painel.getByRole('button', { name: '+ Nova campanha' }).click();
+        await painel.locator('.campanhas-do-card .campanha', { hasText: n }).waitFor();
+        if (i === 0) {
+          // a etiqueta chega carimbada no card da lista
+          await festa.locator('.campanhas.compacta .campanha.chegou', { hasText: n }).waitFor();
+          await p.waitForTimeout(120);
+          await capturar(p, `40-campanha-${nome}-carimbo`);
+        }
+      }
+      assert.deepEqual(await textos(painel.locator('.campanhas-do-card .campanha-nome')), ['Lançamento Domingo', 'AESP Verão', 'Chamadas de elenco']);
+      // no card: a primeira e "+2", com as outras no título
+      assert.deepEqual(await textos(festa.locator('.campanhas.compacta .campanha-nome')), ['Lançamento Domingo']);
+      assert.equal((await festa.locator('.campanha-mais').textContent()).trim(), '+2');
+      assert.equal(await festa.locator('.campanha-mais').getAttribute('title'), 'AESP Verão · Chamadas de elenco');
+      await p.waitForTimeout(600);
+      await capturar(p, `41-campanha-${nome}-card-aberto`);
+      // tirar: a vaga fecha e a caixinha de desfazer abre; "Desfazer" liga de novo
+      await painel.getByRole('button', { name: 'Tirar da campanha AESP Verão' }).click();
+      await painel.locator('.vaga-x.saindo .campanha', { hasText: 'AESP Verão' }).waitFor();
+      await painel.locator('.pa-desfazer', { hasText: 'Tirou da campanha AESP Verão' }).waitFor();
+      await festa.locator('.campanha-mais', { hasText: '+1' }).waitFor();
+      await capturar(p, `42-campanha-${nome}-tirou`);
+      await painel.locator('.pa-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+      await painel.locator('.campanhas-do-card .campanha', { hasText: 'AESP Verão' }).waitFor();
+      await festa.locator('.campanha-mais', { hasText: '+2' }).waitFor();
+      // ligar uma que já existe, pela busca (sem acento), na Novela
+      await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+      await painel.waitFor({ state: 'detached' });
+      const novela = cardDe(p, 'Novela Sinfonia');
+      await novela.locator('.prod-atracao').click();
+      await painel.locator('.pa-arte').first().waitFor();
+      await painel.getByRole('button', { name: 'Ligar a uma campanha' }).click();
+      await painel.getByRole('textbox', { name: 'Buscar campanha' }).fill('aesp verao');
+      await painel.getByRole('option', { name: 'AESP Verão' }).click();
+      await novela.locator('.campanhas.compacta .campanha', { hasText: 'AESP Verão' }).waitFor();
+      assert.equal(await novela.locator('.campanha-mais').count(), 0, 'com uma campanha, sem "+N"');
+      // a linha do tempo diz quem ligou e quem tirou
+      await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+      await painel.waitFor({ state: 'detached' });
+      await festa.locator('.prod-atracao').click();
+      await painel.locator('.pa-arte').first().waitFor();
+      await painel.getByRole('button', { name: 'linha do tempo' }).click();
+      const frases = await textos(painel.locator('.pa-tempo-lista li span'));
+      for (const f of ['Lia Moraes ligou à campanha Lançamento Domingo', 'Lia Moraes tirou da campanha AESP Verão', 'Lia Moraes ligou à campanha AESP Verão']) assert.ok(frases.includes(f), `a linha do tempo diz "${f}" (${frases.join(' · ')})`);
+      await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+      await painel.waitFor({ state: 'detached' });
+      // depois de recarregar, continua
+      await p.reload();
+      await festa.locator('.campanha-mais', { hasText: '+2' }).waitFor();
+    } else {
+      await festa.locator('.campanhas.compacta .campanha').first().waitFor();
+      await festa.locator('.prod-atracao').click();
+      await painel.locator('.campanhas-do-card .campanha').first().waitFor();
+      await p.waitForTimeout(600);
+      await capturar(p, `41-campanha-${nome}-card-aberto`);
+      await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+      await painel.waitFor({ state: 'detached' });
+    }
+    // sem "unha": nada de faixa na borda esquerda
+    const unha = await p.locator('.campanha').first().evaluate((e) => { const c = getComputedStyle(e); return { borda: parseFloat(c.borderLeftWidth), sombra: c.boxShadow }; });
+    assert.ok(unha.borda === 0 && !/inset/.test(unha.sombra), `a etiqueta não tem unha (${JSON.stringify(unha)})`);
+    await semRolagemDeLado(p, `campanhas ${nome}`);
+    await capturar(p, `43-campanha-${nome}-producoes`);
+    assert.deepEqual(chamadasAoTrello, [], 'as campanhas não vão ao Trello');
+    assert.deepEqual(aoTrello, [], 'nem o navegador pede ao Trello');
+    assert.deepEqual(erros, [], `${nome}: sem erros na página`);
+    await ctx.close();
+  }
+  // no celular: a etiqueta no card e no card aberto (a tela toda), sem rolar para o lado
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    const { ctx, p, erros } = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: tema });
+    const festa = cardDe(p, 'Festa na Praça');
+    await festa.locator('.campanhas.compacta .campanha').waitFor();
+    await semRolagemDeLado(p, `campanhas no celular ${nome}`);
+    await festa.scrollIntoViewIfNeeded();
+    await capturar(p, `44-campanha-celular-${nome}`);
+    await festa.locator('.prod-atracao').tap();
+    const painel = p.getByRole('dialog');
+    await painel.locator('.campanhas-do-card .campanha').first().waitFor();
+    await p.waitForTimeout(500);
+    await semRolagemDeLado(p, `card aberto no celular ${nome}`);
+    await capturar(p, `45-campanha-celular-${nome}-card-aberto`);
+    assert.deepEqual(erros, [], `celular ${nome}: sem erros na página`);
+    await ctx.close();
+  }
+  // quem não tem o papel (o Rui: sem designer, sem redator, sem coordenação) vê as etiquetas, mas não liga nem tira
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/designer/producoes', { email: RUI });
+  const festa = cardDe(p, 'Festa na Praça');
+  await festa.locator('.campanhas.compacta .campanha').waitFor();
+  await festa.locator('.prod-atracao').click();
+  const painel = p.getByRole('dialog');
+  await painel.locator('.campanhas-do-card .campanha').first().waitFor();
+  await painel.locator('.pa-arte').first().waitFor();
+  assert.equal(await painel.getByRole('button', { name: 'Ligar a uma campanha' }).count(), 0, 'quem não tem o papel não liga');
+  assert.equal(await painel.getByRole('button', { name: /^Tirar da campanha/ }).count(), 0, 'nem tira');
+  assert.deepEqual(erros, [], 'sem erros na página');
+  await ctx.close();
+  console.log('ok: as campanhas (#178)');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -1798,6 +1921,8 @@ async function principal() {
       await produzindoComEspaco(navegador, s.url, s.db, s.api);
       await filmarOAcabamento(navegador, s.url, s.api);
     }
+    // SO=campanhas roda só as campanhas (#178)
+    else if (process.env.SO === 'campanhas') await asCampanhas(navegador, s.url, chamadasAoTrello, s.db);
     else if (process.env.SO === 'card-aberto') {
       await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
       await filmarOCardAberto(navegador, s.url, s.db);
@@ -1830,6 +1955,7 @@ async function principal() {
     await filmarOAcabamento(navegador, s.url, s.api);
     await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
     await filmarOCardAberto(navegador, s.url, s.db);
+    await asCampanhas(navegador, s.url, chamadasAoTrello, s.db);
     await filmar(navegador, s.url, s.db, s.api);
   }
 }

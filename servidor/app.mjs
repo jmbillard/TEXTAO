@@ -71,6 +71,7 @@ import { CHAVE_DA_AGENDA_DE_FILMES, recusaDaFormaDaAgenda } from '../src/modelo/
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDaOrdem, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarCardDaProducao } from './card-da-producao.mjs';
+import { SEM_PAPEL as SEM_PAPEL_NAS_CAMPANHAS, criarCampanhas } from './campanhas.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarCartaoDoTeams } from './cartao-do-teams.mjs';
@@ -553,6 +554,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const etapaDaProducao = criarEtapaDaProducao({ producoes });
   // o card aberto da tela de produções (#160): o prazo, a atração, os designers e as artes
   const cardDaProducao = criarCardDaProducao({ producoes });
+  // as Campanhas (#178): os conjuntos de Produções com um nome, no SQLite (no backup); nada vai ao Trello nem ao Teable
+  const campanhas = criarCampanhas(db, { producoes });
   // os anexos guardados pelo PROMeiro (#90): o PDF do roteiro do envio e os pôsteres dos filmes, no SQLite (no backup)
   const anexos = criarAnexos(db, { buscar: buscarNoTeable });
   /* O que o PROMeiro guarda de um card, para apagar uma duplicada (#67): a cópia leva os envios dos roteiros, a lista
@@ -862,12 +865,26 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /** O card da tela de produções com as versões da chamada (#121), prontas: as à mão no apelido da claquete (#152, #154),
       ou o código do apelido ou da claquete (sem a praça no fim), ou as do roteiro dele; o dia das etiquetas sem data na
       claquete é o do prazo. */
-  const comAsVersoes = (card) => {
+  const comAsVersoes = (card, campanhasDe = campanhas.daProducao) => {
     if (!card) return card;
     const doRoteiro = apelidos.roteiroDaProducao(card.id);
-    // as versões lidas vão junto (#154): a Produção aberta edita as versões à mão e refaz a conta na hora
-    return { ...card, versoesLidas: doRoteiro.lidas, versoesDaChamada: versoesDaChamada({ ...doRoteiro, claquete: semPracaNoFim(card.claquete ?? '', pracas), dia: card.prazo ? diaDoPrazo(card.prazo) : '' }) };
+    // as versões lidas vão junto (#154): a Produção aberta edita as versões à mão e refaz a conta na hora; e as
+    // campanhas da Produção (#178), a primeira ligada primeiro (a etiqueta do card)
+    return { ...card, versoesLidas: doRoteiro.lidas, versoesDaChamada: versoesDaChamada({ ...doRoteiro, claquete: semPracaNoFim(card.claquete ?? '', pracas), dia: card.prazo ? diaDoPrazo(card.prazo) : '' }), campanhas: campanhasDe(card.id) };
   };
+  /** O card da tela com as versões e as campanhas, para a lista inteira: as campanhas lidas de uma vez. */
+  const comAsVersoesDeTodos = (cards) => {
+    const campanhasDe = campanhas.porProducao();
+    return cards.map((c) => comAsVersoes(c, campanhasDe));
+  };
+  /** Quem cria, liga e tira Produções das campanhas (#178): o administrador, a coordenação, o designer e o redator. O
+      nome de quem fez é o do cadastro de designer ou de redator ou, sem eles, o do login. */
+  async function papelNasCampanhas(eu) {
+    const designer = pessoas.designerDoEmail(eu.email);
+    const redator = designer ? null : (await areas.quemE(eu.email, cadastros)).redator;
+    const podeMudar = !!designer || !!redator || cadastros.podeApagar(eu.email) || escala.ehCoordenacao(eu.email);
+    return { podeMudar, quem: { email: eu.email, nome: designer?.nome || redator?.nome || eu.nome } };
+  }
   // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
   const areas = criarAreas();
   // montar a pauta (#123): o papel de coordenação e o rascunho do dia, no SQLite (nada vai ao Teable)
@@ -3390,7 +3407,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const desde = new Date(Date.now() - DIAS_DO_ENTREGUE * 86_400_000).toISOString();
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
-      const cards = producoes.naTela(desde, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)).map(comAsVersoes);
+      const cards = comAsVersoesDeTodos(producoes.naTela(desde, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
       // quem está logado e o designer dele (#110): sem a ligação, vê a tela, mas não pega, e a tela diz a quem pedir
       const designer = pessoas.designerDoEmail(eu.email);
       const voce = designer ? { designer: designer.nome } : { designer: null, porQue: SEM_LIGACAO };
@@ -3404,7 +3421,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const busca = new URL(req.url, 'http://x').searchParams;
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
       const r = producoes.naBusca((busca.get('q') ?? '').slice(0, 100), { pagina: busca.get('pagina') ?? 0, atracaoDaClaquete: (claquete) => atracaoPelaClaquete(claquete, programas, pracas) });
-      return json(res, 200, { ...r, cards: r.cards.map(comAsVersoes) });
+      return json(res, 200, { ...r, cards: comAsVersoesDeTodos(r.cards) });
     }
     if (caminho === '/api/producoes/etapa') {
       // pegar, voltar para a Entrada (#110) e entregar (#111), para quem está ligado a um designer: { producao, etapa
@@ -3433,8 +3450,31 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const id = (new URL(req.url, 'http://x').searchParams.get('producao') ?? '').trim().slice(0, 100);
       if (!id) return json(res, 400, { erro: 'Falta a Produção.' });
-      const aberta = await abertaNaTela(id);
+      const aberta = await abertaNaTela(id, eu);
       return aberta ? json(res, 200, aberta) : json(res, 404, { erro: 'Essa Produção não existe mais.' });
+    }
+    if (caminho === '/api/producoes/campanha') {
+      // as campanhas pelo card aberto (#178), para o administrador, a coordenação, o designer e o redator: ligar { producao,
+      // campanha (o id), liga: true }, tirar { producao, campanha, liga: false } ou criar e ligar { producao, nova (o
+      // nome) }. Só o PROMeiro: nada vai ao Trello nem ao Teable. Responde { feito, producao, aberta }, como o card aberto
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
+      const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+      const aTela = (id) => comAsVersoes(producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
+      const r = campanhas.naProducao(corpo, { ...(await papelNasCampanhas(eu)), aTela });
+      if (r.status !== 200) return json(res, r.status, r.corpo);
+      return json(res, 200, { ...r.corpo, aberta: await abertaNaTela(r.corpo.producao?.id ?? corpo.producao, eu) });
+    }
+    if (caminho === '/api/campanhas') {
+      // as campanhas (#178): GET ?q=<termo> para qualquer pessoa logada, com quantas Produções cada uma tem (sem as
+      // arquivadas) e quando foi mexida por último; POST { nome } cria (o administrador, a coordenação, o designer e o
+      // redator), e o nome que já existe devolve a que existe. Só o PROMeiro
+      if (req.method === 'GET') return json(res, 200, { campanhas: campanhas.lista((new URL(req.url, 'http://x').searchParams.get('q') ?? '').slice(0, 100)) });
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const papel = await papelNasCampanhas(eu);
+      if (!papel.podeMudar) return json(res, 403, { erro: SEM_PAPEL_NAS_CAMPANHAS });
+      const r = campanhas.criar(((await lerCorpo(req, 4096, 'Pedido')) ?? {}).nome, papel.quem);
+      return r.erro ? json(res, 400, { erro: r.erro }) : json(res, r.nova ? 201 : 200, r);
     }
     const doCardAberto = /^\/api\/producoes\/(prazo|atracao|designer|arte|fogo)$/.exec(caminho);
     if (doCardAberto) {
@@ -3463,7 +3503,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       else if (o === 'arte') r = await cardDaProducao.arte(corpo, ctx);
       else r = fogoNaTela(corpo, ctx);
       if (r.status !== 200) return json(res, r.status, r.corpo);
-      return json(res, 200, { ...r.corpo, aberta: await abertaNaTela(r.corpo.producao?.id ?? corpo.producao) });
+      return json(res, 200, { ...r.corpo, aberta: await abertaNaTela(r.corpo.producao?.id ?? corpo.producao, eu) });
     }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
     if (caminho === '/api/linha-do-tempo') {
@@ -3856,9 +3896,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * A Produção aberta na tela de produções (#113, #160): a de `producoes.aberta` (a linha do tempo, as artes do
    * checklist, o link do card) e, para o card aberto, as artes como a janela do After mostra (`artesDoCard`: cada arte
    * uma vez, feita ou não, com o fogo de fogoDasArtes), a versão do Roteiro (V1 sem versão nova) e
-   * quando ele chegou, e as listas para escolher: os designers ativos e as atrações do cadastro. null sem a Produção.
+   * quando ele chegou, e as listas para escolher: os designers ativos e as atrações do cadastro. As campanhas (#178): as
+   * da Produção, todas as que existem (para ligar) e se quem pede (`eu`) pode criar, ligar e tirar. null sem a Produção.
    */
-  async function abertaNaTela(id) {
+  async function abertaNaTela(id, eu = null) {
     const aberta = typeof id === 'string' ? producoes.aberta(id) : null;
     if (!aberta) return null;
     passarOFogo(id);
@@ -3872,6 +3913,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       roteiro: roteiro ? { versao: Math.max(Number(roteiro.meta.versao) || 1, roteiro.meta.v2De ? 2 : 1), em: roteiro.criadoEm } : null,
       designersAtivos: pessoas.designersAtivos().map((d) => d.nome),
       atracoes: (await atracoesDoCadastro()).map((a) => a.nome),
+      campanhas: campanhas.daProducao(id),
+      todasAsCampanhas: campanhas.lista().map((c) => ({ id: c.id, nome: c.nome })),
+      podeLigarCampanhas: eu ? (await papelNasCampanhas(eu)).podeMudar : false,
     };
   }
 

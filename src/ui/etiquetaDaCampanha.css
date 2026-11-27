@@ -1,0 +1,84 @@
+/* A etiqueta da campanha (#178): a pílula com a bolinha no tom da campanha e o fundo levemente tingido. Nada de faixa
+   na borda esquerda. Os seis tons, no claro e no escuro. */
+:root {
+  --campanha-0: #c2410c;
+  --campanha-1: #2f6b9a;
+  --campanha-2: #2f6b47;
+  --campanha-3: #8a3a62;
+  --campanha-4: #7a5a12;
+  --campanha-5: #5b4bb0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --campanha-0: #ff9a6b;
+    --campanha-1: #8cc0ec;
+    --campanha-2: #86c9a0;
+    --campanha-3: #dc9cc0;
+    --campanha-4: #d9bd6e;
+    --campanha-5: #b5a8f2;
+  }
+}
+:root[data-theme='dark'] {
+  --campanha-0: #ff9a6b;
+  --campanha-1: #8cc0ec;
+  --campanha-2: #86c9a0;
+  --campanha-3: #dc9cc0;
+  --campanha-4: #d9bd6e;
+  --campanha-5: #b5a8f2;
+}
+
+.campanhas { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; max-width: 100%; --vaga-gap: 4px; }
+.campanhas.compacta { flex-wrap: nowrap; }
+.campanha {
+  --tom: var(--campanha-0);
+  position: relative; display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; height: 20px;
+  padding: 0 8px 0 6px; border-radius: 999px; overflow: hidden;
+  background: color-mix(in srgb, var(--tom) 11%, var(--cartao)); color: color-mix(in srgb, var(--tom) 72%, var(--tinta));
+  font: 600 11px/1 var(--sans); letter-spacing: 0.01em; white-space: nowrap;
+  transition: background-color 0.2s var(--suave);
+}
+.campanha[data-tom='1'] { --tom: var(--campanha-1); }
+.campanha[data-tom='2'] { --tom: var(--campanha-2); }
+.campanha[data-tom='3'] { --tom: var(--campanha-3); }
+.campanha[data-tom='4'] { --tom: var(--campanha-4); }
+.campanha[data-tom='5'] { --tom: var(--campanha-5); }
+.campanha:hover { background: color-mix(in srgb, var(--tom) 18%, var(--cartao)); }
+.campanha-bolinha { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--tom); transition: transform 0.2s var(--suave); }
+.campanha:hover .campanha-bolinha { transform: scale(1.3); }
+.campanha-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.campanha-abrir { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.campanha.com-tirar { padding-right: 2px; }
+.campanha-tirar { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.6; cursor: pointer; transition: opacity 0.15s, background-color 0.15s, transform 0.2s var(--suave); }
+.campanha-tirar:hover { opacity: 1; background: color-mix(in srgb, var(--tom) 22%, transparent); transform: rotate(90deg); }
+.campanha-tirar:focus-visible { opacity: 1; }
+
+/* o "+N": um número que rola quando muda */
+.campanha-mais { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--neutro); color: var(--tinta2); font: 600 11px/1 var(--sans); overflow: hidden; }
+.campanha-mais-n { display: inline-block; animation: campanha-mais-rola 0.32s var(--suave) both; }
+@keyframes campanha-mais-rola { from { opacity: 0; transform: translateY(70%); } }
+
+/* a que chega: o carimbo (cresce, assenta), o brilho que passa e a bolinha que pinga */
+.campanha.chegou { animation: campanha-carimbo 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.campanha.chegou::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, color-mix(in srgb, var(--papel) 75%, transparent) 50%, transparent 70%);
+  transform: translateX(-120%); animation: campanha-brilho 0.7s 0.18s var(--suave) both;
+}
+.campanha.chegou .campanha-bolinha { animation: campanha-pinga 0.5s 0.12s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@keyframes campanha-carimbo {
+  0% { opacity: 0; transform: scale(1.45) rotate(-5deg); }
+  55% { opacity: 1; transform: scale(0.94) rotate(1deg); }
+  100% { transform: none; }
+}
+@keyframes campanha-brilho { to { transform: translateX(120%); } }
+@keyframes campanha-pinga {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.6); }
+  100% { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .campanha, .campanha-bolinha, .campanha-tirar { transition: none; }
+  .campanha.chegou, .campanha.chegou::after, .campanha.chegou .campanha-bolinha, .campanha-mais-n { animation: none; }
+  .campanha.chegou::after { display: none; }
+}
