@@ -27,7 +27,8 @@ export interface GrupoDia {
 
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** O dia AAAA-MM-DD de uma data, no fuso do navegador. */
+export const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 /** A data de exibição veio completa (AAAA-MM-DD)? */
 const ehData = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 const maiuscula = (s: string) => s[0].toUpperCase() + s.slice(1);

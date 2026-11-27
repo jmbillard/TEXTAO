@@ -380,6 +380,16 @@ equipe toda já vê no card do Trello), sem os ids do Trello; as Produções int
 _Evitar_: histórico (na tela), log, atividade. Não confundir com a linha do tempo das edições, no editor do roteiro
 (as versões dele).
 
+**API das Produções**:
+A rota só de leitura (`GET /api/publico/producoes?de=AAAA-MM-DD&ate=AAAA-MM-DD`, #185) de onde um produtor da arte
+puxa as Produções para o dashboard dele, fora do login, com o token dela (`PRODUCOES_API_TOKEN`, que se revoga trocando
+ou esvaziando). Sem datas, a semana atual (de segunda a domingo); até 31 dias por pedido. Entram as Produções que
+entraram, estiveram em produção ou foram entregues no período, sem as arquivadas, com os nomes dos designers e as campanhas. Os tempos
+saem da **linha do tempo**: **entrou** (o card que entrou; sem ele, a entrada da produção da arte), **pegou** (o primeiro
+designer, ou a primeira ida para Produzindo) e **entregue** (a última ida para Entregue, só na Entregue); o **tempo em
+produção** é de pegou a entregue, em minutos. As horas vão no fuso de São Paulo.
+_Evitar_: exportação, relatório (não é um arquivo; é a rota que o dashboard puxa)
+
 **Tela de produções**:
 A tela das Produções abertas por etapa, para qualquer designer (ADR 0006, interrogatório de 27/11): um **bloco da
 praça** por praça, cada um com as colunas Entrada · Produzindo · Entregue dentro. No computador, os blocos ficam lado

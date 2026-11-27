@@ -355,6 +355,12 @@ export function criarProducoes(db) {
     daBusca: db.prepare(`${DA_TELA} WHERE p.arquivada = 0 ORDER BY COALESCE(p.entrega_em, p.entrada_em, p.criada_em) DESC, p.criada_em DESC`),
     // a Produção mudada na tela (#110), para a tela mostrar sem reler tudo
     umaNaTela: db.prepare(`${DA_TELA} WHERE p.id = ? AND p.arquivada = 0`),
+    // a API das Produções (#185): as que podem ter estado no período (com a margem), sem as arquivadas; a regra exata
+    // sai da linha do tempo (servidor/api-das-producoes.mjs)
+    daApi: db.prepare(
+      `SELECT id FROM producoes WHERE arquivada = 0 AND etapa <> 'arquivada' AND COALESCE(entrada_em, criada_em) < ?
+       AND (etapa <> 'entregue' OR entrega_em IS NULL OR entrega_em >= ?)`,
+    ),
     // a correção de grafia (#116): todas as Produções, para contar as de cada atração
     paraContar: db.prepare('SELECT p.claquete, r.meta AS roteiro_meta FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id'),
     /* ---------- os eventos (#87) ---------- */
@@ -1074,6 +1080,9 @@ export function criarProducoes(db) {
   }
 
   return {
+    /** Os ids das Produções que podem ter estado no período da API das Produções (#185): entraram antes de `antesDe` e
+        não foram entregues antes de `desde` (ISO), sem as arquivadas. */
+    candidatasDaApi: ({ desde, antesDe }) => q.daApi.all(antesDe, desde).map((l) => l.id),
     linhaDoTempo,
     aberta,
     doRoteiro,

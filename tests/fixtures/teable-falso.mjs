@@ -27,7 +27,7 @@ const resposta = (status, dados) => ({ ok: status < 400, status, json: async () 
  * @returns fetch, com `.estado` (`fora = true` derruba o Teable; `pedidos` guarda o que foi pedido; `falhar`, quando
  *   dado, responde 500 ao pedido em que devolve true), `.consultar` e
  *   `.abrirPg` (o Postgres do Teable: o SELECT de uma tabela da base devolve as linhas dela, com o "__id", sem olhar o
- *   WHERE; `estado.consultas` guarda o SQL e `estado.parametros`, os parâmetros de cada uma)
+ *   WHERE, a não ser o "alterado desde" da releitura nas linhas com `lastModifiedTime`; `estado.consultas` guarda o SQL e `estado.parametros`, os parâmetros de cada uma)
  */
 export function teableFalso(nomes, opcoes = {}) {
   const bases = { [opcoes.base ?? 'bseFalso']: { nome: opcoes.nomeDaBase ?? 'Base falsa', nomes, faltando: opcoes.faltando ?? {}, ids: opcoes.ids ?? {} }, ...(opcoes.bases ?? {}) };
@@ -129,7 +129,14 @@ export function teableFalso(nomes, opcoes = {}) {
     const hora = (r) => ('lastModifiedTime' in r ? { __last_modified_time: r.lastModifiedTime ? new Date(r.lastModifiedTime) : null } : {});
     // o id com o nome que o SQL dá ("__id" AS id, como o acervo lê)
     const comoId = /"__id"\s+AS\s+id\b/i.test(sql);
-    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...(comoId ? { id: r.id } : {}), ...hora(r), ...r.fields, ...(inteira ? { inteira: { __id: r.id, ...r.fields } } : {}) }));
+    // o "alterado desde" da releitura ("__last_modified_time" >= $1): a linha com a hora de uma mudança mais velha fica de
+    // fora, como no Teable. Sem isso, cada releitura (a cada minuto de relógio) trazia todas as linhas de novo e desfazia
+    // o que o teste mudou, mais vezes quanto mais lenta a máquina (#183). A linha sem a hora continua vindo sempre
+    const desde = /"__last_modified_time"\s*>=\s*\$1/i.test(sql) && params[0] ? Date.parse(params[0]) : null;
+    const mudouDesde = (r) => desde === null || !r.lastModifiedTime || Date.parse(r.lastModifiedTime) >= desde;
+    return (opcoes.registros?.[nome] ?? [])
+      .filter(mudouDesde)
+      .map((r) => ({ __id: r.id, ...(comoId ? { id: r.id } : {}), ...hora(r), ...r.fields, ...(inteira ? { inteira: { __id: r.id, ...r.fields } } : {}) }));
   };
   buscar.abrirPg = async () => ({ query: async (sql, params) => ({ rows: await buscar.consultar(sql, params) }), end: async () => {} });
   return buscar;
