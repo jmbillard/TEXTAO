@@ -446,8 +446,10 @@ Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "h
 **Versão da chamada** (na pauta):
 O código no fim da claquete da pauta, entre parênteses ou, depois da data, sem eles, em qualquer caixa e com ou sem
 acento. Cada letra é uma versão, na ordem em que aparece: A amanhã, H hoje, N nesta <dia da semana>, P próxima <dia da
-semana>, D dia X (AH = amanhã e hoje). DIA (= D), MES/MÊS ("em janeiro") e MNT (manutenção da grade) são inteiros. O dia
-da semana, o número e o mês saem da data da claquete; sem ela, do dia da linha. Na pauta, cada versão é uma etiqueta
+semana>, D dia X, M em <mês> (AH = amanhã e hoje). DIA (= D), MES/MÊS (= M) e MNT (manutenção da grade) são
+inteiros. O dia da semana, o número e o mês saem da data da claquete; sem ela, do dia da linha. O padrão, para onde a
+**correção de grafia** leva as outras grafias, é uma letra por versão, maiúscula, entre parênteses ("(DP)", "(M)"), e
+(MNT). Na pauta, cada versão é uma etiqueta
 ("nesta sex", "neste sáb") com o código pequeno ao lado; um código desconhecido aparece cru.
 _Evitar_: sufixo, tipo da chamada
 

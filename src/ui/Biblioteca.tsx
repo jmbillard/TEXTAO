@@ -71,6 +71,8 @@ interface Props {
   configuracao?: () => void;
   /** O Andamento do projeto (#92, só administradores): o item no menu do perfil, depois da Configuração. */
   andamentoDoProjeto?: () => void;
+  /** A Correção de grafia (#114, só administradores): o item no menu do perfil, junto de Cadastros e Configuração. */
+  correcoes?: () => void;
   /** Abre a Pauta da edição (#94): no topo, para qualquer pessoa logada. */
   pauta?: () => void;
   /** abre a tela de produções (#109), ao lado da agenda */
@@ -191,7 +193,7 @@ function EscolhaDeEnfeites({ tema, ligados }: { tema: TemaDeFimDeAno; ligados: b
 }
 
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
-export function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, andamentoDoProjeto, aoMudarCor, enfeites }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; configuracao?: () => void; andamentoDoProjeto?: () => void; aoMudarCor?: () => void; enfeites?: { tema: TemaDeFimDeAno; ligados: boolean } }) {
+export function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, aoMudarCor, enfeites }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; configuracao?: () => void; andamentoDoProjeto?: () => void; correcoes?: () => void; aoMudarCor?: () => void; enfeites?: { tema: TemaDeFimDeAno; ligados: boolean } }) {
   const meuEmail = identidade?.email ?? '';
   const [minhaCor, setMinhaCor] = useState(() => corDe(meuEmail));
   useEffect(() => setMinhaCor(corDe(meuEmail)), [meuEmail]);
@@ -279,6 +281,11 @@ export function Perfil({ identidade, definirPerfil, cadastros, filmes, configura
           {andamentoDoProjeto && (
             <button type="button" className="perfil-link" onClick={andamentoDoProjeto}>
               <Icone nome="andamento" tam={16} /> Andamento <small>o projeto, ao vivo do GitHub</small>
+            </button>
+          )}
+          {correcoes && (
+            <button type="button" className="perfil-link" onClick={correcoes}>
+              <Icone nome="borracha" tam={16} /> Correção de grafia <small>a pauta no padrão</small>
             </button>
           )}
           <EscolhaDeTema />
@@ -939,7 +946,7 @@ function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, pauta, producoes, buscaInicial = '', seletorDeArea }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, pauta, producoes, buscaInicial = '', seletorDeArea }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
@@ -1295,7 +1302,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
             <span className="na-fila-texto">{colegas.length === 1 ? `${colegas[0].nome.split(/\s+/)[0]} também está aqui` : `mais ${colegas.length} aqui`}</span>
           </div>
         )}
-        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} configuracao={souAdministrador() && configuracao ? configuracao : undefined} andamentoDoProjeto={souAdministrador() && andamentoDoProjeto ? andamentoDoProjeto : undefined} aoMudarCor={() => setCores((n) => n + 1)} enfeites={temaDaData ? { tema: temaDaData.tema, ligados: enfeitesSim } : undefined} />
+        <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => cadastros() : undefined} filmes={temFilmes() && filmes ? filmes : undefined} configuracao={souAdministrador() && configuracao ? configuracao : undefined} andamentoDoProjeto={souAdministrador() && andamentoDoProjeto ? andamentoDoProjeto : undefined} correcoes={souAdministrador() && correcoes ? correcoes : undefined} aoMudarCor={() => setCores((n) => n + 1)} enfeites={temaDaData ? { tema: temaDaData.tema, ligados: enfeitesSim } : undefined} />
       </header>
       <main className="biblioteca fila" data-ancora="pagina">
         {EXEMPLOS.length > 0 && (

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ETIQUETAS } from '../modelo/tipos';
 import { atalho } from './util';
 
-type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'pauta';
+type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta';
 type Linha = [tecla: string, oque: string];
 
 const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
@@ -44,6 +44,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
   },
   comparar: { titulo: 'Comparar', linhas: [['Esc', 'Fecha menus e balões']] },
   andamento: { titulo: 'Andamento', linhas: [['Esc', 'Fecha menus e balões']] },
+  correcoes: { titulo: 'Correção de grafia', linhas: [['Esc', 'Fecha menus e balões']] },
   pauta: {
     titulo: 'Pauta da edição',
     linhas: [

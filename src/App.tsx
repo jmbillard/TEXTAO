@@ -7,6 +7,7 @@ import { Configuracao } from './ui/Configuracao';
 import { HistoricoDaConfiguracao } from './ui/HistoricoDaConfiguracao';
 import { PortainerDaConfiguracao } from './ui/PortainerDaConfiguracao';
 import { Andamento } from './ui/Andamento';
+import { CorrecaoDeGrafia } from './ui/CorrecaoDeGrafia';
 import { Pauta } from './ui/Pauta';
 import { enderecoDaPauta, hashDaPauta } from './ui/pecasDaPauta';
 import { Producoes } from './ui/Producoes';
@@ -38,7 +39,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'area'; area: AreaDosRoteiros } | { t: 'producoes' };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'correcoes' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'area'; area: AreaDosRoteiros } | { t: 'producoes' };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -66,6 +67,7 @@ const telaDoHash = (): Tela => {
   if (/^#\/configuracao\/historico\/?$/.test(location.hash)) return { t: 'configuracao', pagina: 'historico' };
   if (/^#\/configuracao\/portainer\/?$/.test(location.hash)) return { t: 'configuracao', pagina: 'portainer' };
   if (/^#\/andamento\/?$/.test(location.hash)) return { t: 'andamento' };
+  if (/^#\/correcoes\/?$/.test(location.hash)) return { t: 'correcoes' };
   // a tela de produções (#109): na área Designer, ao lado da agenda No Trello
   if (/^#\/designer\/producoes\/?$/.test(location.hash)) return { t: 'producoes' };
   // as áreas de trabalho (#101): cada uma com o seu endereço; a Designer é a fila
@@ -182,8 +184,9 @@ export function App() {
   useEffect(() => {
     if (pronto && hashDesconhecido()) avisar(AVISO_DO_HASH);
   }, [pronto, avisar]);
-  // a Configuração e o Andamento são só de administradores: quem não é volta para a fila (o servidor também recusa)
-  const configuracaoFechada = pronto && (tela.t === 'configuracao' || tela.t === 'andamento') && !souAdministrador() ? (tela.t === 'andamento' ? 'Só administradores veem o Andamento.' : 'Só administradores veem a Configuração.') : '';
+  // a Configuração, o Andamento e a Correção de grafia são só de administradores: quem não é volta para a fila (o
+  // servidor também recusa)
+  const configuracaoFechada = pronto && (tela.t === 'configuracao' || tela.t === 'andamento' || tela.t === 'correcoes') && !souAdministrador() ? (tela.t === 'andamento' ? 'Só administradores veem o Andamento.' : tela.t === 'correcoes' ? 'Só administradores veem a correção de grafia.' : 'Só administradores veem a Configuração.') : '';
   useEffect(() => {
     if (!configuracaoFechada) return;
     avisar(configuracaoFechada);
@@ -201,7 +204,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'area' ? `#/${nova.area}` : nova.t === 'producoes' ? '#/designer/producoes' : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'correcoes' ? '#/correcoes' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'area' ? `#/${nova.area}` : nova.t === 'producoes' ? '#/designer/producoes' : '#/';
     try {
       if (location.hash !== hash) history.pushState(null, '', hash);
     } catch {
@@ -502,7 +505,7 @@ export function App() {
 
   return (
     <>
-      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} andamentoDoProjeto={() => ir({ t: 'andamento' })} pauta={() => ir({ t: 'pauta' })} producoes={() => ir({ t: 'producoes' })} avisar={avisar} identidade={identidade} definirPerfil={definirPerfil} seletorDeArea={seletorDeArea} />}
+      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} andamentoDoProjeto={() => ir({ t: 'andamento' })} correcoes={() => ir({ t: 'correcoes' })} pauta={() => ir({ t: 'pauta' })} producoes={() => ir({ t: 'producoes' })} avisar={avisar} identidade={identidade} definirPerfil={definirPerfil} seletorDeArea={seletorDeArea} />}
       {tela.t === 'area' && (
         <MeusRoteiros
           key={tela.area}
@@ -516,7 +519,7 @@ export function App() {
                 <span>Pauta da edição</span>
               </a>
               <span className="espaco" />
-              <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} />
+              <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
             </header>
           }
         />
@@ -536,7 +539,7 @@ export function App() {
                 <span>Pauta da edição</span>
               </a>
               <span className="espaco" />
-              <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} />
+              <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
             </header>
           }
         />
@@ -555,6 +558,7 @@ export function App() {
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'historico' && <HistoricoDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
       {tela.t === 'pauta' && <Pauta semana={tela.semana} dia={tela.dia} irPara={(e) => ir({ t: 'pauta', ...e })} voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'andamento' && souAdministrador() && <Andamento voltar={() => ir({ t: 'biblioteca' })} />}
+      {tela.t === 'correcoes' && souAdministrador() && <CorrecaoDeGrafia voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'portainer' && <PortainerDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key }} />}
 

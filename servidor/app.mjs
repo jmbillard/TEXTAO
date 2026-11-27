@@ -12,6 +12,7 @@ import * as cod from 'lib0/encoding';
 import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
+import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES } from './correcoes.mjs';
 import { cruzarComAProducao, diaOuHoje, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
@@ -444,7 +445,7 @@ const FABRICAS = {
   filmes: (env, { db, trello, abrirPg, anexos }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg, anexos }),
 };
 /** Os módulos que são refeitos quando a configuração muda (e fechados, os antigos, quando terminam o que faziam). */
-const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas'];
+const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas', 'correcoes'];
 const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
 /** O modo só olhar das Duplicadas (#67): ligado até alguém desligar (DUPLICADAS_SO_OLHAR=0), para os primeiros dias
     da comparação com o relatório do n8n. */
@@ -556,6 +557,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     g.acervo = fazer(fabricas.acervo, env, { abrirPg: abrir, trello: g.trello });
     g.vocabulario = criarVocabulario(env, fetch, cache, copia, null, abrir);
     g.pauta = criarPauta(env, g.vocabulario, abrir, cache, copia);
+    // a correção de grafia (#114): a pauta inteira, lida do Postgres do Teable (só leitura)
+    g.correcoes = criarCorrecoes(env, abrir);
     g.cadastros = fazer(fabricas.cadastros, env, { vocabulario: g.vocabulario });
     g.redatorProvavel = fazer(fabricas.redatorProvavel, env, { abrirPg: abrir });
     g.duplicadas = fazer(fabricas.duplicadas, env, { trello: g.trello, acervo: g.acervo, registro: registroDasDuplicadas, promeiro: promeiroDasDuplicadas });
@@ -2550,6 +2553,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const desde = new Date(Date.parse(`${s.inicio ?? s.dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();
       const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
       return json(res, 200, { ...s, linhas: cruzarComAProducao(s.linhas, producoes.naPauta(desde), semPraca) });
+    }
+    if (caminho === '/api/correcoes/pauta') {
+      // a correção de grafia da pauta da edição (#114), só para administradores e só leitura: uma página das propostas
+      // de um grupo (?grupo=corrigir, o padrão, ou nao-reconhecido; ?pagina= a partir de 1) e quantas há em cada um
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem a correção de grafia.' });
+      const busca = new URL(req.url, 'http://x').searchParams;
+      const grupo = GRUPOS_DAS_CORRECOES.includes(busca.get('grupo')) ? busca.get('grupo') : 'corrigir';
+      const pagina = /^\d{1,5}$/.test(busca.get('pagina') ?? '') ? Math.max(1, Number(busca.get('pagina'))) : 1;
+      return json(res, 200, await geracao.correcoes.propostas({ grupo, pagina }));
     }
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
