@@ -67,11 +67,8 @@ async function abrirComo(navegador, url, pessoa, id) {
 /** O texto do roteiro chegou da sala e a folha está liberada (veja a nota sobre o modo estrito em editor-celular). */
 async function esperarTexto(p, id) {
   const n = id.replace('proximo', '');
-  const chegou = (ms) => p.waitForSelector(`.texto u.arte[data-id="a${n}"]`, { timeout: ms }).then(() => true, () => false);
-  if (!(await chegou(30000))) {
-    await p.reload();
-    if (!(await chegou(45000))) throw new Error(`o texto de ${id} não chegou da sala`);
-  }
+  const chegou = await p.waitForSelector(`.texto u.arte[data-id="a${n}"]`, { timeout: 45000 }).then(() => true, () => false);
+  if (!chegou) throw new Error(`o texto de ${id} não chegou da sala`);
   await p.waitForFunction(() => !document.querySelector('[inert] ol.artes'), null, { timeout: 20000 });
 }
 

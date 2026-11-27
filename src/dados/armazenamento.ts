@@ -199,12 +199,29 @@ const ehLapide = (x: unknown): x is Lapide => {
   return typeof l?.claquete === 'string' && typeof l.por === 'string' && typeof l.em === 'string';
 };
 
+/** A ficha desta aba (no sessionStorage, então continua a mesma ao recarregar). O servidor dá a vez de preencher a sala
+    à aba, não à leitura: a mesma aba que lê de novo (o modo estrito do React, o recarregar) continua com a vez. */
+let abaSemArmazenamento = '';
+function abaDoEditor(): string {
+  const nova = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try {
+    const guardada = sessionStorage.getItem('promeiro:aba');
+    if (guardada) return guardada;
+    const f = nova();
+    sessionStorage.setItem('promeiro:aba', f);
+    return f;
+  } catch {
+    // sem sessionStorage (janela privada, site bloqueado): a ficha vale enquanto a página estiver aberta
+    return (abaSemArmazenamento ||= nova());
+  }
+}
+
 /** Abre o roteiro no servidor: 410 é apagado (com a lápide, quando o servidor sabe), 403 sem permissão, 404 (e o id
     malformado, 400) não existe; a rede caída e o servidor com erro são "erro", para a tela oferecer tentar de novo. */
 export async function lerDoServidor(id: string): Promise<Leitura> {
   let r: Response;
   try {
-    r = await fetch(`/api/roteiros/${encodeURIComponent(id)}`, { credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos } });
+    r = await fetch(`/api/roteiros/${encodeURIComponent(id)}`, { credentials: 'same-origin', headers: { 'content-type': 'application/json', 'x-aba-do-editor': abaDoEditor(), ...cabecalhos } });
   } catch (e) {
     return { estado: 'erro', mensagem: e instanceof Error ? e.message : String(e) };
   }
