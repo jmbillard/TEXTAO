@@ -704,6 +704,26 @@ describe('aba Filmes: o envio', () => {
     expect(exibicoes.map((e) => e.sessao)).toEqual([{ id: 'recSessaoSuper' }, undefined]);
   });
 
+  it('a sessão lida com outra grafia grava o nome e o vínculo da atração do cadastro (#118)', async () => {
+    const { enviar, terminar, falsos } = await paraEnviar(
+      [
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'A TELA QUENTE', data: '07/12/2026' },
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'Supercini', data: '05/12/2026' },
+        { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017, sessao: 'Cine Inventado', data: '06/12/2026' },
+      ],
+      { filmes: [DESPEDIDA], atracoes: SESSOES },
+    );
+    await enviar();
+    await terminar();
+    const exibicoes = falsos.teable('tblExibicoes').map((p) => (p.corpo!.records as { fields: Record<string, unknown> }[])[0].fields);
+    expect(exibicoes.map((e) => [String(e.exibicao).split(' - ')[0], e.sessao])).toEqual([
+      ['TELA QUENTE 07/12', { id: 'recSessaoTQ' }],
+      ['SUPERCINE 05/12', { id: 'recSessaoSuper' }],
+      // a que não parece nenhuma vai como foi lida, sem vínculo
+      ['CINE INVENTADO 06/12', undefined],
+    ]);
+  });
+
   it('o filme sem título pede atenção e não vai', async () => {
     const { enviar, filmes } = await paraEnviar([{ titulo: '', ano_de_producao: 2017 }, { titulo: 'DESPEDIDA EM GRANDE ESTILO', ano_de_producao: 2017 }], { filmes: [DESPEDIDA], atracoes: SESSOES });
     const [semTitulo] = await filmes();

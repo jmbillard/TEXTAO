@@ -22,6 +22,7 @@ import { chaveDeArte, vinculos } from './acervo.mjs';
 import { nomesDoPg } from './pauta.mjs';
 import { diaDaPrevia } from './conferencia.mjs';
 import { chaveDoTitulo } from './titulo.mjs';
+import { atracaoParecida } from '../src/modelo/correcaoDeGrafia.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 export const ehSessaoDaTarde = (sessao) => /^sess[aã]o\s*da\s*tarde$/i.test(String(sessao ?? '').trim());
@@ -141,6 +142,13 @@ export function criarEnvioDeFilmes(env, { trello, consultar, anexos } = {}) {
     return new Map(linhas.map((l) => [chaveDaSessao(l.atracao), { id: String(l.__id), nome: String(l.atracao ?? '') }]));
   }
 
+  /** A sessão do cadastro pelo nome lido: a de chave igual; sem ela, a que parece a mesma atração (#118: sem caixa,
+      acento e artigos, uma letra de diferença), e o envio grava o nome e o vínculo dela; sem nenhuma, o nome lido. */
+  function sessaoDoCadastro(doCadastro, lida) {
+    const nome = String(lida ?? '').trim();
+    return doCadastro.get(chaveDaSessao(nome)) ?? atracaoParecida(nome, [...doCadastro.values()])?.ficha ?? { id: '', nome };
+  }
+
   async function doCadastro(id) {
     const linhas = await consultar(`SELECT "__id", "titulo", "projeto_win", "projeto_mac", "output_win", "output_mac", "poster" FROM ${t.filmes} WHERE "__id" = $1`, [id]);
     const l = linhas.find((x) => String(x.__id) === id);
@@ -188,7 +196,7 @@ export function criarEnvioDeFilmes(env, { trello, consultar, anexos } = {}) {
     const avisos = [];
     const tentar = tentarCom(avisos);
     lote.sessoes ??= await tentar('ler as sessões', sessoes) ?? new Map();
-    const sessao = lote.sessoes.get(chaveDaSessao(lido.sessao)) ?? { id: '', nome: String(lido.sessao).trim() };
+    const sessao = sessaoDoCadastro(lote.sessoes, lido.sessao);
     const ano = conferencia.ano ?? null;
 
     const filme = await filmeDoEnvio(lido, conferencia, lote, agora);

@@ -1,11 +1,12 @@
-import { chaveDaClaquete } from './vocabularios.ts';
+import { chaveDaClaqueteNoPadrao } from './vocabularios.ts';
 import { alternativa, normalizarPraca, palavrasDoFim, pracasRegistradas, reconhecerPraca, semPracaNoComeco, type Praca } from './pracas.ts';
 
 /* Claquetes duplicadas: as linhas da produção da arte (ARTE_producao) com a mesma claquete, praça e versão. A regra do
-   relatório "PROMO: CLAQUETES DUPLICADAS" do n8n, com a chave da claquete do PROMeiro (`chaveDaClaquete`, a da fórmula
-   do Teable). Versões diferentes (-2, V2, B, Opção N) não contam como duplicadas. A lista e o caso aberto saem só da
-   produção (não do quadro do Trello: um card qualquer do quadro, que não é de roteiro, não é caso; e o PROMeiro não lê
-   o Trello, ADR 0006). Módulo puro: o servidor lê a produção e chama daqui. */
+   relatório "PROMO: CLAQUETES DUPLICADAS" do n8n, com a chave da claquete do PROMeiro (`chaveDaClaqueteNoPadrao`, a da
+   fórmula do Teable, com o (M) do padrão das versões como o (MES)). Versões diferentes (-2, V2, B, Opção N) não contam
+   como duplicadas. A lista e o caso aberto saem só da produção (não do quadro do Trello: um card qualquer do quadro,
+   que não é de roteiro, não é caso; e o PROMeiro não lê o Trello, ADR 0006). Módulo puro: o servidor lê a produção
+   e chama daqui. */
 
 /** Uma linha da produção da arte, com o que o agrupamento e a sugestão precisam. */
 export interface LinhaDaProducao {
@@ -119,7 +120,8 @@ export function versaoDaClaquete(nome: string, pracas: readonly Praca[] = pracas
 /** O grupo do card: a chave da claquete (sem a versão, a praça do fim e a do começo, "RIO"), a praça e a versão. */
 export function grupoDoCard(card: { nome: string; praca: string }, pracas: readonly Praca[] = pracasRegistradas()): { id: string; chave: string; praca: string; versao: string } {
   const { base, versao } = versaoDaClaquete(card.nome, pracas);
-  const chave = semPracaNoComeco(chaveDaClaquete(base), pracas);
+  // o (M) do padrão (#118) é a mesma versão da chamada que o (MES)
+  const chave = semPracaNoComeco(chaveDaClaqueteNoPadrao(base), pracas);
   const praca = card.praca ? normalizarPraca(card.praca, pracas) : reconhecerPraca(card.nome, pracas);
   return { id: `${chave}|${praca}|${versao}`, chave, praca, versao };
 }

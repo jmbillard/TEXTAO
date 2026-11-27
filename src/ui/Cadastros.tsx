@@ -735,6 +735,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const nomeInicial = inicio?.nome ?? daClaquete;
   const keyInicial = inicio?.key ? comoKey(inicio.key) : daClaquete ? comoKey(daClaquete) : '';
   const [atr, setAtr] = useState({ nome: nomeInicial, keys: keyInicial ? [keyInicial] : [], categoria: '', acervo: 'proprio' as AcervoDaAtracao, campos: {} as Record<string, string> });
+  // o nome que a pessoa confirmou ser de outra atração, depois do aviso de que parece uma que já existe (#118)
+  const [outraAtracao, setOutraAtracao] = useState('');
   const [red, setRed] = useState({ nome: '', keys: [] as string[] });
   const [edi, setEdi] = useState({ nome: '', keys: [] as string[] });
 
@@ -767,7 +769,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       let tirarDoSem: (() => void) | null = null;
       if (aba === 'atracoes') {
         const keysNovas = atr.keys.map(comoKey);
-        const r = await cadastrar<{ id: string; nome: string; keys: string[] }>('atracoes', atr);
+        const r = await cadastrar<{ id: string; nome: string; keys: string[] }>('atracoes', { ...atr, ...(outraAtracao && outraAtracao === atr.nome ? { outra: true } : {}) });
         // no Sem cadastro, as linhas dessas keys saem junto com a folha (sem esperar a lista nova); se eram as
         // últimas, a comemoração guarda os exemplos delas antes
         tirarDoSem = () => {
@@ -803,6 +805,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       void depois?.();
       void carregarSem();
     } catch (e) {
+      // parece uma atração que já existe: salvar de novo com o mesmo nome confirma que é outra
+      if (aba === 'atracoes' && (e as { status?: number }).status === 409 && e instanceof Error && e.message.includes(' parece ')) setOutraAtracao(atr.nome);
       avisar(e instanceof Error ? e.message : 'Não consegui cadastrar.');
     }
     setSalvando(false);

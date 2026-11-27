@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { atracoesParecidas, parDeFichas, propostaDaClaquete } from '../src/modelo/correcaoDeGrafia';
-import { lerVersoes } from '../src/modelo/pauta';
+import { atracaoParecida, atracoesParecidas, claqueteNoPadrao, parDeFichas, propostaDaClaquete } from '../src/modelo/correcaoDeGrafia';
+import { cruzarComAProducao, linhaDaPauta, lerVersoes, type ProducaoNaPauta } from '../src/modelo/pauta';
+import { duplicadasDaProducao, type LinhaDaProducao } from '../src/modelo/duplicadas';
 
 /* A correção de grafia da pauta da edição (#114): o código de versão no fim da claquete passa para o padrão, uma letra
    por versão, maiúscula, entre parênteses, no fim e na ordem escrita (DIA vira D, MES e MÊS viram M, MNT continua
@@ -188,5 +189,57 @@ describe('atracoesParecidas: "não são a mesma"', () => {
   it('a ficha nova parecida com uma marcada volta num grupo novo, só com ela', () => {
     const fichas = [ficha('rec1', 'Clínica'), ficha('rec2', 'Clinica'), ficha('rec3', 'A Clínica')];
     expect(grupos(fichas, new Set([parDeFichas('rec1', 'rec2')]))).toEqual([{ motivo: 'mesmo-nome', ids: ['rec3', 'rec2', 'rec1'] }]);
+  });
+});
+
+/* Daqui para frente (#118): o PROMeiro grava a claquete no padrão, e o que ainda está na grafia antiga (a pauta da
+   edição, as linhas da produção da arte de antes) continua cruzando com ela. */
+describe('claqueteNoPadrao: a claquete como o PROMeiro grava', () => {
+  it('com o código corrigido; sem o que corrigir, como está', () => {
+    expect(claqueteNoPadrao('Show da Tarde 4/12 Dp')).toBe('Show da Tarde 4/12 (DP)');
+    expect(claqueteNoPadrao('Show da Tarde 4/12 (MÊS)')).toBe('Show da Tarde 4/12 (M)');
+    expect(claqueteNoPadrao('Show da Tarde 4/12 (DP)')).toBe('Show da Tarde 4/12 (DP)');
+    expect(claqueteNoPadrao('Show da Tarde 4/12 (REPERC)')).toBe('Show da Tarde 4/12 (REPERC)');
+    expect(claqueteNoPadrao('Show da Tarde 4/12')).toBe('Show da Tarde 4/12');
+  });
+});
+
+describe('a claquete gravada no padrão cruza com a grafia antiga', () => {
+  const producao = (id: string, claquete: string): ProducaoNaPauta => ({ id, claquete, praca: 'G5', etapa: 'entrada', artes: 1, designers: [], alta: false, entradaEm: '2026-11-25T12:00:00.000Z', entregaEm: null });
+  const naPauta = (claquete: string) => linhaDaPauta({ id: 'recL', claquete, editor: 'Ana', data: '2026-11-27' })!;
+  const achadas = (pauta: string, gravada: string) => cruzarComAProducao([naPauta(pauta)], [producao('p1', gravada)], (c) => c)[0].producoes?.map((p) => p.id);
+
+  it.each([
+    ['Especial 29/11 (MES)', 'Especial 29/11(M)'],
+    ['Especial 29/11 (MÊS)', 'Especial 29/11(M)'],
+    ['Especial 29/11 (DIA)', 'Especial 29/11(D)'],
+    ['Especial 29/11 Dp', 'Especial 29/11(DP)'],
+    ['Especial 29/11 (M)', 'Especial 29/11(MES)'],
+  ])('na pauta da edição: %s acha a Produção %s', (pauta, gravada) => {
+    expect(achadas(pauta, gravada)).toEqual(['p1']);
+  });
+
+  it('nas Duplicadas: a mesma claquete com o código antigo e com o do padrão é caso', () => {
+    const linha = (n: number, claquete: string): LinhaDaProducao => ({ registro: `rec${n}`, card: `card${n}`, claquete, praca: '', entrada: new Date(Date.UTC(2026, 10, 10, 12, n)).toISOString(), arquivado: false, filme: false, status: ['PRODUZINDO'], designers: ['Designer Um'], entregue: false });
+    const casos = duplicadasDaProducao([linha(1, 'Terra 20/11 (MES)'), linha(2, 'Terra 20/11(M)'), linha(3, 'Mar 20/11(M)'), linha(4, 'Mar 20/11')], { desde: Date.UTC(2026, 7, 1) });
+    expect(casos.map((c) => c.cards)).toEqual([['card3', 'card4'], ['card1', 'card2']]);
+  });
+});
+
+describe('atracaoParecida: a ficha que já existe para um nome escrito de outro jeito (#118)', () => {
+  const fichas = [
+    { id: 'recA', nome: 'Casa da Colina' },
+    { id: 'recB', nome: 'Tela Quente' },
+    { id: 'recC', nome: 'Tela Quentes' },
+    { id: 'recD', nome: 'Gol' },
+  ];
+  it('o mesmo nome sem caixa, acento e artigos vem antes da uma letra de diferença', () => {
+    expect(atracaoParecida('A CASA DA COLINA', fichas)).toEqual({ ficha: fichas[0], motivo: 'mesmo-nome' });
+    expect(atracaoParecida('tela quente', fichas)).toEqual({ ficha: fichas[1], motivo: 'mesmo-nome' });
+    expect(atracaoParecida('Tela Quenti', fichas)).toEqual({ ficha: fichas[1], motivo: 'uma-letra' });
+  });
+  it('nome curto só vale igual; o que não parece nenhuma é null', () => {
+    expect(atracaoParecida('Gols', fichas)).toBeNull();
+    expect(atracaoParecida('Cine Inventado', fichas)).toBeNull();
   });
 });

@@ -10,6 +10,7 @@ import { TABELAS_DO_TEABLE } from '../src/modelo/tabelasDoTeable.ts';
 import { gerarPdf } from './pdf.mjs';
 import { normalizarKey } from './cadastros.mjs';
 import { claquetePadrao, jaFoiExibida } from '../src/modelo/vocabularios.ts';
+import { claqueteNoPadrao } from '../src/modelo/correcaoDeGrafia.ts';
 import { alternativa, palavrasDoComeco, palavrasDoFim, pracaDaSigla, pracaPadrao, pracasDaConfiguracao, pracasRegistradas } from '../src/modelo/pracas.ts';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { opcaoDaPracaDosFilmes } from '../src/modelo/ligarOsFilmes.ts';
@@ -83,8 +84,10 @@ export const chaveDaAtracao = (claquete, pracas = pracasRegistradas()) =>
     .replaceAll(/\s+/g, ' ')
     .trim();
 
-/** Comparação de claquetes escritas de jeitos diferentes ("Festa_19_11" e "Festa 19/11"). */
-const mesmaClaquete = (a, b) => chaveN8n(a).replace(/ /g, '') === chaveN8n(b).replace(/ /g, '');
+/** Comparação de claquetes escritas de jeitos diferentes ("Festa_19_11" e "Festa 19/11"; "(DIA)" e "(D)", #118: o
+    PROMeiro grava o código de versão no padrão, e o que veio antes, ou de fora, pode estar em outra grafia). */
+const comparavel = (claquete) => chaveN8n(claqueteNoPadrao(String(claquete || '').trim())).replace(/ /g, '');
+const mesmaClaquete = (a, b) => comparavel(a) === comparavel(b);
 
 /** O que o cadastro escreve quando não sabe o caminho (o card fica sem; a importação do acervo também ignora). */
 export const SEM_CAMINHO = /^(cole_aqui_o_caminho|caminho_nao_encontrado)$/;
@@ -526,9 +529,12 @@ export function criarTrello(env, deps = {}) {
     return new Set(linhas.filter((l) => !jaFoiExibida(l.claquete ?? '', agora)).map((l) => l.key));
   }
 
-  async function prioridadeAlta(chave, agora) {
-    if (!t.prioridade || !c.prioridadeAlta || !chave) return false;
-    return (await chavesPrioritarias([chave], agora)).has(chave);
+  /** Alguma das keys está na lista de prioridade (a da claquete como chegou e a dela no padrão, #118). */
+  async function prioridadeAlta(chaves, agora) {
+    const validas = [...new Set(chaves.filter(Boolean))];
+    if (!t.prioridade || !c.prioridadeAlta || !validas.length) return false;
+    const na = await chavesPrioritarias(validas, agora);
+    return validas.some((k) => na.has(k));
   }
 
   /** Atração que é sessão de filme: a exibição do dia (exibicoes) dá o card da prévia e o filme. */
@@ -626,7 +632,10 @@ export function criarTrello(env, deps = {}) {
     const m = r.meta;
     // sem claquete, o card leva o título ou o nome do arquivo: nada impede o envio. A data vai sempre com barra
     // ("DONA 27-11" → "DONA 27/11"), no card e na produção da arte; a chave não muda com isso
-    const claquete = claquetePadrao(String(m.claquete || m.titulo || (r.original?.nome ?? '').replace(/\.[^.]+$/, '').replace(/_/g, ' ') || 'Roteiro sem claquete').trim(), c.pracas);
+    const comoChegou = claquetePadrao(String(m.claquete || m.titulo || (r.original?.nome ?? '').replace(/\.[^.]+$/, '').replace(/_/g, ' ') || 'Roteiro sem claquete').trim(), c.pracas);
+    // e o código de versão vai no padrão (#118: "Dp" → "(DP)", "(DIA)" → "(D)"); a key continua a da claquete como
+    // chegou, a que a lista de prioridade e o n8n conhecem
+    const claquete = claquetePadrao(claqueteNoPadrao(comoChegou), c.pracas);
     const avisos = [];
     const tentar = async (o_que, f) => {
       try {
@@ -653,7 +662,7 @@ export function criarTrello(env, deps = {}) {
     if (!(r.outro ?? m.outroRoteiro) && (await tentar('conferir a produção de hoje', () => jaEntrouHoje(claquete)))) return { duplicado: true, avisos };
 
     const hoje = agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
-    const chave = chaveN8n(claquete);
+    const chave = chaveN8n(comoChegou);
     // a praça que a revisão escolheu; a que não é de nenhuma (ou falta) vai como a padrão
     const daPraca = pracaDaSigla(c.pracas, m.praca) ?? pracaPadrao(c.pracas);
     const praca = daPraca.sigla;
@@ -666,7 +675,7 @@ export function criarTrello(env, deps = {}) {
       tentar('achar o redator', () => acharRedator(m.redator)),
       tentar('achar o editor', () => acharEditor(m.editor)),
       tentar('achar a atração', () => acharAtracao(claquete, m.programa)),
-      tentar('conferir a prioridade', () => prioridadeAlta(chave, agora)),
+      tentar('conferir a prioridade', () => prioridadeAlta([chave, chaveN8n(claquete)], agora)),
     ]);
     const filme = await tentar('achar o card do filme', () => cardDoFilme(atracao?.nome, m.dataExibicao));
     // o card do filme é lido antes dos campos: a complexidade do card é a maior entre a dele e a da revisão
@@ -908,12 +917,13 @@ export function criarTrello(env, deps = {}) {
    */
   async function naProducao(claquete) {
     if (!t.producao || !claquete) return null;
-    const chave = chaveN8n(claquete);
+    // a key como chegou e a da claquete no padrão (#118): a linha gravada antes ou depois do padrão
+    const chaves = [chaveN8n(claquete), chaveN8n(claqueteNoPadrao(String(claquete).trim()))];
     const linhas = await sql(
       `SELECT "__id" AS registro, "card_ID", "claquete", "key", "status", "data_entrada", "artes_quantidade", "artes", "texto", "doc", "redator", "editor" FROM ${t.producao}
        WHERE "data_entrada" >= now() - interval '3 months' ORDER BY "data_entrada" DESC NULLS LAST LIMIT 5000`,
     );
-    const l = linhas.find((x) => x.key === chave) ?? linhas.find((x) => mesmaClaquete(x.claquete, claquete));
+    const l = linhas.find((x) => chaves.includes(x.key)) ?? linhas.find((x) => mesmaClaquete(x.claquete, claquete));
     if (!l?.card_ID) return null;
     return {
       card: l.card_ID,

@@ -35,6 +35,15 @@ export function propostaDaClaquete(claquete: string): PropostaDaClaquete | null 
   return para === de ? null : { tipo: 'corrigir', de, para };
 }
 
+/**
+ * A claquete como o PROMeiro grava (#118): com o código de versão no padrão, quando há o que corrigir; senão, como
+ * está (sem código, já no padrão ou com um código que a pauta não reconhece). A entrada aceita qualquer grafia.
+ */
+export function claqueteNoPadrao(claquete: string): string {
+  const proposta = propostaDaClaquete(claquete);
+  return proposta?.tipo === 'corrigir' ? proposta.para : claquete;
+}
+
 /** Os dois grupos da pauta na tela: as claquetes a corrigir e os códigos que a pauta não reconhece. */
 export type GrupoDaPauta = 'corrigir' | 'nao-reconhecido';
 
@@ -81,6 +90,9 @@ const ARTIGOS = new Set(['A', 'O', 'AS', 'OS', 'UM', 'UMA', 'UNS', 'UMAS', 'THE'
 const PALAVRA_LONGA = 5;
 const palavrasDoNome = (nome: string) => nomeComparavel(nome).split(' ').filter((p) => p && !ARTIGOS.has(p));
 
+/** A ordem das fichas: pelo nome, e o empate pelo id. */
+const ordem = (a: { id: string; nome: string }, b: { id: string; nome: string }) => a.nome.localeCompare(b.nome, 'pt-BR') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
 /** O par de fichas, na mesma ordem dos dois lados: a chave do "não são a mesma". */
 export const parDeFichas = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
@@ -111,7 +123,6 @@ export function atracoesParecidas<F extends { id: string; nome: string }>(fichas
       if (semelhanca(palavras[i], palavras[j]) && !diferentes.has(parDeFichas(fichas[i].id, fichas[j].id))) pai[raiz(i)] = raiz(j);
   const porGrupo = new Map<number, number[]>();
   fichas.forEach((_, i) => porGrupo.set(raiz(i), [...(porGrupo.get(raiz(i)) ?? []), i]));
-  const ordem = (a: F, b: F) => a.nome.localeCompare(b.nome, 'pt-BR') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return [...porGrupo.values()]
     .filter((is) => is.length > 1)
     .map((is) => {
@@ -119,6 +130,20 @@ export function atracoesParecidas<F extends { id: string; nome: string }>(fichas
       return { motivo: is.every((i) => palavras[i].join(' ') === chave) ? ('mesmo-nome' as const) : ('uma-letra' as const), fichas: is.map((i) => fichas[i]).sort(ordem) };
     })
     .sort((a, b) => ordem(a.fichas[0], b.fichas[0]));
+}
+
+/**
+ * A ficha que parece ser a atração deste nome, na mesma comparação de `atracoesParecidas` (#118: o PROMeiro grava o
+ * nome da ficha que já existe, e não outra grafia). A de mesmo nome vem antes da de uma letra de diferença; no empate,
+ * a primeira em ordem de nome. null quando nenhuma parece.
+ */
+export function atracaoParecida<F extends { id: string; nome: string }>(nome: string, fichas: readonly F[]): { ficha: F; motivo: MotivoDoGrupo } | null {
+  const procurada = palavrasDoNome(nome);
+  const achadas = fichas
+    .map((ficha) => ({ ficha, motivo: semelhanca(procurada, palavrasDoNome(ficha.nome)) }))
+    .filter((a): a is { ficha: F; motivo: MotivoDoGrupo } => a.motivo !== null)
+    .sort((a, b) => Number(a.motivo === 'uma-letra') - Number(b.motivo === 'uma-letra') || ordem(a.ficha, b.ficha));
+  return achadas[0] ?? null;
 }
 
 /** Uma ficha de um grupo como a rota devolve: quantas artes do acervo (null sem o acervo ligado), Produções e regras. */

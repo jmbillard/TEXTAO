@@ -12,6 +12,7 @@
      TEABLE_KEY_EDITORES  KEY_editores (key, editor → link para o editor) */
 
 import { ehAdministrador } from '../src/modelo/pessoas.ts';
+import { atracaoParecida } from '../src/modelo/correcaoDeGrafia.ts';
 
 const POR_PAGINA = 1000;
 const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ') : v == null ? '' : String(typeof v === 'object' ? (v.title ?? v.name ?? '') : v)).trim();
@@ -232,7 +233,10 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
     podeApagar: (email) => ehAdministrador(email, env),
     ler,
 
-    async novaAtracao({ nome, categoria, acervo: qual = 'proprio', keys = [], campos: extra = {} }) {
+    /** Atração nova. A que parece uma que já existe (a comparação da correção de grafia, #118) é recusada com o nome
+        da que existe, para não nascer outra grafia da mesma atração; com `outra`, a pessoa confirmou que é outra, e o
+        nome vai como ela escreveu. */
+    async novaAtracao({ nome, categoria, acervo: qual = 'proprio', keys = [], campos: extra = {}, outra = false }) {
       exigir(t.atracoes && t.keysAtracoes, 'Faltam as tabelas de atrações no servidor (TEABLE_CADASTRO e TEABLE_ATRACOES).');
       nome = nomeLimpo(nome);
       exigir(nome, 'Dê um nome para a atração.');
@@ -241,6 +245,8 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
       exigir(ACERVOS.includes(qual), 'Escolha o acervo: próprio, do filme ou sem acervo.');
       const atual = await ler();
       exigir(!atual.atracoes.some((a) => a.nome.toLowerCase() === nome.toLowerCase()), `${nome} já está cadastrada.`);
+      const parecida = outra === true ? null : atracaoParecida(nome, atual.atracoes);
+      if (parecida) throw erro(`${nome} parece ${parecida.ficha.nome}, que já está cadastrada. Se for outra atração, salve de novo.`, 409);
       for (const k of lista) await keyLivre(t.keysAtracoes, k);
       const fields = { [campoAtracao]: nome };
       if (categoria) fields[campoCategoria] = nomeLimpo(categoria, 40);

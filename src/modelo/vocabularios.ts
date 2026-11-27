@@ -336,12 +336,25 @@ export const editoresConhecidos = (): string[] => editores;
 
 /** A claquete como chave de cruzamento: sem acento, sem versão ("(AH)", "V2", "(DIA)") e sem pontuação. Igual à fórmula do Teable. */
 export function chaveDaClaquete(claquete: string): string {
+  return chaveSemAsVersoes(claquete, /\([PNAH/+D\s]+\)/g);
+}
+
+/**
+ * A chave da claquete para cruzar dentro do PROMeiro (a pauta da edição com as Produções, as Duplicadas): a de
+ * `chaveDaClaquete`, sem também o (M) do padrão das versões. O PROMeiro grava "(M)" onde vinha "(MES)" ou "(MÊS)"
+ * (#118), e a fórmula do Teable não conhece o (M): para cruzar com a key do Teable, vale `chaveDaClaquete`.
+ */
+export function chaveDaClaqueteNoPadrao(claquete: string): string {
+  return chaveSemAsVersoes(claquete, /\([PNAHDM/+\s]+\)/g);
+}
+
+function chaveSemAsVersoes(claquete: string, versoes: RegExp): string {
   return claquete
     .toUpperCase()
     .replace(/&/g, 'E')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\([PNAH/+D\s]+\)/g, '')
+    .replace(versoes, '')
     .replace(/V[2-9]+|MNT|\sCLIPE$/g, '')
     .replace(/\((?:DIA|MES)\)/g, ' ')
     .replace(/[-+_/().,]/g, ' ')

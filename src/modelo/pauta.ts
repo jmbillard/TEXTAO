@@ -6,7 +6,7 @@
    Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
 import { nomeComparavel } from './ligarPeloNome.ts';
 import type { Etapa } from './producao.ts';
-import { chaveDaClaquete, lerDataDaClaquete } from './vocabularios.ts';
+import { chaveDaClaquete, chaveDaClaqueteNoPadrao, lerDataDaClaquete } from './vocabularios.ts';
 
 export type TipoDaLinha = 'claquete' | 'tarefa' | 'aviso';
 
@@ -430,7 +430,8 @@ export function cruzarComAProducao(linhas: readonly LinhaDaPauta[], producoes: r
   const semAPraca = new Map<string, ProducaoNaPauta[]>();
   const juntar = (mapa: Map<string, ProducaoNaPauta[]>, chave: string, p: ProducaoNaPauta) => chave && mapa.set(chave, [...(mapa.get(chave) ?? []), p]);
   for (const p of producoes) {
-    const chave = chaveDaClaquete(p.claquete);
+    // a Produção gravada no padrão (#118) tem "(M)" onde a pauta escreve "(MES)"
+    const chave = chaveDaClaqueteNoPadrao(p.claquete);
     juntar(exatas, chave, p);
     juntar(semAPraca, semPraca(chave), p);
   }

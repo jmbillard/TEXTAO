@@ -132,6 +132,21 @@ describe('cadastros no Teable', () => {
     expect((await c.novaKey('atracao', 'recA2', 'colina resumo')).key).toBe('COLINA RESUMO');
   });
 
+  it('atração nova que parece uma que já existe (#118): recusada com o nome da que existe; "é outra" grava como foi escrita', async () => {
+    const { buscar, tabelas } = falso();
+    const c = criarCadastros(ENV, { buscar });
+    const antes = tabelas.tblAtr.length;
+    await expect(c.novaAtracao({ nome: 'Casa da Colina', keys: ['CASA COLINA'] })).rejects.toMatchObject({ status: 409, message: expect.stringContaining('parece A Casa da Colina') });
+    await expect(c.novaAtracao({ nome: 'show da noitte', keys: ['NOITTE'] })).rejects.toMatchObject({ status: 409, message: expect.stringContaining('parece Show da Noite') });
+    expect(tabelas.tblAtr.length).toBe(antes);
+    // a pessoa confirmou que é outra atração: vai como ela escreveu
+    await c.novaAtracao({ nome: 'Casa da Colina', keys: ['CASA COLINA'], outra: true });
+    expect(tabelas.tblAtr.at(-1)!.fields).toEqual({ atracao: 'Casa da Colina' });
+    // a que não parece nenhuma entra direto
+    await c.novaAtracao({ nome: 'Show da Manhã', keys: ['MANHA'] });
+    expect(tabelas.tblAtr.at(-1)!.fields).toEqual({ atracao: 'Show da Manhã' });
+  });
+
   it('o acervo da atração: lê, cria (próprio é o padrão) e troca', async () => {
     const { buscar, pedidos, tabelas } = falso(ACERVO);
     const c = criarCadastros(ENV, { buscar });

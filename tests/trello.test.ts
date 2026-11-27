@@ -1057,3 +1057,66 @@ describe('a conferência da produção da arte', () => {
     expect((await producao(0.1)).ok).toBe(true);
   });
 });
+
+/* A correção de grafia daqui para frente (#118): o envio grava a claquete com o código de versão no padrão (uma letra
+   por versão, maiúscula, entre parênteses), no card e na produção da arte. A entrada aceita qualquer grafia, e a key
+   continua a da claquete como chegou: é ela que a lista de prioridade e o n8n conhecem. */
+describe('o envio grava a claquete no padrão (#118)', () => {
+  const registroDe = (pedidos: Pedido[]) => (pedidos.find((p) => p.url.pathname === '/api/table/tblProducao/record')!.corpo as { records: { fields: Record<string, unknown> }[] }).records[0].fields;
+  const nomeDoCard = (pedidos: Pedido[]) => (pedidos.find((p) => p.url.pathname === '/1/cards' && p.metodo === 'POST')!.corpo as { name: string }).name;
+
+  it.each([
+    ['Festa na Praça 19/11 (Dia)', 'Festa na Praça 19/11(D)'],
+    ['Festa na Praça 19-11 Dp', 'Festa na Praça 19/11(DP)'],
+    ['Festa na Praça 19/11 SP (MÊS)', 'Festa na Praça 19/11 SP(M)'],
+    ['Festa na Praça 19/11 (ah)', 'Festa na Praça 19/11(AH)'],
+    ['Festa na Praça 19/11 H', 'Festa na Praça 19/11(H)'],
+    ['Festa na Praça 19/11 mnt', 'Festa na Praça 19/11(MNT)'],
+  ])('%s vai como %s, no card e na produção da arte', async (chegou, gravada) => {
+    const { buscar, pedidos } = falsos();
+    const t = criarTrello(ENV, { buscar, consultar: banco().consultar });
+    await t.enviar({ meta: { ...meta, claquete: chegou }, artes: ['X'], original }, new Date('2026-11-19T12:00:00Z'));
+    expect(nomeDoCard(pedidos)).toBe(gravada);
+    expect(registroDe(pedidos)).toMatchObject({ claquete: gravada, key: chaveN8n(chegou) });
+  });
+
+  it('a claquete já no padrão, sem código ou com um código que a pauta não reconhece vai como estava', async () => {
+    for (const [chegou, gravada] of [
+      ['Festa na Praça 19/11(DP)', 'Festa na Praça 19/11(DP)'],
+      ['Festa na Praça 19/11 SP', 'Festa na Praça 19/11 SP'],
+      ['Festa na Praça 19/11 (REPERC)', 'Festa na Praça 19/11(REPERC)'],
+      ['ELIANA (REPERC) 29-11', 'ELIANA(REPERC)29/11'],
+    ]) {
+      const { buscar, pedidos } = falsos();
+      const t = criarTrello(ENV, { buscar, consultar: banco().consultar });
+      await t.enviar({ meta: { ...meta, claquete: chegou }, artes: ['X'], original }, new Date('2026-11-19T12:00:00Z'));
+      expect(nomeDoCard(pedidos)).toBe(gravada);
+      expect(registroDe(pedidos).claquete).toBe(gravada);
+    }
+  });
+
+  it('o que já entrou hoje com o código fora do padrão ainda é o mesmo roteiro, e o contrário também', async () => {
+    const hoje = (claquete: string) => async (sql: string, params: unknown[] = []) => (sql.includes('"producao"') ? [{ claquete }] : banco().consultar(sql, params));
+    const { buscar } = falsos();
+    expect(await criarTrello(ENV, { buscar, consultar: hoje('Festa na Praça 19/11 (DIA)') }).enviar({ meta: { ...meta, claquete: 'Festa na Praça 19/11(D)' }, artes: [], original })).toMatchObject({ duplicado: true });
+    expect(await criarTrello(ENV, { buscar, consultar: hoje('Festa na Praça 19/11(M)') }).enviar({ meta: { ...meta, claquete: 'Festa na Praça 19/11 (Mês)' }, artes: [], original })).toMatchObject({ duplicado: true });
+  });
+
+  it('a prioridade ALTA vem da lista escrita com qualquer grafia do código', async () => {
+    for (const [naLista, chegou] of [
+      ['Festa na Praça 19/11 (DIA)', 'Festa na Praça 19/11 (Dia)'],
+      ['Festa na Praça 19/11(D)', 'Festa na Praça 19/11 (DIA)'],
+    ]) {
+      const { buscar, pedidos } = falsos();
+      const { consultar } = banco({ prioridade: [{ claquete: naLista, data: '2026-11-19' }] });
+      await criarTrello(ENV, { buscar, consultar }).enviar({ meta: { ...meta, claquete: chegou }, artes: ['X'], original }, new Date('2026-11-19T12:00:00Z'));
+      expect(campoPut(pedidos, 'cPrio')).toEqual({ idValue: 'opAlta' });
+    }
+  });
+
+  it('a versão nova acha na produção da arte a claquete gravada no padrão', async () => {
+    const consultar = async () => [{ registro: 'recP1', card_ID: 'cardVelho', claquete: 'Festa na Praça 19/11(M)', key: 'OUTRA KEY', status: '[]', data_entrada: new Date('2026-11-18T13:00:00Z'), artes_quantidade: 1 }];
+    const t = criarTrello(ENV, { consultar });
+    expect((await t.naProducao('Festa na Praça 19/11 (MES)'))?.card).toBe('cardVelho');
+  });
+});
