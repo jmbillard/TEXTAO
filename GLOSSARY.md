@@ -303,8 +303,9 @@ família) fica no histórico sem mudar a Produção.
 designer da chave: a etapa e o **designer entrou** do Peguei, ou, na Produção Entregue, só **abriu o projeto**. O
 atrasado segue a mesma regra da família.
 As ações da janela do After (#147) também: o **fogo** da arte (o nível de antes e o de depois; a família é a mesma
-arte), a entrega, a volta (o **designer saiu** e, sem ninguém, a etapa volta para a Entrada) e o desfazer, que grava o
-contrário da última ação da chave, marcado com o que desfez.
+arte; a janela manda o nível pedido, e a ação repetida não muda o nível de novo), a entrega, a volta (o **designer
+saiu** e, sem ninguém, a etapa volta para a Entrada) e o desfazer, que grava o contrário da última ação da chave,
+marcado com o que desfez.
 _Evitar_: log, atividade, ação (a ação é do Trello)
 
 **Linha do tempo** (da Produção):

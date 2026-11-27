@@ -1189,13 +1189,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (copiarMetaParaYdoc(doc, meta) && !sala) q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
   }
   /**
-   * O fogo da arte que sobe um nível pela janela do After (#147), pelo caminho do clique no fogo do editor
-   * (subirComplexidade): a complexidade no mapa "meta" do documento compartilhado (o da sala aberta, que quem está no
-   * editor vê na hora, ou o guardado) e na meta do roteiro no banco. Com o documento, vale o que ele tem agora. Com
+   * O fogo da arte mudado pela janela do After (#147): com `nivel` (1, 2 ou 3), a arte fica nesse nível (repetir não
+   * muda nada); sem ele, sobe um nível, como o clique no fogo do editor (subirComplexidade). Pelo caminho do editor: a
+   * complexidade no mapa "meta" do documento compartilhado (o da sala aberta, que quem está no editor vê na hora, ou o
+   * guardado) e na meta do roteiro no banco; a BAIXA não é guardada. Com o documento, vale o que ele tem agora. Com
    * `gravar: false` (a ação atrasada), só diz o que seria.
    * @returns { antes, depois } (1, 2 ou 3), ou null sem o roteiro
    */
-  function subirFogoNoRoteiro(id, chave, { gravar = true } = {}) {
+  function fogoNoRoteiro(id, chave, { nivel: desejado = null, gravar = true } = {}) {
     const linha = q.um.get(id);
     if (!linha) return null;
     const meta = JSON.parse(linha.meta);
@@ -1208,7 +1209,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const m = doc?.getMap('meta');
     const atual = m?.size ? m.get('complexidade') : meta.complexidade;
     const marcas = atual && typeof atual === 'object' ? atual : {};
-    const { complexidade } = subirComplexidade({ complexidade: marcas }, chave);
+    const noNivel = () => {
+      const resto = { ...marcas };
+      delete resto[chave];
+      const novas = desejado === 1 ? resto : { ...resto, [chave]: desejado };
+      return Object.keys(novas).length ? novas : undefined;
+    };
+    const complexidade = desejado ? noNivel() : subirComplexidade({ complexidade: marcas }, chave).complexidade;
     const nivel = (c) => ([2, 3].includes(c?.[chave]) ? c[chave] : 1);
     if (gravar) {
       if (complexidade) meta.complexidade = complexidade;
@@ -3586,9 +3593,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    *   responde { repetido: true, producao } e não grava de novo; a recusada não o ocupa) e `feitaEm`, a hora (a atrasada
    *   segue a regra do conflito: fica no histórico, e nada vai ao Trello por ela). Respondem { feito: { eventos,
    *   trello }, producao } (a Produção como a janela mostra); o 409 traz a `producao` também.
-   *   - POST /api/padeiro/fogo { acao, feitaEm, producao, arte }: o fogo da arte sobe um nível (1, 2, 3 e volta) no
-   *     Roteiro ligado, para qualquer designer (subirFogoNoRoteiro). A Entregue e a sem Roteiro, 409; a arte que não está
-   *     na Produção, 404
+   *   - POST /api/padeiro/fogo { acao, feitaEm, producao, arte, nivel? }: o fogo da arte no Roteiro ligado, para
+   *     qualquer designer (fogoNoRoteiro): com `nivel` (1, 2 ou 3), fica nesse nível (à prova de repetição); sem ele,
+   *     sobe um nível (1, 2, 3 e volta). O `nivel` que não é 1, 2 ou 3, 400; a Entregue e a sem Roteiro, 409; a arte que
+   *     não está na Produção, 404. Gravada a meta, o identificador fica ocupado mesmo se o evento falhar (a nova
+   *     tentativa responde { repetido: true } e não muda o nível de novo)
    *   - POST /api/padeiro/entregar { acao, feitaEm, producao }: etapaDaProducao.entregarPeloPadeiro (a Entregue, 409)
    *   - POST /api/padeiro/voltar { acao, feitaEm, producao }: etapaDaProducao.voltarPeloPadeiro (a em Produzindo sem o
    *     designer, 403; a que já está na Entrada, 409)
@@ -3658,6 +3667,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const pedido = pedidoDaJanela(res, corpo);
       if (!pedido) return;
       if (typeof corpo.arte !== 'string' || !corpo.arte.trim()) return json(res, 400, { erro: 'Falta a arte.' });
+      const nivelPedido = corpo.nivel ?? null;
+      if (nivelPedido !== null && ![1, 2, 3].includes(nivelPedido)) return json(res, 400, { erro: 'O nível do fogo é 1, 2 ou 3.' });
       const j = typeof corpo.producao === 'string' ? producoes.naJanela(corpo.producao.trim().slice(0, 100)) : null;
       if (!j) return json(res, 404, { erro: 'Essa Produção não está mais aberta no PROMeiro.' });
       const id = j.producao.id;
@@ -3667,16 +3678,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!arte) return json(res, 404, { erro: 'Essa arte não está na Produção.' });
       if (!padeiros.reservarAviso(p.id, pedido.acao, id, pedido.quando)) return json(res, 200, { repetido: true, producao: await producaoDaJanela(id, p) });
       const designer = designerDoPadeiro(p);
+      // gravada a meta, o identificador fica ocupado: a nova tentativa da fila sem rede não muda o nível de novo
+      let gravouAMeta = false;
       try {
-        const ev = { tipo: 'fogo', campo: arte.nome, quando: pedido.quando };
-        const nivel = subirFogoNoRoteiro(j.producao.roteiroId, chaveDeArte(arte.nome), { gravar: !producoes.atrasado(id, ev) });
+        const gravar = !producoes.atrasado(id, { tipo: 'fogo', campo: arte.nome, quando: pedido.quando });
+        const nivel = fogoNoRoteiro(j.producao.roteiroId, chaveDeArte(arte.nome), { nivel: nivelPedido, gravar });
         if (!nivel) {
           padeiros.soltarAviso(p.id, pedido.acao);
           return json(res, 409, { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.', producao: await producaoDaJanela(id, p) });
         }
+        gravouAMeta = gravar;
         producoes.doPadeiro(id, [{ tipo: 'fogo', campo: arte.nome, antes: String(nivel.antes), depois: String(nivel.depois) }], { id: `padeiro:${p.id}`, nome: designer.nome }, pedido.quando, { acao: pedido.acao });
       } catch (e) {
-        padeiros.soltarAviso(p.id, pedido.acao);
+        if (gravouAMeta) console.warn(`[padeiro] o fogo de ${j.producao.claquete} foi gravado no Roteiro, mas o evento não: ${e instanceof Error ? e.message : e}`);
+        else padeiros.soltarAviso(p.id, pedido.acao);
         throw e;
       }
       padeiros.avisou(p.id);

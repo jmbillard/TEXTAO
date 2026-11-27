@@ -223,6 +223,36 @@ describe('o fogo da arte pela janela do After', () => {
   });
 });
 
+describe('o fogo à prova de repetição (a fila sem rede do Padeiro repete ações)', () => {
+  it('com `nivel`, grava esse nível (não soma): mandar o mesmo nível de novo, mesmo com outro identificador, não muda nada', async () => {
+    const { agir, idDe, metaDoShow } = await preparado();
+    const show = idDe('Show da Noite');
+    const fogoDe = (r: { corpo: Resposta }, nome: string) => r.corpo.producao!.artes.find((a) => a.nome === nome)!.fogo;
+    expect(fogoDe(await agir('fogo', { producao: show, arte: 'AMANHÃ', nivel: 3 }), 'AMANHÃ')).toBe(3);
+    expect(fogoDe(await agir('fogo', { producao: show, arte: 'AMANHÃ', nivel: 3 }), 'AMANHÃ')).toBe(3);
+    expect(metaDoShow().complexidade).toEqual({ HOJE: 3, DOMINGO: 2, [chaveDeArte('AMANHÃ')]: 3 });
+    // o nível 1 (BAIXA) não é guardado, como no editor
+    expect(fogoDe(await agir('fogo', { producao: show, arte: 'HOJE', nivel: 1 }), 'HOJE')).toBe(1);
+    expect(metaDoShow().complexidade).toEqual({ DOMINGO: 2, [chaveDeArte('AMANHÃ')]: 3 });
+    for (const nivel of [0, 4, '2', 1.5]) expect((await agir('fogo', { producao: show, arte: 'HOJE', nivel })).status).toBe(400);
+  });
+
+  it('a falha no meio (a meta gravada, o evento não) e a nova tentativa com o mesmo identificador: o nível não muda duas vezes', async () => {
+    const { agir, idDe, metaDoShow, db } = await preparado();
+    const show = idDe('Show da Noite');
+    // o banco recusa o evento do fogo, depois de a meta do roteiro ter sido gravada
+    db.prepare("CREATE TRIGGER falha_no_fogo BEFORE INSERT ON eventos WHEN NEW.tipo = 'fogo' BEGIN SELECT RAISE(ABORT, 'disco cheio'); END").run();
+    expect((await agir('fogo', { producao: show, arte: 'AMANHÃ', acao: 'fogo-sem-rede' })).status).toBe(500);
+    expect((await agir('fogo', { producao: show, arte: 'DOMINGO', acao: 'fogo-com-nivel', nivel: 3 })).status).toBe(500);
+    db.prepare('DROP TRIGGER falha_no_fogo').run();
+    expect(metaDoShow().complexidade).toEqual({ HOJE: 3, DOMINGO: 3, [chaveDeArte('AMANHÃ')]: 2 });
+    // a fila repete as duas: nenhuma sobe de novo
+    expect(await agir('fogo', { producao: show, arte: 'AMANHÃ', acao: 'fogo-sem-rede' })).toMatchObject({ status: 200, corpo: { repetido: true } });
+    expect(await agir('fogo', { producao: show, arte: 'DOMINGO', acao: 'fogo-com-nivel', nivel: 3 })).toMatchObject({ status: 200, corpo: { repetido: true } });
+    expect(metaDoShow().complexidade).toEqual({ HOJE: 3, DOMINGO: 3, [chaveDeArte('AMANHÃ')]: 2 });
+  });
+});
+
 describe('entregar pela janela do After', () => {
   it('muda a etapa e move o card para a saída da praça, como o Entreguei da tela; a linha do tempo mostra a origem "Padeiro" e a hora da ação', async () => {
     const { agir, idDe, producao, linhaDoTempo, resumo, trello } = await preparado();
