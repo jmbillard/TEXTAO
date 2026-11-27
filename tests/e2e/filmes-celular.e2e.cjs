@@ -1003,9 +1003,9 @@ async function principal() {
     // a tela final e o Enviar (#84), na prévia B: até o Trello falso
     await enviarNoAndroid(android.p, trello);
 
-    // o computador não muda: a entrada larga, com o "Solte aqui o PDF da prévia"
+    // o computador não muda: a entrada larga, com a área de soltar no padrão da fila (#169)
     await pc.goto(`${s.url}#/filmes`);
-    await pc.getByText('Solte aqui o PDF da prévia').waitFor({ timeout: 30000 });
+    await pc.getByRole('button', { name: 'escolher o arquivo' }).waitFor({ timeout: 30000 });
     assert.equal(await pc.locator('.previa-celular, .subir-previa').count(), 0, 'o computador não mostra a entrada do celular');
     await pc.waitForTimeout(800);
     if (CAPTURAS) await pc.screenshot({ path: join(CAPTURAS, 'computador-entrada.png') });
