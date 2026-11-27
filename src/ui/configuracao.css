@@ -232,6 +232,14 @@ h3.cfg-modal-rotulo { margin: 22px 0 6px; }
 .cfg-exc.pessoa .cfg-exc-ico { background: var(--edicao); color: var(--papel); }
 .cfg-exc.pessoa.saiu { background: var(--cartao); border-color: var(--regua); }
 .cfg-exc.pessoa.saiu .cfg-exc-ico { background: var(--neutro); color: var(--tinta2); }
+/* #176: as vagas animadas dos Cadastros. O espaço entre os itens fica dentro da vaga (que fecha junto), não no gap
+   da lista, que pularia no fim; a margem negativa da lista tira o espaço do último */
+.cfg-novidades { gap: 0; margin-bottom: -10px; }
+.cfg-novidades:empty { display: none; }
+.cfg-novidades > .vaga-y > .vaga-dentro { display: flow-root; }
+.cfg-novidades .cfg-exc.pessoa { margin-bottom: 10px; }
+/* quantas vezes a pessoa apareceu na produção: um número discreto, sem enfeite */
+.cfg-exc-vezes { margin-left: 8px; font: 500 12px var(--mono); color: var(--tinta3, var(--tinta2)); vertical-align: 1px; }
 .cfg-exc-acoes { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .cfg-exc-acoes .botao { height: 32px; font-size: 13px; padding: 0 11px; }
 .cfg-exc-acoes .botao-texto { font-size: 13px; }

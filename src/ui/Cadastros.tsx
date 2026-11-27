@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Vagas } from './vagas';
+import { CaixinhaDoDesfazer, useDesfazerAdiado } from './desfazer';
 import { Comemoracao, tremerDeLeve } from './Comemoracao';
 import { festaDoSemCadastro, linhaDoTotal, montarTiras } from './regrasDaComemoracao';
 import { reconhecerNaFila } from '../dados/reconhecer';
@@ -565,9 +566,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [sem, setSem] = useState<KeySemCadastro[] | null>(null);
   // apagar, remover key e ignorar: some na hora, a caixinha preta oferece desfazer e só depois vai para o servidor
-  const [escondidos, setEscondidos] = useState<string[]>([]);
-  const [desfazer, setDesfazer] = useState<{ texto: React.ReactNode; id: string } | null>(null);
-  const pendente = useRef<{ id: string; executar: () => Promise<void>; timer: number } | null>(null);
+  const { escondidos, desfazer, comDesfazer, desfazerAgora } = useDesfazerAdiado();
   const nomeAtr = useRef<HTMLInputElement>(null);
   // as claquetes que têm atração: o número e a amostra da comemoração do Sem cadastro zerado (total null: ainda não
   // chegou, ou o cadastro que zerou a lista acabou de mudar o número)
@@ -882,35 +881,6 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     setAtr({ nome: nomeDaAtracaoNova(busca, k.key, k.exemplos, dados?.atracoes.map((a) => a.nome)), keys: [comoKey(k.key)], categoria: '', acervo: 'proprio', campos: {} });
     setTimeout(() => nomeAtr.current?.focus(), 0);
   };
-  /** Executa já o que estava esperando o desfazer (outro apagar começou, ou a tela vai fechar). */
-  const concluir = () => {
-    const p = pendente.current;
-    if (!p) return;
-    clearTimeout(p.timer);
-    pendente.current = null;
-    setDesfazer(null);
-    void p.executar().finally(() => setEscondidos((l) => l.filter((x) => x !== p.id)));
-  };
-  const comDesfazer = (id: string, texto: React.ReactNode, executar: () => Promise<void>) => {
-    concluir();
-    setEscondidos((l) => [...l, id]);
-    setDesfazer({ texto, id });
-    pendente.current = { id, executar, timer: window.setTimeout(concluir, 6000) };
-  };
-  const desfazerAgora = () => {
-    const p = pendente.current;
-    if (!p) return;
-    clearTimeout(p.timer);
-    pendente.current = null;
-    setDesfazer(null);
-    setEscondidos((l) => l.filter((x) => x !== p.id));
-  };
-  // sair da tela não cancela: o que foi apagado é apagado
-  useEffect(() => () => {
-    const p = pendente.current;
-    if (p) (clearTimeout(p.timer), void p.executar());
-  }, []);
-
   const ignorar = (key: string) =>
     comDesfazer(`sem:${key}`, <><b>{key}</b> ignorada.</>, async () => {
       try {
@@ -1478,24 +1448,19 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       </main>
       )}
       {desfazer && (
-        <div className="desfazer" role="status" key={desfazer.id}>
-          <span>{desfazer.texto}</span>
-          <button className="botao-texto" onClick={desfazerAgora}>Desfazer</button>
-        </div>
+        <CaixinhaDoDesfazer key={desfazer.id} desfazer={desfazerAgora}>
+          {desfazer.texto}
+        </CaixinhaDoDesfazer>
       )}
       {gravado && !desfazer && !caixinha && (
-        <div className="desfazer" role="status" key={gravado.id}>
-          <span>{gravado.texto}</span>
-          <button className="botao-texto" onClick={() => void voltarGravado()}>Desfazer</button>
-        </div>
+        <CaixinhaDoDesfazer key={gravado.id} desfazer={() => void voltarGravado()}>
+          {gravado.texto}
+        </CaixinhaDoDesfazer>
       )}
       {caixinha && !desfazer && (
-        <div className="desfazer caixinha-importacao" role="status" key={caixinha.id}>
-          <span>
-            {caixinha.novas ? <><b>+{caixinha.novas}</b> no acervo de {caixinha.atracao}.</> : <>Importação gravada no acervo de {caixinha.atracao}.</>}
-          </span>
-          <button className="botao-texto" onClick={() => void desfazerAImportacao(caixinha.id, caixinha.atracao)}>Desfazer</button>
-        </div>
+        <CaixinhaDoDesfazer key={caixinha.id} className="caixinha-importacao" desfazer={() => void desfazerAImportacao(caixinha.id, caixinha.atracao)}>
+          {caixinha.novas ? <><b>+{caixinha.novas}</b> no acervo de {caixinha.atracao}.</> : <>Importação gravada no acervo de {caixinha.atracao}.</>}
+        </CaixinhaDoDesfazer>
       )}
     </div>
   );

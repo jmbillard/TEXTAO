@@ -33,6 +33,7 @@ import { randomUUID } from 'node:crypto';
 import { ETAPAS, producaoDaLinha } from '../src/modelo/producao.ts';
 import { normalizarPraca, pracasRegistradas, reconhecerPraca } from '../src/modelo/pracas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
+import { separarPessoas } from '../src/modelo/pessoas.ts';
 import { eventosDaReleitura } from '../src/modelo/eventosDoTeable.ts';
 import { artesAgrupadas, artesDaProducao } from './trello.mjs';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
@@ -118,6 +119,40 @@ export function criarTabelaDasProducoes(db) {
   // da meta do Roteiro (a BAIXA não é guardada); quando um Roteiro é ligado, passam para ele (e a coluna se esvazia)
   if (!tem('producoes', 'fogo_das_artes')) db.exec(`ALTER TABLE producoes ADD COLUMN fogo_das_artes TEXT NOT NULL DEFAULT '{}'`);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS eventos_chave ON eventos (chave)');
+  separarOsDesignersGuardados(db);
+}
+
+/**
+ * #176: antes, os designers vinham do texto da produção da arte com os nomes juntados (para o Metabase), e a Produção
+ * guardava "Ana Prado, Bruno Sá" como um designer só. Agora a leitura vem da lista; os guardados se separam aqui, uma
+ * pessoa por nome, para a releitura não ver um designer que saiu e dois que entraram. Roda em toda partida e só grava
+ * o que muda (a segunda vez não acha nada). O SQL é portável.
+ */
+function separarOsDesignersGuardados(db) {
+  const lidas = db.prepare("SELECT id, designers FROM producoes WHERE designers LIKE '%,%' OR designers LIKE '%;%' OR designers LIKE '% e %' OR designers LIKE '% E %'").all();
+  const mudar = db.prepare('UPDATE producoes SET designers = ? WHERE id = ?');
+  const mudadas = [];
+  for (const l of lidas) {
+    let guardados;
+    try {
+      guardados = JSON.parse(l.designers ?? '[]');
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(guardados)) continue;
+    const separados = separarPessoas(guardados.map(String));
+    if (JSON.stringify(separados) !== JSON.stringify(guardados)) mudadas.push([JSON.stringify(separados), l.id]);
+  }
+  if (!mudadas.length) return;
+  db.exec('BEGIN');
+  try {
+    for (const [designers, id] of mudadas) mudar.run(designers, id);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  console.log(`[producoes] os designers de ${mudadas.length} Produções foram separados por pessoa (#176)`);
 }
 
 /** O fogo guardado na Produção (#174): as marcas { chave da arte: 2 | 3 }; {} sem nenhuma ou ilegível. */

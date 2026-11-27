@@ -1481,6 +1481,8 @@ export interface NovidadeDoQuadro {
   nome: string;
   /** o e-mail da tabela designers ou do Trello */
   email: string;
+  /** em quantas linhas da produção apareceu (só em quem entrou, #176) */
+  vezes?: number;
   /** o e-mail para tornar administrador: o do Trello ou o de quem já entrou no PROMeiro com o mesmo nome */
   emailSugerido: string;
   /** é administrador (pela chave-mestra ou pelo salvo) */

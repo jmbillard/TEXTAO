@@ -424,6 +424,9 @@ const SEQUENCIA_A = ['KONG: ILHA DA CAVEIRA', 'O CORVO', 'RIVAIS', 'FILME INEDIT
  * Arrasta o dedo na faixa, de verdade (os toques passam pelo navegador e viram a rolagem nativa): `dx` em proporção da
  * largura (negativo vai para o próximo filme), em `passos` movimentos de `ms` cada. `segurando` roda com o dedo ainda
  * na tela, no fim do caminho.
+ * Cada toque leva a hora do gesto (`timestamp`), e não a hora em que chegou: o navegador mede a velocidade (o gesto
+ * rápido) por ela, e com a máquina carregada os passos de 8 ms levavam muito mais, o gesto deixava de ser rápido e a
+ * faixa voltava (#183).
  */
 async function arrastar(p, dx, { passos = 12, ms = 30, segurando } = {}) {
   const cdp = await p.context().newCDPSession(p);
@@ -431,16 +434,21 @@ async function arrastar(p, dx, { passos = 12, ms = 30, segurando } = {}) {
   const y = caixa.y + caixa.height * 0.6;
   const x0 = caixa.x + caixa.width * (dx < 0 ? 0.85 : 0.15);
   const toque = (x) => [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: toque(x0) });
+  let hora = Date.now() / 1000;
+  const tocar = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints, timestamp: hora });
+  await tocar('touchStart', toque(x0));
   for (let k = 1; k <= passos; k++) {
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: toque(x0 + (dx * caixa.width * k) / passos) });
+    await tocar('touchMove', toque(x0 + (dx * caixa.width * k) / passos));
     await p.waitForTimeout(ms);
+    hora += ms / 1000;
   }
   if (segurando) {
     await p.waitForTimeout(150);
     await segurando();
+    // o dedo ficou parado na tela: solta na hora de agora, sem velocidade
+    hora = Math.max(hora + 0.15, Date.now() / 1000);
   }
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await tocar('touchEnd', []);
   await cdp.detach();
   await paradaNoFilme(p);
 }

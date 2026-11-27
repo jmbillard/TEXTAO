@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TABELAS_DO_TEABLE, avisosDasTabelas, colunasQueFaltam, ligarAsTabelas } from '../src/modelo/tabelasDoTeable';
+import { TABELAS_DO_TEABLE, avisosDasTabelas, colunasDosDesigners, colunasQueFaltam, ligarAsTabelas } from '../src/modelo/tabelasDoTeable';
 
 /* Tabelas e campos fictícios: os ids e os nomes de verdade ficam só no Teable. */
 const lida = (id: string, nome: string, dbTableName = `bseBase.${nome.toLowerCase()}_x`) => ({ id, nome, dbTableName });
@@ -55,6 +55,25 @@ describe('o mapa tabela → colunas que o PROMeiro usa', () => {
     expect(acervo.variavel).toBe('TEABLE_ACERVO');
     expect(acervo.api).toContain('complexidade');
     expect(acervo.pg).toContain('caminho');
+  });
+});
+
+describe('os designers da produção da arte: a lista, não o texto juntado (#176)', () => {
+  const texto = { name: 'designers', dbFieldName: 'designers', type: 'formula' };
+  it('o link para a tabela designers é a lista; o texto juntado fica de reserva', () => {
+    const campos = [texto, { name: 'quem fez', dbFieldName: 'quem_fez', type: 'link', ligaA: 'tblDes' }, { name: 'filme', dbFieldName: 'filme', type: 'link', ligaA: 'tblFilmes' }];
+    expect(colunasDosDesigners(campos, 'tblDes')).toEqual({ lista: 'quem_fez', texto: 'designers' });
+  });
+
+  it('sem o link para a tabela, o campo de lista ou de link chamado designer(s)', () => {
+    expect(colunasDosDesigners([texto, { name: 'Designer', dbFieldName: 'designer_1', type: 'multipleSelect' }], '')).toEqual({ lista: 'designer_1', texto: 'designers' });
+    // o próprio campo designers, quando já é uma lista, não é reserva de si mesmo
+    expect(colunasDosDesigners([{ name: 'designers', dbFieldName: 'designers', type: 'link', ligaA: 'tblOutra' }], 'tblDes')).toEqual({ lista: 'designers', texto: '' });
+  });
+
+  it('sem a lista, vale o texto; sem os campos lidos, o texto, como antes', () => {
+    expect(colunasDosDesigners([texto, { name: 'filme', dbFieldName: 'filme', type: 'link', ligaA: 'tblFilmes' }], 'tblDes')).toEqual({ lista: '', texto: 'designers' });
+    expect(colunasDosDesigners(undefined, 'tblDes')).toEqual({ lista: '', texto: 'designers' });
   });
 });
 

@@ -426,6 +426,29 @@ describe('andamento na produção da arte', () => {
     expect(consultas).toHaveLength(n);
   });
 
+  it('#176: os designers vêm do link (a lista); o texto juntado é reserva e se separa por pessoa', async () => {
+    const consultas: string[] = [];
+    const consultar = async (sql: string) => {
+      consultas.push(sql);
+      return [
+        { card_ID: 'c1', claquete: 'A 20/11', status: null, quem_fez: [{ id: 'recD1', title: 'Rafa Lins' }, { id: 'recD2', title: 'Bia Costa' }], designers: 'Nome Errado', entregue: false, data_entrega: null, data_entrada: null },
+        { card_ID: 'c2', claquete: 'B 20/11', status: null, quem_fez: null, designers: 'Bia Costa, Rafa Lins e Caio Reis', entregue: false, data_entrega: null, data_entrada: null },
+      ];
+    };
+    const t = criarTrello({ ...ENV, colunasDosDesigners: { lista: 'quem_fez', texto: 'designers' } }, { consultar });
+    const a = await t.andamento([
+      { id: 'r1', card: 'c1', claquete: 'A 20/11' },
+      { id: 'r2', card: 'c2', claquete: 'B 20/11' },
+    ]);
+    expect(a.r1.designers).toEqual(['Rafa Lins', 'Bia Costa']);
+    expect(a.r2.designers).toEqual(['Bia Costa', 'Rafa Lins', 'Caio Reis']);
+    expect(consultas[0]).toContain('"quem_fez", "designers"');
+    // sem o texto de reserva (o campo apagado no Teable), a consulta não o pede
+    const so: string[] = [];
+    await criarTrello({ ...ENV, colunasDosDesigners: { lista: 'quem_fez', texto: '' } }, { consultar: async (sql: string) => (so.push(sql), []) }).andamento([{ id: 'r1', card: 'c1', claquete: 'A 20/11' }]);
+    expect(so[0]).not.toContain('"designers"');
+  });
+
   it('a atração ligada na produção da arte de cada card, numa leitura só (#54)', async () => {
     const consultas: { sql: string; params: unknown[] }[] = [];
     const linhas = [

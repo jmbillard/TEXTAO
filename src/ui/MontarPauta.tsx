@@ -12,6 +12,7 @@ import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
 import { CampoDaIlha } from './CampoDaIlha';
 import type { Ilha } from '../modelo/ilhas';
 import { Icone } from './icones';
+import { CaixinhaDoDesfazer } from './desfazer';
 import { Marca } from './pecas';
 import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { AusenciasDoDia } from './AusenciasDaPauta';
@@ -757,21 +758,6 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
 }
 
 /** O recado do dia (#125): um aviso para todos naquele dia, sem posição, num campo próprio acima da grade. */
-/** A caixinha embaixo da tela, com o Desfazer e o fechar: a do Distribuir (#151) e a do "Mover para…" (#163). */
-function CaixinhaDoDesfazer({ className = '', desfazer, fechar, children }: { className?: string; desfazer: () => void; fechar: () => void; children: React.ReactNode }) {
-  return (
-    <div className={`desfazer ${className}`.trim()} role="status">
-      <span>{children}</span>
-      <button type="button" className="botao-texto" onClick={desfazer}>
-        Desfazer
-      </button>
-      <button type="button" className="botao-texto" aria-label="Fechar" onClick={fechar}>
-        ×
-      </button>
-    </div>
-  );
-}
-
 function RecadoDoDia({ texto, mudar }: { texto: string; mudar: (t: string) => void }) {
   return (
     <label className="montar-recado">

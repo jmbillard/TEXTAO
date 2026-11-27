@@ -2634,7 +2634,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       eu: eu.email,
       administradores,
       quemJaEntrou: usuarios.filter((u) => !administradores.some((a) => a.email === u.email)).map((u) => ({ email: u.email, nome: u.nome })),
-      novidades: pendentes.map(comoATelaVe),
+      // #176: quem apareceu na produção e já é administrador sai da lista (tornar admin a tira, como cadastrar)
+      novidades: pendentes.map(comoATelaVe).filter((n) => !(n.tipo === 'entrou' && n.administrador)),
       ignoradas: ignoradas.map(comoATelaVe),
       verificadoEm: verificacao?.em ?? '',
       ...(verificacao?.erro ? { erro: verificacao.erro } : {}),
@@ -2905,7 +2906,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // admin: o menu do perfil mostra a Configuração (só para administradores: a chave-mestra ou o salvo na tela);
         // novidades: quantas há no quadro (o pontinho no menu), da última verificação, sem ir ao Trello
         const admin = cadastros.podeApagar(eu.email);
-        const novidades = admin ? pessoas.separar(pessoas.guardada()?.novidades ?? []).pendentes.length : undefined;
+        const novidades = admin ? estadoDasPessoas(eu, pessoas.guardada()).novidades.length : undefined;
         // as áreas de trabalho (#101): as da pessoa (pelo e-mail nos cadastros), a de entrada e as preferências
         // coordenacao: a pessoa monta a pauta (#123); a entrada "Montar a pauta" só aparece para ela
         const dela = await daPessoa(eu.email, admin);
