@@ -253,6 +253,60 @@ describe('o fogo à prova de repetição (a fila sem rede do Padeiro repete aç�
   });
 });
 
+describe('a ação repetida responde antes das recusas de estado (#155: a fila sem rede reenvia o que perdeu a resposta)', () => {
+  it('fogo: o repetido numa Produção entregue depois responde { repetido: true, producao }; o fogo novo nela continua 409', async () => {
+    const { agir, avisar, idDe, metaDoShow } = await preparado();
+    const show = idDe('Show da Noite');
+    expect((await agir('fogo', { producao: show, arte: 'AMANHÃ', acao: 'fogo-perdido' })).status).toBe(200);
+    // a Ana pega e entrega logo depois; a resposta do fogo se perdeu, e a fila manda de novo
+    expect((await avisar(show)).status).toBe(200);
+    expect((await agir('entregar', { producao: show })).status).toBe(200);
+    expect(await agir('fogo', { producao: show, arte: 'AMANHÃ', acao: 'fogo-perdido' })).toMatchObject({ status: 200, corpo: { repetido: true, producao: { etapa: 'entregue' } } });
+    expect(metaDoShow().complexidade[chaveDeArte('AMANHÃ')]).toBe(2);
+    expect(await agir('fogo', { producao: show, arte: 'AMANHÃ' })).toMatchObject({ status: 409, corpo: { producao: { etapa: 'entregue' } } });
+  });
+
+  it('arte: a marcada repetida depois de a designer sair da Produção responde { repetido: true, producao }; a nova dela, 403', async () => {
+    const { agir, idDe, linhaDoTempo } = await preparado();
+    const festa = idDe('Festa na Praça');
+    expect((await agir('arte', { producao: festa, arte: 'CARTÃO', feita: true, acao: 'arte-perdida' })).status).toBe(200);
+    expect((await agir('voltar', { producao: festa })).status).toBe(200);
+    expect(await agir('arte', { producao: festa, arte: 'CARTÃO', feita: true, acao: 'arte-perdida' })).toMatchObject({ status: 200, corpo: { repetido: true, producao: { etapa: 'entrada', designers: [] } } });
+    expect((await agir('arte', { producao: festa, arte: 'LETTERING', feita: true })).status).toBe(403);
+    expect((await linhaDoTempo(festa)).filter((e) => e.tipo === 'arte-marcada')).toHaveLength(1);
+  });
+
+  it('entregar: a repetida na Produção já Entregue responde { repetido: true, producao }; a nova, 409', async () => {
+    const { agir, idDe, linhaDoTempo, trello } = await preparado();
+    const festa = idDe('Festa na Praça');
+    expect((await agir('entregar', { producao: festa, acao: 'entrega-perdida' })).status).toBe(200);
+    expect(await agir('entregar', { producao: festa, acao: 'entrega-perdida' })).toMatchObject({ status: 200, corpo: { repetido: true, producao: { etapa: 'entregue' } } });
+    expect(await agir('entregar', { producao: festa })).toMatchObject({ status: 409, corpo: { producao: { etapa: 'entregue' } } });
+    expect(await linhaDoTempo(festa)).toHaveLength(1);
+    expect(trello.pedidos).toHaveLength(1);
+  });
+
+  it('voltar: a repetida na Produção que já voltou para a Entrada responde { repetido: true, producao }; a nova, 409', async () => {
+    const { agir, idDe, linhaDoTempo, trello } = await preparado();
+    const festa = idDe('Festa na Praça');
+    expect((await agir('voltar', { producao: festa, acao: 'volta-perdida' })).status).toBe(200);
+    expect(await agir('voltar', { producao: festa, acao: 'volta-perdida' })).toMatchObject({ status: 200, corpo: { repetido: true, producao: { etapa: 'entrada', designers: [] } } });
+    expect(await agir('voltar', { producao: festa })).toMatchObject({ status: 409, corpo: { producao: { etapa: 'entrada' } } });
+    expect(await linhaDoTempo(festa)).toHaveLength(2);
+    expect(trello.pedidos).toHaveLength(1);
+  });
+
+  it('desfazer: o repetido depois de desfeita a ação responde { repetido: true, producao }; o novo, 409', async () => {
+    const { agir, idDe, linhaDoTempo } = await preparado();
+    const festa = idDe('Festa na Praça');
+    expect((await agir('entregar', { producao: festa, acao: 'a-entrega' })).status).toBe(200);
+    expect((await agir('desfazer', { producao: festa, acao: 'desfeita-perdida', desfaz: 'a-entrega' })).status).toBe(200);
+    expect(await agir('desfazer', { producao: festa, acao: 'desfeita-perdida', desfaz: 'a-entrega' })).toMatchObject({ status: 200, corpo: { repetido: true, producao: { etapa: 'produzindo' } } });
+    expect(await agir('desfazer', { producao: festa, desfaz: 'a-entrega' })).toMatchObject({ status: 409, corpo: { producao: { etapa: 'produzindo' } } });
+    expect(await linhaDoTempo(festa)).toHaveLength(2);
+  });
+});
+
 describe('entregar pela janela do After', () => {
   it('muda a etapa e move o card para a saída da praça, como o Entreguei da tela; a linha do tempo mostra a origem "Padeiro" e a hora da ação', async () => {
     const { agir, idDe, producao, linhaDoTempo, resumo, trello } = await preparado();

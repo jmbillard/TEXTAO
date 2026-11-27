@@ -3615,16 +3615,17 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    *   (producaoDaJanela). Lê como a lista; a que não existe (ou arquivada), 404
    * - POST /api/padeiro/arte (#146) { acao, feitaEm, producao, arte, feita }: marca (feita: true) ou desmarca a arte da
    *   Produção, só com a chave ligada e só para o designer que está na Produção (senão, 403). `acao` é o identificador
-   *   (a repetida responde { repetido: true } e não grava de novo); `feitaEm`, a hora (a atrasada segue a regra do
-   *   conflito: vale o mais recente). Responde { feito: { eventos }, producao }
+   *   (a repetida responde { repetido: true } e não grava de novo, antes do 403); `feitaEm`, a hora (a atrasada segue
+   *   a regra do conflito: vale o mais recente). Responde { feito: { eventos }, producao }
    * - POST /api/padeiro/aviso (#139) { aviso, abertoEm, producao | card | filme }: o aviso do Padeiro, o Peguei feito
    *   ao abrir ou criar o projeto (etapaDaProducao.peloPadeiro). `aviso` é o identificador (o repetido responde
    *   { repetido: true } e não grava de novo); `abertoEm`, a hora da abertura (ISO; a do futuro vale como agora). Só
    *   com a chave ligada, como a lista
    * - As ações da janela do After (#147), só com a chave ligada, no formato da arte: `acao` é o identificador (a repetida
-   *   responde { repetido: true, producao } e não grava de novo; a recusada não o ocupa) e `feitaEm`, a hora (a atrasada
-   *   segue a regra do conflito: fica no histórico, e nada vai ao Trello por ela). Respondem { feito: { eventos,
-   *   trello }, producao } (a Produção como a janela mostra); o 409 traz a `producao` também.
+   *   responde { repetido: true, producao } e não grava de novo, antes das recusas de estado, #155; a recusada não o
+   *   ocupa) e `feitaEm`, a hora (a atrasada segue a regra do conflito: fica no histórico, e nada vai ao Trello por
+   *   ela). Respondem { feito: { eventos, trello }, producao } (a Produção como a janela mostra); o 409 traz a
+   *   `producao` também.
    *   - POST /api/padeiro/fogo { acao, feitaEm, producao, arte, nivel? }: o fogo da arte no Roteiro ligado, para
    *     qualquer designer (fogoNoRoteiro): com `nivel` (1, 2 ou 3), fica nesse nível (à prova de repetição); sem ele,
    *     sobe um nível (1, 2, 3 e volta). O `nivel` que não é 1, 2 ou 3, 400; a Entregue e a sem Roteiro, 409; a arte que
@@ -3677,9 +3678,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (typeof corpo.arte !== 'string' || !corpo.arte.trim()) return json(res, 400, { erro: 'Falta a arte.' });
       const producao = typeof corpo.producao === 'string' ? producoes.uma(corpo.producao.trim().slice(0, 100)) : null;
       if (!producao || producao.arquivada) return json(res, 404, { erro: 'Essa Produção não está mais aberta no PROMeiro.' });
-      const designer = designerDoPadeiro(p);
-      if (!producao.designers.some((d) => nomeComparavel(d) === nomeComparavel(designer.nome))) return json(res, 403, { erro: 'Só quem está na Produção marca as artes dela.' });
+      // #155: a repetida responde antes das recusas de estado (a arte marcada por quem saiu da Produção logo depois)
       if (!padeiros.reservarAviso(p.id, acao, producao.id, quando)) return json(res, 200, { repetido: true, producao: await producaoDaJanela(producao.id, p) });
+      const designer = designerDoPadeiro(p);
+      if (!producao.designers.some((d) => nomeComparavel(d) === nomeComparavel(designer.nome))) {
+        padeiros.soltarAviso(p.id, acao);
+        return json(res, 403, { erro: 'Só quem está na Produção marca as artes dela.' });
+      }
       let eventos;
       try {
         eventos = producoes.arteDoPadeiro(producao.id, corpo.arte, corpo.feita, { id: `padeiro:${p.id}`, nome: designer.nome }, quando, acao);
@@ -3707,21 +3712,24 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const j = typeof corpo.producao === 'string' ? producoes.naJanela(corpo.producao.trim().slice(0, 100)) : null;
       if (!j) return json(res, 404, { erro: 'Essa Produção não está mais aberta no PROMeiro.' });
       const id = j.producao.id;
-      if (j.producao.etapa === 'entregue') return json(res, 409, { erro: 'A Produção já está Entregue: o fogo das artes não muda mais.', producao: await producaoDaJanela(id, p) });
-      if (!j.producao.roteiroId) return json(res, 409, { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.', producao: await producaoDaJanela(id, p) });
-      const arte = j.artes.find((a) => chaveDeArte(a.nome) === chaveDeArte(corpo.arte));
-      if (!arte) return json(res, 404, { erro: 'Essa arte não está na Produção.' });
+      // #155: a repetida responde antes das recusas de estado (o fogo gravado numa Produção entregue logo depois)
       if (!padeiros.reservarAviso(p.id, pedido.acao, id, pedido.quando)) return json(res, 200, { repetido: true, producao: await producaoDaJanela(id, p) });
+      // a recusada não ocupa o identificador
+      const recusar = async (status, erro, comAProducao = true) => {
+        padeiros.soltarAviso(p.id, pedido.acao);
+        return json(res, status, comAProducao ? { erro, producao: await producaoDaJanela(id, p) } : { erro });
+      };
+      if (j.producao.etapa === 'entregue') return recusar(409, 'A Produção já está Entregue: o fogo das artes não muda mais.');
+      if (!j.producao.roteiroId) return recusar(409, 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.');
+      const arte = j.artes.find((a) => chaveDeArte(a.nome) === chaveDeArte(corpo.arte));
+      if (!arte) return recusar(404, 'Essa arte não está na Produção.', false);
       const designer = designerDoPadeiro(p);
       // gravada a meta, o identificador fica ocupado: a nova tentativa da fila sem rede não muda o nível de novo
       let gravouAMeta = false;
       try {
         const gravar = !producoes.atrasado(id, { tipo: 'fogo', campo: arte.nome, quando: pedido.quando });
         const nivel = fogoNoRoteiro(j.producao.roteiroId, chaveDeArte(arte.nome), { nivel: nivelPedido, gravar });
-        if (!nivel) {
-          padeiros.soltarAviso(p.id, pedido.acao);
-          return json(res, 409, { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.', producao: await producaoDaJanela(id, p) });
-        }
+        if (!nivel) return recusar(409, 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.');
         gravouAMeta = gravar;
         producoes.doPadeiro(id, [{ tipo: 'fogo', campo: arte.nome, antes: String(nivel.antes), depois: String(nivel.depois) }], { id: `padeiro:${p.id}`, nome: designer.nome }, pedido.quando, { acao: pedido.acao });
       } catch (e) {
