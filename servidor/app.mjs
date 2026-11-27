@@ -3577,7 +3577,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * - POST /api/padeiro/cadastro { usuario, computador, sistema, sigla } (a única sem chave): 201 { chave, estado }
    * - GET /api/padeiro/eu: { estado, usuario, computador, sigla, designer } da chave; sem ela, ou com a errada, 401
    * - GET /api/padeiro/producoes (#138): { trello: [...] }, as Produções em Entrada e Produzindo no formato `trello` do
-   *   Padeiro (producoes.paraOPadeiro), cada uma com o "pronto para abrir" (#146: `pronto`, `estado`). Só a chave
+   *   Padeiro (producoes.paraOPadeiro), cada uma com o "pronto para abrir" (#146: `pronto`, `estado`), os `designers` e
+   *   o `comVoce` (#153: a pessoa da chave está nela), como na rota da Produção. Só a chave
    *   ligada lê; a pendente e a revogada, 403 { erro, estado } (a janela do After mostra só o aviso da pendente)
    * - GET /api/padeiro/producoes/<id> (#146): { producao }, a Produção como a janela do After mostra
    *   (producaoDaJanela). Lê como a lista; a que não existe (ou arquivada), 404
@@ -3621,7 +3622,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
       const lista = producoes.paraOPadeiro((claquete) => atracaoPelaClaquete(claquete, programas, pracas));
       const [cadastro, projetos] = await Promise.all([atracoesDoCadastro(), projetosDosFilmes(lista.filter((c) => c.fil).map((c) => c.filme))]);
-      return json(res, 200, { trello: lista.map((c) => ({ ...c, ...prontoParaAbrir({ atracao: c.atr, filme: c.filme, ehFilme: c.fil }, { cadastro, projetos }) })) });
+      // #153: se a pessoa da chave está na Produção, como na rota da Produção (a aba "Minhas" sem ler uma a uma)
+      const nome = nomeComparavel(designerDoPadeiro(p).nome);
+      const comVoce = (c) => !!nome && c.designers.some((d) => nomeComparavel(d) === nome);
+      return json(res, 200, { trello: lista.map((c) => ({ ...c, comVoce: comVoce(c), ...prontoParaAbrir({ atracao: c.atr, filme: c.filme, ehFilme: c.fil }, { cadastro, projetos }) })) });
     }
     const daJanela = /^\/api\/padeiro\/producoes\/([^/]{1,100})$/.exec(caminho);
     if (daJanela && req.method === 'GET') {
