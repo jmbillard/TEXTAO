@@ -1,72 +1,113 @@
-/* A tela de produções (#109): uma faixa por praça, com as colunas Entrada · Produzindo · Entregue. A moldura é a do
-   app (a linha do logo, a mesa e os cartões); o card segue o da agenda No Trello (a claquete em mono, o marca-texto da
-   prioridade ALTA, as artes à mão). Claro e escuro pelas variáveis do tema; no celular, as colunas da faixa ficam uma
-   embaixo da outra. */
+/* A tela de produções (#109): um bloco por praça (#119), com as colunas Entrada · Produzindo · Entregue dentro. A
+   moldura é a do app (a linha do logo, a mesa e os cartões); o card segue o da agenda No Trello (a claquete em mono, o
+   marca-texto da prioridade ALTA, as artes à mão). Claro e escuro pelas variáveis do tema.
+   No computador e no tablet, a página tem a altura da janela e os blocos ficam lado a lado na largura toda: cada um tem
+   ao menos --bloco-min de largura e cresce para ocupar a sobra. Quando não cabem, a área dos blocos rola para o lado (e
+   para baixo, por dentro), e o topo de cada bloco e o das colunas ficam presos em cima. No celular, como antes: as
+   praças e as etapas uma embaixo da outra, a página rolando inteira. */
 
-.prod-pagina { max-width: 1680px; margin: 0 auto; padding: 18px 32px 120px; display: flex; flex-direction: column; gap: 22px; }
+.pagina.producoes { --bloco-min: 448px; --topo-do-bloco: 54px; --margem: 24px; display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
+/* a linha do logo acompanha a largura toda dos blocos */
+.pagina.producoes .barra-topo { flex: none; width: 100%; max-width: none; padding: 0 var(--margem); }
+.prod-pagina { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 14px var(--margem) 0; }
+.prod-pagina > * { flex: none; }
 .prod-cabeca h1 { font: 400 42px/1.05 var(--serifa); letter-spacing: -0.01em; margin: 0; color: var(--tinta); }
 .prod-sub { margin: 6px 0 0; font: 400 13.5px var(--sans); color: var(--tinta3); }
 .prod-lendo { color: var(--tinta3); font: 400 14px var(--sans); }
 .prod-falha { padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
 
-/* ---------- a faixa da praça ---------- */
-.prod-faixa { border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha); padding: 14px 16px 16px; }
-.prod-faixa-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.prod-faixa-topo h2 { display: flex; align-items: baseline; gap: 10px; margin: 0; }
+/* ---------- os blocos lado a lado ---------- */
+.prod-pagina > .prod-blocos {
+  flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior-x: contain;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(var(--bloco-min), 1fr); gap: 12px;
+  margin: 0 calc(-1 * var(--margem)); padding: 0 var(--margem) 24px; scroll-padding-inline: var(--margem);
+}
+
+/* ---------- o bloco da praça ---------- */
+.prod-bloco { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha); }
+/* o topo do bloco fica em cima ao rolar para baixo (na área dos blocos) */
+.prod-bloco-topo {
+  position: sticky; top: 0; z-index: 2; box-sizing: border-box; height: var(--topo-do-bloco);
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 14px 0;
+  border-radius: 13px 13px 0 0; background: var(--cartao);
+}
+.prod-bloco-topo h2 { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin: 0; }
 .prod-sigla { font: 400 28px/1 var(--serifa); color: var(--tinta); }
-.prod-nome { font: 500 13px var(--sans); color: var(--tinta3); }
+.prod-nome { font: 500 13px var(--sans); color: var(--tinta3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prod-total { font: 500 12.5px var(--sans); color: var(--tinta3); white-space: nowrap; }
 
-.prod-colunas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.prod-coluna { min-width: 0; border-radius: 10px; background: var(--neutro); padding: 10px 10px 12px; }
-.prod-coluna h3 { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: 0 2px 10px; font: 600 12px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta2); }
+.prod-colunas { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 8px 8px; }
+.prod-coluna { min-width: 0; border-radius: 10px; background: var(--neutro); padding: 0 6px 8px; }
+/* o nome da coluna também fica em cima, logo abaixo do topo do bloco */
+.prod-coluna h3 {
+  position: sticky; top: var(--topo-do-bloco); z-index: 1;
+  /* o nome e a contagem sempre na mesma linha (o nome encolhe com reticências se faltar lugar); o "últimos dias" embaixo */
+  display: grid; grid-template-columns: 7px minmax(0, max-content) auto; justify-content: start; align-items: center; gap: 2px 6px;
+  margin: 0; padding: 9px 2px 8px; border-radius: 10px 10px 0 0; background: var(--neutro);
+  font: 600 11.5px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2);
+}
+.prod-coluna-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prod-coluna h3 i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
 .prod-coluna[data-coluna='produzindo'] h3 i { background: var(--ultra); }
 .prod-coluna[data-coluna='entregue'] h3 i { background: var(--ok); }
 .prod-conta { min-width: 22px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--cartao); color: var(--tinta); font: 600 12px/20px var(--sans); letter-spacing: 0; text-align: center; font-variant-numeric: tabular-nums; }
-.prod-recente { font: 500 11.5px var(--sans); letter-spacing: 0; text-transform: none; color: var(--tinta3); }
+.prod-recente { grid-column: 1 / -1; font: 500 11px var(--sans); letter-spacing: 0; text-transform: none; color: var(--tinta3); }
 .prod-nada { margin: 2px 4px; font: 600 17px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); }
 
-/* ---------- o card (como o da agenda) ---------- */
-.prod-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.prod-card { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px 9px; border-radius: 10px; background: var(--papel); border: 1px solid var(--regua); transition: border-color 0.2s; }
+/* ---------- o card (como o da agenda), estreito para caber três colunas por bloco ---------- */
+.prod-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.prod-card { display: flex; flex-direction: column; gap: 3px; padding: 8px 9px 8px; border-radius: 9px; background: var(--papel); border: 1px solid var(--regua); transition: border-color 0.2s; }
 .prod-card:hover { border-color: var(--regua-forte); }
-.prod-claquete { font: 600 13.5px/1.3 var(--mono); letter-spacing: -0.01em; color: var(--tinta); overflow-wrap: anywhere; }
-.prod-atracao { font: 500 12.5px/1.3 var(--sans); color: var(--tinta2); }
-.prod-linha { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; font-size: 12px; color: var(--tinta3); }
-.prod-artes { font: 600 17px/1 Caveat, cursive; color: var(--tinta2); letter-spacing: 0.01em; }
-.prod-prazo { white-space: nowrap; }
-.prod-prazo b { font-weight: 600; color: var(--tinta2); }
+/* a claquete quebra a linha onde precisar: nunca é cortada */
+.prod-claquete { font: 600 12.5px/1.3 var(--mono); letter-spacing: -0.01em; color: var(--tinta); overflow-wrap: anywhere; }
+.prod-atracao { font: 500 12px/1.3 var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
+.prod-linha { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 8px; font-size: 11.5px; color: var(--tinta3); }
+.prod-artes { font: 600 16px/1.1 Caveat, cursive; color: var(--tinta2); letter-spacing: 0.01em; }
+.prod-prazo b { font-weight: 600; color: var(--tinta2); white-space: nowrap; }
 .prod-prazo.passou b { color: var(--falta); }
 .prod-prazo.sem { font-style: italic; }
-.prod-pe { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; font-size: 12px; color: var(--tinta2); }
+.prod-pe { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; margin-top: 2px; font-size: 11.5px; color: var(--tinta2); }
 .prod-designers { font-weight: 500; }
-.prod-marcador, .prod-sem-card { padding: 1px 7px; border-radius: 6px; font: 500 11px/16px var(--sans); white-space: nowrap; }
+.prod-marcador, .prod-sem-card { padding: 1px 6px; border-radius: 6px; font: 500 10.5px/15px var(--sans); }
 .prod-marcador { background: var(--ultra-suave); color: var(--ultra-tinta); }
-.prod-sem-card { box-shadow: inset 0 0 0 1px var(--regua-forte); color: var(--tinta3); }
-
-/* ---------- tablet e celular ---------- */
-@media (max-width: 900px) {
-  .prod-pagina { padding: 14px 16px 80px; }
-  .prod-cabeca h1 { font-size: 34px; }
-}
-@media (max-width: 600px) {
-  /* as etapas da faixa uma embaixo da outra */
-  .prod-colunas { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-  .prod-faixa { padding: 12px 12px 14px; }
-  .prod-claquete { font-size: 14px; }
-}
+.prod-sem-card { box-shadow: inset 0 0 0 1px var(--regua-forte); color: var(--tinta3); white-space: nowrap; }
 
 /* ---------- pegar e voltar para a Entrada (#110) ---------- */
-.prod-acoes { display: flex; justify-content: flex-end; margin-top: 6px; }
-.prod-mudar { height: 30px; padding: 0 12px; font-size: 12.5px; }
+.prod-acoes { display: flex; margin-top: 5px; }
+.prod-mudar { width: 100%; justify-content: center; height: auto; min-height: 28px; padding: 4px 8px; font-size: 12px; line-height: 1.25; text-align: center; white-space: normal; }
 .prod-mudar.pegar { background: var(--tinta); border-color: var(--tinta); color: var(--papel); font-weight: 600; }
 .prod-mudar.pegar:hover { opacity: 0.9; }
 .prod-sem-ligacao, .prod-recusa { margin: 0; padding: 10px 14px; border-radius: 10px; font: 400 13.5px/1.45 var(--sans); }
 .prod-sem-ligacao { background: var(--neutro); color: var(--tinta2); }
 .prod-recusa { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; background: var(--falta-fundo); color: var(--falta); }
 .prod-recusa .botao-texto { color: inherit; flex: none; }
+
+/* ---------- tablet: ao menos um bloco inteiro, e a área rola para o lado de praça em praça ---------- */
+@media (max-width: 900px) {
+  .pagina.producoes { --margem: 16px; }
+  .prod-pagina { padding-top: 12px; }
+  .prod-cabeca h1 { font-size: 34px; }
+  .prod-pagina > .prod-blocos { scroll-snap-type: x proximity; }
+  .prod-bloco { scroll-snap-align: start; }
+}
+
+/* ---------- celular: como antes, as praças e as etapas uma embaixo da outra ---------- */
 @media (max-width: 600px) {
+  .pagina.producoes { display: block; height: auto; min-height: 100vh; }
+  .prod-pagina { gap: 22px; padding: 14px 16px 80px; }
+  .prod-pagina > .prod-blocos { display: flex; flex-direction: column; gap: 22px; overflow: visible; margin: 0; padding: 0; scroll-snap-type: none; }
+  .prod-bloco { padding: 12px 12px 14px; }
+  .prod-bloco-topo { position: static; height: auto; padding: 0; margin-bottom: 12px; }
+  .prod-colunas { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0; }
+  .prod-coluna { padding: 10px 10px 12px; }
+  .prod-coluna h3 { position: static; display: flex; flex-wrap: wrap; gap: 7px; padding: 0; margin: 0 2px 10px; font-size: 12px; letter-spacing: 0.06em; }
+  .prod-cards { gap: 8px; }
+  .prod-card { padding: 10px 12px 9px; }
+  .prod-claquete { font-size: 14px; }
+  .prod-atracao { font-size: 12.5px; }
+  .prod-linha, .prod-pe { font-size: 12px; }
+  .prod-artes { font-size: 17px; }
   /* no celular, o botão do card no tamanho do dedo */
-  .prod-mudar { height: 44px; width: 100%; justify-content: center; font-size: 14px; }
+  .prod-acoes { justify-content: flex-end; margin-top: 6px; }
+  .prod-mudar { height: 44px; font-size: 14px; }
 }

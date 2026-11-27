@@ -236,9 +236,9 @@ describe('a releitura da produção da arte: os eventos nascem do Teable', () =>
 });
 
 /* A tela de produções (#109): a rota de leitura, para qualquer pessoa logada, com as Produções abertas por praça e
-   etapa, montada só do que o PROMeiro guarda (nada do Trello: o ambiente nem tem o Trello). Uma faixa por praça, na
+   etapa, montada só do que o PROMeiro guarda (nada do Trello: o ambiente nem tem o Trello). Um bloco por praça, na
    ordem das praças da Configuração (aqui, as de fábrica); o Entregue só com os dos últimos 3 dias; as arquivadas fora;
-   as sem card na faixa delas; a ordem pelo prazo e, no mesmo prazo, a ALTA primeiro. */
+   as sem card no bloco delas; a ordem pelo prazo e, no mesmo prazo, a ALTA primeiro. */
 describe('a tela de produções: as Produções abertas por praça e etapa', () => {
   const DIA = 86_400_000;
   const agora = Date.now();
@@ -260,8 +260,8 @@ describe('a tela de produções: as Produções abertas por praça e etapa', () 
     registro('recTela7', { card_ID: card(17), claquete: `RIO Show ${dm(2)}`, status: '["PRODUZINDO"]', designers: '["Designer Um"]', arquivado: true, data_entrada: ha(2) }),
   ];
   type Card = { id: string; claquete: string; atracao: string; semCard: boolean; artes: { aProduzir: number | null; entregues: number }; designers: string[]; alta: boolean; prazo: string | null; marcador: string };
-  type Faixa = { praca: string; nome: string; colunas: Record<'entrada' | 'produzindo' | 'entregue', Card[]> };
-  type Tela = { entregueDias: number; faixas: Faixa[] };
+  type Bloco = { praca: string; nome: string; colunas: Record<'entrada' | 'produzindo' | 'entregue', Card[]> };
+  type Tela = { entregueDias: number; blocos: Bloco[] };
 
   async function tela(db = abrirBanco(':memory:')) {
     const s = await comServidor({ db, registros: { ARTE_producao: linhas(), exibicoes: [] } });
@@ -270,19 +270,19 @@ describe('a tela de produções: as Produções abertas por praça e etapa', () 
     return { ...s, r, corpo: (await r.json()) as Tela };
   }
   const claquetes = (cs: Card[]) => cs.map((c) => c.claquete);
-  const daPraca = (t: Tela, sigla: string) => t.faixas.find((f) => f.praca === sigla)!;
+  const daPraca = (t: Tela, sigla: string) => t.blocos.find((f) => f.praca === sigla)!;
 
-  it('qualquer pessoa logada lê; uma faixa por praça, na ordem das praças, com as três colunas', async () => {
+  it('qualquer pessoa logada lê; um bloco por praça, na ordem das praças, com as três colunas', async () => {
     const { r, corpo } = await tela();
     expect(r.status).toBe(200);
     expect(corpo.entregueDias).toBe(3);
-    expect(corpo.faixas.map((f) => [f.praca, f.nome])).toEqual([
+    expect(corpo.blocos.map((f) => [f.praca, f.nome])).toEqual([
       ['G5', 'Rede (G5)'],
       ['RJ', 'Rio'],
       ['SP', 'São Paulo'],
       ['INTER', 'Internacional'],
     ]);
-    // a praça sem nada também tem a faixa, com as colunas vazias
+    // a praça sem nada também tem o bloco, com as colunas vazias
     expect(daPraca(corpo, 'INTER').colunas).toEqual({ entrada: [], produzindo: [], entregue: [] });
   });
 
@@ -317,7 +317,7 @@ describe('a tela de produções: as Produções abertas por praça e etapa', () 
     expect(JSON.stringify(corpo)).not.toMatch(/Jogo Antigo|RIO Show/);
   });
 
-  it('as Produções sem card (a linha sem card, o filme) ficam na faixa da praça delas', async () => {
+  it('as Produções sem card (a linha sem card, o filme) ficam no bloco da praça delas', async () => {
     const { corpo } = await tela();
     const [cozinha] = daPraca(corpo, 'SP').colunas.entrada;
     expect(cozinha).toMatchObject({ claquete: `Cozinha de Vó ${dm(1)} SP`, semCard: true });
@@ -364,7 +364,7 @@ describe('a tela de produções: pegar e voltar para a Entrada', () => {
   }
 
   type Card = { id: string; claquete: string; etapa: string; designers: string[] };
-  type Tela = { faixas: { praca: string; colunas: Record<string, Card[]> }[]; voce: { designer: string | null; porQue?: string } };
+  type Tela = { blocos: { praca: string; colunas: Record<string, Card[]> }[]; voce: { designer: string | null; porQue?: string } };
   type EventoDaLinha = { tipo: string; antes: string | null; depois: string | null; quem: string | null; quando: string; origem?: string };
 
   async function preparado() {
@@ -380,7 +380,7 @@ describe('a tela de produções: pegar e voltar para a Entrada', () => {
     // a carga e a verificação das pessoas não pedem nada ao Trello
     expect(t.pedidos).toEqual([]);
     const tela = async (quem = s.ana) => (await (await quem('/api/producoes/por-praca')).json()) as Tela;
-    const daClaquete = async (inicio: string) => (await tela()).faixas.flatMap((f) => Object.values(f.colunas).flat()).find((c) => c.claquete.startsWith(inicio))!;
+    const daClaquete = async (inicio: string) => (await tela()).blocos.flatMap((f) => Object.values(f.colunas).flat()).find((c) => c.claquete.startsWith(inicio))!;
     const idDe = async (inicio: string) => (await daClaquete(inicio)).id;
     const mudar = (id: string, etapa: string, quem = s.ana) => quem('/api/producoes/etapa', { method: 'POST', body: JSON.stringify({ producao: id, etapa }) });
     const linhaDoTempo = async (id: string) => ((await (await s.ana(`/api/linha-do-tempo?producao=${id}`)).json()) as { eventos: EventoDaLinha[] }).eventos;

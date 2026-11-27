@@ -3,12 +3,17 @@
 // Sobe o servidor e o Vite como os outros e2e (banco temporário, nada sai para a rede), com o Teable falso
 // (tests/fixtures/teable-falso.mjs): a produção da arte, fictícia, carregada como Produções do PROMeiro. Quem abre não é
 // administrador (a tela é de todo mundo que entrou). No computador, claro e escuro: a entrada no topo da fila, ao lado
-// da agenda No Trello, e o endereço próprio na área Designer; uma faixa por praça na ordem das praças (as de fábrica),
-// com as colunas Entrada · Produzindo · Entregue lado a lado e a contagem de cada uma; os cards na ordem do prazo (no
+// da agenda No Trello, e o endereço próprio na área Designer; um bloco por praça na ordem das praças (as de fábrica),
+// com as colunas Entrada · Produzindo · Entregue lado a lado dentro dele e a contagem de cada uma; os cards na ordem do prazo (no
 // mesmo prazo, a ALTA primeiro, com o marca-texto da agenda), com a claquete, a atração, as artes, os designers e o
-// prazo; o Entregue só com os dos últimos 3 dias; a arquivada fora; as sem card (a linha sem card, o filme) na faixa
-// delas; a releitura a cada minuto, como a agenda; e a volta para a agenda. No celular, claro e escuro, cada faixa com
-// as etapas uma embaixo da outra, sem rolar para o lado. Nenhum pedido ao Trello, nem do navegador nem do servidor.
+// prazo; o Entregue só com os dos últimos 3 dias; a arquivada fora; as sem card (a linha sem card, o filme) no bloco
+// delas; a releitura a cada minuto, como a agenda; e a volta para a agenda. No celular, claro e escuro, as praças e as
+// etapas uma embaixo da outra, sem rolar para o lado.
+//
+// #119, os blocos: a 1920px (claro) os quatro blocos cabem lado a lado e usam a largura toda; a 1440px (escuro) ficam
+// lado a lado com a área rolando para o lado até a última praça; numa janela baixa, o topo do bloco e o das colunas
+// ficam presos em cima ao rolar para baixo; no card estreito, nada passa da borda (a claquete quebra, não é cortada).
+// No tablet, cabe um bloco inteiro e a área rola para o lado entre as praças. Nenhum pedido ao Trello, nem do navegador nem do servidor.
 //
 // #110, os botões: a Lia (ligada ao designer pelo e-mail no cadastro de designers) pega o card da Entrada ("Peguei")
 // e volta o de Produzindo e o de Entregue para a Entrada; a mudança aparece na hora e fica depois de recarregar; o
@@ -102,28 +107,106 @@ const capturar = async (p, nome) => {
 };
 const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
 const hash = (p) => new URL(p.url()).hash;
-const coluna = (p, praca, k) => p.locator(`.prod-faixa[data-praca="${praca}"] .prod-coluna[data-coluna="${k}"]`);
+const coluna = (p, praca, k) => p.locator(`.prod-bloco[data-praca="${praca}"] .prod-coluna[data-coluna="${k}"]`);
 const claquetes = (p, praca, k) => textos(coluna(p, praca, k).locator('.prod-claquete'));
 const contas = async (p, praca) => Promise.all(['entrada', 'produzindo', 'entregue'].map(async (k) => Number(await coluna(p, praca, k).locator('.prod-conta').textContent())));
 const cardDe = (p, claquete) => p.locator('.prod-card', { has: p.locator('.prod-claquete', { hasText: claquete }) });
 
+/** Onde estão os blocos e a área deles (em px da janela), e quanto a área rola. */
+const medidasDosBlocos = (p) =>
+  p.locator('.prod-blocos').evaluate((a) => {
+    const r = a.getBoundingClientRect();
+    const estilo = getComputedStyle(a);
+    return {
+      area: { left: r.left + parseFloat(estilo.paddingLeft), right: r.left + a.clientWidth - parseFloat(estilo.paddingRight), top: r.top },
+      largura: a.clientWidth,
+      rolaDeLado: a.scrollWidth - a.clientWidth,
+      blocos: [...a.querySelectorAll('.prod-bloco')].map((b) => {
+        const c = b.getBoundingClientRect();
+        return { praca: b.dataset.praca, left: c.left, right: c.right, top: Math.round(c.top), width: c.width };
+      }),
+    };
+  });
+/** Os elementos do card que passam da borda dele (nada deveria). */
+const passamDaBorda = (p) =>
+  p.locator('.prod-card').evaluateAll((cs) =>
+    cs.flatMap((c) => {
+      const r = c.getBoundingClientRect();
+      return [...c.querySelectorAll('*')].filter((e) => {
+        const q = e.getBoundingClientRect();
+        return q.width > 0 && (q.left < r.left - 0.5 || q.right > r.right + 0.5 || e.scrollWidth > e.clientWidth + 1);
+      }).map((e) => `${c.querySelector('.prod-claquete').textContent} · ${e.className}`);
+    }),
+  );
+
+/** Os blocos lado a lado: a 1920px cabem todos e usam a largura toda; a 1440px, a área rola para o lado. */
+async function blocosLadoALado(p, largura) {
+  const m = await medidasDosBlocos(p);
+  assert.deepEqual(m.blocos.map((b) => b.praca), ['G5', 'RJ', 'SP', 'INTER']);
+  assert.equal(new Set(m.blocos.map((b) => b.top)).size, 1, `${largura}: os blocos ficam lado a lado`);
+  for (let i = 1; i < m.blocos.length; i++) assert.ok(m.blocos[i].left >= m.blocos[i - 1].right, `${largura}: um bloco depois do outro`);
+  // dentro do bloco, as três colunas lado a lado
+  const topos = await p.locator('.prod-bloco[data-praca="SP"] .prod-coluna').evaluateAll((cs) => cs.map((c) => Math.round(c.getBoundingClientRect().top)));
+  assert.equal(new Set(topos).size, 1, `${largura}: no bloco, as colunas ficam lado a lado`);
+  assert.deepEqual(await passamDaBorda(p), [], `${largura}: nada passa da borda do card`);
+  // no topo de cada coluna, o nome inteiro e a contagem na mesma linha
+  const nomes = await p.locator('.prod-coluna h3').evaluateAll((hs) =>
+    hs.map((h) => ({ cortado: h.querySelector('.prod-coluna-nome').scrollWidth > h.querySelector('.prod-coluna-nome').clientWidth, linha: Math.abs(h.querySelector('.prod-conta').getBoundingClientRect().top - h.querySelector('i').getBoundingClientRect().top) < 12 })),
+  );
+  assert.ok(nomes.every((n) => !n.cortado && n.linha), `${largura}: o nome da coluna e a contagem na mesma linha (${JSON.stringify(nomes)})`);
+  if (largura >= 1920) {
+    assert.ok(m.rolaDeLado <= 1, `1920: os quatro blocos cabem (${m.rolaDeLado}px a rolar)`);
+    assert.ok(m.blocos[0].left - m.area.left <= 1 && m.area.right - m.blocos.at(-1).right <= 1, `1920: os blocos usam a largura toda (${JSON.stringify(m.area)})`);
+  } else {
+    // três inteiros à vista; o quarto aparece rolando a área para o lado (a página não rola)
+    assert.ok(m.rolaDeLado > 0, `${largura}: a área dos blocos rola para o lado`);
+    assert.ok(m.blocos.slice(0, 3).every((b) => b.right <= m.area.right + 1), `${largura}: três blocos inteiros à vista`);
+    await p.locator('.prod-blocos').evaluate((a) => (a.scrollLeft = a.scrollWidth));
+    const fim = await medidasDosBlocos(p);
+    assert.ok(Math.abs(fim.blocos.at(-1).right - fim.area.right) <= 1, `${largura}: rolando para o lado, a última praça aparece inteira`);
+    await p.locator('.prod-blocos').evaluate((a) => (a.scrollLeft = 0));
+  }
+}
+
+/** Numa janela baixa, o topo do bloco e o das colunas ficam presos em cima ao rolar a área para baixo. */
+async function topoPreso(p, largura) {
+  await p.setViewportSize({ width: largura, height: 560 });
+  const area = p.locator('.prod-blocos');
+  const { rola, topo } = await area.evaluate((a) => ({ rola: a.scrollHeight - a.clientHeight, topo: a.getBoundingClientRect().top }));
+  assert.ok(rola > 80, `numa janela baixa, a área dos blocos rola para baixo (${rola}px)`);
+  await area.evaluate((a) => (a.scrollTop = a.scrollHeight));
+  const presos = await p.locator('.prod-bloco').evaluateAll((bs) =>
+    bs.map((b) => ({ topo: b.querySelector('.prod-bloco-topo').getBoundingClientRect(), coluna: b.querySelector('.prod-coluna h3').getBoundingClientRect() })),
+  );
+  for (const b of presos) {
+    assert.ok(Math.abs(b.topo.top - topo) <= 1, `o topo do bloco fica em cima (${b.topo.top} e ${topo})`);
+    assert.ok(Math.abs(b.coluna.top - b.topo.bottom) <= 1, 'o nome da coluna fica logo abaixo do topo do bloco');
+  }
+  assert.ok(await p.evaluate(() => scrollY === 0), 'quem rola é a área dos blocos, não a página');
+  await area.evaluate((a) => (a.scrollTop = 0));
+  await p.setViewportSize({ width: largura, height: 1000 });
+}
+
 async function noComputador(navegador, url, tema, chamadasAoTrello) {
   const nome = tema === 'dark' ? 'escuro' : 'claro';
-  const { ctx, p, erros, aoTrello, leituras } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema }, '', { relogio: tema === 'light' });
+  // o claro a 1920px, o escuro a 1440px
+  const largura = tema === 'dark' ? 1440 : 1920;
+  const { ctx, p, erros, aoTrello, leituras } = await abrir(navegador, url, { viewport: { width: largura, height: 1000 }, colorScheme: tema }, '', { relogio: tema === 'light' });
   assert.equal(await fundoEscuro(p), tema === 'dark');
 
   // a entrada no topo da fila, ao lado da agenda No Trello; o endereço próprio, na área Designer
   await p.locator('.barra-topo .topo-producoes').click();
-  await p.locator('.prod-faixa').first().waitFor();
+  await p.locator('.prod-bloco').first().waitFor();
   assert.equal(hash(p), '#/designer/producoes');
   assert.equal((await p.locator('.prod-cabeca h1').textContent()).trim(), 'Produções');
 
-  // uma faixa por praça, na ordem das praças (a que não tem nada também), com as três colunas lado a lado
-  assert.deepEqual(await p.locator('.prod-faixa').evaluateAll((fs) => fs.map((f) => f.dataset.praca)), ['G5', 'RJ', 'SP', 'INTER']);
-  assert.deepEqual(await p.locator('.prod-faixa[data-praca="SP"] .prod-coluna').evaluateAll((cs) => cs.map((c) => c.dataset.coluna)), ['entrada', 'produzindo', 'entregue']);
-  assert.deepEqual(await textos(p.locator('.prod-faixa[data-praca="SP"] .prod-coluna-nome')), ['Entrada', 'Produzindo', 'Entregue']);
-  const topos = await p.locator('.prod-faixa[data-praca="SP"] .prod-coluna').evaluateAll((cs) => cs.map((c) => Math.round(c.getBoundingClientRect().top)));
-  assert.equal(new Set(topos).size, 1, 'no computador, as colunas ficam lado a lado');
+  // um bloco por praça, na ordem das praças (a que não tem nada também), com as três colunas dentro dele
+  assert.deepEqual(await p.locator('.prod-bloco').evaluateAll((fs) => fs.map((f) => f.dataset.praca)), ['G5', 'RJ', 'SP', 'INTER']);
+  assert.deepEqual(await p.locator('.prod-bloco[data-praca="SP"] .prod-coluna').evaluateAll((cs) => cs.map((c) => c.dataset.coluna)), ['entrada', 'produzindo', 'entregue']);
+  assert.deepEqual(await textos(p.locator('.prod-bloco[data-praca="SP"] .prod-coluna-nome')), ['Entrada', 'Produzindo', 'Entregue']);
+  // no topo do bloco, a sigla, o nome e o total da praça
+  assert.deepEqual(await textos(p.locator('.prod-bloco[data-praca="SP"] .prod-bloco-topo').locator('.prod-sigla, .prod-nome, .prod-total')), ['SP', 'São Paulo', '3 produções']);
+  await blocosLadoALado(p, largura);
 
   // a contagem de cada coluna
   assert.deepEqual(await contas(p, 'SP'), [3, 0, 0]);
@@ -153,7 +236,7 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.equal(await cardDe(p, 'Jogo Antigo').count(), 0);
   assert.equal(await cardDe(p, 'RIO Show').count(), 0);
 
-  // as sem card ficam na faixa delas, marcadas
+  // as sem card ficam no bloco delas, marcadas
   assert.equal(await cardDe(p, 'Cozinha de Vó').locator('.prod-sem-card').count(), 1);
   const filme = coluna(p, 'G5', 'entrada').locator('.prod-card');
   assert.equal((await filme.locator('.prod-atracao').textContent()).trim(), 'Filme da Tarde');
@@ -161,7 +244,8 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.equal(await festa.locator('.prod-sem-card').count(), 0);
 
   await semRolagemDeLado(p, `computador ${nome}`);
-  await capturar(p, `01-producoes-computador-${nome}`);
+  await capturar(p, `01-producoes-${largura}-${nome}`);
+  await topoPreso(p, largura);
 
   // a releitura a cada minuto, como a agenda
   if (tema === 'light') {
@@ -181,22 +265,41 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.deepEqual(chamadasAoTrello, [], 'nenhum pedido ao Trello pelo servidor');
   assert.deepEqual(erros, []);
   await ctx.close();
-  console.log(`ok: computador ${nome}: as faixas por praça, as colunas com a contagem, os cards na ordem do prazo, o Entregue recente`);
+  console.log(`ok: computador ${nome} (${largura}px): os blocos lado a lado${largura < 1920 ? ' (a área rola para o lado)' : ', na largura toda'}, o topo preso ao rolar, as colunas com a contagem, os cards na ordem do prazo, o Entregue recente`);
+}
+
+async function noTablet(navegador, url) {
+  const { ctx, p, erros } = await abrir(navegador, url, { ...devices['iPad Mini'], colorScheme: 'light' });
+  await p.locator('.prod-bloco').first().waitFor();
+  const m = await medidasDosBlocos(p);
+  assert.equal(new Set(m.blocos.map((b) => b.top)).size, 1, 'tablet: os blocos lado a lado');
+  assert.ok(m.blocos[0].right <= m.area.right + 1, `tablet: cabe um bloco inteiro (${m.blocos[0].width}px em ${m.largura}px)`);
+  assert.ok(m.rolaDeLado > 0, 'tablet: a área rola para o lado entre as praças');
+  const topos = await p.locator('.prod-bloco[data-praca="G5"] .prod-coluna').evaluateAll((cs) => cs.map((c) => Math.round(c.getBoundingClientRect().top)));
+  assert.equal(new Set(topos).size, 1, 'tablet: no bloco, as colunas lado a lado');
+  assert.deepEqual(await passamDaBorda(p), [], 'tablet: nada passa da borda do card');
+  await semRolagemDeLado(p, 'tablet');
+  await capturar(p, '02-producoes-tablet');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: tablet: um bloco inteiro à vista, a área rola para o lado entre as praças');
 }
 
 async function noCelular(navegador, url, tema, chamadasAoTrello) {
   const nome = tema === 'dark' ? 'escuro' : 'claro';
   const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: tema });
-  await p.locator('.prod-faixa').first().waitFor();
+  await p.locator('.prod-bloco').first().waitFor();
   assert.equal(await fundoEscuro(p), tema === 'dark');
-  // as etapas da faixa uma embaixo da outra
-  const caixas = await p.locator('.prod-faixa[data-praca="SP"] .prod-coluna').evaluateAll((cs) => cs.map((c) => c.getBoundingClientRect()).map((r) => ({ top: r.top, bottom: r.bottom, left: Math.round(r.left) })));
+  // as praças uma embaixo da outra, e as etapas de cada uma também
+  const blocos = await p.locator('.prod-bloco').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect()).map((r) => ({ top: r.top, bottom: r.bottom })));
+  assert.ok(blocos.every((b, i) => i === 0 || blocos[i - 1].bottom <= b.top), 'no celular, as praças uma embaixo da outra');
+  const caixas = await p.locator('.prod-bloco[data-praca="SP"] .prod-coluna').evaluateAll((cs) => cs.map((c) => c.getBoundingClientRect()).map((r) => ({ top: r.top, bottom: r.bottom, left: Math.round(r.left) })));
   assert.equal(caixas.length, 3);
   assert.ok(caixas[0].bottom <= caixas[1].top && caixas[1].bottom <= caixas[2].top, 'no celular, Entrada, Produzindo e Entregue uma embaixo da outra');
   assert.equal(new Set(caixas.map((c) => c.left)).size, 1);
   assert.deepEqual(await claquetes(p, 'SP', 'entrada'), [`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`, `Show da Noite ${dm(3)} SP`]);
   await semRolagemDeLado(p, `celular ${nome}`);
-  await capturar(p, `02-producoes-celular-${nome}`);
+  await capturar(p, `03-producoes-celular-${nome}`);
   assert.deepEqual(aoTrello, []);
   assert.deepEqual(chamadasAoTrello, []);
   assert.deepEqual(erros, []);
@@ -211,7 +314,7 @@ async function entradaNoCelular(navegador, url) {
   assert.equal(await entrada.locator('span').isVisible(), false);
   await semRolagemDeLado(p, 'fila no celular');
   await entrada.tap();
-  await p.locator('.prod-faixa').first().waitFor();
+  await p.locator('.prod-bloco').first().waitFor();
   assert.equal(hash(p), '#/designer/producoes');
   assert.deepEqual(erros, []);
   await ctx.close();
@@ -228,7 +331,7 @@ const designersDe = async (c) => ((await c.locator('.prod-designers').count()) ?
 
 async function osBotoes(navegador, url, chamadasAoTrello) {
   const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
-  await p.locator('.prod-faixa').first().waitFor();
+  await p.locator('.prod-bloco').first().waitFor();
   assert.equal(await p.locator('.prod-sem-ligacao').count(), 0, 'a Lia está ligada a um designer');
   // da Entrada, "Peguei"; de Produzindo e de Entregue, a volta para a Entrada
   assert.deepEqual(await textos(coluna(p, 'SP', 'entrada').locator('.prod-mudar')), ['Peguei', 'Peguei', 'Peguei']);
@@ -243,7 +346,7 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   assert.deepEqual(await textos(cardDe(p, 'Festa na Praça').locator('.prod-mudar')), ['Voltar para a Entrada']);
   await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
   assert.deepEqual(chamadasAoTrello.splice(0), [`POST /cards/${card(2)}/idMembers ?value=membroLia`]);
-  await capturar(p, '03-producoes-peguei');
+  await capturar(p, '04-producoes-peguei');
 
   // o Trello recusa: a tela volta atrás e mostra o motivo
   await cardDe(p, 'Show da Noite').locator('.prod-mudar').click();
@@ -254,7 +357,7 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   assert.deepEqual(await claquetes(p, 'SP', 'entrada'), [`Cozinha de Vó ${dm(1)} SP`, `Show da Noite ${dm(3)} SP`]);
   assert.deepEqual(await contas(p, 'SP'), [2, 1, 0]);
   chamadasAoTrello.splice(0);
-  await capturar(p, '04-producoes-trello-recusou');
+  await capturar(p, '05-producoes-trello-recusou');
   await recusa.locator('button').click();
   assert.equal(await recusa.count(), 0);
 
@@ -276,7 +379,7 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
 
   // recarregada, a tela mostra o que o PROMeiro guardou
   await p.reload();
-  await p.locator('.prod-faixa').first().waitFor();
+  await p.locator('.prod-bloco').first().waitFor();
   assert.deepEqual(await claquetes(p, 'SP', 'produzindo'), [`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`]);
   assert.deepEqual(await contas(p, 'G5'), [3, 0, 0]);
   assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
@@ -286,21 +389,21 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
 
   // no celular, os botões no tamanho do dedo
   const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
-  await cel.p.locator('.prod-faixa').first().waitFor();
+  await cel.p.locator('.prod-bloco').first().waitFor();
   const alturas = await cel.p.locator('.prod-mudar').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
   assert.ok(alturas.length > 0 && alturas.every((h) => h >= 44), 'no celular, os botões têm 44px');
   await semRolagemDeLado(cel.p, 'celular com os botões');
-  await capturar(cel.p, '05-producoes-celular-botoes');
+  await capturar(cel.p, '06-producoes-celular-botoes');
   assert.deepEqual(cel.erros, []);
   await cel.ctx.close();
   console.log('ok: celular: os botões com 44px');
 
   // quem não está ligado a um designer: vê a tela, sem os botões, e a explicação
   const rui = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/designer/producoes', { email: RUI });
-  await rui.p.locator('.prod-faixa').first().waitFor();
+  await rui.p.locator('.prod-bloco').first().waitFor();
   assert.match(await rui.p.locator('.prod-sem-ligacao').textContent(), /cadastro de designer.*administrador/s);
   assert.equal(await rui.p.locator('.prod-mudar').count(), 0);
-  await capturar(rui.p, '06-producoes-sem-ligacao');
+  await capturar(rui.p, '07-producoes-sem-ligacao');
   assert.deepEqual(rui.erros, []);
   await rui.ctx.close();
   console.log('ok: sem a ligação com o designer: a tela sem os botões, com a explicação');
@@ -338,6 +441,7 @@ async function principal() {
   let falhou = false;
   try {
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema, chamadasAoTrello);
+    await noTablet(navegador, s.url);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema, chamadasAoTrello);
     await entradaNoCelular(navegador, s.url);
     await osBotoes(navegador, s.url, chamadasAoTrello);

@@ -309,11 +309,12 @@ _Evitar_: histórico (na tela), log, atividade. Não confundir com a linha do te
 (as versões dele).
 
 **Tela de produções**:
-A tela das Produções abertas por etapa, para qualquer designer (ADR 0006, interrogatório de 27/11): uma **faixa da
-praça** por praça, cada uma com as colunas Entrada · Produzindo · Entregue. Mudar a etapa (arrastando ou com um botão)
+A tela das Produções abertas por etapa, para qualquer designer (ADR 0006, interrogatório de 27/11): um **bloco da
+praça** por praça, cada um com as colunas Entrada · Produzindo · Entregue dentro. No computador, os blocos ficam lado
+a lado na largura toda (#119); no celular, um embaixo do outro. Mudar a etapa (arrastando ou com um botão)
 move o card no Trello; ao marcar Entregue, avisa se falta arte, mas deixa entregar. Se o PROMeiro e o Trello discordam,
 vale o último que aconteceu, e os dois viram evento na linha do tempo. Fica ao lado da agenda No Trello, que continua.
-_Evitar_: quadro, kanban, board (o quadro é do Trello)
+_Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 
 **Aviso do Padeiro**:
 O Padeiro avisando o PROMeiro direto, sem o n8n, quando o designer abre ou cria o projeto pelo card ou pela Produção:

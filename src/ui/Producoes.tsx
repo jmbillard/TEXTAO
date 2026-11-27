@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
-import { COLUNAS_DA_FAIXA, ETAPA_DO_BOTAO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, type CardDaProducao, type FaixaDaPraca, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { COLUNAS_DO_BLOCO, ETAPA_DO_BOTAO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, type CardDaProducao, type BlocoDaPraca, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
 import { MarcaTexto, tracoDe } from './pecas';
 import { plural } from './util';
 import './producoes.css';
 
-/* A tela de produções (#109), na área Designer, ao lado da agenda No Trello: uma faixa por praça (na ordem das praças
-   da Configuração), cada uma com as colunas Entrada · Produzindo · Entregue e a contagem de cada coluna. O card traz a
+/* A tela de produções (#109), na área Designer, ao lado da agenda No Trello: um bloco por praça (na ordem das praças
+   da Configuração), cada um com as colunas Entrada · Produzindo · Entregue e a contagem de cada coluna. O card traz a
    claquete (com o marca-texto da prioridade ALTA, como na agenda), a atração, as artes, os designers e o prazo; a ordem
    é o prazo e, no mesmo prazo, a ALTA primeiro. O Entregue mostra só os entregues dos últimos dias. As Produções vêm
-   do PROMeiro, nada do Trello; a tela se lê de novo na cadência da agenda. No celular, as colunas da faixa ficam uma
-   embaixo da outra.
+   do PROMeiro, nada do Trello; a tela se lê de novo na cadência da agenda.
+   #119: no computador e no tablet, cada praça é um bloco vertical, e os blocos ficam lado a lado na largura toda; quando
+   não cabem, a área dos blocos rola para o lado, e o topo de cada bloco (e o das colunas) fica à vista ao rolar para
+   baixo. No celular, as praças e as etapas ficam uma embaixo da outra.
    #110: quem está ligado a um designer pega o card da Entrada ("Peguei") e volta o de Produzindo ou de Entregue para a
    Entrada. A mudança aparece na hora; se o servidor (o Trello) recusa, a tela volta atrás e diz o motivo. Quem não
-   está ligado vê a tela, sem os botões, e a explicação de a quem pedir. Entregar, arrastar e recolher a faixa vêm
+   está ligado vê a tela, sem os botões, e a explicação de a quem pedir. Entregar, arrastar e recolher o bloco vêm
    depois (#111 a #113). */
 
 interface Props {
@@ -86,32 +88,32 @@ function CardDaTela({ c, hoje, botao }: { c: CardDaProducao; hoje: string; botao
   );
 }
 
-function Faixa({ f, entregueDias, hoje, botao }: { f: FaixaDaPraca; entregueDias: number; hoje: string; botao: (c: CardDaProducao) => Botao | null }) {
-  const total = COLUNAS_DA_FAIXA.reduce((n, k) => n + f.colunas[k].length, 0);
-  const id = `faixa-${f.praca || 'sem-praca'}`;
+function Bloco({ b, entregueDias, hoje, botao }: { b: BlocoDaPraca; entregueDias: number; hoje: string; botao: (c: CardDaProducao) => Botao | null }) {
+  const total = COLUNAS_DO_BLOCO.reduce((n, k) => n + b.colunas[k].length, 0);
+  const id = `bloco-${b.praca || 'sem-praca'}`;
   return (
-    <section className="prod-faixa" data-praca={f.praca} aria-labelledby={id}>
-      <header className="prod-faixa-topo">
+    <section className="prod-bloco" data-praca={b.praca} aria-labelledby={id}>
+      <header className="prod-bloco-topo">
         <h2 id={id}>
-          <span className="prod-sigla">{f.praca || '—'}</span>
-          {f.nome !== f.praca && <span className="prod-nome">{f.nome}</span>}
+          <span className="prod-sigla">{b.praca || '—'}</span>
+          {b.nome !== b.praca && <span className="prod-nome">{b.nome}</span>}
         </h2>
         <span className="prod-total">{plural(total, 'produção', 'produções')}</span>
       </header>
       <div className="prod-colunas">
-        {COLUNAS_DA_FAIXA.map((k) => (
-          <section key={k} className="prod-coluna" data-coluna={k} aria-label={`${f.praca} · ${ROTULO_DA_COLUNA[k]}`}>
+        {COLUNAS_DO_BLOCO.map((k) => (
+          <section key={k} className="prod-coluna" data-coluna={k} aria-label={`${b.praca} · ${ROTULO_DA_COLUNA[k]}`}>
             <h3>
               <i aria-hidden="true" />
               <span className="prod-coluna-nome">{ROTULO_DA_COLUNA[k]}</span>
-              <span className="prod-conta" aria-label={plural(f.colunas[k].length, 'card', 'cards')}>
-                {f.colunas[k].length}
+              <span className="prod-conta" aria-label={plural(b.colunas[k].length, 'card', 'cards')}>
+                {b.colunas[k].length}
               </span>
               {k === 'entregue' && <small className="prod-recente">últimos {entregueDias} dias</small>}
             </h3>
-            {f.colunas[k].length ? (
+            {b.colunas[k].length ? (
               <ul className="prod-cards">
-                {f.colunas[k].map((c) => (
+                {b.colunas[k].map((c) => (
                   <CardDaTela key={c.id} c={c} hoje={hoje} botao={botao(c)} />
                 ))}
               </ul>
@@ -143,7 +145,7 @@ export function Producoes({ topo }: Props) {
           setErro('');
           setHoje(hojeEmSaoPaulo());
         },
-        // na releitura, o erro não apaga as faixas que já estão à vista
+        // na releitura, o erro não apaga os blocos que já estão à vista
         (e) => vivo && primeira && setErro(e instanceof Error ? e.message : 'Não deu para ler as produções.'),
       );
     void ler(true);
@@ -203,7 +205,7 @@ export function Producoes({ topo }: Props) {
       <main className="prod-pagina">
         <div className="prod-cabeca">
           <h1>Produções</h1>
-          <p className="prod-sub">Uma faixa por praça: o que entrou, o que está em produção e o que saiu nos últimos {lido?.entregueDias ?? 3} dias.</p>
+          <p className="prod-sub">Um bloco por praça: o que entrou, o que está em produção e o que saiu nos últimos {lido?.entregueDias ?? 3} dias.</p>
         </div>
         {erro ? (
           <p className="prod-falha" role="alert">
@@ -226,9 +228,11 @@ export function Producoes({ topo }: Props) {
                 </button>
               </p>
             )}
-            {lido.faixas.map((f) => (
-              <Faixa key={f.praca || '—'} f={f} entregueDias={lido.entregueDias} hoje={hoje} botao={botao} />
-            ))}
+            <div className="prod-blocos">
+              {lido.blocos.map((b) => (
+                <Bloco key={b.praca || '—'} b={b} entregueDias={lido.entregueDias} hoje={hoje} botao={botao} />
+              ))}
+            </div>
           </>
         )}
       </main>

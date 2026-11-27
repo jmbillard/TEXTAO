@@ -44,7 +44,7 @@ import { criarPreferencias } from './preferencias.mjs';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
-import { DIAS_DO_ENTREGUE, faixasDasProducoes } from '../src/modelo/producoesPorPraca.ts';
+import { DIAS_DO_ENTREGUE, blocosDasProducoes } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
@@ -2579,7 +2579,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
     if (caminho === '/api/producoes/por-praca') {
       // a tela de produções (#109): para qualquer pessoa logada (é o trabalho que a equipe toda vê no Trello), as
-      // Produções abertas numa faixa por praça, na ordem das praças da Configuração; o Entregue, só os dos últimos dias.
+      // Produções abertas num bloco por praça, na ordem das praças da Configuração; o Entregue, só os dos últimos dias.
       // Só o que o PROMeiro guarda (e o vocabulário, para a atração pela claquete): nada do Trello
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const desde = new Date(Date.now() - DIAS_DO_ENTREGUE * 86_400_000).toISOString();
@@ -2588,7 +2588,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // quem está logado e o designer dele (#110): sem a ligação, vê a tela, mas não pega, e a tela diz a quem pedir
       const designer = pessoas.designerDoEmail(eu.email);
       const voce = designer ? { designer: designer.nome } : { designer: null, porQue: SEM_LIGACAO };
-      return json(res, 200, { entregueDias: DIAS_DO_ENTREGUE, faixas: faixasDasProducoes(cards, pracas), voce });
+      return json(res, 200, { entregueDias: DIAS_DO_ENTREGUE, blocos: blocosDasProducoes(cards, pracas), voce });
     }
     if (caminho === '/api/producoes/etapa') {
       // pegar e voltar para a Entrada (#110), para quem está ligado a um designer: { producao, etapa } (produzindo ou

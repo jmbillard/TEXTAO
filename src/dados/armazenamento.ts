@@ -1330,7 +1330,7 @@ export interface AndamentoDoProjeto {
   repo: string;
 }
 /** A Semana da pauta da edição (#94): qualquer dia da semana (sem ele, a de hoje). Sem o Postgres do Teable, o erro diz. */
-/** A tela de produções (#109): as Produções abertas numa faixa por praça (nada do Trello). */
+/** A tela de produções (#109): as Produções abertas num bloco por praça (nada do Trello). */
 export const lerProducoesPorPraca = () => pedir<TelaDeProducoes>('/api/producoes/por-praca');
 /** Pegar ou voltar para a Entrada (#110): o que foi feito e a Produção como a tela mostra agora. O erro traz o motivo. */
 export const mudarEtapaDaProducao = (producao: string, etapa: 'produzindo' | 'entrada') =>
