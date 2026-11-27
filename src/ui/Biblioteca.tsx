@@ -75,6 +75,8 @@ interface Props {
   pauta?: () => void;
   /** A fila abre já buscando isto (o "Buscar na fila" do link quebrado). */
   buscaInicial?: string;
+  /** O caminho "PROMeiro / designer ▾" das áreas de trabalho (#101), logo depois do logo. */
+  seletorDeArea?: React.ReactNode;
 }
 
 
@@ -187,7 +189,7 @@ function EscolhaDeEnfeites({ tema, ligados }: { tema: TemaDeFimDeAno; ligados: b
 }
 
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
-function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, andamentoDoProjeto, aoMudarCor, enfeites }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; configuracao?: () => void; andamentoDoProjeto?: () => void; aoMudarCor?: () => void; enfeites?: { tema: TemaDeFimDeAno; ligados: boolean } }) {
+export function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, andamentoDoProjeto, aoMudarCor, enfeites }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; configuracao?: () => void; andamentoDoProjeto?: () => void; aoMudarCor?: () => void; enfeites?: { tema: TemaDeFimDeAno; ligados: boolean } }) {
   const meuEmail = identidade?.email ?? '';
   const [minhaCor, setMinhaCor] = useState(() => corDe(meuEmail));
   useEffect(() => setMinhaCor(corDe(meuEmail)), [meuEmail]);
@@ -937,7 +939,7 @@ function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, pauta, buscaInicial = '' }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, pauta, buscaInicial = '', seletorDeArea }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
@@ -1267,6 +1269,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
     <div className="pagina" inert={aoFundo || undefined} aria-hidden={aoFundo || undefined}>
       <header className="barra-topo">
         <h1 className="bib-marca"><Marca /></h1>
+        {seletorDeArea}
         {/* a Pauta da edição (#94): a semana de quem edita o quê, aberta a todo mundo que entrou */}
         {pauta && (
           <a className="topo-pauta" href="#/pauta" aria-label="Pauta da edição" onClick={(e) => (e.preventDefault(), pauta())}>

@@ -1,5 +1,6 @@
 import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { registrarPracas } from '../modelo/pracas';
+import { areaDeEntrada, ehArea, type Area, type AreaDosRoteiros } from '../modelo/areas';
 import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../modelo/redator';
 import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
@@ -825,6 +826,31 @@ export async function quemNosRoteiros(): Promise<PresencaNosRoteiros> {
   return pedir<PresencaNosRoteiros>('/api/no-roteiro').catch(() => ({}));
 }
 
+/* ---------- áreas de trabalho (#101) ---------- */
+
+let minhasAreas: Area[] = ['designer'];
+let areaLembrada: Area = 'designer';
+
+/** A pessoa entrou numa área: o servidor guarda, e o PROMeiro abre nela da próxima vez, em qualquer aparelho. A área
+    que ela não tem não é guardada (o endereço abre, mas não conta como a dela). */
+export async function lembrarArea(area: Area) {
+  if (armazenamento.tipo !== 'servidor' || area === areaLembrada || !minhasAreas.includes(area)) return;
+  areaLembrada = area;
+  await pedir('/api/eu/preferencias', { method: 'PUT', body: JSON.stringify({ area }) });
+}
+
+/** "Meus roteiros" do Redator ou do Editor: os roteiros em que a pessoa é o redator (ou o editor), pelo nome do
+    cadastro ligado ao e-mail dela; `nome` vazio quando o e-mail não está em nenhum cadastro da área. */
+export interface MeusRoteiros {
+  area: AreaDosRoteiros;
+  nome: string | null;
+  roteiros: Resumo[];
+}
+export async function lerMeusRoteiros(area: AreaDosRoteiros): Promise<MeusRoteiros> {
+  if (armazenamento.tipo !== 'servidor') return { area, nome: null, roteiros: [] };
+  return pedir<MeusRoteiros>(`/api/meus-roteiros?area=${area}`);
+}
+
 /** A pessoa viu o tour da revisão (terminou, pulou ou disse "Agora não"): o servidor guarda e o convite não volta. */
 export async function marcarTourVisto() {
   if (armazenamento.tipo !== 'servidor') return;
@@ -840,6 +866,9 @@ export interface Conexao {
   semLogin?: boolean;
   /** Quando a pessoa viu o tour da revisão (null = ainda não viu). Só com servidor e login. */
   tourRevisao?: string | null;
+  /** As áreas de trabalho da pessoa (#101) e a de entrada (a última usada). Sem servidor, só a Designer. */
+  areas?: Area[];
+  area?: Area;
 }
 
 /** Procura o servidor. `perfil` é o perfil local, usado só quando o servidor aceita esse modo (demonstração). */
@@ -852,7 +881,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; novidades?: number };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; novidades?: number; areas?: unknown[]; area?: unknown };
     if (d.email) {
       armazenamento = doServidor;
       // as praças da Configuração, antes de qualquer roteiro ser lido (até aqui, e sem servidor, valem as de fábrica)
@@ -865,7 +894,10 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
       await pedir<{ email: string; cor: string }[]>('/api/cores').then(registrarCores, () => {});
       // nomes da casa (atrações e redatores), quando o servidor está ligado ao Teable
       await atualizarVocabulario();
-      return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false, tourRevisao: d.tour?.revisao ?? null };
+      minhasAreas = (d.areas ?? []).filter(ehArea);
+      if (!minhasAreas.includes('designer')) minhasAreas.unshift('designer');
+      areaLembrada = areaDeEntrada(d.area, minhasAreas);
+      return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false, tourRevisao: d.tour?.revisao ?? null, areas: minhasAreas, area: areaLembrada };
     }
     armazenamento = doNavegador;
     return { eu: null, pedePerfil: !!d.perfilLocal, semLogin: !d.perfilLocal };

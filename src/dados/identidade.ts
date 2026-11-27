@@ -1,5 +1,6 @@
 import type { Pessoa } from '../modelo/tipos';
 import { conectar } from './armazenamento';
+import type { Area } from '../modelo/areas';
 
 /* Quem está usando o app. É o único ponto do código que sabe de onde vem a identidade:
    hoje, do Cloudflare Access (quando o site está atrás dele) ou de um perfil local.
@@ -53,14 +54,17 @@ export interface Sessao {
   semLogin?: boolean;
   /** Quando a pessoa viu o tour da revisão: null = ainda não viu (o convite aparece); sem servidor, não vem. */
   tourRevisao?: string | null;
+  /** As áreas de trabalho da pessoa (#101) e a de entrada (a última usada). Sem servidor, só a Designer. */
+  areas: Area[];
+  area: Area;
 }
 
 /** Descobre quem está usando e onde os roteiros ficam guardados (servidor ou navegador). */
 export async function iniciarSessao(): Promise<Sessao> {
   const perfil = local();
   const conexao = await conectar(perfil);
-  if (conexao.eu) return { identidade: conexao.eu, pedePerfil: false, tourRevisao: conexao.tourRevisao };
-  return { identidade: (await doAcesso()) ?? perfil, pedePerfil: conexao.pedePerfil, semLogin: conexao.semLogin };
+  if (conexao.eu) return { identidade: conexao.eu, pedePerfil: false, tourRevisao: conexao.tourRevisao, areas: conexao.areas ?? ['designer'], area: conexao.area ?? 'designer' };
+  return { identidade: (await doAcesso()) ?? perfil, pedePerfil: conexao.pedePerfil, semLogin: conexao.semLogin, areas: ['designer'], area: 'designer' };
 }
 
 export function salvarPerfilLocal(pessoa: Pessoa): Identidade {

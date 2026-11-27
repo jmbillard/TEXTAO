@@ -12,6 +12,12 @@
 // "sem e-mail" do Otávio Reis vira campo, e o Enter grava. Quem não é administrador vê os e-mails, sem sugestão e sem
 // editar. No celular (escuro), a sugestão de quem acabou de entrar e o "É".
 //
+// O seletor de área (#101), "PROMeiro / designer ▾" na linha do logo: o Caio (redator e editor nos cadastros, pelo
+// e-mail) entra na raiz e cai na Designer (a fila); troca para o Redator e para o Editor, cada um com o endereço
+// próprio e os "meus roteiros" dele por dia; recarregada a raiz, o PROMeiro volta na última área. A Joana, sem
+// cadastro, tem uma área só e não vê o seletor. A administradora sem cadastro vê as três e o aviso de "meus roteiros"
+// vazio. No celular (escuro), a Mariana (redatora, ligada pelo "É") troca de área pelo seletor.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:areas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -32,6 +38,7 @@ const LIA = 'lia.moraes@exemplo.com';
 const OUTRA = 'joana.prado@exemplo.com';
 const MARIANA = 'mariana.telles@exemplo.com';
 const BRUNO = 'bruno.regis@exemplo.com';
+const CAIO = 'caio.brandao@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 
@@ -50,13 +57,17 @@ const TABELAS = {
     { id: 'recR2', fields: { redator: 'Marina Teles' } },
     { id: 'recR3', fields: { redator: 'Otávio Reis' } },
     { id: 'recR4', fields: { redator: 'Renata Álvares' } },
+    { id: 'recR5', fields: { redator: 'Caio Brandão', email: CAIO } },
   ],
   tblKeyRed: [
     { id: 'recKR1', fields: { key: 'BLINS', redator: [{ id: 'recR1' }] } },
     { id: 'recKR2', fields: { key: 'MTELES', redator: [{ id: 'recR2' }] } },
     { id: 'recKR3', fields: { key: 'OREIS', redator: [{ id: 'recR3' }] } },
   ],
-  tblEdi: [{ id: 'recE1', fields: { editor: 'Bruno Regis' } }],
+  tblEdi: [
+    { id: 'recE1', fields: { editor: 'Bruno Regis' } },
+    { id: 'recE2', fields: { editor: 'Caio Brandão', email: CAIO } },
+  ],
   tblKeyEdi: [],
 };
 const pedidosAoTeable = [];
@@ -192,17 +203,163 @@ async function noCelular(navegador, url) {
   console.log('ok: no celular, a sugestão cabe na tela e o "É" grava');
 }
 
+/* ---------- as áreas de trabalho (#101) ---------- */
+
+/** Os roteiros guardados no PROMeiro (quem sobe é a arte): o redator e o editor vêm no roteiro, pelo nome. */
+const iso = (dias) => {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const ROTEIROS = [
+  { id: 'areas-chef', meta: { claquete: 'CHEF(FUT) SP', programa: 'Chef do Futuro', praca: 'SP', dataExibicao: iso(1), redator: 'Caio Brandão', editor: 'Bruno Regis' } },
+  { id: 'areas-fest', meta: { claquete: 'FESTIVAL(VER) REDE', programa: 'Festival de Verão', praca: 'G5', dataExibicao: iso(3), redator: 'Marina Teles', editor: 'Caio Brandão' } },
+  { id: 'areas-nov', meta: { claquete: 'NOVELA7(CAP) SP', programa: 'Sete Mares', praca: 'SP', dataExibicao: iso(3), redator: 'Caio Brandao', editor: 'Bruno Regis' } },
+];
+async function semearRoteiros(api) {
+  const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'LOC: HOJE' }] }] };
+  for (const r of ROTEIROS) {
+    const meta = { titulo: '', tipoPrograma: 'outro', capitulo: null, edicao: '', locutor: '', selo: '', duracaoAlvoSeg: null, ...r.meta };
+    const resp = await fetch(`${api}/roteiros/${r.id}`, { method: 'PUT', headers: { 'content-type': 'application/json', 'cf-access-authenticated-user-email': OUTRA }, body: JSON.stringify({ roteiro: { meta, doc }, nArtes: 2 }) });
+    assert.equal(resp.status, 200, `semear ${r.id}`);
+  }
+}
+
+async function entrar(navegador, url, hash, email, opcoes = {}) {
+  const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': email }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
+  await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(email), url }]);
+  await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+  await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+  const p = await ctx.newPage();
+  const erros = [];
+  const aoTrello = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  p.on('request', (r) => /trello/i.test(r.url()) && aoTrello.push(r.url()));
+  await p.goto(`${url}${hash}`);
+  await p.waitForSelector('.barra-topo .bib-marca');
+  return { ctx, p, erros, aoTrello };
+}
+const hashDe = (p) => new URL(p.url()).hash;
+const nomeDaArea = async (p) => (await p.locator('.seletor-area-nome').innerText()).trim();
+const claquetes = (p) => p.locator('.meus-roteiros .ficha-claquete b').allInnerTexts();
+async function escolherArea(p, nome) {
+  await p.locator('.seletor-area').click();
+  await p.locator('.areas-menu .area-item', { hasText: nome }).click();
+  await p.locator('.areas-menu').waitFor({ state: 'detached' });
+}
+
+async function trocarDeArea(navegador, url) {
+  const { ctx, p, erros, aoTrello } = await entrar(navegador, url, '', CAIO, { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
+  // a primeira entrada, na raiz: a Designer, que é a fila de hoje
+  await p.locator('.seletor-area').waitFor();
+  assert.equal(await nomeDaArea(p), 'designer');
+  assert.ok(await p.locator('.topo-pauta').isVisible(), 'a Pauta da edição continua no topo');
+  // a lista das áreas: as três, cada uma com o que mostra e o endereço
+  await p.locator('.seletor-area').click();
+  const itens = p.locator('.areas-menu .area-item');
+  assert.equal(await itens.count(), 3, 'o Caio é redator e editor: as três áreas');
+  assert.deepEqual((await itens.locator('b').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['Designer /designer', 'Redator /redator', 'Editor /editor']);
+  assert.match(await itens.nth(1).locator('small').innerText(), /roteiros que você escreve/);
+  assert.equal(await itens.nth(0).getAttribute('aria-checked'), 'true');
+  await capturar(p, '04-seletor-de-area-aberto-claro');
+  await p.locator('.areas-menu .area-item', { hasText: 'Redator' }).click();
+  await p.locator('.meus-roteiros').waitFor();
+  assert.equal(hashDe(p), '#/redator');
+  assert.equal(await nomeDaArea(p), 'redator');
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  // os roteiros em que o Caio é o redator (o nome sem acento também é ele), por dia
+  assert.deepEqual(await claquetes(p), ['CHEF(FUT) SP', 'NOVELA7(CAP) SP']);
+  assert.deepEqual((await p.locator('.meus-roteiros .dia-topo h3').allInnerTexts()).map((t) => t.split('\n')[0].trim()).slice(0, 1), ['Amanhã']);
+  assert.match(await p.locator('.meus-roteiros .fila-conta').innerText(), /como redator: Caio Brandão/);
+  await capturar(p, '05-meus-roteiros-do-redator-claro');
+  await escolherArea(p, 'Editor');
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.equal(hashDe(p), '#/editor');
+  assert.deepEqual(await claquetes(p), ['FESTIVAL(VER) REDE']);
+  // de volta à Designer, pelo seletor: o endereço dela e a fila
+  await escolherArea(p, 'Designer');
+  assert.equal(hashDe(p), '#/designer');
+  await p.locator('.biblioteca.fila').waitFor();
+  await escolherArea(p, 'Editor');
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  console.log('ok: "PROMeiro / designer ▾" troca para o Redator e o Editor, cada um com o endereço e os roteiros dele');
+
+  // recarregar na raiz: o PROMeiro abre na última área usada (guardada no servidor)
+  await p.goto(url);
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.equal(hashDe(p), '#/editor');
+  assert.equal(await nomeDaArea(p), 'editor');
+  // em outro navegador (outro aparelho), também
+  const outro = await entrar(navegador, url, '', CAIO, { viewport: { width: 1280, height: 800 } });
+  await outro.p.locator('.meus-roteiros').waitFor();
+  assert.equal(hashDe(outro.p), '#/editor');
+  await outro.ctx.close();
+  console.log('ok: a raiz abre na última área usada, depois de recarregar e em outro navegador');
+  await semRolagemDeLado(p, 'áreas no computador');
+  assert.deepEqual(erros, [], 'áreas: erros na página');
+  assert.deepEqual(aoTrello, [], 'nada é lido do Trello');
+  await ctx.close();
+}
+
+async function umaAreaSo(navegador, url) {
+  const { ctx, p, erros } = await entrar(navegador, url, '', OUTRA, { viewport: { width: 1440, height: 900 } });
+  await p.locator('.biblioteca.fila').waitFor();
+  await p.waitForTimeout(300);
+  assert.equal(await p.locator('.seletor-area').count(), 0, 'sem cadastro, uma área só: sem o seletor');
+  assert.equal(hashDe(p), '');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: quem tem uma área só (a Designer) não vê o seletor');
+}
+
+async function administradoraSemCadastro(navegador, url) {
+  const { ctx, p, erros } = await entrar(navegador, url, '#/redator', LIA, { viewport: { width: 1440, height: 900 } });
+  await p.locator('.meus-roteiros .aviso-meus').waitFor();
+  assert.match(await p.locator('.aviso-meus').innerText(), /ainda não está ligado a um cadastro de redator/);
+  await p.locator('.seletor-area').click();
+  assert.equal(await p.locator('.areas-menu .area-item').count(), 3, 'a administradora vê as três');
+  assert.match(await p.locator('.areas-menu-pe').innerText(), /Como administrador, você vê as três/);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: a administradora sem cadastro vê as três áreas e o aviso claro de "meus roteiros" vazio');
+}
+
+async function areasNoCelular(navegador, url) {
+  const { ctx, p, erros } = await entrar(navegador, url, '#/redator', MARIANA, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.deepEqual(await claquetes(p), ['FESTIVAL(VER) REDE'], 'a Mariana, ligada pelo "É", é a redatora Marina Teles');
+  await semRolagemDeLado(p, 'áreas no celular');
+  await capturar(p, '06-meus-roteiros-no-celular-escuro');
+  await p.locator('.seletor-area').click();
+  assert.equal(await p.locator('.areas-menu .area-item').count(), 2, 'redatora: Designer e Redator');
+  await semRolagemDeLado(p, 'seletor no celular');
+  await capturar(p, '07-seletor-no-celular-escuro');
+  await p.locator('.areas-menu .area-item', { hasText: 'Designer' }).click();
+  await p.locator('.biblioteca.fila').waitFor();
+  assert.equal(hashDe(p), '#/designer');
+  assert.deepEqual(erros, [], 'celular: erros na página');
+  await ctx.close();
+  console.log('ok: no celular, "meus roteiros" cabe na tela e o seletor troca de área');
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   const cadastros = criarCadastros({ ...ENV_CADASTROS, CADASTRO_ADMINS: LIA }, { buscar: buscarNoTeable });
   const s = await subir({ cadastros, env: { CADASTRO_ADMINS: LIA } });
   // quem já entrou no PROMeiro (o nome sai do e-mail); a Renata só entra no celular
   for (const email of [LIA, OUTRA, MARIANA, BRUNO]) await fetch(`${s.api}/eu`, { headers: { 'cf-access-authenticated-user-email': email } });
+  // o tour da revisão já visto: o convite não cobre a fila das áreas
+  for (const email of [LIA, OUTRA, MARIANA, CAIO]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
+  await semearRoteiros(s.api);
   const navegador = await chromium.launch();
   try {
     await simE(navegador, s.url);
     await semSerAdministrador(navegador, s.url);
     await noCelular(navegador, s.url);
+    await trocarDeArea(navegador, s.url);
+    await umaAreaSo(navegador, s.url);
+    await administradoraSemCadastro(navegador, s.url);
+    await areasNoCelular(navegador, s.url);
     assert.ok(pedidosAoTeable.every((x) => /^(GET|PATCH) /.test(x)), 'no Teable, só leitura e o e-mail');
   } finally {
     await navegador.close();

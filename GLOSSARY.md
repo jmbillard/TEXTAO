@@ -434,3 +434,17 @@ palavras de 4 letras ou mais; um nome de uma palavra só não sugere). "É" grav
 "… agora está ligado a Fulana, dos redatores"; "Não é" fica guardado e a sugestão não volta. Um e-mail fica em um só
 cadastro de cada tipo.
 _Evitar_: vínculo, mapeamento de usuário
+
+**Área de trabalho**:
+Uma visão do mesmo PROMeiro, com o mesmo login: **Designer** (a fila, a agenda, os filmes e a revisão), **Redator** e
+**Editor** ("meus roteiros": os roteiros em que a pessoa é o redator ou o editor, pelo nome do cadastro ligado pela
+**ligação pelo e-mail**). Todo mundo tem a Designer; o cadastro de redator dá a Redator e o de editor, a Editor; o
+administrador tem as três. Não é permissão: qualquer pessoa logada abre qualquer endereço. Fica no topo, na linha do
+logo, como o caminho **"PROMeiro / designer ▾"** (o **seletor de área**), que some para quem tem uma área só. Cada área
+tem o seu endereço; a raiz abre a última usada.
+_Evitar_: perfil, papel, permissão
+
+**Preferências da pessoa**:
+O que o PROMeiro lembra por pessoa, em qualquer aparelho (a última área usada; depois, a exibição de cada área e o
+arranjo da Pauta da edição): no SQLite, uma chave por linha, gravada pela rota de quem está logado.
+_Evitar_: configurações (a Configuração é a tela dos administradores)

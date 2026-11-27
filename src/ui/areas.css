@@ -1,0 +1,49 @@
+/* As áreas de trabalho (#101): o caminho "PROMeiro / designer ▾" na linha do logo e "meus roteiros" do Redator e do
+   Editor. A referência é o protótipo aprovado das áreas; as cores são as do tema (claro e escuro). */
+
+/* ---------- o caminho e o seletor ---------- */
+.caminho-area { position: relative; display: inline-flex; align-items: center; flex: none; min-width: 0; margin-left: -8px; }
+.caminho-area-barra { font: 300 30px/1 var(--sans); color: var(--regua-forte); margin: 0 4px 0 0; position: relative; top: -1px; user-select: none; }
+.seletor-area {
+  display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; border: 0; border-radius: 10px; background: none;
+  font: 500 25px/1 var(--sans); letter-spacing: -0.02em; color: var(--tinta2); transition: background 0.15s, color 0.15s;
+}
+.seletor-area:hover, .seletor-area[aria-expanded='true'] { background: var(--neutro); color: var(--tinta); }
+.seletor-area svg { color: var(--tinta3); margin-top: 2px; }
+.areas-menu {
+  position: absolute; left: 0; top: calc(100% + 8px); z-index: 40; width: 340px; max-width: calc(100vw - 32px); padding: 6px; border-radius: 14px;
+  background: var(--cartao); box-shadow: var(--sombra-menu); animation: abrir 0.14s var(--suave); transform-origin: top left;
+}
+.area-item {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) 18px; gap: 2px 12px; align-items: center; width: 100%; padding: 10px; border: 0;
+  border-radius: 10px; background: none; color: inherit; text-align: left; transition: background 0.1s;
+}
+.area-item:hover { background: var(--neutro); }
+.area-item[aria-checked='true'] { background: var(--ultra-suave); }
+.area-item .area-bolha { grid-row: 1 / 3; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--neutro); color: var(--tinta2); }
+.area-item[aria-checked='true'] .area-bolha { background: var(--ultra); color: var(--no-ultra); }
+.area-item b { font: 600 14.5px var(--sans); display: flex; align-items: baseline; gap: 8px; }
+.area-item code { font: 500 11px var(--mono); color: var(--tinta3); }
+.area-item small { grid-column: 2; font-size: 12px; line-height: 1.35; color: var(--tinta2); }
+.area-item .area-certo { grid-row: 1 / 3; grid-column: 3; color: var(--ultra); display: grid; }
+.areas-menu-pe { margin: 4px 6px 2px; padding: 9px 4px 3px; border-top: 1px solid var(--regua); font-size: 12px; line-height: 1.45; color: var(--tinta3); }
+
+/* ---------- meus roteiros ---------- */
+.ficha.ficha-minha { grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) auto; }
+.ficha-artes-minha { font-size: 13px; color: var(--tinta2); white-space: nowrap; }
+.aviso-meus { margin: 8px 0 0; padding: 18px 20px; border-radius: 14px; background: var(--neutro); color: var(--tinta2); font-size: 14.5px; line-height: 1.55; max-width: 620px; }
+.aviso-meus.erro { color: var(--perigo); }
+
+@media (max-width: 600px) {
+  .caminho-area { margin-left: -2px; }
+  .caminho-area-barra { font-size: 24px; margin-right: 0; }
+  .seletor-area { font-size: 20px; height: 44px; padding: 0 6px; }
+  .biblioteca.meus-roteiros { padding: 18px 16px 28px; gap: 20px; }
+  /* a fila do celular arruma a ficha por áreas (marca, claquete, gente…): a de "meus roteiros" tem as suas */
+  .ficha.ficha-minha { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'claquete artes' 'gente gente'; padding: 12px 14px; }
+  .ficha.ficha-minha .ficha-claquete { grid-area: claquete; min-height: 0; }
+  .ficha.ficha-minha .ficha-gente { grid-area: gente; gap: 6px; align-items: baseline; }
+  .ficha.ficha-minha .ficha-artes-minha { grid-area: artes; }
+  /* a lista das áreas desce inteira na largura da tela, abaixo do topo */
+  .areas-menu { position: fixed; top: 64px; left: 16px; right: 16px; width: auto; max-width: none; }
+}

@@ -38,6 +38,9 @@ import { acertarNArtesUmaVez } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
+import { criarPreferencias } from './preferencias.mjs';
+import { criarAreas, dosMeusRoteiros } from './areas.mjs';
+import { ehArea, ehAreaDosRoteiros } from '../src/modelo/areas.ts';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarAndamento } from './andamento.mjs';
@@ -648,6 +651,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const pessoas = criarPessoas({ db, copia, buscar: buscarNoTeable });
   // ligar pessoa e cadastro pelo e-mail (#106): as sugestões "É" e o "Não é" guardado
   const ligacaoDePessoas = criarLigacaoDePessoas({ db });
+  // as preferências de cada pessoa (#101), no SQLite: a última área usada, o arranjo da Pauta da edição…
+  const preferencias = criarPreferencias(db);
+  // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
+  const areas = criarAreas();
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
   // a última verificação desta partida (com o erro e o que não respondeu); sem nenhuma, a guardada
   let ultimaVerificacao = null;
@@ -954,6 +961,19 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const editar = aberto || meu || !!parte?.pode_editar;
     return { linha, meu, editar, ler: editar || !!parte || !!linha.publico };
   };
+
+  /** Os roteiros que esta pessoa vê, como a fila os recebe (o mesmo para "meus roteiros", #101). */
+  const resumosPara = (eu) =>
+    (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).map((l) => ({
+      id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, atualizadoEm: l.atualizado_em,
+      dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
+      compartilhado: !!l.compartilhado,
+      podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
+      revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
+      ...(l.envio_estado ? { trello: { estado: l.envio_estado, card: l.envio_card || undefined, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
+      temOriginal: !!l.tem_original,
+      ...(aberto ? { aberto: true } : {}),
+    }));
 
   /* ---------- edição simultânea ---------- */
 
@@ -2082,7 +2102,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // novidades: quantas há no quadro (o pontinho no menu), da última verificação, sem ir ao Trello
         const admin = cadastros.podeApagar(eu.email);
         const novidades = admin ? pessoas.separar(pessoas.guardada()?.novidades ?? []).pendentes.length : undefined;
-        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin, ...(admin ? { novidades } : {}) });
+        // as áreas de trabalho (#101): as da pessoa (pelo e-mail nos cadastros), a de entrada e as preferências
+        const daPessoa = await areas.daPessoa(eu.email, { cadastros, admin, preferencias });
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin, ...(admin ? { novidades } : {}), ...daPessoa });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -2180,6 +2202,30 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // os colegas com a fila aberta passam a ver a cor nova na hora
       void cache.publicar(FILA, { tipo: 'cor', por: eu.email, cor }).catch(() => {});
       return json(res, 200, { ok: true, cor });
+    }
+    if (caminho === '/api/eu/preferencias') {
+      // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' }. Cada chave é conferida aqui
+      if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
+      const entradas = Object.entries(typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : {});
+      if (!entradas.length) return json(res, 400, { erro: 'Nenhuma preferência para guardar.' });
+      const minhas = (await areas.daPessoa(eu.email, { cadastros, admin: cadastros.podeApagar(eu.email), preferencias })).areas;
+      for (const [chave, valor] of entradas) {
+        if (chave !== 'area') return json(res, 400, { erro: `Preferência desconhecida: ${chave}.` });
+        if (!ehArea(valor)) return json(res, 400, { erro: 'Área desconhecida.' });
+        if (!minhas.includes(valor)) return json(res, 400, { erro: `Você não tem a área ${valor}.` });
+      }
+      q.verUsuario.run(eu.email, eu.nome, new Date().toISOString());
+      for (const [chave, valor] of entradas) preferencias.gravar(eu.email, chave, valor);
+      return json(res, 200, { ok: true, preferencias: preferencias.ler(eu.email) });
+    }
+    if (caminho === '/api/meus-roteiros') {
+      // "meus roteiros" do Redator e do Editor (#101): os roteiros guardados no PROMeiro em que a pessoa é o redator
+      // ou o editor, pelo nome do cadastro ligado ao e-mail dela. Nada é lido do Trello
+      const area = new URL(req.url, 'http://x').searchParams.get('area');
+      if (!ehAreaDosRoteiros(area)) return json(res, 400, { erro: 'Escolha a área: redator ou editor.' });
+      const nome = (await areas.quemE(eu.email, cadastros))[area]?.nome ?? null;
+      return json(res, 200, { area, nome, roteiros: nome ? dosMeusRoteiros(resumosPara(eu), area, nome) : [] });
     }
     if (caminho === '/api/eu/tour') {
       // a pessoa viu o tour da revisão: o convite não aparece mais, em nenhum navegador
@@ -2484,16 +2530,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(
         res,
         200,
-        (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).map((l) => ({
-          id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, atualizadoEm: l.atualizado_em,
-          dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
-          compartilhado: !!l.compartilhado,
-          podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
-          revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
-          ...(l.envio_estado ? { trello: { estado: l.envio_estado, card: l.envio_card || undefined, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
-          temOriginal: !!l.tem_original,
-          ...(aberto ? { aberto: true } : {}),
-        })),
+        resumosPara(eu),
       );
     }
     if (!ID_VALIDO.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
