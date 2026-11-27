@@ -67,6 +67,29 @@ function troca(caminho, antigo, novo) {
 /** O filme tem pôster no Teable (o campo de anexo `poster` com um arquivo)? */
 export const temPosterNoTeable = (poster) => lista(poster).length > 0;
 
+/** O que o cadastro diz do filme: o título, o ano, a pasta "TÍTULO (ANO)" e os caminhos com ela no último nível. */
+function fichaDoFilme(f) {
+  const nomeDaPasta = String(f.nome_da_pasta ?? '');
+  const base = nomeDaPasta.replace(/\s*\(\d{4}\)\s*$/, '');
+  const ano = anoDe(f.ano_de_producao);
+  const pasta = ano !== null ? `${base} (${ano})` : base;
+  return {
+    titulo: String(f.titulo ?? ''),
+    ano,
+    pasta,
+    projeto: { win: troca(f.projeto_win, nomeDaPasta, pasta), mac: troca(f.projeto_mac, nomeDaPasta, pasta) },
+    output: { win: troca(f.output_win, nomeDaPasta, pasta), mac: troca(f.output_mac, nomeDaPasta, pasta) },
+  };
+}
+
+/** A exibição que entra (na janela, não cancelada e de um filme do cadastro): o dia de Brasília e o filme; senão, null. */
+function exibicaoNaJanela(e, de, ate, porId) {
+  const dia = diaEmBrasilia(e.data_de_exibicao);
+  const filmeId = vinculos(e.filme)[0]?.id ?? '';
+  if (!e.__id || !dia || dia < de || dia > ate || cancelada(e.labels) || !porId.has(filmeId)) return null;
+  return { dia, filmeId };
+}
+
 /**
  * Os filmes recentes, no formato do n8n.
  * @param exibicoes as linhas da tabela exibicoes ({ __id, filme, data_de_exibicao, sessao, inedito, link, labels })
@@ -84,9 +107,9 @@ export function filmesRecentes({ exibicoes = [], filmes = [], hoje, poster = () 
   // a exibição que vale de cada filme: a próxima (de hoje em diante); sem ela, a mais recente
   const escolhida = new Map();
   for (const e of exibicoes) {
-    const dia = diaEmBrasilia(e.data_de_exibicao);
-    const filmeId = vinculos(e.filme)[0]?.id ?? '';
-    if (!e.__id || !dia || dia < de || dia > ate || cancelada(e.labels) || !porId.has(filmeId)) continue;
+    const daJanela = exibicaoNaJanela(e, de, ate, porId);
+    if (!daJanela) continue;
+    const { dia, filmeId } = daJanela;
     const x = { e, dia, filmeId, passou: dia < hoje };
     const atual = escolhida.get(filmeId);
     const melhor = !atual || (atual.passou && !x.passou) || (atual.passou === x.passou && (x.passou ? x.dia > atual.dia : x.dia < atual.dia));
@@ -94,20 +117,17 @@ export function filmesRecentes({ exibicoes = [], filmes = [], hoje, poster = () 
   }
   const itens = [...escolhida.values()].map(({ e, dia, filmeId, passou }) => {
     const f = porId.get(filmeId);
-    const nomeDaPasta = String(f.nome_da_pasta ?? '');
-    const base = nomeDaPasta.replace(/\s*\(\d{4}\)\s*$/, '');
-    const ano = anoDe(f.ano_de_producao);
-    const pasta = ano !== null ? `${base} (${ano})` : base;
+    const { titulo, ano, pasta, projeto, output } = fichaDoFilme(f);
     return {
       passou,
       item: {
         exibicao_id: String(e.__id),
         filme_id: filmeId,
-        titulo: String(f.titulo ?? ''),
+        titulo,
         ano,
         pasta,
-        projeto: { win: troca(f.projeto_win, nomeDaPasta, pasta), mac: troca(f.projeto_mac, nomeDaPasta, pasta) },
-        output: { win: troca(f.output_win, nomeDaPasta, pasta), mac: troca(f.output_mac, nomeDaPasta, pasta) },
+        projeto,
+        output,
         exibicao: dia,
         sessao: vinculos(e.sessao)[0]?.title || '',
         inedito: sim(e.inedito),
@@ -126,4 +146,62 @@ export function filmesRecentes({ exibicoes = [], filmes = [], hoje, poster = () 
       comparar(a.item.titulo, b.item.titulo),
   );
   return itens.map((x) => x.item);
+}
+
+/** A hora de Brasília de um instante ("22:30"), ou null na meia-noite (a exibição gravada só com o dia) ou sem data. */
+export function horaEmBrasilia(v) {
+  const t = v instanceof Date ? v.getTime() : Date.parse(String(v ?? ''));
+  if (Number.isNaN(t)) return null;
+  const hora = new Intl.DateTimeFormat('en-GB', { timeZone: BRASILIA, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(t));
+  return hora === '00:00' ? null : hora;
+}
+
+/** O card do Trello da exibição: o card_ID, ou o id do link (trello.com/c/<id>); '' sem nenhum. */
+export function cardDaExibicao(e) {
+  const id = String(e.card_ID ?? '').trim();
+  if (id) return id;
+  return /trello\.com\/c\/([A-Za-z0-9]{6,32})/.exec(String(e.link ?? ''))?.[1] ?? '';
+}
+
+/**
+ * A agenda de filmes da aba Filmes (#169): as mesmas linhas e a mesma janela dos filmes recentes, mas com todas as
+ * exibições de cada filme (sem as canceladas), para ver por dia ou por sessão. O filme da próxima exibição primeiro (do
+ * mais perto ao mais longe) e depois os que só passaram nos últimos dias; as exibições de cada um, por dia e hora.
+ * @param poster (filmeId, temNoTeable) => o endereço do pôster, ou null
+ * @param producao (card) => a Produção do card ({ id, etapa, designers }), ou null
+ * @returns [{ id, titulo, ano, pasta, projeto, output, poster, exibicoes: [{ id, dia, hora, sessao, inedito, trello,
+ *   producao }] }]
+ */
+export function agendaDeFilmes({ exibicoes = [], filmes = [], hoje, poster = () => null, producao = () => null }) {
+  const de = somarDias(hoje, -DIAS_ANTES);
+  const ate = somarDias(hoje, DIAS_DEPOIS);
+  const porId = new Map(filmes.map((f) => [String(f.__id), f]));
+  const porFilme = new Map();
+  for (const e of exibicoes) {
+    const daJanela = exibicaoNaJanela(e, de, ate, porId);
+    if (!daJanela) continue;
+    const card = cardDaExibicao(e);
+    const link = String(e.link ?? '').trim();
+    const lista = porFilme.get(daJanela.filmeId) ?? [];
+    lista.push({
+      id: String(e.__id),
+      dia: daJanela.dia,
+      hora: horaEmBrasilia(e.data_de_exibicao),
+      sessao: vinculos(e.sessao)[0]?.title || '',
+      inedito: sim(e.inedito),
+      trello: link || (card ? `https://trello.com/c/${card}` : null),
+      producao: card ? (producao(card) ?? null) : null,
+    });
+    porFilme.set(daJanela.filmeId, lista);
+  }
+  const comparar = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'pt-BR');
+  const itens = [...porFilme].map(([id, lista]) => {
+    const f = porId.get(id);
+    lista.sort((a, b) => comparar(a.dia, b.dia) || comparar(a.hora, b.hora) || comparar(a.sessao, b.sessao));
+    // a exibição que ordena o filme: a próxima; sem ela, a mais recente
+    const proxima = lista.find((x) => x.dia >= hoje);
+    return { chave: proxima ? proxima.dia : lista[lista.length - 1].dia, passou: !proxima, filme: { id, ...fichaDoFilme(f), poster: poster(id, temPosterNoTeable(f.poster)) ?? null, exibicoes: lista } };
+  });
+  itens.sort((a, b) => Number(a.passou) - Number(b.passou) || (a.passou ? comparar(b.chave, a.chave) : comparar(a.chave, b.chave)) || comparar(a.filme.titulo, b.filme.titulo));
+  return itens.map((x) => x.filme);
 }
