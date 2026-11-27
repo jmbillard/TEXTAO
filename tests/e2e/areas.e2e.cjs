@@ -35,6 +35,13 @@
 // artes mostra cada uma com o estado (entregue, produzindo, já existe) e a origem ("do roteiro", "do designer"), e
 // quantas já foram entregues. No celular (escuro), o lado sobe para antes do texto e nada rola para o lado.
 //
+// O administrador (#105): a administradora sem cadastro vê no Redator e no Editor os roteiros de todos ("Roteiros", "de
+// todos os redatores"), cada um com o redator e a edição, e o filtro "de quem" (de todos, com quantos, e cada pessoa,
+// pelo nome do cadastro); escolher a Marina mostra só os dela, também na navegação do roteiro aberto, e o filtro
+// continua ao voltar. O grupo "De todo mundo" leva à Pauta em todas as áreas; o menu do perfil mostra as áreas e, fora
+// delas, Cadastros e Configuração. Quem não é administrador vê só os seus, sem o filtro, e a rota recusa "de todos". No
+// celular (escuro), o filtro e o perfil cabem na tela.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:areas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -577,16 +584,129 @@ async function umaAreaSo(navegador, url) {
   console.log('ok: quem tem uma área só (a Designer) não vê o seletor');
 }
 
-async function administradoraSemCadastro(navegador, url) {
-  const { ctx, p, erros } = await entrar(navegador, url, '#/redator', LIA, { viewport: { width: 1440, height: 900 } });
-  await p.locator('.meus-roteiros .aviso-meus').waitFor();
-  assert.match(await p.locator('.aviso-meus').innerText(), /ainda não está ligado a um cadastro de redator/);
-  await p.locator('.seletor-area').click();
-  assert.equal(await p.locator('.areas-menu .area-item').count(), 3, 'a administradora vê as três');
-  assert.match(await p.locator('.areas-menu-pe').innerText(), /Como administrador, você vê as três/);
+/* ---------- o administrador, o menu do perfil e "De todo mundo" (#105) ---------- */
+
+const itensDoMenuDeQuem = async (p) => (await p.locator('.de-quem-menu .menu-item').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+async function escolherDeQuem(p, nome) {
+  await p.locator('.de-quem').click();
+  await p.locator('.de-quem-menu .menu-item', { hasText: nome }).click();
+  await p.locator('.de-quem-menu').waitFor({ state: 'detached' });
+  await p.locator('.meus-roteiros[aria-busy="false"]').waitFor();
+}
+
+async function administradora(navegador, url) {
+  // a administradora sem cadastro: as três áreas, e no Redator os roteiros de todos
+  const { ctx, p, erros, aoTrello } = await entrar(navegador, url, '#/redator', LIA, { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.equal((await p.locator('.meus-roteiros h2').innerText()).trim(), 'Roteiros');
+  assert.match(await p.locator('.meus-roteiros .fila-conta').innerText(), /de todos os redatores/);
+  assert.equal(await p.locator('.aviso-meus').count(), 0, 'sem o aviso do e-mail não ligado');
+  const todos = await claquetes(p);
+  for (const c of ['CHEF(FUT) SP', 'FESTIVAL(VER) REDE', 'NOVELA7(CAP) SP']) assert.ok(todos.includes(c), `de todos: ${c} em ${todos.join(', ')}`);
+  // de todos, cada roteiro diz também quem é o redator
+  assert.match(await fichaDe(p, 'FESTIVAL(VER) REDE').locator('.ficha-de').innerText(), /^redator: Marina Teles · edição: Caio Brandão$/);
+  // o filtro "de quem": de todos, com quantos, e cada redator (o nome do cadastro, também para "Caio Brandao")
+  assert.match(await p.locator('.de-quem').innerText(), /de\s+todos/);
+  await p.locator('.de-quem').click();
+  const itens = await itensDoMenuDeQuem(p);
+  // a escolhida leva o ✓ no lugar da conta; a soma dos redatores é a de todos
+  assert.equal(itens[0], 'De todos');
+  assert.equal(await p.locator('.de-quem-menu .menu-item').first().getAttribute('aria-checked'), 'true');
+  assert.equal(itens.slice(1).reduce((n, t) => n + Number(t.split(' ').pop()), 0), todos.length);
+  assert.ok(itens.includes('Marina Teles 1'), `de quem: ${itens.join(' | ')}`);
+  assert.ok(itens.some((t) => /^Caio Brandão \d+$/.test(t)) && !itens.some((t) => t.startsWith('Caio Brandao')), `o Caio uma vez só: ${itens.join(' | ')}`);
+  await semRolagemDeLado(p, 'filtro de quem aberto');
+  await capturar(p, '16-de-quem-aberto-claro');
+  await p.keyboard.press('Escape');
+  await escolherDeQuem(p, 'Marina Teles');
+  assert.deepEqual(await claquetes(p), ['FESTIVAL(VER) REDE']);
+  assert.match(await p.locator('.meus-roteiros .fila-conta').innerText(), /redator: Marina Teles/);
+  assert.match(await p.locator('.de-quem').innerText(), /de\s+Marina Teles/);
+  // na lista de uma pessoa, a ficha volta a mostrar só a edição
+  assert.equal((await fichaDe(p, 'FESTIVAL(VER) REDE').locator('.ficha-de').innerText()).trim(), 'edição: Caio Brandão');
+  // o roteiro aberto navega na lista filtrada
+  await fichaDe(p, 'FESTIVAL(VER) REDE').click();
+  await p.locator('.aberto-claquete', { hasText: 'FESTIVAL(VER) REDE' }).waitFor();
+  assert.equal(await p.locator('button[aria-label="Próximo roteiro"]').isDisabled(), true, 'só um roteiro da Marina');
+  await p.locator('.aberto-voltar').click();
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.match(await p.locator('.de-quem').innerText(), /de\s+Marina Teles/, 'o filtro continua ao voltar');
+  await escolherDeQuem(p, 'De todos');
+  assert.deepEqual((await claquetes(p)).length, todos.length);
+  // no Editor também, pelo campo do editor
+  await escolherArea(p, 'Editor');
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.match(await p.locator('.meus-roteiros .fila-conta').innerText(), /de todos os editores/);
+  await escolherDeQuem(p, 'Bruno Regis');
+  for (const c of await claquetes(p)) assert.ok(c !== 'FESTIVAL(VER) REDE', 'o Festival é do Caio, não do Bruno');
+  console.log('ok: a administradora vê os roteiros de todos no Redator e no Editor, com o filtro "de quem"');
+
+  // "De todo mundo" no topo, em todas as áreas: leva à Pauta da edição
+  const grupo = p.locator('.barra-topo nav.de-todo-mundo');
+  assert.equal((await grupo.getAttribute('aria-label')), 'De todo mundo');
+  assert.ok(await grupo.locator('.topo-pauta').isVisible(), 'a Pauta no grupo, no Editor');
+  await escolherArea(p, 'Designer');
+  await p.locator('.biblioteca.fila').waitFor();
+  assert.ok(await p.locator('.barra-topo nav.de-todo-mundo .topo-pauta').isVisible(), 'a Pauta no grupo, na Designer');
+  await capturar(p, '17-de-todo-mundo-claro');
+
+  // o menu do perfil: as áreas, administrador e, fora das áreas, Cadastros e Configuração
+  await p.locator('.perfil-botao').click();
+  assert.deepEqual(await p.locator('.perfil-areas span').allInnerTexts(), ['Designer', 'Redator', 'Editor', 'administrador']);
+  const fora = p.locator('.perfil-painel .perfil-fora');
+  assert.equal((await fora.locator('.rotulo').innerText()).trim().toLowerCase(), 'fora das áreas');
+  const links = (await fora.locator('.perfil-link').allInnerTexts()).map((t) => t.split('\n')[0].trim().split(/\s{2,}/)[0]);
+  assert.ok(links[0].startsWith('Cadastros') && links[1].startsWith('Configuração'), `fora das áreas: ${links.join(' | ')}`);
+  // nenhum dos dois na navegação
+  assert.equal(await p.locator('.barra-topo > a', { hasText: /Cadastros|Configuração/ }).count(), 0);
+  await capturar(p, '18-menu-do-perfil-claro');
+  await fora.locator('.perfil-link', { hasText: 'Cadastros' }).click();
+  await p.locator('.pagina.cadastros').waitFor();
+  assert.match(hashDe(p), /^#\/cadastros/);
+  await p.goto(`${url}#/redator`);
+  await p.locator('.barra-topo nav.de-todo-mundo .topo-pauta').click();
+  await p.locator('.pagina.pauta').waitFor();
+  assert.equal(hashDe(p), '#/pauta');
+  assert.deepEqual(erros, [], 'administradora: erros na página');
+  assert.deepEqual(aoTrello, [], 'nada é lido do Trello');
+  await ctx.close();
+  console.log('ok: Cadastros e Configuração no menu do perfil, fora das áreas; "De todo mundo" leva à Pauta');
+}
+
+async function soOsSeus(navegador, url) {
+  // quem não é administrador vê só os seus, sem o filtro; no perfil, Cadastros fora das áreas, sem a Configuração
+  const { ctx, p, erros } = await entrar(navegador, url, '#/redator', CAIO, { viewport: { width: 1440, height: 900 } });
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.equal((await p.locator('.meus-roteiros h2').innerText()).trim(), 'Meus roteiros');
+  assert.equal(await p.locator('.de-quem').count(), 0, 'sem o filtro "de quem"');
+  assert.ok(await p.locator('.barra-topo nav.de-todo-mundo .topo-pauta').isVisible());
+  await p.locator('.perfil-botao').click();
+  assert.deepEqual(await p.locator('.perfil-areas span').allInnerTexts(), ['Designer', 'Redator', 'Editor']);
+  assert.equal(await p.locator('.perfil-painel .perfil-link', { hasText: 'Configuração' }).count(), 0);
+  // a rota recusa "de todos" para quem não é administrador
+  const r = await p.evaluate(async () => (await fetch('/api/meus-roteiros?area=redator&de=todos')).status);
+  assert.equal(r, 403);
   assert.deepEqual(erros, []);
   await ctx.close();
-  console.log('ok: a administradora sem cadastro vê as três áreas e o aviso claro de "meus roteiros" vazio');
+  console.log('ok: quem não é administrador vê só os seus roteiros, sem o filtro, e a rota recusa "de todos"');
+}
+
+async function administradoraNoCelular(navegador, url) {
+  const { ctx, p, erros } = await entrar(navegador, url, '#/redator', LIA, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  await p.locator('.de-quem').click();
+  await p.locator('.de-quem-menu').waitFor();
+  await semRolagemDeLado(p, 'filtro de quem no celular');
+  await capturar(p, '19-de-quem-no-celular-escuro');
+  await p.keyboard.press('Escape');
+  assert.equal(await p.locator('.de-todo-mundo-rotulo').isVisible(), false, 'no celular, só o ícone da Pauta');
+  await p.locator('.perfil-botao').click();
+  await p.locator('.perfil-fora').waitFor();
+  await semRolagemDeLado(p, 'perfil no celular');
+  await capturar(p, '20-perfil-no-celular-escuro');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: no celular, o filtro "de quem" e o menu do perfil cabem na tela');
 }
 
 async function areasNoCelular(navegador, url) {
@@ -626,7 +746,9 @@ async function principal() {
     await tresExibicoes(navegador, s.url);
     await roteiroAberto(navegador, s.url, s.db);
     await umaAreaSo(navegador, s.url);
-    await administradoraSemCadastro(navegador, s.url);
+    await administradora(navegador, s.url);
+    await soOsSeus(navegador, s.url);
+    await administradoraNoCelular(navegador, s.url);
     await areasNoCelular(navegador, s.url);
     assert.ok(pedidosAoTeable.every((x) => /^(GET|PATCH) /.test(x)), 'no Teable, só leitura e o e-mail');
   } finally {

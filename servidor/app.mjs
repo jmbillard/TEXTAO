@@ -40,7 +40,7 @@ import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSec
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
 import { criarPreferencias } from './preferencias.mjs';
-import { criarAreas, dosMeusRoteiros } from './areas.mjs';
+import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { DIAS_DO_ENTREGUE, faixasDasProducoes } from '../src/modelo/producoesPorPraca.ts';
@@ -2242,6 +2242,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // ou o editor, pelo nome do cadastro ligado ao e-mail dela. Nada é lido do Trello
       const area = new URL(req.url, 'http://x').searchParams.get('area');
       if (!ehAreaDosRoteiros(area)) return json(res, 400, { erro: 'Escolha a área: redator ou editor.' });
+      // o administrador vê os roteiros de todos (#105): "de=todos" ou "de=<nome>"; para os outros, o pedido é recusado
+      const de = new URL(req.url, 'http://x').searchParams.get('de');
+      if (de !== null && !cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem os roteiros de todos.' });
       const nome = (await areas.quemE(eu.email, cadastros))[area]?.nome ?? null;
       // cada um com o ciclo (#102): o estado e os passos com data, e quem da arte está com ele (os designers da Produção)
       const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
@@ -2260,6 +2263,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const fatos = { chegouEm: q.chegou.get(r.id)?.criado_em ?? null, enviadoEm: enviado?.em ?? null, producao, dataExibicao: r.meta?.dataExibicao };
         return { ...r, ciclo: cicloDoRoteiro(fatos, hoje), daArte: producao?.designers ?? [], artes: artesDe(r, producao) };
       };
+      if (de !== null) {
+        const todos = deTodos(resumosPara(eu), area, de || 'todos', (await areas.nomesDosCadastros(cadastros))[area]);
+        return json(res, 200, { area, nome, de: de || 'todos', pessoas: todos.pessoas, roteiros: todos.roteiros.map(comOCiclo) });
+      }
       return json(res, 200, { area, nome, roteiros: nome ? dosMeusRoteiros(resumosPara(eu), area, nome).map(comOCiclo) : [] });
     }
     if (caminho === '/api/eu/tour') {

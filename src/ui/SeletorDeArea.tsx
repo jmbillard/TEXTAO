@@ -58,3 +58,17 @@ export function SeletorDeArea({ areas, atual, admin, trocar }: { areas: readonly
     </span>
   );
 }
+
+/** O grupo "De todo mundo" na linha do logo (#105): o que não é de uma área só, o mesmo em todas elas. Hoje, a Pauta
+    da edição. No celular, só o ícone. */
+export function DeTodoMundo({ pauta }: { pauta: () => void }) {
+  return (
+    <nav className="de-todo-mundo" aria-label="De todo mundo">
+      <span className="de-todo-mundo-rotulo" aria-hidden="true">de todo mundo</span>
+      <a className="topo-pauta" href="#/pauta" aria-label="Pauta da edição" onClick={(e) => (e.preventDefault(), pauta())}>
+        <Icone nome="edicao" tam={17} traco={1.7} />
+        <span>Pauta da edição</span>
+      </a>
+    </nav>
+  );
+}

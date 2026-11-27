@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Falha } from '../App';
-import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, novidadesNoQuadro, roteiroDa, souAdministrador, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
+import { apagarAoSair, armazenamento, escolherMinhaCor, mandarParaTrello, minhasAreasDeTrabalho, novidadesNoQuadro, roteiroDa, souAdministrador, temCadastros, temFilmes, temTrello, type Andamento, type Resumo, type TipoCadastro, versaoNova } from '../dados/armazenamento';
 import { corDe, iniciais, nomesCurtos as nomes, PALETA, primeiroNome as primeiro, registrarCores } from '../dados/colaboracao';
 import { ouvirFila, type Fila } from '../dados/eventos';
 import { exportar, pendencias, TEXTO_SEM_REDATOR, travamTrello } from '../modelo/exportar';
@@ -22,6 +22,8 @@ import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { avisoDaSubstituicao } from './Comparar';
 import { Icone } from './icones';
+import { AREAS } from '../modelo/areas';
+import { DeTodoMundo } from './SeletorDeArea';
 import { CenaDaFilaZerada, TituloEmDia, useFilaZerada } from './FilaZerada';
 import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, EscolhaDeNome, Marca, MarcaTexto, NA_PRIORIDADE, RABISCOS, TextoDaClaquete, tracoDe, useSaida } from './pecas';
 import { redatoresConhecidos, semAcento } from '../modelo/vocabularios';
@@ -192,6 +194,21 @@ function EscolhaDeEnfeites({ tema, ligados }: { tema: TemaDeFimDeAno; ligados: b
   );
 }
 
+/** As áreas de trabalho da pessoa (#105), em etiquetas, e "administrador" para quem é. Com uma área só e sem ser
+    administrador, nada aparece (como o seletor). */
+function AreasDoPerfil({ admin }: { admin: boolean }) {
+  const minhas = minhasAreasDeTrabalho();
+  if (minhas.length < 2 && !admin) return null;
+  return (
+    <span className="perfil-areas" aria-label="Suas áreas">
+      {AREAS.filter((a) => minhas.includes(a.id)).map((a) => (
+        <span key={a.id}>{a.nome}</span>
+      ))}
+      {admin && <span className="adm">administrador</span>}
+    </span>
+  );
+}
+
 /** Quem está usando. Com login na porta, só mostra; sem ele, deixa a pessoa se identificar. */
 export function Perfil({ identidade, definirPerfil, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, aoMudarCor, enfeites }: Pick<Props, 'identidade' | 'definirPerfil'> & { cadastros?: () => void; filmes?: () => void; configuracao?: () => void; andamentoDoProjeto?: () => void; correcoes?: () => void; aoMudarCor?: () => void; enfeites?: { tema: TemaDeFimDeAno; ligados: boolean } }) {
   const meuEmail = identidade?.email ?? '';
@@ -243,6 +260,7 @@ export function Perfil({ identidade, definirPerfil, cadastros, filmes, configura
             <>
               <strong>{identidade.nome}</strong>
               <span className="suave">{identidade.email}</span>
+              <AreasDoPerfil admin={souAdministrador()} />
               <p className="suave pequeno">Você entrou com a conta da empresa. Seus roteiros saem assinados com este nome.</p>
               <a className="botao-texto" href={SAIR_DO_ACESSO}>Sair</a>
             </>
@@ -263,30 +281,36 @@ export function Perfil({ identidade, definirPerfil, cadastros, filmes, configura
               <button className="botao primario" disabled={!nome.trim()}>Salvar</button>
             </form>
           )}
-          {cadastros && (
-            <button type="button" className="perfil-link" onClick={cadastros}>
-              <Icone nome="pessoas" tam={16} /> Cadastros <small>atrações, redatores, editores</small>
-            </button>
-          )}
           {filmes && (
             <button type="button" className="perfil-link" onClick={filmes}>
               <Icone nome="quadro" tam={16} /> Filmes <small>as prévias de filmes</small>
             </button>
           )}
-          {configuracao && (
-            <button type="button" className="perfil-link" onClick={configuracao}>
-              <Icone nome="ajustes" tam={16} /> Configuração{novidade > 0 && <span className="perfil-ponto" aria-label="há novidade nas Pessoas" />} <small>{novidade ? (novidade === 1 ? 'uma novidade nas Pessoas' : `${novidade} novidades nas Pessoas`) : 'praças e ligações'}</small>
-            </button>
-          )}
-          {andamentoDoProjeto && (
-            <button type="button" className="perfil-link" onClick={andamentoDoProjeto}>
-              <Icone nome="andamento" tam={16} /> Andamento <small>o projeto, ao vivo do GitHub</small>
-            </button>
-          )}
-          {correcoes && (
-            <button type="button" className="perfil-link" onClick={correcoes}>
-              <Icone nome="borracha" tam={16} /> Correção de grafia <small>a pauta no padrão</small>
-            </button>
+          {/* Cadastros e Configuração saem da navegação (#105): ficam aqui, fora das áreas de trabalho */}
+          {(cadastros || configuracao || andamentoDoProjeto || correcoes) && (
+            <div className="perfil-fora" role="group" aria-label="Fora das áreas">
+              <span className="rotulo">Fora das áreas</span>
+              {cadastros && (
+                <button type="button" className="perfil-link" onClick={cadastros}>
+                  <Icone nome="pessoas" tam={16} /> Cadastros <small>atrações, redatores, editores</small>
+                </button>
+              )}
+              {configuracao && (
+                <button type="button" className="perfil-link" onClick={configuracao}>
+                  <Icone nome="ajustes" tam={16} /> Configuração{novidade > 0 && <span className="perfil-ponto" aria-label="há novidade nas Pessoas" />} <small>{novidade ? (novidade === 1 ? 'uma novidade nas Pessoas' : `${novidade} novidades nas Pessoas`) : 'praças e ligações'}</small>
+                </button>
+              )}
+              {andamentoDoProjeto && (
+                <button type="button" className="perfil-link" onClick={andamentoDoProjeto}>
+                  <Icone nome="andamento" tam={16} /> Andamento <small>o projeto, ao vivo do GitHub</small>
+                </button>
+              )}
+              {correcoes && (
+                <button type="button" className="perfil-link" onClick={correcoes}>
+                  <Icone nome="borracha" tam={16} /> Correção de grafia <small>a pauta no padrão</small>
+                </button>
+              )}
+            </div>
           )}
           <EscolhaDeTema />
           {enfeites && <EscolhaDeEnfeites {...enfeites} />}
@@ -1277,13 +1301,6 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
       <header className="barra-topo">
         <h1 className="bib-marca"><Marca /></h1>
         {seletorDeArea}
-        {/* a Pauta da edição (#94): a semana de quem edita o quê, aberta a todo mundo que entrou */}
-        {pauta && (
-          <a className="topo-pauta" href="#/pauta" aria-label="Pauta da edição" onClick={(e) => (e.preventDefault(), pauta())}>
-            <Icone nome="edicao" tam={17} traco={1.7} />
-            <span>Pauta da edição</span>
-          </a>
-        )}
         {/* a tela de produções (#109): as Produções por praça, ao lado da agenda No Trello */}
         {producoes && (
           <a className="topo-producoes" href="#/designer/producoes" aria-label="Produções" onClick={(e) => (e.preventDefault(), producoes())}>
@@ -1291,6 +1308,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
             <span>Produções</span>
           </a>
         )}
+        {/* a Pauta da edição (#94), no grupo "De todo mundo" (#105), o mesmo em todas as áreas */}
+        {pauta && <DeTodoMundo pauta={pauta} />}
         <span className="espaco" />
         {(todos.length > 6 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
         {colegas.length > 0 && (

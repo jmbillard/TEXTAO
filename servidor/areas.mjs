@@ -33,8 +33,16 @@ export function criarAreas({ espera = ESPERA_DOS_CADASTROS } = {}) {
     return { redator: meu(lido?.redatores), editor: meu(lido?.editores) };
   }
 
+  /** Os nomes dos cadastros de redatores e de editores, para dar a grafia certa a quem aparece no "de quem" (#105). */
+  async function nomesDosCadastros(cadastros) {
+    const lido = await lerCadastros(cadastros);
+    const nomes = (lista) => (lista ?? []).map((c) => c.nome).filter(Boolean);
+    return { redator: nomes(lido?.redatores), editor: nomes(lido?.editores) };
+  }
+
   return {
     quemE,
+    nomesDosCadastros,
     /**
      * O que a rota de quem está logado devolve das áreas: as da pessoa, a de entrada (a última usada, se ela ainda a
      * tem) e as preferências guardadas.
@@ -58,6 +66,38 @@ export function criarAreas({ espera = ESPERA_DOS_CADASTROS } = {}) {
 export function dosMeusRoteiros(resumos, area, nome) {
   const alvo = nomeComparavel(nome);
   if (!alvo) return [];
+  return porData(resumos.filter((r) => nomeComparavel(r.meta?.[area] ?? '') === alvo));
+}
+
+/** Na ordem da data de exibição; os sem data no fim; no mesmo dia, pela claquete. */
+function porData(roteiros) {
   const data = (r) => (/^\d{4}-\d{2}-\d{2}$/.test(r.meta?.dataExibicao ?? '') ? r.meta.dataExibicao : '9999');
-  return resumos.filter((r) => nomeComparavel(r.meta?.[area] ?? '') === alvo).sort((a, b) => data(a).localeCompare(data(b)) || String(a.meta.claquete).localeCompare(String(b.meta.claquete)));
+  return roteiros.sort((a, b) => data(a).localeCompare(data(b)) || String(a.meta.claquete).localeCompare(String(b.meta.claquete)));
+}
+
+/**
+ * Os roteiros de todos, para o administrador (#105): os que têm alguém no campo da área, e quem são (para o filtro
+ * "de quem"), cada um com quantos roteiros. A pessoa é o nome sem caixa, acento e pontuação; o nome mostrado é o do
+ * cadastro, quando há um, ou a grafia do primeiro roteiro dela (pela data). Com `de` diferente de "todos", só os roteiros
+ * daquela pessoa; a lista de quem continua inteira.
+ * @param resumos os roteiros como a fila os recebe ({ id, meta, … })
+ * @param area 'redator' | 'editor'
+ * @param de 'todos' ou o nome de alguém
+ * @param nomesDoCadastro os nomes do cadastro da área
+ */
+export function deTodos(resumos, area, de, nomesDoCadastro = []) {
+  const doCadastro = new Map(nomesDoCadastro.map((n) => [nomeComparavel(n), n]));
+  const pessoas = new Map();
+  const comAlguem = porData(resumos.filter((r) => nomeComparavel(r.meta?.[area] ?? '')));
+  for (const r of comAlguem) {
+    const chave = nomeComparavel(r.meta[area]);
+    const p = pessoas.get(chave) ?? { nome: doCadastro.get(chave) ?? String(r.meta[area]).trim(), roteiros: 0 };
+    p.roteiros += 1;
+    pessoas.set(chave, p);
+  }
+  const alvo = de === 'todos' ? null : nomeComparavel(de);
+  return {
+    pessoas: [...pessoas.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+    roteiros: alvo === null ? comAlguem : comAlguem.filter((r) => nomeComparavel(r.meta[area]) === alvo),
+  };
 }

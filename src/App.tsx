@@ -12,7 +12,7 @@ import { Pauta } from './ui/Pauta';
 import { enderecoDaPauta, hashDaPauta } from './ui/pecasDaPauta';
 import { Producoes } from './ui/Producoes';
 import { MeusRoteiros } from './ui/MeusRoteiros';
-import { SeletorDeArea } from './ui/SeletorDeArea';
+import { DeTodoMundo, SeletorDeArea } from './ui/SeletorDeArea';
 import { ehAreaDosRoteiros, type Area, type AreaDosRoteiros } from './modelo/areas';
 import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, temTrello, temFilmes, lembrarArea, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
@@ -516,14 +516,12 @@ export function App() {
           aberto={tela.roteiro}
           abrir={(roteiro) => ir({ t: 'area', area: tela.area, roteiro })}
           voltar={() => ir({ t: 'area', area: tela.area })}
+          admin={souAdministrador()}
           topo={
             <header className="barra-topo">
               <h1 className="bib-marca"><Marca /></h1>
               {seletorDeArea}
-              <a className="topo-pauta" href="#/pauta" aria-label="Pauta da edição" onClick={(e) => (e.preventDefault(), ir({ t: 'pauta' }))}>
-                <Icone nome="edicao" tam={17} traco={1.7} />
-                <span>Pauta da edição</span>
-              </a>
+              <DeTodoMundo pauta={() => ir({ t: 'pauta' })} />
               <span className="espaco" />
               <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
             </header>
@@ -540,10 +538,7 @@ export function App() {
                 <Icone nome="quadro" tam={17} traco={1.7} />
                 <span>No Trello</span>
               </a>
-              <a className="topo-pauta" href="#/pauta" aria-label="Pauta da edição" onClick={(e) => (e.preventDefault(), ir({ t: 'pauta' }))}>
-                <Icone nome="edicao" tam={17} traco={1.7} />
-                <span>Pauta da edição</span>
-              </a>
+              <DeTodoMundo pauta={() => ir({ t: 'pauta' })} />
               <span className="espaco" />
               <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} correcoes={souAdministrador() ? () => ir({ t: 'correcoes' }) : undefined} />
             </header>

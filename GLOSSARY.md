@@ -479,7 +479,10 @@ administrador tem as três. Não é permissão: qualquer pessoa logada abre qual
 logo, como o caminho **"PROMeiro / designer ▾"** (o **seletor de área**), que some para quem tem uma área só. Cada área
 tem o seu endereço; a raiz abre a última usada. No Redator e no Editor, a pessoa escolhe no topo da lista a
 **exibição** de "meus roteiros": **por dia** (pela data de exibição), **quadro** (uma coluna por estado do ciclo) ou
-**por estado** (uma lista agrupada, boa no celular), lembrada por pessoa e por área.
+**por estado** (uma lista agrupada, boa no celular), lembrada por pessoa e por área. O administrador vê no Redator e no
+Editor os roteiros **de todos**, com o filtro **"de quem"** (uma pessoa, pelo nome do cadastro). O que não é de uma área
+só fica no grupo **De todo mundo**, na linha do logo, igual em todas (hoje, a Pauta da edição); Cadastros e
+Configuração ficam no menu do perfil, **fora das áreas**.
 _Evitar_: perfil, papel, permissão
 
 **Ciclo do roteiro**:

@@ -174,6 +174,57 @@ describe('áreas de trabalho (#101)', () => {
     expect(teable.pedidos.every((p) => p.startsWith('GET '))).toBe(true);
   });
 
+  /* ---------- o administrador: "de todos" e "de quem" (#105) ---------- */
+
+  type DeQuem = { de: string; nome: string | null; pessoas: { nome: string; roteiros: number }[]; roteiros: { id: string; ciclo: { estado: string } }[] };
+  const deQuem = async (quem: ReturnType<typeof como>, area: string, de: string) => (await quem(`/api/meus-roteiros?area=${area}&de=${encodeURIComponent(de)}`)).json() as Promise<DeQuem>;
+
+  it('o administrador vê "de todos" no Redator: os roteiros de todos os redatores, por data, e quem são, com quantos', async () => {
+    const d = await deQuem(chefe, 'redator', 'todos');
+    expect(d.de).toBe('todos');
+    // o chefe não tem cadastro: a lista é a de todos do mesmo jeito; o roteiro sem redator fica de fora
+    expect(d.nome).toBeNull();
+    expect(d.roteiros.map((r) => r.id)).toEqual(['rot-chef-1', 'rot-nov-1', 'rot-fest-1', 'rot-sem-1']);
+    // cada um com o ciclo, como em "meus roteiros"
+    expect(d.roteiros.every((r) => r.ciclo?.estado)).toBe(true);
+    // o nome do cadastro vale pelas grafias do roteiro ("MARINA TELES"); por ordem alfabética
+    expect(d.pessoas).toEqual([
+      { nome: 'Júlio Pires', roteiros: 1 },
+      { nome: 'Marina Teles', roteiros: 2 },
+      { nome: 'Otávio Reis', roteiros: 1 },
+    ]);
+  });
+
+  it('o administrador filtra "de quem": só os roteiros daquela pessoa, sem caixa e acento; a lista de quem continua inteira', async () => {
+    const d = await deQuem(chefe, 'redator', 'marina teles');
+    expect(d.de).toBe('marina teles');
+    expect(d.roteiros.map((r) => r.id)).toEqual(['rot-chef-1', 'rot-fest-1']);
+    expect(d.pessoas).toHaveLength(3);
+    // no Editor, pelo campo do editor ("Caio Brandao" sem acento conta para o Caio Brandão); o Caio saiu do cadastro
+    // (no teste da área perdida), e o nome mostrado é a grafia do primeiro roteiro dele
+    const e = await deQuem(chefe, 'editor', 'Caio Brandão');
+    expect(e.roteiros.map((r) => r.id)).toEqual(['rot-chef-1', 'rot-nov-1']);
+    expect(e.pessoas).toEqual([
+      { nome: 'Caio Brandão', roteiros: 2 },
+      { nome: 'Júlio Pires', roteiros: 1 },
+    ]);
+    // ninguém com esse nome: a lista vem vazia
+    expect((await deQuem(chefe, 'editor', 'Ninguém')).roteiros).toEqual([]);
+  });
+
+  it('"de todos" e "de quem" são só do administrador: para os outros, o pedido é recusado', async () => {
+    for (const de of ['todos', 'Júlio Pires', 'Marina Teles']) {
+      const r = await marina(`/api/meus-roteiros?area=redator&de=${encodeURIComponent(de)}`);
+      expect(r.status).toBe(403);
+      expect((await r.json()).erro).toBe('Só administradores veem os roteiros de todos.');
+    }
+    expect((await davi('/api/meus-roteiros?area=editor&de=todos')).status).toBe(403);
+    // sem "de", a Marina continua vendo os dela
+    expect((await (await marina('/api/meus-roteiros?area=redator')).json()).roteiros).toHaveLength(2);
+    // o "de" vazio também é um pedido "de quem"
+    expect((await marina('/api/meus-roteiros?area=redator&de=')).status).toBe(403);
+  });
+
   /* ---------- as três exibições do Redator e do Editor (#103) ---------- */
 
   it('a exibição fica lembrada por pessoa e por área, junto da última área, também com o servidor de novo', async () => {

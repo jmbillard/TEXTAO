@@ -13,7 +13,8 @@ import './areas.css';
    ciclo (#102), os passos com a data e quem da arte está com ele; a lista se lê de novo na cadência da agenda. A pessoa
    escolhe no topo da lista como ver (#103): por dia, em quadro (uma coluna por estado do ciclo) ou por estado (uma
    lista agrupada, boa no celular); o PROMeiro lembra a escolha por pessoa e por área. Um toque abre o roteiro, só para
-   leitura (#104, RoteiroAberto). Nada vem do Trello. */
+   leitura (#104, RoteiroAberto). O administrador vê os roteiros de todos, com o filtro "de quem" (#105). Nada vem do
+   Trello. */
 
 interface Props {
   area: AreaDosRoteiros;
@@ -24,12 +25,16 @@ interface Props {
   abrir: (id: string) => void;
   /** do roteiro aberto de volta à lista */
   voltar: () => void;
+  /** o administrador (#105): vê os roteiros de todos, com o filtro "de quem" */
+  admin?: boolean;
 }
 
 const OUTRO: Record<AreaDosRoteiros, { campo: 'redator' | 'editor'; rotulo: string }> = {
   redator: { campo: 'editor', rotulo: 'edição' },
   editor: { campo: 'redator', rotulo: 'redator' },
 };
+/** O rótulo do próprio campo da área, quando a lista é de todos (#105): "redator: Fulana · edição: Sicrano". */
+const ROTULO_DA_AREA: Record<AreaDosRoteiros, string> = { redator: 'redator', editor: 'edição' };
 
 /** Um ponto por passo do ciclo (os de antes do PROMeiro, vazados), ligados por um traço. */
 function TrilhaDoCiclo({ ciclo }: { ciclo: CicloDoRoteiro }) {
@@ -97,8 +102,60 @@ function EscolhaDaExibicao({ atual, escolher, lembrado }: { atual: Exibicao; esc
   );
 }
 
-export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
+/** O filtro "de quem" do administrador (#105): "de todos" ou de uma pessoa, com quantos roteiros cada uma tem. */
+function FiltroDeQuem({ de, pessoas, escolher }: { de: string; pessoas: { nome: string; roteiros: number }[]; escolher: (de: string) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const caixa = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: PointerEvent) => !caixa.current?.contains(e.target as Node) && setAberto(false);
+    const tecla = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setAberto(false);
+    window.addEventListener('pointerdown', fora, true);
+    window.addEventListener('keydown', tecla);
+    return () => {
+      window.removeEventListener('pointerdown', fora, true);
+      window.removeEventListener('keydown', tecla);
+    };
+  }, [aberto]);
+  const total = pessoas.reduce((n, p) => n + p.roteiros, 0);
+  const item = (valor: string, rotulo: string, n: number) => (
+    <button
+      key={valor}
+      type="button"
+      className="menu-item"
+      role="menuitemradio"
+      aria-checked={de === valor}
+      onClick={() => {
+        setAberto(false);
+        if (valor !== de) escolher(valor);
+      }}
+    >
+      <span className="de-quem-nome">{rotulo}</span>
+      <span className="de-quem-conta">{n}</span>
+    </button>
+  );
+  return (
+    <span className="de-quem-ancora" ref={caixa}>
+      <button type="button" className="de-quem" aria-haspopup="menu" aria-expanded={aberto} onClick={() => setAberto((v) => !v)}>
+        <Icone nome="pessoas" tam={14} /> de <b>{de === 'todos' ? 'todos' : de}</b>
+        <Icone nome="baixo" tam={13} traco={2.2} />
+      </button>
+      {aberto && (
+        <div className="menu de-quem-menu" role="menu" aria-label="De quem">
+          {item('todos', 'De todos', total)}
+          <hr />
+          {pessoas.map((p) => item(p.nome, p.nome, p.roteiros))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false }: Props) {
   const [lido, setLido] = useState<Lidos | null>(null);
+  // o administrador vê os de todos (#105); o filtro vale nesta visita (e no roteiro aberto, que usa a mesma lista)
+  const [deQuem, setDeQuem] = useState('todos');
+  const de = admin ? deQuem : undefined;
   const [erro, setErro] = useState('');
   // a exibição lembrada da área (o App remonta a tela a cada área); o estado escolhido na faixa vale só nesta visita
   const [exibicao, setExibicao] = useState<Exibicao>(() => exibicaoLembrada(area));
@@ -127,7 +184,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
     setLido(null);
     setErro('');
     const ler = (primeira: boolean) =>
-      lerMeusRoteiros(area).then(
+      lerMeusRoteiros(area, de).then(
         (d) => {
           if (!vivo) return;
           setLido(d);
@@ -151,7 +208,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
       document.removeEventListener('visibilitychange', deNovo);
       window.removeEventListener('focus', deNovo);
     };
-  }, [area]);
+  }, [area, de]);
 
   if (aberto) return <RoteiroAberto area={area} id={aberto} lido={lido} topo={topo} abrir={abrir} voltar={voltar} />;
 
@@ -165,6 +222,9 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
     },
   });
   const outro = OUTRO[area];
+  // na lista de todos, cada roteiro diz também quem é o redator (ou o editor); na de uma pessoa, só o outro campo
+  const deTodos = lido?.de === 'todos';
+  const quem = (r: MeuRoteiro) => `${deTodos ? `${ROTULO_DA_AREA[area]}: ${r.meta[area] || '—'} · ` : ''}${outro.rotulo}: ${r.meta[outro.campo] || '—'}`;
   // agruparPorDia devolve os resumos; o ciclo vem do roteiro lido
   const porId = new Map((lido?.roteiros ?? []).map((r) => [r.id, r]));
   const ficha = (resumo: Resumo) => {
@@ -178,9 +238,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
             {r.meta.programa || 'sem atração'}
             {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
           </span>
-          <span className="ficha-de">
-            {outro.rotulo}: {r.meta[outro.campo] || '—'}
-          </span>
+          <span className="ficha-de">{quem(r)}</span>
         </span>
         {r.ciclo && (
           <span className="ficha-ciclo">
@@ -227,7 +285,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
         {r.meta.programa || 'sem atração'} · {diaCurto(r.meta.dataExibicao)}
       </span>
       <span>
-        {plural(r.nArtes, 'arte', 'artes')} · {outro.rotulo}: {r.meta[outro.campo] || '—'}
+        {plural(r.nArtes, 'arte', 'artes')} · {quem(r)}
       </span>
       {r.daArte?.length > 0 && <small className="com-quem">com {r.daArte.join(' e ')}</small>}
     </li>
@@ -266,7 +324,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
       <span className="linha-meu-quem">
         <b>{r.meta.claquete || 'Sem claquete'}</b>
         <small>
-          {r.meta.programa || 'sem atração'} · {outro.rotulo}: {r.meta[outro.campo] || '—'}
+          {r.meta.programa || 'sem atração'} · {quem(r)}
         </small>
       </span>
       {r.ciclo && <TrilhaDoCiclo ciclo={r.ciclo} />}
@@ -323,11 +381,19 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
   return (
     <div className="pagina">
       {topo}
-      <main className={`biblioteca meus-roteiros exibe-${exibicao}`} aria-busy={!lido && !erro}>
+      <main className={`biblioteca meus-roteiros exibe-${exibicao}`} aria-busy={!erro && (!lido || (admin && lido.de !== deQuem))}>
         <div className="fila-topo">
           <div className="fila-titulo">
-            <h2 className="titulo-serifa">Meus roteiros</h2>
-            {lido?.nome && (
+            <h2 className="titulo-serifa">{admin ? 'Roteiros' : 'Meus roteiros'}</h2>
+            {lido && admin && (
+              <p className="fila-conta">
+                <span>
+                  {total ? `${plural(total, 'roteiro', 'roteiros')} · ` : ''}
+                  {deTodos ? `de todos os ${papel}es` : `${papel}: ${lido.de}`}
+                </span>
+              </p>
+            )}
+            {lido?.nome && !admin && (
               <p className="fila-conta">
                 <span>{total ? `${plural(total, 'roteiro', 'roteiros')} · ` : ''}como {papel}: {lido.nome}</span>
               </p>
@@ -335,22 +401,30 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
           </div>
         </div>
         {erro && <p className="aviso-meus erro" role="alert">{erro}</p>}
-        {lido && !lido.nome && (
+        {lido && !admin && !lido.nome && (
           <p className="aviso-meus" role="status">
             O seu e-mail ainda não está ligado a um cadastro de {papel}. Quando um administrador puser o seu e-mail nos Cadastros, os seus roteiros como {papel} aparecem aqui.
           </p>
         )}
-        {lido?.nome && !total && (
+        {lido && !admin && lido.nome && !total && (
           <p className="aviso-meus" role="status">
             Nenhum roteiro seu como {papel} por enquanto. Quando um roteiro seu chegar à fila da arte, ele aparece aqui.
           </p>
         )}
-        {lido?.nome && total > 0 && (
+        {/* o administrador escolhe "de quem" (#105) no topo da lista, à esquerda da exibição */}
+        {lido && ((admin && lido.pessoas) || (lido.nome && total > 0)) && (
           <div className="lista-meus">
             <div className="lista-meus-topo">
-              <EscolhaDaExibicao atual={exibicao} escolher={escolher} lembrado={lembrado} />
+              {admin && lido.pessoas && <FiltroDeQuem de={deQuem} pessoas={lido.pessoas} escolher={setDeQuem} />}
+              {total > 0 && <EscolhaDaExibicao atual={exibicao} escolher={escolher} lembrado={lembrado} />}
             </div>
-            {exibicao === 'quadro' ? quadro : exibicao === 'estado' ? porEstado : porDia}
+            {total > 0 ? (
+              exibicao === 'quadro' ? quadro : exibicao === 'estado' ? porEstado : porDia
+            ) : (
+              <p className="aviso-meus" role="status">
+                {deTodos ? `Nenhum roteiro com ${papel} por enquanto.` : `Nenhum roteiro de ${lido.de} como ${papel} por enquanto.`} Quando um roteiro chegar à fila da arte, ele aparece aqui.
+              </p>
+            )}
           </div>
         )}
       </main>

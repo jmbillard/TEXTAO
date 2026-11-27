@@ -831,6 +831,8 @@ export async function quemNosRoteiros(): Promise<PresencaNosRoteiros> {
 /* ---------- áreas de trabalho (#101) ---------- */
 
 let minhasAreas: Area[] = ['designer'];
+/** As áreas de trabalho da pessoa (#101), para o menu do perfil (#105). Sem servidor, só a Designer. */
+export const minhasAreasDeTrabalho = (): readonly Area[] => minhasAreas;
 let areaLembrada: Area = 'designer';
 /** As preferências da pessoa como o servidor devolveu (e o que ela gravou desde então): a exibição de cada área (#103). */
 let minhasPreferencias: Record<string, unknown> = {};
@@ -870,6 +872,10 @@ export interface MeusRoteiros {
   area: AreaDosRoteiros;
   nome: string | null;
   roteiros: MeuRoteiro[];
+  /** só no pedido do administrador (#105): "todos" ou o nome escolhido no filtro "de quem" */
+  de?: string;
+  /** só no pedido do administrador: quem aparece nos roteiros da área, com quantos roteiros, para o filtro "de quem" */
+  pessoas?: { nome: string; roteiros: number }[];
 }
 /** O roteiro de "meus roteiros", com o ciclo (#102), quem da arte está com ele (os designers da Produção) e as artes com
     o estado e a origem (#104). */
@@ -878,9 +884,10 @@ export interface MeuRoteiro extends Resumo {
   daArte: string[];
   artes: ArtesDoRoteiro;
 }
-export async function lerMeusRoteiros(area: AreaDosRoteiros): Promise<MeusRoteiros> {
+/** Com `de` (só administradores, #105), os roteiros de todos ("todos") ou os de uma pessoa, pelo nome. */
+export async function lerMeusRoteiros(area: AreaDosRoteiros, de?: string): Promise<MeusRoteiros> {
   if (armazenamento.tipo !== 'servidor') return { area, nome: null, roteiros: [] };
-  return pedir<MeusRoteiros>(`/api/meus-roteiros?area=${area}`);
+  return pedir<MeusRoteiros>(`/api/meus-roteiros?area=${area}${de === undefined ? '' : `&de=${encodeURIComponent(de)}`}`);
 }
 
 /** A pessoa viu o tour da revisão (terminou, pulou ou disse "Agora não"): o servidor guarda e o convite não volta. */
