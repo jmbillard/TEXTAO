@@ -1,0 +1,85 @@
+/* A Pauta da edição (#94): a Semana editor × dia. A moldura do app (o topo da Configuração, a mesa e os cartões),
+   claro e escuro pelas variáveis; a grade é uma tabela num cartão, com a coluna dos nomes fixa quando ela rola para o
+   lado (celular e tablet). Claquete em mono, tarefa em itálico, aviso só como ⚑ com o balão. */
+
+.pauta-pagina { max-width: 1680px; margin: 0 auto; padding: 22px 32px 120px; }
+.pauta .cad-topo { max-width: 1680px; padding-left: 32px; padding-right: 32px; }
+.pauta-cabeca { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; margin: 6px 0 20px; }
+.pauta-cabeca h1 { font: 400 42px/1.05 var(--serifa); letter-spacing: -0.01em; margin: 0; color: var(--tinta); }
+.pauta-sub { margin: 6px 0 0; font: 400 13.5px var(--sans); color: var(--tinta3); }
+.pauta-nav { display: flex; align-items: center; gap: 4px; }
+.pauta-periodo { min-width: 15ch; text-align: center; font: 500 16px var(--sans); color: var(--tinta); font-variant-numeric: tabular-nums; }
+.pauta-hoje { margin-right: 10px; }
+.pauta-lendo, .pauta-vazia { color: var(--tinta3); font: 400 14px var(--sans); }
+.pauta-vazia { font: 600 22px/1 Caveat, cursive; transform: rotate(-2deg); display: inline-block; padding: 20px 4px; }
+.pauta-falha { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
+
+/* ---------- a grade ---------- */
+.pauta-rolagem { overflow-x: auto; scroll-padding-left: 190px; border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha); overscroll-behavior-x: contain; }
+.pauta-grade { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.pauta-grade th, .pauta-grade td { border-bottom: 1px solid var(--regua); border-right: 1px solid var(--regua); vertical-align: top; text-align: left; }
+.pauta-grade tr > :last-child { border-right: 0; }
+.pauta-grade tbody tr:last-child > * { border-bottom: 0; }
+.pauta-canto { width: 190px; }
+.pauta-canto .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.pauta-dia, .pauta-celula { width: calc((100% - 190px) / 7); min-width: 168px; }
+.pauta-dia { padding: 12px 12px 10px; font: 400 22px/1 var(--serifa); color: var(--tinta); white-space: nowrap; }
+.pauta-dia-sem { font: 600 11.5px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); }
+.pauta-dia.hoje, .pauta-dia.hoje .pauta-dia-sem { color: var(--ultra-tinta); }
+.pauta-dia-rel { font: 600 19px/1 Caveat, cursive; color: var(--ultra); display: inline-block; transform: rotate(-3deg); }
+.pauta-celula.hoje, .pauta-dia.hoje { background: color-mix(in srgb, var(--ultra-suave) 45%, transparent); }
+
+/* a coluna dos nomes: fixa quando a grade rola para o lado */
+.pauta-editor, .pauta-canto { position: sticky; left: 0; z-index: 2; background: var(--cartao); }
+.pauta-editor { padding: 10px 12px; vertical-align: middle; font: 600 13.5px/1.3 var(--sans); color: var(--tinta); }
+.pauta-editor { display: table-cell; }
+.pauta-editor > span { vertical-align: middle; }
+.pauta-avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; margin-right: 9px; border-radius: 50%; background: var(--neutro); color: var(--tinta2); font: 600 10.5px var(--sans); letter-spacing: 0.02em; }
+.pauta-nome { display: inline-block; max-width: calc(100% - 40px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--tinta3); padding-right: 2px; }
+
+.pauta-celula { padding: 9px 12px 11px; }
+.pauta-celula-topo { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+.pauta-turno { font: 500 11.5px var(--mono); color: var(--tinta3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pauta-itens { list-style: none; margin: 3px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.pauta-item { position: relative; overflow-wrap: break-word; }
+.pauta-item.pauta-claquete { padding-left: 11px; font: 600 12.5px/1.35 var(--mono); color: var(--tinta); }
+.pauta-item.pauta-claquete::before { content: ''; position: absolute; left: 0; top: 0.55em; width: 5px; height: 5px; border-radius: 50%; background: var(--tinta3); }
+.pauta-item.pauta-tarefa { font: italic 400 13.5px/1.3 var(--serifa); color: var(--tinta2); text-transform: lowercase; }
+
+/* ---------- o aviso: ⚑ com o número; o texto no balão ---------- */
+.pauta-avisos { position: relative; display: inline-flex; }
+.pauta-aviso-botao { height: 20px; padding: 0 7px; border: 0; border-radius: 6px; background: var(--ultra-suave); color: var(--ultra-tinta); font: 600 11px var(--sans); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
+.pauta-aviso-botao:hover, .pauta-aviso-botao[aria-expanded='true'] { background: color-mix(in srgb, var(--ultra) 26%, var(--ultra-suave)); }
+.pauta-aviso-balao {
+  position: fixed; z-index: 30; width: max-content; max-width: 260px;
+  display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-radius: 10px;
+  background: var(--papel); box-shadow: var(--sombra-menu); color: var(--tinta); font: 400 13px/1.4 var(--sans);
+  animation: pauta-balao 0.18s var(--suave);
+}
+.pauta-aviso-titulo { font: 600 17px/1 Caveat, cursive; color: var(--ultra); }
+.pauta-aviso-texto { overflow-wrap: anywhere; }
+@keyframes pauta-balao { from { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .pauta-aviso-balao { animation: none; } }
+
+/* ---------- tablet e celular: a grade rola para o lado, os nomes ficam ---------- */
+@media (max-width: 1024px) {
+  .pauta-pagina { padding: 16px 16px 100px; }
+  .pauta .cad-topo { padding-left: 16px; padding-right: 16px; }
+  .pauta-canto { width: 140px; }
+  .pauta-rolagem { scroll-padding-left: 140px; }
+  .pauta-dia, .pauta-celula { width: 172px; }
+}
+@media (max-width: 600px) {
+  .pauta-cabeca h1 { font-size: 32px; }
+  .pauta-cabeca { align-items: flex-start; flex-direction: column; }
+  .pauta-nav { align-self: stretch; justify-content: space-between; }
+  .pauta-nav .botao-icone { width: 44px; height: 44px; }
+  .pauta-canto { width: 112px; }
+  .pauta-rolagem { scroll-padding-left: 112px; }
+  .pauta-editor { padding: 8px; font-size: 12.5px; }
+  .pauta-avatar { display: none; }
+  .pauta-nome { max-width: 96px; white-space: normal; }
+  .pauta-dia, .pauta-celula { width: 156px; }
+  .pauta-aviso-botao { height: 28px; padding: 0 10px; font-size: 12px; }
+}

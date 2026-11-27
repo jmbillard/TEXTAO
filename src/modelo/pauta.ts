@@ -1,0 +1,192 @@
+/* A pauta da edição (#94): as regras puras da Semana, as mesmas no servidor e no navegador (só sintaxe que o Node
+   apaga). Cada linha da tabela EDICAO_producao do Teable vira uma claquete, uma tarefa ou um aviso; o turno sai do
+   início e do fim do expediente, no fuso de São Paulo; o dia da pauta é o campo data (um turno que passa da
+   meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. */
+import { lerDataDaClaquete } from './vocabularios.ts';
+
+export type TipoDaLinha = 'claquete' | 'tarefa' | 'aviso';
+
+/** O turno, em horas de São Paulo ("22:00" a "06:00": passa da meia-noite). */
+export interface Turno {
+  inicio: string;
+  fim: string;
+}
+
+/** Uma linha da pauta, como a rota da Semana devolve. */
+export interface LinhaDaPauta {
+  id: string;
+  /** o dia da pauta (AAAA-MM-DD) */
+  dia: string;
+  /** o editor; '' é o grupo "sem editor" */
+  editor: string;
+  tipo: TipoDaLinha;
+  /** a claquete, a tarefa ou o texto do aviso, como está no Teable */
+  texto: string;
+  turno: Turno | null;
+}
+
+/** A Semana da pauta: a rota GET /api/pauta/semana. */
+export interface SemanaDaPauta {
+  /** a segunda-feira (AAAA-MM-DD) */
+  inicio: string;
+  /** de segunda a domingo */
+  dias: string[];
+  /** na ordem do turno de costume; '' (sem editor) no fim, quando há */
+  editores: string[];
+  linhas: LinhaDaPauta[];
+  /** a hora da última alteração da pauta na semana (ISO), ou null */
+  alteradoEm: string | null;
+}
+
+const FUSO = 'America/Sao_Paulo';
+const DIA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+/** São Paulo não tem horário de verão desde 2019: a semana começa às 00:00 de -03:00. */
+const DESLOCAMENTO = '-03:00';
+
+const somarDias = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/** O dia (AAAA-MM-DD) de um instante, em São Paulo. */
+export const diaEmSaoPaulo = (instante: Date | number = Date.now()) => new Date(instante).toLocaleDateString('en-CA', { timeZone: FUSO });
+const horaEmSaoPaulo = (instante: Date) => instante.toLocaleTimeString('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/** A segunda-feira da semana de um dia (AAAA-MM-DD); um dia que não é data vale hoje. */
+export function segundaDaSemana(dia: string, hoje = diaEmSaoPaulo()): string {
+  const iso = DIA_ISO.test(dia) && !Number.isNaN(Date.parse(`${dia}T12:00:00Z`)) ? dia : hoje;
+  const semana = new Date(`${iso}T12:00:00Z`).getUTCDay(); // 0 domingo
+  return somarDias(iso, -((semana + 6) % 7));
+}
+
+/** Os sete dias da semana, de segunda a domingo. */
+export const diasDaSemana = (segunda: string) => Array.from({ length: 7 }, (_, i) => somarDias(segunda, i));
+export const semanaVizinha = (segunda: string, n: number) => somarDias(segunda, 7 * n);
+
+/** O período da semana para a consulta: [00:00 de segunda, 00:00 da segunda seguinte), em São Paulo, como ISO. */
+export const periodoDaSemana = (segunda: string): [string, string] => [new Date(`${segunda}T00:00:00${DESLOCAMENTO}`).toISOString(), new Date(`${somarDias(segunda, 7)}T00:00:00${DESLOCAMENTO}`).toISOString()];
+
+/**
+ * Claquete é a linha com a forma de claquete: o nome da atração e, depois dele, a data ("Terra 24/11-2",
+ * "Fut(Copabr)6/12"), pela mesma leitura da data das claquetes do roteiro. Com a caixinha de anotação marcada, é
+ * um aviso para o editor; o resto (COMUNICAÇÃO, CALHAUS) é tarefa.
+ */
+export function tipoDaLinha(texto: string, anotacao: unknown): TipoDaLinha {
+  if (anotacao === true || anotacao === 'true' || anotacao === 1) return 'aviso';
+  const data = lerDataDaClaquete(texto);
+  return data && /\p{L}/u.test(texto.slice(0, data.inicio)) ? 'claquete' : 'tarefa';
+}
+
+/** O nome do editor, do link do Teable ({ title }, a lista deles ou o texto, também em JSON). */
+export function nomeDoEditor(v: unknown): string {
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (/^[[{]/.test(t)) {
+      try {
+        return nomeDoEditor(JSON.parse(t));
+      } catch {
+        return t;
+      }
+    }
+    return t;
+  }
+  if (Array.isArray(v)) return nomeDoEditor(v[0]);
+  if (v && typeof v === 'object' && 'title' in v) return nomeDoEditor((v as { title: unknown }).title);
+  return '';
+}
+
+const instante = (v: unknown): Date | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/** O dia da pauta do campo data: o dia só ("2026-11-24") ou o instante, lido em São Paulo. */
+function diaDoCampo(v: unknown): string {
+  if (typeof v === 'string' && DIA_ISO.test(v.trim())) return v.trim();
+  const d = instante(v);
+  return d ? diaEmSaoPaulo(d) : '';
+}
+
+/** Uma linha como vem do Postgres do Teable. */
+export interface LinhaBruta {
+  id?: unknown;
+  claquete?: unknown;
+  editor?: unknown;
+  data?: unknown;
+  expediente_inicio?: unknown;
+  expediente_fim?: unknown;
+  anotacao?: unknown;
+}
+
+/** A linha bruta como a Semana mostra; null quando não tem dia (nem a data nem o início do expediente). */
+export function linhaDaPauta(b: LinhaBruta): LinhaDaPauta | null {
+  const inicio = instante(b.expediente_inicio);
+  const fim = instante(b.expediente_fim);
+  // o dia é o da data; sem ela, o do início do expediente (o turno conta no dia em que começou)
+  const dia = diaDoCampo(b.data) || (inicio ? diaEmSaoPaulo(inicio) : '');
+  if (!dia) return null;
+  const texto = String(b.claquete ?? '').trim();
+  return {
+    id: String(b.id ?? ''),
+    dia,
+    editor: nomeDoEditor(b.editor),
+    tipo: tipoDaLinha(texto, b.anotacao),
+    texto,
+    turno: inicio ? { inicio: horaEmSaoPaulo(inicio), fim: fim ? horaEmSaoPaulo(fim) : '' } : null,
+  };
+}
+
+/** Os minutos do início do turno, num dia que começa às 6h (a madrugada vem depois da noite). */
+const minutosNoDia = (hora: string) => {
+  const [h, m] = hora.split(':').map(Number);
+  return ((h + 18) % 24) * 60 + m;
+};
+const chaveDoTurno = (t: Turno) => `${t.inicio}-${t.fim}`;
+
+/** O turno que mais se repete; no empate, o que começa mais cedo (num dia que começa às 6h). */
+function turnoQueMaisSeRepete(turnos: Iterable<Turno>): Turno | null {
+  const conta = new Map<string, { t: Turno; n: number }>();
+  for (const t of turnos) conta.set(chaveDoTurno(t), { t, n: (conta.get(chaveDoTurno(t))?.n ?? 0) + 1 });
+  return [...conta.values()].sort((a, b) => b.n - a.n || minutosNoDia(a.t.inicio) - minutosNoDia(b.t.inicio))[0]?.t ?? null;
+}
+
+/**
+ * Os editores da semana na ordem do turno de costume (o turno que mais se repete nos dias dele; no empate, o que
+ * começa mais cedo), de manhã à madrugada; depois, pelo nome. Quem não tem turno vem depois; sem editor (''), no fim.
+ */
+export function ordemDosEditores(linhas: readonly LinhaDaPauta[]): string[] {
+  const turnos = new Map<string, Map<string, Turno>>(); // editor → dia → turno
+  for (const l of linhas) {
+    if (!turnos.has(l.editor)) turnos.set(l.editor, new Map());
+    if (l.turno && !turnos.get(l.editor)!.has(l.dia)) turnos.get(l.editor)!.set(l.dia, l.turno);
+  }
+  const nomes = [...turnos.keys()].filter((e) => e !== '');
+  const costume = new Map(nomes.map((e) => [e, turnoQueMaisSeRepete(turnos.get(e)!.values())]));
+  nomes.sort((a, b) => {
+    const ta = costume.get(a);
+    const tb = costume.get(b);
+    if (!ta || !tb) return ta ? -1 : tb ? 1 : a.localeCompare(b, 'pt-BR');
+    return minutosNoDia(ta.inicio) - minutosNoDia(tb.inicio) || minutosNoDia(ta.fim || ta.inicio) - minutosNoDia(tb.fim || tb.inicio) || a.localeCompare(b, 'pt-BR');
+  });
+  return turnos.has('') ? [...nomes, ''] : nomes;
+}
+
+/** Uma célula da Semana editor × dia: o turno e as linhas daquele editor naquele dia. */
+export interface CelulaDaSemana {
+  dia: string;
+  /** o turno que mais aparece nas linhas da célula */
+  turno: Turno | null;
+  /** as claquetes e as tarefas, na ordem da pauta */
+  itens: LinhaDaPauta[];
+  avisos: LinhaDaPauta[];
+}
+
+/** A grade editor × dia: uma fileira por editor (na ordem da semana), uma célula por dia. */
+export function gradeDaSemana(s: Pick<SemanaDaPauta, 'dias' | 'editores' | 'linhas'>): { editor: string; celulas: CelulaDaSemana[] }[] {
+  return s.editores.map((editor) => ({
+    editor,
+    celulas: s.dias.map((dia) => {
+      const doDia = s.linhas.filter((l) => l.editor === editor && l.dia === dia);
+      const turno = turnoQueMaisSeRepete(doDia.flatMap((l) => (l.turno ? [l.turno] : [])));
+      return { dia, turno, itens: doDia.filter((l) => l.tipo !== 'aviso'), avisos: doDia.filter((l) => l.tipo === 'aviso') };
+    }),
+  }));
+}

@@ -220,6 +220,9 @@ kbd {
 .barra-topo .bib-marca { margin: 0; line-height: 1; }
 .barra-topo .bib-marca .logo-app { font-size: 28px; }
 .barra-topo .na-fila { margin-right: 6px; }
+/* a entrada da Pauta da edição (#94), ao lado do logo; no celular, só o ícone */
+.topo-pauta { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; margin-left: 8px; border-radius: 10px; color: var(--tinta2); font: 500 14px var(--sans); text-decoration: none; white-space: nowrap; }
+.topo-pauta:hover { background: var(--neutro); color: var(--tinta); }
 .biblioteca.fila { padding-top: 44px; }
 .marca {
   width: 40px; height: 40px; border-radius: 11px; background: var(--tinta); color: var(--papel); flex-shrink: 0;
@@ -2702,6 +2705,9 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .barra-topo .bib-marca .logo-app { font-size: 24px; }
   .barra-topo .na-fila { flex: none; margin: 0 4px; max-width: 80px; overflow: hidden; transition: max-width 0.28s var(--suave), opacity 0.2s, margin 0.28s var(--suave); }
   .barra-topo .na-fila .presente { width: 30px; height: 30px; font-size: 11px; }
+  .topo-pauta { flex: none; width: 44px; height: 44px; padding: 0; margin: 0; justify-content: center; }
+  .topo-pauta span { display: none; }
+  .barra-topo:has(.busca.lupa.aberta) .topo-pauta { display: none; }
   /* a lupa cresce por cima do logo: o logo e os presentes recolhem, e a altura do topo não muda */
   .busca.lupa { flex: none; width: 44px; height: 44px; border-radius: 12px; }
   .busca.lupa.aberta { width: calc(100% - 52px); }

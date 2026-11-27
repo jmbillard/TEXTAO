@@ -21,6 +21,7 @@
     "e2e:configuracao": "node tests/e2e/configuracao.e2e.cjs",
     "e2e:andamento": "node tests/e2e/andamento.e2e.cjs",
     "e2e:areas": "node tests/e2e/areas.e2e.cjs",
+    "e2e:pauta": "node tests/e2e/pauta.e2e.cjs",
     "servidor": "PORT=8787 PERFIL_LOCAL=1 node servidor/index.mjs",
     "start": "node servidor/index.mjs",
     "corrigir-datas": "node --experimental-strip-types servidor/corrigir-datas.mjs"

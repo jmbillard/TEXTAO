@@ -53,8 +53,8 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     // trello.mjs (andamento, duplicadas, já entrou hoje, a carga das Produções), acervo.mjs, redator.mjs
     pg: ['card_ID', 'claquete', 'key', 'status', 'data_entrada', 'artes_quantidade', 'artes', 'texto', 'doc', 'redator', 'editor', 'designers', 'entregue', 'data_entrega', 'praca', 'arquivado', 'filme', 'atracao', 'complexidade'],
   },
-  // pauta.mjs e vocabulario.mjs (quem está com a claquete)
-  { nome: 'EDICAO_producao', titulo: 'Pauta da edição', variavel: 'TEABLE_PAUTA', api: ['key', 'data', 'editor', 'claquete'], pg: ['key', 'editor', 'data'], opcional: true },
+  // pauta.mjs e vocabulario.mjs (quem está com a claquete); pauta.mjs (a Semana da pauta, #94)
+  { nome: 'EDICAO_producao', titulo: 'Pauta da edição', variavel: 'TEABLE_PAUTA', api: ['key', 'data', 'editor', 'claquete'], pg: ['key', 'editor', 'data', 'expediente_inicio', 'expediente_fim', 'anotacao', 'alterado_em'], opcional: true },
   {
     nome: 'ARTES_acervo',
     titulo: 'Acervo',

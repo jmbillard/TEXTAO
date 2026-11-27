@@ -71,6 +71,8 @@ interface Props {
   configuracao?: () => void;
   /** O Andamento do projeto (#92, só administradores): o item no menu do perfil, depois da Configuração. */
   andamentoDoProjeto?: () => void;
+  /** Abre a Pauta da edição (#94): no topo, para qualquer pessoa logada. */
+  pauta?: () => void;
   /** A fila abre já buscando isto (o "Buscar na fila" do link quebrado). */
   buscaInicial?: string;
 }
@@ -935,7 +937,7 @@ function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, buscaInicial = '' }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, pauta, buscaInicial = '' }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
@@ -1265,6 +1267,13 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
     <div className="pagina" inert={aoFundo || undefined} aria-hidden={aoFundo || undefined}>
       <header className="barra-topo">
         <h1 className="bib-marca"><Marca /></h1>
+        {/* a Pauta da edição (#94): a semana de quem edita o quê, aberta a todo mundo que entrou */}
+        {pauta && (
+          <a className="topo-pauta" href="#/pauta" aria-label="Pauta da edição" onClick={(e) => (e.preventDefault(), pauta())}>
+            <Icone nome="edicao" tam={17} traco={1.7} />
+            <span>Pauta da edição</span>
+          </a>
+        )}
         <span className="espaco" />
         {(todos.length > 6 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
         {colegas.length > 0 && (

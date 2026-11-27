@@ -1,0 +1,249 @@
+// Ponta a ponta da Pauta da edição (#94), rodado à parte do vitest: `npm run e2e:pauta`.
+//
+// Sobe o servidor e o Vite como os outros e2e (banco temporário, nada sai para a rede), com o Teable falso
+// (tests/fixtures/teable-falso.mjs): a tabela EDICAO_producao achada pelo nome e o Postgres dele respondendo as linhas
+// da pauta, fictícias, da semana de hoje e da anterior. Quem abre não é administrador (a pauta é de todo mundo que
+// entrou). No computador, claro e escuro: a entrada no topo da fila, a Semana editor × dia na semana de hoje (um
+// editor por linha na ordem do turno, "sem editor" no fim, o turno que passa da meia-noite no dia em que começou), as
+// tarefas com outro visual, o aviso só como ⚑ com o número e o texto no balão ao passar o mouse; a semana anterior e a
+// próxima pelo endereço, e o endereço da semana aberto direto. No tablet e no celular: a grade rola para o lado com os
+// nomes fixos, abre em hoje, e o toque abre o aviso. Nada vai ao Trello.
+//
+// Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:pauta
+// Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
+const assert = require('node:assert/strict');
+const { mkdirSync } = require('node:fs');
+const { join } = require('node:path');
+const { subir } = require('./tour.e2e.cjs');
+const RAIZ = join(__dirname, '..', '..');
+
+let chromium, devices;
+try {
+  ({ chromium, devices } = require('playwright'));
+} catch {
+  console.error('Playwright não encontrado. Com ele instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:pauta');
+  process.exit(2);
+}
+
+const LIA = 'lia.moraes@exemplo.com';
+const CHEFE = 'chefe.ficticia@exemplo.com';
+const CAPTURAS = process.env.CAPTURAS || '';
+const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
+
+/* ---------- as datas, sempre em São Paulo ---------- */
+const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+const mais = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const segunda = mais(hoje, -((new Date(`${hoje}T12:00:00Z`).getUTCDay() + 6) % 7));
+const anterior = mais(segunda, -7);
+const proxima = mais(segunda, 7);
+const diaMes = (iso) => `${Number(iso.slice(8))}/${Number(iso.slice(5, 7))}`;
+const sp = (iso, h) => new Date(`${iso}T${h}:00-03:00`).toISOString();
+
+/** Uma linha da pauta (fictícia): o dia, o turno (o fim antes do início vira o dia seguinte), o editor ou null. */
+let n = 0;
+function linha(claquete, editor, dia, [ini, fim], anotacao = null) {
+  n += 1;
+  return {
+    id: `recPautaE2e${n}`,
+    fields: { claquete, key: claquete.toUpperCase(), editor: editor ? { id: `rec${editor.replace(/\W/g, '')}`, title: editor } : null, data: sp(dia, '00:00'), expediente_inicio: sp(dia, ini), expediente_fim: sp(fim < ini ? mais(dia, 1) : dia, fim), anotacao, alterado_em: sp(hoje, '08:00') },
+  };
+}
+const PAUTA = [];
+for (let i = 0; i < 7; i++) {
+  const d = mais(segunda, i);
+  PAUTA.push(linha(`Festa da Vila(Prologo)${diaMes(mais(d, 2))} (AH)`, 'Carla Duarte', d, ['22:00', '06:00']));
+  PAUTA.push(linha(`Novela Sol ${diaMes(mais(d, 1))}`, 'Ana Ribeiro', d, ['06:00', '15:00']));
+  PAUTA.push(linha(`Show da Tarde ${diaMes(d)}`, 'Bruno Teixeira', d, ['14:00', '22:53']));
+}
+PAUTA.push(linha('COMUNICAÇÃO', 'Bruno Teixeira', hoje, ['14:00', '22:53']));
+PAUTA.push(linha('CALHAUS', null, hoje, ['08:00', '17:00']));
+PAUTA.push(linha('Redator vem acompanhar a edição', 'Carla Duarte', hoje, ['22:00', '06:00'], true));
+PAUTA.push(linha(`Esporte Antigo ${diaMes(mais(anterior, 3))}`, 'Ana Ribeiro', mais(anterior, 2), ['06:00', '15:00']));
+
+async function abrir(navegador, url, opcoes, hash = '#/pauta') {
+  const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
+  await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(LIA), url }]);
+  await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+  await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+  const p = await ctx.newPage();
+  const erros = [];
+  const aoTrello = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  p.on('request', (r) => /trello/i.test(r.url()) && aoTrello.push(r.url()));
+  await p.goto(`${url}${hash}`);
+  return { ctx, p, erros, aoTrello };
+}
+const fundoEscuro = (p) =>
+  p.evaluate(() => {
+    const [r, g, b] = getComputedStyle(document.body).backgroundColor.match(/\d+/g).map(Number);
+    return r + g + b < 200;
+  });
+const semRolagemDeLado = async (p, onde) => assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${onde}: a página não rola para o lado`);
+const capturar = async (p, nome) => {
+  if (!CAPTURAS) return;
+  mkdirSync(CAPTURAS, { recursive: true });
+  await p.waitForTimeout(300);
+  await p.screenshot({ path: join(CAPTURAS, `${nome}.png`), fullPage: true });
+};
+const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
+const fileira = (p, nome) => p.locator('.pauta-grade tbody tr', { has: p.locator('.pauta-nome', { hasText: new RegExp(`^${nome}$`) }) });
+const celula = (p, nome, dia) => fileira(p, nome).locator(`td[data-dia="${dia}"]`);
+const hash = (p) => new URL(p.url()).hash;
+
+async function noComputador(navegador, url, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema }, '');
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+
+  // a entrada no topo da fila
+  await p.locator('.barra-topo .topo-pauta').click();
+  await p.locator('.pauta-grade').waitFor();
+  assert.equal(hash(p), '#/pauta');
+  assert.equal((await p.locator('.pauta-cabeca h1').textContent()).trim(), 'Pauta da edição');
+
+  // a semana de hoje, de segunda a domingo; hoje marcado
+  const dias = await p.locator('th.pauta-dia').evaluateAll((ths) => ths.map((t) => t.dataset.dia));
+  assert.equal(dias.length, 7);
+  assert.equal(dias[0], segunda);
+  assert.deepEqual(await p.locator('th.pauta-dia.hoje').evaluateAll((ths) => ths.map((t) => t.dataset.dia)), [hoje]);
+
+  // um editor por linha, na ordem do turno de costume; "sem editor" no fim
+  assert.deepEqual(await textos(p.locator('.pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+
+  // a célula: o turno e as linhas; o turno que passa da meia-noite fica no dia em que começou
+  const daCarla = celula(p, 'Carla Duarte', segunda);
+  assert.equal((await daCarla.locator('.pauta-turno').textContent()).trim(), '22:00–06:00');
+  assert.deepEqual(await textos(daCarla.locator('.pauta-item')), [`Festa da Vila(Prologo)${diaMes(mais(segunda, 2))} (AH)`]);
+
+  // a tarefa tem outro visual que a claquete
+  const doBruno = celula(p, 'Bruno Teixeira', hoje);
+  const tarefa = doBruno.locator('.pauta-item.pauta-tarefa');
+  const claquete = doBruno.locator('.pauta-item.pauta-claquete');
+  assert.deepEqual(await textos(tarefa), ['COMUNICAÇÃO']);
+  const estilo = (l) => l.evaluate((e) => [getComputedStyle(e).fontStyle, getComputedStyle(e).fontFamily].join('|'));
+  assert.notEqual(await estilo(tarefa), await estilo(claquete));
+  assert.match(await estilo(tarefa), /^italic/);
+  assert.deepEqual(await textos(celula(p, 'sem editor', hoje).locator('.pauta-item.pauta-tarefa')), ['CALHAUS']);
+
+  // o aviso não é item da pauta: só o ⚑ com o número; o texto abre ao passar o mouse
+  const avisoDeHoje = celula(p, 'Carla Duarte', hoje);
+  assert.equal(await p.locator('.pauta-item', { hasText: 'Redator vem acompanhar' }).count(), 0);
+  assert.equal((await avisoDeHoje.locator('.pauta-aviso-botao').textContent()).replace(/\s+/g, ' ').trim(), '⚑ 1');
+  assert.equal(await p.locator('.pauta-aviso-botao').count(), 1);
+  assert.equal(await p.locator('.pauta-aviso-balao').count(), 0);
+  await avisoDeHoje.locator('.pauta-aviso-botao').hover();
+  await p.locator('.pauta-aviso-balao').waitFor();
+  assert.match(await p.locator('.pauta-aviso-balao').textContent(), /Redator vem acompanhar a edição/);
+  await capturar(p, `01-semana-${nome}`);
+  await p.mouse.move(5, 5);
+  await p.locator('.pauta-aviso-balao').waitFor({ state: 'detached' });
+
+  // a semana anterior e a próxima: o endereço muda e a grade também
+  await p.getByRole('button', { name: 'Semana anterior' }).click();
+  await p.locator(`th.pauta-dia[data-dia="${anterior}"]`).waitFor();
+  assert.equal(hash(p), `#/pauta/semana/${anterior}`);
+  assert.deepEqual(await textos(p.locator('.pauta-item')), [`Esporte Antigo ${diaMes(mais(anterior, 3))}`]);
+  assert.equal(await p.locator('th.pauta-dia.hoje').count(), 0);
+  await p.getByRole('button', { name: 'Próxima semana' }).click();
+  await p.locator(`th.pauta-dia[data-dia="${segunda}"]`).waitFor();
+  assert.equal(hash(p), '#/pauta');
+  // a próxima semana ainda sem pauta: diz que não há nada
+  await p.keyboard.press('ArrowRight');
+  await p.locator('.pauta-vazia').waitFor();
+  assert.equal(hash(p), `#/pauta/semana/${proxima}`);
+  // "esta semana" volta para a de hoje
+  await p.locator('.pauta-hoje').click();
+  await p.locator(`th.pauta-dia[data-dia="${segunda}"]`).waitFor();
+  // o voltar do navegador
+  await p.goBack();
+  await p.locator('.pauta-vazia').waitFor();
+  assert.equal(hash(p), `#/pauta/semana/${proxima}`);
+
+  // o endereço da semana aberto direto (e recarregado)
+  await p.goto(`${url}#/pauta/semana/${mais(anterior, 3)}`);
+  await p.locator(`th.pauta-dia[data-dia="${anterior}"]`).waitFor();
+  await p.reload();
+  await p.locator(`th.pauta-dia[data-dia="${anterior}"]`).waitFor();
+  await semRolagemDeLado(p, `computador ${nome}`);
+  assert.deepEqual(erros, [], `computador ${nome}: erros na página`);
+  assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
+  await ctx.close();
+  console.log(`ok: computador ${nome}: entrada no topo → a semana de hoje, editores na ordem, tarefa, aviso no balão → semana anterior, próxima e o endereço`);
+}
+
+/** No tablet e no celular: a grade rola para o lado, os nomes ficam e ela abre em hoje; o toque abre o aviso. */
+async function naTelaPequena(navegador, url, aparelho, rotulo, tema) {
+  const { deviceScaleFactor, ...opcoes } = devices[aparelho];
+  const nome = `${rotulo}-${tema === 'dark' ? 'escuro' : 'claro'}`;
+  const { ctx, p, erros } = await abrir(navegador, url, { ...opcoes, colorScheme: tema });
+  assert.equal(await fundoEscuro(p), tema === 'dark');
+  await p.locator('.pauta-grade').waitFor();
+  await semRolagemDeLado(p, nome);
+  const medida = await p.evaluate(() => {
+    const r = document.querySelector('.pauta-rolagem');
+    const nomes = document.querySelector('th.pauta-canto').getBoundingClientRect();
+    const hoje = document.querySelector('th.pauta-dia.hoje').getBoundingClientRect();
+    return { rola: r.scrollWidth > r.clientWidth, scrollLeft: r.scrollLeft, maximo: r.scrollWidth - r.clientWidth, hoje: hoje.left, nomes: nomes.right, largura: r.getBoundingClientRect().right };
+  });
+  assert.ok(medida.rola, `${nome}: a grade rola para o lado`);
+  // abre em hoje: a coluna de hoje logo depois dos nomes (ou o mais perto disso, no fim da semana)
+  assert.ok(medida.hoje >= medida.nomes - 2 && medida.hoje < medida.largura, `${nome}: hoje à vista (${JSON.stringify(medida)})`);
+  if (medida.scrollLeft < medida.maximo - 1) assert.ok(Math.abs(medida.hoje - medida.nomes) <= 2, `${nome}: hoje logo depois dos nomes`);
+  // rolando para o lado, a coluna dos nomes fica
+  await p.locator('.pauta-rolagem').evaluate((r) => (r.scrollLeft = r.scrollWidth));
+  const nomesDepois = await p.locator('th.pauta-editor').first().evaluate((e) => e.getBoundingClientRect().left);
+  const rolagem = await p.locator('.pauta-rolagem').evaluate((e) => e.getBoundingClientRect().left);
+  assert.ok(Math.abs(nomesDepois - rolagem) <= 2, `${nome}: os nomes ficam fixos`);
+  // o toque abre o aviso; outro toque fora fecha
+  await p.locator('.pauta-rolagem').evaluate((r) => (r.scrollLeft = 0));
+  const botao = celula(p, 'Carla Duarte', hoje).locator('.pauta-aviso-botao');
+  await botao.scrollIntoViewIfNeeded();
+  await botao.tap();
+  await p.locator('.pauta-aviso-balao').waitFor();
+  assert.match(await p.locator('.pauta-aviso-balao').textContent(), /Redator vem acompanhar a edição/);
+  await capturar(p, `02-${nome}`);
+  await p.locator('.pauta-cabeca h1').tap();
+  await p.locator('.pauta-aviso-balao').waitFor({ state: 'detached' });
+  assert.deepEqual(erros, [], `${nome}: erros na página`);
+  await ctx.close();
+  console.log(`ok: ${nome}: a grade rola para o lado com os nomes fixos, abre em hoje, o toque abre o aviso`);
+}
+
+/** Na fila do celular, a entrada da pauta é só o ícone, e cabe no topo. */
+async function entradaNoCelular(navegador, url) {
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  const { ctx, p, erros } = await abrir(navegador, url, iphone, '');
+  const entrada = p.locator('.barra-topo .topo-pauta');
+  await entrada.waitFor();
+  assert.equal(await entrada.locator('span').isVisible(), false);
+  await semRolagemDeLado(p, 'fila no celular');
+  await entrada.tap();
+  await p.locator('.pauta-grade').waitFor();
+  assert.equal(hash(p), '#/pauta');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: celular: a entrada no topo da fila (o ícone) abre a pauta');
+}
+
+async function principal() {
+  const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
+  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e' }, { registros: { EDICAO_producao: PAUTA } });
+  const s = await subir({ teable, pg: teable.abrirPg, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' } });
+  await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
+  const navegador = await chromium.launch();
+  let falhou = false;
+  try {
+    for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema);
+    await naTelaPequena(navegador, s.url, 'iPad (gen 7)', 'tablet', 'light');
+    for (const tema of ['light', 'dark']) await naTelaPequena(navegador, s.url, 'iPhone 13', 'celular', tema);
+    await entradaNoCelular(navegador, s.url);
+  } catch (e) {
+    falhou = true;
+    console.error(e);
+  } finally {
+    await navegador.close();
+    await s.descer();
+  }
+  process.exit(falhou ? 1 : 0);
+}
+void principal();

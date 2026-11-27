@@ -12,6 +12,7 @@ import * as cod from 'lib0/encoding';
 import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
+import { segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
@@ -2462,6 +2463,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir', 'apagar', 'modo', 'copia', 'recriar'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
+    if (caminho === '/api/pauta/semana') {
+      // a Semana da pauta da edição (#94), para qualquer pessoa logada: lida do Postgres do Teable (só leitura), nada do
+      // Trello; ?inicio= é qualquer dia da semana (sem ele, a de hoje, em São Paulo)
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      return json(res, 200, await pauta.semana(segundaDaSemana(new URL(req.url, 'http://x').searchParams.get('inicio') ?? '')));
+    }
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
     const extra = /^\/api\/roteiros\/([^/]+)\/(original|original-texto|trello|pdf)$/.exec(caminho);

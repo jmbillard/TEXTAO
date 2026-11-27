@@ -388,6 +388,26 @@ _Evitar_: carga, upload, sincronizar, reverter
 **Pacote gráfico novo**:
 Quando a atração troca a identidade: as artes do acervo dela deixam de valer (zerar o acervo).
 
+## Pauta da edição
+
+**Pauta da edição**:
+A tabela do Teable (EDICAO_producao) que diz quem edita cada claquete, em que dia e em que turno; os coordenadores
+escrevem nela, o PROMeiro só lê. É também a página do PROMeiro, aberta a qualquer pessoa logada, com a **Semana**
+(um editor por linha, um dia por coluna). Cada linha é uma claquete, uma **tarefa** ou um **aviso**.
+_Evitar_: escala, grade da edição
+
+**Tarefa** (da pauta):
+A linha da pauta que não tem a forma de claquete (o nome da atração e a data) e não é aviso: COMUNICAÇÃO, CALHAUS.
+
+**Aviso** (da pauta):
+A linha com a caixinha de anotação marcada: um recado do coordenador para o editor, não um item da pauta. Na Semana,
+só o ⚑ com o número; o texto abre ao passar o mouse ou ao tocar.
+_Evitar_: nota, observação
+
+**Turno**:
+O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. O que passa da meia-noite (22–06)
+conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores.
+
 **Ligação pelo e-mail** (pessoa e cadastro):
 O e-mail do login guardado no cadastro de redator ou de editor (no Teable): é ele que diz que quem entra no PROMeiro é
 aquele redator ou editor. O administrador preenche à mão nos Cadastros ou pela **sugestão "É a redatora?"** (ou "É o

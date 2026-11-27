@@ -879,6 +879,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
+import type { SemanaDaPauta } from '../modelo/pauta';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {
@@ -1232,6 +1233,8 @@ export interface AndamentoDoProjeto {
   foraDoAr: { motivo: string; desde: string } | null;
   repo: string;
 }
+/** A Semana da pauta da edição (#94): qualquer dia da semana (sem ele, a de hoje). Sem o Postgres do Teable, o erro diz. */
+export const lerSemanaDaPauta = (dia = '') => pedir<SemanaDaPauta>(`/api/pauta/semana${dia ? `?inicio=${encodeURIComponent(dia)}` : ''}`);
 /** Lê o Andamento (guardado alguns minutos no servidor); `deNovo` vai ao GitHub. */
 export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** Confere sem salvar nada. */
