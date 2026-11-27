@@ -166,6 +166,8 @@ export function configDoTrello(env) {
       prioridade: tabelaNoPg(env, 'prioridade'),
       // exibições de filme (filme + sessão + dia + card da prévia), na mesma base
       exibicoes: tabelaNoPg(env, 'exibicoes'),
+      // o cadastro dos filmes, com os caminhos que o Teable calcula (as fórmulas projeto_win, output_win…)
+      filmes: tabelaNoPg(env, 'filmes'),
     },
     // conversão fiel do original (Word, RTF) para PDF, com LibreOffice; sem ele, o PDF sai do roteiro como chegou
     stirling: { url: (env.STIRLING_URL || '').replace(/\/+$/, ''), chave: env.STIRLING_CHAVE || '' },
@@ -296,6 +298,7 @@ export function criarTrello(env, deps = {}) {
     atracoes: tabela(c.pg.esquema, c.pg.atracoes),
     prioridade: tabela(c.pg.esquema, c.pg.prioridade),
     exibicoes: tabela(c.pg.esquema, c.pg.exibicoes),
+    filmes: tabela(c.pg.esquema, c.pg.filmes),
   };
   async function sql(texto, params) {
     if (!consultar) return [];
@@ -1356,6 +1359,18 @@ export function criarTrello(env, deps = {}) {
     });
   }
 
+  /**
+   * A pasta do projeto de cada filme do cadastro (#146: o "pronto para abrir" do filme na janela do After): a mesma
+   * fórmula projeto_win que vai ao campo projeto do card do filme (servidor/exibicao.mjs), sem o que o cadastro escreve
+   * quando não sabe o caminho. { id: pasta }, só os filmes que têm; {} sem a tabela filmes. Lança com o Postgres fora.
+   */
+  async function projetosDosFilmes(ids) {
+    const pedidos = [...new Set(ids.filter(Boolean).map(String))];
+    if (!t.filmes || !pedidos.length) return {};
+    const linhas = await sql(`SELECT "__id", "projeto_win" FROM ${t.filmes} WHERE "__id" = ANY($1::text[])`, [pedidos]);
+    return Object.fromEntries(linhas.filter((l) => pedidos.includes(String(l.__id)) && caminho(l.projeto_win)).map((l) => [String(l.__id), caminho(l.projeto_win)]));
+  }
+
   /** As artes de um card (os itens dos checklists dele), feitas ou não: o card da prévia de um filme, por exemplo. */
   async function artesDoCard(card) {
     if (!c.chave || !c.token || !/^[0-9a-f]{24}$/i.test(String(card ?? ''))) return [];
@@ -1486,5 +1501,5 @@ export function criarTrello(env, deps = {}) {
     apagar: (id) => trello('DELETE', `/webhooks/${encodeURIComponent(id)}`),
   };
 
-  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, entrarNoCard, sairDoCard, moverCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, entrarNoCard, sairDoCard, moverCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, projetosDosFilmes, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

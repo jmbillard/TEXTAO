@@ -158,10 +158,13 @@ describe('o Padeiro: a lista das Produções para o grupo NO TRELLO', () => {
     expect(lista[2].artes).toEqual({ feitas: [], aFazer: [] });
   });
 
-  it('a ligada e a pendente leem (#146: a janela do After mostra com a pendente); a revogada é recusada (403, com o estado); sem chave ou com a errada, 401', async () => {
+  it('só a ligada lê: a pendente é recusada (403) com o aviso de que espera o administrador ligar; a revogada, 403 com o estado; sem chave ou com a errada, 401', async () => {
     const { padeiro, cadastrar, ligar, revogar } = await preparado();
     const { chave, id } = await cadastrar();
-    expect((await ler(padeiro, chave)).status).toBe(200);
+    const pendente = await ler(padeiro, chave);
+    expect(pendente).toMatchObject({ status: 403, corpo: { estado: 'pendente' } });
+    expect(JSON.stringify(pendente.corpo)).toMatch(/aguardando um administrador .*ligar/);
+    expect(JSON.stringify(pendente.corpo)).not.toMatch(/Show da Noite/);
     await ligar(id);
     expect((await ler(padeiro, chave)).status).toBe(200);
     await revogar(id);
