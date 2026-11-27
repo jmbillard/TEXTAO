@@ -13,7 +13,8 @@ import * as cod from 'lib0/encoding';
 import * as dec from 'lib0/decoding';
 import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
-import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES } from './correcoes.mjs';
+import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES, TIPO_DA_PAUTA, propostasParaAplicar } from './correcoes.mjs';
+import { criarRegistroDeCorrecoes, idsParaDesfazer } from './registro-de-correcoes.mjs';
 import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
 import { codigoDasVersoes, colunasDoDia, cruzarComAProducao, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
@@ -618,8 +619,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     g.acervo = fazer(fabricas.acervo, env, { abrirPg: abrir, trello: g.trello });
     g.vocabulario = criarVocabulario(env, fetch, cache, copia, null, abrir);
     g.pauta = criarPauta(env, g.vocabulario, abrir, cache, copia);
-    // a correção de grafia (#114): a pauta inteira, lida do Postgres do Teable (só leitura)
-    g.correcoes = criarCorrecoes(env, abrir);
+    // a correção de grafia (#114): a pauta inteira, lida do Postgres do Teable; aplicar e desfazer pela API (#115)
+    g.correcoes = criarCorrecoes(env, abrir, { buscar: buscarNoTeable });
     // o índice do buscar do Padeiro (#143): os filmes e as mensagens do Teams, do Postgres do Teable (só leitura)
     g.indiceDoBuscar = criarIndiceDoBuscar(env, { abrirPg: abrir });
     g.cadastros = fazer(fabricas.cadastros, env, { vocabulario: g.vocabulario });
@@ -746,12 +747,51 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return json(res, 200, atracoesParecidas.grupos(fichas, contas, pagina));
   }
 
+  /**
+   * Aplicar e desfazer a correção de grafia (#115), só para administradores:
+   * - POST /api/correcoes/pauta/aplicar { propostas: [{ id, de, mudouEm }] } grava as marcadas no Teable (só na base do
+   *   PROMeiro; de outra base, 409) e responde quantas deram certo e quantas falharam (a linha que mudou desde a proposta);
+   * - GET /api/correcoes/registro?pagina= lista as correções aplicadas (a mais recente primeiro), com o nome de quem aplicou;
+   * - POST /api/correcoes/desfazer { ids } desfaz as correções do registro, com a conferência de "mudou desde então".
+   */
+  async function rotaDoRegistroDeCorrecoes(req, res, eu, caminho) {
+    const ler = caminho === '/api/correcoes/registro';
+    if (req.method !== (ler ? 'GET' : 'POST')) return json(res, 405, { erro: 'Método não permitido.' });
+    if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores aplicam e desfazem a correção de grafia.' });
+    if (ler) {
+      const busca = new URL(req.url, 'http://x').searchParams;
+      const pagina = /^\d{1,5}$/.test(busca.get('pagina') ?? '') ? Math.max(1, Number(busca.get('pagina'))) : 1;
+      const lido = registroDeCorrecoes.listar(pagina);
+      const nomes = (c) => ({ ...c, porNome: nomeDaPessoa(c.por), ...(c.desfeita ? { desfeita: { ...c.desfeita, porNome: nomeDaPessoa(c.desfeita.por) } } : {}) });
+      return json(res, 200, { ...lido, itens: lido.itens.map(nomes) });
+    }
+    const corpo = (await lerCorpo(req)) ?? {};
+    if (caminho === '/api/correcoes/desfazer') {
+      const ids = idsParaDesfazer(corpo.ids);
+      if (!ids) return json(res, 400, { erro: 'Quais correções desfazer?' });
+      const r = await registroDeCorrecoes.desfazer(ids, eu.email);
+      console.log(`[correcoes] ${eu.email} desfez ${r.certas.length} correção(ões)${r.falhas.length ? `; ${r.falhas.length} não` : ''}`);
+      return json(res, 200, r);
+    }
+    const pedidas = propostasParaAplicar(corpo.propostas);
+    if (!pedidas) return json(res, 400, { erro: 'Quais propostas aplicar? (de 1 a 100)' });
+    const correcoes = geracao.correcoes;
+    const pode = correcoes.escrita();
+    if (!pode.pode) return json(res, 409, { erro: pode.aviso });
+    const r = await correcoes.aplicar(pedidas, eu.email, registroDeCorrecoes);
+    console.log(`[correcoes] ${eu.email} aplicou ${r.certas.length} correção(ões) na pauta${r.falhas.length ? `; ${r.falhas.length} falharam` : ''}`);
+    return json(res, 200, r);
+  }
+
   /* ---------- a seção Pessoas (#77): os designers da produção da arte × a tabela designers (nada do Trello) ---------- */
   const pessoas = criarPessoas({ db, copia, buscar: buscarNoTeable });
   // ligar pessoa e cadastro pelo e-mail (#106): as sugestões "É" e o "Não é" guardado
   const ligacaoDePessoas = criarLigacaoDePessoas({ db });
   // as atrações parecidas da correção de grafia (#116): o "não são a mesma" guardado
   const atracoesParecidas = criarAtracoesParecidas({ db });
+  // o registro da correção de grafia (#115): cada correção aplicada, para desfazer; cada tipo dá o seu desfazer
+  // (juntar atrações, #117, entra aqui com o dele)
+  const registroDeCorrecoes = criarRegistroDeCorrecoes({ db, desfazedores: { [TIPO_DA_PAUTA]: (c) => geracao.correcoes.desfazer(c) } });
   // as preferências de cada pessoa (#101), no SQLite: a última área usada, o arranjo da Pauta da edição…
   const preferencias = criarPreferencias(db);
   // o apelido da claquete (#120), um por claquete (#154), no SQLite: só para mostrar, o envio continua com a claquete
@@ -3341,6 +3381,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, await geracao.correcoes.propostas({ grupo, pagina }));
     }
     if (caminho === '/api/correcoes/atracoes' || caminho === '/api/correcoes/atracoes/nao-sao-a-mesma') return rotaDasAtracoesParecidas(req, res, eu, caminho);
+    if (caminho === '/api/correcoes/pauta/aplicar' || caminho === '/api/correcoes/registro' || caminho === '/api/correcoes/desfazer') return rotaDoRegistroDeCorrecoes(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
     const extra = /^\/api\/roteiros\/([^/]+)\/(original|original-texto|trello|pdf)$/.exec(caminho);

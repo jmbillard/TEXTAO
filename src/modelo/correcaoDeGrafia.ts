@@ -60,6 +60,55 @@ export interface PropostaDaPauta {
   para?: string;
   /** só no grupo nao-reconhecido */
   codigo?: string;
+  /** a hora da última mudança da linha no Teable, quando a proposta foi lida (aplicar confere, #115); null sem ela */
+  mudouEm: string | null;
+  /** a correção tem o (M), que a fórmula da key no Teable ainda não entende: não é aplicada (#115) */
+  esperaAKey?: boolean;
+}
+
+/** Pode gravar no Teable? Só na base do PROMeiro; senão, a tela só mostra as propostas, com o aviso (#115). */
+export type EscritaDaCorrecao = { pode: true } | { pode: false; aviso: string };
+
+/** Por que uma correção não foi aplicada ou desfeita: a linha mudou, sumiu, espera a key nova, o Teable falhou… */
+export interface FalhaDaCorrecao {
+  id: string;
+  /** a claquete lida (só ao aplicar) */
+  de?: string;
+  motivo: string;
+  texto: string;
+}
+
+/** O resultado de aplicar as marcadas: POST /api/correcoes/pauta/aplicar. */
+export interface AplicacaoDaCorrecao {
+  /** registro: o id da correção no registro (para desfazer) */
+  certas: { id: string; registro: string; de: string; para: string }[];
+  falhas: FalhaDaCorrecao[];
+}
+
+/** Uma correção aplicada, no registro (#115). Na pauta, antes e depois têm a claquete; juntar atrações (#117) tem os seus. */
+export interface CorrecaoAplicada {
+  id: string;
+  tipo: 'pauta' | (string & {});
+  /** o id do que mudou no Teable */
+  alvo: string;
+  antes: { claquete?: string; [k: string]: unknown };
+  depois: { claquete?: string; [k: string]: unknown };
+  detalhes: { dia?: string; editor?: string; [k: string]: unknown };
+  por: string;
+  porNome: string;
+  em: string;
+  desfeita: { por: string; porNome: string; em: string } | null;
+}
+export interface PaginaDoRegistro {
+  pagina: number;
+  porPagina: number;
+  total: number;
+  itens: CorrecaoAplicada[];
+}
+/** O resultado de desfazer: os ids desfeitos e os que não foram. */
+export interface Desfeitas {
+  certas: string[];
+  falhas: FalhaDaCorrecao[];
 }
 
 /** Uma página das propostas da pauta: a rota GET /api/correcoes/pauta. */
@@ -70,6 +119,7 @@ export interface PaginaDaCorrecao {
   porPagina: number;
   /** quantas há em cada grupo, na pauta inteira */
   resumo: { corrigir: number; naoReconhecido: number };
+  escrita: EscritaDaCorrecao;
   propostas: PropostaDaPauta[];
 }
 
