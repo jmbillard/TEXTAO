@@ -3,7 +3,7 @@
    início e do fim do expediente, no fuso de São Paulo; o dia da pauta é o campo data (um turno que passa da
    meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. As versões
    da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. A claquete cruza com as
-   Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
+   Produções (#96) pela chave. O resumo do administrador (#99) também mora aqui. */
 import type { ForaNaPauta } from './ausencias.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
 import type { Etapa } from './producao.ts';
@@ -69,13 +69,11 @@ export interface SemanaDaPauta {
   alteradoEm: string | null;
 }
 
-/** O que a rota da pauta devolve além do período (#99): o filtro, quem a pessoa é, o resumo e de onde veio a pauta. */
+/** O que a rota da pauta devolve além do período (#99): quem a pessoa é, o resumo e de onde veio a pauta. */
 export interface LeituraDaPauta {
-  /** o filtro aplicado (null: todas as linhas) */
-  filtro: FiltroDaPauta | null;
-  /** o editor ligado ao e-mail da pessoa e o designer dela (null: sem ligação); dizem que filtros ela tem */
+  /** o editor ligado ao e-mail da pessoa e o designer dela (null: sem ligação) */
   voce: { editor: string | null; designer: string | null };
-  /** só para administradores: da pauta inteira do período, sem o filtro */
+  /** só para administradores: da pauta inteira do período */
   resumo?: ResumoDaPauta;
   /** 'copia': o Postgres do Teable não respondeu, e a pauta saiu da última cópia local, tirada em `copiaEm` */
   origem: 'banco' | 'copia';
@@ -376,17 +374,6 @@ export function gradeDaSemana(s: Pick<SemanaDaPauta, 'dias' | 'editores' | 'linh
 
 /* ---------- o Dia (#97): cada editor numa coluna ---------- */
 
-/** O Dia da pauta: a rota GET /api/pauta/dia. */
-export interface DiaDaPauta {
-  /** o dia (AAAA-MM-DD) */
-  dia: string;
-  /** na ordem de início do turno daquele dia; '' (sem editor) no fim, quando há */
-  editores: string[];
-  linhas: LinhaDaPauta[];
-  /** a hora da última alteração da pauta no dia (ISO), ou null */
-  alteradoEm: string | null;
-}
-
 /** Uma coluna do Dia: o editor, o turno dele naquele dia, as claquetes e tarefas e, à parte, os avisos. */
 export interface ColunaDoDia {
   editor: string;
@@ -521,31 +508,23 @@ export function resumoDaProducao(producoes: readonly ProducaoNaPauta[] | undefin
 /** A etapa por extenso, como a pauta mostra. */
 export const ROTULO_DA_ETAPA: Record<Etapa, string> = { entrada: 'Entrada', produzindo: 'Produzindo', entregue: 'Entregue', arquivada: 'Arquivada' };
 
-/* ---------- a escolha da visão e do arranjo, lembrada por pessoa (#98) ---------- */
+/* ---------- a escolha da visão, lembrada por pessoa (#98) ---------- */
 
 export type VisaoDaPauta = 'semana' | 'dia';
-/** Os arranjos da Semana: editor × dia (uma linha por editor) ou um dia por coluna (os cards agrupados por turno). */
-export type ArranjoDaSemana = 'editor-dia' | 'dia-por-coluna';
-/** Os arranjos do Dia: empilhado (cards de altura livre) ou por hora (a régua das 6h às 6h). */
-export type ArranjoDoDia = 'empilhado' | 'por-hora';
 
-/** A escolha de cada pessoa: a visão em que a pauta abre e o arranjo de cada visão. */
+/** A escolha de cada pessoa: a visão em que a pauta abre. */
 export interface EscolhaDaPauta {
   visao: VisaoDaPauta;
-  semana: ArranjoDaSemana;
-  dia: ArranjoDoDia;
 }
 
 /** As chaves das preferências da pessoa (no SQLite, pela rota de quem está logado), cada uma com os valores que valem,
-    o padrão de quem não escolheu (a Semana editor × dia e o Dia empilhado) e a recusa do valor desconhecido. */
+    o padrão de quem não escolheu (a Semana) e a recusa do valor desconhecido. */
 const CHAVES_DA_PAUTA = {
   'pauta.visao': { campo: 'visao', valores: ['semana', 'dia'], recusa: 'Visão da pauta desconhecida: escolha Semana ou Dia.' },
-  'pauta.arranjo.semana': { campo: 'semana', valores: ['editor-dia', 'dia-por-coluna'], recusa: 'Arranjo da Semana desconhecido: escolha editor × dia ou um dia por coluna.' },
-  'pauta.arranjo.dia': { campo: 'dia', valores: ['empilhado', 'por-hora'], recusa: 'Arranjo do Dia desconhecido: escolha empilhado ou por hora.' },
 } as const satisfies Record<string, { campo: keyof EscolhaDaPauta; valores: readonly string[]; recusa: string }>;
 export type ChaveDaPauta = keyof typeof CHAVES_DA_PAUTA;
 /** A chave de cada parte da escolha. */
-export const CHAVE_DA_ESCOLHA = { visao: 'pauta.visao', semana: 'pauta.arranjo.semana', dia: 'pauta.arranjo.dia' } as const satisfies Record<keyof EscolhaDaPauta, ChaveDaPauta>;
+export const CHAVE_DA_ESCOLHA = { visao: 'pauta.visao' } as const satisfies Record<keyof EscolhaDaPauta, ChaveDaPauta>;
 
 export const ehChaveDaPauta = (chave: string): chave is ChaveDaPauta => Object.hasOwn(CHAVES_DA_PAUTA, chave);
 
@@ -559,75 +538,10 @@ export function escolhaDaPauta(preferencias: Record<string, unknown> | undefined
     const lembrada = preferencias?.[chave];
     return (recusaDaPreferenciaDaPauta(chave, lembrada) ? CHAVES_DA_PAUTA[chave].valores[0] : lembrada) as EscolhaDaPauta[K];
   };
-  return { visao: parte('visao'), semana: parte('semana'), dia: parte('dia') };
+  return { visao: parte('visao') };
 }
 
-/* ---------- a Semana com um dia por coluna (#98) ---------- */
-
-/** O período do dia em que o turno começa: manhã (6h–12h), tarde (12h–18h), noite (18h–0h), madrugada (0h–6h); o
-    editor sem horário fica à parte. */
-export type PeriodoDoTurno = 'manha' | 'tarde' | 'noite' | 'madrugada' | 'sem-horario';
-/** Os períodos na ordem do dia da pauta (que começa às 6h), com o nome que a Semana mostra. */
-export const PERIODOS: readonly { id: PeriodoDoTurno; nome: string }[] = [
-  { id: 'manha', nome: 'manhã' },
-  { id: 'tarde', nome: 'tarde' },
-  { id: 'noite', nome: 'noite' },
-  { id: 'madrugada', nome: 'madrugada' },
-  { id: 'sem-horario', nome: 'sem horário' },
-];
-/** O período do turno, pela hora de início. */
-export function periodoDoTurno(turno: Turno | null): PeriodoDoTurno {
-  if (!turno) return 'sem-horario';
-  const h = Number(turno.inicio.split(':')[0]);
-  return h < 6 ? 'madrugada' : h < 12 ? 'manha' : h < 18 ? 'tarde' : 'noite';
-}
-
-/** Um dia da Semana com um dia por coluna: os editores daquele dia agrupados pelo período do turno, e a conta do dia. */
-export interface ColunaDaSemana {
-  dia: string;
-  /** quantos editores (sem contar "sem editor") e quantas claquetes no dia */
-  editores: number;
-  claquetes: number;
-  /** só os períodos com alguém, na ordem do dia da pauta */
-  turnos: { periodo: PeriodoDoTurno; editores: ColunaDoDia[] }[];
-}
-
-/**
- * A Semana com um dia por coluna: um dia por coluna, na ordem da semana; em cada dia, os editores (como as colunas do
- * Dia: o turno, as claquetes e tarefas e, à parte, os avisos) agrupados pelo período em que o turno começa. No período,
- * pela hora de entrada; "sem editor" no fim dele.
- */
-export function colunasDaSemana(s: Pick<SemanaDaPauta, 'dias' | 'linhas'>): ColunaDaSemana[] {
-  return s.dias.map((dia) => {
-    const doDia = s.linhas.filter((l) => l.dia === dia);
-    const editores = colunasDoDia(doDia);
-    return {
-      dia,
-      editores: editores.filter((e) => e.editor).length,
-      claquetes: doDia.filter((l) => l.tipo === 'claquete').length,
-      turnos: PERIODOS.map(({ id }) => ({ periodo: id, editores: editores.filter((e) => periodoDoTurno(e.turno) === id) })).filter((t) => t.editores.length),
-    };
-  });
-}
-
-/* ---------- os filtros pessoais e o resumo do administrador (#99) ---------- */
-
-/** "Só as minhas" (as linhas do editor ligado ao e-mail da pessoa) e "Com arte minha" (as claquetes em que o designer
-    da pessoa está na produção da arte). */
-export type FiltroDaPauta = 'minhas' | 'arte';
-export const ehFiltroDaPauta = (v: unknown): v is FiltroDaPauta => v === 'minhas' || v === 'arte';
-
-/**
- * As linhas do filtro, comparando os nomes sem caixa, acento e pontuação. "Só as minhas" fica com tudo do editor (as
- * claquetes, as tarefas e os avisos dele); "Com arte minha", só com as claquetes em que o designer está em alguma
- * Produção. Sem o editor (ou o designer) da pessoa, nada.
- */
-export function filtrarAPauta(linhas: readonly LinhaDaPauta[], filtro: FiltroDaPauta, voce: LeituraDaPauta['voce']): LinhaDaPauta[] {
-  const alvo = nomeComparavel((filtro === 'minhas' ? voce.editor : voce.designer) ?? '');
-  if (!alvo) return [];
-  if (filtro === 'minhas') return linhas.filter((l) => nomeComparavel(l.editor) === alvo);
-  return linhas.filter((l) => l.tipo === 'claquete' && (l.producoes ?? []).some((p) => p.designers.some((d) => nomeComparavel(d) === alvo)));
-}
+/* ---------- o resumo do administrador (#99) ---------- */
 
 /** O resumo discreto do administrador. */
 export interface ResumoDaPauta {

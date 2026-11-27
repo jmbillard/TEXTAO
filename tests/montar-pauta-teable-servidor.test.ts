@@ -16,6 +16,12 @@ import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 
+/** O dia da Pauta da edição como a tela o vê (#162): a Semana que tem o dia, só com as linhas e quem está fora nele. */
+async function pautaNoDia(quem: (caminho: string) => Promise<Response>, dia: string) {
+  const s = await (await quem(`/api/pauta/semana?inicio=${dia}`)).json();
+  return { ...s, linhas: s.linhas.filter((l: { dia: string }) => l.dia === dia), fora: (s.fora ?? []).filter((f: { dia: string }) => f.dia === dia) };
+}
+
 const SEXTA = '2026-11-27';
 const SABADO = '2026-11-28';
 const DOMINGO = '2026-11-29';
@@ -105,7 +111,7 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     expect(escritas()).toEqual([]);
     expect(pautaNoTeable).toHaveLength(3);
     // e a Pauta junta como antes da virada: a do Teable inteira, mais o que só o PROMeiro tem
-    const p: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${SEXTA}`)).json();
+    const p: { linhas: Linha[] } = await pautaNoDia(lia, SEXTA);
     expect(p.linhas.map((l) => l.texto)).toEqual(['Noite de Gala 27/11 Dp', 'Vale a Pena Rever 30/11', 'COMUNICAÇÃO', 'VEM PRONTA', 'Corujão 28/11 (A)', 'Reunião geral às 15h']);
   });
 
@@ -144,9 +150,9 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
   });
 
   it('depois da virada, na Pauta da edição vale o publicado; o dia que o PROMeiro não gravou continua com o Teable', async () => {
-    const p: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${SEXTA}`)).json();
+    const p: { linhas: Linha[] } = await pautaNoDia(lia, SEXTA);
     expect(p.linhas.map((l) => `${l.editor || '—'}: ${l.texto}`)).toEqual(['Rui Teixeira: Noite de Gala 27/11 (DP)', 'Rui Teixeira: COMUNICAÇÃO', 'Rui Teixeira: VEM PRONTA', 'Elis Furtado: Corujão 28/11 (A)', '—: Reunião geral às 15h']);
-    const domingo: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${DOMINGO}`)).json();
+    const domingo: { linhas: Linha[] } = await pautaNoDia(lia, DOMINGO);
     expect(domingo.linhas.map((l) => `${l.editor}: ${l.texto}`)).toEqual(['Gil Moura: Corujão 29/11']);
   });
 
@@ -205,7 +211,7 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     // o outro dia não é tocado
     expect(noTeable(DOMINGO)).toEqual(['recGilMoura: Corujão 29/11']);
     // sem publicação, a Pauta volta ao Teable (que já não tem o dia)
-    const p: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${SEXTA}`)).json();
+    const p: { linhas: Linha[] } = await pautaNoDia(lia, SEXTA);
     expect(p.linhas).toEqual([]);
   });
 
@@ -217,7 +223,7 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     expect(d.estado).toBe('publicado');
     expect(d.noTeable.erro).toMatch(/Teable/);
     // a Pauta mostra o publicado mesmo assim: o PROMeiro vale
-    const p: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${SABADO}`)).json();
+    const p: { linhas: Linha[] } = await pautaNoDia(lia, SABADO);
     expect(p.linhas.map((l) => l.texto)).toEqual(['Noite de Gala 27/11 (DP)', 'COMUNICAÇÃO', 'VEM PRONTA', 'Corujão 28/11 (A)']);
     d = await publicar(SABADO);
     expect(d.noTeable.erro).toBeNull();

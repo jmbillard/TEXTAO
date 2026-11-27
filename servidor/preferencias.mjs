@@ -1,5 +1,5 @@
 /* As preferências de cada pessoa (#101): o lugar único, no SQLite (e por isso no backup), do que o PROMeiro lembra por
-   pessoa em qualquer aparelho: a última área usada, a exibição de cada área, o arranjo da Pauta da edição (#98)…
+   pessoa em qualquer aparelho: a última área usada, a exibição de cada área, a visão da Pauta da edição (#98)…
    Uma linha por pessoa e chave, com o valor em JSON: uma preferência nova é só uma chave nova, sem mudar a tabela.
    O SQL é portável (vale também no Postgres): sem json_extract, sem INSERT OR REPLACE. Quem grava e confere cada
    chave é a rota de quem está logado (/api/eu/preferencias). */

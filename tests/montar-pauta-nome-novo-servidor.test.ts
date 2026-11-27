@@ -14,6 +14,12 @@ import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 
+/** O dia da Pauta da edição como a tela o vê (#162): a Semana que tem o dia, só com as linhas e quem está fora nele. */
+async function pautaNoDia(quem: (caminho: string) => Promise<Response>, dia: string) {
+  const s = await (await quem(`/api/pauta/semana?inicio=${dia}`)).json();
+  return { ...s, linhas: s.linhas.filter((l: { dia: string }) => l.dia === dia), fora: (s.fora ?? []).filter((f: { dia: string }) => f.dia === dia) };
+}
+
 const SEXTA = '2026-11-27';
 const SABADO = '2026-11-28';
 const CHEFE = 'chefe@empresa.com';
@@ -73,7 +79,7 @@ describe('montar a pauta: o nome novo pendente (#132)', () => {
   const gravar = (posicoes: unknown, dia = SEXTA) => bia(`/api/montar-pauta?dia=${dia}`, { method: 'PUT', body: JSON.stringify({ posicoes }) });
   const nomesNovos = async (quem = chefe): Promise<NomeNovo[]> => (await (await quem('/api/cadastros?renovar=1')).json()).nomesNovos;
   const ligar = (nome: string, editor: string, quem = chefe) => quem('/api/cadastros/nomes-novos/ligar', { method: 'POST', body: JSON.stringify({ nome, editor }) });
-  const pautaDoDia = async (dia = SEXTA): Promise<Linha[]> => (await (await lia(`/api/pauta/dia?dia=${dia}`)).json()).linhas;
+  const pautaDoDia = async (dia = SEXTA): Promise<Linha[]> => (await pautaNoDia(lia, dia)).linhas;
   const editoresDaPauta = async (dia = SEXTA) => [...new Set((await pautaDoDia(dia)).map((l) => l.editor))];
 
   beforeAll(async () => {

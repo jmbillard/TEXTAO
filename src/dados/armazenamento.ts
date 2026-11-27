@@ -976,11 +976,10 @@ export async function lembrarExibicao(area: AreaDosRoteiros, exibicao: Exibicao)
   }
 }
 
-/** A escolha da Pauta da edição (#98): a visão em que ela abre e o arranjo de cada visão; sem escolha, a Semana editor ×
-    dia e o Dia empilhado. */
+/** A escolha da Pauta da edição (#98): a visão em que ela abre; sem escolha, a Semana. */
 export const escolhaLembradaDaPauta = (): EscolhaDaPauta => escolhaDaPauta(minhasPreferencias);
 
-/** A pessoa escolheu a visão ou o arranjo da pauta: vale na hora (também fora do servidor, até recarregar) e o servidor
+/** A pessoa escolheu a visão da pauta: vale na hora (também fora do servidor, até recarregar) e o servidor
     guarda, por pessoa, para qualquer aparelho. Devolve se ficou guardada; o que não ficou volta ao de antes na próxima
     visita (se nenhuma escolha mais nova passou na frente). */
 export async function lembrarNaPauta<K extends keyof EscolhaDaPauta>(parte: K, valor: EscolhaDaPauta[K]): Promise<boolean> {
@@ -1124,7 +1123,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
-import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type EscolhaDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import type { DiaDaEscala, PosicaoDaEscala, TurnoDaEscala } from '../modelo/escala';
 import type { FotoDoDia } from '../modelo/fotoDaPlanilha';
 import type { DeOndeRepetir } from '../modelo/repetir';
@@ -1531,14 +1530,8 @@ export interface ProducaoAberta extends LinhaDoTempo {
   trello: string | null;
 }
 export const lerProducaoAberta = (producao: string) => pedir<ProducaoAberta>(`/api/producoes/aberta?producao=${encodeURIComponent(producao)}`);
-/** O pedido da pauta com o filtro pessoal (#99), quando há. */
-const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
-  const q = new URLSearchParams(Object.entries({ ...busca, ...(filtro ? { filtro } : {}) }).filter(([, v]) => v)).toString();
-  return q ? `?${q}` : '';
-};
-export const lerSemanaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => pedir<SemanaDaPauta & LeituraDaPauta>(`/api/pauta/semana${comFiltro({ inicio: dia }, filtro)}`);
-/** O Dia da pauta da edição (#97): um dia (AAAA-MM-DD; sem ele, hoje), com cada editor numa coluna. */
-export const lerDiaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => pedir<DiaDaPauta & LeituraDaPauta>(`/api/pauta/dia${comFiltro({ dia }, filtro)}`);
+/** A Semana da pauta da edição (#94): a que tem o dia (AAAA-MM-DD; sem ele, a de hoje); o Dia da tela sai dela. */
+export const lerSemanaDaPauta = (dia = '') => pedir<SemanaDaPauta & LeituraDaPauta>(`/api/pauta/semana${dia ? `?inicio=${dia}` : ''}`);
 /** O rascunho do dia que a coordenação monta (#123; sem o dia, amanhã), com as abas da semana e a lista dos editores. */
 export const lerRascunhoDoDia = (dia = '') => pedir<DiaDaEscala>(`/api/montar-pauta${dia ? `?dia=${dia}` : ''}`);
 /**

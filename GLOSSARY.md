@@ -588,9 +588,8 @@ O início e o fim do expediente do editor num dia da pauta, no horário de São 
 **Configuração**, cada um com o seu horário padrão; cada **posição** pode ter o seu horário. O que passa da meia-noite
 (22–06) conta no dia em que começou. O bloco das 20h às 2h, sem nome na planilha, é a **noite** (confirmado por um
 produtor da edição, em 27/11/2026). O **turno de costume** é o que mais se repete na semana: é a ordem dos editores
-na Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior. Na Semana
-com um dia por coluna, os cards se agrupam pelo **período** em que o turno começa: manhã (6h–12h), tarde (12h–18h),
-noite (18h–0h) e madrugada (0h–6h).
+na Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior; é por
+ela que o turno está "no ar agora".
 
 **Versão da chamada** (na pauta):
 O código no fim da claquete da pauta, entre parênteses ou, depois da data, sem eles, em qualquer caixa e com ou sem

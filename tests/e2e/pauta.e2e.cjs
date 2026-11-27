@@ -38,7 +38,7 @@ const LIA = 'lia.moraes@exemplo.com';
 // a escolha lembrada (#98), de outras pessoas (uma por tema, cada uma começando sem escolha): a da Lia continua a dela
 const TOM = 'tom.vieira@exemplo.com';
 const CHEFE = 'chefe.ficticia@exemplo.com';
-// os filtros (#99): a Carla é editora (o cadastro de editores tem o e-mail dela) e a Dora, designer (a tabela designers)
+// quem é quem (#99): a Carla é editora (o cadastro de editores tem o e-mail dela) e a Dora, designer (a tabela designers)
 const CARLA = 'carla.duarte@exemplo.com';
 const DORA = 'dora.lima@exemplo.com';
 // a opção do código das versões (#152), de outra pessoa: a escolha é de cada um
@@ -877,7 +877,7 @@ async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
-  // os filtros (#99): o cadastro de editores com o e-mail da Carla e a tabela designers com o da Dora (fictícios)
+  // quem é quem (#99): o cadastro de editores com o e-mail da Carla e a tabela designers com o da Dora (fictícios)
   const registros = {
     EDICAO_producao: PAUTA,
     ARTE_producao: ARTE,

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { agoraNaRegua, diaDaPautaAgora, noArAgora } from '../src/modelo/pauta';
+import { agoraNaRegua, diaDaPautaAgora, escolhaDaPauta, noArAgora } from '../src/modelo/pauta';
 
 /* A régua do Dia da pauta (#97): das 6h às 6h do dia seguinte, em São Paulo. O turno que passa da meia-noite continua
-   no ar na régua do dia em que começou; a linha do "agora" só aparece no dia da régua. */
+   no ar na régua do dia em que começou: é ela que diz quem está "no ar agora". */
 
 const sp = (dia: string, hora: string) => new Date(`${dia}T${hora}:00-03:00`);
 const noite = { inicio: '22:00', fim: '06:00' };
@@ -34,5 +34,15 @@ describe('a régua do Dia', () => {
     expect(diaDaPautaAgora(sp('2026-11-25', '05:59'))).toBe('2026-11-24');
     expect(diaDaPautaAgora(sp('2026-11-25', '06:00'))).toBe('2026-11-25');
     expect(diaDaPautaAgora(sp('2026-11-25', '23:30'))).toBe('2026-11-25');
+  });
+});
+
+describe('a escolha lembrada da pauta (#98)', () => {
+  it('sem escolha (ou com uma que não vale), a Semana; a visão escolhida vale', () => {
+    expect(escolhaDaPauta(undefined)).toEqual({ visao: 'semana' });
+    expect(escolhaDaPauta({ 'pauta.visao': 'mes' })).toEqual({ visao: 'semana' });
+    expect(escolhaDaPauta({ 'pauta.visao': 'dia' })).toEqual({ visao: 'dia' });
+    // os arranjos de antes (#162) já não contam
+    expect(escolhaDaPauta({ 'pauta.visao': 'dia', 'pauta.arranjo.dia': 'por-hora' })).toEqual({ visao: 'dia' });
   });
 });

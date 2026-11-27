@@ -15,6 +15,12 @@ import { criarEscala } from '../servidor/escala.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 
+/** O dia da Pauta da edição como a tela o vê (#162): a Semana que tem o dia, só com as linhas e quem está fora nele. */
+async function pautaNoDia(quem: (caminho: string) => Promise<Response>, dia: string) {
+  const s = await (await quem(`/api/pauta/semana?inicio=${dia}`)).json();
+  return { ...s, linhas: s.linhas.filter((l: { dia: string }) => l.dia === dia), fora: (s.fora ?? []).filter((f: { dia: string }) => f.dia === dia) };
+}
+
 const SEXTA = '2026-11-27';
 const CHEFE = 'chefe@empresa.com';
 const BIA = 'bia.coord@empresa.com';
@@ -68,7 +74,7 @@ describe('montar a pauta: avisos por posição e recado do dia (#125)', () => {
   const ler = async (): Promise<Dia> => (await bia(`/api/montar-pauta?dia=${SEXTA}`)).json();
   const gravar = (corpo: unknown) => bia(`/api/montar-pauta?dia=${SEXTA}`, { method: 'PUT', body: JSON.stringify(corpo) });
   const publicar = () => bia(`/api/montar-pauta/publicar?dia=${SEXTA}`, { method: 'POST' });
-  const pautaDoDia = async (): Promise<{ linhas: Linha[]; editores: string[] }> => (await lia(`/api/pauta/dia?dia=${SEXTA}`)).json();
+  const pautaDoDia = async (): Promise<{ linhas: Linha[]; editores: string[] }> => pautaNoDia(lia, SEXTA);
   const avisos = (ls: Linha[]) => ls.filter((l) => l.tipo === 'aviso').map((l) => `${l.editor || '—'}: ${l.texto}`);
 
   beforeAll(async () => {

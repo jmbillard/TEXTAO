@@ -745,8 +745,9 @@ async function ausencias(navegador, url, api) {
   assert.deepEqual(await fora.locator('.pauta-etiqueta').allInnerTexts(), ['fora', 'fora']);
   assert.doesNotMatch(await fora.innerText(), /férias|folga|volta depois|comp/, 'a Lia não vê o motivo');
   await capturar(lia.p, '10-pauta-fora');
-  const doChefe = await (await fetch(`${api}/pauta/dia?dia=${amanha}`, { headers: { 'cf-access-authenticated-user-email': CHEFE } })).json();
-  assert.deepEqual(doChefe.fora.map((f) => f.motivo), [`férias até ${diaMes(mais(amanha, 3))}`, 'folga'], 'a administradora vê o motivo');
+  // a mesma leitura da tela: a Semana que tem o dia, com quem está fora naquele dia
+  const doChefe = await (await fetch(`${api}/pauta/semana?inicio=${amanha}`, { headers: { 'cf-access-authenticated-user-email': CHEFE } })).json();
+  assert.deepEqual(doChefe.fora.filter((f) => f.dia === amanha).map((f) => f.motivo), [`férias até ${diaMes(mais(amanha, 3))}`, 'folga'], 'a administradora vê o motivo');
 
   assert.equal(escritasNoTeable.length, 0, 'nada foi escrito nos cadastros');
   assert.deepEqual(erros, [], 'ausências: erros na página');

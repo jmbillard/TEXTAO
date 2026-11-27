@@ -4,7 +4,7 @@
 
 import { tabelaNoPg } from './tabelas-do-teable.mjs';
 import { MARCA_TODAS, pracasDaConfiguracao, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { colunasDoDia, diaEmSaoPaulo, diaVizinho, diasDaSemana, linhaDaPauta, ordemDosEditores, periodoDosDias } from '../src/modelo/pauta.ts';
+import { diaEmSaoPaulo, diaVizinho, diasDaSemana, linhaDaPauta, ordemDosEditores, periodoDosDias } from '../src/modelo/pauta.ts';
 
 const NOME = /^[A-Za-z0-9_]+$/;
 const DIAS = 45; // a mesma chave volta a existir no ano seguinte ("QUEM AMA 20 11"); só vale a pauta recente
@@ -174,10 +174,10 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
     const { linhas, ...resto } = await lerDias(dias);
     return { inicio: segunda, dias, editores: ordemDosEditores(linhas), linhas, ...resto };
   }
-  /* O Dia (#97): as linhas de um dia só, com os editores na ordem de início do turno daquele dia. */
+  /* As linhas de um dia só: o que a gravação no Teable (#134) confere antes de trocar o espelho do dia. */
   async function dia(qual) {
     const { linhas, ...resto } = await lerDias([qual]);
-    return { dia: qual, editores: colunasDoDia(linhas).map((c) => c.editor), linhas, ...resto };
+    return { dia: qual, linhas, ...resto };
   }
 
   return {

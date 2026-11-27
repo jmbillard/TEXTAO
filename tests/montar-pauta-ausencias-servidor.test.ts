@@ -14,6 +14,12 @@ import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 
+/** O dia da Pauta da edição como a tela o vê (#162): a Semana que tem o dia, só com as linhas e quem está fora nele. */
+async function pautaNoDia(quem: (caminho: string) => Promise<Response>, dia: string) {
+  const s = await (await quem(`/api/pauta/semana?inicio=${dia}`)).json();
+  return { ...s, linhas: s.linhas.filter((l: { dia: string }) => l.dia === dia), fora: (s.fora ?? []).filter((f: { dia: string }) => f.dia === dia) };
+}
+
 const SEXTA = '2026-11-27';
 const SABADO = '2026-11-28';
 const SEGUNDA = '2026-11-30';
@@ -72,7 +78,7 @@ describe('montar a pauta: ausências com período (#128)', () => {
   const painel = async (dia: string, quem = bia): Promise<Painel> => (await quem(`/api/montar-pauta/ausencias?dia=${dia}`)).json();
   const marcar = (corpo: Record<string, string>, quem = bia) => quem(`/api/montar-pauta/ausencias?dia=${SEXTA}`, { method: 'POST', body: JSON.stringify(corpo) });
   const quemEstaFora = async (dia: string) => (await painel(dia)).fora.map((a) => a.editor);
-  const foraNaPauta = async (quem: typeof bia, dia = SEXTA): Promise<Fora[]> => (await (await quem(`/api/pauta/dia?dia=${dia}`)).json()).fora;
+  const foraNaPauta = async (quem: typeof bia, dia = SEXTA): Promise<Fora[]> => (await pautaNoDia(quem, dia)).fora;
 
   beforeAll(async () => {
     teable = teableFalso({ EDICAO_producao: 'pauta_pg' }, { registros: { EDICAO_producao: [] } });
@@ -161,7 +167,7 @@ describe('montar a pauta: ausências com período (#128)', () => {
     expect(sabado.estado).toBe('alterado');
     expect(sabado.posicoes.map((x) => [x.editor, x.demandas.length])).toEqual([['', 0], ['Rui Teixeira', 1]]);
     // a Pauta continua com o publicado até publicar de novo; o Gil aparece fora
-    const naPauta: { linhas: { editor: string; texto: string }[]; fora: Fora[] } = await (await lia(`/api/pauta/dia?dia=${SABADO}`)).json();
+    const naPauta: { linhas: { editor: string; texto: string }[]; fora: Fora[] } = await pautaNoDia(lia, SABADO);
     expect(naPauta.linhas.map((l) => `${l.editor}: ${l.texto}`)).toContain('Gil Moura: Corujão 28/11 (D)');
     expect(naPauta.fora.map((f) => f.editor)).toEqual(['Elis Furtado', 'Gil Moura']);
     // tirar quem não está escalado é recusado; "já distribuí" tira da lista

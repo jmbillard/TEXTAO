@@ -447,7 +447,7 @@ export function VisaoDaPauta({ visao, semana, dia }: { visao: 'semana' | 'dia'; 
   );
 }
 
-/* ---------- os filtros pessoais, a cópia de reserva, o resumo do administrador e a releitura (#99) ---------- */
+/* ---------- a cópia de reserva, o resumo do administrador e a releitura (#99) ---------- */
 
 /** "14:20" hoje; "14:20 de 26/11" em outro dia (em São Paulo). */
 export function horaEscrita(iso: string) {

@@ -16,7 +16,7 @@ import { abrirPg, criarPauta } from './pauta.mjs';
 import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES, TIPO_DA_PAUTA, propostasParaAplicar } from './correcoes.mjs';
 import { criarRegistroDeCorrecoes, idsParaDesfazer } from './registro-de-correcoes.mjs';
 import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
-import { codigoDasVersoes, colunasDoDia, cruzarComAProducao, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
+import { codigoDasVersoes, cruzarComAProducao, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
@@ -792,7 +792,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   // o registro da correção de grafia (#115): cada correção aplicada, para desfazer; cada tipo dá o seu desfazer
   // (juntar atrações, #117, entra aqui com o dele)
   const registroDeCorrecoes = criarRegistroDeCorrecoes({ db, desfazedores: { [TIPO_DA_PAUTA]: (c) => geracao.correcoes.desfazer(c) } });
-  // as preferências de cada pessoa (#101), no SQLite: a última área usada, o arranjo da Pauta da edição…
+  // as preferências de cada pessoa (#101), no SQLite: a última área usada, a visão da Pauta da edição…
   const preferencias = criarPreferencias(db);
   // o apelido da claquete (#120), um por claquete (#154), no SQLite: só para mostrar, o envio continua com a claquete
   // original; a chave tira a praça do fim, com as praças de agora
@@ -2945,7 +2945,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
     if (caminho === '/api/eu/preferencias') {
       // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' } ou a exibição de uma área dos
-      // roteiros (#103): { 'exibicao.redator': 'quadro' }, ou a visão e os arranjos da Pauta da edição (#98), que é de
+      // roteiros (#103): { 'exibicao.redator': 'quadro' }, ou a visão da Pauta da edição (#98), que é de
       // todo mundo: { 'pauta.visao': 'dia' }, ou os blocos recolhidos da tela de produções (#113), também de todo mundo:
       // { 'producoes.recolhidos': ['RJ'] }. Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
@@ -3344,25 +3344,24 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/cadastros/ilhas' || caminho.startsWith('/api/cadastros/ilhas/')) return rotaDasIlhas(req, res, eu, caminho);
     if (caminho === '/api/cadastros/padeiros' || caminho.startsWith('/api/cadastros/padeiros/')) return rotaDosPadeiros(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
-    if (caminho === '/api/pauta/semana' || caminho === '/api/pauta/dia') {
-      // a Semana (#94) e o Dia (#97) da pauta da edição, para qualquer pessoa logada: lidos do Postgres do Teable (só
-      // leitura), nada do Trello. Na Semana, ?inicio= é qualquer dia dela; no Dia, ?dia= (sem eles, hoje, em São Paulo).
+    if (caminho === '/api/pauta/semana') {
+      // a Semana da pauta da edição (#94), para qualquer pessoa logada: lida do Postgres do Teable (só leitura), nada do
+      // Trello. ?inicio= é qualquer dia dela (sem ele, hoje, em São Paulo); o Dia da tela sai desta mesma semana.
       // Com o banco fora do ar, da última cópia local (#99: `origem` e `copiaEm` dizem)
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const busca = new URL(req.url, 'http://x').searchParams;
-      const ehDia = caminho === '/api/pauta/dia';
-      const doTeable = ehDia ? await pauta.dia(diaOuHoje(busca.get('dia') ?? '')) : await pauta.semana(segundaDaSemana(busca.get('inicio') ?? ''));
+      const doTeable = await pauta.semana(segundaDaSemana(busca.get('inicio') ?? ''));
       // o dia publicado no PROMeiro (#127) entra junto (a regra em src/modelo/pautaPublicada.ts): antes da virada, a do
       // Teable fica inteira e do publicado entra só o que o Teable ainda não tem no dia; depois (#134), no dia que o
       // PROMeiro gravou no Teable vale o publicado, e as linhas do Teable daquele dia (o espelho) saem
-      const dias = ehDia ? [doTeable.dia] : doTeable.dias;
+      const { dias } = doTeable;
       const gravados = pautaNoTeable.gravados(dias[0], dias.at(-1));
       const publicadas = escala.publicadas(dias[0], dias.at(-1)).map((p) => (gravados.has(p.dia) ? { ...p, vale: true } : p));
       const juntas = juntarAPublicada(doTeable.linhas, publicadas);
-      const s = !publicadas.length ? doTeable : { ...doTeable, linhas: juntas, editores: ehDia ? colunasDoDia(juntas).map((c) => c.editor) : ordemDosEditores(juntas) };
+      const s = !publicadas.length ? doTeable : { ...doTeable, linhas: juntas, editores: ordemDosEditores(juntas) };
       // a claquete com a produção da arte (#96): as Produções do PROMeiro (sem ler o Teable de novo), pela chave, com a
       // tolerância da busca do editor (sem a versão, sem a praça)
-      const desde = new Date(Date.parse(`${s.inicio ?? s.dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();
+      const desde = new Date(Date.parse(`${s.inicio}T12:00:00Z`) - 120 * 86_400_000).toISOString();
       const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
       // cada Produção com as versões lidas do roteiro dela (#152), o valor inicial da claquete sem código no nome
       const comAsLidas = producoes.naPauta(desde).map((p) => {
@@ -3370,16 +3369,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         return lidas.length ? { ...p, versoesLidas: lidas } : p;
       });
       const linhas = cruzarComAProducao(s.linhas, comAsLidas, semPraca);
-      // os filtros pessoais (#99): "Só as minhas" pelo editor ligado ao e-mail (#106), "Com arte minha" pelo designer
-      // do e-mail (#110); o resumo, da pauta inteira, só para administradores
+      // quem a pessoa é: o editor ligado ao e-mail (#106) e o designer do e-mail (#110); o resumo, só para administradores
       const voce = { editor: (await areas.quemE(eu.email, cadastros)).editor?.nome ?? null, designer: pessoas.designerDoEmail(eu.email)?.nome ?? null };
-      const filtro = ehFiltroDaPauta(busca.get('filtro')) ? busca.get('filtro') : null;
-      const vistas = filtro ? filtrarAPauta(linhas, filtro, voce) : linhas;
-      const editores = !filtro ? s.editores : ehDia ? colunasDoDia(vistas).map((c) => c.editor) : ordemDosEditores(vistas);
       const resumo = cadastros.podeApagar(eu.email) ? { resumo: resumoDaPauta(linhas, s.alteradoEm) } : {};
       // quem está fora (#128): todos veem "fora"; o motivo e a observação, só a coordenação e os administradores
       const fora = foraNaPauta(ausencias.noPeriodo(dias[0], dias.at(-1)), dias, escala.ehCoordenacao(eu.email) || cadastros.podeApagar(eu.email));
-      return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, fora, ...resumo });
+      return json(res, 200, { ...s, linhas, voce, fora, ...resumo });
     }
     if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
     if (caminho === '/api/montar-pauta/foto') return rotaDaFotoDoDia(req, res, eu);
