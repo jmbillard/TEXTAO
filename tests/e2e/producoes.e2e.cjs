@@ -180,25 +180,27 @@ const comecarAMedirOsIcones = (p) =>
     };
     medir();
   });
-/** Os ícones dos caminhos só deslizam (#168): cada ícone que muda de lugar passa por vários quadros no meio do caminho
-    (um pulo iria de uma ponta à outra de uma vez). Pela medida em quadros e não em px por quadro: a curva --suave começa
-    rápida, e um quadro longo da tela nova chegando faz um passo grande sem ser pulo. No computador, o primeiro fica
-    parado; no celular (sem o nome), todos. */
+/** Os ícones dos caminhos só deslizam (#168): cada ícone que muda de lugar leva um tempo de ponta a ponta (um pulo iria
+    de uma ponta à outra num quadro só). Pelo tempo e não em px por quadro: a curva --suave começa rápida, e um quadro
+    longo da tela nova chegando faz um passo grande sem ser pulo. No computador, o primeiro fica parado; no celular (sem
+    o nome), todos. */
 async function iconesSemPulo(p, comNome, onde) {
-  const quadros = (await p.evaluate(() => window.__quadrosDosIcones)).map((q) => q.slice(1)).filter((q) => q.length);
-  assert.ok(quadros.length > 10, `${onde}: os quadros medidos`);
-  const n = quadros[quadros.length - 1].length;
-  const mesmos = quadros.filter((q) => q.length === n);
-  for (let j = 0; j < n; j++) {
-    const xs = mesmos.map((q) => q[j]);
+  const todos = (await p.evaluate(() => window.__quadrosDosIcones)).filter((q) => q.length > 1);
+  assert.ok(todos.length > 10, `${onde}: os quadros medidos`);
+  const n = todos[todos.length - 1].length;
+  const quadros = todos.filter((q) => q.length === n);
+  for (let j = 1; j < n; j++) {
+    const xs = quadros.map((q) => q[j]);
     const [de, para] = [xs[0], xs[xs.length - 1]];
-    if (!comNome || j === 0) {
-      assert.ok(Math.max(...xs) - Math.min(...xs) <= 1, `${onde}: o ícone ${j + 1} parado`);
+    if (!comNome || j === 1) {
+      assert.ok(Math.max(...xs) - Math.min(...xs) <= 1, `${onde}: o ícone ${j} parado`);
       continue;
     }
-    if (Math.abs(para - de) <= 1) continue;
-    const noMeio = xs.filter((x) => Math.min(Math.abs(x - de), Math.abs(x - para)) > 1).length;
-    assert.ok(noMeio >= 5, `${onde}: o ícone ${j + 1} desliza de ${de.toFixed(0)} a ${para.toFixed(0)} (${noMeio} quadros no meio)`);
+    if (Math.abs(para - de) <= 4) continue;
+    const saiu = quadros.findIndex((q) => Math.abs(q[j] - de) > 1);
+    const chegou = quadros.findIndex((q) => Math.abs(q[j] - para) <= 1);
+    const ms = quadros[chegou][0] - quadros[saiu - 1][0];
+    assert.ok(chegou - saiu >= 2 && ms >= 100, `${onde}: o ícone ${j} desliza de ${de.toFixed(0)} a ${para.toFixed(0)} (em ${ms} ms, ${chegou - saiu} quadros no meio)`);
   }
 }
 /** O topo no mesmo lugar de antes: no máximo 1 px em cada lado de cada peça. */
@@ -1117,7 +1119,7 @@ async function topoEntreAsTelas(navegador, url) {
     assert.deepEqual(erros, []);
     await ctx.close();
   }
-  console.log('ok: o topo parado (no máximo 1 px) na fila, nas Produções, nos Filmes e na Pauta, no meio da troca e depois, no computador e no celular');
+  console.log('ok: o topo parado (no máximo 1 px) na fila, nas Produções, nos Filmes e na Pauta, no meio da troca e depois, no computador e no celular; os caminhos de sempre, com o atual aberto e os ícones deslizando (#168)');
 }
 
 /** As praças na ordem da tela. */
@@ -1838,6 +1840,12 @@ async function principal() {
     if (process.env.SO === 'acabamento') {
       await produzindoComEspaco(navegador, s.url, s.db, s.api);
       await filmarOAcabamento(navegador, s.url, s.api);
+    }
+    // SO=topo roda só o topo (#168): a fila e as Produções no computador, a troca entre as telas e o vídeo dela
+    else if (process.env.SO === 'topo') {
+      await noComputador(navegador, s.url, 'light', chamadasAoTrello);
+      await entradaNoCelular(navegador, s.url);
+      await topoEntreAsTelas(navegador, s.url);
     }
     else if (process.env.SO === 'card-aberto') {
       await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);

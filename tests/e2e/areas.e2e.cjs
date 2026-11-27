@@ -835,7 +835,9 @@ async function caminhosDoTopo(navegador, url) {
     }
   // sem movimento (#168): a largura troca de uma vez, e o nome só esmaece
   const { ctx, p } = await comFilmes(navegador, url, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' }, { pendente: false });
-  const transicao = await p.locator('.topo-agenda .caminho-nome').evaluate((e) => { const c = getComputedStyle(e); return [c.transitionProperty, c.transitionDuration]; });
+  await p.locator('.barra-topo .topo-agenda.aberto').waitFor();
+  await p.waitForTimeout(300);
+  const transicao = await p.locator('.barra-topo .topo-agenda .caminho-nome').evaluate((e) => { const c = getComputedStyle(e); return [c.transitionProperty, c.transitionDuration]; });
   assert.deepEqual(transicao, ['opacity', '0.3s'], 'sem movimento, o nome só esmaece');
   await ctx.close();
   console.log('ok: o topo da Designer é "No Trello · Produções · Filmes · Pauta da edição", só os ícones com o atual aberto, a bolinha só antes da Pauta, o aviso no ícone dos Filmes e a dica no hover e no foco');
