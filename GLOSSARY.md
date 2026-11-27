@@ -510,13 +510,18 @@ os avisos do dia.
 _Evitar_: vaga, slot
 
 **Ilha**:
-A sala de edição, com tipo (AVID, VDI…), número e nome opcional. Fica nos Cadastros (guardada no PROMeiro). AVID e
-ILHA com o mesmo número são duas ilhas, como estão escritas. A **ilha de costume** do editor é a que mais se repete nas
-posições dele nas oito semanas antes do dia; a ilha está **ocupada** quando outra posição do mesmo turno já está nela.
-_Evitar_: sala, estação
+A sala de edição, com tipo (AVID, VDI…), número e nome opcional. Fica nos Cadastros (guardada no PROMeiro). "AVID 46",
+"ILHA 46" e só "46" são a mesma sala. A VDI 5 é uma ilha remota, usada por um editor temporário. A ilha em branco na
+escala é esquecimento ou ilha ainda por definir, nunca "a de sempre" (confirmado por um produtor da edição, em
+27/11/2026). A **ilha de costume** do editor é a que mais se repete nas posições dele nas oito semanas antes do dia; a
+ilha está **ocupada** quando outra posição do mesmo turno já está nela.
+_Evitar_: sala, estação; "ilha de sempre" para a ilha em branco
 
 **Ausência**:
-O período em que uma pessoa está fora: férias, folga, DM ou licença. Todos veem só "fora"; o motivo, só a coordenação.
+O período em que uma pessoa está fora: férias, folga, **dispensa médica** (o "DM" no horário da planilha) ou licença.
+Todos veem só "fora"; o motivo, só a coordenação. O período das férias não fica na planilha da pauta, e sim noutra
+planilha; a da pauta tem, além dos dias, as abas "escala do mês" e "controle de férias". (Confirmado por um produtor
+da edição, em 27/11/2026.)
 _Evitar_: falta, afastamento
 
 **Coordenação**:
@@ -530,7 +535,9 @@ A linha da pauta que não tem a forma de claquete (o nome da atração e a data)
 **Aviso** (da pauta):
 Um recado da coordenação para o editor de uma **posição**, preso a ela; não é um item da pauta. No Teable, é a linha
 com a caixinha de anotação marcada. Na Semana, só o ⚑ com o número; o texto abre ao passar o mouse ou ao tocar. No Dia,
-um balão "aviso" no topo da coluna do editor. O recado para todos é o **recado do dia**.
+um balão "aviso" no topo da coluna do editor. O recado para todos é o **recado do dia**. O que a coordenação
+põe de recado na pauta é para um editor (o aviso), para todo mundo (o recado do dia) ou são as observações da reunião
+com a gestão da Promo (confirmado por um produtor da edição, em 27/11/2026).
 _Evitar_: nota, observação
 
 **Recado do dia**:
@@ -539,6 +546,8 @@ _Evitar_: aviso geral, mural
 
 **Rascunho** e **Publicar** (da pauta):
 A pauta que a coordenação monta fica em rascunho, que só ela vê, até publicar; publicar é o que a equipe passa a ver.
+Publica-se mesmo com **pendências** da conferência: elas avisam, não travam (ADR 0006; confirmado por um produtor da
+edição, em 27/11/2026).
 Cada dia está **vazio** (nada montado), em **rascunho** (montado e não publicado), **publicado** ou **alterado**
 (publicado e mudado depois, à espera de publicar de novo).
 _Evitar_: salvar, enviar, liberar
@@ -568,7 +577,8 @@ _Evitar_: duplicar, clonar
 **Turno**:
 O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. Os turnos são uma lista na
 **Configuração**, cada um com o seu horário padrão; cada **posição** pode ter o seu horário. O que passa da meia-noite
-(22–06) conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores
+(22–06) conta no dia em que começou. O bloco das 20h às 2h, sem nome na planilha, é a **noite** (confirmado por um
+produtor da edição, em 27/11/2026). O **turno de costume** é o que mais se repete na semana: é a ordem dos editores
 na Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior. Na Semana
 com um dia por coluna, os cards se agrupam pelo **período** em que o turno começa: manhã (6h–12h), tarde (12h–18h),
 noite (18h–0h) e madrugada (0h–6h).
@@ -594,7 +604,10 @@ pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai
 com um "?" para conferir; o horário sozinho não é versão. Quando discordam das versões que valem (as do nome ou as
 feitas à mão), um aviso discreto compara os dois códigos ("o roteiro diz (AH), a claquete diz (A)") e oferece usar as
 do roteiro, que viram as versões à mão do **apelido**; a que veio só do dia leva o "?" depois do código ("(AN)?").
-_Evitar_: tipo da chamada; "sufixo" sozinho (é o sufixo das versões, só na tela)
+Trocar a letra (de (A) para (H)) e subir a **versão do roteiro** (V2, V3) são coisas diferentes: as letras "servem
+para diferenciar as versões das chamadas" (um produtor da edição, em 27/11/2026).
+_Evitar_: tipo da chamada; "sufixo" sozinho (é o sufixo das versões, só na tela); "referência de dia" (descartado:
+confunde com o dia em que a chamada vai ao ar)
 
 **Ficha da claquete** (na pauta):
 O que abre por cima da pauta com um clique numa claquete: as linhas da mesma atração com versões diferentes juntas (a
