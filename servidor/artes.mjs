@@ -16,11 +16,14 @@ registerHooks?.({
   },
 });
 
-const { artesDoEnvio, exportar, quantasAProduzir } = await import('../src/modelo/exportar.ts');
+const { artesDoEnvio, exportar, quantasAProduzir, subirComplexidade } = await import('../src/modelo/exportar.ts');
 const { metaVazia } = await import('../src/modelo/tipos.ts');
 const { artesDoRoteiro } = await import('../src/modelo/artesDoRoteiro.ts');
 const { versoesDoRoteiro } = await import('../src/modelo/versoesDoRoteiro.ts');
 const { diaEmSaoPaulo } = await import('../src/modelo/pauta.ts');
+
+/** O clique no fogo da arte (BAIXA → MÉDIA → ALTA → BAIXA), pela regra do editor (#147: a janela do After também). */
+export { subirComplexidade };
 
 /**
  * As artes do roteiro aberto (#104), com o estado e a origem: as da revisão (as do envio, sem as que não vão ser

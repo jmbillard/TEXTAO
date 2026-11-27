@@ -28,9 +28,18 @@
  * Os eventos levam a origem Padeiro e a hora da abertura, e seguem a regra do conflito (o atrasado fica só no
  * histórico; nada vai ao Trello por ele). A Produção Entregue não muda: fica só o evento "abriu-o-projeto". Abrir de novo
  * o que já é do designer não grava nada.
+ *
+ * As ações da janela do After (#147), também pela chave do Padeiro, com a origem Padeiro, a hora da ação e a regra do
+ * conflito (o que chega atrasado na família fica só no histórico, e nada vai ao Trello por ele):
+ * - entregar: como o Entreguei da tela (de Entrada ou Produzindo; o card vai para a saída da praça), mas sem a conferência
+ *   das artes: o "entregar assim mesmo" é decidido na janela;
+ * - voltar: o designer da chave sai da Produção e do card; sem ninguém, a Produção volta para a Entrada. A Entregue volta
+ *   para a Entrada (o card para a entrada da praça), como na tela;
+ * - desfazer: a ação contrária da última ação da chave na Produção (pegar pelo aviso, entregar ou voltar), gravada como
+ *   eventos novos (marcados com o que desfazem). Só se ninguém mudou a etapa ou os designers depois.
  */
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
-import { ORIGEM_PROMEIRO, artesDoChecklist } from './producoes.mjs';
+import { ORIGEM_PADEIRO, ORIGEM_PROMEIRO, artesDoChecklist } from './producoes.mjs';
 
 /** As etapas para onde a tela leva, e de onde cada uma sai. */
 const DE_ONDE = { produzindo: ['entrada'], entrada: ['produzindo', 'entregue'], entregue: ['entrada', 'produzindo'] };
@@ -138,7 +147,7 @@ export function criarEtapaDaProducao({ producoes }) {
    * @param quem { id, nome } de quem os eventos dizem
    * @returns { status, corpo }: { producao, etapa, designers, eventos (os tipos gravados), trello (os passos) }
    */
-  async function peloPadeiro({ producao: p, quando }, { trello, designer, quem }) {
+  async function peloPadeiro({ producao: p, quando, acao = null }, { trello, designer, quem }) {
     if (!p || p.arquivada) return { status: 404, corpo: { erro: 'Essa Produção não está mais aberta no PROMeiro.' } };
     const ehDesigner = p.designers.some((d) => nomeComparavel(d) === nomeComparavel(designer.nome));
     const mudancas = [];
@@ -157,9 +166,90 @@ export function criarEtapaDaProducao({ producoes }) {
       if (r.erro) return { status: 502, corpo: { erro: r.erro } };
       feito.trello = r.feito;
     }
-    if (mudancas.length) producoes.doPadeiro(p.id, mudancas, quem, quando);
+    if (mudancas.length) producoes.doPadeiro(p.id, mudancas, quem, quando, { acao });
     const agora = producoes.uma(p.id);
     return { status: 200, corpo: { producao: p.id, etapa: agora.etapa, designers: agora.designers, ...feito } };
+  }
+
+  /**
+   * Grava as mudanças de uma ação da janela do After (#147): no Trello, só as que não chegaram atrasadas (o card movido
+   * quando a etapa entra ou sai de Entregue; o membro do designer da chave que entra ou sai); depois, os eventos.
+   * @param ctx { trello, pracas, designer: { nome, membro }, quem: { id, nome }, quando, acao, desfaz }
+   * @returns { status, corpo: { feito: { eventos, trello } } } ou a recusa
+   */
+  async function gravarPeloPadeiro(p, mudancas, { trello, pracas, designer, quem, quando, acao, desfaz = null }) {
+    const feito = { eventos: mudancas.map((m) => m.tipo), trello: [] };
+    if (p.cardId) {
+      const praca = pracas.find((x) => x.sigla === p.praca);
+      const passos = [];
+      for (const m of mudancas.filter((x) => !producoes.atrasado(p.id, { ...x, quando }))) {
+        if (m.tipo === 'etapa' && m.depois === 'entregue') passos.push(passoDeMover(p, 'saida', 'entrada', praca, trello));
+        else if (m.tipo === 'etapa' && m.antes === 'entregue') passos.push(passoDeMover(p, 'entrada', 'saida', praca, trello));
+        else if (m.tipo === 'designer-entrou' || m.tipo === 'designer-saiu') passos.push({ ...passoDoMembro(p, m.tipo === 'designer-entrou', designer.membro, trello), comMembro: true });
+      }
+      if (passos.length) {
+        if (passos.some((x) => x.comMembro) && !designer.membro) return { status: 403, corpo: { erro: SEM_MEMBRO } };
+        if (!trello?.config?.chave || !trello?.config?.token) return { status: 503, corpo: { erro: 'O Trello não está configurado: nada mudou.' } };
+        const r = await executar(p, passos);
+        if (r.erro) return { status: 502, corpo: { erro: r.erro } };
+        feito.trello = r.feito;
+      }
+    }
+    producoes.doPadeiro(p.id, mudancas, quem, quando, { acao, desfaz });
+    return { status: 200, corpo: { feito } };
+  }
+
+  const fechada = (p) => !p || p.arquivada;
+  const NAO_ABERTA = { status: 404, corpo: { erro: 'Essa Produção não está mais aberta no PROMeiro.' } };
+
+  /**
+   * Entregar pela janela do After (#147): a etapa vai para Entregue e o card para a saída da praça.
+   * @param p a Produção (producoes.uma)
+   * @param ctx { trello, pracas, designer, quem, quando, acao }
+   */
+  async function entregarPeloPadeiro(p, ctx) {
+    if (fechada(p)) return NAO_ABERTA;
+    if (!DE_ONDE.entregue.includes(p.etapa)) return { status: 409, corpo: { erro: `Essa Produção já está ${ROTULO[p.etapa] ?? p.etapa}.` } };
+    return gravarPeloPadeiro(p, [{ tipo: 'etapa', antes: p.etapa, depois: 'entregue' }], ctx);
+  }
+
+  /**
+   * Voltar para a Entrada pela janela do After (#147): o designer da chave sai; sem ninguém, a Produção volta para a
+   * Entrada. A Entregue volta para a Entrada (e o designer sai, se está nela), como na tela.
+   */
+  async function voltarPeloPadeiro(p, ctx) {
+    if (fechada(p)) return NAO_ABERTA;
+    const meu = p.designers.find((d) => nomeComparavel(d) === nomeComparavel(ctx.designer.nome));
+    if (p.etapa === 'produzindo' && !meu) return { status: 403, corpo: { erro: 'Só quem está na Produção volta com ela para a Entrada.' } };
+    const restam = p.designers.filter((d) => d !== meu);
+    const mudancas = [];
+    if (p.etapa === 'entregue' || (p.etapa === 'produzindo' && !restam.length)) mudancas.push({ tipo: 'etapa', antes: p.etapa, depois: 'entrada' });
+    if (meu) mudancas.push({ tipo: 'designer-saiu', antes: meu, depois: null });
+    if (!mudancas.length) return { status: 409, corpo: { erro: 'Essa Produção já está na Entrada.' } };
+    return gravarPeloPadeiro(p, mudancas, ctx);
+  }
+
+  /**
+   * Desfazer pela janela do After (#147): a ação contrária da última ação da chave na Produção (pegar, entregar ou
+   * voltar). Só se é a última mudança da etapa e dos designers, ainda não desfeita; com `desfaz` (o identificador da
+   * ação), só se é ela. Os eventos novos vêm depois da ação desfeita (a regra do conflito não os deixa para trás).
+   */
+  async function desfazerPeloPadeiro(p, { desfaz, ...ctx }) {
+    if (fechada(p)) return NAO_ABERTA;
+    const u = producoes.ultimaDaJanela(p.id);
+    const sua = u && u.origem === ORIGEM_PADEIRO && u.quem === ctx.quem.id && u.acao;
+    if (!sua) return { status: 409, corpo: { erro: u ? 'A Produção mudou depois da sua última ação: não dá mais para desfazer.' : 'Não há ação sua para desfazer nesta Produção.' } };
+    if (u.desfaz) return { status: 409, corpo: { erro: 'Essa ação já foi desfeita.' } };
+    if (desfaz && desfaz !== u.acao) return { status: 409, corpo: { erro: 'A sua última ação nesta Produção é outra: não dá para desfazer essa.' } };
+    const ehDesigner = (nome) => p.designers.some((d) => nomeComparavel(d) === nomeComparavel(nome));
+    // o contrário de cada mudança: a etapa volta; quem entrou sai, quem saiu entra de novo
+    const mudancas = u.junto.flatMap((m) => {
+      if (m.tipo === 'designer-entrou') return ehDesigner(m.depois) ? [{ tipo: 'designer-saiu', antes: m.depois, depois: null }] : [];
+      if (m.tipo === 'designer-saiu') return ehDesigner(m.antes) ? [] : [{ tipo: 'designer-entrou', antes: null, depois: m.antes }];
+      return [{ tipo: m.tipo, antes: m.depois, depois: m.antes }];
+    });
+    const quando = ctx.quando > u.quando ? ctx.quando : new Date(Date.parse(u.quando) + 1).toISOString();
+    return gravarPeloPadeiro(p, mudancas, { ...ctx, quando, desfaz: u.id });
   }
 
   /** O passo que move o card para a lista `para` da praça (entrada ou saída) e, ao desfazer, de volta para `de`. Sem a
@@ -217,5 +307,5 @@ export function criarEtapaDaProducao({ producoes }) {
     return { feito: foram.map((f) => f.nome) };
   }
 
-  return { mudar, desfazer, peloPadeiro };
+  return { mudar, desfazer, peloPadeiro, entregarPeloPadeiro, voltarPeloPadeiro, desfazerPeloPadeiro };
 }

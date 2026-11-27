@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SufixoDasVersoes } from './CodigoDasVersoes';
-import { desfazerAPublicacao, devolverADemanda, escalarNoDia, gravarRascunhoDoDia, jaDistribuida, juntarParaDistribuir, lerRascunhoDoDia, levarParaAPosicao, marcarAusencia, marcarPendencia, moverADemanda, publicarODia, repetirAEscala } from '../dados/armazenamento';
+import { desfazerADistribuicao, desfazerAPublicacao, devolverADemanda, distribuirNoDia, escalarNoDia, gravarRascunhoDoDia, jaDistribuida, juntarParaDistribuir, lerRascunhoDoDia, levarParaAPosicao, marcarAusencia, marcarPendencia, moverADemanda, publicarODia, repetirAEscala } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
-import { acrescentarDemanda, escalarNa, moverDemanda, semEscala, tirarDemanda } from '../modelo/distribuir';
+import { acrescentarDemanda, escalarNa, moverDemanda, semEscala, tirarDemanda, type ClaqueteDistribuida } from '../modelo/distribuir';
 import type { DemandaParaDistribuir } from '../modelo/ausencias';
 import { useArrastar, type ItemArrastado, type LugarDeSoltar } from './arrastar';
 import { Alca, EscolherDestino, ParaDistribuir, SemEscala, type Arraste, type Destino } from './ColunaDaPauta';
@@ -45,6 +45,10 @@ import './montarPauta.css';
    posição para outra (ou de volta para a lista) e a pessoa para uma posição ou para um turno (uma posição nova); no
    celular e pelo teclado, o "Mover para…" e o "Escalar na…". Cada uma dessas ações vai ao servidor, que grava o dia;
    a tela já mostra o resultado antes da resposta e fica com o que o servidor gravou.
+   Distribuir (#151): o botão em "Para distribuir" põe a lista inteira nos editores escalados do rascunho (o servidor
+   escolhe pela continuidade, pela carga e pelo sorteio, src/modelo/distribuir.ts); cada claquete distribuída fica com
+   o fundo levemente tingido e o motivo na dica, e a caixinha embaixo diz quantas foram, com o Desfazer, que devolve
+   todas de uma vez. Nada é publicado.
    Colar da planilha (#130): o "⎘ Colar da planilha" abre o diálogo (ColarDaPlanilha.tsx); aplicar troca (ou junta)
    as posições do rascunho, grava, marca as ausências lidas e lê o dia de novo.
 
@@ -124,6 +128,10 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   // depois de Repetir (#129): o que veio e quem ficou de fora; sai ao trocar de dia
   const [repetido, setRepetido] = useState('');
   useEffect(() => setRepetido(''), [dia]);
+  // depois de Distribuir (#151): as claquetes distribuídas (o motivo de cada uma, na dica) e a caixinha do desfazer;
+  // saem ao trocar de dia
+  const [distribuicao, setDistribuicao] = useState<{ dia: string; itens: ClaqueteDistribuida[]; caixinha: boolean } | null>(null);
+  useEffect(() => setDistribuicao(null), [dia]);
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
   const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[]; recado: string } | null>(null);
@@ -392,6 +400,29 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   };
   const tirarDaLista = (id: string) => void naColuna(null, (l) => l.filter((d) => d.id !== id), (dia) => jaDistribuida(dia, id).then(() => lerRascunhoDoDia(dia)));
   const juntar = (texto: string) => naColuna(null, null, (dia) => juntarParaDistribuir(dia, texto));
+  /**
+   * Distribuir (#151): o servidor põe a lista nos editores escalados (ele tem o histórico) e grava o dia de uma vez; a
+   * tela fica com o dia gravado, o motivo de cada claquete e a caixinha com o Desfazer.
+   */
+  const distribuir = () =>
+    void naColuna(null, () => [], (dia) =>
+      distribuirNoDia(dia).then((d) => {
+        if (d.distribuidas?.length) setDistribuicao({ dia, itens: d.distribuidas, caixinha: true });
+        return d;
+      }),
+    );
+  /** Desfazer o Distribuir: as claquetes saem de onde estão agora e voltam todas para "Para distribuir". */
+  const desfazerADistribuicaoDoDia = () => {
+    if (!distribuicao || distribuicao.dia !== dados?.dia) return;
+    const { itens } = distribuicao;
+    const ids = new Set(itens.map((d) => d.id));
+    setDistribuicao(null);
+    void naColuna(
+      (ps) => ps.map((p) => ({ ...p, demandas: p.demandas.filter((d) => !ids.has(d.id)) })),
+      (l) => [...l, ...itens.map(({ id, texto, deQuem }) => ({ id, texto, deQuem }))],
+      (dia) => desfazerADistribuicao(dia, itens),
+    );
+  };
 
   const { arrastado, sobre, iniciar } = useArrastar(
     (item, lugar) => (item.tipo === 'pessoa' ? lugar.tipo !== 'lista' : item.tipo === 'lista' ? lugar.tipo === 'posicao' : lugar.tipo === 'lista' || (lugar.tipo === 'posicao' && lugar.antesDe !== item.id)),
@@ -430,6 +461,11 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   // só com o "Fora" deste dia lido: antes disso, quem está fora apareceria como sem escala (e daria para escalar)
   const foraNoDia = dados && fora?.dia === dados.dia ? fora.nomes : null;
   const pessoasSemEscala = foraNoDia && semEscala(editores, posicoes, foraNoDia);
+  // o Distribuir (#151) só serve com alguém escalado (e não fora) para receber
+  const foraComparavel = new Set((foraNoDia ?? []).map(nomeComparavel));
+  const porQueNaoDistribuir = posicoes.some((p) => p.editor.trim() && !foraComparavel.has(nomeComparavel(p.editor))) ? '' : 'Ninguém escalado no dia para receber: escale alguém numa posição primeiro.';
+  // o motivo de cada claquete distribuída, na dica dela (#151): só enquanto ela está na posição em que o Distribuir a pôs
+  const motivos = new Map(distribuicao && distribuicao.dia === dados?.dia ? distribuicao.itens.map((d) => [`${d.posicao}|${d.id}`, d.motivo]) : []);
 
   /** Aplica o colado: as posições vão para o rascunho (gravado na hora), as ausências são marcadas e o dia é lido de novo. */
   const aplicarOColado = async (r: ColadoParaAplicar) => {
@@ -610,7 +646,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 {erroDaColuna}
               </p>
             )}
-            <ParaDistribuir dia={atual.dia} itens={listaDoDia} juntar={juntar} tirar={tirarDaLista} destinos={destinosDaDemanda(null, false)} mover={(id, v) => moverPeloMenu('lista', id, v)} arraste={{ iniciar, arrastado, sobre }} />
+            <ParaDistribuir dia={atual.dia} itens={listaDoDia} juntar={juntar} tirar={tirarDaLista} destinos={destinosDaDemanda(null, false)} mover={(id, v) => moverPeloMenu('lista', id, v)} arraste={{ iniciar, arrastado, sobre }} distribuir={distribuir} porQueNao={porQueNaoDistribuir} />
             <SemEscala pessoas={pessoasSemEscala} destinos={destinosDaPessoa} escalar={escalarPeloMenu} arraste={{ iniciar, arrastado, sobre }} />
             <AusenciasDoDia key={leituraDoFora} releitura={releitura} dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={avisarFora} />
           </aside>
@@ -650,6 +686,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                           mudar={(f) => daPosicao(p.id, f)}
                           tirar={() => tirarPosicao(p.id)}
                           focar={setFoco}
+                          motivos={motivos}
                           arraste={{ iniciar, sobre, arrastado, destinos: destinosDaDemanda(p.id, true), mover: (id, v) => moverPeloMenu('demanda', id, v) }}
                         />
                       ))}
@@ -659,6 +696,19 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 </section>
               );
             })}
+            {distribuicao?.caixinha && distribuicao.dia === atual.dia && (
+              <div className="desfazer" role="status">
+                <span>
+                  <b>{distribuicao.itens.length}</b> {distribuicao.itens.length === 1 ? 'claquete distribuída' : 'claquetes distribuídas'} · confira e arraste o que quiser
+                </span>
+                <button type="button" className="botao-texto" onClick={desfazerADistribuicaoDoDia}>
+                  Desfazer
+                </button>
+                <button type="button" className="botao-texto" aria-label="Fechar" onClick={() => setDistribuicao((x) => x && { ...x, caixinha: false })}>
+                  ×
+                </button>
+              </div>
+            )}
             <p className="montar-teclas">
               <span><kbd>Tab</kbd> próximo campo</span>
               <span><kbd>Enter</kbd> nova linha</span>
@@ -739,12 +789,14 @@ interface PropsDaCelula {
   mudar: (f: (p: PosicaoDaEscala) => PosicaoDaEscala) => void;
   tirar: () => void;
   focar: (f: Foco) => void;
+  /** o motivo de cada demanda que o Distribuir pôs (#151), pela posição e pelo id ("posicao|id") */
+  motivos: ReadonlyMap<string, string>;
   /** o arrastar (#126): quem arrasta, onde está, e o "Mover para…" das demandas (no celular) */
   arraste: Arraste & { destinos: readonly Destino[]; mover: (id: string, destino: string) => void };
 }
 
 /** Uma posição: o editor, o horário e as demandas, cada campo com o que o PROMeiro entendeu embaixo. */
-function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, mudar, tirar, focar, arraste }: PropsDaCelula) {
+function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, mudar, tirar, focar, motivos, arraste }: PropsDaCelula) {
   const horario = lerHorario(p.horario);
   const situacao = p.editor.trim() ? situacaoNoDia(p.editor, posicoes, p.id) : null;
   const naLista = !p.editor.trim() || editores.some((e) => nomeComparavel(e) === nomeComparavel(p.editor));
@@ -872,7 +924,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
       </div>
       <ul className="montar-demandas" aria-label="Demandas">
         {p.demandas.map((d, i) => (
-          <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} arraste={arraste} />
+          <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} motivo={motivos.get(`${p.id}|${d.id}`)} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} arraste={arraste} />
         ))}
       </ul>
       {p.avisos.length > 0 && (
@@ -907,12 +959,18 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
 }
 
 /** Uma linha de demanda: o texto livre e, embaixo, o que o PROMeiro entendeu. Ao sair, a claquete vai para o padrão. */
-function LinhaDaDemanda({ posicao, id, texto, dia, mudar, tecla, arraste }: { posicao: string; id: string; texto: string; dia: string; mudar: (t: string) => void; tecla: (e: React.KeyboardEvent<HTMLInputElement>) => void; arraste: PropsDaCelula['arraste'] }) {
+function LinhaDaDemanda({ posicao, id, texto, dia, motivo, mudar, tecla, arraste }: { posicao: string; id: string; texto: string; dia: string; motivo?: string; mudar: (t: string) => void; tecla: (e: React.KeyboardEvent<HTMLInputElement>) => void; arraste: PropsDaCelula['arraste'] }) {
   const l = lerDemanda(texto, dia);
   const preenchida = !!texto.trim();
   const indo = arraste.arrastado?.tipo === 'demanda' && arraste.arrastado.id === id;
   return (
-    <li className={`montar-demanda t-${l.tipo}${preenchida ? ' arrastavel' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}`} data-solta={`demanda:${posicao}:${id}`} data-demanda-id={id} onPointerDown={preenchida ? arraste.iniciar({ tipo: 'demanda', id }) : undefined}>
+    <li
+      className={`montar-demanda t-${l.tipo}${preenchida ? ' arrastavel' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}${motivo ? ' distribuida' : ''}`}
+      // a demanda que o Distribuir pôs (#151): o fundo levemente tingido e o motivo na dica
+      title={motivo ? `Distribuída: ${motivo}` : undefined}
+      data-solta={`demanda:${posicao}:${id}`}
+      data-demanda-id={id}
+      onPointerDown={preenchida ? arraste.iniciar({ tipo: 'demanda', id }) : undefined}>
       {preenchida && <Alca />}
       {preenchida && <EscolherDestino className="montar-mover" rotulo="⋯" titulo={`Mover ${texto.trim()} para…`} destinos={arraste.destinos} escolher={(v) => arraste.mover(id, v)} />}
       <input

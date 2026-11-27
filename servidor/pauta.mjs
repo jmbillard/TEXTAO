@@ -184,6 +184,8 @@ export function criarPauta(env, vocabulario, abrir = abrirPg, cache = null, copi
     comBanco,
     semana,
     dia,
+    /** As linhas da pauta de alguns dias seguidos (o histórico da continuidade do distribuir, #151). */
+    dias: (dias) => lerDias(dias),
     parar: () => {
       clearTimeout(primeira);
       clearInterval(relogio);

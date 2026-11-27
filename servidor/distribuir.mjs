@@ -4,12 +4,14 @@
      (escala_para_distribuir, a mesma tabela das demandas tiradas de quem saiu do dia, em ausencias.mjs); levar uma
      para uma posição a tira da lista e a põe nas demandas da posição;
    - mover uma demanda de uma posição para outra, ou devolvê-la para "Para distribuir" (com de quem era);
-   - escalar quem está sem escala numa vaga (ou no lugar de quem está na posição) ou numa posição nova de um turno.
+   - escalar quem está sem escala numa vaga (ou no lugar de quem está na posição) ou numa posição nova de um turno;
+   - distribuir sozinho (#151) toda a lista nos editores escalados (pela continuidade, pela carga e pelo sorteio), e
+     desfazer essa distribuição de uma vez: as claquetes voltam para a lista, com de quem eram.
    Cada ação lê o rascunho do dia, aplica a regra pura (src/modelo/distribuir.ts, a mesma do navegador) e grava o dia
    inteiro, numa transação só com a lista "Para distribuir". O SQL é portável (vale também no Postgres). */
 import { randomUUID } from 'node:crypto';
 import { demandaNoPadrao } from '../src/modelo/escala.ts';
-import { acrescentarDemanda, escalarNa, linhasParaDistribuir, moverDemanda, tirarDemanda } from '../src/modelo/distribuir.ts';
+import { acrescentarDemanda, distribuirAsClaquetes, escalarNa, linhasParaDistribuir, moverDemanda, tirarDemanda } from '../src/modelo/distribuir.ts';
 
 const ID = /^[\w-]{1,40}$/;
 /** Os limites: bem acima de uma lista de verdade, para um pedido errado não encher o banco. */
@@ -79,6 +81,43 @@ export function criarDistribuicao(db, escala) {
       const tirada = tirarDemanda(posicoesDe(dia), umId(demanda, 'a demanda'));
       if (!tirada) throw erro('Essa demanda não existe mais.');
       escala.gravarDia(dia, tirada.posicoes, por, undefined, () => porNaLista(dia, [{ id: tirada.demanda.id, texto: tirada.demanda.texto, deQuem: tirada.de }], por));
+    },
+
+    /**
+     * Distribui sozinho (#151) a lista "Para distribuir" inteira nos editores escalados do dia (a regra pura
+     * distribuirAsClaquetes), numa gravação só do dia: as claquetes saem da lista e entram nas posições. Devolve as
+     * distribuídas, com a posição, o editor, o motivo e de quem eram. Lança (400) a lista vazia e o dia sem ninguém
+     * escalado para receber.
+     */
+    distribuir(dia, { historico, fora, sortear }, por) {
+      const itens = q.lista.all(dia).map((l) => ({ id: l.id, texto: l.texto, deQuem: l.de_quem }));
+      if (!itens.length) throw erro('Não há nada em "Para distribuir".');
+      const r = distribuirAsClaquetes({ dia, posicoes: posicoesDe(dia), itens, historico, fora, sortear });
+      if (!r.distribuidas.length) throw erro('Ninguém escalado no dia para receber as claquetes.');
+      escala.gravarDia(dia, r.posicoes, por, undefined, () => {
+        for (const d of r.distribuidas) q.tirar.run(dia, d.id);
+      });
+      return r.distribuidas;
+    },
+
+    /**
+     * Desfaz a distribuição (#151): as demandas pedidas ({ id, deQuem }) saem das posições em que estão agora e voltam
+     * para o fim de "Para distribuir", na ordem pedida, com de quem eram. As que já não estão no dia ficam de fora; lança
+     * (400) quando nenhuma está.
+     */
+    recolher(dia, itens, por) {
+      if (!Array.isArray(itens) || !itens.length || itens.length > LIMITES.lista) throw erro('Faltam as claquetes distribuídas.');
+      let posicoes = posicoesDe(dia);
+      const voltam = [];
+      for (const it of itens) {
+        const tirada = tirarDemanda(posicoes, umId(it?.id, 'a claquete'));
+        if (!tirada) continue;
+        posicoes = tirada.posicoes;
+        const deQuem = typeof it.deQuem === 'string' ? it.deQuem.trim().slice(0, LIMITES.editor) : '';
+        voltam.push({ id: tirada.demanda.id, texto: tirada.demanda.texto, deQuem });
+      }
+      if (!voltam.length) throw erro('Essas claquetes não estão mais no dia.');
+      escala.gravarDia(dia, posicoes, por, undefined, () => porNaLista(dia, voltam, por));
     },
 
     /**

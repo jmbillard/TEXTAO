@@ -60,10 +60,13 @@ interface PropsDoParaDistribuir {
   destinos: readonly Destino[];
   mover: (id: string, destino: string) => void;
   arraste: Arraste;
+  /** o Distribuir (#151): põe a lista nos editores escalados; `porQueNao` desliga o botão e diz o motivo */
+  distribuir: () => void;
+  porQueNao: string;
 }
 
 /** "Para distribuir": escrever ou colar as claquetes (uma por linha) e depois arrastar cada uma para um editor. */
-export function ParaDistribuir({ dia, itens, juntar, tirar, destinos, mover, arraste: { iniciar, arrastado, sobre } }: PropsDoParaDistribuir) {
+export function ParaDistribuir({ dia, itens, juntar, tirar, destinos, mover, arraste: { iniciar, arrastado, sobre }, distribuir, porQueNao }: PropsDoParaDistribuir) {
   const [texto, setTexto] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const enviar = async (t: string) => {
@@ -101,6 +104,14 @@ export function ParaDistribuir({ dia, itens, juntar, tirar, destinos, mover, arr
         }}
       />
       <p className="coluna-dica">uma por linha, Enter junta; depois arraste cada uma para um editor</p>
+      {itens.length > 0 && (
+        <div className="coluna-distribuir-acao">
+          <button type="button" className="botao" disabled={!!porQueNao} title={porQueNao || 'Põe as claquetes nos editores escalados: quem pegou a atração nos últimos 14 dias, depois quem tem menos demandas, depois um sorteio. Nada é publicado.'} onClick={distribuir}>
+            Distribuir
+          </button>
+          <span className="coluna-dica">{porQueNao || 'pela continuidade, pela carga e pelo sorteio; você confere e arrasta'}</span>
+        </div>
+      )}
       {itens.length > 0 && (
         <ul className="coluna-itens">
           {itens.map((d) => {

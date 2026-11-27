@@ -36,7 +36,7 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { acertarNArtesUmaVez, artesComOEstado, versoesLidas } from './artes.mjs';
+import { acertarNArtesUmaVez, artesComOEstado, subirComplexidade, versoesLidas } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
@@ -58,6 +58,7 @@ import { criarDistribuicao } from './distribuir.mjs';
 import { diasDoRepetir, ehDeOndeRepetir, opcoesDoRepetir, repetirODia } from '../src/modelo/repetir.ts';
 import { conferirODia, pendenciasQueFicaram } from '../src/modelo/conferenciaDaEscala.ts';
 import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
+import { DIAS_DA_CONTINUIDADE, historicoDaPauta } from '../src/modelo/distribuir.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
@@ -1042,6 +1043,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
     conteudo: db.prepare('UPDATE roteiros SET meta = ?, doc = ?, n_artes = ?, atualizado_em = ? WHERE id = ?'),
+    // o fogo da arte pela janela do After (#147): só a meta muda
+    soMeta: db.prepare('UPDATE roteiros SET meta = ?, atualizado_em = ? WHERE id = ?'),
     revisou: db.prepare('UPDATE roteiros SET revisado_email = ?, revisado_nome = ? WHERE id = ?'),
     versoesLidas: db.prepare('UPDATE roteiros SET versoes_lidas = ? WHERE id = ?'),
     limparYdoc: db.prepare('UPDATE roteiros SET ydoc = NULL WHERE id = ?'),
@@ -1186,6 +1189,47 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       Y.applyUpdate(doc, guardado);
     }
     if (copiarMetaParaYdoc(doc, meta) && !sala) q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
+  }
+  /**
+   * O fogo da arte mudado pela janela do After (#147): com `nivel` (1, 2 ou 3), a arte fica nesse nível (repetir não
+   * muda nada); sem ele, sobe um nível, como o clique no fogo do editor (subirComplexidade). Pelo caminho do editor: a
+   * complexidade no mapa "meta" do documento compartilhado (o da sala aberta, que quem está no editor vê na hora, ou o
+   * guardado) e na meta do roteiro no banco; a BAIXA não é guardada. Com o documento, vale o que ele tem agora. Com
+   * `gravar: false` (a ação atrasada), só diz o que seria.
+   * @returns { antes, depois } (1, 2 ou 3), ou null sem o roteiro
+   */
+  function fogoNoRoteiro(id, chave, { nivel: desejado = null, gravar = true } = {}) {
+    const linha = q.um.get(id);
+    if (!linha) return null;
+    const meta = JSON.parse(linha.meta);
+    const sala = salas.get(id);
+    let doc = sala?.doc;
+    if (!doc) {
+      const guardado = q.ydoc.get(id)?.ydoc;
+      if (guardado) Y.applyUpdate((doc = new Y.Doc()), guardado);
+    }
+    const m = doc?.getMap('meta');
+    const atual = m?.size ? m.get('complexidade') : meta.complexidade;
+    const marcas = atual && typeof atual === 'object' ? atual : {};
+    const noNivel = () => {
+      const resto = { ...marcas };
+      delete resto[chave];
+      const novas = desejado === 1 ? resto : { ...resto, [chave]: desejado };
+      return Object.keys(novas).length ? novas : undefined;
+    };
+    const complexidade = desejado ? noNivel() : subirComplexidade({ complexidade: marcas }, chave).complexidade;
+    const nivel = (c) => ([2, 3].includes(c?.[chave]) ? c[chave] : 1);
+    if (gravar) {
+      if (complexidade) meta.complexidade = complexidade;
+      else delete meta.complexidade;
+      q.soMeta.run(JSON.stringify(meta), new Date().toISOString(), id);
+      if (m?.size) {
+        doc.transact(() => (complexidade ? m.set('complexidade', complexidade) : m.delete('complexidade')));
+        // a sala aberta grava sozinha (o documento mudou); a fechada, aqui
+        if (!sala) q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
+      }
+    }
+    return { antes: nivel(marcas), depois: nivel(complexidade) };
   }
   function fecharSala(id, motivo, filtro = () => true) {
     const sala = salas.get(id);
@@ -1675,6 +1719,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * leva uma claquete da lista para a posição; /mover { demanda, posicao, antesDe } move a demanda; /devolver
    * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno, id? } escala quem está sem escala
    * (numa posição, ou numa nova do turno, com o id que a tela já mostrou, #131), e recusa quem está fora no dia.
+   * Distribuir sozinho (#151): /distribuir põe a lista "Para distribuir" inteira nos editores escalados (e não fora) do
+   * rascunho, numa gravação só, e devolve também `distribuidas` (cada claquete com a posição, o editor, o motivo e de
+   * quem era); /desfazer-distribuicao { itens: [{ id, deQuem }] } as devolve para a lista, de uma vez.
    * Duas pessoas ao mesmo tempo (#131): o PUT com `base` ({ posicoes, recado }, o dia como a pessoa o leu) junta o que
    * ela mudou desde a base com o que está gravado (src/modelo/juntarODia.ts); toda resposta traz a `versao` e toda
    * mudança avisa a sala do dia (`montar-AAAA-MM-DD`).
@@ -1724,6 +1771,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const editores = (await areas.nomesDosCadastros(cadastros)).editor.sort((a, b) => a.localeCompare(b, 'pt-BR'));
     const turnos = turnosDaConfiguracao(configuracao.valores());
     let repetido;
+    let distribuidas;
     try {
       if (req.method === 'PUT') {
         const corpo = (await lerCorpo(req)) ?? {};
@@ -1779,6 +1827,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // o Teable volta para a publicação anterior, ou o dia sai dele (#134, com a chave ligada)
         await pautaNoTeable.gravar(dia);
       }
+      if (acao === 'distribuir') {
+        // distribuir sozinho (#151): pela continuidade nos 14 dias antes do dia, pela carga e pelo sorteio; só quem está
+        // escalado e não está fora recebe. Nada é publicado: as claquetes vão para o rascunho
+        distribuidas = distribuicao.distribuir(dia, { historico: await historicoDaContinuidade(dia), fora: ausencias.noPeriodo(dia, dia).map((a) => a.editor), sortear: Math.random }, eu.email);
+        console.log(`[montar-pauta] ${eu.email} distribuiu ${distribuidas.length} claquete(s) em ${dia}`);
+      }
+      if (acao === 'desfazer-distribuicao') distribuicao.recolher(dia, ((await lerCorpo(req)) ?? {}).itens, eu.email);
       if (['para-distribuir', 'levar', 'mover', 'devolver', 'escalar'].includes(acao)) {
         const corpo = (await lerCorpo(req)) ?? {};
         if (acao === 'para-distribuir') distribuicao.acrescentar(dia, corpo.texto, eu.email);
@@ -1809,6 +1864,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // o que cada opção do Repetir traz (#129), só no dia vazio
       repetir: lido.estado === 'vazio' ? opcoesDoRepetir(dia, semana, escala.quantas) : null,
       ...(repetido ? { repetido } : {}),
+      // depois de distribuir (#151): cada claquete com a posição, o editor, o motivo e de quem era (para o desfazer)
+      ...(distribuidas ? { distribuidas } : {}),
       turnos: turnosDoDia(turnos, lido.posicoes),
       editores,
       // as keys dos editores, para reconhecer o apelido no colar da planilha (#130)
@@ -1820,6 +1877,22 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // a virada (#134): a chave, quando o dia foi gravado no Teable e o erro da última vez
       noTeable: pautaNoTeable.estado(dia),
     });
+  }
+
+  /**
+   * O histórico da continuidade do distribuir (#151): as claquetes da pauta dos 14 dias antes do dia, com o editor, da
+   * mesma junção da Pauta da edição (a do Teable e a publicada no PROMeiro, src/modelo/pautaPublicada.ts). Com o Teable
+   * fora do ar (e sem a cópia local), só a publicada.
+   */
+  async function historicoDaContinuidade(dia) {
+    const dias = Array.from({ length: DIAS_DA_CONTINUIDADE }, (_, i) => diaVizinho(dia, i - DIAS_DA_CONTINUIDADE));
+    const doTeable = await pauta.dias(dias).then(
+      (r) => r.linhas,
+      (e) => (console.error('[montar-pauta] sem a pauta do Teable para distribuir:', e.message), []),
+    );
+    const gravados = pautaNoTeable.gravados(dias[0], dias.at(-1));
+    const publicadas = escala.publicadas(dias[0], dias.at(-1)).map((p) => (gravados.has(p.dia) ? { ...p, vale: true } : p));
+    return historicoDaPauta(juntarAPublicada(doTeable, publicadas));
   }
 
   /**
@@ -3215,7 +3288,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/montar-pauta/foto') return rotaDaFotoDoDia(req, res, eu);
     const acaoDasAusencias = /^\/api\/montar-pauta\/(ausencias|ausencias\/onde|ausencias\/historico|ausencias\/apagar|tirar|para-distribuir\/tirar)$/.exec(caminho);
     if (acaoDasAusencias) return rotaDasAusencias(req, res, eu, acaoDasAusencias[1]);
-    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar)$/.exec(caminho);
+    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar|distribuir|desfazer-distribuicao)$/.exec(caminho);
     if (acaoDoMontar) return rotaDeMontarAPauta(req, res, eu, acaoDoMontar[1]);
     if (caminho === '/api/correcoes/pauta') {
       // a correção de grafia da pauta da edição (#114), só para administradores e só leitura: uma página das propostas
@@ -3501,6 +3574,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return Number.isNaN(t) ? null : new Date(Math.min(t, Date.now())).toISOString();
   };
 
+  /** O identificador e a hora de uma ação da janela do After (#147), do corpo; sem eles, responde o 400 e devolve null. */
+  function pedidoDaJanela(res, corpo) {
+    const acao = identificador(corpo.acao);
+    const quando = horaDoPadeiro(corpo.feitaEm);
+    if (!acao) json(res, 400, { erro: 'Falta o identificador da ação (até 100 letras, números, ponto, dois-pontos, hífen ou sublinhado).' });
+    else if (!quando) json(res, 400, { erro: 'Falta a hora da ação (ISO).' });
+    else return { acao, quando };
+    return null;
+  }
+
   /**
    * O caminho do Padeiro (#137), embaixo de /api/padeiro/: fora do login (o Padeiro roda dentro do After Effects, sem o
    * Cloudflare Access, que tem um Bypass só para este caminho). Só vale a chave do Padeiro no cabeçalho; o cabeçalho do
@@ -3520,6 +3603,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    *   ao abrir ou criar o projeto (etapaDaProducao.peloPadeiro). `aviso` é o identificador (o repetido responde
    *   { repetido: true } e não grava de novo); `abertoEm`, a hora da abertura (ISO; a do futuro vale como agora). Só
    *   com a chave ligada, como a lista
+   * - As ações da janela do After (#147), só com a chave ligada, no formato da arte: `acao` é o identificador (a repetida
+   *   responde { repetido: true, producao } e não grava de novo; a recusada não o ocupa) e `feitaEm`, a hora (a atrasada
+   *   segue a regra do conflito: fica no histórico, e nada vai ao Trello por ela). Respondem { feito: { eventos,
+   *   trello }, producao } (a Produção como a janela mostra); o 409 traz a `producao` também.
+   *   - POST /api/padeiro/fogo { acao, feitaEm, producao, arte, nivel? }: o fogo da arte no Roteiro ligado, para
+   *     qualquer designer (fogoNoRoteiro): com `nivel` (1, 2 ou 3), fica nesse nível (à prova de repetição); sem ele,
+   *     sobe um nível (1, 2, 3 e volta). O `nivel` que não é 1, 2 ou 3, 400; a Entregue e a sem Roteiro, 409; a arte que
+   *     não está na Produção, 404. Gravada a meta, o identificador fica ocupado mesmo se o evento falhar (a nova
+   *     tentativa responde { repetido: true } e não muda o nível de novo)
+   *   - POST /api/padeiro/entregar { acao, feitaEm, producao }: etapaDaProducao.entregarPeloPadeiro (a Entregue, 409)
+   *   - POST /api/padeiro/voltar { acao, feitaEm, producao }: etapaDaProducao.voltarPeloPadeiro (a em Produzindo sem o
+   *     designer, 403; a que já está na Entrada, 409)
+   *   - POST /api/padeiro/desfazer { acao, feitaEm, producao, desfaz? }: etapaDaProducao.desfazerPeloPadeiro (`desfaz`, o
+   *     identificador da ação a desfazer, opcional; sem o que desfazer, 409)
    */
   async function rotaDoPadeiro(req, res, caminho) {
     if (caminho === '/api/padeiro/cadastro' && req.method === 'POST') {
@@ -3564,7 +3661,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!padeiros.reservarAviso(p.id, acao, producao.id, quando)) return json(res, 200, { repetido: true, producao: await producaoDaJanela(producao.id, p) });
       let eventos;
       try {
-        eventos = producoes.arteDoPadeiro(producao.id, corpo.arte, corpo.feita, { id: `padeiro:${p.id}`, nome: designer.nome }, quando);
+        eventos = producoes.arteDoPadeiro(producao.id, corpo.arte, corpo.feita, { id: `padeiro:${p.id}`, nome: designer.nome }, quando, acao);
       } catch (e) {
         padeiros.soltarAviso(p.id, acao);
         throw e;
@@ -3576,6 +3673,73 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       padeiros.avisou(p.id);
       console.log(`[padeiro] ${p.usuario} em ${p.computador} ${corpo.feita ? 'marcou' : 'desmarcou'} uma arte de ${producao.claquete} (${eventos.join(', ') || 'nada novo'})`);
       return json(res, 200, { feito: { eventos }, producao: await producaoDaJanela(producao.id, p) });
+    }
+    if (caminho === '/api/padeiro/fogo' && req.method === 'POST') {
+      const p = padeiroLigado(req, res);
+      if (!p) return;
+      const corpo = (await lerCorpo(req, 4096, 'Fogo')) ?? {};
+      const pedido = pedidoDaJanela(res, corpo);
+      if (!pedido) return;
+      if (typeof corpo.arte !== 'string' || !corpo.arte.trim()) return json(res, 400, { erro: 'Falta a arte.' });
+      const nivelPedido = corpo.nivel ?? null;
+      if (nivelPedido !== null && ![1, 2, 3].includes(nivelPedido)) return json(res, 400, { erro: 'O nível do fogo é 1, 2 ou 3.' });
+      const j = typeof corpo.producao === 'string' ? producoes.naJanela(corpo.producao.trim().slice(0, 100)) : null;
+      if (!j) return json(res, 404, { erro: 'Essa Produção não está mais aberta no PROMeiro.' });
+      const id = j.producao.id;
+      if (j.producao.etapa === 'entregue') return json(res, 409, { erro: 'A Produção já está Entregue: o fogo das artes não muda mais.', producao: await producaoDaJanela(id, p) });
+      if (!j.producao.roteiroId) return json(res, 409, { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.', producao: await producaoDaJanela(id, p) });
+      const arte = j.artes.find((a) => chaveDeArte(a.nome) === chaveDeArte(corpo.arte));
+      if (!arte) return json(res, 404, { erro: 'Essa arte não está na Produção.' });
+      if (!padeiros.reservarAviso(p.id, pedido.acao, id, pedido.quando)) return json(res, 200, { repetido: true, producao: await producaoDaJanela(id, p) });
+      const designer = designerDoPadeiro(p);
+      // gravada a meta, o identificador fica ocupado: a nova tentativa da fila sem rede não muda o nível de novo
+      let gravouAMeta = false;
+      try {
+        const gravar = !producoes.atrasado(id, { tipo: 'fogo', campo: arte.nome, quando: pedido.quando });
+        const nivel = fogoNoRoteiro(j.producao.roteiroId, chaveDeArte(arte.nome), { nivel: nivelPedido, gravar });
+        if (!nivel) {
+          padeiros.soltarAviso(p.id, pedido.acao);
+          return json(res, 409, { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.', producao: await producaoDaJanela(id, p) });
+        }
+        gravouAMeta = gravar;
+        producoes.doPadeiro(id, [{ tipo: 'fogo', campo: arte.nome, antes: String(nivel.antes), depois: String(nivel.depois) }], { id: `padeiro:${p.id}`, nome: designer.nome }, pedido.quando, { acao: pedido.acao });
+      } catch (e) {
+        if (gravouAMeta) console.warn(`[padeiro] o fogo de ${j.producao.claquete} foi gravado no Roteiro, mas o evento não: ${e instanceof Error ? e.message : e}`);
+        else padeiros.soltarAviso(p.id, pedido.acao);
+        throw e;
+      }
+      padeiros.avisou(p.id);
+      console.log(`[padeiro] ${p.usuario} em ${p.computador} mudou o fogo de uma arte de ${j.producao.claquete}`);
+      return json(res, 200, { feito: { eventos: ['fogo'], trello: [] }, producao: await producaoDaJanela(id, p) });
+    }
+    const daAcao = /^\/api\/padeiro\/(entregar|voltar|desfazer)$/.exec(caminho);
+    if (daAcao && req.method === 'POST') {
+      const p = padeiroLigado(req, res);
+      if (!p) return;
+      const corpo = (await lerCorpo(req, 4096, 'Ação')) ?? {};
+      const pedido = pedidoDaJanela(res, corpo);
+      if (!pedido) return;
+      const producao = typeof corpo.producao === 'string' ? producoes.uma(corpo.producao.trim().slice(0, 100)) : null;
+      if (!producao || producao.arquivada) return json(res, 404, { erro: 'Essa Produção não está mais aberta no PROMeiro.' });
+      if (!padeiros.reservarAviso(p.id, pedido.acao, producao.id, pedido.quando)) return json(res, 200, { repetido: true, producao: await producaoDaJanela(producao.id, p) });
+      const designer = designerDoPadeiro(p);
+      const ctx = { trello, pracas, designer, quem: { id: `padeiro:${p.id}`, nome: designer.nome }, quando: pedido.quando, acao: pedido.acao };
+      let r;
+      try {
+        if (daAcao[1] === 'entregar') r = await etapaDaProducao.entregarPeloPadeiro(producao, ctx);
+        else if (daAcao[1] === 'voltar') r = await etapaDaProducao.voltarPeloPadeiro(producao, ctx);
+        else r = await etapaDaProducao.desfazerPeloPadeiro(producao, { ...ctx, desfaz: identificador(corpo.desfaz) });
+      } catch (e) {
+        padeiros.soltarAviso(p.id, pedido.acao);
+        throw e;
+      }
+      if (r.status !== 200) {
+        padeiros.soltarAviso(p.id, pedido.acao);
+        return json(res, r.status, r.status === 409 ? { ...r.corpo, producao: await producaoDaJanela(producao.id, p) } : r.corpo);
+      }
+      padeiros.avisou(p.id);
+      console.log(`[padeiro] ${p.usuario} em ${p.computador}: ${daAcao[1]} ${producao.claquete} (${r.corpo.feito.eventos.join(', ') || 'nada novo'})`);
+      return json(res, 200, { feito: r.corpo.feito, producao: await producaoDaJanela(producao.id, p) });
     }
     if (caminho === '/api/padeiro/aviso' && req.method === 'POST') {
       const p = padeiroLigado(req, res);
@@ -3594,7 +3758,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const designer = designerDoPadeiro(p);
       let r;
       try {
-        r = await etapaDaProducao.peloPadeiro({ producao, quando }, { trello, designer, quem: { id: `padeiro:${p.id}`, nome: designer.nome } });
+        r = await etapaDaProducao.peloPadeiro({ producao, quando, acao: aviso }, { trello, designer, quem: { id: `padeiro:${p.id}`, nome: designer.nome } });
       } catch (e) {
         padeiros.soltarAviso(p.id, aviso);
         throw e;

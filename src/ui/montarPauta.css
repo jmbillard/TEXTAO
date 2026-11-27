@@ -119,6 +119,11 @@
 .coluna-distribuir.recebe { background: color-mix(in srgb, var(--ultra-suave) 35%, var(--papel)); }
 .coluna-distribuir.sobre, .montar-celula.sobre, .montar-turno.sobre, .montar-demanda.sobre { background: color-mix(in srgb, var(--ultra-suave) 70%, var(--cartao)); }
 .montar-demanda.sobre { box-shadow: 0 -2px 0 var(--ultra); }
+/* Distribuir (#151): o botão com a dica ao lado; a demanda que ele pôs, com o fundo levemente tingido (o motivo vai na dica) */
+.coluna-distribuir-acao { display: flex; align-items: center; gap: 10px; }
+.coluna-distribuir-acao .botao { flex: none; }
+.coluna-distribuir-acao .coluna-dica { margin: 0; }
+.montar-demanda.distribuida { border-radius: 6px; background: color-mix(in srgb, var(--ultra-suave) 45%, transparent); }
 .montar-solte { margin: 0; padding: 12px 14px; border-top: 1px dashed var(--regua-forte); font: 600 16px/1.2 Caveat, cursive; color: var(--tinta3); text-align: center; }
 
 /* a alça: no dedo, é por ela que se arrasta (não rola a página); no mouse, o item inteiro arrasta */
