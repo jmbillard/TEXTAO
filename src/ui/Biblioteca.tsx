@@ -324,7 +324,7 @@ export function Perfil({ identidade, definirPerfil, cadastros, filmes, configura
               )}
               {configuracao && (
                 <button type="button" className="perfil-link" onClick={configuracao}>
-                  <Icone nome="ajustes" tam={16} /> Configuração{novidade > 0 && <span className="perfil-ponto" aria-label="há novidade nas Pessoas" />} <small>{novidade ? (novidade === 1 ? 'uma novidade nas Pessoas' : `${novidade} novidades nas Pessoas`) : 'praças e ligações'}</small>
+                  <Icone nome="ajustes" tam={16} /> Configuração{novidade > 0 && <i className="ponto tem perfil-ponto" role="img" aria-label="há novidade nas Pessoas" />} <small>{novidade ? (novidade === 1 ? 'uma novidade nas Pessoas' : `${novidade} novidades nas Pessoas`) : 'praças e ligações'}</small>
                 </button>
               )}
               {andamentoDoProjeto && (

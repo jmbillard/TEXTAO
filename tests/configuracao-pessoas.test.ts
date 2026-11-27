@@ -196,6 +196,9 @@ describe('cada pessoa uma vez, pela lista dos designers (#176)', () => {
       ['Bia Sampaio', 2],
       ['Duda Lima', 3],
     ]);
+    // o pontinho do menu conta as pessoas, não as combinações: Bia e Duda, mais Caio e Otávio sem produção
+    expect(titulos(p)).toEqual(['entrou Bia Sampaio', 'entrou Duda Lima', 'saiu Caio Reis', 'saiu Otávio Lins']);
+    expect(((await (await chefe('/api/eu')).json()) as { novidades: number }).novidades).toBe(4);
   });
 
   it('o link para a tabela designers vale antes do texto juntado; o texto só na linha com a lista vazia', async () => {

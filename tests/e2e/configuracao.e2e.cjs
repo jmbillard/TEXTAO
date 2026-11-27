@@ -880,6 +880,10 @@ async function pessoas(navegador, url, app, tema) {
   await p.locator('.perfil-botao').click();
   const item = p.locator('.perfil-painel .perfil-link', { hasText: 'Configuração' });
   assert.equal(await item.locator('.perfil-ponto').count(), 1);
+  // #176: a bolinha de estado padrão (.ponto.tem), a laranja do "tem algo esperando", não a marrom de falta
+  const corDa = (variavel) => p.evaluate((v) => { const el = document.body.appendChild(document.createElement('i')); el.style.background = `var(${v})`; const c = getComputedStyle(el).backgroundColor; el.remove(); return c; }, variavel);
+  assert.equal(await item.locator('.perfil-ponto').evaluate((el) => getComputedStyle(el).backgroundColor), await corDa('--ultra'));
+  assert.equal(await p.locator('.perfil-botao.com-novidade').evaluate((el) => getComputedStyle(el, '::after').backgroundColor), await corDa('--ultra'));
   assert.equal((await item.locator('small').textContent()).trim(), '3 novidades nas Pessoas');
   await capturar(p, `50-pessoas-pontinho-${nome}`);
   await item.click();

@@ -642,8 +642,9 @@ kbd {
 .perfil-botao.falta { padding: 0 14px; border-style: dashed; border-color: var(--falta); color: var(--falta); }
 /* o pontinho do menu do perfil: há novidade no quadro (#77) */
 .perfil-botao.com-novidade { position: relative; }
-.perfil-botao.com-novidade::after { content: ''; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--falta); border: 2px solid var(--papel); }
-.perfil-link .perfil-ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--falta); margin-left: 4px; vertical-align: 1px; }
+.perfil-botao.com-novidade::after { content: ''; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--ultra); border: 2px solid var(--papel); }
+/* a novidade nas Pessoas: a bolinha de estado padrão (.ponto.tem, a laranja do "tem algo esperando", #176) */
+.perfil-link .perfil-ponto { flex: none; margin-left: 4px; vertical-align: 1px; }
 .perfil-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--neutro); color: var(--tinta); font: 600 11px/28px var(--sans); text-align: center; flex-shrink: 0; }
 .perfil-nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .perfil-painel {
@@ -946,6 +947,8 @@ kbd {
 .fila-conta span { display: inline-flex; align-items: center; gap: 7px; }
 .ponto { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .ponto.ok { background: var(--ok); } .ponto.revisar { background: var(--falta); } .ponto.erro { background: var(--perigo); }
+/* tem algo esperando (a mesma cor do estado "tem" das seções da Configuração) */
+.ponto.tem { background: var(--ultra); }
 
 .fichas { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
 .ficha {
