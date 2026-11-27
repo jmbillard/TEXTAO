@@ -365,6 +365,13 @@ Produção já tem designer, o novo é somado; se já está Entregue, a etapa n�
 rede, o aviso fica guardado e é enviado depois, com a hora certa da abertura. Vem pela **chave do Padeiro**.
 _Evitar_: webhook do projeto (é a rota do n8n de hoje). Não confundir com o **aviso** da pauta nem com o aviso do Trello.
 
+**Registro do projeto**:
+A linha da tabela `projetos` da base PROMeiro para cada projeto criado, aberto ou alterado pelo Padeiro: o `.aep`, a
+atração, as pastas, o designer, o momento e o card. Vem pelo **projeto do Padeiro** (`/api/padeiro/projeto`, com a
+chave ligada), que também cadastra a atração nova, liga o card a ela e põe o designer da chave no card, como o fluxo
+"PROMO - PROJETO" do n8n fazia. Não é o **aviso do Padeiro** (o Peguei): o registro não muda a etapa da Produção.
+_Evitar_: log do projeto
+
 **Chave do Padeiro**:
 O que identifica o Padeiro no PROMeiro: uma chave por usuário e por computador. O Padeiro se cadastra com o usuário do
 computador e a sigla do designer; o cadastro fica **pendente** até um administrador ligar a chave ao designer. A chave
@@ -479,11 +486,21 @@ O que cada editor vai editar em cada dia: as claquetes, as **tarefas** e os **av
 **escala**, mais o **recado do dia**. Mora na tabela do Teable (EDICAO_producao), que diz quem edita cada claquete, em
 que dia e em que turno; a **coordenação** monta e publica a pauta no PROMeiro, que grava no Teable ao **publicar**, no
 lugar da planilha da edição (ADR 0006). A **correção de grafia** também escreve nela. É também a página do PROMeiro,
-aberta a qualquer pessoa logada, com a **Semana** e o **Dia** (um editor por coluna, na ordem de início do turno). Cada
-visão tem dois **arranjos**, à escolha de cada pessoa: a Semana editor × dia (um editor por linha, um dia por coluna)
-ou um dia por coluna (os cards por período do turno); o Dia empilhado ou por hora. Cada linha é uma claquete, uma
-**tarefa** ou um **aviso**.
+aberta a qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna) e o **Dia** (um editor por
+coluna: você, o que sobrou sem editor e a equipe, na ordem de início do turno). No alto, o **Minha pauta** de quem é
+editor, com a **contagem do dia** (as claquetes com a arte entregue), ao lado do que sobrou e de quem está fora. Cada
+linha é uma claquete, uma **tarefa** ou um **aviso**.
 _Evitar_: escala (a escala é quem trabalha, não o que edita), grade da edição
+
+**Contagem do dia**:
+O "N de M" do editor na Pauta da edição: quantas das claquetes dele naquele dia já têm a arte entregue (ou
+arquivada), com uma bolinha por claquete. A tarefa e o aviso não contam.
+_Evitar_: editadas (o PROMeiro não sabe o que já foi editado)
+
+**Card aberto**:
+O painel de 720 px no centro, sobre um véu leve, que cresce do card clicado e volta para ele ao fechar; no celular,
+ocupa a tela toda. A ficha da claquete da Pauta da edição abre nele; a tela de Produções também.
+_Evitar_: modal, popup
 
 **Escala da edição**:
 Quem trabalha em cada dia, em que turno e em que ilha, e quem está fora: as **posições** do dia e as **ausências**. Não
@@ -496,13 +513,18 @@ os avisos do dia.
 _Evitar_: vaga, slot
 
 **Ilha**:
-A sala de edição, com tipo (AVID, VDI…), número e nome opcional. Fica nos Cadastros (guardada no PROMeiro). AVID e
-ILHA com o mesmo número são duas ilhas, como estão escritas. A **ilha de costume** do editor é a que mais se repete nas
-posições dele nas oito semanas antes do dia; a ilha está **ocupada** quando outra posição do mesmo turno já está nela.
-_Evitar_: sala, estação
+A sala de edição, com tipo (AVID, VDI…), número e nome opcional. Fica nos Cadastros (guardada no PROMeiro). "AVID 46",
+"ILHA 46" e só "46" são a mesma sala. A VDI 5 é uma ilha remota, usada por um editor temporário. A ilha em branco na
+escala é esquecimento ou ilha ainda por definir, nunca "a de sempre" (confirmado por um produtor da edição, em
+27/11/2026). A **ilha de costume** do editor é a que mais se repete nas posições dele nas oito semanas antes do dia; a
+ilha está **ocupada** quando outra posição do mesmo turno já está nela.
+_Evitar_: sala, estação; "ilha de sempre" para a ilha em branco
 
 **Ausência**:
-O período em que uma pessoa está fora: férias, folga, DM ou licença. Todos veem só "fora"; o motivo, só a coordenação.
+O período em que uma pessoa está fora: férias, folga, **dispensa médica** (o "DM" no horário da planilha) ou licença.
+Todos veem só "fora"; o motivo, só a coordenação. O período das férias não fica na planilha da pauta, e sim noutra
+planilha; a da pauta tem, além dos dias, as abas "escala do mês" e "controle de férias". (Confirmado por um produtor
+da edição, em 27/11/2026.)
 _Evitar_: falta, afastamento
 
 **Coordenação**:
@@ -516,7 +538,9 @@ A linha da pauta que não tem a forma de claquete (o nome da atração e a data)
 **Aviso** (da pauta):
 Um recado da coordenação para o editor de uma **posição**, preso a ela; não é um item da pauta. No Teable, é a linha
 com a caixinha de anotação marcada. Na Semana, só o ⚑ com o número; o texto abre ao passar o mouse ou ao tocar. No Dia,
-um balão "aviso" no topo da coluna do editor. O recado para todos é o **recado do dia**.
+um balão "aviso" no topo da coluna do editor. O recado para todos é o **recado do dia**. O que a coordenação
+põe de recado na pauta é para um editor (o aviso), para todo mundo (o recado do dia) ou são as observações da reunião
+com a gestão da Promo (confirmado por um produtor da edição, em 27/11/2026).
 _Evitar_: nota, observação
 
 **Recado do dia**:
@@ -525,6 +549,8 @@ _Evitar_: aviso geral, mural
 
 **Rascunho** e **Publicar** (da pauta):
 A pauta que a coordenação monta fica em rascunho, que só ela vê, até publicar; publicar é o que a equipe passa a ver.
+Publica-se mesmo com **pendências** da conferência: elas avisam, não travam (ADR 0006; confirmado por um produtor da
+edição, em 27/11/2026).
 Cada dia está **vazio** (nada montado), em **rascunho** (montado e não publicado), **publicado** ou **alterado**
 (publicado e mudado depois, à espera de publicar de novo).
 _Evitar_: salvar, enviar, liberar
@@ -554,7 +580,8 @@ _Evitar_: duplicar, clonar
 **Turno**:
 O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. Os turnos são uma lista na
 **Configuração**, cada um com o seu horário padrão; cada **posição** pode ter o seu horário. O que passa da meia-noite
-(22–06) conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores
+(22–06) conta no dia em que começou. O bloco das 20h às 2h, sem nome na planilha, é a **noite** (confirmado por um
+produtor da edição, em 27/11/2026). O **turno de costume** é o que mais se repete na semana: é a ordem dos editores
 na Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior. Na Semana
 com um dia por coluna, os cards se agrupam pelo **período** em que o turno começa: manhã (6h–12h), tarde (12h–18h),
 noite (18h–0h) e madrugada (0h–6h).
@@ -580,7 +607,10 @@ pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai
 com um "?" para conferir; o horário sozinho não é versão. Quando discordam das versões que valem (as do nome ou as
 feitas à mão), um aviso discreto compara os dois códigos ("o roteiro diz (AH), a claquete diz (A)") e oferece usar as
 do roteiro, que viram as versões à mão do **apelido**; a que veio só do dia leva o "?" depois do código ("(AN)?").
-_Evitar_: tipo da chamada; "sufixo" sozinho (é o sufixo das versões, só na tela)
+Trocar a letra (de (A) para (H)) e subir a **versão do roteiro** (V2, V3) são coisas diferentes: as letras "servem
+para diferenciar as versões das chamadas" (um produtor da edição, em 27/11/2026).
+_Evitar_: tipo da chamada; "sufixo" sozinho (é o sufixo das versões, só na tela); "referência de dia" (descartado:
+confunde com o dia em que a chamada vai ao ar)
 
 **Ficha da claquete** (na pauta):
 O que abre por cima da pauta com um clique numa claquete: as linhas da mesma atração com versões diferentes juntas (a
@@ -635,6 +665,6 @@ _Evitar_: tela do roteiro, detalhe
 
 **Preferências da pessoa**:
 O que o PROMeiro lembra por pessoa, em qualquer aparelho (a última área usada, a **exibição** de cada área, e a visão
-e o **arranjo** de cada visão da Pauta da edição, os blocos recolhidos da tela de produções): no SQLite, uma chave por
+da Pauta da edição, os blocos recolhidos da tela de produções): no SQLite, uma chave por
 linha, gravada pela rota de quem está logado.
 _Evitar_: configurações (a Configuração é a tela dos administradores)

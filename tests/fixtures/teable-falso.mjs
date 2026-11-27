@@ -110,7 +110,11 @@ export function teableFalso(nomes, opcoes = {}) {
     const m = /FROM\s+"([^"]+)"\."([^"]+)"/i.exec(sql);
     const base = m && bases[m[1]];
     const nome = base && Object.keys(base.nomes).find((n) => base.nomes[n] === m[2]);
-    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...('lastModifiedTime' in r ? { __last_modified_time: r.lastModifiedTime ? new Date(r.lastModifiedTime) : null } : {}), ...r.fields }));
+    // a linha inteira (to_jsonb(p) AS "inteira"), quando o SQL pede
+    const inteira = /AS\s+"inteira"/i.test(sql);
+    // a hora da última mudança, quando o registro tem (a correção de grafia confere, #115)
+    const hora = (r) => ('lastModifiedTime' in r ? { __last_modified_time: r.lastModifiedTime ? new Date(r.lastModifiedTime) : null } : {});
+    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...hora(r), ...r.fields, ...(inteira ? { inteira: { __id: r.id, ...r.fields } } : {}) }));
   };
   buscar.abrirPg = async () => ({ query: async (sql, params) => ({ rows: await buscar.consultar(sql, params) }), end: async () => {} });
   return buscar;

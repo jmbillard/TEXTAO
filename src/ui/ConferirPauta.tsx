@@ -213,16 +213,16 @@ export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara
                         ))}
                       </ul>
                     )}
-                    <ul className="pauta-itens">
+                    <ul className="pub-itens">
                       {p.demandas.map((d) => {
                         const l = lerDemanda(d.texto, dados.dia);
                         return l.tipo === 'claquete' ? (
-                          <li key={d.id} className="pauta-item pauta-claquete">
+                          <li key={d.id} className="pub-item pub-claquete">
                             {/* o código no fim do nome, uma vez só, se a pessoa liga (#152) */}
                             <NomeComVersoes nome={l.padrao} versoes={l.versoes} de="da claquete" />
                           </li>
                         ) : (
-                          <li key={d.id} className="pauta-item pauta-tarefa">
+                          <li key={d.id} className="pub-item pub-tarefa">
                             {d.texto}
                           </li>
                         );
