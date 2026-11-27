@@ -259,7 +259,11 @@ async function montarPeloTeclado(navegador, url) {
   await capturar(p, '09-montar-ilha-ocupada');
   // a Madrugada tem a AVID 46 também, mas em outro turno: não está ocupada
   assert.equal(await turno(p, 'Madrugada').getByText(/ocupada/).count(), 0);
+  // o Gil sai: a Elis volta a ter a ilha só para ela (e o resto do teste segue com as posições de antes)
   await gil.locator('[data-campo="horario"]').focus();
+  await gil.getByRole('button', { name: 'Tirar esta posição' }).click();
+  await p.waitForFunction(() => !document.body.textContent?.includes('ocupada:'));
+  await tarde.locator('[data-campo="demanda"]').first().focus();
 
   // gravado sozinho: a aba de amanhã passa a rascunho
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
