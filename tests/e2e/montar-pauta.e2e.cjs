@@ -46,8 +46,10 @@
 // "Escalar na…"; escreve três claquetes em "Para distribuir" (Enter junta, no padrão), arrasta a primeira para o Rui e
 // depois a leva, arrastando a demanda, do Rui para o Gil. Recarregada, tudo volta como foi gravado. No tablet, com o
 // dedo (pela alça), leva outra claquete para o Rui. No celular (escuro), a coluna fica embaixo da grade; o "Escalar
-// na…" põe a Bia numa posição nova da Noite, o "Mover para…" leva a última claquete para o Rui e o "⋯" da demanda a
-// move do Gil para a Bia, sem rolar para o lado.
+// na…" põe a Bia numa posição nova da Noite, o "Mover para…" leva a última claquete para o Rui e o ⇄ da demanda a
+// move do Gil para a Bia, sem rolar para o lado. O ⇄ (#163) também está nas claquetes atribuídas no computador:
+// discreto (sem borda e sem fundo, 44 px, no meio da claquete), o mesmo da lista "Para distribuir"; movida do Gil para
+// o Rui por ele, a caixinha diz para onde foi e o Desfazer a põe de volta.
 //
 // Distribuir (#151): num dia adiante, com só uma vaga, o Distribuir de "Para distribuir" fica desligado e diz por quê.
 // Com o Rui, a Elis e o Gil escalados, Distribuir põe o Mundo Animal no Gil (que o pegou no Teable dois dias antes) e a
@@ -795,6 +797,30 @@ async function colunaEArrastar(navegador, url) {
   // a demanda, arrastada do Rui para o Gil
   await arrastarComOMouse(p, celula(rui).locator('.montar-demanda.arrastavel').first(), celula(gil));
   await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [[], [`Noite de Gala ${diaMes(depois)} (DP)`]]));
+  // o ⇄ (#163): também na claquete já atribuída, no computador; discreto (sem borda, sem fundo), 44 px, no meio da
+  // claquete, o mesmo da lista "Para distribuir"; nada de faixa na borda
+  const gala = `Noite de Gala ${diaMes(depois)} (DP)`;
+  const trocar = p.getByLabel(`Mover ${gala} para…`);
+  const naLista = distribuir.getByLabel('Mover CALHAUS para…');
+  await trocar.waitFor();
+  const estilo = (el) => el.evaluate((x) => { const c = getComputedStyle(x); const r = x.getBoundingClientRect(); const li = x.closest('li').getBoundingClientRect(); return { largura: r.width, altura: r.height, meio: Math.abs(r.top + r.height / 2 - (li.top + li.height / 2)) < 1.5, borda: c.borderTopWidth, fundo: c.backgroundColor, cor: c.color, texto: x.selectedOptions[0].textContent, unha: parseFloat(getComputedStyle(x.closest('li')).borderLeftWidth) > 1 }; });
+  const daGrade = await estilo(trocar);
+  assert.deepEqual(daGrade, { largura: 44, altura: 44, meio: true, borda: '0px', fundo: 'rgba(0, 0, 0, 0)', cor: daGrade.cor, texto: '⇄', unha: false });
+  assert.deepEqual(await estilo(naLista), daGrade, 'o mesmo ⇄ na lista "Para distribuir"');
+  await p.mouse.move(2, 2);
+  assert.ok(parseFloat(await trocar.evaluate((x) => getComputedStyle(x).opacity)) < 1, 'discreto até o mouse passar');
+  await celula(gil).locator('.montar-demanda.arrastavel').first().hover();
+  await ate(async () => assert.equal(await trocar.evaluate((x) => getComputedStyle(x).opacity), '1', 'acende com o mouse'));
+  await capturar(p, '14a-mover-computador');
+  // movida pelo ⇄ do Gil para o Rui: a caixinha diz para onde foi; Desfazer a põe de volta no Gil
+  await trocar.selectOption(`posicao:${rui}`);
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [[gala], []]));
+  const movida = p.locator('.desfazer', { hasText: 'foi para' });
+  assert.equal(await movida.innerText().then((t) => t.split('\n')[0]), `${gala} foi para Rui Teixeira`);
+  await capturar(p, '14b-mover-caixinha');
+  await movida.getByRole('button', { name: 'Desfazer' }).click();
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [[], [gala]]));
+  assert.equal(await movida.count(), 0, 'desfeito, a caixinha sai');
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
   await semRolagemDeLado(p, 'coluna');
   await capturar(p, '14-coluna-computador');
@@ -826,7 +852,7 @@ async function colunaEArrastar(navegador, url) {
   assert.equal((await levado).status(), 200, 'no tablet, o servidor gravou o levar');
   await tablet.ctx.close();
 
-  // no celular (escuro): a coluna embaixo; "Escalar na…", "Mover para…" e o "⋯" da demanda
+  // no celular (escuro): a coluna embaixo; "Escalar na…", "Mover para…" e o ⇄ da demanda
   const cel = await abrir(navegador, url, BIA, `#/pauta/montar/${depois}`, { viewport: { width: 390, height: 844 }, colorScheme: 'dark', hasTouch: true, isMobile: true });
   const c = cel.p;
   const cSem = c.getByRole('region', { name: 'Sem escala' });

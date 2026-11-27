@@ -4,7 +4,7 @@ import { desfazerADistribuicao, desfazerAPublicacao, devolverADemanda, distribui
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
-import { acrescentarDemanda, escalarNa, moverDemanda, semEscala, tirarDemanda, type ClaqueteDistribuida } from '../modelo/distribuir';
+import { acrescentarDemanda, escalarNa, lugarDaDemanda, moverDemanda, semEscala, tirarDemanda, type ClaqueteDistribuida } from '../modelo/distribuir';
 import type { DemandaParaDistribuir } from '../modelo/ausencias';
 import { useArrastar, type ItemArrastado, type LugarDeSoltar } from './arrastar';
 import { Alca, EscolherDestino, ParaDistribuir, SemEscala, type Arraste, type Destino } from './ColunaDaPauta';
@@ -132,6 +132,10 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   // saem ao trocar de dia
   const [distribuicao, setDistribuicao] = useState<{ dia: string; itens: ClaqueteDistribuida[]; caixinha: boolean } | null>(null);
   useEffect(() => setDistribuicao(null), [dia]);
+  // depois do "Mover para…" (⇄, #163): a claquete movida, para onde foi e de onde veio (a posição e a seguinte, ou a
+  // lista com de quem era), para a caixinha do Desfazer; sai ao trocar de dia
+  const [movida, setMovida] = useState<{ dia: string; id: string; texto: string; para: string; de: { lista: string } | { posicao: string; antesDe: string | null } } | null>(null);
+  useEffect(() => setMovida(null), [dia]);
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
   const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[]; recado: string } | null>(null);
@@ -407,7 +411,10 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const distribuir = () =>
     void naColuna(null, () => [], (dia) =>
       distribuirNoDia(dia).then((d) => {
-        if (d.distribuidas?.length) setDistribuicao({ dia, itens: d.distribuidas, caixinha: true });
+        if (d.distribuidas?.length) {
+          setDistribuicao({ dia, itens: d.distribuidas, caixinha: true });
+          setMovida(null);
+        }
         return d;
       }),
     );
@@ -452,11 +459,34 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     const d = lerDestino(valor);
     escalar(editor, d.tipo === 'turno' ? { turno: d.id } : { posicao: d.id });
   };
+  /**
+   * O "Mover para…" (⇄): move como o arrastar e abre a caixinha com o Desfazer (#163), que guarda de onde a claquete
+   * veio (a posição e a demanda seguinte, ou a lista com de quem era). Só uma caixinha por vez: a do Distribuir fecha.
+   */
   const moverPeloMenu = (tipo: 'lista' | 'demanda', id: string, valor: string) => {
+    if (!dados) return;
     const d = lerDestino(valor);
+    const item = tipo === 'lista' ? listaDoDia.find((x) => x.id === id) : null;
+    const lugar = tipo === 'demanda' ? lugarDaDemanda(posicoesAgora.current, id) : null;
+    const texto = item?.texto ?? posicoesAgora.current.flatMap((p) => p.demandas).find((x) => x.id === id)?.texto ?? '';
+    const alvo = posicoesAgora.current.find((p) => p.id === d.id);
+    const para = d.tipo === 'lista' ? 'Para distribuir' : alvo?.editor.trim() || 'a vaga';
     if (tipo === 'lista') levar(id, d.id, null);
     else if (d.tipo === 'lista') devolver(id);
     else mover(id, d.id, null);
+    const de = item ? { lista: item.deQuem } : lugar;
+    if (!de || !texto.trim()) return;
+    setMovida({ dia: dados.dia, id, texto: texto.trim(), para, de });
+    setDistribuicao((x) => x && { ...x, caixinha: false });
+  };
+  /** Desfazer o "Mover para…" (#163): a claquete volta para onde estava (a lista, no fim, com de quem era). */
+  const desfazerAMovida = () => {
+    if (!movida || movida.dia !== dados?.dia) return;
+    const { id, texto, de } = movida;
+    setMovida(null);
+    if ('lista' in de) void naColuna((ps) => tirarDemanda(ps, id)?.posicoes ?? null, (l) => [...l, { id, texto, deQuem: de.lista }], (dia) => desfazerADistribuicao(dia, [{ id, deQuem: de.lista }]));
+    else if (listaDoDia.some((x) => x.id === id)) levar(id, de.posicao, de.antesDe);
+    else mover(id, de.posicao, de.antesDe);
   };
   // só com o "Fora" deste dia lido: antes disso, quem está fora apareceria como sem escala (e daria para escalar)
   const foraNoDia = dados && fora?.dia === dados.dia ? fora.nomes : null;
@@ -696,6 +726,19 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 </section>
               );
             })}
+            {movida && movida.dia === atual.dia && (
+              <div className="desfazer montar-movida" role="status">
+                <span>
+                  <b>{movida.texto}</b> foi para {movida.para}
+                </span>
+                <button type="button" className="botao-texto" onClick={desfazerAMovida}>
+                  Desfazer
+                </button>
+                <button type="button" className="botao-texto" aria-label="Fechar" onClick={() => setMovida(null)}>
+                  ×
+                </button>
+              </div>
+            )}
             {distribuicao?.caixinha && distribuicao.dia === atual.dia && (
               <div className="desfazer" role="status">
                 <span>
@@ -791,7 +834,7 @@ interface PropsDaCelula {
   focar: (f: Foco) => void;
   /** o motivo de cada demanda que o Distribuir pôs (#151), pela posição e pelo id ("posicao|id") */
   motivos: ReadonlyMap<string, string>;
-  /** o arrastar (#126): quem arrasta, onde está, e o "Mover para…" das demandas (no celular) */
+  /** o arrastar (#126): quem arrasta, onde está, e o "Mover para…" (⇄) das demandas (#163: em qualquer largura) */
   arraste: Arraste & { destinos: readonly Destino[]; mover: (id: string, destino: string) => void };
 }
 
@@ -972,7 +1015,7 @@ function LinhaDaDemanda({ posicao, id, texto, dia, motivo, mudar, tecla, arraste
       data-demanda-id={id}
       onPointerDown={preenchida ? arraste.iniciar({ tipo: 'demanda', id }) : undefined}>
       {preenchida && <Alca />}
-      {preenchida && <EscolherDestino className="montar-mover" rotulo="⋯" titulo={`Mover ${texto.trim()} para…`} destinos={arraste.destinos} escolher={(v) => arraste.mover(id, v)} />}
+      {preenchida && <EscolherDestino className="mover-menu montar-mover" rotulo="⇄" titulo={`Mover ${texto.trim()} para…`} destinos={arraste.destinos} escolher={(v) => arraste.mover(id, v)} />}
       <input
         className="montar-in"
         data-posicao={posicao}
