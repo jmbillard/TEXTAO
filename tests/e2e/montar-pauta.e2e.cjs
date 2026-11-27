@@ -237,9 +237,11 @@ async function montarPeloTeclado(navegador, url) {
   await p.keyboard.type(claquete);
   const leitura = celula.locator('.montar-demanda').first().locator('.montar-leitura');
   await leitura.getByText(`Noite de Gala · ${semanaDe(amanha)} ${diaMes(amanha)}`).waitFor();
-  // as versões só como o código no padrão, numa etiqueta; o que ele quer dizer fica na dica
-  const versoes = leitura.locator('.codigo-versoes');
-  assert.deepEqual(await versoes.allInnerTexts(), ['(DP)'], 'as duas versões num código só, no padrão');
+  // as versões como o código no padrão, colado no fim do que o PROMeiro entendeu (#152); o que ele quer dizer fica na dica
+  const versoes = leitura.locator('.sufixo-versoes');
+  assert.deepEqual((await versoes.allTextContents()).map((t) => t.trim()), ['(DP)'], 'as duas versões num código só, no padrão');
+  assert.equal((await leitura.locator('.montar-data').textContent()).replace(/\s+/g, ' ').trim(), `Noite de Gala · ${semanaDe(amanha)} ${diaMes(amanha)} (DP)`, 'o código colado no fim, sem etiqueta');
+  assert.equal(await p.locator('.codigo-versoes, .pauta-versoes').count(), 0, 'nenhuma etiqueta separada');
   assert.match(await versoes.getAttribute('title'), new RegExp(`^dia ${Number(amanha.slice(8))} e próxim[ao] ${semanaDe(amanha)}, da claquete$`));
   await leitura.getByText(`grava Noite de Gala ${diaMes(amanha)} (DP)`).waitFor();
   await capturar(p, '01-montar-digitando');
@@ -471,6 +473,8 @@ async function conferirEPublicar(navegador, url, teable) {
   await p.getByText('publicada!').waitFor();
   await p.getByRole('heading', { name: /está no ar$/ }).waitFor();
   assert.match(await p.locator('.pub-cartoes').innerText(), /0\s*pendências ficaram/);
+  // o dia publicado: o código no fim do nome, uma vez só (#152)
+  assert.equal((await p.locator('.pauta-item.pauta-claquete', { hasText: 'Vale a Pena Rever' }).textContent()).replace(/\s+/g, ' ').trim(), `Vale a Pena Rever ${diaMes(amanha)} (AH)`, 'publicada: o código no fim do nome');
   await capturar(p, '06-publicada', { fullPage: true });
 
   // na Pauta da edição (a Lia): a do Teable inteira e o que só o PROMeiro tem, sem dobrar
@@ -523,6 +527,31 @@ async function conferirEPublicar(navegador, url, teable) {
   await lia.ctx.close();
   await ctx.close();
   console.log('ok: conferir, corrigir, "está certo", publicar, a Pauta sem dobrar, alterado, republicar e desfazer');
+}
+
+/* ---------- "Mostrar o código das versões" desligado (#152) ---------- */
+/** A Bia desliga o código (pela rota das preferências; o menu do perfil é conferido nos e2e da Pauta e da agenda): ao
+    montar a pauta, o que o PROMeiro entendeu fica só com o nome; ligado de novo, o código volta. */
+async function oCodigoDesligado(navegador, url, api) {
+  const lembrar = (v) => fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': BIA, 'content-type': 'application/json' }, body: JSON.stringify({ 'versoes.codigo': v }) });
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`);
+  const noite = p.locator('.montar-leitura', { hasText: 'Noite de Gala ·' }).first();
+  await noite.waitFor();
+  assert.equal((await noite.locator('.montar-data').textContent()).replace(/\s+/g, ' ').trim(), `Noite de Gala · ${semanaDe(amanha)} ${diaMes(amanha)} (DP)`, 'ligado: o código no fim');
+  assert.equal((await lembrar(false)).status, 200);
+  await p.reload();
+  await noite.waitFor();
+  assert.equal((await noite.locator('.montar-data').textContent()).replace(/\s+/g, ' ').trim(), `Noite de Gala · ${semanaDe(amanha)} ${diaMes(amanha)}`, 'desligado: só o nome');
+  assert.equal(await p.locator('.sufixo-versoes, .codigo-versoes').count(), 0, 'desligado: nenhum código');
+  const pasta = process.env.CAPTURAS_SUFIXO || '';
+  if (pasta) {
+    mkdirSync(pasta, { recursive: true });
+    await p.screenshot({ path: join(pasta, 'montar-pauta-desligada.png'), fullPage: true });
+  }
+  assert.equal((await lembrar(true)).status, 200);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: "Mostrar o código das versões" desligado: ao montar a pauta, só o nome');
 }
 
 /* ---------- os avisos e o recado do dia (#125) ---------- */
@@ -1068,6 +1097,7 @@ async function principal() {
     await montarPeloTeclado(navegador, s.url);
     await noCelular(navegador, s.url);
     await conferirEPublicar(navegador, s.url, teable);
+    await oCodigoDesligado(navegador, s.url, s.api);
     await turnosDaConfiguracao(navegador, s.url, s.app);
     await avisosERecado(navegador, s.url);
     await ausencias(navegador, s.url, s.api);

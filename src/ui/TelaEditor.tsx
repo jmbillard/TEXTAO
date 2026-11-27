@@ -44,8 +44,7 @@ import { ehDoTour, enviarExemplo } from '../tour/exemplo';
 import { ajustarSelecao } from '../editor/selecao';
 import { gestoNaLista, SEGURAR_MS } from './gestoNaLista';
 import { enviadoNoTour, enviarNoTour } from '../tour/TourDaRevisao';
-import { ApelidoDaClaquete } from './Apelido';
-import { DE_ONDE, SufixoDasVersoes } from './CodigoDasVersoes';
+import { ApelidoDaClaquete, SufixoDaClaquete } from './Apelido';
 import { apelidoDoRoteiro, useApelidos, versoesAMaoDoRoteiro } from '../dados/apelidos';
 import { versoesDaChamada, versoesDoRoteiro } from '../modelo/versoesDoRoteiro';
 import { diaEmSaoPaulo, nomeSemAsVersoes } from '../modelo/pauta';
@@ -1758,7 +1757,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // as versões que a claquete sabe (#152): o código sai do nome e volta como o sufixo, uma vez só, se a pessoa liga
   const claqueteNoTopo = nomeSemAsVersoes(nomeNoTopo) || meta.programa || 'Roteiro';
   const versoesNoTopo = versoesDaChamada({ lidas: versoesLidas, claquete: meta.claquete, apelido: apelidoDoRoteiro(inicial.id), mao: versoesAMaoDoRoteiro(inicial.id), dia: meta.dataExibicao ?? '' });
-  const sufixoNoTopo = nomeNoTopo ? <SufixoDasVersoes versoes={versoesNoTopo.lista} de={versoesNoTopo.de ? DE_ONDE[versoesNoTopo.de] : undefined} /> : null;
+  const sufixoNoTopo = nomeNoTopo ? <SufixoDaClaquete versoes={versoesNoTopo} /> : null;
   // com apelido, a claquete original aparece ao passar o mouse (e na ficha)
   const originalNoTopo = apelidoDoRoteiro(inicial.id) ? `Claquete: ${meta.claquete}` : undefined;
 

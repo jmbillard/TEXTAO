@@ -306,8 +306,8 @@ export function codigoDasVersoes(versoes: readonly Versao[]): string {
   return `(${versoes.map((v) => letra(semAcento(v.codigo))).join('')})`;
 }
 
-/** O nome que a tela mostra, sem o código de versão no fim (a mesma leitura da Pauta, lerVersoes): o código vai só
-    na etiqueta (codigoDasVersoes). Só para mostrar: a claquete guardada, a chave e o que vai ao Trello e ao Teable não
+/** O nome que a tela mostra, sem o código de versão no fim (a mesma leitura da Pauta, lerVersoes): o código volta,
+    uma vez só e no padrão, como o sufixo das versões (#152), se a pessoa liga. Só para mostrar: a claquete guardada, a chave e o que vai ao Trello e ao Teable não
     mudam. Sem código, o nome como está. */
 export const nomeSemAsVersoes = (nome: string): string => lerVersoes(nome, '').semVersao;
 

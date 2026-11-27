@@ -825,6 +825,7 @@ const FRASES = {
   agdhoje3: [],
 };
 const CAPTURAS = process.env.CAPTURAS || '';
+const CAPTURAS_SUFIXO = process.env.CAPTURAS_SUFIXO || '';
 
 /** Abrir o card mostra a linha do tempo, lida só então (nenhum pedido antes), discreta e sem passar da largura do
     card; o card sem Produção não mostra nada. No computador e no celular, claro e escuro. */
@@ -906,83 +907,105 @@ async function linhaDoTempo(navegador, url, conferir) {
 }
 
 /**
- * O apelido da claquete no card da agenda (#120), no iPhone: o card aberto mostra a versão lida do roteiro ("hoje") e o
- * aviso de que a claquete não diz a versão; "usar (H) no apelido" põe o apelido do roteiro no lugar da claquete, no
- * card (a original fica ao passar o mouse); ele é editado à mão e volta ao original. O roteiro ganha a arte "HOJE, 21H" antes (os outros testes não a veem).
+ * O apelido da claquete e as versões que ela sabe no card da agenda (#120, #121, #152), no iPhone. O código das versões
+ * é um sufixo colado no fim do nome, uma vez só ("CHAMADA_CODIGO_27/11 (AH)"), com a dica; nunca uma etiqueta embaixo.
+ * A claquete sem código fica com as versões lidas do roteiro ("hoje", a arte "HOJE, 21H" que só este roteiro tem). No card
+ * aberto, as versões se editam à mão (o aviso compara com o roteiro, e "usar (H) do roteiro" desfaz o conflito) e voltam
+ * ao inicial; o apelido é editado à mão e volta ao original. "Mostrar o código das versões" desligado no menu do perfil:
+ * só o nome; ligado de novo, o código volta.
  */
 async function apelidoNaAgenda(navegador, url, api, conferir) {
   const rotulo = (t) => `apelido no card da agenda, iPhone 13: ${t}`;
   const d = diaMais(0);
   const claquete = `CHAMADA_SERIE_${d.getDate()}/${d.getMonth() + 1}`;
+  const comCodigo = `CHAMADA_CODIGO_${d.getDate()}/${d.getMonth() + 1}`;
   const comArte = { type: 'doc', content: [...doc.content, { type: 'paragraph', content: [{ type: 'text', text: 'HOJE, 21H', marks: [{ type: 'arte', attrs: { id: 'h1' } }] }] }] };
   const agora = new Date().toISOString();
   await fetch(`${api}/roteiros/agdhoje2`, { method: 'PUT', headers: cabecalhos, body: JSON.stringify({ roteiro: { id: 'agdhoje2', meta: meta(claquete, isoLocal(d), 'RJ'), doc: comArte, revisao: 1, criadoEm: agora, atualizadoEm: agora, publico: true }, nArtes: 5 }) });
   // #121: o roteiro sem versão nas artes mostra o código da claquete
-  await fetch(`${api}/roteiros/agdhoje4`, { method: 'PUT', headers: cabecalhos, body: JSON.stringify({ roteiro: { id: 'agdhoje4', meta: meta(`CHAMADA_CODIGO_${d.getDate()}/${d.getMonth() + 1} (AH)`, isoLocal(d), 'RJ'), doc, revisao: 1, criadoEm: agora, atualizadoEm: agora, publico: true }, nArtes: 1 }) });
+  await fetch(`${api}/roteiros/agdhoje4`, { method: 'PUT', headers: cabecalhos, body: JSON.stringify({ roteiro: { id: 'agdhoje4', meta: meta(`${comCodigo} (ah)`, isoLocal(d), 'RJ'), doc, revisao: 1, criadoEm: agora, atualizadoEm: agora, publico: true }, nArtes: 1 }) });
   await fetch(`${api}/roteiros/agdhoje4/trello`, { method: 'POST', headers: cabecalhos, body: JSON.stringify({ jaEsta: { card: 'agdhoje4' } }) });
   const { ctx, p, erros } = await abrirNoCelular(navegador, url, 'iPhone 13');
+  const foto = async (nome) => {
+    if (!CAPTURAS_SUFIXO) return;
+    await p.waitForTimeout(300);
+    await p.screenshot({ path: `${CAPTURAS_SUFIXO}/${nome}.png` });
+  };
   try {
     await levarAteAAgenda(p);
     const card = p.locator('.secao-trello .semana [data-card="agdhoje2"]');
-    const nome = async () => (await card.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
-    // #121: o card fechado mostra as versões da chamada, prontas da API, numa linha embaixo da claquete inteira
-    const versoes = (c) => c.locator('.card-semana-abrir .versoes-do-card');
-    // com revisão na fila, a agenda encolhe: o card fica só com a claquete, sem o código
+    const doCodigo = p.locator('.secao-trello .semana [data-card="agdhoje4"]');
+    const nomeDe = async (c) => (await c.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
+    const nome = () => nomeDe(card);
+    // com revisão na fila, a agenda encolhe: a semana inteira mostra os cards
     if (await p.isVisible('.secao-trello.encolhida')) {
       await card.waitFor({ state: 'visible', timeout: 5000 });
-      conferir(!(await versoes(card).isVisible()), rotulo('#121: na agenda encolhida, o card fechado fica sem as etiquetas'));
       await p.click('.pe-agenda .botao-texto:has-text("ver a semana inteira")');
       await p.waitForTimeout(400);
     }
-    await versoes(card).waitFor({ state: 'visible', timeout: 5000 });
-    conferir(JSON.stringify(await versoes(card).locator('.codigo-versoes').allInnerTexts()) === '["(H)"]', rotulo('#121: o card fechado mostra a versão lida do roteiro, só o código'));
-    conferir((await versoes(card).locator('.conflito-versoes').innerText()) === 'o roteiro diz (H), a claquete não diz a versão', rotulo('#121: e o aviso de conflito, como no #120'));
-    const arranjo = await card.evaluate((c) => {
-      const q = c.querySelector('.card-semana-claquete');
-      const v = c.querySelector('.card-semana-abrir .versoes-do-card').getBoundingClientRect();
-      const b = c.querySelector('.card-semana-abrir');
-      const dentro = b.clientWidth - parseFloat(getComputedStyle(b).paddingLeft) - parseFloat(getComputedStyle(b).paddingRight);
-      return { abaixo: v.top >= q.getBoundingClientRect().bottom - 0.5, inteira: q.getBoundingClientRect().width >= dentro - 1, dentro: v.right <= c.getBoundingClientRect().right + 0.5 };
-    });
-    conferir(arranjo.abaixo && arranjo.inteira && arranjo.dentro, rotulo(`#121: a claquete inteira, as etiquetas embaixo e dentro do card (${JSON.stringify(arranjo)})`));
-    const doCodigo = p.locator('.secao-trello .semana [data-card="agdhoje4"]');
+    await card.waitFor({ state: 'visible', timeout: 5000 });
+    // #152: o código no fim do nome, uma vez só, no padrão; nenhuma etiqueta embaixo
+    conferir((await nome()) === `${claquete} (H)`, rotulo(`a claquete sem código fica com a versão do roteiro, no fim do nome (${await nome()})`));
+    conferir((await p.locator('.codigo-versoes, .versoes-do-card').count()) === 0, rotulo('nenhuma etiqueta separada embaixo do nome'));
+    conferir((await card.locator('.conflito-versoes').count()) === 0, rotulo('o valor inicial pelo roteiro não tem conflito'));
     if (await doCodigo.count()) {
-      conferir(JSON.stringify(await versoes(doCodigo).locator('.codigo-versoes').allInnerTexts()) === '["(AH)"]', rotulo('#121: sem versão nas artes, o código da claquete'));
-      conferir((await versoes(doCodigo).locator('.conflito-versoes').count()) === 0, rotulo('#121: o código da claquete não tem conflito'));
-      const nomeDoCodigo = (await doCodigo.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
-      conferir(!nomeDoCodigo.includes('(AH)'), rotulo(`o nome sai sem o código, que fica só na etiqueta (${nomeDoCodigo})`));
-      conferir((await versoes(doCodigo).locator('.codigo-versoes').getAttribute('title')) === 'amanhã e hoje, do código da claquete', rotulo('#121: a dica diz o que quer dizer e de onde veio'));
-    } else conferir(false, rotulo('#121: o card do código da claquete está na agenda'));
-    if (CAPTURAS) {
-      await card.scrollIntoViewIfNeeded();
-      await p.screenshot({ path: `${CAPTURAS}/agenda-versoes-celular.png` });
-    }
+      conferir((await nomeDe(doCodigo)) === `${comCodigo} (AH)`, rotulo(`o código da claquete no padrão, uma vez só (${await nomeDe(doCodigo)})`));
+      conferir((await doCodigo.locator('.sufixo-versoes').getAttribute('title')) === 'amanhã e hoje, do código da claquete', rotulo('a dica diz o que quer dizer e de onde veio'));
+    } else conferir(false, rotulo('o card do código da claquete está na agenda'));
+    await card.scrollIntoViewIfNeeded();
+    await foto('agenda-ligada');
+    if (CAPTURAS) await p.screenshot({ path: `${CAPTURAS}/agenda-versoes-celular.png` });
     await card.locator('.card-semana-abrir').tap();
     await p.waitForTimeout(900);
     const apelido = card.locator('.apelido-claquete');
-    conferir(JSON.stringify(await apelido.locator('.codigo-versoes').allInnerTexts()) === '["(H)"]', rotulo('o card aberto mostra a versão lida do roteiro'));
-    conferir(/o roteiro diz \(H\), a claquete não diz a versão/.test(await apelido.locator('.conflito-versoes').innerText()), rotulo('e o aviso discreto: a claquete não diz'));
-    await apelido.getByRole('button', { name: 'usar (H) no apelido' }).tap();
-    await apelido.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
-    conferir(!(await nome()).endsWith('(H)') && JSON.stringify(await versoes(card).locator('.codigo-versoes').allInnerTexts()) === '["(H)"]', rotulo(`o card mostra o apelido sem o código no nome; o código fica só na etiqueta (${await nome()})`));
-    // #121: o apelido com as versões do roteiro desfaz o aviso também no card fechado (a lista se lê de novo)
-    await versoes(card).locator('.conflito-versoes').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
-    conferir((await versoes(card).locator('.conflito-versoes').count()) === 0, rotulo('#121: o apelido com as versões do roteiro desfaz o aviso no card'));
-    await apelido.getByRole('button', { name: 'Editar o apelido' }).tap();
+    conferir((await apelido.locator('.apelido-versoes').innerText()) === '(H)' && /das artes do roteiro/.test(await apelido.innerText()), rotulo('o card aberto diz as versões e de onde vieram'));
+    // as versões à mão: valem sobre o roteiro, que continua no aviso
+    await apelido.getByRole('button', { name: 'Editar as versões' }).tap();
+    await apelido.getByRole('textbox', { name: 'Código das versões' }).fill('an');
+    await apelido.getByRole('button', { name: 'guardar' }).tap();
+    await apelido.locator('.apelido-versoes', { hasText: '(AN)' }).waitFor({ timeout: 5000 });
+    conferir((await nome()) === `${claquete} (AN)`, rotulo(`as versões à mão no fim do nome (${await nome()})`));
+    conferir(/o roteiro diz \(H\), as versões à mão dizem \(AN\)/.test(await apelido.locator('.conflito-versoes').innerText()), rotulo('o aviso compara com o roteiro'));
+    await apelido.getByRole('button', { name: 'usar (H) do roteiro' }).tap();
+    await apelido.locator('.apelido-versoes', { hasText: '(H)' }).waitFor({ timeout: 5000 });
+    conferir((await apelido.locator('.conflito-versoes').count()) === 0 && (await nome()) === `${claquete} (H)`, rotulo('"usar (H) do roteiro" desfaz o aviso'));
+    await apelido.getByRole('button', { name: 'voltar ao inicial' }).tap();
+    await apelido.getByRole('button', { name: 'voltar ao inicial' }).waitFor({ state: 'detached', timeout: 5000 });
+    conferir(/das artes do roteiro/.test(await apelido.innerText()), rotulo('"voltar ao inicial" volta às do roteiro'));
+    // o apelido editado à mão: o código continua no fim do nome
+    await apelido.getByRole('button', { name: 'dar um apelido' }).tap();
     await apelido.getByRole('textbox', { name: 'Apelido da claquete' }).fill('SÉRIE FICTÍCIA, O FINAL');
     await apelido.getByRole('button', { name: 'guardar' }).tap();
-    await p.waitForTimeout(500);
-    conferir((await nome()) === 'SÉRIE FICTÍCIA, O FINAL', rotulo(`o apelido editado à mão no lugar da claquete (${await nome()})`));
+    await apelido.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
+    conferir((await nome()) === 'SÉRIE FICTÍCIA, O FINAL (H)', rotulo(`o apelido editado à mão no lugar da claquete, com o código no fim (${await nome()})`));
     conferir((await card.locator('.card-semana-claquete').getAttribute('title')) === `Claquete: ${claquete}`, rotulo('a claquete original aparece ao passar o mouse'));
     conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), rotulo('a página não rola para o lado'));
     if (CAPTURAS) await card.screenshot({ path: `${CAPTURAS}/agenda-apelido-celular.png` });
     await apelido.getByRole('button', { name: 'voltar ao original' }).tap();
     await apelido.getByRole('button', { name: 'dar um apelido' }).waitFor({ state: 'visible', timeout: 5000 });
     conferir(!(await nome()).includes('FINAL') && (await nome()).includes('SERIE'), rotulo(`"voltar ao original" devolve a claquete (${await nome()})`));
+    // "Mostrar o código das versões" desligado no menu do perfil: só o nome, em todos os cards
+    await mostrarOCodigo(p, false);
+    conferir((await nome()) === claquete && (await nomeDe(doCodigo)) === comCodigo, rotulo(`desligado: só o nome (${await nomeDe(doCodigo)})`));
+    conferir((await p.locator('.secao-trello .sufixo-versoes').count()) === 0, rotulo('desligado: nenhum código na agenda'));
+    await doCodigo.scrollIntoViewIfNeeded();
+    await foto('agenda-desligada');
+    await mostrarOCodigo(p, true);
+    conferir((await nomeDe(doCodigo)) === `${comCodigo} (AH)`, rotulo('ligado de novo: o código volta'));
     conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
   } finally {
     await ctx.close();
   }
+}
+
+/** Liga ou desliga "Mostrar o código das versões" no menu do perfil (#152) e fecha o menu. */
+async function mostrarOCodigo(p, ligado) {
+  await p.locator('.perfil-botao').click();
+  const opcao = p.getByRole('radiogroup', { name: 'Mostrar o código das versões' }).getByRole('radio', { name: ligado ? 'Ligado' : 'Desligado', exact: true });
+  await opcao.click();
+  await p.waitForFunction((v) => document.querySelector('.escolha-codigo-versoes [aria-checked="true"]')?.textContent === v, ligado ? 'Ligado' : 'Desligado');
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(200);
 }
 
 async function principal() {

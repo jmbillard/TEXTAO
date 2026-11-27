@@ -82,6 +82,12 @@ describe('nomeComOSufixo: o código colado no fim do nome, uma vez só, no padr�
     expect(nomeComOSufixo('Show 27/11 (H)', versoes('Show 27/11 (H)', [], 'AH'), true)).toBe('Show 27/11 (AH)');
   });
 
+  it('o código antes da praça no fim também sai do nome; o sufixo vai depois da praça', () => {
+    expect(nomeComOSufixo('Show 27/11 (H) RJ', versoes('Show 27/11 (H)'), true)).toBe('Show 27/11 RJ (H)');
+    expect(nomeComOSufixo('Show 27/11 (H) RJ', versoes('Show 27/11 (H)'), false)).toBe('Show 27/11 RJ');
+    expect(nomeComOSufixo('Show 27/11 SP', versoes('Show 27/11', ['AMANHÃ']), true)).toBe('Show 27/11 SP (A)');
+  });
+
   it('desligado: só o nome, sem o código', () => {
     expect(nomeComOSufixo('CHAMADA_CODIGO_27/11 (AH)', versoes('CHAMADA_CODIGO_27/11 (AH)'), false)).toBe('CHAMADA_CODIGO_27/11');
   });

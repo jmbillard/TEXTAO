@@ -9,8 +9,8 @@ import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
-import { ApelidoDaClaquete, ConflitoDoCard, versoesDoResumo } from './Apelido';
-import { DE_ONDE, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
+import { ApelidoDaClaquete, ConflitoDoCard, SufixoDaClaquete, versoesDoResumo } from './Apelido';
+import { useCodigoDasVersoes } from './CodigoDasVersoes';
 import { nomeSemAsVersoes } from '../modelo/pauta';
 import { apelidoDoRoteiro, relerApelidos, useApelidos } from '../dados/apelidos';
 import { agruparPorDia, artesParaMostrar, LER_ANDAMENTO_MS, claqueteParaMostrar, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, soAsPrioridades, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
@@ -478,7 +478,7 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
         <b>
           <span className="claquete-alvo" title={apelidoDoRoteiro(r.id) ? `Claquete: ${r.meta.claquete}` : undefined}>
             {prioridade && terminou ? <MarcaTexto traco={tracoDe(r.id)}><span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span></MarcaTexto> : <span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span>}
-            {terminou && <SufixoDasVersoes versoes={versoes.lista} de={versoes.de ? DE_ONDE[versoes.de] : undefined} />}
+            {terminou && <SufixoDaClaquete versoes={versoes} />}
             {ocupada && <svg className="ibeam" viewBox="0 0 12 28" aria-hidden="true"><path d="M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5" /></svg>}
           </span>
           {nova && !terminou && <i className="cursor" />}
@@ -641,7 +641,7 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
         <span className="card-semana-claquete" title={apelidoDoRoteiro(r.id) ? `Claquete: ${r.meta.claquete}` : undefined}>
           {c.prioridade ? <MarcaTexto traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></MarcaTexto> : <TextoDaClaquete texto={claquete} quebras />}
           {/* as versões que a claquete sabe (#121, #152): o sufixo colado no fim do nome, se a pessoa liga */}
-          <SufixoDasVersoes versoes={versoes.lista} de={versoes.de ? DE_ONDE[versoes.de] : undefined} />
+          <SufixoDaClaquete versoes={versoes} />
         </span>
         <ConflitoDoCard versoes={versoes} />
         <span className="card-semana-linha">

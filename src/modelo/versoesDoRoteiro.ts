@@ -11,6 +11,7 @@
    Duplicadas). */
 import { codigoDasVersoes, dataDaVersao, lerVersoes, MESES, SEMANA_CURTA, type Versao } from './pauta.ts';
 import { claqueteNoPadrao } from './correcaoDeGrafia.ts';
+import { semPracaNoFim } from './pracas.ts';
 import { chaveDaClaqueteNoPadrao, lerDataDaClaquete } from './vocabularios.ts';
 
 /** A ordem das letras do padrão: as versões lidas vêm sempre nela. */
@@ -167,7 +168,7 @@ export type FonteDasVersoes = 'mao' | 'apelido' | 'claquete' | 'roteiro';
 
 /** As versões que a claquete sabe (#121, #152), como as telas mostram, prontas da API. */
 export interface VersoesDaChamada {
-  /** as etiquetas, na ordem; vazia quando nem à mão, nem o nome, nem o roteiro dizem a versão */
+  /** as versões, na ordem; vazia quando nem à mão, nem o nome, nem o roteiro dizem a versão */
   lista: Versao[];
   /** null com a lista vazia */
   de: FonteDasVersoes | null;
@@ -222,9 +223,21 @@ export function codigoAMao(texto: unknown): { codigo: string } | { recusa: strin
  * depois ("(N)?"); o código desconhecido aparece cru. Desligada, ou sem versão, só o nome.
  */
 export function nomeComOSufixo(nome: string, versoes: readonly Versao[], mostrar: boolean): string {
-  const semCodigo = lerVersoes(nome, '').semVersao;
+  const semCodigo = nomeSemOCodigo(nome);
   const sufixo = mostrar ? sufixoDasVersoes(versoes) : '';
   return sufixo ? `${semCodigo} ${sufixo}` : semCodigo;
+}
+
+/** O nome sem o código das versões no fim, também quando a praça vem depois dele ("Show 27/11 (H) RJ" → "Show 27/11
+    RJ"): o sufixo vai depois de tudo, e o código não aparece duas vezes. Sem código, o nome como está. */
+export function nomeSemOCodigo(nome: string): string {
+  const texto = nome.trim();
+  const direto = lerVersoes(texto, '');
+  if (direto.versoes.length) return direto.semVersao;
+  const semPraca = semPracaNoFim(texto);
+  if (semPraca === texto) return texto;
+  const antes = lerVersoes(semPraca, '');
+  return antes.versoes.length ? `${antes.semVersao}${texto.slice(semPraca.length)}` : texto;
 }
 
 /** O sufixo das versões: o código no padrão e o "?" da leitura só pelo dia; '' sem versão. */

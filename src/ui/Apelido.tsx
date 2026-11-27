@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { apelidoDoRoteiro, mudarApelido, mudarVersoes, useApelidos, versoesAMaoDoRoteiro } from '../dados/apelidos';
-import { codigoAMao, sufixoDasVersoes, versoesDaChamada, type ConflitoDasVersoes, type FonteDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
+import { codigoAMao, nomeSemOCodigo, sufixoDasVersoes, versoesDaChamada, type ConflitoDasVersoes, type FonteDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
 import type { Resumo } from '../dados/armazenamento';
 import { codigoDasVersoes, type Versao } from '../modelo/pauta';
-import { DE_ONDE, dicaDasVersoes, NomeComVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
+import { DE_ONDE, dicaDasVersoes, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
 import './apelido.css';
 
 /* O apelido da claquete e as versões que ela sabe (#120, #152), na ficha da revisão e no editor. O apelido é um por
@@ -25,7 +25,18 @@ export function versoesDoResumo(r: Pick<Resumo, 'id' | 'meta' | 'versoesLidas' |
 /** O nome da claquete com o sufixo das versões que ela sabe (#152), colado no fim: o código uma vez só, no padrão, com a
     dica do significado e de onde veio. Com a opção desligada, só o nome. */
 export function NomeDaClaquete({ nome, versoes }: { nome: string; versoes?: VersoesDaChamada }) {
-  return <NomeComVersoes nome={nome} versoes={versoes?.lista ?? []} de={versoes?.de ? DE_ONDE[versoes.de] : undefined} />;
+  return (
+    <>
+      {nomeSemOCodigo(nome)}
+      <SufixoDaClaquete versoes={versoes} />
+    </>
+  );
+}
+
+/** Só o sufixo das versões que a claquete sabe (#152), para o nome que a tela já escreve (com o marca-texto, a
+    digitação): o código e a dica de onde veio. */
+export function SufixoDaClaquete({ versoes }: { versoes?: VersoesDaChamada }) {
+  return <SufixoDasVersoes versoes={versoes?.lista ?? []} de={versoes?.de ? DE_ONDE[versoes.de] : undefined} />;
 }
 
 /** O aviso discreto, no card da agenda e no da tela de produções (#121), quando o roteiro diz outra versão; só com o

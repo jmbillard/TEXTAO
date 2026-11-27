@@ -131,7 +131,11 @@ const capturar = async (p, nome) => {
 const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
 const hash = (p) => new URL(p.url()).hash;
 const coluna = (p, praca, k) => p.locator(`.prod-bloco[data-praca="${praca}"] .prod-coluna[data-coluna="${k}"]`);
-const claquetes = (p, praca, k) => textos(coluna(p, praca, k).locator('.prod-claquete'));
+/** As claquetes da coluna, só o nome (sem o sufixo das versões, #152, que versoesNosCards confere). */
+const claquetes = (p, praca, k) =>
+  coluna(p, praca, k)
+    .locator('.prod-claquete')
+    .evaluateAll((es) => es.map((e) => [...e.querySelectorAll('.prod-claquete-texto')].map((t) => [...t.childNodes].filter((n) => !n.classList?.contains('sufixo-versoes')).map((n) => n.textContent).join('')).join('').replace(/\s+/g, ' ').trim()));
 const contas = async (p, praca) => Promise.all(['entrada', 'produzindo', 'entregue'].map(async (k) => Number(await coluna(p, praca, k).locator('.prod-conta').textContent())));
 const cardDe = (p, claquete) => p.locator('.prod-card', { has: p.locator('.prod-claquete', { hasText: claquete }) });
 
@@ -162,26 +166,24 @@ const passamDaBorda = (p) =>
     }),
   );
 
-/** As versões da chamada nos cards (#121), prontas da API: as do Roteiro da Festa (com o aviso: a claquete não diz a
-    versão), o código da claquete da Novela, nada no Show da Noite. Numa linha própria, embaixo da claquete inteira. */
-async function versoesNosCards(p, onde) {
-  const versoes = (claquete) => cardDe(p, claquete).locator('.versoes-do-card');
-  assert.deepEqual(await textos(versoes('Festa na Praça').locator('.codigo-versoes')), ['(A)'], `${onde}: a Festa com a versão do roteiro, só o código`);
-  assert.equal((await versoes('Festa na Praça').locator('.conflito-versoes').textContent()).trim(), 'o roteiro diz (A), a claquete não diz a versão', `${onde}: e o aviso de conflito`);
-  assert.deepEqual(await textos(versoes('Novela Sinfonia').locator('.codigo-versoes')), ['(AH)'], `${onde}: a Novela com o código da claquete`);
-  assert.equal(await versoes('Novela Sinfonia').locator('.codigo-versoes').getAttribute('title'), 'amanhã e hoje, do código da claquete', `${onde}: a dica diz o que quer dizer`);
-  assert.equal(await versoes('Novela Sinfonia').locator('.conflito-versoes').count(), 0, `${onde}: o código da claquete não tem aviso`);
-  assert.equal((await cardDe(p, 'Novela Sinfonia').locator('.prod-claquete').textContent()).trim(), `Novela Sinfonia ${dm(2)}`, `${onde}: o nome sai sem o código, que fica só na etiqueta`);
-  assert.equal(await versoes('Show da Noite').count(), 0, `${onde}: sem versão, sem a linha`);
-  const arranjo = await p.locator('.prod-card:has(.versoes-do-card)').evaluateAll((cs) =>
-    cs.map((c) => {
-      const q = c.querySelector('.prod-claquete').getBoundingClientRect();
-      const v = c.querySelector('.versoes-do-card').getBoundingClientRect();
-      const dentro = c.clientWidth - parseFloat(getComputedStyle(c).paddingLeft) - parseFloat(getComputedStyle(c).paddingRight);
-      return { abaixo: v.top >= q.bottom - 0.5, larga: q.width >= dentro - 1, q: Math.round(q.width), dentro };
-    }),
-  );
-  assert.ok(arranjo.length >= 2 && arranjo.every((a) => a.abaixo && a.larga), `${onde}: a claquete com a largura toda do card e as etiquetas embaixo (${JSON.stringify(arranjo)})`);
+/** As versões da chamada nos cards (#121, #152), prontas da API, como o sufixo colado no fim do nome: as do Roteiro da
+    Festa (a claquete não tem código: o valor inicial é o do roteiro, sem aviso), o código da claquete da Novela (uma vez
+    só), nada no Show da Noite. Nenhuma etiqueta embaixo do nome. Com `ligado` false, só o nome. */
+async function versoesNosCards(p, onde, ligado = true) {
+  const nomeDe = async (claquete) => (await cardDe(p, claquete).locator('.prod-claquete').textContent()).replace(/\s+/g, ' ').trim();
+  assert.equal(await p.locator('.prod-card .codigo-versoes, .prod-card .versoes-do-card').count(), 0, `${onde}: nenhuma etiqueta embaixo do nome`);
+  if (!ligado) {
+    assert.equal(await p.locator('.prod-card .sufixo-versoes').count(), 0, `${onde}: desligado, nenhum código`);
+    assert.equal(await nomeDe('Festa na Praça'), `Festa na Praça ${dm(3)} SP`, `${onde}: desligado, a Festa só com o nome`);
+    assert.equal(await nomeDe('Novela Sinfonia'), `Novela Sinfonia ${dm(2)}`, `${onde}: desligado, a Novela só com o nome`);
+    return;
+  }
+  assert.equal(await nomeDe('Festa na Praça'), `Festa na Praça ${dm(3)} SP (A)`, `${onde}: a Festa com a versão do roteiro no fim do nome`);
+  assert.equal(await cardDe(p, 'Festa na Praça').locator('.sufixo-versoes').getAttribute('title'), 'amanhã, das artes do roteiro', `${onde}: a dica da Festa diz de onde veio`);
+  assert.equal(await cardDe(p, 'Festa na Praça').locator('.conflito-versoes').count(), 0, `${onde}: a Festa sem aviso`);
+  assert.equal(await nomeDe('Novela Sinfonia'), `Novela Sinfonia ${dm(2)} (AH)`, `${onde}: a Novela com o código da claquete, uma vez só`);
+  assert.equal(await cardDe(p, 'Novela Sinfonia').locator('.sufixo-versoes').getAttribute('title'), 'amanhã e hoje, do código da claquete', `${onde}: a dica diz o que quer dizer`);
+  assert.equal(await cardDe(p, 'Show da Noite').locator('.sufixo-versoes').count(), 0, `${onde}: sem versão, sem sufixo`);
 }
 
 /** Os blocos lado a lado: a 1920px cabem todos e usam a largura toda; a 1440px, a área rola para o lado. */
@@ -761,6 +763,31 @@ async function artesFeitas(navegador, url, db) {
   console.log('ok: a arte feita pela janela do After conta no card ("1 de 3 artes"), sem unha');
 }
 
+/**
+ * "Mostrar o código das versões" desligado (#152), de outra pessoa (a escolha é de cada um, guardada pela rota das
+ * preferências; o menu do perfil é conferido no e2e da Pauta e no da agenda): a tela de produções mostra só o nome, no
+ * computador e no celular, sem etiqueta nenhuma.
+ */
+async function oCodigoDesligado(navegador, url, api) {
+  const RUI = 'rui.costa@exemplo.com';
+  const r = await fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': RUI, 'content-type': 'application/json' }, body: JSON.stringify({ 'versoes.codigo': false }) });
+  assert.equal(r.status, 200);
+  await fetch(`${api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': RUI } });
+  const pasta = process.env.CAPTURAS_SUFIXO || '';
+  for (const [onde, opcoes] of [['computador', { viewport: { width: 1920, height: 1000 } }], ['celular', { ...devices['iPhone 13'] }]]) {
+    const { ctx, p, erros } = await abrir(navegador, url, opcoes, '#/designer/producoes', { email: RUI });
+    await p.locator('.prod-card').first().waitFor();
+    await versoesNosCards(p, `desligado, ${onde}`, false);
+    if (pasta) {
+      mkdirSync(pasta, { recursive: true });
+      await p.screenshot({ path: join(pasta, `producoes-desligada-${onde}.png`), fullPage: onde === 'computador' });
+    }
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  }
+  console.log('ok: "Mostrar o código das versões" desligado: a tela de produções só com o nome, no computador e no celular');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -805,6 +832,7 @@ async function principal() {
     await arrastarEDesfazer(navegador, s.url, chamadasAoTrello, trelloFalso);
     await recolherEAbrir(navegador, s.url, chamadasAoTrello);
     await artesFeitas(navegador, s.url, s.db);
+    await oCodigoDesligado(navegador, s.url, s.api);
   } catch (e) {
     falhou = true;
     console.error(e);

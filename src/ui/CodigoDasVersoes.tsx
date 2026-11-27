@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { assinarPreferencias, codigoDasVersoesLigado } from '../dados/armazenamento';
-import { leituraDasVersoes, lerVersoes, type Versao } from '../modelo/pauta';
-import { sufixoDasVersoes, type FonteDasVersoes } from '../modelo/versoesDoRoteiro';
+import { leituraDasVersoes, type Versao } from '../modelo/pauta';
+import { nomeSemOCodigo, sufixoDasVersoes, type FonteDasVersoes } from '../modelo/versoesDoRoteiro';
 import './codigoDasVersoes.css';
 
 /* As versões da chamada em todo o PROMeiro (#152): o código no padrão é um sufixo opcional colado no fim do nome, uma
@@ -51,7 +51,7 @@ export function SufixoDasVersoes({ versoes, de }: { versoes: readonly Versao[]; 
 export function NomeComVersoes({ nome, versoes, de }: { nome: string; versoes: readonly Versao[]; de?: string }) {
   return (
     <>
-      {lerVersoes(nome, '').semVersao}
+      {nomeSemOCodigo(nome)}
       <SufixoDasVersoes versoes={versoes} de={de} />
     </>
   );

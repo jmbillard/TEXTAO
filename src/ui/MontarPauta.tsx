@@ -30,7 +30,7 @@ import './montarPauta.css';
    (a alternativa A do protótipo aprovado). Abas com os dias da semana, cada uma com o estado do dia (vazio ou
    rascunho); um bloco por turno; em cada posição, o editor (da lista dos cadastrados, com a situação de cada um no dia),
    o horário (escrito de qualquer jeito, gravado no padrão) e as demandas, texto livre: cada linha mostra na hora o que o
-   PROMeiro entendeu (a atração, a data, as versões como etiquetas e, discretamente, a grafia no padrão). Tudo pelo
+   PROMeiro entendeu (a atração, a data, o código das versões no fim e, discretamente, a grafia no padrão). Tudo pelo
    teclado: Tab, Enter cria uma linha, as setas andam entre as linhas, Backspace na linha vazia apaga. O rascunho é
    gravado sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable.
    Conferir e publicar (#127): "Conferir e publicar" leva à conferência (ConferirPauta.tsx), em que cada pendência tem

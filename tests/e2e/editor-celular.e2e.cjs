@@ -479,43 +479,49 @@ async function versoesEApelido(navegador, url, api) {
   await p.locator('.ficha-resumo').tap();
   await p.waitForTimeout(400);
   const ficha = p.locator('.claquete .apelido-claquete');
-  // as etiquetas, calculadas das artes marcadas, e o aviso discreto: vale o roteiro
-  assert.deepEqual(await ficha.locator('.codigo-versoes').allInnerTexts(), [`(AH${letra})?`], 'a ficha mostra as versões lidas do roteiro só como o código, o dia sozinho a conferir');
-  assert.match(await ficha.locator('.codigo-versoes').getAttribute('title'), new RegExp(`^amanhã, hoje e ${sab}\\?, das artes do roteiro`), 'a dica diz o que o código quer dizer');
+  // as versões que a claquete sabe (#152): o código do nome vale (o valor inicial), e o aviso compara com o roteiro,
+  // calculado das artes marcadas, com o dia sozinho a conferir
+  assert.equal(await ficha.locator('.apelido-versoes').innerText(), '(A)', 'a ficha mostra as versões do código da claquete');
+  assert.match(await ficha.innerText(), /do código da claquete/, 'e de onde vieram');
   assert.match(await ficha.locator('.conflito-versoes').innerText(), new RegExp(`^o roteiro diz \\(AH${letra}\\), a claquete diz \\(A\\)`), 'o aviso compara os dois códigos');
+  assert.ok((await p.locator('.topo .trilha').innerText()).trim().endsWith('(A)'), 'o topo com o código no fim do nome');
+  assert.equal(await p.locator('.codigo-versoes').count(), 0, 'nenhuma etiqueta separada');
   await semRolagemDeLado(p, 'Galaxy S24, com o apelido na ficha');
 
-  // usar as do roteiro no apelido: o topo mostra o apelido; a claquete da ficha continua a original
-  await ficha.getByRole('button', { name: `usar (AH${letra}) no apelido` }).tap();
-  const comAH = claquete.replace('(A)', `(AH${letra})`);
-  await ficha.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
-  assert.equal(await ficha.locator('.apelido-nome').innerText(), comAH, 'o apelido leva as versões do roteiro');
-  assert.equal(await ficha.locator('.conflito-versoes').count(), 0, 'com o apelido do roteiro, o aviso sai');
+  // usar as do roteiro: viram as versões à mão; o topo mostra o código delas; a claquete da ficha continua a original
+  await ficha.getByRole('button', { name: `usar (AH${letra}) do roteiro` }).tap();
+  await ficha.locator('.apelido-versoes', { hasText: `(AH${letra})` }).waitFor({ timeout: 5000 });
+  assert.match(await ficha.innerText(), /feitas à mão no apelido/, 'as versões à mão');
+  assert.equal(await ficha.locator('.conflito-versoes').count(), 0, 'com as do roteiro à mão, o aviso sai');
   assert.equal(await p.locator('.claquete .campo-c.nome input').inputValue(), claquete, 'a claquete da ficha continua a original');
-  assert.ok((await p.locator('.topo .trilha').innerText()).includes(`(AH${letra})`), 'o topo mostra o apelido');
-  assert.equal(await p.locator('.topo .trilha').getAttribute('title'), `Claquete: ${claquete}`, 'a original aparece ao passar o mouse');
+  assert.ok((await p.locator('.topo .trilha').innerText()).trim().endsWith(`(AH${letra})`), 'o topo mostra o código das versões à mão, uma vez só');
+  assert.equal(((await p.locator('.topo .trilha').innerText()).match(/\(/g) ?? []).length, 1, 'o código não aparece duas vezes');
 
-  // editar o apelido à mão
-  await ficha.getByRole('button', { name: 'Editar o apelido' }).tap();
+  // dar um apelido à mão: o código continua no fim, uma vez só
+  await ficha.getByRole('button', { name: 'dar um apelido' }).tap();
   await ficha.getByRole('textbox', { name: 'Apelido da claquete' }).fill('CANTA BRASIL, A FINAL (AH)');
   await ficha.getByRole('button', { name: 'guardar' }).tap();
   await p.waitForFunction(() => document.querySelector('.topo .trilha')?.textContent?.includes('A FINAL'), null, { timeout: 5000 });
   assert.equal(await ficha.locator('.apelido-nome').innerText(), 'CANTA BRASIL, A FINAL (AH)');
+  assert.equal((await p.locator('.topo .trilha').innerText()).replace(/\s+/g, ' ').trim(), `CANTA BRASIL, A FINAL (AH${letra})`, 'o topo: o apelido sem o código dele e o das versões à mão');
+  assert.equal(await p.locator('.topo .trilha').getAttribute('title'), `Claquete: ${claquete}`, 'a original aparece ao passar o mouse');
   const guardados = await (await fetch(`${api}/apelidos`, { headers: h })).json();
-  assert.deepEqual(guardados.map((a) => [a.original, a.apelido]), [[claquete, 'CANTA BRASIL, A FINAL (AH)']], 'o servidor guarda o apelido e a original');
+  assert.deepEqual(guardados.map((a) => [a.original, a.apelido, a.versoes]), [[claquete, 'CANTA BRASIL, A FINAL (AH)', `AH${letra}`]], 'o servidor guarda o apelido, as versões à mão e a original');
 
-  // marcar "NESTE SÁBADO" com o dedo: a versão escrita entra na hora, sem o "?", na ordem do padrão
-  if (letra === 'N') {
-    await selecionarNoTexto(p, 1, LOC_ABERTURA.indexOf('NESTE'), LOC_ABERTURA.indexOf(','));
-    await p.locator(BALAO).getByRole('button', { name: 'Arte', exact: true }).tap();
-    await p.waitForFunction(() => [...document.querySelectorAll('.claquete .codigo-versoes')].map((e) => e.textContent).join('|') === '(AHN)', null, { timeout: 5000 });
-  }
-
-  // voltar ao original
+  // voltar ao inicial e ao original
+  await ficha.getByRole('button', { name: 'voltar ao inicial' }).tap();
+  await ficha.getByRole('button', { name: 'voltar ao inicial' }).waitFor({ state: 'detached', timeout: 5000 });
   await ficha.getByRole('button', { name: 'voltar ao original' }).tap();
   await ficha.getByRole('button', { name: 'dar um apelido' }).waitFor({ state: 'visible', timeout: 5000 });
   assert.doesNotMatch(await p.locator('.topo .trilha').innerText(), /A FINAL/, 'sem apelido, o topo volta à claquete');
-  assert.deepEqual(await (await fetch(`${api}/apelidos`, { headers: h })).json(), [], 'voltar ao original tira o apelido do servidor');
+  assert.deepEqual(await (await fetch(`${api}/apelidos`, { headers: h })).json(), [], 'voltar ao inicial e ao original tira o apelido do servidor');
+
+  // marcar "NESTE SÁBADO" com o dedo: a versão escrita entra na hora no aviso, sem o "?", na ordem do padrão
+  if (letra === 'N') {
+    await selecionarNoTexto(p, 1, LOC_ABERTURA.indexOf('NESTE'), LOC_ABERTURA.indexOf(','));
+    await p.locator(BALAO).getByRole('button', { name: 'Arte', exact: true }).tap();
+    await p.waitForFunction(() => /o roteiro diz \(AHN\)/.test(document.querySelector('.claquete .conflito-versoes')?.textContent ?? ''), null, { timeout: 5000 });
+  }
   assert.deepEqual(erros, [], 'Galaxy S24, versões e apelido: erros na página');
   await ctx.close();
 }

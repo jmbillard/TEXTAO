@@ -12,9 +12,13 @@ _Evitar_: título, nome do roteiro
 
 **Apelido** (da claquete):
 O nome que o PROMeiro mostra no lugar da claquete de um roteiro, em todas as telas e em todas as Produções dele, de
-todas as praças. Um por roteiro, dado por qualquer pessoa logada, à mão ou com as **versões lidas** do roteiro. Vale só
+todas as praças, e as **versões** que a claquete sabe. Um por roteiro, dado por qualquer pessoa logada. Vale só
 dentro do PROMeiro: o Trello e o Teable continuam com a claquete original, que aparece ao passar o mouse e na ficha,
-com "voltar ao original".
+com "voltar ao original". As versões ficam no apelido como dado, com a origem: o valor inicial é o código no fim do
+nome (o do apelido ou, sem código nele, o da claquete) ou, se o nome não tem código, as **versões lidas** do roteiro;
+editadas à mão (na ficha da revisão e no editor, onde se edita o apelido), valem sobre as duas leituras, e "voltar ao
+inicial" as tira. O apelido pode ter só as versões, sem nome novo (a claquete sem código e sem versão no roteiro
+recebe as dela assim).
 _Evitar_: alias, nome novo, key (a key é da atração)
 
 **Roteiro**:
@@ -533,20 +537,22 @@ acento. Cada letra é uma versão, na ordem em que aparece: A amanhã, H hoje, N
 semana>, D dia X, M em <mês> (AH = amanhã e hoje). DIA (= D), MES/MÊS (= M) e MNT (manutenção da grade) são
 inteiros. O dia da semana, o número e o mês saem da data da claquete; sem ela, do dia da linha. O padrão, para onde a
 **correção de grafia** leva as outras grafias, é uma letra por versão, maiúscula, entre parênteses ("(DP)", "(M)"), e
-(MNT). Em todo o PROMeiro (a pauta, a agenda, a tela de produções, a revisão e o editor), as versões aparecem só
-como esse código no padrão, numa etiqueta discreta, um código por claquete ("(AH)", "(PNAH)"); o que ele quer dizer e
-de onde veio ficam na dica ao passar o mouse ("amanhã e hoje, das artes do roteiro"). Um código desconhecido aparece
-cru, entre parênteses. O nome mostrado da claquete (ou do apelido) sai sem o código no fim: ele fica só na etiqueta.
-Só a tela muda; a claquete guardada, a chave e o que vai ao Trello e ao Teable continuam com ele.
+(MNT). A claquete sempre sabe as versões dela (as do **apelido**: à mão, senão o código do nome, senão as do
+roteiro). Em todo o PROMeiro (a pauta, a montagem e o dia publicado, a agenda, a tela de produções, a revisão e o
+editor), o código aparece como o **sufixo das versões**: colado no fim do nome, uma vez só e no padrão
+("CHAMADA_CODIGO_27/11 (AH)"; o código que o nome já trazia sai dele, e a praça no fim fica antes do sufixo); o que ele quer
+dizer e de onde veio ficam na dica ao passar o mouse ("amanhã e hoje, das artes do roteiro"). Cada pessoa liga ou
+desliga o sufixo no menu do perfil ("Mostrar o código das versões", lembrada por pessoa, começa ligada); desligado,
+só o nome. Nunca há etiqueta separada embaixo do nome. Um código desconhecido aparece cru, entre parênteses. Só a tela
+muda; a claquete guardada, a chave e o que vai ao Trello e ao Teable continuam como estão, e a rota da Produção do
+Padeiro manda o código como dado.
 As **versões lidas** do roteiro saem das artes marcadas na revisão que dizem quando o programa vai ao ar ("NESTA
 QUARTA" é N, "AMANHÃ, 22H30" é A, "DIA 28" é D, "EM JANEIRO" é M), na ordem das letras, com o dia da semana conferido
 pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai nos próximos 7 dias e P se cai depois,
-com um "?" para conferir; o horário sozinho não é versão. Quando discordam do código da claquete, vale o roteiro, com
-um aviso discreto que compara os dois códigos ("o roteiro diz (AH), a claquete diz (A)") e a opção de usá-las no
-**apelido**; a que veio só do dia leva o "?" depois do código ("(AN)?"). No card da agenda e no da tela de produções, o
-código é o do roteiro, quando ele está no PROMeiro e as artes dizem; senão, o do fim do apelido ou, sem código nele, o
-da claquete.
-_Evitar_: sufixo, tipo da chamada
+com um "?" para conferir; o horário sozinho não é versão. Quando discordam das versões que valem (as do nome ou as
+feitas à mão), um aviso discreto compara os dois códigos ("o roteiro diz (AH), a claquete diz (A)") e oferece usar as
+do roteiro, que viram as versões à mão do **apelido**; a que veio só do dia leva o "?" depois do código ("(AN)?").
+_Evitar_: tipo da chamada; "sufixo" sozinho (é o sufixo das versões, só na tela)
 
 **Ficha da claquete** (na pauta):
 O que abre por cima da pauta com um clique numa claquete: as linhas da mesma atração com versões diferentes juntas (a
