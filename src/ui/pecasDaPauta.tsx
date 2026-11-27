@@ -6,6 +6,7 @@ import { MenuDeContexto } from './MenuDeContexto';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
+import { NumeroQueConta, useEsmaeceAoMudar } from './topoDaAgenda';
 import { apelidoDaClaquete, apelidoDaProducao, useApelidos, versoesAMaoDaClaquete, versoesAMaoDaProducao } from '../dados/apelidos';
 import { armazenamento } from '../dados/armazenamento';
 import { ApelidoDaClaquete } from './Apelido';
@@ -59,9 +60,6 @@ function comApelidoNaPauta(l: LinhaDaPauta): LinhaNaTela {
   const texto = apelido || l.texto;
   return { ...l, texto, semVersao: lerVersoes(texto, l.dia).semVersao, versoes: v.lista, de: v.de, ...(apelido ? { original: l.texto } : {}) };
 }
-
-/** "1 editor", "3 editores". */
-export const contagem = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
 /** "2 artes", "1 arte"; sem a lista, nada. */
 export const artesEscritas = (n: number | null) => (n === null ? '' : `${n} ${n === 1 ? 'arte' : 'artes'}`);
@@ -231,7 +229,7 @@ export function diaEscrito(iso: string) {
   const p = partes(iso);
   return `${DIAS_DA_SEMANA[p.semana]}, ${String(p.dia).padStart(2, '0')}/${String(p.mes + 1).padStart(2, '0')}`;
 }
-const DIAS_POR_EXTENSO = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+export const DIAS_POR_EXTENSO = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 /** "sexta, 27 de novembro". */
 export function diaPorExtenso(iso: string) {
   const p = partes(iso);
@@ -457,6 +455,19 @@ export function horaEscrita(iso: string) {
   return dia === diaEmSaoPaulo() ? hora : `${hora} de ${Number(dia.slice(8))}/${dia.slice(5, 7)}`;
 }
 
+/** Um número do resumo do administrador, com o contador da agenda (#170): conta do valor antigo até o novo quando a
+    semana na tela muda (ou a releitura traz outro), e a palavra acompanha o número à vista. Com o movimento reduzido, o
+    número só troca e esmaece. */
+function ContaDoResumo({ n, um, varios }: { n: number; um: string; varios: string }) {
+  const el = useRef<HTMLSpanElement>(null);
+  useEsmaeceAoMudar(el, n);
+  return (
+    <span ref={el} className={n ? 'pauta-resumo-conta falta' : 'pauta-resumo-conta'}>
+      <NumeroQueConta valor={n} um={um} varios={varios} />
+    </span>
+  );
+}
+
 /** O aviso da cópia de reserva (o banco do Teable não respondeu) e, para o administrador, o resumo discreto. */
 export function SobreALeitura({ leitura }: { leitura: (LeituraDaPauta & { alteradoEm: string | null }) | null }) {
   if (!leitura) return null;
@@ -470,8 +481,8 @@ export function SobreALeitura({ leitura }: { leitura: (LeituraDaPauta & { altera
       )}
       {r && (
         <p className="pauta-resumo" aria-label="Resumo do administrador">
-          <span className={r.semEditor ? 'pauta-resumo-conta falta' : 'pauta-resumo-conta'}>{contagem(r.semEditor, 'linha sem editor', 'linhas sem editor')}</span>
-          <span className={r.semCard ? 'pauta-resumo-conta falta' : 'pauta-resumo-conta'}>{contagem(r.semCard, 'claquete sem card', 'claquetes sem card')}</span>
+          <ContaDoResumo n={r.semEditor} um="linha sem editor" varios="linhas sem editor" />
+          <ContaDoResumo n={r.semCard} um="claquete sem card" varios="claquetes sem card" />
           <span>{r.alteradoEm ? `pauta alterada às ${horaEscrita(r.alteradoEm)}` : 'sem alteração registrada'}</span>
         </p>
       )}

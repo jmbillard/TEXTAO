@@ -1,5 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { SUAVE } from './topoDaAgenda';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { mesPorExtenso, periodoNaContagem, posicaoNaContagem, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
+import { DIAS_POR_EXTENSO } from './pecasDaPauta';
+import { SUAVE, type Contagem } from './topoDaAgenda';
 import { semMovimento } from './util';
 
 /* A troca de dia ou de semana da Pauta da edição (#162), o movimento da agenda (trocaDeSemana.ts) um pouco mais largo:
@@ -21,6 +23,40 @@ const ELEMENTOS = '.desliza';
 /** O dia (AAAA-MM-DD) como um número que anda de um em um: a troca sabe o sentido pela diferença. */
 export const numeroDoDia = (iso: string) => Math.round(Date.parse(`${iso}T00:00:00Z`) / 86_400_000);
 export const diaDoNumero = (n: number) => new Date(n * 86_400_000).toISOString().slice(0, 10);
+
+/* ---------- os contadores (#170): o seletor de datas e os números contam como os da agenda (topoDaAgenda.tsx) ---------- */
+
+/** Onde o período da Pauta conta: as posições são os números dos dias (numeroDoDia); a Semana cobre sete, o Dia, um;
+    o mês por extenso, como no computador da agenda. */
+export const EIXO_DA_SEMANA: EixoDoPeriodo = { dia: diaDoNumero, dias: 7, mes: mesPorExtenso };
+export const EIXO_DO_DIA: EixoDoPeriodo = { dia: diaDoNumero, dias: 1, mes: mesPorExtenso };
+
+/** O período da Pauta no instante `p` da contagem da posição `de` até `para` (as regras da agenda: os dias contam
+    pelas datas e, na virada do mês, os meses ficam apagados até o fim). No Dia, vem também o dia da semana por
+    extenso do dia contado ("sexta"). */
+export function periodoDaPautaNaContagem(visao: 'semana' | 'dia', de: number, para: number, p: number): PartesDoPeriodo & { mesesApagados: boolean; semana?: string } {
+  if (visao === 'semana') return periodoNaContagem(EIXO_DA_SEMANA, de, para, p);
+  const agora = diaDoNumero(posicaoNaContagem(EIXO_DO_DIA, de, para, p));
+  return { ...periodoNaContagem(EIXO_DO_DIA, de, para, p), semana: DIAS_POR_EXTENSO[new Date(`${agora}T12:00:00Z`).getUTCDay()] };
+}
+
+/** A semana na tela enquanto conta: a contagem da segunda-feira (no eixo da Semana) e a posição contada agora. O
+    período da Semana, os números do cabeçalho da grade e os da fita do Dia contam todos por ela, juntos. */
+export interface SemanaNaContagem {
+  contagem: Contagem;
+  /** O número do primeiro dia (a segunda) no instante da contagem. */
+  inicio: number;
+  contando: boolean;
+}
+export const SemanaQueConta = createContext<SemanaNaContagem | null>(null);
+/** O `i`-ésimo dia da semana na tela no instante da contagem (AAAA-MM-DD: o número e o mês que mostrar) e se ela ainda
+    anda; fora da contagem, o próprio `iso`. */
+export function useDiaQueConta(iso: string, i: number): { contado: string; contando: boolean } {
+  const s = useContext(SemanaQueConta);
+  if (!s) return { contado: iso, contando: false };
+  return { contado: diaDoNumero(s.inicio + i), contando: s.contando };
+}
+
 
 /**
  * Leva o período na tela (o número do dia, ou da segunda-feira) até `alvo`, em `raiz`. Devolve o que mostrar agora: o
