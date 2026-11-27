@@ -2961,12 +2961,24 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return servirPoster(res, await anexos.poster(rec, env), 'public');
   }
 
+  /** O Padeiro da chave do pedido, quando ela está ligada a um designer; senão, responde a recusa (401 sem a chave ou
+      com a errada; 403 com a pendente ou a revogada, com o estado) e devolve null. */
+  function padeiroLigado(req, res) {
+    const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
+    if (!p) json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
+    else if (p.estado !== 'ligada') json(res, 403, { erro: p.estado === 'pendente' ? 'A chave do Padeiro ainda espera um administrador do PROMeiro.' : 'A chave do Padeiro foi revogada: faça o cadastro de novo.', estado: p.estado });
+    else return p;
+    return null;
+  }
+
   /**
    * O caminho do Padeiro (#137), embaixo de /api/padeiro/: fora do login (o Padeiro roda dentro do After Effects, sem o
    * Cloudflare Access, que tem um Bypass só para este caminho). Só vale a chave do Padeiro no cabeçalho; o cabeçalho do
    * Access, aqui, pode ter vindo de qualquer um e nunca é lido. O que não é uma rota daqui responde 404.
    * - POST /api/padeiro/cadastro { usuario, computador, sistema, sigla } (a única sem chave): 201 { chave, estado }
    * - GET /api/padeiro/eu: { estado, usuario, computador, sigla, designer } da chave; sem ela, ou com a errada, 401
+   * - GET /api/padeiro/producoes (#138): { trello: [...] }, as Produções em Entrada e Produzindo no formato `trello` do
+   *   Padeiro (producoes.paraOPadeiro). Só com a chave ligada: a pendente e a revogada, 403 { erro, estado }
    */
   async function rotaDoPadeiro(req, res, caminho) {
     if (caminho === '/api/padeiro/cadastro' && req.method === 'POST') {
@@ -2978,6 +2990,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
       if (!p) return json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
       return json(res, 200, { estado: p.estado, usuario: p.usuario, computador: p.computador, sigla: p.sigla, designer: p.designer ? { nome: p.designer.nome } : null });
+    }
+    if (caminho === '/api/padeiro/producoes' && req.method === 'GET') {
+      const p = padeiroLigado(req, res);
+      if (!p) return;
+      const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+      return json(res, 200, { trello: producoes.paraOPadeiro((claquete) => atracaoPelaClaquete(claquete, programas, pracas)) });
     }
     return json(res, 404, { erro: 'Não encontrado.' });
   }

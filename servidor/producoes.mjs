@@ -216,6 +216,13 @@ export function criarProducoes(db) {
     // a tela de produções (#109): as abertas (Entrada e Produzindo) e as entregues desde a data, sem as arquivadas, com
     // a atração do Roteiro ligado
     naTela: db.prepare(`${DA_TELA} WHERE p.arquivada = 0 AND (p.etapa IN ('entrada', 'produzindo') OR (p.etapa = 'entregue' AND p.entrega_em >= ?))`),
+    // a lista do Padeiro (#138): as abertas (Entrada e Produzindo), sem as arquivadas, as mais novas primeiro, com o
+    // Roteiro ligado (a atração, o redator e o editor)
+    doPadeiro: db.prepare(
+      `SELECT p.id, p.claquete, p.praca, p.etapa, p.artes, p.artes_marcadas, p.entrada_em, p.card_id, p.filme_id, p.filme_titulo, r.meta AS roteiro_meta
+       FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id
+       WHERE p.arquivada = 0 AND p.etapa IN ('entrada', 'produzindo') ORDER BY COALESCE(p.entrada_em, p.criada_em) DESC, p.criada_em DESC`,
+    ),
     // a Produção mudada na tela (#110), para a tela mostrar sem reler tudo
     umaNaTela: db.prepare(`${DA_TELA} WHERE p.id = ? AND p.arquivada = 0`),
     // a correção de grafia (#116): todas as Produções, para contar as de cada atração
@@ -641,6 +648,42 @@ export function criarProducoes(db) {
   }
 
   /**
+   * As Produções para o grupo NO TRELLO do Padeiro (#138), no formato `trello` que ele já entende (o do índice do buscar
+   * do n8n, docs/webhook-trello.md do repositório do Padeiro): a claquete (`claq`), o redator e o editor do Roteiro ligado
+   * (`red`, `ed`; '' sem ele), o card (`card`; '' sem card), a entrada (`at`, ISO; null sem data), `fim` (sempre false:
+   * só as abertas), a atração (`atr`: a do Roteiro, o título do filme ou a da claquete; '' sem nenhuma) e se é filme
+   * (`fil`). A mais, que o Padeiro de antes ignora: a praça, a Produção (o id, para o aviso do Padeiro, #139), a etapa e
+   * as artes do checklist (`artes`: as feitas e as a fazer, na ordem do checklist). Nada do Trello.
+   * @param atracaoDaClaquete (claquete) => nome, ou ''
+   */
+  function paraOPadeiro(atracaoDaClaquete = () => '') {
+    return q.doPadeiro.all().map((l) => {
+      let meta = {};
+      try {
+        meta = JSON.parse(l.roteiro_meta ?? 'null') ?? {};
+      } catch {
+        // meta ilegível: sem redator nem editor, e a atração sai da claquete
+      }
+      const doMeta = (campo) => String(meta?.[campo] ?? '').trim();
+      const artes = artesDoChecklist({ artes: JSON.parse(l.artes ?? '[]'), artesMarcadas: JSON.parse(l.artes_marcadas ?? '[]') });
+      return {
+        claq: l.claquete,
+        red: doMeta('redator'),
+        ed: doMeta('editor'),
+        card: l.card_id ?? '',
+        at: l.entrada_em ?? null,
+        fim: false,
+        atr: doMeta('programa') || String(l.filme_titulo ?? '').trim() || atracaoDaClaquete(l.claquete),
+        fil: !!(l.filme_id || l.filme_titulo),
+        praca: l.praca ?? '',
+        producao: l.id,
+        etapa: l.etapa,
+        artes: { feitas: artes.filter((a) => a.marcada).map((a) => a.nome), aFazer: artes.filter((a) => !a.marcada).map((a) => a.nome) },
+      };
+    });
+  }
+
+  /**
    * O que o ciclo do roteiro (#102) lê da Produção do Roteiro: pelo card do envio (o mais recente, como o aviso) ou,
    * sem ele, pelo Roteiro ligado. null sem nenhuma. As artes (a coluna da produção da arte) e as marcadas no checklist
    * são das artes do roteiro aberto (#104).
@@ -660,6 +703,7 @@ export function criarProducoes(db) {
     doRoteiro,
     naTela,
     umaNaTela,
+    paraOPadeiro,
     doPROMeiro,
     ultimaMudanca,
     /** A Produção pelo id (como a API mostra), ou null. */
