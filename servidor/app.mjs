@@ -39,7 +39,7 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { acertarNArtesUmaVez, artesComOEstado, subirComplexidade, versoesLidas } from './artes.mjs';
+import { acertarNArtesUmaVez, artesComOEstado, fogoNoNivel, versoesLidas } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
@@ -54,7 +54,7 @@ import { criarIlhas } from './ilhas.mjs';
 import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
-import { DIAS_ANTES, DIAS_DEPOIS, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
+import { DIAS_ANTES, DIAS_DEPOIS, agendaDeFilmes, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
 import { DIAS_DO_TRELLO, criarIndiceDoBuscar, dasAtracoes, doTrello, montarIndice } from './indice-do-buscar.mjs';
 import { criarProjetoDoPadeiro } from './projeto-do-padeiro.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
@@ -67,8 +67,10 @@ import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
 import { DIAS_DA_CONTINUIDADE, historicoDaPauta } from '../src/modelo/distribuir.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
+import { CHAVE_DA_AGENDA_DE_FILMES, recusaDaFormaDaAgenda } from '../src/filmes/agenda.ts';
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDaOrdem, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
+import { criarCardDaProducao } from './card-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarCartaoDoTeams } from './cartao-do-teams.mjs';
@@ -549,6 +551,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const producoes = criarProducoes(db);
   // pegar e voltar para a Entrada pela tela de produções (#110): o Trello só escrito, a Produção na hora
   const etapaDaProducao = criarEtapaDaProducao({ producoes });
+  // o card aberto da tela de produções (#160): o prazo, a atração, os designers e as artes
+  const cardDaProducao = criarCardDaProducao({ producoes });
   // os anexos guardados pelo PROMeiro (#90): o PDF do roteiro do envio e os pôsteres dos filmes, no SQLite (no backup)
   const anexos = criarAnexos(db, { buscar: buscarNoTeable });
   /* O que o PROMeiro guarda de um card, para apagar uma duplicada (#67): a cópia leva os envios dos roteiros, a lista
@@ -948,12 +952,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // nenhuma Produção e nenhuma carga que deu certo (a da subida falhou: o Teable estava fora): a carga inteira
         if (producoes.vazia() && !producoes.contagem().ultimaCarga) {
           const carga = await producoes.carregar(trello, pracas);
+          if (carga) passarOsFogos();
           if (carga) copia.guardar(MARCA_DA_RELEITURA, { ate: new Date(inicio - MARGEM_DA_RELEITURA).toISOString() });
           return carga ? (ultimaReleitura = { em: new Date(inicio).toISOString(), desde, lidas: carga.linhas, novas: carga.novas, mudadas: carga.atualizadas, anotados: 0 }) : null;
         }
         const linhas = await trello.producaoAlteradaDesde(desde, LIMITE_DA_RELEITURA);
         if (!linhas) return null;
         const r = producoes.reler(linhas, pracas);
+        passarOsFogos();
         // a próxima continua da modificação mais nova lida, com uma margem (a linha relida de novo, igual, não muda
         // nada); no limite, dela mesma, para andar
         const maisNova = linhas.reduce((m, l) => (l.modificadoEm && l.modificadoEm > m ? l.modificadoEm : m), '');
@@ -1317,10 +1323,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * muda nada); sem ele, sobe um nível, como o clique no fogo do editor (subirComplexidade). Pelo caminho do editor: a
    * complexidade no mapa "meta" do documento compartilhado (o da sala aberta, que quem está no editor vê na hora, ou o
    * guardado) e na meta do roteiro no banco; a BAIXA não é guardada. Com o documento, vale o que ele tem agora. Com
-   * `gravar: false` (a ação atrasada), só diz o que seria.
+   * `gravar: false` (a ação atrasada), só diz o que seria. Com `seVago` (o fogo que passa da Produção, #174), a arte que
+   * o Roteiro já marcou fica como está.
    * @returns { antes, depois } (1, 2 ou 3), ou null sem o roteiro
    */
-  function fogoNoRoteiro(id, chave, { nivel: desejado = null, gravar = true } = {}) {
+  function fogoNoRoteiro(id, chave, { nivel: desejado = null, gravar = true, seVago = false } = {}) {
     const linha = q.um.get(id);
     if (!linha) return null;
     const meta = JSON.parse(linha.meta);
@@ -1333,14 +1340,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const m = doc?.getMap('meta');
     const atual = m?.size ? m.get('complexidade') : meta.complexidade;
     const marcas = atual && typeof atual === 'object' ? atual : {};
-    const noNivel = () => {
-      const resto = { ...marcas };
-      delete resto[chave];
-      const novas = desejado === 1 ? resto : { ...resto, [chave]: desejado };
-      return Object.keys(novas).length ? novas : undefined;
-    };
-    const complexidade = desejado ? noNivel() : subirComplexidade({ complexidade: marcas }, chave).complexidade;
-    const nivel = (c) => ([2, 3].includes(c?.[chave]) ? c[chave] : 1);
+    // #174: o fogo que passa da Produção não pisa no que o Roteiro já marcou
+    if (seVago && [2, 3].includes(marcas[chave])) return { antes: marcas[chave], depois: marcas[chave] };
+    const { marcas: complexidade, antes, depois } = fogoNoNivel(marcas, chave, desejado);
     if (gravar) {
       if (complexidade) meta.complexidade = complexidade;
       else delete meta.complexidade;
@@ -1351,7 +1353,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         if (!sala) q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
       }
     }
-    return { antes: nivel(marcas), depois: nivel(complexidade) };
+    return { antes, depois };
   }
   function fecharSala(id, motivo, filtro = () => true) {
     const sala = salas.get(id);
@@ -2679,7 +2681,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!ligado) return json(res, 404, { erro: 'A produção da arte do Teable não está configurada.' });
       try {
         console.log(`[producoes] ${eu.email} pediu a carga de novo`);
-        return json(res, 200, await producoes.carregar(trello, pracas));
+        const carga = await producoes.carregar(trello, pracas);
+        passarOsFogos();
+        return json(res, 200, carga);
       } catch (e) {
         console.warn(`[producoes] ${e instanceof Error ? e.message : e}`);
         return json(res, 502, { erro: `Não consegui ler a produção da arte: ${e instanceof Error ? e.message : e}` });
@@ -3005,7 +3009,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' } ou a exibição de uma área dos
       // roteiros (#103): { 'exibicao.redator': 'quadro' }, ou a visão e os arranjos da Pauta da edição (#98), que é de
       // todo mundo: { 'pauta.visao': 'dia' }, ou os blocos recolhidos da tela de produções (#113), também de todo mundo:
-      // { 'producoes.recolhidos': ['RJ'] }, e a ordem das praças arrumada arrastando (#159): { 'producoes.ordem': ['SP', 'RJ'] }.
+      // { 'producoes.recolhidos': ['RJ'] }, a ordem das praças arrumada arrastando (#159): { 'producoes.ordem': ['SP', 'RJ'] },
+      // e a forma de ver a agenda de filmes (#169): { 'filmes.agenda': 'sessao' }.
       // Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
@@ -3021,6 +3026,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         if (chave === CHAVE_DO_CODIGO_DAS_VERSOES) {
           // "Mostrar o código das versões" (#152), de todo mundo, para o PROMeiro todo
           const recusa = recusaDoCodigoDasVersoes(valor);
+          if (recusa) return json(res, 400, { erro: recusa });
+          continue;
+        }
+        if (chave === CHAVE_DA_AGENDA_DE_FILMES) {
+          // a forma de ver a agenda de filmes (#169), de todo mundo: { 'filmes.agenda': 'data' | 'sessao' }
+          const recusa = recusaDaFormaDaAgenda(valor);
           if (recusa) return json(res, 400, { erro: recusa });
           continue;
         }
@@ -3295,6 +3306,26 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return res.end(pdf.dados);
     }
     if (caminho.startsWith('/api/filmes/previas')) return previas(req, res, caminho, eu);
+    if (caminho === '/api/filmes/agenda' && req.method === 'GET') {
+      // a agenda de filmes da aba Filmes (#169): a leitura dos filmes recentes do Padeiro (#142), com todas as exibições
+      // de cada filme, o pôster pelo caminho com login e a Produção do card da exibição. Nada do Trello. Com o Postgres
+      // do Teable fora (ou sem as tabelas), 503
+      const hoje = diaEmBrasilia(new Date());
+      let linhas;
+      try {
+        linhas = await trello.linhasDosFilmesRecentes?.(somarDias(hoje, -DIAS_ANTES), somarDias(hoje, DIAS_DEPOIS));
+      } catch (e) {
+        console.warn(`[filmes] não li a agenda de filmes: ${e instanceof Error ? e.message : e}`);
+        return json(res, 503, { erro: 'O PROMeiro não conseguiu ler os filmes agora.' });
+      }
+      if (!linhas) return json(res, 503, { erro: 'O PROMeiro está sem as tabelas exibicoes e filmes do Teable.' });
+      const poster = (filme, temNoTeable) => (temNoTeable || anexos.temPoster(filme) ? posterDoFilme(filme) : null);
+      const producao = (card) => {
+        const p = producoes.doAviso({ card });
+        return p ? { id: p.id, etapa: p.etapa, designers: p.designers } : null;
+      };
+      return json(res, 200, { hoje, filmes: agendaDeFilmes({ ...linhas, hoje, poster, producao }) });
+    }
     if (caminho === '/api/filmes' && req.method === 'GET') {
       // os filmes dos próximos dias, com o andamento do card (a mesma produção da arte das claquetes)
       const filmes = await trello.filmesProximos?.(14).catch((e) => (console.warn(`[filmes] ${e instanceof Error ? e.message : e}`), [])) ?? [];
@@ -3394,8 +3425,30 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const id = (new URL(req.url, 'http://x').searchParams.get('producao') ?? '').trim().slice(0, 100);
       if (!id) return json(res, 400, { erro: 'Falta a Produção.' });
-      const aberta = producoes.aberta(id);
+      const aberta = await abertaNaTela(id);
       return aberta ? json(res, 200, aberta) : json(res, 404, { erro: 'Essa Produção não existe mais.' });
+    }
+    const doCardAberto = /^\/api\/producoes\/(prazo|atracao|designer|arte|fogo)$/.exec(caminho);
+    if (doCardAberto) {
+      // o card aberto (#160), para quem está ligado a um designer: o prazo { producao, prazo }, a atração { producao,
+      // atracao ('' desliga) }, o designer { producao, designer, entra }, a arte { producao, arte, acao (marcar,
+      // desmarcar, apagar, voltar, incluir) } e o fogo { producao, arte, nivel? }. Escreve no Trello (o prazo, o membro,
+      // o checklist; a única leitura é a do checklist do card que muda), grava os eventos; nada vai ao Teable. Responde
+      // { feito, producao (o card da tela), aberta (como /api/producoes/aberta) }
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
+      const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+      const aTela = (id) => comAsVersoes(producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
+      const ctx = { trello, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela };
+      const o = doCardAberto[1];
+      let r;
+      if (o === 'prazo') r = await cardDaProducao.prazo(corpo, ctx);
+      else if (o === 'atracao') r = await cardDaProducao.atracao(corpo, { ...ctx, atracoes: (await atracoesDoCadastro()).map((a) => a.nome) });
+      else if (o === 'designer') r = await cardDaProducao.designer(corpo, { ...ctx, designers: pessoas.designersAtivos() });
+      else if (o === 'arte') r = await cardDaProducao.arte(corpo, ctx);
+      else r = fogoNaTela(corpo, ctx);
+      if (r.status !== 200) return json(res, r.status, r.corpo);
+      return json(res, 200, { ...r.corpo, aberta: await abertaNaTela(r.corpo.producao?.id ?? corpo.producao) });
     }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
     if (caminho === '/api/linha-do-tempo') {
@@ -3674,6 +3727,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return json(res, 200, { ...r, link: linkDaAbaFilmes(env) });
   }
 
+  /** O caminho do pôster com login (o mesmo da prévia, #90), para a agenda de filmes (#169); null com o id torto. */
+  const posterDoFilme = (filme) => (/^rec[A-Za-z0-9]{6,32}$/.test(String(filme ?? '')) ? `/api/filmes/poster/${filme}` : null);
+
   /** O pôster do filme para o Padeiro (#142): o endereço público do PROMeiro (PROMEIRO_URL/api/publico/poster/<filme>?t=
       <POSTER_PUBLICO_TOKEN>), quando o filme tem pôster no Teable ou a cópia guardada pelo PROMeiro; null sem o
       PROMEIRO_URL ou sem o token (o endereço público fica desligado). */
@@ -3734,23 +3790,109 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return comPasta(Object.entries(a.caminhos ?? {}).find(([campo]) => /^projeto/i.test(campo.trim()))?.[1]);
   }
 
+  /** O fogo de cada arte (1 a 3), o mesmo na janela do After (#146) e no card aberto (#160): com Roteiro ligado, o da
+      meta dele; sem marca nele, o guardado na Produção (o que ainda não passou para ele); sem nenhum, BAIXA (#174).
+      @param j a Produção de producoes.naJanela */
+  const fogoDasArtes = ({ producao, meta, fogos = {} }) => {
+    const complexidade = producao.roteiroId && meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
+    return (a) => {
+      const chave = chaveDeArte(a.nome);
+      return [2, 3].includes(complexidade[chave]) ? complexidade[chave] : [2, 3].includes(fogos[chave]) ? fogos[chave] : 1;
+    };
+  };
+
+  /**
+   * O fogo da arte mudado (#147, #160, #174): com Roteiro ligado, no Roteiro (fogoNoRoteiro), e a marca dela que a
+   * Produção ainda guardava sai; sem ele, na Produção (producoes.fogoNaProducao). Com `nivel`, fica nesse nível; sem
+   * ele, sobe um. Com `gravar: false` (a ação atrasada), só diz o que seria.
+   * @returns { antes, depois } (1 a 3), ou null sem a Produção ou o Roteiro
+   */
+  function fogoDaArte(j, nome, { nivel = null, gravar = true } = {}) {
+    const chave = chaveDeArte(nome);
+    if (!j.producao.roteiroId) return producoes.fogoNaProducao(j.producao.id, chave, { nivel, gravar });
+    // o que a tela mostrava (o da Produção, sem marca no Roteiro) é o ponto de partida do clique
+    const herdado = j.fogos?.[chave];
+    if (herdado && gravar) fogoNoRoteiro(j.producao.roteiroId, chave, { nivel: herdado, seVago: true });
+    const n = fogoNoRoteiro(j.producao.roteiroId, chave, { nivel, gravar });
+    if (n && gravar) producoes.soltarFogos(j.producao.id, chave);
+    return n;
+  }
+
+  /**
+   * O fogo guardado na Produção passa para o Roteiro ligado depois (#174): o do Roteiro vale; a arte sem marca nele
+   * recebe a da Produção, que depois se esvazia. Sem Roteiro ou sem fogo guardado, nada muda. Nunca lança.
+   */
+  function passarOFogo(id) {
+    try {
+      const j = producoes.naJanela(id);
+      if (!j?.producao.roteiroId || !Object.keys(j.fogos).length) return;
+      for (const [chave, nivel] of Object.entries(j.fogos)) if (!fogoNoRoteiro(j.producao.roteiroId, chave, { nivel, seVago: true })) return;
+      producoes.soltarFogos(id);
+    } catch (e) {
+      console.warn(`[producoes] o fogo de ${id} não passou para o Roteiro: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  /** Todas as que ainda guardam fogo com o Roteiro já ligado (a carga e a releitura ligam Roteiros). */
+  function passarOsFogos() {
+    for (const id of producoes.comFogoParaPassar()) passarOFogo(id);
+  }
+
+  /**
+   * A Produção aberta na tela de produções (#113, #160): a de `producoes.aberta` (a linha do tempo, as artes do
+   * checklist, o link do card) e, para o card aberto, as artes como a janela do After mostra (`artesDoCard`: cada arte
+   * uma vez, feita ou não, com o fogo de fogoDasArtes), a versão do Roteiro (V1 sem versão nova) e
+   * quando ele chegou, e as listas para escolher: os designers ativos e as atrações do cadastro. null sem a Produção.
+   */
+  async function abertaNaTela(id) {
+    const aberta = typeof id === 'string' ? producoes.aberta(id) : null;
+    if (!aberta) return null;
+    passarOFogo(id);
+    const j = producoes.naJanela(id);
+    const fogo = j ? fogoDasArtes(j) : () => null;
+    const roteiro = producoes.roteiroDe(id);
+    return {
+      ...aberta,
+      artesDoCard: (j?.artes ?? []).map((a) => ({ nome: a.nome, itens: a.itens, feita: a.feita, fogo: fogo(a) })),
+      // a versão do Roteiro, pela regra de versaoDoRoteiro (src/modelo/versoes.ts): V1 sem versão nova
+      roteiro: roteiro ? { versao: Math.max(Number(roteiro.meta.versao) || 1, roteiro.meta.v2De ? 2 : 1), em: roteiro.criadoEm } : null,
+      designersAtivos: pessoas.designersAtivos().map((d) => d.nome),
+      atracoes: (await atracoesDoCadastro()).map((a) => a.nome),
+    };
+  }
+
+  /** O fogo da arte pelo card aberto (#160): como o da janela do After (fogoDaArte, com ou sem Roteiro), com a origem
+      PROMeiro. */
+  function fogoNaTela({ producao, arte, nivel = null }, { email, designer, aTela }) {
+    if (!designer) return { status: 403, corpo: { erro: SEM_LIGACAO } };
+    if (nivel !== null && ![1, 2, 3].includes(nivel)) return { status: 400, corpo: { erro: 'O nível do fogo é 1, 2 ou 3.' } };
+    const j = typeof producao === 'string' ? producoes.naJanela(producao.trim().slice(0, 100)) : null;
+    if (!j) return { status: 404, corpo: { erro: 'Essa Produção não está mais na tela.' } };
+    if (j.producao.etapa === 'entregue') return { status: 409, corpo: { erro: 'A Produção já está Entregue: o fogo das artes não muda mais.' } };
+    const a = typeof arte === 'string' ? j.artes.find((x) => chaveDeArte(x.nome) === chaveDeArte(arte)) : null;
+    if (!a) return { status: 404, corpo: { erro: 'Essa arte não está na Produção.' } };
+    const n = fogoDaArte(j, a.nome, { nivel });
+    if (!n) return { status: 404, corpo: { erro: 'Essa Produção não está mais na tela.' } };
+    producoes.doPROMeiro(j.producao.id, [{ tipo: 'fogo', campo: a.nome, antes: String(n.antes), depois: String(n.depois) }], { email, nome: designer.nome });
+    return { status: 200, corpo: { feito: { eventos: ['fogo'], trello: [] }, producao: aTela(j.producao.id) } };
+  }
+
   /**
    * A Produção como a janela do After mostra (#146): a praça e a etapa, a claquete, a versão da chamada só como o código
    * (a do card da tela de produções), o "pronto para abrir", os designers (e se o da chave está entre eles) e as artes
-   * (`producoes.naJanela`), cada uma com o fogo da complexidade que o editor marcou no Roteiro ligado (BAIXA sem marca;
-   * null sem Roteiro), se está feita e quem marcou, e a contagem. null sem a Produção (ou arquivada).
+   * (`producoes.naJanela`), cada uma com o fogo da complexidade (fogoDasArtes: o do Roteiro ligado ou, sem ele, o da
+   * Produção; BAIXA sem marca), se está feita e quem marcou, e a contagem. null sem a Produção (ou arquivada).
    */
   async function producaoDaJanela(id, padeiro) {
+    passarOFogo(id);
     const j = producoes.naJanela(id);
     if (!j) return null;
-    const { producao: p, meta, artes } = j;
+    const { producao: p, artes } = j;
     const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
     const card = comAsVersoes(producoes.umaNaTela(p.id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
     const nome = padeiro.designer ? designerDoPadeiro(padeiro).nome : '';
-    const complexidade = meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
     // o filme (como o `fil` da lista): o do cadastro ou só o título
     const ehFilme = !!(p.filmeId || p.filmeTitulo);
-    const fogo = (a) => (p.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
+    const fogo = fogoDasArtes(j);
     return {
       id: p.id,
       praca: p.praca,
@@ -3812,9 +3954,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    *   ocupa) e `feitaEm`, a hora (a atrasada segue a regra do conflito: fica no histórico, e nada vai ao Trello por
    *   ela). Respondem { feito: { eventos, trello }, producao } (a Produção como a janela mostra); o 409 traz a
    *   `producao` também.
-   *   - POST /api/padeiro/fogo { acao, feitaEm, producao, arte, nivel? }: o fogo da arte no Roteiro ligado, para
-   *     qualquer designer (fogoNoRoteiro): com `nivel` (1, 2 ou 3), fica nesse nível (à prova de repetição); sem ele,
-   *     sobe um nível (1, 2, 3 e volta). O `nivel` que não é 1, 2 ou 3, 400; a Entregue e a sem Roteiro, 409; a arte que
+   *   - POST /api/padeiro/fogo { acao, feitaEm, producao, arte, nivel? }: o fogo da arte, no Roteiro ligado ou, sem
+   *     ele, na Produção (#174), para qualquer designer (fogoDaArte): com `nivel` (1, 2 ou 3), fica nesse nível (à prova
+   *     de repetição); sem ele, sobe um nível (1, 2, 3 e volta). O `nivel` que não é 1, 2 ou 3, 400; a Entregue, 409; a arte que
    *     não está na Produção, 404. Gravada a meta, o identificador fica ocupado mesmo se o evento falhar (a nova
    *     tentativa responde { repetido: true } e não muda o nível de novo)
    *   - POST /api/padeiro/entregar { acao, feitaEm, producao }: etapaDaProducao.entregarPeloPadeiro (a Entregue, 409)
@@ -3930,7 +4072,6 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         return json(res, status, comAProducao ? { erro, producao: await producaoDaJanela(id, p) } : { erro });
       };
       if (j.producao.etapa === 'entregue') return recusar(409, 'A Produção já está Entregue: o fogo das artes não muda mais.');
-      if (!j.producao.roteiroId) return recusar(409, 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.');
       const arte = j.artes.find((a) => chaveDeArte(a.nome) === chaveDeArte(corpo.arte));
       if (!arte) return recusar(404, 'Essa arte não está na Produção.', false);
       const designer = designerDoPadeiro(p);
@@ -3938,12 +4079,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       let gravouAMeta = false;
       try {
         const gravar = !producoes.atrasado(id, { tipo: 'fogo', campo: arte.nome, quando: pedido.quando });
-        const nivel = fogoNoRoteiro(j.producao.roteiroId, chaveDeArte(arte.nome), { nivel: nivelPedido, gravar });
-        if (!nivel) return recusar(409, 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.');
+        const nivel = fogoDaArte(j, arte.nome, { nivel: nivelPedido, gravar });
+        if (!nivel) return recusar(404, 'Essa Produção não está mais aberta no PROMeiro.', false);
         gravouAMeta = gravar;
         producoes.doPadeiro(id, [{ tipo: 'fogo', campo: arte.nome, antes: String(nivel.antes), depois: String(nivel.depois) }], { id: `padeiro:${p.id}`, nome: designer.nome }, pedido.quando, { acao: pedido.acao });
       } catch (e) {
-        if (gravouAMeta) console.warn(`[padeiro] o fogo de ${j.producao.claquete} foi gravado no Roteiro, mas o evento não: ${e instanceof Error ? e.message : e}`);
+        if (gravouAMeta) console.warn(`[padeiro] o fogo de ${j.producao.claquete} foi gravado, mas o evento não: ${e instanceof Error ? e.message : e}`);
         else padeiros.soltarAviso(p.id, pedido.acao);
         throw e;
       }

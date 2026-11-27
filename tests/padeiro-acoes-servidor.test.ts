@@ -193,7 +193,7 @@ describe('o fogo da arte pela janela do After', () => {
     expect(ydocDoShow()).toEqual({ claquete: 'Show da Noite 20/12 SP', complexidade: { HOJE: 3, DOMINGO: 2, [chaveDeArte('AMANHÃ')]: 2 }, redator: 'Redatora' });
   });
 
-  it('não muda depois de Entregue (409); sem Roteiro ligado, 409; a arte que não está na Produção, 404; nada muda', async () => {
+  it('não muda depois de Entregue (409); a arte que não está na Produção, 404; nada muda', async () => {
     const { agir, idDe, linhaDoTempo, db } = await preparado();
     const jogo = idDe('Jogo Final');
     const entregue = await agir('fogo', { producao: jogo, arte: 'PLACAR' });
@@ -201,11 +201,27 @@ describe('o fogo da arte pela janela do After', () => {
     expect(entregue.corpo.erro).toMatch(/Entregue/);
     expect(entregue.corpo.producao).toMatchObject({ etapa: 'entregue' });
     expect(JSON.parse((db.prepare("SELECT meta FROM roteiros WHERE id = 'roteiro-jogo'").get() as { meta: string }).meta).complexidade).toBeUndefined();
-    expect((await agir('fogo', { producao: idDe('Festa na Praça'), arte: 'LETTERING' })).status).toBe(409);
     expect((await agir('fogo', { producao: idDe('Show da Noite'), arte: 'NÃO EXISTE' })).status).toBe(404);
     expect((await agir('fogo', { producao: 'nao-existe', arte: 'HOJE' })).status).toBe(404);
     expect((await agir('fogo', { producao: idDe('Show da Noite') })).status).toBe(400);
     expect(await linhaDoTempo(jogo)).toEqual([]);
+  });
+
+  it('sem Roteiro ligado (#174): sobe o nível do mesmo jeito, guardado na Produção, com o evento; a janela mostra o novo', async () => {
+    const { agir, idDe, db, linhaDoTempo, resumo } = await preparado();
+    const festa = idDe('Festa na Praça');
+    const fogoDe = (r: { corpo: Resposta }, nome: string) => r.corpo.producao!.artes.find((a) => a.nome === nome)!.fogo;
+    const r = await agir('fogo', { producao: festa, arte: 'LETTERING' });
+    expect(r.status).toBe(200);
+    expect(r.corpo.feito).toEqual({ eventos: ['fogo'], trello: [] });
+    expect(fogoDe(r, 'LETTERING')).toBe(2);
+    expect(fogoDe(r, 'CARTÃO')).toBe(1);
+    expect(fogoDe(await agir('fogo', { producao: festa, arte: 'LETTERING', nivel: 3 }), 'LETTERING')).toBe(3);
+    expect(JSON.parse((db.prepare('SELECT fogo_das_artes FROM producoes WHERE id = ?').get(festa) as { fogo_das_artes: string }).fogo_das_artes)).toEqual({ LETTERING: 3 });
+    expect(resumo(await linhaDoTempo(festa)).filter((e) => e[0] === 'fogo')).toEqual([
+      ['fogo', '1', '2', 'Ana Souza', 'Padeiro'],
+      ['fogo', '2', '3', 'Ana Souza', 'Padeiro'],
+    ]);
   });
 
   it('a ação repetida (o mesmo identificador) não sobe de novo; a atrasada (mais velha que a última mudança do fogo da arte) fica só no histórico', async () => {

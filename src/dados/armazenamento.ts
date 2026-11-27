@@ -1003,6 +1003,16 @@ export const ordemDasPracas = (): string[] => ordemDe(minhasPreferencias);
 /** A pessoa arrumou as praças: como os recolhidos, vale na hora e o servidor guarda, por pessoa, para qualquer aparelho. */
 export const lembrarOrdemDasPracas = (pracas: readonly string[]): Promise<boolean> => guardarPreferencia(CHAVE_DA_ORDEM, [...pracas]);
 
+/** A forma de ver a agenda de filmes da aba Filmes (#169): por data de exibição (sem escolha) ou por sessão. */
+export const formaDaAgendaDeFilmes = (): FormaDaAgenda => formaDaAgenda(minhasPreferencias);
+
+/** A pessoa trocou a forma de ver a agenda de filmes: vale na hora e o servidor guarda, por pessoa, para qualquer
+    aparelho. Devolve se ficou guardada. */
+export const lembrarFormaDaAgendaDeFilmes = (forma: FormaDaAgenda): Promise<boolean> => guardarPreferencia(CHAVE_DA_AGENDA_DE_FILMES, forma);
+
+/** A agenda de filmes (#169): os filmes com exibição perto de hoje, com todas as exibições, o pôster e a Produção. */
+export const lerAgendaDeFilmes = () => pedir<AgendaDeFilmes>('/api/filmes/agenda');
+
 /** Guarda uma preferência da pessoa: vale na hora (também fora do servidor, até recarregar) e o servidor grava. Devolve
     se ficou guardada; a que não ficou volta à de antes na próxima visita (se nenhuma escolha mais nova passou na frente). */
 async function guardarPreferencia(chave: string, valor: unknown): Promise<boolean> {
@@ -1139,6 +1149,7 @@ import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, JuncaoDeAtracoes, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, ordemDe, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { CHAVE_DA_AGENDA_DE_FILMES, formaDaAgenda, type AgendaDeFilmes, type FormaDaAgenda } from '../filmes/agenda';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {
@@ -1540,8 +1551,39 @@ export const desfazerEtapaDaProducao = (producao: string) =>
 export interface ProducaoAberta extends LinhaDoTempo {
   artes: { nome: string; marcada: boolean }[];
   trello: string | null;
+  /** #160: as artes como a janela do After mostra (a de vários tipos é uma só), com o fogo (o do Roteiro ou, sem ele, o da Produção, #174) */
+  artesDoCard?: ArteDoCard[];
+  /** #160: a versão do Roteiro ligado (V1 sem versão nova) e quando ele chegou; null sem Roteiro */
+  roteiro?: { versao: number; em: string } | null;
+  /** #160: para escolher no card aberto: os designers ativos e as atrações do cadastro */
+  designersAtivos?: string[];
+  atracoes?: string[];
+}
+/** Uma arte no card aberto (#160): o nome, os itens do checklist dela, se está feita e o fogo (1 a 3, com ou sem Roteiro, #174). */
+export interface ArteDoCard {
+  nome: string;
+  itens: string[];
+  feita: boolean;
+  fogo: 1 | 2 | 3;
 }
 export const lerProducaoAberta = (producao: string) => pedir<ProducaoAberta>(`/api/producoes/aberta?producao=${encodeURIComponent(producao)}`);
+/** O que as ações do card aberto (#160) respondem: o que foi feito, o card como a tela mostra e a Produção aberta. */
+export interface RespostaDoCardAberto {
+  feito: { eventos: string[]; trello: string[] };
+  producao: CardDaProducao | null;
+  aberta: ProducaoAberta | null;
+}
+const noCardAberto = (o: string, corpo: object) => pedir<RespostaDoCardAberto>(`/api/producoes/${o}`, { method: 'POST', body: JSON.stringify(corpo) });
+/** O prazo (#160): o dia (AAAA-MM-DD); vai ao prazo do card no Trello. */
+export const mudarPrazoDaProducao = (producao: string, prazo: string) => noCardAberto('prazo', { producao, prazo });
+/** A atração (#160): o nome no cadastro, ou '' para desligar. */
+export const mudarAtracaoDaProducao = (producao: string, atracao: string) => noCardAberto('atracao', { producao, atracao });
+/** Atribuir (entra) ou tirar um designer (#160): o membro dele entra ou sai do card no Trello. */
+export const mudarDesignerDaProducao = (producao: string, designer: string, entra: boolean) => noCardAberto('designer', { producao, designer, entra });
+/** Marcar, desmarcar, apagar, voltar (o desfazer do apagar) ou incluir uma arte (#160): o checklist do card espelha. */
+export const mudarArteDaProducao = (producao: string, arte: string, acao: 'marcar' | 'desmarcar' | 'apagar' | 'voltar' | 'incluir') => noCardAberto('arte', { producao, arte, acao });
+/** Subir o fogo de uma arte (#160): no Roteiro ligado ou, sem ele, na Produção (#174). */
+export const subirFogoDaProducao = (producao: string, arte: string) => noCardAberto('fogo', { producao, arte });
 /** O pedido da pauta com o filtro pessoal (#99), quando há. */
 const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
   const q = new URLSearchParams(Object.entries({ ...busca, ...(filtro ? { filtro } : {}) }).filter(([, v]) => v)).toString();

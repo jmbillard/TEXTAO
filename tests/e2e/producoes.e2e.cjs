@@ -289,16 +289,44 @@ async function topoPreso(p, largura) {
     assert.ok(Math.abs(b.topo.top - topo) <= 1, `o topo do bloco fica em cima (${b.topo.top} e ${topo})`);
     assert.ok(Math.abs(b.coluna.top - b.topo.bottom) <= 1, 'o nome da coluna fica logo abaixo do topo do bloco');
   }
-  // #159, os cantos com a área rolando: os topos presos são retos (o arredondado é o do bloco e o da coluna, que cortam o
-  // que passa da borda), e o bloco e a coluna não criam rolagem (o topo continua preso)
+  // #159 e #167, os cantos com a área rolando: os topos presos levam o canto arredondado do bloco e da coluna (a quina
+  // não fica pontuda), e o bloco e a coluna cortam sem criar rolagem (o topo continua preso)
   const cantos = await p.locator('.prod-bloco:not(.recolhido)').first().evaluate((b) => {
     const e = (s) => getComputedStyle(b.querySelector(s));
-    return { topo: e('.prod-bloco-topo').borderTopLeftRadius, nome: e('.prod-coluna h3').borderTopLeftRadius, bloco: getComputedStyle(b).overflow, coluna: e('.prod-coluna').overflow, raio: getComputedStyle(b).borderTopLeftRadius };
+    return { topo: e('.prod-bloco-topo').borderTopLeftRadius, nome: e('.prod-coluna h3').borderTopLeftRadius, coluna: e('.prod-coluna').borderTopLeftRadius, bloco: getComputedStyle(b).overflow, corte: e('.prod-coluna').overflow, raio: getComputedStyle(b).borderTopLeftRadius };
   });
-  assert.deepEqual(cantos, { topo: '0px', nome: '0px', bloco: 'clip', coluna: 'clip', raio: '14px' }, 'os cantos certos com a área rolando');
+  assert.deepEqual(cantos, { topo: '13px', nome: '10px', coluna: '10px', bloco: 'clip', corte: 'clip', raio: '14px' }, 'os cantos redondos com a área rolando');
+  // #167: rolada, o "últimos dias" some (a altura fecha), o cabeçalho da coluna baixa e a fenda aparece onde há card
+  // passando por baixo; de volta ao topo, tudo volta
+  await p.waitForTimeout(350);
+  const rolada = await p.evaluate(() => {
+    const a = document.querySelector('.prod-blocos');
+    const recente = document.querySelector('.prod-coluna[data-coluna="entregue"] .prod-recente');
+    const cobertas = [...document.querySelectorAll('.prod-coluna[data-coberta]')];
+    return {
+      marcada: a.hasAttribute('data-rolada'),
+      recente: recente.getBoundingClientRect().height,
+      cabeca: parseFloat(getComputedStyle(document.querySelector('.prod-coluna:not(.fina) h3')).paddingTop),
+      cobertas: cobertas.length,
+      fenda: cobertas.map((c) => getComputedStyle(c.querySelector('h3'), '::after').opacity),
+      semFenda: [...document.querySelectorAll('.prod-coluna:not([data-coberta]) h3')].map((h) => getComputedStyle(h, '::after').opacity),
+    };
+  });
+  assert.ok(rolada.marcada && rolada.recente < 1 && rolada.cabeca === 6, `rolada: o "últimos dias" some e o cabeçalho baixa (${JSON.stringify(rolada)})`);
+  assert.ok(rolada.cobertas > 0 && rolada.fenda.every((o) => o === '1') && rolada.semFenda.every((o) => o === '0'), `a fenda só onde há card por baixo (${JSON.stringify(rolada)})`);
   await capturar(p, `01b-producoes-${largura}-rolada`);
   assert.ok(await p.evaluate(() => scrollY === 0), 'quem rola é a área dos blocos, não a página');
+  // #167: o hover do card é o da agenda: só a borda, sem subir nem sombra
+  const card = p.locator('.prod-card').first();
+  await card.hover();
+  await p.waitForTimeout(250);
+  const hover = await card.evaluate((c) => ({ transform: getComputedStyle(c).transform, sombra: getComputedStyle(c).boxShadow }));
+  assert.deepEqual(hover, { transform: 'none', sombra: 'none' }, 'o hover não levanta o card');
+  await p.mouse.move(2, 2);
   await area.evaluate((a) => (a.scrollTop = 0));
+  await p.waitForTimeout(350);
+  const noTopo = await p.evaluate(() => ({ marcada: document.querySelector('.prod-blocos').hasAttribute('data-rolada'), recente: document.querySelector('.prod-coluna[data-coluna="entregue"] .prod-recente').getBoundingClientRect().height, cobertas: document.querySelectorAll('.prod-coluna[data-coberta]').length }));
+  assert.ok(!noTopo.marcada && noTopo.recente > 10 && noTopo.cobertas === 0, `no topo, o "últimos dias" volta e a fenda some (${JSON.stringify(noTopo)})`);
   await p.setViewportSize({ width: largura, height: 1000 });
 }
 
@@ -330,7 +358,9 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   assert.deepEqual(await contasRecolhido(p, 'INTER'), [0, 0, 0], 'a fechada com o resumo das contagens');
   // a Produzindo vazia é fina; a com card, não
   const larguraDa = (praca, k) => coluna(p, praca, k).evaluate((c) => c.getBoundingClientRect().width);
-  assert.ok((await larguraDa('SP', 'produzindo')) < 50 && (await larguraDa('SP', 'entrada')) > 150, 'a Produzindo vazia fica fina');
+  // #167: só quando falta largura (a 1440 px, com três praças); a 1920 px, com espaço, ela divide com as outras
+  if (largura >= 1920) assert.ok((await larguraDa('SP', 'produzindo')) > 150, 'com espaço, a Produzindo vazia é larga');
+  else assert.ok((await larguraDa('SP', 'produzindo')) < 50 && (await larguraDa('SP', 'entrada')) > 150, 'apertada, a Produzindo vazia fica fina');
   assert.ok((await larguraDa('G5', 'produzindo')) > 100, 'a Produzindo com card, não');
   // as divisórias por dia no Entregue: o Jogo Final, entregue ontem
   assert.deepEqual(await textos(coluna(p, 'G5', 'entregue').locator('.prod-dia-nome')), ['ontem'], 'as divisórias por dia no Entregue');
@@ -444,6 +474,13 @@ async function noCelular(navegador, url, tema, chamadasAoTrello) {
   await versoesNosCards(p, `celular ${nome}`);
   await semRolagemDeLado(p, `celular ${nome}`);
   await capturar(p, `03-producoes-celular-${nome}`);
+  // #167: rolada, no celular (a página rola; o cabeçalho da coluna não fica preso ali)
+  if (CAPTURAS) {
+    await p.evaluate(() => scrollTo(0, 700));
+    await p.waitForTimeout(300);
+    await p.screenshot({ path: join(CAPTURAS, `03b-producoes-celular-${nome}-rolada.png`) });
+    await p.evaluate(() => scrollTo(0, 0));
+  }
   assert.deepEqual(aoTrello, []);
   assert.deepEqual(chamadasAoTrello, []);
   assert.deepEqual(erros, []);
@@ -832,36 +869,39 @@ async function recolherEAbrir(navegador, url, chamadasAoTrello) {
   await p.waitForTimeout(300);
   console.log('ok: recolher: a coluna estreita com a sigla e as contagens, guardada por pessoa (recarregar, outro aparelho); no máximo 3 abertas, a mais antiga fecha deslizando');
 
-  // abrir a Produção: a linha do tempo, as artes do checklist e o link do card no Trello
+  // abrir a Produção (#160: o card aberto no centro): a linha do tempo (fechada, num link), as artes e o link do card
   const novela = cardDe(p, 'Novela Sinfonia');
   await novela.locator('.prod-atracao').click();
   const painel = p.getByRole('dialog');
-  await painel.locator('.prod-aberta-tempo li').first().waitFor();
+  await painel.locator('.pa-arte').first().waitFor();
   assert.equal((await painel.locator('h2').textContent()).trim(), `Novela Sinfonia ${dm(2)} (AH)`);
-  assert.equal((await painel.locator('.prod-aberta-rotulo').textContent()).replace(/\s+/g, ' ').trim(), 'G5 · Entrada');
-  const frases = await textos(painel.locator('.prod-aberta-tempo li'));
-  assert.ok(frases.some((f) => /^Lia Moraes pegou /.test(f)) && frases.some((f) => /^entregue /.test(f)), `a linha do tempo diz o que a Lia fez (${frases.join(' · ')})`);
-  assert.deepEqual(await textos(painel.locator('.prod-aberta-artes .nome')), ['HOJE', 'AMANHÃ']);
-  assert.deepEqual(await textos(painel.locator('.prod-aberta-artes .estado')), ['falta', 'falta']);
-  const link = painel.getByRole('link', { name: /Abrir o card no Trello/ });
+  assert.equal((await painel.locator('.pa-etapa').textContent()).replace(/\s+/g, ' ').trim(), 'G5 · Entrada');
+  assert.equal(await painel.locator('.pa-tempo-lista').count(), 0, 'a linha do tempo começa fechada');
+  await painel.getByRole('button', { name: 'linha do tempo' }).click();
+  const frases = await textos(painel.locator('.pa-tempo-lista li span'));
+  assert.ok(frases.includes('Lia Moraes pegou') && frases.includes('Lia Moraes entregou'), `a linha do tempo diz o que a Lia fez (${frases.join(' · ')})`);
+  assert.deepEqual(await textos(painel.locator('.pa-arte .txt')), ['HOJE', 'AMANHÃ']);
+  assert.equal(await painel.locator('.pa-arte.marcada').count(), 0, 'nenhuma feita');
+  const link = painel.getByRole('link', { name: 'Abrir no Trello' });
   assert.equal(await link.getAttribute('href'), `https://trello.com/c/${card(4)}`);
   assert.equal(await link.getAttribute('target'), '_blank');
   await capturar(p, '15-producoes-aberta');
-  // fecha no Esc, e o foco volta para o card
+  // fecha no Esc (voltando para o card), e o foco volta para o card
   await p.keyboard.press('Escape');
-  assert.equal(await painel.count(), 0);
+  await painel.waitFor({ state: 'detached' });
   await p.waitForFunction(() => document.activeElement?.matches('.prod-card') && document.activeElement.textContent.includes('Novela Sinfonia'));
   // o Enter no card em foco abre de novo; o clique fora fecha
   await p.keyboard.press('Enter');
   await painel.waitFor();
+  await painel.locator('.pa-arte').first().waitFor();
   await p.mouse.click(40, 500);
-  assert.equal(await painel.count(), 0, 'o clique fora fecha');
+  await painel.waitFor({ state: 'detached' });
   // a sem card: sem o link
   await cardDe(p, 'Cozinha de Vó').locator('.prod-claquete').click();
-  await painel.locator('.prod-aberta-sem-card').waitFor();
+  await painel.locator('.pa-detalhe', { hasText: 'sem card no Trello' }).waitFor();
   assert.equal(await painel.getByRole('link').count(), 0);
-  await painel.getByRole('button', { name: 'Fechar' }).click();
-  assert.equal(await painel.count(), 0);
+  await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+  await painel.waitFor({ state: 'detached' });
 
   // o clique num botão do card e o arrasto não abrem a Produção
   await cardDe(p, 'Cozinha de Vó').locator('.prod-mudar').click();
@@ -885,14 +925,14 @@ async function recolherEAbrir(navegador, url, chamadasAoTrello) {
   await celular.p.locator('.prod-bloco').first().waitFor();
   await cardDe(celular.p, 'Novela Sinfonia').locator('.prod-claquete').tap();
   const noCel = celular.p.getByRole('dialog');
-  await noCel.locator('.prod-aberta-tempo li').first().waitFor();
+  await noCel.locator('.pa-arte').first().waitFor();
   await noCel.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)));
   const caixa = await noCel.boundingBox();
   assert.ok(caixa.x <= 1 && Math.abs(caixa.width - 390) <= 1, `no celular, a Produção aberta ocupa a tela (${JSON.stringify(caixa)})`);
   await semRolagemDeLado(celular.p, 'celular com a Produção aberta');
   await capturar(celular.p, '16-producoes-celular-aberta');
-  await noCel.getByRole('button', { name: 'Fechar' }).tap();
-  assert.equal(await noCel.count(), 0);
+  await noCel.getByRole('button', { name: 'Fechar a Produção' }).tap();
+  await noCel.waitFor({ state: 'detached' });
   assert.deepEqual(celular.aoTrello, []);
   assert.deepEqual(celular.erros, []);
   await celular.ctx.close();
@@ -951,13 +991,14 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
   const nome = async () => (await show.locator('.prod-claquete').textContent()).replace(/\s+/g, ' ').trim();
   assert.equal(await nome(), `Show da Noite ${dm(3)} SP`, 'antes: sem código no nome');
   await show.locator('.prod-atracao').click();
-  const aberta = p.locator('.prod-aberta');
+  const aberta = p.locator('.pa');
   await aberta.waitFor();
   const apelido = aberta.locator('.apelido-claquete');
   // #156: sem versão, a Produção aberta não mostra a linha das versões nem as dá; o apelido continua
   assert.equal(await apelido.locator('small', { hasText: 'versões' }).count(), 0, 'a Produção aberta sem a seção das versões');
   assert.equal(await aberta.getByRole('button', { name: /Editar as versões|dar as versões/ }).count(), 0, '"dar as versões" escondido');
-  assert.ok(await apelido.getByRole('button', { name: 'dar um apelido' }).isVisible(), 'o apelido continua na Produção aberta');
+  // #160: o apelido se dá pelo lápis, ao lado da versão
+  assert.ok(await aberta.getByRole('button', { name: /^Dar um apelido/ }).isVisible(), 'o apelido continua na Produção aberta, pelo lápis');
   // as versões à mão guardadas pela rota, como antes (a Produção do card)
   const producao = await show.getAttribute('data-producao');
   const guardar = (versoes) => p.evaluate(async ([id, v]) => (await fetch('/api/apelidos', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ producao: id, versoes: v }) })).status, [producao, versoes]);
@@ -971,7 +1012,7 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
   await aberta.waitFor();
   await aberta.locator('#prod-aberta-titulo .sufixo-versoes').waitFor();
   assert.equal((await aberta.locator('#prod-aberta-titulo').textContent()).replace(/\s+/g, ' ').trim(), `Show da Noite ${dm(3)} SP (PN)`, 'a Produção aberta: o código no fim do nome');
-  assert.equal(await apelido.evaluate((e) => getComputedStyle(e).borderLeftWidth), '0px', 'sem unha');
+  assert.equal(await aberta.locator('.pa-topo').evaluate((e) => getComputedStyle(e).borderLeftWidth), '0px', 'sem unha');
   await capturar(p, '18-producao-aberta-versoes-a-mao');
   // tiradas: o nome volta sem código
   assert.equal(await guardar(''), 200);
@@ -1359,29 +1400,385 @@ async function filmar(navegador, url, db, api) {
   console.log(`ok: o vídeo do movimento em ${VIDEO}`);
 }
 
+/**
+ * #160, o card aberto: a Produção abre no centro (720 px, sobre o véu), crescendo do card clicado, e volta para ele ao
+ * fechar. A versão V1 fica no detalhe (não no título), com o lápis do apelido; "dar as versões" escondido. A linha do
+ * tempo começa fechada e abre e fecha deslizando. A Lia muda a atração (a busca do cadastro), o prazo e os designers
+ * (atribui o Caio e tira de novo): o card da tela muda junto, o Trello recebe a escrita (o due, o membro) e a linha do
+ * tempo ganha o evento. As artes no esquema da janela do After: a bolinha laranja numerada; marcar risca a arte (o
+ * risco se escreve) e marca o item no checklist do card; apagar recolhe a linha e tira o item; "Desfazer" traz a linha e
+ * o item de volta; "+ arte" põe uma no fim. O fogo da Festa (o Roteiro ligado) sobe um nível; a Novela, sem Roteiro,
+ * tem o fogo em todas as artes, também na incluída, e o clique sobe o nível (#174). Nada de unha, nada de
+ * check verde. Claro e escuro no computador; claro e escuro no celular, a tela toda.
+ */
+async function oCardAberto(navegador, url, chamadasAoTrello, db) {
+  // o palco: a Festa e a Novela com as artes de sempre, sem prazo mudado, sem atração escolhida, sem designer
+  db.prepare("UPDATE producoes SET etapa = 'produzindo', designers = '[]', artes_marcadas = '[]', artes_apagadas = '[]', artes_novas = '[]', fogo_das_artes = '{}', atracao = NULL, prazo_em = NULL WHERE claquete LIKE 'Festa na Praça%' OR claquete LIKE 'Novela Sinfonia%'").run();
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+    const festa = cardDe(p, 'Festa na Praça');
+    await festa.waitFor();
+    await calmo(p);
+    chamadasAoTrello.splice(0);
+    const doCard = await festa.boundingBox();
+    // o painel cresce do card (FLIP): a animação dele começa no tamanho do card e termina no dele
+    await p.evaluate(() => {
+      window.__flip = [];
+      const animar = Element.prototype.animate;
+      Element.prototype.animate = function (quadros, op) {
+        if (this.classList.contains('card-aberto')) window.__flip.push(quadros.map((q) => q.transform ?? ''));
+        return animar.call(this, quadros, op);
+      };
+    });
+    await festa.locator('.prod-atracao').click();
+    const painel = p.getByRole('dialog');
+    await painel.waitFor();
+    // (no modo estrito do React o efeito roda duas vezes: vale a última animação, a que fica)
+    const flip = await p.evaluate(() => window.__flip);
+    const abriu = flip.length;
+    const escala = Number(/scale\(([\d.]+)/.exec(flip.at(-1)?.[0] ?? '')?.[1]);
+    assert.ok(Math.abs(escala - doCard.width / 720) < 0.02 && flip.at(-1)[1] === 'none', `o painel nasce do card (${JSON.stringify(flip)}; o card tem ${doCard.width}px)`);
+    await painel.locator('.pa-arte').first().waitFor();
+    await painel.evaluate((e) => Promise.all(e.getAnimations({ subtree: true }).filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished)));
+    const caixa = await painel.boundingBox();
+    assert.ok(Math.abs(caixa.width - 720) <= 1 && Math.abs(caixa.x + caixa.width / 2 - 720) <= 1, `${nome}: o painel de 720 px no centro (${JSON.stringify(caixa)})`);
+    // a versão no detalhe, não no título; o lápis do apelido; "dar as versões" escondido
+    assert.equal((await painel.locator('.pa-versao').textContent()).trim(), 'V1');
+    assert.ok(!(await painel.locator('h2').textContent()).includes('V1'), 'a versão não vai para o título');
+    assert.equal(await painel.getByRole('button', { name: /dar as versões/ }).count(), 0, '"dar as versões" escondido');
+    await painel.getByRole('button', { name: /^Dar um apelido/ }).click();
+    await painel.getByRole('textbox', { name: 'Apelido da claquete' }).waitFor();
+    await painel.getByRole('button', { name: 'cancelar' }).click();
+    // as artes: a bolinha laranja numerada e o fogo (o Roteiro ligado)
+    assert.deepEqual(await textos(painel.locator('.pa-arte .num')), ['1']);
+    const bolinha = await painel.locator('.pa-arte .b').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+    const laranja = await p.evaluate(() => { const d = document.createElement('i'); d.style.color = 'var(--ultra)'; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; });
+    assert.equal(bolinha, laranja, 'a bolinha é laranja');
+    await painel.locator('.pa-arte .cx').first().waitFor();
+    // a linha do tempo começa fechada
+    assert.equal(await painel.locator('.pa-tempo-lista, .pa-tempo .pa-nada').count(), 0, 'a linha do tempo começa fechada');
+    if (tema === 'light') {
+      // a atração: a busca do cadastro
+      await painel.getByRole('button', { name: 'Atração' }).click();
+      await painel.getByRole('textbox', { name: 'Buscar atração' }).fill('dom');
+      await painel.getByRole('option', { name: 'Domingo Show' }).click();
+      await painel.locator('.pa-valor', { hasText: 'Domingo Show' }).waitFor();
+      await festa.locator('.prod-atracao', { hasText: 'Domingo Show' }).waitFor();
+      // o prazo: o dia de daqui a 5 dias (pulando o domingo)
+      await painel.getByRole('button', { name: 'Prazo' }).click();
+      const dia = painel.locator('.pa-datas .menu-item').nth(4);
+      const rotulo = (await dia.textContent()).replace(/^\D+/, '');
+      await dia.click();
+      await painel.locator('.pa-valor', { hasText: rotulo }).waitFor();
+      await festa.locator('.prod-prazo', { hasText: rotulo }).waitFor();
+      // o designer: atribuir o Caio e tirar de novo
+      await painel.getByRole('button', { name: 'Atribuir um designer' }).click();
+      await painel.locator('.pa-menu .menu-item', { hasText: 'Caio Prates' }).click();
+      await painel.locator('.pa-chip', { hasText: 'Caio' }).waitFor();
+      await p.waitForTimeout(350);
+      await capturar(p, `20-card-aberto-${nome}-campos`);
+      await painel.getByRole('button', { name: 'Tirar Caio Prates' }).click();
+      await painel.locator('.pa-chip', { hasText: 'Caio' }).waitFor({ state: 'detached' });
+      // o fogo sobe um nível
+      await painel.locator('.pa-arte .cx').first().click();
+      await painel.locator('.pa-arte .cx .fogo.n2').first().waitFor();
+      // a linha do tempo abre (deslizando) com o que a Lia fez
+      await painel.getByRole('button', { name: 'linha do tempo' }).click();
+      const tempo = painel.locator('.pa-tempo > .vaga-y');
+      assert.ok(await tempo.evaluate((e) => e.classList.contains('entrando')), 'a linha do tempo abre deslizando');
+      const frases = await textos(painel.locator('.pa-tempo-lista li span'));
+      for (const f of ['Lia Moraes ligou a atração Domingo Show', 'Lia Moraes atribuiu Caio Prates', 'Lia Moraes tirou Caio Prates']) assert.ok(frases.includes(f), `a linha do tempo diz "${f}" (${frases.join(' · ')})`);
+      assert.ok(frases.some((f) => f.startsWith('Lia Moraes mudou o prazo para ')) && frases.some((f) => /^Lia Moraes mudou o fogo de HOJE para média$/.test(f)), `o prazo e o fogo na linha do tempo (${frases.join(' · ')})`);
+      await p.waitForTimeout(350);
+      await capturar(p, `21-card-aberto-${nome}-linha-do-tempo`);
+      await painel.getByRole('button', { name: 'linha do tempo' }).click();
+      await painel.locator('.pa-tempo-lista').waitFor({ state: 'detached' });
+      const escritas = chamadasAoTrello.filter((c) => !c.startsWith('GET'));
+      assert.ok(escritas.some((c) => c.startsWith(`PUT /cards/${card(2)} ?due=`) && c.endsWith('T21:00:00.000Z')), `o prazo vai ao Trello (${escritas.join(' | ')})`);
+      assert.ok(escritas.includes(`POST /cards/${card(2)}/idMembers ?value=membroCaio`) && escritas.includes(`DELETE /cards/${card(2)}/idMembers/membroCaio`), `o Caio entra e sai do card (${escritas.join(' | ')})`);
+    }
+    await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+    // volta para o card: a animação ao contrário, que termina no tamanho do card
+    await p.waitForFunction((n) => window.__flip.length > n, abriu);
+    const volta = await p.evaluate(() => window.__flip.at(-1));
+    assert.ok(volta[0] === 'none' && /scale/.test(volta[1]), `o painel volta para o card (${JSON.stringify(volta)})`);
+    await painel.waitFor({ state: 'detached' });
+    await p.waitForFunction(() => document.activeElement?.matches('.prod-card') && document.activeElement.textContent.includes('Festa na Praça'));
+
+    // a Novela: marcar, apagar, desfazer e "+ arte", com o checklist do card espelhando
+    chamadasAoTrello.splice(0);
+    const novela = cardDe(p, 'Novela Sinfonia');
+    await novela.locator('.prod-atracao').click();
+    await painel.locator('.pa-arte').first().waitFor();
+    assert.deepEqual(await textos(painel.locator('.pa-arte .txt')), tema === 'light' ? ['HOJE', 'AMANHÃ'] : ['HOJE', 'AMANHÃ', 'VINHETA 5"']);
+    // #174: a Novela não tem Roteiro, e toda arte tem o fogo do mesmo jeito (começa na vela)
+    const fogos = () => painel.locator('.pa-arte').evaluateAll((l) => l.map((e) => e.querySelector('.cx .fogo')?.getAttribute('class') ?? 'sem fogo'));
+    assert.deepEqual(await fogos(), tema === 'light' ? ['fogo n1', 'fogo n1'] : ['fogo n1', 'fogo n2', 'fogo n1'], `${nome}: o fogo em todas as artes da Novela, sem Roteiro`);
+    if (tema === 'light') {
+      await painel.locator('.pa-arte', { hasText: 'HOJE' }).locator('.arte-linha').click();
+      await painel.locator('.pa-arte.marcada .riscado-mao').waitFor();
+      assert.equal((await painel.locator('.pa-parte h3 small').textContent()).trim(), '1 de 2 feitas');
+      await novela.locator('.prod-artes', { hasText: '1 de 2 artes' }).waitFor();
+      // apagar: a linha recolhe; o "Desfazer" traz de volta
+      await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).hover();
+      await painel.getByRole('button', { name: 'Apagar AMANHÃ' }).click();
+      await painel.locator('.vaga-y.saindo .pa-arte', { hasText: 'AMANHÃ' }).waitFor();
+      await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).waitFor({ state: 'detached' });
+      await painel.locator('.pa-desfazer', { hasText: 'Apagou AMANHÃ' }).waitFor();
+      await capturar(p, `22-card-aberto-${nome}-apagou`);
+      await painel.locator('.pa-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+      await painel.locator('.vaga-y.entrando .pa-arte', { hasText: 'AMANHÃ' }).waitFor();
+      await novela.locator('.prod-artes', { hasText: '1 de 2 artes' }).waitFor();
+      // "+ arte"
+      await painel.getByRole('button', { name: '+ arte' }).click();
+      await painel.getByRole('textbox', { name: 'O nome da arte nova' }).fill('vinheta 5"');
+      await p.keyboard.press('Enter');
+      await painel.locator('.pa-arte', { hasText: 'VINHETA 5"' }).waitFor();
+      await novela.locator('.prod-artes', { hasText: '1 de 3 artes' }).waitFor();
+      // #174: a arte nova também tem fogo; o clique no da AMANHÃ sobe um nível, guardado na Produção
+      await painel.locator('.pa-arte', { hasText: 'VINHETA 5"' }).locator('.cx .fogo.n1').waitFor();
+      await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).locator('.cx').click();
+      await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).locator('.cx .fogo.n2').waitFor();
+      await p.waitForTimeout(300);
+      assert.deepEqual(JSON.parse(db.prepare("SELECT fogo_das_artes FROM producoes WHERE claquete LIKE 'Novela Sinfonia%'").get().fogo_das_artes), { AMANHA: 2 }, 'o fogo da Novela fica na Produção');
+      const escritas = chamadasAoTrello.filter((c) => !c.startsWith('GET'));
+      assert.deepEqual(
+        escritas.map((c) => c.replace(/item\d+/, 'item')),
+        [`PUT /cards/${card(4)}/checkItem/item ?state=complete`, `DELETE /checklists/lista-${card(4)}/checkItems/item`, `POST /checklists/lista-${card(4)}/checkItems ?name=AMANHÃ&pos=bottom`, `POST /checklists/lista-${card(4)}/checkItems ?name=VINHETA 5"&pos=bottom`],
+        'o checklist do card espelha: marcar, apagar, desfazer e incluir',
+      );
+      assert.ok(chamadasAoTrello.filter((c) => c.startsWith('GET')).every((c) => new URL(c.slice(4)).pathname === `/1/cards/${card(4)}/checklists`), 'a única leitura é o checklist do card que muda');
+    }
+    await capturar(p, `23-card-aberto-${nome}-artes`);
+    // nada de unha nem de check verde
+    const unhas = await painel.evaluate((raiz) => [...raiz.querySelectorAll('*')].filter((e) => parseFloat(getComputedStyle(e).borderLeftWidth) > 1 || /inset \d{2,}px 0/.test(getComputedStyle(e).boxShadow)).map((e) => e.className));
+    assert.deepEqual(unhas, [], 'nada de unha');
+    const verdes = await painel.evaluate((raiz) =>
+      [...raiz.querySelectorAll('*')].filter((e) => {
+        const [r, g, b] = (getComputedStyle(e).backgroundColor.match(/\d+(\.\d+)?/g) ?? [0, 0, 0]).map(Number);
+        const [cr, cg, cb] = (getComputedStyle(e).color.match(/\d+(\.\d+)?/g) ?? [0, 0, 0]).map(Number);
+        return (g > r + 40 && g > b + 40) || (e.closest('.b') && cg > cr + 40 && cg > cb + 40);
+      }).map((e) => e.className),
+    );
+    assert.deepEqual(verdes, [], 'nada de check verde');
+    await p.keyboard.press('Escape');
+    await painel.waitFor({ state: 'detached' });
+    await semRolagemDeLado(p, `card aberto ${nome}`);
+    assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  }
+  // o celular: a tela toda, claro e escuro
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: tema });
+    await cardDe(cel.p, 'Festa na Praça').locator('.prod-claquete').tap();
+    const painel = cel.p.getByRole('dialog');
+    await painel.locator('.pa-arte').first().waitFor();
+    await painel.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)));
+    const caixa = await painel.boundingBox();
+    assert.ok(caixa.x <= 1 && Math.abs(caixa.width - 390) <= 1, `celular ${nome}: a tela toda (${JSON.stringify(caixa)})`);
+    await semRolagemDeLado(cel.p, `celular ${nome} com o card aberto`);
+    const fechar = await painel.getByRole('button', { name: 'Fechar a Produção' }).boundingBox();
+    assert.ok(fechar.width >= 44 && fechar.height >= 44, 'o X no tamanho do dedo');
+    await painel.getByRole('button', { name: 'linha do tempo' }).tap();
+    await painel.locator('.pa-tempo-lista li').first().waitFor();
+    await cel.p.waitForTimeout(400);
+    if (CAPTURAS) await painel.screenshot({ path: join(CAPTURAS, `24-card-aberto-celular-${nome}.png`) });
+    await painel.getByRole('button', { name: 'Fechar a Produção' }).tap();
+    await painel.waitFor({ state: 'detached' });
+    assert.deepEqual(cel.erros, []);
+    await cel.ctx.close();
+  }
+  console.log('ok: o card aberto (#160): no centro, crescendo do card e voltando; a versão no detalhe; a linha do tempo fechada; atração, prazo e designers vão ao Trello e à linha do tempo; marcar, apagar, desfazer e "+ arte" no checklist; o fogo; sem unha e sem verde; no celular, a tela toda');
+}
+
+/** #160: o vídeo do card aberto (VIDEO=pasta): abrir crescendo do card, a linha do tempo abrindo, riscar, apagar e
+    desfazer, o fogo, e a volta para o card. */
+async function filmarOCardAberto(navegador, url, db) {
+  if (!VIDEO) return;
+  mkdirSync(VIDEO, { recursive: true });
+  const { renameSync } = require('node:fs');
+  db.prepare("UPDATE producoes SET artes_marcadas = '[]', artes_apagadas = '[]', artes_novas = '[]' WHERE claquete LIKE 'Novela Sinfonia%'").run();
+  const ctx = await navegador.newContext({
+    extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA },
+    viewport: { width: 1440, height: 860 },
+    recordVideo: { dir: VIDEO, size: { width: 1440, height: 860 } },
+    colorScheme: 'light',
+  });
+  await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(LIA), url }]);
+  await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+  await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+  const p = await ctx.newPage();
+  await p.goto(`${url}#/designer/producoes`);
+  await cardDe(p, 'Novela Sinfonia').waitFor();
+  await p.waitForTimeout(1200);
+  const painel = p.getByRole('dialog');
+  // abrir a Festa (cresce do card), o fogo, a linha do tempo, fechar (volta para o card)
+  await cardDe(p, 'Festa na Praça').locator('.prod-atracao').click();
+  await p.waitForTimeout(900);
+  await painel.locator('.pa-arte .cx').first().click();
+  await p.waitForTimeout(900);
+  await painel.getByRole('button', { name: 'linha do tempo' }).click();
+  await p.waitForTimeout(1100);
+  await painel.getByRole('button', { name: 'linha do tempo' }).click();
+  await p.waitForTimeout(900);
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(900);
+  // a Novela: riscar, apagar, desfazer, voltar a fazer
+  await cardDe(p, 'Novela Sinfonia').locator('.prod-atracao').click();
+  await p.waitForTimeout(900);
+  await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).locator('.arte-linha').click();
+  await p.waitForTimeout(1200);
+  await painel.locator('.pa-arte', { hasText: 'HOJE' }).hover();
+  await p.waitForTimeout(300);
+  await painel.getByRole('button', { name: 'Apagar HOJE' }).click();
+  await p.waitForTimeout(1200);
+  await painel.locator('.pa-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+  await p.waitForTimeout(1200);
+  await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).locator('.arte-linha').click();
+  await p.waitForTimeout(900);
+  await painel.getByRole('button', { name: 'Prazo' }).click();
+  await p.waitForTimeout(700);
+  await painel.locator('.pa-datas .menu-item').nth(3).click();
+  await p.waitForTimeout(900);
+  await p.mouse.click(60, 600);
+  await p.waitForTimeout(1200);
+  const video = p.video();
+  await ctx.close();
+  renameSync(await video.path(), join(VIDEO, 'card-aberto.webm'));
+  console.log(`ok: o vídeo do card aberto em ${VIDEO}`);
+}
+
+/**
+ * #167: a Produzindo vazia só fica fina quando falta largura na praça. A 1920 px com duas praças abertas (o RJ e o SP),
+ * ela é larga, com o "nada aqui" à mão; a 1280 px com três, fina; e a troca desliza quando a janela muda de tamanho.
+ */
+async function produzindoComEspaco(navegador, url, db, api) {
+  db.prepare("UPDATE producoes SET etapa = 'entrada', designers = '[]' WHERE claquete LIKE 'Festa na Praça%' OR claquete LIKE 'Show da Noite%'").run();
+  const preferir = (recolhidos) => fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ 'producoes.recolhidos': recolhidos, 'producoes.ordem': [] }) });
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    await preferir(['G5', 'INTER']);
+    const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1920, height: 1000 }, colorScheme: tema });
+    await p.locator('.prod-bloco').first().waitFor();
+    await quieta(p);
+    const largura = (praca) => coluna(p, praca, 'produzindo').evaluate((c) => ({ w: c.getBoundingClientRect().width, fina: c.classList.contains('fina'), nada: c.querySelector('.prod-nada') ? getComputedStyle(c.querySelector('.prod-nada')).display : '' }));
+    const larga = await largura('RJ');
+    assert.ok(!larga.fina && larga.w > 150 && larga.nada !== 'none', `1920 px, duas praças: a Produzindo vazia larga, com o "nada aqui" (${JSON.stringify(larga)})`);
+    await capturar(p, `30-producoes-1920-duas-pracas-${nome}`);
+    // a janela encolhe: a Produzindo vazia fica fina, deslizando
+    await gravarMovimento(p);
+    await p.setViewportSize({ width: 1100, height: 1000 });
+    await p.waitForFunction(() => document.querySelector('.prod-bloco[data-praca="RJ"] .prod-coluna[data-coluna="produzindo"]').classList.contains('fina'));
+    assert.ok((await movimento(p)).includes('transição grid-template-columns prod-colunas fina'), 'a troca de larga para fina desliza');
+    await ctx.close();
+    assert.deepEqual(erros, []);
+    await preferir(['INTER']);
+    const tres = await abrir(navegador, url, { viewport: { width: 1280, height: 1000 }, colorScheme: tema });
+    await tres.p.locator('.prod-bloco').first().waitFor();
+    await quieta(tres.p);
+    const fina = await coluna(tres.p, 'RJ', 'produzindo').evaluate((c) => ({ w: c.getBoundingClientRect().width, fina: c.classList.contains('fina') }));
+    assert.ok(fina.fina && fina.w < 50, `1280 px, três praças: a Produzindo vazia fina (${JSON.stringify(fina)})`);
+    await capturar(tres.p, `31-producoes-1280-tres-pracas-${nome}`);
+    assert.deepEqual(tres.erros, []);
+    await tres.ctx.close();
+  }
+  await preferir([]);
+  console.log('ok: a Produzindo vazia só fica fina quando falta largura (1920 px com duas praças: larga; 1280 px com três: fina), deslizando');
+}
+
+/** #167: o vídeo do acabamento (VIDEO=pasta): o hover dos cards (só a borda), a área rolando (o "últimos dias" some,
+    o cabeçalho baixa, a fenda aparece) e voltando, e a janela que alarga (a Produzindo vazia se abre). */
+async function filmarOAcabamento(navegador, url, api) {
+  if (!VIDEO) return;
+  mkdirSync(VIDEO, { recursive: true });
+  const { renameSync } = require('node:fs');
+  await fetch(`${api}/eu/preferencias`, { method: 'PUT', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ 'producoes.recolhidos': [], 'producoes.ordem': [] }) });
+  for (const tema of ['light', 'dark']) {
+    const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, viewport: { width: 1440, height: 560 }, recordVideo: { dir: VIDEO, size: { width: 1440, height: 560 } }, colorScheme: tema });
+    await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(LIA), url }]);
+    await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
+    await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
+    const p = await ctx.newPage();
+    await p.goto(`${url}#/designer/producoes`);
+    await p.locator('.prod-card').first().waitFor();
+    await p.waitForTimeout(1000);
+    for (const c of ['Festa na Praça', 'Show da Noite', 'Novela Sinfonia']) {
+      await cardDe(p, c).locator('.prod-atracao').hover();
+      await p.waitForTimeout(500);
+    }
+    await p.mouse.move(700, 300);
+    for (let y = 0; y <= 360; y += 20) {
+      await p.mouse.wheel(0, 20);
+      await p.waitForTimeout(40);
+    }
+    await p.waitForTimeout(900);
+    for (let y = 0; y <= 380; y += 20) {
+      await p.mouse.wheel(0, -20);
+      await p.waitForTimeout(40);
+    }
+    await p.waitForTimeout(900);
+    await p.setViewportSize({ width: 1440, height: 560 });
+    const video = p.video();
+    await ctx.close();
+    renameSync(await video.path(), join(VIDEO, `acabamento-${tema === 'dark' ? 'escuro' : 'claro'}.webm`));
+  }
+  console.log(`ok: o vídeo do acabamento em ${VIDEO}`);
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
   // o cadastro de designers (fictício): a Lia, com o e-mail e o id do membro no Trello
-  const DESIGNERS = [{ id: 'recDesignerE2e', fields: { designer: 'Lia Moraes', email: LIA, designer_ID: 'membroLia', status: 'ativo' } }];
-  const teable = teableFalso({ ARTE_producao: 'arte_e2e', designers: 'designers_e2e' }, { registros: { ARTE_producao: ARTE, designers: DESIGNERS } });
+  // #160: o Caio (fictício), para atribuir no card aberto; e as atrações do cadastro, para a busca
+  const DESIGNERS = [
+    { id: 'recDesignerE2e', fields: { designer: 'Lia Moraes', email: LIA, designer_ID: 'membroLia', status: 'ativo' } },
+    { id: 'recDesignerCaioE2e', fields: { designer: 'Caio Prates', email: 'caio.prates@exemplo.com', designer_ID: 'membroCaio', status: 'ativo' } },
+  ];
+  const ATRACOES = [
+    { id: 'recAtrE2e1', fields: { atracao: 'Domingo Show', categoria: 'Variedades' } },
+    { id: 'recAtrE2e2', fields: { atracao: 'Festa na Praça', categoria: 'Shows' } },
+  ];
+  const teable = teableFalso({ ARTE_producao: 'arte_e2e', designers: 'designers_e2e', atracoes: 'atracoes_e2e' }, { registros: { ARTE_producao: ARTE, designers: DESIGNERS, atracoes: ATRACOES } });
+  const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
   // o Trello de mentira só aceita escrita nos cards (#110): o que o servidor pede fica anotado; a leitura falha; o card
   // do Show da Noite recusa (para a tela desfazer)
   const chamadasAoTrello = [];
   // #112: o Trello de mentira também recusa tudo quando o teste pede (o desfazer recusado)
   const trelloFalso = { recusar: false };
+  // #160: o checklist das artes de cada card (lido só pelo card aberto, no card que muda), com os itens da produção da arte
+  const checklists = new Map();
+  let nItem = 0;
+  const itensDe = (id) => {
+    if (!checklists.has(id)) checklists.set(id, String(ARTE.find((l) => l.fields.card_ID === id)?.fields.artes ?? '').split('|').map((a) => a.trim()).filter(Boolean).map((name) => ({ id: `item${++nItem}`, name, state: 'incomplete' })));
+    return checklists.get(id);
+  };
   const buscar = async (u, init = {}) => {
     const metodo = init.method ?? 'GET';
     chamadasAoTrello.push(metodo === 'GET' ? `GET ${u}` : escrito(u, metodo));
-    if (metodo === 'GET' || !new URL(u).pathname.startsWith('/1/cards/')) throw new Error(`o teste não sai para a rede: ${u}`);
+    const caminho = new URL(u).pathname;
+    const doCheck = /^\/1\/cards\/([^/]+)\/checklists$/.exec(caminho);
+    if (doCheck && metodo === 'GET') return Response.json([{ id: `lista-${doCheck[1]}`, name: 'ARTES PRODUZIDAS', checkItems: itensDe(doCheck[1]) }]);
+    const doItem = /^\/1\/checklists\/lista-([^/]+)\/checkItems(?:\/([^/]+))?$/.exec(caminho);
+    if (doItem) {
+      const itens = itensDe(doItem[1]);
+      if (metodo === 'DELETE') itens.splice(itens.findIndex((i) => i.id === doItem[2]), 1);
+      if (metodo !== 'POST') return Response.json({});
+      const item = { id: `item${++nItem}`, name: new URL(u).searchParams.get('name'), state: 'incomplete' };
+      itens.push(item);
+      return Response.json(item);
+    }
+    if (metodo === 'GET' || !caminho.startsWith('/1/cards/')) throw new Error(`o teste não sai para a rede: ${u}`);
     if (trelloFalso.recusar) return new Response('recusado pelo Trello falso', { status: 400 });
     if (new URL(u).pathname.includes(card(1))) return new Response('card recusado pelo Trello falso', { status: 400 });
     return Response.json({});
   };
   const trello = { env: { ...PG, ...comTabelas({ ARTE_producao: 'arte_e2e' }), TRELLO_KEY: 'chave-falsa', TRELLO_TOKEN: 'token-falso' }, consultar: teable.consultar, buscar };
   const listas = { TRELLO_LISTA_SP: 'entradaSP', TRELLO_SAIDA_SP: 'saidaSP', TRELLO_LISTA_G5: 'entradaG5', TRELLO_SAIDA_G5: 'saidaG5' };
-  const s = await subir({ teable, pg: teable.abrirPg, trello, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG, ...listas } });
+  const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros: (env) => criarCadastros(env, { buscar: teable }), env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG, ...listas } });
   await s.app.pessoasProntas;
   // o Roteiro (fictício) enviado para o card da Festa diz a atração
   const em = new Date().toISOString();
@@ -1396,6 +1793,25 @@ async function principal() {
   const navegador = await chromium.launch();
   let falhou = false;
   try {
+    // SO=card-aberto roda só o card aberto (#160) e o vídeo dele
+    if (process.env.SO === 'acabamento') {
+      await produzindoComEspaco(navegador, s.url, s.db, s.api);
+      await filmarOAcabamento(navegador, s.url, s.api);
+    }
+    else if (process.env.SO === 'card-aberto') {
+      await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
+      await filmarOCardAberto(navegador, s.url, s.db);
+    } else await tudo();
+  } catch (e) {
+    falhou = true;
+    console.error(e);
+  } finally {
+    await navegador.close();
+    await s.descer();
+  }
+  process.exit(falhou ? 1 : 0);
+
+  async function tudo() {
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema, chamadasAoTrello);
     await noTablet(navegador, s.url);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema, chamadasAoTrello);
@@ -1410,14 +1826,11 @@ async function principal() {
     await arrumarAsPracas(navegador, s.url);
     await divisoriasPorDia(navegador, s.url, s.db);
     await espacoEBusca(navegador, s.url, s.db, s.api, chamadasAoTrello);
+    await produzindoComEspaco(navegador, s.url, s.db, s.api);
+    await filmarOAcabamento(navegador, s.url, s.api);
+    await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
+    await filmarOCardAberto(navegador, s.url, s.db);
     await filmar(navegador, s.url, s.db, s.api);
-  } catch (e) {
-    falhou = true;
-    console.error(e);
-  } finally {
-    await navegador.close();
-    await s.descer();
   }
-  process.exit(falhou ? 1 : 0);
 }
 void principal();

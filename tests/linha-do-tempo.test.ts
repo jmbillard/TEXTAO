@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { frasesDaLinhaDoTempo, type EventoDaLinha, type ProducaoDaLinha } from '../src/modelo/linhaDoTempo';
+import { frasesDaLinhaDoTempo, linhaDoTempoDoCard, type EventoDaLinha, type ProducaoDaLinha } from '../src/modelo/linhaDoTempo';
 
 /* A Linha do tempo (#89): os eventos da Produção em frases curtas do dia a dia, em ordem. As horas são as do relógio
    local (como a agenda mostra), por isso os instantes saem de datas locais. */
@@ -89,5 +89,33 @@ describe('a linha do tempo da Produção', () => {
     expect(frasesDaLinhaDoTempo(producao({ entradaEm: em(20, 11) }), [])).toEqual(['na produção desde 20/11']);
     expect(frasesDaLinhaDoTempo(producao({ etapa: 'entregue', entradaEm: em(20, 11), entregaEm: em(21, 15, 20) }), [])).toEqual(['na produção desde 20/11', 'entregue 21/11 15h20']);
     expect(frasesDaLinhaDoTempo(producao(), [])).toEqual([]);
+  });
+});
+
+describe('a linha do tempo do card aberto (#160)', () => {
+  const ev = (tipo: EventoDaLinha['tipo'], quando: string, extra: Partial<EventoDaLinha> = {}): EventoDaLinha => ({ tipo, antes: null, depois: null, quem: null, quando, ...extra });
+  it('um evento por linha, do mais novo para o mais velho, com quem fez na frente', () => {
+    const itens = linhaDoTempoDoCard([
+      ev('criada', '2026-11-26T12:00:00Z', { depois: 'entrada' }),
+      ev('designer-entrou', '2026-11-26T13:00:00Z', { depois: 'Ana Souza', quem: 'Ana Souza', origem: 'PROMeiro' }),
+      ev('designer-entrou', '2026-11-26T13:05:00Z', { depois: 'Caio Prates', quem: 'Ana Souza', origem: 'PROMeiro' }),
+      ev('campo', '2026-11-26T14:00:00Z', { campo: 'atracao', depois: 'Novela das Nove', quem: 'Ana Souza', origem: 'PROMeiro' }),
+      ev('campo', '2026-11-26T14:10:00Z', { campo: 'prazo', antes: '2026-12-01', depois: '2026-12-04', quem: 'Ana Souza', origem: 'PROMeiro' }),
+      ev('designer-saiu', '2026-11-26T15:00:00Z', { antes: 'Caio Prates' }),
+    ]);
+    expect(itens.map((i) => i.texto)).toEqual(['Caio Prates saiu', 'Ana Souza mudou o prazo para sex 4/12', 'Ana Souza ligou a atração Novela das Nove', 'Ana Souza atribuiu Caio Prates', 'Ana Souza pegou', 'entrou na Entrada']);
+    expect(itens.map((i) => i.doPROMeiro)).toEqual([false, true, true, true, true, false]);
+  });
+  it('os itens da mesma arte de uma vez viram uma linha; apagar, devolver, incluir e o fogo', () => {
+    const q = '2026-11-26T16:00:00Z';
+    const itens = linhaDoTempoDoCard([
+      ev('arte-marcada', q, { depois: 'HOJE (RDP)', quem: 'Ana' }),
+      ev('arte-marcada', q, { depois: 'HOJE (CRT)', quem: 'Ana' }),
+      ev('arte-apagada', '2026-11-26T16:01:00Z', { antes: 'AMANHÃ', quem: 'Ana' }),
+      ev('arte-incluida', '2026-11-26T16:02:00Z', { depois: 'AMANHÃ', quem: 'Ana', desfez: true }),
+      ev('arte-incluida', '2026-11-26T16:03:00Z', { depois: 'VINHETA', quem: 'Ana' }),
+      ev('fogo', '2026-11-26T16:04:00Z', { campo: 'HOJE', antes: '1', depois: '3', quem: 'Ana' }),
+    ]);
+    expect(itens.map((i) => i.texto).reverse()).toEqual(['Ana marcou HOJE (RDP), HOJE (CRT)', 'Ana apagou AMANHÃ', 'Ana devolveu AMANHÃ ao checklist', 'Ana incluiu VINHETA', 'Ana mudou o fogo de HOJE para alta']);
   });
 });

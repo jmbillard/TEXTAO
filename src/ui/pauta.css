@@ -147,12 +147,16 @@
 /* ---------- a Semana: editor × dia ---------- */
 .pauta-rolagem { overflow-x: auto; border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha), 0 0 0 1px var(--regua); overscroll-behavior-x: contain; }
 .pauta-corpo.estreia .pauta-rolagem { animation: pauta-entra 0.26s var(--suave) backwards; }
-.pauta-grade { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+/* a largura da grade só em medidas fixas (#172): a coluna dos nomes e o mínimo de cada dia; os dias dividem o resto por
+   igual (table-layout: fixed, sem largura neles). Nada de porcentagem nas células nem de min-width: max-content: no
+   Safari (WebKit), a largura em calc() com % numa célula conta como porcentagem no tamanho intrínseco da tabela, e o
+   max-content dela vai ao limite do navegador (33 milhões de px): cada dia fica da largura da tela, a rolagem até hoje
+   deixa só ele à vista e os nomes somem */
+.pauta-grade { --pauta-nomes: 196px; --pauta-dia-min: 170px; width: 100%; min-width: calc(var(--pauta-nomes) + 7 * var(--pauta-dia-min)); border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .pauta-grade th, .pauta-grade td { border-bottom: 1px solid var(--regua); border-right: 1px solid var(--regua); vertical-align: top; text-align: left; }
 .pauta-grade tr > :last-child { border-right: 0; }
 .pauta-grade tbody tr:last-child > * { border-bottom: 0; }
-.pauta-canto { width: 196px; padding: 14px 12px; }
-.pauta-dia, .pauta-celula { width: calc((100% - 196px) / 7); min-width: 170px; }
+.pauta-canto { width: var(--pauta-nomes); padding: 14px 12px; }
 .pauta-dia { padding: 0; font-weight: 400; }
 .pauta-dia-link { display: flex; align-items: baseline; gap: 8px; padding: 12px 12px 10px; font: 400 22px/1 var(--serifa); color: var(--tinta); text-decoration: none; white-space: nowrap; transition: color 0.15s; }
 .pauta-dia-link:hover .pauta-dia-num { color: var(--ultra-tinta); }
@@ -274,8 +278,7 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
 @media (max-width: 1100px) {
   .pauta-mesa { grid-template-columns: minmax(0, 1fr); }
   .pauta-lateral { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-  .pauta-canto { width: 150px; }
-  .pauta-dia, .pauta-celula { width: 172px; }
+  .pauta-grade { --pauta-nomes: 150px; --pauta-dia-min: 172px; }
 }
 @media (max-width: 1024px) {
   .pauta-pagina { padding: 14px 16px 100px; }
@@ -298,12 +301,11 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
   .pauta-minha-topo .pauta-conta-rot { margin: 0; }
   .pauta-minha-topo .pauta-conta-bolinhas { margin: 0 0 0 auto; }
   .pauta-recado p { font-size: 16.5px; }
-  .pauta-canto { width: 118px; }
+  .pauta-grade { --pauta-nomes: 118px; --pauta-dia-min: 160px; }
   .pauta-editor { padding: 10px 8px; }
   .pauta-editor .pauta-avatar { display: none; }
   .pauta-editor-meta { margin-left: 0; }
   .pauta-editor .pauta-nome { white-space: normal; }
-  .pauta-dia, .pauta-celula { width: 160px; min-width: 160px; }
   .pauta-colunas { grid-auto-columns: calc(100vw - 80px); }
   .pauta-aviso-botao { height: 28px; padding: 0 10px; font-size: 12px; }
   .pauta-claquete-botao, .pauta-tarefa-corpo { padding-right: 12px; }

@@ -47,12 +47,49 @@ const ROTULO = { entrada: 'na Entrada', produzindo: 'em Produzindo', entregue: '
 
 /** O que a tela diz a quem não está ligado a um designer. */
 export const SEM_LIGACAO = 'Para pegar um card, o seu e-mail precisa estar no seu cadastro de designer. Peça a um administrador do PROMeiro para ligar (Configuração · Pessoas).';
-const SEM_MEMBRO = 'O seu cadastro de designer não tem o id do seu membro no Trello, e esta Produção tem card. Peça a um administrador do PROMeiro para completar o cadastro (Configuração · Pessoas).';
+export const SEM_MEMBRO = 'O seu cadastro de designer não tem o id do seu membro no Trello, e esta Produção tem card. Peça a um administrador do PROMeiro para completar o cadastro (Configuração · Pessoas).';
 
 const motivo = (e) => (e instanceof Error ? e.message : String(e));
 
 /** As artes do checklist ainda não marcadas (#111), na ordem. */
 export const artesQueFaltam = (p) => artesDoChecklist(p).filter((a) => !a.marcada).map((a) => a.nome);
+
+/** O passo que põe o membro no card (`entra`) ou o tira, e o contrário ao desfazer. */
+export function passoDoMembro(p, entra, membro, trello) {
+  const por = () => trello.entrarNoCard(p.cardId, membro);
+  const tirar = () => trello.sairDoCard(p.cardId, membro);
+  return entra ? { nome: 'membro-entrou', fazer: por, desfazer: tirar } : { nome: 'membro-saiu', fazer: tirar, desfazer: por };
+}
+
+/**
+ * Os passos no Trello, em ordem; o que falha depois de outro ter ido desfaz o que foi. Um passo que já é o erro (a
+ * lista que falta) não deixa nenhum ir.
+ * @returns { feito: ['membro-entrou' | 'membro-saiu' | 'card-movido'] } ou { erro }
+ */
+export async function executar(p, passos) {
+  const semLista = passos.find((x) => x.erro);
+  if (semLista) return { erro: semLista.erro };
+  const foram = [];
+  for (const passo of passos) {
+    try {
+      // false: o Trello já estava assim (nada a desfazer)
+      if ((await passo.fazer()) !== false) foram.push(passo);
+    } catch (e) {
+      const naoDesfeito = [];
+      for (const f of foram.reverse())
+        try {
+          if (!f.desfazer) throw new Error('sem como desfazer');
+          await f.desfazer();
+        } catch (e2) {
+          naoDesfeito.push(f.nome);
+          console.warn(`[producoes] não desfiz ${f.nome} no card de ${p.claquete}: ${motivo(e2)}`);
+        }
+      const resto = naoDesfeito.length ? ' Não deu para desfazer tudo no Trello: confira o card.' : '';
+      return { erro: `O Trello recusou: ${motivo(e)}. Nada mudou no PROMeiro.${resto}` };
+    }
+  }
+  return { feito: foram.map((f) => f.nome) };
+}
 
 /**
  * @param producoes o módulo das Produções (servidor/producoes.mjs)
@@ -262,49 +299,12 @@ export function criarEtapaDaProducao({ producoes }) {
     return { nome: 'card-movido', fazer: () => trello.moverCard(p.cardId, destino), desfazer: volta ? () => trello.moverCard(p.cardId, volta) : null };
   }
 
-  /** O passo que põe o membro no card (`entra`) ou o tira, e o contrário ao desfazer. */
-  function passoDoMembro(p, entra, membro, trello) {
-    const por = () => trello.entrarNoCard(p.cardId, membro);
-    const tirar = () => trello.sairDoCard(p.cardId, membro);
-    return entra ? { nome: 'membro-entrou', fazer: por, desfazer: tirar } : { nome: 'membro-saiu', fazer: tirar, desfazer: por };
-  }
-
   /** Os passos no Trello para levar a Produção à etapa, em ordem. */
   function passosDaMudanca(p, etapa, { trello, pracas, membro }) {
     const praca = pracas.find((x) => x.sigla === p.praca);
     if (etapa === 'entregue') return [passoDeMover(p, 'saida', 'entrada', praca, trello)];
     if (etapa === 'produzindo') return [passoDoMembro(p, true, membro, trello)];
     return [...(p.etapa === 'entregue' ? [passoDeMover(p, 'entrada', 'saida', praca, trello)] : []), passoDoMembro(p, false, membro, trello)];
-  }
-
-  /**
-   * Os passos no Trello, em ordem; o que falha depois de outro ter ido desfaz o que foi. Um passo que já é o erro (a
-   * lista que falta) não deixa nenhum ir.
-   * @returns { feito: ['membro-entrou' | 'membro-saiu' | 'card-movido'] } ou { erro }
-   */
-  async function executar(p, passos) {
-    const semLista = passos.find((x) => x.erro);
-    if (semLista) return { erro: semLista.erro };
-    const foram = [];
-    for (const passo of passos) {
-      try {
-        // false: o Trello já estava assim (nada a desfazer)
-        if ((await passo.fazer()) !== false) foram.push(passo);
-      } catch (e) {
-        const naoDesfeito = [];
-        for (const f of foram.reverse())
-          try {
-            if (!f.desfazer) throw new Error('sem como desfazer');
-            await f.desfazer();
-          } catch (e2) {
-            naoDesfeito.push(f.nome);
-            console.warn(`[producoes] não desfiz ${f.nome} no card de ${p.claquete}: ${motivo(e2)}`);
-          }
-        const resto = naoDesfeito.length ? ' Não deu para desfazer tudo no Trello: confira o card.' : '';
-        return { erro: `O Trello recusou: ${motivo(e)}. Nada mudou no PROMeiro.${resto}` };
-      }
-    }
-    return { feito: foram.map((f) => f.nome) };
   }
 
   return { mudar, desfazer, peloPadeiro, entregarPeloPadeiro, voltarPeloPadeiro, desfazerPeloPadeiro };

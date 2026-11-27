@@ -96,7 +96,9 @@ _Evitar_: concluída, repetida
 **Complexidade da arte**:
 BAIXA, MÉDIA ou ALTA (1, 2, 3), marcada na revisão para cada arte a produzir; a não marcada é BAIXA. O card leva a
 maior complexidade das artes dele, na mesma escala do campo do Trello e da produção da arte, e a arte entra no acervo
-com a sua. A arte que já existe (✓) fica com a complexidade que o acervo já tem.
+com a sua. A arte que já existe (✓) fica com a complexidade que o acervo já tem. Nas Produções (o card aberto, a
+janela do After), o **fogo** é essa complexidade, em toda arte, com ou sem roteiro (#174): com Roteiro ligado, fica nele;
+sem roteiro, fica na própria Produção, e passa para o Roteiro quando ele for ligado (o que o Roteiro já marcou vale).
 _Evitar_: dificuldade, peso
 
 **Não produzir (✕)**:
@@ -169,6 +171,12 @@ _Evitar_: fila (a fila é a das claquetes), conferido (não existe: passar pela 
 **Aba Filmes**:
 A tela do PROMeiro que lê a prévia, confere cada filme com o banco e cria os cards de filme.
 _Evitar_: FilmeBOT (o site avulso que ela substitui)
+
+**Agenda de filmes**:
+A parte de baixo da aba Filmes: os filmes com exibição de hoje em diante, com os pôsteres, por data de exibição ou por
+sessão (a escolha fica lembrada por pessoa). Lê as exibições e o cadastro de filmes, nunca o Trello; um clique abre o
+card do filme no centro, com as exibições, as pastas e a Produção de cada card.
+_Evitar_: grade (a grade é a programação da emissora; a agenda é o recorte dela que a arte acompanha)
 
 ## Produção e acervo
 
@@ -373,8 +381,13 @@ vale o último que aconteceu, e os dois viram evento na linha do tempo. Cada blo
 com a sigla e a contagem de cada coluna, e o PROMeiro lembra os recolhidos por pessoa (#113). No máximo 3 praças
 ficam abertas: abrir a quarta fecha a aberta há mais tempo; a fechada mostra o nome na vertical (#159). A pessoa arruma
 a ordem das praças arrastando pela faixa do nome, e o PROMeiro lembra a ordem por pessoa (#159). A Produzindo vazia
-fica fina e se abre com um card no ar; o Entregue se divide por dia da entrega (#159). Um clique no card abre a
-Produção na própria tela: a linha do tempo, as artes do checklist e o link do card no Trello. Fica ao lado da agenda No
+fica fina quando falta largura na praça (com espaço, divide a largura com as outras, #167) e se abre com um card no ar; o Entregue se divide por dia da entrega (#159). Um clique no card abre a
+Produção na própria tela, no **card aberto** (#160): um painel de 720 px no centro, sobre um véu leve, que cresce do card
+clicado e volta para ele ao fechar (no celular, a tela toda). Ali ficam a versão do roteiro (V1 sem versão nova, só no
+detalhe), o apelido pelo lápis, a atração (a busca do cadastro), o prazo e os designers (atribuir e tirar), que gravam
+na hora, vão ao Trello (o prazo do card, o membro) e viram evento; as artes no esquema da janela do After (a bolinha
+numerada, a feita riscada, o fogo), que se marcam, apagam (com desfazer) e incluem, com o checklist do card espelhando;
+e a linha do tempo, fechada num link. A atração escolhida fica só no PROMeiro (o card do Trello não tem o campo). Fica ao lado da agenda No
 Trello, que continua, com a mesma linha do logo, parada entre as telas (#159).
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 
