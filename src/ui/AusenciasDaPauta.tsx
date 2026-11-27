@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apagarAusencia, jaDistribuida, lerAusencias, marcarAusencia, ondeEstaEscalada, tirarDoDia } from '../dados/armazenamento';
+import { apagarAusencia, lerAusencias, marcarAusencia, ondeEstaEscalada, tirarDoDia } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { motivoDaAusencia, nomeDoTipo, temPeriodo, TIPOS_DE_AUSENCIA, type Ausencia, type EscaladaNoDia, type PainelDasAusencias, type TipoDeAusencia } from '../modelo/ausencias';
 import type { TurnoDaEscala } from '../modelo/escala';
@@ -7,11 +7,11 @@ import { Icone } from './icones';
 import { DIAS_DA_SEMANA, partes } from './pecasDaPauta';
 import './ausenciasDaPauta.css';
 
-/* Montar a pauta, ausências (#128): o painel simples logo acima da grade (a coluna lateral do #126 leva o "Fora" e o
-   "Para distribuir" para o lado depois). Ele mostra quem está fora no dia, com o motivo (só a coordenação vê esta
-   tela), e o botão de marcar. O diálogo de marcar tem quem, o tipo, o período (de e até, nas férias e na licença) e a
-   observação, e diz antes onde a pessoa está escalada: nos rascunhos a posição vira vaga; num dia já publicado, o
-   painel oferece tirar a pessoa, e tirar manda as demandas dela para "Para distribuir" e deixa o dia alterado. */
+/* Montar a pauta, ausências (#128): a caixa "Fora" da coluna lateral (#126). Ela mostra quem está fora no dia, com o
+   motivo (só a coordenação vê esta tela), e o "marcar ausência". O diálogo de marcar tem quem, o tipo, o período (de e
+   até, nas férias e na licença) e a observação, e diz antes onde a pessoa está escalada: nos rascunhos a posição vira
+   vaga; num dia já publicado, a caixa oferece tirar a pessoa, e tirar manda as demandas dela para "Para distribuir" e
+   deixa o dia alterado. */
 
 interface Props {
   dia: string;
@@ -21,6 +21,8 @@ interface Props {
   antes: () => Promise<void>;
   /** o servidor mexeu nos rascunhos: a tela lê o dia de novo */
   mudou: () => void;
+  /** quem está fora no dia, a cada leitura (para a caixa "Sem escala") */
+  foraNoDia: (nomes: string[]) => void;
 }
 
 type Formulario = Omit<Ausencia, 'id'>;
@@ -34,7 +36,7 @@ const ondeEscrito = (es: readonly EscaladaNoDia[], turnos: readonly TurnoDaEscal
 const diasDoPeriodo = (de: string, ate: string) => Math.round((Date.parse(`${ate}T12:00:00Z`) - Date.parse(`${de}T12:00:00Z`)) / 86_400_000) + 1;
 const erroDe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function AusenciasDoDia({ dia, turnos, editores, antes, mudou }: Props) {
+export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia }: Props) {
   const [painel, setPainel] = useState<PainelDasAusencias | null>(null);
   const [form, setForm] = useState<Formulario | null>(null);
   const [aviso, setAviso] = useState('');
@@ -49,6 +51,10 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou }: Props) {
     setErro('');
     ler();
   }, [ler]);
+  const nomesFora = painel?.dia === dia ? painel.fora.map((a) => a.editor).join('\n') : null;
+  useEffect(() => {
+    if (nomesFora !== null) foraNoDia(nomesFora ? nomesFora.split('\n') : []);
+  }, [nomesFora, foraNoDia]);
 
   /** Uma ação no servidor: grava o rascunho antes, e depois a tela lê o dia de novo. */
   const fazer = async (f: () => Promise<PainelDasAusencias>, depois?: (p: PainelDasAusencias) => string) => {
@@ -90,32 +96,30 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou }: Props) {
 
   if (!painel) return erro ? <p className="aus-erro" role="alert">{erro}</p> : null;
   return (
-    <section className="aus-painel" aria-label="Ausências">
-      <div className="aus-linha">
-        <span className="aus-rotulo">Fora no dia</span>
-        {painel.fora.length ? (
-          <ul className="aus-fora">
-            {painel.fora.map((a) => (
-              <li key={a.id} className="aus-pessoa">
-                <span className="pauta-avatar" aria-hidden="true">
-                  {iniciais(a.editor)}
-                </span>
+    <section className="coluna-caixa coluna-fora aus-painel" aria-label="Fora">
+      <h2 className="coluna-rotulo">
+        Fora no dia <span className="coluna-n">{painel.fora.length}</span>
+      </h2>
+      {painel.fora.length ? (
+        <ul className="aus-fora">
+          {painel.fora.map((a) => (
+            <li key={a.id} className="aus-pessoa">
+              <span className="pauta-avatar" aria-hidden="true">
+                {iniciais(a.editor)}
+              </span>
+              <span className="aus-quem">
                 <strong>{a.editor}</strong>
                 <span className="aus-motivo">
                   {motivoDaAusencia(a)}
                   {a.observacao && ` · ${a.observacao}`}
                 </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <span className="aus-ninguem">ninguém</span>
-        )}
-        <span className="espaco" />
-        <button type="button" className="botao" onClick={() => (setErro(''), setForm({ editor: '', tipo: 'folga', de: dia, ate: dia, observacao: '' }))}>
-          Marcar ausência
-        </button>
-      </div>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="coluna-ninguem">ninguém</p>
+      )}
       {aviso && (
         <p className="aus-aviso" role="status">
           {aviso}
@@ -136,24 +140,9 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou }: Props) {
           </button>
         </div>
       ))}
-      {painel.paraDistribuir.length > 0 && (
-        <div className="aus-distribuir">
-          <span className="aus-rotulo">
-            Para distribuir <span className="aus-n">{painel.paraDistribuir.length}</span>
-          </span>
-          <ul>
-            {painel.paraDistribuir.map((d) => (
-              <li key={d.id}>
-                <span className="mono">{d.texto}</span>
-                <span className="aus-de">era de {primeiroNome(d.deQuem)}</span>
-                <button type="button" className="botao-texto" disabled={ocupado} onClick={() => void fazer(() => jaDistribuida(dia, d.id))}>
-                  já distribuí
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <button type="button" className="botao-texto aus-marcar" onClick={() => (setErro(''), setForm({ editor: '', tipo: 'folga', de: dia, ate: dia, observacao: '' }))}>
+        + marcar ausência
+      </button>
       {form && (
         <DialogoDaAusencia
           form={form}

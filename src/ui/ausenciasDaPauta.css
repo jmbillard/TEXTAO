@@ -1,15 +1,5 @@
-/* Montar a pauta, ausências (#128): o painel acima da grade e o diálogo de marcar. Os estados vão em texto, etiqueta
+/* Montar a pauta, ausências (#128): a caixa "Fora" da coluna lateral (#126) e o diálogo de marcar. Os estados vão em texto, etiqueta
    ou fundo levemente tingido (nada de faixa colorida na borda). */
-.aus-painel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  border: 1px solid var(--regua);
-  border-radius: 12px;
-  background: var(--papel);
-}
 .aus-linha {
   display: flex;
   flex-wrap: wrap;
@@ -37,7 +27,7 @@
   letter-spacing: 0;
 }
 .aus-ninguem { font-size: 13px; color: var(--tinta3); }
-.aus-fora, .aus-distribuir ul, .aus-ja ul {
+.aus-fora, .aus-ja ul {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -45,16 +35,16 @@
   padding: 0;
   list-style: none;
 }
+.aus-fora { flex-direction: column; }
 .aus-pessoa {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 3px 10px 3px 3px;
-  border: 1px dashed var(--regua-forte);
-  border-radius: 999px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
   font-size: 13px;
 }
+.aus-quem { display: flex; flex-direction: column; min-width: 0; }
+.aus-marcar { align-self: flex-start; }
 .aus-painel .pauta-avatar, .aus-dlg .pauta-avatar {
   width: 22px;
   height: 22px;
@@ -77,11 +67,6 @@
   font-size: 13px;
 }
 .aus-oferta span { flex: 1 1 260px; }
-.aus-distribuir { display: flex; flex-direction: column; gap: 6px; }
-.aus-distribuir ul { flex-direction: column; }
-.aus-distribuir li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 13px; }
-.aus-distribuir .mono { font-family: var(--mono); font-size: 12.5px; }
-
 .aus-veu {
   position: fixed;
   inset: 0;

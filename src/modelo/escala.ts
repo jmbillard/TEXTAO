@@ -8,6 +8,7 @@ import { nomeComparavel } from './ligarPeloNome.ts';
 import { dataDaVersao, lerVersoes, tipoDaLinha, type Versao } from './pauta.ts';
 import { lerDataDaClaquete } from './vocabularios.ts';
 import type { Ilha } from './ilhas.ts';
+import type { DemandaParaDistribuir } from './ausencias.ts';
 
 /** O id de um turno: os de fábrica (madrugada, manha, tarde, noite) e os criados na Configuração (#124). */
 export type IdDoTurno = string;
@@ -92,6 +93,8 @@ export interface DiaDaEscala {
   historico: (PublicacaoDoDia & { desfeitaEm: string | null })[];
   /** as chaves das pendências da conferência que a coordenação disse que estão certas */
   dispensadas: string[];
+  /** a lista "Para distribuir" do dia, à espera de ir para uma posição (#126, #128) */
+  paraDistribuir: DemandaParaDistribuir[];
 }
 
 /* ---------- o horário ---------- */

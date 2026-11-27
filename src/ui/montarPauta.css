@@ -10,7 +10,7 @@
 .montar-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* as abas dos dias da semana */
-.montar-abas { display: flex; align-items: flex-end; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--regua-forte); margin: 4px 0 16px; scrollbar-width: none; }
+.montar-abas { position: relative; display: flex; align-items: flex-end; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--regua-forte); margin: 4px 0 16px; scrollbar-width: none; }
 .montar-abas .botao-icone { flex: none; align-self: center; margin-bottom: 4px; }
 .montar-aba { flex: none; display: flex; align-items: center; gap: 7px; margin-bottom: -1px; padding: 8px 14px 9px; border: 1px solid transparent; border-bottom: 0; border-radius: 10px 10px 0 0; background: none; color: var(--tinta3); font: 600 12px var(--sans); letter-spacing: 0.06em; white-space: nowrap; cursor: pointer; }
 .montar-aba:hover { color: var(--tinta); }
@@ -90,6 +90,59 @@
 
 .montar-teclas { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font: 400 12px var(--sans); color: var(--tinta3); }
 
+/* a coluna lateral (#126, a alternativa B): ao lado da grade no computador; em cima, no tablet em pé; embaixo, no
+   celular. O estado vai no fundo levemente tingido ou na etiqueta (nada de faixa colorida na borda). */
+.montar-corpo { display: grid; grid-template-columns: 284px minmax(0, 1fr); gap: 18px; align-items: start; }
+.montar-coluna { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); overflow: auto; overscroll-behavior: contain; padding-bottom: 2px; }
+.coluna-caixa { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 12px 12px; border: 1px solid var(--regua); border-radius: 12px; background: var(--papel); }
+.coluna-rotulo { margin: 0; font: 600 11px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta3); }
+.coluna-n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; background: var(--neutro); color: var(--tinta2); letter-spacing: 0; }
+.coluna-ninguem { margin: 0; font-size: 13px; color: var(--tinta3); }
+.coluna-escrever { width: 100%; min-height: 34px; padding: 7px 9px; border: 1px dashed var(--regua-forte); border-radius: 8px; background: var(--cartao); color: var(--tinta); font: 500 12.5px/1.4 var(--mono); resize: vertical; }
+.coluna-escrever:focus { outline: 0; border-style: solid; border-color: var(--ultra); }
+.coluna-dica { margin: -2px 0 0; font: 400 11px/1.35 var(--sans); color: var(--tinta3); }
+.coluna-itens { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.coluna-claquete, .coluna-pessoa { position: relative; display: flex; align-items: flex-start; gap: 6px; min-width: 0; padding: 7px 8px 7px 4px; border: 1px solid var(--regua); border-radius: 9px; background: var(--cartao); cursor: grab; user-select: none; -webkit-user-select: none; }
+.coluna-pessoa { align-items: center; flex-wrap: wrap; }
+.coluna-pessoa strong { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; }
+.coluna-pessoa .pauta-avatar { flex: none; width: 24px; height: 24px; margin: 0; font-size: 10px; }
+.coluna-claquete-corpo { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.coluna-claquete .mono { font: 600 12.5px var(--mono); overflow-wrap: anywhere; }
+.coluna-leitura { font: 400 11px/1.35 var(--sans); color: var(--tinta3); }
+.coluna-de { color: var(--tinta2); }
+.coluna-acoes { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 5px; }
+.coluna-acoes .botao-texto { font-size: 11.5px; }
+.coluna-destino { max-width: 112px; height: 24px; padding: 0 4px; border: 1px solid var(--regua); border-radius: 6px; background: var(--cartao); color: var(--tinta2); font: 500 11.5px var(--sans); cursor: pointer; }
+.coluna-destino:hover, .coluna-destino:focus { border-color: var(--regua-forte); color: var(--tinta); }
+.coluna-claquete.indo, .coluna-pessoa.indo, .montar-demanda.indo { opacity: 0.4; }
+/* quem recebe o que está sendo arrastado: o fundo tingido */
+.coluna-distribuir.recebe { background: color-mix(in srgb, var(--ultra-suave) 35%, var(--papel)); }
+.coluna-distribuir.sobre, .montar-celula.sobre, .montar-turno.sobre, .montar-demanda.sobre { background: color-mix(in srgb, var(--ultra-suave) 70%, var(--cartao)); }
+.montar-demanda.sobre { box-shadow: 0 -2px 0 var(--ultra); }
+.montar-solte { margin: 0; padding: 12px 14px; border-top: 1px dashed var(--regua-forte); font: 600 16px/1.2 Caveat, cursive; color: var(--tinta3); text-align: center; }
+
+/* a alça: no dedo, é por ela que se arrasta (não rola a página); no mouse, o item inteiro arrasta */
+.arrasto-alca { flex: none; width: 14px; color: var(--tinta3); font-size: 13px; line-height: 20px; text-align: center; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.montar-demanda { position: relative; }
+.montar-demanda > .arrasto-alca { position: absolute; left: -13px; top: 2px; opacity: 0; }
+.montar-demanda.arrastavel:hover > .arrasto-alca, .montar-demanda.arrastavel:focus-within > .arrasto-alca { opacity: 1; }
+.montar-mover { display: none; }
+.montar-teclas .arrasto-alca { display: inline-block; width: auto; line-height: 1; touch-action: auto; cursor: default; }
+@media (pointer: coarse) {
+  .montar-demanda > .arrasto-alca { opacity: 1; }
+  .arrasto-alca { width: 22px; font-size: 16px; }
+  .montar-demanda > .arrasto-alca { left: -18px; }
+}
+.arrasto-fantasma { position: fixed; z-index: 90; margin: 0; pointer-events: none; opacity: 0.92; box-shadow: var(--sombra-menu); background: var(--cartao); border-radius: 9px; list-style: none; transform-origin: 0 0; }
+body.arrastando, body.arrastando * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+
+@media (max-width: 1099px) {
+  .montar-corpo { grid-template-columns: minmax(0, 1fr); }
+  .montar-coluna { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; overflow: visible; align-items: start; }
+  .coluna-distribuir { grid-column: 1 / -1; }
+  .coluna-distribuir .coluna-itens { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+}
+
 @media (max-width: 640px) {
   .montar-pagina { padding-left: 16px; padding-right: 16px; }
   .montar-cabeca h1 { font-size: 34px; }
@@ -99,4 +152,10 @@
   /* a linha do logo aperta: o "rascunho guardado" sai (o erro ao gravar continua) */
   .montar-estado:not(:has(.montar-erro)) { display: none; }
   .montar-turno-cab { flex-wrap: wrap; row-gap: 2px; }
+  /* no celular, a coluna vai para baixo, uma caixa embaixo da outra; o "Mover para…" de cada demanda aparece */
+  .montar-coluna { order: 2; grid-template-columns: minmax(0, 1fr); }
+  .coluna-distribuir .coluna-itens { display: flex; }
+  .montar-mover { display: block; position: absolute; right: 0; top: 0; width: 30px; max-width: 30px; padding: 0; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; font-size: 15px; line-height: 1; }
+  .montar-demanda.arrastavel .montar-in { padding-right: 34px; }
+  .montar-demanda > .arrasto-alca { display: none; }
 }

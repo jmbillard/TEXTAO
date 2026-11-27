@@ -279,8 +279,9 @@ export function criarEscala(db) {
     /**
      * Troca o rascunho do dia pelas posições do pedido (já conferidas por `posicoesDoPedido`) e pelo recado (de
      * `recadoDoPedido`; sem ele, fica o que estava), numa transação. Lança (400) um id que já é de outro dia.
+     * `junto`, se vier, roda na mesma transação (a coluna lateral, #126: tirar ou pôr em "Para distribuir").
      */
-    gravarDia(dia, posicoes, por, recado) {
+    gravarDia(dia, posicoes, por, recado, junto) {
       for (const p of posicoes) {
         if (q.posicaoDeOutroDia.get(p.id, dia)) throw erro('Identificador inválido.');
         for (const d of p.demandas) if (q.demandaDeOutroDia.get(d.id, dia)) throw erro('Identificador inválido.');
@@ -295,6 +296,7 @@ export function criarEscala(db) {
           p.demandas.forEach((d, j) => q.demanda.run(d.id, p.id, j, d.texto));
           (p.avisos ?? []).forEach((a, j) => q.aviso.run(a.id, p.id, j, a.texto));
         });
+        junto?.();
         db.exec('COMMIT');
       } catch (e) {
         db.exec('ROLLBACK');
