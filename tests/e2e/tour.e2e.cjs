@@ -150,6 +150,21 @@ const noPasso = async (p, n) => {
   await balaoPronto(p);
 };
 
+/** O balão não cobre o que a pessoa precisa ver (#35, #36): devolve os seletores que o retângulo dele intersecta. */
+async function balaoCobre(p, seletores) {
+  // a entrada do balão (translateY) termina antes de medir
+  await p.waitForTimeout(400);
+  return p.evaluate((sels) => {
+    const b = document.querySelector('.tour-balao')?.getBoundingClientRect();
+    if (!b) return ['(sem balão)'];
+    return sels.filter((s) => {
+      const r = document.querySelector(s)?.getBoundingClientRect();
+      if (!r) return true;
+      return b.left < r.right && r.left < b.right && b.top < r.bottom && r.top < b.bottom;
+    });
+  }, seletores);
+}
+
 /**
  * O tour inteiro, do passo chegar ao Terminar, clicando como a pessoa. `aoChegar(nome)` é chamado com o tour parado em
  * cada tela que interessa às capturas ("enviar", "no-trello", "fim").
@@ -185,6 +200,8 @@ async function fazerOTour(p, aoChegar = async () => {}) {
   const card = p.locator(`.secao-trello [data-card="${ID}"]`);
   if (!(await card.locator('.nota-exemplo').textContent())?.includes('só de exemplo')) throw new Error('o card do exemplo não está marcado "só de exemplo"');
   if (await p.$(`.ficha[data-ancora="ficha:${ID}"]`)) throw new Error('o exemplo enviado continua na fila');
+  const cobre7 = await balaoCobre(p, [`.secao-trello [data-card="${ID}"]`, `.secao-trello [data-card="${ID}"] .nota-exemplo`]);
+  if (cobre7.length) throw new Error(`passo 7: o balão cobre ${cobre7.join(', ')}`);
   await aoChegar('no-trello');
   await p.click('.tour-balao .botao.primario:has-text("Terminar")');
 

@@ -50,6 +50,8 @@ interface Desenho {
   meio?: () => boolean;
   /** Pronto o alvo, quanto o tour ainda espera para aparecer (a vaga terminando de abrir). */
   esperaAntes?: number;
+  /** O que o balão nunca cobre, além do alvo (a lista de artes que a pessoa está lendo). */
+  evitar?: () => (Element | null)[];
   /** O balão tem o botão do passo (Terminar), em vez de "pular tour". */
   botao?: { rotulo: string; acao: Acao };
 }
@@ -165,6 +167,13 @@ interface Geometria {
 }
 
 const sobrepoe = (a: Retangulo, b: Retangulo) => a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+const retangulo = (r: Retangulo): Retangulo => ({ left: r.left, top: r.top, width: r.width, height: r.height });
+/** O menor retângulo que contém todos. */
+const juntar = (rs: Retangulo[]): Retangulo => {
+  const l = Math.min(...rs.map((r) => r.left));
+  const t = Math.min(...rs.map((r) => r.top));
+  return { left: l, top: t, width: Math.max(...rs.map((r) => r.left + r.width)) - l, height: Math.max(...rs.map((r) => r.top + r.height)) - t };
+};
 
 /** O balão à direita do alvo (e, se não couber sem cobri-lo, embaixo) ou sob a âncora, o laço por fora e a seta do
     balão até o laço (sob a âncora, contornando-a pelo lado `via`). */
@@ -179,13 +188,41 @@ function medir(alvo: Element | null, ancora: Element | null, balao: { w: number;
     buraco = { left: r.left - p, top: r.top - p, width: r.width + 2 * p, height: r.height + 2 * p };
     c = { x: r.left + r.width / 2, y: r.top + r.height / 2, w: Math.max(r.width + 20, 34), h: Math.max(r.height + 16, 30) };
   }
-  const a = (ancora ?? alvo)?.getBoundingClientRect() ?? { left: vw / 2, right: vw / 2, top: vh / 2, bottom: vh / 2, width: 0, height: 0 };
+  let a: { left: number; right: number; top: number; bottom: number; width: number; height: number } = (ancora ?? alvo)?.getBoundingClientRect() ?? { left: vw / 2, right: vw / 2, top: vh / 2, bottom: vh / 2, width: 0, height: 0 };
   const dentro = (x: number, y: number) => ({ x: Math.min(Math.max(12, x), vw - balao.w - 12), y: Math.min(Math.max(12, y), vh - balao.h - 60) });
-  const sob = desenho.lado === 'sob';
+  let sob = desenho.lado === 'sob';
+  // o balão desceu para baixo de tudo: a seta sobe rente ao lado de tudo e entra no laço na altura do alvo
+  let contorna = false;
   let pos = sob ? dentro(a.left, a.bottom + 34) : dentro((c ? Math.max(a.right, c.x + c.w / 2) : a.right) + 44, a.top + a.height / 2 - balao.h / 2);
-  // o balão nunca cobre o alvo: sem espaço à direita, ele desce para baixo do alvo
+  // o balão nunca cobre o alvo (com o laço) nem o que o passo pede para evitar. Se o lugar do passo cobre (a tela não
+  // tem espaço e o balão foi empurrado para dentro dela), ele tenta, nesta ordem: embaixo de tudo, à direita, à
+  // esquerda e em cima, o primeiro lugar que cabe na tela sem cobrir nada
   const ocupado = c ? { left: c.x - c.w / 2, top: c.y - c.h / 2, width: c.w, height: c.h } : null;
-  if (ocupado && sobrepoe({ left: pos.x, top: pos.y, width: balao.w, height: balao.h }, ocupado)) pos = dentro(a.right - balao.w, ocupado.top + ocupado.height + 34);
+  const proibidos = [...(ocupado ? [ocupado] : []), ...(desenho.evitar?.() ?? []).flatMap((el) => (el ? [retangulo(el.getBoundingClientRect())] : []))];
+  const cobre = (x: number, y: number) => proibidos.some((r) => sobrepoe({ left: x, top: y, width: balao.w, height: balao.h }, r));
+  if (proibidos.length && cobre(pos.x, pos.y)) {
+    const tudo = juntar([retangulo(a), ...proibidos]);
+    const cabe = (x: number, y: number) => x >= 12 && x <= vw - balao.w - 12 && y >= 12 && y <= vh - balao.h - 60 && !cobre(x, y);
+    // ao lado, o balão fica na altura do alvo (ou da âncora), sem passar da tela
+    const altura = Math.min(Math.max(12, (ocupado ?? tudo).top), vh - balao.h - 60);
+    const lugares: { x: number; y: number; sob: boolean }[] = [
+      // embaixo, com a seta que contorna, o balão sai um pouco para o lado dela, e a seta sobe por fora de tudo
+      { x: desenho.via === 'esq' ? tudo.left - 20 : desenho.via === 'dir' ? tudo.left + tudo.width - balao.w + 20 : Math.min(Math.max(12, a.left), vw - balao.w - 12), y: tudo.top + tudo.height + 34, sob: true },
+      { x: tudo.left + tudo.width + 34, y: altura, sob: false },
+      { x: tudo.left - 34 - balao.w, y: altura, sob: false },
+      { x: Math.min(Math.max(12, a.left), vw - balao.w - 12), y: tudo.top - 34 - balao.h, sob: false },
+    ];
+    const lugar = lugares.find((l) => cabe(l.x, l.y));
+    if (lugar) {
+      pos = { x: lugar.x, y: lugar.y };
+      sob = lugar.sob;
+      // embaixo de tudo, a seta contorna pelo lado de tudo (não só da âncora)
+      if (sob) {
+        a = { ...a, left: tudo.left, right: tudo.left + tudo.width, top: tudo.top, bottom: tudo.top + tudo.height };
+        contorna = true;
+      }
+    } else if (ocupado && cobre(pos.x, pos.y)) pos = dentro(a.right - balao.w, ocupado.top + ocupado.height + 34);
+  }
 
   let seta: Geometria['seta'] = null;
   if (c && desenho.seta) {
@@ -195,7 +232,7 @@ function medir(alvo: Element | null, ancora: Element | null, balao: { w: number;
     if (sob && desenho.via) {
       // do canto de cima do balão, a seta sobe por fora da âncora (pela esquerda ou pela direita) até o alvo
       s = { x: desenho.via === 'esq' ? pos.x + 8 : pos.x + B.w - 22, y: pos.y - 8 };
-      ctrl = { x: desenho.via === 'esq' ? a.left - 42 : a.right - 6, y: (s.y + c.y) / 2 };
+      ctrl = { x: desenho.via === 'esq' ? a.left - 42 : a.right - 6, y: contorna ? c.y : (s.y + c.y) / 2 };
     } else {
       const bx = pos.x + B.w / 2;
       const by = pos.y + B.h / 2;
