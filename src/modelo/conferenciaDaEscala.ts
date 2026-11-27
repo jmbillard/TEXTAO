@@ -59,14 +59,23 @@ function turnoDaHora(hora: string, turnos: readonly TurnoDaEscala[]): TurnoDaEsc
 function editorNaLista(escrito: string, editores: readonly string[]): { como: 'cadastrado' } | { como: 'parecido'; nome: string } | { como: 'novo' } {
   const alvo = nomeComparavel(escrito);
   if (editores.some((e) => nomeComparavel(e) === alvo)) return { como: 'cadastrado' };
+  const parecido = editorParecido(escrito, editores);
+  return parecido ? { como: 'parecido', nome: parecido } : { como: 'novo' };
+}
+
+/**
+ * O cadastrado que parece o nome escrito (uma letra de diferença no nome ou no primeiro nome, ou só o primeiro nome de
+ * alguém), ou undefined. É o "nome parecido" da conferência e o "é a mesma pessoa?" do nome novo nos Cadastros (#132).
+ */
+export function editorParecido(escrito: string, editores: readonly string[]): string | undefined {
+  const alvo = nomeComparavel(escrito);
   const palavras = alvo.split(' ');
-  const parecido = editores.find((e) => {
+  return editores.find((e) => {
     const nome = nomeComparavel(e);
     const primeiro = nome.split(' ')[0];
     if (palavras.length === 1) return primeiro === alvo || (alvo.length >= 3 && umaLetraDeDiferenca(primeiro, alvo));
     return alvo.length >= 3 && umaLetraDeDiferenca(nome, alvo);
   });
-  return parecido ? { como: 'parecido', nome: parecido } : { como: 'novo' };
 }
 
 /** A linha em maiúsculas, de três palavras ou mais, que a planilha usava como aviso ("REDATOR VEM ACOMPANHAR"). */

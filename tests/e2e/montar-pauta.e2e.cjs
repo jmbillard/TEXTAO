@@ -207,7 +207,8 @@ async function montarPeloTeclado(navegador, url) {
   await p.keyboard.type('rui');
   const lista = p.locator('.montar-lista');
   await lista.waitFor();
-  assert.deepEqual(await lista.locator('[role="option"] strong').allInnerTexts(), ['Rui Teixeira']);
+  // os cadastrados que casam; no fim, o "usar como nome novo" (#132)
+  assert.deepEqual(await lista.locator('[role="option"] strong').allInnerTexts(), ['Rui Teixeira', 'usar “rui” como nome novo']);
   assert.match(await lista.locator('[role="option"] small').first().innerText(), /livre/);
   await p.keyboard.press('Enter');
   let f = await focado(p);

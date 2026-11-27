@@ -19,7 +19,7 @@ import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
 import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
-import { criarCadastros } from './cadastros.mjs';
+import { criarCadastros, normalizarKey } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
 import { escolhasDoPedido, regrasDasDecisoes } from './importacao-do-acervo.mjs';
 import { criarImportacoes, criarTabelaDasImportacoes } from './importacoes.mjs';
@@ -40,6 +40,7 @@ import { acertarNArtesUmaVez, artesComOEstado, versoesLidas } from './artes.mjs'
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
+import { criarNomesNovos, nomeNovoDoPedido } from './nomes-novos.mjs';
 import { criarPreferencias } from './preferencias.mjs';
 import { criarApelidos } from './apelidos.mjs';
 import { versoesDaChamada } from '../src/modelo/versoesDoRoteiro.ts';
@@ -752,6 +753,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const padeiros = criarPadeiros(db);
   // as ausências com período (#128) e as demandas para distribuir, no SQLite, junto da escala
   const ausencias = criarAusencias(db);
+  // os nomes novos da pauta (#132), pendentes nos Cadastros
+  const nomesNovos = criarNomesNovos(db);
   // a coluna lateral (#126): "Para distribuir", mover a demanda e escalar quem está sem escala
   const distribuicao = criarDistribuicao(db, escala);
   // o cartão da pauta no Teams (#135): nos horários da Configuração e ao republicar; o último envio fica no SQLite
@@ -1897,7 +1900,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const admin = cadastros.podeApagar(eu.email);
         // as sugestões "É Fulana, dos redatores?" (#106): só para administradores
         // coordenacao: os e-mails de quem monta a pauta (#123), marcados nos Editores
-        return json(res, 200, { ...lido, podeApagar: admin, sugestoes: admin ? ligacaoDePessoas.sugestoes(q.todosOsUsuarios.all(), lido) : [], coordenacao: escala.coordenacao() });
+        // nomesNovos: os editores da pauta que não estão nos Cadastros (#132), só para administradores
+        return json(res, 200, {
+          ...lido,
+          podeApagar: admin,
+          sugestoes: admin ? ligacaoDePessoas.sugestoes(q.todosOsUsuarios.all(), lido) : [],
+          coordenacao: escala.coordenacao(),
+          nomesNovos: admin && lido.ligado ? nomesNovos.pendentes(lido.editores) : [],
+        });
       }
       if (tipo === 'coordenacao' && !id) {
         // o papel de coordenação (#123), só por administradores: POST { email } marca, DELETE ?email= tira. Guardado no
@@ -1919,6 +1929,31 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         else ligacaoDePessoas.desfazer(de.tipo, de.id, de.email);
         console.log(`[cadastros] ${eu.email} ${req.method === 'POST' ? 'disse que não é' : 'desfez o "não é" de'} ${de.email} (${de.tipo} ${de.id})`);
         return json(res, 200, { ok: true });
+      }
+      if (tipo === 'nomes-novos' && ['ligar', 'ignorar'].includes(id) && !sub) {
+        // o nome novo da pauta (#132), só por administradores: POST /ligar { nome, editor } liga ao editor que já existe
+        // (o nome vira key dele, no Teable, e a escala passa a ter o nome do cadastro); POST /ignorar { nome } o tira
+        // da lista, DELETE /ignorar?nome= o traz de volta. Cadastrar como editor novo é o POST /editores de sempre
+        if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores ligam os nomes novos da pauta.' });
+        if (id === 'ignorar') {
+          const pedido = req.method === 'DELETE' ? new URL(req.url, 'http://x').searchParams.get('nome') : req.method === 'POST' ? ((await lerCorpo(req)) ?? {}).nome : undefined;
+          if (pedido === undefined) return json(res, 405, { erro: 'Método não permitido.' });
+          const nome = nomeNovoDoPedido(pedido);
+          if (req.method === 'POST') nomesNovos.ignorar(nome, eu.email);
+          else nomesNovos.desfazer(nome);
+          console.log(`[cadastros] ${eu.email} ${req.method === 'POST' ? 'ignorou' : 'desfez o ignorar d'}o nome novo ${nome}`);
+          return json(res, 200, { ok: true });
+        }
+        if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+        const corpo = (await lerCorpo(req)) ?? {};
+        const nome = nomeNovoDoPedido(corpo.nome);
+        const editor = (await cadastros.ler(true)).editores.find((e) => e.id === corpo.editor);
+        if (!editor) return json(res, 400, { erro: 'Escolha um editor cadastrado.' });
+        // o nome vira key do editor (a key da pauta), para ser reconhecido; a que já é dele não é gravada de novo
+        if (!editor.keys.some((k) => k.key === normalizarKey(nome))) await cadastros.novaKey('editor', editor.id, nome);
+        const trocas = nomesNovos.ligar(nome, editor.nome);
+        console.log(`[cadastros] ${eu.email} ligou o nome novo ${nome} a ${editor.nome} (${trocas} na escala)`);
+        return json(res, 200, { ok: true, nome: editor.nome, trocas });
       }
       if (!singular) return json(res, 404, { erro: 'Não encontrado.' });
       if (req.method === 'POST' && !id) {

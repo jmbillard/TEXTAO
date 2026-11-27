@@ -20,7 +20,10 @@ import {
   lerTotaisDoAcervo,
   mudarAcervo,
   mudarEmailDoCadastro,
+  ignorarNomeNovo,
+  ligarNomeNovo,
   marcarCoordenacao,
+  type NomeNovoDaPauta,
   responderNaoE,
   type SugestaoDeEmail,
   preverImportacao,
@@ -53,6 +56,7 @@ import { ListaDeDuplicadas, PainelDasDuplicadas, useDuplicadas } from './Duplica
 import { ListaDePadeiros, PainelDosPadeiros, usePadeiros } from './Padeiros';
 import { FormDaIlha, ICONE_DAS_ILHAS, ListaDasIlhas, useIlhas } from './IlhasNosCadastros';
 import { CoordenacaoNaLinha, EmailNaLinha, quemNoCadastro, SugestaoDeEmailNaLista } from './EmailDoCadastro';
+import { NomeNovoNaLista, TituloDosNomesNovos } from './NomesNovosNosCadastros';
 import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, RegrasDaAtracaoNaFicha, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
@@ -966,6 +970,36 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
       avisar(e instanceof Error ? e.message : 'Não consegui mudar a coordenação.');
     }
   };
+  /** O nome novo da pauta (#132): ligar ao editor que já existe, cadastrar como editor novo ou ignorar. */
+  const ligarONomeNovo = (n: NomeNovoDaPauta) => async (e: EditorCadastro) => {
+    try {
+      await ligarNomeNovo(n.nome, e.id);
+      await carregar(true);
+      marcarRecem([e.id]);
+      avisar(`${n.nome} agora é ${e.nome}: a pauta mostra o nome do cadastro.`);
+    } catch (falha) {
+      avisar(falha instanceof Error ? falha.message : 'Não consegui ligar o nome.');
+    }
+  };
+  const cadastrarONomeNovo = (n: NomeNovoDaPauta) => async () => {
+    try {
+      const r = await cadastrar<{ id: string; nome: string; trello: boolean }>('editores', { nome: n.nome });
+      await carregar(true);
+      marcarRecem([r.id]);
+      avisar(`${r.nome} cadastrado${r.trello ? ', também no Trello' : ''}.`);
+    } catch (falha) {
+      avisar(falha instanceof Error ? falha.message : 'Não consegui cadastrar.');
+    }
+  };
+  const ignorarONomeNovo = (n: NomeNovoDaPauta) => async () => {
+    try {
+      await ignorarNomeNovo(n.nome);
+      await carregar(true);
+      mostrarGravado(`nome-novo:${n.nome}`, <><b>{n.nome}</b> fica na pauta como está. O PROMeiro não pergunta de novo.</>, async () => void (await ignorarNomeNovo(n.nome, true)));
+    } catch (falha) {
+      avisar(falha instanceof Error ? falha.message : 'Não consegui guardar a resposta.');
+    }
+  };
   const naoE = async (s: SugestaoDeEmail) => {
     try {
       await responderNaoE(s);
@@ -1028,6 +1062,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const listaEditores = (dados?.editores ?? []).filter((e) => !escondidos.includes(e.id) && casa(e.nome, e.email, ...e.keys.map((k) => k.key)));
   // as sugestões "É Fulana, dos redatores?" da aba (só administradores recebem)
   const sugestoesDaAba = (dados?.sugestoes ?? []).filter((x) => x.tipo === aba);
+  // os nomes novos da pauta (#132), na aba dos Editores (só administradores recebem)
+  const nomesNovosDaBusca = (dados?.nomesNovos ?? []).filter((n) => casa(n.nome));
   const itemAtracao = (a: AtracaoCadastro) => (
     <div
       key={a.id}
@@ -1232,6 +1268,14 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
             })()}
             {!dupAberta && semCad && !sem && <p className="cad-vazio">Procurando nas claquetes…</p>}
             {!dupAberta && !semCad && dados && sugestoesDaAba.map((x) => <SugestaoDeEmailNaLista key={`${x.id}:${x.email}`} s={x} simE={() => simE(x)} naoE={() => void naoE(x)} />)}
+            {!dupAberta && !semCad && dados && aba === 'editores' && !!nomesNovosDaBusca.length && (
+              <section aria-label="Nomes novos da pauta, pendentes">
+                <TituloDosNomesNovos n={nomesNovosDaBusca.length} />
+                {nomesNovosDaBusca.map((n) => (
+                  <NomeNovoNaLista key={n.nome} n={n} editores={dados.editores} ligar={ligarONomeNovo(n)} cadastrar={cadastrarONomeNovo(n)} ignorar={ignorarONomeNovo(n)} />
+                ))}
+              </section>
+            )}
             {!dupAberta && !semCad && dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
             {!dupAberta && !semCad && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
             {!dupAberta && !semCad && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
