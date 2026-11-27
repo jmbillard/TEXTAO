@@ -58,6 +58,7 @@ import { criarDistribuicao } from './distribuir.mjs';
 import { diasDoRepetir, ehDeOndeRepetir, opcoesDoRepetir, repetirODia } from '../src/modelo/repetir.ts';
 import { conferirODia, pendenciasQueFicaram } from '../src/modelo/conferenciaDaEscala.ts';
 import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
+import { DIAS_DA_CONTINUIDADE, historicoDaPauta } from '../src/modelo/distribuir.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
@@ -1673,6 +1674,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * leva uma claquete da lista para a posição; /mover { demanda, posicao, antesDe } move a demanda; /devolver
    * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno, id? } escala quem está sem escala
    * (numa posição, ou numa nova do turno, com o id que a tela já mostrou, #131), e recusa quem está fora no dia.
+   * Distribuir sozinho (#151): /distribuir põe a lista "Para distribuir" inteira nos editores escalados (e não fora) do
+   * rascunho, numa gravação só, e devolve também `distribuidas` (cada claquete com a posição, o editor, o motivo e de
+   * quem era); /desfazer-distribuicao { itens: [{ id, deQuem }] } as devolve para a lista, de uma vez.
    * Duas pessoas ao mesmo tempo (#131): o PUT com `base` ({ posicoes, recado }, o dia como a pessoa o leu) junta o que
    * ela mudou desde a base com o que está gravado (src/modelo/juntarODia.ts); toda resposta traz a `versao` e toda
    * mudança avisa a sala do dia (`montar-AAAA-MM-DD`).
@@ -1722,6 +1726,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const editores = (await areas.nomesDosCadastros(cadastros)).editor.sort((a, b) => a.localeCompare(b, 'pt-BR'));
     const turnos = turnosDaConfiguracao(configuracao.valores());
     let repetido;
+    let distribuidas;
     try {
       if (req.method === 'PUT') {
         const corpo = (await lerCorpo(req)) ?? {};
@@ -1777,6 +1782,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // o Teable volta para a publicação anterior, ou o dia sai dele (#134, com a chave ligada)
         await pautaNoTeable.gravar(dia);
       }
+      if (acao === 'distribuir') {
+        // distribuir sozinho (#151): pela continuidade nos 14 dias antes do dia, pela carga e pelo sorteio; só quem está
+        // escalado e não está fora recebe. Nada é publicado: as claquetes vão para o rascunho
+        distribuidas = distribuicao.distribuir(dia, { historico: await historicoDaContinuidade(dia), fora: ausencias.noPeriodo(dia, dia).map((a) => a.editor), sortear: Math.random }, eu.email);
+        console.log(`[montar-pauta] ${eu.email} distribuiu ${distribuidas.length} claquete(s) em ${dia}`);
+      }
+      if (acao === 'desfazer-distribuicao') distribuicao.recolher(dia, ((await lerCorpo(req)) ?? {}).itens, eu.email);
       if (['para-distribuir', 'levar', 'mover', 'devolver', 'escalar'].includes(acao)) {
         const corpo = (await lerCorpo(req)) ?? {};
         if (acao === 'para-distribuir') distribuicao.acrescentar(dia, corpo.texto, eu.email);
@@ -1807,6 +1819,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // o que cada opção do Repetir traz (#129), só no dia vazio
       repetir: lido.estado === 'vazio' ? opcoesDoRepetir(dia, semana, escala.quantas) : null,
       ...(repetido ? { repetido } : {}),
+      // depois de distribuir (#151): cada claquete com a posição, o editor, o motivo e de quem era (para o desfazer)
+      ...(distribuidas ? { distribuidas } : {}),
       turnos: turnosDoDia(turnos, lido.posicoes),
       editores,
       // as keys dos editores, para reconhecer o apelido no colar da planilha (#130)
@@ -1818,6 +1832,22 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // a virada (#134): a chave, quando o dia foi gravado no Teable e o erro da última vez
       noTeable: pautaNoTeable.estado(dia),
     });
+  }
+
+  /**
+   * O histórico da continuidade do distribuir (#151): as claquetes da pauta dos 14 dias antes do dia, com o editor, da
+   * mesma junção da Pauta da edição (a do Teable e a publicada no PROMeiro, src/modelo/pautaPublicada.ts). Com o Teable
+   * fora do ar (e sem a cópia local), só a publicada.
+   */
+  async function historicoDaContinuidade(dia) {
+    const dias = Array.from({ length: DIAS_DA_CONTINUIDADE }, (_, i) => diaVizinho(dia, i - DIAS_DA_CONTINUIDADE));
+    const doTeable = await pauta.dias(dias).then(
+      (r) => r.linhas,
+      (e) => (console.error('[montar-pauta] sem a pauta do Teable para distribuir:', e.message), []),
+    );
+    const gravados = pautaNoTeable.gravados(dias[0], dias.at(-1));
+    const publicadas = escala.publicadas(dias[0], dias.at(-1)).map((p) => (gravados.has(p.dia) ? { ...p, vale: true } : p));
+    return historicoDaPauta(juntarAPublicada(doTeable, publicadas));
   }
 
   /**
@@ -3201,7 +3231,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/montar-pauta/foto') return rotaDaFotoDoDia(req, res, eu);
     const acaoDasAusencias = /^\/api\/montar-pauta\/(ausencias|ausencias\/onde|ausencias\/historico|ausencias\/apagar|tirar|para-distribuir\/tirar)$/.exec(caminho);
     if (acaoDasAusencias) return rotaDasAusencias(req, res, eu, acaoDasAusencias[1]);
-    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar)$/.exec(caminho);
+    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar|distribuir|desfazer-distribuicao)$/.exec(caminho);
     if (acaoDoMontar) return rotaDeMontarAPauta(req, res, eu, acaoDoMontar[1]);
     if (caminho === '/api/correcoes/pauta') {
       // a correção de grafia da pauta da edição (#114), só para administradores e só leitura: uma página das propostas

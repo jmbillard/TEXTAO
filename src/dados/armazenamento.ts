@@ -1513,6 +1513,10 @@ export const moverADemanda = (dia: string, demanda: string, posicao: string, ant
 export const devolverADemanda = (dia: string, demanda: string) => naColuna(dia, 'devolver', { demanda });
 /** Escala quem está sem escala numa posição, ou numa posição nova do turno. */
 export const escalarNoDia = (dia: string, editor: string, alvo: { posicao: string } | { turno: string; id?: string }) => naColuna(dia, 'escalar', { editor, ...alvo });
+/** Distribuir (#151): põe a lista "Para distribuir" inteira nos editores escalados; o dia volta com as `distribuidas`. */
+export const distribuirNoDia = (dia: string) => naColuna(dia, 'distribuir', {});
+/** Desfaz o Distribuir (#151): as claquetes voltam de uma vez para "Para distribuir", com de quem eram. */
+export const desfazerADistribuicao = (dia: string, itens: readonly { id: string; deQuem: string }[]) => naColuna(dia, 'desfazer-distribuicao', { itens: itens.map(({ id, deQuem }) => ({ id, deQuem })) });
 /** Repetir (#129): copia para o dia vazio a escala de outro dia (ou, na semana inteira, para cada dia vazio). */
 export const repetirAEscala = (dia: string, de: DeOndeRepetir) => pedir<DiaDaEscala>(`/api/montar-pauta/repetir?dia=${dia}`, { method: 'POST', body: JSON.stringify({ de }) });
 /** O painel das ausências do dia (#128): as que valem a partir da semana, as do dia, a oferta de tirar e o para distribuir. */

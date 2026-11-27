@@ -49,6 +49,11 @@
 // na…" põe a Bia numa posição nova da Noite, o "Mover para…" leva a última claquete para o Rui e o "⋯" da demanda a
 // move do Gil para a Bia, sem rolar para o lado.
 //
+// Distribuir (#151): num dia adiante, com só uma vaga, o Distribuir de "Para distribuir" fica desligado e diz por quê.
+// Com o Rui, a Elis e o Gil escalados, Distribuir põe o Mundo Animal no Gil (que o pegou no Teable dois dias antes) e a
+// Terra Viva na Elis (menos demandas); cada uma tem o motivo na dica e o fundo tingido, sem faixa na borda, e a caixinha
+// diz "2 claquetes distribuídas". Nada é publicado. Desfazer devolve as duas para a lista de uma vez.
+//
 // Colar da planilha (#130): num dia vazio, a Bia cola uma aba fictícia (as células por tab, como a planilha copia),
 // com a linha de lixo, o dia, os rótulos de turno e um 4º bloco das 20h sem rótulo. O diálogo mostra o resumo
 // (posições, demandas, avisos, ausências e grafias), as notas (o apelido, a ilha que sobra, o bloco lido como Noite) e
@@ -428,7 +433,13 @@ function linhaDoTeable(id, claquete, quem, dia, [inicio, fim]) {
   const sp = (d, h) => new Date(`${d}T${h}:00-03:00`).toISOString();
   return { id, fields: { claquete, key: claquete.toUpperCase(), editor: { id: `rec${quem.replace(/\W/g, '')}`, title: quem }, data: sp(dia, '00:00'), expediente_inicio: sp(dia, inicio), expediente_fim: sp(fim < inicio ? mais(dia, 1) : dia, fim), anotacao: null, alterado_em: new Date().toISOString() } };
 }
-const PAUTA_DO_TEABLE = [linhaDoTeable('recT1', `Noite de Gala ${diaMes(amanha)} Dp`, 'Rui Teixeira', amanha, ['22:00', '06:00']), linhaDoTeable('recT2', `Corujão ${diaMes(amanha)}`, 'Gil Moura', amanha, ['06:00', '15:00'])];
+/** O dia do Distribuir (#151), bem adiante; dois dias antes, no Teable, o Gil pegou o Mundo Animal. */
+const distDia = mais(segunda, 45);
+const PAUTA_DO_TEABLE = [
+  linhaDoTeable('recT1', `Noite de Gala ${diaMes(amanha)} Dp`, 'Rui Teixeira', amanha, ['22:00', '06:00']),
+  linhaDoTeable('recT2', `Corujão ${diaMes(amanha)}`, 'Gil Moura', amanha, ['06:00', '15:00']),
+  linhaDoTeable('recT3', `Mundo Animal ${diaMes(mais(distDia, -1))} (P)`, 'Gil Moura', mais(distDia, -2), ['14:00', '23:00']),
+];
 
 async function conferirEPublicar(navegador, url, teable) {
   const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`);
@@ -809,6 +820,66 @@ async function colunaEArrastar(navegador, url) {
   console.log('ok: a coluna lateral (para distribuir, sem escala, fora), o arrastar no mouse e no dedo, e o "Escalar na…" e o "Mover para…" no celular');
 }
 
+/* ---------- Distribuir (#151) ---------- */
+async function distribuirSozinho(navegador, url, api) {
+  const h = { 'cf-access-authenticated-user-email': BIA, 'content-type': 'application/json' };
+  const gravar = async (posicoes) => assert.equal((await fetch(`${api}/montar-pauta?dia=${distDia}`, { method: 'PUT', headers: h, body: JSON.stringify({ posicoes }) })).status, 200);
+  const posicao = (id, turno, editor, horario, demandas) => ({ id, turno, editor, ilha: '', horario, demandas: demandas.map((texto, i) => ({ id: `${id}-d${i}`, texto })) });
+  // só uma vaga: ninguém para receber
+  await gravar([posicao('dist-1', 'tarde', '', '14h às 23h', [])]);
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${distDia}`);
+  const coluna = p.getByRole('region', { name: 'Para distribuir' });
+  await p.locator('.montar-celula').first().waitFor();
+  const mundo = `Mundo Animal ${diaMes(distDia)} (P)`;
+  const terra = `Terra Viva ${diaMes(distDia)} (A)`;
+  await coluna.getByLabel('Escrever ou colar as claquetes').fill(`${mundo}\n${terra}`);
+  await p.keyboard.press('Enter');
+  await ate(async () => assert.deepEqual(await daLista(p), [mundo, terra]));
+  const botao = coluna.getByRole('button', { name: 'Distribuir' });
+  assert.ok(await botao.isDisabled(), 'sem ninguém escalado, o Distribuir fica desligado');
+  await coluna.getByText('Ninguém escalado no dia para receber', { exact: false }).waitFor();
+
+  // escalados: o Rui com uma tarefa, a Elis sem nada e o Gil com duas
+  await gravar([posicao('dist-1', 'madrugada', 'Rui Teixeira', '22h às 6h', ['COMUNICAÇÃO']), posicao('dist-2', 'tarde', 'Elis Furtado', '14h às 23h', []), posicao('dist-3', 'tarde', 'Gil Moura', '14h às 23h', ['CALHAUS', 'COMUNICAÇÃO'])]);
+  await p.reload();
+  await p.locator('.montar-celula').nth(2).waitFor();
+  await ate(async () => assert.deepEqual(await daLista(p), [mundo, terra]));
+  assert.ok(!(await botao.isDisabled()), 'com gente escalada, o Distribuir liga');
+  await botao.click();
+  // o Mundo Animal vai para o Gil (pegou a atração no Teable, dois dias antes); a Terra Viva, para a Elis (menos demandas)
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => [x.editor, x.demandas]), [['Rui Teixeira', ['COMUNICAÇÃO']], ['Elis Furtado', [terra]], ['Gil Moura', ['CALHAUS', 'COMUNICAÇÃO', mundo]]]));
+  assert.deepEqual(await daLista(p), [], 'a lista esvazia');
+  const caixinha = p.locator('.desfazer', { hasText: 'distribuídas' });
+  assert.match(await caixinha.innerText(), /2 claquetes distribuídas/);
+  // o motivo na dica de cada demanda distribuída, no fundo tingido, sem faixa na borda
+  const linha = (id) => p.locator(`.montar-celula[data-posicao-id="${id}"] .montar-demanda.distribuida`);
+  assert.equal(await linha('dist-3').getAttribute('title'), `Distribuída: pegou a atração em ${diaMes(mais(distDia, -2))}`);
+  assert.equal(await linha('dist-2').getAttribute('title'), 'Distribuída: menos demandas');
+  assert.equal(await p.locator('.montar-demanda.distribuida').count(), 2);
+  const borda = await linha('dist-3').evaluate((el) => getComputedStyle(el).borderLeftWidth);
+  assert.ok(parseFloat(borda) <= 1, 'nada de faixa na borda esquerda');
+  await linha('dist-3').hover();
+  await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
+  await capturar(p, '22-distribuido');
+  // recarregada, o rascunho ficou; nada foi publicado
+  const lido = await (await fetch(`${api}/montar-pauta?dia=${distDia}`, { headers: h })).json();
+  assert.equal(lido.estado, 'rascunho');
+  assert.equal(lido.paraDistribuir.length, 0);
+
+  // Desfazer: tudo volta para "Para distribuir", de uma vez
+  await caixinha.getByRole('button', { name: 'Desfazer' }).click();
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [['COMUNICAÇÃO'], [], ['CALHAUS', 'COMUNICAÇÃO']]));
+  await ate(async () => assert.deepEqual(await daLista(p), [mundo, terra]));
+  assert.equal(await caixinha.count(), 0, 'desfeito, a caixinha sai');
+  assert.equal(await p.locator('.montar-demanda.distribuida').count(), 0);
+  await ate(async () => assert.equal((await (await fetch(`${api}/montar-pauta?dia=${distDia}`, { headers: h })).json()).paraDistribuir.length, 2));
+  await capturar(p, '23-distribuir-desfeito');
+  assert.equal(escritasNoTeable.length, 0, 'nada foi escrito no Teable');
+  assert.deepEqual(erros, [], 'distribuir: erros na página');
+  await ctx.close();
+  console.log('ok: Distribuir (a continuidade pelo Teable, a carga, o motivo na dica) e Desfazer, que devolve tudo de uma vez');
+}
+
 /* ---------- colar da planilha (#130) ---------- */
 const colarDia = mais(amanha, 6);
 const dm = (iso) => `${Number(iso.slice(8))}/${Number(iso.slice(5, 7))}`;
@@ -1072,6 +1143,7 @@ async function principal() {
     await avisosERecado(navegador, s.url);
     await ausencias(navegador, s.url, s.api);
     await colunaEArrastar(navegador, s.url);
+    await distribuirSozinho(navegador, s.url, s.api);
     await repetir(navegador, s.url, s.api);
     await colarDaPlanilha(navegador, s.url);
     await ladoALado(navegador, s.url, s.api);

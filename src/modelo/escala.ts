@@ -10,6 +10,7 @@ import { lerDataDaClaquete } from './vocabularios.ts';
 import type { Ilha } from './ilhas.ts';
 import type { DemandaParaDistribuir } from './ausencias.ts';
 import type { OpcoesDoRepetir, RepeticaoDoDia, VagaDoRepetir } from './repetir.ts';
+import type { ClaqueteDistribuida } from './distribuir.ts';
 
 /** O id de um turno: os de fábrica (madrugada, manha, tarde, noite) e os criados na Configuração (#124). */
 export type IdDoTurno = string;
@@ -105,6 +106,8 @@ export interface DiaDaEscala {
   repetir?: OpcoesDoRepetir | null;
   /** depois de Repetir: um item por dia preenchido, com quem ficou de fora */
   repetido?: (RepeticaoDoDia & { posicoes: number; vagas: VagaDoRepetir[] })[];
+  /** depois de Distribuir (#151): cada claquete com a posição, o editor, o motivo e de quem era */
+  distribuidas?: ClaqueteDistribuida[];
   /** a versão de montar a pauta quando o dia foi lido (#131): só cresce; a sala do dia avisa a nova */
   versao?: number;
   /** a virada (#134): a chave da Configuração, quando o dia foi gravado no Teable e o erro da última vez */
