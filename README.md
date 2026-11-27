@@ -179,13 +179,15 @@ Teams é do n8n, depois da resposta do PROMeiro.
 A resposta (`200`):
 
 ```json
-{ "id": "<id da prévia>", "existente": false, "nome": "PRÉVIA <MÊS> <ANO>.pdf", "link": "<PROMEIRO_URL>/#/filmes" }
+{ "id": "<id da prévia>", "existente": false, "correcao": false, "nome": "PRÉVIA <MÊS> <ANO>.pdf", "link": "<PROMEIRO_URL>/#/filmes" }
 ```
 
 - **O mesmo PDF não se repete:** o PROMeiro calcula a impressão SHA-256 do arquivo, a mesma que o navegador calcula na
   subida à mão. O mesmo PDF de novo, por e-mail ou subido à mão, responde `"existente": true`, com o id e o nome da
   prévia que já existe, e não cria nada: o n8n só avisa no Teams quando `existente` é `false`.
-- **Um PDF diferente** (a prévia corrigida do mesmo mês) vira **outra prévia, ao lado**; a antiga continua.
+- **Um PDF diferente** vira **outra prévia, ao lado**; a antiga continua. Com o mesmo nome de uma prévia que já existe
+  (sem contar a caixa, os acentos, a pontuação e o "(1)" do anexo repetido), ela é a prévia corrigida do mesmo mês:
+  `"correcao": true` na resposta (para o aviso do Teams dizer) e a etiqueta "correção" na aba Filmes.
 - Sem o token, ou com o errado, `401`; sem o `FILMES_PREVIA_TOKEN` no Portainer, a rota fica desligada (`404`); com a
   aba Filmes desligada (sem `N8N_FILMES_LER` ou `FILMES_PASTA`), `503`; o corpo que não é multipart, sem o campo `pdf`
   ou com um arquivo que não é PDF, `400`; maior que 30 MB, `413`. O caminho torto (`%2e%2e`, barras repetidas, outra

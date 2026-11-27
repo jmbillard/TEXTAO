@@ -132,7 +132,7 @@ _Evitar_: produção (a exibição é o filme na grade; o trabalho da arte do ca
 **Prévia**:
 O PDF mensal da programação de filmes, lido na aba Filmes, que vira os cards de filme. Chega **subida à mão** ou **por
 e-mail** (a origem dela); o mesmo PDF (a mesma impressão SHA-256) é sempre a mesma prévia, e um PDF diferente do mesmo
-mês (a prévia corrigida) é outra prévia, ao lado.
+mês (a **prévia corrigida**, reconhecida pelo mesmo nome) é outra prévia, ao lado, marcada como correção.
 
 **Prévia por preparar**:
 A prévia que chegou por e-mail (o n8n mandou o PDF ao PROMeiro) e que nenhum navegador preparou ainda: o PROMeiro só
@@ -608,7 +608,7 @@ tem o seu endereço; a raiz abre a última usada. No Redator e no Editor, a pess
 **por estado** (uma lista agrupada, boa no celular), lembrada por pessoa e por área. O administrador vê no Redator e no
 Editor os roteiros **de todos**, com o filtro **"de quem"** (uma pessoa, pelo nome do cadastro). Na linha do logo, os
 **caminhos do topo**, separados por bolinhas: na Designer, **Produções · Filmes · Pauta da edição** (a bolinha de
-depois de Filmes fica laranja quando há filme esperando revisão na aba Filmes); no Redator e no Editor, a Pauta da
+depois de Filmes fica laranja quando há filme esperando revisão na aba Filmes ou prévia por preparar); no Redator e no Editor, a Pauta da
 edição. Cadastros e Configuração ficam no menu do perfil, **fora das áreas**.
 _Evitar_: perfil, papel, permissão, De todo mundo (o grupo que virou os caminhos do topo)
 

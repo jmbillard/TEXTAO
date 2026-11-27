@@ -20,8 +20,9 @@ const LIMITES = { abas: 40, nome: 60, linhas: 500, colunas: 100, celula: 5000, m
 
 const erro = (mensagem) => Object.assign(new Error(mensagem), { status: 400 });
 
-/** O token do cabeçalho `Authorization: Bearer …` confere com o esperado? Sem o esperado, nunca (a rota fica desligada). */
-export function tokenDaFotoConfere(cabecalho, esperado) {
+/** O token do cabeçalho `Authorization: Bearer …` confere com o esperado? Sem o esperado, nunca (a rota fica desligada).
+    Vale para as rotas do n8n com Bearer: a foto da edição (#133) e a prévia de filmes do e-mail (#157). */
+export function tokenBearerConfere(cabecalho, esperado) {
   const certo = String(esperado ?? '').trim();
   const veio = /^Bearer\s+(.+)$/i.exec(String(cabecalho ?? '').trim())?.[1]?.trim() ?? '';
   if (!certo || veio.length !== certo.length) return false;

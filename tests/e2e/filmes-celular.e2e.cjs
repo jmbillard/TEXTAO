@@ -905,7 +905,7 @@ async function enviarNoAndroid(p, trello) {
 
 /**
  * A prévia que chega por e-mail (#157), no computador: o n8n (aqui, um fetch com o token) manda o PDF; o mesmo PDF de
- * novo é "repetida". A lista mostra "prévia nova · chegou por e-mail" e a bolinha do Filmes tem o que contar; abrir a
+ * novo é "repetida". A lista mostra "prévia nova · chegou por e-mail" (e a marca dela, que acende a bolinha do Filmes); abrir a
  * prévia prepara no navegador, pela mesma subida da mão (a mesma impressão: o servidor acha a mesma prévia), e as
  * páginas vão para a leitura como sempre.
  */
@@ -919,8 +919,9 @@ async function porEmail(pc, url, leitura, pdf) {
   const nova = await mandar();
   assert.equal(nova.existente, false, 'a prévia do e-mail é nova');
   assert.deepEqual(await mandar(), { ...nova, existente: true }, 'o mesmo PDF de novo é repetida');
-  const eu = () => pc.evaluate(async () => (await (await fetch('/api/eu')).json()).filmesPorPreparar);
-  assert.equal(await eu(), 1, 'a bolinha do Filmes: uma prévia por preparar');
+  // a bolinha do Filmes no topo (#156) acende com a prévia por preparar, que a lista das prévias marca
+  const porPreparar = () => pc.evaluate(async (id) => (await (await fetch('/api/filmes/previas')).json()).find((p) => p.id === id)?.porPreparar, nova.id);
+  assert.equal(await porPreparar(), true, 'a prévia do e-mail está por preparar');
 
   await pc.goto(`${url}#/filmes`);
   const f = pc.locator('.ficha-previa', { hasText: 'PREVIA FILMES FICTICIA EMAIL' });
@@ -947,7 +948,7 @@ async function porEmail(pc, url, leitura, pdf) {
     await pc.waitForTimeout(100);
   }
   await pc.locator('.aviso-do-preparo').waitFor({ state: 'detached', timeout: 10000 });
-  assert.equal(await eu(), 0, 'preparada, a bolinha apaga');
+  assert.equal(await porPreparar(), false, 'preparada, ela não está mais por preparar');
   await pc.waitForTimeout(800);
   if (CAPTURAS) await pc.screenshot({ path: join(CAPTURAS, 'computador-email-03-preparada.png') });
   await pc.goto(`${url}#/filmes`);

@@ -123,4 +123,8 @@ describe('há filme para revisar (#156): a bolinha junto de Filmes, no topo', ()
     expect(haFilmeParaRevisar([{ paginas: 0, diasParaApagar: null }])).toBe(false);
     expect(haFilmeParaRevisar([{ paginas: 3 }])).toBe(false);
   });
+  it('laranja com a prévia que chegou por e-mail e espera a preparação (#157), mesmo sem página', () => {
+    expect(haFilmeParaRevisar([{ paginas: 0, diasParaApagar: null, porPreparar: true }])).toBe(true);
+    expect(haFilmeParaRevisar([{ paginas: 4, diasParaApagar: 12 }, { paginas: 0, diasParaApagar: null, porPreparar: true }])).toBe(true);
+  });
 });

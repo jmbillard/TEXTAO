@@ -283,6 +283,10 @@ function criarConferencia(env, consultar) {
   return { conferir, esquecer };
 }
 
+/** O nome da prévia sem o que muda entre o PDF e o corrigido: a extensão, a caixa, os acentos, a pontuação e o "(1)" que
+    o e-mail acrescenta no anexo repetido. "PRÉVIA DEZEMBRO 2026.pdf" e "Previa_Dezembro_2026 (1).pdf" são o mesmo. */
+export const chaveDoNome = (nome) => compacto(String(nome ?? '').replace(/\.pdf$/i, '').replace(/\s*\(\d+\)\s*$/, ''));
+
 /* ---------- o prazo da prévia toda enviada ---------- */
 const DIA = 86_400_000;
 /** A prévia toda enviada é apagada (o registro e as imagens) depois destes dias; as exibições e os cards ficam. */
@@ -340,16 +344,20 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     );
   `);
   // a origem da prévia (#157): 'navegador' (a subida à mão) ou 'email' (a que o n8n mandou, guardada inteira)
-  if (!db.prepare('PRAGMA table_info(previas)').all().some((c) => c.name === 'origem')) db.exec("ALTER TABLE previas ADD COLUMN origem TEXT NOT NULL DEFAULT 'navegador'");
+  // e a prévia que ela corrige: a que chegou por e-mail com o mesmo nome de outra, num PDF diferente (a prévia corrigida)
+  const colunas = db.prepare('PRAGMA table_info(previas)').all().map((c) => c.name);
+  if (!colunas.includes('origem')) db.exec("ALTER TABLE previas ADD COLUMN origem TEXT NOT NULL DEFAULT 'navegador'");
+  if (!colunas.includes('corrige')) db.exec('ALTER TABLE previas ADD COLUMN corrige TEXT');
   const q = {
     porHash: db.prepare('SELECT p.id, p.nome, (SELECT COUNT(*) FROM previa_paginas g WHERE g.previa_id = p.id) AS paginas FROM previas p WHERE p.hash = ?'),
-    criar: db.prepare('INSERT INTO previas (id, hash, nome, por_email, por_nome, criada_em, origem) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    criar: db.prepare('INSERT INTO previas (id, hash, nome, por_email, por_nome, criada_em, origem, corrige) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+    nomes: db.prepare('SELECT id, nome FROM previas ORDER BY criada_em DESC'),
     criarPagina: db.prepare('INSERT INTO previa_paginas (previa_id, numero, util) VALUES (?, ?, ?)'),
     lista: db.prepare(
-      `SELECT p.id, p.nome, p.por_nome, p.criada_em, p.origem, COUNT(g.numero) AS paginas, SUM(g.estado = 'esperando') AS esperando
+      `SELECT p.id, p.nome, p.por_nome, p.criada_em, p.origem, p.corrige, COUNT(g.numero) AS paginas, SUM(g.estado = 'esperando') AS esperando
        FROM previas p LEFT JOIN previa_paginas g ON g.previa_id = p.id GROUP BY p.id ORDER BY p.criada_em DESC`,
     ),
-    previa: db.prepare('SELECT id, nome, por_nome, criada_em, origem FROM previas WHERE id = ?'),
+    previa: db.prepare('SELECT id, nome, por_nome, criada_em, origem, corrige FROM previas WHERE id = ?'),
     porPreparar: db.prepare("SELECT COUNT(*) AS paginas, SUM(estado = 'esperando') AS esperando FROM previa_paginas WHERE previa_id = ?"),
     paginas: db.prepare('SELECT numero, util, estado, erro, dados, filmes, sessoes FROM previa_paginas WHERE previa_id = ? ORDER BY util'),
     pagina: db.prepare('SELECT p.nome, g.numero, g.util, g.estado, g.dados, (SELECT COUNT(*) FROM previa_paginas x WHERE x.previa_id = g.previa_id) AS total FROM previa_paginas g JOIN previas p ON p.id = g.previa_id WHERE g.previa_id = ? AND g.numero = ?'),
@@ -397,25 +405,29 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       return { id: ja.id, existente: true };
     }
     const id = randomUUID();
-    q.criar.run(id, hash, nome, eu?.email ?? '', eu?.nome ?? '', agoraISO(), 'navegador');
+    q.criar.run(id, hash, nome, eu?.email ?? '', eu?.nome ?? '', agoraISO(), 'navegador', null);
     paginas.forEach((numero, i) => q.criarPagina.run(id, numero, i + 1));
     return { id, existente: false };
   }
 
   /**
    * A prévia que o n8n mandou do e-mail (#157): guarda o PDF inteiro e cria a prévia sem páginas ("por preparar"). O
-   * mesmo PDF (a mesma impressão SHA-256 do navegador), venha por e-mail ou subido à mão, não cria outra.
-   * @returns { id, existente, nome } (o nome da prévia que ficou)
+   * mesmo PDF (a mesma impressão SHA-256 do navegador), venha por e-mail ou subido à mão, não cria outra. O PDF
+   * diferente com o mesmo nome de uma prévia que já existe (a prévia corrigida do mesmo mês) vira outra, ao lado,
+   * marcada como correção da mais nova delas; a antiga continua.
+   * @returns { id, existente, correcao, nome } (o nome da prévia que ficou)
    */
   function receberPorEmail({ nome, pdf, chegouEm }) {
     const hash = createHash('sha256').update(pdf).digest('hex');
     const ja = q.porHash.get(hash);
-    if (ja) return { id: ja.id, existente: true, nome: ja.nome };
+    if (ja) return { id: ja.id, existente: true, correcao: false, nome: ja.nome };
+    const chave = chaveDoNome(nome);
+    const corrige = (chave && q.nomes.all().find((p) => chaveDoNome(p.nome) === chave)?.id) || null;
     const id = randomUUID();
     mkdirSync(dir(id), { recursive: true });
     writeFileSync(pdfInteiro(id), pdf);
-    q.criar.run(id, hash, nome, '', '', chegouEm ?? agoraISO(), 'email');
-    return { id, existente: false, nome };
+    q.criar.run(id, hash, nome, '', '', chegouEm ?? agoraISO(), 'email', corrige);
+    return { id, existente: false, correcao: !!corrige, nome };
   }
 
   /** O PDF inteiro da prévia que chegou por e-mail, para o navegador preparar; null na subida à mão. */
@@ -427,9 +439,6 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       return null;
     }
   }
-
-  /** Quantas prévias chegaram por e-mail e esperam a preparação (a bolinha do Filmes no topo). */
-  const quantasPorPreparar = () => q.lista.all().filter((l) => porPrepararDe(l.id, l.origem, l)).length;
 
   /** A versão da prévia: muda quando muda qualquer coisa dela no banco local (a leitura, o título, as escolhas, o envio).
       É barata (não consulta o Postgres): a tela aberta pergunta por ela a cada poucos segundos e só reabre a prévia
@@ -449,7 +458,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     for (const l of q.lista.all()) {
       const em = await todaEnviada(l.id).catch(() => null);
       const diasParaApagar = em === null ? null : Math.max(0, Math.ceil((em + PRAZO_DA_PREVIA_DIAS * DIA - agora()) / DIA));
-      lista.push({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas, diasParaApagar, origem: l.origem, porPreparar: porPrepararDe(l.id, l.origem, l) });
+      lista.push({ id: l.id, nome: l.nome, por: l.por_nome, criada: l.criada_em, paginas: l.paginas, diasParaApagar, origem: l.origem, porPreparar: porPrepararDe(l.id, l.origem, l), corrige: l.corrige ?? null });
     }
     return lista;
   }
@@ -553,6 +562,7 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
       por: p.por_nome,
       criada: p.criada_em,
       origem: p.origem,
+      corrige: p.corrige ?? null,
       porPreparar: porPrepararDe(p.id, p.origem, q.porPreparar.get(id)),
       versao: v,
       paginas,
@@ -866,7 +876,6 @@ export function criarFilmes(env, { db, pasta, buscar = fetch, consultar, trello,
     criar,
     receberPorEmail,
     pdf,
-    quantasPorPreparar,
     listar,
     versao,
     abrir,

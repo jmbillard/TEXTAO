@@ -177,7 +177,8 @@ function FichaDaPrevia({
       <button className="previa-celular por-preparar" onClick={abrir}>
         <b>{semPdf(p.nome)}</b>
         <span className="linha">
-          <span className="etiqueta-nova">prévia nova</span> · chegou por e-mail em {diaEMes(p.criada)}
+          <span className="etiqueta-nova">prévia nova</span>
+          {p.corrige && <span className="etiqueta-email">correção</span>} · chegou por e-mail em {diaEMes(p.criada)}
         </span>
         {gente}
       </button>

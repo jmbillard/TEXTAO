@@ -254,7 +254,8 @@ function ListaDePrevias({
           <span className="some">
             {p.porPreparar ? (
               <>
-                <span className="etiqueta-nova">prévia nova</span> · chegou por e-mail em{" "}
+                <span className="etiqueta-nova">prévia nova</span>
+                {p.corrige && <span className="etiqueta-email">correção</span>} · chegou por e-mail em{" "}
                 {new Date(p.criada).toLocaleDateString("pt-BR")}
               </>
             ) : (

@@ -53,7 +53,7 @@ describe('a prévia que chega por e-mail (#157)', () => {
     const r = await mandar();
     expect(r.status).toBe(200);
     const corpo = await r.json();
-    expect(corpo).toEqual({ id: expect.any(String), existente: false, nome: 'PRÉVIA DEZEMBRO 2026.pdf', link: 'https://promeiro.exemplo.com/#/filmes' });
+    expect(corpo).toEqual({ id: expect.any(String), existente: false, correcao: false, nome: 'PRÉVIA DEZEMBRO 2026.pdf', link: 'https://promeiro.exemplo.com/#/filmes' });
     expect(existsSync(join(pasta, corpo.id, 'previa.pdf'))).toBe(true);
 
     const lista = await (await api('/api/filmes/previas')).json();
@@ -65,8 +65,6 @@ describe('a prévia que chega por e-mail (#157)', () => {
     expect(baixado.status).toBe(200);
     expect(baixado.headers.get('content-type')).toBe('application/pdf');
     expect(Buffer.from(await baixado.arrayBuffer()).equals(PDF)).toBe(true);
-    // a bolinha do Filmes: há prévia por preparar
-    expect((await (await api('/api/eu')).json()).filmesPorPreparar).toBe(1);
     // nada foi para a leitura: quem prepara é o navegador
     expect(leituras).toEqual([]);
   });
@@ -80,12 +78,10 @@ describe('a prévia que chega por e-mail (#157)', () => {
     expect(aberta.paginas.map((p: { numero: number; estado: string }) => [p.numero, p.estado])).toEqual([[2, 'esperando'], [3, 'esperando']]);
     // com páginas esperando, ela ainda está por preparar (a preparação caiu no meio, ou ainda está indo)
     expect(aberta.porPreparar).toBe(true);
-    expect((await (await api('/api/eu')).json()).filmesPorPreparar).toBe(1);
     const pagina = { pdf: Buffer.from('%PDF-p').toString('base64'), imagem: Buffer.from('jpg').toString('base64'), tamanho: { width: 10, height: 10 }, posteres: [], textos: [], vagas: [] };
     for (const n of [2, 3]) expect((await api(`/api/filmes/previas/${id}/paginas/${n}`, { method: 'PUT', body: JSON.stringify(pagina) })).status).toBe(200);
     const lista = await (await api('/api/filmes/previas')).json();
     expect(lista[0]).toMatchObject({ id, origem: 'email', porPreparar: false, paginas: 2 });
-    expect((await (await api('/api/eu')).json()).filmesPorPreparar).toBe(0);
   });
 
   it('o mesmo PDF de novo responde "repetida" e não cria nada; um PDF diferente vira outra prévia, ao lado', async () => {
@@ -93,15 +89,20 @@ describe('a prévia que chega por e-mail (#157)', () => {
     const primeira = await (await mandar()).json();
     const repetida = await mandar({ nome: 'PRÉVIA DEZEMBRO 2026 (1).pdf', chegouEm: '2026-11-28T09:00:00-03:00' });
     expect(repetida.status).toBe(200);
-    expect(await repetida.json()).toEqual({ id: primeira.id, existente: true, nome: 'PRÉVIA DEZEMBRO 2026.pdf', link: 'https://promeiro.exemplo.com/#/filmes' });
+    expect(await repetida.json()).toEqual({ id: primeira.id, existente: true, correcao: false, nome: 'PRÉVIA DEZEMBRO 2026.pdf', link: 'https://promeiro.exemplo.com/#/filmes' });
     expect(await (await api('/api/filmes/previas')).json()).toHaveLength(1);
 
-    const corrigida = await (await mandar({ pdf: Buffer.concat([PDF, Buffer.from('\ncorrigida')]) })).json();
-    expect(corrigida).toMatchObject({ existente: false, nome: 'PRÉVIA DEZEMBRO 2026.pdf' });
+    // a prévia corrigida (o mesmo nome, outro PDF): outra prévia, marcada como correção da que já estava
+    const corrigida = await (await mandar({ pdf: Buffer.concat([PDF, Buffer.from('\ncorrigida')]), nome: 'Prévia Dezembro 2026 (1).pdf' })).json();
+    expect(corrigida).toMatchObject({ existente: false, correcao: true, nome: 'Prévia Dezembro 2026 (1).pdf' });
     expect(corrigida.id).not.toBe(primeira.id);
     const lista = await (await api('/api/filmes/previas')).json();
     expect(lista.map((p: { id: string }) => p.id).sort()).toEqual([primeira.id, corrigida.id].sort());
-    expect((await (await api('/api/eu')).json()).filmesPorPreparar).toBe(2);
+    expect(lista.find((p: { id: string }) => p.id === corrigida.id).corrige).toBe(primeira.id);
+    expect(lista.find((p: { id: string }) => p.id === primeira.id).corrige).toBeNull();
+    // outro mês não é correção
+    expect(await (await mandar({ pdf: Buffer.concat([PDF, Buffer.from('\njaneiro')]), nome: 'PRÉVIA JANEIRO 2027.pdf' })).json()).toMatchObject({ existente: false, correcao: false });
+    expect(lista.every((p: { porPreparar: boolean }) => p.porPreparar)).toBe(true);
   });
 
   it('o PDF que já foi subido à mão responde "repetida"', async () => {

@@ -66,7 +66,7 @@ import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarCartaoDoTeams } from './cartao-do-teams.mjs';
-import { LIMITE_DA_FOTO, ROTA_DA_FOTO, criarFotosDaEdicao, fotoDoPedido, tokenDaFotoConfere } from './foto-da-edicao.mjs';
+import { LIMITE_DA_FOTO, ROTA_DA_FOTO, criarFotosDaEdicao, fotoDoPedido, tokenBearerConfere } from './foto-da-edicao.mjs';
 import { LIMITE_DA_PREVIA, ROTA_DA_PREVIA, linkDaAbaFilmes, previaDoPedido } from './previa-por-email.mjs';
 import { diferencasDaFoto, lerAFoto } from '../src/modelo/fotoDaPlanilha.ts';
 import { conferirHorarios, horariosArrumados, horariosDaConfiguracao } from '../src/modelo/horariosDoCartao.ts';
@@ -2748,8 +2748,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // as áreas de trabalho (#101): as da pessoa (pelo e-mail nos cadastros), a de entrada e as preferências
         // coordenacao: a pessoa monta a pauta (#123); a entrada "Montar a pauta" só aparece para ela
         const dela = await daPessoa(eu.email, admin);
-        // filmesPorPreparar (#157): as prévias que chegaram por e-mail e esperam a preparação (a bolinha do Filmes)
-        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, ...(filmes.ligado ? { filmesPorPreparar: filmes.quantasPorPreparar() } : {}), tour, pracas: pracasParaONavegador(pracas), admin, coordenacao: escala.ehCoordenacao(eu.email), ...(admin ? { novidades } : {}), ...dela });
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin, coordenacao: escala.ehCoordenacao(eu.email), ...(admin ? { novidades } : {}), ...dela });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -3500,7 +3499,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   async function rotaDaFoto(req, res) {
     const esperado = String(env.EDICAO_FOTO_TOKEN ?? '').trim();
     if (!esperado || String(req.url ?? '').split(/[?#]/)[0] !== ROTA_DA_FOTO) return json(res, 404, { erro: 'Não encontrado.' });
-    if (!tokenDaFotoConfere(req.headers.authorization, esperado)) {
+    if (!tokenBearerConfere(req.headers.authorization, esperado)) {
       req.resume();
       return json(res, 401, { erro: 'Token da foto da edição errado.' });
     }
@@ -3520,7 +3519,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   async function rotaDaPrevia(req, res) {
     const esperado = String(env.FILMES_PREVIA_TOKEN ?? '').trim();
     if (!esperado || String(req.url ?? '').split(/[?#]/)[0] !== ROTA_DA_PREVIA) return json(res, 404, { erro: 'Não encontrado.' });
-    if (!tokenDaFotoConfere(req.headers.authorization, esperado)) {
+    if (!tokenBearerConfere(req.headers.authorization, esperado)) {
       req.resume();
       return json(res, 401, { erro: 'Token da prévia de filmes errado.' });
     }

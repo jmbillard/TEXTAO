@@ -3424,6 +3424,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
    vai na etiqueta e no fundo tingido, sem faixa na borda */
 .etiqueta-nova, .etiqueta-email { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; line-height: 18px; background: var(--ultra-suave); color: var(--ultra-tinta); }
 .etiqueta-email { background: var(--neutro); color: var(--tinta2); font-weight: 500; }
+.etiqueta-nova + .etiqueta-email { margin-left: 6px; }
 .aviso-do-preparo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; padding: 10px 14px; border-radius: 12px; background: var(--ultra-suave); color: var(--tinta); font-size: 14px; }
 .aviso-do-preparo.parou { background: var(--falta-fundo); }
 .previa-cab .aviso-do-preparo { margin: 0; }

@@ -287,7 +287,6 @@ export async function consultarPauta(claquete: string): Promise<{ editor: string
 
 let trelloLigado = false;
 let filmesLigado = false;
-let porPreparar = 0;
 let souAdmin = false;
 let souDaCoordenacao = false;
 let novidades = 0;
@@ -322,9 +321,6 @@ export async function guardarOriginal(id: string, arquivo: File, texto?: TextoOr
 
 /** O servidor lê as prévias de filmes (N8N_FILMES_LER configurado). */
 export const temFilmes = () => armazenamento.tipo === 'servidor' && filmesLigado;
-/** Quantas prévias chegaram por e-mail e esperam a preparação no navegador (#157): a bolinha do Filmes no topo acende
-    com elas. Vem do /api/eu na entrada e é refeito a cada lista das prévias. */
-export const previasPorPreparar = () => (temFilmes() ? porPreparar : 0);
 
 export interface CaixaDaPagina {
   x: number;
@@ -425,6 +421,8 @@ export interface Previa {
   origem?: OrigemDaPrevia;
   /** chegou por e-mail e ainda não foi preparada (sem páginas, ou com página que não chegou): o navegador prepara */
   porPreparar?: boolean;
+  /** a prévia que esta corrige (o mesmo nome, outro PDF, chegado por e-mail); null quando não corrige nenhuma */
+  corrige?: string | null;
 }
 export type OrigemDaPrevia = 'navegador' | 'email';
 export interface PreviaNaLista {
@@ -439,6 +437,7 @@ export interface PreviaNaLista {
   pessoas?: PessoaNaPrevia[];
   origem?: OrigemDaPrevia;
   porPreparar?: boolean;
+  corrige?: string | null;
 }
 export interface PaginaPreparada {
   pdf: string;
@@ -449,8 +448,7 @@ export interface PaginaPreparada {
   vagas: { caixa: CaixaDaPagina; texto: string }[];
 }
 
-export const listarPrevias = () =>
-  pedir<PreviaNaLista[]>('/api/filmes/previas').then((l) => ((porPreparar = l.filter((p) => p.porPreparar).length), l));
+export const listarPrevias = () => pedir<PreviaNaLista[]>('/api/filmes/previas');
 /** O PDF inteiro da prévia que chegou por e-mail (#157), como um arquivo, para preparar como na subida à mão. */
 export async function baixarPdfDaPrevia(id: string, nome: string) {
   const r = await fetch(`/api/filmes/previas/${encodeURIComponent(id)}/pdf`, { credentials: 'same-origin', headers: cabecalhos });
@@ -1093,14 +1091,13 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; filmesPorPreparar?: number; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; coordenacao?: boolean; novidades?: number; areas?: unknown[]; area?: unknown; preferencias?: Record<string, unknown> };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; coordenacao?: boolean; novidades?: number; areas?: unknown[]; area?: unknown; preferencias?: Record<string, unknown> };
     if (d.email) {
       armazenamento = doServidor;
       // as praças da Configuração, antes de qualquer roteiro ser lido (até aqui, e sem servidor, valem as de fábrica)
       registrarPracas(d.pracas);
       trelloLigado = !!d.trello;
       filmesLigado = !!d.filmes;
-      porPreparar = Number(d.filmesPorPreparar ?? 0) || 0;
       souAdmin = !!d.admin;
       souDaCoordenacao = !!d.coordenacao;
       novidades = Number(d.novidades ?? 0) || 0;

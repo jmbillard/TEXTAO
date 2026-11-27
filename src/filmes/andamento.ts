@@ -38,8 +38,10 @@ export function andamentoDaPrevia(paginas: PaginaDaPrevia[]): AndamentoDaPrevia 
 }
 
 /** Há filme esperando revisão na aba Filmes (#156): alguma prévia da lista ainda não está toda enviada (o servidor diz
-    `diasParaApagar` null enquanto falta ler uma página, responder um ! ou enviar um ✓). A prévia sem página não conta. */
-export const haFilmeParaRevisar = (previas: readonly Pick<PreviaNaLista, 'paginas' | 'diasParaApagar'>[]) => previas.some((p) => p.paginas > 0 && p.diasParaApagar === null);
+    `diasParaApagar` null enquanto falta ler uma página, responder um ! ou enviar um ✓), ou chegou por e-mail e espera a
+    preparação (#157). A prévia sem página (e que não está por preparar) não conta. */
+export const haFilmeParaRevisar = (previas: readonly Pick<PreviaNaLista, 'paginas' | 'diasParaApagar' | 'porPreparar'>[]) =>
+  previas.some((p) => p.porPreparar === true || (p.paginas > 0 && p.diasParaApagar === null));
 
 /** Onde está a página que esta tela está subindo: sendo preparada, subindo ou já entregue ao servidor. */
 export type PassoNoNavegador = 'preparando' | 'subindo' | 'subiu';
