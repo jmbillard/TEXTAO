@@ -1360,6 +1360,25 @@ export function criarTrello(env, deps = {}) {
   }
 
   /**
+   * As linhas dos filmes recentes do Padeiro (#142, servidor/filmes-recentes.mjs): as exibições de `de` a `ate` (dias de
+   * Brasília, AAAA-MM-DD) e os filmes delas, do Postgres do Teable. A regra (a cancelada, um por filme, a ordem) fica
+   * em filmesRecentes. null sem as tabelas exibicoes e filmes. Lança com o Postgres fora.
+   */
+  async function linhasDosFilmesRecentes(de, ate) {
+    if (!t.exibicoes || !t.filmes || !consultar) return null;
+    const exibicoes = await sql(
+      `SELECT "__id", "filme", "data_de_exibicao", "sessao", "inedito", "link", "labels" FROM ${t.exibicoes}
+       WHERE ("data_de_exibicao" AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $1::date AND $2::date`,
+      [de, ate],
+    );
+    const ids = [...new Set(exibicoes.map((e) => primeiroLigado(e.filme)?.id).filter(Boolean).map(String))];
+    const filmes = ids.length
+      ? await sql(`SELECT "__id", "titulo", "ano_de_producao", "nome_da_pasta", "projeto_win", "projeto_mac", "output_win", "output_mac", "poster" FROM ${t.filmes} WHERE "__id" = ANY($1::text[])`, [ids])
+      : [];
+    return { exibicoes, filmes };
+  }
+
+  /**
    * A pasta do projeto de cada filme do cadastro (#146: o "pronto para abrir" do filme na janela do After): a mesma
    * fórmula projeto_win que vai ao campo projeto do card do filme (servidor/exibicao.mjs), sem o que o cadastro escreve
    * quando não sabe o caminho. { id: pasta }, só os filmes que têm; {} sem a tabela filmes. Lança com o Postgres fora.
@@ -1501,5 +1520,5 @@ export function criarTrello(env, deps = {}) {
     apagar: (id) => trello('DELETE', `/webhooks/${encodeURIComponent(id)}`),
   };
 
-  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, entrarNoCard, sairDoCard, moverCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, projetosDosFilmes, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, entrarNoCard, sairDoCard, moverCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, linhasDosFilmesRecentes, projetosDosFilmes, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

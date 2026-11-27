@@ -72,6 +72,7 @@ export function criarAnexos(db, { buscar = fetch, agora = () => Date.now() } = {
     // o mais recente do card: a versão nova (V2) vale no lugar da anterior
     pdfDoCard: db.prepare("SELECT nome, mime, dados FROM anexos WHERE tipo = 'roteiro' AND card = ? ORDER BY em DESC LIMIT 1"),
     poster: db.prepare("SELECT id, mime, dados, origem, conferido_em FROM anexos WHERE tipo = 'poster' AND chave = ? ORDER BY em DESC LIMIT 1"),
+    temPoster: db.prepare("SELECT 1 AS tem FROM anexos WHERE tipo = 'poster' AND chave = ? LIMIT 1"),
     tirarPoster: db.prepare("DELETE FROM anexos WHERE tipo = 'poster' AND chave = ?"),
     conferido: db.prepare('UPDATE anexos SET conferido_em = ? WHERE id = ?'),
   };
@@ -196,5 +197,7 @@ export function criarAnexos(db, { buscar = fetch, agora = () => Date.now() } = {
     },
     guardarPoster,
     poster,
+    /** O PROMeiro tem a cópia do pôster do filme (sem ler a imagem)? */
+    temPoster: (rec) => !!(rec && q.temPoster.get(String(rec))),
   };
 }

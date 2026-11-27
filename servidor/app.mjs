@@ -53,6 +53,7 @@ import { criarIlhas } from './ilhas.mjs';
 import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
+import { DIAS_ANTES, DIAS_DEPOIS, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
 import { DIAS_DO_TRELLO, criarIndiceDoBuscar, dasAtracoes, doTrello, montarIndice } from './indice-do-buscar.mjs';
 import { criarProjetoDoPadeiro } from './projeto-do-padeiro.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
@@ -3587,6 +3588,17 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return json(res, 200, { ...r, link: linkDaAbaFilmes(env) });
   }
 
+  /** O pôster do filme para o Padeiro (#142): o endereço público do PROMeiro (PROMEIRO_URL/api/publico/poster/<filme>?t=
+      <POSTER_PUBLICO_TOKEN>), quando o filme tem pôster no Teable ou a cópia guardada pelo PROMeiro; null sem o
+      PROMEIRO_URL ou sem o token (o endereço público fica desligado). */
+  function posterDoPadeiro(filme, temNoTeable) {
+    const base = String(env.PROMEIRO_URL ?? '').trim().replace(/\/+$/, '');
+    const token = String(env.POSTER_PUBLICO_TOKEN ?? '').trim();
+    if (!base || !token || !/^rec[A-Za-z0-9]{6,32}$/.test(String(filme ?? ''))) return null;
+    if (!temNoTeable && !anexos.temPoster(filme)) return null;
+    return `${base}/api/publico/poster/${filme}?t=${encodeURIComponent(token)}`;
+  }
+
   /** O Padeiro da chave do pedido, quando ela está ligada a um designer: só a ligada lê (a lista e a Produção) e age
       (#146). Senão, responde a recusa (401 sem a chave ou com a errada; 403 com a pendente, que espera um administrador
       ligar e é o que a janela do After mostra, ou com a revogada, com o estado) e devolve null. */
@@ -3724,6 +3736,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    *     designer, 403; a que já está na Entrada, 409)
    *   - POST /api/padeiro/desfazer { acao, feitaEm, producao, desfaz? }: etapaDaProducao.desfazerPeloPadeiro (`desfaz`, o
    *     identificador da ação a desfazer, opcional; sem o que desfazer, 409)
+   * - GET /api/padeiro/filmes (#142): { atualizado_em, filmes }, os filmes recentes no formato do fluxo filmes-recentes
+   *   do n8n (servidor/filmes-recentes.mjs), com o pôster no endereço público do PROMeiro (posterDoPadeiro). A chave
+   *   pendente também lê (o n8n dava a mesma lista sem chave); a revogada, 403; sem a chave, ou com a errada, 401. Com o
+   *   Postgres do Teable fora, 503 (o Padeiro volta ao n8n)
    * - POST /api/padeiro/projeto (#144) { momento, atracao, card, designer, versao }: o projeto criado, aberto ou alterado
    *   no Padeiro, o mesmo envio que ia ao fluxo "PROMO - PROJETO" do n8n (docs/webhook-projeto.md do Padeiro), e a
    *   mesma resposta: sempre 200 { itens: [{ codigo, texto }] } (servidor/projeto-do-padeiro.mjs). Só com a chave
@@ -3739,6 +3755,22 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
       if (!p) return json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
       return json(res, 200, { estado: p.estado, usuario: p.usuario, computador: p.computador, sigla: p.sigla, designer: p.designer ? { nome: p.designer.nome } : null });
+    }
+    if (caminho === '/api/padeiro/filmes' && req.method === 'GET') {
+      const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
+      if (!p) return json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
+      if (p.estado === 'revogada') return json(res, 403, { erro: 'A chave do Padeiro foi revogada: faça o cadastro de novo.', estado: p.estado });
+      const hoje = diaEmBrasilia(new Date());
+      let linhas;
+      try {
+        linhas = await trello.linhasDosFilmesRecentes?.(somarDias(hoje, -DIAS_ANTES), somarDias(hoje, DIAS_DEPOIS));
+      } catch (e) {
+        console.warn(`[padeiro] não li os filmes recentes: ${e instanceof Error ? e.message : e}`);
+        return json(res, 503, { erro: 'O PROMeiro não conseguiu ler os filmes agora.' });
+      }
+      if (!linhas) return json(res, 503, { erro: 'O PROMeiro está sem as tabelas exibicoes e filmes do Teable.' });
+      const filmes = filmesRecentes({ ...linhas, hoje, poster: posterDoPadeiro });
+      return json(res, 200, { atualizado_em: horaDeBrasilia(), filmes });
     }
     if (caminho === '/api/padeiro/producoes' && req.method === 'GET') {
       const p = padeiroLigado(req, res);
