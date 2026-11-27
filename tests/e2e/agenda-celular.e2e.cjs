@@ -715,6 +715,9 @@ async function filtroDasPrioridades(navegador, url, conferir) {
       const b0 = await botaoDoFiltro(p);
       conferir(b0?.botao && b0.pressionado === 'false' && b0.texto === '1 prioridade' && !b0.risco, rotulo(`o "1 prioridade" é um botão, desligado e sem o risco (${JSON.stringify(b0)})`));
       conferir(todos.includes('agdhoje2') && todos.length > 2, rotulo(`abre com todos os cards (${todos.length})`));
+      // a etapa do card na bolinha de estado (BolinhaDeEstado, #172), a mesma da Pauta da edição
+      const bolinhaDaEtapa = await p.$eval('.secao-trello [data-card="agdhoje2"] .card-semana-etapa', (e) => e.querySelector('.bolinha-estado')?.dataset.estado ?? null);
+      conferir(bolinhaDaEtapa === 'aprovacao', rotulo(`a etapa na bolinha de estado compartilhada (${bolinhaDaEtapa})`));
       const saem = (await p.$$eval('.secao-trello .semana .coluna-corpo [data-card]', (cs) => cs.map((c) => c.dataset.card))).filter((id) => id !== 'agdhoje2');
 
       const resumoAntes = await p.textContent('.secao-trello-conta > span');

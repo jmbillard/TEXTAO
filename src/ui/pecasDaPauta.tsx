@@ -5,7 +5,8 @@ import { CardAberto, FecharOCardAberto } from './CardAberto';
 import { MenuDeContexto } from './MenuDeContexto';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
-import { MarcaTexto, tracoDe } from './pecas';
+import { BalaoDeInfo } from './BalaoDeInfo';
+import { BolinhaDeEstado, MarcaTexto, tracoDe } from './pecas';
 import { apelidoDaClaquete, apelidoDaProducao, useApelidos, versoesAMaoDaClaquete, versoesAMaoDaProducao } from '../dados/apelidos';
 import { armazenamento } from '../dados/armazenamento';
 import { ApelidoDaClaquete } from './Apelido';
@@ -83,12 +84,15 @@ export function ProducaoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
 
 /** O texto da claquete, com o marca-texto da prioridade ALTA da produção da arte (como na agenda). */
 export function TextoDaClaquete({ linha }: { linha: LinhaNaTela }) {
-  const alta = !!resumoDaProducao(linha.producoes)?.alta;
+  const resumo = resumoDaProducao(linha.producoes);
+  const alta = !!resumo?.alta;
   // com o apelido da claquete (#120, #154), a claquete da pauta aparece ao passar o mouse
   const texto = <span className="pauta-texto" title={linha.original ? `Claquete: ${linha.original}` : undefined}>{linha.semVersao}</span>;
   // o código das versões colado no fim do nome (#152), fora do marca-texto
   return (
     <span className="pauta-nome-com-versoes">
+      {/* a etapa da produção da arte na bolinha da agenda (#172); sem card, a neutra */}
+      <BolinhaDeEstado estado={resumo?.etapa ?? 'sem-card'} className="pauta-bolinha" />
       {alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{texto}</MarcaTexto> : texto}
       <Versoes linha={linha} />
     </span>
@@ -147,6 +151,8 @@ export function ItemDaPauta({ linha, abrir, compacta = false, comProducao = true
           {comProducao && <span className="pauta-producao sem-card">tarefa</span>}
         </span>
       )}
+      {/* a info da claquete (#172): o balão no canto do card; o texto abre embaixo dela */}
+      {claquete && !!l.infos?.length && <BalaoDeInfo textos={l.infos} rotulo={l.semVersao} />}
       {/* com o mouse, o lápis do apelido aparece no canto do card, como na agenda */}
       {podeApelidar && (
         <button type="button" className="pauta-lapis" title={lapis} aria-label={`${lapis}: ${l.semVersao}`} onClick={() => abrir(linha, card.current, true)}>

@@ -1773,9 +1773,13 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-linha .sep { opacity: 0.6; }
 .card-semana-artes { font: 600 17px/1 Caveat, cursive; color: var(--tinta2); letter-spacing: 0.01em; }
 .card-semana-etapa { display: inline-flex; align-items: center; gap: 5px; color: var(--tinta2); white-space: nowrap; }
-.card-semana-etapa i { width: 6px; height: 6px; border-radius: 50%; background: var(--tinta3); flex: none; }
-.card-semana-etapa.produzindo i { background: var(--ultra); }
-.card-semana-etapa.aprovacao i { background: var(--producao); }
+/* a bolinha de estado (BolinhaDeEstado, #172): a mesma na agenda e na Pauta da edição; sem estado conhecido, neutra */
+.bolinha-estado { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--tinta3); flex: none; }
+.bolinha-estado.produzindo { background: var(--ultra); }
+.bolinha-estado.aprovacao { background: var(--producao); }
+.bolinha-estado.entregue { background: var(--ok); }
+.bolinha-estado.entrada { background: var(--falta); }
+.bolinha-estado.arquivada { background: var(--regua-forte); }
 .card-semana-etapa.entregue { color: var(--ok); }
 .card-semana-etapa.caiu { color: var(--tinta3); }
 .card-semana.caiu { opacity: 0.75; }
