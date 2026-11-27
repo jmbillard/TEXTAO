@@ -8,14 +8,30 @@ const TENTAR_DE_NOVO_MS = 30_000;
 
 async function abrirRedis(url) {
   const { createClient } = await import('redis');
-  const opcoes = {
-    url,
-    // comando com o Redis fora do ar falha na hora, em vez de ficar na fila esperando: aí vale a memória
-    disableOfflineQueue: true,
-    socket: { connectTimeout: 3000, reconnectStrategy: (n) => Math.min(500 * (n + 1), 5000) },
+  const opcoes = () => {
+    // Na primeira conexão, um erro (ex.: conexão recusada) desiste na hora: a subida segue em memória e o
+    // criarCache tenta de novo em 30 s. Antes, o cliente repetia a tentativa até o prazo de 4 s, e a subida
+    // ficava esperando à toa. Depois de ligado, uma queda reconecta sozinha, com espera crescente.
+    let jaLigou = false;
+    return {
+      url,
+      // comando com o Redis fora do ar falha na hora, em vez de ficar na fila esperando: aí vale a memória
+      disableOfflineQueue: true,
+      socket: {
+        connectTimeout: 3000,
+        reconnectStrategy: (n) => (jaLigou ? Math.min(500 * (n + 1), 5000) : false),
+      },
+      aoLigar: () => (jaLigou = true),
+    };
   };
-  const cliente = createClient(opcoes);
-  const assinante = createClient(opcoes);
+  const criar = () => {
+    const { aoLigar, ...o } = opcoes();
+    const c = createClient(o);
+    c.on('ready', aoLigar);
+    return c;
+  };
+  const cliente = criar();
+  const assinante = criar();
   let avisou = false;
   const erro = (e) => {
     if (avisou) return;
