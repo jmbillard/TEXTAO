@@ -96,7 +96,7 @@ describe('montar a pauta: ilhas e turnos (#124)', () => {
     it('começa vazio; todos leem, e quem não é da coordenação nem administrador não cadastra', async () => {
       const r = await elis('/api/cadastros/ilhas');
       expect(r.status).toBe(200);
-      expect(await r.json()).toEqual({ ilhas: [], podeCadastrar: false, podeRemover: false });
+      expect(await r.json()).toEqual({ ilhas: [], podeCadastrar: false, podeRemover: false, usos: {} });
       const recusa = await cadastrar(elis, { tipo: 'AVID', numero: '46' });
       expect(recusa.status).toBe(403);
       expect((await recusa.json()).erro).toBe('Só a coordenação e os administradores cadastram ilhas.');
@@ -115,9 +115,14 @@ describe('montar a pauta: ilhas e turnos (#124)', () => {
       ]);
     });
 
-    it('AVID e ILHA com o mesmo número ficam como estão escritas: são duas ilhas', async () => {
-      expect((await cadastrar(bia, { tipo: 'ILHA', numero: '46' })).status).toBe(201);
-      expect((await ilhas()).map((i) => `${i.tipo} ${i.numero}`)).toEqual(['AVID 46', 'ILHA 46', 'VDI 7']);
+    it('AVID 46, ILHA 46 e AVID 046 são a mesma sala: a repetida é recusada (#165)', async () => {
+      const ilha = await cadastrar(bia, { tipo: 'ILHA', numero: '46' });
+      expect(ilha.status).toBe(409);
+      expect((await ilha.json()).erro).toBe('Já existe a AVID 46: ILHA 46 é a mesma sala.');
+      expect((await cadastrar(bia, { tipo: 'AVID', numero: '046' })).status).toBe(409);
+      // outro número é outra sala
+      expect((await cadastrar(bia, { tipo: 'ILHA', numero: '12' })).status).toBe(201);
+      expect((await ilhas()).map((i) => `${i.tipo} ${i.numero}`)).toEqual(['AVID 46', 'ILHA 12', 'VDI 7']);
     });
 
     it('a mesma ilha duas vezes, ou sem tipo ou número, é recusada', async () => {
@@ -131,12 +136,14 @@ describe('montar a pauta: ilhas e turnos (#124)', () => {
     });
 
     it('a coordenação muda o nome; só administradores removem', async () => {
-      const id = await daIlha('ILHA 46');
-      const r = await bia(`/api/cadastros/ilhas/${id}`, { method: 'PUT', body: JSON.stringify({ tipo: 'ILHA', numero: '46', nome: 'Ilha do fundo' }) });
+      const id = await daIlha('ILHA 12');
+      const r = await bia(`/api/cadastros/ilhas/${id}`, { method: 'PUT', body: JSON.stringify({ tipo: 'ILHA', numero: '12', nome: 'Ilha do fundo' }) });
       expect(r.status).toBe(200);
       expect((await r.json()).ilha).toMatchObject({ id, nome: 'Ilha do fundo' });
       // mudar para uma que já existe é recusado
       expect((await bia(`/api/cadastros/ilhas/${id}`, { method: 'PUT', body: JSON.stringify({ tipo: 'AVID', numero: '46' }) })).status).toBe(409);
+      // e para a mesma sala de outra também (#165)
+      expect((await bia(`/api/cadastros/ilhas/${id}`, { method: 'PUT', body: JSON.stringify({ tipo: 'ILHA', numero: '46' }) })).status).toBe(409);
       const recusa = await bia(`/api/cadastros/ilhas/${id}`, { method: 'DELETE' });
       expect(recusa.status).toBe(403);
       expect((await recusa.json()).erro).toBe('Só administradores removem ilhas.');

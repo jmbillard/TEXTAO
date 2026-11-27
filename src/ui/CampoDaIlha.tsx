@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ilhaDeCostume, ilhasQueCasam, quemEstaNaIlha, reconhecerIlha, rotuloDaIlha, type Ilha } from '../modelo/ilhas';
+import { ilhaDeCostume, ilhasQueCasam, quemEstaNaIlha, reconhecerIlha, rotuloDaIlha, salaPeloId, type Ilha } from '../modelo/ilhas';
 import type { PosicaoDaEscala, TurnoDaEscala } from '../modelo/escala';
 import './campoDaIlha.css';
 
@@ -42,7 +42,9 @@ export function CampoDaIlha({ p, posicoes, turnos, ilhas, costume, mudar, depois
   const casam = ilhasQueCasam(escrito ?? '', ilhas);
   const opcoes = aberta ? (sugerida && casam.includes(sugerida) ? [sugerida, ...casam.filter((i) => i !== sugerida)] : casam) : [];
   const i = Math.min(ativo, Math.max(0, opcoes.length - 1));
-  const ocupada = quemEstaNaIlha(p.ilha, p.turno, posicoes, p.id);
+  // a mesma sala (#165): a AVID 46 e a ILHA 46 repetidas no cadastro
+  const sala = salaPeloId(ilhas);
+  const ocupada = quemEstaNaIlha(p.ilha, p.turno, posicoes, p.id, sala);
   const turno = turnos.find((t) => t.id === p.turno)?.nome.toLowerCase() ?? p.turno;
   const lista = `ilhas-${p.id}`;
 
@@ -122,7 +124,7 @@ export function CampoDaIlha({ p, posicoes, turnos, ilhas, costume, mudar, depois
       {aberta && opcoes.length > 0 && (
         <div className="menu montar-lista lista-ilhas" id={lista} role="listbox" aria-label="Ilhas cadastradas">
           {opcoes.map((o, k) => {
-            const com = quemEstaNaIlha(o.id, p.turno, posicoes, p.id);
+            const com = quemEstaNaIlha(o.id, p.turno, posicoes, p.id, sala);
             return (
               <div key={o.id} role="option" aria-selected={k === i} className={`menu-item${k === i ? ' ativo' : ''}`} onMouseDown={(e) => (e.preventDefault(), escolher(o))}>
                 <span className="ilha-rotulo">{rotuloDaIlha(o)}</span>

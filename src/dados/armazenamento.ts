@@ -1615,9 +1615,13 @@ export interface CadastroDasIlhas {
   ilhas: Ilha[];
   podeCadastrar: boolean;
   podeRemover: boolean;
+  /** quantas posições (de todos os dias) estão em cada ilha, pelo id (#165) */
+  usos?: Record<string, number>;
 }
 export type IlhaNova = Pick<Ilha, 'tipo' | 'numero' | 'nome'>;
 export const lerIlhas = () => pedir<CadastroDasIlhas>('/api/cadastros/ilhas');
 export const cadastrarIlha = (i: IlhaNova) => pedir<{ ilha: Ilha }>('/api/cadastros/ilhas', { method: 'POST', body: JSON.stringify(i) }).then((r) => r.ilha);
 export const mudarIlha = (id: string, i: IlhaNova) => pedir<{ ilha: Ilha }>(`/api/cadastros/ilhas/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(i) }).then((r) => r.ilha);
 export const removerIlha = (id: string) => pedir<{ ok: true }>(`/api/cadastros/ilhas/${encodeURIComponent(id)}`, { method: 'DELETE' });
+/** Junta a repetida na que fica (#165), só administradores: as posições passam, a que sai sai do cadastro. */
+export const juntarIlhas = (fica: string, sai: string) => pedir<{ posicoes: number }>('/api/cadastros/ilhas/juntar', { method: 'POST', body: JSON.stringify({ fica, sai }) });

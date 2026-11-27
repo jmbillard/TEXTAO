@@ -1770,7 +1770,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     };
     const daFoto = lerAFoto(foto.linhas, ctx, posicoes);
     const foraNoPromeiro = ausencias.noPeriodo(dia, dia).map((a) => a.editor);
-    const diferencas = diferencasDaFoto(posicoes, daFoto.posicoes, { dia, foraNoPromeiro, foraNaPlanilha: daFoto.fora });
+    const diferencas = diferencasDaFoto(posicoes, daFoto.posicoes, { dia, foraNoPromeiro, foraNaPlanilha: daFoto.fora, ilhas: ctx.ilhas });
     return json(res, 200, { dia, foto, daFoto, diferencas });
   }
 
@@ -1788,6 +1788,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     try {
       if (req.method === 'PUT') {
         const corpo = (await lerCorpo(req)) ?? {};
+        // a ilha juntada (#165) vale pela que ficou: a tela aberta antes de juntar ainda manda a que saiu
+        const juntadas = ilhas.juntadas();
+        const naQueFicou = (lista) => (Array.isArray(lista) ? lista.map((p) => (p && typeof p === 'object' && typeof p.ilha === 'string' && juntadas[p.ilha] ? { ...p, ilha: juntadas[p.ilha] } : p)) : lista);
+        if (corpo && typeof corpo === 'object') {
+          corpo.posicoes = naQueFicou(corpo.posicoes);
+          if (corpo.base && typeof corpo.base === 'object') corpo.base.posicoes = naQueFicou(corpo.base.posicoes);
+        }
         // o que está gravado agora, lido depois do pedido chegar inteiro (o que vem daqui até gravar não espera nada)
         const gravado = escala.lerDia(dia);
         const antes = gravado.posicoes;
@@ -1809,7 +1816,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           // a base só serve para comparar: vale o formato, com qualquer turno e ilha (o que a pessoa leu pode ter mudado)
           const qualquer = { turnos: { has: (t) => typeof t === 'string' && t.length > 0 }, ilhaVale: () => true };
           const baseDoDia = { posicoes: posicoesDoPedido(deBase.posicoes, dia, qualquer), recado: recadoDoPedido(deBase.recado) };
-          const juntado = juntarODia(baseDoDia, { posicoes, recado: recado ?? baseDoDia.recado }, { posicoes: antes, recado: gravado.recado ?? '' }, dia);
+          const juntado = juntarODia(baseDoDia, { posicoes, recado: recado ?? baseDoDia.recado }, { posicoes: antes, recado: gravado.recado ?? '' }, dia, { ilhas: ilhas.todas() });
           posicoes = posicoesDoPedido(juntado.posicoes, dia, validos);
           recadoGravado = juntado.recado;
         }
@@ -1885,7 +1892,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       apelidos: await areas.apelidosDosEditores(cadastros),
       ilhas: ilhas.todas(),
       costume: ilhas.deCostume(dia),
-      ocupadas: ilhasOcupadas(lido.posicoes),
+      ocupadas: ilhasOcupadas(lido.posicoes, ilhas.sala()),
       paraDistribuir: distribuicao.paraDistribuir(dia),
       // a virada (#134): a chave, quando o dia foi gravado no Teable e o erro da última vez
       noTeable: pautaNoTeable.estado(dia),
@@ -1932,8 +1939,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /**
    * O cadastro das ilhas (#124), no SQLite do PROMeiro: GET para qualquer pessoa logada (com o que ela pode fazer);
-   * POST { tipo, numero, nome } cadastra e PUT /:id muda, pela coordenação e pelos administradores; DELETE /:id tira,
-   * só administradores (as posições que já tinham a ilha continuam com ela).
+   * POST { tipo, numero, nome } cadastra e PUT /:id muda, pela coordenação e pelos administradores (a mesma sala de
+   * outra é recusada, #165); DELETE /:id tira, só administradores (as posições que já tinham a ilha continuam com ela).
+   * As repetidas de antes da regra vêm com quantas posições têm (`usos`); POST /juntar { fica, sai } junta a que sai
+   * na que fica, só administradores, depois da conferência na tela.
    */
   async function rotaDasIlhas(req, res, eu, caminho) {
     const id = decodeURIComponent(caminho.slice('/api/cadastros/ilhas/'.length));
@@ -1941,12 +1950,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const podeCadastrar = admin || escala.ehCoordenacao(eu.email);
     try {
       if (caminho === '/api/cadastros/ilhas') {
-        if (req.method === 'GET') return json(res, 200, { ilhas: ilhas.todas(), podeCadastrar, podeRemover: admin });
+        if (req.method === 'GET') return json(res, 200, { ilhas: ilhas.todas(), podeCadastrar, podeRemover: admin, usos: ilhas.usos() });
         if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
         if (!podeCadastrar) return json(res, 403, { erro: 'Só a coordenação e os administradores cadastram ilhas.' });
         const ilha = ilhas.criar((await lerCorpo(req)) ?? {}, eu.email);
         console.log(`[cadastros] ${eu.email} cadastrou a ilha ${ilha.tipo} ${ilha.numero}`);
         return json(res, 201, { ilha });
+      }
+      if (caminho === '/api/cadastros/ilhas/juntar') {
+        if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+        if (!admin) return json(res, 403, { erro: 'Só administradores juntam ilhas.' });
+        const { fica, sai } = (await lerCorpo(req)) ?? {};
+        const r = ilhas.juntar(String(fica ?? ''), String(sai ?? ''), eu.email);
+        console.log(`[cadastros] ${eu.email} juntou a ilha ${sai} na ${fica} (${r.posicoes} posições)`);
+        return json(res, 200, r);
       }
       if (req.method === 'PUT') {
         if (!podeCadastrar) return json(res, 403, { erro: 'Só a coordenação e os administradores mudam ilhas.' });

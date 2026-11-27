@@ -1313,6 +1313,13 @@ kbd {
 .abas-cad .sub path { fill: none; stroke: var(--ultra); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; animation: rabiscar-aba 0.5s 0.05s var(--suave) both; }
 @keyframes rabiscar-aba { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 
+/* as ilhas repetidas de antes da regra (#165): o fundo tingido, a etiqueta e o juntar com conferência */
+.ilhas-repetidas { display: grid; gap: 8px; padding: 12px 18px 4px; }
+.ilha-repetida { display: grid; gap: 8px; padding: 12px 14px; border-radius: 10px; background: var(--realce); color: var(--tinta); font: 400 14px var(--sans); }
+.ilha-repetida p { margin: 0; line-height: 1.45; }
+.ilha-repetida small { color: var(--tinta2); font-size: 13px; line-height: 1.45; }
+.ilha-repetida .acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.etiqueta-repetida { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--cartao); color: var(--ultra); font: 600 11px var(--sans); text-transform: uppercase; letter-spacing: 0.04em; vertical-align: 1px; }
 .item-cad { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 14px 18px; border-top: 1px solid var(--regua); align-items: center; }
 .lista-topo + .item-cad, .lista-topo + .folha-rascunho .item-cad { border-top: 0; }
 .item-cad .nome { font: 600 15px var(--sans); color: var(--tinta); display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }

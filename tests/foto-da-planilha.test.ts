@@ -109,6 +109,23 @@ describe('diferencasDaFoto: o dia montado e a foto, posição por posição', ()
     expect(diferencasDaFoto(montado, foto, { dia: SEXTA }).posicoes).toEqual([{ editor: '', turno: 'tarde', onde: 'nos-dois', campos: [{ campo: 'demandas', promeiro: [], planilha: ['FINALIZAR'] }] }]);
   });
 
+  it('a AVID 46 e a ILHA 46 do cadastro são a mesma sala: não é diferença, e a vaga casa por ela (#165)', () => {
+    const ilhas = [
+      { id: 'ilha-46', tipo: 'AVID', numero: '46', nome: '' },
+      { id: 'ilha-46b', tipo: 'ILHA', numero: '46', nome: '' },
+      { id: 'ilha-7', tipo: 'VDI', numero: '7', nome: '' },
+    ];
+    const foto = [
+      posicao({ id: 'f-1', turno: 'madrugada', editor: 'Rui Teixeira', ilha: 'ilha-46b', horario: '22h às 6h', demandas: demandas('Noite de Gala 27/11 (DP)', 'COMUNICAÇÃO') }),
+      posicao({ id: 'f-2', turno: 'tarde', editor: 'Elis Furtado', ilha: 'ilha-7', horario: '14h às 23h', demandas: demandas('Mundo Animal 30/11 (P)') }),
+    ];
+    expect(diferencasDaFoto(MONTADO, foto, { dia: SEXTA }).posicoes.map((p) => p.campos.map((c) => c.campo))).toEqual([['ilha']]);
+    expect(diferencasDaFoto(MONTADO, foto, { dia: SEXTA, ilhas }).posicoes).toEqual([]);
+    const vagas = [posicao({ id: 'v-1', turno: 'tarde', editor: '', ilha: 'ilha-7', demandas: demandas('CALHAUS') }), posicao({ id: 'v-2', turno: 'tarde', editor: '', ilha: 'ilha-46', demandas: demandas('VINHETAS') })];
+    const daFoto = [posicao({ id: 'f-1', turno: 'tarde', editor: '', ilha: 'ilha-46b', demandas: demandas('VINHETAS') }), posicao({ id: 'f-2', turno: 'tarde', editor: '', ilha: 'ilha-7', demandas: demandas('CALHAUS') })];
+    expect(diferencasDaFoto(vagas, daFoto, { dia: SEXTA, ilhas })).toMatchObject({ posicoes: [], iguais: 2 });
+  });
+
   it('quem está fora só de um lado', () => {
     const r = diferencasDaFoto(MONTADO, MONTADO, { dia: SEXTA, foraNoPromeiro: ['Gil Moura', 'Ana Lima'], foraNaPlanilha: ['GIL MOURA', 'Bia Souza'] });
     expect(r.fora).toEqual({ soNoPromeiro: ['Ana Lima'], soNaPlanilha: ['Bia Souza'] });

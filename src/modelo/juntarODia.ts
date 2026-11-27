@@ -5,8 +5,10 @@
    a outra deixou. A mesma coisa com outra grafia ("22 as 6" e "22h às 6h") não é mudança, e a minha grafia fica.
    As posições, as demandas e os avisos são achados pelo id, em qualquer posição: a demanda que uma moveu vai para onde
    ela pôs, com o texto que a outra escreveu. Tirar só vale para o que a outra não mexeu: o trabalho dela fica. Nada é
-   travado: no mesmo campo, vale quem gravou por último. */
+   travado: no mesmo campo, vale quem gravou por último. A ilha é comparada pela sala (#165): trocar a AVID 46 pela
+   ILHA 46 repetida do cadastro não é mudança. */
 import { demandaNoPadrao, horarioNoPadrao, type AvisoDaEscala, type DemandaDaEscala, type PosicaoDaEscala } from './escala.ts';
+import { salaPeloId, type Ilha } from './ilhas.ts';
 
 /** Um lado do dia: as posições e o recado do dia. */
 export interface LadoDoDia {
@@ -98,8 +100,11 @@ const textoIgual = (a: string, b: string) => limpo(a) === limpo(b);
 /**
  * O dia juntado: as minhas mudanças desde a base por cima do que está gravado agora (veja o comentário do arquivo).
  * @param dia o dia (a claquete é comparada no padrão, perto dele)
+ * @param o.ilhas o cadastro das ilhas (a ilha é comparada pela sala; sem ele, pelo id)
  */
-export function juntarODia(base: LadoDoDia, minhas: LadoDoDia, atuais: LadoDoDia, dia: string): { posicoes: PosicaoDaEscala[]; recado: string } {
+export function juntarODia(base: LadoDoDia, minhas: LadoDoDia, atuais: LadoDoDia, dia: string, o: { ilhas?: readonly Ilha[] } = {}): { posicoes: PosicaoDaEscala[]; recado: string } {
+  const sala = salaPeloId(o.ilhas ?? []);
+  const ilhaIgual = (a: string, b: string) => sala(a) === sala(b);
   const demandaIgual = (a: string, b: string) => textoIgual(a, b) || limpo(demandaNoPadrao(a, dia)) === limpo(demandaNoPadrao(b, dia));
   const horarioIgual = (a: string, b: string) => textoIgual(a, b) || horarioNoPadrao(limpo(a)) === horarioNoPadrao(limpo(b));
   const juntarTexto = (igual: (a: string, b: string) => boolean) => <T extends DemandaDaEscala | AvisoDaEscala>(b: T | undefined, m: T, a: T): T => ({ ...m, texto: campo(b?.texto, m.texto, a.texto, igual) });
@@ -114,14 +119,14 @@ export function juntarODia(base: LadoDoDia, minhas: LadoDoDia, atuais: LadoDoDia
   const cheias = <T extends { texto: string }>(xs: readonly T[] | undefined) => (xs ?? []).filter((x) => limpo(x.texto));
   const conteudo = (p: PosicaoDaEscala) => JSON.stringify([cheias(p.demandas).map((d) => [d.id, limpo(demandaNoPadrao(d.texto, dia))]), cheias(p.avisos).map((a) => [a.id, limpo(a.texto)])]);
   const mudouPosicao = (b: PosicaoDaEscala, x: PosicaoDaEscala) =>
-    b.turno !== x.turno || !textoIgual(b.editor, x.editor) || b.ilha !== x.ilha || !horarioIgual(b.horario, x.horario) || !textoIgual(b.vaga ?? '', x.vaga ?? '') || conteudo(b) !== conteudo(x);
+    b.turno !== x.turno || !textoIgual(b.editor, x.editor) || !ilhaIgual(b.ilha, x.ilha) || !horarioIgual(b.horario, x.horario) || !textoIgual(b.vaga ?? '', x.vaga ?? '') || conteudo(b) !== conteudo(x);
   const juntarPosicao = (b: PosicaoDaEscala | undefined, m: PosicaoDaEscala, a: PosicaoDaEscala): PosicaoDaEscala => {
     const igual = (x: string, y: string) => x === y;
     return {
       ...m,
       turno: campo(b?.turno, m.turno, a.turno, igual),
       editor: campo(b?.editor, m.editor, a.editor, textoIgual),
-      ilha: campo(b?.ilha, m.ilha, a.ilha, igual),
+      ilha: campo(b?.ilha, m.ilha, a.ilha, ilhaIgual),
       horario: campo(b?.horario, m.horario, a.horario, horarioIgual),
       vaga: campo(b ? b.vaga ?? '' : undefined, m.vaga ?? '', a.vaga ?? '', textoIgual),
     };

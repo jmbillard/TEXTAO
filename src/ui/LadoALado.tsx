@@ -51,8 +51,8 @@ export function LadoALado({ dados, posicoes, foraNoDia }: Props) {
   }, [dia]);
 
   const diferencas = useMemo(
-    () => (lido?.daFoto ? diferencasDaFoto(comoGravadas(posicoes), lido.daFoto.posicoes, { dia, foraNoPromeiro: foraNoDia, foraNaPlanilha: lido.daFoto.fora }) : null),
-    [lido, posicoes, foraNoDia, dia],
+    () => (lido?.daFoto ? diferencasDaFoto(comoGravadas(posicoes), lido.daFoto.posicoes, { dia, foraNoPromeiro: foraNoDia, foraNaPlanilha: lido.daFoto.fora, ilhas: dados.ilhas }) : null),
+    [lido, posicoes, foraNoDia, dia, dados.ilhas],
   );
 
   if (falha) return <p className="lado lado-falha">Lado a lado com a planilha: {falha}.</p>;

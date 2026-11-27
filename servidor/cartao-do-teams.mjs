@@ -15,7 +15,7 @@
      envio daquele dia. O dia que ainda não foi não manda nada: o horário leva a pauta nova. */
 import { randomUUID } from 'node:crypto';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
-import { rotuloDaIlha } from '../src/modelo/ilhas.ts';
+import { rotuloDaIlha, salaPeloId } from '../src/modelo/ilhas.ts';
 import { turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { horariosDaConfiguracao, horariosVencidos, relogioDeSaoPaulo } from '../src/modelo/horariosDoCartao.ts';
 
@@ -40,12 +40,14 @@ function quando(instante) {
  * O que mudou de uma pauta mandada para a nova, em linhas legíveis: por posição (na ordem da nova), o editor, o turno,
  * a ilha e o horário, as claquetes que entraram (ou vieram de outro editor) e os avisos novos; depois as claquetes e
  * os avisos que saíram, as posições que saíram e o recado do dia.
- * @param antes, depois { posicoes, recado }; turnos e ilhas para os nomes
+ * A ilha é comparada pela sala (#165): a AVID 46 e a ILHA 46 repetidas, ou a juntada e a que ficou, não são mudança.
+ * @param antes, depois { posicoes, recado }; turnos e ilhas para os nomes; juntadas (o id que saiu → o que ficou)
  */
-export function oQueMudouNaPauta(antes, depois, { turnos = [], ilhas = [] } = {}) {
+export function oQueMudouNaPauta(antes, depois, { turnos = [], ilhas = [], juntadas = {} } = {}) {
   const nomeDoTurno = (id) => turnos.find((t) => t.id === id)?.nome ?? id;
+  const sala = salaPeloId(ilhas, juntadas);
   const nomeDaIlha = (id) => {
-    const i = ilhas.find((x) => x.id === id);
+    const i = ilhas.find((x) => x.id === (juntadas[id] ?? id));
     return i ? rotuloDaIlha(i) : id ? 'outra ilha' : 'sem ilha';
   };
   const quem = (p) => limpo(p.editor) || `sem editor (${nomeDoTurno(p.turno)})`;
@@ -83,7 +85,7 @@ export function oQueMudouNaPauta(antes, depois, { turnos = [], ilhas = [] } = {}
     else {
       if (chave(a.editor) !== chave(p.editor)) linhas.push(`${nomeDoTurno(p.turno)}: ${quem(a)} → ${quem(p)}`);
       if (a.turno !== p.turno) linhas.push(`${quem(p)}: ${nomeDoTurno(a.turno)} → ${nomeDoTurno(p.turno)}`);
-      if ((a.ilha ?? '') !== (p.ilha ?? '')) linhas.push(`${quem(p)}: ${nomeDaIlha(a.ilha)} → ${nomeDaIlha(p.ilha)}`);
+      if (sala(a.ilha ?? '') !== sala(p.ilha ?? '')) linhas.push(`${quem(p)}: ${nomeDaIlha(a.ilha)} → ${nomeDaIlha(p.ilha)}`);
       if (a.horario !== p.horario) linhas.push(`${quem(p)}: ${a.horario || 'sem horário'} → ${p.horario || 'sem horário'}`);
     }
     for (const e of entrou.filter((x) => x.p === p)) {
@@ -269,7 +271,7 @@ export function criarCartaoDoTeams({ db, escala, ilhas, valores, enviar = fetch,
       const pauta = publicada(dia);
       if (!mandada || !pauta) return;
       const env = valores();
-      const mudancas = oQueMudouNaPauta(JSON.parse(mandada.pauta), pauta, { turnos: turnosDoDia(turnosDaConfiguracao(env), pauta.posicoes), ilhas: ilhas.todas() });
+      const mudancas = oQueMudouNaPauta(JSON.parse(mandada.pauta), pauta, { turnos: turnosDoDia(turnosDaConfiguracao(env), pauta.posicoes), ilhas: ilhas.todas(), juntadas: ilhas.juntadas() });
       if (!mudancas.length) return;
       const id = randomUUID();
       q.anotar.run(id, null, dia, 'alterada', relogio().toISOString(), instantaneo(pauta));
