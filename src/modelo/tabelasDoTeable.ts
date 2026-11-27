@@ -72,8 +72,8 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     variavel: 'TEABLE_FILMES',
     // exibicao.mjs (o filme novo, o ano, o pôster)
     api: ['titulo', 'cadastrado_em', 'ano_de_producao', 'poster'],
-    // exibicao.mjs, filmes.mjs (a conferência)
-    pg: ['titulo', 'ano_de_producao', 'projeto_win', 'projeto_mac', 'output_win', 'output_mac', 'poster'],
+    // exibicao.mjs, filmes.mjs (a conferência), trello.mjs (os filmes recentes do Padeiro, #142: o nome_da_pasta)
+    pg: ['titulo', 'ano_de_producao', 'projeto_win', 'projeto_mac', 'output_win', 'output_mac', 'poster', 'nome_da_pasta'],
   },
   {
     nome: 'exibicoes',
