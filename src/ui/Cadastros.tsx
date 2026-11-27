@@ -50,6 +50,7 @@ import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
 import { ListaDeDuplicadas, PainelDasDuplicadas, useDuplicadas } from './Duplicadas';
+import { ListaDePadeiros, PainelDosPadeiros, usePadeiros } from './Padeiros';
 import { FormDaIlha, ICONE_DAS_ILHAS, ListaDasIlhas, useIlhas } from './IlhasNosCadastros';
 import { CoordenacaoNaLinha, EmailNaLinha, quemNoCadastro, SugestaoDeEmailNaLista } from './EmailDoCadastro';
 import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, RegrasDaAtracaoNaFicha, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
@@ -140,8 +141,8 @@ export function previaDoCaminho(formula: string, valores: Record<string, string>
 /* ---------- pedaços ---------- */
 
 type AbaExtra = { ativa: boolean; total: number; abrir: () => void };
-function Abas({ aba, mudar, totais, sem, dup, ilhas }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: AbaExtra; dup: AbaExtra | null; ilhas: AbaExtra }) {
-  const outra = sem.ativa || !!dup?.ativa || ilhas.ativa;
+function Abas({ aba, mudar, totais, sem, dup, pad, ilhas }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: AbaExtra; dup: AbaExtra | null; pad: AbaExtra | null; ilhas: AbaExtra }) {
+  const outra = sem.ativa || !!dup?.ativa || !!pad?.ativa || ilhas.ativa;
   return (
     <div className="abas-cad" role="tablist" aria-label="Cadastros">
       {(Object.keys(NOMES) as TipoCadastro[]).map((a) => (
@@ -165,6 +166,8 @@ function Abas({ aba, mudar, totais, sem, dup, ilhas }: { aba: TipoCadastro; muda
       <AbaDeFora nome="Ilhas" icone={<Desenho d={ICONE_DAS_ILHAS} />} aba={ilhas} classe="aba-ilhas" />
       {/* os cards repetidos no quadro do Trello: só administradores (o número são todos os casos pendentes) */}
       {dup && <AbaDeFora nome="Duplicadas" icone={<Icone nome="duplicar" tam={18} />} aba={dup} classe="aba-dup" />}
+      {/* a chave do Padeiro (#137): só administradores (o número são as pendentes) */}
+      {pad && <AbaDeFora nome="Padeiros" icone={<Icone nome="chave" tam={18} />} aba={pad} classe="aba-pad" />}
     </div>
   );
 }
@@ -533,6 +536,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const [semCad, setSemCad] = useState(false);
   // a aba Duplicadas (só administradores)
   const [dupAberta, setDupAberta] = useState(false);
+  // a aba Padeiros (#137, só administradores); aberta, ela toma o lugar da lista e do painel como a Duplicadas
+  const [padAberta, setPadAberta] = useState(false);
   // a aba Ilhas (#124)
   const [ilhasAbertas, setIlhasAbertas] = useState(!!inicio?.ilhas);
   const ilhas = useIlhas(ilhasAbertas, avisar);
@@ -977,6 +982,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const totais = { atracoes: dados?.atracoes.length ?? 0, redatores: dados?.redatores.length ?? 0, editores: dados?.editores.length ?? 0 };
   const pode = !!dados?.podeApagar;
   const duplicadas = useDuplicadas(pode, dupAberta, busca);
+  const padeiros = usePadeiros(pode);
 
   // a atração da ficha (a removida fecha a ficha); com ela aberta, o formulário e a folha de rascunho esperam
   const atracaoAberta = aba === 'atracoes' && !semCad && aberta ? (dados?.atracoes.find((a) => a.id === aberta && !escondidos.includes(a.id)) ?? null) : null;
@@ -1099,6 +1105,24 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     </button>
   );
   const valoresCaminho = { ...atr.campos, atracao: atr.nome, categoria: atr.categoria };
+  // as abas e a busca, no alto da lista (a mesma na aba Padeiros, que tem a própria lista)
+  const topoDaLista = (
+    <div className="lista-topo">
+      <Abas
+        aba={aba}
+        mudar={(a) => { setAba(a); setSemCad(false); setDupAberta(false); setPadAberta(false); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); }}
+        totais={totais}
+        sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setDupAberta(false); setPadAberta(false); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } }}
+        dup={pode ? { ativa: dupAberta, total: duplicadas.lista?.pendentes ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(true); setPadAberta(false); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } } : null}
+        pad={pode ? { ativa: padAberta, total: padeiros.pendentes, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(true); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } } : null}
+        ilhas={{ ativa: ilhasAbertas, total: ilhas.dados?.ilhas.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(false); setIlhasAbertas(true); setBusca(''); setFesta(null); fecharFicha(); } }}
+      />
+      <label className="cad-busca">
+        <Icone nome="lupa" />
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={ilhasAbertas ? 'Buscar ilha' : padAberta ? 'Buscar usuário, sigla ou designer' : dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'} />
+      </label>
+    </div>
+  );
   const prontoParaSalvar =
     aba === 'atracoes' ? !!atr.nome.trim() && atr.keys.length > 0 : aba === 'redatores' ? !!red.nome.trim() : !!edi.nome.trim();
 
@@ -1156,24 +1180,20 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         <div className="cad-grade">
           {atracaoAberta && verAcervo ? (
             <ListaDoAcervo key={atracaoAberta.id} nome={atracaoAberta.nome} acervo={fichaAberta?.acervo ?? null} voltar={() => setVerAcervo(false)} />
+          ) : ilhasAbertas ? (
+          <section ref={listaEl} className="lista-cad" aria-label="Ilhas">
+            {topoDaLista}
+            <ListaDasIlhas estado={ilhas} busca={busca} />
+          </section>
+          ) : padAberta && pode ? (
+          <section ref={listaEl} className="lista-cad" aria-label="Padeiros">
+            {topoDaLista}
+            <ListaDePadeiros {...padeiros} busca={busca} />
+          </section>
           ) : (
-          <section ref={listaEl} className="lista-cad" aria-label={ilhasAbertas ? 'Ilhas' : dupAberta ? 'Duplicadas' : semCad ? 'Sem cadastro' : NOMES[aba]}>
-            <div className="lista-topo">
-              <Abas
-                aba={aba}
-                mudar={(a) => { setAba(a); setSemCad(false); setDupAberta(false); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); }}
-                totais={totais}
-                sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setDupAberta(false); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } }}
-                dup={pode ? { ativa: dupAberta, total: duplicadas.lista?.pendentes ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(true); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } } : null}
-                ilhas={{ ativa: ilhasAbertas, total: ilhas.dados?.ilhas.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setIlhasAbertas(true); setBusca(''); setFesta(null); fecharFicha(); } }}
-              />
-              <label className="cad-busca">
-                <Icone nome="lupa" />
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={ilhasAbertas ? 'Buscar ilha' : dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'} />
-              </label>
-            </div>
+          <section ref={listaEl} className="lista-cad" aria-label={dupAberta ? 'Duplicadas' : semCad ? 'Sem cadastro' : NOMES[aba]}>
+            {topoDaLista}
             {!dados && !falha && <p className="cad-vazio">Carregando…</p>}
-            {ilhasAbertas && <ListaDasIlhas estado={ilhas} busca={busca} />}
             {dupAberta && pode && (
               <ListaDeDuplicadas {...duplicadas} busca={busca} celular={celular} />
             )}
@@ -1211,11 +1231,11 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               );
             })()}
             {!dupAberta && semCad && !sem && <p className="cad-vazio">Procurando nas claquetes…</p>}
-            {!dupAberta && !semCad && !ilhasAbertas && dados && sugestoesDaAba.map((x) => <SugestaoDeEmailNaLista key={`${x.id}:${x.email}`} s={x} simE={() => simE(x)} naoE={() => void naoE(x)} />)}
-            {!dupAberta && !semCad && !ilhasAbertas && dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
-            {!dupAberta && !semCad && !ilhasAbertas && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
-            {!dupAberta && !semCad && !ilhasAbertas && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
-            {!dupAberta && !semCad && !ilhasAbertas && dados && termo && !rascunho && !(aba === 'atracoes' ? listaAtracoes : aba === 'redatores' ? listaRedatores : listaEditores).length && (
+            {!dupAberta && !semCad && dados && sugestoesDaAba.map((x) => <SugestaoDeEmailNaLista key={`${x.id}:${x.email}`} s={x} simE={() => simE(x)} naoE={() => void naoE(x)} />)}
+            {!dupAberta && !semCad && dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
+            {!dupAberta && !semCad && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
+            {!dupAberta && !semCad && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
+            {!dupAberta && !semCad && dados && termo && !rascunho && !(aba === 'atracoes' ? listaAtracoes : aba === 'redatores' ? listaRedatores : listaEditores).length && (
               <p className="cad-vazio">Nada com “{busca}”.</p>
             )}
           </section>
@@ -1223,6 +1243,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
 
           {ilhasAbertas ? (
             <FormDaIlha estado={ilhas} desenho={<Desenho d={ICONE_DAS_ILHAS} />} />
+          ) : padAberta && pode ? (
+            <PainelDosPadeiros lista={padeiros.lista} />
           ) : dupAberta && pode ? (
             <PainelDasDuplicadas registro={duplicadas.registro} recente={duplicadas.recente} reabrir={duplicadas.reabrir} celular={celular} soOlhar={duplicadas.lista?.ligado ? duplicadas.lista.soOlhar : null} mudarModo={duplicadas.mudarModo} depoisDeRecriar={duplicadas.depoisDeApagar} />
           ) : atracaoAberta ? (
