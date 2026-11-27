@@ -248,9 +248,17 @@ Quem vê a Configuração, as Duplicadas, importa acervo e remove cadastros. É 
 (escolhido entre quem já entrou no PROMeiro, ou por um e-mail digitado). Ninguém tira a si mesmo.
 _Evitar_: admin (na tela, só em botões curtos), superusuário
 
+**Designers da produção**:
+As pessoas de cada linha da produção da arte, lidas do campo de lista ou de link (o link para a tabela designers, que a
+descoberta das tabelas acha). O texto com os nomes juntados por vírgula (a coluna `designers`, feita para o Metabase,
+que não lia listas) só vale de reserva, para a linha com a lista vazia, e se separa por pessoa (vírgula, ponto e
+vírgula e "e"). Cada pessoa aparece uma vez, pelo nome sem caixa e acento.
+_Evitar_: a coluna designers (como se fosse uma pessoa)
+
 **Novidade nas Pessoas**:
-Na seção **Pessoas**: quem aparece na produção da arte (a coluna designers das linhas dos últimos 60 dias) e não está
-na tabela designers do Teable ("apareceu na produção": cadastrar como designer, tornar administrador ou ignorar) e o
+Na seção **Pessoas**: quem aparece na produção da arte (os **designers da produção** das linhas dos últimos 60 dias) e
+não está na tabela designers do Teable nem é administrador ("apareceu na produção", cada pessoa uma vez, com quantas
+vezes apareceu: cadastrar como designer, tornar administrador ou ignorar, que a tiram da lista) e o
 designer ativo que não aparece em nenhuma produção desses 60 dias, a não ser o cadastrado depois disso ("sem produção
 há 60 dias": marcar inativo, tirar de administrador ou ignorar). O designer é a pessoa pelo nome (sem caixa, acento e
 pontuação). O PROMeiro olha ao abrir a Configuração e uma vez por dia; havendo novidade, os administradores veem um
@@ -317,7 +325,7 @@ guardada. Os tipos:
 - **mudou de etapa** (antes → depois): a etapa pela regra da etapa mudou (designer ou status de trabalho, entregue ou
   FINALIZADO);
 - **arquivada** e **desarquivada**: a coluna arquivado;
-- **designer entrou** e **designer saiu**: os nomes da coluna designers (sem caixa nem acento). Muda os designers da
+- **designer entrou** e **designer saiu**: os **designers da produção** (sem caixa nem acento). Muda os designers da
   Produção;
 - **campo mudado** (antes → depois): a **praça** (pela sigla; muda a praça da Produção), a **prioridade** e a
   **complexidade** (pelo nome do nível: BAIXA, MÉDIA, ALTA). A Produção que ainda não guardava a prioridade e a
