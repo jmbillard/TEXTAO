@@ -14,7 +14,7 @@ import { criarVocabulario } from './vocabulario.mjs';
 import { abrirPg, criarPauta } from './pauta.mjs';
 import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES } from './correcoes.mjs';
 import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
-import { colunasDoDia, cruzarComAProducao, diaOuHoje, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
+import { colunasDoDia, cruzarComAProducao, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
@@ -43,6 +43,8 @@ import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs
 import { criarPreferencias } from './preferencias.mjs';
 import { criarApelidos } from './apelidos.mjs';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
+import { criarEscala, posicoesDoPedido } from './escala.mjs';
+import { TURNOS_DE_FABRICA } from '../src/modelo/escala.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
@@ -702,6 +704,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const apelidos = criarApelidos(db);
   // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
   const areas = criarAreas();
+  // montar a pauta (#123): o papel de coordenação e o rascunho do dia, no SQLite (nada vai ao Teable)
+  const escala = criarEscala(db);
+  /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
+  const daPessoa = (email, admin) => areas.daPessoa(email, { cadastros, admin, preferencias, coordenacao: escala.ehCoordenacao(email) });
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
   // a última verificação desta partida (com o erro e o que não respondeu); sem nenhuma, a guardada
   let ultimaVerificacao = null;
@@ -1543,6 +1549,30 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
   }
 
+  /**
+   * Montar a pauta (#123), só para a coordenação: GET /api/montar-pauta?dia= (sem ele, amanhã, em São Paulo) lê o
+   * rascunho do dia, com as abas da semana (o estado de cada dia), os turnos e a lista dos editores cadastrados; PUT
+   * { posicoes } troca o rascunho do dia inteiro (o horário e a claquete vão para o padrão) e devolve o mesmo que o GET.
+   * Fica no SQLite do PROMeiro: nada vai ao Teable.
+   */
+  async function rotaDeMontarAPauta(req, res, eu) {
+    if (req.method !== 'GET' && req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
+    if (!escala.ehCoordenacao(eu.email)) return json(res, 403, { erro: 'Só a coordenação monta a pauta.' });
+    const pedido = new URL(req.url, 'http://x').searchParams.get('dia') ?? '';
+    const dia = pedido ? diaOuHoje(pedido, '') : diaVizinho(diaEmSaoPaulo(), 1);
+    if (!dia) return json(res, 400, { erro: 'Dia inválido.' });
+    if (req.method === 'PUT') {
+      try {
+        const posicoes = posicoesDoPedido(((await lerCorpo(req)) ?? {}).posicoes, dia);
+        escala.gravarDia(dia, posicoes, eu.email);
+      } catch (e) {
+        return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
+      }
+    }
+    const editores = (await areas.nomesDosCadastros(cadastros)).editor.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return json(res, 200, { dia, ...escala.lerDia(dia), semana: escala.estados(diasDaSemana(segundaDaSemana(dia))), turnos: TURNOS_DE_FABRICA, editores });
+  }
+
   /** Cadastros de atrações, redatores e editores: todos cadastram; só CADASTRO_ADMINS removem. */
   async function rotaDosCadastros(req, res, eu, caminho) {
     const partes = caminho.split('/').slice(3); // [tipo, id, 'keys', keyId]
@@ -1556,7 +1586,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const lido = await cadastros.ler(forcar);
         const admin = cadastros.podeApagar(eu.email);
         // as sugestões "É Fulana, dos redatores?" (#106): só para administradores
-        return json(res, 200, { ...lido, podeApagar: admin, sugestoes: admin ? ligacaoDePessoas.sugestoes(q.todosOsUsuarios.all(), lido) : [] });
+        // coordenacao: os e-mails de quem monta a pauta (#123), marcados nos Editores
+        return json(res, 200, { ...lido, podeApagar: admin, sugestoes: admin ? ligacaoDePessoas.sugestoes(q.todosOsUsuarios.all(), lido) : [], coordenacao: escala.coordenacao() });
+      }
+      if (tipo === 'coordenacao' && !id) {
+        // o papel de coordenação (#123), só por administradores: POST { email } marca, DELETE ?email= tira. Guardado no
+        // SQLite do PROMeiro, pelo e-mail do login (não vai ao Teable)
+        if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores marcam a coordenação.' });
+        const email = req.method === 'DELETE' ? new URL(req.url, 'http://x').searchParams.get('email') : req.method === 'POST' ? ((await lerCorpo(req)) ?? {}).email : null;
+        if (email === null) return json(res, 405, { erro: 'Método não permitido.' });
+        const feito = req.method === 'POST' ? escala.marcar(email, eu.email) : escala.tirar(email);
+        console.log(`[cadastros] ${eu.email} ${req.method === 'POST' ? 'pôs' : 'tirou'} ${feito} ${req.method === 'POST' ? 'na' : 'da'} coordenação`);
+        return json(res, 200, { ok: true, coordenacao: escala.coordenacao() });
       }
       if (tipo === 'nao-e' && !id) {
         // "Não é" (#106): guardado no SQLite, a sugestão não volta; DELETE desfaz
@@ -2153,8 +2194,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const admin = cadastros.podeApagar(eu.email);
         const novidades = admin ? pessoas.separar(pessoas.guardada()?.novidades ?? []).pendentes.length : undefined;
         // as áreas de trabalho (#101): as da pessoa (pelo e-mail nos cadastros), a de entrada e as preferências
-        const daPessoa = await areas.daPessoa(eu.email, { cadastros, admin, preferencias });
-        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin, ...(admin ? { novidades } : {}), ...daPessoa });
+        // coordenacao: a pessoa monta a pauta (#123); a entrada "Montar a pauta" só aparece para ela
+        const dela = await daPessoa(eu.email, admin);
+        return json(res, 200, { ...eu, trello: trello.ligado, filmes: filmes.ligado, tour, pracas: pracasParaONavegador(pracas), admin, coordenacao: escala.ehCoordenacao(eu.email), ...(admin ? { novidades } : {}), ...dela });
       }
       // sem login na porta: o navegador pode se apresentar com o perfil local, se a demonstração permitir
       return json(res, 200, { email: null, perfilLocal: env.PERFIL_LOCAL === '1' });
@@ -2278,7 +2320,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
       const entradas = Object.entries(typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : {});
       if (!entradas.length) return json(res, 400, { erro: 'Nenhuma preferência para guardar.' });
-      const minhas = (await areas.daPessoa(eu.email, { cadastros, admin: cadastros.podeApagar(eu.email), preferencias })).areas;
+      const minhas = (await daPessoa(eu.email, cadastros.podeApagar(eu.email))).areas;
       for (const [chave, valor] of entradas) {
         if (ehChaveDaPauta(chave)) {
           const recusa = recusaDaPreferenciaDaPauta(chave, valor);
@@ -2684,6 +2726,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const resumo = cadastros.podeApagar(eu.email) ? { resumo: resumoDaPauta(linhas, s.alteradoEm) } : {};
       return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, ...resumo });
     }
+    if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
     if (caminho === '/api/correcoes/pauta') {
       // a correção de grafia da pauta da edição (#114), só para administradores e só leitura: uma página das propostas
       // de um grupo (?grupo=corrigir, o padrão, ou nao-reconhecido; ?pagina= a partir de 1) e quantas há em cada um

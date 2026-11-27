@@ -327,13 +327,16 @@ Trello, que continua.
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 
 **Aviso do Padeiro**:
-O Padeiro avisando o PROMeiro direto, sem o n8n, quando o designer abre ou cria o projeto pelo card ou pela Produção:
-a Produção passa a Produzindo, com esse designer. Vem pela **chave do Padeiro**.
+O Padeiro avisando o PROMeiro direto, sem o n8n, quando o designer abre ou cria o projeto pelo card, pela Produção ou
+pelo filme. Faz o mesmo que o Peguei: o designer entra no card do Trello e na Produção, com a origem "Padeiro". Se a
+Produção já tem designer, o novo é somado; se já está Entregue, a etapa não muda e o aviso só fica registrado. Sem
+rede, o aviso fica guardado e é enviado depois, com a hora certa da abertura. Vem pela **chave do Padeiro**.
 _Evitar_: webhook do projeto (é a rota do n8n de hoje). Não confundir com o **aviso** da pauta nem com o aviso do Trello.
 
 **Chave do Padeiro**:
-O que identifica o Padeiro no PROMeiro: uma chave por usuário do computador, que o designer pede pelo próprio Padeiro.
-O cadastro nasce **pendente** e só vale depois que um administrador aprova e liga a um designer.
+O que identifica o Padeiro no PROMeiro: uma chave por usuário e por computador. O Padeiro se cadastra com o usuário do
+computador e a sigla do designer; o cadastro fica **pendente** até um administrador ligar a chave ao designer. A chave
+pode ser revogada.
 _Evitar_: token de serviço, senha, login
 
 **Anexo** (guardado pelo PROMeiro):

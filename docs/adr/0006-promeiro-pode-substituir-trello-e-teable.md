@@ -155,3 +155,15 @@ passa a montar e publicar a pauta da edição no PROMeiro já, com o Teable aind
   e republicar.
 - **A tela é um híbrido:** a grade, como a planilha; a coluna lateral, com quem falta distribuir, quem está sem escala
   e quem está fora; e o colar da planilha, para trazer o que já foi escrito lá.
+
+## O Padeiro fala com o PROMeiro (interrogatório de 27/11/2026)
+
+Esta seção responde, de vez, a pergunta aberta da segunda seção: como o Padeiro se identifica. Decisões:
+
+- **Um caminho só do Padeiro**, embaixo de `/api/padeiro/`, que só responde com a **chave do Padeiro** e é liberado no
+  Cloudflare Access. A chave é uma por usuário e por computador, ligada ao designer por um administrador, e pode ser
+  revogada.
+- **Primeiro passam por ele** as Produções, que substituem os cards do Trello no grupo NO TRELLO do Padeiro, e o
+  **aviso do Padeiro**.
+- **Depois que esse caminho funcionar**, passam também os filmes recentes, o índice das atrações (buscar) e o webhook
+  do projeto. Cada fluxo do n8n é desligado quando o PROMeiro cobrir o que ele faz.

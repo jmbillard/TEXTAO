@@ -1,0 +1,551 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { gravarRascunhoDoDia, lerRascunhoDoDia } from '../dados/armazenamento';
+import { iniciais } from '../dados/colaboracao';
+import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
+import { nomeComparavel } from '../modelo/ligarPeloNome';
+import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
+import { Icone } from './icones';
+import { Marca } from './pecas';
+import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
+import './pauta.css';
+import './montarPauta.css';
+
+/* Montar a pauta (#123): a tela em que a coordenação monta o rascunho do dia, numa grade parecida com a planilha
+   (a alternativa A do protótipo aprovado). Abas com os dias da semana, cada uma com o estado do dia (vazio ou
+   rascunho); um bloco por turno; em cada posição, o editor (da lista dos cadastrados, com a situação de cada um no dia),
+   o horário (escrito de qualquer jeito, gravado no padrão) e as demandas, texto livre: cada linha mostra na hora o que o
+   PROMeiro entendeu (a atração, a data, as versões como etiquetas e, discretamente, a grafia no padrão). Tudo pelo
+   teclado: Tab, Enter cria uma linha, as setas andam entre as linhas, Backspace na linha vazia apaga. O rascunho é
+   gravado sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable. */
+
+interface Props {
+  /** o dia (AAAA-MM-DD); '' é amanhã */
+  dia: string;
+  irPara: (dia: string) => void;
+  voltar: () => void;
+}
+
+const GRAVAR_DEPOIS_MS = 600;
+const novoId = (prefixo: string) => `${prefixo}-${(crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 24)}`;
+const linhaVazia = () => ({ id: novoId('d'), texto: '' });
+/** Toda posição mostra ao menos uma linha de demanda, para digitar; a vazia não é gravada. */
+const comLinha = (p: PosicaoDaEscala): PosicaoDaEscala => (p.demandas.length ? p : { ...p, demandas: [linhaVazia()] });
+
+/** "sexta, 27 de novembro". */
+function diaEscrito(iso: string) {
+  const p = partes(iso);
+  const semana = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][p.semana];
+  return `${semana}, ${p.dia} de ${MESES[p.mes]}`;
+}
+/** "hoje", "amanhã", "ontem" ou ''. */
+function perto(iso: string, hoje: string) {
+  return iso === hoje ? 'hoje' : iso === diaVizinho(hoje, 1) ? 'amanhã' : iso === diaVizinho(hoje, -1) ? 'ontem' : '';
+}
+const minutosEscritos = (min: number) => `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, '0') : ''}`;
+const nomeDoTurno = (turnos: readonly TurnoDaEscala[], id: string) => turnos.find((t) => t.id === id)?.nome.toLowerCase() ?? id;
+const textoDaSituacao = (s: SituacaoNoDia, turnos: readonly TurnoDaEscala[]) => (s.tipo === 'livre' ? 'livre' : `já na ${s.turnos.map((t) => nomeDoTurno(turnos, t)).join(' e na ')}`);
+
+/** Onde o foco vai depois de desenhar: um campo de uma posição (e, nas demandas, a linha). */
+type Foco = { posicao: string; campo: 'editor' | 'horario' | 'demanda'; demanda?: string; fim?: boolean } | null;
+
+export function MontarPauta({ dia, irPara, voltar }: Props) {
+  const [hoje] = useState(() => diaEmSaoPaulo());
+  const [dados, setDados] = useState<DiaDaEscala | null>(null);
+  const [posicoes, setPosicoes] = useState<PosicaoDaEscala[]>([]);
+  const [falha, setFalha] = useState('');
+  const [gravacao, setGravacao] = useState<'gravado' | 'esperando' | 'gravando' | 'erro'>('gravado');
+  const [erroAoGravar, setErroAoGravar] = useState('');
+  const [foco, setFoco] = useState<Foco>(null);
+  const grade = useRef<HTMLDivElement>(null);
+
+  // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
+  const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[] } | null>(null);
+  const prazo = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const emCurso = useRef<Promise<void> | null>(null);
+
+  const gravarAgora = useCallback(async () => {
+    if (prazo.current) clearTimeout(prazo.current);
+    prazo.current = null;
+    // uma gravação por vez: a seguinte espera a de agora e leva o que houver de mais novo
+    while (emCurso.current) await emCurso.current;
+    const p = pendente.current;
+    if (!p) return;
+    pendente.current = null;
+    setGravacao('gravando');
+    emCurso.current = gravarRascunhoDoDia(p.dia, p.posicoes)
+      .then((d) => {
+        // as posições na tela continuam as de quem digita; o resto (as abas, o estado) vem do servidor
+        setDados((antes) => (antes?.dia === d.dia ? { ...antes, estado: d.estado, semana: d.semana, gravadoEm: d.gravadoEm, gravadoPor: d.gravadoPor } : antes));
+        setErroAoGravar('');
+        setGravacao(pendente.current ? 'esperando' : 'gravado');
+      })
+      .catch((e) => {
+        // não perde o que foi digitado: volta a ficar pendente, para a próxima mudança (ou o "tentar de novo")
+        pendente.current ??= p;
+        setErroAoGravar(e instanceof Error ? e.message : String(e));
+        setGravacao('erro');
+      })
+      .finally(() => (emCurso.current = null));
+    await emCurso.current;
+  }, []);
+
+  /** Muda as posições do dia e grava daqui a pouco (ou na hora, com `agora`). */
+  const mudar = useCallback(
+    (f: (ps: PosicaoDaEscala[]) => PosicaoDaEscala[], agora = false) => {
+      if (!dados) return;
+      setPosicoes((antes) => {
+        const novas = f(antes);
+        pendente.current = { dia: dados.dia, posicoes: novas };
+        return novas;
+      });
+      setGravacao('esperando');
+      if (prazo.current) clearTimeout(prazo.current);
+      prazo.current = setTimeout(() => void gravarAgora(), agora ? 0 : GRAVAR_DEPOIS_MS);
+    },
+    [dados, gravarAgora],
+  );
+
+  // o dia: o que falta gravar do outro vai antes; depois, lê
+  const carregar = useCallback(() => {
+    let vivo = true;
+    setFalha('');
+    void gravarAgora()
+      .then(() => lerRascunhoDoDia(dia))
+      .then((d) => {
+        if (!vivo) return;
+        setDados(d);
+        setPosicoes(d.posicoes.map(comLinha));
+        setGravacao('gravado');
+      })
+      .catch((e) => vivo && setFalha(e instanceof Error ? e.message : String(e)));
+    return () => {
+      vivo = false;
+    };
+  }, [dia, gravarAgora]);
+  useEffect(() => carregar(), [carregar]);
+  // ao sair da tela (ou fechar a aba), o que falta vai na hora
+  useEffect(() => {
+    const sair = () => void gravarAgora();
+    window.addEventListener('pagehide', sair);
+    return () => {
+      window.removeEventListener('pagehide', sair);
+      sair();
+    };
+  }, [gravarAgora]);
+
+  // o foco pedido, depois de desenhar (a linha nova, a posição nova, a linha de cima depois de apagar)
+  useLayoutEffect(() => {
+    if (!foco) return;
+    const sel = `[data-posicao="${foco.posicao}"][data-campo="${foco.campo}"]${foco.demanda ? `[data-demanda="${foco.demanda}"]` : ''}`;
+    const el = grade.current?.querySelector<HTMLInputElement>(sel);
+    if (el) {
+      el.focus();
+      if (foco.fim !== false) el.setSelectionRange(el.value.length, el.value.length);
+    }
+    setFoco(null);
+  }, [foco]);
+
+  const turnos = dados?.turnos ?? [];
+  const editores = dados?.editores ?? [];
+  const daPosicao = (id: string, f: (p: PosicaoDaEscala) => PosicaoDaEscala) => mudar((ps) => ps.map((p) => (p.id === id ? f(p) : p)));
+  const novaPosicao = (turno: TurnoDaEscala) => {
+    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', horario: turno.horario, demandas: [linhaVazia()] };
+    // a posição nova entra depois da última do turno (a ordem da grade é a dos turnos)
+    mudar((ps) => {
+      const ultima = ps.map((x) => x.turno).lastIndexOf(turno.id);
+      const onde = ultima >= 0 ? ultima + 1 : ps.length;
+      return [...ps.slice(0, onde), p, ...ps.slice(onde)];
+    }, true);
+    setFoco({ posicao: p.id, campo: 'editor' });
+  };
+  const tirarPosicao = (id: string) => mudar((ps) => ps.filter((p) => p.id !== id), true);
+
+  // ← e → trocam de semana, fora dos campos
+  const segunda = dados?.semana[0]?.dia ?? '';
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (!segunda || e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement | null)?.closest('input, textarea, select, [role="listbox"]')) return;
+      if (e.key === 'ArrowLeft') irPara(diaVizinho(dados!.dia, -7));
+      if (e.key === 'ArrowRight') irPara(diaVizinho(dados!.dia, 7));
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [segunda, dados, irPara]);
+
+  const atual = dados && (!dia || dados.dia === dia) ? dados : null;
+  const rel = atual ? perto(atual.dia, hoje) : '';
+  return (
+    <div className="pagina pauta montar-pauta">
+      <header className="cad-topo">
+        <button className="voltar-cad" onClick={voltar}>
+          <Icone nome="voltar" tam={16} /> Pauta da edição
+        </button>
+        <Marca />
+        <span className="montar-estado" role="status">
+          {atual && gravacao === 'erro' ? (
+            <span className="montar-erro">
+              Não consegui gravar: {erroAoGravar}{' '}
+              <button type="button" className="botao-texto" onClick={() => void gravarAgora()}>
+                tentar de novo
+              </button>
+            </span>
+          ) : atual && gravacao !== 'gravado' ? (
+            'gravando…'
+          ) : atual?.estado === 'rascunho' ? (
+            <>
+              <span className="ponto" aria-hidden="true" /> rascunho guardado · só a coordenação vê
+            </>
+          ) : null}
+        </span>
+      </header>
+      <main className="pauta-pagina montar-pagina">
+        <div className="pauta-cabeca montar-cabeca">
+          <div>
+            <h1>Montar a pauta</h1>
+            {atual && (
+              <p className="pauta-sub">
+                {diaEscrito(atual.dia)}
+                {rel && (
+                  <>
+                    {' · '}
+                    <span className="montar-rel">{rel}</span>
+                  </>
+                )}
+                {' · '}
+                {atual.estado === 'rascunho' ? <span className="montar-rascunho">rascunho</span> : 'vazio'}
+              </p>
+            )}
+          </div>
+        </div>
+        {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
+        {falha ? (
+          <p className="pauta-falha" role="alert">
+            {falha}{' '}
+            <button className="botao-texto" onClick={() => carregar()}>
+              Tentar de novo
+            </button>
+          </p>
+        ) : !atual ? (
+          <p className="pauta-lendo">Lendo o rascunho…</p>
+        ) : (
+          <div className="montar-grade" ref={grade}>
+            {!posicoes.length && <p className="montar-vazio">Nada montado para {diaEscrito(atual.dia).split(',')[0]} ainda. Comece por uma posição num turno.</p>}
+            {turnos.map((t) => {
+              const doTurno = posicoes.filter((p) => p.turno === t.id);
+              return (
+                <section key={t.id} className="montar-turno" aria-label={t.nome}>
+                  <div className="montar-turno-cab">
+                    <h2>{t.nome}</h2>
+                    <span className="montar-turno-h">
+                      {t.horario} · {doTurno.length} {doTurno.length === 1 ? 'posição' : 'posições'}
+                    </span>
+                    <span className="espaco" />
+                    <button type="button" className="botao-texto" onClick={() => novaPosicao(t)}>
+                      + posição
+                    </button>
+                  </div>
+                  {doTurno.length > 0 && (
+                    <div className="montar-celulas">
+                      {doTurno.map((p) => (
+                        <CelulaDaPosicao
+                          key={p.id}
+                          p={p}
+                          dia={atual.dia}
+                          posicoes={posicoes}
+                          turnos={turnos}
+                          editores={editores}
+                          mudar={(f) => daPosicao(p.id, f)}
+                          tirar={() => tirarPosicao(p.id)}
+                          focar={setFoco}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+            <p className="montar-teclas">
+              <span><kbd>Tab</kbd> próximo campo</span>
+              <span><kbd>Enter</kbd> nova linha</span>
+              <span><kbd>↑</kbd> <kbd>↓</kbd> entre as linhas</span>
+              <span><kbd>⌫</kbd> na linha vazia apaga</span>
+            </p>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+/** As abas com os dias da semana, cada uma com o estado do dia, e a troca de semana. */
+function AbasDaSemana({ dados, hoje, irPara }: { dados: DiaDaEscala; hoje: string; irPara: (dia: string) => void }) {
+  const abas = useRef<HTMLElement>(null);
+  // no celular as abas rolam para o lado: a do dia aparece (sem mexer na rolagem da página)
+  useLayoutEffect(() => {
+    const nav = abas.current;
+    const aba = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (nav && aba && nav.scrollWidth > nav.clientWidth) nav.scrollLeft += aba.getBoundingClientRect().left - nav.getBoundingClientRect().left - (nav.clientWidth - aba.offsetWidth) / 2;
+  }, [dados.dia]);
+  return (
+    <nav className="montar-abas" aria-label="Dias da semana" ref={abas}>
+      <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior (←)" onClick={() => irPara(diaVizinho(dados.dia, -7))}>
+        <Icone nome="voltar" tam={15} traco={2.2} />
+      </button>
+      {dados.semana.map((s) => {
+        const p = partes(s.dia);
+        const rel = perto(s.dia, hoje);
+        return (
+          <button key={s.dia} type="button" className="montar-aba" aria-current={s.dia === dados.dia ? 'page' : undefined} data-estado={s.estado} title={`${diaEscrito(s.dia)}: ${s.estado}`} onClick={() => irPara(s.dia)}>
+            <span className={`est est-${s.estado}`} aria-hidden="true" />
+            {DIAS_DA_SEMANA[p.semana].toUpperCase()} <span className="n">{p.dia}/{p.mes + 1}</span>
+            {rel && <i>{rel}</i>}
+            <span className="montar-sr">, {s.estado}</span>
+          </button>
+        );
+      })}
+      <button type="button" className="botao-icone" aria-label="Próxima semana" title="Próxima semana (→)" onClick={() => irPara(diaVizinho(dados.dia, 7))}>
+        <Icone nome="direita" tam={15} traco={2.2} />
+      </button>
+    </nav>
+  );
+}
+
+interface PropsDaCelula {
+  p: PosicaoDaEscala;
+  dia: string;
+  posicoes: PosicaoDaEscala[];
+  turnos: readonly TurnoDaEscala[];
+  editores: readonly string[];
+  mudar: (f: (p: PosicaoDaEscala) => PosicaoDaEscala) => void;
+  tirar: () => void;
+  focar: (f: Foco) => void;
+}
+
+/** Uma posição: o editor, o horário e as demandas, cada campo com o que o PROMeiro entendeu embaixo. */
+function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, mudar, tirar, focar }: PropsDaCelula) {
+  const horario = lerHorario(p.horario);
+  const situacao = p.editor.trim() ? situacaoNoDia(p.editor, posicoes, p.id) : null;
+  const naLista = !p.editor.trim() || editores.some((e) => nomeComparavel(e) === nomeComparavel(p.editor));
+  const linha = (id: string, texto: string) => mudar((x) => ({ ...x, demandas: x.demandas.map((d) => (d.id === id ? { ...d, texto } : d)) }));
+
+  const teclaNaDemanda = (e: React.KeyboardEvent<HTMLInputElement>, i: number) => {
+    const d = p.demandas[i];
+    if (e.key === 'Enter') {
+      // Enter cria uma linha logo abaixo (a de agora vai para o padrão)
+      e.preventDefault();
+      const nova = linhaVazia();
+      mudar((x) => {
+        const ds = x.demandas.map((y) => (y.id === d.id ? { ...y, texto: demandaNoPadrao(y.texto, dia) || y.texto.trim() } : y));
+        return { ...x, demandas: [...ds.slice(0, i + 1), nova, ...ds.slice(i + 1)] };
+      });
+      focar({ posicao: p.id, campo: 'demanda', demanda: nova.id });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      focar(i > 0 ? { posicao: p.id, campo: 'demanda', demanda: p.demandas[i - 1].id } : { posicao: p.id, campo: 'horario' });
+    } else if (e.key === 'ArrowDown' && i < p.demandas.length - 1) {
+      e.preventDefault();
+      focar({ posicao: p.id, campo: 'demanda', demanda: p.demandas[i + 1].id });
+    } else if (e.key === 'Backspace' && !e.currentTarget.value && p.demandas.length > 1) {
+      // Backspace na linha vazia apaga a linha; o foco sobe (ou desce, na primeira)
+      e.preventDefault();
+      const vai = p.demandas[i - 1] ?? p.demandas[i + 1];
+      mudar((x) => ({ ...x, demandas: x.demandas.filter((y) => y.id !== d.id) }));
+      focar({ posicao: p.id, campo: 'demanda', demanda: vai.id });
+    }
+  };
+
+  return (
+    <div className="montar-celula" data-posicao-id={p.id}>
+      <div className="montar-celula-topo">
+        <CampoDoEditor p={p} posicoes={posicoes} turnos={turnos} editores={editores} mudar={(editor) => mudar((x) => ({ ...x, editor }))} depois={() => focar({ posicao: p.id, campo: 'horario' })} />
+        {/* fora do Tab: do editor, o Tab vai direto ao horário */}
+        <button type="button" tabIndex={-1} className="botao-icone pequeno montar-tirar" title="Tirar esta posição" aria-label="Tirar esta posição" onClick={tirar}>
+          <Icone nome="fechar" tam={13} />
+        </button>
+      </div>
+      <div className="montar-sob">
+        {situacao?.tipo === 'escalado' && <span className="montar-alerta">{textoDaSituacao(situacao, turnos)}</span>}
+        {!naLista && <span className="montar-tag">nome novo</span>}
+      </div>
+      <input
+        className="montar-in hora"
+        data-posicao={p.id}
+        data-campo="horario"
+        value={p.horario}
+        placeholder="horário"
+        spellCheck={false}
+        autoComplete="off"
+        aria-label="Horário"
+        onChange={(e) => mudar((x) => ({ ...x, horario: e.target.value }))}
+        onBlur={(e) => horarioNoPadrao(e.target.value) !== e.target.value && mudar((x) => ({ ...x, horario: horarioNoPadrao(x.horario) }))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            focar({ posicao: p.id, campo: 'demanda', demanda: p.demandas[0]?.id });
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            focar({ posicao: p.id, campo: 'editor' });
+          }
+        }}
+      />
+      <div className="montar-sob">
+        {horario &&
+          (horarioEntendido(horario) ? (
+            <span className="montar-leve">
+              {minutosEscritos(horario.minutos)}
+              {horario.viraODia && ' · vira o dia'}
+              {horario.padrao !== p.horario.trim() && (
+                <>
+                  {' · grava '}
+                  <b>{horario.padrao}</b>
+                </>
+              )}
+            </span>
+          ) : (
+            <span className="montar-alerta">{horario.erro}</span>
+          ))}
+      </div>
+      <ul className="montar-demandas" aria-label="Demandas">
+        {p.demandas.map((d, i) => (
+          <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Uma linha de demanda: o texto livre e, embaixo, o que o PROMeiro entendeu. Ao sair, a claquete vai para o padrão. */
+function LinhaDaDemanda({ posicao, id, texto, dia, mudar, tecla }: { posicao: string; id: string; texto: string; dia: string; mudar: (t: string) => void; tecla: (e: React.KeyboardEvent<HTMLInputElement>) => void }) {
+  const l = lerDemanda(texto, dia);
+  return (
+    <li className={`montar-demanda t-${l.tipo}`}>
+      <input
+        className="montar-in"
+        data-posicao={posicao}
+        data-campo="demanda"
+        data-demanda={id}
+        value={texto}
+        placeholder="claquete ou tarefa, Enter"
+        spellCheck={false}
+        autoComplete="off"
+        aria-label="Demanda"
+        onChange={(e) => mudar(e.target.value)}
+        onBlur={(e) => l.tipo === 'claquete' && l.mudou && e.target.value === texto && mudar(l.padrao)}
+        onKeyDown={tecla}
+      />
+      {l.tipo === 'claquete' && (
+        <span className="montar-leitura">
+          {l.data ? (
+            <span className="montar-data">
+              {l.atracao} · {DIAS_DA_SEMANA[partes(l.data).semana]} {partes(l.data).dia}/{partes(l.data).mes + 1}
+            </span>
+          ) : (
+            <span className="montar-alerta">sem data</span>
+          )}
+          {l.versoes.length > 0 && (
+            <span className="pauta-versoes">
+              {l.versoes.map((v, i) => (
+                <span key={i} className={`pauta-versao${v.conhecida ? '' : ' desconhecida'}`}>
+                  {v.rotulo}
+                  {v.conhecida && <small>{v.codigo.toUpperCase()}</small>}
+                </span>
+              ))}
+            </span>
+          )}
+          {l.mudou && (
+            <span className="montar-grava">
+              grava <b>{l.padrao}</b>
+            </span>
+          )}
+        </span>
+      )}
+    </li>
+  );
+}
+
+/** As opções da lista dos editores: os cadastrados que casam com o que foi escrito, os livres primeiro. */
+function opcoesDoEditor(escrito: string, p: PosicaoDaEscala, posicoes: readonly PosicaoDaEscala[], editores: readonly string[]) {
+  const q = nomeComparavel(escrito);
+  const casa = (nome: string) => !q || nomeComparavel(nome).startsWith(q) || nomeComparavel(nome).split(' ').some((w) => w.startsWith(q));
+  return editores
+    .filter(casa)
+    .map((nome) => ({ nome, situacao: situacaoNoDia(nome, posicoes, p.id) }))
+    .sort((a, b) => Number(a.situacao.tipo !== 'livre') - Number(b.situacao.tipo !== 'livre'));
+}
+
+/** O editor da posição: o campo com a lista dos cadastrados (a situação de cada um no dia), pelo teclado. */
+function CampoDoEditor({ p, posicoes, turnos, editores, mudar, depois }: { p: PosicaoDaEscala; posicoes: PosicaoDaEscala[]; turnos: readonly TurnoDaEscala[]; editores: readonly string[]; mudar: (editor: string) => void; depois: () => void }) {
+  const [aberta, setAberta] = useState(false);
+  // filtrar: a pessoa digitou desde que entrou no campo (antes disso, a lista mostra todos)
+  const [filtrar, setFiltrar] = useState(false);
+  const [ativo, setAtivo] = useState(0);
+  const opcoes = aberta ? opcoesDoEditor(filtrar ? p.editor : '', p, posicoes, editores) : [];
+  const i = Math.min(ativo, Math.max(0, opcoes.length - 1));
+  const escolher = (nome: string) => {
+    mudar(nome);
+    setAberta(false);
+    setFiltrar(false);
+  };
+  const lista = `editores-${p.id}`;
+  return (
+    <div className="montar-campo">
+      <input
+        className={`montar-in editor${p.editor ? '' : ' sem-editor'}`}
+        data-posicao={p.id}
+        data-campo="editor"
+        value={p.editor}
+        placeholder="sem editor"
+        spellCheck={false}
+        autoComplete="off"
+        aria-label="Editor"
+        role="combobox"
+        aria-expanded={aberta && opcoes.length > 0}
+        aria-controls={lista}
+        aria-autocomplete="list"
+        onFocus={() => (setAberta(true), setFiltrar(false), setAtivo(0))}
+        onBlur={() => (setAberta(false), p.editor !== p.editor.trim().replace(/\s+/g, ' ') && mudar(p.editor.trim().replace(/\s+/g, ' ')))}
+        onChange={(e) => (mudar(e.target.value), setAberta(true), setFiltrar(true), setAtivo(0))}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (!aberta) return setAberta(true);
+            setAtivo(Math.max(0, Math.min(opcoes.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1))));
+          } else if (e.key === 'Escape') {
+            setAberta(false);
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (aberta && opcoes.length && (filtrar || !p.editor)) escolher(opcoes[i].nome);
+            depois();
+          } else if (e.key === 'Tab' && !e.shiftKey && aberta && filtrar && p.editor.trim() && opcoes.length && nomeComparavel(opcoes[i].nome) !== nomeComparavel(p.editor)) {
+            // Tab completa com a opção da lista (e segue para o horário)
+            escolher(opcoes[i].nome);
+          }
+        }}
+      />
+      {aberta && opcoes.length > 0 && (
+        <div className="menu montar-lista" id={lista} role="listbox" aria-label="Editores cadastrados">
+          {opcoes.map((o, k) => (
+            <div
+              key={o.nome}
+              role="option"
+              aria-selected={k === i}
+              className={`menu-item${k === i ? ' ativo' : ''}`}
+              // sem tirar o foco do campo
+              onMouseDown={(e) => (e.preventDefault(), escolher(o.nome))}
+            >
+              <span className="pauta-avatar">{iniciais(o.nome)}</span>
+              <span className="menu-texto">
+                <strong>{o.nome}</strong>
+                <small className={o.situacao.tipo === 'livre' ? '' : 'escalado'}>{textoDaSituacao(o.situacao, turnos)}</small>
+              </span>
+            </div>
+          ))}
+          <p className="montar-lista-pe">
+            <kbd>↑</kbd> <kbd>↓</kbd> escolhe · <kbd>Enter</kbd> ou <kbd>Tab</kbd> confirma · <kbd>Esc</kbd> fecha
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+

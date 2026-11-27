@@ -60,8 +60,8 @@ export function SeletorDeArea({ areas, atual, admin, trocar }: { areas: readonly
 }
 
 /** O grupo "De todo mundo" na linha do logo (#105): o que não é de uma área só, o mesmo em todas elas. Hoje, a Pauta
-    da edição. No celular, só o ícone. */
-export function DeTodoMundo({ pauta }: { pauta: () => void }) {
+    da edição e, ao lado dela, só para a coordenação, o "Montar a pauta" (#123). No celular, só o ícone. */
+export function DeTodoMundo({ pauta, montar }: { pauta: () => void; montar?: () => void }) {
   return (
     <nav className="de-todo-mundo" aria-label="De todo mundo">
       <span className="de-todo-mundo-rotulo" aria-hidden="true">de todo mundo</span>
@@ -69,6 +69,12 @@ export function DeTodoMundo({ pauta }: { pauta: () => void }) {
         <Icone nome="edicao" tam={17} traco={1.7} />
         <span>Pauta da edição</span>
       </a>
+      {montar && (
+        <a className="topo-pauta topo-montar" href="#/pauta/montar" aria-label="Montar a pauta" onClick={(e) => (e.preventDefault(), montar())}>
+          <Icone nome="ajustes" tam={17} traco={1.7} />
+          <span>Montar a pauta</span>
+        </a>
+      )}
     </nav>
   );
 }

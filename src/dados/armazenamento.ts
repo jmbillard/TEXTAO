@@ -272,10 +272,13 @@ export async function consultarPauta(claquete: string): Promise<{ editor: string
 let trelloLigado = false;
 let filmesLigado = false;
 let souAdmin = false;
+let souDaCoordenacao = false;
 let novidades = 0;
 /** Quem está usando é administrador (a chave-mestra CADASTRO_ADMINS ou o salvo na Configuração): o menu do perfil
     mostra a Configuração. */
 export const souAdministrador = () => armazenamento.tipo === 'servidor' && souAdmin;
+/** Quem está usando é da coordenação (#123): vê e usa o "Montar a pauta". */
+export const souCoordenacao = () => armazenamento.tipo === 'servidor' && souDaCoordenacao;
 /** Quantas novidades há no quadro (quem entrou, quem saiu), da última verificação: o pontinho no menu do perfil. */
 export const novidadesNoQuadro = () => (souAdministrador() ? novidades : 0);
 /** O servidor sabe mandar para o Trello (TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA configurados). */
@@ -507,6 +510,8 @@ export interface Cadastros {
   podeApagar: boolean;
   /** só para administradores (vazio para os outros) */
   sugestoes: SugestaoDeEmail[];
+  /** os e-mails de quem é da coordenação (#123), que monta a pauta */
+  coordenacao?: string[];
 }
 export type TipoCadastro = 'atracoes' | 'redatores' | 'editores';
 
@@ -534,6 +539,11 @@ export const responderNaoE = (s: Pick<SugestaoDeEmail, 'tipo' | 'id' | 'email'>,
   desfazer
     ? pedir<{ ok: true }>(`/api/cadastros/nao-e?${new URLSearchParams({ tipo: s.tipo, id: s.id, email: s.email })}`, { method: 'DELETE' })
     : pedir<{ ok: true }>('/api/cadastros/nao-e', { method: 'POST', body: JSON.stringify({ tipo: s.tipo, id: s.id, email: s.email }) });
+/** Marca (ou tira) a pessoa do e-mail na coordenação (#123, só administradores); devolve quem é da coordenação. */
+export const marcarCoordenacao = (email: string, marcar: boolean) =>
+  marcar
+    ? pedir<{ ok: true; coordenacao: string[] }>('/api/cadastros/coordenacao', { method: 'POST', body: JSON.stringify({ email }) })
+    : pedir<{ ok: true; coordenacao: string[] }>(`/api/cadastros/coordenacao?${new URLSearchParams({ email })}`, { method: 'DELETE' });
 export const removerCadastro = (tipo: TipoCadastro, id: string, keyId?: string) =>
   pedir<{ ok: true }>(`/api/cadastros/${tipo}/${encodeURIComponent(id)}${keyId ? `/keys/${encodeURIComponent(keyId)}` : ''}`, { method: 'DELETE' });
 
@@ -974,7 +984,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
     const r = await fetch('/api/eu', { credentials: 'same-origin', headers: cabecalhos, signal: controle.signal });
     clearTimeout(prazo);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Error('sem servidor');
-    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; novidades?: number; areas?: unknown[]; area?: unknown; preferencias?: Record<string, unknown> };
+    const d = (await r.json()) as { email: string | null; nome?: string; origem?: 'acesso' | 'local'; perfilLocal?: boolean; trello?: boolean; filmes?: boolean; tour?: { revisao: string | null }; pracas?: unknown[]; admin?: boolean; coordenacao?: boolean; novidades?: number; areas?: unknown[]; area?: unknown; preferencias?: Record<string, unknown> };
     if (d.email) {
       armazenamento = doServidor;
       // as praças da Configuração, antes de qualquer roteiro ser lido (até aqui, e sem servidor, valem as de fábrica)
@@ -982,6 +992,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
       trelloLigado = !!d.trello;
       filmesLigado = !!d.filmes;
       souAdmin = !!d.admin;
+      souDaCoordenacao = !!d.coordenacao;
       novidades = Number(d.novidades ?? 0) || 0;
       // as cores que cada um escolheu, para a orelha, o grifo e os cursores saírem certos
       await pedir<{ email: string; cor: string }[]>('/api/cores').then(registrarCores, () => {});
@@ -1006,6 +1017,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import type { DiaDaEscala, PosicaoDaEscala } from '../modelo/escala';
 import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DOS_RECOLHIDOS, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
@@ -1394,6 +1406,10 @@ const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) 
 export const lerSemanaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => pedir<SemanaDaPauta & LeituraDaPauta>(`/api/pauta/semana${comFiltro({ inicio: dia }, filtro)}`);
 /** O Dia da pauta da edição (#97): um dia (AAAA-MM-DD; sem ele, hoje), com cada editor numa coluna. */
 export const lerDiaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => pedir<DiaDaPauta & LeituraDaPauta>(`/api/pauta/dia${comFiltro({ dia }, filtro)}`);
+/** O rascunho do dia que a coordenação monta (#123; sem o dia, amanhã), com as abas da semana e a lista dos editores. */
+export const lerRascunhoDoDia = (dia = '') => pedir<DiaDaEscala>(`/api/montar-pauta${dia ? `?dia=${dia}` : ''}`);
+/** Troca o rascunho do dia pelas posições (o servidor grava o horário e a claquete no padrão) e devolve o dia gravado. */
+export const gravarRascunhoDoDia = (dia: string, posicoes: PosicaoDaEscala[]) => pedir<DiaDaEscala>(`/api/montar-pauta?dia=${dia}`, { method: 'PUT', body: JSON.stringify({ posicoes }) });
 /** Lê o Andamento (guardado alguns minutos no servidor); `deNovo` vai ao GitHub. */
 export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** A correção de grafia (#114, só administradores): uma página das propostas da pauta de um grupo, e o resumo. */

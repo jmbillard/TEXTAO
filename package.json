@@ -24,6 +24,7 @@
     "e2e:pauta": "node tests/e2e/pauta.e2e.cjs",
     "e2e:correcoes": "node tests/e2e/correcoes.e2e.cjs",
     "e2e:producoes": "node tests/e2e/producoes.e2e.cjs",
+    "e2e:montar-pauta": "node tests/e2e/montar-pauta.e2e.cjs",
     "servidor": "PORT=8787 PERFIL_LOCAL=1 node servidor/index.mjs",
     "start": "node servidor/index.mjs",
     "corrigir-datas": "node --experimental-strip-types servidor/corrigir-datas.mjs"
