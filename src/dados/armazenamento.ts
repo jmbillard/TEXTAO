@@ -1550,7 +1550,7 @@ export const desfazerEtapaDaProducao = (producao: string) =>
 export interface ProducaoAberta extends LinhaDoTempo {
   artes: { nome: string; marcada: boolean }[];
   trello: string | null;
-  /** #160: as artes como a janela do After mostra (a de vários tipos é uma só), com o fogo do Roteiro (null sem ele) */
+  /** #160: as artes como a janela do After mostra (a de vários tipos é uma só), com o fogo (o do Roteiro ou, sem ele, o da Produção, #174) */
   artesDoCard?: ArteDoCard[];
   /** #160: a versão do Roteiro ligado (V1 sem versão nova) e quando ele chegou; null sem Roteiro */
   roteiro?: { versao: number; em: string } | null;
@@ -1558,12 +1558,12 @@ export interface ProducaoAberta extends LinhaDoTempo {
   designersAtivos?: string[];
   atracoes?: string[];
 }
-/** Uma arte no card aberto (#160): o nome, os itens do checklist dela, se está feita e o fogo (1 a 3; null sem Roteiro). */
+/** Uma arte no card aberto (#160): o nome, os itens do checklist dela, se está feita e o fogo (1 a 3, com ou sem Roteiro, #174). */
 export interface ArteDoCard {
   nome: string;
   itens: string[];
   feita: boolean;
-  fogo: 1 | 2 | 3 | null;
+  fogo: 1 | 2 | 3;
 }
 export const lerProducaoAberta = (producao: string) => pedir<ProducaoAberta>(`/api/producoes/aberta?producao=${encodeURIComponent(producao)}`);
 /** O que as ações do card aberto (#160) respondem: o que foi feito, o card como a tela mostra e a Produção aberta. */
@@ -1581,7 +1581,7 @@ export const mudarAtracaoDaProducao = (producao: string, atracao: string) => noC
 export const mudarDesignerDaProducao = (producao: string, designer: string, entra: boolean) => noCardAberto('designer', { producao, designer, entra });
 /** Marcar, desmarcar, apagar, voltar (o desfazer do apagar) ou incluir uma arte (#160): o checklist do card espelha. */
 export const mudarArteDaProducao = (producao: string, arte: string, acao: 'marcar' | 'desmarcar' | 'apagar' | 'voltar' | 'incluir') => noCardAberto('arte', { producao, arte, acao });
-/** Subir o fogo de uma arte (#160), no Roteiro ligado. */
+/** Subir o fogo de uma arte (#160): no Roteiro ligado ou, sem ele, na Produção (#174). */
 export const subirFogoDaProducao = (producao: string, arte: string) => noCardAberto('fogo', { producao, arte });
 /** O pedido da pauta com o filtro pessoal (#99), quando há. */
 const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
