@@ -38,7 +38,7 @@ entra no backup com o resto do banco) e são servidos por endereço fixo:
   Portainer, `PROMEIRO_URL/api/publico/poster/<filme>?t=<token>` serve o mesmo pôster fora do login; precisa de uma
   aplicação no Cloudflare Access só para o caminho `/api/publico/poster`, com uma política **Bypass** (como a do aviso
   do Trello). Sem o token, ou com o errado, 404; o que mais estiver embaixo de `/api/publico/` também responde 404 e
-  nunca chega às rotas com login. O fluxo `filmes-recentes` do n8n passa a mandar esse endereço no lugar do link
+  nunca chega às rotas com login, nem com o caminho torto (`%2e%2e`, barras repetidas, outra caixa; #145). O fluxo `filmes-recentes` do n8n passa a mandar esse endereço no lugar do link
   temporário do Teable.
 
 ## O caminho do Padeiro (a chave do Padeiro)
