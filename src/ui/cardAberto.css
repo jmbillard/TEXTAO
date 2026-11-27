@@ -1,0 +1,27 @@
+/* O card aberto no centro (CardAberto.tsx): o painel de 720 px sobre o véu leve; no celular, a tela toda. As
+   animações de abrir e de voltar ao card são feitas no CardAberto (Web Animations). */
+
+:root { --card-aberto-veu: rgb(26 25 22 / 26%); --card-aberto-largura: 720px; }
+:root[data-theme='dark'] { --card-aberto-veu: rgb(0 0 0 / 48%); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { --card-aberto-veu: rgb(0 0 0 / 48%); }
+}
+
+.card-aberto-camada { position: fixed; inset: 0; z-index: 60; }
+.card-aberto-veu { position: absolute; inset: 0; background: var(--card-aberto-veu); }
+.card-aberto {
+  position: absolute; left: 50%; top: 56px;
+  width: min(var(--card-aberto-largura), calc(100vw - 48px)); margin-left: calc(min(var(--card-aberto-largura), calc(100vw - 48px)) / -2);
+  max-height: calc(100vh - 112px); display: flex; flex-direction: column;
+  border-radius: 16px; background: var(--papel); color: var(--tinta); box-shadow: var(--sombra-menu); outline: none;
+}
+.card-aberto-rolar { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 22px 26px 24px; border-radius: inherit; }
+.card-aberto-fechar { display: inline-grid; place-items: center; width: 34px; height: 34px; margin: -8px -10px -8px 0; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--tinta2); transition: background-color 0.15s, color 0.15s; }
+.card-aberto-fechar:hover { background: var(--neutro); color: var(--tinta); }
+.card-aberto-fechar:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+
+@media (max-width: 600px) {
+  .card-aberto { left: 0; right: 0; top: 0; bottom: 0; width: 100vw; margin: 0; max-height: none; border-radius: 0; }
+  .card-aberto-rolar { padding: 16px 16px 24px; }
+  .card-aberto-fechar { width: 44px; height: 44px; }
+}

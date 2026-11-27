@@ -13,6 +13,7 @@
 
 import { ehAdministrador } from '../src/modelo/pessoas.ts';
 import { atracaoParecida } from '../src/modelo/correcaoDeGrafia.ts';
+import { chaveDaPasta, chaveDoNome } from './projeto-do-padeiro.mjs';
 
 const POR_PAGINA = 1000;
 const texto = (v) => (Array.isArray(v) ? v.map(texto).filter(Boolean).join(', ') : v == null ? '' : String(typeof v === 'object' ? (v.title ?? v.name ?? '') : v)).trim();
@@ -256,6 +257,38 @@ export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {})
       for (const k of lista) await criar(t.keysAtracoes, { key: k, [campoKeyLink]: [{ id: rec.id }] });
       await depois([{ nome, chaves: lista }]);
       return { id: rec.id, nome, keys: lista };
+    },
+
+    /**
+     * A atração nova do projeto criado no Padeiro (#144), como o fluxo "PROMO - PROJETO" do n8n cadastrava: a mesma
+     * pelo nome (sem acentos, símbolos nem caixa) ou pela pasta do projeto não é criada de novo; senão entra com a
+     * categoria (a que já existe com o mesmo nome, ou o tipo em maiúsculas), o acervo próprio, as pastas (os campos
+     * `projeto` e `output`, que as fórmulas dos caminhos leem) e a key do nome, quando ela não é de outra atração.
+     * Sem a conferência da grafia parecida: o designer já criou a pasta com esse nome.
+     * @returns { atracao: { id, nome }, existia }
+     */
+    async atracaoDoProjeto({ nome, tipo = '', pasta = '', output = '' }) {
+      exigir(t.atracoes && t.keysAtracoes, 'faltam as tabelas de atrações');
+      nome = nomeLimpo(nome);
+      exigir(nome, 'a atração veio sem nome');
+      const atual = await ler(true);
+      const chave = pasta ? chaveDaPasta(pasta) : '';
+      const pastasDe = (a) => [a.campos?.projeto, ...Object.entries(a.caminhos ?? {}).filter(([c]) => /^projeto/i.test(c)).map(([, v]) => v)].filter(Boolean);
+      const existente = atual.atracoes.find((a) => chaveDoNome(a.nome) === chaveDoNome(nome)) ?? (chave ? atual.atracoes.find((a) => pastasDe(a).some((p) => chaveDaPasta(p) === chave)) : null);
+      if (existente) return { atracao: { id: existente.id, nome: existente.nome }, existia: true };
+      const tipoLimpo = nomeLimpo(tipo, 40);
+      const categoria = tipoLimpo ? (atual.categorias.find((c) => chaveDoNome(c) === chaveDoNome(tipoLimpo)) ?? tipoLimpo.toUpperCase()) : '';
+      const fields = { [campoAtracao]: nome };
+      if (categoria) fields[campoCategoria] = categoria;
+      if (temAcervo) fields.acervo = OPCOES_DO_ACERVO.proprio;
+      if (pasta) fields.projeto = String(pasta).slice(0, 500);
+      if (output) fields.output = String(output).slice(0, 500);
+      const rec = await criar(t.atracoes, fields);
+      const key = normalizarKey(nome);
+      const keyLivre = key && !atual.atracoes.some((a) => a.keys.some((k) => k.key === key));
+      if (keyLivre) await criar(t.keysAtracoes, { key, [campoKeyLink]: [{ id: rec.id }] });
+      await depois(keyLivre ? [{ nome, chaves: [key] }] : []);
+      return { atracao: { id: rec.id, nome }, existia: false };
     },
 
     /** Troca o acervo de uma atração que já existe. */
