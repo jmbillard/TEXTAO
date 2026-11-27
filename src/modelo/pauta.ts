@@ -645,3 +645,36 @@ export function resumoDaPauta(linhas: readonly LinhaDaPauta[], alteradoEm: strin
     alteradoEm,
   };
 }
+
+/* ---------- a mesa do dia e a busca (#162) ---------- */
+
+/** O editor da linha é a pessoa (o editor ligado ao e-mail dela), comparando os nomes sem caixa, acento e pontuação. */
+export const ehDaPessoa = (editor: string, voceEditor: string | null | undefined): boolean => !!editor && !!voceEditor && nomeComparavel(editor) === nomeComparavel(voceEditor);
+
+/** A contagem do dia de um editor ("N de M"): as claquetes com a arte entregue (ou já arquivada), uma bolinha por
+    claquete na ordem da pauta. A tarefa e o aviso não contam. */
+export function contaDoEditor(itens: readonly LinhaDaPauta[]): { feitas: number; total: number; bolinhas: boolean[] } {
+  const bolinhas = itens.filter((l) => l.tipo === 'claquete').map((l) => {
+    const etapa = resumoDaProducao(l.producoes)?.etapa;
+    return etapa === 'entregue' || etapa === 'arquivada';
+  });
+  return { feitas: bolinhas.filter(Boolean).length, total: bolinhas.length, bolinhas };
+}
+
+/** O recado do dia (#125): o aviso sem editor daquele dia. */
+export const recadoDoDia = (linhas: readonly LinhaDaPauta[], dia: string): LinhaDaPauta[] => linhas.filter((l) => l.tipo === 'aviso' && !l.editor && l.dia === dia);
+
+/**
+ * A busca da pauta: as claquetes e as tarefas cujo texto (a claquete, que traz a atração), o apelido ou o editor têm
+ * todas as palavras do termo, sem caixa, acento e pontuação. O aviso não é resultado. Sem termo, nada.
+ * @param apelido o apelido da claquete, quando há (a tela sabe)
+ */
+export function buscarNaPauta(linhas: readonly LinhaDaPauta[], termo: string, apelido: (l: LinhaDaPauta) => string = () => ''): LinhaDaPauta[] {
+  const palavras = nomeComparavel(termo).split(' ').filter(Boolean);
+  if (!palavras.length) return [];
+  return linhas.filter((l) => {
+    if (l.tipo === 'aviso') return false;
+    const onde = nomeComparavel([l.texto, apelido(l), l.editor].join(' '));
+    return palavras.every((p) => onde.includes(p));
+  });
+}

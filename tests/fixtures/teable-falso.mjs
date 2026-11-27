@@ -100,7 +100,9 @@ export function teableFalso(nomes, opcoes = {}) {
     const m = /FROM\s+"([^"]+)"\."([^"]+)"/i.exec(sql);
     const base = m && bases[m[1]];
     const nome = base && Object.keys(base.nomes).find((n) => base.nomes[n] === m[2]);
-    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...r.fields }));
+    // a linha inteira (to_jsonb(p) AS "inteira"), quando o SQL pede
+    const inteira = /AS\s+"inteira"/i.test(sql);
+    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...r.fields, ...(inteira ? { inteira: { __id: r.id, ...r.fields } } : {}) }));
   };
   buscar.abrirPg = async () => ({ query: async (sql, params) => ({ rows: await buscar.consultar(sql, params) }), end: async () => {} });
   return buscar;

@@ -25,8 +25,9 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     nome: 'atracoes',
     titulo: 'Atrações',
     variavel: 'TEABLE_CADASTRO',
-    // cadastros.mjs (criar, ler), vocabulario.mjs (a categoria)
-    api: ['atracao', 'categoria', 'acervo', 'projeto_win', 'output_win'],
+    // cadastros.mjs (criar, ler; a atração nova do projeto do Padeiro, #144, grava as pastas em projeto e output),
+    // vocabulario.mjs (a categoria)
+    api: ['atracao', 'categoria', 'acervo', 'projeto_win', 'output_win', 'projeto', 'output'],
     // vocabulario.mjs, trello.mjs (acharAtracao), acervo.mjs, exibicao.mjs (as sessões)
     pg: ['atracao', 'categoria', 'pattern', 'projeto_win', 'output_win', 'acervo'],
   },
@@ -74,6 +75,15 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     api: ['titulo', 'cadastrado_em', 'ano_de_producao', 'poster'],
     // exibicao.mjs, filmes.mjs (a conferência), trello.mjs (os filmes recentes do Padeiro, #142: o nome_da_pasta)
     pg: ['titulo', 'ano_de_producao', 'projeto_win', 'projeto_mac', 'output_win', 'output_mac', 'poster', 'nome_da_pasta'],
+  },
+  // projeto-do-padeiro.mjs (#144): o registro de cada projeto criado, aberto ou alterado pelo Padeiro (o que o fluxo
+  // "PROMO - PROJETO" do n8n gravava)
+  {
+    nome: 'projetos',
+    titulo: 'Projetos do Padeiro',
+    variavel: '',
+    api: ['aep', 'atracao', 'tipo', 'pasta', 'output', 'filme_ano', 'designer_login', 'designer_sigla', 'momento', 'card_ID', 'versao', 'data'],
+    pg: [],
   },
   {
     nome: 'exibicoes',

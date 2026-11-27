@@ -26,6 +26,7 @@ import { SAIR_DO_ACESSO, type Identidade } from '../dados/identidade';
 import type { Pessoa } from '../modelo/tipos';
 import { avisoDaSubstituicao } from './Comparar';
 import { Icone } from './icones';
+import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
 import { AREAS } from '../modelo/areas';
 import { CaminhosDoTopo } from './SeletorDeArea';
 import { CenaDaFilaZerada, TituloEmDia, useFilaZerada } from './FilaZerada';
@@ -1006,46 +1007,6 @@ function NoTrello({ lista, fila, andamento, abrir, tirar }: { lista: Resumo[]; f
       {/* os fantasmas dos cards que saem da agenda à vista na troca de critério */}
       <div className="camada-voo" ref={camadaDoVoo} aria-hidden="true" />
     </section>
-  );
-}
-
-/** A tecla foi num campo de texto ou num diálogo: os atalhos da fila não valem ali. */
-const emCampo = (e: KeyboardEvent) => !!(e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]');
-
-/** A busca da fila recolhida numa lupa na barra do topo: "/" ou um clique abrem o campo; Esc limpa e recolhe; sem texto, perder o foco recolhe. */
-function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string) => void; ativa: boolean }) {
-  const campo = useRef<HTMLInputElement>(null);
-  const [aberta, setAberta] = useState(false);
-  useEffect(() => {
-    if (!ativa) return;
-    const tecla = (e: KeyboardEvent) => {
-      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || emCampo(e)) return;
-      e.preventDefault();
-      campo.current?.focus();
-    };
-    window.addEventListener('keydown', tecla);
-    return () => window.removeEventListener('keydown', tecla);
-  }, [ativa]);
-  return (
-    <label className={`busca lupa ${aberta || valor ? 'aberta' : ''}`} title="Buscar (/)">
-      <Icone nome="lupa" tam={15} traco={2} />
-      <input
-        ref={campo}
-        type="search"
-        placeholder="Buscar claquete, atração ou redator"
-        aria-label="Buscar roteiros"
-        aria-keyshortcuts="/"
-        value={valor}
-        onChange={(e) => mudar(e.target.value)}
-        onFocus={() => setAberta(true)}
-        onBlur={() => setAberta(false)}
-        onKeyDown={(e) => {
-          if (e.key !== 'Escape') return;
-          mudar('');
-          e.currentTarget.blur();
-        }}
-      />
-    </label>
   );
 }
 
