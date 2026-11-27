@@ -113,6 +113,44 @@ Com `Accept-Encoding: gzip`, vai comprimido. O `stamp` muda só quando o conteú
 **Para voltar atrás:** ligue o fluxo de novo (o Padeiro sem a chave ligada volta a ler na hora) e, se tiver mudado,
 volte o intervalo do MENSAGENS NO TEAMS.
 
+### O projeto criado no Padeiro (no lugar do fluxo "PROMO - PROJETO" do n8n)
+
+`POST /api/padeiro/projeto` (#144), com a chave **ligada**, recebe o mesmo envio que o Padeiro mandava ao webhook do
+projeto do n8n (o contrato fica no `docs/webhook-projeto.md` do Padeiro: `{ momento, atracao, card, designer, versao }`)
+e responde do mesmo jeito, sempre `200 { itens: [{ codigo, texto }] }`. O PROMeiro grava o que o fluxo gravava, só na
+base do PROMeiro e no card (`servidor/projeto-do-padeiro.mjs`):
+
+- **o registro do projeto**, em todo envio: uma linha na tabela `projetos` (`aep`, `atracao`, `tipo`, `pasta`,
+  `output`, `filme_ano`, `designer_login`, `designer_sigla`, `momento`, `card_ID`, `versao`, `data`, a hora em que
+  chegou). Sem a tabela na base, o item `erro` (e o aviso no topo da Configuração);
+- **a atração nova** (só no `criado`, com `atracao.nova`): a mesma pelo nome (sem acentos, símbolos nem caixa) ou pela
+  pasta não é criada de novo (`atracaoJaExistia`); senão entra no cadastro das atrações com a categoria, o acervo
+  próprio, as pastas (`projeto` e `output`, o caminho de rede com a barra invertida) e a key do nome
+  (`atracaoCadastrada`);
+- **o card da atração nova:** o link `atracao` da linha do card na produção da arte fica com ela em primeiro
+  (`cardLigado`);
+- **o designer no card:** o da **chave** (não o login nem a sigla do envio) entra no card, só se ainda não está
+  (`designerEntrouNoCard`, `designerJaEstavaNoCard`); sem o membro do Trello no cadastro dele, `designerNaoEncontrado`.
+  O designer inativo na tabela designers volta para os ativos.
+
+Sem a chave, ou com ela pendente ou revogada, a rota recusa (401 ou 403) e o Padeiro continua mandando ao n8n.
+
+**Para desligar o fluxo do n8n depois de conferir** (o passo é seu; o PROMeiro não mexe no n8n):
+
+1. **Antes:** o caminho do Padeiro liberado no Access (acima) e os Padeiros da equipe atualizados, com a chave
+   **ligada** nos Cadastros › Padeiros. Quem ainda está sem chave, pendente ou com a versão antiga continua mandando
+   ao n8n: desligar o fluxo antes disso faz o projeto dessas pessoas não ser registrado.
+2. **Confira a tabela:** a base do PROMeiro tem a tabela `projetos` com as colunas acima (é a mesma em que o fluxo
+   grava hoje). O topo da Configuração avisa se ela, ou uma coluna, faltar.
+3. **Confira uns dias lado a lado:** crie e abra projetos pelo Padeiro com a chave ligada (uma atração conhecida, uma
+   nova, uma por card). Cada um tem de aparecer na tabela `projetos`, e o rodapé da janela de projeto mostra o que o
+   PROMeiro fez. No n8n, em **Executions** do fluxo "PROMO - PROJETO", as execuções devem ficar só para quem ainda
+   não tem a chave ligada; nos logs do PROMeiro, cada envio aparece como `[padeiro] projeto de …`.
+4. **Desligue:** no n8n, abra o fluxo "PROMO - PROJETO" e mude o interruptor **Active** para desligado (não apague: o
+   fluxo fica como referência e para voltar atrás). O endereço `/webhook/projeto` passa a responder 404, e o Padeiro
+   sem a chave mostra o aviso amarelo de "o n8n não respondeu" (o projeto continua sendo criado).
+5. **Para voltar atrás:** ligue o interruptor **Active** de novo. Nada no PROMeiro precisa mudar.
+
 ## A semana lado a lado com a planilha (a foto da edição)
 
 Durante a transição da pauta da edição (#133, ADR 0006), a coordenação monta nas duas: no PROMeiro e na planilha. O

@@ -53,6 +53,7 @@ import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
 import { DIAS_DO_TRELLO, criarIndiceDoBuscar, dasAtracoes, doTrello, montarIndice } from './indice-do-buscar.mjs';
+import { criarProjetoDoPadeiro } from './projeto-do-padeiro.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
 import { ausenciaDoPedido, criarAusencias } from './ausencias.mjs';
 import { foraNaPauta, motivoDaAusencia } from '../src/modelo/ausencias.ts';
@@ -772,6 +773,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const ilhas = criarIlhas(db);
   // o caminho do Padeiro (#137): a chave do Padeiro (só o hash), no SQLite
   const padeiros = criarPadeiros(db);
+  // o projeto criado, aberto ou alterado no Padeiro (#144), no lugar do fluxo "PROMO - PROJETO" do n8n
+  const projetoDoPadeiro = criarProjetoDoPadeiro({ buscar: buscarNoTeable });
   // as ausências com período (#128) e as demandas para distribuir, no SQLite, junto da escala
   const ausencias = criarAusencias(db);
   // os nomes novos da pauta (#132), pendentes nos Cadastros
@@ -3680,6 +3683,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    *     designer, 403; a que já está na Entrada, 409)
    *   - POST /api/padeiro/desfazer { acao, feitaEm, producao, desfaz? }: etapaDaProducao.desfazerPeloPadeiro (`desfaz`, o
    *     identificador da ação a desfazer, opcional; sem o que desfazer, 409)
+   * - POST /api/padeiro/projeto (#144) { momento, atracao, card, designer, versao }: o projeto criado, aberto ou alterado
+   *   no Padeiro, o mesmo envio que ia ao fluxo "PROMO - PROJETO" do n8n (docs/webhook-projeto.md do Padeiro), e a
+   *   mesma resposta: sempre 200 { itens: [{ codigo, texto }] } (servidor/projeto-do-padeiro.mjs). Só com a chave
+   *   ligada; o designer no card é o da chave
    */
   async function rotaDoPadeiro(req, res, caminho) {
     if (caminho === '/api/padeiro/cadastro' && req.method === 'POST') {
@@ -3846,6 +3853,17 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const p = padeiroLigado(req, res);
       if (!p) return;
       return jsonComprimido(req, res, 200, await indiceDoBuscar());
+    }
+    if (caminho === '/api/padeiro/projeto' && req.method === 'POST') {
+      const p = padeiroLigado(req, res);
+      if (!p) return;
+      const corpo = await lerCorpo(req, 32_768, 'Projeto');
+      const d = designerDoPadeiro(p);
+      const naTabela = (pessoas.guardada()?.designers ?? []).find((x) => x.registro === p.designer.registro);
+      const { itens, envio } = await projetoDoPadeiro.receber(corpo, { env, cadastros, trello, designer: { ...d, registro: p.designer.registro, inativo: naTabela?.ativo === false } });
+      padeiros.avisou(p.id);
+      console.log(`[padeiro] projeto de ${p.usuario} em ${p.computador}${envio?.momento ? ` (${envio.momento})` : ''}: ${itens.map((i) => i.codigo).join(', ')}`);
+      return json(res, 200, { itens });
     }
     return json(res, 404, { erro: 'Não encontrado.' });
   }

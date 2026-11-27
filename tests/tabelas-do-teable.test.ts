@@ -50,7 +50,7 @@ describe('as tabelas achadas pelo nome na base', () => {
 describe('o mapa tabela → colunas que o PROMeiro usa', () => {
   it('tem as tabelas da base, cada uma com as colunas da API (o nome do campo) e do Postgres (o dbFieldName)', () => {
     const nomes = TABELAS_DO_TEABLE.map((t) => t.nome);
-    expect(nomes).toEqual(['atracoes', 'KEY_atracoes', 'redatores', 'KEY_redatores', 'editores', 'KEY_editores', 'designers', 'ARTE_producao', 'EDICAO_producao', 'ARTES_acervo', 'prioridade', 'filmes', 'exibicoes', 'mensagens']);
+    expect(nomes).toEqual(['atracoes', 'KEY_atracoes', 'redatores', 'KEY_redatores', 'editores', 'KEY_editores', 'designers', 'ARTE_producao', 'EDICAO_producao', 'ARTES_acervo', 'prioridade', 'filmes', 'projetos', 'exibicoes', 'mensagens']);
     const acervo = TABELAS_DO_TEABLE.find((t) => t.nome === 'ARTES_acervo')!;
     expect(acervo.variavel).toBe('TEABLE_ACERVO');
     expect(acervo.api).toContain('complexidade');

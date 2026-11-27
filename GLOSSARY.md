@@ -365,6 +365,13 @@ Produção já tem designer, o novo é somado; se já está Entregue, a etapa n�
 rede, o aviso fica guardado e é enviado depois, com a hora certa da abertura. Vem pela **chave do Padeiro**.
 _Evitar_: webhook do projeto (é a rota do n8n de hoje). Não confundir com o **aviso** da pauta nem com o aviso do Trello.
 
+**Registro do projeto**:
+A linha da tabela `projetos` da base PROMeiro para cada projeto criado, aberto ou alterado pelo Padeiro: o `.aep`, a
+atração, as pastas, o designer, o momento e o card. Vem pelo **projeto do Padeiro** (`/api/padeiro/projeto`, com a
+chave ligada), que também cadastra a atração nova, liga o card a ela e põe o designer da chave no card, como o fluxo
+"PROMO - PROJETO" do n8n fazia. Não é o **aviso do Padeiro** (o Peguei): o registro não muda a etapa da Produção.
+_Evitar_: log do projeto
+
 **Chave do Padeiro**:
 O que identifica o Padeiro no PROMeiro: uma chave por usuário e por computador. O Padeiro se cadastra com o usuário do
 computador e a sigla do designer; o cadastro fica **pendente** até um administrador ligar a chave ao designer. A chave
