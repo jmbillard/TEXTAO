@@ -901,11 +901,16 @@ async function pessoas(navegador, url, app, tema) {
   await p.locator(PESSOAS).scrollIntoViewIfNeeded();
   await capturar(p, `51-pessoas-novidades-${nome}`);
 
-  // tornar administradora: ninguém com o nome dela entrou no PROMeiro, então o e-mail é pedido
-  await bia.locator('.botao', { hasText: 'Tornar admin' }).click();
-  await bia.locator('input[type="email"]').fill(BIA);
-  await capturar(p, `52-pessoas-email-${nome}`);
-  await bia.locator('form .botao.primario').click();
+  // tornar administradora: ninguém com o nome dela entrou no PROMeiro, então o e-mail é pedido (na segunda volta, a do
+  // escuro, o e-mail digitado na primeira já está lembrado e vai direto)
+  const tornarABiaAdmin = async (captura) => {
+    await bia.locator('.botao', { hasText: 'Tornar admin' }).click();
+    if (!(await bia.locator('input[type="email"]').count())) return;
+    await bia.locator('input[type="email"]').fill(BIA);
+    if (captura) await capturar(p, captura);
+    await bia.locator('form .botao.primario').click();
+  };
+  await tornarABiaAdmin(`52-pessoas-email-${nome}`);
   // #176: ela sai da lista na hora, a vaga fecha (as vagas animadas dos Cadastros) e a caixinha oferece desfazer
   await p.locator(`${PESSOAS} .cfg-novidades > li.saindo`).waitFor({ state: 'attached', timeout: 2000 });
   await caixinha(p).filter({ hasText: 'Bia Sampaio agora é administrador.' }).waitFor();
@@ -919,9 +924,7 @@ async function pessoas(navegador, url, app, tema) {
   await bia.waitFor();
   assert.equal(app.modulos().cadastros.podeApagar(BIA), false, 'desfeito, nada gravado');
   // de novo, até o fim do prazo: vale na hora no app inteiro e ela não volta (já é administradora)
-  await bia.locator('.botao', { hasText: 'Tornar admin' }).click();
-  await bia.locator('input[type="email"]').fill(BIA);
-  await bia.locator('form .botao.primario').click();
+  await tornarABiaAdmin('');
   await caixinha(p).filter({ hasText: 'agora é administrador' }).waitFor();
   // outra ação no meio manda a anterior na hora: cadastrar Duda grava a Bia como administradora
   await duda.locator('.botao', { hasText: 'Cadastrar como designer' }).click();
