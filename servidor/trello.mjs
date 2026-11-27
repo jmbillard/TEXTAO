@@ -1131,6 +1131,32 @@ export function criarTrello(env, deps = {}) {
   /** Apaga o card do Trello (não volta: recriar faz um card novo). */
   const apagarCard = (card) => trello('DELETE', `/cards/${encodeURIComponent(card)}`);
 
+  /* ---------- a tela de produções (#110): pegar e voltar para a Entrada, só escrevendo no Trello ---------- */
+  /** O Trello disse que já estava assim (o membro já no card, ou já fora dele): não é recusa. */
+  const jaEstava = (e, padrao) => padrao.test(e instanceof Error ? e.message : '');
+  /** Põe o membro no card (o card fica na lista em que está). @returns true se entrou agora; false se já estava */
+  async function entrarNoCard(card, membro) {
+    try {
+      await trello('POST', `/cards/${encodeURIComponent(card)}/idMembers`, { consulta: { value: membro } });
+      return true;
+    } catch (e) {
+      if (jaEstava(e, /^Trello respondeu 400 .*already/is)) return false;
+      throw e;
+    }
+  }
+  /** Tira o membro do card. @returns true se saiu agora; false se já não estava */
+  async function sairDoCard(card, membro) {
+    try {
+      await trello('DELETE', `/cards/${encodeURIComponent(card)}/idMembers/${encodeURIComponent(membro)}`);
+      return true;
+    } catch (e) {
+      if (jaEstava(e, /^Trello respondeu 400 .*not (a )?member|^Trello respondeu 400 .*not on (the )?card/is)) return false;
+      throw e;
+    }
+  }
+  /** Move o card para a lista. */
+  const moverCard = (card, lista) => trello('PUT', `/cards/${encodeURIComponent(card)}`, { consulta: { idList: lista } });
+
   /** A linha da produção da arte como a carga e a releitura leem (src/modelo/eventosDoTeable.ts, LinhaRelida). */
   const linhaDaCarga = (l) => ({
     registro: String(l.__id),
@@ -1433,5 +1459,5 @@ export function criarTrello(env, deps = {}) {
     apagar: (id) => trello('DELETE', `/webhooks/${encodeURIComponent(id)}`),
   };
 
-  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, entrarNoCard, sairDoCard, moverCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

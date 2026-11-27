@@ -97,6 +97,8 @@ export function criarTabelaDasProducoes(db) {
   if (!tem('producoes', 'prioridade')) db.exec('ALTER TABLE producoes ADD COLUMN prioridade TEXT');
   if (!tem('producoes', 'complexidade')) db.exec('ALTER TABLE producoes ADD COLUMN complexidade TEXT');
   if (!tem('eventos', 'chave')) db.exec('ALTER TABLE eventos ADD COLUMN chave TEXT');
+  // a origem do evento (#110): 'PROMeiro' no que foi feito na tela de produções; vazia nos do Teable e do Trello
+  if (!tem('eventos', 'origem')) db.exec('ALTER TABLE eventos ADD COLUMN origem TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS eventos_chave ON eventos (chave)');
 }
 
@@ -131,8 +133,15 @@ const ehAlta = (prioridade) => String(prioridade ?? '').normalize('NFD').replace
 /** As artes a produzir sem repetir (a conta da agenda, `artesDaProducao`); sem a lista, a quantidade da coluna. */
 const artesAProduzir = (l) => artesDaProducao(JSON.parse(l.artes ?? '[]').join(' | ')) ?? l.artes_quantidade ?? null;
 
+/** O que o card da tela de produções (#109) lê da Produção, com a atração do Roteiro ligado. */
+const DA_TELA = `SELECT p.id, p.claquete, p.praca, p.etapa, p.marcador, p.designers, p.artes, p.artes_marcadas, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, p.exibicao_em, p.card_id, p.filme_titulo, r.meta AS roteiro_meta
+  FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id`;
+
 /** O evento como a API mostra. */
-const doEvento = (e) => ({ tipo: e.tipo, ...(e.campo ? { campo: e.campo } : {}), antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null });
+const doEvento = (e) => ({ tipo: e.tipo, ...(e.campo ? { campo: e.campo } : {}), antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null, ...(e.origem ? { origem: e.origem } : {}) });
+
+/** A origem dos eventos feitos na tela de produções (#110). */
+export const ORIGEM_PROMEIRO = 'PROMeiro';
 
 /** A Produção como a API mostra. */
 const daLinha = (l) => ({
@@ -190,11 +199,9 @@ export function criarProducoes(db) {
     ),
     // a tela de produções (#109): as abertas (Entrada e Produzindo) e as entregues desde a data, sem as arquivadas, com
     // a atração do Roteiro ligado
-    naTela: db.prepare(
-      `SELECT p.id, p.claquete, p.praca, p.etapa, p.marcador, p.designers, p.artes, p.artes_marcadas, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, p.exibicao_em, p.card_id, p.filme_titulo, r.meta AS roteiro_meta
-       FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id
-       WHERE p.arquivada = 0 AND (p.etapa IN ('entrada', 'produzindo') OR (p.etapa = 'entregue' AND p.entrega_em >= ?))`,
-    ),
+    naTela: db.prepare(`${DA_TELA} WHERE p.arquivada = 0 AND (p.etapa IN ('entrada', 'produzindo') OR (p.etapa = 'entregue' AND p.entrega_em >= ?))`),
+    // a Produção mudada na tela (#110), para a tela mostrar sem reler tudo
+    umaNaTela: db.prepare(`${DA_TELA} WHERE p.id = ? AND p.arquivada = 0`),
     /* ---------- os eventos (#87) ---------- */
     eventosDe: db.prepare('SELECT * FROM eventos WHERE producao_id = ? ORDER BY quando, anotado_em'),
     temAcao: db.prepare('SELECT 1 FROM eventos WHERE trello_acao = ?'),
@@ -227,6 +234,10 @@ export function criarProducoes(db) {
     relida: db.prepare(
       `INSERT INTO producoes (id, teable_registro, criada_em, ${COLUNAS.join(', ')}) VALUES (?, ?, ?, ${COLUNAS.map(() => '?').join(', ')})
        ON CONFLICT (teable_registro) DO UPDATE SET ${[...DA_RELEITURA.map((c) => `${c} = excluded.${c}`), ...['roteiro_id', 'exibicao_em', 'filme_id', 'filme_titulo'].map((c) => `${c} = COALESCE(excluded.${c}, producoes.${c})`), 'atualizada_em = excluded.atualizada_em'].join(', ')}`,
+    ),
+    // o que foi feito na tela de produções (#110): quem é o e-mail e o nome do designer, sem ação do Trello
+    anotarDoPROMeiro: db.prepare(
+      `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, origem, anotado_em) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     anotarDoTeable: db.prepare(
       `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, chave, anotado_em) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
@@ -371,6 +382,55 @@ export function criarProducoes(db) {
     return r;
   }
 
+  /** O evento é mais velho que o último já anotado da família dele? */
+  function atrasado(id, ev) {
+    const ultimo = ultimoDaFamilia(id, ev);
+    return !!ultimo && ev.quando < ultimo;
+  }
+
+  /**
+   * A linha relida que ficou para trás de uma mudança mais nova (#110): a etapa e os designers guardados ficam onde a
+   * releitura não trouxe evento deles (o atrasado foi tirado). Muda `valores` (as colunas que a releitura grava).
+   */
+  function manterOMaisRecente(atual, valores, l, pracas, eventos) {
+    const p = producaoDaLinha(l, {}, pracas);
+    if (p.etapa !== atual.etapa && !eventos.some((ev) => DA_ETAPA.includes(ev.tipo))) {
+      valores.etapa = atual.etapa;
+      valores.arquivada = atual.arquivada;
+      valores.entrega_em = atual.entrega_em ?? null;
+    }
+    const nomes = (lista) => new Set(lista.map((x) => nomeComparavel(String(x))));
+    const guardados = JSON.parse(atual.designers ?? '[]');
+    const [doTeable, daqui] = [nomes(p.designers), nomes(guardados)];
+    const comEvento = nomes(eventos.filter((ev) => DO_DESIGNER.includes(ev.tipo)).map((ev) => ev.depois ?? ev.antes));
+    // cada designer: o da linha quando ela trouxe o evento dele; senão, o guardado
+    const fica = (nome) => (comEvento.has(nomeComparavel(nome)) ? doTeable.has(nomeComparavel(nome)) : daqui.has(nomeComparavel(nome)));
+    const designers = [...guardados, ...p.designers].filter((d, i, todos) => fica(d) && todos.findIndex((x) => nomeComparavel(x) === nomeComparavel(d)) === i);
+    if (doTeable.size !== designers.length || designers.some((d) => !doTeable.has(nomeComparavel(d)))) valores.designers = JSON.stringify(designers);
+  }
+
+  /**
+   * O que foi feito na tela de produções (#110), numa transação: os eventos (a etapa, o designer que entrou ou saiu),
+   * com quem, agora e a origem PROMeiro, e a Produção mudada na hora. Nada vai ao Teable (a produção da arte continua
+   * com o n8n).
+   * @param mudancas [{ tipo: 'etapa' | 'designer-entrou' | 'designer-saiu', antes, depois }]
+   * @param quem { email, nome } (o nome do designer)
+   */
+  function doPROMeiro(id, mudancas, quem) {
+    const em = new Date().toISOString();
+    db.exec('BEGIN');
+    try {
+      for (const ev of mudancas) {
+        q.anotarDoPROMeiro.run(randomUUID(), id, ev.tipo, ev.antes ?? null, ev.depois ?? null, quem.email, quem.nome, em, ORIGEM_PROMEIRO, em);
+        mudarAProducao(id, { ...ev, quando: em }, em, []);
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
   /**
    * A releitura da produção da arte (ADR 0006: lê do Teable): cada linha relida é comparada com a Produção guardada
    * (src/modelo/eventosDoTeable.ts), numa transação. A linha nova vira Produção, com o evento "criada"; a que já existe
@@ -391,8 +451,11 @@ export function criarProducoes(db) {
         if (p.cardId && !q.existe.get(p.teableRegistro)) q.adotar.run(p.teableRegistro, p.cardId);
         const atual = q.doRegistro.get(p.teableRegistro);
         const antes = atual ? { etapa: atual.etapa, designers: JSON.parse(atual.designers ?? '[]'), praca: atual.praca, prioridade: atual.prioridade ?? null, complexidade: atual.complexidade ?? null } : null;
-        const eventos = eventosDaReleitura(antes, l, { pracas, agora });
+        // conflito (#110): o que a linha diz e que é mais velho que o último evento da mesma família (o "pegar" do
+        // PROMeiro que o n8n ainda não levou ao Teable) não volta a Produção nem vira evento; vale o mais recente
+        const eventos = eventosDaReleitura(antes, l, { pracas, agora }).filter((ev) => !atual || !atrasado(atual.id, ev));
         const valores = colunasDa(p, l, agora);
+        if (atual) manterOMaisRecente(atual, valores, l, pracas, eventos);
         // a linha igual à guardada (a releitura pega de novo as do fim da janela) não é regravada
         const igual = atual && DA_RELEITURA.every((c) => (atual[c] ?? null) === (valores[c] ?? null)) && (!valores.filme_id || atual.filme_id === valores.filme_id);
         if (!igual) {
@@ -462,7 +525,18 @@ export function criarProducoes(db) {
    * @param atracaoDaClaquete (claquete) => nome, ou ''
    */
   function naTela(desde, atracaoDaClaquete = () => '') {
-    return q.naTela.all(desde).map((l) => {
+    return q.naTela.all(desde).map(paraATela(atracaoDaClaquete));
+  }
+
+  /** Uma Produção como o card da tela de produções mostra (a de `naTela`); null sem ela ou arquivada. */
+  function umaNaTela(id, atracaoDaClaquete = () => '') {
+    const l = q.umaNaTela.get(id);
+    return l ? paraATela(atracaoDaClaquete)(l) : null;
+  }
+
+  /** A linha de `naTela` como o card mostra. */
+  function paraATela(atracaoDaClaquete) {
+    return (l) => {
       let programa = '';
       try {
         programa = String(JSON.parse(l.roteiro_meta ?? 'null')?.programa ?? '').trim();
@@ -484,7 +558,7 @@ export function criarProducoes(db) {
         semCard: !l.card_id,
         entregaEm: l.entrega_em ?? null,
       };
-    });
+    };
   }
 
   /**
@@ -505,6 +579,13 @@ export function criarProducoes(db) {
     linhaDoTempo,
     doRoteiro,
     naTela,
+    umaNaTela,
+    doPROMeiro,
+    /** A Produção pelo id (como a API mostra), ou null. */
+    uma: (id) => {
+      const l = q.doId.get(id);
+      return l ? daLinha(l) : null;
+    },
     naPauta,
     vazia: () => Number(q.total.get().n) === 0,
     /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */

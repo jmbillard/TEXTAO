@@ -56,3 +56,17 @@
   .prod-faixa { padding: 12px 12px 14px; }
   .prod-claquete { font-size: 14px; }
 }
+
+/* ---------- pegar e voltar para a Entrada (#110) ---------- */
+.prod-acoes { display: flex; justify-content: flex-end; margin-top: 6px; }
+.prod-mudar { height: 30px; padding: 0 12px; font-size: 12.5px; }
+.prod-mudar.pegar { background: var(--tinta); border-color: var(--tinta); color: var(--papel); font-weight: 600; }
+.prod-mudar.pegar:hover { opacity: 0.9; }
+.prod-sem-ligacao, .prod-recusa { margin: 0; padding: 10px 14px; border-radius: 10px; font: 400 13.5px/1.45 var(--sans); }
+.prod-sem-ligacao { background: var(--neutro); color: var(--tinta2); }
+.prod-recusa { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; background: var(--falta-fundo); color: var(--falta); }
+.prod-recusa .botao-texto { color: inherit; flex: none; }
+@media (max-width: 600px) {
+  /* no celular, o botão do card no tamanho do dedo */
+  .prod-mudar { height: 44px; width: 100%; justify-content: center; font-size: 14px; }
+}

@@ -29,6 +29,7 @@ export function criarPessoas({ db, copia, buscar = fetch }) {
     email: db.prepare('SELECT email FROM pessoas_emails WHERE membro = ?'),
     lembrarEmail: db.prepare('INSERT OR REPLACE INTO pessoas_emails (membro, email) VALUES (?, ?)'),
     esquecerEmail: db.prepare('DELETE FROM pessoas_emails WHERE membro = ?'),
+    chaveDoEmail: db.prepare("SELECT membro FROM pessoas_emails WHERE email = ? AND membro LIKE 'entrou:%' LIMIT 1"),
   };
 
   const doTeable = (env) => ({ url: limpo(env.TEABLE_URL).replace(/\/+$/, ''), token: limpo(env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA), tabela: env.tabelas?.designers?.id ?? '' });
@@ -118,6 +119,19 @@ export function criarPessoas({ db, copia, buscar = fetch }) {
       };
     },
     emailDe,
+    /**
+     * O designer de quem está logado (#110, a tela de produções): o designer ativo da tabela designers (a última
+     * verificação guardada) com este e-mail ou, sem ele, o do e-mail digitado ao tornar administrador quem entrou (a
+     * chave da novidade diz o nome). O membro é o id do Trello do cadastro ('' quando ele não tem).
+     * @returns { nome, membro } ou null
+     */
+    designerDoEmail(email) {
+      const e = String(email ?? '').trim().toLowerCase();
+      const ativos = (copia.ler(GUARDADA)?.dados?.designers ?? []).filter((d) => d.ativo !== false && d.nome);
+      const chave = e ? q.chaveDoEmail.get(e)?.membro : '';
+      const d = (e && ativos.find((x) => x.email === e)) || (chave && ativos.find((x) => `entrou:${nomeComparavel(x.nome)}` === chave));
+      return d ? { nome: d.nome, membro: d.idNoTrello || '' } : null;
+    },
     /** Lembra o e-mail digitado para quem entrou, pela chave da novidade. */
     lembrarEmail: (chave, email) => chave && q.lembrarEmail.run(chave, String(email).trim().toLowerCase()),
     ignorar: (novidade, por) => q.ignorar.run(novidade.chave, novidade.nome, por, new Date().toISOString()),

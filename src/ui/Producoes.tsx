@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { lerProducoesPorPraca } from '../dados/armazenamento';
-import { COLUNAS_DA_FAIXA, ROTULO_DA_COLUNA, diaDoPrazo, type CardDaProducao, type FaixaDaPraca, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
+import { COLUNAS_DA_FAIXA, ETAPA_DO_BOTAO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, type CardDaProducao, type FaixaDaPraca, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
 import { MarcaTexto, tracoDe } from './pecas';
 import { plural } from './util';
@@ -11,7 +12,11 @@ import './producoes.css';
    claquete (com o marca-texto da prioridade ALTA, como na agenda), a atração, as artes, os designers e o prazo; a ordem
    é o prazo e, no mesmo prazo, a ALTA primeiro. O Entregue mostra só os entregues dos últimos dias. As Produções vêm
    do PROMeiro, nada do Trello; a tela se lê de novo na cadência da agenda. No celular, as colunas da faixa ficam uma
-   embaixo da outra. Só leitura por enquanto: pegar, entregar e recolher a faixa vêm depois (#110 a #113). */
+   embaixo da outra.
+   #110: quem está ligado a um designer pega o card da Entrada ("Peguei") e volta o de Produzindo ou de Entregue para a
+   Entrada. A mudança aparece na hora; se o servidor (o Trello) recusa, a tela volta atrás e diz o motivo. Quem não
+   está ligado vê a tela, sem os botões, e a explicação de a quem pedir. Entregar, arrastar e recolher a faixa vêm
+   depois (#111 a #113). */
 
 interface Props {
   /** a linha do logo: o caminho "PROMeiro / designer ▾", a agenda No Trello, a Pauta da edição e o perfil */
@@ -38,7 +43,14 @@ function artesEscritas({ aProduzir, entregues }: CardDaProducao['artes']) {
   return entregues ? `${entregues} de ${plural(aProduzir, 'arte', 'artes')}` : plural(aProduzir, 'arte', 'artes');
 }
 
-function CardDaTela({ c, hoje }: { c: CardDaProducao; hoje: string }) {
+/** O botão do card: para onde ele leva e o que fazer. */
+interface Botao {
+  rotulo: string;
+  indo: boolean;
+  fazer: () => void;
+}
+
+function CardDaTela({ c, hoje, botao }: { c: CardDaProducao; hoje: string; botao: Botao | null }) {
   const claquete = <span className="prod-claquete-texto">{c.claquete || 'Sem claquete'}</span>;
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
@@ -63,11 +75,18 @@ function CardDaTela({ c, hoje }: { c: CardDaProducao; hoje: string }) {
           {c.semCard && <span className="prod-sem-card">sem card</span>}
         </span>
       )}
+      {botao && (
+        <span className="prod-acoes">
+          <button type="button" className={`botao prod-mudar${c.etapa === 'entrada' ? ' pegar' : ' voltar'}`} disabled={botao.indo} onClick={botao.fazer}>
+            {botao.rotulo}
+          </button>
+        </span>
+      )}
     </li>
   );
 }
 
-function Faixa({ f, entregueDias, hoje }: { f: FaixaDaPraca; entregueDias: number; hoje: string }) {
+function Faixa({ f, entregueDias, hoje, botao }: { f: FaixaDaPraca; entregueDias: number; hoje: string; botao: (c: CardDaProducao) => Botao | null }) {
   const total = COLUNAS_DA_FAIXA.reduce((n, k) => n + f.colunas[k].length, 0);
   const id = `faixa-${f.praca || 'sem-praca'}`;
   return (
@@ -93,7 +112,7 @@ function Faixa({ f, entregueDias, hoje }: { f: FaixaDaPraca; entregueDias: numbe
             {f.colunas[k].length ? (
               <ul className="prod-cards">
                 {f.colunas[k].map((c) => (
-                  <CardDaTela key={c.id} c={c} hoje={hoje} />
+                  <CardDaTela key={c.id} c={c} hoje={hoje} botao={botao(c)} />
                 ))}
               </ul>
             ) : (
@@ -110,6 +129,10 @@ export function Producoes({ topo }: Props) {
   const [lido, setLido] = useState<TelaDeProducoes | null>(null);
   const [erro, setErro] = useState('');
   const [hoje, setHoje] = useState(hojeEmSaoPaulo);
+  // a recusa da última mudança (o motivo), e os cards com a mudança a caminho do servidor
+  const [recusa, setRecusa] = useState('');
+  const [indo, setIndo] = useState<ReadonlySet<string>>(new Set());
+  const reler = useRef<() => void>(() => {});
   useEffect(() => {
     let vivo = true;
     const ler = (primeira: boolean) =>
@@ -124,6 +147,7 @@ export function Producoes({ topo }: Props) {
         (e) => vivo && primeira && setErro(e instanceof Error ? e.message : 'Não deu para ler as produções.'),
       );
     void ler(true);
+    reler.current = () => void ler(false);
     // como a agenda: a cada minuto com a aba à vista, e de novo quando a aba volta à vista ou ganha o foco
     const deNovo = () => {
       if (document.visibilityState === 'visible') void ler(false);
@@ -138,6 +162,40 @@ export function Producoes({ topo }: Props) {
       window.removeEventListener('focus', deNovo);
     };
   }, []);
+
+  const designer = lido?.voce.designer ?? null;
+  /** Pegar ou voltar: a tela muda na hora; com a resposta, fica o card que o servidor diz; recusado, volta atrás. */
+  const mudar = useCallback(
+    (c: CardDaProducao) => {
+      if (!designer) return;
+      const etapa = ETAPA_DO_BOTAO[c.etapa];
+      const eu = nomeComparavel(designer);
+      const outros = c.designers.filter((d) => nomeComparavel(d) !== eu);
+      const naHora: CardDaProducao = { ...c, etapa, designers: etapa === 'produzindo' ? [...outros, designer] : outros };
+      setRecusa('');
+      setIndo((s) => new Set(s).add(c.id));
+      setLido((t) => t && comOCard(t, naHora));
+      mudarEtapaDaProducao(c.id, etapa)
+        .then(
+          (r) => setLido((t) => t && comOCard(t, r.producao ?? naHora)),
+          (e) => {
+            setLido((t) => t && comOCard(t, c));
+            setRecusa(`Não mudou ${c.claquete || 'a Produção'}: ${e instanceof Error ? e.message : 'o servidor não respondeu.'}`);
+            // o motivo pode ser a tela velha (alguém mudou antes): lê de novo
+            reler.current();
+          },
+        )
+        .finally(() =>
+          setIndo((s) => {
+            const n = new Set(s);
+            n.delete(c.id);
+            return n;
+          }),
+        );
+    },
+    [designer],
+  );
+  const botao = (c: CardDaProducao): Botao | null => (designer ? { rotulo: c.etapa === 'entrada' ? 'Peguei' : 'Voltar para a Entrada', indo: indo.has(c.id), fazer: () => mudar(c) } : null);
 
   return (
     <div className="pagina producoes">
@@ -154,7 +212,24 @@ export function Producoes({ topo }: Props) {
         ) : !lido ? (
           <p className="prod-lendo">Lendo as produções…</p>
         ) : (
-          lido.faixas.map((f) => <Faixa key={f.praca || '—'} f={f} entregueDias={lido.entregueDias} hoje={hoje} />)
+          <>
+            {!designer && lido.voce.porQue && (
+              <p className="prod-sem-ligacao" role="note">
+                {lido.voce.porQue}
+              </p>
+            )}
+            {recusa && (
+              <p className="prod-recusa" role="alert">
+                <span>{recusa}</span>
+                <button type="button" className="botao-texto" onClick={() => setRecusa('')}>
+                  Fechar
+                </button>
+              </p>
+            )}
+            {lido.faixas.map((f) => (
+              <Faixa key={f.praca || '—'} f={f} entregueDias={lido.entregueDias} hoje={hoje} botao={botao} />
+            ))}
+          </>
         )}
       </main>
     </div>

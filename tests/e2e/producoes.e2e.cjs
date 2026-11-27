@@ -10,6 +10,12 @@
 // delas; a releitura a cada minuto, como a agenda; e a volta para a agenda. No celular, claro e escuro, cada faixa com
 // as etapas uma embaixo da outra, sem rolar para o lado. Nenhum pedido ao Trello, nem do navegador nem do servidor.
 //
+// #110, os botões: a Lia (ligada ao designer pelo e-mail no cadastro de designers) pega o card da Entrada ("Peguei")
+// e volta o de Produzindo e o de Entregue para a Entrada; a mudança aparece na hora e fica depois de recarregar; o
+// Trello de mentira recebe só escritas (o membro do card, mover de lista), nunca uma leitura; quando ele recusa, a tela
+// volta atrás e mostra o motivo; a Produção sem card muda sem ir ao Trello. Quem não está ligado vê a tela sem os
+// botões, com a explicação de a quem pedir. No celular, os botões têm 44px.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:producoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -27,6 +33,8 @@ try {
 }
 
 const LIA = 'lia.moraes@exemplo.com';
+// sem cadastro de designer: vê a tela, não pega
+const RUI = 'rui.sem.cadastro@exemplo.com';
 const CHEFE = 'chefe.ficticia@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
@@ -62,9 +70,9 @@ const ARTE = [
   linha('recProdE2e7', { card_ID: card(7), claquete: `RIO Show ${dm(2)}`, status: '["PRODUZINDO"]', designers: '["Dora Lima"]', arquivado: true, data_entrada: ha(2) }),
 ];
 
-async function abrir(navegador, url, opcoes, hash = '#/designer/producoes', { relogio = false } = {}) {
-  const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
-  await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(LIA), url }]);
+async function abrir(navegador, url, opcoes, hash = '#/designer/producoes', { relogio = false, email = LIA } = {}) {
+  const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': email }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
+  await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(email), url }]);
   await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
   await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
   const p = await ctx.newPage();
@@ -210,19 +218,115 @@ async function entradaNoCelular(navegador, url) {
   console.log('ok: celular: a entrada no topo da fila (o ícone) abre a tela de produções');
 }
 
+/** O que o servidor escreveu no Trello: "MÉTODO /caminho ?consulta" (sem a chave e o token). */
+const escrito = (u, metodo) => {
+  const url = new URL(u);
+  const consulta = [...url.searchParams].filter(([k]) => k !== 'key' && k !== 'token').map(([k, v]) => `${k}=${v}`).join('&');
+  return `${metodo} ${url.pathname.replace(/^\/1/, '')}${consulta ? ` ?${consulta}` : ''}`;
+};
+const designersDe = async (c) => ((await c.locator('.prod-designers').count()) ? (await c.locator('.prod-designers').textContent()).trim() : '');
+
+async function osBotoes(navegador, url, chamadasAoTrello) {
+  const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
+  await p.locator('.prod-faixa').first().waitFor();
+  assert.equal(await p.locator('.prod-sem-ligacao').count(), 0, 'a Lia está ligada a um designer');
+  // da Entrada, "Peguei"; de Produzindo e de Entregue, a volta para a Entrada
+  assert.deepEqual(await textos(coluna(p, 'SP', 'entrada').locator('.prod-mudar')), ['Peguei', 'Peguei', 'Peguei']);
+  assert.deepEqual(await textos(coluna(p, 'G5', 'produzindo').locator('.prod-mudar')), ['Voltar para a Entrada']);
+  assert.deepEqual(await textos(coluna(p, 'G5', 'entregue').locator('.prod-mudar')), ['Voltar para a Entrada']);
+
+  // "Peguei": o card vai para Produzindo com a Lia; no Trello, a Lia entra no card (o card fica na lista)
+  await cardDe(p, 'Festa na Praça').locator('.prod-mudar').click();
+  await coluna(p, 'SP', 'produzindo').locator('.prod-card', { hasText: 'Festa na Praça' }).waitFor();
+  assert.deepEqual(await contas(p, 'SP'), [2, 1, 0]);
+  assert.equal(await designersDe(cardDe(p, 'Festa na Praça')), 'Lia Moraes');
+  assert.deepEqual(await textos(cardDe(p, 'Festa na Praça').locator('.prod-mudar')), ['Voltar para a Entrada']);
+  await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
+  assert.deepEqual(chamadasAoTrello.splice(0), [`POST /cards/${card(2)}/idMembers ?value=membroLia`]);
+  await capturar(p, '03-producoes-peguei');
+
+  // o Trello recusa: a tela volta atrás e mostra o motivo
+  await cardDe(p, 'Show da Noite').locator('.prod-mudar').click();
+  const recusa = p.locator('.prod-recusa');
+  await recusa.waitFor();
+  assert.match(await recusa.textContent(), /Show da Noite.*Trello recusou.*Nada mudou/s);
+  await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
+  assert.deepEqual(await claquetes(p, 'SP', 'entrada'), [`Cozinha de Vó ${dm(1)} SP`, `Show da Noite ${dm(3)} SP`]);
+  assert.deepEqual(await contas(p, 'SP'), [2, 1, 0]);
+  chamadasAoTrello.splice(0);
+  await capturar(p, '04-producoes-trello-recusou');
+  await recusa.locator('button').click();
+  assert.equal(await recusa.count(), 0);
+
+  // voltar para a Entrada: de Produzindo (a Lia não estava: os outros ficam) e de Entregue (o card sai da saída)
+  await cardDe(p, 'Novela Sinfonia').locator('.prod-mudar').click();
+  await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
+  assert.equal(await designersDe(cardDe(p, 'Novela Sinfonia')), 'Dora Lima, Enzo Prado');
+  await cardDe(p, 'Jogo Final').locator('.prod-mudar').click();
+  await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Jogo Final' }).waitFor();
+  assert.deepEqual(await contas(p, 'G5'), [3, 0, 0]);
+  await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
+  assert.deepEqual(chamadasAoTrello.splice(0), [`DELETE /cards/${card(4)}/idMembers/membroLia`, `PUT /cards/${card(5)} ?idList=entradaG5`, `DELETE /cards/${card(5)}/idMembers/membroLia`]);
+
+  // a Produção sem card: só no PROMeiro
+  await cardDe(p, 'Cozinha de Vó').locator('.prod-mudar').click();
+  await coluna(p, 'SP', 'produzindo').locator('.prod-card', { hasText: 'Cozinha de Vó' }).waitFor();
+  await p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
+  assert.deepEqual(chamadasAoTrello, [], 'a Produção sem card não vai ao Trello');
+
+  // recarregada, a tela mostra o que o PROMeiro guardou
+  await p.reload();
+  await p.locator('.prod-faixa').first().waitFor();
+  assert.deepEqual(await claquetes(p, 'SP', 'produzindo'), [`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`]);
+  assert.deepEqual(await contas(p, 'G5'), [3, 0, 0]);
+  assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: os botões: Peguei, Voltar para a Entrada (de Produzindo e de Entregue), a recusa do Trello desfeita na tela, a sem card só no PROMeiro');
+
+  // no celular, os botões no tamanho do dedo
+  const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await cel.p.locator('.prod-faixa').first().waitFor();
+  const alturas = await cel.p.locator('.prod-mudar').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
+  assert.ok(alturas.length > 0 && alturas.every((h) => h >= 44), 'no celular, os botões têm 44px');
+  await semRolagemDeLado(cel.p, 'celular com os botões');
+  await capturar(cel.p, '05-producoes-celular-botoes');
+  assert.deepEqual(cel.erros, []);
+  await cel.ctx.close();
+  console.log('ok: celular: os botões com 44px');
+
+  // quem não está ligado a um designer: vê a tela, sem os botões, e a explicação
+  const rui = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/designer/producoes', { email: RUI });
+  await rui.p.locator('.prod-faixa').first().waitFor();
+  assert.match(await rui.p.locator('.prod-sem-ligacao').textContent(), /cadastro de designer.*administrador/s);
+  assert.equal(await rui.p.locator('.prod-mudar').count(), 0);
+  await capturar(rui.p, '06-producoes-sem-ligacao');
+  assert.deepEqual(rui.erros, []);
+  await rui.ctx.close();
+  console.log('ok: sem a ligação com o designer: a tela sem os botões, com a explicação');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
-  const teable = teableFalso({ ARTE_producao: 'arte_e2e' }, { registros: { ARTE_producao: ARTE } });
+  // o cadastro de designers (fictício): a Lia, com o e-mail e o id do membro no Trello
+  const DESIGNERS = [{ id: 'recDesignerE2e', fields: { designer: 'Lia Moraes', email: LIA, designer_ID: 'membroLia', status: 'ativo' } }];
+  const teable = teableFalso({ ARTE_producao: 'arte_e2e', designers: 'designers_e2e' }, { registros: { ARTE_producao: ARTE, designers: DESIGNERS } });
   const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
-  // o servidor não pode pedir nada ao Trello: o que ele tentar fica anotado (e falha)
+  // o Trello de mentira só aceita escrita nos cards (#110): o que o servidor pede fica anotado; a leitura falha; o card
+  // do Show da Noite recusa (para a tela desfazer)
   const chamadasAoTrello = [];
-  const buscar = async (u) => {
-    chamadasAoTrello.push(String(u));
-    throw new Error(`o teste não sai para a rede: ${u}`);
+  const buscar = async (u, init = {}) => {
+    const metodo = init.method ?? 'GET';
+    chamadasAoTrello.push(metodo === 'GET' ? `GET ${u}` : escrito(u, metodo));
+    if (metodo === 'GET' || !new URL(u).pathname.startsWith('/1/cards/')) throw new Error(`o teste não sai para a rede: ${u}`);
+    if (new URL(u).pathname.includes(card(1))) return new Response('card recusado pelo Trello falso', { status: 400 });
+    return Response.json({});
   };
-  const trello = { env: { ...PG, ...comTabelas({ ARTE_producao: 'arte_e2e' }) }, consultar: teable.consultar, buscar };
-  const s = await subir({ teable, pg: teable.abrirPg, trello, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG } });
+  const trello = { env: { ...PG, ...comTabelas({ ARTE_producao: 'arte_e2e' }), TRELLO_KEY: 'chave-falsa', TRELLO_TOKEN: 'token-falso' }, consultar: teable.consultar, buscar };
+  const listas = { TRELLO_LISTA_SP: 'entradaSP', TRELLO_SAIDA_SP: 'saidaSP', TRELLO_LISTA_G5: 'entradaG5', TRELLO_SAIDA_G5: 'saidaG5' };
+  const s = await subir({ teable, pg: teable.abrirPg, trello, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG, ...listas } });
+  await s.app.pessoasProntas;
   // o Roteiro (fictício) enviado para o card da Festa diz a atração
   const em = new Date().toISOString();
   s.db.prepare('INSERT INTO roteiros (id, dono_email, dono_nome, meta, doc, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?)').run('roteiro-festa-e2e', CHEFE, 'Chefe', JSON.stringify({ claquete: `Festa na Praça ${dm(3)} SP`, programa: 'Festa na Praça' }), '{}', em, em);
@@ -236,6 +340,7 @@ async function principal() {
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema, chamadasAoTrello);
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema, chamadasAoTrello);
     await entradaNoCelular(navegador, s.url);
+    await osBotoes(navegador, s.url, chamadasAoTrello);
   } catch (e) {
     falhou = true;
     console.error(e);

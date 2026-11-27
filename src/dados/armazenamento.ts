@@ -946,7 +946,7 @@ import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import type { DiaDaPauta, SemanaDaPauta } from '../modelo/pauta';
 import type { GrupoDaPauta, PaginaDaCorrecao } from '../modelo/correcaoDeGrafia';
-import type { TelaDeProducoes } from '../modelo/producoesPorPraca';
+import type { CardDaProducao, TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {
@@ -1303,6 +1303,9 @@ export interface AndamentoDoProjeto {
 /** A Semana da pauta da edição (#94): qualquer dia da semana (sem ele, a de hoje). Sem o Postgres do Teable, o erro diz. */
 /** A tela de produções (#109): as Produções abertas numa faixa por praça (nada do Trello). */
 export const lerProducoesPorPraca = () => pedir<TelaDeProducoes>('/api/producoes/por-praca');
+/** Pegar ou voltar para a Entrada (#110): o que foi feito e a Produção como a tela mostra agora. O erro traz o motivo. */
+export const mudarEtapaDaProducao = (producao: string, etapa: 'produzindo' | 'entrada') =>
+  pedir<{ feito: { antes: string; depois: string; semCard: boolean }; producao: CardDaProducao | null }>('/api/producoes/etapa', { method: 'POST', body: JSON.stringify({ producao, etapa }) });
 export const lerSemanaDaPauta = (dia = '') => pedir<SemanaDaPauta>(`/api/pauta/semana${dia ? `?inicio=${encodeURIComponent(dia)}` : ''}`);
 /** O Dia da pauta da edição (#97): um dia (AAAA-MM-DD; sem ele, hoje), com cada editor numa coluna. */
 export const lerDiaDaPauta = (dia = '') => pedir<DiaDaPauta>(`/api/pauta/dia${dia ? `?dia=${encodeURIComponent(dia)}` : ''}`);

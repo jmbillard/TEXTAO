@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { criarTrello } from '../servidor/trello.mjs';
 
 /* A Produção (#86) pela API: a carga inicial lê a produção da arte INTEIRA do Teable de mentira (as tabelas achadas
    pelo nome, o Postgres respondendo as linhas) e cada linha vira uma Produção do PROMeiro, com id próprio. Rodar de
@@ -17,6 +19,7 @@ const NOMES = { ARTE_producao: 'arte_producao_pg', exibicoes: 'exibicoes_pg' };
 const card = (n: number) => `c0ffee${String(n).padStart(18, '0')}`;
 type Campos = Record<string, unknown>;
 const registro = (id: string, fields: Campos) => ({ id, fields });
+type Registros = Record<string, ReturnType<typeof registro>[]>;
 
 function producaoDaArte() {
   return [
@@ -41,9 +44,9 @@ afterEach(async () => {
   parar = null;
 });
 
-async function comServidor({ db = abrirBanco(':memory:'), registros = { ARTE_producao: producaoDaArte(), exibicoes: exibicoes() } } = {}) {
-  const teable = teableFalso(NOMES, { registros });
-  const app = criarApp({ db, env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg });
+async function comServidor({ db = abrirBanco(':memory:'), registros = { ARTE_producao: producaoDaArte(), exibicoes: exibicoes() } as Registros, env = ENV as Record<string, string>, nomes = NOMES as Record<string, string>, trello = undefined as unknown } = {}) {
+  const teable = teableFalso(nomes, { registros });
+  const app = criarApp({ db, env, buscarNoTeable: teable, abrirPg: teable.abrirPg, ...(trello ? { trello } : {}) });
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   parar = async () => {
@@ -325,5 +328,199 @@ describe('a tela de produções: as Produções abertas por praça e etapa', () 
   it('só GET', async () => {
     const { ana } = await tela();
     expect((await ana('/api/producoes/por-praca', { method: 'POST' })).status).toBe(405);
+  });
+});
+
+/* Pegar e voltar para a Entrada (#110): a rota de mudar a etapa, para quem está ligado a um designer (pelo e-mail no
+   cadastro de designers, o mesmo que a Configuração · Pessoas lê), com o Trello e o Teable de mentira. O PROMeiro só
+   ESCREVE no Trello (o membro do card, mover de lista), nunca lê; a Produção muda na hora, e nada vai para o Teable. */
+describe('a tela de produções: pegar e voltar para a Entrada', () => {
+  const DIA = 86_400_000;
+  const ha = (n: number) => new Date(Date.now() - n * DIA).toISOString();
+  const AMBIENTE = { ...ENV, TRELLO_KEY: 'chave-falsa', TRELLO_TOKEN: 'token-falso-do-trello', TRELLO_LISTA_SP: 'entradaSP', TRELLO_SAIDA_SP: 'saidaSP' };
+  const linhas = () => [
+    registro('recPeg1', { card_ID: card(21), claquete: 'Show da Noite 20/12 SP', status: '[]', designers: null, data_entrada: ha(1), __last_modified_time: ha(1) }),
+    registro('recPeg2', { card_ID: card(22), claquete: 'Festa na Praça 20/12 SP', status: '["PRODUZINDO"]', designers: '["Ana Souza","Designer Dois"]', data_entrada: ha(2), __last_modified_time: ha(2) }),
+    registro('recPeg3', { card_ID: card(23), claquete: 'Jogo Final 20/12 SP', status: '["FINALIZADO"]', designers: '["Ana Souza"]', entregue: true, data_entrada: ha(3), data_entrega: ha(1), __last_modified_time: ha(1) }),
+    registro('recPeg4', { card_ID: '', claquete: 'Cozinha de Vó 20/12 SP', status: null, designers: null, data_entrada: ha(1), __last_modified_time: ha(1) }),
+  ];
+  // o cadastro de designers (fictício): a Ana tem o e-mail e o id do membro no Trello; a Bia não está lá
+  const designers = () => [registro('recDesignerAna', { designer: 'Ana Souza', email: 'ana@empresa.com', designer_ID: 'membroAna', status: 'ativo' })];
+
+  type Pedido = { metodo: string; caminho: string; consulta: Record<string, string> };
+  /** O Trello de mentira: anota cada pedido (sem a chave e o token) e responde ok, ou recusa onde `recusar` disser. */
+  function trelloFalso() {
+    const pedidos: Pedido[] = [];
+    const estado = { recusar: null as null | ((p: Pedido) => boolean) };
+    const buscar = async (endereco: string, init: RequestInit = {}) => {
+      const url = new URL(endereco);
+      const consulta = Object.fromEntries([...url.searchParams].filter(([k]) => k !== 'key' && k !== 'token'));
+      const p = { metodo: init.method ?? 'GET', caminho: url.pathname.replace(/^\/1/, ''), consulta };
+      pedidos.push(p);
+      if (estado.recusar?.(p)) return new Response('invalid value for idMembers', { status: 400 });
+      return Response.json({});
+    };
+    return { pedidos, estado, buscar };
+  }
+
+  type Card = { id: string; claquete: string; etapa: string; designers: string[] };
+  type Tela = { faixas: { praca: string; colunas: Record<string, Card[]> }[]; voce: { designer: string | null; porQue?: string } };
+  type EventoDaLinha = { tipo: string; antes: string | null; depois: string | null; quem: string | null; quando: string; origem?: string };
+
+  async function preparado() {
+    const t = trelloFalso();
+    const s = await comServidor({
+      env: AMBIENTE,
+      nomes: { ...NOMES, designers: 'designers_pg' },
+      registros: { ARTE_producao: linhas(), exibicoes: [], designers: designers() },
+      trello: (env: unknown, deps: Record<string, unknown>) => criarTrello(env, { ...deps, buscar: t.buscar }),
+    });
+    await s.app.releituraPronta;
+    await s.app.pessoasProntas;
+    // a carga e a verificação das pessoas não pedem nada ao Trello
+    expect(t.pedidos).toEqual([]);
+    const tela = async (quem = s.ana) => (await (await quem('/api/producoes/por-praca')).json()) as Tela;
+    const daClaquete = async (inicio: string) => (await tela()).faixas.flatMap((f) => Object.values(f.colunas).flat()).find((c) => c.claquete.startsWith(inicio))!;
+    const idDe = async (inicio: string) => (await daClaquete(inicio)).id;
+    const mudar = (id: string, etapa: string, quem = s.ana) => quem('/api/producoes/etapa', { method: 'POST', body: JSON.stringify({ producao: id, etapa }) });
+    const linhaDoTempo = async (id: string) => ((await (await s.ana(`/api/linha-do-tempo?producao=${id}`)).json()) as { eventos: EventoDaLinha[] }).eventos;
+    const bia = (caminho: string, init: RequestInit = {}) => s.ana(caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'bia@empresa.com' } });
+    return { ...s, trello: t, tela, daClaquete, idDe, mudar, linhaDoTempo, bia };
+  }
+  const resumo = (evs: EventoDaLinha[]) => evs.map((e) => [e.tipo, e.antes, e.depois, e.quem, e.origem ?? '']);
+
+  it('quem está ligado a um designer vê que pode pegar', async () => {
+    const { tela } = await preparado();
+    expect((await tela()).voce).toEqual({ designer: 'Ana Souza' });
+  });
+
+  it('"Peguei": quem clicou entra no card do Trello (o card fica na lista) e vira designer; a Produção vai para Produzindo', async () => {
+    const { idDe, mudar, daClaquete, linhaDoTempo, trello, teable } = await preparado();
+    const id = await idDe('Show da Noite');
+    const pedidosAoTeable = teable.estado.pedidos.length;
+    const r = await mudar(id, 'produzindo');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ feito: { antes: 'entrada', depois: 'produzindo', designer: { entrou: 'Ana Souza' } }, producao: { id, etapa: 'produzindo', designers: ['Ana Souza'] } });
+    // só a escrita: o membro entra no card; nada de mover de lista, nada de ler
+    expect(trello.pedidos).toEqual([{ metodo: 'POST', caminho: `/cards/${card(21)}/idMembers`, consulta: { value: 'membroAna' } }]);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'produzindo', designers: ['Ana Souza'] });
+    const evs = await linhaDoTempo(id);
+    expect(resumo(evs)).toEqual([
+      ['etapa', 'entrada', 'produzindo', 'Ana Souza', 'PROMeiro'],
+      ['designer-entrou', null, 'Ana Souza', 'Ana Souza', 'PROMeiro'],
+    ]);
+    expect(Math.abs(Date.parse(evs[0].quando) - Date.now())).toBeLessThan(60_000);
+    // nada escrito no Teable (a etapa e os designers da produção da arte continuam com o n8n)
+    expect(teable.estado.pedidos.slice(pedidosAoTeable).filter((p: string) => !p.startsWith('GET'))).toEqual([]);
+    // pegar de novo: já não está na Entrada
+    expect((await mudar(id, 'produzindo')).status).toBe(409);
+  });
+
+  it('"Voltar para a Entrada": sai do card e dos designers; o card que estava na saída volta para a entrada da praça', async () => {
+    const { idDe, mudar, daClaquete, linhaDoTempo, trello } = await preparado();
+    const festa = await idDe('Festa na Praça');
+    expect((await mudar(festa, 'entrada')).status).toBe(200);
+    expect(trello.pedidos).toEqual([{ metodo: 'DELETE', caminho: `/cards/${card(22)}/idMembers/membroAna`, consulta: {} }]);
+    expect(await daClaquete('Festa na Praça')).toMatchObject({ etapa: 'entrada', designers: ['Designer Dois'] });
+    expect(resumo(await linhaDoTempo(festa))).toEqual([
+      ['etapa', 'produzindo', 'entrada', 'Ana Souza', 'PROMeiro'],
+      ['designer-saiu', 'Ana Souza', null, 'Ana Souza', 'PROMeiro'],
+    ]);
+    trello.pedidos.length = 0;
+    const jogo = await idDe('Jogo Final');
+    expect((await mudar(jogo, 'entrada')).status).toBe(200);
+    expect(trello.pedidos).toEqual([
+      { metodo: 'PUT', caminho: `/cards/${card(23)}`, consulta: { idList: 'entradaSP' } },
+      { metodo: 'DELETE', caminho: `/cards/${card(23)}/idMembers/membroAna`, consulta: {} },
+    ]);
+    expect(await daClaquete('Jogo Final')).toMatchObject({ etapa: 'entrada', designers: [] });
+    // na Entrada, não há o que voltar
+    expect((await mudar(jogo, 'entrada')).status).toBe(409);
+  });
+
+  it('qualquer designer move qualquer card: voltar tira só quem clicou, e os outros designers ficam', async () => {
+    const { idDe, mudar, daClaquete, trello } = await preparado();
+    const festa = await idDe('Festa na Praça');
+    // a festa é da Ana e do Designer Dois: a Ana volta e pega de novo, e o Designer Dois fica o tempo todo
+    expect((await mudar(festa, 'entrada')).status).toBe(200);
+    expect((await mudar(festa, 'produzindo')).status).toBe(200);
+    expect(await daClaquete('Festa na Praça')).toMatchObject({ etapa: 'produzindo', designers: ['Designer Dois', 'Ana Souza'] });
+    expect(trello.pedidos.map((p) => p.metodo)).toEqual(['DELETE', 'POST']);
+  });
+
+  it('a Produção sem card muda de etapa só no PROMeiro, sem erro', async () => {
+    const { idDe, mudar, daClaquete, linhaDoTempo, trello } = await preparado();
+    const id = await idDe('Cozinha de Vó');
+    const r = await mudar(id, 'produzindo');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ feito: { semCard: true } });
+    expect(await daClaquete('Cozinha de Vó')).toMatchObject({ etapa: 'produzindo', designers: ['Ana Souza'] });
+    expect(resumo(await linhaDoTempo(id)).map((e) => e[0])).toEqual(['etapa', 'designer-entrou']);
+    expect((await mudar(id, 'entrada')).status).toBe(200);
+    expect(await daClaquete('Cozinha de Vó')).toMatchObject({ etapa: 'entrada', designers: [] });
+    expect(trello.pedidos).toEqual([]);
+  });
+
+  it('o Trello recusa: a Produção não muda, nenhum evento, e o motivo volta para a tela', async () => {
+    const { idDe, mudar, daClaquete, linhaDoTempo, trello } = await preparado();
+    trello.estado.recusar = () => true;
+    const id = await idDe('Show da Noite');
+    const r = await mudar(id, 'produzindo');
+    expect(r.status).toBe(502);
+    expect((await r.json()).erro).toMatch(/Trello recusou.*nada mudou/is);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entrada', designers: [] });
+    expect(await linhaDoTempo(id)).toEqual([]);
+  });
+
+  it('o Trello recusa o segundo passo: o card que já foi movido volta para a saída (desfeito)', async () => {
+    const { idDe, mudar, daClaquete, trello } = await preparado();
+    trello.estado.recusar = (p) => p.metodo === 'DELETE';
+    const jogo = await idDe('Jogo Final');
+    expect((await mudar(jogo, 'entrada')).status).toBe(502);
+    expect(trello.pedidos.map((p) => [p.metodo, p.consulta.idList ?? ''])).toEqual([
+      ['PUT', 'entradaSP'],
+      ['DELETE', ''],
+      ['PUT', 'saidaSP'],
+    ]);
+    expect(await daClaquete('Jogo Final')).toMatchObject({ etapa: 'entregue', designers: ['Ana Souza'] });
+  });
+
+  it('quem não está ligado a um designer vê a tela, não pega, e a tela explica a quem pedir', async () => {
+    const { tela, idDe, bia, trello } = await preparado();
+    const voce = (await tela(bia)).voce;
+    expect(voce.designer).toBeNull();
+    expect(voce.porQue).toMatch(/administrador/);
+    const r = await bia('/api/producoes/etapa', { method: 'POST', body: JSON.stringify({ producao: await idDe('Show da Noite'), etapa: 'produzindo' }) });
+    expect(r.status).toBe(403);
+    expect((await r.json()).erro).toBe(voce.porQue);
+    expect(trello.pedidos).toEqual([]);
+  });
+
+  it('o pedido mal feito: a Produção que não existe, a etapa desconhecida e o método', async () => {
+    const { mudar, ana, idDe } = await preparado();
+    expect((await mudar('nao-existe', 'produzindo')).status).toBe(404);
+    expect((await mudar(await idDe('Show da Noite'), 'arquivada')).status).toBe(400);
+    expect((await ana('/api/producoes/etapa')).status).toBe(405);
+  });
+
+  it('conflito: a releitura atrasada não desfaz o que o PROMeiro fez; a mudança de fora depois dele vira evento e vale', async () => {
+    const { idDe, mudar, daClaquete, linhaDoTempo, app, registros } = await preparado();
+    const id = await idDe('Show da Noite');
+    expect((await mudar(id, 'produzindo')).status).toBe(200);
+    // o Teable ainda não sabe (o n8n não sincronizou): a linha relida, mais velha que o "pegar", não volta a etapa
+    await app.relerAProducao();
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'produzindo', designers: ['Ana Souza'] });
+    expect(resumo(await linhaDoTempo(id)).map((e) => e[0])).toEqual(['etapa', 'designer-entrou']);
+    // depois, alguém tira a Ana do card direto no Trello e o n8n grava no Teable: vale o mais recente
+    const depois = new Date(Date.now() + 60_000).toISOString();
+    Object.assign(registros.ARTE_producao[0].fields, { designers: '[]', status: '[]', __last_modified_time: depois });
+    await app.relerAProducao();
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entrada', designers: [] });
+    expect(resumo(await linhaDoTempo(id))).toEqual([
+      ['etapa', 'entrada', 'produzindo', 'Ana Souza', 'PROMeiro'],
+      ['designer-entrou', null, 'Ana Souza', 'Ana Souza', 'PROMeiro'],
+      ['etapa', 'produzindo', 'entrada', null, ''],
+      ['designer-saiu', 'Ana Souza', null, null, ''],
+    ]);
   });
 });

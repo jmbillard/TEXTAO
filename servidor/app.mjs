@@ -44,6 +44,7 @@ import { criarAreas, dosMeusRoteiros } from './areas.mjs';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { DIAS_DO_ENTREGUE, faixasDasProducoes } from '../src/modelo/producoesPorPraca.ts';
+import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarAndamento } from './andamento.mjs';
@@ -486,6 +487,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const registroDasDuplicadas = criarRegistroDasDuplicadas(db);
   // as Produções (#86): o trabalho da arte com id próprio do PROMeiro, no SQLite
   const producoes = criarProducoes(db);
+  // pegar e voltar para a Entrada pela tela de produções (#110): o Trello só escrito, a Produção na hora
+  const etapaDaProducao = criarEtapaDaProducao({ producoes });
   // os anexos guardados pelo PROMeiro (#90): o PDF do roteiro do envio e os pôsteres dos filmes, no SQLite (no backup)
   const anexos = criarAnexos(db, { buscar: buscarNoTeable });
   /* O que o PROMeiro guarda de um card, para apagar uma duplicada (#67): a cópia leva os envios dos roteiros, a lista
@@ -2535,7 +2538,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const desde = new Date(Date.now() - DIAS_DO_ENTREGUE * 86_400_000).toISOString();
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
       const cards = producoes.naTela(desde, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
-      return json(res, 200, { entregueDias: DIAS_DO_ENTREGUE, faixas: faixasDasProducoes(cards, pracas) });
+      // quem está logado e o designer dele (#110): sem a ligação, vê a tela, mas não pega, e a tela diz a quem pedir
+      const designer = pessoas.designerDoEmail(eu.email);
+      const voce = designer ? { designer: designer.nome } : { designer: null, porQue: SEM_LIGACAO };
+      return json(res, 200, { entregueDias: DIAS_DO_ENTREGUE, faixas: faixasDasProducoes(cards, pracas), voce });
+    }
+    if (caminho === '/api/producoes/etapa') {
+      // pegar e voltar para a Entrada (#110), para quem está ligado a um designer: { producao, etapa } (produzindo ou
+      // entrada). Escreve no Trello (o membro do card, mover de lista), nunca lê; nada vai ao Teable
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
+      const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+      const aTela = (id) => producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
+      const r = await etapaDaProducao.mudar({ producao: corpo.producao, etapa: corpo.etapa }, { trello, pracas, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela });
+      return json(res, r.status, r.corpo);
     }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
     if (caminho === '/api/linha-do-tempo') {
