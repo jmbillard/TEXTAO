@@ -10,7 +10,7 @@
    notas do que foi interpretado, para a pessoa conferir antes de aplicar. */
 import { demandaNoPadrao, horarioEntendido, lerDemanda, lerHorario, type IdDoTurno, type PosicaoDaEscala, type TurnoDaEscala } from './escala.ts';
 import type { Ausencia, TipoDeAusencia } from './ausencias.ts';
-import { reconhecerIlha, rotuloDaIlha, type Ilha } from './ilhas.ts';
+import { TIPOS_DE_ILHA, emOrdem, reconhecerIlha, rotuloDaIlha, salaDaIlha, salaDe, type Ilha } from './ilhas.ts';
 import { nomeComparavel, umaLetraDeDiferenca } from './ligarPeloNome.ts';
 
 /** O que a regra precisa saber do dia: os turnos, os editores (com os apelidos) e as ilhas cadastradas. */
@@ -194,7 +194,11 @@ export function lerNome(escrito: string, editores: readonly string[], apelidos: 
 
 /* ---------- a ilha ---------- */
 
-/** A ilha pelo rótulo inteiro, pelo número (se só uma tem) ou pelo nome; a nota diz como foi lida. */
+/**
+ * A ilha pelo rótulo inteiro, pela sala (AVID 46, ILHA 46 e 46 são a mesma, #165), pelo número (se só uma sala tem)
+ * ou pelo nome; a nota diz como foi lida. A ilha escrita com outro tipo do cadastro ("VDI 46" sem a VDI 46) não é
+ * lida como a do mesmo número: é outra ilha.
+ */
 function lerIlha(escrito: string, ilhas: readonly Ilha[]): { id: string; nota: string } {
   if (!escrito) return { id: '', nota: '' };
   const lida = (i: Ilha) => ({ id: i.id, nota: nomeComparavel(rotuloDaIlha(i)).replace(/\s+/g, '') === nomeComparavel(escrito).replace(/\s+/g, '') ? '' : `“${escrito}” lida como ${rotuloDaIlha(i)}` });
@@ -203,11 +207,17 @@ function lerIlha(escrito: string, ilhas: readonly Ilha[]): { id: string; nota: s
   const t = nomeComparavel(escrito);
   const numero = /\d+/.exec(t)?.[0];
   if (numero) {
-    const doNumero = ilhas.filter((i) => nomeComparavel(i.numero).replace(/^0+/, '') === numero.replace(/^0+/, ''));
-    const doTipo = doNumero.filter((i) => t.startsWith(nomeComparavel(i.tipo)));
-    const uma = doTipo.length === 1 ? doTipo[0] : doNumero.length === 1 ? doNumero[0] : null;
-    if (uma) return lida(uma);
-    if (doNumero.length > 1) return { id: '', nota: `“${escrito}” serve para ${doNumero.map(rotuloDaIlha).join(' e ')}: escolha na grade` };
+    // o que vem antes do número é o tipo ("AVID 29 - COMUNICAÇÃO")
+    const tipo = t.slice(0, t.indexOf(numero)).trim();
+    const daSala = emOrdem(ilhas.filter((i) => salaDe(i) === salaDaIlha(`${tipo} ${numero}`)));
+    if (daSala.length) return lida(daSala[0]);
+    const tipos = new Set([...TIPOS_DE_ILHA, ...ilhas.map((i) => nomeComparavel(i.tipo))]);
+    if (tipos.has(tipo)) return { id: '', nota: `“${escrito}” não está no cadastro das ilhas` };
+    const doNumero = emOrdem(ilhas.filter((i) => nomeComparavel(i.numero).replace(/^0+/, '') === numero.replace(/^0+/, '')));
+    // uma ilha por sala (a primeira das repetidas)
+    const porSala = doNumero.filter((i, n) => doNumero.findIndex((x) => salaDe(x) === salaDe(i)) === n);
+    if (porSala.length === 1) return lida(porSala[0]);
+    if (porSala.length > 1) return { id: '', nota: `“${escrito}” serve para ${porSala.map(rotuloDaIlha).join(' e ')}: escolha na grade` };
     return { id: '', nota: `“${escrito}” não está no cadastro das ilhas` };
   }
   const peloNome = ilhas.filter((i) => i.nome && t.includes(nomeComparavel(i.nome)));

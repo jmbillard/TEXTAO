@@ -13,8 +13,10 @@
 // completa "eli" com a Elis. O rascunho é gravado sozinho: a aba de amanhã passa a rascunho e, recarregada a página,
 // tudo volta como foi gravado (o horário e a claquete no padrão). Outro dia da semana continua vazio. No celular
 // (escuro), o rascunho cabe na tela, sem rolar para o lado.
-// As ilhas e os turnos (#124): a Bia cadastra as ilhas na aba Ilhas dos Cadastros (AVID 46, VDI 7 com nome e ILHA 46,
-// que fica como está escrita); a Lia vê a lista, sem cadastrar. Com o histórico de uma semana antes (o Rui na AVID 46),
+// As ilhas e os turnos (#124): a Bia cadastra as ilhas na aba Ilhas dos Cadastros (AVID 46 e VDI 7 com nome; a ILHA 46
+// é recusada, é a mesma sala da AVID 46, #165); a Lia vê a lista, sem cadastrar. A ILHA 46 repetida de antes da regra
+// (posta direto no banco, com uma posição) aparece no alto da lista como "mesma sala"; a Bia só lê que um
+// administrador junta; a administradora escolhe ficar com a AVID 46, confere que 1 posição passa e junta. Com o histórico de uma semana antes (o Rui na AVID 46),
 // escolher o Rui leva à ilha, com a AVID 46 "de costume" no alto da lista, e Enter a confirma; "avid46" e Tab acham a
 // ilha da Elis; o Gil na mesma ilha da Elis, na Tarde, mostra "ocupada". Recarregada, a ilha volta como foi gravada.
 // Os turnos vêm da Configuração: com um turno salvo a mais (Plantão), a grade ganha o bloco dele.
@@ -381,8 +383,11 @@ async function cadastrarAsIlhas(navegador, url) {
   };
   await cadastrar('AVID', '46');
   await cadastrar('VDI', '7', 'Sala da esquina');
-  // AVID e ILHA com o mesmo número ficam como estão escritas
-  await cadastrar('ILHA', '46');
+  // a ILHA 46 é a mesma sala da AVID 46 (#165)
+  await form.getByRole('radio', { name: 'ILHA' }).click();
+  await form.getByLabel('Número').fill('46');
+  await form.getByRole('button', { name: 'Cadastrar' }).click();
+  await p.locator('.aviso', { hasText: 'Já existe a AVID 46: ILHA 46 é a mesma sala.' }).waitFor();
   // a mesma ilha de novo é recusada
   await form.getByRole('radio', { name: 'AVID' }).click();
   await form.getByLabel('Número').fill('46');
@@ -390,9 +395,9 @@ async function cadastrarAsIlhas(navegador, url) {
   await p.locator('.aviso', { hasText: 'Já existe a AVID 46.' }).waitFor();
   await form.getByLabel('Número').fill('');
   const linhas = () => lista.locator('.item-ilha .nome').allInnerTexts();
-  assert.deepEqual((await linhas()).map((t) => t.replace(/\s+/g, ' ').trim()), ['AVID 46', 'ILHA 46', 'VDI 7 Sala da esquina']);
+  assert.deepEqual((await linhas()).map((t) => t.replace(/\s+/g, ' ').trim()), ['AVID 46', 'VDI 7 Sala da esquina']);
   // a coordenação não remove (só administradores)
-  assert.equal(await lista.locator('.lixo-cad.travado').count(), 3);
+  assert.equal(await lista.locator('.lixo-cad.travado').count(), 2);
   await capturar(p, '10-cadastros-ilhas');
   assert.deepEqual(erros, [], 'ilhas: erros na página');
   await ctx.close();
@@ -400,11 +405,50 @@ async function cadastrarAsIlhas(navegador, url) {
   // a Lia vê a lista, sem cadastrar
   const lia = await abrir(navegador, url, LIA, '#/cadastros/ilhas');
   await lia.p.locator('.item-ilha').first().waitFor();
-  assert.equal(await lia.p.locator('.item-ilha').count(), 3);
+  assert.equal(await lia.p.locator('.item-ilha').count(), 2);
   assert.ok(await lia.p.locator('.form-ilha').getByRole('button', { name: 'Cadastrar' }).isDisabled(), 'a Lia não cadastra');
   assert.deepEqual(lia.erros, [], 'ilhas (Lia): erros na página');
   await lia.ctx.close();
   console.log('ok: a coordenação cadastra as ilhas nos Cadastros; quem não é só vê');
+}
+
+/** A ILHA 46 repetida de antes da regra (#165): aparece para juntar, e só a administradora junta, depois de conferir. */
+async function juntarAsRepetidas(navegador, url, api, db) {
+  db.prepare("INSERT INTO ilhas (id, tipo, numero, nome, por, em) VALUES ('ilha-velha', 'ILHA', '46', '', ?, '2026-01-05T12:00:00.000Z')").run(BIA);
+  const h = { 'cf-access-authenticated-user-email': BIA, 'content-type': 'application/json' };
+  // uma posição antiga, fora das oito semanas da ilha de costume
+  const longe = mais(amanha, -90);
+  const r = await fetch(`${api}/montar-pauta?dia=${longe}`, { method: 'PUT', headers: h, body: JSON.stringify({ posicoes: [{ id: 'velha-1', turno: 'manha', editor: 'Gil Moura', ilha: 'ilha-velha', horario: '6h às 15h', demandas: [] }] }) });
+  assert.equal(r.status, 200);
+
+  const bia = await abrir(navegador, url, BIA, '#/cadastros/ilhas');
+  const caixaDaBia = bia.p.locator('.ilha-repetida');
+  await caixaDaBia.waitFor();
+  assert.equal((await caixaDaBia.locator('p').innerText()).replace(/\s+/g, ' ').trim(), 'MESMA SALA AVID 46 (0 posições) e ILHA 46 (1 posição) são a mesma sala.');
+  await caixaDaBia.getByText('Um administrador junta as duas.').waitFor();
+  assert.equal(await caixaDaBia.getByRole('button').count(), 0, 'a coordenação não junta');
+  assert.deepEqual(bia.erros, [], 'repetidas (Bia): erros na página');
+  await bia.ctx.close();
+
+  const { ctx, p, erros } = await abrir(navegador, url, CHEFE, '#/cadastros/ilhas');
+  const caixa = p.locator('.ilha-repetida');
+  await caixa.waitFor();
+  await caixa.getByRole('button', { name: 'Ficar com a AVID 46' }).click();
+  await caixa.getByText('1 posição da ILHA 46 passa para a AVID 46, e a ILHA 46 sai do cadastro. Os dias publicados continuam publicados.').waitFor();
+  await capturar(p, '10b-cadastros-ilhas-repetidas');
+  // nada mudou ainda: só a conferência
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM escala_posicoes WHERE ilha = 'ilha-velha'").get().n, 1);
+  await caixa.getByRole('button', { name: 'Juntar na AVID 46' }).click();
+  await p.locator('.aviso', { hasText: 'ILHA 46 juntada na AVID 46 (1 posição passou).' }).waitFor();
+  await caixa.waitFor({ state: 'detached' });
+  const linhas = (await p.locator('.lista-cad[aria-label="Ilhas"] .item-ilha .nome').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+  assert.deepEqual(linhas, ['AVID 46', 'VDI 7 Sala da esquina']);
+  const avid = db.prepare("SELECT id FROM ilhas WHERE tipo = 'AVID' AND numero = '46'").get().id;
+  assert.equal(db.prepare("SELECT ilha FROM escala_posicoes WHERE id = 'velha-1'").get().ilha, avid);
+  await capturar(p, '10c-cadastros-ilhas-juntadas');
+  assert.deepEqual(erros, [], 'repetidas: erros na página');
+  await ctx.close();
+  console.log('ok: a ILHA 46 repetida de antes da regra aparece para juntar; só a administradora junta, depois de conferir');
 }
 
 /** O histórico: uma semana antes de amanhã, o Rui na AVID 46 (a ilha de costume dele). */
@@ -1196,6 +1240,7 @@ async function principal() {
     await marcarACoordenacao(navegador, s.url);
     await quemNaoEDaCoordenacao(navegador, s.url, s.api);
     await cadastrarAsIlhas(navegador, s.url);
+    await juntarAsRepetidas(navegador, s.url, s.api, s.db);
     await umaSemanaAntes(s.api);
     await montarPeloTeclado(navegador, s.url);
     await noCelular(navegador, s.url);

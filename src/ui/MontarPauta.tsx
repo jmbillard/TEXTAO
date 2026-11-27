@@ -153,7 +153,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const chegou = useCallback((d: DiaDaEscala) => {
     const b = base.current;
     if (!b || b.dia !== d.dia || (d.versao ?? 0) < b.versao) return false;
-    const juntado = juntarODia(b, { posicoes: posicoesAgora.current, recado: recadoAgora.current }, { posicoes: d.posicoes, recado: d.recado ?? '' }, d.dia);
+    const juntado = juntarODia(b, { posicoes: posicoesAgora.current, recado: recadoAgora.current }, { posicoes: d.posicoes, recado: d.recado ?? '' }, d.dia, { ilhas: d.ilhas });
     base.current = { dia: d.dia, posicoes: d.posicoes, recado: d.recado ?? '', versao: d.versao ?? 0 };
     // a linha vazia da tela só fica onde não chegou nada, ou se a pessoa está nela
     const focada = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.demanda : undefined;

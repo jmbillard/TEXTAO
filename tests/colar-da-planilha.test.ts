@@ -198,15 +198,26 @@ describe('lerOColado: as ilhas, pelo número', () => {
     ['AVID 29 - COMUNICAÇÃO', 'i29', '“AVID 29 - COMUNICAÇÃO” lida como AVID 29'],
     ['AVID COMUNICAÇÃO', 'i29', '“AVID COMUNICAÇÃO” lida como AVID 29'],
     ['ILHA 53', 'i53i', ''],
+    // AVID 53 e ILHA 53 repetidas no cadastro são a mesma sala (#165): só o número fica com a primeira
+    ['53', 'i53a', '“53” lida como AVID 53'],
+    ['Ilha 22', 'i22', '“Ilha 22” lida como AVID 22'],
+    ['VDI 05', 'v5', '“VDI 05” lida como VDI 5'],
   ])('"%s"', (ilha, id, nota) => {
     const b = umBloco({ ilha });
     expect(b.ilha.id).toBe(id);
     if (nota) expect(b.notas).toContain(nota);
   });
 
-  it('o número que não está no cadastro, ou que serve para duas, fica sem ilha, com a nota', () => {
+  it('o número que não está no cadastro, ou que serve para duas salas, fica sem ilha, com a nota', () => {
     expect(umBloco({ ilha: 'AVID 99' })).toMatchObject({ ilha: { escrito: 'AVID 99', id: '' }, notas: expect.arrayContaining(['“AVID 99” não está no cadastro das ilhas']) });
-    expect(umBloco({ ilha: '53' })).toMatchObject({ ilha: { id: '' }, notas: expect.arrayContaining(['“53” serve para AVID 53 e ILHA 53: escolha na grade']) });
+    // a VDI 46 é outra ilha, não a AVID 46 (#165)
+    expect(umBloco({ ilha: 'VDI 46' })).toMatchObject({ ilha: { id: '' }, notas: expect.arrayContaining(['“VDI 46” não está no cadastro das ilhas']) });
+    expect(umBloco({ ilha: 'AVID 5' })).toMatchObject({ ilha: { id: '' }, notas: expect.arrayContaining(['“AVID 5” não está no cadastro das ilhas']) });
+    const comVdi53 = { ...CTX, ilhas: [...CTX.ilhas, { id: 'v53', tipo: 'VDI', numero: '53', nome: '' }] };
+    expect(ler(turno('MANHÃ', [{ ilha: 'SALA 53', nome: 'RUI', hora: '8H AS 17H', demandas: [] }]), comVdi53).blocos[0]).toMatchObject({
+      ilha: { id: '' },
+      notas: expect.arrayContaining(['“SALA 53” serve para AVID 53 e VDI 53: escolha na grade']),
+    });
   });
 });
 

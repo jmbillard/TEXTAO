@@ -6,6 +6,7 @@
    o texto, o dia da aba, a leitura e a comparação do dia montado com o que a foto diz, posição por posição. */
 import { aplicarOColado, lerOColado, type ContextoDoColado } from './colarDaPlanilha.ts';
 import { demandaNoPadrao, type IdDoTurno, type PosicaoDaEscala } from './escala.ts';
+import { salaPeloId, type Ilha } from './ilhas.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
 
 /** O formato do pacote que o n8n manda (o campo `formato`); outro número é recusado. */
@@ -148,14 +149,16 @@ function soEm(a: readonly string[], b: readonly string[], chave: (t: string) => 
  * posição por posição. A posição com editor casa pelo editor (sem caixa, acento e pontuação) e pelo turno; sobrando,
  * só pelo editor (aí o turno é a diferença). A vaga casa pelo turno e pela ilha, depois pelo turno; a vaga vazia que
  * sobra (sem demanda nem aviso) não conta. A demanda é comparada no padrão (a grafia não é diferença); o horário, como
- * está (os dois lados já vêm no padrão).
+ * está (os dois lados já vêm no padrão). A ilha é comparada pela sala (#165): com `o.ilhas` (o cadastro), a AVID 46 e a
+ * ILHA 46 repetidas são a mesma.
  * @param o.foraNoPromeiro e o.foraNaPlanilha: quem está fora no dia em cada lado
  */
 export function diferencasDaFoto(
   montado: readonly PosicaoDaEscala[],
   foto: readonly PosicaoDaEscala[],
-  o: { dia: string; foraNoPromeiro?: readonly string[]; foraNaPlanilha?: readonly string[] },
+  o: { dia: string; foraNoPromeiro?: readonly string[]; foraNaPlanilha?: readonly string[]; ilhas?: readonly Ilha[] },
 ): DiferencasDaFoto {
+  const sala = salaPeloId(o.ilhas ?? []);
   const daDemanda = (t: string) => nomeComparavel(demandaNoPadrao(t, o.dia) || t);
   const doEditor = (p: PosicaoDaEscala) => nomeComparavel(p.editor);
   const sobra = [...foto];
@@ -169,14 +172,14 @@ export function diferencasDaFoto(
   };
   casar((m, f) => !!doEditor(m) && doEditor(m) === doEditor(f) && m.turno === f.turno);
   casar((m, f) => !!doEditor(m) && doEditor(m) === doEditor(f));
-  casar((m, f) => !doEditor(m) && !doEditor(f) && m.turno === f.turno && m.ilha === f.ilha);
+  casar((m, f) => !doEditor(m) && !doEditor(f) && m.turno === f.turno && sala(m.ilha) === sala(f.ilha));
   casar((m, f) => !doEditor(m) && !doEditor(f) && m.turno === f.turno);
 
   const comparar = (m: PosicaoDaEscala, f: PosicaoDaEscala) => {
     const campos: DiferencaDaPosicao['campos'] = [];
     const simples = (campo: CampoDaDiferenca, a: string, b: string) => a !== b && campos.push({ campo, promeiro: umValor(a), planilha: umValor(b) });
     simples('turno', m.turno, f.turno);
-    simples('ilha', m.ilha, f.ilha);
+    if (sala(m.ilha) !== sala(f.ilha)) campos.push({ campo: 'ilha', promeiro: umValor(m.ilha), planilha: umValor(f.ilha) });
     simples('horario', m.horario, f.horario);
     const listas = (campo: CampoDaDiferenca, a: string[], b: string[], chave: (t: string) => string) => {
       const promeiro = soEm(a, b, chave);

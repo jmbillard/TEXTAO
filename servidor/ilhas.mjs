@@ -2,10 +2,15 @@
    novo, e no Teable isso pediria uma tabela nova na base PROMeiro. Quem usa as ilhas é só a montagem da pauta, que
    também fica no SQLite; o histórico das posições (escala_posicoes) guarda o id da ilha, e é dele que sai a ilha de
    costume de cada editor.
-   - ilhas: o id, o tipo (em maiúsculas), o número (como escrito) e o nome opcional; tipo e número não se repetem.
+   - ilhas: o id, o tipo (em maiúsculas), o número (como escrito) e o nome opcional; a sala não se repete (#165:
+     "AVID 46", "ILHA 46" e "46" são a mesma, pela regra de src/modelo/ilhas.ts).
+   - ilhas_juntadas: as repetidas de antes da regra que um administrador juntou (o id que saiu → o que ficou, quem e
+     quando). Juntar passa as posições da que saiu para a que ficou (também as das publicações, para o dia publicado
+     continuar publicado) e tira a que saiu do cadastro; o id que saiu
+     continua valendo pela que ficou (no que já foi ao Teams e na tela aberta antes de juntar).
    O SQL é portável (vale também no Postgres): sem INSERT OR REPLACE. */
 import { randomUUID } from 'node:crypto';
-import { emOrdem, ilhasDeCostume } from '../src/modelo/ilhas.ts';
+import { emOrdem, ilhasDeCostume, rotuloDaIlha, salaDe, salaPeloId } from '../src/modelo/ilhas.ts';
 
 /** Quanto do histórico conta para a ilha de costume: as oito semanas antes do dia. */
 const DIAS_DO_COSTUME = 56;
@@ -39,25 +44,83 @@ export function criarIlhas(db) {
       em TEXT NOT NULL,
       UNIQUE (tipo, numero)
     );
+    CREATE TABLE IF NOT EXISTS ilhas_juntadas (
+      id TEXT PRIMARY KEY,
+      fica TEXT NOT NULL,
+      por TEXT,
+      em TEXT NOT NULL
+    );
   `);
   const q = {
     todas: db.prepare('SELECT id, tipo, numero, nome FROM ilhas'),
     uma: db.prepare('SELECT id, tipo, numero, nome FROM ilhas WHERE id = ?'),
-    mesma: db.prepare('SELECT id FROM ilhas WHERE tipo = ? AND numero = ?'),
     criar: db.prepare('INSERT INTO ilhas (id, tipo, numero, nome, por, em) VALUES (?, ?, ?, ?, ?, ?)'),
     mudar: db.prepare('UPDATE ilhas SET tipo = ?, numero = ?, nome = ?, por = ?, em = ? WHERE id = ?'),
     remover: db.prepare('DELETE FROM ilhas WHERE id = ?'),
     historico: db.prepare("SELECT dia, editor, ilha FROM escala_posicoes WHERE dia >= ? AND dia < ? AND ilha <> ''"),
+    usos: db.prepare("SELECT ilha, COUNT(*) AS n FROM escala_posicoes WHERE ilha <> '' GROUP BY ilha"),
+    juntadas: db.prepare('SELECT id, fica FROM ilhas_juntadas'),
+    passarPosicoes: db.prepare('UPDATE escala_posicoes SET ilha = ? WHERE ilha = ?'),
+    passarJuntadas: db.prepare('UPDATE ilhas_juntadas SET fica = ? WHERE fica = ?'),
+    juntar: db.prepare('INSERT INTO ilhas_juntadas (id, fica, por, em) VALUES (?, ?, ?, ?)'),
+    publicacoes: db.prepare('SELECT id, posicoes FROM escala_publicacoes WHERE posicoes LIKE ?'),
+    passarPublicacao: db.prepare('UPDATE escala_publicacoes SET posicoes = ? WHERE id = ?'),
   };
+  /** As publicações com a ilha que sai, com ela trocada pela que fica (só o campo ilha das posições). */
+  const passarPublicacoes = (fica, sai) => {
+    for (const l of q.publicacoes.all(`%${JSON.stringify(sai)}%`)) {
+      const posicoes = JSON.parse(l.posicoes);
+      if (!Array.isArray(posicoes) || !posicoes.some((p) => p?.ilha === sai)) continue;
+      q.passarPublicacao.run(JSON.stringify(posicoes.map((p) => (p?.ilha === sai ? { ...p, ilha: fica } : p))), l.id);
+    }
+  };
+  const lista = () => q.todas.all().map((l) => ({ id: l.id, tipo: l.tipo, numero: l.numero, nome: l.nome }));
+  /** A mesma sala já no cadastro (#165): a ILHA 46 quando já existe a AVID 46. */
   const repetida = (i, id = '') => {
-    const outra = q.mesma.get(i.tipo, i.numero);
-    if (outra && outra.id !== id) throw erro(`Já existe a ${i.tipo} ${i.numero}.`, 409);
+    const outra = lista().find((x) => x.id !== id && salaDe(x) === salaDe(i));
+    if (!outra) return;
+    const igual = rotuloDaIlha(outra) === rotuloDaIlha(i);
+    throw erro(igual ? `Já existe a ${rotuloDaIlha(i)}.` : `Já existe a ${rotuloDaIlha(outra)}: ${rotuloDaIlha(i)} é a mesma sala.`, 409);
   };
+  const juntadas = () => Object.fromEntries(q.juntadas.all().map((l) => [l.id, l.fica]));
   const agora = () => new Date().toISOString();
 
   return {
     /** As ilhas, em ordem (pelo tipo e pelo número). */
-    todas: () => emOrdem(q.todas.all().map((l) => ({ id: l.id, tipo: l.tipo, numero: l.numero, nome: l.nome }))),
+    todas: () => emOrdem(lista()),
+    /** As juntadas: o id que saiu → o que ficou. */
+    juntadas,
+    /** A sala pelo id (a regra de src/modelo/ilhas.ts), com as juntadas: para comparar as posições. */
+    sala: () => salaPeloId(lista(), juntadas()),
+    /** O id que vale: o da que ficou, para o id juntado; os outros, como vieram. */
+    queFicou: (id) => juntadas()[id] ?? id,
+    /** Quantas posições (de todos os dias) estão em cada ilha. */
+    usos: () => Object.fromEntries(q.usos.all().map((l) => [l.ilha, Number(l.n)])),
+    /**
+     * Junta a repetida na que fica (#165), só com a conferência de quem pede (a tela mostra as duas e quantas posições
+     * passam): as posições da que sai (as do rascunho e as das publicações) passam para a que fica, e a que sai sai do
+     * cadastro. Lança 404 a que não existe
+     * e 400 as que não são a mesma sala. Devolve quantas posições passaram.
+     */
+    juntar(fica, sai, por) {
+      const a = q.uma.get(fica);
+      const b = q.uma.get(sai);
+      if (!a || !b) throw erro('Essa ilha não está no cadastro.', 404);
+      if (fica === sai || salaDe(a) !== salaDe(b)) throw erro(`${rotuloDaIlha(a)} e ${rotuloDaIlha(b)} não são a mesma sala.`);
+      db.exec('BEGIN');
+      try {
+        const { changes } = q.passarPosicoes.run(fica, sai);
+        passarPublicacoes(fica, sai);
+        q.passarJuntadas.run(fica, sai);
+        q.juntar.run(sai, fica, por, agora());
+        q.remover.run(sai);
+        db.exec('COMMIT');
+        return { posicoes: Number(changes) };
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    },
     /** Cadastra (lança 400 o pedido errado, 409 a ilha que já existe). */
     criar(corpo, por) {
       const i = ilhaDoPedido(corpo);
@@ -82,7 +145,7 @@ export function criarIlhas(db) {
     /** A ilha de costume de cada editor no dia: a que mais se repete nas posições das oito semanas antes dele. */
     deCostume(dia) {
       const valem = new Set(q.todas.all().map((l) => l.id));
-      return ilhasDeCostume(q.historico.all(diaAntes(dia, DIAS_DO_COSTUME), dia), valem);
+      return ilhasDeCostume(q.historico.all(diaAntes(dia, DIAS_DO_COSTUME), dia), valem, salaPeloId(lista(), juntadas()));
     },
   };
 }
