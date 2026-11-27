@@ -86,6 +86,22 @@ function diferencasDeLinhas(antigo: string, novo: string): Trecho[] {
   ]);
 }
 
+/** Um pedaço de uma das folhas da comparação: o texto como está naquela folha, e se ele é diferença (o que saiu, na
+    anterior; o que entrou, na nova). */
+export type PedacoDaFolha = { tipo: Trecho['tipo']; texto: string; marcado: boolean };
+
+/** Os trechos da comparação repartidos pelas duas folhas: a anterior com o texto de lá e o que saiu marcado; a nova
+    com o que entrou marcado. */
+export function textoDeCadaLado(trechos: Trecho[]): { anterior: PedacoDaFolha[]; nova: PedacoDaFolha[] } {
+  const anterior: PedacoDaFolha[] = [];
+  const nova: PedacoDaFolha[] = [];
+  for (const t of trechos) {
+    if (t.tipo !== 'entrou') anterior.push({ tipo: t.tipo, texto: t.tipo === 'igual' ? (t.antigo ?? t.texto) : t.texto, marcado: t.tipo === 'saiu' });
+    if (t.tipo !== 'saiu') nova.push({ tipo: t.tipo, texto: t.texto, marcado: t.tipo === 'entrou' });
+  }
+  return { anterior, nova };
+}
+
 /** Quanto do texto ficou igual, de 0 a 1 (sobre o maior dos dois). */
 export function semelhanca(trechos: Trecho[]): number {
   const conta = (tipo: Trecho['tipo']) => trechos.filter((t) => t.tipo === tipo).reduce((n, t) => n + t.texto.trim().split(/\s+/).filter(Boolean).length, 0);

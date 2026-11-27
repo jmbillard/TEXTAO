@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, pdfDoRoteiro, roteiroDa, versaoNova } from '../dados/armazenamento';
 import { casoDaLeitura, LinkQuebrado, type CasoQuebrado } from './LinkQuebrado';
-import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, type ArteComparada } from '../modelo/diferencas';
+import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, textoDeCadaLado, type ArteComparada, type PedacoDaFolha } from '../modelo/diferencas';
 import { exportar, pendencias } from '../modelo/exportar';
 import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
 import { Icone } from './icones';
@@ -58,6 +58,8 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
   const [anterior, setAnterior] = useState<Roteiro | null | undefined>(undefined);
   const [decidindo, setDecidindo] = useState(false);
   const [escolha, setEscolha] = useState<Resposta | null>(null);
+  // versão nova da fila: as duas folhas com o texto e as diferenças marcadas; os originais, a um toque
+  const [vista, setVista] = useState<'texto' | 'original'>('texto');
 
   // por cima da fila: a página de trás não rola, e Esc fecha
   useEffect(() => {
@@ -107,7 +109,7 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
     const sairam = artes.antigas.filter((a) => a.tipo === 'saiu').length;
     const igual = semelhanca(texto);
     const outroRedator = !mesmaPessoa(ladoDeLa.redator, roteiro.meta.redator);
-    return { texto, artes, novas, sairam, igual, outroRedator, mesmo: igual === 1 && !novas && !sairam };
+    return { texto, folhas: textoDeCadaLado(texto), artes, novas, sairam, igual, outroRedator, mesmo: igual === 1 && !novas && !sairam };
   }, [roteiro, ladoDeLa]);
 
   // as duas folhas: o PDF que está no card (ou o da versão anterior) e o do roteiro novo, como vai para o Trello
@@ -183,6 +185,12 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
             <div className="comparar-cabeca">
             <div>
             <h1>{daFila ? 'Versão nova do roteiro' : 'É o mesmo roteiro?'}</h1>
+            {daFila && (
+              <div className="segmento comparar-vista" role="radiogroup" aria-label="Ver os roteiros">
+                <button role="radio" aria-checked={vista === 'texto'} title="O texto dos dois, com as diferenças marcadas" onClick={() => setVista('texto')}>Diferenças</button>
+                <button role="radio" aria-checked={vista === 'original'} title="Os dois como chegaram" onClick={() => setVista('original')}>Originais</button>
+              </div>
+            )}
             </div>
             <div className="comparar-decisao">
               {/* o seletor muda o que o botão faz: a revisão segue como se a claquete não fosse repetida */}
@@ -212,7 +220,7 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
                   rotulo="versão anterior"
                   gente={anterior && <Gente redator={anterior.meta.redator} />}
                   artes={comparacao?.artes.antigas}
-                  folha={anterior && <FolhaDoRoteiro r={anterior} pdf={pdfAntigo} rotulo="Versão anterior" anotacao="anterior" />}
+                  folha={anterior && (vista === 'texto' && comparacao ? <FolhaComDiferencas pedacos={comparacao.folhas.anterior} rotulo="Versão anterior" anotacao="anterior" /> : <FolhaDoRoteiro r={anterior} pdf={pdfAntigo} rotulo="Versão anterior" anotacao="anterior" />)}
                 />
               ) : (
               <Lado
@@ -244,7 +252,13 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
                 rotulo="chegou agora"
                 gente={<Gente redator={roteiro.meta.redator} destacar={!!comparacao?.outroRedator} />}
                 artes={comparacao?.artes.novas ?? exportar(roteiro).artes.map((a) => ({ texto: a.texto, tipo: 'igual' as const }))}
-                folha={<FolhaDoRoteiro r={roteiro} pdf={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" />}
+                folha={
+                  daFila && vista === 'texto' && comparacao ? (
+                    <FolhaComDiferencas pedacos={comparacao.folhas.nova} rotulo="Roteiro novo" anotacao="novo" lado="direita" />
+                  ) : (
+                    <FolhaDoRoteiro r={roteiro} pdf={pdfNovo} rotulo="Roteiro novo" anotacao="novo" lado="direita" />
+                  )
+                }
               />
             </div>
 
@@ -270,6 +284,25 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
           )}
         </footer>
       )}
+    </div>
+  );
+}
+
+/** A folha com o texto de um dos lados e as diferenças marcadas: na anterior, o que saiu; na nova, o que entrou. */
+function FolhaComDiferencas({ pedacos, rotulo, anotacao, lado = 'esquerda' }: { pedacos: PedacoDaFolha[]; rotulo: string; anotacao: string; lado?: 'esquerda' | 'direita' }) {
+  return (
+    <div className="comparar-folha-texto" aria-label={rotulo}>
+      <span className={`anotacao-folha ${lado} ${lado === 'direita' ? 'circulada' : ''}`}>
+        {anotacao}
+        {lado === 'direita' && (
+          <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M50 9 C 30 2, 6 9, 6 23 C 6 37, 30 42, 46 38 C 62 33, 62 12, 44 7 C 34 4, 22 5, 15 9" />
+          </svg>
+        )}
+      </span>
+      <div className="comparar-texto">
+        {pedacos.map((p, i) => (p.marcado ? <mark key={i} className={p.tipo}>{p.texto}</mark> : <span key={i}>{p.texto}</span>))}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diferencasDeArtes, diferencasDeTexto, semelhanca } from '../src/modelo/diferencas';
+import { diferencasDeArtes, diferencasDeTexto, semelhanca, textoDeCadaLado } from '../src/modelo/diferencas';
 
 describe('comparar dois roteiros', () => {
   it('marca o que saiu e o que entrou, frase inteira, ignorando acento, caixa e pontuação', () => {
@@ -24,6 +24,26 @@ describe('comparar dois roteiros', () => {
     const d = diferencasDeArtes(['A GRANDE FESTA', 'SÁBADO'], ['A Grande Festa', 'DOMINGO']);
     expect(d.antigas).toEqual([{ texto: 'A GRANDE FESTA', tipo: 'igual' }, { texto: 'SÁBADO', tipo: 'saiu' }]);
     expect(d.novas).toEqual([{ texto: 'A Grande Festa', tipo: 'igual' }, { texto: 'DOMINGO', tipo: 'entrou' }]);
+  });
+});
+
+describe('as duas folhas da comparação (#49)', () => {
+  const antigo = 'As locs ficam em: ACERVO\\LOCUCOES\\FESTA NA VILA - NAO APAGAR\nRESUMO DO CAP 7';
+  const novo = 'As locs ficam em: ACERVO\\LOCUCOES\\FESTA NA VILA NOVA - NAO APAGAR\nRESUMO DO CAP 7';
+
+  it('o trecho que entrou vem marcado na folha nova, e a anterior fica como estava', () => {
+    const { anterior, nova } = textoDeCadaLado(diferencasDeTexto(antigo, novo));
+    expect(nova.filter((t) => t.marcado).map((t) => t.texto.trim())).toEqual(['NOVA']);
+    expect(anterior.filter((t) => t.marcado)).toEqual([]);
+    expect(nova.map((t) => t.texto).join('')).toBe(`${novo} `);
+    expect(anterior.map((t) => t.texto).join('')).toBe(`${antigo} `);
+  });
+
+  it('o que saiu vem marcado só na folha anterior, com o texto de lá', () => {
+    const { anterior, nova } = textoDeCadaLado(diferencasDeTexto('SÁBADO, LOGO APÓS A NOVELA', 'Domingo, logo após a novela'));
+    expect(anterior.filter((t) => t.marcado).map((t) => [t.tipo, t.texto.trim()])).toEqual([['saiu', 'SÁBADO,']]);
+    expect(nova.filter((t) => t.marcado).map((t) => [t.tipo, t.texto.trim()])).toEqual([['entrou', 'Domingo,']]);
+    expect(anterior.map((t) => t.texto).join('').trim()).toBe('SÁBADO, LOGO APÓS A NOVELA');
   });
 });
 
