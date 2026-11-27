@@ -194,7 +194,7 @@ export const CONVITES = [
   'Vamos revisar o que vem aí?',
 ];
 
-function TituloQueSeEscreve({ frases }: { frases: string[] }) {
+export function TituloQueSeEscreve({ frases }: { frases: string[] }) {
   const [i, setI] = useState(() => Math.floor(Math.random() * frases.length));
   const [n, setN] = useState(0);
   const [apagando, setApagando] = useState(false);

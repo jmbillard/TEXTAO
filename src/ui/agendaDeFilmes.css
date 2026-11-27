@@ -1,0 +1,158 @@
+/* A aba Filmes (#169): a área de soltar a prévia, no padrão do convite da fila, e a agenda de filmes com os pôsteres, no
+   padrão da agenda No Trello (as colunas, o card de borda fina e o hover só da borda). Nada de faixa na borda esquerda:
+   o estado vai na bolinha, na etiqueta ou no fundo tingido. */
+
+/* ---------- a área de soltar (o convite da fila, .fila-vazia) ---------- */
+.convite-previa { position: relative; padding: 40px 20px 34px; gap: 8px; background: var(--papel); transition: border-color 0.2s, background-color 0.2s, transform 0.28s var(--suave), box-shadow 0.28s var(--suave); }
+.convite-previa h2 { font-size: 30px; min-height: 1.15em; }
+.convite-previa .fila-vazia-icone { transition: transform 0.35s var(--suave), background-color 0.2s; }
+.convite-previa:hover .fila-vazia-icone { transform: translateY(-2px); }
+/* a borda que marcha, por cima da tracejada do cartão de soltar (o mesmo da fila) */
+.soltar-formiga { position: absolute; inset: -2px; width: calc(100% + 4px); height: calc(100% + 4px); pointer-events: none; overflow: visible; }
+.soltar-formiga rect { width: calc(100% - 2px); height: calc(100% - 2px); fill: none; stroke: var(--ultra); stroke-width: 2; stroke-dasharray: 8 7; animation: marchar 0.7s linear infinite; }
+@keyframes marchar { to { stroke-dashoffset: -15; } }
+.soltar.da-previa .soltar-cartao { position: relative; border-color: transparent; gap: 8px; }
+.soltar.da-previa .fila-vazia-icone { background: var(--ultra); color: var(--papel); animation: chamar-icone 1.1s var(--suave) infinite; }
+@keyframes chamar-icone { 0%, 100% { transform: translateY(0) rotate(0); } 40% { transform: translateY(-5px) rotate(-5deg); } 70% { transform: translateY(1px) rotate(3deg); } }
+.convite-previa.subindo { cursor: progress; }
+.convite-previa.subindo .fila-vazia-icone svg { animation: subir-icone 1.2s var(--suave) infinite; }
+@keyframes subir-icone { 0% { transform: translateY(6px); opacity: 0; } 40% { transform: none; opacity: 1; } 100% { transform: translateY(-6px); opacity: 0; } }
+.convite-previa-progresso { width: min(320px, 80%); height: 4px; border-radius: 4px; background: var(--neutro); overflow: hidden; }
+.convite-previa-progresso i { display: block; height: 100%; border-radius: inherit; background: var(--ultra); transition: width 0.3s var(--suave); }
+/* a camada de soltar da janela, a mesma da fila, para a prévia */
+.soltar.da-previa .soltar-cartao { animation: pousar-cartao 0.32s var(--suave); }
+@keyframes pousar-cartao { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
+
+/* ---------- a agenda de filmes ---------- */
+/* no computador, a agenda se abre além da coluna das prévias, até a largura da agenda No Trello */
+@media (min-width: 601px) {
+  .filmes-inicio { grid-template-columns: minmax(0, 1fr); }
+  .filmes-inicio > .agenda-filmes { margin-inline: calc((100% - min(1616px, 100vw - 64px)) / 2); }
+}
+.agenda-filmes { margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--regua); min-width: 0; }
+.agenda-filmes-topo { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 16px; }
+.agenda-filmes-topo h2 { margin: 0; font: 400 30px/1.1 var(--serifa); letter-spacing: -0.01em; display: inline-flex; align-items: baseline; gap: 10px; }
+.agenda-filmes-topo h2 svg { align-self: center; color: var(--tinta3); }
+.agenda-filmes-topo .linha-criterio { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; }
+.agenda-filmes-conta { color: var(--tinta3); font-size: 13.5px; }
+.agenda-filmes-falha { color: var(--tinta2); font-size: 14px; }
+.agenda-filmes-nada { padding: 12px 6px; }
+
+/* por data: os dias em colunas, como a agenda; a faixa corre para o lado (a página não) */
+.filmes-dias { display: grid; grid-auto-flow: column; grid-auto-columns: 188px; gap: 8px; align-items: start; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding-bottom: 12px; scrollbar-width: thin; }
+.filmes-dias .coluna { scroll-snap-align: start; }
+.filmes-dias .coluna-corpo { min-height: 260px; gap: 7px; }
+
+/* por sessão: uma faixa por sessão, os pôsteres lado a lado */
+.filmes-sessoes { display: flex; flex-direction: column; gap: 18px; }
+.faixa-sessao h3 { margin: 0 0 8px 6px; display: flex; align-items: baseline; gap: 8px; font: 400 21px/1.2 var(--serifa); color: var(--tinta); }
+.faixa-sessao-conta { font: 600 17px/1 Caveat, cursive; color: var(--tinta3); }
+.faixa-sessao ul { list-style: none; margin: 0; padding: 8px; display: grid; grid-auto-flow: column; grid-auto-columns: 158px; gap: 7px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; border-radius: 14px; background: color-mix(in srgb, var(--tinta) 3.5%, var(--mesa)); scrollbar-width: thin; }
+.faixa-sessao li { scroll-snap-align: start; }
+
+/* o pôster: o card fechado da agenda (borda fina, sem sombra; o hover só acende a borda) */
+.poster-filme { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 6px 6px 9px; border-radius: 10px; background: var(--papel); border: 1px solid var(--regua); cursor: pointer; transition: border-color 0.2s, background-color 0.2s; animation: chegar-poster 0.46s var(--suave) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.poster-filme:hover { border-color: var(--regua-forte); }
+@keyframes chegar-poster { from { opacity: 0; transform: translateY(12px) scale(0.97); } }
+.poster-filme-capa { position: relative; display: block; width: 100%; aspect-ratio: 2 / 3; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: var(--neutro); cursor: pointer; }
+.poster-filme-capa:focus-visible { outline: 2px solid var(--ultra); outline-offset: 2px; }
+.poster-filme-capa img, .ficha-filme-capa img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.35s var(--suave); }
+.poster-filme-capa img.carregou, .ficha-filme-capa img.carregou { opacity: 1; }
+.poster-filme-titulo { margin: 6px 3px 0; font: 600 13px/1.25 var(--sans); color: var(--tinta); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.poster-filme-linha { margin: 0 3px; display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; color: var(--tinta3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.poster-filme-rel { font: 600 15px/1 Caveat, cursive; color: var(--ultra); }
+
+/* sem pôster: o título sobre o papel tingido, com a cara de capa (nunca a imagem quebrada) */
+.capa-sem-poster { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; padding: 12px 10px; text-align: left; color: var(--tinta2); background: linear-gradient(160deg, color-mix(in srgb, var(--ultra) 9%, var(--cartao)), color-mix(in srgb, var(--tinta) 6%, var(--cartao))); }
+.capa-sem-poster svg { position: absolute; left: 10px; top: 10px; color: var(--tinta3); }
+.capa-sem-poster-titulo { font: 400 17px/1.15 var(--serifa); color: var(--tinta); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.capa-sem-poster-ano { font: 600 16px/1 Caveat, cursive; color: var(--tinta3); }
+.capa-sem-poster.grande { padding: 18px 16px; }
+.capa-sem-poster.grande .capa-sem-poster-titulo { font-size: 24px; }
+.capa-sem-poster.grande svg { left: 16px; top: 16px; }
+
+.etiqueta-inedito { display: inline-block; border-radius: 999px; padding: 0 7px; font: 600 11px/17px var(--sans); background: var(--ultra-suave); color: var(--ultra-tinta); }
+.poster-filme-capa .etiqueta-inedito { position: absolute; left: 6px; top: 6px; box-shadow: 0 1px 4px rgb(0 0 0 / 18%); }
+
+/* enquanto a agenda chega: as capas vazias pulsando */
+.agenda-filmes-esperando { display: grid; grid-auto-flow: column; grid-auto-columns: 158px; gap: 8px; overflow: hidden; }
+.poster-esperando { aspect-ratio: 2 / 3; border-radius: 10px; background: color-mix(in srgb, var(--tinta) 5%, var(--mesa)); animation: esperar-poster 1.4s ease-in-out infinite; animation-delay: calc(var(--i) * 90ms); }
+@keyframes esperar-poster { 50% { opacity: 0.45; } }
+
+/* ---------- o card aberto do filme (dentro do CardAberto) ---------- */
+.ficha-filme { display: flex; flex-direction: column; }
+.ficha-filme .rotulo { font: 600 11px var(--sans); letter-spacing: 0.13em; text-transform: uppercase; color: var(--tinta3); }
+.ficha-filme-corpo { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 22px; margin-top: 14px; }
+.ficha-filme-capa { position: relative; align-self: start; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: var(--neutro); box-shadow: 0 1px 2px rgb(26 25 22 / 8%), 0 8px 22px rgb(26 25 22 / 12%); }
+.ficha-filme h2 { margin: 0 0 4px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; font: 400 30px/1.15 var(--serifa); letter-spacing: -0.01em; color: var(--tinta); overflow-wrap: anywhere; }
+.ficha-filme-ano { font: 600 22px/1 Caveat, cursive; color: var(--tinta3); }
+.ficha-filme-pasta { margin: 0; font: 500 12.5px var(--mono); color: var(--tinta3); }
+.ficha-filme h3 { margin: 20px 0 8px; font: 600 11px var(--sans); letter-spacing: 0.13em; text-transform: uppercase; color: var(--tinta3); }
+.ficha-filme-exibicoes { list-style: none; margin: 0; padding: 0; border-radius: 12px; background: var(--cartao); box-shadow: 0 0 0 1px var(--regua); overflow: hidden; }
+.ficha-filme-exibicoes li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 12px; padding: 10px 14px; border-bottom: 1px solid var(--regua); font-size: 13.5px; }
+.ficha-filme-exibicoes li:last-child { border-bottom: 0; }
+.ficha-filme-exibicoes li.esta { background: color-mix(in srgb, var(--ultra-suave) 50%, transparent); }
+.ficha-filme-exibicoes li.passou { color: var(--tinta3); }
+.ficha-filme-exibicoes li.passou b { color: var(--tinta3); }
+.ficha-filme-quando b { font-weight: 600; color: var(--tinta); }
+.ficha-filme-rel { margin-left: 8px; font: 600 16px/1 Caveat, cursive; color: var(--ultra); }
+.ficha-filme-sessao { display: inline-flex; align-items: center; gap: 8px; justify-self: end; text-align: right; color: var(--tinta2); }
+.ficha-filme-producao { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--tinta3); }
+.ficha-filme-producao i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--tinta3); }
+.ficha-filme-producao b { font-weight: 600; color: var(--tinta2); }
+.ficha-filme-producao[data-etapa='entrada'] i { background: var(--falta); }
+.ficha-filme-producao[data-etapa='produzindo'] i { background: var(--ultra); }
+.ficha-filme-producao[data-etapa='produzindo'] b { color: var(--ultra-tinta); }
+.ficha-filme-producao[data-etapa='entregue'] i { background: var(--ok); }
+.ficha-filme-producao[data-etapa='entregue'] b { color: var(--ok); }
+.ficha-filme-producao[data-etapa='card'] i, .ficha-filme-producao[data-etapa='sem-card'] i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tinta3); }
+.ficha-filme-trello { margin-left: auto; color: var(--ultra); font-weight: 600; text-decoration: none; }
+.ficha-filme-trello:hover { text-decoration: underline; }
+.ficha-filme-pastas { display: flex; flex-direction: column; gap: 8px; }
+.ficha-filme-caminho { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; border-radius: 12px; background: var(--cartao); box-shadow: 0 0 0 1px var(--regua); }
+.ficha-filme-caminho-rotulo { font: 600 11px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); }
+.ficha-filme-caminho code { min-width: 0; font: 500 12.5px/1.4 var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
+.ficha-filme-vazio { font-size: 13px; color: var(--tinta3); }
+.ficha-filme-copiar { height: 32px; padding: 0 11px; border-radius: 9px; gap: 6px; font-size: 12.5px; white-space: nowrap; transition: background-color 0.15s, color 0.15s, border-color 0.15s; }
+.ficha-filme-copiar.copiado { color: var(--ultra); border-color: color-mix(in srgb, var(--ultra) 40%, var(--regua)); background: color-mix(in srgb, var(--ultra-suave) 60%, transparent); }
+.ficha-filme-copiar-texto { display: inline-block; animation: trocar-texto 0.22s var(--suave); }
+@keyframes trocar-texto { from { opacity: 0; transform: translateY(3px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .poster-filme, .poster-esperando, .ficha-filme-copiar-texto, .soltar.da-previa .soltar-cartao, .soltar.da-previa .fila-vazia-icone, .soltar-formiga rect, .convite-previa.subindo .fila-vazia-icone svg { animation: none !important; }
+  .convite-previa .fila-vazia-icone { transition: none; }
+  .poster-filme-capa img, .ficha-filme-capa img { transition: none; }
+}
+
+/* ---------- no celular ---------- */
+@media (max-width: 600px) {
+  .convite-previa { padding: 28px 16px 24px; }
+  .convite-previa h2 { font-size: 24px; }
+  .agenda-filmes { margin-top: 22px; padding-top: 20px; }
+  .agenda-filmes-topo h2 { font-size: 26px; }
+  .filmes-dias { grid-auto-columns: 152px; margin: 0 -16px; padding: 0 16px 12px; scroll-padding: 0 16px; }
+  .faixa-sessao ul { grid-auto-columns: 132px; }
+  .ficha-filme h2 { font-size: 24px; }
+  .ficha-filme-exibicoes li { grid-template-columns: minmax(0, 1fr); }
+  .ficha-filme-sessao { justify-self: start; text-align: left; }
+  .ficha-filme-caminho { grid-template-columns: minmax(0, 1fr) auto; }
+  .ficha-filme-caminho-rotulo { grid-column: 1 / -1; }
+  .ficha-filme-copiar { height: 44px; }
+}
+/* no celular, a capa pequena ao lado do título; as exibições embaixo, na largura toda */
+@media (max-width: 600px) {
+  .ficha-filme-corpo { grid-template-columns: 104px minmax(0, 1fr); grid-template-areas: 'capa titulo' 'capa pasta' 'rotulo rotulo' 'lista lista'; gap: 0 14px; }
+  .ficha-filme-dados { display: contents; }
+  .ficha-filme-capa { grid-area: capa; }
+  .ficha-filme-dados h2 { grid-area: titulo; align-self: end; }
+  .ficha-filme-pasta { grid-area: pasta; align-self: start; }
+  .ficha-filme-dados h3 { grid-area: rotulo; }
+  .ficha-filme-exibicoes { grid-area: lista; }
+}
+
+/* no celular, a agenda vem depois da entrada das prévias (FilmesCelular), com as mesmas margens */
+.filmes-no-celular > .agenda-filmes { margin: 6px max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 600px) {
+  /* os alvos de toque do celular: 44px */
+  .agenda-filmes .abas-criterio button { min-height: 44px; min-width: 44px; }
+}

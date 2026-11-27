@@ -52,6 +52,7 @@ const mais = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_00
 const segunda = mais(hoje, -((new Date(`${hoje}T12:00:00Z`).getUTCDay() + 6) % 7));
 const anterior = mais(segunda, -7);
 const proxima = mais(segunda, 7);
+const diasDe = (seg) => Array.from({ length: 7 }, (_, i) => mais(seg, i));
 const diaMes = (iso) => `${Number(iso.slice(8))}/${Number(iso.slice(5, 7))}`;
 const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -88,6 +89,21 @@ PAUTA.push(linha('Reunião geral às 10h na ilha 4', null, hoje, ['08:00', '17:0
 // a mesma atração em outra praça e com versão (#96): a ficha junta as duas linhas
 PAUTA.push(linha(`Show da Tarde ${diaMes(hoje)} SP (H)`, 'Ana Ribeiro', hoje, ['06:00', '15:00']));
 PAUTA.push(linha(`Esporte Antigo ${diaMes(mais(anterior, 3))}`, 'Ana Ribeiro', mais(anterior, 2), ['06:00', '15:00']));
+
+/* A semana daqui a duas, na forma da pauta real que quebrou a Semana no Safari (#172), com nomes inventados: só de
+   segunda a sexta (o fim de semana sem ninguém), muitos editores na manhã, o nome em caixa alta com "(sem ID)*" como
+   vem do Teable, as tarefas, as instruções e o aviso com a caixinha. */
+const DEPOIS = mais(segunda, 14);
+const DA_FORMA_REAL = ['Rita Fontes', 'Otto Lemos', 'Vera Campos', 'Igor Matos', 'PEDRO SALES (sem ID)*', 'Nina Prado'];
+for (let i = 0; i < 5; i++) {
+  const d = mais(DEPOIS, i);
+  DA_FORMA_REAL.forEach((editor, j) => {
+    const turno = j < 4 ? ['06:00', '15:00'] : j === 4 ? ['14:00', '20:00'] : ['22:00', '06:00'];
+    PAUTA.push(linha(j === 4 ? 'COMUNICAÇÃO' : `Atração ${j + 1}(Prologo)${diaMes(mais(d, 1))} (AH)`, editor, d, turno));
+    if (j === 1) PAUTA.push(linha('TRANSFORMAR DA A B', editor, d, turno));
+    if (j === 2) PAUTA.push(linha('VEM PRONTA', editor, d, turno, true));
+  });
+}
 
 /** A produção da arte (fictícia) do Show da Tarde de hoje: a G5 entregue, com prioridade ALTA, e a de SP produzindo. */
 const ARTE = [
@@ -429,6 +445,95 @@ async function naTelaPequena(navegador, url, aparelho, rotulo, tema) {
   assert.deepEqual(erros, [], `${nome}: erros na página`);
   await ctx.close();
   console.log(`ok: ${nome}: a grade rola para o lado com os nomes fixos, abre em hoje, o toque abre o aviso e a ficha${rotulo === 'celular' ? ' na tela toda' : ''}`);
+}
+
+/**
+ * Emula o Safari (WebKit) na grade (#172): lá, a largura em calc() com % de uma célula de tabela conta como porcentagem
+ * no tamanho intrínseco da tabela, e com min-width: max-content a grade ia ao limite do navegador. Troca, nas regras das
+ * células da grade, o calc() com % pela porcentagem dele; devolve as regras trocadas (nenhuma, com a grade em medidas
+ * fixas).
+ */
+const comoNoSafari = (p) =>
+  p.evaluate(() => {
+    const trocadas = [];
+    const varrer = (regras) => {
+      for (const r of regras) {
+        if (r.cssRules) varrer(r.cssRules);
+        if (!r.style || !/pauta-(grade|dia|celula|canto|editor)/.test(r.selectorText || '')) continue;
+        for (const prop of ['width', 'min-width']) {
+          const v = r.style.getPropertyValue(prop);
+          const pct = /calc\(.*?([\d.]+)%/.exec(v);
+          if (!pct) continue;
+          const divide = /\/\s*([\d.]+)\s*\)?\s*$/.exec(v);
+          r.style.setProperty(prop, `${Number(pct[1]) / (divide ? Number(divide[1]) : 1)}%`);
+          trocadas.push(`${r.selectorText} { ${prop}: ${v} }`);
+        }
+      }
+    };
+    for (const f of document.styleSheets) varrer(f.cssRules);
+    return trocadas;
+  });
+/** O que a Semana mostra na tela: as datas das colunas à vista, os nomes à vista e a largura da grade e de cada dia. */
+const semanaAVista = (p) =>
+  p.evaluate(() => {
+    const caixa = document.querySelector('.pauta-rolagem').getBoundingClientRect();
+    const dentro = (e) => {
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.left >= caixa.left - 1 && r.right <= caixa.right + 1;
+    };
+    return {
+      dias: [...document.querySelectorAll('th.pauta-dia')].filter(dentro).map((t) => t.dataset.dia),
+      nomes: [...document.querySelectorAll('th.pauta-editor .pauta-nome')].filter((e) => dentro(e) && e.textContent.trim()).map((e) => e.textContent.trim()),
+      grade: Math.round(document.querySelector('.pauta-grade').getBoundingClientRect().width),
+      maiorDia: Math.round(Math.max(...[...document.querySelectorAll('th.pauta-dia')].map((t) => t.getBoundingClientRect().width))),
+    };
+  });
+
+/**
+ * A Semana no Safari (#172): com a regra do WebKit emulada, a grade continua com os 7 dias e o nome de cada editor à
+ * vista, na semana de hoje (a rolagem até hoje) e numa semana na forma da pauta real (o fim de semana vazio, o nome em
+ * caixa alta com "(sem ID)*", as tarefas e os avisos).
+ */
+async function aSemanaNoSafari(navegador, url) {
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1600, height: 1000 } });
+  await p.locator('.pauta-grade').waitFor();
+  const trocadas = await comoNoSafari(p);
+  assert.deepEqual(trocadas, [], 'a grade não tem largura em calc() com %, que o Safari conta como porcentagem');
+  // a grade montada de novo com a regra emulada, e a rolagem até hoje de novo
+  await p.keyboard.press('ArrowRight');
+  await p.locator('.pauta-vazia').waitFor();
+  await p.keyboard.press('ArrowLeft');
+  await p.locator(`th.pauta-dia[data-dia="${hoje}"]`).waitFor();
+  await p.waitForTimeout(400);
+  let vista = await semanaAVista(p);
+  assert.deepEqual(vista.dias, diasDe(segunda), `a semana de hoje inteira à vista (${JSON.stringify(vista)})`);
+  assert.deepEqual(vista.nomes, ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+  assert.ok(vista.grade <= 1600 && vista.maiorDia < 400, `a grade cabe na tela (${JSON.stringify(vista)})`);
+  // a semana na forma da pauta real
+  await p.goto(`${url}#/pauta/semana/${DEPOIS}`);
+  await p.locator(`th.pauta-dia[data-dia="${DEPOIS}"]`).waitFor();
+  await comoNoSafari(p);
+  await p.waitForTimeout(400);
+  vista = await semanaAVista(p);
+  assert.deepEqual(vista.dias, diasDe(DEPOIS), `a semana da forma real inteira à vista (${JSON.stringify(vista)})`);
+  assert.deepEqual([...vista.nomes].sort(), [...DA_FORMA_REAL, 'sem editor'].sort(), 'o nome de cada editor à vista');
+  assert.ok(vista.grade <= 1600 && vista.maiorDia < 400, `a grade cabe na tela (${JSON.stringify(vista)})`);
+  // o fim de semana sem ninguém: o traço em cada linha
+  assert.deepEqual(await textos(fileira(p, 'Rita Fontes').locator(`td[data-dia="${mais(DEPOIS, 5)}"], td[data-dia="${mais(DEPOIS, 6)}"]`)), ['–', '–']);
+  // no celular, com a regra emulada: a grade rola, os nomes ficam e hoje abre logo depois deles
+  const cel = await abrir(navegador, url, { ...devices['iPhone 13'], deviceScaleFactor: 1 });
+  await cel.p.locator('.pauta-grade').waitFor();
+  await comoNoSafari(cel.p);
+  const medida = await cel.p.evaluate(() => {
+    const r = document.querySelector('.pauta-rolagem');
+    return { largura: r.scrollWidth, tela: r.clientWidth, nome: document.querySelector('th.pauta-editor .pauta-nome').getBoundingClientRect().left >= r.getBoundingClientRect().left - 1 };
+  });
+  assert.ok(medida.largura < 8 * medida.tela && medida.nome, `celular: a grade rola sem ir ao limite (${JSON.stringify(medida)})`);
+  assert.deepEqual(erros, []);
+  assert.deepEqual(cel.erros, []);
+  await cel.ctx.close();
+  await ctx.close();
+  console.log('ok: a Semana no Safari (#172): os 7 dias e os nomes à vista, na semana de hoje e na da forma real; no celular, a grade rola sem ir ao limite');
 }
 
 /** Na fila do celular, a entrada da pauta é só o ícone, e cabe no topo. */
@@ -898,6 +1003,7 @@ async function principal() {
   const navegador = await chromium.launch();
   let falhou = false;
   try {
+    await aSemanaNoSafari(navegador, s.url);
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema);
     await naTelaPequena(navegador, s.url, 'iPad (gen 7)', 'tablet', 'light');
     for (const tema of ['light', 'dark']) await naTelaPequena(navegador, s.url, 'iPhone 13', 'celular', tema);

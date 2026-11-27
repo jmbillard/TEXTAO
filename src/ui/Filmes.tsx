@@ -25,7 +25,8 @@ import { EntradaDoCelular } from "./FilmesCelular";
 import { SequenciaDeFilmes } from "./SequenciaDeFilmes";
 import { Icone } from "./icones";
 import { LinkQuebrado } from "./LinkQuebrado";
-import { Duvida, Marca, RABISCOS } from "./pecas";
+import { Duvida, Marca, RABISCOS, Riscado, TituloQueSeEscreve } from "./pecas";
+import { AgendaDeFilmes } from "./AgendaDeFilmes";
 
 /* A aba Filmes: as prévias de filmes. Solta-se o PDF, o navegador prepara as páginas e o servidor lê cada uma
    com a IA (dá para fechar a aba). Em cada página, os cards em cima, alinhados com os pôsteres (identidade
@@ -134,7 +135,10 @@ export function Filmes({ aberta, abrir, voltar, avisar, topo }: Props) {
         {aberta ? (
           <SequenciaDeFilmes id={aberta} avisar={avisar} verPrevias={() => abrir()} voltar={voltar} />
         ) : (
-          <EntradaDoCelular abrir={abrir} avisar={avisar} />
+          <>
+            <EntradaDoCelular abrir={abrir} avisar={avisar} />
+            <AgendaDeFilmes avisar={avisar} />
+          </>
         )}
       </div>
     );
@@ -173,6 +177,15 @@ export function Filmes({ aberta, abrir, voltar, avisar, topo }: Props) {
   );
 }
 
+/** As frases da área de soltar a prévia, que se escrevem sozinhas como as do convite da fila. */
+const CONVITES_DA_PREVIA = [
+  "Solte aqui a prévia",
+  "Chegou a prévia?",
+  "Prévia nova do mês?",
+  "Bora ler os filmes?",
+  "Tem correção da prévia?",
+];
+
 /** "em 38 dias", "amanhã" ou "hoje": quando a prévia toda enviada é apagada. */
 export const quandoSome = (dias: number) =>
   dias <= 0 ? "hoje" : dias === 1 ? "amanhã" : `em ${dias} dias`;
@@ -206,7 +219,8 @@ function ListaDePrevias({
   }, [avisar]);
 
   const subir = async (arquivo?: File) => {
-    if (!arquivo) return;
+    // uma prévia por vez: o arquivo solto na janela durante a subida fica de fora
+    if (!arquivo || subindo) return;
     if (!/\.pdf$/i.test(arquivo.name) && arquivo.type !== "application/pdf")
       return avisar("A prévia é um PDF.");
     setSubindo({ nome: arquivo.name, feito: 0, total: 0 });
@@ -224,39 +238,90 @@ function ListaDePrevias({
     }
   };
 
+  // arrastar um arquivo pela janela acende a camada de soltar (a mesma da fila); soltar em qualquer lugar sobe a prévia.
+  // A área tem o data-soltar-aqui: o soltar da janela (roteiros para a fila) fica de fora
+  const subirAgora = useRef(subir);
+  subirAgora.current = subir;
+  useEffect(() => {
+    let dentro = 0;
+    const temArquivo = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files");
+    const entrar = (e: DragEvent) => {
+      if (!temArquivo(e)) return;
+      dentro++;
+      setSoltando(true);
+    };
+    const sair = () => {
+      dentro = Math.max(0, dentro - 1);
+      if (!dentro) setSoltando(false);
+    };
+    const sobre = (e: DragEvent) => temArquivo(e) && e.preventDefault();
+    const soltar = (e: DragEvent) => {
+      if (!temArquivo(e)) return;
+      e.preventDefault();
+      dentro = 0;
+      setSoltando(false);
+      void subirAgora.current(e.dataTransfer?.files[0]);
+    };
+    window.addEventListener("dragenter", entrar);
+    window.addEventListener("dragleave", sair);
+    window.addEventListener("dragover", sobre);
+    window.addEventListener("drop", soltar);
+    return () => {
+      window.removeEventListener("dragenter", entrar);
+      window.removeEventListener("dragleave", sair);
+      window.removeEventListener("dragover", sobre);
+      window.removeEventListener("drop", soltar);
+    };
+  }, []);
+
   return (
-    <main
-      className="filmes-inicio"
-      onDragOver={(e) => (e.preventDefault(), setSoltando(true))}
-      onDragLeave={() => setSoltando(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setSoltando(false);
-        void subir(e.dataTransfer.files[0]);
-      }}
-    >
+    <main className="filmes-inicio">
       <h1>Filmes</h1>
-      <button
-        className={`solta-previa ${soltando ? "soltando" : ""}`}
-        onClick={() => entrada.current?.click()}
-        disabled={!!subindo}
+      <section
+        className={`fila-vazia convite-previa ${subindo ? "subindo" : "clicavel"}`}
+        data-soltar-aqui=""
+        aria-label="Subir a prévia de filmes"
+        onClick={(e) => !subindo && !(e.target as HTMLElement).closest("button") && entrada.current?.click()}
       >
+        <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
         {subindo ? (
           <>
-            <strong>Preparando {subindo.nome}</strong>
-            <span>
-              {subindo.total
-                ? `página ${Math.min(subindo.feito + 1, subindo.total)} de ${subindo.total}`
-                : "abrindo o PDF…"}
+            <h2 className="titulo-serifa">Preparando a prévia</h2>
+            <p className="suave">
+              {subindo.nome} ·{" "}
+              {subindo.total ? `página ${Math.min(subindo.feito + 1, subindo.total)} de ${subindo.total}` : "abrindo o PDF…"}
+            </p>
+            <span className="convite-previa-progresso" aria-hidden="true">
+              <i style={{ width: `${subindo.total ? Math.round((subindo.feito / subindo.total) * 100) : 4}%` }} />
             </span>
           </>
         ) : (
           <>
-            <strong>Solte aqui o PDF da prévia</strong>
-            <span>ou escolha o arquivo</span>
+            <h2 className="titulo-serifa"><TituloQueSeEscreve frases={CONVITES_DA_PREVIA} /></h2>
+            <p className="suave">
+              <Riscado className="formatos-riscados">o PDF da prévia</Riscado>
+              <span className="formatos-resto">, a do mês ou a correção.</span>
+            </p>
+            <div className="convite-acoes">
+              <button type="button" className="botao-texto escolher" onClick={() => entrada.current?.click()}>
+                escolher o arquivo
+              </button>
+            </div>
           </>
         )}
-      </button>
+      </section>
+      {soltando && (
+        <div className="soltar da-previa" aria-hidden="true">
+          <div className="soltar-cartao">
+            <svg className="soltar-formiga" aria-hidden="true">
+              <rect x="1" y="1" rx="20" />
+            </svg>
+            <span className="fila-vazia-icone"><Icone nome="importar" tam={26} /></span>
+            <span className="soltar-titulo">Pode soltar</span>
+            <span>o PDF da prévia de filmes</span>
+          </div>
+        </div>
+      )}
       <input
         ref={entrada}
         type="file"
@@ -295,6 +360,7 @@ function ListaDePrevias({
           )}
         </button>
       ))}
+      <AgendaDeFilmes avisar={avisar} />
     </main>
   );
 }
