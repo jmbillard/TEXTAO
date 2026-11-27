@@ -94,8 +94,17 @@ export function criarApelidos(db, lerPracas = pracasRegistradas) {
       tirar: db.prepare('DELETE FROM apelidos WHERE chave = ?'),
       soOsApelidos: db.prepare('SELECT chave, apelido, versoes FROM apelidos'),
     });
-  /** A chave do apelido desta claquete, com as praças de agora. */
-  const chave = (claquete) => chaveDoApelido(String(claquete ?? ''), lerPracas());
+  /** A chave do apelido desta claquete, com as praças de agora. A leitura de todos os apelidos tira a chave de cada
+      roteiro e de cada Produção: as já tiradas ficam guardadas enquanto as praças forem as mesmas. */
+  let guardadas = { pracas: null, chaves: new Map() };
+  const chave = (claquete) => {
+    const pracas = lerPracas();
+    if (guardadas.pracas !== pracas) guardadas = { pracas, chaves: new Map() };
+    const texto = String(claquete ?? '');
+    let k = guardadas.chaves.get(texto);
+    if (k === undefined) guardadas.chaves.set(texto, (k = chaveDoApelido(texto, pracas)));
+    return k;
+  };
   const claqueteDe = (meta) => String(metaDe(meta)?.claquete ?? '');
   /** A chave da Produção: a da claquete do roteiro dela, quando ele está no PROMeiro; senão, a da claquete dela. */
   const chaveDaProducao = (p, claqueteDoRoteiro) => chave(claqueteDoRoteiro ?? p.claquete);

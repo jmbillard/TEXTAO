@@ -11,8 +11,8 @@ import './apelido.css';
 /* O apelido da claquete e as versões que ela sabe (#120, #152), na ficha da revisão, no editor, na ficha da Pauta e na
    Produção aberta da tela de produções (#154). O apelido é um por claquete, com ou sem roteiro no PROMeiro, e vale só
    dentro dele: o Trello e o Teable continuam com a claquete original, que fica guardada (e o campo Claquete da ficha
-   continua sendo ela). As versões ficam no apelido: o valor inicial é o código do nome (o do
-   apelido ou o da claquete) ou, sem ele, as artes do roteiro; o que foi feito à mão vale sobre os dois. */
+   continua sendo ela). As versões ficam no apelido: o valor inicial é o código do nome (o do apelido ou o da claquete)
+   ou, sem ele, as artes do roteiro; o que foi feito à mão vale sobre os dois. */
 
 /** O texto do aviso discreto do conflito, com os dois códigos: o roteiro diz uma coisa, o que vale diz outra. */
 const textoDoConflito = (c: ConflitoDasVersoes, de: FonteDasVersoes | null) =>
