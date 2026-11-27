@@ -34,7 +34,7 @@ import { ETAPAS, producaoDaLinha } from '../src/modelo/producao.ts';
 import { normalizarPraca, pracasRegistradas, reconhecerPraca } from '../src/modelo/pracas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { eventosDaReleitura } from '../src/modelo/eventosDoTeable.ts';
-import { artesDaProducao } from './trello.mjs';
+import { artesAgrupadas, artesDaProducao } from './trello.mjs';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { dataDaClaquete } from '../src/modelo/vocabularios.ts';
 
@@ -156,6 +156,14 @@ export function artesDoChecklist({ artes, artesMarcadas }) {
   });
 }
 
+/** As artes da Produção como a janela do After e a contagem da tela de produções mostram (#146): cada arte uma vez (a
+    de vários tipos junta os itens dela, a regra de `artesDaProducao`), feita quando ela, ou todos os itens dela, estão
+    nas artes marcadas. */
+export function artesFeitas({ artes, artesMarcadas }) {
+  const marcadas = new Set(artesMarcadas.map(chaveDeArte));
+  return artesAgrupadas(artes).map((a) => ({ ...a, feita: marcadas.has(chaveDeArte(a.nome)) || a.itens.every((i) => marcadas.has(chaveDeArte(i))) }));
+}
+
 /** A origem dos eventos feitos na tela de produções (#110). */
 export const ORIGEM_PROMEIRO = 'PROMeiro';
 /** A origem dos eventos do aviso do Padeiro (#139). */
@@ -275,6 +283,9 @@ export function criarProducoes(db) {
     ultimaDaEtapa: db.prepare(`SELECT * FROM eventos WHERE producao_id = ? AND tipo IN (${DA_ETAPA.map(() => '?').join(', ')}) ORDER BY quando DESC, anotado_em DESC LIMIT 1`),
     juntoCom: db.prepare('SELECT * FROM eventos WHERE producao_id = ? AND origem = ? AND quem_id = ? AND quando = ? ORDER BY anotado_em'),
     ultimoDoPROMeiro: db.prepare('SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND origem = ?'),
+    // a janela do After (#146): a meta do Roteiro ligado (a complexidade das artes) e quem marcou cada arte, e quando
+    metaDoRoteiro: db.prepare('SELECT meta FROM roteiros WHERE id = ?'),
+    marcadasDe: db.prepare("SELECT depois, quem_nome, quando FROM eventos WHERE producao_id = ? AND tipo = 'arte-marcada' ORDER BY quando, anotado_em"),
     anotarDoTeable: db.prepare(
       `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, chave, anotado_em) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
        ON CONFLICT DO NOTHING`,
@@ -498,6 +509,49 @@ export function criarProducoes(db) {
     }
   }
 
+  /**
+   * A Produção como a janela do After mostra (#146): a Produção, a meta do Roteiro ligado ({} sem ele) e as artes de
+   * `artesFeitas`, cada feita com quem a marcou por último e quando (null quando o PROMeiro não sabe: a marcada antes
+   * dos eventos). null sem a Produção ou arquivada.
+   * @returns { producao, meta, artes: [{ nome, itens, feita, marcada: { por, em } | null }] } | null
+   */
+  function naJanela(id) {
+    const l = typeof id === 'string' && id ? q.doId.get(id) : null;
+    if (!l || l.arquivada) return null;
+    const p = daLinha(l);
+    let meta = {};
+    try {
+      meta = (p.roteiroId ? JSON.parse(q.metaDoRoteiro.get(p.roteiroId)?.meta ?? 'null') : null) ?? {};
+    } catch {
+      // meta ilegível: as artes ficam sem o fogo
+    }
+    const ultima = new Map();
+    for (const e of q.marcadasDe.all(p.id)) ultima.set(chaveDeArte(String(e.depois ?? '')), { por: e.quem_nome ?? '', em: e.quando });
+    const artes = artesFeitas(p).map((a) => {
+      const vezes = a.feita ? [a.nome, ...a.itens].map((x) => ultima.get(chaveDeArte(x))).filter(Boolean) : [];
+      return { ...a, marcada: vezes.sort((x, y) => (x.em < y.em ? 1 : -1))[0] ?? null };
+    });
+    return { producao: p, meta, artes };
+  }
+
+  /**
+   * Marca ou desmarca uma arte pela janela do After (#146): os itens dela que mudam (marcar: os que não estão marcados;
+   * desmarcar: os marcados, e o nome dela, quando é ele que está), como eventos do aviso do Padeiro (`doPadeiro`, a
+   * origem Padeiro, a regra do conflito na família de cada item). Nada vai ao Trello nem ao Teable.
+   * @returns os eventos gravados ([] quando a arte já estava assim), ou null quando a Produção não tem essa arte
+   */
+  function arteDoPadeiro(id, nome, feita, quem, quando) {
+    const p = q.doId.get(id) ? daLinha(q.doId.get(id)) : null;
+    const arte = p && artesFeitas(p).find((a) => chaveDeArte(a.nome) === chaveDeArte(String(nome ?? '')));
+    if (!arte) return null;
+    const marcadas = new Set(p.artesMarcadas.map(chaveDeArte));
+    const desmarcar = [...new Set([arte.nome, ...arte.itens])].filter((x) => marcadas.has(chaveDeArte(x)));
+    const itens = feita ? arte.itens.filter((x) => !marcadas.has(chaveDeArte(x))) : desmarcar;
+    const mudancas = itens.map((x) => (feita ? { tipo: 'arte-marcada', antes: null, depois: x } : { tipo: 'arte-desmarcada', antes: x, depois: null }));
+    if (mudancas.length) doPadeiro(p.id, mudancas, quem, quando);
+    return mudancas.map((m) => m.tipo);
+  }
+
   /** A Produção do aviso do Padeiro (#139): pelo id dela, pelo card (a mais recente, como o aviso do Trello) ou pelo
       filme (a mais recente, sem as arquivadas). null sem nenhuma. */
   function doAviso({ producao, card, filme }) {
@@ -674,7 +728,8 @@ export function criarProducoes(db) {
         etapa: l.etapa,
         marcador: l.marcador ?? '',
         designers: JSON.parse(l.designers ?? '[]'),
-        artes: { aProduzir: artesAProduzir(l), entregues: JSON.parse(l.artes_marcadas ?? '[]').length },
+        // a contagem da janela do After (#146): as artes feitas de cada uma vez, pela mesma regra
+        artes: { aProduzir: artesAProduzir(l), entregues: artesFeitas({ artes: JSON.parse(l.artes ?? '[]'), artesMarcadas: JSON.parse(l.artes_marcadas ?? '[]') }).filter((a) => a.feita).length },
         alta: ehAlta(l.prioridade),
         prazo: l.exibicao_em || daClaquete || null,
         semCard: !l.card_id,
@@ -743,6 +798,8 @@ export function criarProducoes(db) {
     doPROMeiro,
     doPadeiro,
     doAviso,
+    naJanela,
+    arteDoPadeiro,
     /** O evento ({ tipo, antes, depois, quando }) é mais velho que o último já anotado da família dele (#139)? */
     atrasado,
     ultimaMudanca,
