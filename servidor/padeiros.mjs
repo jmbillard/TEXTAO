@@ -1,7 +1,10 @@
 /* O caminho do Padeiro (#137): a chave do Padeiro, no SQLite do PROMeiro (e por isso no backup).
    - O Padeiro (a extensão do After Effects, fora do Cloudflare Access) se cadastra com o usuário do computador, o nome
      do computador, o sistema e a sigla do designer, e recebe uma chave. Uma por par usuário + computador: o cadastro
-     novo do mesmo par troca a chave e volta a pendente (vale também para a revogada).
+     novo do mesmo par troca a chave na hora e volta a pendente, quando ela está pendente ou revogada. A ligada não
+     cai: o cadastro novo vira o **pedido novo** do mesmo computador (pendente, numa linha à parte, com a sua chave), e
+     a ligada vale até um administrador aprovar o pedido (aí ela cai) ou recusá-lo (aí ela fica). O pedido novo guarda
+     no `par` o do computador com NOVO no fim: o par continua único (uma chave atual e, no máximo, um pedido novo).
    - Estados: pendente (ninguém ligou ainda), ligada (a um designer cadastrado, por um administrador) e revogada.
    - A chave só existe às claras na resposta do cadastro. Aqui fica o SHA-256 dela: a chave são 32 bytes aleatórios
      (256 bits), então não há o que adivinhar por força bruta e um hash lento (scrypt, bcrypt) não acrescenta nada; o
@@ -22,6 +25,8 @@ const erro = (mensagem, status = 400) => Object.assign(new Error(mensagem), { st
 const hashDa = (chave) => createHash('sha256').update(String(chave)).digest('hex');
 /** O par usuário + computador como o PROMeiro compara (o mesmo computador pode mandar o nome em outra caixa). */
 const parDe = (usuario, computador) => `${usuario.toLowerCase()}\n${computador.toLowerCase()}`;
+/** O fim do `par` do pedido novo (a chave que espera para trocar a ligada do mesmo computador). */
+const NOVO = '\nnovo';
 
 /** O cadastro que veio do Padeiro, conferido. Lança (status 400) o que falta ou passa do limite. */
 function doPedido(corpo) {
@@ -57,9 +62,11 @@ export function criarPadeiros(db, { agora = () => new Date() } = {}) {
       ultimo_aviso_em TEXT
     );
   `);
-  const COLUNAS = 'id, usuario, computador, sistema, sigla, estado, designer_registro, designer_nome, mudado_por, mudado_em, criado_em, ultimo_aviso_em';
+  const COLUNAS = 'id, par, usuario, computador, sistema, sigla, estado, designer_registro, designer_nome, mudado_por, mudado_em, criado_em, ultimo_aviso_em';
   const q = {
-    doPar: db.prepare('SELECT id FROM padeiros WHERE par = ?'),
+    doPar: db.prepare('SELECT id, estado FROM padeiros WHERE par = ?'),
+    apagar: db.prepare('DELETE FROM padeiros WHERE id = ?'),
+    mudarPar: db.prepare('UPDATE padeiros SET par = ? WHERE id = ?'),
     total: db.prepare('SELECT COUNT(*) AS n FROM padeiros'),
     trocar: db.prepare(
       `UPDATE padeiros SET usuario = ?, computador = ?, sistema = ?, sigla = ?, chave_hash = ?, estado = 'pendente', designer_registro = NULL,
@@ -74,8 +81,12 @@ export function criarPadeiros(db, { agora = () => new Date() } = {}) {
     ligar: db.prepare("UPDATE padeiros SET estado = 'ligada', designer_registro = ?, designer_nome = ?, mudado_por = ?, mudado_em = ? WHERE id = ?"),
     revogar: db.prepare("UPDATE padeiros SET estado = 'revogada', mudado_por = ?, mudado_em = ? WHERE id = ?"),
   };
+  const ehPedidoNovo = (l) => l.par.endsWith(NOVO);
   const comoFica = (l) => ({
     id: l.id,
+    // o pedido novo do mesmo computador e a chave ligada que ele vai trocar quando for aprovado
+    pedidoNovo: ehPedidoNovo(l),
+    substitui: ehPedidoNovo(l) ? (q.doPar.get(l.par.slice(0, -NOVO.length))?.id ?? null) : null,
     usuario: l.usuario,
     computador: l.computador,
     sistema: l.sistema,
@@ -87,6 +98,16 @@ export function criarPadeiros(db, { agora = () => new Date() } = {}) {
     criadoEm: l.criado_em,
     ultimoAviso: l.ultimo_aviso_em ?? null,
   });
+  const emTransacao = (f) => {
+    db.exec('BEGIN');
+    try {
+      f();
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  };
   const achar = (id) => {
     const l = typeof id === 'string' ? q.um.get(id) : null;
     if (!l) throw erro('Não achei esse Padeiro.', 404);
@@ -95,20 +116,31 @@ export function criarPadeiros(db, { agora = () => new Date() } = {}) {
 
   return {
     /**
-     * O cadastro do Padeiro: devolve a chave (às claras, só aqui) e o estado, pendente. O mesmo par usuário +
-     * computador troca a chave do cadastro que já existia (a antiga deixa de valer) e volta a pendente.
+     * O cadastro do Padeiro: devolve a chave (às claras, só aqui) e o estado, pendente. Com a chave do mesmo par usuário
+     * + computador ligada, o cadastro vira o pedido novo (a ligada continua valendo); senão, troca a chave do cadastro
+     * que já existia (a antiga deixa de valer, e o pedido novo que havia some).
      */
     cadastrar(corpo) {
       const p = doPedido(corpo);
       const chave = randomBytes(32).toString('base64url');
       const em = agora().toISOString();
       const par = parDe(p.usuario, p.computador);
-      const existente = q.doPar.get(par);
-      if (existente) q.trocar.run(p.usuario, p.computador, p.sistema, p.sigla, hashDa(chave), em, existente.id);
-      else {
+      const atual = q.doPar.get(par);
+      const pedido = q.doPar.get(par + NOVO);
+      const novaLinha = (oPar) => {
         if (q.total.get().n >= MAXIMO_DE_PADEIROS) throw erro('Padeiros demais cadastrados. Peça a um administrador para revogar os que não valem mais.', 429);
-        q.inserir.run(randomUUID(), par, p.usuario, p.computador, p.sistema, p.sigla, hashDa(chave), em);
-      }
+        q.inserir.run(randomUUID(), oPar, p.usuario, p.computador, p.sistema, p.sigla, hashDa(chave), em);
+      };
+      emTransacao(() => {
+        if (atual?.estado === 'ligada') {
+          if (pedido) q.trocar.run(p.usuario, p.computador, p.sistema, p.sigla, hashDa(chave), em, pedido.id);
+          else novaLinha(par + NOVO);
+        } else {
+          if (pedido) q.apagar.run(pedido.id);
+          if (atual) q.trocar.run(p.usuario, p.computador, p.sistema, p.sigla, hashDa(chave), em, atual.id);
+          else novaLinha(par);
+        }
+      });
       return { chave, estado: 'pendente', usuario: p.usuario, computador: p.computador };
     },
     /** O Padeiro da chave (o que veio no cabeçalho), ou null quando ela não vale (nenhuma, errada ou trocada). */
@@ -119,20 +151,34 @@ export function criarPadeiros(db, { agora = () => new Date() } = {}) {
       return l ? comoFica(l) : null;
     },
     /** Todos os Padeiros (a aba Padeiros): os pendentes primeiro, depois os ligados e os revogados; em cada estado,
-        pelo usuário e pelo computador. */
-    lista: () =>
-      q.todos
+        pelo usuário e pelo computador. O pedido novo vem logo antes da chave que ele vai trocar. */
+    lista() {
+      const todos = q.todos
         .all()
         .map(comoFica)
-        .sort((a, b) => ESTADOS.indexOf(a.estado) - ESTADOS.indexOf(b.estado) || a.usuario.localeCompare(b.usuario, 'pt-BR') || a.computador.localeCompare(b.computador, 'pt-BR')),
+        .sort((a, b) => ESTADOS.indexOf(a.estado) - ESTADOS.indexOf(b.estado) || a.usuario.localeCompare(b.usuario, 'pt-BR') || a.computador.localeCompare(b.computador, 'pt-BR'));
+      const pedidos = new Map(todos.filter((p) => p.substitui).map((p) => [p.substitui, p]));
+      return todos.filter((p) => !p.substitui).flatMap((p) => (pedidos.has(p.id) ? [pedidos.get(p.id), p] : [p]));
+    },
     /** Liga a chave a um designer cadastrado ({ registro, nome }), ou troca o designer da ligada. A revogada não volta:
         o Padeiro pede outra chave. */
     ligar(id, designer, por) {
-      if (achar(id).estado === 'revogada') throw erro('Essa chave foi revogada: o Padeiro precisa pedir outra.', 409);
-      q.ligar.run(designer.registro, designer.nome, por, agora().toISOString(), id);
+      const l = achar(id);
+      if (l.estado === 'revogada') throw erro('Essa chave foi revogada: o Padeiro precisa pedir outra.', 409);
+      emTransacao(() => {
+        // aprovar o pedido novo: a chave de antes do mesmo computador cai, e o pedido passa a ser a chave dele
+        if (ehPedidoNovo(l)) {
+          const par = l.par.slice(0, -NOVO.length);
+          const antes = q.doPar.get(par);
+          if (antes) q.apagar.run(antes.id);
+          q.mudarPar.run(par, id);
+        }
+        q.ligar.run(designer.registro, designer.nome, por, agora().toISOString(), id);
+      });
       return comoFica(q.um.get(id));
     },
-    /** Revoga a chave: o Padeiro vê "revogada" e precisa se cadastrar de novo (e volta a pendente). */
+    /** Revoga a chave: o Padeiro vê "revogada" e precisa se cadastrar de novo (e volta a pendente). No pedido novo, é
+        recusar: a chave ligada do mesmo computador fica. */
     revogar(id, por) {
       achar(id);
       q.revogar.run(por, agora().toISOString(), id);

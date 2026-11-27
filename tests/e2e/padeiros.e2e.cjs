@@ -5,8 +5,9 @@
 // de verdade (/api/padeiro/cadastro, sem login) e conferem o estado dela em /api/padeiro/eu. No computador, claro e
 // escuro: a aba com o número de pendentes, a lista (usuário, computador, sigla, designer e último aviso), a sugestão de
 // designer pela sigla, a busca; ligar (o Padeiro passa a ver "ligada", com o designer), trocar o designer e revogar
-// com a confirmação (o Padeiro vê "revogada"; a linha não oferece ligar de novo). Quem não é administrador não vê a
-// aba. No celular: a lista sem rolar para o lado.
+// com a confirmação (o Padeiro vê "revogada"; a linha não oferece ligar de novo). O recadastro de um Padeiro ligado
+// não derruba a chave: o pedido novo aparece logo acima da ligada, recusar mantém a de agora, aprovar troca (a de
+// antes cai). Quem não é administrador não vê a aba. No celular: a lista sem rolar para o lado.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:padeiros
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -168,6 +169,46 @@ async function ligarERevogar(navegador, s, chaves) {
   await ctx.close();
 }
 
+const pedirAChave = (api, pedido) => fetch(`${api}/padeiro/cadastro`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(pedido) }).then((r) => r.json());
+
+/** O computador emprestado (ligado à Dora em ligarERevogar) pede a chave de novo: o pedido novo, ao lado da ligada. */
+async function recadastroDoLigado(navegador, s, chaves) {
+  const { ctx, p, erros } = await abrir(navegador, s.url, { viewport: { width: 1440, height: 1000 } });
+  const primeiro = await pedirAChave(s.api, { ...PEDIDOS[2], sistema: 'macOS 15.0' });
+  assert.equal(primeiro.estado, 'pendente');
+  assert.equal((await quemSou(s.api, chaves[2])).estado, 'ligada', 'a chave ligada não cai com o recadastro');
+  await abrirAAba(p);
+  const visitas = p.locator('.item-pad', { has: p.locator('.usuario-pad', { hasText: 'visita' }) });
+  await p.waitForFunction(() => document.querySelectorAll('.item-pad.pad-novo').length === 1);
+  assert.equal(await visitas.count(), 2);
+  // o pedido novo vem logo acima da ligada, com a marca, o designer de agora sugerido e o que aprovar faz
+  const pedido = visitas.nth(0);
+  assert.match(await texto(pedido), /visita em MAC-EMPRESTADO pendente pedido novo do mesmo computador .*macOS 15\.0/i);
+  assert.match(await texto(pedido), /Aprovar troca a chave: a de agora, ligada a Dora Lima, deixa de valer\. Recusar mantém a de agora\./);
+  assert.equal(await pedido.locator('select option:checked').textContent(), 'Dora Lima');
+  assert.equal(await pedido.locator('.sugestao-pad').textContent(), 'o de agora');
+  assert.match(await texto(visitas.nth(1)), /visita em MAC-EMPRESTADO ligada/i);
+  await capturar(p, '05-pedido-novo');
+  // recusar: a de agora continua ligada
+  await pedido.getByRole('button', { name: 'Recusar' }).click();
+  await pedido.locator('.estado-pad.revogada').waitFor();
+  assert.equal((await quemSou(s.api, chaves[2])).estado, 'ligada');
+  assert.equal((await quemSou(s.api, primeiro.chave)).estado, 'revogada');
+  // pede de novo e o administrador aprova: a nova fica ligada, a de antes cai, e sobra uma linha
+  const segundo = await pedirAChave(s.api, { ...PEDIDOS[2], sistema: 'macOS 15.0' });
+  await p.reload();
+  await abrirAAba(p);
+  await p.locator('.item-pad.pad-novo .estado-pad.pendente').waitFor();
+  await p.locator('.item-pad.pad-novo').getByRole('button', { name: 'Aprovar' }).click();
+  await p.waitForFunction(() => document.querySelectorAll('.item-pad.pad-novo').length === 0);
+  assert.equal(await visitas.count(), 1);
+  assert.match(await texto(visitas.first()), /visita em MAC-EMPRESTADO ligada .*macOS 15\.0/i);
+  assert.equal((await quemSou(s.api, chaves[2])).status, 401, 'a chave de antes caiu');
+  assert.deepEqual(await quemSou(s.api, segundo.chave), { estado: 'ligada', usuario: 'visita', computador: 'MAC-EMPRESTADO', sigla: 'XYZ', designer: { nome: 'Dora Lima' } });
+  assert.deepEqual(erros, []);
+  await ctx.close();
+}
+
 async function semSerAdministrador(navegador, s) {
   const { ctx, p, erros } = await abrir(navegador, s.url, { viewport: { width: 1440, height: 1000 } }, { email: OUTRA, admin: false });
   await p.waitForTimeout(500);
@@ -216,6 +257,8 @@ async function principal() {
     console.log('ok: no celular, a lista sem rolar para o lado');
     await ligarERevogar(navegador, s, chaves);
     console.log('ok: ligar, trocar o designer e revogar com a confirmação; o Padeiro vê cada estado; o cadastro novo volta a pendente');
+    await recadastroDoLigado(navegador, s, chaves);
+    console.log('ok: o recadastro do ligado vira um pedido novo ao lado; recusar mantém a chave, aprovar troca (a de antes cai)');
   } finally {
     await navegador.close();
     await s.descer();

@@ -49,8 +49,10 @@ Access nunca é lido, e o que não é uma rota do Padeiro responde 404, sem cheg
 `/api/padeiros`, barras repetidas e `%2e%2e` no caminho).
 
 - `POST /api/padeiro/cadastro` `{ usuario, computador, sistema, sigla }` (a única rota sem chave): devolve
-  `201 { chave, estado: "pendente" }`. Uma chave por usuário e por computador: o cadastro de novo do mesmo par troca a
-  chave (a antiga deixa de valer) e volta a pendente. O PROMeiro guarda só o hash (SHA-256) da chave, no SQLite (a
+  `201 { chave, estado: "pendente" }`. Uma chave por usuário e por computador. O cadastro de novo do mesmo par, com a
+  chave pendente ou revogada, troca a chave na hora (a antiga deixa de valer). Com a chave **ligada**, ela não cai: o
+  cadastro vira um **pedido novo do mesmo computador**, pendente, ao lado dela nos Cadastros › Padeiros; aprovar o
+  pedido troca a chave (a de antes cai), recusar mantém a de antes. O PROMeiro guarda só o hash (SHA-256) da chave, no SQLite (a
   tabela `padeiros`, que entra no backup).
 - `GET /api/padeiro/eu`, com a chave: `{ estado, usuario, computador, sigla, designer }`, com o estado `pendente`,
   `ligada` ou `revogada`. Sem a chave, ou com uma que não vale mais, `401`.

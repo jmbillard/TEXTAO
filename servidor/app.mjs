@@ -1616,8 +1616,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const designers = ativos.map((d) => ({ registro: d.registro, nome: d.nome })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     if (caminho === '/api/cadastros/padeiros') {
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
-      const comSugestao = padeiros.lista().map((p) => {
-        const s = p.estado === 'pendente' ? designerSugerido(p.sigla, p.usuario, ativos) : null;
+      const lista = padeiros.lista();
+      // o pedido novo do mesmo computador sugere o designer da chave que ele vai trocar; o resto, o da sigla
+      const daChaveDeAntes = (p) => ativos.find((d) => d.registro === lista.find((x) => x.id === p.substitui)?.designer?.registro);
+      const comSugestao = lista.map((p) => {
+        const s = p.estado === 'pendente' ? ((p.substitui && daChaveDeAntes(p)) || designerSugerido(p.sigla, p.usuario, ativos)) : null;
         return { ...p, sugestao: s ? { registro: s.registro, nome: s.nome } : null };
       });
       return json(res, 200, { padeiros: comSugestao, designers });
