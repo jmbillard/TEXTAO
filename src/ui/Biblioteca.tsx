@@ -9,6 +9,8 @@ import type { Meta, Roteiro } from '../modelo/tipos';
 import { useDeslize, Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
+import { ApelidoDaClaquete, AvisoDasVersoes, EtiquetasDasVersoes } from './Apelido';
+import { apelidoDoRoteiro, relerApelidos, useApelidos } from '../dados/apelidos';
 import { agruparPorDia, artesParaMostrar, LER_ANDAMENTO_MS, claqueteParaMostrar, CRITERIOS, eixoDaSemana, filaVisivel, inicioDaSemana, montarFaixa, montarSemana, mudancasDaSemana, noTrello, nomeDaEtiqueta, pedeRevisao, peDoCard, pendentes, periodoNaContagem, proximoParaRevisar as proximoDaFila, posicaoNaContagem, resumoDosDias, rubrica, semanaEncolhida, soAsPrioridades, type CardDaSemana, type CriterioDaAgenda, type EtapaDoCard, type FaixaDeDias, type GrupoDia, type PeDoCard } from './fila';
 import { useFaixa, useTelaDeCelular } from './faixa';
 import { AbasDoCriterio, ItemQueAbre, Periodo, PeriodoQueConta, ResumoQueConta, TopoDoDia, useContagemDoPeriodo, VoltarParaHoje } from './topoDaAgenda';
@@ -408,7 +410,7 @@ interface RedatorNaFicha {
 function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, producao, mandar, cadastrarAtracao, avisar, ligou, redator }: { r: Resumo; nova: boolean; ordem: number; prioridade?: boolean; abrir: () => void; acoes: React.ReactNode; agora: { nome: string; email: string }[]; eu?: string; versao?: VersaoNova; producao?: JaNaProducao; mandar?: () => Promise<void>; cadastrarAtracao?: (nova?: AtracaoNova) => void; avisar?: (t: string) => void; ligou?: () => void; redator?: RedatorNaFicha }) {
   const [ligando, setLigando] = useState(false);
   // no padrão da casa, mesmo o roteiro guardado antes dele (só a exibição; o nome guardado fica)
-  const claquete = claqueteParaMostrar(r.meta) || r.meta.titulo || r.meta.programa || 'Sem claquete';
+  const claquete = claqueteParaMostrar(r.meta, null, r.id) || r.meta.titulo || r.meta.programa || 'Sem claquete';
   const [digitado, terminou] = useDigitacao(claquete, nova);
   // o que já está no Trello não vira ficha: vai para a seção No Trello
   const revisarAgora = r.meta.revisar ?? [];
@@ -450,7 +452,7 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
       </span>
       <button className="ficha-claquete" onClick={entrar} aria-label={`Abrir ${claquete}`}>
         <b>
-          <span className="claquete-alvo">
+          <span className="claquete-alvo" title={apelidoDoRoteiro(r.id) ? `Claquete: ${r.meta.claquete}` : undefined}>
             {prioridade && terminou ? <MarcaTexto traco={tracoDe(r.id)}><span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span></MarcaTexto> : <span className="claquete-texto"><TextoDaClaquete texto={digitado} /></span>}
             {ocupada && <svg className="ibeam" viewBox="0 0 12 28" aria-hidden="true"><path d="M2 2 Q6 2 6 6 V22 Q6 26 2 26 M10 2 Q6 2 6 6 M10 26 Q6 26 6 22 M3.5 14 H8.5" /></svg>}
           </span>
@@ -472,6 +474,8 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
           {r.meta.programa || 'atração não reconhecida'}
           {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
           {r.meta.dataExibicao ? ` · ${dataCurtaComDia(r.meta.dataExibicao)}` : ' · sem data'}
+          {r.versoesLidas && <EtiquetasDasVersoes versoes={r.versoesLidas} />}
+          {r.versoesLidas && <AvisoDasVersoes claquete={r.meta.claquete} versoes={r.versoesLidas} />}
         </span>
       </button>
       <span className="ficha-gente some">
@@ -602,14 +606,14 @@ function OutraData({ pe }: { pe: PeDoCard }) {
 function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void }) {
   const { r, etapa, andamento } = c;
   // o nome de hoje na produção da arte (o card no Trello); sem ele, o guardado no padrão da casa
-  const claquete = claqueteParaMostrar(r.meta, andamento) || r.meta.titulo || 'Sem claquete';
+  const claquete = claqueteParaMostrar(r.meta, andamento, r.id) || r.meta.titulo || 'Sem claquete';
   const idMais = `card-mais-${r.id}`;
   // o card simulado do roteiro de exemplo, no fim do tour: não é um card do Trello
   const doTour = ehDoTour(r.id);
   return (
     <div className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''} ${c.aEntregar ? 'a-entregar' : ''}`} data-card={r.id}>
       <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
-        <span className="card-semana-claquete">{c.prioridade ? <MarcaTexto traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></MarcaTexto> : <TextoDaClaquete texto={claquete} quebras />}</span>
+        <span className="card-semana-claquete" title={apelidoDoRoteiro(r.id) ? `Claquete: ${r.meta.claquete}` : undefined}>{c.prioridade ? <MarcaTexto traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></MarcaTexto> : <TextoDaClaquete texto={claquete} quebras />}</span>
         <span className="card-semana-linha">
           <span className="card-quem">
             {r.meta.praca && <><span>{r.meta.praca}</span><span className="sep" aria-hidden="true">·</span></>}
@@ -635,6 +639,7 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar }: { c: CardDaSema
               <PessoaNoCard rotulo="editor" nome={r.meta.editor} falta="sem editor" />
               {!!andamento?.designers.length && <PessoaNoCard rotulo="designer" nome={andamento.designers.join(', ')} />}
             </dl>
+            {!doTour && aberto && <ApelidoDaClaquete roteiro={r.id} claquete={r.meta.claquete} versoes={r.versoesLidas ?? []} podeMudar />}
             {!doTour && <LinhaDoTempoDoCard card={r.trello?.card} aberto={aberto} />}
             <div className="card-semana-pe">
               {r.revisadoPor && (
@@ -1045,6 +1050,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const [fila, setFila] = useState<Fila | null>(null);
   // muda quando alguém troca a cor de destaque: as fichas e os ponteiros se redesenham
   const [, setCores] = useState(0);
+  // o apelido da claquete (#120) aparece no lugar dela nas fichas e nos cards: redesenha quando ele muda
+  useApelidos();
   const eu = identidade?.email;
   useEffect(() => {
     let prazo: ReturnType<typeof setTimeout> | undefined;
@@ -1057,6 +1064,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         registrarCores([{ email: e.por, cor: e.cor }]);
         return setCores((n) => n + 1);
       }
+      if (e.tipo === 'apelido') return void relerApelidos();
       if (e.tipo === 'ponteiro') {
         if (e.por === eu) return;
         return setPonteiros((atual) => {

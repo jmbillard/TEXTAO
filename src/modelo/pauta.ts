@@ -4,6 +4,7 @@
    meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. As versões
    da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. A claquete cruza com as
    Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
+import type { ForaNaPauta } from './ausencias.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
 import type { Etapa } from './producao.ts';
 import { chaveDaClaquete, chaveDaClaqueteNoPadrao, lerDataDaClaquete } from './vocabularios.ts';
@@ -77,6 +78,8 @@ export interface LeituraDaPauta {
   /** 'copia': o Postgres do Teable não respondeu, e a pauta saiu da última cópia local, tirada em `copiaEm` */
   origem: 'banco' | 'copia';
   copiaEm: string | null;
+  /** quem está fora em cada dia (#128): o motivo e a observação só para a coordenação e os administradores */
+  fora?: ForaNaPauta[];
 }
 
 const FUSO = 'America/Sao_Paulo';
@@ -202,10 +205,13 @@ export interface Versao {
   rotulo: string;
   /** false: um código que o PROMeiro não conhece, que aparece cru */
   conhecida: boolean;
+  /** só nas versões lidas do roteiro (#120): veio só do dia da semana, sem "nesta" nem "próxima"; a tela pede conferir */
+  aConferir?: true;
 }
 
-const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+/** Os dias da semana curtos (domingo é 0) e os meses por extenso, nas etiquetas das versões (também as do roteiro, #120). */
+export const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+export const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const semAcento = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
 /** Uma combinação de letras, cada uma uma versão, sem repetir. */
 const LETRAS = /^(?!.*(.).*\1)[AHNPDM]{1,6}$/;

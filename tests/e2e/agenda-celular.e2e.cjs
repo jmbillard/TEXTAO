@@ -905,6 +905,48 @@ async function linhaDoTempo(navegador, url, conferir) {
   }
 }
 
+/**
+ * O apelido da claquete no card da agenda (#120), no iPhone: o card aberto mostra a versão lida do roteiro ("hoje") e o
+ * aviso de que a claquete não diz a versão; "usar (H) no apelido" põe o apelido do roteiro no lugar da claquete, no
+ * card (a original fica ao passar o mouse); ele é editado à mão e volta ao original. O roteiro ganha a arte "HOJE, 21H" antes (os outros testes não a veem).
+ */
+async function apelidoNaAgenda(navegador, url, api, conferir) {
+  const rotulo = (t) => `apelido no card da agenda, iPhone 13: ${t}`;
+  const d = diaMais(0);
+  const claquete = `CHAMADA_SERIE_${d.getDate()}/${d.getMonth() + 1}`;
+  const comArte = { type: 'doc', content: [...doc.content, { type: 'paragraph', content: [{ type: 'text', text: 'HOJE, 21H', marks: [{ type: 'arte', attrs: { id: 'h1' } }] }] }] };
+  const agora = new Date().toISOString();
+  await fetch(`${api}/roteiros/agdhoje2`, { method: 'PUT', headers: cabecalhos, body: JSON.stringify({ roteiro: { id: 'agdhoje2', meta: meta(claquete, isoLocal(d), 'RJ'), doc: comArte, revisao: 1, criadoEm: agora, atualizadoEm: agora, publico: true }, nArtes: 5 }) });
+  const { ctx, p, erros } = await abrirNoCelular(navegador, url, 'iPhone 13');
+  try {
+    await levarAteAAgenda(p);
+    const card = p.locator('.secao-trello .semana [data-card="agdhoje2"]');
+    const nome = async () => (await card.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
+    await card.locator('.card-semana-abrir').tap();
+    await p.waitForTimeout(900);
+    const apelido = card.locator('.apelido-claquete');
+    conferir(JSON.stringify(await apelido.locator('.versao-lida').allInnerTexts()) === '["hoje"]', rotulo('o card aberto mostra a versão lida do roteiro'));
+    conferir(/a claquete não diz a versão/.test(await apelido.locator('.conflito-versoes').innerText()), rotulo('e o aviso discreto: a claquete não diz'));
+    await apelido.getByRole('button', { name: 'usar (H) no apelido' }).tap();
+    await apelido.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
+    conferir((await nome()).endsWith('(H)'), rotulo(`o card mostra o apelido com a versão do roteiro (${await nome()})`));
+    await apelido.getByRole('button', { name: 'Editar o apelido' }).tap();
+    await apelido.getByRole('textbox', { name: 'Apelido da claquete' }).fill('SÉRIE FICTÍCIA, O FINAL');
+    await apelido.getByRole('button', { name: 'guardar' }).tap();
+    await p.waitForTimeout(500);
+    conferir((await nome()) === 'SÉRIE FICTÍCIA, O FINAL', rotulo(`o apelido editado à mão no lugar da claquete (${await nome()})`));
+    conferir((await card.locator('.card-semana-claquete').getAttribute('title')) === `Claquete: ${claquete}`, rotulo('a claquete original aparece ao passar o mouse'));
+    conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), rotulo('a página não rola para o lado'));
+    if (CAPTURAS) await card.screenshot({ path: `${CAPTURAS}/agenda-apelido-celular.png` });
+    await apelido.getByRole('button', { name: 'voltar ao original' }).tap();
+    await apelido.getByRole('button', { name: 'dar um apelido' }).waitFor({ state: 'visible', timeout: 5000 });
+    conferir(!(await nome()).includes('FINAL') && (await nome()).includes('SERIE'), rotulo(`"voltar ao original" devolve a claquete (${await nome()})`));
+    conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
+  } finally {
+    await ctx.close();
+  }
+}
+
 async function principal() {
   const amb = await subir();
   const navegador = await chromium.launch();
@@ -925,6 +967,7 @@ async function principal() {
     await linhaDoTempo(navegador, amb.url, conferir);
     await semearRevisao(amb.api);
     await encolhida(navegador, amb.url, conferir);
+    await apelidoNaAgenda(navegador, amb.url, amb.api, conferir);
   } catch (e) {
     conferir(false, e instanceof Error ? e.stack ?? e.message : String(e));
   } finally {

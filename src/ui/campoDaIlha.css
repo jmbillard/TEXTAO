@@ -1,0 +1,6 @@
+/* A ilha da posição (#124): o campo e a lista, com as peças da montarPauta.css. */
+.montar-in.ilha { height: 24px; font: 600 12px var(--mono); letter-spacing: 0.04em; color: var(--tinta2); }
+.montar-in.ilha.sem-ilha::placeholder { font-style: italic; font-weight: 500; letter-spacing: 0; }
+.lista-ilhas .ilha-rotulo { flex: none; min-width: 64px; font: 600 12px var(--mono); letter-spacing: 0.04em; color: var(--tinta); }
+.lista-ilhas .menu-texto { flex: 1; }
+.lista-ilhas .montar-tag { flex: none; }

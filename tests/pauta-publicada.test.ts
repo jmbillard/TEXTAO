@@ -14,7 +14,7 @@ const sp = (dia: string, hora: string) => new Date(`${dia}T${hora}:00-03:00`).to
 /** Uma linha do Teable, já lida como a Pauta lê. */
 const doTeable = (id: string, claquete: string, editor: string, dia: string, inicio: string, fim: string, anotacao = false) =>
   linhaDaPauta({ id, claquete, editor: { title: editor }, data: sp(dia, '00:00'), expediente_inicio: sp(dia, inicio), expediente_fim: sp(fim < inicio ? '2026-11-28' : dia, fim), anotacao }) as LinhaDaPauta;
-const pos = (id: string, turno: PosicaoDaEscala['turno'], editor: string, horario: string, demandas: string[]): PosicaoDaEscala => ({ id, turno, editor, horario, demandas: demandas.map((texto, i) => ({ id: `${id}-d${i + 1}`, texto })) });
+const pos = (id: string, turno: PosicaoDaEscala['turno'], editor: string, horario: string, demandas: string[]): PosicaoDaEscala => ({ id, turno, editor, ilha: '', horario, demandas: demandas.map((texto, i) => ({ id: `${id}-d${i + 1}`, texto })) });
 const resumo = (ls: LinhaDaPauta[]) => ls.map((l) => `${l.dia} ${l.editor || '—'} ${l.turno ? `${l.turno.inicio}-${l.turno.fim}` : 'sem turno'} ${l.tipo}: ${l.texto}`);
 
 describe('juntarAPublicada: o Teable e o dia publicado no PROMeiro', () => {

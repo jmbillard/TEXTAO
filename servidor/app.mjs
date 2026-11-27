@@ -36,16 +36,21 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { acertarNArtesUmaVez, artesComOEstado } from './artes.mjs';
+import { acertarNArtesUmaVez, artesComOEstado, versoesLidas } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
 import { criarPreferencias } from './preferencias.mjs';
+import { criarApelidos } from './apelidos.mjs';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { criarEscala, posicoesDoPedido } from './escala.mjs';
+import { criarIlhas } from './ilhas.mjs';
+import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
+import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
-import { TURNOS_DE_FABRICA } from '../src/modelo/escala.ts';
+import { ausenciaDoPedido, criarAusencias } from './ausencias.mjs';
+import { foraNaPauta } from '../src/modelo/ausencias.ts';
 import { conferirODia, pendenciasQueFicaram } from '../src/modelo/conferenciaDaEscala.ts';
 import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
@@ -169,6 +174,8 @@ export function abrirBanco(caminho) {
   if (!tem('envios', 'artes_novas')) db.exec('ALTER TABLE envios ADD COLUMN artes_novas TEXT; ALTER TABLE envios ADD COLUMN atracao TEXT; ALTER TABLE envios ADD COLUMN acervo_em TEXT');
   // a data de exibição: numa sessão de filme, é ela que diz qual filme (pelo log do bot)
   if (!tem('envios', 'exibicao')) db.exec('ALTER TABLE envios ADD COLUMN exibicao TEXT');
+  // as versões da chamada lidas nas artes do roteiro (#120), em JSON, refeitas a cada gravação: a fila as mostra
+  if (!tem('roteiros', 'versoes_lidas')) db.exec('ALTER TABLE roteiros ADD COLUMN versoes_lidas TEXT');
   // keys que alguém marcou como "não é atração" na aba Sem cadastro: não voltam para a lista
   db.exec('CREATE TABLE IF NOT EXISTS keys_ignoradas (key TEXT PRIMARY KEY, por TEXT, em TEXT)');
   // cards de filme cujas artes já foram para o acervo do filme (uma vez só, como os roteiros); o card da semana da
@@ -720,12 +727,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const atracoesParecidas = criarAtracoesParecidas({ db });
   // as preferências de cada pessoa (#101), no SQLite: a última área usada, o arranjo da Pauta da edição…
   const preferencias = criarPreferencias(db);
+  // o apelido da claquete (#120), um por roteiro, no SQLite: só para mostrar, o envio continua com a claquete original
+  const apelidos = criarApelidos(db);
   // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
   const areas = criarAreas();
   // montar a pauta (#123): o papel de coordenação e o rascunho do dia, no SQLite (nada vai ao Teable)
   const escala = criarEscala(db);
+  // o cadastro das ilhas (#124), também no SQLite: a montagem da pauta é quem usa
+  const ilhas = criarIlhas(db);
   // o caminho do Padeiro (#137): a chave do Padeiro (só o hash), no SQLite
   const padeiros = criarPadeiros(db);
+  // as ausências com período (#128) e as demandas para distribuir, no SQLite, junto da escala
+  const ausencias = criarAusencias(db);
   /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
   const daPessoa = (email, admin) => areas.daPessoa(email, { cadastros, admin, preferencias, coordenacao: escala.ehCoordenacao(email) });
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
@@ -940,7 +953,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
   const q = {
     lista: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, versoes_lidas, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
               e.estado AS envio_estado, e.card_id AS envio_card, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
@@ -950,7 +963,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
     listaTudo: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, versoes_lidas, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
               e.estado AS envio_estado, e.card_id AS envio_card, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
@@ -986,6 +999,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
     conteudo: db.prepare('UPDATE roteiros SET meta = ?, doc = ?, n_artes = ?, atualizado_em = ? WHERE id = ?'),
     revisou: db.prepare('UPDATE roteiros SET revisado_email = ?, revisado_nome = ? WHERE id = ?'),
+    versoesLidas: db.prepare('UPDATE roteiros SET versoes_lidas = ? WHERE id = ?'),
     limparYdoc: db.prepare('UPDATE roteiros SET ydoc = NULL WHERE id = ?'),
     inserir: db.prepare(
       `INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em)
@@ -1040,7 +1054,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /** Os roteiros que esta pessoa vê, como a fila os recebe (o mesmo para "meus roteiros", #101). */
   const resumosPara = (eu) =>
     (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).map((l) => ({
-      id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, atualizadoEm: l.atualizado_em,
+      id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, versoesLidas: l.versoes_lidas ? JSON.parse(l.versoes_lidas) : [], atualizadoEm: l.atualizado_em,
       dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
       compartilhado: !!l.compartilhado,
       podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
@@ -1576,6 +1590,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * reabre) uma pendência da conferência; /publicar publica o rascunho gravado, mesmo com pendências, e guarda quantas
    * "para olhar" ficaram; /desfazer tira a última publicação. Fica no SQLite do PROMeiro: nada vai ao Teable (a virada
    * é o #134); o dia publicado aparece na Pauta da edição junto com a do Teable.
+   * Fica no SQLite do PROMeiro: nada vai ao Teable. Os turnos são os da Configuração (#124) e, no fim, os que saíram
+   * dela e ainda têm posição no dia; a ilha sai do cadastro das ilhas (a que já estava na posição continua, mesmo
+   * removida do cadastro); vêm junto as ilhas, a de costume de cada editor e as ilhas ocupadas naquele turno.
    */
   async function rotaDeMontarAPauta(req, res, eu, acao = '') {
     const metodos = acao ? ['POST'] : ['GET', 'PUT'];
@@ -1585,15 +1602,25 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const dia = pedido ? diaOuHoje(pedido, '') : diaVizinho(diaEmSaoPaulo(), 1);
     if (!dia) return json(res, 400, { erro: 'Dia inválido.' });
     const editores = (await areas.nomesDosCadastros(cadastros)).editor.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const turnos = turnosDaConfiguracao(configuracao.valores());
     try {
-      if (req.method === 'PUT') escala.gravarDia(dia, posicoesDoPedido(((await lerCorpo(req)) ?? {}).posicoes, dia), eu.email);
+      if (req.method === 'PUT') {
+        const antes = escala.lerDia(dia).posicoes;
+        // a ilha do cadastro; a que saiu dele, só na posição que já a tinha
+        const cadastradas = new Set(ilhas.todas().map((i) => i.id));
+        const validos = {
+          turnos: new Set(turnosDoDia(turnos, antes).map((t) => t.id)),
+          ilhaVale: (ilha, posicao) => cadastradas.has(ilha) || antes.some((p) => p.id === posicao && p.ilha === ilha),
+        };
+        escala.gravarDia(dia, posicoesDoPedido(((await lerCorpo(req)) ?? {}).posicoes, dia, validos), eu.email);
+      }
       if (acao === 'conferida') {
         const { chave, certo } = (await lerCorpo(req)) ?? {};
         escala.conferida(dia, chave, !!certo, eu.email);
       }
       if (acao === 'publicar') {
         const { posicoes, dispensadas } = escala.lerDia(dia);
-        escala.publicar(dia, pendenciasQueFicaram(conferirODia({ dia, posicoes, editores, turnos: TURNOS_DE_FABRICA }), dispensadas), eu.email);
+        escala.publicar(dia, pendenciasQueFicaram(conferirODia({ dia, posicoes, editores, turnos: turnosDoDia(turnos, posicoes) }), dispensadas), eu.email);
         console.log(`[montar-pauta] ${eu.email} publicou ${dia}`);
       }
       if (acao === 'desfazer') {
@@ -1603,7 +1630,51 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     } catch (e) {
       return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
     }
-    return json(res, 200, { dia, ...escala.lerDia(dia), semana: escala.estados(diasDaSemana(segundaDaSemana(dia))), turnos: TURNOS_DE_FABRICA, editores });
+    const lido = escala.lerDia(dia);
+    return json(res, 200, {
+      dia,
+      ...lido,
+      semana: escala.estados(diasDaSemana(segundaDaSemana(dia))),
+      turnos: turnosDoDia(turnos, lido.posicoes),
+      editores,
+      ilhas: ilhas.todas(),
+      costume: ilhas.deCostume(dia),
+      ocupadas: ilhasOcupadas(lido.posicoes),
+    });
+  }
+
+  /**
+   * O cadastro das ilhas (#124), no SQLite do PROMeiro: GET para qualquer pessoa logada (com o que ela pode fazer);
+   * POST { tipo, numero, nome } cadastra e PUT /:id muda, pela coordenação e pelos administradores; DELETE /:id tira,
+   * só administradores (as posições que já tinham a ilha continuam com ela).
+   */
+  async function rotaDasIlhas(req, res, eu, caminho) {
+    const id = decodeURIComponent(caminho.slice('/api/cadastros/ilhas/'.length));
+    const admin = cadastros.podeApagar(eu.email);
+    const podeCadastrar = admin || escala.ehCoordenacao(eu.email);
+    try {
+      if (caminho === '/api/cadastros/ilhas') {
+        if (req.method === 'GET') return json(res, 200, { ilhas: ilhas.todas(), podeCadastrar, podeRemover: admin });
+        if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+        if (!podeCadastrar) return json(res, 403, { erro: 'Só a coordenação e os administradores cadastram ilhas.' });
+        const ilha = ilhas.criar((await lerCorpo(req)) ?? {}, eu.email);
+        console.log(`[cadastros] ${eu.email} cadastrou a ilha ${ilha.tipo} ${ilha.numero}`);
+        return json(res, 201, { ilha });
+      }
+      if (req.method === 'PUT') {
+        if (!podeCadastrar) return json(res, 403, { erro: 'Só a coordenação e os administradores mudam ilhas.' });
+        return json(res, 200, { ilha: ilhas.mudar(id, (await lerCorpo(req)) ?? {}, eu.email) });
+      }
+      if (req.method === 'DELETE') {
+        if (!admin) return json(res, 403, { erro: 'Só administradores removem ilhas.' });
+        ilhas.remover(id);
+        console.log(`[cadastros] ${eu.email} removeu a ilha ${id}`);
+        return json(res, 200, { ok: true });
+      }
+      return json(res, 405, { erro: 'Método não permitido.' });
+    } catch (e) {
+      return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
+    }
   }
 
   /**
@@ -1645,6 +1716,44 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     } catch (e) {
       if (!e.status) throw e;
       return json(res, e.status, { erro: e.message });
+    }
+  }
+
+  /**
+   * As ausências (#128), só para a coordenação. GET /api/montar-pauta/ausencias?dia= é o painel do dia (as ausências
+   * que valem a partir da semana dele, as do dia, a oferta de tirar quem continua num dia publicado e as demandas para
+   * distribuir); /ausencias/onde?editor=&de=&ate= diz onde a pessoa está escalada no período, antes de marcar;
+   * /ausencias/historico?editor= tem também as apagadas. Os POST devolvem o painel: /ausencias { editor, tipo, de,
+   * ate, observacao } marca (e, nos rascunhos, a posição vira vaga; volta também `marcada` e `escalada`);
+   * /ausencias/apagar { id }; /tirar { editor } tira a pessoa do dia (as demandas vão para distribuir);
+   * /para-distribuir/tirar { id } tira a demanda da lista. Nada vai ao Teable.
+   */
+  async function rotaDasAusencias(req, res, eu, acao) {
+    const leitura = ['ausencias', 'ausencias/onde', 'ausencias/historico'].includes(acao) && req.method === 'GET';
+    if (!leitura && req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    if (!escala.ehCoordenacao(eu.email)) return json(res, 403, { erro: 'Só a coordenação marca as ausências.' });
+    const busca = new URL(req.url, 'http://x').searchParams;
+    const dia = diaOuHoje(busca.get('dia') ?? '', '') || diaVizinho(diaEmSaoPaulo(), 1);
+    try {
+      if (acao === 'ausencias/onde') return json(res, 200, { escalada: ausencias.onde(busca.get('editor'), busca.get('de'), busca.get('ate')) });
+      if (acao === 'ausencias/historico') return json(res, 200, { historico: ausencias.historico(busca.get('editor')) });
+      let marcou = {};
+      if (req.method === 'POST') {
+        const corpo = (await lerCorpo(req)) ?? {};
+        if (acao === 'ausencias') {
+          marcou = ausencias.marcar(ausenciaDoPedido(corpo), eu.email);
+          console.log(`[montar-pauta] ${eu.email} marcou uma ausência (${marcou.marcada.de} a ${marcou.marcada.ate})`);
+        }
+        if (acao === 'ausencias/apagar') ausencias.apagar(corpo.id, eu.email);
+        if (acao === 'tirar') {
+          ausencias.tirar(dia, corpo.editor, eu.email);
+          console.log(`[montar-pauta] ${eu.email} tirou uma pessoa de ${dia}`);
+        }
+        if (acao === 'para-distribuir/tirar') ausencias.distribuida(dia, corpo.id);
+      }
+      return json(res, 200, { ...ausencias.painel(dia, segundaDaSemana(dia)), ...marcou });
+    } catch (e) {
+      return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
     }
   }
 
@@ -1771,6 +1880,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const daPraca = await lerSecaoPracas(trello, env, lido);
     const teable = teableForaDoAr();
     return {
+      // os turnos (#124): não dependem do Trello, nem travam com ele fora
+      turnos: { salvo: turnosDaConfiguracao(configuracao.valores()), deFabrica: !salvos.has('TURNOS') },
       pracas: travada(daPraca),
       card: travada(card),
       filmes: travada(filmes),
@@ -1920,7 +2031,19 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const corpo = await lerCorpo(req).catch(() => null);
       if (acao === '/trocar') return await trocarAConexao(res, eu, corpo);
       if (acao === '/voltar') return await voltarNoHistorico(res, eu, corpo);
-      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
+      if (corpo?.pracas === undefined && corpo?.card === undefined && corpo?.filmes === undefined && corpo?.turnos === undefined) return json(res, 400, { erro: 'Nada veio para conferir.' });
+      // os turnos (#124): sem o Trello; vindo só eles, o quadro nem é lido
+      if (corpo.turnos !== undefined && !Array.isArray(corpo.turnos)) return json(res, 400, { erro: 'Os turnos vieram incompletos.' });
+      const turnosNovos = corpo.turnos === undefined ? null : turnosArrumados(corpo.turnos.slice(0, 20));
+      const dosTurnos = turnosNovos && conferirTurnos(turnosNovos, turnosDaConfiguracao(configuracao.valores()));
+      const soTurnos = corpo.pracas === undefined && corpo.card === undefined && corpo.filmes === undefined;
+      if (soTurnos) {
+        if (acao === '/conferir') return json(res, 200, dosTurnos);
+        if (!dosTurnos.ok) return json(res, 422, { erro: 'A conferência não passou: nada foi salvo.', conferencia: dosTurnos });
+        mudarConfiguracao({ TURNOS: JSON.stringify(turnosNovos) }, { por: eu.email });
+        console.log(`[configuração] ${eu.email} salvou os turnos: ${dosTurnos.muda.map((m) => m.oque).join(', ') || 'sem mudança'}`);
+        return json(res, 200, await lerAsSecoes());
+      }
       const pracas = corpo.pracas === undefined ? null : secaoDoPedido(corpo);
       if (corpo.pracas !== undefined && !pracas) return json(res, 400, { erro: 'As praças vieram incompletas.' });
       const card = corpo.card === undefined ? null : cardDoPedido(corpo);
@@ -1935,7 +2058,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // a praça dos filmes é uma das praças que vão valer: as do pedido, quando as praças mudam junto
       const sessoes = filmesNovos && (await sessoesDoCadastro(cadastros)).sessoes;
       const dosFilmes = filmesNovos && conferirSecaoDosFilmes(env, lido.quadro, filmesNovos, { pracas: pracas ? pracas.pracas : geracao.pracas, sessoes });
-      const partes = [daPraca, doCard?.conferencia, dosFilmes].filter(Boolean);
+      const partes = [daPraca, doCard?.conferencia, dosFilmes, dosTurnos].filter(Boolean);
       const conferencia = {
         ok: partes.every((c) => c.ok),
         itens: partes.flatMap((c) => c.itens),
@@ -1964,12 +2087,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           ...(completa ? mudancasDaSecao(completa.secao) : {}),
           ...(doCard ? mudancasDoCard(doCard.secao) : {}),
           ...(filmesNovos ? mudancasDosFilmes(filmesNovos) : {}),
+          ...(turnosNovos ? { TURNOS: JSON.stringify(turnosNovos) } : {}),
           LIGADO_A_MAO: JSON.stringify(aMao),
         },
         { por: eu.email, quadro: lido.quadro },
       );
       const criadas = completa?.criadas.length ? ` (opção criada no Trello: ${completa.criadas.join(', ')})` : '';
-      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
+      console.log(`[configuração] ${eu.email} salvou ${[pracas && 'as praças', card && 'o card', filmesNovos && 'os filmes', turnosNovos && 'os turnos'].filter(Boolean).join(' e ')}: ${conferencia.muda.map((m) => m.oque).join(', ') || 'sem mudança'}${criadas}`);
       return json(res, 200, await lerAsSecoes());
     } catch (e) {
       console.warn(`[configuração] ${e instanceof Error ? e.message : e}`);
@@ -2360,6 +2484,22 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
     if (caminho === '/api/cores') return json(res, 200, q.cores.all());
+    if (caminho === '/api/apelidos') {
+      // o apelido da claquete (#120), um por roteiro: qualquer pessoa logada que lê o roteiro lê, dá, troca e tira o
+      // apelido ("voltar ao original", o apelido vazio)
+      const lidos = () => apelidos.todos((id) => acesso(id, eu).ler);
+      if (req.method === 'GET') return json(res, 200, lidos());
+      if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
+      const id = typeof corpo.roteiro === 'string' ? corpo.roteiro : '';
+      const { linha, ler } = ID_VALIDO.test(id) ? acesso(id, eu) : { linha: null, ler: false };
+      if (!linha || !ler) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+      const recusa = apelidos.gravar(id, JSON.parse(linha.meta)?.claquete, corpo.apelido, eu);
+      if (recusa) return json(res, 400, { erro: recusa });
+      // os colegas com a fila aberta passam a ver o apelido na hora
+      void cache.publicar(FILA, { tipo: 'apelido', por: eu.email }).catch(() => {});
+      return json(res, 200, lidos());
+    }
     if (caminho === '/api/eu/cor') {
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const cor = String((await lerCorpo(req))?.cor ?? '').toLowerCase();
@@ -2762,6 +2902,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, producoes.linhaDoTempo({ card, producao }));
     }
     if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir', 'apagar', 'modo', 'copia', 'recriar'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
+    if (caminho === '/api/cadastros/ilhas' || caminho.startsWith('/api/cadastros/ilhas/')) return rotaDasIlhas(req, res, eu, caminho);
     if (caminho === '/api/cadastros/padeiros' || caminho.startsWith('/api/cadastros/padeiros/')) return rotaDosPadeiros(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta/semana' || caminho === '/api/pauta/dia') {
@@ -2789,9 +2930,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const vistas = filtro ? filtrarAPauta(linhas, filtro, voce) : linhas;
       const editores = !filtro ? s.editores : ehDia ? colunasDoDia(vistas).map((c) => c.editor) : ordemDosEditores(vistas);
       const resumo = cadastros.podeApagar(eu.email) ? { resumo: resumoDaPauta(linhas, s.alteradoEm) } : {};
-      return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, ...resumo });
+      // quem está fora (#128): todos veem "fora"; o motivo e a observação, só a coordenação e os administradores
+      const fora = foraNaPauta(ausencias.noPeriodo(dias[0], dias.at(-1)), dias, escala.ehCoordenacao(eu.email) || cadastros.podeApagar(eu.email));
+      return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, fora, ...resumo });
     }
     if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
+    const acaoDasAusencias = /^\/api\/montar-pauta\/(ausencias|ausencias\/onde|ausencias\/historico|ausencias\/apagar|tirar|para-distribuir\/tirar)$/.exec(caminho);
+    if (acaoDasAusencias) return rotaDasAusencias(req, res, eu, acaoDasAusencias[1]);
     const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer)$/.exec(caminho);
     if (acaoDoMontar) return rotaDeMontarAPauta(req, res, eu, acaoDoMontar[1]);
     if (caminho === '/api/correcoes/pauta') {
@@ -2893,6 +3038,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           q.atualizar.run(publico, meta, doc, nArtes, revisao, agora, id);
         }
         else q.inserir.run(id, eu.email, eu.nome, publico, meta, doc, nArtes, revisao, r.origem ?? null, agora, agora);
+        // as versões da chamada que as artes do roteiro dizem (#120), pela mesma regra do editor
+        q.versoesLidas.run(JSON.stringify(versoesLidas(r.meta, r.doc)), id);
         if ((meu || !atual) && Array.isArray(r.compartilhadoCom)) {
           const antes = JSON.stringify(q.compartilhadoCom.all(id));
           q.limparCompartilhamento.run(id);

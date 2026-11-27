@@ -1,3 +1,4 @@
+import type { Ausencia, EscaladaNoDia, PainelDasAusencias } from '../modelo/ausencias';
 import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { registrarPracas } from '../modelo/pracas';
 import { areaDeEntrada, chaveDaExibicao, ehArea, exibicaoDaArea, type Area, type AreaDosRoteiros, type Exibicao } from '../modelo/areas';
@@ -7,6 +8,7 @@ import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../
 import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import type { EventoDaLinha, ProducaoDaLinha } from '../modelo/linhaDoTempo';
+import type { Versao as VersaoDaChamada } from '../modelo/pauta';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
@@ -21,6 +23,8 @@ export interface Resumo {
   meta: Meta;
   /** As artes a produzir (`quantasAProduzir`): sem as que já existem e as que não vão ser produzidas, como o checklist. */
   nArtes: number;
+  /** As versões da chamada lidas nas artes do roteiro guardado (#120), na ordem do padrão; ausente fora do servidor. */
+  versoesLidas?: VersaoDaChamada[];
   atualizadoEm: string;
   dono: Pessoa | null;
   publico: boolean;
@@ -238,6 +242,22 @@ export async function atualizarVocabulario() {
   const v = await pedir<VocabularioExterno>('/api/vocabulario').catch((e) => void (ultimoErroVocabulario = e instanceof Error ? e.message : String(e)));
   if (v) registrarVocabulario(v);
 }
+
+/** O apelido de um roteiro guardado no servidor (#120), com a claquete original, as Produções do roteiro (de todas as
+    praças) e os cards do envio: só dentro do PROMeiro, o envio leva a original. */
+export interface ApelidoGuardado {
+  roteiro: string;
+  original: string;
+  apelido: string;
+  por: string;
+  em: string;
+  producoes: string[];
+  cards: string[];
+}
+/** Os apelidos dos roteiros; fora do servidor, nenhum. */
+export const lerApelidos = async (): Promise<ApelidoGuardado[]> => (armazenamento.tipo === 'servidor' ? pedir<ApelidoGuardado[]>('/api/apelidos') : []);
+/** Dá, troca ou tira (o apelido vazio: "voltar ao original") o apelido do roteiro; devolve os apelidos de agora. */
+export const gravarApelido = (roteiro: string, apelido: string) => pedir<ApelidoGuardado[]>('/api/apelidos', { method: 'PUT', body: JSON.stringify({ roteiro, apelido }) });
 
 /** Quem está com a claquete na pauta da edição. Pergunta ao servidor; sem resposta, usa a pauta que já veio no vocabulário. */
 export async function consultarPauta(claquete: string): Promise<{ editor: string; claquete: string }> {
@@ -1028,7 +1048,8 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
 import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
-import type { DiaDaEscala, PosicaoDaEscala } from '../modelo/escala';
+import type { DiaDaEscala, PosicaoDaEscala, TurnoDaEscala } from '../modelo/escala';
+import type { Ilha } from '../modelo/ilhas';
 import type { GrupoDaPauta, PaginaDaCorrecao, PaginaDasAtracoes } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DOS_RECOLHIDOS, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 export type { SecaoDaDuplicada };
@@ -1284,12 +1305,15 @@ export interface SecoesDaConfiguracao {
   card: SecaoCard;
   filmes: SecaoFilmes;
   conexoes: ConexoesDaConfiguracao;
+  /** os turnos da montagem da pauta (#124): os salvos, ou os de fábrica */
+  turnos: { salvo: TurnoDaEscala[]; deFabrica: boolean };
 }
 /** O que vai para conferir e salvar: só as seções que mudaram. */
 export interface MudancasDaConfiguracao {
   pracas?: LigacoesDasPracas;
   card?: LigacoesDoCard;
   filmes?: LigacoesDosFilmes;
+  turnos?: TurnoDaEscala[];
 }
 export const lerConfiguracao = () => pedir<SecoesDaConfiguracao>('/api/configuracao');
 /** Os quadros do Trello e as bases do Teable que os tokens enxergam (para trocar, em Conexões). */
@@ -1427,6 +1451,17 @@ export const marcarPendencia = (dia: string, chave: string, certo: boolean) => p
 export const publicarODia = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/publicar?dia=${dia}`, { method: 'POST' });
 /** Desfaz a última publicação do dia (vale a anterior, ou nenhuma) (#127); devolve o dia. */
 export const desfazerAPublicacao = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/desfazer?dia=${dia}`, { method: 'POST' });
+/** O painel das ausências do dia (#128): as que valem a partir da semana, as do dia, a oferta de tirar e o para distribuir. */
+export const lerAusencias = (dia: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/ausencias?dia=${dia}`);
+/** Onde a pessoa está escalada no período, antes de marcar a ausência. */
+export const ondeEstaEscalada = (editor: string, de: string, ate: string) => pedir<{ escalada: EscaladaNoDia[] }>(`/api/montar-pauta/ausencias/onde?${new URLSearchParams({ editor, de, ate })}`);
+/** Marca a ausência; nos rascunhos do período, a posição da pessoa vira vaga. Devolve o painel e onde ela estava. */
+export const marcarAusencia = (dia: string, a: Omit<Ausencia, 'id'>) => pedir<PainelDasAusencias & { marcada: Ausencia; escalada: EscaladaNoDia[] }>(`/api/montar-pauta/ausencias?dia=${dia}`, { method: 'POST', body: JSON.stringify(a) });
+export const apagarAusencia = (dia: string, id: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/ausencias/apagar?dia=${dia}`, { method: 'POST', body: JSON.stringify({ id }) });
+/** Tira a pessoa do dia (publicado): as posições dela ficam vagas e as demandas vão para "para distribuir". */
+export const tirarDoDia = (dia: string, editor: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/tirar?dia=${dia}`, { method: 'POST', body: JSON.stringify({ editor }) });
+/** "Já distribuí": tira a demanda da lista "para distribuir" do dia. */
+export const jaDistribuida = (dia: string, id: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/para-distribuir/tirar?dia=${dia}`, { method: 'POST', body: JSON.stringify({ id }) });
 /** Lê o Andamento (guardado alguns minutos no servidor); `deNovo` vai ao GitHub. */
 export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** A correção de grafia (#114, só administradores): uma página das propostas da pauta de um grupo, e o resumo. */
@@ -1441,11 +1476,25 @@ export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<Confere
 export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ secoes: SecoesDaConfiguracao } | { conferencia: ConferenciaDasPracas }> {
   const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify(m) });
   const corpo = (await r.json().catch(() => null)) as (Partial<SecoesDaConfiguracao> & { conferencia?: ConferenciaDasPracas; erro?: string }) | null;
-  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes) {
+  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);
 }
+
+/* ---------- as ilhas (#124), no SQLite do PROMeiro ---------- */
+
+/** O cadastro das ilhas, com o que quem está logado pode fazer nele. */
+export interface CadastroDasIlhas {
+  ilhas: Ilha[];
+  podeCadastrar: boolean;
+  podeRemover: boolean;
+}
+export type IlhaNova = Pick<Ilha, 'tipo' | 'numero' | 'nome'>;
+export const lerIlhas = () => pedir<CadastroDasIlhas>('/api/cadastros/ilhas');
+export const cadastrarIlha = (i: IlhaNova) => pedir<{ ilha: Ilha }>('/api/cadastros/ilhas', { method: 'POST', body: JSON.stringify(i) }).then((r) => r.ilha);
+export const mudarIlha = (id: string, i: IlhaNova) => pedir<{ ilha: Ilha }>(`/api/cadastros/ilhas/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(i) }).then((r) => r.ilha);
+export const removerIlha = (id: string) => pedir<{ ok: true }>(`/api/cadastros/ilhas/${encodeURIComponent(id)}`, { method: 'DELETE' });

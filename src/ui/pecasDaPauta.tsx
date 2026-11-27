@@ -1,9 +1,10 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { escolhaLembradaDaPauta, lembrarNaPauta } from '../dados/armazenamento';
-import { ROTULO_DA_ETAPA, diaEmSaoPaulo, resumoDaProducao, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
+import { ROTULO_DA_ETAPA, diaEmSaoPaulo, lerVersoes, resumoDaProducao, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
+import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
 
 /* As peças da Pauta da edição que a Semana (#94) e o Dia (#97) usam igual: as datas escritas, as versões da chamada
    como etiquetas (#95), a claquete com a produção da arte (#96), o item da pauta (claquete ou tarefa), a ficha da
@@ -39,6 +40,13 @@ export function Versoes({ linha }: { linha: LinhaDaPauta }) {
   );
 }
 
+/** A linha com o apelido do roteiro (#120) das Produções dela no lugar do texto, e as versões lidas dele: só para
+    mostrar. A chave e as Produções achadas por ela ficam as da claquete da pauta; a original fica em `original`. */
+function comApelidoNaPauta(l: LinhaDaPauta): LinhaDaPauta & { original?: string } {
+  const apelido = l.tipo === 'claquete' ? (l.producoes ?? []).map((p) => apelidoDaProducao(p.id)).find(Boolean) : '';
+  return apelido ? { ...l, texto: apelido, ...lerVersoes(apelido, l.dia), original: l.texto } : l;
+}
+
 /** "1 editor", "3 editores". */
 export const contagem = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
@@ -61,19 +69,22 @@ export function ProducaoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
 }
 
 /** O texto da claquete, com o marca-texto da prioridade ALTA da produção da arte (como na agenda). */
-export function TextoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
+export function TextoDaClaquete({ linha }: { linha: LinhaDaPauta & { original?: string } }) {
   const alta = !!resumoDaProducao(linha.producoes)?.alta;
-  const texto = <span className="pauta-texto">{linha.semVersao}</span>;
+  // com o apelido do roteiro (#120), a claquete da pauta aparece ao passar o mouse
+  const texto = <span className="pauta-texto" title={linha.original ? `Claquete: ${linha.original}` : undefined}>{linha.semVersao}</span>;
   return alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{texto}</MarcaTexto> : texto;
 }
 
 /** Um item da pauta: a claquete (que abre a ficha), com as versões e a produção da arte; ou a tarefa, com outro visual.
     O `pe` vem no fim do card, fora do botão da claquete (na Semana com um dia por coluna, o editor e os avisos). */
-export function ItemDaPauta({ linha: l, abrir, pe }: { linha: LinhaDaPauta; abrir: (l: LinhaDaPauta) => void; pe?: ReactNode }) {
+export function ItemDaPauta({ linha, abrir, pe }: { linha: LinhaDaPauta; abrir: (l: LinhaDaPauta) => void; pe?: ReactNode }) {
+  useApelidos();
+  const l = comApelidoNaPauta(linha);
   return (
     <li className={`pauta-item pauta-${l.tipo}`} data-tipo={l.tipo} data-etapa={l.tipo === 'claquete' ? (resumoDaProducao(l.producoes)?.etapa ?? 'sem-card') : undefined}>
       {l.tipo === 'claquete' ? (
-        <button type="button" className="pauta-claquete-botao" aria-haspopup="dialog" onClick={() => abrir(l)}>
+        <button type="button" className="pauta-claquete-botao" aria-haspopup="dialog" onClick={() => abrir(linha)}>
           <TextoDaClaquete linha={l} />
           <Versoes linha={l} />
           <ProducaoDaClaquete linha={l} />
@@ -102,8 +113,10 @@ const vizinho = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00
  * A ficha da claquete (#96), por cima da Semana ou do Dia (#97): as linhas da mesma atração com versões diferentes
  * juntas (a mesma chave), os dias em que ela aparece na pauta lida (a semana ou o dia) e a produção da arte de cada praça.
  */
-export function FichaDaClaquete({ linha, linhas: todas, hoje, fechar }: { linha: LinhaDaPauta; linhas: readonly LinhaDaPauta[]; hoje: string; fechar: () => void }) {
-  const linhas = todas.filter((l) => l.tipo === 'claquete' && (l.id === linha.id || (!!linha.chave && l.chave === linha.chave)));
+export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }: { linha: LinhaDaPauta; linhas: readonly LinhaDaPauta[]; hoje: string; fechar: () => void }) {
+  useApelidos();
+  const linha = comApelidoNaPauta(daPauta);
+  const linhas = todas.filter((l) => l.tipo === 'claquete' && (l.id === linha.id || (!!linha.chave && l.chave === linha.chave))).map(comApelidoNaPauta);
   const producoes = [...new Map(linhas.flatMap((l) => l.producoes ?? []).map((p) => [p.id, p])).values()].sort((a, b) => a.praca.localeCompare(b.praca));
   const versoes = [...new Map(linhas.flatMap((l) => l.versoes).map((v) => [`${v.codigo.toUpperCase()}|${v.rotulo}`, v])).values()];
   const resumo = resumoDaProducao(producoes);

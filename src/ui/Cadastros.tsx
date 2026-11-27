@@ -51,6 +51,7 @@ import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
 import { ListaDeDuplicadas, PainelDasDuplicadas, useDuplicadas } from './Duplicadas';
 import { ListaDePadeiros, PainelDosPadeiros, usePadeiros } from './Padeiros';
+import { FormDaIlha, ICONE_DAS_ILHAS, ListaDasIlhas, useIlhas } from './IlhasNosCadastros';
 import { CoordenacaoNaLinha, EmailNaLinha, quemNoCadastro, SugestaoDeEmailNaLista } from './EmailDoCadastro';
 import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, RegrasDaAtracaoNaFicha, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
@@ -140,8 +141,8 @@ export function previaDoCaminho(formula: string, valores: Record<string, string>
 /* ---------- pedaços ---------- */
 
 type AbaExtra = { ativa: boolean; total: number; abrir: () => void };
-function Abas({ aba, mudar, totais, sem, dup, pad }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: AbaExtra; dup: AbaExtra | null; pad: AbaExtra | null }) {
-  const outra = sem.ativa || !!dup?.ativa || !!pad?.ativa;
+function Abas({ aba, mudar, totais, sem, dup, pad, ilhas }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: AbaExtra; dup: AbaExtra | null; pad: AbaExtra | null; ilhas: AbaExtra }) {
+  const outra = sem.ativa || !!dup?.ativa || !!pad?.ativa || ilhas.ativa;
   return (
     <div className="abas-cad" role="tablist" aria-label="Cadastros">
       {(Object.keys(NOMES) as TipoCadastro[]).map((a) => (
@@ -161,6 +162,8 @@ function Abas({ aba, mudar, totais, sem, dup, pad }: { aba: TipoCadastro; mudar:
       ))}
       {/* as keys que aparecem nas claquetes e nenhuma atração reconhece */}
       <AbaDeFora nome="Sem cadastro" icone={<Desenho d={ICONE_SEM} />} aba={sem} />
+      {/* as salas de edição (#124): no PROMeiro, para a montagem da pauta */}
+      <AbaDeFora nome="Ilhas" icone={<Desenho d={ICONE_DAS_ILHAS} />} aba={ilhas} classe="aba-ilhas" />
       {/* os cards repetidos no quadro do Trello: só administradores (o número são todos os casos pendentes) */}
       {dup && <AbaDeFora nome="Duplicadas" icone={<Icone nome="duplicar" tam={18} />} aba={dup} classe="aba-dup" />}
       {/* a chave do Padeiro (#137): só administradores (o número são as pendentes) */}
@@ -518,7 +521,7 @@ interface Props {
   avisar: (t: string) => void;
   /** Abre já numa aba e, para atração, com o formulário preenchido a partir da claquete (ou com o nome e a key
       que o "+ Nova atração" do balão escolheu). */
-  inicio?: { aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>;
+  inicio?: { aba?: TipoCadastro; claquete?: string; ilhas?: boolean } & Partial<AtracaoNova>;
 }
 
 export function Cadastros({ voltar, avisar, inicio }: Props) {
@@ -535,6 +538,9 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const [dupAberta, setDupAberta] = useState(false);
   // a aba Padeiros (#137, só administradores); aberta, ela toma o lugar da lista e do painel como a Duplicadas
   const [padAberta, setPadAberta] = useState(false);
+  // a aba Ilhas (#124)
+  const [ilhasAbertas, setIlhasAbertas] = useState(!!inicio?.ilhas);
+  const ilhas = useIlhas(ilhasAbertas, avisar);
   // onde a tira de rascunho abre a vaga na lista
   const [nomeVaga, setNomeVaga] = useState<string | null>(null);
   const vaga = useRef<HTMLDivElement>(null);
@@ -1104,15 +1110,16 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     <div className="lista-topo">
       <Abas
         aba={aba}
-        mudar={(a) => { setAba(a); setSemCad(false); setDupAberta(false); setPadAberta(false); setBusca(''); setFesta(null); fecharFicha(); }}
+        mudar={(a) => { setAba(a); setSemCad(false); setDupAberta(false); setPadAberta(false); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); }}
         totais={totais}
-        sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setDupAberta(false); setPadAberta(false); setBusca(''); setFesta(null); fecharFicha(); } }}
-        dup={pode ? { ativa: dupAberta, total: duplicadas.lista?.pendentes ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(true); setPadAberta(false); setBusca(''); setFesta(null); fecharFicha(); } } : null}
-        pad={pode ? { ativa: padAberta, total: padeiros.pendentes, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(true); setBusca(''); setFesta(null); fecharFicha(); } } : null}
+        sem={{ ativa: semCad, total: sem?.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(true); setDupAberta(false); setPadAberta(false); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } }}
+        dup={pode ? { ativa: dupAberta, total: duplicadas.lista?.pendentes ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(true); setPadAberta(false); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } } : null}
+        pad={pode ? { ativa: padAberta, total: padeiros.pendentes, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(true); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } } : null}
+        ilhas={{ ativa: ilhasAbertas, total: ilhas.dados?.ilhas.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(false); setIlhasAbertas(true); setBusca(''); setFesta(null); fecharFicha(); } }}
       />
       <label className="cad-busca">
         <Icone nome="lupa" />
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={padAberta ? 'Buscar usuário, sigla ou designer' : dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'} />
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={ilhasAbertas ? 'Buscar ilha' : padAberta ? 'Buscar usuário, sigla ou designer' : dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'} />
       </label>
     </div>
   );
@@ -1173,6 +1180,11 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         <div className="cad-grade">
           {atracaoAberta && verAcervo ? (
             <ListaDoAcervo key={atracaoAberta.id} nome={atracaoAberta.nome} acervo={fichaAberta?.acervo ?? null} voltar={() => setVerAcervo(false)} />
+          ) : ilhasAbertas ? (
+          <section ref={listaEl} className="lista-cad" aria-label="Ilhas">
+            {topoDaLista}
+            <ListaDasIlhas estado={ilhas} busca={busca} />
+          </section>
           ) : padAberta && pode ? (
           <section ref={listaEl} className="lista-cad" aria-label="Padeiros">
             {topoDaLista}
@@ -1229,7 +1241,9 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
           </section>
           )}
 
-          {padAberta && pode ? (
+          {ilhasAbertas ? (
+            <FormDaIlha estado={ilhas} desenho={<Desenho d={ICONE_DAS_ILHAS} />} />
+          ) : padAberta && pode ? (
             <PainelDosPadeiros lista={padeiros.lista} />
           ) : dupAberta && pode ? (
             <PainelDasDuplicadas registro={duplicadas.registro} recente={duplicadas.recente} reabrir={duplicadas.reabrir} celular={celular} soOlhar={duplicadas.lista?.ligado ? duplicadas.lista.soOlhar : null} mudarModo={duplicadas.mudarModo} depoisDeRecriar={duplicadas.depoisDeApagar} />
