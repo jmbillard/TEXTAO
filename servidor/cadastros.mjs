@@ -61,7 +61,7 @@ export function acervoDaAtracao(linha) {
 }
 
 /** Campos que nunca entram no formulário dos caminhos. */
-const NAO_EDITAVEIS = new Set(['formula', 'link', 'lookup', 'rollup', 'createdTime', 'lastModifiedTime', 'createdBy', 'lastModifiedBy', 'autoNumber', 'button', 'attachment']);
+export const NAO_EDITAVEIS = new Set(['formula', 'link', 'lookup', 'rollup', 'createdTime', 'lastModifiedTime', 'createdBy', 'lastModifiedBy', 'autoNumber', 'button', 'attachment']);
 
 export function criarCadastros(env, { buscar = fetch, vocabulario = null } = {}) {
   const base = (env.TEABLE_URL || '').replace(/\/+$/, '');

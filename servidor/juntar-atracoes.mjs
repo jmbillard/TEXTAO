@@ -13,14 +13,14 @@
    partir da cópia (com outro id), religa a ela o que tinha passado e ainda está na que ficou, devolve o nome da que
    ficou e as regras. A escrita é pela API do Teable, só na base do PROMeiro; a leitura das ligações, pelo Postgres. */
 import { vinculos } from './acervo.mjs';
+// os campos que não se gravam ao recriar a ficha: os calculados, os vínculos (religados à parte) e os anexos
+import { NAO_EDITAVEIS as NAO_GRAVAVEIS } from './cadastros.mjs';
 
 /** O tipo das junções no registro das correções. */
 export const TIPO_DAS_ATRACOES = 'atracoes';
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const LOTE = 100;
 const limpo = (v) => String(v ?? '').trim();
-/** Campos que não se gravam ao recriar a ficha: os calculados, os vínculos (religados à parte) e os anexos. */
-const NAO_GRAVAVEIS = new Set(['formula', 'link', 'lookup', 'rollup', 'createdTime', 'lastModifiedTime', 'createdBy', 'lastModifiedBy', 'autoNumber', 'button', 'attachment']);
 /** As tabelas em que a junção escreve, e o vínculo de cada uma com a ficha de atração. */
 const LIGACOES = [
   { nome: 'KEY_atracoes', campo: 'atracoes', conta: 'keys' },
