@@ -164,6 +164,43 @@ const posicoesDoTopo = (p) =>
     const r = e.getBoundingClientRect();
     return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
   }), PECAS_DO_TOPO);
+/** Os caminhos do topo, pela ordem (#168). */
+const caminhosNaOrdem = (p) => p.locator('.barra-topo nav.caminhos-do-topo a').evaluateAll((as) => as.map((a) => a.getAttribute('aria-label')));
+/** Mede, quadro a quadro, onde fica cada ícone dos caminhos (pela ordem) a partir de agora, por 1,2 s. Cada tela monta o
+    topo dela, então a medida acha o nav de novo a cada quadro. */
+const comecarAMedirOsIcones = (p) =>
+  p.evaluate(() => {
+    const quadros = [];
+    window.__quadrosDosIcones = quadros;
+    const inicio = performance.now();
+    const medir = () => {
+      const icones = [...document.querySelectorAll('.barra-topo nav.caminhos-do-topo .caminho-icone')];
+      quadros.push([Math.round(performance.now() - inicio), ...icones.map((i) => i.getBoundingClientRect().left)]); // [ms, x...]
+      if (performance.now() - inicio < 1200) requestAnimationFrame(medir);
+    };
+    medir();
+  });
+/** Os ícones dos caminhos só deslizam (#168): cada ícone que muda de lugar passa por vários quadros no meio do caminho
+    (um pulo iria de uma ponta à outra de uma vez). Pela medida em quadros e não em px por quadro: a curva --suave começa
+    rápida, e um quadro longo da tela nova chegando faz um passo grande sem ser pulo. No computador, o primeiro fica
+    parado; no celular (sem o nome), todos. */
+async function iconesSemPulo(p, comNome, onde) {
+  const quadros = (await p.evaluate(() => window.__quadrosDosIcones)).map((q) => q.slice(1)).filter((q) => q.length);
+  assert.ok(quadros.length > 10, `${onde}: os quadros medidos`);
+  const n = quadros[quadros.length - 1].length;
+  const mesmos = quadros.filter((q) => q.length === n);
+  for (let j = 0; j < n; j++) {
+    const xs = mesmos.map((q) => q[j]);
+    const [de, para] = [xs[0], xs[xs.length - 1]];
+    if (!comNome || j === 0) {
+      assert.ok(Math.max(...xs) - Math.min(...xs) <= 1, `${onde}: o ícone ${j + 1} parado`);
+      continue;
+    }
+    if (Math.abs(para - de) <= 1) continue;
+    const noMeio = xs.filter((x) => Math.min(Math.abs(x - de), Math.abs(x - para)) > 1).length;
+    assert.ok(noMeio >= 5, `${onde}: o ícone ${j + 1} desliza de ${de.toFixed(0)} a ${para.toFixed(0)} (${noMeio} quadros no meio)`);
+  }
+}
 /** O topo no mesmo lugar de antes: no máximo 1 px em cada lado de cada peça. */
 async function topoParado(p, antes, onde) {
   const agora = await posicoesDoTopo(p);
@@ -391,14 +428,17 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
     assert.ok(leituras.length > antes, 'a tela se lê de novo depois de um minuto');
   }
 
-  // os caminhos do topo (#156): "No Trello · Pauta da edição", com a bolinha entre eles, sem o "De todo mundo"
+  // os caminhos do topo (#156, #168): "No Trello · Produções · Pauta da edição", com as Produções abertas e a bolinha
+  // só antes da Pauta, sem o "De todo mundo"
   const caminhos = p.locator('.barra-topo nav.caminhos-do-topo');
-  assert.deepEqual((await caminhos.locator('a span').allTextContents()).slice(0, 2), ['No Trello', 'Pauta da edição']);
-  assert.equal(await caminhos.locator('.caminho-bolinha').count() >= 1, true, 'a bolinha entre os caminhos');
+  assert.deepEqual((await caminhos.locator('a').evaluateAll((as) => as.map((a) => a.getAttribute('aria-label')))).slice(0, 3), ['No Trello', 'Produções', 'Pauta da edição']);
+  assert.equal(await caminhos.locator('[aria-current="page"]').getAttribute('aria-label'), 'Produções', 'as Produções são o caminho atual');
+  assert.equal(await caminhos.locator('.caminho-bolinha').count(), 1, 'uma bolinha só');
+  assert.equal(await caminhos.locator('.caminho-bolinha + .topo-pauta').count(), 1, 'a bolinha antes da Pauta');
   assert.equal(await p.locator('.barra-topo', { hasText: /de todo mundo/i }).count(), 0, 'sem o "De todo mundo"');
   // a volta para a agenda No Trello, com o topo parado
   await p.locator('.barra-topo .topo-agenda').click();
-  await p.locator('.barra-topo .topo-producoes').waitFor();
+  await p.locator('.barra-topo .topo-agenda[aria-current="page"]').waitFor();
   await topoParado(p, naFila, `${largura}: das Produções para a fila`);
   assert.equal(hash(p), '#/designer');
 
@@ -455,7 +495,7 @@ async function entradaNoCelular(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, devices['iPhone 13'], '');
   const entrada = p.locator('.barra-topo .topo-producoes');
   await entrada.waitFor();
-  assert.equal(await entrada.locator('span').isVisible(), false);
+  assert.equal(await entrada.locator('.caminho-nome').isVisible(), false, 'no celular, só o ícone');
   await semRolagemDeLado(p, 'fila no celular');
   await entrada.tap();
   await p.locator('.prod-bloco').first().waitFor();
@@ -989,10 +1029,14 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
  * #159: o topo parado entre as telas, para quem tem as três áreas (o seletor aparece) e a aba Filmes: o logo, o seletor e
  * o perfil no mesmo lugar (no máximo 1 px) na fila, nas Produções, nos Filmes e na Pauta, logo depois do clique (no meio
  * da troca) e depois; no computador e no celular (ali, sem os Filmes, que têm a entrada própria das prévias, #80).
+ * #168: os caminhos são sempre os mesmos, na mesma ordem, com o da tela atual marcado; os ícones só deslizam enquanto o
+ * nome do de antes fecha e o da tela nova abre (no celular, sem o nome, nem isso), e o primeiro fica parado.
  */
 async function topoEntreAsTelas(navegador, url) {
   for (const [onde, opcoes] of [['computador', { viewport: { width: 1440, height: 900 } }], ['celular', { ...devices['iPhone 13'] }]]) {
-    const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': CHEFE }, ...opcoes });
+    // com VIDEO=pasta, o vídeo curto da troca de tela no computador (#168): o caminho da tela abrindo e o de antes fechando
+    const filme = VIDEO && onde === 'computador' ? { recordVideo: { dir: join(VIDEO, 'topo'), size: { width: 1440, height: 900 } } } : {};
+    const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': CHEFE }, ...opcoes, ...filme });
     await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
     await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
     // a aba Filmes ligada (o servidor do teste não tem a leitura) e a lista das prévias vazia
@@ -1005,12 +1049,18 @@ async function topoEntreAsTelas(navegador, url) {
     await p.locator('.barra-topo .topo-filmes').waitFor();
     await p.locator('.barra-topo .seletor-area').waitFor();
     const naFila = await posicoesDoTopo(p);
+    const ordem = await caminhosNaOrdem(p);
     const ir = async (caminho, chegou, tela) => {
+      await comecarAMedirOsIcones(p);
       await p.locator(`.barra-topo ${caminho}`).click();
       await p.locator(chegou).first().waitFor();
       await topoParado(p, naFila, `${onde}: ${tela}, logo depois do clique`);
-      await p.waitForTimeout(400);
+      await p.waitForTimeout(700);
       await topoParado(p, naFila, `${onde}: ${tela}`);
+      // #168: os mesmos caminhos, na mesma ordem, com o da tela aberto; os ícones deslizam, sem pular
+      assert.deepEqual(await caminhosNaOrdem(p), ordem, `${onde}: ${tela}, os caminhos de sempre`);
+      assert.equal(await p.locator(`.barra-topo ${caminho}`).getAttribute('aria-current'), 'page', `${onde}: ${tela}, o caminho atual`);
+      await iconesSemPulo(p, onde === 'computador', `${onde}: ${tela}`);
     };
     await ir('.topo-producoes', '.prod-pagina', 'Produções');
     // no celular, a aba Filmes é a entrada das prévias (#80), com o topo próprio dela: fica de fora
@@ -1021,7 +1071,7 @@ async function topoEntreAsTelas(navegador, url) {
     await ir('.topo-pauta', '.pagina.pauta', 'Pauta');
     if (onde === 'computador') await capturar(p, '20-topo-pauta');
     await ir('.topo-producoes', '.prod-pagina', 'Produções de novo');
-    await ir('.topo-agenda', '.barra-topo .topo-producoes', 'a fila de novo');
+    await ir('.topo-agenda', '.barra-topo .topo-agenda[aria-current="page"]', 'a fila de novo');
     await semRolagemDeLado(p, `${onde}: o topo`);
     assert.deepEqual(erros, []);
     await ctx.close();

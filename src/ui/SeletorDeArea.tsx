@@ -5,6 +5,9 @@ import { AREAS, type Area } from '../modelo/areas';
 import { Icone, type NomeIcone } from './icones';
 import './areas.css';
 
+/** O rabisco embaixo do nome aberto, o mesmo das abas dos Cadastros. */
+const RABISCO = 'M2 9 C 30 3, 70 4, 98 6 C 70 8, 40 10, 14 12';
+
 const ICONE: Record<Area, NomeIcone> = { designer: 'arte', redator: 'arquivo', editor: 'edicao' };
 
 /** O caminho "PROMeiro / designer ▾" na linha do logo (#101): o clique em "designer ▾" abre a lista das áreas da
@@ -27,7 +30,9 @@ export function SeletorDeArea({ areas, atual, admin, trocar }: { areas: readonly
   return (
     <span className="caminho-area" ref={caixa}>
       <span className="caminho-area-barra" aria-hidden="true">/</span>
-      <button type="button" className="seletor-area" aria-haspopup="menu" aria-expanded={aberto} title="Trocar de área" onClick={() => setAberto((v) => !v)}>
+      <button type="button" className="seletor-area" aria-haspopup="menu" aria-expanded={aberto} aria-label={`Área: ${atual}. Trocar de área`} title="Trocar de área" onClick={() => setAberto((v) => !v)}>
+        {/* no celular, o ícone da área no lugar do nome, para os caminhos do topo caberem (#168) */}
+        <span className="seletor-area-icone" aria-hidden="true"><Icone nome={ICONE[atual]} tam={20} /></span>
         <span className="seletor-area-nome">{atual}</span>
         <Icone nome="baixo" tam={16} traco={2.2} />
       </button>
@@ -82,49 +87,85 @@ function useFilmesParaRevisar(ligado: boolean) {
   return ligado && revisar;
 }
 
+/** Os caminhos do topo, pela ordem fixa (#168). */
+export type IdDoCaminho = 'agenda' | 'producoes' | 'filmes' | 'pauta' | 'montar';
+
 interface Caminho {
-  classe: string;
+  id: IdDoCaminho;
   href: string;
   nome: string;
   icone: NomeIcone;
   ir: () => void;
 }
 
+/** O caminho aberto na última linha do logo montada: a tela nova abre com ele e anima a troca (#168). Cada tela monta o
+    próprio topo, então a memória fica fora do componente. */
+let abertoAntes: IdDoCaminho | undefined;
+
 /**
- * Os caminhos da linha do logo (#105, #156), em texto, separados por bolinhas: na Designer, "Produções · Filmes · Pauta
- * da edição"; na tela de produções, "No Trello" no lugar das Produções; no Redator e no Editor, só a Pauta. Só para a
- * coordenação, "Montar a pauta" (#123) vem depois da Pauta. A bolinha logo depois de Filmes fica laranja quando há
- * filme esperando revisão na aba Filmes. No celular, só os ícones.
+ * Os caminhos da linha do logo (#105, #156, #168): só os ícones, sempre na mesma ordem e no mesmo lugar — na Designer,
+ * "No Trello · Produções · Filmes · Pauta da edição"; no Redator e no Editor, só a Pauta. O da tela atual não some: se
+ * abre com o texto, como as abas dos Cadastros, e a largura anima (a tela nova começa com o caminho da anterior aberto e
+ * troca no quadro seguinte). Só para a coordenação, "Montar a pauta" (#123) vem depois da Pauta. A única bolinha
+ * separadora fica antes da Pauta, que é de todo mundo. O aviso de filme para revisar é uma bolinha laranja no ícone dos
+ * Filmes. O nome de cada um vai na dica (hover e foco) e no `aria-label`. No celular, só os ícones.
  */
-export function CaminhosDoTopo({ producoes, agenda, filmes, pauta, montar }: { producoes?: () => void; agenda?: () => void; filmes?: () => void; pauta?: () => void; montar?: () => void }) {
+export function CaminhosDoTopo({ agenda, producoes, filmes, pauta, montar, atual }: { agenda?: () => void; producoes?: () => void; filmes?: () => void; pauta?: () => void; montar?: () => void; atual?: IdDoCaminho }) {
   const revisar = useFilmesParaRevisar(!!filmes);
+  const [aberto, setAberto] = useState(() => abertoAntes ?? atual);
+  useEffect(() => {
+    abertoAntes = atual;
+    if (aberto === atual) return;
+    // dois quadros: o primeiro pinta o caminho de antes aberto, o segundo troca e a transição corre
+    let q = requestAnimationFrame(() => (q = requestAnimationFrame(() => setAberto(atual))));
+    return () => cancelAnimationFrame(q);
+  }, [atual]);
   const caminhos: Caminho[] = [
-    ...(producoes ? [{ classe: 'topo-producoes', href: '#/designer/producoes', nome: 'Produções', icone: 'colunas' as const, ir: producoes }] : []),
-    ...(agenda ? [{ classe: 'topo-agenda', href: '#/designer', nome: 'No Trello', icone: 'quadro' as const, ir: agenda }] : []),
-    ...(filmes ? [{ classe: 'topo-filmes', href: '#/filmes', nome: 'Filmes', icone: 'filme' as const, ir: filmes }] : []),
-    ...(pauta ? [{ classe: 'topo-pauta', href: '#/pauta', nome: 'Pauta da edição', icone: 'edicao' as const, ir: pauta }] : []),
-    ...(montar ? [{ classe: 'topo-pauta topo-montar', href: '#/pauta/montar', nome: 'Montar a pauta', icone: 'ajustes' as const, ir: montar }] : []),
+    ...(agenda ? [{ id: 'agenda' as const, href: '#/designer', nome: 'No Trello', icone: 'quadro' as const, ir: agenda }] : []),
+    ...(producoes ? [{ id: 'producoes' as const, href: '#/designer/producoes', nome: 'Produções', icone: 'colunas' as const, ir: producoes }] : []),
+    ...(filmes ? [{ id: 'filmes' as const, href: '#/filmes', nome: 'Filmes', icone: 'filme' as const, ir: filmes }] : []),
+    ...(pauta ? [{ id: 'pauta' as const, href: '#/pauta', nome: 'Pauta da edição', icone: 'edicao' as const, ir: pauta }] : []),
+    ...(montar ? [{ id: 'montar' as const, href: '#/pauta/montar', nome: 'Montar a pauta', icone: 'ajustes' as const, ir: montar }] : []),
   ];
   if (!caminhos.length) return null;
   return (
     <nav className="caminhos-do-topo" aria-label="Caminhos">
       {caminhos.map((c, i) => {
-        const deFilmes = c.classe === 'topo-filmes';
-        // a bolinha depois de Filmes é a dele: laranja com filme para revisar (no fim da linha, só quando é laranja)
-        const bolinha = i < caminhos.length - 1 || (deFilmes && revisar);
+        const aviso = c.id === 'filmes' && revisar;
+        const agora = c.id === atual;
+        const classe = c.id === 'montar' ? 'topo-montar topo-pauta' : `topo-${c.id}`;
         return (
-          <Fragment key={c.classe}>
+          <Fragment key={c.id}>
+            {/* a Pauta é de todo mundo: a bolinha a separa dos caminhos da área */}
+            {c.id === 'pauta' && i > 0 && <i className="caminho-bolinha" aria-hidden="true" />}
             <a
-              className={c.classe}
+              className={`${classe}${c.id === aberto ? ' aberto' : ''}`}
               href={c.href}
-              aria-label={deFilmes && revisar ? 'Filmes, com filme para revisar' : c.nome}
-              title={deFilmes && revisar ? 'Há filme esperando revisão na aba Filmes' : undefined}
-              onClick={(e) => (e.preventDefault(), c.ir())}
+              aria-label={aviso ? 'Filmes, com filme para revisar' : c.nome}
+              aria-current={agora ? 'page' : undefined}
+              data-dica={aviso ? 'Filmes: há filme esperando revisão' : c.nome}
+              onClick={(e) => {
+                e.preventDefault();
+                if (!agora) c.ir();
+              }}
             >
-              <Icone nome={c.icone} tam={17} traco={1.7} />
-              <span>{c.nome}</span>
+              <span className="caminho-icone">
+                <Icone nome={c.icone} tam={17} traco={1.7} />
+                {aviso && <i className="caminho-aviso" aria-hidden="true" />}
+              </span>
+              <span className="caminho-nome" aria-hidden="true">
+                <span>
+                  <span className="caminho-texto">
+                    {c.nome}
+                    {c.id === aberto && (
+                      <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none">
+                        <path pathLength={1} d={RABISCO} />
+                      </svg>
+                    )}
+                  </span>
+                </span>
+              </span>
             </a>
-            {bolinha && <i className={`caminho-bolinha${deFilmes ? ' de-filmes' : ''}${deFilmes && revisar ? ' revisar' : ''}`} aria-hidden="true" />}
           </Fragment>
         );
       })}
