@@ -70,7 +70,7 @@ async function comServidor({ env = ENV, registros = { EDICAO_producao: PAUTA() }
   return { teable, ana: como('ana@empresa.com'), chefe: como('chefe@empresa.com'), ninguem: como('') };
 }
 
-type Proposta = { id: string; dia: string; editor: string; de: string; para?: string; codigo?: string };
+type Proposta = { id: string; dia: string; editor: string; de: string; para?: string; codigo?: string; mudouEm: string | null; esperaAKey?: boolean };
 type Pagina = { grupo: string; pagina: number; porPagina: number; resumo: { corrigir: number; naoReconhecido: number }; propostas: Proposta[] };
 const pagina = async (r: Response) => {
   expect(r.status).toBe(200);
@@ -83,9 +83,9 @@ describe('as propostas da pauta da edição', () => {
     const p = await pagina(await chefe('/api/correcoes/pauta'));
     expect(p.grupo).toBe('corrigir');
     expect([...p.propostas].sort((a, b) => a.id.localeCompare(b.id))).toEqual([
-      { id: 'recC1', dia: '2026-11-27', editor: 'Beto Tarde', de: 'Show da Tarde 4/12 Dp', para: 'Show da Tarde 4/12 (DP)' },
-      { id: 'recC2', dia: '2025-12-20', editor: 'Ana Manhã', de: 'Festival 3/1 (MÊS)', para: 'Festival 3/1 (M)' },
-      { id: 'recC3', dia: '2026-11-27', editor: '', de: 'Novela Sol 28/11 H', para: 'Novela Sol 28/11 (H)' },
+      { id: 'recC1', dia: '2026-11-27', editor: 'Beto Tarde', de: 'Show da Tarde 4/12 Dp', para: 'Show da Tarde 4/12 (DP)', mudouEm: null },
+      { id: 'recC2', dia: '2025-12-20', editor: 'Ana Manhã', de: 'Festival 3/1 (MÊS)', para: 'Festival 3/1 (M)', mudouEm: null, esperaAKey: true },
+      { id: 'recC3', dia: '2026-11-27', editor: '', de: 'Novela Sol 28/11 H', para: 'Novela Sol 28/11 (H)', mudouEm: null },
     ]);
   });
 
@@ -93,7 +93,7 @@ describe('as propostas da pauta da edição', () => {
     const { chefe } = await comServidor();
     const p = await pagina(await chefe('/api/correcoes/pauta?grupo=nao-reconhecido'));
     expect(p.grupo).toBe('nao-reconhecido');
-    expect(p.propostas).toEqual([{ id: 'recX1', dia: '2026-11-27', editor: 'Beto Tarde', de: 'Show Extra 28/11 (XYZ)', codigo: 'XYZ' }]);
+    expect(p.propostas).toEqual([{ id: 'recX1', dia: '2026-11-27', editor: 'Beto Tarde', de: 'Show Extra 28/11 (XYZ)', codigo: 'XYZ', mudouEm: null }]);
   });
 
   it('o resumo diz quantas propostas há em cada grupo; o aviso não é corrigido', async () => {

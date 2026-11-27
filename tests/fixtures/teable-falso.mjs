@@ -3,7 +3,9 @@
    e nomes são inventados. Serve aos testes do Vitest e aos e2e (import dinâmico). Com `opcoes.registros`, as tabelas
    dadas também têm linhas, que se leem, criam e mudam pela API (a tabela designers da seção Pessoas, #77), e que o
    Postgres de mentira (`.consultar`, ou `.abrirPg` para o criarApp) devolve inteiras (a carga das Produções, #86).
-   Apagar um registro (DELETE) também vale, para a pauta que o PROMeiro grava depois da virada (#134). */
+   Apagar um registro (DELETE) também vale, para a pauta que o PROMeiro grava depois da virada (#134). Cada registro
+   pode ter a hora da última mudança (`lastModifiedTime`): a API devolve, o PATCH renova (com a hora de agora) e o
+   Postgres de mentira mostra como "__last_modified_time" (a conferência da correção de grafia, #115). */
 import { TABELAS_DO_TEABLE } from '../../src/modelo/tabelasDoTeable.ts';
 
 /** O endereço e o token do Teable falso (vão no env do teste). */
@@ -16,7 +18,9 @@ const resposta = (status, dados) => ({ ok: status < 400, status, json: async () 
  * @param opcoes.base o id da base (o esquema); opcoes.nomeDaBase; opcoes.bases as outras bases ({ [id]: { nome, nomes } });
  *   opcoes.faltando { [tabela]: [colunas que não existem] }; opcoes.ids { [tabela]: id na API } (padrão tblFalso_<tabela>);
  *   opcoes.url o endereço (padrão o de TEABLE_FALSO); opcoes.outro o fetch para o que não é do Teable;
- *   opcoes.registros { [tabela]: [{ id, fields }] } as linhas (o array é o mesmo: o teste vê o que foi gravado)
+ *   opcoes.registros { [tabela]: [{ id, fields, lastModifiedTime? }] } as linhas (o array é o mesmo: o teste vê o que foi
+ *   gravado); opcoes.esquemas { [tabela]: esquema } o esquema do dbTableName, quando não é o da base (uma tabela que
+ *   não é da base do PROMeiro)
  * @returns fetch, com `.estado` (`fora = true` derruba o Teable; `pedidos` guarda o que foi pedido), `.consultar` e
  *   `.abrirPg` (o Postgres do Teable: o SELECT de uma tabela da base devolve as linhas dela, com o "__id", sem olhar o
  *   WHERE; `estado.consultas` guarda o SQL e `estado.parametros`, os parâmetros de cada uma)
@@ -42,6 +46,10 @@ export function teableFalso(nomes, opcoes = {}) {
       const nome = Object.entries(bases).flatMap(([b, base]) => Object.keys(base.nomes).filter((n) => idDe(b, n) === id))[0];
       const linhas = nome && opcoes.registros?.[nome];
       if (!linhas) return resposta(404, { message: 'tabela sem registros no Teable falso' });
+      if (metodo === 'GET' && deRegistros[2]) {
+        const linha = linhas.find((l) => l.id === decodeURIComponent(deRegistros[2]));
+        return linha ? resposta(200, structuredClone(linha)) : resposta(404, { message: 'registro não encontrado' });
+      }
       if (metodo === 'GET' && !deRegistros[2]) {
         const pular = Number(url.searchParams.get('skip') ?? 0);
         const tomar = Number(url.searchParams.get('take') ?? 100);
@@ -63,6 +71,8 @@ export function teableFalso(nomes, opcoes = {}) {
         const linha = linhas.find((l) => l.id === decodeURIComponent(deRegistros[2]));
         if (!linha) return resposta(404, { message: 'registro não encontrado' });
         Object.assign(linha.fields, corpo.record?.fields ?? {});
+        // a hora de agora, sempre depois da anterior (dois PATCH no mesmo milissegundo ainda mudam a hora)
+        if ('lastModifiedTime' in linha) linha.lastModifiedTime = new Date(Math.max(Date.now(), Date.parse(linha.lastModifiedTime ?? '') + 1 || 0)).toISOString();
         return resposta(200, linha);
       }
     }
@@ -72,7 +82,7 @@ export function teableFalso(nomes, opcoes = {}) {
     if (m) {
       const b = bases[decodeURIComponent(m[1])];
       if (!b) return resposta(404, { message: 'not found' });
-      return resposta(200, Object.entries(b.nomes).map(([nome, pg]) => ({ id: idDe(m[1], nome), name: nome, dbTableName: `${m[1]}.${pg}` })));
+      return resposta(200, Object.entries(b.nomes).map(([nome, pg]) => ({ id: idDe(m[1], nome), name: nome, dbTableName: `${opcoes.esquemas?.[nome] ?? m[1]}.${pg}` })));
     }
     m = /^\/api\/base\/([^/]+)$/.exec(url.pathname);
     if (m) return bases[m[1]] ? resposta(200, { id: m[1], name: bases[m[1]].nome }) : resposta(404, {});
@@ -102,7 +112,9 @@ export function teableFalso(nomes, opcoes = {}) {
     const nome = base && Object.keys(base.nomes).find((n) => base.nomes[n] === m[2]);
     // a linha inteira (to_jsonb(p) AS "inteira"), quando o SQL pede
     const inteira = /AS\s+"inteira"/i.test(sql);
-    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...r.fields, ...(inteira ? { inteira: { __id: r.id, ...r.fields } } : {}) }));
+    // a hora da última mudança, quando o registro tem (a correção de grafia confere, #115)
+    const hora = (r) => ('lastModifiedTime' in r ? { __last_modified_time: r.lastModifiedTime ? new Date(r.lastModifiedTime) : null } : {});
+    return (opcoes.registros?.[nome] ?? []).map((r) => ({ __id: r.id, ...hora(r), ...r.fields, ...(inteira ? { inteira: { __id: r.id, ...r.fields } } : {}) }));
   };
   buscar.abrirPg = async () => ({ query: async (sql, params) => ({ rows: await buscar.consultar(sql, params) }), end: async () => {} });
   return buscar;
