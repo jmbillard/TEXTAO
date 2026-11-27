@@ -1402,8 +1402,10 @@ export interface SecoesDaConfiguracao {
   card: SecaoCard;
   filmes: SecaoFilmes;
   conexoes: ConexoesDaConfiguracao;
-  /** os turnos da montagem da pauta (#124): os salvos, ou os de fábrica */
+  /** os turnos da edição (#124), os da montagem da pauta: os salvos, ou os de fábrica */
   turnos: { salvo: TurnoDaEscala[]; deFabrica: boolean };
+  /** os turnos da arte (#175): os salvos, ou os de fábrica (manhã e noite); nenhuma tela usa ainda */
+  turnosDaArte: { salvo: TurnoDaEscala[]; deFabrica: boolean };
   /** o cartão da pauta no Teams (#135): os horários, o segredo que falta no Portainer e o último envio */
   teams: CartaoDoTeamsDaConfiguracao;
   /** a chave da virada (#134): publicar grava a pauta no Teable; `tabela`: a tabela da pauta foi achada na base */
@@ -1428,6 +1430,7 @@ export interface MudancasDaConfiguracao {
   card?: LigacoesDoCard;
   filmes?: LigacoesDosFilmes;
   turnos?: TurnoDaEscala[];
+  turnosDaArte?: TurnoDaEscala[];
   teams?: HorarioDoCartao[];
 }
 export const lerConfiguracao = () => pedir<SecoesDaConfiguracao>('/api/configuracao');
@@ -1659,10 +1662,10 @@ export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<Confere
 export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ secoes: SecoesDaConfiguracao } | { conferencia: ConferenciaDasPracas }> {
   const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify(m) });
   const corpo = (await r.json().catch(() => null)) as (Partial<SecoesDaConfiguracao> & { conferencia?: ConferenciaDasPracas; erro?: string }) | null;
-  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos && corpo.teams) {
+  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos && corpo.turnosDaArte && corpo.teams) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, teams: corpo.teams, virada: corpo.virada } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, turnosDaArte: corpo.turnosDaArte, teams: corpo.teams, virada: corpo.virada } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);
