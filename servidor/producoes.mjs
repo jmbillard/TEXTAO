@@ -489,15 +489,16 @@ export function criarProducoes(db) {
 
   /**
    * O que o ciclo do roteiro (#102) lê da Produção do Roteiro: pelo card do envio (o mais recente, como o aviso) ou,
-   * sem ele, pelo Roteiro ligado. null sem nenhuma.
-   * @returns { etapa, entradaEm, entregaEm, designers } | null
+   * sem ele, pelo Roteiro ligado. null sem nenhuma. As artes (a coluna da produção da arte) e as marcadas no checklist
+   * são das artes do roteiro aberto (#104).
+   * @returns { etapa, entradaEm, entregaEm, designers, artes, artesMarcadas } | null
    */
   function doRoteiro({ roteiro, card }) {
     const id = card ? q.daUltimaDoCard.get(card)?.id : null;
     const l = (id ? q.doId.get(id) : null) ?? (roteiro ? q.daUltimaDoRoteiro.get(roteiro) : null);
     if (!l) return null;
     const p = daLinha(l);
-    return { etapa: p.etapa, entradaEm: p.entradaEm, entregaEm: p.entregaEm, designers: p.designers };
+    return { etapa: p.etapa, entradaEm: p.entradaEm, entregaEm: p.entregaEm, designers: p.designers, artes: p.artes, artesMarcadas: p.artesMarcadas };
   }
 
   return {

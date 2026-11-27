@@ -29,6 +29,12 @@
 // depois de recarregar e em outro navegador. No tablet, o quadro rola dentro dele; no celular (escuro), as colunas
 // empilham, por estado cabe na tela e a escolha volta depois de recarregar.
 //
+// O roteiro aberto (#104): no Redator, o Caio abre o Chef pela lista (o quadro): o endereço é o do roteiro, o texto
+// aparece só para leitura (não aceita digitar) e o ciclo em pé mostra os passos com a data; "próximo" vai à Novela e
+// "anterior" volta, sem passar pela lista, e o endereço recarregado abre o mesmo roteiro. No Editor, o roteiro com
+// artes mostra cada uma com o estado (entregue, produzindo, já existe) e a origem ("do roteiro", "do designer"), e
+// quantas já foram entregues. No celular (escuro), o lado sobe para antes do texto e nada rola para o lado.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:areas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -469,6 +475,97 @@ async function tresExibicoes(navegador, url) {
   console.log('ok: no tablet e no celular, as três exibições cabem na tela e a escolha fica lembrada');
 }
 
+/* ---------- o roteiro aberto (#104) ---------- */
+
+/** Um parágrafo com uma arte marcada na revisão. */
+const comArte = (texto, subtipo, id) => ({ type: 'paragraph', content: [{ type: 'text', text: texto, marks: [{ type: 'arte', attrs: { id, subtipo, obs: '' } }] }] });
+const artesAbertas = (p) => p.locator('.arte-aberta').evaluateAll((as) => as.map((a) => [a.querySelector('.t').textContent.trim(), a.dataset.estado, a.querySelector('.origem').textContent.trim()]));
+
+async function roteiroAberto(navegador, url, db) {
+  const { ctx, p, erros, aoTrello } = await entrar(navegador, url, '#/redator', CAIO, { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
+  // a lista do Redator está por dia (a última escolha das exibições, acima): um toque na ficha abre o roteiro
+  await fichaDe(p, 'CHEF(FUT) SP').click();
+  await p.locator('.roteiro-aberto .folha-aberta .texto').waitFor();
+  assert.equal(hashDe(p), '#/redator/r/areas-chef', 'o roteiro aberto tem endereço próprio');
+  assert.equal((await p.locator('.aberto-claquete').innerText()).trim(), 'CHEF(FUT) SP');
+  assert.equal((await p.locator('.folha-aberta .texto').innerText()).trim(), 'LOC: HOJE');
+  assert.equal(await p.locator('.folha-aberta .texto').getAttribute('contenteditable'), 'false', 'o texto é só para leitura');
+  await p.locator('.folha-aberta .texto').click();
+  await p.keyboard.type('XYZ');
+  assert.equal((await p.locator('.folha-aberta .texto').innerText()).trim(), 'LOC: HOJE', 'digitar não muda o texto');
+  // o ciclo em pé: o estado, os passos com a data e os de antes apagados
+  assert.equal((await p.locator('.ciclo-em-pe li[aria-current="step"] .nome').innerText()).trim(), 'Entregue');
+  assert.match(await p.locator('.ciclo-em-pe li[data-passo="revisao"] .quando').innerText(), /^chegou \d+\/\d+, \d+h\d\d$/);
+  assert.match(await p.locator('.ciclo-em-pe li[data-passo="produzindo"] .quando').innerText(), /^no Trello \d+\/\d+, \d+h\d\d · com Tânia Arruda$/);
+  assert.match(await p.locator('.ciclo-em-pe li[data-passo="entregue"] .quando').innerText(), /^entregue \d+\/\d+, \d+h\d\d$/);
+  assert.equal(await p.locator('.ciclo-em-pe li.em-breve').count(), 3, 'os passos de antes do PROMeiro, em breve');
+  assert.equal(await p.locator('.arte-aberta').count(), 0, 'no Redator, as artes não aparecem uma a uma');
+  assert.equal((await p.locator('.aberto-posicao').innerText()).trim(), '1 de 2');
+  assert.ok(await p.locator('button[aria-label="Roteiro anterior"]').isDisabled(), 'o primeiro não tem anterior');
+  await capturar(p, '13-roteiro-aberto-redator-claro');
+  // o próximo e o anterior, sem voltar à lista
+  await p.locator('button[aria-label="Próximo roteiro"]').click();
+  await p.locator('.aberto-claquete', { hasText: 'NOVELA7(CAP) SP' }).waitFor();
+  assert.equal(hashDe(p), '#/redator/r/areas-nov');
+  assert.equal((await p.locator('.ciclo-em-pe li[aria-current="step"] .nome').innerText()).trim(), 'Em revisão');
+  assert.equal(await p.locator('.meus-roteiros, .lista-meus').count(), 0, 'não passou pela lista');
+  await p.locator('button[aria-label="Roteiro anterior"]').click();
+  await p.locator('.aberto-claquete', { hasText: 'CHEF(FUT) SP' }).waitFor();
+  assert.equal(hashDe(p), '#/redator/r/areas-chef');
+  // o endereço recarregado abre o mesmo roteiro; "Roteiros" volta à lista
+  await p.reload();
+  await p.locator('.aberto-claquete', { hasText: 'CHEF(FUT) SP' }).waitFor();
+  await p.locator('.ciclo-em-pe').waitFor();
+  await p.locator('.aberto-voltar').click();
+  await p.locator('.meus-roteiros .ficha').first().waitFor();
+  assert.equal(hashDe(p), '#/redator');
+  console.log('ok: o roteiro aberto tem endereço, o texto só para leitura, o ciclo com as datas, e vai ao anterior e ao próximo');
+
+  // no Editor: um roteiro com artes, enviado e com a Produção em Produzindo; o designer pôs uma arte direto na produção
+  const doc = { type: 'doc', content: [comArte('NESTA QUARTA', 'rodape', 'a1'), comArte('12 COZINHEIROS', 'cartao', 'a2'), comArte('CHEF DO FUTURO', 'lettering', 'a3')] };
+  const meta = { titulo: '', tipoPrograma: 'outro', capitulo: null, edicao: '', locutor: '', selo: '', duracaoAlvoSeg: null, claquete: 'CHEF(FUT) 2 SP', programa: 'Chef do Futuro', praca: 'SP', dataExibicao: iso(2), redator: 'Beatriz Lins', editor: 'Caio Brandão', jaExiste: ['CHEF DO FUTURO'] };
+  const resp = await fetch(`${url.replace(/\/$/, '')}/api/roteiros/areas-artes`, { method: 'PUT', headers: { 'content-type': 'application/json', 'cf-access-authenticated-user-email': OUTRA }, body: JSON.stringify({ roteiro: { meta, doc }, nArtes: 2 }) });
+  assert.equal(resp.status, 200);
+  enviar(db, 'areas-artes', 'cardareasartes', new Date().toISOString());
+  producao(db, 'prod-areas-artes', 'cardareasartes', { etapa: 'produzindo', designers: ['Tânia Arruda'] });
+  db.prepare("UPDATE producoes SET artes = ?, artes_marcadas = ? WHERE id = 'prod-areas-artes'").run(JSON.stringify(['NESTA QUARTA', '12 COZINHEIROS', 'SELO AO VIVO']), JSON.stringify(['NESTA QUARTA']));
+  await escolherArea(p, 'Editor');
+  await p.locator('.meus-roteiros .linha-meu', { hasText: 'CHEF(FUT) 2 SP' }).click();
+  await p.locator('.arte-aberta').first().waitFor();
+  assert.equal(hashDe(p), '#/editor/r/areas-artes');
+  assert.deepEqual(await artesAbertas(p), [
+    ['NESTA QUARTA', 'entregue', 'do roteiro'],
+    ['12 COZINHEIROS', 'produzindo', 'do roteiro'],
+    ['CHEF DO FUTURO', 'ja-existe', 'do roteiro'],
+    ['SELO AO VIVO', 'produzindo', 'do designer'],
+  ]);
+  assert.deepEqual(await p.locator('.estado-da-arte').allInnerTexts(), ['entregue', 'produzindo', 'já existe', 'produzindo']);
+  assert.equal((await p.locator('.artes-entregues').innerText()).trim(), '1 de 3 entregues', 'o topo mostra quantas já foram entregues');
+  await semRolagemDeLado(p, 'roteiro aberto no computador');
+  await capturar(p, '14-roteiro-aberto-editor-claro');
+  // o próximo do Editor é o Festival, sem artes marcadas
+  await p.locator('button[aria-label="Próximo roteiro"]').click();
+  await p.locator('.aberto-claquete', { hasText: 'FESTIVAL(VER) REDE' }).waitFor();
+  assert.equal(hashDe(p), '#/editor/r/areas-fest');
+  assert.equal((await p.locator('.artes-entregues').innerText()).trim(), 'nenhuma a produzir');
+  console.log('ok: no Editor, as artes do roteiro com o estado, a origem e quantas já foram entregues');
+  assert.deepEqual(erros, [], 'roteiro aberto: erros na página');
+  assert.deepEqual(aoTrello, [], 'o roteiro aberto não lê o Trello');
+  await ctx.close();
+
+  // no celular (escuro): o lado sobe para antes do texto, e nada rola para o lado
+  const cel = await entrar(navegador, url, '#/editor/r/areas-artes', CAIO, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await cel.p.locator('.arte-aberta').first().waitFor();
+  await cel.p.locator('.folha-aberta .texto').waitFor();
+  const [lado, folha] = await Promise.all([cel.p.locator('.aberto-lado').boundingBox(), cel.p.locator('.folha-aberta').boundingBox()]);
+  assert.ok(lado.y < folha.y, 'no celular, o ciclo e as artes vêm antes do texto');
+  await semRolagemDeLado(cel.p, 'roteiro aberto no celular');
+  await capturar(cel.p, '15-roteiro-aberto-no-celular-escuro');
+  assert.deepEqual(cel.erros, [], 'roteiro aberto no celular: erros na página');
+  await cel.ctx.close();
+  console.log('ok: no celular, o roteiro aberto cabe na tela');
+}
+
 async function umaAreaSo(navegador, url) {
   const { ctx, p, erros } = await entrar(navegador, url, '', OUTRA, { viewport: { width: 1440, height: 900 } });
   await p.locator('.biblioteca.fila').waitFor();
@@ -527,6 +624,7 @@ async function principal() {
     await trocarDeArea(navegador, s.url);
     await cicloNaLista(navegador, s.url, s.db);
     await tresExibicoes(navegador, s.url);
+    await roteiroAberto(navegador, s.url, s.db);
     await umaAreaSo(navegador, s.url);
     await administradoraSemCadastro(navegador, s.url);
     await areasNoCelular(navegador, s.url);

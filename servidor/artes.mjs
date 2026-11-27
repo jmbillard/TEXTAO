@@ -16,8 +16,20 @@ registerHooks?.({
   },
 });
 
-const { exportar, quantasAProduzir } = await import('../src/modelo/exportar.ts');
+const { artesDoEnvio, exportar, quantasAProduzir } = await import('../src/modelo/exportar.ts');
 const { metaVazia } = await import('../src/modelo/tipos.ts');
+const { artesDoRoteiro } = await import('../src/modelo/artesDoRoteiro.ts');
+
+/**
+ * As artes do roteiro aberto (#104), com o estado e a origem: as da revisão (as do envio, sem as que não vão ser
+ * produzidas) cruzadas com a Produção (a etapa, a coluna de artes e o checklist marcado). Nada vem do Trello.
+ * @param producao { etapa, artes, artesMarcadas } | null
+ */
+export function artesComOEstado(meta, doc, producao) {
+  const roteiro = { id: '', meta: { ...metaVazia(), ...meta }, doc, revisao: 1, criadoEm: '', atualizadoEm: '' };
+  const daRevisao = artesDoEnvio(exportar(roteiro), roteiro.meta).map((a) => ({ texto: a.texto, tipos: a.tipos, existe: a.existe }));
+  return artesDoRoteiro(daRevisao, producao);
+}
 
 /** Quantas artes a produzir o roteiro tem (sem as que já existem e as que não vão ser produzidas, cada uma uma vez):
     a conta que o editor mostra e o cliente manda ao salvar. */

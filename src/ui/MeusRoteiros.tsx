@@ -1,23 +1,29 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { exibicaoLembrada, lembrarExibicao, lerMeusRoteiros, type MeuRoteiro, type MeusRoteiros as Lidos, type Resumo } from '../dados/armazenamento';
 import { EXIBICOES, type AreaDosRoteiros, type Exibicao } from '../modelo/areas';
 import { CICLO, frasesDoCiclo, type CicloDoRoteiro, type EstadoDoCiclo as Estado } from '../modelo/cicloDoRoteiro';
 import { agruparPorDia, LER_ANDAMENTO_MS, type GrupoDia } from './fila';
 import { Icone, type NomeIcone } from './icones';
 import { plural } from './util';
+import { RoteiroAberto } from './RoteiroAberto';
 import './areas.css';
 
 /* "Meus roteiros" do Redator e do Editor (#101): a lista simples, por dia, dos roteiros guardados no PROMeiro em que a
    pessoa é o redator (ou o editor), pelo nome do cadastro ligado ao e-mail dela. Cada roteiro mostra o seu estado no
    ciclo (#102), os passos com a data e quem da arte está com ele; a lista se lê de novo na cadência da agenda. A pessoa
    escolhe no topo da lista como ver (#103): por dia, em quadro (uma coluna por estado do ciclo) ou por estado (uma
-   lista agrupada, boa no celular); o PROMeiro lembra a escolha por pessoa e por área. Só leitura: o roteiro aberto
-   chega depois (#104). Nada vem do Trello. */
+   lista agrupada, boa no celular); o PROMeiro lembra a escolha por pessoa e por área. Um toque abre o roteiro, só para
+   leitura (#104, RoteiroAberto). Nada vem do Trello. */
 
 interface Props {
   area: AreaDosRoteiros;
   /** a linha do logo: o caminho "PROMeiro / redator ▾", a Pauta da edição e o perfil */
   topo: ReactNode;
+  /** o roteiro aberto, só para leitura (#104): a lista lida serve à navegação dele */
+  aberto?: string;
+  abrir: (id: string) => void;
+  /** do roteiro aberto de volta à lista */
+  voltar: () => void;
 }
 
 const OUTRO: Record<AreaDosRoteiros, { campo: 'redator' | 'editor'; rotulo: string }> = {
@@ -91,7 +97,7 @@ function EscolhaDaExibicao({ atual, escolher, lembrado }: { atual: Exibicao; esc
   );
 }
 
-export function MeusRoteiros({ area, topo }: Props) {
+export function MeusRoteiros({ area, topo, aberto, abrir, voltar }: Props) {
   const [lido, setLido] = useState<Lidos | null>(null);
   const [erro, setErro] = useState('');
   // a exibição lembrada da área (o App remonta a tela a cada área); o estado escolhido na faixa vale só nesta visita
@@ -147,7 +153,17 @@ export function MeusRoteiros({ area, topo }: Props) {
     };
   }, [area]);
 
+  if (aberto) return <RoteiroAberto area={area} id={aberto} lido={lido} topo={topo} abrir={abrir} voltar={voltar} />;
+
   const { proximos, exibidos } = agruparPorDia(lido?.roteiros ?? []);
+  // cada roteiro, em qualquer exibição, abre com um toque ou com Enter
+  const abreCom = (r: { id: string }) => ({
+    tabIndex: 0,
+    onClick: () => abrir(r.id),
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === 'Enter') abrir(r.id);
+    },
+  });
   const outro = OUTRO[area];
   // agruparPorDia devolve os resumos; o ciclo vem do roteiro lido
   const porId = new Map((lido?.roteiros ?? []).map((r) => [r.id, r]));
@@ -155,7 +171,7 @@ export function MeusRoteiros({ area, topo }: Props) {
     const r = porId.get(resumo.id) as MeuRoteiro;
     const passos = r.ciclo ? frasesDoCiclo(r.ciclo.passos) : [];
     return (
-      <li key={r.id} className="ficha ficha-minha" data-estado={r.ciclo?.estado}>
+      <li key={r.id} className="ficha ficha-minha" data-estado={r.ciclo?.estado} {...abreCom(r)}>
         <span className="ficha-claquete">
           <b>{r.meta.claquete || 'Sem claquete'}</b>
           <span>
@@ -205,7 +221,7 @@ export function MeusRoteiros({ area, topo }: Props) {
 
   // quadro: uma coluna por estado do ciclo; os passos de antes do PROMeiro numa coluna apagada, "em breve"
   const cartao = (r: MeuRoteiro) => (
-    <li key={r.id} className="cartao-meu" data-estado={estadoDe(r)}>
+    <li key={r.id} className="cartao-meu" data-estado={estadoDe(r)} {...abreCom(r)}>
       <b>{r.meta.claquete || 'Sem claquete'}</b>
       <span>
         {r.meta.programa || 'sem atração'} · {diaCurto(r.meta.dataExibicao)}
@@ -246,7 +262,7 @@ export function MeusRoteiros({ area, topo }: Props) {
 
   // por estado: a faixa do ciclo com quantos há em cada estado (um toque mostra só aquele) e a lista agrupada
   const linha = (r: MeuRoteiro) => (
-    <li key={r.id} className="linha-meu" data-estado={estadoDe(r)}>
+    <li key={r.id} className="linha-meu" data-estado={estadoDe(r)} {...abreCom(r)}>
       <span className="linha-meu-quem">
         <b>{r.meta.claquete || 'Sem claquete'}</b>
         <small>

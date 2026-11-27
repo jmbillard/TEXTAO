@@ -491,6 +491,15 @@ data ("chegou 26/11, 9h40 · no Trello 26/11, 11h02 · entregue 27/11, 16h20 · 
 já sabe (o roteiro, o envio e a Produção), nada do Trello. Não confundir com a **etapa** da Produção.
 _Evitar_: status, fase
 
+**Roteiro aberto**:
+Um roteiro de "meus roteiros" aberto no Redator ou no Editor, com endereço próprio (`#/redator/r/<id>`): o texto só
+para leitura, o **ciclo do roteiro** em pé e o anterior e o próximo da lista. No Editor, também as artes, cada uma com
+o estado (**a fazer**: a Produção ainda não começou; **produzindo**: a Produção está em Produzindo; **entregue**:
+marcada no checklist, ou a Produção Entregue ou arquivada; **já existe**) e a **origem**: **do roteiro** (marcada na
+revisão) ou **do designer** (posta direto na produção, sem estar na revisão), e quantas já foram entregues. Sai da
+revisão e da Produção, nada do Trello.
+_Evitar_: tela do roteiro, detalhe
+
 **Preferências da pessoa**:
 O que o PROMeiro lembra por pessoa, em qualquer aparelho (a última área usada, a **exibição** de cada área e, depois,
 o arranjo da Pauta da edição): no SQLite, uma chave por linha, gravada pela rota de quem está logado.

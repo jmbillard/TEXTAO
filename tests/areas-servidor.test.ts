@@ -270,3 +270,116 @@ describe('áreas de trabalho (#101)', () => {
     expect(passo(r, 'exibido').quando).toBe('2026-01-03');
   });
 });
+
+/* ---------- o roteiro aberto: as artes com o estado e a origem (#104) ---------- */
+
+describe('o roteiro aberto: as artes com o estado e a origem (#104)', () => {
+  let servidor: Server;
+  let base = '';
+  let db: unknown;
+  const como = (email: string) => (caminho: string, init: RequestInit = {}) =>
+    fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json', ...init.headers } });
+  const caio = como('caio.brandao@empresa.com');
+  const marina = como('marina.teles@empresa.com');
+  const davi = como('davi.rocha@empresa.com');
+  type Banco = { prepare: (s: string) => { run: (...a: unknown[]) => void } };
+  type Arte = { texto: string; tipos: string[]; estado: string; origem: string };
+  type Artes = { lista: Arte[]; aProduzir: number; entregues: number };
+  const artesDe = async (quem: ReturnType<typeof como>, area: string, id: string) =>
+    ((await (await quem(`/api/meus-roteiros?area=${area}`)).json()) as { roteiros: { id: string; artes: Artes }[] }).roteiros.find((r) => r.id === id)!.artes;
+  const resumo = (a: Artes) => a.lista.map((x) => [x.texto, x.estado, x.origem]);
+
+  /** Um parágrafo com uma arte marcada na revisão (o sublinhado com o tipo). */
+  const comArte = (texto: string, subtipo: string, id: string) => ({ type: 'paragraph', content: [{ type: 'text', text: texto, marks: [{ type: 'arte', attrs: { id, subtipo, obs: '' } }] }] });
+  const docComArtes = {
+    type: 'doc',
+    content: [
+      comArte('NESTA QUARTA', 'rodape', 'a1'),
+      comArte('12 COZINHEIROS', 'cartao', 'a2'),
+      comArte('CHEF DO FUTURO', 'lettering', 'a3'),
+      // a mesma arte em dois tipos: o checklist a escreve uma vez por tipo
+      comArte('DEPOIS DE A FAVORITA', 'rodape', 'a4'),
+      comArte('DEPOIS DE A FAVORITA', 'cartao', 'a5'),
+      // a que a revisão tirou (✕) não é arte do roteiro
+      comArte('APRESENTA', 'rodape', 'a6'),
+    ],
+  };
+  /** A Produção do card, com as artes da produção da arte e as marcadas no checklist. */
+  const producao = (etapa: string, artes: string[], marcadas: string[]) =>
+    (db as Banco)
+      .prepare(
+        `INSERT INTO producoes (id, claquete, etapa, artes, artes_marcadas, card_id, entrada_em, arquivada, criada_em, atualizada_em) VALUES ('prod-a', 'CHEF(FUT) 3/12 SP', ?, ?, ?, 'cardartes', '2026-11-26T14:03:00.000Z', ?, '2026-11-26T14:03:00.000Z', '2026-11-26T14:03:00.000Z')
+         ON CONFLICT (id) DO UPDATE SET etapa = excluded.etapa, artes = excluded.artes, artes_marcadas = excluded.artes_marcadas, arquivada = excluded.arquivada`,
+      )
+      .run(etapa, JSON.stringify(artes), JSON.stringify(marcadas), etapa === 'arquivada' ? 1 : 0);
+  const ITENS = ['NESTA QUARTA', '12 COZINHEIROS', 'DEPOIS DE A FAVORITA (RDP)', 'DEPOIS DE A FAVORITA (CRT)'];
+
+  beforeAll(async () => {
+    db = abrirBanco(':memory:');
+    const app = criarApp({ db, env: {}, cadastros: criarCadastros(ENV, { buscar: falso().buscar }) });
+    servidor = createServer(app);
+    await new Promise<void>((ok) => servidor.listen(0, ok));
+    base = `http://localhost:${(servidor.address() as { port: number }).port}`;
+    const meta = { claquete: 'CHEF(FUT) 3/12 SP', programa: 'Chef do Futuro', praca: 'SP', dataExibicao: '2026-12-03', redator: 'Marina Teles', editor: 'Caio Brandão', jaExiste: ['CHEF DO FUTURO'], naoProduzir: ['APRESENTA'] };
+    await davi('/api/roteiros/rot-artes-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta, doc: docComArtes }, nArtes: 3 }) });
+  });
+  afterAll(() => servidor.close());
+
+  it('antes do envio, as artes marcadas na revisão estão a fazer, "do roteiro"; a que já existe aparece como já existe', async () => {
+    const a = await artesDe(caio, 'editor', 'rot-artes-1');
+    expect(resumo(a)).toEqual([
+      ['NESTA QUARTA', 'a-fazer', 'roteiro'],
+      ['12 COZINHEIROS', 'a-fazer', 'roteiro'],
+      ['CHEF DO FUTURO', 'ja-existe', 'roteiro'],
+      ['DEPOIS DE A FAVORITA', 'a-fazer', 'roteiro'],
+    ]);
+    expect(a.lista[3].tipos).toEqual(['RDP', 'CRT']);
+    expect([a.aProduzir, a.entregues]).toEqual([3, 0]);
+  });
+
+  it('na Produção em Entrada, as artes continuam a fazer', async () => {
+    (db as Banco).prepare("INSERT INTO envios (roteiro_id, estado, card_id, em) VALUES ('rot-artes-1', 'enviado', 'cardartes', '2026-11-26T14:02:00.000Z')").run();
+    producao('entrada', ITENS, []);
+    expect(resumo(await artesDe(caio, 'editor', 'rot-artes-1')).map((x) => x[1])).toEqual(['a-fazer', 'a-fazer', 'ja-existe', 'a-fazer']);
+  });
+
+  it('na Produção em Produzindo: a marcada no checklist está entregue, as outras produzindo; a posta direto na produção é "do designer"', async () => {
+    // a de dois tipos com só um marcado ainda está produzindo
+    producao('produzindo', [...ITENS, 'SELO AO VIVO'], ['NESTA QUARTA', 'DEPOIS DE A FAVORITA (RDP)']);
+    const a = await artesDe(caio, 'editor', 'rot-artes-1');
+    expect(resumo(a)).toEqual([
+      ['NESTA QUARTA', 'entregue', 'roteiro'],
+      ['12 COZINHEIROS', 'produzindo', 'roteiro'],
+      ['CHEF DO FUTURO', 'ja-existe', 'roteiro'],
+      ['DEPOIS DE A FAVORITA', 'produzindo', 'roteiro'],
+      ['SELO AO VIVO', 'produzindo', 'designer'],
+    ]);
+    expect([a.aProduzir, a.entregues]).toEqual([4, 1]);
+    // os dois tipos marcados: entregue; a do designer marcada também
+    producao('produzindo', [...ITENS, 'SELO AO VIVO'], ['nesta quarta', 'DEPOIS DE A FAVORITA (RDP)', 'DEPOIS DE A FAVORITA (CRT)', 'SELO AO VIVO']);
+    const b = await artesDe(caio, 'editor', 'rot-artes-1');
+    expect(resumo(b).map((x) => x[1])).toEqual(['entregue', 'produzindo', 'ja-existe', 'entregue', 'entregue']);
+    expect([b.aProduzir, b.entregues]).toEqual([4, 3]);
+  });
+
+  it('a marcada no checklist que não está na coluna da produção da arte também é "do designer"', async () => {
+    producao('produzindo', ITENS, ['VINHETA EXTRA']);
+    const a = await artesDe(caio, 'editor', 'rot-artes-1');
+    expect(a.lista.at(-1)).toEqual({ texto: 'VINHETA EXTRA', tipos: [], estado: 'entregue', origem: 'designer' });
+  });
+
+  it('na Produção Entregue (ou arquivada), todas as artes a produzir estão entregues', async () => {
+    producao('entregue', [...ITENS, 'SELO AO VIVO'], ['NESTA QUARTA']);
+    let a = await artesDe(caio, 'editor', 'rot-artes-1');
+    expect(resumo(a).map((x) => x[1])).toEqual(['entregue', 'entregue', 'ja-existe', 'entregue', 'entregue']);
+    expect([a.aProduzir, a.entregues]).toEqual([4, 4]);
+    producao('arquivada', [...ITENS, 'SELO AO VIVO'], []);
+    a = await artesDe(caio, 'editor', 'rot-artes-1');
+    expect(a.entregues).toBe(4);
+  });
+
+  it('o redator vê a mesma conta das artes do roteiro dele', async () => {
+    const a = await artesDe(marina, 'redator', 'rot-artes-1');
+    expect([a.aProduzir, a.entregues]).toEqual([4, 4]);
+  });
+});

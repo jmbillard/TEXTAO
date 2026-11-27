@@ -35,7 +35,7 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { acertarNArtesUmaVez } from './artes.mjs';
+import { acertarNArtesUmaVez, artesComOEstado } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
@@ -2242,11 +2242,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const nome = (await areas.quemE(eu.email, cadastros))[area]?.nome ?? null;
       // cada um com o ciclo (#102): o estado e os passos com data, e quem da arte está com ele (os designers da Produção)
       const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD no horário de Brasília
+      // e as artes do roteiro aberto (#104): as da revisão e as do designer, com o estado, pela Produção
+      const artesDe = (r, producao) => {
+        try {
+          return artesComOEstado(r.meta, JSON.parse(q.um.get(r.id)?.doc ?? 'null') ?? { type: 'doc', content: [] }, producao);
+        } catch (e) {
+          console.warn(`[meus-roteiros] as artes de ${r.id}: ${e instanceof Error ? e.message : e}`);
+          return { lista: [], aProduzir: r.nArtes ?? 0, entregues: 0 };
+        }
+      };
       const comOCiclo = (r) => {
         const enviado = r.trello?.estado === 'enviado' || r.trello?.estado === 'duplicado' ? r.trello : null;
         const producao = producoes.doRoteiro({ roteiro: r.id, card: enviado?.card });
         const fatos = { chegouEm: q.chegou.get(r.id)?.criado_em ?? null, enviadoEm: enviado?.em ?? null, producao, dataExibicao: r.meta?.dataExibicao };
-        return { ...r, ciclo: cicloDoRoteiro(fatos, hoje), daArte: producao?.designers ?? [] };
+        return { ...r, ciclo: cicloDoRoteiro(fatos, hoje), daArte: producao?.designers ?? [], artes: artesDe(r, producao) };
       };
       return json(res, 200, { area, nome, roteiros: nome ? dosMeusRoteiros(resumosPara(eu), area, nome).map(comOCiclo) : [] });
     }

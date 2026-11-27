@@ -142,3 +142,78 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
   /* a lista das áreas desce inteira na largura da tela, abaixo do topo */
   .areas-menu { position: fixed; top: 64px; left: 16px; right: 16px; width: auto; max-width: none; }
 }
+
+/* ---------- o roteiro aberto (#104): o texto só para leitura, o ciclo em pé e, no Editor, as artes ---------- */
+.ficha-minha, .cartao-meu, .linha-meu { cursor: pointer; }
+.ficha-minha:focus-visible, .cartao-meu:focus-visible, .linha-meu:focus-visible { outline: 2px solid var(--ultra); outline-offset: 2px; }
+.roteiro-aberto { max-width: 1120px; margin: 0 auto; padding: 18px 24px 96px; }
+.aberto-topo { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+.aberto-voltar { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--tinta2); font: 500 14px var(--sans); padding: 6px 8px 6px 0; }
+.aberto-voltar:hover { color: var(--tinta); }
+.aberto-nav { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: 13px; color: var(--tinta3); }
+.aberto-nav .botao-icone:disabled { opacity: 0.35; cursor: default; background: none; }
+.aberto-posicao { min-width: 54px; text-align: center; white-space: nowrap; }
+.aberto-posicao b { color: var(--tinta); font-weight: 600; }
+.aberto-leitura { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--sans); color: var(--tinta3); background: var(--neutro); border-radius: 999px; padding: 3px 10px; }
+.aberto-grade { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; margin-top: 10px; }
+.folha-aberta .cab { padding: 40px 52px 18px; }
+.folha-aberta .corpo { padding: 6px 52px 36px; }
+.folha-aberta .cab-titulo { font-size: 36px; }
+.folha-aberta .texto { min-height: 0; caret-color: transparent; }
+.aberto-claquete { font: 600 15px var(--mono); color: var(--tinta2); }
+.aberto-lendo { color: var(--tinta3); font-size: 14px; }
+.aberto-lado { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 16px; }
+.cartao-lado { background: var(--papel); border: 1px solid var(--regua); border-radius: 14px; padding: 16px 16px 14px; }
+.cartao-lado h3 { margin: 0 0 10px; font: 400 20px var(--serifa); display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cartao-lado h3 small { font: 400 12.5px var(--sans); color: var(--tinta3); }
+.cartao-vazio, .quem-aberto { margin: 0; font-size: 13.5px; line-height: 1.7; color: var(--tinta2); }
+.quem-aberto b { color: var(--tinta); }
+
+/* o ciclo em pé: um ponto por passo, ligados por um traço; os de antes do PROMeiro apagados, "em breve" */
+.ciclo-em-pe { list-style: none; margin: 0; padding: 0; }
+.ciclo-em-pe li { position: relative; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 2px 10px; padding: 0 0 12px; }
+.ciclo-em-pe li::before { content: ''; position: absolute; left: 8px; top: 14px; bottom: -2px; width: 1.5px; background: var(--regua-forte); }
+.ciclo-em-pe li:last-child::before, .ciclo-em-pe li.ciclo-nota::before { display: none; }
+.ciclo-em-pe li.feito::before { background: var(--tinta3); }
+.ciclo-em-pe .ponto { width: 12px; height: 12px; border-radius: 50%; margin: 3px 0 0 3px; background: var(--cartao); box-shadow: inset 0 0 0 1.5px var(--regua-forte); position: relative; z-index: 1; }
+.ciclo-em-pe .feito .ponto { background: var(--tinta3); box-shadow: none; }
+.ciclo-em-pe .agora .ponto { background: var(--ultra); box-shadow: 0 0 0 4px var(--ultra-suave); }
+.ciclo-em-pe .nome { font: 500 14px var(--sans); color: var(--tinta2); }
+.ciclo-em-pe .agora .nome { color: var(--tinta); font-weight: 600; }
+.ciclo-em-pe .quando { grid-column: 2; font-size: 12px; color: var(--tinta3); }
+.ciclo-em-pe .em-breve { opacity: 0.5; }
+.ciclo-em-pe .em-breve .ponto { background: none; box-shadow: inset 0 0 0 1.2px var(--regua-forte); }
+.ciclo-em-pe .em-breve .nome { font-weight: 400; }
+.ciclo-em-pe li.ciclo-nota { display: block; font: 600 17px/1.1 Caveat, cursive; color: var(--tinta3); margin: -4px 0 10px 28px; padding: 0; }
+
+/* as artes no Editor: o estado (a fazer, produzindo, entregue, já existe) e a origem (do roteiro, do designer) */
+.artes-abertas { list-style: none; margin: 0; padding: 0; }
+.arte-aberta { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 1px 10px; padding: 9px 0; border-top: 1px solid var(--regua); align-items: start; }
+.arte-aberta:first-child { border-top: 0; }
+.arte-aberta .st { width: 16px; height: 16px; border-radius: 50%; margin-top: 2px; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px var(--regua-forte); color: transparent; }
+.arte-aberta.entregue .st { background: var(--ok); box-shadow: none; color: var(--papel); }
+.arte-aberta.produzindo .st { box-shadow: inset 0 0 0 1.5px var(--ultra); background: conic-gradient(var(--ultra) 0 50%, transparent 50% 100%); }
+.arte-aberta.ja-existe .st { background: var(--neutro); box-shadow: none; }
+.arte-aberta .t { font: 600 13px/1.35 var(--mono); overflow-wrap: anywhere; }
+.arte-aberta.ja-existe .t { color: var(--tinta3); text-decoration: line-through; text-decoration-color: var(--regua-forte); }
+.arte-aberta .meta { grid-column: 2; font-size: 12px; color: var(--tinta3); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.estado-da-arte { font: 500 12px var(--sans); white-space: nowrap; color: var(--tinta2); }
+.arte-aberta.entregue .estado-da-arte { color: var(--ok); }
+.arte-aberta.produzindo .estado-da-arte { color: var(--ultra); }
+.origem { font: 500 11px var(--mono); color: var(--tinta3); }
+.origem.designer { color: var(--sonoplastia); }
+.artes-pe { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--regua); font-size: 12px; color: var(--tinta3); }
+
+/* tablet e celular: o lado sobe para antes do texto */
+@media (max-width: 1000px) {
+  .aberto-grade { grid-template-columns: minmax(0, 1fr); }
+  .aberto-lado { position: static; order: -1; }
+}
+@media (max-width: 600px) {
+  .roteiro-aberto { padding: 8px 16px 64px; }
+  .aberto-leitura { display: none; }
+  .aberto-nav .botao-icone { width: 44px; height: 44px; }
+  .folha-aberta .cab { padding: 24px 20px 12px; }
+  .folha-aberta .corpo { padding: 4px 20px 24px; }
+  .folha-aberta .cab-titulo { font-size: 28px; }
+}

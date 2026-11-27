@@ -2,6 +2,7 @@ import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, ty
 import { registrarPracas } from '../modelo/pracas';
 import { areaDeEntrada, chaveDaExibicao, ehArea, exibicaoDaArea, type Area, type AreaDosRoteiros, type Exibicao } from '../modelo/areas';
 import type { CicloDoRoteiro } from '../modelo/cicloDoRoteiro';
+import type { ArtesDoRoteiro } from '../modelo/artesDoRoteiro';
 import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../modelo/redator';
 import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
@@ -870,10 +871,12 @@ export interface MeusRoteiros {
   nome: string | null;
   roteiros: MeuRoteiro[];
 }
-/** O roteiro de "meus roteiros", com o ciclo (#102) e quem da arte está com ele (os designers da Produção). */
+/** O roteiro de "meus roteiros", com o ciclo (#102), quem da arte está com ele (os designers da Produção) e as artes com
+    o estado e a origem (#104). */
 export interface MeuRoteiro extends Resumo {
   ciclo: CicloDoRoteiro;
   daArte: string[];
+  artes: ArtesDoRoteiro;
 }
 export async function lerMeusRoteiros(area: AreaDosRoteiros): Promise<MeusRoteiros> {
   if (armazenamento.tipo !== 'servidor') return { area, nome: null, roteiros: [] };
