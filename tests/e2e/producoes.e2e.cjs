@@ -198,7 +198,8 @@ async function iconesSemPulo(p, comNome, onde) {
     }
     if (Math.abs(para - de) <= 4) continue;
     const saiu = quadros.findIndex((q) => Math.abs(q[j] - de) > 1);
-    const chegou = quadros.findIndex((q) => Math.abs(q[j] - para) <= 1);
+    // chegou: o primeiro quadro depois do último ainda fora do lugar
+    const chegou = quadros.length - [...quadros].reverse().findIndex((q) => Math.abs(q[j] - para) > 1);
     const ms = quadros[chegou][0] - quadros[saiu - 1][0];
     assert.ok(chegou - saiu >= 2 && ms >= 100, `${onde}: o ícone ${j} desliza de ${de.toFixed(0)} a ${para.toFixed(0)} (em ${ms} ms, ${chegou - saiu} quadros no meio)`);
   }

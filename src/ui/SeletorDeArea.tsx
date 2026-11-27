@@ -2,11 +2,9 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { listarPrevias } from '../dados/armazenamento';
 import { haFilmeParaRevisar } from '../filmes/andamento';
 import { AREAS, type Area } from '../modelo/areas';
+import { RABISCO } from './cena';
 import { Icone, type NomeIcone } from './icones';
 import './areas.css';
-
-/** O rabisco embaixo do nome aberto, o mesmo das abas dos Cadastros. */
-const RABISCO = 'M2 9 C 30 3, 70 4, 98 6 C 70 8, 40 10, 14 12';
 
 const ICONE: Record<Area, NomeIcone> = { designer: 'arte', redator: 'arquivo', editor: 'edicao' };
 

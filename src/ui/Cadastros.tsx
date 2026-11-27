@@ -47,6 +47,7 @@ import {
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
 import { semPracaNoComeco, semPracaNoFim } from '../modelo/pracas';
 import { SetaCurva } from './setaCurva';
+import { RABISCO } from './cena';
 import { caminhoDoIcone, Icone } from './icones';
 import { Marca } from './pecas';
 import { plural } from './util';
@@ -71,7 +72,6 @@ const ICONES = {
   editores: caminhoDoIcone('edicao'),
 } as const;
 const NOMES: Record<TipoCadastro, string> = { atracoes: 'Atrações', redatores: 'Redatores', editores: 'Editores' };
-const RABISCO = 'M2 9 C 30 3, 70 4, 98 6 C 70 8, 40 10, 14 12';
 
 function Desenho({ d, tam = 18 }: { d: string; tam?: number }) {
   return (

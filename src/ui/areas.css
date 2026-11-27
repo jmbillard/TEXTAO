@@ -158,16 +158,18 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
   70% { transform: translateY(0.5px) rotate(3deg) scale(0.98); }
   100% { transform: none; }
 }
-/* o nome: a coluna cresce de 0 até a largura do texto; o texto esmaece junto, um pouco depois ao abrir */
+/* o nome: a coluna cresce de 0 até a largura do texto; o texto esmaece junto, um pouco depois ao abrir. Abrir e fechar
+   têm a mesma duração, para os ícones depois dos dois deslizarem num movimento só */
 .caminho-nome {
   display: grid; grid-template-columns: 0fr; overflow-x: clip; overflow-y: visible; opacity: 0;
-  transition: grid-template-columns 0.42s var(--suave), opacity 0.16s;
+  transition: grid-template-columns 0.5s var(--suave), opacity 0.16s;
 }
 .caminho-nome > span { min-width: 0; }
 .caminho-texto { position: relative; display: inline-block; padding: 0 2.5px 0 7px; color: var(--tinta); font-weight: 600; }
 .caminhos-do-topo > a.aberto .caminho-nome { grid-template-columns: 1fr; opacity: 1; transition: grid-template-columns 0.5s var(--suave), opacity 0.3s 0.1s; }
 .caminho-nome .sub { position: absolute; left: 5px; top: calc(100% + 1px); width: calc(100% - 6px); height: 8px; overflow: visible; }
-.caminho-nome .sub path { fill: none; stroke: var(--ultra); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; animation: rabiscar-aba 0.5s 0.22s var(--suave) both; }
+/* o traço do rabisco é o das abas dos Cadastros (estilos.css); aqui, só começa depois, com o nome já abrindo */
+.caminho-nome .sub path { animation-delay: 0.22s; }
 /* a bolinha antes da Pauta, que é de todo mundo */
 .caminho-bolinha { flex: none; width: 4px; height: 4px; margin: 0 6px; border-radius: 50%; background: var(--regua-forte); }
 /* o aviso de filme para revisar (#156, #157): a bolinha laranja no canto do ícone dos Filmes, que surge com um pulo */
