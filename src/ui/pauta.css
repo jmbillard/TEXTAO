@@ -15,7 +15,11 @@
 .pauta-controles .segmento button { font-size: 13px; gap: 6px; padding: 0 13px; }
 .pauta-nav { display: flex; align-items: center; gap: 2px; }
 .pauta-hoje { margin-right: 6px; }
-.pauta-periodo { min-width: 17ch; text-align: center; font: 500 15.5px var(--sans); color: var(--tinta); font-variant-numeric: tabular-nums; white-space: nowrap; animation: pauta-surgir 0.2s var(--suave); }
+.pauta-periodo { display: inline-flex; font: 500 15.5px var(--sans); color: var(--tinta); font-variant-numeric: tabular-nums; white-space: nowrap; animation: pauta-surgir 0.2s var(--suave); }
+/* o período da agenda (topoDaAgenda.tsx: Periodo, #170): os dias contam com algarismos de largura fixa, os meses apagam
+   na virada (estilos.css) e a largura acompanha o texto, com as setas andando até o lugar */
+.pauta-periodo b { font-weight: 500; padding: 0 6px; }
+.pauta-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .pauta-interruptor { display: inline-flex; align-items: center; gap: 9px; padding: 4px 2px; border: 0; background: none; color: var(--tinta2); font: 500 13px var(--sans); cursor: pointer; }
 .pauta-interruptor:hover { color: var(--tinta); }
 .pauta-trilho { position: relative; flex: none; width: 32px; height: 19px; border-radius: 99px; background: var(--regua-forte); transition: background-color 0.2s var(--suave); }
@@ -172,6 +176,9 @@
 .pauta-dia.hoje .pauta-dia-link, .pauta-dia.hoje .pauta-dia-sem { color: var(--ultra-tinta); }
 .pauta-dia-rel { display: inline-block; font: 600 18px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); }
 .pauta-celula.hoje, .pauta-dia.hoje { background: color-mix(in srgb, var(--ultra-suave) 45%, transparent); }
+/* o cabeçalho fica no lugar na troca de semana (#170): o número conta e o fundo de hoje volta quando ela termina */
+.pauta-dia { transition: background-color 0.2s var(--suave); }
+.pauta-dia-num { font-variant-numeric: tabular-nums; }
 /* a coluna dos nomes: fixa quando a grade rola para o lado */
 .pauta-editor, .pauta-canto { position: sticky; left: 0; z-index: 2; background: var(--cartao); }
 .pauta-editor { padding: 12px; font-weight: 400; }
