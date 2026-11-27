@@ -781,6 +781,9 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
   );
 }
 
+/** O caminho "No Trello" na própria fila: aberto e sem ida (#168). */
+const naFila = () => {};
+
 const CHAVE_SEMANA = 'promeiro:semana';
 const CHAVE_CRITERIO = 'promeiro:criterio';
 
@@ -1401,8 +1404,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
       <header className="barra-topo">
         <h1 className="bib-marca"><Marca /></h1>
         {seletorDeArea}
-        {/* os caminhos (#156): a tela de produções (#109), a aba Filmes e a Pauta da edição (#94) */}
-        <CaminhosDoTopo producoes={producoes} filmes={temFilmes() ? filmes : undefined} pauta={pauta} montar={pauta && montarPauta} />
+        {/* os caminhos (#156, #168): a fila (aqui, o aberto), a tela de produções (#109), a aba Filmes e a Pauta da edição (#94) */}
+        <CaminhosDoTopo atual="agenda" agenda={naFila} producoes={producoes} filmes={temFilmes() ? filmes : undefined} pauta={pauta} montar={pauta && montarPauta} />
         <span className="espaco" />
         {(todos.length > 6 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
         {colegas.length > 0 && (

@@ -525,16 +525,17 @@ export function App() {
   const seletorDeArea = <SeletorDeArea areas={areas} atual={areaAgora ?? 'designer'} admin={souAdministrador()} trocar={irParaArea} />;
   /** A linha do logo das telas da Designer fora da fila (#159): Produções, Filmes e a Pauta da edição. É a mesma da fila
       (o logo, o seletor de área, os caminhos e o perfil, nos mesmos lugares), para nada pular ao trocar de tela; os
-      caminhos são os da Designer, menos o da tela em que a pessoa está. */
+      caminhos são os da Designer, todos e sempre no mesmo lugar, com o da tela em que a pessoa está aberto (#168). */
   const topoDaDesigner = (atual: 'producoes' | 'filmes' | 'pauta') => (
     <header className="barra-topo">
       <h1 className="bib-marca"><Marca /></h1>
       {seletorDeArea}
       <CaminhosDoTopo
-        producoes={atual !== 'producoes' ? () => ir({ t: 'producoes' }) : undefined}
+        atual={atual}
         agenda={() => irParaArea('designer')}
-        filmes={atual !== 'filmes' && temFilmes() ? () => ir({ t: 'filmes' }) : undefined}
-        pauta={atual !== 'pauta' ? () => ir({ t: 'pauta', ...entradaDaPauta() }) : undefined}
+        producoes={() => ir({ t: 'producoes' })}
+        filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined}
+        pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })}
         montar={montarAPauta}
       />
       <span className="espaco" />

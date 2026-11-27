@@ -30,7 +30,7 @@ export interface ListasDoQuadro {
 }
 
 /** Os tipos de evento da Produção. "abriu-o-projeto" é só do aviso do Padeiro (#139), na Produção já Entregue. */
-export type TipoDoEvento = 'criada' | 'etapa' | 'arquivada' | 'desarquivada' | 'designer-entrou' | 'designer-saiu' | 'arte-marcada' | 'arte-desmarcada' | 'campo' | 'abriu-o-projeto' | 'fogo' | 'arte-apagada' | 'arte-incluida';
+export type TipoDoEvento = 'criada' | 'etapa' | 'arquivada' | 'desarquivada' | 'designer-entrou' | 'designer-saiu' | 'arte-marcada' | 'arte-desmarcada' | 'campo' | 'abriu-o-projeto' | 'fogo' | 'arte-apagada' | 'arte-incluida' | 'campanha-ligada' | 'campanha-tirada';
 
 export interface EventoDoAviso {
   tipo: TipoDoEvento;

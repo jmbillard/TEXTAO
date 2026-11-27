@@ -10,6 +10,8 @@
 }
 .seletor-area:hover, .seletor-area[aria-expanded='true'] { background: var(--neutro); color: var(--tinta); }
 .seletor-area svg { color: var(--tinta3); margin-top: 2px; }
+.seletor-area-icone { display: none; }
+.seletor-area .seletor-area-icone svg { color: inherit; margin: 0; }
 .areas-menu {
   position: absolute; left: 0; top: calc(100% + 8px); z-index: 40; width: 340px; max-width: calc(100vw - 32px); padding: 6px; border-radius: 14px;
   background: var(--cartao); box-shadow: var(--sombra-menu); animation: abrir 0.14s var(--suave); transform-origin: top left;
@@ -133,20 +135,79 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 .perfil-areas span.adm { background: var(--ultra-suave); color: var(--ultra-tinta); }
 .perfil-fora { display: flex; flex-direction: column; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--regua); }
 .perfil-fora .perfil-link { margin-top: 6px; }
-/* os caminhos da linha do logo (#105, #156): "Produções · Filmes · Pauta da edição", separados por bolinhas; a de
-   depois de Filmes fica laranja quando há filme esperando revisão na aba Filmes */
-.caminhos-do-topo { display: inline-flex; align-items: center; flex: none; margin-left: 8px; }
-.caminhos-do-topo :is(.topo-producoes, .topo-agenda, .topo-filmes, .topo-pauta) { margin-left: 0; }
-.caminho-bolinha { flex: none; width: 4px; height: 4px; margin: 0 2px; border-radius: 50%; background: var(--regua-forte); transition: background-color 0.3s; }
-.caminho-bolinha.revisar { width: 7px; height: 7px; margin: 0 1px; background: var(--ultra); }
+/* os caminhos da linha do logo (#105, #156, #168): só os ícones, sempre no mesmo lugar; o da tela atual se abre com o
+   nome, como as abas dos Cadastros (a cor, o peso e o rabisco embaixo). Só a largura do aberto muda, pela coluna da
+   grade que vai de 0fr a 1fr com a curva --suave; o logo fica à esquerda e o perfil depois do espaço, então nada empurra
+   os dois. A bolinha separadora fica só antes da Pauta; o aviso de filme para revisar é a bolinha laranja no ícone. */
+.caminhos-do-topo { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: 8px; }
+.caminhos-do-topo > a {
+  position: relative; display: inline-flex; align-items: center; height: 36px; padding: 0 9.5px; border-radius: 10px;
+  color: var(--tinta3); font: 500 14px var(--sans); text-decoration: none; white-space: nowrap; transition: color 0.25s, background-color 0.2s;
+}
+.caminhos-do-topo > a:hover { background: var(--neutro); color: var(--tinta); }
+.caminhos-do-topo > a:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.caminhos-do-topo > a.aberto { color: var(--ultra); }
+.caminhos-do-topo > a[aria-current='page'] { cursor: default; }
+.caminhos-do-topo > a[aria-current='page']:hover { background: none; }
+.caminho-icone { position: relative; display: inline-flex; flex: none; }
+.caminho-icone svg { transform-origin: 50% 60%; }
+.caminhos-do-topo > a.aberto .caminho-icone svg { animation: caminho-abre 0.55s var(--suave); }
+@keyframes caminho-abre {
+  0% { transform: none; }
+  35% { transform: translateY(-2px) rotate(-9deg) scale(1.12); }
+  70% { transform: translateY(0.5px) rotate(3deg) scale(0.98); }
+  100% { transform: none; }
+}
+/* o nome: a coluna cresce de 0 até a largura do texto; o texto esmaece junto, um pouco depois ao abrir. Abrir e fechar
+   têm a mesma duração, para os ícones depois dos dois deslizarem num movimento só */
+.caminho-nome {
+  display: grid; grid-template-columns: 0fr; overflow-x: clip; overflow-y: visible; opacity: 0;
+  transition: grid-template-columns 0.5s var(--suave), opacity 0.16s;
+}
+.caminho-nome > span { min-width: 0; }
+.caminho-texto { position: relative; display: inline-block; padding: 0 2.5px 0 7px; color: var(--tinta); font-weight: 600; }
+.caminhos-do-topo > a.aberto .caminho-nome { grid-template-columns: 1fr; opacity: 1; transition: grid-template-columns 0.5s var(--suave), opacity 0.3s 0.1s; }
+.caminho-nome .sub { position: absolute; left: 5px; top: calc(100% + 1px); width: calc(100% - 6px); height: 8px; overflow: visible; }
+/* o traço do rabisco é o das abas dos Cadastros (estilos.css); aqui, só começa depois, com o nome já abrindo */
+.caminho-nome .sub path { animation-delay: 0.22s; }
+/* a bolinha antes da Pauta, que é de todo mundo */
+.caminho-bolinha { flex: none; width: 4px; height: 4px; margin: 0 6px; border-radius: 50%; background: var(--regua-forte); }
+/* o aviso de filme para revisar (#156, #157): a bolinha laranja no canto do ícone dos Filmes, que surge com um pulo */
+.caminho-aviso {
+  position: absolute; top: -3px; right: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--ultra);
+  box-shadow: 0 0 0 2px var(--papel); transition: box-shadow 0.2s; animation: caminho-aviso 0.5s var(--suave) both;
+}
+.caminho-aviso::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--ultra); animation: caminho-aviso-onda 1.2s 0.4s ease-out 2 both; }
+.caminhos-do-topo > a:hover .caminho-aviso { box-shadow: 0 0 0 2px var(--neutro); }
+@keyframes caminho-aviso { 0% { transform: scale(0); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
+@keyframes caminho-aviso-onda { 0% { transform: scale(1); opacity: 0.55; } 100% { transform: scale(2.6); opacity: 0; } }
+/* a dica com o nome, no hover e no foco (no aberto, só quando há o aviso dos Filmes) */
+.caminhos-do-topo > a::after {
+  content: attr(data-dica); position: absolute; top: calc(100% + 8px); left: 50%; z-index: 50; white-space: nowrap; pointer-events: none;
+  background: var(--tinta); color: var(--papel); font: 500 12px/1.3 var(--sans); padding: 6px 9px; border-radius: 8px;
+  box-shadow: var(--sombra-menu); opacity: 0; transform: translate(-50%, -3px); transition: opacity 0.15s, transform 0.15s var(--suave);
+}
+.caminhos-do-topo > a:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 0.1s; }
+@media (hover: hover) { .caminhos-do-topo > a:hover::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 0.35s; } }
+.caminhos-do-topo > a.aberto:not(:has(.caminho-aviso))::after { display: none; }
+/* sem movimento: a largura troca de uma vez e o nome só esmaece */
+@media (prefers-reduced-motion: reduce) {
+  .caminhos-do-topo .caminho-nome, .caminhos-do-topo > a.aberto .caminho-nome { transition-property: opacity !important; transition-duration: 0.3s !important; }
+}
 
 @media (max-width: 600px) {
   .caminho-area { margin-left: -2px; }
-  /* os caminhos no celular: só os ícones, com as bolinhas entre eles */
-  .caminhos-do-topo { margin: 0; }
-  .caminho-bolinha { margin: 0; }
-  .caminho-area-barra { font-size: 24px; margin-right: 0; }
-  .seletor-area { font-size: 20px; height: 44px; padding: 0 6px; }
+  /* os caminhos no celular (#168): só os ícones, mesmo o aberto, que fica com o fundo tingido; a bolinha antes da
+     Pauta. Com 36px de largura (e os 44 de altura do toque), os quatro, o seletor e o perfil cabem no iPhone */
+  .caminhos-do-topo { margin: 0; gap: 0; }
+  .caminhos-do-topo > a { flex: none; width: 36px; height: 44px; padding: 0; justify-content: center; }
+  .caminhos-do-topo > a.aberto { background: color-mix(in srgb, var(--ultra) 12%, transparent); }
+  .caminhos-do-topo .caminho-nome { display: none; }
+  .caminho-bolinha { margin: 0 1px; }
+  /* o seletor é o ícone da área, sem a barra: o nome dela fica no menu e no aria-label */
+  .seletor-area { height: 44px; gap: 2px; padding: 0 4px 0 6px; }
+  .seletor-area-icone { display: inline-flex; }
+  .seletor-area-nome, .caminho-area-barra { display: none; }
   .biblioteca.meus-roteiros { padding: 18px 16px 28px; gap: 20px; }
   /* a fila do celular arruma a ficha por áreas (marca, claquete, gente…): a de "meus roteiros" tem as suas */
   .ficha.ficha-minha { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'claquete artes' 'ciclo ciclo'; padding: 12px 14px; }
