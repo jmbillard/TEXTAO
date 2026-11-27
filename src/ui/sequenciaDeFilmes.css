@@ -45,3 +45,33 @@
   .card-celular.ocupado .cf-grifo { animation: none; background-size: 100% 100%; }
   .cc-opcoes button:active { transform: none; }
 }
+
+/* A página inteira (#83). O toque na imagem de cima: a janela de cada filme da faixa é o botão (a rolagem passa por
+   ele; só o toque abre). */
+.sequencia-item .janela { display: block; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; cursor: zoom-in; -webkit-tap-highlight-color: transparent; }
+
+/* o filme sem pôster: a nota à mão no canto da janela, que não amplia com a página */
+.sem-poster { position: absolute; left: max(14px, env(safe-area-inset-left, 0px)); bottom: 10px; font: 700 24px/1 Caveat, cursive; color: #ffb36b; transform: rotate(-4deg); transform-origin: left bottom; text-shadow: 0 1px 3px rgb(0 0 0 / 60%); pointer-events: none; }
+
+/* por cima de tudo: a página inteira na janela de cima, e o resto escurecido (o toque fora volta ao atual) */
+.pagina-inteira { position: absolute; inset: 0; z-index: 3; background: rgb(10 16 30 / 72%); animation: pi-abrir 0.18s ease-out; -webkit-tap-highlight-color: transparent; }
+.pi-janela { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: #16213a; }
+.pi-folha { position: absolute; }
+.pi-folha img { display: block; width: 100%; height: 100%; }
+.pi-folha .contorno, .pi-folha .pi-pendente { position: absolute; pointer-events: none; }
+.pi-folha .circulo { position: absolute; overflow: visible; }
+.pi-folha .circulo path { fill: none; stroke: #ffb36b; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 50%)); }
+/* o atual: o mesmo contorno da imagem ampliada; os pendentes: o círculo menor e mais fino */
+.pi-folha .circulo.atual { left: -24%; top: -15%; width: 148%; height: 130%; }
+.pi-folha .circulo.atual path { stroke-width: 3; }
+.pi-folha .circulo.pendente { left: -8%; top: -5%; width: 116%; height: 110%; }
+.pi-folha .circulo.pendente path { stroke-width: 2; }
+.pi-poster { position: absolute; transform: translate(-50%, -50%); margin: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
+.pi-poster:active { background: rgb(255 255 255 / 12%); }
+.pi-poster:focus-visible { outline: 2px solid #ffb36b; outline-offset: 2px; }
+.pi-dica { margin: 14px 0 0; padding: 0 16px; text-align: center; font: 500 14px/1.4 var(--sans); color: rgb(255 255 255 / 80%); pointer-events: none; }
+
+@keyframes pi-abrir { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .pagina-inteira { animation: none; }
+}

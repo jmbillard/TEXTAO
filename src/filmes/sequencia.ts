@@ -126,6 +126,29 @@ export function avancaDepoisDaResposta(antes: FilmeNaSequencia, depois: FilmeNaS
   return !!depois && antes.pendente && !depois.pendente;
 }
 
+/** Um pôster da página inteira: a posição do filme dele na sequência (o toque leva até lá), a caixa e a marca. */
+export interface PosterNaPaginaInteira {
+  k: number;
+  caixa: CaixaDaPagina;
+  /** o atual leva o contorno; os outros pendentes da página, o círculo menor; os demais, nada */
+  papel: 'atual' | 'pendente' | 'outro';
+}
+
+/**
+ * A página inteira (#83), aberta com um toque na imagem de cima: a página do filme na posição k, com os pôsteres dos
+ * filmes dela na ordem da página. O que saiu da prévia fica de fora. O filme sem pôster leva a nota "sem pôster",
+ * como aviso só: não é pendente por isso.
+ */
+export function paginaInteira(seq: FilmeNaSequencia[], k: number) {
+  const atual = seq[k];
+  const posteres = seq
+    .flatMap((s, j): PosterNaPaginaInteira[] =>
+      s.numero !== atual?.numero || s.saiu || !s.caixa ? [] : [{ k: j, caixa: s.caixa, papel: j === k ? 'atual' : s.pendente ? 'pendente' : 'outro' }],
+    )
+    .sort((a, b) => seq[a.k].i - seq[b.k].i);
+  return { semPoster: !!atual && !atual.caixa, posteres };
+}
+
 /** O que a imagem de cima mostra numa posição da rolagem (em filmes: 2,5 é o meio do caminho entre o 3º e o 4º). */
 export interface QuadroDaRolagem {
   de: number;

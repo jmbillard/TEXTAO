@@ -15,6 +15,8 @@ import {
   avancaDepoisDaResposta,
   JANELA,
   montarSequencia,
+  PAGINA_INTEIRA,
+  paginaInteira,
   quadroNaRolagem,
   transformar,
   type FilmeNaSequencia,
@@ -35,7 +37,10 @@ import './sequenciaDeFilmes.css';
    computador; o título se corrige no próprio card; o filme da Sessão da Tarde com a vaga do pôster dele em cima sobe
    por um botão. Respondida a pergunta, a marca nova aparece por um instante e a sequência anda sozinha, só se a pessoa
    ainda estiver naquele filme. A presença é a mesma do computador: quem mais está na prévia, e o card em que cada um
-   está (o filme à vista, para quem está no celular) com o título grifado na cor da pessoa e a rubrica. */
+   está (o filme à vista, para quem está no celular) com o título grifado na cor da pessoa e a rubrica.
+   A página inteira (#83): um toque na imagem de cima mostra a página do filme atual inteira, com ele contornado e os
+   outros pendentes da página com o círculo menor; tocar num pôster leva até o filme dele, tocar fora volta ao atual. O
+   filme sem pôster já mostra a página inteira, com a nota à mão "sem pôster": um aviso só, sem pergunta. */
 
 /** Quanto tempo a marca nova fica à vista antes de a sequência andar sozinha. */
 const MARCA_MS = 550;
@@ -98,9 +103,16 @@ function Sequencia({
   agora.current = { seq, atual };
   const avanco = useRef(0);
   useEffect(() => () => window.clearTimeout(avanco.current), []);
-  const irPara = (k: number) => {
+  const irPara = (k: number, pulo = false) => {
     const el = faixa.current;
-    if (el) el.scrollTo({ left: k * el.clientWidth, behavior: semMovimento() ? 'auto' : 'smooth' });
+    if (el) el.scrollTo({ left: k * el.clientWidth, behavior: pulo || semMovimento() ? 'auto' : 'smooth' });
+  };
+  // a página inteira aberta (do filme atual)
+  const [inteira, setInteira] = useState(false);
+  /** O toque na página inteira: num pôster, vai até o filme dele (de um pulo: a página some por cima); fora, fica. */
+  const fecharInteira = (k?: number) => {
+    setInteira(false);
+    if (k !== undefined && k !== atual) irPara(k, true);
   };
   /** Grava a resposta no filme k; depois do instante da marca nova, anda se ele parou de perguntar e se a pessoa ainda
       está nele. */
@@ -145,7 +157,7 @@ function Sequencia({
     por(b, q.para, undefined, desliza ? 0 : q.t);
     // o contorno passa de um pôster ao outro junto com a imagem; esmaecendo, cada camada leva só o do filme dela
     const contorno = { a: { de: desliza ? 1 - q.t : 1, para: desliza ? q.t : 0 }, b: { de: 0, para: 1 } };
-    for (const c of caixa.querySelectorAll<HTMLElement>('.contorno')) {
+    for (const c of caixa.querySelectorAll<HTMLElement>('.contorno, .sem-poster')) {
       const camada = c.closest('.camada') === a ? contorno.a : contorno.b;
       c.style.opacity = String(c.dataset.papel === 'de' ? camada.de : camada.para);
     }
@@ -171,25 +183,24 @@ function Sequencia({
 
   const camada = (k: number) => {
     const s = seq[k];
-    // o contorno dos dois filmes do caminho que estão nesta página (o de e o para)
-    const contornos = [par[0], par[1]].flatMap((j, n) =>
-      (n === 0 || j !== par[0]) && seq[j].numero === s.numero && seq[j].caixa ? [{ j, papel: n === 0 ? 'de' : 'para', c: seq[j].caixa! }] : [],
+    // o contorno (ou, sem pôster, a nota) dos dois filmes do caminho que estão nesta página (o de e o para)
+    const marcas = [par[0], par[1]].flatMap((j, n) =>
+      (n === 0 || j !== par[0]) && seq[j].numero === s.numero ? [{ j, papel: n === 0 ? 'de' : 'para', c: seq[j].caixa }] : [],
     );
     return (
       <div className="camada">
         <div className="folha">
           <img src={imagemDaPagina(previaId, s.numero)} alt="" draggable={false} />
-          {contornos.map(({ j, papel, c }) => (
-            <span
-              key={papel}
-              className="contorno"
-              data-papel={papel}
-              style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%`, width: `${c.width * 100}%`, height: `${c.height * 100}%` }}
-            >
-              <Circulo traco={seq[j].filme.poster ?? 0} className="circulo" />
-            </span>
-          ))}
+          {marcas.map(({ j, papel, c }) =>
+            c ? (
+              <span key={papel} className="contorno" data-papel={papel} style={emCaixa(c)}>
+                <Circulo traco={seq[j].filme.poster ?? 0} className="circulo" />
+              </span>
+            ) : null,
+          )}
         </div>
+        {/* a nota não amplia com a página: fica no canto da janela */}
+        {marcas.map(({ papel, c }) => (c ? null : <SemPoster key={papel} papel={papel} />))}
       </div>
     );
   };
@@ -205,7 +216,7 @@ function Sequencia({
           const pagina = paginas.find((p) => p.numero === s.numero);
           return (
             <section className="sequencia-item" key={k} aria-label={`Filme ${k + 1} de ${seq.length}`} aria-current={k === atual || undefined}>
-              <div className="janela" />
+              <button type="button" className="janela" aria-label="Ver a página inteira" onClick={() => setInteira(true)} />
               <CardDoFilme
                 previaId={previaId}
                 s={s}
@@ -220,12 +231,92 @@ function Sequencia({
       <div className="sequencia-gente">
         <Presentes pessoas={pessoas} />
       </div>
+      {inteira && seq[atual] && (
+        <PaginaInteira previaId={previaId} seq={seq} k={atual} tamanho={tamanhoDe(seq[atual].numero)} fechar={fecharInteira} />
+      )}
       <footer className="sequencia-barra">
         <span className="posicao" aria-live="polite">
           {atual + 1}/{seq.length}
         </span>
       </footer>
     </main>
+  );
+}
+
+/** A caixa do pôster (em proporção da página) como posição na folha. */
+const emCaixa = (c: { x: number; y: number; width: number; height: number }) => ({
+  left: `${c.x * 100}%`,
+  top: `${c.y * 100}%`,
+  width: `${c.width * 100}%`,
+  height: `${c.height * 100}%`,
+});
+
+/** A nota à mão do filme sem pôster: um aviso só, sem pergunta. */
+const SemPoster = ({ papel }: { papel?: string }) => (
+  <span className="sem-poster" data-papel={papel}>
+    sem pôster
+  </span>
+);
+
+/**
+ * A página inteira do filme na posição k, na janela de cima, por cima de tudo: o atual contornado, os outros pendentes
+ * da página com o círculo menor, cada pôster um alvo que leva ao filme dele; o toque fora (na página ou fora dela) volta
+ * ao atual. O filme sem pôster leva a nota.
+ */
+function PaginaInteira({
+  previaId,
+  seq,
+  k,
+  tamanho,
+  fechar,
+}: {
+  previaId: string;
+  seq: FilmeNaSequencia[];
+  k: number;
+  tamanho: { width: number; height: number } | null;
+  /** com a posição de um filme, vai até ele; sem, volta ao atual */
+  fechar: (k?: number) => void;
+}) {
+  const p = paginaInteira(seq, k);
+  const t = transformar(PAGINA_INTEIRA, tamanho, JANELA);
+  return (
+    <div className="pagina-inteira" role="dialog" aria-modal="true" aria-label="A página inteira" onClick={() => fechar()}>
+      <div className="pi-janela">
+        <div className="pi-folha" style={{ left: `${t.x * 100}%`, top: `${t.y * 100}%`, width: `${t.largura * 100}%`, height: `${t.altura * 100}%` }}>
+          <img src={imagemDaPagina(previaId, seq[k].numero)} alt="" draggable={false} />
+          {p.posteres.map((o) =>
+            o.papel === 'outro' ? null : (
+              <span key={`m${o.k}`} className={o.papel === 'atual' ? 'contorno' : 'pi-pendente'} style={emCaixa(o.caixa)}>
+                <Circulo traco={(seq[o.k].filme.poster ?? 0) + (o.papel === 'atual' ? 0 : 1)} className={`circulo ${o.papel}`} />
+              </span>
+            ),
+          )}
+          {/* o alvo do toque: o pôster, com pelo menos 44px em volta do centro dele */}
+          {p.posteres.map((o) => (
+            <button
+              key={o.k}
+              type="button"
+              className="pi-poster"
+              data-papel={o.papel}
+              aria-label={seq[o.k].filme.titulo || 'sem título'}
+              aria-current={o.papel === 'atual' || undefined}
+              style={{
+                left: `${(o.caixa.x + o.caixa.width / 2) * 100}%`,
+                top: `${(o.caixa.y + o.caixa.height / 2) * 100}%`,
+                width: `max(44px, ${o.caixa.width * 100}%)`,
+                height: `max(44px, ${o.caixa.height * 100}%)`,
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                fechar(o.k);
+              }}
+            />
+          ))}
+        </div>
+        {p.semPoster && <SemPoster />}
+      </div>
+      <p className="pi-dica">Toque num pôster para ir até o filme. Fora, volta.</p>
+    </div>
   );
 }
 

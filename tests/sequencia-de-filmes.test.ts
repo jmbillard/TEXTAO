@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { atualizarSequencia, avancaDepoisDaResposta, montarSequencia, quadroNaRolagem } from '../src/filmes/sequencia';
+import { atualizarSequencia, avancaDepoisDaResposta, montarSequencia, paginaInteira, quadroNaRolagem } from '../src/filmes/sequencia';
 import { opcoesDaPergunta } from '../src/filmes/perguntas';
 import type { Conferencia, FilmeLido, PaginaDaPrevia } from '../src/dados/armazenamento';
 
@@ -165,6 +165,57 @@ describe('a sequência de filmes', () => {
     expect(quadroNaRolagem(seq, 1, false)).toMatchObject({ de: 1, para: 1, t: 0 });
     expect(quadroNaRolagem(seq, 2.4, false)).toMatchObject({ de: 2, para: 2, t: 0 });
     expect(quadroNaRolagem(seq, -0.3, false)).toMatchObject({ de: 0, para: 0, t: 0 });
+  });
+});
+
+/* A página inteira (#83): um toque na imagem de cima mostra a página do filme atual inteira, com ele contornado e os
+   outros pendentes da página com o círculo menor; cada pôster leva ao filme dele. */
+describe('a página inteira', () => {
+  const tres = [
+    { caixa: { x: 100, y: 150, width: 150, height: 225 } },
+    { caixa: { x: 400, y: 150, width: 150, height: 225 } },
+    { caixa: { x: 700, y: 150, width: 150, height: 225 } },
+  ];
+  const tamanho = { width: 1000, height: 600 };
+  const qual = conf('atencao', 'qual-filme');
+  const paginas = [
+    pagina(2, [
+      filme('PRONTO', 'SUPERCINE', '01/12/2026', { poster: 0 }),
+      filme('QUAL FILME', 'SUPERCINE', '02/12/2026', { poster: 1, conferencia: qual }),
+      filme('NÃO ACHADO', 'TELA QUENTE', '03/12/2026', { poster: 2, naoAchado: true, conferencia: conf('atencao', 'nao-achado') }),
+      filme('SEM PÔSTER', 'CORUJÃO', '04/12/2026', { conferencia: qual }),
+    ], { posteres: tres, tamanho }),
+    pagina(3, [filme('OUTRA PÁGINA', 'SUPERCINE', '01/12/2026', { poster: 0, conferencia: qual })], { posteres: tres, tamanho }),
+  ];
+  const seq = montarSequencia(paginas, 4 / 3);
+  const posicao = (titulo: string) => seq.findIndex((s) => s.filme.titulo === titulo);
+
+  it('o atual contornado e os outros pendentes da página marcados; cada pôster leva à posição do filme dele', () => {
+    expect(seq.map((s) => s.filme.titulo)).toEqual(['PRONTO', 'OUTRA PÁGINA', 'QUAL FILME', 'NÃO ACHADO', 'SEM PÔSTER']);
+    const p = paginaInteira(seq, posicao('PRONTO'));
+    expect(p.semPoster).toBe(false);
+    // na ordem da página; o pendente sem pôster não tem onde ser marcado, e o da outra página não entra
+    expect(p.posteres.map((o) => [seq[o.k].filme.titulo, o.papel])).toEqual([
+      ['PRONTO', 'atual'],
+      ['QUAL FILME', 'pendente'],
+      ['NÃO ACHADO', 'pendente'],
+    ]);
+    expect(p.posteres[1].caixa).toEqual({ x: 0.4, y: 0.25, width: 0.15, height: 0.375 });
+    // o atual pendente leva o contorno, não o círculo
+    expect(paginaInteira(seq, posicao('QUAL FILME')).posteres.map((o) => o.papel)).toEqual(['outro', 'atual', 'pendente']);
+  });
+
+  it('o filme sem pôster mostra a página inteira com a nota, sem contorno', () => {
+    const p = paginaInteira(seq, posicao('SEM PÔSTER'));
+    expect(p.semPoster).toBe(true);
+    expect(p.posteres.map((o) => o.papel)).toEqual(['outro', 'pendente', 'pendente']);
+  });
+
+  it('o que saiu da prévia durante a revisão não é marcado nem leva a lugar nenhum', () => {
+    const [pronto, qualFilme, , semPoster] = paginas[0].filmes;
+    const depois = atualizarSequencia(seq, [pagina(2, [pronto, qualFilme, semPoster], { posteres: tres, tamanho }), paginas[1]], 4 / 3);
+    expect(depois[posicao('NÃO ACHADO')].saiu).toBe(true);
+    expect(paginaInteira(depois, posicao('PRONTO')).posteres.map((o) => seq[o.k].filme.titulo)).toEqual(['PRONTO', 'QUAL FILME']);
   });
 });
 

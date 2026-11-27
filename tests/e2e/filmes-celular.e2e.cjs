@@ -13,7 +13,9 @@
 // esmaece) e a barra "1/4" fixa embaixo. Responder no card (#82): as perguntas tocáveis gravam a mesma mudança do
 // computador, a marca nova aparece e a sequência anda sozinha (só se a pessoa ainda estiver no filme); o título se
 // corrige num campo de 16px; o filme da Sessão da Tarde sobe pelo "Subir para a vaga"; o link do card do Trello; e a
-// presença dos dois lados, com o Bruno no computador. Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=<pasta>,
+// presença dos dois lados, com o Bruno no computador. A página inteira (#83): um toque na imagem mostra a página do
+// filme atual inteira, com ele contornado e os pendentes com o círculo menor; o pôster leva ao filme, o toque fora volta;
+// e o filme sem pôster mostra a página inteira com a nota "sem pôster". Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=<pasta>,
 // guarda as telas nos temas claro e escuro, e a entrada do computador (que não muda).
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:filmes
@@ -171,7 +173,11 @@ const FILMES = {
   'PREVIA_FILMES_FICTICIA_B.pdf': {
     2: [{ titulo: 'KONG: ILHA DA CAVEIRA', ano_de_producao: 2017, sessao: 'SUPERCINE', data: '19/12/2026' }],
     3: [{ titulo: 'RIVAIS', ano_de_producao: 2023, sessao: 'CORUJÃO', data: '20/12/2026' }],
-    4: [{ titulo: 'FILME INEDITO FICTICIO', ano_de_producao: 2026, inedito: true, sessao: 'SUPERCINE', data: '21/12/2026' }],
+    // o filme sem pôster (#83): o título dele não está na página, e a página tem um pôster só
+    4: [
+      { titulo: 'FILME INEDITO FICTICIO', ano_de_producao: 2026, inedito: true, sessao: 'SUPERCINE', data: '21/12/2026' },
+      { titulo: 'FILME SEM POSTER FICTICIO', ano_de_producao: 2015, sessao: 'TELA QUENTE', data: '22/12/2026' },
+    ],
   },
   'PREVIA_FILMES_FICTICIA_C.pdf': {
     2: [
@@ -337,7 +343,7 @@ async function noAndroid(navegador, s, leitura, pdf) {
   await leitura.soltar();
   await leitura.soltar();
   await f.locator('.andamento').waitFor({ timeout: 30000 });
-  assert.equal((await f.locator('.andamento').innerText()).replace(/\s+/g, ' '), '3/3 páginas lidas 2 prontos 1 com pergunta');
+  assert.equal((await f.locator('.andamento').innerText()).replace(/\s+/g, ' '), '3/3 páginas lidas 3 prontos 1 com pergunta');
   assert.deepEqual(subidas, [2, 3, 4]);
   await semRolagemDeLado(p, 'Android, a lista');
   await alvosDe44(p, 'Android, a lista');
@@ -453,6 +459,98 @@ async function naSequencia(p) {
   await arrastar(p, 0.22, { passos: 4, ms: 8 });
   assert.deepEqual(await filmeAVista(p), ['3/4', SEQUENCIA_A[2]]);
   await semRolagemDeLado(p, 'iPhone, depois de arrastar');
+}
+
+/* ---------- a página inteira (#83) ---------- */
+/** Abre a página inteira com um toque na imagem de cima do filme à vista. */
+async function abrirPaginaInteira(p) {
+  await p.locator('.sequencia-item[aria-current]').getByRole('button', { name: 'Ver a página inteira' }).tap();
+  const pi = p.getByRole('dialog', { name: 'A página inteira' });
+  await pi.waitFor({ timeout: 5000 });
+  return pi;
+}
+/** Os pôsteres da página inteira: o filme de cada um e a marca (atual, pendente ou nada). */
+const marcasDa = (pi) => pi.locator('.pi-poster').evaluateAll((bs) => bs.map((b) => [b.getAttribute('aria-label'), b.dataset.papel]));
+/** Toca fora dos pôsteres: no meio da tela, embaixo da página. */
+async function tocarFora(p) {
+  const { width, height } = p.viewportSize();
+  await p.touchscreen.tap(width / 2, height * 0.75);
+}
+
+/**
+ * iPhone, noutra aba na prévia A, parado no Kong (1/4): um toque na imagem mostra a página inteira, com o Kong contornado
+ * e o Corvo (qual filme?) com o círculo menor. Tocar no pôster do Corvo leva até ele; tocar fora volta ao atual.
+ */
+async function naPaginaInteira(navegador, url, id) {
+  const ctx = await navegador.newContext({ ...aparelho('iPhone 13'), extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA } });
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto(`${url}#/filmes/${encodeURIComponent(id)}`);
+  await p.locator('.sequencia-faixa').waitFor({ timeout: 30000 });
+  assert.deepEqual(await filmeAVista(p), ['1/4', SEQUENCIA_A[0]]);
+  let pi = await abrirPaginaInteira(p);
+  assert.deepEqual(await marcasDa(pi), [['KONG: ILHA DA CAVEIRA', 'atual'], ['O CORVO', 'pendente']]);
+  assert.equal(await pi.locator('.contorno .circulo.atual').count(), 1, 'o atual contornado');
+  assert.equal(await pi.locator('.pi-pendente .circulo.pendente').count(), 1, 'o pendente com o círculo');
+  assert.equal(await pi.locator('.sem-poster').count(), 0, 'com pôster, sem a nota');
+  // a página cabe inteira na janela de cima
+  await pi.locator('img').evaluate((i) => i.decode());
+  const [janela, folha] = await Promise.all([pi.locator('.pi-janela').boundingBox(), pi.locator('.pi-folha').boundingBox()]);
+  assert.ok(folha.x >= janela.x - 1 && folha.x + folha.width <= janela.x + janela.width + 1, 'a página inteira cabe na largura');
+  assert.ok(folha.y >= janela.y - 1 && folha.y + folha.height <= janela.y + janela.height + 1, 'a página inteira cabe na altura');
+  await semRolagemDeLado(p, 'iPhone, a página inteira');
+  await alvosDe44(p, 'iPhone, a página inteira');
+  await p.waitForTimeout(400);
+  await capturar(p, 'iphone-04b-pagina-inteira');
+  // o pôster do Corvo leva até ele
+  await pi.getByRole('button', { name: 'O CORVO' }).tap();
+  await pi.waitFor({ state: 'detached', timeout: 5000 });
+  await paradaNoFilme(p);
+  assert.deepEqual(await filmeAVista(p), ['2/4', 'O CORVO'], 'o pôster leva ao filme dele');
+  // de novo, e tocar fora: volta ao atual (o Corvo), sem andar
+  pi = await abrirPaginaInteira(p);
+  assert.deepEqual(await marcasDa(pi), [['KONG: ILHA DA CAVEIRA', 'outro'], ['O CORVO', 'atual']]);
+  await tocarFora(p);
+  await pi.waitFor({ state: 'detached', timeout: 5000 });
+  assert.deepEqual(await filmeAVista(p), ['2/4', 'O CORVO'], 'o toque fora volta ao atual');
+  assert.deepEqual(erros, [], 'a página inteira: erros na página');
+  await ctx.close();
+}
+
+/**
+ * Android, na prévia B: o filme sem pôster mostra a página inteira com a nota à mão "sem pôster", como aviso só (sem
+ * pergunta); a página inteira dele também leva a nota.
+ */
+async function semPosterNoAndroid(p, f) {
+  await f.tap();
+  await p.locator('.sequencia-faixa').waitFor({ timeout: 30000 });
+  assert.deepEqual(
+    await p.locator('.sequencia-item .cc-titulo').allTextContents(),
+    ['KONG: ILHA DA CAVEIRA', 'RIVAIS', 'FILME INEDITO FICTICIO', 'FILME SEM POSTER FICTICIO'],
+  );
+  const nota = p.locator('.sequencia-imagem .sem-poster');
+  for (const k of [1, 2, 3]) {
+    assert.equal(await nota.evaluateAll((ns) => ns.filter((n) => Number(n.style.opacity) > 0.5).length), 0, `${k}/4: com pôster, sem a nota`);
+    await arrastar(p, -0.6);
+  }
+  assert.deepEqual(await filmeAVista(p), ['4/4', 'FILME SEM POSTER FICTICIO']);
+  // a página inteira, com a nota à vista; aviso só: o card não pergunta nada e a marca é a do pronto
+  const imagem = await imagemAgora(p);
+  assert.ok(Math.abs(imagem.zoom - 1) < 0.01, `sem pôster, a página inteira (zoom ${imagem.zoom})`);
+  assert.deepEqual(await nota.evaluateAll((ns) => ns.filter((n) => Number(n.style.opacity) > 0.5).map((n) => n.textContent)), ['sem pôster']);
+  assert.equal(await cardNa(p, 3).locator('.cc-opcoes, .cc-explica').count(), 0, 'sem pôster não é pergunta');
+  assert.equal(await cardNa(p, 3).locator('.ficha-marca').getAttribute('aria-label'), 'Pronto');
+  await semRolagemDeLado(p, 'Android, sem pôster');
+  await alvosDe44(p, 'Android, sem pôster');
+  await capturar(p, 'android-09-sem-poster');
+  // o toque na imagem: a página inteira com a nota, e o pôster do outro filme da página, sem marca
+  const pi = await abrirPaginaInteira(p);
+  assert.equal(await pi.locator('.sem-poster').textContent(), 'sem pôster');
+  assert.deepEqual(await marcasDa(pi), [['FILME INEDITO FICTICIO', 'outro']]);
+  await tocarFora(p);
+  await pi.waitFor({ state: 'detached', timeout: 5000 });
+  assert.deepEqual(await filmeAVista(p), ['4/4', 'FILME SEM POSTER FICTICIO']);
 }
 
 /** Sem movimento (o sistema pede menos animação): até na mesma página, a imagem só esmaece. */
@@ -664,10 +762,13 @@ async function principal() {
     const idDaPrevia = decodeURIComponent((await iphone.p.evaluate(() => location.hash)).replace(/^#\/filmes\//, ''));
     const mudancas = mudancasDe(iphone.p);
     await naSequencia(iphone.p);
+    await naPaginaInteira(navegador, s.url, idDaPrevia);
     // responder no card (#82): com o Bruno ainda na prévia A, no computador
     await responderNoCard(iphone.p, pc, idDaPrevia, mudancas);
     await semMovimentoNaSequencia(navegador, s.url, idDaPrevia);
     await naTarde(navegador, s, leitura, await pdfDaTarde());
+    // o filme sem pôster (#83), no Android, depois dos gestos do iPhone
+    await semPosterNoAndroid(android.p, android.f);
 
     // o computador não muda: a entrada larga, com o "Solte aqui o PDF da prévia"
     await pc.goto(`${s.url}#/filmes`);
@@ -679,7 +780,7 @@ async function principal() {
     assert.deepEqual(iphone.erros, [], 'iPhone: erros na página');
     assert.deepEqual(android.erros, [], 'Android: erros na página');
     await Promise.all([iphone.ctx.close(), android.ctx.close(), outro.close()]);
-    console.log('ok: a aba Filmes no celular (iPhone 13 e Pixel 7): a subida, a retomada, o andamento, a sequência de filmes e responder no card');
+    console.log('ok: a aba Filmes no celular (iPhone 13 e Pixel 7): a subida, a retomada, o andamento, a sequência de filmes, responder no card e a página inteira');
   } finally {
     await navegador.close();
     await s.descer();
