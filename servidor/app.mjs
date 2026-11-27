@@ -54,7 +54,7 @@ import { criarIlhas } from './ilhas.mjs';
 import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
-import { DIAS_ANTES, DIAS_DEPOIS, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
+import { DIAS_ANTES, DIAS_DEPOIS, agendaDeFilmes, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
 import { DIAS_DO_TRELLO, criarIndiceDoBuscar, dasAtracoes, doTrello, montarIndice } from './indice-do-buscar.mjs';
 import { criarProjetoDoPadeiro } from './projeto-do-padeiro.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
@@ -67,6 +67,7 @@ import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
 import { DIAS_DA_CONTINUIDADE, historicoDaPauta } from '../src/modelo/distribuir.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
+import { CHAVE_DA_AGENDA_DE_FILMES, recusaDaFormaDaAgenda } from '../src/filmes/agenda.ts';
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDaOrdem, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
@@ -3005,7 +3006,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // as preferências da pessoa (#101), uma chave por vez ou várias: { area: 'redator' } ou a exibição de uma área dos
       // roteiros (#103): { 'exibicao.redator': 'quadro' }, ou a visão e os arranjos da Pauta da edição (#98), que é de
       // todo mundo: { 'pauta.visao': 'dia' }, ou os blocos recolhidos da tela de produções (#113), também de todo mundo:
-      // { 'producoes.recolhidos': ['RJ'] }, e a ordem das praças arrumada arrastando (#159): { 'producoes.ordem': ['SP', 'RJ'] }.
+      // { 'producoes.recolhidos': ['RJ'] }, a ordem das praças arrumada arrastando (#159): { 'producoes.ordem': ['SP', 'RJ'] },
+      // e a forma de ver a agenda de filmes (#169): { 'filmes.agenda': 'sessao' }.
       // Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
@@ -3021,6 +3023,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         if (chave === CHAVE_DO_CODIGO_DAS_VERSOES) {
           // "Mostrar o código das versões" (#152), de todo mundo, para o PROMeiro todo
           const recusa = recusaDoCodigoDasVersoes(valor);
+          if (recusa) return json(res, 400, { erro: recusa });
+          continue;
+        }
+        if (chave === CHAVE_DA_AGENDA_DE_FILMES) {
+          // a forma de ver a agenda de filmes (#169), de todo mundo: { 'filmes.agenda': 'data' | 'sessao' }
+          const recusa = recusaDaFormaDaAgenda(valor);
           if (recusa) return json(res, 400, { erro: recusa });
           continue;
         }
@@ -3295,6 +3303,26 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return res.end(pdf.dados);
     }
     if (caminho.startsWith('/api/filmes/previas')) return previas(req, res, caminho, eu);
+    if (caminho === '/api/filmes/agenda' && req.method === 'GET') {
+      // a agenda de filmes da aba Filmes (#169): a leitura dos filmes recentes do Padeiro (#142), com todas as exibições
+      // de cada filme, o pôster pelo caminho com login e a Produção do card da exibição. Nada do Trello. Com o Postgres
+      // do Teable fora (ou sem as tabelas), 503
+      const hoje = diaEmBrasilia(new Date());
+      let linhas;
+      try {
+        linhas = await trello.linhasDosFilmesRecentes?.(somarDias(hoje, -DIAS_ANTES), somarDias(hoje, DIAS_DEPOIS));
+      } catch (e) {
+        console.warn(`[filmes] não li a agenda de filmes: ${e instanceof Error ? e.message : e}`);
+        return json(res, 503, { erro: 'O PROMeiro não conseguiu ler os filmes agora.' });
+      }
+      if (!linhas) return json(res, 503, { erro: 'O PROMeiro está sem as tabelas exibicoes e filmes do Teable.' });
+      const poster = (filme, temNoTeable) => (temNoTeable || anexos.temPoster(filme) ? posterDoFilme(filme) : null);
+      const producao = (card) => {
+        const p = producoes.doAviso({ card });
+        return p ? { id: p.id, etapa: p.etapa, designers: p.designers } : null;
+      };
+      return json(res, 200, { hoje, filmes: agendaDeFilmes({ ...linhas, hoje, poster, producao }) });
+    }
     if (caminho === '/api/filmes' && req.method === 'GET') {
       // os filmes dos próximos dias, com o andamento do card (a mesma produção da arte das claquetes)
       const filmes = await trello.filmesProximos?.(14).catch((e) => (console.warn(`[filmes] ${e instanceof Error ? e.message : e}`), [])) ?? [];
@@ -3673,6 +3701,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     console.log(`[filmes] prévia por e-mail ${r.existente ? 'repetida' : 'nova'}: ${previa.nome} (${Math.round(previa.pdf.length / 1024)} KB)`);
     return json(res, 200, { ...r, link: linkDaAbaFilmes(env) });
   }
+
+  /** O caminho do pôster com login (o mesmo da prévia, #90), para a agenda de filmes (#169); null com o id torto. */
+  const posterDoFilme = (filme) => (/^rec[A-Za-z0-9]{6,32}$/.test(String(filme ?? '')) ? `/api/filmes/poster/${filme}` : null);
 
   /** O pôster do filme para o Padeiro (#142): o endereço público do PROMeiro (PROMEIRO_URL/api/publico/poster/<filme>?t=
       <POSTER_PUBLICO_TOKEN>), quando o filme tem pôster no Teable ou a cópia guardada pelo PROMeiro; null sem o

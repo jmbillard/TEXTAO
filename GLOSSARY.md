@@ -153,6 +153,12 @@ _Evitar_: fila (a fila é a das claquetes), conferido (não existe: passar pela 
 A tela do PROMeiro que lê a prévia, confere cada filme com o banco e cria os cards de filme.
 _Evitar_: FilmeBOT (o site avulso que ela substitui)
 
+**Agenda de filmes**:
+A parte de baixo da aba Filmes: os filmes com exibição de hoje em diante, com os pôsteres, por data de exibição ou por
+sessão (a escolha fica lembrada por pessoa). Lê as exibições e o cadastro de filmes, nunca o Trello; um clique abre o
+card do filme no centro, com as exibições, as pastas e a Produção de cada card.
+_Evitar_: grade (a grade é a programação da emissora; a agenda é o recorte dela que a arte acompanha)
+
 ## Produção e acervo
 
 **Card**:
