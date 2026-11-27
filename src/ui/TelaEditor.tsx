@@ -44,7 +44,8 @@ import { ehDoTour, enviarExemplo } from '../tour/exemplo';
 import { ajustarSelecao } from '../editor/selecao';
 import { gestoNaLista, SEGURAR_MS } from './gestoNaLista';
 import { enviadoNoTour, enviarNoTour } from '../tour/TourDaRevisao';
-import { ApelidoDaClaquete, SufixoDaClaquete } from './Apelido';
+import { ApelidoDaClaquete, MarcaDaLetraEVersao, SufixoDaClaquete } from './Apelido';
+import { letraEVersaoDoRoteiro, marcaDaLetraEVersao } from '../modelo/letraEVersao';
 import { apelidoDoRoteiro, useApelidos, versoesAMaoDoRoteiro } from '../dados/apelidos';
 import { versoesDaChamada, versoesDoRoteiro } from '../modelo/versoesDoRoteiro';
 import { diaEmSaoPaulo, nomeSemAsVersoes } from '../modelo/pauta';
@@ -1757,7 +1758,13 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // as versões que a claquete sabe (#152): o código sai do nome e volta como o sufixo, uma vez só, se a pessoa liga
   const claqueteNoTopo = nomeSemAsVersoes(nomeNoTopo) || meta.programa || 'Roteiro';
   const versoesNoTopo = versoesDaChamada({ lidas: versoesLidas, claquete: meta.claquete, apelido: apelidoDoRoteiro(inicial.id), mao: versoesAMaoDoRoteiro(inicial.id), dia: meta.dataExibicao ?? '' });
-  const sufixoNoTopo = nomeNoTopo ? <SufixoDaClaquete versoes={versoesNoTopo} /> : null;
+  // o código das versões da chamada e, depois, a letra e a versão do roteiro (#166), só o que não é o início
+  const sufixoNoTopo = nomeNoTopo ? (
+    <>
+      <SufixoDaClaquete versoes={versoesNoTopo} />
+      <MarcaDaLetraEVersao marca={marcaDaLetraEVersao(letraEVersaoDoRoteiro(meta))} nome={claqueteNoTopo} />
+    </>
+  ) : null;
   // com apelido, a claquete original aparece ao passar o mouse (e na ficha)
   const originalNoTopo = apelidoDoRoteiro(inicial.id) ? `Claquete: ${meta.claquete}` : undefined;
 

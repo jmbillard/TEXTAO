@@ -31,11 +31,28 @@ _Evitar_: alias, nome novo, key (a key é da atração)
 O texto que chega (Word, RTF, PDF ou colado) com a claquete, o redator, a data e as artes sublinhadas.
 _Evitar_: script, documento
 
+**Letra da chamada** (A, B, C…):
+A letra que a chamada ganha quando volta para ajuste **depois de liberada para exibição** (a exibição já gravou o id,
+e a versão não pode mais mudar): a chamada "vira letra", da A para a B, depois a C, e volta para avaliação. A claquete
+começa sem letra, que vale como A. A **versão do roteiro** recomeça na V1 a cada letra nova (B, B V2, B V3…). "A gente
+versiona a claquete quando a chamada ainda não foi entregue para exibição e precisa de ajuste. A chamada vira letra
+quando já foi liberada pra exibição e precisa ser ajustada" (um produtor da Promo, em 27/11/2026). Não é uma das
+letras do código das **versões da chamada** ((A) amanhã, (H) hoje).
+_Evitar_: versão (sozinha), opção
+
 **Versão do roteiro** (V1, V2…):
-Quantas vezes o roteiro da claquete chegou: a **versão nova** que substitui a anterior na fila fica com a versão
-seguinte à dela, e o roteiro respondido "é v2" (o que atualiza o card que já estava na produção da arte) é a V2; o
-resto é a V1. O card aberto da agenda sempre diz a versão; a claquete do card só a mostra da V2 em diante. Não é a
-**versão da chamada** (o código "(AH)" no fim do nome).
+Quantas vezes a chamada foi ajustada **antes de ser liberada para exibição**, dentro da mesma **letra da chamada**. O
+ciclo: a claquete começa sem letra e sem versão (vale como A V1, que não aparece); um ajuste antes de liberar sobe a
+versão (V2, V3…); liberada, um ajuste faz a chamada virar letra (B) e a versão volta à V1; um ajuste antes de liberar
+de novo segue na letra (B V2, B V3…). A troca de trecho (AMANHÃ que vira HOJE, o filme que já passou) também é ajuste.
+No PROMeiro, o ajuste é a **versão nova** que substitui a anterior na fila: "Substituir a anterior" pergunta "Essa
+chamada já foi liberada para exibição?"; sim, a letra seguinte com a V1; não, a versão seguinte na mesma letra. A
+resposta e a letra e a versão da anterior ficam guardadas no roteiro, e o card aberto da agenda deixa corrigir a
+resposta (a letra e a versão são refeitas). O roteiro respondido "é v2" (o que atualiza o card que já estava na
+produção da arte) é a V2. Os roteiros de antes, com a versão e sem letra, valem como A. O card aberto da agenda sempre
+diz a letra (A sem letra) e a versão (V1 sem versão nova); o título e a claquete (na agenda, nas Produções, na Pauta,
+na revisão e no editor) só mostram o que não é o início, depois do nome e do código das versões: "B", "V2", "B V2";
+nunca "A V1", e não de novo se o nome já diz. Não são as **versões da chamada** (o código "(AH)" no fim do nome).
 _Evitar_: revisão, histórico de versões (o que o editor guarda a cada mudança)
 
 **Arte**:
@@ -370,8 +387,9 @@ clicado e volta para ele ao fechar (no celular, a tela toda). Ali ficam a versã
 detalhe), o apelido pelo lápis, a atração (a busca do cadastro), o prazo e os designers (atribuir e tirar), que gravam
 na hora, vão ao Trello (o prazo do card, o membro) e viram evento; as artes no esquema da janela do After (a bolinha
 numerada, a feita riscada, o fogo), que se marcam, apagam (com desfazer) e incluem, com o checklist do card espelhando;
-e a linha do tempo, fechada num link. A atração escolhida fica só no PROMeiro (o card do Trello não tem o campo). Fica ao lado da agenda No
-Trello, que continua, com a mesma linha do logo, parada entre as telas (#159).
+e a linha do tempo, fechada num link. A atração escolhida vai ao link `atracao` da linha do card na produção da arte
+do Teable (#173), não ao Trello (o card não tem o campo). Fica ao lado da agenda No Trello, que continua, com a mesma
+linha do logo, parada entre as telas (#159).
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 
 **Aviso do Padeiro**:
@@ -514,7 +532,8 @@ lugar da planilha da edição (ADR 0006). A **correção de grafia** também esc
 aberta a qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna) e o **Dia** (um editor por
 coluna: você, o que sobrou sem editor e a equipe, na ordem de início do turno). No alto, o **Minha pauta** de quem é
 editor, com a **contagem do dia** (as claquetes com a arte entregue), ao lado do que sobrou e de quem está fora. Cada
-linha é uma claquete, uma **tarefa** ou um **aviso**.
+linha é uma claquete, uma **tarefa**, uma **info** ou um **aviso**. O que sobrou sem editor aparece só para a
+**coordenação** e os editores.
 _Evitar_: escala (a escala é quem trabalha, não o que edita), grade da edição
 
 **Contagem do dia**:
@@ -557,8 +576,17 @@ O papel de quem monta e publica a pauta da edição.
 _Evitar_: coordenador (é a pessoa; o papel é a coordenação), chefia
 
 **Tarefa** (da pauta):
-A linha da pauta que não tem a forma de claquete (o nome da atração e a data) e não é aviso: COMUNICAÇÃO, CALHAUS. A
-**tarefa fixa** é a que se repete toda semana na mesma posição.
+A linha da pauta que não tem a forma de claquete (o nome da atração e a data), não é aviso nem **info**: o trabalho que
+ocupa o editor, como COMUNICAÇÃO, CALHAUS, PROJETO CALHAUS ou uma peça sem data. A **tarefa fixa** é a que se repete
+toda semana na mesma posição.
+
+**Info** (da pauta):
+A linha da pauta que é uma instrução para o editor, e não trabalho, sem a caixinha de anotação do aviso: "TRANSFORMAR
+DA A B", "REDATOR VAI ACOMPANHAR", "ENTRA SÁBADO". O PROMeiro a reconhece porque começa por um verbo (ou tem "vai",
+"vem", "deve" logo depois do sujeito) ou por uma palavra que continua a frase de cima. Vai com a claquete de antes, na
+mesma posição; sem claquete antes, fica na posição. Não é item da pauta: fica escondida no balão (o balão de fala,
+laranja quando tem texto), e o clique abre o texto ali mesmo.
+_Evitar_: instrução (o rótulo na tela é "info"), observação
 
 **Aviso** (da pauta):
 Um recado da coordenação para o editor de uma **posição**, preso a ela; não é um item da pauta. No Teable, é a linha
@@ -602,17 +630,25 @@ _Evitar_: mensagem, notificação, card (card é o do Trello)
 Copiar para outros dias a escala e as tarefas fixas de um dia; nunca as claquetes, que mudam todo dia.
 _Evitar_: duplicar, clonar
 
-**Turno**:
-O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. Os turnos são uma lista na
-**Configuração**, cada um com o seu horário padrão; cada **posição** pode ter o seu horário. O que passa da meia-noite
-(22–06) conta no dia em que começou. O bloco das 20h às 2h, sem nome na planilha, é a **noite** (confirmado por um
+**Turno** (da edição):
+O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. Os turnos da edição são uma lista
+na **Configuração** (a seção "Turnos da edição"), cada um com o seu horário padrão; são os da escala, do Montar a pauta
+e da Pauta, e cada **posição** pode ter o seu horário. O que passa da meia-noite (22–06) conta no dia em que começou. O bloco das 20h às 2h, sem nome na planilha, é a **noite** (confirmado por um
 produtor da edição, em 27/11/2026). O **turno de costume** é o que mais se repete na semana: é a ordem dos editores
 na Semana. No Dia, a **régua** vai das 6h às 6h do dia seguinte: antes das 6h, "hoje" ainda é o dia anterior. Na Semana
 com um dia por coluna, os cards se agrupam pelo **período** em que o turno começa: manhã (6h–12h), tarde (12h–18h),
-noite (18h–0h) e madrugada (0h–6h).
+noite (18h–0h) e madrugada (0h–6h). Não é o **turno da arte**.
+_Evitar_: turno da arte (é outro)
 
-**Versão da chamada** (na pauta):
-O código no fim da claquete da pauta, entre parênteses ou, depois da data, sem eles, em qualquer caixa e com ou sem
+**Turno da arte**:
+O expediente da equipe de arte, que é outro: a Manhã, das 7h às 16h, e a Noite, das 16h às 0h30, que vira o dia
+(confirmado pelo usuário em 27/11/2026). É uma segunda lista na **Configuração** (a seção "Turnos da arte"), com as
+mesmas regras e a mesma edição dos turnos da edição, guardada à parte. Por enquanto só fica guardada: nenhuma tela a
+usa ainda.
+_Evitar_: turno da edição, período
+
+**Versões da chamada** (o código de dia, na pauta):
+É assim que a equipe chama o código de dia (AH, NAH, PNAH): o código no fim da claquete da pauta, entre parênteses ou, depois da data, sem eles, em qualquer caixa e com ou sem
 acento. Cada letra é uma versão, na ordem em que aparece: A amanhã, H hoje, N nesta <dia da semana>, P próxima <dia da
 semana>, D dia X, M em <mês> (AH = amanhã e hoje). DIA (= D), MES/MÊS (= M) e MNT (manutenção da grade) são
 inteiros. O dia da semana, o número e o mês saem da data da claquete; sem ela, do dia da linha. O padrão, para onde a
@@ -632,8 +668,10 @@ pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai
 com um "?" para conferir; o horário sozinho não é versão. Quando discordam das versões que valem (as do nome ou as
 feitas à mão), um aviso discreto compara os dois códigos ("o roteiro diz (AH), a claquete diz (A)") e oferece usar as
 do roteiro, que viram as versões à mão do **apelido**; a que veio só do dia leva o "?" depois do código ("(AN)?").
-Trocar a letra (de (A) para (H)) e subir a **versão do roteiro** (V2, V3) são coisas diferentes: as letras "servem
-para diferenciar as versões das chamadas" (um produtor da edição, em 27/11/2026).
+Trocar o código (de (A) para (H)), virar a **letra da chamada** (B, C) e subir a **versão do roteiro** (V2, V3) são três
+coisas diferentes: as letras do código "servem para diferenciar as versões das chamadas" (um produtor da edição, em
+27/11/2026); a letra da chamada e a versão do roteiro contam os ajustes, depois e antes de liberar para exibição. Na
+tela, o código vem primeiro, colado no nome, e a letra e a versão depois ("… (AH) B V2").
 _Evitar_: tipo da chamada; "sufixo" sozinho (é o sufixo das versões, só na tela); "referência de dia" (descartado:
 confunde com o dia em que a chamada vai ao ar)
 

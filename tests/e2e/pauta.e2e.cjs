@@ -6,7 +6,7 @@
 // da pauta, fictícias, da semana de hoje e da anterior. Nada vai ao Trello.
 // - A Semana (computador, claro e escuro, pela Lia, que não é editora): sem o texto embaixo do título; um editor por
 //   linha, "sem editor · sobrou" no fim; o código das versões no fim do nome; a tarefa com outro visual; o ⚑ do aviso
-//   com o balão; o recado do dia, o que sobrou e quem está fora; a claquete com a produção da arte (#96); o hover da
+//   com o balão; o recado do dia e quem está fora (o que sobrou, só a coordenação e os editores, #172); a claquete com a produção da arte (#96); o hover da
 //   agenda sem sublinhado, o lápis do apelido e o clique direito; a ficha no card aberto do centro (#160, alternativa
 //   A); a busca por claquete, atração e editor, nas semanas vizinhas também; o interruptor do código; anterior,
 //   próxima e Hoje. No tablet e no celular: a grade rola com os nomes fixos e abre em hoje; a ficha na tela toda.
@@ -43,6 +43,8 @@ const CARLA = 'carla.duarte@exemplo.com';
 const DORA = 'dora.lima@exemplo.com';
 // a opção do código das versões (#152), de outra pessoa: a escolha é de cada um
 const RUI = 'rui.costa@exemplo.com';
+// a coordenação (#123), marcada no e2e por um administrador: vê o que sobrou (#172)
+const COORD = 'cora.nunes@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 
@@ -99,6 +101,8 @@ for (let i = 0; i < 5; i++) {
   const d = mais(DEPOIS, i);
   DA_FORMA_REAL.forEach((editor, j) => {
     const turno = j < 4 ? ['06:00', '15:00'] : j === 4 ? ['14:00', '20:00'] : ['22:00', '06:00'];
+    // a info sem claquete antes fica na posição (#172)
+    if (j === 3) PAUTA.push(linha('REDATOR VAI ACOMPANHAR', editor, d, turno));
     PAUTA.push(linha(j === 4 ? 'COMUNICAÇÃO' : `Atração ${j + 1}(Prologo)${diaMes(mais(d, 1))} (AH)`, editor, d, turno));
     if (j === 1) PAUTA.push(linha('TRANSFORMAR DA A B', editor, d, turno));
     if (j === 2) PAUTA.push(linha('VEM PRONTA', editor, d, turno, true));
@@ -260,14 +264,14 @@ async function noComputador(navegador, url, tema) {
   await p.mouse.move(5, 5);
   await p.locator('.pauta-aviso-balao').waitFor({ state: 'detached' });
 
-  // o recado do dia (o aviso sem editor), no alto; a mesa da produção: o que sobrou e quem está fora
+  // o recado do dia (o aviso sem editor), no alto; a mesa da produção: quem está fora (o que sobrou, a Lia não vê:
+  // não é da coordenação nem editora, #172)
   const recado = p.locator('.pauta-recado');
   assert.match(await recado.locator('.rotulo').textContent(), /Recado do dia · hoje/);
   assert.equal((await recado.locator('p').textContent()).trim(), 'Reunião geral às 10h na ilha 4');
   assert.equal(await p.locator('.pauta-mesa.so-lateral').count(), 1);
-  const sobrou = p.locator('.pauta-sobrou');
-  assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
-  assert.deepEqual(await textos(sobrou.locator('.pauta-texto')), ['CALHAUS']);
+  assert.equal(await p.locator('.pauta-sobrou').count(), 0, 'a Lia não vê o que sobrou');
+  assert.equal(await p.locator('.pauta-lateral.so-fora').count(), 1);
   const fora = p.locator('.pauta-fora');
   assert.match(await fora.locator('.rotulo').textContent(), /Fora no dia\s*1/);
   assert.deepEqual(await textos(fora.locator('.pauta-fora-nome')), ['Elis Furtado']);
@@ -280,6 +284,13 @@ async function noComputador(navegador, url, tema) {
   assert.equal(await show.locator('.marca-texto').count(), 1);
   const novela = cardDe(celula(p, 'Ana Ribeiro', hoje), 'Novela Sol');
   assert.equal((await novela.locator('.pauta-producao').textContent()).trim(), 'sem card');
+  // a bolinha do "sem card" é a bolinha de estado da agenda (BolinhaDeEstado, #172): o pontinho cheio e neutro, sem anel
+  const bolinha = (l) => l.locator('.pauta-nome-com-versoes > .bolinha-estado').evaluate((e) => ({ estado: e.dataset.estado, cor: getComputedStyle(e).backgroundColor, anel: getComputedStyle(e).boxShadow, w: getComputedStyle(e).width, raio: getComputedStyle(e).borderRadius }));
+  const semCard = await bolinha(novela);
+  const tinta3 = await p.evaluate(() => { const e = document.createElement('i'); e.style.color = 'var(--tinta3)'; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
+  assert.deepEqual(semCard, { estado: 'sem-card', cor: tinta3, anel: 'none', w: '6px', raio: '50%' }, 'sem card: a bolinha neutra da agenda');
+  assert.equal((await bolinha(show)).estado, 'entregue');
+  assert.notEqual((await bolinha(show)).cor, tinta3, 'entregue: a bolinha com a cor da etapa');
   // o hover da agenda (#162): o realce, sem sublinhado; o lápis do apelido aparece no canto
   const lapis = show.locator('.pauta-lapis');
   assert.equal(await lapis.evaluate((e) => getComputedStyle(e).opacity), '0');
@@ -534,6 +545,85 @@ async function aSemanaNoSafari(navegador, url) {
   await cel.ctx.close();
   await ctx.close();
   console.log('ok: a Semana no Safari (#172): os 7 dias e os nomes à vista, na semana de hoje e na da forma real; no celular, a grade rola sem ir ao limite');
+}
+
+/**
+ * Quem vê o "Sobrou · sem editor" (#172): a coordenação (marcada por um administrador) e os editores (a Carla); a Lia e
+ * a designer (a Dora), não.
+ */
+async function oSobrouPorPerfil(navegador, url, api) {
+  const marcar = await fetch(`${api}/cadastros/coordenacao`, { method: 'POST', headers: { 'content-type': 'application/json', 'cf-access-authenticated-user-email': CHEFE }, body: JSON.stringify({ email: COORD }) });
+  assert.equal(marcar.status, 200, 'a coordenação marcada');
+  const ve = {};
+  for (const [quem, email] of [['coordenação', COORD], ['editora', CARLA], ['designer', DORA], ['sem perfil', LIA]]) {
+    const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/pauta', null, email);
+    await p.locator('.pauta-grade').waitFor();
+    await p.locator('.pauta-fora').waitFor();
+    const sobrou = p.locator('.pauta-sobrou');
+    ve[quem] = (await sobrou.count()) ? await textos(sobrou.locator('.pauta-texto')) : null;
+    if (ve[quem]) assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
+    if (CAPTURAS && quem !== 'editora') await capturar(p, `00-sobrou-${quem.replace(/\s+/g, '-')}`, false);
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  }
+  assert.deepEqual(ve, { coordenação: ['CALHAUS'], editora: ['CALHAUS'], designer: null, 'sem perfil': null });
+  console.log('ok: o "Sobrou · sem editor" só para a coordenação e os editores; a designer e quem não tem perfil não veem');
+}
+
+/**
+ * A info (#172): a instrução para o editor sai da lista (não é tarefa) e fica escondida num balão. A da claquete, no
+ * canto do card; a que não tem claquete antes, no alto da posição. Com info, o balão é cheio e laranja; o clique abre o
+ * texto ali mesmo (sem abrir a ficha), e Esc, outro clique ou um clique fora fecham.
+ */
+async function aInfoNoBalao(navegador, url) {
+  for (const [onde, opcoes] of [
+    ['computador', { viewport: { width: 1440, height: 1000 } }],
+    ['celular', { ...devices['iPhone 13'] }],
+  ]) {
+    for (const tema of ['light', 'dark']) {
+      const nome = `${onde}-${tema === 'dark' ? 'escuro' : 'claro'}`;
+      const { ctx, p, erros } = await abrir(navegador, url, { ...opcoes, colorScheme: tema }, `#/pauta/semana/${DEPOIS}`);
+      await p.locator(`th.pauta-dia[data-dia="${DEPOIS}"]`).waitFor();
+      const otto = celula(p, 'Otto Lemos', DEPOIS);
+      // a instrução não é item da lista nem "tarefa"
+      const daLista = await textos(otto.locator('.pauta-texto'));
+      assert.ok(daLista.length === 1 && daLista[0].startsWith('Atração 2(Prologo)'), `${nome}: só a claquete na lista (${daLista})`);
+      assert.equal(await otto.locator('.pauta-producao', { hasText: 'tarefa' }).count(), 0);
+      const card = cardDe(otto, 'Atração 2');
+      const botao = card.locator('.balao-info-botao');
+      assert.equal(await botao.getAttribute('aria-expanded'), 'false');
+      assert.equal(await card.locator('.balao-info-texto').count(), 0, `${nome}: a info escondida`);
+      const ultra = await p.evaluate(() => { const e = document.createElement('i'); e.style.color = 'var(--ultra)'; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
+      assert.equal(await botao.evaluate((b) => getComputedStyle(b).color), ultra, `${nome}: com info, o balão laranja`);
+      assert.equal(await botao.locator('path').getAttribute('fill'), 'currentColor', `${nome}: o balão cheio`);
+      await botao.scrollIntoViewIfNeeded();
+      await botao.click();
+      await card.locator('.balao-info-texto').waitFor();
+      assert.equal(await botao.getAttribute('aria-expanded'), 'true');
+      assert.deepEqual(await textos(card.locator('.balao-info-texto p')), ['TRANSFORMAR DA A B']);
+      assert.equal(await p.locator('.card-aberto').count(), 0, `${nome}: o balão não abre a ficha`);
+      await p.waitForTimeout(300);
+      await capturar(p, `08-info-${nome}`, false);
+      // Esc fecha
+      await p.keyboard.press('Escape');
+      await card.locator('.balao-info-texto').waitFor({ state: 'detached' });
+      // a info sem claquete antes: no alto da posição
+      const igor = celula(p, 'Igor Matos', DEPOIS);
+      assert.equal(await igor.locator('.pauta-texto', { hasText: 'REDATOR' }).count(), 0);
+      const daPosicao = igor.locator('.pauta-celula-topo .balao-info-botao.tem');
+      await daPosicao.scrollIntoViewIfNeeded();
+      await daPosicao.click();
+      await igor.locator('.pauta-celula-topo .balao-info-texto').waitFor();
+      assert.deepEqual(await textos(igor.locator('.balao-info-texto p')), ['REDATOR VAI ACOMPANHAR']);
+      // um clique fora fecha
+      await p.locator('.pauta-cabeca h1').click();
+      await igor.locator('.balao-info-texto').waitFor({ state: 'detached' });
+      await semRolagemDeLado(p, nome);
+      assert.deepEqual(erros, [], `${nome}: erros na página`);
+      await ctx.close();
+    }
+  }
+  console.log('ok: a info (#172): fora da lista, no balão da claquete ou da posição; laranja e cheio; o clique abre ali mesmo, Esc e o clique fora fecham (computador e celular, claro e escuro)');
 }
 
 /** Na fila do celular, a entrada da pauta é só o ícone, e cabe no topo. */
@@ -999,11 +1089,13 @@ async function principal() {
   const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros, env });
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
-  for (const quem of [LIA, TOM, CARLA, DORA, RUI]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
+  for (const quem of [LIA, TOM, CARLA, DORA, RUI, COORD]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
   let falhou = false;
   try {
     await aSemanaNoSafari(navegador, s.url);
+    await oSobrouPorPerfil(navegador, s.url, s.api);
+    await aInfoNoBalao(navegador, s.url);
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema);
     await naTelaPequena(navegador, s.url, 'iPad (gen 7)', 'tablet', 'light');
     for (const tema of ['light', 'dark']) await naTelaPequena(navegador, s.url, 'iPhone 13', 'celular', tema);

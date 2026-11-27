@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buscarNaPauta, contaDoEditor, ehDaPessoa, recadoDoDia, type LinhaDaPauta, type ProducaoNaPauta } from '../src/modelo/pauta';
+import { buscarNaPauta, contaDoEditor, ehDaPessoa, recadoDoDia, veOQueSobrou, type LinhaDaPauta, type ProducaoNaPauta } from '../src/modelo/pauta';
 
 /* A Pauta da edição como no mock-up (#162): o "Minha pauta" de quem é editor, a contagem do dia (as claquetes com a
    arte entregue), o recado do dia (o aviso sem editor) e a busca por claquete, atração e editor. */
@@ -17,6 +17,17 @@ describe('quem é a pessoa na pauta', () => {
     expect(ehDaPessoa('Ana Ribeiro', 'Carla Duarte')).toBe(false);
     expect(ehDaPessoa('', null)).toBe(false);
     expect(ehDaPessoa('', '')).toBe(false);
+  });
+});
+
+describe('quem vê o "Sobrou · sem editor" (#172)', () => {
+  it('a coordenação e os editores; os outros perfis (designer, redator), não', () => {
+    expect(veOQueSobrou({ coordenacao: true, editor: null })).toBe(true);
+    expect(veOQueSobrou({ coordenacao: false, editor: 'Carla Duarte' })).toBe(true);
+    expect(veOQueSobrou({ coordenacao: true, editor: 'Carla Duarte' })).toBe(true);
+    expect(veOQueSobrou({ coordenacao: false, editor: null })).toBe(false);
+    expect(veOQueSobrou({ coordenacao: false, editor: '' })).toBe(false);
+    expect(veOQueSobrou({ coordenacao: false, editor: undefined })).toBe(false);
   });
 });
 
