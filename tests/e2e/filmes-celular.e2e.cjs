@@ -10,7 +10,10 @@
 // mais está na prévia, e tocar nela abre a revisão: a sequência de filmes (#81), as sessões próprias por data e depois a
 // Sessão da Tarde, arrastada com o dedo (o arrasto que não passa da metade volta; o que passa, ou o gesto rápido, troca de
 // filme), com a imagem de cima deslizando entre pôsteres da mesma página e esmaecendo entre páginas (sem movimento, só
-// esmaece) e a barra "1/4" fixa embaixo. Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=<pasta>,
+// esmaece) e a barra "1/4" fixa embaixo. Responder no card (#82): as perguntas tocáveis gravam a mesma mudança do
+// computador, a marca nova aparece e a sequência anda sozinha (só se a pessoa ainda estiver no filme); o título se
+// corrige num campo de 16px; o filme da Sessão da Tarde sobe pelo "Subir para a vaga"; o link do card do Trello; e a
+// presença dos dois lados, com o Bruno no computador. Os alvos têm 44px e a página não rola para o lado. Com CAPTURAS=<pasta>,
 // guarda as telas nos temas claro e escuro, e a entrada do computador (que não muda).
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:filmes
@@ -38,14 +41,23 @@ const CAPTURAS = process.env.CAPTURAS || '';
 const PG = { TEABLE_PG_URL: 'postgres://teste', TEABLE_PG_ESQUEMA: 'bse_teste', TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'token-falso' };
 const NO_POSTGRES = { filmes: 'filmes_teste', exibicoes: 'exibicoes_teste', ARTES_acervo: 'acervo_teste' };
 const ENV = { N8N_FILMES_LER: 'http://n8n.falso/webhook/ler-pagina', FILMES_INTERVALO_MS: '0', ...PG };
-/** O banco de filmes fictício: o Kong bate (pronto), o Corvo tem dois candidatos (qual filme?) e o Rivais, outro ano. */
+/** O banco de filmes fictício: o Kong bate (pronto), o Corvo tem dois candidatos (qual filme?) e o Rivais, outro ano. O
+    filme de cima da prévia C já tem card no Trello (a exibição na mesma sessão e no mesmo dia). */
 const BANCO = [
   { __id: 'recKong01', titulo: 'Kong - A Ilha da Caveira', ano_de_producao: 2017 },
   { __id: 'recCorvo94', titulo: 'O Corvo', ano_de_producao: 1994 },
   { __id: 'recCorvo24', titulo: 'O Corvo', ano_de_producao: 2024 },
   { __id: 'recRivais1', titulo: 'Rivais', ano_de_producao: 2024 },
+  { __id: 'recCimaFic1', titulo: 'Filme de Cima Ficticio', ano_de_producao: 2020 },
 ];
-const consultar = async (sql) => (sql.includes('"filmes_teste"') ? BANCO : []);
+const LINK_DO_CARD = 'https://trello.com/c/cardFicticio1';
+const EXIBICOES = [
+  { filme: { id: 'recCimaFic1', title: 'Filme de Cima Ficticio (2020)' }, sessao: { id: 'recSesFic01', title: 'SUPERCINE' }, data_de_exibicao: '2027-01-09T03:00:00.000Z', card_ID: 'cardFicticio1', link: LINK_DO_CARD, labels: null },
+];
+// o dia da exibição em Brasília, como o filtro por data da consulta faz no Postgres
+const diaDe = (e) => new Date(e.data_de_exibicao).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+const consultar = async (sql, params = []) =>
+  sql.includes('"filmes_teste"') ? BANCO : sql.includes('"exibicoes_teste"') ? EXIBICOES.filter((e) => (params[0] ?? []).includes(diaDe(e))) : [];
 
 /* ---------- a prévia fictícia em PDF ---------- */
 /** Um PNG de uma cor só (o pôster fictício). */
@@ -92,6 +104,34 @@ async function pdfDaPrevia(paginas, marca) {
   return Buffer.from(await doc.save());
 }
 
+/**
+ * A prévia C, de uma página útil com as duas fileiras: em cima, o filme de cima (já no Trello) e o filme que a leitura
+ * pôs por engano na Sessão da Tarde (o pôster dele está na fileira de cima: ele sobe para a vaga); embaixo, dois da
+ * Sessão da Tarde.
+ */
+async function pdfDaTarde() {
+  const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+  const doc = await PDFDocument.create();
+  const fonte = await doc.embedFont(StandardFonts.Helvetica);
+  const capa = (texto) => doc.addPage([842, 595]).drawText(texto, { x: 60, y: 300, size: 28, font: fonte });
+  capa('PREVIA FICTICIA C');
+  const pg = doc.addPage([842, 595]);
+  pg.drawRectangle({ x: 0, y: 0, width: 842, height: 595, color: rgb(0.09, 0.13, 0.23) });
+  pg.drawText('SEMANA FICTICIA C', { x: 40, y: 565, size: 14, font: fonte, color: rgb(1, 1, 1) });
+  const fileiras = [
+    [340, ['FILME DE CIMA FICTICIO', 'FILME LIDO NA TARDE']],
+    [120, ['TARDE FICTICIA UM', 'TARDE FICTICIA DOIS']],
+  ];
+  for (const [k, [y, titulos]] of fileiras.entries())
+    for (const [i, titulo] of titulos.entries()) {
+      const x = 80 + i * 300;
+      pg.drawImage(await doc.embedPng(png(8, 12, CORES[(i + 2 * k) % CORES.length])), { x, y, width: 100, height: 150 });
+      pg.drawText(titulo, { x, y: y - 15, size: 10, font: fonte, color: rgb(1, 1, 1) });
+    }
+  capa('FIM');
+  return Buffer.from(await doc.save());
+}
+
 /* ---------- a leitura por IA falsa: segura cada página até o teste soltar ---------- */
 function leituraFalsa(filmesDaPagina) {
   const esperando = [];
@@ -132,6 +172,14 @@ const FILMES = {
     2: [{ titulo: 'KONG: ILHA DA CAVEIRA', ano_de_producao: 2017, sessao: 'SUPERCINE', data: '19/12/2026' }],
     3: [{ titulo: 'RIVAIS', ano_de_producao: 2023, sessao: 'CORUJÃO', data: '20/12/2026' }],
     4: [{ titulo: 'FILME INEDITO FICTICIO', ano_de_producao: 2026, inedito: true, sessao: 'SUPERCINE', data: '21/12/2026' }],
+  },
+  'PREVIA_FILMES_FICTICIA_C.pdf': {
+    2: [
+      { titulo: 'FILME DE CIMA FICTICIO', ano_de_producao: 2020, sessao: 'SUPERCINE', data: '09/01/2027' },
+      { titulo: 'FILME LIDO NA TARDE', ano_de_producao: 2019, sessao: 'SESSÃO DA TARDE', data: '10/01/2027' },
+      { titulo: 'TARDE FICTICIA UM', ano_de_producao: 2018, sessao: 'SESSÃO DA TARDE', data: '11/01/2027' },
+      { titulo: 'TARDE FICTICIA DOIS', ano_de_producao: 2017, sessao: 'SESSÃO DA TARDE', data: '12/01/2027' },
+    ],
   },
 };
 const filmesDaPagina = (nome, n) => (FILMES[nome]?.[n] ?? []).map((f) => ({ inedito: false, ano_de_producao: null, ...f }));
@@ -428,6 +476,161 @@ async function semMovimentoNaSequencia(navegador, url, id) {
   await ctx.close();
 }
 
+/* ---------- responder no card (#82) ---------- */
+/** O card de um filme da sequência (pela posição, a partir de 0). */
+const cardNa = (p, k) => p.locator('.sequencia-item').nth(k).locator('.card-celular');
+/** As mudanças que o celular mandou ao servidor (o corpo de cada PATCH num filme), na ordem. */
+function mudancasDe(p) {
+  const corpos = [];
+  p.on('request', (r) => {
+    if (r.method() === 'PATCH' && /\/paginas\/\d+\/filmes\/\d+$/.test(new URL(r.url()).pathname)) corpos.push(JSON.parse(r.postData()));
+  });
+  return corpos;
+}
+/** A prévia como o servidor guarda (a mesma que o computador abre). */
+const previaNoServidor = (p, id) => p.evaluate(async (id) => (await fetch(`/api/filmes/previas/${encodeURIComponent(id)}`)).json(), id);
+/** Espera a sequência chegar a uma posição ("3/4") sozinha. */
+async function esperarPosicao(p, posicao, onde) {
+  await p.waitForFunction((alvo) => document.querySelector('.sequencia-barra .posicao')?.textContent.trim() === alvo, posicao, { timeout: 5000 }).catch(() => {});
+  assert.equal((await p.locator('.sequencia-barra .posicao').textContent()).trim(), posicao, onde);
+}
+
+/**
+ * iPhone, na prévia A (parado no Rivais, 3/4), com o Bruno no computador: a presença dos dois lados; "qual filme?"
+ * respondido no card grava a mesma mudança do computador, a marca nova aparece e a sequência anda sozinha; a resposta
+ * que chega quando a pessoa já saiu do filme não arrasta a sequência; o título corrigido no campo de 16px.
+ */
+async function responderNoCard(p, pc, id, mudancas) {
+  // o Bruno abre o "qual filme?" do Corvo no computador: no celular, a bolinha dele e o Corvo grifado com a rubrica
+  await pc.getByRole('button', { name: 'Qual filme?' }).click();
+  await p.locator('.sequencia-gente .presente').first().waitFor({ timeout: 15000 });
+  await cardNa(p, 1).locator('.rubrica', { hasText: 'Bruno tá vendo' }).waitFor({ timeout: 15000 });
+  assert.ok(await cardNa(p, 1).evaluate((el) => el.classList.contains('ocupado')), 'o card do Corvo grifado na cor do Bruno');
+  await arrastar(p, 0.6);
+  assert.deepEqual(await filmeAVista(p), ['2/4', 'O CORVO']);
+  // e o computador vê a Lia no Corvo (o filme à vista no celular)
+  await pc.locator('.cartao-filme.ocupado', { hasText: 'O CORVO' }).locator('.rubrica', { hasText: 'Lia tá vendo' }).waitFor({ timeout: 15000 });
+  // as opções do "qual filme?" no card: os dois candidatos com o pôster do banco e "outro filme (novo)"
+  const opcoes = cardNa(p, 1).locator('.cc-opcoes button');
+  assert.deepEqual((await opcoes.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['O Corvo 1994', 'O Corvo 2024', 'outro filme (novo)']);
+  await alvosDe44(p, 'iPhone, as opções do card');
+  await semRolagemDeLado(p, 'iPhone, as opções do card');
+  await p.waitForTimeout(1500);
+  await capturar(p, 'iphone-07-qual-filme');
+
+  // tocar no candidato: a marca nova (✓) aparece no lugar, e a sequência anda sozinha para o Rivais
+  await opcoes.first().tap();
+  await cardNa(p, 1).locator('.ficha-marca[aria-label="Pronto"]').waitFor({ timeout: 10000 });
+  assert.equal((await p.locator('.sequencia-barra .posicao').textContent()).trim(), '2/4', 'a marca nova aparece antes de andar');
+  if (CAPTURAS) await p.screenshot({ path: join(CAPTURAS, 'iphone-08-respondido.png') });
+  await esperarPosicao(p, '3/4', 'respondido, a sequência anda sozinha');
+  await paradaNoFilme(p);
+  assert.deepEqual(await filmeAVista(p), ['3/4', 'RIVAIS']);
+  // gravou o mesmo que o computador grava: a escolha do candidato, e o computador vê o Corvo pronto na hora
+  assert.deepEqual(mudancas, [{ filme: 'recCorvo94' }]);
+  let previa = await previaNoServidor(p, id);
+  assert.equal(previa.paginas[0].filmes[1].escolha.filme, 'recCorvo94');
+  assert.equal(previa.paginas[0].filmes[1].conferencia.marca, 'ok');
+  await pc.locator('.cartao-filme', { hasText: 'O CORVO' }).locator('.ficha-marca[aria-label="Pronto"]').waitFor({ timeout: 10000 });
+
+  // o ano do Rivais, mas a pessoa volta ao Corvo antes da resposta chegar: grava, e a sequência não anda sozinha
+  let soltar;
+  const segura = new Promise((ok) => (soltar = ok));
+  const filmeDoRivais = /\/paginas\/3\/filmes\/0$/;
+  await p.route(filmeDoRivais, async (r) => (await segura, r.continue()));
+  assert.deepEqual(await cardNa(p, 2).locator('.cc-opcoes button').allInnerTexts(), ['2023', '2024']);
+  await cardNa(p, 2).getByRole('button', { name: '2024' }).tap();
+  await arrastar(p, 0.6);
+  assert.deepEqual(await filmeAVista(p), ['2/4', 'O CORVO']);
+  soltar();
+  await cardNa(p, 2).locator('.ficha-marca[aria-label="Pronto"]').waitFor({ timeout: 10000 });
+  await p.waitForTimeout(1200);
+  assert.deepEqual(await filmeAVista(p), ['2/4', 'O CORVO'], 'quem já saiu do filme não é levado embora');
+  await p.unroute(filmeDoRivais);
+  assert.deepEqual(mudancas, [{ filme: 'recCorvo94' }, { ano: 2024 }]);
+
+  // o título se corrige no próprio card, num campo de 16px (o iPhone não amplia a tela)
+  await arrastar(p, -0.6);
+  await arrastar(p, -0.6);
+  assert.deepEqual(await filmeAVista(p), ['4/4', 'FILME INEDITO FICTICIO']);
+  await cardNa(p, 3).locator('.cc-titulo [role="button"]').tap();
+  const campo = cardNa(p, 3).getByRole('textbox', { name: 'Título do filme' });
+  assert.equal(await campo.evaluate((el) => getComputedStyle(el).fontSize), '16px', 'o campo do título tem 16px');
+  await semRolagemDeLado(p, 'iPhone, corrigindo o título');
+  await campo.fill('FILME INEDITO FICTICIO DOIS');
+  await campo.press('Enter');
+  await cardNa(p, 3).locator('.cc-titulo', { hasText: 'FILME INEDITO FICTICIO DOIS' }).waitFor({ timeout: 10000 });
+  assert.deepEqual(mudancas, [{ filme: 'recCorvo94' }, { ano: 2024 }, { titulo: 'FILME INEDITO FICTICIO DOIS' }]);
+  previa = await previaNoServidor(p, id);
+  assert.deepEqual(previa.paginas[1].filmes.map((f) => [f.titulo, f.conferencia.marca]), [['RIVAIS', 'ok'], ['FILME INEDITO FICTICIO DOIS', 'ok']]);
+  await pc.locator('.bolinha[aria-label="Página 2"]').click();
+  await pc.locator('.cartao-filme', { hasText: 'FILME INEDITO FICTICIO DOIS' }).waitFor({ timeout: 10000 });
+  await alvosDe44(p, 'iPhone, depois de responder');
+}
+
+/**
+ * Android, na prévia C: o card da Sessão da Tarde reduzido; o filme de cima já no Trello, com o link do card; e o filme
+ * lido por engano na Sessão da Tarde sobe pelo botão: "Subir para a vaga" mostra a vaga "???", e depois a sessão.
+ */
+async function naTarde(navegador, s, leitura, pdf) {
+  const nome = 'PREVIA_FILMES_FICTICIA_C';
+  const { ctx, p, erros } = await abrirNoCelular(navegador, s.url, 'Pixel 7');
+  const mudancas = mudancasDe(p);
+  await p.locator('input[type=file]').setInputFiles(arquivo(`${nome}.pdf`, pdf));
+  await leitura.soltar();
+  const f = ficha(p, nome);
+  await f.locator('.andamento').waitFor({ timeout: 30000 });
+  await f.tap();
+  await p.locator('.sequencia-faixa').waitFor({ timeout: 30000 });
+  const titulos = await p.locator('.sequencia-item .cc-titulo').allTextContents();
+  assert.deepEqual(titulos, ['FILME DE CIMA FICTICIO', 'FILME LIDO NA TARDE', 'TARDE FICTICIA UM', 'TARDE FICTICIA DOIS'], 'a sessão própria, depois a Tarde');
+  // o filme de cima já está no Trello: o link do card
+  assert.equal(await cardNa(p, 0).getByRole('link', { name: 'Abrir o card no Trello' }).getAttribute('href'), LINK_DO_CARD);
+  // a Tarde: só o pôster, o nome e a marca; o que não tem a vaga em cima não sobe
+  for (const k of [1, 2]) {
+    const card = cardNa(p, k);
+    assert.ok(await card.evaluate((el) => el.classList.contains('tarde')), 'o card da Tarde é o reduzido');
+    assert.equal(await card.locator('.cc-sessao, .cc-linha, .cc-artes').count(), 0, 'o card da Tarde não mostra sessão, ano, data nem artes');
+    assert.equal(await card.locator('.ficha-marca').count(), 1, 'o card da Tarde tem a marca');
+  }
+  assert.equal(await cardNa(p, 2).getByRole('button', { name: 'Subir para a vaga' }).count(), 0, 'sem a vaga em cima, não sobe');
+
+  await arrastar(p, -0.6);
+  assert.deepEqual(await filmeAVista(p), ['2/4', 'FILME LIDO NA TARDE']);
+  await semRolagemDeLado(p, 'Android, a Tarde');
+  await alvosDe44(p, 'Android, a Tarde');
+  await capturar(p, 'android-07-tarde');
+  // o botão mostra a vaga "???"; tocada, o filme sobe (sem andar: agora ele pede a sessão)
+  await cardNa(p, 1).getByRole('button', { name: 'Subir para a vaga' }).tap();
+  await cardNa(p, 1).getByRole('button', { name: 'A vaga ??? do pôster dele em cima' }).tap();
+  await cardNa(p, 1).locator('.cc-opcoes.sessao').waitFor({ timeout: 10000 });
+  assert.ok(!(await cardNa(p, 1).evaluate((el) => el.classList.contains('tarde'))), 'subiu: o card deixa de ser o da Tarde');
+  await p.waitForTimeout(1200);
+  assert.deepEqual(await filmeAVista(p), ['2/4', 'FILME LIDO NA TARDE'], 'subir não anda: falta a sessão');
+  await alvosDe44(p, 'Android, a sessão');
+  await capturar(p, 'android-08-sessao');
+  // a sessão escolhida responde: pronto, e a sequência anda sozinha
+  await cardNa(p, 1).locator('.cc-opcoes.sessao button', { hasText: 'SUPERCINE' }).tap();
+  await cardNa(p, 1).locator('.ficha-marca[aria-label="Pronto"]').waitFor({ timeout: 10000 });
+  await esperarPosicao(p, '3/4', 'com a sessão, a sequência anda sozinha');
+  assert.deepEqual(mudancas, [{ subir: true }, { sessao: 'SUPERCINE' }]);
+  const previa = await (async () => {
+    const id = decodeURIComponent((await p.evaluate(() => location.hash)).replace(/^#\/filmes\//, ''));
+    return previaNoServidor(p, id);
+  })();
+  assert.deepEqual(
+    previa.paginas[0].filmes.map((g) => [g.titulo, g.sessao, !!g.subiu]),
+    [
+      ['FILME DE CIMA FICTICIO', 'SUPERCINE', false],
+      ['FILME LIDO NA TARDE', 'SUPERCINE', true],
+      ['TARDE FICTICIA UM', 'SESSÃO DA TARDE', false],
+      ['TARDE FICTICIA DOIS', 'SESSÃO DA TARDE', false],
+    ],
+  );
+  assert.deepEqual(erros, [], 'Android, a Tarde: erros na página');
+  await ctx.close();
+}
+
 async function principal() {
   if (CAPTURAS) mkdirSync(CAPTURAS, { recursive: true });
   const pasta = mkdtempSync(join(tmpdir(), 'promeiro-e2e-previas-'));
@@ -459,8 +662,12 @@ async function principal() {
     await iphone.f.tap();
     await iphone.p.waitForFunction(() => /^#\/filmes\/.+/.test(location.hash), null, { timeout: 10000 });
     const idDaPrevia = decodeURIComponent((await iphone.p.evaluate(() => location.hash)).replace(/^#\/filmes\//, ''));
+    const mudancas = mudancasDe(iphone.p);
     await naSequencia(iphone.p);
+    // responder no card (#82): com o Bruno ainda na prévia A, no computador
+    await responderNoCard(iphone.p, pc, idDaPrevia, mudancas);
     await semMovimentoNaSequencia(navegador, s.url, idDaPrevia);
+    await naTarde(navegador, s, leitura, await pdfDaTarde());
 
     // o computador não muda: a entrada larga, com o "Solte aqui o PDF da prévia"
     await pc.goto(`${s.url}#/filmes`);
@@ -472,7 +679,7 @@ async function principal() {
     assert.deepEqual(iphone.erros, [], 'iPhone: erros na página');
     assert.deepEqual(android.erros, [], 'Android: erros na página');
     await Promise.all([iphone.ctx.close(), android.ctx.close(), outro.close()]);
-    console.log('ok: a aba Filmes no celular (iPhone 13 e Pixel 7): a subida, a retomada, o andamento e a sequência de filmes');
+    console.log('ok: a aba Filmes no celular (iPhone 13 e Pixel 7): a subida, a retomada, o andamento, a sequência de filmes e responder no card');
   } finally {
     await navegador.close();
     await s.descer();

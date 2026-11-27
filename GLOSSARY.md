@@ -108,6 +108,15 @@ _Evitar_: produção (a exibição é o filme na grade; o trabalho da arte do ca
 **Prévia**:
 O PDF mensal da programação de filmes, lido na aba Filmes, que vira os cards de filme.
 
+**Sequência de filmes**:
+A prévia aberta no celular: os filmes um atrás do outro, sem paginar o PDF, cada um com a página ampliada no pôster
+dele em cima e o card embaixo, em que se responde a pergunta do !. A ordem: primeiro os de sessão própria por data,
+depois os da Sessão da Tarde por data; no mesmo dia, a ordem da página. Ela é montada quando a prévia abre; o que muda
+durante a revisão atualiza o filme no lugar (o que sai fica riscado), e o filme novo (de uma página lida depois) vai
+para o fim. A ordem nova só vale quando a prévia é aberta de novo. Respondida a pergunta, a sequência anda sozinha para
+o próximo, se a pessoa ainda estiver naquele filme.
+_Evitar_: fila (a fila é a das claquetes), conferido (não existe: passar pela sequência é a conferência)
+
 **Aba Filmes**:
 A tela do PROMeiro que lê a prévia, confere cada filme com o banco e cria os cards de filme.
 _Evitar_: FilmeBOT (o site avulso que ela substitui)

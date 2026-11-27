@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { atualizarSequencia, montarSequencia, quadroNaRolagem } from '../src/filmes/sequencia';
+import { atualizarSequencia, avancaDepoisDaResposta, montarSequencia, quadroNaRolagem } from '../src/filmes/sequencia';
+import { opcoesDaPergunta } from '../src/filmes/perguntas';
 import type { Conferencia, FilmeLido, PaginaDaPrevia } from '../src/dados/armazenamento';
 
 /* A sequência de filmes do celular (#81): a regra pura que recebe a prévia aberta e devolve os filmes em ordem, um
@@ -164,5 +165,67 @@ describe('a sequência de filmes', () => {
     expect(quadroNaRolagem(seq, 1, false)).toMatchObject({ de: 1, para: 1, t: 0 });
     expect(quadroNaRolagem(seq, 2.4, false)).toMatchObject({ de: 2, para: 2, t: 0 });
     expect(quadroNaRolagem(seq, -0.3, false)).toMatchObject({ de: 0, para: 0, t: 0 });
+  });
+});
+
+/* Responder no card (#82): as perguntas viram opções tocáveis, com as mesmas mudanças de filme do computador. */
+describe('responder no card', () => {
+  const candidatos = [
+    { id: 'recCorvo94', titulo: 'O Corvo', ano: 1994 },
+    { id: 'recCorvo24', titulo: 'O Corvo', ano: 2024 },
+  ];
+  const perguntando = (pergunta: Conferencia['pergunta'], mais: Partial<Conferencia> = {}, f: Partial<FilmeLido> = {}) =>
+    filme('O FILME', 'SUPERCINE', '01/12/2026', { conferencia: { ...conf('atencao', pergunta), ...mais }, ...f });
+
+  it('"qual filme?": cada candidato com o pôster do banco, e "outro filme (novo)" sem pôster', () => {
+    expect(opcoesDaPergunta(perguntando('qual-filme', { candidatos }))).toEqual([
+      { rotulo: 'O Corvo', ano: 1994, poster: 'recCorvo94', m: { filme: 'recCorvo94' } },
+      { rotulo: 'O Corvo', ano: 2024, poster: 'recCorvo24', m: { filme: 'recCorvo24' } },
+      { rotulo: 'outro filme (novo)', poster: null, m: { filme: 'novo' } },
+    ]);
+  });
+
+  it('o ano, a sessão (a da coluna primeiro, com a data) e o fica/sai do não achado', () => {
+    expect(opcoesDaPergunta(perguntando('ano-diferente', { anos: [2023, 2024] }))).toEqual([
+      { rotulo: '2023', m: { ano: 2023 } },
+      { rotulo: '2024', m: { ano: 2024 } },
+    ]);
+    const sessoes = [{ sessao: 'TELA QUENTE', data: '07/12/2026', coluna: true }, { sessao: 'SUPERCINE' }];
+    expect(opcoesDaPergunta(perguntando('sessao', { sessoes }, { sessao: '', subiu: true }))).toEqual([
+      { rotulo: 'TELA QUENTE · 07/12', nota: 'a coluna dele na página', m: { sessao: 'TELA QUENTE' } },
+      { rotulo: 'SUPERCINE', m: { sessao: 'SUPERCINE' } },
+    ]);
+    expect(opcoesDaPergunta(perguntando('nao-achado', {}, { naoAchado: true }))).toEqual([
+      { rotulo: 'fica', m: { fica: true } },
+      { rotulo: 'sai', m: { sai: true } },
+    ]);
+  });
+
+  it('sem pergunta, ou "sem título" (responde-se no título), não há opções', () => {
+    expect(opcoesDaPergunta(filme('PRONTO', 'SUPERCINE', '01/12/2026'))).toEqual([]);
+    expect(opcoesDaPergunta(perguntando('sem-titulo', {}, { titulo: '' }))).toEqual([]);
+    expect(opcoesDaPergunta(filme('SEM CONFERÊNCIA', 'SUPERCINE', '01/12/2026', { conferencia: undefined }))).toEqual([]);
+  });
+
+  it('depois da resposta, a sequência avança só quando o filme parou de perguntar (ou saiu da prévia)', () => {
+    const [antes] = montarSequencia([pagina(2, [perguntando('qual-filme', { candidatos })])]);
+    const respondido = (f: FilmeLido) => atualizarSequencia([antes], [pagina(2, [f])])[0];
+    // respondeu: o ✓ (ou o Trello) e anda
+    expect(avancaDepoisDaResposta(antes, respondido(filme('O FILME', 'SUPERCINE', '01/12/2026')), { filme: 'recCorvo94' })).toBe(true);
+    expect(avancaDepoisDaResposta(antes, respondido(filme('O FILME', 'SUPERCINE', '01/12/2026', { conferencia: conf('trello') })), { filme: 'recCorvo24' })).toBe(true);
+    // a resposta não resolveu (o servidor recusou, ou ainda falta outra pergunta): fica
+    expect(avancaDepoisDaResposta(antes, respondido(perguntando('ano-diferente', { anos: [1994, 1995] })), { filme: 'recCorvo94' })).toBe(false);
+    // o "sai" leva o filme da prévia: anda mesmo antes de a prévia reabrir
+    expect(avancaDepoisDaResposta(antes, antes, { sai: true })).toBe(true);
+    expect(avancaDepoisDaResposta(antes, { ...antes, saiu: true }, { fica: true })).toBe(true);
+    // o que não perguntava nada não anda: corrigir o título de um pronto, ou subir da Tarde (agora pede a sessão)
+    const [pronto] = montarSequencia([pagina(2, [filme('PRONTO', 'SUPERCINE', '01/12/2026')])]);
+    expect(avancaDepoisDaResposta(pronto, pronto, { titulo: 'PRONTO DE NOVO' })).toBe(false);
+    const [daTarde] = montarSequencia([pagina(2, [filme('DA TARDE', 'SESSÃO DA TARDE', '01/12/2026', { poster: 0 })])]);
+    const subiu = atualizarSequencia([daTarde], [pagina(2, [filme('DA TARDE', '', '01/12/2026', { poster: 0, subiu: true, conferencia: conf('atencao', 'sessao') })])])[0];
+    expect(avancaDepoisDaResposta(daTarde, subiu, { subir: true })).toBe(false);
+    // e a sessão escolhida responde: anda
+    const comSessao = atualizarSequencia([subiu], [pagina(2, [filme('DA TARDE', 'SUPERCINE', '01/12/2026', { poster: 0, subiu: true })])])[0];
+    expect(avancaDepoisDaResposta(subiu, comSessao, { sessao: 'SUPERCINE' })).toBe(true);
   });
 });

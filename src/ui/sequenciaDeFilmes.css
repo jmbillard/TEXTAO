@@ -1,0 +1,47 @@
+/* Responder no card do celular (#82): as opções da pergunta, o título que se corrige no card, o "Subir para a vaga",
+   o link do card no Trello e a presença (quem mais está na prévia; o título grifado na cor de quem está no card). O
+   resto da sequência fica em estilos.css. Os alvos de toque têm pelo menos 44px. */
+
+/* o título: toca-se para corrigir; o campo tem 16px, para o iPhone não ampliar a tela */
+.card-celular .cf-titulo.editavel { display: flex; align-items: center; min-height: 44px; cursor: text; }
+.card-celular input.cf-titulo { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 6px 8px; font: 600 16px/1.25 var(--mono); color: var(--tinta); background: var(--mesa); border: 1px solid var(--regua-forte); border-radius: 8px; outline: none; }
+.card-celular input.cf-titulo:focus { border-color: var(--ultra); }
+.card-celular .cf-grifo { background: linear-gradient(var(--grifo, transparent), var(--grifo, transparent)) no-repeat 0 0 / 0% 100%; -webkit-box-decoration-break: clone; box-decoration-break: clone; border-radius: 2px; }
+.card-celular.ocupado .cf-grifo { --grifo: color-mix(in srgb, var(--cor) 24%, transparent); animation: selecionar-claquete 0.88s 0.1s cubic-bezier(0.45, 0, 0.3, 1) forwards; }
+.card-celular .rubrica { justify-self: start; margin: 0; font-size: 18px; line-height: 0.95; animation-delay: 0.6s; }
+
+/* a marca fica no canto do card, e não na área "marca" da grade das fichas do celular (estilos.css); na Sessão da
+   Tarde, na altura do meio do pôster (o card cresce com a pergunta e o "Subir para a vaga") */
+.card-celular > .ficha-marca { grid-area: auto; margin-top: 0; }
+.card-celular.tarde > .ficha-marca { top: 45px; margin-top: 0; }
+
+/* o que vem embaixo do card ocupa a largura toda */
+.card-celular > .cc-explica, .card-celular > .cc-opcoes, .card-celular > .cc-artes, .card-celular > .cc-subir, .card-celular > .cc-trello { grid-column: 1 / -1; }
+.card-celular > .cc-artes { margin: 0; }
+.card-celular > .cc-explica { margin: 0; font-size: 14px; line-height: 1.4; color: var(--tinta2); }
+
+.cc-opcoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.cc-opcoes button { flex: 1 1 0; min-width: 44px; min-height: 44px; display: grid; justify-items: center; align-content: center; gap: 3px; padding: 6px; border: 1px solid var(--regua-forte); border-radius: 10px; background: var(--mesa); color: var(--tinta); font: 600 14px/1.25 var(--sans); text-align: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cc-opcoes button:active { border-color: var(--ultra); transform: scale(0.98); }
+.cc-opcoes button:disabled { opacity: 0.55; }
+.cc-opcoes button small { color: var(--tinta2); font-weight: 500; font-variant-numeric: tabular-nums; }
+.cc-opcoes img, .cc-opcoes .sem { display: block; width: 36px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 5px; background: var(--neutro); }
+.cc-opcoes img.sem { visibility: hidden; }
+.cc-opcoes.ano-diferente button, .cc-opcoes.nao-achado button { font: 600 16px var(--mono); }
+.cc-opcoes.sessao { flex-direction: column; }
+.cc-opcoes.sessao button { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 2px 8px; padding: 10px 14px; text-align: left; font: 600 14px var(--mono); }
+.cc-opcoes.vagas button { flex: none; width: 100%; grid-auto-flow: column; justify-content: start; gap: 12px; padding: 8px 14px; border-style: dashed; }
+.cc-opcoes .mao { font: 700 26px/1 Caveat, cursive; color: var(--falta); }
+
+.card-celular > .cc-subir { min-height: 44px; justify-content: center; }
+.card-celular > .cc-trello { display: flex; align-items: center; gap: 8px; min-height: 44px; font: 600 14px var(--sans); color: var(--ultra-tinta); text-decoration: none; }
+
+/* quem mais está na prévia, no canto da imagem de cima (os toques passam para a faixa) */
+.sequencia-gente { position: absolute; top: 10px; right: max(12px, env(safe-area-inset-right, 0px)); z-index: 2; pointer-events: none; }
+.sequencia-gente .na-fila { margin: 0; }
+.sequencia-gente .presente { box-shadow: 0 0 0 2px #16213a; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card-celular.ocupado .cf-grifo { animation: none; background-size: 100% 100%; }
+  .cc-opcoes button:active { transform: none; }
+}

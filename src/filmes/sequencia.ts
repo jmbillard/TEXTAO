@@ -1,7 +1,7 @@
 /* A sequência de filmes do celular (#81): a prévia aberta vira uma fila única de filmes, sem paginar o PDF. Primeiro
    os de sessão própria (Supercine, Tela Quente, Corujão…) por data, depois os da Sessão da Tarde por data; no mesmo
    dia, a ordem da página (a página no PDF e o filme nela). Os dados lidos não têm hora. */
-import type { CaixaDaPagina, FilmeLido, PaginaDaPrevia } from '../dados/armazenamento';
+import type { CaixaDaPagina, FilmeLido, MudancaNoFilme, PaginaDaPrevia } from '../dados/armazenamento';
 import { ehSessaoDaTarde } from './fileiras';
 
 export interface FilmeNaSequencia {
@@ -114,6 +114,16 @@ export function atualizarSequencia(seq: FilmeNaSequencia[], paginas: PaginaDaPre
   });
   const novos = montarSequencia(paginas, janela).filter((s) => !usados.has(`${s.numero}:${s.i}`));
   return [...mantidos, ...novos];
+}
+
+/**
+ * Responder no card (#82): depois da resposta, a sequência anda sozinha só quando o filme parou de perguntar (a pergunta
+ * respondida, sem outra no lugar) ou saiu da prévia. O "sai" anda mesmo antes de a prévia reabrir sem ele. O que não
+ * perguntava nada (o título corrigido de um pronto, o filme da Tarde que subiu e agora pede a sessão) fica.
+ */
+export function avancaDepoisDaResposta(antes: FilmeNaSequencia, depois: FilmeNaSequencia | undefined, m: MudancaNoFilme) {
+  if ('sai' in m || depois?.saiu) return true;
+  return !!depois && antes.pendente && !depois.pendente;
 }
 
 /** O que a imagem de cima mostra numa posição da rolagem (em filmes: 2,5 é o meio do caminho entre o 3º e o 4º). */

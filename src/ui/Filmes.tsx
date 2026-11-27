@@ -19,6 +19,7 @@ import {
 } from "../dados/armazenamento";
 import { corDe, iniciais, nomesCurtos, primeiroNome as primeiro } from "../dados/colaboracao";
 import { montarFileiras, podeSubir, type ItemDaFileira } from "../filmes/fileiras";
+import { opcoesDaPergunta } from "../filmes/perguntas";
 import { useTelaDeCelular } from "./faixa";
 import { EntradaDoCelular } from "./FilmesCelular";
 import { SequenciaDeFilmes } from "./SequenciaDeFilmes";
@@ -762,7 +763,7 @@ function Pagina({
 }
 
 /** O título do card: o único campo editável. Clique para editar; Enter (ou sair do campo) grava, Esc desiste. */
-function Titulo({
+export function Titulo({
   filme,
   gravar,
   aoEditar,
@@ -917,31 +918,11 @@ function Balao({
       : c.pergunta === "sem-titulo"
         ? { titulo: "sem título", texto: "clique no título para escrever" }
         : null;
-  const opcoes: { rotulo: string; ano?: number | null; poster?: string; nota?: string; m: MudancaNoFilme }[] =
-    c.pergunta === "qual-filme"
-      ? [
-          ...(c.candidatos ?? []).map((f) => ({
-            rotulo: f.titulo,
-            ano: f.ano,
-            poster: posterDoFilme(f.id),
-            m: { filme: f.id },
-          })),
-          { rotulo: "outro filme (novo)", poster: "", m: { filme: "novo" } },
-        ]
-      : c.pergunta === "ano-diferente"
-        ? (c.anos ?? []).map((ano) => ({ rotulo: String(ano), m: { ano } }))
-        : c.pergunta === "sessao"
-          ? (c.sessoes ?? []).map((s) => ({
-              rotulo: s.data ? `${s.sessao} · ${s.data.slice(0, 5)}` : s.sessao,
-              nota: s.coluna ? "a coluna dele na página" : undefined,
-              m: { sessao: s.sessao },
-            }))
-          : c.pergunta === "nao-achado"
-            ? [
-                { rotulo: "fica", m: { fica: true } },
-                { rotulo: "sai", m: { sai: true } },
-              ]
-            : [];
+  // as mesmas opções do card do celular; o pôster é o do filme do banco ("" no "outro filme (novo)")
+  const opcoes = opcoesDaPergunta(filme).map((o) => ({
+    ...o,
+    poster: o.poster === undefined ? undefined : o.poster ? posterDoFilme(o.poster) : "",
+  }));
   const escolher = useRef<(k: number) => void>(() => {});
   escolher.current = (k) => {
     const m = opcoes[k]?.m;
