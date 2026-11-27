@@ -90,6 +90,9 @@ const DESENHOS: Partial<Record<IdDoPasso, Desenho>> = {
     // "Sem editor" em Para revisar; com a lista de nomes aberta (na claquete), a lista
     alvo: () => document.querySelector(`${LISTA_DE_EDITORES} ul`) ?? document.querySelector('.pendencias-editor li'),
     ancora: () => document.querySelector('.pendencias-editor'),
+    // sem espaço à direita da coluna, o balão desce para baixo da lista, e a seta sobe pela esquerda dela
+    evitar: () => [document.querySelector('ol.artes')],
+    via: 'esq',
     seta: true,
     deixa: (el) => !!el.closest(`.pendencias-editor li .botao-texto, ${CAMPO_DO_EDITOR}, ${LISTA_DE_EDITORES}`),
     meio: () => !!document.querySelector(LISTA_DE_EDITORES),

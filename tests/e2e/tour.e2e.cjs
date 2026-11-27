@@ -165,16 +165,31 @@ async function balaoCobre(p, seletores) {
   }, seletores);
 }
 
+/** O lembrete: depois de um clique fora do lugar, o balão se mexe (a classe e a animação do cutucão). */
+const balaoLembrou = (p) =>
+  p.evaluate(() => {
+    const b = document.querySelector('.tour-balao');
+    return !!b?.classList.contains('cutucado') && b.getAnimations().some((a) => a.animationName === 'tour-cutucar');
+  });
+
 /**
  * O tour inteiro, do passo chegar ao Terminar, clicando como a pessoa. `aoChegar(nome)` é chamado com o tour parado em
  * cada tela que interessa às capturas ("enviar", "no-trello", "fim").
  */
 async function fazerOTour(p, aoChegar = async () => {}) {
   await noPasso(p, 1);
+  // um clique fora do alvo: o balão lembra onde clicar, e o tour não sai do lugar
+  await p.mouse.click(1600, 1000);
+  if (!(await balaoLembrou(p))) throw new Error('passo 1: o clique fora do alvo não fez o balão lembrar');
   await p.click('.convite-compacto-acoes .botao:not(.primario)');
   await noPasso(p, 2);
   await p.click(`.ficha[data-ancora="ficha:${ID}"] .ficha-acoes .botao`);
   await noPasso(p, 3);
+  const cobre3 = await balaoCobre(p, ['ol.artes']);
+  if (cobre3.length) throw new Error(`passo 3: o balão cobre ${cobre3.join(', ')}`);
+  // o Enviar antes da hora: o tour segura e o balão lembra o passo atual
+  await p.click('.acao-principal .botao.primario');
+  if (!(await balaoLembrou(p))) throw new Error('passo 3: o Enviar antes da hora não fez o balão lembrar');
   await p.click('.pendencias-editor li .botao-texto');
   await p.waitForSelector('.escolha-nome-menu li:has-text("Carla Nunes")');
   await balaoPronto(p);
