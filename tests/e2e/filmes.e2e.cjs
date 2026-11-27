@@ -3,7 +3,8 @@
 // Sobe o servidor e o Vite como o e2e do tour (banco temporário, dados fictícios), com o Postgres do Teable falso: nada
 // sai para a rede. Confere a área de soltar a prévia no padrão da fila (o convite que se escreve sozinho, o risco à mão,
 // a camada "Pode soltar" ao arrastar um arquivo pela janela, sem a camada dos roteiros), a agenda de filmes com os
-// pôsteres (a cascata, o hover da agenda, por data e por sessão, a escolha lembrada depois de recarregar), o filme sem
+// pôsteres (a cascata, o hover da agenda, a semana por data com as setas e o "voltar para hoje", #182, a busca na lupa,
+// por sessão, a escolha lembrada depois de recarregar), o filme sem
 // pôster e o de pôster quebrado (a capa com o título, nunca a imagem quebrada), o card aberto no centro que cresce do
 // pôster (as exibições, a Produção ligada, o "Copiar caminho") e o movimento reduzido. No celular, a página não rola
 // para o lado e os alvos têm 44px. Com CAPTURAS=<pasta>, guarda as telas nos temas claro e escuro e um vídeo curto.
@@ -163,10 +164,22 @@ async function noComputador(navegador, s, video) {
   const atrasos = await p.locator('.filmes-dias .poster-filme').evaluateAll((ls) => ls.map((l) => parseFloat(getComputedStyle(l).animationDelay)));
   assert.ok(atrasos.length >= 6, `os pôsteres de hoje em diante (${atrasos.length})`);
   assert.ok(atrasos[0] < atrasos[atrasos.length - 1], 'os pôsteres chegam em cascata');
-  // por data: um dia por coluna, de hoje em diante (o que passou só aparece no card)
-  const dias = await p.locator('.filmes-dias .coluna').count();
-  assert.equal(dias, 6, 'os dias com filme, de hoje a daqui a 6 dias');
-  assert.match(await p.locator('.filmes-dias .coluna').first().textContent(), /hoje/);
+  // por data (#182): a semana da agenda No Trello, sete colunas a partir de ontem; ontem, com o que passou esmaecido; hoje
+  // circulado, com o que passa hoje em destaque
+  const colunas = p.locator('.filmes-dias .coluna');
+  assert.equal(await colunas.count(), 7, 'a semana: sete dias, de ontem a daqui a 5 dias');
+  assert.match(await colunas.nth(0).textContent(), /ontem/);
+  assert.match(await colunas.nth(1).textContent(), /hoje/);
+  await colunas.nth(1).locator('.dia-num svg').waitFor();
+  assert.equal(await colunas.nth(0).getAttribute('class').then((c) => c.includes('passou')), true, 'ontem já passou');
+  const passou = colunas.nth(0).locator('.poster-filme', { hasText: 'A Sala Escura' });
+  assert.equal(await passou.getAttribute('data-quando'), 'passou');
+  assert.ok(Number(await passou.locator('.poster-filme-capa').evaluate((c) => getComputedStyle(c).opacity)) < 0.8, 'o que passou fica esmaecido');
+  assert.equal(await colunas.nth(1).locator('.poster-filme.hoje').count(), 2, 'o que passa hoje, em destaque');
+  // o topo da agenda: o período e o resumo que contam, sem o "voltar para hoje" na semana de agora
+  assert.match(await p.locator('.agenda-filmes .semana-nav b').textContent(), /\d+.*–.*\d+/);
+  assert.match(await p.locator('.agenda-filmes .secao-trello-conta').textContent(), /8 exibições · 2 inéditas/);
+  assert.equal(await p.locator('.agenda-filmes .voltar-hoje').count(), 0);
   // o Vidro (pôster do Teable que não vem) e a Noite (sem pôster): a capa com o título, nunca a imagem quebrada
   await p.waitForTimeout(1500);
   await semImagemQuebrada(p, 'computador');
@@ -176,9 +189,53 @@ async function noComputador(navegador, s, video) {
   assert.equal(await p.locator('.poster-filme', { hasText: 'Corrida no Gelo' }).first().locator('.etiqueta-inedito').count(), 1, 'a etiqueta de inédito');
   await capturar(p, 'filmes-01-computador');
 
+  // a troca de semana (as setas), como a agenda No Trello: a semana que sai some, a nova chega e os números contam; o
+  // "voltar para hoje" abre a vaga e traz de volta
+  await p.getByRole('button', { name: 'Próxima semana' }).click();
+  await p.locator('.filmes-dias .poster-filme', { hasText: 'Viagem ao Farol' }).waitFor();
+  await p.waitForTimeout(900);
+  assert.equal(await colunas.count(), 7);
+  assert.equal(await p.locator('.filmes-dias .coluna.hoje').count(), 0, 'outra semana, sem o hoje');
+  assert.match(await colunas.nth(0).textContent(), /Viagem ao Farol/);
+  assert.match(await p.locator('.agenda-filmes .secao-trello-conta').textContent(), /1 exibição/);
+  await capturar(p, 'filmes-01b-proxima-semana');
+  await p.getByRole('button', { name: 'voltar para hoje' }).click();
+  await p.locator('.filmes-dias .coluna.hoje').waitFor();
+  await p.waitForTimeout(900);
+  assert.match(await colunas.nth(1).textContent(), /hoje/);
+
+  // a busca (#182): a lupa acha pelo sessão, sem acento, em outras semanas também, e mostra como a busca de Produções
+  await p.locator('.agenda-filmes .busca.lupa').click();
+  await p.keyboard.type('corujao');
+  const achados = p.locator('.filmes-busca .prod-achado');
+  await achados.first().waitFor();
+  await p.waitForTimeout(700);
+  assert.match(await p.locator('.filmes-busca h2').textContent(), /3 exibições com.*corujao/);
+  assert.deepEqual(await achados.evaluateAll((ls) => ls.map((l) => l.getAttribute('data-quando'))), ['passou', 'vai-passar', 'vai-passar']);
+  assert.match(await achados.nth(2).textContent(), /Viagem ao Farol.*2021.*Corujão.*01:40.*vai passar/);
+  assert.equal(await p.locator('.agenda-filmes-corpo').isHidden(), true, 'os achados no lugar da agenda');
+  await capturar(p, 'filmes-01c-busca');
+  // pelo título e pelo ano, sem caixa nem acento
+  await p.locator('.agenda-filmes .busca input').fill('GELO 2019');
+  await p.waitForTimeout(500);
+  assert.equal(await achados.count(), 2);
+  // um clique abre o card do filme
+  await achados.first().locator('button').click();
+  await p.locator('.card-aberto[role=dialog] #ficha-filme-titulo', { hasText: 'Corrida no Gelo' }).waitFor();
+  await p.keyboard.press('Escape');
+  await p.locator('.card-aberto[role=dialog]').waitFor({ state: 'detached' });
+  // o Esc no campo limpa e a agenda volta
+  await p.locator('.agenda-filmes .busca input').focus();
+  await p.keyboard.press('Escape');
+  await p.locator('.filmes-busca').waitFor({ state: 'detached' });
+  assert.equal(await p.locator('.agenda-filmes-corpo').isVisible(), true);
+  await p.waitForTimeout(500);
+
   // o hover da agenda: só a borda acende
   const card = p.locator('.poster-filme', { hasText: 'Ponte Sobre o Rio' });
   const borda = () => card.evaluate((c) => getComputedStyle(c).borderTopColor);
+  await p.mouse.move(5, 5);
+  await p.waitForTimeout(300);
   const antes = await borda();
   await card.hover();
   await p.waitForTimeout(300);
@@ -272,6 +329,21 @@ async function gravarVideo(navegador, s) {
     await p.locator('.poster-filme', { hasText: t }).first().hover();
     await p.waitForTimeout(450);
   }
+  await p.locator('.agenda-filmes').evaluate((a) => a.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  await p.waitForTimeout(900);
+  await p.getByRole('button', { name: 'Próxima semana' }).click();
+  await p.waitForTimeout(1300);
+  await p.getByRole('button', { name: 'voltar para hoje' }).click();
+  await p.waitForTimeout(1300);
+  await p.getByRole('button', { name: 'Semana anterior' }).click();
+  await p.waitForTimeout(1300);
+  await p.getByRole('button', { name: 'Próxima semana' }).click();
+  await p.waitForTimeout(1300);
+  await p.locator('.agenda-filmes .busca.lupa').click();
+  await p.keyboard.type('corujao', { delay: 110 });
+  await p.waitForTimeout(1500);
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(1000);
   await p.getByRole('tab', { name: 'por sessão' }).click();
   await p.waitForTimeout(1600);
   await p.getByRole('tab', { name: 'por data' }).click();

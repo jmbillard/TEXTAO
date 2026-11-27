@@ -9,6 +9,8 @@ import { vinculos } from './acervo.mjs';
 /** Quantos dias para trás e para a frente de hoje (o mesmo do n8n). */
 export const DIAS_ANTES = 2;
 export const DIAS_DEPOIS = 45;
+/** A agenda de filmes da aba Filmes (#182) volta mais: as semanas que já passaram também aparecem, e a busca acha nelas. */
+export const DIAS_ANTES_DA_AGENDA = 14;
 
 const BRASILIA = 'America/Sao_Paulo';
 
@@ -164,7 +166,8 @@ export function cardDaExibicao(e) {
 }
 
 /**
- * A agenda de filmes da aba Filmes (#169): as mesmas linhas e a mesma janela dos filmes recentes, mas com todas as
+ * A agenda de filmes da aba Filmes (#169): as mesmas linhas dos filmes recentes, numa janela que volta mais (as duas
+ * últimas semanas, #182: DIAS_ANTES_DA_AGENDA), com todas as
  * exibições de cada filme (sem as canceladas), para ver por dia ou por sessão. O filme da próxima exibição primeiro (do
  * mais perto ao mais longe) e depois os que só passaram nos últimos dias; as exibições de cada um, por dia e hora.
  * @param poster (filmeId, temNoTeable) => o endereço do pôster, ou null
@@ -172,8 +175,8 @@ export function cardDaExibicao(e) {
  * @returns [{ id, titulo, ano, pasta, projeto, output, poster, exibicoes: [{ id, dia, hora, sessao, inedito, trello,
  *   producao }] }]
  */
-export function agendaDeFilmes({ exibicoes = [], filmes = [], hoje, poster = () => null, producao = () => null }) {
-  const de = somarDias(hoje, -DIAS_ANTES);
+export function agendaDeFilmes({ exibicoes = [], filmes = [], hoje, poster = () => null, producao = () => null, diasAntes = DIAS_ANTES_DA_AGENDA }) {
+  const de = somarDias(hoje, -diasAntes);
   const ate = somarDias(hoje, DIAS_DEPOIS);
   const porId = new Map(filmes.map((f) => [String(f.__id), f]));
   const porFilme = new Map();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SEM_SESSAO, caminhoNoSistema, formaDaAgenda, porData, porSessao, recusaDaFormaDaAgenda, type ExibicaoDoFilme, type FilmeDaAgenda } from '../src/modelo/agendaDeFilmes';
+import { SEM_SESSAO, buscarNaAgenda, caminhoNoSistema, formaDaAgenda, porData, porSessao, quandoPassa, recusaDaFormaDaAgenda, semanaDosFilmes, somarDias, type ExibicaoDoFilme, type FilmeDaAgenda } from '../src/modelo/agendaDeFilmes';
 
 /* A agenda de filmes da aba Filmes (#169): os filmes agrupados por data de exibição ou por sessão. Títulos inventados. */
 
@@ -49,5 +49,52 @@ describe('a agenda de filmes (#169)', () => {
     expect(caminhoNoSistema({ win: 'P:\\X', mac: '/Volumes/P/X' }, true)).toBe('/Volumes/P/X');
     expect(caminhoNoSistema({ win: 'P:\\X', mac: '' }, true)).toBe('P:\\X');
     expect(caminhoNoSistema({ win: '', mac: '/Volumes/P/X' }, false)).toBe('/Volumes/P/X');
+  });
+});
+
+describe('a semana da agenda de filmes (#182)', () => {
+  it('sete dias a partir de ontem, como a agenda No Trello, com os dias sem filme e o que já passou', () => {
+    const s = semanaDosFilmes(FILMES, HOJE, -1);
+    expect(s.dias.map((d) => d.dia)).toEqual(['2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29', '2026-11-30', '2026-12-01', '2026-12-02']);
+    // ontem (já passou) fica, com o que passou
+    expect(s.dias[0].itens.map((x) => x.exibicao.id)).toEqual(['a1']);
+    expect(s.dias[1].itens).toEqual([]);
+    expect(s.dias[2].itens.map((x) => x.exibicao.id)).toEqual(['b1', 'c1', 'a2']);
+    expect(s.exibicoes).toBe(5);
+    expect(s.ineditas).toBe(0);
+  });
+
+  it('a semana seguinte e a anterior; as inéditas contam no resumo', () => {
+    const comInedito = [filme('recD', 'Ilha do Vento', [ex('d1', '2026-12-04', 'Supercine', { inedito: true }), ex('d2', '2026-11-19', 'Supercine')])];
+    const seguinte = semanaDosFilmes([...FILMES, ...comInedito], HOJE, 6);
+    expect(seguinte.dias[0].dia).toBe('2026-12-03');
+    expect(seguinte.dias.flatMap((d) => d.itens.map((x) => x.exibicao.id))).toEqual(['a3', 'd1']);
+    expect(seguinte).toMatchObject({ exibicoes: 2, ineditas: 1 });
+    expect(semanaDosFilmes(comInedito, HOJE, -8).dias.flatMap((d) => d.itens.map((x) => x.exibicao.id))).toEqual(['d2']);
+  });
+
+  it('o dia diante de hoje e a soma de dias na virada do mês', () => {
+    expect([quandoPassa('2026-11-26', HOJE), quandoPassa(HOJE, HOJE), quandoPassa('2026-11-28', HOJE)]).toEqual(['passou', 'hoje', 'vai-passar']);
+    expect(somarDias('2026-11-30', 1)).toBe('2026-12-01');
+    expect(somarDias('2026-03-01', -1)).toBe('2026-02-28');
+  });
+});
+
+describe('a busca da agenda de filmes (#182)', () => {
+  it('pelo título, sem diferença de caixa e acento, em todas as semanas, em ordem de dia', () => {
+    expect(buscarNaAgenda(FILMES, 'viagem').map((x) => x.exibicao.id)).toEqual(['a1', 'a2', 'a3']);
+    expect(buscarNaAgenda(FILMES, 'CORRIDA no gélo').map((x) => x.exibicao.id)).toEqual(['b1', 'b2']);
+  });
+
+  it('pela sessão e pelo ano; todas as palavras têm de estar', () => {
+    expect(buscarNaAgenda(FILMES, 'corujao').map((x) => x.exibicao.id)).toEqual(['b1', 'a3']);
+    expect(buscarNaAgenda(FILMES, 'sessão da tarde').map((x) => x.exibicao.id)).toEqual(['c1']);
+    expect(buscarNaAgenda(FILMES, '2020 farol corujão').map((x) => x.exibicao.id)).toEqual(['a3']);
+    expect(buscarNaAgenda(FILMES, 'farol gelo')).toEqual([]);
+  });
+
+  it('sem termo (ou só espaços e pontuação), nada', () => {
+    expect(buscarNaAgenda(FILMES, '')).toEqual([]);
+    expect(buscarNaAgenda(FILMES, '  · ')).toEqual([]);
   });
 });

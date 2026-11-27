@@ -113,10 +113,9 @@ const aparelho = (nome) => {
 };
 
 /**
- * Abre o roteiro no editor, no aparelho (ou no tamanho) pedido, e espera o texto chegar da sala. No Vite, o modo
- * estrito do React lê o roteiro duas vezes ao abrir: a primeira leitura reserva o preenchimento da sala por 20 s e,
- * às vezes, a folha fica com a segunda, que espera a vez passar. Por isso a espera longa e, se ainda assim o texto não
- * chegar, uma segunda abertura (com a reserva já vencida).
+ * Abre o roteiro no editor, no aparelho (ou no tamanho) pedido, e espera o texto chegar da sala. O modo estrito do
+ * React lê o roteiro duas vezes ao abrir; a vez de preencher a sala é da aba (#183), então a segunda leitura, a que
+ * fica com a folha, preenche na hora. A espera longa é só a primeira compilação do Vite com a máquina carregada.
  */
 async function abrirEditor(navegador, url, id, opcoes) {
   const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': LIA }, ...opcoes });
@@ -125,11 +124,8 @@ async function abrirEditor(navegador, url, id, opcoes) {
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
   await p.goto(`${url}#/r/${id}`);
-  const chegou = (ms) => p.waitForSelector('.texto u.arte[data-id="c7"]', { timeout: ms }).then(() => true, () => false);
-  if (!(await chegou(30000))) {
-    await p.reload();
-    if (!(await chegou(45000))) throw new Error(`o texto de ${id} não chegou da sala`);
-  }
+  const chegou = await p.waitForSelector('.texto u.arte[data-id="c7"]', { timeout: 45000 }).then(() => true, () => false);
+  if (!chegou) throw new Error(`o texto de ${id} não chegou da sala`);
   // liberado: a lista de artes deixa de estar travada
   await p.waitForFunction(() => !document.querySelector('[inert] ol.artes'), null, { timeout: 20000 });
   return { ctx, p, erros };

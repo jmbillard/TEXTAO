@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { mesPorExtenso, periodoNaContagem, posicaoNaContagem, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
-import { DIAS_POR_EXTENSO } from './pecasDaPauta';
+import { DIAS_POR_EXTENSO, partes } from './pecasDaPauta';
 import { SUAVE, type Contagem } from './topoDaAgenda';
 import { semMovimento } from './util';
 
@@ -37,7 +37,7 @@ export const EIXO_DO_DIA: EixoDoPeriodo = { dia: diaDoNumero, dias: 1, mes: mesP
 export function periodoDaPautaNaContagem(visao: 'semana' | 'dia', de: number, para: number, p: number): PartesDoPeriodo & { mesesApagados: boolean; semana?: string } {
   if (visao === 'semana') return periodoNaContagem(EIXO_DA_SEMANA, de, para, p);
   const agora = diaDoNumero(posicaoNaContagem(EIXO_DO_DIA, de, para, p));
-  return { ...periodoNaContagem(EIXO_DO_DIA, de, para, p), semana: DIAS_POR_EXTENSO[new Date(`${agora}T12:00:00Z`).getUTCDay()] };
+  return { ...periodoNaContagem(EIXO_DO_DIA, de, para, p), semana: DIAS_POR_EXTENSO[partes(agora).semana] };
 }
 
 /** A semana na tela enquanto conta: a contagem da segunda-feira (no eixo da Semana) e a posição contada agora. O
