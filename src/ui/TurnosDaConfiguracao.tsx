@@ -1,19 +1,25 @@
 import { horarioEntendido, horarioNoPadrao, lerHorario, type TurnoDaEscala } from '../modelo/escala';
+import { DOS_TURNOS, type QualTurno } from '../modelo/turnos';
 import { Icone } from './icones';
 import './turnosDaConfiguracao.css';
 
-/* A lista da seção Turnos da Configuração (#124), como a das praças: cada turno com o nome e o horário padrão de uma
+/* A lista das seções Turnos da edição (#124) e Turnos da arte (#175) da Configuração, como a das praças: cada turno com o nome e o horário padrão de uma
    posição nova (escrito de qualquer jeito, gravado no padrão), a ordem da grade (↑ ↓), tirar e "+ Novo turno". O
    que muda fica no rascunho da tela até "Conferir e salvar". O id do turno (que as posições guardam) não aparece: o
-   nome muda sem mexer nas posições. No celular, só consulta. */
+   nome muda sem mexer nas posições. No celular, só consulta. As duas listas são a mesma: só muda o nome da lista e
+   a dica do tirar (os da arte ainda não estão em nenhum dia). */
 
 interface Props {
+  /** qual das duas listas (#175); sem dizer, a da edição */
+  qual?: QualTurno;
   turnos: TurnoDaEscala[];
   podeMudar: boolean;
   mudar: (turnos: TurnoDaEscala[]) => void;
 }
 
-export function ListaDosTurnos({ turnos, podeMudar, mudar }: Props) {
+const DICA_DO_TIRAR: Record<QualTurno, string> = { edicao: 'Tirar (os dias já montados continuam com as posições)', arte: 'Tirar' };
+
+export function ListaDosTurnos({ qual = 'edicao', turnos, podeMudar, mudar }: Props) {
   const trocar = (i: number, m: Partial<TurnoDaEscala>) => mudar(turnos.map((t, k) => (k === i ? { ...t, ...m } : t)));
   const mover = (de: number, para: number) => {
     if (para < 0 || para >= turnos.length) return;
@@ -24,7 +30,7 @@ export function ListaDosTurnos({ turnos, podeMudar, mudar }: Props) {
   };
   return (
     <>
-      <ul className="cfg-turnos" aria-label="Turnos">
+      <ul className="cfg-turnos" aria-label={DOS_TURNOS[qual].titulo}>
         {turnos.map((t, i) => {
           const h = lerHorario(t.horario);
           const padrao = horarioNoPadrao(t.horario);
@@ -53,7 +59,7 @@ export function ListaDosTurnos({ turnos, podeMudar, mudar }: Props) {
                     />
                     <small className={h && !horarioEntendido(h) ? 'erro' : ''}>{!h ? 'sem horário' : horarioEntendido(h) ? (h.padrao !== t.horario.trim() ? `grava ${h.padrao}` : h.viraODia ? 'vira o dia' : '') : h.erro}</small>
                   </span>
-                  <button type="button" className="botao-icone pequeno" aria-label={`Tirar ${t.nome || 'o turno'}`} title="Tirar (os dias já montados continuam com as posições)" onClick={() => mudar(turnos.filter((_, k) => k !== i))}>
+                  <button type="button" className="botao-icone pequeno" aria-label={`Tirar ${t.nome || 'o turno'}`} title={DICA_DO_TIRAR[qual]} onClick={() => mudar(turnos.filter((_, k) => k !== i))}>
                     <Icone nome="fechar" tam={13} />
                   </button>
                 </>

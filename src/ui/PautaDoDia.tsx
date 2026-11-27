@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { iniciais } from '../dados/colaboracao';
 import { colunasDoDia, diasDaSemana, ehDaPessoa, noArAgora, segundaDaSemana, type ColunaDoDia, type LinhaDaPauta } from '../modelo/pauta';
+import { BalaoDeInfo } from './BalaoDeInfo';
 import { ContaDoDia, ListaDaPauta } from './MesaDaPauta';
 import { Avisos, DIAS_DA_SEMANA, partes, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
 import { useDiaQueConta } from './trocaDaPauta';
@@ -62,10 +63,14 @@ function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string
           <span className="pauta-turno">{sobra ? 'quem puder' : turnoEscrito(c.turno) || 'sem horário'}</span>
           {sobra ? <span className="pauta-coluna-conta">{c.itens.length}</span> : <ContaDoDia itens={c.itens} rotulo={false} />}
         </span>
-        {(noAr || c.avisos.length > 0) && (
+        {(noAr || c.avisos.length > 0 || (!sobra && c.infos.length > 0)) && (
           <span className="pauta-coluna-linha">
             {noAr ? <span className="pauta-no-ar">no ar agora</span> : <span />}
-            {c.avisos.length > 0 && <Avisos avisos={c.avisos} rotulo={c.editor || 'sem editor'} />}
+            <span className="pauta-coluna-recados">
+              {c.avisos.length > 0 && <Avisos avisos={c.avisos} rotulo={c.editor || 'sem editor'} />}
+              {/* a info que não é de claquete fica na posição (#172) */}
+              {!sobra && c.infos.length > 0 && <BalaoDeInfo textos={c.infos} rotulo={c.editor} />}
+            </span>
           </span>
         )}
       </header>
@@ -90,9 +95,9 @@ export function ColunasDoDia({ linhas, dia, voce, abrir }: { linhas: readonly Li
   const faixa = useRef<HTMLDivElement>(null);
   const doDia = linhas.filter((l) => l.dia === dia);
   // o recado do dia (o aviso sem editor) não é da coluna do que sobrou: vai no alto, no recado
-  const todas = colunasDoDia(doDia).map((c) => (c.editor ? c : { ...c, avisos: [] }));
+  const todas = colunasDoDia(doDia).map((c) => (c.editor ? c : { ...c, avisos: [], infos: [] }));
   const eu = todas.filter((c) => ehDaPessoa(c.editor, voce));
-  const sobra = todas.find((c) => !c.editor) ?? { editor: '', turno: null, itens: [], avisos: [] };
+  const sobra = todas.find((c) => !c.editor) ?? { editor: '', turno: null, itens: [], infos: [], avisos: [] };
   const colunas = [...eu, sobra, ...todas.filter((c) => c.editor && !ehDaPessoa(c.editor, voce))];
   const temPauta = doDia.some((l) => l.tipo !== 'aviso');
 

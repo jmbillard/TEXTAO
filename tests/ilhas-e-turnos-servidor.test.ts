@@ -209,10 +209,48 @@ describe('montar a pauta: ilhas e turnos (#124)', () => {
       // o histórico da Configuração diz o que mudou, pelos nomes
       const hist = await (await chefe('/api/configuracao/historico')).json();
       expect(hist.entradas[0].linhas).toEqual([
-        { oque: 'Turnos · Manhã', antes: '6h às 15h', depois: '7h às 16h' },
-        { oque: 'Turnos · Plantão', antes: '—', depois: '10h às 19h' },
-        { oque: 'Turnos · Noite', antes: '20h às 2h', depois: '—' },
+        { oque: 'Turnos da edição · Manhã', antes: '6h às 15h', depois: '7h às 16h' },
+        { oque: 'Turnos da edição · Plantão', antes: '—', depois: '10h às 19h' },
+        { oque: 'Turnos da edição · Noite', antes: '20h às 2h', depois: '—' },
       ]);
+    });
+
+    it('os turnos da arte (#175): os de fábrica, conferidos e salvos à parte, com histórico, sem mexer nos da edição', async () => {
+      const cfg = await (await chefe('/api/configuracao')).json();
+      expect(cfg.turnosDaArte).toEqual({
+        salvo: [
+          { id: 'manha', nome: 'Manhã', horario: '7h às 16h' },
+          { id: 'noite', nome: 'Noite', horario: '16h às 0h30' },
+        ],
+        deFabrica: true,
+      });
+      const daEdicao = (await ler()).turnos;
+      expect((await chefe('/api/configuracao/salvar', { method: 'POST', body: JSON.stringify({ turnosDaArte: 'manhã' }) })).status).toBe(400);
+      const ruim = await (await chefe('/api/configuracao/conferir', { method: 'POST', body: JSON.stringify({ turnosDaArte: [{ id: '', nome: 'Tarde', horario: 'cedo' }] }) })).json();
+      expect(ruim.ok).toBe(false);
+      expect(ruim.itens[0]).toMatchObject({ tipo: 'erro', titulo: 'Turnos da arte' });
+      const novos = [
+        { id: 'manha', nome: 'Manhã', horario: '7 as 16' },
+        { id: '', nome: 'Tarde', horario: '12 às 21' },
+        { id: 'noite', nome: 'Noite', horario: '16h às 0h30' },
+      ];
+      const r = await chefe('/api/configuracao/salvar', { method: 'POST', body: JSON.stringify({ turnosDaArte: novos }) });
+      expect(r.status).toBe(200);
+      const salva = await r.json();
+      expect(salva.turnosDaArte).toEqual({
+        salvo: [
+          { id: 'manha', nome: 'Manhã', horario: '7h às 16h' },
+          { id: 'tarde', nome: 'Tarde', horario: '12h às 21h' },
+          { id: 'noite', nome: 'Noite', horario: '16h às 0h30' },
+        ],
+        deFabrica: false,
+      });
+      // os da edição e a montagem continuam como estavam
+      expect(salva.turnos.salvo).toEqual(daEdicao);
+      expect((await ler()).turnos).toEqual(daEdicao);
+      const hist = await (await chefe('/api/configuracao/historico')).json();
+      expect(hist.entradas[0].linhas).toEqual([{ oque: 'Turnos da arte · Tarde', antes: '—', depois: '12h às 21h' }]);
+      expect(hist.entradas[0].voltar).toEqual({ pode: true });
     });
 
     it('a posição tem o seu horário; o turno desconhecido é recusado; o que saiu da Configuração continua no dia', async () => {

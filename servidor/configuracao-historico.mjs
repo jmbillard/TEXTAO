@@ -64,7 +64,8 @@ export function descreverMudanca(antes, depois, nomes, { quadro = null, nomeDaPe
     const filmes = (env) => filmesSalvos(env, pracasDaConfiguracao(env), []);
     linhas.push(...prefixar('Filmes', oQueMudaNosFilmes(filmes(depois), filmes(antes), q)));
   }
-  if (s.turnos) linhas.push(...prefixar('Turnos', oQueMudaNosTurnos(turnosDaConfiguracao(depois), turnosDaConfiguracao(antes))));
+  if (s.turnos) linhas.push(...prefixar('Turnos da edição', oQueMudaNosTurnos(turnosDaConfiguracao(depois), turnosDaConfiguracao(antes))));
+  if (s.turnosDaArte) linhas.push(...prefixar('Turnos da arte', oQueMudaNosTurnos(turnosDaConfiguracao(depois, 'arte'), turnosDaConfiguracao(antes, 'arte'))));
   if (s.teams) linhas.push(...prefixar('Cartão do Teams', oQueMudaNosHorarios(horariosDaConfiguracao(depois), horariosDaConfiguracao(antes))));
   if (s.pessoas) {
     const a = administradoresSalvos(antes);
@@ -79,7 +80,7 @@ export function descreverMudanca(antes, depois, nomes, { quadro = null, nomeDaPe
     return id ? (q.listas.find((l) => l.id === id)?.nome ?? q.campos.find((c) => c.id === id)?.nome ?? id) : '—';
   };
   for (const n of nomes)
-    if (!DO_QUADRO(n) && n !== 'ADMINISTRADORES' && n !== 'TURNOS' && n !== 'TEAMS_HORARIOS' && limpo(antes[n]) !== limpo(depois[n])) linhas.push({ oque: ROTULOS[n] ?? n, antes: (CHAVES[n] ?? valor)(antes[n]), depois: (CHAVES[n] ?? valor)(depois[n]) });
+    if (!DO_QUADRO(n) && n !== 'ADMINISTRADORES' && n !== 'TURNOS' && n !== 'TURNOS_DA_ARTE' && n !== 'TEAMS_HORARIOS' && limpo(antes[n]) !== limpo(depois[n])) linhas.push({ oque: ROTULOS[n] ?? n, antes: (CHAVES[n] ?? valor)(antes[n]), depois: (CHAVES[n] ?? valor)(depois[n]) });
   // nada mudou no que vale (o valor do Portainer passou a ser guardado na tela, ou só a marca do ligado à mão)
   if (!linhas.length) linhas.push({ oque: 'Guardado na tela', antes: 'Portainer', depois: 'os mesmos valores' });
   return linhas;
@@ -95,6 +96,7 @@ export function secoesDe(nomes) {
     filmes: nomes.some((n) => DOS_FILMES.has(n) || n === 'LIGADO_A_MAO' || DAS_PRACAS.has(n)),
     pessoas: nomes.includes('ADMINISTRADORES'),
     turnos: nomes.includes('TURNOS'),
+    turnosDaArte: nomes.includes('TURNOS_DA_ARTE'),
     teams: nomes.includes('TEAMS_HORARIOS'),
   };
 }

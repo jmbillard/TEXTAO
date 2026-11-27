@@ -1,8 +1,9 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { lembrarCodigoDasVersoes, lerSemanaDaPauta } from '../dados/armazenamento';
+import { lembrarCodigoDasVersoes, lerSemanaDaPauta, souCoordenacao } from '../dados/armazenamento';
 import { apelidoDaClaquete, useApelidos } from '../dados/apelidos';
 import { iniciais } from '../dados/colaboracao';
-import { buscarNaPauta, diaDaPautaAgora, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehDaPessoa, gradeDaSemana, segundaDaSemana, semanaVizinha, type CelulaDaSemana, type LeituraDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { buscarNaPauta, diaDaPautaAgora, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehDaPessoa, gradeDaSemana, segundaDaSemana, semanaVizinha, veOQueSobrou, type CelulaDaSemana, type LeituraDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { BalaoDeInfo } from './BalaoDeInfo';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { useCodigoDasVersoes } from './CodigoDasVersoes';
 import { Icone } from './icones';
@@ -120,7 +121,8 @@ function useSemanas(segunda: string) {
 function Celula({ c, editor, hoje, foraNoDia, abrir }: { c: CelulaDaSemana; editor: string; hoje: boolean; foraNoDia: boolean; abrir: AbrirClaquete }) {
   const { dia, semana } = partes(c.dia);
   const avisos = editor ? c.avisos : [];
-  const vazia = !c.turno && !c.itens.length && !avisos.length;
+  const infos = editor ? c.infos : [];
+  const vazia = !c.turno && !c.itens.length && !avisos.length && !infos.length;
   return (
     <td className={`pauta-celula${hoje ? ' hoje' : ''}`} data-dia={c.dia}>
       <div className="desliza">
@@ -130,10 +132,12 @@ function Celula({ c, editor, hoje, foraNoDia, abrir }: { c: CelulaDaSemana; edit
           editor ? <span className="pauta-cel-fora" aria-label="sem pauta">–</span> : hoje ? <span className="pauta-nada">nada sobrando</span> : null
         ) : (
           <>
-            {(c.turno || avisos.length > 0) && (
+            {(c.turno || avisos.length > 0 || infos.length > 0) && (
               <div className="pauta-celula-topo">
                 {c.turno && <span className="pauta-turno">{turnoEscrito(c.turno)}</span>}
                 {avisos.length > 0 && <Avisos avisos={avisos} rotulo={`${editor || 'sem editor'}, ${DIAS_DA_SEMANA[semana]} ${dia}`} />}
+                {/* a info que não é de claquete fica na posição (#172) */}
+                {infos.length > 0 && <BalaoDeInfo textos={infos} rotulo={`${editor}, ${DIAS_DA_SEMANA[semana]} ${dia}`} />}
               </div>
             )}
             <ListaDaPauta itens={c.itens} abrir={abrir} compacta comProducao={hoje} />
@@ -179,7 +183,7 @@ function TopoDoDiaDaGrade({ d, i, hoje, irPara }: { d: string; i: number; hoje: 
 function GradeDaSemana({ dados, hoje, voce, irPara, abrir }: { dados: Semana; hoje: string; voce: string | null | undefined; irPara: Props['irPara']; abrir: AbrirClaquete }) {
   const rolagem = useRef<HTMLDivElement>(null);
   const grade = gradeDaSemana(dados);
-  const comSobra = grade.some((f) => !f.editor) ? grade : [...grade, { editor: '', celulas: dados.dias.map((dia) => ({ dia, turno: null, itens: [], avisos: [] })) }];
+  const comSobra = grade.some((f) => !f.editor) ? grade : [...grade, { editor: '', celulas: dados.dias.map((dia) => ({ dia, turno: null, itens: [], infos: [], avisos: [] })) }];
   const fora = (editor: string, dia: string) => (dados.fora ?? []).some((f) => f.dia === dia && ehDaPessoa(f.editor, editor));
   // a grade mais larga que a tela (celular, tablet): abre em hoje, logo depois da coluna dos nomes
   useLayoutEffect(() => {
@@ -311,7 +315,7 @@ function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir, 
       ) : (
         <>
           <RecadoDoDia linhas={dados.linhas} dia={dia} hoje={hoje} />
-          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} abrir={abrir} />
+          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} abrir={abrir} comSobra={veOQueSobrou({ coordenacao: souCoordenacao(), editor: dados.voce.editor })} />
           {visao === 'dia' ? (
             <ColunasDoDia linhas={dados.linhas} dia={mostrado} voce={dados.voce.editor} abrir={abrir} />
           ) : !dados.linhas.length ? (

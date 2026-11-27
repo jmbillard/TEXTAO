@@ -1407,12 +1407,13 @@ async function filmar(navegador, url, db, api) {
  * (atribui o Caio e tira de novo): o card da tela muda junto, o Trello recebe a escrita (o due, o membro) e a linha do
  * tempo ganha o evento. As artes no esquema da janela do After: a bolinha laranja numerada; marcar risca a arte (o
  * risco se escreve) e marca o item no checklist do card; apagar recolhe a linha e tira o item; "Desfazer" traz a linha e
- * o item de volta; "+ arte" põe uma no fim. O fogo da Festa (o Roteiro ligado) sobe um nível. Nada de unha, nada de
+ * o item de volta; "+ arte" põe uma no fim. O fogo da Festa (o Roteiro ligado) sobe um nível; a Novela, sem Roteiro,
+ * tem o fogo em todas as artes, também na incluída, e o clique sobe o nível (#174). Nada de unha, nada de
  * check verde. Claro e escuro no computador; claro e escuro no celular, a tela toda.
  */
 async function oCardAberto(navegador, url, chamadasAoTrello, db) {
   // o palco: a Festa e a Novela com as artes de sempre, sem prazo mudado, sem atração escolhida, sem designer
-  db.prepare("UPDATE producoes SET etapa = 'produzindo', designers = '[]', artes_marcadas = '[]', artes_apagadas = '[]', artes_novas = '[]', atracao = NULL, prazo_em = NULL WHERE claquete LIKE 'Festa na Praça%' OR claquete LIKE 'Novela Sinfonia%'").run();
+  db.prepare("UPDATE producoes SET etapa = 'produzindo', designers = '[]', artes_marcadas = '[]', artes_apagadas = '[]', artes_novas = '[]', fogo_das_artes = '{}', atracao = NULL, prazo_em = NULL WHERE claquete LIKE 'Festa na Praça%' OR claquete LIKE 'Novela Sinfonia%'").run();
   for (const tema of ['light', 'dark']) {
     const nome = tema === 'dark' ? 'escuro' : 'claro';
     const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
@@ -1511,6 +1512,9 @@ async function oCardAberto(navegador, url, chamadasAoTrello, db) {
     await novela.locator('.prod-atracao').click();
     await painel.locator('.pa-arte').first().waitFor();
     assert.deepEqual(await textos(painel.locator('.pa-arte .txt')), tema === 'light' ? ['HOJE', 'AMANHÃ'] : ['HOJE', 'AMANHÃ', 'VINHETA 5"']);
+    // #174: a Novela não tem Roteiro, e toda arte tem o fogo do mesmo jeito (começa na vela)
+    const fogos = () => painel.locator('.pa-arte').evaluateAll((l) => l.map((e) => e.querySelector('.cx .fogo')?.getAttribute('class') ?? 'sem fogo'));
+    assert.deepEqual(await fogos(), tema === 'light' ? ['fogo n1', 'fogo n1'] : ['fogo n1', 'fogo n2', 'fogo n1'], `${nome}: o fogo em todas as artes da Novela, sem Roteiro`);
     if (tema === 'light') {
       await painel.locator('.pa-arte', { hasText: 'HOJE' }).locator('.arte-linha').click();
       await painel.locator('.pa-arte.marcada .riscado-mao').waitFor();
@@ -1532,7 +1536,12 @@ async function oCardAberto(navegador, url, chamadasAoTrello, db) {
       await p.keyboard.press('Enter');
       await painel.locator('.pa-arte', { hasText: 'VINHETA 5"' }).waitFor();
       await novela.locator('.prod-artes', { hasText: '1 de 3 artes' }).waitFor();
+      // #174: a arte nova também tem fogo; o clique no da AMANHÃ sobe um nível, guardado na Produção
+      await painel.locator('.pa-arte', { hasText: 'VINHETA 5"' }).locator('.cx .fogo.n1').waitFor();
+      await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).locator('.cx').click();
+      await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).locator('.cx .fogo.n2').waitFor();
       await p.waitForTimeout(300);
+      assert.deepEqual(JSON.parse(db.prepare("SELECT fogo_das_artes FROM producoes WHERE claquete LIKE 'Novela Sinfonia%'").get().fogo_das_artes), { AMANHA: 2 }, 'o fogo da Novela fica na Produção');
       const escritas = chamadasAoTrello.filter((c) => !c.startsWith('GET'));
       assert.deepEqual(
         escritas.map((c) => c.replace(/item\d+/, 'item')),

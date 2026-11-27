@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { connect } from 'node:net';
@@ -46,9 +46,15 @@ describe('cache em memória (sem REDIS_URL)', () => {
     expect(recebidos).toEqual([{ tipo: 'criado', id: 'x' }]);
   });
   it('Redis fora do ar não derruba nada: segue em memória', async () => {
+    const erros: string[] = [];
+    const espiao = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => void erros.push(a.join(' ')));
     const cache = criarCache({ REDIS_URL: 'redis://127.0.0.1:1' });
     await cache.ligando;
+    espiao.mockRestore();
     expect(cache.tipo).toBe('memória');
+    // conexão recusada desiste na hora: não fica tentando de novo até o prazo de 4 s (a subida esperava à toa)
+    expect(erros.join('\n')).toContain('ECONNREFUSED');
+    expect(erros.join('\n')).not.toContain('não respondeu');
     await cache.guardar('k', 'v', 60);
     expect(await cache.ler('k')).toBe('v');
     await cache.fechar();

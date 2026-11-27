@@ -9,10 +9,14 @@ import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
 import { criarTrello } from '../servidor/trello.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { criarCadastros } from '../servidor/cadastros.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { criarProjetoDoPadeiro } from '../servidor/projeto-do-padeiro.mjs';
+import { chaveDeArte } from '../src/modelo/diferencas';
 
 /* O card aberto da tela de produções (#160): o prazo, a atração, atribuir e tirar designer e as artes (marcar, apagar,
    desfazer, incluir, o fogo) pela API, com o Trello e o Teable de mentira. Cada ação escreve no Trello (o prazo, o
-   membro, o checklist), grava o evento (origem PROMeiro) e muda a Produção; o Trello que recusa não deixa mudar nada. */
+   membro, o checklist), grava o evento (origem PROMeiro) e muda a Produção; o Trello que recusa não deixa mudar nada.
+   A atração vai ao link da linha do card na produção da arte do Teable (#173); o Teable que recusa também não. */
 
 const DIA = 86_400_000;
 const ha = (n: number) => new Date(Date.now() - n * DIA).toISOString();
@@ -71,6 +75,8 @@ afterEach(async () => {
 type Card = { id: string; claquete: string; atracao: string; prazo: string | null; designers: string[]; artes: { aProduzir: number | null; entregues: number } };
 type Evento = { tipo: string; campo?: string; antes: string | null; depois: string | null; quem: string | null; origem?: string; desfez?: boolean };
 type ArteDoCard = { nome: string; itens: string[]; feita: boolean; fogo: number | null };
+type Linha = { fogo_das_artes: string };
+type Banco = { prepare: (sql: string) => { run: (...a: unknown[]) => unknown; get: (...a: unknown[]) => unknown } };
 type Aberta = { eventos: Evento[]; artesDoCard: ArteDoCard[]; designersAtivos: string[]; atracoes: string[]; roteiro: { versao: number; em: string } | null };
 
 async function preparado() {
@@ -105,13 +111,13 @@ async function preparado() {
 }
 
 describe('o card aberto da tela de produções (#160)', () => {
-  it('abrir traz as artes como a janela do After, os designers ativos e as atrações do cadastro; sem Roteiro, sem fogo nem versão', async () => {
+  it('abrir traz as artes como a janela do After, os designers ativos e as atrações do cadastro; sem Roteiro, sem versão, e o fogo começa na vela (#174)', async () => {
     const { aberta, novela, trello } = await preparado();
     const a = await aberta(novela);
     expect(a.artesDoCard).toEqual([
-      { nome: 'HOJE', itens: ['HOJE (RDP)', 'HOJE (CRT)'], feita: false, fogo: null },
-      { nome: 'AMANHÃ', itens: ['AMANHÃ'], feita: false, fogo: null },
-      { nome: 'DOMINGO', itens: ['DOMINGO'], feita: false, fogo: null },
+      { nome: 'HOJE', itens: ['HOJE (RDP)', 'HOJE (CRT)'], feita: false, fogo: 1 },
+      { nome: 'AMANHÃ', itens: ['AMANHÃ'], feita: false, fogo: 1 },
+      { nome: 'DOMINGO', itens: ['DOMINGO'], feita: false, fogo: 1 },
     ]);
     expect(a.designersAtivos).toEqual(['Ana Souza', 'Caio Prates', 'Duda Reis']);
     expect(a.atracoes).toEqual(['Novela das Nove', 'Show da Noite']);
@@ -137,7 +143,7 @@ describe('o card aberto da tela de produções (#160)', () => {
     expect((await pedir('prazo', { producao: novela, prazo: '2026-02-31' })).status).toBe(400);
   });
 
-  it('a atração: uma do cadastro (na grafia dele) ou desligada; vale sobre a da claquete, fica só no PROMeiro', async () => {
+  it('a atração: uma do cadastro (na grafia dele) ou desligada; vale sobre a da claquete; o card do Trello não muda', async () => {
     const { pedir, novela, daClaquete, doPROMeiro, trello } = await preparado();
     const r = await pedir('atracao', { producao: novela, atracao: 'novela das nove' });
     expect(r.status).toBe(200);
@@ -152,6 +158,83 @@ describe('o card aberto da tela de produções (#160)', () => {
     ]);
     // o card do Trello não tem o campo da atração
     expect(trello.pedidos).toEqual([]);
+  });
+
+  describe('a atração no Teable (#173): o link `atracao` da linha do card na produção da arte', () => {
+    const linkDa = (producaoDaArte: { id: string; fields: Record<string, unknown> }[]) => producaoDaArte.find((l) => l.id === 'recCa1')!.fields.atracao;
+    const patches = (teable: { estado: { pedidos: string[] } }) => teable.estado.pedidos.filter((x) => x.startsWith('PATCH '));
+
+    it('ligar: a atração nova em primeiro, as que a linha já tinha depois', async () => {
+      const { pedir, novela, producaoDaArte, teable } = await preparado();
+      producaoDaArte[0].fields.atracao = [{ id: 'recAtrAvulsa', title: 'Avulsa' }];
+      const r = await pedir('atracao', { producao: novela, atracao: 'Novela das Nove' });
+      expect(r.status).toBe(200);
+      expect((await r.json()).feito).toEqual({ eventos: ['campo'], trello: [], teable: ['atracao-ligada'] });
+      expect(linkDa(producaoDaArte)).toEqual([{ id: 'recAtrNovela' }, { id: 'recAtrAvulsa' }]);
+      expect(patches(teable)).toEqual(['PATCH /api/table/tblFalso_bseFalso_ARTE_producao/record/recCa1']);
+    });
+
+    it('trocar: a nova entra em primeiro e a que saiu deixa o link; a mesma de novo não grava', async () => {
+      const { pedir, novela, producaoDaArte, teable } = await preparado();
+      producaoDaArte[0].fields.atracao = [{ id: 'recAtrAvulsa', title: 'Avulsa' }];
+      await pedir('atracao', { producao: novela, atracao: 'Novela das Nove' });
+      // o Postgres do Teable devolve o link com o título
+      producaoDaArte[0].fields.atracao = [{ id: 'recAtrNovela', title: 'Novela das Nove' }, { id: 'recAtrAvulsa', title: 'Avulsa' }];
+      expect((await pedir('atracao', { producao: novela, atracao: 'Show da Noite' })).status).toBe(200);
+      expect(linkDa(producaoDaArte)).toEqual([{ id: 'recAtrShow' }, { id: 'recAtrAvulsa' }]);
+      expect((await (await pedir('atracao', { producao: novela, atracao: 'show da noite' })).json()).feito).toEqual({ eventos: [], trello: [], teable: [] });
+      expect(patches(teable)).toHaveLength(2);
+    });
+
+    it('desligar: o link fica vazio (nenhuma atração antiga sobra para voltar)', async () => {
+      const { pedir, novela, producaoDaArte, daClaquete } = await preparado();
+      producaoDaArte[0].fields.atracao = [{ id: 'recAtrAvulsa', title: 'Avulsa' }];
+      await pedir('atracao', { producao: novela, atracao: 'Novela das Nove' });
+      const r = await pedir('atracao', { producao: novela, atracao: '' });
+      expect(r.status).toBe(200);
+      expect((await r.json()).feito.teable).toEqual(['atracao-desligada']);
+      expect(linkDa(producaoDaArte)).toEqual([]);
+      expect((await daClaquete('Novela Sinfonia')).atracao).toBe('');
+    });
+
+    it('o Teable recusa: nada muda no PROMeiro, nenhum evento, e o erro volta', async () => {
+      const { pedir, novela, producaoDaArte, teable, daClaquete, doPROMeiro } = await preparado();
+      teable.estado.falhar = (metodo: string) => metodo === 'PATCH';
+      const r = await pedir('atracao', { producao: novela, atracao: 'Novela das Nove' });
+      expect(r.status).toBe(502);
+      expect((await r.json()).erro).toMatch(/Teable recusou.*Nada mudou no PROMeiro/s);
+      expect((await daClaquete('Novela Sinfonia')).atracao).not.toBe('Novela das Nove');
+      expect(linkDa(producaoDaArte)).toBeUndefined();
+      expect(await doPROMeiro(novela)).toEqual([]);
+    });
+
+    it('a releitura do Teable não volta a atração antiga', async () => {
+      const { pedir, novela, producaoDaArte, app, daClaquete } = await preparado();
+      await pedir('atracao', { producao: novela, atracao: 'Novela das Nove' });
+      producaoDaArte[0].fields.atracao = [{ id: 'recAtrNovela', title: 'Novela das Nove' }];
+      await pedir('atracao', { producao: novela, atracao: 'Show da Noite' });
+      // a linha mudou no Teable depois (a releitura a traz de novo)
+      Object.assign(producaoDaArte[0].fields, { artes: 'HOJE (RDP) | HOJE (CRT) | AMANHÃ | DOMINGO | SEGUNDA', __last_modified_time: new Date().toISOString() });
+      await app.relerAProducao();
+      expect((await daClaquete('Novela Sinfonia')).atracao).toBe('Show da Noite');
+      expect(linkDa(producaoDaArte)).toEqual([{ id: 'recAtrShow' }]);
+    });
+
+    it('a Produção sem card muda só no PROMeiro', async () => {
+      const { pedir, cozinha, teable } = await preparado();
+      expect((await pedir('atracao', { producao: cozinha, atracao: 'Show da Noite' })).status).toBe(200);
+      expect(patches(teable)).toEqual([]);
+    });
+
+    it('a escrita do #144 só grava na base do PROMeiro: a tabela de outra base fica sem escrita', async () => {
+      const teable = teableFalso(NOMES, { registros: { ARTE_producao: linhas() } });
+      const { ligarAAtracao } = criarProjetoDoPadeiro({ buscar: teable });
+      const trello = { producaoDosCards: async () => [{ card: card(31), registro: 'recCa1', inteira: {} }] };
+      const env = { ...ENV, tabelas: { ARTE_producao: { id: 'tblFalso_bseFalso_ARTE_producao', pg: 'arte_producao_pg', esquema: 'bseOutra' } } };
+      expect(await ligarAAtracao(env, trello, card(31), { nova: 'recAtrShow' })).toBe('a produção da arte não está na base do PROMeiro');
+      expect(await ligarAAtracao({ ...env, tabelas: { ARTE_producao: { ...env.tabelas.ARTE_producao, esquema: 'bseFalso' } } }, trello, card(31), { nova: 'recAtrShow' })).toBe('');
+      expect(teable.estado.pedidos).toEqual(['PATCH /api/table/tblFalso_bseFalso_ARTE_producao/record/recCa1']);
+    });
   });
 
   it('atribuir e tirar designer: o membro dele entra e sai do card; a etapa não muda', async () => {
@@ -269,9 +352,8 @@ describe('o card aberto da tela de produções (#160)', () => {
     expect(await doPROMeiro(novela)).toEqual([]);
   });
 
-  it('o fogo: sobe o nível da arte no Roteiro ligado, com o evento; sem Roteiro, não', async () => {
+  it('o fogo: sobe o nível da arte no Roteiro ligado, com o evento', async () => {
     const { db, pedir, novela, aberta } = await preparado();
-    expect((await pedir('fogo', { producao: novela, arte: 'HOJE' })).status).toBe(409);
     const agora = new Date().toISOString();
     db.prepare('INSERT INTO roteiros (id, dono_email, dono_nome, meta, doc, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?)').run('rotNovela', 'ana@empresa.com', 'Ana', JSON.stringify({ claquete: 'Novela Sinfonia 20/12 SP', versao: 2 }), '{}', agora, agora);
     db.prepare('UPDATE producoes SET roteiro_id = ? WHERE id = ?').run('rotNovela', novela);
@@ -295,4 +377,57 @@ describe('o card aberto da tela de produções (#160)', () => {
     expect((await ana('/api/producoes/prazo')).status).toBe(405);
     expect(trello.pedidos).toEqual([]);
   });
+});
+
+describe('o fogo das artes com ou sem Roteiro (#174)', () => {
+  const roteiro = (db: Banco, id: string, meta: Record<string, unknown>) => {
+    const agora = new Date().toISOString();
+    db.prepare('INSERT INTO roteiros (id, dono_email, dono_nome, meta, doc, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, 'ana@empresa.com', 'Ana', JSON.stringify(meta), '{}', agora, agora);
+  };
+  const metaDe = (db: Banco, id: string) => JSON.parse((db.prepare('SELECT meta FROM roteiros WHERE id = ?').get(id) as { meta: string }).meta);
+  const fogosDa = (db: Banco, id: string) => JSON.parse((db.prepare('SELECT fogo_das_artes FROM producoes WHERE id = ?').get(id) as Linha).fogo_das_artes);
+  const fogos = (a: Aberta) => a.artesDoCard.map((x) => [x.nome, x.fogo]);
+
+  it('sem Roteiro: o clique sobe o nível (vela, fogueira, incêndio e volta), guardado na Produção, com o evento; o `nivel` leva direto', async () => {
+    const { db, pedir, novela, aberta } = await preparado();
+    const r = await pedir('fogo', { producao: novela, arte: 'AMANHÃ' });
+    expect(r.status).toBe(200);
+    const corpo = await r.json();
+    expect(fogos(corpo.aberta)).toEqual([['HOJE', 1], ['AMANHÃ', 2], ['DOMINGO', 1]]);
+    expect(corpo.aberta.eventos.at(-1)).toMatchObject({ tipo: 'fogo', campo: 'AMANHÃ', antes: '1', depois: '2', origem: 'PROMeiro' });
+    expect(fogosDa(db, novela)).toEqual({ [chaveDeArte('AMANHÃ')]: 2 });
+    await pedir('fogo', { producao: novela, arte: 'AMANHÃ' });
+    expect(fogos(await aberta(novela))[1]).toEqual(['AMANHÃ', 3]);
+    await pedir('fogo', { producao: novela, arte: 'AMANHÃ' });
+    // a BAIXA não é guardada, como no Roteiro
+    expect(fogosDa(db, novela)).toEqual({});
+    expect((await (await pedir('fogo', { producao: novela, arte: 'HOJE', nivel: 3 })).json()).aberta.artesDoCard[0].fogo).toBe(3);
+    expect(fogosDa(db, novela)).toEqual({ HOJE: 3 });
+  });
+
+  it('a arte incluída pelo "+ arte" também tem fogo', async () => {
+    const { pedir, novela, aberta } = await preparado();
+    expect((await pedir('arte', { producao: novela, arte: 'PEÇA SOCIAL 1:1', acao: 'incluir' })).status).toBe(200);
+    expect(fogos(await aberta(novela)).at(-1)).toEqual(['PEÇA SOCIAL 1:1', 1]);
+    await pedir('fogo', { producao: novela, arte: 'PEÇA SOCIAL 1:1' });
+    expect(fogos(await aberta(novela)).at(-1)).toEqual(['PEÇA SOCIAL 1:1', 2]);
+  });
+
+  it('o Roteiro ligado depois: o fogo dele vale; a arte sem fogo nele recebe o da Produção, que passa para o Roteiro', async () => {
+    const { db, pedir, novela, aberta } = await preparado();
+    await pedir('fogo', { producao: novela, arte: 'HOJE' });
+    await pedir('fogo', { producao: novela, arte: 'AMANHÃ', nivel: 3 });
+    expect(fogosDa(db, novela)).toEqual({ HOJE: 2, [chaveDeArte('AMANHÃ')]: 3 });
+    // o Roteiro já marcou a AMANHÃ como MÉDIA; a HOJE, não
+    roteiro(db, 'rotNovela', { claquete: 'Novela Sinfonia 20/12 SP', complexidade: { [chaveDeArte('AMANHÃ')]: 2 } });
+    db.prepare('UPDATE producoes SET roteiro_id = ? WHERE id = ?').run('rotNovela', novela);
+    expect(fogos(await aberta(novela))).toEqual([['HOJE', 2], ['AMANHÃ', 2], ['DOMINGO', 1]]);
+    expect(metaDe(db, 'rotNovela').complexidade).toEqual({ HOJE: 2, [chaveDeArte('AMANHÃ')]: 2 });
+    expect(fogosDa(db, novela)).toEqual({});
+    // daí em diante, o fogo muda no Roteiro
+    await pedir('fogo', { producao: novela, arte: 'DOMINGO' });
+    expect(metaDe(db, 'rotNovela').complexidade).toEqual({ HOJE: 2, [chaveDeArte('AMANHÃ')]: 2, DOMINGO: 2 });
+    expect(fogosDa(db, novela)).toEqual({});
+  });
+
 });

@@ -33,6 +33,14 @@ export function Riscado({ children, traco = 0, className = '' }: { children: Rea
 /** Qual das formas (do risco ou do marca-texto) vai na claquete: sempre a mesma para o mesmo roteiro. */
 export const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0);
 
+/**
+ * A bolinha de estado (#172): o pontinho cheio da etapa, o mesmo da agenda No Trello e da Pauta da edição. A cor vem do
+ * estado (produzindo, aprovacao, entregue, entrada, arquivada); o resto (o "sem card" da pauta) é a bolinha neutra.
+ */
+export function BolinhaDeEstado({ estado, className = '' }: { estado: string; className?: string }) {
+  return <i className={`bolinha-estado ${estado}${className ? ` ${className}` : ''}`} data-estado={estado} aria-hidden="true" />;
+}
+
 /** A dica da palavra "prioridade" ao lado da claquete marcada (a ficha da fila e o topo da revisão). */
 export const NA_PRIORIDADE = 'Na lista de prioridade: vai para o Trello com prioridade ALTA';
 
@@ -194,7 +202,7 @@ export const CONVITES = [
   'Vamos revisar o que vem aí?',
 ];
 
-function TituloQueSeEscreve({ frases }: { frases: string[] }) {
+export function TituloQueSeEscreve({ frases }: { frases: string[] }) {
   const [i, setI] = useState(() => Math.floor(Math.random() * frases.length));
   const [n, setN] = useState(0);
   const [apagando, setApagando] = useState(false);

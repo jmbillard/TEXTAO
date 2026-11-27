@@ -5,11 +5,12 @@
    da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. A claquete cruza com as
    Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
 import type { ForaNaPauta } from './ausencias.ts';
+import { PARADAS, continua } from './frasePartida.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
 import type { Etapa } from './producao.ts';
 import { chaveDaClaquete, chaveDaClaqueteNoPadrao, lerDataDaClaquete } from './vocabularios.ts';
 
-export type TipoDaLinha = 'claquete' | 'tarefa' | 'aviso';
+export type TipoDaLinha = 'claquete' | 'tarefa' | 'aviso' | 'info';
 
 /** O turno, em horas de São Paulo ("22:00" a "06:00": passa da meia-noite). */
 export interface Turno {
@@ -36,6 +37,8 @@ export interface LinhaDaPauta {
   chave?: string;
   /** só na claquete (#96): as Produções achadas pela chave, uma por praça; [] é "sem card" */
   producoes?: ProducaoNaPauta[];
+  /** só na claquete da posição (#172, colunasDoDia e gradeDaSemana): as infos que vieram logo depois dela */
+  infos?: string[];
 }
 
 /** O que a pauta mostra de uma Produção (#96). */
@@ -54,6 +57,8 @@ export interface ProducaoNaPauta {
   entregaEm: string | null;
   /** as versões lidas do roteiro da Produção (#152), quando ele está no PROMeiro e as artes dizem */
   versoesLidas?: Versao[];
+  /** a letra e a versão do roteiro da Produção (#166), como o título mostra ("B", "V2", "B V2"); ausente na A V1 */
+  letraEVersao?: string;
 }
 
 /** A Semana da pauta: a rota GET /api/pauta/semana. */
@@ -122,12 +127,65 @@ export const diaVizinho = (dia: string, n: number) => somarDias(dia, n);
 /**
  * Claquete é a linha com a forma de claquete: o nome da atração e, depois dele, a data ("Terra 24/11-2",
  * "Fut(Copabr)6/12"), pela mesma leitura da data das claquetes do roteiro. Com a caixinha de anotação marcada, é
- * um aviso para o editor; o resto (COMUNICAÇÃO, CALHAUS) é tarefa.
+ * um aviso para o editor. Do resto, a instrução para o editor é info (#172, ehInfo); o trabalho (COMUNICAÇÃO,
+ * CALHAUS, uma peça sem data) é tarefa.
  */
 export function tipoDaLinha(texto: string, anotacao: unknown): TipoDaLinha {
   if (anotacao === true || anotacao === 'true' || anotacao === 1) return 'aviso';
   const data = lerDataDaClaquete(texto);
-  return data && /\p{L}/u.test(texto.slice(0, data.inicio)) ? 'claquete' : 'tarefa';
+  if (data && /\p{L}/u.test(texto.slice(0, data.inicio))) return 'claquete';
+  return ehInfo(texto) ? 'info' : 'tarefa';
+}
+
+/** Os verbos conjugados que abrem uma instrução ("ENTRA SÁBADO", "VIRA B", "REDUZ DA ..."); o infinitivo (-AR, -ER,
+    -IR) vale por si. */
+const VERBOS = new Set(['VAI', 'VAO', 'VEM', 'VEEM', 'ENTRA', 'ENTRAM', 'VIRA', 'VIRAM', 'DEVE', 'DEVEM', 'DEVEMOS', 'VAMOS', 'PRECISA', 'TRANSFORMA', 'REDUZ', 'TROCA', 'FICA', 'SAI', 'TIRA', 'USA', 'PEGA', 'CONTINUA', 'FAZ', 'MUDA', 'MANDA', 'ACOMPANHA', 'TEM']);
+/** O que vem logo depois do sujeito numa instrução ("REDATOR VAI ACOMPANHAR", "PROMO VAI INDICAR"). */
+const DEPOIS_DO_SUJEITO = new Set(['VAI', 'VAO', 'VEM', 'DEVE', 'DEVEM', 'PRECISA', 'VAMOS']);
+/** O que abre um recado sem verbo ("INFORMAÇÕES COM ...", "OBS: ..."). */
+const RECADOS = new Set(['INFO', 'INFORMACAO', 'INFORMACOES', 'OBS', 'OBSERVACAO', 'ATENCAO']);
+
+/**
+ * A linha (que não é claquete) é uma instrução para o editor, e não trabalho (#172): começa por um verbo (no infinitivo,
+ * "TRANSFORMAR DA A B", ou conjugado, "ENTRA SÁBADO"), tem "vai", "vem" ou "deve" logo depois do sujeito ("REDATOR
+ * VAI ACOMPANHAR"), ou começa por uma palavra que continua a frase de cima ("DA ANA PRADO") ou de recado. O resto
+ * (COMUNICAÇÃO, PROJETO CALHAUS, LANÇAMENTO ..., uma peça sem data) é tarefa.
+ */
+export function ehInfo(texto: string): boolean {
+  const [primeira = '', segunda = ''] = nomeComparavel(texto).split(' ');
+  if (!/^\p{L}+$/u.test(primeira)) return false;
+  return (primeira.length >= 3 && /(AR|ER|IR)$/.test(primeira)) || VERBOS.has(primeira) || DEPOIS_DO_SUJEITO.has(segunda) || PARADAS.has(primeira) || RECADOS.has(primeira);
+}
+
+/**
+ * As claquetes e as tarefas de uma posição (um editor num dia), na ordem da pauta, com as infos (#172) separadas: a info
+ * vai com a claquete de antes (o aviso marcado no meio não conta); sem claquete antes (no começo, ou depois de uma
+ * tarefa), fica na posição. A frase partida em duas linhas volta a ser uma (continua, a regra do colar da planilha): a
+ * linha que continua a info de cima entra nela, mesmo que sozinha parecesse tarefa ("... SEGUNDO A" e "PREMIAÇÃO").
+ */
+export function separarAsInfos(ls: readonly LinhaDaPauta[]): { itens: LinhaDaPauta[]; infos: string[] } {
+  const itens: LinhaDaPauta[] = [];
+  const infos: string[] = [];
+  let ultima: string[] | null = null; // a lista em que a última info entrou
+  let dono: LinhaDaPauta | null = null; // a claquete que leva as infos que vierem
+  for (const l of ls) {
+    if (l.tipo === 'aviso') continue;
+    const anterior = ultima?.at(-1);
+    if (ultima && anterior !== undefined && l.tipo !== 'claquete' && continua(anterior, l.texto, false)) {
+      ultima[ultima.length - 1] = `${anterior} ${l.texto}`;
+      continue;
+    }
+    if (l.tipo === 'info') {
+      ultima = dono ? (dono.infos ??= []) : infos;
+      ultima.push(l.texto);
+      continue;
+    }
+    ultima = null;
+    const item: LinhaDaPauta = l.tipo === 'claquete' ? { ...l, infos: [] } : l;
+    dono = l.tipo === 'claquete' ? item : null;
+    itens.push(item);
+  }
+  return { itens, infos };
 }
 
 /** O nome do editor, do link do Teable ({ title }, a lista deles ou o texto, também em JSON). */
@@ -183,7 +241,7 @@ export function linhaDaPauta(b: LinhaBruta): LinhaDaPauta | null {
   const tipo = tipoDaLinha(texto, b.anotacao);
   // a claquete mostra qualquer código (o desconhecido, cru); a tarefa sem data ("ESPECIAL (MES)"), só o conhecido; o
   // aviso é um recado, não tem versão
-  const lidas = tipo === 'aviso' ? null : lerVersoes(texto, dia);
+  const lidas = tipo === 'aviso' || tipo === 'info' ? null : lerVersoes(texto, dia);
   const { versoes, semVersao } = lidas && (tipo === 'claquete' || lidas.versoes.every((v) => v.conhecida)) ? lidas : { versoes: [], semVersao: texto };
   return {
     id: String(b.id ?? ''),
@@ -357,8 +415,10 @@ export interface CelulaDaSemana {
   dia: string;
   /** o turno que mais aparece nas linhas da célula */
   turno: Turno | null;
-  /** as claquetes e as tarefas, na ordem da pauta */
+  /** as claquetes e as tarefas, na ordem da pauta (a claquete com as infos dela, #172) */
   itens: LinhaDaPauta[];
+  /** as infos sem claquete antes (#172): ficam na posição */
+  infos: string[];
   avisos: LinhaDaPauta[];
 }
 
@@ -369,7 +429,7 @@ export function gradeDaSemana(s: Pick<SemanaDaPauta, 'dias' | 'editores' | 'linh
     celulas: s.dias.map((dia) => {
       const doDia = s.linhas.filter((l) => l.editor === editor && l.dia === dia);
       const turno = turnoQueMaisSeRepete(doDia.flatMap((l) => (l.turno ? [l.turno] : [])));
-      return { dia, turno, itens: doDia.filter((l) => l.tipo !== 'aviso'), avisos: doDia.filter((l) => l.tipo === 'aviso') };
+      return { dia, turno, ...separarAsInfos(doDia), avisos: doDia.filter((l) => l.tipo === 'aviso') };
     }),
   }));
 }
@@ -392,6 +452,8 @@ export interface ColunaDoDia {
   editor: string;
   turno: Turno | null;
   itens: LinhaDaPauta[];
+  /** as infos sem claquete antes (#172): ficam na posição */
+  infos: string[];
   avisos: LinhaDaPauta[];
 }
 
@@ -413,7 +475,7 @@ export function colunasDoDia(linhas: readonly LinhaDaPauta[]): ColunaDoDia[] {
   const colunas = [...doEditor].map(([editor, ls]) => ({
     editor,
     turno: turnoQueMaisSeRepete(ls.flatMap((l) => (l.turno ? [l.turno] : []))),
-    itens: ls.filter((l) => l.tipo !== 'aviso'),
+    ...separarAsInfos(ls),
     avisos: ls.filter((l) => l.tipo === 'aviso'),
   }));
   return colunas.sort((a, b) => {
@@ -515,6 +577,8 @@ export function resumoDaProducao(producoes: readonly ProducaoNaPauta[] | undefin
     designers: [...new Set(producoes.flatMap((p) => p.designers))],
     pracas: [...new Set(producoes.map((p) => p.praca).filter(Boolean))],
     alta: producoes.some((p) => p.alta),
+    // a letra e a versão do roteiro (#166): as da Produção que entrou por último ('' na A V1)
+    letraEVersao: [...producoes].sort((a, b) => (b.entradaEm ?? '').localeCompare(a.entradaEm ?? ''))[0].letraEVersao ?? '',
   };
 }
 
@@ -631,7 +695,7 @@ export function filtrarAPauta(linhas: readonly LinhaDaPauta[], filtro: FiltroDaP
 
 /** O resumo discreto do administrador. */
 export interface ResumoDaPauta {
-  /** as claquetes e as tarefas sem editor (o aviso não conta: é um recado) */
+  /** as claquetes e as tarefas sem editor (o aviso e a info não contam: são recados) */
   semEditor: number;
   /** as claquetes sem nenhuma Produção achada pela chave */
   semCard: number;
@@ -640,7 +704,7 @@ export interface ResumoDaPauta {
 }
 export function resumoDaPauta(linhas: readonly LinhaDaPauta[], alteradoEm: string | null): ResumoDaPauta {
   return {
-    semEditor: linhas.filter((l) => l.tipo !== 'aviso' && !l.editor).length,
+    semEditor: linhas.filter((l) => (l.tipo === 'claquete' || l.tipo === 'tarefa') && !l.editor).length,
     semCard: linhas.filter((l) => l.tipo === 'claquete' && !l.producoes?.length).length,
     alteradoEm,
   };
@@ -650,6 +714,10 @@ export function resumoDaPauta(linhas: readonly LinhaDaPauta[], alteradoEm: strin
 
 /** O editor da linha é a pessoa (o editor ligado ao e-mail dela), comparando os nomes sem caixa, acento e pontuação. */
 export const ehDaPessoa = (editor: string, voceEditor: string | null | undefined): boolean => !!editor && !!voceEditor && nomeComparavel(editor) === nomeComparavel(voceEditor);
+
+/** Quem vê o "Sobrou · sem editor" na mesa do dia (#172): a coordenação (quem monta a pauta) e os editores; para os
+    outros perfis (designer, redator), o que sobrou não ajuda. */
+export const veOQueSobrou = ({ coordenacao, editor }: { coordenacao: boolean; editor: string | null | undefined }): boolean => coordenacao || !!editor;
 
 /** A contagem do dia de um editor ("N de M"): as claquetes com a arte entregue (ou já arquivada), uma bolinha por
     claquete na ordem da pauta. A tarefa e o aviso não contam. */
@@ -673,7 +741,7 @@ export function buscarNaPauta(linhas: readonly LinhaDaPauta[], termo: string, ap
   const palavras = nomeComparavel(termo).split(' ').filter(Boolean);
   if (!palavras.length) return [];
   return linhas.filter((l) => {
-    if (l.tipo === 'aviso') return false;
+    if (l.tipo === 'aviso' || l.tipo === 'info') return false;
     const onde = nomeComparavel([l.texto, apelido(l), l.editor].join(' '));
     return palavras.every((p) => onde.includes(p));
   });

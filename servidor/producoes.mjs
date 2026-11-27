@@ -37,6 +37,8 @@ import { eventosDaReleitura } from '../src/modelo/eventosDoTeable.ts';
 import { artesAgrupadas, artesDaProducao } from './trello.mjs';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { dataDaClaquete } from '../src/modelo/vocabularios.ts';
+import { letraEVersaoDoRoteiro, marcaDaLetraEVersao } from '../src/modelo/letraEVersao.ts';
+import { fogoNoNivel } from './artes.mjs';
 
 export function criarTabelaDasProducoes(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS producoes (
@@ -112,7 +114,20 @@ export function criarTabelaDasProducoes(db) {
   if (!tem('producoes', 'prazo_em')) db.exec('ALTER TABLE producoes ADD COLUMN prazo_em TEXT');
   if (!tem('producoes', 'artes_apagadas')) db.exec(`ALTER TABLE producoes ADD COLUMN artes_apagadas TEXT NOT NULL DEFAULT '[]'`);
   if (!tem('producoes', 'artes_novas')) db.exec(`ALTER TABLE producoes ADD COLUMN artes_novas TEXT NOT NULL DEFAULT '[]'`);
+  // o fogo das artes da Produção sem Roteiro (#174): as marcas de complexidade { chave da arte: 2 | 3 } em JSON, como as
+  // da meta do Roteiro (a BAIXA não é guardada); quando um Roteiro é ligado, passam para ele (e a coluna se esvazia)
+  if (!tem('producoes', 'fogo_das_artes')) db.exec(`ALTER TABLE producoes ADD COLUMN fogo_das_artes TEXT NOT NULL DEFAULT '{}'`);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS eventos_chave ON eventos (chave)');
+}
+
+/** O fogo guardado na Produção (#174): as marcas { chave da arte: 2 | 3 }; {} sem nenhuma ou ilegível. */
+function fogosDaLinha(l) {
+  try {
+    const f = JSON.parse(l?.fogo_das_artes ?? '{}');
+    return f && typeof f === 'object' && !Array.isArray(f) ? Object.fromEntries(Object.entries(f).filter(([, n]) => n === 2 || n === 3)) : {};
+  } catch {
+    return {};
+  }
 }
 
 /** As famílias de evento: o atrasado só não muda a Produção diante de um mais novo da mesma família. */
@@ -211,6 +226,19 @@ export const ORIGEM_PROMEIRO = 'PROMeiro';
 /** A origem dos eventos do aviso do Padeiro (#139). */
 export const ORIGEM_PADEIRO = 'Padeiro';
 
+/** A letra e a versão do Roteiro ligado (#166), como o título mostra ("B", "V2", "B V2"): só quando não é o início
+    (a A V1, o roteiro de antes sem letra e a Produção sem roteiro não levam nada). */
+function comALetraEVersao(l) {
+  let meta = null;
+  try {
+    meta = JSON.parse(l.roteiro_meta ?? 'null');
+  } catch {
+    // meta ilegível: sem letra nem versão
+  }
+  const marca = meta ? marcaDaLetraEVersao(letraEVersaoDoRoteiro(meta)) : '';
+  return marca ? { letraEVersao: marca } : {};
+}
+
 /** A Produção como a API mostra. */
 const daLinha = (l) => ({
   id: l.id,
@@ -263,7 +291,7 @@ export function criarProducoes(db) {
     doRegistro: db.prepare('SELECT * FROM producoes WHERE teable_registro = ?'),
     doId: db.prepare('SELECT * FROM producoes WHERE id = ?'),
     // a pauta da edição (#96): as que entraram desde a data (e as sem data de entrada)
-    daPauta: db.prepare('SELECT id, claquete, praca, etapa, designers, artes, artes_novas, artes_apagadas, artes_quantidade, prioridade, entrada_em, entrega_em FROM producoes WHERE entrada_em IS NULL OR entrada_em >= ?'),
+    daPauta: db.prepare('SELECT p.id, p.claquete, p.praca, p.etapa, p.designers, p.artes, p.artes_novas, p.artes_apagadas, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, r.meta AS roteiro_meta FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id WHERE p.entrada_em IS NULL OR p.entrada_em >= ?'),
     // a carga adota a Produção que o aviso do Trello criou para o card (ainda sem o registro do Teable): não duplica
     adotar: db.prepare(
       `UPDATE producoes SET teable_registro = ? WHERE id = (SELECT id FROM producoes WHERE card_id = ? AND teable_registro IS NULL ORDER BY criada_em LIMIT 1)`,
@@ -309,6 +337,8 @@ export function criarProducoes(db) {
     // o evento mais novo de todos: a recuperação lê o quadro desde ele
     ultimoDeTodos: db.prepare('SELECT MAX(quando) AS quando FROM eventos'),
     daProducao: db.prepare('SELECT designers, artes, artes_marcadas, artes_novas, artes_apagadas FROM producoes WHERE id = ?'),
+    mudarFogos: db.prepare('UPDATE producoes SET fogo_das_artes = ?, atualizada_em = ? WHERE id = ?'),
+    comFogoParaPassar: db.prepare("SELECT id FROM producoes WHERE roteiro_id IS NOT NULL AND fogo_das_artes <> '{}'"),
     mudarArtesDoCard: db.prepare('UPDATE producoes SET artes_novas = ?, artes_apagadas = ?, atualizada_em = ? WHERE id = ?'),
     mudarAtracao: db.prepare('UPDATE producoes SET atracao = ?, atualizada_em = ? WHERE id = ?'),
     mudarPrazo: db.prepare('UPDATE producoes SET prazo_em = ?, atualizada_em = ? WHERE id = ?'),
@@ -573,7 +603,7 @@ export function criarProducoes(db) {
    * quem (o Padeiro e o nome do designer da chave), a hora da abertura (`quando`) e a origem Padeiro. A regra do
    * conflito é a da releitura e do aviso do Trello: o evento mais velho que o último da mesma família fica só no
    * histórico; os outros mudam a Produção. Nada vai ao Teable.
-   * As ações da janela do After (#147) também passam por aqui: o fogo (que fica só no evento; o Roteiro muda fora), a
+   * As ações da janela do After (#147) também passam por aqui: o fogo (que fica só no evento; o nível muda fora), a
    * entrega (a data da entrega é a da ação), a volta e o desfazer (`desfaz`: o id do evento desfeito). `acao` é o
    * identificador da ação do Padeiro, o mesmo nos eventos dela.
    * @param mudancas [{ tipo: 'etapa' | 'designer-entrou' | 'designer-saiu' | 'abriu-o-projeto' | 'arte-…' | 'fogo', campo?, antes, depois }]
@@ -597,10 +627,11 @@ export function criarProducoes(db) {
   }
 
   /**
-   * A Produção como a janela do After mostra (#146): a Produção, a meta do Roteiro ligado ({} sem ele) e as artes de
+   * A Produção como a janela do After mostra (#146): a Produção, a meta do Roteiro ligado ({} sem ele), o fogo guardado
+   * nela (#174: as marcas { chave: 2 | 3 } da Produção sem Roteiro, ou as que ainda não passaram para ele) e as artes de
    * `artesFeitas`, cada feita com quem a marcou por último e quando (null quando o PROMeiro não sabe: a marcada antes
    * dos eventos). null sem a Produção ou arquivada.
-   * @returns { producao, meta, artes: [{ nome, itens, feita, marcada: { por, em } | null }] } | null
+   * @returns { producao, meta, fogos, artes: [{ nome, itens, feita, marcada: { por, em } | null }] } | null
    */
   function naJanela(id) {
     const l = typeof id === 'string' && id ? q.doId.get(id) : null;
@@ -618,8 +649,33 @@ export function criarProducoes(db) {
       const vezes = a.feita ? [a.nome, ...a.itens].map((x) => ultima.get(chaveDeArte(x))).filter(Boolean) : [];
       return { ...a, marcada: vezes.sort((x, y) => (x.em < y.em ? 1 : -1))[0] ?? null };
     });
-    return { producao: p, meta, artes };
+    return { producao: p, meta, fogos: fogosDaLinha(l), artes };
   }
+
+  /**
+   * O fogo de uma arte da Produção sem Roteiro (#174), guardado nela, pela regra do Roteiro (fogoNoNivel): com `nivel`,
+   * fica nesse nível; sem ele, sobe um. Com `gravar: false` (a ação atrasada), só diz o que seria.
+   * @returns { antes, depois } (1, 2 ou 3), ou null sem a Produção
+   */
+  function fogoNaProducao(id, chave, { nivel = null, gravar = true } = {}) {
+    const l = q.doId.get(id);
+    if (!l) return null;
+    const { marcas, antes, depois } = fogoNoNivel(fogosDaLinha(l), chave, nivel);
+    if (gravar) q.mudarFogos.run(JSON.stringify(marcas ?? {}), new Date().toISOString(), id);
+    return { antes, depois };
+  }
+
+  /** Esvazia o fogo guardado na Produção (#174): o fogo passou para o Roteiro ligado, ou a arte mudou nele. Só a
+      arte `chave`, quando dada. */
+  function soltarFogos(id, chave = null) {
+    const l = q.doId.get(id);
+    if (!l) return;
+    const resto = chave === null ? {} : Object.fromEntries(Object.entries(fogosDaLinha(l)).filter(([k]) => k !== chave));
+    if (JSON.stringify(resto) !== JSON.stringify(fogosDaLinha(l))) q.mudarFogos.run(JSON.stringify(resto), new Date().toISOString(), id);
+  }
+
+  /** As Produções com Roteiro ligado que ainda guardam fogo (#174): o fogo delas ainda tem de passar para o Roteiro. */
+  const comFogoParaPassar = () => q.comFogoParaPassar.all().map((l) => l.id);
 
   /**
    * Marca ou desmarca uma arte pela janela do After (#146): os itens dela que mudam (marcar: os que não estão marcados;
@@ -808,6 +864,7 @@ export function criarProducoes(db) {
         alta: String(l.prioridade ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase() === 'ALTA',
         entradaEm: l.entrada_em ?? null,
         entregaEm: l.entrega_em ?? null,
+        ...comALetraEVersao(l),
       };
     });
   }
@@ -910,6 +967,7 @@ export function criarProducoes(db) {
         prazo: l.prazo_em || l.exibicao_em || daClaquete || null,
         semCard: !l.card_id,
         entregaEm: l.entrega_em ?? null,
+        ...comALetraEVersao(l),
       };
     };
   }
@@ -993,6 +1051,9 @@ export function criarProducoes(db) {
     doPadeiro,
     doAviso,
     naJanela,
+    fogoNaProducao,
+    soltarFogos,
+    comFogoParaPassar,
     arteDoPadeiro,
     mudancasDaArte,
     /** O id do último "arte-apagada" do item na Produção (#160), ou null. */

@@ -845,8 +845,9 @@ async function anteriorNoTrello(id: string) {
 
 /** As duas saídas da versão nova de um roteiro que já estava na fila (o aviso da ficha no celular e a comparação). */
 export const versaoNova = {
-  /** Fica a nova, com o trabalho da anterior (modelo/versoes); o card que a anterior já tinha passa para ela, e a anterior sai da fila. */
-  async substituir(novaId: string): Promise<{ roteiro: Roteiro; herdadas: number; cardHerdado: boolean } | undefined> {
+  /** Fica a nova, com o trabalho da anterior (modelo/versoes); o card que a anterior já tinha passa para ela, e a anterior sai da fila.
+   *  @param liberada a resposta de "Essa chamada já foi liberada para exibição?" (#166): sim, a letra seguinte; não, a versão seguinte */
+  async substituir(novaId: string, liberada: boolean): Promise<{ roteiro: Roteiro; herdadas: number; cardHerdado: boolean } | undefined> {
     const rn = roteiroDa(await armazenamento.ler(novaId));
     if (!rn) return undefined;
     const ra = rn.meta.substitui ? roteiroDa(await armazenamento.ler(rn.meta.substitui)) : undefined;
@@ -856,7 +857,7 @@ export const versaoNova = {
       await armazenamento.salvar(roteiro);
       return { roteiro, herdadas: 0, cardHerdado: false };
     }
-    const { roteiro, herdadas } = substituirVersao(rn, ra);
+    const { roteiro, herdadas } = substituirVersao(rn, ra, { liberada });
     await armazenamento.salvar(roteiro, 'substituiu a versão anterior');
     // o card que a anterior já tinha fica com a nova, antes que ela saia
     const cardHerdado = await anteriorNoTrello(ra.id);
@@ -1002,6 +1003,16 @@ export const ordemDasPracas = (): string[] => ordemDe(minhasPreferencias);
 /** A pessoa arrumou as praças: como os recolhidos, vale na hora e o servidor guarda, por pessoa, para qualquer aparelho. */
 export const lembrarOrdemDasPracas = (pracas: readonly string[]): Promise<boolean> => guardarPreferencia(CHAVE_DA_ORDEM, [...pracas]);
 
+/** A forma de ver a agenda de filmes da aba Filmes (#169): por data de exibição (sem escolha) ou por sessão. */
+export const formaDaAgendaDeFilmes = (): FormaDaAgenda => formaDaAgenda(minhasPreferencias);
+
+/** A pessoa trocou a forma de ver a agenda de filmes: vale na hora e o servidor guarda, por pessoa, para qualquer
+    aparelho. Devolve se ficou guardada. */
+export const lembrarFormaDaAgendaDeFilmes = (forma: FormaDaAgenda): Promise<boolean> => guardarPreferencia(CHAVE_DA_AGENDA_DE_FILMES, forma);
+
+/** A agenda de filmes (#169): os filmes com exibição perto de hoje, com todas as exibições, o pôster e a Produção. */
+export const lerAgendaDeFilmes = () => pedir<AgendaDeFilmes>('/api/filmes/agenda');
+
 /** Guarda uma preferência da pessoa: vale na hora (também fora do servidor, até recarregar) e o servidor grava. Devolve
     se ficou guardada; a que não ficou volta à de antes na próxima visita (se nenhuma escolha mais nova passou na frente). */
 async function guardarPreferencia(chave: string, valor: unknown): Promise<boolean> {
@@ -1138,6 +1149,7 @@ import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, JuncaoDeAtracoes, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, ordemDe, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { CHAVE_DA_AGENDA_DE_FILMES, formaDaAgenda, type AgendaDeFilmes, type FormaDaAgenda } from '../modelo/agendaDeFilmes';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
 export interface ResumoDaDuplicada {
@@ -1391,8 +1403,10 @@ export interface SecoesDaConfiguracao {
   card: SecaoCard;
   filmes: SecaoFilmes;
   conexoes: ConexoesDaConfiguracao;
-  /** os turnos da montagem da pauta (#124): os salvos, ou os de fábrica */
+  /** os turnos da edição (#124), os da montagem da pauta: os salvos, ou os de fábrica */
   turnos: { salvo: TurnoDaEscala[]; deFabrica: boolean };
+  /** os turnos da arte (#175): os salvos, ou os de fábrica (manhã e noite); nenhuma tela usa ainda */
+  turnosDaArte: { salvo: TurnoDaEscala[]; deFabrica: boolean };
   /** o cartão da pauta no Teams (#135): os horários, o segredo que falta no Portainer e o último envio */
   teams: CartaoDoTeamsDaConfiguracao;
   /** a chave da virada (#134): publicar grava a pauta no Teable; `tabela`: a tabela da pauta foi achada na base */
@@ -1417,6 +1431,7 @@ export interface MudancasDaConfiguracao {
   card?: LigacoesDoCard;
   filmes?: LigacoesDosFilmes;
   turnos?: TurnoDaEscala[];
+  turnosDaArte?: TurnoDaEscala[];
   teams?: HorarioDoCartao[];
 }
 export const lerConfiguracao = () => pedir<SecoesDaConfiguracao>('/api/configuracao');
@@ -1539,7 +1554,7 @@ export const desfazerEtapaDaProducao = (producao: string) =>
 export interface ProducaoAberta extends LinhaDoTempo {
   artes: { nome: string; marcada: boolean }[];
   trello: string | null;
-  /** #160: as artes como a janela do After mostra (a de vários tipos é uma só), com o fogo do Roteiro (null sem ele) */
+  /** #160: as artes como a janela do After mostra (a de vários tipos é uma só), com o fogo (o do Roteiro ou, sem ele, o da Produção, #174) */
   artesDoCard?: ArteDoCard[];
   /** #160: a versão do Roteiro ligado (V1 sem versão nova) e quando ele chegou; null sem Roteiro */
   roteiro?: { versao: number; em: string } | null;
@@ -1547,12 +1562,12 @@ export interface ProducaoAberta extends LinhaDoTempo {
   designersAtivos?: string[];
   atracoes?: string[];
 }
-/** Uma arte no card aberto (#160): o nome, os itens do checklist dela, se está feita e o fogo (1 a 3; null sem Roteiro). */
+/** Uma arte no card aberto (#160): o nome, os itens do checklist dela, se está feita e o fogo (1 a 3, com ou sem Roteiro, #174). */
 export interface ArteDoCard {
   nome: string;
   itens: string[];
   feita: boolean;
-  fogo: 1 | 2 | 3 | null;
+  fogo: 1 | 2 | 3;
 }
 export const lerProducaoAberta = (producao: string) => pedir<ProducaoAberta>(`/api/producoes/aberta?producao=${encodeURIComponent(producao)}`);
 /** O que as ações do card aberto (#160) respondem: o que foi feito, o card como a tela mostra e a Produção aberta. */
@@ -1570,7 +1585,7 @@ export const mudarAtracaoDaProducao = (producao: string, atracao: string) => noC
 export const mudarDesignerDaProducao = (producao: string, designer: string, entra: boolean) => noCardAberto('designer', { producao, designer, entra });
 /** Marcar, desmarcar, apagar, voltar (o desfazer do apagar) ou incluir uma arte (#160): o checklist do card espelha. */
 export const mudarArteDaProducao = (producao: string, arte: string, acao: 'marcar' | 'desmarcar' | 'apagar' | 'voltar' | 'incluir') => noCardAberto('arte', { producao, arte, acao });
-/** Subir o fogo de uma arte (#160), no Roteiro ligado. */
+/** Subir o fogo de uma arte (#160): no Roteiro ligado ou, sem ele, na Produção (#174). */
 export const subirFogoDaProducao = (producao: string, arte: string) => noCardAberto('fogo', { producao, arte });
 /** O pedido da pauta com o filtro pessoal (#99), quando há. */
 const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
@@ -1648,10 +1663,10 @@ export const conferirConfiguracao = (m: MudancasDaConfiguracao) => pedir<Confere
 export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ secoes: SecoesDaConfiguracao } | { conferencia: ConferenciaDasPracas }> {
   const r = await fetch('/api/configuracao/salvar', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos }, body: JSON.stringify(m) });
   const corpo = (await r.json().catch(() => null)) as (Partial<SecoesDaConfiguracao> & { conferencia?: ConferenciaDasPracas; erro?: string }) | null;
-  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos && corpo.teams) {
+  if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos && corpo.turnosDaArte && corpo.teams) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, teams: corpo.teams, virada: corpo.virada } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, turnosDaArte: corpo.turnosDaArte, teams: corpo.teams, virada: corpo.virada } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);

@@ -6,7 +6,7 @@
 // da pauta, fictícias, da semana de hoje e da anterior. Nada vai ao Trello.
 // - A Semana (computador, claro e escuro, pela Lia, que não é editora): sem o texto embaixo do título; um editor por
 //   linha, "sem editor · sobrou" no fim; o código das versões no fim do nome; a tarefa com outro visual; o ⚑ do aviso
-//   com o balão; o recado do dia, o que sobrou e quem está fora; a claquete com a produção da arte (#96); o hover da
+//   com o balão; o recado do dia e quem está fora (o que sobrou, só a coordenação e os editores, #172); a claquete com a produção da arte (#96); o hover da
 //   agenda sem sublinhado, o lápis do apelido e o clique direito; a ficha no card aberto do centro (#160, alternativa
 //   A); a busca por claquete, atração e editor, nas semanas vizinhas também; o interruptor do código; anterior,
 //   próxima e Hoje. No tablet e no celular: a grade rola com os nomes fixos e abre em hoje; a ficha na tela toda.
@@ -44,6 +44,8 @@ const CARLA = 'carla.duarte@exemplo.com';
 const DORA = 'dora.lima@exemplo.com';
 // a opção do código das versões (#152), de outra pessoa: a escolha é de cada um
 const RUI = 'rui.costa@exemplo.com';
+// a coordenação (#123), marcada no e2e por um administrador: vê o que sobrou (#172)
+const COORD = 'cora.nunes@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 
@@ -53,6 +55,7 @@ const mais = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_00
 const segunda = mais(hoje, -((new Date(`${hoje}T12:00:00Z`).getUTCDay() + 6) % 7));
 const anterior = mais(segunda, -7);
 const proxima = mais(segunda, 7);
+const diasDe = (seg) => Array.from({ length: 7 }, (_, i) => mais(seg, i));
 const diaMes = (iso) => `${Number(iso.slice(8))}/${Number(iso.slice(5, 7))}`;
 const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -89,6 +92,23 @@ PAUTA.push(linha('Reunião geral às 10h na ilha 4', null, hoje, ['08:00', '17:0
 // a mesma atração em outra praça e com versão (#96): a ficha junta as duas linhas
 PAUTA.push(linha(`Show da Tarde ${diaMes(hoje)} SP (H)`, 'Ana Ribeiro', hoje, ['06:00', '15:00']));
 PAUTA.push(linha(`Esporte Antigo ${diaMes(mais(anterior, 3))}`, 'Ana Ribeiro', mais(anterior, 2), ['06:00', '15:00']));
+
+/* A semana daqui a duas, na forma da pauta real que quebrou a Semana no Safari (#172), com nomes inventados: só de
+   segunda a sexta (o fim de semana sem ninguém), muitos editores na manhã, o nome em caixa alta com "(sem ID)*" como
+   vem do Teable, as tarefas, as instruções e o aviso com a caixinha. */
+const DEPOIS = mais(segunda, 14);
+const DA_FORMA_REAL = ['Rita Fontes', 'Otto Lemos', 'Vera Campos', 'Igor Matos', 'PEDRO SALES (sem ID)*', 'Nina Prado'];
+for (let i = 0; i < 5; i++) {
+  const d = mais(DEPOIS, i);
+  DA_FORMA_REAL.forEach((editor, j) => {
+    const turno = j < 4 ? ['06:00', '15:00'] : j === 4 ? ['14:00', '20:00'] : ['22:00', '06:00'];
+    // a info sem claquete antes fica na posição (#172)
+    if (j === 3) PAUTA.push(linha('REDATOR VAI ACOMPANHAR', editor, d, turno));
+    PAUTA.push(linha(j === 4 ? 'COMUNICAÇÃO' : `Atração ${j + 1}(Prologo)${diaMes(mais(d, 1))} (AH)`, editor, d, turno));
+    if (j === 1) PAUTA.push(linha('TRANSFORMAR DA A B', editor, d, turno));
+    if (j === 2) PAUTA.push(linha('VEM PRONTA', editor, d, turno, true));
+  });
+}
 
 /** A produção da arte (fictícia) do Show da Tarde de hoje: a G5 entregue, com prioridade ALTA, e a de SP produzindo. */
 const ARTE = [
@@ -245,14 +265,14 @@ async function noComputador(navegador, url, tema) {
   await p.mouse.move(5, 5);
   await p.locator('.pauta-aviso-balao').waitFor({ state: 'detached' });
 
-  // o recado do dia (o aviso sem editor), no alto; a mesa da produção: o que sobrou e quem está fora
+  // o recado do dia (o aviso sem editor), no alto; a mesa da produção: quem está fora (o que sobrou, a Lia não vê:
+  // não é da coordenação nem editora, #172)
   const recado = p.locator('.pauta-recado');
   assert.match(await recado.locator('.rotulo').textContent(), /Recado do dia · hoje/);
   assert.equal((await recado.locator('p').textContent()).trim(), 'Reunião geral às 10h na ilha 4');
   assert.equal(await p.locator('.pauta-mesa.so-lateral').count(), 1);
-  const sobrou = p.locator('.pauta-sobrou');
-  assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
-  assert.deepEqual(await textos(sobrou.locator('.pauta-texto')), ['CALHAUS']);
+  assert.equal(await p.locator('.pauta-sobrou').count(), 0, 'a Lia não vê o que sobrou');
+  assert.equal(await p.locator('.pauta-lateral.so-fora').count(), 1);
   const fora = p.locator('.pauta-fora');
   assert.match(await fora.locator('.rotulo').textContent(), /Fora no dia\s*1/);
   assert.deepEqual(await textos(fora.locator('.pauta-fora-nome')), ['Elis Furtado']);
@@ -265,6 +285,13 @@ async function noComputador(navegador, url, tema) {
   assert.equal(await show.locator('.marca-texto').count(), 1);
   const novela = cardDe(celula(p, 'Ana Ribeiro', hoje), 'Novela Sol');
   assert.equal((await novela.locator('.pauta-producao').textContent()).trim(), 'sem card');
+  // a bolinha do "sem card" é a bolinha de estado da agenda (BolinhaDeEstado, #172): o pontinho cheio e neutro, sem anel
+  const bolinha = (l) => l.locator('.pauta-nome-com-versoes > .bolinha-estado').evaluate((e) => ({ estado: e.dataset.estado, cor: getComputedStyle(e).backgroundColor, anel: getComputedStyle(e).boxShadow, w: getComputedStyle(e).width, raio: getComputedStyle(e).borderRadius }));
+  const semCard = await bolinha(novela);
+  const tinta3 = await p.evaluate(() => { const e = document.createElement('i'); e.style.color = 'var(--tinta3)'; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
+  assert.deepEqual(semCard, { estado: 'sem-card', cor: tinta3, anel: 'none', w: '6px', raio: '50%' }, 'sem card: a bolinha neutra da agenda');
+  assert.equal((await bolinha(show)).estado, 'entregue');
+  assert.notEqual((await bolinha(show)).cor, tinta3, 'entregue: a bolinha com a cor da etapa');
   // o hover da agenda (#162): o realce, sem sublinhado; o lápis do apelido aparece no canto
   const lapis = show.locator('.pauta-lapis');
   assert.equal(await lapis.evaluate((e) => getComputedStyle(e).opacity), '0');
@@ -430,6 +457,174 @@ async function naTelaPequena(navegador, url, aparelho, rotulo, tema) {
   assert.deepEqual(erros, [], `${nome}: erros na página`);
   await ctx.close();
   console.log(`ok: ${nome}: a grade rola para o lado com os nomes fixos, abre em hoje, o toque abre o aviso e a ficha${rotulo === 'celular' ? ' na tela toda' : ''}`);
+}
+
+/**
+ * Emula o Safari (WebKit) na grade (#172): lá, a largura em calc() com % de uma célula de tabela conta como porcentagem
+ * no tamanho intrínseco da tabela, e com min-width: max-content a grade ia ao limite do navegador. Troca, nas regras das
+ * células da grade, o calc() com % pela porcentagem dele; devolve as regras trocadas (nenhuma, com a grade em medidas
+ * fixas).
+ */
+const comoNoSafari = (p) =>
+  p.evaluate(() => {
+    const trocadas = [];
+    const varrer = (regras) => {
+      for (const r of regras) {
+        if (r.cssRules) varrer(r.cssRules);
+        if (!r.style || !/pauta-(grade|dia|celula|canto|editor)/.test(r.selectorText || '')) continue;
+        for (const prop of ['width', 'min-width']) {
+          const v = r.style.getPropertyValue(prop);
+          const pct = /calc\(.*?([\d.]+)%/.exec(v);
+          if (!pct) continue;
+          const divide = /\/\s*([\d.]+)\s*\)?\s*$/.exec(v);
+          r.style.setProperty(prop, `${Number(pct[1]) / (divide ? Number(divide[1]) : 1)}%`);
+          trocadas.push(`${r.selectorText} { ${prop}: ${v} }`);
+        }
+      }
+    };
+    for (const f of document.styleSheets) varrer(f.cssRules);
+    return trocadas;
+  });
+/** O que a Semana mostra na tela: as datas das colunas à vista, os nomes à vista e a largura da grade e de cada dia. */
+const semanaAVista = (p) =>
+  p.evaluate(() => {
+    const caixa = document.querySelector('.pauta-rolagem').getBoundingClientRect();
+    const dentro = (e) => {
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.left >= caixa.left - 1 && r.right <= caixa.right + 1;
+    };
+    return {
+      dias: [...document.querySelectorAll('th.pauta-dia')].filter(dentro).map((t) => t.dataset.dia),
+      nomes: [...document.querySelectorAll('th.pauta-editor .pauta-nome')].filter((e) => dentro(e) && e.textContent.trim()).map((e) => e.textContent.trim()),
+      grade: Math.round(document.querySelector('.pauta-grade').getBoundingClientRect().width),
+      maiorDia: Math.round(Math.max(...[...document.querySelectorAll('th.pauta-dia')].map((t) => t.getBoundingClientRect().width))),
+    };
+  });
+
+/**
+ * A Semana no Safari (#172): com a regra do WebKit emulada, a grade continua com os 7 dias e o nome de cada editor à
+ * vista, na semana de hoje (a rolagem até hoje) e numa semana na forma da pauta real (o fim de semana vazio, o nome em
+ * caixa alta com "(sem ID)*", as tarefas e os avisos).
+ */
+async function aSemanaNoSafari(navegador, url) {
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1600, height: 1000 } });
+  await p.locator('.pauta-grade').waitFor();
+  const trocadas = await comoNoSafari(p);
+  assert.deepEqual(trocadas, [], 'a grade não tem largura em calc() com %, que o Safari conta como porcentagem');
+  // a grade montada de novo com a regra emulada, e a rolagem até hoje de novo
+  await p.keyboard.press('ArrowRight');
+  await p.locator('.pauta-vazia').waitFor();
+  await p.keyboard.press('ArrowLeft');
+  await p.locator(`th.pauta-dia[data-dia="${hoje}"]`).waitFor();
+  await p.waitForTimeout(400);
+  let vista = await semanaAVista(p);
+  assert.deepEqual(vista.dias, diasDe(segunda), `a semana de hoje inteira à vista (${JSON.stringify(vista)})`);
+  assert.deepEqual(vista.nomes, ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
+  assert.ok(vista.grade <= 1600 && vista.maiorDia < 400, `a grade cabe na tela (${JSON.stringify(vista)})`);
+  // a semana na forma da pauta real
+  await p.goto(`${url}#/pauta/semana/${DEPOIS}`);
+  await p.locator(`th.pauta-dia[data-dia="${DEPOIS}"]`).waitFor();
+  await comoNoSafari(p);
+  await p.waitForTimeout(400);
+  vista = await semanaAVista(p);
+  assert.deepEqual(vista.dias, diasDe(DEPOIS), `a semana da forma real inteira à vista (${JSON.stringify(vista)})`);
+  assert.deepEqual([...vista.nomes].sort(), [...DA_FORMA_REAL, 'sem editor'].sort(), 'o nome de cada editor à vista');
+  assert.ok(vista.grade <= 1600 && vista.maiorDia < 400, `a grade cabe na tela (${JSON.stringify(vista)})`);
+  // o fim de semana sem ninguém: o traço em cada linha
+  assert.deepEqual(await textos(fileira(p, 'Rita Fontes').locator(`td[data-dia="${mais(DEPOIS, 5)}"], td[data-dia="${mais(DEPOIS, 6)}"]`)), ['–', '–']);
+  // no celular, com a regra emulada: a grade rola, os nomes ficam e hoje abre logo depois deles
+  const cel = await abrir(navegador, url, { ...devices['iPhone 13'], deviceScaleFactor: 1 });
+  await cel.p.locator('.pauta-grade').waitFor();
+  await comoNoSafari(cel.p);
+  const medida = await cel.p.evaluate(() => {
+    const r = document.querySelector('.pauta-rolagem');
+    return { largura: r.scrollWidth, tela: r.clientWidth, nome: document.querySelector('th.pauta-editor .pauta-nome').getBoundingClientRect().left >= r.getBoundingClientRect().left - 1 };
+  });
+  assert.ok(medida.largura < 8 * medida.tela && medida.nome, `celular: a grade rola sem ir ao limite (${JSON.stringify(medida)})`);
+  assert.deepEqual(erros, []);
+  assert.deepEqual(cel.erros, []);
+  await cel.ctx.close();
+  await ctx.close();
+  console.log('ok: a Semana no Safari (#172): os 7 dias e os nomes à vista, na semana de hoje e na da forma real; no celular, a grade rola sem ir ao limite');
+}
+
+/**
+ * Quem vê o "Sobrou · sem editor" (#172): a coordenação (marcada por um administrador) e os editores (a Carla); a Lia e
+ * a designer (a Dora), não.
+ */
+async function oSobrouPorPerfil(navegador, url, api) {
+  const marcar = await fetch(`${api}/cadastros/coordenacao`, { method: 'POST', headers: { 'content-type': 'application/json', 'cf-access-authenticated-user-email': CHEFE }, body: JSON.stringify({ email: COORD }) });
+  assert.equal(marcar.status, 200, 'a coordenação marcada');
+  const ve = {};
+  for (const [quem, email] of [['coordenação', COORD], ['editora', CARLA], ['designer', DORA], ['sem perfil', LIA]]) {
+    const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/pauta', null, email);
+    await p.locator('.pauta-grade').waitFor();
+    await p.locator('.pauta-fora').waitFor();
+    const sobrou = p.locator('.pauta-sobrou');
+    ve[quem] = (await sobrou.count()) ? await textos(sobrou.locator('.pauta-texto')) : null;
+    if (ve[quem]) assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
+    if (CAPTURAS && quem !== 'editora') await capturar(p, `00-sobrou-${quem.replace(/\s+/g, '-')}`, false);
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  }
+  assert.deepEqual(ve, { coordenação: ['CALHAUS'], editora: ['CALHAUS'], designer: null, 'sem perfil': null });
+  console.log('ok: o "Sobrou · sem editor" só para a coordenação e os editores; a designer e quem não tem perfil não veem');
+}
+
+/**
+ * A info (#172): a instrução para o editor sai da lista (não é tarefa) e fica escondida num balão. A da claquete, no
+ * canto do card; a que não tem claquete antes, no alto da posição. Com info, o balão é cheio e laranja; o clique abre o
+ * texto ali mesmo (sem abrir a ficha), e Esc, outro clique ou um clique fora fecham.
+ */
+async function aInfoNoBalao(navegador, url) {
+  for (const [onde, opcoes] of [
+    ['computador', { viewport: { width: 1440, height: 1000 } }],
+    ['celular', { ...devices['iPhone 13'] }],
+  ]) {
+    for (const tema of ['light', 'dark']) {
+      const nome = `${onde}-${tema === 'dark' ? 'escuro' : 'claro'}`;
+      const { ctx, p, erros } = await abrir(navegador, url, { ...opcoes, colorScheme: tema }, `#/pauta/semana/${DEPOIS}`);
+      await p.locator(`th.pauta-dia[data-dia="${DEPOIS}"]`).waitFor();
+      const otto = celula(p, 'Otto Lemos', DEPOIS);
+      // a instrução não é item da lista nem "tarefa"
+      const daLista = await textos(otto.locator('.pauta-texto'));
+      assert.ok(daLista.length === 1 && daLista[0].startsWith('Atração 2(Prologo)'), `${nome}: só a claquete na lista (${daLista})`);
+      assert.equal(await otto.locator('.pauta-producao', { hasText: 'tarefa' }).count(), 0);
+      const card = cardDe(otto, 'Atração 2');
+      const botao = card.locator('.balao-info-botao');
+      assert.equal(await botao.getAttribute('aria-expanded'), 'false');
+      assert.equal(await card.locator('.balao-info-texto').count(), 0, `${nome}: a info escondida`);
+      const ultra = await p.evaluate(() => { const e = document.createElement('i'); e.style.color = 'var(--ultra)'; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
+      assert.equal(await botao.evaluate((b) => getComputedStyle(b).color), ultra, `${nome}: com info, o balão laranja`);
+      assert.equal(await botao.locator('path').getAttribute('fill'), 'currentColor', `${nome}: o balão cheio`);
+      await botao.scrollIntoViewIfNeeded();
+      await botao.click();
+      await card.locator('.balao-info-texto').waitFor();
+      assert.equal(await botao.getAttribute('aria-expanded'), 'true');
+      assert.deepEqual(await textos(card.locator('.balao-info-texto p')), ['TRANSFORMAR DA A B']);
+      assert.equal(await p.locator('.card-aberto').count(), 0, `${nome}: o balão não abre a ficha`);
+      await p.waitForTimeout(300);
+      await capturar(p, `08-info-${nome}`, false);
+      // Esc fecha
+      await p.keyboard.press('Escape');
+      await card.locator('.balao-info-texto').waitFor({ state: 'detached' });
+      // a info sem claquete antes: no alto da posição
+      const igor = celula(p, 'Igor Matos', DEPOIS);
+      assert.equal(await igor.locator('.pauta-texto', { hasText: 'REDATOR' }).count(), 0);
+      const daPosicao = igor.locator('.pauta-celula-topo .balao-info-botao.tem');
+      await daPosicao.scrollIntoViewIfNeeded();
+      await daPosicao.click();
+      await igor.locator('.pauta-celula-topo .balao-info-texto').waitFor();
+      assert.deepEqual(await textos(igor.locator('.balao-info-texto p')), ['REDATOR VAI ACOMPANHAR']);
+      // um clique fora fecha
+      await p.locator('.pauta-cabeca h1').click();
+      await igor.locator('.balao-info-texto').waitFor({ state: 'detached' });
+      await semRolagemDeLado(p, nome);
+      assert.deepEqual(erros, [], `${nome}: erros na página`);
+      await ctx.close();
+    }
+  }
+  console.log('ok: a info (#172): fora da lista, no balão da claquete ou da posição; laranja e cheio; o clique abre ali mesmo, Esc e o clique fora fecham (computador e celular, claro e escuro)');
 }
 
 /** Na fila do celular, a entrada da pauta é só o ícone, e cabe no topo. */
@@ -1036,10 +1231,13 @@ async function principal() {
   const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros, env });
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
-  for (const quem of [LIA, TOM, CARLA, DORA, RUI]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
+  for (const quem of [LIA, TOM, CARLA, DORA, RUI, COORD]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
   let falhou = false;
   try {
+    await aSemanaNoSafari(navegador, s.url);
+    await oSobrouPorPerfil(navegador, s.url, s.api);
+    await aInfoNoBalao(navegador, s.url);
     for (const tema of ['light', 'dark']) await noComputador(navegador, s.url, tema);
     await naTelaPequena(navegador, s.url, 'iPad (gen 7)', 'tablet', 'light');
     for (const tema of ['light', 'dark']) await naTelaPequena(navegador, s.url, 'iPhone 13', 'celular', tema);

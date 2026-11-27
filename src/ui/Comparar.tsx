@@ -3,7 +3,8 @@ import { armazenamento, consultarProducao, ligarAoCardExistente, pdfDaProducao, 
 import { casoDaLeitura, LinkQuebrado, type CasoQuebrado } from './LinkQuebrado';
 import { diferencasDeArtes, diferencasDeTexto, mesmaPessoa, semelhanca, textoDeCadaLado, type ArteComparada, type PedacoDaFolha } from '../modelo/diferencas';
 import { exportar, pendencias } from '../modelo/exportar';
-import type { ProducaoCompleta, Roteiro } from '../modelo/tipos';
+import type { Meta, ProducaoCompleta, Roteiro } from '../modelo/tipos';
+import { letraEVersaoDoRoteiro, proximaLetraEVersao } from '../modelo/letraEVersao';
 import { Icone } from './icones';
 import { useCamadaDeRiscos } from './riscos';
 import { dataCurtaComDia, plural } from './util';
@@ -45,6 +46,33 @@ const ladoDoRoteiro = (r: Roteiro): LadoDeLa => {
 export const avisoDaSubstituicao = ({ herdadas, cardHerdado }: { herdadas: number; cardHerdado: boolean }) =>
   `Versão anterior substituída.${herdadas ? ` ${plural(herdadas, 'tipo de arte foi mantido', 'tipos de arte foram mantidos')}.` : ''}${cardHerdado ? ' O card no Trello continua o da versão anterior.' : ''}`;
 
+/** "B V1", "A V2": a letra e a versão inteiras, na dica da pergunta da liberação. */
+const letraEVersaoEscrita = (l: { letra: string; versao: number }) => `${l.letra} V${l.versao}`;
+
+/**
+ * A pergunta de "Substituir a anterior" (#166), no aviso da ficha (no celular) e na comparação: "Essa chamada já foi
+ * liberada para exibição?". Sim, a chamada vira a letra seguinte, de volta à V1; não, ganha a versão seguinte na mesma
+ * letra. A dica de cada botão diz em que letra e versão a nova fica. A resposta se corrige depois, no detalhe do card.
+ * @param anterior a meta da versão anterior (dá a letra e a versão de onde a nova parte)
+ */
+export function PerguntaDaLiberacao({ anterior, responder, cancelar, ocupado = false }: { anterior: Pick<Meta, 'letra' | 'versao' | 'v2De'>; responder: (liberada: boolean) => void; cancelar: () => void; ocupado?: boolean }) {
+  const de = letraEVersaoDoRoteiro(anterior);
+  return (
+    <span className="pergunta-liberacao" role="group" aria-label="Essa chamada já foi liberada para exibição?">
+      <span className="pergunta-liberacao-texto">Essa chamada já foi liberada para exibição?</span>
+      <button type="button" className="botao" disabled={ocupado} title={`A nova fica ${letraEVersaoEscrita(proximaLetraEVersao(de, false))}: um ajuste antes de liberar`} onClick={() => responder(false)}>
+        Não
+      </button>
+      <button type="button" className="botao" disabled={ocupado} title={`A nova vira a letra ${proximaLetraEVersao(de, true).letra}, de volta à V1: um ajuste depois de liberada`} onClick={() => responder(true)}>
+        Sim
+      </button>
+      <button type="button" className="botao-texto" disabled={ocupado} onClick={cancelar}>
+        Cancelar
+      </button>
+    </span>
+  );
+}
+
 const diaDe = (iso: string | null) => (iso ? dataCurtaComDia(new Date(iso).toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })) : '');
 
 /** O roteiro que chegou ao lado do que já está na produção da arte, ou da versão anterior que está na fila, com as
@@ -58,6 +86,8 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
   const [anterior, setAnterior] = useState<Roteiro | null | undefined>(undefined);
   const [decidindo, setDecidindo] = useState(false);
   const [escolha, setEscolha] = useState<Resposta | null>(null);
+  // "Substituir a anterior" pergunta antes se a chamada já foi liberada para exibição (#166)
+  const [perguntando, setPerguntando] = useState(false);
   // versão nova da fila: as duas folhas com o texto e as diferenças marcadas; os originais, a um toque
   const [vista, setVista] = useState<'texto' | 'original'>('texto');
 
@@ -125,12 +155,14 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
   const opcao: Resposta = escolha ?? (daFila ? 'substituir' : comparacao?.mesmo ? 'mesmo' : 'v2');
 
   // versão nova da fila: as duas saídas do aviso da ficha, e depois a revisão da que ficou
-  const decidirNaFila = async (resposta: Resposta) => {
+  const decidirNaFila = async (resposta: Resposta, liberada?: boolean) => {
     if (!roteiro || decidindo) return;
+    // com a anterior ainda na fila, a resposta da liberação vem antes (#166)
+    if (resposta === 'substituir' && liberada === undefined && anterior) return setPerguntando(true);
     setDecidindo(true);
     try {
       if (resposta === 'substituir') {
-        const feito = await versaoNova.substituir(roteiro.id);
+        const feito = await versaoNova.substituir(roteiro.id, !!liberada);
         // a nova saiu da fila enquanto a pessoa decidia: não há o que revisar
         if (!feito) return voltar();
         avisar(avisoDaSubstituicao(feito));
@@ -196,14 +228,18 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
               {/* o seletor muda o que o botão faz: a revisão segue como se a claquete não fosse repetida */}
               <div className="segmento" role="radiogroup" aria-label={daFila ? 'O que fazer com a versão anterior' : 'O que fazer com o card'}>
                 {opcoes.map((o) => (
-                  <button key={o.id} role="radio" aria-checked={opcao === o.id} title={o.dica} onClick={() => setEscolha(o.id)}>
+                  <button key={o.id} role="radio" aria-checked={opcao === o.id} title={o.dica} onClick={() => (setEscolha(o.id), setPerguntando(false))}>
                     {o.nome}
                   </button>
                 ))}
               </div>
-              <button className="botao primario" disabled={decidindo || (!daFila && !np)} onClick={() => void decidir(opcao)}>
-                {opcao === 'mesmo' ? 'Voltar para a fila' : 'Revisar'}
-              </button>
+              {perguntando && anterior ? (
+                <PerguntaDaLiberacao anterior={anterior.meta} ocupado={decidindo} responder={(liberada) => void decidirNaFila('substituir', liberada)} cancelar={() => setPerguntando(false)} />
+              ) : (
+                <button className="botao primario" disabled={decidindo || (!daFila && !np)} onClick={() => void decidir(opcao)}>
+                  {opcao === 'mesmo' ? 'Voltar para a fila' : 'Revisar'}
+                </button>
+              )}
             </div>
             </div>
 

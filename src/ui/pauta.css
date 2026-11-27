@@ -60,6 +60,8 @@
 .pauta-mesa { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 26px; }
 .pauta-mesa.so-lateral { grid-template-columns: minmax(0, 1fr); }
 .pauta-mesa.so-lateral .pauta-lateral { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+/* sem o que sobrou (#172), quem está fora fica sozinho na lateral */
+.pauta-mesa .pauta-lateral.so-fora { grid-template-columns: minmax(0, 1fr); }
 .pauta-lateral { display: grid; gap: 16px; min-width: 0; }
 .pauta-folha { min-width: 0; padding: 18px 18px 16px; border-radius: 16px; background: var(--papel); box-shadow: var(--sombra-folha), 0 0 0 1px var(--regua); }
 .pauta-folha-topo { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 10px; }
@@ -104,15 +106,11 @@
 .pauta-item.compacta .pauta-claquete-botao, .pauta-item.compacta .pauta-tarefa-corpo { gap: 1px; padding: 3px 22px 3px 4px; }
 .pauta-nome-com-versoes { position: relative; display: block; padding-left: 12px; font: 600 13.5px/1.35 var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
 .pauta-item.compacta .pauta-nome-com-versoes { padding-left: 11px; font-size: 12.5px; }
-.pauta-nome-com-versoes::before { content: ''; position: absolute; left: 0; top: 0.5em; width: 6px; height: 6px; border-radius: 50%; background: var(--tinta3); }
-.pauta-item[data-etapa='entregue'] .pauta-nome-com-versoes::before { background: var(--ok); }
-.pauta-item[data-etapa='produzindo'] .pauta-nome-com-versoes::before { background: var(--ultra); }
-.pauta-item[data-etapa='entrada'] .pauta-nome-com-versoes::before { background: var(--falta); }
-.pauta-item[data-etapa='arquivada'] .pauta-nome-com-versoes::before { background: var(--regua-forte); }
-.pauta-item[data-etapa='sem-card'] .pauta-nome-com-versoes::before { background: transparent; box-shadow: inset 0 0 0 1.2px var(--tinta3); }
+/* a etapa da claquete: a bolinha de estado da agenda (BolinhaDeEstado), no começo do nome */
+.pauta-bolinha { position: absolute; left: 0; top: 0.5em; }
 /* a tarefa: outro visual (o quadradinho, sem mono) */
 .pauta-item.pauta-tarefa .pauta-nome-com-versoes { font: italic 400 14.5px/1.3 var(--serifa); color: var(--tinta2); }
-.pauta-item.pauta-tarefa .pauta-nome-com-versoes::before { top: 0.45em; border-radius: 1px; background: var(--regua-forte); box-shadow: none; }
+.pauta-item.pauta-tarefa .pauta-nome-com-versoes::before { content: ''; position: absolute; left: 0; top: 0.45em; width: 6px; height: 6px; border-radius: 1px; background: var(--regua-forte); }
 .pauta-item.compacta.pauta-tarefa .pauta-nome-com-versoes { font-size: 13.5px; }
 
 .pauta-producao { display: block; padding-left: 12px; font: 400 11.5px/1.35 var(--sans); color: var(--tinta3); }
@@ -129,6 +127,14 @@
 .pauta-lapis:hover { color: var(--tinta); background: var(--neutro); }
 .pauta-lapis:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
 @media (hover: none) { .pauta-lapis { display: none; } }
+/* a info da claquete (#172, BalaoDeInfo): o balão no canto do card (o lápis vai para o lado), o texto embaixo do nome */
+.pauta-item .balao-info-botao { position: absolute; top: 5px; right: 5px; }
+.pauta-item.compacta .balao-info-botao { top: 1px; right: 0; width: 22px; height: 20px; }
+.pauta-item:has(.balao-info) .pauta-lapis { right: 31px; }
+.pauta-item.compacta:has(.balao-info) .pauta-lapis { right: 23px; }
+.pauta-item .balao-info-texto { padding: 0 12px 9px 24px; }
+.pauta-item.compacta .balao-info-texto { padding: 0 4px 5px 15px; }
+.pauta-item.compacta .balao-info-texto p { font-size: 12.5px; }
 
 @keyframes pauta-entra { from { opacity: 0; transform: translateY(5px); } }
 @keyframes pauta-surgir { from { opacity: 0; transform: translateY(3px); } }
@@ -151,12 +157,16 @@
 /* ---------- a Semana: editor × dia ---------- */
 .pauta-rolagem { overflow-x: auto; border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha), 0 0 0 1px var(--regua); overscroll-behavior-x: contain; }
 .pauta-corpo.estreia .pauta-rolagem { animation: pauta-entra 0.26s var(--suave) backwards; }
-.pauta-grade { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+/* a largura da grade só em medidas fixas (#172): a coluna dos nomes e o mínimo de cada dia; os dias dividem o resto por
+   igual (table-layout: fixed, sem largura neles). Nada de porcentagem nas células nem de min-width: max-content: no
+   Safari (WebKit), a largura em calc() com % numa célula conta como porcentagem no tamanho intrínseco da tabela, e o
+   max-content dela vai ao limite do navegador (33 milhões de px): cada dia fica da largura da tela, a rolagem até hoje
+   deixa só ele à vista e os nomes somem */
+.pauta-grade { --pauta-nomes: 196px; --pauta-dia-min: 170px; width: 100%; min-width: calc(var(--pauta-nomes) + 7 * var(--pauta-dia-min)); border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .pauta-grade th, .pauta-grade td { border-bottom: 1px solid var(--regua); border-right: 1px solid var(--regua); vertical-align: top; text-align: left; }
 .pauta-grade tr > :last-child { border-right: 0; }
 .pauta-grade tbody tr:last-child > * { border-bottom: 0; }
-.pauta-canto { width: 196px; padding: 14px 12px; }
-.pauta-dia, .pauta-celula { width: calc((100% - 196px) / 7); min-width: 170px; }
+.pauta-canto { width: var(--pauta-nomes); padding: 14px 12px; }
 .pauta-dia { padding: 0; font-weight: 400; }
 .pauta-dia-link { display: flex; align-items: baseline; gap: 8px; padding: 12px 12px 10px; font: 400 22px/1 var(--serifa); color: var(--tinta); text-decoration: none; white-space: nowrap; transition: color 0.15s; }
 .pauta-dia-link:hover .pauta-dia-num { color: var(--ultra-tinta); }
@@ -180,7 +190,7 @@ tr.eu > td.pauta-celula.hoje { background: color-mix(in srgb, var(--ultra-suave)
 tr.eu .pauta-avatar { background: var(--ultra); color: var(--no-ultra, #fff); }
 tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--tinta3); }
 .pauta-celula { padding: 9px 10px 11px; }
-.pauta-celula-topo { display: flex; align-items: center; gap: 8px; min-height: 22px; margin-bottom: 2px; }
+.pauta-celula-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-height: 22px; margin-bottom: 2px; }
 .pauta-turno { font: 500 11.5px var(--mono); color: var(--tinta3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pauta-cel-fora { display: inline-block; margin-top: 4px; font: italic 400 14px var(--serifa); color: var(--tinta3); }
 .pauta-celula .pauta-nada { font-size: 16px; }
@@ -200,6 +210,10 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
 .pauta-coluna-nome .pauta-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pauta-coluna.sobra .pauta-nome { font-weight: 500; font-style: italic; color: var(--tinta3); }
 .pauta-coluna-linha { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+/* o ⚑ e o balão da info (#172) à direita; o texto da info abre embaixo, na largura da coluna */
+.pauta-coluna-recados { display: contents; }
+.pauta-coluna-linha:has(> .pauta-coluna-recados) { flex-wrap: wrap; justify-content: flex-start; row-gap: 4px; }
+.pauta-coluna-linha:has(> .pauta-coluna-recados) > :first-child { margin-right: auto; }
 .pauta-coluna-linha .pauta-turno { font-size: 12px; color: var(--tinta2); }
 .pauta-coluna.sobra .pauta-turno { font-style: italic; }
 .pauta-coluna-conta { font: 400 12px var(--sans); color: var(--tinta3); font-variant-numeric: tabular-nums; }
@@ -281,8 +295,7 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
 @media (max-width: 1100px) {
   .pauta-mesa { grid-template-columns: minmax(0, 1fr); }
   .pauta-lateral { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-  .pauta-canto { width: 150px; }
-  .pauta-dia, .pauta-celula { width: 172px; }
+  .pauta-grade { --pauta-nomes: 150px; --pauta-dia-min: 172px; }
 }
 @media (max-width: 1024px) {
   .pauta-pagina { padding: 14px 16px 100px; }
@@ -305,12 +318,11 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
   .pauta-minha-topo .pauta-conta-rot { margin: 0; }
   .pauta-minha-topo .pauta-conta-bolinhas { margin: 0 0 0 auto; }
   .pauta-recado p { font-size: 16.5px; }
-  .pauta-canto { width: 118px; }
+  .pauta-grade { --pauta-nomes: 118px; --pauta-dia-min: 160px; }
   .pauta-editor { padding: 10px 8px; }
   .pauta-editor .pauta-avatar { display: none; }
   .pauta-editor-meta { margin-left: 0; }
   .pauta-editor .pauta-nome { white-space: normal; }
-  .pauta-dia, .pauta-celula { width: 160px; min-width: 160px; }
   .pauta-colunas { grid-auto-columns: calc(100vw - 80px); }
   .pauta-aviso-botao { height: 28px; padding: 0 10px; font-size: 12px; }
   .pauta-claquete-botao, .pauta-tarefa-corpo { padding-right: 12px; }

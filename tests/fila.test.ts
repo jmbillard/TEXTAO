@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { agruparPorDia, artesParaMostrar, claqueteParaMostrar, filaVisivel, pendentes, proximoParaRevisar } from '../src/ui/fila';
-import { herdarTipos, manterAsDuas, substituirVersao, versaoDoRoteiro } from '../src/modelo/versoes';
+import { herdarTipos, manterAsDuas, substituirVersao } from '../src/modelo/versoes';
+import { corrigirLiberacao, letraEVersaoDoRoteiro, marcaDaLetraEVersao, marcaDepoisDoNome, proximaLetraEVersao, versaoDoRoteiro } from '../src/modelo/letraEVersao';
 import { dataDaClaquete } from '../src/modelo/vocabularios';
 import { reconhecerPraca as pracaDaClaquete } from '../src/modelo/pracas';
 import { exportar, pendencias, pendenciasDetalhadas } from '../src/modelo/exportar';
@@ -124,6 +125,60 @@ describe('versão nova de um roteiro', () => {
     expect(v3.meta.versao).toBe(3);
     // a anterior que respondeu "é v2" já é a V2: a nova é a V3
     expect(substituirVersao(roteiro('n', [['HOJE', '']], { substitui: 'a' }), roteiro('a', [['HOJE', '']], { v2De: { card: 'c', url: 'u' } })).roteiro.meta.versao).toBe(3);
+  });
+
+  it('a próxima letra e versão (#166): não liberada, V+1 na mesma letra; liberada, a letra seguinte com V1', () => {
+    expect(proximaLetraEVersao({ letra: 'A', versao: 1 }, false)).toEqual({ letra: 'A', versao: 2 });
+    expect(proximaLetraEVersao({ letra: 'A', versao: 3 }, true)).toEqual({ letra: 'B', versao: 1 });
+    expect(proximaLetraEVersao({ letra: 'B', versao: 2 }, false)).toEqual({ letra: 'B', versao: 3 });
+    expect(proximaLetraEVersao({ letra: 'Z', versao: 1 }, true)).toEqual({ letra: 'Z', versao: 1 });
+  });
+
+  it('o ciclo da chamada (#166): A → A V2 → B → B V2 → B V3 → C', () => {
+    const passos: [string, boolean][] = [['n1', false], ['n2', true], ['n3', false], ['n4', false], ['n5', true]];
+    let atual = roteiro('a', [['HOJE', '']]);
+    const marcas = [marcaDaLetraEVersao(letraEVersaoDoRoteiro(atual.meta))];
+    for (const [id, liberada] of passos) {
+      atual = substituirVersao(roteiro(id, [['HOJE', '']], { substitui: atual.id }), atual, { liberada }).roteiro;
+      marcas.push(marcaDaLetraEVersao(letraEVersaoDoRoteiro(atual.meta)));
+    }
+    expect(marcas).toEqual(['', 'V2', 'B', 'B V2', 'B V3', 'C']);
+    // a anterior e a resposta ficam guardadas, para corrigir depois
+    expect(atual.meta.substituiu).toEqual({ letra: 'B', versao: 3, liberada: true });
+  });
+
+  it('o roteiro de antes, com a versão do #156 e sem letra, vale como A (#166)', () => {
+    expect(letraEVersaoDoRoteiro({ versao: 2 })).toEqual({ letra: 'A', versao: 2 });
+    expect(letraEVersaoDoRoteiro(metaVazia())).toEqual({ letra: 'A', versao: 1 });
+    expect(letraEVersaoDoRoteiro({ letra: 'x' })).toEqual({ letra: 'A', versao: 1 });
+    // substituído como liberado, vira a B
+    const r = substituirVersao(roteiro('n', [['HOJE', '']], { substitui: 'a' }), roteiro('a', [['HOJE', '']], { versao: 2 }), { liberada: true }).roteiro;
+    expect([r.meta.letra, r.meta.versao]).toEqual(['B', 1]);
+  });
+
+  it('o título só mostra o que não é o início (#166): "B", "V2", "B V2", e nada na A V1', () => {
+    expect(marcaDaLetraEVersao({ letra: 'A', versao: 1 })).toBe('');
+    expect(marcaDaLetraEVersao({ letra: 'A', versao: 2 })).toBe('V2');
+    expect(marcaDaLetraEVersao({ letra: 'B', versao: 1 })).toBe('B');
+    expect(marcaDaLetraEVersao({ letra: 'B', versao: 2 })).toBe('B V2');
+    // não repete o que o nome já diz
+    expect(marcaDepoisDoNome('V2', 'FUT 27/11 V2 (AH)')).toBe('');
+    expect(marcaDepoisDoNome('B V2', 'FUT 27/11 b v2')).toBe('');
+    expect(marcaDepoisDoNome('B', 'FUT 27/11 B')).toBe('');
+    expect(marcaDepoisDoNome('B', 'PLANO B 27/11')).toBe('B');
+    expect(marcaDepoisDoNome('V2', 'FUT 27/11')).toBe('V2');
+  });
+
+  it('corrigir a resposta no detalhe do card (#166): a letra e a versão refeitas da anterior', () => {
+    const r = substituirVersao(roteiro('n', [['HOJE', '']], { substitui: 'a' }), roteiro('a', [['HOJE', '']], { letra: 'B', versao: 2 }), { liberada: false }).roteiro;
+    expect(letraEVersaoDoRoteiro(r.meta)).toEqual({ letra: 'B', versao: 3 });
+    const sim = corrigirLiberacao(r.meta, true);
+    expect(letraEVersaoDoRoteiro(sim)).toEqual({ letra: 'C', versao: 1 });
+    expect(sim.substituiu?.liberada).toBe(true);
+    expect(letraEVersaoDoRoteiro(corrigirLiberacao(sim, false))).toEqual({ letra: 'B', versao: 3 });
+    // sem a anterior guardada, nada muda
+    const sem = { ...metaVazia(), versao: 2 };
+    expect(corrigirLiberacao(sem, true)).toBe(sem);
   });
 
   it('manter as duas: a nova só perde a pergunta', () => {
