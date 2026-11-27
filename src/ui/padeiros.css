@@ -19,6 +19,9 @@
 .confirmar-pad { display: inline-flex; align-items: center; gap: 10px; }
 .revogar-pad { color: var(--tinta3); }
 .designer-pad { font: 500 13px var(--sans); color: var(--tinta2); }
+.novo-pad { font: 600 17px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-2deg); }
+.pad-novo { background: var(--realce); }
+.troca-pad { grid-column: 1 / -1; margin: 0; font: 400 12.5px var(--sans); color: var(--tinta2); }
 .dica-pad { font: 400 12.5px var(--sans); color: var(--tinta3); }
 .pad-revogada .usuario-pad, .pad-revogada .computador-pad { color: var(--tinta3); text-decoration: line-through; text-decoration-color: var(--regua-forte); }
 .contagem-pad { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 16px; padding: 0; font: 400 13px var(--sans); color: var(--tinta2); }

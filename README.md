@@ -38,7 +38,7 @@ entra no backup com o resto do banco) e são servidos por endereço fixo:
   Portainer, `PROMEIRO_URL/api/publico/poster/<filme>?t=<token>` serve o mesmo pôster fora do login; precisa de uma
   aplicação no Cloudflare Access só para o caminho `/api/publico/poster`, com uma política **Bypass** (como a do aviso
   do Trello). Sem o token, ou com o errado, 404; o que mais estiver embaixo de `/api/publico/` também responde 404 e
-  nunca chega às rotas com login. O fluxo `filmes-recentes` do n8n passa a mandar esse endereço no lugar do link
+  nunca chega às rotas com login, nem com o caminho torto (`%2e%2e`, barras repetidas, outra caixa; #145). O fluxo `filmes-recentes` do n8n passa a mandar esse endereço no lugar do link
   temporário do Teable.
 
 ## O caminho do Padeiro (a chave do Padeiro)
@@ -49,8 +49,10 @@ Access nunca é lido, e o que não é uma rota do Padeiro responde 404, sem cheg
 `/api/padeiros`, barras repetidas e `%2e%2e` no caminho).
 
 - `POST /api/padeiro/cadastro` `{ usuario, computador, sistema, sigla }` (a única rota sem chave): devolve
-  `201 { chave, estado: "pendente" }`. Uma chave por usuário e por computador: o cadastro de novo do mesmo par troca a
-  chave (a antiga deixa de valer) e volta a pendente. O PROMeiro guarda só o hash (SHA-256) da chave, no SQLite (a
+  `201 { chave, estado: "pendente" }`. Uma chave por usuário e por computador. O cadastro de novo do mesmo par, com a
+  chave pendente ou revogada, troca a chave na hora (a antiga deixa de valer). Com a chave **ligada**, ela não cai: o
+  cadastro vira um **pedido novo do mesmo computador**, pendente, ao lado dela nos Cadastros › Padeiros; aprovar o
+  pedido troca a chave (a de antes cai), recusar mantém a de antes. O PROMeiro guarda só o hash (SHA-256) da chave, no SQLite (a
   tabela `padeiros`, que entra no backup).
 - `GET /api/padeiro/eu`, com a chave: `{ estado, usuario, computador, sigla, designer }`, com o estado `pendente`,
   `ligada` ou `revogada`. Sem a chave, ou com uma que não vale mais, `401`.

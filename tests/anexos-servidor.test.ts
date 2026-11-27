@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -255,6 +255,37 @@ describe('os pôsteres guardados pelo PROMeiro', () => {
     // o que está embaixo de /api/publico/ não chega às rotas com login
     expect((await fetch(`${base}/api/publico/roteiros`, { headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } })).status).toBe(404);
     expect(teable.pedidos.length).toBe(antes);
+  });
+
+  it('o caminho torto embaixo de /api/publico (%2e%2e, barras repetidas, outra caixa) não chega às rotas com login (#145)', async () => {
+    const teable = teableDosPosteres();
+    const { base, ana } = await subir({ env: ENV_DOS_FILMES, teable: teable.buscar });
+    // o pedido com o caminho exatamente como vai (o fetch arrumaria o %2e%2e e as barras antes de mandar)
+    const cru = (caminho: string) =>
+      new Promise<number>((ok, falhou) => {
+        const r = request(base + '/', { path: caminho, headers: { 'cf-access-authenticated-user-email': 'ana@empresa.com' } }, (resposta) => (resposta.resume(), ok(resposta.statusCode ?? 0)));
+        r.on('error', falhou);
+        r.end();
+      });
+    // com o login, as rotas respondem…
+    expect((await ana('/api/roteiros')).status).toBe(200);
+    expect((await ana('/api/eu')).status).toBe(200);
+    // …mas não pelo caminho do pôster público, nem com o token
+    for (const caminho of [
+      '/api/publico/%2e%2e/roteiros',
+      '/api/publico/%2E%2E/eu',
+      '/api/publico/poster/%2e%2e/%2e%2e/roteiros',
+      '/api//publico/%2e%2e/roteiros',
+      '/API/publico/%2e%2e/roteiros',
+      '/api/PUBLICO/%2e%2e/eu',
+      '/api/publico%2f%2e%2e%2froteiros',
+      '/api/publico',
+      '/api/publicos',
+      '/api/publico/%2e%2e/roteiros?t=token-do-padeiro',
+    ])
+      expect(await cru(caminho), caminho).toBe(404);
+    // o pôster continua abrindo pelo caminho certo
+    expect(await cru('/api/publico/poster/recFilme0001?t=token-do-padeiro')).toBe(200);
   });
 
   it('sem o POSTER_PUBLICO_TOKEN, o endereço público fica desligado', async () => {
