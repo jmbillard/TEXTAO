@@ -8,6 +8,7 @@ import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
 import { ProducaoAberta } from './ProducaoAberta';
 import { plural } from './util';
+import { VersoesDoCard } from './Apelido';
 import './producoes.css';
 
 /* A tela de produções (#109), na área Designer, ao lado da agenda No Trello: um bloco por praça (na ordem das praças
@@ -177,6 +178,8 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
       }}
     >
       <span className="prod-claquete" title={c.alta ? 'prioridade ALTA' : undefined}>{c.alta ? <MarcaTexto traco={tracoDe(c.id)}>{claquete}</MarcaTexto> : claquete}</span>
+      {/* as versões da chamada (#121), prontas da API, numa linha própria: a claquete não encolhe por elas */}
+      <VersoesDoCard versoes={c.versoesDaChamada} />
       <span className="prod-atracao">{c.atracao || 'sem atração'}</span>
       <span className="prod-linha">
         {artes && <span className="prod-artes">{artes}</span>}

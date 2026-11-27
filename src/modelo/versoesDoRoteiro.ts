@@ -160,3 +160,32 @@ export function chaveDoApelido(claquete: string): string {
 export function nomeComApelido(claquete: string, apelidos: ReadonlyMap<string, string>): string {
   return (claquete && apelidos.get(chaveDoApelido(claquete))) || claquete;
 }
+
+/** De onde vieram as versões que o card mostra (#121). */
+export type FonteDasVersoes = 'roteiro' | 'apelido' | 'claquete';
+
+/** As versões da chamada como o card da agenda e o da tela de produções mostram (#121), prontas da API. */
+export interface VersoesDaChamada {
+  /** as etiquetas, na ordem; vazia quando nem o roteiro nem o nome dizem a versão */
+  lista: Versao[];
+  /** null com a lista vazia */
+  de: FonteDasVersoes | null;
+  /** o roteiro e o código do nome discordam (vale o roteiro): o aviso discreto */
+  conflito: ConflitoDasVersoes | null;
+}
+
+/**
+ * As versões que o card mostra: as lidas do roteiro, quando ele está no PROMeiro e as artes dizem; senão, o código no fim
+ * do apelido (o nome que a tela mostra) ou, sem código nele, o da claquete. O aviso compara o roteiro com esse mesmo
+ * código: o apelido que já leva as versões do roteiro desfaz o conflito.
+ * @param lidas as versões lidas do roteiro (vazia sem roteiro)
+ * @param claquete a claquete original, sem a praça no fim
+ * @param dia AAAA-MM-DD: o dia das etiquetas quando a claquete não tem data (a exibição); '' sem ele
+ */
+export function versoesDaChamada({ lidas, claquete, apelido, dia }: { lidas: readonly Versao[]; claquete: string; apelido: string; dia: string }): VersoesDaChamada {
+  const doApelido = apelido.trim() ? lerVersoes(apelido, dia).versoes : [];
+  const nome = doApelido.length ? apelido : claquete;
+  if (lidas.length) return { lista: [...lidas], de: 'roteiro', conflito: conflitoDasVersoes(nome, lidas) };
+  const lista = doApelido.length ? doApelido : lerVersoes(claquete, dia).versoes;
+  return { lista, de: lista.length ? (doApelido.length ? 'apelido' : 'claquete') : null, conflito: null };
+}

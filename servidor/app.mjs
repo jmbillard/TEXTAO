@@ -42,6 +42,7 @@ import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
 import { criarPreferencias } from './preferencias.mjs';
 import { criarApelidos } from './apelidos.mjs';
+import { versoesDaChamada } from '../src/modelo/versoesDoRoteiro.ts';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { criarEscala, posicoesDoPedido } from './escala.mjs';
 import { criarIlhas } from './ilhas.mjs';
@@ -55,7 +56,7 @@ import { conferirODia, pendenciasQueFicaram } from '../src/modelo/conferenciaDaE
 import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
-import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
+import { CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
@@ -729,6 +730,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const preferencias = criarPreferencias(db);
   // o apelido da claquete (#120), um por roteiro, no SQLite: só para mostrar, o envio continua com a claquete original
   const apelidos = criarApelidos(db);
+  /** O card da tela de produções com as versões da chamada (#121), prontas: as do roteiro dele, ou o código do apelido
+      ou da claquete (sem a praça no fim); o dia das etiquetas sem data na claquete é o do prazo. */
+  const comAsVersoes = (card) =>
+    card && { ...card, versoesDaChamada: versoesDaChamada({ ...apelidos.roteiroDaProducao(card.id), claquete: semPracaNoFim(card.claquete ?? '', pracas), dia: card.prazo ? diaDoPrazo(card.prazo) : '' }) };
   // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
   const areas = criarAreas();
   // montar a pauta (#123): o papel de coordenação e o rascunho do dia, no SQLite (nada vai ao Teable)
@@ -1052,17 +1057,25 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   };
 
   /** Os roteiros que esta pessoa vê, como a fila os recebe (o mesmo para "meus roteiros", #101). */
-  const resumosPara = (eu) =>
-    (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).map((l) => ({
-      id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, versoesLidas: l.versoes_lidas ? JSON.parse(l.versoes_lidas) : [], atualizadoEm: l.atualizado_em,
-      dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
-      compartilhado: !!l.compartilhado,
-      podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
-      revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
-      ...(l.envio_estado ? { trello: { estado: l.envio_estado, card: l.envio_card || undefined, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
-      temOriginal: !!l.tem_original,
-      ...(aberto ? { aberto: true } : {}),
-    }));
+  const resumosPara = (eu) => {
+    const apelidoDe = apelidos.porRoteiro();
+    return (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).map((l) => {
+      const meta = JSON.parse(l.meta);
+      const lidas = l.versoes_lidas ? JSON.parse(l.versoes_lidas) : [];
+      return {
+        id: l.id, meta, nArtes: l.n_artes, versoesLidas: lidas, atualizadoEm: l.atualizado_em,
+        // as versões da chamada do card da agenda (#121), prontas: as do roteiro, ou o código do apelido ou da claquete
+        versoesDaChamada: versoesDaChamada({ lidas, claquete: String(meta?.claquete ?? ''), apelido: apelidoDe.get(l.id) ?? '', dia: String(meta?.dataExibicao ?? '') }),
+        dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
+        compartilhado: !!l.compartilhado,
+        podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
+        revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
+        ...(l.envio_estado ? { trello: { estado: l.envio_estado, card: l.envio_card || undefined, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
+        temOriginal: !!l.tem_original,
+        ...(aberto ? { aberto: true } : {}),
+      };
+    });
+  };
 
   /* ---------- edição simultânea ---------- */
 
@@ -2853,7 +2866,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const desde = new Date(Date.now() - DIAS_DO_ENTREGUE * 86_400_000).toISOString();
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
-      const cards = producoes.naTela(desde, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
+      const cards = producoes.naTela(desde, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)).map(comAsVersoes);
       // quem está logado e o designer dele (#110): sem a ligação, vê a tela, mas não pega, e a tela diz a quem pedir
       const designer = pessoas.designerDoEmail(eu.email);
       const voce = designer ? { designer: designer.nome } : { designer: null, porQue: SEM_LIGACAO };
@@ -2866,7 +2879,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
-      const aTela = (id) => producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
+      const aTela = (id) => comAsVersoes(producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
       const r = await etapaDaProducao.mudar({ producao: corpo.producao, etapa: corpo.etapa, assimMesmo: corpo.assimMesmo === true }, { trello, pracas, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela });
       return json(res, r.status, r.corpo);
     }
@@ -2876,7 +2889,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
-      const aTela = (id) => producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
+      const aTela = (id) => comAsVersoes(producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
       const r = await etapaDaProducao.desfazer({ producao: corpo.producao }, { trello, pracas, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela });
       return json(res, r.status, r.corpo);
     }

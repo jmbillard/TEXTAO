@@ -917,11 +917,44 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
   const comArte = { type: 'doc', content: [...doc.content, { type: 'paragraph', content: [{ type: 'text', text: 'HOJE, 21H', marks: [{ type: 'arte', attrs: { id: 'h1' } }] }] }] };
   const agora = new Date().toISOString();
   await fetch(`${api}/roteiros/agdhoje2`, { method: 'PUT', headers: cabecalhos, body: JSON.stringify({ roteiro: { id: 'agdhoje2', meta: meta(claquete, isoLocal(d), 'RJ'), doc: comArte, revisao: 1, criadoEm: agora, atualizadoEm: agora, publico: true }, nArtes: 5 }) });
+  // #121: o roteiro sem versão nas artes mostra o código da claquete
+  await fetch(`${api}/roteiros/agdhoje4`, { method: 'PUT', headers: cabecalhos, body: JSON.stringify({ roteiro: { id: 'agdhoje4', meta: meta(`CHAMADA_CODIGO_${d.getDate()}/${d.getMonth() + 1} (AH)`, isoLocal(d), 'RJ'), doc, revisao: 1, criadoEm: agora, atualizadoEm: agora, publico: true }, nArtes: 1 }) });
+  await fetch(`${api}/roteiros/agdhoje4/trello`, { method: 'POST', headers: cabecalhos, body: JSON.stringify({ jaEsta: { card: 'agdhoje4' } }) });
   const { ctx, p, erros } = await abrirNoCelular(navegador, url, 'iPhone 13');
   try {
     await levarAteAAgenda(p);
     const card = p.locator('.secao-trello .semana [data-card="agdhoje2"]');
     const nome = async () => (await card.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
+    // #121: o card fechado mostra as versões da chamada, prontas da API, numa linha embaixo da claquete inteira
+    const versoes = (c) => c.locator('.card-semana-abrir .versoes-do-card');
+    // com revisão na fila, a agenda encolhe: o card fica só com a claquete, sem as etiquetas
+    if (await p.isVisible('.secao-trello.encolhida')) {
+      await card.waitFor({ state: 'visible', timeout: 5000 });
+      conferir(!(await versoes(card).isVisible()), rotulo('#121: na agenda encolhida, o card fechado fica sem as etiquetas'));
+      await p.click('.pe-agenda .botao-texto:has-text("ver a semana inteira")');
+      await p.waitForTimeout(400);
+    }
+    await versoes(card).waitFor({ state: 'visible', timeout: 5000 });
+    conferir(JSON.stringify(await versoes(card).locator('.versao-lida').allInnerTexts()) === '["hoje"]', rotulo('#121: o card fechado mostra a versão lida do roteiro'));
+    conferir((await versoes(card).locator('.conflito-versoes').innerText()) === 'a claquete não diz a versão', rotulo('#121: e o aviso de conflito, como no #120'));
+    const arranjo = await card.evaluate((c) => {
+      const q = c.querySelector('.card-semana-claquete');
+      const v = c.querySelector('.card-semana-abrir .versoes-do-card').getBoundingClientRect();
+      const b = c.querySelector('.card-semana-abrir');
+      const dentro = b.clientWidth - parseFloat(getComputedStyle(b).paddingLeft) - parseFloat(getComputedStyle(b).paddingRight);
+      return { abaixo: v.top >= q.getBoundingClientRect().bottom - 0.5, inteira: q.getBoundingClientRect().width >= dentro - 1, dentro: v.right <= c.getBoundingClientRect().right + 0.5 };
+    });
+    conferir(arranjo.abaixo && arranjo.inteira && arranjo.dentro, rotulo(`#121: a claquete inteira, as etiquetas embaixo e dentro do card (${JSON.stringify(arranjo)})`));
+    const doCodigo = p.locator('.secao-trello .semana [data-card="agdhoje4"]');
+    if (await doCodigo.count()) {
+      conferir(JSON.stringify(await versoes(doCodigo).locator('.versao-lida').allInnerTexts()) === '["amanhã","hoje"]', rotulo('#121: sem versão nas artes, o código da claquete'));
+      conferir((await versoes(doCodigo).locator('.conflito-versoes').count()) === 0, rotulo('#121: o código da claquete não tem conflito'));
+      conferir((await versoes(doCodigo).locator('.versao-lida').first().getAttribute('title')) === '(A), do código da claquete', rotulo('#121: a dica diz de onde veio'));
+    } else conferir(false, rotulo('#121: o card do código da claquete está na agenda'));
+    if (CAPTURAS) {
+      await card.scrollIntoViewIfNeeded();
+      await p.screenshot({ path: `${CAPTURAS}/agenda-versoes-celular.png` });
+    }
     await card.locator('.card-semana-abrir').tap();
     await p.waitForTimeout(900);
     const apelido = card.locator('.apelido-claquete');
@@ -930,6 +963,9 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     await apelido.getByRole('button', { name: 'usar (H) no apelido' }).tap();
     await apelido.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
     conferir((await nome()).endsWith('(H)'), rotulo(`o card mostra o apelido com a versão do roteiro (${await nome()})`));
+    // #121: o apelido com as versões do roteiro desfaz o aviso também no card fechado (a lista se lê de novo)
+    await versoes(card).locator('.conflito-versoes').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+    conferir((await versoes(card).locator('.conflito-versoes').count()) === 0, rotulo('#121: o apelido com as versões do roteiro desfaz o aviso no card'));
     await apelido.getByRole('button', { name: 'Editar o apelido' }).tap();
     await apelido.getByRole('textbox', { name: 'Apelido da claquete' }).fill('SÉRIE FICTÍCIA, O FINAL');
     await apelido.getByRole('button', { name: 'guardar' }).tap();

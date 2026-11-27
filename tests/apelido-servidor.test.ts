@@ -169,3 +169,76 @@ describe('as versões lidas do roteiro', () => {
     expect((await (await ana('/api/roteiros')).json())[0].versoesLidas).toEqual([]);
   });
 });
+
+describe('as versões da chamada nos cards (#121), prontas da API', () => {
+  type Versoes = { lista: { codigo: string; rotulo: string }[]; de: string | null; conflito: { daClaquete: string; doRoteiro: string } | null };
+  const rotulos = (v: Versoes) => v.lista.map((x) => x.rotulo);
+  /** O roteiro com a data de exibição (o dia das etiquetas sem data na claquete) e as artes marcadas. */
+  const comData = (quem: (c: string, i?: RequestInit) => Promise<Response>, id: string, claquete: string, artes: string[] = []) =>
+    quem(`/api/roteiros/${id}`, { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete, dataExibicao: '2026-11-27' }, doc: roteiro(claquete, artes).roteiro.doc }, nArtes: artes.length }) });
+  const daAgenda = async (quem: (c: string, i?: RequestInit) => Promise<Response>, id: string) =>
+    ((await (await quem('/api/roteiros')).json()) as { id: string; versoesDaChamada: Versoes }[]).find((r) => r.id === id)!.versoesDaChamada;
+  const daTela = async (quem: (c: string, i?: RequestInit) => Promise<Response>, id: string) =>
+    ((await (await quem('/api/producoes/por-praca')).json()) as { blocos: { colunas: Record<string, { id: string; versoesDaChamada: Versoes }[]> }[] }).blocos
+      .flatMap((b) => Object.values(b.colunas).flat())
+      .find((c) => c.id === id)!.versoesDaChamada;
+  const producao = (db: { prepare: (s: string) => { run: (...a: unknown[]) => void } }, id: string, claquete: string, roteiroId: string | null) => {
+    const agora = new Date().toISOString();
+    db.prepare("INSERT INTO producoes (id, claquete, praca, etapa, roteiro_id, criada_em, atualizada_em) VALUES (?, ?, 'RJ', 'entrada', ?, ?, ?)").run(id, claquete, roteiroId, agora, agora);
+  };
+
+  it('na agenda: vale o roteiro, com o aviso quando a claquete diz outra coisa', async () => {
+    const { ana } = await subir();
+    await comData(ana, 'rot-card-1', 'Show Fictício 27/11 (H)', ['AMANHÃ, 22H30']);
+    const v = await daAgenda(ana, 'rot-card-1');
+    expect(rotulos(v)).toEqual(['amanhã']);
+    expect(v.de).toBe('roteiro');
+    expect(v.conflito).toMatchObject({ daClaquete: '(H)', doRoteiro: '(A)' });
+  });
+
+  it('na agenda: sem versão nas artes, o código da claquete; com apelido que tem código, o do apelido', async () => {
+    const { ana } = await subir();
+    await comData(ana, 'rot-card-2', 'Show Fictício 27/11 (AH)', ['AO VIVO']);
+    expect(await daAgenda(ana, 'rot-card-2')).toEqual({ lista: [{ codigo: 'A', rotulo: 'amanhã', conhecida: true }, { codigo: 'H', rotulo: 'hoje', conhecida: true }], de: 'claquete', conflito: null });
+    await darApelido(ana, 'rot-card-2', 'Show Fictício 27/11 (N)');
+    const v = await daAgenda(ana, 'rot-card-2');
+    expect([rotulos(v), v.de]).toEqual([['nesta sex'], 'apelido']);
+    // o apelido sem código: volta o da claquete
+    await darApelido(ana, 'rot-card-2', 'A estreia fictícia');
+    expect((await daAgenda(ana, 'rot-card-2')).de).toBe('claquete');
+  });
+
+  it('na agenda: o apelido com as versões do roteiro desfaz o aviso; sem versão em lugar nenhum, a lista vazia', async () => {
+    const { ana } = await subir();
+    await comData(ana, 'rot-card-3', 'Show Fictício 27/11 (H)', ['AMANHÃ']);
+    await darApelido(ana, 'rot-card-3', 'Show Fictício 27/11 (A)');
+    expect((await daAgenda(ana, 'rot-card-3')).conflito).toBeNull();
+    await comData(ana, 'rot-card-4', 'Show Fictício 27/11', ['AO VIVO']);
+    expect(await daAgenda(ana, 'rot-card-4')).toEqual({ lista: [], de: null, conflito: null });
+  });
+
+  it('na tela de produções: as do roteiro da Produção (com o aviso), senão o código da claquete dela, mesmo com a praça no fim', async () => {
+    const db = abrirBanco(':memory:');
+    const { ana } = await subir({ db });
+    await comData(ana, 'rot-card-5', 'Show Fictício 27/11 (H)', ['AMANHÃ, 22H30']);
+    producao(db, 'prod-com-roteiro', 'Show Fictício 27/11 (H) RJ', 'rot-card-5');
+    producao(db, 'prod-sem-roteiro', 'Festa Fictícia 27/11 (AH) RJ', null);
+    producao(db, 'prod-sem-versao', 'Festa Fictícia 27/11', null);
+    const comRoteiro = await daTela(ana, 'prod-com-roteiro');
+    expect([rotulos(comRoteiro), comRoteiro.de]).toEqual([['amanhã'], 'roteiro']);
+    expect(comRoteiro.conflito).toMatchObject({ daClaquete: '(H)', doRoteiro: '(A)' });
+    const semRoteiro = await daTela(ana, 'prod-sem-roteiro');
+    expect([rotulos(semRoteiro), semRoteiro.de, semRoteiro.conflito]).toEqual([['amanhã', 'hoje'], 'claquete', null]);
+    expect(await daTela(ana, 'prod-sem-versao')).toEqual({ lista: [], de: null, conflito: null });
+  });
+
+  it('na tela de produções: o apelido do roteiro vale para a Produção dele', async () => {
+    const db = abrirBanco(':memory:');
+    const { ana } = await subir({ db });
+    await comData(ana, 'rot-card-6', 'Show Fictício 27/11', ['AO VIVO']);
+    producao(db, 'prod-apelido', 'Show Fictício 27/11 RJ', 'rot-card-6');
+    await darApelido(ana, 'rot-card-6', 'Show Fictício 27/11 (P)');
+    const v = await daTela(ana, 'prod-apelido');
+    expect([rotulos(v), v.de]).toEqual([['próxima sex'], 'apelido']);
+  });
+});
