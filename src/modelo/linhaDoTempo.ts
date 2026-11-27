@@ -8,13 +8,18 @@ import type { Etapa } from './producao.ts';
 /** O evento como a linha do tempo lê (o que a rota devolve a qualquer pessoa: sem os ids do Trello). */
 export interface EventoDaLinha {
   tipo: TipoDoEvento;
-  campo?: CampoDoEvento;
+  /** o campo mudado; no "fogo" (#147, #160), a arte */
+  campo?: CampoDoEvento | (string & {});
   antes: string | null;
   depois: string | null;
   /** o nome de quem fez, quando o Trello diz */
   quem: string | null;
   /** ISO */
   quando: string;
+  /** de onde veio: 'PROMeiro' (a tela de produções), 'Padeiro' (a janela do After); sem ela, o Teable ou o Trello */
+  origem?: string;
+  /** o evento desfez outro (o desfazer) */
+  desfez?: boolean;
 }
 
 /** O que a linha do tempo lê da Produção: o estado de agora (para a Produção sem eventos) e o total de artes. */
@@ -46,7 +51,7 @@ function daEtapa(antes: string | null, depois: string | null): string | null {
 }
 
 /** O campo mudado: "prioridade alta", "sem prioridade", "praça SP". */
-function doCampo(campo: CampoDoEvento | undefined, depois: string | null): string | null {
+function doCampo(campo: EventoDaLinha['campo'], depois: string | null): string | null {
   const valor = String(depois ?? '').trim();
   if (campo === 'praca') return valor ? `praça ${valor}` : 'sem praça';
   if (campo === 'prioridade' || campo === 'complexidade') return valor ? `${campo} ${valor.toLowerCase()}` : `sem ${campo}`;
@@ -117,4 +122,84 @@ export function frasesDaLinhaDoTempo(p: ProducaoDaLinha, eventos: readonly Event
     ultimoDia = dia;
     return `${texto} ${comDia ? `${dia} ` : ''}${horaDe(quando)}`;
   });
+}
+
+/** Uma linha da linha do tempo do card aberto (#160): o instante, a frase e se foi feita no PROMeiro. */
+export interface ItemDaLinhaDoTempo {
+  quando: string;
+  texto: string;
+  /** feita no PROMeiro (a tela de produções): foi ao Trello */
+  doPROMeiro: boolean;
+}
+
+const NIVEL_DO_FOGO: Record<string, string> = { '1': 'baixa', '2': 'média', '3': 'alta' };
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+/** "sex 4/12", do dia AAAA-MM-DD. */
+const diaCurto = (dia: string) => {
+  const d = new Date(`${dia}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? dia : `${DIAS_CURTOS[d.getUTCDay()]} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+};
+
+/** A frase de um evento, com quem fez na frente quando se sabe; null para o que não se mostra. */
+function fraseDoEvento(e: EventoDaLinha, itens: string): string | null {
+  const quem = String(e.quem ?? '').trim();
+  const por = (verbo: string) => (quem ? `${quem} ${verbo}` : verbo);
+  switch (e.tipo) {
+    case 'criada':
+      return 'entrou na Entrada';
+    case 'designer-entrou':
+      return quem && nomeIgual(quem, e.depois) ? `${quem} pegou` : quem ? `${quem} atribuiu ${e.depois ?? 'alguém'}` : `${e.depois ?? 'alguém'} entrou`;
+    case 'designer-saiu':
+      return quem && nomeIgual(quem, e.antes) ? `${quem} saiu` : quem ? `${quem} tirou ${e.antes ?? 'alguém'}` : `${e.antes ?? 'alguém'} saiu`;
+    case 'etapa':
+      return e.depois === 'entregue' ? por('entregou') : daEtapa(e.antes, e.depois);
+    case 'arquivada':
+      return 'arquivada';
+    case 'desarquivada':
+      return 'desarquivada';
+    case 'abriu-o-projeto':
+      return `${e.depois || quem || 'alguém'} abriu o projeto`;
+    case 'arte-marcada':
+      return por(`marcou ${itens}`);
+    case 'arte-desmarcada':
+      return por(`desmarcou ${itens}`);
+    case 'arte-apagada':
+      return por(`apagou ${itens}`);
+    case 'arte-incluida':
+      return por(e.desfez ? `devolveu ${itens} ao checklist` : `incluiu ${itens}`);
+    case 'fogo':
+      return por(`mudou o fogo de ${e.campo ?? 'uma arte'} para ${NIVEL_DO_FOGO[String(e.depois)] ?? e.depois}`);
+    case 'campo':
+      if (e.campo === 'prazo') return por(e.depois ? `mudou o prazo para ${diaCurto(e.depois)}` : 'tirou o prazo');
+      if (e.campo === 'atracao') return por(e.depois ? `ligou a atração ${e.depois}` : 'desligou a atração');
+      if (e.campo === 'entrega') {
+        const prazo = instante(e.depois);
+        return prazo ? `prazo do card ${diaDe(prazo)} ${horaDe(prazo)}` : 'sem prazo no card';
+      }
+      return doCampo(e.campo, e.depois);
+  }
+  return null;
+}
+const nomeIgual = (a: string, b: string | null) => a.trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+
+/**
+ * A linha do tempo do card aberto da tela de produções (#160): um evento por linha, do mais novo para o mais velho,
+ * com quem fez na frente ("Ana Souza ligou a atração X"). Os itens de uma arte mudados de uma vez (o mesmo tipo, a
+ * mesma pessoa, o mesmo instante) viram uma linha só.
+ */
+export function linhaDoTempoDoCard(eventos: readonly EventoDaLinha[]): ItemDaLinhaDoTempo[] {
+  const ordem = [...eventos].filter((e) => instante(e.quando)).sort((a, b) => Date.parse(a.quando) - Date.parse(b.quando));
+  const grupos: EventoDaLinha[][] = [];
+  const arte = (e: EventoDaLinha) => e.tipo.startsWith('arte-');
+  for (const e of ordem) {
+    const u = grupos[grupos.length - 1]?.[0];
+    if (u && arte(e) && u.tipo === e.tipo && u.quem === e.quem && u.quando === e.quando) grupos[grupos.length - 1].push(e);
+    else grupos.push([e]);
+  }
+  return grupos
+    .flatMap((g) => {
+      const texto = fraseDoEvento(g[0], g.map((e) => e.depois ?? e.antes ?? '').join(', '));
+      return texto ? [{ quando: g[0].quando, texto, doPROMeiro: g[0].origem === 'PROMeiro' }] : [];
+    })
+    .reverse();
 }

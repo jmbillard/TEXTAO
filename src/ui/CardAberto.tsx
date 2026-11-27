@@ -10,7 +10,7 @@ import './cardAberto.css';
    esmaece. A Pauta da edição (#162) abre a ficha da claquete nele; a tela de Produções (#160) usa o mesmo painel. */
 
 /** Quanto o painel leva para abrir e para voltar ao card, em ms (no movimento reduzido, só o esmaecer). */
-const ABRE_MS = 260;
+const ABRE_MS = 300;
 const REDUZIDO_MS = 140;
 const ABRE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 const FECHA = 'cubic-bezier(0.4, 0, 0.8, 0.4)';
@@ -48,6 +48,9 @@ export function CardAberto({ origem, titulo, fechar, children }: { origem: HTMLE
     const p = painel.current;
     const v = veu.current;
     if (!p || !v || typeof p.animate !== 'function') return [];
+    // a animação que já corre (o efeito rodado duas vezes no modo estrito, ou o fechar no meio do abrir) sai antes da
+    // medida: senão o painel se mede no meio dela e o FLIP sai parado
+    for (const el of [p, v, p.firstElementChild]) for (const a of el?.getAnimations?.() ?? []) a.cancel();
     const reduzido = semMovimento();
     const op: KeyframeAnimationOptions = { duration: reduzido ? REDUZIDO_MS : ABRE_MS, easing: abrindo ? ABRE : FECHA, fill: 'both' };
     const sentido = (k: Keyframe[]) => (abrindo ? k : [...k].reverse());
@@ -63,7 +66,7 @@ export function CardAberto({ origem, titulo, fechar, children }: { origem: HTMLE
     p.style.transformOrigin = '0 0';
     lista.push(p.animate(sentido([{ transform: de, opacity: 0.35, borderRadius: '9px' }, { transform: 'none', opacity: 1 }]), op));
     const dentro = p.firstElementChild as HTMLElement | null;
-    if (dentro) lista.push(dentro.animate(sentido([{ opacity: 0 }, { opacity: 0, offset: 0.35 }, { opacity: 1 }]), op));
+    if (dentro) lista.push(dentro.animate(sentido([{ opacity: 0 }, { opacity: 0, offset: 0.45 }, { opacity: 1 }]), op));
     return lista;
   }, []);
 

@@ -1187,6 +1187,32 @@ export function criarTrello(env, deps = {}) {
   /** Move o card para a lista. */
   const moverCard = (card, lista) => trello('PUT', `/cards/${encodeURIComponent(card)}`, { consulta: { idList: lista } });
 
+  /* ---------- o card aberto da tela de produções (#160): o prazo e o checklist das artes ---------- */
+  /** Muda o prazo (due) do card: o dia às 18h de São Paulo (21h UTC). */
+  const mudarPrazoDoCard = (card, dia) => trello('PUT', `/cards/${encodeURIComponent(card)}`, { consulta: { due: `${dia}T21:00:00.000Z` } });
+  /**
+   * Os itens dos checklists do card que o PROMeiro vai mudar (a leitura que o ADR 0006 deixa: o card a mudar).
+   * @returns [{ lista, id, nome, feito }]
+   */
+  async function itensDoCard(card) {
+    const listas = await trello('GET', `/cards/${encodeURIComponent(card)}/checklists`, { consulta: { fields: 'name', checkItem_fields: 'name,state' } });
+    return (Array.isArray(listas) ? listas : []).flatMap((l) => (l.checkItems ?? []).map((i) => ({ lista: String(l.id), id: String(i.id), nome: String(i.name ?? '').trim(), feito: i.state === 'complete' })));
+  }
+  /** Marca (feito) ou desmarca o item do checklist. */
+  const marcarItemDoCard = (card, item, feito) => trello('PUT', `/cards/${encodeURIComponent(card)}/checkItem/${encodeURIComponent(item)}`, { consulta: { state: feito ? 'complete' : 'incomplete' } });
+  /** Apaga o item do checklist. */
+  const apagarItemDoCard = (lista, item) => trello('DELETE', `/checklists/${encodeURIComponent(lista)}/checkItems/${encodeURIComponent(item)}`);
+  /**
+   * Põe o item no checklist das artes do card (no fim), marcado ou não; sem checklist, cria o das artes.
+   * @param lista o checklist onde entra (null: o primeiro do card, ou um novo)
+   * @returns { lista, id } do item
+   */
+  async function incluirItemNoCard(card, lista, nome, feito = false) {
+    const destino = lista ?? (await trello('POST', '/checklists', { consulta: { idCard: card, name: CHECKLIST_DAS_ARTES } }))?.id;
+    const item = await trello('POST', `/checklists/${encodeURIComponent(destino)}/checkItems`, { consulta: { name: nome, pos: 'bottom', ...(feito ? { checked: 'true' } : {}) } });
+    return { lista: String(destino), id: String(item?.id ?? '') };
+  }
+
   /** A linha da produção da arte como a carga e a releitura leem (src/modelo/eventosDoTeable.ts, LinhaRelida). */
   const linhaDaCarga = (l) => ({
     registro: String(l.__id),
@@ -1520,5 +1546,5 @@ export function criarTrello(env, deps = {}) {
     apagar: (id) => trello('DELETE', `/webhooks/${encodeURIComponent(id)}`),
   };
 
-  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, entrarNoCard, sairDoCard, moverCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, linhasDosFilmesRecentes, projetosDosFilmes, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, entrarNoCard, sairDoCard, moverCard, mudarPrazoDoCard, itensDoCard, marcarItemDoCard, apagarItemDoCard, incluirItemNoCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, linhasDosFilmesRecentes, projetosDosFilmes, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

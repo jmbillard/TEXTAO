@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as PointerDoReact, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as PointerDoReact, type ReactNode } from 'react';
 import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
-import { blocosRecolhidos, desfazerEtapaDaProducao, lembrarOrdemDasPracas, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao, ordemDasPracas } from '../dados/armazenamento';
+import { blocosRecolhidos, lerProducaoAberta, type ProducaoAberta as ProducaoLida, desfazerEtapaDaProducao, lembrarOrdemDasPracas, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao, ordemDasPracas } from '../dados/armazenamento';
 import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, abertasNoComeco, abrirAPraca, comOCard, diaDoPrazo, diasDoEntregue, faltaArte, naOrdem, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
@@ -34,7 +34,8 @@ import './producoes.css';
    #113: cada bloco se recolhe numa coluna estreita, só com a sigla e a contagem de cada coluna (no celular, uma linha);
    o PROMeiro lembra os recolhidos por pessoa, em qualquer aparelho (as preferências da pessoa). Um clique no card (fora
    dos botões; o arrasto não conta) abre a Produção na própria tela: a linha do tempo, as artes e o link do card no
-   Trello (src/ui/ProducaoAberta.tsx).
+   Trello (src/ui/ProducaoAberta.tsx). #160: ela abre no card aberto do centro (CardAberto), crescendo do card clicado,
+   e ali se mudam a atração, o prazo, os designers e as artes; o card da tela muda junto.
    #159: o topo é o mesmo das outras telas e não se mexe; sem o texto de explicação. No máximo 3 praças abertas: abrir
    mais uma fecha a aberta há mais tempo. A pessoa arruma as praças arrastando pela faixa do nome, e a ordem fica
    lembrada como os recolhidos. A praça fechada mostra o nome na vertical. A Produzindo vazia fica fina e se abre com um
@@ -99,6 +100,8 @@ interface Desfazivel {
   depois: CardDaProducao;
   texto: string;
 }
+/** Quanto o clique espera a Produção ser lida antes de abrir o card aberto (#160); depois disso, abre e lê lá. */
+const ESPERA_PARA_ABRIR_MS = 350;
 /** Quanto tempo a caixinha de desfazer fica aberta. */
 const DESFAZER_MS = 10_000;
 
@@ -193,7 +196,7 @@ const Alca = () => (
 /** O clique que abre a Produção (#113): no card, fora dos botões, do link e do aviso de arte faltando. */
 const cliqueDeAbrir = (e: { target: EventTarget }) => !(e.target as Element).closest('button, a, .prod-aviso');
 
-function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: () => void }) {
+function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: (el: HTMLElement) => void }) {
   // o apelido da claquete da Produção (#120, #154) no lugar da claquete: só para mostrar; a original, ao passar o mouse
   useApelidos();
   const apelido = apelidoDaProducao(c.id);
@@ -222,11 +225,11 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
       // abrir a Produção (#113): o clique no card (o arrasto não vira clique) e o Enter com o card em foco
       tabIndex={0}
       aria-haspopup="dialog"
-      onClick={(e) => cliqueDeAbrir(e) && abrir()}
+      onClick={(e) => cliqueDeAbrir(e) && abrir(e.currentTarget)}
       onKeyDown={(e) => {
         if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault();
-          abrir();
+          abrir(e.currentTarget);
         }
       }}
     >
@@ -268,6 +271,21 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
   );
 }
 
+/** Os botões da etapa no card aberto (#160): os mesmos do card, com o aviso de arte faltando. */
+function BotoesDaEtapa({ acoes }: { acoes: Acoes | null }) {
+  if (!acoes) return null;
+  if (acoes.aviso) return <AvisoDeFalta aviso={acoes.aviso} indo={acoes.indo} />;
+  return (
+    <span className="prod-acoes pa-acoes">
+      {acoes.para.map((etapa, i) => (
+        <button key={etapa} type="button" className={`botao prod-mudar ${DO_BOTAO[etapa].classe}${i === 0 && etapa !== 'entrada' ? ' primario' : ''}`} disabled={acoes.indo} onClick={() => acoes.fazer(etapa)}>
+          {DO_BOTAO[etapa].rotulo}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 /** O que a coluna faz com o arrasto em curso (#112): aceita o card (do mesmo bloco, para onde ele pode ir) e solta. */
 interface Soltar {
   arrasto: Arrasto | null;
@@ -279,7 +297,8 @@ interface Soltar {
 interface DoBloco {
   recolhido: boolean;
   alternar: () => void;
-  abrir: (c: CardDaProducao) => void;
+  /** abrir a Produção do card (#160: o card aberto cresce do card clicado) */
+  abrir: (c: CardDaProducao, el: HTMLElement) => void;
   levantado: boolean;
   arrastar: (e: PointerDoReact<HTMLElement>) => void;
   /** a vez do bloco na cascata da primeira carga (#159): as colunas chegam uma depois da outra, de bloco em bloco */
@@ -343,7 +362,7 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
   const cardsDe = (cs: CardDaProducao[]) => (
     <ul className="prod-cards">
       {cs.map((c) => (
-        <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} abrir={() => bloco.abrir(c)} />
+        <CardDaTela key={c.id} c={c} hoje={hoje} acoes={acoes(c)} abrir={(el) => bloco.abrir(c, el)} />
       ))}
     </ul>
   );
@@ -425,7 +444,13 @@ export function Producoes({ topo }: Props) {
   // para a mais nova, que valem depois do primeiro clique; e a Produção aberta (o card como estava ao abrir)
   const [recolhidosLembrados] = useState(blocosRecolhidos);
   const [abertas, setAbertas] = useState<readonly string[] | null>(null);
-  const [aberta, setAberta] = useState<CardDaProducao | null>(null);
+  const [aberta, setAberta] = useState<{ card: CardDaProducao; origem: HTMLElement | null; inicial: ProducaoLida | null } | null>(null);
+  /** Abrir a Produção (#160): lida antes (até um instante), para o painel crescer do card já com a altura dele. */
+  const abrirAProducao = useCallback((card: CardDaProducao, origem: HTMLElement) => {
+    let inicial: ProducaoLida | null = null;
+    const pedido = lerProducaoAberta(card.id).then((l) => (inicial = l), () => null);
+    void Promise.race([pedido, new Promise((ok) => setTimeout(ok, ESPERA_PARA_ABRIR_MS))]).then(() => setAberta({ card, origem, inicial }));
+  }, []);
   // a ordem das praças, arrumada arrastando (#159) e lembrada por pessoa
   const [ordem, setOrdem] = useState<readonly string[]>(ordemDasPracas);
   const area = useRef<HTMLDivElement>(null);
@@ -580,14 +605,17 @@ export function Producoes({ topo }: Props) {
   useDeslize(area, ':scope > .prod-bloco:not(.levantado)', 'data-praca', pracas.join('\n'));
   useDeslize(area, '.prod-card', 'data-producao', blocos.map((b) => (abertasAgora.includes(b.praca) ? COLUNAS_DO_BLOCO.map((k) => b.colunas[k].map((c) => c.id).join(',')).join('/') : '')).join('|'));
   // a Produção aberta acompanha a tela (a mudança e a releitura); a que saiu da tela fica como estava
-  const cardAberto = aberta && (lido?.blocos.flatMap((b) => COLUNAS_DO_BLOCO.flatMap((k) => b.colunas[k])).find((c) => c.id === aberta.id) ?? aberta);
-  const fecharAberta = useCallback(() => {
-    setAberta((a) => {
-      // o foco volta para o card que abriu
-      if (a) requestAnimationFrame(() => document.querySelector<HTMLElement>(`.prod-card[data-producao="${CSS.escape(a.id)}"]`)?.focus());
-      return null;
-    });
-  }, []);
+  const cardAberto = aberta && (lido?.blocos.flatMap((b) => COLUNAS_DO_BLOCO.flatMap((k) => b.colunas[k])).find((c) => c.id === aberta.card.id) ?? aberta.card);
+  // o card aberto volta para o card da tela (#160): o que mudou de coluna é outro elemento, achado de novo
+  useLayoutEffect(() => {
+    if (!aberta || aberta.origem?.isConnected) return;
+    const el = document.querySelector<HTMLElement>(`.prod-card[data-producao="${CSS.escape(aberta.card.id)}"]`);
+    if (el) setAberta((a) => a && { ...a, origem: el });
+  });
+  // o foco volta para o card que abriu (o CardAberto devolve)
+  const fecharAberta = useCallback(() => setAberta(null), []);
+  /** O card mudado no card aberto (#160): a tela mostra na hora. */
+  const mudouNoCard = useCallback((c: CardDaProducao) => setLido((t) => t && comOCard(t, c)), []);
   const solta: Soltar = {
     arrasto,
     sobre: (k) => setArrasto((a) => a && { ...a, sobre: k }),
@@ -641,11 +669,24 @@ export function Producoes({ topo }: Props) {
                   hoje={hoje}
                   acoes={acoes}
                   solta={solta}
-                  bloco={{ recolhido: !abertasAgora.includes(b.praca), alternar: () => alternar(b.praca), abrir: setAberta, levantado: reordenar.levantada === b.praca, arrastar: reordenar.iniciar(b.praca), cascata: chegando ? i : 0 }}
+                  bloco={{ recolhido: !abertasAgora.includes(b.praca), alternar: () => alternar(b.praca), abrir: abrirAProducao, levantado: reordenar.levantada === b.praca, arrastar: reordenar.iniciar(b.praca), cascata: chegando ? i : 0 }}
                 />
               ))}
             </div>
-            {cardAberto && <ProducaoAberta card={cardAberto} prazo={cardAberto.prazo ? prazoEscrito(cardAberto.prazo, hoje) : null} fechar={fecharAberta} />}
+            {cardAberto && aberta && (
+              <ProducaoAberta
+                card={cardAberto}
+                origem={aberta.origem}
+                inicial={aberta.inicial}
+                hoje={hoje}
+                prazoEscrito={(p) => prazoEscrito(p, hoje)}
+                voce={designer}
+                recusa={recusa}
+                etapa={<BotoesDaEtapa acoes={acoes(cardAberto)} />}
+                mudou={mudouNoCard}
+                fechar={fecharAberta}
+              />
+            )}
             {desfazivel && (
               <div className="prod-desfazer" role="status">
                 <span className="prod-desfazer-texto">{desfazivel.texto}</span>
