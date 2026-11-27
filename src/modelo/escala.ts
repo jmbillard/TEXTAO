@@ -46,7 +46,12 @@ export interface DemandaDaEscala {
   id: string;
   texto: string;
 }
-/** Uma posição do dia: o lugar de um editor num turno, com o horário e as demandas. */
+/** Um aviso da posição (#125): um recado da coordenação para o editor dela, como foi escrito; não é demanda. */
+export interface AvisoDaEscala {
+  id: string;
+  texto: string;
+}
+/** Uma posição do dia: o lugar de um editor num turno, com o horário, as demandas e os avisos. */
 export interface PosicaoDaEscala {
   id: string;
   turno: IdDoTurno;
@@ -57,12 +62,16 @@ export interface PosicaoDaEscala {
   /** no padrão quando o PROMeiro entende; senão, como foi escrito */
   horario: string;
   demandas: DemandaDaEscala[];
+  /** os avisos (⚑) para o editor da posição, à parte das demandas (#125) */
+  avisos: AvisoDaEscala[];
 }
 /** O dia como a rota devolve (GET e PUT /api/montar-pauta). */
 export interface DiaDaEscala {
   dia: string;
   estado: EstadoDoDia;
   posicoes: PosicaoDaEscala[];
+  /** o recado do dia, para todos, sem posição (#125); '' sem recado */
+  recado: string;
   /** a semana do dia, de segunda a domingo, com o estado de cada um (as abas) */
   semana: { dia: string; estado: EstadoDoDia }[];
   turnos: TurnoDaEscala[];

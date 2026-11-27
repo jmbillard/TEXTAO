@@ -44,7 +44,7 @@ import { criarPreferencias } from './preferencias.mjs';
 import { criarApelidos } from './apelidos.mjs';
 import { versoesDaChamada } from '../src/modelo/versoesDoRoteiro.ts';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
-import { criarEscala, posicoesDoPedido } from './escala.mjs';
+import { criarEscala, posicoesDoPedido, recadoDoPedido } from './escala.mjs';
 import { criarIlhas } from './ilhas.mjs';
 import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
@@ -1598,7 +1598,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /**
    * Montar a pauta (#123), só para a coordenação: GET /api/montar-pauta?dia= (sem ele, amanhã, em São Paulo) lê o
    * rascunho do dia, com as abas da semana (o estado de cada dia), os turnos e a lista dos editores cadastrados; PUT
-   * { posicoes } troca o rascunho do dia inteiro (o horário e a claquete vão para o padrão) e devolve o mesmo que o GET.
+   * { posicoes, recado } troca o rascunho do dia inteiro (o horário e a claquete vão para o padrão; os avisos de cada
+   * posição e o recado do dia, #125, como foram escritos) e devolve o mesmo que o GET.
    * Conferir e publicar (#127), todos POST e devolvendo o mesmo que o GET: /conferida { chave, certo } dispensa (ou
    * reabre) uma pendência da conferência; /publicar publica o rascunho gravado, mesmo com pendências, e guarda quantas
    * "para olhar" ficaram; /desfazer tira a última publicação. Fica no SQLite do PROMeiro: nada vai ao Teable (a virada
@@ -1625,7 +1626,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           turnos: new Set(turnosDoDia(turnos, antes).map((t) => t.id)),
           ilhaVale: (ilha, posicao) => cadastradas.has(ilha) || antes.some((p) => p.id === posicao && p.ilha === ilha),
         };
-        escala.gravarDia(dia, posicoesDoPedido(((await lerCorpo(req)) ?? {}).posicoes, dia, validos), eu.email);
+        const corpo = (await lerCorpo(req)) ?? {};
+        // o recado do dia (#125): sem ele no pedido, fica o que estava
+        const recado = typeof corpo === 'object' && 'recado' in corpo ? recadoDoPedido(corpo.recado) : undefined;
+        escala.gravarDia(dia, posicoesDoPedido(corpo.posicoes, dia, validos), eu.email, recado);
       }
       if (acao === 'conferida') {
         const { chave, certo } = (await lerCorpo(req)) ?? {};

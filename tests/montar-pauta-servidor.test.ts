@@ -122,10 +122,10 @@ describe('montar a pauta: o papel de coordenação e o rascunho do dia (#123)', 
     expect(d.estado).toBe('rascunho');
     expect(d.gravadoPor).toBe('bia.coord@empresa.com');
     expect(d.posicoes).toEqual([
-      { id: 'pos-1', turno: 'madrugada', editor: 'Rui Teixeira', ilha: '', horario: '22h às 6h', demandas: [{ id: 'd-1', texto: 'Noite de Gala 27/11 (DP)' }, { id: 'd-3', texto: 'COMUNICAÇÃO' }] },
+      { id: 'pos-1', turno: 'madrugada', editor: 'Rui Teixeira', ilha: '', horario: '22h às 6h', demandas: [{ id: 'd-1', texto: 'Noite de Gala 27/11 (DP)' }, { id: 'd-3', texto: 'COMUNICAÇÃO' }], avisos: [] },
       // o horário que o PROMeiro não entende fica como foi escrito
-      { id: 'pos-2', turno: 'tarde', editor: 'Elis Furtado', ilha: '', horario: 'depois do almoço', demandas: [{ id: 'd-4', texto: 'Mundo Animal 30/11 (P)' }] },
-      { id: 'pos-3', turno: 'tarde', editor: '', ilha: '', horario: '14h às 22h53', demandas: [] },
+      { id: 'pos-2', turno: 'tarde', editor: 'Elis Furtado', ilha: '', horario: 'depois do almoço', demandas: [{ id: 'd-4', texto: 'Mundo Animal 30/11 (P)' }], avisos: [] },
+      { id: 'pos-3', turno: 'tarde', editor: '', ilha: '', horario: '14h às 22h53', demandas: [], avisos: [] },
     ]);
     // a aba do dia passa a rascunho; as outras continuam vazias
     expect(d.semana.find((s: { dia: string }) => s.dia === SEXTA).estado).toBe('rascunho');

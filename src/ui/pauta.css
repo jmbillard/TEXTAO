@@ -58,7 +58,7 @@
   animation: pauta-balao 0.18s var(--suave);
 }
 .pauta-aviso-titulo { font: 600 17px/1 Caveat, cursive; color: var(--ultra); }
-.pauta-aviso-texto { overflow-wrap: anywhere; }
+.pauta-aviso-texto { overflow-wrap: anywhere; white-space: pre-line; }
 @keyframes pauta-balao { from { opacity: 0; transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .pauta-aviso-balao { animation: none; } }
 

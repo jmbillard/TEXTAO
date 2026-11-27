@@ -63,6 +63,23 @@
 .montar-data { font: 500 11px var(--sans); color: var(--tinta2); }
 .montar-grava { font: 400 10.5px/1.3 var(--sans); color: var(--tinta3); }
 
+/* os avisos da posição (#125): à parte das demandas, no fundo do aviso da Pauta, com o ⚑ */
+.montar-avisos { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.montar-aviso { display: flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 8px; background: var(--ultra-suave); color: var(--ultra-tinta); }
+.montar-aviso-marca { flex: none; font-size: 12px; }
+.montar-aviso .montar-in { height: 26px; color: var(--ultra-tinta); font: italic 400 14px var(--serifa); }
+.montar-aviso .montar-in::placeholder { color: var(--ultra-tinta); opacity: 0.6; }
+.montar-aviso .montar-in:focus { background: transparent; }
+.montar-mais-aviso { align-self: flex-start; margin-top: 4px; font-size: 12px; }
+
+/* o recado do dia (#125): para todos, acima da grade */
+.montar-recado { display: flex; flex-direction: column; gap: 4px; margin: 0 0 16px; padding: 10px 14px 10px; border-radius: 12px; background: var(--ultra-suave); color: var(--ultra-tinta); }
+.montar-recado-rotulo { font: 600 10.5px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; }
+.montar-recado-in { width: 100%; min-height: 26px; padding: 2px; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ultra-tinta); font: italic 400 16px/1.4 var(--serifa); resize: vertical; outline: 0; }
+.montar-recado-in::placeholder { color: var(--ultra-tinta); opacity: 0.6; }
+.montar-recado-in:hover { border-bottom-color: color-mix(in srgb, var(--ultra-tinta) 30%, transparent); }
+.montar-recado-in:focus { border-bottom-color: var(--ultra); }
+
 /* a lista dos editores */
 .montar-lista { left: -6px; right: -6px; top: calc(100% + 4px); min-width: 250px; max-height: 340px; overflow: auto; }
 .montar-lista .menu-item { min-height: 40px; cursor: pointer; }

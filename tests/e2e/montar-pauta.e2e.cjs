@@ -34,6 +34,12 @@
 // tirá-lo, e tirar deixa a posição vaga, manda as demandas para "Para distribuir" e o dia fica alterado. Na Pauta da
 // edição, a Lia vê os dois "fora", sem o motivo; a administradora vê o motivo.
 //
+// Os avisos e o recado do dia (#125): a Bia escreve o recado do dia, no campo acima da grade, e, no Rui, abre os avisos
+// pelo "+ aviso" (Enter cria outro, Backspace na vazia apaga), à parte das demandas. Recarregada, tudo volta como foi
+// gravado. A conferência conta os avisos (o recado conta como um) e a tela "publicada" mostra o recado e os avisos. Na
+// Pauta da edição, a Lia vê os avisos no balão do Rui e o recado no da coluna "sem editor"; o aviso que o Teable já tem
+// não dobra. Desfeita a publicação, a Pauta volta a ser só a do Teable.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:montar-pauta
 // Com CAPTURAS=pasta, grava as capturas (densidade 2).
 const assert = require('node:assert/strict');
@@ -486,6 +492,71 @@ async function conferirEPublicar(navegador, url, teable) {
   console.log('ok: conferir, corrigir, "está certo", publicar, a Pauta sem dobrar, alterado, republicar e desfazer');
 }
 
+/* ---------- os avisos e o recado do dia (#125) ---------- */
+async function avisosERecado(navegador, url) {
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`);
+  await p.locator('.montar-celula').first().waitFor();
+  // o recado do dia, no campo próprio, acima da grade
+  await p.getByLabel('Recado do dia').fill('Reunião geral às 15h, na sala 3');
+  // os avisos do Rui, à parte das demandas, pelo teclado
+  const rui = turno(p, 'Madrugada').locator('.montar-celula').first();
+  const demandasAntes = await rui.locator('[data-campo="demanda"]').count();
+  await rui.getByRole('button', { name: '+ aviso' }).click();
+  assert.equal((await focado(p)).campo, 'aviso', '"+ aviso" põe o foco no aviso novo');
+  await p.keyboard.type('Redator vem acompanhar');
+  await p.keyboard.press('Enter');
+  await p.keyboard.type('Chega às 21h');
+  await p.keyboard.press('Enter');
+  assert.equal(await rui.locator('[data-campo="aviso"]').count(), 3, 'Enter cria outro aviso');
+  await p.keyboard.press('Backspace');
+  assert.deepEqual(await focado(p).then((f) => [f.campo, f.valor]), ['aviso', 'Chega às 21h'], 'Backspace na vazia apaga e sobe');
+  await p.keyboard.press('ArrowUp');
+  await p.keyboard.press('ArrowUp');
+  assert.equal((await focado(p)).campo, 'demanda', 'de cima do primeiro aviso, a última demanda');
+  assert.equal(await rui.locator('[data-campo="demanda"]').count(), demandasAntes, 'os avisos não viram demandas');
+  await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
+  await semRolagemDeLado(p, 'avisos');
+  await capturar(p, '11-montar-avisos-e-recado');
+
+  // recarregada, tudo volta como foi gravado
+  await p.reload();
+  await p.locator('.montar-celula').first().waitFor();
+  assert.equal(await p.getByLabel('Recado do dia').inputValue(), 'Reunião geral às 15h, na sala 3');
+  assert.deepEqual(await turno(p, 'Madrugada').locator('.montar-celula').first().locator('[data-campo="aviso"]').evaluateAll((els) => els.map((e) => e.value)), ['Redator vem acompanhar', 'Chega às 21h']);
+
+  // a conferência conta os avisos (o recado conta como um); a "publicada" mostra o recado e os avisos
+  await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
+  await p.getByRole('heading', { name: 'Conferir antes de publicar' }).waitFor();
+  assert.ok((await p.locator('.conf-placar span').allInnerTexts()).map((x) => x.replace(/\s+/g, ' ')).includes('3 avisos'), 'o placar conta os avisos');
+  await p.getByRole('button', { name: /^Publicar/ }).click();
+  await p.getByText('publicada!').waitFor();
+  await p.getByRole('note', { name: 'Recado do dia' }).getByText('Reunião geral às 15h, na sala 3').waitFor();
+  assert.match(await p.getByRole('list', { name: 'Avisos para Rui Teixeira' }).innerText(), /Redator vem acompanhar[\s\S]*Chega às 21h/);
+  await capturar(p, '12-publicada-com-avisos', { fullPage: true });
+
+  // na Pauta da edição (a Lia): os avisos no balão do Rui, o recado no "sem editor"
+  const lia = await abrir(navegador, url, LIA, `#/pauta/dia/${amanha}`);
+  await lia.p.locator('.pauta-colunas').waitFor();
+  const balao = lia.p.getByRole('note', { name: 'avisos para Rui Teixeira' });
+  await balao.waitFor();
+  assert.deepEqual(await balao.locator('.pauta-aviso-texto').allInnerTexts(), ['Redator vem acompanhar', 'Chega às 21h']);
+  assert.deepEqual(await lia.p.getByRole('note', { name: 'aviso para sem editor' }).locator('.pauta-aviso-texto').allInnerTexts(), ['Reunião geral às 15h, na sala 3']);
+  assert.equal(await lia.p.locator('.pauta-cards .pauta-item', { hasText: 'Chega às 21h' }).count(), 0, 'o aviso não é item da pauta');
+  await capturar(lia.p, '13-pauta-com-avisos-e-recado', { fullPage: true });
+
+  // desfeita a publicação, a Pauta volta a ser só a do Teable (as ausências, a seguir, começam do rascunho)
+  await p.getByRole('button', { name: 'Desfazer' }).click();
+  await p.locator('.pub-faixa', { hasText: 'Publicação desfeita' }).waitFor();
+  await lia.p.reload();
+  await lia.p.locator('.pauta-colunas').waitFor();
+  assert.equal(await lia.p.locator('.pauta-balao-aviso').count(), 0, 'sem a publicação, sem os avisos do PROMeiro');
+  assert.deepEqual(erros, [], 'avisos: erros na página');
+  assert.deepEqual(lia.erros, [], 'pauta com avisos: erros na página');
+  await lia.ctx.close();
+  await ctx.close();
+  console.log('ok: os avisos por posição e o recado do dia, gravados, conferidos, publicados e na Pauta');
+}
+
 /* ---------- ausências com período (#128) ---------- */
 const curto = (iso) => `${semanaDe(iso)} ${diaMes(iso)}`;
 async function ausencias(navegador, url, api) {
@@ -581,6 +652,7 @@ async function principal() {
     await noCelular(navegador, s.url);
     await conferirEPublicar(navegador, s.url, teable);
     await turnosDaConfiguracao(navegador, s.url, s.app);
+    await avisosERecado(navegador, s.url);
     await ausencias(navegador, s.url, s.api);
   } catch (e) {
     falhou = true;
