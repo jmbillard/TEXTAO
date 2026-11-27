@@ -54,7 +54,7 @@ import { criarIlhas } from './ilhas.mjs';
 import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
-import { DIAS_ANTES, DIAS_DEPOIS, agendaDeFilmes, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
+import { DIAS_ANTES, DIAS_ANTES_DA_AGENDA, DIAS_DEPOIS, agendaDeFilmes, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
 import { DIAS_DO_TRELLO, criarIndiceDoBuscar, dasAtracoes, doTrello, montarIndice } from './indice-do-buscar.mjs';
 import { criarProjetoDoPadeiro } from './projeto-do-padeiro.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
@@ -3321,7 +3321,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const hoje = diaEmBrasilia(new Date());
       let linhas;
       try {
-        linhas = await trello.linhasDosFilmesRecentes?.(somarDias(hoje, -DIAS_ANTES), somarDias(hoje, DIAS_DEPOIS));
+        linhas = await trello.linhasDosFilmesRecentes?.(somarDias(hoje, -DIAS_ANTES_DA_AGENDA), somarDias(hoje, DIAS_DEPOIS));
       } catch (e) {
         console.warn(`[filmes] não li a agenda de filmes: ${e instanceof Error ? e.message : e}`);
         return json(res, 503, { erro: 'O PROMeiro não conseguiu ler os filmes agora.' });
