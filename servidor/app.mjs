@@ -1625,8 +1625,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * A coluna lateral (#126), todos POST e devolvendo o mesmo que o GET (que traz também a lista "Para distribuir"):
    * /para-distribuir { texto } junta a lista escrita ou colada (uma claquete por linha); /levar { id, posicao, antesDe }
    * leva uma claquete da lista para a posição; /mover { demanda, posicao, antesDe } move a demanda; /devolver
-   * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno } escala quem está sem escala
-   * (numa posição, ou numa nova do turno), e recusa quem está fora no dia.
+   * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno, id? } escala quem está sem escala
+   * (numa posição, ou numa nova do turno, com o `id` que a tela já mostra), e recusa quem está fora no dia.
    * Repetir (#129): POST /repetir { de } copia para o dia vazio a escala do mesmo dia na semana passada ('semana-passada'),
    * a de ontem ('ontem') ou, em cada dia vazio da semana, a do mesmo dia na semana passada ('semana-inteira'): a ilha
    * (a que ainda está no cadastro), o editor, o horário e as tarefas, nunca as claquetes, os avisos nem o recado. Quem

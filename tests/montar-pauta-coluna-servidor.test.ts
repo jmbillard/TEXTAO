@@ -155,6 +155,12 @@ describe('montar a pauta: a coluna lateral e o arrastar (#126)', () => {
       ['tarde', 'Elis Furtado', '14h às 23h'],
       ['tarde', 'Gil Moura', '14h às 23h'],
     ]);
+    // a posição nova fica com o id que a tela já mostra; o que já existe no dia (ou mal formado) não vale
+    const comId: Dia = await (await acao('escalar', { editor: 'Bia Campos', turno: 'noite', id: 'p-da-tela-1' })).json();
+    expect(comId.posicoes.find((p) => p.editor === 'Bia Campos')!.id).toBe('p-da-tela-1');
+    const repetido: Dia = await (await acao('escalar', { editor: 'Lia Moraes', turno: 'noite', id: 'pos-1' })).json();
+    expect(repetido.posicoes.filter((p) => p.id === 'pos-1')).toHaveLength(1);
+    expect(repetido.posicoes.find((p) => p.editor === 'Lia Moraes')!.id).not.toBe('pos-1');
     // no dia vazio, a posição nova cria o rascunho
     const domingo: Dia = await (await acao('escalar', { editor: 'Rui Teixeira', turno: 'noite' }, DOMINGO)).json();
     expect([domingo.estado, resumo(domingo)]).toEqual(['rascunho', ['noite/Rui Teixeira: ']]);

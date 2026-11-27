@@ -241,9 +241,13 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   };
 
   /* ---------- a coluna lateral (#126) ---------- */
+  // as ações da coluna vão ao servidor uma de cada vez, na ordem; só a resposta da última vale para a tela
+  const filaDaColuna = useRef<Promise<unknown>>(Promise.resolve());
+  const ultimaDaColuna = useRef(0);
   /**
    * Uma ação da coluna: grava antes o que falta, mostra já o resultado (`local`, nas posições sem as linhas vazias;
    * `lista`, em "Para distribuir") e vai ao servidor; fica com o dia que ele gravou (ou volta ao de antes, no erro).
+   * Com outra ação feita enquanto esta ia, a resposta desta é velha (não tem a outra): a tela espera a da última.
    */
   const naColuna = async (local: ((ps: PosicaoDaEscala[]) => PosicaoDaEscala[] | null) | null, lista: ((l: DemandaParaDistribuir[]) => DemandaParaDistribuir[]) | null, servidor: (dia: string) => Promise<DiaDaEscala>) => {
     if (!dados) return false;
@@ -257,8 +261,12 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
       setPosicoes(posicoesAgora.current);
     }
     if (lista) setDados((d) => (d?.dia === dia ? { ...d, paraDistribuir: lista(d.paraDistribuir ?? []) } : d));
+    const esta = ++ultimaDaColuna.current;
+    const resposta = filaDaColuna.current.then(() => servidor(dia));
+    filaDaColuna.current = resposta.catch(() => undefined);
     try {
-      const d = await servidor(dia);
+      const d = await resposta;
+      if (esta !== ultimaDaColuna.current) return true;
       setDados((x) => (x?.dia === d.dia ? { ...x, estado: d.estado, semana: d.semana, turnos: d.turnos, ocupadas: d.ocupadas, publicacao: d.publicacao, historico: d.historico, dispensadas: d.dispensadas, gravadoEm: d.gravadoEm, gravadoPor: d.gravadoPor, paraDistribuir: d.paraDistribuir } : x));
       // quem digitou enquanto isso fica com o que digitou (a gravação seguinte leva tudo, com a ação)
       if (!pendente.current && !prazo.current) {
@@ -267,11 +275,13 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
       }
       return true;
     } catch (e) {
-      if (!pendente.current) {
-        posicoesAgora.current = antes.posicoes;
-        setPosicoes(antes.posicoes);
+      if (esta === ultimaDaColuna.current) {
+        if (!pendente.current) {
+          posicoesAgora.current = antes.posicoes;
+          setPosicoes(antes.posicoes);
+        }
+        setDados((d) => (d?.dia === dia ? { ...d, paraDistribuir: antes.lista } : d));
       }
-      setDados((d) => (d?.dia === dia ? { ...d, paraDistribuir: antes.lista } : d));
       setErroDaColuna(e instanceof Error ? e.message : String(e));
       return false;
     }
@@ -279,9 +289,11 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const listaDoDia = dados?.paraDistribuir ?? [];
   const escalar = (editor: string, alvo: { posicao: string } | { turno: string }) => {
     const t = 'turno' in alvo ? turnos.find((x) => x.id === alvo.turno) : null;
+    // a posição nova vai ao servidor com o id que a tela já mostra: quem age nela antes da resposta acerta a mesma
+    const id = novoId('p');
     const local = (ps: PosicaoDaEscala[]) =>
-      'posicao' in alvo ? escalarNa(ps, editor, alvo) : t ? escalarNa(ps, editor, { turno: t.id, nova: { id: novoId('p'), turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } }) : null;
-    void naColuna(local, null, (dia) => escalarNoDia(dia, editor, alvo));
+      'posicao' in alvo ? escalarNa(ps, editor, alvo) : t ? escalarNa(ps, editor, { turno: t.id, nova: { id, turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } }) : null;
+    void naColuna(local, null, (dia) => escalarNoDia(dia, editor, 'posicao' in alvo ? alvo : { turno: alvo.turno, id }));
   };
   const levar = (id: string, posicao: string, antesDe: string | null) => {
     const item = listaDoDia.find((d) => d.id === id);
