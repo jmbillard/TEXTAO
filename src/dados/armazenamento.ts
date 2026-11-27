@@ -1166,6 +1166,7 @@ import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, JuncaoDeAtracoes, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, ordemDe, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import type { CampanhaDoCard } from '../modelo/campanhas';
 import { CHAVE_DA_AGENDA_DE_FILMES, formaDaAgenda, type AgendaDeFilmes, type FormaDaAgenda } from '../modelo/agendaDeFilmes';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
@@ -1468,6 +1469,8 @@ export interface NovidadeDoQuadro {
   nome: string;
   /** o e-mail da tabela designers ou do Trello */
   email: string;
+  /** em quantas linhas da produção apareceu (só em quem entrou, #176) */
+  vezes?: number;
   /** o e-mail para tornar administrador: o do Trello ou o de quem já entrou no PROMeiro com o mesmo nome */
   emailSugerido: string;
   /** é administrador (pela chave-mestra ou pelo salvo) */
@@ -1578,6 +1581,10 @@ export interface ProducaoAberta extends LinhaDoTempo {
   /** #160: para escolher no card aberto: os designers ativos e as atrações do cadastro */
   designersAtivos?: string[];
   atracoes?: string[];
+  /** #178: as campanhas da Produção, todas as que existem (para ligar) e se quem pede cria, liga e tira */
+  campanhas?: CampanhaDoCard[];
+  todasAsCampanhas?: CampanhaDoCard[];
+  podeLigarCampanhas?: boolean;
 }
 /** Uma arte no card aberto (#160): o nome, os itens do checklist dela, se está feita e o fogo (1 a 3, com ou sem Roteiro, #174). */
 export interface ArteDoCard {
@@ -1602,6 +1609,10 @@ export const mudarAtracaoDaProducao = (producao: string, atracao: string) => noC
 export const mudarDesignerDaProducao = (producao: string, designer: string, entra: boolean) => noCardAberto('designer', { producao, designer, entra });
 /** Marcar, desmarcar, apagar, voltar (o desfazer do apagar) ou incluir uma arte (#160): o checklist do card espelha. */
 export const mudarArteDaProducao = (producao: string, arte: string, acao: 'marcar' | 'desmarcar' | 'apagar' | 'voltar' | 'incluir') => noCardAberto('arte', { producao, arte, acao });
+/** Ligar a Produção a uma campanha (`liga`) ou tirar dela (#178): só no PROMeiro, nada vai ao Trello. */
+export const mudarCampanhaDaProducao = (producao: string, campanha: string, liga: boolean) => noCardAberto('campanha', { producao, campanha, liga });
+/** Criar uma campanha e ligar a Produção a ela (#178); o nome que já existe liga a que existe. */
+export const novaCampanhaNaProducao = (producao: string, nome: string) => noCardAberto('campanha', { producao, nova: nome });
 /** Subir o fogo de uma arte (#160): no Roteiro ligado ou, sem ele, na Produção (#174). */
 export const subirFogoDaProducao = (producao: string, arte: string) => noCardAberto('fogo', { producao, arte });
 /** O pedido da pauta com o filtro pessoal (#99), quando há. */

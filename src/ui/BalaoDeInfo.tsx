@@ -10,9 +10,9 @@ import './balaoDeInfo.css';
    pauta"). */
 
 /** O balão de fala do mock-up; `cheio` quando há texto. */
-export function IconeDoBalao({ cheio, tam = 15 }: { cheio: boolean; tam?: number }) {
+export function IconeDoBalao({ cheio }: { cheio: boolean }) {
   return (
-    <svg width={tam} height={tam} viewBox="0 0 16 16" aria-hidden="true">
+    <svg width={15} height={15} viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.2 2.8h9.6a1.7 1.7 0 0 1 1.7 1.7v5.4a1.7 1.7 0 0 1-1.7 1.7H7.6l-3 2.6v-2.6H3.2a1.7 1.7 0 0 1-1.7-1.7V4.5a1.7 1.7 0 0 1 1.7-1.7Z" fill={cheio ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
   );
@@ -23,10 +23,9 @@ export function IconeDoBalao({ cheio, tam = 15 }: { cheio: boolean; tam?: number
  * @param textos o que o balão diz, um parágrafo por texto ([]: o balão vazio, contornado)
  * @param rotulo de quem é a info, para o leitor de tela ("Rita Fontes, sex 27")
  */
-export function BalaoDeInfo({ textos, rotulo, className = '' }: { textos: readonly string[]; rotulo: string; className?: string }) {
+export function BalaoDeInfo({ textos, rotulo }: { textos: readonly string[]; rotulo: string }) {
   const [aberto, setAberto] = useState(false);
   const saindo = useSaida(aberto, 200);
-  const raiz = useRef<HTMLSpanElement>(null);
   const botao = useRef<HTMLButtonElement>(null);
   const texto = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -50,7 +49,7 @@ export function BalaoDeInfo({ textos, rotulo, className = '' }: { textos: readon
   }, [aberto]);
   const tem = textos.length > 0;
   return (
-    <span className={`balao-info${aberto ? ' aberto' : ''}${className ? ` ${className}` : ''}`} ref={raiz}>
+    <span className={`balao-info${aberto ? ' aberto' : ''}`}>
       <button
         ref={botao}
         type="button"

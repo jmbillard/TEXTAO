@@ -200,8 +200,10 @@ function PrioridadeAMao({ n, escreverAoAparecer }: { n: number; escreverAoAparec
   );
 }
 
-/** As palavras do resumo em cada critério: o primeiro número e o segundo (que só aparece quando não é zero). */
-const PALAVRAS: Record<CriterioDaAgenda, [[string, string], [string, string]]> = {
+/** As palavras do resumo: o primeiro número e o segundo (que só aparece quando não é zero), no singular e no plural. */
+export type PalavrasDoResumo = [[string, string], [string, string]];
+/** As palavras do resumo em cada critério da agenda No Trello. */
+const PALAVRAS: Record<CriterioDaAgenda, PalavrasDoResumo> = {
   exibicao: [['card', 'cards'], ['entregue', 'entregues']],
   entrada: [['entrou', 'entraram'], ['já saiu', 'já saíram']],
   entrega: [['entregue', 'entregues'], ['a entregar', 'a entregar']],
@@ -217,13 +219,14 @@ export interface FiltroDasPrioridades {
 /** O resumo dos dias à vista, no critério da agenda: "17 cards · 9 entregues · 2 prioridades" (por exibição), "22
     entraram · 12 já saíram" (por entrada), "10 entregues · 7 a entregar" (por entrega). Os números contam; os itens que
     aparecem ou somem abrem ou fecham a vaga; a prioridade se escreve. Com o `filtro`, a prioridade é o botão que mostra
-    só os cards de prioridade; o resumo continua contando todos os cards dos dias à vista. */
-export function ResumoQueConta({ total, entregues, aEntregar = 0, comPrioridade, criterio = 'exibicao', filtro }: { total: number; entregues: number; aEntregar?: number; comPrioridade: number; criterio?: CriterioDaAgenda; filtro?: FiltroDasPrioridades }) {
+    só os cards de prioridade; o resumo continua contando todos os cards dos dias à vista. Outra agenda (a de filmes,
+    #182) dá as `palavras` dela: "12 exibições · 3 inéditas". */
+export function ResumoQueConta({ total, entregues, aEntregar = 0, comPrioridade, criterio = 'exibicao', filtro, palavras }: { total: number; entregues: number; aEntregar?: number; comPrioridade: number; criterio?: CriterioDaAgenda; filtro?: FiltroDasPrioridades; palavras?: PalavrasDoResumo }) {
   const montado = useRef(false);
   useEffect(() => {
     montado.current = true;
   }, []);
-  const [[um1, varios1], [um2, varios2]] = PALAVRAS[criterio];
+  const [[um1, varios1], [um2, varios2]] = palavras ?? PALAVRAS[criterio];
   const [primeiro, segundo] = criterio === 'entrega' ? [entregues, aEntregar] : [total, entregues];
   return (
     <span>

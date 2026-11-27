@@ -26,6 +26,8 @@
 // administradora com o e-mail digitado e cadastrada como designer (grava no Teable falso); os administradores no "ver
 // tudo" (a chave-mestra, "você", não dá para tirar a si mesmo); o designer sem produção ignorado (vai para o "ver
 // tudo"), desfeito, tirado de administrador e marcado inativo (grava no Teable falso). No celular, só consulta.
+// #176: o texto dos designers com os nomes juntados se separa (cada pessoa uma vez, com o número de vezes); tornar
+// admin, cadastrar, ignorar e marcar inativo tiram a pessoa com as vagas e a caixinha do desfazer dos Cadastros.
 // Os Turnos da edição (#124), claro e escuro: os de fábrica; o horário da Manhã escrito de qualquer jeito (vai para o padrão),
 // um turno novo, a Noite tirada e a ordem mudada; conferir (o que muda e o aviso do turno que sai) e salvar, que vale
 // na hora sem pedir nada ao Trello. Os turnos da arte (#175), claro e escuro: a mesma lista, com a Manhã e a Noite de
@@ -166,8 +168,10 @@ const QUADROS = {
   },
 };
 // quem aparece na produção da arte (#77, ADR 0006): nomes fictícios; a tabela designers do Teable falso está em DESIGNERS
-const NA_PRODUCAO = ['Lia Moraes', 'Bia Sampaio', 'Caio Brandão'];
+// #176: o texto com os nomes juntados (os dados antigos) se separa por pessoa: Bia aparece 3 vezes, Duda 2
+const NA_PRODUCAO = ['Lia Moraes', 'Bia Sampaio, Duda Reis', 'Caio Brandão e Bia Sampaio', 'Duda Reis; bia sampaio'];
 const BIA_ENTROU = 'entrou:BIA SAMPAIO';
+const DUDA_ENTROU = 'entrou:DUDA REIS';
 const OTAVIO = 'otavio.lins@exemplo.com';
 const BIA = 'bia.sampaio@exemplo.com';
 const designersDoComeco = () => [
@@ -850,12 +854,16 @@ async function conexoes(navegador, url, app, teable, tema) {
 /* ---------- a seção Pessoas (#77) ---------- */
 
 const PESSOAS = '.cfg-secao[data-secao="pessoas"]';
-const novidades = (p) => textos(p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto strong`));
+// o título de cada novidade, sem o número discreto de vezes
+const novidades = (p) => p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto strong`).evaluateAll((ss) => ss.map((s) => [...s.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim()));
+const caixinha = (p) => p.locator('.desfazer[role="status"]');
+/** Espera a caixinha do desfazer sumir (o prazo acabou e a ação foi para o servidor). */
+const esperarOPrazo = (p) => caixinha(p).waitFor({ state: 'detached', timeout: 15_000 });
 /** A tabela designers e os administradores do começo, nada ignorado, e a produção olhada de novo. Otávio (sem
     produção) é administrador salvo na tela. */
 async function recomecarPessoas(app, url) {
   DESIGNERS.splice(0, DESIGNERS.length, ...designersDoComeco());
-  for (const chave of [BIA_ENTROU, 'saiu:recOtavio'])
+  for (const chave of [BIA_ENTROU, DUDA_ENTROU, 'saiu:recOtavio'])
     await fetch(new URL('/api/configuracao/pessoas', url), { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ acao: 'desfazer', chave }) });
   await app.mudarConfiguracao({ ADMINISTRADORES: JSON.stringify([OTAVIO]) }).antigaFechada;
   await app.verificarPessoas();
@@ -872,38 +880,63 @@ async function pessoas(navegador, url, app, tema) {
   await p.locator('.perfil-botao').click();
   const item = p.locator('.perfil-painel .perfil-link', { hasText: 'Configuração' });
   assert.equal(await item.locator('.perfil-ponto').count(), 1);
-  assert.equal((await item.locator('small').textContent()).trim(), '2 novidades nas Pessoas');
+  // #176: a bolinha de estado padrão (.ponto.tem), a laranja do "tem algo esperando", não a marrom de falta
+  const corDa = (variavel) => p.evaluate((v) => { const el = document.body.appendChild(document.createElement('i')); el.style.background = `var(${v})`; const c = getComputedStyle(el).backgroundColor; el.remove(); return c; }, variavel);
+  assert.equal(await item.locator('.perfil-ponto').evaluate((el) => getComputedStyle(el).backgroundColor), await corDa('--ultra'));
+  assert.equal(await p.locator('.perfil-botao.com-novidade').evaluate((el) => getComputedStyle(el, '::after').backgroundColor), await corDa('--ultra'));
+  assert.equal((await item.locator('small').textContent()).trim(), '3 novidades nas Pessoas');
   await capturar(p, `50-pessoas-pontinho-${nome}`);
   await item.click();
 
-  // as novidades: quem aparece na produção e não é designer; o designer ativo sem produção (a inativa não conta)
+  // as novidades: quem aparece na produção e não é designer, cada pessoa uma vez (#176: o texto juntado se separa), com
+  // quantas vezes apareceu; o designer ativo sem produção (a inativa não conta)
   await p.locator(`${PESSOAS} .cfg-exc`).first().waitFor();
-  assert.equal(await resumo(p, PESSOAS), '2 administradores · 2 novidades');
-  assert.deepEqual(await novidades(p), ['Bia Sampaio apareceu na produção', 'Otávio Lins sem produção há 60 dias']);
-  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto span`)), ['não é designer', `designer ativo · ${OTAVIO} · administrador`]);
+  assert.equal(await resumo(p, PESSOAS), '2 administradores · 3 novidades');
+  assert.deepEqual(await novidades(p), ['Bia Sampaio apareceu na produção', 'Duda Reis apareceu na produção', 'Otávio Lins sem produção há 60 dias']);
+  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-exc-vezes`)), ['3', '2']);
+  assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-exc .cfg-exc-texto > span`)), ['não é designer', 'não é designer', `designer ativo · ${OTAVIO} · administrador`]);
   const bia = p.locator(`${PESSOAS} .cfg-exc[data-chave="${BIA_ENTROU}"]`);
+  const duda = p.locator(`${PESSOAS} .cfg-exc[data-chave="${DUDA_ENTROU}"]`);
   const otavio = p.locator(`${PESSOAS} .cfg-exc[data-chave="saiu:recOtavio"]`);
   assert.deepEqual(await textos(bia.locator('button')), ['Cadastrar como designer', 'Tornar admin', 'ignorar']);
   assert.deepEqual(await textos(otavio.locator('button')), ['Marcar inativo', 'Tirar de admin', 'ignorar']);
+  // nada de unha: nenhuma faixa na borda esquerda
+  assert.deepEqual(await bia.evaluate((el) => { const c = getComputedStyle(el); return [c.borderLeftWidth, c.borderRightWidth, c.boxShadow.includes('inset')]; }).then(([e, d, i]) => [e === d, i]), [true, false]);
   await semRolagemDeLado(p, `pessoas ${nome}, novidades`);
   await p.locator(PESSOAS).scrollIntoViewIfNeeded();
   await capturar(p, `51-pessoas-novidades-${nome}`);
 
-  // tornar administradora: ninguém com o nome dela entrou no PROMeiro, então o e-mail é pedido
-  await bia.locator('.botao', { hasText: 'Tornar admin' }).click();
-  await bia.locator('input[type="email"]').fill(BIA);
-  await capturar(p, `52-pessoas-email-${nome}`);
-  await bia.locator('form .botao.primario').click();
-  await p.locator('.aviso', { hasText: 'agora é administrador' }).waitFor();
-  assert.deepEqual(await textos(bia.locator('.cfg-exc-texto span')), ['não é designer · já é administrador']);
-  assert.equal(await bia.locator('.botao', { hasText: 'Tornar admin' }).count(), 0);
-  // vale na hora no app inteiro (sem a Bia entrar no PROMeiro: entrando, o nome dela já daria o e-mail)
-  assert.equal(app.modulos().cadastros.podeApagar(BIA), true, 'vale na hora no app inteiro');
-
-  // cadastrar como designer: grava no Teable (ativo, o nome e o e-mail digitado)
-  await bia.locator('.botao', { hasText: 'Cadastrar como designer' }).click();
-  await p.locator('.aviso', { hasText: 'cadastrado como designer' }).waitFor();
-  assert.deepEqual(DESIGNERS.at(-1).fields, { designer: 'Bia Sampaio', status: 'ativo', email: BIA });
+  // tornar administradora: ninguém com o nome dela entrou no PROMeiro, então o e-mail é pedido (na segunda volta, a do
+  // escuro, o e-mail digitado na primeira já está lembrado e vai direto)
+  const tornarABiaAdmin = async (captura) => {
+    await bia.locator('.botao', { hasText: 'Tornar admin' }).click();
+    if (!(await bia.locator('input[type="email"]').count())) return;
+    await bia.locator('input[type="email"]').fill(BIA);
+    if (captura) await capturar(p, captura);
+    await bia.locator('form .botao.primario').click();
+  };
+  await tornarABiaAdmin(`52-pessoas-email-${nome}`);
+  // #176: ela sai da lista na hora, a vaga fecha (as vagas animadas dos Cadastros) e a caixinha oferece desfazer
+  await p.locator(`${PESSOAS} .cfg-novidades > li.saindo`).waitFor({ state: 'attached', timeout: 2000 });
+  await caixinha(p).filter({ hasText: 'Bia Sampaio agora é administrador.' }).waitFor();
+  await capturar(p, `52b-pessoas-saindo-${nome}`);
+  await p.locator(`${PESSOAS} .cfg-novidades > li.saindo`).waitFor({ state: 'detached' });
+  assert.deepEqual(await novidades(p), ['Duda Reis apareceu na produção', 'Otávio Lins sem produção há 60 dias']);
+  assert.equal(await resumo(p, PESSOAS), '2 administradores · 2 novidades');
+  await capturar(p, `52c-pessoas-caixinha-${nome}`);
+  // desfazer: nada foi ao servidor e a vaga abre de novo
+  await caixinha(p).locator('.botao-texto', { hasText: 'Desfazer' }).click();
+  await bia.waitFor();
+  assert.equal(app.modulos().cadastros.podeApagar(BIA), false, 'desfeito, nada gravado');
+  // de novo, até o fim do prazo: vale na hora no app inteiro e ela não volta (já é administradora)
+  await tornarABiaAdmin('');
+  await caixinha(p).filter({ hasText: 'agora é administrador' }).waitFor();
+  // outra ação no meio manda a anterior na hora: cadastrar Duda grava a Bia como administradora
+  await duda.locator('.botao', { hasText: 'Cadastrar como designer' }).click();
+  await caixinha(p).filter({ hasText: 'Duda Reis cadastrado como designer.' }).waitFor();
+  await esperarOPrazo(p);
+  assert.equal(app.modulos().cadastros.podeApagar(BIA), true, 'vale no app inteiro');
+  assert.deepEqual(DESIGNERS.at(-1).fields, { designer: 'Duda Reis', status: 'ativo' });
   assert.deepEqual(await novidades(p), ['Otávio Lins sem produção há 60 dias']);
 
   // ver tudo: os administradores, com a chave-mestra e "você"; não dá para tirar a si mesmo
@@ -917,9 +950,10 @@ async function pessoas(navegador, url, app, tema) {
   await semRolagemDeLado(p, `pessoas ${nome}, ver tudo`);
   await capturar(p, `53-pessoas-administradores-${nome}`);
 
-  // ignorar quem está sem produção: sai das novidades e vai para o ver tudo, até desfazer
+  // ignorar quem está sem produção: sai das novidades (com a caixinha) e vai para o ver tudo, até desfazer
   await otavio.locator('.botao-texto', { hasText: 'ignorar' }).click();
-  await p.locator('.aviso', { hasText: 'ignorado' }).waitFor();
+  await caixinha(p).filter({ hasText: 'Otávio Lins ignorado.' }).waitFor();
+  await esperarOPrazo(p);
   assert.equal(await p.locator(`${PESSOAS} .cfg-exc`).count(), 0);
   assert.equal(await resumo(p, PESSOAS), '3 administradores');
   assert.deepEqual(await textos(p.locator(`${PESSOAS} .cfg-tudo-l[data-chave="saiu:recOtavio"] > span`)).then((t) => t.slice(0, 2)), ['Otávio Lins', 'sem produção há 60 dias']);
@@ -928,18 +962,19 @@ async function pessoas(navegador, url, app, tema) {
   await p.locator(`${PESSOAS} .cfg-tudo-l[data-chave="saiu:recOtavio"] .botao-texto`, { hasText: 'desfazer' }).click();
   await otavio.waitFor();
 
-  // quem está sem produção: tirar de administrador e marcar inativo (grava no Teable)
+  // quem está sem produção: tirar de administrador e marcar inativo (grava no Teable, depois da caixinha)
   await otavio.locator('.botao', { hasText: 'Tirar de admin' }).click();
   await p.locator('.aviso', { hasText: 'não é mais administrador' }).waitFor();
   assert.equal(await otavio.locator('.botao', { hasText: 'Tirar de admin' }).count(), 0);
   assert.equal(await admins.count(), 2);
   await otavio.locator('.botao', { hasText: 'Marcar inativo' }).click();
-  await p.locator('.aviso', { hasText: 'marcado como inativo' }).waitFor();
+  await caixinha(p).filter({ hasText: 'marcado como inativo' }).waitFor();
+  await esperarOPrazo(p);
   assert.equal(DESIGNERS.find((d) => d.id === 'recOtavio').fields.status, 'inativo');
   assert.equal(await p.locator(`${PESSOAS} .cfg-exc`).count(), 0);
   assert.deepEqual(erros, [], `pessoas ${nome}: erros na página`);
   await ctx.close();
-  console.log(`ok: pessoas ${nome}: o pontinho, a que apareceu na produção tornada administradora e cadastrada, os administradores, ignorar e desfazer, tirar de administrador e marcar inativo`);
+  console.log(`ok: pessoas ${nome}: o pontinho, cada pessoa uma vez com as vezes, tornar admin com a vaga e a caixinha (desfazer e de novo), cadastrar, os administradores, ignorar e desfazer, tirar de administrador e marcar inativo`);
 }
 
 async function pessoasNoCelular(navegador, url, app, tema) {
@@ -948,7 +983,7 @@ async function pessoasNoCelular(navegador, url, app, tema) {
   const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
   const { ctx, p, erros } = await abrir(navegador, url, { ...iphone, colorScheme: tema });
   await p.locator(`${PESSOAS} .cfg-exc`).first().waitFor();
-  assert.deepEqual(await novidades(p), ['Bia Sampaio apareceu na produção', 'Otávio Lins sem produção há 60 dias']);
+  assert.deepEqual(await novidades(p), ['Bia Sampaio apareceu na produção', 'Duda Reis apareceu na produção', 'Otávio Lins sem produção há 60 dias']);
   // só consulta: nada de cadastrar, ignorar, tirar ou pôr administrador
   assert.equal(await p.locator(`${PESSOAS} button:not(.cfg-ver-tudo):not(.cfg-ajuda button)`).count(), 0);
   await p.locator(PESSOAS).scrollIntoViewIfNeeded();

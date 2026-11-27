@@ -22,7 +22,8 @@ const resposta = (status, dados) => ({ ok: status < 400, status, json: async () 
  *   opcoes.url o endereço (padrão o de TEABLE_FALSO); opcoes.outro o fetch para o que não é do Teable;
  *   opcoes.registros { [tabela]: [{ id, fields, lastModifiedTime? }] } as linhas (o array é o mesmo: o teste vê o que foi
  *   gravado); opcoes.esquemas { [tabela]: esquema } o esquema do dbTableName, quando não é o da base (uma tabela que
- *   não é da base do PROMeiro)
+ *   não é da base do PROMeiro); opcoes.campos { [tabela]: [{ name, type, ligaA? }] } os campos a mais da tabela (o link
+ *   dos designers na produção da arte, #176: `ligaA` é a tabela a que o link liga, pelo nome do PROMeiro)
  * @returns fetch, com `.estado` (`fora = true` derruba o Teable; `pedidos` guarda o que foi pedido; `falhar`, quando
  *   dado, responde 500 ao pedido em que devolve true), `.consultar` e
  *   `.abrirPg` (o Postgres do Teable: o SELECT de uma tabela da base devolve as linhas dela, com o "__id", sem olhar o
@@ -106,7 +107,8 @@ export function teableFalso(nomes, opcoes = {}) {
           const t = TABELAS_DO_TEABLE.find((x) => x.nome === nome);
           const faltam = base.faltando?.[nome] ?? [];
           const colunas = [...new Set([...(t?.api ?? []), ...(t?.pg ?? [])])].filter((c) => !faltam.includes(c));
-          return resposta(200, colunas.map((c, i) => ({ id: `fld${i}`, name: c, dbFieldName: c, type: c === 'poster' ? 'attachment' : 'singleLineText' })));
+          const aMais = (opcoes.campos?.[nome] ?? []).map((c, i) => ({ id: `fldMais${i}`, name: c.name, dbFieldName: c.dbFieldName ?? c.name, type: c.type, ...(c.ligaA ? { options: { foreignTableId: idDe(b, c.ligaA) } } : {}) }));
+          return resposta(200, [...colunas.map((c, i) => ({ id: `fld${i}`, name: c, dbFieldName: c, type: c === 'poster' ? 'attachment' : 'singleLineText' })), ...aMais]);
         }
       return resposta(404, {});
     }

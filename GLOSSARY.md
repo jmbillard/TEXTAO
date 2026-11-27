@@ -265,9 +265,17 @@ Quem vê a Configuração, as Duplicadas, importa acervo e remove cadastros. É 
 (escolhido entre quem já entrou no PROMeiro, ou por um e-mail digitado). Ninguém tira a si mesmo.
 _Evitar_: admin (na tela, só em botões curtos), superusuário
 
+**Designers da produção**:
+As pessoas de cada linha da produção da arte, lidas do campo de lista ou de link (o link para a tabela designers, que a
+descoberta das tabelas acha). O texto com os nomes juntados por vírgula (a coluna `designers`, feita para o Metabase,
+que não lia listas) só vale de reserva, para a linha com a lista vazia, e se separa por pessoa (vírgula, ponto e
+vírgula e "e"). Cada pessoa aparece uma vez, pelo nome sem caixa e acento.
+_Evitar_: a coluna designers (como se fosse uma pessoa)
+
 **Novidade nas Pessoas**:
-Na seção **Pessoas**: quem aparece na produção da arte (a coluna designers das linhas dos últimos 60 dias) e não está
-na tabela designers do Teable ("apareceu na produção": cadastrar como designer, tornar administrador ou ignorar) e o
+Na seção **Pessoas**: quem aparece na produção da arte (os **designers da produção** das linhas dos últimos 60 dias) e
+não está na tabela designers do Teable nem é administrador ("apareceu na produção", cada pessoa uma vez, com quantas
+vezes apareceu: cadastrar como designer, tornar administrador ou ignorar, que a tiram da lista) e o
 designer ativo que não aparece em nenhuma produção desses 60 dias, a não ser o cadastrado depois disso ("sem produção
 há 60 dias": marcar inativo, tirar de administrador ou ignorar). O designer é a pessoa pelo nome (sem caixa, acento e
 pontuação). O PROMeiro olha ao abrir a Configuração e uma vez por dia; havendo novidade, os administradores veem um
@@ -334,7 +342,7 @@ guardada. Os tipos:
 - **mudou de etapa** (antes → depois): a etapa pela regra da etapa mudou (designer ou status de trabalho, entregue ou
   FINALIZADO);
 - **arquivada** e **desarquivada**: a coluna arquivado;
-- **designer entrou** e **designer saiu**: os nomes da coluna designers (sem caixa nem acento). Muda os designers da
+- **designer entrou** e **designer saiu**: os **designers da produção** (sem caixa nem acento). Muda os designers da
   Produção;
 - **campo mudado** (antes → depois): a **praça** (pela sigla; muda a praça da Produção), a **prioridade** e a
   **complexidade** (pelo nome do nível: BAIXA, MÉDIA, ALTA). A Produção que ainda não guardava a prioridade e a
@@ -401,6 +409,19 @@ e a linha do tempo, fechada num link. A atração escolhida vai ao link `atracao
 do Teable (#173), não ao Trello (o card não tem o campo). Fica ao lado da agenda No Trello, que continua, com a mesma
 linha do logo, parada entre as telas (#159).
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
+
+**Campanha**:
+Um conjunto de **Produções** com um nome ("Lançamento Avenida Carona"), para ver junto as peças de um mesmo esforço
+(as chamadas de elenco, a AESP, o lançamento de uma novela nova). Não tem tipo, período nem lista de peças previstas: o
+conjunto basta. Uma Produção pode estar em várias campanhas (o lançamento e uma AESP). Mora no SQLite do PROMeiro (no
+backup); nada vai ao Trello nem ao Teable. Criam, ligam e tiram Produções o administrador, a **coordenação** (o produtor
+da edição), os designers e os redatores; os outros só veem. O nome não se repete (sem caixa, acento e pontuação: criar
+uma que já existe liga a que existe). Ligar e tirar entram na **linha do tempo** da Produção, com quem fez ("ligou à
+campanha X", "tirou da campanha X"). Aparece como a **etiqueta da campanha**, um componente só em todas as telas: a
+pílula com a bolinha no tom da campanha (o mesmo tom para a mesma campanha); no card de Produções, a primeira ligada e
+"+N" das outras; no card aberto, todas, com a busca para ligar, "+ Nova campanha" e tirar com a caixinha de desfazer
+(#178).
+_Evitar_: grupo, pacote, projeto (o projeto é do After), tag
 
 **Aviso do Padeiro**:
 O Padeiro avisando o PROMeiro direto, sem o n8n, quando o designer abre ou cria o projeto pelo card, pela Produção ou
