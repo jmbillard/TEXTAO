@@ -1391,6 +1391,12 @@ export const lerDiaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => 
 export const lerRascunhoDoDia = (dia = '') => pedir<DiaDaEscala>(`/api/montar-pauta${dia ? `?dia=${dia}` : ''}`);
 /** Troca o rascunho do dia pelas posições (o servidor grava o horário e a claquete no padrão) e devolve o dia gravado. */
 export const gravarRascunhoDoDia = (dia: string, posicoes: PosicaoDaEscala[]) => pedir<DiaDaEscala>(`/api/montar-pauta?dia=${dia}`, { method: 'PUT', body: JSON.stringify({ posicoes }) });
+/** Diz que uma pendência da conferência está certa (ou a reabre), pela chave (#127); devolve o dia. */
+export const marcarPendencia = (dia: string, chave: string, certo: boolean) => pedir<DiaDaEscala>(`/api/montar-pauta/conferida?dia=${dia}`, { method: 'POST', body: JSON.stringify({ chave, certo }) });
+/** Publica o rascunho gravado do dia, mesmo com pendências (#127); devolve o dia, com a publicação. */
+export const publicarODia = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/publicar?dia=${dia}`, { method: 'POST' });
+/** Desfaz a última publicação do dia (vale a anterior, ou nenhuma) (#127); devolve o dia. */
+export const desfazerAPublicacao = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/desfazer?dia=${dia}`, { method: 'POST' });
 /** Lê o Andamento (guardado alguns minutos no servidor); `deNovo` vai ao GitHub. */
 export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** A correção de grafia (#114, só administradores): uma página das propostas da pauta de um grupo, e o resumo. */

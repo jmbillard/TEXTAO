@@ -14,6 +14,15 @@
 // tudo volta como foi gravado (o horário e a claquete no padrão). Outro dia da semana continua vazio. No celular
 // (escuro), o rascunho cabe na tela, sem rolar para o lado.
 //
+// Conferir e publicar (#127): o Teable falso também tem o Postgres da pauta, com duas linhas de amanhã (uma delas a
+// mesma claquete que a Bia montou). A Bia abre uma posição vazia na Noite e escreve uma claquete sem data; "Conferir e
+// publicar" mostra o placar e as pendências: "Turno sem editor" e "Claquete sem data" para olhar. O "Corrigir" da
+// claquete volta à grade com o foco na linha; corrigida, sai da conferência. O "está certo" do turno o leva para as
+// conferidas, e publicar mostra "publicada!", com a aba de amanhã publicada. Na Pauta da edição, a Lia vê o dia com a
+// do Teable inteira e o que só o PROMeiro tem, sem a claquete em dobro. Mexer depois deixa o dia "alterado"; publicar
+// de novo entra no histórico; Desfazer volta à publicação anterior e, de novo, tira a publicação: a Pauta volta a ser
+// só a do Teable.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:montar-pauta
 // Com CAPTURAS=pasta, grava as capturas (densidade 2).
 const assert = require('node:assert/strict');
@@ -257,10 +266,117 @@ async function noCelular(navegador, url) {
   console.log('ok: no celular (escuro), o rascunho cabe na tela');
 }
 
+/* ---------- conferir e publicar (#127) ---------- */
+const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
+/** Uma linha da pauta do Teable (EDICAO_producao), no fuso de São Paulo. */
+function linhaDoTeable(id, claquete, quem, dia, [inicio, fim]) {
+  const sp = (d, h) => new Date(`${d}T${h}:00-03:00`).toISOString();
+  return { id, fields: { claquete, key: claquete.toUpperCase(), editor: { id: `rec${quem.replace(/\W/g, '')}`, title: quem }, data: sp(dia, '00:00'), expediente_inicio: sp(dia, inicio), expediente_fim: sp(fim < inicio ? mais(dia, 1) : dia, fim), anotacao: null, alterado_em: new Date().toISOString() } };
+}
+const PAUTA_DO_TEABLE = [linhaDoTeable('recT1', `Noite de Gala ${diaMes(amanha)} Dp`, 'Rui Teixeira', amanha, ['22:00', '06:00']), linhaDoTeable('recT2', `Corujão ${diaMes(amanha)}`, 'Gil Moura', amanha, ['06:00', '15:00'])];
+
+async function conferirEPublicar(navegador, url, teable) {
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`);
+  await p.locator('.montar-celula').first().waitFor();
+  // uma posição vazia na Noite; uma claquete sem data na Tarde
+  await turno(p, 'Noite').getByRole('button', { name: '+ posição' }).click();
+  await p.keyboard.press('Escape');
+  const tarde = turno(p, 'Tarde').locator('.montar-celula').first();
+  await tarde.locator('[data-campo="demanda"]').last().click();
+  await p.keyboard.press('End');
+  await p.keyboard.press('Enter');
+  await p.keyboard.type('Vale a Pena Rever (AH)');
+  await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
+
+  // a conferência: o placar e as pendências
+  await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
+  await p.getByRole('heading', { name: 'Conferir antes de publicar' }).waitFor();
+  assert.deepEqual(await p.locator('.conf-placar span').allInnerTexts().then((t) => t.map((x) => x.replace(/\s+/g, ' '))), ['3 posições', '2 editores', '4 demandas']);
+  assert.deepEqual(await p.locator('.conf-prob.olhar .conf-prob-tipo').allInnerTexts(), ['CLAQUETE SEM DATA', 'TURNO SEM EDITOR']);
+  await p.getByText('2 itens para olhar; dá para publicar assim mesmo').waitFor();
+  await capturar(p, '05-conferir', { fullPage: true });
+
+  // "Corrigir" volta à grade, com o foco na linha da claquete
+  await p.locator('.conf-prob', { hasText: 'Claquete sem data' }).getByRole('button', { name: 'Corrigir' }).click();
+  await p.waitForFunction(() => document.activeElement?.getAttribute('data-campo') === 'demanda');
+  assert.equal((await focado(p)).valor, 'Vale a Pena Rever (AH)', 'o foco vai à linha da claquete sem data');
+  await p.keyboard.press('ControlOrMeta+a');
+  await p.keyboard.type(`Vale a Pena Rever ${diaMes(amanha)} (AH)`);
+  await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
+  await p.getByRole('heading', { name: 'Conferir antes de publicar' }).waitFor();
+  assert.deepEqual(await p.locator('.conf-prob.olhar .conf-prob-tipo').allInnerTexts(), ['TURNO SEM EDITOR'], 'corrigida, a claquete sai da conferência');
+
+  // "está certo" leva o turno para as conferidas
+  await p.locator('.conf-prob.olhar', { hasText: 'Turno sem editor' }).getByRole('button', { name: 'está certo' }).click();
+  await p.locator('.conf-prob.conferida', { hasText: 'Turno sem editor' }).waitFor();
+  await p.getByText('tudo conferido').waitFor();
+
+  // publicar
+  await p.getByRole('button', { name: 'Publicar a pauta de amanhã' }).click();
+  await p.getByText('publicada!').waitFor();
+  await p.getByRole('heading', { name: /está no ar$/ }).waitFor();
+  assert.match(await p.locator('.pub-cartoes').innerText(), /0\s*pendências ficaram/);
+  await capturar(p, '06-publicada', { fullPage: true });
+
+  // na Pauta da edição (a Lia): a do Teable inteira e o que só o PROMeiro tem, sem dobrar
+  const lia = await abrir(navegador, url, LIA, `#/pauta/dia/${amanha}`);
+  await lia.p.locator('.pauta-colunas').waitFor();
+  const naPauta = async () => lia.p.locator('.pauta-cards .pauta-item').allInnerTexts().then((t) => t.join('\n'));
+  let texto = await naPauta();
+  assert.equal((texto.match(/Noite de Gala/g) ?? []).length, 1, 'a mesma claquete aparece uma vez');
+  assert.match(texto, /Corujão/, 'a do Teable continua');
+  assert.match(texto, /Mundo Animal/, 'o que só o PROMeiro tem aparece');
+  assert.match(texto, /Vale a Pena Rever/);
+  assert.ok((await lia.p.locator('.pauta-coluna-topo .pauta-nome').allInnerTexts()).includes('Elis Furtado'), 'a Elis ganha a coluna dela');
+  await capturar(lia.p, '07-pauta-com-o-publicado', { fullPage: true });
+
+  // de volta à grade: a aba de amanhã publicada; mexer depois de publicar deixa alterado
+  await p.getByRole('button', { name: 'Voltar a mexer' }).click();
+  assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'publicado');
+  await p.locator('.pub-faixa', { hasText: 'Publicada' }).waitFor();
+  const tardeDeNovo = turno(p, 'Tarde').locator('.montar-celula').first();
+  await tardeDeNovo.locator('[data-campo="demanda"]').last().click();
+  await p.keyboard.press('End');
+  await p.keyboard.press('Enter');
+  await p.keyboard.type('CALHAUS');
+  await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'alterado');
+  await p.locator('.pub-faixa', { hasText: 'Alterada depois de publicar' }).waitFor();
+  // publicar de novo: duas no histórico
+  await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
+  await p.getByRole('button', { name: 'Publicar de novo a pauta de amanhã' }).click();
+  await p.getByText('publicada!').waitFor();
+  await p.getByRole('button', { name: 'Voltar a mexer' }).click();
+  await p.locator('.pub-historico summary', { hasText: 'Histórico · 2' }).waitFor();
+
+  // Desfazer: volta a valer a anterior (o rascunho tem a CALHAUS a mais: alterado); de novo, nenhuma
+  await p.getByRole('button', { name: 'Desfazer a publicação' }).click();
+  await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'alterado');
+  await p.getByRole('button', { name: 'Desfazer a publicação' }).click();
+  await p.locator('.pub-faixa', { hasText: 'Publicação desfeita' }).waitFor();
+  assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
+  await lia.p.reload();
+  await lia.p.locator('.pauta-colunas').waitFor();
+  texto = await naPauta();
+  assert.doesNotMatch(texto, /Mundo Animal/, 'desfeita, a Pauta volta a ser só a do Teable');
+  assert.match(texto, /Noite de Gala/);
+  assert.match(texto, /Corujão/);
+
+  assert.ok(teable.estado.pedidos.every((x) => x.startsWith('GET ')), 'nada foi escrito no Teable');
+  assert.equal(escritasNoTeable.length, 0, 'nada foi escrito nos cadastros');
+  assert.deepEqual(erros, [], 'conferir: erros na página');
+  assert.deepEqual(lia.erros, [], 'pauta: erros na página');
+  await lia.ctx.close();
+  await ctx.close();
+  console.log('ok: conferir, corrigir, "está certo", publicar, a Pauta sem dobrar, alterado, republicar e desfazer');
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   const cadastros = criarCadastros({ ...ENV_CADASTROS, CADASTRO_ADMINS: CHEFE }, { buscar: buscarNoTeable });
-  const s = await subir({ cadastros, env: { CADASTRO_ADMINS: CHEFE } });
+  // o Teable falso da descoberta e do Postgres da pauta (#127), só leitura
+  const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
+  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e' }, { registros: { EDICAO_producao: PAUTA_DO_TEABLE } });
+  const s = await subir({ cadastros, teable, pg: teable.abrirPg, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG } });
   // o convite do tour não atrapalha
   for (const quem of [LIA, BIA, CHEFE]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
@@ -270,6 +386,7 @@ async function principal() {
     await quemNaoEDaCoordenacao(navegador, s.url, s.api);
     await montarPeloTeclado(navegador, s.url);
     await noCelular(navegador, s.url);
+    await conferirEPublicar(navegador, s.url, teable);
   } catch (e) {
     falhou = true;
     console.error(e);
