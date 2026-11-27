@@ -202,10 +202,13 @@ export interface Versao {
   rotulo: string;
   /** false: um código que o PROMeiro não conhece, que aparece cru */
   conhecida: boolean;
+  /** só nas versões lidas do roteiro (#120): veio só do dia da semana, sem "nesta" nem "próxima"; a tela pede conferir */
+  aConferir?: true;
 }
 
-const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+/** Os dias da semana curtos (domingo é 0) e os meses por extenso, nas etiquetas das versões (também as do roteiro, #120). */
+export const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+export const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const semAcento = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
 /** Uma combinação de letras, cada uma uma versão, sem repetir. */
 const LETRAS = /^(?!.*(.).*\1)[AHNPDM]{1,6}$/;
@@ -216,7 +219,7 @@ const conhecido = (bruto: string) => LETRAS.test(semAcento(bruto)) || INTEIROS.h
  * A data da versão: a escrita na claquete (dia e mês), no ano que a deixa mais perto do dia da linha (a claquete de
  * janeiro numa pauta de dezembro é do ano seguinte); sem ela, o dia da linha. null quando nenhum dos dois é data.
  */
-function dataDaVersao(claquete: string, diaDaLinha: string): Date | null {
+export function dataDaVersao(claquete: string, diaDaLinha: string): Date | null {
   const linha = DIA_ISO.test(diaDaLinha) ? new Date(`${diaDaLinha}T12:00:00Z`) : null;
   const daLinha = linha && !Number.isNaN(linha.getTime()) ? linha : null;
   const lida = lerDataDaClaquete(claquete);

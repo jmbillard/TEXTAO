@@ -453,6 +453,72 @@ async function noCelular(navegador, url, nome, { id, enviar, pedidos }) {
   await ctx.close();
 }
 
+/**
+ * As versões lidas do roteiro e o apelido da claquete (#120): um roteiro com "HOJE, 22H30" e "AMANHÃ" nas artes (e o
+ * "SÁBADO, DEPOIS DO JORNAL" do roteiro fictício, só o dia: "neste sáb?", a conferir) e a claquete "(A)", para o sábado
+ * que vem. A ficha mostra as etiquetas, o aviso "a claquete diz (A)" e a opção de usar as do roteiro no apelido; o
+ * apelido aparece no topo (a original, ao passar o mouse), é editado e volta ao original. Marcar "NESTE SÁBADO" com o
+ * dedo troca o "?" pela versão escrita, na hora. A claquete da ficha (a que vai ao Trello) continua a original.
+ */
+async function versoesEApelido(navegador, url, api) {
+  const id = `${ID}v`;
+  const h = { 'content-type': 'application/json', 'cf-access-authenticated-user-email': LIA };
+  const sabado = new Date();
+  do sabado.setDate(sabado.getDate() + 1);
+  while (sabado.getDay() !== 6);
+  const claquete = `CHAMADA_CANTA_BRASIL_${String(sabado.getDate()).padStart(2, '0')}/${String(sabado.getMonth() + 1).padStart(2, '0')} (A)`;
+  // só o dia: nos próximos 7 dias (contando hoje) é "neste"; num sábado, o sábado que vem já é o "próximo"
+  const [letra, sab] = new Date().getDay() === 6 ? ['P', 'próximo sáb'] : ['N', 'neste sáb'];
+  const meta = { claquete, titulo: 'Canta Brasil', programa: 'Programa Fictício', tipoPrograma: 'variedades', dataExibicao: isoLocal(sabado), capitulo: null, edicao: '', praca: 'RJ', redator: 'Redator Fictício', editor: 'Bruno Teixeira', locutor: 'Locutor Fictício', selo: '', duracaoAlvoSeg: 30, duracaoModo: 'fechar', layout: 'padrao', status: 'rascunho' };
+  const doc = { ...DOC, content: [...DOC.content, P('LOC: A GRANDE FINAL.'), P({ a: 'HOJE, 22H30', id: 'v1' }), P({ a: 'AMANHÃ, A REPRISE', id: 'v2' })] };
+  const agora = new Date().toISOString();
+  const r = await fetch(`${api}/roteiros/${id}`, { method: 'PUT', headers: h, body: JSON.stringify({ roteiro: { id, meta, doc, revisao: 1, criadoEm: agora, atualizadoEm: agora }, nArtes: ARTES.length + 2 }) });
+  if (!r.ok) throw new Error(`semear ${id}: ${r.status} ${await r.text()}`);
+
+  const { ctx, p, erros } = await abrirEditor(navegador, url, id, aparelho('Galaxy S24'));
+  await p.locator('.ficha-resumo').tap();
+  await p.waitForTimeout(400);
+  const ficha = p.locator('.claquete .apelido-claquete');
+  // as etiquetas, calculadas das artes marcadas, e o aviso discreto: vale o roteiro
+  assert.deepEqual(await ficha.locator('.versao-lida').allInnerTexts(), ['amanhã', 'hoje', `${sab}?`], 'a ficha mostra as versões lidas do roteiro, o dia sozinho a conferir');
+  assert.match(await ficha.locator('.conflito-versoes').innerText(), /a claquete diz \(A\)/, 'o aviso diz o que a claquete diz');
+  await semRolagemDeLado(p, 'Galaxy S24, com o apelido na ficha');
+
+  // usar as do roteiro no apelido: o topo mostra o apelido; a claquete da ficha continua a original
+  await ficha.getByRole('button', { name: `usar (AH${letra}) no apelido` }).tap();
+  const comAH = claquete.replace('(A)', `(AH${letra})`);
+  await ficha.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
+  assert.equal(await ficha.locator('.apelido-nome').innerText(), comAH, 'o apelido leva as versões do roteiro');
+  assert.equal(await ficha.locator('.conflito-versoes').count(), 0, 'com o apelido do roteiro, o aviso sai');
+  assert.equal(await p.locator('.claquete .campo-c.nome input').inputValue(), claquete, 'a claquete da ficha continua a original');
+  assert.ok((await p.locator('.topo .trilha').innerText()).includes(`(AH${letra})`), 'o topo mostra o apelido');
+  assert.equal(await p.locator('.topo .trilha').getAttribute('title'), `Claquete: ${claquete}`, 'a original aparece ao passar o mouse');
+
+  // editar o apelido à mão
+  await ficha.getByRole('button', { name: 'Editar o apelido' }).tap();
+  await ficha.getByRole('textbox', { name: 'Apelido da claquete' }).fill('CANTA BRASIL, A FINAL (AH)');
+  await ficha.getByRole('button', { name: 'guardar' }).tap();
+  await p.waitForFunction(() => document.querySelector('.topo .trilha')?.textContent?.includes('A FINAL'), null, { timeout: 5000 });
+  assert.equal(await ficha.locator('.apelido-nome').innerText(), 'CANTA BRASIL, A FINAL (AH)');
+  const guardados = await (await fetch(`${api}/apelidos`, { headers: h })).json();
+  assert.deepEqual(guardados.map((a) => [a.original, a.apelido]), [[claquete, 'CANTA BRASIL, A FINAL (AH)']], 'o servidor guarda o apelido e a original');
+
+  // marcar "NESTE SÁBADO" com o dedo: a versão escrita entra na hora, sem o "?", na ordem do padrão
+  if (letra === 'N') {
+    await selecionarNoTexto(p, 1, LOC_ABERTURA.indexOf('NESTE'), LOC_ABERTURA.indexOf(','));
+    await p.locator(BALAO).getByRole('button', { name: 'Arte', exact: true }).tap();
+    await p.waitForFunction(() => [...document.querySelectorAll('.claquete .versao-lida')].map((e) => e.textContent).join('|') === 'amanhã|hoje|neste sáb', null, { timeout: 5000 });
+  }
+
+  // voltar ao original
+  await ficha.getByRole('button', { name: 'voltar ao original' }).tap();
+  await ficha.getByRole('button', { name: 'dar um apelido' }).waitFor({ state: 'visible', timeout: 5000 });
+  assert.doesNotMatch(await p.locator('.topo .trilha').innerText(), /A FINAL/, 'sem apelido, o topo volta à claquete');
+  assert.deepEqual(await (await fetch(`${api}/apelidos`, { headers: h })).json(), [], 'voltar ao original tira o apelido do servidor');
+  assert.deepEqual(erros, [], 'Galaxy S24, versões e apelido: erros na página');
+  await ctx.close();
+}
+
 async function principal() {
   const falso = trelloFalso();
   const s = await subir({ trello: falso });
@@ -460,10 +526,20 @@ async function principal() {
   try {
     // um roteiro para cada aparelho: os dois começam do mesmo jeito
     await semearRoteiro(s.api, `${ID}a`);
-    await semearRoteiro(s.api, `${ID}b`);
     await noCelular(navegador, s.url, 'Galaxy S24', { id: `${ID}a`, enviar: false, pedidos: falso.pedidos });
+    await versoesEApelido(navegador, s.url, s.api);
+    // o roteiro que vai ao Trello tem um apelido (#120): o card e a produção da arte levam a claquete original
+    const enviado = await semearRoteiro(s.api, `${ID}b`);
+    const h = { 'content-type': 'application/json', 'cf-access-authenticated-user-email': LIA };
+    const deu = await fetch(`${s.api}/apelidos`, { method: 'PUT', headers: h, body: JSON.stringify({ roteiro: enviado.id, apelido: 'APELIDO SÓ DO PROMEIRO' }) });
+    assert.equal(deu.status, 200, 'o roteiro que vai ao Trello ganha um apelido');
     await noCelular(navegador, s.url, 'iPhone 13', { id: `${ID}b`, enviar: true, pedidos: falso.pedidos });
-    console.log('ok: o editor no celular (Galaxy S24 e iPhone 13), com o envio ao Trello falso');
+    const card = falso.pedidos.find((x) => x.metodo === 'POST' && x.url.pathname === '/1/cards');
+    assert.ok(card && !JSON.stringify(card).includes('APELIDO'), 'o card do Trello vai com a claquete original, sem o apelido');
+    assert.match(card.corpo.name, /CANTA/i);
+    const registro = falso.pedidos.find((x) => x.url.pathname === '/api/table/tblProducao/record');
+    assert.ok(!JSON.stringify(registro).includes('APELIDO'), 'a produção da arte vai com a claquete original, sem o apelido');
+    console.log('ok: o editor no celular (Galaxy S24 e iPhone 13), as versões lidas e o apelido, com o envio ao Trello falso');
   } finally {
     await navegador.close();
     await s.descer();

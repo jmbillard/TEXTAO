@@ -24,7 +24,7 @@ import {
   Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
   marcarArte as marcarArteNoTexto, partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
-import { alternarJaExiste, alvosDoTeclado, artesUnicas, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, quantasAProduzir, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
+import { alternarJaExiste, alvosDoTeclado, artesDoEnvio, artesUnicas, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, quantasAProduzir, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
 import { agruparPorDia, claqueteParaMostrar, pedeRevisao, pendentes, proximoParaRevisar } from './fila';
 import { chaveDeArte } from '../modelo/diferencas';
 import {
@@ -44,6 +44,10 @@ import { ehDoTour, enviarExemplo } from '../tour/exemplo';
 import { ajustarSelecao } from '../editor/selecao';
 import { gestoNaLista, SEGURAR_MS } from './gestoNaLista';
 import { enviadoNoTour, enviarNoTour } from '../tour/TourDaRevisao';
+import { ApelidoDaClaquete } from './Apelido';
+import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
+import { versoesDoRoteiro } from '../modelo/versoesDoRoteiro';
+import { diaEmSaoPaulo } from '../modelo/pauta';
 
 
 /** No tour, quanto tempo o Enviar do exemplo mostra "Mandando…" antes de voltar para a fila. */
@@ -937,6 +941,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const nFora = artes.filter((a) => marcadasFora.has(chaveDeArte(a.texto))).length;
   // a mesma conta que a fila, a agenda e o checklist do Trello (quantasAProduzir)
   const nAProduzir = useMemo(() => quantasAProduzir(saida, meta), [saida, meta]);
+  // as versões da chamada que as artes marcadas dizem (#120), na hora: a mesma regra que o servidor guarda
+  const versoesLidas = useMemo(() => versoesDoRoteiro(artesDoEnvio(saida, meta).map((a) => a.texto), meta.claquete, diaEmSaoPaulo()), [saida, meta]);
+  // o apelido da claquete aparece no topo no lugar dela (claqueteParaMostrar): redesenha quando ele muda
+  useApelidos();
   // o risco à mão se escreve só na marca nova; o que já vem marcado ao abrir aparece pronto
   const desdeDaMarca = useDesdeDaMarca([...marcadasJa, ...marcadasFora]);
   // "já existe" também no texto (#50): o trecho apaga, o sublinhado some e um risco à mão atravessa cada linha, numa
@@ -1459,6 +1467,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       }
       recolhivel={celular ? { aberta: fichaAberta, mudar: setFichaAberta } : undefined}
       palpiteRedator={palpiteRedator}
+      apelido={<ApelidoDaClaquete roteiro={inicial.id} claquete={meta.claquete} versoes={versoesLidas} podeMudar={comServidor} />}
     />
   );
   const avisosDoTrello = (
@@ -1744,7 +1753,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     </button>
   ) : null;
   // a claquete do topo: a regra da agenda (o nome de hoje na produção da arte; senão o guardado no padrão da casa)
-  const claqueteNoTopo = claqueteParaMostrar(meta, nomeNaProducao ? { claquete: nomeNaProducao } : null) || meta.programa || 'Roteiro';
+  const claqueteNoTopo = claqueteParaMostrar(meta, nomeNaProducao ? { claquete: nomeNaProducao } : null, inicial.id) || meta.programa || 'Roteiro';
+  // com apelido, a claquete original aparece ao passar o mouse (e na ficha)
+  const originalNoTopo = apelidoDoRoteiro(inicial.id) ? `Claquete: ${meta.claquete}` : undefined;
 
   return (
     <div className="pagina editor">
@@ -1753,7 +1764,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
         {celular ? (
           <>
             <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
-            <span className="trilha">
+            <span className="trilha" title={originalNoTopo}>
               <strong>
                 {prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}><TextoDaClaquete texto={claqueteNoTopo} /></MarcaTexto> : <TextoDaClaquete texto={claqueteNoTopo} />}
                 {prioridade && <span className="prio-nota" title={NA_PRIORIDADE}>prioridade</span>}
@@ -1766,7 +1777,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             <div className="topo-esq">
               <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
               <Marca />
-              <span className="trilha">
+              <span className="trilha" title={originalNoTopo}>
                 <strong>{prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}>{claqueteNoTopo}</MarcaTexto> : claqueteNoTopo}</strong>
                 {prioridade && <span className="prio-nota" title={NA_PRIORIDADE}>prioridade</span>}
               </span>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { apelidoDoCard, comApelido, useApelidos } from '../dados/apelidos';
 import {
   apagarDuplicada,
   ignorarDuplicada,
@@ -52,6 +53,11 @@ const lerPeriodo = () => {
  * A lista das duplicadas: lida quando a pessoa é administradora (o número de casos vai na aba mesmo com ela fechada),
  * de novo quando muda o período ou a busca (com a aba aberta) e quando pede para ler a produção de novo.
  */
+/** O nome do caso que a tela mostra: o apelido do roteiro de um dos cards (#120), ou o da claquete; senão, a claquete. */
+const nomeDoCaso = (caso: { claquete: string; cards: { id: string }[] }) => caso.cards.map((c) => apelidoDoCard(c.id)).find(Boolean) || comApelido(caso.claquete);
+/** Com o apelido no lugar, a claquete da produção aparece ao passar o mouse. */
+const tituloDoOriginal = (claquete: string, mostrado: string) => (mostrado !== claquete ? `Claquete: ${claquete}` : undefined);
+
 export function useDuplicadas(pode: boolean, aberta: boolean, busca: string) {
   const [dias, setDias] = useState(lerPeriodo);
   const [lista, setLista] = useState<ListaDasDuplicadas | null>(null);
@@ -203,6 +209,8 @@ interface PropsDaLista {
 type Vista = 'pendentes' | 'resolvidas';
 
 export function ListaDeDuplicadas({ lista, falha, lendo, dias, mudarDias, renovar, busca, celular, ignorar, reabrir, depoisDeApagar }: PropsDaLista) {
+  // o apelido da claquete (#120) no lugar dela: só para mostrar, o caso é achado pela claquete da produção
+  useApelidos();
   const [aberto, setAberto] = useState<string | null>(null);
   const [vista, setVista] = useState<Vista>('pendentes');
   // o caso que está sendo ignorado (o diálogo do motivo aberto)
@@ -319,7 +327,7 @@ function LinhaResolvida({ r, agora, reabrir }: { r: ResolvidaDaDuplicada; agora:
   return (
     <div className="caso-dup resolvida-dup">
       <div className="topo-dup">
-        <span className="claquete-dup">{r.claquete}</span>
+        <span className="claquete-dup" title={tituloDoOriginal(r.claquete, comApelido(r.claquete))}>{comApelido(r.claquete)}</span>
         <span className="praca-dup">{r.praca}</span>
         {reabrir && (
           <span className="lado-dup">
@@ -376,7 +384,7 @@ function DialogoIgnorar({ claquete, fechar, confirmar }: { claquete: string; fec
       <div className="dialogo-dup" role="dialog" aria-modal="true" aria-labelledby="titulo-ignorar">
         <h2 id="titulo-ignorar">Não é duplicada</h2>
         <p className="dica">
-          <b className="claquete-dup">{claquete}</b> sai da lista e não volta enquanto os mesmos cards estiverem no grupo. Nada muda no Trello nem no Teable.
+          <b className="claquete-dup" title={tituloDoOriginal(claquete, comApelido(claquete))}>{comApelido(claquete)}</b> sai da lista e não volta enquanto os mesmos cards estiverem no grupo. Nada muda no Trello nem no Teable.
         </p>
         <span className="rotulo-dup">Por quê (opcional)</span>
         <div className="motivos-dup" role="group" aria-label="Motivo">
@@ -420,7 +428,7 @@ function LinhaDoCaso({ caso, aberto, alternar, dias, celular, ignorar, apagar }:
       <div className="envolta-dup">
         <button type="button" className="linha-dup" aria-expanded={aberto} onClick={alternar}>
           <span className="topo-dup">
-            <span className="claquete-dup">{caso.claquete}</span>
+            <span className="claquete-dup" title={tituloDoOriginal(caso.claquete, comApelido(caso.claquete))}>{comApelido(caso.claquete)}</span>
             <span className="praca-dup">{caso.praca}</span>
             <span className="lado-dup">
               <span>{plural(caso.cards, 'card', 'cards')}</span>
@@ -677,7 +685,7 @@ function DialogoApagar({ caso, dias, sai, fica, depois, fechar }: { caso: CasoDa
           <>
             <h2 id="titulo-apagar">Apagar o card …{cSai.codigo}</h2>
             <p className="dica">
-              <b className="claquete-dup">{caso.claquete}</b> {caso.praca && <span className="praca-dup">{caso.praca}</span>} Um card por vez. Confira os dois uma última vez.
+              <b className="claquete-dup" title={tituloDoOriginal(caso.claquete, nomeDoCaso(caso))}>{nomeDoCaso(caso)}</b> {caso.praca && <span className="praca-dup">{caso.praca}</span>} Um card por vez. Confira os dois uma última vez.
             </p>
             {!cSai.arquivado && (
               <p className="aviso-dup" role="alert">
@@ -800,7 +808,7 @@ function ResultadoDoApagar({ apagado, claquete, fechar }: { apagado: ApagadoDaDu
     <div className="resultado-dup" role="status">
       <h2 id="titulo-apagar">Card …{apagado.codigo} apagado</h2>
       <p className="dica">
-        <b className="claquete-dup">{claquete}</b>
+        <b className="claquete-dup" title={tituloDoOriginal(claquete, comApelido(claquete))}>{comApelido(claquete)}</b>
       </p>
       <ul className="feito-dup">
         <li>O card …{apagado.codigo} saiu do Trello{apagado.comentou ? `, e o card …${codigoDoCard(apagado.fica)} ganhou o comentário.` : '.'}</li>
@@ -937,7 +945,7 @@ function DialogoRecriar({ a, depois, fechar }: { a: AcaoDoRegistro; depois: () =
           <>
             <h2 id="titulo-recriar">Recriar o card …{codigo}</h2>
             <p className="dica">
-              <b className="claquete-dup">{a.claquete}</b> {a.praca && <span className="praca-dup">{a.praca}</span>} O card apagado não volta: o PROMeiro faz um card novo só com a cópia guardada e o que ele e o Teable sabem. Nada é lido do Trello.
+              <b className="claquete-dup" title={tituloDoOriginal(a.claquete, comApelido(a.claquete))}>{comApelido(a.claquete)}</b> {a.praca && <span className="praca-dup">{a.praca}</span>} O card apagado não volta: o PROMeiro faz um card novo só com a cópia guardada e o que ele e o Teable sabem. Nada é lido do Trello.
             </p>
             <h3 className="sub-dup">O que volta</h3>
             <table className="efeitos-dup">
@@ -1001,7 +1009,7 @@ function ResultadoDoRecriar({ recriado, codigo, claquete, fechar }: { recriado: 
     <div className="resultado-dup" role="status">
       <h2 id="titulo-recriar">Card novo …{recriado.codigo} criado</h2>
       <p className="dica">
-        <b className="claquete-dup">{claquete}</b> No lugar do card …{codigo}.{' '}
+        <b className="claquete-dup" title={tituloDoOriginal(claquete, comApelido(claquete))}>{comApelido(claquete)}</b> No lugar do card …{codigo}.{' '}
         <a href={recriado.url} target="_blank" rel="noreferrer">
           Abrir no Trello
         </a>

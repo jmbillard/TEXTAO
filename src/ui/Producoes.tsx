@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
 import { desfazerEtapaDaProducao, lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
 import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, faltaArte, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
@@ -132,7 +133,10 @@ function AvisoDeFalta({ aviso, indo }: { aviso: NonNullable<Acoes['aviso']>; ind
 }
 
 function CardDaTela({ c, hoje, acoes }: { c: CardDaProducao; hoje: string; acoes: Acoes | null }) {
-  const claquete = <span className="prod-claquete-texto">{c.claquete || 'Sem claquete'}</span>;
+  // o apelido da claquete (#120) no lugar dela: só para mostrar
+  useApelidos();
+  const apelido = apelidoDaProducao(c.id);
+  const claquete = <span className="prod-claquete-texto" title={apelido ? `Claquete: ${c.claquete}` : undefined}>{apelido || c.claquete || 'Sem claquete'}</span>;
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
   const arrastar = acoes?.arrastar ?? null;

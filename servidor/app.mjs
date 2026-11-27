@@ -36,11 +36,12 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { acertarNArtesUmaVez, artesComOEstado } from './artes.mjs';
+import { acertarNArtesUmaVez, artesComOEstado, versoesLidas } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
 import { criarPreferencias } from './preferencias.mjs';
+import { criarApelidos } from './apelidos.mjs';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
@@ -163,6 +164,8 @@ export function abrirBanco(caminho) {
   if (!tem('envios', 'artes_novas')) db.exec('ALTER TABLE envios ADD COLUMN artes_novas TEXT; ALTER TABLE envios ADD COLUMN atracao TEXT; ALTER TABLE envios ADD COLUMN acervo_em TEXT');
   // a data de exibição: numa sessão de filme, é ela que diz qual filme (pelo log do bot)
   if (!tem('envios', 'exibicao')) db.exec('ALTER TABLE envios ADD COLUMN exibicao TEXT');
+  // as versões da chamada lidas nas artes do roteiro (#120), em JSON, refeitas a cada gravação: a fila as mostra
+  if (!tem('roteiros', 'versoes_lidas')) db.exec('ALTER TABLE roteiros ADD COLUMN versoes_lidas TEXT');
   // keys que alguém marcou como "não é atração" na aba Sem cadastro: não voltam para a lista
   db.exec('CREATE TABLE IF NOT EXISTS keys_ignoradas (key TEXT PRIMARY KEY, por TEXT, em TEXT)');
   // cards de filme cujas artes já foram para o acervo do filme (uma vez só, como os roteiros); o card da semana da
@@ -695,6 +698,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const atracoesParecidas = criarAtracoesParecidas({ db });
   // as preferências de cada pessoa (#101), no SQLite: a última área usada, o arranjo da Pauta da edição…
   const preferencias = criarPreferencias(db);
+  // o apelido da claquete (#120), um por roteiro, no SQLite: só para mostrar, o envio continua com a claquete original
+  const apelidos = criarApelidos(db);
   // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
   const areas = criarAreas();
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
@@ -909,7 +914,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
   const q = {
     lista: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, versoes_lidas, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
               e.estado AS envio_estado, e.card_id AS envio_card, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
@@ -919,7 +924,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
     listaTudo: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, atualizado_em, revisado_email, revisado_nome,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, versoes_lidas, atualizado_em, revisado_email, revisado_nome,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
               e.estado AS envio_estado, e.card_id AS envio_card, e.url AS envio_url, e.erro AS envio_erro, e.em AS envio_em, e.por_nome AS envio_por,
@@ -955,6 +960,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
     conteudo: db.prepare('UPDATE roteiros SET meta = ?, doc = ?, n_artes = ?, atualizado_em = ? WHERE id = ?'),
     revisou: db.prepare('UPDATE roteiros SET revisado_email = ?, revisado_nome = ? WHERE id = ?'),
+    versoesLidas: db.prepare('UPDATE roteiros SET versoes_lidas = ? WHERE id = ?'),
     limparYdoc: db.prepare('UPDATE roteiros SET ydoc = NULL WHERE id = ?'),
     inserir: db.prepare(
       `INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, criado_em, atualizado_em)
@@ -1009,7 +1015,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /** Os roteiros que esta pessoa vê, como a fila os recebe (o mesmo para "meus roteiros", #101). */
   const resumosPara = (eu) =>
     (aberto ? q.listaTudo.all(eu.email) : q.lista.all(eu.email, eu.email, eu.email)).map((l) => ({
-      id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, atualizadoEm: l.atualizado_em,
+      id: l.id, meta: JSON.parse(l.meta), nArtes: l.n_artes, versoesLidas: l.versoes_lidas ? JSON.parse(l.versoes_lidas) : [], atualizadoEm: l.atualizado_em,
       dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
       compartilhado: !!l.compartilhado,
       podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
@@ -2237,6 +2243,22 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     }
     if (caminho === '/api/usuarios') return json(res, 200, q.usuarios.all(eu.email));
     if (caminho === '/api/cores') return json(res, 200, q.cores.all());
+    if (caminho === '/api/apelidos') {
+      // o apelido da claquete (#120), um por roteiro: qualquer pessoa logada que lê o roteiro lê, dá, troca e tira o
+      // apelido ("voltar ao original", o apelido vazio)
+      const lidos = () => apelidos.todos((id) => acesso(id, eu).ler);
+      if (req.method === 'GET') return json(res, 200, lidos());
+      if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
+      const id = typeof corpo.roteiro === 'string' ? corpo.roteiro : '';
+      const { linha, ler } = ID_VALIDO.test(id) ? acesso(id, eu) : { linha: null, ler: false };
+      if (!linha || !ler) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+      const recusa = apelidos.gravar(id, JSON.parse(linha.meta)?.claquete, corpo.apelido, eu);
+      if (recusa) return json(res, 400, { erro: recusa });
+      // os colegas com a fila aberta passam a ver o apelido na hora
+      void cache.publicar(FILA, { tipo: 'apelido', por: eu.email }).catch(() => {});
+      return json(res, 200, lidos());
+    }
     if (caminho === '/api/eu/cor') {
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const cor = String((await lerCorpo(req))?.cor ?? '').toLowerCase();
@@ -2746,6 +2768,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           q.atualizar.run(publico, meta, doc, nArtes, revisao, agora, id);
         }
         else q.inserir.run(id, eu.email, eu.nome, publico, meta, doc, nArtes, revisao, r.origem ?? null, agora, agora);
+        // as versões da chamada que as artes do roteiro dizem (#120), pela mesma regra do editor
+        q.versoesLidas.run(JSON.stringify(versoesLidas(r.meta, r.doc)), id);
         if ((meu || !atual) && Array.isArray(r.compartilhadoCom)) {
           const antes = JSON.stringify(q.compartilhadoCom.all(id));
           q.limparCompartilhamento.run(id);

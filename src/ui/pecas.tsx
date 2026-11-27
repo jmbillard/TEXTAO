@@ -285,7 +285,7 @@ export interface FichaRecolhivel {
   mudar: (aberta: boolean) => void;
 }
 
-export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar, estimadaSeg, recolhivel, palpiteRedator }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode; estimadaSeg?: number | null; recolhivel?: FichaRecolhivel; palpiteRedator?: PalpiteNoCampo }) {
+export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, balaoLigar, estimadaSeg, recolhivel, palpiteRedator, apelido }: { dados: DadosClaquete; mudar?: (m: Partial<Meta>) => void; comAtracao?: boolean; cadastrarAtracao?: () => void; balaoLigar?: (fechar: () => void) => React.ReactNode; estimadaSeg?: number | null; recolhivel?: FichaRecolhivel; palpiteRedator?: PalpiteNoCampo; /** o apelido e as versões lidas do roteiro (#120), embaixo da claquete */ apelido?: React.ReactNode }) {
   const [ligando, setLigando] = useState(false);
   const data = useRef<HTMLInputElement>(null);
   const campo = (rotulo: string, chave: 'claquete' | 'redator' | 'editor', vazio: string, lista?: () => string[]) =>
@@ -315,6 +315,7 @@ export function Claquete({ dados, mudar, comAtracao = false, cadastrarAtracao, b
           {campo('Claquete', 'claquete', 'NOME DA CHAMADA')}
         </label>
       )}
+      {apelido}
       {(mostra(dados.redator) || mostra(dados.editor)) && (
         <div className="dupla">
           {mostra(dados.redator) && (
