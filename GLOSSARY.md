@@ -545,7 +545,8 @@ lugar da planilha da edição (ADR 0006). A **correção de grafia** também esc
 aberta a qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna) e o **Dia** (um editor por
 coluna: você, o que sobrou sem editor e a equipe, na ordem de início do turno). No alto, o **Minha pauta** de quem é
 editor, com a **contagem do dia** (as claquetes com a arte entregue), ao lado do que sobrou e de quem está fora. Cada
-linha é uma claquete, uma **tarefa** ou um **aviso**.
+linha é uma claquete, uma **tarefa**, uma **info** ou um **aviso**. O que sobrou sem editor aparece só para a
+**coordenação** e os editores.
 _Evitar_: escala (a escala é quem trabalha, não o que edita), grade da edição
 
 **Contagem do dia**:
@@ -588,8 +589,17 @@ O papel de quem monta e publica a pauta da edição.
 _Evitar_: coordenador (é a pessoa; o papel é a coordenação), chefia
 
 **Tarefa** (da pauta):
-A linha da pauta que não tem a forma de claquete (o nome da atração e a data) e não é aviso: COMUNICAÇÃO, CALHAUS. A
-**tarefa fixa** é a que se repete toda semana na mesma posição.
+A linha da pauta que não tem a forma de claquete (o nome da atração e a data), não é aviso nem **info**: o trabalho que
+ocupa o editor, como COMUNICAÇÃO, CALHAUS, PROJETO CALHAUS ou uma peça sem data. A **tarefa fixa** é a que se repete
+toda semana na mesma posição.
+
+**Info** (da pauta):
+A linha da pauta que é uma instrução para o editor, e não trabalho, sem a caixinha de anotação do aviso: "TRANSFORMAR
+DA A B", "REDATOR VAI ACOMPANHAR", "ENTRA SÁBADO". O PROMeiro a reconhece porque começa por um verbo (ou tem "vai",
+"vem", "deve" logo depois do sujeito) ou por uma palavra que continua a frase de cima. Vai com a claquete de antes, na
+mesma posição; sem claquete antes, fica na posição. Não é item da pauta: fica escondida no balão (o balão de fala,
+laranja quando tem texto), e o clique abre o texto ali mesmo.
+_Evitar_: instrução (o rótulo na tela é "info"), observação
 
 **Aviso** (da pauta):
 Um recado da coordenação para o editor de uma **posição**, preso a ela; não é um item da pauta. No Teable, é a linha

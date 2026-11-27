@@ -30,7 +30,7 @@ import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
 import { AREAS } from '../modelo/areas';
 import { CaminhosDoTopo } from './SeletorDeArea';
 import { CenaDaFilaZerada, TituloEmDia, useFilaZerada } from './FilaZerada';
-import { CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, EscolhaDeNome, Marca, MarcaTexto, NA_PRIORIDADE, RABISCOS, TextoDaClaquete, tracoDe, useSaida } from './pecas';
+import { BolinhaDeEstado, CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, EscolhaDeNome, Marca, MarcaTexto, NA_PRIORIDADE, RABISCOS, TextoDaClaquete, tracoDe, useSaida } from './pecas';
 import { redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, ehCelular, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
@@ -723,7 +723,7 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
           </span>
           {etapa && (
             <span key={etapa} className={`card-semana-etapa ${etapa}`}>
-              {etapa === 'entregue' ? <Icone nome="certo" tam={11} traco={3} /> : etapa !== 'caiu' && <i aria-hidden="true" />}
+              {etapa === 'entregue' ? <Icone nome="certo" tam={11} traco={3} /> : etapa !== 'caiu' && <BolinhaDeEstado estado={etapa} />}
               <span className="etapa-nome">{ETAPA_NO_CARD[etapa]}</span>
             </span>
           )}
