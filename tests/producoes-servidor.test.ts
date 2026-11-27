@@ -920,3 +920,25 @@ describe('a tela de produções: a ordem das praças, lembrada por pessoa', () =
     expect(await lembradas(s, 'ana')).not.toHaveProperty(CHAVE);
   });
 });
+
+describe('os designers guardados juntados se separam por pessoa (#176)', () => {
+  it('na partida, "Ana Prado, Bruno Sá" guardado como um designer vira dois; o resto fica; a segunda partida não muda nada', async () => {
+    // @ts-expect-error módulo JS sem tipos
+    const { criarProducoes } = await import('../servidor/producoes.mjs');
+    const db = abrirBanco(':memory:');
+    criarProducoes(db);
+    const agora = new Date().toISOString();
+    const pôr = db.prepare("INSERT INTO producoes (id, claquete, praca, etapa, designers, criada_em, atualizada_em) VALUES (?, 'Claquete Fictícia 20/11', 'SP', 'entrada', ?, ?, ?)");
+    pôr.run('p1', JSON.stringify(['Ana Prado, Bruno Sá e Caio Reis']), agora, agora);
+    pôr.run('p2', JSON.stringify(['Ana Prado', 'Bruno Sá']), agora, agora);
+    pôr.run('p3', JSON.stringify(['Dora Lis; ana prado', 'Ana Prado']), agora, agora);
+    criarProducoes(db);
+    const designers = (id: string) => JSON.parse(db.prepare('SELECT designers FROM producoes WHERE id = ?').get(id).designers);
+    expect(designers('p1')).toEqual(['Ana Prado', 'Bruno Sá', 'Caio Reis']);
+    expect(designers('p2')).toEqual(['Ana Prado', 'Bruno Sá']);
+    expect(designers('p3')).toEqual(['Dora Lis', 'ana prado']);
+    const antes = db.prepare('SELECT id, designers, atualizada_em FROM producoes ORDER BY id').all();
+    criarProducoes(db);
+    expect(db.prepare('SELECT id, designers, atualizada_em FROM producoes ORDER BY id').all()).toEqual(antes);
+  });
+});

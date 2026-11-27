@@ -15,6 +15,8 @@ import { alternativa, palavrasDoComeco, palavrasDoFim, pracaDaSigla, pracaPadrao
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { opcaoDaPracaDosFilmes } from '../src/modelo/ligarOsFilmes.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
+import { juntarNaProducao, separarPessoas } from '../src/modelo/pessoas.ts';
+import { CAMPO_DOS_DESIGNERS } from '../src/modelo/tabelasDoTeable.ts';
 
 const NOME_SQL = /^[A-Za-z0-9_]+$/;
 const API_PADRAO = 'https://api.trello.com/1';
@@ -1014,6 +1016,19 @@ export function criarTrello(env, deps = {}) {
     return [String(v)];
   };
   const quando = (v) => (v ? new Date(v).getTime() || 0 : 0);
+  // #176: os designers vêm do campo de lista ou de link da produção da arte (a descoberta acha, colunasDosDesigners);
+  // o texto com os nomes juntados (o de antes, para o Metabase) só vale de reserva, na linha com a lista vazia, e
+  // separado por pessoa (separarPessoas), para os dados antigos
+  const doSql = (v) => (NOME_SQL.test(String(v ?? '')) ? String(v) : '');
+  const colunasDes = { lista: doSql(env.colunasDosDesigners?.lista), texto: env.colunasDosDesigners ? doSql(env.colunasDosDesigners.texto) : CAMPO_DOS_DESIGNERS };
+  if (!colunasDes.lista && !colunasDes.texto) colunasDes.texto = CAMPO_DOS_DESIGNERS;
+  /** As colunas dos designers no SELECT (com o prefixo da tabela, quando há). */
+  const colunasDosDesignersSql = (prefixo = '') => [colunasDes.lista, colunasDes.texto].filter(Boolean).map((c) => `${prefixo}"${c}"`).join(', ');
+  /** Os designers de uma linha da produção da arte: a lista, ou o texto de reserva; uma pessoa por nome. */
+  const designersDaLinha = (l) => {
+    const daLista = colunasDes.lista ? separarPessoas(lerLista(l[colunasDes.lista])) : [];
+    return daLista.length || !colunasDes.texto ? daLista : separarPessoas(lerLista(l[colunasDes.texto]));
+  };
   let memo = { em: 0, chave: '', dados: {} };
   let avisouFalha = false;
   let avisouFalhaPrioridade = false;
@@ -1051,7 +1066,7 @@ export function criarTrello(env, deps = {}) {
       const semCard = itens.some((i) => !i.card);
       const ler = (tabela, cards) =>
         sql(
-          `SELECT "card_ID", "claquete", "artes", "status", "designers", "entregue", "data_entrega", "data_entrada" FROM ${tabela}
+          `SELECT "card_ID", "claquete", "artes", "status", ${colunasDosDesignersSql()}, "entregue", "data_entrega", "data_entrada" FROM ${tabela}
          WHERE "card_ID" = ANY($1::text[])${semCard ? ` OR "data_entrada" >= now() - interval '30 days'` : ''}`,
           [cards],
         );
@@ -1065,7 +1080,7 @@ export function criarTrello(env, deps = {}) {
         if (!l) continue;
         dados[i.id] = {
           status: lerLista(l.status),
-          designers: lerLista(l.designers),
+          designers: designersDaLinha(l),
           entregue: !!l.entregue,
           entrega: quando(l.data_entrega) ? new Date(l.data_entrega).toISOString() : null,
           entrada: quando(l.data_entrada) ? new Date(l.data_entrada).toISOString() : null,
@@ -1109,7 +1124,7 @@ export function criarTrello(env, deps = {}) {
     if (!t.producao || !consultar) return null;
     const ler = (tabela) =>
       sql(
-        `SELECT "__id" AS registro, "card_ID", "claquete", "praca", "data_entrada", "data_entrega", "status", "arquivado", "designers", "entregue", "filme", "artes_quantidade", "__last_modified_time" FROM ${tabela}
+        `SELECT "__id" AS registro, "card_ID", "claquete", "praca", "data_entrada", "data_entrega", "status", "arquivado", ${colunasDosDesignersSql()}, "entregue", "filme", "artes_quantidade", "__last_modified_time" FROM ${tabela}
          WHERE "data_entrada" >= now() - ($1 || ' days')::interval AND "card_ID" IS NOT NULL AND "card_ID" <> ''`,
         [String(dias | 0)],
       );
@@ -1123,7 +1138,7 @@ export function criarTrello(env, deps = {}) {
       arquivado: sim(l.arquivado),
       filme: lerLista(l.filme).some((f) => String(f).trim()),
       status: lerLista(l.status),
-      designers: lerLista(l.designers),
+      designers: designersDaLinha(l),
       entregue: sim(l.entregue),
       // para o caso aberto (só o que o Teable tem, ADR 0006)
       entrega: instante(l.data_entrega),
@@ -1220,7 +1235,7 @@ export function criarTrello(env, deps = {}) {
     claquete: String(l.claquete ?? '').trim(),
     praca: String(lerLista(l.praca)[0] ?? '').trim(),
     status: lerLista(l.status).map((s) => String(s).trim()).filter(Boolean),
-    designers: lerLista(l.designers).map((s) => String(s).trim()).filter(Boolean),
+    designers: designersDaLinha(l),
     entregue: sim(l.entregue),
     arquivado: sim(l.arquivado),
     entrada: instante(l.data_entrada),
@@ -1236,7 +1251,7 @@ export function criarTrello(env, deps = {}) {
   });
   // a prioridade pelo to_jsonb (a coluna pode não existir na base: vem null); __last_modified_time é do Teable (toda
   // tabela tem)
-  const COLUNAS_DA_CARGA = `p."__id", p."card_ID", p."claquete", p."praca", p."status", p."designers", p."entregue", p."arquivado", p."data_entrada", p."data_entrega", p."artes", p."artes_quantidade", p."filme", p."complexidade", to_jsonb(p)->>'prioridade' AS "prioridade", p."__last_modified_time"`;
+  const COLUNAS_DA_CARGA = `p."__id", p."card_ID", p."claquete", p."praca", p."status", ${colunasDosDesignersSql('p.')}, p."entregue", p."arquivado", p."data_entrada", p."data_entrega", p."artes", p."artes_quantidade", p."filme", p."complexidade", to_jsonb(p)->>'prioridade' AS "prioridade", p."__last_modified_time"`;
 
   /**
    * A produção da arte INTEIRA (a carga das Produções, #86): todas as linhas, abertas e arquivadas, com e sem card,
@@ -1264,21 +1279,15 @@ export function criarTrello(env, deps = {}) {
 
   /**
    * Os designers que aparecem na produção da arte das linhas que entraram nos últimos `dias` dias (a seção Pessoas:
-   * as novidades vêm do Teable, não do quadro do Trello), cada um com a entrada mais recente: [{ nome, ultima }].
+   * as novidades vêm do Teable, não do quadro do Trello), cada um com a entrada mais recente e quantas vezes
+   * apareceu: [{ nome, ultima, vezes }].
    * Sem a produção configurada, null; com o Postgres fora, lança.
    */
   async function designersDaProducao(dias) {
     if (!t.producao || !consultar) return null;
-    const linhas = await sql(`SELECT "designers", "data_entrada" FROM ${t.producao} WHERE "data_entrada" >= now() - ($1 || ' days')::interval`, [String(dias | 0)]);
-    const porNome = new Map();
-    for (const l of linhas)
-      for (const nome of lerLista(l.designers).map((x) => String(x).trim()).filter(Boolean)) {
-        const chave = nomeComparavel(nome);
-        const ultima = instante(l.data_entrada);
-        const ja = porNome.get(chave);
-        if (!ja || (ultima && (!ja.ultima || ultima > ja.ultima))) porNome.set(chave, { nome, ultima });
-      }
-    return [...porNome.values()];
+    const linhas = await sql(`SELECT ${colunasDosDesignersSql()}, "data_entrada" FROM ${t.producao} WHERE "data_entrada" >= now() - ($1 || ' days')::interval`, [String(dias | 0)]);
+    // #176: cada pessoa uma vez, com quantas linhas a trazem (a linha conta uma vez, mesmo com o nome repetido)
+    return juntarNaProducao(linhas.map((l) => ({ nome: designersDaLinha(l).join(', '), ultima: instante(l.data_entrada) })));
   }
 
   /** As exibições com card (a carga das Produções): card → { data, filme }. Sem a tabela, vazio. */
