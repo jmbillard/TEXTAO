@@ -2,6 +2,7 @@ import { chaveDeArte } from './diferencas';
 import { exportar, pendencias } from './exportar';
 import { metaVazia, type Meta, type NoJSON, type Roteiro } from './tipos';
 import { semAcento } from './vocabularios';
+import { comLetraEVersao, letraEVersaoDoRoteiro } from './letraEVersao';
 
 /* Versão nova de um roteiro que já estava na fila: o texto vem do arquivo novo, mas o trabalho já feito
    na versão anterior (o tipo e a observação de cada arte) passa para as artes que continuam iguais. */
@@ -61,16 +62,14 @@ function herdarMarcas(nova: Roteiro, anterior: Roteiro): Marcas {
   };
 }
 
-/** A versão do roteiro (#156): a guardada (a versão nova que substituiu a anterior na fila), senão a V2 do roteiro que
-    respondeu "é v2" (atualiza o card que já estava na produção da arte), senão a V1. */
-export const versaoDoRoteiro = (meta: Pick<Meta, 'versao' | 'v2De'>): number => Math.max(meta.versao ?? 1, meta.v2De ? 2 : 1);
-
 /** "Substituir a anterior": fica a nova, sem a pergunta, com o trabalho já feito na anterior (os tipos e as
- *  observações das artes, o editor e as marcas da revisão) e a versão seguinte à dela. As pendências são recalculadas. */
-export function substituirVersao(nova: Roteiro, anterior: Roteiro): { roteiro: Roteiro; herdadas: number } {
+ *  observações das artes, o editor e as marcas da revisão) e a letra e a versão seguintes às dela (#166): a resposta de
+ *  "Essa chamada já foi liberada para exibição?" diz se é a versão seguinte (não) ou a letra seguinte (sim). As
+ *  pendências são recalculadas. */
+export function substituirVersao(nova: Roteiro, anterior: Roteiro, { liberada = false }: { liberada?: boolean } = {}): { roteiro: Roteiro; herdadas: number } {
   const { doc, herdadas } = herdarTipos(nova.doc, anterior.doc);
-  const versao = Math.max(versaoDoRoteiro(nova.meta), versaoDoRoteiro(anterior.meta) + 1);
-  const roteiro: Roteiro = { ...nova, doc, meta: { ...nova.meta, ...herdarMarcas(nova, anterior), substitui: undefined, editor: nova.meta.editor || anterior.meta.editor, versao } };
+  const meta = comLetraEVersao({ ...nova.meta, ...herdarMarcas(nova, anterior), substitui: undefined, editor: nova.meta.editor || anterior.meta.editor }, letraEVersaoDoRoteiro(anterior.meta), liberada);
+  const roteiro: Roteiro = { ...nova, doc, meta };
   roteiro.meta.revisar = pendencias(exportar(roteiro));
   return { roteiro, herdadas };
 }

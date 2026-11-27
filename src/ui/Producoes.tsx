@@ -205,7 +205,7 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
   const apelido = apelidoDaProducao(c.id);
   // as versões refeitas com o apelido de agora (#154): a edição à mão na Produção aberta vale na hora
   const versoes = versoesDoCard(c);
-  const claquete = <span className="prod-claquete-texto" title={apelido ? `Claquete: ${c.claquete}` : undefined}>{apelido || c.claquete ? <NomeDaClaquete nome={apelido || c.claquete} versoes={versoes} /> : 'Sem claquete'}</span>;
+  const claquete = <span className="prod-claquete-texto" title={apelido ? `Claquete: ${c.claquete}` : undefined}>{apelido || c.claquete ? <NomeDaClaquete nome={apelido || c.claquete} versoes={versoes} marca={c.letraEVersao} /> : 'Sem claquete'}</span>;
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
   const arrastar = acoes?.arrastar ?? null;

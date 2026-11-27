@@ -845,8 +845,9 @@ async function anteriorNoTrello(id: string) {
 
 /** As duas saídas da versão nova de um roteiro que já estava na fila (o aviso da ficha no celular e a comparação). */
 export const versaoNova = {
-  /** Fica a nova, com o trabalho da anterior (modelo/versoes); o card que a anterior já tinha passa para ela, e a anterior sai da fila. */
-  async substituir(novaId: string): Promise<{ roteiro: Roteiro; herdadas: number; cardHerdado: boolean } | undefined> {
+  /** Fica a nova, com o trabalho da anterior (modelo/versoes); o card que a anterior já tinha passa para ela, e a anterior sai da fila.
+   *  @param liberada a resposta de "Essa chamada já foi liberada para exibição?" (#166): sim, a letra seguinte; não, a versão seguinte */
+  async substituir(novaId: string, liberada: boolean): Promise<{ roteiro: Roteiro; herdadas: number; cardHerdado: boolean } | undefined> {
     const rn = roteiroDa(await armazenamento.ler(novaId));
     if (!rn) return undefined;
     const ra = rn.meta.substitui ? roteiroDa(await armazenamento.ler(rn.meta.substitui)) : undefined;
@@ -856,7 +857,7 @@ export const versaoNova = {
       await armazenamento.salvar(roteiro);
       return { roteiro, herdadas: 0, cardHerdado: false };
     }
-    const { roteiro, herdadas } = substituirVersao(rn, ra);
+    const { roteiro, herdadas } = substituirVersao(rn, ra, { liberada });
     await armazenamento.salvar(roteiro, 'substituiu a versão anterior');
     // o card que a anterior já tinha fica com a nova, antes que ela saia
     const cardHerdado = await anteriorNoTrello(ra.id);

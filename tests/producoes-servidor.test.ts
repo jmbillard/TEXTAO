@@ -310,6 +310,23 @@ describe('a tela de produções: as Produções abertas por praça e etapa', () 
     expect(JSON.stringify(corpo)).not.toMatch(/c0ffee|recTela/);
   });
 
+  it('o card traz a letra e a versão do roteiro dela (#166), só quando não é o início', async () => {
+    const db = abrirBanco(':memory:');
+    const em = new Date(agora).toISOString();
+    const roteiro = (id: string, meta: object, n: number) => {
+      db.prepare('INSERT INTO roteiros (id, dono_email, dono_nome, meta, doc, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, 'ana@empresa.com', 'Ana', JSON.stringify(meta), '{}', em, em);
+      db.prepare("INSERT INTO envios (roteiro_id, estado, card_id, em) VALUES (?, 'ok', ?, ?)").run(id, card(n), em);
+    };
+    roteiro('roteiro-festa', { claquete: `Festa na Praça ${dm(3)} SP`, letra: 'B', versao: 2 }, 12);
+    // o roteiro de antes, com a versão do #156 e sem letra, vale como A
+    roteiro('roteiro-show', { claquete: `Show da Noite ${dm(3)} SP`, versao: 1 }, 11);
+    const { corpo } = await tela(db);
+    const [cozinha, festa, show] = daPraca(corpo, 'SP').colunas.entrada;
+    expect((festa as Card & { letraEVersao?: string }).letraEVersao).toBe('B V2');
+    expect(show).not.toHaveProperty('letraEVersao');
+    expect(cozinha).not.toHaveProperty('letraEVersao');
+  });
+
   it('o Entregue mostra só os entregues dos últimos 3 dias; as arquivadas não aparecem', async () => {
     const { corpo } = await tela();
     expect(claquetes(daPraca(corpo, 'G5').colunas.entregue)).toEqual([`Jogo Final ${dm(0)}`]);

@@ -37,6 +37,7 @@ import { eventosDaReleitura } from '../src/modelo/eventosDoTeable.ts';
 import { artesAgrupadas, artesDaProducao } from './trello.mjs';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { dataDaClaquete } from '../src/modelo/vocabularios.ts';
+import { letraEVersaoDoRoteiro, marcaDaLetraEVersao } from '../src/modelo/letraEVersao.ts';
 
 export function criarTabelaDasProducoes(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS producoes (
@@ -180,6 +181,19 @@ export const ORIGEM_PROMEIRO = 'PROMeiro';
 /** A origem dos eventos do aviso do Padeiro (#139). */
 export const ORIGEM_PADEIRO = 'Padeiro';
 
+/** A letra e a versão do Roteiro ligado (#166), como o título mostra ("B", "V2", "B V2"): só quando não é o início
+    (a A V1, o roteiro de antes sem letra e a Produção sem roteiro não levam nada). */
+function comALetraEVersao(l) {
+  let meta = null;
+  try {
+    meta = JSON.parse(l.roteiro_meta ?? 'null');
+  } catch {
+    // meta ilegível: sem letra nem versão
+  }
+  const marca = meta ? marcaDaLetraEVersao(letraEVersaoDoRoteiro(meta)) : '';
+  return marca ? { letraEVersao: marca } : {};
+}
+
 /** A Produção como a API mostra. */
 const daLinha = (l) => ({
   id: l.id,
@@ -229,7 +243,7 @@ export function criarProducoes(db) {
     doRegistro: db.prepare('SELECT * FROM producoes WHERE teable_registro = ?'),
     doId: db.prepare('SELECT * FROM producoes WHERE id = ?'),
     // a pauta da edição (#96): as que entraram desde a data (e as sem data de entrada)
-    daPauta: db.prepare('SELECT id, claquete, praca, etapa, designers, artes, artes_quantidade, prioridade, entrada_em, entrega_em FROM producoes WHERE entrada_em IS NULL OR entrada_em >= ?'),
+    daPauta: db.prepare('SELECT p.id, p.claquete, p.praca, p.etapa, p.designers, p.artes, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, r.meta AS roteiro_meta FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id WHERE p.entrada_em IS NULL OR p.entrada_em >= ?'),
     // a carga adota a Produção que o aviso do Trello criou para o card (ainda sem o registro do Teable): não duplica
     adotar: db.prepare(
       `UPDATE producoes SET teable_registro = ? WHERE id = (SELECT id FROM producoes WHERE card_id = ? AND teable_registro IS NULL ORDER BY criada_em LIMIT 1)`,
@@ -716,6 +730,7 @@ export function criarProducoes(db) {
         alta: String(l.prioridade ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase() === 'ALTA',
         entradaEm: l.entrada_em ?? null,
         entregaEm: l.entrega_em ?? null,
+        ...comALetraEVersao(l),
       };
     });
   }
@@ -816,6 +831,7 @@ export function criarProducoes(db) {
         prazo: l.exibicao_em || daClaquete || null,
         semCard: !l.card_id,
         entregaEm: l.entrega_em ?? null,
+        ...comALetraEVersao(l),
       };
     };
   }

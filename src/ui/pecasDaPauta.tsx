@@ -8,7 +8,7 @@ import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
 import { apelidoDaClaquete, apelidoDaProducao, useApelidos, versoesAMaoDaClaquete, versoesAMaoDaProducao } from '../dados/apelidos';
 import { armazenamento } from '../dados/armazenamento';
-import { ApelidoDaClaquete } from './Apelido';
+import { ApelidoDaClaquete, MarcaDaLetraEVersao } from './Apelido';
 import { DE_ONDE, dicaDasVersoes, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
 import { sufixoDasVersoes, versoesDaChamada, type FonteDasVersoes } from '../modelo/versoesDoRoteiro';
 
@@ -83,7 +83,8 @@ export function ProducaoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
 
 /** O texto da claquete, com o marca-texto da prioridade ALTA da produção da arte (como na agenda). */
 export function TextoDaClaquete({ linha }: { linha: LinhaNaTela }) {
-  const alta = !!resumoDaProducao(linha.producoes)?.alta;
+  const resumo = resumoDaProducao(linha.producoes);
+  const alta = !!resumo?.alta;
   // com o apelido da claquete (#120, #154), a claquete da pauta aparece ao passar o mouse
   const texto = <span className="pauta-texto" title={linha.original ? `Claquete: ${linha.original}` : undefined}>{linha.semVersao}</span>;
   // o código das versões colado no fim do nome (#152), fora do marca-texto
@@ -91,6 +92,8 @@ export function TextoDaClaquete({ linha }: { linha: LinhaNaTela }) {
     <span className="pauta-nome-com-versoes">
       {alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{texto}</MarcaTexto> : texto}
       <Versoes linha={linha} />
+      {/* a letra e a versão do roteiro da Produção (#166), só o que não é o início */}
+      <MarcaDaLetraEVersao marca={resumo?.letraEVersao ?? ''} nome={linha.semVersao} />
     </span>
   );
 }
@@ -286,6 +289,7 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
     <span>
       {linha.semVersao}
       <Versoes linha={linha} />
+      <MarcaDaLetraEVersao marca={resumo?.letraEVersao ?? ''} nome={linha.semVersao} />
     </span>
   );
   const lapis = nomeDoLapis(daPauta);

@@ -62,7 +62,7 @@ export function ProducaoAberta({ card, prazo, fechar }: Props) {
             <Icone nome="fechar" tam={18} />
           </button>
           <h2 id="prod-aberta-titulo" title={apelidoDaProducao(card.id) ? `Claquete: ${card.claquete}` : undefined}>
-            {apelidoDaProducao(card.id) || card.claquete ? <NomeDaClaquete nome={apelidoDaProducao(card.id) || card.claquete} versoes={versoesDoCard(card)} /> : 'Sem claquete'}
+            {apelidoDaProducao(card.id) || card.claquete ? <NomeDaClaquete nome={apelidoDaProducao(card.id) || card.claquete} versoes={versoesDoCard(card)} marca={card.letraEVersao} /> : 'Sem claquete'}
           </h2>
           <p className="prod-aberta-sobre">
             <span>{card.atracao || 'sem atração'}</span>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codigoDasVersoes, leituraDasVersoes, lerVersoes, nomeSemAsVersoes } from '../src/modelo/pauta';
+import { codigoDasVersoes, leituraDasVersoes, lerVersoes, nomeSemAsVersoes, resumoDaProducao, type ProducaoNaPauta } from '../src/modelo/pauta';
 
 /* As versões da chamada na pauta da edição (#95): o código no fim da claquete, uma letra por versão (A amanhã, H hoje,
    N nesta <dia>, P próxima <dia>, D dia X) ou um código inteiro (DIA, MES/MÊS, MNT). O dia da semana, o número e o
@@ -192,5 +192,13 @@ describe('nomeSemAsVersoes: o nome mostrado sai sem o código, que fica só na e
     expect(nomeSemAsVersoes('Festa na Praça 4/12 SP')).toBe('Festa na Praça 4/12 SP');
     expect(nomeSemAsVersoes('SÉRIE FICTÍCIA, O FINAL')).toBe('SÉRIE FICTÍCIA, O FINAL');
     expect(nomeSemAsVersoes('')).toBe('');
+  });
+});
+
+describe('a letra e a versão do roteiro na claquete da pauta (#166)', () => {
+  const producao = (id: string, entradaEm: string | null, letraEVersao?: string): ProducaoNaPauta => ({ id, claquete: 'X', praca: 'SP', etapa: 'entrada', artes: null, designers: [], alta: false, entradaEm, entregaEm: null, ...(letraEVersao ? { letraEVersao } : {}) });
+  it('vale a da Produção que entrou por último; a A V1 não mostra nada', () => {
+    expect(resumoDaProducao([producao('a', '2026-11-20T10:00:00Z', 'V2'), producao('b', '2026-11-21T10:00:00Z', 'B')])?.letraEVersao).toBe('B');
+    expect(resumoDaProducao([producao('a', '2026-11-22T10:00:00Z'), producao('b', '2026-11-21T10:00:00Z', 'B')])?.letraEVersao).toBe('');
   });
 });

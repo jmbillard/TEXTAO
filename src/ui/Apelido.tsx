@@ -6,6 +6,7 @@ import { codigoAMao, nomeSemOCodigo, sufixoDasVersoes, versoesDaChamada, type Co
 import type { AlvoDoApelido, Resumo } from '../dados/armazenamento';
 import { codigoDasVersoes, type Versao } from '../modelo/pauta';
 import { DE_ONDE, dicaDasVersoes, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
+import { marcaDepoisDoNome } from '../modelo/letraEVersao';
 import './apelido.css';
 
 /* O apelido da claquete e as versões que ela sabe (#120, #152), na ficha da revisão, no editor, na ficha da Pauta e na
@@ -34,12 +35,27 @@ export function versoesDoCard(c: Pick<CardDaProducao, 'id' | 'claquete' | 'prazo
 
 /** O nome da claquete com o sufixo das versões que ela sabe (#152), colado no fim: o código uma vez só, no padrão, com a
     dica do significado e de onde veio. Com a opção desligada, só o nome. */
-export function NomeDaClaquete({ nome, versoes }: { nome: string; versoes?: VersoesDaChamada }) {
+export function NomeDaClaquete({ nome, versoes, marca = '' }: { nome: string; versoes?: VersoesDaChamada; marca?: string }) {
   return (
     <>
       {nomeSemOCodigo(nome)}
       <SufixoDaClaquete versoes={versoes} />
+      <MarcaDaLetraEVersao marca={marca} nome={nome} />
     </>
+  );
+}
+
+/** A letra e a versão do roteiro depois do nome (#156, #166): só o que não é o início ("B", "V2", "B V2"; nada na A
+    V1) e não de novo, se o nome já diz. É outra coisa que o código das versões da chamada, que vem antes.
+    @param marca a de `marcaDaLetraEVersao` ('' na A V1) */
+export function MarcaDaLetraEVersao({ marca, nome }: { marca: string; nome: string }) {
+  const mostrar = marcaDepoisDoNome(marca, nome);
+  if (!mostrar) return null;
+  return (
+    <span className="marca-letra-versao" title={`Letra e versão do roteiro: ${mostrar}`}>
+      {' '}
+      {mostrar}
+    </span>
   );
 }
 
