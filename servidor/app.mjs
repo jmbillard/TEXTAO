@@ -3458,6 +3458,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const card = comAsVersoes(producoes.umaNaTela(p.id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
     const nome = padeiro.designer ? designerDoPadeiro(padeiro).nome : '';
     const complexidade = meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
+    // o filme (como o `fil` da lista): o do cadastro ou só o título
+    const ehFilme = !!(p.filmeId || p.filmeTitulo);
     const fogo = (a) => (p.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
     return {
       id: p.id,
@@ -3466,8 +3468,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       claquete: p.claquete,
       versao: codigoDasVersoes(card?.versoesDaChamada?.lista ?? []),
       ...prontoParaAbrir(
-        { atracao: card?.atracao ?? '', filme: p.filmeId, ehFilme: !!(p.filmeId || p.filmeTitulo) },
-        { cadastro: p.filmeId || p.filmeTitulo ? [] : await atracoesDoCadastro(), projetos: p.filmeId ? await projetosDosFilmes([p.filmeId]) : {} },
+        { atracao: card?.atracao ?? '', filme: p.filmeId, ehFilme },
+        { cadastro: ehFilme ? [] : await atracoesDoCadastro(), projetos: p.filmeId ? await projetosDosFilmes([p.filmeId]) : {} },
       ),
       designers: p.designers,
       comVoce: !!nome && p.designers.some((d) => nomeComparavel(d) === nomeComparavel(nome)),
