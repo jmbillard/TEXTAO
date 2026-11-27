@@ -6,7 +6,9 @@ import './padeiros.css';
 /* Aba Padeiros dos Cadastros (#137), só para administradores: os Padeiros que pediram a chave do Padeiro (um por
    usuário e por computador), com a sigla, o designer ligado e o último aviso. O pendente se liga a um designer
    cadastrado (a sigla sugere qual); o ligado troca de designer ou é revogado. A revogada não volta: o Padeiro pede
-   outra chave, que chega pendente. A chave nunca vem ao navegador. */
+   outra chave, que chega pendente. O Padeiro ligado que pede outra chave (o mesmo usuário no mesmo computador) vira um
+   pedido novo, logo acima da ligada: aprovar troca a chave (a de antes cai), recusar mantém a de antes. A chave nunca
+   vem ao navegador. */
 
 const ROTULOS: Record<EstadoDaChave, string> = { pendente: 'pendente', ligada: 'ligada', revogada: 'revogada' };
 
@@ -69,13 +71,13 @@ export function ListaDePadeiros({ lista, designers, falha, ligar, revogar, busca
         <p className="cad-falha">Nenhum designer ativo na tabela designers do Teable (a da Configuração · Pessoas): sem ele, não há a quem ligar a chave.</p>
       )}
       {vistos.map((p) => (
-        <LinhaDoPadeiro key={p.id} p={p} designers={designers} ligar={(d) => ligar(p.id, d)} revogar={() => revogar(p.id)} />
+        <LinhaDoPadeiro key={p.id} p={p} antes={p.substitui ? (lista ?? []).find((x) => x.id === p.substitui) : undefined} designers={designers} ligar={(d) => ligar(p.id, d)} revogar={() => revogar(p.id)} />
       ))}
     </>
   );
 }
 
-function LinhaDoPadeiro({ p, designers, ligar, revogar }: { p: Padeiro; designers: DesignerDoPadeiro[]; ligar: (designer: string) => Promise<void>; revogar: () => Promise<void> }) {
+function LinhaDoPadeiro({ p, antes, designers, ligar, revogar }: { p: Padeiro; antes?: Padeiro; designers: DesignerDoPadeiro[]; ligar: (designer: string) => Promise<void>; revogar: () => Promise<void> }) {
   const inicial = p.designer?.registro ?? p.sugestao?.registro ?? '';
   const [escolhido, setEscolhido] = useState(inicial);
   const [confirmando, setConfirmando] = useState(false);
@@ -91,12 +93,13 @@ function LinhaDoPadeiro({ p, designers, ligar, revogar }: { p: Padeiro; designer
   // o designer ligado que saiu da tabela (ou ficou inativo) continua na escolha, para a linha não mentir
   const opcoes = p.designer && !designers.some((d) => d.registro === p.designer!.registro) ? [p.designer, ...designers] : designers;
   return (
-    <div className={`item-cad item-pad pad-${p.estado}`} data-padeiro={p.id}>
+    <div className={`item-cad item-pad pad-${p.estado}${p.pedidoNovo ? ' pad-novo' : ''}`} data-padeiro={p.id}>
       <div className="nome">
         <Icone nome="chave" tam={15} />
         <span className="usuario-pad">{p.usuario}</span>
         <span className="computador-pad">em {p.computador}</span>
         <span className={`estado-pad ${p.estado}`}>{ROTULOS[p.estado]}</span>
+        {p.pedidoNovo && <span className="novo-pad">pedido novo do mesmo computador</span>}
       </div>
       <div className="lado-cad aviso-pad">{p.ultimoAviso ? `último aviso ${quando(p.ultimoAviso)}` : 'nenhum aviso ainda'}</div>
       <div className="detalhe-pad">
@@ -111,6 +114,11 @@ function LinhaDoPadeiro({ p, designers, ligar, revogar }: { p: Padeiro; designer
           </span>
         )}
       </div>
+      {p.pedidoNovo && p.estado === 'pendente' && antes && (
+        <p className="troca-pad">
+          Aprovar troca a chave: a de agora{antes.designer ? `, ligada a ${antes.designer.nome},` : ''} deixa de valer. Recusar mantém a de agora.
+        </p>
+      )}
       {p.estado === 'revogada' ? (
         <div className="acoes-pad">
           <span className="designer-pad">{p.designer ? `era de ${p.designer.nome}` : 'não chegou a ser ligada'}</span>
@@ -129,9 +137,9 @@ function LinhaDoPadeiro({ p, designers, ligar, revogar }: { p: Padeiro; designer
               ))}
             </select>
           </label>
-          {p.estado === 'pendente' && p.sugestao && escolhido === p.sugestao.registro && <span className="sugestao-pad">pela sigla</span>}
+          {p.estado === 'pendente' && p.sugestao && escolhido === p.sugestao.registro && <span className="sugestao-pad">{p.pedidoNovo ? 'o de agora' : 'pela sigla'}</span>}
           <button type="button" className="botao primario pequeno-pad" disabled={!mudou || indo} onClick={com(() => ligar(escolhido))}>
-            {p.estado === 'pendente' ? 'Ligar' : 'Trocar'}
+            {p.pedidoNovo ? 'Aprovar' : p.estado === 'pendente' ? 'Ligar' : 'Trocar'}
           </button>
           {p.estado === 'ligada' &&
             (confirmando ? (

@@ -10,6 +10,10 @@ muda código ou dados vai para um **subagente** novo, um ticket por vez na ordem
 completo; o gestor confere o que voltou antes de seguir e continua livre para a conversa. Consultas rápidas e
 respostas ficam com o gestor. Ao delegar ou conferir, siga `docs/agents/gestao.md`.
 
+## Regras de UI
+
+- Nada de "unha": nenhum item, cartão, linha ou bloco leva faixa colorida na borda esquerda (`border-left` grosso, `box-shadow: inset Npx 0 0`, `border-inline-start`); o estado vai numa bolinha ou etiqueta, no fundo levemente tingido ou no texto.
+
 ## Skills dos agentes (Agent skills)
 
 As skills do Matt Pocock, traduzidas para pt-BR, ficam em `.claude/skills/` (veja `.claude/skills/README.md`).

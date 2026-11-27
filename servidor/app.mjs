@@ -378,13 +378,15 @@ export function semCadastro(claquetes, programas, ignoradas = new Set(), pracas 
 /* ---------- utilidades HTTP ---------- */
 
 /**
- * O pedido é do caminho do Padeiro (#137)? Vale o que o Bypass do Access pode ter deixado passar: o caminho como veio
- * (com %2e%2e, barras repetidas ou outra caixa, que o endereço já arrumado esconderia: /api/padeiro/%2e%2e/roteiros
- * vira /api/roteiros) e o arrumado, os dois sem a barra no fim (/api/padeiro, /api/padeiros…). Nada disso pode chegar
- * às rotas com login, onde o cabeçalho do Access que veio junto valeria.
+ * O pedido é de um caminho fora do login (o do Padeiro, #137; o do pôster público, #145)? Vale o que o Bypass do Access
+ * pode ter deixado passar: o caminho como veio (com %2e%2e, barras repetidas ou outra caixa, que o endereço já arrumado
+ * esconderia: /api/publico/%2e%2e/roteiros vira /api/roteiros) e o arrumado, os dois sem a barra no fim
+ * (/api/padeiro, /api/padeiros…). Nada disso pode chegar às rotas com login, onde o cabeçalho do Access que veio junto
+ * valeria.
+ * @param prefixo o caminho fora do login, sem a barra no fim e em minúsculas
  */
-function doCaminhoDoPadeiro(cru, caminho) {
-  const comeco = (c) => c.replace(/\/+/g, '/').toLowerCase().startsWith('/api/padeiro');
+function debaixoDoCaminho(prefixo, cru, caminho) {
+  const comeco = (c) => c.replace(/\/+/g, '/').toLowerCase().startsWith(prefixo);
   let veio = String(cru ?? '').split(/[?#]/)[0];
   try {
     veio = decodeURIComponent(veio);
@@ -1677,8 +1679,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const designers = ativos.map((d) => ({ registro: d.registro, nome: d.nome })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     if (caminho === '/api/cadastros/padeiros') {
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
-      const comSugestao = padeiros.lista().map((p) => {
-        const s = p.estado === 'pendente' ? designerSugerido(p.sigla, p.usuario, ativos) : null;
+      const lista = padeiros.lista();
+      // o pedido novo do mesmo computador sugere o designer da chave que ele vai trocar; o resto, o da sigla
+      const daChaveDeAntes = (p) => ativos.find((d) => d.registro === lista.find((x) => x.id === p.substitui)?.designer?.registro);
+      const comSugestao = lista.map((p) => {
+        const s = p.estado === 'pendente' ? ((p.substitui && daChaveDeAntes(p)) || designerSugerido(p.sigla, p.usuario, ativos)) : null;
         return { ...p, sugestao: s ? { registro: s.registro, nome: s.nome } : null };
       });
       return json(res, 200, { padeiros: comSugestao, designers });
@@ -3066,10 +3071,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // o que está embaixo dela também pode ter passado pelo Bypass do Access (o caminho cobre os de baixo): não é nada,
       // e nunca chega às rotas com login (o cabeçalho do Access, ali, pode ter vindo de qualquer um)
       else if (caminho.startsWith(`${ROTA_DO_AVISO}/`)) json(res, 404, { erro: 'Não encontrado.' });
-      // o pôster público (#90): outra exceção ao Access, só com o token do Padeiro; nada daqui chega às rotas com login
-      else if (caminho.startsWith(ROTA_PUBLICA)) await rotaPublica(req, res, url);
+      // o pôster público (#90): outra exceção ao Access, só com o token do Padeiro; nada daqui (nem o caminho torto,
+      // #145) chega às rotas com login
+      else if (debaixoDoCaminho(ROTA_PUBLICA.replace(/\/$/, ''), req.url, caminho)) await rotaPublica(req, res, url);
       // o caminho do Padeiro (#137): também fora do login, só com a chave do Padeiro
-      else if (doCaminhoDoPadeiro(req.url, caminho)) await rotaDoPadeiro(req, res, caminho);
+      else if (debaixoDoCaminho('/api/padeiro', req.url, caminho)) await rotaDoPadeiro(req, res, caminho);
       else if (caminho.startsWith('/api/')) await api(req, res, caminho);
       else arquivo(req, res, caminho);
     } catch (e) {

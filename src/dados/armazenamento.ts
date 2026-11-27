@@ -543,7 +543,10 @@ export interface Padeiro {
   sigla: string;
   estado: EstadoDaChave;
   designer: DesignerDoPadeiro | null;
-  /** O designer que a sigla indica (só nos pendentes, e só quando é um só). */
+  /** O pedido novo do mesmo computador: a chave que, aprovada, troca a ligada (`substitui`, o id dela). */
+  pedidoNovo: boolean;
+  substitui: string | null;
+  /** O designer sugerido (só nos pendentes): o da chave que o pedido novo troca ou, senão, o que a sigla indica. */
   sugestao: DesignerDoPadeiro | null;
   mudadoPor: string | null;
   mudadoEm: string | null;

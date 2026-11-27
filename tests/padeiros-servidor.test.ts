@@ -112,7 +112,7 @@ describe('o caminho do Padeiro: o cadastro e a chave', () => {
   });
 });
 
-type Padeiro = { id: string; usuario: string; computador: string; sistema: string; sigla: string; estado: string; designer: { registro: string; nome: string } | null; sugestao: { registro: string; nome: string } | null; ultimoAviso: string | null };
+type Padeiro = { id: string; usuario: string; computador: string; sistema: string; sigla: string; estado: string; designer: { registro: string; nome: string } | null; sugestao: { registro: string; nome: string } | null; ultimoAviso: string | null; pedidoNovo: boolean; substitui: string | null };
 type Lista = { padeiros: Padeiro[]; designers: { registro: string; nome: string }[] };
 
 describe('a aba Padeiros: ligar e revogar a chave', () => {
@@ -183,13 +183,87 @@ describe('a aba Padeiros: ligar e revogar a chave', () => {
     expect(depois[0]).toMatchObject({ estado: 'pendente', designer: null, sistema: 'macOS 15.2' });
   });
 
-  it('o cadastro novo do mesmo par também desliga a chave ligada (volta a pendente)', async () => {
+  it('o recadastro de um Padeiro pendente troca a chave na hora (a antiga cai)', async () => {
+    const { cadastrar, quemSou, chefe } = await comServidor();
+    const antiga = (await cadastrar()).corpo.chave;
+    const nova = (await cadastrar({ sistema: 'macOS 15.2' })).corpo.chave;
+    expect((await quemSou(antiga)).status).toBe(401);
+    expect((await quemSou(nova)).corpo).toMatchObject({ estado: 'pendente', designer: null });
+    expect((await lista(chefe)).padeiros).toHaveLength(1);
+  });
+
+  it('o recadastro de um Padeiro ligado não derruba a chave: vira um pedido novo, pendente, ao lado da ligada', async () => {
+    const { cadastrar, quemSou, chefe } = await comServidor();
+    const antiga = (await cadastrar()).corpo.chave;
+    await cadastrar({ usuario: 'cprates', computador: 'WIN-ARTE-02', sistema: 'Windows 11', sigla: 'CP' });
+    const ligada = (await lista(chefe)).padeiros.find((p) => p.usuario === 'ana.souza')!;
+    // ligada ao Caio (o computador mudou de mãos): a sigla diria Ana, mas a sugestão do pedido novo é a da chave de antes
+    await ligar(chefe, ligada.id, 'recDesignerCaio');
+    const r = await cadastrar({ sistema: 'macOS 15.2', sigla: 'AS' });
+    expect(r.status).toBe(201);
+    expect(r.corpo.estado).toBe('pendente');
+    // a ligada continua valendo; a nova espera o administrador
+    expect((await quemSou(antiga)).corpo).toMatchObject({ estado: 'ligada', designer: { nome: 'Caio Prates' } });
+    expect((await quemSou(r.corpo.chave)).corpo).toMatchObject({ estado: 'pendente', designer: null });
+    const l = (await lista(chefe)).padeiros;
+    // o pedido novo vem logo antes da ligada que ele troca, com o designer dela como sugestão
+    expect(l.map((p) => [p.usuario, p.estado, p.pedidoNovo, p.sistema])).toEqual([
+      ['cprates', 'pendente', false, 'Windows 11'],
+      ['ana.souza', 'pendente', true, 'macOS 15.2'],
+      ['ana.souza', 'ligada', false, 'macOS 15.1'],
+    ]);
+    expect(l[1]).toMatchObject({ substitui: ligada.id, sugestao: { registro: 'recDesignerCaio', nome: 'Caio Prates' } });
+    // pedir de novo troca só o pedido novo (a primeira chave nova cai; a ligada fica)
+    const outra = (await cadastrar()).corpo.chave;
+    expect((await quemSou(r.corpo.chave)).status).toBe(401);
+    expect((await quemSou(outra)).corpo).toMatchObject({ estado: 'pendente' });
+    expect((await quemSou(antiga)).corpo).toMatchObject({ estado: 'ligada' });
+    expect((await lista(chefe)).padeiros).toHaveLength(3);
+  });
+
+  it('aprovar o pedido novo: a chave nova fica ligada e a antiga cai', async () => {
     const { cadastrar, quemSou, chefe } = await comServidor();
     const antiga = (await cadastrar()).corpo.chave;
     await ligar(chefe, (await lista(chefe)).padeiros[0].id, 'recDesignerAna');
     const nova = (await cadastrar()).corpo.chave;
+    const pedido = (await lista(chefe)).padeiros.find((p) => p.pedidoNovo)!;
+    const r = await ligar(chefe, pedido.id, 'recDesignerAna');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ padeiro: { id: pedido.id, estado: 'ligada', pedidoNovo: false, substitui: null } });
     expect((await quemSou(antiga)).status).toBe(401);
-    expect((await quemSou(nova)).corpo).toMatchObject({ estado: 'pendente', designer: null });
+    expect((await quemSou(nova)).corpo).toMatchObject({ estado: 'ligada', designer: { nome: 'Ana Souza' } });
+    const l = (await lista(chefe)).padeiros;
+    expect(l.map((p) => [p.id, p.estado, p.pedidoNovo])).toEqual([[pedido.id, 'ligada', false]]);
+    // um recadastro depois disso volta a ser um pedido novo ao lado da ligada
+    await cadastrar();
+    expect((await lista(chefe)).padeiros.map((p) => p.pedidoNovo)).toEqual([true, false]);
+  });
+
+  it('recusar o pedido novo mantém a chave ligada', async () => {
+    const { cadastrar, quemSou, chefe } = await comServidor();
+    const antiga = (await cadastrar()).corpo.chave;
+    await ligar(chefe, (await lista(chefe)).padeiros[0].id, 'recDesignerAna');
+    const nova = (await cadastrar()).corpo.chave;
+    const pedido = (await lista(chefe)).padeiros.find((p) => p.pedidoNovo)!;
+    expect((await revogar(chefe, pedido.id)).status).toBe(200);
+    expect((await quemSou(antiga)).corpo).toMatchObject({ estado: 'ligada', designer: { nome: 'Ana Souza' } });
+    expect((await quemSou(nova)).corpo).toMatchObject({ estado: 'revogada' });
+    // o recusado não se aprova depois
+    expect((await ligar(chefe, pedido.id, 'recDesignerAna')).status).toBe(409);
+    expect((await quemSou(antiga)).corpo).toMatchObject({ estado: 'ligada' });
+  });
+
+  it('com a ligada revogada, o recadastro troca a chave na hora e o pedido novo que havia some', async () => {
+    const { cadastrar, quemSou, chefe } = await comServidor();
+    await cadastrar();
+    const ligada = (await lista(chefe)).padeiros[0];
+    await ligar(chefe, ligada.id, 'recDesignerAna');
+    const doPedido = (await cadastrar()).corpo.chave;
+    await revogar(chefe, ligada.id);
+    const nova = (await cadastrar()).corpo.chave;
+    expect((await quemSou(doPedido)).status).toBe(401);
+    expect((await quemSou(nova)).corpo).toMatchObject({ estado: 'pendente' });
+    expect((await lista(chefe)).padeiros.map((p) => [p.id, p.estado, p.pedidoNovo])).toEqual([[ligada.id, 'pendente', false]]);
   });
 
   it('só administradores veem, ligam e revogam', async () => {
