@@ -42,6 +42,8 @@ import { horariosArrumados, oQueMudaNosHorarios, type HorarioDoCartao } from '..
 import { EstadoDoCartao, ListaDosHorarios } from './CartaoDoTeamsDaConfiguracao';
 import { ChaveDaVirada } from './ViradaDaConfiguracao';
 import { Icone } from './icones';
+import { Vagas } from './vagas';
+import { CaixinhaDoDesfazer, useDesfazerAdiado } from './desfazer';
 import { Marca } from './pecas';
 import { useTelaDeCelular } from './faixa';
 import { quandoFoi } from './HistoricoDaConfiguracao';
@@ -191,7 +193,7 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
   const mudarAsPessoas = async (a: AcaoNasPessoas, feito: string) => {
     try {
       setPessoas(await mudarPessoas(a));
-      avisar(feito);
+      if (feito) avisar(feito);
       return true;
     } catch (e) {
       avisar(e instanceof Error ? e.message : String(e));
@@ -1859,7 +1861,15 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
     setOcupado(false);
     return ok;
   };
-  const n = pessoas?.novidades.length ?? 0;
+  // #176: cadastrar, tornar admin e ignorar tiram a pessoa na hora (a vaga fecha) e a caixinha preta dos Cadastros
+  // oferece desfazer; só depois vai para o servidor
+  const { escondidos, desfazer, comDesfazer, desfazerAgora } = useDesfazerAdiado();
+  const tirarComDesfazer = (x: NovidadeDoQuadro, a: AcaoNasPessoas, texto: ReactNode) =>
+    comDesfazer(x.chave, texto, async () => {
+      await mudar(a, '');
+    });
+  const visiveis = (pessoas?.novidades ?? []).filter((x) => !escondidos.includes(x.chave));
+  const n = visiveis.length;
   // #79: com o Teable fora, cadastrar e marcar inativo (que leem e gravam nele) ficam travados
   const travadaPeloForaDoAr = !!pessoas?.foraDoAr;
   const resumo = pessoas ? `${plural(pessoas.administradores.length, 'administrador', 'administradores')}${n ? ` · ${plural(n, 'novidade', 'novidades')}` : ''}` : falha ? 'não consegui ler' : 'lendo…';
@@ -1876,22 +1886,30 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
         ) : (
           pessoas?.erro && <p className="cfg-falha">{pessoas.erro}{pessoas.verificadoEm ? ` Valem as novidades de ${quando(pessoas.verificadoEm)}.` : ''}</p>
         )}
-        {pessoas && n > 0 && (
-          <ul className="cfg-excecoes">
-            {pessoas.novidades.map((x) => (
-              <li key={x.chave} className={`cfg-exc pessoa ${x.tipo}`} data-chave={x.chave}>
+        {pessoas && (
+          <ul className="cfg-excecoes cfg-novidades">
+            <Vagas como="li" itens={visiveis} chave={(x) => x.chave}>
+              {(x) => (
+              <div className={`cfg-exc pessoa ${x.tipo}`} data-chave={x.chave}>
                 <span className="cfg-exc-ico" aria-hidden>
                   <Icone nome="pessoa" tam={14} traco={2.2} />
                 </span>
                 <span className="cfg-exc-texto">
-                  <strong>{titulo(x)}</strong>
+                  <strong>
+                    {titulo(x)}
+                    {(x.vezes ?? 0) > 1 && (
+                      <small className="cfg-exc-vezes" title={`apareceu em ${x.vezes} produções`} aria-label={`em ${x.vezes} produções`}>
+                        {x.vezes}
+                      </small>
+                    )}
+                  </strong>
                   <span>{detalhe(x)}</span>
                 </span>
                 {podeMudar && (
                   <span className="cfg-exc-acoes">
                     {x.tipo === 'entrou' ? (
                       <>
-                        <button type="button" className="botao" disabled={ocupado || travadaPeloForaDoAr} onClick={() => void fazer({ acao: 'cadastrar', chave: x.chave }, `${x.nome} cadastrado como designer.`)}>
+                        <button type="button" className="botao" disabled={ocupado || travadaPeloForaDoAr} onClick={() => tirarComDesfazer(x, { acao: 'cadastrar', chave: x.chave }, <><b>{x.nome}</b> cadastrado como designer.</>)}>
                           Cadastrar como designer
                         </button>
                         {!x.administrador && (
@@ -1900,7 +1918,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                             className="botao"
                             disabled={ocupado}
                             onClick={() => {
-                              if (x.emailSugerido) return void fazer({ acao: 'administrador', email: x.emailSugerido, chave: x.chave }, `${x.nome} agora é administrador.`);
+                              if (x.emailSugerido) return tirarComDesfazer(x, { acao: 'administrador', email: x.emailSugerido, chave: x.chave }, <><b>{x.nome}</b> agora é administrador.</>);
                               setEmailDigitado('');
                               setPedindoEmail(x.chave);
                             }}
@@ -1911,7 +1929,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                       </>
                     ) : (
                       <>
-                        <button type="button" className="botao" disabled={ocupado || travadaPeloForaDoAr} onClick={() => void fazer({ acao: 'inativar', chave: x.chave }, `${x.nome} marcado como inativo.`)}>
+                        <button type="button" className="botao" disabled={ocupado || travadaPeloForaDoAr} onClick={() => tirarComDesfazer(x, { acao: 'inativar', chave: x.chave }, <><b>{x.nome}</b> marcado como inativo.</>)}>
                           Marcar inativo
                         </button>
                         {x.salvo && (
@@ -1921,7 +1939,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                         )}
                       </>
                     )}
-                    <button type="button" className="botao-texto" disabled={ocupado} onClick={() => void fazer({ acao: 'ignorar', chave: x.chave }, `${x.nome} ignorado. Desfaz no "ver tudo".`)}>
+                    <button type="button" className="botao-texto" disabled={ocupado} onClick={() => tirarComDesfazer(x, { acao: 'ignorar', chave: x.chave }, <><b>{x.nome}</b> ignorado.</>)}>
                       ignorar
                     </button>
                   </span>
@@ -1931,7 +1949,8 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                     className="cfg-pessoa-email"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void fazer({ acao: 'administrador', email: emailDigitado, chave: x.chave }, `${x.nome} agora é administrador.`).then((ok) => ok && setPedindoEmail(null));
+                      setPedindoEmail(null);
+                      tirarComDesfazer(x, { acao: 'administrador', email: emailDigitado, chave: x.chave }, <><b>{x.nome}</b> agora é administrador.</>);
                     }}
                   >
                     <label htmlFor={`email-${x.chave}`}>Qual é o e-mail de {x.nome}?</label>
@@ -1940,8 +1959,9 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
                     <button type="button" className="botao-texto" onClick={() => setPedindoEmail(null)}>cancelar</button>
                   </form>
                 )}
-              </li>
-            ))}
+              </div>
+              )}
+            </Vagas>
           </ul>
         )}
         {verTudo && pessoas && (
@@ -2049,6 +2069,11 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
           </div>
         )}
       </div>
+      {desfazer && (
+        <CaixinhaDoDesfazer key={desfazer.id} desfazer={desfazerAgora}>
+          {desfazer.texto}
+        </CaixinhaDoDesfazer>
+      )}
     </section>
   );
 }
