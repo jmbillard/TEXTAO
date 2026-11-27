@@ -497,6 +497,18 @@ Cada dia está **vazio** (nada montado), em **rascunho** (montado e não publica
 (publicado e mudado depois, à espera de publicar de novo).
 _Evitar_: salvar, enviar, liberar
 
+**Virada** (da pauta):
+O momento em que a pauta da edição passa a sair do PROMeiro: um administrador liga a chave da virada na Configuração,
+e publicar passa a gravar o dia no Teable (o fluxo do n8n que lê a planilha é desligado). No dia publicado vale o
+PROMeiro; o Teable é o espelho. Antes da virada, a pauta do Teable vale e o publicado entra junto.
+_Evitar_: migração, corte
+
+**Sala do dia** (de montar a pauta):
+A edição simultânea do rascunho de um dia: duas pessoas da coordenação montam o mesmo dia ao mesmo tempo, cada uma vê
+a outra e o campo em que ela está, e as mudanças aparecem para as duas. Ninguém trava nada: o que cada uma muda é
+juntado campo por campo com o que a outra gravou; no mesmo campo, vale quem gravou por último.
+_Evitar_: trava, bloqueio, sessão
+
 **Cartão da pauta** (no Teams):
 O resumo da pauta publicada que o PROMeiro manda ao canal da edição no Teams, nos horários da Configuração: a pauta do
 dia por turno (editor, ilha, horário, claquetes e avisos), o recado do dia e o link para a Pauta. Republicar um dia que

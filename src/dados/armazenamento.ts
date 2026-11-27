@@ -1334,7 +1334,15 @@ export interface SecoesDaConfiguracao {
   turnos: { salvo: TurnoDaEscala[]; deFabrica: boolean };
   /** o cartão da pauta no Teams (#135): os horários, o segredo que falta no Portainer e o último envio */
   teams: CartaoDoTeamsDaConfiguracao;
+  /** a chave da virada (#134): publicar grava a pauta no Teable; `tabela`: a tabela da pauta foi achada na base */
+  virada?: ViradaDaPauta;
 }
+export interface ViradaDaPauta {
+  ligada: boolean;
+  tabela: boolean;
+}
+/** Liga ou desliga a chave da virada (#134): vale na hora e entra no histórico. */
+export const mudarAVirada = (ligada: boolean) => pedir<{ virada: ViradaDaPauta }>('/api/configuracao/virada', { method: 'POST', body: JSON.stringify({ ligada }) }).then((r) => r.virada);
 export interface CartaoDoTeamsDaConfiguracao {
   horarios: HorarioDoCartao[];
   deFabrica: boolean;
@@ -1478,8 +1486,13 @@ export const lerSemanaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) 
 export const lerDiaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => pedir<DiaDaPauta & LeituraDaPauta>(`/api/pauta/dia${comFiltro({ dia }, filtro)}`);
 /** O rascunho do dia que a coordenação monta (#123; sem o dia, amanhã), com as abas da semana e a lista dos editores. */
 export const lerRascunhoDoDia = (dia = '') => pedir<DiaDaEscala>(`/api/montar-pauta${dia ? `?dia=${dia}` : ''}`);
-/** Troca o rascunho do dia pelas posições e pelo recado do dia (#125); o servidor grava o horário e a claquete no padrão e devolve o dia gravado. */
-export const gravarRascunhoDoDia = (dia: string, posicoes: PosicaoDaEscala[], recado: string) => pedir<DiaDaEscala>(`/api/montar-pauta?dia=${dia}`, { method: 'PUT', body: JSON.stringify({ posicoes, recado }) });
+/**
+ * Grava o rascunho do dia com as posições e o recado do dia (#125); o servidor grava o horário e a claquete no padrão e
+ * devolve o dia gravado. Com a `base` (o dia como a tela o leu, #131), o servidor junta o que mudou desde ela com o que
+ * outra pessoa gravou nesse meio-tempo; sem ela, troca o dia inteiro.
+ */
+export const gravarRascunhoDoDia = (dia: string, posicoes: PosicaoDaEscala[], recado: string, base?: { posicoes: PosicaoDaEscala[]; recado: string }) =>
+  pedir<DiaDaEscala>(`/api/montar-pauta?dia=${dia}`, { method: 'PUT', body: JSON.stringify({ posicoes, recado, ...(base ? { base } : {}) }) });
 /** Diz que uma pendência da conferência está certa (ou a reabre), pela chave (#127); devolve o dia. */
 export const marcarPendencia = (dia: string, chave: string, certo: boolean) => pedir<DiaDaEscala>(`/api/montar-pauta/conferida?dia=${dia}`, { method: 'POST', body: JSON.stringify({ chave, certo }) });
 /** Publica o rascunho gravado do dia, mesmo com pendências (#127); devolve o dia, com a publicação. */
@@ -1530,7 +1543,7 @@ export async function salvarConfiguracao(m: MudancasDaConfiguracao): Promise<{ s
   if (r.ok && corpo?.pracas && corpo.card && corpo.filmes && corpo.conexoes && corpo.turnos && corpo.teams) {
     // as regras novas valem na hora também neste navegador
     registrarPracas(corpo.pracas.salvo.pracas);
-    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, teams: corpo.teams } };
+    return { secoes: { pracas: corpo.pracas, card: corpo.card, filmes: corpo.filmes, conexoes: corpo.conexoes, turnos: corpo.turnos, teams: corpo.teams, virada: corpo.virada } };
   }
   if (corpo?.conferencia) return { conferencia: corpo.conferencia };
   throw new Error(corpo?.erro ?? `O servidor não respondeu (${r.status}).`);

@@ -40,6 +40,7 @@ import type { TurnoDaEscala } from '../modelo/escala';
 import { ListaDosTurnos } from './TurnosDaConfiguracao';
 import { horariosArrumados, oQueMudaNosHorarios, type HorarioDoCartao } from '../modelo/horariosDoCartao';
 import { EstadoDoCartao, ListaDosHorarios } from './CartaoDoTeamsDaConfiguracao';
+import { ChaveDaVirada } from './ViradaDaConfiguracao';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { useTelaDeCelular } from './faixa';
@@ -429,6 +430,22 @@ export function Configuracao({ voltar, historico, portainer, avisar }: Props) {
               </div>
             </section>
           )}
+          {secoes.virada && (
+            <section className="cfg-secao" aria-labelledby="cfg-virada">
+              <TopoDaSecao
+                id="cfg-virada"
+                titulo="Pauta no Teable"
+                ajuda={AJUDA_DA_VIRADA}
+                cor={secoes.virada.ligada ? 'ok' : secoes.virada.tabela ? 'tem' : 'falta'}
+                resumo={secoes.virada.ligada ? 'ligada · o PROMeiro grava' : 'desligada · o n8n grava'}
+                verTudo={null}
+                alternarVerTudo={() => {}}
+              />
+              <div className="cfg-secao-corpo">
+                <ChaveDaVirada virada={secoes.virada} podeMudar={podeMudarTurnos} mudou={(virada) => setSecoes((s) => (s ? { ...s, virada } : s))} />
+              </div>
+            </section>
+          )}
           <SecaoDasPessoas pessoas={pessoas} falha={falhaDasPessoas} podeMudar={!celular} mudar={mudarAsPessoas} />
           <SecaoDasConexoes conexoes={secoes.conexoes} aberta={conexoesAbertas} alternar={() => setConexoesAbertas((v) => !v)} podeMudar={!celular} trocar={setTrocando} />
           <nav className="cfg-rodape" aria-label="Mais da Configuração">
@@ -526,6 +543,9 @@ const AJUDA_DOS_TURNOS =
 
 const AJUDA_DO_TEAMS =
   'O PROMeiro manda ao Teams o cartão da pauta publicada nestes horários (no relógio de São Paulo): a pauta por turno, os avisos, o recado do dia e o link para a Pauta. Republicar um dia que já foi manda "pauta alterada", com o que mudou. O endereço do Power Automate é segredo e fica no Portainer (TEAMS_PAUTA_URL); sem ele, nada é mandado. Sem nada salvo, valem os horários do n8n.';
+
+const AJUDA_DA_VIRADA =
+  'A virada da pauta da edição (#134). Desligada, a pauta do Teable vem da planilha, pelo fluxo do n8n, e o que a coordenação publica no PROMeiro aparece junto. Ligada, publicar grava o dia na pauta da edição do Teable (uma linha por demanda, os avisos e o recado com a caixinha de anotação), republicar ajusta as linhas sem duplicar, desfazer volta o Teable para a publicação anterior, e na Pauta vale o publicado. O rascunho nunca vai. Antes de ligar, desative o fluxo do n8n que lê a planilha (o passo a passo está no README).';
 
 const AJUDA_DAS_PRACAS =
   'O PROMeiro liga pelo nome a entrada de cada praça (a sigla ou uma palavra da regra + ENTRADA), a saída (+ SAÍDA, ENTREGUE ou PRONTO) e a opção no campo Praça. Aqui só aparece o que precisa de você. A ordem decide quando duas regras batem; a padrão vale quando a claquete não diz a praça.';

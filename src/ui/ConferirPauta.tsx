@@ -8,9 +8,22 @@ import './conferirPauta.css';
 /* Montar a pauta, conferir e publicar (#127): as telas "conferir" e "publicada" do protótipo aprovado, e a faixa da
    publicação na tela de montar (o estado, o Desfazer da última e o histórico). A conferência é a regra pura de
    src/modelo/conferenciaDaEscala.ts, sobre o que está na tela; as pendências avisam, não travam: publicar funciona com
-   elas e guarda quantas "para olhar" ficaram. Publicar ainda não grava no Teable (a virada, #134): o dia publicado
-   aparece na Pauta da edição junto com a do Teable. Os avisos de cada posição e o recado do dia (#125) entram no placar
+   elas e guarda quantas "para olhar" ficaram. Com a chave da virada desligada, o dia publicado aparece na Pauta da edição
+   junto com a do Teable; ligada (#134), publicar grava o dia no Teable, e a tela diz quando gravou (ou o erro). Os avisos de cada posição e o recado do dia (#125) entram no placar
    e na tela "publicada". */
+
+/** A virada (#134): o dia no Teable, só com a chave ligada: quando foi gravado, ou o erro da última vez. */
+function NoTeable({ dados }: { dados: DiaDaEscala }) {
+  const t = dados.noTeable;
+  if (!t?.ligada || (!t.erro && !t.gravadoEm) || !dados.publicacao) return null;
+  return t.erro ? (
+    <p className="pub-teable falha" role="alert">
+      {t.erro}
+    </p>
+  ) : (
+    <p className="pub-teable">gravada no Teable às {hora(t.gravadoEm!)}</p>
+  );
+}
 
 /** "sexta, 27 de novembro". */
 export function diaPorExtenso(iso: string) {
@@ -126,7 +139,7 @@ export function ConferirODia({ dados, posicoes, recado, hoje, publicando, erro, 
                 {erro}
               </p>
             )}
-            <p>Os editores veem na Pauta da edição, junto com o que vem do Teable. Dá para mudar depois e publicar de novo.</p>
+            <p>{dados.noTeable?.ligada ? 'Os editores veem na Pauta da edição, e o dia vai para o Teable. Dá para mudar depois e publicar de novo.' : 'Os editores veem na Pauta da edição, junto com o que vem do Teable. Dá para mudar depois e publicar de novo.'}</p>
           </div>
         </aside>
       </div>
@@ -156,6 +169,7 @@ export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara
         <span className="pub-carimbo">publicada!</span>
         <h1>A pauta de {diaPorExtenso(dados.dia)} está no ar</h1>
         {pub && <p className="pauta-sub">às {hora(pub.em)} · os editores já veem na Pauta da edição</p>}
+        <NoTeable dados={dados} />
       </div>
       <div className="pub-cartoes">
         <div><b>{n.demandas}</b>{n.demandas === 1 ? 'demanda publicada' : 'demandas publicadas'}, {semEditor ? `${semEditor} ainda sem editor` : 'todas com editor'}</div>
@@ -254,6 +268,7 @@ export function FaixaDaPublicacao({ dados, desfazer }: { dados: DiaDaEscala; des
           </>
         )}
       </span>
+      <NoTeable dados={dados} />
       {pub && (
         <button type="button" className="botao-texto" onClick={desfazer}>
           Desfazer a publicação

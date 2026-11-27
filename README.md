@@ -162,6 +162,54 @@ e o corpo JSON (até 1 MB) no **formato 1**:
 **Para desligar:** desligue o nó `Foto: manda ao PROMeiro` no n8n, ou esvazie o `EDICAO_FOTO_TOKEN` (a rota volta a
 responder 404). As fotos guardadas ficam no SQLite; o ramo da pauta do n8n não depende delas.
 
+## A virada da pauta: o PROMeiro grava no Teable
+
+Passada a semana lado a lado (#134, ADR 0006), a pauta da edição passa a sair do PROMeiro: publicar grava o dia na
+tabela da pauta da edição (`EDICAO_producao`) da base do PROMeiro, e o fluxo do n8n que lê a planilha é desligado. Quem
+decide a hora é a **chave da virada**, na Configuração (só administradores), que vem **desligada**: desligada, publicar
+fica só no PROMeiro e nada vai ao Teable.
+
+**O que o PROMeiro grava**, pela API do Teable (o mesmo `TEABLE_TOKEN` dos Cadastros), no formato que o n8n grava hoje:
+uma linha por demanda, com `claquete`, `editor` (o link para o cadastro de editores, pelo nome), `data` (00:00 do dia em
+São Paulo), `expediente_inicio` e `expediente_fim` (o horário da posição; sem eles, se o PROMeiro não entendeu o
+horário), `anotacao` e `alterado_em`. Os avisos de cada posição vão como linhas com a caixinha `anotacao` marcada, com
+o editor e o expediente da posição; o recado do dia, como uma linha com a caixinha marcada, sem editor e sem expediente.
+
+- **Republicar** ajusta as linhas do dia, sem duplicar: o PROMeiro guarda no SQLite (a tabela `pauta_no_teable`, que
+  entra no backup) o vínculo de cada item publicado com o registro do Teable. Cria o item novo, muda só o que mudou (o
+  `alterado_em` vai junto, só nele), apaga o que saiu. O registro que alguém apagou à mão no Teable é criado de novo.
+- **O rascunho nunca vai.** Só publicar e desfazer mexem no Teable.
+- **Desfazer** a publicação volta o Teable para a publicação anterior; desfeita a única, as linhas do dia saem.
+- **O dia publicado é do PROMeiro:** na primeira vez, as linhas que o n8n tinha gravado da planilha naquele dia são
+  apagadas (lidas do Postgres do Teable; sem ele, ficam, e a tela avisa). Os outros dias não são tocados.
+- **Na Pauta da edição**, no dia que o PROMeiro gravou vale o publicado, e as linhas do Teable daquele dia (o espelho)
+  não entram de novo. O dia que ninguém publicou, e os de antes da virada, continuam vindo do Teable.
+- **Com o Teable fora do ar**, a publicação vale no PROMeiro (a Pauta já mostra o dia publicado) e a tela de montar diz
+  "Não gravei no Teable…". Publicar de novo termina o que faltou, sem duplicar.
+- Desligada a chave, o PROMeiro não toca mais no Teable (nem ao desfazer), e a Pauta volta à junção de antes.
+
+**O passo a passo** (o PROMeiro não mexe no n8n):
+
+1. **Antes:** confira, na semana lado a lado, que a pauta montada no PROMeiro bate com a planilha, e que a
+   Configuração › Conexões acha a tabela `EDICAO_producao` na base (sem ela, a chave não liga).
+2. **No n8n, desative o fluxo que lê a planilha:** no fluxo **PROMO: ESTEIRA PÓS - EDITORES**, desligue o gatilho
+   "updates regulares" e o ramo que grava a pauta (o `Get data` da planilha, o "Compare DEMANDAS" e os POST, PATCH e
+   DELETE na `EDICAO_producao`, e a criação dos editores "(sem ID)*"). Se o cartão do Teams já sai pelo PROMeiro (#135,
+   `TEAMS_PAUTA_URL`), desligue também os gatilhos "MANHÃ" e "NOITE". O que o fluxo faz fora da planilha (o campo
+   editor dos cards do Trello, os cards de filme) fica a seu critério; se ninguém mais precisa, desative o fluxo
+   inteiro (o botão *Active*). Salve e confira em *Executions* que a rodada seguinte (no minuto 15) não grava mais.
+3. **No PROMeiro, ligue a chave:** Configuração › **Pauta no Teable** › "Ligar a gravação no Teable…" › "Já desativei:
+   ligar". Vale na hora e entra no Histórico da Configuração. Ligar não grava nada: só a próxima publicação vai.
+4. **Publique de novo** os dias de hoje em diante (Montar a pauta › Conferir e publicar › Publicar de novo). Cada dia
+   vai ao Teable e a tela mostra "gravada no Teable às …"; um erro aparece no lugar, com o motivo.
+5. **Confira** no Teable, na tabela `EDICAO_producao`, as linhas do dia (uma por demanda, os avisos e o recado com a
+   caixinha marcada) e, na Pauta da edição, o dia como foi publicado.
+6. **Depois:** o ramo da foto (a semana lado a lado) já não é preciso; desligue o nó `Foto: manda ao PROMeiro` ou
+   esvazie o `EDICAO_FOTO_TOKEN`.
+
+**Para voltar atrás:** desligue a chave (Configuração › Pauta no Teable › "Desligar a gravação no Teable") e reative
+o fluxo do n8n. As linhas que o PROMeiro gravou ficam no Teable, e o n8n as acerta pela planilha na rodada seguinte.
+
 ## O aviso do Trello: desligado
 
 O aviso do Trello (#87, o webhook do quadro, e a recuperação das ações do quadro, #88) está **desligado por padrão** e

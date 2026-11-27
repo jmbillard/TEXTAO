@@ -12,7 +12,8 @@
    - escala_publicacoes: o histórico das publicações de cada dia, com as posições como foram publicadas (JSON), quem
      publicou, quantas pendências ficaram e, se foi desfeita, quando. A publicação que vale é a última não desfeita.
    O estado do dia sai daí: sem publicação, vazio ou rascunho; com ela, publicado (o rascunho é o que foi publicado) ou
-   alterado (mudou depois). Publicar ainda não grava no Teable: isso é a virada (#134).
+   alterado (mudou depois). Publicar não grava no Teable aqui: com a chave da virada ligada, quem grava é
+   servidor/pauta-no-teable.mjs (#134).
    Os avisos e o recado do dia (#125):
    - escala_avisos: os avisos (⚑) de cada posição, na ordem, como foram escritos, à parte das demandas (a ausência que
      tira a pessoa leva as demandas para distribuir; os avisos ficam na posição);
@@ -266,7 +267,7 @@ export function criarEscala(db) {
     },
     /**
      * Publica o rascunho do dia como está gravado (as posições e o recado), com quantas pendências ficaram. Lança (400) o dia sem nada montado.
-     * Não grava no Teable (a virada, #134).
+     * Não grava no Teable: com a chave da virada ligada, a rota chama servidor/pauta-no-teable.mjs (#134).
      */
     publicar(dia, pendencias, por) {
       const posicoes = posicoesDoDia(dia);
@@ -279,11 +280,11 @@ export function criarEscala(db) {
       if (!publicada) throw erro('Não há publicação para desfazer.');
       q.desfazer.run(new Date().toISOString(), publicada.id);
     },
-    /** Os dias publicados do período (de `primeiro` a `ultimo`), com as posições e o recado como foram publicados. */
+    /** Os dias publicados do período (de `primeiro` a `ultimo`), com as posições e o recado como foram publicados e quando. */
     publicadas(primeiro, ultimo) {
       const porDia = new Map();
       // na ordem de publicação: a última de cada dia fica
-      for (const l of q.publicadasNoPeriodo.all(primeiro, ultimo)) porDia.set(l.dia, { dia: l.dia, posicoes: JSON.parse(l.posicoes), recado: l.recado ?? '' });
+      for (const l of q.publicadasNoPeriodo.all(primeiro, ultimo)) porDia.set(l.dia, { dia: l.dia, posicoes: JSON.parse(l.posicoes), recado: l.recado ?? '', em: l.em });
       return [...porDia.values()];
     },
     /**

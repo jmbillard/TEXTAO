@@ -97,8 +97,10 @@ export function criarDistribuicao(db, escala) {
       else {
         const t = turnos.find((x) => x.id === turno);
         if (!t) throw erro('Turno desconhecido.');
-        const livre = typeof id === 'string' && ID.test(id) && !posicoesDe(dia).some((p) => p.id === id);
-        alvo = { turno: t.id, nova: { id: livre ? id : `p-${randomUUID().slice(0, 24)}`, turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } };
+        // a posição nova fica com o id que a tela já mostrou (#131), se ele vale e ainda não está no dia
+        const usados = new Set(posicoesDe(dia).flatMap((p) => [p.id, ...p.demandas.map((d) => d.id), ...(p.avisos ?? []).map((a) => a.id)]));
+        const novoId = typeof id === 'string' && ID.test(id) && !usados.has(id) ? id : `p-${randomUUID().slice(0, 24)}`;
+        alvo = { turno: t.id, nova: { id: novoId, turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } };
       }
       const novas = escalarNa(posicoesDe(dia), nome, alvo);
       if (!novas) throw erro('Essa posição não existe mais.');

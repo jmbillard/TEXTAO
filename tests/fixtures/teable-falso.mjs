@@ -2,7 +2,8 @@
    campos de cada uma (por padrão, todas as colunas que o PROMeiro usa, do mapa src/modelo/tabelasDoTeable.ts). Os ids
    e nomes são inventados. Serve aos testes do Vitest e aos e2e (import dinâmico). Com `opcoes.registros`, as tabelas
    dadas também têm linhas, que se leem, criam e mudam pela API (a tabela designers da seção Pessoas, #77), e que o
-   Postgres de mentira (`.consultar`, ou `.abrirPg` para o criarApp) devolve inteiras (a carga das Produções, #86). */
+   Postgres de mentira (`.consultar`, ou `.abrirPg` para o criarApp) devolve inteiras (a carga das Produções, #86).
+   Apagar um registro (DELETE) também vale, para a pauta que o PROMeiro grava depois da virada (#134). */
 import { TABELAS_DO_TEABLE } from '../../src/modelo/tabelasDoTeable.ts';
 
 /** O endereço e o token do Teable falso (vão no env do teste). */
@@ -23,6 +24,8 @@ const resposta = (status, dados) => ({ ok: status < 400, status, json: async () 
 export function teableFalso(nomes, opcoes = {}) {
   const bases = { [opcoes.base ?? 'bseFalso']: { nome: opcoes.nomeDaBase ?? 'Base falsa', nomes, faltando: opcoes.faltando ?? {}, ids: opcoes.ids ?? {} }, ...(opcoes.bases ?? {}) };
   const estado = { fora: false, pedidos: [], consultas: [], parametros: [] };
+  // os ids dos registros criados, sem repetir (mesmo com vários no mesmo POST, ou depois de apagar)
+  let criados = 0;
   const idDe = (b, nome) => bases[b].ids?.[nome] ?? `tblFalso_${b}_${nome}`;
   const buscar = async (endereco, init = {}) => {
     const url = new URL(endereco);
@@ -44,9 +47,15 @@ export function teableFalso(nomes, opcoes = {}) {
         const tomar = Number(url.searchParams.get('take') ?? 100);
         return resposta(200, { records: linhas.slice(pular, pular + tomar) });
       }
+      if (metodo === 'DELETE' && deRegistros[2]) {
+        const i = linhas.findIndex((l) => l.id === decodeURIComponent(deRegistros[2]));
+        if (i < 0) return resposta(404, { message: 'registro não encontrado' });
+        linhas.splice(i, 1);
+        return resposta(200, {});
+      }
       const corpo = JSON.parse(String(init.body ?? '{}'));
       if (metodo === 'POST' && !deRegistros[2]) {
-        const novos = (corpo.records ?? []).map((r) => ({ id: `recFalso${linhas.length + 1}`, fields: { ...r.fields } }));
+        const novos = (corpo.records ?? []).map((r) => ({ id: `recFalso${++criados}`, fields: { ...r.fields } }));
         linhas.push(...novos);
         return resposta(200, { records: novos });
       }

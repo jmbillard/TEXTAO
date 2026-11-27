@@ -24,7 +24,10 @@ const ROTULOS = {
   TRELLO_LISTA_ENTREGUES: 'Lista dos entregues',
   TEABLE_FILMES_POSTER: 'Pôster dos filmes',
   LIGADO_A_MAO: 'Ligado à mão',
+  PAUTA_NO_TEABLE: 'A pauta grava no Teable (a virada)',
 };
+/** As chaves de ligar e desligar, que a linha mostra como "ligada" ou "desligada". */
+const CHAVES = { PAUTA_NO_TEABLE: (v) => (/^(1|sim|true|on)$/i.test(limpo(v)) ? 'ligada' : 'desligada') };
 const QUADRO_VAZIO = { id: '', nome: '', listas: [], campos: [], etiquetas: [] };
 const limpo = (v) => String(v ?? '').trim();
 const prefixar = (secao, linhas) => linhas.map((l) => ({ oque: `${secao} · ${l.oque}`, antes: String(l.antes), depois: String(l.depois) }));
@@ -76,7 +79,7 @@ export function descreverMudanca(antes, depois, nomes, { quadro = null, nomeDaPe
     return id ? (q.listas.find((l) => l.id === id)?.nome ?? q.campos.find((c) => c.id === id)?.nome ?? id) : '—';
   };
   for (const n of nomes)
-    if (!DO_QUADRO(n) && n !== 'ADMINISTRADORES' && n !== 'TURNOS' && n !== 'TEAMS_HORARIOS' && limpo(antes[n]) !== limpo(depois[n])) linhas.push({ oque: ROTULOS[n] ?? n, antes: valor(antes[n]), depois: valor(depois[n]) });
+    if (!DO_QUADRO(n) && n !== 'ADMINISTRADORES' && n !== 'TURNOS' && n !== 'TEAMS_HORARIOS' && limpo(antes[n]) !== limpo(depois[n])) linhas.push({ oque: ROTULOS[n] ?? n, antes: (CHAVES[n] ?? valor)(antes[n]), depois: (CHAVES[n] ?? valor)(depois[n]) });
   // nada mudou no que vale (o valor do Portainer passou a ser guardado na tela, ou só a marca do ligado à mão)
   if (!linhas.length) linhas.push({ oque: 'Guardado na tela', antes: 'Portainer', depois: 'os mesmos valores' });
   return linhas;
