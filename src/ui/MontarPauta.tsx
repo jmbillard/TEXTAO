@@ -19,6 +19,9 @@ import { LadoALado } from './LadoALado';
 import { DiaVazio, textoDoRepetido } from './DiaVazio';
 import type { DeOndeRepetir } from '../modelo/repetir';
 import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
+import { campoDoElemento, MarcasDosOutros, QuemMaisEsta, useSalaDoDia } from './JuntosNoDia';
+import { juntarODia } from '../modelo/juntarODia';
+import type { Pessoa } from '../modelo/tipos';
 import './pauta.css';
 import './montarPauta.css';
 
@@ -46,13 +49,23 @@ import './montarPauta.css';
 
    O dia vazio (#129, DiaVazio.tsx) oferece Repetir a escala de outro dia, Colar da planilha (o mesmo diálogo) ou Começar do
    zero; a posição que o Repetir deixou vaga diz o motivo, até ganhar editor.
-   A semana lado a lado (#133, LadoALado.tsx): acima da grade, as diferenças entre o dia montado e a foto da planilha. */
+   A semana lado a lado (#133, LadoALado.tsx): acima da grade, as diferenças entre o dia montado e a foto da planilha.
+
+   Duas pessoas ao mesmo tempo (#131, JuntosNoDia.tsx): a tela entra na sala do dia (a mesma sala de colaboração do
+   editor de roteiros). No topo, quem mais está no dia; na grade, o campo em que a outra pessoa está, com a cor dela.
+   Ninguém trava nada. A gravação leva a base (o dia como a tela o leu por último) e o servidor junta o que mudou
+   desde ela com o que a outra gravou; o dia que volta (da gravação, de uma ação da coluna ou relido porque a sala
+   avisou a versão nova) é juntado com o que está na tela (src/modelo/juntarODia.ts): o que a pessoa ainda está
+   digitando fica, o que a outra fez aparece. A versão do dia só cresce: um dia lido antes de outro mais novo não volta
+   a tela para trás. */
 
 interface Props {
   /** o dia (AAAA-MM-DD); '' é amanhã */
   dia: string;
   irPara: (dia: string) => void;
   voltar: () => void;
+  /** quem está na tela, para a sala do dia (#131) */
+  pessoa?: Pessoa;
 }
 
 const GRAVAR_DEPOIS_MS = 600;
@@ -79,7 +92,10 @@ const textoDaSituacao = (s: SituacaoNoDia, turnos: readonly TurnoDaEscala[]) => 
 /** Onde o foco vai depois de desenhar: um campo de uma posição (e, nas demandas, a linha). */
 type Foco = { posicao: string; campo: 'editor' | 'ilha' | 'horario' | 'demanda' | 'aviso'; demanda?: string; aviso?: string; fim?: boolean } | null;
 
-export function MontarPauta({ dia, irPara, voltar }: Props) {
+/** O dia como a tela o leu por último do servidor (#131): a base da gravação seguinte e a versão dele. */
+type BaseDoDia = { dia: string; posicoes: PosicaoDaEscala[]; recado: string; versao: number };
+
+export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const [hoje] = useState(() => diaEmSaoPaulo());
   const [dados, setDados] = useState<DiaDaEscala | null>(null);
   const [posicoes, setPosicoes] = useState<PosicaoDaEscala[]>([]);
@@ -98,6 +114,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const [erroAoPublicar, setErroAoPublicar] = useState('');
   // a coluna lateral (#126): quem está fora no dia (da caixa "Fora") e o erro da última ação dela
   const [foraNoDia, setForaNoDia] = useState<string[]>([]);
+  // de que dia a caixa "Fora" já foi lida: antes disso, "Sem escala" não aparece (quem está fora nunca passa por ela)
+  const [foraLidoEm, setForaLidoEm] = useState('');
   const [erroDaColuna, setErroDaColuna] = useState('');
   // colar da planilha (#130): o diálogo aberto, o que foi aplicado e a releitura da caixa "Fora" depois de marcar
   const [colando, setColando] = useState(false);
@@ -111,6 +129,30 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const pendente = useRef<{ dia: string; posicoes: PosicaoDaEscala[]; recado: string } | null>(null);
   const prazo = useRef<ReturnType<typeof setTimeout> | null>(null);
   const emCurso = useRef<Promise<void> | null>(null);
+  const base = useRef<BaseDoDia | null>(null);
+  const pagina = useRef<HTMLElement>(null);
+  // a caixa "Fora" lê de novo quando a sala avisa que o dia mudou (#131)
+  const [releitura, setReleitura] = useState(0);
+
+  /**
+   * O dia que voltou do servidor (#131), juntado com o que está na tela: o que mudou na tela desde a base fica, o resto
+   * vem do servidor; o dia vira a nova base. O dia mais velho que a base não mexe nas posições.
+   */
+  const chegou = useCallback((d: DiaDaEscala) => {
+    const b = base.current;
+    if (!b || b.dia !== d.dia || (d.versao ?? 0) < b.versao) return false;
+    const juntado = juntarODia(b, { posicoes: posicoesAgora.current, recado: recadoAgora.current }, { posicoes: d.posicoes, recado: d.recado ?? '' }, d.dia);
+    base.current = { dia: d.dia, posicoes: d.posicoes, recado: d.recado ?? '', versao: d.versao ?? 0 };
+    // a linha vazia da tela só fica onde não chegou nada, ou se a pessoa está nela
+    const focada = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.demanda : undefined;
+    const doServidor = new Set(d.posicoes.flatMap((p) => p.demandas.map((x) => x.id)));
+    posicoesAgora.current = juntado.posicoes.map((p) => comLinha({ ...p, demandas: p.demandas.filter((x) => x.texto.trim() || doServidor.has(x.id) || x.id === focada) }));
+    setPosicoes(posicoesAgora.current);
+    recadoAgora.current = juntado.recado;
+    setRecado(juntado.recado);
+    setDados((x) => (x?.dia === d.dia ? { ...x, estado: d.estado, semana: d.semana, turnos: d.turnos, ocupadas: d.ocupadas, publicacao: d.publicacao, historico: d.historico, dispensadas: d.dispensadas, gravadoEm: d.gravadoEm, gravadoPor: d.gravadoPor, paraDistribuir: d.paraDistribuir, versao: d.versao } : x));
+    return true;
+  }, []);
 
   const gravarAgora = useCallback(async () => {
     if (prazo.current) clearTimeout(prazo.current);
@@ -121,10 +163,14 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     if (!p) return;
     pendente.current = null;
     setGravacao('gravando');
-    emCurso.current = gravarRascunhoDoDia(p.dia, p.posicoes, p.recado)
+    // a base e a tela vão juntas, as de agora: o dia que chegou depois de a mudança ficar pendente já está nas duas
+    // (mandar a tela de antes com a base de agora desfaria o que a outra pessoa fez, #131)
+    const b = base.current?.dia === p.dia ? base.current : null;
+    emCurso.current = gravarRascunhoDoDia(p.dia, b ? posicoesAgora.current : p.posicoes, b ? recadoAgora.current : p.recado, b ? { posicoes: b.posicoes, recado: b.recado } : undefined)
       .then((d) => {
-        // as posições na tela continuam as de quem digita; o resto (as abas, o estado) vem do servidor
-        setDados((antes) => (antes?.dia === d.dia ? { ...antes, estado: d.estado, semana: d.semana, gravadoEm: d.gravadoEm, gravadoPor: d.gravadoPor } : antes));
+        // o dia gravado (com o que outra pessoa gravou nesse meio-tempo) juntado com o que está na tela: o que a pessoa
+        // digitou depois de mandar fica (#131)
+        if (!chegou(d)) setDados((antes) => (antes?.dia === d.dia ? { ...antes, estado: d.estado, semana: d.semana, gravadoEm: d.gravadoEm, gravadoPor: d.gravadoPor } : antes));
         setErroAoGravar('');
         setGravacao(pendente.current ? 'esperando' : 'gravado');
       })
@@ -136,7 +182,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
       })
       .finally(() => (emCurso.current = null));
     await emCurso.current;
-  }, []);
+  }, [chegou]);
 
   /** Grava o que há de mais novo (as posições e o recado) daqui a pouco, ou na hora, com `agora`. */
   const gravarDepois = useCallback(
@@ -169,6 +215,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   /** O dia como veio do servidor, na tela: as posições, o recado e o resto. */
   const mostrar = useCallback((d: DiaDaEscala) => {
     setDados(d);
+    base.current = { dia: d.dia, posicoes: d.posicoes, recado: d.recado ?? '', versao: d.versao ?? 0 };
     posicoesAgora.current = d.posicoes.map(comLinha);
     setPosicoes(posicoesAgora.current);
     recadoAgora.current = d.recado ?? '';
@@ -189,6 +236,40 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     };
   }, [dia, gravarAgora, mostrar]);
   useEffect(() => carregar(), [carregar]);
+
+  /* ---------- duas pessoas ao mesmo tempo (#131) ---------- */
+  // uma releitura por vez; a versão que chegar no meio dela pede outra no fim
+  const relendo = useRef(false);
+  const relerDeNovo = useRef(false);
+  /** A sala avisou uma versão nova: o que falta gravar vai antes (a gravação já volta com o dia juntado); senão, lê. */
+  const versaoNova = useCallback(
+    async (versao: number) => {
+      const b = base.current;
+      if (!b || versao <= b.versao) return;
+      if (relendo.current) {
+        relerDeNovo.current = true;
+        return;
+      }
+      relendo.current = true;
+      try {
+        do {
+          relerDeNovo.current = false;
+          if (pendente.current) await gravarAgora();
+          else {
+            while (emCurso.current) await emCurso.current;
+            chegou(await lerRascunhoDoDia(b.dia));
+          }
+        } while (relerDeNovo.current);
+        setReleitura((n) => n + 1);
+      } catch {
+        // sem rede agora: a próxima gravação ou o próximo aviso da sala acertam
+      } finally {
+        relendo.current = false;
+      }
+    },
+    [chegou, gravarAgora],
+  );
+  const { outros, estarEm } = useSalaDoDia(dados?.dia ?? null, pessoa, (v) => void versaoNova(v));
   // ao sair da tela (ou fechar a aba), o que falta vai na hora
   useEffect(() => {
     const sair = () => void gravarAgora();
@@ -251,23 +332,25 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     const dia = dados.dia;
     setErroDaColuna('');
     await gravarAgora();
-    const antes = { posicoes: posicoesAgora.current, lista: dados.paraDistribuir ?? [] };
+    const antes = { posicoes: posicoesAgora.current, lista: dados.paraDistribuir ?? [], base: base.current };
     const novas = local?.(posicoesAgora.current.map((p) => ({ ...p, demandas: p.demandas.filter((d) => d.texto.trim()) })));
     if (novas) {
       posicoesAgora.current = novas.map(comLinha);
       setPosicoes(posicoesAgora.current);
+      // o resultado mostrado antes da resposta também vai para a base (#131): não é mudança da pessoa, e o dia que o
+      // servidor gravar fica no lugar dele (a posição nova que o servidor cria tem outro id)
+      const b = base.current;
+      const naBase = b?.dia === dia ? local?.(b.posicoes) : null;
+      if (b && naBase) base.current = { ...b, posicoes: naBase };
     }
     if (lista) setDados((d) => (d?.dia === dia ? { ...d, paraDistribuir: lista(d.paraDistribuir ?? []) } : d));
     try {
       const d = await servidor(dia);
-      setDados((x) => (x?.dia === d.dia ? { ...x, estado: d.estado, semana: d.semana, turnos: d.turnos, ocupadas: d.ocupadas, publicacao: d.publicacao, historico: d.historico, dispensadas: d.dispensadas, gravadoEm: d.gravadoEm, gravadoPor: d.gravadoPor, paraDistribuir: d.paraDistribuir } : x));
-      // quem digitou enquanto isso fica com o que digitou (a gravação seguinte leva tudo, com a ação)
-      if (!pendente.current && !prazo.current) {
-        posicoesAgora.current = d.posicoes.map(comLinha);
-        setPosicoes(posicoesAgora.current);
-      }
+      // o dia que o servidor gravou, juntado com a tela: quem digitou enquanto isso fica com o que digitou (#131)
+      chegou(d);
       return true;
     } catch (e) {
+      if (base.current?.dia === dia && base.current.versao === antes.base?.versao) base.current = antes.base;
       if (!pendente.current) {
         posicoesAgora.current = antes.posicoes;
         setPosicoes(antes.posicoes);
@@ -280,9 +363,11 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
   const listaDoDia = dados?.paraDistribuir ?? [];
   const escalar = (editor: string, alvo: { posicao: string } | { turno: string }) => {
     const t = 'turno' in alvo ? turnos.find((x) => x.id === alvo.turno) : null;
+    // o mesmo id na tela e na base (o resultado mostrado antes da resposta vai para as duas)
+    const idNovo = novoId('p');
     const local = (ps: PosicaoDaEscala[]) =>
-      'posicao' in alvo ? escalarNa(ps, editor, alvo) : t ? escalarNa(ps, editor, { turno: t.id, nova: { id: novoId('p'), turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } }) : null;
-    void naColuna(local, null, (dia) => escalarNoDia(dia, editor, alvo));
+      'posicao' in alvo ? escalarNa(ps, editor, alvo) : t ? escalarNa(ps, editor, { turno: t.id, nova: { id: idNovo, turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } }) : null;
+    void naColuna(local, null, (dia) => escalarNoDia(dia, editor, 'turno' in alvo ? { ...alvo, id: idNovo } : alvo));
   };
   const levar = (id: string, posicao: string, antesDe: string | null) => {
     const item = listaDoDia.find((d) => d.id === id);
@@ -333,6 +418,14 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
     else mover(id, d.id, null);
   };
   const pessoasSemEscala = semEscala(editores, posicoes, foraNoDia);
+  const diaNaTela = dados?.dia ?? '';
+  const foraLido = useCallback(
+    (nomes: string[]) => {
+      setForaNoDia(nomes);
+      setForaLidoEm(diaNaTela);
+    },
+    [diaNaTela],
+  );
 
   /** Aplica o colado: as posições vão para o rascunho (gravado na hora), as ausências são marcadas e o dia é lido de novo. */
   const aplicarOColado = async (r: ColadoParaAplicar) => {
@@ -433,7 +526,16 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
           ) : null}
         </span>
       </header>
-      <main className="pauta-pagina montar-pagina">
+      <main
+        className="pauta-pagina montar-pagina"
+        ref={pagina}
+        // o campo em que a pessoa está vai para a sala, para a outra ver (#131)
+        onFocus={(e) => estarEm(campoDoElemento(e.target))}
+        onBlur={(e) => {
+          if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))) estarEm(null);
+        }}
+      >
+        <MarcasDosOutros outros={outros} dentro={pagina} versao={posicoes} />
         {atual && vista === 'conferir' ? (
           <ConferirODia dados={atual} posicoes={posicoes} recado={recado} hoje={hoje} publicando={publicando} erro={erroAoPublicar} voltar={() => setVista('montar')} corrigir={(alvo) => (setVista('montar'), setFoco(alvo))} marcar={marcar} publicar={() => void publicar()} />
         ) : atual && vista === 'publicada' ? (
@@ -456,6 +558,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
                 {atual.estado === 'vazio' ? 'vazio' : <span className={`montar-${atual.estado}`}>{atual.estado}</span>}
               </p>
             )}
+            <QuemMaisEsta outros={outros} />
           </div>
           <div className="montar-acoes">
             {atual && (
@@ -504,8 +607,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
               </p>
             )}
             <ParaDistribuir dia={atual.dia} itens={listaDoDia} juntar={juntar} tirar={tirarDaLista} destinos={destinosDaDemanda(null, false)} mover={(id, v) => moverPeloMenu('lista', id, v)} arraste={{ iniciar, arrastado, sobre }} />
-            <SemEscala pessoas={pessoasSemEscala} destinos={destinosDaPessoa} escalar={escalarPeloMenu} arraste={{ iniciar, arrastado, sobre }} />
-            <AusenciasDoDia key={leituraDoFora} dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={setForaNoDia} />
+            {foraLidoEm === atual.dia && <SemEscala pessoas={pessoasSemEscala} destinos={destinosDaPessoa} escalar={escalarPeloMenu} arraste={{ iniciar, arrastado, sobre }} />}
+            <AusenciasDoDia key={leituraDoFora} releitura={releitura} dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={foraLido} />
           </aside>
           <div className="montar-grade" ref={grade}>
             {repetido && (
@@ -577,6 +680,7 @@ function RecadoDoDia({ texto, mudar }: { texto: string; mudar: (t: string) => vo
       <span className="montar-recado-rotulo">Recado do dia</span>
       <textarea
         className="montar-recado-in"
+        data-campo="recado"
         value={texto}
         rows={Math.min(4, Math.max(1, texto.split('\n').length))}
         maxLength={500}

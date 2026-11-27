@@ -160,3 +160,14 @@ body.arrastando, body.arrastando * { cursor: grabbing !important; user-select: n
   .montar-demanda.arrastavel .montar-in { padding-right: 34px; }
   .montar-demanda > .arrasto-alca { display: none; }
 }
+
+/* Duas pessoas ao mesmo tempo (#131): quem mais está no dia, embaixo do título, e o campo em que a outra pessoa está,
+   com um contorno da cor dela em volta (nunca uma faixa só de um lado) e o primeiro nome em cima. As marcas não pegam
+   o clique: o campo continua livre. */
+.montar-pagina { position: relative; }
+.juntos-no-dia { display: flex; align-items: center; gap: 10px; margin: 6px 0 0; color: var(--tinta2); font: 500 13px var(--sans); }
+.juntos-no-dia .presentes { padding-left: 6px; }
+.juntos-no-dia .presente { width: 24px; height: 24px; font-size: 10px; line-height: 24px; box-shadow: 0 0 0 2px var(--mesa); }
+.marca-do-outro { position: absolute; z-index: 3; pointer-events: none; border-radius: 8px; box-shadow: 0 0 0 2px var(--cor-do-outro); transition: left 0.12s, top 0.12s, width 0.12s, height 0.12s; }
+.marca-do-outro-nome { position: absolute; right: 6px; bottom: 100%; margin-bottom: 1px; padding: 2px 7px; border-radius: 6px 6px 6px 2px; background: var(--cor-do-outro); color: #fff; font: 600 10.5px/1.3 var(--sans); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .marca-do-outro { transition: none; } }

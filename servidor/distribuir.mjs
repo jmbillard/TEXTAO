@@ -85,7 +85,7 @@ export function criarDistribuicao(db, escala) {
      * Escala a pessoa numa posição (a vaga, ou no lugar de quem está nela) ou numa posição nova do turno, com o
      * horário padrão dele. `fora(editor)` diz o motivo de quem está fora no dia (e aí recusa); `turnos` os que valem.
      */
-    escalar(dia, { editor, posicao, turno }, { turnos, fora }, por) {
+    escalar(dia, { editor, posicao, turno, id }, { turnos, fora }, por) {
       const nome = String(typeof editor === 'string' ? editor : '').trim().replace(/\s+/g, ' ');
       if (!nome || nome.length > LIMITES.editor) throw erro('Falta quem escalar.');
       const motivo = fora(nome);
@@ -95,7 +95,10 @@ export function criarDistribuicao(db, escala) {
       else {
         const t = turnos.find((x) => x.id === turno);
         if (!t) throw erro('Turno desconhecido.');
-        alvo = { turno: t.id, nova: { id: `p-${randomUUID().slice(0, 24)}`, turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } };
+        // a posição nova fica com o id que a tela já mostrou (#131), se ele vale e ainda não está no dia
+        const usados = new Set(posicoesDe(dia).flatMap((p) => [p.id, ...p.demandas.map((d) => d.id), ...(p.avisos ?? []).map((a) => a.id)]));
+        const novoId = typeof id === 'string' && ID.test(id) && !usados.has(id) ? id : `p-${randomUUID().slice(0, 24)}`;
+        alvo = { turno: t.id, nova: { id: novoId, turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] } };
       }
       const novas = escalarNa(posicoesDe(dia), nome, alvo);
       if (!novas) throw erro('Essa posição não existe mais.');

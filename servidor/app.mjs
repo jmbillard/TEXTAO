@@ -46,6 +46,7 @@ import { criarApelidos } from './apelidos.mjs';
 import { versoesDaChamada } from '../src/modelo/versoesDoRoteiro.ts';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { criarEscala, posicoesDoPedido, recadoDoPedido } from './escala.mjs';
+import { juntarODia } from '../src/modelo/juntarODia.ts';
 import { criarIlhas } from './ilhas.mjs';
 import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
@@ -1099,6 +1100,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   /* ---------- edição simultânea ---------- */
 
   const salas = new Map(); // id → { doc, presenca, conexoes: Map<ws, { eu, editar, clientes:Set }>, gravar }
+  /* Montar a pauta: duas pessoas ao mesmo tempo (#131). A sala de colaboração de um dia de montar a pauta é a mesma do
+     editor de roteiros, com o id `montar-AAAA-MM-DD`: só a coordenação entra, a presença (quem está e em que campo) é
+     repassada como no editor, e nada dela é guardado (o dia fica no SQLite da escala). O documento compartilhado só
+     leva o aviso de que o dia mudou: `dia.versao`, a versão de montar a pauta, que só cresce; quem está na sala lê o
+     dia de novo e junta com o que tem (src/modelo/juntarODia.ts). */
+  const SALA_DO_DIA = /^montar-(\d{4}-\d{2}-\d{2})$/;
+  // começa da hora da partida, para não voltar depois de reiniciar
+  let versaoDoMontar = Date.now();
+  /** Algum dia de montar a pauta mudou: a versão cresce e as salas abertas dos dias ficam sabendo (devolve a nova). */
+  function mudouOMontar() {
+    versaoDoMontar++;
+    for (const [id, sala] of salas) if (SALA_DO_DIA.test(id)) sala.doc.getMap('dia').set('versao', versaoDoMontar);
+    return versaoDoMontar;
+  }
   const reservas = new Map(); // id → prazo: quem abriu primeiro preenche o documento compartilhado
 
   const enviar = (ws, encoder) => {
@@ -1108,7 +1123,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     let sala = salas.get(id);
     if (sala) return sala;
     const doc = new Y.Doc();
-    const guardado = q.ydoc.get(id)?.ydoc;
+    const doDia = SALA_DO_DIA.test(id);
+    const guardado = doDia ? null : q.ydoc.get(id)?.ydoc;
     if (guardado) Y.applyUpdate(doc, guardado);
     const pres = new presenca.Awareness(doc);
     pres.setLocalState(null);
@@ -1123,7 +1139,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       cod.writeVarUint(e, MSG_SINC);
       sinc.writeUpdate(e, atualizacao);
       for (const ws of sala.conexoes.keys()) if (ws !== origem) enviar(ws, e);
-      if (!sala.prazo) sala.prazo = setTimeout(gravar, 1500);
+      if (!doDia && !sala.prazo) sala.prazo = setTimeout(gravar, 1500);
     });
     pres.on('update', ({ added, updated, removed }, origem) => {
       const con = sala.conexoes.get(origem);
@@ -1233,6 +1249,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     for (const aviso of ultimosPonteiros.values())
       if (aviso.por !== eu.email && ws.readyState === 1 && (aberto || !roteiroDoAviso(aviso) || acesso(roteiroDoAviso(aviso), eu).ler)) ws.send(JSON.stringify(aviso));
     for (const id of salas.keys()) {
+      if (SALA_DO_DIA.test(id)) continue;
       const pessoas = quemNoRoteiro(id);
       if (pessoas.length && ws.readyState === 1) ws.send(JSON.stringify({ tipo: 'no-roteiro', id, pessoas }));
     }
@@ -1287,6 +1304,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!m) return recusar('404 Not Found');
       const eu = await identificar(req, env);
       if (!eu) return recusar('401 Unauthorized');
+      // a sala de um dia de montar a pauta (#131): só a coordenação, sempre editando
+      const doDia = SALA_DO_DIA.exec(m[1]);
+      if (doDia) {
+        if (!escala.ehCoordenacao(eu.email) || diaOuHoje(doDia[1], '') !== doDia[1]) return recusar('404 Not Found');
+        return wss.handleUpgrade(req, socket, head, (ws) => conectar(ws, m[1], eu, true));
+      }
       const a = acesso(m[1], eu);
       if (!a.ler) return recusar('404 Not Found');
       wss.handleUpgrade(req, socket, head, (ws) => conectar(ws, m[1], eu, a.editar));
@@ -1298,7 +1321,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const sala = abrirSala(id);
     const con = { eu, editar, clientes: new Set(), vivo: true };
     sala.conexoes.set(ws, con);
-    avisarNoRoteiro(id);
+    const doDia = SALA_DO_DIA.test(id);
+    if (!doDia) avisarNoRoteiro(id);
     ws.on('pong', () => (con.vivo = true));
     ws.on('error', (e) => console.warn(`[colab] ${id}: conexão de ${eu.email} encerrada: ${e.message}`));
     ws.binaryType = 'arraybuffer';
@@ -1324,7 +1348,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     ws.on('close', () => {
       presenca.removeAwarenessStates(sala.presenca, [...con.clientes], null);
       sala.conexoes.delete(ws);
-      avisarNoRoteiro(id);
+      if (!doDia) avisarNoRoteiro(id);
       if (!sala.conexoes.size) {
         if (sala.prazo) clearTimeout(sala.prazo);
         if (q.um.get(id)) sala.gravar();
@@ -1629,8 +1653,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * A coluna lateral (#126), todos POST e devolvendo o mesmo que o GET (que traz também a lista "Para distribuir"):
    * /para-distribuir { texto } junta a lista escrita ou colada (uma claquete por linha); /levar { id, posicao, antesDe }
    * leva uma claquete da lista para a posição; /mover { demanda, posicao, antesDe } move a demanda; /devolver
-   * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno } escala quem está sem escala
-   * (numa posição, ou numa nova do turno), e recusa quem está fora no dia.
+   * { demanda } a devolve para a lista; /escalar { editor, posicao } ou { editor, turno, id? } escala quem está sem escala
+   * (numa posição, ou numa nova do turno, com o id que a tela já mostrou, #131), e recusa quem está fora no dia.
+   * Duas pessoas ao mesmo tempo (#131): o PUT com `base` ({ posicoes, recado }, o dia como a pessoa o leu) junta o que
+   * ela mudou desde a base com o que está gravado (src/modelo/juntarODia.ts); toda resposta traz a `versao` e toda
+   * mudança avisa a sala do dia (`montar-AAAA-MM-DD`).
    * Repetir (#129): POST /repetir { de } copia para o dia vazio a escala do mesmo dia na semana passada ('semana-passada'),
    * a de ontem ('ontem') ou, em cada dia vazio da semana, a do mesmo dia na semana passada ('semana-inteira'): a ilha
    * (a que ainda está no cadastro), o editor, o horário e as tarefas, nunca as claquetes, os avisos nem o recado. Quem
@@ -1679,17 +1706,33 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     let repetido;
     try {
       if (req.method === 'PUT') {
-        const antes = escala.lerDia(dia).posicoes;
+        const corpo = (await lerCorpo(req)) ?? {};
+        // o que está gravado agora, lido depois do pedido chegar inteiro (o que vem daqui até gravar não espera nada)
+        const gravado = escala.lerDia(dia);
+        const antes = gravado.posicoes;
         // a ilha do cadastro; a que saiu dele, só na posição que já a tinha
         const cadastradas = new Set(ilhas.todas().map((i) => i.id));
         const validos = {
           turnos: new Set(turnosDoDia(turnos, antes).map((t) => t.id)),
           ilhaVale: (ilha, posicao) => cadastradas.has(ilha) || antes.some((p) => p.id === posicao && p.ilha === ilha),
         };
-        const corpo = (await lerCorpo(req)) ?? {};
         // o recado do dia (#125): sem ele no pedido, fica o que estava
         const recado = typeof corpo === 'object' && 'recado' in corpo ? recadoDoPedido(corpo.recado) : undefined;
-        escala.gravarDia(dia, posicoesDoPedido(corpo.posicoes, dia, validos), eu.email, recado);
+        let posicoes = posicoesDoPedido(corpo.posicoes, dia, validos);
+        let recadoGravado = recado;
+        // duas pessoas ao mesmo tempo (#131): com a base (o dia como a pessoa o leu), o que ela mudou desde a base vai
+        // por cima do que está gravado agora, sem desfazer o que a outra fez; sem a base, troca o dia inteiro
+        const deBase = corpo?.base;
+        if (deBase !== undefined) {
+          if (!deBase || typeof deBase !== 'object' || !Array.isArray(deBase.posicoes)) throw Object.assign(new Error('Base do dia inválida.'), { status: 400 });
+          // a base só serve para comparar: vale o formato, com qualquer turno e ilha (o que a pessoa leu pode ter mudado)
+          const qualquer = { turnos: { has: (t) => typeof t === 'string' && t.length > 0 }, ilhaVale: () => true };
+          const baseDoDia = { posicoes: posicoesDoPedido(deBase.posicoes, dia, qualquer), recado: recadoDoPedido(deBase.recado) };
+          const juntado = juntarODia(baseDoDia, { posicoes, recado: recado ?? baseDoDia.recado }, { posicoes: antes, recado: gravado.recado ?? '' }, dia);
+          posicoes = posicoesDoPedido(juntado.posicoes, dia, validos);
+          recadoGravado = juntado.recado;
+        }
+        escala.gravarDia(dia, posicoes, eu.email, recadoGravado);
       }
       if (acao === 'conferida') {
         const { chave, certo } = (await lerCorpo(req)) ?? {};
@@ -1730,11 +1773,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     } catch (e) {
       return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
     }
+    // a versão vai junto do dia lido no mesmo instante (#131): quem está na sala sabe se já tem o mais novo
+    const versao = req.method === 'GET' ? versaoDoMontar : mudouOMontar();
     const lido = escala.lerDia(dia);
     const semana = escala.estados(diasDaSemana(segundaDaSemana(dia)));
     return json(res, 200, {
       dia,
       ...lido,
+      versao,
       semana,
       // o que cada opção do Repetir traz (#129), só no dia vazio
       repetir: lido.estado === 'vazio' ? opcoesDoRepetir(dia, semana, escala.quantas) : null,
@@ -1879,6 +1925,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           console.log(`[montar-pauta] ${eu.email} tirou uma pessoa de ${dia}`);
         }
         if (acao === 'para-distribuir/tirar') ausencias.distribuida(dia, corpo.id);
+        // a ausência muda os rascunhos e a caixa "Fora": quem está na sala de um dia lê de novo (#131)
+        mudouOMontar();
       }
       return json(res, 200, { ...ausencias.painel(dia, segundaDaSemana(dia)), ...marcou });
     } catch (e) {
@@ -1953,6 +2001,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         if (!editor.keys.some((k) => k.key === normalizarKey(nome))) await cadastros.novaKey('editor', editor.id, nome);
         const trocas = nomesNovos.ligar(nome, editor.nome);
         console.log(`[cadastros] ${eu.email} ligou o nome novo ${nome} a ${editor.nome} (${trocas} na escala)`);
+        if (trocas) mudouOMontar();
         return json(res, 200, { ok: true, nome: editor.nome, trocas });
       }
       if (!singular) return json(res, 404, { erro: 'Não encontrado.' });

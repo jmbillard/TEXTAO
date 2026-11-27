@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apagarAusencia, lerAusencias, marcarAusencia, ondeEstaEscalada, tirarDoDia } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { motivoDaAusencia, nomeDoTipo, temPeriodo, TIPOS_DE_AUSENCIA, type Ausencia, type EscaladaNoDia, type PainelDasAusencias, type TipoDeAusencia } from '../modelo/ausencias';
@@ -23,6 +23,8 @@ interface Props {
   mudou: () => void;
   /** quem está fora no dia, a cada leitura (para a caixa "Sem escala") */
   foraNoDia: (nomes: string[]) => void;
+  /** muda quando a outra pessoa da coordenação mexeu no dia (#131): o painel lê de novo */
+  releitura?: number;
 }
 
 type Formulario = Omit<Ausencia, 'id'>;
@@ -36,7 +38,7 @@ const ondeEscrito = (es: readonly EscaladaNoDia[], turnos: readonly TurnoDaEscal
 const diasDoPeriodo = (de: string, ate: string) => Math.round((Date.parse(`${ate}T12:00:00Z`) - Date.parse(`${de}T12:00:00Z`)) / 86_400_000) + 1;
 const erroDe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia }: Props) {
+export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia, releitura = 0 }: Props) {
   const [painel, setPainel] = useState<PainelDasAusencias | null>(null);
   const [form, setForm] = useState<Formulario | null>(null);
   const [aviso, setAviso] = useState('');
@@ -51,6 +53,13 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia 
     setErro('');
     ler();
   }, [ler]);
+  // a outra pessoa da coordenação mudou o dia (#131): lê de novo, sem fechar o que está aberto aqui
+  const lida = useRef(releitura);
+  useEffect(() => {
+    if (lida.current === releitura) return;
+    lida.current = releitura;
+    ler();
+  }, [releitura, ler]);
   const nomesFora = painel?.dia === dia ? painel.fora.map((a) => a.editor).join('\n') : null;
   useEffect(() => {
     if (nomesFora !== null) foraNoDia(nomesFora ? nomesFora.split('\n') : []);

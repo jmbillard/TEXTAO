@@ -1478,8 +1478,13 @@ export const lerSemanaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) 
 export const lerDiaDaPauta = (dia = '', filtro: FiltroDaPauta | null = null) => pedir<DiaDaPauta & LeituraDaPauta>(`/api/pauta/dia${comFiltro({ dia }, filtro)}`);
 /** O rascunho do dia que a coordenação monta (#123; sem o dia, amanhã), com as abas da semana e a lista dos editores. */
 export const lerRascunhoDoDia = (dia = '') => pedir<DiaDaEscala>(`/api/montar-pauta${dia ? `?dia=${dia}` : ''}`);
-/** Troca o rascunho do dia pelas posições e pelo recado do dia (#125); o servidor grava o horário e a claquete no padrão e devolve o dia gravado. */
-export const gravarRascunhoDoDia = (dia: string, posicoes: PosicaoDaEscala[], recado: string) => pedir<DiaDaEscala>(`/api/montar-pauta?dia=${dia}`, { method: 'PUT', body: JSON.stringify({ posicoes, recado }) });
+/**
+ * Grava o rascunho do dia com as posições e o recado do dia (#125); o servidor grava o horário e a claquete no padrão e
+ * devolve o dia gravado. Com a `base` (o dia como a tela o leu, #131), o servidor junta o que mudou desde ela com o que
+ * outra pessoa gravou nesse meio-tempo; sem ela, troca o dia inteiro.
+ */
+export const gravarRascunhoDoDia = (dia: string, posicoes: PosicaoDaEscala[], recado: string, base?: { posicoes: PosicaoDaEscala[]; recado: string }) =>
+  pedir<DiaDaEscala>(`/api/montar-pauta?dia=${dia}`, { method: 'PUT', body: JSON.stringify({ posicoes, recado, ...(base ? { base } : {}) }) });
 /** Diz que uma pendência da conferência está certa (ou a reabre), pela chave (#127); devolve o dia. */
 export const marcarPendencia = (dia: string, chave: string, certo: boolean) => pedir<DiaDaEscala>(`/api/montar-pauta/conferida?dia=${dia}`, { method: 'POST', body: JSON.stringify({ chave, certo }) });
 /** Publica o rascunho gravado do dia, mesmo com pendências (#127); devolve o dia, com a publicação. */
@@ -1499,7 +1504,7 @@ export const moverADemanda = (dia: string, demanda: string, posicao: string, ant
 /** Devolve a demanda para "Para distribuir", com de quem era. */
 export const devolverADemanda = (dia: string, demanda: string) => naColuna(dia, 'devolver', { demanda });
 /** Escala quem está sem escala numa posição, ou numa posição nova do turno. */
-export const escalarNoDia = (dia: string, editor: string, alvo: { posicao: string } | { turno: string }) => naColuna(dia, 'escalar', { editor, ...alvo });
+export const escalarNoDia = (dia: string, editor: string, alvo: { posicao: string } | { turno: string; id?: string }) => naColuna(dia, 'escalar', { editor, ...alvo });
 /** Repetir (#129): copia para o dia vazio a escala de outro dia (ou, na semana inteira, para cada dia vazio). */
 export const repetirAEscala = (dia: string, de: DeOndeRepetir) => pedir<DiaDaEscala>(`/api/montar-pauta/repetir?dia=${dia}`, { method: 'POST', body: JSON.stringify({ de }) });
 /** O painel das ausências do dia (#128): as que valem a partir da semana, as do dia, a oferta de tirar e o para distribuir. */

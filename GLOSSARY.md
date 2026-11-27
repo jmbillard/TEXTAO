@@ -497,6 +497,12 @@ Cada dia está **vazio** (nada montado), em **rascunho** (montado e não publica
 (publicado e mudado depois, à espera de publicar de novo).
 _Evitar_: salvar, enviar, liberar
 
+**Sala do dia** (de montar a pauta):
+A edição simultânea do rascunho de um dia: duas pessoas da coordenação montam o mesmo dia ao mesmo tempo, cada uma vê
+a outra e o campo em que ela está, e as mudanças aparecem para as duas. Ninguém trava nada: o que cada uma muda é
+juntado campo por campo com o que a outra gravou; no mesmo campo, vale quem gravou por último.
+_Evitar_: trava, bloqueio, sessão
+
 **Cartão da pauta** (no Teams):
 O resumo da pauta publicada que o PROMeiro manda ao canal da edição no Teams, nos horários da Configuração: a pauta do
 dia por turno (editor, ilha, horário, claquetes e avisos), o recado do dia e o link para a Pauta. Republicar um dia que

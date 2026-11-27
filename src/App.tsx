@@ -576,7 +576,7 @@ export function App() {
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && !tela.pagina && <Configuracao voltar={() => ir({ t: 'biblioteca' })} historico={() => ir({ t: 'configuracao', pagina: 'historico' })} portainer={() => ir({ t: 'configuracao', pagina: 'portainer' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'historico' && <HistoricoDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}
-      {tela.t === 'montar' && souCoordenacao() && <MontarPauta dia={tela.dia} irPara={(dia) => ir({ t: 'montar', dia })} voltar={() => ir({ t: 'pauta', ...entradaDaPauta() })} />}
+      {tela.t === 'montar' && souCoordenacao() && <MontarPauta dia={tela.dia} pessoa={pessoa} irPara={(dia) => ir({ t: 'montar', dia })} voltar={() => ir({ t: 'pauta', ...entradaDaPauta() })} />}
       {tela.t === 'pauta' && <Pauta semana={tela.semana} dia={tela.dia} irPara={(e) => ir({ t: 'pauta', ...e })} voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'andamento' && souAdministrador() && <Andamento voltar={() => ir({ t: 'biblioteca' })} />}
       {tela.t === 'correcoes' && souAdministrador() && <CorrecaoDeGrafia voltar={() => ir({ t: 'biblioteca' })} />}

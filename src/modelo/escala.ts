@@ -105,6 +105,8 @@ export interface DiaDaEscala {
   repetir?: OpcoesDoRepetir | null;
   /** depois de Repetir: um item por dia preenchido, com quem ficou de fora */
   repetido?: (RepeticaoDoDia & { posicoes: number; vagas: VagaDoRepetir[] })[];
+  /** a versão de montar a pauta quando o dia foi lido (#131): só cresce; a sala do dia avisa a nova */
+  versao?: number;
 }
 
 /* ---------- o horário ---------- */
