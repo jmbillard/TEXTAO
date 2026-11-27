@@ -77,6 +77,8 @@ interface Props {
   correcoes?: () => void;
   /** Abre a Pauta da edição (#94): no topo, para qualquer pessoa logada. */
   pauta?: () => void;
+  /** montar a pauta (#123): só para a coordenação */
+  montarPauta?: () => void;
   /** abre a tela de produções (#109), ao lado da agenda */
   producoes?: () => void;
   /** A fila abre já buscando isto (o "Buscar na fila" do link quebrado). */
@@ -970,7 +972,7 @@ function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, pauta, producoes, buscaInicial = '', seletorDeArea }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, pauta, montarPauta, producoes, buscaInicial = '', seletorDeArea }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
@@ -1309,7 +1311,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           </a>
         )}
         {/* a Pauta da edição (#94), no grupo "De todo mundo" (#105), o mesmo em todas as áreas */}
-        {pauta && <DeTodoMundo pauta={pauta} />}
+        {pauta && <DeTodoMundo pauta={pauta} montar={montarPauta} />}
         <span className="espaco" />
         {(todos.length > 6 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
         {colegas.length > 0 && (

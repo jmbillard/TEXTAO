@@ -1,0 +1,85 @@
+/* Montar a pauta (#123): a grade como a planilha (a alternativa A do protótipo aprovado). Usa as peças da pauta.css
+   (o cabeçalho, as etiquetas das versões, o avatar). */
+.montar-pagina { padding-top: 14px; }
+.montar-estado { justify-self: end; display: flex; align-items: center; gap: 8px; font: 400 12.5px var(--sans); color: var(--tinta3); text-align: right; }
+.montar-estado .ponto { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.montar-erro { color: var(--falta); }
+.montar-cabeca { margin-bottom: 10px; }
+.montar-rel, .montar-rascunho { display: inline-block; font: 600 19px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-2deg); }
+.montar-rascunho { font-size: 17px; }
+.montar-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* as abas dos dias da semana */
+.montar-abas { display: flex; align-items: flex-end; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--regua-forte); margin: 4px 0 16px; scrollbar-width: none; }
+.montar-abas .botao-icone { flex: none; align-self: center; margin-bottom: 4px; }
+.montar-aba { flex: none; display: flex; align-items: center; gap: 7px; margin-bottom: -1px; padding: 8px 14px 9px; border: 1px solid transparent; border-bottom: 0; border-radius: 10px 10px 0 0; background: none; color: var(--tinta3); font: 600 12px var(--sans); letter-spacing: 0.06em; white-space: nowrap; cursor: pointer; }
+.montar-aba:hover { color: var(--tinta); }
+.montar-aba[aria-current='page'] { background: var(--cartao); border-color: var(--regua-forte); color: var(--tinta); }
+.montar-aba .n { font: 500 12px var(--mono); letter-spacing: 0; }
+.montar-aba i { font: 600 15px/1 Caveat, cursive; letter-spacing: 0; color: var(--ultra); }
+.montar-aba .est { display: block; flex: none; width: 7px; height: 7px; padding: 0; border-radius: 50%; box-shadow: inset 0 0 0 1.3px var(--regua-forte); }
+.montar-aba .est-rascunho { background: var(--ultra); box-shadow: none; }
+
+.montar-vazio { margin: 0 0 14px; font: italic 400 17px var(--serifa); color: var(--tinta3); }
+
+/* um bloco por turno; uma célula por posição */
+.montar-turno { margin-bottom: 16px; border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha); }
+.montar-turno-cab { display: flex; align-items: baseline; gap: 12px; padding: 10px 14px 9px; }
+.montar-turno:has(.montar-celulas) .montar-turno-cab { border-bottom: 1px solid var(--regua); }
+.montar-turno-cab h2 { font: 400 22px/1 var(--serifa); margin: 0; }
+.montar-turno-h { font: 500 11.5px var(--mono); color: var(--tinta3); }
+.montar-turno-cab .espaco { flex: 1; min-width: 8px; }
+.montar-turno-cab .botao-texto { margin-left: auto; white-space: nowrap; }
+.montar-celulas { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); border-radius: 0 0 14px 14px; }
+.montar-celula { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 9px 12px 12px; box-shadow: 1px 0 0 var(--regua), 0 1px 0 var(--regua); }
+.montar-celula-topo { display: flex; align-items: center; gap: 4px; }
+.montar-celula-topo .montar-campo { flex: 1; }
+.montar-tirar { opacity: 0; color: var(--tinta3); }
+.montar-celula:hover .montar-tirar, .montar-celula:focus-within .montar-tirar { opacity: 1; }
+
+/* os campos: sem caixa, como a planilha; o foco sublinha */
+.montar-campo { position: relative; min-width: 0; }
+.montar-in { width: 100%; height: 26px; padding: 0 2px; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; color: var(--tinta); outline: 0; }
+.montar-in::placeholder { color: var(--tinta3); opacity: 0.8; }
+.montar-in:hover { border-bottom-color: var(--regua-forte); }
+.montar-in:focus { border-bottom-color: var(--ultra); background: color-mix(in srgb, var(--ultra-suave) 30%, transparent); }
+.montar-in.editor { height: 30px; font: 600 15px var(--sans); }
+.montar-in.editor.sem-editor::placeholder { font-style: italic; font-weight: 500; }
+.montar-in.hora { font: 500 12.5px var(--mono); color: var(--tinta2); }
+
+/* o que o PROMeiro entendeu, embaixo de cada campo */
+.montar-sob { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; padding: 0 2px; }
+.montar-sob:empty { display: none; }
+.montar-leve { font: 400 11px/1.3 var(--sans); color: var(--tinta3); }
+.montar-leve b, .montar-grava b { font-weight: 500; font-family: var(--mono); color: var(--tinta2); }
+.montar-alerta { font: 600 11px/1.3 var(--sans); color: var(--falta); }
+.montar-tag { display: inline-block; padding: 0 6px; border-radius: 6px; font: 600 10.5px/17px var(--sans); background: var(--ok-fundo); color: var(--ok); }
+.montar-demandas { list-style: none; margin: 6px 0 0; padding: 6px 0 0; border-top: 1px dashed var(--regua); display: flex; flex-direction: column; gap: 3px; }
+.montar-demanda .montar-in { height: 24px; font: 600 12.5px var(--mono); }
+.montar-demanda.t-tarefa .montar-in { font: italic 400 14px var(--serifa); color: var(--tinta2); }
+.montar-demanda.t-vazia .montar-in { font-weight: 500; }
+.montar-leitura { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 5px; margin-top: 2px; padding-left: 2px; font: 400 11px/1.3 var(--sans); color: var(--tinta3); }
+.montar-leitura .pauta-versoes { margin: 0; }
+.montar-data { font: 500 11px var(--sans); color: var(--tinta2); }
+.montar-grava { font: 400 10.5px/1.3 var(--sans); color: var(--tinta3); }
+
+/* a lista dos editores */
+.montar-lista { left: -6px; right: -6px; top: calc(100% + 4px); min-width: 250px; max-height: 340px; overflow: auto; }
+.montar-lista .menu-item { min-height: 40px; cursor: pointer; }
+.montar-lista .pauta-avatar { flex: none; margin-right: 0; }
+.montar-lista small.escalado { color: var(--falta); }
+.montar-lista-pe { margin: 4px 0 0; padding: 6px 10px 4px; border-top: 1px solid var(--regua); font: 400 11px var(--sans); color: var(--tinta3); }
+.montar-lista-pe kbd, .montar-teclas kbd { font-size: 10.5px; padding: 0 4px; }
+
+.montar-teclas { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font: 400 12px var(--sans); color: var(--tinta3); }
+
+@media (max-width: 640px) {
+  .montar-pagina { padding-left: 16px; padding-right: 16px; }
+  .montar-cabeca h1 { font-size: 34px; }
+  .montar-celulas { grid-template-columns: minmax(0, 1fr); }
+  .montar-tirar { opacity: 1; }
+  .montar-teclas { display: none; }
+  /* a linha do logo aperta: o "rascunho guardado" sai (o erro ao gravar continua) */
+  .montar-estado:not(:has(.montar-erro)) { display: none; }
+  .montar-turno-cab { flex-wrap: wrap; row-gap: 2px; }
+}

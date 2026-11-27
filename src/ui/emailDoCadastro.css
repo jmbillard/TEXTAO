@@ -29,3 +29,12 @@ button.email-cad:hover, button.email-cad:focus-visible { background: var(--neutr
 @media (prefers-reduced-motion: reduce) {
   .sugestao-email { animation: none; }
 }
+
+/* O papel de coordenação (#123) na linha do editor */
+.coordenacao-cad {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; border: 1px dashed var(--regua-forte);
+  background: none; color: var(--tinta3); font: 600 11px var(--sans); white-space: nowrap;
+}
+button.coordenacao-cad { cursor: pointer; }
+button.coordenacao-cad:hover, button.coordenacao-cad:focus-visible { border-color: var(--tinta3); color: var(--tinta); }
+.coordenacao-cad.marcada { border: 0; background: var(--ultra-suave); color: var(--ultra-tinta); }

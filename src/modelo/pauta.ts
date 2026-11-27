@@ -216,7 +216,7 @@ const conhecido = (bruto: string) => LETRAS.test(semAcento(bruto)) || INTEIROS.h
  * A data da versão: a escrita na claquete (dia e mês), no ano que a deixa mais perto do dia da linha (a claquete de
  * janeiro numa pauta de dezembro é do ano seguinte); sem ela, o dia da linha. null quando nenhum dos dois é data.
  */
-function dataDaVersao(claquete: string, diaDaLinha: string): Date | null {
+export function dataDaVersao(claquete: string, diaDaLinha: string): Date | null {
   const linha = DIA_ISO.test(diaDaLinha) ? new Date(`${diaDaLinha}T12:00:00Z`) : null;
   const daLinha = linha && !Number.isNaN(linha.getTime()) ? linha : null;
   const lida = lerDataDaClaquete(claquete);

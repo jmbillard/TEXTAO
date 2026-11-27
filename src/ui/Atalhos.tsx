@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ETIQUETAS } from '../modelo/tipos';
 import { atalho } from './util';
 
-type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta';
+type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta' | 'montar';
 type Linha = [tecla: string, oque: string];
 
 const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
@@ -50,6 +50,16 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
     linhas: [
       ['← →', 'Semana (ou dia) anterior e próxima'],
       ['Esc', 'Fecha o balão do aviso e a ficha'],
+    ],
+  },
+  montar: {
+    titulo: 'Montar a pauta',
+    linhas: [
+      ['Tab', 'Próximo campo'],
+      ['Enter', 'Nova linha de demanda (no editor, escolhe da lista)'],
+      ['↑ ↓', 'Entre as linhas (e na lista dos editores)'],
+      ['⌫', 'Na linha vazia, apaga a linha'],
+      ['← →', 'Semana anterior e próxima (fora dos campos)'],
     ],
   },
   configuracao: {

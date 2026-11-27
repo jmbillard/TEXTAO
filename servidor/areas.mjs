@@ -45,11 +45,11 @@ export function criarAreas({ espera = ESPERA_DOS_CADASTROS } = {}) {
     nomesDosCadastros,
     /**
      * O que a rota de quem está logado devolve das áreas: as da pessoa, a de entrada (a última usada, se ela ainda a
-     * tem) e as preferências guardadas.
+     * tem) e as preferências guardadas. `coordenacao`: a pessoa é da coordenação (#123), que também tem a do Editor.
      */
-    async daPessoa(email, { cadastros, admin, preferencias }) {
+    async daPessoa(email, { cadastros, admin, preferencias, coordenacao = false }) {
       const eu = await quemE(email, cadastros);
-      const areas = areasDaPessoa({ admin, redator: !!eu.redator, editor: !!eu.editor });
+      const areas = areasDaPessoa({ admin, redator: !!eu.redator, editor: !!eu.editor, coordenacao });
       const prefs = preferencias.ler(email);
       return { areas, area: areaDeEntrada(prefs.area, areas), preferencias: prefs };
     },

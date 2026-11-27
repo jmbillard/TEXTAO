@@ -74,3 +74,23 @@ export function EmailNaLinha({ email, pode, salvar }: { email: string; pode: boo
     />
   );
 }
+
+/**
+ * O papel de coordenação (#123) na linha do editor que tem e-mail: o administrador marca e desmarca com um clique
+ * (vale pelo e-mail do login); os outros só veem a marca, quando há.
+ */
+export function CoordenacaoNaLinha({ nome, email, marcada, pode, mudar }: { nome: string; email: string; marcada: boolean; pode: boolean; mudar: (marcar: boolean) => void }) {
+  if (!email || (!pode && !marcada)) return null;
+  if (!pode) return <span className="coordenacao-cad marcada">coordenação</span>;
+  return (
+    <button
+      type="button"
+      className={`coordenacao-cad${marcada ? ' marcada' : ''}`}
+      aria-pressed={marcada}
+      title={marcada ? `Tirar ${nome} da coordenação` : `${nome} é da coordenação: monta a pauta`}
+      onClick={() => mudar(!marcada)}
+    >
+      {marcada ? 'coordenação' : '+ coordenação'}
+    </button>
+  );
+}

@@ -15,9 +15,10 @@ export const AREAS: readonly { id: Area; nome: string; mostra: string }[] = [
 export const ehArea = (x: unknown): x is Area => AREAS.some((a) => a.id === x);
 export const ehAreaDosRoteiros = (x: unknown): x is AreaDosRoteiros => x === 'redator' || x === 'editor';
 
-/** Todo mundo tem a Designer; o cadastro de redator dá a Redator e o de editor, a Editor. O administrador tem as três. */
-export function areasDaPessoa({ admin, redator, editor }: { admin: boolean; redator: boolean; editor: boolean }): Area[] {
-  return AREAS.map((a) => a.id).filter((a) => a === 'designer' || admin || (a === 'redator' ? redator : editor));
+/** Todo mundo tem a Designer; o cadastro de redator dá a Redator e o de editor, a Editor. A coordenação (#123) também
+    tem a Editor, onde fica o "Montar a pauta". O administrador tem as três. */
+export function areasDaPessoa({ admin, redator, editor, coordenacao = false }: { admin: boolean; redator: boolean; editor: boolean; coordenacao?: boolean }): Area[] {
+  return AREAS.map((a) => a.id).filter((a) => a === 'designer' || admin || (a === 'redator' ? redator : editor || coordenacao));
 }
 
 /** A área em que o PROMeiro abre: a última usada, se a pessoa ainda a tem; senão, a Designer. */

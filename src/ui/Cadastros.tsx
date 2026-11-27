@@ -20,6 +20,7 @@ import {
   lerTotaisDoAcervo,
   mudarAcervo,
   mudarEmailDoCadastro,
+  marcarCoordenacao,
   responderNaoE,
   type SugestaoDeEmail,
   preverImportacao,
@@ -49,7 +50,7 @@ import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
 import { ListaDeDuplicadas, PainelDasDuplicadas, useDuplicadas } from './Duplicadas';
-import { EmailNaLinha, quemNoCadastro, SugestaoDeEmailNaLista } from './EmailDoCadastro';
+import { CoordenacaoNaLinha, EmailNaLinha, quemNoCadastro, SugestaoDeEmailNaLista } from './EmailDoCadastro';
 import { AreaDeImportar, ConferenciaDaImportacao, HistoricoDasImportacoes, RegrasDaAtracaoNaFicha, ResultadoDaImportacaoNaTela } from './ImportarAcervo';
 
 /* Cadastros: o que o PROMeiro usa para reconhecer cada roteiro. Tudo vai direto para o Teable
@@ -944,6 +945,16 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const emailAMao = (tipo: SugestaoDeEmail['tipo'], c: RedatorCadastro | EditorCadastro) => (email: string) =>
     gravarEmail(tipo, c.id, email, (e) => (e ? <><b>{e}</b> agora é o e-mail de {c.nome}.</> : <>{c.nome} ficou sem e-mail.</>));
   const simE = (s: SugestaoDeEmail) => void gravarEmail(s.tipo, s.id, s.email, (e) => <><b>{e}</b> agora está ligado a {quemNoCadastro(s.tipo, s.nome)}.</>);
+  /** Marca ou tira o editor da coordenação (#123), pelo e-mail dele. */
+  const mudarCoordenacao = (c: EditorCadastro) => async (marcar: boolean) => {
+    try {
+      const r = await marcarCoordenacao(c.email, marcar);
+      setDados((d) => (d ? { ...d, coordenacao: r.coordenacao } : d));
+      avisar(marcar ? `${c.nome} agora é da coordenação: monta a pauta.` : `${c.nome} saiu da coordenação.`);
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'Não consegui mudar a coordenação.');
+    }
+  };
   const naoE = async (s: SugestaoDeEmail) => {
     try {
       await responderNaoE(s);
@@ -1059,7 +1070,8 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const itemEditor = (e: EditorCadastro) => (
     <div key={e.id} className={`item-cad ${recem.includes(e.id) ? 'chegou' : ''}`}>
       <div className="nome">
-        {e.nome} <EmailNaLinha email={e.email} pode={pode} salvar={emailAMao('editores', e)} />
+        {e.nome} <EmailNaLinha email={e.email} pode={pode} salvar={emailAMao('editores', e)} />{' '}
+        <CoordenacaoNaLinha nome={e.nome} email={e.email} pode={pode} marcada={!!e.email && (dados?.coordenacao ?? []).includes(e.email.toLowerCase())} mudar={mudarCoordenacao(e)} />
       </div>
       <div className="lado-cad">
         {e.trello && <span className="no-trello"><Icone nome="quadro" tam={14} /> no Trello</span>}
