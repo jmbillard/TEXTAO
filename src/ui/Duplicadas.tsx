@@ -7,12 +7,14 @@ import {
   lerRegistroDasDuplicadas,
   mudarModoDasDuplicadas,
   reabrirDuplicada,
+  recriarDuplicada,
   type AcaoDoRegistro,
   type ApagadoDaDuplicada,
   type ApagarDuplicada,
   type CardDaDuplicada,
   type CasoDaDuplicada,
   type ListaDasDuplicadas,
+  type RecriadoDaDuplicada,
   type ResolvidaDaDuplicada,
   type ResumoDaDuplicada,
   type SecaoDaDuplicada,
@@ -29,7 +31,9 @@ import { LinhaDoTempoDoCard } from './LinhaDoTempo';
    Ignorar (#66), na linha e no caso aberto, com motivo opcional: o caso vai para Resolvidas e para o Registro (o painel
    da direita), e Reabrir devolve. Nada muda no Trello nem no Teable. No celular, só consulta (sem os botões).
    Apagar (#67), no caso aberto e fora do modo só olhar: um card por vez, com a confirmação à prova de engano (os dois
-   cards lado a lado, o que acontece em cada sistema, "Conferi" e o código do card que sai digitado). */
+   cards lado a lado, o que acontece em cada sistema, "Conferi" e o código do card que sai digitado).
+   Recriar (#68), no Registro, no computador e fora do modo só olhar: o card apagado vira um card novo, feito só da
+   cópia, com a confirmação que diz o que volta e o que não volta (o que só existia no Trello). */
 
 export const PERIODOS = [30, 60, 90, 180, 365];
 const PERIODO_PADRAO = 90;
@@ -847,15 +851,189 @@ function fraseDoRegistro(a: AcaoDoRegistro) {
     const passaram = [a.apagado?.religadas ? plural(a.apagado.religadas, 'arte', 'artes') : '', a.apagado?.roteiros ? plural(a.apagado.roteiros, 'roteiro', 'roteiros') : ''].filter(Boolean).join(' e ');
     return (
       <>
-        <b>{a.por}</b> apagou o card {codigo} de {caso} (ficou {fica}{passaram ? `, que recebeu ${passaram}` : ''}).
+        <b>{a.por}</b> apagou o card {codigo} de {caso} (ficou {fica}{passaram ? `, que recebeu ${passaram}` : ''}).{a.estado === 'recriado' ? ' Já foi recriado.' : ''}
       </>
     );
   }
+  const r = a.recriado;
+  const codigo = r?.codigo ? `…${r.codigo}` : '';
+  if (a.estado === 'falhou')
+    return (
+      <>
+        <b>{a.por}</b> tentou recriar o card {codigo} de {caso} e parou{r?.erro ? ` ao ${r.erro}` : ''}. Nada ficou no Trello
+        {r?.naoDesfeito.length ? `; não deu para desfazer: ${r.naoDesfeito.join('; ')}` : ''}.
+      </>
+    );
+  if (a.estado === 'em-curso')
+    return (
+      <>
+        <b>{a.por}</b> está recriando o card {codigo} de {caso}.
+      </>
+    );
+  const voltaram = [r?.religadas ? plural(r.religadas, 'arte', 'artes') : '', r?.roteiros ? plural(r.roteiros, 'roteiro', 'roteiros') : ''].filter(Boolean).join(' e ');
   return (
     <>
-      <b>{a.por}</b> recriou um card de {caso}
-      {a.motivo ? `: ${a.motivo}` : ''}.
+      <b>{a.por}</b> recriou o card {codigo} de {caso}: card novo{' '}
+      {r?.url ? (
+        <a href={r.url} target="_blank" rel="noreferrer">
+          …{r.novo}
+        </a>
+      ) : (
+        `…${r?.novo ?? ''}`
+      )}
+      {voltaram ? `, com ${voltaram}` : ''}.
     </>
+  );
+}
+
+/** O que só existia no Trello e não volta no card recriado (a cópia é do PROMeiro e do Teable, ADR 0006). */
+const NAO_VOLTA = [
+  'O número e o link do card apagado: o card novo tem outros.',
+  'A descrição editada à mão, as etiquetas, os comentários e os membros: só existiam no Trello, e o PROMeiro não lê o Trello.',
+  'O histórico do card, as marcas da checklist e os anexos postos à mão no Trello (só o PDF do roteiro volta).',
+];
+const ENTENDI = 'Entendi: é um card novo, sem o que só existia no Trello';
+
+/**
+ * A confirmação de recriar (#68): o que volta em cada sistema, o que não volta e a caixa "Entendi"; o botão só acende
+ * com ela. Depois: o resultado (o card novo, com o link) ou o erro.
+ */
+function DialogoRecriar({ a, depois, fechar }: { a: AcaoDoRegistro; depois: () => Promise<void>; fechar: () => void }) {
+  const [entendi, setEntendi] = useState(false);
+  const [indo, setIndo] = useState(false);
+  const [recriado, setRecriado] = useState<RecriadoDaDuplicada | null>(null);
+  const [erro, setErro] = useState('');
+  const caixa = useRef<HTMLInputElement>(null);
+  useEffect(() => caixa.current?.focus(), []);
+  const codigo = a.apagado?.codigo ?? '';
+  const fica = a.fica ? codigoDoCard(a.fica) : '';
+  const sair = () => {
+    if (indo) return;
+    fechar();
+    if (recriado) void depois();
+  };
+  const ir = () => {
+    if (!entendi || indo) return;
+    setIndo(true);
+    setErro('');
+    recriarDuplicada(a.id).then(
+      (r) => {
+        if (r.ok) setRecriado(r.recriado);
+        else setErro(r.erro);
+        setIndo(false);
+      },
+      (e: unknown) => {
+        setErro(e instanceof Error ? e.message : 'Não consegui falar com o servidor. Nada foi recriado.');
+        setIndo(false);
+      },
+    );
+  };
+  return (
+    <div className="veu-dup" onMouseDown={(e) => e.target === e.currentTarget && sair()} onKeyDown={(e) => e.key === 'Escape' && sair()}>
+      <div className="dialogo-dup largo recriar-dup" role="dialog" aria-modal="true" aria-labelledby="titulo-recriar">
+        {recriado ? (
+          <ResultadoDoRecriar recriado={recriado} codigo={codigo} claquete={a.claquete} fechar={sair} />
+        ) : (
+          <>
+            <h2 id="titulo-recriar">Recriar o card …{codigo}</h2>
+            <p className="dica">
+              <b className="claquete-dup">{a.claquete}</b> {a.praca && <span className="praca-dup">{a.praca}</span>} O card apagado não volta: o PROMeiro faz um card novo só com a cópia guardada e o que ele e o Teable sabem. Nada é lido do Trello.
+            </p>
+            <h3 className="sub-dup">O que volta</h3>
+            <table className="efeitos-dup">
+              <tbody>
+                <tr>
+                  <th scope="row">Trello</th>
+                  <td>
+                    Um card novo na entrada{a.praca ? ` de ${a.praca}` : ''}, com a claquete, a checklist das artes, os campos que o envio preenche{a.apagado?.pdfs ? ' e o PDF do roteiro guardado' : ''}. O card …{fica}, que tinha ficado, ganha o comentário “Card …{codigo} recriado por você pelo PROMeiro”.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Produção da arte</th>
+                  <td>A linha do card novo nasce como no envio, com a entrada de antes (se o n8n já tiver criado a linha, vale a dele). O caso volta à lista das duplicadas.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Acervo</th>
+                  <td>{a.apagado?.religadas ? `${plural(a.apagado.religadas, 'arte volta', 'artes voltam')} do card …${fica} para o card novo.` : 'Nenhuma arte do acervo tinha passado para o card que ficou.'}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Roteiro no PROMeiro</th>
+                  <td>{a.apagado?.roteiros || a.apagado?.pdfs ? 'O roteiro guardado e o PDF dele voltam a apontar para o card novo.' : 'Nenhum roteiro guardado apontava para o card apagado.'}</td>
+                </tr>
+              </tbody>
+            </table>
+            <h3 className="sub-dup">O que não volta</h3>
+            <ul className="aviso-dup nao-volta-dup">
+              {NAO_VOLTA.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+            <label className="conferi-dup">
+              <input ref={caixa} type="checkbox" checked={entendi} onChange={(e) => setEntendi(e.target.checked)} disabled={indo} />
+              <span>{ENTENDI}</span>
+            </label>
+            {erro && (
+              <div className="cad-falha recusa-dup" role="alert">
+                <p>{erro}</p>
+              </div>
+            )}
+            <div className="rodape-dup">
+              <span className="quem-dup">Fica no Registro com o seu nome e a hora.</span>
+              <button type="button" className="botao-texto" onClick={sair} disabled={indo}>
+                Cancelar
+              </button>
+              <button type="button" className="botao primario" onClick={ir} disabled={!entendi || indo}>
+                {indo ? 'Recriando…' : 'Recriar o card'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Depois de recriar: o card novo (com o link) e o que voltou para ele. */
+function ResultadoDoRecriar({ recriado, codigo, claquete, fechar }: { recriado: RecriadoDaDuplicada; codigo: string; claquete: string; fechar: () => void }) {
+  const fechar1 = useRef<HTMLButtonElement>(null);
+  useEffect(() => fechar1.current?.focus(), []);
+  return (
+    <div className="resultado-dup" role="status">
+      <h2 id="titulo-recriar">Card novo …{recriado.codigo} criado</h2>
+      <p className="dica">
+        <b className="claquete-dup">{claquete}</b> No lugar do card …{codigo}.{' '}
+        <a href={recriado.url} target="_blank" rel="noreferrer">
+          Abrir no Trello
+        </a>
+      </p>
+      <ul className="feito-dup">
+        <li>O card novo está na entrada{recriado.comentou ? `, e o card …${codigoDoCard(recriado.fica)} ganhou o comentário.` : '.'}</li>
+        <li>{recriado.linha ? 'A linha da produção do card novo está no Teable.' : 'Sem a linha da produção do card novo: ela aparece quando o n8n ler o card.'}</li>
+        <li>
+          {recriado.religadas
+            ? `${plural(recriado.religadas, 'arte do acervo voltou', 'artes do acervo voltaram')} para o card novo.`
+            : recriado.artesSemLinha
+              ? `${plural(recriado.artesSemLinha, 'arte do acervo ficou', 'artes do acervo ficaram')} no card …${codigoDoCard(recriado.fica)}: sem a linha nova, não há onde ligar.`
+              : 'Nenhuma arte do acervo para devolver.'}
+        </li>
+        <li>{recriado.roteiros || recriado.pdfs ? 'O roteiro guardado e o PDF apontam para o card novo.' : 'Nenhum roteiro guardado para reapontar.'}</li>
+      </ul>
+      {!!recriado.avisos.length && (
+        <div className="aviso-dup avisos-recriar-dup">
+          <b>Não entrou no card:</b>
+          <ul>
+            {recriado.avisos.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="rodape-dup">
+        <button ref={fechar1} type="button" className="botao primario" onClick={fechar}>
+          Fechar
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -881,9 +1059,31 @@ function ModoSoOlhar({ soOlhar, mudar, celular }: { soOlhar: boolean; mudar: (so
   );
 }
 
-/** O painel ao lado da lista: o Registro (quem ignorou ou reabriu o quê e quando) e como o PROMeiro acha as duplicadas. */
-export function PainelDasDuplicadas({ registro, recente, reabrir, celular, soOlhar, mudarModo }: { registro: AcaoDoRegistro[] | null; recente: number | null; reabrir: (id: string) => Promise<void>; celular: boolean; soOlhar: boolean | null; mudarModo: (soOlhar: boolean) => Promise<void> }) {
+/**
+ * O painel ao lado da lista: o Registro (quem ignorou, reabriu, apagou ou recriou o quê e quando, com Recriar no card
+ * apagado, #68) e como o PROMeiro acha as duplicadas.
+ */
+export function PainelDasDuplicadas({
+  registro,
+  recente,
+  reabrir,
+  celular,
+  soOlhar,
+  mudarModo,
+  depoisDeRecriar,
+}: {
+  registro: AcaoDoRegistro[] | null;
+  recente: number | null;
+  reabrir: (id: string) => Promise<void>;
+  celular: boolean;
+  soOlhar: boolean | null;
+  mudarModo: (soOlhar: boolean) => Promise<void>;
+  depoisDeRecriar: () => Promise<void>;
+}) {
   const agora = useAgora(registro);
+  const [recriando, setRecriando] = useState<AcaoDoRegistro | null>(null);
+  // recriar como o apagar: no computador e fora do modo só olhar
+  const podeRecriar = (a: AcaoDoRegistro) => a.acao === 'apagar' && a.estado === 'feito' && !celular && soOlhar === false;
   return (
     <aside className="form-cad painel-dup" aria-label="Registro das duplicadas">
       <h2>
@@ -892,7 +1092,7 @@ export function PainelDasDuplicadas({ registro, recente, reabrir, celular, soOlh
         </span>
         Registro
       </h2>
-      <p className="dica">Quem ignorou, reabriu ou apagou cada caso, e quando. Fica guardado no PROMeiro, com a cópia de cada card apagado.</p>
+      <p className="dica">Quem ignorou, reabriu, apagou ou recriou cada caso, e quando. Fica guardado no PROMeiro, com a cópia de cada card apagado, de onde ele pode ser recriado.</p>
       {soOlhar !== null && <ModoSoOlhar soOlhar={soOlhar} mudar={mudarModo} celular={celular} />}
       {registro === null ? (
         <p className="vazio-registro-dup">Lendo o registro…</p>
@@ -911,6 +1111,14 @@ export function PainelDasDuplicadas({ registro, recente, reabrir, celular, soOlh
                     </button>
                   </>
                 )}
+                {podeRecriar(a) && (
+                  <>
+                    {' · '}
+                    <button type="button" className="botao-texto recriar-registro-dup" onClick={() => setRecriando(a)}>
+                      Recriar
+                    </button>
+                  </>
+                )}
               </span>
             </li>
           ))}
@@ -918,9 +1126,10 @@ export function PainelDasDuplicadas({ registro, recente, reabrir, celular, soOlh
       ) : (
         <p className="vazio-registro-dup">Nada ainda: quem ignorar ou apagar aparece aqui.</p>
       )}
+      {recriando && <DialogoRecriar a={recriando} depois={depoisDeRecriar} fechar={() => setRecriando(null)} />}
       <p className="regra-dup">
         <b>Como o PROMeiro acha:</b> as linhas da produção da arte com card (sem as de filme) que entraram no período, abertas e arquivadas, agrupadas
-        pela claquete sem acento, caixa e pontuação, pela praça e pela versão. Nada é lido do Trello: apagar só escreve nele. Versões diferentes (-2, V2, B, Opção) não contam como duplicadas. Só administradores veem esta aba.
+        pela claquete sem acento, caixa e pontuação, pela praça e pela versão. Nada é lido do Trello: apagar e recriar só escrevem nele. Versões diferentes (-2, V2, B, Opção) não contam como duplicadas. Só administradores veem esta aba.
       </p>
     </aside>
   );

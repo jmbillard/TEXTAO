@@ -482,12 +482,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const anexos = criarAnexos(db, { buscar: buscarNoTeable });
   /* O que o PROMeiro guarda de um card, para apagar uma duplicada (#67): a cópia leva os envios dos roteiros, a lista
      dos anexos (o PDF continua guardado, pelo id) e as Produções com a linha do tempo; o envio do roteiro passa ao card
-     que fica (e volta, se o apagar parar antes do DELETE). Nada lido do Trello. */
+     que fica (e volta, se o apagar parar antes do DELETE). Recriar da cópia (#68) desfaz isso: o envio e o PDF guardado
+     voltam a apontar para o card novo. Nada lido do Trello. */
   const doCardNoPROMeiro = {
     envios: db.prepare('SELECT roteiro_id, estado, card_id, url, em, por_nome FROM envios WHERE card_id = ? ORDER BY em'),
     anexos: db.prepare('SELECT id, tipo, chave, nome, mime, em FROM anexos WHERE card = ? ORDER BY em'),
     mudar: db.prepare('UPDATE envios SET card_id = ?, url = ? WHERE roteiro_id = ? AND card_id = ?'),
     devolver: db.prepare('UPDATE envios SET card_id = ?, url = ? WHERE roteiro_id = ?'),
+    ligarPdf: db.prepare("UPDATE anexos SET card = ? WHERE tipo = 'roteiro' AND id = ? AND card = ?"),
   };
   const emTransacao = (f) => {
     db.exec('BEGIN');
@@ -505,8 +507,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       anexos: doCardNoPROMeiro.anexos.all(card).map((a) => ({ id: a.id, tipo: a.tipo, chave: a.chave, nome: a.nome, mime: a.mime, em: a.em })),
       producoes: producoes.buscar({ card }),
     }),
-    reapontar: (roteiros, card) => emTransacao(() => roteiros.forEach((r) => doCardNoPROMeiro.mudar.run(card, `https://trello.com/c/${card}`, r.id, r.card))),
+    reapontar: (roteiros, card, url = `https://trello.com/c/${card}`) => emTransacao(() => roteiros.forEach((r) => doCardNoPROMeiro.mudar.run(card, url, r.id, r.card))),
     devolver: (roteiros) => emTransacao(() => roteiros.forEach((r) => doCardNoPROMeiro.devolver.run(r.card, r.url, r.id))),
+    /** O PDF do roteiro mais recente da lista dos anexos da cópia que o PROMeiro ainda guarda: { id, nome, dados } ou null. */
+    pdfDe: (lista) => {
+      for (const a of [...lista].filter((x) => x.tipo === 'roteiro').sort((x, y) => String(y.em).localeCompare(String(x.em)))) {
+        const pdf = anexos.pdf(a.id);
+        if (pdf) return { id: a.id, nome: pdf.nome, dados: pdf.dados };
+      }
+      return null;
+    },
+    /** A ligação dos PDFs guardados com o card da Produção passa de um card a outro. */
+    religarPdfs: (ids, de, para) => emTransacao(() => ids.forEach((id) => doCardNoPROMeiro.ligarPdf.run(para, id, de))),
   };
   // as importações que estão sendo desfeitas ou retomadas agora (o segundo clique espera o primeiro)
   const mexendoNaImportacao = new Set();
@@ -1839,7 +1851,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * do Trello. Ignorar e reabrir (#66, POST { id, dias, motivo }) só anotam no registro do PROMeiro: nada muda no Trello
    * nem no Teable. Apagar (#67, POST { caso, dias, sai, fica, codigo, vistos }) relê os cards no Teable e só escreve no
    * Trello (o comentário e o DELETE); a cópia fica em GET /api/duplicadas/copia?id=; POST /api/duplicadas/modo
-   * { soOlhar } liga ou desliga o modo só olhar (DUPLICADAS_SO_OLHAR).
+   * { soOlhar } liga ou desliga o modo só olhar (DUPLICADAS_SO_OLHAR). Recriar (#68, POST { id }, o apagar do
+   * registro) faz um card novo da cópia, sem ler o Trello.
    */
   /**
    * As Produções (#86), só para administradores, para conferir a carga: GET /api/producoes dá quantas há em cada etapa
@@ -1870,10 +1883,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   async function rotaDasDuplicadas(req, res, eu, caminho) {
     const acao = caminho === '/api/duplicadas/ignorar' || caminho === '/api/duplicadas/reabrir';
-    const escreve = acao || caminho === '/api/duplicadas/apagar' || caminho === '/api/duplicadas/modo';
+    const escreve = acao || ['/api/duplicadas/apagar', '/api/duplicadas/modo', '/api/duplicadas/recriar'].includes(caminho);
     if (req.method !== (escreve ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
     if (!cadastros.podeApagar(eu.email))
-      return json(res, 403, { erro: caminho === '/api/duplicadas/apagar' ? 'Só administradores apagam duplicadas.' : escreve ? 'Só administradores ignoram, reabrem e apagam duplicadas.' : 'Só administradores veem as duplicadas.' });
+      return json(res, 403, { erro: caminho === '/api/duplicadas/apagar' ? 'Só administradores apagam duplicadas.' : caminho === '/api/duplicadas/recriar' ? 'Só administradores recriam cards apagados.' : escreve ? 'Só administradores ignoram, reabrem e apagam duplicadas.' : 'Só administradores veem as duplicadas.' });
     if (caminho === '/api/duplicadas/registro') return json(res, 200, { registro: duplicadas.registro() });
     const busca = new URL(req.url, 'http://x').searchParams;
     // a cópia guardada de um card apagado (#67), para conferir e para o #68 recriar
@@ -1888,6 +1901,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       mudarConfiguracao({ DUPLICADAS_SO_OLHAR: corpo.soOlhar ? '1' : '0' }, { por: eu.email });
       console.log(`[duplicadas] ${eu.email} ${corpo.soOlhar ? 'ligou o modo só olhar' : 'liberou o apagar'}`);
       return json(res, 200, { soOlhar: corpo.soOlhar });
+    }
+    // recriar o card apagado da cópia (#68): o número do apagar no registro
+    if (caminho === '/api/duplicadas/recriar') {
+      const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
+      if (!Number.isInteger(corpo.id) || corpo.id < 1) return json(res, 400, { erro: 'Diga qual apagar do Registro recriar.' });
+      try {
+        const r = await duplicadas.recriar(corpo.id, { por: { email: eu.email, nome: eu.nome } });
+        if (r.ok) return json(res, 200, r.resultado);
+        const { status, ...resto } = r;
+        return json(res, status, resto);
+      } catch (e) {
+        console.warn(`[duplicadas] ${e instanceof Error ? e.message : e}`);
+        return json(res, 502, { erro: `Não consegui recriar o card: ${e instanceof Error ? e.message : e}.` });
+      }
     }
     if (caminho === '/api/duplicadas/apagar') {
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
@@ -2407,7 +2434,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!card && !producao) return json(res, 400, { erro: 'Falta o card ou a Produção.' });
       return json(res, 200, producoes.linhaDoTempo({ card, producao }));
     }
-    if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir', 'apagar', 'modo', 'copia'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
+    if (caminho === '/api/duplicadas' || ['caso', 'registro', 'ignorar', 'reabrir', 'apagar', 'modo', 'copia', 'recriar'].some((r) => caminho === `/api/duplicadas/${r}`)) return rotaDasDuplicadas(req, res, eu, caminho);
     if (caminho === '/api/cadastros' || caminho.startsWith('/api/cadastros/')) return rotaDosCadastros(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 

@@ -17,6 +17,11 @@
  * card que fica → reaponta o roteiro guardado → comenta no card que fica → apaga o card no Trello. Antes do DELETE,
  * a falha desfaz o que foi feito (e diz o que não deu). A linha da produção sai pelo fluxo PROMO: DB do n8n: o
  * PROMeiro não apaga a linha, e o card apagado sai da lista pelo registro, sem esperar o n8n.
+ *
+ * Recriar (#68), do Registro e só fora do modo só olhar: um card novo feito só da cópia e do que o PROMeiro e o Teable
+ * sabem (nada lido do Trello), pelo caminho do envio. Desfaz a religação do apagar: anota no registro → cria o card →
+ * a linha da produção (como no envio, sem dobrar a que o n8n já tenha criado) → as artes do acervo → o roteiro guardado
+ * → o PDF guardado → comenta no card que tinha ficado. A falha desfaz tudo, o card novo incluído. Uma vez só por cópia.
  */
 import { codigoDoCard, duplicadasDaProducao, grupoDoCard, linhasDoPeriodo, mudancasDoCard } from '../src/modelo/duplicadas.ts';
 import { chaveDaClaquete, semAcento } from '../src/modelo/vocabularios.ts';
@@ -36,8 +41,9 @@ export const criadoEm = (id) => (ID_DO_CARD.test(String(id)) ? parseInt(String(i
  * @param deps.registro o registro das ações (servidor/registro-das-duplicadas.mjs): os casos ignorados saem da lista
  * @param deps.guardarMs por quanto tempo a leitura da produção vale (5 min)
  * @param deps.soOlhar o modo só olhar (#67): a aba não apaga (para comparar com o relatório do n8n nos primeiros dias)
- * @param deps.promeiro o que o PROMeiro guarda do card no SQLite (servidor/app.mjs): doCard(card) → { roteiros,
- *   anexos, producoes }, reapontar(roteiros, card) e devolver(roteiros), os envios dos roteiros guardados
+  * @param deps.promeiro o que o PROMeiro guarda do card no SQLite (servidor/app.mjs): doCard(card) → { roteiros,
+ *   anexos, producoes }, reapontar(roteiros, card) e devolver(roteiros), os envios dos roteiros guardados; para recriar
+ *   (#68), pdfDe(anexos) (o PDF mais recente da lista) e religarPdfs(ids, de, para) (a ligação do PDF com o card)
  */
 export function criarDuplicadas({ trello, acervo, registro = null, guardarMs = 5 * 60_000, soOlhar = true, promeiro = null }) {
   const c = trello?.config ?? {};
@@ -346,5 +352,112 @@ export function criarDuplicadas({ trello, acervo, registro = null, guardarMs = 5
   /** A claquete do caso, como a lista mostra (a do card que a sugestão deixa ficar). */
   const claqueteDoCaso = (caso, relidas) => relidas.get(caso.sugestao.fica)?.claquete ?? [...relidas.values()][0]?.claquete ?? '';
 
-  return { ligado, soOlhar, listar, detalhe, ignorar, reabrir, apagar, registro: () => registro?.lista() ?? [], copia: (id) => registro?.copiaDe?.(id) ?? null };
+  /* ---------- recriar o card apagado da cópia (#68) ---------- */
+  const recriando = new Set(); // os apagares sendo recriados agora nesta instância
+
+  /**
+   * Recria o card apagado pelo apagar `id` do registro: um card novo, com outro número e link.
+   * @returns { ok, resultado } | { status, erro, naoDesfeito? }
+   */
+  async function recriar(id, { por }) {
+    if (!registro?.acao || !promeiro) return { status: 404, erro: 'A aba Duplicadas não está configurada.' };
+    if (soOlhar) return { status: 403, erro: 'A aba está no modo só olhar: recriar fica desligado enquanto o PROMeiro é comparado com o relatório do n8n.' };
+    if (!trello?.ligado || !trello.recriarCard) return { status: 503, erro: 'O Trello não está configurado neste servidor.' };
+    const apagado = registro.acao(id);
+    if (!apagado || apagado.acao !== 'apagar' || !apagado.copia) return { status: 404, erro: 'Não há card apagado com este número no Registro.' };
+    if (apagado.estado === 'recriado' || registro.recriando(apagado.card) || recriando.has(id)) return { status: 409, erro: 'Este card já foi recriado (ou está sendo recriado agora).' };
+    if (apagado.estado !== 'feito') return { status: 409, erro: 'Só o card que o PROMeiro apagou de verdade pode ser recriado.' };
+    recriando.add(id);
+    try {
+      return await recriarDoApagado(apagado, por);
+    } finally {
+      recriando.delete(id);
+    }
+  }
+
+  async function recriarDoApagado(apagado, por) {
+    const copia = apagado.copia;
+    const { card: antigo, fica } = copia;
+    const linha = copia.producaoDaArte ?? { claquete: copia.claquete, praca: copia.praca };
+    const pdf = promeiro.pdfDe?.(copia.anexos ?? []) ?? null;
+    const pdfs = pdf ? [pdf.id] : [];
+    // as artes e os roteiros que o apagar passou ao card que ficou voltam ao card novo
+    const artes = copia.feito?.religadas ?? [];
+    const roteiros = (copia.feito?.roteiros ?? []).map((r) => ({ ...r, card: fica, url: `https://trello.com/c/${fica}` }));
+    const feito = { card: null, linha: null, linhaCriada: false, religadas: [], roteiros: [], pdfs: [], comentario: null };
+    const rec = { de: apagado.id, codigo: copia.codigo, card: antigo, fica, claquete: copia.claquete, novo: null, feito, avisos: [] };
+    const anotado = registro.anotar({ acao: 'recriar', caso: apagado.caso, claquete: apagado.claquete, praca: apagado.praca, cards: apagado.cards, card: antigo, fica, por, copia: rec, estado: 'em-curso' });
+    const desfazer = async () => {
+      const nao = [];
+      const tentar = async (o_que, f) => {
+        try {
+          await f();
+        } catch (e) {
+          nao.push(`${o_que} (${erroDe(e)})`);
+        }
+      };
+      if (feito.comentario) await tentar('o comentário no card que ficou', () => trello.apagarComentario(feito.comentario));
+      if (feito.pdfs.length) await tentar('a ligação do PDF', () => promeiro.religarPdfs(feito.pdfs, feito.card.id, antigo));
+      if (feito.roteiros.length) await tentar('o roteiro guardado', () => promeiro.devolver(feito.roteiros));
+      if (feito.religadas.length) await tentar(feito.religadas.length === 1 ? 'a arte do acervo' : `as ${feito.religadas.length} artes do acervo`, () => acervo.religar({ de: feito.linha, para: copia.registroQueFica, ids: feito.religadas }));
+      if (feito.linhaCriada) await tentar('a linha nova da produção da arte', () => trello.apagarLinhaDaProducao(feito.linha));
+      if (feito.card) await tentar(`o card novo …${codigoDoCard(feito.card.id)} no Trello`, () => trello.apagarCard(feito.card.id));
+      return nao;
+    };
+    let passo = '';
+    try {
+      // 1. o card novo, pelo caminho do envio, só com a cópia (nada lido do Trello)
+      passo = 'criar o card no Trello';
+      const novo = await trello.recriarCard({ linha, praca: copia.praca, pdf });
+      feito.card = { id: novo.id, url: novo.url };
+      rec.novo = { id: novo.id, url: novo.url, codigo: codigoDoCard(novo.id) };
+      rec.avisos = novo.avisos ?? [];
+      // 2. a linha da produção da arte, como no envio (a que o n8n já criou para o card novo vale)
+      passo = 'criar a linha da produção da arte';
+      const nasceu = (await trello.linhaDoCardRecriado?.(linha, novo.id)) ?? { registro: null, criada: false };
+      feito.linha = nasceu.registro;
+      feito.linhaCriada = nasceu.criada;
+      // 3. as artes do acervo voltam do card que ficou ao card novo (precisa da linha nova)
+      passo = 'religar as artes do acervo';
+      if (artes.length && feito.linha && copia.registroQueFica && acervo?.religar)
+        try {
+          feito.religadas = await acervo.religar({ de: copia.registroQueFica, para: feito.linha, ids: artes });
+        } catch (e) {
+          feito.religadas = e?.religadas ?? [];
+          throw e;
+        }
+      // 4. o roteiro guardado volta a apontar para o card novo
+      passo = 'reapontar o roteiro guardado';
+      if (roteiros.length) {
+        promeiro.reapontar(roteiros, novo.id, novo.url);
+        feito.roteiros = roteiros;
+      }
+      // 5. o PDF guardado volta a ser do card novo
+      passo = 'religar o PDF guardado';
+      if (pdfs.length) {
+        promeiro.religarPdfs(pdfs, antigo, novo.id);
+        feito.pdfs = pdfs;
+      }
+      // 6. o comentário no card que tinha ficado
+      passo = 'comentar no card que ficou';
+      feito.comentario = await trello.comentar(fica, `Card …${copia.codigo} (${copia.claquete}) recriado por ${por.nome} pelo PROMeiro: o card novo é …${codigoDoCard(novo.id)}.`);
+    } catch (e) {
+      rec.erro = `${passo}: ${erroDe(e)}`;
+      rec.naoDesfeito = await desfazer();
+      registro.concluir(anotado.id, 'falhou', rec);
+      console.warn(`[duplicadas] ${por.email} não recriou o card …${copia.codigo} de ${copia.claquete}: ${rec.erro}`);
+      const nao = rec.naoDesfeito.length ? ` Não consegui desfazer: ${rec.naoDesfeito.join('; ')}.` : ' O que tinha sido feito foi desfeito.';
+      return { status: 502, erro: `Parei ao ${rec.erro}. Nada ficou no Trello.${nao}`, naoDesfeito: rec.naoDesfeito };
+    }
+    registro.concluir(anotado.id, 'feito', rec);
+    registro.marcarRecriado(apagado.id);
+    guardadas.clear();
+    console.log(`[duplicadas] ${por.email} recriou o card …${copia.codigo} de ${copia.claquete} (card novo …${rec.novo.codigo})`);
+    return {
+      ok: true,
+      resultado: { registro: anotado.id, card: rec.novo.id, codigo: rec.novo.codigo, url: rec.novo.url, fica, linha: !!feito.linha, religadas: feito.religadas.length, artesSemLinha: feito.linha ? 0 : artes.length, roteiros: feito.roteiros.length, pdfs: feito.pdfs.length, comentou: !!feito.comentario, avisos: rec.avisos },
+    };
+  }
+
+  return { ligado, soOlhar, listar, detalhe, ignorar, reabrir, apagar, recriar, registro: () => registro?.lista() ?? [], copia: (id) => registro?.copiaDe?.(id) ?? null };
 }

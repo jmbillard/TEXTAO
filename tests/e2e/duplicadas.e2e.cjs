@@ -11,6 +11,9 @@
 // o Registro, só consulta (sem Ignorar nem Reabrir). Apagar (#67): no modo só olhar (o padrão) não há Apagar; liberado
 // no painel, apagar um card com a confirmação (Conferi + o código do card que sai, o aviso do card aberto): o resultado,
 // o caso sai da lista, o contador cai e o Registro mostra quem apagou. No Trello, só o comentário e o DELETE.
+// Recriar (#68), no Registro: a confirmação com o que volta e o que não volta ("Entendi"), o card novo pelo caminho do
+// envio (nada lido do Trello), a linha da produção nova, as artes do acervo de volta, o caso de novo na lista e o
+// Registro com "recriou o card"; não dá para recriar duas vezes.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:duplicadas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -107,6 +110,10 @@ const ENV_TRELLO = {
   TEABLE_PG_ESQUEMA: 'bseFalso',
   // os nomes no Postgres, como a descoberta das tabelas do Teable (#76) acharia
   tabelas: { ARTE_producao: { id: '', pg: 'producao' }, ARTES_acervo: { id: '', pg: 'acervo' } },
+  // recriar (#68) grava a linha da produção do card novo como o envio, pela API do Teable (de mentira)
+  TEABLE_URL: 'http://teable-falso',
+  TEABLE_TOKEN: 'falso',
+  TEABLE_ARTE_PRODUCAO: 'tblProducao',
 };
 // a Linha do tempo (#89) do card que fica no caso do Show da Noite: a rota de mentira (o banco do e2e não tem eventos);
 // o outro card do caso não é Produção e mostra "—"
@@ -131,10 +138,27 @@ const pedidosDaLinha = [];
     chegou nenhum. Apagar (#67) só escreve: o comentário no card que fica e o DELETE do que sai. */
 const pedidosAoTrello = [];
 const ok = (dados = {}) => ({ ok: true, status: 200, json: async () => dados, text: async () => '' });
+/** Os cards que o PROMeiro criou (recriar da cópia, #68). */
+const CRIADOS = [];
 async function buscar(url, init = {}) {
   const u = new URL(url);
   const metodo = init.method ?? 'GET';
+  if (u.origin === ACERVO_GRAVA.TEABLE_URL) return buscarNoTeable(url, init);
   pedidosAoTrello.push(`${metodo} ${u.pathname}`);
+  // o card recriado: o card, a checklist, os campos e o anexo, pelo caminho do envio
+  if (metodo === 'POST' && u.pathname === '/1/cards') {
+    const corpo = JSON.parse(init.body);
+    const c = { id: idCriadoEm(Date.now()), idShort: 4999, name: corpo.name, closed: false, idList: corpo.idList, idMembers: [], due: null, checkItems: 0, anexos: [] };
+    CARDS.push(c);
+    CRIADOS.push({ ...c, desc: corpo.desc, itens: [] });
+    return ok({ id: c.id, shortUrl: `https://trello.com/c/Ficti${c.idShort}` });
+  }
+  if (metodo === 'POST' && u.pathname === '/1/checklists') return ok({ id: 'listaFalsa1' });
+  if (metodo === 'POST' && /^\/1\/checklists\/\w+\/checkItems$/.test(u.pathname)) {
+    CRIADOS.at(-1).itens.push(u.searchParams.get('name'));
+    return ok();
+  }
+  if ((metodo === 'PUT' && /\/customField\/\w+\/item$/.test(u.pathname)) || (metodo === 'POST' && /\/attachments$/.test(u.pathname))) return ok();
   if (metodo === 'POST' && /^\/1\/cards\/[0-9a-f]{24}\/actions\/comments$/.test(u.pathname)) return ok({ id: 'acaoFalsa1' });
   if (metodo === 'DELETE' && /^\/1\/cards\/[0-9a-f]{24}$/.test(u.pathname)) {
     CARDS.splice(CARDS.findIndex((c) => u.pathname.endsWith(c.id)), 1);
@@ -178,6 +202,12 @@ const pedidosAoTeable = [];
 async function buscarNoTeable(url, init = {}) {
   const u = new URL(url);
   pedidosAoTeable.push(`${init.method ?? 'GET'} ${u.pathname}`);
+  // a linha da produção do card recriado (#68)
+  if (init.method === 'POST' && u.pathname === '/api/table/tblProducao/record') {
+    const f = JSON.parse(init.body).records[0].fields;
+    PRODUCAO.push({ registro: 'recNova1', status: [], designers: [], arquivado: false, entregue: false, filme: null, praca: null, __last_modified_time: new Date().toISOString(), ...f });
+    return ok({ records: [{ id: 'recNova1', fields: f }] });
+  }
   if (init.method !== 'PATCH') throw new Error(`pedido inesperado ao Teable: ${u.pathname}`);
   const { records } = JSON.parse(init.body);
   for (const r of records) ACERVO.find((a) => a.id === r.id).claquete = [{ id: r.fields.claquete[0].id, title: '' }];
@@ -510,18 +540,66 @@ async function apagarNoComputador(navegador, url) {
   assert.equal((await aba.locator('.rot').textContent()).trim(), 'Duplicadas 5');
   const primeira = p.locator('.registro-dup li').first();
   await primeira.locator('text=apagou').waitFor();
-  assert.match((await primeira.textContent()).replace(/\s+/g, ' '), new RegExp(`apagou o card …${cod(primeiro)} de Show da Noite 20/11 SP \\(ficou …${cod(segundo)}, que recebeu 3 artes\\)\\.agora$`));
+  assert.match((await primeira.textContent()).replace(/\s+/g, ' '), new RegExp(`apagou o card …${cod(primeiro)} de Show da Noite 20/11 SP \\(ficou …${cod(segundo)}, que recebeu 3 artes\\)\\.agora · Recriar$`));
   await semRolagemDeLado(p, 'computador, depois de apagar');
   await capturar(p, '22-apagar-registro-claro');
-  // volta ao só olhar (o Apagar some)
+
+  // Recriar (#68), no Registro: só no card apagado de verdade, com a confirmação do que volta e do que não volta
+  pedidosAoTrello.length = 0;
+  pedidosAoTeable.length = 0;
+  assert.deepEqual(await textos(p.locator('.registro-dup .recriar-registro-dup')), ['Recriar'], 'Recriar só no card apagado');
+  await primeira.locator('.recriar-registro-dup').click();
+  const recriar = p.locator('.dialogo-dup.recriar-dup');
+  await recriar.waitFor();
+  assert.equal((await recriar.locator('h2').textContent()).trim(), `Recriar o card …${cod(primeiro)}`);
+  assert.match(await recriar.locator('.dica').first().textContent(), /O card apagado não volta: o PROMeiro faz um card novo só com a cópia guardada/);
+  assert.deepEqual(await textos(recriar.locator('.efeitos-dup tbody th')), ['Trello', 'Produção da arte', 'Acervo', 'Roteiro no PROMeiro']);
+  assert.match(await recriar.locator('.efeitos-dup tbody tr').nth(0).textContent(), new RegExp(`Um card novo na entrada de SP.*O card …${cod(segundo)}, que tinha ficado, ganha o comentário`));
+  assert.match(await recriar.locator('.efeitos-dup tbody tr').nth(2).textContent(), new RegExp(`3 artes voltam do card …${cod(segundo)} para o card novo`));
+  const naoVolta = await textos(recriar.locator('.nao-volta-dup li'));
+  assert.equal(naoVolta.length, 3);
+  assert.match(naoVolta[1], /descrição editada à mão, as etiquetas, os comentários e os membros: só existiam no Trello/);
+  const botaoRecriar = recriar.locator('.botao.primario');
+  assert.equal(await botaoRecriar.isDisabled(), true, 'sem o Entendi, apagado');
+  await recriar.locator('.conferi-dup input').check();
+  assert.equal(await botaoRecriar.isDisabled(), false);
+  assert.deepEqual(pedidosAoTrello, [], 'nada no Trello antes de confirmar');
+  await semRolagemDeLado(p, 'computador, confirmação de recriar');
+  await capturar(p, '23-recriar-confirmacao-claro', { tela: true });
+  await botaoRecriar.click();
+  await recriar.locator('.resultado-dup').waitFor();
+  const novo = CRIADOS[0];
+  assert.equal((await recriar.locator('h2').textContent()).trim(), `Card novo …${cod(novo.id)} criado`);
+  assert.match(await recriar.locator('.feito-dup').textContent(), /3 artes do acervo voltaram para o card novo/);
+  // só escritas no Trello: o card (na entrada da praça, com a checklist das artes) e o comentário no que tinha ficado
+  assert.ok(pedidosAoTrello.every((x) => !x.startsWith('GET ')), 'nada lido do Trello');
+  assert.equal(pedidosAoTrello[0], 'POST /1/cards');
+  assert.equal(pedidosAoTrello.at(-1), `POST /1/cards/${segundo}/actions/comments`);
+  assert.deepEqual([novo.name, novo.idList], ['Show da Noite 20/11 SP', 'entradaSP']);
+  assert.deepEqual(pedidosAoTeable, ['POST /api/table/tblProducao/record', 'PATCH /api/table/tblAcervo/record']);
+  assert.deepEqual(ACERVO.filter((a) => a.atracao[0].id === 'recShow').map((a) => a.claquete[0].id), ['recNova1', 'recNova1', 'recNova1']);
+  await capturar(p, '24-recriar-resultado-claro', { tela: true });
+  await recriar.locator('button', { hasText: 'Fechar' }).click();
+  // o caso volta à lista (o card novo e o que ficou); o Registro mostra quem recriou, e o apagado não recria de novo
+  await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 6);
+  assert.equal((await aba.locator('.rot').textContent()).trim(), 'Duplicadas 6');
+  await primeira.locator('text=recriou').waitFor();
+  assert.match((await primeira.textContent()).replace(/\s+/g, ' '), new RegExp(`recriou o card …${cod(primeiro)} de Show da Noite 20/11 SP: card novo …${cod(novo.id)}, com 3 artes\\.agora$`));
+  assert.match((await p.locator('.registro-dup li').nth(1).textContent()).replace(/\s+/g, ' '), /Já foi recriado\./);
+  assert.equal(await p.locator('.registro-dup .recriar-registro-dup').count(), 0, 'não dá para recriar duas vezes');
+  await semRolagemDeLado(p, 'computador, depois de recriar');
+  await capturar(p, '25-recriar-registro-claro');
+  // volta ao só olhar (o Apagar e o Recriar somem)
   await modo.locator('button', { hasText: 'Voltar a só olhar' }).click();
   await modo.locator('text=Só olhar').waitFor();
+  assert.equal(await p.locator('.recriar-registro-dup').count(), 0);
   await caso(p, 'Festa na Praça').locator('.linha-dup').click();
   await caso(p, 'Festa na Praça').locator('.tabela-dup').waitFor();
   assert.equal(await p.locator('.apagar-dup').count(), 0);
   assert.deepEqual(erros, [], 'apagar: erros na página');
   await ctx.close();
   console.log('ok: apagar: só olhar esconde o Apagar; liberado, a confirmação (aviso do card aberto, Conferi + código) apaga, religa o acervo, e o caso sai da lista e entra no Registro');
+  console.log('ok: recriar: no Registro, a confirmação (o que volta, o que não volta, Entendi) faz o card novo sem ler o Trello, a linha e o acervo voltam, o caso volta à lista e não recria duas vezes');
 }
 
 async function principal() {

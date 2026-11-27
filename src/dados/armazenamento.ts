@@ -903,7 +903,7 @@ export interface ResolvidaDaDuplicada {
   em: string;
   motivo: string;
 }
-/** Uma ação do Registro: quem ignorou, reabriu ou apagou (e, depois, recriou) o quê e quando. */
+/** Uma ação do Registro: quem ignorou, reabriu, apagou ou recriou o quê e quando. */
 export interface AcaoDoRegistro {
   id: number;
   acao: 'ignorar' | 'reabrir' | 'apagar' | 'recriar';
@@ -911,7 +911,7 @@ export interface AcaoDoRegistro {
   claquete: string;
   praca: string;
   cards: string[];
-  /** apagar: o card que saiu e o que ficou */
+  /** apagar e recriar: o card que saiu e o que ficou */
   card: string | null;
   fica: string | null;
   por: string;
@@ -919,9 +919,12 @@ export interface AcaoDoRegistro {
   motivo: string;
   /** a ignorada que vale agora: dá para reabrir */
   podeReabrir: boolean;
-  /** apagar (#67): em curso, feito (o card saiu do Trello) ou falhou (nada foi apagado) */
-  estado?: 'em-curso' | 'feito' | 'falhou';
-  apagado?: { codigo: string; religadas: number; roteiros: number; erro: string; naoDesfeito: string[] } | null;
+  /** apagar (#67): em curso, feito (o card saiu do Trello), falhou (nada foi apagado) ou recriado depois (#68);
+      recriar: em curso, feito ou falhou (nada ficou no Trello) */
+  estado?: 'em-curso' | 'feito' | 'falhou' | 'recriado';
+  apagado?: { codigo: string; religadas: number; roteiros: number; erro: string; naoDesfeito: string[]; pdfs: number } | null;
+  /** recriar (#68): o código do card apagado e o do card novo, o link dele e o que voltou para ele */
+  recriado?: { codigo: string; novo: string; url: string; religadas: number; roteiros: number; pdfs: number; erro: string; naoDesfeito: string[] } | null;
 }
 /** Um card do caso aberto, como o detalhe compara: só o que a produção da arte do Teable tem (nada é lido do Trello). */
 export interface CardDaDuplicada {
@@ -1001,6 +1004,36 @@ export async function apagarDuplicada(caso: CasoDaDuplicada, dias: number, sai: 
   const corpo = (await r.json().catch(() => null)) as (ApagadoDaDuplicada & { erro?: string; mudou?: MudancaNaDuplicada[]; bloqueado?: boolean }) | null;
   if (r.ok && corpo) return { ok: true, apagado: corpo };
   return { ok: false, erro: corpo?.erro ?? `O servidor não respondeu (${r.status}).`, mudou: corpo?.mudou, bloqueado: corpo?.bloqueado };
+}
+/** O card recriado da cópia (#68): o card novo e o que voltou para ele. */
+export interface RecriadoDaDuplicada {
+  registro: number;
+  card: string;
+  codigo: string;
+  url: string;
+  fica: string;
+  /** a linha da produção do card novo existe (sem ela, as artes do acervo não voltam: artesSemLinha) */
+  linha: boolean;
+  religadas: number;
+  artesSemLinha: number;
+  roteiros: number;
+  pdfs: number;
+  comentou: boolean;
+  /** o que não entrou no card (a checklist, um campo, o anexo) */
+  avisos: string[];
+}
+export type RecriarDuplicada = { ok: true; recriado: RecriadoDaDuplicada } | { ok: false; erro: string };
+/** Recria o card apagado pelo apagar `id` do Registro (#68): um card novo, feito só da cópia (nada é lido do Trello). */
+export async function recriarDuplicada(id: number): Promise<RecriarDuplicada> {
+  const r = await fetch('/api/duplicadas/recriar', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', ...cabecalhos },
+    body: JSON.stringify({ id }),
+  });
+  const corpo = (await r.json().catch(() => null)) as (RecriadoDaDuplicada & { erro?: string }) | null;
+  if (r.ok && corpo) return { ok: true, recriado: corpo };
+  return { ok: false, erro: corpo?.erro ?? `O servidor não respondeu (${r.status}).` };
 }
 /** Liga ou desliga o modo só olhar das Duplicadas (a chave DUPLICADAS_SO_OLHAR da configuração). */
 export const mudarModoDasDuplicadas = (soOlhar: boolean) => pedir<{ soOlhar: boolean }>('/api/duplicadas/modo', { method: 'POST', body: JSON.stringify({ soOlhar }) });

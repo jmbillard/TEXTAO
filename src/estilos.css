@@ -3323,6 +3323,14 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .recusa-dup p { margin: 0; }
 .recusa-dup ul { margin: 6px 0 0; padding-left: 18px; }
 .feito-dup { margin: 0; padding-left: 18px; font: 400 14px/1.6 var(--sans); color: var(--tinta); }
+/* recriar da cópia (#68): o que não volta e os avisos do card novo */
+.nao-volta-dup { padding-left: 32px; }
+.nao-volta-dup li + li { margin-top: 4px; }
+.avisos-recriar-dup { margin: 14px 0 0; }
+.avisos-recriar-dup ul { margin: 4px 0 0; padding-left: 18px; }
+.recriar-dup .efeitos-dup td:last-child { width: auto; }
+.recriar-dup .efeitos-dup tbody th { width: 11em; }
+.registro-dup li a, .recriar-dup .dica a { color: var(--ultra); font-weight: 600; }
 .modo-dup { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--ok-fundo); }
 .modo-dup.so-olhar { background: color-mix(in srgb, var(--neutro) 70%, var(--papel)); }
 .modo-dup p { margin: 0; flex: 1 1 200px; font: 400 12.5px/1.5 var(--sans); color: var(--tinta2); }

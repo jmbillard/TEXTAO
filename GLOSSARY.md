@@ -229,6 +229,11 @@ linhas no Teable (não no Trello) e para se algo mudou desde que a tela abriu; e
 linha da produção inteira e o que o PROMeiro tem do card), passa as artes do acervo e o roteiro guardado ao card que
 fica, comenta nele e apaga o card no Trello. A linha da produção sai pelo n8n; o card apagado sai da lista na hora.
 O **modo só olhar** (ligado até um administrador liberar o Apagar no painel) é para comparar com o relatório do n8n.
+**Recriar** (no Registro, só administradores, no computador, fora do modo só olhar, uma vez por cópia) faz um card
+novo da cópia, com outro código e link, pelo caminho do envio (o card na entrada da praça, a checklist das artes, os
+campos e o PDF guardado) e sem ler o Trello: a descrição editada à mão, as etiquetas, os comentários e os membros não
+voltam. A linha da produção nasce como no envio (a que o n8n já criou vale); as artes do acervo, o roteiro guardado e
+o PDF voltam ao card novo, e o card que tinha ficado ganha um comentário. A cópia passa a **recriado**.
 _Evitar_: card repetido, claquete duplicada (no envio, "duplicado" é a claquete que já tinha entrado hoje na produção)
 
 **Produção**:

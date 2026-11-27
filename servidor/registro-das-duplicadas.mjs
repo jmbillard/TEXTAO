@@ -1,6 +1,6 @@
 /*
- * O registro da aba Duplicadas (#66), no SQLite do PROMeiro: quem ignorou, reabriu, apagou (#67) (e, no #68, recriou)
- * o quê e quando, com o motivo. Uma linha por ação, sem apagar nenhuma: o Registro da tela lê daqui, e o caso
+ * O registro da aba Duplicadas (#66), no SQLite do PROMeiro: quem ignorou, reabriu, apagou (#67) e recriou (#68) o quê
+ * e quando, com o motivo. Uma linha por ação, sem apagar nenhuma: o Registro da tela lê daqui, e o caso
  * ignorado de agora sai da última ação de ignorar ou reabrir de cada caso.
  *
  * Ignorar guarda a assinatura do grupo (os ids dos cards): o caso continua ignorado enquanto não entrar card novo no
@@ -10,13 +10,17 @@
  * PROMeiro tem do card), com o estado 'em-curso'; no fim, 'feito' (o card saiu do Trello) ou 'falhou' (nada foi
  * apagado; a cópia diz o que foi desfeito e o que não deu). O card apagado ('feito') não volta à lista, mesmo antes de
  * o n8n tirar a linha da produção. O SQL é o comum ao SQLite e ao Postgres, e a tabela entra no backup do banco.
+ *
+ * Recriar (#68) é uma linha nova, com o card apagado em `card` e, na `copia`, o número do apagar de onde veio (`de`), o
+ * card novo e o que foi feito; o estado vai de 'em-curso' a 'feito' ou 'falhou', como no apagar. Feito, o apagar passa
+ * a 'recriado': não dá para recriar duas vezes.
  */
 
-/** As ações do registro: ignorar, reabrir e apagar; recriar fica pronta para o #68. */
+/** As ações do registro: ignorar, reabrir, apagar (#67) e recriar (#68). */
 export const ACOES = ['ignorar', 'reabrir', 'apagar', 'recriar'];
 export const MOTIVO_MAXIMO = 200;
-/** O estado de apagar: a cópia guardada e o resto em curso, o card apagado, ou parou antes de apagar. */
-export const ESTADOS = ['em-curso', 'feito', 'falhou'];
+/** O estado de apagar e de recriar: em curso, feito, ou parou (desfeito); o apagar recriado depois (#68), 'recriado'. */
+export const ESTADOS = ['em-curso', 'feito', 'falhou', 'recriado'];
 
 export function criarTabelaDoRegistroDasDuplicadas(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS duplicadas_registro (
@@ -39,7 +43,7 @@ export function criarTabelaDoRegistroDasDuplicadas(db) {
 }
 
 /** O que o Registro mostra de um apagar, tirado da cópia: o código do card, quantas artes e roteiros foram para o card
-    que fica e, no que falhou, o erro e o que não foi desfeito. */
+    que fica, quantos PDFs estão guardados e, no que falhou, o erro e o que não foi desfeito. */
 function resumoDaCopia(copia) {
   if (!copia) return null;
   let c;
@@ -54,6 +58,30 @@ function resumoDaCopia(copia) {
     roteiros: c?.feito?.roteiros?.length ?? 0,
     erro: c?.erro ? String(c.erro) : '',
     naoDesfeito: Array.isArray(c?.naoDesfeito) ? c.naoDesfeito.map(String) : [],
+    // para recriar (#68): quantos PDFs do roteiro o PROMeiro guarda do card
+    pdfs: Array.isArray(c?.anexos) ? c.anexos.filter((a) => a?.tipo === 'roteiro').length : 0,
+  };
+}
+
+/** O que o Registro mostra de um recriar (#68): o código do card apagado e o do card novo, o link dele, quantas artes,
+    roteiros e PDFs voltaram e, no que falhou, o erro e o que não foi desfeito. */
+function resumoDoRecriar(copia) {
+  let c;
+  try {
+    c = JSON.parse(copia ?? 'null');
+  } catch {
+    return null;
+  }
+  if (!c) return null;
+  return {
+    codigo: String(c.codigo ?? ''),
+    novo: c.novo?.codigo ? String(c.novo.codigo) : '',
+    url: c.novo?.url ? String(c.novo.url) : '',
+    religadas: c.feito?.religadas?.length ?? 0,
+    roteiros: c.feito?.roteiros?.length ?? 0,
+    pdfs: c.feito?.pdfs?.length ?? 0,
+    erro: c.erro ? String(c.erro) : '',
+    naoDesfeito: Array.isArray(c.naoDesfeito) ? c.naoDesfeito.map(String) : [],
   };
 }
 
@@ -77,8 +105,12 @@ export function criarRegistroDasDuplicadas(db) {
     concluir: db.prepare('UPDATE duplicadas_registro SET estado = ?, copia = ? WHERE id = ?'),
     // os cards apagados de verdade: não voltam à lista (o em curso que ficou para trás, numa queda do servidor, não
     // esconde o card)
-    apagados: db.prepare("SELECT card FROM duplicadas_registro WHERE acao = 'apagar' AND estado = 'feito' AND card IS NOT NULL"),
+    apagados: db.prepare("SELECT card FROM duplicadas_registro WHERE acao = 'apagar' AND estado IN ('feito', 'recriado') AND card IS NOT NULL"),
     copia: db.prepare('SELECT copia FROM duplicadas_registro WHERE id = ?'),
+    umaAcao: db.prepare('SELECT * FROM duplicadas_registro WHERE id = ?'),
+    marcar: db.prepare('UPDATE duplicadas_registro SET estado = ? WHERE id = ?'),
+    // o recriar deste card em curso (ou o que ficou para trás, numa queda do servidor) ou feito: não recria de novo
+    recriando: db.prepare("SELECT id FROM duplicadas_registro WHERE acao = 'recriar' AND card = ? AND estado IN ('em-curso', 'feito')"),
   };
   const ler = (l) => ({
     id: l.id,
@@ -93,6 +125,7 @@ export function criarRegistroDasDuplicadas(db) {
     em: l.em,
     motivo: l.motivo,
     ...(l.acao === 'apagar' ? { estado: l.estado ?? 'feito', apagado: resumoDaCopia(l.copia) } : {}),
+    ...(l.acao === 'recriar' ? { estado: l.estado ?? 'feito', recriado: resumoDoRecriar(l.copia) } : {}),
   });
 
   /** @param a { acao, caso, claquete, praca, cards, card?, fica?, por: { email, nome }, motivo?, copia?, estado? } */
@@ -105,7 +138,8 @@ export function criarRegistroDasDuplicadas(db) {
     return { id: Number(r.lastInsertRowid), em, motivo };
   }
 
-  /** Fecha o apagar (#67): 'feito' ou 'falhou', com a cópia completada (o que foi feito, desfeito e o erro). */
+  /** Fecha o apagar (#67) ou o recriar (#68): 'feito' ou 'falhou', com a cópia completada (o que foi feito, desfeito e
+      o erro). */
   function concluir(id, estado, copia) {
     if (!ESTADOS.includes(estado)) throw new Error(`Estado desconhecido no registro: ${estado}`);
     q.concluir.run(estado, JSON.stringify(copia), id);
@@ -119,6 +153,18 @@ export function criarRegistroDasDuplicadas(db) {
     const l = q.copia.get(id);
     return l?.copia ? JSON.parse(l.copia) : null;
   }
+
+  /** Uma ação do registro com a cópia (o apagar de onde se recria, #68), ou null. */
+  function acao(id) {
+    const l = q.umaAcao.get(id);
+    return l ? { ...ler(l), estado: l.estado ?? null, copia: l.copia ? JSON.parse(l.copia) : null } : null;
+  }
+
+  /** O apagar recriado (#68): o estado passa a 'recriado' (a cópia fica como estava). */
+  const marcarRecriado = (id) => q.marcar.run('recriado', id);
+
+  /** Há um recriar em curso ou feito deste card apagado? */
+  const recriando = (card) => !!q.recriando.get(card);
 
   /** O caso → a ação de ignorar que vale agora (o caso reaberto não entra). */
   function ignorados() {
@@ -134,5 +180,5 @@ export function criarRegistroDasDuplicadas(db) {
     return q.ultimas.all(limite).map((l) => ({ ...ler(l), podeReabrir: vale.has(l.id) }));
   }
 
-  return { anotar, concluir, apagados, copiaDe, ignorados, continuaIgnorado, lista };
+  return { anotar, concluir, apagados, copiaDe, acao, marcarRecriado, recriando, ignorados, continuaIgnorado, lista };
 }

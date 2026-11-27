@@ -196,6 +196,27 @@ export function faltasDoTrello(c) {
   return f;
 }
 
+/** A checklist das artes do card: a que o envio cria (e o card recriado, #68). */
+const CHECKLIST_DAS_ARTES = 'ARTES PRODUZIDAS';
+
+/** A descrição do card que o envio cria: as artes identificadas, as que já existem e os caminhos a preencher. */
+function descricaoDoCard(artes, existentes) {
+  return [
+    '**ARTES IDENTIFICADAS:**',
+    artes.length ? '`' + artes.join('`, `') + '`' : '—',
+    ...(existentes.length ? ['', '**JÁ EXISTEM (não produzir):**', '`' + existentes.join('`, `') + '`'] : []),
+    '',
+    '---',
+    '**CAMINHO DO PROJETO:**',
+    '``',
+    '',
+    '---',
+    '**CAMINHO DAS ARTES:**',
+    '``',
+    '',
+  ].join('\n');
+}
+
 /** A complexidade da arte que chegou no envio: 1, 2 ou 3 (BAIXA, MÉDIA, ALTA); o resto vale BAIXA. */
 export const nivelDeComplexidade = (v) => ([1, 2, 3].includes(Number(v)) ? Number(v) : 1);
 
@@ -652,23 +673,8 @@ export function criarTrello(env, deps = {}) {
     const doFilme = filme ? await tentar('ler o card do filme', () => trello('GET', `/cards/${filme.card}`, { consulta: { fields: 'id,idMembers', customFieldItems: 'true' } })) : null;
     const complexidade = Math.max(complexidadeDoCard(listaDeArtes), nivelDoFilme(doFilme));
 
-    const desc = [
-      '**ARTES IDENTIFICADAS:**',
-      artes.length ? '`' + artes.join('`, `') + '`' : '—',
-      ...(existentes.length ? ['', '**JÁ EXISTEM (não produzir):**', '`' + existentes.join('`, `') + '`'] : []),
-      '',
-      '---',
-      '**CAMINHO DO PROJETO:**',
-      '``',
-      '',
-      '---',
-      '**CAMINHO DAS ARTES:**',
-      '``',
-      '',
-    ].join('\n');
-
     // o card é o que importa: sem ele, o envio falhou (a checklist que falhar vira aviso)
-    const card = await criarCard({ lista, nome: claquete, desc, checklist: { nome: 'ARTES PRODUZIDAS', itens: artes } }, avisos);
+    const card = await criarCard({ lista, nome: claquete, desc: descricaoDoCard(artes, existentes), checklist: { nome: CHECKLIST_DAS_ARTES, itens: artes } }, avisos);
     const output = filme?.output || atracao?.output || '';
     const opcaoDaComplexidade = c.campos.complexidade ? c.complexidades[complexidade - 1] : '';
     await Promise.all([
@@ -738,6 +744,106 @@ export function criarTrello(env, deps = {}) {
     return { card: { id: card.id, url: card.shortUrl || card.url || `https://trello.com/c/${card.id}` }, avisos };
   }
 
+  /**
+   * Recria um card apagado de uma duplicada (#68) só com o que o PROMeiro e o Teable sabem, sem ler nada do Trello: a
+   * linha da produção da arte guardada na cópia (claquete, praça, artes, redator, editor, atração, prioridade,
+   * complexidade, entrada) e o PDF do roteiro guardado no PROMeiro. É o caminho do envio: o card com a descrição e a
+   * checklist das artes, os campos e o anexo. Vai para a entrada da praça, como o card que chega. A descrição editada à
+   * mão, as etiquetas, os comentários, os membros e as marcas da checklist só existiam no Trello: não voltam.
+   * @param linha a linha da produção da arte da cópia (as colunas do Postgres do Teable)
+   * @param praca a praça do caso, quando a linha não tem a dela
+   * @param pdf { nome, dados } | null
+   * @returns { id, url, avisos }: sem o card, lança; o resto que der errado vira aviso
+   */
+  async function recriarCard({ linha, praca = '', pdf = null }) {
+    if (!c.ligado) throw new Error('O Trello não está configurado (TRELLO_KEY, TRELLO_TOKEN e TRELLO_LISTA).');
+    const claquete = String(linha?.claquete ?? '').trim() || 'Card recriado';
+    const daPraca = pracaDaSigla(c.pracas, String(linha?.praca || praca || '')) ?? pracaPadrao(c.pracas);
+    const vt = /\bVt\b/i.test(claquete);
+    const lista = (vt && c.listas.VT) || daPraca.entrada || c.listas.padrao;
+    if (!lista) throw new Error(`Não há lista de entrada para ${daPraca.sigla} no Trello (TRELLO_LISTA_${daPraca.sigla}).`);
+    const avisos = [];
+    const tentar = async (o_que, f) => {
+      try {
+        return await f();
+      } catch (e) {
+        avisos.push(`${o_que}: ${e instanceof Error ? e.message : e}`);
+        return null;
+      }
+    };
+    const separar = (v) => String(v ?? '').split('|').map((a) => a.trim()).filter(Boolean);
+    const artes = separar(linha?.artes);
+    const anexos = pdf ? [{ nome: pdf.nome, tipo: 'application/pdf', dados: pdf.dados }] : [];
+    const card = await criarCard({ lista, nome: claquete, desc: descricaoDoCard(artes, separar(linha?.artes_existentes)), checklist: { nome: CHECKLIST_DAS_ARTES, itens: artes }, anexos }, avisos);
+    // a opção do redator e do editor só como o Teable guarda (sem criar nem procurar opção no Trello)
+    const [redator, editor, atracao] = await Promise.all([
+      tentar('achar o redator', () => opcaoGuardada(t.redatores, 'redator', linha?.redator, c.campos.redator)),
+      tentar('achar o editor', () => opcaoGuardada(t.editores, 'editor', linha?.editor, c.campos.editor)),
+      tentar('achar a atração', () => acharAtracao(claquete, linha?.atracao || '')),
+    ]);
+    const nivel = [1, 2, 3].includes(Number(linha?.complexidade)) ? Number(linha.complexidade) : 0;
+    const opcaoDaComplexidade = nivel && c.campos.complexidade ? c.complexidades[nivel - 1] : '';
+    const entrada = linha?.data_entrada ? new Date(linha.data_entrada) : null;
+    await Promise.all([
+      tentar('marcar o BOT', () => campo(card.id, c.campos.bot, { value: { checked: 'true' } })),
+      daPraca.opcao && tentar('preencher a praça', () => campo(card.id, c.campos.praca, { idValue: daPraca.opcao })),
+      redator && tentar('preencher o redator', () => campo(card.id, redator.campo, { idValue: redator.idValue })),
+      editor && tentar('preencher o editor', () => campo(card.id, editor.campo, { idValue: editor.idValue })),
+      /ALTA/i.test(String(linha?.prioridade ?? '')) && c.prioridadeAlta && tentar('preencher a prioridade', () => campo(card.id, c.campos.prioridade, { idValue: c.prioridadeAlta })),
+      atracao?.projeto && tentar('preencher o projeto', () => campo(card.id, c.campos.projeto, { value: { text: atracao.projeto } })),
+      atracao?.output && tentar('preencher o output', () => campo(card.id, c.campos.output, { value: { text: atracao.output } })),
+      opcaoDaComplexidade && tentar('preencher a complexidade', () => campo(card.id, c.campos.complexidade, { idValue: opcaoDaComplexidade })),
+      entrada && !Number.isNaN(entrada.getTime()) && tentar('marcar a data de entrada', () => campo(card.id, c.campos.entrada, { value: { date: entrada.toISOString() } })),
+    ]);
+    return { id: card.id, url: card.url, avisos };
+  }
+
+  /** A opção do campo (redator ou editor) que o Teable guarda para este nome; a do campo de outro quadro não vale. */
+  async function opcaoGuardada(tabela, coluna, nome, campoAtual) {
+    if (!tabela || !nome) return null;
+    const [l] = await sql(`SELECT "${coluna}_ID" AS op, "customField_ID" AS campo FROM ${tabela} WHERE UPPER("${coluna}") = UPPER($1) AND "${coluna}_ID" IS NOT NULL AND "${coluna}_ID" <> '' LIMIT 1`, [String(nome)]);
+    if (!l?.op || deOutroCampo(l.campo, campoAtual)) return null;
+    const campoId = l.campo || campoAtual;
+    return campoId ? { idValue: l.op, campo: campoId } : null;
+  }
+
+  /** As colunas da produção da arte que o envio grava: o card recriado (#68) as leva da cópia. */
+  const COLUNAS_DO_ENVIO = ['claquete', 'artes_quantidade', 'artes', 'artes_existentes', 'redator', 'data_entrada', 'texto', 'atracao', 'editor', 'key', 'praca', 'prioridade', 'workflow', 'urgencia', 'complexidade'];
+
+  /**
+   * A linha da produção da arte do card recriado (#68), pelo caminho do envio (a API do Teable), com as colunas que o
+   * envio grava, tiradas da cópia (a entrada de antes). Não nasce em dobro: se o n8n já criou a linha do card novo, vale
+   * a dele. Sem a produção configurada para escrever, nenhuma.
+   * @returns { registro, criada } (registro null: sem linha)
+   */
+  async function linhaDoCardRecriado(linha, card) {
+    if (!c.teable.url || !c.teable.token || !c.teable.producao) return { registro: null, criada: false };
+    const ja = (await producaoDosCards([card]))?.[0];
+    if (ja) return { registro: ja.registro, criada: false };
+    const campos = Object.fromEntries(COLUNAS_DO_ENVIO.filter((k) => linha?.[k] !== null && linha?.[k] !== undefined && linha?.[k] !== '').map((k) => [k, linha[k]]));
+    let filme = linha?.filme;
+    try {
+      if (typeof filme === 'string') filme = JSON.parse(filme);
+    } catch {
+      filme = null;
+    }
+    const filmeId = (Array.isArray(filme) ? filme[0] : filme)?.id;
+    const r = await teableCriar(c.teable.producao, { ...campos, card_ID: card, ...(filmeId ? { filme: { id: filmeId } } : {}) });
+    const registro = r?.records?.[0]?.id ?? null;
+    if (!registro) throw new Error('O Teable não devolveu a linha criada.');
+    return { registro: String(registro), criada: true };
+  }
+
+  /** Tira a linha que o PROMeiro criou para o card recriado, quando recriar para no meio (#68). */
+  async function apagarLinhaDaProducao(registro) {
+    const r = await buscar(`${c.teable.url}/api/table/${encodeURIComponent(c.teable.producao)}/record/${encodeURIComponent(registro)}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${c.teable.token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) throw new Error(`Teable respondeu ${r.status} ao tirar a linha da produção da arte`);
+  }
+
   /** Versão nova: artes que faltam no checklist, o roteiro novo anexado, um comentário e a linha do Teable em dia. */
   async function atualizarCard(r, claquete, listaDeArtes, avisos, tentar) {
     const id = r.v2De.card;
@@ -749,7 +855,7 @@ export function criarTrello(env, deps = {}) {
     const ja = new Set((lista?.checkItems ?? []).map((i) => chaveN8n(i.name)));
     const novas = artes.filter((a) => !ja.has(chaveN8n(a)));
     if (novas.length) {
-      lista ??= await tentar('criar a checklist', () => trello('POST', '/checklists', { consulta: { idCard: id, name: 'ARTES PRODUZIDAS' } }));
+      lista ??= await tentar('criar a checklist', () => trello('POST', '/checklists', { consulta: { idCard: id, name: CHECKLIST_DAS_ARTES } }));
       if (lista?.id) for (const a of novas) await tentar(`incluir a arte ${a}`, () => trello('POST', `/checklists/${lista.id}/checkItems`, { consulta: { name: a } }));
     }
     const pdf = await tentar('gerar o PDF', () => emPdf(r, listaDeArtes));
@@ -1327,5 +1433,5 @@ export function criarTrello(env, deps = {}) {
     apagar: (id) => trello('DELETE', `/webhooks/${encodeURIComponent(id)}`),
   };
 
-  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
+  return { ligado: c.ligado, config: c, webhooks, ler: (rota, consulta) => trello('GET', rota, { consulta }), lerSeExistir, criarOpcao, temProducao: !!(t.producao && consultar), producaoDoPeriodo, producaoDosCards, comentar, apagarComentario, apagarCard, recriarCard, linhaDoCardRecriado, apagarLinhaDaProducao, producaoInteira, producaoAlteradaDesde, designersDaProducao, exibicoesDosCards, enviar, criarCard, lerCard, mudarCard, teableCriar, teableAtualizar, teableAnexar, andamento, atracoesDosCards, filmesProximos, artesDoCard, atracaoDaClaquete, diagnosticarAtracao, conferir, ultimasClaquetes, claquetesRecentes, naProducao, pdfDaProducao, pdfDoRoteiro: emPdf, parar: () => banco?.end?.().catch(() => {}) };
 }

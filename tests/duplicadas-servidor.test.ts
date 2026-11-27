@@ -9,6 +9,8 @@ import { criarTrello } from '../servidor/trello.mjs';
 import { criarAcervo } from '../servidor/acervo.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
+// @ts-expect-error módulo JS sem tipos
+import { criarAnexos } from '../servidor/anexos.mjs';
 
 /* A aba Duplicadas pela API (#65, corrigido): a produção da arte (o Postgres do Teable) e o Trello de mentira, com
    linhas e cards fictícios. A lista, o contador e o caso aberto saem só da produção: nenhum pedido vai ao Trello
@@ -43,7 +45,9 @@ type CardFalso = { id: string; idShort: number; name: string; closed: boolean; i
 type LinhaFalsa = { registro: string; card_ID: string | null; claquete: string; praca: string | null; data_entrada: string | null; data_entrega?: string | null; artes_quantidade?: number | null; status: unknown; designers: unknown; arquivado: boolean | null; entregue: boolean | null; filme: unknown; __last_modified_time?: string };
 type ArteFalsa = { id: string; arte: string; tipo: string; atracao: unknown; claquete: { id: string; title: string }[]; filme: unknown };
 /** Onde o Trello ou o Teable de mentira falham (o passo do apagar que para no meio). */
-type Falha = 'religar' | 'comentar' | 'apagar';
+type Falha = 'religar' | 'comentar' | 'apagar' | 'criar';
+/** Um card que o PROMeiro criou no Trello de mentira (recriar da cópia, #68): o que foi escrito nele. */
+type CardCriado = { id: string; idList: string; name: string; desc: string; checklists: { nome: string; itens: string[] }[]; campos: Record<string, unknown>; anexos: string[] };
 
 function falsos() {
   const noTrello: CardFalso[] = [];
@@ -84,6 +88,9 @@ function falsos() {
   const pedidos: string[] = [];
   const falhar = new Set<Falha>();
   const comentarios: { id: string; card: string; texto: string }[] = [];
+  const criados: CardCriado[] = [];
+  /** O n8n (PROMO: DB) já criou a linha do card novo quando ele apareceu no quadro (o PROMeiro não cria outra). */
+  const n8n = { criaLinha: false };
   const erro = (status: number) => ({ ok: false, status, json: async () => ({}), text: async () => 'falha de mentira' });
   const buscar = async (url: string, init: RequestInit = {}) => {
     const u = new URL(url);
@@ -91,6 +98,19 @@ function falsos() {
     // o Teable (a API): só o acervo grava, religando as artes ao card que fica
     if (u.origin === ENV_DO_ACERVO.TEABLE_URL) {
       pedidos.push(`${metodo} teable ${u.pathname}`);
+      // a linha da produção do card recriado (#68), como o envio grava; e o desfazer, que a tira
+      if (metodo === 'POST' && u.pathname === '/api/table/tblProducao/record') {
+        const { records } = JSON.parse(String(init.body)) as { records: { fields: Record<string, unknown> }[] };
+        const f = records[0].fields;
+        const l = { registro: `recNova${++sequencia}`, status: [], designers: [], arquivado: false, entregue: false, filme: null, praca: null, data_entrada: null, __last_modified_time: new Date().toISOString(), ...f } as LinhaFalsa;
+        producao.push(l);
+        return { ok: true, status: 200, json: async () => ({ records: [{ id: l.registro, fields: f }] }), text: async () => '' };
+      }
+      const umaLinha = /^\/api\/table\/tblProducao\/record\/(\w+)$/.exec(u.pathname);
+      if (metodo === 'DELETE' && umaLinha) {
+        producao.splice(producao.findIndex((l) => l.registro === umaLinha[1]), 1);
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
+      }
       if (metodo !== 'PATCH' || u.pathname !== `/api/table/${ENV_DO_ACERVO.TEABLE_ACERVO}/record`) throw new Error(`pedido inesperado ao Teable: ${metodo} ${u.pathname}`);
       if (falhar.has('religar')) return erro(500);
       const corpo = JSON.parse(String(init.body)) as { records: { id: string; fields: { claquete: { id: string }[] } }[] };
@@ -108,6 +128,36 @@ function falsos() {
       const c = { id: `acao${comentarios.length + 1}`, card: comentar[1], texto: u.searchParams.get('text') ?? '' };
       comentarios.push(c);
       return { ok: true, status: 200, json: async () => ({ id: c.id }), text: async () => '' };
+    }
+    // o card recriado da cópia (#68): o card, a checklist, os campos e o anexo, pelo caminho do envio
+    if (metodo === 'POST' && u.pathname === '/1/cards') {
+      if (falhar.has('criar')) return erro(500);
+      const corpo = JSON.parse(String(init.body)) as { idList: string; name: string; desc: string };
+      const c: CardCriado = { id: idCriadoHa(0), idList: corpo.idList, name: corpo.name, desc: corpo.desc, checklists: [], campos: {}, anexos: [] };
+      criados.push(c);
+      noTrello.push({ id: c.id, idShort: 7000 + sequencia, name: c.name, closed: false, idList: c.idList, idMembers: [] });
+      if (n8n.criaLinha) producao.push({ registro: `recDoN8n${sequencia}`, card_ID: c.id, claquete: c.name, praca: null, data_entrada: new Date().toISOString(), status: [], designers: [], arquivado: false, entregue: false, filme: null });
+      return { ok: true, status: 200, json: async () => ({ id: c.id, shortUrl: `https://trello.com/c/${c.id.slice(-8)}` }), text: async () => '' };
+    }
+    const doCriado = (id: string) => criados.find((c) => c.id === id)!;
+    if (metodo === 'POST' && u.pathname === '/1/checklists') {
+      const id = `lista${criados.length}`;
+      doCriado(u.searchParams.get('idCard')!).checklists.push({ nome: u.searchParams.get('name') ?? '', itens: [] });
+      return { ok: true, status: 200, json: async () => ({ id }), text: async () => '' };
+    }
+    if (metodo === 'POST' && /^\/1\/checklists\/\w+\/checkItems$/.test(u.pathname)) {
+      criados.at(-1)!.checklists.at(-1)!.itens.push(u.searchParams.get('name') ?? '');
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
+    }
+    const umCampo = /^\/1\/cards\/([0-9a-f]{24})\/customField\/(\w+)\/item$/.exec(u.pathname);
+    if (metodo === 'PUT' && umCampo) {
+      doCriado(umCampo[1]).campos[umCampo[2]] = JSON.parse(String(init.body));
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
+    }
+    const anexar = /^\/1\/cards\/([0-9a-f]{24})\/attachments$/.exec(u.pathname);
+    if (metodo === 'POST' && anexar) {
+      doCriado(anexar[1]).anexos.push(String((init.body as FormData).get('name')));
+      return { ok: true, status: 200, json: async () => ({ id: 'anexo1' }), text: async () => '' };
     }
     const umaAcao = /^\/1\/actions\/(\w+)$/.exec(u.pathname);
     if (metodo === 'DELETE' && umaAcao) {
@@ -165,7 +215,7 @@ function falsos() {
   };
   /** O n8n (PROMO: DB) tira a linha da produção do card apagado. */
   const tirarDaProducao = (l: LinhaFalsa) => producao.splice(producao.indexOf(l), 1);
-  return { linhas, acervo, buscar, consultar, pedidos, falhar, comentarios, noTrello, tirarDaProducao, novaLinha, leituras: () => leiturasDaProducao };
+  return { linhas, acervo, producao, buscar, consultar, pedidos, falhar, comentarios, noTrello, criados, n8n, tirarDaProducao, novaLinha, leituras: () => leiturasDaProducao };
 }
 
 let parar: (() => Promise<void>) | null = null;
@@ -178,14 +228,15 @@ async function comServidor(env: Record<string, string> = ENV) {
   const f = falsos();
   const trello = criarTrello(env, { buscar: f.buscar, consultar: f.consultar });
   const acervo = criarAcervo({ ...env, ...ENV_DO_ACERVO }, { consultar: f.consultar, buscar: f.buscar });
-  const app = criarApp({ db: abrirBanco(':memory:'), env, trello, acervo });
+  const db = abrirBanco(':memory:');
+  const app = criarApp({ db, env, trello, acervo });
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   parar = () => new Promise<void>((ok) => servidor.close(() => ok()));
   const base = `http://localhost:${(servidor.address() as { port: number }).port}`;
   const como = (email: string) => (caminho: string, init: RequestInit = {}) =>
     fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json', ...init.headers } });
-  return { ...f, app, chefe: como('chefe@empresa.com'), ana: como('ana@empresa.com') };
+  return { ...f, app, db, chefe: como('chefe@empresa.com'), ana: como('ana@empresa.com') };
 }
 
 type Resumo = { id: string; claquete: string; praca: string; secao: string; cards: number; abertos: number; arquivados: number; artesNoAcervo: number; dias: number };
@@ -590,5 +641,142 @@ describe('apagar um card do caso (#67)', () => {
     expect((await apagar(chefe, await casoDe(chefe, 'Show da Noite 20/11 SP'), linhas.show2.card_ID!, linhas.show1.card_ID!)).status).toBe(200);
     await chefe('/api/duplicadas/modo', { method: 'POST', body: JSON.stringify({ soOlhar: true }) });
     expect(((await (await chefe('/api/duplicadas')).json()) as { soOlhar: boolean }).soOlhar).toBe(true);
+  });
+});
+
+type AcaoRecriar = AcaoApagar & { recriado: { codigo: string; novo: string; url: string; religadas: number; roteiros: number; pdfs: number; erro: string; naoDesfeito: string[] } };
+
+describe('recriar o card apagado da cópia (#68)', () => {
+  type Pedir = (c: string, i?: RequestInit) => Promise<Response>;
+  // o envio de verdade grava a linha da produção pela API do Teable e preenche os campos do card
+  const ENV_RECRIAR = {
+    ...ENV,
+    TEABLE_URL: ENV_DO_ACERVO.TEABLE_URL,
+    TEABLE_TOKEN: ENV_DO_ACERVO.TEABLE_TOKEN,
+    TEABLE_ARTE_PRODUCAO: 'tblProducao',
+    TRELLO_CAMPO_BOT: 'cBot',
+    TRELLO_CAMPO_PRACA: 'cPraca',
+    TRELLO_PRACAS: 'G5=opG5,SP=opSP',
+    TRELLO_CAMPO_ENTRADA: 'cEntrada',
+    TRELLO_CAMPO_COMPLEXIDADE: 'cComplexidade',
+    TRELLO_COMPLEXIDADE_OPCOES: 'opBaixa,opMedia,opAlta',
+  };
+  const escritas = (pedidos: string[]) => pedidos.filter((p) => !p.startsWith('GET '));
+  const registroDe = async (chefe: Pedir) => ((await (await chefe('/api/duplicadas/registro')).json()) as { registro: AcaoRecriar[] }).registro;
+  const recriar = (pedir: Pedir, id: number) => pedir('/api/duplicadas/recriar', { method: 'POST', body: JSON.stringify({ id }) });
+  /**
+   * O cenário: o primeiro show (com o roteiro guardado, o PDF dele no PROMeiro e as três artes do acervo) foi apagado
+   * pelo PROMeiro, e ficou o segundo. A linha da produção dele saiu pelo n8n.
+   */
+  async function comApagado(env: Record<string, string> = ENV_RECRIAR) {
+    const s = await comServidor(env);
+    const { chefe, linhas, db } = s;
+    const [sai, fica] = [linhas.show1.card_ID!, linhas.show2.card_ID!];
+    Object.assign(linhas.show1, { artes: 'HOJE | AMANHÃ | SÁBADO | DOMINGO', key: 'SHOWDANOITE2011SP', texto: 'O texto do roteiro', complexidade: 2, redator: 'Redator Um', workflow: 'PROMeiro' });
+    await chefe('/api/roteiros/rot-show-1', { method: 'PUT', body: JSON.stringify({ roteiro: { meta: { claquete: 'Show da Noite 20/11 SP' }, doc: { type: 'doc', content: [] } }, nArtes: 1 }) });
+    await chefe('/api/roteiros/rot-show-1/trello', { method: 'POST', body: JSON.stringify({ jaEsta: { card: sai } }) });
+    const anexos = criarAnexos(db);
+    anexos.guardarPdf({ chave: 'rot-show-1', card: sai, nome: 'Show da Noite 20-11 SP.pdf', dados: Buffer.from('%PDF-1.4 de mentira') });
+    const lista = (await (await chefe('/api/duplicadas')).json()) as Lista;
+    const id = lista.casos.find((c) => c.claquete === 'Show da Noite 20/11 SP')!.id;
+    const caso = (await (await chefe(`/api/duplicadas/caso?id=${encodeURIComponent(id)}`)).json()) as Caso;
+    const r = await chefe('/api/duplicadas/apagar', { method: 'POST', body: JSON.stringify({ caso: caso.id, dias: 90, sai, fica, codigo: sai.slice(-4), vistos: Object.fromEntries(caso.cards.map((c) => [c.id, c])) }) });
+    expect(r.status).toBe(200);
+    s.tirarDaProducao(linhas.show1);
+    const apagado = (await registroDe(chefe))[0];
+    s.pedidos.length = 0;
+    s.comentarios.length = 0;
+    return { ...s, sai, fica, caso, apagado, anexos };
+  }
+
+  it('cria um card novo só com a cópia, pelo caminho do envio; a linha nasce como no envio; acervo, roteiro e PDF voltam; comenta no que ficou', async () => {
+    const { chefe, sai, fica, apagado, pedidos, criados, producao, acervo, comentarios, anexos, linhas } = await comApagado();
+    expect(apagado).toMatchObject({ acao: 'apagar', card: sai, estado: 'feito' });
+    const r = await recriar(chefe, apagado.id);
+    expect(r.status).toBe(200);
+    const novo = criados[0];
+    expect(await r.json()).toMatchObject({ registro: expect.any(Number), card: novo.id, codigo: novo.id.slice(-4), url: `https://trello.com/c/${novo.id.slice(-8)}`, religadas: 3, roteiros: 1, pdfs: 1, linha: true, comentou: true });
+    // nada lido do Trello
+    expect(pedidos.filter((p) => p.startsWith('GET /1/'))).toEqual([]);
+    // o card na entrada da praça, com o nome, a descrição do envio, a checklist das artes, os campos e o PDF guardado
+    expect(criados).toHaveLength(1);
+    expect(novo).toMatchObject({ idList: 'entradaSP', name: 'Show da Noite 20/11 SP', checklists: [{ nome: 'ARTES PRODUZIDAS', itens: ['HOJE', 'AMANHÃ', 'SÁBADO', 'DOMINGO'] }], anexos: ['Show da Noite 20-11 SP.pdf'] });
+    expect(novo.desc).toContain('**ARTES IDENTIFICADAS:**\n`HOJE`, `AMANHÃ`, `SÁBADO`, `DOMINGO`');
+    expect(novo.campos).toEqual({
+      cBot: { value: { checked: 'true' } },
+      cPraca: { idValue: 'opSP' },
+      cComplexidade: { idValue: 'opMedia' },
+      cEntrada: { value: { date: linhas.show1.data_entrada } },
+    });
+    // a linha da produção do card novo, pela API do Teable como no envio, com a entrada de antes
+    const nova = producao.find((l) => l.card_ID === novo.id)!;
+    expect(nova).toMatchObject({ claquete: 'Show da Noite 20/11 SP', artes: 'HOJE | AMANHÃ | SÁBADO | DOMINGO', artes_quantidade: 4, key: 'SHOWDANOITE2011SP', redator: 'Redator Um', texto: 'O texto do roteiro', complexidade: 2, data_entrada: linhas.show1.data_entrada });
+    expect(producao.filter((l) => l.card_ID === novo.id)).toHaveLength(1);
+    // a ordem: o card, a linha, o acervo e, por último, o comentário no card que ficou
+    const passos = escritas(pedidos).filter((p) => /^POST \/1\/cards$|tblProducao|tblAcervo|comments/.test(p));
+    expect(passos).toEqual(['POST /1/cards', 'POST teable /api/table/tblProducao/record', 'PATCH teable /api/table/tblAcervo/record', `POST /1/cards/${fica}/actions/comments`]);
+    // as artes do acervo, o roteiro guardado e o PDF voltam a apontar para o card novo
+    expect(acervo.filter((a) => a.claquete[0].id === nova.registro).map((a) => a.arte)).toEqual(['HOJE', 'AMANHÃ', 'SÁBADO']);
+    expect(((await (await chefe('/api/roteiros/rot-show-1/trello')).json()) as { url: string }).url).toBe(`https://trello.com/c/${novo.id.slice(-8)}`);
+    expect(anexos.pdfDoCard(novo.id)).toMatchObject({ nome: 'Show da Noite 20-11 SP.pdf' });
+    expect(anexos.pdfDoCard(sai)).toBeNull();
+    expect(comentarios).toEqual([{ id: expect.any(String), card: fica, texto: `Card …${sai.slice(-4)} (Show da Noite 20/11 SP) recriado por Chefe pelo PROMeiro: o card novo é …${novo.id.slice(-4)}.` }]);
+    // o Registro: "recriou o card", e a cópia passa a "recriado"
+    const registro = await registroDe(chefe);
+    expect(registro[0]).toMatchObject({ acao: 'recriar', card: sai, fica, por: 'Chefe', estado: 'feito', recriado: { codigo: sai.slice(-4), novo: novo.id.slice(-4), religadas: 3, roteiros: 1, pdfs: 1, erro: '', naoDesfeito: [] } });
+    expect(registro.find((l) => l.id === apagado.id)).toMatchObject({ acao: 'apagar', estado: 'recriado' });
+  });
+
+  it('não recria duas vezes; só administradores; no modo só olhar, recusa; o que não foi apagado não recria', async () => {
+    const { chefe, ana, apagado, pedidos, criados } = await comApagado();
+    expect((await recriar(ana, apagado.id)).status).toBe(403);
+    expect((await chefe('/api/duplicadas/recriar')).status).toBe(405);
+    expect((await recriar(chefe, 99999)).status).toBe(404);
+    expect(pedidos).toEqual([]);
+    const [um, dois] = await Promise.all([recriar(chefe, apagado.id), recriar(chefe, apagado.id)]);
+    expect([um.status, dois.status].sort()).toEqual([200, 409]);
+    const tres = await recriar(chefe, apagado.id);
+    expect(tres.status).toBe(409);
+    expect((await tres.json()).erro).toMatch(/já foi recriado/);
+    expect(criados).toHaveLength(1);
+    // uma ação que não é apagar (o recriar mesmo) não recria
+    expect((await recriar(chefe, (await registroDe(chefe))[0].id)).status).toBe(404);
+    await parar?.();
+    const soOlhando = await comApagado();
+    await soOlhando.chefe('/api/duplicadas/modo', { method: 'POST', body: JSON.stringify({ soOlhar: true }) });
+    const r = await recriar(soOlhando.chefe, soOlhando.apagado.id);
+    expect(r.status).toBe(403);
+    expect((await r.json()).erro).toMatch(/modo só olhar/);
+    expect(soOlhando.criados).toEqual([]);
+  });
+
+  it('a linha que o n8n já criou para o card novo não nasce em dobro: o acervo vai para ela', async () => {
+    const { chefe, apagado, pedidos, criados, producao, acervo, n8n } = await comApagado();
+    n8n.criaLinha = true;
+    expect((await recriar(chefe, apagado.id)).status).toBe(200);
+    const doCard = producao.filter((l) => l.card_ID === criados[0].id);
+    expect(doCard.map((l) => l.registro)).toEqual([expect.stringMatching(/^recDoN8n/)]);
+    expect(escritas(pedidos)).not.toContain('POST teable /api/table/tblProducao/record');
+    expect(acervo.filter((a) => a.claquete[0].id === doCard[0].registro)).toHaveLength(3);
+  });
+
+  it.each(['religar', 'comentar'] as const)('a falha ao %s desfaz tudo: o card novo sai, a linha sai, acervo, roteiro e PDF voltam; dá para tentar de novo', async (falha) => {
+    const { chefe, sai, fica, apagado, falhar, criados, producao, acervo, noTrello, anexos, comentarios } = await comApagado();
+    falhar.add(falha);
+    const r = await recriar(chefe, apagado.id);
+    expect(r.status).toBe(502);
+    expect((await r.json()).erro).toMatch(/Nada ficou no Trello\. O que tinha sido feito foi desfeito\./);
+    const novo = criados[0].id;
+    expect(noTrello.some((c) => c.id === novo)).toBe(false);
+    expect(producao.some((l) => l.card_ID === novo)).toBe(false);
+    expect(comentarios).toEqual([]);
+    expect(acervo.filter((a) => a.arte !== 'ABERTURA').map((a) => a.claquete[0].id)).toEqual(Array(3).fill(producao.find((l) => l.card_ID === fica)!.registro));
+    expect(((await (await chefe('/api/roteiros/rot-show-1/trello')).json()) as { url: string }).url).toBe(`https://trello.com/c/${fica}`);
+    expect(anexos.pdfDoCard(sai)).toMatchObject({ nome: 'Show da Noite 20-11 SP.pdf' });
+    const registro = await registroDe(chefe);
+    expect(registro[0]).toMatchObject({ acao: 'recriar', estado: 'falhou', recriado: { erro: expect.any(String), naoDesfeito: [] } });
+    expect(registro.find((l) => l.id === apagado.id)).toMatchObject({ estado: 'feito' });
+    falhar.clear();
+    expect((await recriar(chefe, apagado.id)).status).toBe(200);
   });
 });
