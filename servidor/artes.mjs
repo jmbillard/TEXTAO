@@ -26,6 +26,25 @@ const { diaEmSaoPaulo } = await import('../src/modelo/pauta.ts');
 export { subirComplexidade };
 
 /**
+ * O fogo novo de uma arte nas marcas de complexidade ({ chave: 2 | 3 }; a BAIXA não é guardada), como no editor: com
+ * `nivel` (1, 2 ou 3), a arte fica nesse nível (repetir não muda nada); sem ele, sobe um nível (subirComplexidade).
+ * Vale para as marcas do Roteiro (#147) e para as da Produção sem Roteiro (#174).
+ * @returns { marcas (as novas; undefined sem nenhuma), antes, depois } (os níveis, 1 a 3)
+ */
+export function fogoNoNivel(marcas, chave, nivel = null) {
+  const atuais = marcas && typeof marcas === 'object' ? marcas : {};
+  let novas;
+  if (nivel) {
+    const resto = { ...atuais };
+    delete resto[chave];
+    novas = nivel === 1 ? resto : { ...resto, [chave]: nivel };
+    if (!Object.keys(novas).length) novas = undefined;
+  } else novas = subirComplexidade({ complexidade: atuais }, chave).complexidade;
+  const de = (c) => ([2, 3].includes(c?.[chave]) ? c[chave] : 1);
+  return { marcas: novas, antes: de(atuais), depois: de(novas) };
+}
+
+/**
  * As artes do roteiro aberto (#104), com o estado e a origem: as da revisão (as do envio, sem as que não vão ser
  * produzidas) cruzadas com a Produção (a etapa, a coluna de artes e o checklist marcado). Nada vem do Trello.
  * @param producao { etapa, artes, artesMarcadas } | null

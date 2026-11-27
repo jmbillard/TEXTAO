@@ -39,7 +39,7 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { acertarNArtesUmaVez, artesComOEstado, subirComplexidade, versoesLidas } from './artes.mjs';
+import { acertarNArtesUmaVez, artesComOEstado, fogoNoNivel, versoesLidas } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
@@ -951,12 +951,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // nenhuma Produção e nenhuma carga que deu certo (a da subida falhou: o Teable estava fora): a carga inteira
         if (producoes.vazia() && !producoes.contagem().ultimaCarga) {
           const carga = await producoes.carregar(trello, pracas);
+          if (carga) passarOsFogos();
           if (carga) copia.guardar(MARCA_DA_RELEITURA, { ate: new Date(inicio - MARGEM_DA_RELEITURA).toISOString() });
           return carga ? (ultimaReleitura = { em: new Date(inicio).toISOString(), desde, lidas: carga.linhas, novas: carga.novas, mudadas: carga.atualizadas, anotados: 0 }) : null;
         }
         const linhas = await trello.producaoAlteradaDesde(desde, LIMITE_DA_RELEITURA);
         if (!linhas) return null;
         const r = producoes.reler(linhas, pracas);
+        passarOsFogos();
         // a próxima continua da modificação mais nova lida, com uma margem (a linha relida de novo, igual, não muda
         // nada); no limite, dela mesma, para andar
         const maisNova = linhas.reduce((m, l) => (l.modificadoEm && l.modificadoEm > m ? l.modificadoEm : m), '');
@@ -1320,10 +1322,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * muda nada); sem ele, sobe um nível, como o clique no fogo do editor (subirComplexidade). Pelo caminho do editor: a
    * complexidade no mapa "meta" do documento compartilhado (o da sala aberta, que quem está no editor vê na hora, ou o
    * guardado) e na meta do roteiro no banco; a BAIXA não é guardada. Com o documento, vale o que ele tem agora. Com
-   * `gravar: false` (a ação atrasada), só diz o que seria.
+   * `gravar: false` (a ação atrasada), só diz o que seria. Com `seVago` (o fogo que passa da Produção, #174), a arte que
+   * o Roteiro já marcou fica como está.
    * @returns { antes, depois } (1, 2 ou 3), ou null sem o roteiro
    */
-  function fogoNoRoteiro(id, chave, { nivel: desejado = null, gravar = true } = {}) {
+  function fogoNoRoteiro(id, chave, { nivel: desejado = null, gravar = true, seVago = false } = {}) {
     const linha = q.um.get(id);
     if (!linha) return null;
     const meta = JSON.parse(linha.meta);
@@ -1336,14 +1339,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const m = doc?.getMap('meta');
     const atual = m?.size ? m.get('complexidade') : meta.complexidade;
     const marcas = atual && typeof atual === 'object' ? atual : {};
-    const noNivel = () => {
-      const resto = { ...marcas };
-      delete resto[chave];
-      const novas = desejado === 1 ? resto : { ...resto, [chave]: desejado };
-      return Object.keys(novas).length ? novas : undefined;
-    };
-    const complexidade = desejado ? noNivel() : subirComplexidade({ complexidade: marcas }, chave).complexidade;
-    const nivel = (c) => ([2, 3].includes(c?.[chave]) ? c[chave] : 1);
+    // #174: o fogo que passa da Produção não pisa no que o Roteiro já marcou
+    if (seVago && [2, 3].includes(marcas[chave])) return { antes: marcas[chave], depois: marcas[chave] };
+    const { marcas: complexidade, antes, depois } = fogoNoNivel(marcas, chave, desejado);
     if (gravar) {
       if (complexidade) meta.complexidade = complexidade;
       else delete meta.complexidade;
@@ -1354,7 +1352,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         if (!sala) q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
       }
     }
-    return { antes: nivel(marcas), depois: nivel(complexidade) };
+    return { antes, depois };
   }
   function fecharSala(id, motivo, filtro = () => true) {
     const sala = salas.get(id);
@@ -2682,7 +2680,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!ligado) return json(res, 404, { erro: 'A produção da arte do Teable não está configurada.' });
       try {
         console.log(`[producoes] ${eu.email} pediu a carga de novo`);
-        return json(res, 200, await producoes.carregar(trello, pracas));
+        const carga = await producoes.carregar(trello, pracas);
+        passarOsFogos();
+        return json(res, 200, carga);
       } catch (e) {
         console.warn(`[producoes] ${e instanceof Error ? e.message : e}`);
         return json(res, 502, { erro: `Não consegui ler a produção da arte: ${e instanceof Error ? e.message : e}` });
@@ -3759,28 +3759,63 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return comPasta(Object.entries(a.caminhos ?? {}).find(([campo]) => /^projeto/i.test(campo.trim()))?.[1]);
   }
 
-  /**
-   * A Produção como a janela do After mostra (#146): a praça e a etapa, a claquete, a versão da chamada só como o código
-   * (a do card da tela de produções), o "pronto para abrir", os designers (e se o da chave está entre eles) e as artes
-   * (`producoes.naJanela`), cada uma com o fogo da complexidade que o editor marcou no Roteiro ligado (BAIXA sem marca;
-   * null sem Roteiro), se está feita e quem marcou, e a contagem. null sem a Produção (ou arquivada).
-   */
-  /** O fogo de cada arte (1 a 3) pela meta do Roteiro ligado, como a janela do After (#146) e o card aberto (#160)
-      mostram; sem Roteiro, null. @param j a Produção de producoes.naJanela */
-  const fogoDasArtes = ({ producao, meta }) => {
-    const complexidade = meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
-    return (a) => (producao.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
+  /** O fogo de cada arte (1 a 3), o mesmo na janela do After (#146) e no card aberto (#160): com Roteiro ligado, o da
+      meta dele; sem marca nele, o guardado na Produção (o que ainda não passou para ele); sem nenhum, BAIXA (#174).
+      @param j a Produção de producoes.naJanela */
+  const fogoDasArtes = ({ producao, meta, fogos = {} }) => {
+    const complexidade = producao.roteiroId && meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
+    return (a) => {
+      const chave = chaveDeArte(a.nome);
+      return [2, 3].includes(complexidade[chave]) ? complexidade[chave] : [2, 3].includes(fogos[chave]) ? fogos[chave] : 1;
+    };
   };
+
+  /**
+   * O fogo da arte mudado (#147, #160, #174): com Roteiro ligado, no Roteiro (fogoNoRoteiro), e a marca dela que a
+   * Produção ainda guardava sai; sem ele, na Produção (producoes.fogoNaProducao). Com `nivel`, fica nesse nível; sem
+   * ele, sobe um. Com `gravar: false` (a ação atrasada), só diz o que seria.
+   * @returns { antes, depois } (1 a 3), ou null sem a Produção ou o Roteiro
+   */
+  function fogoDaArte(j, nome, { nivel = null, gravar = true } = {}) {
+    const chave = chaveDeArte(nome);
+    if (!j.producao.roteiroId) return producoes.fogoNaProducao(j.producao.id, chave, { nivel, gravar });
+    // o que a tela mostrava (o da Produção, sem marca no Roteiro) é o ponto de partida do clique
+    const herdado = j.fogos?.[chave];
+    if (herdado && gravar) fogoNoRoteiro(j.producao.roteiroId, chave, { nivel: herdado, seVago: true });
+    const n = fogoNoRoteiro(j.producao.roteiroId, chave, { nivel, gravar });
+    if (n && gravar) producoes.soltarFogos(j.producao.id, chave);
+    return n;
+  }
+
+  /**
+   * O fogo guardado na Produção passa para o Roteiro ligado depois (#174): o do Roteiro vale; a arte sem marca nele
+   * recebe a da Produção, que depois se esvazia. Sem Roteiro ou sem fogo guardado, nada muda. Nunca lança.
+   */
+  function passarOFogo(id) {
+    try {
+      const j = producoes.naJanela(id);
+      if (!j?.producao.roteiroId || !Object.keys(j.fogos).length) return;
+      for (const [chave, nivel] of Object.entries(j.fogos)) if (!fogoNoRoteiro(j.producao.roteiroId, chave, { nivel, seVago: true })) return;
+      producoes.soltarFogos(id);
+    } catch (e) {
+      console.warn(`[producoes] o fogo de ${id} não passou para o Roteiro: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  /** Todas as que ainda guardam fogo com o Roteiro já ligado (a carga e a releitura ligam Roteiros). */
+  function passarOsFogos() {
+    for (const id of producoes.comFogoParaPassar()) passarOFogo(id);
+  }
 
   /**
    * A Produção aberta na tela de produções (#113, #160): a de `producoes.aberta` (a linha do tempo, as artes do
    * checklist, o link do card) e, para o card aberto, as artes como a janela do After mostra (`artesDoCard`: cada arte
-   * uma vez, feita ou não, com o fogo do Roteiro ligado; null sem ele), a versão do Roteiro (V1 sem versão nova) e
+   * uma vez, feita ou não, com o fogo de fogoDasArtes), a versão do Roteiro (V1 sem versão nova) e
    * quando ele chegou, e as listas para escolher: os designers ativos e as atrações do cadastro. null sem a Produção.
    */
   async function abertaNaTela(id) {
     const aberta = typeof id === 'string' ? producoes.aberta(id) : null;
     if (!aberta) return null;
+    passarOFogo(id);
     const j = producoes.naJanela(id);
     const fogo = j ? fogoDasArtes(j) : () => null;
     const roteiro = producoes.roteiroDe(id);
@@ -3794,23 +3829,30 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     };
   }
 
-  /** O fogo da arte pelo card aberto (#160): como o da janela do After (fogoNoRoteiro), com a origem PROMeiro. */
+  /** O fogo da arte pelo card aberto (#160): como o da janela do After (fogoDaArte, com ou sem Roteiro), com a origem
+      PROMeiro. */
   function fogoNaTela({ producao, arte, nivel = null }, { email, designer, aTela }) {
     if (!designer) return { status: 403, corpo: { erro: SEM_LIGACAO } };
     if (nivel !== null && ![1, 2, 3].includes(nivel)) return { status: 400, corpo: { erro: 'O nível do fogo é 1, 2 ou 3.' } };
     const j = typeof producao === 'string' ? producoes.naJanela(producao.trim().slice(0, 100)) : null;
     if (!j) return { status: 404, corpo: { erro: 'Essa Produção não está mais na tela.' } };
     if (j.producao.etapa === 'entregue') return { status: 409, corpo: { erro: 'A Produção já está Entregue: o fogo das artes não muda mais.' } };
-    if (!j.producao.roteiroId) return { status: 409, corpo: { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.' } };
     const a = typeof arte === 'string' ? j.artes.find((x) => chaveDeArte(x.nome) === chaveDeArte(arte)) : null;
     if (!a) return { status: 404, corpo: { erro: 'Essa arte não está na Produção.' } };
-    const n = fogoNoRoteiro(j.producao.roteiroId, chaveDeArte(a.nome), { nivel });
-    if (!n) return { status: 409, corpo: { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.' } };
+    const n = fogoDaArte(j, a.nome, { nivel });
+    if (!n) return { status: 404, corpo: { erro: 'Essa Produção não está mais na tela.' } };
     producoes.doPROMeiro(j.producao.id, [{ tipo: 'fogo', campo: a.nome, antes: String(n.antes), depois: String(n.depois) }], { email, nome: designer.nome });
     return { status: 200, corpo: { feito: { eventos: ['fogo'], trello: [] }, producao: aTela(j.producao.id) } };
   }
 
+  /**
+   * A Produção como a janela do After mostra (#146): a praça e a etapa, a claquete, a versão da chamada só como o código
+   * (a do card da tela de produções), o "pronto para abrir", os designers (e se o da chave está entre eles) e as artes
+   * (`producoes.naJanela`), cada uma com o fogo da complexidade (fogoDasArtes: o do Roteiro ligado ou, sem ele, o da
+   * Produção; BAIXA sem marca), se está feita e quem marcou, e a contagem. null sem a Produção (ou arquivada).
+   */
   async function producaoDaJanela(id, padeiro) {
+    passarOFogo(id);
     const j = producoes.naJanela(id);
     if (!j) return null;
     const { producao: p, artes } = j;
@@ -3881,9 +3923,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    *   ocupa) e `feitaEm`, a hora (a atrasada segue a regra do conflito: fica no histórico, e nada vai ao Trello por
    *   ela). Respondem { feito: { eventos, trello }, producao } (a Produção como a janela mostra); o 409 traz a
    *   `producao` também.
-   *   - POST /api/padeiro/fogo { acao, feitaEm, producao, arte, nivel? }: o fogo da arte no Roteiro ligado, para
-   *     qualquer designer (fogoNoRoteiro): com `nivel` (1, 2 ou 3), fica nesse nível (à prova de repetição); sem ele,
-   *     sobe um nível (1, 2, 3 e volta). O `nivel` que não é 1, 2 ou 3, 400; a Entregue e a sem Roteiro, 409; a arte que
+   *   - POST /api/padeiro/fogo { acao, feitaEm, producao, arte, nivel? }: o fogo da arte, no Roteiro ligado ou, sem
+   *     ele, na Produção (#174), para qualquer designer (fogoDaArte): com `nivel` (1, 2 ou 3), fica nesse nível (à prova
+   *     de repetição); sem ele, sobe um nível (1, 2, 3 e volta). O `nivel` que não é 1, 2 ou 3, 400; a Entregue, 409; a arte que
    *     não está na Produção, 404. Gravada a meta, o identificador fica ocupado mesmo se o evento falhar (a nova
    *     tentativa responde { repetido: true } e não muda o nível de novo)
    *   - POST /api/padeiro/entregar { acao, feitaEm, producao }: etapaDaProducao.entregarPeloPadeiro (a Entregue, 409)
@@ -3999,7 +4041,6 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         return json(res, status, comAProducao ? { erro, producao: await producaoDaJanela(id, p) } : { erro });
       };
       if (j.producao.etapa === 'entregue') return recusar(409, 'A Produção já está Entregue: o fogo das artes não muda mais.');
-      if (!j.producao.roteiroId) return recusar(409, 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.');
       const arte = j.artes.find((a) => chaveDeArte(a.nome) === chaveDeArte(corpo.arte));
       if (!arte) return recusar(404, 'Essa arte não está na Produção.', false);
       const designer = designerDoPadeiro(p);
@@ -4007,12 +4048,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       let gravouAMeta = false;
       try {
         const gravar = !producoes.atrasado(id, { tipo: 'fogo', campo: arte.nome, quando: pedido.quando });
-        const nivel = fogoNoRoteiro(j.producao.roteiroId, chaveDeArte(arte.nome), { nivel: nivelPedido, gravar });
-        if (!nivel) return recusar(409, 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.');
+        const nivel = fogoDaArte(j, arte.nome, { nivel: nivelPedido, gravar });
+        if (!nivel) return recusar(404, 'Essa Produção não está mais aberta no PROMeiro.', false);
         gravouAMeta = gravar;
         producoes.doPadeiro(id, [{ tipo: 'fogo', campo: arte.nome, antes: String(nivel.antes), depois: String(nivel.depois) }], { id: `padeiro:${p.id}`, nome: designer.nome }, pedido.quando, { acao: pedido.acao });
       } catch (e) {
-        if (gravouAMeta) console.warn(`[padeiro] o fogo de ${j.producao.claquete} foi gravado no Roteiro, mas o evento não: ${e instanceof Error ? e.message : e}`);
+        if (gravouAMeta) console.warn(`[padeiro] o fogo de ${j.producao.claquete} foi gravado, mas o evento não: ${e instanceof Error ? e.message : e}`);
         else padeiros.soltarAviso(p.id, pedido.acao);
         throw e;
       }
