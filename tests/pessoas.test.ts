@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { administradoresDaTela, ehAdministrador, novidadesDaProducao, porAdministrador, tirarAdministrador } from '../src/modelo/pessoas';
+import { administradoresDaTela, ehAdministrador, juntarNaProducao, novidadesDaProducao, porAdministrador, separarPessoas, tirarAdministrador } from '../src/modelo/pessoas';
 
 /* A seção Pessoas (#77), pelas funções puras: quem entrou e quem saiu (os designers que aparecem na produção da arte
    do Teable × a tabela designers; nada do Trello, ADR 0006) e os administradores (a chave-mestra do Portainer e o
@@ -14,7 +14,7 @@ describe('quem entrou e quem saiu, pela produção da arte', () => {
     const producao = [naProducao('Ana Prado'), naProducao('Bruno Sá'), naProducao('Caio Reis')];
     const designers = [designer('r1', 'Ana Prado', 'm1'), designer('r3', 'Caio Reis', ''), designer('r4', 'Duda Lima', 'm4', true, 'duda@empresa.com'), designer('r5', 'Eva Luz', 'm5', false)];
     expect(novidadesDaProducao(producao, designers, { desde: DESDE })).toEqual([
-      { chave: 'entrou:BRUNO SA', tipo: 'entrou', nome: 'Bruno Sá', email: '', membro: '' },
+      { chave: 'entrou:BRUNO SA', tipo: 'entrou', nome: 'Bruno Sá', email: '', membro: '', vezes: 1 },
       { chave: 'saiu:r4', tipo: 'saiu', nome: 'Duda Lima', email: 'duda@empresa.com', membro: 'm4', registro: 'r4' },
     ]);
   });
@@ -23,6 +23,56 @@ describe('quem entrou e quem saiu, pela produção da arte', () => {
     const producao = [naProducao('JOÃO NEVES'), naProducao('Eva Luz')];
     const designers = [designer('r1', 'Joao Neves', ''), designer('r2', 'Fábio Dias', ''), designer('r5', 'Eva Luz', 'm5', false), designer('r6', 'Gil Novo', '', true, '', '2026-11-25T10:00:00.000Z')];
     expect(novidadesDaProducao(producao, designers, { desde: DESDE })).toEqual([{ chave: 'saiu:r2', tipo: 'saiu', nome: 'Fábio Dias', email: '', membro: '', registro: 'r2' }]);
+  });
+});
+
+describe('cada pessoa uma vez: o campo dos designers separado (#176)', () => {
+  it('dois e três nomes juntados pela vírgula viram pessoas', () => {
+    expect(separarPessoas('Ana Prado, Bruno Sá')).toEqual(['Ana Prado', 'Bruno Sá']);
+    expect(separarPessoas('Ana Prado, Bruno Sá, Caio Reis')).toEqual(['Ana Prado', 'Bruno Sá', 'Caio Reis']);
+  });
+
+  it('o "e" e o ponto e vírgula também separam; o hífen do nome não', () => {
+    expect(separarPessoas('Ana Prado, Bruno Sá e Caio Reis')).toEqual(['Ana Prado', 'Bruno Sá', 'Caio Reis']);
+    expect(separarPessoas('Ana Prado; Jean-Luc Dias E Caio Reis')).toEqual(['Ana Prado', 'Jean-Luc Dias', 'Caio Reis']);
+    // o "e" dentro de um nome (Elisa, Teles) não separa
+    expect(separarPessoas('Elisa Teles')).toEqual(['Elisa Teles']);
+  });
+
+  it('sem os espaços a mais, e o vazio fica de fora', () => {
+    expect(separarPessoas('  Ana   Prado ,Bruno  Sá ;; , ')).toEqual(['Ana Prado', 'Bruno Sá']);
+    expect(separarPessoas('')).toEqual([]);
+    expect(separarPessoas(null)).toEqual([]);
+  });
+
+  it('a lista (o campo de lista ou de link) também passa, e cada pessoa aparece uma vez, sem caixa e acento', () => {
+    expect(separarPessoas(['Ana Prado', 'Bruno Sá'])).toEqual(['Ana Prado', 'Bruno Sá']);
+    expect(separarPessoas(['Ana Prado, Bruno Sá', 'ANA PRADO', 'bruno sa'])).toEqual(['Ana Prado', 'Bruno Sá']);
+  });
+
+  it('as repetidas da produção se juntam: a entrada mais recente, a grafia dela e quantas vezes apareceu', () => {
+    const lidos = [
+      { nome: 'Ana Prado, Bruno Sá', ultima: '2026-11-20T12:00:00.000Z' },
+      { nome: 'Bruno Sa e Ana Prado', ultima: '2026-11-22T12:00:00.000Z' },
+      { nome: 'ANA PRADO; Caio Reis', ultima: '2026-11-21T12:00:00.000Z' },
+      { nome: 'Caio Reis', ultima: null },
+    ];
+    expect(juntarNaProducao(lidos)).toEqual([
+      { nome: 'Ana Prado', ultima: '2026-11-22T12:00:00.000Z', vezes: 3 },
+      { nome: 'Bruno Sa', ultima: '2026-11-22T12:00:00.000Z', vezes: 2 },
+      { nome: 'Caio Reis', ultima: '2026-11-21T12:00:00.000Z', vezes: 2 },
+    ]);
+  });
+
+  it('quem já está cadastrado não é novidade, mesmo vindo junto com outro nome', () => {
+    const producao = [naProducao('Ana Prado, Bruno Sá, Caio Reis'), naProducao('Bruno Sá, Ana Prado'), naProducao('Caio Reis e Bruno Sá')];
+    const designers = [designer('r1', 'Ana Prado', 'm1'), designer('r3', 'CAIO REIS', '')];
+    expect(novidadesDaProducao(producao, designers, { desde: DESDE })).toEqual([{ chave: 'entrou:BRUNO SA', tipo: 'entrou', nome: 'Bruno Sá', email: '', membro: '', vezes: 3 }]);
+  });
+
+  it('o designer que só aparecia junto com outro nome não "saiu"', () => {
+    const designers = [designer('r1', 'Ana Prado', 'm1'), designer('r2', 'Bruno Sá', 'm2')];
+    expect(novidadesDaProducao([naProducao('Ana Prado, Bruno Sá')], designers, { desde: DESDE })).toEqual([]);
   });
 });
 

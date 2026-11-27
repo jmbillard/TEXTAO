@@ -40,6 +40,8 @@ services:
       - EDICAO_FOTO_TOKEN=${EDICAO_FOTO_TOKEN:-}
       # a prévia de filmes em PDF que o n8n pega do e-mail (#157): POST /api/publico/filmes/previa. Vazia: desligada
       - FILMES_PREVIA_TOKEN=${FILMES_PREVIA_TOKEN:-}
+      # a API das Produções, só de leitura, para o dashboard de um produtor (#185): GET /api/publico/producoes. Vazia: desligada
+      - PRODUCOES_API_TOKEN=${PRODUCOES_API_TOKEN:-}
 
       # ---- Servidor ----
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
