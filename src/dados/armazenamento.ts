@@ -1,3 +1,4 @@
+import type { Ausencia, EscaladaNoDia, PainelDasAusencias } from '../modelo/ausencias';
 import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { registrarPracas } from '../modelo/pracas';
 import { areaDeEntrada, chaveDaExibicao, ehArea, exibicaoDaArea, type Area, type AreaDosRoteiros, type Exibicao } from '../modelo/areas';
@@ -1431,6 +1432,17 @@ export const marcarPendencia = (dia: string, chave: string, certo: boolean) => p
 export const publicarODia = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/publicar?dia=${dia}`, { method: 'POST' });
 /** Desfaz a última publicação do dia (vale a anterior, ou nenhuma) (#127); devolve o dia. */
 export const desfazerAPublicacao = (dia: string) => pedir<DiaDaEscala>(`/api/montar-pauta/desfazer?dia=${dia}`, { method: 'POST' });
+/** O painel das ausências do dia (#128): as que valem a partir da semana, as do dia, a oferta de tirar e o para distribuir. */
+export const lerAusencias = (dia: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/ausencias?dia=${dia}`);
+/** Onde a pessoa está escalada no período, antes de marcar a ausência. */
+export const ondeEstaEscalada = (editor: string, de: string, ate: string) => pedir<{ escalada: EscaladaNoDia[] }>(`/api/montar-pauta/ausencias/onde?${new URLSearchParams({ editor, de, ate })}`);
+/** Marca a ausência; nos rascunhos do período, a posição da pessoa vira vaga. Devolve o painel e onde ela estava. */
+export const marcarAusencia = (dia: string, a: Omit<Ausencia, 'id'>) => pedir<PainelDasAusencias & { marcada: Ausencia; escalada: EscaladaNoDia[] }>(`/api/montar-pauta/ausencias?dia=${dia}`, { method: 'POST', body: JSON.stringify(a) });
+export const apagarAusencia = (dia: string, id: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/ausencias/apagar?dia=${dia}`, { method: 'POST', body: JSON.stringify({ id }) });
+/** Tira a pessoa do dia (publicado): as posições dela ficam vagas e as demandas vão para "para distribuir". */
+export const tirarDoDia = (dia: string, editor: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/tirar?dia=${dia}`, { method: 'POST', body: JSON.stringify({ editor }) });
+/** "Já distribuí": tira a demanda da lista "para distribuir" do dia. */
+export const jaDistribuida = (dia: string, id: string) => pedir<PainelDasAusencias>(`/api/montar-pauta/para-distribuir/tirar?dia=${dia}`, { method: 'POST', body: JSON.stringify({ id }) });
 /** Lê o Andamento (guardado alguns minutos no servidor); `deNovo` vai ao GitHub. */
 export const lerAndamentoDoProjeto = (deNovo = false) => pedir<AndamentoDoProjeto>(`/api/andamento-do-projeto${deNovo ? '?deNovo=1' : ''}`);
 /** A correção de grafia (#114, só administradores): uma página das propostas da pauta de um grupo, e o resumo. */

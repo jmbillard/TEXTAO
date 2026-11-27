@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { escolhaLembradaDaPauta, lembrarNaPauta, lerSemanaDaPauta } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { PERIODOS, colunasDaSemana, diaEmSaoPaulo, diasDaSemana, gradeDaSemana, segundaDaSemana, semanaVizinha, type ArranjoDaSemana, type ArranjoDoDia, type CelulaDaSemana, type ColunaDaSemana, type ColunaDoDia, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { ForaNaPautaTela } from './ForaNaPauta';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { DIAS_DA_SEMANA, FichaDaClaquete, FiltroDaPautaTela, ItemDaPauta, MESES, SobreALeitura, VisaoDaPauta, contagem, hashDaPauta, partes, useReleitura, type EnderecoDaPauta } from './pecasDaPauta';
@@ -313,6 +314,7 @@ function SemanaDaPautaTela({ semana, arranjo, mudarArranjo, irPara, voltar, filt
           </div>
         </div>
         {!falha && <SobreALeitura leitura={atual} />}
+        {!falha && atual && <ForaNaPautaTela fora={atual.fora} dias={atual.dias} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}

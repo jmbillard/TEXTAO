@@ -28,6 +28,12 @@
 // de novo entra no histórico; Desfazer volta à publicação anterior e, de novo, tira a publicação: a Pauta volta a ser
 // só a do Teable.
 //
+// Ausências (#128): a Bia marca as férias da Elis de amanhã a três dias depois, com observação. Antes de marcar, o
+// diálogo diz quantos dias cobre e onde a Elis está na escala; marcada, a posição dela vira vaga (com as demandas) e
+// ela aparece no "Fora no dia", com o motivo. Publicado o dia, a folga do Rui não mexe no publicado: o painel oferece
+// tirá-lo, e tirar deixa a posição vaga, manda as demandas para "Para distribuir" e o dia fica alterado. Na Pauta da
+// edição, a Lia vê os dois "fora", sem o motivo; a administradora vê o motivo.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:montar-pauta
 // Com CAPTURAS=pasta, grava as capturas (densidade 2).
 const assert = require('node:assert/strict');
@@ -480,6 +486,81 @@ async function conferirEPublicar(navegador, url, teable) {
   console.log('ok: conferir, corrigir, "está certo", publicar, a Pauta sem dobrar, alterado, republicar e desfazer');
 }
 
+/* ---------- ausências com período (#128) ---------- */
+const curto = (iso) => `${semanaDe(iso)} ${diaMes(iso)}`;
+async function ausencias(navegador, url, api) {
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`);
+  await p.locator('.montar-celula').first().waitFor();
+  const painel = p.locator('.aus-painel');
+  await painel.getByText('ninguém').waitFor();
+  const dialogo = p.getByRole('dialog', { name: 'Marcar ausência' });
+  const marcarComo = async (editor, tipo) => {
+    await painel.getByRole('button', { name: 'Marcar ausência' }).click();
+    await dialogo.waitFor();
+    await dialogo.getByLabel('Quem').fill(editor);
+    await dialogo.getByRole('radio', { name: tipo }).click();
+  };
+
+  // as férias da Elis: o diálogo diz quantos dias e onde ela está na escala, antes de marcar
+  await marcarComo('Elis Furtado', 'Férias');
+  await dialogo.getByLabel('De').fill(amanha);
+  await dialogo.getByLabel('Até (o último dia fora)').fill(mais(amanha, 3));
+  await dialogo.getByLabel('Observação').fill('volta depois');
+  await dialogo.getByText(`Cobre 4 dias, de ${curto(amanha)} a ${curto(mais(amanha, 3))}`).waitFor();
+  await dialogo.getByText(`Elis está na escala em ${curto(amanha)} (tarde): lá a posição vira vaga.`).waitFor();
+  await capturar(p, '08-ausencia-marcar');
+  await dialogo.getByRole('button', { name: 'Marcar férias' }).click();
+  await dialogo.waitFor({ state: 'detached' });
+  // marcada: a posição da Elis vira vaga, com as demandas; ela aparece fora, com o motivo
+  await painel.locator('.aus-pessoa', { hasText: 'Elis Furtado' }).getByText(`férias até ${diaMes(mais(amanha, 3))} · volta depois`).waitFor();
+  await painel.getByText(`A posição ficou vaga em ${curto(amanha)} (tarde).`).waitFor();
+  const tarde = turno(p, 'Tarde').locator('.montar-celula').first();
+  await p.waitForFunction(() => [...document.querySelectorAll('.montar-turno')].find((t) => t.querySelector('h2')?.textContent === 'Tarde')?.querySelector('[data-campo="editor"]')?.value === '');
+  assert.ok((await tarde.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value))).some((v) => /Mundo Animal/.test(v)), 'a vaga fica com as demandas');
+
+  // publicado o dia, a folga do Rui não mexe sozinha: o painel oferece tirar
+  const r = await fetch(`${api}/montar-pauta/publicar?dia=${amanha}`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': BIA } });
+  assert.equal(r.status, 200, 'publicou');
+  await p.reload();
+  await p.locator('.montar-celula').first().waitFor();
+  await marcarComo('Rui Teixeira', 'Folga');
+  await dialogo.getByLabel('Observação').fill('comp');
+  await dialogo.getByText(`${curto(amanha)} já foi publicado com Rui: depois de marcar, dá para tirar de lá.`).waitFor();
+  await dialogo.getByRole('button', { name: 'Marcar folga' }).click();
+  await dialogo.waitFor({ state: 'detached' });
+  const oferta = painel.locator('.aus-oferta', { hasText: 'Rui Teixeira' });
+  await oferta.getByText(`está na pauta publicada de ${curto(amanha)} (madrugada)`).waitFor();
+  assert.equal(await turno(p, 'Madrugada').locator('[data-campo="editor"]').first().inputValue(), 'Rui Teixeira', 'o publicado não muda sozinho');
+  assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'publicado');
+  await oferta.getByRole('button', { name: `Tirar Rui de ${curto(amanha)}` }).click();
+  // tirado: a posição vaga, as demandas para distribuir, o dia alterado
+  await painel.locator('.aus-distribuir').waitFor();
+  assert.deepEqual(await painel.locator('.aus-distribuir .mono').allInnerTexts(), [`Noite de Gala ${diaMes(amanha)} (DP)`, 'COMUNICAÇÃO']);
+  await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'alterado');
+  assert.equal(await turno(p, 'Madrugada').locator('[data-campo="editor"]').first().inputValue(), '', 'a posição do Rui ficou vaga');
+  assert.equal(await painel.locator('.aus-oferta').count(), 0, 'a oferta sai');
+  await semRolagemDeLado(p, 'ausências');
+  await capturar(p, '09-ausencia-tirada-do-publicado', { fullPage: true });
+
+  // na Pauta da edição: todos veem "fora"; o motivo, só a coordenação e os administradores
+  const lia = await abrir(navegador, url, LIA, `#/pauta/dia/${amanha}`);
+  const fora = lia.p.locator('.pauta-fora');
+  await fora.waitFor();
+  assert.deepEqual(await fora.locator('.pauta-fora-nome').allInnerTexts(), ['Elis Furtado', 'Rui Teixeira']);
+  assert.deepEqual(await fora.locator('.pauta-fora-det').allInnerTexts(), ['fora', 'fora']);
+  assert.doesNotMatch(await fora.innerText(), /férias|folga|volta depois|comp/, 'a Lia não vê o motivo');
+  await capturar(lia.p, '10-pauta-fora');
+  const doChefe = await (await fetch(`${api}/pauta/dia?dia=${amanha}`, { headers: { 'cf-access-authenticated-user-email': CHEFE } })).json();
+  assert.deepEqual(doChefe.fora.map((f) => f.motivo), [`férias até ${diaMes(mais(amanha, 3))}`, 'folga'], 'a administradora vê o motivo');
+
+  assert.equal(escritasNoTeable.length, 0, 'nada foi escrito nos cadastros');
+  assert.deepEqual(erros, [], 'ausências: erros na página');
+  assert.deepEqual(lia.erros, [], 'pauta com fora: erros na página');
+  await lia.ctx.close();
+  await ctx.close();
+  console.log('ok: marcar a ausência, a vaga nos rascunhos, tirar do dia publicado e o "fora" na Pauta');
+}
+
 async function principal() {
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   const cadastros = criarCadastros({ ...ENV_CADASTROS, CADASTRO_ADMINS: CHEFE }, { buscar: buscarNoTeable });
@@ -500,6 +581,7 @@ async function principal() {
     await noCelular(navegador, s.url);
     await conferirEPublicar(navegador, s.url, teable);
     await turnosDaConfiguracao(navegador, s.url, s.app);
+    await ausencias(navegador, s.url, s.api);
   } catch (e) {
     falhou = true;
     console.error(e);

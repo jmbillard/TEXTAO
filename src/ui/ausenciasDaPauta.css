@@ -1,0 +1,125 @@
+/* Montar a pauta, ausências (#128): o painel acima da grade e o diálogo de marcar. Os estados vão em texto, etiqueta
+   ou fundo levemente tingido (nada de faixa colorida na borda). */
+.aus-painel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--regua);
+  border-radius: 12px;
+  background: var(--papel);
+}
+.aus-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.aus-linha .espaco { flex: 1; }
+.aus-rotulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tinta3);
+}
+.aus-n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--neutro);
+  color: var(--tinta2);
+  letter-spacing: 0;
+}
+.aus-ninguem { font-size: 13px; color: var(--tinta3); }
+.aus-fora, .aus-distribuir ul, .aus-ja ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.aus-pessoa {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 10px 3px 3px;
+  border: 1px dashed var(--regua-forte);
+  border-radius: 999px;
+  font-size: 13px;
+}
+.aus-painel .pauta-avatar, .aus-dlg .pauta-avatar {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  font-size: 9.5px;
+}
+.aus-pessoa strong { font-weight: 500; }
+.aus-motivo, .aus-de { color: var(--tinta3); font-size: 12.5px; overflow-wrap: anywhere; }
+.aus-aviso, .aus-erro { margin: 0; font-size: 13px; color: var(--tinta2); }
+.aus-erro { color: var(--perigo); }
+.aus-oferta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--falta-fundo);
+  color: var(--tinta);
+  font-size: 13px;
+}
+.aus-oferta span { flex: 1 1 260px; }
+.aus-distribuir { display: flex; flex-direction: column; gap: 6px; }
+.aus-distribuir ul { flex-direction: column; }
+.aus-distribuir li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 13px; }
+.aus-distribuir .mono { font-family: var(--mono); font-size: 12.5px; }
+
+.aus-veu {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10vh 16px 24px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--mesa) 70%, rgb(0 0 0 / 35%));
+}
+.aus-dlg {
+  width: min(520px, 100%);
+  padding: 18px 20px 16px;
+  border-radius: 16px;
+  background: var(--papel);
+  color: var(--tinta);
+  box-shadow: var(--sombra-menu);
+}
+.aus-dlg form { display: flex; flex-direction: column; gap: 12px; }
+.aus-dlg-topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.aus-dlg-topo h2 { margin: 0; font: 400 24px/1.2 var(--serifa); }
+.aus-rot { display: flex; flex-direction: column; gap: 4px; flex: 1; font-size: 12px; font-weight: 500; color: var(--tinta2); }
+.aus-in {
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--regua-forte);
+  border-radius: 8px;
+  background: var(--cartao);
+  color: var(--tinta);
+  font: 400 14px var(--sans);
+}
+.aus-datas { display: flex; flex-wrap: wrap; gap: 10px; }
+.aus-tipos { align-self: flex-start; }
+.aus-efeito { min-height: 1.5em; margin: 0; font-size: 13px; line-height: 1.5; color: var(--tinta2); }
+.aus-dlg-pe { display: flex; justify-content: flex-end; gap: 8px; }
+.aus-ja { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--regua); display: flex; flex-direction: column; gap: 6px; }
+.aus-ja ul { flex-direction: column; }
+.aus-ja li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.aus-ja-nome { font-weight: 500; }
+.aus-ja .aus-motivo { flex: 1; }

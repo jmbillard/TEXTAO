@@ -48,6 +48,8 @@ import { ilhasOcupadas } from '../src/modelo/ilhas.ts';
 import { conferirTurnos, turnosArrumados, turnosDaConfiguracao, turnosDoDia } from '../src/modelo/turnos.ts';
 import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
+import { ausenciaDoPedido, criarAusencias } from './ausencias.mjs';
+import { foraNaPauta } from '../src/modelo/ausencias.ts';
 import { conferirODia, pendenciasQueFicaram } from '../src/modelo/conferenciaDaEscala.ts';
 import { juntarAPublicada } from '../src/modelo/pautaPublicada.ts';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
@@ -730,6 +732,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const ilhas = criarIlhas(db);
   // o caminho do Padeiro (#137): a chave do Padeiro (só o hash), no SQLite
   const padeiros = criarPadeiros(db);
+  // as ausências com período (#128) e as demandas para distribuir, no SQLite, junto da escala
+  const ausencias = criarAusencias(db);
   /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
   const daPessoa = (email, admin) => areas.daPessoa(email, { cadastros, admin, preferencias, coordenacao: escala.ehCoordenacao(email) });
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
@@ -1706,6 +1710,44 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     } catch (e) {
       if (!e.status) throw e;
       return json(res, e.status, { erro: e.message });
+    }
+  }
+
+  /**
+   * As ausências (#128), só para a coordenação. GET /api/montar-pauta/ausencias?dia= é o painel do dia (as ausências
+   * que valem a partir da semana dele, as do dia, a oferta de tirar quem continua num dia publicado e as demandas para
+   * distribuir); /ausencias/onde?editor=&de=&ate= diz onde a pessoa está escalada no período, antes de marcar;
+   * /ausencias/historico?editor= tem também as apagadas. Os POST devolvem o painel: /ausencias { editor, tipo, de,
+   * ate, observacao } marca (e, nos rascunhos, a posição vira vaga; volta também `marcada` e `escalada`);
+   * /ausencias/apagar { id }; /tirar { editor } tira a pessoa do dia (as demandas vão para distribuir);
+   * /para-distribuir/tirar { id } tira a demanda da lista. Nada vai ao Teable.
+   */
+  async function rotaDasAusencias(req, res, eu, acao) {
+    const leitura = ['ausencias', 'ausencias/onde', 'ausencias/historico'].includes(acao) && req.method === 'GET';
+    if (!leitura && req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    if (!escala.ehCoordenacao(eu.email)) return json(res, 403, { erro: 'Só a coordenação marca as ausências.' });
+    const busca = new URL(req.url, 'http://x').searchParams;
+    const dia = diaOuHoje(busca.get('dia') ?? '', '') || diaVizinho(diaEmSaoPaulo(), 1);
+    try {
+      if (acao === 'ausencias/onde') return json(res, 200, { escalada: ausencias.onde(busca.get('editor'), busca.get('de'), busca.get('ate')) });
+      if (acao === 'ausencias/historico') return json(res, 200, { historico: ausencias.historico(busca.get('editor')) });
+      let marcou = {};
+      if (req.method === 'POST') {
+        const corpo = (await lerCorpo(req)) ?? {};
+        if (acao === 'ausencias') {
+          marcou = ausencias.marcar(ausenciaDoPedido(corpo), eu.email);
+          console.log(`[montar-pauta] ${eu.email} marcou uma ausência (${marcou.marcada.de} a ${marcou.marcada.ate})`);
+        }
+        if (acao === 'ausencias/apagar') ausencias.apagar(corpo.id, eu.email);
+        if (acao === 'tirar') {
+          ausencias.tirar(dia, corpo.editor, eu.email);
+          console.log(`[montar-pauta] ${eu.email} tirou uma pessoa de ${dia}`);
+        }
+        if (acao === 'para-distribuir/tirar') ausencias.distribuida(dia, corpo.id);
+      }
+      return json(res, 200, { ...ausencias.painel(dia, segundaDaSemana(dia)), ...marcou });
+    } catch (e) {
+      return json(res, e.status ?? 400, { erro: e instanceof Error ? e.message : 'Pedido inválido.' });
     }
   }
 
@@ -2866,9 +2908,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const vistas = filtro ? filtrarAPauta(linhas, filtro, voce) : linhas;
       const editores = !filtro ? s.editores : ehDia ? colunasDoDia(vistas).map((c) => c.editor) : ordemDosEditores(vistas);
       const resumo = cadastros.podeApagar(eu.email) ? { resumo: resumoDaPauta(linhas, s.alteradoEm) } : {};
-      return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, ...resumo });
+      // quem está fora (#128): todos veem "fora"; o motivo e a observação, só a coordenação e os administradores
+      const fora = foraNaPauta(ausencias.noPeriodo(dias[0], dias.at(-1)), dias, escala.ehCoordenacao(eu.email) || cadastros.podeApagar(eu.email));
+      return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, fora, ...resumo });
     }
     if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
+    const acaoDasAusencias = /^\/api\/montar-pauta\/(ausencias|ausencias\/onde|ausencias\/historico|ausencias\/apagar|tirar|para-distribuir\/tirar)$/.exec(caminho);
+    if (acaoDasAusencias) return rotaDasAusencias(req, res, eu, acaoDasAusencias[1]);
     const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer)$/.exec(caminho);
     if (acaoDoMontar) return rotaDeMontarAPauta(req, res, eu, acaoDoMontar[1]);
     if (caminho === '/api/correcoes/pauta') {

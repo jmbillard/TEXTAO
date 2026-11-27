@@ -9,6 +9,7 @@ import type { Ilha } from '../modelo/ilhas';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
+import { AusenciasDoDia } from './AusenciasDaPauta';
 import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
 import './pauta.css';
 import './montarPauta.css';
@@ -286,6 +287,8 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
         {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
+        {/* as ausências (#128): quem está fora no dia, marcar, a oferta de tirar do dia publicado e o para distribuir */}
+        {atual && <AusenciasDoDia dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}

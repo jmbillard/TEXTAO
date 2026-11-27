@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { lerDiaDaPauta } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { agoraNaRegua, colunasDoDia, diaDaPautaAgora, diaOuHoje, diaVizinho, fimNaRegua, naRegua, noArAgora, resumoDaProducao, segundaDaSemana, type ArranjoDoDia as Arranjo, type ColunaDoDia, type DiaDaPauta, type LeituraDaPauta, type LinhaDaPauta } from '../modelo/pauta';
+import { ForaNaPautaTela } from './ForaNaPauta';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import { DIAS_DA_SEMANA, FichaDaClaquete, FiltroDaPautaTela, ItemDaPauta, MESES, SobreALeitura, VisaoDaPauta, artesEscritas, contagem, partes, useReleitura, type EnderecoDaPauta } from './pecasDaPauta';
@@ -248,6 +249,7 @@ export function PautaDoDia({ dia, arranjo, mudarArranjo, irPara, voltar, filtro,
           </div>
         </div>
         {!falha && <SobreALeitura leitura={atual} />}
+        {!falha && atual && <ForaNaPautaTela fora={atual.fora} dias={[atual.dia]} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}

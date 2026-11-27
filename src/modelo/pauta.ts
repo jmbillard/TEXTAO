@@ -4,6 +4,7 @@
    meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. As versões
    da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. A claquete cruza com as
    Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
+import type { ForaNaPauta } from './ausencias.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
 import type { Etapa } from './producao.ts';
 import { chaveDaClaquete, chaveDaClaqueteNoPadrao, lerDataDaClaquete } from './vocabularios.ts';
@@ -77,6 +78,8 @@ export interface LeituraDaPauta {
   /** 'copia': o Postgres do Teable não respondeu, e a pauta saiu da última cópia local, tirada em `copiaEm` */
   origem: 'banco' | 'copia';
   copiaEm: string | null;
+  /** quem está fora em cada dia (#128): o motivo e a observação só para a coordenação e os administradores */
+  fora?: ForaNaPauta[];
 }
 
 const FUSO = 'America/Sao_Paulo';
