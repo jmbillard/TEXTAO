@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { formaDaAgendaDeFilmes, lembrarFormaDaAgendaDeFilmes, lerAgendaDeFilmes } from '../dados/armazenamento';
-import { FORMAS_DA_AGENDA, caminhoNoSistema, porData, porSessao, type AgendaDeFilmes as Agenda, type ExibicaoDoFilme, type FilmeDaAgenda, type FilmeNaAgenda, type FormaDaAgenda } from '../filmes/agenda';
+import { FORMAS_DA_AGENDA, caminhoNoSistema, porData, porSessao, type AgendaDeFilmes as Agenda, type ExibicaoDoFilme, type FilmeDaAgenda, type FilmeNaAgenda, type FormaDaAgenda } from '../modelo/agendaDeFilmes';
 import { ROTULO_DA_ETAPA } from '../modelo/pauta';
 import type { DiaDaSemana } from './fila';
 import { CardAberto, FecharOCardAberto } from './CardAberto';

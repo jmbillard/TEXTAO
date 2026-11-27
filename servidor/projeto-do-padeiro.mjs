@@ -111,7 +111,8 @@ export function linhaDoProjeto(envio, agora = new Date()) {
 
 /**
  * @param buscar o fetch do Teable (o de verdade ou um falso)
- * @returns receber(corpo, { env, cadastros, trello, designer, reativar }) → { itens }
+ * @returns receber(corpo, { env, cadastros, trello, designer, reativar }) → { itens }; e ligarAAtracao(env, trello,
+ *   cardId, { nova, tira }), o link `atracao` da linha do card (também do card aberto, #173)
  */
 export function criarProjetoDoPadeiro({ buscar = fetch } = {}) {
   async function teable(env, metodo, caminho, corpo) {
@@ -141,14 +142,25 @@ export function criarProjetoDoPadeiro({ buscar = fetch } = {}) {
     }
   }
 
-  /** 2. O card ligado à atração (o link `atracao` da linha do card na produção da arte). @returns '' ligou, ou o motivo */
-  async function ligarOCard(env, trello, cardId, atracaoId) {
+  /**
+   * O link `atracao` da linha do card na produção da arte (ARTE_producao), só na base do PROMeiro: a atração `nova` em
+   * primeiro e, depois, as que a linha já tinha, menos as que `tira` tira. É a escrita do card ligado (o passo 2) e a
+   * do card aberto da tela de produções (#173: trocar, ligar e desligar a atração).
+   * @param nova o id da atração no cadastro, ou '' (nenhuma: desligar)
+   * @param tira ({ id, title }) => true para o link antigo que sai
+   * @returns '' gravou; 'fora' o card não tem linha na produção da arte; ou o motivo de não poder gravar. Lança quando
+   *   o Teable recusa
+   */
+  async function ligarAAtracao(env, trello, cardId, { nova = '', tira = () => false } = {}) {
     const tabela = idDaTabela(env, 'ARTE_producao');
     if (!tabela || !trello?.producaoDosCards) return 'a produção da arte não está configurada';
+    const base = String(env.TEABLE_PG_ESQUEMA ?? '').trim();
+    if (!base || env.tabelas?.ARTE_producao?.esquema !== base) return 'a produção da arte não está na base do PROMeiro';
+    if (!String(env.TEABLE_URL ?? '').trim() || !String(env.TEABLE_TOKEN || env.TEABLE_TOKEN_ESCRITA || '').trim()) return 'o Teable não está configurado';
     const linha = ((await trello.producaoDosCards([cardId])) ?? []).find((l) => l.card === cardId);
     if (!linha) return 'fora';
     const antes = Array.isArray(linha.inteira?.atracao) ? linha.inteira.atracao : typeof linha.inteira?.atracao === 'string' ? JSON.parse(linha.inteira.atracao || '[]') : [];
-    const links = [{ id: atracaoId }, ...antes.filter((x) => x?.id && x.id !== atracaoId).map((x) => ({ id: x.id }))];
+    const links = [...(nova ? [{ id: nova }] : []), ...antes.filter((x) => x?.id && x.id !== nova && !tira(x)).map((x) => ({ id: x.id }))];
     await teable(env, 'PATCH', `/table/${encodeURIComponent(tabela)}/record/${encodeURIComponent(linha.registro)}`, { fieldKeyType: 'name', typecast: true, record: { fields: { atracao: links } } });
     return '';
   }
@@ -198,7 +210,7 @@ export function criarProjetoDoPadeiro({ buscar = fetch } = {}) {
     // 2. o card ligado à atração nova
     if (envio.nova && card && atracao) {
       try {
-        const falta = await ligarOCard(env, trello, card.id, atracao.id);
+        const falta = await ligarAAtracao(env, trello, card.id, { nova: atracao.id });
         if (falta === 'fora') item('erro', `o card${claq} não está no banco: não deu para ligá-lo à atração`);
         else if (falta) item('erro', `não deu para ligar o card${claq} à atração no banco (${falta})`);
         else item('cardLigado', `card${claq} ligado à atração`);
@@ -233,5 +245,5 @@ export function criarProjetoDoPadeiro({ buscar = fetch } = {}) {
     return { itens, envio };
   }
 
-  return { receber };
+  return { receber, ligarAAtracao };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SEM_SESSAO, caminhoNoSistema, formaDaAgenda, porData, porSessao, recusaDaFormaDaAgenda, type ExibicaoDoFilme, type FilmeDaAgenda } from '../src/filmes/agenda';
+import { SEM_SESSAO, caminhoNoSistema, formaDaAgenda, porData, porSessao, recusaDaFormaDaAgenda, type ExibicaoDoFilme, type FilmeDaAgenda } from '../src/modelo/agendaDeFilmes';
 
 /* A agenda de filmes da aba Filmes (#169): os filmes agrupados por data de exibição ou por sessão. Títulos inventados. */
 
