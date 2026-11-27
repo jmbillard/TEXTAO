@@ -890,6 +890,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const ctx = {
       ...papel,
       admin: cadastros.podeApagar(eu.email),
+      // o designer de quem vê: o card aberto muda a atração, o prazo, os designers e as artes (#160)
+      designer: pessoas.designerDoEmail(eu.email)?.nome ?? null,
       cardDe: (pid) => comAsVersoes(producoes.daCampanha(pid, atracaoDaClaquete)),
       candidatas: () => comAsVersoesDeTodos(producoes.naTela(new Date(Date.now() - DIAS_DO_ENTREGUE * 86_400_000).toISOString(), atracaoDaClaquete)),
       pautaDe: pautaDasProducoes,
@@ -3534,7 +3536,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // as campanhas (#178): GET ?q=<termo> para qualquer pessoa logada, com quantas Produções cada uma tem (sem as
       // arquivadas) e quando foi mexida por último; POST { nome } cria (o administrador, a coordenação, o designer e o
       // redator), e o nome que já existe devolve a que existe. Só o PROMeiro
-      if (req.method === 'GET') return json(res, 200, { campanhas: campanhas.lista((new URL(req.url, 'http://x').searchParams.get('q') ?? '').slice(0, 100)) });
+      // (#180: e se quem pede cria, para o "+ Nova campanha" da lista)
+      if (req.method === 'GET') return json(res, 200, { campanhas: campanhas.lista((new URL(req.url, 'http://x').searchParams.get('q') ?? '').slice(0, 100)), voce: { podeMudar: (await papelNasCampanhas(eu)).podeMudar } });
       if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
       const papel = await papelNasCampanhas(eu);
       if (!papel.podeMudar) return json(res, 403, { erro: SEM_PAPEL_NAS_CAMPANHAS });

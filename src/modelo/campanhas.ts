@@ -1,7 +1,7 @@
 /* A Campanha (#177, #178): um conjunto de Produções com um nome. Uma Produção pode estar em várias; a etiqueta do card
    mostra a primeira ligada e "+N" das outras. Puro: a tela de Produções, o card aberto e, depois, a Pauta e a agenda
    (#181) leem daqui. */
-import { nomeComparavel } from './ligarPeloNome';
+import { nomeComparavel } from './ligarPeloNome.ts';
 
 /** A campanha como o card mostra. */
 export interface CampanhaDoCard {

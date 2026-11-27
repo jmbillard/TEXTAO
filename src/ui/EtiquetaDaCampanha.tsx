@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { etiquetasDoCard, tomDaCampanha, type CampanhaDoCard } from '../modelo/campanhas';
+import { etiquetasDoCard, hashDaCampanha, tomDaCampanha, type CampanhaDoCard } from '../modelo/campanhas';
 import { Icone } from './icones';
 import { Vagas } from './vagas';
 import './etiquetaDaCampanha.css';
@@ -20,8 +20,23 @@ interface Props {
   modo?: 'compacta' | 'todas';
   /** tirar a Produção da campanha (só no modo 'todas', para quem pode) */
   tirar?: (c: CampanhaDoCard) => void;
-  /** abrir a campanha (a página dela, #179): com ele, a pílula é um botão */
-  abrir?: (c: CampanhaDoCard) => void;
+  /** abrir a campanha: por padrão, a página dela (#180), em qualquer tela; false deixa a pílula só para ler */
+  abrir?: ((c: CampanhaDoCard) => void) | false;
+}
+
+/** Ir para a página da campanha (#180) de qualquer tela: o endereço muda e o app troca de tela, como no voltar do
+    navegador. */
+export function abrirACampanha(c: Pick<CampanhaDoCard, 'id'>) {
+  const hash = hashDaCampanha(c.id);
+  if (location.hash === hash) return;
+  try {
+    history.pushState(null, '', hash);
+  } catch {
+    location.hash = hash;
+    return;
+  }
+  window.scrollTo(0, 0);
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 /** As campanhas que chegaram depois da montagem: só elas entram carimbadas (a tela que abre não carimba tudo). */
@@ -45,7 +60,8 @@ function useChegadas(ids: readonly string[]) {
   return chegadas;
 }
 
-export function EtiquetaDaCampanha({ campanhas, modo = 'compacta', tirar, abrir }: Props) {
+export function EtiquetaDaCampanha({ campanhas, modo = 'compacta', tirar, abrir: abrirPedido }: Props) {
+  const abrir = abrirPedido === false ? undefined : (abrirPedido ?? abrirACampanha);
   const todas = campanhas ?? [];
   const chegadas = useChegadas(todas.map((c) => c.id));
   const pilula = (c: CampanhaDoCard) => <Pilula key={c.id} c={c} chegou={chegadas.has(c.id)} tirar={modo === 'todas' ? tirar : undefined} abrir={abrir} />;
@@ -82,7 +98,7 @@ function Pilula({ c, chegou, tirar, abrir }: { c: CampanhaDoCard; chegou: boolea
   return (
     <span className={classe} data-campanha={c.id} data-tom={tomDaCampanha(c.id)} title={c.nome}>
       {abrir ? (
-        <button type="button" className="campanha-abrir" onClick={() => abrir(c)}>
+        <button type="button" className="campanha-abrir" title={`Abrir a campanha ${c.nome}`} onClick={() => abrir(c)}>
           {dentro}
         </button>
       ) : (

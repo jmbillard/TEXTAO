@@ -12,6 +12,8 @@ import { Pauta } from './ui/Pauta';
 import { MontarPauta } from './ui/MontarPauta';
 import { enderecoDaPauta, entradaDaPauta, hashDaPauta } from './ui/pecasDaPauta';
 import { Producoes } from './ui/Producoes';
+import { ListaDasCampanhas, PaginaDaCampanha } from './ui/Campanhas';
+import { HASH_DAS_CAMPANHAS, campanhaDoHash, hashDaCampanha } from './modelo/campanhas';
 import { MeusRoteiros } from './ui/MeusRoteiros';
 import { CaminhosDoTopo, SeletorDeArea } from './ui/SeletorDeArea';
 import { ehAreaDosRoteiros, type Area, type AreaDosRoteiros } from './modelo/areas';
@@ -39,7 +41,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string; ilhas?: boolean } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'correcoes' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'montar'; dia: string } | { t: 'area'; area: AreaDosRoteiros; roteiro?: string } | { t: 'producoes' };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string; ilhas?: boolean } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'correcoes' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'montar'; dia: string } | { t: 'area'; area: AreaDosRoteiros; roteiro?: string } | { t: 'producoes' } | { t: 'campanhas'; id?: string };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -70,6 +72,9 @@ const telaDoHash = (): Tela => {
   if (/^#\/correcoes\/?$/.test(location.hash)) return { t: 'correcoes' };
   // a tela de produções (#109): na área Designer, ao lado da agenda No Trello
   if (/^#\/designer\/producoes\/?$/.test(location.hash)) return { t: 'producoes' };
+  // as campanhas (#180): a lista e a página de cada uma, com o endereço próprio
+  const camp = campanhaDoHash(location.hash);
+  if (camp) return { t: 'campanhas', id: camp.id };
   // o roteiro aberto do Redator e do Editor (#104), só para leitura, com o seu endereço
   const ra = /^#\/(redator|editor)\/r\/(.+)$/.exec(location.hash);
   if (ra && ehAreaDosRoteiros(ra[1])) return { t: 'area', area: ra[1], roteiro: decodeURIComponent(ra[2]) };
@@ -223,7 +228,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.ilhas ? 'ilhas' : (nova.aba ?? 'atracoes')}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'correcoes' ? '#/correcoes' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'montar' ? `#/pauta/montar${nova.dia ? `/${nova.dia}` : ''}` : nova.t === 'area' ? `#/${nova.area}${nova.roteiro ? `/r/${encodeURIComponent(nova.roteiro)}` : ''}` : nova.t === 'producoes' ? '#/designer/producoes' : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.ilhas ? 'ilhas' : (nova.aba ?? 'atracoes')}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'correcoes' ? '#/correcoes' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'montar' ? `#/pauta/montar${nova.dia ? `/${nova.dia}` : ''}` : nova.t === 'area' ? `#/${nova.area}${nova.roteiro ? `/r/${encodeURIComponent(nova.roteiro)}` : ''}` : nova.t === 'producoes' ? '#/designer/producoes' : nova.t === 'campanhas' ? (nova.id ? hashDaCampanha(nova.id) : HASH_DAS_CAMPANHAS) : '#/';
     try {
       if (location.hash !== hash) history.pushState(null, '', hash);
     } catch {
@@ -526,7 +531,7 @@ export function App() {
   /** A linha do logo das telas da Designer fora da fila (#159): Produções, Filmes e a Pauta da edição. É a mesma da fila
       (o logo, o seletor de área, os caminhos e o perfil, nos mesmos lugares), para nada pular ao trocar de tela; os
       caminhos são os da Designer, todos e sempre no mesmo lugar, com o da tela em que a pessoa está aberto (#168). */
-  const topoDaDesigner = (atual: 'producoes' | 'filmes' | 'pauta') => (
+  const topoDaDesigner = (atual: 'producoes' | 'campanhas' | 'filmes' | 'pauta') => (
     <header className="barra-topo">
       <h1 className="bib-marca"><Marca /></h1>
       {seletorDeArea}
@@ -534,6 +539,7 @@ export function App() {
         atual={atual}
         agenda={() => irParaArea('designer')}
         producoes={() => ir({ t: 'producoes' })}
+        campanhas={() => ir({ t: 'campanhas' })}
         filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined}
         pauta={() => ir({ t: 'pauta', ...entradaDaPauta() })}
         montar={montarAPauta}
@@ -568,6 +574,8 @@ export function App() {
       {tela.t === 'producoes' && (
         <Producoes topo={topoDaDesigner('producoes')} />
       )}
+      {tela.t === 'campanhas' && !tela.id && <ListaDasCampanhas topo={topoDaDesigner('campanhas')} abrir={(id) => ir({ t: 'campanhas', id })} />}
+      {tela.t === 'campanhas' && tela.id && <PaginaDaCampanha key={tela.id} id={tela.id} topo={topoDaDesigner('campanhas')} voltar={() => ir({ t: 'campanhas' })} />}
       {semLogin && (
         <div className="faixa-sem-login" role="alert">
           O servidor não reconheceu o seu login: os roteiros estão ficando só neste navegador. Veja <a href="/api/diagnostico" target="_blank" rel="noreferrer">o diagnóstico</a>.
@@ -576,7 +584,7 @@ export function App() {
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete, nova) => ir({ t: 'cadastros', aba: 'atracoes', claquete, ...nova }) : undefined} buscarNaFila={buscarNaFila} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} buscar={buscarNaFila} />}
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
-      {tela.t !== 'area' && tela.t !== 'producoes' && <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />}
+      {tela.t !== 'area' && tela.t !== 'producoes' && tela.t !== 'campanhas' && <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />}
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} topo={topoDaDesigner('filmes')} />}
       {tela.t === 'configuracao' && souAdministrador() && !tela.pagina && <Configuracao voltar={() => ir({ t: 'biblioteca' })} historico={() => ir({ t: 'configuracao', pagina: 'historico' })} portainer={() => ir({ t: 'configuracao', pagina: 'portainer' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'historico' && <HistoricoDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}

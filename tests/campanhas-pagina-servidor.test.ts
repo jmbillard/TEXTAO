@@ -50,7 +50,7 @@ type Pagina = {
   producoes: Card[];
   sugestoes: Card[];
   pauta: { linhas: { producao: string; dia: string; editor: string; claquete: string }[]; erro?: string };
-  voce: { podeMudar: boolean; podeApagar: boolean };
+  voce: { podeMudar: boolean; podeApagar: boolean; designer?: string | null };
 };
 
 let parar: (() => Promise<void>) | null = null;
@@ -200,10 +200,10 @@ describe('a página da campanha (#180)', () => {
   it('apagar: só o administrador ou quem criou; as Produções ficam; o desfazer traz a campanha e as ligações de volta', async () => {
     const { p, ana, rita, chefe, davi, post, criada, pagina, lista } = await preparado();
     const c = await criada('Lançamento', [p.novela, p.elenco]);
-    expect((await pagina(c.id, ana)).voce).toEqual({ podeMudar: true, podeApagar: true });
-    expect((await pagina(c.id, rita)).voce).toEqual({ podeMudar: true, podeApagar: false });
-    expect((await pagina(c.id, chefe)).voce).toEqual({ podeMudar: true, podeApagar: true });
-    expect((await pagina(c.id, davi)).voce).toEqual({ podeMudar: false, podeApagar: false });
+    expect((await pagina(c.id, ana)).voce).toEqual({ podeMudar: true, podeApagar: true, designer: 'Ana Souza' });
+    expect((await pagina(c.id, rita)).voce).toEqual({ podeMudar: true, podeApagar: false, designer: null });
+    expect((await pagina(c.id, chefe)).voce).toMatchObject({ podeMudar: true, podeApagar: true });
+    expect((await pagina(c.id, davi)).voce).toEqual({ podeMudar: false, podeApagar: false, designer: null });
     // a Rita (redatora) liga e tira, mas não apaga a campanha que não criou
     const recusa = await post(rita, `/api/campanhas/${c.id}/apagar`);
     expect(recusa.status).toBe(403);
@@ -262,5 +262,11 @@ describe('a lista das campanhas (#180)', () => {
     expect(todas[0]).toMatchObject({ producoes: 0, etapas: { entrada: 0, produzindo: 0, entregue: 0 } });
     expect(Date.parse(todas[1].mexidaEm)).toBeGreaterThan(0);
     expect((await lista('sinfonia')).map((c) => c.nome)).toEqual(['Lançamento Sinfonia']);
+  });
+
+  it('diz se quem pede cria campanhas (o "+ Nova campanha")', async () => {
+    const { davi, ana } = await preparado();
+    expect((await (await ana('/api/campanhas')).json()).voce).toEqual({ podeMudar: true });
+    expect((await (await davi('/api/campanhas')).json()).voce).toEqual({ podeMudar: false });
   });
 });

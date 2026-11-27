@@ -232,7 +232,7 @@ export function criarCampanhas(db, { producoes }) {
       producoes: cards,
       sugestoes,
       pauta,
-      voce: { podeMudar: !!ctx.podeMudar, podeApagar: podeApagar(c, ctx) },
+      voce: { podeMudar: !!ctx.podeMudar, podeApagar: podeApagar(c, ctx), designer: ctx.designer ?? null },
     };
   }
 

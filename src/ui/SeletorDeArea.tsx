@@ -86,7 +86,7 @@ function useFilmesParaRevisar(ligado: boolean) {
 }
 
 /** Os caminhos do topo, pela ordem fixa (#168). */
-export type IdDoCaminho = 'agenda' | 'producoes' | 'filmes' | 'pauta' | 'montar';
+export type IdDoCaminho = 'agenda' | 'producoes' | 'campanhas' | 'filmes' | 'pauta' | 'montar';
 
 interface Caminho {
   id: IdDoCaminho;
@@ -102,13 +102,13 @@ let abertoAntes: IdDoCaminho | undefined;
 
 /**
  * Os caminhos da linha do logo (#105, #156, #168): só os ícones, sempre na mesma ordem e no mesmo lugar — na Designer,
- * "No Trello · Produções · Filmes · Pauta da edição"; no Redator e no Editor, só a Pauta. O da tela atual não some: se
+ * "No Trello · Produções · Campanhas (#180) · Filmes · Pauta da edição"; no Redator e no Editor, só a Pauta. O da tela atual não some: se
  * abre com o texto, como as abas dos Cadastros, e a largura anima (a tela nova começa com o caminho da anterior aberto e
  * troca no quadro seguinte). Só para a coordenação, "Montar a pauta" (#123) vem depois da Pauta. A única bolinha
  * separadora fica antes da Pauta, que é de todo mundo. O aviso de filme para revisar é uma bolinha laranja no ícone dos
  * Filmes. O nome de cada um vai na dica (hover e foco) e no `aria-label`. No celular, só os ícones.
  */
-export function CaminhosDoTopo({ agenda, producoes, filmes, pauta, montar, atual }: { agenda?: () => void; producoes?: () => void; filmes?: () => void; pauta?: () => void; montar?: () => void; atual?: IdDoCaminho }) {
+export function CaminhosDoTopo({ agenda, producoes, campanhas, filmes, pauta, montar, atual }: { agenda?: () => void; producoes?: () => void; campanhas?: () => void; filmes?: () => void; pauta?: () => void; montar?: () => void; atual?: IdDoCaminho }) {
   const revisar = useFilmesParaRevisar(!!filmes);
   const [aberto, setAberto] = useState(() => abertoAntes ?? atual);
   useEffect(() => {
@@ -121,6 +121,8 @@ export function CaminhosDoTopo({ agenda, producoes, filmes, pauta, montar, atual
   const caminhos: Caminho[] = [
     ...(agenda ? [{ id: 'agenda' as const, href: '#/designer', nome: 'No Trello', icone: 'quadro' as const, ir: agenda }] : []),
     ...(producoes ? [{ id: 'producoes' as const, href: '#/designer/producoes', nome: 'Produções', icone: 'colunas' as const, ir: producoes }] : []),
+    // as campanhas (#180), logo depois das Produções que elas juntam
+    ...(campanhas ? [{ id: 'campanhas' as const, href: '#/campanhas', nome: 'Campanhas', icone: 'etiqueta' as const, ir: campanhas }] : []),
     ...(filmes ? [{ id: 'filmes' as const, href: '#/filmes', nome: 'Filmes', icone: 'filme' as const, ir: filmes }] : []),
     ...(pauta ? [{ id: 'pauta' as const, href: '#/pauta', nome: 'Pauta da edição', icone: 'edicao' as const, ir: pauta }] : []),
     ...(montar ? [{ id: 'montar' as const, href: '#/pauta/montar', nome: 'Montar a pauta', icone: 'ajustes' as const, ir: montar }] : []),

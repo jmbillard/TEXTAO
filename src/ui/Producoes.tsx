@@ -56,17 +56,17 @@ interface Props {
 }
 
 const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const hojeEmSaoPaulo = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+export const hojeEmSaoPaulo = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 const vizinho = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 /** O dia como a tela escreve: "hoje", "amanhã", "ontem", "qua 25/11". */
-function diaEscrito(dia: string, hoje: string) {
+export function diaEscrito(dia: string, hoje: string) {
   const d = new Date(`${dia}T12:00:00Z`);
   return dia === hoje ? 'hoje' : dia === vizinho(hoje, 1) ? 'amanhã' : dia === vizinho(hoje, -1) ? 'ontem' : `${DIAS_CURTOS[d.getUTCDay()]} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
 }
 
 /** O prazo como o card mostra: "hoje", "amanhã", "sex 20/11"; com a hora quando a exibição traz ("sex 20/11 21h30"). */
-function prazoEscrito(prazo: string, hoje = hojeEmSaoPaulo()) {
+export function prazoEscrito(prazo: string, hoje = hojeEmSaoPaulo()) {
   const nome = diaEscrito(diaDoPrazo(prazo), hoje);
   if (/^\d{4}-\d{2}-\d{2}$/.test(prazo)) return nome;
   const [h, m] = new Date(prazo).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).split(':');
@@ -161,7 +161,7 @@ function AvisoDeFalta({ aviso, indo }: { aviso: NonNullable<Acoes['aviso']>; ind
 }
 
 /** A contagem da coluna: quando muda, o número pula de leve (#159), para o olho ver onde o card foi. */
-function Conta({ n, rotulo, traco = 0 }: { n: number; rotulo: string; traco?: number }) {
+export function Conta({ n, rotulo, traco = 0 }: { n: number; rotulo: string; traco?: number }) {
   const antes = useRef(n);
   const [vez, setVez] = useState(0);
   const [pulando, setPulando] = useState(false);
@@ -208,7 +208,9 @@ const Alca = () => (
 /** O clique que abre a Produção (#113): no card, fora dos botões, do link e do aviso de arte faltando. */
 const cliqueDeAbrir = (e: { target: EventTarget }) => !(e.target as Element).closest('button, a, .prod-aviso');
 
-function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: (el: HTMLElement) => void }) {
+/** O card da Produção (o da agenda No Trello), o mesmo na tela de Produções e na página da campanha (#180).
+    @param extra o que a outra tela põe no pé do card (a Pauta e o tirar da campanha, #180) */
+export function CardDaTela({ c, hoje, acoes, abrir, extra }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: (el: HTMLElement) => void; extra?: ReactNode }) {
   // o apelido da claquete da Produção (#120, #154) no lugar da claquete: só para mostrar; a original, ao passar o mouse
   useApelidos();
   const apelido = apelidoDaProducao(c.id);
@@ -282,6 +284,7 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
           </span>
         )
       )}
+      {extra}
     </li>
   );
 }

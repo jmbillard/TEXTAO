@@ -121,27 +121,7 @@ export function BuscaDasProducoes({ termo, saindo, diaEscrito, prazoEscrito, abr
       }
       dica="também as entregues há mais tempo · Esc limpa"
       nada={achados && !achados.total && !erro ? <p className="prod-nada prod-busca-nada">nenhuma Produção com isso, nem nas antigas</p> : null}
-      linha={(c) => {
-        const apelido = apelidoDaProducao(c.id);
-        const quando = c.etapa === 'entregue' ? (c.entregaEm ? `entregue ${diaEscrito(diaDoPrazo(c.entregaEm))}` : 'entregue') : c.prazo ? `ao ar ${prazoEscrito(c.prazo)}` : 'sem prazo';
-        return (
-          <button type="button" className="prod-achado-abrir" aria-haspopup="dialog" onClick={(e) => abrir(c, e.currentTarget)}>
-            <span className="prod-achado-etapa">
-              <i aria-hidden="true" />
-              {ROTULO_DA_COLUNA[c.etapa]}
-            </span>
-            <span className="prod-achado-nome">
-              <span className="prod-achado-claquete" title={apelido ? `Claquete: ${c.claquete}` : undefined}>
-                {apelido || c.claquete || 'Sem claquete'}
-              </span>
-              <span className="prod-achado-atracao">{c.atracao || 'sem atração'}</span>
-            </span>
-            <span className="prod-achado-praca">{c.praca || '—'}</span>
-            <span className="prod-achado-designers">{c.designers.length ? c.designers.join(', ') : 'ninguém pegou'}</span>
-            <span className={`prod-achado-quando${c.etapa === 'entregue' ? ' entregue' : ''}`}>{quando}</span>
-          </button>
-        );
-      }}
+      linha={(c) => <AchadoDaProducao c={c} diaEscrito={diaEscrito} prazoEscrito={prazoEscrito} aoClicar={(el) => abrir(c, el)} />}
       mais={
         achados?.mais && (
           <button type="button" className="botao prod-busca-mais" disabled={buscando} onClick={maisUma}>
@@ -150,5 +130,41 @@ export function BuscaDasProducoes({ termo, saindo, diaEscrito, prazoEscrito, abr
         )
       }
     />
+  );
+}
+
+/**
+ * A linha de uma Produção achada (#161): a etapa na bolinha, a claquete (ou o apelido) e a atração, a praça, os
+ * designers e o dia. A mesma na busca de Produções e no "ligar Produções" da página da campanha (#180), que escolhe
+ * várias: com `escolhida`, o botão fica apertado (o fundo tingido); com `jaEsta`, a linha diz que já está e não escolhe.
+ */
+export function AchadoDaProducao({ c, diaEscrito, prazoEscrito, aoClicar, escolhida, jaEsta }: { c: CardDaProducao; diaEscrito: (dia: string) => string; prazoEscrito: (prazo: string) => string; aoClicar: (el: HTMLElement) => void; escolhida?: boolean; jaEsta?: boolean }) {
+  useApelidos();
+  const apelido = apelidoDaProducao(c.id);
+  const quando = c.etapa === 'entregue' ? (c.entregaEm ? `entregue ${diaEscrito(diaDoPrazo(c.entregaEm))}` : 'entregue') : c.prazo ? `ao ar ${prazoEscrito(c.prazo)}` : 'sem prazo';
+  const escolhe = escolhida !== undefined;
+  return (
+    <button
+      type="button"
+      className={`prod-achado-abrir${escolhida ? ' escolhida' : ''}${jaEsta ? ' ja-esta' : ''}`}
+      aria-haspopup={escolhe ? undefined : 'dialog'}
+      aria-pressed={escolhe && !jaEsta ? escolhida : undefined}
+      disabled={jaEsta}
+      onClick={(e) => aoClicar(e.currentTarget)}
+    >
+      <span className="prod-achado-etapa">
+        <i aria-hidden="true" />
+        {ROTULO_DA_COLUNA[c.etapa]}
+      </span>
+      <span className="prod-achado-nome">
+        <span className="prod-achado-claquete" title={apelido ? `Claquete: ${c.claquete}` : undefined}>
+          {apelido || c.claquete || 'Sem claquete'}
+        </span>
+        <span className="prod-achado-atracao">{c.atracao || 'sem atração'}</span>
+      </span>
+      <span className="prod-achado-praca">{c.praca || '—'}</span>
+      <span className="prod-achado-designers">{c.designers.length ? c.designers.join(', ') : 'ninguém pegou'}</span>
+      <span className={`prod-achado-quando${c.etapa === 'entregue' ? ' entregue' : ''}`}>{jaEsta ? 'já está na campanha' : quando}</span>
+    </button>
   );
 }

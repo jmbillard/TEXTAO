@@ -1,0 +1,157 @@
+/* As Campanhas (#180): a lista e a página da campanha. A moldura, o card da Produção, as colunas, as contagens à mão e a
+   caixinha são os das Produções (producoes.css); aqui, só o que é delas: os cartões da lista, o nome com a bolinha no
+   tom da campanha (o mesmo da etiqueta), a Pauta no pé do card, o "ligar Produções", as sugestões e as arquivadas.
+   Nada de faixa na borda: o tom vai na bolinha e no fundo levemente tingido. O movimento: os cartões e as colunas chegam
+   em cascata, o nome se escreve à mão, a bolinha pinga, o "ligar" abre deslizando a altura, e o que muda de lugar
+   desliza (o FLIP das Produções). Com prefers-reduced-motion, só esmaece. */
+
+.pagina.campanhas { --camp-tom: var(--campanha-0); }
+/* a página rola por dentro, abaixo do topo (a moldura das Produções tem a altura da janela) */
+.pagina.campanhas .prod-pagina { overflow-y: auto; padding-bottom: 40px; }
+.camp-cabeca-acoes { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.camp-nova, .camp-abrir-ligar { display: inline-flex; align-items: center; gap: 6px; }
+.camp-abrir-ligar.aberto { background: var(--neutro); border-color: var(--regua-forte); }
+.camp-abrir-ligar svg { transition: transform 0.24s var(--suave); }
+.camp-abrir-ligar.aberto svg { transform: rotate(45deg); }
+.camp-apagar { display: inline-grid; place-items: center; width: 36px; padding: 0; color: var(--tinta2); }
+.camp-apagar:hover { color: var(--falta); border-color: color-mix(in srgb, var(--falta) 45%, var(--regua)); background: var(--falta-fundo); }
+
+/* ---------- o tom da campanha: a bolinha, a mesma da etiqueta ---------- */
+.camp-bolinha { --tom: var(--campanha-0); flex: none; display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--tom); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tom) 16%, transparent); }
+.camp-bolinha[data-tom='1'] { --tom: var(--campanha-1); }
+.camp-bolinha[data-tom='2'] { --tom: var(--campanha-2); }
+.camp-bolinha[data-tom='3'] { --tom: var(--campanha-3); }
+.camp-bolinha[data-tom='4'] { --tom: var(--campanha-4); }
+.camp-bolinha[data-tom='5'] { --tom: var(--campanha-5); }
+
+/* ---------- o resumo que conta ---------- */
+.camp-resumo { margin: 0; font: 500 13px var(--sans); color: var(--tinta3); display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+.camp-resumo .ct-num { font-variant-numeric: tabular-nums; color: var(--tinta2); font-weight: 600; }
+.camp-resumo q { font-style: italic; }
+.camp-nada { margin: 8px 2px; }
+
+/* ---------- as contagens por etapa, à mão, com a bolinha (as do bloco recolhido, deitadas) ---------- */
+.camp-contas { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; }
+.camp-contas li { gap: 6px; }
+.camp-conta-nome { font: 600 10.5px var(--sans); letter-spacing: 0.05em; text-transform: uppercase; color: var(--tinta3); }
+.camp-contas .prod-conta { background: none; }
+
+/* ---------- a lista: um cartão por campanha ---------- */
+.camp-cartoes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; align-items: start; }
+.camp-cartao { animation: chegar-cartao 0.34s var(--suave) backwards; animation-delay: var(--atraso, 0ms); }
+.camp-cartao.deslizando { position: relative; z-index: 1; }
+@keyframes chegar-cartao { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+.camp-cartao-abrir {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 12px; border-radius: 12px; border: 1px solid var(--regua);
+  background: var(--papel); color: var(--tinta); text-decoration: none;
+  transition: border-color 0.2s, box-shadow 0.24s var(--suave), transform 0.24s var(--suave), background-color 0.2s;
+}
+.camp-cartao-abrir:hover { border-color: var(--regua-forte); transform: translateY(-1px); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 6px 14px rgb(26 25 22 / 8%); }
+.camp-cartao-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.camp-cartao-abrir:active { transform: scale(0.99); }
+.camp-cartao-nome { display: flex; align-items: center; gap: 10px; font: 400 22px/1.15 var(--serifa); overflow-wrap: anywhere; }
+.camp-cartao-abrir .camp-bolinha { transition: transform 0.24s var(--suave); }
+.camp-cartao-abrir:hover .camp-bolinha { transform: scale(1.25); }
+.camp-cartao-pe { display: flex; flex-wrap: wrap; gap: 0 6px; font: 500 12px var(--sans); color: var(--tinta3); }
+
+/* ---------- o nome do campo (criar e renomear) ---------- */
+.camp-nome-campo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1; min-width: 0; animation: chegar-campo 0.22s var(--suave) both; }
+.camp-nome-campo input {
+  flex: 1 1 260px; min-width: 0; height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--ultra); background: var(--cartao);
+  color: var(--tinta); font: 400 26px/1 var(--serifa); outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ultra) 16%, transparent);
+}
+@keyframes chegar-campo { from { opacity: 0; transform: translateY(-4px); } }
+
+/* ---------- a página ---------- */
+.camp-voltar { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin: -4px 0 -10px; font: 600 12.5px var(--sans); color: var(--tinta3); text-decoration: none; transition: color 0.15s, transform 0.2s var(--suave); }
+.camp-voltar:hover { color: var(--tinta); transform: translateX(-2px); }
+.camp-cabeca { flex-wrap: wrap; }
+.camp-titulo { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.camp-titulo .camp-bolinha { width: 14px; height: 14px; animation: pingar 0.6s var(--suave) 0.15s backwards; }
+@keyframes pingar { 0% { transform: scale(0); } 55% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.camp-titulo-nome { overflow-wrap: anywhere; }
+.camp-lapis { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--tinta3); cursor: pointer; opacity: 0; transition: opacity 0.15s, background-color 0.15s, color 0.15s; }
+.camp-titulo:hover .camp-lapis, .camp-lapis:focus-visible { opacity: 1; }
+.camp-lapis:hover { background: var(--neutro); color: var(--tinta); }
+@media (hover: none) { .camp-lapis { opacity: 1; } }
+.camp-resumo-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; }
+
+.camp-corpo { display: flex; flex-direction: column; gap: 20px; }
+/* o bloco das Produções: o das praças, sem a largura mínima nem o topo preso (a página rola inteira) */
+.camp-bloco { --topo-do-bloco: 0px; overflow: visible; padding-top: 8px; }
+.camp-bloco > .prod-colunas { min-width: 0 !important; }
+.camp-bloco .prod-coluna { overflow: visible; }
+.camp-bloco .prod-coluna h3 { position: static; }
+
+/* o card: o × de tirar aparece com o mouse, no canto */
+.camp-pagina .prod-card { position: relative; }
+.camp-tirar {
+  position: absolute; top: 5px; right: 5px; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px;
+  background: var(--cartao); color: var(--tinta3); cursor: pointer; opacity: 0; transform: scale(0.85); transition: opacity 0.15s, transform 0.2s var(--suave), color 0.15s, background-color 0.15s;
+}
+.prod-card:hover > .camp-tirar, .camp-tirar:focus-visible { opacity: 1; transform: none; }
+.camp-tirar:hover { color: var(--falta); background: var(--falta-fundo); }
+@media (hover: none) { .camp-tirar { opacity: 1; transform: none; } }
+
+/* a claquete na Pauta da edição: o dia à mão e o editor */
+.camp-na-pauta { list-style: none; margin: 3px 0 0; padding: 5px 0 0; border-top: 1px dashed var(--regua); display: flex; flex-direction: column; gap: 2px; }
+.camp-na-pauta li { display: flex; align-items: center; gap: 6px; min-width: 0; font: 500 11.5px var(--sans); color: var(--tinta2); animation: chegar-pauta 0.3s var(--suave) 0.2s backwards; }
+.camp-na-pauta svg { flex: none; color: var(--tinta3); }
+.camp-na-pauta-dia { font: 600 15px/1 Caveat, cursive; color: var(--ultra); }
+.camp-na-pauta-editor { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes chegar-pauta { from { opacity: 0; transform: translateX(-4px); } }
+
+/* ---------- ligar Produções: abre deslizando a altura ---------- */
+.camp-ligar { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s var(--suave), opacity 0.2s, margin 0.3s var(--suave); margin: -8px 0; }
+.camp-ligar.aberto { grid-template-rows: 1fr; opacity: 1; margin: 0; }
+.camp-ligar-dentro { min-height: 0; overflow: hidden; }
+.camp-ligar.aberto .camp-ligar-dentro { padding: 14px; border-radius: 14px; border: 1px solid var(--regua); background: var(--cartao); box-shadow: var(--sombra-folha); }
+.camp-ligar-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 12px; }
+.camp-ligar-busca { flex: 1 1 300px; max-width: 420px; }
+.camp-ligar-escolhidas { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 200px; min-width: 0; }
+.camp-escolhida {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 6px 0 9px; border-radius: 999px; border: 0;
+  background: var(--ultra-suave); color: var(--ultra-tinta); font: 600 11.5px var(--sans); cursor: pointer; animation: pingar 0.32s var(--suave) backwards;
+}
+.camp-escolhida:hover { filter: brightness(0.96); }
+.camp-ligar-dica { margin: 4px 2px; }
+.camp-ligar-achados { max-height: 46vh; overflow-y: auto; }
+.camp-ligar-achados .prod-busca-topo { background: var(--cartao); }
+/* a escolhida: o fundo tingido e a bolinha que acende (nada de check verde) */
+.prod-achado-abrir.escolhida { background: var(--ultra-suave); border-color: color-mix(in srgb, var(--ultra) 45%, var(--regua)); }
+.prod-achado-abrir.escolhida .prod-achado-etapa i { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ultra) 25%, transparent); }
+.prod-achado-abrir.ja-esta { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
+
+/* ---------- as sugestões e as arquivadas ---------- */
+.camp-secao-topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 10px; }
+.camp-secao-topo h2 { margin: 0; font: 400 24px/1.2 var(--serifa); color: var(--tinta); }
+.camp-secao-dica { font: 600 16px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); }
+.camp-ligar-todas { margin-left: auto; }
+.camp-sugestoes, .camp-arquivadas { animation: chegar-cartao 0.34s var(--suave) 0.18s backwards; }
+.camp-sugestoes .prod-cards, .camp-arquivadas .prod-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; align-items: start; }
+.camp-sugestoes .prod-card { background: color-mix(in srgb, var(--papel) 70%, var(--neutro)); border-style: dashed; }
+.camp-sugestoes .prod-card:hover { border-style: solid; }
+.camp-acoes { margin-top: 4px; }
+.camp-ligar-uma { display: inline-flex; align-items: center; gap: 4px; }
+.camp-arquivadas summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; cursor: pointer; font: 600 13px var(--sans); color: var(--tinta2); list-style: none; margin-bottom: 10px; }
+.camp-arquivadas summary::-webkit-details-marker { display: none; }
+.camp-arquivadas summary svg { transition: transform 0.2s var(--suave); }
+.camp-arquivadas[open] summary svg { transform: rotate(90deg); }
+.camp-arquivadas summary small { flex: 1 1 100%; padding-left: 21px; font: 600 15px/1 Caveat, cursive; color: var(--tinta3); }
+.camp-arquivadas .prod-card { opacity: 0.72; }
+
+/* ---------- o celular ---------- */
+@media (max-width: 600px) {
+  .camp-cartoes { grid-template-columns: 1fr; }
+  .camp-cabeca-acoes { width: 100%; justify-content: flex-end; }
+  .camp-titulo { font-size: 34px; }
+  .camp-bloco > .prod-colunas { grid-template-columns: 1fr !important; }
+  .camp-nome-campo input { font-size: 20px; }
+}
+
+/* ---------- sem movimento: só esmaece ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .camp-cartao, .camp-sugestoes, .camp-arquivadas, .camp-na-pauta li, .camp-escolhida, .camp-nome-campo, .camp-titulo .camp-bolinha { animation: esmaecer 0.18s ease-out both !important; animation-delay: 0ms !important; }
+  .camp-cartao-abrir, .camp-cartao-abrir:hover, .camp-cartao-abrir:active, .camp-voltar:hover { transform: none; }
+  .camp-ligar { transition: opacity 0.18s; }
+}

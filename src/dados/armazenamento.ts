@@ -1166,7 +1166,7 @@ import type { HorarioDoCartao } from '../modelo/horariosDoCartao';
 import type { Ilha } from '../modelo/ilhas';
 import type { AplicacaoDaCorrecao, Desfeitas, GrupoDaPauta, JuncaoDeAtracoes, PaginaDaCorrecao, PaginaDasAtracoes, PaginaDoRegistro } from '../modelo/correcaoDeGrafia';
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, ordemDe, recolhidosDe, type CardDaProducao, type TelaDeProducoes } from '../modelo/producoesPorPraca';
-import type { CampanhaDoCard } from '../modelo/campanhas';
+import type { CampanhaDoCard, CampanhaNaLista, ContagensDaCampanha } from '../modelo/campanhas';
 import { CHAVE_DA_AGENDA_DE_FILMES, formaDaAgenda, type AgendaDeFilmes, type FormaDaAgenda } from '../modelo/agendaDeFilmes';
 export type { SecaoDaDuplicada };
 /** Um caso na lista: as linhas da produção da arte (cada uma de um card) com a mesma claquete, praça e versão. */
@@ -1715,3 +1715,36 @@ export const mudarIlha = (id: string, i: IlhaNova) => pedir<{ ilha: Ilha }>(`/ap
 export const removerIlha = (id: string) => pedir<{ ok: true }>(`/api/cadastros/ilhas/${encodeURIComponent(id)}`, { method: 'DELETE' });
 /** Junta a repetida na que fica (#165), só administradores: as posições passam, a que sai sai do cadastro. */
 export const juntarIlhas = (fica: string, sai: string) => pedir<{ posicoes: number }>('/api/cadastros/ilhas/juntar', { method: 'POST', body: JSON.stringify({ fica, sai }) });
+
+/* ---------- a página da campanha e a lista das campanhas (#180) ---------- */
+
+/** A claquete da Produção na Pauta da edição: o dia e o editor (#180). */
+export interface ClaqueteNaPautaDaCampanha {
+  producao: string;
+  dia: string;
+  editor: string;
+  claquete: string;
+  turno: { inicio: string; fim: string } | null;
+}
+/** O card da Produção na página da campanha: o da tela, com a arquivada (que fica de fora das contagens). */
+export type CardDaCampanha = CardDaProducao & { arquivada?: boolean };
+export interface PaginaDaCampanha {
+  campanha: CampanhaDoCard & { criadaEm: string; mexidaEm: string };
+  contagens: ContagensDaCampanha;
+  producoes: CardDaCampanha[];
+  sugestoes: CardDaCampanha[];
+  pauta: { linhas: ClaqueteNaPautaDaCampanha[]; erro?: string };
+  voce: { podeMudar: boolean; podeApagar: boolean; designer: string | null };
+}
+const daCampanha = (id: string, acao = '') => `/api/campanhas/${encodeURIComponent(id)}${acao ? `/${acao}` : ''}`;
+const postar = <T>(caminho: string, corpo: unknown = {}) => pedir<T>(caminho, { method: 'POST', body: JSON.stringify(corpo) });
+/** As campanhas, as mexidas por último primeiro, com as contagens por etapa. */
+export const lerCampanhas = () => pedir<{ campanhas: CampanhaNaLista[]; voce: { podeMudar: boolean } }>('/api/campanhas');
+/** Criar uma campanha (sem Produções); o nome que já existe devolve a que existe. */
+export const criarCampanha = (nome: string) => postar<{ campanha: CampanhaDoCard; nova: boolean }>('/api/campanhas', { nome });
+export const lerPaginaDaCampanha = (id: string) => pedir<PaginaDaCampanha>(daCampanha(id));
+export const renomearCampanha = (id: string, nome: string) => postar<{ pagina: PaginaDaCampanha }>(daCampanha(id, 'nome'), { nome }).then((r) => r.pagina);
+/** Ligar (`liga`) ou tirar várias Produções de uma vez; devolve as que mudaram e a página nova. */
+export const ligarNaCampanha = (id: string, producoes: string[], liga: boolean) => postar<{ feito: { mudadas: string[] }; pagina: PaginaDaCampanha }>(daCampanha(id, 'producoes'), { producoes, liga });
+export const apagarCampanha = (id: string) => postar<{ apagada: CampanhaDoCard }>(daCampanha(id, 'apagar'));
+export const desfazerApagarCampanha = (id: string) => postar<{ pagina: PaginaDaCampanha }>(daCampanha(id, 'desfazer-apagar')).then((r) => r.pagina);
