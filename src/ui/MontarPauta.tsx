@@ -464,8 +464,8 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   // o Distribuir (#151) só serve com alguém escalado (e não fora) para receber
   const foraComparavel = new Set((foraNoDia ?? []).map(nomeComparavel));
   const porQueNaoDistribuir = posicoes.some((p) => p.editor.trim() && !foraComparavel.has(nomeComparavel(p.editor))) ? '' : 'Ninguém escalado no dia para receber: escale alguém numa posição primeiro.';
-  // o motivo de cada claquete distribuída, na dica dela (#151)
-  const motivos = new Map(distribuicao && distribuicao.dia === dados?.dia ? distribuicao.itens.map((d) => [d.id, d.motivo]) : []);
+  // o motivo de cada claquete distribuída, na dica dela (#151): só enquanto ela está na posição em que o Distribuir a pôs
+  const motivos = new Map(distribuicao && distribuicao.dia === dados?.dia ? distribuicao.itens.map((d) => [`${d.posicao}|${d.id}`, d.motivo]) : []);
 
   /** Aplica o colado: as posições vão para o rascunho (gravado na hora), as ausências são marcadas e o dia é lido de novo. */
   const aplicarOColado = async (r: ColadoParaAplicar) => {
@@ -789,7 +789,7 @@ interface PropsDaCelula {
   mudar: (f: (p: PosicaoDaEscala) => PosicaoDaEscala) => void;
   tirar: () => void;
   focar: (f: Foco) => void;
-  /** o motivo de cada demanda que o Distribuir pôs (#151), pelo id */
+  /** o motivo de cada demanda que o Distribuir pôs (#151), pela posição e pelo id ("posicao|id") */
   motivos: ReadonlyMap<string, string>;
   /** o arrastar (#126): quem arrasta, onde está, e o "Mover para…" das demandas (no celular) */
   arraste: Arraste & { destinos: readonly Destino[]; mover: (id: string, destino: string) => void };
@@ -924,7 +924,7 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
       </div>
       <ul className="montar-demandas" aria-label="Demandas">
         {p.demandas.map((d, i) => (
-          <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} motivo={motivos.get(d.id)} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} arraste={arraste} />
+          <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} motivo={motivos.get(`${p.id}|${d.id}`)} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} arraste={arraste} />
         ))}
       </ul>
       {p.avisos.length > 0 && (

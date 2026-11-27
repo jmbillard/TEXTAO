@@ -52,7 +52,8 @@
 // Distribuir (#151): num dia adiante, com só uma vaga, o Distribuir de "Para distribuir" fica desligado e diz por quê.
 // Com o Rui, a Elis e o Gil escalados, Distribuir põe o Mundo Animal no Gil (que o pegou no Teable dois dias antes) e a
 // Terra Viva na Elis (menos demandas); cada uma tem o motivo na dica e o fundo tingido, sem faixa na borda, e a caixinha
-// diz "2 claquetes distribuídas". Nada é publicado. Desfazer devolve as duas para a lista de uma vez.
+// diz "2 claquetes distribuídas". Movida para o Rui, a Terra Viva perde o motivo. Nada é publicado. Desfazer devolve as
+// duas para a lista de uma vez, mesmo a que foi movida.
 //
 // Colar da planilha (#130): num dia vazio, a Bia cola uma aba fictícia (as células por tab, como a planilha copia),
 // com a linha de lixo, o dia, os rótulos de turno e um 4º bloco das 20h sem rótulo. O diálogo mostra o resumo
@@ -855,9 +856,12 @@ async function distribuirSozinho(navegador, url, api) {
   const linha = (id) => p.locator(`.montar-celula[data-posicao-id="${id}"] .montar-demanda.distribuida`);
   assert.equal(await linha('dist-3').getAttribute('title'), `Distribuída: pegou a atração em ${diaMes(mais(distDia, -2))}`);
   assert.equal(await linha('dist-2').getAttribute('title'), 'Distribuída: menos demandas');
-  assert.equal(await p.locator('.montar-demanda.distribuida').count(), 2);
   const borda = await linha('dist-3').evaluate((el) => getComputedStyle(el).borderLeftWidth);
   assert.ok(parseFloat(borda) <= 1, 'nada de faixa na borda esquerda');
+  // arrastada para outro editor, a claquete deixa de mostrar o motivo (ele era de onde o Distribuir a pôs)
+  await arrastarComOMouse(p, linha('dist-2'), p.locator('.montar-celula[data-posicao-id="dist-1"]'));
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [['COMUNICAÇÃO', terra], [], ['CALHAUS', 'COMUNICAÇÃO', mundo]]));
+  assert.equal(await p.locator('.montar-demanda.distribuida').count(), 1);
   await linha('dist-3').hover();
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
   await capturar(p, '22-distribuido');

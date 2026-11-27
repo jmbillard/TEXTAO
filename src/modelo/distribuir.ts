@@ -1,6 +1,6 @@
 /* Montar a pauta, a coluna lateral (#126): as regras puras de arrastar, as mesmas no servidor e no navegador (só
-   sintaxe que o Node apaga). Nenhuma muda a lista recebida: cada uma devolve as posições novas, ou null quando o que
-   foi pedido não existe mais (a demanda, a posição). */
+   sintaxe que o Node apaga), e a de distribuir sozinho (#151, no fim). Nenhuma muda a lista recebida: cada uma devolve
+   as posições novas, ou null quando o que foi pedido não existe mais (a demanda, a posição). */
 import { nomeSemArtigos } from './correcaoDeGrafia.ts';
 import { lerDemanda, type DemandaDaEscala, type PosicaoDaEscala } from './escala.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
