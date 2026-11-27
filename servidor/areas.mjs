@@ -40,9 +40,16 @@ export function criarAreas({ espera = ESPERA_DOS_CADASTROS } = {}) {
     return { redator: nomes(lido?.redatores), editor: nomes(lido?.editores) };
   }
 
+  /** As keys de cada editor (o apelido dele na planilha da edição), pelo nome do cadastro, para o colar (#130). */
+  async function apelidosDosEditores(cadastros) {
+    const lido = await lerCadastros(cadastros);
+    return Object.fromEntries((lido?.editores ?? []).filter((e) => e.nome).map((e) => [e.nome, (e.keys ?? []).map((k) => k.key).filter(Boolean)]));
+  }
+
   return {
     quemE,
     nomesDosCadastros,
+    apelidosDosEditores,
     /**
      * O que a rota de quem está logado devolve das áreas: as da pessoa, a de entrada (a última usada, se ela ainda a
      * tem) e as preferências guardadas. `coordenacao`: a pessoa é da coordenação (#123), que também tem a do Editor.

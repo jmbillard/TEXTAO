@@ -82,6 +82,8 @@ export interface DiaDaEscala {
   turnos: TurnoDaEscala[];
   /** os nomes dos editores cadastrados, para a lista */
   editores: string[];
+  /** as keys de cada editor no cadastro (o apelido da planilha), pelo nome, para o colar (#130) */
+  apelidos?: Record<string, string[]>;
   /** as ilhas cadastradas, para a lista (#124) */
   ilhas: Ilha[];
   /** a ilha de costume de cada editor (pelo nome comparável), tirada do histórico das posições */

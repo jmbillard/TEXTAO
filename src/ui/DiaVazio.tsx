@@ -29,9 +29,11 @@ interface Props {
   /** chamado com a opção escolhida; devolve quando acabou (o erro vem como exceção) */
   repetir: (de: DeOndeRepetir) => Promise<void>;
   doZero: () => void;
+  /** abre o colar da planilha (#130) */
+  colar: () => void;
 }
 
-export function DiaVazio({ dados, repetir, doZero }: Props) {
+export function DiaVazio({ dados, repetir, doZero, colar }: Props) {
   const [fazendo, setFazendo] = useState<DeOndeRepetir | null>(null);
   const [erro, setErro] = useState('');
   const o = dados.repetir;
@@ -66,10 +68,10 @@ export function DiaVazio({ dados, repetir, doZero }: Props) {
             <small>{fazendo === x.de ? 'repetindo…' : x.sub}</small>
           </button>
         ))}
-        {/* o colar da planilha é o #130 */}
-        <button type="button" className="dia-vazio-opcao" disabled title="Ainda não: vem logo">
+        {/* o colar da planilha (#130): o mesmo diálogo do botão do alto */}
+        <button type="button" className="dia-vazio-opcao" disabled={!!fazendo} onClick={colar}>
           <strong>⎘ Colar da planilha</strong>
-          <small>em breve: um bloco da aba do dia, como está hoje</small>
+          <small>um bloco da aba do dia, como está hoje</small>
         </button>
         <button type="button" className="dia-vazio-opcao" disabled={!!fazendo} onClick={doZero}>
           <strong>Começar do zero</strong>

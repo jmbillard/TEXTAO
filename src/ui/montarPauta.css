@@ -5,6 +5,7 @@
 .montar-estado .ponto { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .montar-erro { color: var(--falta); }
 .montar-cabeca { margin-bottom: 10px; }
+.montar-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .montar-rel, .montar-rascunho { display: inline-block; font: 600 19px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-2deg); }
 .montar-rascunho { font-size: 17px; }
 .montar-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

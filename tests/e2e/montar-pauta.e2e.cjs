@@ -49,9 +49,16 @@
 // na…" põe a Bia numa posição nova da Noite, o "Mover para…" leva a última claquete para o Rui e o "⋯" da demanda a
 // move do Gil para a Bia, sem rolar para o lado.
 //
+// Colar da planilha (#130): num dia vazio, a Bia cola uma aba fictícia (as células por tab, como a planilha copia),
+// com a linha de lixo, o dia, os rótulos de turno e um 4º bloco das 20h sem rótulo. O diálogo mostra o resumo
+// (posições, demandas, avisos, ausências e grafias), as notas (o apelido, a ilha que sobra, o bloco lido como Noite) e
+// a pergunta do nome com erro de digitação; respondida, "Pôr em…" monta a grade: os nomes do cadastro, as ilhas, os
+// horários e as claquetes no padrão, o aviso quebrado juntado, e a folga da Bia vira ausência, na caixa "Fora".
+// Colado de novo só um turno, "Juntar ao rascunho" acrescenta à Elis só a claquete que faltava. Recarregada, fica.
+//
 // Repetir (#129): numa semana adiante, com a semana anterior montada (o Rui com claquete e COMUNICAÇÃO; a Elis com
 // CALHAUS) e a Elis de férias na segunda e na terça, o dia vazio oferece Repetir (o mesmo dia na semana passada, o de
-// ontem, que está vazio e fica desligado, e a semana passada inteira), Colar da planilha (desligado, é o #130) e
+// ontem, que está vazio e fica desligado, e a semana passada inteira), Colar da planilha (o #130) e
 // Começar do zero. Repetir a segunda traz a ilha, o editor, o horário e as tarefas, nunca as claquetes; a posição da
 // Elis vira vaga, com o motivo, que sai quando a vaga ganha editor. Na terça, "a semana passada inteira" só preenche
 // os dias vazios: a quarta, já montada, fica como estava. Na quinta, "Começar do zero" abre uma posição por turno,
@@ -99,7 +106,8 @@ const TABELAS = {
     { id: 'recE3', fields: { editor: 'Gil Moura' } },
     { id: 'recE4', fields: { editor: 'Bia Campos', email: BIA } },
   ],
-  tblKeyEdi: [],
+  // o apelido do Gil na planilha (#130)
+  tblKeyEdi: [{ id: 'recK1', fields: { key: 'GUGA', editor: [{ id: 'recE3' }] } }],
 };
 const escritasNoTeable = [];
 async function buscarNoTeable(url, init = {}) {
@@ -787,6 +795,113 @@ async function colunaEArrastar(navegador, url) {
   console.log('ok: a coluna lateral (para distribuir, sem escala, fora), o arrastar no mouse e no dedo, e o "Escalar na…" e o "Mover para…" no celular');
 }
 
+/* ---------- colar da planilha (#130) ---------- */
+const colarDia = mais(amanha, 6);
+const dm = (iso) => `${Number(iso.slice(8))}/${Number(iso.slice(5, 7))}`;
+/** A grade como a planilha copia: as células por tab, as linhas por quebra de linha. */
+const tsv = (linhas) => linhas.map((l) => l.join('\t')).join('\n');
+function blocos(rotulo, bs) {
+  const linhas = [];
+  if (rotulo) linhas.push(['', `                          ${rotulo}`]);
+  linhas.push(['', ...bs.flatMap((b) => [b.ilha, ''])]);
+  linhas.push(['', ...bs.flatMap((b) => ['EDITOR: ', b.nome])]);
+  linhas.push(['', ...bs.flatMap((b) => ['HORÁRIO: ', b.hora])]);
+  const max = Math.max(0, ...bs.map((b) => b.demandas.length));
+  for (let k = 0; k < max; k++) linhas.push(['', ...bs.flatMap((b) => [b.demandas[k] ?? '', ''])]);
+  linhas.push(['']);
+  return linhas;
+}
+const [dd, mm, aaaa] = [colarDia.slice(8), colarDia.slice(5, 7), colarDia.slice(0, 4)];
+const ABA = tsv([
+  ['L'],
+  ['', 'DIA', `${dd}/${mm}/${aaaa}`, '', 'ESTEIRA DE PÓS PRODUÇÃO'],
+  ...blocos('MADRUGADA', [
+    { ilha: 'AVID 46', nome: 'RUI', hora: '22H AS 6H', demandas: [`Noite de Gala ${dm(colarDia)} dp`, 'TERRA VEM PRONTA DA PROMO,', 'SÓ FINALIZAR'] },
+    { ilha: 'VDI 7', nome: 'GUGA', hora: '22 AS 6', demandas: ['COMUNICAÇÃO', 'VDI 7'] },
+  ]),
+  ...blocos('MANHÃ', [
+    { ilha: '', nome: 'ELIZ', hora: '8H AS 17', demandas: [`Mundo Animal ${dm(colarDia)} (P)`] },
+    { ilha: 'AVID 46', nome: 'BIA', hora: 'FOLGA COMP', demandas: [] },
+  ]),
+  ...blocos(null, [{ ilha: 'AVID 99', nome: 'TOMÁS NOVO', hora: '20H AS 02H', demandas: [`Corujão ${dm(colarDia)} a`] }]),
+]);
+
+async function colarDaPlanilha(navegador, url) {
+  const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${colarDia}`);
+  // o dia vazio (#129) oferece o colar: abre o mesmo diálogo do botão do alto
+  await p.locator('.dia-vazio').getByRole('button', { name: /Colar da planilha/ }).click();
+  const dlg = p.getByRole('dialog', { name: 'Colar da planilha' });
+  await dlg.getByLabel('O que foi copiado da planilha').fill(ABA);
+  const lido = dlg.getByRole('region', { name: 'O que o PROMeiro entendeu' });
+  await lido.getByText(/^Entendi/).waitFor();
+  assert.equal(
+    (await lido.locator('.colar-resumo').innerText()).replace(/\s+/g, ' ').trim(),
+    'Entendi 4 posições, 4 demandas, 1 aviso e 1 ausência. 9 grafias vão para o padrão.',
+    'o resumo antes de aplicar',
+  );
+  await lido.getByText('1 nome para confirmar', { exact: false }).waitFor();
+  // as notas do que foi interpretado
+  await lido.getByText('GUGA → Gil Moura').waitFor();
+  await lido.getByText('“VDI 7” saiu: é uma ilha').waitFor();
+  await lido.getByText('sem rótulo de turno, das 20h: lido como Noite').waitFor();
+  await lido.getByText('“AVID 99” não está no cadastro das ilhas').waitFor();
+  await lido.getByText('“TOMÁS NOVO” não está nos cadastros: nome novo').waitFor();
+  await lido.getByText('Bia Campos · fora (folga comp)').waitFor();
+  await lido.getByText('⚑ TERRA VEM PRONTA DA PROMO, SÓ FINALIZAR').waitFor();
+  // a pergunta: "ELIZ" é a Elis
+  const pergunta = lido.getByRole('group', { name: 'Quem é “ELIZ”?' });
+  await pergunta.getByRole('button', { name: 'Elis Furtado' }).click();
+  assert.equal(await pergunta.getByRole('button', { name: 'Elis Furtado' }).getAttribute('aria-pressed'), 'true');
+  await semRolagemDeLado(p, 'colar');
+  await capturar(p, '17-colar-da-planilha');
+  await dlg.getByRole('button', { name: /^Pôr em/ }).click();
+  await dlg.waitFor({ state: 'detached' });
+  await p.getByText('Colado da planilha: 4 posições, 4 demandas e 1 ausência marcada.').waitFor();
+
+  const esperado = [
+    ['Madrugada', 'Rui Teixeira', '22h às 6h', [`Noite de Gala ${dm(colarDia)} (DP)`]],
+    ['Madrugada', 'Gil Moura', '22h às 6h', ['COMUNICAÇÃO']],
+    ['Manhã', 'Elis Furtado', '8h às 17h', [`Mundo Animal ${dm(colarDia)} (P)`]],
+    ['Noite', 'TOMÁS NOVO', '20h às 2h', [`Corujão ${dm(colarDia)} (A)`]],
+  ];
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => [x.turno, x.editor, x.horario, x.demandas]), esperado));
+  assert.deepEqual(await p.locator('.montar-celula [data-campo="ilha"]').evaluateAll((es) => es.map((e) => e.value)), ['AVID 46', 'VDI 7', '', '']);
+  assert.deepEqual(await p.locator('.montar-celula [data-campo="aviso"]').evaluateAll((es) => es.map((e) => e.value)), ['TERRA VEM PRONTA DA PROMO, SÓ FINALIZAR']);
+  // a folga da Bia, marcada: na caixa "Fora", e não em "Sem escala"
+  const coluna = p.getByRole('complementary', { name: 'Coluna lateral' });
+  await coluna.getByRole('region', { name: 'Fora' }).locator('.aus-pessoa', { hasText: 'Bia Campos' }).waitFor();
+  await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
+  await capturar(p, '18-colar-aplicado');
+
+  // colado de novo, só um turno: juntar acrescenta à Elis só o que faltava
+  await p.getByRole('button', { name: '⎘ Colar da planilha', exact: true }).click();
+  await dlg.getByLabel('O que foi copiado da planilha').fill(tsv(blocos('MANHÃ', [{ ilha: '', nome: 'ELIS FURTADO', hora: '8h às 17h', demandas: [`Mundo Animal ${dm(colarDia)} (P)`, `Cozinha de Raiz ${dm(colarDia)} (AH)`] }])));
+  await lido.getByText(/^Entendi 1 posição/).waitFor();
+  await dlg.getByRole('button', { name: 'Juntar ao rascunho' }).click();
+  await dlg.waitFor({ state: 'detached' });
+  esperado[2][3] = [`Mundo Animal ${dm(colarDia)} (P)`, `Cozinha de Raiz ${dm(colarDia)} (AH)`];
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => [x.turno, x.editor, x.horario, x.demandas]), esperado));
+  // recarregada, fica
+  await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
+  await p.reload();
+  await p.locator('.montar-celula').first().waitFor();
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => [x.turno, x.editor, x.horario, x.demandas]), esperado));
+  assert.deepEqual(erros, [], 'colar: erros na página');
+  await ctx.close();
+
+  // no celular (escuro), o diálogo cabe na tela, sem rolar para o lado
+  const cel = await abrir(navegador, url, BIA, `#/pauta/montar/${colarDia}`, { viewport: { width: 390, height: 844 }, colorScheme: 'dark', hasTouch: true, isMobile: true });
+  await cel.p.locator('.montar-celula').first().waitFor();
+  await cel.p.getByRole('button', { name: '⎘ Colar da planilha', exact: true }).click();
+  await cel.p.getByLabel('O que foi copiado da planilha').fill(ABA);
+  await cel.p.getByRole('region', { name: 'O que o PROMeiro entendeu' }).getByText(/^Entendi/).waitFor();
+  await semRolagemDeLado(cel.p, 'colar no celular');
+  await capturar(cel.p, '19-colar-celular');
+  assert.deepEqual(cel.erros, [], 'colar no celular: erros na página');
+  await cel.ctx.close();
+  console.log('ok: colar da planilha (o resumo, as notas, a pergunta do nome, pôr no dia, a ausência e juntar)');
+}
+
 /* ---------- Repetir (#129) ---------- */
 async function repetir(navegador, url, api) {
   const h = { 'cf-access-authenticated-user-email': BIA, 'content-type': 'application/json' };
@@ -813,7 +928,7 @@ async function repetir(navegador, url, api) {
   assert.match(await semanaPassada.innerText(), /o mesmo dia, na semana passada · 2 posições/);
   assert.ok(await opcao(new RegExp(`A escala de ${curto(mais(nova, -1))}`)).isDisabled(), 'ontem (domingo) está vazio: desligado');
   assert.match(await opcao(/A semana passada inteira/).innerText(), new RegExp(`preenche os dias vazios: ${curto(nova)}, ${curto(mais(nova, 1))}$`, 'm'));
-  assert.ok(await opcao(/Colar da planilha/).isDisabled(), 'o colar é o #130');
+  assert.ok(!(await opcao(/Colar da planilha/).isDisabled()), 'o colar da planilha (#130) está ligado');
   await capturar(p, '11-repetir-dia-vazio');
 
   // o mesmo dia na semana passada: a escala e as tarefas, nunca as claquetes; a Elis de férias vira vaga
@@ -885,6 +1000,7 @@ async function principal() {
     await ausencias(navegador, s.url, s.api);
     await colunaEArrastar(navegador, s.url);
     await repetir(navegador, s.url, s.api);
+    await colarDaPlanilha(navegador, s.url);
   } catch (e) {
     falhou = true;
     console.error(e);

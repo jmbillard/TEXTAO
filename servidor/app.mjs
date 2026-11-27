@@ -1632,6 +1632,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * (a que ainda está no cadastro), o editor, o horário e as tarefas, nunca as claquetes, os avisos nem o recado. Quem
    * está fora no dia de destino vira vaga, com o motivo. Devolve o mesmo que o GET e `repetido`, um item por dia
    * preenchido, com as vagas. O dia vazio vem com `repetir`, o que cada opção traz (null no dia que já tem escala).
+   * O colar da planilha (#130) é lido no navegador; o GET traz as keys de cada editor (`apelidos`) para ele reconhecer
+   * o apelido da planilha, e o aplicar usa o PUT e as ausências.
    */
   async function rotaDeMontarAPauta(req, res, eu, acao = '') {
     const metodos = acao ? ['POST'] : ['GET', 'PUT'];
@@ -1707,6 +1709,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       ...(repetido ? { repetido } : {}),
       turnos: turnosDoDia(turnos, lido.posicoes),
       editores,
+      // as keys dos editores, para reconhecer o apelido no colar da planilha (#130)
+      apelidos: await areas.apelidosDosEditores(cadastros),
       ilhas: ilhas.todas(),
       costume: ilhas.deCostume(dia),
       ocupadas: ilhasOcupadas(lido.posicoes),
