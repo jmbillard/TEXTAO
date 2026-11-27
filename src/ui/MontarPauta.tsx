@@ -488,7 +488,7 @@ export function MontarPauta({ dia, irPara, voltar }: Props) {
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
         {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
         {/* a semana lado a lado com a planilha (#133): as diferenças com a foto do mesmo dia */}
-        {atual && <LadoALado dados={atual} posicoes={posicoes} foraNoDia={foraNoDia} />}
+        {atual && <LadoALado dados={atual} posicoes={posicoes} foraNoDia={foraNoDia ?? []} />}
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}
