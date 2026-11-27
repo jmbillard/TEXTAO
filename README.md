@@ -370,6 +370,7 @@ A resposta (`200`):
       "letra_e_versao": "B V2",
       "atracao": "Show da Noite",
       "praca": "SP",
+      "campanhas": [{ "id": "<id da campanha>", "nome": "Lançamento de Verão" }],
       "etapa": "entregue",
       "entrou_em": "2026-11-26T09:40:00-03:00",
       "pegou_em": "2026-11-26T10:02:00-03:00",
@@ -404,7 +405,7 @@ A resposta (`200`):
   `alta`: a complexidade da arte; sem marca, baixa).
 - `tempo_em_producao_min`: os minutos de `pegou_em` a `entregue_em`; `null` sem um dos dois.
 - `trello`: o link do card no Trello; `null` sem card.
-- `campanhas`: ainda não vem; entra quando a Campanha (#178) existir.
+- `campanhas`: as campanhas em que a Produção está (`id` e `nome`, a primeira ligada primeiro); `[]` sem nenhuma.
 
 As horas vão em ISO, no fuso de São Paulo (`-03:00`).
 

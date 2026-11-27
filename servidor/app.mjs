@@ -3813,6 +3813,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const periodo = periodoDoPedido(url.searchParams, diaEmSaoPaulo(agora));
     const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
     const atracaoDaClaquete = (claquete) => atracaoPelaClaquete(claquete, programas, pracas);
+    const campanhasDe = campanhas.porProducao();
     const itens = producoes.candidatasDaApi(margemDaConsulta(periodo)).flatMap((id) => {
       const j = producoes.naJanela(id);
       if (!j) return [];
@@ -3824,7 +3825,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
           artes: j.artes.map((a) => ({ feita: a.feita, fogo: fogo(a) })),
           atracao: producoes.umaNaTela(id, atracaoDaClaquete)?.atracao ?? '',
           eventos: producoes.linhaDoTempo({ producao: id }).eventos,
-          // #178: quando a Campanha existir, as campanhas da Produção entram aqui (`campanhas: [...]`)
+          // as campanhas da Produção (#178), a primeira ligada primeiro
+          campanhas: campanhasDe(id).map((c) => ({ id: c.id, nome: c.nome })),
         },
       ];
     });

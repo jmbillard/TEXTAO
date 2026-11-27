@@ -97,9 +97,9 @@ export function diaNoAr(exibicaoEm, claquete, entradaEm) {
  * @param o.artes as artes (cada uma uma vez) com `feita` e o `fogo` (1 a 3)
  * @param o.atracao a atração (a do card da tela de produções)
  * @param o.eventos a linha do tempo
- * @param o.campanhas as campanhas da Produção (#178): sem elas (undefined), o campo não vai
+ * @param o.campanhas as campanhas da Produção (#178), [{ id, nome }]
  */
-export function producaoDaApi({ producao: p, meta = {}, artes, atracao, eventos, campanhas }) {
+export function producaoDaApi({ producao: p, meta = {}, artes, atracao, eventos, campanhas = [] }) {
   const tempos = temposDaLinhaDoTempo(p, eventos);
   const lv = p.roteiroId ? letraEVersaoDoRoteiro(meta ?? {}) : null;
   const conta = (n) => artes.filter((a) => a.fogo === n).length;
@@ -109,8 +109,7 @@ export function producaoDaApi({ producao: p, meta = {}, artes, atracao, eventos,
     letra_e_versao: lv ? `${lv.letra} V${lv.versao}` : null,
     atracao: atracao || null,
     praca: p.praca || null,
-    // #178: as campanhas entram aqui quando a Campanha existir (o servidor passa a lista; sem ela, o campo não vai)
-    ...(campanhas !== undefined ? { campanhas } : {}),
+    campanhas: campanhas.map((c) => ({ id: c.id, nome: c.nome })),
     etapa: p.etapa,
     entrou_em: emSaoPaulo(tempos.entrouEm),
     pegou_em: emSaoPaulo(tempos.pegouEm),

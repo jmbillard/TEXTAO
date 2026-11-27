@@ -384,7 +384,7 @@ _Evitar_: histórico (na tela), log, atividade. Não confundir com a linha do te
 A rota só de leitura (`GET /api/publico/producoes?de=AAAA-MM-DD&ate=AAAA-MM-DD`, #185) de onde um produtor da arte
 puxa as Produções para o dashboard dele, fora do login, com o token dela (`PRODUCOES_API_TOKEN`, que se revoga trocando
 ou esvaziando). Sem datas, a semana atual (de segunda a domingo); até 31 dias por pedido. Entram as Produções que
-entraram, estiveram em produção ou foram entregues no período, sem as arquivadas, com os nomes dos designers. Os tempos
+entraram, estiveram em produção ou foram entregues no período, sem as arquivadas, com os nomes dos designers e as campanhas. Os tempos
 saem da **linha do tempo**: **entrou** (o card que entrou; sem ele, a entrada da produção da arte), **pegou** (o primeiro
 designer, ou a primeira ida para Produzindo) e **entregue** (a última ida para Entregue, só na Entregue); o **tempo em
 produção** é de pegou a entregue, em minutos. As horas vão no fuso de São Paulo.

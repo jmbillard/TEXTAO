@@ -58,6 +58,11 @@ function semear(db: ReturnType<typeof abrirBanco>) {
   evento(db, 'p-show', 'etapa', 'entrada', 'produzindo', '2026-11-26T13:02:00.000Z', 'Ana Souza');
   evento(db, 'p-show', 'arte-marcada', null, 'HOJE', '2026-11-26T16:00:00.000Z', 'Ana Souza');
   evento(db, 'p-show', 'etapa', 'produzindo', 'entregue', '2026-11-26T18:20:00.000Z', 'Ana Souza');
+  // as campanhas (#178), a primeira ligada primeiro
+  for (const [id, nome, em] of [['camp-verao', 'Lançamento de Verão', '2026-11-25T12:00:00.000Z'], ['camp-final', 'Final do Ano', '2026-11-26T12:00:00.000Z']]) {
+    db.prepare('INSERT INTO campanhas (id, nome, chave, criada_em, mexida_em) VALUES (?, ?, ?, ?, ?)').run(id, nome, id, em, em);
+    db.prepare('INSERT INTO campanhas_producoes (campanha_id, producao_id, ligada_em) VALUES (?, ?, ?)').run(id, 'p-show', em);
+  }
   // entrou na semana passada e ainda está em produção: esteve em produção na semana
   producao(db, { id: 'p-festa', claquete: 'Festa na Praça 05/12', praca: 'G5', etapa: 'produzindo', designers: '["Caio Prates","Lia Moura"]', artes: '["VINHETA","ASSINATURA"]', entrada_em: '2026-11-20T12:00:00.000Z', card_id: card(2), atracao: 'Festa na Praça', fogo_das_artes: JSON.stringify({ [chaveDeArte('VINHETA')]: 2 }) });
   evento(db, 'p-festa', 'designer-entrou', null, 'Caio Prates', '2026-11-21T14:00:00.000Z', 'Caio Prates');
@@ -146,6 +151,10 @@ describe('a API das Produções (#185)', () => {
       letra_e_versao: 'B V2',
       atracao: 'Show da Noite',
       praca: 'SP',
+      campanhas: [
+        { id: 'camp-verao', nome: 'Lançamento de Verão' },
+        { id: 'camp-final', nome: 'Final do Ano' },
+      ],
       etapa: 'entregue',
       // o card entrou antes da data de entrada da produção da arte: vale a linha do tempo
       entrou_em: '2026-11-26T09:40:00-03:00',
@@ -173,8 +182,7 @@ describe('a API das Produções (#185)', () => {
       tempo_em_producao_min: null,
     });
     expect(producoes[2]).toMatchObject({ id: 'p-entrada', etapa: 'entrada', entrou_em: '2026-11-27T07:00:00-03:00', pegou_em: null, entregue_em: null, ao_ar: '2026-11-29', trello: null, tempo_em_producao_min: null, artes: { total: 0, feitas: 0, fogo: { baixa: 0, media: 0, alta: 0 } } });
-    // sem o #178, nada de campanhas
-    expect(producoes.every((p) => !('campanhas' in p))).toBe(true);
+    expect(producoes[0].campanhas).toEqual([]);
     // a entregue na semana passada aparece no período que pega o dia dela
     expect((await ler('?de=2026-11-20&ate=2026-11-20')).producoes.map((p) => p.id)).toEqual(['p-jogo', 'p-festa']);
   });
