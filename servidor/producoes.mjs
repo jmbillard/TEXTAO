@@ -743,8 +743,9 @@ export function criarProducoes(db) {
    * do n8n, docs/webhook-trello.md do repositório do Padeiro): a claquete (`claq`), o redator e o editor do Roteiro ligado
    * (`red`, `ed`; '' sem ele), o card (`card`; '' sem card), a entrada (`at`, ISO; null sem data), `fim` (sempre false:
    * só as abertas), a atração (`atr`: a do Roteiro, o título do filme ou a da claquete; '' sem nenhuma) e se é filme
-   * (`fil`). A mais, que o Padeiro de antes ignora: a praça, a Produção (o id, para o aviso do Padeiro, #139), a etapa e
-   * as artes do checklist (`artes`: as feitas e as a fazer, na ordem do checklist). Nada do Trello.
+   * (`fil`). A mais, que o Padeiro de antes ignora: o filme do cadastro (`filme`, o id; '' sem ele), a praça, a Produção
+   * (o id, para o aviso do Padeiro, #139), a etapa e as artes do checklist (`artes`: as feitas e as a fazer, na ordem
+   * do checklist). Nada do Trello.
    * @param atracaoDaClaquete (claquete) => nome, ou ''
    */
   function paraOPadeiro(atracaoDaClaquete = () => '') {
@@ -766,6 +767,7 @@ export function criarProducoes(db) {
         fim: false,
         atr: doMeta('programa') || String(l.filme_titulo ?? '').trim() || atracaoDaClaquete(l.claquete),
         fil: !!(l.filme_id || l.filme_titulo),
+        filme: l.filme_id ?? '',
         praca: l.praca ?? '',
         producao: l.id,
         etapa: l.etapa,

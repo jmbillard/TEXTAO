@@ -21,7 +21,7 @@ import { criarTrello } from '../servidor/trello.mjs';
 
 const CHEFE = 'chefe@empresa.com';
 const ENV = { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso', TRELLO_KEY: 'chave-falsa', TRELLO_TOKEN: 'token-falso-do-trello', TRELLO_LISTA_SP: 'entradaSP', TRELLO_SAIDA_SP: 'saidaSP' };
-const NOMES = { ARTE_producao: 'arte_producao_pg', exibicoes: 'exibicoes_pg', designers: 'designers_pg', atracoes: 'atracoes_pg' };
+const NOMES = { ARTE_producao: 'arte_producao_pg', exibicoes: 'exibicoes_pg', designers: 'designers_pg', atracoes: 'atracoes_pg', filmes: 'filmes_pg' };
 const DIA = 86_400_000;
 const MINUTO = 60_000;
 const ha = (n: number) => new Date(Date.now() - n * DIA).toISOString();
@@ -32,18 +32,26 @@ const registro = (id: string, fields: Record<string, unknown>) => ({ id, fields 
 const linhas = () => [
   // Entrada: a arte HOJE tem dois tipos (dois itens no checklist), e conta uma vez só
   registro('recJan1', { card_ID: card(1), claquete: 'Show da Noite 20/12 SP', status: '[]', designers: null, artes: 'HOJE (RDP) | HOJE (CRT) | AMANHÃ | DOMINGO', data_entrada: ha(1), __last_modified_time: ha(1) }),
-  // Produzindo, com a Ana: a atração está no cadastro, mas sem a pasta do output
+  // Produzindo, com a Ana: a atração está no cadastro, mas sem a pasta do projeto
   registro('recJan2', { card_ID: card(2), claquete: 'Festa na Praça 20/12 SP', status: '["PRODUZINDO"]', designers: '["Ana Souza"]', artes: 'LETTERING | CARTÃO', data_entrada: ha(2), __last_modified_time: ha(2) }),
-  // o filme, sem card e sem atração no cadastro
+  // os filmes, sem card e sem atração no cadastro: valem os caminhos do filme
   registro('recJan3', { card_ID: '', claquete: 'Filme da Tarde 21/12', status: '["FILME"]', designers: null, filme: [{ id: 'recFilme1', title: 'Filme da Tarde' }], data_entrada: ha(1.5), __last_modified_time: ha(1.5) }),
+  registro('recJan4', { card_ID: '', claquete: 'Filme da Noite 22/12', status: '["FILME"]', designers: null, filme: [{ id: 'recFilme2', title: 'Filme da Noite' }], data_entrada: ha(3), __last_modified_time: ha(3) }),
+];
+/** Os filmes do cadastro, com os caminhos que o Teable calcula (as fórmulas): o da Noite não achou a pasta do projeto. */
+const filmes = () => [
+  registro('recFilme1', { titulo: 'Filme da Tarde', projeto_win: 'P:\\FILMES\\FILME DA TARDE\\PROJETOS', projeto_mac: '/Volumes/P/FILMES/FILME DA TARDE/PROJETOS', output_win: '', output_mac: '' }),
+  registro('recFilme2', { titulo: 'Filme da Noite', projeto_win: 'caminho_nao_encontrado', projeto_mac: 'caminho_nao_encontrado', output_win: 'P:\\FILMES\\FILME DA NOITE\\OUTPUT', output_mac: '/Volumes/P/FILMES/FILME DA NOITE/OUTPUT' }),
 ];
 const designers = () => [
   registro('recDesignerAna', { designer: 'Ana Souza', email: 'ana.souza@empresa.com', designer_ID: 'membroAna', status: 'ativo' }),
   registro('recDesignerCaio', { designer: 'Caio Prates', email: 'caio@empresa.com', designer_ID: 'membroCaio', status: 'ativo' }),
 ];
 const atracoes = () => [
-  registro('recAtrShow', { atracao: 'Show da Noite', categoria: 'Variedades', projeto_win: 'P:\\SHOW\\PROJETOS', output_win: 'P:\\SHOW\\OUTPUT' }),
-  registro('recAtrFesta', { atracao: 'Festa na Praça', categoria: 'Shows', projeto_win: 'P:\\FESTA\\PROJETOS', output_win: '' }),
+  // o Show tem a pasta do projeto e não a do output: o "pronto para abrir" só precisa da pasta do projeto
+  registro('recAtrShow', { atracao: 'Show da Noite', categoria: 'Variedades', projeto_win: 'P:\\SHOW\\PROJETOS', output_win: '' }),
+  // a Festa tem a do output, e na do projeto o que o cadastro escreve quando não sabe o caminho
+  registro('recAtrFesta', { atracao: 'Festa na Praça', categoria: 'Shows', projeto_win: 'cole_aqui_o_caminho', output_win: 'P:\\FESTA\\OUTPUT' }),
 ];
 
 type Pedido = { metodo: string; caminho: string; consulta: Record<string, string> };
@@ -79,7 +87,7 @@ async function preparado({ db = abrirBanco(':memory:') } = {}) {
     { codigo: 'H', rotulo: 'hoje', conhecida: true },
   ]);
   roteiroNoCard(db, 'roteiro-festa', 2, { claquete: 'Festa na Praça 20/12 SP', programa: 'Festa na Praça' });
-  const registros = { ARTE_producao: linhas(), exibicoes: [], designers: designers(), atracoes: atracoes() };
+  const registros = { ARTE_producao: linhas(), exibicoes: [], designers: designers(), atracoes: atracoes(), filmes: filmes() };
   const teable = teableFalso(NOMES, { registros });
   const t = trelloFalso();
   const app = criarApp({
@@ -157,13 +165,28 @@ describe('a Produção como a janela do After mostra', () => {
   });
 });
 
-describe('o "pronto para abrir": a atração ligada e os caminhos definidos', () => {
-  it('sem a pasta de um dos caminhos no cadastro, "sem pasta"; sem a atração no cadastro, "sem atração"; sem Roteiro, as artes ficam sem fogo', async () => {
+describe('o "pronto para abrir": a atração ligada e a pasta do projeto definida', () => {
+  it('sem a pasta do projeto no cadastro (vazia ou "cole_aqui_o_caminho"), "sem pasta", mesmo com a do output; sem Roteiro, as artes ficam sem fogo', async () => {
     const { padeiro, ligado, idDe } = await preparado();
     const { chave } = await ligado();
     expect((await lerProducao(padeiro, idDe('Festa na Praça'), chave)).corpo.producao).toMatchObject({ pronto: false, estado: 'sem pasta', designers: ['Ana Souza'], comVoce: true });
     const filme = (await lerProducao(padeiro, idDe('Filme da Tarde'), chave)).corpo.producao!;
-    expect(filme).toMatchObject({ pronto: false, estado: 'sem atração', versao: '', artes: [], contagem: { feitas: 0, total: 0 } });
+    expect(filme).toMatchObject({ versao: '', artes: [], contagem: { feitas: 0, total: 0 } });
+  });
+
+  it('o filme usa os caminhos do filme (o cadastro de filmes), não o de atrações: com a pasta do projeto, "pronto para abrir"; sem ela, "sem pasta"', async () => {
+    const { padeiro, ligado, idDe } = await preparado();
+    const { chave } = await ligado();
+    expect((await lerProducao(padeiro, idDe('Filme da Tarde'), chave)).corpo.producao).toMatchObject({ pronto: true, estado: 'pronto para abrir' });
+    expect((await lerProducao(padeiro, idDe('Filme da Noite'), chave)).corpo.producao).toMatchObject({ pronto: false, estado: 'sem pasta' });
+  });
+
+  it('sem a atração no cadastro, "sem atração"', async () => {
+    const { padeiro, ligado, idDe, db } = await preparado();
+    const { chave } = await ligado();
+    db.prepare("UPDATE producoes SET claquete = 'Programa Novo 20/12 SP' WHERE id = ?").run(idDe('Show da Noite'));
+    db.prepare("UPDATE roteiros SET meta = ? WHERE id = 'roteiro-show'").run(JSON.stringify({ claquete: 'Programa Novo 20/12 SP', programa: 'Programa Novo' }));
+    expect((await lerProducao(padeiro, idDe('Programa Novo'), chave)).corpo.producao).toMatchObject({ pronto: false, estado: 'sem atração' });
   });
 
   it('a lista do Padeiro traz o mesmo estado em cada Produção', async () => {
@@ -173,21 +196,27 @@ describe('o "pronto para abrir": a atração ligada e os caminhos definidos', ()
     const lista = ((await r.json()) as { trello: { claq: string; pronto: boolean; estado: string }[] }).trello;
     expect(lista.map((c) => [c.claq, c.pronto, c.estado])).toEqual([
       ['Show da Noite 20/12 SP', true, 'pronto para abrir'],
-      ['Filme da Tarde 21/12', false, 'sem atração'],
+      ['Filme da Tarde 21/12', true, 'pronto para abrir'],
       ['Festa na Praça 20/12 SP', false, 'sem pasta'],
+      ['Filme da Noite 22/12', false, 'sem pasta'],
     ]);
   });
 });
 
 describe('quem lê a Produção', () => {
-  it('a ligada e a pendente leem (a lista e a Produção); a revogada é recusada (403, com o estado); sem chave ou com a errada, 401; a que não existe, 404', async () => {
+  it('só a ligada lê (a lista e a Produção); a pendente é recusada (403) com o aviso de que espera o administrador ligar; a revogada, 403 com o estado; sem chave ou com a errada, 401; a que não existe, 404', async () => {
     const { padeiro, cadastrar, ligar, revogar, idDe } = await preparado();
     const id = idDe('Show da Noite');
     const { chave, id: padeiroId } = await cadastrar();
-    expect(await lerProducao(padeiro, id, chave)).toMatchObject({ status: 200, corpo: { producao: { claquete: 'Show da Noite 20/12 SP', comVoce: false } } });
-    expect((await padeiro('/api/padeiro/producoes', { chave })).status).toBe(200);
+    const pendente = await lerProducao(padeiro, id, chave);
+    expect(pendente).toMatchObject({ status: 403, corpo: { estado: 'pendente' } });
+    expect(pendente.corpo.erro).toMatch(/aguardando um administrador .*ligar/);
+    expect(JSON.stringify(pendente.corpo)).not.toMatch(/Show da Noite/);
+    const lista = await padeiro('/api/padeiro/producoes', { chave });
+    expect(lista.status).toBe(403);
+    expect(await lista.json()).toEqual(pendente.corpo);
     await ligar(padeiroId);
-    expect((await lerProducao(padeiro, id, chave)).status).toBe(200);
+    expect(await lerProducao(padeiro, id, chave)).toMatchObject({ status: 200, corpo: { producao: { claquete: 'Show da Noite 20/12 SP', comVoce: false } } });
     await revogar(padeiroId);
     expect(await lerProducao(padeiro, id, chave)).toMatchObject({ status: 403, corpo: { estado: 'revogada' } });
     expect((await padeiro('/api/padeiro/producoes', { chave })).status).toBe(403);
@@ -195,6 +224,7 @@ describe('quem lê a Produção', () => {
     expect((await lerProducao(padeiro, id)).status).toBe(401);
     expect((await lerProducao(padeiro, id, 'chave-inventada')).status).toBe(401);
     const outra = await cadastrar({ usuario: 'cprates', computador: 'WIN-ARTE-02', sigla: 'CP' });
+    await ligar(outra.id, 'recDesignerCaio');
     expect((await lerProducao(padeiro, 'nao-existe', outra.chave)).status).toBe(404);
   });
 });

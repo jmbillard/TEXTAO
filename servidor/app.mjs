@@ -18,7 +18,7 @@ import { codigoDasVersoes, colunasDoDia, cruzarComAProducao, diaEmSaoPaulo, diaO
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
-import { chaveDaAtracao, criarTrello, nivelDeComplexidade } from './trello.mjs';
+import { chaveDaAtracao, criarTrello, nivelDeComplexidade, SEM_CAMINHO } from './trello.mjs';
 import { criarCadastros, normalizarKey } from './cadastros.mjs';
 import { criarAcervo } from './acervo.mjs';
 import { escolhasDoPedido, regrasDasDecisoes } from './importacao-do-acervo.mjs';
@@ -3395,18 +3395,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return json(res, 200, r);
   }
 
-  /** O Padeiro da chave do pedido, quando ela está ligada a um designer (ou, com `pendenteLe`, pendente: a janela do
-      After mostra, mas não age, #146); senão, responde a recusa (401 sem a chave ou com a errada; 403 com a pendente ou
-      a revogada, com o estado) e devolve null. */
-  function padeiroLigado(req, res, { pendenteLe = false } = {}) {
+  /** O Padeiro da chave do pedido, quando ela está ligada a um designer: só a ligada lê (a lista e a Produção) e age
+      (#146). Senão, responde a recusa (401 sem a chave ou com a errada; 403 com a pendente, que espera um administrador
+      ligar e é o que a janela do After mostra, ou com a revogada, com o estado) e devolve null. */
+  function padeiroLigado(req, res) {
     const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
     if (!p) json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
-    else if (p.estado === 'ligada' || (pendenteLe && p.estado === 'pendente')) return p;
-    else json(res, 403, { erro: p.estado === 'pendente' ? 'A chave do Padeiro ainda espera um administrador do PROMeiro.' : 'A chave do Padeiro foi revogada: faça o cadastro de novo.', estado: p.estado });
+    else if (p.estado === 'ligada') return p;
+    else json(res, 403, { erro: p.estado === 'pendente' ? 'A chave do Padeiro está aguardando um administrador do PROMeiro ligar ao designer.' : 'A chave do Padeiro foi revogada: faça o cadastro de novo.', estado: p.estado });
     return null;
   }
-  /** O Padeiro que lê (a lista e a Produção, #146): a chave ligada ou a pendente. */
-  const padeiroQueLe = (req, res) => padeiroLigado(req, res, { pendenteLe: true });
 
   /** O designer da chave ligada como a tabela designers diz agora (o membro do Trello vem dela). */
   const designerDoPadeiro = (p) => {
@@ -3419,17 +3417,31 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const lido = await cadastros.ler().catch((e) => (console.warn(`[padeiro] não li o cadastro das atrações: ${e instanceof Error ? e.message : e}`), null));
     return lido?.ligado ? lido.atracoes : [];
   };
+  /** As pastas do projeto dos filmes do cadastro ({ id: pasta }); {} com o Teable fora (os filmes ficam "sem pasta"). */
+  const projetosDosFilmes = async (ids) => {
+    try {
+      return (await trello.projetosDosFilmes?.(ids)) ?? {};
+    } catch (e) {
+      console.warn(`[padeiro] não li as pastas dos filmes: ${e instanceof Error ? e.message : e}`);
+      return {};
+    }
+  };
+  /** Um caminho de verdade: o que o cadastro escreve quando não sabe o caminho (SEM_CAMINHO) não é pasta. */
+  const temCaminho = (v) => !!String(v ?? '').trim() && !SEM_CAMINHO.test(String(v).trim());
   /**
-   * O "pronto para abrir" da janela do After (#146): a atração da Produção (a do card da tela de produções) está no
-   * cadastro e tem todos os caminhos (TEABLE_CAMPOS_CAMINHO: a pasta do projeto e a dos templates) definidos. Senão,
-   * "sem atração" ou "sem pasta".
+   * O "pronto para abrir" da janela do After (#146): só a pasta do projeto conta (a do output não).
+   * - O filme usa os caminhos do filme (`projetos`, de projetosDosFilmes: a fórmula projeto_win do cadastro de filmes,
+   *   a mesma do card do filme), e não o cadastro de atrações: com a pasta, pronto; sem ela (ou sem o filme), "sem pasta".
+   * - A atração da Produção (a do card da tela de produções) está no `cadastro` e tem a pasta do projeto (o campo de
+   *   TEABLE_CAMPOS_CAMINHO que é o do projeto: projeto_win). Senão, "sem atração" ou "sem pasta".
+   * O Mac não tem um campo à parte na atração: o Padeiro converte o caminho do Windows (o mesmo do card).
    */
-  function prontoParaAbrir(atracao, cadastro) {
+  function prontoParaAbrir({ atracao, filme, ehFilme }, { cadastro, projetos }) {
+    const comPasta = (pasta) => (temCaminho(pasta) ? { pronto: true, estado: 'pronto para abrir' } : { pronto: false, estado: 'sem pasta' });
+    if (ehFilme) return comPasta(filme ? projetos[filme] : '');
     const a = atracao ? cadastro.find((x) => nomeComparavel(x.nome) === nomeComparavel(atracao)) : null;
     if (!a) return { pronto: false, estado: 'sem atração' };
-    const caminhos = Object.values(a.caminhos ?? {});
-    if (!caminhos.length || caminhos.some((c) => !String(c ?? '').trim())) return { pronto: false, estado: 'sem pasta' };
-    return { pronto: true, estado: 'pronto para abrir' };
+    return comPasta(Object.entries(a.caminhos ?? {}).find(([campo]) => /^projeto/i.test(campo.trim()))?.[1]);
   }
 
   /**
@@ -3453,7 +3465,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       etapa: p.etapa,
       claquete: p.claquete,
       versao: codigoDasVersoes(card?.versoesDaChamada?.lista ?? []),
-      ...prontoParaAbrir(card?.atracao ?? '', await atracoesDoCadastro()),
+      ...prontoParaAbrir(
+        { atracao: card?.atracao ?? '', filme: p.filmeId, ehFilme: !!(p.filmeId || p.filmeTitulo) },
+        { cadastro: p.filmeId || p.filmeTitulo ? [] : await atracoesDoCadastro(), projetos: p.filmeId ? await projetosDosFilmes([p.filmeId]) : {} },
+      ),
       designers: p.designers,
       comVoce: !!nome && p.designers.some((d) => nomeComparavel(d) === nomeComparavel(nome)),
       artes: artes.map((a) => ({ nome: a.nome, fogo: fogo(a), feita: a.feita, marcada: a.marcada })),
@@ -3477,8 +3492,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * - POST /api/padeiro/cadastro { usuario, computador, sistema, sigla } (a única sem chave): 201 { chave, estado }
    * - GET /api/padeiro/eu: { estado, usuario, computador, sigla, designer } da chave; sem ela, ou com a errada, 401
    * - GET /api/padeiro/producoes (#138): { trello: [...] }, as Produções em Entrada e Produzindo no formato `trello` do
-   *   Padeiro (producoes.paraOPadeiro), cada uma com o "pronto para abrir" (#146: `pronto`, `estado`). A ligada e a
-   *   pendente leem (a janela do After mostra, mas não age); a revogada, 403 { erro, estado }
+   *   Padeiro (producoes.paraOPadeiro), cada uma com o "pronto para abrir" (#146: `pronto`, `estado`). Só a chave
+   *   ligada lê; a pendente e a revogada, 403 { erro, estado } (a janela do After mostra só o aviso da pendente)
    * - GET /api/padeiro/producoes/<id> (#146): { producao }, a Produção como a janela do After mostra
    *   (producaoDaJanela). Lê como a lista; a que não existe (ou arquivada), 404
    * - POST /api/padeiro/arte (#146) { acao, feitaEm, producao, arte, feita }: marca (feita: true) ou desmarca a arte da
@@ -3502,16 +3517,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, { estado: p.estado, usuario: p.usuario, computador: p.computador, sigla: p.sigla, designer: p.designer ? { nome: p.designer.nome } : null });
     }
     if (caminho === '/api/padeiro/producoes' && req.method === 'GET') {
-      const p = padeiroQueLe(req, res);
+      const p = padeiroLigado(req, res);
       if (!p) return;
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
-      const cadastro = await atracoesDoCadastro();
       const lista = producoes.paraOPadeiro((claquete) => atracaoPelaClaquete(claquete, programas, pracas));
-      return json(res, 200, { trello: lista.map((c) => ({ ...c, ...prontoParaAbrir(c.atr, cadastro) })) });
+      const [cadastro, projetos] = await Promise.all([atracoesDoCadastro(), projetosDosFilmes(lista.filter((c) => c.fil).map((c) => c.filme))]);
+      return json(res, 200, { trello: lista.map((c) => ({ ...c, ...prontoParaAbrir({ atracao: c.atr, filme: c.filme, ehFilme: c.fil }, { cadastro, projetos }) })) });
     }
     const daJanela = /^\/api\/padeiro\/producoes\/([^/]{1,100})$/.exec(caminho);
     if (daJanela && req.method === 'GET') {
-      const p = padeiroQueLe(req, res);
+      const p = padeiroLigado(req, res);
       if (!p) return;
       const producao = await producaoDaJanela(decodeURIComponent(daJanela[1]), p);
       return producao ? json(res, 200, { producao }) : json(res, 404, { erro: 'Essa Produção não está mais aberta no PROMeiro.' });
