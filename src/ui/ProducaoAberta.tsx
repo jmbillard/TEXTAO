@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { apelidoDaProducao } from '../dados/apelidos';
 import { lerProducaoAberta, type ProducaoAberta as Lida } from '../dados/armazenamento';
 import { frasesDaLinhaDoTempo } from '../modelo/linhaDoTempo';
 import { ROTULO_DA_COLUNA, type CardDaProducao } from '../modelo/producoesPorPraca';
@@ -57,7 +58,7 @@ export function ProducaoAberta({ card, prazo, fechar }: Props) {
           <button ref={fecho} type="button" className="botao-texto prod-aberta-fechar" aria-label="Fechar" onClick={fechar}>
             <Icone nome="fechar" tam={18} />
           </button>
-          <h2 id="prod-aberta-titulo">{card.claquete || 'Sem claquete'}</h2>
+          <h2 id="prod-aberta-titulo" title={apelidoDaProducao(card.id) ? `Claquete: ${card.claquete}` : undefined}>{apelidoDaProducao(card.id) || card.claquete || 'Sem claquete'}</h2>
           <p className="prod-aberta-sobre">
             <span>{card.atracao || 'sem atração'}</span>
             <span>{prazo ? `ao ar ${prazo}` : 'sem prazo'}</span>

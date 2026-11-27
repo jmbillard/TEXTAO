@@ -205,10 +205,13 @@ export interface Versao {
   rotulo: string;
   /** false: um código que o PROMeiro não conhece, que aparece cru */
   conhecida: boolean;
+  /** só nas versões lidas do roteiro (#120): veio só do dia da semana, sem "nesta" nem "próxima"; a tela pede conferir */
+  aConferir?: true;
 }
 
-const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+/** Os dias da semana curtos (domingo é 0) e os meses por extenso, nas etiquetas das versões (também as do roteiro, #120). */
+export const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+export const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const semAcento = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
 /** Uma combinação de letras, cada uma uma versão, sem repetir. */
 const LETRAS = /^(?!.*(.).*\1)[AHNPDM]{1,6}$/;

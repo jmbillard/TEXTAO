@@ -10,6 +10,13 @@ O identificador de um roteiro que pede arte: o nome da atração (ou a key dela)
 Ganhar claquete própria é o que faz de algo uma atração.
 _Evitar_: título, nome do roteiro
 
+**Apelido** (da claquete):
+O nome que o PROMeiro mostra no lugar da claquete de um roteiro, em todas as telas e em todas as Produções dele, de
+todas as praças. Um por roteiro, dado por qualquer pessoa logada, à mão ou com as **versões lidas** do roteiro. Vale só
+dentro do PROMeiro: o Trello e o Teable continuam com a claquete original, que aparece ao passar o mouse e na ficha,
+com "voltar ao original".
+_Evitar_: alias, nome novo, key (a key é da atração)
+
 **Roteiro**:
 O texto que chega (Word, RTF, PDF ou colado) com a claquete, o redator, a data e as artes sublinhadas.
 _Evitar_: script, documento
@@ -507,6 +514,11 @@ inteiros. O dia da semana, o número e o mês saem da data da claquete; sem ela,
 **correção de grafia** leva as outras grafias, é uma letra por versão, maiúscula, entre parênteses ("(DP)", "(M)"), e
 (MNT). Na pauta, cada versão é uma etiqueta
 ("nesta sex", "neste sáb") com o código pequeno ao lado; um código desconhecido aparece cru.
+As **versões lidas** do roteiro saem das artes marcadas na revisão que dizem quando o programa vai ao ar ("NESTA
+QUARTA" é N, "AMANHÃ, 22H30" é A, "DIA 28" é D, "EM JANEIRO" é M), na ordem das letras, com o dia da semana conferido
+pela data da claquete. Só o dia ("SÁBADO, 22H") é N se a data da claquete cai nos próximos 7 dias e P se cai depois,
+com um "?" para conferir; o horário sozinho não é versão. Quando discordam do código da claquete, vale o roteiro, com
+um aviso discreto e a opção de usá-las no **apelido**.
 _Evitar_: sufixo, tipo da chamada
 
 **Ficha da claquete** (na pauta):

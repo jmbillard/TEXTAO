@@ -19,6 +19,8 @@ registerHooks?.({
 const { artesDoEnvio, exportar, quantasAProduzir } = await import('../src/modelo/exportar.ts');
 const { metaVazia } = await import('../src/modelo/tipos.ts');
 const { artesDoRoteiro } = await import('../src/modelo/artesDoRoteiro.ts');
+const { versoesDoRoteiro } = await import('../src/modelo/versoesDoRoteiro.ts');
+const { diaEmSaoPaulo } = await import('../src/modelo/pauta.ts');
 
 /**
  * As artes do roteiro aberto (#104), com o estado e a origem: as da revisão (as do envio, sem as que não vão ser
@@ -36,6 +38,13 @@ export function artesComOEstado(meta, doc, producao) {
 export function contarArtes(meta, doc) {
   const roteiro = { id: '', meta: { ...metaVazia(), ...meta }, doc, revisao: 1, criadoEm: '', atualizadoEm: '' };
   return quantasAProduzir(exportar(roteiro), roteiro.meta);
+}
+
+/** As versões da chamada que as artes da revisão (as do envio) dizem (#120), com as etiquetas: a regra do editor. */
+export function versoesLidas(meta, doc, hoje = diaEmSaoPaulo()) {
+  const roteiro = { id: '', meta: { ...metaVazia(), ...meta }, doc, revisao: 1, criadoEm: '', atualizadoEm: '' };
+  const artes = artesDoEnvio(exportar(roteiro), roteiro.meta).map((a) => a.texto);
+  return versoesDoRoteiro(artes, String(roteiro.meta.claquete ?? ''), hoje);
 }
 
 /**

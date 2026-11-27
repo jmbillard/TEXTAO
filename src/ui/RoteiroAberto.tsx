@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
 import { EditorContent, useEditor } from '@tiptap/react';
 import Bold from '@tiptap/extension-bold';
 import Document from '@tiptap/extension-document';
@@ -107,6 +108,8 @@ function ArtesDoEditor({ artes }: { artes: ArtesDoRoteiro }) {
 }
 
 export function RoteiroAberto({ area, id, lido, topo, abrir, voltar }: Props) {
+  // o apelido da claquete (#120) aparece no lugar dela: redesenha quando ele muda
+  useApelidos();
   const [leitura, setLeitura] = useState<{ id: string; l: Leitura } | null>(null);
   // o texto: o roteiro guardado, como o editor o lê
   useEffect(() => {
@@ -125,7 +128,7 @@ export function RoteiroAberto({ area, id, lido, topo, abrir, voltar }: Props) {
   const roteiro: Roteiro | undefined = leitura?.id === id ? roteiroDa(leitura.l) : undefined;
   const meta = roteiro?.meta ?? meu?.meta;
   const colunas = roteiro ? NOMES_COLUNAS[roteiro.meta.layout] : null;
-  const nomeDe = (r: MeuRoteiro | undefined) => r?.meta.claquete || 'sem claquete';
+  const nomeDe = (r: MeuRoteiro | undefined) => apelidoDoRoteiro(r?.id) || r?.meta.claquete || 'sem claquete';
   const dia = diaDaExibicao(meta?.dataExibicao);
 
   return (
@@ -156,7 +159,7 @@ export function RoteiroAberto({ area, id, lido, topo, abrir, voltar }: Props) {
         <div className="aberto-grade">
           <article className="folha folha-aberta" key={id}>
             <div className="cab">
-              <span className="aberto-claquete">{meta?.claquete || 'Sem claquete'}</span>
+              <span className="aberto-claquete" title={apelidoDoRoteiro(id) ? `Claquete: ${meta?.claquete ?? ''}` : undefined}>{apelidoDoRoteiro(id) || meta?.claquete || 'Sem claquete'}</span>
               <div className="cab-titulo">{meta?.programa || meta?.titulo || 'Sem atração'}</div>
               <div className="cab-frase">
                 {[

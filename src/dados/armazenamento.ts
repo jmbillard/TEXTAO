@@ -8,6 +8,7 @@ import { redatorNoTexto, sugestoesDoRedator, type RedatorDoHistorico } from '../
 import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo/exportar';
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import type { EventoDaLinha, ProducaoDaLinha } from '../modelo/linhaDoTempo';
+import type { Versao as VersaoDaChamada } from '../modelo/pauta';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
@@ -22,6 +23,8 @@ export interface Resumo {
   meta: Meta;
   /** As artes a produzir (`quantasAProduzir`): sem as que já existem e as que não vão ser produzidas, como o checklist. */
   nArtes: number;
+  /** As versões da chamada lidas nas artes do roteiro guardado (#120), na ordem do padrão; ausente fora do servidor. */
+  versoesLidas?: VersaoDaChamada[];
   atualizadoEm: string;
   dono: Pessoa | null;
   publico: boolean;
@@ -239,6 +242,22 @@ export async function atualizarVocabulario() {
   const v = await pedir<VocabularioExterno>('/api/vocabulario').catch((e) => void (ultimoErroVocabulario = e instanceof Error ? e.message : String(e)));
   if (v) registrarVocabulario(v);
 }
+
+/** O apelido de um roteiro guardado no servidor (#120), com a claquete original, as Produções do roteiro (de todas as
+    praças) e os cards do envio: só dentro do PROMeiro, o envio leva a original. */
+export interface ApelidoGuardado {
+  roteiro: string;
+  original: string;
+  apelido: string;
+  por: string;
+  em: string;
+  producoes: string[];
+  cards: string[];
+}
+/** Os apelidos dos roteiros; fora do servidor, nenhum. */
+export const lerApelidos = async (): Promise<ApelidoGuardado[]> => (armazenamento.tipo === 'servidor' ? pedir<ApelidoGuardado[]>('/api/apelidos') : []);
+/** Dá, troca ou tira (o apelido vazio: "voltar ao original") o apelido do roteiro; devolve os apelidos de agora. */
+export const gravarApelido = (roteiro: string, apelido: string) => pedir<ApelidoGuardado[]>('/api/apelidos', { method: 'PUT', body: JSON.stringify({ roteiro, apelido }) });
 
 /** Quem está com a claquete na pauta da edição. Pergunta ao servidor; sem resposta, usa a pauta que já veio no vocabulário. */
 export async function consultarPauta(claquete: string): Promise<{ editor: string; claquete: string }> {

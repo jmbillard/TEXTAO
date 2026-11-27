@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
 import { blocosRecolhidos, desfazerEtapaDaProducao, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
 import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, faltaArte, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
@@ -141,7 +142,10 @@ function AvisoDeFalta({ aviso, indo }: { aviso: NonNullable<Acoes['aviso']>; ind
 const cliqueDeAbrir = (e: { target: EventTarget }) => !(e.target as Element).closest('button, a, .prod-aviso');
 
 function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: () => void }) {
-  const claquete = <span className="prod-claquete-texto">{c.claquete || 'Sem claquete'}</span>;
+  // o apelido do roteiro da Produção (#120) no lugar da claquete: só para mostrar; a original, ao passar o mouse
+  useApelidos();
+  const apelido = apelidoDaProducao(c.id);
+  const claquete = <span className="prod-claquete-texto" title={apelido ? `Claquete: ${c.claquete}` : undefined}>{apelido || c.claquete || 'Sem claquete'}</span>;
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
   const arrastar = acoes?.arrastar ?? null;

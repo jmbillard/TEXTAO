@@ -11,6 +11,8 @@ export type EventoFila =
   | { tipo: 'ponteiro'; por: string; nome: string; ancora?: string; fx?: number; fy?: number; cursor?: string; saiu?: boolean; parado?: boolean }
   /** Alguém trocou a cor de destaque no perfil ('' = voltou para a sorteada). */
   | { tipo: 'cor'; por: string; cor: string }
+  /** Alguém deu, trocou ou tirou o apelido de uma claquete (#120): vale reler os apelidos. */
+  | { tipo: 'apelido'; por: string }
   /** A conexão voltou depois de cair: pode ter perdido avisos, então vale recarregar. */
   | { tipo: 'reconectou' };
 
