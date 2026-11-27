@@ -3395,25 +3395,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return json(res, 200, r);
   }
 
-  /** O Padeiro da chave do pedido, quando ela está ligada a um designer; senão, responde a recusa (401 sem a chave ou
-      com a errada; 403 com a pendente ou a revogada, com o estado) e devolve null. */
-  function padeiroLigado(req, res) {
+  /** O Padeiro da chave do pedido, quando ela está ligada a um designer (ou, com `pendenteLe`, pendente: a janela do
+      After mostra, mas não age, #146); senão, responde a recusa (401 sem a chave ou com a errada; 403 com a pendente ou
+      a revogada, com o estado) e devolve null. */
+  function padeiroLigado(req, res, { pendenteLe = false } = {}) {
     const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
     if (!p) json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
-    else if (p.estado !== 'ligada') json(res, 403, { erro: p.estado === 'pendente' ? 'A chave do Padeiro ainda espera um administrador do PROMeiro.' : 'A chave do Padeiro foi revogada: faça o cadastro de novo.', estado: p.estado });
-    else return p;
+    else if (p.estado === 'ligada' || (pendenteLe && p.estado === 'pendente')) return p;
+    else json(res, 403, { erro: p.estado === 'pendente' ? 'A chave do Padeiro ainda espera um administrador do PROMeiro.' : 'A chave do Padeiro foi revogada: faça o cadastro de novo.', estado: p.estado });
     return null;
   }
-
-  /** O Padeiro da chave do pedido, quando ela lê (#146): a ligada e a pendente (a janela do After mostra, mas não age);
-      senão, responde a recusa como `padeiroLigado` e devolve null. */
-  function padeiroQueLe(req, res) {
-    const p = padeiros.daChave(req.headers[CABECALHO_DA_CHAVE]);
-    if (!p) json(res, 401, { erro: 'Chave do Padeiro desconhecida: faça o cadastro de novo.' });
-    else if (p.estado === 'revogada') json(res, 403, { erro: 'A chave do Padeiro foi revogada: faça o cadastro de novo.', estado: p.estado });
-    else return p;
-    return null;
-  }
+  /** O Padeiro que lê (a lista e a Produção, #146): a chave ligada ou a pendente. */
+  const padeiroQueLe = (req, res) => padeiroLigado(req, res, { pendenteLe: true });
 
   /** O designer da chave ligada como a tabela designers diz agora (o membro do Trello vem dela). */
   const designerDoPadeiro = (p) => {
