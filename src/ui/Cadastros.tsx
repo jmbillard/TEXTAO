@@ -196,7 +196,8 @@ function AbaDeFora({ nome, icone, aba, classe }: { nome: string; icone: React.Re
 }
 
 /** "Ligar a…": a busca nas atrações, com "+ Nova atração" sempre no fim (ela recebe o que está na busca). */
-export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { atracoes: string[]; ligar: (nome: string) => void; nova: (busca: string) => void; fechar: () => void; dentro?: boolean }) {
+/** A busca de atração: `nova` põe o "+ Nova atração" (sem ele, só a busca, como no card aberto da tela de produções, #160). */
+export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { atracoes: string[]; ligar: (nome: string) => void; nova?: (busca: string) => void; fechar: () => void; dentro?: boolean }) {
   const [busca, setBusca] = useState('');
   const [marcado, setMarcado] = useState(0);
   const caixa = useRef<HTMLDivElement>(null);
@@ -210,12 +211,12 @@ export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { a
     document.addEventListener('mousedown', fora);
     return () => document.removeEventListener('mousedown', fora);
   }, [fechar, dentro]);
-  useEffect(() => setMarcado(achadas.length ? 0 : NOVA), [busca]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setMarcado(achadas.length || !nova ? 0 : NOVA), [busca]); // eslint-disable-line react-hooks/exhaustive-deps
   const lista = useRef<HTMLUListElement>(null);
   useEffect(() => {
     lista.current?.querySelector('.marcado')?.scrollIntoView({ block: 'nearest' });
   }, [marcado]);
-  const escolher = (k: number) => (k >= 0 && k < achadas.length ? ligar(achadas[k]) : nova(busca));
+  const escolher = (k: number) => (k >= 0 && k < achadas.length ? ligar(achadas[k]) : nova?.(busca));
   return (
     <div className="escolha-nome-menu menu-ligar" ref={caixa}>
       <input
@@ -227,13 +228,15 @@ export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { a
         onKeyDown={(e) => {
           if (e.key === 'Escape') fechar();
           else if (e.key === 'ArrowDown') (e.preventDefault(), setMarcado((m) => Math.min(achadas.length - 1, m + 1)));
-          else if (e.key === 'ArrowUp') (e.preventDefault(), setMarcado((m) => Math.max(NOVA, m - 1)));
+          else if (e.key === 'ArrowUp') (e.preventDefault(), setMarcado((m) => Math.max(nova ? NOVA : 0, m - 1)));
           else if (e.key === 'Enter') (e.preventDefault(), escolher(marcado));
         }}
       />
-      <button type="button" className={`nova-ligar ${marcado === NOVA ? 'marcado' : ''}`} onMouseEnter={() => setMarcado(NOVA)} onMouseDown={(e) => e.preventDefault()} onClick={() => nova(busca)}>
-        + Nova atração
-      </button>
+      {nova && (
+        <button type="button" className={`nova-ligar ${marcado === NOVA ? 'marcado' : ''}`} onMouseEnter={() => setMarcado(NOVA)} onMouseDown={(e) => e.preventDefault()} onClick={() => nova(busca)}>
+          + Nova atração
+        </button>
+      )}
       <ul role="listbox" ref={lista}>
         {achadas.map((a, k) => (
           <li key={a} role="option" aria-selected={k === marcado} className={k === marcado ? 'marcado' : ''} onMouseEnter={() => setMarcado(k)} onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(k)}>

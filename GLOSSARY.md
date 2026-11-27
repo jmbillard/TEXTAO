@@ -362,8 +362,13 @@ vale o último que aconteceu, e os dois viram evento na linha do tempo. Cada blo
 com a sigla e a contagem de cada coluna, e o PROMeiro lembra os recolhidos por pessoa (#113). No máximo 3 praças
 ficam abertas: abrir a quarta fecha a aberta há mais tempo; a fechada mostra o nome na vertical (#159). A pessoa arruma
 a ordem das praças arrastando pela faixa do nome, e o PROMeiro lembra a ordem por pessoa (#159). A Produzindo vazia
-fica fina e se abre com um card no ar; o Entregue se divide por dia da entrega (#159). Um clique no card abre a
-Produção na própria tela: a linha do tempo, as artes do checklist e o link do card no Trello. Fica ao lado da agenda No
+fica fina quando falta largura na praça (com espaço, divide a largura com as outras, #167) e se abre com um card no ar; o Entregue se divide por dia da entrega (#159). Um clique no card abre a
+Produção na própria tela, no **card aberto** (#160): um painel de 720 px no centro, sobre um véu leve, que cresce do card
+clicado e volta para ele ao fechar (no celular, a tela toda). Ali ficam a versão do roteiro (V1 sem versão nova, só no
+detalhe), o apelido pelo lápis, a atração (a busca do cadastro), o prazo e os designers (atribuir e tirar), que gravam
+na hora, vão ao Trello (o prazo do card, o membro) e viram evento; as artes no esquema da janela do After (a bolinha
+numerada, a feita riscada, o fogo), que se marcam, apagam (com desfazer) e incluem, com o checklist do card espelhando;
+e a linha do tempo, fechada num link. A atração escolhida fica só no PROMeiro (o card do Trello não tem o campo). Fica ao lado da agenda No
 Trello, que continua, com a mesma linha do logo, parada entre as telas (#159).
 _Evitar_: quadro, kanban, board (o quadro é do Trello); faixa da praça (o nome de antes do #119)
 

@@ -1550,8 +1550,39 @@ export const desfazerEtapaDaProducao = (producao: string) =>
 export interface ProducaoAberta extends LinhaDoTempo {
   artes: { nome: string; marcada: boolean }[];
   trello: string | null;
+  /** #160: as artes como a janela do After mostra (a de vários tipos é uma só), com o fogo do Roteiro (null sem ele) */
+  artesDoCard?: ArteDoCard[];
+  /** #160: a versão do Roteiro ligado (V1 sem versão nova) e quando ele chegou; null sem Roteiro */
+  roteiro?: { versao: number; em: string } | null;
+  /** #160: para escolher no card aberto: os designers ativos e as atrações do cadastro */
+  designersAtivos?: string[];
+  atracoes?: string[];
+}
+/** Uma arte no card aberto (#160): o nome, os itens do checklist dela, se está feita e o fogo (1 a 3; null sem Roteiro). */
+export interface ArteDoCard {
+  nome: string;
+  itens: string[];
+  feita: boolean;
+  fogo: 1 | 2 | 3 | null;
 }
 export const lerProducaoAberta = (producao: string) => pedir<ProducaoAberta>(`/api/producoes/aberta?producao=${encodeURIComponent(producao)}`);
+/** O que as ações do card aberto (#160) respondem: o que foi feito, o card como a tela mostra e a Produção aberta. */
+export interface RespostaDoCardAberto {
+  feito: { eventos: string[]; trello: string[] };
+  producao: CardDaProducao | null;
+  aberta: ProducaoAberta | null;
+}
+const noCardAberto = (o: string, corpo: object) => pedir<RespostaDoCardAberto>(`/api/producoes/${o}`, { method: 'POST', body: JSON.stringify(corpo) });
+/** O prazo (#160): o dia (AAAA-MM-DD); vai ao prazo do card no Trello. */
+export const mudarPrazoDaProducao = (producao: string, prazo: string) => noCardAberto('prazo', { producao, prazo });
+/** A atração (#160): o nome no cadastro, ou '' para desligar. */
+export const mudarAtracaoDaProducao = (producao: string, atracao: string) => noCardAberto('atracao', { producao, atracao });
+/** Atribuir (entra) ou tirar um designer (#160): o membro dele entra ou sai do card no Trello. */
+export const mudarDesignerDaProducao = (producao: string, designer: string, entra: boolean) => noCardAberto('designer', { producao, designer, entra });
+/** Marcar, desmarcar, apagar, voltar (o desfazer do apagar) ou incluir uma arte (#160): o checklist do card espelha. */
+export const mudarArteDaProducao = (producao: string, arte: string, acao: 'marcar' | 'desmarcar' | 'apagar' | 'voltar' | 'incluir') => noCardAberto('arte', { producao, arte, acao });
+/** Subir o fogo de uma arte (#160), no Roteiro ligado. */
+export const subirFogoDaProducao = (producao: string, arte: string) => noCardAberto('fogo', { producao, arte });
 /** O pedido da pauta com o filtro pessoal (#99), quando há. */
 const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
   const q = new URLSearchParams(Object.entries({ ...busca, ...(filtro ? { filtro } : {}) }).filter(([, v]) => v)).toString();

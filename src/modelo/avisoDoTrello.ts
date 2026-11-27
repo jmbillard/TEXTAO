@@ -7,7 +7,7 @@ import { nomeComparavel } from './ligarPeloNome.ts';
 import type { Etapa } from './producao.ts';
 
 /** Os campos da Produção que o evento "campo mudado" acompanha. */
-export type CampoDoEvento = 'prioridade' | 'complexidade' | 'praca' | 'entrega';
+export type CampoDoEvento = 'prioridade' | 'complexidade' | 'praca' | 'entrega' | 'prazo' | 'atracao';
 
 /** Um campo personalizado do card ligado na Configuração: o id e o nome de cada opção (o id → o nome). */
 export interface CampoLigado {
@@ -30,7 +30,7 @@ export interface ListasDoQuadro {
 }
 
 /** Os tipos de evento da Produção. "abriu-o-projeto" é só do aviso do Padeiro (#139), na Produção já Entregue. */
-export type TipoDoEvento = 'criada' | 'etapa' | 'arquivada' | 'desarquivada' | 'designer-entrou' | 'designer-saiu' | 'arte-marcada' | 'arte-desmarcada' | 'campo' | 'abriu-o-projeto';
+export type TipoDoEvento = 'criada' | 'etapa' | 'arquivada' | 'desarquivada' | 'designer-entrou' | 'designer-saiu' | 'arte-marcada' | 'arte-desmarcada' | 'campo' | 'abriu-o-projeto' | 'fogo' | 'arte-apagada' | 'arte-incluida';
 
 export interface EventoDoAviso {
   tipo: TipoDoEvento;

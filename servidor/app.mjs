@@ -70,6 +70,7 @@ import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { CHAVE_DA_AGENDA_DE_FILMES, recusaDaFormaDaAgenda } from '../src/filmes/agenda.ts';
 import { CHAVE_DA_ORDEM, CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDaOrdem, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
+import { criarCardDaProducao } from './card-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarCartaoDoTeams } from './cartao-do-teams.mjs';
@@ -550,6 +551,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const producoes = criarProducoes(db);
   // pegar e voltar para a Entrada pela tela de produções (#110): o Trello só escrito, a Produção na hora
   const etapaDaProducao = criarEtapaDaProducao({ producoes });
+  // o card aberto da tela de produções (#160): o prazo, a atração, os designers e as artes
+  const cardDaProducao = criarCardDaProducao({ producoes });
   // os anexos guardados pelo PROMeiro (#90): o PDF do roteiro do envio e os pôsteres dos filmes, no SQLite (no backup)
   const anexos = criarAnexos(db, { buscar: buscarNoTeable });
   /* O que o PROMeiro guarda de um card, para apagar uma duplicada (#67): a cópia leva os envios dos roteiros, a lista
@@ -3422,8 +3425,30 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const id = (new URL(req.url, 'http://x').searchParams.get('producao') ?? '').trim().slice(0, 100);
       if (!id) return json(res, 400, { erro: 'Falta a Produção.' });
-      const aberta = producoes.aberta(id);
+      const aberta = await abertaNaTela(id);
       return aberta ? json(res, 200, aberta) : json(res, 404, { erro: 'Essa Produção não existe mais.' });
+    }
+    const doCardAberto = /^\/api\/producoes\/(prazo|atracao|designer|arte|fogo)$/.exec(caminho);
+    if (doCardAberto) {
+      // o card aberto (#160), para quem está ligado a um designer: o prazo { producao, prazo }, a atração { producao,
+      // atracao ('' desliga) }, o designer { producao, designer, entra }, a arte { producao, arte, acao (marcar,
+      // desmarcar, apagar, voltar, incluir) } e o fogo { producao, arte, nivel? }. Escreve no Trello (o prazo, o membro,
+      // o checklist; a única leitura é a do checklist do card que muda), grava os eventos; nada vai ao Teable. Responde
+      // { feito, producao (o card da tela), aberta (como /api/producoes/aberta) }
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
+      const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+      const aTela = (id) => comAsVersoes(producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
+      const ctx = { trello, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela };
+      const o = doCardAberto[1];
+      let r;
+      if (o === 'prazo') r = await cardDaProducao.prazo(corpo, ctx);
+      else if (o === 'atracao') r = await cardDaProducao.atracao(corpo, { ...ctx, atracoes: (await atracoesDoCadastro()).map((a) => a.nome) });
+      else if (o === 'designer') r = await cardDaProducao.designer(corpo, { ...ctx, designers: pessoas.designersAtivos() });
+      else if (o === 'arte') r = await cardDaProducao.arte(corpo, ctx);
+      else r = fogoNaTela(corpo, ctx);
+      if (r.status !== 200) return json(res, r.status, r.corpo);
+      return json(res, 200, { ...r.corpo, aberta: await abertaNaTela(r.corpo.producao?.id ?? corpo.producao) });
     }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
     if (caminho === '/api/linha-do-tempo') {
@@ -3771,17 +3796,61 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * (`producoes.naJanela`), cada uma com o fogo da complexidade que o editor marcou no Roteiro ligado (BAIXA sem marca;
    * null sem Roteiro), se está feita e quem marcou, e a contagem. null sem a Produção (ou arquivada).
    */
+  /** O fogo de cada arte (1 a 3) pela meta do Roteiro ligado, como a janela do After (#146) e o card aberto (#160)
+      mostram; sem Roteiro, null. @param j a Produção de producoes.naJanela */
+  const fogoDasArtes = ({ producao, meta }) => {
+    const complexidade = meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
+    return (a) => (producao.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
+  };
+
+  /**
+   * A Produção aberta na tela de produções (#113, #160): a de `producoes.aberta` (a linha do tempo, as artes do
+   * checklist, o link do card) e, para o card aberto, as artes como a janela do After mostra (`artesDoCard`: cada arte
+   * uma vez, feita ou não, com o fogo do Roteiro ligado; null sem ele), a versão do Roteiro (V1 sem versão nova) e
+   * quando ele chegou, e as listas para escolher: os designers ativos e as atrações do cadastro. null sem a Produção.
+   */
+  async function abertaNaTela(id) {
+    const aberta = typeof id === 'string' ? producoes.aberta(id) : null;
+    if (!aberta) return null;
+    const j = producoes.naJanela(id);
+    const fogo = j ? fogoDasArtes(j) : () => null;
+    const roteiro = producoes.roteiroDe(id);
+    return {
+      ...aberta,
+      artesDoCard: (j?.artes ?? []).map((a) => ({ nome: a.nome, itens: a.itens, feita: a.feita, fogo: fogo(a) })),
+      // a versão do Roteiro, pela regra de versaoDoRoteiro (src/modelo/versoes.ts): V1 sem versão nova
+      roteiro: roteiro ? { versao: Math.max(Number(roteiro.meta.versao) || 1, roteiro.meta.v2De ? 2 : 1), em: roteiro.criadoEm } : null,
+      designersAtivos: pessoas.designersAtivos().map((d) => d.nome),
+      atracoes: (await atracoesDoCadastro()).map((a) => a.nome),
+    };
+  }
+
+  /** O fogo da arte pelo card aberto (#160): como o da janela do After (fogoNoRoteiro), com a origem PROMeiro. */
+  function fogoNaTela({ producao, arte, nivel = null }, { email, designer, aTela }) {
+    if (!designer) return { status: 403, corpo: { erro: SEM_LIGACAO } };
+    if (nivel !== null && ![1, 2, 3].includes(nivel)) return { status: 400, corpo: { erro: 'O nível do fogo é 1, 2 ou 3.' } };
+    const j = typeof producao === 'string' ? producoes.naJanela(producao.trim().slice(0, 100)) : null;
+    if (!j) return { status: 404, corpo: { erro: 'Essa Produção não está mais na tela.' } };
+    if (j.producao.etapa === 'entregue') return { status: 409, corpo: { erro: 'A Produção já está Entregue: o fogo das artes não muda mais.' } };
+    if (!j.producao.roteiroId) return { status: 409, corpo: { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.' } };
+    const a = typeof arte === 'string' ? j.artes.find((x) => chaveDeArte(x.nome) === chaveDeArte(arte)) : null;
+    if (!a) return { status: 404, corpo: { erro: 'Essa arte não está na Produção.' } };
+    const n = fogoNoRoteiro(j.producao.roteiroId, chaveDeArte(a.nome), { nivel });
+    if (!n) return { status: 409, corpo: { erro: 'Essa Produção não tem Roteiro ligado: as artes dela não têm fogo.' } };
+    producoes.doPROMeiro(j.producao.id, [{ tipo: 'fogo', campo: a.nome, antes: String(n.antes), depois: String(n.depois) }], { email, nome: designer.nome });
+    return { status: 200, corpo: { feito: { eventos: ['fogo'], trello: [] }, producao: aTela(j.producao.id) } };
+  }
+
   async function producaoDaJanela(id, padeiro) {
     const j = producoes.naJanela(id);
     if (!j) return null;
-    const { producao: p, meta, artes } = j;
+    const { producao: p, artes } = j;
     const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
     const card = comAsVersoes(producoes.umaNaTela(p.id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
     const nome = padeiro.designer ? designerDoPadeiro(padeiro).nome : '';
-    const complexidade = meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
     // o filme (como o `fil` da lista): o do cadastro ou só o título
     const ehFilme = !!(p.filmeId || p.filmeTitulo);
-    const fogo = (a) => (p.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
+    const fogo = fogoDasArtes(j);
     return {
       id: p.id,
       praca: p.praca,
