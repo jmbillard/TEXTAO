@@ -214,6 +214,18 @@ describe('servidor', () => {
     expect(fazerBackup(db, pasta)).toBeNull();
     expect(readdirSync(pasta)).toHaveLength(1);
   });
+
+  it('a vez de preencher a sala é da aba: a mesma aba que lê de novo continua com ela; outra aba espera', async () => {
+    // o modo estrito do React (e o recarregar a página) lê o roteiro duas vezes na mesma aba: a segunda leitura não pode
+    // ficar 20 s esperando a vez que a primeira reservou e largou (#183)
+    await salvar(ana, 'vez-da-aba', roteiro('A'));
+    const ler = async (aba?: string) => (await (await ana('/api/roteiros/vez-da-aba', aba ? { headers: { 'x-aba-do-editor': aba } } : {})).json()).semear;
+    expect(await ler('aba-1')).toBe(true);
+    expect(await ler('aba-1')).toBe(true);
+    expect(await ler('aba-2')).toBeUndefined();
+    expect(await ler()).toBeUndefined();
+    expect(await ler('aba-1')).toBe(true);
+  });
 });
 
 describe('vocabulário do Teable', () => {

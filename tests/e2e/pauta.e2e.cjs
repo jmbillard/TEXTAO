@@ -15,6 +15,7 @@
 //   relógio do navegador às 15:30 de hoje ("no ar agora"); no celular, o Dia abre na coluna dela.
 // - A visão lembrada (#98); o resumo do administrador e a cópia de reserva (#99); o código das versões (#152); as
 //   versões à mão (#154).
+// - Os contadores da agenda (#170): o seletor de datas, o cabeçalho da grade, a fita e o resumo contam juntos.
 // - O movimento: a troca de semana e de dia desliza para o lado da navegação, a ficha cresce do card e volta; com o
 //   movimento reduzido, só esmaece. Com VIDEO=pasta, grava o vídeo das transições.
 //
@@ -1081,6 +1082,147 @@ async function oMovimento(navegador, url) {
   console.log(`ok: o movimento: a troca de semana e de dia desliza para o lado da navegação, a ficha cresce do card e volta; reduzido, só esmaece${VIDEO ? ` (vídeo em ${VIDEO})` : ''}`);
 }
 
+/** O período escrito da Semana, como a Pauta escreve: "16 a 22 de novembro", "30 de novembro a 6 de dezembro". */
+const periodoDaSemana = (seg) => {
+  const fim = mais(seg, 6);
+  const [a, b] = [Number(seg.slice(5, 7)) - 1, Number(fim.slice(5, 7)) - 1];
+  return a === b ? `${Number(seg.slice(8))} a ${Number(fim.slice(8))} de ${MESES[b]}` : `${Number(seg.slice(8))} de ${MESES[a]} a ${Number(fim.slice(8))} de ${MESES[b]}`;
+};
+
+/** Grava, a cada quadro, o que o seletor de datas, o resumo e o cabeçalho da grade (ou a fita) mostram, enquanto `agir`
+    troca de semana ou de dia, até o seletor chegar a `alvo` e tudo parar por um tempo; devolve os quadros, sem
+    repetidos seguidos. */
+async function quadrosDaTroca(p, agir, alvo, parado = 400) {
+  await p.evaluate(() => {
+    window.__quadros = [];
+    window.__gravando = true;
+    const ler = () => {
+      const txt = (sel) => [...document.querySelectorAll(sel)].map((e) => e.textContent.replace(/\s+/g, ' ').trim()).join('|');
+      const q = { periodo: txt('.pauta-periodo'), resumo: txt('.pauta-resumo .ct-num'), dias: txt('th.pauta-dia .pauta-dia-num, .pauta-fita .pauta-fita-num'), t: performance.now() };
+      const u = window.__quadros.at(-1);
+      if (!u || u.periodo !== q.periodo || u.resumo !== q.resumo || u.dias !== q.dias) window.__quadros.push(q);
+      if (window.__gravando) requestAnimationFrame(ler);
+    };
+    requestAnimationFrame(ler);
+  });
+  await agir();
+  await p.waitForFunction(
+    ([a, ms]) => {
+      const u = window.__quadros.at(-1);
+      return u && u.periodo === a && performance.now() - u.t > ms;
+    },
+    [alvo, parado],
+    { timeout: 8000 },
+  );
+  return p.evaluate(() => ((window.__gravando = false), window.__quadros));
+}
+
+/**
+ * Os contadores da agenda na Pauta (#170): o seletor de datas ("16 a 22 de novembro", "sexta, 27 de novembro") e os
+ * números do resumo do administrador ("1 linha sem editor · 15 claquetes sem card") contam como os da agenda (No
+ * Trello) quando a semana ou o dia muda: o período e os números do cabeçalho da grade (e da fita do Dia) contam juntos,
+ * pelas datas, e o "hoje" volta à mão no fim. Com o movimento reduzido, nada conta: só esmaece. Com VIDEO=pasta, grava
+ * o vídeo da troca de semana.
+ */
+async function osContadores(navegador, url) {
+  const VIDEO = process.env.VIDEO || '';
+  const tela = { viewport: { width: 1440, height: 900 }, colorScheme: 'light', ...(VIDEO ? { recordVideo: { dir: join(VIDEO, 'contadores'), size: { width: 1440, height: 900 } } } : {}) };
+  const { ctx, p, erros } = await abrir(navegador, url, tela, '#/pauta', null, CHEFE);
+  await p.locator('.pauta-grade').waitFor();
+  await p.locator('.pauta-resumo').waitFor();
+  const devagar = (ms) => (VIDEO ? p.waitForTimeout(ms) : Promise.resolve());
+  const periodo = () => p.locator('.pauta-periodo').textContent().then((t) => t.replace(/\s+/g, ' ').trim());
+  // o período da agenda: o mesmo componente (os dias com algarismos de largura fixa), escrito como a Pauta escreve
+  assert.equal(await periodo(), periodoDaSemana(segunda));
+  assert.equal(await p.locator('.pauta-periodo b .p-dia').count(), 2, 'o período da agenda: dois dias que contam');
+  assert.equal(await p.locator('.pauta-periodo b .p-dia').first().evaluate((e) => getComputedStyle(e).fontVariantNumeric), 'tabular-nums');
+  // o leitor de tela ouve o período parado, não a contagem
+  assert.equal(await p.locator('.pauta-periodo').getAttribute('aria-hidden'), 'true');
+  assert.equal((await p.locator('.pauta-leitor').textContent()).trim(), periodoDaSemana(segunda));
+  const resumo = async () => (await p.locator('.pauta-resumo').textContent()).replace(/\s+/g, ' ');
+  const [semEditor, semCard] = (await p.locator('.pauta-resumo .ct-num').allTextContents()).map(Number);
+  assert.match(await resumo(), /^1 linha sem editor/);
+  assert.ok(semCard > 3, `claquetes sem card (${semCard})`);
+  await capturar(p, '12-contadores-semana', false);
+  await devagar(900);
+
+  // a semana anterior: o período e os números do cabeçalho contam para trás, pelas datas, e o resumo conta junto
+  const indo = await quadrosDaTroca(p, () => p.getByRole('button', { name: 'Semana anterior' }).click(), periodoDaSemana(anterior));
+  const finalAnterior = indo.at(-1);
+  assert.equal(finalAnterior.periodo, periodoDaSemana(anterior));
+  const primeiros = indo.map((q) => Number(q.dias.split('|')[0]));
+  const contados = [...new Set(primeiros)];
+  assert.ok(contados.length >= 3, `o cabeçalho conta (${contados})`);
+  const [ini, fim] = [Number(segunda.slice(8)), Number(anterior.slice(8))];
+  // o primeiro número passa por dias entre a partida e o alvo (pelas datas: a virada do mês volta a 31)
+  assert.ok(contados.includes(ini) && contados.at(-1) === fim, `o cabeçalho sai de ${ini} e chega em ${fim} (${contados})`);
+  const noMeio = indo.filter((q) => q.periodo !== periodoDaSemana(segunda) && q.periodo !== periodoDaSemana(anterior));
+  assert.ok(noMeio.length >= 1, `o período conta, passando pelas datas do meio (${indo.map((q) => q.periodo)})`);
+  const cards = [...new Set(indo.map((q) => Number(q.resumo.split('|')[1])))];
+  assert.equal(cards[0], semCard);
+  assert.ok(cards.length >= 3 && cards.some((c) => c < semCard && c > cards.at(-1)), `as claquetes sem card contam (${cards})`);
+  // as contas param certas: o período, o resumo (a palavra acompanha) e o hoje fora desta semana
+  assert.equal(await periodo(), periodoDaSemana(anterior));
+  assert.equal(await p.locator('th.pauta-dia.hoje').count(), 0);
+  assert.match(await resumo(), /^0 linhas sem editor1 claquete sem card/);
+  await capturar(p, '13-contadores-semana-anterior', false);
+  await devagar(700);
+
+  // de volta: hoje volta ao cabeçalho depois da contagem, escrevendo-se à mão
+  const voltando = await quadrosDaTroca(p, () => p.getByRole('button', { name: 'Próxima semana' }).click(), periodoDaSemana(segunda));
+  assert.equal(voltando.at(-1).periodo, periodoDaSemana(segunda));
+  await p.locator('th.pauta-dia.hoje .pauta-dia-rel').waitFor();
+  assert.equal((await p.locator('th.pauta-dia.hoje').getAttribute('data-dia')), hoje);
+  assert.deepEqual((await p.locator('.pauta-resumo .ct-num').allTextContents()).map(Number), [semEditor, semCard]);
+  await devagar(700);
+  // a semana seguinte, sem pauta, e a volta pelo Hoje: as contas param certas
+  await p.keyboard.press('ArrowRight');
+  await p.locator('.pauta-vazia').waitFor();
+  await p.waitForFunction((t) => document.querySelector('.pauta-periodo')?.textContent.replace(/\s+/g, ' ').trim() === t, periodoDaSemana(proxima));
+  await devagar(800);
+  await p.locator('.pauta-hoje').click();
+  await p.waitForFunction((t) => document.querySelector('.pauta-periodo')?.textContent.replace(/\s+/g, ' ').trim() === t, periodoDaSemana(segunda));
+  await devagar(800);
+
+  // o Dia: o período conta o dia ("sexta, 27 de novembro"), e a fita conta quando a semana muda
+  await p.getByRole('radio', { name: 'Dia', exact: true }).click();
+  await p.locator('.pauta-colunas').waitFor();
+  assert.equal(await periodo(), porExtenso(hoje));
+  await devagar(700);
+  const dia = await quadrosDaTroca(p, () => p.getByRole('button', { name: 'Próximo dia' }).click(), porExtenso(mais(hoje, 1)));
+  assert.equal(dia.at(-1).periodo, porExtenso(mais(hoje, 1)));
+  await capturar(p, '14-contadores-dia', false);
+  await devagar(500);
+  // a fita: ir para a segunda e voltar um dia troca de semana; os números da fita contam
+  await p.locator(`.pauta-fita [data-dia="${segunda}"]`).click();
+  await p.waitForFunction((t) => document.querySelector('.pauta-periodo')?.textContent.replace(/\s+/g, ' ').trim() === t, porExtenso(segunda));
+  await devagar(500);
+  const fita = await quadrosDaTroca(p, () => p.getByRole('button', { name: 'Dia anterior' }).click(), porExtenso(mais(segunda, -1)));
+  assert.equal(fita.at(-1).periodo, porExtenso(mais(segunda, -1)));
+  const daFita = [...new Set(fita.map((q) => q.dias.split('|')[0]))];
+  assert.ok(daFita.length >= 3, `a fita conta (${daFita})`);
+  assert.equal(daFita.at(-1), `${anterior.slice(8)}/${anterior.slice(5, 7)}`);
+  await devagar(900);
+  assert.deepEqual(erros, [], 'os contadores: erros na página');
+  await ctx.close();
+
+  // o movimento reduzido: nada conta (o período e os números trocam de uma vez) e só esmaece
+  const reduzido = await abrir(navegador, url, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' }, '#/pauta', null, CHEFE);
+  const q = reduzido.p;
+  await q.locator('.pauta-resumo').waitFor();
+  const troca = await quadrosDaTroca(q, () => q.getByRole('button', { name: 'Semana anterior' }).click(), periodoDaSemana(anterior));
+  const periodos = [...new Set(troca.map((x) => x.periodo))];
+  assert.deepEqual(periodos, [periodoDaSemana(segunda), periodoDaSemana(anterior)], `reduzido: o período só troca (${periodos})`);
+  assert.equal(new Set(troca.map((x) => x.resumo)).size, 2, 'reduzido: o resumo só troca');
+  await q.getByRole('button', { name: 'Próxima semana' }).click();
+  await q.waitForFunction(() => document.querySelector('.pauta-periodo').getAnimations().length > 0);
+  const anima = await q.locator('.pauta-periodo').evaluate((e) => e.getAnimations().map((a) => Object.keys(a.effect.getKeyframes()[0]).filter((k) => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)).join(',')));
+  assert.ok(anima.every((k) => k === 'opacity'), `reduzido: o período só esmaece (${anima})`);
+  assert.deepEqual(reduzido.erros, []);
+  await reduzido.ctx.close();
+  console.log(`ok: os contadores da agenda na Pauta: o seletor de datas (Semana e Dia), o cabeçalho da grade, a fita e o resumo contam juntos; reduzido, só esmaece${VIDEO ? ` (vídeo em ${join(VIDEO, 'contadores')})` : ''}`);
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -1120,6 +1262,7 @@ async function principal() {
     await oCodigoDasVersoes(navegador, s.url);
     await asVersoesAMaoSemRoteiro(navegador, s.url);
     await oMovimento(navegador, s.url);
+    await osContadores(navegador, s.url);
   } catch (e) {
     falhou = true;
     console.error(e);
