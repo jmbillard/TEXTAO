@@ -84,8 +84,7 @@
   .pauta-aviso-botao { height: 28px; padding: 0 10px; font-size: 12px; }
 }
 
-/* ---------- as versões da chamada (#95): só o código no padrão, numa etiqueta (CodigoDasVersoes) ---------- */
-.pauta-versoes { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; color: var(--tinta2); }
+/* as versões da chamada (#95, #152): o código vai colado no fim do nome (SufixoDasVersoes), sem etiqueta */
 
 /* ---------- a claquete com a produção da arte (#96): a etapa, as artes, os designers e a praça; um clique abre a ficha ---------- */
 .pauta-claquete-botao { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: 4px; }
@@ -107,14 +106,13 @@
 .pauta-ficha-voltar { display: inline-flex; align-items: center; gap: 6px; font: 400 14px var(--sans); color: var(--tinta2); }
 .pauta-ficha h2 { margin: 12px 0 6px; font: 600 28px/1.2 var(--mono); letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .pauta-ficha h3 { margin: 22px 0 8px; font: 600 11.5px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta3); }
-.pauta-ficha-versoes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 6px; font: 400 13.5px var(--sans); color: var(--tinta3); }
 .pauta-ficha > .pauta-producao { font-size: 13.5px; }
 .pauta-ficha-tabela { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); font: 400 14px/1.4 var(--sans); overflow: hidden; }
 .pauta-ficha-tabela th { padding: 10px 14px; text-align: left; font: 600 11px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); border-bottom: 1px solid var(--regua); }
 .pauta-ficha-tabela td { padding: 10px 14px; vertical-align: top; border-bottom: 1px solid var(--regua); }
 .pauta-ficha-tabela tbody tr:last-child td { border-bottom: 0; }
 .pauta-ficha-tabela tr.hoje td { background: color-mix(in srgb, var(--ultra-suave) 45%, transparent); }
-.pauta-ficha-tabela .pauta-versoes, .pauta-ficha-versoes .pauta-versoes { margin-top: 0; }
+.pauta-ficha-versao { font-family: var(--mono); cursor: help; }
 .pauta-ficha-tabela .pauta-producao { margin: 0; font-size: 13.5px; }
 .pauta-ficha-praca { font-family: var(--mono); }
 .pauta-ficha-quando { display: block; color: var(--tinta3); font-size: 12px; }
@@ -173,7 +171,6 @@
 .pauta-cards .pauta-item.pauta-claquete::before { display: none; }
 .pauta-cards .pauta-item.pauta-tarefa { border: 1px dashed var(--regua-forte); font-size: 15px; }
 .pauta-cards .pauta-producao { margin-top: 5px; font-size: 12px; }
-.pauta-cards .pauta-versoes { margin-top: 5px; }
 
 /* o arranjo por hora: a régua das 6h às 6h, o turno como um bloco, a linha do "agora" */
 .pauta-horas { position: relative; padding: 0; margin: 10px 10px 0; }

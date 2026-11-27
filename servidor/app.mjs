@@ -43,7 +43,7 @@ import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs
 import { criarNomesNovos, nomeNovoDoPedido } from './nomes-novos.mjs';
 import { criarPreferencias } from './preferencias.mjs';
 import { criarApelidos } from './apelidos.mjs';
-import { versoesDaChamada } from '../src/modelo/versoesDoRoteiro.ts';
+import { CHAVE_DO_CODIGO_DAS_VERSOES, recusaDoCodigoDasVersoes, versoesDaChamada } from '../src/modelo/versoesDoRoteiro.ts';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { criarEscala, posicoesDoPedido, recadoDoPedido } from './escala.mjs';
 import { juntarODia } from '../src/modelo/juntarODia.ts';
@@ -742,8 +742,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const preferencias = criarPreferencias(db);
   // o apelido da claquete (#120), um por roteiro, no SQLite: só para mostrar, o envio continua com a claquete original
   const apelidos = criarApelidos(db);
-  /** O card da tela de produções com as versões da chamada (#121), prontas: as do roteiro dele, ou o código do apelido
-      ou da claquete (sem a praça no fim); o dia das etiquetas sem data na claquete é o do prazo. */
+  /** O card da tela de produções com as versões da chamada (#121), prontas: as à mão no apelido (#152), ou o código do
+      apelido ou da claquete (sem a praça no fim), ou as do roteiro dele; o dia das etiquetas sem data na claquete é o do
+      prazo. */
   const comAsVersoes = (card) =>
     card && { ...card, versoesDaChamada: versoesDaChamada({ ...apelidos.roteiroDaProducao(card.id), claquete: semPracaNoFim(card.claquete ?? '', pracas), dia: card.prazo ? diaDoPrazo(card.prazo) : '' }) };
   // as áreas de trabalho (#101): quem é quem pelo e-mail nos cadastros
@@ -1102,8 +1103,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const lidas = l.versoes_lidas ? JSON.parse(l.versoes_lidas) : [];
       return {
         id: l.id, meta, nArtes: l.n_artes, versoesLidas: lidas, atualizadoEm: l.atualizado_em,
-        // as versões da chamada do card da agenda (#121), prontas: as do roteiro, ou o código do apelido ou da claquete
-        versoesDaChamada: versoesDaChamada({ lidas, claquete: String(meta?.claquete ?? ''), apelido: apelidoDe.get(l.id) ?? '', dia: String(meta?.dataExibicao ?? '') }),
+        // as versões da chamada do card da agenda (#121), prontas: as à mão (#152), ou o código do apelido ou da claquete,
+        // ou as do roteiro
+        versoesDaChamada: versoesDaChamada({ lidas, claquete: String(meta?.claquete ?? ''), apelido: apelidoDe.get(l.id)?.apelido ?? '', mao: apelidoDe.get(l.id)?.mao ?? '', dia: String(meta?.dataExibicao ?? '') }),
         dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
         compartilhado: !!l.compartilhado,
         podeEditar: aberto || l.dono_email === eu.email || !!l.pode_editar,
@@ -2746,7 +2748,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/cores') return json(res, 200, q.cores.all());
     if (caminho === '/api/apelidos') {
       // o apelido da claquete (#120), um por roteiro: qualquer pessoa logada que lê o roteiro lê, dá, troca e tira o
-      // apelido ("voltar ao original", o apelido vazio)
+      // apelido ("voltar ao original", o apelido vazio) e as versões à mão (#152, as vazias voltam ao valor inicial);
+      // o que não vem no pedido fica como está
       const lidos = () => apelidos.todos((id) => acesso(id, eu).ler);
       if (req.method === 'GET') return json(res, 200, lidos());
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
@@ -2754,7 +2757,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const id = typeof corpo.roteiro === 'string' ? corpo.roteiro : '';
       const { linha, ler } = ID_VALIDO.test(id) ? acesso(id, eu) : { linha: null, ler: false };
       if (!linha || !ler) return json(res, 404, { erro: 'Roteiro não encontrado.' });
-      const recusa = apelidos.gravar(id, JSON.parse(linha.meta)?.claquete, corpo.apelido, eu);
+      const recusa = apelidos.gravar(id, JSON.parse(linha.meta)?.claquete, { apelido: corpo.apelido, versoes: corpo.versoes }, eu);
       if (recusa) return json(res, 400, { erro: recusa });
       // os colegas com a fila aberta passam a ver o apelido na hora
       void cache.publicar(FILA, { tipo: 'apelido', por: eu.email }).catch(() => {});
@@ -2783,6 +2786,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       for (const [chave, valor] of entradas) {
         if (ehChaveDaPauta(chave)) {
           const recusa = recusaDaPreferenciaDaPauta(chave, valor);
+          if (recusa) return json(res, 400, { erro: recusa });
+          continue;
+        }
+        if (chave === CHAVE_DO_CODIGO_DAS_VERSOES) {
+          // "Mostrar o código das versões" (#152), de todo mundo, para o PROMeiro todo
+          const recusa = recusaDoCodigoDasVersoes(valor);
           if (recusa) return json(res, 400, { erro: recusa });
           continue;
         }
@@ -3185,7 +3194,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // tolerância da busca do editor (sem a versão, sem a praça)
       const desde = new Date(Date.parse(`${s.inicio ?? s.dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();
       const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
-      const linhas = cruzarComAProducao(s.linhas, producoes.naPauta(desde), semPraca);
+      // cada Produção com as versões lidas do roteiro dela (#152), o valor inicial da claquete sem código no nome
+      const comAsLidas = producoes.naPauta(desde).map((p) => {
+        const { lidas } = apelidos.roteiroDaProducao(p.id);
+        return lidas.length ? { ...p, versoesLidas: lidas } : p;
+      });
+      const linhas = cruzarComAProducao(s.linhas, comAsLidas, semPraca);
       // os filtros pessoais (#99): "Só as minhas" pelo editor ligado ao e-mail (#106), "Com arte minha" pelo designer
       // do e-mail (#110); o resumo, da pauta inteira, só para administradores
       const voce = { editor: (await areas.quemE(eu.email, cadastros)).editor?.nome ?? null, designer: pessoas.designerDoEmail(eu.email)?.nome ?? null };

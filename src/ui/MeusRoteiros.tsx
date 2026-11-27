@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
+import { NomeDaClaquete, versoesDoResumo } from './Apelido';
 import { exibicaoLembrada, lembrarExibicao, lerMeusRoteiros, type MeuRoteiro, type MeusRoteiros as Lidos, type Resumo } from '../dados/armazenamento';
 import { EXIBICOES, type AreaDosRoteiros, type Exibicao } from '../modelo/areas';
 import { CICLO, frasesDoCiclo, type CicloDoRoteiro, type EstadoDoCiclo as Estado } from '../modelo/cicloDoRoteiro';
@@ -236,7 +237,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
     return (
       <li key={r.id} className="ficha ficha-minha" data-estado={r.ciclo?.estado} {...abreCom(r)}>
         <span className="ficha-claquete">
-          <b>{apelidoDoRoteiro(r.id) || r.meta.claquete || 'Sem claquete'}</b>
+          <b>{apelidoDoRoteiro(r.id) || r.meta.claquete ? <NomeDaClaquete nome={apelidoDoRoteiro(r.id) || r.meta.claquete} versoes={versoesDoResumo(r)} /> : 'Sem claquete'}</b>
           <span>
             {r.meta.programa || 'sem atração'}
             {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
@@ -283,7 +284,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
   // quadro: uma coluna por estado do ciclo; os passos de antes do PROMeiro numa coluna apagada, "em breve"
   const cartao = (r: MeuRoteiro) => (
     <li key={r.id} className="cartao-meu" data-estado={estadoDe(r)} {...abreCom(r)}>
-      <b>{apelidoDoRoteiro(r.id) || r.meta.claquete || 'Sem claquete'}</b>
+      <b>{apelidoDoRoteiro(r.id) || r.meta.claquete ? <NomeDaClaquete nome={apelidoDoRoteiro(r.id) || r.meta.claquete} versoes={versoesDoResumo(r)} /> : 'Sem claquete'}</b>
       <span>
         {r.meta.programa || 'sem atração'} · {diaCurto(r.meta.dataExibicao)}
       </span>
@@ -325,7 +326,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
   const linha = (r: MeuRoteiro) => (
     <li key={r.id} className="linha-meu" data-estado={estadoDe(r)} {...abreCom(r)}>
       <span className="linha-meu-quem">
-        <b>{apelidoDoRoteiro(r.id) || r.meta.claquete || 'Sem claquete'}</b>
+        <b>{apelidoDoRoteiro(r.id) || r.meta.claquete ? <NomeDaClaquete nome={apelidoDoRoteiro(r.id) || r.meta.claquete} versoes={versoesDoResumo(r)} /> : 'Sem claquete'}</b>
         <small>
           {r.meta.programa || 'sem atração'} · {quem(r)}
         </small>

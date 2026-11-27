@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
+import { NomeDaClaquete, versoesDoResumo } from './Apelido';
 import { EditorContent, useEditor } from '@tiptap/react';
 import Bold from '@tiptap/extension-bold';
 import Document from '@tiptap/extension-document';
@@ -159,7 +160,7 @@ export function RoteiroAberto({ area, id, lido, topo, abrir, voltar }: Props) {
         <div className="aberto-grade">
           <article className="folha folha-aberta" key={id}>
             <div className="cab">
-              <span className="aberto-claquete" title={apelidoDoRoteiro(id) ? `Claquete: ${meta?.claquete ?? ''}` : undefined}>{apelidoDoRoteiro(id) || meta?.claquete || 'Sem claquete'}</span>
+              <span className="aberto-claquete" title={apelidoDoRoteiro(id) ? `Claquete: ${meta?.claquete ?? ''}` : undefined}>{apelidoDoRoteiro(id) || meta?.claquete ? <NomeDaClaquete nome={apelidoDoRoteiro(id) || meta?.claquete || ''} versoes={meu ? versoesDoResumo(meu) : undefined} /> : 'Sem claquete'}</span>
               <div className="cab-titulo">{meta?.programa || meta?.titulo || 'Sem atração'}</div>
               <div className="cab-frase">
                 {[

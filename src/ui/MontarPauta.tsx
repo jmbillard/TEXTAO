@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CodigoDasVersoes } from './CodigoDasVersoes';
+import { SufixoDasVersoes } from './CodigoDasVersoes';
 import { desfazerAPublicacao, devolverADemanda, escalarNoDia, gravarRascunhoDoDia, jaDistribuida, juntarParaDistribuir, lerRascunhoDoDia, levarParaAPosicao, marcarAusencia, marcarPendencia, moverADemanda, publicarODia, repetirAEscala } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
@@ -934,14 +934,14 @@ function LinhaDaDemanda({ posicao, id, texto, dia, mudar, tecla, arraste }: { po
           {l.data ? (
             <span className="montar-data">
               {l.atracao} · {DIAS_DA_SEMANA[partes(l.data).semana]} {partes(l.data).dia}/{partes(l.data).mes + 1}
+              {/* o código das versões colado no fim do que o PROMeiro entendeu, se a pessoa liga (#152) */}
+              <SufixoDasVersoes versoes={l.versoes} de="da claquete" />
             </span>
           ) : (
-            <span className="montar-alerta">sem data</span>
-          )}
-          {l.versoes.length > 0 && (
-            <span className="pauta-versoes">
-              <CodigoDasVersoes versoes={l.versoes} de="da claquete" />
-            </span>
+            <>
+              <span className="montar-alerta">sem data</span>
+              <SufixoDasVersoes versoes={l.versoes} de="da claquete" />
+            </>
           )}
           {l.mudou && (
             <span className="montar-grava">

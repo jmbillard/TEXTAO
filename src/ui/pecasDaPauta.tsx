@@ -1,11 +1,12 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { escolhaLembradaDaPauta, lembrarNaPauta } from '../dados/armazenamento';
-import { ROTULO_DA_ETAPA, codigoDasVersoes, diaEmSaoPaulo, lerVersoes, resumoDaProducao, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
+import { ROTULO_DA_ETAPA, diaEmSaoPaulo, lerVersoes, nomeSemAsVersoes, resumoDaProducao, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, tracoDe } from './pecas';
-import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
-import { CodigoDasVersoes } from './CodigoDasVersoes';
+import { apelidoDaProducao, useApelidos, versoesAMaoDaProducao } from '../dados/apelidos';
+import { DE_ONDE, dicaDasVersoes, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
+import { sufixoDasVersoes, versoesDaChamada, type FonteDasVersoes } from '../modelo/versoesDoRoteiro';
 
 /* As peças da Pauta da edição que a Semana (#94) e o Dia (#97) usam igual: as datas escritas, as versões da chamada
    como o código no padrão (#95), a claquete com a produção da arte (#96), o item da pauta (claquete ou tarefa), a ficha da
@@ -18,23 +19,36 @@ export const partes = (iso: string) => {
   return { dia: d.getUTCDate(), mes: d.getUTCMonth(), semana: d.getUTCDay() };
 };
 
-/** As versões da chamada só como o código no padrão ("(AH)"), numa etiqueta; o que ele quer dizer e a grafia da
-    claquete ficam na dica. O código desconhecido aparece cru. */
-export function Versoes({ linha }: { linha: LinhaDaPauta }) {
-  if (!linha.versoes.length) return null;
-  const original = linha.texto.slice(linha.semVersao.length).trim();
-  return (
-    <span className="pauta-versoes">
-      <CodigoDasVersoes versoes={linha.versoes} de={`da claquete ${original}`} />
-    </span>
-  );
+/** A linha da pauta como a tela mostra: com o apelido e a origem das versões que a claquete sabe (#120, #152). */
+type LinhaNaTela = LinhaDaPauta & { original?: string; de?: FonteDasVersoes | null };
+
+/** De onde vieram as versões da linha, para a dica: a grafia da claquete quando vêm dela. */
+const deOndeNaLinha = (linha: LinhaNaTela) => {
+  if (linha.de && linha.de !== 'claquete') return DE_ONDE[linha.de];
+  const escrito = linha.texto.slice(nomeSemAsVersoes(linha.texto).length).trim();
+  return escrito ? `da claquete ${escrito}` : DE_ONDE.claquete;
+};
+
+/** As versões da chamada como o sufixo colado no fim do nome (#152): o código no padrão, uma vez só; o que ele quer
+    dizer e de onde veio ficam na dica. Com a opção desligada, nada. */
+export function Versoes({ linha }: { linha: LinhaNaTela }) {
+  return <SufixoDasVersoes versoes={linha.versoes} de={deOndeNaLinha(linha)} />;
 }
 
-/** A linha com o apelido do roteiro (#120) das Produções dela no lugar do texto, e as versões lidas dele: só para
-    mostrar. A chave e as Produções achadas por ela ficam as da claquete da pauta; a original fica em `original`. */
-function comApelidoNaPauta(l: LinhaDaPauta): LinhaDaPauta & { original?: string } {
-  const apelido = l.tipo === 'claquete' ? (l.producoes ?? []).map((p) => apelidoDaProducao(p.id)).find(Boolean) : '';
-  return apelido ? { ...l, texto: apelido, ...lerVersoes(apelido, l.dia), original: l.texto } : l;
+/**
+ * A linha com o apelido do roteiro (#120) das Produções dela no lugar do texto e as versões que a claquete sabe (#152):
+ * as feitas à mão no apelido, o código do nome (o do apelido ou o da claquete) ou as lidas do roteiro. Só para mostrar:
+ * a chave e as Produções achadas por ela ficam as da claquete da pauta; a original fica em `original`.
+ */
+function comApelidoNaPauta(l: LinhaDaPauta): LinhaNaTela {
+  if (l.tipo !== 'claquete') return l;
+  const producoes = l.producoes ?? [];
+  const apelido = producoes.map((p) => apelidoDaProducao(p.id)).find(Boolean) ?? '';
+  const mao = producoes.map((p) => versoesAMaoDaProducao(p.id)).find(Boolean) ?? '';
+  const lidas = producoes.map((p) => p.versoesLidas ?? []).find((v) => v.length) ?? [];
+  const v = versoesDaChamada({ lidas, claquete: l.texto, apelido, mao, dia: l.dia });
+  const texto = apelido || l.texto;
+  return { ...l, texto, semVersao: lerVersoes(texto, l.dia).semVersao, versoes: v.lista, de: v.de, ...(apelido ? { original: l.texto } : {}) };
 }
 
 /** "1 editor", "3 editores". */
@@ -59,11 +73,17 @@ export function ProducaoDaClaquete({ linha }: { linha: LinhaDaPauta }) {
 }
 
 /** O texto da claquete, com o marca-texto da prioridade ALTA da produção da arte (como na agenda). */
-export function TextoDaClaquete({ linha }: { linha: LinhaDaPauta & { original?: string } }) {
+export function TextoDaClaquete({ linha }: { linha: LinhaNaTela }) {
   const alta = !!resumoDaProducao(linha.producoes)?.alta;
   // com o apelido do roteiro (#120), a claquete da pauta aparece ao passar o mouse
   const texto = <span className="pauta-texto" title={linha.original ? `Claquete: ${linha.original}` : undefined}>{linha.semVersao}</span>;
-  return alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{texto}</MarcaTexto> : texto;
+  // o código das versões colado no fim do nome (#152), fora do marca-texto
+  return (
+    <span className="pauta-nome-com-versoes">
+      {alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{texto}</MarcaTexto> : texto}
+      <Versoes linha={linha} />
+    </span>
+  );
 }
 
 /** Um item da pauta: a claquete (que abre a ficha), com as versões e a produção da arte; ou a tarefa, com outro visual.
@@ -76,13 +96,14 @@ export function ItemDaPauta({ linha, abrir, pe }: { linha: LinhaDaPauta; abrir: 
       {l.tipo === 'claquete' ? (
         <button type="button" className="pauta-claquete-botao" aria-haspopup="dialog" onClick={() => abrir(linha)}>
           <TextoDaClaquete linha={l} />
-          <Versoes linha={l} />
           <ProducaoDaClaquete linha={l} />
         </button>
       ) : (
         <>
-          <span className="pauta-texto">{l.semVersao}</span>
-          <Versoes linha={l} />
+          <span className="pauta-nome-com-versoes">
+            <span className="pauta-texto">{l.semVersao}</span>
+            <Versoes linha={l} />
+          </span>
         </>
       )}
       {pe}
@@ -108,8 +129,7 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }:
   const linha = comApelidoNaPauta(daPauta);
   const linhas = todas.filter((l) => l.tipo === 'claquete' && (l.id === linha.id || (!!linha.chave && l.chave === linha.chave))).map(comApelidoNaPauta);
   const producoes = [...new Map(linhas.flatMap((l) => l.producoes ?? []).map((p) => [p.id, p])).values()].sort((a, b) => a.praca.localeCompare(b.praca));
-  // um código por claquete: as linhas com o mesmo código no padrão contam uma vez
-  const versoes = [...new Map(linhas.filter((l) => l.versoes.length).map((l) => [codigoDasVersoes(l.versoes), l])).values()];
+  const ligado = useCodigoDasVersoes();
   const resumo = resumoDaProducao(producoes);
   const corpo = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -119,7 +139,13 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }:
     return () => document.removeEventListener('keydown', tecla);
   }, [fechar]);
   const relativo = (d: string) => (d === hoje ? 'hoje' : d === vizinho(hoje, -1) ? 'ontem' : d === vizinho(hoje, 1) ? 'amanhã' : '');
-  const titulo = <span>{linha.semVersao}</span>;
+  // o código das versões no fim do nome, uma vez só (#152), se a pessoa liga
+  const titulo = (
+    <span>
+      {linha.semVersao}
+      <Versoes linha={linha} />
+    </span>
+  );
   return (
     <div className="pauta-veu" onClick={fechar}>
       <div className="pauta-ficha" role="dialog" aria-modal="true" aria-labelledby="pauta-ficha-titulo" tabIndex={-1} ref={corpo} onClick={(e) => e.stopPropagation()}>
@@ -127,14 +153,6 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }:
           <Icone nome="voltar" tam={14} /> Pauta da edição
         </button>
         <h2 id="pauta-ficha-titulo">{resumo?.alta ? <MarcaTexto traco={tracoDe(linha.chave ?? linha.id)}>{titulo}</MarcaTexto> : titulo}</h2>
-        {versoes.length > 0 && (
-          <p className="pauta-ficha-versoes">
-            Versões na pauta:{' '}
-            {versoes.map((l) => (
-              <Versoes key={l.id} linha={l} />
-            ))}
-          </p>
-        )}
         <p className="pauta-producao" data-etapa={resumo?.etapa ?? 'sem-card'}>
           {resumo ? <span className="pauta-etapa">{ROTULO_DA_ETAPA[resumo.etapa]}</span> : 'sem card na produção da arte'}
         </p>
@@ -144,7 +162,7 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }:
           <thead>
             <tr>
               <th scope="col">Dia</th>
-              <th scope="col">Versão</th>
+              {ligado && <th scope="col">Versão</th>}
               <th scope="col">Turno</th>
               <th scope="col">Editor</th>
             </tr>
@@ -155,7 +173,12 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, fechar }:
                 <td>
                   {diaEscrito(l.dia)} {relativo(l.dia) && <span className="pauta-dia-rel">{relativo(l.dia)}</span>}
                 </td>
-                <td>{l.versoes.length ? <Versoes linha={l} /> : '—'}</td>
+                {/* as linhas da mesma atração com versões diferentes: o código de cada uma, só com a opção ligada */}
+                {ligado && (
+                  <td className="pauta-ficha-versao" title={l.versoes.length ? dicaDasVersoes(l.versoes, deOndeNaLinha(l)) : undefined}>
+                    {sufixoDasVersoes(l.versoes) || '—'}
+                  </td>
+                )}
                 <td className="pauta-turno">{l.turno ? `${l.turno.inicio}${l.turno.fim ? `–${l.turno.fim}` : ''}` : '—'}</td>
                 <td>{l.editor || <em>sem editor</em>}</td>
               </tr>

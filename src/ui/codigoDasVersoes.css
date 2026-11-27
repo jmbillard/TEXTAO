@@ -1,11 +1,5 @@
-/* O código das versões da chamada: uma etiqueta discreta por claquete, no tom do texto em volta (serve no papel, no
-   card e na ficha escura do editor). */
-.codigo-versoes {
-  display: inline-block; padding: 0 6px; border-radius: 6px; max-width: 100%;
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  font: normal 500 10.5px/18px var(--mono); letter-spacing: 0.04em; white-space: nowrap; text-transform: none;
-  opacity: 0.85; cursor: default;
-}
-/* o desconhecido, cru: só o contorno tracejado; o "?" a conferir também */
-.codigo-versoes.desconhecido { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent); opacity: 0.7; }
-.codigo-versoes.a-conferir { outline: 1px dashed color-mix(in srgb, currentColor 45%, transparent); outline-offset: -1px; }
+/* O sufixo das versões da chamada (#152): colado no fim do nome, no mesmo texto (serve no papel, no card e na ficha
+   escura do editor), sem etiqueta. Não quebra no meio do código. */
+.sufixo-versoes { white-space: nowrap; cursor: help; text-transform: none; }
+/* o código que o PROMeiro não conhece: cru, com um sublinhado pontilhado discreto */
+.sufixo-versoes.desconhecido { text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; }

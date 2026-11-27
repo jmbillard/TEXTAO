@@ -1,8 +1,8 @@
 import { conferirODia, type AlvoDaPendencia, type Pendencia } from '../modelo/conferenciaDaEscala';
-import { CodigoDasVersoes } from './CodigoDasVersoes';
+import { NomeComVersoes } from './CodigoDasVersoes';
 import { horarioNoPadrao, lerDemanda, type DiaDaEscala, type PosicaoDaEscala, type PublicacaoDoDia } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
-import { diaVizinho, nomeSemAsVersoes } from '../modelo/pauta';
+import { diaVizinho } from '../modelo/pauta';
 import { MESES, partes } from './pecasDaPauta';
 import './conferirPauta.css';
 
@@ -218,12 +218,8 @@ export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara
                         const l = lerDemanda(d.texto, dados.dia);
                         return l.tipo === 'claquete' ? (
                           <li key={d.id} className="pauta-item pauta-claquete">
-                            {nomeSemAsVersoes(l.padrao)}
-                            {l.versoes.length > 0 && (
-                              <span className="pauta-versoes">
-                                <CodigoDasVersoes versoes={l.versoes} de="da claquete" />
-                              </span>
-                            )}
+                            {/* o código no fim do nome, uma vez só, se a pessoa liga (#152) */}
+                            <NomeComVersoes nome={l.padrao} versoes={l.versoes} de="da claquete" />
                           </li>
                         ) : (
                           <li key={d.id} className="pauta-item pauta-tarefa">

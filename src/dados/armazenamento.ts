@@ -9,7 +9,7 @@ import { artesDoEnvio, artesUnicas, exportar, quantasAProduzir } from '../modelo
 import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import type { EventoDaLinha, ProducaoDaLinha } from '../modelo/linhaDoTempo';
 import type { Versao as VersaoDaChamada } from '../modelo/pauta';
-import type { VersoesDaChamada } from '../modelo/versoesDoRoteiro';
+import { CHAVE_DO_CODIGO_DAS_VERSOES, mostraOCodigoDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
@@ -251,7 +251,12 @@ export async function atualizarVocabulario() {
 export interface ApelidoGuardado {
   roteiro: string;
   original: string;
+  /** o nome novo; '' no apelido só com as versões à mão (a tela mostra a claquete original) */
   apelido: string;
+  /** as versões feitas à mão (#152), no padrão ("AH", "MNT"); '' sem elas */
+  versoes: string;
+  /** as versões que valem, com a origem (à mão, do nome ou do roteiro) */
+  versoesDaChamada?: VersoesDaChamada;
   por: string;
   em: string;
   producoes: string[];
@@ -259,8 +264,9 @@ export interface ApelidoGuardado {
 }
 /** Os apelidos dos roteiros; fora do servidor, nenhum. */
 export const lerApelidos = async (): Promise<ApelidoGuardado[]> => (armazenamento.tipo === 'servidor' ? pedir<ApelidoGuardado[]>('/api/apelidos') : []);
-/** Dá, troca ou tira (o apelido vazio: "voltar ao original") o apelido do roteiro; devolve os apelidos de agora. */
-export const gravarApelido = (roteiro: string, apelido: string) => pedir<ApelidoGuardado[]>('/api/apelidos', { method: 'PUT', body: JSON.stringify({ roteiro, apelido }) });
+/** Dá, troca ou tira o nome do apelido do roteiro (o vazio: "voltar ao original") ou as versões à mão (#152; as vazias
+    voltam ao valor inicial); o que não vem fica como está. Devolve os apelidos de agora. */
+export const gravarApelido = (roteiro: string, mudanca: { apelido?: string; versoes?: string }) => pedir<ApelidoGuardado[]>('/api/apelidos', { method: 'PUT', body: JSON.stringify({ roteiro, ...mudanca }) });
 
 /** Quem está com a claquete na pauta da edição. Pergunta ao servidor; sem resposta, usa a pauta que já veio no vocabulário. */
 export async function consultarPauta(claquete: string): Promise<{ editor: string; claquete: string }> {
@@ -983,6 +989,32 @@ async function guardarPreferencia(chave: string, valor: unknown): Promise<boolea
   }
 }
 
+/** Quem redesenha quando uma preferência que vale no PROMeiro todo muda (o código das versões, #152). */
+const ouvintesDasPreferencias = new Set<() => void>();
+const avisarDasPreferencias = () => {
+  for (const f of ouvintesDasPreferencias) f();
+};
+/** Assina as mudanças das preferências (para o useSyncExternalStore); devolve como desassinar. */
+export function assinarPreferencias(f: () => void): () => void {
+  ouvintesDasPreferencias.add(f);
+  return () => void ouvintesDasPreferencias.delete(f);
+}
+
+/** "Mostrar o código das versões" (#152): a opção da pessoa, para o PROMeiro todo; sem escolha, ligada. */
+export const codigoDasVersoesLigado = (): boolean => mostraOCodigoDasVersoes(minhasPreferencias);
+
+/** A pessoa ligou ou desligou o código das versões no menu do perfil: vale na hora, em todas as telas, e o servidor
+    guarda, por pessoa, para qualquer aparelho. Devolve se ficou guardada. */
+export async function lembrarCodigoDasVersoes(ligado: boolean): Promise<boolean> {
+  if (codigoDasVersoesLigado() === ligado) return true;
+  const guardou = guardarPreferencia(CHAVE_DO_CODIGO_DAS_VERSOES, ligado);
+  avisarDasPreferencias();
+  const ok = await guardou;
+  // a que não ficou guardada pode ter voltado à de antes
+  avisarDasPreferencias();
+  return ok;
+}
+
 /** "Meus roteiros" do Redator ou do Editor: os roteiros em que a pessoa é o redator (ou o editor), pelo nome do
     cadastro ligado ao e-mail dela; `nome` vazio quando o e-mail não está em nenhum cadastro da área. */
 export interface MeusRoteiros {
@@ -1055,6 +1087,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
       if (!minhasAreas.includes('designer')) minhasAreas.unshift('designer');
       areaLembrada = areaDeEntrada(d.area, minhasAreas);
       minhasPreferencias = d.preferencias && typeof d.preferencias === 'object' ? d.preferencias : {};
+      avisarDasPreferencias();
       return { eu: { email: d.email, nome: d.nome ?? d.email, origem: d.origem ?? 'acesso' }, pedePerfil: false, tourRevisao: d.tour?.revisao ?? null, areas: minhasAreas, area: areaLembrada };
     }
     armazenamento = doNavegador;

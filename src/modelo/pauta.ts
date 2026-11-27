@@ -52,6 +52,8 @@ export interface ProducaoNaPauta {
   alta: boolean;
   entradaEm: string | null;
   entregaEm: string | null;
+  /** as versões lidas do roteiro da Produção (#152), quando ele está no PROMeiro e as artes dizem */
+  versoesLidas?: Versao[];
 }
 
 /** A Semana da pauta: a rota GET /api/pauta/semana. */

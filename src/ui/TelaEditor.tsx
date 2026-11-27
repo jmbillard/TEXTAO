@@ -45,9 +45,10 @@ import { ajustarSelecao } from '../editor/selecao';
 import { gestoNaLista, SEGURAR_MS } from './gestoNaLista';
 import { enviadoNoTour, enviarNoTour } from '../tour/TourDaRevisao';
 import { ApelidoDaClaquete } from './Apelido';
-import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
-import { versoesDoRoteiro } from '../modelo/versoesDoRoteiro';
-import { diaEmSaoPaulo } from '../modelo/pauta';
+import { DE_ONDE, SufixoDasVersoes } from './CodigoDasVersoes';
+import { apelidoDoRoteiro, useApelidos, versoesAMaoDoRoteiro } from '../dados/apelidos';
+import { versoesDaChamada, versoesDoRoteiro } from '../modelo/versoesDoRoteiro';
+import { diaEmSaoPaulo, nomeSemAsVersoes } from '../modelo/pauta';
 
 
 /** No tour, quanto tempo o Enviar do exemplo mostra "Mandando…" antes de voltar para a fila. */
@@ -1467,7 +1468,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       }
       recolhivel={celular ? { aberta: fichaAberta, mudar: setFichaAberta } : undefined}
       palpiteRedator={palpiteRedator}
-      apelido={<ApelidoDaClaquete roteiro={inicial.id} claquete={meta.claquete} versoes={versoesLidas} podeMudar={comServidor} />}
+      apelido={<ApelidoDaClaquete roteiro={inicial.id} claquete={meta.claquete} versoes={versoesLidas} dia={meta.dataExibicao ?? ''} podeMudar={comServidor} />}
     />
   );
   const avisosDoTrello = (
@@ -1753,7 +1754,11 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     </button>
   ) : null;
   // a claquete do topo: a regra da agenda (o nome de hoje na produção da arte; senão o guardado no padrão da casa)
-  const claqueteNoTopo = claqueteParaMostrar(meta, nomeNaProducao ? { claquete: nomeNaProducao } : null, inicial.id) || meta.programa || 'Roteiro';
+  const nomeNoTopo = claqueteParaMostrar(meta, nomeNaProducao ? { claquete: nomeNaProducao } : null, inicial.id);
+  // as versões que a claquete sabe (#152): o código sai do nome e volta como o sufixo, uma vez só, se a pessoa liga
+  const claqueteNoTopo = nomeSemAsVersoes(nomeNoTopo) || meta.programa || 'Roteiro';
+  const versoesNoTopo = versoesDaChamada({ lidas: versoesLidas, claquete: meta.claquete, apelido: apelidoDoRoteiro(inicial.id), mao: versoesAMaoDoRoteiro(inicial.id), dia: meta.dataExibicao ?? '' });
+  const sufixoNoTopo = nomeNoTopo ? <SufixoDasVersoes versoes={versoesNoTopo.lista} de={versoesNoTopo.de ? DE_ONDE[versoesNoTopo.de] : undefined} /> : null;
   // com apelido, a claquete original aparece ao passar o mouse (e na ficha)
   const originalNoTopo = apelidoDoRoteiro(inicial.id) ? `Claquete: ${meta.claquete}` : undefined;
 
@@ -1767,6 +1772,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
             <span className="trilha" title={originalNoTopo}>
               <strong>
                 {prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}><TextoDaClaquete texto={claqueteNoTopo} /></MarcaTexto> : <TextoDaClaquete texto={claqueteNoTopo} />}
+                {sufixoNoTopo}
                 {prioridade && <span className="prio-nota" title={NA_PRIORIDADE}>prioridade</span>}
               </strong>
             </span>
@@ -1778,7 +1784,10 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               <button className="botao-icone" aria-label="Voltar para os roteiros" title="Roteiros" onClick={voltar}><Icone nome="voltar" tam={18} /></button>
               <Marca />
               <span className="trilha" title={originalNoTopo}>
-                <strong>{prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}>{claqueteNoTopo}</MarcaTexto> : claqueteNoTopo}</strong>
+                <strong>
+                  {prioridade ? <MarcaTexto traco={tracoDe(inicial.id)}>{claqueteNoTopo}</MarcaTexto> : claqueteNoTopo}
+                  {sufixoNoTopo}
+                </strong>
                 {prioridade && <span className="prio-nota" title={NA_PRIORIDADE}>prioridade</span>}
               </span>
               {leitura ? (

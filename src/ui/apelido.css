@@ -8,16 +8,15 @@
 .apelido-botao { border: 0; background: none; padding: 2px 0; font: 500 12px var(--sans); color: inherit; opacity: 0.75; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; cursor: pointer; min-height: 24px; }
 .apelido-botao:hover { opacity: 1; }
 .apelido-linha input { flex: 1 1 160px; min-width: 0; border: 0; border-bottom: 1px dashed currentColor; background: none; color: inherit; font: 600 13.5px/1.3 var(--mono); padding: 2px 0; outline: 0; }
-.versoes-lidas { display: inline-flex; }
 .conflito-versoes { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-style: italic; opacity: 0.75; }
 .claquete .conflito-versoes { color: #f5d400; opacity: 1; }
 .apelido-erro { color: var(--perigo, #e5262b); }
-/* no card da agenda e no da tela de produções (#121): numa linha própria, abaixo da claquete, que quebra */
-.versoes-do-card { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 6px; margin-top: 3px; min-width: 0; color: var(--tinta2); }
-.versoes-do-card .codigo-versoes { line-height: 16px; }
-.versoes-do-card .conflito-versoes { font-size: 11px; color: var(--tinta3); }
-.secao-trello.encolhida .card-semana:not(.aberto) .versoes-do-card { display: none; }
-/* na ficha da fila (a revisão): na mesma linha da atração, discreto */
-.ficha .versoes-do-card { display: inline-flex; margin: 0 0 0 6px; vertical-align: 1px; color: inherit; }
-.ficha .codigo-versoes { line-height: 16px; opacity: 0.7; }
-.ficha .conflito-versoes { font-size: 11.5px; color: inherit; }
+/* o aviso do conflito no card da agenda, no da tela de produções e na ficha da revisão (#121): discreto, numa linha
+   própria; o código das versões fica no fim do nome (#152) */
+.conflito-do-card { display: flex; margin-top: 3px; font-size: 11px; color: var(--tinta3); }
+.secao-trello.encolhida .card-semana:not(.aberto) .conflito-do-card { display: none; }
+.ficha .conflito-do-card { display: inline-flex; margin: 0 0 0 6px; font-size: 11.5px; color: inherit; }
+/* as versões que a claquete sabe (#152), na ficha: o código e de onde veio, editável à mão */
+.apelido-versoes { font: 600 13px/1.3 var(--mono); cursor: help; }
+.apelido-de { font-size: 11.5px; opacity: 0.7; }
+.apelido-linha input.apelido-versoes-campo { flex: 0 1 110px; text-transform: uppercase; }

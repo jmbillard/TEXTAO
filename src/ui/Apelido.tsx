@@ -1,74 +1,78 @@
 import { useState } from 'react';
-import { apelidoDoRoteiro, mudarApelido, useApelidos } from '../dados/apelidos';
-import { conflitoDasVersoes, versoesDaChamada, type ConflitoDasVersoes, type FonteDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
+import { apelidoDoRoteiro, mudarApelido, mudarVersoes, useApelidos, versoesAMaoDoRoteiro } from '../dados/apelidos';
+import { codigoAMao, sufixoDasVersoes, versoesDaChamada, type ConflitoDasVersoes, type FonteDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
 import type { Resumo } from '../dados/armazenamento';
-import type { Versao } from '../modelo/pauta';
-import { CodigoDasVersoes } from './CodigoDasVersoes';
+import { codigoDasVersoes, type Versao } from '../modelo/pauta';
+import { DE_ONDE, dicaDasVersoes, NomeComVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
 import './apelido.css';
 
-/* O apelido da claquete e as versões lidas do roteiro (#120), na ficha da revisão e no card da agenda. O apelido é um
-   por roteiro e vale só dentro do PROMeiro: o Trello e o Teable continuam com a claquete original, que fica guardada (e
-   o campo Claquete da ficha continua sendo ela). */
+/* O apelido da claquete e as versões que ela sabe (#120, #152), na ficha da revisão e no editor. O apelido é um por
+   roteiro e vale só dentro do PROMeiro: o Trello e o Teable continuam com a claquete original, que fica guardada (e o
+   campo Claquete da ficha continua sendo ela). As versões ficam no apelido: o valor inicial é o código do nome (o do
+   apelido ou o da claquete) ou, sem ele, as artes do roteiro; o que foi feito à mão vale sobre os dois. */
 
-/** De onde vieram as versões: no fim da dica do código. */
-const DE_ONDE: Record<FonteDasVersoes, string> = {
-  roteiro: 'das artes do roteiro',
-  apelido: 'do código do apelido',
-  claquete: 'do código da claquete',
-};
+/** O texto do aviso discreto do conflito, com os dois códigos: o roteiro diz uma coisa, o que vale diz outra. */
+const textoDoConflito = (c: ConflitoDasVersoes, de: FonteDasVersoes | null) =>
+  `o roteiro diz ${c.doRoteiro}, ${c.daClaquete ? `${de === 'mao' ? 'as versões à mão dizem' : 'a claquete diz'} ${c.daClaquete}` : 'a claquete não diz a versão'}`;
 
-/** As versões da chamada só como o código no padrão ("(AH)"), com o que ele quer dizer e de onde veio na dica (as lidas
-    do roteiro, sem `de`). A que veio só do dia da semana ("SÁBADO, 22H") leva um "?". */
-export function EtiquetasDasVersoes({ versoes, de = 'roteiro' }: { versoes: readonly Versao[]; de?: FonteDasVersoes }) {
-  if (!versoes.length) return null;
-  return (
-    <span className="versoes-lidas">
-      <CodigoDasVersoes versoes={versoes} de={DE_ONDE[de]} />
-    </span>
-  );
-}
-
-/** O texto do aviso discreto do conflito, com os dois códigos: vale o roteiro; a claquete diz outra coisa. */
-const textoDoConflito = (c: ConflitoDasVersoes) => `o roteiro diz ${c.doRoteiro}, ${c.daClaquete ? `a claquete diz ${c.daClaquete}` : 'a claquete não diz a versão'}`;
-
-/** As versões do roteiro como o card mostra: as prontas da API; fora do servidor (o roteiro de exemplo), calculadas
-    aqui com a mesma regra (versoesDaChamada). Com o código fora do nome, a etiqueta é o único lugar dele. */
+/** As versões que a claquete do roteiro sabe, como a agenda mostra: as feitas à mão no apelido, o código do nome ou as
+    lidas do roteiro, pela mesma regra do servidor (versoesDaChamada), na hora em que o apelido muda. */
 export function versoesDoResumo(r: Pick<Resumo, 'id' | 'meta' | 'versoesLidas' | 'versoesDaChamada'>): VersoesDaChamada {
-  return r.versoesDaChamada ?? versoesDaChamada({ lidas: r.versoesLidas ?? [], claquete: r.meta.claquete ?? '', apelido: apelidoDoRoteiro(r.id), dia: r.meta.dataExibicao ?? '' });
+  if (!r.versoesLidas && r.versoesDaChamada) return r.versoesDaChamada;
+  return versoesDaChamada({ lidas: r.versoesLidas ?? [], claquete: r.meta.claquete ?? '', apelido: apelidoDoRoteiro(r.id), mao: versoesAMaoDoRoteiro(r.id), dia: r.meta.dataExibicao ?? '' });
 }
 
-/** As versões da chamada no card da agenda e no da tela de produções (#121), como a API manda: o código e, num
-    conflito com o código do nome, o aviso discreto. Numa linha própria, que quebra: a claquete nunca encolhe por elas. */
-export function VersoesDoCard({ versoes }: { versoes?: VersoesDaChamada }) {
-  if (!versoes?.lista.length) return null;
-  return (
-    <span className="versoes-do-card">
-      <EtiquetasDasVersoes versoes={versoes.lista} de={versoes.de ?? 'roteiro'} />
-      {versoes.conflito && <span className="conflito-versoes">{textoDoConflito(versoes.conflito)}</span>}
-    </span>
-  );
+/** O nome da claquete com o sufixo das versões que ela sabe (#152), colado no fim: o código uma vez só, no padrão, com a
+    dica do significado e de onde veio. Com a opção desligada, só o nome. */
+export function NomeDaClaquete({ nome, versoes }: { nome: string; versoes?: VersoesDaChamada }) {
+  return <NomeComVersoes nome={nome} versoes={versoes?.lista ?? []} de={versoes?.de ? DE_ONDE[versoes.de] : undefined} />;
+}
+
+/** O aviso discreto, no card da agenda e no da tela de produções (#121), quando o roteiro diz outra versão; só com o
+    código das versões ligado (#152). Não é etiqueta: o código fica no fim do nome. */
+export function ConflitoDoCard({ versoes }: { versoes?: VersoesDaChamada }) {
+  const ligado = useCodigoDasVersoes();
+  if (!ligado || !versoes?.conflito) return null;
+  return <span className="conflito-versoes conflito-do-card">{textoDoConflito(versoes.conflito, versoes.de)}</span>;
 }
 
 /**
- * O apelido editável do roteiro, as versões lidas dele e, num conflito com a claquete, a opção de usar as do roteiro no
- * apelido. Sem `podeMudar` (fora do servidor, o roteiro de exemplo), só mostra.
+ * O apelido editável do roteiro e as versões que a claquete sabe: o código e de onde veio, editável à mão (as vazias
+ * voltam ao valor inicial) e, num conflito com o roteiro, a opção de usar as dele. Sem `podeMudar` (fora do servidor, o
+ * roteiro de exemplo), só mostra.
+ * @param versoes as versões lidas do roteiro
+ * @param dia AAAA-MM-DD, a exibição: o dia das etiquetas sem data na claquete
  */
-export function ApelidoDaClaquete({ roteiro, claquete, versoes, podeMudar }: { roteiro: string; claquete: string; versoes: readonly Versao[]; podeMudar: boolean }) {
+export function ApelidoDaClaquete({ roteiro, claquete, versoes, podeMudar, dia = '' }: { roteiro: string; claquete: string; versoes: readonly Versao[]; podeMudar: boolean; dia?: string }) {
   useApelidos();
   const apelido = apelidoDoRoteiro(roteiro);
+  const aMao = versoesAMaoDoRoteiro(roteiro);
   const [editando, setEditando] = useState<string | null>(null);
+  const [editandoVersoes, setEditandoVersoes] = useState<string | null>(null);
   const [erro, setErro] = useState('');
-  const conflito = conflitoDasVersoes(claquete, versoes);
-  const guardar = async (novo: string) => {
+  const valem = versoesDaChamada({ lidas: versoes, claquete, apelido, mao: aMao, dia });
+  const conflito = valem.conflito;
+  const guardar = async (mudar: () => Promise<void>, fechar: () => void, oQue: string) => {
     setErro('');
     try {
-      await mudarApelido(roteiro, novo);
-      setEditando(null);
+      await mudar();
+      fechar();
     } catch (e) {
-      setErro(`Não guardou o apelido: ${e instanceof Error ? e.message : 'o servidor não respondeu.'}`);
+      setErro(`Não guardou ${oQue}: ${e instanceof Error ? e.message : 'o servidor não respondeu.'}`);
     }
   };
-  if (!claquete.trim() || (!podeMudar && !apelido && !versoes.length)) return null;
+  const guardarNome = (novo: string) => guardar(() => mudarApelido(roteiro, novo), () => setEditando(null), 'o apelido');
+  const guardarVersoes = (novo: string) => {
+    const lido = codigoAMao(novo);
+    if ('recusa' in lido) return void setErro(lido.recusa);
+    void guardar(() => mudarVersoes(roteiro, lido.codigo), () => setEditandoVersoes(null), 'as versões');
+  };
+  if (!claquete.trim() || (!podeMudar && !apelido && !valem.lista.length)) return null;
+  const tecla = (fechar: () => void) => (e: React.KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    fechar();
+  };
   return (
     <div className="apelido-claquete">
       {editando !== null ? (
@@ -76,7 +80,7 @@ export function ApelidoDaClaquete({ roteiro, claquete, versoes, podeMudar }: { r
           className="apelido-linha"
           onSubmit={(e) => {
             e.preventDefault();
-            void guardar(editando);
+            void guardarNome(editando);
           }}
         >
           <input
@@ -88,11 +92,7 @@ export function ApelidoDaClaquete({ roteiro, claquete, versoes, podeMudar }: { r
             spellCheck={false}
             maxLength={200}
             onChange={(e) => setEditando(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== 'Escape') return;
-              e.stopPropagation();
-              setEditando(null);
-            }}
+            onKeyDown={tecla(() => setEditando(null))}
           />
           <button type="submit" className="apelido-botao">guardar</button>
           <button type="button" className="apelido-botao" onClick={() => setEditando(null)}>cancelar</button>
@@ -104,7 +104,7 @@ export function ApelidoDaClaquete({ roteiro, claquete, versoes, podeMudar }: { r
           {podeMudar && (
             <>
               <button type="button" className="apelido-botao" aria-label="Editar o apelido" onClick={() => setEditando(apelido)}>editar</button>
-              <button type="button" className="apelido-botao" onClick={() => void guardar('')}>voltar ao original</button>
+              <button type="button" className="apelido-botao" onClick={() => void guardarNome('')}>voltar ao original</button>
             </>
           )}
         </span>
@@ -117,23 +117,71 @@ export function ApelidoDaClaquete({ roteiro, claquete, versoes, podeMudar }: { r
           </span>
         )
       )}
-      {versoes.length > 0 && (
-        <span className="apelido-linha">
+      {editandoVersoes !== null ? (
+        <form
+          className="apelido-linha"
+          onSubmit={(e) => {
+            e.preventDefault();
+            guardarVersoes(editandoVersoes);
+          }}
+        >
           <small>versões</small>
-          <EtiquetasDasVersoes versoes={versoes} />
-          {conflito && apelido !== conflito.apelido && (
-            <span className="conflito-versoes">
-              {textoDoConflito(conflito)}
-              {podeMudar && (
-                <button type="button" className="apelido-botao" title={conflito.apelido} onClick={() => void guardar(conflito.apelido)}>
-                  usar {conflito.doRoteiro} no apelido
+          <input
+            autoFocus
+            className="apelido-versoes-campo"
+            value={editandoVersoes}
+            aria-label="Código das versões"
+            placeholder="AH, PN, MNT…"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={10}
+            onChange={(e) => setEditandoVersoes(e.target.value)}
+            onKeyDown={tecla(() => setEditandoVersoes(null))}
+          />
+          <button type="submit" className="apelido-botao">guardar</button>
+          <button type="button" className="apelido-botao" onClick={() => setEditandoVersoes(null)}>cancelar</button>
+        </form>
+      ) : (
+        (valem.lista.length > 0 || podeMudar) && (
+          <span className="apelido-linha">
+            <small>versões</small>
+            {valem.lista.length ? (
+              <>
+                <b className="apelido-versoes" title={dicaDasVersoes(valem.lista)}>
+                  {sufixoDasVersoes(valem.lista)}
+                </b>
+                {valem.de && <span className="apelido-de">{DE_ONDE[valem.de]}</span>}
+              </>
+            ) : (
+              <span className="apelido-de">o nome e o roteiro não dizem</span>
+            )}
+            {podeMudar && (
+              <>
+                <button type="button" className="apelido-botao" aria-label="Editar as versões" onClick={() => setEditandoVersoes(aMao || codigoDasVersoes(valem.lista).slice(1, -1))}>
+                  {valem.lista.length ? 'editar' : 'dar as versões'}
                 </button>
-              )}
-            </span>
-          )}
-        </span>
+                {aMao && (
+                  <button type="button" className="apelido-botao" title="O código do nome ou, sem ele, as artes do roteiro" onClick={() => guardarVersoes('')}>
+                    voltar ao inicial
+                  </button>
+                )}
+              </>
+            )}
+            {conflito && (
+              <span className="conflito-versoes">
+                {textoDoConflito(conflito, valem.de)}
+                {podeMudar && (
+                  <button type="button" className="apelido-botao" onClick={() => guardarVersoes(conflito.doRoteiro)}>
+                    usar {conflito.doRoteiro} do roteiro
+                  </button>
+                )}
+              </span>
+            )}
+          </span>
+        )
       )}
       {erro && <span className="apelido-erro" role="alert">{erro}</span>}
     </div>
   );
 }
+

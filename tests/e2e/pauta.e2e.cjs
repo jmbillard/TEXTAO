@@ -5,7 +5,7 @@
 // da pauta, fictícias, da semana de hoje e da anterior. Quem abre não é administrador (a pauta é de todo mundo que
 // entrou). No computador, claro e escuro: a entrada no topo da fila, a Semana editor × dia na semana de hoje (um
 // editor por linha na ordem do turno, "sem editor" no fim, o turno que passa da meia-noite no dia em que começou), as
-// tarefas com outro visual, as versões da chamada como etiquetas (#95), o aviso só como ⚑ com o número e o texto no
+// tarefas com outro visual, as versões da chamada como o sufixo no fim do nome (#95, #152), o aviso só como ⚑ com o número e o texto no
 // balão ao passar o mouse; a semana anterior e a próxima pelo endereço, e o endereço da semana aberto direto. No tablet e no celular: a grade rola para o lado com os
 // nomes fixos, abre em hoje, e o toque abre o aviso. A claquete com a produção da arte (#96): as Produções carregadas da
 // produção da arte do Teable falso (fictícias), a etapa, as artes, os designers, a praça, o marca-texto da prioridade
@@ -47,6 +47,8 @@ const CHEFE = 'chefe.ficticia@exemplo.com';
 // os filtros (#99): a Carla é editora (o cadastro de editores tem o e-mail dela) e a Dora, designer (a tabela designers)
 const CARLA = 'carla.duarte@exemplo.com';
 const DORA = 'dora.lima@exemplo.com';
+// a opção do código das versões (#152), de outra pessoa: a escolha é de cada um
+const RUI = 'rui.costa@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 
@@ -127,9 +129,20 @@ const capturar = async (p, nome, fullPage = true) => {
   await p.waitForTimeout(300);
   await p.screenshot({ path: join(CAPTURAS, `${nome}.png`), fullPage });
 };
-/** As versões: só o código no padrão, uma etiqueta por claquete, e a dica dela ao passar o mouse. */
-const etiquetas = (l) => l.locator('.codigo-versoes').evaluateAll((es) => es.map((e) => e.textContent.trim()));
-const dicas = (l) => l.locator('.codigo-versoes').evaluateAll((es) => es.map((e) => e.title));
+/** As versões (#152): o código no padrão, um sufixo colado no fim do nome de cada claquete, e a dica dele ao passar o
+    mouse. */
+const etiquetas = (l) => l.locator('.sufixo-versoes').evaluateAll((es) => es.map((e) => e.textContent.trim()));
+const dicas = (l) => l.locator('.sufixo-versoes').evaluateAll((es) => es.map((e) => e.title));
+/** O nome da claquete como a pessoa lê: o texto e, colado no fim, o sufixo das versões. */
+const nomesComVersoes = async (l) => (await l.locator('.pauta-nome-com-versoes').allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
+/** Liga ou desliga "Mostrar o código das versões" no menu do perfil (na fila, onde o perfil fica). */
+async function mostrarOCodigo(p, ligado) {
+  await p.locator('.perfil-botao').click();
+  const grupo = p.getByRole('radiogroup', { name: 'Mostrar o código das versões' });
+  await grupo.getByRole('radio', { name: ligado ? 'Ligado' : 'Desligado', exact: true }).click();
+  await p.waitForFunction((v) => document.querySelector(`.escolha-codigo-versoes [aria-checked="true"]`)?.textContent === v, ligado ? 'Ligado' : 'Desligado');
+  await p.keyboard.press('Escape');
+}
 const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
 const fileira = (p, nome) => p.locator('.pauta-grade tbody tr', { has: p.locator('.pauta-nome', { hasText: new RegExp(`^${nome}$`) }) });
 const celula = (p, nome, dia) => fileira(p, nome).locator(`td[data-dia="${dia}"]`);
@@ -171,9 +184,10 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(await etiquetas(itemDo('Festival')), ['(M)']);
   assert.match((await dicas(itemDo('Festival')))[0], new RegExp(`^em ${MESES[Number(FESTIVAL.slice(5, 7)) - 1]}, `));
   assert.deepEqual(await etiquetas(itemDo('Grade da Noite')), ['(MNT)']);
-  assert.deepEqual(await textos(itemDo('Show Extra').locator('.codigo-versoes.desconhecido')), ['(XYZ)']);
-  // nenhum rótulo legível na tela: "amanhã", "nesta sex" e o código pequeno ao lado saíram
-  assert.equal(await p.locator('.pauta-versoes small').count(), 0);
+  assert.deepEqual(await textos(itemDo('Show Extra').locator('.sufixo-versoes.desconhecido')), ['(XYZ)']);
+  // o código vai colado no fim do nome, uma vez só (#152); nenhuma etiqueta separada nem rótulo legível na tela
+  assert.deepEqual(await nomesComVersoes(daCarla), [`Festa da Vila(Prologo)${diaMes(mais(segunda, 2))} (AH)`]);
+  assert.equal(await p.locator('.codigo-versoes, .pauta-versoes').count(), 0);
   assert.deepEqual(await textos(itemDo('Show Extra').locator('.pauta-texto')), [`Show Extra ${diaMes(hoje)}`]);
 
   // a tarefa tem outro visual que a claquete
@@ -215,7 +229,9 @@ async function noComputador(navegador, url, tema) {
   assert.equal(await tabelas.nth(0).locator('tbody tr').count(), 2);
   assert.deepEqual((await textos(tabelas.nth(0).locator('tbody td:last-child'))).sort(), ['Ana Ribeiro', 'Bruno Teixeira']);
   assert.match((await tabelas.nth(0).locator('tbody tr').first().textContent()) ?? '', /hoje/);
-  assert.deepEqual(await etiquetas(ficha.locator('.pauta-ficha-versoes')), ['(H)']);
+  // a versão de cada linha da atração, no padrão, na tabela (a ficha não tem etiqueta embaixo do nome, #152)
+  assert.deepEqual((await textos(tabelas.nth(0).locator('tbody td.pauta-ficha-versao'))).sort(), ['(H)', '—']);
+  assert.equal(await ficha.locator('.pauta-ficha-versoes').count(), 0);
   assert.deepEqual(await tabelas.nth(1).locator('tbody tr').evaluateAll((trs) => trs.map((t) => t.dataset.praca)), ['G5', 'SP']);
   assert.match(await tabelas.nth(1).locator('tr[data-praca="SP"]').textContent(), /Produzindo.*1.*Enzo Prado/);
   assert.match(await tabelas.nth(1).locator('tr[data-praca="G5"]').textContent(), /Entregue.*2.*Dora Lima/);
@@ -253,7 +269,7 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(erros, [], `computador ${nome}: erros na página`);
   assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
   await ctx.close();
-  console.log(`ok: computador ${nome}: entrada no topo → a semana de hoje, editores na ordem, tarefa, as versões como etiquetas, aviso no balão, a claquete com a produção e a ficha → semana anterior, próxima e o endereço`);
+  console.log(`ok: computador ${nome}: entrada no topo → a semana de hoje, editores na ordem, tarefa, o código das versões no fim do nome, aviso no balão, a claquete com a produção e a ficha → semana anterior, próxima e o endereço`);
 }
 
 /** No tablet e no celular: a grade rola para o lado, os nomes ficam e ela abre em hoje; o toque abre o aviso. */
@@ -709,6 +725,65 @@ async function osFiltros(navegador, url, teable) {
   console.log('ok: os filtros "Só as minhas" e "Com arte minha", a releitura, o resumo do administrador e a cópia de reserva');
 }
 
+/**
+ * "Mostrar o código das versões" (#152), do Rui (outra pessoa: a escolha é de cada um): começa ligada; desligada no menu
+ * do perfil, a Pauta (Semana, Dia e a ficha) mostra só o nome, sem etiqueta nenhuma; a escolha fica lembrada depois de
+ * recarregar e em outro navegador, e a da Lia continua ligada.
+ */
+async function oCodigoDasVersoes(navegador, url) {
+  const pastaDoSufixo = process.env.CAPTURAS_SUFIXO || '';
+  const foto = async (p, nome) => {
+    if (!pastaDoSufixo) return;
+    mkdirSync(pastaDoSufixo, { recursive: true });
+    await p.waitForTimeout(300);
+    await p.screenshot({ path: join(pastaDoSufixo, `${nome}.png`), fullPage: true });
+  };
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '', null, RUI);
+  await p.locator('.perfil-botao').waitFor();
+  await p.locator('.barra-topo .topo-pauta').click();
+  await p.locator('.pauta-grade').waitFor();
+  const daCarla = celula(p, 'Carla Duarte', segunda);
+  const festa = `Festa da Vila(Prologo)${diaMes(mais(segunda, 2))}`;
+  // ligada (o valor inicial): o código colado no fim do nome
+  assert.deepEqual(await nomesComVersoes(daCarla), [`${festa} (AH)`], 'ligada: o código no fim do nome');
+  await foto(p, 'pauta-ligada');
+  // desligada no menu do perfil: só o nome, em todo lugar da Pauta
+  await p.goto(`${url}#/`);
+  await mostrarOCodigo(p, false);
+  await p.goto(`${url}#/pauta`);
+  await p.locator('.pauta-grade').waitFor();
+  assert.deepEqual(await nomesComVersoes(daCarla), [festa], 'desligada: só o nome');
+  assert.equal(await p.locator('.sufixo-versoes, .codigo-versoes, .pauta-versoes').count(), 0, 'desligada: nenhum código na Semana');
+  await foto(p, 'pauta-desligada');
+  // a ficha: o nome sem o código e a tabela sem a coluna da versão
+  await celula(p, 'Bruno Teixeira', hoje).locator('.pauta-claquete-botao').first().click();
+  const ficha = p.locator('.pauta-ficha');
+  await ficha.waitFor();
+  assert.equal(await ficha.locator('.sufixo-versoes, .pauta-ficha-versao').count(), 0, 'desligada: a ficha sem código');
+  await p.keyboard.press('Escape');
+  // lembrada por pessoa: depois de recarregar e em outro navegador continua desligada; a da Lia continua ligada
+  await p.reload();
+  await p.locator('.pauta-grade').waitFor();
+  assert.deepEqual(await nomesComVersoes(daCarla), [festa], 'desligada depois de recarregar');
+  const outro = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/pauta', null, RUI);
+  await outro.p.locator('.pauta-grade').waitFor();
+  assert.deepEqual(await nomesComVersoes(celula(outro.p, 'Carla Duarte', segunda)), [festa], 'desligada em outro navegador');
+  await outro.ctx.close();
+  const daLia = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/pauta');
+  await daLia.p.locator('.pauta-grade').waitFor();
+  assert.deepEqual(await nomesComVersoes(celula(daLia.p, 'Carla Duarte', segunda)), [`${festa} (AH)`], 'a da Lia continua ligada');
+  await daLia.ctx.close();
+  // ligada de novo: o código volta
+  await p.goto(`${url}#/`);
+  await mostrarOCodigo(p, true);
+  await p.goto(`${url}#/pauta`);
+  await p.locator('.pauta-grade').waitFor();
+  assert.deepEqual(await nomesComVersoes(daCarla), [`${festa} (AH)`], 'ligada de novo');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: "Mostrar o código das versões" no menu do perfil: ligada, o código no fim do nome; desligada, só o nome na Semana e na ficha; lembrada por pessoa');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -730,7 +805,7 @@ async function principal() {
   const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros, env });
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
-  for (const quem of [LIA, TOM, IVO, CARLA, DORA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
+  for (const quem of [LIA, TOM, IVO, CARLA, DORA, RUI]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
   let falhou = false;
   try {
@@ -743,6 +818,7 @@ async function principal() {
     for (const tema of ['light', 'dark']) await aEscolhaLembrada(navegador, s.url, tema);
     await oDiaPorColunaNoCelular(navegador, s.url);
     await osFiltros(navegador, s.url, teable);
+    await oCodigoDasVersoes(navegador, s.url);
   } catch (e) {
     falhou = true;
     console.error(e);

@@ -9,7 +9,7 @@
    O apelido é o nome que o PROMeiro mostra no lugar da claquete, só dentro dele, um por roteiro: o Trello e o Teable
    continuam com a claquete original, e o apelido nunca entra na chave dos cruzamentos (a pauta com as Produções, as
    Duplicadas). */
-import { dataDaVersao, lerVersoes, MESES, SEMANA_CURTA, type Versao } from './pauta.ts';
+import { codigoDasVersoes, dataDaVersao, lerVersoes, MESES, SEMANA_CURTA, type Versao } from './pauta.ts';
 import { claqueteNoPadrao } from './correcaoDeGrafia.ts';
 import { chaveDaClaqueteNoPadrao, lerDataDaClaquete } from './vocabularios.ts';
 
@@ -161,31 +161,81 @@ export function nomeComApelido(claquete: string, apelidos: ReadonlyMap<string, s
   return (claquete && apelidos.get(chaveDoApelido(claquete))) || claquete;
 }
 
-/** De onde vieram as versões que o card mostra (#121). */
-export type FonteDasVersoes = 'roteiro' | 'apelido' | 'claquete';
+/** De onde vieram as versões da claquete (#121, #152): à mão no apelido, do código do nome (o do apelido ou o da
+    claquete) ou das artes do roteiro. */
+export type FonteDasVersoes = 'mao' | 'apelido' | 'claquete' | 'roteiro';
 
-/** As versões da chamada como o card da agenda e o da tela de produções mostram (#121), prontas da API. */
+/** As versões que a claquete sabe (#121, #152), como as telas mostram, prontas da API. */
 export interface VersoesDaChamada {
-  /** as etiquetas, na ordem; vazia quando nem o roteiro nem o nome dizem a versão */
+  /** as etiquetas, na ordem; vazia quando nem à mão, nem o nome, nem o roteiro dizem a versão */
   lista: Versao[];
   /** null com a lista vazia */
   de: FonteDasVersoes | null;
-  /** o roteiro e o código do nome discordam (vale o roteiro): o aviso discreto */
+  /** o roteiro diz outra coisa: o aviso discreto, que compara com o roteiro */
   conflito: ConflitoDasVersoes | null;
 }
 
 /**
- * As versões que o card mostra: as lidas do roteiro, quando ele está no PROMeiro e as artes dizem; senão, o código no fim
- * do apelido (o nome que a tela mostra) ou, sem código nele, o da claquete. O aviso compara o roteiro com esse mesmo
- * código: o apelido que já leva as versões do roteiro desfaz o conflito.
+ * As versões que a claquete sabe (#152): as feitas à mão no apelido, quando há; senão, o valor inicial, que é o código no
+ * fim do nome (o do apelido, ou, sem código nele, o da claquete) e, sem código no nome, as versões lidas das artes do
+ * roteiro. O aviso compara o que vale com o roteiro: as versões à mão iguais às dele desfazem o conflito.
  * @param lidas as versões lidas do roteiro (vazia sem roteiro)
  * @param claquete a claquete original, sem a praça no fim
+ * @param mao o código feito à mão no apelido ("AH", "MNT"); '' ou ausente sem ele
  * @param dia AAAA-MM-DD: o dia das etiquetas quando a claquete não tem data (a exibição); '' sem ele
  */
-export function versoesDaChamada({ lidas, claquete, apelido, dia }: { lidas: readonly Versao[]; claquete: string; apelido: string; dia: string }): VersoesDaChamada {
+export function versoesDaChamada({ lidas, claquete, apelido, mao = '', dia }: { lidas: readonly Versao[]; claquete: string; apelido: string; mao?: string; dia: string }): VersoesDaChamada {
   const doApelido = apelido.trim() ? lerVersoes(apelido, dia).versoes : [];
   const nome = doApelido.length ? apelido : claquete;
-  if (lidas.length) return { lista: [...lidas], de: 'roteiro', conflito: conflitoDasVersoes(nome, lidas) };
-  const lista = doApelido.length ? doApelido : lerVersoes(claquete, dia).versoes;
-  return { lista, de: lista.length ? (doApelido.length ? 'apelido' : 'claquete') : null, conflito: null };
+  const aMao = mao ? lerVersoes(`${lerVersoes(nome, '').semVersao} (${mao})`, dia).versoes : [];
+  const doNome = doApelido.length ? doApelido : lerVersoes(claquete, dia).versoes;
+  const [lista, de]: [Versao[], FonteDasVersoes | null] = aMao.length
+    ? [aMao, 'mao']
+    : doNome.length
+      ? [doNome, doApelido.length ? 'apelido' : 'claquete']
+      : lidas.length
+        ? [[...lidas], 'roteiro']
+        : [[], null];
+  const conflito = de && de !== 'roteiro' ? conflitoDasVersoes(`${lerVersoes(nome, '').semVersao} ${codigoDasVersoes(lista)}`, lidas) : null;
+  return { lista, de, conflito };
 }
+
+/**
+ * O código das versões digitado à mão no apelido (#152), no padrão em que fica guardado: maiúsculas, sem parênteses, uma
+ * letra por versão na ordem escrita ("pnah" → "PNAH"), DIA vira D, MÊS vira M, MNT fica inteiro. O vazio ('' ou "()")
+ * tira as versões à mão (volta ao valor inicial). O código que o PROMeiro não conhece é recusado.
+ */
+export function codigoAMao(texto: unknown): { codigo: string } | { recusa: string } {
+  const recusa = { recusa: 'Código das versões desconhecido: use A, H, N, P, D e M (uma vez cada), DIA, MÊS ou MNT.' };
+  if (typeof texto !== 'string') return recusa;
+  const limpo = texto.trim().replace(/^\(\s*/, '').replace(/\s*\)$/, '').trim();
+  if (!limpo) return { codigo: '' };
+  if (limpo.length > 6) return recusa;
+  const { versoes } = lerVersoes(`(${limpo})`, '');
+  if (!versoes.length || versoes.some((v) => !v.conhecida)) return recusa;
+  return { codigo: codigoDasVersoes(versoes).slice(1, -1) };
+}
+
+/**
+ * O nome como a tela mostra (#152): sem o código que ele já traz no fim e, com a opção ligada, o código das versões no
+ * padrão colado no fim, uma vez só ("CHAMADA_CODIGO_27/11 (AH)"). A versão que veio só do dia da semana leva o "?"
+ * depois ("(N)?"); o código desconhecido aparece cru. Desligada, ou sem versão, só o nome.
+ */
+export function nomeComOSufixo(nome: string, versoes: readonly Versao[], mostrar: boolean): string {
+  const semCodigo = lerVersoes(nome, '').semVersao;
+  const sufixo = mostrar ? sufixoDasVersoes(versoes) : '';
+  return sufixo ? `${semCodigo} ${sufixo}` : semCodigo;
+}
+
+/** O sufixo das versões: o código no padrão e o "?" da leitura só pelo dia; '' sem versão. */
+export function sufixoDasVersoes(versoes: readonly Versao[]): string {
+  const codigo = codigoDasVersoes(versoes);
+  return codigo && `${codigo}${versoes.some((v) => v.conhecida && v.aConferir) && versoes.every((v) => v.conhecida) ? '?' : ''}`;
+}
+
+/** A preferência de cada pessoa (#152): "Mostrar o código das versões", no PROMeiro todo. */
+export const CHAVE_DO_CODIGO_DAS_VERSOES = 'versoes.codigo';
+/** A opção começa ligada; só o false guardado desliga. */
+export const mostraOCodigoDasVersoes = (preferencias: Record<string, unknown> | undefined) => preferencias?.[CHAVE_DO_CODIGO_DAS_VERSOES] !== false;
+/** A recusa do valor da opção: '' quando é ligada ou desligada. */
+export const recusaDoCodigoDasVersoes = (valor: unknown) => (typeof valor === 'boolean' ? '' : 'Mostrar o código das versões: escolha ligada ou desligada.');
