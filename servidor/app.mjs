@@ -1265,7 +1265,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     for (const [id, sala] of salas) if (SALA_DO_DIA.test(id)) sala.doc.getMap('dia').set('versao', versaoDoMontar);
     return versaoDoMontar;
   }
-  const reservas = new Map(); // id → prazo: quem abriu primeiro preenche o documento compartilhado
+  // id → { ate, aba }: a aba que abriu primeiro preenche o documento compartilhado. A vez é da aba (o cabeçalho
+  // x-aba-do-editor), não da leitura: o modo estrito do React e o recarregar leem duas vezes na mesma aba, e a segunda
+  // leitura, a que fica com a folha, esperava 20 s a vez que a primeira reservou e largou (#183)
+  const reservas = new Map();
 
   const enviar = (ws, encoder) => {
     if (ws.readyState === 1) ws.send(cod.toUint8Array(encoder), { binary: true });
@@ -3575,8 +3578,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const fora = { ...paraFora(atual, eu), podeEditar };
       // o documento compartilhado ainda está vazio: a primeira pessoa que pode editar o preenche (uma só, por 20 s)
       const vazio = !atual.tem_ydoc && !(salas.get(id)?.doc.getXmlFragment('doc').length > 0);
-      if (podeEditar && vazio && !((reservas.get(id) ?? 0) > Date.now())) {
-        reservas.set(id, Date.now() + 20_000);
+      const aba = String(req.headers['x-aba-do-editor'] ?? '').slice(0, 64);
+      const reserva = reservas.get(id);
+      const livre = !reserva || reserva.ate <= Date.now() || (!!aba && reserva.aba === aba);
+      if (podeEditar && vazio && livre) {
+        reservas.set(id, { ate: Date.now() + 20_000, aba });
         fora.semear = true;
       }
       return json(res, 200, fora);
