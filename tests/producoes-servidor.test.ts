@@ -231,3 +231,99 @@ describe('a releitura da produção da arte: os eventos nascem do Teable', () =>
     expect(await app.relerAProducao()).toBeNull();
   });
 });
+
+/* A tela de produções (#109): a rota de leitura, para qualquer pessoa logada, com as Produções abertas por praça e
+   etapa, montada só do que o PROMeiro guarda (nada do Trello: o ambiente nem tem o Trello). Uma faixa por praça, na
+   ordem das praças da Configuração (aqui, as de fábrica); o Entregue só com os dos últimos 3 dias; as arquivadas fora;
+   as sem card na faixa delas; a ordem pelo prazo e, no mesmo prazo, a ALTA primeiro. */
+describe('a tela de produções: as Produções abertas por praça e etapa', () => {
+  const DIA = 86_400_000;
+  const agora = Date.now();
+  /** "27/11": o dia daqui a n dias, em São Paulo (a data na claquete, que vira o prazo). */
+  const dm = (n: number) => new Date(agora + n * DIA).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
+  const diaIso = (n: number) => new Date(agora + n * DIA).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const ha = (n: number) => new Date(agora - n * DIA).toISOString();
+  const linhas = () => [
+    // SP: duas no mesmo prazo (a ALTA primeiro) e uma sem card com o prazo mais perto
+    registro('recTela1', { card_ID: card(11), claquete: `Show da Noite ${dm(3)} SP`, status: '[]', designers: null, artes: 'HOJE\nAMANHÃ\nDOMINGO', data_entrada: ha(1) }),
+    registro('recTela2', { card_ID: card(12), claquete: `Festa na Praça ${dm(3)} SP`, status: '[]', designers: null, artes: 'HOJE', prioridade: 'ALTA', data_entrada: ha(1) }),
+    registro('recTela3', { card_ID: '', claquete: `Cozinha de Vó ${dm(1)} SP`, status: null, designers: null, data_entrada: ha(2) }),
+    // G5: produzindo, entregue ontem (fica), entregue há 5 dias (sai) e um filme sem card
+    registro('recTela4', { card_ID: card(14), claquete: `Novela Sinfonia ${dm(2)}`, status: '["PRODUZINDO","AGUARDANDO MATERIAL"]', designers: '["Designer Um","Designer Dois"]', artes: 'HOJE | AMANHÃ', data_entrada: ha(2) }),
+    registro('recTela5', { card_ID: card(15), claquete: `Jogo Final ${dm(0)}`, status: '["FINALIZADO"]', designers: '["Designer Um"]', entregue: true, data_entrada: ha(3), data_entrega: ha(1) }),
+    registro('recTela6', { card_ID: card(16), claquete: `Jogo Antigo ${dm(-4)}`, status: '["FINALIZADO"]', designers: '["Designer Dois"]', entregue: true, data_entrada: ha(8), data_entrega: ha(5) }),
+    registro('recTela8', { card_ID: '', claquete: `Filme da Tarde ${dm(4)}`, status: '["FILME"]', designers: null, filme: [{ id: 'recFilme9', title: 'Filme da Tarde' }], data_entrada: ha(1) }),
+    // RJ: arquivada (sai)
+    registro('recTela7', { card_ID: card(17), claquete: `RIO Show ${dm(2)}`, status: '["PRODUZINDO"]', designers: '["Designer Um"]', arquivado: true, data_entrada: ha(2) }),
+  ];
+  type Card = { id: string; claquete: string; atracao: string; semCard: boolean; artes: { aProduzir: number | null; entregues: number }; designers: string[]; alta: boolean; prazo: string | null; marcador: string };
+  type Faixa = { praca: string; nome: string; colunas: Record<'entrada' | 'produzindo' | 'entregue', Card[]> };
+  type Tela = { entregueDias: number; faixas: Faixa[] };
+
+  async function tela(db = abrirBanco(':memory:')) {
+    const s = await comServidor({ db, registros: { ARTE_producao: linhas(), exibicoes: [] } });
+    await s.app.releituraPronta;
+    const r = await s.ana('/api/producoes/por-praca');
+    return { ...s, r, corpo: (await r.json()) as Tela };
+  }
+  const claquetes = (cs: Card[]) => cs.map((c) => c.claquete);
+  const daPraca = (t: Tela, sigla: string) => t.faixas.find((f) => f.praca === sigla)!;
+
+  it('qualquer pessoa logada lê; uma faixa por praça, na ordem das praças, com as três colunas', async () => {
+    const { r, corpo } = await tela();
+    expect(r.status).toBe(200);
+    expect(corpo.entregueDias).toBe(3);
+    expect(corpo.faixas.map((f) => [f.praca, f.nome])).toEqual([
+      ['G5', 'Rede (G5)'],
+      ['RJ', 'Rio'],
+      ['SP', 'São Paulo'],
+      ['INTER', 'Internacional'],
+    ]);
+    // a praça sem nada também tem a faixa, com as colunas vazias
+    expect(daPraca(corpo, 'INTER').colunas).toEqual({ entrada: [], produzindo: [], entregue: [] });
+  });
+
+  it('cada Produção na coluna da etapa dela; a ordem é o prazo e, no mesmo prazo, a ALTA primeiro', async () => {
+    const { corpo } = await tela();
+    const sp = daPraca(corpo, 'SP').colunas;
+    expect(claquetes(sp.entrada)).toEqual([`Cozinha de Vó ${dm(1)} SP`, `Festa na Praça ${dm(3)} SP`, `Show da Noite ${dm(3)} SP`]);
+    expect(sp.produzindo).toEqual([]);
+    const g5 = daPraca(corpo, 'G5').colunas;
+    expect(claquetes(g5.produzindo)).toEqual([`Novela Sinfonia ${dm(2)}`]);
+  });
+
+  it('o card traz o que a tela mostra: a claquete, a atração, as artes, os designers, a prioridade e o prazo', async () => {
+    const db = abrirBanco(':memory:');
+    // o Roteiro enviado para o card diz a atração
+    const em = new Date(agora).toISOString();
+    db.prepare('INSERT INTO roteiros (id, dono_email, dono_nome, meta, doc, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?)').run('roteiro-festa', 'ana@empresa.com', 'Ana', JSON.stringify({ claquete: `Festa na Praça ${dm(3)} SP`, programa: 'Festa na Praça' }), '{}', em, em);
+    db.prepare("INSERT INTO envios (roteiro_id, estado, card_id, em) VALUES (?, 'ok', ?, ?)").run('roteiro-festa', card(12), em);
+    const { corpo } = await tela(db);
+    const [, festa] = daPraca(corpo, 'SP').colunas.entrada;
+    expect(festa).toMatchObject({ claquete: `Festa na Praça ${dm(3)} SP`, atracao: 'Festa na Praça', semCard: false, artes: { aProduzir: 1, entregues: 0 }, designers: [], alta: true, prazo: diaIso(3) });
+    const [novela] = daPraca(corpo, 'G5').colunas.produzindo;
+    expect(novela).toMatchObject({ artes: { aProduzir: 2, entregues: 0 }, designers: ['Designer Um', 'Designer Dois'], alta: false, marcador: 'Aguardando material', prazo: diaIso(2) });
+    // nenhum id do Trello nem do Teable vai para a tela
+    expect(JSON.stringify(corpo)).not.toMatch(/c0ffee|recTela/);
+  });
+
+  it('o Entregue mostra só os entregues dos últimos 3 dias; as arquivadas não aparecem', async () => {
+    const { corpo } = await tela();
+    expect(claquetes(daPraca(corpo, 'G5').colunas.entregue)).toEqual([`Jogo Final ${dm(0)}`]);
+    expect(daPraca(corpo, 'RJ').colunas).toEqual({ entrada: [], produzindo: [], entregue: [] });
+    expect(JSON.stringify(corpo)).not.toMatch(/Jogo Antigo|RIO Show/);
+  });
+
+  it('as Produções sem card (a linha sem card, o filme) ficam na faixa da praça delas', async () => {
+    const { corpo } = await tela();
+    const [cozinha] = daPraca(corpo, 'SP').colunas.entrada;
+    expect(cozinha).toMatchObject({ claquete: `Cozinha de Vó ${dm(1)} SP`, semCard: true });
+    const filme = daPraca(corpo, 'G5').colunas.entrada.find((c) => c.claquete.startsWith('Filme da Tarde'));
+    expect(filme).toMatchObject({ semCard: true, atracao: 'Filme da Tarde', prazo: diaIso(4) });
+  });
+
+  it('só GET', async () => {
+    const { ana } = await tela();
+    expect((await ana('/api/producoes/por-praca', { method: 'POST' })).status).toBe(405);
+  });
+});

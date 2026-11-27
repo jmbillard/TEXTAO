@@ -73,6 +73,8 @@ interface Props {
   andamentoDoProjeto?: () => void;
   /** Abre a Pauta da edição (#94): no topo, para qualquer pessoa logada. */
   pauta?: () => void;
+  /** abre a tela de produções (#109), ao lado da agenda */
+  producoes?: () => void;
   /** A fila abre já buscando isto (o "Buscar na fila" do link quebrado). */
   buscaInicial?: string;
   /** O caminho "PROMeiro / designer ▾" das áreas de trabalho (#101), logo depois do logo. */
@@ -937,7 +939,7 @@ function BuscaNaLupa({ valor, mudar, ativa }: { valor: string; mudar: (v: string
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, pauta, buscaInicial = '', seletorDeArea }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, pauta, producoes, buscaInicial = '', seletorDeArea }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
@@ -1273,6 +1275,13 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           <a className="topo-pauta" href="#/pauta" aria-label="Pauta da edição" onClick={(e) => (e.preventDefault(), pauta())}>
             <Icone nome="edicao" tam={17} traco={1.7} />
             <span>Pauta da edição</span>
+          </a>
+        )}
+        {/* a tela de produções (#109): as Produções por praça, ao lado da agenda No Trello */}
+        {producoes && (
+          <a className="topo-producoes" href="#/designer/producoes" aria-label="Produções" onClick={(e) => (e.preventDefault(), producoes())}>
+            <Icone nome="colunas" tam={17} traco={1.7} />
+            <span>Produções</span>
           </a>
         )}
         <span className="espaco" />

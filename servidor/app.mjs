@@ -42,6 +42,7 @@ import { criarPreferencias } from './preferencias.mjs';
 import { criarAreas, dosMeusRoteiros } from './areas.mjs';
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
+import { DIAS_DO_ENTREGUE, faixasDasProducoes } from '../src/modelo/producoesPorPraca.ts';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarAndamento } from './andamento.mjs';
@@ -2513,6 +2514,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores veem o Andamento.' });
       const deNovo = new URL(req.url, 'http://x').searchParams.get('deNovo') === '1';
       return json(res, 200, await andamentoDoProjeto.ler(configuracao.valores(), { deNovo }));
+    }
+    if (caminho === '/api/producoes/por-praca') {
+      // a tela de produções (#109): para qualquer pessoa logada (é o trabalho que a equipe toda vê no Trello), as
+      // Produções abertas numa faixa por praça, na ordem das praças da Configuração; o Entregue, só os dos últimos dias.
+      // Só o que o PROMeiro guarda (e o vocabulário, para a atração pela claquete): nada do Trello
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      const desde = new Date(Date.now() - DIAS_DO_ENTREGUE * 86_400_000).toISOString();
+      const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+      const cards = producoes.naTela(desde, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
+      return json(res, 200, { entregueDias: DIAS_DO_ENTREGUE, faixas: faixasDasProducoes(cards, pracas) });
     }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
     if (caminho === '/api/linha-do-tempo') {

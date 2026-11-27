@@ -8,6 +8,7 @@ import { HistoricoDaConfiguracao } from './ui/HistoricoDaConfiguracao';
 import { PortainerDaConfiguracao } from './ui/PortainerDaConfiguracao';
 import { Andamento } from './ui/Andamento';
 import { Pauta } from './ui/Pauta';
+import { Producoes } from './ui/Producoes';
 import { MeusRoteiros } from './ui/MeusRoteiros';
 import { SeletorDeArea } from './ui/SeletorDeArea';
 import { ehAreaDosRoteiros, type Area, type AreaDosRoteiros } from './modelo/areas';
@@ -36,7 +37,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'pauta'; semana?: string } | { t: 'area'; area: AreaDosRoteiros };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'pauta'; semana?: string } | { t: 'area'; area: AreaDosRoteiros } | { t: 'producoes' };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -64,6 +65,8 @@ const telaDoHash = (): Tela => {
   if (/^#\/configuracao\/historico\/?$/.test(location.hash)) return { t: 'configuracao', pagina: 'historico' };
   if (/^#\/configuracao\/portainer\/?$/.test(location.hash)) return { t: 'configuracao', pagina: 'portainer' };
   if (/^#\/andamento\/?$/.test(location.hash)) return { t: 'andamento' };
+  // a tela de produções (#109): na área Designer, ao lado da agenda No Trello
+  if (/^#\/designer\/producoes\/?$/.test(location.hash)) return { t: 'producoes' };
   // as áreas de trabalho (#101): cada uma com o seu endereço; a Designer é a fila
   const a = /^#\/(designer|redator|editor)\/?$/.exec(location.hash);
   if (a) return ehAreaDosRoteiros(a[1]) ? { t: 'area', area: a[1] } : { t: 'biblioteca' };
@@ -78,7 +81,7 @@ const hashDesconhecido = () => telaDoHash().t === 'biblioteca' && !/^#?\/?$/.tes
 /** O endereço é a raiz (sem tela escolhida): o PROMeiro abre na última área usada. */
 const naRaiz = () => /^#?\/?$/.test(location.hash);
 /** A área da tela: a fila é a Designer; as telas de fora das áreas (Cadastros, Pauta…) não contam. */
-const areaDaTela = (t: Tela): Area | null => (t.t === 'biblioteca' ? 'designer' : t.t === 'area' ? t.area : null);
+const areaDaTela = (t: Tela): Area | null => (t.t === 'biblioteca' || t.t === 'producoes' ? 'designer' : t.t === 'area' ? t.area : null);
 const AVISO_DO_HASH = 'Esse endereço não existe mais. Você está na fila.';
 
 /** O texto do arquivo como chegou, parágrafo a parágrafo, com o sublinhado do redator (para o PDF do card). */
@@ -197,7 +200,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'pauta' ? `#/pauta${nova.semana ? `/semana/${nova.semana}` : ''}` : nova.t === 'area' ? `#/${nova.area}` : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.aba ?? 'atracoes'}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'pauta' ? `#/pauta${nova.semana ? `/semana/${nova.semana}` : ''}` : nova.t === 'area' ? `#/${nova.area}` : nova.t === 'producoes' ? '#/designer/producoes' : '#/';
     try {
       if (location.hash !== hash) history.pushState(null, '', hash);
     } catch {
@@ -498,7 +501,7 @@ export function App() {
 
   return (
     <>
-      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} andamentoDoProjeto={() => ir({ t: 'andamento' })} pauta={() => ir({ t: 'pauta' })} avisar={avisar} identidade={identidade} definirPerfil={definirPerfil} seletorDeArea={seletorDeArea} />}
+      {(tela.t === 'biblioteca' || tela.t === 'comparar') && <Biblioteca key={`${sessao}-${buscaNaFila?.n ?? 0}`} buscaInicial={buscaNaFila?.termo} aoFundo={tela.t === 'comparar'} novos={novos} falhas={falhas} chegou={chegou} lendo={lendo} tirarFalha={(nome) => setFalhas((f) => f.filter((x) => x.nome !== nome))} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} abrirArquivo={abrirArquivo} receberArquivos={receberArquivos} criar={(claquete) => void colarComClaquete(claquete)} cadastros={(inicio) => ir({ t: 'cadastros', ...inicio })} filmes={() => ir({ t: 'filmes' })} configuracao={() => ir({ t: 'configuracao' })} andamentoDoProjeto={() => ir({ t: 'andamento' })} pauta={() => ir({ t: 'pauta' })} producoes={() => ir({ t: 'producoes' })} avisar={avisar} identidade={identidade} definirPerfil={definirPerfil} seletorDeArea={seletorDeArea} />}
       {tela.t === 'area' && (
         <MeusRoteiros
           key={tela.area}
@@ -517,6 +520,26 @@ export function App() {
           }
         />
       )}
+      {tela.t === 'producoes' && (
+        <Producoes
+          topo={
+            <header className="barra-topo">
+              <h1 className="bib-marca"><Marca /></h1>
+              {seletorDeArea}
+              <a className="topo-agenda" href="#/designer" aria-label="No Trello" onClick={(e) => (e.preventDefault(), irParaArea('designer'))}>
+                <Icone nome="quadro" tam={17} traco={1.7} />
+                <span>No Trello</span>
+              </a>
+              <a className="topo-pauta" href="#/pauta" aria-label="Pauta da edição" onClick={(e) => (e.preventDefault(), ir({ t: 'pauta' }))}>
+                <Icone nome="edicao" tam={17} traco={1.7} />
+                <span>Pauta da edição</span>
+              </a>
+              <span className="espaco" />
+              <Perfil identidade={identidade} definirPerfil={definirPerfil} cadastros={temCadastros() ? () => ir({ t: 'cadastros' }) : undefined} filmes={temFilmes() ? () => ir({ t: 'filmes' }) : undefined} configuracao={souAdministrador() ? () => ir({ t: 'configuracao' }) : undefined} andamentoDoProjeto={souAdministrador() ? () => ir({ t: 'andamento' }) : undefined} />
+            </header>
+          }
+        />
+      )}
       {semLogin && (
         <div className="faixa-sem-login" role="alert">
           O servidor não reconheceu o seu login: os roteiros estão ficando só neste navegador. Veja <a href="/api/diagnostico" target="_blank" rel="noreferrer">o diagnóstico</a>.
@@ -525,7 +548,7 @@ export function App() {
       {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete, nova) => ir({ t: 'cadastros', aba: 'atracoes', claquete, ...nova }) : undefined} buscarNaFila={buscarNaFila} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} buscar={buscarNaFila} />}
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
-      {tela.t !== 'area' && <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />}
+      {tela.t !== 'area' && tela.t !== 'producoes' && <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />}
       {tela.t === 'filmes' && <Filmes key={tela.id ?? 'lista'} aberta={tela.id} abrir={(id) => ir({ t: 'filmes', id })} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && !tela.pagina && <Configuracao voltar={() => ir({ t: 'biblioteca' })} historico={() => ir({ t: 'configuracao', pagina: 'historico' })} portainer={() => ir({ t: 'configuracao', pagina: 'portainer' })} avisar={avisar} />}
       {tela.t === 'configuracao' && souAdministrador() && tela.pagina === 'historico' && <HistoricoDaConfiguracao voltar={() => ir({ t: 'configuracao' })} avisar={avisar} />}

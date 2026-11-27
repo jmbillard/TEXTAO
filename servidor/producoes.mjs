@@ -35,6 +35,7 @@ import { normalizarPraca, pracasRegistradas, reconhecerPraca } from '../src/mode
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { eventosDaReleitura } from '../src/modelo/eventosDoTeable.ts';
 import { artesDaProducao } from './trello.mjs';
+import { dataDaClaquete } from '../src/modelo/vocabularios.ts';
 
 export function criarTabelaDasProducoes(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS producoes (
@@ -125,6 +126,11 @@ const texto = (v) => (v === undefined || v === null ? null : String(v).trim());
 /** As colunas da Produção (COLUNAS) de uma linha da produção da arte: a da carga e a da releitura. */
 const colunasDa = (p, l, em) => ({ claquete: p.claquete, praca: p.praca, etapa: p.etapa, marcador: p.marcador, designers: JSON.stringify(p.designers), artes: JSON.stringify(p.artes), artes_quantidade: p.artesQuantidade, entrada_em: p.entradaEm, entrega_em: p.entregaEm, exibicao_em: p.exibicaoEm, card_id: p.cardId, roteiro_id: p.roteiroId, filme_id: p.filmeId, filme_titulo: p.filmeTitulo, arquivada: p.arquivada ? 1 : 0, prioridade: texto(l.prioridade), complexidade: texto(l.complexidade), atualizada_em: em });
 
+/** A prioridade ALTA da produção da arte (sem caixa nem acento). */
+const ehAlta = (prioridade) => String(prioridade ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase() === 'ALTA';
+/** As artes a produzir sem repetir (a conta da agenda, `artesDaProducao`); sem a lista, a quantidade da coluna. */
+const artesAProduzir = (l) => artesDaProducao(JSON.parse(l.artes ?? '[]').join(' | ')) ?? l.artes_quantidade ?? null;
+
 /** O evento como a API mostra. */
 const doEvento = (e) => ({ tipo: e.tipo, ...(e.campo ? { campo: e.campo } : {}), antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null });
 
@@ -181,6 +187,13 @@ export function criarProducoes(db) {
     // a carga adota a Produção que o aviso do Trello criou para o card (ainda sem o registro do Teable): não duplica
     adotar: db.prepare(
       `UPDATE producoes SET teable_registro = ? WHERE id = (SELECT id FROM producoes WHERE card_id = ? AND teable_registro IS NULL ORDER BY criada_em LIMIT 1)`,
+    ),
+    // a tela de produções (#109): as abertas (Entrada e Produzindo) e as entregues desde a data, sem as arquivadas, com
+    // a atração do Roteiro ligado
+    naTela: db.prepare(
+      `SELECT p.id, p.claquete, p.praca, p.etapa, p.marcador, p.designers, p.artes, p.artes_marcadas, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, p.exibicao_em, p.card_id, p.filme_titulo, r.meta AS roteiro_meta
+       FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id
+       WHERE p.arquivada = 0 AND (p.etapa IN ('entrada', 'produzindo') OR (p.etapa = 'entregue' AND p.entrega_em >= ?))`,
     ),
     /* ---------- os eventos (#87) ---------- */
     eventosDe: db.prepare('SELECT * FROM eventos WHERE producao_id = ? ORDER BY quando, anotado_em'),
@@ -441,6 +454,40 @@ export function criarProducoes(db) {
   }
 
   /**
+   * As Produções da tela de produções (#109, src/modelo/producoesPorPraca.ts, CardDaProducao): as de Entrada e
+   * Produzindo e as entregues desde `desde` (ISO), sem as arquivadas. As artes a produzir são a conta da agenda
+   * (`artesDaProducao`; sem a lista, a quantidade da coluna); o prazo é a exibição ou, sem ela, o dia da claquete. A
+   * atração vem do Roteiro ligado, do filme ou, sem os dois, de `atracaoDaClaquete`. Nada do Trello: o card só diz se
+   * existe (sem o id).
+   * @param atracaoDaClaquete (claquete) => nome, ou ''
+   */
+  function naTela(desde, atracaoDaClaquete = () => '') {
+    return q.naTela.all(desde).map((l) => {
+      let programa = '';
+      try {
+        programa = String(JSON.parse(l.roteiro_meta ?? 'null')?.programa ?? '').trim();
+      } catch {
+        // meta ilegível: a atração sai da claquete
+      }
+      const daClaquete = dataDaClaquete(l.claquete, new Date(l.entrada_em ?? Date.now()));
+      return {
+        id: l.id,
+        claquete: l.claquete,
+        atracao: programa || String(l.filme_titulo ?? '').trim() || atracaoDaClaquete(l.claquete),
+        praca: l.praca ?? '',
+        etapa: l.etapa,
+        marcador: l.marcador ?? '',
+        designers: JSON.parse(l.designers ?? '[]'),
+        artes: { aProduzir: artesAProduzir(l), entregues: JSON.parse(l.artes_marcadas ?? '[]').length },
+        alta: ehAlta(l.prioridade),
+        prazo: l.exibicao_em || daClaquete || null,
+        semCard: !l.card_id,
+        entregaEm: l.entrega_em ?? null,
+      };
+    });
+  }
+
+  /**
    * O que o ciclo do roteiro (#102) lê da Produção do Roteiro: pelo card do envio (o mais recente, como o aviso) ou,
    * sem ele, pelo Roteiro ligado. null sem nenhuma.
    * @returns { etapa, entradaEm, entregaEm, designers } | null
@@ -456,6 +503,7 @@ export function criarProducoes(db) {
   return {
     linhaDoTempo,
     doRoteiro,
+    naTela,
     naPauta,
     vazia: () => Number(q.total.get().n) === 0,
     /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */
