@@ -2979,6 +2979,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * - GET /api/padeiro/eu: { estado, usuario, computador, sigla, designer } da chave; sem ela, ou com a errada, 401
    * - GET /api/padeiro/producoes (#138): { trello: [...] }, as Produções em Entrada e Produzindo no formato `trello` do
    *   Padeiro (producoes.paraOPadeiro). Só com a chave ligada: a pendente e a revogada, 403 { erro, estado }
+   * - POST /api/padeiro/aviso (#139) { aviso, abertoEm, producao | card | filme }: o aviso do Padeiro, o Peguei feito
+   *   ao abrir ou criar o projeto (etapaDaProducao.peloPadeiro). `aviso` é o identificador (o repetido responde
+   *   { repetido: true } e não grava de novo); `abertoEm`, a hora da abertura (ISO; a do futuro vale como agora). Só
+   *   com a chave ligada, como a lista
    */
   async function rotaDoPadeiro(req, res, caminho) {
     if (caminho === '/api/padeiro/cadastro' && req.method === 'POST') {
@@ -2996,6 +3000,38 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!p) return;
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
       return json(res, 200, { trello: producoes.paraOPadeiro((claquete) => atracaoPelaClaquete(claquete, programas, pracas)) });
+    }
+    if (caminho === '/api/padeiro/aviso' && req.method === 'POST') {
+      const p = padeiroLigado(req, res);
+      if (!p) return;
+      const corpo = (await lerCorpo(req, 4096, 'Aviso')) ?? {};
+      const texto = (v) => (typeof v === 'string' ? v.trim() : '');
+      const aviso = texto(corpo.aviso);
+      if (!/^[\w.:-]{1,100}$/.test(aviso)) return json(res, 400, { erro: 'Falta o identificador do aviso (até 100 letras, números, ponto, dois-pontos, hífen ou sublinhado).' });
+      const aberto = Date.parse(texto(corpo.abertoEm));
+      if (Number.isNaN(aberto)) return json(res, 400, { erro: 'Falta a hora da abertura do projeto (ISO).' });
+      // o relógio adiantado do computador não passa à frente do que acontecer depois
+      const quando = new Date(Math.min(aberto, Date.now())).toISOString();
+      const qual = { producao: texto(corpo.producao).slice(0, 100), card: texto(corpo.card).slice(0, 100), filme: texto(corpo.filme).slice(0, 100) };
+      if (!qual.producao && !qual.card && !qual.filme) return json(res, 400, { erro: 'Falta a Produção (ou o card, ou o filme).' });
+      const producao = producoes.doAviso(qual);
+      if (!producao) return json(res, 404, { erro: 'Essa Produção não existe no PROMeiro.' });
+      if (!padeiros.reservarAviso(p.id, aviso, producao.id, quando)) return json(res, 200, { repetido: true, producao: producao.id });
+      // o designer da chave como a tabela designers diz agora (o membro do Trello vem dela)
+      const doCadastro = (pessoas.guardada()?.designers ?? []).find((d) => d.registro === p.designer.registro);
+      const designer = { nome: doCadastro?.nome || p.designer.nome, membro: doCadastro?.idNoTrello || '' };
+      let r;
+      try {
+        r = await etapaDaProducao.peloPadeiro({ producao, quando }, { trello, designer, quem: { id: `padeiro:${p.id}`, nome: designer.nome } });
+      } catch (e) {
+        padeiros.soltarAviso(p.id, aviso);
+        throw e;
+      }
+      if (r.status === 200) {
+        padeiros.avisou(p.id);
+        console.log(`[padeiro] aviso de ${p.usuario} em ${p.computador}: ${producao.claquete} (${r.corpo.eventos.join(', ') || 'nada novo'})`);
+      } else padeiros.soltarAviso(p.id, aviso);
+      return json(res, r.status, r.corpo);
     }
     return json(res, 404, { erro: 'Não encontrado.' });
   }

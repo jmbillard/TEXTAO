@@ -22,6 +22,12 @@
  * etapa daquele card, e só se ela é de quem pede, foi feita na tela e ainda não foi desfeita. Se alguém (aqui, no Trello
  * ou no Teable) mudou a etapa depois, não desfaz. No Trello, o contrário do que a mudança fez: o card volta para a lista
  * de onde saiu e quem entrou sai (ou quem saiu entra de novo).
+ *
+ * O aviso do Padeiro (#139) é o Peguei feito pelo Padeiro, quando o designer abre ou cria o projeto: o designer da chave
+ * entra no card (só escrita) e na Produção (somado, se ela já tem outro), e a Produção na Entrada vai para Produzindo.
+ * Os eventos levam a origem Padeiro e a hora da abertura, e seguem a regra do conflito (o atrasado fica só no
+ * histórico; nada vai ao Trello por ele). A Produção Entregue não muda: fica só o evento "abriu-o-projeto". Abrir de novo
+ * o que já é do designer não grava nada.
  */
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { ORIGEM_PROMEIRO, artesDoChecklist } from './producoes.mjs';
@@ -125,6 +131,37 @@ export function criarEtapaDaProducao({ producoes }) {
     return { status: 200, corpo: { feito, producao: aTela(p.id) } };
   }
 
+  /**
+   * O aviso do Padeiro (#139): o Peguei pelo Padeiro, com a hora da abertura.
+   * @param p a Produção (producoes.doAviso)
+   * @param designer { nome, membro } do designer ligado à chave
+   * @param quem { id, nome } de quem os eventos dizem
+   * @returns { status, corpo }: { producao, etapa, designers, eventos (os tipos gravados), trello (os passos) }
+   */
+  async function peloPadeiro({ producao: p, quando }, { trello, designer, quem }) {
+    if (!p || p.arquivada) return { status: 404, corpo: { erro: 'Essa Produção não está mais aberta no PROMeiro.' } };
+    const ehDesigner = p.designers.some((d) => nomeComparavel(d) === nomeComparavel(designer.nome));
+    const mudancas = [];
+    if (p.etapa === 'entregue') mudancas.push({ tipo: 'abriu-o-projeto', antes: null, depois: designer.nome });
+    else {
+      if (p.etapa === 'entrada') mudancas.push({ tipo: 'etapa', antes: 'entrada', depois: 'produzindo' });
+      if (!ehDesigner) mudancas.push({ tipo: 'designer-entrou', antes: null, depois: designer.nome });
+    }
+    const feito = { eventos: mudancas.map((m) => m.tipo), trello: [] };
+    // no Trello, só o membro que entra de fato (o atrasado fica só no histórico)
+    const entra = mudancas.some((m) => m.tipo === 'designer-entrou' && !producoes.atrasado(p.id, { ...m, quando }));
+    if (entra && p.cardId) {
+      if (!designer.membro) return { status: 403, corpo: { erro: SEM_MEMBRO } };
+      if (!trello?.config?.chave || !trello?.config?.token) return { status: 503, corpo: { erro: 'O Trello não está configurado: nada mudou.' } };
+      const r = await executar(p, [passoDoMembro(p, true, designer.membro, trello)]);
+      if (r.erro) return { status: 502, corpo: { erro: r.erro } };
+      feito.trello = r.feito;
+    }
+    if (mudancas.length) producoes.doPadeiro(p.id, mudancas, quem, quando);
+    const agora = producoes.uma(p.id);
+    return { status: 200, corpo: { producao: p.id, etapa: agora.etapa, designers: agora.designers, ...feito } };
+  }
+
   /** O passo que move o card para a lista `para` da praça (entrada ou saída) e, ao desfazer, de volta para `de`. Sem a
       lista, o passo é o erro. */
   function passoDeMover(p, para, de, praca, trello) {
@@ -180,5 +217,5 @@ export function criarEtapaDaProducao({ producoes }) {
     return { feito: foram.map((f) => f.nome) };
   }
 
-  return { mudar, desfazer };
+  return { mudar, desfazer, peloPadeiro };
 }

@@ -158,6 +158,8 @@ export function artesDoChecklist({ artes, artesMarcadas }) {
 
 /** A origem dos eventos feitos na tela de produções (#110). */
 export const ORIGEM_PROMEIRO = 'PROMeiro';
+/** A origem dos eventos do aviso do Padeiro (#139). */
+export const ORIGEM_PADEIRO = 'Padeiro';
 
 /** A Produção como a API mostra. */
 const daLinha = (l) => ({
@@ -223,6 +225,8 @@ export function criarProducoes(db) {
        FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id
        WHERE p.arquivada = 0 AND p.etapa IN ('entrada', 'produzindo') ORDER BY COALESCE(p.entrada_em, p.criada_em) DESC, p.criada_em DESC`,
     ),
+    // o aviso do Padeiro (#139) pelo filme: a Produção mais recente dele, sem as arquivadas
+    daUltimaDoFilme: db.prepare('SELECT id FROM producoes WHERE filme_id = ? AND arquivada = 0 ORDER BY COALESCE(entrada_em, criada_em) DESC, criada_em DESC LIMIT 1'),
     // a Produção mudada na tela (#110), para a tela mostrar sem reler tudo
     umaNaTela: db.prepare(`${DA_TELA} WHERE p.id = ? AND p.arquivada = 0`),
     // a correção de grafia (#116): todas as Produções, para contar as de cada atração
@@ -471,6 +475,38 @@ export function criarProducoes(db) {
   }
 
   /**
+   * O aviso do Padeiro (#139), numa transação: os eventos (a etapa, o designer que entrou ou "abriu-o-projeto"), com
+   * quem (o Padeiro e o nome do designer da chave), a hora da abertura (`quando`) e a origem Padeiro. A regra do
+   * conflito é a da releitura e do aviso do Trello: o evento mais velho que o último da mesma família fica só no
+   * histórico; os outros mudam a Produção. Nada vai ao Teable.
+   * @param mudancas [{ tipo: 'etapa' | 'designer-entrou' | 'abriu-o-projeto', antes, depois }]
+   * @param quem { id, nome }
+   */
+  function doPadeiro(id, mudancas, quem, quando) {
+    const em = new Date().toISOString();
+    db.exec('BEGIN');
+    try {
+      for (const ev of mudancas) {
+        const vale = ev.tipo !== 'abriu-o-projeto' && !atrasado(id, { ...ev, quando });
+        q.anotarDoPROMeiro.run(randomUUID(), id, ev.tipo, ev.antes ?? null, ev.depois ?? null, quem.id, quem.nome, quando, ORIGEM_PADEIRO, null, em);
+        if (vale) mudarAProducao(id, { ...ev, quando }, em, []);
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  /** A Produção do aviso do Padeiro (#139): pelo id dela, pelo card (a mais recente, como o aviso do Trello) ou pelo
+      filme (a mais recente, sem as arquivadas). null sem nenhuma. */
+  function doAviso({ producao, card, filme }) {
+    const id = producao || (card ? q.daUltimaDoCard.get(card)?.id : null) || (filme ? q.daUltimaDoFilme.get(filme)?.id : null);
+    const l = id ? q.doId.get(id) : null;
+    return l ? daLinha(l) : null;
+  }
+
+  /**
    * A última mudança da etapa da Produção (#112), para o desfazer: o evento da etapa mais recente, de onde vier, e as
    * mudanças feitas junto com ele (quando é do PROMeiro). null sem nenhum evento da etapa.
    * @returns { id, tipo, antes, depois, quem, origem, desfaz, quando, junto: [{ tipo, antes, depois }] } ou null
@@ -705,6 +741,10 @@ export function criarProducoes(db) {
     umaNaTela,
     paraOPadeiro,
     doPROMeiro,
+    doPadeiro,
+    doAviso,
+    /** O evento ({ tipo, antes, depois, quando }) é mais velho que o último já anotado da família dele (#139)? */
+    atrasado,
     ultimaMudanca,
     /** A Produção pelo id (como a API mostra), ou null. */
     uma: (id) => {

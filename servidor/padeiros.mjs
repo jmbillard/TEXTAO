@@ -61,6 +61,15 @@ export function criarPadeiros(db, { agora = () => new Date() } = {}) {
       criado_em TEXT NOT NULL,
       ultimo_aviso_em TEXT
     );
+    -- os avisos do Padeiro já recebidos (#139), pelo identificador que o Padeiro manda: o repetido não grava de novo
+    CREATE TABLE IF NOT EXISTS avisos_do_padeiro (
+      padeiro_id TEXT NOT NULL,
+      aviso TEXT NOT NULL,
+      producao_id TEXT NOT NULL,
+      aberto_em TEXT NOT NULL,
+      recebido_em TEXT NOT NULL,
+      PRIMARY KEY (padeiro_id, aviso)
+    );
   `);
   const COLUNAS = 'id, par, usuario, computador, sistema, sigla, estado, designer_registro, designer_nome, mudado_por, mudado_em, criado_em, ultimo_aviso_em';
   const q = {
@@ -80,6 +89,9 @@ export function criarPadeiros(db, { agora = () => new Date() } = {}) {
     todos: db.prepare(`SELECT ${COLUNAS} FROM padeiros`),
     ligar: db.prepare("UPDATE padeiros SET estado = 'ligada', designer_registro = ?, designer_nome = ?, mudado_por = ?, mudado_em = ? WHERE id = ?"),
     revogar: db.prepare("UPDATE padeiros SET estado = 'revogada', mudado_por = ?, mudado_em = ? WHERE id = ?"),
+    reservarAviso: db.prepare('INSERT INTO avisos_do_padeiro (padeiro_id, aviso, producao_id, aberto_em, recebido_em) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING'),
+    soltarAviso: db.prepare('DELETE FROM avisos_do_padeiro WHERE padeiro_id = ? AND aviso = ?'),
+    avisou: db.prepare('UPDATE padeiros SET ultimo_aviso_em = ? WHERE id = ?'),
   };
   const ehPedidoNovo = (l) => l.par.endsWith(NOVO);
   const comoFica = (l) => ({
@@ -177,6 +189,15 @@ export function criarPadeiros(db, { agora = () => new Date() } = {}) {
       });
       return comoFica(q.um.get(id));
     },
+    /**
+     * Reserva o aviso do Padeiro (#139) pelo identificador dele, antes de fazer o que ele pede: false quando o mesmo
+     * Padeiro já mandou esse aviso (o repetido não grava de novo). Se o aviso não vai (o Trello recusou), `soltarAviso`
+     * deixa o Padeiro mandar de novo.
+     */
+    reservarAviso: (padeiroId, aviso, producaoId, abertoEm) => Number(q.reservarAviso.run(padeiroId, aviso, producaoId, abertoEm, agora().toISOString()).changes ?? 0) > 0,
+    soltarAviso: (padeiroId, aviso) => q.soltarAviso.run(padeiroId, aviso),
+    /** O aviso feito: o último aviso do Padeiro (a aba Padeiros mostra) é agora. */
+    avisou: (padeiroId) => q.avisou.run(agora().toISOString(), padeiroId),
     /** Revoga a chave: o Padeiro vê "revogada" e precisa se cadastrar de novo (e volta a pendente). No pedido novo, é
         recusar: a chave ligada do mesmo computador fica. */
     revogar(id, por) {

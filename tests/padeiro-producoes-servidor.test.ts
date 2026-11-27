@@ -177,3 +177,149 @@ describe('o Padeiro: a lista das Produções para o grupo NO TRELLO', () => {
     expect((await padeiro('/api/padeiro/producoes', { method: 'POST', chave })).status).toBe(404);
   });
 });
+
+type EventoDaLinha = { tipo: string; antes: string | null; depois: string | null; quem: string | null; quando: string; origem?: string };
+
+describe('o aviso do Padeiro: abrir o projeto faz o mesmo que o Peguei', () => {
+  const MINUTO = 60_000;
+  async function comAviso() {
+    const s = await preparado();
+    const { chave, id: padeiroId } = await s.daAna();
+    let n = 0;
+    /** O aviso do Padeiro: a Produção (ou o card, ou o filme), a hora da abertura e o identificador (um novo, sem `aviso`). */
+    const avisar = async (corpo: Record<string, unknown>, k = chave) => {
+      const r = await s.padeiro('/api/padeiro/aviso', { method: 'POST', chave: k, body: JSON.stringify({ aviso: `aviso-${++n}`, abertoEm: new Date().toISOString(), ...corpo }) });
+      return { status: r.status, corpo: (await r.json()) as Record<string, unknown> };
+    };
+    const linhaDoTempo = async (id: string) => ((await (await s.chefe(`/api/linha-do-tempo?producao=${id}`)).json()) as { eventos: EventoDaLinha[] }).eventos;
+    const resumo = (evs: EventoDaLinha[]) => evs.map((e) => [e.tipo, e.antes, e.depois, e.quem, e.origem ?? '']);
+    const ana = (caminho: string, init: RequestInit = {}) => s.chefe(caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'ana.souza@empresa.com' } });
+    return { ...s, chave, padeiroId, avisar, linhaDoTempo, resumo, ana };
+  }
+
+  it('pela Produção: a designer da chave entra no card do Trello (só escrita) e na Produção, que vai para Produzindo, com a origem "Padeiro" e a hora da abertura', async () => {
+    const { avisar, daClaquete, linhaDoTempo, resumo, trello, teable, chefe, padeiroId } = await comAviso();
+    const id = (await daClaquete('Show da Noite')).id;
+    const pedidosAoTeable = teable.estado.pedidos.length;
+    const abertoEm = new Date(Date.now() - 5 * MINUTO).toISOString();
+    const r = await avisar({ producao: id, abertoEm });
+    expect(r.status).toBe(200);
+    expect(r.corpo).toMatchObject({ producao: id, etapa: 'produzindo', designers: ['Ana Souza'] });
+    expect(trello.pedidos).toEqual([{ metodo: 'POST', caminho: `/cards/${card(1)}/idMembers`, consulta: { value: 'membroAna' } }]);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'produzindo', designers: ['Ana Souza'] });
+    const evs = await linhaDoTempo(id);
+    expect(resumo(evs)).toEqual([
+      ['etapa', 'entrada', 'produzindo', 'Ana Souza', 'Padeiro'],
+      ['designer-entrou', null, 'Ana Souza', 'Ana Souza', 'Padeiro'],
+    ]);
+    expect(evs.map((e) => e.quando)).toEqual([abertoEm, abertoEm]);
+    // nada escrito no Teable
+    expect(teable.estado.pedidos.slice(pedidosAoTeable).filter((p: string) => !p.startsWith('GET'))).toEqual([]);
+    // a aba Padeiros mostra o último aviso
+    const lista = (await (await chefe('/api/cadastros/padeiros')).json()) as { padeiros: { id: string; ultimoAviso: string | null }[] };
+    expect(Math.abs(Date.parse(lista.padeiros.find((p) => p.id === padeiroId)!.ultimoAviso!) - Date.now())).toBeLessThan(MINUTO);
+  });
+
+  it('pelo card e pelo filme: acha a Produção dele (a do filme sem card muda só no PROMeiro)', async () => {
+    const { avisar, daClaquete, trello } = await comAviso();
+    expect(await avisar({ card: card(1) })).toMatchObject({ status: 200, corpo: { etapa: 'produzindo', designers: ['Ana Souza'] } });
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'produzindo' });
+    expect(await avisar({ filme: 'recFilme1' })).toMatchObject({ status: 200, corpo: { etapa: 'produzindo', designers: ['Ana Souza'] } });
+    expect(await daClaquete('Filme da Tarde')).toMatchObject({ etapa: 'produzindo', designers: ['Ana Souza'] });
+    expect(trello.pedidos).toHaveLength(1);
+  });
+
+  it('a Produção que já tem designer: a nova é somada, e a etapa (Produzindo) fica', async () => {
+    const { avisar, daClaquete, linhaDoTempo, resumo, trello } = await comAviso();
+    const id = (await daClaquete('Festa na Praça')).id;
+    expect((await avisar({ producao: id })).status).toBe(200);
+    expect(await daClaquete('Festa na Praça')).toMatchObject({ etapa: 'produzindo', designers: ['Caio Prates', 'Ana Souza'] });
+    expect(trello.pedidos).toEqual([{ metodo: 'POST', caminho: `/cards/${card(2)}/idMembers`, consulta: { value: 'membroAna' } }]);
+    expect(resumo(await linhaDoTempo(id))).toEqual([['designer-entrou', null, 'Ana Souza', 'Ana Souza', 'Padeiro']]);
+  });
+
+  it('a Produção Entregue: a etapa não muda, ninguém entra no card, e fica só o evento "abriu o projeto"', async () => {
+    const { avisar, db, linhaDoTempo, resumo, trello } = await comAviso();
+    const { id } = db.prepare("SELECT id FROM producoes WHERE claquete LIKE 'Jogo Final%'").get() as { id: string };
+    expect(await avisar({ producao: id })).toMatchObject({ status: 200, corpo: { etapa: 'entregue', designers: ['Ana Souza'] } });
+    expect(trello.pedidos).toEqual([]);
+    expect(resumo(await linhaDoTempo(id))).toEqual([['abriu-o-projeto', null, 'Ana Souza', 'Ana Souza', 'Padeiro']]);
+    expect(db.prepare('SELECT etapa FROM producoes WHERE id = ?').get(id)).toEqual({ etapa: 'entregue' });
+  });
+
+  it('o aviso repetido (o mesmo identificador) não grava de novo; abrir de novo o que já é dela não duplica evento nem membro', async () => {
+    const { avisar, daClaquete, linhaDoTempo, trello } = await comAviso();
+    const id = (await daClaquete('Show da Noite')).id;
+    expect((await avisar({ producao: id, aviso: 'aviso-unico' })).status).toBe(200);
+    expect(await avisar({ producao: id, aviso: 'aviso-unico' })).toMatchObject({ status: 200, corpo: { repetido: true } });
+    // o mesmo projeto aberto de novo (outro aviso): a Ana já está nela, em Produzindo
+    expect((await avisar({ producao: id })).status).toBe(200);
+    expect(await linhaDoTempo(id)).toHaveLength(2);
+    expect(trello.pedidos).toHaveLength(1);
+  });
+
+  it('o aviso atrasado (mais velho que a última mudança) fica no histórico e não desfaz o que veio depois', async () => {
+    const { avisar, daClaquete, linhaDoTempo, resumo, trello, ana } = await comAviso();
+    const id = (await daClaquete('Show da Noite')).id;
+    // na tela: a Ana pega e volta para a Entrada (agora)
+    const mudar = (etapa: string) => ana('/api/producoes/etapa', { method: 'POST', body: JSON.stringify({ producao: id, etapa }) });
+    expect((await mudar('produzindo')).status).toBe(200);
+    expect((await mudar('entrada')).status).toBe(200);
+    const pedidos = trello.pedidos.length;
+    // o aviso guardado sem rede, da abertura de uma hora atrás, chega agora
+    const abertoEm = new Date(Date.now() - 60 * MINUTO).toISOString();
+    expect((await avisar({ producao: id, abertoEm })).status).toBe(200);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entrada', designers: [] });
+    expect(trello.pedidos).toHaveLength(pedidos);
+    const evs = await linhaDoTempo(id);
+    // no histórico, na hora da abertura (antes das mudanças da tela)
+    expect(resumo(evs).slice(0, 2)).toEqual([
+      ['etapa', 'entrada', 'produzindo', 'Ana Souza', 'Padeiro'],
+      ['designer-entrou', null, 'Ana Souza', 'Ana Souza', 'Padeiro'],
+    ]);
+    expect(evs[0].quando).toBe(abertoEm);
+    expect(evs).toHaveLength(6);
+  });
+
+  it('a abertura no futuro (o relógio do computador adiantado) vale como agora', async () => {
+    const { avisar, daClaquete, linhaDoTempo } = await comAviso();
+    const id = (await daClaquete('Show da Noite')).id;
+    await avisar({ producao: id, abertoEm: new Date(Date.now() + 120 * MINUTO).toISOString() });
+    const [ev] = await linhaDoTempo(id);
+    expect(Math.abs(Date.parse(ev.quando) - Date.now())).toBeLessThan(MINUTO);
+  });
+
+  it('a chave pendente ou revogada é recusada, e nada muda', async () => {
+    const { avisar, daClaquete, cadastrar, revogar, padeiroId, trello } = await comAviso();
+    const id = (await daClaquete('Show da Noite')).id;
+    const pendente = await cadastrar({ usuario: 'cprates', computador: 'WIN-ARTE-02', sigla: 'CP' });
+    expect(await avisar({ producao: id }, pendente.chave)).toMatchObject({ status: 403, corpo: { estado: 'pendente' } });
+    await revogar(padeiroId);
+    expect(await avisar({ producao: id })).toMatchObject({ status: 403, corpo: { estado: 'revogada' } });
+    expect((await avisar({ producao: id }, 'chave-inventada')).status).toBe(401);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entrada', designers: [] });
+    expect(trello.pedidos).toEqual([]);
+  });
+
+  it('o Trello recusa: nada muda, e o mesmo aviso pode vir de novo depois', async () => {
+    const { avisar, daClaquete, linhaDoTempo, trello } = await comAviso();
+    const id = (await daClaquete('Show da Noite')).id;
+    trello.estado.recusar = () => true;
+    expect((await avisar({ producao: id, aviso: 'aviso-de-novo' })).status).toBe(502);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entrada', designers: [] });
+    expect(await linhaDoTempo(id)).toEqual([]);
+    trello.estado.recusar = null;
+    expect(await avisar({ producao: id, aviso: 'aviso-de-novo' })).toMatchObject({ status: 200, corpo: { etapa: 'produzindo' } });
+  });
+
+  it('o aviso mal feito: sem identificador, sem a hora certa, sem a Produção, a que não existe e o método', async () => {
+    const { avisar, daClaquete, padeiro, chave } = await comAviso();
+    const id = (await daClaquete('Show da Noite')).id;
+    expect((await avisar({ producao: id, aviso: '' })).status).toBe(400);
+    expect((await avisar({ producao: id, abertoEm: 'ontem' })).status).toBe(400);
+    expect((await avisar({})).status).toBe(400);
+    expect((await avisar({ producao: 'nao-existe' })).status).toBe(404);
+    expect((await avisar({ card: 'card-que-nao-existe' })).status).toBe(404);
+    expect((await padeiro('/api/padeiro/aviso', { chave })).status).toBe(404);
+  });
+});

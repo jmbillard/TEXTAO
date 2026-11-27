@@ -97,6 +97,7 @@ export function frasesDaLinhaDoTempo(p: ProducaoDaLinha, eventos: readonly Event
     if (e.tipo === 'criada') pedacos.push({ texto: 'entrou', quando });
     else if (e.tipo === 'designer-entrou' || e.tipo === 'designer-saiu') pedacos.push({ texto: `${quem || 'alguém'} ${e.tipo === 'designer-entrou' ? 'pegou' : 'saiu'}`, quando });
     else if (e.tipo === 'desarquivada') pedacos.push({ texto: 'desarquivada', quando });
+    else if (e.tipo === 'abriu-o-projeto') pedacos.push({ texto: `${quem || 'alguém'} abriu o projeto`, quando });
     else if (e.tipo === 'etapa' || e.tipo === 'arquivada') {
       const texto = daEtapa(e.antes, e.depois);
       if (texto) pedacos.push({ texto, quando });

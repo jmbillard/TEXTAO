@@ -292,6 +292,9 @@ direto na única rota fora do Cloudflare Access, com a assinatura do Trello, e a
 o id da ação não repete, e ele também traz a **arte marcada** e **desmarcada** (o item do checklist) e a **entrega** (o
 prazo do card); o card novo vira Produção só pelo aviso ao vivo, e o aviso atrasado (mais velho que o último da mesma
 família) fica no histórico sem mudar a Produção.
+**O aviso do Padeiro** (#139) grava os eventos com a origem "Padeiro", o quando da abertura do projeto e, como quem, o
+designer da chave: a etapa e o **designer entrou** do Peguei, ou, na Produção Entregue, só **abriu o projeto**. O
+atrasado segue a mesma regra da família.
 _Evitar_: log, atividade, ação (a ação é do Trello)
 
 **Linha do tempo** (da Produção):

@@ -75,6 +75,11 @@ describe('a linha do tempo da Produção', () => {
     expect(frasesDaLinhaDoTempo(producao(), eventos)).toEqual(['Rafael pegou 26/11 10h02', 'entregue 15h20']);
   });
 
+  it('o aviso do Padeiro numa Produção entregue: quem abriu o projeto (#139)', () => {
+    const eventos = [ev('etapa', em(26, 15, 20), { antes: 'produzindo', depois: 'entregue' }), ev('abriu-o-projeto', em(27, 9, 10), { depois: 'Rafael' })];
+    expect(frasesDaLinhaDoTempo(producao({ etapa: 'entregue' }), eventos)).toEqual(['entregue 26/11 15h20', 'Rafael abriu o projeto 27/11 9h10']);
+  });
+
   it('a Produção que já estava lá antes dos eventos começa por "na produção desde"', () => {
     const eventos = [ev('designer-entrou', em(26, 10, 2), { depois: 'Rafael' })];
     expect(frasesDaLinhaDoTempo(producao({ entradaEm: em(20, 11) }), eventos)).toEqual(['na produção desde 20/11', 'Rafael pegou 26/11 10h02']);
