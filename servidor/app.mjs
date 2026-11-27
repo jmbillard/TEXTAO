@@ -3765,6 +3765,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * (`producoes.naJanela`), cada uma com o fogo da complexidade que o editor marcou no Roteiro ligado (BAIXA sem marca;
    * null sem Roteiro), se está feita e quem marcou, e a contagem. null sem a Produção (ou arquivada).
    */
+  /** O fogo de cada arte (1 a 3) pela meta do Roteiro ligado, como a janela do After (#146) e o card aberto (#160)
+      mostram; sem Roteiro, null. @param j a Produção de producoes.naJanela */
+  const fogoDasArtes = ({ producao, meta }) => {
+    const complexidade = meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
+    return (a) => (producao.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
+  };
+
   /**
    * A Produção aberta na tela de produções (#113, #160): a de `producoes.aberta` (a linha do tempo, as artes do
    * checklist, o link do card) e, para o card aberto, as artes como a janela do After mostra (`artesDoCard`: cada arte
@@ -3775,8 +3782,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const aberta = typeof id === 'string' ? producoes.aberta(id) : null;
     if (!aberta) return null;
     const j = producoes.naJanela(id);
-    const complexidade = j?.meta?.complexidade && typeof j.meta.complexidade === 'object' ? j.meta.complexidade : {};
-    const fogo = (a) => (j?.producao.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
+    const fogo = j ? fogoDasArtes(j) : () => null;
     const roteiro = producoes.roteiroDe(id);
     return {
       ...aberta,
@@ -3807,14 +3813,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   async function producaoDaJanela(id, padeiro) {
     const j = producoes.naJanela(id);
     if (!j) return null;
-    const { producao: p, meta, artes } = j;
+    const { producao: p, artes } = j;
     const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
     const card = comAsVersoes(producoes.umaNaTela(p.id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas)));
     const nome = padeiro.designer ? designerDoPadeiro(padeiro).nome : '';
-    const complexidade = meta?.complexidade && typeof meta.complexidade === 'object' ? meta.complexidade : {};
     // o filme (como o `fil` da lista): o do cadastro ou só o título
     const ehFilme = !!(p.filmeId || p.filmeTitulo);
-    const fogo = (a) => (p.roteiroId ? ([1, 2, 3].includes(complexidade[chaveDeArte(a.nome)]) ? complexidade[chaveDeArte(a.nome)] : 1) : null);
+    const fogo = fogoDasArtes(j);
     return {
       id: p.id,
       praca: p.praca,
