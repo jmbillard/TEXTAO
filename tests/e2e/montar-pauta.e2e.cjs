@@ -769,12 +769,15 @@ async function colunaEArrastar(navegador, url) {
   const tablet = await abrir(navegador, url, BIA, `#/pauta/montar/${depois}`, { viewport: { width: 834, height: 1194 }, hasTouch: true });
   const tColuna = tablet.p.getByRole('region', { name: 'Para distribuir' });
   await tColuna.locator('.coluna-claquete').first().waitFor();
+  // a tela mostra o levar antes de o servidor gravar: fechar o tablet antes da resposta pode cortar o pedido
+  const levado = tablet.p.waitForResponse((r) => new URL(r.url()).pathname === '/api/montar-pauta/levar' && r.request().method() === 'POST');
   await arrastarComODedo(tablet.p, tColuna.locator('.coluna-claquete', { hasText: 'Mundo Animal' }), tablet.p.locator(`.montar-celula[data-posicao-id="${rui}"]`));
   await ate(async () => assert.deepEqual((await aGrade(tablet.p)).map((x) => x.demandas), [[`Mundo Animal ${diaMes(depois)} (P)`], [`Noite de Gala ${diaMes(depois)} (DP)`]]));
   assert.deepEqual(await daLista(tablet.p), ['CALHAUS']);
   await semRolagemDeLado(tablet.p, 'coluna no tablet');
   await capturar(tablet.p, '15-coluna-tablet');
   assert.deepEqual(tablet.erros, [], 'coluna no tablet: erros na página');
+  assert.equal((await levado).status(), 200, 'no tablet, o servidor gravou o levar');
   await tablet.ctx.close();
 
   // no celular (escuro): a coluna embaixo; "Escalar na…", "Mover para…" e o "⋯" da demanda
