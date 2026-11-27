@@ -241,6 +241,13 @@ export function criarProducoes(db) {
        FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id
        WHERE p.arquivada = 0 AND p.etapa IN ('entrada', 'produzindo') ORDER BY COALESCE(p.entrada_em, p.criada_em) DESC, p.criada_em DESC`,
     ),
+    // o índice do buscar do Padeiro (#143): as que entraram desde a data, também as entregues e as arquivadas, as mais
+    // novas primeiro, com o Roteiro ligado
+    doIndice: db.prepare(
+      `SELECT p.id, p.claquete, p.praca, p.etapa, p.designers, p.artes, p.artes_marcadas, p.entrada_em, p.card_id, p.filme_id, p.filme_titulo, p.arquivada, r.meta AS roteiro_meta
+       FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id
+       WHERE COALESCE(p.entrada_em, p.criada_em) >= ? ORDER BY COALESCE(p.entrada_em, p.criada_em) DESC, p.criada_em DESC`,
+    ),
     // o aviso do Padeiro (#139) pelo filme: a Produção mais recente dele, sem as arquivadas
     daUltimaDoFilme: db.prepare('SELECT id FROM producoes WHERE filme_id = ? AND arquivada = 0 ORDER BY COALESCE(entrada_em, criada_em) DESC, criada_em DESC LIMIT 1'),
     // a Produção mudada na tela (#110), para a tela mostrar sem reler tudo
@@ -785,32 +792,45 @@ export function criarProducoes(db) {
    * @param atracaoDaClaquete (claquete) => nome, ou ''
    */
   function paraOPadeiro(atracaoDaClaquete = () => '') {
-    return q.doPadeiro.all().map((l) => {
-      let meta = {};
-      try {
-        meta = JSON.parse(l.roteiro_meta ?? 'null') ?? {};
-      } catch {
-        // meta ilegível: sem redator nem editor, e a atração sai da claquete
-      }
-      const doMeta = (campo) => String(meta?.[campo] ?? '').trim();
-      const artes = artesDoChecklist({ artes: JSON.parse(l.artes ?? '[]'), artesMarcadas: JSON.parse(l.artes_marcadas ?? '[]') });
-      return {
-        claq: l.claquete,
-        red: doMeta('redator'),
-        ed: doMeta('editor'),
-        card: l.card_id ?? '',
-        at: l.entrada_em ?? null,
-        fim: false,
-        atr: doMeta('programa') || String(l.filme_titulo ?? '').trim() || atracaoDaClaquete(l.claquete),
-        fil: !!(l.filme_id || l.filme_titulo),
-        filme: l.filme_id ?? '',
-        praca: l.praca ?? '',
-        producao: l.id,
-        etapa: l.etapa,
-        designers: JSON.parse(l.designers ?? '[]'),
-        artes: { feitas: artes.filter((a) => a.marcada).map((a) => a.nome), aFazer: artes.filter((a) => !a.marcada).map((a) => a.nome) },
-      };
-    });
+    return q.doPadeiro.all().map((l) => doPadeiroDaLinha(l, atracaoDaClaquete));
+  }
+
+  /**
+   * O `trello` do índice do buscar do Padeiro (#143): as Produções que entraram desde a data (ISO), as mais novas
+   * primeiro, no formato da lista do Padeiro (paraOPadeiro). A Entregue e a arquivada vêm com `fim: true`, como o card
+   * FINALIZADO ou arquivado do índice do n8n.
+   * @param atracaoDaClaquete (claquete) => nome, ou ''
+   */
+  function noIndice(desde, atracaoDaClaquete = () => '') {
+    return q.doIndice.all(desde).map((l) => ({ ...doPadeiroDaLinha(l, atracaoDaClaquete), fim: l.etapa === 'entregue' || l.etapa === 'arquivada' || !!l.arquivada }));
+  }
+
+  /** Uma linha das Produções no formato da lista do Padeiro (paraOPadeiro). */
+  function doPadeiroDaLinha(l, atracaoDaClaquete) {
+    let meta = {};
+    try {
+      meta = JSON.parse(l.roteiro_meta ?? 'null') ?? {};
+    } catch {
+      // meta ilegível: sem redator nem editor, e a atração sai da claquete
+    }
+    const doMeta = (campo) => String(meta?.[campo] ?? '').trim();
+    const artes = artesDoChecklist({ artes: JSON.parse(l.artes ?? '[]'), artesMarcadas: JSON.parse(l.artes_marcadas ?? '[]') });
+    return {
+      claq: l.claquete,
+      red: doMeta('redator'),
+      ed: doMeta('editor'),
+      card: l.card_id ?? '',
+      at: l.entrada_em ?? null,
+      fim: false,
+      atr: doMeta('programa') || String(l.filme_titulo ?? '').trim() || atracaoDaClaquete(l.claquete),
+      fil: !!(l.filme_id || l.filme_titulo),
+      filme: l.filme_id ?? '',
+      praca: l.praca ?? '',
+      producao: l.id,
+      etapa: l.etapa,
+      designers: JSON.parse(l.designers ?? '[]'),
+      artes: { feitas: artes.filter((a) => a.marcada).map((a) => a.nome), aFazer: artes.filter((a) => !a.marcada).map((a) => a.nome) },
+    };
   }
 
   /**
@@ -834,6 +854,7 @@ export function criarProducoes(db) {
     naTela,
     umaNaTela,
     paraOPadeiro,
+    noIndice,
     doPROMeiro,
     doPadeiro,
     doAviso,

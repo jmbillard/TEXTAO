@@ -380,6 +380,12 @@ cadastro vira um **pedido novo**, pendente, e a chave ligada vale até um admini
 trocada) ou recusá-lo (aí ela fica). Com a chave pendente ou revogada, o cadastro novo a troca na hora.
 _Evitar_: token de serviço, senha, login
 
+**Índice do buscar**:
+O que a busca do Padeiro (o acessorista e a claquete) procura: as atrações com as pastas e os padrões, as Produções
+recentes, os filmes e as pastas citadas no Teams, num JSON só (`{ v: 2, … }`). Vinha do fluxo PROMO - BUSCAR do n8n;
+com a **chave do Padeiro** ligada, vem do PROMeiro (`/api/padeiro/buscar`, #143), no mesmo formato.
+_Evitar_: índice de caminhos (é o antigo, do path-search), índice local (o das pastas de um computador, no Padeiro)
+
 **Anexo** (guardado pelo PROMeiro):
 Um arquivo que o PROMeiro guarda no próprio banco (entra no backup) e serve por endereço fixo, sem depender do Trello
 nem do Teable (#90): o **PDF do roteiro** que vai ao card no envio (ligado ao card da Produção, servido em

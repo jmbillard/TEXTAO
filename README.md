@@ -78,6 +78,41 @@ Delete). O caminho volta para trás do login, como o resto do domínio: o Padeir
 segue pelo n8n, como antes), e as chaves continuam guardadas, sem valer para nada até o Bypass voltar. Para cortar um
 Padeiro só, sem mexer no Access, revogue a chave dele nos Cadastros.
 
+### O índice do buscar (#143)
+
+`GET /api/padeiro/buscar`, com a chave **ligada** (a pendente e a revogada, `403 { estado }`; sem chave ou com a errada,
+`401`), devolve o índice da busca do Padeiro (a busca de caminhos e a claquete) no mesmo formato do fluxo
+**PROMO - BUSCAR** do n8n (`GET …/webhook/buscar`): `{ v: 2, stamp, generated, teams, trello, atracoes, filmes }`.
+Com `Accept-Encoding: gzip`, vai comprimido. O `stamp` muda só quando o conteúdo muda.
+
+- **atracoes:** o cadastro das atrações (os Cadastros): `{ name, cat, pattern, proj, out }`. As keys viram os padrões,
+  e as pastas são os campos de `TEABLE_CAMPOS_CAMINHO` que começam com `projeto` e `output`; a atração sem pasta fica
+  de fora.
+- **trello:** as Produções do PROMeiro que entraram nos últimos 15 dias, as mais novas primeiro (`claq`, `red`, `ed`,
+  `card`, `atr`, `at`, `des`, `fim`, `fil` e a `producao`). A Entregue e a arquivada vêm com `fim: true`.
+- **filmes:** o cadastro dos filmes (o Postgres do Teable), um por título: `{ name, year, out }`.
+- **teams:** as pastas citadas nas mensagens do Teams dos últimos 30 dias (a tabela **mensagens** da base, que o fluxo
+  **PROMO: MENSAGENS NO TEAMS** grava), cada pasta uma vez. Sem a tabela na base, o `teams` vem vazio.
+- Sem o cadastro das atrações, ou com o Teable fora do ar, `503`: o Padeiro fica com o webhook do n8n ou com a cópia
+  que já tem.
+
+**Para desligar o fluxo PROMO - BUSCAR do n8n** (o passo é seu, depois de conferir):
+
+1. **Os Padeiros:** todos os computadores com a versão do Padeiro que lê o índice do PROMeiro, e todas as chaves
+   **ligadas** nos Cadastros › Padeiros. O Padeiro sem chave, com a pendente, ou de antes, continua lendo o webhook do
+   n8n: com o fluxo desligado, ele fica só com a última cópia do índice.
+2. **Confira** com uma chave ligada: `curl -s -H 'X-Chave-Do-Padeiro: <chave>' https://<promeiro>/api/padeiro/buscar`
+   responde `{"v":2,…}`, e as contagens de `atracoes`, `filmes` e `teams` batem com as do
+   `curl -s https://<n8n>/webhook/buscar` (o `trello` do PROMeiro vem das Produções: pode ter outros cards).
+3. **As mensagens do Teams:** o PROMO - BUSCAR chamava o **PROMO: MENSAGENS NO TEAMS** a cada busca; sem ele, as
+   mensagens só entram pelo agendamento do próprio fluxo (hoje, de 3 em 3 horas). Diminua o intervalo do Schedule
+   Trigger dele (por exemplo, de 15 em 15 minutos) **antes** de desligar o BUSCAR. Ele continua ligado.
+4. **Desligue** o PROMO - BUSCAR no n8n (o interruptor Active do fluxo; não apague). Abra o acessorista e a claquete
+   num Padeiro ligado e confira as atrações, os filmes e as pastas do Teams.
+
+**Para voltar atrás:** ligue o fluxo de novo (o Padeiro sem a chave ligada volta a ler na hora) e, se tiver mudado,
+volte o intervalo do MENSAGENS NO TEAMS.
+
 ### O projeto criado no Padeiro (no lugar do fluxo "PROMO - PROJETO" do n8n)
 
 `POST /api/padeiro/projeto` (#144), com a chave **ligada**, recebe o mesmo envio que o Padeiro mandava ao webhook do
