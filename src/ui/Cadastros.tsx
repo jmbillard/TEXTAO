@@ -924,7 +924,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
     }
     await carregar(true);
   };
-  /** Grava o e-mail do cadastro (à mão ou pelo "É ela"); `texto` é o que a caixinha diz. */
+  /** Grava o e-mail do cadastro (à mão ou pelo "É"); `texto` é o que a caixinha diz. */
   const gravarEmail = async (tipo: SugestaoDeEmail['tipo'], id: string, email: string, texto: (e: string) => React.ReactNode) => {
     try {
       const r = await mudarEmailDoCadastro(tipo, id, email);
@@ -939,7 +939,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   };
   const emailAMao = (tipo: SugestaoDeEmail['tipo'], c: RedatorCadastro | EditorCadastro) => (email: string) =>
     gravarEmail(tipo, c.id, email, (e) => (e ? <><b>{e}</b> agora é o e-mail de {c.nome}.</> : <>{c.nome} ficou sem e-mail.</>));
-  const eEla = (s: SugestaoDeEmail) => void gravarEmail(s.tipo, s.id, s.email, (e) => <><b>{e}</b> agora é {quemNoCadastro(s.tipo, s.nome)}.</>);
+  const simE = (s: SugestaoDeEmail) => void gravarEmail(s.tipo, s.id, s.email, (e) => <><b>{e}</b> agora está ligado a {quemNoCadastro(s.tipo, s.nome)}.</>);
   const naoE = async (s: SugestaoDeEmail) => {
     try {
       await responderNaoE(s);
@@ -999,7 +999,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   const listaAtracoes = (dados?.atracoes ?? []).filter((a) => !escondidos.includes(a.id) && casa(a.nome, a.categoria, ...a.keys.map((k) => k.key)));
   const listaRedatores = (dados?.redatores ?? []).filter((r) => !escondidos.includes(r.id) && casa(r.nome, r.email, ...r.keys.map((k) => k.key)));
   const listaEditores = (dados?.editores ?? []).filter((e) => !escondidos.includes(e.id) && casa(e.nome, e.email, ...e.keys.map((k) => k.key)));
-  // as sugestões "É a redatora?" da aba (só administradores recebem)
+  // as sugestões "É Fulana, dos redatores?" da aba (só administradores recebem)
   const sugestoesDaAba = (dados?.sugestoes ?? []).filter((x) => x.tipo === aba);
   const itemAtracao = (a: AtracaoCadastro) => (
     <div
@@ -1187,7 +1187,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
               );
             })()}
             {!dupAberta && semCad && !sem && <p className="cad-vazio">Procurando nas claquetes…</p>}
-            {!dupAberta && !semCad && dados && sugestoesDaAba.map((x) => <SugestaoDeEmailNaLista key={`${x.id}:${x.email}`} s={x} eEla={() => eEla(x)} naoE={() => void naoE(x)} />)}
+            {!dupAberta && !semCad && dados && sugestoesDaAba.map((x) => <SugestaoDeEmailNaLista key={`${x.id}:${x.email}`} s={x} simE={() => simE(x)} naoE={() => void naoE(x)} />)}
             {!dupAberta && !semCad && dados && aba === 'atracoes' && comRascunho(listaAtracoes, itemAtracao)}
             {!dupAberta && !semCad && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
             {!dupAberta && !semCad && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}

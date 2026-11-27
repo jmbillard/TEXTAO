@@ -410,9 +410,10 @@ conta no dia em que começou. O **turno de costume** é o que mais se repete na 
 
 **Ligação pelo e-mail** (pessoa e cadastro):
 O e-mail do login guardado no cadastro de redator ou de editor (no Teable): é ele que diz que quem entra no PROMeiro é
-aquele redator ou editor. O administrador preenche à mão nos Cadastros ou pela **sugestão "É a redatora?"** (ou "É o
-editor?"): quem já entrou no PROMeiro e tem o nome parecido com o de um cadastro sem e-mail (sem caixa, acento e
-"da/de/dos"; o primeiro nome e o sobrenome batem, com até uma letra de diferença nas palavras de 4 letras ou mais;
-um nome de uma palavra só não sugere). "É ela" grava na hora, com desfazer; "Não é" fica guardado e a sugestão não
-volta. Um e-mail fica em um só cadastro de cada tipo.
+aquele redator ou editor. O administrador preenche à mão nos Cadastros ou pela **sugestão "É Fulana, dos
+redatores?"** (ou "dos editores?", sem gênero): quem já entrou no PROMeiro e tem o nome parecido com o de um cadastro
+sem e-mail (sem caixa, acento e "da/de/dos"; o primeiro nome e o sobrenome batem, com até uma letra de diferença nas
+palavras de 4 letras ou mais; um nome de uma palavra só não sugere). "É" grava na hora, com desfazer, e a caixinha diz
+"… agora está ligado a Fulana, dos redatores"; "Não é" fica guardado e a sugestão não volta. Um e-mail fica em um só
+cadastro de cada tipo.
 _Evitar_: vínculo, mapeamento de usuário

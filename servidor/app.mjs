@@ -646,7 +646,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
 
   /* ---------- a seção Pessoas (#77): os designers da produção da arte × a tabela designers (nada do Trello) ---------- */
   const pessoas = criarPessoas({ db, copia, buscar: buscarNoTeable });
-  // ligar pessoa e cadastro pelo e-mail (#106): as sugestões "É ela" e o "Não é" guardado
+  // ligar pessoa e cadastro pelo e-mail (#106): as sugestões "É" e o "Não é" guardado
   const ligacaoDePessoas = criarLigacaoDePessoas({ db });
   /** Olha a produção da arte e a tabela designers, com os módulos de agora (nunca lança: o erro vem no resultado). */
   // a última verificação desta partida (com o erro e o que não respondeu); sem nenhuma, a guardada
@@ -1485,7 +1485,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const forcar = new URL(req.url, 'http://x').searchParams.has('renovar');
         const lido = await cadastros.ler(forcar);
         const admin = cadastros.podeApagar(eu.email);
-        // as sugestões "É a redatora?" (#106): só para administradores
+        // as sugestões "É Fulana, dos redatores?" (#106): só para administradores
         return json(res, 200, { ...lido, podeApagar: admin, sugestoes: admin ? ligacaoDePessoas.sugestoes(q.todosOsUsuarios.all(), lido) : [] });
       }
       if (tipo === 'nao-e' && !id) {
@@ -1517,7 +1517,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         return json(res, 200, feito);
       }
       if (req.method === 'PATCH' && tipo !== 'atracoes' && id && !sub) {
-        // o e-mail do login no cadastro (#106): à mão ou pelo "É ela"; o desfazer grava o de antes
+        // o e-mail do login no cadastro (#106): à mão ou pelo "É"; o desfazer grava o de antes
         const corpo = (await lerCorpo(req)) ?? {};
         if (!('email' in corpo)) return json(res, 405, { erro: 'Método não permitido.' });
         if (!cadastros.podeApagar(eu.email)) return json(res, 403, { erro: 'Só administradores mudam o e-mail dos cadastros.' });

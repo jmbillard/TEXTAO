@@ -459,7 +459,7 @@ export interface EditorCadastro {
   keys: KeyCadastro[];
   trello: boolean;
 }
-/** "É a redatora?" (#106): quem já entrou no PROMeiro e parece, pelo nome, ser este cadastro sem e-mail. */
+/** "É Fulana, dos redatores?" (#106): quem já entrou no PROMeiro e parece, pelo nome, ser este cadastro sem e-mail. */
 export interface SugestaoDeEmail {
   tipo: 'redatores' | 'editores';
   /** o cadastro */

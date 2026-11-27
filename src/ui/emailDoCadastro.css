@@ -1,4 +1,4 @@
-/* Ligar pessoa e cadastro pelo e-mail (#106): a sugestão "É a redatora?" e o e-mail na linha do cadastro */
+/* Ligar pessoa e cadastro pelo e-mail (#106): a sugestão "É Fulana, dos redatores?" e o e-mail na linha do cadastro */
 .sugestao-email {
   margin: 12px 12px 4px; padding: 14px 16px; border-radius: 12px;
   background: color-mix(in srgb, var(--ultra) 6%, var(--papel)); border: 1px solid color-mix(in srgb, var(--ultra) 30%, var(--regua));

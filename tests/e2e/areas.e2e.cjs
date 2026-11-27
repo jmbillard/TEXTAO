@@ -5,12 +5,12 @@
 // keys. Quem já entrou no PROMeiro é a tabela usuarios do SQLite (cada um passa pelo /api/eu). Nomes e e-mails
 // fictícios.
 //
-// Ligar pessoa e cadastro pelo e-mail (#106), no computador (claro): a administradora vê nos Redatores a sugestão "É a
-// redatora Marina Teles?" para quem entrou como Mariana Telles; "É ela" grava o e-mail no Teable falso na hora, a linha
-// mostra o e-mail e a caixinha preta oferece desfazer, que apaga o e-mail e traz a sugestão de volta; "É ela" de
+// Ligar pessoa e cadastro pelo e-mail (#106), no computador (claro): a administradora vê nos Redatores a sugestão "É Marina
+// Teles, dos redatores?" para quem entrou como Mariana Telles; "É" grava o e-mail no Teable falso na hora, a linha
+// mostra o e-mail e a caixinha preta oferece desfazer, que apaga o e-mail e traz a sugestão de volta; "É" de
 // novo. Nos Editores, "Não é" tira a sugestão do Bruno Regis, e ela não volta depois de recarregar. O e-mail à mão: o
 // "sem e-mail" do Otávio Reis vira campo, e o Enter grava. Quem não é administrador vê os e-mails, sem sugestão e sem
-// editar. No celular (escuro), a sugestão de quem acabou de entrar e o "É ela".
+// editar. No celular (escuro), a sugestão de quem acabou de entrar e o "É".
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:areas
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
@@ -100,34 +100,34 @@ const capturar = async (p, nome) => {
 const linha = (p, nome) => p.locator('.item-cad', { has: p.locator('.nome', { hasText: nome }) });
 const caixinha = (p) => p.locator('.desfazer[role="status"]');
 
-async function eEla(navegador, url) {
+async function simE(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, 'redatores', { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
   const sugestao = p.locator('.sugestao-email');
   await sugestao.waitFor();
   assert.equal(await sugestao.count(), 1, 'uma sugestão nos Redatores');
   assert.match(await sugestao.innerText(), /mariana\.telles@exemplo\.com/);
-  assert.equal((await sugestao.locator('.pergunta-sugestao').innerText()).trim(), 'É a redatora Marina Teles?');
+  assert.equal((await sugestao.locator('.pergunta-sugestao').innerText()).trim(), 'É Marina Teles, dos redatores?');
   assert.equal((await linha(p, 'Marina Teles').locator('.email-cad').innerText()).trim(), 'sem e-mail');
   assert.equal((await linha(p, 'Beatriz Lins').locator('.email-cad').innerText()).trim(), 'beatriz.lins@exemplo.com');
-  await capturar(p, '01-sugestao-e-a-redatora-claro');
+  await capturar(p, '01-sugestao-dos-redatores-claro');
 
-  // "É ela": grava na hora, a linha mostra o e-mail e a caixinha oferece desfazer
-  await sugestao.locator('button', { hasText: 'É ela' }).click();
-  await caixinha(p).filter({ hasText: 'agora é a redatora Marina Teles' }).waitFor();
+  // "É": grava na hora, a linha mostra o e-mail e a caixinha oferece desfazer
+  await sugestao.getByRole('button', { name: 'É', exact: true }).click();
+  await caixinha(p).filter({ hasText: 'agora está ligado a Marina Teles, dos redatores' }).waitFor();
   assert.equal(emailNoTeable('tblRed', 'recR2'), MARIANA, 'o e-mail foi para o Teable');
   await linha(p, 'Marina Teles').locator('.email-cad', { hasText: MARIANA }).waitFor();
   assert.equal(await p.locator('.sugestao-email').count(), 0, 'a sugestão sai');
-  await capturar(p, '02-e-ela-gravado-com-desfazer-claro');
+  await capturar(p, '02-e-gravado-com-desfazer-claro');
 
   // desfazer: o e-mail sai do Teable e a sugestão volta
   await caixinha(p).locator('button', { hasText: 'Desfazer' }).click();
   await p.locator('.sugestao-email').waitFor();
   assert.equal(emailNoTeable('tblRed', 'recR2'), '', 'o desfazer apaga o e-mail no Teable');
   assert.equal((await linha(p, 'Marina Teles').locator('.email-cad').innerText()).trim(), 'sem e-mail');
-  await p.locator('.sugestao-email button', { hasText: 'É ela' }).click();
+  await p.locator('.sugestao-email').getByRole('button', { name: 'É', exact: true }).click();
   await linha(p, 'Marina Teles').locator('.email-cad', { hasText: MARIANA }).waitFor();
   assert.equal(emailNoTeable('tblRed', 'recR2'), MARIANA);
-  console.log('ok: "É a redatora Marina Teles?" para quem entrou como Mariana Telles; "É ela" grava no Teable na hora, desfazer apaga e a sugestão volta');
+  console.log('ok: "É Marina Teles, dos redatores?" para quem entrou como Mariana Telles; "É" grava no Teable na hora, desfazer apaga e a sugestão volta');
 
   // o e-mail à mão: o "sem e-mail" vira campo e o Enter grava
   await linha(p, 'Otávio Reis').locator('button.email-cad').click();
@@ -148,7 +148,7 @@ async function eEla(navegador, url) {
   await p.locator('.abas-cad button[title="Editores"]').click();
   const doBruno = p.locator('.sugestao-email');
   await doBruno.waitFor();
-  assert.equal((await doBruno.locator('.pergunta-sugestao').innerText()).trim(), 'É o editor Bruno Regis?');
+  assert.equal((await doBruno.locator('.pergunta-sugestao').innerText()).trim(), 'É Bruno Regis, dos editores?');
   await doBruno.locator('button', { hasText: 'Não é' }).click();
   await caixinha(p).filter({ hasText: 'O PROMeiro não pergunta de novo.' }).waitFor();
   assert.equal(await p.locator('.sugestao-email').count(), 0);
@@ -180,16 +180,16 @@ async function noCelular(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, 'redatores', { ...devices['iPhone 13'], colorScheme: 'dark' });
   const sugestao = p.locator('.sugestao-email');
   await sugestao.waitFor();
-  assert.equal((await sugestao.locator('.pergunta-sugestao').innerText()).trim(), 'É a redatora Renata Álvares?');
+  assert.equal((await sugestao.locator('.pergunta-sugestao').innerText()).trim(), 'É Renata Álvares, dos redatores?');
   await semRolagemDeLado(p, 'celular');
   await sugestao.scrollIntoViewIfNeeded();
   await capturar(p, '03-sugestao-no-celular-escuro');
-  await sugestao.locator('button', { hasText: 'É ela' }).click();
+  await sugestao.getByRole('button', { name: 'É', exact: true }).click();
   await linha(p, 'Renata Álvares').locator('.email-cad', { hasText: 'renata.alvares@exemplo.com' }).waitFor();
   assert.equal(emailNoTeable('tblRed', 'recR4'), 'renata.alvares@exemplo.com');
   assert.deepEqual(erros, [], 'celular: erros na página');
   await ctx.close();
-  console.log('ok: no celular, a sugestão cabe na tela e o "É ela" grava');
+  console.log('ok: no celular, a sugestão cabe na tela e o "É" grava');
 }
 
 async function principal() {
@@ -200,7 +200,7 @@ async function principal() {
   for (const email of [LIA, OUTRA, MARIANA, BRUNO]) await fetch(`${s.api}/eu`, { headers: { 'cf-access-authenticated-user-email': email } });
   const navegador = await chromium.launch();
   try {
-    await eEla(navegador, s.url);
+    await simE(navegador, s.url);
     await semSerAdministrador(navegador, s.url);
     await noCelular(navegador, s.url);
     assert.ok(pedidosAoTeable.every((x) => /^(GET|PATCH) /.test(x)), 'no Teable, só leitura e o e-mail');

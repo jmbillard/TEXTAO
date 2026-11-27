@@ -291,7 +291,7 @@ describe('Sem cadastro depois de cadastrar a atração', () => {
   });
 });
 
-describe('ligar pessoa e cadastro pelo e-mail ("É ela", #106)', () => {
+describe('ligar pessoa e cadastro pelo e-mail ("É", #106)', () => {
   /* Os usuários do PROMeiro (a tabela usuarios do SQLite, de quem já entrou) e os redatores e editores do Teable
      falso, ligados pelo campo e-mail. Nomes e e-mails inventados. */
   let servidor: Server;
@@ -354,7 +354,7 @@ describe('ligar pessoa e cadastro pelo e-mail ("É ela", #106)', () => {
     expect(await sugestoes(ana)).toEqual([]);
   });
 
-  it('"É ela" grava o e-mail no Teable na hora; desfazer apaga, e a sugestão volta', async () => {
+  it('"É" grava o e-mail no Teable na hora; desfazer apaga, e a sugestão volta', async () => {
     const r = await chefe('/api/cadastros/redatores/recR2', { method: 'PATCH', body: JSON.stringify({ email: 'mariana.telles@empresa.com' }) });
     expect(r.status).toBe(200);
     expect(tabelas.tblRed.find((x) => x.id === 'recR2')!.fields.email).toBe('mariana.telles@empresa.com');

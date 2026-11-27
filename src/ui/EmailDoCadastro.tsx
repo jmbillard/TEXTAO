@@ -1,15 +1,15 @@
 /* Ligar pessoa e cadastro pelo e-mail (#106), nos Cadastros: o e-mail na linha do redator ou do editor (o
-   administrador edita à mão) e a sugestão "É a redatora?" / "É o editor?" no alto da lista. */
+   administrador edita à mão) e a sugestão "É Fulana, dos redatores?" no alto da lista. */
 import { useEffect, useRef, useState } from 'react';
 import type { SugestaoDeEmail } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
 import './emailDoCadastro.css';
 
-/** "a redatora Fulana" / "o editor Fulano": o cadastro na pergunta e na caixinha. */
-export const quemNoCadastro = (tipo: SugestaoDeEmail['tipo'], nome: string) => (tipo === 'redatores' ? `a redatora ${nome}` : `o editor ${nome}`);
+/** "Fulana, dos redatores" / "Fulano, dos editores": o cadastro na pergunta e na caixinha, sem gênero. */
+export const quemNoCadastro = (tipo: SugestaoDeEmail['tipo'], nome: string) => `${nome}, dos ${tipo}`;
 
 /** A sugestão no alto da lista: quem entrou, a pergunta e as duas respostas. */
-export function SugestaoDeEmailNaLista({ s, eEla, naoE }: { s: SugestaoDeEmail; eEla: () => void; naoE: () => void }) {
+export function SugestaoDeEmailNaLista({ s, simE, naoE }: { s: SugestaoDeEmail; simE: () => void; naoE: () => void }) {
   const pergunta = `É ${quemNoCadastro(s.tipo, s.nome)}?`;
   return (
     <div className="sugestao-email" role="group" aria-label={pergunta}>
@@ -19,7 +19,7 @@ export function SugestaoDeEmailNaLista({ s, eEla, naoE }: { s: SugestaoDeEmail; 
       </p>
       <p className="pergunta-sugestao">{pergunta}</p>
       <div className="acoes-sugestao">
-        <button type="button" className="botao primario" onClick={eEla}>{s.tipo === 'redatores' ? 'É ela' : 'É ele'}</button>
+        <button type="button" className="botao primario" onClick={simE}>É</button>
         <button type="button" className="botao" onClick={naoE}>Não é</button>
       </div>
     </div>

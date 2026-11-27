@@ -1,6 +1,6 @@
 /* Ligar pessoa e cadastro pelo e-mail (#106): quem já entrou no PROMeiro (a tabela usuarios do SQLite) e parece, pelo
-   nome, ser um redator ou editor dos cadastros que ainda não tem e-mail vira a sugestão "É a redatora?" / "É o
-   editor?" nos Cadastros, só para administradores. "É ela" grava o e-mail no Teable (cadastros.mudarEmail); "Não é"
+   nome, ser um redator ou editor dos cadastros que ainda não tem e-mail vira a sugestão "É Fulana, dos
+   redatores?" nos Cadastros, só para administradores. "É" grava o e-mail no Teable (cadastros.mudarEmail); "Não é"
    fica guardado aqui, no SQLite, e a mesma sugestão não volta (até alguém desfazer). */
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 
