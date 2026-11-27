@@ -75,6 +75,7 @@ import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuraca
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarCartaoDoTeams } from './cartao-do-teams.mjs';
 import { LIMITE_DA_FOTO, ROTA_DA_FOTO, criarFotosDaEdicao, fotoDoPedido, tokenBearerConfere } from './foto-da-edicao.mjs';
+import { ROTA_DAS_PRODUCOES, criarLimiteDePedidos, emSaoPaulo, margemDaConsulta, periodoDoPedido, producoesDoPeriodo } from './api-das-producoes.mjs';
 import { LIMITE_DA_PREVIA, ROTA_DA_PREVIA, linkDaAbaFilmes, previaDoPedido } from './previa-por-email.mjs';
 import { diferencasDaFoto, lerAFoto } from '../src/modelo/fotoDaPlanilha.ts';
 import { conferirHorarios, horariosArrumados, horariosDaConfiguracao } from '../src/modelo/horariosDoCartao.ts';
@@ -888,6 +889,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const cartaoDoTeams = criarCartaoDoTeams({ db, escala, ilhas, valores: () => configuracao.valores(), enviar: buscarNoTeams, relogio });
   // a semana lado a lado com a planilha (#133): a foto crua das abas, que o n8n manda, no SQLite (só quando a aba muda)
   const fotosDaEdicao = criarFotosDaEdicao(db, { agora: relogio });
+  // a API das Produções (#185): os pedidos com o token certo, por minuto
+  const limiteDaApi = criarLimiteDePedidos({ agora: relogio });
   // a virada (#134): com a chave da Configuração ligada, publicar grava o dia na pauta da edição do Teable (o vínculo de
   // cada item com o registro fica no SQLite); os editores do cadastro dão o link, e o Postgres, as linhas do dia
   const pautaNoTeable = criarPautaNoTeable(db, {
@@ -3700,6 +3703,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   async function rotaPublica(req, res, url) {
     if (req.method === 'POST' && url.pathname === ROTA_DA_FOTO) return rotaDaFoto(req, res);
     if (req.method === 'POST' && url.pathname === ROTA_DA_PREVIA) return rotaDaPrevia(req, res);
+    if (req.method === 'GET' && url.pathname === ROTA_DAS_PRODUCOES) return rotaDaApiDasProducoes(req, res, url);
     const rec = req.method === 'GET' ? posterPublico(url.pathname, url.searchParams, env.POSTER_PUBLICO_TOKEN) : null;
     if (!rec) return json(res, 404, { erro: 'Não encontrado.' });
     return servirPoster(res, await anexos.poster(rec, env), 'public');
@@ -3746,6 +3750,44 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const r = filmes.receberPorEmail(previa);
     console.log(`[filmes] prévia por e-mail ${r.existente ? 'repetida' : 'nova'}: ${previa.nome} (${Math.round(previa.pdf.length / 1024)} KB)`);
     return json(res, 200, { ...r, link: linkDaAbaFilmes(env) });
+  }
+
+  /**
+   * A API das Produções (#185): GET /api/publico/producoes?de=AAAA-MM-DD&ate=AAAA-MM-DD, só de leitura, com
+   * `Authorization: Bearer <PRODUCOES_API_TOKEN>`, para o dashboard de um produtor da arte. Responde { periodo,
+   * gerado_em, producoes } (servidor/api-das-producoes.mjs), em gzip para quem aceita. Sem o PRODUCOES_API_TOKEN, a
+   * rota fica desligada (404); sem o token, ou com o errado, 401; o período errado, 400; passados os pedidos do minuto,
+   * 429. O caminho tem de vir exatamente assim (o torto é 404). Não muda nada: nem o fogo passa para o Roteiro.
+   */
+  async function rotaDaApiDasProducoes(req, res, url) {
+    const esperado = String(env.PRODUCOES_API_TOKEN ?? '').trim();
+    if (!esperado || String(req.url ?? '').split(/[?#]/)[0] !== ROTA_DAS_PRODUCOES) return json(res, 404, { erro: 'Não encontrado.' });
+    if (!tokenBearerConfere(req.headers.authorization, esperado)) return json(res, 401, { erro: 'Token da API das Produções errado.' });
+    const limite = limiteDaApi.conta();
+    if (!limite.vale) {
+      res.setHeader('retry-after', String(limite.espera));
+      return json(res, 429, { erro: `Pedidos demais neste minuto: tente de novo em ${limite.espera} s.` });
+    }
+    const agora = relogio();
+    const periodo = periodoDoPedido(url.searchParams, diaEmSaoPaulo(agora));
+    const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+    const atracaoDaClaquete = (claquete) => atracaoPelaClaquete(claquete, programas, pracas);
+    const itens = producoes.candidatasDaApi(margemDaConsulta(periodo)).flatMap((id) => {
+      const j = producoes.naJanela(id);
+      if (!j) return [];
+      const fogo = fogoDasArtes(j);
+      return [
+        {
+          producao: j.producao,
+          meta: j.meta,
+          artes: j.artes.map((a) => ({ feita: a.feita, fogo: fogo(a) })),
+          atracao: producoes.umaNaTela(id, atracaoDaClaquete)?.atracao ?? '',
+          eventos: producoes.linhaDoTempo({ producao: id }).eventos,
+          // #178: quando a Campanha existir, as campanhas da Produção entram aqui (`campanhas: [...]`)
+        },
+      ];
+    });
+    return jsonComprimido(req, res, 200, { periodo: { de: periodo.de, ate: periodo.ate }, gerado_em: emSaoPaulo(agora.toISOString()), producoes: producoesDoPeriodo(itens, periodo) });
   }
 
   /** O caminho do pôster com login (o mesmo da prévia, #90), para a agenda de filmes (#169); null com o id torto. */

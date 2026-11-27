@@ -337,6 +337,95 @@ A resposta (`200`):
 **Para desligar:** desligue o nó HTTP do ramo do PDF no n8n, ou esvazie o `FILMES_PREVIA_TOKEN` (a rota volta a
 responder 404). As prévias que já chegaram ficam na aba Filmes, como as subidas à mão.
 
+## A API das Produções
+
+Uma rota **só de leitura** para um produtor da arte puxar as Produções para o dashboard dele (#185): a produção do dia a
+dia, as claquetes que entram e saem no mesmo dia, com os nomes dos designers. O PROMeiro não manda nada: quem consome
+puxa.
+
+**A rota:** `GET /api/publico/producoes?de=AAAA-MM-DD&ate=AAAA-MM-DD`, fora do login, com o cabeçalho
+`Authorization: Bearer <PRODUCOES_API_TOKEN>`.
+
+- **O período:** `de` e `ate` são dias de São Paulo, os dois inclusive. Sem nenhum dos dois, vale a **semana atual**
+  (de segunda a domingo). No máximo **31 dias** por pedido. Só uma das duas datas, a data que não é data, `de` depois
+  de `ate` ou mais de 31 dias: `400`, com o `erro`.
+- **Quais Produções:** as que entraram, estiveram em produção ou foram entregues no período (entraram antes do fim e não
+  foram entregues antes do começo). As arquivadas ficam de fora. Em ordem de entrada.
+- Sem o token, ou com o errado, `401`; sem o `PRODUCOES_API_TOKEN` no Portainer, a rota fica desligada (`404`); o
+  caminho torto (`%2e%2e`, barras repetidas, outra caixa, a barra no fim) é `404` e nunca chega às rotas com login.
+- **Desempenho:** a resposta vai em gzip quando o pedido aceita (`Accept-Encoding: gzip`; o `curl --compressed`
+  manda). Até **30 pedidos por minuto** com o token certo; passados eles, `429`, com o `Retry-After` em segundos até o
+  minuto virar.
+
+A resposta (`200`):
+
+```json
+{
+  "periodo": { "de": "2026-11-23", "ate": "2026-11-29" },
+  "gerado_em": "2026-11-27T14:00:00-03:00",
+  "producoes": [
+    {
+      "id": "<id da Produção>",
+      "claquete": "Show da Noite 28/11 SP",
+      "letra_e_versao": "B V2",
+      "atracao": "Show da Noite",
+      "praca": "SP",
+      "etapa": "entregue",
+      "entrou_em": "2026-11-26T09:40:00-03:00",
+      "pegou_em": "2026-11-26T10:02:00-03:00",
+      "entregue_em": "2026-11-26T15:20:00-03:00",
+      "ao_ar": "2026-11-28",
+      "designers": ["Ana Souza"],
+      "artes": { "total": 3, "feitas": 2, "fogo": { "baixa": 1, "media": 1, "alta": 1 } },
+      "tempo_em_producao_min": 318,
+      "trello": "https://trello.com/c/<id do card>"
+    }
+  ]
+}
+```
+
+**Os campos:**
+
+- `periodo`: o período respondido (`de` e `ate`, AAAA-MM-DD); `gerado_em`: a hora da resposta.
+- `id`: o id da Produção no PROMeiro (não muda; serve de chave no dashboard).
+- `claquete`: o nome da claquete, como na produção da arte.
+- `letra_e_versao`: a letra da chamada e a versão do roteiro ("A V1", "B V2"); `null` sem Roteiro ligado.
+- `atracao`: a atração (a escolhida no card aberto; senão, a do Roteiro ligado, o título do filme ou a da claquete); `null`
+  sem nenhuma.
+- `praca`: a sigla da praça (G5, SP, RJ…); `null` sem praça.
+- `etapa`: `entrada`, `produzindo` ou `entregue`.
+- `entrou_em`, `pegou_em`, `entregue_em`: tirados da linha do tempo. **Entrou**: o card que entrou; sem o evento, a
+  entrada da produção da arte. **Pegou**: a primeira vez que um designer entrou ou que a etapa foi para Produzindo (a
+  que vier antes); `null` quando ninguém pegou ou o PROMeiro não sabe (as Produções de antes dos eventos). **Entregue**:
+  a última ida para Entregue, só na Produção que está Entregue (a que voltou para a produção fica `null`).
+- `ao_ar`: o dia em que vai ao ar (AAAA-MM-DD): o da exibição ligada; sem ela, a data da claquete; `null` sem nenhuma.
+- `designers`: os nomes dos designers da Produção.
+- `artes`: `total` (cada arte uma vez), `feitas` (marcadas no checklist) e a contagem por `fogo` (`baixa`, `media`,
+  `alta`: a complexidade da arte; sem marca, baixa).
+- `tempo_em_producao_min`: os minutos de `pegou_em` a `entregue_em`; `null` sem um dos dois.
+- `trello`: o link do card no Trello; `null` sem card.
+- `campanhas`: ainda não vem; entra quando a Campanha (#178) existir.
+
+As horas vão em ISO, no fuso de São Paulo (`-03:00`).
+
+**O seu lado:**
+
+1. **No Portainer:** gere o token (`openssl rand -hex 24`), ponha em `PRODUCOES_API_TOKEN` e atualize a stack. Use um
+   token só desta rota.
+2. **No Cloudflare Access:** uma aplicação **só para o caminho `api/publico/producoes`**, com a política **Bypass** para
+   Everyone (como a do pôster público). Nada mais do `/api/publico` precisa dela.
+3. **Passe ao produtor** o endereço e o token (por um canal seguro), com o exemplo:
+
+   ```sh
+   curl -s --compressed 'https://<PROMEIRO_URL>/api/publico/producoes?de=2026-11-01&ate=2026-11-30' \
+     -H 'Authorization: Bearer <token>'
+   ```
+
+   Sem as datas, vem a semana atual. Confira também que `curl -i <PROMEIRO_URL>/api/eu` continua pedindo o login.
+
+**Para revogar:** troque o `PRODUCOES_API_TOKEN` (o token antigo passa a dar `401`) ou esvazie (a rota volta a
+responder `404`) e atualize a stack.
+
 ## A virada da pauta: o PROMeiro grava no Teable
 
 Passada a semana lado a lado (#134, ADR 0006), a pauta da edição passa a sair do PROMeiro: publicar grava o dia na
