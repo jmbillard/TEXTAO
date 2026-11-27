@@ -77,7 +77,7 @@ function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string
  * As colunas do Dia: você, o que sobrou e a equipe.
  * @param linhas as linhas da semana (ficam as do dia)
  */
-export function ColunasDoDia({ linhas, dia, voce, abrir }: { linhas: readonly LinhaDaPauta[]; dia: string; voce: string | null | undefined; abrir: AbrirClaquete }) {
+export function ColunasDoDia({ linhas, dia, voce, abrir, comSobra = true }: { linhas: readonly LinhaDaPauta[]; dia: string; voce: string | null | undefined; abrir: AbrirClaquete; comSobra?: boolean }) {
   const [agora, setAgora] = useState(() => Date.now());
   // o "agora" anda: o "no ar agora" a cada minuto
   useEffect(() => {
@@ -90,7 +90,8 @@ export function ColunasDoDia({ linhas, dia, voce, abrir }: { linhas: readonly Li
   const todas = colunasDoDia(doDia).map((c) => (c.editor ? c : { ...c, avisos: [], infos: [] }));
   const eu = todas.filter((c) => ehDaPessoa(c.editor, voce));
   const sobra = todas.find((c) => !c.editor) ?? { editor: '', turno: null, itens: [], infos: [], avisos: [] };
-  const colunas = [...eu, sobra, ...todas.filter((c) => c.editor && !ehDaPessoa(c.editor, voce))];
+  // o que sobrou, só para a coordenação e os editores (#172, veOQueSobrou)
+  const colunas = [...eu, ...(comSobra ? [sobra] : []), ...todas.filter((c) => c.editor && !ehDaPessoa(c.editor, voce))];
   const temPauta = doDia.some((l) => l.tipo !== 'aviso');
 
   // a faixa mais larga que a tela (celular, tablet): começa em você ou, sem você, no turno que está no ar
