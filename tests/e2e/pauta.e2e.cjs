@@ -5,8 +5,8 @@
 // da pauta, fictícias, da semana de hoje e da anterior. Quem abre não é administrador (a pauta é de todo mundo que
 // entrou). No computador, claro e escuro: a entrada no topo da fila, a Semana editor × dia na semana de hoje (um
 // editor por linha na ordem do turno, "sem editor" no fim, o turno que passa da meia-noite no dia em que começou), as
-// tarefas com outro visual, o aviso só como ⚑ com o número e o texto no balão ao passar o mouse; a semana anterior e a
-// próxima pelo endereço, e o endereço da semana aberto direto. No tablet e no celular: a grade rola para o lado com os
+// tarefas com outro visual, as versões da chamada como etiquetas (#95), o aviso só como ⚑ com o número e o texto no
+// balão ao passar o mouse; a semana anterior e a próxima pelo endereço, e o endereço da semana aberto direto. No tablet e no celular: a grade rola para o lado com os
 // nomes fixos, abre em hoje, e o toque abre o aviso. Nada vai ao Trello.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:pauta
@@ -37,6 +37,8 @@ const segunda = mais(hoje, -((new Date(`${hoje}T12:00:00Z`).getUTCDay() + 6) % 7
 const anterior = mais(segunda, -7);
 const proxima = mais(segunda, 7);
 const diaMes = (iso) => `${Number(iso.slice(8))}/${Number(iso.slice(5, 7))}`;
+const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const sp = (iso, h) => new Date(`${iso}T${h}:00-03:00`).toISOString();
 
 /** Uma linha da pauta (fictícia): o dia, o turno (o fim antes do início vira o dia seguinte), o editor ou null. */
@@ -56,6 +58,13 @@ for (let i = 0; i < 7; i++) {
   PAUTA.push(linha(`Show da Tarde ${diaMes(d)}`, 'Bruno Teixeira', d, ['14:00', '22:53']));
 }
 PAUTA.push(linha('COMUNICAÇÃO', 'Bruno Teixeira', hoje, ['14:00', '22:53']));
+// as versões da chamada (#95): fora do padrão (minúsculas, sem parênteses, com acento), inteiras e uma desconhecida
+const JOGO = mais(hoje, 3);
+const FESTIVAL = mais(hoje, 40);
+PAUTA.push(linha(`Jogo Final ${diaMes(JOGO)} Dp`, 'Bruno Teixeira', hoje, ['14:00', '22:53']));
+PAUTA.push(linha(`Festival ${diaMes(FESTIVAL)} (MÊS)`, 'Bruno Teixeira', hoje, ['14:00', '22:53']));
+PAUTA.push(linha(`Grade da Noite ${diaMes(hoje)} (MNT)`, 'Bruno Teixeira', hoje, ['14:00', '22:53']));
+PAUTA.push(linha(`Show Extra ${diaMes(hoje)} (XYZ)`, 'Bruno Teixeira', hoje, ['14:00', '22:53']));
 PAUTA.push(linha('CALHAUS', null, hoje, ['08:00', '17:00']));
 PAUTA.push(linha('Redator vem acompanhar a edição', 'Carla Duarte', hoje, ['22:00', '06:00'], true));
 PAUTA.push(linha(`Esporte Antigo ${diaMes(mais(anterior, 3))}`, 'Ana Ribeiro', mais(anterior, 2), ['06:00', '15:00']));
@@ -85,6 +94,8 @@ const capturar = async (p, nome) => {
   await p.waitForTimeout(300);
   await p.screenshot({ path: join(CAPTURAS, `${nome}.png`), fullPage: true });
 };
+/** As etiquetas das versões: [o rótulo, o código pequeno]. */
+const etiquetas = (l) => l.locator('.pauta-versao').evaluateAll((es) => es.map((e) => [e.firstChild.textContent.trim(), e.querySelector('small')?.textContent ?? '']));
 const textos = async (l) => (await l.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
 const fileira = (p, nome) => p.locator('.pauta-grade tbody tr', { has: p.locator('.pauta-nome', { hasText: new RegExp(`^${nome}$`) }) });
 const celula = (p, nome, dia) => fileira(p, nome).locator(`td[data-dia="${dia}"]`);
@@ -113,12 +124,22 @@ async function noComputador(navegador, url, tema) {
   // a célula: o turno e as linhas; o turno que passa da meia-noite fica no dia em que começou
   const daCarla = celula(p, 'Carla Duarte', segunda);
   assert.equal((await daCarla.locator('.pauta-turno').textContent()).trim(), '22:00–06:00');
-  assert.deepEqual(await textos(daCarla.locator('.pauta-item')), [`Festa da Vila(Prologo)${diaMes(mais(segunda, 2))} (AH)`]);
+  assert.deepEqual(await textos(daCarla.locator('.pauta-texto')), [`Festa da Vila(Prologo)${diaMes(mais(segunda, 2))}`]);
+
+  // as versões viram etiquetas, cada uma com o código original pequeno ao lado; o desconhecido aparece cru
+  assert.deepEqual(await etiquetas(daCarla), [['amanhã', 'A'], ['hoje', 'H']]);
+  const itemDo = (texto) => celula(p, 'Bruno Teixeira', hoje).locator('.pauta-item', { has: p.locator('.pauta-texto', { hasText: texto }) });
+  const jogo = new Date(`${JOGO}T12:00:00Z`).getUTCDay();
+  assert.deepEqual(await etiquetas(itemDo('Jogo Final')), [[`dia ${Number(JOGO.slice(8))}`, 'D'], [`${jogo % 6 === 0 ? 'próximo' : 'próxima'} ${SEMANA[jogo]}`, 'p']]);
+  assert.deepEqual(await etiquetas(itemDo('Festival')), [[`em ${MESES[Number(FESTIVAL.slice(5, 7)) - 1]}`, 'MÊS']]);
+  assert.deepEqual(await etiquetas(itemDo('Grade da Noite')), [['manutenção da grade', 'MNT']]);
+  assert.deepEqual(await textos(itemDo('Show Extra').locator('.pauta-versao.desconhecida')), ['XYZ']);
+  assert.deepEqual(await textos(itemDo('Show Extra').locator('.pauta-texto')), [`Show Extra ${diaMes(hoje)}`]);
 
   // a tarefa tem outro visual que a claquete
   const doBruno = celula(p, 'Bruno Teixeira', hoje);
   const tarefa = doBruno.locator('.pauta-item.pauta-tarefa');
-  const claquete = doBruno.locator('.pauta-item.pauta-claquete');
+  const claquete = doBruno.locator('.pauta-item.pauta-claquete').first();
   assert.deepEqual(await textos(tarefa), ['COMUNICAÇÃO']);
   const estilo = (l) => l.evaluate((e) => [getComputedStyle(e).fontStyle, getComputedStyle(e).fontFamily].join('|'));
   assert.notEqual(await estilo(tarefa), await estilo(claquete));
@@ -168,7 +189,7 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(erros, [], `computador ${nome}: erros na página`);
   assert.deepEqual(aoTrello, [], 'nada vai ao Trello');
   await ctx.close();
-  console.log(`ok: computador ${nome}: entrada no topo → a semana de hoje, editores na ordem, tarefa, aviso no balão → semana anterior, próxima e o endereço`);
+  console.log(`ok: computador ${nome}: entrada no topo → a semana de hoje, editores na ordem, tarefa, as versões como etiquetas, aviso no balão → semana anterior, próxima e o endereço`);
 }
 
 /** No tablet e no celular: a grade rola para o lado, os nomes ficam e ela abre em hoje; o toque abre o aviso. */

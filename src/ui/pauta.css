@@ -83,3 +83,13 @@
   .pauta-dia, .pauta-celula { width: 156px; }
   .pauta-aviso-botao { height: 28px; padding: 0 10px; font-size: 12px; }
 }
+
+/* ---------- as versões da chamada (#95): etiquetas legíveis, o código pequeno ao lado ---------- */
+.pauta-versoes { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.pauta-versao {
+  display: inline-block; padding: 0 6px; border-radius: 6px;
+  background: var(--neutro); color: var(--tinta2); font: normal 500 11.5px/18px var(--sans); text-transform: none;
+  max-width: 100%;
+}
+.pauta-versao small { margin-left: 4px; white-space: nowrap; font: 500 9.5px var(--mono); color: var(--tinta3); letter-spacing: 0.03em; }
+.pauta-versao.desconhecida { background: transparent; box-shadow: inset 0 0 0 1px var(--regua-forte); font-family: var(--mono); font-size: 10.5px; color: var(--tinta3); }

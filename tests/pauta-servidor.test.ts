@@ -124,6 +124,38 @@ describe('a Semana da pauta da edição', () => {
     expect(s.linhas.find((l) => l.id === 'recP7')).toMatchObject({ editor: '', turno: { inicio: '08:00', fim: '17:00' } });
   });
 
+  it('as versões da chamada vêm já resolvidas, da data da claquete ou, sem ela, do dia da linha (#95)', async () => {
+    const { ana } = await comServidor({
+      registros: {
+        EDICAO_producao: [
+          ...PAUTA(),
+          linha('recV1', 'Show da Tarde 4/12 Dp', 'Beto Tarde', '2026-11-27', ['14:00', '22:53']),
+          linha('recV2', 'Festival 3/1 (MÊS)', 'Ana Manhã', '2026-11-27', ['06:00', '15:00']),
+          linha('recV3', 'Especial de Verão (MES)', 'Ana Manhã', '2026-11-27', ['06:00', '15:00']),
+          linha('recV4', 'Show da Tarde 28/11 (XYZ)', 'Beto Tarde', '2026-11-27', ['14:00', '22:53']),
+          linha('recV5', 'CALHAUS (VER LISTA)', null, '2026-11-27', ['08:00', '17:00']),
+          linha('recV6', 'TROCAR A GRADE (AH)', 'Carla Noite', '2026-11-27', ['22:00', '06:00'], { anotacao: true }),
+        ],
+      },
+    });
+    const s = await semana(await ana('/api/pauta/semana?inicio=2026-11-23'));
+    const por = (id: string) => s.linhas.find((l) => l.id === id)! as Linha & { versoes: unknown[]; semVersao: string };
+    expect(por('recP1')).toMatchObject({ semVersao: 'Festa do Bairro(Prologo)26/11', versoes: [{ codigo: 'A', rotulo: 'amanhã', conhecida: true }, { codigo: 'H', rotulo: 'hoje', conhecida: true }] });
+    expect(por('recV1').versoes).toEqual([
+      { codigo: 'D', rotulo: 'dia 4', conhecida: true },
+      { codigo: 'p', rotulo: 'próxima sex', conhecida: true },
+    ]);
+    expect(por('recV2').versoes).toEqual([{ codigo: 'MÊS', rotulo: 'em janeiro', conhecida: true }]);
+    // sem data na claquete (é uma tarefa), o mês da linha
+    expect(por('recV3')).toMatchObject({ tipo: 'tarefa', semVersao: 'Especial de Verão', versoes: [{ codigo: 'MES', rotulo: 'em novembro', conhecida: true }] });
+    // o desconhecido vem cru na claquete; a tarefa e o aviso não ganham versão desconhecida nem versão nenhuma
+    expect(por('recV4')).toMatchObject({ semVersao: 'Show da Tarde 28/11', versoes: [{ codigo: 'XYZ', rotulo: 'XYZ', conhecida: false }] });
+    expect(por('recV5')).toMatchObject({ tipo: 'tarefa', semVersao: 'CALHAUS (VER LISTA)', versoes: [] });
+    expect(por('recV6')).toMatchObject({ tipo: 'aviso', semVersao: 'TROCAR A GRADE (AH)', versoes: [] });
+    // sem código, a linha inteira
+    expect(por('recP5')).toMatchObject({ semVersao: 'Novela Sol 24/11-2', versoes: [] });
+  });
+
   it('sem semana pedida, vale a de hoje; quem não entrou não vê', async () => {
     const { ana, ninguem } = await comServidor({ registros: { EDICAO_producao: [] } });
     const s = await semana(await ana('/api/pauta/semana'));

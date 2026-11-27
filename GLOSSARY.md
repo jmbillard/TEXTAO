@@ -417,6 +417,14 @@ _Evitar_: nota, observação
 O início e o fim do expediente do editor num dia da pauta, no horário de São Paulo. O que passa da meia-noite (22–06)
 conta no dia em que começou. O **turno de costume** é o que mais se repete na semana: é a ordem dos editores.
 
+**Versão da chamada** (na pauta):
+O código no fim da claquete da pauta, entre parênteses ou, depois da data, sem eles, em qualquer caixa e com ou sem
+acento. Cada letra é uma versão, na ordem em que aparece: A amanhã, H hoje, N nesta <dia da semana>, P próxima <dia da
+semana>, D dia X (AH = amanhã e hoje). DIA (= D), MES/MÊS ("em janeiro") e MNT (manutenção da grade) são inteiros. O dia
+da semana, o número e o mês saem da data da claquete; sem ela, do dia da linha. Na pauta, cada versão é uma etiqueta
+("nesta sex", "neste sáb") com o código pequeno ao lado; um código desconhecido aparece cru.
+_Evitar_: sufixo, tipo da chamada
+
 **Ligação pelo e-mail** (pessoa e cadastro):
 O e-mail do login guardado no cadastro de redator ou de editor (no Teable): é ele que diz que quem entra no PROMeiro é
 aquele redator ou editor. O administrador preenche à mão nos Cadastros ou pela **sugestão "É Fulana, dos

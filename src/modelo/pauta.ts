@@ -1,7 +1,8 @@
 /* A pauta da edição (#94): as regras puras da Semana, as mesmas no servidor e no navegador (só sintaxe que o Node
    apaga). Cada linha da tabela EDICAO_producao do Teable vira uma claquete, uma tarefa ou um aviso; o turno sai do
    início e do fim do expediente, no fuso de São Paulo; o dia da pauta é o campo data (um turno que passa da
-   meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. */
+   meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. As versões
+   da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. */
 import { lerDataDaClaquete } from './vocabularios.ts';
 
 export type TipoDaLinha = 'claquete' | 'tarefa' | 'aviso';
@@ -23,6 +24,10 @@ export interface LinhaDaPauta {
   /** a claquete, a tarefa ou o texto do aviso, como está no Teable */
   texto: string;
   turno: Turno | null;
+  /** as versões da chamada, já resolvidas (#95), na ordem do código; [] sem código */
+  versoes: Versao[];
+  /** o texto sem o código das versões (o texto inteiro, sem versões) */
+  semVersao: string;
 }
 
 /** A Semana da pauta: a rota GET /api/pauta/semana. */
@@ -124,14 +129,113 @@ export function linhaDaPauta(b: LinhaBruta): LinhaDaPauta | null {
   const dia = diaDoCampo(b.data) || (inicio ? diaEmSaoPaulo(inicio) : '');
   if (!dia) return null;
   const texto = String(b.claquete ?? '').trim();
+  const tipo = tipoDaLinha(texto, b.anotacao);
+  // a claquete mostra qualquer código (o desconhecido, cru); a tarefa sem data ("ESPECIAL (MES)"), só o conhecido; o
+  // aviso é um recado, não tem versão
+  const lidas = tipo === 'aviso' ? null : lerVersoes(texto, dia);
+  const { versoes, semVersao } = lidas && (tipo === 'claquete' || lidas.versoes.every((v) => v.conhecida)) ? lidas : { versoes: [], semVersao: texto };
   return {
     id: String(b.id ?? ''),
     dia,
     editor: nomeDoEditor(b.editor),
-    tipo: tipoDaLinha(texto, b.anotacao),
+    tipo,
     texto,
     turno: inicio ? { inicio: horaEmSaoPaulo(inicio), fim: fim ? horaEmSaoPaulo(fim) : '' } : null,
+    versoes,
+    semVersao,
   };
+}
+
+/* ---------- as versões da chamada (#95) ---------- */
+
+/** Uma versão da chamada, como a pauta mostra: a etiqueta legível e o código dela, como está escrito na claquete. */
+export interface Versao {
+  /** a letra ("A", "p") ou o código inteiro ("DIA", "MÊS", "MNT"), na grafia da claquete */
+  codigo: string;
+  /** "amanhã", "hoje", "nesta sex", "próxima sex", "dia 28", "em janeiro", "manutenção da grade"; o desconhecido, cru */
+  rotulo: string;
+  /** false: um código que o PROMeiro não conhece, que aparece cru */
+  conhecida: boolean;
+}
+
+const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const semAcento = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
+/** Uma combinação de letras, cada uma uma versão, sem repetir. */
+const LETRAS = /^(?!.*(.).*\1)[AHNPD]{1,5}$/;
+const INTEIROS = new Set(['DIA', 'MES', 'MNT']);
+const conhecido = (bruto: string) => LETRAS.test(semAcento(bruto)) || INTEIROS.has(semAcento(bruto));
+
+/**
+ * A data da versão: a escrita na claquete (dia e mês), no ano que a deixa mais perto do dia da linha (a claquete de
+ * janeiro numa pauta de dezembro é do ano seguinte); sem ela, o dia da linha. null quando nenhum dos dois é data.
+ */
+function dataDaVersao(claquete: string, diaDaLinha: string): Date | null {
+  const linha = DIA_ISO.test(diaDaLinha) ? new Date(`${diaDaLinha}T12:00:00Z`) : null;
+  const daLinha = linha && !Number.isNaN(linha.getTime()) ? linha : null;
+  const lida = lerDataDaClaquete(claquete);
+  if (!lida) return daLinha;
+  const ano = daLinha?.getUTCFullYear() ?? new Date().getUTCFullYear();
+  const perto = (d: Date) => Math.abs(d.getTime() - (daLinha ?? d).getTime());
+  return (
+    [ano - 1, ano, ano + 1]
+      .map((a) => new Date(Date.UTC(a, lida.mes - 1, lida.dia, 12)))
+      // 29/2 fora do ano bissexto não é data
+      .filter((d) => d.getUTCDate() === lida.dia)
+      .sort((a, b) => perto(a) - perto(b))[0] ?? daLinha
+  );
+}
+
+/** A etiqueta de uma letra ou de um código inteiro (já sem acento e em maiúsculas). */
+function rotuloDaVersao(codigo: string, data: Date | null): string {
+  const semana = data ? SEMANA_CURTA[data.getUTCDay()] : '…';
+  // sábado e domingo: "neste", "próximo"
+  const masculino = data ? data.getUTCDay() % 6 === 0 : false;
+  switch (codigo) {
+    case 'A':
+      return 'amanhã';
+    case 'H':
+      return 'hoje';
+    case 'N':
+      return `${masculino ? 'neste' : 'nesta'} ${semana}`;
+    case 'P':
+      return `${masculino ? 'próximo' : 'próxima'} ${semana}`;
+    case 'MES':
+      return `em ${data ? MESES[data.getUTCMonth()] : '…'}`;
+    case 'MNT':
+      return 'manutenção da grade';
+    default: // D e DIA
+      return `dia ${data ? data.getUTCDate() : '…'}`;
+  }
+}
+
+/**
+ * As versões da chamada no fim da claquete, na ordem em que aparecem, e a claquete sem o código.
+ * - O código vem entre parênteses no fim ("(AH)", "( AH )"); depois da data, também sem parênteses ("4/12 NAH"), mas
+ *   aí só um código conhecido (a praça e a versão da arte no fim, "SP", "B", não são código).
+ * - Cada letra é uma versão: A amanhã, H hoje, N nesta <dia da semana>, P próxima <dia da semana>, D dia X. DIA (= D),
+ *   MES/MÊS ("em <mês>") e MNT (manutenção da grade) são inteiros. Em qualquer caixa, com ou sem acento.
+ * - O dia da semana, o número e o mês saem da data escrita na claquete; sem ela, do dia da linha da pauta.
+ * - Um código entre parênteses que não é nada disso aparece cru (conhecida: false).
+ */
+export function lerVersoes(claquete: string, diaDaLinha: string): { versoes: Versao[]; semVersao: string } {
+  const texto = claquete.trim();
+  const data = lerDataDaClaquete(texto);
+  const depoisDaData = (i: number) => !data || i >= data.fim;
+  const entreParenteses = /\(\s*([^()]*?)\s*\)$/u.exec(texto);
+  const solto = /(?<=\s)(\p{L}+)$/u.exec(texto);
+  let achado: RegExpExecArray | null = null;
+  if (entreParenteses) {
+    if (entreParenteses[1] && depoisDaData(entreParenteses.index)) achado = entreParenteses;
+  } else if (solto && data && depoisDaData(solto.index) && conhecido(solto[1])) achado = solto;
+  if (!achado) return { versoes: [], semVersao: texto };
+  const bruto = achado[1];
+  const semVersao = texto.slice(0, achado.index).trimEnd();
+  const codigo = semAcento(bruto);
+  if (!conhecido(bruto)) return { versoes: [{ codigo: bruto, rotulo: bruto, conhecida: false }], semVersao };
+  const quando = dataDaVersao(texto, diaDaLinha);
+  if (INTEIROS.has(codigo)) return { versoes: [{ codigo: bruto, rotulo: rotuloDaVersao(codigo, quando), conhecida: true }], semVersao };
+  return { versoes: [...bruto].map((letra) => ({ codigo: letra, rotulo: rotuloDaVersao(semAcento(letra), quando), conhecida: true })), semVersao };
 }
 
 /** Os minutos do início do turno, num dia que começa às 6h (a madrugada vem depois da noite). */

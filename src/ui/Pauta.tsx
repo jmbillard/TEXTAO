@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { lerSemanaDaPauta } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
-import { diaEmSaoPaulo, diasDaSemana, gradeDaSemana, segundaDaSemana, semanaVizinha, type CelulaDaSemana, type SemanaDaPauta } from '../modelo/pauta';
+import { diaEmSaoPaulo, diasDaSemana, gradeDaSemana, segundaDaSemana, semanaVizinha, type CelulaDaSemana, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import { Icone } from './icones';
 import { Marca } from './pecas';
 import './pauta.css';
@@ -9,7 +9,8 @@ import './pauta.css';
 /* A Pauta da edição (#94): a Semana editor × dia, para qualquer pessoa logada. Uma linha por editor (na ordem do turno
    de costume; "sem editor" no fim), uma coluna por dia, de segunda a domingo. A célula traz o turno e as linhas da
    pauta daquele editor naquele dia: as claquetes, as tarefas (com outro visual) e, no lugar dos avisos, só o ⚑ com o
-   número deles, que abre o texto ao passar o mouse ou ao tocar. Lida do Teable pelo servidor (nada do Trello). No
+   número deles, que abre o texto ao passar o mouse ou ao tocar. As versões da chamada (#95) viram etiquetas legíveis,
+   com o código pequeno ao lado. Lida do Teable pelo servidor (nada do Trello). No
    celular e no tablet, a grade rola para o lado com a coluna dos nomes fixa e abre em hoje. */
 
 interface Props {
@@ -95,6 +96,29 @@ function Avisos({ avisos, rotulo }: { avisos: CelulaDaSemana['avisos']; rotulo: 
   );
 }
 
+/** As versões da chamada como etiquetas ("amanhã", "nesta sex"), cada uma com o código pequeno ao lado; o código
+    desconhecido aparece cru. */
+function Versoes({ linha }: { linha: LinhaDaPauta }) {
+  if (!linha.versoes.length) return null;
+  const original = linha.texto.slice(linha.semVersao.length).trim();
+  return (
+    <span className="pauta-versoes" title={`versões da chamada: ${original}`}>
+      {linha.versoes.map((v, i) =>
+        v.conhecida ? (
+          <span key={i} className="pauta-versao">
+            {v.rotulo}
+            <small>{v.codigo}</small>
+          </span>
+        ) : (
+          <span key={i} className="pauta-versao desconhecida" title={`código ${v.codigo}: o PROMeiro não conhece`}>
+            {v.codigo}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
+
 function Celula({ c, editor, hoje }: { c: CelulaDaSemana; editor: string; hoje: boolean }) {
   const vazia = !c.turno && !c.itens.length && !c.avisos.length;
   const { dia, semana } = partes(c.dia);
@@ -115,7 +139,8 @@ function Celula({ c, editor, hoje }: { c: CelulaDaSemana; editor: string; hoje: 
             <ul className="pauta-itens">
               {c.itens.map((l) => (
                 <li key={l.id} className={`pauta-item pauta-${l.tipo}`} data-tipo={l.tipo}>
-                  {l.texto}
+                  <span className="pauta-texto">{l.semVersao}</span>
+                  <Versoes linha={l} />
                 </li>
               ))}
             </ul>
