@@ -486,13 +486,13 @@ async function conferirEPublicar(navegador, url, teable) {
   await p.getByRole('heading', { name: /está no ar$/ }).waitFor();
   assert.match(await p.locator('.pub-cartoes').innerText(), /0\s*pendências ficaram/);
   // o dia publicado: o código no fim do nome, uma vez só (#152)
-  assert.equal((await p.locator('.pauta-item.pauta-claquete', { hasText: 'Vale a Pena Rever' }).textContent()).replace(/\s+/g, ' ').trim(), `Vale a Pena Rever ${diaMes(amanha)} (AH)`, 'publicada: o código no fim do nome');
+  assert.equal((await p.locator('.pub-item.pub-claquete', { hasText: 'Vale a Pena Rever' }).textContent()).replace(/\s+/g, ' ').trim(), `Vale a Pena Rever ${diaMes(amanha)} (AH)`, 'publicada: o código no fim do nome');
   await capturar(p, '06-publicada', { fullPage: true });
 
   // na Pauta da edição (a Lia): a do Teable inteira e o que só o PROMeiro tem, sem dobrar
   const lia = await abrir(navegador, url, LIA, `#/pauta/dia/${amanha}`);
   await lia.p.locator('.pauta-colunas').waitFor();
-  const naPauta = async () => lia.p.locator('.pauta-cards .pauta-item').allInnerTexts().then((t) => t.join('\n'));
+  const naPauta = async () => lia.p.locator('.pauta-colunas .pauta-item').allInnerTexts().then((t) => t.join('\n'));
   let texto = await naPauta();
   assert.equal((texto.match(/Noite de Gala/g) ?? []).length, 1, 'a mesma claquete aparece uma vez');
   assert.match(texto, /Corujão/, 'a do Teable continua');
@@ -611,11 +611,13 @@ async function avisosERecado(navegador, url) {
   // na Pauta da edição (a Lia): os avisos no balão do Rui, o recado no "sem editor"
   const lia = await abrir(navegador, url, LIA, `#/pauta/dia/${amanha}`);
   await lia.p.locator('.pauta-colunas').waitFor();
-  const balao = lia.p.getByRole('note', { name: 'avisos para Rui Teixeira' });
+  // (#162: os avisos no ⚑ da coluna, com o balão; o recado do dia no alto)
+  await lia.p.getByRole('button', { name: '2 avisos para Rui Teixeira' }).click();
+  const balao = lia.p.locator('.pauta-aviso-balao');
   await balao.waitFor();
   assert.deepEqual(await balao.locator('.pauta-aviso-texto').allInnerTexts(), ['Redator vem acompanhar', 'Chega às 21h']);
-  assert.deepEqual(await lia.p.getByRole('note', { name: 'aviso para sem editor' }).locator('.pauta-aviso-texto').allInnerTexts(), ['Reunião geral às 15h, na sala 3']);
-  assert.equal(await lia.p.locator('.pauta-cards .pauta-item', { hasText: 'Chega às 21h' }).count(), 0, 'o aviso não é item da pauta');
+  assert.deepEqual(await lia.p.locator('.pauta-recado p').allInnerTexts(), ['Reunião geral às 15h, na sala 3']);
+  assert.equal(await lia.p.locator('.pauta-colunas .pauta-item', { hasText: 'Chega às 21h' }).count(), 0, 'o aviso não é item da pauta');
   await capturar(lia.p, '13-pauta-com-avisos-e-recado', { fullPage: true });
 
   // desfeita a publicação, a Pauta volta a ser só a do Teable (as ausências, a seguir, começam do rascunho)
@@ -623,7 +625,7 @@ async function avisosERecado(navegador, url) {
   await p.locator('.pub-faixa', { hasText: 'Publicação desfeita' }).waitFor();
   await lia.p.reload();
   await lia.p.locator('.pauta-colunas').waitFor();
-  assert.equal(await lia.p.locator('.pauta-balao-aviso').count(), 0, 'sem a publicação, sem os avisos do PROMeiro');
+  assert.equal(await lia.p.locator('.pauta-aviso-botao, .pauta-recado').count(), 0, 'sem a publicação, sem os avisos do PROMeiro');
   assert.deepEqual(erros, [], 'avisos: erros na página');
   assert.deepEqual(lia.erros, [], 'pauta com avisos: erros na página');
   await lia.ctx.close();
@@ -694,7 +696,7 @@ async function ausencias(navegador, url, api) {
   const fora = lia.p.locator('.pauta-fora');
   await fora.waitFor();
   assert.deepEqual(await fora.locator('.pauta-fora-nome').allInnerTexts(), ['Elis Furtado', 'Rui Teixeira']);
-  assert.deepEqual(await fora.locator('.pauta-fora-det').allInnerTexts(), ['fora', 'fora']);
+  assert.deepEqual(await fora.locator('.pauta-etiqueta').allInnerTexts(), ['fora', 'fora']);
   assert.doesNotMatch(await fora.innerText(), /férias|folga|volta depois|comp/, 'a Lia não vê o motivo');
   await capturar(lia.p, '10-pauta-fora');
   const doChefe = await (await fetch(`${api}/pauta/dia?dia=${amanha}`, { headers: { 'cf-access-authenticated-user-email': CHEFE } })).json();

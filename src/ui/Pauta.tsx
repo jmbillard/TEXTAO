@@ -1,41 +1,37 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { escolhaLembradaDaPauta, lembrarNaPauta, lerSemanaDaPauta } from '../dados/armazenamento';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { lembrarCodigoDasVersoes, lerSemanaDaPauta } from '../dados/armazenamento';
+import { apelidoDaClaquete, useApelidos } from '../dados/apelidos';
 import { iniciais } from '../dados/colaboracao';
-import { PERIODOS, colunasDaSemana, diaEmSaoPaulo, diasDaSemana, gradeDaSemana, segundaDaSemana, semanaVizinha, type ArranjoDaSemana, type ArranjoDoDia, type CelulaDaSemana, type ColunaDaSemana, type ColunaDoDia, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
-import { ForaNaPautaTela } from './ForaNaPauta';
+import { buscarNaPauta, diaDaPautaAgora, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehDaPessoa, gradeDaSemana, segundaDaSemana, semanaVizinha, type CelulaDaSemana, type LeituraDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { BuscaNaLupa } from './BuscaNaLupa';
+import { useCodigoDasVersoes } from './CodigoDasVersoes';
 import { Icone } from './icones';
-import { Marca } from './pecas';
-import { DIAS_DA_SEMANA, FichaDaClaquete, FiltroDaPautaTela, ItemDaPauta, MESES, SobreALeitura, VisaoDaPauta, contagem, hashDaPauta, partes, useReleitura, type EnderecoDaPauta } from './pecasDaPauta';
-import { PautaDoDia } from './PautaDoDia';
+import { ListaDaPauta, MesaDaPauta, RecadoDoDia } from './MesaDaPauta';
+import { ColunasDoDia, FitaDosDias } from './PautaDoDia';
+import { Marca, useSaida } from './pecas';
+import { Avisos, ClaqueteAberta, DIAS_DA_SEMANA, MESES, SobreALeitura, VisaoDaPauta, diaEscrito, diaPorExtenso, hashDaPauta, partes, relativoA, turnoEscrito, useReleitura, type AbrirClaquete, type ClaqueteNaTela, type EnderecoDaPauta } from './pecasDaPauta';
+import { diaDoNumero, numeroDoDia, useTrocaDaPauta } from './trocaDaPauta';
 import './pauta.css';
 
-/* A Pauta da edição (#94): a Semana editor × dia, para qualquer pessoa logada. Uma linha por editor (na ordem do turno
-   de costume; "sem editor" no fim), uma coluna por dia, de segunda a domingo. A célula traz o turno e as linhas da
-   pauta daquele editor naquele dia: as claquetes, as tarefas (com outro visual) e, no lugar dos avisos, só o ⚑ com o
-   número deles, que abre o texto ao passar o mouse ou ao tocar. As versões da chamada (#95) viram etiquetas legíveis,
-   com o código pequeno ao lado. A claquete traz o que o PROMeiro sabe da produção da arte dela (#96): a etapa, as
-   artes, os designers, a praça e o marca-texto da prioridade ALTA, ou "sem card"; um clique abre a ficha da claquete,
-   por cima da Semana. Lida do Teable pelo servidor (nada do Trello). No
-   celular e no tablet, a grade rola para o lado com a coluna dos nomes fixa e abre em hoje. Um clique num dia abre o
-   Dia (#97, em PautaDoDia.tsx), com cada editor numa coluna.
-   A Semana tem um segundo arranjo (#98), um dia por coluna: em cada dia, os cards agrupados pelo período do turno
-   (manhã, tarde, noite, madrugada), cada card com o editor e, no primeiro dele, o ⚑ dos avisos. A visão e o arranjo de
-   cada uma ficam lembrados por pessoa, em qualquer aparelho.
-   O #99: o filtro "Só as minhas" (o editor ligado ao e-mail; o "Com arte minha" do designer saiu da tela no #156), que
-   vale nas duas visões enquanto a página está aberta; o resumo discreto do administrador; a cópia de reserva quando o banco do
-   Teable não responde, com a hora dela; e a releitura a cada minuto. */
+/* A Pauta da edição (#94), no desenho do mock-up que o usuário aprovou (#162). No alto, o título e os controles: a
+   Semana ou o Dia, a busca, "Mostrar o código das versões", Hoje e o anterior e o próximo (← →). Embaixo, a mesa do dia
+   (MesaDaPauta: o recado, o "Minha pauta" de quem é editor, o que sobrou e quem está fora) e a visão:
+   - a Semana: um editor por linha, um dia por coluna, "sem editor · sobrou" no fim; a célula traz o turno, o ⚑ dos
+     avisos e as claquetes compactas (a produção da arte só em hoje); um clique no dia abre o Dia;
+   - o Dia (PautaDoDia.tsx): a fita dos dias e um editor por coluna, você primeiro.
+   As claquetes são os cards da agenda: o hover sem sublinhado, o clique que abre a ficha no card aberto do centro
+   (CardAberto, a alternativa A do #160), o lápis do apelido e o clique direito. Trocar de dia ou de semana desliza o
+   conteúdo para o lado da navegação (trocaDaPauta.ts); a entrada e a troca de visão chegam em cascata curta.
+   A pauta é lida por semana (do Teable, pelo servidor; nada do Trello), com a semana à vista e as vizinhas guardadas
+   para a busca; a releitura é a cada minuto (#99), com a cópia de reserva e o resumo do administrador. */
 
 interface Props extends EnderecoDaPauta {
   /** vai para outra semana ou outro dia (sem a data: a de hoje) */
   irPara: (e: EnderecoDaPauta) => void;
   voltar: () => void;
 }
-/** O filtro pessoal (#99), o mesmo na Semana e no Dia. */
-export interface FiltroNaTela {
-  filtro: FiltroDaPauta | null;
-  mudarFiltro: (f: FiltroDaPauta | null) => void;
-}
 
+type Semana = SemanaDaPauta & LeituraDaPauta;
 
 /** "23 a 29 de novembro", "30 de novembro a 6 de dezembro". */
 function periodoEscrito(dias: string[]) {
@@ -44,231 +40,283 @@ function periodoEscrito(dias: string[]) {
   return a.mes === b.mes ? `${a.dia} a ${b.dia} de ${MESES[b.mes]}` : `${a.dia} de ${MESES[a.mes]} a ${b.dia} de ${MESES[b.mes]}`;
 }
 
-/** O ⚑ com o número de avisos daquele editor naquele dia; o texto abre ao passar o mouse ou ao tocar. */
-function Avisos({ avisos, rotulo }: { avisos: LinhaDaPauta[]; rotulo: string }) {
-  const [aberto, setAberto] = useState(false);
-  const [fixo, setFixo] = useState(false);
-  const caixa = useRef<HTMLSpanElement>(null);
-  const botao = useRef<HTMLButtonElement>(null);
-  // o balão fica por cima da grade (que rola para o lado e cortaria o balão): preso à tela, embaixo do ⚑
-  const [onde, setOnde] = useState<{ top: number; left: number } | null>(null);
-  useLayoutEffect(() => {
-    const r = botao.current?.getBoundingClientRect();
-    setOnde(
-      aberto && r
-        ? {
-            top: r.bottom + 6,
-            left: Math.max(8, Math.min(r.left - 10, innerWidth - 268)),
-          }
-        : null,
+/** A pauta lida por semana: a semana à vista e, para a busca e a troca sem espera, as vizinhas. A releitura (#99) não
+    apaga a que está à vista quando falha. */
+function useSemanas(segunda: string) {
+  const [semanas, setSemanas] = useState<Record<string, Semana>>({});
+  const [falha, setFalha] = useState('');
+  const pedidas = useRef(new Set<string>());
+  const ler = useCallback((s: string, releitura = false) => {
+    if (!releitura && pedidas.current.has(s)) return;
+    pedidas.current.add(s);
+    return lerSemanaDaPauta(s).then(
+      (d) => (setSemanas((t) => ({ ...t, [s]: d })), releitura || setFalha('')),
+      (e: unknown) => {
+        pedidas.current.delete(s);
+        throw e;
+      },
     );
-  }, [aberto]);
-  useEffect(() => {
-    if (!aberto) return;
-    const fechar = () => (setAberto(false), setFixo(false));
-    const fora = (e: PointerEvent) => {
-      if (!caixa.current?.contains(e.target as Node)) fechar();
-    };
-    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && fechar();
-    document.addEventListener('pointerdown', fora);
-    document.addEventListener('keydown', tecla);
-    // rolou a página ou a grade: o balão sairia do lugar
-    document.addEventListener('scroll', fechar, true);
-    return () => {
-      document.removeEventListener('pointerdown', fora);
-      document.removeEventListener('keydown', tecla);
-      document.removeEventListener('scroll', fechar, true);
-    };
-  }, [aberto]);
-  const n = avisos.length;
-  return (
-    <span className="pauta-avisos" ref={caixa} onMouseEnter={() => setAberto(true)} onMouseLeave={() => fixo || setAberto(false)}>
-      <button
-        ref={botao}
-        type="button"
-        className="pauta-aviso-botao"
-        aria-expanded={aberto}
-        aria-label={`${n} ${n === 1 ? 'aviso' : 'avisos'} para ${rotulo}`}
-        onClick={() => {
-          // o toque fixa o balão (no celular não há o passar do mouse); o segundo toque fecha
-          const abrir = !(aberto && fixo);
-          setAberto(abrir);
-          setFixo(abrir);
-        }}
-      >
-        <span aria-hidden="true">⚑</span> {n}
-      </button>
-      {aberto && onde && (
-        <span className="pauta-aviso-balao" role="tooltip" style={onde}>
-          <span className="pauta-aviso-titulo">{n === 1 ? 'aviso' : 'avisos'}</span>
-          {avisos.map((a) => (
-            <span key={a.id} className="pauta-aviso-texto">
-              {a.texto}
-            </span>
-          ))}
-        </span>
-      )}
-    </span>
+  }, []);
+  const carregar = useCallback(
+    (releitura = false) => {
+      if (!releitura) setFalha('');
+      void ler(segunda, releitura)
+        ?.then(() => {
+          // as vizinhas, depois da semana à vista
+          void ler(semanaVizinha(segunda, -1), releitura)?.catch(() => undefined);
+          void ler(semanaVizinha(segunda, 1), releitura)?.catch(() => undefined);
+        })
+        .catch((e) => releitura || setFalha(e instanceof Error ? e.message : String(e)));
+    },
+    [segunda, ler],
   );
+  useEffect(() => carregar(), [carregar]);
+  useReleitura(useCallback(() => carregar(true), [carregar]));
+  const tentar = useCallback(() => {
+    pedidas.current.delete(segunda);
+    carregar();
+  }, [segunda, carregar]);
+  return { semanas, falha, tentar };
 }
 
-function Celula({ c, editor, hoje, abrir }: { c: CelulaDaSemana; editor: string; hoje: boolean; abrir: (l: LinhaDaPauta) => void }) {
-  const vazia = !c.turno && !c.itens.length && !c.avisos.length;
+/** A célula da Semana: o turno e o ⚑ dos avisos, e as claquetes compactas (a produção só em hoje); fora, "fora". */
+function Celula({ c, editor, hoje, foraNoDia, abrir }: { c: CelulaDaSemana; editor: string; hoje: boolean; foraNoDia: boolean; abrir: AbrirClaquete }) {
   const { dia, semana } = partes(c.dia);
+  const avisos = editor ? c.avisos : [];
+  const vazia = !c.turno && !c.itens.length && !avisos.length;
   return (
     <td className={`pauta-celula${hoje ? ' hoje' : ''}`} data-dia={c.dia}>
-      {!vazia && (
-        <>
-          <div className="pauta-celula-topo">
-            {c.turno && (
-              <span className="pauta-turno">
-                {c.turno.inicio}
-                {c.turno.fim && `–${c.turno.fim}`}
-              </span>
+      <div className="desliza">
+        {foraNoDia && vazia ? (
+          <span className="pauta-cel-fora">fora</span>
+        ) : vazia ? (
+          editor ? <span className="pauta-cel-fora" aria-label="sem pauta">–</span> : hoje ? <span className="pauta-nada">nada sobrando</span> : null
+        ) : (
+          <>
+            {(c.turno || avisos.length > 0) && (
+              <div className="pauta-celula-topo">
+                {c.turno && <span className="pauta-turno">{turnoEscrito(c.turno)}</span>}
+                {avisos.length > 0 && <Avisos avisos={avisos} rotulo={`${editor || 'sem editor'}, ${DIAS_DA_SEMANA[semana]} ${dia}`} />}
+              </div>
             )}
-            {c.avisos.length > 0 && <Avisos avisos={c.avisos} rotulo={`${editor || 'sem editor'}, ${DIAS_DA_SEMANA[semana]} ${dia}`} />}
-          </div>
-          {c.itens.length > 0 && (
-            <ul className="pauta-itens">
-              {c.itens.map((l) => (
-                <ItemDaPauta key={l.id} linha={l} abrir={abrir} />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+            <ListaDaPauta itens={c.itens} abrir={abrir} compacta comProducao={hoje} />
+          </>
+        )}
+      </div>
     </td>
   );
 }
 
-/** A Pauta da edição: a Semana ou o Dia (#97), pelo endereço, cada uma no arranjo que a pessoa escolheu (#98; sem
-    escolha, a Semana editor × dia e o Dia empilhado). A troca vale na hora e o servidor guarda. */
-export function Pauta({ semana, dia, irPara, voltar }: Props) {
-  const [escolha, setEscolha] = useState<EscolhaDaPauta>(() => escolhaLembradaDaPauta());
-  const [filtro, mudarFiltro] = useState<FiltroDaPauta | null>(null);
-  const mudar = <K extends 'semana' | 'dia'>(parte: K, valor: EscolhaDaPauta[K]) => {
-    setEscolha((e) => ({ ...e, [parte]: valor }));
-    void lembrarNaPauta(parte, valor);
-  };
-  if (dia !== undefined) return <PautaDoDia dia={dia} arranjo={escolha.dia} mudarArranjo={(a: ArranjoDoDia) => mudar('dia', a)} irPara={irPara} voltar={voltar} filtro={filtro} mudarFiltro={mudarFiltro} />;
-  return <SemanaDaPautaTela semana={semana} arranjo={escolha.semana} mudarArranjo={(a) => mudar('semana', a)} irPara={irPara} voltar={voltar} filtro={filtro} mudarFiltro={mudarFiltro} />;
+/** A Semana editor × dia, como no mock-up: a pessoa com "você" e a linha tingida; "sem editor · sobrou" no fim. */
+function GradeDaSemana({ dados, hoje, voce, irPara, abrir }: { dados: Semana; hoje: string; voce: string | null | undefined; irPara: Props['irPara']; abrir: AbrirClaquete }) {
+  const rolagem = useRef<HTMLDivElement>(null);
+  const grade = gradeDaSemana(dados);
+  const comSobra = grade.some((f) => !f.editor) ? grade : [...grade, { editor: '', celulas: dados.dias.map((dia) => ({ dia, turno: null, itens: [], avisos: [] })) }];
+  const fora = (editor: string, dia: string) => (dados.fora ?? []).some((f) => f.dia === dia && ehDaPessoa(f.editor, editor));
+  // a grade mais larga que a tela (celular, tablet): abre em hoje, logo depois da coluna dos nomes
+  useLayoutEffect(() => {
+    const r = rolagem.current;
+    if (!r) return;
+    const coluna = r.querySelector<HTMLElement>('th.pauta-dia.hoje');
+    const nomes = r.querySelector<HTMLElement>('th.pauta-canto');
+    if (!coluna || !nomes || r.scrollWidth <= r.clientWidth) return;
+    r.scrollLeft = r.scrollLeft + coluna.getBoundingClientRect().left - nomes.getBoundingClientRect().right;
+  }, [dados.inicio]);
+  return (
+    <div className="pauta-rolagem" ref={rolagem}>
+      <table className="pauta-grade">
+        <thead>
+          <tr>
+            <th className="pauta-canto" scope="col">
+              <span className="rotulo">Editor</span>
+            </th>
+            {dados.dias.map((d) => {
+              const p = partes(d);
+              const ehHoje = d === hoje;
+              return (
+                <th key={d} scope="col" className={`pauta-dia${ehHoje ? ' hoje' : ''}`} data-dia={d}>
+                  {/* um clique no dia abre aquele Dia (#97) */}
+                  <a className="pauta-dia-link desliza" href={hashDaPauta({ dia: d })} title="Abrir o dia, com cada editor numa coluna" onClick={(e) => (e.preventDefault(), irPara({ dia: d }))}>
+                    <span className="pauta-dia-sem">{DIAS_DA_SEMANA[p.semana]}</span> <span className="pauta-dia-num">{p.dia}</span>
+                    {ehHoje && <span className="pauta-dia-rel"> hoje</span>}
+                  </a>
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {comSobra.map((f, i) => {
+            const eu = ehDaPessoa(f.editor, voce);
+            const claquetes = f.celulas.reduce((n, c) => n + c.itens.filter((l) => l.tipo === 'claquete').length, 0);
+            return (
+              <tr key={f.editor || '(sem editor)'} className={`${f.editor ? '' : 'sem-editor'}${eu ? ' eu' : ''}`} style={{ '--i': i } as CSSProperties}>
+                <th scope="row" className="pauta-editor">
+                  <div className="desliza">
+                    <span className="pauta-editor-linha">
+                      <span className="pauta-avatar" aria-hidden="true">
+                        {f.editor ? iniciais(f.editor) : '–'}
+                      </span>
+                      <span className="pauta-nome">{f.editor || 'sem editor'}</span>
+                      {eu && <span className="pauta-mao">você</span>}
+                    </span>
+                    <span className="pauta-editor-meta">{f.editor ? `${claquetes} ${claquetes === 1 ? 'claquete' : 'claquetes'}` : 'sobrou'}</span>
+                  </div>
+                </th>
+                {f.celulas.map((c) => (
+                  <Celula key={c.dia} c={c} editor={f.editor} hoje={c.dia === hoje} foraNoDia={!!f.editor && fora(f.editor, c.dia)} abrir={abrir} />
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
-/** O card do arranjo um dia por coluna: o editor no pé e, no primeiro card dele no período, o ⚑ dos avisos. Quem só tem
-    aviso naquele dia aparece só com o pé. */
-function CardsDoEditor({ e, dia, abrir }: { e: ColunaDoDia; dia: string; abrir: (l: LinhaDaPauta) => void }) {
-  const { dia: num, semana } = partes(dia);
-  const nome = e.editor || 'sem editor';
-  const pe = (comAvisos: boolean) => (
-    <span className={`pauta-card-pe${e.editor ? '' : ' sem-editor'}`} title={e.turno ? `${e.turno.inicio}${e.turno.fim ? `–${e.turno.fim}` : ''}` : 'sem horário'}>
-      <span className="pauta-card-editor">{nome}</span>
-      {comAvisos && e.avisos.length > 0 && <Avisos avisos={e.avisos} rotulo={`${nome}, ${DIAS_DA_SEMANA[semana]} ${num}`} />}
-    </span>
-  );
-  if (!e.itens.length)
-    return (
-      <li className="pauta-item pauta-so-aviso" data-tipo="aviso">
-        {pe(true)}
-      </li>
-    );
+/** Os achados da busca, na semana à vista e nas vizinhas: por dia, com o editor de cada um. Aparece e some recolhendo. */
+function AchadosDaBusca({ termo, linhas, hoje, irPara, abrir }: { termo: string; linhas: readonly LinhaDaPauta[]; hoje: string; irPara: Props['irPara']; abrir: AbrirClaquete }) {
+  useApelidos();
+  const limpo = termo.trim();
+  const saindo = useSaida(!!limpo, 260);
+  // enquanto recolhe, o painel guarda o último termo
+  const [ultimo, setUltimo] = useState(limpo);
+  if (limpo && limpo !== ultimo) setUltimo(limpo);
+  const mostrado = limpo || ultimo;
+  const achados = useMemo(() => buscarNaPauta(linhas, mostrado, (l) => (l.tipo === 'claquete' ? apelidoDaClaquete(l.texto) : '')), [linhas, mostrado]);
+  if (!limpo && !saindo) return null;
+  const porDia = [...new Set(achados.map((l) => l.dia))].sort();
   return (
-    <>
-      {e.itens.map((l, i) => (
-        <ItemDaPauta key={l.id} linha={l} abrir={abrir} pe={pe(i === 0)} />
-      ))}
-    </>
-  );
-}
-
-/** Um dia da Semana no arranjo um dia por coluna: no topo, o dia (que abre o Dia) e a conta; os cards por turno. */
-function DiaEmColuna({ c, hoje, irPara, abrir }: { c: ColunaDaSemana; hoje: boolean; irPara: Props['irPara']; abrir: (l: LinhaDaPauta) => void }) {
-  const p = partes(c.dia);
-  return (
-    <section className={`pauta-dia-coluna${hoje ? ' hoje' : ''}`} data-dia={c.dia} aria-label={`${DIAS_DA_SEMANA[p.semana]} ${p.dia}`}>
-      <header className="pauta-dia-coluna-topo">
-        <a className="pauta-dia-link" href={hashDaPauta({ dia: c.dia })} title="Abrir o dia, com cada editor numa coluna" onClick={(e) => (e.preventDefault(), irPara({ dia: c.dia }))}>
-          <span className="pauta-dia-sem">{DIAS_DA_SEMANA[p.semana]}</span> <span className="pauta-dia-num">{p.dia}</span>
-          {hoje && <span className="pauta-dia-rel"> hoje</span>}
-          <span className="pauta-dia-ver" aria-hidden="true">
-            ver o dia →
-          </span>
-        </a>
-        {c.turnos.length > 0 && <span className="pauta-dia-conta">{[contagem(c.editores, 'editor', 'editores'), contagem(c.claquetes, 'claquete', 'claquetes')].join(' · ')}</span>}
-      </header>
-      {c.turnos.length ? (
-        c.turnos.map((t) => (
-          <section key={t.periodo} className="pauta-periodo" data-periodo={t.periodo}>
-            <h3 className="pauta-periodo-nome">{PERIODOS.find((x) => x.id === t.periodo)?.nome}</h3>
-            <ul className="pauta-cards">
-              {t.editores.map((e) => (
-                <CardsDoEditor key={e.editor || '(sem editor)'} e={e} dia={c.dia} abrir={abrir} />
+    <section className={`pauta-achados${saindo ? ' saindo' : ''}`} aria-label="Achados da busca" aria-live="polite">
+      <div className="pauta-achados-dentro">
+        <div className="pauta-folha">
+          <div className="pauta-folha-topo">
+            <span className="rotulo">
+              Busca · {achados.length ? `${achados.length} ${achados.length === 1 ? 'achada' : 'achadas'}` : 'nada'} para “{mostrado}”
+            </span>
+            <span className="pauta-achados-onde">na semana à vista e nas vizinhas</span>
+          </div>
+          {porDia.length ? (
+            <ol className="pauta-achados-dias">
+              {porDia.map((d, i) => (
+                <li key={d} className="pauta-achados-dia" style={{ '--i': i } as CSSProperties}>
+                  <a className="pauta-achados-data" href={hashDaPauta({ dia: d })} onClick={(e) => (e.preventDefault(), irPara({ dia: d }))}>
+                    {diaEscrito(d)}
+                    {relativoA(hoje, d) && <span className="pauta-dia-rel"> {relativoA(hoje, d)}</span>}
+                  </a>
+                  <ul className="pauta-achados-linhas">
+                    {achados
+                      .filter((l) => l.dia === d)
+                      .map((l) => (
+                        <li key={l.id} className="pauta-achado">
+                          <span className="pauta-achado-editor">{l.editor || <em>sem editor</em>}</span>
+                          <ListaDaPauta itens={[l]} abrir={abrir} />
+                        </li>
+                      ))}
+                  </ul>
+                </li>
               ))}
-            </ul>
-          </section>
-        ))
-      ) : (
-        <p className="pauta-dia-sem-pauta">sem pauta</p>
-      )}
+            </ol>
+          ) : (
+            <p className="pauta-nada">nada com “{mostrado}” por aqui</p>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
 
-const ARRANJOS_DA_SEMANA: readonly { id: ArranjoDaSemana; nome: string; dica: string; sub: string }[] = [
-  { id: 'editor-dia', nome: 'Editor × dia', dica: 'Um editor por linha, um dia por coluna', sub: 'A semana inteira: um editor por linha, um dia por coluna.' },
-  { id: 'dia-por-coluna', nome: 'Um dia por coluna', dica: 'Os cards de cada dia agrupados por turno', sub: 'A semana inteira: um dia por coluna, os cards por turno.' },
-];
-
-function SemanaDaPautaTela({ semana, arranjo, mudarArranjo, irPara, voltar, filtro, mudarFiltro }: Omit<Props, 'dia'> & FiltroNaTela & { arranjo: ArranjoDaSemana; mudarArranjo: (a: ArranjoDaSemana) => void }) {
-  const [hoje, setHoje] = useState(() => diaEmSaoPaulo());
-  const segunda = segundaDaSemana(semana ?? '', hoje);
-  const [dados, setDados] = useState<(SemanaDaPauta & LeituraDaPauta) | null>(null);
-  const [falha, setFalha] = useState('');
-  const rolagem = useRef<HTMLDivElement>(null);
-  // a ficha da claquete aberta (#96), pelo id da linha
-  const [ficha, setFicha] = useState<string | null>(null);
-  const fecharFicha = useCallback(() => setFicha(null), []);
-
-  // na releitura (#99), o erro não apaga a pauta que já está à vista
-  const carregar = useCallback(
-    (releitura = false) => {
-      if (!releitura) setFalha('');
-      setHoje(diaEmSaoPaulo());
-      lerSemanaDaPauta(segunda, filtro)
-        .then((d) => (setDados(d), setFalha('')))
-        .catch((e) => releitura || setFalha(e instanceof Error ? e.message : String(e)));
-    },
-    [segunda, filtro],
+/** O que desliza na troca de dia ou de semana: a mesa do dia e a visão, do período `mostrado`. */
+function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir }: { visao: 'semana' | 'dia'; alvo: string; semanas: Record<string, Semana>; hojeDaGrade: string; hoje: string; irPara: Props['irPara']; abrir: AbrirClaquete }) {
+  const raiz = useRef<HTMLDivElement>(null);
+  const mostrado = diaDoNumero(useTrocaDaPauta(raiz, numeroDoDia(alvo)));
+  const segunda = segundaDaSemana(mostrado, hoje);
+  const dados = semanas[segunda];
+  // a estreia (a pauta que chega, a troca de visão): os cards em cascata pelo CSS; depois, quem mexe é a troca
+  const [estreia, setEstreia] = useState<'antes' | 'agora' | 'depois'>('antes');
+  useEffect(() => {
+    if (!dados || estreia !== 'antes') return;
+    setEstreia('agora');
+    const t = setTimeout(() => setEstreia('depois'), 700);
+    return () => clearTimeout(t);
+  }, [dados]); // eslint-disable-line react-hooks/exhaustive-deps
+  // o dia da mesa: no Dia, o dia aberto; na Semana, hoje (quando é da semana) ou a segunda
+  const dia = visao === 'dia' ? mostrado : diasDaSemana(segunda).includes(hoje) ? hoje : segunda;
+  return (
+    <div className={`pauta-corpo pauta-corpo-${visao}${estreia === 'depois' ? '' : ' estreia'}`} ref={raiz}>
+      {visao === 'dia' && <FitaDosDias dia={mostrado} hoje={hoje} ir={(d) => irPara({ dia: d })} />}
+      {!dados ? (
+        <p className="pauta-lendo">Lendo a pauta…</p>
+      ) : (
+        <>
+          <RecadoDoDia linhas={dados.linhas} dia={dia} hoje={hoje} />
+          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} abrir={abrir} />
+          {visao === 'dia' ? (
+            <ColunasDoDia linhas={dados.linhas} dia={mostrado} voce={dados.voce.editor} abrir={abrir} />
+          ) : !dados.linhas.length ? (
+            <p className="pauta-vazia desliza">Nada na pauta desta semana.</p>
+          ) : (
+            <GradeDaSemana dados={dados} hoje={hojeDaGrade} voce={dados.voce.editor} irPara={irPara} abrir={abrir} />
+          )}
+        </>
+      )}
+    </div>
   );
-  useEffect(() => carregar(), [carregar]);
-  useReleitura(useCallback(() => carregar(true), [carregar]));
+}
 
-  // ← e → trocam de semana (fora dos campos de digitar)
-  const desta = segundaDaSemana(hoje, hoje);
-  const ir = useCallback((s: string) => irPara({ semana: s === desta ? undefined : s }), [irPara, desta]);
+/** "Mostrar o código das versões" (#152), na própria Pauta: a mesma opção do menu do perfil, lembrada por pessoa. */
+function InterruptorDoCodigo() {
+  const ligado = useCodigoDasVersoes();
+  return (
+    <button type="button" className="pauta-interruptor" role="switch" aria-checked={ligado} onClick={() => void lembrarCodigoDasVersoes(!ligado)}>
+      <span className="pauta-trilho" aria-hidden="true" />
+      Mostrar o código das versões
+    </button>
+  );
+}
+
+/** A Pauta da edição: a Semana ou o Dia (#97), pelo endereço. */
+export function Pauta({ semana, dia, irPara, voltar }: Props) {
+  const visao = dia !== undefined ? 'dia' : 'semana';
+  // "hoje" do Dia é o dia da pauta que está correndo (às 2h, ainda o de ontem); a grade da Semana marca o do calendário
+  const [hojeDaGrade, setHojeDaGrade] = useState(() => diaEmSaoPaulo());
+  const [hoje, setHoje] = useState(() => diaDaPautaAgora());
+  useReleitura(useCallback(() => (setHoje(diaDaPautaAgora()), setHojeDaGrade(diaEmSaoPaulo())), []));
+  const segunda = visao === 'dia' ? segundaDaSemana(diaOuHoje(dia ?? '', hoje), hoje) : segundaDaSemana(semana ?? '', hojeDaGrade);
+  const qual = visao === 'dia' ? diaOuHoje(dia ?? '', hoje) : segunda;
+  const desta = segundaDaSemana(hojeDaGrade, hojeDaGrade);
+  const { semanas, falha, tentar } = useSemanas(segunda);
+  const [busca, setBusca] = useState('');
+  const [aberta, setAberta] = useState<ClaqueteNaTela | null>(null);
+  const fecharFicha = useCallback(() => setAberta(null), []);
+  const abrir: AbrirClaquete = useCallback((linha, origem, peloLapis = false) => setAberta({ linha, origem, peloLapis }), []);
+
+  // ← e → trocam de dia ou de semana (fora dos campos de digitar e com a ficha fechada)
+  const ir = useCallback(
+    (n: -1 | 1) => {
+      if (visao === 'dia') irPara({ dia: diaVizinho(qual, n) });
+      else {
+        const s = semanaVizinha(segunda, n);
+        irPara({ semana: s === desta ? undefined : s });
+      }
+    },
+    [visao, qual, segunda, desta, irPara],
+  );
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
-      if (ficha || e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
-      if (e.key === 'ArrowLeft') ir(semanaVizinha(segunda, -1));
-      if (e.key === 'ArrowRight') ir(semanaVizinha(segunda, 1));
+      if (aberta || e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement | null)?.closest('input, textarea, select, [role="dialog"], [role="menu"]')) return;
+      if (e.key === 'ArrowLeft') ir(-1);
+      if (e.key === 'ArrowRight') ir(1);
     };
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
-  }, [ir, segunda, ficha]);
+  }, [ir, aberta]);
 
-  const atual = dados?.inicio === segunda && dados.filtro === filtro ? dados : null;
-  // a grade mais larga que a tela (celular, tablet): abre em hoje, logo depois da coluna dos nomes (no arranjo um dia por
-  // coluna, logo na borda)
-  useLayoutEffect(() => {
-    const r = rolagem.current;
-    if (!r || !atual) return;
-    const coluna = r.querySelector<HTMLElement>('th.pauta-dia.hoje, .pauta-dia-coluna.hoje');
-    const nomes = r.querySelector<HTMLElement>('th.pauta-canto');
-    const borda = nomes ? nomes.getBoundingClientRect().right : r.getBoundingClientRect().left + parseFloat(getComputedStyle(r).paddingLeft);
-    r.scrollLeft = coluna && r.scrollWidth > r.clientWidth ? r.scrollLeft + coluna.getBoundingClientRect().left - borda : 0;
-  }, [atual, arranjo]);
-
-  const grade = atual && arranjo === 'editor-dia' ? gradeDaSemana(atual) : [];
-  const aberta = ficha ? (atual?.linhas.find((l) => l.id === ficha) ?? null) : null;
+  const atual = semanas[segunda] ?? null;
+  // a busca e a ficha olham a pauta lida: a semana à vista e as vizinhas
+  const lidas = useMemo(() => [-1, 0, 1].flatMap((n) => semanas[semanaVizinha(segunda, n)]?.linhas ?? []), [semanas, segunda]);
+  const ehHoje = visao === 'dia' ? qual === hoje : segunda === desta;
   return (
     <div className="pagina pauta">
       <header className="cad-topo">
@@ -280,103 +328,42 @@ function SemanaDaPautaTela({ semana, arranjo, mudarArranjo, irPara, voltar, filt
       </header>
       <main className="pauta-pagina">
         <div className="pauta-cabeca">
-          <div>
-            <h1>Pauta da edição</h1>
-            <p className="pauta-sub">{ARRANJOS_DA_SEMANA.find((a) => a.id === arranjo)?.sub}</p>
-          </div>
-          {/* o Dia abre em hoje, quando hoje é desta semana; senão, na segunda */}
+          <h1>Pauta da edição</h1>
           <div className="pauta-controles">
-            <VisaoDaPauta visao="semana" semana={() => undefined} dia={() => irPara({ dia: segunda === desta ? '' : segunda })} />
-            <FiltroDaPautaTela voce={dados?.voce} filtro={filtro} mudar={mudarFiltro} />
-            <div className="segmento pauta-arranjo pauta-arranjo-semana" role="radiogroup" aria-label="Arranjo da semana">
-              {ARRANJOS_DA_SEMANA.map((a) => (
-                <button key={a.id} type="button" role="radio" aria-checked={arranjo === a.id} title={a.dica} onClick={() => mudarArranjo(a.id)}>
-                  {a.nome}
-                </button>
-              ))}
-            </div>
-            <nav className="pauta-nav" aria-label="Semana">
-              {segunda !== desta && (
-                <button type="button" className="botao-texto pauta-hoje" onClick={() => irPara({})}>
-                  esta semana
-                </button>
-              )}
-              <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior (←)" onClick={() => ir(semanaVizinha(segunda, -1))}>
+            {/* o Dia abre em hoje, quando hoje é desta semana; senão, na segunda */}
+            <VisaoDaPauta visao={visao} semana={() => irPara({ semana: segunda === desta ? undefined : segunda })} dia={() => irPara({ dia: visao === 'dia' ? qual : diasDaSemana(segunda).includes(hoje) ? '' : segunda })} />
+            <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou editor" rotulo="Buscar na pauta" />
+            <InterruptorDoCodigo />
+            <nav className="pauta-nav" aria-label={visao === 'dia' ? 'Dia' : 'Semana'}>
+              <button type="button" className="botao pauta-hoje" disabled={ehHoje} onClick={() => irPara(visao === 'dia' ? { dia: '' } : {})}>
+                Hoje
+              </button>
+              <button type="button" className="botao-icone" aria-label={visao === 'dia' ? 'Dia anterior' : 'Semana anterior'} title={`${visao === 'dia' ? 'Dia anterior' : 'Semana anterior'} (←)`} onClick={() => ir(-1)}>
                 <Icone nome="voltar" tam={16} traco={2.2} />
               </button>
-              <span className="pauta-periodo" aria-live="polite">
-                {periodoEscrito(atual?.dias ?? diasDaSemana(segunda))}
+              <span className="pauta-periodo" aria-live="polite" key={qual}>
+                {visao === 'dia' ? diaPorExtenso(qual) : periodoEscrito(atual?.dias ?? diasDaSemana(segunda))}
               </span>
-              <button type="button" className="botao-icone" aria-label="Próxima semana" title="Próxima semana (→)" onClick={() => ir(semanaVizinha(segunda, 1))}>
+              <button type="button" className="botao-icone" aria-label={visao === 'dia' ? 'Próximo dia' : 'Próxima semana'} title={`${visao === 'dia' ? 'Próximo dia' : 'Próxima semana'} (→)`} onClick={() => ir(1)}>
                 <Icone nome="direita" tam={16} traco={2.2} />
               </button>
             </nav>
           </div>
         </div>
         {!falha && <SobreALeitura leitura={atual} />}
-        {!falha && atual && <ForaNaPautaTela fora={atual.fora} dias={atual.dias} />}
+        <AchadosDaBusca termo={busca} linhas={lidas} hoje={hoje} irPara={irPara} abrir={abrir} />
         {falha ? (
           <p className="pauta-falha" role="alert">
             {falha}{' '}
-            <button className="botao-texto" onClick={() => carregar()}>
+            <button className="botao-texto" onClick={tentar}>
               Tentar de novo
             </button>
           </p>
-        ) : !atual ? (
-          <p className="pauta-lendo">Lendo a pauta…</p>
-        ) : !atual.linhas.length ? (
-          <p className="pauta-vazia">{filtro ? 'Nada seu na pauta desta semana.' : 'Nada na pauta desta semana.'}</p>
-        ) : arranjo === 'dia-por-coluna' ? (
-          <div className="pauta-faixa" ref={rolagem}>
-            <div className="pauta-dias">
-              {colunasDaSemana(atual).map((c) => (
-                <DiaEmColuna key={c.dia} c={c} hoje={c.dia === hoje} irPara={irPara} abrir={(l) => setFicha(l.id)} />
-              ))}
-            </div>
-          </div>
         ) : (
-          <div className="pauta-rolagem" ref={rolagem}>
-            <table className="pauta-grade">
-              <thead>
-                <tr>
-                  <th className="pauta-canto" scope="col">
-                    <span className="sr">Editor</span>
-                  </th>
-                  {atual.dias.map((d) => {
-                    const p = partes(d);
-                    const ehHoje = d === hoje;
-                    return (
-                      <th key={d} scope="col" className={`pauta-dia${ehHoje ? ' hoje' : ''}`} data-dia={d}>
-                        {/* um clique no dia abre aquele Dia (#97) */}
-                        <a className="pauta-dia-link" href={hashDaPauta({ dia: d })} title="Abrir o dia, com cada editor numa coluna" onClick={(e) => (e.preventDefault(), irPara({ dia: d }))}>
-                          <span className="pauta-dia-sem">{DIAS_DA_SEMANA[p.semana]}</span> <span className="pauta-dia-num">{p.dia}</span>
-                          {ehHoje && <span className="pauta-dia-rel"> hoje</span>}
-                        </a>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {grade.map((f) => (
-                  <tr key={f.editor || '(sem editor)'} className={f.editor ? '' : 'sem-editor'}>
-                    <th scope="row" className="pauta-editor">
-                      <span className="pauta-avatar" aria-hidden="true">
-                        {f.editor ? iniciais(f.editor) : '–'}
-                      </span>
-                      <span className="pauta-nome">{f.editor || 'sem editor'}</span>
-                    </th>
-                    {f.celulas.map((c) => (
-                      <Celula key={c.dia} c={c} editor={f.editor} hoje={c.dia === hoje} abrir={(l) => setFicha(l.id)} />
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <CorpoDaPauta key={visao} visao={visao} alvo={qual} semanas={semanas} hojeDaGrade={hojeDaGrade} hoje={hoje} irPara={irPara} abrir={abrir} />
         )}
       </main>
-      {atual && aberta && <FichaDaClaquete linha={aberta} linhas={atual.linhas} hoje={hoje} fechar={fecharFicha} />}
+      {aberta && <ClaqueteAberta aberta={aberta} linhas={lidas.length ? lidas : [aberta.linha]} hoje={hoje} voce={atual?.voce.editor} fechar={fecharFicha} />}
     </div>
   );
 }

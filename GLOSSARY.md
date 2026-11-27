@@ -476,11 +476,21 @@ O que cada editor vai editar em cada dia: as claquetes, as **tarefas** e os **av
 **escala**, mais o **recado do dia**. Mora na tabela do Teable (EDICAO_producao), que diz quem edita cada claquete, em
 que dia e em que turno; a **coordenação** monta e publica a pauta no PROMeiro, que grava no Teable ao **publicar**, no
 lugar da planilha da edição (ADR 0006). A **correção de grafia** também escreve nela. É também a página do PROMeiro,
-aberta a qualquer pessoa logada, com a **Semana** e o **Dia** (um editor por coluna, na ordem de início do turno). Cada
-visão tem dois **arranjos**, à escolha de cada pessoa: a Semana editor × dia (um editor por linha, um dia por coluna)
-ou um dia por coluna (os cards por período do turno); o Dia empilhado ou por hora. Cada linha é uma claquete, uma
-**tarefa** ou um **aviso**.
+aberta a qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna) e o **Dia** (um editor por
+coluna: você, o que sobrou sem editor e a equipe, na ordem de início do turno). No alto, o **Minha pauta** de quem é
+editor, com a **contagem do dia** (as claquetes com a arte entregue), ao lado do que sobrou e de quem está fora. Cada
+linha é uma claquete, uma **tarefa** ou um **aviso**.
 _Evitar_: escala (a escala é quem trabalha, não o que edita), grade da edição
+
+**Contagem do dia**:
+O "N de M" do editor na Pauta da edição: quantas das claquetes dele naquele dia já têm a arte entregue (ou
+arquivada), com uma bolinha por claquete. A tarefa e o aviso não contam.
+_Evitar_: editadas (o PROMeiro não sabe o que já foi editado)
+
+**Card aberto**:
+O painel de 720 px no centro, sobre um véu leve, que cresce do card clicado e volta para ele ao fechar; no celular,
+ocupa a tela toda. A ficha da claquete da Pauta da edição abre nele; a tela de Produções também.
+_Evitar_: modal, popup
 
 **Escala da edição**:
 Quem trabalha em cada dia, em que turno e em que ilha, e quem está fora: as **posições** do dia e as **ausências**. Não
@@ -632,6 +642,6 @@ _Evitar_: tela do roteiro, detalhe
 
 **Preferências da pessoa**:
 O que o PROMeiro lembra por pessoa, em qualquer aparelho (a última área usada, a **exibição** de cada área, e a visão
-e o **arranjo** de cada visão da Pauta da edição, os blocos recolhidos da tela de produções): no SQLite, uma chave por
+da Pauta da edição, os blocos recolhidos da tela de produções): no SQLite, uma chave por
 linha, gravada pela rota de quem está logado.
 _Evitar_: configurações (a Configuração é a tela dos administradores)
