@@ -36,6 +36,8 @@ services:
       - PROMEIRO_URL=${PROMEIRO_URL:-}
       # o pôster dos filmes aberto sem login, para o Padeiro (#90): /api/publico/poster/<filme>?t=<token>. Vazia: desligado
       - POSTER_PUBLICO_TOKEN=${POSTER_PUBLICO_TOKEN:-}
+      # a foto crua da planilha da edição, que o n8n manda (#133): POST /api/publico/edicao/foto. Vazia: desligada
+      - EDICAO_FOTO_TOKEN=${EDICAO_FOTO_TOKEN:-}
 
       # ---- Servidor ----
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}

@@ -64,6 +64,8 @@ import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarForaDoAr, lerOQuadroComCopia, recusaForaDoAr } from './configuracao-fora-do-ar.mjs';
 import { listaDoPortainer } from './configuracao-portainer.mjs';
 import { criarCartaoDoTeams } from './cartao-do-teams.mjs';
+import { LIMITE_DA_FOTO, ROTA_DA_FOTO, criarFotosDaEdicao, fotoDoPedido, tokenDaFotoConfere } from './foto-da-edicao.mjs';
+import { diferencasDaFoto, lerAFoto } from '../src/modelo/fotoDaPlanilha.ts';
 import { conferirHorarios, horariosArrumados, horariosDaConfiguracao } from '../src/modelo/horariosDoCartao.ts';
 import { criarAndamento } from './andamento.mjs';
 import { administradoresDaTela, administradoresSalvos, ehAdministrador, porAdministrador, tirarAdministrador } from '../src/modelo/pessoas.ts';
@@ -757,6 +759,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const distribuicao = criarDistribuicao(db, escala);
   // o cartão da pauta no Teams (#135): nos horários da Configuração e ao republicar; o último envio fica no SQLite
   const cartaoDoTeams = criarCartaoDoTeams({ db, escala, ilhas, valores: () => configuracao.valores(), enviar: buscarNoTeams, relogio });
+  // a semana lado a lado com a planilha (#133): a foto crua das abas, que o n8n manda, no SQLite (só quando a aba muda)
+  const fotosDaEdicao = criarFotosDaEdicao(db, { agora: relogio });
   const conferenciaDoCartao = agendar(() => cartaoDoTeams.conferir(), 30 * 1000);
   conferenciaDoCartao?.unref?.();
   /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
@@ -1635,6 +1639,34 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * O colar da planilha (#130) é lido no navegador; o GET traz as keys de cada editor (`apelidos`) para ele reconhecer
    * o apelido da planilha, e o aplicar usa o PUT e as ausências.
    */
+  /**
+   * A semana lado a lado com a planilha (#133), só para a coordenação: GET /api/montar-pauta/foto?dia= (sem ele, amanhã)
+   * devolve a foto mais nova da planilha para o dia ({ aba, lidaEm, recebidaEm, confirmadaEm, todasAsAbas, linhas,
+   * mesclas }, ou null), o que o colar da planilha (#130) leu dela (`daFoto`: as posições e quem está fora) e as
+   * diferenças com o rascunho gravado, posição por posição (diferencasDaFoto). Só lê.
+   */
+  async function rotaDaFotoDoDia(req, res, eu) {
+    if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+    if (!escala.ehCoordenacao(eu.email)) return json(res, 403, { erro: 'Só a coordenação monta a pauta.' });
+    const pedido = new URL(req.url, 'http://x').searchParams.get('dia') ?? '';
+    const dia = pedido ? diaOuHoje(pedido, '') : diaVizinho(diaEmSaoPaulo(), 1);
+    if (!dia) return json(res, 400, { erro: 'Dia inválido.' });
+    const foto = fotosDaEdicao.doDia(dia);
+    if (!foto) return json(res, 200, { dia, foto: null, daFoto: null, diferencas: null });
+    const { posicoes } = escala.lerDia(dia);
+    const ctx = {
+      dia,
+      turnos: turnosDoDia(turnosDaConfiguracao(configuracao.valores()), posicoes),
+      editores: (await areas.nomesDosCadastros(cadastros)).editor,
+      apelidos: await areas.apelidosDosEditores(cadastros),
+      ilhas: ilhas.todas(),
+    };
+    const daFoto = lerAFoto(foto.linhas, ctx, posicoes);
+    const foraNoPromeiro = ausencias.noPeriodo(dia, dia).map((a) => a.editor);
+    const diferencas = diferencasDaFoto(posicoes, daFoto.posicoes, { dia, foraNoPromeiro, foraNaPlanilha: daFoto.fora });
+    return json(res, 200, { dia, foto, daFoto, diferencas });
+  }
+
   async function rotaDeMontarAPauta(req, res, eu, acao = '') {
     const metodos = acao ? ['POST'] : ['GET', 'PUT'];
     if (!metodos.includes(req.method)) return json(res, 405, { erro: 'Método não permitido.' });
@@ -3073,6 +3105,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, fora, ...resumo });
     }
     if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
+    if (caminho === '/api/montar-pauta/foto') return rotaDaFotoDoDia(req, res, eu);
     const acaoDasAusencias = /^\/api\/montar-pauta\/(ausencias|ausencias\/onde|ausencias\/historico|ausencias\/apagar|tirar|para-distribuir\/tirar)$/.exec(caminho);
     if (acaoDasAusencias) return rotaDasAusencias(req, res, eu, acaoDasAusencias[1]);
     const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar)$/.exec(caminho);
@@ -3239,11 +3272,34 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return res.end(img.dados);
   }
 
-  /** O que está embaixo de /api/publico/ (#90): fora do login, para o Padeiro. Só o pôster com o token certo; o resto, 404. */
+  /**
+   * O que está embaixo de /api/publico/ (#90): fora do login. O pôster com o token certo, para o Padeiro; a foto da
+   * planilha da edição (#133), para o n8n; o resto, 404.
+   */
   async function rotaPublica(req, res, url) {
+    if (req.method === 'POST' && url.pathname === ROTA_DA_FOTO) return rotaDaFoto(req, res);
     const rec = req.method === 'GET' ? posterPublico(url.pathname, url.searchParams, env.POSTER_PUBLICO_TOKEN) : null;
     if (!rec) return json(res, 404, { erro: 'Não encontrado.' });
     return servirPoster(res, await anexos.poster(rec, env), 'public');
+  }
+
+  /**
+   * A foto crua da planilha da edição (#133): POST /api/publico/edicao/foto, com `Authorization: Bearer
+   * <EDICAO_FOTO_TOKEN>` e o pacote do n8n (o formato 1, até 1 MB). Guarda só as abas que mudaram desde a última foto
+   * delas e responde { gravadas, iguais }. Sem o EDICAO_FOTO_TOKEN, a rota fica desligada (404); sem o token, ou com o
+   * errado, 401. O caminho tem de vir exatamente assim (o torto, com %2e%2e ou barras repetidas, é 404).
+   */
+  async function rotaDaFoto(req, res) {
+    const esperado = String(env.EDICAO_FOTO_TOKEN ?? '').trim();
+    if (!esperado || String(req.url ?? '').split(/[?#]/)[0] !== ROTA_DA_FOTO) return json(res, 404, { erro: 'Não encontrado.' });
+    if (!tokenDaFotoConfere(req.headers.authorization, esperado)) {
+      req.resume();
+      return json(res, 401, { erro: 'Token da foto da edição errado.' });
+    }
+    const foto = fotoDoPedido(await lerCorpo(req, LIMITE_DA_FOTO, 'Foto da planilha'));
+    const r = fotosDaEdicao.receber(foto);
+    console.log(`[foto da edição] ${r.gravadas} ${r.gravadas === 1 ? 'aba nova' : 'abas novas'}, ${r.iguais} ${r.iguais === 1 ? 'igual' : 'iguais'} (execução ${foto.origem.execucao || '?'})`);
+    return json(res, 200, r);
   }
 
   /** O Padeiro da chave do pedido, quando ela está ligada a um designer; senão, responde a recusa (401 sem a chave ou
