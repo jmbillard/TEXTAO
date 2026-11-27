@@ -6,6 +6,8 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, RABISCOS, tracoDe } from './pecas';
+import { CaixinhaDoDesfazer } from './CaixinhaDoDesfazer';
+import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { ProducaoAberta } from './ProducaoAberta';
 import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
 import { BuscaDasProducoes, usePresenca } from './BuscaDasProducoes';
@@ -248,6 +250,8 @@ function CardDaTela({ c, hoje, acoes, abrir }: { c: CardDaProducao; hoje: string
       {/* as versões da chamada (#121, #152) vão no fim do nome; aqui, só o aviso quando o roteiro diz outra coisa */}
       <ConflitoDoCard versoes={versoes} />
       <span className="prod-atracao">{c.atracao || 'sem atração'}</span>
+      {/* a etiqueta da campanha (#178): a primeira ligada e "+N" das outras; sempre montada, para a que chega carimbar */}
+      <EtiquetaDaCampanha campanhas={c.campanhas} />
       <span className="prod-linha">
         {artes && <span className="prod-artes">{artes}</span>}
         {c.prazo ? (
@@ -781,17 +785,7 @@ export function Producoes({ topo }: Props) {
                 fechar={fecharAberta}
               />
             )}
-            {desfazivel && (
-              <div className="prod-desfazer" role="status">
-                <span className="prod-desfazer-texto">{desfazivel.texto}</span>
-                <button type="button" className="botao prod-desfazer-botao" onClick={() => desfazer(desfazivel)}>
-                  Desfazer
-                </button>
-                <button type="button" className="botao-texto prod-desfazer-fechar" aria-label="Fechar" onClick={() => setDesfazivel(null)}>
-                  ×
-                </button>
-              </div>
-            )}
+            {desfazivel && <CaixinhaDoDesfazer onde="tela" texto={desfazivel.texto} desfazer={() => desfazer(desfazivel)} fechar={() => setDesfazivel(null)} />}
           </>
         )}
       </main>

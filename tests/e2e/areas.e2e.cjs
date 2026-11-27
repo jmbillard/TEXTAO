@@ -705,7 +705,7 @@ async function administradoraNoCelular(navegador, url) {
   await semRolagemDeLado(p, 'filtro de quem no celular');
   await capturar(p, '19-de-quem-no-celular-escuro');
   await p.keyboard.press('Escape');
-  assert.equal(await p.locator('.barra-topo .topo-pauta span').isVisible(), false, 'no celular, só o ícone da Pauta');
+  assert.equal(await p.locator('.barra-topo .topo-pauta .caminho-nome').isVisible(), false, 'no celular, só o ícone da Pauta');
   await p.locator('.perfil-botao').click();
   await p.locator('.perfil-fora').waitFor();
   await semRolagemDeLado(p, 'perfil no celular');
@@ -759,14 +759,32 @@ async function caminhosDoTopo(navegador, url) {
       const estado = { pendente: true };
       const { ctx, p, erros } = await comFilmes(navegador, url, { ...opcoes, colorScheme: tema }, estado);
       const nav = p.locator('.barra-topo nav.caminhos-do-topo');
-      const nomes = await nav.locator('a').evaluateAll((as) => as.map((a) => a.querySelector('span').textContent));
-      assert.deepEqual(nomes.slice(0, 3), ['Produções', 'Filmes', 'Pauta da edição'], `${onde}: Produções · Filmes · Pauta da edição`);
-      // uma bolinha entre cada dois caminhos; a de depois de Filmes é a dele
+      const nomes = await nav.locator('a').evaluateAll((as) => as.map((a) => a.querySelector('.caminho-nome').textContent));
+      assert.deepEqual(nomes.slice(0, 4), ['No Trello', 'Produções', 'Filmes', 'Pauta da edição'], `${onde}: No Trello · Produções · Filmes · Pauta da edição`);
+      // #168: todos os caminhos, o da fila aberto e marcado; a bolinha separadora só antes da Pauta
       const filhos = await nav.evaluate((n) => [...n.children].map((e) => (e.tagName === 'A' ? e.className : `• ${e.className}`)));
-      assert.deepEqual(filhos.slice(0, 5), ['topo-producoes', '• caminho-bolinha', 'topo-filmes', '• caminho-bolinha de-filmes revisar', 'topo-pauta'], `${onde}: as bolinhas entre os caminhos`);
+      assert.deepEqual(filhos.slice(0, 5), ['topo-agenda aberto', 'topo-producoes', 'topo-filmes', '• caminho-bolinha', 'topo-pauta'], `${onde}: a bolinha só antes da Pauta`);
+      assert.equal(await nav.locator('[aria-current="page"]').getAttribute('class'), 'topo-agenda aberto', `${onde}: o caminho da fila é o atual`);
       assert.equal(await p.locator('.barra-topo', { hasText: /de todo mundo/i }).count(), 0, `${onde}: sem o "De todo mundo"`);
       assert.equal(await nav.evaluate((n) => getComputedStyle(n).borderLeftWidth), '0px', `${onde}: sem a linha vertical`);
-      const bolinha = nav.locator('.caminho-bolinha.de-filmes');
+      // nada de unha: nenhum caminho com faixa na borda esquerda
+      for (const a of await nav.locator('a').all()) {
+        const borda = await a.evaluate((e) => { const c = getComputedStyle(e); return [c.borderLeftWidth, c.boxShadow]; });
+        assert.deepEqual(borda, ['0px', 'none'], `${onde}: sem unha`);
+      }
+      // só ícones; o aberto mostra o nome (no celular, nem ele)
+      const largura = (sel) => nav.locator(sel).evaluate((e) => e.getBoundingClientRect().width);
+      assert.equal(await nav.locator('.topo-producoes .caminho-nome').evaluate((e) => e.getBoundingClientRect().width), 0, `${onde}: fechado, sem o nome`);
+      if (onde === 'computador') {
+        await p.waitForTimeout(700);
+        assert.ok((await largura('.topo-agenda')) > 80, `${onde}: o aberto com o nome`);
+        assert.ok(await nav.locator('.topo-agenda .caminho-nome').isVisible(), 'o nome do aberto');
+        assert.equal(Math.round(await largura('.topo-producoes')), 36, 'o fechado, só o ícone');
+      } else {
+        assert.equal(await nav.locator('.topo-agenda .caminho-nome').isVisible(), false, 'no celular, só o ícone, mesmo no aberto');
+        assert.deepEqual(await nav.locator('.topo-agenda').evaluate((e) => [e.offsetWidth, e.offsetHeight]), [36, 44], 'no celular, 36 por 44');
+      }
+      const bolinha = nav.locator('.topo-filmes .caminho-icone .caminho-aviso');
       const cor = () => bolinha.evaluate((e) => getComputedStyle(e).backgroundColor);
       const laranja = await p.evaluate(() => {
         const e = document.createElement('i');
@@ -777,11 +795,11 @@ async function caminhosDoTopo(navegador, url) {
         return c;
       });
       // a cor troca com uma transição curta: espera ela terminar
-      await p.waitForFunction((c) => getComputedStyle(document.querySelector('.caminho-bolinha.de-filmes')).backgroundColor === c, laranja, { timeout: 3000 }).catch(() => {});
-      assert.equal(await cor(), laranja, `${onde}, ${tema}: com filme para revisar, a bolinha é laranja`);
+      await bolinha.waitFor();
+      assert.equal(await cor(), laranja, `${onde}, ${tema}: com filme para revisar, a bolinha laranja no ícone dos Filmes`);
       assert.equal(await nav.locator('.topo-filmes').getAttribute('aria-label'), 'Filmes, com filme para revisar');
       if (onde === 'celular') {
-        assert.equal(await nav.locator('.topo-filmes span').isVisible(), false, 'no celular, só o ícone');
+        assert.equal(await nav.locator('.topo-filmes .caminho-nome').isVisible(), false, 'no celular, só o ícone');
         await semRolagemDeLado(p, 'caminhos no celular');
       }
       await capturar(p, `21-caminhos-${onde}-${tema === 'light' ? 'claro' : 'escuro'}-revisar`);
@@ -789,10 +807,25 @@ async function caminhosDoTopo(navegador, url) {
       estado.pendente = false;
       await p.reload();
       await nav.locator('.topo-filmes').waitFor();
-      await p.waitForFunction(() => !document.querySelector('.caminho-bolinha.revisar'));
       await p.waitForTimeout(400);
-      assert.notEqual(await cor(), laranja, `${onde}, ${tema}: sem filme para revisar, a bolinha é neutra`);
+      assert.equal(await nav.locator('.caminho-aviso').count(), 0, `${onde}, ${tema}: sem filme para revisar, sem o aviso`);
       assert.equal(await nav.locator('.topo-filmes').getAttribute('aria-label'), 'Filmes');
+      // a dica com o nome: no foco (pelo teclado) e, no computador, no hover; no aberto, não (o nome já está ali)
+      const dica = (sel) => nav.locator(sel).evaluate((e) => { const c = getComputedStyle(e, '::after'); return { texto: c.content, opacidade: c.opacity, mostra: c.display !== 'none' }; });
+      await p.keyboard.press('Shift');
+      await nav.locator('.topo-producoes').focus();
+      await p.waitForTimeout(350);
+      assert.deepEqual(await dica('.topo-producoes'), { texto: '"Produções"', opacidade: '1', mostra: true }, `${onde}: a dica no foco`);
+      assert.equal(await nav.locator('.topo-producoes').getAttribute('aria-label'), 'Produções');
+      await capturar(p, `23-caminhos-${onde}-${tema === 'light' ? 'claro' : 'escuro'}-dica`);
+      await nav.locator('.topo-producoes').blur();
+      if (onde === 'computador') {
+        await nav.locator('.topo-pauta').hover();
+        await p.waitForTimeout(650);
+        assert.deepEqual(await dica('.topo-pauta'), { texto: '"Pauta da edição"', opacidade: '1', mostra: true }, 'a dica no hover');
+        assert.equal((await dica('.topo-agenda')).mostra, false, 'no aberto, sem a dica');
+        await p.mouse.move(0, 400);
+      }
       await capturar(p, `22-caminhos-${onde}-${tema === 'light' ? 'claro' : 'escuro'}-neutra`);
       // Filmes leva à aba Filmes
       await nav.locator('.topo-filmes').click();
@@ -800,7 +833,14 @@ async function caminhosDoTopo(navegador, url) {
       assert.deepEqual(erros, [], `${onde}, ${tema}: erros na página`);
       await ctx.close();
     }
-  console.log('ok: o topo da Designer é "Produções · Filmes · Pauta da edição", com a bolinha de Filmes laranja só quando há filme para revisar');
+  // sem movimento (#168): a largura troca de uma vez, e o nome só esmaece
+  const { ctx, p } = await comFilmes(navegador, url, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' }, { pendente: false });
+  await p.locator('.barra-topo .topo-agenda.aberto').waitFor();
+  await p.waitForTimeout(300);
+  const transicao = await p.locator('.barra-topo .topo-agenda .caminho-nome').evaluate((e) => { const c = getComputedStyle(e); return [c.transitionProperty, c.transitionDuration]; });
+  assert.deepEqual(transicao, ['opacity', '0.3s'], 'sem movimento, o nome só esmaece');
+  await ctx.close();
+  console.log('ok: o topo da Designer é "No Trello · Produções · Filmes · Pauta da edição", só os ícones com o atual aberto, a bolinha só antes da Pauta, o aviso no ícone dos Filmes e a dica no hover e no foco');
 }
 
 async function principal() {

@@ -5,8 +5,10 @@ import {
   lerProducaoAberta,
   mudarArteDaProducao,
   mudarAtracaoDaProducao,
+  mudarCampanhaDaProducao,
   mudarDesignerDaProducao,
   mudarPrazoDaProducao,
+  novaCampanhaNaProducao,
   subirFogoDaProducao,
   type ArteDoCard,
   type ProducaoAberta as Lida,
@@ -14,6 +16,9 @@ import {
 } from '../dados/armazenamento';
 import { ApelidoDaClaquete, NomeDaClaquete, versoesDoCard } from './Apelido';
 import { CardAberto, FecharOCardAberto } from './CardAberto';
+import { CaixinhaDoDesfazer } from './CaixinhaDoDesfazer';
+import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
+import { campanhasParaLigar, type CampanhaDoCard } from '../modelo/campanhas';
 import { MenuLigar } from './Cadastros';
 import { Riscado } from './Comparar';
 import { FogoComTroca } from './fogo';
@@ -33,6 +38,9 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
    ligado a um designer muda ali: a atração (a busca do cadastro), o prazo e os designers (atribuir e tirar). As artes
    seguem a janela do After: a bolinha laranja numerada, a feita riscada (o risco se escreve na hora), o fogo da
    complexidade (o clique sobe um nível), apagar com desfazer e "+ arte". A linha do tempo começa fechada, num link.
+   As campanhas (#178): as etiquetas (EtiquetaDaCampanha, a mesma do card), a busca para ligar (o MenuLigar da atração)
+   com "+ Nova campanha", e tirar com a caixinha de desfazer (a CaixinhaDoDesfazer, a mesma do apagar a arte). Mudam
+   o administrador, a coordenação, os designers e os redatores (o servidor diz em `podeLigarCampanhas`).
    Cada mudança aparece na hora e vai ao servidor (o Trello e o evento); recusada, volta atrás e diz o motivo. */
 
 interface Props {
@@ -80,7 +88,15 @@ const DESFAZER_MS = 8_000;
 /** O campo que acabou de mudar pisca de leve (a troca), esse tempo. */
 const TROCA_MS = 450;
 
-type Menu = 'atracao' | 'prazo' | 'designer' | null;
+type Menu = 'atracao' | 'prazo' | 'designer' | 'campanha' | null;
+/** O que a caixinha de desfazer do card aberto oferece agora (o apagar da arte, o tirar da campanha). */
+interface Desfazivel {
+  texto: ReactNode;
+  vez: number;
+  /** o que volta: a arte apagada (com o lugar dela) ou a campanha tirada */
+  arte?: { arte: ArteDoCard; lugar: number; vez: number };
+  campanha?: CampanhaDoCard;
+}
 
 function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, etapa, recusa: recusaDaTela, mudou }: Props) {
   useApelidos();
@@ -93,6 +109,9 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
   const [apagada, setApagada] = useState<{ arte: ArteDoCard; lugar: number; vez: number } | null>(null);
   const [novaArte, setNovaArte] = useState<string | null>(null);
   const [pedidoDoLapis, setPedidoDoLapis] = useState(0);
+  const [desfazivel, setDesfazivel] = useState<Desfazivel | null>(null);
+  const cardAgora = useRef(card);
+  cardAgora.current = card;
   const podeMudar = !!voce && armazenamento.tipo === 'servidor';
   // lida de novo quando a mudança da tela (ou a releitura) traz outra etapa ou outros designers: há eventos novos
   const versao = `${card.id}|${card.etapa}|${card.designers.join('|')}`;
@@ -116,6 +135,11 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
     const t = setTimeout(() => setApagada(null), DESFAZER_MS);
     return () => clearTimeout(t);
   }, [apagada]);
+  useEffect(() => {
+    if (!desfazivel) return;
+    const t = setTimeout(() => setDesfazivel(null), DESFAZER_MS);
+    return () => clearTimeout(t);
+  }, [desfazivel]);
   useEffect(() => {
     if (!trocou) return;
     const t = setTimeout(() => setTrocou(null), TROCA_MS);
@@ -148,13 +172,22 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
     void agir(a.feita ? 'desmarcou a arte' : 'marcou a arte', () => mudarArteDaProducao(card.id, a.nome, a.feita ? 'desmarcar' : 'marcar'), comArtes((l) => l.map((x) => (x.nome === a.nome ? { ...x, feita: !a.feita } : x))));
   const apagar = (a: ArteDoCard) => {
     const lugar = artes.findIndex((x) => x.nome === a.nome);
-    setApagada({ arte: a, lugar, vez: Date.now() });
-    void agir('apagou a arte', () => mudarArteDaProducao(card.id, a.nome, 'apagar'), comArtes((l) => l.filter((x) => x.nome !== a.nome))).then((ok) => !ok && setApagada(null));
+    const d = { arte: a, lugar, vez: Date.now() };
+    setApagada(d);
+    setDesfazivel({
+      texto: (
+        <>
+          Apagou <b>{a.nome}</b> · saiu do checklist
+        </>
+      ),
+      arte: d,
+      vez: d.vez,
+    });
+    void agir('apagou a arte', () => mudarArteDaProducao(card.id, a.nome, 'apagar'), comArtes((l) => l.filter((x) => x.nome !== a.nome))).then((ok) => !ok && (setApagada(null), setDesfazivel(null)));
   };
-  const desfazerApagar = () => {
-    const d = apagada;
-    if (!d) return;
+  const desfazerApagar = (d: NonNullable<typeof apagada>) => {
     setApagada(null);
+    setDesfazivel(null);
     void agir('devolveu a arte', () => mudarArteDaProducao(card.id, d.arte.nome, 'voltar'), comArtes((l) => [...l.slice(0, d.lugar), d.arte, ...l.slice(d.lugar)]));
   };
   const subirFogo = (a: ArteDoCard) =>
@@ -177,6 +210,38 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
     mudou({ ...card, prazo: dia });
     void agir('mudou o prazo', () => mudarPrazoDaProducao(card.id, dia)).then((ok) => (ok ? setTrocou('prazo') : mudou(card)));
   };
+  /** Ligar (`entra`) ou tirar a Produção de uma campanha (#178): a etiqueta muda na hora; tirar abre a caixinha. */
+  const campanha = (c: CampanhaDoCard, entra: boolean) => {
+    setMenu(null);
+    // o card de agora: o desfazer da caixinha chega depois de o card ter mudado
+    const atual = cardAgora.current;
+    const antes = atual.campanhas ?? [];
+    if (entra === antes.some((x) => x.id === c.id)) return;
+    mudou({ ...atual, campanhas: entra ? [...antes, c] : antes.filter((x) => x.id !== c.id) });
+    if (!entra)
+      setDesfazivel({
+        texto: (
+          <>
+            Tirou da campanha <b>{c.nome}</b>
+          </>
+        ),
+        campanha: c,
+        vez: Date.now(),
+      });
+    else setDesfazivel(null);
+    void agir(entra ? `ligou à campanha ${c.nome}` : `tirou da campanha ${c.nome}`, () => mudarCampanhaDaProducao(card.id, c.id, entra)).then((ok) => {
+      if (ok) return;
+      mudou({ ...cardAgora.current, campanhas: antes });
+      setDesfazivel(null);
+    });
+  };
+  /** "+ Nova campanha" (#178): cria com o nome buscado e liga (o nome que já existe liga a que existe). */
+  const novaCampanha = (nome: string) => {
+    const n = nome.trim().replace(/\s+/g, ' ');
+    if (!n) return;
+    setMenu(null);
+    void agir(`criou a campanha ${n}`, () => novaCampanhaNaProducao(card.id, n));
+  };
   const designer = (nome: string, entra: boolean) => {
     setMenu(null);
     const designers = entra ? [...card.designers, nome] : card.designers.filter((d) => d !== nome);
@@ -190,6 +255,9 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
   const passou = !!card.prazo && card.etapa !== 'entregue' && diaDoPrazo(card.prazo) < hoje;
   const livres = (lida?.designersAtivos ?? []).filter((d) => !card.designers.some((x) => nomeComparavel(x) === nomeComparavel(d)));
   const itensDoTempo = lida ? linhaDoTempoDoCard(lida.eventos) : [];
+  const podeCampanhas = !!lida?.podeLigarCampanhas && armazenamento.tipo === 'servidor';
+  const campanhasDoCard = card.campanhas ?? [];
+  const paraLigar = campanhasParaLigar(lida?.todasAsCampanhas ?? [], campanhasDoCard);
   const nomeDoLapis = apelido ? 'Editar o apelido' : 'Dar um apelido';
   /** O menu aberto fecha no Esc antes do card aberto (que fecha no Esc seguinte). */
   const escDoMenu = (e: React.KeyboardEvent) => {
@@ -199,7 +267,7 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
     setMenu(null);
   };
   const alternar = (m: Exclude<Menu, null>) => setMenu((x) => (x === m ? null : m));
-  useFecharFora(menu !== null && menu !== 'atracao', () => setMenu(null));
+  useFecharFora(menu !== null && menu !== 'atracao' && menu !== 'campanha', () => setMenu(null));
 
   return (
     <div className="pa" data-producao={card.id} onKeyDown={escDoMenu}>
@@ -331,6 +399,37 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
                   <p className="pa-menu-vazio">todo mundo já está</p>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+        <div className="pa-campo campanhas-do-card">
+          <span className="pa-rotulo" id="pa-rotulo-campanhas">
+            Campanhas
+          </span>
+          <span className="pa-chips" role="group" aria-labelledby="pa-rotulo-campanhas">
+            <EtiquetaDaCampanha modo="todas" campanhas={campanhasDoCard} tirar={podeCampanhas ? (c) => campanha(c, false) : undefined} />
+            {podeCampanhas ? (
+              <button type="button" className="pa-mais" aria-expanded={menu === 'campanha'} aria-label="Ligar a uma campanha" title="Ligar a uma campanha" onClick={() => setMenu('campanha')}>
+                <Icone nome="mais" tam={11} traco={2.2} />
+                {!campanhasDoCard.length && 'ligar a uma campanha'}
+              </button>
+            ) : (
+              !campanhasDoCard.length && <span className="vazio">nenhuma</span>
+            )}
+          </span>
+          {menu === 'campanha' && (
+            <div className="pa-menu-campanha">
+              <MenuLigar
+                atracoes={paraLigar.map((c) => c.nome)}
+                ligar={(nome) => {
+                  const c = paraLigar.find((x) => x.nome === nome);
+                  if (c) campanha(c, true);
+                }}
+                nova={novaCampanha}
+                fechar={() => setMenu(null)}
+                dica="Buscar campanha"
+                rotuloDaNova="+ Nova campanha"
+              />
             </div>
           )}
         </div>
@@ -484,16 +583,7 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
         )}
       </footer>
 
-      {apagada && (
-        <div className="pa-desfazer" role="status" key={apagada.vez}>
-          <span>
-            Apagou <b>{apagada.arte.nome}</b> · saiu do checklist
-          </span>
-          <button type="button" className="botao pa-desfazer-botao" onClick={desfazerApagar}>
-            Desfazer
-          </button>
-        </div>
-      )}
+      {desfazivel && <CaixinhaDoDesfazer key={desfazivel.vez} onde="card" texto={desfazivel.texto} desfazer={() => (desfazivel.arte ? desfazerApagar(desfazivel.arte) : desfazivel.campanha && campanha(desfazivel.campanha, true))} fechar={() => setDesfazivel(null)} />}
     </div>
   );
 }

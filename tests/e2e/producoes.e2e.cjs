@@ -164,6 +164,46 @@ const posicoesDoTopo = (p) =>
     const r = e.getBoundingClientRect();
     return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
   }), PECAS_DO_TOPO);
+/** Os caminhos do topo, pela ordem (#168). */
+const caminhosNaOrdem = (p) => p.locator('.barra-topo nav.caminhos-do-topo a').evaluateAll((as) => as.map((a) => a.getAttribute('aria-label')));
+/** Mede, quadro a quadro, onde fica cada ícone dos caminhos (pela ordem) a partir de agora, por 1,2 s. Cada tela monta o
+    topo dela, então a medida acha o nav de novo a cada quadro. */
+const comecarAMedirOsIcones = (p) =>
+  p.evaluate(() => {
+    const quadros = [];
+    window.__quadrosDosIcones = quadros;
+    const inicio = performance.now();
+    const medir = () => {
+      const icones = [...document.querySelectorAll('.barra-topo nav.caminhos-do-topo .caminho-icone')];
+      quadros.push([Math.round(performance.now() - inicio), ...icones.map((i) => i.getBoundingClientRect().left)]); // [ms, x...]
+      if (performance.now() - inicio < 1200) requestAnimationFrame(medir);
+    };
+    medir();
+  });
+/** Os ícones dos caminhos só deslizam (#168): cada ícone que muda de lugar leva um tempo de ponta a ponta (um pulo iria
+    de uma ponta à outra num quadro só). Pelo tempo e não em px por quadro: a curva --suave começa rápida, e um quadro
+    longo da tela nova chegando faz um passo grande sem ser pulo. No computador, o primeiro fica parado; no celular (sem
+    o nome), todos. */
+async function iconesSemPulo(p, comNome, onde) {
+  const todos = (await p.evaluate(() => window.__quadrosDosIcones)).filter((q) => q.length > 1);
+  assert.ok(todos.length > 10, `${onde}: os quadros medidos`);
+  const n = todos[todos.length - 1].length;
+  const quadros = todos.filter((q) => q.length === n);
+  for (let j = 1; j < n; j++) {
+    const xs = quadros.map((q) => q[j]);
+    const [de, para] = [xs[0], xs[xs.length - 1]];
+    if (!comNome || j === 1) {
+      assert.ok(Math.max(...xs) - Math.min(...xs) <= 1, `${onde}: o ícone ${j} parado`);
+      continue;
+    }
+    if (Math.abs(para - de) <= 4) continue;
+    const saiu = quadros.findIndex((q) => Math.abs(q[j] - de) > 1);
+    // chegou: o primeiro quadro depois do último ainda fora do lugar
+    const chegou = quadros.length - [...quadros].reverse().findIndex((q) => Math.abs(q[j] - para) > 1);
+    const ms = quadros[chegou][0] - quadros[saiu - 1][0];
+    assert.ok(chegou - saiu >= 2 && ms >= 100, `${onde}: o ícone ${j} desliza de ${de.toFixed(0)} a ${para.toFixed(0)} (em ${ms} ms, ${chegou - saiu} quadros no meio)`);
+  }
+}
 /** O topo no mesmo lugar de antes: no máximo 1 px em cada lado de cada peça. */
 async function topoParado(p, antes, onde) {
   const agora = await posicoesDoTopo(p);
@@ -421,14 +461,17 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
     assert.ok(leituras.length > antes, 'a tela se lê de novo depois de um minuto');
   }
 
-  // os caminhos do topo (#156): "No Trello · Pauta da edição", com a bolinha entre eles, sem o "De todo mundo"
+  // os caminhos do topo (#156, #168): "No Trello · Produções · Pauta da edição", com as Produções abertas e a bolinha
+  // só antes da Pauta, sem o "De todo mundo"
   const caminhos = p.locator('.barra-topo nav.caminhos-do-topo');
-  assert.deepEqual((await caminhos.locator('a span').allTextContents()).slice(0, 2), ['No Trello', 'Pauta da edição']);
-  assert.equal(await caminhos.locator('.caminho-bolinha').count() >= 1, true, 'a bolinha entre os caminhos');
+  assert.deepEqual((await caminhos.locator('a').evaluateAll((as) => as.map((a) => a.getAttribute('aria-label')))).slice(0, 3), ['No Trello', 'Produções', 'Pauta da edição']);
+  assert.equal(await caminhos.locator('[aria-current="page"]').getAttribute('aria-label'), 'Produções', 'as Produções são o caminho atual');
+  assert.equal(await caminhos.locator('.caminho-bolinha').count(), 1, 'uma bolinha só');
+  assert.equal(await caminhos.locator('.caminho-bolinha + .topo-pauta').count(), 1, 'a bolinha antes da Pauta');
   assert.equal(await p.locator('.barra-topo', { hasText: /de todo mundo/i }).count(), 0, 'sem o "De todo mundo"');
   // a volta para a agenda No Trello, com o topo parado
   await p.locator('.barra-topo .topo-agenda').click();
-  await p.locator('.barra-topo .topo-producoes').waitFor();
+  await p.locator('.barra-topo .topo-agenda[aria-current="page"]').waitFor();
   await topoParado(p, naFila, `${largura}: das Produções para a fila`);
   assert.equal(hash(p), '#/designer');
 
@@ -492,7 +535,7 @@ async function entradaNoCelular(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, devices['iPhone 13'], '');
   const entrada = p.locator('.barra-topo .topo-producoes');
   await entrada.waitFor();
-  assert.equal(await entrada.locator('span').isVisible(), false);
+  assert.equal(await entrada.locator('.caminho-nome').isVisible(), false, 'no celular, só o ícone');
   await semRolagemDeLado(p, 'fila no celular');
   await entrada.tap();
   await p.locator('.prod-bloco').first().waitFor();
@@ -1030,10 +1073,14 @@ async function asVersoesAMaoSemRoteiro(navegador, url) {
  * #159: o topo parado entre as telas, para quem tem as três áreas (o seletor aparece) e a aba Filmes: o logo, o seletor e
  * o perfil no mesmo lugar (no máximo 1 px) na fila, nas Produções, nos Filmes e na Pauta, logo depois do clique (no meio
  * da troca) e depois; no computador e no celular (ali, sem os Filmes, que têm a entrada própria das prévias, #80).
+ * #168: os caminhos são sempre os mesmos, na mesma ordem, com o da tela atual marcado; os ícones só deslizam enquanto o
+ * nome do de antes fecha e o da tela nova abre (no celular, sem o nome, nem isso), e o primeiro fica parado.
  */
 async function topoEntreAsTelas(navegador, url) {
   for (const [onde, opcoes] of [['computador', { viewport: { width: 1440, height: 900 } }], ['celular', { ...devices['iPhone 13'] }]]) {
-    const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': CHEFE }, ...opcoes });
+    // com VIDEO=pasta, o vídeo curto da troca de tela no computador (#168): o caminho da tela abrindo e o de antes fechando
+    const filme = VIDEO && onde === 'computador' ? { recordVideo: { dir: join(VIDEO, 'topo'), size: { width: 1440, height: 900 } } } : {};
+    const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': CHEFE }, ...opcoes, ...filme });
     await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
     await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
     // a aba Filmes ligada (o servidor do teste não tem a leitura) e a lista das prévias vazia
@@ -1046,12 +1093,18 @@ async function topoEntreAsTelas(navegador, url) {
     await p.locator('.barra-topo .topo-filmes').waitFor();
     await p.locator('.barra-topo .seletor-area').waitFor();
     const naFila = await posicoesDoTopo(p);
+    const ordem = await caminhosNaOrdem(p);
     const ir = async (caminho, chegou, tela) => {
+      await comecarAMedirOsIcones(p);
       await p.locator(`.barra-topo ${caminho}`).click();
       await p.locator(chegou).first().waitFor();
       await topoParado(p, naFila, `${onde}: ${tela}, logo depois do clique`);
-      await p.waitForTimeout(400);
+      await p.waitForTimeout(700);
       await topoParado(p, naFila, `${onde}: ${tela}`);
+      // #168: os mesmos caminhos, na mesma ordem, com o da tela aberto; os ícones deslizam, sem pular
+      assert.deepEqual(await caminhosNaOrdem(p), ordem, `${onde}: ${tela}, os caminhos de sempre`);
+      assert.equal(await p.locator(`.barra-topo ${caminho}`).getAttribute('aria-current'), 'page', `${onde}: ${tela}, o caminho atual`);
+      await iconesSemPulo(p, onde === 'computador', `${onde}: ${tela}`);
     };
     await ir('.topo-producoes', '.prod-pagina', 'Produções');
     // no celular, a aba Filmes é a entrada das prévias (#80), com o topo próprio dela: fica de fora
@@ -1062,12 +1115,12 @@ async function topoEntreAsTelas(navegador, url) {
     await ir('.topo-pauta', '.pagina.pauta', 'Pauta');
     if (onde === 'computador') await capturar(p, '20-topo-pauta');
     await ir('.topo-producoes', '.prod-pagina', 'Produções de novo');
-    await ir('.topo-agenda', '.barra-topo .topo-producoes', 'a fila de novo');
+    await ir('.topo-agenda', '.barra-topo .topo-agenda[aria-current="page"]', 'a fila de novo');
     await semRolagemDeLado(p, `${onde}: o topo`);
     assert.deepEqual(erros, []);
     await ctx.close();
   }
-  console.log('ok: o topo parado (no máximo 1 px) na fila, nas Produções, nos Filmes e na Pauta, no meio da troca e depois, no computador e no celular');
+  console.log('ok: o topo parado (no máximo 1 px) na fila, nas Produções, nos Filmes e na Pauta, no meio da troca e depois, no computador e no celular; os caminhos de sempre, com o atual aberto e os ícones deslizando (#168)');
 }
 
 /** As praças na ordem da tela. */
@@ -1728,6 +1781,138 @@ async function filmarOAcabamento(navegador, url, api) {
   console.log(`ok: o vídeo do acabamento em ${VIDEO}`);
 }
 
+/* ---------- #178: as campanhas ---------- */
+/** O "+N" e a etiqueta no card de Produções, ligar e criar pelo card aberto, tirar com a caixinha de desfazer, a linha
+    do tempo, e quem não tem o papel só vê. Nada vai ao Trello. Sem "unha": o tom vai na bolinha e no fundo. */
+async function asCampanhas(navegador, url, chamadasAoTrello, db) {
+  db.prepare('DELETE FROM campanhas_producoes').run();
+  db.prepare('DELETE FROM campanhas').run();
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+    const festa = cardDe(p, 'Festa na Praça');
+    await festa.waitFor();
+    await calmo(p);
+    chamadasAoTrello.splice(0);
+    const painel = p.getByRole('dialog');
+    if (tema === 'light') {
+      assert.equal(await festa.locator('.campanha').count(), 0, 'sem campanha, sem etiqueta');
+      await festa.locator('.prod-atracao').click();
+      await painel.locator('.pa-arte').first().waitFor();
+      // criar pela busca: "+ Nova campanha" com o nome buscado
+      for (const [i, n] of ['Lançamento Domingo', 'AESP Verão', 'Chamadas de elenco'].entries()) {
+        await painel.getByRole('button', { name: 'Ligar a uma campanha' }).click();
+        await painel.getByRole('textbox', { name: 'Buscar campanha' }).fill(n);
+        await painel.getByRole('button', { name: '+ Nova campanha' }).click();
+        await painel.locator('.campanhas-do-card .campanha', { hasText: n }).waitFor();
+        if (i === 0) {
+          // a etiqueta chega carimbada no card da lista
+          await festa.locator('.campanhas.compacta .campanha.chegou', { hasText: n }).waitFor();
+          await p.waitForTimeout(120);
+          await capturar(p, `40-campanha-${nome}-carimbo`);
+        }
+      }
+      assert.deepEqual(await textos(painel.locator('.campanhas-do-card .campanha-nome')), ['Lançamento Domingo', 'AESP Verão', 'Chamadas de elenco']);
+      // no card: a primeira e "+2", com as outras no título
+      assert.deepEqual(await textos(festa.locator('.campanhas.compacta .campanha-nome')), ['Lançamento Domingo']);
+      assert.equal((await festa.locator('.campanha-mais').textContent()).trim(), '+2');
+      assert.equal(await festa.locator('.campanha-mais').getAttribute('title'), 'AESP Verão · Chamadas de elenco');
+      await p.waitForTimeout(600);
+      await capturar(p, `41-campanha-${nome}-card-aberto`);
+      // tirar: a vaga fecha e a caixinha de desfazer abre; "Desfazer" liga de novo
+      // a vaga que fecha dura 220 ms: um observador anota se ela apareceu, sem depender de pegar o instante
+      await p.evaluate(() => {
+        window.__fechou = false;
+        const o = new MutationObserver(() => {
+          if ([...document.querySelectorAll('.campanhas-do-card .vaga-x.saindo .campanha')].some((e) => e.textContent.includes('AESP Verão'))) (window.__fechou = true), o.disconnect();
+        });
+        o.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+      });
+      await painel.getByRole('button', { name: 'Tirar da campanha AESP Verão' }).click();
+      await p.waitForFunction(() => window.__fechou === true);
+      await painel.locator('.campanhas-do-card .campanha', { hasText: 'AESP Verão' }).waitFor({ state: 'detached' });
+      await painel.locator('.pa-desfazer', { hasText: 'Tirou da campanha AESP Verão' }).waitFor();
+      await festa.locator('.campanha-mais', { hasText: '+1' }).waitFor();
+      await capturar(p, `42-campanha-${nome}-tirou`);
+      await painel.locator('.pa-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+      await painel.locator('.campanhas-do-card .campanha', { hasText: 'AESP Verão' }).waitFor();
+      await festa.locator('.campanha-mais', { hasText: '+2' }).waitFor();
+      // ligar uma que já existe, pela busca (sem acento), na Novela
+      await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+      await painel.waitFor({ state: 'detached' });
+      const novela = cardDe(p, 'Novela Sinfonia');
+      await novela.locator('.prod-atracao').click();
+      await painel.locator('.pa-arte').first().waitFor();
+      await painel.getByRole('button', { name: 'Ligar a uma campanha' }).click();
+      await painel.getByRole('textbox', { name: 'Buscar campanha' }).fill('aesp verao');
+      await painel.getByRole('option', { name: 'AESP Verão' }).click();
+      await novela.locator('.campanhas.compacta .campanha', { hasText: 'AESP Verão' }).waitFor();
+      assert.equal(await novela.locator('.campanha-mais').count(), 0, 'com uma campanha, sem "+N"');
+      // a linha do tempo diz quem ligou e quem tirou
+      await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+      await painel.waitFor({ state: 'detached' });
+      await festa.locator('.prod-atracao').click();
+      await painel.locator('.pa-arte').first().waitFor();
+      await painel.getByRole('button', { name: 'linha do tempo' }).click();
+      const frases = await textos(painel.locator('.pa-tempo-lista li span'));
+      for (const f of ['Lia Moraes ligou à campanha Lançamento Domingo', 'Lia Moraes tirou da campanha AESP Verão', 'Lia Moraes ligou à campanha AESP Verão']) assert.ok(frases.includes(f), `a linha do tempo diz "${f}" (${frases.join(' · ')})`);
+      await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+      await painel.waitFor({ state: 'detached' });
+      // depois de recarregar, continua
+      await p.reload();
+      await festa.locator('.campanha-mais', { hasText: '+2' }).waitFor();
+    } else {
+      await festa.locator('.campanhas.compacta .campanha').first().waitFor();
+      await festa.locator('.prod-atracao').click();
+      await painel.locator('.campanhas-do-card .campanha').first().waitFor();
+      await p.waitForTimeout(600);
+      await capturar(p, `41-campanha-${nome}-card-aberto`);
+      await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+      await painel.waitFor({ state: 'detached' });
+    }
+    // sem "unha": nada de faixa na borda esquerda
+    const unha = await p.locator('.campanha').first().evaluate((e) => { const c = getComputedStyle(e); return { borda: parseFloat(c.borderLeftWidth), sombra: c.boxShadow }; });
+    assert.ok(unha.borda === 0 && !/inset/.test(unha.sombra), `a etiqueta não tem unha (${JSON.stringify(unha)})`);
+    await semRolagemDeLado(p, `campanhas ${nome}`);
+    await capturar(p, `43-campanha-${nome}-producoes`);
+    assert.deepEqual(chamadasAoTrello, [], 'as campanhas não vão ao Trello');
+    assert.deepEqual(aoTrello, [], 'nem o navegador pede ao Trello');
+    assert.deepEqual(erros, [], `${nome}: sem erros na página`);
+    await ctx.close();
+  }
+  // no celular: a etiqueta no card e no card aberto (a tela toda), sem rolar para o lado
+  for (const tema of ['light', 'dark']) {
+    const nome = tema === 'dark' ? 'escuro' : 'claro';
+    const { ctx, p, erros } = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: tema });
+    const festa = cardDe(p, 'Festa na Praça');
+    await festa.locator('.campanhas.compacta .campanha').waitFor();
+    await semRolagemDeLado(p, `campanhas no celular ${nome}`);
+    await festa.scrollIntoViewIfNeeded();
+    await capturar(p, `44-campanha-celular-${nome}`);
+    await festa.locator('.prod-atracao').tap();
+    const painel = p.getByRole('dialog');
+    await painel.locator('.campanhas-do-card .campanha').first().waitFor();
+    await p.waitForTimeout(500);
+    await semRolagemDeLado(p, `card aberto no celular ${nome}`);
+    await capturar(p, `45-campanha-celular-${nome}-card-aberto`);
+    assert.deepEqual(erros, [], `celular ${nome}: sem erros na página`);
+    await ctx.close();
+  }
+  // quem não tem o papel (o Rui: sem designer, sem redator, sem coordenação) vê as etiquetas, mas não liga nem tira
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 } }, '#/designer/producoes', { email: RUI });
+  const festa = cardDe(p, 'Festa na Praça');
+  await festa.locator('.campanhas.compacta .campanha').waitFor();
+  await festa.locator('.prod-atracao').click();
+  const painel = p.getByRole('dialog');
+  await painel.locator('.campanhas-do-card .campanha').first().waitFor();
+  await painel.locator('.pa-arte').first().waitFor();
+  assert.equal(await painel.getByRole('button', { name: 'Ligar a uma campanha' }).count(), 0, 'quem não tem o papel não liga');
+  assert.equal(await painel.getByRole('button', { name: /^Tirar da campanha/ }).count(), 0, 'nem tira');
+  assert.deepEqual(erros, [], 'sem erros na página');
+  await ctx.close();
+  console.log('ok: as campanhas (#178)');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -1798,6 +1983,14 @@ async function principal() {
       await produzindoComEspaco(navegador, s.url, s.db, s.api);
       await filmarOAcabamento(navegador, s.url, s.api);
     }
+    // SO=topo roda só o topo (#168): a fila e as Produções no computador, a troca entre as telas e o vídeo dela
+    else if (process.env.SO === 'topo') {
+      await noComputador(navegador, s.url, 'light', chamadasAoTrello);
+      await entradaNoCelular(navegador, s.url);
+      await topoEntreAsTelas(navegador, s.url);
+    }
+    // SO=campanhas roda só as campanhas (#178)
+    else if (process.env.SO === 'campanhas') await asCampanhas(navegador, s.url, chamadasAoTrello, s.db);
     else if (process.env.SO === 'card-aberto') {
       await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
       await filmarOCardAberto(navegador, s.url, s.db);
@@ -1830,6 +2023,7 @@ async function principal() {
     await filmarOAcabamento(navegador, s.url, s.api);
     await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
     await filmarOCardAberto(navegador, s.url, s.db);
+    await asCampanhas(navegador, s.url, chamadasAoTrello, s.db);
     await filmar(navegador, s.url, s.db, s.api);
   }
 }

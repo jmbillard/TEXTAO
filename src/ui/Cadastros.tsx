@@ -47,6 +47,7 @@ import {
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
 import { semPracaNoComeco, semPracaNoFim } from '../modelo/pracas';
 import { SetaCurva } from './setaCurva';
+import { RABISCO } from './cena';
 import { caminhoDoIcone, Icone } from './icones';
 import { Marca } from './pecas';
 import { plural } from './util';
@@ -71,7 +72,6 @@ const ICONES = {
   editores: caminhoDoIcone('edicao'),
 } as const;
 const NOMES: Record<TipoCadastro, string> = { atracoes: 'Atrações', redatores: 'Redatores', editores: 'Editores' };
-const RABISCO = 'M2 9 C 30 3, 70 4, 98 6 C 70 8, 40 10, 14 12';
 
 function Desenho({ d, tam = 18 }: { d: string; tam?: number }) {
   return (
@@ -197,7 +197,12 @@ function AbaDeFora({ nome, icone, aba, classe }: { nome: string; icone: React.Re
 
 /** "Ligar a…": a busca nas atrações, com "+ Nova atração" sempre no fim (ela recebe o que está na busca). */
 /** A busca de atração: `nova` põe o "+ Nova atração" (sem ele, só a busca, como no card aberto da tela de produções, #160). */
-export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { atracoes: string[]; ligar: (nome: string) => void; nova?: (busca: string) => void; fechar: () => void; dentro?: boolean }) {
+/**
+ * A busca para ligar um nome de uma lista (a atração do cadastro; #178, a campanha do card aberto): o campo, o "+ Nova"
+ * preso embaixo dele e a lista filtrada sem caixa e acento, pelas setas e pelo Enter.
+ * @param dica o que o campo pede (padrão: "Buscar atração"); rotuloDaNova, o botão de criar (padrão: "+ Nova atração")
+ */
+export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false, dica = 'Buscar atração', rotuloDaNova = '+ Nova atração' }: { atracoes: string[]; ligar: (nome: string) => void; nova?: (busca: string) => void; fechar: () => void; dentro?: boolean; dica?: string; rotuloDaNova?: string }) {
   const [busca, setBusca] = useState('');
   const [marcado, setMarcado] = useState(0);
   const caixa = useRef<HTMLDivElement>(null);
@@ -223,8 +228,8 @@ export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { a
         autoFocus
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar atração"
-        aria-label="Buscar atração"
+        placeholder={dica}
+        aria-label={dica}
         onKeyDown={(e) => {
           if (e.key === 'Escape') fechar();
           else if (e.key === 'ArrowDown') (e.preventDefault(), setMarcado((m) => Math.min(achadas.length - 1, m + 1)));
@@ -234,7 +239,7 @@ export function MenuLigar({ atracoes, ligar, nova, fechar, dentro = false }: { a
       />
       {nova && (
         <button type="button" className={`nova-ligar ${marcado === NOVA ? 'marcado' : ''}`} onMouseEnter={() => setMarcado(NOVA)} onMouseDown={(e) => e.preventDefault()} onClick={() => nova(busca)}>
-          + Nova atração
+          {rotuloDaNova}
         </button>
       )}
       <ul role="listbox" ref={lista}>

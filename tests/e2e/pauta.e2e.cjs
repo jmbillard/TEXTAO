@@ -646,7 +646,7 @@ async function entradaNoCelular(navegador, url) {
   const { ctx, p, erros } = await abrir(navegador, url, iphone, '');
   const entrada = p.locator('.barra-topo .topo-pauta');
   await entrada.waitFor();
-  assert.equal(await entrada.locator('span').isVisible(), false);
+  assert.equal(await entrada.locator('.caminho-nome').isVisible(), false, 'no celular, só o ícone');
   await semRolagemDeLado(p, 'fila no celular');
   await entrada.tap();
   await p.locator('.pauta-grade').waitFor();
