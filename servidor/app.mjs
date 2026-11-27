@@ -2601,6 +2601,16 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const r = await etapaDaProducao.mudar({ producao: corpo.producao, etapa: corpo.etapa, assimMesmo: corpo.assimMesmo === true }, { trello, pracas, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela });
       return json(res, r.status, r.corpo);
     }
+    if (caminho === '/api/producoes/desfazer') {
+      // desfazer (#112): a ação contrária da última mudança da etapa de quem pede, naquele card ({ producao }), gravada
+      // como eventos novos. Só se ninguém mudou a etapa depois; escreve no Trello, nunca lê; nada vai ao Teable
+      if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+      const corpo = (await lerCorpo(req, 4096, 'Pedido')) ?? {};
+      const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
+      const aTela = (id) => producoes.umaNaTela(id, (claquete) => atracaoPelaClaquete(claquete, programas, pracas));
+      const r = await etapaDaProducao.desfazer({ producao: corpo.producao }, { trello, pracas, email: eu.email, designer: pessoas.designerDoEmail(eu.email), aTela });
+      return json(res, r.status, r.corpo);
+    }
     if (caminho === '/api/producoes' || caminho === '/api/producoes/recarregar') return rotaDasProducoes(req, res, eu, caminho);
     if (caminho === '/api/linha-do-tempo') {
       // a Linha do tempo (#89): para qualquer pessoa logada, porque é só a leitura do trabalho (quando entrou, quem

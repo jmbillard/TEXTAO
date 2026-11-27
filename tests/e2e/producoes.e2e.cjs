@@ -26,6 +26,14 @@
 // "Entregar assim mesmo" leva o card para Entregue e, no Trello, para a saída da praça. A Cozinha (sem card, sem a
 // lista de artes) é entregue direto, sem aviso e sem ir ao Trello. Com o aviso aberto, nada passa da borda do card.
 //
+// #112, arrastar e desfazer: no computador, a Lia arrasta o card entre as colunas do mesmo bloco, e o efeito é o dos
+// botões: pegar (entra no card do Trello), entregar direto da Entrada com o aviso de arte faltando (o card fica onde
+// está até "Entregar assim mesmo"); com o card no ar, só as colunas do bloco dele para onde ele pode ir ficam marcadas,
+// e soltar no bloco de outra praça não muda nada. Depois de cada mudança, a caixinha de desfazer: "Desfazer" volta o
+// card na hora e faz o contrário no Trello (sai do card, volta para a entrada), e o desfeito fica depois de recarregar;
+// quando o Trello recusa o desfazer, o card volta para onde a mudança o deixou, com o motivo. No celular, o card não se
+// arrasta: a mudança é pelos botões, e a caixinha de desfazer tem os botões de 44px.
+//
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:producoes
 // Com CAPTURAS=pasta, grava as capturas de cada tela (densidade 2).
 const assert = require('node:assert/strict');
@@ -453,6 +461,124 @@ async function osBotoes(navegador, url, chamadasAoTrello) {
   console.log('ok: sem a ligação com o designer: a tela sem os botões, com a explicação');
 }
 
+/** Arrasta o card até a coluna com o mouse (o arrastar do navegador); `antes` olha a tela com o card no ar. */
+async function arrastar(p, cardLoc, destino, antes = async () => {}) {
+  await cardLoc.locator('.prod-claquete').hover();
+  await p.mouse.down();
+  const caixa = await destino.boundingBox();
+  await p.mouse.move(caixa.x + caixa.width / 2, caixa.y + Math.min(caixa.height / 2, 60), { steps: 8 });
+  await antes();
+  await p.mouse.up();
+}
+const calmo = (p) => p.waitForFunction(() => !document.querySelector('.prod-mudar:disabled'));
+
+async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) {
+  const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
+  await p.locator('.prod-bloco').first().waitFor();
+  chamadasAoTrello.splice(0);
+  const novela = () => cardDe(p, 'Novela Sinfonia');
+  assert.equal(await novela().getAttribute('draggable'), 'true', 'no computador, o card se arrasta');
+  assert.deepEqual(await contas(p, 'G5'), [3, 0, 0]);
+
+  // arrastar da Entrada para Produzindo é pegar: no ar, só as colunas do bloco dele para onde ele pode ir ficam marcadas
+  await arrastar(p, novela(), coluna(p, 'G5', 'produzindo'), async () => {
+    const marcadas = await p.locator('.prod-coluna.aceita').evaluateAll((cs) => cs.map((c) => `${c.closest('.prod-bloco').dataset.praca} ${c.dataset.coluna}${c.classList.contains('sobre') ? ' (sobre)' : ''}`));
+    assert.deepEqual(marcadas, ['G5 produzindo (sobre)', 'G5 entregue']);
+    await capturar(p, '10-producoes-arrastando');
+  });
+  await coluna(p, 'G5', 'produzindo').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
+  await calmo(p);
+  assert.equal(await designersDe(novela()), 'Dora Lima, Enzo Prado, Lia Moraes');
+  assert.deepEqual(chamadasAoTrello.splice(0), [`POST /cards/${card(4)}/idMembers ?value=membroLia`]);
+  assert.equal(await p.locator('.prod-coluna.aceita').count(), 0, 'solto, nenhuma coluna fica marcada');
+  // a caixinha de desfazer
+  const caixinha = p.locator('.prod-desfazer');
+  await caixinha.waitFor();
+  assert.match(await caixinha.locator('.prod-desfazer-texto').textContent(), /Você pegou Novela Sinfonia/);
+  await capturar(p, '11-producoes-desfazer');
+  // "Desfazer": o card volta para a Entrada, e no Trello a Lia sai do card
+  await caixinha.getByRole('button', { name: 'Desfazer' }).click();
+  await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
+  assert.equal(await caixinha.count(), 0, 'desfeito, a caixinha fecha');
+  await calmo(p);
+  assert.equal(await designersDe(novela()), 'Dora Lima, Enzo Prado');
+  assert.deepEqual(chamadasAoTrello.splice(0), [`DELETE /cards/${card(4)}/idMembers/membroLia`]);
+  await p.reload();
+  await p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await contas(p, 'G5'), [3, 0, 0], 'o desfeito fica depois de recarregar');
+
+  // soltar no bloco de outra praça não muda nada
+  await arrastar(p, novela(), coluna(p, 'SP', 'produzindo'), async () => {
+    assert.equal(await coluna(p, 'SP', 'produzindo').evaluate((c) => c.classList.contains('aceita')), false);
+  });
+  await p.waitForTimeout(300);
+  assert.deepEqual(await contas(p, 'G5'), [3, 0, 0]);
+  assert.deepEqual(chamadasAoTrello, [], 'soltar fora do bloco não vai ao Trello');
+
+  // arrastar da Entrada para Entregue, com arte faltando: o aviso, e o card fica onde está; "Entregar assim mesmo" entrega
+  await arrastar(p, novela(), coluna(p, 'G5', 'entregue'));
+  const aviso = novela().locator('.prod-aviso');
+  await aviso.waitFor();
+  assert.deepEqual(await textos(aviso.locator('.prod-aviso-artes li')), ['HOJE', 'AMANHÃ']);
+  assert.deepEqual(await contas(p, 'G5'), [3, 0, 0]);
+  assert.deepEqual(chamadasAoTrello, [], 'o aviso não vai ao Trello');
+  assert.equal(await novela().getAttribute('draggable'), 'false', 'com o aviso aberto, o card não se arrasta');
+  await aviso.getByRole('button', { name: 'Entregar assim mesmo' }).click();
+  await coluna(p, 'G5', 'entregue').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
+  await calmo(p);
+  assert.deepEqual(chamadasAoTrello.splice(0), [`PUT /cards/${card(4)} ?idList=saidaG5`]);
+  assert.match(await caixinha.locator('.prod-desfazer-texto').textContent(), /Novela Sinfonia .* foi entregue/);
+  // desfazer a entrega: o card volta para a entrada da praça
+  await caixinha.getByRole('button', { name: 'Desfazer' }).click();
+  await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
+  await calmo(p);
+  assert.deepEqual(chamadasAoTrello.splice(0), [`PUT /cards/${card(4)} ?idList=entradaG5`]);
+
+  // o Trello recusa o desfazer: o card volta para onde a mudança o deixou, e a tela diz o motivo
+  const jogo = () => cardDe(p, 'Jogo Final');
+  await arrastar(p, jogo(), coluna(p, 'G5', 'produzindo'));
+  await coluna(p, 'G5', 'produzindo').locator('.prod-card', { hasText: 'Jogo Final' }).waitFor();
+  await caixinha.waitFor();
+  await calmo(p);
+  chamadasAoTrello.splice(0);
+  trelloFalso.recusar = true;
+  await caixinha.getByRole('button', { name: 'Desfazer' }).click();
+  const recusa = p.locator('.prod-recusa');
+  await recusa.waitFor();
+  trelloFalso.recusar = false;
+  assert.match(await recusa.textContent(), /Não desfez Jogo Final.*Trello recusou/s);
+  await calmo(p);
+  assert.deepEqual(await claquetes(p, 'G5', 'produzindo'), [`Jogo Final ${dm(0)}`]);
+  assert.equal(await designersDe(jogo()), 'Dora Lima, Lia Moraes');
+  await recusa.locator('button').click();
+  chamadasAoTrello.splice(0);
+  assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: arrastar: pegar e entregar da Entrada (com o aviso), só as colunas do bloco; desfazer na hora (também depois de recarregar), e a recusa do Trello desfeita na tela');
+
+  // no celular, o card não se arrasta: os botões, e a caixinha de desfazer com 44px
+  const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
+  await cel.p.locator('.prod-bloco').first().waitFor();
+  assert.deepEqual(await cel.p.locator('.prod-card').evaluateAll((cs) => cs.filter((c) => c.draggable).length), 0, 'no celular, nenhum card se arrasta');
+  await cardDe(cel.p, 'Jogo Final').locator('.prod-mudar.voltar').tap();
+  await coluna(cel.p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Jogo Final' }).waitFor();
+  const caixa = cel.p.locator('.prod-desfazer');
+  await caixa.waitFor();
+  assert.match(await caixa.textContent(), /Jogo Final .* voltou para a Entrada/);
+  const alturas = await caixa.locator('button').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
+  assert.ok(alturas.length === 2 && alturas.every((h) => h >= 44), `no celular, os botões da caixinha têm 44px (${alturas})`);
+  await semRolagemDeLado(cel.p, 'celular com a caixinha de desfazer');
+  await capturar(cel.p, '12-producoes-celular-desfazer');
+  await caixa.getByRole('button', { name: 'Desfazer' }).tap();
+  await coluna(cel.p, 'G5', 'produzindo').locator('.prod-card', { hasText: 'Jogo Final' }).waitFor();
+  await calmo(cel.p);
+  assert.deepEqual(chamadasAoTrello.splice(0), [`DELETE /cards/${card(5)}/idMembers/membroLia`, `POST /cards/${card(5)}/idMembers ?value=membroLia`]);
+  assert.deepEqual(cel.erros, []);
+  await cel.ctx.close();
+  console.log('ok: celular: sem arrastar, a mudança pelos botões e a caixinha de desfazer com 44px');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -463,10 +589,13 @@ async function principal() {
   // o Trello de mentira só aceita escrita nos cards (#110): o que o servidor pede fica anotado; a leitura falha; o card
   // do Show da Noite recusa (para a tela desfazer)
   const chamadasAoTrello = [];
+  // #112: o Trello de mentira também recusa tudo quando o teste pede (o desfazer recusado)
+  const trelloFalso = { recusar: false };
   const buscar = async (u, init = {}) => {
     const metodo = init.method ?? 'GET';
     chamadasAoTrello.push(metodo === 'GET' ? `GET ${u}` : escrito(u, metodo));
     if (metodo === 'GET' || !new URL(u).pathname.startsWith('/1/cards/')) throw new Error(`o teste não sai para a rede: ${u}`);
+    if (trelloFalso.recusar) return new Response('recusado pelo Trello falso', { status: 400 });
     if (new URL(u).pathname.includes(card(1))) return new Response('card recusado pelo Trello falso', { status: 400 });
     return Response.json({});
   };
@@ -489,6 +618,7 @@ async function principal() {
     for (const tema of ['light', 'dark']) await noCelular(navegador, s.url, tema, chamadasAoTrello);
     await entradaNoCelular(navegador, s.url);
     await osBotoes(navegador, s.url, chamadasAoTrello);
+    await arrastarEDesfazer(navegador, s.url, chamadasAoTrello, trelloFalso);
   } catch (e) {
     falhou = true;
     console.error(e);

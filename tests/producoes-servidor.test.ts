@@ -347,7 +347,11 @@ describe('a tela de produções: pegar, voltar para a Entrada e entregar', () =>
     registro('recPeg5', { card_ID: card(25), claquete: 'Novela Sinfonia 20/12 SP', status: '["PRODUZINDO"]', designers: '["Ana Souza"]', artes: 'HOJE (RDP) | HOJE (CRT) | AMANHÃ', data_entrada: ha(2), __last_modified_time: ha(2) }),
   ];
   // o cadastro de designers (fictício): a Ana tem o e-mail e o id do membro no Trello; a Bia não está lá
-  const designers = () => [registro('recDesignerAna', { designer: 'Ana Souza', email: 'ana@empresa.com', designer_ID: 'membroAna', status: 'ativo' })];
+  // o Caio (#112) é outro designer ligado, para o desfazer de uma pessoa diante da mudança de outra
+  const designers = () => [
+    registro('recDesignerAna', { designer: 'Ana Souza', email: 'ana@empresa.com', designer_ID: 'membroAna', status: 'ativo' }),
+    registro('recDesignerCaio', { designer: 'Caio Prates', email: 'caio@empresa.com', designer_ID: 'membroCaio', status: 'ativo' }),
+  ];
 
   type Pedido = { metodo: string; caminho: string; consulta: Record<string, string> };
   /** O Trello de mentira: anota cada pedido (sem a chave e o token) e responde ok, ou recusa onde `recusar` disser. */
@@ -389,9 +393,13 @@ describe('a tela de produções: pegar, voltar para a Entrada e entregar', () =>
     const marcar = (id: string, artes: string[]) => s.db.prepare('UPDATE producoes SET artes_marcadas = ? WHERE id = ?').run(JSON.stringify(artes), id);
     const linhaDoTempo = async (id: string) => ((await (await s.ana(`/api/linha-do-tempo?producao=${id}`)).json()) as { eventos: EventoDaLinha[] }).eventos;
     const bia = (caminho: string, init: RequestInit = {}) => s.ana(caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'bia@empresa.com' } });
-    return { ...s, trello: t, tela, daClaquete, idDe, mudar, marcar, linhaDoTempo, bia };
+    const caio = (caminho: string, init: RequestInit = {}) => s.ana(caminho, { ...init, headers: { 'cf-access-authenticated-user-email': 'caio@empresa.com' } });
+    const desfazer = (id: string, quem = s.ana) => quem('/api/producoes/desfazer', { method: 'POST', body: JSON.stringify({ producao: id }) });
+    return { ...s, trello: t, tela, daClaquete, idDe, mudar, marcar, linhaDoTempo, bia, caio, desfazer };
   }
   const resumo = (evs: EventoDaLinha[]) => evs.map((e) => [e.tipo, e.antes, e.depois, e.quem, e.origem ?? '']);
+  /** O resumo com a marca do desfazer (o evento que desfez uma mudança). */
+  const comDesfeito = (evs: (EventoDaLinha & { desfez?: boolean })[]) => evs.map((e) => [e.tipo, e.antes, e.depois, e.desfez ? 'desfez' : '']);
 
   it('quem está ligado a um designer vê que pode pegar', async () => {
     const { tela } = await preparado();
@@ -606,5 +614,126 @@ describe('a tela de produções: pegar, voltar para a Entrada e entregar', () =>
       ['etapa', 'produzindo', 'entrada', null, ''],
       ['designer-saiu', 'Ana Souza', null, null, ''],
     ]);
+  });
+
+  /* ---------- desfazer (#112): a ação contrária, gravada como evento novo, só da última mudança da pessoa ---------- */
+
+  it('desfazer "Peguei": quem pegou sai do card e dos designers, a Produção volta para a Entrada, e os eventos novos dizem que desfez', async () => {
+    const { idDe, mudar, desfazer, daClaquete, linhaDoTempo, trello } = await preparado();
+    const id = await idDe('Show da Noite');
+    expect((await mudar(id, 'produzindo')).status).toBe(200);
+    trello.pedidos.length = 0;
+    const r = await desfazer(id);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ feito: { antes: 'produzindo', depois: 'entrada', designer: { saiu: 'Ana Souza' } }, producao: { id, etapa: 'entrada', designers: [] } });
+    expect(trello.pedidos).toEqual([{ metodo: 'DELETE', caminho: `/cards/${card(21)}/idMembers/membroAna`, consulta: {} }]);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entrada', designers: [] });
+    // a mudança fica na linha do tempo; o desfazer é evento novo, com quem e a origem
+    const evs = await linhaDoTempo(id);
+    expect(comDesfeito(evs)).toEqual([
+      ['etapa', 'entrada', 'produzindo', ''],
+      ['designer-entrou', null, 'Ana Souza', ''],
+      ['etapa', 'produzindo', 'entrada', 'desfez'],
+      ['designer-saiu', 'Ana Souza', null, 'desfez'],
+    ]);
+    expect(resumo(evs).slice(2).map((e) => [e[3], e[4]])).toEqual([
+      ['Ana Souza', 'PROMeiro'],
+      ['Ana Souza', 'PROMeiro'],
+    ]);
+  });
+
+  it('desfazer "Voltar para a Entrada" de Entregue: o card volta para a saída, quem saiu volta ao card, e a entrega é a de antes', async () => {
+    const { idDe, mudar, desfazer, daClaquete, trello } = await preparado();
+    const jogo = await idDe('Jogo Final');
+    const antes = (await daClaquete('Jogo Final')) as Card & { entregaEm: string };
+    expect((await mudar(jogo, 'entrada')).status).toBe(200);
+    trello.pedidos.length = 0;
+    expect((await desfazer(jogo)).status).toBe(200);
+    expect(trello.pedidos).toEqual([
+      { metodo: 'PUT', caminho: `/cards/${card(23)}`, consulta: { idList: 'saidaSP' } },
+      { metodo: 'POST', caminho: `/cards/${card(23)}/idMembers`, consulta: { value: 'membroAna' } },
+    ]);
+    expect(await daClaquete('Jogo Final')).toMatchObject({ etapa: 'entregue', designers: ['Ana Souza'], entregaEm: antes.entregaEm });
+  });
+
+  it('desfazer "Entreguei": o card volta para a entrada da praça e a Produção para Produzindo', async () => {
+    const { idDe, mudar, desfazer, daClaquete, linhaDoTempo, trello } = await preparado();
+    const id = await idDe('Novela Sinfonia');
+    expect((await mudar(id, 'entregue', undefined, { assimMesmo: true })).status).toBe(200);
+    trello.pedidos.length = 0;
+    expect((await desfazer(id)).status).toBe(200);
+    expect(trello.pedidos).toEqual([{ metodo: 'PUT', caminho: `/cards/${card(25)}`, consulta: { idList: 'entradaSP' } }]);
+    expect(await daClaquete('Novela Sinfonia')).toMatchObject({ etapa: 'produzindo', designers: ['Ana Souza'] });
+    expect(comDesfeito(await linhaDoTempo(id))).toEqual([
+      ['etapa', 'produzindo', 'entregue', ''],
+      ['etapa', 'entregue', 'produzindo', 'desfez'],
+    ]);
+  });
+
+  it('a Produção sem card desfaz só no PROMeiro', async () => {
+    const { idDe, mudar, desfazer, daClaquete, trello } = await preparado();
+    const id = await idDe('Cozinha de Vó');
+    expect((await mudar(id, 'produzindo')).status).toBe(200);
+    const r = await desfazer(id);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ feito: { semCard: true } });
+    expect(await daClaquete('Cozinha de Vó')).toMatchObject({ etapa: 'entrada', designers: [] });
+    expect(trello.pedidos).toEqual([]);
+  });
+
+  it('só vale para a última mudança da pessoa naquele card: o desfeito não desfaz de novo, e a mudança de outra pessoa depois tranca', async () => {
+    const { idDe, mudar, desfazer, daClaquete, caio, trello } = await preparado();
+    const id = await idDe('Show da Noite');
+    // sem nenhuma mudança da pessoa, não há o que desfazer
+    expect((await desfazer(id)).status).toBe(409);
+    expect((await mudar(id, 'produzindo')).status).toBe(200);
+    expect((await desfazer(id)).status).toBe(200);
+    // o desfazer não se desfaz
+    const deNovo = await desfazer(id);
+    expect(deNovo.status).toBe(409);
+    expect((await deNovo.json()).erro).toMatch(/já foi desfeita/);
+    // a Ana pega, o Caio entrega depois: a Ana não desfaz mais; o Caio desfaz a dele
+    expect((await mudar(id, 'produzindo')).status).toBe(200);
+    expect((await mudar(id, 'entregue', caio, { assimMesmo: true })).status).toBe(200);
+    trello.pedidos.length = 0;
+    const daAna = await desfazer(id);
+    expect(daAna.status).toBe(409);
+    expect((await daAna.json()).erro).toMatch(/mudou depois/);
+    expect(trello.pedidos).toEqual([]);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entregue' });
+    expect((await desfazer(id, caio)).status).toBe(200);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'produzindo', designers: ['Ana Souza'] });
+  });
+
+  it('a mudança de fora que chega depois (a releitura) tranca o desfazer', async () => {
+    const { idDe, mudar, desfazer, daClaquete, app, registros } = await preparado();
+    const id = await idDe('Show da Noite');
+    expect((await mudar(id, 'produzindo')).status).toBe(200);
+    Object.assign(registros.ARTE_producao[0].fields, { status: '["FINALIZADO"]', entregue: true, data_entrega: new Date().toISOString(), designers: '["Ana Souza"]', __last_modified_time: new Date(Date.now() + 60_000).toISOString() });
+    await app.relerAProducao();
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entregue' });
+    expect((await desfazer(id)).status).toBe(409);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'entregue' });
+  });
+
+  it('o Trello recusa o desfazer: a Produção fica como está, nenhum evento novo, e o motivo volta', async () => {
+    const { idDe, mudar, desfazer, daClaquete, linhaDoTempo, trello } = await preparado();
+    const id = await idDe('Show da Noite');
+    expect((await mudar(id, 'produzindo')).status).toBe(200);
+    trello.estado.recusar = () => true;
+    const r = await desfazer(id);
+    expect(r.status).toBe(502);
+    expect((await r.json()).erro).toMatch(/Trello recusou.*nada mudou/is);
+    expect(await daClaquete('Show da Noite')).toMatchObject({ etapa: 'produzindo', designers: ['Ana Souza'] });
+    expect((await linhaDoTempo(id)).length).toBe(2);
+  });
+
+  it('o desfazer mal pedido: sem ligação, a Produção que não existe e o método', async () => {
+    const { idDe, mudar, desfazer, bia, ana } = await preparado();
+    const id = await idDe('Show da Noite');
+    expect((await mudar(id, 'produzindo')).status).toBe(200);
+    expect((await desfazer(id, bia)).status).toBe(403);
+    expect((await desfazer('nao-existe')).status).toBe(404);
+    expect((await ana('/api/producoes/desfazer')).status).toBe(405);
   });
 });

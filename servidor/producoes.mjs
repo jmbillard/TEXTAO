@@ -99,6 +99,8 @@ export function criarTabelaDasProducoes(db) {
   if (!tem('eventos', 'chave')) db.exec('ALTER TABLE eventos ADD COLUMN chave TEXT');
   // a origem do evento (#110): 'PROMeiro' no que foi feito na tela de produções; vazia nos do Teable e do Trello
   if (!tem('eventos', 'origem')) db.exec('ALTER TABLE eventos ADD COLUMN origem TEXT');
+  // o desfazer da tela de produções (#112): o id do evento da etapa que o evento desfez; vazio nos outros
+  if (!tem('eventos', 'desfaz')) db.exec('ALTER TABLE eventos ADD COLUMN desfaz TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS eventos_chave ON eventos (chave)');
 }
 
@@ -138,7 +140,7 @@ const DA_TELA = `SELECT p.id, p.claquete, p.praca, p.etapa, p.marcador, p.design
   FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id`;
 
 /** O evento como a API mostra. */
-const doEvento = (e) => ({ tipo: e.tipo, ...(e.campo ? { campo: e.campo } : {}), antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null, ...(e.origem ? { origem: e.origem } : {}) });
+const doEvento = (e) => ({ tipo: e.tipo, ...(e.campo ? { campo: e.campo } : {}), antes: e.antes ?? null, depois: e.depois ?? null, quem: e.quem_id ? { id: e.quem_id, nome: e.quem_nome ?? '' } : null, quando: e.quando, acao: e.trello_acao ?? null, ...(e.origem ? { origem: e.origem } : {}), ...(e.desfaz ? { desfez: true } : {}) });
 
 /** A origem dos eventos feitos na tela de produções (#110). */
 export const ORIGEM_PROMEIRO = 'PROMeiro';
@@ -241,8 +243,13 @@ export function criarProducoes(db) {
     ),
     // o que foi feito na tela de produções (#110): quem é o e-mail e o nome do designer, sem ação do Trello
     anotarDoPROMeiro: db.prepare(
-      `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, origem, anotado_em) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, origem, desfaz, anotado_em) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
+    // o desfazer (#112): o último evento da etapa da Produção (de onde vier), as mudanças feitas junto com ele (o mesmo
+    // instante e a mesma pessoa) e o instante do último evento do PROMeiro
+    ultimaDaEtapa: db.prepare(`SELECT * FROM eventos WHERE producao_id = ? AND tipo IN (${DA_ETAPA.map(() => '?').join(', ')}) ORDER BY quando DESC, anotado_em DESC LIMIT 1`),
+    juntoCom: db.prepare('SELECT * FROM eventos WHERE producao_id = ? AND origem = ? AND quem_id = ? AND quando = ? ORDER BY anotado_em'),
+    ultimoDoPROMeiro: db.prepare('SELECT MAX(quando) AS quando FROM eventos WHERE producao_id = ? AND origem = ?'),
     anotarDoTeable: db.prepare(
       `INSERT INTO eventos (id, producao_id, tipo, campo, antes, depois, quem_id, quem_nome, quando, chave, anotado_em) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
        ON CONFLICT DO NOTHING`,
@@ -417,23 +424,42 @@ export function criarProducoes(db) {
    * O que foi feito na tela de produções (#110), numa transação: os eventos (a etapa, o designer que entrou ou saiu),
    * com quem, agora e a origem PROMeiro, e a Produção mudada na hora. Nada vai ao Teable (a produção da arte continua
    * com o n8n).
+   * O desfazer (#112) é a mesma coisa, com `desfaz` (o id do evento da etapa desfeito) em cada evento novo; a entrega
+   * que ele traz de volta é a de antes (a guardada), não a de agora.
+   * As mudanças de uma vez têm o mesmo instante, sempre depois do último evento do PROMeiro na Produção (o desfazer
+   * acha a mudança pelo instante).
    * @param mudancas [{ tipo: 'etapa' | 'designer-entrou' | 'designer-saiu', antes, depois }]
    * @param quem { email, nome } (o nome do designer)
    */
-  function doPROMeiro(id, mudancas, quem) {
-    const em = new Date().toISOString();
+  function doPROMeiro(id, mudancas, quem, { desfaz = null } = {}) {
+    let em = new Date().toISOString();
+    const ultimo = q.ultimoDoPROMeiro.get(id, ORIGEM_PROMEIRO)?.quando;
+    if (ultimo && ultimo >= em) em = new Date(Date.parse(ultimo) + 1).toISOString();
     db.exec('BEGIN');
     try {
       for (const ev of mudancas) {
-        q.anotarDoPROMeiro.run(randomUUID(), id, ev.tipo, ev.antes ?? null, ev.depois ?? null, quem.email, quem.nome, em, ORIGEM_PROMEIRO, em);
+        q.anotarDoPROMeiro.run(randomUUID(), id, ev.tipo, ev.antes ?? null, ev.depois ?? null, quem.email, quem.nome, em, ORIGEM_PROMEIRO, desfaz, em);
         mudarAProducao(id, { ...ev, quando: em }, em, []);
-        if (ev.tipo === 'etapa' && ev.depois === 'entregue') q.entregueAgora.run(em, id);
+        if (ev.tipo === 'etapa' && ev.depois === 'entregue' && !desfaz) q.entregueAgora.run(em, id);
       }
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
       throw e;
     }
+  }
+
+  /**
+   * A última mudança da etapa da Produção (#112), para o desfazer: o evento da etapa mais recente, de onde vier, e as
+   * mudanças feitas junto com ele (quando é do PROMeiro). null sem nenhum evento da etapa.
+   * @returns { id, tipo, antes, depois, quem, origem, desfaz, quando, junto: [{ tipo, antes, depois }] } ou null
+   */
+  function ultimaMudanca(id) {
+    const e = q.ultimaDaEtapa.get(id, ...DA_ETAPA);
+    if (!e) return null;
+    const junto = e.origem === ORIGEM_PROMEIRO && e.quem_id ? q.juntoCom.all(id, ORIGEM_PROMEIRO, e.quem_id, e.quando) : [e];
+    const doEv = (x) => ({ tipo: x.tipo, antes: x.antes ?? null, depois: x.depois ?? null });
+    return { id: e.id, ...doEv(e), quem: e.quem_id ?? null, origem: e.origem ?? null, desfaz: e.desfaz ?? null, quando: e.quando, junto: junto.map(doEv) };
   }
 
   /**
@@ -607,6 +633,7 @@ export function criarProducoes(db) {
     naTela,
     umaNaTela,
     doPROMeiro,
+    ultimaMudanca,
     /** A Produção pelo id (como a API mostra), ou null. */
     uma: (id) => {
       const l = q.doId.get(id);

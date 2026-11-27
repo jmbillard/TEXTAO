@@ -57,6 +57,10 @@ export interface TelaDeProducoes {
     para a Entrada; de Entregue, a volta para a Entrada. */
 export const BOTOES_DO_CARD: Record<ColunaDoBloco, readonly ColunaDoBloco[]> = { entrada: ['produzindo'], produzindo: ['entregue', 'entrada'], entregue: ['entrada'] };
 
+/** Para onde o card pode ser arrastado, no mesmo bloco (#112): para onde os botões levam e, da Entrada, também direto
+    para Entregue (o servidor aceita entregar da Entrada). */
+export const ARRASTA_PARA: Record<ColunaDoBloco, readonly ColunaDoBloco[]> = { entrada: ['produzindo', 'entregue'], produzindo: ['entregue', 'entrada'], entregue: ['entrada'] };
+
 /** O card mostra arte do checklist ainda não marcada? (Sem a lista de artes, não.) Entregar esse card pode trazer o
     aviso das que faltam (#111), que o servidor confere. */
 export const faltaArte = (c: CardDaProducao) => c.artes.aProduzir !== null && c.artes.entregues < c.artes.aProduzir;

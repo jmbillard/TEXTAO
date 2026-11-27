@@ -91,6 +91,26 @@
 .prod-recusa { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; background: var(--falta-fundo); color: var(--falta); }
 .prod-recusa .botao-texto { color: inherit; flex: none; }
 
+/* ---------- arrastar e desfazer (#112) ---------- */
+.prod-card.arrastavel { cursor: grab; }
+.prod-card.arrastavel:active { cursor: grabbing; }
+/* com um card no ar, as colunas do bloco para onde ele pode ir ficam marcadas; a de baixo do cursor, mais forte */
+.prod-coluna { transition: box-shadow 0.15s, background-color 0.15s; }
+.prod-coluna.aceita { box-shadow: inset 0 0 0 1.5px var(--regua-forte); }
+.prod-coluna.sobre { box-shadow: inset 0 0 0 2px var(--ultra); background: var(--ultra-suave); }
+.prod-coluna.sobre h3 { background: var(--ultra-suave); }
+/* a caixinha de desfazer, embaixo, no meio da janela */
+.prod-desfazer {
+  position: fixed; left: 50%; bottom: 24px; z-index: 30; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px)); box-sizing: border-box;
+  padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--tinta); color: var(--papel); box-shadow: var(--sombra-folha);
+  font: 500 13.5px/1.35 var(--sans);
+}
+.prod-desfazer-texto { min-width: 0; overflow-wrap: anywhere; }
+.prod-desfazer-botao { flex: none; background: var(--papel); border-color: var(--papel); color: var(--tinta); font-weight: 600; }
+.prod-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
+.prod-desfazer-fechar:hover { opacity: 1; }
+
 /* ---------- tablet: ao menos um bloco inteiro, e a área rola para o lado de praça em praça ---------- */
 @media (max-width: 900px) {
   .pagina.producoes { --margem: 16px; }
@@ -121,5 +141,9 @@
   .prod-acoes { margin-top: 6px; }
   .prod-mudar, .prod-aviso-botao { flex: 1 1 0; height: 44px; font-size: 14px; }
   .prod-aviso { font-size: 13px; }
+  /* a caixinha de desfazer na largura da tela, com os botões no tamanho do dedo */
+  .prod-desfazer { left: 16px; right: 16px; bottom: 16px; transform: none; max-width: none; }
+  .prod-desfazer-botao { height: 44px; padding: 0 18px; font-size: 14px; }
+  .prod-desfazer-fechar { min-width: 44px; height: 44px; }
   .prod-aviso-artes { font-size: 12.5px; }
 }

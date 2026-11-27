@@ -1340,6 +1340,13 @@ export const mudarEtapaDaProducao = (producao: string, etapa: 'produzindo' | 'en
     method: 'POST',
     body: JSON.stringify({ producao, etapa, ...(assimMesmo ? { assimMesmo: true } : {}) }),
   });
+/** Desfazer (#112) a última mudança da etapa da pessoa naquele card: o que foi feito e a Produção como a tela mostra
+    agora. Se a etapa mudou depois (outra pessoa, o Trello) ou já foi desfeita, o erro diz. */
+export const desfazerEtapaDaProducao = (producao: string) =>
+  pedir<{ feito?: { antes: string; depois: string; semCard: boolean }; producao: CardDaProducao | null }>('/api/producoes/desfazer', {
+    method: 'POST',
+    body: JSON.stringify({ producao }),
+  });
 /** O pedido da pauta com o filtro pessoal (#99), quando há. */
 const comFiltro = (busca: Record<string, string>, filtro: FiltroDaPauta | null) => {
   const q = new URLSearchParams(Object.entries({ ...busca, ...(filtro ? { filtro } : {}) }).filter(([, v]) => v)).toString();

@@ -17,9 +17,15 @@
  * Depois, a Produção do PROMeiro muda na hora, com os eventos (a etapa, o designer que entrou ou saiu), quem, quando
  * e a origem PROMeiro. Nada vai ao Teable: a produção da arte continua com o n8n, que sincroniza a partir do Trello.
  * A Produção sem card muda só no PROMeiro.
+ *
+ * Desfazer (#112) é a ação contrária, gravada como eventos novos (marcados com o que desfazem): só a última mudança da
+ * etapa daquele card, e só se ela é de quem pede, foi feita na tela e ainda não foi desfeita. Se alguém (aqui, no Trello
+ * ou no Teable) mudou a etapa depois, não desfaz. No Trello, o contrário do que a mudança fez: o card volta para a lista
+ * de onde saiu e quem entrou sai (ou quem saiu entra de novo).
  */
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
+import { ORIGEM_PROMEIRO } from './producoes.mjs';
 
 /** As etapas para onde a tela leva, e de onde cada uma sai. */
 const DE_ONDE = { produzindo: ['entrada'], entrada: ['produzindo', 'entregue'], entregue: ['entrada', 'produzindo'] };
@@ -72,7 +78,7 @@ export function criarEtapaDaProducao({ producoes }) {
       // entregar só move o card: não precisa do membro de quem clicou
       if (!designer.membro && etapa !== 'entregue') return { status: 403, corpo: { erro: SEM_MEMBRO } };
       if (!trello?.config?.chave || !trello?.config?.token) return { status: 503, corpo: { erro: 'O Trello não está configurado: nada mudou.' } };
-      const r = await noTrello(p, etapa, { trello, pracas, membro: designer.membro });
+      const r = await executar(p, passosDaMudanca(p, etapa, { trello, pracas, membro: designer.membro }));
       if (r.erro) return { status: 502, corpo: { erro: r.erro } };
       feito.trello = r.feito;
     }
@@ -86,27 +92,83 @@ export function criarEtapaDaProducao({ producoes }) {
   }
 
   /**
-   * Os passos no Trello, em ordem; o que falha depois de outro ter ido desfaz o que foi.
+   * Desfaz a última mudança de quem pede naquele card (#112): a ação contrária, no Trello e na Produção.
+   * @returns { status, corpo }: { feito, producao }, como `mudar`
+   */
+  async function desfazer({ producao: id }, { trello, pracas, email, designer, aTela }) {
+    if (!designer) return { status: 403, corpo: { erro: SEM_LIGACAO } };
+    const p = typeof id === 'string' && id ? producoes.uma(id) : null;
+    if (!p || p.arquivada) return { status: 404, corpo: { erro: 'Essa Produção não está mais na tela.' } };
+    const u = producoes.ultimaMudanca(p.id);
+    const sua = u && u.origem === ORIGEM_PROMEIRO && u.quem === email && u.tipo === 'etapa' && u.depois === p.etapa;
+    if (!sua) {
+      const erro = u ? 'A Produção mudou depois da sua mudança: não dá mais para desfazer. A tela foi lida de novo.' : 'Não há mudança sua para desfazer nesta Produção.';
+      return { status: 409, corpo: { erro, producao: aTela(p.id) } };
+    }
+    if (u.desfaz) return { status: 409, corpo: { erro: 'Essa mudança já foi desfeita.', producao: aTela(p.id) } };
+
+    // o contrário de cada mudança feita junto: a etapa volta; quem entrou sai, quem saiu entra de novo
+    const entrou = u.junto.find((m) => m.tipo === 'designer-entrou');
+    const saiu = u.junto.find((m) => m.tipo === 'designer-saiu');
+    const mudancas = [{ tipo: 'etapa', antes: u.depois, depois: u.antes }];
+    const ehDesigner = (nome) => p.designers.some((d) => nomeComparavel(d) === nomeComparavel(nome));
+    if (entrou && ehDesigner(entrou.depois)) mudancas.push({ tipo: 'designer-saiu', antes: entrou.depois, depois: null });
+    if (saiu && !ehDesigner(saiu.antes)) mudancas.push({ tipo: 'designer-entrou', antes: null, depois: saiu.antes });
+
+    const feito = { antes: p.etapa, depois: u.antes, semCard: !p.cardId, trello: [] };
+    if (p.cardId) {
+      const comMembro = mudancas.length > 1;
+      if (comMembro && !designer.membro) return { status: 403, corpo: { erro: SEM_MEMBRO } };
+      if (!trello?.config?.chave || !trello?.config?.token) return { status: 503, corpo: { erro: 'O Trello não está configurado: nada mudou.' } };
+      const praca = pracas.find((x) => x.sigla === p.praca);
+      const passos = [];
+      // o card volta para a lista de onde saiu: a entrega o levou à saída; a volta de Entregue, à entrada
+      if (u.depois === 'entregue') passos.push(passoDeMover(p, 'entrada', 'saida', praca, trello));
+      else if (u.antes === 'entregue') passos.push(passoDeMover(p, 'saida', 'entrada', praca, trello));
+      for (const m of mudancas.slice(1)) passos.push(passoDoMembro(p, m.tipo === 'designer-entrou', designer.membro, trello));
+      const r = await executar(p, passos);
+      if (r.erro) return { status: 502, corpo: { erro: r.erro } };
+      feito.trello = r.feito;
+    }
+    producoes.doPROMeiro(p.id, mudancas, { email, nome: designer.nome }, { desfaz: u.id });
+    const designerMudou = mudancas[1];
+    if (designerMudou) feito.designer = designerMudou.tipo === 'designer-entrou' ? { entrou: designerMudou.depois } : { saiu: designerMudou.antes };
+    return { status: 200, corpo: { feito, producao: aTela(p.id) } };
+  }
+
+  /** O passo que move o card para a lista `para` da praça (entrada ou saída) e, ao desfazer, de volta para `de`. Sem a
+      lista, o passo é o erro. */
+  function passoDeMover(p, para, de, praca, trello) {
+    const lista = (k) => (k === 'entrada' ? praca?.entrada || trello.config.listas?.padrao || '' : praca?.saida || '');
+    const destino = lista(para);
+    if (!destino) return { erro: `A praça ${p.praca || '(sem praça)'} não tem a lista de ${para === 'entrada' ? 'entrada' : 'saída'} na Configuração: nada mudou.` };
+    const volta = lista(de);
+    return { nome: 'card-movido', fazer: () => trello.moverCard(p.cardId, destino), desfazer: volta ? () => trello.moverCard(p.cardId, volta) : null };
+  }
+
+  /** O passo que põe o membro no card (`entra`) ou o tira, e o contrário ao desfazer. */
+  function passoDoMembro(p, entra, membro, trello) {
+    const por = () => trello.entrarNoCard(p.cardId, membro);
+    const tirar = () => trello.sairDoCard(p.cardId, membro);
+    return entra ? { nome: 'membro-entrou', fazer: por, desfazer: tirar } : { nome: 'membro-saiu', fazer: tirar, desfazer: por };
+  }
+
+  /** Os passos no Trello para levar a Produção à etapa, em ordem. */
+  function passosDaMudanca(p, etapa, { trello, pracas, membro }) {
+    const praca = pracas.find((x) => x.sigla === p.praca);
+    if (etapa === 'entregue') return [passoDeMover(p, 'saida', 'entrada', praca, trello)];
+    if (etapa === 'produzindo') return [passoDoMembro(p, true, membro, trello)];
+    return [...(p.etapa === 'entregue' ? [passoDeMover(p, 'entrada', 'saida', praca, trello)] : []), passoDoMembro(p, false, membro, trello)];
+  }
+
+  /**
+   * Os passos no Trello, em ordem; o que falha depois de outro ter ido desfaz o que foi. Um passo que já é o erro (a
+   * lista que falta) não deixa nenhum ir.
    * @returns { feito: ['membro-entrou' | 'membro-saiu' | 'card-movido'] } ou { erro }
    */
-  async function noTrello(p, etapa, { trello, pracas, membro }) {
-    const praca = pracas.find((x) => x.sigla === p.praca);
-    const passos = [];
-    if (etapa === 'entregue') {
-      const saida = praca?.saida || '';
-      if (!saida) return { erro: `A praça ${p.praca || '(sem praça)'} não tem a lista de saída na Configuração: nada mudou.` };
-      const entrada = praca?.entrada || trello.config.listas?.padrao || '';
-      passos.push({ nome: 'card-movido', fazer: () => trello.moverCard(p.cardId, saida), desfazer: entrada ? () => trello.moverCard(p.cardId, entrada) : null });
-    } else if (etapa === 'produzindo') passos.push({ nome: 'membro-entrou', fazer: () => trello.entrarNoCard(p.cardId, membro), desfazer: () => trello.sairDoCard(p.cardId, membro) });
-    else {
-      if (p.etapa === 'entregue') {
-        const entrada = praca?.entrada || trello.config.listas?.padrao || '';
-        if (!entrada) return { erro: `A praça ${p.praca || '(sem praça)'} não tem a lista de entrada na Configuração: nada mudou.` };
-        const saida = praca?.saida || '';
-        passos.push({ nome: 'card-movido', fazer: () => trello.moverCard(p.cardId, entrada), desfazer: saida ? () => trello.moverCard(p.cardId, saida) : null });
-      }
-      passos.push({ nome: 'membro-saiu', fazer: () => trello.sairDoCard(p.cardId, membro), desfazer: () => trello.entrarNoCard(p.cardId, membro) });
-    }
+  async function executar(p, passos) {
+    const semLista = passos.find((x) => x.erro);
+    if (semLista) return { erro: semLista.erro };
     const foram = [];
     for (const passo of passos) {
       try {
@@ -129,5 +191,5 @@ export function criarEtapaDaProducao({ producoes }) {
     return { feito: foram.map((f) => f.nome) };
   }
 
-  return { mudar };
+  return { mudar, desfazer };
 }

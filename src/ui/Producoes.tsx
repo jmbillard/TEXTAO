@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
-import { BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, faltaArte, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
+import { desfazerEtapaDaProducao, lerProducoesPorPraca, mudarEtapaDaProducao } from '../dados/armazenamento';
+import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, comOCard, diaDoPrazo, faltaArte, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { LER_ANDAMENTO_MS } from './fila';
 import { MarcaTexto, tracoDe } from './pecas';
@@ -21,7 +21,11 @@ import './producoes.css';
    #111: o card de Produzindo ganha "Entreguei": o card vai para Entregue (e, no Trello, para a saída da praça). Se
    alguma arte do checklist não está marcada, o card fica onde está e mostra o aviso com as que faltam, com "Entregar
    assim mesmo" e "Voltar". O card que já mostra arte faltando (a conta das artes) espera o servidor antes de mudar,
-   para não ir e voltar; o resto muda na hora. Arrastar e recolher o bloco vêm depois (#112, #113). */
+   para não ir e voltar; o resto muda na hora.
+   #112: no computador e no tablet, o card também muda arrastando, entre as colunas do mesmo bloco, com o mesmo efeito
+   dos botões (e o mesmo aviso de arte faltando). Depois de cada mudança, a caixinha de desfazer: desfazer é a ação
+   contrária, no servidor, só da última mudança da pessoa; a tela mostra na hora e volta atrás se o servidor recusa. No
+   celular, nada de arrastar: os botões, no tamanho do dedo. Recolher o bloco vem depois (#113). */
 
 interface Props {
   /** a linha do logo: o caminho "PROMeiro / designer ▾", a agenda No Trello, a Pauta da edição e o perfil */
@@ -61,6 +65,45 @@ interface Acoes {
   indo: boolean;
   fazer: (etapa: ColunaDoBloco) => void;
   aviso: { faltam: string[]; entregar: () => void; voltar: () => void } | null;
+  /** começar a arrastar o card (#112); null quando não dá (celular, mudança a caminho, aviso aberto) */
+  arrastar: ((sim: boolean) => void) | null;
+}
+
+/** O arrasto em curso (#112): o card e, se está sobre uma, a coluna de destino. */
+interface Arrasto {
+  card: CardDaProducao;
+  sobre: ColunaDoBloco | null;
+}
+
+/** A caixinha de desfazer (#112): a última mudança da pessoa (o card antes e depois) e a frase. */
+interface Desfazivel {
+  antes: CardDaProducao;
+  depois: CardDaProducao;
+  texto: string;
+}
+/** Quanto tempo a caixinha de desfazer fica aberta. */
+const DESFAZER_MS = 10_000;
+
+/** A frase da caixinha: o que a mudança fez. */
+function fraseDaMudanca(c: CardDaProducao, etapa: ColunaDoBloco) {
+  const nome = c.claquete || 'A Produção';
+  if (etapa === 'produzindo') return `Você pegou ${nome}.`;
+  if (etapa === 'entregue') return `${nome} foi entregue.`;
+  return `${nome} voltou para a Entrada.`;
+}
+
+/** O celular (#112): ali, a mudança é só pelos botões. A mesma largura do CSS. */
+const NO_CELULAR = '(max-width: 600px)';
+function useNoCelular() {
+  const [sim, setSim] = useState(() => typeof matchMedia === 'function' && matchMedia(NO_CELULAR).matches);
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
+    const m = matchMedia(NO_CELULAR);
+    const mudou = () => setSim(m.matches);
+    m.addEventListener('change', mudou);
+    return () => m.removeEventListener('change', mudou);
+  }, []);
+  return sim;
 }
 
 /** O aviso ao entregar (#111): as artes do checklist que não estão marcadas, e as duas saídas. */
@@ -92,8 +135,24 @@ function CardDaTela({ c, hoje, acoes }: { c: CardDaProducao; hoje: string; acoes
   const claquete = <span className="prod-claquete-texto">{c.claquete || 'Sem claquete'}</span>;
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
+  const arrastar = acoes?.arrastar ?? null;
   return (
-    <li className={`prod-card${c.alta ? ' alta' : ''}`} data-producao={c.id} data-etapa={c.etapa}>
+    <li
+      className={`prod-card${c.alta ? ' alta' : ''}${arrastar ? ' arrastavel' : ''}`}
+      data-producao={c.id}
+      data-etapa={c.etapa}
+      draggable={!!arrastar}
+      onDragStart={
+        arrastar
+          ? (e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', c.id);
+              arrastar(true);
+            }
+          : undefined
+      }
+      onDragEnd={arrastar ? () => arrastar(false) : undefined}
+    >
       <span className="prod-claquete" title={c.alta ? 'prioridade ALTA' : undefined}>{c.alta ? <MarcaTexto traco={tracoDe(c.id)}>{claquete}</MarcaTexto> : claquete}</span>
       <span className="prod-atracao">{c.atracao || 'sem atração'}</span>
       <span className="prod-linha">
@@ -130,7 +189,16 @@ function CardDaTela({ c, hoje, acoes }: { c: CardDaProducao; hoje: string; acoes
   );
 }
 
-function Bloco({ b, entregueDias, hoje, acoes }: { b: BlocoDaPraca; entregueDias: number; hoje: string; acoes: (c: CardDaProducao) => Acoes | null }) {
+/** O que a coluna faz com o arrasto em curso (#112): aceita o card (do mesmo bloco, para onde ele pode ir) e solta. */
+interface Soltar {
+  arrasto: Arrasto | null;
+  sobre: (k: ColunaDoBloco | null) => void;
+  soltar: (k: ColunaDoBloco) => void;
+}
+
+function Bloco({ b, entregueDias, hoje, acoes, solta }: { b: BlocoDaPraca; entregueDias: number; hoje: string; acoes: (c: CardDaProducao) => Acoes | null; solta: Soltar }) {
+  const arrasto = solta.arrasto?.card.praca === b.praca ? solta.arrasto : null;
+  const aceita = (k: ColunaDoBloco) => !!arrasto && ARRASTA_PARA[arrasto.card.etapa].includes(k);
   const total = COLUNAS_DO_BLOCO.reduce((n, k) => n + b.colunas[k].length, 0);
   const id = `bloco-${b.praca || 'sem-praca'}`;
   return (
@@ -144,7 +212,26 @@ function Bloco({ b, entregueDias, hoje, acoes }: { b: BlocoDaPraca; entregueDias
       </header>
       <div className="prod-colunas">
         {COLUNAS_DO_BLOCO.map((k) => (
-          <section key={k} className="prod-coluna" data-coluna={k} aria-label={`${b.praca} · ${ROTULO_DA_COLUNA[k]}`}>
+          <section
+            key={k}
+            className={`prod-coluna${aceita(k) ? ' aceita' : ''}${aceita(k) && arrasto?.sobre === k ? ' sobre' : ''}`}
+            data-coluna={k}
+            aria-label={`${b.praca} · ${ROTULO_DA_COLUNA[k]}`}
+            onDragOver={(e) => {
+              if (!aceita(k)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (arrasto?.sobre !== k) solta.sobre(k);
+            }}
+            onDragLeave={(e) => {
+              if (arrasto?.sobre === k && !e.currentTarget.contains(e.relatedTarget as Node | null)) solta.sobre(null);
+            }}
+            onDrop={(e) => {
+              if (!aceita(k)) return;
+              e.preventDefault();
+              solta.soltar(k);
+            }}
+          >
             <h3>
               <i aria-hidden="true" />
               <span className="prod-coluna-nome">{ROTULO_DA_COLUNA[k]}</span>
@@ -178,7 +265,16 @@ export function Producoes({ topo }: Props) {
   const [indo, setIndo] = useState<ReadonlySet<string>>(new Set());
   // o aviso de arte faltando (#111) aberto em cada card: as artes que faltam
   const [avisos, setAvisos] = useState<ReadonlyMap<string, string[]>>(new Map());
+  // o arrasto em curso e a caixinha de desfazer (#112)
+  const [arrasto, setArrasto] = useState<Arrasto | null>(null);
+  const [desfazivel, setDesfazivel] = useState<Desfazivel | null>(null);
+  const noCelular = useNoCelular();
   const reler = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!desfazivel) return;
+    const t = setTimeout(() => setDesfazivel(null), DESFAZER_MS);
+    return () => clearTimeout(t);
+  }, [desfazivel]);
   useEffect(() => {
     let vivo = true;
     const ler = (primeira: boolean) =>
@@ -217,8 +313,16 @@ export function Producoes({ topo }: Props) {
       else n.delete(id);
       return n;
     });
+  const comIndo = (id: string, sim: boolean) =>
+    setIndo((s) => {
+      const n = new Set(s);
+      if (sim) n.add(id);
+      else n.delete(id);
+      return n;
+    });
   /** Pegar, voltar ou entregar: a tela muda na hora; com a resposta, fica o card que o servidor diz; recusado, volta
-      atrás. A entrega com arte faltando volta com as que faltam: o card fica onde estava, com o aviso. */
+      atrás. A entrega com arte faltando volta com as que faltam: o card fica onde estava, com o aviso. Feita, a
+      caixinha de desfazer abre com ela (#112). */
   const mudar = useCallback(
     (c: CardDaProducao, etapa: ColunaDoBloco, assimMesmo = false) => {
       if (!designer) return;
@@ -229,8 +333,9 @@ export function Producoes({ topo }: Props) {
       // o card que já mostra arte faltando espera o servidor (que pode devolver o aviso), para não ir e voltar
       const naHoraMesmo = etapa !== 'entregue' || assimMesmo || !faltaArte(c);
       setRecusa('');
+      setDesfazivel(null);
       comAviso(c.id, null);
-      setIndo((s) => new Set(s).add(c.id));
+      comIndo(c.id, true);
       if (naHoraMesmo) setLido((t) => t && comOCard(t, naHora));
       mudarEtapaDaProducao(c.id, etapa, assimMesmo)
         .then(
@@ -238,7 +343,11 @@ export function Producoes({ topo }: Props) {
             if (r.faltam?.length) {
               setLido((t) => t && comOCard(t, r.producao ?? c));
               comAviso(c.id, r.faltam);
-            } else setLido((t) => t && comOCard(t, r.producao ?? naHora));
+            } else {
+              const depois = r.producao ?? naHora;
+              setLido((t) => t && comOCard(t, depois));
+              setDesfazivel({ antes: c, depois, texto: fraseDaMudanca(c, etapa) });
+            }
           },
           (e) => {
             setLido((t) => t && comOCard(t, c));
@@ -247,26 +356,50 @@ export function Producoes({ topo }: Props) {
             reler.current();
           },
         )
-        .finally(() =>
-          setIndo((s) => {
-            const n = new Set(s);
-            n.delete(c.id);
-            return n;
-          }),
-        );
+        .finally(() => comIndo(c.id, false));
     },
     [designer],
   );
+  /** Desfazer (#112): o card volta na hora para onde estava; o servidor faz a ação contrária. Recusado, o card fica
+      como estava depois da mudança, e a tela diz o motivo. */
+  const desfazer = (d: Desfazivel) => {
+    setDesfazivel(null);
+    setRecusa('');
+    comIndo(d.antes.id, true);
+    setLido((t) => t && comOCard(t, d.antes));
+    desfazerEtapaDaProducao(d.antes.id)
+      .then(
+        (r) => setLido((t) => t && comOCard(t, r.producao ?? d.antes)),
+        (e) => {
+          setLido((t) => t && comOCard(t, d.depois));
+          setRecusa(`Não desfez ${d.antes.claquete || 'a Produção'}: ${e instanceof Error ? e.message : 'o servidor não respondeu.'}`);
+          reler.current();
+        },
+      )
+      .finally(() => comIndo(d.antes.id, false));
+  };
   const acoes = (c: CardDaProducao): Acoes | null => {
     if (!designer) return null;
     // o aviso fica só enquanto o card não foi entregue (a releitura pode trazer a entrega feita por outra pessoa)
     const faltam = c.etapa === 'entregue' ? undefined : avisos.get(c.id);
+    const vai = indo.has(c.id);
     return {
       para: BOTOES_DO_CARD[c.etapa],
-      indo: indo.has(c.id),
+      indo: vai,
       fazer: (etapa) => mudar(c, etapa),
       aviso: faltam ? { faltam, entregar: () => mudar(c, 'entregue', true), voltar: () => comAviso(c.id, null) } : null,
+      // no celular, só os botões; e nada de arrastar o card com a mudança a caminho ou com o aviso aberto
+      arrastar: noCelular || vai || faltam ? null : (sim) => setArrasto(sim ? { card: c, sobre: null } : null),
     };
+  };
+  const solta: Soltar = {
+    arrasto,
+    sobre: (k) => setArrasto((a) => a && { ...a, sobre: k }),
+    soltar: (k) => {
+      const a = arrasto;
+      setArrasto(null);
+      if (a && a.card.etapa !== k) mudar(a.card, k);
+    },
   };
 
   return (
@@ -300,9 +433,20 @@ export function Producoes({ topo }: Props) {
             )}
             <div className="prod-blocos">
               {lido.blocos.map((b) => (
-                <Bloco key={b.praca || '—'} b={b} entregueDias={lido.entregueDias} hoje={hoje} acoes={acoes} />
+                <Bloco key={b.praca || '—'} b={b} entregueDias={lido.entregueDias} hoje={hoje} acoes={acoes} solta={solta} />
               ))}
             </div>
+            {desfazivel && (
+              <div className="prod-desfazer" role="status">
+                <span className="prod-desfazer-texto">{desfazivel.texto}</span>
+                <button type="button" className="botao prod-desfazer-botao" onClick={() => desfazer(desfazivel)}>
+                  Desfazer
+                </button>
+                <button type="button" className="botao-texto prod-desfazer-fechar" aria-label="Fechar" onClick={() => setDesfazivel(null)}>
+                  ×
+                </button>
+              </div>
+            )}
           </>
         )}
       </main>
