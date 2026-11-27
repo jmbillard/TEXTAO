@@ -97,7 +97,7 @@ const ARTE = [
   { id: 'recArteE2e2', fields: { card_ID: '', claquete: `Show da Tarde ${diaMes(hoje)} SP`, status: '["PRODUZINDO"]', entregue: false, arquivado: false, designers: '["Enzo Prado"]', artes: 'HOJE', praca: null, filme: null, data_entrada: sp(mais(hoje, -2), '10:00') } },
 ];
 
-async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null, quem = LIA, relogio = false) {
+async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null, quem = LIA, relogio = null) {
   const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': quem }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
   await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(quem), url }]);
   await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
@@ -109,8 +109,8 @@ async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null, que
   p.on('request', (r) => /trello/i.test(r.url()) && aoTrello.push(r.url()));
   // o relógio do navegador parado (os timers andam): o "agora" do Dia
   if (agora) await p.clock.setFixedTime(agora);
-  // o relógio do navegador nas mãos do teste: o minuto da releitura passa na hora (#99)
-  if (relogio) await p.clock.install();
+  // o relógio do navegador nas mãos do teste, a partir de `relogio`: o minuto da releitura passa na hora (#99)
+  if (relogio) await p.clock.install({ time: relogio });
   await p.goto(`${url}${hash}`);
   return { ctx, p, erros, aoTrello };
 }
@@ -611,7 +611,7 @@ async function osFiltros(navegador, url, teable) {
   const tela = { viewport: { width: 1440, height: 1000 }, colorScheme: 'light' };
 
   // a Carla, editora: "Só as minhas" na Semana; "Com arte minha" não aparece (ela não é designer)
-  let { ctx, p, erros, aoTrello } = await abrir(navegador, url, tela, '#/pauta', null, CARLA, true);
+  let { ctx, p, erros, aoTrello } = await abrir(navegador, url, tela, '#/pauta', null, CARLA, AS_15_30);
   await p.locator('.pauta-grade').waitFor();
   const filtro = p.getByRole('radiogroup', { name: 'Filtro da pauta' });
   assert.deepEqual(await textos(filtro.getByRole('radio')), ['Todas', 'Só as minhas']);
@@ -646,7 +646,7 @@ async function osFiltros(navegador, url, teable) {
   await filtro.getByRole('radio', { name: 'Todas' }).click();
   await lida;
   await p.waitForFunction(() => document.querySelectorAll('.pauta-coluna').length > 1);
-  assert.deepEqual(await textos(p.locator('.pauta-coluna .pauta-nome')), ['Ana Ribeiro', 'sem editor', 'Bruno Teixeira', 'Carla Duarte']);
+  assert.deepEqual(await textos(p.locator('.pauta-coluna .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte', 'sem editor']);
   // de volta à Semana, para a próxima vez
   await p.getByRole('radio', { name: 'Semana', exact: true }).click();
   await p.locator('.pauta-grade').waitFor();
