@@ -23,8 +23,11 @@ export const SALVAVEIS = new Set([
   'LIGADO_A_MAO',
   // os administradores salvos na tela (#77), em JSON (os e-mails); a chave-mestra CADASTRO_ADMINS fica no Portainer
   'ADMINISTRADORES',
-  // os turnos da montagem da pauta (#124), em JSON (id, nome, horário padrão), na ordem da grade; sem ela, os de fábrica
+  // os turnos da edição (#124), os da montagem da pauta, em JSON (id, nome, horário padrão), na ordem da grade; sem
+  // ela, os de fábrica
   'TURNOS',
+  // os turnos da arte (#175), no mesmo formato; sem ela, os de fábrica (manhã e noite). Nenhuma tela usa ainda
+  'TURNOS_DA_ARTE',
   // os horários do cartão da pauta no Teams (#135), em JSON (hora, dias da semana, a pauta de hoje ou de amanhã); sem
   // ela, os do n8n. O endereço do Power Automate é segredo: fica no Portainer (TEAMS_PAUTA_URL)
   'TEAMS_HORARIOS',

@@ -98,6 +98,12 @@ export interface Meta {
   /** A versão do roteiro (#156), da V2 em diante: a versão nova que substituiu a anterior na fila fica com a dela mais
       um. Ausente, vale a resposta "é v2" (a V2) ou a V1 (versaoDoRoteiro). */
   versao?: number;
+  /** A letra da chamada (#166), da B em diante: a chamada já liberada para exibição que volta para ajuste vira a letra
+      seguinte. Ausente, é a A (letraDoRoteiro), também nos roteiros de antes. */
+  letra?: string;
+  /** O roteiro que este substituiu na fila (#166): a letra e a versão dele e a resposta de "Essa chamada já foi
+      liberada para exibição?", para corrigir no detalhe do card (corrigirLiberacao). */
+  substituiu?: { letra: string; versao: number; liberada: boolean };
   /** Respondido "é outro roteiro": vai como card novo, mesmo com a claquete parecida. */
   outroRoteiro?: boolean;
   /** Artes do roteiro que a atração já tem prontas (acervo do Teable): aviso para quem revisa decidir. */

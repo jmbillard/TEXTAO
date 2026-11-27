@@ -4,7 +4,8 @@
  *
  * - o prazo: o dia (AAAA-MM-DD), que vale sobre a exibição. No Trello, o prazo (due) do card, às 18h de São Paulo;
  * - a atração: uma do cadastro das atrações (o nome como o cadastro escreve) ou nenhuma (desligada). Vale sobre a do
- *   Roteiro, a do filme e a da claquete. O card do Trello não tem o campo da atração: ela fica só no PROMeiro;
+ *   Roteiro, a do filme e a da claquete. O card do Trello não tem o campo da atração: ela vai ao link `atracao` da
+ *   linha do card na produção da arte do Teable (#173), não ao Trello;
  * - o designer: atribuir ou tirar qualquer designer ativo do cadastro. No Trello, o membro dele entra no card ou sai.
  *   A etapa não muda (o Peguei e o "Voltar para a Entrada" continuam sendo os botões da etapa);
  * - as artes: marcar e desmarcar (como a janela do After), apagar (todos os itens da arte saem do checklist) e o
@@ -14,8 +15,8 @@
  *
  * Como no Peguei: o Trello primeiro, só escrevendo (a única leitura é a dos itens do checklist do card que vai mudar, a
  * que o ADR 0006 deixa); o passo que falha depois de outro ter ido desfaz o que foi, e com o Trello recusando a
- * Produção não muda. Depois, os eventos, com quem, agora e a origem PROMeiro, mudam a Produção na hora. Nada vai ao
- * Teable. A Produção sem card muda só no PROMeiro.
+ * Produção não muda. Depois, os eventos, com quem, agora e a origem PROMeiro, mudam a Produção na hora. Só a atração
+ * vai ao Teable (#173), também antes dos eventos. A Produção sem card muda só no PROMeiro.
  */
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
 import { chaveDeArte } from '../src/modelo/diferencas.ts';
@@ -74,19 +75,46 @@ export function criarCardDaProducao({ producoes }) {
   }
 
   /**
-   * A atração (#160): uma do cadastro (o nome como ele escreve) ou '' (desligada). Fica só no PROMeiro.
-   * @param ctx.atracoes os nomes das atrações do cadastro
+   * A atração (#160): uma do cadastro (o nome como ele escreve) ou '' (desligada). No Teable (#173), o link `atracao`
+   * da linha do card na produção da arte, pela escrita do projeto do Padeiro (#144, `ligarAAtracao`): a nova em
+   * primeiro, as outras que a linha já tinha depois, menos a que sai; desligar tira todas (a que sobrasse voltaria nas
+   * leituras do link). O Teable primeiro: recusando, a Produção não muda. Sem card, sem a linha na produção da arte, ou
+   * com a tabela fora da base do PROMeiro (ou o Teable sem configurar), a atração muda só no PROMeiro.
+   * @param ctx.atracoes as atrações do cadastro: [{ nome, id }]
+   * @param ctx.atracaoNoTeable (cardId, { nova, tira }) => '' gravou, 'fora' ou o motivo; lança quando o Teable recusa
    */
   async function atracao({ producao, atracao: nome }, ctx) {
     const { p, recusa } = daTela(producao, ctx.designer);
     if (recusa) return recusa;
     if (typeof nome !== 'string') return { status: 400, corpo: { erro: 'Falta a atração (ou "" para desligar).' } };
     const pedida = nome.trim();
-    const doCadastro = pedida ? (ctx.atracoes ?? []).find((a) => nomeComparavel(a) === nomeComparavel(pedida)) : '';
+    const cadastro = ctx.atracoes ?? [];
+    const doCadastro = pedida ? cadastro.find((a) => nomeComparavel(a.nome) === nomeComparavel(pedida)) : null;
     if (doCadastro === undefined) return { status: 404, corpo: { erro: `A atração ${pedida} não está no cadastro das atrações.` } };
     const antes = ctx.aTela(p.id)?.atracao || null;
-    const mudancas = p.atracao === doCadastro ? [] : [{ tipo: 'campo', campo: 'atracao', antes, depois: doCadastro || null }];
-    return gravar(p, mudancas, [], ctx);
+    const depois = doCadastro?.nome ?? '';
+    const mudancas = p.atracao === depois ? [] : [{ tipo: 'campo', campo: 'atracao', antes, depois: depois || null }];
+    const teable = [];
+    let aviso = '';
+    if (mudancas.length && p.cardId && ctx.atracaoNoTeable) {
+      const idDaAntiga = antes ? cadastro.find((a) => nomeComparavel(a.nome) === nomeComparavel(antes))?.id : '';
+      const saiu = (x) => (!!idDaAntiga && x.id === idDaAntiga) || (!!antes && nomeComparavel(x.title ?? '') === nomeComparavel(antes));
+      let r;
+      try {
+        r = await ctx.atracaoNoTeable(p.cardId, { nova: doCadastro?.id ?? '', tira: doCadastro ? saiu : () => true });
+      } catch (e) {
+        return { status: 502, corpo: { erro: `O Teable recusou: ${e instanceof Error ? e.message : e}. Nada mudou no PROMeiro.` } };
+      }
+      if (!r) teable.push(doCadastro ? 'atracao-ligada' : 'atracao-desligada');
+      else if (r !== 'fora') {
+        aviso = `A atração mudou só no PROMeiro: ${r}.`;
+        console.warn(`[producoes] a atração de ${p.claquete} não foi ao Teable: ${r}`);
+      }
+    }
+    const g = await gravar(p, mudancas, [], ctx);
+    if (g.status === 200) g.corpo.feito.teable = teable;
+    if (aviso && g.status === 200) g.corpo.aviso = aviso;
+    return g;
   }
 
   /**

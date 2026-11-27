@@ -210,7 +210,7 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
         </span>
         <FecharOCardAberto rotulo="Fechar a Produção" />
         <h2 id="prod-aberta-titulo" title={apelido ? `Claquete: ${card.claquete}` : undefined}>
-          {apelido || card.claquete ? <NomeDaClaquete nome={apelido || card.claquete} versoes={versoes} /> : 'Sem claquete'}
+          {apelido || card.claquete ? <NomeDaClaquete nome={apelido || card.claquete} versoes={versoes} marca={card.letraEVersao} /> : 'Sem claquete'}
         </h2>
         <p className="pa-detalhe">
           {/* a versão do Roteiro (#156): sempre aqui, V1 sem versão nova; nunca no título */}

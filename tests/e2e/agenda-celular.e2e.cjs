@@ -1059,6 +1059,113 @@ async function apelidoPeloLapis(navegador, url, conferir) {
   }
 }
 
+/**
+ * A letra e a versão do roteiro (#166), no iPhone. Na fila, "Substituir a anterior" pergunta "Essa chamada já foi
+ * liberada para exibição?": o "Sim" faz a nova virar a letra B, de volta à V1, e a anterior sai da fila. Na agenda, a
+ * claquete só mostra o que não é o início ("B"; nada na A V1), e o card aberto diz sempre a letra e a versão e deixa
+ * corrigir a resposta: o "Não" refaz a letra e a versão a partir da anterior (A V2). Nada de unha.
+ */
+async function letraEVersaoNaAgenda(navegador, url, api, conferir) {
+  const rotulo = (t) => `letra e versão do roteiro, iPhone 13: ${t}`;
+  const d = diaMais(0);
+  const claquete = `CHAMADA_LETRA_${d.getDate()}/${d.getMonth() + 1}`;
+  const naAgenda = `CHAMADA_CORRIGIR_${d.getDate()}/${d.getMonth() + 1}`;
+  // a versão anterior na fila e a nova que a substitui (a pergunta da ficha)
+  await por(api, 'agdletraa', meta(claquete, isoLocal(d), 'RJ'), 1);
+  await por(api, 'agdletran', meta(claquete, isoLocal(d), 'RJ', { substitui: 'agdletraa' }), 1);
+  // na agenda: a que substituiu a A V1 como liberada (a B), para corrigir a resposta
+  await por(api, 'agdletrab', meta(naAgenda, isoLocal(d), 'RJ', { letra: 'B', versao: 1, substituiu: { letra: 'A', versao: 1, liberada: true } }), 1);
+  await fetch(`${api}/roteiros/agdletrab/trello`, { method: 'POST', headers: cabecalhos, body: JSON.stringify({ jaEsta: { card: 'agdletrab' } }) });
+  const lerMeta = async (id) => (await (await fetch(`${api}/roteiros/${id}`, { headers: cabecalhos })).json())?.meta;
+  const { ctx, p, erros } = await abrirNoCelular(navegador, url, 'iPhone 13');
+  try {
+    // a fila: o aviso da versão nova, com os dois botões no celular
+    const aviso = p.locator('.ficha-versao', { hasText: claquete });
+    await aviso.waitFor({ state: 'visible', timeout: 5000 });
+    await aviso.scrollIntoViewIfNeeded();
+    await aviso.getByRole('button', { name: 'Substituir a anterior' }).tap();
+    const pergunta = aviso.getByRole('group', { name: 'Essa chamada já foi liberada para exibição?' });
+    await pergunta.waitFor({ state: 'visible', timeout: 5000 });
+    conferir((await pergunta.innerText()).includes('Essa chamada já foi liberada para exibição?'), rotulo('"Substituir a anterior" pergunta se a chamada já foi liberada'));
+    conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), rotulo('com a pergunta, a página não rola para o lado'));
+    if (CAPTURAS) await aviso.screenshot({ path: `${CAPTURAS}/fila-pergunta-liberacao.png` });
+    // "Cancelar" volta aos dois botões; "Sim" substitui com a letra nova
+    await pergunta.getByRole('button', { name: 'Cancelar' }).tap();
+    await aviso.getByRole('button', { name: 'Substituir a anterior' }).waitFor({ state: 'visible', timeout: 5000 });
+    await aviso.getByRole('button', { name: 'Substituir a anterior' }).tap();
+    await pergunta.getByRole('button', { name: 'Sim' }).tap();
+    let m = null;
+    for (let i = 0; i < 30 && !m?.letra; i++) {
+      await p.waitForTimeout(200);
+      m = await lerMeta('agdletran');
+    }
+    conferir(m?.letra === 'B' && m?.versao === 1 && m?.substituiu?.liberada === true && !m?.substitui, rotulo(`"Sim": a nova vira a letra B, V1 (${JSON.stringify([m?.letra, m?.versao, m?.substituiu])})`));
+    conferir([404, 410].includes((await fetch(`${api}/roteiros/agdletraa`, { headers: cabecalhos })).status), rotulo('a anterior sai da fila'));
+
+    // a agenda: a claquete com a letra, o card aberto com a letra e a versão, e a correção
+    await levarAteAAgenda(p);
+    if (await p.isVisible('.secao-trello.encolhida')) {
+      await p.click('.pe-agenda .botao-texto:has-text("ver a semana inteira")');
+      await p.waitForTimeout(400);
+    }
+    const card = p.locator('.secao-trello .semana [data-card="agdletrab"]');
+    await card.waitFor({ state: 'visible', timeout: 5000 });
+    const nome = async () => (await card.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
+    const dado = async (r) => (await card.locator('.card-semana-dados .card-semana-pessoa', { hasText: r }).locator('dd').textContent()).trim();
+    conferir((await nome()) === `${naAgenda} B`, rotulo(`a claquete da letra B termina em "B", sem a V1 (${await nome()})`));
+    await card.scrollIntoViewIfNeeded();
+    await card.locator('.card-semana-abrir').tap();
+    await p.waitForTimeout(900);
+    conferir((await dado('letra')) === 'B' && (await dado('versão')) === 'V1', rotulo(`o card aberto diz a letra e a versão (${await dado('letra')} ${await dado('versão')})`));
+    const liberacao = card.getByRole('radiogroup', { name: 'A versão anterior já tinha sido liberada para exibição?' });
+    conferir((await liberacao.getByRole('radio', { name: 'Sim' }).getAttribute('aria-checked')) === 'true', rotulo('a resposta guardada aparece marcada'));
+    if (CAPTURAS) await card.screenshot({ path: `${CAPTURAS}/agenda-letra-b.png` });
+    await liberacao.getByRole('radio', { name: 'Não' }).tap();
+    await p.waitForFunction(() => document.querySelector('.secao-trello .semana [data-card="agdletrab"] .marca-letra-versao')?.textContent?.trim() === 'V2', null, { timeout: 5000 });
+    conferir((await nome()) === `${naAgenda} V2` && (await dado('letra')) === 'A' && (await dado('versão')) === 'V2', rotulo(`corrigida para "Não": a A V2 (${await nome()})`));
+    let mb = null;
+    for (let i = 0; i < 30 && mb?.versao !== 2; i++) {
+      await p.waitForTimeout(200);
+      mb = await lerMeta('agdletrab');
+    }
+    conferir(mb?.versao === 2 && !mb?.letra && mb?.substituiu?.liberada === false, rotulo(`a correção fica gravada (${JSON.stringify([mb?.letra, mb?.versao, mb?.substituiu])})`));
+    if (CAPTURAS) await card.screenshot({ path: `${CAPTURAS}/agenda-letra-corrigida.png` });
+    const unha = await card.locator('.card-semana-liberacao').evaluate((e) => [e, ...e.querySelectorAll('*')].some((x) => parseFloat(getComputedStyle(x).borderLeftWidth) > 1 || /inset/.test(getComputedStyle(x).boxShadow)));
+    conferir(!unha, rotulo('nada de unha na correção'));
+    conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), rotulo('a página não rola para o lado'));
+    conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
+  } finally {
+    await ctx.close();
+  }
+  // no computador, a pergunta fica na comparação: "Substituir a anterior" e o Revisar perguntam; o "Não" dá a V2
+  const rotuloPc = (t) => `letra e versão do roteiro, computador: ${t}`;
+  const outra = `CHAMADA_VERSAO_${d.getDate()}/${d.getMonth() + 1}`;
+  await por(api, 'agdversaoa', meta(outra, isoLocal(d), 'RJ'), 1);
+  await por(api, 'agdversaon', meta(outra, isoLocal(d), 'RJ', { substitui: 'agdversaoa' }), 1);
+  const pc = await contexto(navegador, url);
+  try {
+    const ficha = pc.p.locator('.ficha', { has: pc.p.locator('.ficha-versao', { hasText: outra }) });
+    await ficha.getByRole('button', { name: 'Revisar' }).click();
+    const dialogo = pc.p.getByRole('dialog', { name: 'Comparar com a versão anterior da fila' });
+    await dialogo.waitFor({ state: 'visible', timeout: 5000 });
+    await dialogo.locator('.comparar-decisao').getByRole('button', { name: 'Revisar' }).click();
+    const pergunta = dialogo.getByRole('group', { name: 'Essa chamada já foi liberada para exibição?' });
+    await pergunta.waitFor({ state: 'visible', timeout: 5000 });
+    conferir(true, rotuloPc('o Revisar de "Substituir a anterior" pergunta se a chamada já foi liberada'));
+    if (CAPTURAS) await dialogo.locator('.comparar-cabeca').screenshot({ path: `${CAPTURAS}/comparar-pergunta-liberacao.png` });
+    await pergunta.getByRole('button', { name: 'Não' }).click();
+    let m = null;
+    for (let i = 0; i < 30 && !m?.versao; i++) {
+      await pc.p.waitForTimeout(200);
+      m = await lerMeta('agdversaon');
+    }
+    conferir(m?.versao === 2 && !m?.letra && m?.substituiu?.liberada === false, rotuloPc(`"Não": a nova fica na A, como V2 (${JSON.stringify([m?.letra, m?.versao])})`));
+    conferir(pc.erros.length === 0, rotuloPc(`nenhum erro na página${pc.erros.length ? `: ${pc.erros.join(' | ')}` : ''}`));
+  } finally {
+    await pc.ctx.close();
+  }
+}
+
 /** Liga ou desliga "Mostrar o código das versões" no menu do perfil (#152) e fecha o menu. */
 async function mostrarOCodigo(p, ligado) {
   await p.locator('.perfil-botao').click();
@@ -1091,6 +1198,7 @@ async function principal() {
     await encolhida(navegador, amb.url, conferir);
     await apelidoNaAgenda(navegador, amb.url, amb.api, conferir);
     await apelidoPeloLapis(navegador, amb.url, conferir);
+    await letraEVersaoNaAgenda(navegador, amb.url, amb.api, conferir);
   } catch (e) {
     conferir(false, e instanceof Error ? e.stack ?? e.message : String(e));
   } finally {

@@ -28,9 +28,10 @@
 // tudo"), desfeito, tirado de administrador e marcado inativo (grava no Teable falso). No celular, só consulta.
 // #176: o texto dos designers com os nomes juntados se separa (cada pessoa uma vez, com o número de vezes); tornar
 // admin, cadastrar, ignorar e marcar inativo tiram a pessoa com as vagas e a caixinha do desfazer dos Cadastros.
-// Os Turnos (#124), claro e escuro: os de fábrica; o horário da Manhã escrito de qualquer jeito (vai para o padrão),
+// Os Turnos da edição (#124), claro e escuro: os de fábrica; o horário da Manhã escrito de qualquer jeito (vai para o padrão),
 // um turno novo, a Noite tirada e a ordem mudada; conferir (o que muda e o aviso do turno que sai) e salvar, que vale
-// na hora sem pedir nada ao Trello.
+// na hora sem pedir nada ao Trello. Os turnos da arte (#175), claro e escuro: a mesma lista, com a Manhã e a Noite de
+// fábrica, editada, conferida e salva à parte dos da edição.
 // O Histórico (#78), claro e escuro: pelo rodapé da Configuração; as mudanças (Pessoas e Praças, pela API como a tela
 // faz) com quem, quando e o antigo → o novo pelos nomes; voltar travado (a lista antiga foi arquivada) com o porquê;
 // voltar que vale na hora e entra no histórico. No celular, só consulta.
@@ -1252,6 +1253,7 @@ async function secaoTurnos(navegador, url, app, tema) {
   await turnos.waitFor();
   // sem nada salvo: os de fábrica, na ordem da grade
   assert.equal(await resumo(p, TURNOS), '4 turnos · os de fábrica');
+  assert.equal((await turnos.locator('h2').textContent()).trim(), 'Turnos da edição', 'a seção dos turnos da edição tem esse nome (#175)');
   assert.deepEqual(await linhasDosTurnos(p), ['Madrugada | 22h às 6h', 'Manhã | 6h às 15h', 'Tarde | 14h às 23h', 'Noite | 20h às 2h']);
   assert.equal(await barra(p), '');
 
@@ -1293,6 +1295,67 @@ async function secaoTurnos(navegador, url, app, tema) {
   // volta aos de fábrica, para os passos seguintes
   await app.mudarConfiguracao({ TURNOS: null }).antigaFechada;
   console.log(`ok: turnos ${nome}: os de fábrica → horário no padrão, turno novo, tirar e subir → conferir e salvar, vale na hora`);
+}
+
+/* ---------- os turnos da arte (#175) ---------- */
+
+const ARTE = '.cfg-secao[aria-labelledby="cfg-turnos-arte"]';
+const linhasDaArte = (p) =>
+  p.locator(`${ARTE} .cfg-turno`).evaluateAll((ls) => ls.map((l) => [...l.querySelectorAll('input')].map((i) => i.value).join(' | ') || l.textContent.trim()));
+
+async function secaoTurnosDaArte(navegador, url, app, tema) {
+  const nome = tema === 'dark' ? 'escuro' : 'claro';
+  await app.mudarConfiguracao({ TURNOS: null, TURNOS_DA_ARTE: null }).antigaFechada;
+  pedidosAoTrello.length = 0;
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+  const arte = p.locator(ARTE);
+  await arte.waitFor();
+  // logo depois dos turnos da edição, com o mesmo componente: a Manhã e a Noite de fábrica, a Noite virando o dia
+  assert.equal((await arte.locator('h2').textContent()).trim(), 'Turnos da arte');
+  assert.equal(await p.locator(`${TURNOS} + ${ARTE}`).count(), 1, 'os turnos da arte vêm logo depois dos da edição');
+  assert.equal(await resumo(p, ARTE), '2 turnos · os de fábrica');
+  assert.deepEqual(await linhasDaArte(p), ['Manhã | 7h às 16h', 'Noite | 16h às 0h30']);
+  await arte.locator('.cfg-turno', { has: p.locator('input[value="Noite"]') }).getByText('vira o dia').waitFor();
+  assert.equal(await barra(p), '');
+  await arte.scrollIntoViewIfNeeded();
+  await capturar(p, `37-turnos-da-arte-fabrica-${nome}`);
+
+  // a mesma edição dos da edição: horário de qualquer jeito, turno novo, tirar e subir
+  const manha = arte.getByLabel('Horário padrão de Manhã');
+  await manha.fill('8 AS 17');
+  await manha.blur();
+  assert.equal(await manha.inputValue(), '8h às 17h');
+  await arte.getByRole('button', { name: '+ Novo turno' }).click();
+  const novo = arte.locator('.cfg-turno.novo');
+  await novo.getByLabel('Nome do turno').fill('Tarde');
+  await novo.getByLabel('Horário padrão de Tarde').fill('12 as 21');
+  await arte.getByRole('button', { name: 'Subir Tarde' }).click();
+  assert.deepEqual(await linhasDaArte(p), ['Manhã | 8h às 17h', 'Tarde | 12h às 21h', 'Noite | 16h às 0h30']);
+  // os da edição não mudaram
+  assert.deepEqual(await linhasDosTurnos(p), ['Madrugada | 22h às 6h', 'Manhã | 6h às 15h', 'Tarde | 14h às 23h', 'Noite | 20h às 2h']);
+  assert.equal(await barra(p), '2 mudanças');
+  await semRolagemDeLado(p, `turnos da arte ${nome}`);
+  await capturar(p, `38-turnos-da-arte-rascunho-${nome}`);
+
+  await p.locator('.cfg-barra-salvar').click();
+  const dialogo = p.locator('.cfg-modal');
+  await dialogo.locator('h2', { hasText: 'Tudo confere' }).waitFor();
+  assert.deepEqual(await linhasDoQueMuda(dialogo), ['Turnos da arte · Manhã | 7h às 16h | 8h às 17h', 'Turnos da arte · Tarde | — | 12h às 21h']);
+  await capturar(p, `39-turnos-da-arte-conferir-${nome}`);
+  await dialogo.locator('.botao.primario', { hasText: 'Salvar' }).click();
+  await p.locator('.aviso', { hasText: 'Salvo. Já vale.' }).waitFor();
+  assert.equal(await barra(p), '');
+  assert.equal(await resumo(p, ARTE), '3 turnos');
+  assert.deepEqual(JSON.parse(app.modulos().env.TURNOS_DA_ARTE).map((t) => t.id), ['manha', 'tarde', 'noite']);
+  assert.equal(app.modulos().env.TURNOS ?? null, null, 'os turnos da edição continuam os de fábrica');
+  await p.reload();
+  await arte.waitFor();
+  assert.deepEqual(await linhasDaArte(p), ['Manhã | 8h às 17h', 'Tarde | 12h às 21h', 'Noite | 16h às 0h30']);
+  assert.equal(pedidosAoTrello.filter((x) => !x.startsWith('GET')).length, 0, 'os turnos da arte não escrevem no Trello');
+  assert.deepEqual(erros, [], `turnos da arte ${nome}: erros na página`);
+  await ctx.close();
+  await app.mudarConfiguracao({ TURNOS_DA_ARTE: null }).antigaFechada;
+  console.log(`ok: turnos da arte ${nome}: Manhã 7h–16h e Noite 16h–0h30 de fábrica → editar, conferir e salvar à parte`);
 }
 
 async function principal() {
@@ -1339,6 +1402,7 @@ async function principal() {
     for (const tema of ['light', 'dark']) await secaoFilmes(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await filmesNoCelular(navegador, s.url, tema);
     for (const tema of ['light', 'dark']) await secaoTurnos(navegador, s.url, s.app, tema);
+    for (const tema of ['light', 'dark']) await secaoTurnosDaArte(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await conexoes(navegador, s.url, s.app, teable, tema);
     for (const tema of ['light', 'dark']) await pessoas(navegador, s.url, s.app, tema);
     for (const tema of ['light', 'dark']) await pessoasNoCelular(navegador, s.url, s.app, tema);
