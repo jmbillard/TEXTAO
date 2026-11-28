@@ -51,9 +51,11 @@ interface Props {
   pedido: number;
   /** quantos comentários abertos há (para a barra) */
   contar?: (n: number) => void;
+  /** quem escreve guarda as âncoras refeitas quando o texto muda; o envio lido pela Pauta (#197) não é o texto vivo */
+  guardarAncoras?: boolean;
 }
 
-export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: Props) {
+export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar, guardarAncoras = true }: Props) {
   const [lidos, setLidos] = useState<ComentariosLidos | null>(null);
   const [novo, setNovo] = useState<{ ancora: Ancora } | null>(null);
   const [ativo, setAtivo] = useState<string | null>(null);
@@ -110,7 +112,7 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: P
     const mudou = () => redesenhar((n) => n + 1);
     const guardar = () => {
       clearTimeout(prazo);
-      if (!escreve) return;
+      if (!escreve || !guardarAncoras) return;
       prazo = setTimeout(() => {
         if (editor.isDestroyed) return;
         const refeitas = ancorasRefeitas(editor.state);
@@ -132,7 +134,7 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: P
       editor.off('update', guardar);
       window.removeEventListener('resize', mudou);
     };
-  }, [editor, escreve, id]);
+  }, [editor, escreve, guardarAncoras, id]);
 
   // o clique no trecho grifado abre o balão dele
   useEffect(() => {

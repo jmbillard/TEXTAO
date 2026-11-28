@@ -32,6 +32,7 @@
     "e2e:colunas": "node tests/e2e/colunas-e-limpo.e2e.cjs",
     "e2e:comentarios": "node tests/e2e/comentarios.e2e.cjs",
     "e2e:pauta": "node tests/e2e/pauta.e2e.cjs",
+    "e2e:roteiro-pela-pauta": "node tests/e2e/roteiro-pela-pauta.e2e.cjs",
     "e2e:correcoes": "node tests/e2e/correcoes.e2e.cjs",
     "e2e:producoes": "node tests/e2e/producoes.e2e.cjs",
     "e2e:campanhas": "node tests/e2e/campanhas.e2e.cjs",
