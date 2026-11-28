@@ -2,6 +2,7 @@ import type { Andamento, PresencaNosRoteiros, Resumo } from '../dados/armazename
 import type { Meta } from '../modelo/tipos';
 import { claquetePadrao } from '../modelo/vocabularios';
 import { apelidoDoRoteiro } from '../dados/apelidos';
+import { dataPorExtenso } from './util';
 
 /**
  * A claquete que a tela mostra (agenda, ficha da fila, topo do editor): o apelido da claquete do roteiro (#120, #154), quando há; senão, o nome
@@ -241,10 +242,7 @@ function montarDias(lista: Resumo[], andamento: Record<string, Andamento>, agora
   // os dias anteriores: antes do primeiro dia da semana de agora do critério
   const corte = isoLocal(somarDias(agora, inicioDaSemana(0, criterio)));
   const passados = [...new Set([...dia.values()].filter((d) => d && d < corte))].sort().reverse();
-  const anteriores = passados.map((iso) => {
-    const d = dataDoIso(iso);
-    return { iso, titulo: `${DIAS[d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()]}`, cards: doDia(iso) };
-  });
+  const anteriores = passados.map((iso) => ({ iso, titulo: dataPorExtenso(iso), cards: doDia(iso) }));
   return { dias, semData, anteriores };
 }
 
