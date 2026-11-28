@@ -578,7 +578,14 @@ _Evitar_: editadas (o PROMeiro não sabe o que já foi editado)
 
 **Card aberto**:
 O painel de 720 px no centro, sobre um véu leve, que cresce do card clicado e volta para ele ao fechar; no celular,
-ocupa a tela toda. A ficha da claquete da Pauta da edição abre nele; a tela de Produções também.
+ocupa a tela toda. A ficha da claquete da Pauta da edição abre nele; a tela de Produções, os Filmes e o card da agenda
+No Trello também (#171).
+
+**Caixinha do desfazer**:
+A caixinha preta embaixo, no meio da janela, depois de uma ação que dá para voltar: a frase do que aconteceu, o
+"Desfazer" sublinhado e o × que fecha. Uma só em todas as telas (#171), por cima do card aberto, com o prazo de 8 s
+em toda parte e o trilho do tempo, um fio claro que encolhe até o fim.
+_Evitar_: toast, snackbar
 _Evitar_: modal, popup
 
 **Escala da edição**:
