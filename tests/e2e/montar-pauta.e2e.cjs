@@ -880,7 +880,7 @@ async function colunaEArrastar(navegador, url) {
   await capturar(p, '14b-mover-caixinha');
   await movida.getByRole('button', { name: 'Desfazer' }).click();
   await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [[], [gala]]));
-  assert.equal(await movida.count(), 0, 'desfeito, a caixinha sai');
+  await movida.waitFor({ state: 'detached', timeout: 2000 });
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
   await semRolagemDeLado(p, 'coluna');
   await capturar(p, '14-coluna-computador');

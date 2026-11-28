@@ -1797,6 +1797,11 @@ a.ficha-marca.trello { text-decoration: none; }
 .vazio-a-mao { margin: 0; padding: 6px 4px; font: 600 18px/1.1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); transform-origin: left center; overflow-wrap: anywhere; }
 .vazio-a-mao.pequeno { font-size: 16px; }
 .nada { padding: 10px 8px; }
+/* a caixa de falta (#171): o erro e o aviso da página, uma caixa só (o mesmo raio, o mesmo respiro, o mesmo texto) em
+   todas as telas; cada classe guarda só o lugar dela */
+.aviso-de-falta, .cfg-falha, .cfg-aviso-topo, .cfg-fora, .prod-falha, .pauta-falha, .pauta-copia, .and-aviso.fora {
+  padding: 10px 14px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 13.5px/1.45 var(--sans);
+}
 .nada-na-agenda { margin: 2px 6px 12px; }
 /* o "você" à mão (VoceAMao): a sua linha na Pauta, o seu card em Produções */
 .rel-a-mao { display: inline-block; font: 600 19px/1 Caveat, cursive; letter-spacing: 0; text-transform: none; color: var(--ultra); rotate: -2deg; }

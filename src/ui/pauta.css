@@ -31,7 +31,7 @@
 
 .pauta-lendo { color: var(--tinta3); font: 400 14px var(--sans); }
 .pauta-vazia { display: inline-block; padding: 20px 4px; font: 600 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-2deg); }
-.pauta-falha { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
+.pauta-falha { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
 .pauta-nada { padding: 6px 2px; }
 
 .pauta-avatar { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--neutro); color: var(--tinta2); font: 600 10.5px var(--sans); letter-spacing: 0.02em; }
@@ -285,7 +285,7 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
 .pauta-nenhum { margin: 0; font: 600 18px/1.1 Caveat, cursive; color: var(--tinta3); }
 
 /* ---------- a cópia de reserva e o resumo do administrador (#99) ---------- */
-.pauta-copia { margin: -8px 0 16px; padding: 10px 14px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 13.5px/1.45 var(--sans); }
+.pauta-copia { margin: -8px 0 16px; }
 .pauta-resumo { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: -10px 0 16px; font: 400 12.5px var(--sans); color: var(--tinta3); }
 .pauta-resumo > span + span::before { content: '·'; margin-right: 14px; color: var(--regua-forte); }
 .pauta-resumo-conta { font-variant-numeric: tabular-nums; }

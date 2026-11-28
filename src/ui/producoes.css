@@ -50,7 +50,6 @@
 .prod-card.saindo-do-filtro { animation: sair-do-filtro 0.16s var(--suave) forwards; pointer-events: none; }
 @keyframes sair-do-filtro { to { opacity: 0; transform: scale(0.96); } }
 .prod-lendo { color: var(--tinta3); font: 400 14px var(--sans); }
-.prod-falha { padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
 
 /* ---------- os blocos lado a lado ---------- */
 .prod-pagina > .prod-blocos {
