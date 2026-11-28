@@ -4,6 +4,7 @@
 import { nomeSemArtigos } from './correcaoDeGrafia.ts';
 import { lerDemanda, type DemandaDaEscala, type PosicaoDaEscala } from './escala.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
+import { tipoDaLinha } from './pauta.ts';
 import type { DemandaParaDistribuir } from './ausencias.ts';
 
 /** A lista escrita ou colada em "Para distribuir": uma claquete por linha, sem as vazias e sem os espaços das pontas. */
@@ -13,24 +14,41 @@ export const linhasParaDistribuir = (texto: string): string[] =>
     .map((l) => l.trim().replace(/\s+/g, ' '))
     .filter(Boolean);
 
-/** Põe a demanda na posição, antes de `antesDe` (uma demanda dela) ou no fim. */
-export function acrescentarDemanda(posicoes: readonly PosicaoDaEscala[], posicao: string, demanda: DemandaDaEscala, antesDe: string | null = null): PosicaoDaEscala[] | null {
+/** Põe a demanda na posição, antes de `antesDe` (uma demanda dela) ou no fim; com `infos`, as infos dela logo depois (#199). */
+export function acrescentarDemanda(posicoes: readonly PosicaoDaEscala[], posicao: string, demanda: DemandaDaEscala, antesDe: string | null = null, infos: readonly DemandaDaEscala[] = []): PosicaoDaEscala[] | null {
   if (!posicoes.some((p) => p.id === posicao)) return null;
   return posicoes.map((p) => {
     if (p.id !== posicao) return p;
     const onde = antesDe ? p.demandas.findIndex((d) => d.id === antesDe) : -1;
     const i = onde >= 0 ? onde : p.demandas.length;
-    return { ...p, demandas: [...p.demandas.slice(0, i), demanda, ...p.demandas.slice(i)] };
+    return { ...p, demandas: [...p.demandas.slice(0, i), demanda, ...infos, ...p.demandas.slice(i)] };
   });
 }
 
-/** Tira a demanda da posição em que está: as posições sem ela, a demanda e de quem ela era ('' na vaga). */
-export function tirarDemanda(posicoes: readonly PosicaoDaEscala[], demanda: string): { posicoes: PosicaoDaEscala[]; demanda: DemandaDaEscala; de: string } | null {
+/** A demanda é uma info para o editor (#172, #199), e não claquete nem trabalho. */
+export const demandaEhInfo = (d: DemandaDaEscala) => tipoDaLinha(d.texto.trim(), false) === 'info';
+
+/**
+ * Tira a demanda da posição em que está: as posições sem ela, a demanda e de quem ela era ('' na vaga). A claquete leva
+ * as infos que vêm logo depois dela (#199: a info é da claquete de antes), em `infos`.
+ */
+export function tirarDemanda(posicoes: readonly PosicaoDaEscala[], demanda: string): { posicoes: PosicaoDaEscala[]; demanda: DemandaDaEscala; infos: DemandaDaEscala[]; de: string } | null {
   const dona = posicoes.find((p) => p.demandas.some((d) => d.id === demanda));
   if (!dona) return null;
+  const i = dona.demandas.findIndex((d) => d.id === demanda);
+  const tirada = dona.demandas[i];
+  const infos: DemandaDaEscala[] = [];
+  if (tipoDaLinha(tirada.texto.trim(), false) === 'claquete') {
+    for (const d of dona.demandas.slice(i + 1)) {
+      if (!demandaEhInfo(d)) break;
+      infos.push(d);
+    }
+  }
+  const saem = new Set([tirada.id, ...infos.map((d) => d.id)]);
   return {
-    posicoes: posicoes.map((p) => (p === dona ? { ...p, demandas: p.demandas.filter((d) => d.id !== demanda) } : p)),
-    demanda: dona.demandas.find((d) => d.id === demanda)!,
+    posicoes: posicoes.map((p) => (p === dona ? { ...p, demandas: p.demandas.filter((d) => !saem.has(d.id)) } : p)),
+    demanda: tirada,
+    infos,
     de: dona.editor,
   };
 }
@@ -52,7 +70,9 @@ export function lugarDaDemanda(posicoes: readonly PosicaoDaEscala[], demanda: st
 export function moverDemanda(posicoes: readonly PosicaoDaEscala[], demanda: string, posicao: string, antesDe: string | null = null): PosicaoDaEscala[] | null {
   if (antesDe === demanda) return posicoes.slice();
   const tirada = tirarDemanda(posicoes, demanda);
-  return tirada && acrescentarDemanda(tirada.posicoes, posicao, tirada.demanda, antesDe);
+  // a claquete vai com as infos dela (#199); soltar entre elas é soltar depois delas
+  if (tirada && antesDe && tirada.infos.some((d) => d.id === antesDe)) return acrescentarDemanda(tirada.posicoes, posicao, tirada.demanda, null, tirada.infos);
+  return tirada && acrescentarDemanda(tirada.posicoes, posicao, tirada.demanda, antesDe, tirada.infos);
 }
 
 /** Onde escalar: numa posição que já existe (a vaga, ou no lugar de quem está nela) ou numa posição nova do turno. */

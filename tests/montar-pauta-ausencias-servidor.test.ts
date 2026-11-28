@@ -13,6 +13,7 @@ import { criarCadastros } from '../servidor/cadastros.mjs';
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
+import { porProducoes } from './fixtures/producoes-falsas';
 
 const SEXTA = '2026-11-27';
 const SABADO = '2026-11-28';
@@ -76,7 +77,10 @@ describe('montar a pauta: ausências com período (#128)', () => {
 
   beforeAll(async () => {
     teable = teableFalso({ EDICAO_producao: 'pauta_pg' }, { registros: { EDICAO_producao: [] } });
-    app = criarApp({ db: abrirBanco(':memory:'), env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg, cadastros: criarCadastros(ENV_CADASTROS, { buscar: buscarOsCadastros }) });
+    const db = abrirBanco(':memory:');
+    app = criarApp({ db, env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg, cadastros: criarCadastros(ENV_CADASTROS, { buscar: buscarOsCadastros }) });
+    // a Pauta só mostra as claquetes que casam com uma Produção (#199)
+    porProducoes(db, ['Noite de Gala 27/11', 'Mundo Animal 30/11', 'Corujão 28/11', 'Vale a Pena Rever 1/12'], { perto: '2026-11-27' });
     await app.tabelasProntas;
     servidor = createServer(app as never);
     await new Promise<void>((ok) => servidor.listen(0, ok));

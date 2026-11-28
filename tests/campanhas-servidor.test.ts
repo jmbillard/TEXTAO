@@ -276,9 +276,9 @@ describe('a campanha na Pauta, na agenda e na busca (#181)', () => {
       const { linhas: ls } = (await (await davi(caminho)).json()) as { linhas: LinhaDaPauta[] };
       const por = (id: string) => ls.find((l) => l.id === id)!;
       expect(por('recPtNovela').producoes, caminho).toEqual([expect.objectContaining({ id: novela, campanhas: [lanc, aesp] })]);
-      // a claquete com Produção sem campanha: a lista vazia; a tarefa não cruza
+      // a claquete com Produção sem campanha: a lista vazia; a tarefa fica fora da Pauta (#199)
       expect(por('recPtCozinha').producoes?.[0].campanhas, caminho).toEqual([]);
-      expect(por('recPtTarefa').producoes, caminho).toBeUndefined();
+      expect(ls.find((l) => l.id === 'recPtTarefa'), caminho).toBeUndefined();
     }
   });
 

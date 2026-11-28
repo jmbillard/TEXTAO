@@ -3,8 +3,8 @@ import { diasDoRepetir, opcoesDoRepetir, repetirODia } from '../src/modelo/repet
 import type { Ausencia } from '../src/modelo/ausencias';
 import type { PosicaoDaEscala } from '../src/modelo/escala';
 
-/* Montar a pauta, Repetir (#129): copiar para outro dia a escala e as tarefas fixas de um dia; nunca as claquetes, que
-   mudam todo dia. Quem está fora no dia de destino vira vaga, com o motivo. Nomes e claquetes fictícios. A semana de
+/* Montar a pauta, Repetir (#129): copiar para outro dia a escala de um dia; nunca as claquetes, que mudam todo dia, nem
+   as tarefas, que saíram da Pauta (#199). Quem está fora no dia de destino vira vaga, com o motivo. Nomes e claquetes fictícios. A semana de
    23/11/2026 começa numa segunda: 27/11 é sexta; a semana passada começa em 16/11. */
 
 const SEXTA_PASSADA = '2026-11-20';
@@ -34,19 +34,19 @@ const contador = () => {
   return (prefixo: string) => `${prefixo}-novo-${++n}`;
 };
 
-describe('repetirODia: a escala e as tarefas fixas, nunca as claquetes', () => {
-  it('copia a ilha, o editor, o horário e as tarefas; deixa as claquetes e os avisos de fora', () => {
+describe('repetirODia: a escala, nunca as claquetes nem as tarefas', () => {
+  it('copia a ilha, o editor e o horário; deixa as claquetes, as tarefas (#199) e os avisos de fora', () => {
     const { posicoes, vagas } = repetirODia(ORIGEM, SEXTA, [], contador());
     expect(posicoes.map((p) => [p.turno, p.editor, p.ilha, p.horario, p.demandas.map((d) => d.texto)])).toEqual([
-      ['madrugada', 'Rui Teixeira', 'ilha-46', '22h às 6h', ['COMUNICAÇÃO']],
-      ['tarde', 'Elis Furtado', 'ilha-7', '14h às 22h53', ['CALHAUS']],
+      ['madrugada', 'Rui Teixeira', 'ilha-46', '22h às 6h', []],
+      ['tarde', 'Elis Furtado', 'ilha-7', '14h às 22h53', []],
       ['noite', '', '', '20h às 2h', []],
     ]);
     expect(posicoes.every((p) => p.avisos.length === 0)).toBe(true);
     expect(vagas).toEqual([]);
   });
 
-  it('as posições e as tarefas ganham ids novos (as do dia de origem continuam lá)', () => {
+  it('as posições ganham ids novos (as do dia de origem continuam lá)', () => {
     const { posicoes } = repetirODia(ORIGEM, SEXTA, [], contador());
     const ids = posicoes.flatMap((p) => [p.id, ...p.demandas.map((d) => d.id)]);
     expect(new Set(ids).size).toBe(ids.length);
@@ -58,10 +58,10 @@ describe('repetirODia: a escala e as tarefas fixas, nunca as claquetes', () => {
     expect(posicoes[2].vaga).toBeUndefined();
   });
 
-  it('quem está fora no dia de destino vira vaga, com o motivo; a ilha, o horário e as tarefas ficam', () => {
+  it('quem está fora no dia de destino vira vaga, com o motivo; a ilha e o horário ficam', () => {
     const { posicoes, vagas } = repetirODia(ORIGEM, SEXTA, [ferias('elis  furtado', '2026-11-25', '2026-12-04')], contador());
     expect(posicoes[1]).toMatchObject({ turno: 'tarde', editor: '', ilha: 'ilha-7', horario: '14h às 22h53', vaga: 'Elis Furtado está de férias até 4/12' });
-    expect(posicoes[1].demandas.map((d) => d.texto)).toEqual(['CALHAUS']);
+    expect(posicoes[1].demandas).toEqual([]);
     expect(posicoes[0].editor).toBe('Rui Teixeira');
     expect(vagas).toEqual([{ editor: 'Elis Furtado', motivo: 'férias até 4/12' }]);
   });

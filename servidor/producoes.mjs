@@ -326,6 +326,8 @@ export function criarProducoes(db) {
     doRegistro: db.prepare('SELECT * FROM producoes WHERE teable_registro = ?'),
     doId: db.prepare('SELECT * FROM producoes WHERE id = ?'),
     // a pauta da edição (#96): as que entraram desde a data (e as sem data de entrada)
+    // as Produções com card no Trello (#199): a lista de claquetes do Montar a pauta diz de onde cada uma veio
+    comCard: db.prepare('SELECT id FROM producoes WHERE card_id IS NOT NULL AND (entrada_em IS NULL OR entrada_em >= ?)'),
     daPauta: db.prepare('SELECT p.id, p.claquete, p.praca, p.etapa, p.designers, p.artes, p.artes_novas, p.artes_apagadas, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, r.meta AS roteiro_meta FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id WHERE p.entrada_em IS NULL OR p.entrada_em >= ?'),
     // a carga adota a Produção que o aviso do Trello criou para o card (ainda sem o registro do Teable): não duplica
     adotar: db.prepare(
@@ -1133,6 +1135,8 @@ export function criarProducoes(db) {
       return l ? daLinha(l) : null;
     },
     naPauta,
+    /** Os ids das Produções desde a data que têm card no Trello (#199, a lista de claquetes do Montar a pauta). */
+    comCard: (desde) => new Set(q.comCard.all(desde).map((l) => l.id)),
     porAtracao,
     vazia: () => Number(q.total.get().n) === 0,
     /** A data do evento mais novo (ISO), de onde a recuperação lê o quadro; null sem nenhum. */

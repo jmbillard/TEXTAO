@@ -60,6 +60,26 @@ export function criarDistribuicao(db, escala) {
       porNaLista(dia, linhas.map((l) => ({ texto: demandaNoPadrao(l, dia), deQuem: '' })), por);
     },
 
+    /**
+     * Escolhe uma claquete da lista das Produções (#199, ADR 0008): no fim de "Para distribuir" ou, com `posicao`, nas
+     * demandas dela (antes de `antesDe`, ou no fim). Quem chama já conferiu que ela casa com uma Produção. Devolve o id.
+     */
+    escolher(dia, claquete, { posicao = null, antesDe = null, id = null } = {}, por) {
+      const texto = demandaNoPadrao(String(claquete ?? '').trim().slice(0, LIMITES.texto), dia);
+      if (!texto) throw erro('Falta a claquete.');
+      const usados = new Set([...posicoesDe(dia).flatMap((p) => [p.id, ...p.demandas.map((d) => d.id), ...(p.avisos ?? []).map((a) => a.id)]), ...q.lista.all(dia).map((l) => l.id)]);
+      const novo = typeof id === 'string' && ID.test(id) && !usados.has(id) && !q.usado.get(id) ? id : `d-${randomUUID().slice(0, 24)}`;
+      if (posicao === null || posicao === undefined) {
+        if (q.lista.all(dia).length >= LIMITES.lista) throw erro(`A lista "Para distribuir" está cheia (até ${LIMITES.lista}).`);
+        porNaLista(dia, [{ id: novo, texto, deQuem: '' }], por);
+        return novo;
+      }
+      const novas = acrescentarDemanda(posicoesDe(dia), umId(posicao, 'a posição'), { id: novo, texto }, antesDe ?? null);
+      if (!novas) throw erro('Essa posição não existe mais.');
+      escala.gravarDia(dia, novas, por);
+      return novo;
+    },
+
     /** Leva uma claquete de "Para distribuir" para as demandas de uma posição (antes de `antesDe`, ou no fim). */
     levar(dia, id, posicao, antesDe, por) {
       const item = q.item.get(dia, umId(id, 'a claquete'));

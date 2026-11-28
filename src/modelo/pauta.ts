@@ -40,6 +40,8 @@ export interface LinhaDaPauta {
   producoes?: ProducaoNaPauta[];
   /** só na claquete da posição (#172, colunasDoDia e gradeDaSemana): as infos que vieram logo depois dela */
   infos?: string[];
+  /** só na info (#199): ela vinha depois de uma tarefa, que saiu da Pauta; fica na posição, como antes */
+  naPosicao?: true;
 }
 
 /** O que a pauta mostra de uma Produção (#96). */
@@ -179,7 +181,7 @@ export function separarAsInfos(ls: readonly LinhaDaPauta[]): { itens: LinhaDaPau
       continue;
     }
     if (l.tipo === 'info') {
-      ultima = dono ? (dono.infos ??= []) : infos;
+      ultima = dono && !l.naPosicao ? (dono.infos ??= []) : infos;
       ultima.push(l.texto);
       continue;
     }
@@ -563,6 +565,118 @@ export function cruzarComAProducao(linhas: readonly LinhaDaPauta[], producoes: r
     }
     return { ...l, chave: semPraca(curta), producoes: achadas };
   });
+}
+
+/* ---------- só as claquetes que casam com uma Produção (#199, ADR 0008) ---------- */
+
+/** A claquete casa com uma Produção: o cruzamento (cruzarComAProducao) achou ao menos uma. */
+export const casaComAProducao = (l: Pick<LinhaDaPauta, 'tipo' | 'producoes'>): boolean => l.tipo === 'claquete' && !!l.producoes?.length;
+
+/** O que ficou de fora da Pauta (#199): a claquete sem Produção ou a tarefa, com as infos que iam com ela. */
+export interface DeForaDaPauta {
+  id: string;
+  dia: string;
+  editor: string;
+  tipo: 'claquete' | 'tarefa';
+  texto: string;
+  /** as infos que vinham logo depois da claquete de fora (também ficam fora) */
+  infos: string[];
+}
+
+/**
+ * A Pauta só com as claquetes que casam com uma Produção (#199, ADR 0008), já cruzadas (cruzarComAProducao): ficam a
+ * claquete que casa, a info e o aviso (o recado do dia é um aviso sem editor); saem a tarefa e a claquete sem Produção,
+ * que vão para `deFora`, na ordem. A info é da claquete de antes, na mesma posição (separarAsInfos): a que vinha depois
+ * de uma claquete de fora sai com ela; a do começo da posição, ou depois de uma tarefa, fica na posição, como antes. A
+ * frase partida (a linha que continua a info de cima, mesmo com cara de tarefa) segue a info de cima. Nada é apagado:
+ * é só o que a tela mostra.
+ */
+export function soAsQueCasam(linhas: readonly LinhaDaPauta[]): { linhas: LinhaDaPauta[]; deFora: DeForaDaPauta[] } {
+  const ficam: LinhaDaPauta[] = [];
+  const deFora: DeForaDaPauta[] = [];
+  // por posição (o editor no dia): a claquete de fora que leva as infos que vierem, e a última info (a frase partida)
+  const estado = new Map<string, { dona: DeForaDaPauta | null; depoisDaTarefa: boolean; ultima: { texto: string; fica: boolean; dona: DeForaDaPauta | null } | null }>();
+  for (const l of linhas) {
+    const chave = `${l.dia}|${l.editor}`;
+    const e = estado.get(chave) ?? { dona: null, depoisDaTarefa: false, ultima: null };
+    estado.set(chave, e);
+    if (l.tipo === 'aviso') {
+      ficam.push(l);
+      continue;
+    }
+    const u = e.ultima;
+    if (u && l.tipo !== 'claquete' && continua(u.texto, l.texto, false)) {
+      u.texto = `${u.texto} ${l.texto}`;
+      if (u.fica) ficam.push(l);
+      else if (u.dona) u.dona.infos[u.dona.infos.length - 1] = u.texto;
+      continue;
+    }
+    if (l.tipo === 'info') {
+      const fica = !e.dona;
+      // a tarefa de antes saiu: a info continua na posição, e não vai para a claquete de antes dela
+      if (fica) ficam.push(e.depoisDaTarefa ? { ...l, naPosicao: true } : l);
+      else e.dona!.infos.push(l.texto);
+      e.ultima = { texto: l.texto, fica, dona: e.dona };
+      continue;
+    }
+    e.ultima = null;
+    e.depoisDaTarefa = l.tipo === 'tarefa';
+    if (casaComAProducao(l)) {
+      ficam.push(l);
+      e.dona = null;
+      continue;
+    }
+    const fora: DeForaDaPauta = { id: l.id, dia: l.dia, editor: l.editor, tipo: l.tipo === 'claquete' ? 'claquete' : 'tarefa', texto: l.texto, infos: [] };
+    deFora.push(fora);
+    // a info depois da tarefa fica na posição (separarAsInfos); depois da claquete de fora, vai com ela
+    e.dona = l.tipo === 'claquete' ? fora : null;
+  }
+  return { linhas: ficam, deFora };
+}
+
+/** Uma claquete que a coordenação pode pôr no Montar a pauta (#199): a de uma Produção, perto do dia. */
+export interface ClaqueteParaEscolher {
+  /** a claquete como a Produção a tem (a que entrou por último) */
+  claquete: string;
+  /** a chave da ficha, sem a versão e sem a praça: a mesma das Produções da claquete em todas as praças */
+  chave: string;
+  pracas: string[];
+  /** a etapa mais atrasada das Produções dela (resumoDaProducao) */
+  etapa: Etapa;
+  /** alguma das Produções tem card no Trello */
+  noTrello: boolean;
+  entradaEm: string | null;
+  /** as Produções da claquete */
+  producoes: string[];
+}
+
+/**
+ * As claquetes que a coordenação escolhe no Montar a pauta (#199, ADR 0008): as das Produções que entraram perto do dia
+ * (a mesma janela do cruzamento), sem as arquivadas, uma por chave (as praças juntas), da que entrou por último para a
+ * mais velha. Fica de fora a que já está no dia (`noDia`: as Produções que as demandas e "Para distribuir" já casam).
+ * @param comCard os ids das Produções com card no Trello
+ */
+export function claquetesParaEscolher(producoes: readonly ProducaoNaPauta[], dia: string, semPraca: (chave: string) => string, { comCard = new Set<string>(), noDia = new Set<string>() }: { comCard?: ReadonlySet<string>; noDia?: ReadonlySet<string> } = {}): ClaqueteParaEscolher[] {
+  const doDia = Date.parse(`${dia}T12:00:00Z`);
+  const perto = (p: ProducaoNaPauta) => {
+    const entrada = p.entradaEm ? Date.parse(p.entradaEm) : NaN;
+    return Number.isNaN(entrada) || (entrada >= doDia - ANTES * DIA_MS && entrada <= doDia + DEPOIS * DIA_MS);
+  };
+  const grupos = new Map<string, ProducaoNaPauta[]>();
+  for (const p of producoes) {
+    if (p.etapa === 'arquivada' || !perto(p)) continue;
+    const chave = semPraca(chaveDaClaqueteNoPadrao(p.claquete));
+    if (!chave) continue;
+    grupos.set(chave, [...(grupos.get(chave) ?? []), p]);
+  }
+  const lista: ClaqueteParaEscolher[] = [];
+  for (const [chave, ps] of grupos) {
+    if (ps.some((p) => noDia.has(p.id))) continue;
+    const ultima = [...ps].sort((a, b) => (b.entradaEm ?? '').localeCompare(a.entradaEm ?? ''))[0];
+    const resumo = resumoDaProducao(ps)!;
+    lista.push({ claquete: ultima.claquete, chave, pracas: [...resumo.pracas].sort(), etapa: resumo.etapa, noTrello: ps.some((p) => comCard.has(p.id)), entradaEm: ultima.entradaEm, producoes: ps.map((p) => p.id) });
+  }
+  return lista.sort((a, b) => (b.entradaEm ?? '').localeCompare(a.entradaEm ?? '') || a.claquete.localeCompare(b.claquete, 'pt-BR'));
 }
 
 const ORDEM_DA_ETAPA: Etapa[] = ['entrada', 'produzindo', 'entregue'];

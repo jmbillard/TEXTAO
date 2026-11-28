@@ -12,6 +12,7 @@ import { demandaNoPadrao, horarioEntendido, lerDemanda, lerHorario, type IdDoTur
 import type { Ausencia, TipoDeAusencia } from './ausencias.ts';
 import { TIPOS_DE_ILHA, emOrdem, reconhecerIlha, rotuloDaIlha, salaDaIlha, salaDe, type Ilha } from './ilhas.ts';
 import { continua } from './frasePartida.ts';
+import { tipoDaLinha } from './pauta.ts';
 import { nomeComparavel, umaLetraDeDiferenca } from './ligarPeloNome.ts';
 
 /** O que a regra precisa saber do dia: os turnos, os editores (com os apelidos) e as ilhas cadastradas. */
@@ -369,6 +370,40 @@ export interface ComoAplicar {
   /** quem já está fora no dia (não é marcado de novo) */
   jaFora: readonly string[];
   novoId: (prefixo: string) => string;
+  /** a claquete casa com uma Produção (#199, ADR 0008): sem ele, tudo entra (como antes) */
+  casa?: (claquete: string) => boolean;
+}
+
+/** O que o colar deixou de fora (#199): a tarefa, a claquete sem Produção e a info que ia com ela. */
+export interface DeForaDoColado {
+  editor: string;
+  texto: string;
+  tipo: 'claquete' | 'tarefa' | 'info';
+}
+
+/**
+ * As demandas de um bloco colado que entram no Montar (#199, ADR 0008): a claquete que casa com uma Produção e as
+ * infos. A tarefa e a claquete sem Produção ficam de fora; a info logo depois de uma claquete de fora sai com ela (é
+ * dela); a do começo do bloco, ou depois de uma tarefa, fica (é da posição). A mesma regra da Pauta (soAsQueCasam).
+ * @returns os índices que entram e o que fica de fora, na ordem
+ */
+export function demandasQueEntram(textos: readonly string[], casa: (claquete: string) => boolean): { entram: number[]; deFora: { i: number; tipo: DeForaDoColado['tipo'] }[] } {
+  const entram: number[] = [];
+  const deFora: { i: number; tipo: DeForaDoColado['tipo'] }[] = [];
+  let donaDeFora = false;
+  textos.forEach((t, i) => {
+    const tipo = tipoDaLinha(t.trim(), false);
+    if (tipo === 'info') {
+      if (donaDeFora) deFora.push({ i, tipo: 'info' });
+      else entram.push(i);
+      return;
+    }
+    const entra = tipo === 'claquete' && casa(t);
+    if (entra) entram.push(i);
+    else deFora.push({ i, tipo: tipo === 'claquete' ? 'claquete' : 'tarefa' });
+    donaDeFora = !entra && tipo === 'claquete';
+  });
+  return { entram, deFora };
 }
 
 /** O nome que vai para a posição: o do cadastro, a resposta da pergunta ou o escrito. */
@@ -384,18 +419,26 @@ const cadastrado = (b: BlocoDoColado, respostas: Readonly<Record<string, string>
  * Quem está fora deixa a posição vaga (com as demandas, quando tem) e entra nas ausências, se é dos cadastros e ainda
  * não está fora no dia.
  */
-export function aplicarOColado(leitura: LeituraDoColado, como: ComoAplicar): { posicoes: PosicaoDaEscala[]; ausencias: Omit<Ausencia, 'id'>[] } {
+export function aplicarOColado(leitura: LeituraDoColado, como: ComoAplicar): { posicoes: PosicaoDaEscala[]; ausencias: Omit<Ausencia, 'id'>[]; deFora: DeForaDoColado[] } {
   const { dia, respostas, novoId } = como;
   const horarioDoTurno = (id: string) => como.turnos.find((t) => t.id === id)?.horario ?? '';
-  const novas: PosicaoDaEscala[] = leitura.blocos.filter(viraPosicao).map((b) => ({
-    id: novoId('p'),
-    turno: b.turno,
-    editor: b.ausencia ? '' : nomeFinal(b, respostas),
-    ilha: b.ilha.id,
-    horario: b.horario.padrao || (b.ausencia ? horarioDoTurno(b.turno) : b.horario.escrito),
-    demandas: b.demandas.map((d) => ({ id: novoId('d'), texto: d.padrao })),
-    avisos: b.avisos.map((texto) => ({ id: novoId('a'), texto })),
-  }));
+  const deFora: DeForaDoColado[] = [];
+  const novas: PosicaoDaEscala[] = leitura.blocos.filter(viraPosicao).map((b) => {
+    const editor = b.ausencia ? '' : nomeFinal(b, respostas);
+    // só o que casa com uma Produção entra (#199); o resto fica na lista "de fora" do resultado
+    const textos = b.demandas.map((d) => d.padrao);
+    const { entram, deFora: daqui } = como.casa ? demandasQueEntram(textos, como.casa) : { entram: textos.map((_, i) => i), deFora: [] };
+    deFora.push(...daqui.map(({ i, tipo }) => ({ editor, texto: textos[i], tipo })));
+    return {
+      id: novoId('p'),
+      turno: b.turno,
+      editor,
+      ilha: b.ilha.id,
+      horario: b.horario.padrao || (b.ausencia ? horarioDoTurno(b.turno) : b.horario.escrito),
+      demandas: entram.map((i) => ({ id: novoId('d'), texto: textos[i] })),
+      avisos: b.avisos.map((texto) => ({ id: novoId('a'), texto })),
+    };
+  });
 
   let posicoes: PosicaoDaEscala[];
   if (como.modo === 'substituir') posicoes = novas;
@@ -424,6 +467,6 @@ export function aplicarOColado(leitura: LeituraDoColado, como: ComoAplicar): { p
     const comPeriodo = b.ausencia.tipo === 'ferias' || b.ausencia.tipo === 'licenca';
     ausencias.push({ editor, tipo: b.ausencia.tipo, de: dia, ate: comPeriodo && b.ausencia.ate ? b.ausencia.ate : dia, observacao: b.ausencia.observacao });
   }
-  return { posicoes, ausencias };
+  return { posicoes, ausencias, deFora };
 }
 

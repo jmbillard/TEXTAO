@@ -7,7 +7,7 @@ import './diaVazio.css';
 /* Montar a pauta, o dia vazio (#129): a escala costuma se repetir, então o dia vazio oferece começar de uma que já
    existe (Repetir: o mesmo dia na semana passada, o de ontem ou a semana passada inteira, nos dias vazios), colar da
    planilha (o #130; por enquanto desligado) ou começar do zero (uma posição vazia em cada turno). O Repetir traz a
-   ilha, o editor, o horário e as tarefas, nunca as claquetes; quem está fora no dia vira vaga, com o motivo. */
+   ilha, o editor e o horário, nunca as claquetes (nem as tarefas, #199); quem está fora no dia vira vaga, com o motivo. */
 
 /** "sex 20/11". */
 export const diaCurto = (iso: string) => {
@@ -78,7 +78,7 @@ export function DiaVazio({ dados, repetir, doZero, colar }: Props) {
           <small>cada turno com uma posição vazia</small>
         </button>
       </div>
-      <p className="dia-vazio-pe">Repete a ilha, o editor, o horário e as tarefas (COMUNICAÇÃO, CALHAUS), nunca as claquetes. Quem estiver fora no dia vira vaga.</p>
+      <p className="dia-vazio-pe">Repete a ilha, o editor e o horário, nunca as claquetes. Quem estiver fora no dia vira vaga.</p>
       {erro && (
         <p className="montar-erro" role="alert">
           {erro}

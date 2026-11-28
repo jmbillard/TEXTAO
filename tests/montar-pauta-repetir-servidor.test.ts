@@ -1,7 +1,7 @@
 // @vitest-environment node
 /* Montar a pauta, Repetir (#129), pela API: POST /api/montar-pauta/repetir?dia= { de } copia a escala de outro dia (o
-   mesmo dia na semana passada, o de ontem ou a semana passada inteira) para o dia vazio: a ilha, o editor, o horário e
-   as tarefas, nunca as claquetes. Quem está fora no dia de destino vira vaga, com o motivo. A semana inteira só
+   mesmo dia na semana passada, o de ontem ou a semana passada inteira) para o dia vazio: a ilha, o editor e o horário,
+   nunca as claquetes nem as tarefas (#199). Quem está fora no dia de destino vira vaga, com o motivo. A semana inteira só
    preenche os dias vazios. O dia vazio diz, no GET, o que cada opção traz. Nada vai ao Teable. Nomes, e-mails e
    claquetes fictícios; a semana de 7/12/2026 começa numa segunda, e a de antes em 30/11. */
 import { createServer, type Server } from 'node:http';
@@ -99,14 +99,14 @@ describe('montar a pauta: Repetir (#129)', () => {
     });
   });
 
-  it('o mesmo dia na semana passada: a ilha, o editor, o horário e as tarefas; nunca as claquetes, os avisos nem o recado', async () => {
+  it('o mesmo dia na semana passada: a ilha, o editor e o horário; nunca as claquetes, as tarefas (#199), os avisos nem o recado', async () => {
     const r = await repetir(SEGUNDA, 'semana-passada');
     expect(r.status).toBe(200);
     const d: Dia = await r.json();
     expect(d.estado).toBe('rascunho');
     expect(d.posicoes.map((p) => [p.turno, p.editor, p.ilha, p.horario, p.demandas.map((x) => x.texto), p.avisos.length])).toEqual([
-      ['madrugada', 'Rui Teixeira', ilha, '22h às 6h', ['COMUNICAÇÃO'], 0],
-      ['tarde', '', '', '14h às 22h53', ['CALHAUS'], 0],
+      ['madrugada', 'Rui Teixeira', ilha, '22h às 6h', [], 0],
+      ['tarde', '', '', '14h às 22h53', [], 0],
     ]);
     expect(d.recado).toBe('');
     // a Elis está de férias: a posição dela vira vaga, com o motivo
@@ -150,8 +150,8 @@ describe('montar a pauta: Repetir (#129)', () => {
     expect((await ler(SEGUNDA)).posicoes).toEqual(antes);
     const quarta = await ler(QUARTA);
     expect(quarta.posicoes.map((p) => [p.editor, p.demandas.map((x) => x.texto)])).toEqual([
-      ['Rui Teixeira', ['COMUNICAÇÃO']],
-      ['', ['CALHAUS']],
+      ['Rui Teixeira', []],
+      ['', []],
     ]);
     expect(d.semana.filter((s) => [SEGUNDA, TERCA, QUARTA].includes(s.dia)).map((s) => s.estado)).toEqual(['rascunho', 'rascunho', 'rascunho']);
   });

@@ -7,11 +7,14 @@ import { abrirBanco, criarApp } from '../servidor/app.mjs';
 import { criarCadastros } from '../servidor/cadastros.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
+import { porProducoes } from './fixtures/producoes-falsas';
 
 /* A Semana da pauta da edição (#94) pela API: a tabela EDICAO_producao do Teable de mentira (achada pelo nome, o
    Postgres respondendo as linhas inteiras, sem olhar o WHERE), lida só para a semana pedida. Cada linha vem
-   classificada (claquete, tarefa ou aviso), com o turno no fuso de São Paulo e o dia da pauta. Nada do Trello: o
-   ambiente nem tem o Trello. Nomes e claquetes fictícios. */
+   classificada (claquete, tarefa ou aviso), com o turno no fuso de São Paulo e o dia da pauta. Só vêm as claquetes que
+   casam com uma Produção (#199, ADR 0008), a info e o aviso: a tarefa e a claquete sem Produção ficam de fora. As
+   Produções das claquetes da semana vão direto no SQLite (fixtures/producoes-falsas). Nada do Trello: o ambiente nem
+   tem o Trello. Nomes e claquetes fictícios. */
 
 const ENV = { CADASTRO_ADMINS: 'chefe@empresa.com', ...TEABLE_FALSO, TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
 const NOMES = { EDICAO_producao: 'pauta_pg' };
@@ -60,10 +63,14 @@ afterEach(async () => {
   parar = null;
 });
 
-async function comServidor({ env = ENV, registros = { EDICAO_producao: PAUTA() }, db = abrirBanco(':memory:') }: { env?: Record<string, string>; registros?: Record<string, unknown[]>; db?: unknown } = {}) {
+/** As claquetes da semana que têm Produção (a Esporte Total 29/11 não tem: fica de fora da Pauta). */
+const COM_PRODUCAO = ['Festa do Bairro(Prologo)26/11', 'Show da Tarde 25/11', 'Show da Tarde 26/11', 'Novela Sol 24/11-2', 'Show da Tarde 28/11', 'Show da Tarde 29/11', 'Novela Sol 28/11', 'Show da Tarde 4/12', 'Festival 3/1'];
+
+async function comServidor({ env = ENV, registros = { EDICAO_producao: PAUTA() }, db = abrirBanco(':memory:'), producoes = COM_PRODUCAO }: { env?: Record<string, string>; registros?: Record<string, unknown[]>; db?: unknown; producoes?: readonly string[] } = {}) {
   const teable = teableFalso(NOMES, { registros });
   const app = criarApp({ db, env, buscarNoTeable: teable, abrirPg: teable.abrirPg });
   await app.tabelasProntas;
+  porProducoes(db, producoes, { perto: '2026-11-24' });
   const servidor = createServer(app);
   await new Promise<void>((ok) => servidor.listen(0, ok));
   parar = async () => {
@@ -88,26 +95,45 @@ describe('a Semana da pauta da edição', () => {
     const s = await semana(await ana('/api/pauta/semana?inicio=2026-11-26'));
     expect(s.inicio).toBe('2026-11-23');
     expect(s.dias).toEqual(['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29']);
-    expect(s.linhas.map((l) => l.id).sort()).toEqual(['recP1', 'recP10', 'recP2', 'recP3', 'recP4', 'recP5', 'recP6', 'recP7', 'recP8', 'recP9']);
+    // a COMUNICAÇÃO e a CALHAUS (tarefas) e a Esporte Total (sem Produção) ficam de fora (#199)
+    expect(s.linhas.map((l) => l.id).sort()).toEqual(['recP1', 'recP10', 'recP3', 'recP4', 'recP5', 'recP6', 'recP9']);
     expect(s.linhas.map((l) => l.dia)).toEqual([...s.linhas.map((l) => l.dia)].sort());
     // a consulta é do Postgres do Teable, só leitura, pela tabela achada pelo nome, com o período nos parâmetros
     const i = teable.estado.consultas.findIndex((sql: string) => sql.includes('"bseFalso"."pauta_pg"') && sql.includes('expediente_inicio'));
     expect(i).toBeGreaterThanOrEqual(0);
     expect(teable.estado.consultas[i]).toMatch(/^\s*SELECT/);
     expect(teable.estado.parametros[i]).toEqual(['2026-11-23T03:00:00.000Z', '2026-11-30T03:00:00.000Z']);
-    // a hora da última alteração da pauta
+    // a hora da última alteração da pauta: a do Teable inteiro, também do que ficou de fora
     expect(s.alteradoEm).toBe('2026-11-26T15:30:00.000Z');
   });
 
-  it('cada linha vem classificada: claquete, tarefa ou aviso (a caixinha de anotação marcada)', async () => {
+  it('cada linha vem classificada: claquete ou aviso (a caixinha de anotação marcada); a tarefa e a claquete sem Produção ficam de fora (#199)', async () => {
     const { ana } = await comServidor();
     const s = await semana(await ana('/api/pauta/semana?inicio=2026-11-23'));
-    const por = (id: string) => s.linhas.find((l) => l.id === id)!;
+    const por = (id: string) => s.linhas.find((l) => l.id === id);
     expect(por('recP1')).toMatchObject({ tipo: 'claquete', texto: 'Festa do Bairro(Prologo)26/11 (AH)' });
     expect(por('recP5')).toMatchObject({ tipo: 'claquete', texto: 'Novela Sol 24/11-2' });
-    expect(por('recP2')).toMatchObject({ tipo: 'tarefa', texto: 'COMUNICAÇÃO' });
-    expect(por('recP7')).toMatchObject({ tipo: 'tarefa', texto: 'CALHAUS' });
     expect(por('recP6')).toMatchObject({ tipo: 'aviso', texto: 'REDATOR VEM ACOMPANHAR' });
+    expect(por('recP2')).toBeUndefined();
+    expect(por('recP7')).toBeUndefined();
+    expect(por('recP8')).toBeUndefined();
+    expect(s.linhas.every((l) => l.tipo !== 'tarefa')).toBe(true);
+  });
+
+  it('a claquete que passa a ter Produção aparece; a info depois da claquete de fora sai com ela', async () => {
+    const { ana } = await comServidor({
+      registros: { EDICAO_producao: [...PAUTA(), linha('recI1', 'ENTRA SÁBADO', 'Ana Manhã', '2026-11-28', ['06:00', '15:00']), linha('recI2', 'VIRA B', 'Beto Tarde', '2026-11-27', ['06:00', '15:00'])] },
+      producoes: [...COM_PRODUCAO],
+    });
+    const s = await semana(await ana('/api/pauta/semana?inicio=2026-11-23'));
+    // a info da Esporte Total (sem Produção) sai; a do Show da Tarde 28/11 (com Produção) fica
+    expect(s.linhas.find((l) => l.id === 'recI1')).toBeUndefined();
+    expect(s.linhas.find((l) => l.id === 'recI2')).toMatchObject({ tipo: 'info', texto: 'VIRA B' });
+    await parar?.();
+    const comEsporte = await comServidor({ registros: { EDICAO_producao: [...PAUTA(), linha('recI1', 'ENTRA SÁBADO', 'Ana Manhã', '2026-11-28', ['06:00', '15:00'])] }, producoes: [...COM_PRODUCAO, 'Esporte Total 29/11'] });
+    const t = await semana(await comEsporte.ana('/api/pauta/semana?inicio=2026-11-23'));
+    expect(t.linhas.find((l) => l.id === 'recP8')).toMatchObject({ tipo: 'claquete' });
+    expect(t.linhas.find((l) => l.id === 'recI1')).toMatchObject({ tipo: 'info' });
   });
 
   it('o turno sai do expediente, no fuso de São Paulo; o que passa da meia-noite conta no dia em que começou', async () => {
@@ -120,10 +146,14 @@ describe('a Semana da pauta da edição', () => {
   });
 
   it('os editores vêm na ordem do turno de costume, e a linha sem editor fica no grupo "sem editor", no fim', async () => {
-    const { ana } = await comServidor();
+    const { ana } = await comServidor({ registros: { EDICAO_producao: [...PAUTA(), linha('recS1', 'Show da Tarde 26/11', null, '2026-11-26', ['08:00', '17:00'])] } });
     const s = await semana(await ana('/api/pauta/semana?inicio=2026-11-23'));
     expect(s.editores).toEqual(['Ana Manhã', 'Beto Tarde', 'Carla Noite', '']);
-    expect(s.linhas.find((l) => l.id === 'recP7')).toMatchObject({ editor: '', turno: { inicio: '08:00', fim: '17:00' } });
+    expect(s.linhas.find((l) => l.id === 'recS1')).toMatchObject({ editor: '', turno: { inicio: '08:00', fim: '17:00' } });
+    // só com a tarefa sem editor (a CALHAUS), o grupo "sem editor" não aparece: a tarefa ficou de fora (#199)
+    await parar?.();
+    const so = await comServidor();
+    expect((await semana(await so.ana('/api/pauta/semana?inicio=2026-11-23'))).editores).toEqual(['Ana Manhã', 'Beto Tarde', 'Carla Noite']);
   });
 
   it('as versões da chamada vêm já resolvidas, da data da claquete ou, sem ela, do dia da linha (#95)', async () => {
@@ -148,11 +178,11 @@ describe('a Semana da pauta da edição', () => {
       { codigo: 'p', rotulo: 'próxima sex', conhecida: true },
     ]);
     expect(por('recV2').versoes).toEqual([{ codigo: 'MÊS', rotulo: 'em janeiro', conhecida: true }]);
-    // sem data na claquete (é uma tarefa), o mês da linha
-    expect(por('recV3')).toMatchObject({ tipo: 'tarefa', semVersao: 'Especial de Verão', versoes: [{ codigo: 'MES', rotulo: 'em novembro', conhecida: true }] });
-    // o desconhecido vem cru na claquete; a tarefa e o aviso não ganham versão desconhecida nem versão nenhuma
+    // a tarefa (com ou sem código) fica de fora (#199): as versões dela estão no teste do modelo (pauta-versoes)
+    expect(por('recV3')).toBeUndefined();
+    expect(por('recV5')).toBeUndefined();
+    // o desconhecido vem cru na claquete; o aviso não ganha versão desconhecida nem versão nenhuma
     expect(por('recV4')).toMatchObject({ semVersao: 'Show da Tarde 28/11', versoes: [{ codigo: 'XYZ', rotulo: 'XYZ', conhecida: false }] });
-    expect(por('recV5')).toMatchObject({ tipo: 'tarefa', semVersao: 'CALHAUS (VER LISTA)', versoes: [] });
     expect(por('recV6')).toMatchObject({ tipo: 'aviso', semVersao: 'TROCAR A GRADE (AH)', versoes: [] });
     // sem código, a linha inteira
     expect(por('recP5')).toMatchObject({ semVersao: 'Novela Sol 24/11-2', versoes: [] });
@@ -197,9 +227,9 @@ describe('o Dia da pauta da edição (#97)', () => {
     const { ana, teable } = await comServidor();
     const d = await diaDaPauta(await ana('/api/pauta/dia?dia=2026-11-24'));
     expect(d.dia).toBe('2026-11-24');
-    expect(d.linhas.map((l) => l.id).sort()).toEqual(['recP1', 'recP2', 'recP3']);
+    // a COMUNICAÇÃO (tarefa) fica de fora (#199)
+    expect(d.linhas.map((l) => l.id).sort()).toEqual(['recP1', 'recP3']);
     expect(d.linhas.find((l) => l.id === 'recP1')).toMatchObject({ tipo: 'claquete', editor: 'Carla Noite', turno: { inicio: '22:00', fim: '06:00' }, versoes: [{ rotulo: 'amanhã' }, { rotulo: 'hoje' }] });
-    expect(d.linhas.find((l) => l.id === 'recP2')).toMatchObject({ tipo: 'tarefa', texto: 'COMUNICAÇÃO' });
     const consultas: string[] = teable.estado.consultas;
     const i = consultas.map((sql, j) => (sql.includes('"bseFalso"."pauta_pg"') && sql.includes('expediente_inicio') ? j : -1)).reduce((a, b) => Math.max(a, b), -1);
     expect(teable.estado.consultas[i]).toMatch(/^\s*SELECT/);
@@ -213,8 +243,8 @@ describe('o Dia da pauta da edição (#97)', () => {
     });
     // Beto pegou a manhã de sexta (06:00), Carla entrou às 10:00 e Ana à tarde
     expect((await diaDaPauta(await ana('/api/pauta/dia?dia=2026-11-27'))).editores).toEqual(['Beto Tarde', 'Carla Noite', 'Ana Manhã']);
-    // a CALHAUS sem editor começa às 08:00, mas fica no fim
-    expect((await diaDaPauta(await ana('/api/pauta/dia?dia=2026-11-26'))).editores).toEqual(['Beto Tarde', '']);
+    // a CALHAUS sem editor (uma tarefa) fica de fora (#199): o grupo "sem editor" some
+    expect((await diaDaPauta(await ana('/api/pauta/dia?dia=2026-11-26'))).editores).toEqual(['Beto Tarde']);
   });
 
   it('o aviso vem no dia, preso ao editor e ao turno, separado da pauta', async () => {
@@ -260,6 +290,8 @@ describe('a claquete da pauta com a produção da arte (#96)', () => {
     // sem a praça: a pauta escreve "Rede"; a produção tem SP e a G5
     arte('recA3', { claquete: 'Quem Ama 28/11 SP', artes: 'HOJE\nAMANHÃ', data_entrada: '2026-11-23T12:00:00.000Z' }),
     arte('recA4', { claquete: 'Quem Ama 28/11', status: '["PRODUZINDO"]', designers: '["Designer Um","Designer Dois"]', artes: 'HOJE', data_entrada: '2026-11-23T12:00:00.000Z' }),
+    // a Festa do Bairro, que a pauta tem em duas versões
+    arte('recA5', { claquete: 'Festa do Bairro(Prologo)26/11', artes: 'HOJE', data_entrada: '2026-11-21T12:00:00.000Z' }),
   ];
   const PAUTA_COM_ARTE = () => [
     ...PAUTA(),
@@ -310,10 +342,10 @@ describe('a claquete da pauta com a produção da arte (#96)', () => {
     expect(producoes.find((p) => p.praca === 'G5')).toMatchObject({ etapa: 'produzindo', designers: ['Designer Um', 'Designer Dois'] });
   });
 
-  it('a claquete sem produção vem sem card; a tarefa e o aviso não cruzam', async () => {
+  it('a claquete sem produção e a tarefa ficam de fora (#199); o aviso não cruza', async () => {
     const por = await semanaComArte();
-    expect(por('recP8').producoes).toEqual([]);
-    expect(por('recP2').producoes).toBeUndefined();
+    expect(por('recP8')).toBeUndefined();
+    expect(por('recP2')).toBeUndefined();
     expect(por('recP6').producoes).toBeUndefined();
   });
 
@@ -327,7 +359,8 @@ describe('a claquete da pauta com a produção da arte (#96)', () => {
   it('o Dia também traz a claquete com a produção da arte (#97)', async () => {
     const por = await semanaComArte('/api/pauta/dia?dia=2026-11-24');
     expect(por('recP3').producoes).toEqual([expect.objectContaining({ praca: 'G5', etapa: 'entregue', artes: 2, alta: true })]);
-    expect(por('recP1').producoes).toEqual([]);
+    // a COMUNICAÇÃO (tarefa) fica de fora (#199)
+    expect(por('recP2')).toBeUndefined();
   });
 });
 
@@ -426,6 +459,8 @@ describe('os filtros, o resumo do administrador e a cópia de reserva (#99)', ()
     expect(carga.status).toBe(200);
     // a verificação das pessoas (a tabela designers, com o e-mail), a mesma das Produções
     await app.pessoasProntas;
+    // as outras claquetes da semana com Produção; a Esporte Total 29/11 continua sem (fica de fora, #199)
+    porProducoes(db, ['Festa do Bairro(Prologo)26/11', 'Show da Tarde 26/11', 'Show da Tarde 28/11', 'Show da Tarde 29/11'], { perto: '2026-11-24' });
     const como = (email: string) => (caminho: string) => fetch(base + caminho, { headers: { 'cf-access-authenticated-user-email': email } });
     return { teable, carla: como('carla@empresa.com'), dani: como('dani@empresa.com'), ana: como('ana@empresa.com'), chefe: como('chefe@empresa.com') };
   }
@@ -434,13 +469,14 @@ describe('os filtros, o resumo do administrador e a cópia de reserva (#99)', ()
     const { carla } = await completo();
     const todas = await lida(await carla('/api/pauta/semana?inicio=2026-11-23'));
     expect(todas).toMatchObject({ filtro: null, voce: { editor: 'Carla Noite', designer: null } });
-    expect(todas.linhas.length).toBe(11);
+    // as 11 menos as duas tarefas e a Esporte Total, sem Produção (#199)
+    expect(todas.linhas.length).toBe(8);
     const minhas = await lida(await carla('/api/pauta/semana?inicio=2026-11-23&filtro=minhas'));
     expect(minhas.filtro).toBe('minhas');
-    expect(ids(minhas)).toEqual(['recC3', 'recP1', 'recP2']);
+    expect(ids(minhas)).toEqual(['recC3', 'recP1']);
     expect(minhas.editores).toEqual(['Carla Noite']);
     const dia = (await lida(await carla('/api/pauta/dia?dia=2026-11-24&filtro=minhas'))) as unknown as Lida & { dia: string };
-    expect(ids(dia)).toEqual(['recP1', 'recP2']);
+    expect(ids(dia)).toEqual(['recP1']);
     expect(dia.editores).toEqual(['Carla Noite']);
   });
 
@@ -461,17 +497,17 @@ describe('os filtros, o resumo do administrador e a cópia de reserva (#99)', ()
     expect((await lida(await ana('/api/pauta/semana?inicio=2026-11-23&filtro=arte'))).linhas).toEqual([]);
     const outro = await lida(await ana('/api/pauta/semana?inicio=2026-11-23&filtro=tudo'));
     expect(outro.filtro).toBeNull();
-    expect(outro.linhas.length).toBe(11);
+    expect(outro.linhas.length).toBe(8);
   });
 
   it('o resumo só vem para o administrador: linhas sem editor, claquetes sem card e a última alteração, da pauta inteira', async () => {
     const { ana, chefe } = await completo();
     const doChefe = await lida(await chefe('/api/pauta/semana?inicio=2026-11-23'));
-    // sem editor: a CALHAUS; sem card: as 8 claquetes menos o Show da Tarde 25/11, a Novela Sol 24/11 e o Quem Ama
-    expect(doChefe.resumo).toEqual({ semEditor: 1, semCard: 5, alteradoEm: '2026-11-26T15:30:00.000Z' });
+    // da pauta inteira, também do que ficou de fora da tela (#199): sem editor, a CALHAUS; sem card, a Esporte Total
+    expect(doChefe.resumo).toEqual({ semEditor: 1, semCard: 1, alteradoEm: '2026-11-26T15:30:00.000Z' });
     // com um filtro, o resumo continua o da pauta inteira
     expect((await lida(await chefe('/api/pauta/semana?inicio=2026-11-23&filtro=minhas'))).resumo).toEqual(doChefe.resumo);
-    expect((await lida(await chefe('/api/pauta/dia?dia=2026-11-26'))).resumo).toEqual({ semEditor: 1, semCard: 1, alteradoEm: '2026-11-26T15:30:00.000Z' });
+    expect((await lida(await chefe('/api/pauta/dia?dia=2026-11-26'))).resumo).toEqual({ semEditor: 1, semCard: 0, alteradoEm: '2026-11-26T15:30:00.000Z' });
     expect('resumo' in (await lida(await ana('/api/pauta/semana?inicio=2026-11-23')))).toBe(false);
     expect('resumo' in (await lida(await ana('/api/pauta/dia?dia=2026-11-26')))).toBe(false);
   });
@@ -492,7 +528,7 @@ describe('os filtros, o resumo do administrador e a cópia de reserva (#99)', ()
     // o Dia de um dia já copiado também; com o filtro, igual
     const dia = (await lida(await ana('/api/pauta/dia?dia=2026-11-24'))) as unknown as Lida;
     expect(dia).toMatchObject({ origem: 'copia', copiaEm: daCopia.copiaEm });
-    expect(ids(dia)).toEqual(['recP1', 'recP2', 'recP3']);
+    expect(ids(dia)).toEqual(['recP1', 'recP3']);
     // uma semana que nunca foi copiada: a página fica sabendo que o banco não respondeu
     const nunca = await ana('/api/pauta/semana?inicio=2027-03-01');
     expect(nunca.status).toBe(503);

@@ -5,8 +5,9 @@
    claquete, o editor (o link para o cadastro), a data e o expediente; os avisos e o recado do dia como linhas com a
    caixinha de anotação. Republicar ajusta as linhas do dia sem duplicar (o vínculo de cada item publicado com o registro
    fica no SQLite), o rascunho nunca vai, e desfazer a publicação volta o Teable para a anterior (ou tira o dia). Depois
-   da virada, na Pauta da edição vale o publicado: o Teable daquele dia é o espelho. Nomes e claquetes fictícios;
-   27/11/2026 é uma sexta. */
+   da virada, na Pauta da edição vale o publicado: o Teable daquele dia é o espelho. Publicar só apaga do dia o que o
+   n8n gravou e casa com uma Produção (#199, ADR 0008): a tarefa e a claquete sem Produção ficam no Teable, fora da
+   tela. Nomes e claquetes fictícios; 27/11/2026 é uma sexta. */
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
@@ -15,6 +16,7 @@ import { criarCadastros } from '../servidor/cadastros.mjs';
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
+import { porProducoes } from './fixtures/producoes-falsas';
 
 const SEXTA = '2026-11-27';
 const SABADO = '2026-11-28';
@@ -57,6 +59,8 @@ const RASCUNHO = [
 const DO_SABADO = RASCUNHO.map((p) => ({ ...p, id: `${p.id}-sab`, demandas: p.demandas.map((d) => ({ ...d, id: `${d.id}-sab` })), avisos: (p.avisos ?? []).map((a) => ({ ...a, id: `${a.id}-sab` })) }));
 
 type Registro = { id: string; fields: Record<string, unknown> };
+/** O que o n8n gravou na sexta e não casa com uma Produção: fica no Teable depois de publicar (#199). */
+const DO_N8N = ['recGilMoura: CALHAUS', 'recGilMoura: Vale a Pena Rever 30/11'];
 type Linha = { id: string; dia: string; editor: string; texto: string; tipo: string };
 
 describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
@@ -83,10 +87,19 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
   const escritas = () => teable.estado.pedidos.filter((p: string) => !p.startsWith('GET') && p.includes(TABELA_DA_PAUTA));
 
   beforeAll(async () => {
-    pautaNoTeable.push(doN8n('recN1', 'Noite de Gala 27/11 Dp', 'Rui Teixeira', SEXTA, ['22:00', '06:00']), doN8n('recN2', 'Vale a Pena Rever 30/11', 'Gil Moura', SEXTA, ['06:00', '15:00']), doN8n('recN3', 'Corujão 29/11', 'Gil Moura', DOMINGO, ['06:00', '15:00']));
+    // o que o n8n gravou: a Noite de Gala casa com uma Produção; a Vale a Pena Rever não tem Produção e a CALHAUS é uma
+    // tarefa (#199: as duas ficam no Teable depois de publicar)
+    pautaNoTeable.push(
+      doN8n('recN1', 'Noite de Gala 27/11 Dp', 'Rui Teixeira', SEXTA, ['22:00', '06:00']),
+      doN8n('recN2', 'Vale a Pena Rever 30/11', 'Gil Moura', SEXTA, ['06:00', '15:00']),
+      doN8n('recN3', 'Corujão 29/11', 'Gil Moura', DOMINGO, ['06:00', '15:00']),
+      doN8n('recN4', 'CALHAUS', 'Gil Moura', SEXTA, ['06:00', '15:00']),
+    );
     teable = teableFalso({ EDICAO_producao: 'pauta_pg' }, { registros: { EDICAO_producao: pautaNoTeable } });
-    app = criarApp({ db: abrirBanco(':memory:'), env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg, cadastros: criarCadastros(ENV_CADASTROS, { buscar: buscarOsCadastros }) });
+    const db = abrirBanco(':memory:');
+    app = criarApp({ db, env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg, cadastros: criarCadastros(ENV_CADASTROS, { buscar: buscarOsCadastros }) });
     await app.tabelasProntas;
+    porProducoes(db, ['Noite de Gala 27/11', 'Corujão 28/11', 'Corujão 29/11', 'Mundo Animal 30/11'], { perto: SEXTA });
     servidor = createServer(app as never);
     await new Promise<void>((ok) => servidor.listen(0, ok));
     base = `http://localhost:${(servidor.address() as { port: number }).port}`;
@@ -103,10 +116,11 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     expect(d.estado).toBe('publicado');
     expect(d.noTeable).toEqual({ ligada: false, gravadoEm: null, erro: null });
     expect(escritas()).toEqual([]);
-    expect(pautaNoTeable).toHaveLength(3);
-    // e a Pauta junta como antes da virada: a do Teable inteira, mais o que só o PROMeiro tem
+    expect(pautaNoTeable).toHaveLength(4);
+    // e a Pauta junta como antes da virada: a do Teable inteira, mais o que só o PROMeiro tem; só as claquetes que casam
+    // com uma Produção (#199): a Vale a Pena Rever, a CALHAUS e a COMUNICAÇÃO ficam fora da tela
     const p: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${SEXTA}`)).json();
-    expect(p.linhas.map((l) => l.texto)).toEqual(['Noite de Gala 27/11 Dp', 'Vale a Pena Rever 30/11', 'COMUNICAÇÃO', 'VEM PRONTA', 'Corujão 28/11 (A)', 'Reunião geral às 15h']);
+    expect(p.linhas.map((l) => l.texto)).toEqual(['Noite de Gala 27/11 Dp', 'VEM PRONTA', 'Corujão 28/11 (A)', 'Reunião geral às 15h']);
   });
 
   it('a chave é da Configuração, só para administradores: a coordenação não liga', async () => {
@@ -128,10 +142,12 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     expect(d.noTeable).toMatchObject({ ligada: true, erro: null });
     expect(d.noTeable.gravadoEm).toEqual(expect.any(String));
     const doDia = pautaNoTeable.filter((r) => r.fields.data === sp(SEXTA, '00:00'));
-    // as linhas que o n8n gravou no dia saem: o dia agora é do PROMeiro (o outro dia fica)
+    // a linha que o n8n gravou no dia e casa com uma Produção sai: o PROMeiro põe a dele no lugar (o outro dia fica)
     expect(doDia.map((r) => r.id)).not.toContain('recN1');
     expect(pautaNoTeable.map((r) => r.id)).toContain('recN3');
-    const campos = doDia.map((r) => r.fields);
+    // o Teable não perde nada (#199): a claquete sem Produção e a tarefa continuam lá, como estavam
+    expect(doDia.filter((r) => ['recN2', 'recN4'].includes(r.id)).map((r) => r.fields.claquete)).toEqual(['Vale a Pena Rever 30/11', 'CALHAUS']);
+    const campos = doDia.filter((r) => !['recN2', 'recN4'].includes(r.id)).map((r) => r.fields);
     expect(campos).toEqual([
       { claquete: 'Noite de Gala 27/11 (DP)', editor: { id: 'recE1' }, data: sp(SEXTA, '00:00'), expediente_inicio: sp(SEXTA, '22:00'), expediente_fim: sp(SABADO, '06:00'), anotacao: null, alterado_em: d.publicacao.em },
       { claquete: 'COMUNICAÇÃO', editor: { id: 'recE1' }, data: sp(SEXTA, '00:00'), expediente_inicio: sp(SEXTA, '22:00'), expediente_fim: sp(SABADO, '06:00'), anotacao: null, alterado_em: d.publicacao.em },
@@ -145,7 +161,8 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
 
   it('depois da virada, na Pauta da edição vale o publicado; o dia que o PROMeiro não gravou continua com o Teable', async () => {
     const p: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${SEXTA}`)).json();
-    expect(p.linhas.map((l) => `${l.editor || '—'}: ${l.texto}`)).toEqual(['Rui Teixeira: Noite de Gala 27/11 (DP)', 'Rui Teixeira: COMUNICAÇÃO', 'Rui Teixeira: VEM PRONTA', 'Elis Furtado: Corujão 28/11 (A)', '—: Reunião geral às 15h']);
+    // a COMUNICAÇÃO publicada (uma tarefa de um rascunho de antes do #199) vai ao Teable, mas fica fora da tela
+    expect(p.linhas.map((l) => `${l.editor || '—'}: ${l.texto}`)).toEqual(['Rui Teixeira: Noite de Gala 27/11 (DP)', 'Rui Teixeira: VEM PRONTA', 'Elis Furtado: Corujão 28/11 (A)', '—: Reunião geral às 15h']);
     const domingo: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${DOMINGO}`)).json();
     expect(domingo.linhas.map((l) => `${l.editor}: ${l.texto}`)).toEqual(['Gil Moura: Corujão 29/11']);
   });
@@ -169,7 +186,7 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     const antes = escritas().length;
     const d = await publicar();
     expect(d.noTeable.erro).toBeNull();
-    expect(noTeable()).toEqual(['recE1: Mundo Animal 30/11 (P)', 'recE1: Noite de Gala 27/11 (DP)', 'recE1: VEM PRONTA (aviso)', 'recE2: Corujão 28/11 (A)', '—: Reunião geral às 16h (aviso)'].sort());
+    expect(noTeable()).toEqual(['recE1: Mundo Animal 30/11 (P)', 'recE1: Noite de Gala 27/11 (DP)', 'recE1: VEM PRONTA (aviso)', 'recE2: Corujão 28/11 (A)', '—: Reunião geral às 16h (aviso)', ...DO_N8N].sort());
     // os registros que continuam são os mesmos
     const depois = Object.fromEntries(pautaNoTeable.map((r) => [r.fields.claquete, r.id]));
     expect(depois['Noite de Gala 27/11 (DP)']).toBe(ids['Noite de Gala 27/11 (DP)']);
@@ -184,7 +201,7 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     // republicar de novo, sem mudar nada, não duplica nem escreve
     const agora = escritas().length;
     await publicar();
-    expect(noTeable()).toHaveLength(5);
+    expect(noTeable()).toHaveLength(7);
     expect(escritas()).toHaveLength(agora);
   });
 
@@ -192,16 +209,17 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     let d = await desfazer();
     expect(d.noTeable.erro).toBeNull();
     // vale a publicação anterior, que era igual a esta (o recado das 16h, sem a COMUNICAÇÃO)
-    expect(noTeable()).toHaveLength(5);
+    expect(noTeable()).toHaveLength(7);
     await desfazer();
     // agora vale a segunda publicação (a de 15h, com a COMUNICAÇÃO)
-    expect(noTeable()).toEqual(['recE1: COMUNICAÇÃO', 'recE1: Noite de Gala 27/11 (DP)', 'recE1: VEM PRONTA (aviso)', 'recE2: Corujão 28/11 (A)', '—: Reunião geral às 15h (aviso)'].sort());
+    expect(noTeable()).toEqual(['recE1: COMUNICAÇÃO', 'recE1: Noite de Gala 27/11 (DP)', 'recE1: VEM PRONTA (aviso)', 'recE2: Corujão 28/11 (A)', '—: Reunião geral às 15h (aviso)', ...DO_N8N].sort());
     await desfazer();
     // a primeira (com a chave desligada) é a que vale agora: com a chave ligada, ela vai ao Teable também
-    expect(noTeable()).toHaveLength(5);
+    expect(noTeable()).toHaveLength(7);
     d = await desfazer();
     expect(d.publicacao).toBeNull();
-    expect(noTeable()).toEqual([]);
+    // saem só as linhas que o PROMeiro gravou: as do n8n que não casam continuam (#199)
+    expect(noTeable()).toEqual([...DO_N8N].sort());
     // o outro dia não é tocado
     expect(noTeable(DOMINGO)).toEqual(['recGilMoura: Corujão 29/11']);
     // sem publicação, a Pauta volta ao Teable (que já não tem o dia)
@@ -218,7 +236,7 @@ describe('montar a pauta: gravar no Teable e a chave da virada (#134)', () => {
     expect(d.noTeable.erro).toMatch(/Teable/);
     // a Pauta mostra o publicado mesmo assim: o PROMeiro vale
     const p: { linhas: Linha[] } = await (await lia(`/api/pauta/dia?dia=${SABADO}`)).json();
-    expect(p.linhas.map((l) => l.texto)).toEqual(['Noite de Gala 27/11 (DP)', 'COMUNICAÇÃO', 'VEM PRONTA', 'Corujão 28/11 (A)']);
+    expect(p.linhas.map((l) => l.texto)).toEqual(['Noite de Gala 27/11 (DP)', 'VEM PRONTA', 'Corujão 28/11 (A)']);
     d = await publicar(SABADO);
     expect(d.noTeable.erro).toBeNull();
     expect(noTeable(SABADO)).toHaveLength(4);

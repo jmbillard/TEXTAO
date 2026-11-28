@@ -17,7 +17,7 @@ import { criarCorrecoes, GRUPOS as GRUPOS_DAS_CORRECOES, TIPO_DA_PAUTA, proposta
 import { criarRegistroDeCorrecoes, idsParaDesfazer } from './registro-de-correcoes.mjs';
 import { criarAtracoesParecidas, idsDoGrupo } from './atracoes-parecidas.mjs';
 import { criarJuntarAtracoes, TIPO_DAS_ATRACOES } from './juntar-atracoes.mjs';
-import { codigoDasVersoes, colunasDoDia, cruzarComAProducao, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana } from '../src/modelo/pauta.ts';
+import { casaComAProducao, claquetesParaEscolher, codigoDasVersoes, colunasDoDia, cruzarComAProducao, linhaDaPauta, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehChaveDaPauta, ehFiltroDaPauta, filtrarAPauta, ordemDosEditores, recusaDaPreferenciaDaPauta, resumoDaPauta, segundaDaSemana, soAsQueCasam } from '../src/modelo/pauta.ts';
 import { criarConfiguracao } from './configuracao.mjs';
 import { criarDescoberta, envDosModulos, mesmasTabelas, tabelaNoPg } from './tabelas-do-teable.mjs';
 import { criarCache } from './cache.mjs';
@@ -1005,11 +1005,32 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!lido?.ligado) throw new Error('não li os editores do cadastro');
       return lido.editores;
     },
+    // o que publicar pode apagar do dia no Teable (#199, ADR 0008): só as claquetes que casam com uma Produção, que a
+    // publicação põe no lugar delas; a tarefa, a claquete sem Produção, a info e o aviso que já estão lá ficam
     idsDoDia: async (dia) => {
       const lido = await pauta.dia(dia);
-      return lido.origem === 'banco' ? lido.linhas.map((l) => l.id).filter(Boolean) : null;
+      if (lido.origem !== 'banco') return null;
+      return cruzarComAProducao(lido.linhas, producoesPerto(dia), semPracaDaPauta)
+        .filter(casaComAProducao)
+        .map((l) => l.id)
+        .filter(Boolean);
     },
   });
+  /** As Produções que a Pauta cruza perto do dia (#96, #199): as que entraram nos 120 dias antes dele, ou depois. */
+  function producoesPerto(dia) {
+    return producoes.naPauta(new Date(Date.parse(`${dia}T12:00:00Z`) - 120 * 86_400_000).toISOString());
+  }
+  /** A chave sem a praça do fim, a mesma do cruzamento da Pauta. */
+  function semPracaDaPauta(chave) {
+    return semPracaNoFim(chave, pracas, [MARCA_TODAS]);
+  }
+  /** Quais destes textos são claquetes que casam com uma Produção no dia (#199), pelo mesmo cruzamento da Pauta. */
+  function casamNoDia(textos, dia) {
+    const linhas = textos.map((t, i) => linhaDaPauta({ id: String(i), claquete: String(t ?? ''), data: dia }));
+    const cruzadas = cruzarComAProducao(linhas.filter(Boolean), producoesPerto(dia), semPracaDaPauta);
+    const casam = new Set(cruzadas.filter(casaComAProducao).map((l) => l.id));
+    return textos.map((_, i) => casam.has(String(i)));
+  }
   const conferenciaDoCartao = agendar(() => cartaoDoTeams.conferir(), 30 * 1000);
   conferenciaDoCartao?.unref?.();
   /** As áreas da pessoa e o resto do que a rota de quem está logado devolve delas (a coordenação tem a do Editor). */
@@ -2097,6 +2118,49 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return json(res, 200, { dia, foto, daFoto, diferencas });
   }
 
+  /**
+   * As claquetes do Montar a pauta (#199, ADR 0008), só para a coordenação. GET /api/montar-pauta/claquetes?dia= (sem
+   * ele, amanhã) devolve `claquetes`, as das Produções perto do dia que ainda não estão nele (claquetesParaEscolher), e
+   * `deFora`, o que o Teable tem no dia e não casa com uma Produção (as tarefas e as claquetes sem Produção, que a Pauta
+   * não mostra e a publicação não apaga), ou null com o Postgres fora do ar (o motivo em `erroDeFora`).
+   * POST /api/montar-pauta/casam?dia= { textos } diz quais casam ({ casam: [bool] }): o colar da planilha (#130) só põe
+   * no rascunho o que casa.
+   */
+  async function rotaDasClaquetesDoMontar(req, res, eu, caminho) {
+    const ehCasam = caminho.endsWith('/casam');
+    if (req.method !== (ehCasam ? 'POST' : 'GET')) return json(res, 405, { erro: 'Método não permitido.' });
+    if (!escala.ehCoordenacao(eu.email)) return json(res, 403, { erro: 'Só a coordenação monta a pauta.' });
+    const pedido = new URL(req.url, 'http://x').searchParams.get('dia') ?? '';
+    const dia = pedido ? diaOuHoje(pedido, '') : diaVizinho(diaEmSaoPaulo(), 1);
+    if (!dia) return json(res, 400, { erro: 'Dia inválido.' });
+    if (ehCasam) {
+      const { textos } = (await lerCorpo(req, 256 * 1024, 'Pedido')) ?? {};
+      if (!Array.isArray(textos) || textos.length > 2000) return json(res, 400, { erro: 'Faltam as claquetes.' });
+      return json(res, 200, { casam: casamNoDia(textos.map((t) => String(t ?? '').slice(0, 200)), dia) });
+    }
+    const ps = producoesPerto(dia);
+    const lido = escala.lerDia(dia);
+    const noDiaTextos = [...lido.posicoes.flatMap((p) => p.demandas.map((d) => d.texto)), ...distribuicao.paraDistribuir(dia).map((d) => d.texto)];
+    const noDia = new Set(
+      cruzarComAProducao(
+        noDiaTextos.map((t, i) => linhaDaPauta({ id: String(i), claquete: t, data: dia })).filter(Boolean),
+        ps,
+        semPracaDaPauta,
+      ).flatMap((l) => (l.producoes ?? []).map((p) => p.id)),
+    );
+    const desde = new Date(Date.parse(`${dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();
+    const claquetes = claquetesParaEscolher(ps, dia, semPracaDaPauta, { comCard: producoes.comCard(desde), noDia });
+    let deFora = null;
+    let erroDeFora;
+    try {
+      const doTeable = await pauta.dia(dia);
+      deFora = soAsQueCasam(cruzarComAProducao(doTeable.linhas, ps, semPracaDaPauta)).deFora;
+    } catch (e) {
+      erroDeFora = e instanceof Error ? e.message : 'A Pauta da edição não respondeu.';
+    }
+    return json(res, 200, { dia, claquetes, deFora, ...(erroDeFora ? { erroDeFora } : {}) });
+  }
+
   async function rotaDeMontarAPauta(req, res, eu, acao = '') {
     const metodos = acao ? ['POST'] : ['GET', 'PUT'];
     if (!metodos.includes(req.method)) return json(res, 405, { erro: 'Método não permitido.' });
@@ -2177,6 +2241,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         console.log(`[montar-pauta] ${eu.email} distribuiu ${distribuidas.length} claquete(s) em ${dia}`);
       }
       if (acao === 'desfazer-distribuicao') distribuicao.recolher(dia, ((await lerCorpo(req)) ?? {}).itens, eu.email);
+      if (acao === 'escolher') {
+        // escolher uma claquete das Produções (#199, ADR 0008): só a que casa com uma Produção entra, em "Para
+        // distribuir" ou, com `posicao`, direto na posição
+        const corpo = (await lerCorpo(req)) ?? {};
+        if (typeof corpo.claquete !== 'string' || !corpo.claquete.trim()) throw Object.assign(new Error('Falta a claquete.'), { status: 400 });
+        if (!casamNoDia([corpo.claquete], dia)[0]) throw Object.assign(new Error('Essa claquete não casa com nenhuma Produção: a Pauta só mostra as que casam.'), { status: 422 });
+        distribuicao.escolher(dia, corpo.claquete, { posicao: corpo.posicao ?? null, antesDe: corpo.antesDe ?? null, id: corpo.id ?? null }, eu.email);
+      }
       if (['para-distribuir', 'levar', 'mover', 'devolver', 'escalar'].includes(acao)) {
         const corpo = (await lerCorpo(req)) ?? {};
         if (acao === 'para-distribuir') distribuicao.acrescentar(dia, corpo.texto, eu.email);
@@ -3796,23 +3868,29 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         const { lidas } = apelidos.roteiroDaProducao(p.id);
         return { ...p, ...(lidas.length ? { versoesLidas: lidas } : {}), campanhas: campanhasDe(p.id) };
       });
-      const linhas = cruzarComAProducao(s.linhas, comAsLidas, semPraca);
+      const cruzadas = cruzarComAProducao(s.linhas, comAsLidas, semPraca);
+      // só as claquetes que casam com uma Produção (#199, ADR 0008): a tarefa e a claquete sem Produção ficam no
+      // Teable, fora da tela; a info e o aviso (e o recado do dia) ficam. Os editores saem do que ficou
+      const linhas = soAsQueCasam(cruzadas).linhas;
+      const naTela = { ...s, editores: ehDia ? colunasDoDia(linhas).map((c) => c.editor) : ordemDosEditores(linhas) };
       // os filtros pessoais (#99): "Só as minhas" pelo editor ligado ao e-mail (#106), "Com arte minha" pelo designer
       // do e-mail (#110); o resumo, da pauta inteira, só para administradores
       const voce = { editor: (await areas.quemE(eu.email, cadastros)).editor?.nome ?? null, designer: pessoas.designerDoEmail(eu.email)?.nome ?? null };
       const filtro = ehFiltroDaPauta(busca.get('filtro')) ? busca.get('filtro') : null;
       const vistas = filtro ? filtrarAPauta(linhas, filtro, voce) : linhas;
-      const editores = !filtro ? s.editores : ehDia ? colunasDoDia(vistas).map((c) => c.editor) : ordemDosEditores(vistas);
-      const resumo = cadastros.podeApagar(eu.email) ? { resumo: resumoDaPauta(linhas, s.alteradoEm) } : {};
+      const editores = !filtro ? naTela.editores : ehDia ? colunasDoDia(vistas).map((c) => c.editor) : ordemDosEditores(vistas);
+      // o resumo do administrador olha a pauta inteira, com o que ficou de fora
+      const resumo = cadastros.podeApagar(eu.email) ? { resumo: resumoDaPauta(cruzadas, s.alteradoEm) } : {};
       // quem está fora (#128): todos veem "fora"; o motivo e a observação, só a coordenação e os administradores
       const fora = foraNaPauta(ausencias.noPeriodo(dias[0], dias.at(-1)), dias, escala.ehCoordenacao(eu.email) || cadastros.podeApagar(eu.email));
-      return json(res, 200, { ...s, editores, linhas: vistas, filtro, voce, fora, ...resumo });
+      return json(res, 200, { ...naTela, editores, linhas: vistas, filtro, voce, fora, ...resumo });
     }
     if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
     if (caminho === '/api/montar-pauta/foto') return rotaDaFotoDoDia(req, res, eu);
     const acaoDasAusencias = /^\/api\/montar-pauta\/(ausencias|ausencias\/onde|ausencias\/historico|ausencias\/apagar|tirar|para-distribuir\/tirar)$/.exec(caminho);
     if (acaoDasAusencias) return rotaDasAusencias(req, res, eu, acaoDasAusencias[1]);
-    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar|distribuir|desfazer-distribuicao)$/.exec(caminho);
+    if (caminho === '/api/montar-pauta/claquetes' || caminho === '/api/montar-pauta/casam') return rotaDasClaquetesDoMontar(req, res, eu, caminho);
+    const acaoDoMontar = /^\/api\/montar-pauta\/(conferida|publicar|desfazer|repetir|para-distribuir|levar|mover|devolver|escalar|distribuir|desfazer-distribuicao|escolher)$/.exec(caminho);
     if (acaoDoMontar) return rotaDeMontarAPauta(req, res, eu, acaoDoMontar[1]);
     if (caminho === '/api/correcoes/pauta') {
       // a correção de grafia da pauta da edição (#114), só para administradores e só leitura: uma página das propostas

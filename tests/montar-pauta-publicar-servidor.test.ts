@@ -2,8 +2,9 @@
 /* Montar a pauta, conferir e publicar (#127), pela API: o "está certo" que dispensa uma pendência, publicar (mesmo com
    pendências, contando as que ficaram), o estado do dia (publicado e alterado), o histórico das publicações e o
    Desfazer da última. O dia publicado aparece na Pauta da edição junto com a do Teable, sem dobrar e sem sumir com
-   ela. Nada vai ao Teable: o Teable falso só responde a leitura (os cadastros e o Postgres da pauta). Nomes, e-mails e
-   claquetes fictícios; 27/11/2026 é uma sexta. */
+   ela. Na Pauta, só as claquetes que casam com uma Produção (#199): a claquete sem data ("Mundo Animal (AH)") é lida
+   como tarefa e fica fora da tela. Nada vai ao Teable: o Teable falso só responde a leitura (os cadastros e o Postgres
+   da pauta). Nomes, e-mails e claquetes fictícios; 27/11/2026 é uma sexta. */
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error módulo JS sem tipos
@@ -12,6 +13,7 @@ import { criarCadastros } from '../servidor/cadastros.mjs';
 import { abrirBanco, criarApp } from '../servidor/app.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { TEABLE_FALSO, teableFalso } from './fixtures/teable-falso.mjs';
+import { porProducoes } from './fixtures/producoes-falsas';
 
 const SEXTA = '2026-11-27';
 const SABADO = '2026-11-28';
@@ -77,8 +79,10 @@ describe('montar a pauta: conferir e publicar (#127)', () => {
 
   beforeAll(async () => {
     teable = teableFalso({ EDICAO_producao: 'pauta_pg' }, { registros: { EDICAO_producao: PAUTA_DO_TEABLE } });
-    app = criarApp({ db: abrirBanco(':memory:'), env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg, cadastros: criarCadastros(ENV_CADASTROS, { buscar: buscarOsCadastros }) });
+    const db = abrirBanco(':memory:');
+    app = criarApp({ db, env: ENV, buscarNoTeable: teable, abrirPg: teable.abrirPg, cadastros: criarCadastros(ENV_CADASTROS, { buscar: buscarOsCadastros }) });
     await app.tabelasProntas;
+    porProducoes(db, ['Noite de Gala 27/11', 'Corujão 28/11', 'Vale a Pena Rever 30/11', 'Mundo Animal 30/11'], { perto: SEXTA });
     servidor = createServer(app as never);
     await new Promise<void>((ok) => servidor.listen(0, ok));
     base = `http://localhost:${(servidor.address() as { port: number }).port}`;
@@ -123,13 +127,13 @@ describe('montar a pauta: conferir e publicar (#127)', () => {
       'Rui Teixeira: Noite de Gala 27/11 Dp',
       'Gil Moura: Corujão 28/11',
       'Rui Teixeira: Vale a Pena Rever 30/11 (P)',
-      'Elis Furtado: Mundo Animal (AH)',
+      // a "Mundo Animal (AH)", sem data, é tarefa: fica fora da tela (#199), e a Elis, sem mais nada, também
     ]);
-    expect(p.linhas.find((l) => l.texto === 'Mundo Animal (AH)')?.turno).toEqual({ inicio: '14:00', fim: '22:53' });
-    expect(p.editores).toContain('Elis Furtado');
+    expect(p.linhas.find((l) => l.texto === 'Vale a Pena Rever 30/11 (P)')?.turno).toEqual({ inicio: '22:00', fim: '06:00' });
+    expect(p.editores).not.toContain('Elis Furtado');
     // e na Semana também
     const semana: { linhas: Linha[] } = await (await lia(`/api/pauta/semana?inicio=${SEXTA}`)).json();
-    expect(semana.linhas.filter((l) => l.dia === SEXTA)).toHaveLength(4);
+    expect(semana.linhas.filter((l) => l.dia === SEXTA)).toHaveLength(3);
   });
 
   it('mexer depois de publicar deixa o dia alterado; a Pauta continua com o que foi publicado', async () => {
@@ -137,7 +141,8 @@ describe('montar a pauta: conferir e publicar (#127)', () => {
     const d = await ler();
     expect(d.estado).toBe('alterado');
     expect(d.semana.find((s) => s.dia === SEXTA)?.estado).toBe('alterado');
-    expect(textos((await pautaDoDia()).linhas)).toContain('Elis Furtado: Mundo Animal (AH)');
+    expect(textos((await pautaDoDia()).linhas)).toContain('Rui Teixeira: Vale a Pena Rever 30/11 (P)');
+    expect(textos((await pautaDoDia()).linhas)).not.toContain('Elis Furtado: Mundo Animal 30/11 (AH)');
     // voltar ao que foi publicado volta a "publicado"
     await gravar(RASCUNHO);
     expect((await ler()).estado).toBe('publicado');
@@ -158,7 +163,7 @@ describe('montar a pauta: conferir e publicar (#127)', () => {
     expect(d.estado).toBe('alterado');
     expect(d.historico[0].desfeitaEm).not.toBeNull();
     expect(d.historico[1].desfeitaEm).toBeNull();
-    expect(textos((await pautaDoDia()).linhas)).toContain('Elis Furtado: Mundo Animal (AH)');
+    expect(textos((await pautaDoDia()).linhas)).not.toContain('Elis Furtado: Mundo Animal 30/11 (AH)');
   });
 
   it('desfeita a única publicação, o dia volta a rascunho e a Pauta volta a ser só a do Teable', async () => {
