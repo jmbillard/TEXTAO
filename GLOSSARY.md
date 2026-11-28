@@ -28,8 +28,30 @@ ficou o mais recente, e o outro foi para o log.
 _Evitar_: alias, nome novo, key (a key é da atração)
 
 **Roteiro**:
-O texto que chega (Word, RTF, PDF ou colado) com a claquete, o redator, a data e as artes sublinhadas.
-_Evitar_: script, documento
+O texto da chamada com a claquete, o redator, a data e as artes sublinhadas. Chega de fora (Word, RTF, PDF ou colado)
+ou nasce **escrito no PROMeiro** pelo redator; nos dois casos é o mesmo Roteiro e, depois do **Enviar**, segue igual
+para a fila.
+_Evitar_: script, documento, rascunho
+
+**Sendo escrito**:
+O Roteiro escrito no PROMeiro antes do primeiro **Enviar**: ainda não está na fila nem na pauta. Pode ser visto pela
+equipe ou só por quem escreve, à escolha do redator. Cada Enviar seguinte do mesmo Roteiro é uma **versão do roteiro**
+nova (ou uma **letra** nova, se a chamada já foi liberada para exibição).
+_Evitar_: rascunho, documento novo
+
+**Enviar** (o roteiro):
+O momento em que o Roteiro escrito no PROMeiro ganha a **claquete** conferida e entra na fila, para a arte revisar, e na
+pauta, para a edição. Guarda como o texto estava em cada envio.
+_Evitar_: publicar, mandar para o Trello
+
+**Locação**:
+O lugar ou cenário onde a cena se passa, marcado no Roteiro; agrupa os trechos que vêm depois dele.
+_Evitar_: lugar, cena
+
+**Referência**:
+Uma imagem de inspiração presa ao Roteiro (a foto de um ator, um frame, um print). Vai junto no **Enviar**, mas não é
+arte a produzir e não entra na lista de artes.
+_Evitar_: arte, anexo
 
 **Letra da chamada** (A, B, C…):
 A letra que a chamada ganha quando volta para ajuste **depois de liberada para exibição** (a exibição já gravou o id,
