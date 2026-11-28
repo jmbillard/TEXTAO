@@ -177,3 +177,103 @@ export function artesDoTexto(doc: NoJSON): ArteDoTexto[] {
   }
   return [...porChave.values()];
 }
+
+/* ---------- escrever na folha (#190) ---------- */
+
+/** Como cada tipo aparece: o nome, o rótulo curto da margem e a dica do menu do "/". */
+export const SOBRE_O_TIPO: Record<TipoDoTrecho, { nome: string; rotulo: string; dica: string }> = {
+  locucao: { nome: 'Locução', rotulo: 'LOC', dica: 'caixa alta, conta no tempo' },
+  arte: { nome: 'Arte', rotulo: 'ARTE', dica: 'o trecho todo vai para a lista da arte' },
+  sonora: { nome: 'Sonora', rotulo: 'SONORA', dica: '“Nome, de onde: a fala”' },
+  edicao: { nome: 'Edição', rotulo: 'EDIÇÃO', dica: 'imagem, corte, material' },
+  trilha: { nome: 'Trilha', rotulo: 'TRILHA', dica: 'música, efeito, silêncio' },
+  locutor: { nome: 'Para o locutor', rotulo: 'LOCUTOR', dica: 'o jeito de ler, para quem grava' },
+  producao: { nome: 'Produção', rotulo: 'PRODUÇÃO', dica: 'o que a produção precisa providenciar' },
+  locacao: { nome: 'Locação', rotulo: 'LOCAÇÃO', dica: 'onde a cena se passa; agrupa o que vem depois' },
+  comentario: { nome: 'Comentário', rotulo: 'NOTA', dica: 'uma nota no roteiro, fora do texto lido' },
+  texto: { nome: 'Texto sem tipo', rotulo: 'TEXTO', dica: 'o PROMeiro adivinha pelo texto' },
+};
+
+/** A ordem em que o Tab troca o tipo (e em que o menu do tipo os mostra, com os números de 1 a 0). */
+export const CICLO_DOS_TIPOS: readonly TipoDoTrecho[] = ['locucao', 'arte', 'sonora', 'edicao', 'trilha', 'locutor', 'producao', 'locacao', 'comentario', 'texto'];
+
+/** O tipo seguinte (Tab) ou o anterior (Shift+Tab), dando a volta. */
+export function tipoVizinho(tipo: TipoDoTrecho, sentido: 1 | -1): TipoDoTrecho {
+  const i = CICLO_DOS_TIPOS.indexOf(tipo);
+  const n = CICLO_DOS_TIPOS.length;
+  return CICLO_DOS_TIPOS[(i + sentido + n) % n];
+}
+
+/** Um comando do "/": troca o tipo do trecho ou põe uma ficha (timecode, arquivo) no texto. */
+export interface ComandoDaBarra {
+  id: string;
+  nome: string;
+  dica: string;
+  tipo?: TipoDoTrecho;
+}
+
+const comandoDoTipo = (tipo: TipoDoTrecho): ComandoDaBarra => ({ id: tipo, tipo, nome: SOBRE_O_TIPO[tipo].nome, dica: SOBRE_O_TIPO[tipo].dica });
+
+/** Os comandos do "/", na ordem do menu: os tipos, as fichas e, no fim, o texto sem tipo. */
+export const COMANDOS_DA_BARRA: readonly ComandoDaBarra[] = [
+  ...(['locucao', 'arte', 'sonora', 'edicao', 'trilha', 'locutor', 'producao', 'locacao', 'comentario'] as const).map(comandoDoTipo),
+  { id: 'timecode', nome: 'Timecode', dica: '00:00:00:00, vira ficha' },
+  { id: 'arquivo', nome: 'Arquivo na rede', dica: '\\\\servidor\\pasta\\…, vira ficha' },
+  comandoDoTipo('texto'),
+];
+
+const semAcentoNemCaixa = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/** Os comandos que batem com o que se digitou depois do "/": primeiro os que começam com ele (pelo id ou pelo nome),
+    depois os que o têm no nome. Sem caixa e sem acento. */
+export function comandosQueBatem(q: string): ComandoDaBarra[] {
+  const k = semAcentoNemCaixa(q.trim());
+  if (!k) return [...COMANDOS_DA_BARRA];
+  const comeca = COMANDOS_DA_BARRA.filter((c) => c.id.startsWith(k) || semAcentoNemCaixa(c.nome).startsWith(k));
+  const tem = COMANDOS_DA_BARRA.filter((c) => !comeca.includes(c) && semAcentoNemCaixa(c.nome).includes(k));
+  return [...comeca, ...tem];
+}
+
+/** O "/" que abre o menu: no começo do trecho ou depois de um espaço, só com letras depois (até 14). Devolve o que se
+    digitou depois dele, ou null (uma data, um caminho, um espaço no meio). */
+export function barraNoTexto(antesDoCursor: string): string | null {
+  const m = /(?:^|\s)\/(\p{L}{0,14})$/u.exec(antesDoCursor);
+  return m ? m[1] : null;
+}
+
+/** O nome do arquivo, sem as pastas: é o que a ficha mostra (o caminho inteiro abre no clique). */
+export const nomeDoArquivo = (caminho: string) => caminho.split(/[\\/]/).filter(Boolean).pop() ?? caminho;
+
+const contarPalavras = (s: string) => (s.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
+/** O texto sem as fichas: o timecode e o caminho não são palavras. */
+const semFichas = (texto: string) => {
+  let out = texto;
+  for (const f of fichasDoTexto(texto).reverse()) out = out.slice(0, f.ini) + ' ' + out.slice(f.fim);
+  return out;
+};
+/** Ritmo médio de leitura de chamada, em palavras por segundo (o mesmo de `RITMO`, na exportação). */
+const LEITURA = { locucao: 2.6, sonora: 3 };
+
+/**
+ * Os números do rodapé: as palavras do texto, as da locução e o tempo de leitura (a locução e a fala das sonoras, no
+ * ritmo médio). Vale o tipo do trecho, confirmado ou palpite. Os timecodes e os arquivos não contam como palavras.
+ */
+export function contagemDoTexto(doc: NoJSON): { palavras: number; locucao: number; segundos: number } {
+  let palavras = 0;
+  let locucao = 0;
+  let seg = 0;
+  for (const p of trechosDoDoc(doc)) {
+    const texto = semFichas(textoDoTrecho(p));
+    const n = contarPalavras(texto);
+    palavras += n;
+    const { tipo } = tipoDoTrecho(p);
+    if (tipo === 'locucao') {
+      locucao += n;
+      seg += n / LEITURA.locucao;
+    } else if (tipo === 'sonora') seg += contarPalavras(texto.replace(/^[^:\n]{1,60}:\s*/u, '')) / LEITURA.sonora;
+  }
+  return { palavras, locucao, segundos: Math.round(seg) };
+}
+
+/** O tempo como o rodapé mostra: "12s", "1min", "1min15s". */
+export const duracaoLegivel = (seg: number) => (seg < 60 ? `${seg}s` : `${Math.floor(seg / 60)}min${seg % 60 ? `${String(seg % 60).padStart(2, '0')}s` : ''}`);

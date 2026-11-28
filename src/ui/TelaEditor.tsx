@@ -1,3 +1,4 @@
+import { duracaoLegivel } from '../modelo/trecho';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { Vagas } from './vagas';
@@ -238,8 +239,8 @@ function BalaoDoCelular({ editor, trecho, area, versao, rotulo, children }: { ed
   );
 }
 
-/** Edição de uma marcação já feita. */
-function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: MarcaNoDoc; x: number; y: number; fechar: () => void }) {
+/** Edição de uma marcação já feita: a da revisão e a da folha de escrita (#190). */
+export function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: MarcaNoDoc; x: number; y: number; fechar: () => void }) {
   const arte = marca.nome === 'arte';
   const pedacos = arte ? partesDaArte(marca.texto) : [];
   return (
@@ -2006,7 +2007,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
 const contarPalavras = (s: string) => (s.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu) ?? []).length;
 const numero = (n: number) => n.toLocaleString('pt-BR');
 export const tamanhoLegivel = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${Math.round(b / 1024)} KB` : `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
-const duracao = (seg: number) => (seg < 60 ? `${seg}s` : `${Math.floor(seg / 60)}min${seg % 60 ? `${String(seg % 60).padStart(2, '0')}s` : ''}`);
 const quandoSubiu = (iso: string) => {
   const d = new Date(iso);
   const hoje = new Date();
@@ -2031,7 +2031,7 @@ function Estatisticas({ saida, complexidade, paginas, original }: { saida: Saida
     <footer className="estatisticas" aria-label="Números do roteiro">
       <span><b>{numero(total)}</b> {total === 1 ? 'palavra' : 'palavras'}</span>
       <span><b>{numero(locucao)}</b> na locução</span>
-      <span className="tempo" title="Locução e sonoras, no ritmo médio de leitura de chamada">≈ <b>{duracao(saida.roteiro.duracaoEstimadaSeg)}</b> de leitura</span>
+      <span className="tempo" title="Locução e sonoras, no ritmo médio de leitura de chamada">≈ <b>{duracaoLegivel(saida.roteiro.duracaoEstimadaSeg)}</b> de leitura</span>
       <span><b>{numero(caracteres)}</b> caracteres</span>
       <span title="Artes a produzir"><b>{nArtes}</b> {nArtes === 1 ? 'arte' : 'artes'}</span>
       {/* o card leva a maior complexidade das artes a produzir */}
