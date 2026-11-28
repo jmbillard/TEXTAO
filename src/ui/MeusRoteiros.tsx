@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
 import { NomeDaClaquete, versoesDoResumo } from './Apelido';
 import { comecarRoteiro, exibicaoLembrada, lembrarExibicao, lerMeusRoteiros, lerRoteirosEscritos, type MeuRoteiro, type MeusRoteiros as Lidos, type Resumo, type RoteirosEscritos } from '../dados/armazenamento';
@@ -6,15 +6,13 @@ import { EXIBICOES, type AreaDosRoteiros, type Exibicao } from '../modelo/areas'
 import { CICLO, frasesDoCiclo, type CicloDoRoteiro, type EstadoDoCiclo as Estado } from '../modelo/cicloDoRoteiro';
 import { agruparPorDia, LER_ANDAMENTO_MS, type GrupoDia } from './fila';
 import { Icone, type NomeIcone } from './icones';
-import { plural } from './util';
+import { plural, quandoComecou } from './util';
 import { RoteiroAberto } from './RoteiroAberto';
 import './areas.css';
 import { AbaComRabisco, BolinhaDeEstado, NadaNaBusca, Vazio } from './pecas';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { ABAS_DOS_ROTEIROS, bateComABusca, escritosDaAba, tituloParaMostrar, type AbaDosRoteiros } from '../modelo/escrito';
 import { CASCATA_MS, NA_CASCATA } from './cena';
-import { quandoComecou } from './util';
-import type { CSSProperties } from 'react';
 
 /* "Meus roteiros" do Redator e do Editor (#101): a lista simples, por dia, dos roteiros guardados no PROMeiro em que a
    pessoa é o redator (ou o editor), pelo nome do cadastro ligado ao e-mail dela. Cada roteiro mostra o seu estado no
