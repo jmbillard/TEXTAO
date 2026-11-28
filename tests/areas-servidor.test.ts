@@ -280,7 +280,7 @@ describe('áreas de trabalho (#101)', () => {
   it('o ciclo: o roteiro que chegou à fila e não foi enviado está Em revisão, com quando chegou e sem ninguém da arte', async () => {
     const r = await doRoteiro(marina, 'redator', 'rot-chef-1');
     expect(r.ciclo.estado).toBe('revisao');
-    expect(r.ciclo.passos.map((p) => p.situacao)).toEqual(['em-breve', 'em-breve', 'em-breve', 'agora', 'depois', 'depois', 'depois']);
+    expect(r.ciclo.passos.map((p) => p.situacao)).toEqual(['fora', 'em-breve', 'em-breve', 'agora', 'depois', 'depois', 'depois']);
     expect(Date.parse(passo(r, 'revisao').quando ?? '')).toBeGreaterThan(0);
     expect(r.daArte).toEqual([]);
   });

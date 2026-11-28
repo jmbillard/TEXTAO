@@ -2,16 +2,18 @@
    PROMeiro já sabe (nada do Trello): a chegada à fila, o envio, a Produção e a data da claquete. Puro e compartilhado:
    o servidor diz o estado ("meus roteiros") e o navegador escreve as datas no relógio local, como a agenda mostra.
 
-   Escrevendo (antes) → Em aprovação (antes) → Aprovado (antes) → Em revisão → Produzindo → Entregue → Exibido
+   Escrevendo → Em aprovação (antes) → Aprovado (antes) → Em revisão → Produzindo → Entregue → Exibido
 
-   Os passos de antes do PROMeiro existem no ciclo, mas são sempre "em breve". Só sintaxe que o Node apaga. */
+   O Escrevendo vale desde o editor de escrita (#189): o Roteiro escrito no PROMeiro está nele enquanto é **sendo
+   escrito**; no roteiro que chegou de fora, o passo aconteceu fora do PROMeiro ("fora"). Os dois passos de aprovação
+   existem no ciclo, mas são sempre "em breve". Só sintaxe que o Node apaga. */
 import type { Etapa } from './producao.ts';
 
 export type EstadoDoCiclo = 'escrevendo' | 'aprovacao' | 'aprovado' | 'revisao' | 'produzindo' | 'entregue' | 'exibido';
 
 /** O ciclo, na ordem; `antes` são os passos de antes do PROMeiro (em breve). */
 export const CICLO: readonly { id: EstadoDoCiclo; nome: string; antes: boolean }[] = [
-  { id: 'escrevendo', nome: 'Escrevendo', antes: true },
+  { id: 'escrevendo', nome: 'Escrevendo', antes: false },
   { id: 'aprovacao', nome: 'Em aprovação', antes: true },
   { id: 'aprovado', nome: 'Aprovado', antes: true },
   { id: 'revisao', nome: 'Em revisão', antes: false },
@@ -30,13 +32,19 @@ export interface FatosDoCiclo {
   producao: { etapa: Etapa; entradaEm: string | null; entregaEm: string | null } | null;
   /** a data da claquete (AAAA-MM-DD); sem ela, o roteiro fica no último estado conhecido */
   dataExibicao: string | null | undefined;
+  /** o Roteiro escrito no PROMeiro (#189): 'sendo-escrito' antes do primeiro Enviar, 'enviado' depois; ausente no
+      roteiro que chegou de fora */
+  escrito?: 'sendo-escrito' | 'enviado' | null;
+  /** quando o Roteiro escrito no PROMeiro começou (ISO) */
+  escritoEm?: string | null;
 }
 
 export interface PassoDoCiclo {
   id: EstadoDoCiclo;
   nome: string;
-  /** em-breve: de antes do PROMeiro; feito: já passou; agora: o estado; depois: ainda não */
-  situacao: 'em-breve' | 'feito' | 'agora' | 'depois';
+  /** em-breve: de antes do PROMeiro; fora: aconteceu fora do PROMeiro (o Escrevendo do roteiro que chegou de fora);
+      feito: já passou; agora: o estado; depois: ainda não */
+  situacao: 'em-breve' | 'fora' | 'feito' | 'agora' | 'depois';
   /** quando aconteceu (ISO; no Exibido, a data AAAA-MM-DD); null no passo que não aconteceu ou sem data conhecida */
   quando: string | null;
 }
@@ -49,7 +57,7 @@ export interface CicloDoRoteiro {
 const ehData = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 /**
- * O estado e os passos. Em revisão: chegou à fila. Produzindo: foi enviado (com a Produção em Entrada ou Produzindo,
+ * O estado e os passos. Escrevendo: o Roteiro escrito no PROMeiro ainda não foi enviado. Em revisão: chegou à fila. Produzindo: foi enviado (com a Produção em Entrada ou Produzindo,
  * ou ainda sem ela). Entregue: a Produção está Entregue ou arquivada. Exibido: a data da claquete é de antes de hoje.
  * @param hoje o dia de hoje (AAAA-MM-DD), no fuso da casa
  */
@@ -57,8 +65,10 @@ export function cicloDoRoteiro(f: FatosDoCiclo, hoje: string): CicloDoRoteiro {
   const etapa = f.producao?.etapa;
   const entregue = etapa === 'entregue' || etapa === 'arquivada';
   const exibido = ehData(f.dataExibicao) && f.dataExibicao < hoje;
-  const estado: EstadoDoCiclo = exibido ? 'exibido' : entregue ? 'entregue' : f.enviadoEm || etapa ? 'produzindo' : 'revisao';
+  const sendoEscrito = f.escrito === 'sendo-escrito';
+  const estado: EstadoDoCiclo = sendoEscrito ? 'escrevendo' : exibido ? 'exibido' : entregue ? 'entregue' : f.enviadoEm || etapa ? 'produzindo' : 'revisao';
   const quando: Partial<Record<EstadoDoCiclo, string | null>> = {
+    escrevendo: f.escritoEm ?? null,
     revisao: f.chegouEm,
     produzindo: f.enviadoEm ?? f.producao?.entradaEm ?? null,
     entregue: entregue ? (f.producao?.entregaEm ?? null) : null,
@@ -66,7 +76,7 @@ export function cicloDoRoteiro(f: FatosDoCiclo, hoje: string): CicloDoRoteiro {
   };
   const k = CICLO.findIndex((c) => c.id === estado);
   const passos = CICLO.map((c, i): PassoDoCiclo => {
-    const situacao = c.antes ? 'em-breve' : i < k ? 'feito' : i === k ? 'agora' : 'depois';
+    const situacao = c.antes ? 'em-breve' : c.id === 'escrevendo' && !f.escrito ? 'fora' : i < k ? 'feito' : i === k ? 'agora' : 'depois';
     return { id: c.id, nome: c.nome, situacao, quando: situacao === 'feito' || situacao === 'agora' ? (quando[c.id] ?? null) : null };
   });
   return { estado, passos };
@@ -78,7 +88,7 @@ const instante = (s: string) => {
 };
 const diaEHora = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}, ${d.getHours()}h${String(d.getMinutes()).padStart(2, '0')}`;
 /** O que cada passo diz antes da data. */
-const VERBO: Partial<Record<EstadoDoCiclo, string>> = { revisao: 'chegou', produzindo: 'no Trello', entregue: 'entregue', exibido: 'foi ao ar' };
+const VERBO: Partial<Record<EstadoDoCiclo, string>> = { escrevendo: 'começou', revisao: 'chegou', produzindo: 'no Trello', entregue: 'entregue', exibido: 'foi ao ar' };
 
 /**
  * Os passos que aconteceram, em frases curtas com a data, no relógio local: "chegou 26/11, 9h40", "no Trello 26/11,

@@ -15,7 +15,7 @@ describe('o ciclo do roteiro', () => {
     const c = cicloDoRoteiro(fatos(), HOJE);
     expect(c.estado).toBe('revisao');
     expect(c.passos.map((p) => p.nome)).toEqual(['Escrevendo', 'Em aprovação', 'Aprovado', 'Em revisão', 'Produzindo', 'Entregue', 'Exibido']);
-    expect(situacoes(fatos())).toEqual({ escrevendo: 'em-breve', aprovacao: 'em-breve', aprovado: 'em-breve', revisao: 'agora', produzindo: 'depois', entregue: 'depois', exibido: 'depois' });
+    expect(situacoes(fatos())).toEqual({ escrevendo: 'fora', aprovacao: 'em-breve', aprovado: 'em-breve', revisao: 'agora', produzindo: 'depois', entregue: 'depois', exibido: 'depois' });
     expect(frasesDoCiclo(c.passos)).toEqual(['chegou 26/11, 9h40']);
   });
 
@@ -73,5 +73,23 @@ describe('o ciclo do roteiro', () => {
     const c = cicloDoRoteiro(fatos({ enviadoEm: em(26, 11, 2), producao: { etapa: 'produzindo', entradaEm: null, entregaEm: em(27, 16, 20) } }), HOJE);
     expect(c.estado).toBe('produzindo');
     expect(c.passos.find((p) => p.id === 'entregue')?.quando).toBeNull();
+  });
+
+  it('o Roteiro sendo escrito no PROMeiro (#189) está Escrevendo, com quando começou; o resto ainda não', () => {
+    const f = fatos({ chegouEm: null, dataExibicao: '', escrito: 'sendo-escrito', escritoEm: em(25, 8, 5) });
+    const c = cicloDoRoteiro(f, HOJE);
+    expect(c.estado).toBe('escrevendo');
+    expect(situacoes(f)).toEqual({ escrevendo: 'agora', aprovacao: 'em-breve', aprovado: 'em-breve', revisao: 'depois', produzindo: 'depois', entregue: 'depois', exibido: 'depois' });
+    expect(frasesDoCiclo(c.passos)).toEqual(['começou 25/11, 8h05']);
+  });
+
+  it('sendo escrito, nem a data da claquete que passou o tira do Escrevendo: ele ainda não foi a lugar nenhum', () => {
+    expect(cicloDoRoteiro(fatos({ escrito: 'sendo-escrito', dataExibicao: '2026-11-01' }), HOJE).estado).toBe('escrevendo');
+  });
+
+  it('o Roteiro escrito e já enviado tem o Escrevendo feito e segue o caminho da fila', () => {
+    const f = fatos({ escrito: 'enviado', escritoEm: em(25, 8, 5) });
+    expect(cicloDoRoteiro(f, HOJE).estado).toBe('revisao');
+    expect(situacoes(f)).toMatchObject({ escrevendo: 'feito', revisao: 'agora' });
   });
 });
