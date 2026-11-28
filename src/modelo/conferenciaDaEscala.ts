@@ -7,6 +7,7 @@
    Cada pendência tem uma chave estável (o "está certo" a dispensa pela chave) e o campo que o "Corrigir" abre. */
 import { lerDemanda, lerHorario, horarioEntendido, type PosicaoDaEscala, type TurnoDaEscala } from './escala.ts';
 import { nomeComparavel, umaLetraDeDiferenca } from './ligarPeloNome.ts';
+import { ehInfo } from './pauta.ts';
 
 /** O campo da grade que o "Corrigir" abre (a demanda, pela linha). */
 export interface AlvoDaPendencia {
@@ -139,7 +140,8 @@ export function conferirODia({ dia, posicoes, editores, turnos }: { dia: string;
     for (const d of p.demandas) {
       const l = lerDemanda(d.texto, dia);
       if (l.tipo === 'claquete' && !l.data) paraOlhar.push({ chave: `sem-data:${d.id}`, tipo: 'Claquete sem data', titulo: d.texto.trim(), detalhe: `${quem} · ${turno}`, alvo: naPosicao('demanda', d.id) });
-      if (l.tipo === 'tarefa' && pareceAviso(l.padrao)) soParaSaber.push({ chave: `parece-aviso:${d.id}`, tipo: 'Parece aviso', titulo: l.padrao, detalhe: `está entre as demandas de ${quem}; vai como tarefa se ficar ali`, alvo: naPosicao('demanda', d.id) });
+      // a info vai no balão da claquete de cima; a tarefa fica fora da Pauta (#199)
+      if (l.tipo === 'tarefa' && pareceAviso(l.padrao)) soParaSaber.push({ chave: `parece-aviso:${d.id}`, tipo: 'Parece aviso', titulo: l.padrao, detalhe: `está entre as demandas de ${quem}; ${ehInfo(l.padrao) ? 'vai como info da claquete de cima' : 'vai como tarefa, fora da Pauta'} se ficar ali`, alvo: naPosicao('demanda', d.id) });
     }
   }
   return { paraOlhar, soParaSaber };

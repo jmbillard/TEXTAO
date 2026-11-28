@@ -84,6 +84,7 @@ import { LIMITE_DA_FOTO, ROTA_DA_FOTO, criarFotosDaEdicao, fotoDoPedido, tokenBe
 import { ROTA_DAS_PRODUCOES, criarLimiteDePedidos, emSaoPaulo, margemDaConsulta, periodoDoPedido, producoesDoPeriodo } from './api-das-producoes.mjs';
 import { LIMITE_DA_PREVIA, ROTA_DA_PREVIA, linkDaAbaFilmes, previaDoPedido } from './previa-por-email.mjs';
 import { diferencasDaFoto, lerAFoto } from '../src/modelo/fotoDaPlanilha.ts';
+import { demandasQueEntram } from '../src/modelo/colarDaPlanilha.ts';
 import { conferirHorarios, horariosArrumados, horariosDaConfiguracao } from '../src/modelo/horariosDoCartao.ts';
 import { criarAndamento } from './andamento.mjs';
 import { administradoresDaTela, administradoresSalvos, ehAdministrador, porAdministrador, tirarAdministrador } from '../src/modelo/pessoas.ts';
@@ -2243,7 +2244,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       apelidos: await areas.apelidosDosEditores(cadastros),
       ilhas: ilhas.todas(),
     };
-    const daFoto = lerAFoto(foto.linhas, ctx, posicoes);
+    const lida = lerAFoto(foto.linhas, ctx, posicoes);
+    // da planilha, só o que casa com uma Produção conta (#199, a mesma regra do colar): a tarefa e a claquete sem
+    // Produção não entram no Montar, e não são diferença
+    const textos = [...new Set(lida.posicoes.flatMap((p) => p.demandas.map((d) => d.texto)))];
+    const casam = new Map(casamNoDia(textos, dia).map((c, i) => [textos[i], c]));
+    const daFoto = { ...lida, posicoes: lida.posicoes.map((p) => ({ ...p, demandas: demandasQueEntram(p.demandas.map((d) => d.texto), (t) => !!casam.get(t)).entram.map((i) => p.demandas[i]) })) };
     const foraNoPromeiro = ausencias.noPeriodo(dia, dia).map((a) => a.editor);
     const diferencas = diferencasDaFoto(posicoes, daFoto.posicoes, { dia, foraNoPromeiro, foraNaPlanilha: daFoto.fora, ilhas: ctx.ilhas });
     return json(res, 200, { dia, foto, daFoto, diferencas });

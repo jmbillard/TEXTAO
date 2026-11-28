@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { ehTipoDeAusencia, temPeriodo, valeNoDia } from '../src/modelo/ausencias.ts';
 import { nomeComparavel } from '../src/modelo/ligarPeloNome.ts';
-import { diaOuHoje } from '../src/modelo/pauta.ts';
+import { diaOuHoje, tipoDaLinha } from '../src/modelo/pauta.ts';
 
 const ID = /^[\w-]{1,40}$/;
 /** Os limites: bem acima de uma ausência de verdade, para um pedido errado não encher o banco. */
@@ -139,7 +139,8 @@ export function criarAusencias(db) {
       q.apagar.run(minusculo(por), new Date().toISOString(), id);
     },
     /**
-     * Tira a pessoa do rascunho do dia: as posições dela ficam vagas e as demandas vão para "para distribuir". Lança
+     * Tira a pessoa do rascunho do dia: as posições dela ficam vagas e as demandas vão para "para distribuir" (as infos,
+     * #199, saem com a posição). Lança
      * (400) quando ela não está escalada no dia.
      */
     tirar(dia, editor, por) {
@@ -149,7 +150,8 @@ export function criarAusencias(db) {
       transacao(() => {
         let ordem = (q.ultimaOrdem.get(dia)?.n ?? -1) + 1;
         for (const p of posicoes) {
-          for (const d of q.demandas.all(p.id)) q.distribuir.run(d.id, dia, ordem++, d.texto, p.editor, minusculo(por), agora);
+          // a info é da claquete naquela posição (#199): não vira item de "para distribuir", sai com a posição
+          for (const d of q.demandas.all(p.id)) if (tipoDaLinha(d.texto.trim(), false) !== 'info') q.distribuir.run(d.id, dia, ordem++, d.texto, p.editor, minusculo(por), agora);
           q.tirarDemandas.run(p.id);
           q.vaga.run(p.id);
         }

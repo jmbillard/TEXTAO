@@ -49,7 +49,7 @@ const SEXTA_RASCUNHO = [
 ];
 const SEGUNDA_RASCUNHO = [{ id: 'pos-3', turno: 'manha', editor: 'elis  furtado', horario: '6h às 15h', demandas: [] }];
 const SABADO_PUBLICADO = [
-  { id: 'pos-4', turno: 'tarde', editor: 'Gil Moura', horario: '14h às 23h', demandas: [{ id: 'd-4', texto: 'Corujão 28/11 (D)' }, { id: 'd-5', texto: 'CALHAUS' }] },
+  { id: 'pos-4', turno: 'tarde', editor: 'Gil Moura', horario: '14h às 23h', demandas: [{ id: 'd-4', texto: 'Corujão 28/11 (D)' }, { id: 'd-7', texto: 'VIRA B' }, { id: 'd-5', texto: 'CALHAUS' }] },
   { id: 'pos-5', turno: 'noite', editor: 'Rui Teixeira', horario: '20h às 2h', demandas: [{ id: 'd-6', texto: 'Vale a Pena Rever 1/12 (P)' }] },
 ];
 
@@ -159,6 +159,7 @@ describe('montar a pauta: ausências com período (#128)', () => {
     const r = await bia(`/api/montar-pauta/tirar?dia=${SABADO}`, { method: 'POST', body: JSON.stringify({ editor: 'Gil Moura' }) });
     expect(r.status).toBe(200);
     const p: Painel = await r.json();
+    // a info da Corujão (VIRA B) é daquela posição: sai com ela, não vira item da lista (#199)
     expect(p.paraDistribuir.map((d) => [d.texto, d.deQuem])).toEqual([['Corujão 28/11 (D)', 'Gil Moura'], ['CALHAUS', 'Gil Moura']]);
     expect(p.noPublicado).toEqual([]);
     const sabado = await rascunho(SABADO);

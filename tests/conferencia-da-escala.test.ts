@@ -98,7 +98,12 @@ describe('conferirODia: só para saber', () => {
 
   it('linha que parece aviso: a frase em maiúsculas, de três palavras ou mais, entre as demandas', () => {
     const p = pos('manha', 'Gil Moura', '6h às 15h', ['COMUNICAÇÃO', 'ARQUIVO GERAL', 'REDATOR VEM ACOMPANHAR A EDIÇÃO']);
-    expect(conferir([p]).soParaSaber).toEqual([{ chave: `parece-aviso:${p.id}-d3`, tipo: 'Parece aviso', titulo: 'REDATOR VEM ACOMPANHAR A EDIÇÃO', detalhe: 'está entre as demandas de Gil Moura; vai como tarefa se ficar ali', alvo: { posicao: p.id, campo: 'demanda', demanda: `${p.id}-d3` } }]);
+    expect(conferir([p]).soParaSaber).toEqual([{ chave: `parece-aviso:${p.id}-d3`, tipo: 'Parece aviso', titulo: 'REDATOR VEM ACOMPANHAR A EDIÇÃO', detalhe: 'está entre as demandas de Gil Moura; vai como info da claquete de cima se ficar ali', alvo: { posicao: p.id, campo: 'demanda', demanda: `${p.id}-d3` } }]);
+  });
+
+  it('a que parece aviso e não é info vai como tarefa, que fica fora da Pauta (#199)', () => {
+    const p = pos('manha', 'Gil Moura', '6h às 15h', ['PROJETO CALHAUS NOVO']);
+    expect(conferir([p]).soParaSaber.map((x) => x.detalhe)).toEqual(['está entre as demandas de Gil Moura; vai como tarefa, fora da Pauta se ficar ali']);
   });
 });
 

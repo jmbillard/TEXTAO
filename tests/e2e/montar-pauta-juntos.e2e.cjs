@@ -5,9 +5,10 @@
 // responde os cadastros (fictícios). A Bia e a Ana, as duas da coordenação, abrem o mesmo dia, cada uma no seu
 // navegador. Cada uma vê a outra no alto da tela ("Ana também está montando este dia"). A Ana entra no horário do Rui e
 // a Bia vê o campo com o contorno e o nome dela; a Bia entra no mesmo campo e digita: ninguém fica bloqueado. Ao mesmo
-// tempo, a Ana muda o horário do Rui e a Bia escreve uma demanda nele: as duas mudanças aparecem nas duas telas, e
-// nenhuma desfaz a outra. A Ana escreve o recado do dia e escala o Gil na vaga pelo "Escalar na…" da coluna (uma ação
-// do servidor) enquanto a Bia digita na Elis: tudo aparece nas duas, sem perder o que a Bia digitava. Recarregadas as
+// tempo, a Ana muda o horário do Rui e a Bia escreve uma info na claquete dele (#199: as claquetes são escolhidas das
+// Produções; a info é o texto que se digita): as duas mudanças aparecem nas duas telas, e nenhuma desfaz a outra. A Ana
+// escreve o recado do dia e escala o Gil na vaga pelo "Escalar na…" da coluna (uma ação do servidor) enquanto a Bia
+// digita uma info na Elis: tudo aparece nas duas, sem perder o que a Bia digitava. Recarregadas as
 // duas, o dia volta com o trabalho das duas. Quando a Ana sai, a Bia deixa de vê-la.
 //
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:montar-pauta-juntos
@@ -94,8 +95,8 @@ async function principal() {
   for (const email of [BIA, ANA]) assert.equal((await como(CHEFE)('/cadastros/coordenacao', { method: 'POST', body: JSON.stringify({ email }) })).status, 200);
   // o dia já começado: o Rui na Madrugada, a Elis e uma vaga na Tarde
   const posicoes = [
-    { id: 'pos-rui', turno: 'madrugada', editor: 'Rui Teixeira', ilha: '', horario: '22h às 6h', demandas: [], avisos: [] },
-    { id: 'pos-elis', turno: 'tarde', editor: 'Elis Furtado', ilha: '', horario: '14h às 23h', demandas: [], avisos: [] },
+    { id: 'pos-rui', turno: 'madrugada', editor: 'Rui Teixeira', ilha: '', horario: '22h às 6h', demandas: [{ id: 'd-gala', texto: `Noite de Gala ${diaMes(DIA)} (DP)` }], avisos: [] },
+    { id: 'pos-elis', turno: 'tarde', editor: 'Elis Furtado', ilha: '', horario: '14h às 23h', demandas: [{ id: 'd-mundo', texto: `Mundo Animal ${diaMes(DIA)} (P)` }], avisos: [] },
     { id: 'pos-vaga', turno: 'tarde', editor: '', ilha: '', horario: '14h às 23h', demandas: [], avisos: [] },
   ];
   assert.equal((await como(BIA)(`/montar-pauta?dia=${DIA}`, { method: 'PUT', body: JSON.stringify({ posicoes, recado: '' }) })).status, 200);
@@ -121,19 +122,20 @@ async function principal() {
     await capturar(bia.p, '01-bia-ve-a-ana-no-horario');
     console.log('ok: a Bia vê em que campo a Ana está');
 
-    // ao mesmo tempo: a Ana muda o horário do Rui; a Bia escreve uma demanda no Rui
+    // ao mesmo tempo: a Ana muda o horário do Rui; a Bia escreve uma info na claquete do Rui
     await ana.p.keyboard.press('ControlOrMeta+a');
     await ana.p.keyboard.type('23 as 7');
-    await celulaDe(bia.p, 'Rui Teixeira').locator('[data-campo="demanda"]').first().click();
-    await bia.p.keyboard.type(`Noite de Gala ${diaMes(DIA)} Dp`);
+    const galaDaBia = celulaDe(bia.p, 'Rui Teixeira').locator('.montar-demanda.t-claquete').first();
+    await galaDaBia.hover();
+    await galaDaBia.getByRole('button', { name: '+ info' }).click();
+    await bia.p.keyboard.type('VEM PRONTA DA PROMO');
     await ana.p.keyboard.press('Tab');
     await esperarValor(bia.p, '[data-posicao="pos-rui"][data-campo="horario"]', '23h às 7h', 'a Bia vê o horário da Ana');
-    // a Ana vê a demanda como foi gravada (no padrão); a linha vazia em que o Tab a pôs continua com ela
-    await esperarValor(ana.p, '[data-posicao="pos-rui"][data-campo="demanda"]', `Noite de Gala ${diaMes(DIA)} (DP)`, 'a Ana vê a demanda da Bia');
-    const daAna = await celulaDe(ana.p, 'Rui Teixeira').locator('[data-campo="demanda"]').evaluateAll((els) => els.map((el) => ({ valor: el.value, focada: el === document.activeElement })));
-    assert.deepEqual(daAna.filter((x) => x.valor).map((x) => x.valor), [`Noite de Gala ${diaMes(DIA)} (DP)`]);
-    assert.ok(daAna.every((x) => x.valor || x.focada), 'linha vazia, só a em que a Ana está');
-    assert.equal(await celulaDe(bia.p, 'Rui Teixeira').locator('[data-campo="demanda"]').first().inputValue(), `Noite de Gala ${diaMes(DIA)} Dp`, 'a Bia continua com o que digitou');
+    // a Ana vê a info da Bia, embaixo da claquete
+    await esperarValor(ana.p, '[data-posicao="pos-rui"][data-campo="demanda"]', 'VEM PRONTA DA PROMO', 'a Ana vê a info da Bia');
+    const daAna = await celulaDe(ana.p, 'Rui Teixeira').locator('input[data-campo="demanda"]').evaluateAll((els) => els.map((el) => el.value));
+    assert.deepEqual(daAna, ['VEM PRONTA DA PROMO'], 'uma info só, sem linha vazia');
+    assert.equal(await celulaDe(bia.p, 'Rui Teixeira').locator('input[data-campo="demanda"]').first().inputValue(), 'VEM PRONTA DA PROMO', 'a Bia continua com o que digitou');
     console.log('ok: as duas mexem no Rui ao mesmo tempo e veem as duas mudanças');
 
     // ninguém fica bloqueado: a Bia entra no campo em que a Ana está e digita
@@ -149,17 +151,19 @@ async function principal() {
     await capturar(ana.p, '02-ana-ve-a-bia-na-elis');
     console.log('ok: ninguém fica bloqueado no campo da outra');
 
-    // a Ana escreve o recado e escala o Gil na vaga pela coluna, enquanto a Bia digita uma demanda da Elis
-    await celulaDe(bia.p, 'Elis Furtado').locator('[data-campo="demanda"]').first().click();
-    await bia.p.keyboard.type('COMUNICA');
+    // a Ana escreve o recado e escala o Gil na vaga pela coluna, enquanto a Bia digita uma info da Elis
+    const mundoDaBia = celulaDe(bia.p, 'Elis Furtado').locator('.montar-demanda.t-claquete').first();
+    await mundoDaBia.hover();
+    await mundoDaBia.getByRole('button', { name: '+ info' }).click();
+    await bia.p.keyboard.type('VIRA');
     await ana.p.locator('[data-campo="recado"]').fill('reunião de pauta às 15h');
     await ana.p.getByLabel('Escalar Gil Moura na…').selectOption('posicao:pos-vaga');
-    await bia.p.keyboard.type('ÇÃO');
+    await bia.p.keyboard.type(' B');
     await esperarValor(bia.p, '[data-campo="recado"]', 'reunião de pauta às 15h', 'a Bia vê o recado da Ana');
     await esperarValor(ana.p, '[data-posicao="pos-vaga"][data-campo="editor"]', 'Gil Moura', 'a Ana vê o Gil que escalou');
     await esperarValor(bia.p, '[data-posicao="pos-vaga"][data-campo="editor"]', 'Gil Moura', 'a Bia vê o Gil escalado pela Ana');
-    await esperarValor(ana.p, '[data-posicao="pos-elis"][data-campo="demanda"]', 'COMUNICAÇÃO', 'a Ana vê a demanda da Bia');
-    assert.equal(await celulaDe(bia.p, 'Elis Furtado').locator('[data-campo="demanda"]').first().inputValue(), 'COMUNICAÇÃO', 'a Bia não perdeu o que digitava');
+    await esperarValor(ana.p, '[data-posicao="pos-elis"][data-campo="demanda"]', 'VIRA B', 'a Ana vê a info da Bia');
+    assert.equal(await celulaDe(bia.p, 'Elis Furtado').locator('input[data-campo="demanda"]').first().inputValue(), 'VIRA B', 'a Bia não perdeu o que digitava');
     await capturar(bia.p, '03-as-duas-no-mesmo-dia');
     console.log('ok: a ação da coluna e o recado da Ana não apagam o que a Bia digitava');
 
@@ -169,9 +173,9 @@ async function principal() {
     const gravado = await (await como(BIA)(`/montar-pauta?dia=${DIA}`)).json();
     const p = (id) => gravado.posicoes.find((x) => x.id === id);
     assert.equal(p('pos-rui').horario, '23h às 7h');
-    assert.deepEqual(p('pos-rui').demandas.map((d) => d.texto), [`Noite de Gala ${diaMes(DIA)} (DP)`]);
+    assert.deepEqual(p('pos-rui').demandas.map((d) => d.texto), [`Noite de Gala ${diaMes(DIA)} (DP)`, 'VEM PRONTA DA PROMO']);
     assert.equal(p('pos-elis').horario, '15h às 23h');
-    assert.deepEqual(p('pos-elis').demandas.map((d) => d.texto), ['COMUNICAÇÃO']);
+    assert.deepEqual(p('pos-elis').demandas.map((d) => d.texto), [`Mundo Animal ${diaMes(DIA)} (P)`, 'VIRA B']);
     assert.equal(p('pos-vaga').editor, 'Gil Moura');
     assert.equal(gravado.recado, 'reunião de pauta às 15h');
     await bia.p.reload();

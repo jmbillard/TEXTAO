@@ -499,7 +499,8 @@ export function SobreALeitura({ leitura }: { leitura: (LeituraDaPauta & { altera
       {r && (
         <p className="pauta-resumo" aria-label="Resumo do administrador">
           <ContaDoResumo n={r.semEditor} um="linha sem editor" varios="linhas sem editor" />
-          <ContaDoResumo n={r.semCard} um="claquete sem card" varios="claquetes sem card" />
+          {/* a claquete sem card fica fora da Pauta (#199): o resumo conta a pauta inteira, com ela */}
+          <ContaDoResumo n={r.semCard} um="claquete sem card, fora da Pauta" varios="claquetes sem card, fora da Pauta" />
           <span>{r.alteradoEm ? `pauta alterada às ${horaEscrita(r.alteradoEm)}` : 'sem alteração registrada'}</span>
         </p>
       )}

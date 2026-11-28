@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { criarCadastros } from '../servidor/cadastros.mjs';
 // @ts-expect-error módulo JS sem tipos
 import { abrirBanco, criarApp, fazerBackup } from '../servidor/app.mjs';
+import { porProducoes } from './fixtures/producoes-falsas';
 // @ts-expect-error módulo JS sem tipos
 import { criarFotosDaEdicao, fotoDoPedido } from '../servidor/foto-da-edicao.mjs';
 
@@ -200,7 +201,10 @@ describe('a semana lado a lado: o dia montado e a foto do mesmo dia (#133)', () 
   afterEach(() => void servidor?.close());
 
   it('as diferenças, posição por posição, só para a coordenação', async () => {
-    const app = criarApp({ db: abrirBanco(':memory:'), env: { EDICAO_FOTO_TOKEN: TOKEN }, cadastros: criarCadastros(CADASTROS, { buscar: teableFalso() }) });
+    const db = abrirBanco(':memory:');
+    const app = criarApp({ db, env: { EDICAO_FOTO_TOKEN: TOKEN }, cadastros: criarCadastros(CADASTROS, { buscar: teableFalso() }) });
+    // da planilha, só conta o que casa com uma Produção (#199): a Terra 28/11 ainda não tem
+    porProducoes(db, ['Noite de Gala 27/11', 'Mundo Animal 30/11'], { perto: SEXTA });
     servidor = createServer(app);
     await new Promise<void>((ok) => servidor!.listen(0, ok));
     const base = `http://localhost:${(servidor!.address() as { port: number }).port}`;
@@ -216,6 +220,12 @@ describe('a semana lado a lado: o dia montado e a foto do mesmo dia (#133)', () 
     ];
     expect((await bia(`/api/montar-pauta?dia=${SEXTA}`, { method: 'PUT', body: JSON.stringify({ posicoes }) })).status).toBe(200);
     await fetch(`${base}/api/publico/edicao/foto`, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify(pacote()) });
+
+    // sem a Produção da Terra, a linha dela na planilha não é diferença: o Montar não a teria
+    const semTerra = await (await bia(`/api/montar-pauta/foto?dia=${SEXTA}`)).json();
+    expect(semTerra.diferencas.posicoes.map((p: { editor: string }) => p.editor)).toEqual(['Elis Furtado']);
+    expect(semTerra.daFoto.posicoes[0].demandas.map((d: { texto: string }) => d.texto)).toEqual(['Noite de Gala 27/11 (DP)']);
+    porProducoes(db, ['Terra 28/11'], { perto: SEXTA });
 
     const r = await (await bia(`/api/montar-pauta/foto?dia=${SEXTA}`)).json();
     expect(r.foto.aba).toBe('SEXTA');

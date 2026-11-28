@@ -93,14 +93,14 @@
 /* a coluna lateral (#126, a alternativa B): ao lado da grade no computador; em cima, no tablet em pé; embaixo, no
    celular. O estado vai no fundo levemente tingido ou na etiqueta (nada de faixa colorida na borda). */
 .montar-corpo { display: grid; grid-template-columns: 284px minmax(0, 1fr); gap: 18px; align-items: start; }
-.montar-coluna { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); overflow: auto; overscroll-behavior: contain; padding-bottom: 2px; }
+/* a coluna fica por cima da grade (z-index): o diálogo das ausências mora nela, e o que a grade pinta numa camada
+   própria (o "+ info" esmaecido, a claquete que acabou de chegar) não passa por cima do véu dele */
+.montar-coluna { position: sticky; z-index: 2; top: 12px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); overflow: auto; overscroll-behavior: contain; padding-bottom: 2px; }
 .coluna-caixa { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 12px 12px; border: 1px solid var(--regua); border-radius: 12px; background: var(--papel); }
 .coluna-rotulo { margin: 0; font: 600 11px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta3); }
 .coluna-n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; background: var(--neutro); color: var(--tinta2); letter-spacing: 0; }
 .coluna-ninguem { margin: 0; }
 .coluna-ninguem:not(.vazio-a-mao) { font-size: 13px; color: var(--tinta3); }
-.coluna-escrever { width: 100%; min-height: 34px; padding: 7px 9px; border: 1px dashed var(--regua-forte); border-radius: 8px; background: var(--cartao); color: var(--tinta); font: 500 12.5px/1.4 var(--mono); resize: vertical; }
-.coluna-escrever:focus { outline: 0; border-style: solid; border-color: var(--ultra); }
 .coluna-dica { margin: -2px 0 0; font: 400 11px/1.35 var(--sans); color: var(--tinta3); }
 .coluna-itens { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .coluna-claquete, .coluna-pessoa { position: relative; display: flex; align-items: flex-start; gap: 6px; min-width: 0; padding: 7px 8px 7px 4px; border: 1px solid var(--regua); border-radius: 9px; background: var(--cartao); cursor: grab; user-select: none; -webkit-user-select: none; }
@@ -154,8 +154,8 @@ body.arrastando, body.arrastando * { cursor: grabbing !important; user-select: n
 @media (max-width: 1099px) {
   .montar-corpo { grid-template-columns: minmax(0, 1fr); }
   .montar-coluna { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; overflow: visible; align-items: start; }
-  .coluna-distribuir { grid-column: 1 / -1; }
-  .coluna-distribuir .coluna-itens { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .coluna-distribuir, .coluna-producoes { grid-column: 1 / -1; }
+  .coluna-distribuir .coluna-itens, .coluna-producoes .coluna-itens { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 }
 
 @media (max-width: 640px) {
@@ -169,7 +169,7 @@ body.arrastando, body.arrastando * { cursor: grabbing !important; user-select: n
   .montar-turno-cab { flex-wrap: wrap; row-gap: 2px; }
   /* no celular, a coluna vai para baixo, uma caixa embaixo da outra; a demanda muda de lugar pelo "Mover para…" (⇄), sem a alça */
   .montar-coluna { order: 2; grid-template-columns: minmax(0, 1fr); }
-  .coluna-distribuir .coluna-itens { display: flex; }
+  .coluna-distribuir .coluna-itens, .coluna-producoes .coluna-itens { display: flex; }
   .montar-demanda > .arrasto-alca { display: none; }
 }
 
@@ -190,3 +190,54 @@ body.arrastando, body.arrastando * { cursor: grabbing !important; user-select: n
 .montar-demanda.fora-da-busca, .coluna-claquete.fora-da-busca { opacity: 0.3; }
 .montar-achadas { margin: -4px 0 12px; }
 .montar-achadas:not(.vazio-a-mao) { font: 500 12.5px var(--sans); color: var(--tinta3); }
+
+/* Só claquetes que casam com uma Produção (#199, ADR 0008). A lista "Das Produções": cada claquete com a bolinha da
+   etapa, as praças e o "no Trello"; o "+" a põe em "Para distribuir" (o ⇄ fica à esquerda dele). Entra e sai pelas
+   vagas (Vagas). */
+.coluna-producao { padding-right: 76px; }
+.coluna-producao > .mover-menu { right: 32px; }
+.coluna-mais { position: absolute; top: 50%; right: 4px; width: 28px; height: 28px; transform: translateY(-50%); border-radius: 8px; color: var(--tinta2); font: 500 18px/1 var(--sans); transition: background var(--rapido) var(--suave), color var(--rapido) var(--suave), transform var(--rapido) var(--suave); }
+.coluna-mais:hover, .coluna-mais:focus-visible { background: color-mix(in srgb, var(--ultra-suave) 80%, transparent); color: var(--ultra-tinta); }
+.coluna-mais:active { transform: translateY(-50%) scale(0.9); }
+.coluna-etapa { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 5px; }
+.coluna-etapa .bolinha-estado { margin-right: 1px; }
+.coluna-todas { align-self: flex-start; font-size: 11.5px; }
+
+/* "N de fora": o número na frente, a dica e a lista que abre e fecha (a altura cresce pelo grid, sem medir) */
+.coluna-de-fora .coluna-rotulo .coluna-n { margin: 0 4px 0 0; }
+.coluna-ver { align-self: flex-start; font-size: 11.5px; }
+.de-fora-lista { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--medio) var(--suave), opacity var(--medio) var(--suave); }
+.de-fora-lista > .coluna-itens { min-height: 0; overflow: hidden; }
+.de-fora-lista.aberta { grid-template-rows: 1fr; opacity: 1; }
+.de-fora-item { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--tinta) 4%, transparent); }
+.de-fora-item .mono { font: 500 12px var(--mono); color: var(--tinta2); overflow-wrap: anywhere; }
+.de-fora-item.t-tarefa .mono { font: italic 400 13.5px var(--serifa); }
+.de-fora-item .etiqueta { font-style: italic; }
+.de-fora-info { font: italic 400 12.5px/1.3 var(--serifa); color: var(--tinta3); }
+.de-fora-info::before { content: '“'; }
+.de-fora-info::after { content: '”'; }
+
+/* a claquete da posição: escolhida, não se edita; a info vem embaixo dela, em texto, como o aviso */
+.montar-claquete { display: block; padding: 3px 2px 0; font: 600 12.5px/1.4 var(--mono); color: var(--tinta); overflow-wrap: anywhere; border-radius: 4px; outline: 0; }
+.montar-claquete:focus-visible { box-shadow: 0 0 0 2px var(--ultra-suave); }
+.montar-demanda.arrastavel .montar-claquete { padding-right: 44px; }
+.montar-mais-info { margin-left: auto; padding: 0 2px; font-size: 11px; color: var(--tinta3); opacity: 0; transition: opacity var(--rapido) var(--suave), color var(--rapido) var(--suave); }
+.montar-demanda:hover .montar-mais-info, .montar-mais-info:focus-visible { opacity: 1; }
+.montar-mais-info:hover { color: var(--ultra-tinta); }
+@media (hover: none) { .montar-mais-info { opacity: 1; } }
+.montar-demanda.t-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; padding-left: 14px; }
+.montar-info-marca { flex: none; font: 600 9.5px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ultra-tinta); }
+.montar-demanda.t-info .montar-in { flex: 1; width: auto; min-width: 0; height: 24px; font: italic 400 14px var(--serifa); color: var(--tinta2); }
+.montar-demanda.t-info .montar-leitura { flex-basis: 100%; }
+/* a claquete que acabou de chegar à posição (escolhida, levada ou movida): um sopro do laranja, que se apaga */
+.montar-demanda.m-chegou { animation: m-chegou 1.1s var(--suave); }
+@keyframes m-chegou {
+  0% { background: color-mix(in srgb, var(--ultra-suave) 95%, transparent); transform: translateY(-3px); }
+  35% { transform: none; }
+  100% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .montar-demanda.m-chegou { animation: m-chegou-quieto 1.1s linear; }
+  @keyframes m-chegou-quieto { from { background: color-mix(in srgb, var(--ultra-suave) 95%, transparent); } to { background: transparent; } }
+  .de-fora-lista, .coluna-mais, .montar-mais-info { transition: none; }
+}

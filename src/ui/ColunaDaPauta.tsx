@@ -3,9 +3,11 @@ import { semAcento } from '../modelo/vocabularios';
 import { iniciais, primeiroNome } from '../dados/colaboracao';
 import { lerDemanda } from '../modelo/escala';
 import type { DemandaParaDistribuir } from '../modelo/ausencias';
+import { ROTULO_DA_ETAPA, type ClaqueteParaEscolher, type DeForaDaPauta } from '../modelo/pauta';
 import type { ItemArrastado } from './arrastar';
 import { DIAS_DA_SEMANA, partes } from './pecasDaPauta';
-import { Vazio } from './pecas';
+import { BolinhaDeEstado, NadaNaBusca, Vazio } from './pecas';
+import { Vagas } from './vagas';
 
 /** A busca do Montar a pauta (#171), a lupa das outras telas: as claquetes que batem ficam, as outras esmaecem (a
     grade continua inteira, para arrastar e digitar). Vazia, nada esmaece. */
@@ -67,8 +69,6 @@ export const Alca = () => (
 interface PropsDoParaDistribuir {
   dia: string;
   itens: readonly DemandaParaDistribuir[];
-  /** junta a lista escrita ou colada; devolve se deu certo (aí o campo esvazia) */
-  juntar: (texto: string) => Promise<boolean>;
   tirar: (id: string) => void;
   destinos: readonly Destino[];
   mover: (id: string, destino: string) => void;
@@ -78,46 +78,19 @@ interface PropsDoParaDistribuir {
   porQueNao: string;
 }
 
-/** "Para distribuir": escrever ou colar as claquetes (uma por linha) e depois arrastar cada uma para um editor. */
-export function ParaDistribuir({ dia, itens, juntar, tirar, destinos, mover, arraste: { iniciar, arrastado, sobre }, distribuir, porQueNao }: PropsDoParaDistribuir) {
-  const [texto, setTexto] = useState('');
-  const [ocupado, setOcupado] = useState(false);
+/**
+ * "Para distribuir": as claquetes escolhidas das Produções (#199: não se escreve nem se cola uma linha livre), à espera
+ * de ir para um editor, arrastando, pelo "Mover para…" ou pelo Distribuir.
+ */
+export function ParaDistribuir({ dia, itens, tirar, destinos, mover, arraste: { iniciar, arrastado, sobre }, distribuir, porQueNao }: PropsDoParaDistribuir) {
   const termo = useContext(BuscaNoMontar);
-  const enviar = async (t: string) => {
-    if (!t.trim() || ocupado) return;
-    setOcupado(true);
-    if (await juntar(t)) setTexto('');
-    setOcupado(false);
-  };
+  const recebe = arrastado?.tipo === 'demanda' || arrastado?.tipo === 'producao';
   return (
-    <section className={`coluna-caixa coluna-distribuir${sobre === 'lista' ? ' sobre' : ''}${arrastado?.tipo === 'demanda' ? ' recebe' : ''}`} aria-label="Para distribuir" data-solta="lista">
+    <section className={`coluna-caixa coluna-distribuir${sobre === 'lista' ? ' sobre' : ''}${recebe ? ' recebe' : ''}`} aria-label="Para distribuir" data-solta="lista">
       <h2 className="coluna-rotulo">
         Para distribuir <span className="coluna-n">{itens.length}</span>
       </h2>
-      <textarea
-        className="coluna-escrever"
-        value={texto}
-        rows={Math.min(6, Math.max(1, texto.split('\n').length))}
-        placeholder="escreva ou cole as claquetes"
-        aria-label="Escrever ou colar as claquetes"
-        spellCheck={false}
-        disabled={ocupado}
-        onChange={(e) => setTexto(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            void enviar(texto);
-          }
-        }}
-        onPaste={(e) => {
-          // a lista colada (mais de uma linha) entra na hora
-          const colado = e.clipboardData.getData('text');
-          if (!colado.includes('\n')) return;
-          e.preventDefault();
-          void enviar(`${texto}\n${colado}`);
-        }}
-      />
-      <p className="coluna-dica">uma por linha, Enter junta; depois arraste cada uma para um editor</p>
+      {!itens.length && <p className="coluna-dica">escolha as claquetes nas Produções (o + ou arrastando) e depois leve cada uma para um editor</p>}
       {itens.length > 0 && (
         <div className="coluna-distribuir-acao">
           <button type="button" className="botao" disabled={!!porQueNao} title={porQueNao || 'Põe as claquetes nos editores escalados: quem pegou a atração nos últimos 14 dias, depois quem tem menos demandas, depois um sorteio. Nada é publicado.'} onClick={distribuir}>
@@ -189,6 +162,138 @@ export function SemEscala({ pessoas, destinos, escalar, arraste: { iniciar, arra
         </ul>
       ) : (
         <Vazio className="coluna-ninguem">todos escalados</Vazio>
+      )}
+    </section>
+  );
+}
+
+/* ---------- as claquetes das Produções e o "de fora" (#199, ADR 0008) ---------- */
+
+/** Quantas claquetes a lista mostra antes do "mostrar todas" (com a busca, todas as que batem). */
+const NA_LISTA = 8;
+
+interface PropsDasClaquetes {
+  /** null enquanto lê */
+  claquetes: readonly ClaqueteParaEscolher[] | null;
+  erro: string;
+  /** põe em "Para distribuir" */
+  escolher: (c: ClaqueteParaEscolher) => void;
+  /** o "Pôr em…": uma posição do dia ou "lista" */
+  destinos: readonly Destino[];
+  porEm: (c: ClaqueteParaEscolher, destino: string) => void;
+  arraste: Arraste;
+}
+
+/**
+ * As claquetes das Produções (#199): as que a coordenação pode pôr no dia, das Produções que entraram perto dele (do
+ * Teable e do Trello), da que entrou por último para a mais velha. Cada uma arrasta para um editor ou para "Para
+ * distribuir", tem o "+" (vai para "Para distribuir") e o "Pôr em…" (o caminho no celular e pelo teclado). A lupa da
+ * tela filtra a lista: aqui o que não bate sai (é uma lista para achar), em vez de esmaecer.
+ */
+export function ClaquetesDasProducoes({ claquetes, erro, escolher, destinos, porEm, arraste: { iniciar, arrastado } }: PropsDasClaquetes) {
+  const termo = useContext(BuscaNoMontar);
+  const [todas, setTodas] = useState(false);
+  const batem = (claquetes ?? []).filter((c) => !termo || semAcento(`${c.claquete} ${c.pracas.join(' ')}`).includes(termo));
+  const vistas = termo || todas ? batem : batem.slice(0, NA_LISTA);
+  return (
+    <section className="coluna-caixa coluna-producoes" aria-label="Claquetes das Produções">
+      <h2 className="coluna-rotulo">
+        Das Produções {claquetes && <span className="coluna-n">{claquetes.length}</span>}
+      </h2>
+      {erro ? (
+        <p className="aus-erro" role="alert">
+          {erro}
+        </p>
+      ) : !claquetes ? (
+        <p className="coluna-ninguem">lendo as Produções…</p>
+      ) : !claquetes.length ? (
+        <Vazio className="coluna-ninguem">nenhuma Produção perto do dia</Vazio>
+      ) : !batem.length ? (
+        <NadaNaBusca termo={termo} onde="nas Produções" className="coluna-ninguem" />
+      ) : (
+        <>
+          <ul className="coluna-itens">
+            <Vagas como="li" itens={vistas} chave={(c) => c.chave}>
+              {(c) => (
+                <div className={`coluna-claquete coluna-producao${arrastado?.tipo === 'producao' && arrastado.id === c.chave ? ' indo' : ''}`} data-chave={c.chave} onPointerDown={iniciar({ tipo: 'producao', id: c.chave })}>
+                  <Alca />
+                  <EscolherDestino className="mover-menu" rotulo="⇄" titulo={`Pôr ${c.claquete} em…`} destinos={destinos} escolher={(v) => porEm(c, v)} />
+                  <span className="coluna-claquete-corpo">
+                    <span className="mono">{c.claquete}</span>
+                    <span className="coluna-leitura coluna-etapa">
+                      <BolinhaDeEstado estado={c.etapa} />
+                      {ROTULO_DA_ETAPA[c.etapa]}
+                      {c.pracas.length > 0 && <> · {c.pracas.join(', ')}</>}
+                      {c.noTrello && <> · no Trello</>}
+                    </span>
+                  </span>
+                  <button type="button" className="botao-icone pequeno coluna-mais" aria-label={`Pôr ${c.claquete} em Para distribuir`} title="Pôr em Para distribuir" onClick={() => escolher(c)}>
+                    +
+                  </button>
+                </div>
+              )}
+            </Vagas>
+          </ul>
+          {!termo && batem.length > NA_LISTA && (
+            <button type="button" className="botao-texto coluna-todas" aria-expanded={todas} onClick={() => setTodas((x) => !x)}>
+              {todas ? 'mostrar menos' : `mostrar todas (${batem.length})`}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * "N de fora" (#199), só para a coordenação: o que o Teable tem no dia e não aparece na Pauta (as tarefas e as claquetes
+ * sem Produção, com as infos delas), para conferir. Nada disso é apagado ao publicar. A lista abre e fecha.
+ */
+export function DeForaDoDia({ deFora, erro }: { deFora: readonly DeForaDaPauta[] | null | undefined; erro: string }) {
+  const [aberta, setAberta] = useState(false);
+  const n = deFora?.length ?? 0;
+  return (
+    <section className="coluna-caixa coluna-de-fora" aria-label="De fora da Pauta">
+      <h2 className="coluna-rotulo">
+        {deFora ? (
+          <>
+            <span className="coluna-n">{n}</span> de fora
+          </>
+        ) : (
+          'De fora'
+        )}
+      </h2>
+      {erro ? (
+        <p className="coluna-dica">não li o Teable deste dia: {erro}</p>
+      ) : deFora === undefined ? (
+        <p className="coluna-ninguem">lendo o Teable…</p>
+      ) : !n ? (
+        <Vazio className="coluna-ninguem">nada de fora</Vazio>
+      ) : (
+        <>
+          <p className="coluna-dica">no Teable, fora da Pauta: tarefas e claquetes sem Produção. Publicar não apaga nada disso.</p>
+          <button type="button" className="botao-texto coluna-ver" aria-expanded={aberta} onClick={() => setAberta((x) => !x)}>
+            {aberta ? 'esconder a lista' : 'ver a lista'}
+          </button>
+          <div className={`de-fora-lista${aberta ? ' aberta' : ''}`} aria-hidden={!aberta}>
+            <ul className="coluna-itens">
+              {(deFora ?? []).map((d) => (
+                <li key={d.id} className={`de-fora-item t-${d.tipo}`}>
+                  <span className="mono">{d.texto}</span>
+                  <span className="coluna-leitura">
+                    <span className="etiqueta">{d.tipo === 'tarefa' ? 'tarefa' : 'sem Produção'}</span>
+                    {d.editor ? ` ${primeiroNome(d.editor)}` : ' sem editor'}
+                  </span>
+                  {d.infos.map((info, i) => (
+                    <span key={i} className="de-fora-info">
+                      {info}
+                    </span>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
       )}
     </section>
   );

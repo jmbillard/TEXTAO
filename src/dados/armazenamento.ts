@@ -1229,7 +1229,7 @@ export async function conectar(perfil: Pessoa | null): Promise<Conexao> {
 
 import type { SecaoDaDuplicada } from '../modelo/duplicadas';
 import type { Andamento as FrentesDoAndamento, Etapa } from '../modelo/andamento';
-import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
+import { CHAVE_DA_ESCOLHA, escolhaDaPauta, type ClaqueteParaEscolher, type DeForaDaPauta, type DiaDaPauta, type EscolhaDaPauta, type FiltroDaPauta, type LeituraDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import type { DiaDaEscala, PosicaoDaEscala, TurnoDaEscala } from '../modelo/escala';
 import type { FotoDoDia } from '../modelo/fotoDaPlanilha';
 import type { DeOndeRepetir } from '../modelo/repetir';
@@ -1715,6 +1715,23 @@ export const desfazerAPublicacao = (dia: string) => pedir<DiaDaEscala>(`/api/mon
 const naColuna = (dia: string, acao: string, corpo: unknown) => pedir<DiaDaEscala>(`/api/montar-pauta/${acao}?dia=${dia}`, { method: 'POST', body: JSON.stringify(corpo) });
 /** Junta a lista escrita ou colada em "Para distribuir" (uma claquete por linha, no padrão). */
 export const juntarParaDistribuir = (dia: string, texto: string) => naColuna(dia, 'para-distribuir', { texto });
+/** O que a lista das claquetes do Montar a pauta lê (#199). */
+export interface ClaquetesDoMontar {
+  dia: string;
+  claquetes: ClaqueteParaEscolher[];
+  /** null: o Postgres do Teable não respondeu (o motivo em erroDeFora) */
+  deFora: DeForaDaPauta[] | null;
+  erroDeFora?: string;
+}
+/**
+ * Escolhe uma claquete das Produções (#199): no fim de "Para distribuir" ou, com `posicao`, nela (antes de `antesDe`, ou
+ * no fim), com o `id` que a tela já mostrou. O servidor recusa (422) a que não casa com uma Produção.
+ */
+export const escolherAClaquete = (dia: string, claquete: string, onde: { posicao?: string; antesDe?: string | null; id?: string } = {}) => naColuna(dia, 'escolher', { claquete, ...onde });
+/** As claquetes das Produções perto do dia que ainda não estão nele e o que o Teable tem no dia e não casa (#199). */
+export const lerAsClaquetesDoMontar = (dia: string) => pedir<ClaquetesDoMontar>(`/api/montar-pauta/claquetes?dia=${dia}`);
+/** Quais destes textos casam com uma Produção no dia (#199): o colar da planilha só põe no rascunho o que casa. */
+export const quaisCasam = (dia: string, textos: readonly string[]) => pedir<{ casam: boolean[] }>(`/api/montar-pauta/casam?dia=${dia}`, { method: 'POST', body: JSON.stringify({ textos }) }).then((r) => r.casam);
 /** Leva uma claquete de "Para distribuir" para a posição (antes de `antesDe`, ou no fim). */
 export const levarParaAPosicao = (dia: string, id: string, posicao: string, antesDe: string | null = null) => naColuna(dia, 'levar', { id, posicao, antesDe });
 /** Move a demanda para a posição (antes de `antesDe`, ou no fim). */

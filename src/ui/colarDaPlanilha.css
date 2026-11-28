@@ -69,3 +69,9 @@
   .colar-texto { min-height: 140px; height: 140px; }
   .colar-lido { max-height: none; }
 }
+
+/* só o que casa com uma Produção entra (#199): o que fica de fora vem riscado e apagado, com o motivo na dica */
+.colar-de-fora { opacity: 0.55; text-decoration: line-through; text-decoration-color: var(--tinta3); transition: opacity var(--medio) var(--suave); }
+.colar-conferindo { margin: 0 0 8px; font: 600 15px/1.2 Caveat, cursive; color: var(--tinta3); }
+.colar-de-fora-resumo { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: var(--tinta2); }
+@media (prefers-reduced-motion: reduce) { .colar-de-fora { transition: none; } }

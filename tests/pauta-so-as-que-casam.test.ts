@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { colunasDoDia, contaDoEditor, cruzarComAProducao, linhaDaPauta, soAsQueCasam, type LinhaDaPauta, type ProducaoNaPauta } from '../src/modelo/pauta';
+import { colunasDoDia, contaDoEditor, cruzarComAProducao, infoNoPadrao, linhaDaPauta, soAsQueCasam, tipoDaLinha, type LinhaDaPauta, type ProducaoNaPauta } from '../src/modelo/pauta';
 
 /* Só as claquetes que casam com uma Produção (#199, ADR 0008): a Pauta mostra a claquete que casa (pela chave do
    cruzamento: exata, sem a versão, sem a praça), a info e o aviso; a tarefa e a claquete sem Produção ficam de fora,
@@ -67,5 +67,15 @@ describe('só as claquetes que casam com uma Produção', () => {
     const ls = cruzar([linha('Bola Cheia 29/11'), linha('Terra Viva 30/11'), linha('COMUNICAÇÃO'), linha('Mundo Animal 28/11')], [producao('Bola Cheia 29/11', 'entregue'), producao('Mundo Animal 28/11', 'produzindo')]);
     const [c] = colunasDoDia(soAsQueCasam(ls).linhas);
     expect(contaDoEditor(c.itens)).toEqual({ feitas: 1, total: 2, bolinhas: [true, false] });
+  });
+});
+
+describe('a info do Montar a pauta', () => {
+  it('a que o PROMeiro não leria como info ganha "OBS:" (não vira tarefa, que ficaria fora da Pauta); a que já é, fica', () => {
+    expect(infoNoPadrao('  Cuidado   com o áudio ')).toBe('OBS: Cuidado com o áudio');
+    expect(infoNoPadrao('VIRA B')).toBe('VIRA B');
+    expect(infoNoPadrao('REDATOR VAI ACOMPANHAR')).toBe('REDATOR VAI ACOMPANHAR');
+    expect(infoNoPadrao('')).toBe('');
+    for (const t of ['Cuidado com o áudio', 'Festa no sábado', 'COMUNICAÇÃO']) expect(tipoDaLinha(infoNoPadrao(t), null)).toBe('info');
   });
 });

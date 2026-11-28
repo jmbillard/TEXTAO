@@ -193,6 +193,13 @@ export function separarAsInfos(ls: readonly LinhaDaPauta[]): { itens: LinhaDaPau
   return { itens, infos };
 }
 
+/** A info como o Montar a pauta grava (#199): a que o PROMeiro não leria como info (e iria como tarefa, que fica fora
+    da Pauta) ganha "OBS:" na frente; os espaços repetidos saem. */
+export function infoNoPadrao(texto: string): string {
+  const t = texto.trim().replace(/\s+/g, ' ');
+  return !t || ehInfo(t) ? t : `OBS: ${t}`;
+}
+
 /** O nome do editor, do link do Teable ({ title }, a lista deles ou o texto, também em JSON). */
 export function nomeDoEditor(v: unknown): string {
   if (typeof v === 'string') {

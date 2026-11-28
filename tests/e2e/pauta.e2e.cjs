@@ -3,9 +3,10 @@
 //
 // Sobe o servidor e o Vite como os outros e2e (banco temporário, nada sai para a rede), com o Teable falso
 // (tests/fixtures/teable-falso.mjs): a tabela EDICAO_producao achada pelo nome e o Postgres dele respondendo as linhas
-// da pauta, fictícias, da semana de hoje e da anterior. Nada vai ao Trello.
+// da pauta, fictícias, da semana de hoje e da anterior. Só aparecem as claquetes que casam com uma Produção (#199): as
+// Produções vão direto no SQLite, menos as de algumas claquetes, que ficam de fora com as tarefas. Nada vai ao Trello.
 // - A Semana (computador, claro e escuro, pela Lia, que não é editora): sem o texto embaixo do título; um editor por
-//   linha ("sem editor · sobrou" no fim, só para a coordenação e os editores, #172); o código das versões no fim do nome; a tarefa com outro visual; o ⚑ do aviso
+//   linha ("sem editor · sobrou" no fim, só para a coordenação e os editores, #172); o código das versões no fim do nome; a tarefa e a claquete sem Produção de fora (#199); o ⚑ do aviso
 //   com o balão; o recado do dia e quem está fora (o que sobrou, só a coordenação e os editores, #172); a claquete com a produção da arte (#96); o hover da
 //   agenda sem sublinhado, o lápis do apelido e o clique direito; a ficha no card aberto do centro (#160, alternativa
 //   A); a busca por claquete, atração e editor, nas semanas vizinhas também; o interruptor do código; anterior,
@@ -94,6 +95,18 @@ PAUTA.push(linha('Reunião geral às 10h na ilha 4', null, hoje, ['08:00', '17:0
 // a mesma atração em outra praça e com versão (#96): a ficha junta as duas linhas
 PAUTA.push(linha(`Show da Tarde ${diaMes(hoje)} SP (H)`, 'Ana Ribeiro', hoje, ['06:00', '15:00']));
 PAUTA.push(linha(`Esporte Antigo ${diaMes(mais(anterior, 3))}`, 'Ana Ribeiro', mais(anterior, 2), ['06:00', '15:00']));
+// só as claquetes que casam com uma Produção (#199): a que sobrou sem editor tem Produção; o Filme Sem Card, não (fica de
+// fora, como a COMUNICAÇÃO e a CALHAUS, que são tarefas)
+const SOBROU = `Sessão Extra ${diaMes(hoje)}`;
+const SEM_CARD = `Filme Sem Card ${diaMes(hoje)}`;
+PAUTA.push(linha(SOBROU, null, hoje, ['08:00', '17:00']));
+PAUTA.push(linha(SEM_CARD, 'Bruno Teixeira', hoje, ['14:00', '22:53']));
+// mais claquetes sem Produção, fora da tela, para o resumo do administrador contar (#170): cinco nesta semana, uma na
+// anterior
+const SEM_CARD_TAMBEM = [];
+for (let i = 0; i < 5; i++) SEM_CARD_TAMBEM.push(linha(`Reprise Sem Card ${i + 1} ${diaMes(mais(segunda, i))}`, 'Bruno Teixeira', mais(segunda, i), ['14:00', '22:53']));
+SEM_CARD_TAMBEM.push(linha(`Arquivo Sem Card ${diaMes(mais(anterior, 1))}`, 'Ana Ribeiro', mais(anterior, 1), ['06:00', '15:00']));
+PAUTA.push(...SEM_CARD_TAMBEM);
 
 /* A semana daqui a duas, na forma da pauta real que quebrou a Semana no Safari (#172), com nomes inventados: só de
    segunda a sexta (o fim de semana sem ninguém), muitos editores na manhã, o nome em caixa alta com "(sem ID)*" como
@@ -106,7 +119,9 @@ for (let i = 0; i < 5; i++) {
     const turno = j < 4 ? ['06:00', '15:00'] : j === 4 ? ['14:00', '20:00'] : ['22:00', '06:00'];
     // a info sem claquete antes fica na posição (#172)
     if (j === 3) PAUTA.push(linha('REDATOR VAI ACOMPANHAR', editor, d, turno));
-    PAUTA.push(linha(j === 4 ? 'COMUNICAÇÃO' : `Atração ${j + 1}(Prologo)${diaMes(mais(d, 1))} (AH)`, editor, d, turno));
+    PAUTA.push(linha(`Atração ${j + 1}(Prologo)${diaMes(mais(d, 1))} (AH)`, editor, d, turno));
+    // a tarefa (#199): no Teable, fora da Pauta
+    if (j === 4) PAUTA.push(linha('COMUNICAÇÃO', editor, d, turno));
     if (j === 1) PAUTA.push(linha('TRANSFORMAR DA A B', editor, d, turno));
     if (j === 2) PAUTA.push(linha('VEM PRONTA', editor, d, turno, true));
   });
@@ -242,16 +257,13 @@ async function noComputador(navegador, url, tema) {
   assert.deepEqual(await nomesComVersoes(daCarla), [`Festa da Vila(Prologo)${diaMes(mais(segunda, 2))} (AH)`]);
   assert.equal(await p.locator('.codigo-versoes, .pauta-versoes').count(), 0);
 
-  // a tarefa tem outro visual que a claquete; na coluna de hoje ela diz "tarefa"
+  // só as claquetes que casam com uma Produção (#199): a tarefa (COMUNICAÇÃO, CALHAUS) e a claquete sem Produção (o Filme
+  // Sem Card) ficam no Teable, fora da Pauta
   const doBruno = celula(p, 'Bruno Teixeira', hoje);
-  const tarefa = doBruno.locator('.pauta-item.pauta-tarefa');
-  const claquete = doBruno.locator('.pauta-item.pauta-claquete').first();
-  assert.deepEqual(await textos(tarefa.locator('.pauta-texto')), ['COMUNICAÇÃO']);
-  assert.equal((await tarefa.locator('.pauta-producao').textContent()).trim(), 'tarefa');
-  const estilo = (l) => l.evaluate((e) => [getComputedStyle(e).fontStyle, getComputedStyle(e).fontFamily].join('|'));
-  assert.notEqual(await estilo(tarefa.locator('.pauta-nome-com-versoes')), await estilo(claquete.locator('.pauta-nome-com-versoes')));
-  assert.match(await estilo(tarefa.locator('.pauta-nome-com-versoes')), /^italic/);
-  
+  assert.equal(await p.locator('.pauta-item.pauta-tarefa').count(), 0, 'nenhuma tarefa na Semana');
+  assert.equal(await p.locator('.pauta-item', { hasText: /COMUNICAÇÃO|CALHAUS|Filme Sem Card/ }).count(), 0, 'nem a claquete sem Produção');
+  assert.ok((await doBruno.locator('.pauta-item.pauta-claquete').count()) > 0);
+
 
   // a produção da arte aparece só na coluna de hoje; nos outros dias, só o nome
   assert.ok((await celula(p, 'Ana Ribeiro', hoje).locator('.pauta-producao').count()) > 0);
@@ -287,12 +299,12 @@ async function noComputador(navegador, url, tema) {
   assert.equal((await show.locator('.pauta-producao').textContent()).replace(/\s+/g, ' ').trim(), 'Entregue · 2 artes · Dora Lima · G5');
   assert.equal(await show.locator('.marca-texto').count(), 1);
   const novela = cardDe(celula(p, 'Ana Ribeiro', hoje), 'Novela Sol');
-  assert.equal((await novela.locator('.pauta-producao').textContent()).trim(), 'sem card');
-  // a bolinha do "sem card" é a bolinha de estado da agenda (BolinhaDeEstado, #172): o pontinho cheio e neutro, sem anel
+  assert.equal((await novela.locator('.pauta-producao').textContent()).trim(), 'Entrada');
+  // a bolinha da Entrada é a bolinha de estado da agenda (BolinhaDeEstado, #172): o pontinho cheio e neutro, sem anel
   const bolinha = (l) => l.locator('.pauta-nome-com-versoes > .bolinha-estado').evaluate((e) => ({ estado: e.dataset.estado, cor: getComputedStyle(e).backgroundColor, anel: getComputedStyle(e).boxShadow, w: getComputedStyle(e).width, raio: getComputedStyle(e).borderRadius }));
   const semCard = await bolinha(novela);
   const tinta3 = await p.evaluate(() => { const e = document.createElement('i'); e.style.color = 'var(--tinta3)'; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; });
-  assert.deepEqual(semCard, { estado: 'sem-card', cor: tinta3, anel: 'none', w: '6px', raio: '50%' }, 'sem card: a bolinha neutra da agenda');
+  assert.deepEqual(semCard, { estado: 'entrada', cor: tinta3, anel: 'none', w: '6px', raio: '50%' }, 'entrada: a bolinha neutra da agenda');
   assert.equal((await bolinha(show)).estado, 'entregue');
   assert.notEqual((await bolinha(show)).cor, tinta3, 'entregue: a bolinha com a cor da etapa');
   // o hover da agenda (#162): o realce, sem sublinhado; o lápis do apelido aparece no canto
@@ -573,7 +585,7 @@ async function oSobrouPorPerfil(navegador, url, api) {
     const sobrou = p.locator('.pauta-sobrou');
     ve[quem] = (await sobrou.count()) ? await textos(sobrou.locator('.pauta-texto')) : null;
     // a linha "sem editor · sobrou" da Semana vai junto com a folha
-    const linha = (await p.locator('.pauta-grade tr.sem-editor').count()) ? await textos(celula(p, 'sem editor', hoje).locator('.pauta-item.pauta-tarefa .pauta-texto')) : null;
+    const linha = (await p.locator('.pauta-grade tr.sem-editor').count()) ? await textos(celula(p, 'sem editor', hoje).locator('.pauta-item .pauta-texto')) : null;
     assert.deepEqual(linha, ve[quem], `${quem}: a linha da Semana e a folha do que sobrou juntas`);
     if (ve[quem]) {
       assert.match(await sobrou.locator('.rotulo').textContent(), /Sobrou · sem editor\s*1/);
@@ -589,7 +601,8 @@ async function oSobrouPorPerfil(navegador, url, api) {
     assert.deepEqual(erros, []);
     await ctx.close();
   }
-  assert.deepEqual(ve, { coordenação: ['CALHAUS'], editora: ['CALHAUS'], designer: null, 'sem perfil': null });
+  // o que sobrou é a claquete sem editor que casa com uma Produção; a CALHAUS (tarefa) ficou de fora (#199)
+  assert.deepEqual(ve, { coordenação: [SOBROU], editora: [SOBROU], designer: null, 'sem perfil': null });
   console.log('ok: o "Sobrou · sem editor" (a folha, a linha da Semana e a coluna do Dia) só para a coordenação e os editores; a designer e quem não tem perfil não veem');
 }
 
@@ -723,9 +736,11 @@ async function oDia(navegador, url, tema, teable, api) {
   assert.equal((await coluna(p, 'Ana Ribeiro').locator('.pauta-conta-num').textContent()).replace(/\s+/g, ' ').trim(), '0 de 2');
   // o aviso da Carla no ⚑ da coluna
   assert.equal(await coluna(p, 'Carla Duarte').locator('.pauta-aviso-botao').count(), 1);
-  // as claquetes e as tarefas em cards; o aviso não é card
+  // só as claquetes que casam com uma Produção, em cards (#199): a tarefa e a claquete sem Produção ficam de fora; o
+  // aviso não é card
   const doBruno = coluna(p, 'Bruno Teixeira');
-  assert.deepEqual(await textos(doBruno.locator('.pauta-tarefa .pauta-texto')), ['COMUNICAÇÃO']);
+  assert.equal(await doBruno.locator('.pauta-tarefa').count(), 0, 'no Dia, nenhuma tarefa');
+  assert.equal(await doBruno.locator('.pauta-item', { hasText: 'Filme Sem Card' }).count(), 0, 'nem a claquete sem Produção');
   const show = doBruno.locator('.pauta-claquete', { has: p.locator('.pauta-texto', { hasText: new RegExp(`^Show da Tarde ${diaMes(hoje)}$`) }) });
   assert.equal((await show.locator('.pauta-producao').textContent()).replace(/\s+/g, ' ').trim(), 'Entregue · 2 artes · Dora Lima · G5');
   assert.equal(await p.locator('.pauta-colunas .pauta-item', { hasText: 'Redator vem acompanhar' }).count(), 0);
@@ -886,8 +901,9 @@ async function oResumoEACopia(navegador, url, teable) {
   ({ ctx, p, erros } = await abrir(navegador, url, { ...tela, colorScheme: 'dark' }, '#/pauta', null, CHEFE));
   await p.locator('.pauta-grade').waitFor();
   const resumo = (await p.locator('.pauta-resumo').textContent()).replace(/\s+/g, ' ');
-  assert.match(resumo, /^1 linha sem editor/);
-  assert.match(resumo, /\d+ claquetes sem card/);
+  // da pauta inteira, com o que ficou fora da tela (#199): sem editor, a CALHAUS e a Sessão Extra
+  assert.match(resumo, /^2 linhas sem editor/);
+  assert.match(resumo, /\d+ claquetes sem card, fora da Pauta/);
   assert.match(resumo, /pauta alterada às 08:00/);
   assert.equal(await p.locator('.pauta-copia').count(), 0);
   // o banco do Teable cai: a página relida mostra a última cópia, com a hora dela
@@ -1150,7 +1166,7 @@ async function osContadores(navegador, url) {
   assert.equal((await p.locator('.pauta-leitor').textContent()).trim(), periodoDaSemana(segunda));
   const resumo = async () => (await p.locator('.pauta-resumo').textContent()).replace(/\s+/g, ' ');
   const [semEditor, semCard] = (await p.locator('.pauta-resumo .ct-num').allTextContents()).map(Number);
-  assert.match(await resumo(), /^1 linha sem editor/);
+  assert.match(await resumo(), /^2 linhas sem editor/);
   assert.ok(semCard > 3, `claquetes sem card (${semCard})`);
   await capturar(p, '12-contadores-semana', false);
   await devagar(900);
@@ -1314,6 +1330,23 @@ async function aCampanha(navegador, url, api) {
   console.log('ok: a campanha na Pauta (#181)');
 }
 
+/**
+ * As Produções das outras claquetes da pauta (#199: a Pauta só mostra as que casam), direto no SQLite, em Entrada: todas
+ * menos as da produção da arte do Teable (a carga) e o Filme Sem Card, que fica de fora.
+ */
+async function porAsProducoes(db) {
+  const { tipoDaLinha } = await import(join(RAIZ, 'src', 'modelo', 'pauta.ts'));
+  const daCarga = new Set([`Show da Tarde ${diaMes(hoje)}`, `Show da Tarde ${diaMes(hoje)} SP (H)`, `Festa da Vila(Prologo)${diaMes(mais(hoje, 2))} (AH)`, SEM_CARD, ...SEM_CARD_TAMBEM.map((l) => l.fields.claquete)]);
+  const inserir = db.prepare('INSERT INTO producoes (id, claquete, praca, etapa, entrada_em, criada_em, atualizada_em) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const agora = new Date().toISOString();
+  const feitas = new Set();
+  for (const { fields: f } of PAUTA) {
+    if (f.anotacao || daCarga.has(f.claquete) || feitas.has(f.claquete) || tipoDaLinha(f.claquete, null) !== 'claquete') continue;
+    feitas.add(f.claquete);
+    inserir.run(`prod-e2e-${feitas.size}`, f.claquete, '', 'entrada', new Date(Date.parse(f.data) - 86_400_000).toISOString(), agora, agora);
+  }
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -1335,6 +1368,7 @@ async function principal() {
   const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros, env });
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
+  await porAsProducoes(s.db);
   for (const quem of [LIA, TOM, CARLA, DORA, RUI, COORD]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
   let falhou = false;

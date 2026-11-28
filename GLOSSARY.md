@@ -605,20 +605,22 @@ _Evitar_: normalização, limpeza, saneamento
 ## Pauta da edição
 
 **Pauta da edição**:
-O que cada editor vai editar em cada dia: as claquetes, as **tarefas** e os **avisos** de cada **posição** da
-**escala**, mais o **recado do dia**. Mora na tabela do Teable (EDICAO_producao), que diz quem edita cada claquete, em
+O que cada editor vai editar em cada dia: as claquetes que casam com uma **Produção** (ADR 0008), com as **infos**
+delas, e os **avisos** de cada **posição** da **escala**, mais o **recado do dia**. A **tarefa** e a claquete sem
+Produção ficam no Teable, fora da tela (o que fica **de fora**). Mora na tabela do Teable (EDICAO_producao), que diz quem edita cada claquete, em
 que dia e em que turno; a **coordenação** monta e publica a pauta no PROMeiro, que grava no Teable ao **publicar**, no
 lugar da planilha da edição (ADR 0006). A **correção de grafia** também escreve nela. É também a página do PROMeiro,
 aberta a qualquer pessoa logada, com a **Semana** (um editor por linha, um dia por coluna) e o **Dia** (um editor por
 coluna: você, o que sobrou sem editor e a equipe, na ordem de início do turno). No alto, o **Minha pauta** de quem é
-editor, com a **contagem do dia** (as claquetes com a arte entregue), ao lado do que sobrou e de quem está fora. Cada
-linha é uma claquete, uma **tarefa**, uma **info** ou um **aviso**. O que sobrou sem editor aparece só para a
-**coordenação** e os editores.
+editor, com a **contagem do dia** (as claquetes com a arte entregue), ao lado do que sobrou e de quem está fora. No
+Teable, cada linha é uma claquete, uma **tarefa**, uma **info** ou um **aviso**; na tela, só a claquete que casa, a info
+e o aviso. O que sobrou sem editor aparece só para a **coordenação** e os editores.
 _Evitar_: escala (a escala é quem trabalha, não o que edita), grade da edição
 
 **Contagem do dia**:
 O "N de M" do editor na Pauta da edição: quantas das claquetes dele naquele dia já têm a arte entregue (ou
-arquivada), com uma bolinha por claquete. A tarefa e o aviso não contam.
+arquivada), com uma bolinha por claquete. Só contam as claquetes que casam com uma Produção (as que estão na tela); a
+tarefa e o aviso não contam.
 _Evitar_: editadas (o PROMeiro não sabe o que já foi editado)
 
 **Card aberto**:
@@ -639,8 +641,8 @@ Quem trabalha em cada dia, em que turno e em que ilha, e quem está fora: as **p
 _Evitar_: pauta, plantão
 
 **Posição** (na escala):
-O lugar de um editor num turno do dia, com ilha e horário próprios. É a ela que se prendem as claquetes, as tarefas e
-os avisos do dia.
+O lugar de um editor num turno do dia, com ilha e horário próprios. É a ela que se prendem as claquetes (com as infos)
+e os avisos do dia.
 _Evitar_: vaga, slot
 
 **Ilha**:
@@ -665,15 +667,24 @@ _Evitar_: coordenador (é a pessoa; o papel é a coordenação), chefia
 **Tarefa** (da pauta):
 A linha da pauta que não tem a forma de claquete (o nome da atração e a data), não é aviso nem **info**: o trabalho que
 ocupa o editor, como COMUNICAÇÃO, CALHAUS, PROJETO CALHAUS ou uma peça sem data. A **tarefa fixa** é a que se repete
-toda semana na mesma posição.
+toda semana na mesma posição. Saiu da Pauta e do Montar a pauta (ADR 0008): a que está no Teable fica lá, **de fora**,
+e publicar não a apaga.
 
 **Info** (da pauta):
 A linha da pauta que é uma instrução para o editor, e não trabalho, sem a caixinha de anotação do aviso: "TRANSFORMAR
 DA A B", "REDATOR VAI ACOMPANHAR", "ENTRA SÁBADO". O PROMeiro a reconhece porque começa por um verbo (ou tem "vai",
 "vem", "deve" logo depois do sujeito) ou por uma palavra que continua a frase de cima. Vai com a claquete de antes, na
 mesma posição; sem claquete antes, fica na posição. Não é item da pauta: fica escondida no balão (o balão de fala,
-laranja quando tem texto), e o clique abre o texto ali mesmo.
+laranja quando tem texto), e o clique abre o texto ali mesmo. A info da claquete que fica **de fora** sai com ela. No
+Montar a pauta, é texto, aberto pelo "+ info" da claquete; a que o PROMeiro não leria como info grava com "OBS:" na
+frente, para não virar tarefa.
 _Evitar_: instrução (o rótulo na tela é "info"), observação
+
+**De fora** (da Pauta):
+O que o Teable tem no dia e não aparece na Pauta, porque não casa com uma Produção: a **tarefa** e a claquete sem
+Produção, com as infos delas (ADR 0008). Nada é apagado; o Montar a pauta mostra o "N de fora", com a lista, só para a
+**coordenação**, e o colar da planilha mostra riscado o que fica de fora.
+_Evitar_: escondido, ignorado, descartado
 
 **Aviso** (da pauta):
 Um recado da coordenação para o editor de uma **posição**, preso a ela; não é um item da pauta. No Teable, é a linha
@@ -714,7 +725,8 @@ já foi ao Teams manda a **pauta alterada**, com o que mudou desde o último car
 _Evitar_: mensagem, notificação, card (card é o do Trello)
 
 **Repetir** (a escala):
-Copiar para outros dias a escala e as tarefas fixas de um dia; nunca as claquetes, que mudam todo dia.
+Copiar para outros dias a escala de um dia (a ilha, o editor e o horário); nunca as claquetes, que mudam todo dia, nem
+as tarefas fixas, que saíram da Pauta (ADR 0008).
 _Evitar_: duplicar, clonar
 
 **Turno** (da edição):

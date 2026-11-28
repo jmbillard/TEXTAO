@@ -6,7 +6,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
    Cada item arrastável chama `iniciar(item)` no onPointerDown; cada lugar que recebe tem `data-solta="tipo:id"` (a
    demanda, "demanda:posicao:id"). Perto da borda da janela, a página rola sozinha; Esc cancela. */
 
-export type ItemArrastado = { tipo: 'lista' | 'demanda' | 'pessoa'; id: string };
+/** O item arrastado; 'producao' é uma claquete da lista das Produções (#199), pela chave. */
+export type ItemArrastado = { tipo: 'lista' | 'demanda' | 'pessoa' | 'producao'; id: string };
 export type LugarDeSoltar = { tipo: 'posicao' | 'turno' | 'lista'; id: string; antesDe: string | null };
 
 /** O lugar de um `data-solta`: "posicao:id", "turno:id", "lista" ou "demanda:posicao:id" (antes daquela demanda). */

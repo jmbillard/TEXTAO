@@ -7,9 +7,10 @@
 // não vê a entrada "Montar a pauta" no topo, e o endereço da tela a leva para a Pauta, com o aviso; a rota recusa.
 // A Bia vê a entrada ao lado da Pauta, nos caminhos do topo, e abre a tela em amanhã, com as abas da semana (o dia
 // vazio). Tudo pelo teclado: "+ posição" na Madrugada põe o foco no editor; "rui" mostra o Rui na lista (livre) e Enter
-// escolhe e vai ao horário; "22 AS 06" mostra "grava 22h às 6h" e, ao sair, vira o padrão; a demanda mostra o que o
-// PROMeiro entendeu (a atração, a data, as versões como etiquetas e a grafia no padrão); Enter cria uma linha, Backspace
-// na linha vazia apaga, as setas andam entre as linhas. Na Tarde, o Rui aparece "já na madrugada" na lista, e o Tab
+// escolhe e vai ao horário; "22 AS 06" mostra "grava 22h às 6h" e, ao sair, vira o padrão. Não há linha livre (#199):
+// a lupa acha a claquete na lista "Das Produções" e ela é arrastada para o Rui (sai da lista), com o que o PROMeiro
+// entendeu (a atração, a data e as versões); o "+ info" abre a info dela (a que não é info grava com "OBS:"), Enter
+// abre outra, Backspace na vazia apaga. Na Tarde, a claquete vai pelo "Pôr em…"; o Rui aparece "já na madrugada" na lista, e o Tab
 // completa "eli" com a Elis. O rascunho é gravado sozinho: a aba de amanhã passa a rascunho e, recarregada a página,
 // tudo volta como foi gravado (o horário e a claquete no padrão). Outro dia da semana continua vazio. No celular
 // (escuro), o rascunho cabe na tela, sem rolar para o lado.
@@ -21,10 +22,10 @@
 // ilha da Elis; o Gil na mesma ilha da Elis, na Tarde, mostra "ocupada". Recarregada, a ilha volta como foi gravada.
 // Os turnos vêm da Configuração: com um turno salvo a mais (Plantão), a grade ganha o bloco dele.
 //
-// Conferir e publicar (#127): o Teable falso também tem o Postgres da pauta, com duas linhas de amanhã (uma delas a
-// mesma claquete que a Bia montou). A Bia abre uma posição vazia na Noite e escreve uma claquete sem data; "Conferir e
-// publicar" mostra o placar e as pendências: "Turno sem editor" e "Claquete sem data" para olhar. O "Corrigir" da
-// claquete volta à grade com o foco na linha; corrigida, sai da conferência. O "está certo" do turno o leva para as
+// Conferir e publicar (#127): o Teable falso também tem o Postgres da pauta, com linhas de amanhã (uma delas a mesma
+// claquete que a Bia montou; uma tarefa e uma claquete sem Produção, que o Montar mostra no "2 de fora", #199). A Bia
+// abre uma posição vazia na Noite e arrasta a Vale a Pena Rever das Produções para a Elis; "Conferir e publicar" mostra
+// o placar e a pendência "Turno sem editor"; o "Corrigir" volta à grade com o foco no editor. O "está certo" do turno o leva para as
 // conferidas, e publicar mostra "publicada!", com a aba de amanhã publicada. Na Pauta da edição, a Lia vê o dia com a
 // do Teable inteira e o que só o PROMeiro tem, sem a claquete em dobro. Mexer depois deixa o dia "alterado"; publicar
 // de novo entra no histórico; Desfazer volta à publicação anterior e, de novo, tira a publicação: a Pauta volta a ser
@@ -45,7 +46,7 @@
 // A coluna lateral e o arrastar (#126): no dia seguinte a amanhã, vazio, a coluna mostra "Sem escala" (os editores
 // cadastrados, sem a Elis, que está de férias) e "Fora" (a Elis, com o motivo). No computador, com o mouse, a Bia
 // arrasta o Rui para o turno da Madrugada (uma posição nova, com o horário do turno) e escala o Gil na Tarde pelo
-// "Escalar na…"; escreve três claquetes em "Para distribuir" (Enter junta, no padrão), arrasta a primeira para o Rui e
+// "Escalar na…"; escolhe três claquetes das Produções pelo "+" (vão para "Para distribuir"), arrasta a primeira para o Rui e
 // depois a leva, arrastando a demanda, do Rui para o Gil. Recarregada, tudo volta como foi gravado. No tablet, com o
 // dedo (pela alça), leva outra claquete para o Rui. No celular (escuro), a coluna fica embaixo da grade; o "Escalar
 // na…" põe a Bia numa posição nova da Noite, o "Mover para…" leva a última claquete para o Rui e o ⇄ da demanda a
@@ -61,10 +62,11 @@
 //
 // Colar da planilha (#130): num dia vazio, a Bia cola uma aba fictícia (as células por tab, como a planilha copia),
 // com a linha de lixo, o dia, os rótulos de turno e um 4º bloco das 20h sem rótulo. O diálogo mostra o resumo
-// (posições, demandas, avisos, ausências e grafias), as notas (o apelido, a ilha que sobra, o bloco lido como Noite) e
-// a pergunta do nome com erro de digitação; respondida, "Pôr em…" monta a grade: os nomes do cadastro, as ilhas, os
+// (posições, demandas, avisos, ausências e grafias), o que fica de fora riscado (a tarefa, #199), as notas (o apelido,
+// a ilha que sobra, o bloco lido como Noite) e a pergunta do nome com erro de digitação; respondida, "Pôr em…" monta a grade: os nomes do cadastro, as ilhas, os
 // horários e as claquetes no padrão, o aviso quebrado juntado, e a folga da Bia vira ausência, na caixa "Fora".
-// Colado de novo só um turno, "Juntar ao rascunho" acrescenta à Elis só a claquete que faltava. Recarregada, fica.
+// Colado de novo só um turno, "Juntar ao rascunho" acrescenta à Elis só a claquete que faltava (a sem Produção vem
+// riscada e não entra). Recarregada, fica.
 //
 // A semana lado a lado com a planilha (#133): no dia colado, sem foto, a faixa diz que ainda não chegou. O n8n de
 // mentira manda a mesma aba como foto crua (sem o token, 401; a mesma de novo só confirma); a faixa diz de quando é a
@@ -72,10 +74,10 @@
 // Elis escalada; a foto crua abre à parte. Mudar o horário do Rui na grade vira diferença na hora, e voltar a tira.
 // No celular (escuro), a faixa aberta cabe na tela.
 //
-// Repetir (#129): numa semana adiante, com a semana anterior montada (o Rui com claquete e COMUNICAÇÃO; a Elis com
+// Repetir (#129, sem as tarefas desde o #199): numa semana adiante, com a semana anterior montada (o Rui com claquete e COMUNICAÇÃO; a Elis com
 // CALHAUS) e a Elis de férias na segunda e na terça, o dia vazio oferece Repetir (o mesmo dia na semana passada, o de
 // ontem, que está vazio e fica desligado, e a semana passada inteira), Colar da planilha (o #130) e
-// Começar do zero. Repetir a segunda traz a ilha, o editor, o horário e as tarefas, nunca as claquetes; a posição da
+// Começar do zero. Repetir a segunda traz a ilha, o editor e o horário, nunca as claquetes nem as tarefas; a posição da
 // Elis vira vaga, com o motivo, que sai quando a vaga ganha editor. Na terça, "a semana passada inteira" só preenche
 // os dias vazios: a quarta, já montada, fica como estava. Na quinta, "Começar do zero" abre uma posição por turno,
 // com o foco no editor.
@@ -160,6 +162,8 @@ const focado = (p) => p.evaluate(() => {
   const el = document.activeElement;
   return { campo: el?.getAttribute('data-campo') ?? '', valor: el?.value ?? '', posicao: el?.getAttribute('data-posicao') ?? '' };
 });
+/** O texto de cada demanda (a claquete escolhida, que não é campo, e o valor da info), para o evaluateAll. */
+const valores = (els) => els.map((e) => ('value' in e ? e.value : e.textContent.trim()));
 const turno = (p, nome) => p.locator('.montar-turno', { has: p.locator('h2', { hasText: new RegExp(`^${nome}$`) }) });
 const semRolagemDeLado = async (p, onde) => assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${onde}: a página não rola para o lado`);
 
@@ -240,13 +244,31 @@ async function montarPeloTeclado(navegador, url) {
   const celula = turno(p, 'Madrugada').locator('.montar-celula').first();
   await celula.getByText('grava 22h às 6h').waitFor();
   await p.keyboard.press('Tab');
-  f = await focado(p);
-  assert.equal(f.campo, 'demanda', 'Tab vai à demanda');
   assert.equal(await celula.locator('[data-campo="horario"]').inputValue(), '22h às 6h', 'ao sair, o horário vai para o padrão');
 
-  const claquete = `Noite de Gala ${diaMes(amanha)} Dp`;
-  await p.keyboard.type(claquete);
-  const leitura = celula.locator('.montar-demanda').first().locator('.montar-leitura');
+  // não há linha livre (#199): a posição só recebe claquetes escolhidas das Produções
+  assert.equal(await p.locator('input[data-campo="demanda"]').count(), 0, 'nenhum campo para digitar uma claquete');
+  await celula.locator('.montar-solte', { hasText: 'arraste uma claquete das Produções' }).waitFor();
+  const dasProducoes = p.getByRole('region', { name: 'Claquetes das Produções' });
+  await dasProducoes.locator('.coluna-producao').first().waitFor();
+  assert.equal(await dasProducoes.locator('.coluna-producao').count(), 8, 'a lista mostra as primeiras');
+  await dasProducoes.getByRole('button', { name: /^mostrar todas/ }).waitFor();
+  assert.match(await dasProducoes.locator('.coluna-producao').first().innerText(), /Entrada/, 'com a etapa na bolinha');
+  // a lupa da tela acha a claquete na lista das Produções (#171: a mesma lupa, no lugar de todas)
+  await p.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  await p.keyboard.press('/');
+  const lupaDoDia = p.getByRole('searchbox', { name: 'Buscar no dia' });
+  await lupaDoDia.fill(`noite de gala ${diaMes(amanha)}`);
+  const claquete = `Noite de Gala ${diaMes(amanha)} (DP)`;
+  const naLista = dasProducoes.locator('.coluna-producao', { hasText: claquete });
+  await ate(async () => assert.equal(await dasProducoes.locator('.coluna-producao').count(), 1, 'a lupa deixa só a que bate'));
+  await capturar(p, '01-montar-escolher');
+  // arrastada com o mouse para o Rui
+  await arrastarComOMouse(p, naLista, celula);
+  const linhaDaClaquete = celula.locator('.montar-demanda.t-claquete').first();
+  await linhaDaClaquete.waitFor();
+  assert.equal((await linhaDaClaquete.locator('.montar-claquete').innerText()).trim(), claquete);
+  const leitura = linhaDaClaquete.locator('.montar-leitura');
   await leitura.getByText(`Noite de Gala · ${semanaDe(amanha)} ${diaMes(amanha)}`).waitFor();
   // as versões como o código no padrão, colado no fim do que o PROMeiro entendeu (#152); o que ele quer dizer fica na dica
   const versoes = leitura.locator('.sufixo-versoes');
@@ -254,25 +276,25 @@ async function montarPeloTeclado(navegador, url) {
   assert.equal((await leitura.locator('.montar-data').textContent()).replace(/\s+/g, ' ').trim(), `Noite de Gala · ${semanaDe(amanha)} ${diaMes(amanha)} (DP)`, 'o código colado no fim, sem etiqueta');
   assert.equal(await p.locator('.codigo-versoes, .pauta-versoes').count(), 0, 'nenhuma etiqueta separada');
   assert.match(await versoes.getAttribute('title'), new RegExp(`^dia ${Number(amanha.slice(8))} e próxim[ao] ${semanaDe(amanha)}, da claquete$`));
-  await leitura.getByText(`grava Noite de Gala ${diaMes(amanha)} (DP)`).waitFor();
-  await capturar(p, '01-montar-digitando');
+  // escolhida, ela sai da lista das Produções (a vaga fecha)
+  await ate(async () => assert.equal(await dasProducoes.locator('.coluna-producao').count(), 0, 'escolhida, sai da lista'));
+  await lupaDoDia.press('Escape');
 
-  // Enter cria uma linha; Backspace na linha vazia apaga; as setas andam
-  await p.keyboard.press('Enter');
+  // a info para o editor, presa à claquete: "+ info", Enter abre outra, Backspace na vazia apaga; a que o PROMeiro não
+  // leria como info grava com "OBS:" na frente
+  await linhaDaClaquete.hover();
+  await linhaDaClaquete.getByRole('button', { name: '+ info' }).click();
   f = await focado(p);
-  assert.deepEqual([f.campo, f.valor], ['demanda', ''], 'Enter cria uma linha nova');
-  assert.equal(await celula.locator('[data-campo="demanda"]').first().inputValue(), `Noite de Gala ${diaMes(amanha)} (DP)`, 'a linha de cima foi para o padrão');
-  await p.keyboard.type('COMUNICAÇÃO');
+  assert.deepEqual([f.campo, f.valor], ['demanda', ''], '"+ info" abre a info e põe o foco nela');
+  await p.keyboard.type('Cuidado com o áudio');
+  await celula.getByText('grava OBS: Cuidado com o áudio').waitFor();
+  await capturar(p, '01b-montar-info');
   await p.keyboard.press('Enter');
-  assert.equal(await celula.locator('[data-campo="demanda"]').count(), 3);
+  assert.equal(await celula.locator('input[data-campo="demanda"]').count(), 2, 'Enter abre outra info');
+  assert.equal(await celula.locator('input[data-campo="demanda"]').first().inputValue(), 'OBS: Cuidado com o áudio', 'a de cima foi para o padrão');
   await p.keyboard.press('Backspace');
-  assert.equal(await celula.locator('[data-campo="demanda"]').count(), 2, 'Backspace na linha vazia apaga');
-  f = await focado(p);
-  assert.equal(f.valor, 'COMUNICAÇÃO', 'o foco sobe para a linha de cima');
-  await p.keyboard.press('ArrowUp');
-  assert.equal((await focado(p)).valor, `Noite de Gala ${diaMes(amanha)} (DP)`, '↑ sobe uma linha');
-  await p.keyboard.press('ArrowDown');
-  assert.equal((await focado(p)).valor, 'COMUNICAÇÃO', '↓ desce uma linha');
+  assert.equal(await celula.locator('input[data-campo="demanda"]').count(), 1, 'Backspace na info vazia apaga');
+  assert.equal((await focado(p)).valor, 'OBS: Cuidado com o áudio', 'o foco sobe para a info de cima');
 
   // a Tarde: a lista mostra a situação de cada um no dia; o Tab completa
   await turno(p, 'Tarde').getByRole('button', { name: '+ posição' }).click();
@@ -296,9 +318,15 @@ async function montarPeloTeclado(navegador, url) {
   assert.equal(f.campo, 'horario', 'e vai ao horário');
   await p.keyboard.press('ControlOrMeta+a');
   await p.keyboard.type('14 as 22:53');
-  await p.keyboard.press('Enter');
-  assert.equal((await focado(p)).campo, 'demanda', 'Enter no horário vai à demanda');
-  await p.keyboard.type('Mundo Animal 30/11 (P)');
+  await p.keyboard.press('Tab');
+  // a claquete pelo "Pôr em…" (⇄) da lista das Produções: o caminho do teclado e do celular
+  await p.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  await p.keyboard.press('/');
+  await lupaDoDia.fill('mundo animal 30/11');
+  await ate(async () => assert.equal(await dasProducoes.locator('.coluna-producao').count(), 1));
+  await dasProducoes.getByLabel('Pôr Mundo Animal 30/11 (P) em…').selectOption(`posicao:${await tarde.getAttribute('data-posicao-id')}`);
+  await tarde.locator('.montar-claquete', { hasText: 'Mundo Animal 30/11 (P)' }).waitFor();
+  await lupaDoDia.press('Escape');
 
   // o Gil na mesma ilha da Elis, na Tarde: a lista diz com quem está, e a escolhida avisa "ocupada"
   await turno(p, 'Tarde').getByRole('button', { name: '+ posição' }).click();
@@ -320,7 +348,7 @@ async function montarPeloTeclado(navegador, url) {
   await gil.locator('[data-campo="horario"]').focus();
   await gil.getByRole('button', { name: 'Tirar esta posição' }).click();
   await p.waitForFunction(() => !document.body.textContent?.includes('ocupada:'));
-  await tarde.locator('[data-campo="demanda"]').first().focus();
+  await tarde.locator('[data-campo="horario"]').focus();
 
   // gravado sozinho: a aba de amanhã passa a rascunho
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
@@ -337,12 +365,12 @@ async function montarPeloTeclado(navegador, url) {
   assert.equal(await madrugada.locator('[data-campo="editor"]').inputValue(), 'Rui Teixeira');
   assert.equal(await madrugada.locator('[data-campo="ilha"]').inputValue(), 'AVID 46');
   assert.equal(await madrugada.locator('[data-campo="horario"]').inputValue(), '22h às 6h');
-  assert.deepEqual(await madrugada.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), [`Noite de Gala ${diaMes(amanha)} (DP)`, 'COMUNICAÇÃO']);
+  assert.deepEqual(await madrugada.locator('[data-campo="demanda"]').evaluateAll(valores), [`Noite de Gala ${diaMes(amanha)} (DP)`, 'OBS: Cuidado com o áudio']);
   const tardeDeNovo = turno(p, 'Tarde').locator('.montar-celula').first();
   assert.equal(await tardeDeNovo.locator('[data-campo="editor"]').inputValue(), 'Elis Furtado');
   assert.equal(await tardeDeNovo.locator('[data-campo="ilha"]').inputValue(), 'AVID 46');
   assert.equal(await tardeDeNovo.locator('[data-campo="horario"]').inputValue(), '14h às 22h53');
-  assert.deepEqual(await tardeDeNovo.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), ['Mundo Animal 30/11 (P)']);
+  assert.deepEqual(await tardeDeNovo.locator('[data-campo="demanda"]').evaluateAll(valores), ['Mundo Animal 30/11 (P)']);
   assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
 
   // #171: a busca, a lupa das outras telas: a claquete que bate fica, as outras esmaecem; sem nenhuma, à mão
@@ -355,8 +383,10 @@ async function montarPeloTeclado(navegador, url) {
   const lupa = p.getByRole('searchbox', { name: 'Buscar no dia' });
   await p.keyboard.press('/');
   await lupa.fill('mundo');
+  // a lista das Produções também: só as do Mundo Animal ficam
+  await ate(async () => assert.ok((await p.getByRole('region', { name: 'Claquetes das Produções' }).locator('.coluna-producao .mono').allInnerTexts()).every((t) => /Mundo Animal/.test(t))));
   await p.locator('.montar-achadas', { hasText: '1 claquete com “mundo”' }).waitFor();
-  assert.equal(await p.locator('.montar-demanda.fora-da-busca').count(), 2, 'a Noite de Gala e o COMUNICAÇÃO esmaecem');
+  assert.equal(await p.locator('.montar-demanda.fora-da-busca').count(), 2, 'a Noite de Gala e a info dela esmaecem');
   assert.equal(await tardeDeNovo.locator('.montar-demanda.fora-da-busca').count(), 0, 'o Mundo Animal fica');
   await capturar(p, '03b-montar-busca');
   await lupa.fill('zzzqqq');
@@ -376,7 +406,7 @@ async function montarPeloTeclado(navegador, url) {
   assert.equal(escritasNoTeable.length, 0, 'nada foi escrito no Teable');
   assert.deepEqual(erros, [], 'Bia: erros na página');
   await ctx.close();
-  console.log('ok: a coordenação monta o rascunho pelo teclado, gravado e relido');
+  console.log('ok: a coordenação monta o rascunho escolhendo claquetes das Produções, com as infos, gravado e relido');
 }
 
 async function noCelular(navegador, url) {
@@ -508,39 +538,54 @@ const distDia = mais(segunda, 45);
 const PAUTA_DO_TEABLE = [
   linhaDoTeable('recT1', `Noite de Gala ${diaMes(amanha)} Dp`, 'Rui Teixeira', amanha, ['22:00', '06:00']),
   linhaDoTeable('recT2', `Corujão ${diaMes(amanha)}`, 'Gil Moura', amanha, ['06:00', '15:00']),
+  // o que o Teable tem e não casa com uma Produção (#199): fica fora da Pauta, no "de fora" do Montar
+  linhaDoTeable('recT4', `Festa Sem Card ${diaMes(amanha)}`, 'Gil Moura', amanha, ['06:00', '15:00']),
+  linhaDoTeable('recT5', 'CALHAUS', 'Gil Moura', amanha, ['06:00', '15:00']),
   linhaDoTeable('recT3', `Mundo Animal ${diaMes(mais(distDia, -1))} (P)`, 'Gil Moura', mais(distDia, -2), ['14:00', '23:00']),
 ];
 
 async function conferirEPublicar(navegador, url, teable) {
   const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`);
   await p.locator('.montar-celula').first().waitFor();
-  // uma posição vazia na Noite; uma claquete sem data na Tarde
+  // uma posição vazia na Noite; a Vale a Pena Rever na Tarde, arrastada da lista das Produções
   await turno(p, 'Noite').getByRole('button', { name: '+ posição' }).click();
   await p.keyboard.press('Escape');
   const tarde = turno(p, 'Tarde').locator('.montar-celula').first();
-  await tarde.locator('[data-campo="demanda"]').last().click();
-  await p.keyboard.press('End');
-  await p.keyboard.press('Enter');
-  await p.keyboard.type('Vale a Pena Rever (AH)');
+  const dasProducoes = p.getByRole('region', { name: 'Claquetes das Produções' });
+  await p.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+  await p.keyboard.press('/');
+  await p.getByRole('searchbox', { name: 'Buscar no dia' }).fill(`vale a pena rever ${diaMes(amanha)}`);
+  await ate(async () => assert.equal(await dasProducoes.locator('.coluna-producao').count(), 1));
+  await arrastarComOMouse(p, dasProducoes.locator('.coluna-producao').first(), tarde);
+  await tarde.locator('.montar-claquete', { hasText: 'Vale a Pena Rever' }).waitFor();
+  await p.getByRole('searchbox', { name: 'Buscar no dia' }).press('Escape');
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
+
+  // "N de fora" (#199): o que o Teable tem no dia e não casa com uma Produção, só para conferir
+  const deFora = p.getByRole('region', { name: 'De fora da Pauta' });
+  await deFora.locator('.coluna-rotulo', { hasText: '2 de fora' }).waitFor();
+  assert.equal(await deFora.locator('.de-fora-lista.aberta').count(), 0, 'a lista começa fechada');
+  await deFora.getByRole('button', { name: 'ver a lista' }).click();
+  await deFora.locator('.de-fora-lista.aberta').waitFor();
+  assert.deepEqual(await deFora.locator('.de-fora-item').evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim())), [`Festa Sem Card ${diaMes(amanha)} sem Produção Gil`, 'CALHAUS tarefa Gil']);
+  await capturar(p, '04b-montar-de-fora');
+  await deFora.getByRole('button', { name: 'esconder a lista' }).click();
 
   // a conferência: o placar e as pendências
   await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
   await p.getByRole('heading', { name: 'Conferir antes de publicar' }).waitFor();
   assert.deepEqual(await p.locator('.conf-placar span').allInnerTexts().then((t) => t.map((x) => x.replace(/\s+/g, ' '))), ['3 posições', '2 editores', '4 demandas']);
-  assert.deepEqual(await p.locator('.conf-prob.olhar .conf-prob-tipo').allInnerTexts(), ['CLAQUETE SEM DATA', 'TURNO SEM EDITOR']);
-  await p.getByText('2 itens para olhar; dá para publicar assim mesmo').waitFor();
+  assert.deepEqual(await p.locator('.conf-prob.olhar .conf-prob-tipo').allInnerTexts(), ['TURNO SEM EDITOR']);
+  await p.getByText('1 item para olhar; dá para publicar assim mesmo').waitFor();
   await capturar(p, '05-conferir', { fullPage: true });
 
-  // "Corrigir" volta à grade, com o foco na linha da claquete
-  await p.locator('.conf-prob', { hasText: 'Claquete sem data' }).getByRole('button', { name: 'Corrigir' }).click();
-  await p.waitForFunction(() => document.activeElement?.getAttribute('data-campo') === 'demanda');
-  assert.equal((await focado(p)).valor, 'Vale a Pena Rever (AH)', 'o foco vai à linha da claquete sem data');
-  await p.keyboard.press('ControlOrMeta+a');
-  await p.keyboard.type(`Vale a Pena Rever ${diaMes(amanha)} (AH)`);
+  // "Corrigir" volta à grade, com o foco no editor da posição sem editor
+  await p.locator('.conf-prob', { hasText: 'Turno sem editor' }).getByRole('button', { name: 'Corrigir' }).click();
+  await p.waitForFunction(() => document.activeElement?.getAttribute('data-campo') === 'editor');
+  assert.equal((await focado(p)).valor, '', 'o foco vai ao editor da posição vazia');
+  await p.keyboard.press('Escape');
   await p.getByRole('button', { name: 'Conferir e publicar →' }).click();
   await p.getByRole('heading', { name: 'Conferir antes de publicar' }).waitFor();
-  assert.deepEqual(await p.locator('.conf-prob.olhar .conf-prob-tipo').allInnerTexts(), ['TURNO SEM EDITOR'], 'corrigida, a claquete sai da conferência');
 
   // "está certo" leva o turno para as conferidas
   await p.locator('.conf-prob.olhar', { hasText: 'Turno sem editor' }).getByRole('button', { name: 'está certo' }).click();
@@ -565,6 +610,8 @@ async function conferirEPublicar(navegador, url, teable) {
   assert.match(texto, /Corujão/, 'a do Teable continua');
   assert.match(texto, /Mundo Animal/, 'o que só o PROMeiro tem aparece');
   assert.match(texto, /Vale a Pena Rever/);
+  // só as claquetes que casam com uma Produção (#199): a tarefa e a claquete sem Produção do Teable ficam de fora
+  assert.doesNotMatch(texto, /CALHAUS|Festa Sem Card|COMUNICAÇÃO/, 'a tarefa e a claquete sem Produção não aparecem');
   assert.ok((await lia.p.locator('.pauta-coluna-topo .pauta-nome').allInnerTexts()).includes('Elis Furtado'), 'a Elis ganha a coluna dela');
   await capturar(lia.p, '07-pauta-com-o-publicado', { fullPage: true });
 
@@ -573,10 +620,10 @@ async function conferirEPublicar(navegador, url, teable) {
   assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'publicado');
   await p.locator('.pub-faixa', { hasText: 'Publicada' }).waitFor();
   const tardeDeNovo = turno(p, 'Tarde').locator('.montar-celula').first();
-  await tardeDeNovo.locator('[data-campo="demanda"]').last().click();
-  await p.keyboard.press('End');
-  await p.keyboard.press('Enter');
-  await p.keyboard.type('CALHAUS');
+  const mundoDaTarde = tardeDeNovo.locator('.montar-demanda.t-claquete', { hasText: 'Mundo Animal' });
+  await mundoDaTarde.hover();
+  await mundoDaTarde.getByRole('button', { name: '+ info' }).click();
+  await p.keyboard.type('VIRA B');
   await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'alterado');
   await p.locator('.pub-faixa', { hasText: 'Alterada depois de publicar' }).waitFor();
   // publicar de novo: duas no histórico
@@ -586,7 +633,7 @@ async function conferirEPublicar(navegador, url, teable) {
   await p.getByRole('button', { name: 'Voltar a mexer' }).click();
   await p.locator('.pub-historico summary', { hasText: 'Histórico · 2' }).waitFor();
 
-  // Desfazer: volta a valer a anterior (o rascunho tem a CALHAUS a mais: alterado); de novo, nenhuma
+  // Desfazer: volta a valer a anterior (o rascunho tem a info a mais: alterado); de novo, nenhuma
   await p.getByRole('button', { name: 'Desfazer a publicação' }).click();
   await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'alterado');
   await p.getByRole('button', { name: 'Desfazer a publicação' }).click();
@@ -730,7 +777,7 @@ async function ausencias(navegador, url, api) {
   await painel.getByText(`A posição ficou vaga em ${curto(amanha)} (tarde).`).waitFor();
   const tarde = turno(p, 'Tarde').locator('.montar-celula').first();
   await p.waitForFunction(() => [...document.querySelectorAll('.montar-turno')].find((t) => t.querySelector('h2')?.textContent === 'Tarde')?.querySelector('[data-campo="editor"]')?.value === '');
-  assert.ok((await tarde.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value))).some((v) => /Mundo Animal/.test(v)), 'a vaga fica com as demandas');
+  assert.ok((await tarde.locator('[data-campo="demanda"]').evaluateAll(valores)).some((v) => /Mundo Animal/.test(v)), 'a vaga fica com as demandas');
 
   // publicado o dia, a folga do Rui não mexe sozinha: o painel oferece tirar
   const r = await fetch(`${api}/montar-pauta/publicar?dia=${amanha}`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': BIA } });
@@ -750,7 +797,8 @@ async function ausencias(navegador, url, api) {
   // tirado: a posição vaga, as demandas para distribuir, o dia alterado
   const distribuir = p.getByRole('region', { name: 'Para distribuir' });
   await distribuir.locator('.coluna-claquete').first().waitFor();
-  assert.deepEqual(await distribuir.locator('.coluna-claquete .mono').allInnerTexts(), [`Noite de Gala ${diaMes(amanha)} (DP)`, 'COMUNICAÇÃO']);
+  // a info da claquete (OBS: …) sai com a posição: não vira item da lista (#199)
+  assert.deepEqual(await distribuir.locator('.coluna-claquete .mono').allInnerTexts(), [`Noite de Gala ${diaMes(amanha)} (DP)`]);
   assert.match(await distribuir.locator('.coluna-claquete').first().innerText(), /era de Rui/);
   await p.waitForFunction(() => document.querySelector('.montar-aba[aria-current="page"]')?.getAttribute('data-estado') === 'alterado');
   assert.equal(await turno(p, 'Madrugada').locator('[data-campo="editor"]').first().inputValue(), '', 'a posição do Rui ficou vaga');
@@ -788,7 +836,7 @@ const aGrade = (p) =>
         id: c.getAttribute('data-posicao-id'),
         editor: c.querySelector('[data-campo="editor"]').value,
         horario: c.querySelector('[data-campo="horario"]').value,
-        demandas: [...c.querySelectorAll('[data-campo="demanda"]')].map((i) => i.value).filter(Boolean),
+        demandas: [...c.querySelectorAll('[data-campo="demanda"]')].map((i) => ('value' in i ? i.value : i.textContent.trim())).filter(Boolean),
       })),
     ),
   );
@@ -811,6 +859,8 @@ const centro = async (l) => {
 /** Arrasta com o mouse, pela alça do item, até o lugar. */
 async function arrastarComOMouse(p, item, lugar) {
   await lugar.scrollIntoViewIfNeeded();
+  // o item pode estar mais embaixo na coluna, que rola sozinha (a lista das Produções vem em cima, #199)
+  await item.scrollIntoViewIfNeeded();
   const a = await centro(item.locator('.arrasto-alca').first());
   const b = await centro(lugar);
   await p.mouse.move(a.x, a.y);
@@ -850,17 +900,24 @@ async function colunaEArrastar(navegador, url) {
   await semEscala.getByLabel('Escalar Gil Moura na…').selectOption('turno:tarde');
   await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.editor), ['Rui Teixeira', 'Gil Moura']));
 
-  // "Para distribuir": três claquetes escritas (Enter junta, no padrão)
-  await distribuir.getByLabel('Escrever ou colar as claquetes').fill(`Noite de Gala ${diaMes(depois)} dp\nMundo Animal ${diaMes(depois)} (P)\nCALHAUS`);
-  await p.keyboard.press('Enter');
-  await ate(async () => assert.deepEqual(await daLista(p), [`Noite de Gala ${diaMes(depois)} (DP)`, `Mundo Animal ${diaMes(depois)} (P)`, 'CALHAUS']));
-  assert.equal(await distribuir.getByLabel('Escrever ou colar as claquetes').inputValue(), '', 'juntada, o campo esvazia');
+  // "Para distribuir": três claquetes escolhidas das Produções pelo "+" (#199: nada se escreve ali)
+  assert.equal(await distribuir.locator('textarea').count(), 0, 'sem campo para escrever ou colar');
+  const dasProducoes = coluna.getByRole('region', { name: 'Claquetes das Produções' });
+  const lupaDoDia = p.getByRole('searchbox', { name: 'Buscar no dia' });
+  for (const c of [`Noite de Gala ${diaMes(depois)} (DP)`, `Mundo Animal ${diaMes(depois)} (P)`, `Terra Viva ${diaMes(depois)} (A)`]) {
+    await p.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+    if (!(await lupaDoDia.isVisible())) await p.keyboard.press('/');
+    await lupaDoDia.fill(c.replace(/ \(.*$/, '').toLowerCase());
+    await dasProducoes.getByRole('button', { name: `Pôr ${c} em Para distribuir` }).click();
+  }
+  await lupaDoDia.press('Escape');
+  await ate(async () => assert.deepEqual(await daLista(p), [`Noite de Gala ${diaMes(depois)} (DP)`, `Mundo Animal ${diaMes(depois)} (P)`, `Terra Viva ${diaMes(depois)} (A)`]));
   const [rui, gil] = (await aGrade(p)).map((x) => x.id);
   const celula = (id) => p.locator(`.montar-celula[data-posicao-id="${id}"]`);
   // a primeira, arrastada para o Rui
   await arrastarComOMouse(p, distribuir.locator('.coluna-claquete').first(), celula(rui));
   await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [[`Noite de Gala ${diaMes(depois)} (DP)`], []]));
-  assert.deepEqual(await daLista(p), [`Mundo Animal ${diaMes(depois)} (P)`, 'CALHAUS']);
+  assert.deepEqual(await daLista(p), [`Mundo Animal ${diaMes(depois)} (P)`, `Terra Viva ${diaMes(depois)} (A)`]);
   // a demanda, arrastada do Rui para o Gil
   await arrastarComOMouse(p, celula(rui).locator('.montar-demanda.arrastavel').first(), celula(gil));
   await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [[], [`Noite de Gala ${diaMes(depois)} (DP)`]]));
@@ -868,7 +925,7 @@ async function colunaEArrastar(navegador, url) {
   // claquete, o mesmo da lista "Para distribuir"; nada de faixa na borda
   const gala = `Noite de Gala ${diaMes(depois)} (DP)`;
   const trocar = p.getByLabel(`Mover ${gala} para…`);
-  const naLista = distribuir.getByLabel('Mover CALHAUS para…');
+  const naLista = distribuir.getByLabel(`Mover Terra Viva ${diaMes(depois)} (A) para…`);
   await trocar.waitFor();
   const estilo = (el) => el.evaluate((x) => { const c = getComputedStyle(x); const r = x.getBoundingClientRect(); const li = x.closest('li').getBoundingClientRect(); return { largura: r.width, altura: r.height, meio: Math.abs(r.top + r.height / 2 - (li.top + li.height / 2)) < 1.5, borda: c.borderTopWidth, fundo: c.backgroundColor, cor: c.color, texto: x.selectedOptions[0].textContent, unha: parseFloat(getComputedStyle(x.closest('li')).borderLeftWidth) > 1 }; });
   const daGrade = await estilo(trocar);
@@ -895,7 +952,7 @@ async function colunaEArrastar(navegador, url) {
   await p.reload();
   await semEscala.locator('.coluna-pessoa').first().waitFor();
   await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => [x.editor, x.demandas]), [['Rui Teixeira', []], ['Gil Moura', [`Noite de Gala ${diaMes(depois)} (DP)`]]]));
-  assert.deepEqual(await daLista(p), [`Mundo Animal ${diaMes(depois)} (P)`, 'CALHAUS']);
+  assert.deepEqual(await daLista(p), [`Mundo Animal ${diaMes(depois)} (P)`, `Terra Viva ${diaMes(depois)} (A)`]);
   assert.deepEqual(erros, [], 'coluna no computador: erros na página');
   await ctx.close();
 
@@ -912,7 +969,7 @@ async function colunaEArrastar(navegador, url) {
   levado.catch(() => {});
   await arrastarComODedo(tablet.p, tColuna.locator('.coluna-claquete', { hasText: 'Mundo Animal' }), tablet.p.locator(`.montar-celula[data-posicao-id="${rui}"]`));
   await ate(async () => assert.deepEqual((await aGrade(tablet.p)).map((x) => x.demandas), [[`Mundo Animal ${diaMes(depois)} (P)`], [`Noite de Gala ${diaMes(depois)} (DP)`]]));
-  assert.deepEqual(await daLista(tablet.p), ['CALHAUS']);
+  assert.deepEqual(await daLista(tablet.p), [`Terra Viva ${diaMes(depois)} (A)`]);
   await semRolagemDeLado(tablet.p, 'coluna no tablet');
   await capturar(tablet.p, '15-coluna-tablet');
   assert.deepEqual(tablet.erros, [], 'coluna no tablet: erros na página');
@@ -931,11 +988,11 @@ async function colunaEArrastar(navegador, url) {
   assert.equal(await cSem.locator('.coluna-pessoa').count(), 0);
   await cSem.getByText('todos escalados').waitFor();
   const bia = (await aGrade(c))[2].id;
-  await c.getByLabel('Mover CALHAUS para…').selectOption(`posicao:${rui}`);
-  await ate(async () => assert.deepEqual((await aGrade(c)).find((x) => x.id === rui).demandas, [`Mundo Animal ${diaMes(depois)} (P)`, 'CALHAUS']));
+  await c.getByLabel(`Mover Terra Viva ${diaMes(depois)} (A) para…`).selectOption(`posicao:${rui}`);
+  await ate(async () => assert.deepEqual((await aGrade(c)).find((x) => x.id === rui).demandas, [`Mundo Animal ${diaMes(depois)} (P)`, `Terra Viva ${diaMes(depois)} (A)`]));
   await c.getByLabel(`Mover Noite de Gala ${diaMes(depois)} (DP) para…`).selectOption(`posicao:${bia}`);
   await ate(async () => assert.deepEqual((await aGrade(c)).map((x) => x.demandas.length), [2, 0, 1]));
-  await c.getByRole('region', { name: 'Para distribuir' }).getByText('uma por linha', { exact: false }).waitFor();
+  await c.getByRole('region', { name: 'Para distribuir' }).getByText('escolha as claquetes nas Produções', { exact: false }).waitFor();
   await semRolagemDeLado(c, 'coluna no celular');
   await capturar(c, '16-coluna-celular', { fullPage: true });
   assert.deepEqual(cel.erros, [], 'coluna no celular: erros na página');
@@ -955,22 +1012,33 @@ async function distribuirSozinho(navegador, url, api) {
   await p.locator('.montar-celula').first().waitFor();
   const mundo = `Mundo Animal ${diaMes(distDia)} (P)`;
   const terra = `Terra Viva ${diaMes(distDia)} (A)`;
-  await coluna.getByLabel('Escrever ou colar as claquetes').fill(`${mundo}\n${terra}`);
-  await p.keyboard.press('Enter');
+  // as duas, escolhidas na lista das Produções pelo "+" (#199: nada se escreve em "Para distribuir")
+  const dasProducoes = p.getByRole('region', { name: 'Claquetes das Produções' });
+  const lupaDoDia = p.getByRole('searchbox', { name: 'Buscar no dia' });
+  for (const c of [mundo, terra]) {
+    await p.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+    if (!(await lupaDoDia.isVisible())) await p.keyboard.press('/');
+    await lupaDoDia.fill(c.replace(/ \(.*$/, '').toLowerCase());
+    await dasProducoes.getByRole('button', { name: `Pôr ${c} em Para distribuir` }).click();
+  }
+  await lupaDoDia.press('Escape');
   await ate(async () => assert.deepEqual(await daLista(p), [mundo, terra]));
   const botao = coluna.getByRole('button', { name: 'Distribuir' });
   assert.ok(await botao.isDisabled(), 'sem ninguém escalado, o Distribuir fica desligado');
   await coluna.getByText('Ninguém escalado no dia para receber', { exact: false }).waitFor();
 
-  // escalados: o Rui com uma tarefa, a Elis sem nada e o Gil com duas
-  await gravar([posicao('dist-1', 'madrugada', 'Rui Teixeira', '22h às 6h', ['COMUNICAÇÃO']), posicao('dist-2', 'tarde', 'Elis Furtado', '14h às 23h', []), posicao('dist-3', 'tarde', 'Gil Moura', '14h às 23h', ['CALHAUS', 'COMUNICAÇÃO'])]);
+  // escalados: o Rui com uma claquete, a Elis sem nada e o Gil com duas
+  const gala = `Noite de Gala ${diaMes(distDia)} (DP)`;
+  const coru = `Corujão ${diaMes(distDia)}`;
+  const vale = `Vale a Pena Rever ${diaMes(distDia)} (AH)`;
+  await gravar([posicao('dist-1', 'madrugada', 'Rui Teixeira', '22h às 6h', [gala]), posicao('dist-2', 'tarde', 'Elis Furtado', '14h às 23h', []), posicao('dist-3', 'tarde', 'Gil Moura', '14h às 23h', [coru, vale])]);
   await p.reload();
   await p.locator('.montar-celula').nth(2).waitFor();
   await ate(async () => assert.deepEqual(await daLista(p), [mundo, terra]));
   assert.ok(!(await botao.isDisabled()), 'com gente escalada, o Distribuir liga');
   await botao.click();
   // o Mundo Animal vai para o Gil (pegou a atração no Teable, dois dias antes); a Terra Viva, para a Elis (menos demandas)
-  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => [x.editor, x.demandas]), [['Rui Teixeira', ['COMUNICAÇÃO']], ['Elis Furtado', [terra]], ['Gil Moura', ['CALHAUS', 'COMUNICAÇÃO', mundo]]]));
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => [x.editor, x.demandas]), [['Rui Teixeira', [gala]], ['Elis Furtado', [terra]], ['Gil Moura', [coru, vale, mundo]]]));
   assert.deepEqual(await daLista(p), [], 'a lista esvazia');
   const caixinha = p.locator('.desfazer', { hasText: 'distribuídas' });
   assert.match(await caixinha.innerText(), /2 claquetes distribuídas/);
@@ -982,7 +1050,7 @@ async function distribuirSozinho(navegador, url, api) {
   assert.ok(parseFloat(borda) <= 1, 'nada de faixa na borda esquerda');
   // arrastada para outro editor, a claquete deixa de mostrar o motivo (ele era de onde o Distribuir a pôs)
   await arrastarComOMouse(p, linha('dist-2'), p.locator('.montar-celula[data-posicao-id="dist-1"]'));
-  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [['COMUNICAÇÃO', terra], [], ['CALHAUS', 'COMUNICAÇÃO', mundo]]));
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [[gala, terra], [], [coru, vale, mundo]]));
   assert.equal(await p.locator('.montar-demanda.distribuida').count(), 1);
   await linha('dist-3').hover();
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
@@ -994,7 +1062,7 @@ async function distribuirSozinho(navegador, url, api) {
 
   // Desfazer: tudo volta para "Para distribuir", de uma vez
   await caixinha.getByRole('button', { name: 'Desfazer' }).click();
-  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [['COMUNICAÇÃO'], [], ['CALHAUS', 'COMUNICAÇÃO']]));
+  await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [[gala], [], [coru, vale]]));
   await ate(async () => assert.deepEqual(await daLista(p), [mundo, terra]));
   await caixinha.waitFor({ state: 'detached', timeout: 2000 });
   assert.equal(await p.locator('.montar-demanda.distribuida').count(), 0);
@@ -1059,6 +1127,10 @@ async function colarDaPlanilha(navegador, url) {
   await lido.getByText('“TOMÁS NOVO” não está nos cadastros: nome novo').waitFor();
   await lido.getByText('Bia Campos · fora (folga comp)').waitFor();
   await lido.getByText('⚑ TERRA VEM PRONTA DA PROMO, SÓ FINALIZAR').waitFor();
+  // só entra o que casa com uma Produção (#199): a COMUNICAÇÃO (uma tarefa) vem riscada, e o resumo diz
+  await lido.locator('.colar-de-fora-resumo', { hasText: '1 linha fica de fora' }).waitFor();
+  assert.deepEqual(await lido.locator('.colar-de-fora').allInnerTexts(), ['COMUNICAÇÃO']);
+  assert.equal(await lido.locator('.colar-de-fora').getAttribute('title'), 'fica de fora: tarefa');
   // a pergunta: "ELIZ" é a Elis
   const pergunta = lido.getByRole('group', { name: 'Quem é “ELIZ”?' });
   await pergunta.getByRole('button', { name: 'Elis Furtado' }).click();
@@ -1067,11 +1139,11 @@ async function colarDaPlanilha(navegador, url) {
   await capturar(p, '17-colar-da-planilha');
   await dlg.getByRole('button', { name: /^Pôr em/ }).click();
   await dlg.waitFor({ state: 'detached' });
-  await p.getByText('Colado da planilha: 4 posições, 4 demandas e 1 ausência marcada.').waitFor();
+  await p.getByText('Colado da planilha: 4 posições, 3 claquetes (1 de fora) e 1 ausência marcada.').waitFor();
 
   const esperado = [
     ['Madrugada', 'Rui Teixeira', '22h às 6h', [`Noite de Gala ${dm(colarDia)} (DP)`]],
-    ['Madrugada', 'Gil Moura', '22h às 6h', ['COMUNICAÇÃO']],
+    ['Madrugada', 'Gil Moura', '22h às 6h', []],
     ['Manhã', 'Elis Furtado', '8h às 17h', [`Mundo Animal ${dm(colarDia)} (P)`]],
     ['Noite', 'TOMÁS NOVO', '20h às 2h', [`Corujão ${dm(colarDia)} (A)`]],
   ];
@@ -1086,11 +1158,14 @@ async function colarDaPlanilha(navegador, url) {
 
   // colado de novo, só um turno: juntar acrescenta à Elis só o que faltava
   await p.getByRole('button', { name: '⎘ Colar da planilha', exact: true }).click();
-  await dlg.getByLabel('O que foi copiado da planilha').fill(tsv(blocos('MANHÃ', [{ ilha: '', nome: 'ELIS FURTADO', hora: '8h às 17h', demandas: [`Mundo Animal ${dm(colarDia)} (P)`, `Cozinha de Raiz ${dm(colarDia)} (AH)`] }])));
+  await dlg.getByLabel('O que foi copiado da planilha').fill(tsv(blocos('MANHÃ', [{ ilha: '', nome: 'ELIS FURTADO', hora: '8h às 17h', demandas: [`Mundo Animal ${dm(colarDia)} (P)`, `Terra Viva ${dm(colarDia)} (A)`, `Cozinha de Raiz ${dm(colarDia)} (AH)`] }])));
   await lido.getByText(/^Entendi 1 posição/).waitFor();
+  // a Cozinha de Raiz não tem Produção: riscada, com o motivo na dica
+  await lido.locator('.colar-de-fora', { hasText: 'Cozinha de Raiz' }).waitFor();
+  assert.equal(await lido.locator('.colar-de-fora').getAttribute('title'), 'fica de fora: não casa com nenhuma Produção');
   await dlg.getByRole('button', { name: 'Juntar ao rascunho' }).click();
   await dlg.waitFor({ state: 'detached' });
-  esperado[2][3] = [`Mundo Animal ${dm(colarDia)} (P)`, `Cozinha de Raiz ${dm(colarDia)} (AH)`];
+  esperado[2][3] = [`Mundo Animal ${dm(colarDia)} (P)`, `Terra Viva ${dm(colarDia)} (A)`];
   await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => [x.turno, x.editor, x.horario, x.demandas]), esperado));
   // recarregada, fica
   await p.locator('.montar-estado', { hasText: 'rascunho guardado' }).waitFor();
@@ -1141,7 +1216,7 @@ async function ladoALado(navegador, url, api) {
   await lado.getByRole('button', { name: 'ver as diferenças' }).click();
   const lista = lado.getByRole('list', { name: 'Diferenças por posição' });
   const textos = async () => (await lista.locator('.lado-pos').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
-  assert.deepEqual(await textos(), [`Elis Furtado Manhã PROMEIRO PLANILHA Demandas Cozinha de Raiz ${dm(colarDia)} (AH) —`]);
+  assert.deepEqual(await textos(), [`Elis Furtado Manhã PROMEIRO PLANILHA Demandas Terra Viva ${dm(colarDia)} (A) —`]);
   await lado.getByText('A foto crua da aba SEXTA').click();
   await lado.locator('.lado-grade td', { hasText: 'TOMÁS NOVO' }).waitFor();
   await semRolagemDeLado(p, 'lado a lado');
@@ -1201,18 +1276,18 @@ async function repetir(navegador, url, api) {
   assert.ok(!(await opcao(/Colar da planilha/).isDisabled()), 'o colar da planilha (#130) está ligado');
   await capturar(p, '11-repetir-dia-vazio');
 
-  // o mesmo dia na semana passada: a escala e as tarefas, nunca as claquetes; a Elis de férias vira vaga
+  // o mesmo dia na semana passada: a escala, nunca as claquetes nem as tarefas (#199); a Elis de férias vira vaga
   await semanaPassada.click();
   await p.locator('.repetido').getByText(`Escala de ${curto(antes)} repetida: 2 posições. Elis Furtado está fora: ficou a vaga.`).waitFor();
   const madrugada = turno(p, 'Madrugada').locator('.montar-celula').first();
   assert.equal(await madrugada.locator('[data-campo="editor"]').inputValue(), 'Rui Teixeira');
   assert.equal(await madrugada.locator('[data-campo="ilha"]').inputValue(), 'AVID 46');
   assert.equal(await madrugada.locator('[data-campo="horario"]').inputValue(), '22h às 6h');
-  assert.deepEqual(await madrugada.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), ['COMUNICAÇÃO'], 'a claquete fica');
+  assert.deepEqual(await madrugada.locator('[data-campo="demanda"]').evaluateAll(valores), [], 'a claquete e a tarefa ficam');
   const tarde = turno(p, 'Tarde').locator('.montar-celula').first();
   assert.equal(await tarde.locator('[data-campo="editor"]').inputValue(), '');
   await tarde.locator('.montar-vaga').getByText(`Elis Furtado está de férias até ${diaMes(mais(nova, 1))}`).waitFor();
-  assert.deepEqual(await tarde.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), ['CALHAUS']);
+  assert.deepEqual(await tarde.locator('[data-campo="demanda"]').evaluateAll(valores), []);
   assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
   assert.equal(await p.locator('.dia-vazio').count(), 0, 'o dia deixou de estar vazio');
   await semRolagemDeLado(p, 'repetir');
@@ -1243,7 +1318,24 @@ async function repetir(navegador, url, api) {
   assert.equal(escritasNoTeable.length, 0, 'nada foi escrito nos cadastros');
   assert.deepEqual(erros, [], 'repetir: erros na página');
   await ctx.close();
-  console.log('ok: Repetir a escala (as tarefas sem as claquetes, a vaga com o motivo, a semana inteira nos vazios) e começar do zero');
+  console.log('ok: Repetir a escala (sem as claquetes nem as tarefas, a vaga com o motivo, a semana inteira nos vazios) e começar do zero');
+}
+
+/**
+ * As Produções de mentira (#199): a Pauta e o Montar só têm as claquetes que casam com uma Produção. Uma por atração
+ * por dia, de três dias antes de hoje a dois meses depois, direto no SQLite (a carga do Teable não é o que se testa).
+ */
+function porAsProducoes(db) {
+  const inserir = db.prepare('INSERT INTO producoes (id, claquete, praca, etapa, entrada_em, criada_em, atualizada_em) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const agora = new Date().toISOString();
+  const entrada = new Date(Date.now() - 2 * 86_400_000).toISOString();
+  let n = 0;
+  const por = (claquete) => inserir.run(`prod-e2e-${++n}`, claquete, '', 'entrada', entrada, agora, agora);
+  for (let i = -3; i <= 60; i++) {
+    const d = diaMes(mais(hoje, i));
+    for (const c of [`Noite de Gala ${d} (DP)`, `Mundo Animal ${d} (P)`, `Vale a Pena Rever ${d} (AH)`, `Terra Viva ${d} (A)`, `Corujão ${d}`]) por(c);
+  }
+  por('Mundo Animal 30/11 (P)');
 }
 
 async function principal() {
@@ -1255,6 +1347,7 @@ async function principal() {
   const s = await subir({ cadastros, teable, pg: teable.abrirPg, env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG, EDICAO_FOTO_TOKEN: TOKEN_DA_FOTO } });
   // o convite do tour não atrapalha
   for (const quem of [LIA, BIA, CHEFE]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
+  porAsProducoes(s.db);
   const navegador = await chromium.launch();
   let falhou = false;
   try {

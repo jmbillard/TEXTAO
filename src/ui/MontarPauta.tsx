@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SufixoDasVersoes } from './CodigoDasVersoes';
-import { desfazerADistribuicao, desfazerAPublicacao, devolverADemanda, distribuirNoDia, escalarNoDia, gravarRascunhoDoDia, jaDistribuida, juntarParaDistribuir, lerRascunhoDoDia, levarParaAPosicao, marcarAusencia, marcarPendencia, moverADemanda, publicarODia, repetirAEscala } from '../dados/armazenamento';
+import { desfazerADistribuicao, desfazerAPublicacao, devolverADemanda, distribuirNoDia, escalarNoDia, escolherAClaquete, gravarRascunhoDoDia, jaDistribuida, lerAsClaquetesDoMontar, lerRascunhoDoDia, levarParaAPosicao, marcarAusencia, marcarPendencia, moverADemanda, publicarODia, repetirAEscala, type ClaquetesDoMontar } from '../dados/armazenamento';
 import { iniciais } from '../dados/colaboracao';
-import { demandaNoPadrao, horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
+import { horarioEntendido, horarioNoPadrao, lerDemanda, lerHorario, situacaoNoDia, type DiaDaEscala, type PosicaoDaEscala, type SituacaoNoDia, type TurnoDaEscala } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { acrescentarDemanda, escalarNa, lugarDaDemanda, moverDemanda, semEscala, tirarDemanda, type ClaqueteDistribuida } from '../modelo/distribuir';
 import type { DemandaParaDistribuir } from '../modelo/ausencias';
 import { useArrastar, type ItemArrastado, type LugarDeSoltar } from './arrastar';
-import { Alca, BuscaNoMontar, EscolherDestino, ParaDistribuir, SemEscala, batemNaBusca, useForaDaBusca, type Arraste, type Destino } from './ColunaDaPauta';
+import { Alca, BuscaNoMontar, ClaquetesDasProducoes, DeForaDoDia, EscolherDestino, ParaDistribuir, SemEscala, batemNaBusca, useForaDaBusca, type Arraste, type Destino } from './ColunaDaPauta';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { semAcento } from '../modelo/vocabularios';
-import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
+import { diaEmSaoPaulo, diaVizinho, infoNoPadrao, type ClaqueteParaEscolher } from '../modelo/pauta';
 import { CampoDaIlha } from './CampoDaIlha';
 import type { Ilha } from '../modelo/ilhas';
 import { Icone } from './icones';
@@ -34,10 +34,11 @@ import { dataPorExtenso, semMovimento } from './util';
 /* Montar a pauta (#123): a tela em que a coordenação monta o rascunho do dia, numa grade parecida com a planilha
    (a alternativa A do protótipo aprovado). Abas com os dias da semana, cada uma com o estado do dia (vazio ou
    rascunho); um bloco por turno; em cada posição, o editor (da lista dos cadastrados, com a situação de cada um no dia),
-   o horário (escrito de qualquer jeito, gravado no padrão) e as demandas, texto livre: cada linha mostra na hora o que o
-   PROMeiro entendeu (a atração, a data, o código das versões no fim e, discretamente, a grafia no padrão). Tudo pelo
-   teclado: Tab, Enter cria uma linha, as setas andam entre as linhas, Backspace na linha vazia apaga. O rascunho é
-   gravado sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable.
+   o horário (escrito de qualquer jeito, gravado no padrão) e as demandas. As demandas são só claquetes escolhidas das
+   Produções (#199, ADR 0008): não há linha livre. Cada claquete mostra o que o PROMeiro entendeu (a atração, a data e o
+   código das versões no fim) e pode levar infos para o editor, texto, abertas pelo "+ info" (Enter cria outra,
+   Backspace na vazia apaga; a que o PROMeiro não leria como info grava com "OBS:" na frente). O rascunho é gravado
+   sozinho no SQLite do PROMeiro, só a coordenação vê; nada vai ao Teable.
    Conferir e publicar (#127): "Conferir e publicar" leva à conferência (ConferirPauta.tsx), em que cada pendência tem
    o "Corrigir", que volta à grade com o foco no campo, e o "está certo"; publicar mostra a tela "publicada". Na grade,
    a faixa da publicação diz se o dia está publicado ou alterado, com o Desfazer e o histórico.
@@ -45,8 +46,9 @@ import { dataPorExtenso, semMovimento } from './util';
    "+ aviso" (Enter cria outra, Backspace na vazia apaga); o recado do dia, para todos, fica num campo próprio, acima da
    grade. Os dois são gravados com o rascunho e, publicados, aparecem na Pauta como os avisos de hoje.
    A coluna lateral (#126, a alternativa B do protótipo): ao lado da grade (em cima, no tablet em pé; embaixo, no
-   celular), as caixas "Para distribuir" (escrever ou colar as claquetes), "Sem escala" (quem não está em nenhuma
-   posição nem fora) e "Fora" (as ausências do dia). Arrasta-se a claquete da lista para uma posição, a demanda de uma
+   celular), as caixas "Das Produções" (as claquetes que dá para escolher, #199), "Para distribuir", "N de fora" (o que o
+   Teable tem no dia e a Pauta não mostra), "Sem escala" (quem não está em nenhuma posição nem fora) e "Fora" (as
+   ausências do dia). A claquete das Produções arrasta para um editor ou para "Para distribuir", tem o "+" e o "Pôr em…". Arrasta-se a claquete da lista para uma posição, a demanda de uma
    posição para outra (ou de volta para a lista) e a pessoa para uma posição ou para um turno (uma posição nova); no
    celular e pelo teclado, o "Mover para…" e o "Escalar na…". Cada uma dessas ações vai ao servidor, que grava o dia;
    a tela já mostra o resultado antes da resposta e fica com o que o servidor gravou.
@@ -80,10 +82,11 @@ interface Props {
 
 const GRAVAR_DEPOIS_MS = 600;
 const novoId = (prefixo: string) => `${prefixo}-${(crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 24)}`;
-const linhaVazia = () => ({ id: novoId('d'), texto: '' });
+/** Uma info nova (#199), vazia, para digitar; a vazia não é gravada. */
+const infoVazia = () => ({ id: novoId('d'), texto: '' });
 const avisoVazio = () => ({ id: novoId('a'), texto: '' });
-/** Toda posição mostra ao menos uma linha de demanda, para digitar; a vazia não é gravada. */
-const comLinha = (p: PosicaoDaEscala): PosicaoDaEscala => (p.demandas.length ? p : { ...p, demandas: [linhaVazia()] });
+/** A demanda é uma claquete (a escolhida das Produções); o resto é info (ou a tarefa de um rascunho de antes do #199). */
+const ehClaquete = (texto: string, dia: string) => lerDemanda(texto, dia).tipo === 'claquete';
 
 /** "sexta, 27 de novembro": o dia por extenso de todas as telas (util.ts). */
 const diaEscrito = dataPorExtenso;
@@ -160,7 +163,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     // a linha vazia da tela só fica onde não chegou nada, ou se a pessoa está nela
     const focada = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.demanda : undefined;
     const doServidor = new Set(d.posicoes.flatMap((p) => p.demandas.map((x) => x.id)));
-    posicoesAgora.current = juntado.posicoes.map((p) => comLinha({ ...p, demandas: p.demandas.filter((x) => x.texto.trim() || doServidor.has(x.id) || x.id === focada) }));
+    posicoesAgora.current = juntado.posicoes.map((p) => ({ ...p, demandas: p.demandas.filter((x) => x.texto.trim() || doServidor.has(x.id) || x.id === focada) }));
     setPosicoes(posicoesAgora.current);
     recadoAgora.current = juntado.recado;
     setRecado(juntado.recado);
@@ -230,7 +233,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const mostrar = useCallback((d: DiaDaEscala) => {
     setDados(d);
     base.current = { dia: d.dia, posicoes: d.posicoes, recado: d.recado ?? '', versao: d.versao ?? 0 };
-    posicoesAgora.current = d.posicoes.map(comLinha);
+    posicoesAgora.current = d.posicoes;
     setPosicoes(posicoesAgora.current);
     recadoAgora.current = d.recado ?? '';
     setRecado(recadoAgora.current);
@@ -301,7 +304,8 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     const el = grade.current?.querySelector<HTMLInputElement>(sel);
     if (el) {
       el.focus();
-      if (foco.fim !== false) el.setSelectionRange(el.value.length, el.value.length);
+      // a claquete escolhida (#199) não é campo: só ganha o foco
+      if (foco.fim !== false && typeof el.setSelectionRange === 'function') el.setSelectionRange(el.value.length, el.value.length);
     }
     setFoco(null);
   }, [foco]);
@@ -310,7 +314,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const editores = dados?.editores ?? [];
   const daPosicao = (id: string, f: (p: PosicaoDaEscala) => PosicaoDaEscala) => mudar((ps) => ps.map((p) => (p.id === id ? f(p) : p)));
   const novaPosicao = (turno: TurnoDaEscala) => {
-    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', ilha: '', horario: turno.horario, demandas: [linhaVazia()], avisos: [] };
+    const p: PosicaoDaEscala = { id: novoId('p'), turno: turno.id, editor: '', ilha: '', horario: turno.horario, demandas: [], avisos: [] };
     // a posição nova entra depois da última do turno (a ordem da grade é a dos turnos)
     mudar((ps) => {
       const ultima = ps.map((x) => x.turno).lastIndexOf(turno.id);
@@ -330,7 +334,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   };
   /** Começar do zero: uma posição vazia em cada turno, com o foco no editor da primeira. */
   const doZero = () => {
-    const novas = turnos.map((t): PosicaoDaEscala => ({ id: novoId('p'), turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [linhaVazia()], avisos: [] }));
+    const novas = turnos.map((t): PosicaoDaEscala => ({ id: novoId('p'), turno: t.id, editor: '', ilha: '', horario: t.horario, demandas: [], avisos: [] }));
     if (!novas.length) return;
     mudar((ps) => [...ps, ...novas], true);
     setFoco({ posicao: novas[0].id, campo: 'editor' });
@@ -353,7 +357,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     const antes = { posicoes: posicoesAgora.current, lista: dados.paraDistribuir ?? [], base: base.current };
     const novas = local?.(posicoesAgora.current.map((p) => ({ ...p, demandas: p.demandas.filter((d) => d.texto.trim()) })));
     if (novas) {
-      posicoesAgora.current = novas.map(comLinha);
+      posicoesAgora.current = novas;
       setPosicoes(posicoesAgora.current);
       // o resultado mostrado antes da resposta também vai para a base (#131): não é mudança da pessoa, e o dia que o
       // servidor gravar fica no lugar dele (a posição nova que o servidor cria tem outro id)
@@ -396,16 +400,71 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const levar = (id: string, posicao: string, antesDe: string | null) => {
     const item = listaDoDia.find((d) => d.id === id);
     if (!item) return Promise.resolve(false);
+    setChegou(id);
     return naColuna((ps) => acrescentarDemanda(ps, posicao, { id: item.id, texto: item.texto }, antesDe), (l) => l.filter((d) => d.id !== id), (dia) => levarParaAPosicao(dia, id, posicao, antesDe));
   };
-  const mover = (id: string, posicao: string, antesDe: string | null) => naColuna((ps) => moverDemanda(ps, id, posicao, antesDe), null, (dia) => moverADemanda(dia, id, posicao, antesDe));
+  const mover = (id: string, posicao: string, antesDe: string | null) => (setChegou(id), naColuna((ps) => moverDemanda(ps, id, posicao, antesDe), null, (dia) => moverADemanda(dia, id, posicao, antesDe)));
   const devolver = (id: string) => {
     const tirada = tirarDemanda(posicoesAgora.current, id);
     if (!tirada) return Promise.resolve(false);
     return naColuna((ps) => tirarDemanda(ps, id)?.posicoes ?? null, (l) => [...l, { id, texto: tirada.demanda.texto, deQuem: tirada.de }], (dia) => devolverADemanda(dia, id));
   };
   const tirarDaLista = (id: string) => void naColuna(null, (l) => l.filter((d) => d.id !== id), (dia) => jaDistribuida(dia, id).then(() => lerRascunhoDoDia(dia)));
-  const juntar = (texto: string) => naColuna(null, null, (dia) => juntarParaDistribuir(dia, texto));
+  /* ---------- as claquetes das Produções (#199) ---------- */
+  // a lista das claquetes e o "de fora" do dia; lida de novo quando o dia muda (a versão), um pouco depois
+  const [escolha, setEscolha] = useState<{ dia: string; lido: ClaquetesDoMontar | null; erro: string } | null>(null);
+  // as que a pessoa acabou de escolher saem da lista na hora, antes da releitura
+  const [escolhidas, setEscolhidas] = useState<ReadonlySet<string>>(new Set());
+  const escolhaLida = useRef('');
+  // a claquete que acabou de chegar a uma posição (escolhida, levada ou movida): o sopro do laranja (m-chegou)
+  const [recemChegada, setChegou] = useState<string | null>(null);
+  useEffect(() => {
+    if (!recemChegada) return;
+    const t = setTimeout(() => setChegou(null), 1200);
+    return () => clearTimeout(t);
+  }, [recemChegada]);
+  const versaoDoDia = dados?.versao ?? 0;
+  const diaDosDados = dados?.dia ?? '';
+  useEffect(() => {
+    if (!diaDosDados) return;
+    let vivo = true;
+    const t = setTimeout(
+      () =>
+        void lerAsClaquetesDoMontar(diaDosDados).then(
+          (lido) => vivo && (setEscolha({ dia: diaDosDados, lido, erro: '' }), setEscolhidas(new Set())),
+          (e) => vivo && setEscolha((x) => ({ dia: diaDosDados, lido: x?.dia === diaDosDados ? x.lido : null, erro: e instanceof Error ? e.message : String(e) })),
+        ),
+      escolhaLida.current === diaDosDados ? 700 : 0,
+    );
+    escolhaLida.current = diaDosDados;
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [diaDosDados, versaoDoDia]);
+  const escolhaDoDia = escolha?.dia === diaDosDados ? escolha : null;
+  const claquetesDoDia = escolhaDoDia?.lido ? escolhaDoDia.lido.claquetes.filter((c) => !escolhidas.has(c.chave)) : null;
+  /**
+   * Escolhe a claquete das Produções: em "Para distribuir" ou, com `posicao`, direto nela (antes de `antesDe`). A tela
+   * mostra já, com o id que o servidor vai guardar, e a tira da lista; o servidor confere que ela casa.
+   */
+  const escolherClaquete = (c: ClaqueteParaEscolher, onde: { posicao: string; antesDe: string | null } | null) => {
+    const id = novoId('d');
+    setEscolhidas((x) => new Set([...x, c.chave]));
+    if (onde) setChegou(id);
+    return naColuna(
+      onde ? (ps) => acrescentarDemanda(ps, onde.posicao, { id, texto: c.claquete }, onde.antesDe) : null,
+      onde ? null : (l) => [...l, { id, texto: c.claquete, deQuem: '' }],
+      (dia) => escolherAClaquete(dia, c.claquete, onde ? { posicao: onde.posicao, antesDe: onde.antesDe, id } : { id }),
+    ).then((ok) => {
+      if (!ok) setEscolhidas((x) => new Set([...x].filter((k) => k !== c.chave)));
+      return ok;
+    });
+  };
+  const porEm = (c: ClaqueteParaEscolher, valor: string) => {
+    const d = lerDestino(valor);
+    void escolherClaquete(c, d.tipo === 'posicao' ? { posicao: d.id, antesDe: null } : null);
+  };
   /**
    * Distribuir (#151): o servidor põe a lista nos editores escalados (ele tem o histórico) e grava o dia de uma vez; a
    * tela fica com o dia gravado, o motivo de cada claquete e a caixinha com o Desfazer.
@@ -434,9 +493,13 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   };
 
   const { arrastado, sobre, iniciar } = useArrastar(
-    (item, lugar) => (item.tipo === 'pessoa' ? lugar.tipo !== 'lista' : item.tipo === 'lista' ? lugar.tipo === 'posicao' : lugar.tipo === 'lista' || (lugar.tipo === 'posicao' && lugar.antesDe !== item.id)),
+    (item, lugar) =>
+      item.tipo === 'pessoa' ? lugar.tipo !== 'lista' : item.tipo === 'lista' ? lugar.tipo === 'posicao' : item.tipo === 'producao' ? lugar.tipo !== 'turno' : lugar.tipo === 'lista' || (lugar.tipo === 'posicao' && lugar.antesDe !== item.id),
     (item: ItemArrastado, lugar: LugarDeSoltar) => {
-      if (item.tipo === 'pessoa') escalar(item.id, lugar.tipo === 'turno' ? { turno: lugar.id } : { posicao: lugar.id });
+      if (item.tipo === 'producao') {
+        const c = claquetesDoDia?.find((x) => x.chave === item.id);
+        if (c) void escolherClaquete(c, lugar.tipo === 'posicao' ? { posicao: lugar.id, antesDe: lugar.antesDe } : null);
+      } else if (item.tipo === 'pessoa') escalar(item.id, lugar.tipo === 'turno' ? { turno: lugar.id } : { posicao: lugar.id });
       else if (item.tipo === 'lista') void levar(item.id, lugar.id, lugar.antesDe);
       else if (lugar.tipo === 'lista') void devolver(item.id);
       else void mover(item.id, lugar.id, lugar.antesDe);
@@ -505,7 +568,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const aplicarOColado = async (r: ColadoParaAplicar) => {
     if (!dados) return;
     const dia = dados.dia;
-    posicoesAgora.current = r.posicoes.map(comLinha);
+    posicoesAgora.current = r.posicoes;
     setPosicoes(posicoesAgora.current);
     gravarDepois(dia, true);
     await gravarAgora();
@@ -700,7 +763,11 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 {erroDaColuna}
               </p>
             )}
-            <ParaDistribuir dia={atual.dia} itens={listaDoDia} juntar={juntar} tirar={tirarDaLista} destinos={destinosDaDemanda(null, false)} mover={(id, v) => moverPeloMenu('lista', id, v)} arraste={{ iniciar, arrastado, sobre }} distribuir={distribuir} porQueNao={porQueNaoDistribuir} />
+            {/* as claquetes das Produções (#199): só elas entram no dia, sem linha livre */}
+            <ClaquetesDasProducoes claquetes={claquetesDoDia} erro={escolhaDoDia?.lido ? '' : (escolhaDoDia?.erro ?? '')} escolher={(c) => void escolherClaquete(c, null)} destinos={destinosDaDemanda(null, true)} porEm={porEm} arraste={{ iniciar, arrastado, sobre }} />
+            <ParaDistribuir dia={atual.dia} itens={listaDoDia} tirar={tirarDaLista} destinos={destinosDaDemanda(null, false)} mover={(id, v) => moverPeloMenu('lista', id, v)} arraste={{ iniciar, arrastado, sobre }} distribuir={distribuir} porQueNao={porQueNaoDistribuir} />
+            {/* "N de fora" (#199): o que o Teable tem no dia e a Pauta não mostra, para conferir */}
+            <DeForaDoDia deFora={escolhaDoDia?.lido ? escolhaDoDia.lido.deFora : undefined} erro={escolhaDoDia?.lido?.erroDeFora ?? ''} />
             <SemEscala pessoas={pessoasSemEscala} destinos={destinosDaPessoa} escalar={escalarPeloMenu} arraste={{ iniciar, arrastado, sobre }} />
             <AusenciasDoDia key={leituraDoFora} releitura={releitura} dia={atual.dia} turnos={turnos} editores={editores} antes={gravarAgora} mudou={() => void carregar()} foraNoDia={avisarFora} />
           </aside>
@@ -741,6 +808,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                           tirar={() => tirarPosicao(p.id)}
                           focar={setFoco}
                           motivos={motivos}
+                          chegou={recemChegada}
                           arraste={{ iniciar, sobre, arrastado, destinos: destinosDaDemanda(p.id, true), mover: (id, v) => moverPeloMenu('demanda', id, v) }}
                         />
                       ))}
@@ -766,11 +834,11 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
               }
             />
             <p className="montar-teclas">
+              <span><Alca /> arraste uma claquete das Produções para um editor</span>
               <span><kbd>Tab</kbd> próximo campo</span>
-              <span><kbd>Enter</kbd> nova linha</span>
-              <span><kbd>↑</kbd> <kbd>↓</kbd> entre as linhas</span>
-              <span><kbd>⌫</kbd> na linha vazia apaga</span>
-              <span><Alca /> arraste para outra posição</span>
+              <span><kbd>Enter</kbd> outra info</span>
+              <span><kbd>↑</kbd> <kbd>↓</kbd> entre as infos</span>
+              <span><kbd>⌫</kbd> na info vazia apaga</span>
             </p>
           </div>
           </div>
@@ -851,40 +919,57 @@ interface PropsDaCelula {
   focar: (f: Foco) => void;
   /** o motivo de cada demanda que o Distribuir pôs (#151), pela posição e pelo id ("posicao|id") */
   motivos: ReadonlyMap<string, string>;
+  /** a claquete que acabou de chegar (#199): o sopro do laranja */
+  chegou: string | null;
   /** o arrastar (#126): quem arrasta, onde está, e o "Mover para…" (⇄) das demandas (#163: em qualquer largura) */
   arraste: Arraste & { destinos: readonly Destino[]; mover: (id: string, destino: string) => void };
 }
 
 /** Uma posição: o editor, o horário e as demandas, cada campo com o que o PROMeiro entendeu embaixo. */
-function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, mudar, tirar, focar, motivos, arraste }: PropsDaCelula) {
+function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, mudar, tirar, focar, motivos, chegou, arraste }: PropsDaCelula) {
   const horario = lerHorario(p.horario);
   const situacao = p.editor.trim() ? situacaoNoDia(p.editor, posicoes, p.id) : null;
   const naLista = !p.editor.trim() || editores.some((e) => nomeComparavel(e) === nomeComparavel(p.editor));
   const linha = (id: string, texto: string) => mudar((x) => ({ ...x, demandas: x.demandas.map((d) => (d.id === id ? { ...d, texto } : d)) }));
 
-  const teclaNaDemanda = (e: React.KeyboardEvent<HTMLInputElement>, i: number) => {
+  /** As infos da posição (#199): as demandas que não são claquete; as setas andam só entre elas. */
+  const infoAntes = (i: number) => p.demandas.slice(0, i).map((d, j) => [d, j] as const).filter(([d]) => !ehClaquete(d.texto, dia)).at(-1)?.[0];
+  const infoDepois = (i: number) => p.demandas.slice(i + 1).find((d) => !ehClaquete(d.texto, dia));
+  /** Abre uma info nova logo depois da claquete `i` e das infos que ela já tem. */
+  const novaInfo = (i: number) => {
+    const nova = infoVazia();
+    mudar((x) => {
+      let j = i + 1;
+      while (j < x.demandas.length && !ehClaquete(x.demandas[j].texto, dia)) j++;
+      return { ...x, demandas: [...x.demandas.slice(0, j), nova, ...x.demandas.slice(j)] };
+    });
+    focar({ posicao: p.id, campo: 'demanda', demanda: nova.id });
+  };
+  const teclaNaInfo = (e: React.KeyboardEvent<HTMLInputElement>, i: number) => {
     const d = p.demandas[i];
     if (e.key === 'Enter') {
-      // Enter cria uma linha logo abaixo (a de agora vai para o padrão)
+      // Enter abre outra info logo abaixo (a de agora vai para o padrão)
       e.preventDefault();
-      const nova = linhaVazia();
+      const nova = infoVazia();
       mudar((x) => {
-        const ds = x.demandas.map((y) => (y.id === d.id ? { ...y, texto: demandaNoPadrao(y.texto, dia) || y.texto.trim() } : y));
+        const ds = x.demandas.map((y) => (y.id === d.id ? { ...y, texto: infoNoPadrao(y.texto) } : y));
         return { ...x, demandas: [...ds.slice(0, i + 1), nova, ...ds.slice(i + 1)] };
       });
       focar({ posicao: p.id, campo: 'demanda', demanda: nova.id });
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      focar(i > 0 ? { posicao: p.id, campo: 'demanda', demanda: p.demandas[i - 1].id } : { posicao: p.id, campo: 'horario' });
-    } else if (e.key === 'ArrowDown' && (i < p.demandas.length - 1 || p.avisos.length)) {
+      const antes = infoAntes(i);
+      focar(antes ? { posicao: p.id, campo: 'demanda', demanda: antes.id } : { posicao: p.id, campo: 'horario' });
+    } else if (e.key === 'ArrowDown' && (infoDepois(i) || p.avisos.length)) {
       e.preventDefault();
-      focar(i < p.demandas.length - 1 ? { posicao: p.id, campo: 'demanda', demanda: p.demandas[i + 1].id } : { posicao: p.id, campo: 'aviso', aviso: p.avisos[0].id });
-    } else if (e.key === 'Backspace' && !e.currentTarget.value && p.demandas.length > 1) {
-      // Backspace na linha vazia apaga a linha; o foco sobe (ou desce, na primeira)
+      const depois = infoDepois(i);
+      focar(depois ? { posicao: p.id, campo: 'demanda', demanda: depois.id } : { posicao: p.id, campo: 'aviso', aviso: p.avisos[0].id });
+    } else if (e.key === 'Backspace' && !e.currentTarget.value) {
+      // Backspace na info vazia a apaga; o foco vai à info de cima (ou à de baixo)
       e.preventDefault();
-      const vai = p.demandas[i - 1] ?? p.demandas[i + 1];
+      const vai = infoAntes(i) ?? infoDepois(i);
       mudar((x) => ({ ...x, demandas: x.demandas.filter((y) => y.id !== d.id) }));
-      focar({ posicao: p.id, campo: 'demanda', demanda: vai.id });
+      if (vai) focar({ posicao: p.id, campo: 'demanda', demanda: vai.id });
     }
   };
 
@@ -902,7 +987,8 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
       novoAviso(i);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      focar(i > 0 ? { posicao: p.id, campo: 'aviso', aviso: p.avisos[i - 1].id } : { posicao: p.id, campo: 'demanda', demanda: p.demandas.at(-1)?.id });
+      const ultimaInfo = infoAntes(p.demandas.length);
+      focar(i > 0 ? { posicao: p.id, campo: 'aviso', aviso: p.avisos[i - 1].id } : ultimaInfo ? { posicao: p.id, campo: 'demanda', demanda: ultimaInfo.id } : { posicao: p.id, campo: 'horario' });
     } else if (e.key === 'ArrowDown' && i < p.avisos.length - 1) {
       e.preventDefault();
       focar({ posicao: p.id, campo: 'aviso', aviso: p.avisos[i + 1].id });
@@ -911,7 +997,8 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
       e.preventDefault();
       const vai = p.avisos[i - 1] ?? p.avisos[i + 1];
       mudar((x) => ({ ...x, avisos: x.avisos.filter((y) => y.id !== a.id) }));
-      focar(vai ? { posicao: p.id, campo: 'aviso', aviso: vai.id } : { posicao: p.id, campo: 'demanda', demanda: p.demandas.at(-1)?.id });
+      const ultimaInfo = infoAntes(p.demandas.length);
+      focar(vai ? { posicao: p.id, campo: 'aviso', aviso: vai.id } : ultimaInfo ? { posicao: p.id, campo: 'demanda', demanda: ultimaInfo.id } : { posicao: p.id, campo: 'horario' });
     }
   };
 
@@ -958,7 +1045,9 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === 'ArrowDown') {
             e.preventDefault();
-            focar({ posicao: p.id, campo: 'demanda', demanda: p.demandas[0]?.id });
+            const primeira = infoDepois(-1);
+            if (primeira) focar({ posicao: p.id, campo: 'demanda', demanda: primeira.id });
+            else if (p.avisos.length) focar({ posicao: p.id, campo: 'aviso', aviso: p.avisos[0].id });
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             focar({ posicao: p.id, campo: 'ilha' });
@@ -982,10 +1071,19 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
             <span className="montar-alerta">{horario.erro}</span>
           ))}
       </div>
-      <ul className="montar-demandas" aria-label="Demandas">
-        {p.demandas.map((d, i) => (
-          <LinhaDaDemanda key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} motivo={motivos.get(`${p.id}|${d.id}`)} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaDemanda(e, i)} arraste={arraste} />
-        ))}
+      <ul className="montar-demandas" aria-label="Claquetes">
+        {p.demandas.map((d, i) =>
+          ehClaquete(d.texto, dia) ? (
+            <LinhaDaClaquete key={d.id} posicao={p.id} id={d.id} texto={d.texto} dia={dia} motivo={motivos.get(`${p.id}|${d.id}`)} chegou={chegou === d.id} maisInfo={() => novaInfo(i)} arraste={arraste} />
+          ) : (
+            <LinhaDaInfo key={d.id} posicao={p.id} id={d.id} texto={d.texto} mudar={(t) => linha(d.id, t)} tecla={(e) => teclaNaInfo(e, i)} arraste={arraste} />
+          ),
+        )}
+        {!p.demandas.length && (
+          <li className="montar-solte" data-vazio>
+            {arraste.arrastado?.tipo === 'producao' || arraste.arrastado?.tipo === 'lista' || arraste.arrastado?.tipo === 'demanda' ? 'solte aqui' : 'arraste uma claquete das Produções'}
+          </li>
+        )}
       </ul>
       {p.avisos.length > 0 && (
         <ul className="montar-avisos" aria-label="Avisos">
@@ -1018,55 +1116,85 @@ function CelulaDaPosicao({ p, dia, posicoes, turnos, editores, ilhas, costume, m
   );
 }
 
-/** Uma linha de demanda: o texto livre e, embaixo, o que o PROMeiro entendeu. Ao sair, a claquete vai para o padrão. */
-function LinhaDaDemanda({ posicao, id, texto, dia, motivo, mudar, tecla, arraste }: { posicao: string; id: string; texto: string; dia: string; motivo?: string; mudar: (t: string) => void; tecla: (e: React.KeyboardEvent<HTMLInputElement>) => void; arraste: PropsDaCelula['arraste'] }) {
+/**
+ * Uma claquete da posição (#199): a escolhida das Produções, que não se edita (não há linha livre), com o que o PROMeiro
+ * entendeu embaixo (a atração, a data e as versões). Arrasta, tem o "Mover para…" (⇄) e o "+ info", que abre uma info
+ * para o editor logo depois dela.
+ */
+function LinhaDaClaquete({ posicao, id, texto, dia, motivo, chegou, maisInfo, arraste }: { posicao: string; id: string; texto: string; dia: string; motivo?: string; chegou: boolean; maisInfo: () => void; arraste: PropsDaCelula['arraste'] }) {
   const l = lerDemanda(texto, dia);
-  const preenchida = !!texto.trim();
   const indo = arraste.arrastado?.tipo === 'demanda' && arraste.arrastado.id === id;
   const fora = useForaDaBusca(texto);
   return (
     <li
-      className={`montar-demanda t-${l.tipo}${preenchida ? ' arrastavel' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}${motivo ? ' distribuida' : ''}${fora ? ' fora-da-busca' : ''}`}
+      className={`montar-demanda t-claquete arrastavel${chegou ? ' m-chegou' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}${motivo ? ' distribuida' : ''}${fora ? ' fora-da-busca' : ''}`}
       // a demanda que o Distribuir pôs (#151): o fundo levemente tingido e o motivo na dica
       title={motivo ? `Distribuída: ${motivo}` : undefined}
       data-solta={`demanda:${posicao}:${id}`}
       data-demanda-id={id}
-      onPointerDown={preenchida ? arraste.iniciar({ tipo: 'demanda', id }) : undefined}>
-      {preenchida && <Alca />}
-      {preenchida && <EscolherDestino className="mover-menu montar-mover" rotulo="⇄" titulo={`Mover ${texto.trim()} para…`} destinos={arraste.destinos} escolher={(v) => arraste.mover(id, v)} />}
+      onPointerDown={arraste.iniciar({ tipo: 'demanda', id })}>
+      <Alca />
+      <EscolherDestino className="mover-menu montar-mover" rotulo="⇄" titulo={`Mover ${texto.trim()} para…`} destinos={arraste.destinos} escolher={(v) => arraste.mover(id, v)} />
+      {/* o foco do "Corrigir" da conferência cai aqui: a claquete não é campo */}
+      <span className="montar-claquete" tabIndex={0} data-posicao={posicao} data-campo="demanda" data-demanda={id}>
+        {texto}
+      </span>
+      <span className="montar-leitura">
+        {l.tipo === 'claquete' && l.data ? (
+          <span className="montar-data">
+            {l.atracao} · {DIAS_DA_SEMANA[partes(l.data).semana]} {partes(l.data).dia}/{partes(l.data).mes + 1}
+            {/* o código das versões colado no fim do que o PROMeiro entendeu, se a pessoa liga (#152) */}
+            <SufixoDasVersoes versoes={l.versoes} de="da claquete" />
+          </span>
+        ) : (
+          <>
+            <span className="montar-alerta">sem data</span>
+            {l.tipo === 'claquete' && <SufixoDasVersoes versoes={l.versoes} de="da claquete" />}
+          </>
+        )}
+        <button type="button" className="botao-texto montar-mais-info" onClick={maisInfo}>
+          + info
+        </button>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * Uma info para o editor (#199), presa à claquete de cima: texto, como o aviso. O que o PROMeiro não leria como info
+ * (iria como tarefa, que fica fora da Pauta) grava com "OBS:" na frente, e a linha diz isso antes. A tarefa de um
+ * rascunho de antes do #199 aparece aqui também, e some com Backspace.
+ */
+function LinhaDaInfo({ posicao, id, texto, mudar, tecla, arraste }: { posicao: string; id: string; texto: string; mudar: (t: string) => void; tecla: (e: React.KeyboardEvent<HTMLInputElement>) => void; arraste: PropsDaCelula['arraste'] }) {
+  const ao = useRef(texto);
+  const padrao = infoNoPadrao(texto);
+  const fora = useForaDaBusca(texto);
+  return (
+    <li className={`montar-demanda t-info${fora ? ' fora-da-busca' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}`} data-solta={`demanda:${posicao}:${id}`} data-demanda-id={id}>
+      <span className="montar-info-marca" aria-hidden="true">
+        info
+      </span>
       <input
         className="montar-in"
         data-posicao={posicao}
         data-campo="demanda"
         data-demanda={id}
         value={texto}
-        placeholder="claquete ou tarefa, Enter"
-        spellCheck={false}
+        placeholder="info para o editor, Enter"
         autoComplete="off"
-        aria-label="Demanda"
+        aria-label="Info para o editor"
+        maxLength={200}
+        onFocus={() => (ao.current = texto)}
         onChange={(e) => mudar(e.target.value)}
-        onBlur={(e) => l.tipo === 'claquete' && l.mudou && e.target.value === texto && mudar(l.padrao)}
+        // ao sair, a info que a pessoa mudou vai para o padrão (a que o PROMeiro não leria como info ganha "OBS:")
+        onBlur={(e) => e.target.value !== ao.current && padrao !== e.target.value && mudar(padrao)}
         onKeyDown={tecla}
       />
-      {l.tipo === 'claquete' && (
+      {texto.trim() && padrao !== texto.trim().replace(/\s+/g, ' ') && (
         <span className="montar-leitura">
-          {l.data ? (
-            <span className="montar-data">
-              {l.atracao} · {DIAS_DA_SEMANA[partes(l.data).semana]} {partes(l.data).dia}/{partes(l.data).mes + 1}
-              {/* o código das versões colado no fim do que o PROMeiro entendeu, se a pessoa liga (#152) */}
-              <SufixoDasVersoes versoes={l.versoes} de="da claquete" />
-            </span>
-          ) : (
-            <>
-              <span className="montar-alerta">sem data</span>
-              <SufixoDasVersoes versoes={l.versoes} de="da claquete" />
-            </>
-          )}
-          {l.mudou && (
-            <span className="montar-grava">
-              grava <b>{l.padrao}</b>
-            </span>
-          )}
+          <span className="montar-grava">
+            grava <b>{padrao}</b>
+          </span>
         </span>
       )}
     </li>

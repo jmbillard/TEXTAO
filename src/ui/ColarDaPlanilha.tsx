@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { aplicarOColado, lerOColado, type BlocoDoColado } from '../modelo/colarDaPlanilha';
+import { aplicarOColado, demandasQueEntram, lerOColado, type BlocoDoColado } from '../modelo/colarDaPlanilha';
+import { quaisCasam } from '../dados/armazenamento';
 import { nomeDoTipo, type Ausencia } from '../modelo/ausencias';
 import { rotuloDaIlha } from '../modelo/ilhas';
 import { lerDemanda, type DiaDaEscala, type PosicaoDaEscala } from '../modelo/escala';
@@ -12,7 +13,11 @@ import './colarDaPlanilha.css';
    (colarDaPlanilha.ts), por turno: cada posição com o editor, a ilha, o horário, as demandas e os avisos, as notas do
    que foi interpretado e, quando o nome tem um erro de digitação ou serve para mais de um, a pergunta. No alto, o
    resumo: posições, demandas, avisos, ausências e grafias que vão para o padrão. A pessoa escolhe entre substituir o
-   rascunho e juntar a ele; quem estava fora vira ausência (marcada uma vez) e a posição dele fica vaga. */
+   rascunho e juntar a ele; quem estava fora vira ausência (marcada uma vez) e a posição dele fica vaga.
+   Só entra o que casa com uma Produção (#199, ADR 0008): o PROMeiro pergunta ao servidor quais claquetes casam (a mesma
+   chave da Pauta) e mostra riscadas as que ficam de fora, a tarefa e a claquete sem Produção (com a info dela); elas não
+   vão para o rascunho. A planilha é o rascunho de quem a escreveu, e a Pauta não mostraria nada disso: pôr no Montar uma
+   linha que a Pauta esconde só confundiria. */
 
 export interface ColadoParaAplicar {
   posicoes: PosicaoDaEscala[];
@@ -48,6 +53,31 @@ export function ColarDaPlanilha({ dados, posicoes, jaFora, novoId, fechar, aplic
   const ctx = useMemo(() => ({ dia: dados.dia, turnos: dados.turnos, editores: dados.editores, apelidos: dados.apelidos ?? {}, ilhas: dados.ilhas }), [dados]);
   const leitura = useMemo(() => (texto.trim() ? lerOColado(texto, ctx) : null), [texto, ctx]);
   const temRascunho = preenchidas(posicoes).length > 0;
+  // quais claquetes do colado casam com uma Produção (#199): perguntado ao servidor, um pouco depois de colar
+  const textos = useMemo(() => [...new Set((leitura?.blocos ?? []).flatMap((b) => b.demandas.map((d) => d.padrao)))], [leitura]);
+  const [casam, setCasam] = useState<{ chave: string; mapa: ReadonlyMap<string, boolean> } | null>(null);
+  const [erroDaConferencia, setErroDaConferencia] = useState('');
+  const chaveDosTextos = textos.join('\n');
+  useEffect(() => {
+    if (!textos.length) return;
+    let vivo = true;
+    setErroDaConferencia('');
+    const t = setTimeout(
+      () =>
+        void quaisCasam(dados.dia, textos).then(
+          (r) => vivo && setCasam({ chave: chaveDosTextos, mapa: new Map(textos.map((x, i) => [x, !!r[i]])) }),
+          (e) => vivo && setErroDaConferencia(e instanceof Error ? e.message : String(e)),
+        ),
+      250,
+    );
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [dados.dia, textos, chaveDosTextos]);
+  const casa = casam?.chave === chaveDosTextos ? casam.mapa : textos.length ? null : new Map<string, boolean>();
+  const casaComAProducao = (t: string) => casa?.get(t) === true;
+  const nDeFora = casa ? (leitura?.blocos ?? []).reduce((n, b) => n + demandasQueEntram(b.demandas.map((d) => d.padrao), casaComAProducao).deFora.length, 0) : 0;
 
   // Esc fecha
   useEffect(() => {
@@ -61,9 +91,11 @@ export function ColarDaPlanilha({ dados, posicoes, jaFora, novoId, fechar, aplic
     setOcupado(true);
     setErro('');
     try {
-      const r = aplicarOColado(leitura, { dia: dados.dia, turnos: dados.turnos, posicoes: preenchidas(posicoes), modo, respostas, jaFora, novoId });
+      if (!casa) throw new Error('Ainda conferindo as claquetes nas Produções.');
+      const r = aplicarOColado(leitura, { dia: dados.dia, turnos: dados.turnos, posicoes: preenchidas(posicoes), modo, respostas, jaFora, novoId, casa: casaComAProducao });
       const s = leitura.resumo;
-      await aplicar({ ...r, resumo: `${contar(s.posicoes, 'posição', 'posições')}, ${contar(s.demandas, 'demanda', 'demandas')} e ${contar(r.ausencias.length, 'ausência marcada', 'ausências marcadas')}` });
+      const entraram = s.demandas - r.deFora.length;
+      await aplicar({ ...r, resumo: `${contar(s.posicoes, 'posição', 'posições')}, ${contar(entraram, 'claquete', 'claquetes')}${r.deFora.length ? ` (${r.deFora.length} de fora)` : ''} e ${contar(r.ausencias.length, 'ausência marcada', 'ausências marcadas')}` });
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
       setOcupado(false);
@@ -102,6 +134,18 @@ export function ColarDaPlanilha({ dados, posicoes, jaFora, novoId, fechar, aplic
                   <b>{s!.grafias}</b> {s!.grafias === 1 ? 'grafia vai' : 'grafias vão'} para o padrão.
                   {s!.vazias > 0 && ` ${contar(s!.vazias, 'bloco vazio fica', 'blocos vazios ficam')} de fora.`}
                 </p>
+                {/* só o que casa com uma Produção entra (#199): o resto aparece riscado */}
+                {erroDaConferencia ? (
+                  <p className="colar-alerta" role="alert">
+                    Não consegui conferir as claquetes nas Produções: {erroDaConferencia}
+                  </p>
+                ) : !casa ? (
+                  <p className="colar-conferindo">conferindo as claquetes nas Produções…</p>
+                ) : nDeFora > 0 ? (
+                  <p className="colar-de-fora-resumo">
+                    <b>{contar(nDeFora, 'linha fica', 'linhas ficam')} de fora</b>: as tarefas e as claquetes sem Produção (riscadas) não vão para o rascunho; a Pauta só mostra as claquetes que casam com uma Produção.
+                  </p>
+                ) : null}
                 {outroDia && (
                   <p className="colar-alerta">
                     A aba colada é de {diaCurto(outroDia)}; vai para {diaCurto(dados.dia)}, o dia aberto.
@@ -116,7 +160,7 @@ export function ColarDaPlanilha({ dados, posicoes, jaFora, novoId, fechar, aplic
                       {leitura.blocos
                         .filter((b) => b.turno === t.id)
                         .map((b) => (
-                          <BlocoLido key={b.id} b={b} dados={dados} resposta={respostas[b.id] ?? ''} responder={(nome) => setRespostas((r) => ({ ...r, [b.id]: nome }))} />
+                          <BlocoLido key={b.id} b={b} dados={dados} casa={casa ? casaComAProducao : null} resposta={respostas[b.id] ?? ''} responder={(nome) => setRespostas((r) => ({ ...r, [b.id]: nome }))} />
                         ))}
                     </div>
                   ))}
@@ -136,15 +180,15 @@ export function ColarDaPlanilha({ dados, posicoes, jaFora, novoId, fechar, aplic
           {!!leitura?.blocos.length &&
             (temRascunho ? (
               <>
-                <button type="button" className="botao" disabled={ocupado} onClick={() => void ir('juntar')}>
+                <button type="button" className="botao" disabled={ocupado || !casa} onClick={() => void ir('juntar')}>
                   Juntar ao rascunho
                 </button>
-                <button type="button" className="botao primario" disabled={ocupado} onClick={() => void ir('substituir')}>
+                <button type="button" className="botao primario" disabled={ocupado || !casa} onClick={() => void ir('substituir')}>
                   Substituir o rascunho
                 </button>
               </>
             ) : (
-              <button type="button" className="botao primario" disabled={ocupado} onClick={() => void ir('substituir')}>
+              <button type="button" className="botao primario" disabled={ocupado || !casa} onClick={() => void ir('substituir')}>
                 Pôr em {diaCurto(dados.dia)}
               </button>
             ))}
@@ -155,7 +199,9 @@ export function ColarDaPlanilha({ dados, posicoes, jaFora, novoId, fechar, aplic
 }
 
 /** Um bloco lido: o editor (ou a vaga, ou quem está fora), a ilha e o horário, as demandas, os avisos e as notas. */
-function BlocoLido({ b, dados, resposta, responder }: { b: BlocoDoColado; dados: DiaDaEscala; resposta: string; responder: (nome: string) => void }) {
+function BlocoLido({ b, dados, casa, resposta, responder }: { b: BlocoDoColado; dados: DiaDaEscala; casa: ((t: string) => boolean) | null; resposta: string; responder: (nome: string) => void }) {
+  // o que fica de fora (#199): a tarefa, a claquete sem Produção e a info dela; sem a conferência ainda, nada riscado
+  const deFora = new Map(casa ? demandasQueEntram(b.demandas.map((d) => d.padrao), casa).deFora.map((x) => [x.i, x.tipo]) : []);
   const ilha = dados.ilhas.find((i) => i.id === b.ilha.id);
   const pergunta = b.editor.como === 'parecido' || b.editor.como === 'ambiguo';
   const nome = pergunta ? resposta || b.editor.escrito : b.editor.nome;
@@ -194,11 +240,17 @@ function BlocoLido({ b, dados, resposta, responder }: { b: BlocoDoColado; dados:
       )}
       {(b.demandas.length > 0 || b.avisos.length > 0) && (
         <div className="colar-itens">
-          {b.demandas.map((d, i) => (
-            <span key={`d${i}`} className={lerDemanda(d.padrao, dados.dia).tipo === 'claquete' ? 'colar-claquete' : 'colar-tarefa'}>
-              {d.padrao}
-            </span>
-          ))}
+          {b.demandas.map((d, i) => {
+            const fora = deFora.get(i);
+            return (
+              <span
+                key={`d${i}`}
+                className={`${lerDemanda(d.padrao, dados.dia).tipo === 'claquete' ? 'colar-claquete' : 'colar-tarefa'}${fora ? ' colar-de-fora' : ''}`}
+                title={fora === 'claquete' ? 'fica de fora: não casa com nenhuma Produção' : fora === 'tarefa' ? 'fica de fora: tarefa' : fora === 'info' ? 'fica de fora: é da claquete de fora' : undefined}>
+                {d.padrao}
+              </span>
+            );
+          })}
           {b.avisos.map((a, i) => (
             <span key={`a${i}`} className="colar-aviso">
               ⚑ {a}
