@@ -48,6 +48,15 @@ _Evitar_: publicar, mandar para o Trello
 O lugar ou cenário onde a cena se passa, marcado no Roteiro; agrupa os trechos que vêm depois dele.
 _Evitar_: lugar, cena
 
+**Tipo do trecho**:
+O que cada trecho (parágrafo) do Roteiro é: locução, sonora, trilha, para o locutor, arte, edição, produção, locação,
+comentário ou texto (sem tipo). Fica guardado no trecho, com o **palpite** pelo texto (caixa alta é locução, "Nome, de
+onde:" é sonora, "TRILHA/BG" é trilha) marcado como não confirmado, com "?", até a pessoa confirmar ou trocar. O
+Roteiro que chega de fora não guarda tipo: vale a arte ou a etiqueta que cobre o trecho inteiro e, sem elas, o palpite.
+Nas colunas, cada tipo tem a sua: vídeo (arte, edição, produção, comentário), áudio (locução, sonora, trilha, para o
+locutor, texto) e a locação na linha inteira.
+_Evitar_: estilo, formato, bloco
+
 **Referência**:
 Uma imagem de inspiração presa ao Roteiro (a foto de um ator, um frame, um print). Vai junto no **Enviar**, mas não é
 arte a produzir e não entra na lista de artes.
