@@ -97,7 +97,9 @@
 @media (max-width: 600px) {
   .comentarios-da-folha.estreita { position: static; height: 0; }
   .comentarios-da-folha.estreita .balao-comentario {
-    position: fixed; top: auto !important; left: 0; right: 0; bottom: 0; width: auto; max-height: 70vh; overflow: auto; z-index: 40;
+    position: fixed; top: auto !important; left: 0; right: 0; bottom: var(--teclado, 0px); width: auto; overflow: auto; z-index: 40;
+    /* acima do teclado (#198, o --teclado de useTecladoNaTela), na parte da tela que ele deixa */
+    max-height: min(70vh, calc(var(--altura-visivel, 100vh) - 24px));
     border-radius: 16px 16px 0 0; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--sombra-menu); transform: none;
     animation: balao-sobe 0.3s var(--suave) both;
   }

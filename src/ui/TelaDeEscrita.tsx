@@ -17,7 +17,8 @@ import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
 import { ComentariosDaFolha } from './ComentariosDaFolha';
 import { ComentariosNoTexto } from '../editor/comentarios';
-import { ArtesDaEscrita, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
+import { ArtesDaEscrita, BarraDoPolegar, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
+import { useTelaDeCelular } from './faixa';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
 import { atalho, ATALHO_DE_COMENTAR, baixar, dataPorExtenso, nomeDoArquivo, plural, quandoComecou, semMovimento } from './util';
@@ -47,6 +48,10 @@ import './escrita.css';
    (o botão e Ctrl+Shift+L, numa transição) esconde tudo menos a folha e mostra a cara dos .docx de hoje; o "/" e os
    atalhos continuam, porque o editor é o mesmo. Em colunas, o limpo vira a tabela de bordas pretas. O .docx baixado
    sai igual ao limpo da visão de agora (`gerarDocx` com `limpo`).
+
+   No celular (#198), a margem dos tipos dá lugar à barra do polegar (`BarraDoPolegar`), no pé da tela e acima do
+   teclado: os tipos, o "/", a Arte e o Enviar (o painel do #194, em tela cheia); com um trecho selecionado, o Comentar
+   (a folha de baixo do #192). Quem só lê tem só o Comentar. As colunas viram as linhas empilhadas, vídeo e áudio.
 
    O envio (#197): a edição abre o roteiro pela Pauta no último Enviar (`envio`), a versão que vale, e não o texto vivo.
    É a mesma folha, só de leitura, sem a sala, e já nas colunas (a visão inicial das `Colunas`): os timecodes e os
@@ -170,6 +175,9 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
   const [vezDosEnvios, setVezDosEnvios] = useState(0);
   const [enviando, setEnviando] = useState<Roteiro | null>(null);
   const botaoEnviar = useRef<HTMLButtonElement>(null);
+  // de onde o painel cresce: o botão da barra de cima ou o da barra do polegar, no celular (#198)
+  const origemDoEnviar = useRef<HTMLElement | null>(null);
+  const celular = useTelaDeCelular();
   // ver (#193): a visão (texto ou colunas) e o modo limpo são de cada um, não do roteiro
   // o envio pela Pauta (#197) abre nas colunas
   const visaoInicial: Visao = envio ? 'colunas' : 'texto';
@@ -261,9 +269,14 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
 
   // o Enviar (#194): o botão e o Ctrl+Enter abrem o painel com o roteiro como está agora
   const podeEnviar = escreve && !!enviar && armazenamento.tipo === 'servidor';
-  const abrirEnviar = useCallback(() => {
-    if (podeEnviar && liberado) setEnviando(roteiroAtual());
-  }, [podeEnviar, liberado, roteiroAtual]);
+  const abrirEnviar = useCallback(
+    (origem?: HTMLElement | null) => {
+      if (!podeEnviar || !liberado) return;
+      origemDoEnviar.current = origem ?? botaoEnviar.current;
+      setEnviando(roteiroAtual());
+    },
+    [podeEnviar, liberado, roteiroAtual],
+  );
   // no texto, a tecla chega pela ponte da escrita (antes da quebra de linha do editor); fora dele, pela janela
   enviarPelaTecla.current = podeEnviar && !enviando ? () => (abrirEnviar(), true) : undefined;
   useEffect(() => {
@@ -390,7 +403,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
   const visibilidade = publico ? 'Visível para a equipe' : pessoas.length ? `Fechado · ${pessoas.length === 1 ? '1 convidado' : `${pessoas.length} convidados`}` : 'Fechado';
 
   return (
-    <div className={`pagina pagina-escrita${limpo ? ' limpo' : ''}`} data-visao={visao}>
+    <div className={`pagina pagina-escrita${limpo ? ' limpo' : ''}${celular && !limpo && (escreve || comenta) ? ' com-polegar' : ''}`} data-visao={visao}>
       {/* no limpo, só a folha: o topo, a barra, as artes e o rodapé saem; fica o caminho de volta */}
       {limpo && (
         <div className="sair-do-limpo" role="toolbar" aria-label="Modo limpo">
@@ -457,7 +470,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
         )}
         {/* #194: o Enviar (e o Ctrl+Enter), na ponta */}
         {podeEnviar && (
-          <button type="button" ref={botaoEnviar} className="botao primario escrita-enviar" disabled={!liberado} aria-keyshortcuts="Control+Enter" title={`${estadoDoEscrito === 'enviado' ? 'Enviar a versão nova' : 'Enviar para a fila'} (${atalho('Mod-Enter')})`} onClick={abrirEnviar}>
+          <button type="button" ref={botaoEnviar} className="botao primario escrita-enviar" disabled={!liberado} aria-keyshortcuts="Control+Enter" title={`${estadoDoEscrito === 'enviado' ? 'Enviar a versão nova' : 'Enviar para a fila'} (${atalho('Mod-Enter')})`} onClick={() => abrirEnviar()}>
             <Icone nome="subir" tam={14} traco={2} />
             <span className="escrita-enviar-nome">Enviar</span>
           </button>
@@ -555,9 +568,21 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
         </aside>
       </main>
       {editor && <RodapeDaEscrita editor={editor} escreve={escreve} comenta={comenta} />}
+      {/* #198: no celular, a escrita no pé da tela, acima do teclado */}
+      {/* no envio do roteiro fechado (#197), quem não escreve nem comenta só lê: sem a barra */}
+      {editor && celular && !limpo && (escreve || comenta) && (
+        <BarraDoPolegar
+          editor={editor}
+          escreve={escreve}
+          pronto={liberado}
+          programa={() => estado.current.meta.programa}
+          comentar={comentarOTexto}
+          enviar={podeEnviar ? { abrir: abrirEnviar, pode: liberado, enviado: estadoDoEscrito === 'enviado' } : undefined}
+        />
+      )}
       {enviando && enviar && (
         <PainelDoEnviar
-          origem={botaoEnviar.current}
+          origem={origemDoEnviar.current ?? botaoEnviar.current}
           escrito={enviando}
           // o último envio ainda não lido: a letra e a versão que a folha já sabe
           ultimo={estadoDoEscrito === 'enviado' ? (ultimoEnvio ?? { n: 0, em: '', por: { nome: '', email: '' }, motivo: '', claquete: meta.claquete, ...letraEVersaoDoRoteiro(meta) }) : null}

@@ -110,3 +110,10 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `Marca` | `pecas.tsx` | A marca do app. | O topo. |
 | `criarPalco`, `FraseAMao` | `cena.tsx` | O palco das cenas (anima, marca prazos, desfaz tudo e para sozinho com o movimento reduzido) e a frase à mão com o risco. | As cenas: a fila zerada e a comemoração. |
 | `Icone` | `icones.tsx` | Os ícones de traço fino. | Todo ícone. O `certo` (✓) só marca a opção escolhida. |
+
+## Celular
+
+| Peça | Onde mora | O que é | Quando usar |
+|---|---|---|---|
+| `useTecladoNaTela` | `tecladoNaTela.ts` | Acompanha o teclado do celular pelo `visualViewport`: devolve a altura e a põe no `--teclado` da página (e `--altura-visivel`, `data-teclado="aberto"`). | O que fica no pé da tela e precisa subir com o teclado: a barra do polegar e a folha de baixo do comentário (#198). |
+| `BarraDoPolegar` | `EscritaNaFolha.tsx` | A escrita no pé da tela, no lugar da margem dos tipos: os tipos (o do cursor aceso, com o "?" do palpite), o "/", a Arte e o Enviar; com seleção, o Comentar. Os toques não tiram o foco do texto. Quem só lê tem só o Comentar. | A folha de escrita no celular (#198). |
