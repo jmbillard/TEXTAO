@@ -27,6 +27,7 @@
     "e2e:escrever": "node tests/e2e/escrever.e2e.cjs",
     "e2e:comecar": "node tests/e2e/comecar-de-fora.e2e.cjs",
     "e2e:escrever-juntos": "node tests/e2e/escrever-juntos.e2e.cjs",
+    "e2e:colunas": "node tests/e2e/colunas-e-limpo.e2e.cjs",
     "e2e:comentarios": "node tests/e2e/comentarios.e2e.cjs",
     "e2e:pauta": "node tests/e2e/pauta.e2e.cjs",
     "e2e:correcoes": "node tests/e2e/correcoes.e2e.cjs",
