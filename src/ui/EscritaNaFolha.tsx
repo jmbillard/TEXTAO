@@ -285,12 +285,12 @@ function MenuDaBarra({ q, lista, ativo, x, y, escolher, apontar }: { q: string; 
 /* ---------- a escolha do "/comentario" ---------- */
 
 /** O trecho com texto mais perto antes de `pos` (o de cima do trecho vazio), para o comentário ter o que grifar. */
-function trechoComTextoAntes(editor: Editor, pos: number) {
-  let achado: { pos: number; no: Parameters<typeof tipoDoNo>[0] } | null = null;
+function trechoComTextoAntes(editor: Editor, pos: number): ReturnType<typeof trechoNoCursor> {
+  const achados: NonNullable<ReturnType<typeof trechoNoCursor>>[] = [];
   editor.state.doc.forEach((no, p) => {
-    if (p <= pos && no.type.name === 'paragraph' && no.textContent.trim()) achado = { pos: p, no };
+    if (p <= pos && no.type.name === 'paragraph' && no.textContent.trim()) achados.push({ pos: p, no });
   });
-  return achado as { pos: number; no: Parameters<typeof tipoDoNo>[0] } | null;
+  return achados.at(-1) ?? null;
 }
 
 /**
