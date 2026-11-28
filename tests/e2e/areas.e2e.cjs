@@ -402,15 +402,17 @@ async function tresExibicoes(navegador, url) {
   assert.equal(await exibicaoAtual(p), 'dia', 'sem escolha, a lista é por dia');
   assert.deepEqual((await p.locator('.exibir button').allInnerTexts()).map((t) => t.trim()), ['por dia', 'quadro', 'por estado']);
 
-  // quadro: uma coluna por estado do ciclo; os passos de antes, "em breve", numa coluna apagada
+  // quadro: uma coluna por estado do ciclo; no Redator, o Escrevendo (#189) primeiro e os passos da aprovação, "em
+  // breve", numa coluna apagada antes da revisão
   await exibir(p, 'quadro');
-  assert.deepEqual((await p.locator('.coluna-meus h4').allInnerTexts()).map((t) => t.split('\n')[0].trim().toLowerCase()), ['antes', 'em revisão', 'produzindo', 'entregue', 'exibido']);
+  assert.deepEqual((await p.locator('.coluna-meus h4').allInnerTexts()).map((t) => t.split('\n')[0].trim().toLowerCase()), ['escrevendo', 'aprovação', 'em revisão', 'produzindo', 'entregue', 'exibido']);
   assert.deepEqual(await cartoesDa(p, 'Em revisão'), ['NOVELA7_CAP SP']);
   assert.deepEqual(await cartoesDa(p, 'Entregue'), ['CHEF_FUTURO SP']);
   assert.deepEqual(await cartoesDa(p, 'Produzindo'), []);
   assert.match(await coluna(p, 'Entregue').locator('.cartao-meu').innerText(), /2 artes · edição: Bruno Regis/);
   assert.match(await coluna(p, 'Entregue').locator('.com-quem').innerText(), /com Tânia Arruda/);
-  assert.match(await coluna(p, 'Antes').innerText(), /Escrevendo[\s\S]*Em aprovação[\s\S]*Aprovado[\s\S]*em breve/);
+  assert.deepEqual(await cartoesDa(p, 'Escrevendo'), []);
+  assert.match(await coluna(p, 'Aprovação').innerText(), /Em aprovação[\s\S]*Aprovado[\s\S]*em breve/);
   await p.locator('.exibir-lembrado').waitFor();
   assert.equal((await exibicoesGuardadas(url)).redator, 'quadro', 'o servidor guardou o quadro do Redator');
   await semRolagemDeLado(p, 'quadro no computador');
@@ -420,7 +422,7 @@ async function tresExibicoes(navegador, url) {
   // por estado: a faixa com quantos em cada estado e a lista agrupada; um toque num estado mostra só ele
   await exibir(p, 'estado');
   const faixa = async () => Object.fromEntries(await p.locator('button.seg-ciclo').evaluateAll((bs) => bs.map((b) => [b.dataset.estado, b.querySelector('b').textContent])));
-  assert.deepEqual(await faixa(), { revisao: '1', produzindo: '0', entregue: '1', exibido: '0' });
+  assert.deepEqual(await faixa(), { escrevendo: '0', revisao: '1', produzindo: '0', entregue: '1', exibido: '0' });
   assert.deepEqual(await p.locator('.grupo-estado').evaluateAll((g) => g.map((x) => x.dataset.estado)), ['revisao', 'entregue']);
   assert.deepEqual((await p.locator('.grupo-estado[data-estado="entregue"] .linha-meu b').allInnerTexts()).map((t) => t.trim()), ['CHEF_FUTURO SP']);
   assert.match(await p.locator('.grupo-estado[data-estado="revisao"] .linha-meu-dia').innerText(), /^\w{3}, \d+\/\d+$/);
@@ -510,7 +512,8 @@ async function roteiroAberto(navegador, url, db) {
   assert.match(await p.locator('.ciclo-em-pe li[data-passo="revisao"] .quando').innerText(), /^chegou \d+\/\d+, \d+h\d\d$/);
   assert.match(await p.locator('.ciclo-em-pe li[data-passo="produzindo"] .quando').innerText(), /^no Trello \d+\/\d+, \d+h\d\d · com Tânia Arruda$/);
   assert.match(await p.locator('.ciclo-em-pe li[data-passo="entregue"] .quando').innerText(), /^entregue \d+\/\d+, \d+h\d\d$/);
-  assert.equal(await p.locator('.ciclo-em-pe li.em-breve').count(), 3, 'os passos de antes do PROMeiro, em breve');
+  assert.equal(await p.locator('.ciclo-em-pe li.em-breve').count(), 2, 'os passos da aprovação, em breve');
+  assert.equal(await p.locator('.ciclo-em-pe li.fora[data-passo="escrevendo"]').count(), 1, 'o Escrevendo do roteiro que chegou de fora, apagado (#189)');
   assert.equal(await p.locator('.arte-aberta').count(), 0, 'no Redator, as artes não aparecem uma a uma');
   assert.equal((await p.locator('.aberto-posicao').innerText()).trim(), '1 de 2');
   assert.ok(await p.locator('button[aria-label="Roteiro anterior"]').isDisabled(), 'o primeiro não tem anterior');
@@ -683,7 +686,8 @@ async function soOsSeus(navegador, url) {
   // quem não é administrador vê só os seus, sem o filtro; no perfil, Cadastros fora das áreas, sem a Configuração
   const { ctx, p, erros } = await entrar(navegador, url, '#/redator', CAIO, { viewport: { width: 1440, height: 900 } });
   await p.locator('.meus-roteiros .ficha').first().waitFor();
-  assert.equal((await p.locator('.meus-roteiros h2').innerText()).trim(), 'Meus roteiros');
+  // o Redator é "Roteiros" (#189)
+  assert.equal((await p.locator('.meus-roteiros h2').innerText()).trim(), 'Roteiros');
   assert.equal(await p.locator('.de-quem').count(), 0, 'sem o filtro "de quem"');
   assert.ok(await p.locator('.barra-topo nav.caminhos-do-topo .topo-pauta').isVisible());
   await p.locator('.perfil-botao').click();
@@ -760,10 +764,11 @@ async function caminhosDoTopo(navegador, url) {
       const { ctx, p, erros } = await comFilmes(navegador, url, { ...opcoes, colorScheme: tema }, estado);
       const nav = p.locator('.barra-topo nav.caminhos-do-topo');
       const nomes = await nav.locator('a').evaluateAll((as) => as.map((a) => a.querySelector('.caminho-nome').textContent));
-      assert.deepEqual(nomes.slice(0, 5), ['No Trello', 'Produções', 'Campanhas', 'Filmes', 'Pauta da edição'], `${onde}: No Trello · Produções · Campanhas · Filmes · Pauta da edição`);
+      // os Roteiros (#189) por último entre os da área
+      assert.deepEqual(nomes.slice(0, 6), ['No Trello', 'Produções', 'Campanhas', 'Filmes', 'Roteiros', 'Pauta da edição'], `${onde}: No Trello · Produções · Campanhas · Filmes · Roteiros · Pauta da edição`);
       // #168: todos os caminhos, o da fila aberto e marcado; a bolinha separadora só antes da Pauta
       const filhos = await nav.evaluate((n) => [...n.children].map((e) => (e.tagName === 'A' ? e.className : `• ${e.className}`)));
-      assert.deepEqual(filhos.slice(0, 6), ['topo-agenda aberto', 'topo-producoes', 'topo-campanhas', 'topo-filmes', '• caminho-bolinha', 'topo-pauta'], `${onde}: a bolinha só antes da Pauta`);
+      assert.deepEqual(filhos.slice(0, 7), ['topo-agenda aberto', 'topo-producoes', 'topo-campanhas', 'topo-filmes', 'topo-roteiros', '• caminho-bolinha', 'topo-pauta'], `${onde}: a bolinha só antes da Pauta`);
       assert.equal(await nav.locator('[aria-current="page"]').getAttribute('class'), 'topo-agenda aberto', `${onde}: o caminho da fila é o atual`);
       assert.equal(await p.locator('.barra-topo', { hasText: /de todo mundo/i }).count(), 0, `${onde}: sem o "De todo mundo"`);
       assert.equal(await nav.evaluate((n) => getComputedStyle(n).borderLeftWidth), '0px', `${onde}: sem a linha vertical`);

@@ -16,7 +16,8 @@
 //
 // No celular (claro e escuro): a lista e a folha cabem, sem rolar para o lado.
 //
-// Com CAPTURAS=pasta, grava as capturas (densidade 2) e o vídeo do Novo roteiro (novo-roteiro.webm).
+// Com CAPTURAS=pasta, grava as capturas (densidade 2) e os vídeos do Novo roteiro (no computador, claro, e no celular,
+// escuro).
 // Precisa do Playwright com o Chromium. Instalado globalmente: NODE_PATH=$(npm root -g) npm run e2e:roteiros
 const assert = require('node:assert/strict');
 const { mkdirSync, readdirSync, renameSync } = require('node:fs');
@@ -92,7 +93,7 @@ const capturar = async (p, nome) => {
   await p.waitForTimeout(500);
   await p.screenshot({ path: join(CAPTURAS, `${nome}.png`) });
 };
-const salvou = (p) => p.waitForSelector('.escrita-salvo.salvo', { timeout: 8000 });
+const salvou = (p) => p.waitForSelector('.escrita-salvo[data-salvamento="salvo"]', { timeout: 8000 });
 
 async function oDaMarina(navegador, url) {
   const video = CAPTURAS ? { recordVideo: { dir: join(CAPTURAS, 'video'), size: { width: 1280, height: 800 } } } : {};
@@ -120,6 +121,8 @@ async function oDaMarina(navegador, url) {
   await p.keyboard.type('Desafio da Brasa, a final', { delay: 15 });
   await salvou(p);
   assert.equal((await p.locator('.escrita-salvo').innerText()).trim(), 'salvo');
+  // a bolinha troca de cor numa transição (0.3s): a cor é a do fim dela
+  await p.waitForTimeout(450);
   const cor = await p.locator('.escrita-salvo .bolinha-estado').evaluate((e) => getComputedStyle(e).backgroundColor);
   const laranja = await p.evaluate(() => {
     const i = document.createElement('i');
@@ -163,7 +166,7 @@ async function oDaMarina(navegador, url) {
   // o vídeo do Novo roteiro
   const caminho = await p.video()?.path();
   await ctx.close();
-  if (caminho) renameSync(caminho, join(CAPTURAS, 'novo-roteiro.webm'));
+  if (caminho) renameSync(caminho, join(CAPTURAS, 'novo-roteiro-computador-claro.webm'));
   return id;
 }
 
@@ -212,6 +215,7 @@ async function oDoDavi(navegador, url, id) {
   assert.ok(!(await p.locator('.texto-escrita').innerText()).includes('POR CIMA'), 'o texto não aceita digitar');
   await semCheckVerde(p, 'só lendo');
   await semUnha(p, 'só lendo');
+  await p.evaluate(() => scrollTo(0, 0));
   await capturar(p, '06-so-lendo-escuro');
   assert.equal(p.url().endsWith(`#/roteiros/${id}`), true);
   assert.deepEqual(erros, []);
@@ -233,25 +237,42 @@ async function aDaBia(navegador, url, id) {
 
 async function noCelular(navegador, url, id) {
   for (const [tema, sufixo] of [['light', 'claro'], ['dark', 'escuro']]) {
-    const { ctx, p, erros } = await entrar(navegador, url, '#/redator', MARINA, { ...devices['iPhone 13'], colorScheme: tema });
+    const video = CAPTURAS && tema === 'dark' ? { recordVideo: { dir: join(CAPTURAS, 'video'), size: { width: 390, height: 844 } } } : {};
+    const { ctx, p, erros } = await entrar(navegador, url, '#/redator', MARINA, { ...devices['iPhone 13'], colorScheme: tema, ...video });
     await p.waitForSelector('.roteiros-escritos .ficha');
     await semRolagemDeLado(p, `a lista no celular (${sufixo})`);
     const lupa = await lugarDaLupa(p);
     assert.ok(lupa.ok, `a lupa no celular: ${lupa.motivo}`);
     await capturar(p, `07-roteiros-celular-${sufixo}`);
+    if (tema === 'dark') {
+      // o Novo roteiro no celular, no escuro: a folha com o cursor, salva sozinha
+      await p.click('.novo-roteiro');
+      await p.waitForFunction(() => document.activeElement?.closest('.texto-escrita') !== null);
+      await p.keyboard.type('LOC: a brasa no celular.', { delay: 20 });
+      await salvou(p);
+      await semRolagemDeLado(p, 'o Novo roteiro no celular');
+      await capturar(p, '07b-novo-roteiro-celular-escuro');
+      await p.goBack();
+      await p.waitForSelector('.roteiros-escritos .ficha');
+    }
     await p.goto(`${url}#/roteiros/${id}`);
     await p.waitForSelector('.folha-escrita .texto-escrita p');
     await semRolagemDeLado(p, `a folha no celular (${sufixo})`);
     await semCheckVerde(p, `a folha no celular (${sufixo})`);
     await capturar(p, `08-folha-celular-${sufixo}`);
     assert.deepEqual(erros, []);
+    const caminho = await p.video()?.path();
     await ctx.close();
+    if (caminho) renameSync(caminho, join(CAPTURAS, 'novo-roteiro-celular-escuro.webm'));
   }
 }
 
 async function noComputadorEscuro(navegador, url, id) {
-  const { ctx, p } = await entrar(navegador, url, `#/roteiros/${id}`, MARINA, { viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  // o link da revisão de um roteiro sendo escrito leva à folha de escrita, sem ficar no histórico
+  const { ctx, p } = await entrar(navegador, url, `#/r/${id}`, MARINA, { viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
   await p.waitForSelector('.folha-escrita .texto-escrita p');
+  assert.ok(p.url().endsWith(`#/roteiros/${id}`), 'da revisão para a folha de escrita');
+  assert.equal(await p.locator('.cadeado-do-texto').count(), 0, 'sem o cadeado da revisão');
   await semCheckVerde(p, 'a folha no escuro');
   await capturar(p, '09-folha-escuro');
   await p.goto(`${url}#/redator`);
@@ -268,6 +289,8 @@ async function noComputadorEscuro(navegador, url, id) {
   try {
     const r = await fetch(`${s.api}/cadastros/coordenacao`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA, 'content-type': 'application/json' }, body: JSON.stringify({ email: BIA }) });
     assert.equal(r.status, 200);
+    // o tour da revisão já visto: o convite não cobre a fila
+    for (const email of [LIA, MARINA, DAVI, BIA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
     const id = await oDaMarina(navegador, s.url);
     console.log('✔ o Novo roteiro abre a folha com o cursor, salva sozinho (bolinha laranja) e volta ao recarregar; a lista com abas e busca');
     await fecharEReabrir(navegador, s.url, id);
@@ -279,7 +302,7 @@ async function noComputadorEscuro(navegador, url, id) {
     await noCelular(navegador, s.url, id);
     console.log('✔ no celular, claro e escuro, sem rolar para o lado');
     await noComputadorEscuro(navegador, s.url, id);
-    console.log('✔ no escuro, no computador');
+    console.log('✔ no escuro, no computador; o link da revisão leva à folha de escrita');
     if (CAPTURAS) for (const f of readdirSync(join(CAPTURAS, 'video'), { withFileTypes: true }).filter((f) => f.isFile())) console.log(`vídeo: ${f.name}`);
   } finally {
     await navegador.close();

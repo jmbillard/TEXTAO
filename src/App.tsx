@@ -231,10 +231,11 @@ export function App() {
     return () => clearTimeout(t);
   }, [aviso]);
 
-  const ir = useCallback((nova: Tela) => {
+  const ir = useCallback((nova: Tela, { substituir = false }: { substituir?: boolean } = {}) => {
     const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.ilhas ? 'ilhas' : (nova.aba ?? 'atracoes')}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'correcoes' ? '#/correcoes' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'montar' ? `#/pauta/montar${nova.dia ? `/${nova.dia}` : ''}` : nova.t === 'area' ? `#/${nova.area}${nova.roteiro ? `/r/${encodeURIComponent(nova.roteiro)}` : ''}` : nova.t === 'producoes' ? '#/designer/producoes' : nova.t === 'campanhas' ? (nova.id ? hashDaCampanha(nova.id) : HASH_DAS_CAMPANHAS) : nova.t === 'roteiros' ? `#/roteiros${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : '#/';
     try {
-      if (location.hash !== hash) history.pushState(null, '', hash);
+      // `substituir`: o endereço que só leva a outro (a revisão de um roteiro sendo escrito, #189) não fica no histórico
+      if (location.hash !== hash) history[substituir ? 'replaceState' : 'pushState'](null, '', hash);
     } catch {
       /* páginas embutidas podem não permitir mudar o endereço */
     }
@@ -268,8 +269,9 @@ export function App() {
   // são da área de onde vieram
   const areaAgora = tela.t === 'roteiros' ? (tela.id ? listaDaFolha : 'roteiros') === 'redator' ? 'redator' : 'designer' : areaDaTela(tela);
   const voltarAosRoteiros = useCallback(() => ir(listaDaFolha === 'redator' ? { t: 'area', area: 'redator' } : { t: 'roteiros' }), [ir, listaDaFolha]);
-  const abrirNaRevisao = useCallback((id: string) => ir({ t: 'editor', id }), [ir]);
+  const abrirNaRevisao = useCallback((id: string) => ir({ t: 'editor', id }, { substituir: true }), [ir]);
   const abrirEscrito = useCallback((id: string) => ir({ t: 'roteiros', id }), [ir]);
+  const levarAEscrita = useCallback((id: string) => ir({ t: 'roteiros', id }, { substituir: true }), [ir]);
   useEffect(() => {
     if (pronto && areaAgora) void lembrarArea(areaAgora).catch(() => {});
   }, [pronto, areaAgora]);
@@ -615,7 +617,7 @@ export function App() {
           O servidor não reconheceu o seu login: os roteiros estão ficando só neste navegador. Veja <a href="/api/diagnostico" target="_blank" rel="noreferrer">o diagnóstico</a>.
         </div>
       )}
-      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete, nova) => ir({ t: 'cadastros', aba: 'atracoes', claquete, ...nova }) : undefined} buscarNaFila={buscarNaFila} />}
+      {tela.t === 'editor' && <TelaEditor key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} abrir={(id) => ir({ t: 'editor', id })} comparar={(id) => ir({ t: 'comparar', id })} avisar={avisar} pessoa={pessoa} cadastrarAtracao={temCadastros() ? (claquete, nova) => ir({ t: 'cadastros', aba: 'atracoes', claquete, ...nova }) : undefined} buscarNaFila={buscarNaFila} abrirNaEscrita={levarAEscrita} />}
       {tela.t === 'comparar' && <Comparar key={tela.id} id={tela.id} voltar={() => ir({ t: 'biblioteca' })} revisar={(id) => ir({ t: 'editor', id })} avisar={avisar} buscar={buscarNaFila} />}
       {ondeEsta && tour && tour.fase !== 'fora' && <TourDaRevisao tour={tour} mudar={mudarTour} trazerExemplo={trazerExemplo} abrirExemplo={abrirExemplo} levarAoTrello={levarAoTrello} />}
       {tela.t !== 'area' && tela.t !== 'producoes' && tela.t !== 'campanhas' && tela.t !== 'roteiros' && <Atalhos tela={tela.t === 'biblioteca' ? 'fila' : tela.t === 'editor' ? 'revisao' : tela.t} fazerTour={noCelular ? undefined : refazerTour} />}

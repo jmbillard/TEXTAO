@@ -376,7 +376,7 @@ function PonteirosDaSala({ sala, eu, editor }: { sala: Sala; eu: string; editor:
 
 /* ---------- tela ---------- */
 
-export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao, buscarNaFila }: { id: string; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string, nova?: AtracaoNova) => void; buscarNaFila?: (termo: string) => void }) {
+export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadastrarAtracao, buscarNaFila, abrirNaEscrita }: { id: string; voltar: () => void; abrir: (id: string) => void; comparar: (id: string) => void; avisar: (t: string) => void; pessoa?: Pessoa; cadastrarAtracao?: (claquete: string, nova?: AtracaoNova) => void; buscarNaFila?: (termo: string) => void; /** o roteiro ainda sendo escrito (#189) não está na revisão: abre na folha de escrita */ abrirNaEscrita?: (id: string) => void }) {
   const [leitura, setLeitura] = useState<Leitura | undefined>(undefined);
   const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
@@ -386,8 +386,13 @@ export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadast
       vivo = false;
     };
   }, [id, tentativa]);
+  // o link da revisão de um roteiro sendo escrito (#189) leva à folha de escrita: ele só chega à revisão pelo Enviar
+  const sendoEscrito = leitura?.estado === 'ok' && leitura.roteiro.escrito === 'sendo-escrito' && !!abrirNaEscrita;
+  useEffect(() => {
+    if (sendoEscrito) abrirNaEscrita?.(id);
+  }, [sendoEscrito, id, abrirNaEscrita]);
 
-  if (leitura === undefined) return <div className="pagina" />;
+  if (leitura === undefined || sendoEscrito) return <div className="pagina" />;
   if (leitura.estado !== 'ok')
     return (
       <div className="pagina">
