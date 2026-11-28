@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ETIQUETAS } from '../modelo/tipos';
-import { ATALHO_DE_COMENTAR, atalho } from './util';
+import { ATALHO_DAS_ARTES, ATALHO_DE_COMENTAR, atalho } from './util';
 
 type Tela = 'fila' | 'revisao' | 'escrita' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta' | 'montar';
 type Linha = [tecla: string, oque: string];
@@ -24,6 +24,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       ['E', 'Marca a arte (ou as selecionadas) como já existe ou devolve à lista'],
       ...ETIQUETAS.map((e): Linha => [atalho(e.atalho), e.nome]),
       [atalho('Mod-Enter'), 'Manda para o Trello ou abre o próximo'],
+      [ATALHO_DAS_ARTES, 'Recolhe ou mostra a lista das artes (a escolha vale também na folha de escrita)'],
       [atalho('Mod-z'), 'Desfaz'],
     ],
   },
@@ -32,7 +33,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
   escrita: {
     titulo: 'Escrever',
     linhas: [
-      ['/', 'Comandos: /locucao, /arte, /sonora, /edicao, /trilha, /locutor, /producao, /locacao, /comentario, /timecode, /arquivo, /texto'],
+      ['/', 'Comandos: /locucao, /arte, /sonora, /edicao, /trilha, /locutor, /producao, /locacao, /comentario (recado para a edição, a produção ou a arte, ou comentário sobre o texto), /timecode, /arquivo, /texto'],
       ['Tab', 'Confirma o tipo adivinhado (o "?"); de novo, troca pelo próximo'],
       ['Shift+Tab', 'Troca pelo tipo anterior'],
       [atalho('Mod-u'), 'Arte: o selecionado (no meio da frase) ou, sem seleção, o trecho todo'],
@@ -43,6 +44,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       [atalho('Mod-z'), 'Desfaz'],
       [atalho('Mod-Shift-z'), 'Refaz'],
       [atalho('Mod-Shift-l'), 'Modo limpo: só a folha, com a cara do .docx (de novo, sai)'],
+      [ATALHO_DAS_ARTES, 'Recolhe ou mostra a lista das artes: a folha ganha o espaço (vale também na revisão)'],
       [atalho('Mod-Enter'), 'Enviar: confere a claquete e põe o roteiro na fila'],
     ],
   },

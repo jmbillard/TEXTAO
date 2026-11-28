@@ -115,6 +115,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
   const titulo = useRef<HTMLTextAreaElement>(null);
   // os comentários (#192): o pedido do botão Comentar e quantos estão abertos
   const [pedidoDeComentario, setPedidoDeComentario] = useState(0);
+  /** comentar o trecho selecionado (#192): o botão Comentar, o Ctrl+Alt+M e o "Comentário sobre o texto" do /comentario */
+  const comentarOTexto = useCallback(() => setPedidoDeComentario((n) => n + 1), []);
   const [abertos, setAbertos] = useState(0);
   // a escrita (#190): a ponte entre o teclado do editor e a tela (o menu do "/", os balões), e a arte com o balão aberto
   const ponte = useRef<PonteDaEscrita>({});
@@ -382,7 +384,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
           aria-keyshortcuts="Control+Alt+M"
           // o clique não tira a seleção do texto
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setPedidoDeComentario((n) => n + 1)}
+          onClick={comentarOTexto}
         >
           <Icone nome="comentario" tam={14} traco={2} />
           <span className="escrita-comentar-nome">Comentar</span>
@@ -485,7 +487,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
             {/* #195: na folha vazia, começar de um arquivo ou de um texto colado */}
             {escreve && <ComecarNaFolha corpo={corpo} vazia={vazia} pode={liberado && !!editor} receber={receberDeFora} falhou={avisar} />}
             <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} />
-            {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} />}
+            {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} comentarOTexto={comentarOTexto} />}
           </div>
         </article>
         {/* ao lado da folha: a lista das artes (#190) */}

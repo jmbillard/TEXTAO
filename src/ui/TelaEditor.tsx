@@ -2,6 +2,7 @@ import { duracaoLegivel } from '../modelo/trecho';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { Vagas } from './vagas';
+import { ArtesQueRecolhem } from './ArtesQueRecolhem';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
@@ -260,7 +261,7 @@ export function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; 
           <MenuDeOpcoes
             rotulo="Tipo de etiqueta"
             valor={String(marca.attrs.tipo)}
-            opcoes={ETIQUETAS.map((s) => ({ id: s.id, nome: s.id === 'comentario' ? 'Comentário' : s.nome }))}
+            opcoes={ETIQUETAS.map((s) => ({ id: s.id, nome: s.id === 'comentario' ? 'Recado' : s.nome }))}
             mudar={(v) => atualizarMarca(editor, marca, { tipo: v })}
           />
         )}
@@ -1532,13 +1533,16 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     </span>
   );
   const fecharLote = <button type="button" className="fechar-lote" aria-label="Limpar a seleção" title={celular ? undefined : 'Limpar (Esc)'} onClick={() => setSelecionadas([])}><Icone nome="fechar" tam={celular ? 14 : 12} traco={2.4} /></button>;
+  // o cabeçalho "N artes" é o do `ArtesQueRecolhem` (a mesma lista que recolhe da folha de escrita); ao lado do número,
+  // o que fica fora e o que falta
+  const extraDasArtes = (nFora > 0 || (TIPOS_NA_LISTA && semTipo > 0)) && (
+    <>
+      {nFora > 0 && <span className="rotulo">+{nFora} fora</span>}
+      {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
+    </>
+  );
   const listaDasArtes = (
     <>
-      <div className="cab-artes">
-        <b><i>{nAProduzir}</i> {nAProduzir === 1 ? 'arte' : 'artes'}</b>
-        {nFora > 0 && <span className="rotulo">+{nFora} fora</span>}
-        {TIPOS_NA_LISTA && semTipo > 0 && <span className="rotulo">falta o tipo de {semTipo}</span>}
-      </div>
       {artes.length === 0 && (celular ? <p className="suave pequeno">As artes sublinhadas no texto aparecem aqui.</p> : <p className="suave pequeno">Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.</p>)}
       {selecionadas.length > 0 && !leitura && !celular && (
         <div className="barra-lote" role="toolbar" aria-label="Marcar as artes selecionadas">
@@ -1910,17 +1914,16 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
           </article>
 
           {celular ? (
-            <section className="cartao artes-celular" aria-label="Artes" inert={travado}>
+            <ArtesQueRecolhem className="artes-celular" rotulo="Artes" inert={travado} n={nAProduzir} extra={extraDasArtes}>
               {listaDasArtes}
-            </section>
+            </ArtesQueRecolhem>
           ) : (
             <aside className="lado" data-ancora="lado" aria-label="Claquete e artes" inert={travado}>
               {ficha}
               {avisosDoTrello}
-              <section className="cartao">
-                {pendenciasNoComputador}
+              <ArtesQueRecolhem n={nAProduzir} extra={extraDasArtes} antes={pendenciasNoComputador || undefined}>
                 {listaDasArtes}
-              </section>
+              </ArtesQueRecolhem>
             </aside>
           )}
 
@@ -1974,7 +1977,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
           <thead><tr><th>Nº</th><th>Tipo</th><th>Texto</th><th>Observação</th></tr></thead>
           <tbody>{unicas.map((a) => <tr key={a.id}><td>{a.ordem}</td><td>{a.subtipo ? a.subtipoNome : ''}</td><td>{a.texto}</td><td>{a.observacao}</td></tr>)}</tbody>
         </table>
-        {saida.comentarios.length > 0 && <p>Comentários: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
+        {saida.comentarios.length > 0 && <p>Recados: {saida.comentarios.map((c) => c.texto).join(' · ')}</p>}
       </section>
 
       {realce && <style>{`.texto u.arte[data-id="${CSS.escape(realce)}"]{position:relative;animation:selecionar-arte .5s cubic-bezier(.45,0,.3,1) forwards}.texto u.arte[data-id="${CSS.escape(realce)}"]::after{content:'';position:absolute;top:-.2em;width:.5em;height:1.4em;margin-left:-.25em;pointer-events:none;background:var(--ibeam-arte) no-repeat center/contain;animation:arrastar-cursor-arte .5s cubic-bezier(.45,0,.3,1) forwards}`}</style>}

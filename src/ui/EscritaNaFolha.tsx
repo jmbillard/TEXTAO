@@ -3,9 +3,10 @@ import type { Editor } from '@tiptap/core';
 import { aplicarComando, barraNoCursor, definirTipo, tipoDoNo, trechoNoCursor, type PonteDaEscrita } from '../editor/escrita';
 import { listarMarcas, marcaEm, type MarcaNoDoc } from '../editor/extensoes';
 import { chaveDeArte } from '../modelo/diferencas';
-import { CICLO_DOS_TIPOS, comandosQueBatem, contagemDoTexto, duracaoLegivel, artesDoTexto, nomeDoArquivo, SOBRE_O_TIPO, type ComandoDaBarra, type FichaNoTexto, type TipoDoTrecho } from '../modelo/trecho';
+import { CICLO_DOS_TIPOS, COMANDO_DO_COMENTARIO, comandosQueBatem, ESCOLHAS_DO_COMENTARIO, type EscolhaDoComentario, contagemDoTexto, duracaoLegivel, artesDoTexto, nomeDoArquivo, SOBRE_O_TIPO, type ComandoDaBarra, type FichaNoTexto, type TipoDoTrecho } from '../modelo/trecho';
 import { nomesDosTipos, normalizarSubtipo, type NoJSON } from '../modelo/tipos';
 import { Atalhos } from './Atalhos';
+import { ArtesQueRecolhem } from './ArtesQueRecolhem';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { PopoverMarca } from './TelaEditor';
 import { ATALHO_DE_COMENTAR, atalho, copiarTexto } from './util';
@@ -281,6 +282,93 @@ function MenuDaBarra({ q, lista, ativo, x, y, escolher, apontar }: { q: string; 
   );
 }
 
+/* ---------- a escolha do "/comentario" ---------- */
+
+/** O trecho com texto mais perto antes de `pos` (o de cima do trecho vazio), para o comentário ter o que grifar. */
+function trechoComTextoAntes(editor: Editor, pos: number) {
+  let achado: { pos: number; no: Parameters<typeof tipoDoNo>[0] } | null = null;
+  editor.state.doc.forEach((no, p) => {
+    if (p <= pos && no.type.name === 'paragraph' && no.textContent.trim()) achado = { pos: p, no };
+  });
+  return achado as { pos: number; no: Parameters<typeof tipoDoNo>[0] } | null;
+}
+
+/**
+ * O que o "/comentario" pergunta: o recado (o aviso dentro do texto, que vai no Enviar) para a edição, a produção ou a
+ * arte, ou o comentário sobre o texto (o fio, que não vai). O menu do "/" de sempre, com as setas, o Enter, os números
+ * e o Esc.
+ */
+function MenuDoComentario({ x, y, escolher }: { x: number; y: number; escolher: (e: EscolhaDoComentario | null) => void }) {
+  const [ativo, setAtivo] = useState(0);
+  const n = ESCOLHAS_DO_COMENTARIO.length;
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = Number(e.key);
+      if (/^[1-9]$/.test(e.key) && k <= n) {
+        e.preventDefault();
+        e.stopPropagation();
+        return escolher(ESCOLHAS_DO_COMENTARIO[k - 1]);
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || (e.key === 'Tab' && !e.shiftKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setAtivo((i) => (i + (e.key === 'ArrowUp' ? -1 : 1) + n) % n);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        escolher(ESCOLHAS_DO_COMENTARIO[ativo]);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        escolher(null);
+      } else if (e.key.length === 1 || e.key === 'Backspace') {
+        // digitar segue no texto: a escolha fecha
+        escolher(null);
+      }
+    };
+    // antes do editor: as teclas são da escolha enquanto ela está aberta
+    window.addEventListener('keydown', tecla, true);
+    return () => window.removeEventListener('keydown', tecla, true);
+  }, [ativo, n, escolher]);
+  useEffect(() => {
+    const fora = (e: PointerEvent) => !(e.target as HTMLElement).closest('.menu-do-comentario') && escolher(null);
+    window.addEventListener('pointerdown', fora, true);
+    return () => window.removeEventListener('pointerdown', fora, true);
+  }, [escolher]);
+  const item = (e: EscolhaDoComentario, i: number) => (
+    <button
+      key={e.id}
+      type="button"
+      role="menuitem"
+      className={`menu-item alto${i === ativo ? ' ativo' : ''}`}
+      data-escolha={e.id}
+      data-tipo={e.tipo}
+      onMouseEnter={() => setAtivo(i)}
+      onClick={() => escolher(e)}
+    >
+      <Selo nome={e.tipo ? ICONE_DO_TIPO[e.tipo] : 'comentario'} />
+      <span className="menu-texto">
+        <strong>{e.nome}</strong>
+        <small>{e.dica}</small>
+      </span>
+      <kbd className="menu-atalho">{i + 1}</kbd>
+    </button>
+  );
+  const recados = ESCOLHAS_DO_COMENTARIO.filter((e) => e.tipo);
+  return (
+    <div className="menu menu-da-barra menu-do-comentario" role="menu" aria-label="Recado ou comentário" style={{ left: x, top: y }} onMouseDown={(e) => e.preventDefault()}>
+      <div className="menu-cab-escrita">
+        <span>Recado para…</span>
+        <span>vai no Enviar</span>
+      </div>
+      {recados.map(item)}
+      <div className="menu-sep" />
+      {ESCOLHAS_DO_COMENTARIO.filter((e) => !e.tipo).map((e) => item(e, recados.length))}
+    </div>
+  );
+}
+
 /* ---------- o balão da ficha ---------- */
 
 function BalaoDaFicha({ ficha, x, y }: { ficha: { tipo: FichaNoTexto['tipo']; texto: string }; x: number; y: number }) {
@@ -314,7 +402,22 @@ function BalaoDaFicha({ ficha, x, y }: { ficha: { tipo: FichaNoTexto['tipo']; te
  * O que a escrita mostra dentro da folha (no corpo, `data-margem="tipos"`): a margem, o menu do "/", o menu do tipo e os
  * balões. Liga a ponte da extensão `Escrita` a cada desenho.
  */
-export function EscritaNaFolha({ editor, escreve, ponte, arteAberta, abrirArte }: { editor: Editor; escreve: boolean; ponte: MutableRefObject<PonteDaEscrita>; arteAberta: string | null; abrirArte: (id: string | null) => void }) {
+export function EscritaNaFolha({
+  editor,
+  escreve,
+  ponte,
+  arteAberta,
+  abrirArte,
+  comentarOTexto,
+}: {
+  editor: Editor;
+  escreve: boolean;
+  ponte: MutableRefObject<PonteDaEscrita>;
+  arteAberta: string | null;
+  abrirArte: (id: string | null) => void;
+  /** abre o fio do comentário (#192) no trecho selecionado: o mesmo do botão Comentar e do Ctrl+Alt+M */
+  comentarOTexto: () => void;
+}) {
   useVersaoDoEditor(editor);
   const corpo = useCallback(() => editor.view.dom.closest<HTMLElement>('.folha-escrita-corpo'), [editor]);
 
@@ -333,10 +436,28 @@ export function EscritaNaFolha({ editor, escreve, ponte, arteAberta, abrirArte }
   const lista = barra && barra.from === barraEm ? comandosQueBatem(barra.q) : [];
   const menuAberto = escreve && !!barra && lista.length > 0;
   useEffect(() => setAtivo(0), [barra?.q]);
+  // o "/comentario" pergunta qual dos dois (o recado ou o comentário), no mesmo lugar do menu do "/"
+  const [escolha, setEscolha] = useState<{ x: number; y: number } | null>(null);
   const escolherComando = (c: ComandoDaBarra) => {
     if (!barra) return;
+    const onde = posDaBarra;
     setBarraEm(null);
     aplicarComando(editor, c, barra);
+    if (c.id === COMANDO_DO_COMENTARIO.id) setEscolha(onde ?? { x: 0, y: 0 });
+  };
+  const escolherNoComentario = (e: EscolhaDoComentario | null) => {
+    setEscolha(null);
+    if (!e) return void editor.commands.focus();
+    const t = trechoNoCursor(editor.state);
+    if (e.tipo) {
+      if (t) definirTipo(editor, t.pos, e.tipo);
+      return void editor.commands.focus();
+    }
+    // o comentário sobre o texto: o trecho todo (ou, vazio, o de cima) é o grifo do fio
+    const alvo = t && t.no.textContent.trim() ? t : trechoComTextoAntes(editor, t?.pos ?? 0);
+    if (!alvo) return void editor.commands.focus();
+    editor.chain().focus().setTextSelection({ from: alvo.pos + 1, to: alvo.pos + 1 + alvo.no.content.size }).run();
+    comentarOTexto();
   };
 
   // o menu do tipo (clique na margem) e os balões
@@ -433,6 +554,7 @@ export function EscritaNaFolha({ editor, escreve, ponte, arteAberta, abrirArte }
         }}
       />
       {menuDoTipo && <MenuDoTipo key={menuDoTipo.pos} editor={editor} pos={menuDoTipo.pos} x={menuDoTipo.x} y={menuDoTipo.y} fechar={() => setMenuDoTipo(null)} />}
+      {escolha && <MenuDoComentario x={escolha.x} y={escolha.y} escolher={escolherNoComentario} />}
       {menuAberto && barra && posDaBarra && <MenuDaBarra q={barra.q} lista={lista} ativo={Math.min(ativo, lista.length - 1)} x={posDaBarra.x} y={posDaBarra.y} escolher={escolherComando} apontar={setAtivo} />}
       {ficha && <BalaoDaFicha key={ficha.texto} ficha={ficha} x={ficha.x} y={ficha.y} />}
       {marca && posDaMarca && <PopoverMarca editor={editor} marca={marca} x={posDaMarca.x} y={posDaMarca.y} fechar={() => abrirArte(null)} />}
@@ -467,8 +589,9 @@ function artesNaLista(editor: Editor): ArteNaLista[] {
   });
 }
 
-/** A lista das artes ao lado da folha, como a da revisão: numeradas e sem repetir. O clique leva à arte no texto e abre
-    o balão dela (o tipo da arte, opcional, e a observação). */
+/** A lista das artes ao lado da folha, como a da revisão: numeradas e sem repetir, no `ArtesQueRecolhem` (recolhe pelo
+    cabeçalho e pelo Ctrl+Alt+A, como a da revisão). O clique leva à arte no texto e abre o balão dela (o tipo da arte,
+    opcional, e a observação). */
 export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { editor: Editor; escreve: boolean; abrirArte: (id: string | null) => void; arteAberta: string | null }) {
   useVersaoDoEditor(editor);
   const artes = artesNaLista(editor);
@@ -480,13 +603,7 @@ export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { edi
     if (escreve) abrirArte(a.marca.id);
   };
   return (
-    <section className="cartao artes-da-escrita" aria-label="As artes do roteiro">
-      <div className="cab-artes">
-        <b>
-          <i>{artes.length}</i> {artes.length === 1 ? 'arte' : 'artes'}
-        </b>
-        <span className="rotulo">vão para a arte</span>
-      </div>
+    <ArtesQueRecolhem className="artes-da-escrita" n={artes.length} extra={<span className="rotulo">vão para a arte</span>}>
       <ol className="artes so-lista">
         <Vagas
           itens={artes}
@@ -514,7 +631,7 @@ export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { edi
         </Vagas>
       </ol>
       <p className="artes-da-escrita-nota suave pequeno">As artes saem do texto: o trecho de arte e o que você marca com {atalho('Mod-u')}.</p>
-    </section>
+    </ArtesQueRecolhem>
   );
 }
 
