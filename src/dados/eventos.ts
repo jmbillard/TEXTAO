@@ -13,6 +13,8 @@ export type EventoFila =
   | { tipo: 'cor'; por: string; cor: string }
   /** Alguém deu, trocou ou tirou o apelido de uma claquete (#120): vale reler os apelidos. */
   | { tipo: 'apelido'; por: string }
+  /** Os comentários de um roteiro mudaram, ou alguém viu os avisos dele (#192). */
+  | { tipo: 'comentarios' | 'avisos'; id: string; por: string }
   /** A conexão voltou depois de cair: pode ter perdido avisos, então vale recarregar. */
   | { tipo: 'reconectou' };
 
@@ -22,7 +24,8 @@ export interface Fila {
   enviar: (dado: object) => void;
 }
 
-export function ouvirFila(aoReceber: (e: EventoFila) => void): Fila {
+/** `so: 'comentarios'`: só os avisos dos comentários (#192), sem contar como presença na fila. */
+export function ouvirFila(aoReceber: (e: EventoFila) => void, { so }: { so?: 'comentarios' } = {}): Fila {
   if (armazenamento.tipo !== 'servidor' || typeof WebSocket === 'undefined') return { parar: () => {}, enviar: () => {} };
   let ws: WebSocket | null = null;
   let parar = false;
@@ -31,7 +34,7 @@ export function ouvirFila(aoReceber: (e: EventoFila) => void): Fila {
   let prazo: ReturnType<typeof setTimeout> | undefined;
 
   const abrir = () => {
-    const params = new URLSearchParams(parametrosDoPerfil()).toString();
+    const params = new URLSearchParams({ ...parametrosDoPerfil(), ...(so ? { so } : {}) }).toString();
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/eventos${params ? `?${params}` : ''}`);
     ws.onopen = () => {
       espera = 1000;

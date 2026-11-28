@@ -47,6 +47,15 @@ export function BolinhaDeEstado({ estado, tam = 'pequena', className = '' }: { e
 }
 
 /**
+ * A bolinha de aviso (#192): o pontinho laranja que surge com um pulo e uma onda, o mesmo do aviso dos Filmes no topo
+ * (`caminho-aviso`). Marca o que é novo para a pessoa: o comentário que a cita ou que chegou no roteiro dela, na lista
+ * de "Roteiros" e no balão. Some quando ela vê.
+ */
+export function BolinhaDeAviso({ rotulo, className = '' }: { rotulo?: string; className?: string }) {
+  return <i className={`bolinha-aviso${className ? ` ${className}` : ''}`} {...(rotulo ? { role: 'img', 'aria-label': rotulo, title: rotulo } : { 'aria-hidden': true })} />;
+}
+
+/**
  * O vazio à mão (#171): o texto curto em Caveat, meio torto, no lugar de uma lista, de uma coluna ou de uma busca que
  * não tem nada ("nada aqui", "ninguém", "nada com “x”"). Um só desenho em todas as telas; os vazios que explicam
  * (os de formulário) ficam no texto comum.

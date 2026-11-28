@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ETIQUETAS } from '../modelo/tipos';
-import { atalho } from './util';
+import { ATALHO_DE_COMENTAR, atalho } from './util';
 
 type Tela = 'fila' | 'revisao' | 'escrita' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta' | 'montar';
 type Linha = [tecla: string, oque: string];
@@ -38,6 +38,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       [atalho('Mod-u'), 'Arte: o selecionado (no meio da frase) ou, sem seleção, o trecho todo'],
       ['Enter', 'Trecho novo'],
       ['↑ ↓ Enter', 'Escolhe no menu do / e no do tipo'],
+      [ATALHO_DE_COMENTAR, 'Comenta o trecho selecionado (#192); no balão, Enter envia e @ chama alguém'],
       ['Esc', 'Fecha os menus e os balões'],
       [atalho('Mod-z'), 'Desfaz'],
       [atalho('Mod-Shift-z'), 'Refaz'],

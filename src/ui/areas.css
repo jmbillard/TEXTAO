@@ -181,6 +181,15 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 .caminhos-do-topo > a:hover .caminho-aviso { box-shadow: 0 0 0 2px var(--neutro); }
 @keyframes caminho-aviso { 0% { transform: scale(0); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
 @keyframes caminho-aviso-onda { 0% { transform: scale(1); opacity: 0.55; } 100% { transform: scale(2.6); opacity: 0; } }
+/* a mesma bolinha, solta no texto (#192): o comentário novo para a pessoa, na lista de "Roteiros" e no balão */
+.bolinha-aviso {
+  position: relative; display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ultra);
+  vertical-align: middle; animation: caminho-aviso 0.5s var(--suave) both;
+}
+.bolinha-aviso::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--ultra); animation: caminho-aviso-onda 1.2s 0.4s ease-out 2 both; }
+/* ao lado do título, na lista de "Roteiros" */
+.aviso-na-ficha { margin-left: 8px; top: -1px; }
+@media (prefers-reduced-motion: reduce) { .bolinha-aviso, .bolinha-aviso::after { animation: none; } .bolinha-aviso::after { display: none; } }
 /* a dica com o nome, no hover e no foco (no aberto, só quando há o aviso dos Filmes) */
 .caminhos-do-topo > a::after {
   content: attr(data-dica); position: absolute; top: calc(100% + 8px); left: 50%; z-index: 50; white-space: nowrap; pointer-events: none;

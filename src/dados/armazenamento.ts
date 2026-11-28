@@ -50,6 +50,8 @@ export interface Resumo {
   criadoEm?: string;
   /** A pessoa foi convidada pelo autor (só no Roteiro escrito no PROMeiro). */
   convidado?: boolean;
+  /** Os avisos de comentário que a pessoa ainda não viu neste roteiro (#192): a bolinha na lista. */
+  avisos?: { n: number; mencao: boolean };
 }
 export interface EnvioTrello {
   /** "duplicado": a claquete já tinha entrado hoje na produção da arte (pelo upload antigo). */
@@ -195,7 +197,7 @@ let perfilLocal: Pessoa | null = null;
 /** O WebSocket do navegador não envia cabeçalhos; no modo de demonstração o perfil vai na URL. */
 export const parametrosDoPerfil = (): Record<string, string> => (perfilLocal?.email ? { email: perfilLocal.email, nome: perfilLocal.nome } : {});
 
-async function pedir<T>(caminho: string, init: RequestInit = {}): Promise<T> {
+export async function pedir<T>(caminho: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(caminho, { ...init, credentials: 'same-origin', headers: { 'content-type': 'application/json', ...cabecalhos, ...init.headers } });
   if (!r.ok) {
     const erro = (await r.json().catch(() => null)) as { erro?: string } | null;
