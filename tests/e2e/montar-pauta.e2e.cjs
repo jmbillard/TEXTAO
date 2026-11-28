@@ -373,6 +373,7 @@ async function montarPeloTeclado(navegador, url) {
   assert.deepEqual(await tardeDeNovo.locator('[data-campo="demanda"]').evaluateAll(valores), ['Mundo Animal 30/11 (P)']);
   assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
 
+  assert.deepEqual(await sobreposicoes(p), [], 'nada se sobrepõe no Montar');
   // #171: a busca, a lupa das outras telas: a claquete que bate fica, as outras esmaecem; sem nenhuma, à mão
   // a coerência entre as telas (#171): a lupa no lugar de todas e nenhum check verde de estado
   {
@@ -655,6 +656,37 @@ async function conferirEPublicar(navegador, url, teable) {
   console.log('ok: conferir, corrigir, "está certo", publicar, a Pauta sem dobrar, alterado, republicar e desfazer');
 }
 
+/**
+ * Nada se sobrepõe no Montar (#199): os blocos da página (a cabeça, as abas, as faixas, o recado e o corpo) uns sobre os
+ * outros; as caixas da coluna entre si; e, em cada turno, as posições dentro do bloco e sem se cruzarem. Devolve a lista
+ * do que se cruza (vazia é o certo).
+ */
+const sobreposicoes = (p) =>
+  p.evaluate(() => {
+    const r = (e) => e.getBoundingClientRect();
+    const visivel = (e) => r(e).width > 0 && r(e).height > 0;
+    const cruza = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    const dentro = (a, b) => a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+    const nome = (e) => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`;
+    const ruins = [];
+    const pares = (els, onde) => {
+      const vs = els.filter(visivel);
+      for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++) if (cruza(r(vs[i]), r(vs[j]))) ruins.push(`${onde}: ${nome(vs[i])} × ${nome(vs[j])}`);
+    };
+    const pagina = document.querySelector('.montar-pagina');
+    pares([...pagina.children].filter((e) => !e.classList.contains('marca-do-outro')), 'página');
+    const coluna = document.querySelector('.montar-coluna');
+    if (coluna) pares([...coluna.children], 'coluna');
+    const corpo = document.querySelector('.montar-corpo');
+    if (corpo) pares([...corpo.children], 'corpo');
+    for (const t of document.querySelectorAll('.montar-turno')) {
+      const cel = [...t.querySelectorAll('.montar-celula')];
+      pares(cel, 'turno');
+      for (const c of cel) if (!dentro(r(c), r(t))) ruins.push(`turno: ${nome(c)} sai do bloco`);
+    }
+    return ruins;
+  });
+
 /* ---------- as capturas do #199 (só com CAPTURAS): o Montar só com claquetes, no computador e no celular ---------- */
 async function capturasDasClaquetes(navegador, url) {
   if (!CAPTURAS) return;
@@ -666,6 +698,13 @@ async function capturasDasClaquetes(navegador, url) {
       await deFora.getByRole('button', { name: 'ver a lista' }).click();
       await deFora.locator('.de-fora-lista.aberta').waitFor();
       await semRolagemDeLado(p, `capturas ${onde} ${tema}`);
+      // nada se cruza, no alto e com a página rolada até o fim (o que gruda no alto ao rolar passaria por cima)
+      for (const y of [0, 100_000]) {
+        await p.evaluate((v) => scrollTo(0, v), y);
+        await p.waitForTimeout(150);
+        assert.deepEqual(await sobreposicoes(p), [], `nada se sobrepõe no Montar (${onde}, ${tema}, rolado até ${y ? 'o fim' : 'o alto'})`);
+      }
+      await p.evaluate(() => scrollTo(0, 0));
       const nome = `199-montar-${onde}-${tema === 'light' ? 'claro' : 'escuro'}`;
       await capturar(p, nome, { fullPage: true });
       // a coluna de perto: as Produções, Para distribuir e o "N de fora" aberto

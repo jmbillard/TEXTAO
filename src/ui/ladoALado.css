@@ -1,7 +1,9 @@
 /* A semana lado a lado com a planilha (#133): a faixa acima da grade. O estado vai na bolinha e nas etiquetas, nunca
    numa faixa colorida na borda. */
-.lado { margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); font: 400 13px/1.4 var(--sans); color: var(--tinta2); }
-.lado.com-diferencas { background: color-mix(in srgb, var(--falta) 5%, var(--cartao)); }
+/* a faixa toda: "lado-planilha", e não "lado", que é a coluna fixa (sticky) da folha do roteiro em estilos.css; com o
+   mesmo nome, a faixa grudava no alto ao rolar e passava por cima da grade (#199) */
+.lado-planilha { margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--regua); border-radius: 12px; background: var(--cartao); font: 400 13px/1.4 var(--sans); color: var(--tinta2); }
+.lado-planilha.com-diferencas { background: color-mix(in srgb, var(--falta) 5%, var(--cartao)); }
 .lado-sem, .lado-falha { color: var(--tinta3); }
 .lado-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .lado-texto { flex: 1; min-width: 0; }

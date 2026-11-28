@@ -55,11 +55,11 @@ export function LadoALado({ dados, posicoes, foraNoDia }: Props) {
     [lido, posicoes, foraNoDia, dia, dados.ilhas],
   );
 
-  if (falha) return <p className="lado lado-falha">Lado a lado com a planilha: {falha}.</p>;
+  if (falha) return <p className="lado-planilha lado-falha">Lado a lado com a planilha: {falha}.</p>;
   if (!lido) return null;
   if (!lido.foto || !diferencas)
     return (
-      <p className="lado lado-sem" role="status">
+      <p className="lado-planilha lado-sem" role="status">
         {/* o "·" fica com o título: a linha que quebra não começa num separador */}
         <b>Lado a lado com a planilha</b>{'\u00a0·'} ainda não chegou foto da planilha para este dia (o n8n manda de hora em hora).
       </p>
@@ -77,7 +77,7 @@ export function LadoALado({ dados, posicoes, foraNoDia }: Props) {
     return v;
   };
   return (
-    <section className={`lado${total ? ' com-diferencas' : ' igual'}`} aria-label="Lado a lado com a planilha">
+    <section className={`lado-planilha${total ? ' com-diferencas' : ' igual'}`} aria-label="Lado a lado com a planilha">
       <div className="lado-cab">
         <span className={`lado-ponto${total ? ' difere' : ''}`} aria-hidden="true" />
         <span className="lado-texto">

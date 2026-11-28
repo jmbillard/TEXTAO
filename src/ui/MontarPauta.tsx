@@ -834,7 +834,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
               }
             />
             <p className="montar-teclas">
-              <span><Alca /> escolha uma claquete das Produções para um editor</span>
+              <span><Alca /> arraste uma claquete das Produções para um editor</span>
               <span><kbd>Tab</kbd> próximo campo</span>
               <span><kbd>Enter</kbd> outra info</span>
               <span><kbd>↑</kbd> <kbd>↓</kbd> entre as infos</span>
