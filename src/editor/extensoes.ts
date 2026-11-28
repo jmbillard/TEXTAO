@@ -1,4 +1,10 @@
 import { Extension, Mark, Node, type Editor } from '@tiptap/core';
+import Bold from '@tiptap/extension-bold';
+import Document from '@tiptap/extension-document';
+import HardBreak from '@tiptap/extension-hard-break';
+import Italic from '@tiptap/extension-italic';
+import Paragraph from '@tiptap/extension-paragraph';
+import Text from '@tiptap/extension-text';
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { AddMarkStep, RemoveMarkStep } from '@tiptap/pm/transform';
@@ -181,6 +187,11 @@ export const Celula = Node.create({
     return ['div', { class: 'celula' }, 0];
   },
 });
+
+/** O documento do Roteiro: o mesmo schema na revisão (TelaEditor), no roteiro aberto do Redator e do Editor
+    (RoteiroAberto) e na escrita (#189, TelaDeEscrita). Quem usa acrescenta o comportamento dela (a trava, o teclado, a
+    sala ou o histórico). */
+export const extensoesDoRoteiro = () => [Document, Paragraph, Text, Bold, Italic, HardBreak, Arte, Etiqueta, Imagem, Linha, Celula, TipoDoTrecho];
 
 const linhaVazia = (): NoJSON => ({
   type: 'linha',

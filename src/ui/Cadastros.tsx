@@ -51,7 +51,7 @@ import { SetaCurva } from './setaCurva';
 import { RABISCO, SUAVE } from './cena';
 import { caminhoDoIcone, Icone } from './icones';
 import { BuscaNaLupa } from './BuscaNaLupa';
-import { Marca, NadaNaBusca } from './pecas';
+import { AbaComRabisco, Marca, NadaNaBusca, type AbaDaLista } from './pecas';
 import { plural, semMovimento } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
@@ -146,8 +146,7 @@ export function previaDoCaminho(formula: string, valores: Record<string, string>
 
 /* ---------- pedaços ---------- */
 
-type AbaExtra = { ativa: boolean; total: number; abrir: () => void };
-function Abas({ aba, mudar, totais, sem, dup, pad, ilhas }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: AbaExtra; dup: AbaExtra | null; pad: AbaExtra | null; ilhas: AbaExtra }) {
+function Abas({ aba, mudar, totais, sem, dup, pad, ilhas }: { aba: TipoCadastro; mudar: (a: TipoCadastro) => void; totais: Record<TipoCadastro, number>; sem: AbaDaLista; dup: AbaDaLista | null; pad: AbaDaLista | null; ilhas: AbaDaLista }) {
   const outra = sem.ativa || !!dup?.ativa || !!pad?.ativa || ilhas.ativa;
   return (
     <div className="abas-cad" role="tablist" aria-label="Cadastros">
@@ -167,35 +166,17 @@ function Abas({ aba, mudar, totais, sem, dup, pad, ilhas }: { aba: TipoCadastro;
         </button>
       ))}
       {/* as keys que aparecem nas claquetes e nenhuma atração reconhece */}
-      <AbaDeFora nome="Sem cadastro" icone={<Desenho d={ICONE_SEM} />} aba={sem} />
+      <AbaComRabisco nome="Sem cadastro" icone={<Desenho d={ICONE_SEM} />} aba={sem} />
       {/* as salas de edição (#124): no PROMeiro, para a montagem da pauta */}
-      <AbaDeFora nome="Ilhas" icone={<Desenho d={ICONE_DAS_ILHAS} />} aba={ilhas} classe="aba-ilhas" />
+      <AbaComRabisco nome="Ilhas" icone={<Desenho d={ICONE_DAS_ILHAS} />} aba={ilhas} classe="aba-ilhas" />
       {/* os cards repetidos no quadro do Trello: só administradores (o número são todos os casos pendentes) */}
-      {dup && <AbaDeFora nome="Duplicadas" icone={<Icone nome="duplicar" tam={18} />} aba={dup} classe="aba-dup" />}
+      {dup && <AbaComRabisco nome="Duplicadas" icone={<Icone nome="duplicar" tam={18} />} aba={dup} classe="aba-dup" />}
       {/* a chave do Padeiro (#137): só administradores (o número são as pendentes) */}
-      {pad && <AbaDeFora nome="Padeiros" icone={<Icone nome="chave" tam={18} />} aba={pad} classe="aba-pad" />}
+      {pad && <AbaComRabisco nome="Padeiros" icone={<Icone nome="chave" tam={18} />} aba={pad} classe="aba-pad" />}
     </div>
   );
 }
 
-/** Uma aba que não é de cadastro (Sem cadastro, Duplicadas): o nome sublinhado quando ativa; fechada, só o número. */
-function AbaDeFora({ nome, icone, aba, classe }: { nome: string; icone: React.ReactNode; aba: AbaExtra; classe?: string }) {
-  return (
-    <button role="tab" className={classe} aria-selected={aba.ativa} title={aba.ativa ? undefined : nome} onClick={aba.abrir}>
-      {icone}
-      {aba.ativa ? (
-        <span className="rot">
-          {nome} <b>{aba.total}</b>
-          <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
-            <path pathLength={1} d={RABISCO} />
-          </svg>
-        </span>
-      ) : (
-        <sup>{aba.total}</sup>
-      )}
-    </button>
-  );
-}
 
 /** "Ligar a…": a busca nas atrações, com "+ Nova atração" sempre no fim (ela recebe o que está na busca). */
 /** A busca de atração: `nova` põe o "+ Nova atração" (sem ele, só a busca, como no card aberto da tela de produções, #160). */

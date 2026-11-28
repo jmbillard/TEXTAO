@@ -5,6 +5,7 @@ import { claquetePadrao, editoresConhecidos, seloCurto, programasConhecidos, red
 import { pracasRegistradas, siglasDasPracas } from '../modelo/pracas';
 import { atalho, dataCurtaComDia, dataPorExtenso, ehMac } from './util';
 import { Icone } from './icones';
+import { RABISCO } from './cena';
 
 /** Os traços do círculo à caneta (viewBox 0 0 64 44, pathLength 1): a contagem de artes da fila e o pôster da prévia. */
 export const RABISCOS = [
@@ -753,5 +754,34 @@ export function EscolhaDeNome({ rotulo, valor, opcoes, mudar, semente, palpite, 
         </div>
       )}
     </div>
+  );
+}
+
+/** Uma aba das listas com abas (os Cadastros, os Roteiros, #189). */
+export type AbaDaLista = { ativa: boolean; total: number; abrir: () => void };
+/**
+ * A aba com o rabisco (#171): fechada, o ícone e o número pequeno; ativa, o nome com o número em laranja e o rabisco
+ * que se escreve embaixo (`abas-cad`). A mesma nos Cadastros e nos Roteiros (#189).
+ * @param mostrarNome o nome também com a aba fechada (as abas com texto, sem ícone que as diga)
+ */
+export function AbaComRabisco({ nome, icone, aba, classe, mostrarNome = false }: { nome: string; icone?: React.ReactNode; aba: AbaDaLista; classe?: string; mostrarNome?: boolean }) {
+  return (
+    <button role="tab" className={classe} aria-selected={aba.ativa} title={aba.ativa || mostrarNome ? undefined : nome} onClick={aba.abrir}>
+      {icone}
+      {aba.ativa ? (
+        <span className="rot">
+          {nome} <b>{aba.total}</b>
+          <svg className="sub" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
+            <path pathLength={1} d={RABISCO} />
+          </svg>
+        </span>
+      ) : mostrarNome ? (
+        <span className="rot-fechada">
+          {nome} <sup>{aba.total}</sup>
+        </span>
+      ) : (
+        <sup>{aba.total}</sup>
+      )}
+    </button>
   );
 }

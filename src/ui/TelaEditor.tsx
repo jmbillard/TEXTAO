@@ -4,15 +4,7 @@ import { Vagas } from './vagas';
 import { BalaoLigar } from './BalaoLigar';
 import type { AtracaoNova } from './Cadastros';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
-import Bold from '@tiptap/extension-bold';
-import Document from '@tiptap/extension-document';
-import HardBreak from '@tiptap/extension-hard-break';
 import History from '@tiptap/extension-history';
-import Italic from '@tiptap/extension-italic';
-import Paragraph from '@tiptap/extension-paragraph';
-// o tipo do trecho guardado no parágrafo (#187): o schema precisa dele para abrir o roteiro escrito no PROMeiro
-import { TipoDoTrecho } from '../editor/extensoes';
-import Text from '@tiptap/extension-text';
 import { redoDepth, undoDepth } from '@tiptap/pm/history';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
@@ -23,8 +15,9 @@ import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro 
 import { meuCursor } from './cursores';
 import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, palpitesDoRedator, quemNosRoteiros, roteiroDa, temTrello, type EnvioTrello, type Leitura, type PresencaNosRoteiros, type Resumo, type Versao } from '../dados/armazenamento';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
+import { Compartilhar, type Convite } from './Compartilhar';
 import {
-  Arte, atualizarMarca, Celula, dividirArte, Etiqueta, Imagem, limparMarcas, Linha, listarMarcas, marcaEm, marcarArte,
+  atualizarMarca, dividirArte, extensoesDoRoteiro, limparMarcas, listarMarcas, marcaEm, marcarArte,
   marcarArte as marcarArteNoTexto, partesDaArte, prepararColagem, Reconhecimento, SoMarcas, Teclado, type MarcaNoDoc,
 } from '../editor/extensoes';
 import { alternarJaExiste, alvosDoTeclado, artesDoEnvio, artesUnicas, chavesQueExistem, complexidadeDaArte, complexidadeDoRoteiro, exportar, listaDeArtes, marcarComplexidade, NOME_DA_COMPLEXIDADE, pendencias, pendenciasDetalhadas, quantasAProduzir, remarcar, subirComplexidade, type Complexidade, type Saida } from '../modelo/exportar';
@@ -295,67 +288,6 @@ function PopoverMarca({ editor, marca, x, y, fechar }: { editor: Editor; marca: 
 
 /* ---------- compartilhar ---------- */
 
-type Convite = { email: string; editar: boolean };
-
-function Compartilhar({ publico, pessoas, mudar }: { publico: boolean; pessoas: Convite[]; mudar: (todos: boolean, lista: Convite[]) => void }) {
-  const [usuarios, setUsuarios] = useState<Pessoa[] | null>(null);
-  const [busca, setBusca] = useState('');
-  useEffect(() => {
-    armazenamento.usuarios().then(setUsuarios, () => setUsuarios([]));
-  }, []);
-
-  const papel = (email: string) => pessoas.find((p) => p.email === email);
-  const definir = (email: string, valor: 'nao' | 'ver' | 'editar') =>
-    mudar(publico, [...pessoas.filter((p) => p.email !== email), ...(valor === 'nao' ? [] : [{ email, editar: valor === 'editar' }])]);
-  const termo = busca.trim().toLowerCase();
-  // quem já foi escolhido aparece mesmo que não esteja mais na lista
-  const lista = [...(usuarios ?? []), ...pessoas.filter((p) => !(usuarios ?? []).some((u) => u.email === p.email)).map((p) => ({ nome: p.email.split('@')[0], email: p.email }))]
-    .filter((u) => !termo || `${u.nome} ${u.email}`.toLowerCase().includes(termo));
-  const privado = !publico && !pessoas.length;
-
-  return (
-    <div className="painel-compartilhar" role="dialog" aria-label="Quem tem acesso a este roteiro">
-      <div className="rotulo">Quem tem acesso</div>
-      <div className="modos">
-        <button className="modo" role="switch" aria-checked={privado} onClick={() => mudar(false, [])}>
-          <Selo nome="cadeado" />
-          <span className="menu-texto"><strong>Só eu</strong><small>100% privado: ninguém mais vê</small></span>
-          <span className="modo-marca">{privado && <Icone nome="certo" tam={12} traco={3} />}</span>
-        </button>
-        <button className="modo" role="switch" aria-checked={publico} onClick={() => mudar(!publico, pessoas)}>
-          <Selo nome="olho" />
-          <span className="menu-texto"><strong>Todos podem ver</strong><small>Qualquer colega lê; só edita quem você escolher</small></span>
-          <span className="modo-marca">{publico && <Icone nome="certo" tam={12} traco={3} />}</span>
-        </button>
-      </div>
-      <div className="quem">
-        <div className="rotulo">Pessoas</div>
-        {(usuarios?.length ?? 0) > 6 && <input className="popover-obs" placeholder="Buscar pessoa" aria-label="Buscar pessoa" value={busca} onChange={(e) => setBusca(e.target.value)} />}
-        <ul>
-          {lista.map((u) => {
-            const p = papel(u.email);
-            const valor = p ? (p.editar ? 'editar' : 'ver') : 'nao';
-            return (
-              <li key={u.email} className={p ? 'com-acesso' : ''}>
-                <span className="quem-pessoa">
-                  <span className="quem-nome">{u.nome}</span>
-                  <span className="suave pequeno">{u.email}</span>
-                </span>
-                <select className="quem-papel" data-valor={valor} value={valor} aria-label={`Acesso de ${u.nome}`} onChange={(e) => definir(u.email, e.target.value as 'nao' | 'ver' | 'editar')}>
-                  <option value="nao">{publico ? 'Só vê' : 'Sem acesso'}</option>
-                  {!publico && <option value="ver">Pode ver</option>}
-                  <option value="editar">Pode editar</option>
-                </select>
-              </li>
-            );
-          })}
-        </ul>
-        {usuarios && !lista.length && <p className="suave pequeno">{termo ? 'Ninguém com esse nome.' : 'Ainda não há outras pessoas por aqui. Elas aparecem depois do primeiro acesso.'}</p>}
-      </div>
-      <p className="suave pequeno">Quem edita escreve junto com você, ao mesmo tempo. Só você muda o acesso e apaga o roteiro.</p>
-    </div>
-  );
-}
 
 /* ---------- linha do tempo ---------- */
 
@@ -580,8 +512,8 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
 
   const editor = useEditor({
     extensions: [
-      Document, Paragraph, Text, Bold, Italic, HardBreak,
-      Arte, Etiqueta, Imagem, Linha, Celula, TipoDoTrecho, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
+      // o schema do Roteiro, com o tipo do trecho guardado no parágrafo (#187)
+      ...extensoesDoRoteiro(), Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
       SoMarcas.configure({ aviso: () => avisoTexto.current(), destravado: () => destravadoRef.current, comCadeado: (tr) => mudancaComCadeado.current(tr) }),
       ...(sala
         ? [

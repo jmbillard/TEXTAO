@@ -2,13 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
 import { NomeDaClaquete, versoesDoResumo } from './Apelido';
 import { EditorContent, useEditor } from '@tiptap/react';
-import Bold from '@tiptap/extension-bold';
-import Document from '@tiptap/extension-document';
-import HardBreak from '@tiptap/extension-hard-break';
-import Italic from '@tiptap/extension-italic';
-import Paragraph from '@tiptap/extension-paragraph';
-import Text from '@tiptap/extension-text';
-import { Arte, Celula, Etiqueta, Imagem, Linha, TipoDoTrecho } from '../editor/extensoes';
+import { extensoesDoRoteiro } from '../editor/extensoes';
 import { armazenamento, roteiroDa, type Leitura, type MeuRoteiro, type MeusRoteiros as Lidos } from '../dados/armazenamento';
 import type { AreaDosRoteiros } from '../modelo/areas';
 import type { ArteDoRoteiro, ArtesDoRoteiro, EstadoDaArte } from '../modelo/artesDoRoteiro';
@@ -45,7 +39,7 @@ function diaDaExibicao(iso: string | undefined) {
 /** O texto do roteiro com as extensões do editor, sem digitar: as artes e as etiquetas aparecem como na revisão. */
 function TextoSoLeitura({ doc }: { doc: NoJSON }) {
   const editor = useEditor({
-    extensions: [Document, Paragraph, Text, Bold, Italic, HardBreak, Arte, Etiqueta, Imagem, Linha, Celula, TipoDoTrecho],
+    extensions: extensoesDoRoteiro(),
     content: doc,
     editable: false,
     editorProps: { attributes: { class: 'texto', lang: 'pt-BR', 'aria-label': 'Texto do roteiro', 'aria-readonly': 'true' } },
@@ -53,7 +47,8 @@ function TextoSoLeitura({ doc }: { doc: NoJSON }) {
   return <EditorContent editor={editor} />;
 }
 
-/** O ciclo em pé: cada passo com a data e, no Produzindo, quem da arte está com ele; os de antes do PROMeiro apagados. */
+/** O ciclo em pé: cada passo com a data e, no Produzindo, quem da arte está com ele; os da aprovação (em breve) e o
+    Escrevendo do roteiro que chegou de fora (fora do PROMeiro) apagados. */
 function CicloEmPe({ ciclo, daArte }: { ciclo: CicloDoRoteiro; daArte: string[] }) {
   const ultimoAntes = ciclo.passos.filter((p) => p.situacao === 'em-breve').at(-1)?.id;
   return (
@@ -70,7 +65,7 @@ function CicloEmPe({ ciclo, daArte }: { ciclo: CicloDoRoteiro; daArte: string[] 
           </li>,
           p.id === ultimoAntes && (
             <li key="nota" className="ciclo-nota" aria-hidden="true">
-              antes do PROMeiro: em breve
+              a aprovação no PROMeiro: em breve
             </li>
           ),
         ];
