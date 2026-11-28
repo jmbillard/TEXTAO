@@ -819,16 +819,16 @@ export function Producoes({ topo }: Props) {
     <div className="pagina producoes">
       {topo}
       <main className="prod-pagina">
-        <div className="prod-cabeca">
+        <div className="prod-cabeca cabeca-com-lupa">
           {/* o título e, com o filtro por campanha (#179), "só" e a etiqueta da campanha, com o × que tira */}
           <div className="prod-titulo">
             <h1>Produções</h1>
             <CampanhaDoFiltro filtro={filtroVisto} tirar={() => filtrar(null)} />
           </div>
           {lido && (
-            <span className="prod-ferramentas">
+            <span className="prod-ferramentas ao-lado-da-lupa">
               <EscolherCampanha filtro={filtroVisto} filtrar={filtrar} />
-              <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou pessoa" rotulo="Buscar nas produções" />
+              <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou pessoa" rotulo="Buscar nas produções" />
             </span>
           )}
         </div>

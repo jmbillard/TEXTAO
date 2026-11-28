@@ -25,7 +25,7 @@
 .prod-pagina { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 14px var(--margem) 0; }
 .prod-pagina > * { flex: none; }
 .prod-cabeca h1 { font: 400 42px/1.05 var(--serifa); letter-spacing: -0.01em; margin: 0; color: var(--tinta); }
-/* a lupa da busca (#161), à direita do título, na mesma linha */
+/* a lupa da busca (#161), na ponta direita da linha do título (o lugar de todas, estilos.css) */
 .prod-cabeca { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; }
 /* o filtro por campanha (#179): "só" e a etiqueta ao lado do título; o botão "Campanha" ao lado da lupa */
 .prod-titulo { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -451,9 +451,7 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .prod-recolher, .prod-mostrar { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
   .prod-recolher svg, .prod-mostrar svg { transform: rotate(90deg); }
   .prod-recolhido .prod-mostrar { order: 3; margin: -10px -10px -10px 0; }
-  /* a busca (#161): a lupa aberta toma a linha do título; cada achado em duas linhas */
-  .prod-cabeca:has(.busca.lupa.aberta) .prod-titulo, .prod-cabeca:has(.busca.lupa.aberta) .prod-escolher-campanha { display: none; }
-  .prod-cabeca:has(.busca.lupa.aberta) .prod-ferramentas { flex: 1; }
+  /* a busca (#161): a lupa aberta toma a linha do título (o lugar da lupa, estilos.css); cada achado em duas linhas */
   /* #179: no celular, o botão da campanha é só o sinal, no tamanho do dedo; o nome da campanha quebra a linha do título */
   .prod-cabeca { gap: 8px; }
   .prod-titulo { flex-wrap: wrap; gap: 4px 10px; }
@@ -462,9 +460,6 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .prod-campanha-bolinhas { margin-right: 5px; }
   .prod-filtro .campanha { height: 32px; }
   .prod-filtro .campanha-tirar { width: 28px; height: 28px; }
-  .prod-cabeca .busca.lupa { flex: none; width: 44px; height: 44px; border-radius: 12px; }
-  .prod-cabeca .busca.lupa.aberta { flex: 1; width: auto; }
-  .prod-cabeca .busca.lupa input { font-size: 16px; }
   .prod-pagina > .prod-busca { overflow: visible; margin: 0; padding: 0; }
   .prod-busca-topo { position: relative; }
   .prod-achado-abrir { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px; }

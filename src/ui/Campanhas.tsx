@@ -152,15 +152,15 @@ export function ListaDasCampanhas({ topo, abrir }: { topo: ReactNode; abrir: (id
     <div className="pagina producoes campanhas">
       {topo}
       <main className="prod-pagina camp-pagina">
-        <div className="prod-cabeca">
+        <div className="prod-cabeca cabeca-com-lupa">
           <h1>Campanhas</h1>
-          <span className="camp-cabeca-acoes">
+          <span className="camp-cabeca-acoes ao-lado-da-lupa">
             {podeCriar && criando === null && (
               <button type="button" className="botao camp-nova" onClick={() => setCriando(busca.trim())}>
                 <Icone nome="mais" tam={14} traco={2.2} /> Nova campanha
               </button>
             )}
-            {lidas && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={criando === null} dica="Buscar campanha" rotulo="Buscar nas campanhas" />}
+            {lidas && <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa={criando === null} dica="Buscar campanha" rotulo="Buscar nas campanhas" />}
           </span>
         </div>
         {criando !== null && <NomeNoCampo inicial={criando} rotulo="O nome da campanha nova" botao="Criar" salvar={criar} cancelar={() => (setCriando(null), setRecusa(''))} />}
@@ -483,11 +483,11 @@ export function PaginaDaCampanha({ id, topo, voltar }: { id: string; topo: React
           <p className="prod-lendo">Lendo a campanha…</p>
         ) : (
           <>
-            <div className="prod-cabeca camp-cabeca">
+            <div className="prod-cabeca camp-cabeca cabeca-com-lupa">
               {renomeando ? (
                 <NomeNoCampo inicial={pagina.campanha.nome} rotulo="O nome da campanha" botao="Renomear" indo={indo} salvar={renomear} cancelar={() => (setRenomeando(false), setRecusa(''))} />
               ) : (
-                <h1 className="camp-titulo">
+                <h1 className="camp-titulo ao-lado-da-lupa">
                   <BolinhaDaCampanha id={pagina.campanha.id} />
                   <span ref={titulo} className="camp-titulo-nome">
                     {pagina.campanha.nome}
@@ -510,7 +510,7 @@ export function PaginaDaCampanha({ id, topo, voltar }: { id: string; topo: React
                     <Icone nome="lixo" tam={15} traco={1.9} />
                   </button>
                 )}
-                <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta && !renomeando && !ligando} dica="Buscar claquete, atração ou pessoa" rotulo="Buscar na campanha" />
+                <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa={!aberta && !renomeando && !ligando} dica="Buscar claquete, atração ou pessoa" rotulo="Buscar na campanha" />
               </span>
             </div>
             <div className="camp-resumo-linha">

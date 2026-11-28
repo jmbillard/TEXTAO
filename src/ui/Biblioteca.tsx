@@ -483,7 +483,7 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
         </span>
       )}
       <span className={`ficha-marca ${alerta ? 'revisar' : 'ok'}`} aria-hidden="true">
-        {alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <Icone nome="certo" tam={12} traco={3} />}
+        {alerta ? <Icone nome="atencao" tam={12} traco={3} /> : <BolinhaDeEstado estado="ok" tam="ficha" />}
       </span>
       <button className="ficha-claquete" onClick={entrar} aria-label={`Abrir ${claquete}`}>
         <b>
@@ -736,15 +736,15 @@ function CardNoTrello({ c, pe, aberto, abrirCard, fecharCard, abrir, tirar, corr
           </span>
           {etapa && (
             <span key={etapa} className={`card-semana-etapa ${etapa}`}>
-              {etapa === 'entregue' ? <Icone nome="certo" tam={11} traco={3} /> : etapa !== 'caiu' && <BolinhaDeEstado estado={etapa} />}
+              {etapa !== 'caiu' && <BolinhaDeEstado estado={etapa} />}
               <span className="etapa-nome">{ETAPA_NO_CARD[etapa]}</span>
             </span>
           )}
         </span>
         {pe && <OutraData pe={pe} />}
         {doTour && <span className="nota-exemplo">só de exemplo</span>}
-        {/* na semana encolhida, a etapa vira só o pontinho à direita da claquete */}
-        {etapa && etapa !== 'caiu' && <i key={etapa} className={`card-semana-sinal ${etapa}`} aria-hidden="true" />}
+        {/* na semana encolhida, a etapa vira só a bolinha de estado à direita da claquete (a mesma da linha de baixo) */}
+        {etapa && etapa !== 'caiu' && <BolinhaDeEstado key={etapa} estado={etapa} className="card-semana-sinal" />}
       </button>
       {/* a etiqueta da campanha (#181), a mesma de Produções e da Pauta: a primeira e "+N"; fora do botão do card,
           porque abre a campanha */}
@@ -1016,7 +1016,7 @@ function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir, busca = '' }
           {verDiasAnteriores}
         </ItemQueAbre>
         {/* as setas e o período andam juntos: na agenda estreita, a linha quebra entre os links, nunca entre eles */}
-        <span className="semana-setas">
+        <span className="semana-setas nav-do-tempo">
           <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
             <Icone nome="voltar" tam={16} traco={2.2} />
           </button>
@@ -1077,7 +1077,6 @@ const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, pauta, montarPauta, producoes, campanhas, buscaInicial = '', seletorDeArea }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
-  const celular = useTelaDeCelular();
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
   const temaDaData = useTemaDaData();
   const [enfeitesSim, setEnfeitesSim] = useState(enfeitesLigados);
@@ -1349,7 +1348,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const porId = new Map(todos.map((r) => [r.id, r]));
   // durante o "desfazer" a fila já fica como vai ficar (sem trocar de tela de novo quando o prazo acaba)
   const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo;
-  const lupa = roteiros !== null && (todos.length > 0 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} className="lupa-da-fila" />;
+  // toda tela de lista ou agenda tem a lupa (#171), no lugar de todas: a ponta direita da linha do título. Ela busca na
+  // fila e na agenda No Trello
+  const lupa = roteiros !== null && (todos.length > 0 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} className="lupa-da-cabeca lupa-da-fila" />;
   let ordem = 0;
 
   const ficha = (r: Resumo) => {
@@ -1429,9 +1430,6 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         {/* os caminhos (#156, #168): a fila (aqui, o aberto), a tela de produções (#109), a aba Filmes e a Pauta da edição (#94) */}
         <CaminhosDoTopo atual="agenda" agenda={naFila} producoes={producoes} campanhas={campanhas} filmes={temFilmes() ? filmes : undefined} pauta={pauta} montar={pauta && montarPauta} />
         <span className="espaco" />
-        {/* toda tela de lista ou agenda tem a lupa (#171): ela busca na fila e na agenda No Trello. No celular, ela fica
-            ao lado do título, como nas Produções (o topo é o mesmo entre as telas) */}
-        {!celular && lupa}
         {colegas.length > 0 && (
           <div className="na-fila" title={`Também com a fila aberta: ${colegas.map((c) => c.nome).join(', ')}`}>
             {colegas.slice(0, 5).map((c) => (
@@ -1479,10 +1477,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         ) : (
           roteiros && (
             <section className="lista">
-              <div className="fila-topo">
-                {celular && lupa}
+              <div className="fila-topo cabeca-com-lupa">
                 <div className="fila-titulo">
-                  <h2 className="titulo-serifa">
+                  <h2 className="titulo-serifa ao-lado-da-lupa">
                     {nPendentes || !lendo ? (
                       nPendentes ? <><em>{nPendentes}</em> {nPendentes === 1 ? 'roteiro na fila' : 'roteiros na fila'}</> : <TituloEmDia z={filaZerada} />
                     ) : (
@@ -1502,6 +1499,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                   </p>
                 </div>
                 <ConviteCompacto frases={CONVITES_AO_LADO} escolher={receberArquivos} colar={() => setColando(true)} colando={colando} />
+                {lupa}
               </div>
               {colando && colar}
 

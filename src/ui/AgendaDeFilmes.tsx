@@ -131,8 +131,8 @@ export function AgendaDeFilmes({ avisar }: { avisar: (t: string) => void }) {
 
   return (
     <section className="agenda-filmes" aria-label="Agenda de filmes">
-      <div className="secao-trello-topo agenda-filmes-topo">
-        <h2>
+      <div className="secao-trello-topo agenda-filmes-topo cabeca-com-lupa">
+        <h2 className="ao-lado-da-lupa">
           <Icone nome="filme" tam={22} traco={1.7} />
           Agenda de filmes
         </h2>
@@ -146,10 +146,10 @@ export function AgendaDeFilmes({ avisar }: { avisar: (t: string) => void }) {
           )}
         </span>
         <span className="semana-nav">
-          {agenda && temFilme && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberto} dica="Buscar filme, ano ou sessão" rotulo="Buscar na agenda de filmes" />}
+          {agenda && temFilme && <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa={!aberto} dica="Buscar filme, ano ou sessão" rotulo="Buscar na agenda de filmes" />}
           <VoltarParaHoje ver={porData && !buscaAtiva && troca.mostrada !== 0} sentido={troca.sentido} voltar={() => setDeslocamento(0)} abreVaga />
           {/* as setas e o período só na semana (por data); por sessão, fecham a vaga */}
-          <ItemQueAbre ver={porData && !buscaAtiva} classe="ct-setas">
+          <ItemQueAbre ver={porData && !buscaAtiva} classe="ct-setas nav-do-tempo">
             <span className="semana-setas">
               <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior" onClick={() => setDeslocamento((n) => n - 1)}>
                 <Icone nome="voltar" tam={16} traco={2.2} />

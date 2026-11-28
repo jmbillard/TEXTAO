@@ -637,9 +637,9 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
           <DiaPublicado dados={atual} posicoes={posicoes} recado={recado} voltar={() => setVista('montar')} desfazer={() => void desfazer()} irPara={irPara} />
         ) : (
         <>
-        <div className="pauta-cabeca montar-cabeca">
+        <div className="pauta-cabeca montar-cabeca cabeca-com-lupa">
           <div>
-            <h1>Montar a pauta</h1>
+            <h1 className="ao-lado-da-lupa">Montar a pauta</h1>
             {atual && (
               <p className="pauta-sub">
                 {diaEscrito(atual.dia)}
@@ -656,7 +656,6 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
             <QuemMaisEsta outros={outros} />
           </div>
           <div className="montar-acoes">
-            {atual && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={vista === 'montar' && !colando} dica="Buscar claquete" rotulo="Buscar no dia" />}
             {atual && (
               <button type="button" className="botao" onClick={() => (setColado(''), setColando(true))}>
                 ⎘ Colar da planilha
@@ -667,6 +666,8 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 Conferir e publicar →
               </button>
             )}
+            {/* a lupa no lugar de todas (#171): a última ferramenta da linha do título */}
+            {atual && <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa={vista === 'montar' && !colando} dica="Buscar claquete" rotulo="Buscar no dia" />}
           </div>
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}

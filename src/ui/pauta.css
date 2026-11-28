@@ -314,8 +314,6 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
   .pauta-nav { width: 100%; justify-content: space-between; order: 3; }
   .pauta-nav .botao-icone { width: 44px; height: 44px; }
   .pauta-periodo { min-width: 0; font-size: 15px; }
-  .pauta .busca.lupa.aberta { width: 100%; }
-  .pauta .busca.lupa { order: 2; }
   .pauta-lateral, .pauta-mesa.so-lateral .pauta-lateral { grid-template-columns: minmax(0, 1fr); }
   .pauta-folha { padding: 16px 14px 14px; }
   .pauta-minha-quem h2 { font-size: 24px; }

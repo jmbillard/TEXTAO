@@ -271,6 +271,18 @@ kbd {
 .busca.lupa.aberta:focus-within { background: var(--cartao); color: var(--ultra); }
 .busca.lupa.aberta input { flex: 1; opacity: 1; transition-delay: 0.08s; cursor: text; }
 @media (prefers-reduced-motion: reduce) { .busca.lupa, .busca.lupa input { transition: none; } }
+/* O lugar da lupa (#171), o mesmo em toda tela de lista ou agenda: na linha do título (a cabeça, `cabeca-com-lupa`), na
+   ponta direita, depois das outras ferramentas; quando a cabeça tem a navegação do tempo (o "voltar para hoje" e o
+   ‹ período ›, `nav-do-tempo`), logo antes dela, que fica parada na ponta. Aberta, cresce para a esquerda. No celular,
+   é o quadrado de 44 px na ponta direita da linha do título (o que fica à esquerda dela, `ao-lado-da-lupa`, guarda o
+   lugar) e, aberta, cobre a linha inteira. Veja docs/componentes.md. */
+@media (max-width: 600px) {
+  .cabeca-com-lupa { position: relative; }
+  .cabeca-com-lupa .busca.lupa.lupa-da-cabeca { position: absolute; top: 0; right: 0; z-index: 2; margin: 0; }
+  .cabeca-com-lupa .busca.lupa.lupa-da-cabeca.aberta { left: 0; width: auto; }
+  .cabeca-com-lupa .ao-lado-da-lupa { padding-right: 52px; transition: opacity 0.15s var(--suave); }
+  .cabeca-com-lupa:has(.lupa-da-cabeca.aberta) :is(.ao-lado-da-lupa:not(:has(.lupa-da-cabeca)), .ao-lado-da-lupa > :not(.lupa-da-cabeca)) { opacity: 0; pointer-events: none; }
+}
 .item {
   display: grid; grid-template-columns: minmax(0, 1fr) 80px 110px 76px; align-items: center; gap: 12px;
   border-top: 1px solid var(--regua); padding: 4px 0; border-radius: 0;
@@ -498,18 +510,6 @@ kbd {
    Editor: margem
    ========================================================= */
 .margem { position: relative; padding-top: 52px; min-width: 0; }
-.checklist { background: var(--cartao); border: 1px solid var(--regua); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-.check { display: flex; align-items: center; gap: 9px; font-size: 13px; }
-.check-marca {
-  width: 17px; height: 17px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-  border: 1.5px dashed var(--falta); color: var(--ok); transition: background 0.3s var(--suave), border-color 0.3s var(--suave);
-}
-.check.ok .check-marca { background: var(--ok-fundo); border: 1.5px solid transparent; }
-.check.ok .check-marca svg { animation: marcar 0.35s var(--suave); }
-@keyframes marcar { from { transform: scale(0.3); opacity: 0; } }
-.check-nome { flex: 1; }
-.check-valor { font-size: 12.5px; color: var(--tinta3); text-align: right; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.check:not(.ok) .check-valor { color: var(--falta); }
 .margem-titulo { margin: 16px 2px 0; font-size: 13px; color: var(--tinta2); line-height: 1.5; }
 .margem-titulo strong { color: var(--tinta); font-weight: 600; }
 
@@ -967,7 +967,8 @@ kbd {
 .ficha.revisar { border-color: color-mix(in srgb, var(--falta) 40%, var(--regua)); }
 .ficha.erro { border-color: color-mix(in srgb, var(--perigo) 40%, var(--regua)); background: color-mix(in srgb, var(--perigo) 5%, var(--papel)); }
 .ficha-marca { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 12px var(--sans); }
-.ficha-marca.ok { background: var(--ok-fundo); color: var(--ok); }
+/* pronto: só a bolinha de estado, sem o ✓ verde (#171); o ! e o Trello seguem no círculo */
+.ficha-marca.ok { background: none; }
 .ficha-marca.revisar { background: var(--falta-fundo); color: var(--falta); }
 .ficha-marca.erro { background: color-mix(in srgb, var(--perigo) 14%, var(--papel)); color: var(--perigo); }
 .ficha-claquete { border: 0; background: none; padding: 2px 0; text-align: left; min-width: 0; display: flex; flex-direction: column; gap: 1px; color: inherit; border-radius: 8px; }
@@ -1039,6 +1040,19 @@ kbd {
 @container convite (max-width: 275px) { .formatos-resto { display: none; } }
 @container convite (max-width: 225px) { .convite-compacto-texto .titulo-serifa { font-size: 16.5px; } }
 .fila-topo + .colar-form { margin: 0 0 18px auto; }
+/* a lupa da fila (#171), na ponta direita da linha do título, depois do convite; aberta, toma o lugar do convite */
+.fila-topo > .lupa-da-fila { margin-left: auto; }
+@media (min-width: 861px) {
+  .fila-topo:has(.convite-compacto):has(> .lupa-da-fila) { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'titulo convite lupa' 'conta conta conta'; }
+  .fila-topo > .lupa-da-fila { grid-area: lupa; margin-left: -18px; }
+  .fila-topo > .lupa-da-fila.aberta { grid-column: 2 / 4; justify-self: end; margin-left: 0; }
+  .fila-topo:has(> .lupa-da-fila.aberta) > .convite-compacto { display: none; }
+}
+/* entre o celular e o computador, o convite desce para a linha dele: a lupa fica na ponta da linha do título */
+@media (min-width: 601px) and (max-width: 860px) {
+  .fila-topo:has(.convite-compacto):has(> .lupa-da-fila) { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'titulo lupa' 'conta conta' 'convite convite'; }
+  .fila-topo > .lupa-da-fila { grid-area: lupa; }
+}
 @media (max-width: 860px) {
   .fila-topo:has(.convite-compacto) { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'titulo' 'conta' 'convite'; gap: 0; }
   .convite-compacto { margin-top: 12px; flex-wrap: wrap; }
@@ -1840,7 +1854,7 @@ a.ficha-marca.trello { text-decoration: none; }
 .bolinha-estado { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--tinta3); flex: none; }
 .bolinha-estado.produzindo { background: var(--ultra); }
 .bolinha-estado.aprovacao { background: var(--producao); }
-.bolinha-estado.entregue { background: var(--ok); }
+.bolinha-estado.entregue, .bolinha-estado.ok { background: var(--ok); }
 .bolinha-estado.entrada { background: var(--tinta3); }
 .bolinha-estado.ficha { width: 8px; height: 8px; }
 .bolinha-estado.ficha.card, .bolinha-estado.ficha.sem-card { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tinta3); }
@@ -1950,7 +1964,7 @@ a.ficha-marca.trello { text-decoration: none; }
   .card-semana-claquete { font-size: 12.5px; line-height: 1.28; }
   .card-semana > .campanhas { margin: -2px 9px 7px; }
 }
-/* o card muito estreito: a etapa só com o sinal (✓ ou •; o nome fica para o leitor de tela) e o pé sem a hora */
+/* o card muito estreito: a etapa só com a bolinha (o nome fica para o leitor de tela) e o pé sem a hora */
 @container card (max-width: 128px) {
   /* o pedaço que não cabe na linha quebra onde der, em vez de vazar (a data, nunca) */
   .card-semana-claquete .seg:not(.data) { white-space: normal; }
@@ -2668,6 +2682,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 /* a marca da conferência (✓, ! ou Trello), na quina do card; o ! abre o balão logo abaixo */
 .cartao-filme > .ficha-marca { position: absolute; top: -7px; right: -7px; border: 0; padding: 0; box-shadow: 0 0 0 2px var(--papel); }
 .cartao-filme > button.ficha-marca { cursor: pointer; }
+/* na quina do pôster, o pronto fica num círculo de papel, com a bolinha no meio */
+.cartao-filme > .ficha-marca.ok { background: var(--papel); }
 .cartao-filme.aberto { z-index: 60; }
 .cartao-filme .cf-titulo.editavel { cursor: text; }
 .cartao-filme input.cf-titulo { width: 100%; min-width: 0; font: inherit; font-weight: 600; font-size: 13.5px; color: var(--tinta); background: transparent; border: 1px solid var(--regua-forte); border-radius: 4px; padding: 1px 4px; outline: none; }
@@ -2717,7 +2733,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .folha-previa .folha-vazia { aspect-ratio: 16 / 9; }
 .folha-dentro { position: relative; }
 /* A caneta na página: o pôster sob o mouse e o que pede atenção circulados (os traços da contagem de artes, grandes
-   o bastante para abraçar o pôster inteiro), o ✓ no que foi para o Trello e o número de cada um à mão. A tinta fica
+   o bastante para abraçar o pôster inteiro), a bolinha no que foi para o Trello (a de estado, sem o ✓ verde, #171)
+   e o número de cada um à mão. A tinta fica
    sobre a arte da prévia (sempre escura e colorida), não sobre o papel do app: os tons claros valem nos dois temas. */
 .folha-dentro { --caneta-atencao: #ffb36b; --caneta-visto: #9be3b5; }
 .caixa-poster { position: absolute; }
@@ -2725,8 +2742,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .caixa-poster .circulo path { fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .caixa-poster .circulo.mouse path { stroke: var(--ultra); }
 .caixa-poster .circulo.atencao path { stroke: var(--caneta-atencao); }
-.caixa-poster .visto { position: absolute; right: -6%; top: -9%; width: 30%; max-width: 44px; overflow: visible; pointer-events: none; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 45%)); }
-.caixa-poster .visto path { fill: none; stroke: var(--caneta-visto); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+.caixa-poster .visto { position: absolute; right: 6px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--caneta-visto); pointer-events: none; box-shadow: 0 0 0 2px rgb(0 0 0 / 35%); }
 .caixa-poster i { position: absolute; top: 0; left: 0; background: var(--papel); color: var(--tinta); font: 700 15px/1.1 Caveat, cursive; font-style: normal; border-radius: 0 0 6px 0; padding: 1px 6px; }
 .lendo-pagina { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .lendo-pagina::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--ultra); animation: ler-pagina 2.2s ease-in-out infinite alternate; }
@@ -2735,7 +2751,7 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 
 /* com roteiros para revisar, a semana encolhe (a prioridade é a revisão): as colunas perdem a altura mínima e o card
    fechado mostra só a claquete numa linha, com o pontinho da etapa à direita. O card aberto continua completo. */
-.card-semana-sinal { display: none; background: var(--tinta3); }
+.card-semana-sinal { display: none; }
 .secao-trello.encolhida .secao-trello-topo h2 { font-size: 24px; }
 .secao-trello.encolhida .coluna-topo { min-height: 38px; padding-bottom: 6px; }
 .secao-trello.encolhida .dia-num { font-size: 22px; }
@@ -2752,9 +2768,6 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .secao-trello.encolhida .card-semana > .campanhas { display: none; }
 .secao-trello.encolhida .card-semana .card-semana-sinal { display: block; position: absolute; right: 8px; top: 50%; margin-top: -3px; width: 6px; height: 6px; border-radius: 50%; transition: opacity 0.15s var(--suave); }
 .secao-trello.encolhida .card-semana:has(.card-semana-sinal) .card-semana-claquete { padding-right: 10px; }
-.card-semana-sinal.produzindo { background: var(--ultra); }
-.card-semana-sinal.aprovacao { background: var(--producao); }
-.card-semana-sinal.entregue { background: var(--ok); }
 /* o x de tirar da fila aparece no lugar do pontinho */
 .secao-trello.encolhida .card-semana .card-lixo { top: 3px; right: 4px; }
 .secao-trello.encolhida .card-semana .card-lapis { top: 3px; right: 4px; }
@@ -2816,13 +2829,9 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .barra-topo .bib-marca .logo-app { font-size: 24px; }
   .barra-topo .na-fila { flex: none; margin: 0 4px; max-width: 80px; overflow: hidden; transition: max-width 0.28s var(--suave), opacity 0.2s var(--suave), margin 0.28s var(--suave); }
   .barra-topo .na-fila .presente { width: 30px; height: 30px; font-size: 11px; }
-  .barra-topo:has(.busca.lupa.aberta) .caminhos-do-topo { display: none; }
-  /* a lupa cresce por cima do logo: o logo e os presentes recolhem, e a altura do topo não muda */
   .busca.lupa { flex: none; width: 44px; height: 44px; border-radius: 12px; }
   .busca.lupa.aberta { width: calc(100% - 52px); }
   .busca.lupa input { font-size: 16px; }
-  .barra-topo:has(.busca.lupa.aberta) .bib-marca, .barra-topo:has(.busca.lupa.aberta) .na-fila { max-width: 0; opacity: 0; margin: 0; }
-  .barra-topo:has(.busca.lupa.aberta) .espaco { flex: 0; }
   .perfil-botao:not(.falta) { width: 44px; height: 44px; padding: 0; border-radius: 22px; justify-content: center; background: none; }
   .perfil-avatar { width: 34px; height: 34px; line-height: 34px; }
   .perfil-painel input { font-size: 16px; }
@@ -2836,11 +2845,6 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .conta-filtro { min-height: 44px; padding: 0 9px; }
   /* o "R revisar o próximo" é de teclado */
   .tecla-proximo { display: none; }
-  /* a lupa da fila (#171): no celular, ao lado do título, como nas Produções; aberta, cobre a linha do título */
-  .fila-topo { position: relative; }
-  .fila-topo > .lupa-da-fila { position: absolute; top: 0; right: 0; z-index: 2; }
-  .fila-topo > .lupa-da-fila.aberta { left: 0; width: auto; }
-  .fila-topo:has(> .lupa-da-fila) .fila-titulo h2 { padding-right: 52px; }
 
   /* ---- o convite em duas linhas: o ícone, a frase e os formatos em cima; só o Escolher arquivos embaixo ---- */
   .convite-compacto { margin-top: 14px; display: grid; grid-template-columns: 44px minmax(0, 1fr); grid-template-areas: 'icone texto' 'acoes acoes'; align-items: center; gap: 12px; padding: 14px; }
@@ -3219,6 +3223,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 /* os avisos da prévia (#62): a pasta de output e o já importado */
 .conf-aviso { grid-column: 1 / -1; display: flex; gap: 10px; align-items: flex-start; border-radius: 10px; padding: 9px 12px; font: 400 13px/1.45 var(--sans); }
 .conf-aviso svg { flex: none; margin-top: 2px; }
+/* o aviso de que confere: a bolinha de estado no lugar do ícone (sem o ✓ verde, #171), na altura da primeira linha */
+.conf-aviso .bolinha-estado { margin: 6px 4px 0; }
 .conf-aviso.ok { background: var(--ok-fundo); color: var(--ok); }
 .conf-aviso.ruim { background: var(--falta-fundo); color: var(--falta); }
 .conf-aviso.neutro { background: var(--neutro); color: var(--tinta2); }

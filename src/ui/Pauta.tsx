@@ -410,14 +410,15 @@ export function Pauta({ semana, dia, irPara, voltar, topo }: Props) {
       )}
       <main className="pauta-pagina">
         <ContagemDaSemana segunda={segundaNaTela}>
-          <div className="pauta-cabeca">
-            <h1>Pauta da edição</h1>
+          <div className="pauta-cabeca cabeca-com-lupa">
+            <h1 className="ao-lado-da-lupa">Pauta da edição</h1>
             <div className="pauta-controles">
               {/* o Dia abre em hoje, quando hoje é desta semana; senão, na segunda */}
               <VisaoDaPauta visao={visao} semana={() => irPara({ semana: segunda === desta ? undefined : segunda })} dia={() => irPara({ dia: visao === 'dia' ? qual : diasDaSemana(segunda).includes(hoje) ? '' : segunda })} />
-              <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou editor" rotulo="Buscar na pauta" />
               <InterruptorDoCodigo />
-              <nav className="pauta-nav" aria-label={visao === 'dia' ? 'Dia' : 'Semana'}>
+              {/* a lupa no lugar de todas (#171): a última ferramenta, logo antes da navegação do tempo */}
+              <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou editor" rotulo="Buscar na pauta" />
+              <nav className="pauta-nav nav-do-tempo" aria-label={visao === 'dia' ? 'Dia' : 'Semana'}>
                 <button type="button" className="botao pauta-hoje" disabled={ehHoje} onClick={() => irPara(visao === 'dia' ? { dia: '' } : {})}>
                   Hoje
                 </button>

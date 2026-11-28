@@ -172,11 +172,11 @@ function faixaDaAgenda({ caixa, q }: Medidas): Caixa | null {
   return { x: esq, r: dir, w: dir - esq, y: topo.y, h: 22 + h2.h, b: topo.y + 22 + h2.h };
 }
 
-/** No celular: o vão entre o logo e a busca (ou o perfil), na barra do topo. */
+/** No celular: o vão entre o logo e quem está online (ou o perfil), na barra do topo (a lupa fica na linha do título, #171). */
 function faixaDoTopo({ caixa, q }: Medidas): Caixa | null {
   const logo = caixa(q('.bib-marca'));
   const barra = caixa(q('.barra-topo'));
-  const direita = caixa(q('.barra-topo .na-fila')) ?? caixa(q('.busca')) ?? caixa(q('.perfil'));
+  const direita = caixa(q('.barra-topo .na-fila')) ?? caixa(q('.perfil'));
   if (!logo || !barra || !direita) return null;
   return { x: logo.r + 16, r: direita.x - 16, w: direita.x - logo.r - 32, y: barra.y, b: barra.b, h: barra.h };
 }
