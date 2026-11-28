@@ -14,6 +14,7 @@
     "e2e:agenda": "node tests/e2e/agenda-celular.e2e.cjs",
     "e2e:editor": "node tests/e2e/editor-celular.e2e.cjs",
     "e2e:cadeado": "node tests/e2e/cadeado.e2e.cjs",
+    "e2e:enviar": "node tests/e2e/enviar.e2e.cjs",
     "e2e:proximo": "node tests/e2e/proximo.e2e.cjs",
     "e2e:visor": "node tests/e2e/visor-docx.e2e.cjs",
     "e2e:ficha": "node tests/e2e/ficha-atracao.e2e.cjs",

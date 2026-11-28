@@ -42,6 +42,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       ['Esc', 'Fecha os menus e os balões'],
       [atalho('Mod-z'), 'Desfaz'],
       [atalho('Mod-Shift-z'), 'Refaz'],
+      [atalho('Mod-Enter'), 'Enviar: confere a claquete e põe o roteiro na fila'],
     ],
   },
   filmes: {

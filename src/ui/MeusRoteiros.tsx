@@ -266,8 +266,9 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false,
   const vistos = (lido?.roteiros ?? []).filter((r) => !comEscrita || bateComABusca(r, busca));
   const { proximos, exibidos } = agruparPorDia(vistos);
   // cada roteiro, em qualquer exibição, abre com um toque ou com Enter; o escrito no PROMeiro abre na folha de escrita
-  const abrirUm = (r: { id: string; escrito?: string }) => (r.escrito && escrita ? escrita.abrir(r.id) : abrir(r.id));
-  const abreCom = (r: { id: string; escrito?: string }) => ({
+  // o último envio de um escrito (#194) abre o escrito, onde o redator continua escrevendo
+  const abrirUm = (r: { id: string; escrito?: string; escritoDe?: string }) => (r.escrito && escrita ? escrita.abrir(r.id) : r.escritoDe && escrita ? escrita.abrir(r.escritoDe) : abrir(r.id));
+  const abreCom = (r: { id: string; escrito?: string; escritoDe?: string }) => ({
     tabIndex: 0,
     onClick: () => abrirUm(r),
     onKeyDown: (e: KeyboardEvent) => {
@@ -463,7 +464,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false,
       roteiros={naAba(aba)}
       lendo={!escritos}
       busca={busca}
-      vazio={aba === 'equipe' ? 'ninguém da equipe escrevendo por aqui ainda' : aba === 'sendo' ? 'nenhum roteiro sendo escrito agora' : 'nenhum roteiro enviado ainda: o Enviar chega em breve'}
+      vazio={aba === 'equipe' ? 'ninguém da equipe escrevendo por aqui ainda' : aba === 'sendo' ? 'nenhum roteiro sendo escrito agora' : 'nenhum roteiro enviado ainda'}
       abrir={escrita.abrir}
     />
   );
@@ -566,6 +567,8 @@ function ListaDosEscritos({ roteiros, lendo, busca, vazio, abrir }: { roteiros: 
         >
           <span className="ficha-claquete">
             <b>{nomeNaFicha(r)}</b>
+            {/* o enviado (#194) mostra a claquete conferida no Enviar */}
+            {r.escrito === 'enviado' && r.meta.claquete && <span className="ficha-claquete-enviada">{r.meta.claquete}</span>}
             <span>
               {r.dono?.nome ? `por ${r.dono.nome}` : 'sem autor'}
               {r.criadoEm && ` · ${quandoComecou(r.criadoEm)}`}

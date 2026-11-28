@@ -1,0 +1,87 @@
+/* O Enviar da folha de escrita (#194): o painel no card aberto (a claquete, as pendências, os destinos) e, ao lado da
+   folha, o andamento da arte e os envios. Sem "unha": o estado vai na bolinha, no fundo tingido ou no texto. */
+
+.escrita-enviar { display: inline-flex; align-items: center; gap: 7px; }
+.escrita-enviar .escrita-enviar-marca { font: 600 11px var(--mono); color: var(--no-ultra); opacity: 0.85; }
+
+.enviar { display: flex; flex-direction: column; gap: 18px; }
+.enviar-cabeca { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.enviar-cabeca h2 { margin: 2px 0 0; font: 600 21px/1.25 var(--serifa); overflow-wrap: anywhere; }
+.enviar-sobre { margin: 0; font: 600 11px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta3); }
+.enviar-dica { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--tinta2); }
+
+.enviar-bloco { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--regua); animation: enviar-entra 0.32s var(--suave) both; }
+.enviar-bloco:nth-of-type(2) { animation-delay: 40ms; }
+.enviar-bloco:nth-of-type(3) { animation-delay: 80ms; }
+.enviar-bloco h3 { margin: 0; font: 600 13px var(--sans); color: var(--tinta); }
+.enviar-bloco .enviar-dica { margin-top: -6px; }
+
+.enviar-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.enviar-campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.enviar-campo > span { font-size: 12px; color: var(--tinta3); }
+.enviar-campo input { min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--regua-forte); border-radius: 8px; background: var(--cartao); color: var(--tinta); font: 500 14px var(--sans); transition: border-color var(--rapido) var(--suave), box-shadow var(--rapido) var(--suave); }
+.enviar-campo input:focus { outline: none; border-color: var(--ultra); box-shadow: 0 0 0 3px var(--ultra-suave); }
+.enviar-campo-largo { grid-column: 1 / -1; }
+.enviar-campo .enviar-claquete { height: 42px; font: 600 16px var(--mono); letter-spacing: 0.01em; }
+
+.enviar-versoes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
+.enviar-versoes .rotulo { margin-right: 4px; font-size: 12px; color: var(--tinta3); }
+.enviar-versao { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; background: var(--neutro); font-size: 12.5px; color: var(--tinta2); }
+.enviar-versao b { font: 600 11.5px var(--mono); color: var(--tinta); }
+.enviar-versao.a-conferir { background: var(--falta-fundo); color: var(--falta); }
+
+.enviar-avisos { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.enviar-avisos li { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 8px; background: var(--falta-fundo); color: var(--falta); font-size: 13px; animation: enviar-entra 0.25s var(--suave) both; }
+.enviar-avisos li.trava { background: color-mix(in srgb, var(--perigo) 12%, transparent); color: var(--perigo); font-weight: 600; }
+
+.enviar-lista, .enviar-destinos { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+.enviar-lista li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.enviar-lista small { color: var(--tinta3); }
+.enviar-destinos li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--neutro); color: var(--tinta2); }
+.enviar-destinos b { color: var(--tinta); font-weight: 600; }
+.enviar-destinos small { color: var(--tinta3); }
+.enviar-motivo { margin-top: 4px; }
+
+.enviar-pe { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 14px; padding-top: 14px; border-top: 1px solid var(--regua); }
+.enviar-marca { margin-right: auto; font: 500 12px var(--mono); color: var(--tinta3); }
+.enviar-recusa { flex-basis: 100%; margin: 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--perigo) 12%, transparent); color: var(--perigo); font-size: 13px; }
+.enviar-pe .pergunta-liberacao { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; animation: enviar-entra 0.25s var(--suave) both; }
+.enviar-pe .pergunta-liberacao-texto { margin-right: 4px; font-weight: 600; }
+
+/* ao lado da folha: o andamento da arte */
+.andamento-da-arte .cab-artes, .envios-da-escrita .cab-artes { margin-bottom: 8px; }
+.andamento-da-arte .rotulo { font-family: var(--mono); overflow-wrap: anywhere; }
+.passos-da-arte { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.passos-da-arte li { position: relative; flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding: 8px 8px 7px; border-radius: 10px; font-size: 12.5px; color: var(--tinta3); transition: background var(--medio) var(--suave), color var(--medio) var(--suave); }
+.passos-da-arte li[data-situacao='feito'] { color: var(--tinta2); }
+.passos-da-arte li[data-situacao='agora'] { background: var(--ultra-suave); color: var(--ultra-tinta); font-weight: 600; }
+.passos-da-arte li[data-situacao='agora'] .bolinha-estado { animation: bolinha-respira 1.6s ease-in-out infinite; }
+.passos-da-arte small { font-weight: 400; color: var(--tinta3); }
+.andamento-nota { margin: 8px 2px 0; line-height: 1.5; }
+.andamento-nota a { color: inherit; }
+
+/* os envios */
+.lista-de-envios { margin: 0; padding: 0; list-style: none; }
+.envio-linha { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-radius: 10px; background: none; color: var(--tinta); text-align: left; font: inherit; cursor: pointer; transition: background var(--rapido) var(--suave); }
+.envio-linha:hover { background: var(--neutro); }
+.envio-linha:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+.envio-marca { flex: none; min-width: 34px; padding: 1px 6px; border-radius: 6px; background: var(--neutro); font: 600 11.5px/1.6 var(--mono); text-align: center; color: var(--tinta2); }
+.lista-de-envios li:first-child .envio-marca { background: var(--ultra-suave); color: var(--ultra-tinta); }
+.envio-linha .txt { display: flex; flex-direction: column; min-width: 0; }
+.envio-linha .txt b { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.envio-linha .txt span { font-size: 12px; color: var(--tinta3); }
+.envio-aberto { display: flex; flex-direction: column; gap: 14px; }
+.envio-aberto h2 { font-family: var(--mono); font-size: 18px; }
+
+@keyframes enviar-entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .enviar-bloco, .enviar-avisos li, .enviar-pe .pergunta-liberacao { animation: none; }
+  .passos-da-arte li[data-situacao='agora'] .bolinha-estado { animation: none; }
+}
+@media (max-width: 600px) {
+  .enviar-campos { grid-template-columns: 1fr; }
+  .enviar-pe .botao.primario { flex: 1; min-height: 44px; }
+  .escrita-enviar .escrita-enviar-nome { display: none; }
+  .escrita-enviar { min-width: 44px; min-height: 40px; justify-content: center; }
+}

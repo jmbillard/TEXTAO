@@ -34,6 +34,8 @@ export interface PonteDaEscrita {
   abrirFicha?: (f: { tipo: FichaNoTexto['tipo']; texto: string; el: HTMLElement }) => void;
   /** um clique no texto, com o cursor já no lugar (abre o balão da arte, como na revisão) */
   aoClicar?: (pos: number) => void;
+  /** o Ctrl+Enter, que abre o Enviar (#194); sem ele, o Ctrl+Enter é a quebra de linha do editor. true: abriu */
+  enviar?: () => boolean;
 }
 
 /** O texto do trecho com a quebra de linha e a imagem valendo um caractere cada: as posições batem com as do editor. */
@@ -203,10 +205,11 @@ function decorarFichas(state: EditorState): DecorationSet {
 
 const chaveDasFichas = new PluginKey<DecorationSet>('fichasDaEscrita');
 
-/** As teclas da escrita, na ordem: o menu aberto, o Tab (a sugestão, depois o tipo), o Ctrl+U e o Enter no fim. */
+/** As teclas da escrita, na ordem: o menu aberto, o Ctrl+Enter do Enviar (#194), o Tab (a sugestão, depois o tipo), o Ctrl+U e o Enter no fim. */
 function tecla(editor: Editor, ponte: PonteDaEscrita, e: KeyboardEvent, programa: string): boolean {
   if (ponte.teclaNoMenu?.(e)) return true;
   const mod = e.ctrlKey || e.metaKey;
+  if (e.key === 'Enter' && mod && !e.shiftKey && !e.altKey && ponte.enviar?.()) return true;
   if (e.key === 'Tab' && !mod && !e.altKey) {
     if (!e.shiftKey && ponte.aceitarSugestao?.()) return true;
     return confirmarOuTrocar(editor, e.shiftKey ? -1 : 1);

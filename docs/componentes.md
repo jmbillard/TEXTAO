@@ -21,7 +21,7 @@ as durações `--rapido` (0.15s) e `--medio` (0.2s) e o respeito ao `prefers-red
 
 | Peça | Onde mora | O que é | Quando usar |
 |---|---|---|---|
-| `CardAberto` | `CardAberto.tsx` | O painel que cresce do card clicado e volta para ele, por cima de tudo. `FecharOCardAberto` é o × dele. | Para abrir qualquer card: a agenda No Trello, a Pauta, as Produções e os Filmes. Nada de abrir em linha. |
+| `CardAberto` | `CardAberto.tsx` | O painel que cresce do card clicado e volta para ele, por cima de tudo. `FecharOCardAberto` é o × dele. | Para abrir qualquer card: a agenda No Trello, a Pauta, as Produções e os Filmes; o painel do Enviar e um envio do histórico, na folha de escrita (#194). Nada de abrir em linha. |
 | `Vagas` | `vagas.tsx` | A lista com vagas animadas: o item que entra abre a vaga e o que sai a fecha (`eixo` "y" para linhas, "x" para chips). O `vazio` entra depois que a última vaga fecha. | Toda lista em que um item entra ou sai sem trocar a tela. |
 | `useDeslize` | `vagas.tsx` | O FLIP dos `[data-card]`: o que muda de lugar desliza até o lugar novo. | Quando a disposição muda (ordem, coluna). Não serve para a troca de semana (aí é a troca). |
 | `CASCATA_MS` | `cena.tsx` | O passo da cascata de entrada e quantos entram nela. | Toda lista ou coluna que chega em cascata. |
@@ -63,6 +63,7 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `RelativoAMao` | `pecas.tsx` | "hoje", "amanhã" ou "ontem" à mão. | Ao lado de um dia. |
 | `Vazio` | `pecas.tsx` | O vazio curto à mão ("nada aqui", "ninguém"). `pequeno` para células e colunas estreitas. | Os vazios de lista e de coluna. Os vazios que explicam (formulários) ficam no texto comum. |
 | `MarcaTexto` | `pecas.tsx` | A passada de marca-texto da claquete de prioridade. | A prioridade, onde a claquete aparece. |
+| `FolhaComDiferencas` | `Comparar.tsx` | A folha com o texto e o que entrou e saiu marcado, com a anotação à mão. | A comparação da versão nova e o envio aberto no histórico da folha de escrita (#194). |
 | `Riscado` | `Comparar.tsx` | O risco à mão que atravessa cada linha do texto. | O que saiu do roteiro e a arte que já existe. |
 | `BalaoDeInfo` | `BalaoDeInfo.tsx` | O balão de fala que abre o texto ali mesmo. | A observação de uma claquete ou de uma posição. |
 | `FogoComTroca` | `fogo.tsx` | O fogo da complexidade, com a troca cruzada de nível. | Onde a complexidade da arte muda. |
