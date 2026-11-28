@@ -17,12 +17,14 @@ import { HASH_DAS_CAMPANHAS, campanhaDoHash, hashDaCampanha } from './modelo/cam
 import { MeusRoteiros } from './ui/MeusRoteiros';
 import { CaminhosDoTopo, SeletorDeArea } from './ui/SeletorDeArea';
 import { ehAreaDosRoteiros, type Area, type AreaDosRoteiros } from './modelo/areas';
-import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, souCoordenacao, temTrello, temFilmes, lembrarArea, type TextoOriginal } from './dados/armazenamento';
+import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, enviarOEscrito, type EnvioFeito, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, souCoordenacao, temTrello, temFilmes, lembrarArea, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { converterLayout } from './editor/extensoes';
 import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
 import type { DocBruto } from './importar/bruto';
 import { exportar, pendencias, roteiroDoJson, travamTrello } from './modelo/exportar';
+import { roteiroDoEnvio, type ClaqueteConferida } from './modelo/enviar';
+import { textoDoTrecho } from './modelo/trecho';
 import { docVazio, metaVazia, novoId, type ArteDoAcervo, type Pessoa, type Roteiro } from './modelo/tipos';
 import { Marca } from './ui/pecas';
 import { chaveDeArte } from './modelo/diferencas';
@@ -109,6 +111,70 @@ const textoDoOriginal = (bruto: DocBruto): TextoOriginal =>
   bruto.blocos
     .flatMap((b) => (b.tipo === 'p' ? [b.par] : b.linhas.flatMap((linha) => linha.flatMap((celula) => celula))))
     .map((par) => par.filter((r) => r.t).map((r) => ({ t: r.t, ...(r.u ? { u: 1 as const } : {}), ...(r.b ? { b: 1 as const } : {}), ...(r.i ? { i: 1 as const } : {}) })));
+
+/** As fichas de claquete que já estão na fila (dos últimos 3 meses), pela chave: o arquivo novo é uma versão nova dela.
+    `menos`: as cópias do envio deste Roteiro escrito no PROMeiro (#194), que o próprio Enviar substitui. */
+async function claquetesNaFila(menos?: string): Promise<Map<string, string>> {
+  const naFila = new Map<string, string>();
+  // só os dos últimos 3 meses: a claquete não tem o ano, e a do ano que vem bateria com a deste ano
+  const limite = new Date(Date.now() - 92 * 86_400_000).toISOString();
+  for (const r of await armazenamento.listar().catch(() => [])) {
+    if (r.atualizadoEm < limite || (menos && r.escritoDe === menos)) continue;
+    const k = chaveDaClaquete(r.meta.claquete ?? '');
+    if (k) naFila.set(k, r.id);
+  }
+  return naFila;
+}
+
+/**
+ * O caminho da fila de um roteiro que chega (#194: o mesmo do arquivo solto na fila e do Enviar da folha de escrita): a
+ * atração pelo servidor quando a lista do navegador não reconhece, os palpites de redator, a versão nova de uma claquete
+ * que já está na fila, a claquete que já está na produção da arte e as artes que a atração já tem. Muda o roteiro.
+ * @param arquivo o nome do arquivo (ou do roteiro), para a atração com número e o diagnóstico
+ * @param jaNaProducao o roteiro já foi enviado antes (o reenvio do escrito herda o card): não pergunta da produção
+ */
+async function noCaminhoDaFila(roteiro: Roteiro, { arquivo, paragrafos, naFila, acervos, jaNaProducao = false }: { arquivo: string; paragrafos: string[]; naFila: Map<string, string>; acervos: Map<string, Promise<ArteDoAcervo[]>>; jaNaProducao?: boolean }) {
+  // atração não reconhecida pela lista do navegador: o servidor procura nas keys do Teable
+  // (também quando o que achou não é do cadastro: o nome embutido "Eliana" não é a atração "Em Família com Eliana")
+  if ((!roteiro.meta.programa || !atracaoCadastrada(roteiro.meta.programa)) && roteiro.meta.claquete) {
+    const antes = roteiro.meta.programa;
+    const nome = await atracaoNoServidor(roteiro.meta.claquete);
+    if (nome) Object.assign(roteiro.meta, { programa: nome, tipoPrograma: programasConhecidos().find((x) => x.nome === nome)?.tipo ?? 'outro' });
+    // a atração com número no nome ("Fórmula 1") que o navegador não conhecia: o número dela saiu da data
+    const refeita = nome ? refazerPelaAtracao(roteiro.meta, arquivo, nome) : null;
+    if (refeita) {
+      Object.assign(roteiro.meta, refeita);
+      roteiro.meta.revisar = pendencias(exportar(roteiro));
+    }
+    // ficou sem atração: o servidor fica sabendo o que o navegador tinha, para o diagnóstico
+    if (!nome) relatarSemAtracao({ claquete: roteiro.meta.claquete, arquivo, achadoNoNavegador: antes, atracoesNoNavegador: quantasAtracoes(), porLista: acharPrograma(roteiro.meta.claquete)?.nome ?? '' });
+  }
+  // sem redator: o PROMeiro sugere um nome, pelo texto e pelas últimas claquetes da atração (já com a atração
+  // que o servidor achou), sem preencher sozinho
+  if (!roteiro.meta.redator) {
+    roteiro.meta.sugestoesRedator = await palpitesDoRedator(roteiro.meta, paragrafos).catch(() => []);
+  }
+  const k = chaveDaClaquete(roteiro.meta.claquete);
+  if (k && naFila.has(k)) roteiro.meta.substitui = naFila.get(k);
+  if (k) naFila.set(k, roteiro.id);
+  // não está na fila, mas já está na produção da arte: a ficha pergunta se é uma v2
+  if (!roteiro.meta.substitui && !jaNaProducao) {
+    const np = await consultarProducao(roteiro.meta.claquete);
+    if (np) roteiro.meta.naProducao = resumoDaProducao(np);
+  }
+  // artes que a atração já tem prontas: ficam marcadas para a conferência e seguram o envio automático
+  if (roteiro.meta.programa) {
+    const chave = `${roteiro.meta.programa.trim().toLowerCase()}|${roteiro.meta.dataExibicao ?? ''}`;
+    if (!acervos.has(chave)) acervos.set(chave, consultarAcervo(roteiro.meta.programa, roteiro.meta.dataExibicao ?? '').then((a) => a.artes));
+    const doAcervo = await acervos.get(chave)!;
+    const noRoteiro = new Set(exportar(roteiro).artes.map((a) => chaveDeArte(a.texto)));
+    const ja = doAcervo.filter((a) => noRoteiro.has(a.chave));
+    if (ja.length) {
+      roteiro.meta.jaExistem = ja;
+      roteiro.meta.revisar = pendencias(exportar(roteiro));
+    }
+  }
+}
 
 export function App() {
   const [tela, setTela] = useState<Tela>(telaDoHash);
@@ -356,59 +422,13 @@ export function App() {
       ir({ t: 'biblioteca' });
       await atualizarVocabulario();
       // claquete que já está na fila: o arquivo novo é uma versão nova dela, e a ficha pergunta se substitui
-      const naFila = new Map<string, string>();
+      const naFila = await claquetesNaFila();
       const acervos = new Map<string, Promise<ArteDoAcervo[]>>();
-      // só os dos últimos 3 meses: a claquete não tem o ano, e a do ano que vem bateria com a deste ano
-      const limite = new Date(Date.now() - 92 * 86_400_000).toISOString();
-      for (const r of await armazenamento.listar().catch(() => [])) {
-        if (r.atualizadoEm < limite) continue;
-        const k = chaveDaClaquete(r.meta.claquete ?? '');
-        if (k) naFila.set(k, r.id);
-      }
       for (const arquivo of arquivos) {
         try {
           const roteiro = await lerRoteiro(arquivo, (detalhe) => setLendo({ nome: arquivo.name, detalhe }));
-          // atração não reconhecida pela lista do navegador: o servidor procura nas keys do Teable
-          // (também quando o que achou não é do cadastro: o nome embutido "Eliana" não é a atração "Em Família com Eliana")
-          if ((!roteiro.meta.programa || !atracaoCadastrada(roteiro.meta.programa)) && roteiro.meta.claquete) {
-            const antes = roteiro.meta.programa;
-            const nome = await atracaoNoServidor(roteiro.meta.claquete);
-            if (nome) Object.assign(roteiro.meta, { programa: nome, tipoPrograma: programasConhecidos().find((x) => x.nome === nome)?.tipo ?? 'outro' });
-            // a atração com número no nome ("Fórmula 1") que o navegador não conhecia: o número dela saiu da data
-            const refeita = nome ? refazerPelaAtracao(roteiro.meta, arquivo.name, nome) : null;
-            if (refeita) {
-              Object.assign(roteiro.meta, refeita);
-              roteiro.meta.revisar = pendencias(exportar(roteiro));
-            }
-            // ficou sem atração: o servidor fica sabendo o que o navegador tinha, para o diagnóstico
-            if (!nome) relatarSemAtracao({ claquete: roteiro.meta.claquete, arquivo: arquivo.name, achadoNoNavegador: antes, atracoesNoNavegador: quantasAtracoes(), porLista: acharPrograma(roteiro.meta.claquete)?.nome ?? '' });
-          }
-          // sem redator: o PROMeiro sugere um nome, pelo texto e pelas últimas claquetes da atração (já com a atração
-          // que o servidor achou), sem preencher sozinho
-          if (!roteiro.meta.redator) {
-            const paragrafos = (textosOriginais.get(roteiro.id) ?? []).map((par) => par.map((r) => r.t).join(''));
-            roteiro.meta.sugestoesRedator = await palpitesDoRedator(roteiro.meta, paragrafos).catch(() => []);
-          }
-          const k = chaveDaClaquete(roteiro.meta.claquete);
-          if (k && naFila.has(k)) roteiro.meta.substitui = naFila.get(k);
-          if (k) naFila.set(k, roteiro.id);
-          // não está na fila, mas já está na produção da arte: a ficha pergunta se é uma v2
-          if (!roteiro.meta.substitui) {
-            const np = await consultarProducao(roteiro.meta.claquete);
-            if (np) roteiro.meta.naProducao = resumoDaProducao(np);
-          }
-          // artes que a atração já tem prontas: ficam marcadas para a conferência e seguram o envio automático
-          if (roteiro.meta.programa) {
-            const chave = `${roteiro.meta.programa.trim().toLowerCase()}|${roteiro.meta.dataExibicao ?? ''}`;
-            if (!acervos.has(chave)) acervos.set(chave, consultarAcervo(roteiro.meta.programa, roteiro.meta.dataExibicao ?? '').then((a) => a.artes));
-            const doAcervo = await acervos.get(chave)!;
-            const noRoteiro = new Set(exportar(roteiro).artes.map((a) => chaveDeArte(a.texto)));
-            const ja = doAcervo.filter((a) => noRoteiro.has(a.chave));
-            if (ja.length) {
-              roteiro.meta.jaExistem = ja;
-              roteiro.meta.revisar = pendencias(exportar(roteiro));
-            }
-          }
+          const paragrafos = (textosOriginais.get(roteiro.id) ?? []).map((par) => par.map((r) => r.t).join(''));
+          await noCaminhoDaFila(roteiro, { arquivo: arquivo.name, paragrafos, naFila, acervos });
           await armazenamento.salvar(roteiro);
           setNovos((n) => [...n, roteiro.id]);
           // o arquivo como veio fica no servidor: é ele que vira o PDF do card
@@ -431,6 +451,33 @@ export function App() {
       }
     },
     [lerRoteiro], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  /**
+   * O Enviar da folha de escrita (#194): o roteiro da fila sai do texto da folha com a claquete conferida e passa pelo
+   * mesmo caminho do arquivo solto na fila (o editor da pauta, a atração, o redator, a versão nova de uma claquete que já
+   * está nela, a produção e o acervo); o servidor grava a foto e põe a cópia do envio na fila (no reenvio, substituindo
+   * a anterior e herdando o card); sem pendência que trave, vai sozinho ao Trello quando o envio automático está ligado.
+   */
+  const enviarDaEscrita = useCallback(
+    async (escrito: Roteiro, conferida: ClaqueteConferida, { motivo, liberada, jaEnviado }: { motivo: string; liberada?: boolean; jaEnviado: boolean }): Promise<EnvioFeito> => {
+      await atualizarVocabulario();
+      const copia = roteiroDoEnvio(escrito, conferida, novoId());
+      Object.assign(copia, { criadoPor: pessoa, alteradoPor: pessoa });
+      // o editor vem da pauta da edição, pela claquete, como no arquivo que chega
+      if (!copia.meta.editor) copia.meta.editor = (await consultarPauta(copia.meta.claquete).catch(() => ({ editor: '' }))).editor;
+      copia.meta.revisar = pendencias(exportar(copia));
+      const paragrafos = (copia.doc.content ?? []).map((p) => textoDoTrecho(p));
+      await noCaminhoDaFila(copia, { arquivo: copia.meta.claquete, paragrafos, naFila: await claquetesNaFila(escrito.id), acervos: new Map(), jaNaProducao: jaEnviado });
+      const feito = await enviarOEscrito(escrito.id, { roteiro: { meta: copia.meta, doc: copia.doc }, copia: copia.id, motivo, ...(jaEnviado ? { liberada: !!liberada } : {}) });
+      setNovos((n) => [...n, feito.copia.id]);
+      setChegou((n) => n + 1);
+      const r = feito.copia;
+      if (ENVIO_AUTOMATICO && temTrello() && !travamTrello(r.meta.revisar).length && !r.meta.substitui && !r.meta.naProducao && !feito.cardHerdado)
+        void mandarParaTrello(r).catch((e) => avisar(`${r.meta.claquete} não foi para o Trello: ${e instanceof Error ? e.message : e}`)).finally(() => setChegou((n) => n + 1));
+      return feito;
+    },
+    [identidade, avisar], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const abrirArquivo = useCallback(
@@ -605,7 +652,7 @@ export function App() {
         />
       )}
       {tela.t === 'roteiros' && tela.id && (
-        <TelaDeEscrita key={tela.id} id={tela.id} voltar={voltarAosRoteiros} abrirNaRevisao={abrirNaRevisao} avisar={avisar} pessoa={pessoa} topo={listaDaFolha === 'redator' ? topoDaArea('redator') : topoDaDesigner('roteiros')} />
+        <TelaDeEscrita key={tela.id} id={tela.id} voltar={voltarAosRoteiros} enviar={enviarDaEscrita} abrirNaRevisao={abrirNaRevisao} avisar={avisar} pessoa={pessoa} topo={listaDaFolha === 'redator' ? topoDaArea('redator') : topoDaDesigner('roteiros')} />
       )}
       {tela.t === 'producoes' && (
         <Producoes topo={topoDaDesigner('producoes')} />

@@ -92,7 +92,7 @@ describe('o Enviar do Roteiro escrito no PROMeiro (#194)', () => {
     expect((await enviar(davi, 'escrito-envio-1', { roteiro: { meta: { ...escrito.meta, ...conferida() }, doc: escrito.doc } })).status).toBe(403);
     expect((await enviar(marina, 'escrito-envio-1', { roteiro: { meta: { ...escrito.meta, claquete: ' ' }, doc: escrito.doc } })).status).toBe(400);
 
-    const r = await enviar(marina, 'escrito-envio-1', { roteiro: { meta: { ...escrito.meta, ...conferida() }, doc: escrito.doc }, copia: 'envio-brasa-1', motivo: 'primeira versão', nArtes: 2 });
+    const r = await enviar(marina, 'escrito-envio-1', { roteiro: { meta: { ...escrito.meta, ...conferida() }, doc: escrito.doc }, copia: 'envio-brasa-1', motivo: 'primeira versão' });
     expect(r.status).toBe(201);
     const feito = await r.json();
     expect(feito).toMatchObject({ envio: { n: 2, claquete: 'BRASA 21/11 (A)', letra: 'A', versao: 1 }, cardHerdado: false, substituiu: null });

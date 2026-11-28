@@ -39,7 +39,7 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { acertarNArtesUmaVez, artesComOEstado, fogoNoNivel, versoesLidas } from './artes.mjs';
+import { acertarNArtesUmaVez, artesComOEstado, contarArtes, fogoNoNivel, versoesLidas } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
@@ -2012,7 +2012,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const nova = roteiroDaFila({ id: novo, meta, doc: r.doc, anterior, ultimo: ultimaFoto ? JSON.parse(ultimaFoto.meta) : null, liberada: !!corpo.liberada, agora });
       const metaJ = JSON.stringify(nova.meta);
       const docJ = JSON.stringify(nova.doc);
-      const nArtes = Number.isInteger(corpo.nArtes) ? corpo.nArtes : 0;
+      // a conta das artes da cópia é a do servidor: a herança da anterior pode tirar artes da lista
+      const nArtes = contarArtes(nova.meta, nova.doc);
       const metaDoEscrito = metaDoEscritoEnviado(JSON.parse(linha.meta), nova.meta);
       const herdado = anteriorLinha ? q.envio.get(anteriorLinha.id) : null;
       const n = (q.ultimaVersao.get(id)?.n ?? 0) + 1;

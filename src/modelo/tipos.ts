@@ -197,6 +197,10 @@ export interface Roteiro {
   /** O Roteiro escrito no PROMeiro (#189): o estado dele, guardado pelo servidor ('sendo-escrito' antes do Enviar).
       Ausente no roteiro que chegou de fora. */
   escrito?: 'sendo-escrito' | 'enviado';
+  /** O roteiro da fila que saiu do Enviar (#194): o id do Roteiro escrito no PROMeiro de onde veio. */
+  escritoDe?: string;
+  /** Quem só lê o Roteiro escrito no PROMeiro que nunca teve sala (#194): lê o texto guardado, sem a sala. */
+  semSala?: boolean;
 }
 
 export const novoId = (): string =>
