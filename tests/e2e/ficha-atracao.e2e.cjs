@@ -801,7 +801,7 @@ async function desfazerNoComputador(navegador, url, tema) {
   assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '6→4');
   assert.equal(await res.locator('.det-desfeita').textContent(), `Importação desfeita: o acervo de ${revista} voltou a 4.`);
   assert.equal(await res.locator('.nao-voltaram').count(), 0);
-  assert.equal(await p.locator('.caixinha-importacao').count(), 0, 'a caixinha some ao desfazer');
+  await p.locator('.caixinha-importacao').waitFor({ state: 'detached', timeout: 2000 });
   assert.deepEqual(
     LINHAS.filter((l) => l.atracao[0]?.title === revista).map((l) => `${l.arte} (${l.tipo ?? ''})`),
     ['CAPA (CRT)', 'ENTREVISTA (RDP)', 'BASTIDORES ()', 'MODA NOVA (RDP)'],

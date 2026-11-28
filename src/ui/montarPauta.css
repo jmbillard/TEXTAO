@@ -139,8 +139,6 @@
 .coluna-destino.mover-menu:hover, .coluna-destino.mover-menu:focus { border: 0; background: color-mix(in srgb, var(--tinta) 6%, transparent); color: var(--tinta); }
 @media (hover: none) { .coluna-destino.mover-menu { opacity: 0.7; } }
 .coluna-claquete { padding-right: 44px; }
-/* a caixinha do Desfazer do ⇄: a largura do texto (no celular, até a beira da tela), não metade da tela */
-.desfazer.montar-movida { width: max-content; }
 .montar-demanda.arrastavel .montar-in { width: calc(100% - 44px); }
 .montar-demanda.arrastavel .montar-leitura { padding-right: 44px; }
 .montar-teclas .arrasto-alca { display: inline-block; width: auto; line-height: 1; touch-action: auto; cursor: default; }

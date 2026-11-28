@@ -120,7 +120,7 @@ export function BuscaDasProducoes({ termo, saindo, diaEscrito, prazoEscrito, abr
         )
       }
       dica="também as entregues há mais tempo · Esc limpa"
-      nada={achados && !achados.total && !erro ? <p className="prod-nada prod-busca-nada">nenhuma Produção com isso, nem nas antigas</p> : null}
+      nada={achados && !achados.total && !erro ? 'nenhuma Produção com isso, nem nas antigas' : null}
       linha={(c) => <AchadoDaProducao c={c} diaEscrito={diaEscrito} prazoEscrito={prazoEscrito} aoClicar={(el) => abrir(c, el)} />}
       mais={
         achados?.mais && (

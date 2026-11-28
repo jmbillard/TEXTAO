@@ -4,6 +4,7 @@ import { SUBTIPOS_ARTE } from '../modelo/tipos';
 import { Icone } from './icones';
 import { ImportarNoComputador } from './ImportarAcervo';
 import { chaveDeBusca } from './util';
+import { NadaNaBusca } from './pecas';
 
 /* A ficha da atração nos Cadastros: o acervo dela (as artes prontas), só para consultar. No computador, a seção Acervo
    fica no painel da direita e "Ver as N" troca a lista da esquerda pelo acervo; no celular, a ficha ocupa a tela. */
@@ -50,8 +51,8 @@ export function TiposDoAcervo({ acervo }: { acervo: AcervoDaFicha }) {
 }
 
 /** As linhas do acervo (a miniatura, a arte e o tipo), até o máximo. */
-function LinhasDoAcervo({ artes, vazio }: { artes: ArteDaFicha[]; vazio: string }) {
-  if (!artes.length) return <p className="cad-vazio">{vazio}</p>;
+function LinhasDoAcervo({ artes, vazio }: { artes: ArteDaFicha[]; vazio: React.ReactNode }) {
+  if (!artes.length) return typeof vazio === 'string' ? <p className="cad-vazio">{vazio}</p> : vazio;
   return (
     <>
       {artes.slice(0, MAXIMO).map((a) => (
@@ -101,7 +102,7 @@ export function ListaDoAcervo({ nome, acervo, voltar }: { nome: string; acervo: 
               </button>
             ))}
           </div>
-          <LinhasDoAcervo artes={lista} vazio={busca.trim() ? `Nada com “${busca.trim()}”.` : 'Nenhuma arte deste tipo.'} />
+          <LinhasDoAcervo artes={lista} vazio={busca.trim() ? <NadaNaBusca termo={busca} className="cad-nada" /> : 'Nenhuma arte deste tipo.'} />
         </>
       )}
     </section>
@@ -175,7 +176,7 @@ export function FichaNoCelular({ nome, acervo, falha, voltar }: { nome: string; 
                 <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Tem essa arte?" enterKeyHint="search" />
               </label>
               <section className="lista-cad" aria-label={`Acervo de ${nome}`}>
-                <LinhasDoAcervo artes={filtrar(acervo.artes, busca, null)} vazio={`Nada com “${busca.trim()}” no acervo.`} />
+                <LinhasDoAcervo artes={filtrar(acervo.artes, busca, null)} vazio={<NadaNaBusca termo={busca} onde="no acervo" className="cad-nada" />} />
               </section>
             </>
           )}

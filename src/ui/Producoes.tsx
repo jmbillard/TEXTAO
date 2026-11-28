@@ -7,7 +7,7 @@ import type { CampanhaDoCard } from '../modelo/campanhas';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
 import { MarcaTexto, RABISCOS, tracoDe } from './pecas';
-import { CaixinhaDoDesfazer } from './CaixinhaDoDesfazer';
+import { CaixinhaDoDesfazer } from './desfazer';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { CampanhaDoFiltro, EscolherCampanha } from './FiltroDaCampanha';
 import { ProducaoAberta } from './ProducaoAberta';
@@ -113,11 +113,10 @@ interface Desfazivel {
   antes: CardDaProducao;
   depois: CardDaProducao;
   texto: string;
+  vez: number;
 }
 /** Quanto o clique espera a Produção ser lida antes de abrir o card aberto (#160); depois disso, abre e lê lá. */
 const ESPERA_PARA_ABRIR_MS = 350;
-/** Quanto tempo a caixinha de desfazer fica aberta. */
-const DESFAZER_MS = 10_000;
 
 /** A frase da caixinha: o que a mudança fez. */
 function fraseDaMudanca(c: CardDaProducao, etapa: ColunaDoBloco) {
@@ -602,11 +601,6 @@ export function Producoes({ topo }: Props) {
   const noCelular = useNoCelular();
   const reler = useRef<() => void>(() => {});
   useEffect(() => {
-    if (!desfazivel) return;
-    const t = setTimeout(() => setDesfazivel(null), DESFAZER_MS);
-    return () => clearTimeout(t);
-  }, [desfazivel]);
-  useEffect(() => {
     let vivo = true;
     const ler = (primeira: boolean) =>
       lerProducoesPorPraca().then(
@@ -677,7 +671,7 @@ export function Producoes({ topo }: Props) {
             } else {
               const depois = r.producao ?? naHora;
               setLido((t) => t && comOCard(t, depois));
-              setDesfazivel({ antes: c, depois, texto: fraseDaMudanca(c, etapa) });
+              setDesfazivel({ antes: c, depois, texto: fraseDaMudanca(c, etapa), vez: Date.now() });
             }
           },
           (e) => {
@@ -888,7 +882,7 @@ export function Producoes({ topo }: Props) {
                 fechar={fecharAberta}
               />
             )}
-            {desfazivel && <CaixinhaDoDesfazer onde="tela" texto={desfazivel.texto} desfazer={() => desfazer(desfazivel)} fechar={() => setDesfazivel(null)} />}
+            <CaixinhaDoDesfazer caixinha={desfazivel && { id: desfazivel.vez, texto: desfazivel.texto, desfazer: () => desfazer(desfazivel), fechar: () => setDesfazivel(null) }} />
           </>
         )}
       </main>

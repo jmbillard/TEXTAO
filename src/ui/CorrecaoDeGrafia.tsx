@@ -22,6 +22,7 @@ import type {
 } from "../modelo/correcaoDeGrafia";
 import { Icone } from "./icones";
 import { Marca } from "./pecas";
+import { CaixinhaDoDesfazer } from "./desfazer";
 import { useTelaDeCelular } from "./faixa";
 import "./configuracao.css";
 import "./correcoes.css";
@@ -97,8 +98,6 @@ const fraseDoResultado = (certas: number, falhas: number) =>
 const VOLTOU_DA_PAUTA = "a claquete antiga voltou";
 const VOLTOU_DAS_ATRACOES = "a ficha que saiu voltou, com as artes e as ligações";
 
-/** Quanto tempo a caixinha de desfazer fica aberta. */
-const DESFAZER_MS = 15_000;
 
 /** A claquete com o código destacado: o que fica igual e o código (o "(...)" do fim ou a palavra solta). */
 function partes(p: PropostaDaPauta): {
@@ -181,11 +180,6 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
   const [desfazendo, setDesfazendo] = useState(false);
   // o registro relê quando muda (uma aplicação, um desfazer)
   const [mudou, setMudou] = useState(0);
-  useEffect(() => {
-    if (!desfazivel || desfazendo) return;
-    const t = setTimeout(() => setDesfazivel(null), DESFAZER_MS);
-    return () => clearTimeout(t);
-  }, [desfazivel, desfazendo]);
   // trocou de página: as marcadas eram da outra
   useEffect(() => setMarcadas(new Set()), [paginas.corrigir]);
   const reler = () => {
@@ -380,27 +374,17 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
             )}
           </>
         )}
-        {desfazivel && (
-          <div className="cor-desfazer" role="status">
-            <span className="cor-desfazer-texto">{desfazivel.texto}</span>
-            <button
-              type="button"
-              className="botao cor-desfazer-botao"
-              disabled={desfazendo}
-              onClick={() => void desfazer(desfazivel.ids, desfazivel.voltou).catch((e) => setResultado({ texto: e instanceof Error ? e.message : String(e), falhas: [] }))}
-            >
-              {desfazendo ? "Desfazendo…" : "Desfazer"}
-            </button>
-            <button
-              type="button"
-              className="botao-texto cor-desfazer-fechar"
-              aria-label="Fechar"
-              onClick={() => setDesfazivel(null)}
-            >
-              ×
-            </button>
-          </div>
-        )}
+        <CaixinhaDoDesfazer
+          caixinha={
+            desfazivel && {
+              id: desfazivel.ids.join(","),
+              texto: desfazivel.texto,
+              ocupado: desfazendo,
+              desfazer: () => void desfazer(desfazivel.ids, desfazivel.voltou).catch((e) => setResultado({ texto: e instanceof Error ? e.message : String(e), falhas: [] })),
+              fechar: () => setDesfazivel(null),
+            }
+          }
+        />
         <Atracoes
           dados={atracoes}
           falha={falhaAtr}

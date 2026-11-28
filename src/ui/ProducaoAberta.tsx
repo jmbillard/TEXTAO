@@ -16,7 +16,7 @@ import {
 } from '../dados/armazenamento';
 import { ApelidoDaClaquete, NomeDaClaquete, versoesDoCard } from './Apelido';
 import { CardAberto, FecharOCardAberto } from './CardAberto';
-import { CaixinhaDoDesfazer } from './CaixinhaDoDesfazer';
+import { CaixinhaDoDesfazer, PRAZO_DO_DESFAZER } from './desfazer';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { campanhasParaLigar, type CampanhaDoCard } from '../modelo/campanhas';
 import { MenuLigar } from './Cadastros';
@@ -83,8 +83,6 @@ const diasDoPrazo = (hoje: string, n = 12) => {
 const instanteCurto = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
 const diaCurto = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
 const NIVEL = { 1: 'BAIXA', 2: 'MÉDIA', 3: 'ALTA' } as const;
-/** Quanto tempo o "Desfazer" do apagar fica à vista. */
-const DESFAZER_MS = 8_000;
 /** O campo que acabou de mudar pisca de leve (a troca), esse tempo. */
 const TROCA_MS = 450;
 
@@ -132,14 +130,9 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
   }, [versao]);
   useEffect(() => {
     if (!apagada) return;
-    const t = setTimeout(() => setApagada(null), DESFAZER_MS);
+    const t = setTimeout(() => setApagada(null), PRAZO_DO_DESFAZER);
     return () => clearTimeout(t);
   }, [apagada]);
-  useEffect(() => {
-    if (!desfazivel) return;
-    const t = setTimeout(() => setDesfazivel(null), DESFAZER_MS);
-    return () => clearTimeout(t);
-  }, [desfazivel]);
   useEffect(() => {
     if (!trocou) return;
     const t = setTimeout(() => setTrocou(null), TROCA_MS);
@@ -583,7 +576,7 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
         )}
       </footer>
 
-      {desfazivel && <CaixinhaDoDesfazer key={desfazivel.vez} onde="card" texto={desfazivel.texto} desfazer={() => (desfazivel.arte ? desfazerApagar(desfazivel.arte) : desfazivel.campanha && campanha(desfazivel.campanha, true))} fechar={() => setDesfazivel(null)} />}
+      <CaixinhaDoDesfazer caixinha={desfazivel && { id: desfazivel.vez, texto: desfazivel.texto, desfazer: () => (desfazivel.arte ? desfazerApagar(desfazivel.arte) : desfazivel.campanha && campanha(desfazivel.campanha, true)), fechar: () => setDesfazivel(null) }} />
     </div>
   );
 }

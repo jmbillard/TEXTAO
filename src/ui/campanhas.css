@@ -120,7 +120,7 @@
 /* a escolhida: o fundo tingido e a bolinha que acende (nada de check verde) */
 .prod-achado-abrir.escolhida { background: var(--ultra-suave); border-color: color-mix(in srgb, var(--ultra) 45%, var(--regua)); }
 .prod-achado-abrir.escolhida .prod-achado-etapa i { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ultra) 25%, transparent); }
-.prod-achado-abrir.ja-esta { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
+.prod-achado-abrir.ja-esta { opacity: 0.55; cursor: default; }
 
 /* ---------- as sugestões e as arquivadas ---------- */
 .camp-secao-topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 10px; }

@@ -197,10 +197,11 @@ kbd {
 }
 
 /* Avisos e soltar arquivo */
-.avisos { position: fixed; left: 0; right: 0; bottom: 28px; display: flex; justify-content: center; pointer-events: none; z-index: 60; }
+/* o aviso solto: a mesma pílula preta da caixinha do desfazer (#171), no mesmo lugar, sem o botão */
+.avisos { position: fixed; left: 16px; right: 16px; bottom: max(24px, env(safe-area-inset-bottom, 0px)); display: flex; justify-content: center; pointer-events: none; z-index: 60; }
 .aviso {
-  background: var(--tinta); color: var(--papel); padding: 10px 16px; border-radius: 12px; font-weight: 500;
-  box-shadow: 0 10px 30px rgb(26 25 22 / 25%); animation: subir 0.3s var(--suave);
+  max-width: 560px; box-sizing: border-box; background: var(--tinta); color: var(--papel); padding: 10px 18px; border-radius: 12px;
+  font: 500 13.5px/1.35 var(--sans); box-shadow: var(--sombra-menu); animation: surgir 0.25s var(--suave);
 }
 @keyframes subir { from { opacity: 0; transform: translateY(10px); } }
 .soltar {
@@ -1179,14 +1180,40 @@ kbd {
 .pergunta-liberacao-texto { font-weight: 600; color: var(--tinta); }
 .ficha-versao .pergunta-liberacao-texto { flex: 1 1 100%; }
 
-/* tirar da fila com desfazer */
+/* a caixinha do desfazer (CaixinhaDoDesfazer, #171): uma só em todas as telas. Embaixo, no meio da janela, por cima do
+   card aberto; o "Desfazer" em texto sublinhado, o × que fecha e o trilho do tempo, que encolhe até o fim do prazo.
+   Sobe com o surgir e desce esmaecendo. No celular, na largura da tela, com os alvos no tamanho do dedo. */
 .desfazer {
-  position: fixed; left: 50%; bottom: calc(max(24px, env(safe-area-inset-bottom, 0px)) + 62px); transform: translateX(-50%); z-index: 70;
-  display: flex; align-items: center; gap: 16px; padding: 10px 12px 10px 18px; border-radius: 12px; background: var(--tinta); color: var(--papel);
-  box-shadow: var(--sombra-menu); font-size: 13.5px; max-width: calc(100vw - 32px); animation: surgir 0.25s var(--suave);
+  position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: 70;
+  display: flex; align-items: center; gap: 14px; box-sizing: border-box; max-width: min(560px, calc(100vw - 32px)); overflow: hidden;
+  padding: 10px 8px 10px 18px; border-radius: 12px; background: var(--tinta); color: var(--papel);
+  box-shadow: var(--sombra-menu); font: 500 13.5px/1.35 var(--sans); animation: surgir 0.25s var(--suave);
 }
+.desfazer.saindo { animation: desfazer-sai 0.18s ease-out forwards; }
+@keyframes desfazer-sai { to { opacity: 0; transform: translateY(6px); } }
 .desfazer b { font: 600 13px var(--mono); }
-.desfazer .botao-texto { color: var(--papel); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.desfazer-texto { min-width: 0; overflow-wrap: anywhere; }
+.desfazer .desfazer-botao { flex: none; color: var(--papel); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.desfazer .desfazer-botao:disabled { opacity: 0.7; text-decoration: none; }
+.desfazer-fechar {
+  flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; margin-left: -6px; padding: 0; border: 0; border-radius: 8px;
+  background: none; color: inherit; opacity: 0.7; cursor: pointer; transition: opacity 0.15s var(--suave), background-color 0.15s var(--suave);
+}
+.desfazer-fechar:hover { opacity: 1; background: color-mix(in srgb, var(--papel) 14%, transparent); }
+.desfazer-fechar:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; opacity: 1; }
+/* o trilho do tempo: um fio claro de 2 px embaixo; parado enquanto desfaz e no movimento reduzido */
+.desfazer-trilho {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: color-mix(in srgb, var(--papel) 55%, transparent);
+  transform-origin: left center; animation: desfazer-trilho linear forwards;
+}
+.desfazer-trilho.parado { animation: none; opacity: 0.35; }
+@keyframes desfazer-trilho { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .desfazer-trilho { animation: none !important; } }
+@media (max-width: 600px) {
+  .desfazer { left: 16px; right: 16px; translate: none; max-width: none; bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+  .desfazer .desfazer-botao { min-height: 44px; padding: 0 8px; font-size: 14px; }
+  .desfazer-fechar { width: 44px; height: 44px; }
+}
 
 /* colar do Word: a claquete primeiro */
 .colar-form { display: flex; flex-direction: column; gap: 8px; width: min(100%, 460px); margin: 18px auto 0; padding: 16px 18px; border: 1px solid var(--regua); border-radius: 14px; background: var(--papel); text-align: left; animation: surgir 0.2s var(--suave); }
@@ -1757,7 +1784,10 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-etapa, .card-semana-sinal { animation: etapa-trocar 0.3s var(--suave); }
 @keyframes etapa-trocar { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .card-semana-etapa, .card-semana-sinal { animation: none; } }
-.nada { font: 600 19px/1 Caveat, cursive; color: color-mix(in srgb, var(--tinta3) 70%, transparent); padding: 10px 8px; transform: rotate(-2deg); }
+/* o vazio à mão (Vazio, em pecas.tsx, #171): o mesmo em todas as telas; o lugar fica com cada uma */
+.vazio-a-mao { margin: 0; padding: 6px 4px; font: 600 18px/1.1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); transform-origin: left center; overflow-wrap: anywhere; }
+.vazio-a-mao.pequeno { font-size: 16px; }
+.nada { padding: 10px 8px; }
 
 /* sem data e dias anteriores: os mesmos cards, numa faixa abaixo da semana */
 .semana-avulsa { margin-top: 18px; }

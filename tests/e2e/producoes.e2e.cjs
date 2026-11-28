@@ -293,7 +293,8 @@ const gravarMovimento = (p) =>
 const movimento = (p) => p.evaluate(() => window.__movimento);
 
 /** Espera o movimento da tela parar (#159): as animações que têm fim. */
-const quieta = (p) => p.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))));
+// o trilho do tempo da caixinha do desfazer (8 s) não conta: esperar por ele fecharia a caixinha
+const quieta = (p) => p.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity && !a.effect?.target?.classList?.contains('desfazer-trilho')).map((a) => a.finished.catch(() => {}))));
 
 /** Os blocos lado a lado: a 1920px cabem todos e usam a largura toda; a 1440px, a área rola para o lado. */
 async function blocosLadoALado(p, largura) {
@@ -740,14 +741,26 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   assert.equal(await p.locator('.prod-coluna.aceita').count(), 0, 'solto, nenhuma coluna fica marcada');
   // soltar fora não deixa a Produzindo aberta: vazia de novo (depois do desfazer), ela se recolhe
   // a caixinha de desfazer
-  const caixinha = p.locator('.prod-desfazer');
+  const caixinha = p.locator('.desfazer');
   await caixinha.waitFor();
-  assert.match(await caixinha.locator('.prod-desfazer-texto').textContent(), /Você pegou Novela Sinfonia/);
+  assert.match(await caixinha.locator('.desfazer-texto').textContent(), /Você pegou Novela Sinfonia/);
+  // #171: a caixinha única: o "Desfazer" em texto sublinhado, o × e o trilho do tempo de 8 s, encolhendo
+  const forma = await caixinha.evaluate((c) => {
+    const b = c.querySelector('.desfazer-botao');
+    const t = c.querySelector('.desfazer-trilho');
+    const a = t?.getAnimations()[0];
+    return { sublinhado: getComputedStyle(b).textDecorationLine, fundo: getComputedStyle(b).backgroundColor, fechar: !!c.querySelector('.desfazer-fechar[aria-label="Fechar"]'), duracao: a?.effect?.getTiming().duration, altura: t?.getBoundingClientRect().height };
+  });
+  assert.equal(forma.sublinhado, 'underline', 'o Desfazer é texto sublinhado');
+  assert.equal(forma.fundo, 'rgba(0, 0, 0, 0)', 'o Desfazer não é botão cheio');
+  assert.ok(forma.fechar, 'a caixinha tem o ×');
+  assert.equal(forma.duracao, 8000, 'o trilho do tempo leva 8 s');
+  assert.equal(forma.altura, 2, 'o trilho é um fio de 2 px');
   await capturar(p, '11-producoes-desfazer');
   // "Desfazer": o card volta para a Entrada, e no Trello a Lia sai do card
   await caixinha.getByRole('button', { name: 'Desfazer' }).click();
   await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
-  assert.equal(await caixinha.count(), 0, 'desfeito, a caixinha fecha');
+  await caixinha.waitFor({ state: 'detached', timeout: 2000 });
   await calmo(p);
   assert.equal(await designersDe(novela()), 'Dora Lima, Enzo Prado');
   assert.deepEqual(chamadasAoTrello.splice(0), [`DELETE /cards/${card(4)}/idMembers/membroLia`]);
@@ -776,7 +789,7 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   await coluna(p, 'G5', 'entregue').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
   await calmo(p);
   assert.deepEqual(chamadasAoTrello.splice(0), [`PUT /cards/${card(4)} ?idList=saidaG5`]);
-  assert.match(await caixinha.locator('.prod-desfazer-texto').textContent(), /Novela Sinfonia .* foi entregue/);
+  assert.match(await caixinha.locator('.desfazer-texto').textContent(), /Novela Sinfonia .* foi entregue/);
   // desfazer a entrega: o card volta para a entrada da praça
   await caixinha.getByRole('button', { name: 'Desfazer' }).click();
   await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
@@ -801,6 +814,24 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   assert.equal(await designersDe(jogo()), 'Dora Lima, Lia Moraes');
   await recusa.locator('button').click();
   chamadasAoTrello.splice(0);
+
+  // #171: o × fecha sem desfazer; sem nada, a caixinha fecha sozinha no fim dos 8 s
+  await arrastar(p, jogo(), coluna(p, 'G5', 'entrada'));
+  await caixinha.waitFor();
+  await caixinha.locator('.desfazer-fechar').click();
+  await caixinha.waitFor({ state: 'detached', timeout: 2000 });
+  assert.equal(await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Jogo Final' }).count(), 1, 'o × não desfaz');
+  await calmo(p);
+  await arrastar(p, jogo(), coluna(p, 'G5', 'produzindo'));
+  await caixinha.waitFor();
+  const abriu = Date.now();
+  await p.waitForTimeout(7000);
+  assert.equal(await caixinha.count(), 1, 'aos 7 s, a caixinha ainda está à vista');
+  await caixinha.waitFor({ state: 'detached', timeout: 3000 });
+  const durou = Date.now() - abriu;
+  assert.ok(durou >= 7900 && durou < 9500, `a caixinha fica 8 s (${durou} ms)`);
+  await calmo(p);
+  chamadasAoTrello.splice(0);
   assert.deepEqual(aoTrello, [], 'nenhum pedido ao Trello pelo navegador');
   assert.deepEqual(erros, []);
   await ctx.close();
@@ -812,7 +843,7 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   assert.deepEqual(await cel.p.locator('.prod-card').evaluateAll((cs) => cs.filter((c) => c.draggable).length), 0, 'no celular, nenhum card se arrasta');
   await cardDe(cel.p, 'Jogo Final').locator('.prod-mudar.voltar').tap();
   await coluna(cel.p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Jogo Final' }).waitFor();
-  const caixa = cel.p.locator('.prod-desfazer');
+  const caixa = cel.p.locator('.desfazer');
   await caixa.waitFor();
   assert.match(await caixa.textContent(), /Jogo Final .* voltou para a Entrada/);
   await quieta(cel.p);
@@ -1287,7 +1318,7 @@ async function espacoEBusca(navegador, url, db, api, chamadasAoTrello) {
   await p.keyboard.press(' ');
   await p.waitForTimeout(300);
   assert.equal(await coluna(p, 'G5', 'entrada').locator('.prod-card', { hasText: 'Novela Sinfonia' }).count(), 1, 'no campo de texto, o espaço não pega');
-  assert.equal(await p.locator('.prod-desfazer').count(), 0);
+  assert.equal(await p.locator('.desfazer').count(), 0);
   assert.deepEqual(chamadasAoTrello, []);
   await lupa.press('Escape');
 
@@ -1297,7 +1328,7 @@ async function espacoEBusca(navegador, url, db, api, chamadasAoTrello) {
   await p.keyboard.press(' ');
   await coluna(p, 'G5', 'produzindo').locator('.prod-card', { hasText: 'Novela Sinfonia' }).waitFor();
   assert.ok((await movimento(p)).some((m) => m.startsWith('deslize card Novela Sinfonia')), 'o card pego pelo espaço desliza para a Produzindo');
-  const caixinha = p.locator('.prod-desfazer');
+  const caixinha = p.locator('.desfazer');
   await caixinha.waitFor();
   assert.match(await caixinha.textContent(), /Você pegou Novela Sinfonia/);
   assert.equal(await designersDe(cardDe(p, 'Novela Sinfonia')), 'Lia Moraes');
@@ -1427,7 +1458,7 @@ async function filmar(navegador, url, db, api) {
     await cardDe(p, 'Festa na Praça').locator('.prod-mudar').click();
     await p.waitForTimeout(1400);
     // desfazer: o card volta deslizando, e a Produzindo se recolhe
-    await p.locator('.prod-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+    await p.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
     await p.waitForTimeout(1300);
     // o arrasto: a Produzindo se abre com o card no ar; o card cai nela
     const novela = cardDe(p, 'Novela Sinfonia');
@@ -1588,9 +1619,9 @@ async function oCardAberto(navegador, url, chamadasAoTrello, db) {
       await painel.getByRole('button', { name: 'Apagar AMANHÃ' }).click();
       await painel.locator('.vaga-y.saindo .pa-arte', { hasText: 'AMANHÃ' }).waitFor();
       await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).waitFor({ state: 'detached' });
-      await painel.locator('.pa-desfazer', { hasText: 'Apagou AMANHÃ' }).waitFor();
+      await painel.locator('.desfazer', { hasText: 'Apagou AMANHÃ' }).waitFor();
       await capturar(p, `22-card-aberto-${nome}-apagou`);
-      await painel.locator('.pa-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+      await painel.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
       await painel.locator('.vaga-y.entrando .pa-arte', { hasText: 'AMANHÃ' }).waitFor();
       await novela.locator('.prod-artes', { hasText: '1 de 2 artes' }).waitFor();
       // "+ arte"
@@ -1698,7 +1729,7 @@ async function filmarOCardAberto(navegador, url, db) {
   await p.waitForTimeout(300);
   await painel.getByRole('button', { name: 'Apagar HOJE' }).click();
   await p.waitForTimeout(1200);
-  await painel.locator('.pa-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+  await painel.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
   await p.waitForTimeout(1200);
   await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).locator('.arte-linha').click();
   await p.waitForTimeout(900);
@@ -1841,10 +1872,10 @@ async function asCampanhas(navegador, url, chamadasAoTrello, db) {
       await painel.getByRole('button', { name: 'Tirar da campanha AESP Verão' }).click();
       await p.waitForFunction(() => window.__fechou === true);
       await painel.locator('.campanhas-do-card .campanha', { hasText: 'AESP Verão' }).waitFor({ state: 'detached' });
-      await painel.locator('.pa-desfazer', { hasText: 'Tirou da campanha AESP Verão' }).waitFor();
+      await painel.locator('.desfazer', { hasText: 'Tirou da campanha AESP Verão' }).waitFor();
       await festa.locator('.campanha-mais', { hasText: '+1' }).waitFor();
       await capturar(p, `42-campanha-${nome}-tirou`);
-      await painel.locator('.pa-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+      await painel.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
       await painel.locator('.campanhas-do-card .campanha', { hasText: 'AESP Verão' }).waitFor();
       await festa.locator('.campanha-mais', { hasText: '+2' }).waitFor();
       // ligar uma que já existe, pela busca (sem acento), na Novela

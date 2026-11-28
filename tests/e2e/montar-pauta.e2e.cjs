@@ -975,7 +975,7 @@ async function distribuirSozinho(navegador, url, api) {
   await caixinha.getByRole('button', { name: 'Desfazer' }).click();
   await ate(async () => assert.deepEqual((await aGrade(p)).map((x) => x.demandas), [['COMUNICAÇÃO'], [], ['CALHAUS', 'COMUNICAÇÃO']]));
   await ate(async () => assert.deepEqual(await daLista(p), [mundo, terra]));
-  assert.equal(await caixinha.count(), 0, 'desfeito, a caixinha sai');
+  await caixinha.waitFor({ state: 'detached', timeout: 2000 });
   assert.equal(await p.locator('.montar-demanda.distribuida').count(), 0);
   await ate(async () => assert.equal((await (await fetch(`${api}/montar-pauta?dia=${distDia}`, { headers: h })).json()).paraDistribuir.length, 2));
   await capturar(p, '23-distribuir-desfeito');

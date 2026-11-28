@@ -253,18 +253,6 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .prod-coluna.aceita::after { box-shadow: inset 0 0 0 1.5px var(--regua-forte); }
 .prod-coluna.sobre::after { box-shadow: inset 0 0 0 2px var(--ultra); }
 .prod-coluna.sobre, .prod-coluna.sobre h3 { background: var(--ultra-suave); }
-/* a caixinha de desfazer, embaixo, no meio da janela */
-.prod-desfazer {
-  position: fixed; left: 50%; bottom: 24px; z-index: 70; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px)); box-sizing: border-box;
-  padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--tinta); color: var(--papel); box-shadow: var(--sombra-folha);
-  font: 500 13.5px/1.35 var(--sans); animation: subir-caixinha var(--dur) var(--suave) both;
-}
-@keyframes subir-caixinha { from { opacity: 0; transform: translate(-50%, 14px); } }
-.prod-desfazer-texto { min-width: 0; overflow-wrap: anywhere; }
-.prod-desfazer-botao { flex: none; background: var(--papel); border-color: var(--papel); color: var(--tinta); font-weight: 600; }
-.prod-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
-.prod-desfazer-fechar:hover { opacity: 1; }
 
 /* ---------- a busca no histórico (#161): a lista dos achados, no lugar dos blocos ---------- */
 .prod-pagina > .prod-busca {
@@ -397,18 +385,6 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .pa-pe .prod-aviso { flex: 1 1 100%; }
 .pa-espaco { flex: 1; }
 .pa-trello { display: inline-flex; align-items: center; gap: 6px; }
-/* o desfazer do apagar: preso embaixo do card aberto */
-.pa-desfazer {
-  position: sticky; bottom: 0; z-index: 2; align-self: center; display: flex; align-items: center; gap: 12px; margin: 0 0 -8px;
-  padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--tinta); color: var(--papel); box-shadow: var(--sombra-folha);
-  font: 500 13.5px/1.35 var(--sans); animation: pa-desfazer-sobe 0.28s var(--suave) both;
-}
-@keyframes pa-desfazer-sobe { from { opacity: 0; transform: translateY(14px) scale(0.97); } }
-.pa-desfazer-botao { flex: none; background: var(--papel); border-color: var(--papel); color: var(--tinta); font-weight: 600; }
-/* o × da caixinha (CaixinhaDoDesfazer), o mesmo nas duas */
-.pa-desfazer-texto { min-width: 0; overflow-wrap: anywhere; }
-.pa-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
-.pa-desfazer-fechar:hover { opacity: 1; }
 /* as campanhas no card aberto (#178): as etiquetas, o "+" que abre a busca e a busca embaixo */
 .pa-campo.campanhas-do-card { grid-column: 1 / -1; }
 .pa-campo.campanhas-do-card .pa-chips { gap: 4px; }
@@ -418,7 +394,7 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 @keyframes pa-menu-campanha-abre { from { opacity: 0; transform: translateY(-6px) scale(0.97); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .pa-valor.trocou, .pa-valor.trocou > span, .pa-artes li.marcada .b svg, .pa-artes > .vaga-y .pa-arte, .pa-desfazer, .pa-recusa, .pa-nova-arte-campo, .pa-menu-campanha { animation: none; }
+  .pa-valor.trocou, .pa-valor.trocou > span, .pa-artes li.marcada .b svg, .pa-artes > .vaga-y .pa-arte, .pa-recusa, .pa-nova-arte-campo, .pa-menu-campanha { animation: none; }
 }
 @media (max-width: 600px) {
   .artes.so-lista.pa-artes { margin: 0 -16px; }
@@ -459,10 +435,6 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .prod-acoes { margin-top: 6px; }
   .prod-mudar, .prod-aviso-botao { flex: 1 1 0; height: 44px; font-size: 14px; }
   .prod-aviso { font-size: 13px; }
-  /* a caixinha de desfazer na largura da tela, com os botões no tamanho do dedo */
-  .prod-desfazer { left: 16px; right: 16px; bottom: 16px; transform: none; max-width: none; animation-name: subir-caixinha-celular; }
-  .prod-desfazer-botao { height: 44px; padding: 0 18px; font-size: 14px; }
-  .prod-desfazer-fechar { min-width: 44px; height: 44px; }
   .prod-aviso-artes { font-size: 12.5px; }
   /* o bloco recolhido (#113): uma linha só, com a sigla e as contagens */
   .prod-bloco.recolhido { padding: 0; }
@@ -507,13 +479,12 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   .prod-achado-quando { grid-column: 1 / -1; text-align: left; }
 }
 
-@keyframes subir-caixinha-celular { from { opacity: 0; transform: translateY(14px); } }
 
 /* ---------- prefers-reduced-motion (#159): nada desliza nem gira; o que muda só esmaece ---------- */
 @media (prefers-reduced-motion: reduce) {
   .prod-pagina > .prod-blocos, .prod-colunas, .prod-card { transition: none !important; }
   .pagina.producoes .prod-bloco.chegando .prod-coluna, .pagina.producoes .prod-bloco.chegando .prod-recolhido h2, .pagina.producoes .prod-bloco.chegando .prod-bloco-topo h2,
-  .pagina.producoes .prod-desfazer, .pagina.producoes .prod-busca, .pagina.producoes .prod-achado, .pagina.producoes .prod-busca-mais, .pagina.producoes .prod-blocos.voltando {
+  .pagina.producoes .prod-busca, .pagina.producoes .prod-achado, .pagina.producoes .prod-busca-mais, .pagina.producoes .prod-blocos.voltando {
     animation: esmaecer 0.18s ease-out both !important; animation-delay: 0ms !important;
   }
   .pagina.producoes .prod-busca.saindo { animation: sumir 0.18s ease-out both !important; }

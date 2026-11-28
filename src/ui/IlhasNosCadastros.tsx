@@ -3,6 +3,7 @@ import { cadastrarIlha, juntarIlhas, lerIlhas, mudarIlha, removerIlha, type Cada
 import { TIPOS_DE_ILHA, emOrdem, ilhasRepetidas, rotuloDaIlha, type Ilha } from '../modelo/ilhas';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { Icone } from './icones';
+import { NadaNaBusca } from './pecas';
 
 /* A aba Ilhas dos Cadastros (#124): as salas de edição, com tipo, número e nome opcional, para a coordenação escolher
    a ilha da posição numa lista. Ficam no SQLite do PROMeiro (não vão ao Teable nem ao Trello). Todos veem; a
@@ -144,7 +145,7 @@ export function ListaDasIlhas({ estado, busca }: { estado: EstadoDasIlhas; busca
   const q = nomeComparavel(busca);
   const lista = emOrdem(dados.ilhas).filter((i) => !q || [rotuloDaIlha(i), i.nome].some((x) => nomeComparavel(x).includes(q)));
   if (!dados.ilhas.length) return <p className="cad-vazio">Nenhuma ilha cadastrada ainda.{dados.podeCadastrar ? ' Comece pelo formulário ao lado.' : ''}</p>;
-  if (!lista.length) return <p className="cad-vazio">Nada com “{busca}”.</p>;
+  if (!lista.length) return <NadaNaBusca termo={busca} className="cad-nada" />;
   return (
     <>
       {!q && <IlhasRepetidas estado={estado} />}

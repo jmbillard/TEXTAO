@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { lerPadeiros, ligarPadeiro, revogarPadeiro, type DesignerDoPadeiro, type EstadoDaChave, type Padeiro } from '../dados/armazenamento';
 import { Icone } from './icones';
 import './padeiros.css';
+import { NadaNaBusca } from './pecas';
 
 /* Aba Padeiros dos Cadastros (#137), só para administradores: os Padeiros que pediram a chave do Padeiro (um por
    usuário e por computador), com a sigla, o designer ligado e o último aviso. O pendente se liga a um designer
@@ -66,7 +67,7 @@ export function ListaDePadeiros({ lista, designers, falha, ligar, revogar, busca
       {falha && <p className="cad-falha">{falha}</p>}
       {!lista && !falha && <p className="cad-vazio">Lendo os Padeiros…</p>}
       {lista && !lista.length && <p className="cad-vazio">Nenhum Padeiro pediu a chave ainda. Ele pede sozinho, na primeira vez que abre com o endereço do PROMeiro.</p>}
-      {lista && !!lista.length && !vistos.length && <p className="cad-vazio">Nada com “{busca.trim()}”.</p>}
+      {lista && !!lista.length && !vistos.length && <NadaNaBusca termo={busca} className="cad-nada" />}
       {lista && !!lista.length && !designers.length && (
         <p className="cad-falha">Nenhum designer ativo na tabela designers do Teable (a da Configuração · Pessoas): sem ele, não há a quem ligar a chave.</p>
       )}

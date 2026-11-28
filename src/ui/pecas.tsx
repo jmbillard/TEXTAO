@@ -41,6 +41,26 @@ export function BolinhaDeEstado({ estado, className = '' }: { estado: string; cl
   return <i className={`bolinha-estado ${estado}${className ? ` ${className}` : ''}`} data-estado={estado} aria-hidden="true" />;
 }
 
+/**
+ * O vazio à mão (#171): o texto curto em Caveat, meio torto, no lugar de uma lista, de uma coluna ou de uma busca que
+ * não tem nada ("nada aqui", "ninguém", "nada com “x”"). Um só desenho em todas as telas; os vazios que explicam
+ * (os de formulário) ficam no texto comum.
+ * @param pequeno a medida das células e das colunas estreitas
+ * @param como a marca (p, li ou span), para caber na lista de quem usa
+ */
+export function Vazio({ children, pequeno = false, como: Como = 'p', className = '' }: { children: React.ReactNode; pequeno?: boolean; como?: 'p' | 'li' | 'span'; className?: string }) {
+  return <Como className={`vazio-a-mao${pequeno ? ' pequeno' : ''}${className ? ` ${className}` : ''}`}>{children}</Como>;
+}
+
+/** O vazio da busca, à mão: "nada com “x”", e onde se buscou ("na fila"). */
+export function NadaNaBusca({ termo, onde, className = '' }: { termo: string; onde?: string; className?: string }) {
+  return (
+    <Vazio className={`nada-na-busca${className ? ` ${className}` : ''}`}>
+      nada com “{termo.trim()}”{onde ? ` ${onde}` : ''}
+    </Vazio>
+  );
+}
+
 /** A dica da palavra "prioridade" ao lado da claquete marcada (a ficha da fila e o topo da revisão). */
 export const NA_PRIORIDADE = 'Na lista de prioridade: vai para o Trello com prioridade ALTA';
 
@@ -694,7 +714,7 @@ export function EscolhaDeNome({ rotulo, valor, opcoes, mudar, semente, palpite, 
             {sugeridos.length > 0 && filtradas.length > 0 && <li className="sep" role="presentation" />}
             {filtradas.map((o, i) => item(o, sugeridos.length + i))}
             {livre && item(livre, sugeridos.length + filtradas.length)}
-            {!itens.length && <li className="nada">Ninguém com esse nome</li>}
+            {!itens.length && <Vazio como="li" pequeno className="nada">ninguém com esse nome</Vazio>}
           </ul>
           {valor && (
             <button type="button" className="escolha-nome-limpar" onClick={() => escolher('')}>

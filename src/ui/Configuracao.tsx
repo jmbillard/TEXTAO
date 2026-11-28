@@ -44,7 +44,7 @@ import { ChaveDaVirada } from './ViradaDaConfiguracao';
 import { Icone } from './icones';
 import { Vagas } from './vagas';
 import { CaixinhaDoDesfazer, useDesfazerAdiado } from './desfazer';
-import { Marca } from './pecas';
+import { Marca, Vazio } from './pecas';
 import { useTelaDeCelular } from './faixa';
 import { quandoFoi } from './HistoricoDaConfiguracao';
 import './configuracao.css';
@@ -1548,7 +1548,7 @@ function BalaoDeEscolha({ titulo, ancora, opcoes, candidatos, atuais, escolher, 
             </button>
           </li>
         ))}
-        {!vistas.length && <li className="cfg-escolher-vazio">Nada com esse nome.</li>}
+        {!vistas.length && <Vazio como="li" pequeno className="cfg-escolher-vazio">ninguém com esse nome</Vazio>}
       </ul>
     </div>,
     document.body,
@@ -1882,7 +1882,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
   };
   // #176: cadastrar, tornar admin e ignorar tiram a pessoa na hora (a vaga fecha) e a caixinha preta dos Cadastros
   // oferece desfazer; só depois vai para o servidor
-  const { escondidos, desfazer, comDesfazer, desfazerAgora } = useDesfazerAdiado();
+  const { escondidos, desfazer, comDesfazer } = useDesfazerAdiado();
   const tirarComDesfazer = (x: NovidadeDoQuadro, a: AcaoNasPessoas, texto: ReactNode) =>
     comDesfazer(x.chave, texto, async () => {
       await mudar(a, '');
@@ -2088,11 +2088,7 @@ function SecaoDasPessoas({ pessoas, falha, podeMudar, mudar }: { pessoas: Pessoa
           </div>
         )}
       </div>
-      {desfazer && (
-        <CaixinhaDoDesfazer key={desfazer.id} desfazer={desfazerAgora}>
-          {desfazer.texto}
-        </CaixinhaDoDesfazer>
-      )}
+      <CaixinhaDoDesfazer caixinha={desfazer} />
     </section>
   );
 }

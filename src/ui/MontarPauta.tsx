@@ -131,11 +131,11 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   useEffect(() => setRepetido(''), [dia]);
   // depois de Distribuir (#151): as claquetes distribuídas (o motivo de cada uma, na dica) e a caixinha do desfazer;
   // saem ao trocar de dia
-  const [distribuicao, setDistribuicao] = useState<{ dia: string; itens: ClaqueteDistribuida[]; caixinha: boolean } | null>(null);
+  const [distribuicao, setDistribuicao] = useState<{ dia: string; itens: ClaqueteDistribuida[]; caixinha: boolean; vez?: number } | null>(null);
   useEffect(() => setDistribuicao(null), [dia]);
   // depois do "Mover para…" (⇄, #163): a claquete movida, para onde foi e de onde veio (a posição e a seguinte, ou a
   // lista com de quem era), para a caixinha do Desfazer; sai ao trocar de dia
-  const [movida, setMovida] = useState<{ dia: string; id: string; texto: string; para: string; de: { lista: string } | { posicao: string; antesDe: string | null } } | null>(null);
+  const [movida, setMovida] = useState<{ vez: number; dia: string; id: string; texto: string; para: string; de: { lista: string } | { posicao: string; antesDe: string | null } } | null>(null);
   useEffect(() => setMovida(null), [dia]);
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
@@ -413,7 +413,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     void naColuna(null, () => [], (dia) =>
       distribuirNoDia(dia).then((d) => {
         if (d.distribuidas?.length) {
-          setDistribuicao({ dia, itens: d.distribuidas, caixinha: true });
+          setDistribuicao({ dia, itens: d.distribuidas, caixinha: true, vez: Date.now() });
           setMovida(null);
         }
         return d;
@@ -478,7 +478,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     // a caixinha só depois de o servidor gravar: se não deu, não há o que desfazer
     void feito.then((ok) => {
       if (!ok || !de || !texto.trim()) return;
-      setMovida({ dia, id, texto: texto.trim(), para, de });
+      setMovida({ vez: Date.now(), dia, id, texto: texto.trim(), para, de });
       setDistribuicao((x) => x && { ...x, caixinha: false });
     });
   };
@@ -729,16 +729,21 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 </section>
               );
             })}
-            {movida && movida.dia === atual.dia && (
-              <CaixinhaDoDesfazer className="montar-movida" desfazer={desfazerAMovida} fechar={() => setMovida(null)}>
-                <b>{movida.texto}</b> foi para {movida.para}
-              </CaixinhaDoDesfazer>
-            )}
-            {distribuicao?.caixinha && distribuicao.dia === atual.dia && (
-              <CaixinhaDoDesfazer desfazer={desfazerADistribuicaoDoDia} fechar={() => setDistribuicao((x) => x && { ...x, caixinha: false })}>
-                <b>{distribuicao.itens.length}</b> {distribuicao.itens.length === 1 ? 'claquete distribuída' : 'claquetes distribuídas'} · confira e arraste o que quiser
-              </CaixinhaDoDesfazer>
-            )}
+            {/* uma caixinha por vez: a do ⇄ fecha a do Distribuir, e o contrário */}
+            <CaixinhaDoDesfazer
+              caixinha={
+                movida && movida.dia === atual.dia
+                  ? { id: movida.vez, texto: <><b>{movida.texto}</b> foi para {movida.para}</>, desfazer: desfazerAMovida, fechar: () => setMovida(null) }
+                  : distribuicao?.caixinha && distribuicao.dia === atual.dia
+                    ? {
+                        id: `distribuicao-${distribuicao.vez ?? distribuicao.dia}`,
+                        texto: <><b>{distribuicao.itens.length}</b> {distribuicao.itens.length === 1 ? 'claquete distribuída' : 'claquetes distribuídas'} · confira e arraste o que quiser</>,
+                        desfazer: desfazerADistribuicaoDoDia,
+                        fechar: () => setDistribuicao((x) => x && { ...x, caixinha: false }),
+                      }
+                    : null
+              }
+            />
             <p className="montar-teclas">
               <span><kbd>Tab</kbd> próximo campo</span>
               <span><kbd>Enter</kbd> nova linha</span>

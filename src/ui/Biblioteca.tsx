@@ -30,9 +30,10 @@ import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
 import { AREAS } from '../modelo/areas';
 import { CaminhosDoTopo } from './SeletorDeArea';
 import { CenaDaFilaZerada, TituloEmDia, useFilaZerada } from './FilaZerada';
-import { BolinhaDeEstado, CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, EscolhaDeNome, Marca, MarcaTexto, NA_PRIORIDADE, RABISCOS, TextoDaClaquete, tracoDe, useSaida } from './pecas';
+import { BolinhaDeEstado, CONVITES, CONVITES_FILA_VAZIA, ConviteCompacto, ConviteDeArrastar, Duvida, EscolhaDeNome, Marca, MarcaTexto, NA_PRIORIDADE, RABISCOS, NadaNaBusca, TextoDaClaquete, tracoDe, useSaida, Vazio } from './pecas';
 import { redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, ehCelular, plural } from './util';
+import { CaixinhaDoDesfazer } from './desfazer';
 import { ehDoTour } from '../tour/exemplo';
 import { LinhaDoTempoDoCard } from './LinhaDoTempo';
 import { MenuDeContexto } from './MenuDeContexto';
@@ -1023,7 +1024,7 @@ function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir }: { lista: R
               {f ? <TopoDoDia d={d} /> : <TopoDoDia d={d} numero={Number(eixo.dia(inicioNaContagem + i).slice(8))} marcas={!contando} escrever />}
               <ul className="coluna-corpo">
                 <Vagas key={d.iso} como="li" itens={d.cards} chave={(c) => c.r.id} deslizam={deslizam}>{card}</Vagas>
-                {!d.cards.length && <li className="nada entra-suave">nada ainda</li>}
+                {!d.cards.length && <Vazio como="li" className="nada entra-suave">nada ainda</Vazio>}
               </ul>
             </section>
           );
@@ -1064,7 +1065,6 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const enfeite = enfeitesSim && !aoFundo ? temaDaData : null;
   // tirar da fila: some na hora, mas só é apagado depois de alguns segundos, para dar tempo de desfazer
   const [saindo, setSaindo] = useState<Resumo | null>(null);
-  const prazoSaida = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [filtroEstado, setFiltroEstado] = useState<'prontos' | 'revisar' | null>(null);
   const [colando, setColando] = useState(false);
   const [claqueteNova, setClaqueteNova] = useState('');
@@ -1207,20 +1207,20 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   // tirar da fila: a ficha (ou o card da agenda) fecha a vaga na hora, esmaecendo junto. Antes, a ficha sumia
   // primeiro e só depois fechava a vaga: na virada ela piscava de volta por alguns quadros (#32)
   const tirar = (r: Resumo) => {
-    if (saindo) {
-      clearTimeout(prazoSaida.current);
-      void apagarDeVez(saindo);
-    }
+    if (saindo) void apagarDeVez(saindo);
     setSaindo(r);
-    prazoSaida.current = setTimeout(() => {
-      setSaindo(null);
-      void apagarDeVez(r);
-    }, 6000);
+  };
+  /** O fim do prazo da caixinha (ou o ×): apaga de vez. */
+  const concluirSaida = () => {
+    const r = saindoRef.current;
+    if (!r) return;
+    saindoRef.current = null;
+    setSaindo(null);
+    void apagarDeVez(r);
   };
   // quem volta com "desfazer" não repete a animação de chegada
   const [devolvidos, setDevolvidos] = useState<string[]>([]);
   const desfazer = () => {
-    clearTimeout(prazoSaida.current);
     if (saindo) setDevolvidos((d) => [...d, saindo.id]);
     setSaindo(null);
   };
@@ -1230,7 +1230,6 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   useEffect(() => {
     // recarregar ou fechar a página durante o "desfazer" também apaga (antes, o roteiro voltava)
     const aoSair = () => {
-      clearTimeout(prazoSaida.current);
       if (saindoRef.current) apagarAoSair(saindoRef.current.id);
       saindoRef.current = null;
     };
@@ -1534,11 +1533,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
                 </details>
               )}
 
-              {!visiveis.length && (termo || filtroEstado) && (
-                <p className="suave vazio">
-                  {termo ? `Nada encontrado para “${busca}”.` : filtroEstado === 'revisar' ? 'Nada para revisar.' : 'Nenhum roteiro pronto ainda.'}
-                </p>
-              )}
+              {!visiveis.length && (termo || filtroEstado) && (termo ? <NadaNaBusca termo={busca} onde="na fila" className="vazio" /> : <Vazio className="vazio">{filtroEstado === 'revisar' ? 'nada para revisar' : 'nenhum roteiro pronto ainda'}</Vazio>)}
             </section>
           )
         )}
@@ -1548,12 +1543,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} corrigir={(r) => ((r.podeEditar || r.meu || aberto) && !ehDoTour(r.id) ? (liberada) => void corrigirALiberacao(r, liberada) : undefined)} />
         </AnoNovoNaAgenda.Provider>
       )}
-      {saindo && (
-        <div className="desfazer" role="status">
-          <span><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</span>
-          <button className="botao-texto" onClick={desfazer}>Desfazer</button>
-        </div>
-      )}
+      <CaixinhaDoDesfazer caixinha={saindo && { id: saindo.id, texto: <><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</>, desfazer, fechar: concluirSaida }} />
       <Ponteiros lista={Object.values(ponteiros)} />
       {enfeite && <Enfeites tema={enfeite} />}
     </div>
