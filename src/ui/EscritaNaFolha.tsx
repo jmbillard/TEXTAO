@@ -611,7 +611,13 @@ export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { edi
           como="li"
           vazio={
             <p className="suave pequeno artes-da-escrita-vazio">
-              Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.
+              {escreve ? (
+                <>
+                  Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.
+                </>
+              ) : (
+                'Nenhuma arte no texto ainda.'
+              )}
             </p>
           }
         >
@@ -630,7 +636,8 @@ export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { edi
           )}
         </Vagas>
       </ol>
-      <p className="artes-da-escrita-nota suave pequeno">As artes saem do texto: o trecho de arte e o que você marca com {atalho('Mod-u')}.</p>
+      {/* em leitura, sem o atalho de escrever */}
+      <p className="artes-da-escrita-nota suave pequeno">{escreve ? <>As artes saem do texto: o trecho de arte e o que você marca com {atalho('Mod-u')}.</> : 'As artes saem do texto: o trecho de arte e o sublinhado.'}</p>
     </ArtesQueRecolhem>
   );
 }

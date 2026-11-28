@@ -367,6 +367,7 @@ async function soLendo(navegador, s, id) {
   assert.doesNotMatch(cartao, /Comandos: \/locucao|Tab|Ctrl\+U/, 'o "?" só lendo, sem os atalhos de escrever');
   await capturar(p, '14-so-lendo-atalhos');
   await p.keyboard.press('Escape');
+  assert.doesNotMatch(await p.locator('.artes-da-escrita').innerText(), /Ctrl\+U/, 'a lista das artes também, sem o Ctrl+U');
   // e a lista das artes recolhe para ele também (a escolha é dele: começa aberta)
   assert.equal((await comoEsta(p)).recolhida, false);
   assert.deepEqual(erros, []);
