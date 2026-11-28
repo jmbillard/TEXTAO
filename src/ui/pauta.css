@@ -260,11 +260,7 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
 .pauta-ficha .apelido-claquete { color: var(--tinta2); }
 .pauta-ficha h3 { margin: 22px 0 8px; font: 600 11px var(--sans); letter-spacing: 0.13em; text-transform: uppercase; color: var(--tinta3); }
 .pauta-ficha-producao { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--cartao); box-shadow: 0 0 0 1px var(--regua); }
-.pauta-ficha-ponto { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--tinta3); }
-.pauta-ficha-producao[data-etapa='entregue'] .pauta-ficha-ponto { background: var(--ok); }
-.pauta-ficha-producao[data-etapa='produzindo'] .pauta-ficha-ponto { background: var(--ultra); }
-.pauta-ficha-producao[data-etapa='entrada'] .pauta-ficha-ponto { background: var(--falta); }
-.pauta-ficha-producao[data-etapa='sem-card'] .pauta-ficha-ponto { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tinta3); }
+.pauta-ficha-ponto { margin-top: 5px; }
 .pauta-ficha-etapa { font: 600 14px var(--sans); color: var(--tinta); }
 .pauta-ficha-producao[data-etapa='entregue'] .pauta-ficha-etapa { color: var(--ok); }
 .pauta-ficha-producao[data-etapa='produzindo'] .pauta-ficha-etapa { color: var(--ultra-tinta); }

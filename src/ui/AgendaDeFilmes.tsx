@@ -10,7 +10,7 @@ import { RABISCO } from './cena';
 import { Icone } from './icones';
 import { lambeDe } from './lambe';
 import { ListaDeAchados } from './ListaDeAchados';
-import { Vazio } from './pecas';
+import { BolinhaDeEstado, Vazio } from './pecas';
 import { relativoA } from './pecasDaPauta';
 import { ItemQueAbre, Periodo, ResumoQueConta, TopoDoDia, VoltarParaHoje, useContagemDoPeriodo, type PalavrasDoResumo } from './topoDaAgenda';
 import { useTrocaDeSemana } from './trocaDeSemana';
@@ -377,7 +377,7 @@ function ProducaoDaExibicao({ e }: { e: ExibicaoDoFilme }) {
   const p = e.producao;
   return (
     <span className="ficha-filme-producao" data-etapa={p?.etapa ?? (e.trello ? 'card' : 'sem-card')}>
-      <i aria-hidden="true" />
+      <BolinhaDeEstado estado={p?.etapa ?? (e.trello ? 'card' : 'sem-card')} tam="ficha" />
       {p ? (
         <>
           <b>{ROTULO_DA_ETAPA[p.etapa]}</b>

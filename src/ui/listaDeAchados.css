@@ -29,5 +29,5 @@
 .prod-achado-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
 /* a etapa numa bolinha, com as cores das colunas */
 .prod-achado-etapa { display: inline-flex; align-items: center; gap: 7px; font: 600 11px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2); white-space: nowrap; }
-.prod-achado-etapa i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
+.prod-achado-etapa i:not(.bolinha-estado) { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
 .prod-busca-mais { align-self: center; margin-top: 6px; animation: surgir-achado var(--dur) var(--suave) backwards; }

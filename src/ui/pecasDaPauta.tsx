@@ -337,7 +337,7 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
 
       <h3>Produção da arte</h3>
       <div className="pauta-ficha-producao" data-etapa={resumo?.etapa ?? 'sem-card'}>
-        <span className="pauta-ficha-ponto" aria-hidden="true" />
+        <BolinhaDeEstado estado={resumo?.etapa ?? 'sem-card'} tam="ficha" className="pauta-ficha-ponto" />
         <div>
           <div className="pauta-ficha-etapa">{resumo ? ROTULO_DA_ETAPA[resumo.etapa] : 'Sem card'}{resumo?.alta && ' · prioridade alta'}</div>
           <div className="pauta-ficha-mais">{resumo ? [resumo.designers.join(', ') || 'sem designer', ...resumo.pracas].join(' · ') : 'nenhuma Produção achada pela claquete'}</div>

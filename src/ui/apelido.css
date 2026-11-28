@@ -10,7 +10,7 @@
 .apelido-linha input { flex: 1 1 160px; min-width: 0; border: 0; border-bottom: 1px dashed currentColor; background: none; color: inherit; font: 600 13.5px/1.3 var(--mono); padding: 2px 0; outline: 0; }
 .conflito-versoes { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-style: italic; opacity: 0.75; }
 .claquete .conflito-versoes { color: #f5d400; opacity: 1; }
-.apelido-erro { color: var(--perigo, #e5262b); }
+.apelido-erro { color: var(--perigo); }
 /* o aviso do conflito no card da agenda, no da tela de produções e na ficha da revisão (#121): discreto, numa linha
    própria; o código das versões fica no fim do nome (#152) */
 .conflito-do-card { display: flex; margin-top: 3px; font-size: 11px; color: var(--tinta3); }

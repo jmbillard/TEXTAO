@@ -34,11 +34,14 @@ export function Riscado({ children, traco = 0, className = '' }: { children: Rea
 export const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0);
 
 /**
- * A bolinha de estado (#172): o pontinho cheio da etapa, o mesmo da agenda No Trello e da Pauta da edição. A cor vem do
- * estado (produzindo, aprovacao, entregue, entrada, arquivada); o resto (o "sem card" da pauta) é a bolinha neutra.
+ * A bolinha de estado (#172, #171): o pontinho cheio da etapa, a mesma em todas as telas (a agenda No Trello, a Pauta,
+ * as Produções, a busca, o card aberto e a ficha do filme). A cor vem do estado: a entrada neutra, produzindo em
+ * --ultra, aprovação, entregue em --ok, arquivada; o resto é a bolinha neutra. Na ficha, o "card" e o "sem card" vêm
+ * vazados.
+ * @param tam 'pequena' (6 px, nas linhas e nos cards) ou 'ficha' (8 px, na ficha e no card aberto)
  */
-export function BolinhaDeEstado({ estado, className = '' }: { estado: string; className?: string }) {
-  return <i className={`bolinha-estado ${estado}${className ? ` ${className}` : ''}`} data-estado={estado} aria-hidden="true" />;
+export function BolinhaDeEstado({ estado, tam = 'pequena', className = '' }: { estado: string; tam?: 'pequena' | 'ficha'; className?: string }) {
+  return <i className={`bolinha-estado ${estado}${tam === 'ficha' ? ' ficha' : ''}${className ? ` ${className}` : ''}`} data-estado={estado} aria-hidden="true" />;
 }
 
 /**

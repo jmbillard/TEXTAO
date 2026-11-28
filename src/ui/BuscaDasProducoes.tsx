@@ -4,6 +4,7 @@ import { buscarProducoes } from '../dados/armazenamento';
 import { ROTULO_DA_COLUNA, diaDoPrazo, type CardDaProducao } from '../modelo/producoesPorPraca';
 import { ListaDeAchados } from './ListaDeAchados';
 import { plural, semMovimento } from './util';
+import { BolinhaDeEstado } from './pecas';
 
 /* A busca da tela de produções (#161): o que a lupa do topo acha no histórico todo (também os entregues de mais de 3
    dias, que os blocos não mostram), pela claquete, pela atração e pelas pessoas, numa lista no lugar dos blocos. Cada
@@ -153,7 +154,7 @@ export function AchadoDaProducao({ c, diaEscrito, prazoEscrito, aoClicar, escolh
       onClick={(e) => aoClicar(e.currentTarget)}
     >
       <span className="prod-achado-etapa">
-        <i aria-hidden="true" />
+        <BolinhaDeEstado estado={c.etapa} />
         {ROTULO_DA_COLUNA[c.etapa]}
       </span>
       <span className="prod-achado-nome">

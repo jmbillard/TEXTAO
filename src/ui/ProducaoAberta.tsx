@@ -29,6 +29,7 @@ import { useDesdeDaMarca } from './riscos';
 import { Icone } from './icones';
 import { Vagas } from './vagas';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
+import { BolinhaDeEstado } from './pecas';
 
 /* O card aberto da tela de produções (#113; #160, a alternativa A escolhida pelo usuário): um clique no card abre a
    Produção no CardAberto, o painel de 720 px no centro, que cresce do card clicado e volta para ele (Esc, o X ou o
@@ -266,7 +267,7 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
     <div className="pa" data-producao={card.id} onKeyDown={escDoMenu}>
       <header className="pa-topo">
         <span className="pa-etapa" data-etapa={card.etapa}>
-          <i aria-hidden="true" />
+          <BolinhaDeEstado estado={card.etapa} />
           {card.praca || 'sem praça'} · {ROTULO_DA_COLUNA[card.etapa]}
         </span>
         <FecharOCardAberto rotulo="Fechar a Produção" />

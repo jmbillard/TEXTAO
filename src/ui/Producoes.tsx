@@ -6,7 +6,7 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
 import type { CampanhaDoCard } from '../modelo/campanhas';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
-import { MarcaTexto, RABISCOS, tracoDe, Vazio, VoceAMao } from './pecas';
+import { BolinhaDeEstado, MarcaTexto, RABISCOS, tracoDe, Vazio, VoceAMao } from './pecas';
 import { CaixinhaDoDesfazer } from './desfazer';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { CampanhaDoFiltro, EscolherCampanha } from './FiltroDaCampanha';
@@ -481,7 +481,7 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
             }}
           >
             <h3>
-              <i aria-hidden="true" />
+              <BolinhaDeEstado estado={k} />
               <span className="prod-coluna-nome">{ROTULO_DA_COLUNA[k]}</span>
               <Conta n={b.colunas[k].length} traco={tracoDe(b.praca) + i} rotulo={plural(b.colunas[k].length, 'card', 'cards')} />
               {/* a anotação à mão (#167), que some quando a área rola */}
