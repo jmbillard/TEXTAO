@@ -114,17 +114,18 @@ function Duvida({ semente, rotulo, n = 3 }: { semente: string; rotulo: string; n
   );
 }
 
-/** O seletor de arquivos escondido do convite: `abrir` chama o diálogo do sistema e `escolher` recebe o que veio. */
-function useSeletorDeArquivos(escolher?: (arquivos: File[]) => void) {
+/** O seletor de arquivos escondido do convite: `abrir` chama o diálogo do sistema e `escolher` recebe o que veio. Com
+    `um`, um arquivo só, e só os de texto (o roteiro que começa a ser escrito, #195). */
+export function useSeletorDeArquivos(escolher?: (arquivos: File[]) => void, um = false) {
   const seletor = useRef<HTMLInputElement>(null);
   const abrir = () => seletor.current?.click();
   const elemento = escolher && (
     <input
       ref={seletor}
       type="file"
-      multiple
+      multiple={!um}
       hidden
-      accept=".docx,.rtf,.pdf,.txt,.json"
+      accept={um ? '.docx,.rtf,.pdf,.txt' : '.docx,.rtf,.pdf,.txt,.json'}
       onChange={(e) => {
         const arquivos = [...(e.target.files ?? [])];
         e.target.value = '';
@@ -135,6 +136,18 @@ function useSeletorDeArquivos(escolher?: (arquivos: File[]) => void) {
   // a área toda abre o seletor; os botões de dentro seguem com a própria ação
   const clicarNaArea = escolher ? (e: React.MouseEvent) => !(e.target as HTMLElement).closest('button, textarea, input, a') && abrir() : undefined;
   return { abrir, elemento, clicarNaArea };
+}
+
+/** O cartão que aparece com um arquivo sendo arrastado sobre a tela: "Pode soltar" e o que ela faz com ele. */
+export function AvisoDeSoltar({ texto }: { texto: string }) {
+  return (
+    <div className="soltar" aria-hidden="true">
+      <div className="soltar-cartao">
+        <span className="soltar-titulo">Pode soltar</span>
+        <span>{texto}</span>
+      </div>
+    </div>
+  );
 }
 
 /** Os formatos que o convite aceita, riscados à mão. */

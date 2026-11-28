@@ -3,6 +3,7 @@
    a arte ou a etiqueta cobre inteiro fica confirmado; o resto fica com o palpite (`comOsTiposGuardados`). */
 import { empurrar, type BlocoBruto, type DocBruto, type Par, type Run } from './bruto';
 import { interpretar, montarDoc, type Importacao } from './interpretar';
+import { lerArquivo } from './index';
 import { converterLayout } from '../editor/extensoes';
 import { metaDeFora } from '../modelo/escrito';
 import { artesDoTexto, comOsTiposGuardados } from '../modelo/trecho';
@@ -40,6 +41,20 @@ export function tituloDaImportacao(imp: Importacao): string {
 export function comecoDaImportacao(imp: Importacao): ComecoDeFora {
   const doc = comOsTiposGuardados(docDaImportacao(imp));
   return { titulo: tituloDaImportacao(imp), meta: metaDeFora(imp.meta), doc, nArtes: artesDoTexto(doc).length };
+}
+
+/** O motivo de o arquivo não ter sido lido, para quem abriu: as mensagens das bibliotecas de leitura vêm em inglês e
+    não ajudam. O mesmo da fila. */
+export function motivoDaLeitura(e: unknown): string {
+  const bruto = e instanceof Error ? e.message : '';
+  return !bruto || /zip|central directory|xml|undefined|null|cannot|unexpected|invalid|password/i.test(bruto) ? 'O arquivo parece corrompido, ou não é do tipo que o nome diz.' : bruto;
+}
+
+/** Lê o arquivo aberto (.docx, RTF, PDF ou .txt) pela leitura da fila: o começo da folha e o texto do original, que vai
+    guardado junto com ele. `aoProgredir`: o andamento do que demora (o OCR do PDF digitalizado). */
+export async function comecoDoArquivo(arquivo: File, aoProgredir?: (texto: string) => void): Promise<{ comeco: ComecoDeFora; original: TextoOriginal }> {
+  const bruto = await lerArquivo(await arquivo.arrayBuffer(), arquivo.name, aoProgredir);
+  return { comeco: comecoDaImportacao(interpretar(bruto)), original: textoDoOriginal(bruto) };
 }
 
 /* ---------- o texto colado ---------- */

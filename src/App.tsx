@@ -20,10 +20,10 @@ import { ehAreaDosRoteiros, type Area, type AreaDosRoteiros } from './modelo/are
 import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, souCoordenacao, temTrello, temFilmes, lembrarArea, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
 import { interpretar, lerArquivo, type Importacao } from './importar';
-import { docDaImportacao, textoDoOriginal } from './importar/paraEscrever';
+import { docDaImportacao, motivoDaLeitura, textoDoOriginal } from './importar/paraEscrever';
 import { exportar, pendencias, roteiroDoJson, travamTrello } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type ArteDoAcervo, type Pessoa, type Roteiro } from './modelo/tipos';
-import { Marca } from './ui/pecas';
+import { AvisoDeSoltar, Marca } from './ui/pecas';
 import { chaveDeArte } from './modelo/diferencas';
 import { Biblioteca, Perfil } from './ui/Biblioteca';
 import { TelaEditor } from './ui/TelaEditor';
@@ -413,11 +413,7 @@ export function App() {
           if (ENVIO_AUTOMATICO && temTrello() && !travamTrello(roteiro.meta.revisar).length && !roteiro.meta.substitui && !roteiro.meta.naProducao)
             void guardado.then(() => mandarParaTrello(roteiro)).catch((e) => avisar(`${roteiro.meta.claquete || arquivo.name} não foi para o Trello: ${e instanceof Error ? e.message : e}`)).finally(() => setChegou((n) => n + 1));
         } catch (e) {
-          // as mensagens das bibliotecas de leitura vêm em inglês e não ajudam quem está subindo o roteiro
-          const bruto = e instanceof Error ? e.message : '';
-          const motivo = !bruto || /zip|central directory|xml|undefined|null|cannot|unexpected|invalid|password/i.test(bruto)
-            ? 'O arquivo parece corrompido, ou não é do tipo que o nome diz.'
-            : bruto;
+          const motivo = motivoDaLeitura(e);
           setFalhas((f) => [...f.filter((x) => x.nome !== arquivo.name), { nome: arquivo.name, motivo }]);
         }
         setLendo(null);
@@ -627,14 +623,7 @@ export function App() {
       {tela.t === 'cadastros' && <Cadastros key={`${tela.aba}-${tela.ilhas ? 'ilhas' : ''}-${tela.claquete ?? ''}-${tela.nome ?? ''}-${tela.key ?? ''}`} voltar={() => ir({ t: 'biblioteca' })} avisar={avisar} inicio={{ aba: tela.aba, claquete: tela.claquete, nome: tela.nome, key: tela.key, ilhas: tela.ilhas }} />}
 
       <DesenhosDeCursor />
-      {soltando && (
-        <div className="soltar" aria-hidden="true">
-          <div className="soltar-cartao">
-            <span className="soltar-titulo">Pode soltar</span>
-            <span>Quantos roteiros quiser: .docx, .rtf ou .pdf</span>
-          </div>
-        </div>
-      )}
+      {soltando && <AvisoDeSoltar texto="Quantos roteiros quiser: .docx, .rtf ou .pdf" />}
       <div className="avisos" role="status" aria-live="polite">
         {aviso && (
           <div className="aviso" key={aviso.n}>

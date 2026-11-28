@@ -1120,8 +1120,10 @@ export async function lerRoteirosEscritos(): Promise<RoteirosEscritos> {
   if (armazenamento.tipo !== 'servidor') return { podeComecar: false, roteiros: [] };
   return pedir<RoteirosEscritos>('/api/roteiros-escritos');
 }
-/** O Novo roteiro (#189): nasce sendo escrito, visível para a equipe, com a pessoa de redatora. */
-export const comecarRoteiro = (titulo = '') => pedir<Roteiro>('/api/roteiros-escritos', { method: 'POST', body: JSON.stringify({ id: novoId(), titulo }) });
+/** O Novo roteiro (#189): nasce sendo escrito, visível para a equipe, com a pessoa de redatora. `deFora` (#195): o
+    texto de um arquivo aberto ou colado, já lido no navegador (com os tipos e as artes), e o que a leitura achou. */
+export const comecarRoteiro = (titulo = '', deFora?: { doc: NoJSON; meta: Partial<Meta>; nArtes: number; origem?: string }) =>
+  pedir<Roteiro>('/api/roteiros-escritos', { method: 'POST', body: JSON.stringify({ id: novoId(), titulo, ...deFora }) });
 
 /** Com `de` (só administradores, #105), os roteiros de todos ("todos") ou os de uma pessoa, pelo nome. */
 export async function lerMeusRoteiros(area: AreaDosRoteiros, de?: string): Promise<MeusRoteiros> {
