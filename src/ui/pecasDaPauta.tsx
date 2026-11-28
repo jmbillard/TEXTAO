@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { escolhaLembradaDaPauta, lembrarNaPauta } from '../dados/armazenamento';
+import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { ROTULO_DA_ETAPA, diaEmSaoPaulo, ehDaPessoa, lerVersoes, nomeSemAsVersoes, resumoDaProducao, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
 import { CardAberto, FecharOCardAberto } from './CardAberto';
 import { MenuDeContexto } from './MenuDeContexto';
@@ -120,7 +121,8 @@ export function ItemDaPauta({ linha, abrir, compacta = false, comProducao = true
   const claquete = l.tipo === 'claquete';
   const podeApelidar = claquete && armazenamento.tipo === 'servidor';
   const lapis = nomeDoLapis(linha);
-  const etapa = claquete ? (resumoDaProducao(l.producoes)?.etapa ?? 'sem-card') : 'tarefa';
+  const resumo = claquete ? resumoDaProducao(l.producoes) : null;
+  const etapa = claquete ? (resumo?.etapa ?? 'sem-card') : 'tarefa';
   return (
     <li
       ref={card}
@@ -151,6 +153,9 @@ export function ItemDaPauta({ linha, abrir, compacta = false, comProducao = true
           {comProducao && <span className="pauta-producao sem-card">tarefa</span>}
         </span>
       )}
+      {/* a etiqueta da campanha (#181), a mesma de Produções: a primeira e "+N"; fora do botão da claquete, porque abre a
+          campanha. Sai do cruzamento com a Produção: a claquete não guarda nada */}
+      {claquete && <EtiquetaDaCampanha campanhas={resumo?.campanhas} />}
       {/* a info da claquete (#172): o balão no canto do card; o texto abre embaixo dela */}
       {claquete && !!l.infos?.length && <BalaoDeInfo textos={l.infos} rotulo={l.semVersao} />}
       {/* com o mouse, o lápis do apelido aparece no canto do card, como na agenda */}
@@ -342,6 +347,13 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
           <small>{resumo?.artes === 1 ? 'arte' : 'artes'}</small>
         </div>
       </div>
+      {/* as campanhas das Produções da claquete (#181): todas, como no card aberto de Produções, sem o tirar (é lá que
+          se liga e tira) */}
+      {!!resumo?.campanhas.length && (
+        <div className="pauta-ficha-campanhas" role="group" aria-label="Campanhas">
+          <EtiquetaDaCampanha modo="todas" campanhas={resumo.campanhas} />
+        </div>
+      )}
       {producoes.length > 1 || producoes.some((p) => p.praca) ? (
         <table className="pauta-ficha-tabela">
           <thead>

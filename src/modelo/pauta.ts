@@ -5,6 +5,7 @@
    da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. A claquete cruza com as
    Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
 import type { ForaNaPauta } from './ausencias.ts';
+import { campanhasDasProducoes, type CampanhaDoCard } from './campanhas.ts';
 import { PARADAS, continua } from './frasePartida.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
 import type { Etapa } from './producao.ts';
@@ -59,6 +60,8 @@ export interface ProducaoNaPauta {
   versoesLidas?: Versao[];
   /** a letra e a versão do roteiro da Produção (#166), como o título mostra ("B", "V2", "B V2"); ausente na A V1 */
   letraEVersao?: string;
+  /** as campanhas da Produção (#181), a primeira ligada primeiro: a etiqueta da claquete sai daqui */
+  campanhas?: CampanhaDoCard[];
 }
 
 /** A Semana da pauta: a rota GET /api/pauta/semana. */
@@ -565,7 +568,8 @@ export function cruzarComAProducao(linhas: readonly LinhaDaPauta[], producoes: r
 const ORDEM_DA_ETAPA: Etapa[] = ['entrada', 'produzindo', 'entregue'];
 
 /** O resumo das Produções de uma claquete, para a célula: a etapa mais atrasada (Arquivada só quando todas estão),
-    as artes somadas, os designers e as praças sem repetir e a prioridade ALTA de alguma. null: sem card. */
+    as artes somadas, os designers, as praças e as campanhas (#181) sem repetir e a prioridade ALTA de alguma. null: sem
+    card. */
 export function resumoDaProducao(producoes: readonly ProducaoNaPauta[] | undefined) {
   if (!producoes?.length) return null;
   const abertas = producoes.filter((p) => p.etapa !== 'arquivada');
@@ -579,6 +583,8 @@ export function resumoDaProducao(producoes: readonly ProducaoNaPauta[] | undefin
     alta: producoes.some((p) => p.alta),
     // a letra e a versão do roteiro (#166): as da Produção que entrou por último ('' na A V1)
     letraEVersao: [...producoes].sort((a, b) => (b.entradaEm ?? '').localeCompare(a.entradaEm ?? ''))[0].letraEVersao ?? '',
+    // as campanhas das Produções da claquete (#181), sem repetir: a etiqueta da Pauta
+    campanhas: campanhasDasProducoes(producoes),
   };
 }
 

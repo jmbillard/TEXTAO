@@ -122,6 +122,9 @@ export interface Andamento {
   /** A claquete está na lista de prioridade (a mesma que dá a prioridade ALTA no envio). Vem também para os roteiros
       da fila de revisão, com o andamento vazio. */
   prioridade?: true;
+  /** As campanhas das Produções do card (#181), a primeira ligada primeiro: a etiqueta do card da agenda. Só do
+      PROMeiro; ausente sem campanha. */
+  campanhas?: CampanhaDoCard[];
 }
 
 /* ---------- navegador ---------- */

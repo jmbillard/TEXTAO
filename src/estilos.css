@@ -1811,6 +1811,8 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana:hover { border-color: var(--regua-forte); }
 .card-semana-abrir { display: block; width: 100%; padding: 10px 12px 8px; border: 0; border-radius: inherit; background: none; text-align: left; cursor: pointer; }
 .card-semana-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+/* a etiqueta da campanha (#181), no pé do card, fora do botão dele (abre a campanha) */
+.card-semana > .campanhas { display: flex; margin: -3px 12px 8px; }
 .card-semana-claquete { display: block; font: 600 13.5px/1.3 var(--mono); letter-spacing: -0.01em; color: var(--tinta); overflow-wrap: anywhere; }
 /* a claquete quebra entre os pedaços (TextoDaClaquete com quebras: nos espaços, antes de "(", depois de ")" e antes da
    data), nunca dentro deles */
@@ -1924,6 +1926,7 @@ a.ficha-marca.trello { text-decoration: none; }
 @container card (max-width: 170px) {
   .card-semana-abrir { padding: 8px 9px 7px; }
   .card-semana-claquete { font-size: 12.5px; line-height: 1.28; }
+  .card-semana > .campanhas { margin: -2px 9px 7px; }
 }
 /* o card muito estreito: a etapa só com o sinal (✓ ou •; o nome fica para o leitor de tela) e o pé sem a hora */
 @container card (max-width: 128px) {
@@ -2727,6 +2730,8 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   padding-bottom: 3px; margin-bottom: -3px; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete .seg { white-space: nowrap; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-linha, .secao-trello.encolhida .card-semana:not(.aberto) .card-outra { display: none; }
+/* na semana encolhida, a etiqueta da campanha também se recolhe: só com o card aberto */
+.secao-trello.encolhida .card-semana:not(.aberto) > .campanhas { display: none; }
 .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-sinal { display: block; position: absolute; right: 8px; top: 50%; margin-top: -3px; width: 6px; height: 6px; border-radius: 50%; transition: opacity 0.15s; }
 .secao-trello.encolhida .card-semana:not(.aberto):has(.card-semana-sinal) .card-semana-claquete { padding-right: 10px; }
 .card-semana-sinal.produzindo { background: var(--ultra); }

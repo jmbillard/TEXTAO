@@ -16,6 +16,7 @@
 // - A visão lembrada (#98); o resumo do administrador e a cópia de reserva (#99); o código das versões (#152); as
 //   versões à mão (#154).
 // - Os contadores da agenda (#170): o seletor de datas, o cabeçalho da grade, a fita e o resumo contam juntos.
+// - A etiqueta da campanha (#181): na Semana, no Dia e na ficha, e o clique que leva à página da campanha.
 // - O movimento: a troca de semana e de dia desliza para o lado da navegação, a ficha cresce do card e volta; com o
 //   movimento reduzido, só esmaece. Com VIDEO=pasta, grava o vídeo das transições.
 //
@@ -1223,6 +1224,88 @@ async function osContadores(navegador, url) {
   console.log(`ok: os contadores da agenda na Pauta: o seletor de datas (Semana e Dia), o cabeçalho da grade, a fita e o resumo contam juntos; reduzido, só esmaece${VIDEO ? ` (vídeo em ${join(VIDEO, 'contadores')})` : ''}`);
 }
 
+/* ---------- #181: a etiqueta da campanha na claquete ---------- */
+
+/**
+ * A campanha na Pauta (#181): o Show da Tarde de hoje (a G5 e a SP) ligado a duas campanhas pela API, como faz o card
+ * aberto de Produções. A etiqueta vem do cruzamento com a Produção (a claquete não guarda nada): na Semana (a primeira e
+ * "+N"), no Dia e na ficha (todas); o clique leva à página da campanha (#180). Claro e escuro, no
+ * computador e no celular.
+ */
+async function aCampanha(navegador, url, api) {
+  const como = (caminho, corpo) => fetch(`${api}${caminho}`, { method: corpo ? 'POST' : 'GET', headers: { 'cf-access-authenticated-user-email': CHEFE, 'content-type': 'application/json' }, ...(corpo ? { body: JSON.stringify(corpo) } : {}) }).then((r) => r.json());
+  const tela = await como('/producoes/por-praca');
+  const shows = tela.blocos.flatMap((b) => Object.values(b.colunas).flat()).filter((c) => c.claquete.startsWith(`Show da Tarde ${diaMes(hoje)}`));
+  assert.equal(shows.length, 2, 'o Show da Tarde de hoje tem a G5 e a SP');
+  const g5 = shows.find((c) => !c.claquete.endsWith(' SP'));
+  const spp = shows.find((c) => c.claquete.endsWith(' SP'));
+  const lanc = (await como('/producoes/campanha', { producao: g5.id, nova: 'Lançamento da Tarde' })).feito.campanha;
+  await como('/producoes/campanha', { producao: g5.id, nova: 'AESP Verão' });
+  await como('/producoes/campanha', { producao: spp.id, campanha: lanc.id, liga: true });
+  try {
+    for (const tema of ['light', 'dark']) {
+      const nome = tema === 'dark' ? 'escuro' : 'claro';
+      const { p, ctx, erros, aoTrello } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, colorScheme: tema });
+      await p.locator('.pauta-grade').waitFor();
+      // a Semana: a primeira campanha e "+1" (a AESP só na G5), na mesma pílula das Produções
+      const show = cardDe(celula(p, 'Bruno Teixeira', hoje), `Show da Tarde ${diaMes(hoje)}`).first();
+      const etiqueta = show.locator('.campanhas.compacta');
+      await etiqueta.waitFor();
+      assert.deepEqual(await textos(etiqueta.locator('.campanha-nome')), ['Lançamento da Tarde']);
+      assert.equal((await etiqueta.locator('.campanha-mais').textContent()).trim(), '+1');
+      assert.equal(await etiqueta.locator('.campanha-mais').getAttribute('title'), 'AESP Verão');
+      // a claquete sem campanha não tem etiqueta; a tarefa também não
+      assert.equal(await cardDe(celula(p, 'Ana Ribeiro', hoje), 'Novela Sol').locator('.campanha').count(), 0, 'sem campanha, sem etiqueta');
+      // nada de "unha" na pílula
+      const unha = await etiqueta.locator('.campanha').first().evaluate((e) => ({ borda: parseFloat(getComputedStyle(e).borderLeftWidth), sombra: getComputedStyle(e).boxShadow }));
+      assert.equal(unha.borda, 0, 'sem unha');
+      assert.ok(!/inset/.test(unha.sombra), 'sem faixa por sombra');
+      await semRolagemDeLado(p, `a campanha na Semana ${nome}`);
+      await capturar(p, `60-campanha-semana-${nome}`);
+      // a ficha: todas as campanhas das Produções da claquete, sem o tirar (é no card aberto de Produções)
+      await show.locator('.pauta-claquete-botao').click();
+      const ficha = p.getByRole('dialog', { name: `Show da Tarde ${diaMes(hoje)}` });
+      await ficha.waitFor();
+      assert.deepEqual(await textos(ficha.locator('.pauta-ficha-campanhas .campanha-nome')), ['Lançamento da Tarde', 'AESP Verão']);
+      assert.equal(await ficha.getByRole('button', { name: /^Tirar da campanha/ }).count(), 0, 'a ficha não tira');
+      await p.waitForTimeout(450);
+      await capturar(p, `61-campanha-ficha-${nome}`, false);
+      await p.keyboard.press('Escape');
+      await fechou(p);
+      // o Dia: a mesma etiqueta no card da coluna do Bruno
+      await p.locator(`th.pauta-dia[data-dia="${hoje}"] a`).click();
+      await p.locator('.pauta-colunas').waitFor();
+      const noDia = cardDe(p.locator('.pauta-coluna[data-editor="Bruno Teixeira"]'), `Show da Tarde ${diaMes(hoje)}`).first();
+      await noDia.locator('.campanhas.compacta .campanha', { hasText: 'Lançamento da Tarde' }).waitFor();
+      assert.equal((await noDia.locator('.campanha-mais').textContent()).trim(), '+1');
+      await capturar(p, `62-campanha-dia-${nome}`);
+      // o clique na etiqueta leva à página da campanha (#180), como em qualquer tela
+      await noDia.getByRole('button', { name: 'Abrir a campanha Lançamento da Tarde' }).click();
+      await p.waitForFunction((id) => location.hash === `#/campanhas/${encodeURIComponent(id)}`, lanc.id);
+      await p.locator('.camp-titulo-nome', { hasText: 'Lançamento da Tarde' }).waitFor();
+      await capturar(p, `63-campanha-pagina-${nome}`);
+      assert.deepEqual(aoTrello, [], 'a campanha não vai ao Trello');
+      assert.deepEqual(erros, []);
+      await ctx.close();
+    }
+    // no celular: o Dia, com a etiqueta no card, sem a página rolar para o lado
+    const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+    const { p, ctx, erros } = await abrir(navegador, url, { ...iphone, colorScheme: 'light' }, `#/pauta/dia/${hoje}`);
+    await p.locator('.pauta-colunas').waitFor();
+    const noCelular = cardDe(p.locator('.pauta-coluna[data-editor="Bruno Teixeira"]'), `Show da Tarde ${diaMes(hoje)}`).first();
+    await noCelular.scrollIntoViewIfNeeded();
+    await noCelular.locator('.campanhas.compacta .campanha').waitFor();
+    await semRolagemDeLado(p, 'a campanha no celular');
+    await capturar(p, '64-campanha-dia-celular', false);
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  } finally {
+    // as outras partes do e2e não contam com as campanhas
+    for (const c of [g5, spp]) for (const x of (await como(`/producoes/aberta?producao=${c.id}`)).campanhas ?? []) await como('/producoes/campanha', { producao: c.id, campanha: x.id, liga: false });
+  }
+  console.log('ok: a campanha na Pauta (#181)');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -1248,6 +1331,8 @@ async function principal() {
   const navegador = await chromium.launch();
   let falhou = false;
   try {
+    // SO=campanha roda só a etiqueta da campanha (#181)
+    if (process.env.SO === 'campanha') return void (await aCampanha(navegador, s.url, s.api));
     await aSemanaNoSafari(navegador, s.url);
     await oSobrouPorPerfil(navegador, s.url, s.api);
     await aInfoNoBalao(navegador, s.url);
@@ -1263,6 +1348,7 @@ async function principal() {
     await asVersoesAMaoSemRoteiro(navegador, s.url);
     await oMovimento(navegador, s.url);
     await osContadores(navegador, s.url);
+    await aCampanha(navegador, s.url, s.api);
   } catch (e) {
     falhou = true;
     console.error(e);

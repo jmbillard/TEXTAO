@@ -93,6 +93,8 @@ export function criarCampanhas(db, { producoes }) {
     // a primeira ligada primeiro: é a que a etiqueta mostra, com o "+N" das outras
     daProducao: db.prepare('SELECT c.id, c.nome FROM campanhas_producoes l JOIN campanhas c ON c.id = l.campanha_id WHERE l.producao_id = ? AND c.apagada_em IS NULL ORDER BY l.ligada_em, c.nome'),
     todasAsLigacoes: db.prepare('SELECT l.producao_id, c.id, c.nome FROM campanhas_producoes l JOIN campanhas c ON c.id = l.campanha_id WHERE c.apagada_em IS NULL ORDER BY l.ligada_em, c.nome'),
+    // as campanhas de cada roteiro e de cada card (#181, a agenda No Trello): pelas Produções ligadas a eles
+    doRoteiroEDoCard: db.prepare('SELECT p.roteiro_id, p.card_id, c.id, c.nome FROM campanhas_producoes l JOIN campanhas c ON c.id = l.campanha_id JOIN producoes p ON p.id = l.producao_id WHERE c.apagada_em IS NULL ORDER BY l.ligada_em, c.nome'),
     ligar: db.prepare('INSERT INTO campanhas_producoes (campanha_id, producao_id, ligada_por, ligada_em) VALUES (?, ?, ?, ?) ON CONFLICT (campanha_id, producao_id) DO NOTHING'),
     tirar: db.prepare('DELETE FROM campanhas_producoes WHERE campanha_id = ? AND producao_id = ?'),
   };
@@ -157,6 +159,31 @@ export function criarCampanhas(db, { producoes }) {
       mapa.get(l.producao_id).push({ id: l.id, nome: l.nome });
     }
     return (id) => mapa.get(id) ?? [];
+  }
+
+  /**
+   * As campanhas de cada card da agenda No Trello (#181), para a lista inteira de uma vez: as das Produções do roteiro
+   * (ligadas a ele) e as do card do Trello dele, sem repetir, a primeira ligada primeiro.
+   * @returns (roteiro, card) => [{ id, nome }]
+   */
+  function porRoteiroECard() {
+    const doRoteiro = new Map();
+    const doCard = new Map();
+    const juntar = (mapa, chave, c) => {
+      if (!chave) return;
+      if (!mapa.has(chave)) mapa.set(chave, []);
+      mapa.get(chave).push(c);
+    };
+    for (const l of q.doRoteiroEDoCard.all()) {
+      const c = { id: l.id, nome: l.nome };
+      juntar(doRoteiro, l.roteiro_id, c);
+      juntar(doCard, l.card_id, c);
+    }
+    return (roteiro, card) => {
+      const vistas = new Map();
+      for (const c of [...(doRoteiro.get(roteiro) ?? []), ...(card ? (doCard.get(card) ?? []) : [])]) if (!vistas.has(c.id)) vistas.set(c.id, c);
+      return [...vistas.values()];
+    };
   }
 
   /** Liga (`liga`) ou tira a Produção da campanha, com o evento; false quando não mudou nada (já estava, ou não estava). */
@@ -296,5 +323,5 @@ export function criarCampanhas(db, { producoes }) {
     return { status: 200, corpo: { pagina: await pagina(c.id, ctx) } };
   }
 
-  return { lista, criar, daProducao, porProducao, naProducao, pagina, renomear, varias, apagar, desfazerApagar };
+  return { lista, criar, daProducao, porProducao, porRoteiroECard, naProducao, pagina, renomear, varias, apagar, desfazerApagar };
 }

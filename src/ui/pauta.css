@@ -132,6 +132,10 @@
 .pauta-item.compacta .balao-info-botao { top: 1px; right: 0; width: 22px; height: 20px; }
 .pauta-item:has(.balao-info) .pauta-lapis { right: 31px; }
 .pauta-item.compacta:has(.balao-info) .pauta-lapis { right: 23px; }
+/* a etiqueta da campanha (#181), embaixo da claquete, alinhada ao texto (depois da bolinha) */
+.pauta-item > .campanhas { display: flex; margin: -5px 30px 9px 24px; }
+.pauta-item.compacta > .campanhas { margin: 0 4px 4px 15px; }
+.pauta-item.compacta > .campanhas .campanha { height: 17px; font-size: 10.5px; }
 .pauta-item .balao-info-texto { padding: 0 12px 9px 24px; }
 .pauta-item.compacta .balao-info-texto { padding: 0 4px 5px 15px; }
 .pauta-item.compacta .balao-info-texto p { font-size: 12.5px; }
@@ -262,7 +266,8 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
 .pauta-ficha-mais { font: 400 13px var(--sans); color: var(--tinta3); }
 .pauta-ficha-artes { margin-left: auto; text-align: right; font: 400 24px/1 var(--serifa); font-variant-numeric: tabular-nums; color: var(--tinta); }
 .pauta-ficha-artes small { display: block; font: 400 11.5px var(--sans); color: var(--tinta3); }
-.pauta-ficha-producao + .pauta-ficha-tabela { margin-top: 10px; }
+.pauta-ficha-producao + .pauta-ficha-tabela, .pauta-ficha-campanhas + .pauta-ficha-tabela { margin-top: 10px; }
+.pauta-ficha-campanhas { margin: 10px 0 0; }
 .pauta-ficha-tabela { width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 12px; background: var(--cartao); box-shadow: 0 0 0 1px var(--regua); font: 400 14px/1.4 var(--sans); overflow: hidden; }
 .pauta-ficha-tabela th { padding: 9px 14px; text-align: left; font: 600 11px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); border-bottom: 1px solid var(--regua); }
 .pauta-ficha-tabela td { padding: 9px 14px; vertical-align: top; border-bottom: 1px solid var(--regua); }

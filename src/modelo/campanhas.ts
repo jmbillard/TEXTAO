@@ -1,6 +1,6 @@
 /* A Campanha (#177, #178): um conjunto de Produções com um nome. Uma Produção pode estar em várias; a etiqueta do card
-   mostra a primeira ligada e "+N" das outras. Puro: a tela de Produções, o card aberto e, depois, a Pauta e a agenda
-   (#181) leem daqui. */
+   mostra a primeira ligada e "+N" das outras. Puro: a tela de Produções, o card aberto, a Pauta e a agenda (#181) leem
+   daqui. */
 import { nomeComparavel } from './ligarPeloNome.ts';
 
 /** A campanha como o card mostra. */
@@ -32,6 +32,16 @@ export function etiquetasDoCard(campanhas: readonly CampanhaDoCard[] | undefined
 
 /** As campanhas que ainda dá para ligar à Produção (as que ela não tem), na ordem da lista. */
 export const campanhasParaLigar = (todas: readonly CampanhaDoCard[], daProducao: readonly CampanhaDoCard[]) => todas.filter((c) => !daProducao.some((x) => x.id === c.id));
+
+/**
+ * As campanhas de um conjunto de Produções (#181): a claquete da Pauta da edição (uma Produção por praça) e o card da
+ * agenda No Trello. Sem repetir, na ordem: as da primeira Produção, depois as novas das outras.
+ */
+export function campanhasDasProducoes(producoes: readonly { campanhas?: readonly CampanhaDoCard[] }[] | undefined): CampanhaDoCard[] {
+  const vistas = new Map<string, CampanhaDoCard>();
+  for (const p of producoes ?? []) for (const c of p.campanhas ?? []) if (!vistas.has(c.id)) vistas.set(c.id, { id: c.id, nome: c.nome });
+  return [...vistas.values()];
+}
 
 /** A campanha tem todas as palavras do termo no nome, cada uma pelo começo de uma palavra, sem caixa, acento e
     pontuação (a busca da lista das campanhas, #180: a mesma no servidor e na tela). O termo vazio acha todas. */

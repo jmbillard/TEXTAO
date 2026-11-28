@@ -1949,9 +1949,22 @@ async function asCampanhas(navegador, url, chamadasAoTrello, db) {
   await painel.locator('.pa-arte').first().waitFor();
   assert.equal(await painel.getByRole('button', { name: 'Ligar a uma campanha' }).count(), 0, 'quem não tem o papel não liga');
   assert.equal(await painel.getByRole('button', { name: /^Tirar da campanha/ }).count(), 0, 'nem tira');
+  await painel.getByRole('button', { name: 'Fechar a Produção' }).click();
+  await painel.waitFor({ state: 'detached' });
+  // #181: a busca acha pelo nome da campanha, sem caixa nem acento (qualquer pessoa busca)
+  const lupa = p.getByRole('searchbox', { name: 'Buscar nas produções' });
+  for (const termo of ['chamadas de ELENCO', 'lancamento domingo']) {
+    await lupa.fill(termo);
+    await p.locator('.prod-busca-topo', { hasText: termo }).waitFor();
+    await p.locator('.prod-achado', { hasText: 'Festa na Praça' }).waitFor();
+    assert.ok((await p.locator('.prod-achado').count()) >= 1, `a busca acha "${termo}"`);
+  }
+  await capturar(p, '46-campanha-busca');
+  await lupa.press('Escape');
+  await p.locator('.prod-achado').first().waitFor({ state: 'detached' });
   assert.deepEqual(erros, [], 'sem erros na página');
   await ctx.close();
-  console.log('ok: as campanhas (#178)');
+  console.log('ok: as campanhas (#178) e a busca pelo nome da campanha (#181)');
 }
 
 /* ---------- #179: o filtro por campanha ---------- */
