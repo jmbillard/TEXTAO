@@ -77,6 +77,20 @@ export function tipoDoTrecho(p: NoJSON): TipoLido {
   return { tipo: palpiteDoTipo(textoDoTrecho(p)), confirmado: false };
 }
 
+/**
+ * O documento que chega de fora (o arquivo aberto, o texto colado) com o tipo guardado em cada trecho (#195), para
+ * começar a ser escrito: o que a arte ou a etiqueta cobre inteiro, como a fila leu, fica confirmado; o resto fica com
+ * o palpite pelo texto, com "?". O trecho que já tem tipo guardado fica como está.
+ */
+export function comOsTiposGuardados(no: NoJSON): NoJSON {
+  if (no.type === 'paragraph') {
+    if (ehTipo(no.attrs?.tipo)) return no;
+    const { tipo, confirmado } = tipoDoTrecho(no);
+    return { ...no, attrs: { ...no.attrs, tipo, confirmado } };
+  }
+  return no.content ? { ...no, content: no.content.map(comOsTiposGuardados) } : no;
+}
+
 /** Onde o trecho fica nas colunas: no vídeo, no áudio ou na linha inteira, por cima das duas. */
 export type ColunaDoTrecho = 'video' | 'audio' | 'linha';
 

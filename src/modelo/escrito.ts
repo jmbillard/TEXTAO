@@ -38,9 +38,47 @@ export const podeComecar = (q: { redator: boolean; coordenacao: boolean; admin: 
 /** O título do Roteiro novo: o que a pessoa deu, sem espaços sobrando, até 200 letras. */
 export const tituloLimpo = (t: unknown) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, 200) : '');
 
+/** Os campos da meta que o roteiro aberto de um arquivo (ou colado, #195) traz para a folha: o que a leitura da fila
+    achou no cabeçalho e serve ao Enviar (a atração, a data, a praça, quem edita e quem grava). A claquete fica de fora
+    (ela é proposta no Enviar), e o redator é quem escreve. */
+const CAMPOS_DE_FORA = {
+  programa: 'texto',
+  tipoPrograma: ['novela', 'ao_vivo', 'esporte', 'auditorio', 'outro'],
+  dataExibicao: 'data',
+  capitulo: 'inteiro',
+  edicao: 'texto',
+  praca: 'texto',
+  editor: 'texto',
+  locutor: 'texto',
+  selo: 'texto',
+  duracaoAlvoSeg: 'inteiro',
+  duracaoModo: ['fechar', 'max'],
+  lidoPorOcr: 'sim',
+  paginasOriginal: 'inteiro',
+} as const;
+
+const valeComo = (regra: (typeof CAMPOS_DE_FORA)[keyof typeof CAMPOS_DE_FORA], v: unknown): boolean => {
+  if (Array.isArray(regra)) return regra.includes(v as never);
+  if (regra === 'texto') return typeof v === 'string' && v.length <= 200;
+  if (regra === 'data') return typeof v === 'string' && /^(\d{4}-\d{2}-\d{2})?$/.test(v);
+  if (regra === 'inteiro') return v === null || (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 100_000);
+  return typeof v === 'boolean';
+};
+
+/** Do que chegou (a meta lida do arquivo, ou o corpo do pedido), só os campos de fora que valem, cada um no seu tipo. */
+export function metaDeFora(m: unknown): Partial<Meta> {
+  if (!m || typeof m !== 'object') return {};
+  const out: Record<string, unknown> = {};
+  for (const [campo, regra] of Object.entries(CAMPOS_DE_FORA)) {
+    const v = (m as Record<string, unknown>)[campo];
+    if (v !== undefined && valeComo(regra, v)) out[campo] = v;
+  }
+  return out as Partial<Meta>;
+}
+
 /** A meta do Roteiro que começa a ser escrito: sem claquete (ela é proposta no Enviar), com o título e o redator, no
-    status de rascunho (que é o sendo escrito). */
-export const metaDoNovo = (titulo: string, redator: string): Meta => ({ ...metaVazia(), titulo, redator, status: 'rascunho' });
+    status de rascunho (que é o sendo escrito). `deFora`: o que o arquivo aberto trouxe (#195, `metaDeFora`). */
+export const metaDoNovo = (titulo: string, redator: string, deFora: unknown = {}): Meta => ({ ...metaVazia(), ...metaDeFora(deFora), titulo, redator, status: 'rascunho', layout: 'coluna_unica' });
 
 /** O título para mostrar: o dado, ou "Sem título". */
 export const tituloParaMostrar = (meta: Pick<Meta, 'titulo' | 'claquete'> | undefined) => meta?.titulo?.trim() || meta?.claquete?.trim() || 'Sem título';

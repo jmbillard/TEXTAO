@@ -19,9 +19,8 @@ import { CaminhosDoTopo, SeletorDeArea } from './ui/SeletorDeArea';
 import { ehAreaDosRoteiros, type Area, type AreaDosRoteiros } from './modelo/areas';
 import { armazenamento, marcarTourVisto, atracaoNoServidor, relatarSemAtracao, atualizarVocabulario, temCadastros, type TipoCadastro, consultarAcervo, consultarPauta, palpitesDoRedator, consultarProducao, resumoDaProducao, guardarOriginal, mandarParaTrello, souAdministrador, souCoordenacao, temTrello, temFilmes, lembrarArea, type TextoOriginal } from './dados/armazenamento';
 import { iniciarSessao, salvarPerfilLocal, type Identidade } from './dados/identidade';
-import { converterLayout } from './editor/extensoes';
-import { interpretar, lerArquivo, montarDoc, type Importacao } from './importar';
-import type { DocBruto } from './importar/bruto';
+import { interpretar, lerArquivo, type Importacao } from './importar';
+import { docDaImportacao, textoDoOriginal } from './importar/paraEscrever';
 import { exportar, pendencias, roteiroDoJson, travamTrello } from './modelo/exportar';
 import { docVazio, metaVazia, novoId, type ArteDoAcervo, type Pessoa, type Roteiro } from './modelo/tipos';
 import { Marca } from './ui/pecas';
@@ -105,10 +104,6 @@ const AVISO_DO_HASH = 'Esse endereço não existe mais. Você está na fila.';
 
 /** O texto do arquivo como chegou, parágrafo a parágrafo, com o sublinhado do redator (para o PDF do card). */
 const textosOriginais = new Map<string, TextoOriginal>();
-const textoDoOriginal = (bruto: DocBruto): TextoOriginal =>
-  bruto.blocos
-    .flatMap((b) => (b.tipo === 'p' ? [b.par] : b.linhas.flatMap((linha) => linha.flatMap((celula) => celula))))
-    .map((par) => par.filter((r) => r.t).map((r) => ({ t: r.t, ...(r.u ? { u: 1 as const } : {}), ...(r.b ? { b: 1 as const } : {}), ...(r.i ? { i: 1 as const } : {}) })));
 
 export function App() {
   const [tela, setTela] = useState<Tela>(telaDoHash);
@@ -340,7 +335,7 @@ export function App() {
       const agora = new Date().toISOString();
       // o roteiro é sempre texto corrido; as cores do Word ficam com o significado que o app deduziu
       const roteiro: Roteiro = {
-        id: novoId(), meta: { ...imp.meta, layout: 'coluna_unica' }, doc: converterLayout(montarDoc(imp), 'coluna_unica'),
+        id: novoId(), meta: { ...imp.meta, layout: 'coluna_unica' }, doc: docDaImportacao(imp),
         revisao: 1, criadoEm: agora, atualizadoEm: agora, origem: imp.bruto.arquivo, criadoPor: pessoa, alteradoPor: pessoa,
       };
       roteiro.meta.revisar = pendencias(exportar(roteiro));
