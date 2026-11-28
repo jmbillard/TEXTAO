@@ -133,6 +133,9 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
       transformPastedHTML: prepararColagem,
     },
     onCreate: ({ editor: e }) => setVazia(e.isEmpty),
+    // o texto que chega da sala (o preenchimento, o colega digitando) não passa pelo onUpdate: a folha vazia também
+    // deixa de ser vazia com ele (senão o convite do começo, #195, ficaria por cima do texto)
+    onTransaction: ({ editor: e, transaction }) => transaction.docChanged && setVazia(e.isEmpty),
     onUpdate: ({ editor: e }) => {
       setVazia(e.isEmpty);
       // na sala, quem salva é ela

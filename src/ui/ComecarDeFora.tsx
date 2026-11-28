@@ -199,9 +199,9 @@ export function ComecarNaFolha({ corpo, vazia, pode, receber, falhou }: { corpo:
               <button type="button" className="botao-texto comecar-abrir" onMouseDown={(e) => e.preventDefault()} onClick={deFora.abrir}>
                 <Icone nome="importar" tam={13} traco={2} /> abrir um .docx, RTF ou PDF
               </button>
-              <span aria-hidden="true"> · </span>
-              <span>
-                soltar o arquivo aqui ou colar o texto do Word (<kbd>{atalho('Mod-V')}</kbd>)
+              <span className="comecar-no-computador" aria-hidden="true"> · </span>
+              <span className="comecar-no-computador">
+                soltar o arquivo aqui ou colar o texto do Word com <kbd>{atalho('Mod-V')}</kbd>
               </span>
             </>
           )}

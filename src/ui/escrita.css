@@ -72,6 +72,11 @@
 .comecar-na-folha .comecar-abrir { display: inline-flex; align-items: center; gap: 5px; font-size: inherit; }
 .comecar-na-folha kbd { font-size: 12px; }
 .comecar-na-folha-lendo { color: var(--tinta2); }
+/* no celular, o convite desce (o "Comece a escrever" quebra em duas linhas) e fica só o abrir: lá não se arrasta nem há Ctrl+V */
+@media (max-width: 600px) {
+  .comecar-na-folha { top: 6.6em; }
+  .comecar-no-computador { display: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .comecar-na-folha { animation: none; }
