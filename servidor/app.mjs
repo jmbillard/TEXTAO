@@ -1312,6 +1312,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       `INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, escrito_de, criado_em, atualizado_em)
        VALUES (?, ?, ?, 1, ?, ?, ?, 1, ?, ?, ?, ?)`,
     ),
+    // a edição pela Pauta (#197): o texto do último envio, a foto dele
+    ultimaFotoDoEscrito: db.prepare("SELECT n, criado_em, por_email, por_nome, motivo, meta, doc FROM versoes WHERE roteiro_id = ? AND (motivo = 'enviado' OR motivo LIKE 'enviado: %') ORDER BY n DESC LIMIT 1"),
     fotosDoEscrito: db.prepare("SELECT n, criado_em, por_email, por_nome, motivo, meta FROM versoes WHERE roteiro_id = ? AND (motivo = 'enviado' OR motivo LIKE 'enviado: %') ORDER BY n DESC LIMIT 200"),
     marcarEnviado: db.prepare("UPDATE roteiros SET escrito = 'enviado', meta = ?, atualizado_em = ? WHERE id = ?"),
     verUsuario: db.prepare(
@@ -2001,6 +2003,30 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         andamento: andamentoDaArte(producao),
       },
     };
+  }
+
+  /**
+   * O último envio do Roteiro escrito no PROMeiro, para a edição ler pela Pauta (#197): GET
+   * …/roteiros-escritos/<id>/ultimo-envio → { envio, roteiro, comenta, escreve }. O texto é o da foto do último Enviar
+   * (a versão que vale), nunca o texto vivo. Lê quem lê o escrito e também quem lê a cópia desse envio na fila (ela é de
+   * toda a equipe): fechado pela redatora, o envio ainda abre pela Pauta, mas sem os comentários, que são do escrito
+   * (`comenta`). `escreve`: a pessoa escreve no roteiro (a folha oferece o texto de agora).
+   */
+  function rotaDoUltimoEnvio(req, res, eu, id) {
+    if (!ID_VALIDO.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
+    if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+    const { linha, editar, ler } = acesso(id, eu);
+    const copia = linha?.escrito ? q.copiaDoEscrito.get(id) : null;
+    if (!linha?.escrito || !(ler || (copia && acesso(copia.id, eu).ler))) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+    const foto = q.ultimaFotoDoEscrito.get(id);
+    if (!foto) return json(res, 404, { erro: 'Este roteiro ainda não foi enviado: a edição lê a partir do primeiro Enviar.' });
+    const meta = JSON.parse(foto.meta);
+    return json(res, 200, {
+      envio: { n: foto.n, em: foto.criado_em, por: { nome: foto.por_nome, email: foto.por_email }, motivo: textoDoMotivo(foto.motivo), claquete: String(meta.claquete ?? ''), ...letraEVersaoDaFoto(meta) },
+      roteiro: { id, meta, doc: JSON.parse(foto.doc), revisao: 1, criadoEm: linha.criado_em, atualizadoEm: foto.criado_em, criadoPor: { nome: linha.dono_nome, email: linha.dono_email }, publico: !!linha.publico, meu: false, escrito: linha.escrito, semSala: true },
+      comenta: ler,
+      escreve: editar,
+    });
   }
 
   /**
@@ -3435,7 +3461,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       for (const [chave, valor] of entradas) preferencias.gravar(eu.email, chave, valor);
       return json(res, 200, { ok: true, preferencias: preferencias.ler(eu.email) });
     }
-    const doEnviar = /^\/api\/roteiros-escritos\/([^/]+)\/(enviar|envios)$/.exec(caminho);
+    const doEnviar = /^\/api\/roteiros-escritos\/([^/]+)\/(enviar|envios|ultimo-envio)$/.exec(caminho);
+    if (doEnviar?.[2] === 'ultimo-envio') return rotaDoUltimoEnvio(req, res, eu, doEnviar[1]);
     if (doEnviar) return rotaDoEnviar(req, res, eu, doEnviar[1], doEnviar[2]);
     if (caminho === '/api/roteiros-escritos') {
       // os Roteiros escritos no PROMeiro (#189): GET, os que a pessoa lê (a lista de "Roteiros", com as abas); POST

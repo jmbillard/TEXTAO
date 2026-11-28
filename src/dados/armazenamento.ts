@@ -1159,6 +1159,15 @@ export interface EnviosDoEscrito {
   fila: { id: string; claquete: string; trello?: { estado: EnvioTrello['estado']; url?: string }; designers: string[]; andamento: { id: 'entrada' | 'produzindo' | 'entregue'; nome: string; situacao: 'feito' | 'agora' | 'depois'; quando: string | null }[] } | null;
 }
 export const lerEnviosDoEscrito = (id: string) => pedir<EnviosDoEscrito>(`/api/roteiros-escritos/${encodeURIComponent(id)}/envios`);
+/** O último envio do Roteiro escrito no PROMeiro, como a edição lê pela Pauta (#197): o envio, o roteiro com o texto da
+    foto (não o texto vivo), se a pessoa comenta (lê o escrito) e se ela escreve nele. */
+export interface UltimoEnvio {
+  envio: EnvioDoEscrito;
+  roteiro: Roteiro;
+  comenta: boolean;
+  escreve: boolean;
+}
+export const lerUltimoEnvio = (id: string) => pedir<UltimoEnvio>(`/api/roteiros-escritos/${encodeURIComponent(id)}/ultimo-envio`);
 /** O que o Enviar devolve: a cópia do envio que entrou na fila, o envio e o escrito como ficou. */
 export interface EnvioFeito {
   copia: Roteiro;
