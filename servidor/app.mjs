@@ -1026,7 +1026,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   });
   /** As Produções que a Pauta cruza perto do dia (#96, #199): as que entraram nos 120 dias antes dele, ou depois. */
   function producoesPerto(dia) {
-    return producoes.naPauta(new Date(Date.parse(`${dia}T12:00:00Z`) - 120 * 86_400_000).toISOString());
+    return producoes.naPauta(desdeOCruzamento(dia));
+  }
+  /** O instante de 120 dias antes do dia: de quando o cruzamento da Pauta lê as Produções. */
+  function desdeOCruzamento(dia) {
+    return new Date(Date.parse(`${dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();
   }
   /** A chave sem a praça do fim, a mesma do cruzamento da Pauta. */
   function semPracaDaPauta(chave) {
@@ -2313,8 +2317,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         semPracaDaPauta,
       ).flatMap((l) => (l.producoes ?? []).map((p) => p.id)),
     );
-    const desde = new Date(Date.parse(`${dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();
-    const claquetes = claquetesParaEscolher(ps, dia, semPracaDaPauta, { comCard: producoes.comCard(desde), noDia });
+    const claquetes = claquetesParaEscolher(ps, dia, semPracaDaPauta, { comCard: producoes.comCard(desdeOCruzamento(dia)), noDia });
     let deFora = null;
     let erroDeFora;
     try {

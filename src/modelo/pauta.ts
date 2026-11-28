@@ -523,6 +523,14 @@ const ANTES = 90;
 const DEPOIS = 14;
 const DIA_MS = 86_400_000;
 
+/** A Produção entrou perto do dia (de ANTES dias antes a DEPOIS dias depois); sem a data de entrada, vale. */
+const pertoDoDia = (dia: string) => (p: ProducaoNaPauta) => {
+  const entrada = p.entradaEm ? Date.parse(p.entradaEm) : NaN;
+  if (Number.isNaN(entrada)) return true;
+  const doDia = Date.parse(`${dia}T12:00:00Z`);
+  return entrada >= doDia - ANTES * DIA_MS && entrada <= doDia + DEPOIS * DIA_MS;
+};
+
 /** A chave da claquete sem o código das versões no fim ("Novela Sol 27/11 NAH" → "NOVELA SOL 27 11"). */
 const chaveSemVersao = (l: Pick<LinhaDaPauta, 'semVersao'>) => chaveDaClaquete(l.semVersao);
 
@@ -543,12 +551,7 @@ export function cruzarComAProducao(linhas: readonly LinhaDaPauta[], producoes: r
     juntar(exatas, chave, p);
     juntar(semAPraca, semPraca(chave), p);
   }
-  const perto = (dia: string) => (p: ProducaoNaPauta) => {
-    const entrada = p.entradaEm ? Date.parse(p.entradaEm) : NaN;
-    if (Number.isNaN(entrada)) return true;
-    const doDia = Date.parse(`${dia}T12:00:00Z`);
-    return entrada >= doDia - ANTES * DIA_MS && entrada <= doDia + DEPOIS * DIA_MS;
-  };
+  const perto = pertoDoDia;
   /** Uma por praça: a que entrou por último. */
   const umaPorPraca = (lista: ProducaoNaPauta[]) => {
     const porPraca = new Map<string, ProducaoNaPauta>();
@@ -666,11 +669,7 @@ export interface ClaqueteParaEscolher {
  * @param comCard os ids das Produções com card no Trello
  */
 export function claquetesParaEscolher(producoes: readonly ProducaoNaPauta[], dia: string, semPraca: (chave: string) => string, { comCard = new Set<string>(), noDia = new Set<string>() }: { comCard?: ReadonlySet<string>; noDia?: ReadonlySet<string> } = {}): ClaqueteParaEscolher[] {
-  const doDia = Date.parse(`${dia}T12:00:00Z`);
-  const perto = (p: ProducaoNaPauta) => {
-    const entrada = p.entradaEm ? Date.parse(p.entradaEm) : NaN;
-    return Number.isNaN(entrada) || (entrada >= doDia - ANTES * DIA_MS && entrada <= doDia + DEPOIS * DIA_MS);
-  };
+  const perto = pertoDoDia(dia);
   const grupos = new Map<string, ProducaoNaPauta[]>();
   for (const p of producoes) {
     if (p.etapa === 'arquivada' || !perto(p)) continue;
