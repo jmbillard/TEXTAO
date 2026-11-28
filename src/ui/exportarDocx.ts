@@ -2,6 +2,7 @@ import { AlignmentType, BorderStyle, CommentRangeEnd, CommentRangeStart, Comment
 import JSZip from 'jszip';
 import type { Saida } from '../modelo/exportar';
 import { nomeEtiqueta, NOMES_COLUNAS, type NoJSON } from '../modelo/tipos';
+import { gruposDasColunas, tipoDoTrecho, type TipoDoTrecho } from '../modelo/trecho';
 
 /* O Word como formato de saída: o mesmo roteiro, limpo e padronizado,
    com a lista de artes em anexo. Arte continua sendo o que está sublinhado.
@@ -9,7 +10,18 @@ import { nomeEtiqueta, NOMES_COLUNAS, type NoJSON } from '../modelo/tipos';
    - autores nas propriedades do documento;
    - a observação de cada arte como comentário do Word, preso ao trecho;
    - um XML próprio (customXml, urn:promeiro:roteiro:1) com o roteiro e a lista de artes,
-     que o Word guarda intacto quando alguém edita e salva. */
+     que o Word guarda intacto quando alguém edita e salva.
+
+   O modo limpo do Roteiro escrito no PROMeiro (#193) sai pelo mesmo gerador, com a cara dos .docx de hoje e igual ao
+   que a folha mostra: Arial 11, o título em caixa alta e negrito; a locução em caixa alta (aqui no texto do arquivo,
+   não só na aparência); a arte sublinhada em negrito; a sonora em negrito; a locação sublinhada. Em texto corrido ou,
+   nas colunas, numa tabela de bordas pretas (a regra dos grupos, `gruposDasColunas`). Sem o cabeçalho da revisão e
+   sem a lista de artes anexa; os dados (os autores, os comentários das artes e o XML) continuam indo. */
+
+/** Como o .docx sai: o da revisão (o padrão) ou o do modo limpo da folha de escrita, em texto ou em colunas. */
+export interface ComoSai {
+  limpo?: 'texto' | 'colunas';
+}
 
 const FONTE = 'Arial';
 const CINZA = '6B6860';
@@ -31,7 +43,18 @@ interface Comentarios {
   usados: Set<string>;
 }
 
-function paragrafo(p: NoJSON, comentarios: Comentarios = { ids: new Map(), usados: new Set() }): Paragraph {
+/** A cara de cada tipo do trecho no modo limpo (a mesma do CSS da folha, `.folha-escrita.limpo`); o resto sai como foi
+    escrito. */
+const NO_LIMPO: Partial<Record<TipoDoTrecho, { caixaAlta?: boolean; negrito?: boolean; sublinhado?: boolean; italico?: boolean }>> = {
+  locucao: { caixaAlta: true },
+  sonora: { negrito: true },
+  locacao: { sublinhado: true },
+  comentario: { italico: true },
+};
+const caixaAlta = (s: string) => s.toLocaleUpperCase('pt-BR');
+
+function paragrafo(p: NoJSON, comentarios: Comentarios = { ids: new Map(), usados: new Set() }, limpo = false): Paragraph {
+  const cara = limpo ? (NO_LIMPO[tipoDoTrecho(p).tipo] ?? {}) : {};
   const filhos: (TextRun | CommentRangeStart | CommentRangeEnd)[] = [];
   let etqAnterior: unknown = null;
   const nos = (p.content ?? []).filter((n) => n.type === 'hardBreak' || (n.type === 'text' && n.text));
@@ -53,6 +76,21 @@ function paragrafo(p: NoJSON, comentarios: Comentarios = { ids: new Map(), usado
     const arte = n.marks?.find((m) => m.type === 'arte');
     const etq = n.marks?.find((m) => m.type === 'etiqueta')?.attrs;
     const negrito = !!n.marks?.some((m) => m.type === 'bold');
+    if (limpo) {
+      // no limpo, as etiquetas da revisão não aparecem: quem dá a cara é o tipo do trecho
+      filhos.push(
+        texto(cara.caixaAlta ? caixaAlta(n.text) : n.text, {
+          bold: negrito || !!arte || !!cara.negrito,
+          underline: arte || cara.sublinhado ? { type: UnderlineType.SINGLE } : undefined,
+          italics: !!cara.italico,
+        }),
+      );
+      if (comentario !== undefined && abertos.has(id) && idArte(nos[k + 1]) !== id) {
+        filhos.push(new CommentRangeEnd(comentario), new TextRun({ children: [new CommentReference(comentario)] }));
+        abertos.delete(id);
+      }
+      continue;
+    }
     if (etq && etq.id !== etqAnterior)
       filhos.push(new TextRun({ text: `[${nomeEtiqueta(String(etq.tipo))}] `, font: FONTE, size: 16, bold: true, color: CORES[String(etq.tipo)] ?? CINZA }));
     etqAnterior = etq?.id ?? null;
@@ -70,7 +108,7 @@ function paragrafo(p: NoJSON, comentarios: Comentarios = { ids: new Map(), usado
       abertos.delete(id);
     }
   }
-  return new Paragraph({ children: filhos, spacing: { after: 140, line: 320 } });
+  return new Paragraph({ children: filhos, spacing: limpo ? { after: 160, line: 276 } : { after: 140, line: 320 } });
 }
 
 const celula = (filhos: (Paragraph | Table)[], largura: number, fundo?: string) =>
@@ -149,7 +187,38 @@ async function embutirXml(docx: Blob, xml: string): Promise<Blob> {
   return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
 }
 
-export async function gerarDocx(saida: Saida): Promise<Blob> {
+const bordaPreta = { style: BorderStyle.SINGLE, size: 4, color: '000000' };
+const bordasPretas = { top: bordaPreta, bottom: bordaPreta, left: bordaPreta, right: bordaPreta };
+const celulaLimpa = (filhos: Paragraph[], largura: number, juntas = 1) =>
+  new TableCell({
+    children: filhos.length ? filhos : [new Paragraph({})],
+    width: { size: largura, type: WidthType.PERCENTAGE },
+    columnSpan: juntas > 1 ? juntas : undefined,
+    borders: bordasPretas,
+    margins: { top: 80, bottom: 80, left: 120, right: 120 },
+  });
+
+/** O corpo do modo limpo: o título e os trechos, em texto corrido ou na tabela de bordas pretas das colunas (a locação
+    na linha inteira; cada grupo numa linha, o vídeo à esquerda e o áudio à direita). */
+function corpoLimpo(saida: Saida, visao: 'texto' | 'colunas', comentarios: Comentarios): (Paragraph | Table)[] {
+  const trechos = (saida.blocos.content ?? []).filter((n) => n.type === 'paragraph');
+  const titulo = saida.roteiro.titulo || saida.roteiro.claquete || 'Roteiro';
+  const cabeca = new Paragraph({ children: [texto(caixaAlta(titulo), { bold: true })], spacing: { after: 240, line: 276 } });
+  const um = (i: number) => paragrafo(trechos[i], comentarios, true);
+  if (visao === 'texto') return [cabeca, ...trechos.map((_, i) => um(i))];
+  const grupos = gruposDasColunas(trechos.map((p) => tipoDoTrecho(p).tipo));
+  if (!grupos.length) return [cabeca];
+  return [
+    cabeca,
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      columnWidths: [4513, 4513],
+      rows: grupos.map((g) => new TableRow({ children: g.tipo === 'linha' ? [celulaLimpa([um(g.trecho)], 100, 2)] : [celulaLimpa(g.video.map(um), 50), celulaLimpa(g.audio.map(um), 50)] })),
+    }),
+  ];
+}
+
+export async function gerarDocx(saida: Saida, como: ComoSai = {}): Promise<Blob> {
   const r = saida.roteiro;
   const autores = autoresDe(saida);
   // a observação de cada arte vira comentário do Word, preso ao trecho sublinhado
@@ -231,8 +300,11 @@ export async function gerarDocx(saida: Saida): Promise<Blob> {
     },
     sections: [
       {
-        properties: { page: { margin: { top: 1000, bottom: 1000, left: 1100, right: 1100 } } },
-        children: [
+        // o modo limpo (#193): a página do Word de sempre, só o roteiro (os comentários das artes se prendem de novo nele)
+        properties: { page: { margin: como.limpo ? { top: 1440, bottom: 1440, left: 1440, right: 1440 } : { top: 1000, bottom: 1000, left: 1100, right: 1100 } } },
+        children: como.limpo
+          ? corpoLimpo(saida, como.limpo, { ids: comentarios.ids, usados: new Set() })
+          : [
           new Paragraph({ children: [rotulo([r.programa, data].filter(Boolean).join(' · '))], spacing: { after: 80 } }),
           new Paragraph({ children: [new TextRun({ text: r.titulo || 'Roteiro', font: FONTE, size: 40, bold: true })], spacing: { after: 240 } }),
           ...(preenchidos.length ? [cabecalho] : []),
