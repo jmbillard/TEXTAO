@@ -27,7 +27,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       [atalho('Mod-z'), 'Desfaz'],
     ],
   },
-  // a folha de escrita (#190). Os próximos tickets acrescentam as linhas deles: comentar (#192), o modo limpo (#193) e
+  // a folha de escrita (#190) e o modo limpo (#193). Os próximos tickets acrescentam as linhas deles: comentar (#192) e
   // o Enviar (#194)
   escrita: {
     titulo: 'Escrever',
@@ -42,6 +42,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       ['Esc', 'Fecha os menus e os balões'],
       [atalho('Mod-z'), 'Desfaz'],
       [atalho('Mod-Shift-z'), 'Refaz'],
+      [atalho('Mod-Shift-l'), 'Modo limpo: só a folha, com a cara do .docx (de novo, sai)'],
       [atalho('Mod-Enter'), 'Enviar: confere a claquete e põe o roteiro na fila'],
     ],
   },

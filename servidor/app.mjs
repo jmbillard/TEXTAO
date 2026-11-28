@@ -1280,7 +1280,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     // o Roteiro que começa a ser escrito no PROMeiro (#189): visível para a equipe e sendo escrito
     inserirEscrito: db.prepare(
       `INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, escrito, criado_em, atualizado_em)
-       VALUES (?, ?, ?, 1, ?, ?, 0, 1, NULL, 'sendo-escrito', ?, ?)`,
+       VALUES (?, ?, ?, 1, ?, ?, ?, 1, ?, 'sendo-escrito', ?, ?)`,
     ),
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
@@ -3430,7 +3430,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (doEnviar) return rotaDoEnviar(req, res, eu, doEnviar[1], doEnviar[2]);
     if (caminho === '/api/roteiros-escritos') {
       // os Roteiros escritos no PROMeiro (#189): GET, os que a pessoa lê (a lista de "Roteiros", com as abas); POST
-      // { id?, titulo? }, o Novo roteiro, que nasce sendo escrito, visível para a equipe e com a pessoa de redatora
+      // { id?, titulo? }, o Novo roteiro, que nasce sendo escrito, visível para a equipe e com a pessoa de redatora. Aberto
+      // de um arquivo ou colado (#195), também { doc, meta, origem, nArtes }: o texto já lido no navegador, com os tipos
+      // e as artes, e da meta só os campos de fora (metaDeFora)
       const eRedator = await areas.quemE(eu.email, cadastros);
       const comecar = podeComecar({ redator: !!eRedator.redator, coordenacao: escala.ehCoordenacao(eu.email), admin: cadastros.podeApagar(eu.email) });
       if (req.method === 'GET') return json(res, 200, { podeComecar: comecar, roteiros: resumosPara(eu, { escritos: true }) });
@@ -3441,11 +3443,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!ID_VALIDO.test(id) || id.startsWith(PREFIXO_DO_TOUR)) return json(res, 400, { erro: 'Identificador inválido.' });
       if (q.um.get(id) || q.lapide.get(id)) return json(res, 409, { erro: 'Esse roteiro já existe.' });
       const agora = new Date().toISOString();
-      const meta = metaDoNovo(tituloLimpo(corpo.titulo), eRedator.redator?.nome ?? eu.nome);
-      const doc = { type: 'doc', content: [{ type: 'paragraph' }] };
-      q.inserirEscrito.run(id, eu.email, eu.nome, JSON.stringify(meta), JSON.stringify(doc), agora, agora);
-      versionar(id, eu, JSON.stringify(meta), JSON.stringify(doc), 'começou', agora);
-      console.log(`[roteiros] ${eu.email} começou o roteiro ${id}`);
+      const deFora = corpo.doc !== undefined;
+      if (deFora && (corpo.doc?.type !== 'doc' || !Array.isArray(corpo.doc.content) || !corpo.doc.content.length)) return json(res, 400, { erro: 'Roteiro inválido.' });
+      const meta = metaDoNovo(tituloLimpo(corpo.titulo), eRedator.redator?.nome ?? eu.nome, deFora ? corpo.meta : {});
+      const doc = deFora ? corpo.doc : { type: 'doc', content: [{ type: 'paragraph' }] };
+      const origem = deFora && typeof corpo.origem === 'string' && corpo.origem.trim() ? corpo.origem.trim().slice(0, 255) : null;
+      const nArtes = deFora && Number.isInteger(corpo.nArtes) && corpo.nArtes >= 0 ? corpo.nArtes : 0;
+      q.inserirEscrito.run(id, eu.email, eu.nome, JSON.stringify(meta), JSON.stringify(doc), nArtes, origem, agora, agora);
+      versionar(id, eu, JSON.stringify(meta), JSON.stringify(doc), deFora ? (origem ? 'começou do arquivo' : 'começou do colado') : 'começou', agora);
+      console.log(`[roteiros] ${eu.email} começou o roteiro ${id}${deFora ? (origem ? ' de um arquivo' : ' de um texto colado') : ''}`);
       return json(res, 201, { ...paraFora(q.um.get(id), eu), podeEditar: true });
     }
     if (caminho === '/api/meus-roteiros') {
