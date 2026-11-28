@@ -13,7 +13,7 @@
 .prod-busca.buscando .prod-busca-fio::after { opacity: 1; animation: correr-fio 0.9s var(--suave) infinite; }
 @keyframes correr-fio { to { transform: translateX(340%); } }
 .prod-busca-nada { margin: 6px 4px; }
-.prod-achados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; transition: opacity 0.18s; }
+.prod-achados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; transition: opacity 0.18s var(--suave); }
 /* buscando um termo novo, os achados de antes ficam à vista, mais apagados, até chegarem os novos */
 .prod-busca.buscando .prod-achados { opacity: 0.6; }
 .prod-achado { animation: surgir-achado var(--dur) var(--suave) backwards; animation-delay: var(--atraso, 0ms); }

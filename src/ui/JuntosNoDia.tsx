@@ -139,7 +139,7 @@ export function MarcasDosOutros({ outros, dentro, versao }: { outros: readonly O
   return (
     <>
       {marcas.map((m) => (
-        <span key={m.email} className="marca-do-outro" aria-hidden="true" style={{ left: m.x - 3, top: m.y - 3, width: m.w + 6, height: m.h + 6, ['--cor-do-outro' as string]: m.cor }}>
+        <span key={m.email} className="marca-do-outro" aria-hidden="true" style={{ transform: `translate(${m.x - 3}px, ${m.y - 3}px)`, width: m.w + 6, height: m.h + 6, ['--cor-do-outro' as string]: m.cor }}>
           <span className="marca-do-outro-nome">{m.nome}</span>
         </span>
       ))}

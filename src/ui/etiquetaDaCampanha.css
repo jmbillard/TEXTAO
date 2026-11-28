@@ -52,7 +52,7 @@
 .campanha-abrir:focus-visible { outline: none; }
 .campanha:has(> .campanha-abrir:focus-visible) { box-shadow: 0 0 0 2px var(--tom); }
 .campanha.com-tirar { padding-right: 2px; }
-.campanha-tirar { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.6; cursor: pointer; transition: opacity 0.15s, background-color 0.15s, transform 0.2s var(--suave); }
+.campanha-tirar { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.6; cursor: pointer; transition: opacity 0.15s var(--suave), background-color 0.15s var(--suave), transform 0.2s var(--suave); }
 .campanha-tirar:hover { opacity: 1; background: color-mix(in srgb, var(--tom) 22%, transparent); transform: rotate(90deg); }
 .campanha-tirar:focus-visible { opacity: 1; }
 

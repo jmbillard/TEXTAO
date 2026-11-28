@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { mesPorExtenso, periodoNaContagem, posicaoNaContagem, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
 import { DIAS_POR_EXTENSO, partes } from './pecasDaPauta';
-import { SUAVE, type Contagem } from './topoDaAgenda';
+import { SUAVE, TROCA_ENTRA_MS, TROCA_SAI, TROCA_SAI_MS, type Contagem } from './topoDaAgenda';
 import { semMovimento } from './util';
 
 /* A troca de dia ou de semana da Pauta da edição (#162), o movimento da agenda (trocaDeSemana.ts) um pouco mais largo:
@@ -11,8 +11,8 @@ import { semMovimento } from './util';
 
 /** Quanto o período que sai leva sumindo e quanto o novo leva entrando, em ms; quanto andam de lado, em px; e o atraso
     da cascata (por elemento, até o teto). */
-const SAI_MS = 150;
-const ENTRA_MS = 220;
+const SAI_MS = TROCA_SAI_MS;
+const ENTRA_MS = TROCA_ENTRA_MS;
 const ANDA_PX = 22;
 const CASCATA_MS = 10;
 const CASCATA_TETO_MS = 80;
@@ -83,7 +83,7 @@ export function useTrocaDaPauta(raiz: RefObject<HTMLElement | null>, alvo: numbe
     entrando.current.forEach((a) => a.cancel());
     entrando.current = [];
     const ate = reduzido ? { opacity: 0 } : { opacity: 0, transform: `translateX(${-ANDA_PX * sentido}px)` };
-    const estas = itens.map((e) => e.animate([{}, ate], { duration: reduzido ? REDUZIDO_MS / 2 : SAI_MS, easing: 'ease-in', fill: 'forwards' }));
+    const estas = itens.map((e) => e.animate([{}, ate], { duration: reduzido ? REDUZIDO_MS / 2 : SAI_MS, easing: TROCA_SAI, fill: 'forwards' }));
     saindo.current = estas;
     const trocar = () => {
       if (saindo.current !== estas) return;

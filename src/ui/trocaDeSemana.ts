@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { SUAVE } from './topoDaAgenda';
+import { SUAVE, TROCA_ENTRA_MS, TROCA_SAI, TROCA_SAI_MS } from './topoDaAgenda';
 import { semMovimento } from './util';
 
 /* A troca de semana do computador (as setas e o "voltar para hoje"). As sete colunas ficam no lugar; o que é da semana
@@ -11,8 +11,8 @@ import { semMovimento } from './util';
 
 /** Quanto a semana que sai leva sumindo (como a prioridade que some) e quanto a nova leva entrando (como o "voltar
     para hoje"), em ms, e quanto elas andam de lado, em px. */
-const SAI_MS = 130;
-const ENTRA_MS = 220;
+const SAI_MS = TROCA_SAI_MS;
+const ENTRA_MS = TROCA_ENTRA_MS;
 const ANDA_PX = 10;
 
 export interface TrocaDeSemana {
@@ -51,7 +51,7 @@ export function useTrocaDeSemana(raiz: RefObject<HTMLElement | null>, alvo: numb
     });
     entrando.current.forEach((a) => a.cancel());
     entrando.current = [];
-    const estas = itens.map((e, i) => e.animate([de[i], { opacity: 0, transform: `translateX(${-ANDA_PX * sentido}px)` }], { duration: SAI_MS, easing: 'ease-out', fill: 'forwards' }));
+    const estas = itens.map((e, i) => e.animate([de[i], { opacity: 0, transform: `translateX(${-ANDA_PX * sentido}px)` }], { duration: SAI_MS, easing: TROCA_SAI, fill: 'forwards' }));
     saindo.current = estas;
     const trocar = () => {
       if (saindo.current !== estas) return;

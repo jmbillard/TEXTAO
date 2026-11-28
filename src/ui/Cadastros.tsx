@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Vagas } from './vagas';
 import { CaixinhaDoDesfazer, useDesfazerAdiado } from './desfazer';
 import { Comemoracao, tremerDeLeve } from './Comemoracao';
@@ -48,11 +48,11 @@ import {
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
 import { semPracaNoComeco, semPracaNoFim } from '../modelo/pracas';
 import { SetaCurva } from './setaCurva';
-import { RABISCO } from './cena';
+import { RABISCO, SUAVE } from './cena';
 import { caminhoDoIcone, Icone } from './icones';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { Marca, NadaNaBusca } from './pecas';
-import { plural } from './util';
+import { plural, semMovimento } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
 import { ListaDeDuplicadas, PainelDasDuplicadas, useDuplicadas } from './Duplicadas';
@@ -561,7 +561,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   useEffect(() => {
     const el = vaga.current;
     if (!el) return;
-    const t = setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }), 60);
+    const t = setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: semMovimento() ? 'auto' : 'smooth' }), 60);
     return () => clearTimeout(t);
   }, [nomeVaga, aba, semCad]);
   const [salvando, setSalvando] = useState(false);
@@ -584,6 +584,19 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   // linhas que saíram, guardados antes de elas saírem; cena: a atração que vai na claquete
   const [festa, setFesta] = useState<{ destacadas: string[]; cena: string } | null>(null);
   const listaEl = useRef<HTMLElement>(null);
+  // a troca de aba (#171): a lista nova sobe de leve, como as outras listas que chegam, em vez de trocar seca (as
+  // abas ficam paradas; só o rabisco da aba anda)
+  const qualLista = `${aba}|${semCad}|${dupAberta}|${padAberta}|${ilhasAbertas}`;
+  const listaAntes = useRef(qualLista);
+  useLayoutEffect(() => {
+    if (listaAntes.current === qualLista) return;
+    listaAntes.current = qualLista;
+    const el = listaEl.current;
+    if (!el || typeof el.animate !== 'function') return;
+    const partes = [...el.children].filter((c) => !c.classList.contains('lista-topo')) as HTMLElement[];
+    const vao = partes.map((c) => c.animate(semMovimento() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: SUAVE }));
+    return () => vao.forEach((x) => x.cancel());
+  }, [qualLista]);
   // o Sem cadastro como está agora (as funções assíncronas de salvar e ligar leem daqui, não da renderização velha)
   const semAgora = useRef({ sem, escondidos, semCad });
   semAgora.current = { sem, escondidos, semCad };

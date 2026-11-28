@@ -17,6 +17,7 @@ import { useDeslize, useReordenar, useRolagemDosBlocos } from './movimentoDasPro
 import { plural, semMovimento } from './util';
 import { ConflitoDoCard, NomeDaClaquete, versoesDoCard } from './Apelido';
 import './producoes.css';
+import { CASCATA_MS } from './cena';
 
 /* A tela de produções (#109), na área Designer, ao lado da agenda No Trello: um bloco por praça (na ordem das praças
    da Configuração), cada um com as colunas Entrada · Produzindo · Entregue e a contagem de cada coluna. O card traz a
@@ -346,8 +347,6 @@ interface DoBloco {
   vez: number;
   filtro: NoFiltro;
 }
-/** O intervalo da cascata, de coluna em coluna. */
-const CASCATA_MS = 35;
 /** O filtro por campanha (#179): quanto os cards de fora esmaecem antes de o filtro valer (o CSS tem o mesmo tempo), e
     o passo da cascata de card em card numa coluna (até o 8º). */
 const SAIDA_DO_FILTRO_MS = 160;

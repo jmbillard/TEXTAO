@@ -53,7 +53,9 @@
 
 /* ---------- aplicar e desfazer (#115): marcar, o resultado, as etiquetas, a caixinha de desfazer e o registro ---------- */
 .cor-aviso { margin: 0 0 14px; max-width: 86ch; padding: 8px 12px; border-radius: 8px; background: var(--neutro); color: var(--tinta2); font: 500 13.5px/1.5 var(--sans); }
-.cor-resultado { margin: 0 0 14px; max-width: 86ch; font: 500 14px/1.5 var(--sans); color: var(--tinta); }
+.cor-resultado { margin: 0 0 14px; max-width: 86ch; font: 500 14px/1.5 var(--sans); color: var(--tinta); animation: surgir 0.25s var(--suave); }
+/* as linhas que chegam (a releitura depois de aplicar ou desfazer) sobem de leve, sem estalo (#171) */
+.cor-tabela tbody tr { animation: surgir 0.25s var(--suave) backwards; }
 .cor-aplicar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 0 0 8px; }
 .cor-aplicar .botao { height: 32px; font-size: 13px; }
 .cor-marcadas { margin-right: auto; font: 500 13px var(--sans); color: var(--tinta3); font-variant-numeric: tabular-nums; }

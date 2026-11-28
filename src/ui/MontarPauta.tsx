@@ -28,6 +28,8 @@ import { juntarODia } from '../modelo/juntarODia';
 import type { Pessoa } from '../modelo/tipos';
 import './pauta.css';
 import './montarPauta.css';
+import { SUAVE, TROCA_ENTRA_MS } from './topoDaAgenda';
+import { semMovimento } from './util';
 
 /* Montar a pauta (#123): a tela em que a coordenação monta o rascunho do dia, numa grade parecida com a planilha
    (a alternativa A do protótipo aprovado). Abas com os dias da semana, cada uma com o estado do dia (vazio ou
@@ -572,6 +574,19 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
 
   const atual = dados && (!dia || dados.dia === dia) ? dados : null;
   const rel = atual ? perto(atual.dia, hoje) : '';
+  // a troca de dia (#171): o dia novo chega como a troca da agenda e da Pauta, em vez de trocar seco
+  const corpo = useRef<HTMLDivElement>(null);
+  const diaNaTela = useRef<string | null>(null);
+  const diaAtual = atual?.dia ?? null;
+  useLayoutEffect(() => {
+    const antes = diaNaTela.current;
+    diaNaTela.current = diaAtual;
+    const el = corpo.current;
+    if (!el || !antes || !diaAtual || antes === diaAtual || typeof el.animate !== 'function') return;
+    const lado = diaAtual > antes ? 1 : -1;
+    const a = el.animate(semMovimento() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: `translateX(${10 * lado}px)` }, { opacity: 1, transform: 'none' }], { duration: TROCA_ENTRA_MS, easing: SUAVE });
+    return () => a.cancel();
+  }, [diaAtual]);
   // a busca (#171): a lupa das outras telas; as claquetes que não batem esmaecem
   const termo = semAcento(busca.trim());
   const nAchadas = termo && atual ? batemNaBusca(termo, [...posicoes.flatMap((p) => p.demandas.map((d) => d.texto)), ...listaDoDia.map((d) => d.texto)]) : 0;
@@ -680,7 +695,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
             </p>
           )}
           {colando && <ColarDaPlanilha dados={atual} posicoes={posicoes} jaFora={foraNoDia ?? []} novoId={novoId} fechar={() => setColando(false)} aplicar={aplicarOColado} />}
-          <div className={`montar-corpo${arrastado ? ` arrastando-${arrastado.tipo}` : ''}`}>
+          <div ref={corpo} className={`montar-corpo${arrastado ? ` arrastando-${arrastado.tipo}` : ''}`}>
           {/* a coluna lateral (#126): para distribuir, sem escala e fora (as ausências, #128) */}
           <aside className="montar-coluna" aria-label="Coluna lateral">
             {erroDaColuna && (

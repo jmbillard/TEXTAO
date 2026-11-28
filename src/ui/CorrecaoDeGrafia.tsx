@@ -318,7 +318,7 @@ export function CorrecaoDeGrafia({ voltar }: Props) {
               </p>
             )}
             {resultado && (
-              <p className="cor-resultado" role="status">
+              <p key={resultado.texto} className="cor-resultado" role="status">
                 {resultado.texto}
               </p>
             )}

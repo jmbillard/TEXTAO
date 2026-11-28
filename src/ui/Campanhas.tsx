@@ -16,6 +16,7 @@ import { NumeroQueConta, escrever } from './topoDaAgenda';
 import { plural, semMovimento } from './util';
 import './producoes.css';
 import './campanhas.css';
+import { CASCATA_MS, NA_CASCATA } from './cena';
 
 /* As Campanhas (#180): a lista das campanhas e a página de cada uma, cada uma com o endereço próprio (#/campanhas e
    #/campanhas/<id>), abertas pelo caminho do topo e pela etiqueta da campanha em qualquer tela.
@@ -32,9 +33,6 @@ import './campanhas.css';
      Apagar (o administrador ou quem criou) volta para a lista, com o Desfazer.
    Com o movimento reduzido, tudo só esmaece. */
 
-/** O intervalo da cascata dos cartões e das colunas, de um para o outro, e quantos entram nela. */
-const CASCATA_MS = 35;
-const NA_CASCATA = 14;
 /** Quanto o clique espera a Produção ser lida antes de abrir o card aberto (o mesmo das Produções). */
 const ESPERA_PARA_ABRIR_MS = 350;
 

@@ -1,6 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { CRITERIOS, duracaoDoPeriodo, NOME_DO_CRITERIO, periodoNaContagem, valorNaContagem, type CriterioDaAgenda, type DiaDaSemana, type EixoDoPeriodo, type PartesDoPeriodo } from './fila';
-import { RABISCO } from './cena';
+import { RABISCO, SUAVE } from './cena';
 import { RABISCOS } from './pecas';
 import { semMovimento } from './util';
 import { AnoNovoNaAgenda } from './Enfeites';
@@ -16,7 +16,12 @@ import { AnoNovoNaAgenda } from './Enfeites';
    quadro: assim nada salta quando a página desacelera as animações (o CDP, nos quadros em câmera lenta). */
 
 /** A curva --suave dos estilos, para as animações feitas daqui. */
-export const SUAVE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+export { SUAVE };
+/** A troca de semana ou de dia, a mesma na agenda e na Pauta (#171): o que sai esmaece em ease-out; o que entra anda
+    em --suave. */
+export const TROCA_SAI_MS = 140;
+export const TROCA_ENTRA_MS = 220;
+export const TROCA_SAI = 'ease-out';
 const CONTA_RESUMO_MS = 360;
 
 /** Uma contagem em andamento: de onde, para onde e em que instante (de 0 a 1). Parada, `de` e `para` são o alvo. */
