@@ -1570,9 +1570,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const id = roteiroDoAviso(dado);
     for (const [ws, c] of naFila) {
       if (ws.readyState !== 1) continue;
-      if (c.so && !SO_DOS_COMENTARIOS.has(dado.tipo)) continue;
+      // quem só escuta os comentários recebe só eles; a fila não os recebe (nada nela muda com um comentário)
+      if (!!c.so !== SO_DOS_COMENTARIOS.has(dado.tipo)) continue;
       // no modo privado, ninguém fica sabendo de roteiro que não pode ler (o aviso de apagado só leva o id)
-      if (!aberto && id && dado.tipo !== 'apagado' && !acesso(id, c.eu).ler) continue;
+      // os comentários (#192) são do Roteiro escrito, que segue a regra dele também com o servidor aberto
+      if ((!aberto || SO_DOS_COMENTARIOS.has(dado.tipo)) && id && dado.tipo !== 'apagado' && !acesso(id, c.eu).ler) continue;
       ws.send(msg);
     }
   };

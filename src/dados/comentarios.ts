@@ -1,4 +1,5 @@
-import { armazenamento, parametrosDoPerfil, pedir } from './armazenamento';
+import { armazenamento, pedir } from './armazenamento';
+import { ouvirFila } from './eventos';
 import type { Ancora, Comentario, Quem } from '../modelo/comentarios';
 
 /* Os comentários do Roteiro escrito no PROMeiro (#192), pelo servidor: ler, comentar, responder, resolver, reabrir, o
@@ -41,57 +42,23 @@ export async function lerAvisos(): Promise<Record<string, { n: number; mencao: b
 export type AvisoDeComentario = { tipo: 'comentarios' | 'avisos'; id: string; por: string } | { tipo: 'reconectou' };
 
 const ouvintes = new Set<(a: AvisoDeComentario) => void>();
-let conexao: { fechar: () => void } | null = null;
-
-function abrirConexao() {
-  let ws: WebSocket | null = null;
-  let parar = false;
-  let espera = 1000;
-  let caiu = false;
-  let prazo: ReturnType<typeof setTimeout> | undefined;
-  const abrir = () => {
-    const params = new URLSearchParams({ ...parametrosDoPerfil(), so: 'comentarios' }).toString();
-    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/eventos?${params}`);
-    ws.onopen = () => {
-      espera = 1000;
-      if (caiu) for (const o of ouvintes) o({ tipo: 'reconectou' });
-      caiu = false;
-    };
-    ws.onmessage = (m) => {
-      let a: AvisoDeComentario;
-      try {
-        a = JSON.parse(String(m.data)) as AvisoDeComentario;
-      } catch {
-        return;
-      }
-      for (const o of ouvintes) o(a);
-    };
-    ws.onclose = () => {
-      if (parar) return;
-      caiu = true;
-      prazo = setTimeout(abrir, espera);
-      espera = Math.min(espera * 2, 30_000);
-    };
-  };
-  abrir();
-  return {
-    fechar: () => {
-      parar = true;
-      clearTimeout(prazo);
-      ws?.close();
-    },
-  };
-}
+let conexao: { parar: () => void } | null = null;
 
 /** Escuta os avisos dos comentários ao vivo; devolve o parar. Uma conexão por página, aberta enquanto alguém escuta. */
 export function ouvirComentarios(aoReceber: (a: AvisoDeComentario) => void): () => void {
   if (!comServidor() || typeof WebSocket === 'undefined') return () => {};
   ouvintes.add(aoReceber);
-  conexao ??= abrirConexao();
+  // a mesma conexão da fila, só com os comentários
+  conexao ??= ouvirFila(
+    (e) => {
+      if (e.tipo === 'comentarios' || e.tipo === 'avisos' || e.tipo === 'reconectou') for (const o of ouvintes) o(e);
+    },
+    { so: 'comentarios' },
+  );
   return () => {
     ouvintes.delete(aoReceber);
     if (!ouvintes.size) {
-      conexao?.fechar();
+      conexao?.parar();
       conexao = null;
     }
   };

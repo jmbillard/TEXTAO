@@ -197,6 +197,8 @@ describe('os comentários do Roteiro escrito (#192)', () => {
     await new Promise((r) => setTimeout(r, 150));
     expect(soComentarios.recebidos).toContainEqual({ tipo: 'comentarios', id: 'coment-vivo-1', por: 'davi.rocha@empresa.com' });
     expect(soComentarios.recebidos.every((e) => e.tipo === 'comentarios' || e.tipo === 'avisos')).toBe(true);
+    // a fila não recebe os comentários (nada nela muda com eles)
+    expect(naFila.recebidos.some((e) => e.tipo === 'comentarios')).toBe(false);
     naFila.ws.close();
     soComentarios.ws.close();
   });
