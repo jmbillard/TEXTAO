@@ -102,6 +102,27 @@ export function arteNoSelecionadoOuNoTrecho(editor: Editor, programa = ''): bool
   return ehArte ? definirTipo(editor, t.pos, null, false) : definirTipo(editor, t.pos, 'arte');
 }
 
+/** O toque num tipo da barra do celular (#198): o trecho do cursor ganha o tipo (o palpite do mesmo tipo se confirma). */
+export function darTipoNoCursor(editor: Editor, tipo: TipoDoTrecho): boolean {
+  const t = trechoNoCursor(editor.state);
+  if (!t) return false;
+  const atual = tipoDoNo(t.no);
+  if (atual.confirmado && atual.tipo === tipo) return true;
+  return definirTipo(editor, t.pos, tipo);
+}
+
+/** O botão "/" do celular (#198): o "/" no cursor, como se digitado, com um espaço antes no meio da palavra (o "/" só
+    abre o menu no começo do trecho ou depois de um espaço). */
+export function abrirBarraNoCursor(editor: Editor): boolean {
+  const { selection } = editor.state;
+  const { $from } = selection;
+  if ($from.parent.type.name !== 'paragraph') return false;
+  const antes = $from.parent.textBetween(0, $from.parentOffset, '\n', '\n');
+  const texto = !antes || /\s$/.test(antes) ? '/' : ' /';
+  editor.view.dispatch(editor.state.tr.insertText(texto, selection.from, selection.to).scrollIntoView());
+  return true;
+}
+
 /** O "/" antes do cursor, com o que se digitou depois dele: de `from` (o "/") até `to` (o cursor). */
 export interface BarraNoCursor {
   q: string;

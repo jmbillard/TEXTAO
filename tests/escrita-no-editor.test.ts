@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { extensoesDoRoteiro } from '../src/editor/extensoes';
-import { aplicarComando, arteNoSelecionadoOuNoTrecho, barraNoCursor, confirmarOuTrocar, Escrita } from '../src/editor/escrita';
+import { abrirBarraNoCursor, aplicarComando, arteNoSelecionadoOuNoTrecho, barraNoCursor, confirmarOuTrocar, darTipoNoCursor, Escrita } from '../src/editor/escrita';
 import { artesDoTexto, COMANDOS_DA_BARRA } from '../src/modelo/trecho';
 import type { NoJSON } from '../src/modelo/tipos';
 
@@ -85,5 +85,33 @@ describe('escrever na folha (#190)', () => {
     expect(e.getText()).toBe('Galpão 00:00:00:00');
     const { from, to } = e.state.selection;
     expect(e.state.doc.textBetween(from, to)).toBe('00:00:00:00');
+  });
+
+  it('o botão "/" do celular (#198): abre o menu no começo do trecho ou depois de um espaço; no meio da palavra, com um espaço antes', () => {
+    const e = montar();
+    abrirBarraNoCursor(e);
+    expect(e.getText()).toBe('/');
+    expect(barraNoCursor(e.state)?.q).toBe('');
+    const f = montar('NESTE SÁBADO');
+    abrirBarraNoCursor(f);
+    expect(f.getText()).toBe('NESTE SÁBADO /');
+    expect(barraNoCursor(f.state)?.q).toBe('');
+    const g = montar('NESTE ');
+    abrirBarraNoCursor(g);
+    expect(g.getText()).toBe('NESTE /');
+  });
+
+  it('a barra de tipos do celular (#198): o toque dá o tipo ao trecho do cursor; no palpite do mesmo tipo, confirma', () => {
+    const e = montar('NESTE SÁBADO, A BRASA DECIDE.');
+    digitar(e, ' ');
+    expect(tipos(e)).toEqual(['locucao?']);
+    darTipoNoCursor(e, 'locucao');
+    expect(tipos(e)).toEqual(['locucao']);
+    darTipoNoCursor(e, 'arte');
+    expect(tipos(e)).toEqual(['arte']);
+    expect(artesDoTexto(e.getJSON() as NoJSON).map((a) => a.texto)).toEqual(['NESTE SÁBADO, A BRASA DECIDE.']);
+    darTipoNoCursor(e, 'sonora');
+    expect(tipos(e)).toEqual(['sonora']);
+    expect(artesDoTexto(e.getJSON() as NoJSON)).toEqual([]);
   });
 });
