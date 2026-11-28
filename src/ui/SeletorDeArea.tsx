@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { listarPrevias } from '../dados/armazenamento';
+import { lerAvisos, ouvirComentarios } from '../dados/comentarios';
 import { haFilmeParaRevisar } from '../filmes/andamento';
 import { AREAS, type Area } from '../modelo/areas';
 import { RABISCO } from './cena';
@@ -85,6 +86,29 @@ function useFilmesParaRevisar(ligado: boolean) {
   return ligado && revisar;
 }
 
+/** De quanto em quanto tempo o topo pergunta pelos avisos de comentário, além do aviso ao vivo. */
+const AVISOS_MS = 60_000;
+
+/** Há aviso de comentário não visto (#192): alguém citou a pessoa, ou comentaram num roteiro dela. Pergunta ao abrir, a
+    cada aviso ao vivo dos comentários e de tempos em tempos, enquanto o topo mostra o caminho dos Roteiros. */
+function useAvisosDosRoteiros(ligado: boolean) {
+  const [aviso, setAviso] = useState(false);
+  useEffect(() => {
+    if (!ligado) return;
+    let vivo = true;
+    const perguntar = () => void lerAvisos().then((a) => vivo && setAviso(Object.keys(a).length > 0), () => {});
+    perguntar();
+    const parar = ouvirComentarios(perguntar);
+    const t = setInterval(perguntar, AVISOS_MS);
+    return () => {
+      vivo = false;
+      parar();
+      clearInterval(t);
+    };
+  }, [ligado]);
+  return ligado && aviso;
+}
+
 /** Os caminhos do topo, pela ordem fixa (#168). */
 export type IdDoCaminho = 'agenda' | 'producoes' | 'campanhas' | 'filmes' | 'roteiros' | 'pauta' | 'montar';
 
@@ -112,6 +136,7 @@ let abertoAntes: IdDoCaminho | undefined;
  */
 export function CaminhosDoTopo({ agenda, producoes, campanhas, filmes, roteiros, roteirosEm = '#/roteiros', pauta, montar, atual }: { agenda?: () => void; producoes?: () => void; campanhas?: () => void; filmes?: () => void; roteiros?: () => void; roteirosEm?: string; pauta?: () => void; montar?: () => void; atual?: IdDoCaminho }) {
   const revisar = useFilmesParaRevisar(!!filmes);
+  const comentado = useAvisosDosRoteiros(!!roteiros);
   const [aberto, setAberto] = useState(() => abertoAntes ?? atual);
   useEffect(() => {
     abertoAntes = atual;
@@ -135,7 +160,9 @@ export function CaminhosDoTopo({ agenda, producoes, campanhas, filmes, roteiros,
   return (
     <nav className="caminhos-do-topo" aria-label="Caminhos">
       {caminhos.map((c, i) => {
-        const aviso = c.id === 'filmes' && revisar;
+        // a mesma bolinha: o filme para revisar (#156) e o comentário novo para a pessoa (#192)
+        const aviso = (c.id === 'filmes' && revisar) || (c.id === 'roteiros' && comentado);
+        const textoDoAviso = c.id === 'filmes' ? ['Filmes, com filme para revisar', 'Filmes: há filme esperando revisão'] : ['Roteiros, com comentário novo para você', 'Roteiros: há comentário novo para você'];
         const agora = c.id === atual;
         const classe = c.id === 'montar' ? 'topo-montar topo-pauta' : `topo-${c.id}`;
         return (
@@ -145,9 +172,9 @@ export function CaminhosDoTopo({ agenda, producoes, campanhas, filmes, roteiros,
             <a
               className={`${classe}${c.id === aberto ? ' aberto' : ''}`}
               href={c.href}
-              aria-label={aviso ? 'Filmes, com filme para revisar' : c.nome}
+              aria-label={aviso ? textoDoAviso[0] : c.nome}
               aria-current={agora ? 'page' : undefined}
-              data-dica={aviso ? 'Filmes: há filme esperando revisão' : c.nome}
+              data-dica={aviso ? textoDoAviso[1] : c.nome}
               onClick={(e) => {
                 e.preventDefault();
                 if (!agora) c.ir();

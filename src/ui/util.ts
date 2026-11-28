@@ -105,6 +105,9 @@ export const atalho = (s: string) =>
     ? s.replace('Mod-', '⌘').replace('Shift-', '⇧').replace(/(.)$/, (c) => c.toUpperCase()).replace('Enter', '↩')
     : s.replace('Mod-', 'Ctrl+').replace('Shift-', 'Shift+').replace(/\+(.)$/, (_, c: string) => '+' + c.toUpperCase());
 
+/** Comentar o trecho selecionado na folha de escrita (#192): Ctrl+Alt+M (no Mac, ⌃⌥M; o ⌘⌥M também vale). */
+export const ATALHO_DE_COMENTAR = ehMac ? '⌃⌥M' : 'Ctrl+Alt+M';
+
 /** A pessoa pediu ao sistema para reduzir o movimento: as animações viram só a troca. */
 export const semMovimento = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 

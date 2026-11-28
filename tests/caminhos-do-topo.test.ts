@@ -8,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const previas = vi.hoisted(() => ({ lista: [] as { paginas: number; diasParaApagar: number | null }[] }));
 vi.mock('../src/dados/armazenamento', () => ({ listarPrevias: () => Promise.resolve(previas.lista) }));
+// os avisos de comentário (#192): os roteiros com aviso não visto da pessoa
+const avisos = vi.hoisted(() => ({ roteiros: {} as Record<string, { n: number; mencao: boolean }> }));
+vi.mock('../src/dados/comentarios', () => ({ lerAvisos: () => Promise.resolve(avisos.roteiros), ouvirComentarios: () => () => {} }));
 
 import { CaminhosDoTopo } from '../src/ui/SeletorDeArea';
 
@@ -17,6 +20,7 @@ let caixa: HTMLDivElement;
 let raiz: Root;
 beforeEach(() => {
   previas.lista = [];
+  avisos.roteiros = {};
   caixa = document.createElement('div');
   document.body.append(caixa);
   raiz = createRoot(caixa);
@@ -103,5 +107,14 @@ describe('os caminhos do topo', () => {
     await montar({ roteiros: nada, roteirosEm: '#/redator', pauta: nada, atual: 'roteiros' });
     expect(filhos()).toEqual(['topo-roteiros', '•', 'topo-pauta']);
     expect(caixa.querySelector('nav a.topo-roteiros')!.getAttribute('href')).toBe('#/redator');
+  });
+
+  it('o comentário novo para a pessoa (#192) acende a mesma bolinha no ícone dos Roteiros', async () => {
+    avisos.roteiros = { 'roteiro-1': { n: 1, mencao: true } };
+    await montar({ ...todos, roteiros: nada, atual: 'agenda' });
+    await quadros(() => caixa.querySelector('.topo-roteiros .caminho-aviso') !== null);
+    const r = caixa.querySelector('a.topo-roteiros')!;
+    expect(r.querySelector('.caminho-icone .caminho-aviso')).not.toBeNull();
+    expect(r.getAttribute('aria-label')).toBe('Roteiros, com comentário novo para você');
   });
 });

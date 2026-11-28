@@ -49,6 +49,8 @@ import { criarApelidos } from './apelidos.mjs';
 import { CHAVE_DO_CODIGO_DAS_VERSOES, recusaDoCodigoDasVersoes, versoesDaChamada } from '../src/modelo/versoesDoRoteiro.ts';
 import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { metaDoNovo, podeComecar, regraDoEscrito, tituloLimpo } from '../src/modelo/escrito.ts';
+import { ancoraValida, mencoesDoTexto, podeResolver, quemAvisar, textoDoComentario } from '../src/modelo/comentarios.ts';
+import { criarComentarios, criarTabelasDosComentarios } from './comentarios.mjs';
 import { docDaSala, salaPreenchida } from './doc-da-sala.mjs';
 import { criarEscala, posicoesDoPedido, recadoDoPedido } from './escala.mjs';
 import { juntarODia } from '../src/modelo/juntarODia.ts';
@@ -222,6 +224,8 @@ export function abrirBanco(caminho) {
   criarTabelaDasImportacoes(db);
   // as regras desta atração: as decisões da conferência lembradas para as próximas importações (#63)
   criarTabelaDasRegras(db);
+  // os comentários do Roteiro escrito no PROMeiro e os avisos de cada pessoa (#192)
+  criarTabelasDosComentarios(db);
   // a conta das artes pela lista sem repetição, uma vez: os roteiros guardados antes dela contavam as repetidas
   acertarNArtesUmaVez(db);
   return db;
@@ -565,6 +569,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const cardDaProducao = criarCardDaProducao({ producoes });
   // as Campanhas (#178): os conjuntos de Produções com um nome, no SQLite (no backup); nada vai ao Trello nem ao Teable
   const campanhas = criarCampanhas(db, { producoes });
+  // os comentários do Roteiro escrito no PROMeiro (#192): os fios e os avisos, no SQLite
+  const comentarios = criarComentarios(db);
   // os anexos guardados pelo PROMeiro (#90): o PDF do roteiro do envio e os pôsteres dos filmes, no SQLite (no backup)
   const anexos = criarAnexos(db, { buscar: buscarNoTeable });
   /* O que o PROMeiro guarda de um card, para apagar uma duplicada (#67): a cópia leva os envios dos roteiros, a lista
@@ -1358,6 +1364,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   const resumosPara = (eu, { escritos = false } = {}) => {
     const apelidoDe = apelidos.porChave();
     const forte = escritos ? coordenaOuAdministra(eu.email) : false;
+    // os avisos de comentário ainda não vistos (#192): a bolinha na lista de "Roteiros"
+    const avisos = escritos ? comentarios.naoVistos(eu.email) : {};
     return linhasPara(eu, { escritos }).map((l) => {
       const meta = JSON.parse(l.meta);
       const lidas = l.versoes_lidas ? JSON.parse(l.versoes_lidas) : [];
@@ -1373,7 +1381,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         dono: { nome: l.dono_nome, email: l.dono_email }, publico: !!l.publico, meu: l.dono_email === eu.email,
         compartilhado: !!l.compartilhado,
         podeEditar: l.escrito ? regraDoEscrito(conviteDaLinha(l, eu, forte)).escrever : aberto || l.dono_email === eu.email || !!l.pode_editar,
-        ...(l.escrito ? { escrito: l.escrito, criadoEm: l.criado_em, convidado: l.dono_email !== eu.email && !!l.convidado } : {}),
+        ...(l.escrito ? { escrito: l.escrito, criadoEm: l.criado_em, convidado: l.dono_email !== eu.email && !!l.convidado, ...(avisos[l.id] ? { avisos: avisos[l.id] } : {}) } : {}),
         revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
         ...(l.envio_estado ? { trello: { estado: l.envio_estado, card: l.envio_card || undefined, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
         temOriginal: !!l.tem_original,
@@ -1551,7 +1559,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   // Com Redis, o aviso passa por ele e chega a quem estiver em qualquer instância.
   const naFila = new Map(); // ws → { eu, vivo }
   const FILA = 'fila';
-  const pessoasNaFila = () => [...new Map([...naFila.values()].map(({ eu }) => [eu.email, { nome: eu.nome, email: eu.email }])).values()];
+  const pessoasNaFila = () => [...new Map([...naFila.values()].filter((c) => !c.so).map(({ eu }) => [eu.email, { nome: eu.nome, email: eu.email }])).values()];
+  /** O que chega a quem só escuta os avisos dos comentários (#192): a folha de escrita e a bolinha do topo, sem contar
+      como presença na fila. */
+  const SO_DOS_COMENTARIOS = new Set(['comentarios', 'avisos']);
   /** Em qual roteiro o aviso toca: o id, ou a ficha sob o ponteiro. */
   const roteiroDoAviso = (dado) => dado.id ?? (typeof dado.ancora === 'string' && dado.ancora.startsWith('ficha:') ? dado.ancora.slice(6) : null);
   const paraTodos = (dado) => {
@@ -1559,8 +1570,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const id = roteiroDoAviso(dado);
     for (const [ws, c] of naFila) {
       if (ws.readyState !== 1) continue;
+      // quem só escuta os comentários recebe só eles; a fila não os recebe (nada nela muda com um comentário)
+      if (!!c.so !== SO_DOS_COMENTARIOS.has(dado.tipo)) continue;
       // no modo privado, ninguém fica sabendo de roteiro que não pode ler (o aviso de apagado só leva o id)
-      if (!aberto && id && dado.tipo !== 'apagado' && !acesso(id, c.eu).ler) continue;
+      // os comentários (#192) são do Roteiro escrito, que segue a regra dele também com o servidor aberto
+      if ((!aberto || SO_DOS_COMENTARIOS.has(dado.tipo)) && id && dado.tipo !== 'apagado' && !acesso(id, c.eu).ler) continue;
       ws.send(msg);
     }
   };
@@ -1599,8 +1613,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     else ultimosPonteiros.set(dado.por, dado);
   });
 
-  function entrarNaFila(ws, eu) {
-    naFila.set(ws, { eu, vivo: true });
+  function entrarNaFila(ws, eu, so = false) {
+    naFila.set(ws, { eu, vivo: true, so });
+    if (so) {
+      // só escuta os avisos dos comentários: nada de presença nem de ponteiro
+      ws.on('error', () => {});
+      ws.on('pong', () => {
+        const c = naFila.get(ws);
+        if (c) c.vivo = true;
+      });
+      ws.on('close', () => naFila.delete(ws));
+      return;
+    }
     ws.on('message', (dados) => {
       if (dados.length > 400) return;
       let m;
@@ -1670,7 +1694,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (caminho === '/api/eventos') {
         const eu = await identificar(req, env);
         if (!eu) return recusar('401 Unauthorized');
-        return wss.handleUpgrade(req, socket, head, (ws) => entrarNaFila(ws, eu));
+        const so = new URL(req.url, 'http://x').searchParams.get('so') === 'comentarios';
+        return wss.handleUpgrade(req, socket, head, (ws) => entrarNaFila(ws, eu, so));
       }
       const m = /^\/api\/colab\/([\w-]{6,80})$/.exec(caminho);
       if (!m) return recusar('404 Not Found');
@@ -3803,6 +3828,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/correcoes/pauta/aplicar' || caminho === '/api/correcoes/registro' || caminho === '/api/correcoes/desfazer') return rotaDoRegistroDeCorrecoes(req, res, eu, caminho);
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
+    // os comentários do Roteiro escrito no PROMeiro (#192) e os avisos de cada pessoa
+    const doComentario = /^\/api\/roteiros\/([^/]+)\/comentarios(?:\/(visto|ancoras)|\/([\w-]{6,80})\/(resolver|reabrir))?$/.exec(caminho);
+    if (doComentario) return rotaDosComentarios(req, res, eu, doComentario[1], doComentario[2] ?? doComentario[4], doComentario[3]);
+    if (caminho === '/api/avisos') {
+      if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
+      // só os dos roteiros que a pessoa ainda lê
+      const porRoteiro = Object.fromEntries(Object.entries(comentarios.naoVistos(eu.email)).filter(([r]) => acesso(r, eu).ler));
+      return json(res, 200, { roteiros: porRoteiro });
+    }
     const extra = /^\/api\/roteiros\/([^/]+)\/(original|original-texto|trello|pdf)$/.exec(caminho);
     if (extra?.[2] === 'trello' && extra[1].startsWith(PREFIXO_DO_TOUR)) return json(res, 400, RECUSA_DO_TOUR);
     if (extra) return rotaDoTrello(req, res, eu, extra[1], extra[2]);
@@ -3944,6 +3978,99 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       return json(res, 200, { ok: true, atualizadoEm: agora });
     }
     return json(res, 405, { erro: 'Método não permitido.' });
+  }
+
+  /* ---------- os comentários do Roteiro escrito no PROMeiro (#192) ---------- */
+
+  /** O papel de quem comenta, como aparece no balão: a coordenação, a redação, a edição, a arte ou a administração. */
+  const papelDe = async (email) => {
+    if (escala.ehCoordenacao(email)) return 'coordenação';
+    const quem = await areas.quemE(email, cadastros);
+    if (quem.redator) return 'redação';
+    if (quem.editor) return 'edição';
+    if (pessoas.designerDoEmail(email)) return 'arte';
+    if (cadastros.podeApagar(email)) return 'administração';
+    return 'equipe';
+  };
+  /** Quem a menção @nome acha: os redatores e os editores dos cadastros, os designers da tabela designers e quem já
+      entrou no PROMeiro, cada e-mail uma vez (com o nome do cadastro, quando há). */
+  const citaveis = async () => {
+    const todas = new Map();
+    const juntar = (nome, email) => {
+      const e = String(email ?? '').trim().toLowerCase();
+      if (e && nome && !todas.has(e)) todas.set(e, { nome: String(nome), email: e });
+    };
+    for (const p of await areas.pessoasDosCadastros(cadastros)) juntar(p.nome, p.email);
+    for (const d of pessoas.guardada()?.designers ?? []) if (d.ativo !== false) juntar(d.nome, d.email);
+    for (const u of q.usuarios.all('')) juntar(u.nome, u.email);
+    return [...todas.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  };
+  /** Os comentários mudaram: quem está no roteiro (e a bolinha de quem foi avisado) fica sabendo na hora. */
+  const avisarComentarios = (id, eu) => void cache.publicar(FILA, { tipo: 'comentarios', id, por: eu.email }).catch(() => {});
+
+  /**
+   * Os comentários de um Roteiro escrito no PROMeiro (#192). Comenta toda pessoa que lê o roteiro (a regra do escrito):
+   * também quem só lê o texto, porque os comentários ficam fora do documento.
+   *   GET  …/comentarios → { comentarios, novos: { id: motivo } (os avisos não vistos de quem pede), pessoas (quem o
+   *        @ acha), escreve }
+   *   POST …/comentarios { texto, ancora } comenta o trecho; { texto, fio } responde. Avisa os citados que leem o
+   *        roteiro e o autor dele. 201 { comentario }
+   *   POST …/comentarios/<id>/resolver | reabrir: quem comentou e quem escreve no roteiro. { comentario }
+   *   POST …/comentarios/visto: a pessoa viu o roteiro, os avisos dela nele somem
+   *   POST …/comentarios/ancoras { ancoras: { id: ancora } }: quem escreve refaz as âncoras (o trecho mudou)
+   */
+  async function rotaDosComentarios(req, res, eu, id, acao, cid) {
+    if (!ID_VALIDO.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
+    const a = acesso(id, eu);
+    if (!a.linha?.escrito || !a.ler) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+    if ((acao || cid ? ['POST'] : ['GET', 'POST']).indexOf(req.method) < 0) return json(res, 405, { erro: 'Método não permitido.' });
+    const agora = relogio().toISOString();
+    if (cid) {
+      const c = comentarios.um(id, cid);
+      if (!c || c.fio) return json(res, 404, { erro: 'Esse comentário não existe mais.' });
+      if (!podeResolver({ autorDoComentario: c.autor.email === eu.email, escreve: a.editar }))
+        return json(res, 403, { erro: 'Só quem comentou e quem escreve no roteiro resolvem o comentário.' });
+      if (acao === 'resolver') comentarios.resolver(cid, eu, agora);
+      else comentarios.reabrir(cid);
+      avisarComentarios(id, eu);
+      return json(res, 200, { comentario: comentarios.um(id, cid) });
+    }
+    if (acao === 'visto') {
+      const n = comentarios.visto(eu.email, id, agora);
+      if (n) void cache.publicar(FILA, { tipo: 'avisos', id, por: eu.email }).catch(() => {});
+      return json(res, 200, { vistos: n });
+    }
+    if (acao === 'ancoras') {
+      if (!a.editar) return json(res, 403, { erro: 'Só quem escreve no roteiro acerta as âncoras.' });
+      const corpo = (await lerCorpo(req, 256 * 1024, 'Pedido')) ?? {};
+      const ancoras = Object.entries(corpo.ancoras ?? {})
+        .slice(0, 500)
+        .map(([c, x]) => [String(c), ancoraValida(x)])
+        .filter(([, x]) => x);
+      return json(res, 200, { mudadas: comentarios.mudarAncoras(id, ancoras) });
+    }
+    if (req.method === 'GET')
+      return json(res, 200, { comentarios: comentarios.doRoteiro(id), novos: comentarios.novos(eu.email, id), pessoas: await citaveis(), escreve: a.editar });
+    const corpo = (await lerCorpo(req, 64 * 1024, 'Comentário')) ?? {};
+    const texto = textoDoComentario(corpo.texto);
+    if (!texto) return json(res, 400, { erro: 'Escreva o comentário.' });
+    let fio = null;
+    let ancora = null;
+    if (corpo.fio) {
+      const pai = comentarios.um(id, String(corpo.fio));
+      if (!pai || pai.fio) return json(res, 404, { erro: 'Esse comentário não existe mais.' });
+      fio = pai.id;
+    } else {
+      ancora = ancoraValida(corpo.ancora);
+      if (!ancora) return json(res, 400, { erro: 'Selecione o trecho que quer comentar.' });
+    }
+    // só ganha o aviso quem lê o roteiro: o citado que não vê um roteiro fechado não fica sabendo dele
+    const citadas = mencoesDoTexto(texto, await citaveis()).filter((p) => acesso(id, p).ler);
+    const avisos = quemAvisar({ autor: eu.email, donoDoRoteiro: a.linha.dono_email, citadas: citadas.map((p) => p.email) });
+    const comentario = comentarios.criar({ roteiro: id, fio, autor: eu, papel: await papelDe(eu.email), texto, ancora, avisos, em: agora });
+    console.log(`[comentarios] ${eu.email} ${fio ? 'respondeu' : 'comentou'} em ${id}${avisos.length ? ` (avisos: ${avisos.length})` : ''}`);
+    avisarComentarios(id, eu);
+    return json(res, 201, { comentario });
   }
 
   function arquivo(req, res, caminho) {

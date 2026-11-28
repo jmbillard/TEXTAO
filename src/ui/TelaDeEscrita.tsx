@@ -13,10 +13,12 @@ import { exportar } from '../modelo/exportar';
 import { metaVazia, type Meta, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
+import { ComentariosDaFolha } from './ComentariosDaFolha';
+import { ComentariosNoTexto } from '../editor/comentarios';
 import { ArtesDaEscrita, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
-import { atalho, baixar, nomeDoArquivo, quandoComecou, semMovimento } from './util';
+import { atalho, ATALHO_DE_COMENTAR, baixar, nomeDoArquivo, quandoComecou, semMovimento } from './util';
 import { Presentes } from './Filmes';
 import { useSalaDaEscrita } from './salaDaEscrita';
 import './escrita.css';
@@ -101,6 +103,9 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   const pessoaRef = useRef(pessoa);
   pessoaRef.current = pessoa;
   const titulo = useRef<HTMLTextAreaElement>(null);
+  // os comentários (#192): o pedido do botão Comentar e quantos estão abertos
+  const [pedidoDeComentario, setPedidoDeComentario] = useState(0);
+  const [abertos, setAbertos] = useState(0);
   // a escrita (#190): a ponte entre o teclado do editor e a tela (o menu do "/", os balões), e a arte com o balão aberto
   const ponte = useRef<PonteDaEscrita>({});
   const [arteAberta, setArteAberta] = useState<string | null>(null);
@@ -118,6 +123,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
       // as colunas (#193): o lugar de cada trecho na grade vídeo | áudio, só decoração sobre o mesmo documento
       Colunas,
       Teclado.configure({ programa: () => estado.current.meta.programa }),
+      // o grifo dos trechos comentados (#192): decoração, o documento não muda
+      ComentariosNoTexto,
       // na sala, o texto é o do documento compartilhado (com o desfazer de cada um) e os cursores dos colegas
       ...(sala
         ? [
@@ -301,6 +308,20 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
           <span className="escrita-so-lendo-curto">só lendo</span>
         )}
         <span className="espaco" />
+        {/* #192: comentar o trecho selecionado (também Ctrl+Alt+M), para toda pessoa que lê o roteiro */}
+        <button
+          type="button"
+          className="botao escrita-comentar"
+          title={`Comentar o trecho selecionado (${ATALHO_DE_COMENTAR})`}
+          aria-keyshortcuts="Control+Alt+M"
+          // o clique não tira a seleção do texto
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setPedidoDeComentario((n) => n + 1)}
+        >
+          <Icone nome="comentario" tam={14} traco={2} />
+          <span className="escrita-comentar-nome">Comentar</span>
+          {abertos > 0 && <span className="escrita-comentar-conta" aria-label={`${abertos} abertos`}>{abertos}</span>}
+        </button>
         {/* quem mais está no roteiro agora (#191): as bolinhas da mesma peça da prévia, com as iniciais na cor de cada um */}
         <span className="escrita-presentes" aria-live="polite">
           <Presentes pessoas={presentes} texto />
@@ -324,7 +345,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
         <p className="escrita-so-lendo" role="status">
           <Icone nome="olho" tam={15} traco={2} />
           <span>
-            Você está <b>só lendo</b>: quem escreve é {autor || 'o redator'} e quem {autor ? 'ele ou ela' : 'ele'} convidar.
+            Você está <b>só lendo</b>: quem escreve é {autor || 'o redator'} e quem {autor ? 'ele ou ela' : 'ele'} convidar. Selecione um trecho para comentar.
           </span>
         </p>
       )}
@@ -389,6 +410,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
               </div>
             )}
             <EditorContent editor={editor} />
+            <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} />
             {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} />}
           </div>
         </article>

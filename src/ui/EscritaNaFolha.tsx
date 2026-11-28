@@ -8,7 +8,7 @@ import { nomesDosTipos, normalizarSubtipo, type NoJSON } from '../modelo/tipos';
 import { Atalhos } from './Atalhos';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { PopoverMarca } from './TelaEditor';
-import { atalho, copiarTexto } from './util';
+import { ATALHO_DE_COMENTAR, atalho, copiarTexto } from './util';
 import { Vagas } from './vagas';
 
 /* Escrever na folha (#190, spec #186): o que a folha de escrita mostra por cima do editor. A margem dos tipos à
@@ -554,6 +554,9 @@ export function RodapeDaEscrita({ editor }: { editor: Editor }) {
           </span>
           <span>
             <kbd>{atalho('Mod-u')}</kbd> arte
+          </span>
+          <span>
+            <kbd>{ATALHO_DE_COMENTAR}</kbd> comenta
           </span>
           <span>
             <kbd>{atalho('Mod-Shift-l')}</kbd> limpo
