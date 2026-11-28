@@ -8,7 +8,7 @@ import HardBreak from '@tiptap/extension-hard-break';
 import Italic from '@tiptap/extension-italic';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
-import { Arte, Celula, Etiqueta, Imagem, Linha } from '../editor/extensoes';
+import { Arte, Celula, Etiqueta, Imagem, Linha, TipoDoTrecho } from '../editor/extensoes';
 import { armazenamento, roteiroDa, type Leitura, type MeuRoteiro, type MeusRoteiros as Lidos } from '../dados/armazenamento';
 import type { AreaDosRoteiros } from '../modelo/areas';
 import type { ArteDoRoteiro, ArtesDoRoteiro, EstadoDaArte } from '../modelo/artesDoRoteiro';
@@ -45,7 +45,7 @@ function diaDaExibicao(iso: string | undefined) {
 /** O texto do roteiro com as extensões do editor, sem digitar: as artes e as etiquetas aparecem como na revisão. */
 function TextoSoLeitura({ doc }: { doc: NoJSON }) {
   const editor = useEditor({
-    extensions: [Document, Paragraph, Text, Bold, Italic, HardBreak, Arte, Etiqueta, Imagem, Linha, Celula],
+    extensions: [Document, Paragraph, Text, Bold, Italic, HardBreak, Arte, Etiqueta, Imagem, Linha, Celula, TipoDoTrecho],
     content: doc,
     editable: false,
     editorProps: { attributes: { class: 'texto', lang: 'pt-BR', 'aria-label': 'Texto do roteiro', 'aria-readonly': 'true' } },

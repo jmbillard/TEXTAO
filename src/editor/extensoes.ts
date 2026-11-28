@@ -118,6 +118,30 @@ export function prepararColagem(html: string): string {
   return doc.body.innerHTML;
 }
 
+/* ---------- tipo do trecho ---------- */
+
+/**
+ * O tipo do trecho (#187), guardado no parágrafo, ao lado das marcas: `tipo` (locução, sonora, locação, texto…) e
+ * `confirmado` (false: é o palpite, com "?"). Os dois começam nulos, e nulo não vai para a sala ao vivo nem para o
+ * HTML: os roteiros de antes e os que chegam de fora ficam iguais. Quem lê é `tipoDoTrecho`, no modelo.
+ */
+export const TipoDoTrecho = Extension.create({
+  name: 'tipoDoTrecho',
+  addGlobalAttributes: () => [
+    {
+      types: ['paragraph'],
+      attributes: {
+        tipo: attr('tipo', null),
+        confirmado: {
+          default: null,
+          parseHTML: (el: HTMLElement) => (el.hasAttribute('data-confirmado') ? el.getAttribute('data-confirmado') === 'true' : null),
+          renderHTML: (attrs: Record<string, unknown>) => (attrs.confirmado === null ? {} : { 'data-confirmado': String(attrs.confirmado) }),
+        },
+      },
+    },
+  ],
+});
+
 /* ---------- colunas ---------- */
 
 /** Imagem que veio no roteiro (a foto da pessoa, a referência): só para ver, não se mexe nela na revisão. */

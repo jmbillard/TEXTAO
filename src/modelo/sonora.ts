@@ -60,7 +60,7 @@ const RE_VT = new RegExp(String.raw`(VT\s*\d(?:\s*[\/e]\s*\d)?)\s+(?:(${TC})\s+)
 const RE_NOME = /((?:\p{Lu}\p{Ll}[\p{L}'’.]*)(?:\s+(?:(?:p\/|e|de|da|do|dos|das)\s*)?\p{Lu}[\p{L}'’.]*){0,3})\s*:\s+(?=\S)/uy;
 /** NOME (qualquer caixa) seguido de dois-pontos: só vale quando há um timecode pendente da linha de cima. */
 const RE_NOME_LIVRE = /(\p{Lu}[\p{L}'’.]*(?:\s+(?:p\/\s*)?[\p{L}'’.]+){0,5})\s*:\s*(?=\S)/uy;
-const NAO_E_NOME = /^(abre|fecha|encerra|assina|ilustr\w*|cobr\w*|aten[cç][aã]o|refer[eê]ncia|caminho|obs|loc|locu[cç][aã]o|lettering|arte|cartela|selo|vers[oõ]es|redator[a]?|produ[cç][aã]o|arquivos?|chamada|tempo)$/i;
+export const NAO_E_NOME = /^(abre|fecha|encerra|assina|ilustr\w*|cobr\w*|aten[cç][aã]o|refer[eê]ncia|caminho|obs|loc|locu[cç][aã]o|lettering|arte|cartela|selo|vers[oõ]es|redator[a]?|produ[cç][aã]o|arquivos?|chamada|tempo)$/i;
 const RE_INICIOS = new RegExp(
   String.raw`(?:RETR[ÔO]\s*\/\s*)?(?:${FONTE}|EP\.?\s*\d+)\s*\/\s*(?:CAP\.?\s*\d+\s*\/\s*)?B(?:L(?:OCO)?)?\s*\d+\s*\/\s*${TC}|\([^()]{2,90}\)\s*${TC}\s|\/edit\/\s*(?=${TC}\s*[–—-]\s)`,
   'gi',
