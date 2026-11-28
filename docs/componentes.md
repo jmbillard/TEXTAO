@@ -56,6 +56,7 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 |---|---|---|---|
 | `BolinhaDeEstado` | `pecas.tsx` | O pontinho da etapa: entrada neutra, produzindo `--ultra`, aprovação, entregue `--ok`, arquivada. O estado `ok` (pronto, confere, pode) também é ela; `escrevendo` é o roteiro sendo escrito, e `salvando`/`salvou` são a marca de salvo da folha de escrita (a laranja, nunca um ✓). Tamanhos: `pequena` (6 px) e `ficha` (8 px, a classe `tam-ficha`). | Todo estado. É ela que diz "está tudo certo", nunca um ✓ verde. |
 | `EtiquetaDaCampanha` | `EtiquetaDaCampanha.tsx` | A etiqueta da campanha, no tom dela: a primeira e "+N". Abre a página da campanha. | Onde um card mostra a campanha: agenda, Pauta, Produções, card aberto. |
+| `Presentes` | `Filmes.tsx` | Quem mais está aqui agora: as bolinhas com as iniciais na cor de cada um (`corDe`), até 5 e "+N"; com `texto`, "Ana também está aqui" / "mais 2 aqui" (some no celular). | A presença de quem está junto: a prévia e a folha de escrita (#191). |
 | `NumeroCirculado` | `pecas.tsx` | O número circulado à caneta em `--ultra`. | Um por tela: o número da sua tarefa. |
 | `VoceAMao` | `pecas.tsx` | O "você" à mão, em `--ultra`. | Ao lado do que é seu (a sua linha na Pauta, o seu card nas Produções). |
 | `RelativoAMao` | `pecas.tsx` | "hoje", "amanhã" ou "ontem" à mão. | Ao lado de um dia. |
