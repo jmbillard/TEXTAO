@@ -55,9 +55,11 @@ interface Props {
   contar?: (n: number) => void;
   /** quantas sugestões da revisão (#196) esperam a decisão (para o Enviar) */
   contarSugestoes?: (n: number) => void;
+  /** quem escreve guarda as âncoras refeitas quando o texto muda; o envio lido pela Pauta (#197) não é o texto vivo */
+  guardarAncoras?: boolean;
 }
 
-export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar, contarSugestoes }: Props) {
+export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar, contarSugestoes, guardarAncoras = true }: Props) {
   const [lidos, setLidos] = useState<ComentariosLidos | null>(null);
   const [novo, setNovo] = useState<{ ancora: Ancora } | null>(null);
   const [ativo, setAtivo] = useState<string | null>(null);
@@ -117,7 +119,7 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar, con
     const mudou = () => redesenhar((n) => n + 1);
     const guardar = () => {
       clearTimeout(prazo);
-      if (!escreve) return;
+      if (!escreve || !guardarAncoras) return;
       prazo = setTimeout(() => {
         if (editor.isDestroyed) return;
         const refeitas = ancorasRefeitas(editor.state);
@@ -139,7 +141,7 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar, con
       editor.off('update', guardar);
       window.removeEventListener('resize', mudou);
     };
-  }, [editor, escreve, id]);
+  }, [editor, escreve, guardarAncoras, id]);
 
   // o clique no trecho grifado abre o balão dele
   useEffect(() => {
@@ -377,7 +379,7 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar, con
             fechar={() => setAtivo(null)}
             responder={(t) => enviarResposta(c, t)}
             resolver={() => resolver(f)}
-            decide={escreve}
+            decide={escreve && guardarAncoras}
             decidir={(acao) => decidir(f, acao)}
             avisar={avisar}
           />
@@ -406,7 +408,7 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar, con
               fechar={() => setAtivo(null)}
               responder={(t) => enviarResposta(f.id, t)}
               resolver={() => resolver(f)}
-              decide={escreve}
+              decide={escreve && guardarAncoras}
               decidir={(acao) => decidir(f, acao)}
               semTrecho
               avisar={avisar}
