@@ -57,6 +57,14 @@ Nas colunas, cada tipo tem a sua: vídeo (arte, edição, produção, comentári
 locutor, texto) e a locação na linha inteira.
 _Evitar_: estilo, formato, bloco
 
+**Comentário** (no Roteiro escrito):
+A conversa presa a um trecho do Roteiro escrito no PROMeiro: o comentário, as respostas e o resolver (que se desfaz).
+Toda pessoa que lê o roteiro comenta, também quem só lê o texto. Fica fora do texto e acha o trecho pelo que ele diz
+(a âncora), mesmo com o texto reescrito em volta. O **@nome** chama alguém dos cadastros, e quem foi chamado (e o redator,
+quando comentam no roteiro dele) ganha o **aviso**, a bolinha laranja em "Roteiros" e no comentário, que some quando a
+pessoa vê. Não é o tipo de trecho "comentário" do roteiro que chega de fora, que continua sendo texto do roteiro.
+_Evitar_: nota, observação, anotação
+
 **Referência**:
 Uma imagem de inspiração presa ao Roteiro (a foto de um ator, um frame, um print). Vai junto no **Enviar**, mas não é
 arte a produzir e não entra na lista de artes.

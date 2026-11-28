@@ -46,9 +46,16 @@ export function criarAreas({ espera = ESPERA_DOS_CADASTROS } = {}) {
     return Object.fromEntries((lido?.editores ?? []).filter((e) => e.nome).map((e) => [e.nome, (e.keys ?? []).map((k) => k.key).filter(Boolean)]));
   }
 
+  /** Os redatores e os editores dos cadastros que têm e-mail ({ nome, email }): quem a menção @nome acha (#192). */
+  async function pessoasDosCadastros(cadastros) {
+    const lido = await lerCadastros(cadastros);
+    return [...(lido?.redatores ?? []), ...(lido?.editores ?? [])].filter((c) => c.nome && c.email).map((c) => ({ nome: c.nome, email: c.email }));
+  }
+
   return {
     quemE,
     nomesDosCadastros,
+    pessoasDosCadastros,
     apelidosDosEditores,
     /**
      * O que a rota de quem está logado devolve das áreas: as da pessoa, a de entrada (a última usada, se ela ainda a
