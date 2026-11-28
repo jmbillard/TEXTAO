@@ -113,6 +113,12 @@ const ESPIAO = () => {
 const QUADROS = () => {
   window.__log = [];
   window.__fase = '';
+  // o dedo na tela pelos toques que a própria página recebe, na ordem dos quadros. Antes, o teste marcava o dedo por
+  // um evaluate depois do toque: a resposta chegava quadros depois de soltar (até 8 com a máquina carregada), e a volta
+  // do encaixe, que é permitida, caía no trecho "com o dedo" e contava como salto contra o movimento (#183)
+  addEventListener('touchstart', () => (window.__dedo = true), { capture: true, passive: true });
+  addEventListener('touchend', () => (window.__dedo = false), { capture: true, passive: true });
+  addEventListener('touchcancel', () => (window.__dedo = false), { capture: true, passive: true });
   const s = document.querySelector('.secao-trello .semana');
   const cols = s.querySelectorAll('.coluna');
   const f = () => {
@@ -151,7 +157,9 @@ function inversoesEm(q) {
 /**
  * Os números de um gesto. O salto contra o movimento é contado em dois trechos: com o dedo na tela (a faixa tem de
  * seguir o dedo, sem voltar nunca) e depois de soltar (a inércia e o encaixe vão num sentido só até o dia). Entre os
- * dois, uma volta é permitida: o dedo que passou do dia e o encaixe que volta até ele, devagar, sem tremer.
+ * dois, uma volta é permitida: o dedo que passou do dia e o encaixe que volta até ele, devagar, sem tremer. O segundo
+ * trecho começa onde a faixa para de andar no sentido do dedo: o último movimento do dedo pode aparecer na rolagem um
+ * quadro depois de o toque terminar, e a volta é contada a partir dali.
  */
 function analisar(log, fase) {
   const q = log.filter((f) => f.fase === fase);
@@ -159,11 +167,13 @@ function analisar(log, fase) {
   const xFim = q[q.length - 1].x;
   const ultimoComDedo = q.map((f) => f.dedo).lastIndexOf(true);
   const comDedo = q.slice(0, ultimoComDedo + 1).filter((f) => f.dedo);
-  const solto = q.slice(Math.max(0, ultimoComDedo));
+  const sentidoDoDedo = comDedo.length > 1 ? Math.sign(comDedo[comDedo.length - 1].x - comDedo[0].x) : 0;
+  let virada = Math.max(0, ultimoComDedo);
+  while (sentidoDoDedo && virada + 1 < q.length && (q[virada + 1].x - q[virada].x) * sentidoDoDedo >= -0.3) virada++;
+  const solto = q.slice(virada);
   const inversoesComDedo = inversoesEm(comDedo);
   const inversoesSolto = inversoesEm(solto);
   // quanto o encaixe voltou, contra o sentido do dedo, depois de soltar
-  const sentidoDoDedo = comDedo.length > 1 ? Math.sign(comDedo[comDedo.length - 1].x - comDedo[0].x) : 0;
   const volta = Math.round(-(xFim - solto[0].x) * sentidoDoDedo);
   for (let k = 1; k < q.length; k++) {
     maiorPasso = Math.max(maiorPasso, Math.abs(q[k].x - q[k - 1].x));
@@ -179,14 +189,12 @@ function analisar(log, fase) {
 
 async function arrastar(cdp, p, pontos, passoMs = 16) {
   const [x0, y0] = pontos[0];
-  await p.evaluate(() => (window.__dedo = true));
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y: y0 }] });
   for (const [x, y] of pontos.slice(1)) {
     await p.waitForTimeout(passoMs);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await p.evaluate(() => (window.__dedo = false));
 }
 const linha = (x0, y0, x1, y1, n) => Array.from({ length: n + 1 }, (_, k) => [x0 + ((x1 - x0) * k) / n, y0 + ((y1 - y0) * k) / n]);
 
@@ -426,10 +434,65 @@ const QUADROS_DO_COMPUTADOR = () => {
       esquerda: setas[0],
       direita: setas[1],
       transparentes: [...sec.querySelectorAll('.coluna-corpo > *')].filter((e) => +getComputedStyle(e).opacity < 0.95).length,
+      animando: document.getAnimations().some((a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity && sec.contains(a.effect?.target ?? null)),
     });
     requestAnimationFrame(f);
   };
   requestAnimationFrame(f);
+};
+
+// a linha do tempo da página a um quarto da velocidade, pelo CDP, nas fases que medem uma animação quadro a quadro.
+// O app anima pelo relógio dela (document.timeline: as animações, as vagas e o relógio da contagem), não pelos
+// quadros. Com a máquina carregada, os quadros rareiam (intervalos de 100 a 300 ms medidos), e em velocidade normal uma
+// animação de 300 a 400 ms cabia em um ou dois quadros: o teste via o salto direto para o fim (#183). Mais devagar,
+// cada passo do caminho fica à vista por mais quadros, e o que se mede (o caminho, a ordem, nada de estalo) é o mesmo
+const TAXA_DA_LINHA_DO_TEMPO = 0.25;
+// uma sessão do CDP por página, aberta até o fim dela: ao fechar a sessão, a linha do tempo volta à velocidade normal
+const sessoes = new WeakMap();
+async function linhaDoTempoDevagar(ctx, p, devagar = true) {
+  if (!sessoes.has(p)) {
+    const cdp = await ctx.newCDPSession(p);
+    await cdp.send('Animation.enable');
+    sessoes.set(p, cdp);
+  }
+  await sessoes.get(p).send('Animation.setPlaybackRate', { playbackRate: devagar ? TAXA_DA_LINHA_DO_TEMPO : 1 });
+}
+
+// a agenda parou de animar: nenhuma animação em curso nela e o resumo igual por quatro quadros seguidos, depois de
+// alguma ter começado (ou quarenta quadros sem nenhuma, com o movimento reduzido). As fases esperam por esse estado,
+// e não por um tempo fixo, que com a linha do tempo mais devagar acabaria no meio
+const AGENDA_PARADA = () =>
+  new Promise((ok) => {
+    let quietos = 0;
+    let mexeu = false;
+    let resumo = null;
+    const f = () => {
+      const sec = document.querySelector('.secao-trello');
+      const animando = document.getAnimations().some((a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity && sec.contains(a.effect?.target ?? null));
+      const r = sec.querySelector('.secao-trello-conta')?.textContent;
+      if (animando || r !== resumo) {
+        mexeu ||= animando;
+        quietos = 0;
+        resumo = r;
+      } else quietos++;
+      if ((mexeu && quietos >= 4) || quietos >= 40) ok(true);
+      else requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+  });
+const agendaParada = (p) => Promise.race([p.evaluate(AGENDA_PARADA), p.waitForTimeout(20000)]);
+
+// a troca de semana aconteceu (algo animou na agenda ou, com o movimento reduzido, a semana à vista mudou) e terminou:
+// os últimos quadros gravados iguais, sem animação em curso (a contagem, o período, o resumo, as marcas e os cards
+// parados) e com o mês à vista. O mês conta porque a contagem anda por um relógio sem elemento, que não aparece nas
+// animações da página: na virada do mês, os números ficam parados na partida enquanto os meses apagam, e só o mês
+// apagado diz que ela ainda não acabou. É por esse estado, e não por um tempo fixo, que cada fase espera
+const SEMANA_PARADA = () => {
+  const log = window.__log ?? [];
+  const ultimos = log.slice(-4);
+  const igual = (q) => JSON.stringify([q.periodo, q.numeros, q.marcas, q.resumo, q.circulo, q.esquerda]);
+  const mudou = log.some((q) => q.animando) || (log.length > 0 && igual(log[0]) !== igual(log[log.length - 1]));
+  return mudou && ultimos.length === 4 && ultimos.every((q) => igual(q) === igual(ultimos[0]) && q.mesAVista && !q.animando && q.transparentes === 0 && !q.escrevendo);
 };
 
 /**
@@ -493,10 +556,11 @@ async function computador(navegador, url, conferir) {
       conferir(per === periodoDaSemana(0) && nums === numerosDaSemana(0) && marcas === 'ontem,hoje,amanhã', rotulo(`abre na semana de agora: "${per}", ${nums}, ${marcas}`));
       conferir(!(await p.isVisible('.secao-trello .voltar-hoje')), rotulo('na semana de agora, sem o "voltar para hoje"'));
 
-      const fase = async (fn, espera = 1100) => {
+      await linhaDoTempoDevagar(ctx, p);
+      const fase = async (fn) => {
         await p.evaluate(QUADROS_DO_COMPUTADOR);
         await fn();
-        await p.waitForTimeout(espera);
+        await p.waitForFunction(SEMANA_PARADA, null, { timeout: 20000 }).catch(() => {});
         const log = await p.evaluate(() => window.__log);
         await p.evaluate(() => (window.__log = []));
         return log;
@@ -537,10 +601,10 @@ async function computador(navegador, url, conferir) {
         await p.click('.secao-trello button[aria-label="Semana anterior"]');
         await p.waitForTimeout(60);
         await p.click('.secao-trello button[aria-label="Semana anterior"]');
-      }, 1300);
+      });
       conferirTroca(log, 'duas para trás, seguidas', 1, -1);
 
-      log = await fase(() => p.click('.secao-trello .voltar-hoje'), 1300);
+      log = await fase(() => p.click('.secao-trello .voltar-hoje'));
       conferirTroca(log, 'voltar para hoje', -1, 0);
       const fim = log[log.length - 1];
       conferir(fim.marcas === 'ontem,hoje,amanhã' && fim.circulo, rotulo('voltar para hoje: as marcas do dia e o círculo voltam'));
@@ -593,10 +657,12 @@ async function criterio(navegador, url, conferir) {
       conferir(/^\d+ cards/.test(resumoExibicao) && resumoExibicao.includes('1 prioridade'), rotulo(`o resumo por exibição ("${resumoExibicao}")`));
 
       // por entrega: o card entregue ontem voa de hoje para ontem; o que ainda não saiu fica em hoje, tracejado
+      await linhaDoTempoDevagar(ctx, p);
       await p.evaluate(QUADROS_DO_CRITERIO);
       await p.click('.abas-criterio [data-criterio="entrega"]');
-      await p.waitForTimeout(1100);
+      await agendaParada(p);
       const log = await p.evaluate(() => window.__log);
+      await linhaDoTempoDevagar(ctx, p, false);
       conferir((await colunaDe('agdhoje1')).endsWith(', ontem'), rotulo('por entrega, o card entregue ontem fica em ontem'));
       conferir(await p.isVisible('.secao-trello .semana [data-card="agdhoje3"].a-entregar'), rotulo('por entrega, o que ainda não saiu fica no dia da exibição, tracejado'));
       const xs = log.map((q) => q.x).filter((x) => x !== null);
@@ -649,6 +715,7 @@ const QUADROS_DO_FILTRO = () => {
     const sec = document.querySelector('.secao-trello');
     const fica = sec.querySelector('.semana [data-card="agdhoje2"]');
     window.__log.push({
+      t: performance.now(),
       fica: fica ? Math.round((fica.getBoundingClientRect().top - sec.getBoundingClientRect().top) * 10) / 10 : null,
       tela: fica ? Math.round(fica.getBoundingClientRect().top * 10) / 10 : null,
       vagas: [...sec.querySelectorAll('.semana .coluna-corpo > .vaga-y')].map((v) => ({ id: v.querySelector('[data-card]')?.dataset.card, h: Math.round(v.getBoundingClientRect().height * 10) / 10 })),
@@ -668,21 +735,24 @@ const botaoDoFiltro = (p) => p.evaluate(() => {
 /**
  * Quantos quadros cada vaga que mudou passou no meio do caminho (nem inteira nem fechada) e o passo do card que fica.
  * Uma vaga que fecha ou abre de estalo passa zero quadros no meio; o card que fica, se teleporta, anda tudo num quadro.
+ * O passo é medido por quadro, como o da seta (saltoDaSeta): um quadro atrasado pela máquina conta como os quadros que
+ * ele cobriu, cada um de 1/60 s, e não vira salto; o teleporte, que anda tudo de uma vez, falha do mesmo jeito.
  */
 function semTeleporte(log, ids) {
   const altura = (q, id) => q.vagas.find((v) => v.id === id)?.h ?? 0;
   const inteira = Object.fromEntries(ids.map((id) => [id, Math.max(...log.map((q) => altura(q, id)))]));
   const noMeio = Object.fromEntries(ids.map((id) => [id, log.filter((q) => { const h = altura(q, id); return h > 1 && h < inteira[id] - 1; }).length]));
-  const maiorPasso = (ys) => {
+  const maiorPasso = (qs, campo) => {
     let passo = 0;
-    for (let k = 1; k < ys.length; k++) passo = Math.max(passo, Math.abs(ys[k] - ys[k - 1]));
+    for (let k = 1; k < qs.length; k++) passo = Math.max(passo, Math.abs(qs[k][campo] - qs[k - 1][campo]) / Math.max(1, (qs[k].t - qs[k - 1].t) / (1000 / 60)));
     return Math.round(passo * 10) / 10;
   };
-  const ys = log.map((q) => q.fica).filter((y) => y !== null);
+  const comCard = log.filter((q) => q.fica !== null);
+  const ys = comCard.map((q) => q.fica);
   const caminho = Math.round(Math.abs(ys[ys.length - 1] - ys[0]) * 10) / 10;
   // na tela, o card também anda com a página, que rola junto quando a agenda encolhe no fim dela
-  const naTela = log.map((q) => q.tela).filter((y) => y !== null);
-  return { noMeio, menosNoMeio: Math.min(...Object.values(noMeio)), passo: maiorPasso(ys), caminho, passoNaTela: maiorPasso(naTela), caminhoNaTela: Math.round(Math.abs(naTela[naTela.length - 1] - naTela[0]) * 10) / 10 };
+  const naTela = comCard.map((q) => q.tela);
+  return { noMeio, menosNoMeio: Math.min(...Object.values(noMeio)), passo: maiorPasso(comCard, 'fica'), caminho, passoNaTela: maiorPasso(comCard, 'tela'), caminhoNaTela: Math.round(Math.abs(naTela[naTela.length - 1] - naTela[0]) * 10) / 10 };
 }
 
 /** O filtro das prioridades no computador (com e sem movimento reduzido) e no celular: clicar mostra só as prioridades,
@@ -722,9 +792,10 @@ async function filtroDasPrioridades(navegador, url, conferir) {
 
       const resumoAntes = await p.textContent('.secao-trello-conta > span');
       // clicar: só a prioridade fica; os outros fecham a vaga, e o card que fica sobe até o lugar novo sem saltar
+      await linhaDoTempoDevagar(ctx, p);
       await p.evaluate(QUADROS_DO_FILTRO);
       await p.click('.secao-trello-conta .prio-filtro');
-      await p.waitForTimeout(900);
+      await agendaParada(p);
       let log = await p.evaluate(() => window.__log);
       const b1 = await botaoDoFiltro(p);
       conferir(b1.pressionado === 'true' && b1.risco, rotulo('clicar liga o filtro: aria-pressed e o risco à mão embaixo'));
@@ -743,8 +814,9 @@ async function filtroDasPrioridades(navegador, url, conferir) {
       // clicar de novo: tudo volta, abrindo as vagas
       await p.evaluate(QUADROS_DO_FILTRO);
       await p.click('.secao-trello-conta .prio-filtro');
-      await p.waitForTimeout(900);
+      await agendaParada(p);
       log = await p.evaluate(() => window.__log);
+      await linhaDoTempoDevagar(ctx, p, false);
       const b2 = await botaoDoFiltro(p);
       conferir(b2.pressionado === 'false' && !b2.risco, rotulo('clicar de novo desliga o filtro e tira o risco'));
       conferir(JSON.stringify(await cardsAVista(p)) === JSON.stringify(todos), rotulo('clicar de novo traz todos os cards de volta'));
