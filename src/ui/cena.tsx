@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode, Ref } from 'react';
+import { semMovimento } from './util';
 
 /*
   As peças comuns das comemorações (o Sem cadastro zerado, em Comemoracao.tsx, e a fila zerada, em FilaZerada.tsx):
@@ -33,7 +34,8 @@ export interface OpcoesDaAnimacao {
   fill?: FillMode;
 }
 
-/** O palco de uma cena: anima, marca prazos e desfaz tudo. Instantâneo (movimento reduzido), tudo vai direto ao fim. */
+/** O palco de uma cena: anima, marca prazos e desfaz tudo. Instantâneo (movimento reduzido), tudo vai direto ao fim.
+    O palco lê o movimento reduzido sozinho (#171): quem cria não precisa passar `instante`. */
 export interface Palco {
   instante: boolean;
   a(el: Element, kf: Keyframe[], o?: OpcoesDaAnimacao): Animation;
@@ -43,7 +45,7 @@ export interface Palco {
   desfazer(): void;
 }
 
-export function criarPalco(instante = false): Palco {
+export function criarPalco(instante = semMovimento()): Palco {
   const animacoes: Animation[] = [];
   const prazos: number[] = [];
   const palco: Palco = {

@@ -167,7 +167,7 @@ function Area({ n, cena, bilhete, recolher, acabar }: { n: number; cena: Cena; b
   useLayoutEffect(() => {
     const el = area.current!, q = quadro.current!, c = camada.current!, fr = frase.current!;
     const parado = semMovimento();
-    const palco = criarPalco(parado);
+    const palco = criarPalco();
     const prazos: number[] = [];
     const depois = (ms: number, fn: () => void) => prazos.push(window.setTimeout(fn, ms));
     const animacoes: Animation[] = [];
