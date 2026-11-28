@@ -10,6 +10,12 @@
 .escrita-salvo .bolinha-estado { width: 7px; height: 7px; }
 .escrita-visivel { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; font-size: 13px; color: var(--tinta2); background: var(--neutro); }
 .escrita-visivel.publico { background: var(--ultra-suave); color: var(--ultra); }
+/* quem mais está no roteiro (#191): a peça `Presentes` da prévia, antes de quem vê */
+.escrita-presentes { display: inline-flex; }
+.escrita-presentes .na-fila { margin-right: 2px; }
+/* os cursores dos colegas na folha: o nome sobe um pouco acima da linha alta da escrita */
+.folha-escrita .collaboration-cursor__label { top: -1.25em; animation: surgir 0.25s var(--suave) both; }
+
 /* o painel de quem vê abre para baixo, alinhado à direita do botão */
 .escrita-visibilidade .painel-compartilhar { right: 0; left: auto; }
 
@@ -52,8 +58,14 @@
 }
 .folha-escrita.so-leitura.vazia .texto-escrita > p:first-child::before { content: 'Ainda não há texto.'; }
 
+/* a folha esperando o texto chegar da sala: apagada e sem o convite, que só aparece se ela estiver mesmo vazia */
+.folha-escrita .folha-escrita-corpo, .folha-escrita .folha-escrita-titulo { transition: opacity var(--medio) var(--suave); }
+.folha-escrita.chegando .folha-escrita-corpo, .folha-escrita.chegando .folha-escrita-titulo { opacity: 0.35; }
+.folha-escrita.chegando.vazia .texto-escrita > p:first-child::before { content: 'Abrindo o roteiro…'; }
+
 @media (prefers-reduced-motion: reduce) {
-  .folha-escrita, .folha-escrita-titulo, .folha-escrita-corpo, .escrita-so-lendo { animation: none; }
+  .folha-escrita, .folha-escrita-titulo, .folha-escrita-corpo, .escrita-so-lendo, .folha-escrita .collaboration-cursor__label { animation: none; }
+  .folha-escrita .folha-escrita-corpo, .folha-escrita .folha-escrita-titulo { transition: none; }
 }
 
 /* o celular não quebra (escrever no celular é o #198): a folha ocupa a largura, a margem dos tipos encolhe */
