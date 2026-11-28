@@ -23,7 +23,7 @@ import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
 import { atalho, ATALHO_DE_COMENTAR, baixar, dataPorExtenso, nomeDoArquivo, plural, quandoComecou, semMovimento } from './util';
 import { Presentes } from './Filmes';
-import { useSalaDaEscrita } from './salaDaEscrita';
+import { useSalaAoVivo } from './salaAoVivo';
 import { EnviosDaEscrita, PainelDoEnviar } from './EnviarDaEscrita';
 import type { EnvioDoEscrito, EnvioFeito } from '../dados/armazenamento';
 import type { ClaqueteConferida } from '../modelo/enviar';
@@ -33,7 +33,7 @@ import './escrita.css';
 /* O editor de escrita (#189, spec #186): o Roteiro sendo escrito no PROMeiro, numa folha corrida com o título no topo e
    sem claquete (ela é proposta no Enviar, #194). É o mesmo documento da revisão (o schema de `extensoesDoRoteiro`, com o
    tipo do trecho guardado no parágrafo) num outro modo: aqui a digitação é livre (sem a trava `SoMarcas`), e o roteiro
-   se salva sozinho. Com o servidor, pela sala ao vivo da revisão (#191, `useSalaDaEscrita`): duas pessoas escrevem
+   se salva sozinho. Com o servidor, pela sala ao vivo da revisão (#191, `useSalaAoVivo`): duas pessoas escrevem
    juntas, com o cursor e o nome de cada uma, e a barra mostra quem está no roteiro; a sala grava e diz até onde gravou.
    Sem o servidor, pelo PUT. A marca de salvo é a bolinha laranja (`BolinhaDeEstado`), nunca um ✓. Quem não escreve lê
    (e recebe ao vivo), com a faixa que diz isso; o servidor descarta o que ele mandar pela sala. A visibilidade é o
@@ -206,7 +206,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
           ]
         : [History.configure({ depth: 500 })]),
     ],
-    // na sala, o texto chega dela, e a folha só libera a digitação depois disso (useSalaDaEscrita)
+    // na sala, o texto chega dela, e a folha só libera a digitação depois disso (useSalaAoVivo)
     content: sala ? undefined : inicial.doc,
     editable: escreve && !sala,
     // a folha abre com o cursor no texto, pronta para digitar (o título fica no topo, opcional)
@@ -225,10 +225,12 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
       if (!sala) mudou();
     },
   });
-  const { liberado, presentes, gravacao } = useSalaDaEscrita(sala, editor, {
+  const { liberado, presentes, gravacao } = useSalaAoVivo(sala, editor, {
     inicial,
     pessoa,
     escreve,
+    // a folha abre com o cursor no texto, pronta para digitar
+    focarAoLiberar: true,
     aoMudarMeta: (m) => setMeta((antes) => ({ ...antes, ...m })),
   });
   // a marca de salvo junta a sala (o texto) e o PUT (quem vê)

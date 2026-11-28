@@ -77,7 +77,15 @@ async function esperarTexto(p) {
   await p.waitForFunction(() => !document.querySelector('[inert] ol.artes') || !!document.querySelector('.faixa-leitura'), null, { timeout: 20000 });
 }
 
-const paragrafo = (p, i) => p.evaluate((i) => document.querySelectorAll('.texto p')[i]?.textContent ?? '', i);
+/** O texto do parágrafo `i`, sem o cursor do colega (a barra com o nome dele, que fica dentro do parágrafo). */
+const textoDoParagrafo = (i) => {
+  const par = document.querySelectorAll('.texto p')[i];
+  if (!par) return '';
+  const c = par.cloneNode(true);
+  c.querySelectorAll('.collaboration-cursor__caret').forEach((x) => x.remove());
+  return c.textContent;
+};
+const paragrafo = (p, i) => p.evaluate(textoDoParagrafo, i);
 /** Põe o cursor no fim do parágrafo `i` do texto, com um clique, como a pessoa faria. */
 async function cursorNoFim(p, i) {
   const par = p.locator('.texto p').nth(i);
@@ -141,19 +149,22 @@ async function noComputador(navegador, s, tema) {
   await p.keyboard.type('VO!');
   const novo = `${antes} AO VIVO!`;
   assert.equal(await paragrafo(p, 1), novo, 'destravado: digitar e apagar mudam o texto');
-  // colar também passa
+  // colar também passa. O colar usa o cursor que o editor já tem, e o editor só fica sabendo do clique quando o
+  // navegador avisa que a seleção mudou: espera o Beto ver o cursor da Lia no 4º parágrafo, como a pessoa que olha o
+  // cursor antes de colar, para o colar sintético não sair antes desse aviso (e cair no parágrafo anterior)
   await cursorNoFim(p, 3);
+  await beto.p.waitForFunction(() => !!document.querySelectorAll('.texto p')[3]?.querySelector('.collaboration-cursor__caret'), null, { timeout: 10000 });
   await p.evaluate(() => {
     const dt = new DataTransfer();
     dt.setData('text/plain', ' COLADO');
     document.querySelector('.texto').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
   });
-  await p.waitForFunction(() => document.querySelectorAll('.texto p')[3]?.textContent?.endsWith('COLADO'), null, { timeout: 5000 });
+  await p.waitForFunction(`(${textoDoParagrafo})(3).endsWith(' COLADO')`, null, { timeout: 5000 });
   await semUnha(p, `${tema}, destravado`);
   await capturar(p, `2-destravado-${tema}`);
 
   // o colega na sala vê a mudança, e o texto salva no servidor
-  await beto.p.waitForFunction((t) => document.querySelectorAll('.texto p')[1]?.textContent === t, novo, { timeout: 10000 });
+  await beto.p.waitForFunction(`(${textoDoParagrafo})(1) === ${JSON.stringify(novo)}`, null, { timeout: 10000 });
   assert.equal(await beto.p.locator('.cadeado-do-texto').getAttribute('aria-pressed'), 'false', 'o cadeado é de quem abriu: o do Beto continua fechado');
   await p.locator('.salvo.ok').waitFor({ timeout: 15000 });
   const salvoNoServidor = async () => JSON.stringify((await (await fetch(`${s.api}/roteiros/${id}`, { headers: { 'cf-access-authenticated-user-email': LIA } })).json()).doc).includes('AO VIVO!');
