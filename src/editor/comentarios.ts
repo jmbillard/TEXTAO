@@ -36,13 +36,13 @@ export function textoCorrido(doc: NoPM): { texto: string; pos: number[] } {
 }
 
 /** O trecho [de, ate) do texto corrido, em posições do documento. */
-function faixaNoDoc(pos: number[], de: number, ate: number): { de: number; ate: number } | null {
+export function faixaNoDoc(pos: number[], de: number, ate: number): { de: number; ate: number } | null {
   while (de < ate && pos[de] < 0) de++;
   while (ate > de && pos[ate - 1] < 0) ate--;
   return de < ate ? { de: pos[de], ate: pos[ate - 1] + 1 } : null;
 }
 /** O trecho [de, ate) do documento, no texto corrido. */
-function faixaNoTexto(pos: number[], de: number, ate: number): { de: number; ate: number } | null {
+export function faixaNoTexto(pos: number[], de: number, ate: number): { de: number; ate: number } | null {
   const i = pos.findIndex((p) => p >= de);
   let j = -1;
   for (let k = pos.length - 1; k >= 0; k--)

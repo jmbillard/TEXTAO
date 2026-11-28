@@ -3,6 +3,7 @@
    trecho no texto com elas. É uma estrutura nova, separada da etiqueta `comentario` do roteiro importado (que continua
    sendo um tipo de trecho). Só sintaxe que o Node apaga. */
 import { nomeComparavel } from './ligarPeloNome.ts';
+import type { Sugerido } from './sugestoes.ts';
 
 /**
  * Onde o comentário está preso: o trecho citado, um pouco do texto antes e depois dele e o lugar aproximado (a posição
@@ -32,6 +33,9 @@ export interface Comentario {
   criadoEm: string;
   ancora: Ancora | null;
   resolvido: { em: string; por: Quem } | null;
+  /** a sugestão da revisão (#196): o texto sugerido no lugar do trecho da âncora e a decisão; o resolvido é quem
+      decidiu e quando. Num comentário, não há */
+  sugestao?: Sugerido | null;
 }
 
 /** Um fio: o comentário de cima, com as respostas na ordem em que chegaram. */

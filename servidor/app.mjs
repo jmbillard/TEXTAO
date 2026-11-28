@@ -51,6 +51,7 @@ import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { metaDoNovo, podeComecar, regraDoEscrito, tituloLimpo } from '../src/modelo/escrito.ts';
 import { ancoraValida, mencoesDoTexto, podeResolver, quemAvisar, textoDoComentario } from '../src/modelo/comentarios.ts';
 import { criarComentarios, criarTabelasDosComentarios } from './comentarios.mjs';
+import { ID_DA_SUGESTAO, SUGESTOES_POR_PEDIDO, sugeridoValido } from '../src/modelo/sugestoes.ts';
 import { docDaSala, salaPreenchida } from './doc-da-sala.mjs';
 import { andamentoDaArte, letraEVersaoDaFoto, metaDoEscritoEnviado, motivoDoEnvio, ORIGEM_DO_ENVIO, roteiroDaFila, textoDoMotivo } from './envio-do-escrito.mjs';
 import { criarEscala, posicoesDoPedido, recadoDoPedido } from './escala.mjs';
@@ -3970,8 +3971,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (caminho === '/api/pauta') return json(res, 200, await pauta.achar(new URL(req.url, 'http://x').searchParams.get('chave')));
 
     // os comentários do Roteiro escrito no PROMeiro (#192) e os avisos de cada pessoa
-    const doComentario = /^\/api\/roteiros\/([^/]+)\/comentarios(?:\/(visto|ancoras)|\/([\w-]{6,80})\/(resolver|reabrir))?$/.exec(caminho);
+    const doComentario = /^\/api\/roteiros\/([^/]+)\/comentarios(?:\/(visto|ancoras)|\/([\w-]{6,80})\/(resolver|reabrir|aceitar|recusar))?$/.exec(caminho);
     if (doComentario) return rotaDosComentarios(req, res, eu, doComentario[1], doComentario[2] ?? doComentario[4], doComentario[3]);
+    // a revisão que volta como sugestão (#196): o designer, na cópia da fila, sugere ao escrito
+    const daSugestao = /^\/api\/roteiros\/([^/]+)\/sugestoes$/.exec(caminho);
+    if (daSugestao) return rotaDasSugestoes(req, res, eu, daSugestao[1]);
     if (caminho === '/api/avisos') {
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       // só os dos roteiros que a pessoa ainda lê
@@ -4173,6 +4177,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (cid) {
       const c = comentarios.um(id, cid);
       if (!c || c.fio) return json(res, 404, { erro: 'Esse comentário não existe mais.' });
+      // a sugestão da revisão (#196) se aceita ou se recusa, por quem escreve (e só ele a reabre, no desfazer)
+      if (c.sugestao || acao === 'aceitar' || acao === 'recusar') {
+        if (!c.sugestao) return json(res, 400, { erro: 'Isto é um comentário: ele se resolve.' });
+        if (acao === 'resolver') return json(res, 400, { erro: 'A sugestão se aceita ou se recusa.' });
+        if (!a.editar) return json(res, 403, { erro: 'Só quem escreve no roteiro aceita ou recusa a sugestão.' });
+        if (acao === 'reabrir') comentarios.reabrir(cid);
+        else if (c.sugestao.decisao) return json(res, 409, { erro: c.sugestao.decisao === 'aceita' ? 'Essa sugestão já foi aceita.' : 'Essa sugestão já foi recusada.' });
+        else comentarios.decidir(cid, acao === 'aceitar' ? 'aceita' : 'recusada', eu, agora);
+        console.log(`[sugestoes] ${eu.email} ${acao === 'reabrir' ? 'reabriu' : acao === 'aceitar' ? 'aceitou' : 'recusou'} a sugestão ${cid} em ${id}`);
+        avisarComentarios(id, eu);
+        return json(res, 200, { comentario: comentarios.um(id, cid) });
+      }
       if (!podeResolver({ autorDoComentario: c.autor.email === eu.email, escreve: a.editar }))
         return json(res, 403, { erro: 'Só quem comentou e quem escreve no roteiro resolvem o comentário.' });
       if (acao === 'resolver') comentarios.resolver(cid, eu, agora);
@@ -4216,6 +4232,43 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     console.log(`[comentarios] ${eu.email} ${fio ? 'respondeu' : 'comentou'} em ${id}${avisos.length ? ` (avisos: ${avisos.length})` : ''}`);
     avisarComentarios(id, eu);
     return json(res, 201, { comentario });
+  }
+
+  /**
+   * A revisão que volta como sugestão (#196). POST /api/roteiros/<cópia>/sugestoes { lote, sugestoes: [{ id, ancora,
+   * texto }] }: quem revisa a cópia da fila de um Roteiro escrito no PROMeiro (`escrito_de`), com o cadeado aberto, manda
+   * as mudanças dele como estão agora; elas viram sugestões no escrito, com autor e hora, e o autor do escrito ganha o
+   * aviso (a bolinha do #192). A cópia guarda a mudança pelo caminho de sempre (a sala, o PUT): a arte não espera o
+   * redator, e o próximo Enviar leva o que ele aceitou. O roteiro de fora não tem escrito: 409.
+   * → { decididas: ids (o redator já aceitou ou recusou; quem sugeriu esquece o trecho), escrito }
+   */
+  async function rotaDasSugestoes(req, res, eu, id) {
+    if (!ID_VALIDO.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
+    if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    const a = acesso(id, eu);
+    if (!a.linha || !a.ler) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+    if (a.linha.escrito) return json(res, 400, { erro: 'No roteiro escrito, a mudança vai direto no texto.' });
+    if (!a.linha.escrito_de) return json(res, 409, { erro: 'Este roteiro chegou de fora: a mudança fica no texto da fila.' });
+    if (!a.editar) return json(res, 403, { erro: 'Só quem revisa o roteiro sugere mudanças no texto.' });
+    const escrito = q.um.get(a.linha.escrito_de);
+    if (!escrito?.escrito) return json(res, 409, { erro: 'O roteiro escrito deste envio não existe mais.' });
+    const corpo = (await lerCorpo(req, 512 * 1024, 'Pedido')) ?? {};
+    const lote = String(corpo.lote ?? '');
+    if (!ID_DA_SUGESTAO.test(lote)) return json(res, 400, { erro: 'Lote inválido.' });
+    if (!Array.isArray(corpo.sugestoes) || corpo.sugestoes.length > SUGESTOES_POR_PEDIDO) return json(res, 400, { erro: 'Sugestões inválidas.' });
+    const sugestoes = [];
+    for (const x of corpo.sugestoes) {
+      const ancora = ancoraValida(x?.ancora);
+      const texto = sugeridoValido(x?.texto);
+      if (!ID_DA_SUGESTAO.test(String(x?.id ?? '')) || !ancora || texto === null) return json(res, 400, { erro: 'Sugestão inválida.' });
+      sugestoes.push({ id: String(x.id), ancora, texto });
+    }
+    const agora = relogio().toISOString();
+    const avisos = quemAvisar({ autor: eu.email, donoDoRoteiro: escrito.dono_email, citadas: [] });
+    const r = comentarios.sugerir({ roteiro: escrito.id, copia: id, lote, autor: eu, papel: await papelDe(eu.email), sugestoes, avisos, em: agora });
+    if (r.novas) console.log(`[sugestoes] ${eu.email} sugeriu ${r.novas} ${r.novas === 1 ? 'mudança' : 'mudanças'} em ${escrito.id} (pela cópia ${id})`);
+    avisarComentarios(escrito.id, eu);
+    return json(res, 200, { decididas: r.decididas, escrito: escrito.id });
   }
 
   function arquivo(req, res, caminho) {
