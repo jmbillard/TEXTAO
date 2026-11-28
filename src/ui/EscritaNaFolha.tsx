@@ -57,6 +57,8 @@ interface TrechoNaMargem {
   tipo: TipoDoTrecho;
   confirmado: boolean;
   top: number;
+  /** nas colunas (#193), o rótulo fica no começo do trecho, na coluna dele; no texto, na margem (0) */
+  left: number;
   vazio: boolean;
 }
 
@@ -70,19 +72,37 @@ const chaveDe = (el: Element) => {
   return k;
 };
 
+/** Onde o elemento fica dentro do corpo pelo lugar dele na página, sem a animação do momento (o FLIP das colunas move
+    o trecho com `transform`; o rótulo vai direto ao lugar final e desliza na transição dele). */
+function noCorpo(el: HTMLElement, corpo: HTMLElement): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  let n: HTMLElement | null = el;
+  while (n && n !== corpo) {
+    x += n.offsetLeft;
+    y += n.offsetTop;
+    n = n.offsetParent as HTMLElement | null;
+  }
+  if (n === corpo) return { x, y };
+  const r = el.getBoundingClientRect();
+  const b = corpo.getBoundingClientRect();
+  return { x: r.left - b.left, y: r.top - b.top };
+}
+
 function trechosNaMargem(editor: Editor, corpo: HTMLElement): TrechoNaMargem[] {
-  const base = corpo.getBoundingClientRect().top;
   const out: TrechoNaMargem[] = [];
   editor.state.doc.forEach((no, pos) => {
     if (no.type.name !== 'paragraph') return;
     const el = editor.view.nodeDOM(pos);
     if (!(el instanceof HTMLElement)) return;
-    const r = el.getBoundingClientRect();
+    const onde = noCorpo(el, corpo);
     const estilo = getComputedStyle(el);
     const linha = parseFloat(estilo.lineHeight) || 28;
     // o rótulo (20 px) no meio da primeira linha do trecho
-    const top = r.top - base + (parseFloat(estilo.paddingTop) || 0) + (linha - 20) / 2;
-    out.push({ chave: chaveDe(el), pos, ...tipoDoNo(no), top: Math.round(top), vazio: !no.textContent.trim() });
+    const top = onde.y + (parseFloat(estilo.paddingTop) || 0) + (linha - 20) / 2;
+    // nas colunas (#193), o trecho tem a coluna dele (a decoração `data-coluna`): o rótulo vai junto
+    const left = el.dataset.coluna ? Math.round(onde.x) : 0;
+    out.push({ chave: chaveDe(el), pos, ...tipoDoNo(no), top: Math.round(top), left, vazio: !no.textContent.trim() });
   });
   return out;
 }
@@ -117,7 +137,7 @@ function MargemDosTipos({ editor, escreve, abrir, aberto }: { editor: Editor; es
             type="button"
             className={`tipo-na-margem${t.confirmado ? '' : ' palpite'}${t.pos === noCursor ? ' no-cursor' : ''}${t.vazio && t.tipo === 'texto' && !t.confirmado ? ' vazio' : ''}`}
             data-tipo={t.tipo}
-            style={{ transform: `translateY(${t.top}px)` }}
+            style={{ transform: `translate(${t.left}px, ${t.top}px)` }}
             disabled={!escreve}
             aria-haspopup="menu"
             aria-expanded={aberto === t.pos}
@@ -524,7 +544,7 @@ export function RodapeDaEscrita({ editor }: { editor: Editor }) {
         <span>
           <b>{nArtes}</b> {nArtes === 1 ? 'arte' : 'artes'}
         </span>
-        {/* os atalhos à vista; os próximos tickets acrescentam os deles (comentar, #192; o modo limpo, #193) */}
+        {/* os atalhos à vista; os próximos tickets acrescentam os deles (comentar, #192) */}
         <span className="dir atalhos-da-escrita">
           <span>
             <kbd>/</kbd> comandos
@@ -534,6 +554,9 @@ export function RodapeDaEscrita({ editor }: { editor: Editor }) {
           </span>
           <span>
             <kbd>{atalho('Mod-u')}</kbd> arte
+          </span>
+          <span>
+            <kbd>{atalho('Mod-Shift-l')}</kbd> limpo
           </span>
           <span>
             <kbd>?</kbd> atalhos

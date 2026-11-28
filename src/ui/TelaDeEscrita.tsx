@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { EditorContent, useEditor } from '@tiptap/react';
 import History from '@tiptap/extension-history';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -7,13 +8,15 @@ import { armazenamento, type Leitura } from '../dados/armazenamento';
 import { abrirSala, corDe } from '../dados/colaboracao';
 import { extensoesDoRoteiro, prepararColagem, Teclado } from '../editor/extensoes';
 import { Escrita, type PonteDaEscrita } from '../editor/escrita';
+import { Colunas, mudarVisao, type Visao } from '../editor/colunas';
+import { exportar } from '../modelo/exportar';
 import { metaVazia, type Meta, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
 import { ArtesDaEscrita, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
-import { quandoComecou } from './util';
+import { atalho, baixar, nomeDoArquivo, quandoComecou, semMovimento } from './util';
 import { Presentes } from './Filmes';
 import { useSalaDaEscrita } from './salaDaEscrita';
 import './escrita.css';
@@ -29,7 +32,13 @@ import './escrita.css';
 
    O escrever (#190) mora em `editor/escrita.ts` (o teclado, o palpite, as fichas) e em `EscritaNaFolha.tsx` (a margem
    dos tipos, o menu do "/", os balões, a lista das artes e o rodapé). Os ganchos dos próximos tickets ficam marcados: a
-   sala e a presença no topo (#191), os comentários (#192), Texto/Colunas e o modo limpo (#193) e o Enviar (#194). */
+   sala e a presença no topo (#191), os comentários (#192) e o Enviar (#194).
+
+   Ver (#193): embaixo do título, "Texto" e "Colunas" (vídeo | áudio) são duas visões do mesmo documento: nas colunas,
+   cada trecho ganha o lugar dele por decoração (`editor/colunas.ts`), e a troca anda numa animação FLIP. O modo limpo
+   (o botão e Ctrl+Shift+L, numa transição) esconde tudo menos a folha e mostra a cara dos .docx de hoje; o "/" e os
+   atalhos continuam, porque o editor é o mesmo. Em colunas, o limpo vira a tabela de bordas pretas. O .docx baixado
+   sai igual ao limpo da visão de agora (`gerarDocx` com `limpo`). */
 
 /** Quanto a folha espera depois da última tecla para salvar. */
 const SALVAR_MS = 600;
@@ -97,12 +106,17 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   const [arteAberta, setArteAberta] = useState<string | null>(null);
   // a sala ao vivo (#191): só existe com o servidor; o exemplo do tour não chega aqui (ele não é escrito no PROMeiro)
   const [sala] = useState(() => (armazenamento.tipo === 'servidor' ? abrirSala(inicial.id) : null));
+  // ver (#193): a visão (texto ou colunas) e o modo limpo são de cada um, não do roteiro
+  const [visao, setVisao] = useState<Visao>('texto');
+  const [limpo, setLimpo] = useState(false);
 
   const editor = useEditor({
     extensions: [
       ...extensoesDoRoteiro(),
       // o teclado da escrita (#190) vem antes do da revisão: o "/", o Tab nos tipos, o Ctrl+U no trecho, as fichas
       Escrita.configure({ ponte: () => ponte.current, programa: () => estado.current.meta.programa }),
+      // as colunas (#193): o lugar de cada trecho na grade vídeo | áudio, só decoração sobre o mesmo documento
+      Colunas,
       Teclado.configure({ programa: () => estado.current.meta.programa }),
       // na sala, o texto é o do documento compartilhado (com o desfazer de cada um) e os cursores dos colegas
       ...(sala
@@ -194,7 +208,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
     if (!t) return;
     t.style.height = 'auto';
     t.style.height = `${t.scrollHeight}px`;
-  }, [meta.titulo]);
+    // no modo limpo (#193), a letra do título muda: a altura acompanha
+  }, [meta.titulo, limpo]);
 
   const mudarTitulo = (valor: string) => {
     const t = valor.replace(/\n/g, ' ');
@@ -208,6 +223,40 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
     setPessoas(lista);
     mudou();
   };
+  // Texto | Colunas: a grade vem da decoração e a tela muda junto, no mesmo instante, para o FLIP medir o lugar final
+  const trocarVisao = (v: Visao) => {
+    if (!editor || v === visao) return;
+    mudarVisao(editor, v, () => flushSync(() => setVisao(v)));
+  };
+  // o modo limpo entra e sai numa transição da página (a folha muda de cara no lugar); com o movimento reduzido, direto
+  const alternarLimpo = useCallback(() => {
+    const trocar = () => flushSync(() => setLimpo((v) => !v));
+    const doc = document as Document & { startViewTransition?: (f: () => void) => unknown };
+    if (doc.startViewTransition && !semMovimento()) doc.startViewTransition(trocar);
+    else trocar();
+  }, []);
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      // Ctrl+Shift+L (⌘⇧L no Mac), também com o cursor no texto
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === 'KeyL') {
+        e.preventDefault();
+        alternarLimpo();
+      }
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [alternarLimpo]);
+  // o .docx sai igual ao limpo da visão de agora
+  const baixarDocx = async () => {
+    try {
+      const r = roteiroAtual();
+      const blob = await (await import('./exportarDocx')).gerarDocx(exportar(r), { limpo: visao });
+      baixar(blob, `${nomeDoArquivo(r.meta)}.docx`);
+    } catch (e) {
+      avisar((e as Error).message || 'Não consegui gerar o .docx.');
+    }
+  };
+
   // o painel de quem vê fecha no clique fora e no Esc
   const caixaDoPainel = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -226,7 +275,18 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   const visibilidade = publico ? 'Visível para a equipe' : pessoas.length ? `Fechado · ${pessoas.length === 1 ? '1 convidado' : `${pessoas.length} convidados`}` : 'Fechado';
 
   return (
-    <div className="pagina pagina-escrita">
+    <div className={`pagina pagina-escrita${limpo ? ' limpo' : ''}`} data-visao={visao}>
+      {/* no limpo, só a folha: o topo, a barra, as artes e o rodapé saem; fica o caminho de volta */}
+      {limpo && (
+        <div className="sair-do-limpo" role="toolbar" aria-label="Modo limpo">
+          <button type="button" className="botao-texto" onClick={() => void baixarDocx()} title={`Baixa o .docx igual a esta folha, em ${visao === 'colunas' ? 'colunas' : 'texto'}`}>
+            <Icone nome="baixar" tam={14} traco={2} /> .docx
+          </button>
+          <button type="button" className="botao" onClick={alternarLimpo}>
+            Sair do modo limpo <kbd>{atalho('Mod-Shift-l')}</kbd>
+          </button>
+        </div>
+      )}
       {topo}
       <div className="escrita-barra" role="toolbar" aria-label="O roteiro">
         <button type="button" className="botao-texto escrita-voltar" onClick={voltar}>
@@ -269,7 +329,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
         </p>
       )}
       <main className="escrita">
-        <article className={`folha-escrita${vazia ? ' vazia' : ''}${escreve ? '' : ' so-leitura'}${liberado ? '' : ' chegando'}`} aria-label="Roteiro sendo escrito" aria-busy={!liberado}>
+        <article data-visao={visao} className={`folha-escrita${limpo ? ' limpo' : ''}${vazia ? ' vazia' : ''}${escreve ? '' : ' so-leitura'}${liberado ? '' : ' chegando'}`} aria-label="Roteiro sendo escrito" aria-busy={!liberado}>
           <header className="folha-escrita-cabeca">
             <p className="folha-escrita-sobre">
               Roteiro <span aria-hidden="true">·</span> sendo escrito
@@ -301,11 +361,33 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
                 </span>
               )}
             </p>
-            {/* #193: Texto/Colunas e o modo limpo entram aqui, embaixo do título */}
+            {/* ver (#193): Texto | Colunas, o modo limpo e o .docx igual a ele */}
+            <div className="escrita-ver" role="toolbar" aria-label="Ver o roteiro">
+              <div className="segmento" role="radiogroup" aria-label="Texto ou colunas">
+                <button type="button" role="radio" aria-checked={visao === 'texto'} onClick={() => trocarVisao('texto')} title="O texto corrido">
+                  <Icone nome="corrido" tam={14} traco={2} /> Texto
+                </button>
+                <button type="button" role="radio" aria-checked={visao === 'colunas'} onClick={() => trocarVisao('colunas')} title="Vídeo | áudio, como roteiro de TV">
+                  <Icone nome="colunas" tam={14} traco={2} /> Colunas
+                </button>
+              </div>
+              <button type="button" className="botao escrita-ver-limpo" aria-pressed={limpo} onClick={alternarLimpo} title={`Só a folha, com a cara do .docx (${atalho('Mod-Shift-l')})`}>
+                <Icone nome="arquivo" tam={14} traco={2} /> Limpo
+              </button>
+              <button type="button" className="botao-texto escrita-ver-docx" onClick={() => void baixarDocx()} title={`Baixa o .docx igual ao modo limpo, em ${visao === 'colunas' ? 'colunas' : 'texto'}`}>
+                <Icone nome="baixar" tam={14} traco={2} /> .docx
+              </button>
+            </div>
           </header>
           {/* a margem fica à esquerda do texto, com o tipo de cada trecho (e o "?" do palpite, #190); os balões de
               comentário (#192) ficam à direita */}
           <div className="folha-escrita-corpo" data-margem="tipos">
+            {visao === 'colunas' && (
+              <div className="cabeca-das-colunas" aria-hidden="true">
+                <span>Vídeo</span>
+                <span>Áudio</span>
+              </div>
+            )}
             <EditorContent editor={editor} />
             {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} />}
           </div>
