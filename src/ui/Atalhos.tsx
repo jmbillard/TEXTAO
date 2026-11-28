@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ETIQUETAS } from '../modelo/tipos';
 import { ATALHO_DAS_ARTES, ATALHO_DE_COMENTAR, atalho } from './util';
 
-type Tela = 'fila' | 'revisao' | 'escrita' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta' | 'montar';
+type Tela = 'fila' | 'revisao' | 'escrita' | 'leitura' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta' | 'montar';
 type Linha = [tecla: string, oque: string];
 
 const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
@@ -46,6 +46,17 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       [atalho('Mod-Shift-l'), 'Modo limpo: só a folha, com a cara do .docx (de novo, sai)'],
       [ATALHO_DAS_ARTES, 'Recolhe ou mostra a lista das artes: a folha ganha o espaço (vale também na revisão)'],
       [atalho('Mod-Enter'), 'Enviar: confere a claquete e põe o roteiro na fila'],
+    ],
+  },
+  // a folha de escrita em leitura (quem só lê e o último envio aberto pela Pauta, #197): sem os atalhos de escrever; o
+  // comentar só para quem pode comentar (a opção `comenta`)
+  leitura: {
+    titulo: 'Ler o roteiro',
+    linhas: [
+      [ATALHO_DE_COMENTAR, 'Comenta o trecho selecionado; no balão, Enter envia e @ chama alguém'],
+      [atalho('Mod-Shift-l'), 'Modo limpo: só a folha, com a cara do .docx (de novo, sai)'],
+      [ATALHO_DAS_ARTES, 'Recolhe ou mostra a lista das artes'],
+      ['Esc', 'Fecha os balões'],
     ],
   },
   filmes: {
@@ -93,7 +104,7 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
 };
 
 /** "?" mostra os atalhos da tela onde a pessoa está e, embaixo, "Fazer o tour" (o tour da revisão de novo). */
-export function Atalhos({ tela, fazerTour }: { tela: Tela; fazerTour?: () => void }) {
+export function Atalhos({ tela, fazerTour, comenta = true }: { tela: Tela; fazerTour?: () => void; /** sem ele, a linha do comentar sai */ comenta?: boolean }) {
   const [aberto, setAberto] = useState(false);
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
@@ -109,7 +120,7 @@ export function Atalhos({ tela, fazerTour }: { tela: Tela; fazerTour?: () => voi
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
   }, [tela]);
-  const t = LINHAS[tela];
+  const t = { ...LINHAS[tela], linhas: LINHAS[tela].linhas.filter(([k]) => comenta || k !== ATALHO_DE_COMENTAR) };
   return (
     <>
       <button type="button" className="botao-atalhos" aria-label="Atalhos do teclado" title="Atalhos (?)" onClick={() => setAberto((x) => !x)}>

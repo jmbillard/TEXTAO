@@ -10,6 +10,8 @@
 // abre do mesmo jeito. No celular, a lista desce para baixo da folha e recolhe também. No escuro e com o movimento
 // reduzido, sem "unha" e sem ✓ verde.
 //
+// Quem só lê: o rodapé e o "?" sem os atalhos de escrever (/, Tab, Ctrl+U), com o Ctrl+Alt+M e o "?".
+//
 // O "/comentario": abre a escolha "Recado para… edição / produção / arte" ou "Comentário sobre o texto". O recado vira o
 // trecho do tipo (edição, produção ou o recado para a arte); o comentário abre o fio (#192) no trecho.
 //
@@ -32,6 +34,7 @@ try {
 
 const LIA = 'lia.moraes@exemplo.com';
 const MARINA = 'marina.teles@exemplo.com';
+const DAVI = 'davi.rocha@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [{ nome: 'Programa Fictício', chaves: ['CHAMADA'], categoria: 'variedades' }], redatores: ['Marina Teles'], editores: ['Caio Brandão'], pauta: [] };
 
@@ -345,6 +348,31 @@ async function recolherNaRevisao(navegador, s) {
   await ctx.close();
 }
 
+/** Quem só lê (o Davi, da arte, sem papel de escrita): o rodapé e o "?" sem os atalhos de escrever, com o comentar. */
+async function soLendo(navegador, s, id) {
+  const { ctx, p, erros } = await entrar(navegador, s.url, `#/roteiros/${id}`, DAVI, { viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
+  await p.waitForSelector('.escrita-so-lendo');
+  await p.waitForSelector('.rodape-da-escrita');
+  const rodape = await p.locator('.rodape-da-escrita .atalhos-da-escrita').innerText();
+  assert.doesNotMatch(rodape, /comandos|confirma ou troca o tipo|Ctrl\+U/, 'só lendo, sem os atalhos de escrever');
+  assert.match(rodape, /Ctrl\+Alt\+M\s+comenta/, 'quem lê comenta');
+  assert.match(rodape, /\?\s+atalhos/);
+  await capturar(p, '13-so-lendo-rodape');
+  await p.click('.botao-atalhos');
+  await p.waitForFunction(() => /Ler o roteiro/i.test(document.querySelector('.atalhos-cartao')?.textContent ?? ''));
+  const cartao = await p.locator('.atalhos-cartao').textContent();
+  assert.match(cartao, /Ler o roteiro/i);
+  assert.match(cartao, /Ctrl\+Alt\+M/);
+  assert.match(cartao, /Ctrl\+Alt\+A/);
+  assert.doesNotMatch(cartao, /Comandos: \/locucao|Tab|Ctrl\+U/, 'o "?" só lendo, sem os atalhos de escrever');
+  await capturar(p, '14-so-lendo-atalhos');
+  await p.keyboard.press('Escape');
+  // e a lista das artes recolhe para ele também (a escolha é dele: começa aberta)
+  assert.equal((await comoEsta(p)).recolhida, false);
+  assert.deepEqual(erros, []);
+  await ctx.close();
+}
+
 async function noEscuroSemMovimento(navegador, s, id) {
   const { ctx, p, erros } = await entrar(navegador, s.url, `#/roteiros/${id}`, MARINA, { viewport: { width: 1440, height: 900 }, colorScheme: 'dark', reducedMotion: 'reduce' });
   await p.waitForSelector('.artes-da-escrita');
@@ -396,12 +424,14 @@ async function noCelular(navegador, s, id) {
   const s = await subir({ cadastros, env: { CADASTRO_ADMINS: LIA } });
   const navegador = await chromium.launch();
   try {
-    for (const email of [LIA, MARINA]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
+    for (const email of [LIA, MARINA, DAVI]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': email } });
     const id = await recolherNaFolha(navegador, s);
     console.log('✔ a folha: recolher e abrir pelo cabeçalho e pelo Ctrl+Alt+A, a pílula, a folha mais larga, o "?", recarregar e o modo limpo');
     console.log('✔ o "/comentario": recado para a edição, a produção e a arte, o Esc e o comentário sobre o texto (o fio)');
     await recolherNaRevisao(navegador, s);
     console.log('✔ a revisão: a mesma pílula e a mesma escolha, abre e recolhe igual');
+    await soLendo(navegador, s, id);
+    console.log('✔ só lendo: o rodapé e o "?" sem os atalhos de escrever, com o comentar');
     await noEscuroSemMovimento(navegador, s, id);
     console.log('✔ no escuro, com o movimento reduzido');
     await noCelular(navegador, s, id);

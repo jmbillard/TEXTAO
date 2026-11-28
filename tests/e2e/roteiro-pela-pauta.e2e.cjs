@@ -180,6 +180,18 @@ async function aEdicaoPelaPauta(navegador, url, api, tema) {
   // sem Enviar, sem visibilidade, sem a sala
   assert.equal(await p.locator('.escrita-enviar, .escrita-visibilidade, .escrita-ao-vivo').count(), 0);
   assert.equal(await p.locator('.escrita-voltar').innerText(), 'Pauta');
+  // o rodapé e o "?" só com o que vale em leitura: sem o /, o Tab e o Ctrl+U; com o comentar e o "?"
+  const rodape = await p.locator('.rodape-da-escrita .atalhos-da-escrita').innerText();
+  assert.doesNotMatch(rodape, /comandos|confirma ou troca o tipo|Ctrl\+U/, 'em leitura, sem os atalhos de escrever');
+  assert.match(rodape, /Ctrl\+Alt\+M\s+comenta/);
+  assert.match(rodape, /\?\s+atalhos/);
+  await p.click('.botao-atalhos');
+  await p.waitForFunction(() => /Ler o roteiro/i.test(document.querySelector('.atalhos-cartao')?.textContent ?? ''));
+  const cartao = await p.locator('.atalhos-cartao').textContent();
+  assert.match(cartao, /Ler o roteiro/i);
+  assert.match(cartao, /Ctrl\+Alt\+M/);
+  assert.doesNotMatch(cartao, /Comandos: \/locucao|Tab|Ctrl\+U/, 'o "?" em leitura, sem os atalhos de escrever');
+  await p.keyboard.press('Escape');
   await semUnha(p, `o envio no ${nome}`);
   await semCheckVerde(p, `o envio no ${nome}`);
   await semRolagemDeLado(p, `o envio no ${nome}`);

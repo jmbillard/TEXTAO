@@ -641,7 +641,7 @@ const numero = (n: number) => n.toLocaleString('pt-BR');
 
 /** O rodapé da folha, o mesmo da revisão (`estatisticas`): as palavras, as da locução, o tempo de leitura e as artes; e
     os atalhos à vista, com o cartão "?". */
-export function RodapeDaEscrita({ editor }: { editor: Editor }) {
+export function RodapeDaEscrita({ editor, escreve = true, comenta = true }: { editor: Editor; escreve?: boolean; comenta?: boolean }) {
   useVersaoDoEditor(editor);
   const doc = editor.getJSON() as NoJSON;
   const c = contagemDoTexto(doc);
@@ -661,20 +661,27 @@ export function RodapeDaEscrita({ editor }: { editor: Editor }) {
         <span>
           <b>{nArtes}</b> {nArtes === 1 ? 'arte' : 'artes'}
         </span>
-        {/* os atalhos à vista; os próximos tickets acrescentam os deles (comentar, #192) */}
+        {/* os atalhos à vista: em leitura (quem só lê, o envio aberto pela Pauta), só os que valem nela; o comentar, para
+            quem pode comentar */}
         <span className="dir atalhos-da-escrita">
-          <span>
-            <kbd>/</kbd> comandos
-          </span>
-          <span>
-            <kbd>Tab</kbd> confirma ou troca o tipo
-          </span>
-          <span>
-            <kbd>{atalho('Mod-u')}</kbd> arte
-          </span>
-          <span>
-            <kbd>{ATALHO_DE_COMENTAR}</kbd> comenta
-          </span>
+          {escreve && (
+            <>
+              <span>
+                <kbd>/</kbd> comandos
+              </span>
+              <span>
+                <kbd>Tab</kbd> confirma ou troca o tipo
+              </span>
+              <span>
+                <kbd>{atalho('Mod-u')}</kbd> arte
+              </span>
+            </>
+          )}
+          {comenta && (
+            <span>
+              <kbd>{ATALHO_DE_COMENTAR}</kbd> comenta
+            </span>
+          )}
           <span>
             <kbd>{atalho('Mod-Shift-l')}</kbd> limpo
           </span>
@@ -683,7 +690,7 @@ export function RodapeDaEscrita({ editor }: { editor: Editor }) {
           </span>
         </span>
       </footer>
-      <Atalhos tela="escrita" />
+      <Atalhos tela={escreve ? 'escrita' : 'leitura'} comenta={comenta} />
     </>
   );
 }

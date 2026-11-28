@@ -554,7 +554,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
           {editor && <ArtesDaEscrita editor={editor} escreve={escreve} arteAberta={arteAberta} abrirArte={setArteAberta} />}
         </aside>
       </main>
-      {editor && <RodapeDaEscrita editor={editor} />}
+      {editor && <RodapeDaEscrita editor={editor} escreve={escreve} comenta={comenta} />}
       {enviando && enviar && (
         <PainelDoEnviar
           origem={botaoEnviar.current}
