@@ -18,6 +18,34 @@
 }
 .texto-escrita .comentario-trecho.ativo, .texto-escrita .comentario-trecho:hover { background: var(--grifo-comentario-forte); }
 
+/* a sugestão da revisão (#196): o trecho de agora riscado e o sugerido inserido logo depois, como no controle de
+   alterações do Word; em laranja (o destaque), sem faixa nenhuma. O sugerido entra num deslize da esquerda. */
+.texto-escrita .comentario-trecho.sugestao-trecho {
+  background: color-mix(in srgb, var(--ultra) 7%, transparent); color: var(--tinta3);
+  text-decoration: line-through; text-decoration-color: var(--ultra); text-decoration-thickness: 1.5px;
+}
+.texto-escrita .comentario-trecho.sugestao-trecho.ativo, .texto-escrita .comentario-trecho.sugestao-trecho:hover { background: color-mix(in srgb, var(--ultra) 14%, transparent); }
+.texto-escrita .sugestao-inserido {
+  margin-left: 0.25em; padding: 0 2px; border-radius: 2px; cursor: pointer; user-select: none; white-space: pre-wrap;
+  color: var(--ultra-tinta); background: var(--ultra-suave); text-decoration: underline; text-decoration-color: var(--ultra); text-underline-offset: 3px;
+  box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  display: inline-block; animation: sugestao-entra 0.32s var(--suave) both;
+}
+.texto-escrita .sugestao-inserido:empty { display: none; }
+.texto-escrita .sugestao-inserido.ativo { background: color-mix(in srgb, var(--ultra) 24%, transparent); animation: none; }
+@keyframes sugestao-entra { from { opacity: 0; transform: translateX(-4px); clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+/* no balão: o de antes riscado → o sugerido, e o aceitar e o recusar à vista */
+.sugestao-troca { margin: 6px 0 0; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.sugestao-rotulo { color: var(--tinta3); font-size: 12.5px; }
+.sugestao-troca del { color: var(--tinta3); text-decoration-color: var(--ultra); text-decoration-thickness: 1.5px; }
+.sugestao-troca ins { color: var(--ultra-tinta); background: var(--ultra-suave); text-decoration: none; padding: 0 3px; border-radius: 3px; font-weight: 600; }
+.sugestao-seta { color: var(--tinta3); }
+.sugestao-apagar { color: var(--tinta3); font-size: 12.5px; }
+.sugestao-decidir { display: flex; align-items: center; gap: 8px; margin: 12px 0 0 38px; }
+.sugestao-decidir .botao { height: 30px; padding: 0 13px; border-radius: 9px; font-size: 13px; }
+.sugestao-decidir .botao:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* a coluna dos balões: à direita do texto, na folha larga */
 .folha-escrita-corpo { position: relative; }
 .comentarios-da-folha { position: absolute; top: 0; right: 0; width: var(--coluna-dos-comentarios); height: 100%; pointer-events: none; }
@@ -89,7 +117,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .balao-comentario, .mencao-lista { animation: none; transition: none; }
+  .balao-comentario, .mencao-lista, .texto-escrita .sugestao-inserido { animation: none; transition: none; }
   .balao-comentario.ativo { transform: none; }
 }
 
@@ -104,6 +132,11 @@
     animation: balao-sobe 0.3s var(--suave) both;
   }
   .escrita-comentar-nome { display: none; }
+  /* os alvos de toque de 44 px na folha de baixo (#198) */
+  .comentarios-da-folha.estreita .balao-fechar { width: 44px; height: 44px; top: 4px; right: 4px; }
+  .comentarios-da-folha.estreita :is(.balao-trecho, .comentario-quem) { padding-right: 40px; }
+  .comentarios-da-folha.estreita .caixa-de-comentario-acoes .botao { height: 44px; }
+  .comentarios-da-folha.estreita .balao-resolver { min-height: 44px; }
   .comentarios-sem-trecho { max-width: none; }
 }
 @keyframes balao-sobe { from { transform: translateY(100%); } }

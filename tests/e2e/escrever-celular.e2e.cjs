@@ -114,7 +114,7 @@ async function semUnha(p, onde) {
 /** Os botões à vista no topo da folha, no convite e na barra com menos de 44 px de altura ou de largura. */
 const alvosPequenos = (p) =>
   p.evaluate(() =>
-    [...document.querySelectorAll('.escrita-barra button, .folha-escrita-cabeca button, .comecar-na-folha button, .barra-do-polegar button, .menu-da-barra button')]
+    [...document.querySelectorAll('.escrita-barra button, .folha-escrita-cabeca button, .comecar-na-folha button, .barra-do-polegar button, .menu-da-barra button, .balao-comentario button, .balao-comentario .balao-resolver')]
       .filter((b) => {
         const r = b.getBoundingClientRect();
         const c = getComputedStyle(b);
@@ -252,6 +252,7 @@ async function aMarinaEscreve(navegador, s, como, { aparelho, tema, sufixo, vide
   await p.keyboard.press('Enter');
   await p.waitForSelector('.balao-comentario[data-fio]');
   assert.match(await p.locator('.balao-comentario[data-fio]').innerText(), /Vale a pena repetir a data aqui\?/);
+  assert.deepEqual(await alvosPequenos(p), [], 'os toques da folha de baixo têm 44 px');
   await semUnha(p, `a folha de baixo (${sufixo})`);
   await semCheckVerde(p, `a folha de baixo (${sufixo})`);
   await capturar(p, `05-comentario-${sufixo}`);

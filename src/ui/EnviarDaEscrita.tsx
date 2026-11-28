@@ -36,6 +36,8 @@ interface Props {
   ultimo: EnvioDoEscrito | null;
   /** quantos comentários estão abertos no roteiro (#192) */
   comentariosAbertos: number;
+  /** quantas sugestões da revisão (#196) esperam a decisão: o envio leva só o aceito */
+  sugestoesAbertas?: number;
   enviar: (conferida: ClaqueteConferida, opcoes: { motivo: string; liberada?: boolean }) => Promise<EnvioFeito>;
   aoEnviar: (feito: EnvioFeito) => void;
   fechar: () => void;
@@ -49,7 +51,7 @@ export function PainelDoEnviar(props: Props) {
   );
 }
 
-function ConteudoDoEnviar({ escrito, ultimo, comentariosAbertos, enviar, aoEnviar }: Props) {
+function ConteudoDoEnviar({ escrito, ultimo, comentariosAbertos, sugestoesAbertas = 0, enviar, aoEnviar }: Props) {
   const fechar = useFecharCardAberto();
   const inicial = useMemo(() => propostaDaClaquete({ meta: escrito.meta, doc: escrito.doc }), [escrito]);
   const [programa, setPrograma] = useState(inicial.programa);
@@ -192,6 +194,11 @@ function ConteudoDoEnviar({ escrito, ultimo, comentariosAbertos, enviar, aoEnvia
             <BolinhaDeEstado estado={comentariosAbertos ? 'produzindo' : 'ok'} />
             {comentariosAbertos ? `${plural(comentariosAbertos, 'comentário aberto', 'comentários abertos')} no roteiro` : 'Nenhum comentário aberto'}
           </li>
+          {sugestoesAbertas > 0 && (
+            <li className="enviar-sugestoes">
+              <BolinhaDeEstado estado="produzindo" /> {plural(sugestoesAbertas, 'sugestão da revisão', 'sugestões da revisão')} sem resposta <small>o envio leva só o que você aceitou</small>
+            </li>
+          )}
           {travam.length ? (
             travam.map((t) => (
               <li key={t}>

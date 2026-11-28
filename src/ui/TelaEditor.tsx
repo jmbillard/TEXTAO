@@ -49,6 +49,8 @@ import { versoesDaChamada, versoesDoRoteiro } from '../modelo/versoesDoRoteiro';
 import { diaEmSaoPaulo, nomeSemAsVersoes } from '../modelo/pauta';
 import { cadeadoNaRevisao } from '../modelo/cadeado';
 import { CadeadoDoTexto } from './CadeadoDoTexto';
+import { useSugestoesDaRevisao, type RastroDaRevisao } from './sugestoesDaRevisao';
+import { novoRastro } from '../editor/sugestoes';
 
 
 /** No tour, quanto tempo o Enviar do exemplo mostra "Mandando…" antes de voltar para a fila. */
@@ -430,8 +432,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   destravadoRef.current = destravado;
   const temCadeadoRef = useRef(false);
   const [chacoalhar, setChacoalhar] = useState(0);
-  /* A mudança de texto com o cadeado aberto. Hoje passa como está: muda o texto do roteiro, que é o da fila. O #196
-     troca aqui, num roteiro escrito no PROMeiro, a mudança por uma sugestão ao redator (e devolve `false`). */
+  /* A mudança de texto com o cadeado aberto passa como está: muda o texto do roteiro, que é o da fila. Na cópia de um
+     Roteiro escrito no PROMeiro (#196, `escritoDe`), ela também entra no rastro e vai como sugestão ao redator (veja
+     `useSugestoesDaRevisao`); no roteiro de fora, nada além disso. */
   const mudancaComCadeado = useRef<(tr: Transaction) => boolean>(() => true);
   const [docVersao, setDocVersao] = useState(0);
   const [selVersao, setSelVersao] = useState(0);
@@ -442,6 +445,13 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // nada ao servidor sobre ele (pauta, acervo)
   const doTour = ehDoTour(inicial.id);
   const comServidor = armazenamento.tipo === 'servidor' && !doTour;
+  // a revisão que volta como sugestão (#196): só na cópia da fila de um escrito, e com o servidor
+  const sugestoesDaRevisao = useRef<RastroDaRevisao | null>(null);
+  sugestoesDaRevisao.current ??= comServidor && inicial.escritoDe ? { lote: novoId(), rastro: novoRastro(), doCadeado: new WeakSet() } : null;
+  mudancaComCadeado.current = (tr) => {
+    sugestoesDaRevisao.current?.doCadeado.add(tr);
+    return true;
+  };
   // na lista de prioridade? O mesmo andamento que marca a ficha da fila e o card da agenda (o servidor guarda por 30 s):
   // a claquete do topo ganha o marca-texto e a palavra ao lado. O mesmo andamento traz o nome de hoje na produção da
   // arte (o card no Trello): o topo mostra esse, como a agenda, para o roteiro não aparecer com dois nomes
@@ -622,6 +632,9 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
       clearTimeout(prazo);
     };
   }, [sala, editor, sincronizado]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a revisão que volta como sugestão (#196): o rastro da mudança com o cadeado aberto vai ao escrito do redator
+  useSugestoesDaRevisao(editor, sugestoesDaRevisao.current, { copia: inicial.id, destravado, avisar, redator: meta.redator });
 
   // no celular, o texto é só de leitura: nada de digitar, mas a seleção continua (é por ela que se marca a arte).
   // Girar o aparelho troca o modo; isso não é uma edição, então não avisa o onUpdate

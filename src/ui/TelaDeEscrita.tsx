@@ -161,6 +161,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
   /** comentar o trecho selecionado (#192): o botão Comentar, o Ctrl+Alt+M e o "Comentário sobre o texto" do /comentario */
   const comentarOTexto = useCallback(() => setPedidoDeComentario((n) => n + 1), []);
   const [abertos, setAbertos] = useState(0);
+  // as sugestões da revisão (#196) que esperam a decisão: o Enviar diz que elas não vão
+  const [sugestoes, setSugestoes] = useState(0);
   // a escrita (#190): a ponte entre o teclado do editor e a tela (o menu do "/", os balões), e a arte com o balão aberto
   const ponte = useRef<PonteDaEscrita>({});
   // o Ctrl+Enter do Enviar (#194), à parte da ponte que a margem preenche
@@ -556,7 +558,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
             <EditorContent editor={editor} />
             {/* #195: na folha vazia, começar de um arquivo ou de um texto colado */}
             {escreve && <ComecarNaFolha corpo={corpo} vazia={vazia} pode={liberado && !!editor} receber={receberDeFora} falhou={avisar} />}
-            {comenta && <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} guardarAncoras={!envio} />}
+            {comenta && <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} contarSugestoes={setSugestoes} guardarAncoras={!envio} />}
             {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} comentarOTexto={comentarOTexto} />}
           </div>
         </article>
@@ -587,6 +589,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEsc
           // o último envio ainda não lido: a letra e a versão que a folha já sabe
           ultimo={estadoDoEscrito === 'enviado' ? (ultimoEnvio ?? { n: 0, em: '', por: { nome: '', email: '' }, motivo: '', claquete: meta.claquete, ...letraEVersaoDoRoteiro(meta) }) : null}
           comentariosAbertos={abertos}
+          sugestoesAbertas={sugestoes}
           enviar={(conferida, opcoes) => enviar(enviando, conferida, { ...opcoes, jaEnviado: estadoDoEscrito === 'enviado' })}
           aoEnviar={aoEnviar}
           fechar={() => setEnviando(null)}
