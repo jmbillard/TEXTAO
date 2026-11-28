@@ -9,7 +9,7 @@ import { useCodigoDasVersoes } from './CodigoDasVersoes';
 import { Icone } from './icones';
 import { ListaDaPauta, MesaDaPauta, RecadoDoDia } from './MesaDaPauta';
 import { ColunasDoDia, FitaDosDias } from './PautaDoDia';
-import { Marca, useSaida } from './pecas';
+import { Marca, useSaida, VoceAMao } from './pecas';
 import { posicaoNaContagem } from './fila';
 import { escrever, Periodo, useContagemDoPeriodo, useEsmaeceAoMudar } from './topoDaAgenda';
 import { semMovimento } from './util';
@@ -222,7 +222,7 @@ function GradeDaSemana({ dados, hoje, voce, irPara, abrir, comSobra }: { dados: 
                         {f.editor ? iniciais(f.editor) : '–'}
                       </span>
                       <span className="pauta-nome">{f.editor || 'sem editor'}</span>
-                      {eu && <span className="pauta-mao">você</span>}
+                      {eu && <VoceAMao />}
                     </span>
                     <span className="pauta-editor-meta">{f.editor ? `${claquetes} ${claquetes === 1 ? 'claquete' : 'claquetes'}` : 'sobrou'}</span>
                   </div>

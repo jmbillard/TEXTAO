@@ -67,6 +67,11 @@ export function NumeroCirculado({ children, traco = 0, className = '' }: { child
   );
 }
 
+/** O "você" à mão, em --ultra, ao lado do que é seu (a sua linha na Pauta, o seu card em Produções, #171). */
+export function VoceAMao() {
+  return <span className="voce-a-mao">você</span>;
+}
+
 /** O vazio da busca, à mão: "nada com “x”", e onde se buscou ("na fila"). */
 export function NadaNaBusca({ termo, onde, className = '' }: { termo: string; onde?: string; className?: string }) {
   return (

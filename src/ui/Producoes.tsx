@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as PointerDoReact, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as PointerDoReact, type ReactNode } from 'react';
 import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
 import { blocosRecolhidos, campanhaDoFiltro, lembrarFiltroDaCampanha, lerCampanhas, lerProducaoAberta, type ProducaoAberta as ProducaoLida, desfazerEtapaDaProducao, lembrarOrdemDasPracas, lembrarRecolhidos, lerProducoesPorPraca, mudarEtapaDaProducao, ordemDasPracas } from '../dados/armazenamento';
 import { ARRASTA_PARA, BOTOES_DO_CARD, COLUNAS_DO_BLOCO, ROTULO_DA_COLUNA, abertasNoComeco, abrirAPraca, comOCard, diaDoPrazo, diasDoEntregue, faltaArte, naOrdem, nomeDoFiltro, soDaCampanha, type CardDaProducao, type BlocoDaPraca, type ColunaDoBloco, type TelaDeProducoes } from '../modelo/producoesPorPraca';
@@ -6,7 +6,7 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
 import type { CampanhaDoCard } from '../modelo/campanhas';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
-import { MarcaTexto, RABISCOS, tracoDe, Vazio } from './pecas';
+import { MarcaTexto, RABISCOS, tracoDe, Vazio, VoceAMao } from './pecas';
 import { CaixinhaDoDesfazer } from './desfazer';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { CampanhaDoFiltro, EscolherCampanha } from './FiltroDaCampanha';
@@ -51,7 +51,7 @@ import './producoes.css';
    card que não tem o "Peguei" (o que já é da pessoa, o de Produzindo, o entregue), nada; num campo de texto, nada. E a
    lupa do topo busca no histórico todo, também os entregues antigos (src/ui/BuscaDasProducoes.tsx), numa lista no lugar
    dos blocos.
-   #179: o filtro por campanha. O botão "Campanha" ao lado da lupa (ou um clique na etiqueta de um card) escolhe a
+   #179: o filtro por campanha. O botão "Campanha" ao lado da lupa escolhe a (a etiqueta do card abre a página dela, #171)
    campanha, e as praças de sempre mostram só as Produções dela, com as contagens acompanhando; o nome fica ao lado do
    título ("só" e a etiqueta), e o × dele ou o Esc tiram o filtro. Os cards que saem esmaecem, os que ficam deslizam
    (o FLIP) e os que chegam vêm em cascata, de coluna em coluna. A escolha fica lembrada por pessoa. */
@@ -213,16 +213,18 @@ const Alca = () => (
 /** O clique que abre a Produção (#113): no card, fora dos botões, do link e do aviso de arte faltando. */
 const cliqueDeAbrir = (e: { target: EventTarget }) => !(e.target as Element).closest('button, a, .prod-aviso');
 
-/** O que o card faz com o filtro por campanha (#179): filtrar pela etiqueta, e se ele está saindo (fora da campanha
-    escolhida, esmaecendo antes de o filtro valer). */
+/** O que o card sabe do filtro por campanha (#179): se ele está saindo (fora da campanha escolhida, esmaecendo antes
+    de o filtro valer). O filtro se escolhe pelo botão "Campanha" do topo; a etiqueta abre a página dela (#171). */
 interface NoFiltro {
-  filtrar: (c: CampanhaDoCard) => void;
   saindo: (c: CardDaProducao) => boolean;
 }
 
+/** O designer da pessoa logada (#171): o card em que ela é designer fica destacado, como a sua linha na Pauta. */
+const VoceNasProducoes = createContext<string | null>(null);
+
 /** O card da Produção (o da agenda No Trello), o mesmo na tela de Produções e na página da campanha (#180).
-    @param filtro o filtro por campanha da tela de Produções (#179); sem ele (a página da campanha), a etiqueta abre a
-      página da campanha
+    @param filtro o filtro por campanha da tela de Produções (#179); a etiqueta abre a página da campanha, aqui e em
+      todas as telas (#171)
     @param extra o que a outra tela põe no pé do card (a Pauta e o tirar da campanha, #180) */
 export function CardDaTela({ c, hoje, acoes, abrir, filtro, extra }: { c: CardDaProducao; hoje: string; acoes: Acoes | null; abrir: (el: HTMLElement) => void; filtro?: NoFiltro; extra?: ReactNode }) {
   // o apelido da claquete da Produção (#120, #154) no lugar da claquete: só para mostrar; a original, ao passar o mouse
@@ -234,9 +236,12 @@ export function CardDaTela({ c, hoje, acoes, abrir, filtro, extra }: { c: CardDa
   const artes = artesEscritas(c.artes);
   const passou = !!c.prazo && c.etapa !== 'entregue' && diaDoPrazo(c.prazo) < hoje;
   const arrastar = acoes?.arrastar ?? null;
+  // o seu card (#171): o fundo levemente tingido e o "você" à mão, como a sua linha na Pauta
+  const voce = useContext(VoceNasProducoes);
+  const seu = !!voce && c.designers.some((d) => nomeComparavel(d) === nomeComparavel(voce));
   return (
     <li
-      className={`prod-card${c.alta ? ' alta' : ''}${arrastar ? ' arrastavel' : ''}${filtro?.saindo(c) ? ' saindo-do-filtro' : ''}`}
+      className={`prod-card${c.alta ? ' alta' : ''}${seu ? ' seu' : ''}${arrastar ? ' arrastavel' : ''}${filtro?.saindo(c) ? ' saindo-do-filtro' : ''}`}
       data-producao={c.id}
       data-etapa={c.etapa}
       draggable={!!arrastar}
@@ -267,8 +272,8 @@ export function CardDaTela({ c, hoje, acoes, abrir, filtro, extra }: { c: CardDa
       <ConflitoDoCard versoes={versoes} />
       <span className="prod-atracao">{c.atracao || 'sem atração'}</span>
       {/* a etiqueta da campanha (#178): a primeira ligada e "+N" das outras; sempre montada, para a que chega carimbar.
-          #179: o clique nela filtra a tela pela campanha (enquanto a página da campanha não existe) */}
-      <EtiquetaDaCampanha campanhas={c.campanhas} abrir={filtro?.filtrar} rotuloDoAbrir={filtro ? (x) => `Só a campanha ${x.nome}` : undefined} />
+          O clique abre a página da campanha, como em todas as telas (#171); o filtro é o botão "Campanha" do topo */}
+      <EtiquetaDaCampanha campanhas={c.campanhas} />
       <span className="prod-linha">
         {artes && <span className="prod-artes">{artes}</span>}
         {c.prazo ? (
@@ -282,6 +287,7 @@ export function CardDaTela({ c, hoje, acoes, abrir, filtro, extra }: { c: CardDa
       {(c.designers.length > 0 || c.marcador || c.semCard) && (
         <span className="prod-pe">
           {c.designers.length > 0 && <span className="prod-designers">{c.designers.join(', ')}</span>}
+          {seu && <VoceAMao />}
           {c.marcador && <span className="prod-marcador">{c.marcador}</span>}
           {c.semCard && <span className="prod-sem-card">sem card</span>}
         </span>
@@ -720,7 +726,7 @@ export function Producoes({ topo }: Props) {
   // o filtro por campanha (#179): as praças de sempre, só com as Produções dela; o nome, o das etiquetas (a renomeada)
   const vista = lido && soDaCampanha(lido, filtro?.id ?? null);
   const filtroVisto = filtro && { id: filtro.id, nome: nomeDoFiltro(filtro, lido) };
-  const noFiltro: NoFiltro = { filtrar, saindo: (c) => !!indoPara && !c.campanhas?.some((x) => x.id === indoPara.id) };
+  const noFiltro: NoFiltro = { saindo: (c) => !!indoPara && !c.campanhas?.some((x) => x.id === indoPara.id) };
   const blocos = vista ? naOrdem(vista.blocos, ordem) : [];
   const pracas = blocos.map((b) => b.praca);
   // (a praça que saiu da tela, numa releitura, não conta entre as abertas)
@@ -810,6 +816,7 @@ export function Producoes({ topo }: Props) {
   };
 
   return (
+    <VoceNasProducoes.Provider value={designer}>
     <div className="pagina producoes">
       {topo}
       <main className="prod-pagina">
@@ -887,5 +894,6 @@ export function Producoes({ topo }: Props) {
         )}
       </main>
     </div>
+    </VoceNasProducoes.Provider>
   );
 }

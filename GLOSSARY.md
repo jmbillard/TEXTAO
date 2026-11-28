@@ -420,8 +420,9 @@ uma que já existe liga a que existe). Ligar e tirar entram na **linha do tempo*
 campanha X", "tirou da campanha X"). Aparece como a **etiqueta da campanha**, um componente só em todas as telas: a
 pílula com a bolinha no tom da campanha (o mesmo tom para a mesma campanha); no card de Produções, a primeira ligada e
 "+N" das outras; no card aberto, todas, com a busca para ligar, "+ Nova campanha" e tirar com a caixinha de desfazer
-(#178). Em Produções, o **filtro por campanha** (#179): o botão "Campanha" ao lado da lupa (a mesma busca da campanha
-do card aberto) ou um clique na etiqueta de um card escolhe a campanha, e as praças de sempre mostram só as Produções
+(#178). O clique na etiqueta abre a página da campanha, em todas as telas, também no card de Produções (#171). Em
+Produções, o **filtro por campanha** (#179): o botão "Campanha" ao lado da lupa (a mesma busca da campanha do card
+aberto) escolhe a campanha, e as praças de sempre mostram só as Produções
 dela, com as contagens acompanhando; ao lado do título, "só" e a etiqueta, com o × que tira; o Esc também tira. Fica
 lembrado por pessoa, como as outras preferências.
 _Evitar_: grupo, pacote, projeto (o projeto é do After), tag

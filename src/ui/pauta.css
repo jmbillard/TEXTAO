@@ -33,7 +33,7 @@
 .pauta-vazia { display: inline-block; padding: 20px 4px; font: 600 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-2deg); }
 .pauta-falha { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
 .pauta-nada { padding: 6px 2px; font: 600 18px/1.1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); transform-origin: left; }
-.pauta-mao { display: inline-block; margin-left: 2px; font: 600 17px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); }
+
 .pauta-avatar { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--neutro); color: var(--tinta2); font: 600 10.5px var(--sans); letter-spacing: 0.02em; }
 .pauta-qtd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: var(--neutro); color: var(--tinta2); font: 600 11px var(--sans); letter-spacing: 0; vertical-align: 1px; }
 .pauta-etiqueta { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--neutro); color: var(--tinta2); font: italic 500 11.5px var(--sans); white-space: nowrap; }

@@ -673,7 +673,7 @@ async function oDia(navegador, url, tema, teable, api) {
 
   // a Semana da Carla: "você" na linha dela, e o "Minha pauta" de hoje no alto
   assert.equal((await p.locator('tr.eu .pauta-nome').textContent()).trim(), 'Carla Duarte');
-  assert.equal((await p.locator('tr.eu .pauta-mao').textContent()).trim(), 'você');
+  assert.equal((await p.locator('tr.eu .voce-a-mao').textContent()).trim(), 'você');
   const minha = p.locator('.pauta-minha');
   assert.match(await minha.locator('.rotulo').textContent(), new RegExp(`Minha pauta · hoje, ${Number(hoje.slice(8))} de`));
   assert.equal((await minha.locator('h2').textContent()).trim(), 'Carla Duarte');
@@ -701,7 +701,7 @@ async function oDia(navegador, url, tema, teable, api) {
   // a coluna da Carla primeiro, depois o que sobrou, depois a equipe pela hora de entrada
   assert.deepEqual(await textos(p.locator('.pauta-coluna-topo .pauta-nome')), ['Carla Duarte', 'Sobrou · sem editor', 'Ana Ribeiro', 'Bruno Teixeira']);
   assert.equal(await coluna(p, 'Carla Duarte').evaluate((c) => c.classList.contains('eu')), true);
-  assert.equal((await coluna(p, 'Carla Duarte').locator('.pauta-mao').textContent()).trim(), 'você');
+  assert.equal((await coluna(p, 'Carla Duarte').locator('.voce-a-mao').textContent()).trim(), 'você');
   assert.deepEqual(await textos(p.locator('.pauta-coluna-topo .pauta-turno')), ['22:00–06:00', 'quem puder', '06:00–15:00', '14:00–22:53']);
   // no ar agora: só o Bruno
   assert.deepEqual(await textos(p.locator('.pauta-coluna.no-ar .pauta-nome')), ['Bruno Teixeira']);

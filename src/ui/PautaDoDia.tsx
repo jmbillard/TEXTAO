@@ -5,6 +5,7 @@ import { BalaoDeInfo } from './BalaoDeInfo';
 import { ContaDoDia, ListaDaPauta } from './MesaDaPauta';
 import { Avisos, DIAS_DA_SEMANA, partes, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
 import { useDiaQueConta } from './trocaDaPauta';
+import { VoceAMao } from './pecas';
 
 /* O Dia da Pauta da edição (#97, no desenho do #162): a fita com os dias da semana e, embaixo, cada editor numa
    coluna. A coluna de quem vê vem primeiro ("você"), depois a do que sobrou sem editor ("quem puder") e então a equipe,
@@ -57,7 +58,7 @@ function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string
             {c.editor ? iniciais(c.editor) : '–'}
           </span>
           <span className="pauta-nome">{nome}</span>
-          {eu && <span className="pauta-mao">você</span>}
+          {eu && <VoceAMao />}
         </span>
         <span className="pauta-coluna-linha">
           <span className="pauta-turno">{sobra ? 'quem puder' : turnoEscrito(c.turno) || 'sem horário'}</span>

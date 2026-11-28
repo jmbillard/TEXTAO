@@ -58,7 +58,7 @@
 // acento, e acha também o entregue de 5 dias atrás, que os blocos não mostram, com o dia da entrega; a lista chega em
 // cascata e sai esmaecendo, e os blocos voltam; um clique abre a Produção. No celular, a lupa toma a linha do título.
 //
-// #179, o filtro por campanha: pelo botão "Campanha" (a busca sem acento) e pela etiqueta do card; as praças de sempre
+// #179, o filtro por campanha: pelo botão "Campanha" (a busca sem acento; a etiqueta do card abre a página, #171); as praças de sempre
 // só com as Produções da campanha, e as contagens acompanham; o nome ao lado do título; o Esc e o × tiram; lembrado por
 // pessoa; a campanha renomeada mostra o nome novo e a apagada não filtra mais. No celular, o botão tem 44px.
 //
@@ -756,6 +756,12 @@ async function arrastarEDesfazer(navegador, url, chamadasAoTrello, trelloFalso) 
   assert.ok(forma.fechar, 'a caixinha tem o ×');
   assert.equal(forma.duracao, 8000, 'o trilho do tempo leva 8 s');
   assert.equal(forma.altura, 2, 'o trilho é um fio de 2 px');
+  // #171: o seu card: a Lia pegou, o card fica tingido de --ultra com o "você" à mão, como a sua linha na Pauta
+  assert.ok(await novela().evaluate((c) => c.classList.contains('seu')), 'o card que a Lia pegou é o dela');
+  assert.equal((await novela().locator('.voce-a-mao').textContent()).trim(), 'você');
+  const fundos = await novela().evaluate((c) => [getComputedStyle(c).backgroundColor, getComputedStyle(c.closest('.prod-coluna').querySelector('.prod-card:not(.seu)') ?? document.body).backgroundColor]);
+  assert.notEqual(fundos[0], fundos[1], 'o seu card tem o fundo tingido');
+  assert.equal(await p.locator('.prod-card.seu').count(), await p.locator('.prod-card', { has: p.locator('.prod-designers', { hasText: 'Lia Moraes' }) }).count(), 'só os cards da Lia');
   await capturar(p, '11-producoes-desfazer');
   // "Desfazer": o card volta para a Entrada, e no Trello a Lia sai do card
   await caixinha.getByRole('button', { name: 'Desfazer' }).click();
@@ -2038,11 +2044,20 @@ async function oFiltroDaCampanha(navegador, url, chamadasAoTrello, db, api) {
       await filtroNoTopo(p).waitFor({ state: 'detached' });
       assert.deepEqual(await todas(p), antes, 'sem o filtro, as praças completas');
       assert.deepEqual(await contas(p, 'SP'), contasAntes, 'e as contagens de antes');
-      // o clique na etiqueta do card filtra pela campanha dela, sem abrir a Produção
-      await cardDe(p, 'Show da Noite').getByRole('button', { name: 'Só a campanha AESP Verão' }).click();
+      // #171: o clique na etiqueta do card abre a página da campanha, como em todas as telas: não filtra nem abre a
+      // Produção; o filtro é o botão "Campanha" do topo
+      const id = db.prepare("SELECT id FROM campanhas WHERE nome = 'AESP Verão'").get().id;
+      await cardDe(p, 'Show da Noite').getByRole('button', { name: 'Abrir a campanha AESP Verão' }).click();
+      await p.waitForFunction((x) => location.hash.endsWith(`/${encodeURIComponent(x)}`), id);
+      assert.equal(await p.getByRole('dialog').count(), 0, 'o clique na etiqueta não abre a Produção');
+      await p.goBack();
+      await cardDe(p, 'Festa na Praça').waitFor();
+      assert.equal(await filtroNoTopo(p).count(), 0, 'a etiqueta não filtra');
+      await p.getByRole('button', { name: 'Campanha', exact: true }).click();
+      await p.getByRole('textbox', { name: 'Buscar campanha' }).fill('aesp');
+      await p.getByRole('option', { name: 'AESP Verão' }).click();
       await filtroNoTopo(p).filter({ hasText: 'AESP Verão' }).waitFor();
       await cardDe(p, 'Festa na Praça').waitFor({ state: 'detached' });
-      assert.equal(await p.getByRole('dialog').count(), 0, 'o clique na etiqueta não abre a Produção');
       assert.deepEqual(await contas(p, 'SP'), [1, 0, 0], 'só o Show no SP');
       // o × tira o filtro, e tirado fica lembrado
       await p.getByRole('button', { name: 'Tirar o filtro da campanha AESP Verão (Esc)' }).click();
@@ -2123,7 +2138,9 @@ async function filmarOFiltro(navegador, url, api) {
     await p.locator('.prod-titulo h1').click();
     await p.keyboard.press('Escape');
     await p.waitForTimeout(1500);
-    await cardDe(p, 'Show da Noite').getByRole('button', { name: 'Só a campanha AESP Verão' }).click();
+    await p.getByRole('button', { name: 'Campanha', exact: true }).click();
+    await p.getByRole('textbox', { name: 'Buscar campanha' }).pressSequentially('aesp', { delay: 90 });
+    await p.getByRole('option', { name: 'AESP Verão' }).click();
     await p.waitForTimeout(1500);
     await p.getByRole('button', { name: /^Tirar o filtro/ }).click();
     await p.waitForTimeout(1500);

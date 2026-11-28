@@ -205,6 +205,10 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 /* o hover é o da agenda (#167): só a borda, sem subir */
 .prod-card:hover { border-color: var(--regua-forte); }
 .prod-card.deslizando { position: relative; z-index: 1; }
+/* o seu card (#171): o fundo levemente tingido de --ultra, como a sua linha na Pauta; o "você" à mão no pé */
+.prod-card.seu { background: color-mix(in srgb, var(--ultra-suave) 45%, var(--papel)); border-color: color-mix(in srgb, var(--ultra) 22%, var(--regua)); }
+.prod-card.seu:hover { border-color: color-mix(in srgb, var(--ultra) 45%, var(--regua)); }
+.prod-pe .voce-a-mao { font-size: 16px; margin-left: 0; }
 /* o card abre a Produção (#113) */
 .prod-card { cursor: pointer; }
 .prod-card:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }

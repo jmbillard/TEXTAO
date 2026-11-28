@@ -1795,6 +1795,8 @@ a.ficha-marca.trello { text-decoration: none; }
 .vazio-a-mao { margin: 0; padding: 6px 4px; font: 600 18px/1.1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); transform-origin: left center; overflow-wrap: anywhere; }
 .vazio-a-mao.pequeno { font-size: 16px; }
 .nada { padding: 10px 8px; }
+/* o "você" à mão (VoceAMao): a sua linha na Pauta, o seu card em Produções */
+.voce-a-mao { display: inline-block; margin-left: 2px; font: 600 17px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); }
 /* o número da sua tarefa, circulado à caneta (NumeroCirculado, #171); o círculo se escreve ao chegar */
 .numero-circulado { position: relative; display: inline-block; padding: 0 0.42em; margin: 0 0.12em; color: var(--ultra); font-weight: 700; }
 .numero-circulado svg { position: absolute; left: -2px; top: -0.32em; width: calc(100% + 4px); height: calc(100% + 0.64em); overflow: visible; pointer-events: none; }
