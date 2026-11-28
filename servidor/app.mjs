@@ -923,20 +923,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const hoje = diaEmSaoPaulo(Date.now());
     const inicios = naPauta.map((p) => (p.entradaEm ? diaEmSaoPaulo(Date.parse(p.entradaEm)) : hoje));
     const fins = cards.map((c) => (c.prazo ? diaDoPrazo(c.prazo) : hoje));
-    let ate = [...fins, ...inicios].sort().at(-1) ?? hoje;
+    const ate = [...fins, ...inicios].sort().at(-1) ?? hoje;
     let de = [...inicios, ...fins].sort()[0] ?? hoje;
     if (Date.parse(`${ate}T12:00:00Z`) - Date.parse(`${de}T12:00:00Z`) >= DIAS_DA_PAUTA_DA_CAMPANHA * 86_400_000) de = diaVizinho(ate, 1 - DIAS_DA_PAUTA_DA_CAMPANHA);
     const dias = [de];
     while (dias.at(-1) < ate) dias.push(diaVizinho(dias.at(-1), 1));
-    let erro;
-    const doTeable = await pauta.dias(dias).then(
-      (r) => r.linhas,
-      (e) => ((erro = e instanceof Error ? e.message : 'A Pauta da edição não respondeu.'), []),
-    );
-    const gravados = pautaNoTeable.gravados(dias[0], dias.at(-1));
-    const publicadas = escala.publicadas(dias[0], dias.at(-1)).map((p) => (gravados.has(p.dia) ? { ...p, vale: true } : p));
+    const { linhas: lidas, erro } = await pautaJuntaNosDias(dias);
     const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
-    const linhas = cruzarComAProducao(publicadas.length ? juntarAPublicada(doTeable, publicadas) : doTeable, naPauta, semPraca).flatMap((l) =>
+    const linhas = cruzarComAProducao(lidas, naPauta, semPraca).flatMap((l) =>
       (l.producoes ?? []).filter((p) => ids.has(p.id)).map((p) => ({ producao: p.id, dia: l.dia, editor: l.editor, claquete: l.texto, turno: l.turno })),
     );
     return erro ? { linhas, erro } : { linhas };
@@ -2104,13 +2098,25 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    */
   async function historicoDaContinuidade(dia) {
     const dias = Array.from({ length: DIAS_DA_CONTINUIDADE }, (_, i) => diaVizinho(dia, i - DIAS_DA_CONTINUIDADE));
+    const { linhas, erro } = await pautaJuntaNosDias(dias);
+    if (erro) console.error('[montar-pauta] sem a pauta do Teable para distribuir:', erro);
+    return historicoDaPauta(linhas);
+  }
+
+  /**
+   * As linhas da Pauta da edição de alguns dias seguidos, na junção da Pauta (a do Teable e a publicada no PROMeiro,
+   * src/modelo/pautaPublicada.ts): o histórico do distribuir (#151) e a página da campanha (#180). Com o Teable fora do
+   * ar (e sem a cópia local), só a publicada, e o motivo em `erro`.
+   */
+  async function pautaJuntaNosDias(dias) {
+    let erro;
     const doTeable = await pauta.dias(dias).then(
       (r) => r.linhas,
-      (e) => (console.error('[montar-pauta] sem a pauta do Teable para distribuir:', e.message), []),
+      (e) => ((erro = e instanceof Error ? e.message : 'A Pauta da edição não respondeu.'), []),
     );
     const gravados = pautaNoTeable.gravados(dias[0], dias.at(-1));
     const publicadas = escala.publicadas(dias[0], dias.at(-1)).map((p) => (gravados.has(p.dia) ? { ...p, vale: true } : p));
-    return historicoDaPauta(juntarAPublicada(doTeable, publicadas));
+    return { linhas: juntarAPublicada(doTeable, publicadas), ...(erro ? { erro } : {}) };
   }
 
   /**
