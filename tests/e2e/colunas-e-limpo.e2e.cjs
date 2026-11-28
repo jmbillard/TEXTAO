@@ -271,6 +271,11 @@ async function principal() {
     assert.deepEqual(await checksVerdes(bia.p), []);
     await capturar(bia.p, '03-colunas-escuro');
 
+    // a Bia comenta um trecho (#192): na folha, o grifo; no limpo, vira um pontinho
+    const comentou = await como(BIA)(`/roteiros/${ID}/comentarios`, { method: 'POST', body: JSON.stringify({ texto: 'Dá para tirar este pedaço?', ancora: { trecho: 'um só título', antes: 'oito churrasqueiros. ', depois: '.', pos: 0 } }) });
+    assert.equal(comentou.status, 201);
+    await marina.p.waitForSelector('.texto-escrita .comentario-trecho', { timeout: 8000 });
+
     // o modo limpo, em colunas: Ctrl+Shift+L com o cursor no texto
     await noFimDo(marina.p, -1);
     await marina.p.keyboard.press('Control+Shift+L');
@@ -307,6 +312,12 @@ async function principal() {
     assert.equal(tabela.locacao, 'underline');
     assert.equal(tabela.arte, '700');
     assert.equal(tabela.arteSublinhada, 'underline');
+    const comentario = await marina.p.evaluate(() => {
+      const el = [...document.querySelectorAll('.texto-escrita .comentario-trecho')].at(-1);
+      const ponto = getComputedStyle(el, '::after');
+      return { fundo: getComputedStyle(el).backgroundColor, ponto: ponto.content, largura: ponto.width, baloes: [...document.querySelectorAll('.balao-comentario')].filter((b) => b.getBoundingClientRect().height > 0).length };
+    });
+    assert.deepEqual(comentario, { fundo: 'rgba(0, 0, 0, 0)', ponto: '""', largura: '6px', baloes: 0 }, 'no limpo, o comentário é um pontinho');
     await semUnha(marina.p, 'o limpo em colunas');
     await capturar(marina.p, '04-limpo-colunas-claro', true);
     // o "/" continua no limpo

@@ -286,7 +286,18 @@ body:has(.pagina-escrita.limpo) :is(.botao-atalhos, .rodape-da-escrita) { displa
 .folha-escrita.limpo .texto-escrita .ficha-do-texto { padding: 0; margin: 0; font: inherit; color: inherit; background: none; animation: none; }
 .folha-escrita.limpo .texto-escrita .ficha-do-texto::before { display: none; }
 .folha-escrita.limpo .texto-escrita .ficha-do-texto-pasta { display: inline; }
-/* #192: o balão do comentário vira um pontinho no limpo (o gancho: `.folha-escrita.limpo` com a marca do comentário) */
+/* o comentário (#192) vira um pontinho no fim do trecho; a coluna dos balões sai, e o balão aberto (no clique no
+   trecho) abre por cima da folha, como na folha estreita */
+.folha-escrita.limpo { --coluna-dos-comentarios: 0px; }
+.pagina-escrita .folha-escrita.limpo .folha-escrita-corpo { padding-right: 0; }
+.folha-escrita.limpo .texto-escrita .comentario-trecho { background: none; }
+.folha-escrita.limpo .texto-escrita .comentario-trecho:not(:has(+ .comentario-trecho))::after {
+  content: ''; display: inline-block; width: 6px; height: 6px; margin: 0 1px 0 2px; border-radius: 50%; vertical-align: 0.55em;
+  background: #e0a400; animation: aparecer-fundo var(--medio) var(--suave) both;
+}
+.folha-escrita.limpo .comentarios-da-folha { left: 0; width: auto; z-index: 5; }
+.folha-escrita.limpo .comentarios-da-folha .balao-comentario { right: 0; left: auto; width: min(360px, 100%); }
+.folha-escrita.limpo .comentarios-da-folha .balao-comentario:not(.ativo), .folha-escrita.limpo .comentarios-sem-trecho { display: none; }
 
 /* o limpo em colunas: a tabela de bordas pretas, um grupo por linha, como no .docx */
 .folha-escrita.limpo .texto-escrita[data-visao='colunas'] { padding: 1px 0 0 1px; }
@@ -300,7 +311,7 @@ body:has(.pagina-escrita.limpo) :is(.botao-atalhos, .rodape-da-escrita) { displa
 .folha-escrita.limpo .texto-escrita[data-visao='colunas'] > p:not(.abre) { padding-top: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .escrita-ver, .cabeca-das-colunas, .texto-escrita .celula-vazia, .sair-do-limpo { animation: none; }
+  .escrita-ver, .cabeca-das-colunas, .texto-escrita .celula-vazia, .sair-do-limpo, .folha-escrita.limpo .texto-escrita .comentario-trecho::after { animation: none; }
   ::view-transition-group(folha-escrita), ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 }
 @media print { .sair-do-limpo { display: none; } }
