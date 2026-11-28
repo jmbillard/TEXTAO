@@ -13,7 +13,7 @@ import { AbaComRabisco, BolinhaDeEstado, NadaNaBusca, Vazio } from './pecas';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { ABAS_DOS_ROTEIROS, bateComABusca, escritosDaAba, tituloParaMostrar, type AbaDosRoteiros } from '../modelo/escrito';
 import { CASCATA_MS, NA_CASCATA } from './cena';
-import { haQuantoTempo } from './util';
+import { quandoComecou } from './util';
 import type { CSSProperties } from 'react';
 
 /* "Meus roteiros" do Redator e do Editor (#101): a lista simples, por dia, dos roteiros guardados no PROMeiro em que a
@@ -552,7 +552,7 @@ function ListaDosEscritos({ roteiros, lendo, busca, vazio, abrir }: { roteiros: 
             <b>{nomeNaFicha(r)}</b>
             <span>
               {r.dono?.nome ? `por ${r.dono.nome}` : 'sem autor'}
-              {r.criadoEm && ` · começou ${haQuantoTempo(r.criadoEm)}`}
+              {r.criadoEm && ` · ${quandoComecou(r.criadoEm)}`}
             </span>
             <span className="ficha-de">{r.meu ? 'você escreve' : r.podeEditar ? (r.convidado ? 'convidado: você escreve' : 'você também escreve') : 'você lê'}</span>
           </span>

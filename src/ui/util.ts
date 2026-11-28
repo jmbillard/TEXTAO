@@ -49,6 +49,12 @@ export function haQuantoTempo(iso: string, agora = Date.now()): string {
   return dias === 1 ? 'ontem' : dias < 30 ? `há ${dias} dias` : new Date(iso).toLocaleDateString('pt-BR');
 }
 
+/** "começou agora", "começou há 5 min", "começou ontem": quando o Roteiro escrito no PROMeiro começou (#189). */
+export const quandoComecou = (iso: string, agora = Date.now()) => {
+  const t = haQuantoTempo(iso, agora);
+  return t === 'agora há pouco' ? 'começou agora' : `começou ${t}`;
+};
+
 export const nomeDoArquivo = (meta: Meta) =>
   // a claquete já é o nome da chamada; a barra da data não cabe em nome de arquivo
   (meta.claquete ? [meta.claquete.replace(/\//g, ' ')] : [meta.programa, meta.titulo, meta.titulo.includes(dataCurta(meta.dataExibicao)) ? '' : dataCurta(meta.dataExibicao).replace('/', '-')])

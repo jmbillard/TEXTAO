@@ -43,7 +43,7 @@ export const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt
  * @param tam 'pequena' (6 px, nas linhas e nos cards) ou 'ficha' (8 px, na ficha e no card aberto)
  */
 export function BolinhaDeEstado({ estado, tam = 'pequena', className = '' }: { estado: string; tam?: 'pequena' | 'ficha'; className?: string }) {
-  return <i className={`bolinha-estado ${estado}${tam === 'ficha' ? ' ficha' : ''}${className ? ` ${className}` : ''}`} data-estado={estado} aria-hidden="true" />;
+  return <i className={`bolinha-estado ${estado}${tam === 'ficha' ? ' tam-ficha' : ''}${className ? ` ${className}` : ''}`} data-estado={estado} aria-hidden="true" />;
 }
 
 /**

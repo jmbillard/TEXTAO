@@ -8,7 +8,7 @@ import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
-import { haQuantoTempo } from './util';
+import { quandoComecou } from './util';
 import './escrita.css';
 
 /* O editor de escrita (#189, spec #186): o Roteiro sendo escrito no PROMeiro, numa folha corrida com o título no topo e
@@ -198,8 +198,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
           <Icone nome="voltar" tam={14} traco={2} /> Roteiros
         </button>
         {escreve ? (
-          <span className={`escrita-salvo ${salvamento}`} role="status" aria-live="polite" title={salvamento === 'salvo' ? 'O roteiro está salvo' : undefined}>
-            <BolinhaDeEstado estado={salvamento === 'salvo' ? 'salvo' : salvamento === 'erro' ? 'arquivada' : 'salvando'} />
+          <span className="escrita-salvo" data-salvamento={salvamento} role="status" aria-live="polite" title={salvamento === 'salvo' ? 'O roteiro está salvo' : undefined}>
+            <BolinhaDeEstado estado={salvamento === 'salvo' ? 'salvou' : salvamento === 'erro' ? 'arquivada' : 'salvando'} />
             {salvamento === 'salvo' ? 'salvo' : salvamento === 'erro' ? 'não salvou' : 'salvando'}
           </span>
         ) : (
@@ -259,7 +259,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
               {autor && <span>por {autor}</span>}
               {inicial.criadoEm && (
                 <span>
-                  <span aria-hidden="true"> · </span>começou {haQuantoTempo(inicial.criadoEm)}
+                  <span aria-hidden="true"> · </span>{quandoComecou(inicial.criadoEm)}
                 </span>
               )}
             </p>

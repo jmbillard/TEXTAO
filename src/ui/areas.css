@@ -331,8 +331,10 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 @media (prefers-reduced-motion: reduce) { .fichas-escritas .ficha { animation: none; } }
 @media (max-width: 600px) {
   .roteiros-acoes { margin-left: 0; }
-  .abas-roteiros { gap: 0; margin-bottom: 14px; }
-  .abas-roteiros button { padding: 8px 8px; font-size: 14px; }
+  /* as quatro abas numa linha só: a linha rola de lado se faltar largura (a página, não), com espaço para o rabisco */
+  .abas-cad.abas-roteiros { gap: 0; margin: -2px -16px 10px; padding: 0 16px 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .abas-cad.abas-roteiros::-webkit-scrollbar { display: none; }
+  .abas-cad.abas-roteiros button { padding: 8px 7px; font-size: 14px; white-space: nowrap; flex: none; }
   .faixa-ciclo.com-escrevendo { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .quadro-meus.com-escrevendo { min-width: 0; }
 }

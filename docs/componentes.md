@@ -35,6 +35,7 @@ as durações `--rapido` (0.15s) e `--medio` (0.2s) e o respeito ao `prefers-red
 | `BuscaNaLupa` | `BuscaNaLupa.tsx` | A busca recolhida na lupa: "/" ou um clique abrem; Esc limpa e recolhe; o × é o nosso, em `--tinta3`. | Toda tela de lista ou agenda, sem exceção. |
 | `ListaDeAchados` | `ListaDeAchados.tsx` | A lista dos achados no lugar do que a tela mostrava: o topo, a dica, o fio que corre enquanto busca, as linhas em cascata. | A busca que troca a tela pelos achados (Produções, agenda de filmes, Campanhas). |
 | `NadaNaBusca` | `pecas.tsx` | O vazio da busca, à mão: "nada com “x”", com onde se buscou. | Toda busca sem resultado. |
+| `AbaComRabisco` | `pecas.tsx` | A aba das listas com abas (`abas-cad`): fechada, o ícone (ou o nome, com `mostrarNome`) e o número pequeno; ativa, o nome com o número em laranja e o rabisco que se escreve embaixo. | As abas de uma lista: os Cadastros e os Roteiros. |
 
 **O lugar da lupa** (`estilos.css`, perto de `.busca.lupa`). A lupa fica na linha do título da tela, na ponta direita,
 depois das outras ferramentas. Quando a cabeça tem a navegação do tempo (o "voltar para hoje" e o ‹ período ›), ela
@@ -53,7 +54,7 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 
 | Peça | Onde mora | O que é | Quando usar |
 |---|---|---|---|
-| `BolinhaDeEstado` | `pecas.tsx` | O pontinho da etapa: entrada neutra, produzindo `--ultra`, aprovação, entregue `--ok`, arquivada. O estado `ok` (pronto, confere, pode) também é ela. Tamanhos: `pequena` (6 px) e `ficha` (8 px). | Todo estado. É ela que diz "está tudo certo", nunca um ✓ verde. |
+| `BolinhaDeEstado` | `pecas.tsx` | O pontinho da etapa: entrada neutra, produzindo `--ultra`, aprovação, entregue `--ok`, arquivada. O estado `ok` (pronto, confere, pode) também é ela; `escrevendo` é o roteiro sendo escrito, e `salvando`/`salvou` são a marca de salvo da folha de escrita (a laranja, nunca um ✓). Tamanhos: `pequena` (6 px) e `ficha` (8 px, a classe `tam-ficha`). | Todo estado. É ela que diz "está tudo certo", nunca um ✓ verde. |
 | `EtiquetaDaCampanha` | `EtiquetaDaCampanha.tsx` | A etiqueta da campanha, no tom dela: a primeira e "+N". Abre a página da campanha. | Onde um card mostra a campanha: agenda, Pauta, Produções, card aberto. |
 | `NumeroCirculado` | `pecas.tsx` | O número circulado à caneta em `--ultra`. | Um por tela: o número da sua tarefa. |
 | `VoceAMao` | `pecas.tsx` | O "você" à mão, em `--ultra`. | Ao lado do que é seu (a sua linha na Pauta, o seu card nas Produções). |
@@ -91,6 +92,7 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `MenuLigar` | `Cadastros.tsx` | A busca para ligar um nome de uma lista, com o "+ Nova" preso embaixo, pelas setas e pelo Enter. | Ligar uma atração, uma campanha ou uma Produção. |
 | `EscolhaDeNome` | `pecas.tsx` | Escolher um nome da lista do Teable, com busca e o palpite à mão. | O redator e o editor. |
 | `ListaDosTurnos` | `TurnosDaConfiguracao.tsx` | A lista de turnos da Configuração (nome, horário, ordem, tirar, "+ Novo turno"). `qual` escolhe a da edição ou a da arte. | As seções de turnos. |
+| `Compartilhar` | `Compartilhar.tsx` | O painel de quem tem acesso a um roteiro: o modo (fechado ou de todos) e as pessoas, sem acesso, lendo ou escrevendo. `escrito` troca só os textos para os do Roteiro escrito no PROMeiro. | O botão de visibilidade da revisão e da folha de escrita. |
 
 ## Topo e cenas
 
