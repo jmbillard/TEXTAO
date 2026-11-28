@@ -23,7 +23,7 @@ const DIA = 86_400_000;
 const ha = (n: number) => new Date(Date.now() - n * DIA).toISOString();
 const card = (n: number) => `c0ffee${String(n).padStart(18, '0')}`;
 const registro = (id: string, fields: Record<string, unknown>) => ({ id, fields });
-const NOMES = { ARTE_producao: 'arte_producao_pg', exibicoes: 'exibicoes_pg', designers: 'designers_pg', atracoes: 'atracoes_pg', redatores: 'redatores_pg' };
+const NOMES = { ARTE_producao: 'arte_producao_pg', exibicoes: 'exibicoes_pg', designers: 'designers_pg', atracoes: 'atracoes_pg', redatores: 'redatores_pg', EDICAO_producao: 'pauta_pg' };
 const ENV = { CADASTRO_ADMINS: 'chefe@empresa.com', ...TEABLE_FALSO, TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso', TRELLO_KEY: 'chave-falsa', TRELLO_TOKEN: 'token-falso-do-trello', TRELLO_LISTA_SP: 'entradaSP', TRELLO_SAIDA_SP: 'saidaSP' };
 
 const linhas = () => [
@@ -33,6 +33,12 @@ const linhas = () => [
 ];
 const designers = () => [registro('recDesignerAna', { designer: 'Ana Souza', email: 'ana@empresa.com', designer_ID: 'membroAna', status: 'ativo' })];
 const redatores = () => [registro('recRedRita', { redator: 'Rita Lemos', email: 'rita@empresa.com' })];
+/** O dia de hoje em São Paulo (AAAA-MM-DD), o da pauta pedida. */
+const HOJE = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+/** Uma linha da pauta da edição (#181), hoje, de manhã, com o editor. */
+const naPauta = (id: string, claquete: string) =>
+  registro(id, { claquete, key: claquete.toUpperCase(), editor: { id: 'recEdEva', title: 'Eva Manhã' }, data: new Date(`${HOJE}T00:00:00-03:00`).toISOString(), expediente_inicio: new Date(`${HOJE}T06:00:00-03:00`).toISOString(), expediente_fim: new Date(`${HOJE}T15:00:00-03:00`).toISOString(), anotacao: null, alterado_em: ha(0) });
+const pauta = () => [naPauta('recPtNovela', 'Novela Sinfonia 20/12'), naPauta('recPtCozinha', 'Cozinha de Vó 20/12'), naPauta('recPtTarefa', 'COMUNICAÇÃO')];
 
 type Campanha = { id: string; nome: string };
 type Card = { id: string; claquete: string; campanhas: Campanha[] };
@@ -48,7 +54,7 @@ afterEach(async () => {
 async function preparado() {
   const aoTrello: string[] = [];
   const db = abrirBanco(':memory:');
-  const teable = teableFalso(NOMES, { registros: { ARTE_producao: linhas(), exibicoes: [], designers: designers(), atracoes: [], redatores: redatores() } });
+  const teable = teableFalso(NOMES, { registros: { ARTE_producao: linhas(), exibicoes: [], designers: designers(), atracoes: [], redatores: redatores(), EDICAO_producao: pauta() } });
   const app = criarApp({
     db,
     env: ENV,
@@ -88,7 +94,7 @@ async function preparado() {
   const naProducao = (corpo: Record<string, unknown>, quem = ana) => quem('/api/producoes/campanha', { method: 'POST', body: JSON.stringify(corpo) });
   const aberta = async (id: string, quem = davi) => (await (await quem(`/api/producoes/aberta?producao=${id}`)).json()) as Aberta;
   const lista = async (q = '') => ((await (await davi(`/api/campanhas${q ? `?q=${encodeURIComponent(q)}` : ''}`)).json()) as { campanhas: (Campanha & { producoes: number; mexidaEm: string })[] }).campanhas;
-  return { db, teable, aoTrello, ana, rita, chefe, bia, davi, novela, cozinha, antiga, naProducao, aberta, lista, daClaquete };
+  return { db, teable, aoTrello, ana, rita, chefe, bia, davi, novela, cozinha, antiga, naProducao, aberta, lista, daClaquete, cards };
 }
 
 describe('as Campanhas (#178)', () => {
@@ -252,5 +258,65 @@ describe('as Campanhas (#178)', () => {
     } finally {
       rmSync(pasta, { recursive: true, force: true });
     }
+  });
+});
+
+/* A etiqueta da campanha também na Pauta da edição e na agenda No Trello, e a busca de Produções pelo nome da campanha
+   (#181). Na Pauta, a campanha vem do cruzamento da claquete com a Produção (a claquete não guarda nada); na agenda, das
+   Produções do card do roteiro enviado. */
+describe('a campanha na Pauta, na agenda e na busca (#181)', () => {
+  type ProducaoDaLinha = { id: string; campanhas?: Campanha[] };
+  type LinhaDaPauta = { id: string; tipo: string; producoes?: ProducaoDaLinha[] };
+
+  it('na Pauta (Semana e Dia): cada Produção cruzada com a claquete traz as campanhas dela, na ordem em que foram ligadas', async () => {
+    const { naProducao, novela, davi } = await preparado();
+    const lanc = (await (await naProducao({ producao: novela, nova: 'Lançamento Avenida Carona' })).json()).feito.campanha;
+    const aesp = (await (await naProducao({ producao: novela, nova: 'AESP Verão' })).json()).feito.campanha;
+    for (const caminho of [`/api/pauta/dia?dia=${HOJE}`, `/api/pauta/semana?inicio=${HOJE}`]) {
+      const { linhas: ls } = (await (await davi(caminho)).json()) as { linhas: LinhaDaPauta[] };
+      const por = (id: string) => ls.find((l) => l.id === id)!;
+      expect(por('recPtNovela').producoes, caminho).toEqual([expect.objectContaining({ id: novela, campanhas: [lanc, aesp] })]);
+      // a claquete com Produção sem campanha: a lista vazia; a tarefa não cruza
+      expect(por('recPtCozinha').producoes?.[0].campanhas, caminho).toEqual([]);
+      expect(por('recPtTarefa').producoes, caminho).toBeUndefined();
+    }
+  });
+
+  it('na Pauta, a Produção tirada da campanha vale na próxima leitura (nada fica guardado na claquete)', async () => {
+    const { naProducao, novela, davi } = await preparado();
+    const lanc = (await (await naProducao({ producao: novela, nova: 'Lançamento' })).json()).feito.campanha;
+    await naProducao({ producao: novela, campanha: lanc.id, liga: false });
+    const { linhas: ls } = (await (await davi(`/api/pauta/dia?dia=${HOJE}`)).json()) as { linhas: LinhaDaPauta[] };
+    expect(ls.find((l) => l.id === 'recPtNovela')!.producoes?.[0].campanhas).toEqual([]);
+  });
+
+  it('na agenda No Trello: o andamento do roteiro enviado traz as campanhas das Produções do card dele', async () => {
+    const { db, naProducao, novela, ana } = await preparado();
+    const lanc = (await (await naProducao({ producao: novela, nova: 'Lançamento' })).json()).feito.campanha;
+    const em = new Date().toISOString();
+    const meta = JSON.stringify({ claquete: 'Novela Sinfonia 20/12 SP', praca: 'SP' });
+    for (const id of ['rotNovela', 'rotSemCampanha'])
+      db.prepare('INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, criado_em, atualizado_em) VALUES (?, ?, ?, 1, ?, ?, ?, ?)').run(id, 'ana@empresa.com', 'Ana Souza', meta, '{}', em, em);
+    db.prepare("INSERT INTO envios (roteiro_id, estado, card_id, em) VALUES ('rotNovela', 'enviado', ?, ?), ('rotSemCampanha', 'enviado', ?, ?)").run(card(41), em, card(99), em);
+    const andamento = (await (await ana('/api/andamento')).json()) as Record<string, { campanhas?: Campanha[] }>;
+    expect(andamento.rotNovela?.campanhas).toEqual([lanc]);
+    expect(andamento.rotSemCampanha?.campanhas ?? []).toEqual([]);
+  });
+
+  it('a busca de Produções acha pelo nome da campanha, sem diferença de caixa e acento, cada palavra pelo começo', async () => {
+    const { naProducao, novela, cozinha, ana } = await preparado();
+    const lanc = (await (await naProducao({ producao: novela, nova: 'Lançamento Avenida Carona' })).json()).feito.campanha;
+    await naProducao({ producao: cozinha, campanha: lanc.id, liga: true });
+    await naProducao({ producao: cozinha, nova: 'AESP Verão' });
+    const buscar = async (q: string) => ((await (await ana(`/api/producoes/busca?q=${encodeURIComponent(q)}`)).json()) as { cards: Card[]; total: number }).cards.map((c) => c.claquete.split(' ')[0]).sort();
+    expect(await buscar('lancamento avenida')).toEqual(['Cozinha', 'Novela']);
+    expect(await buscar('LANÇAMENTO')).toEqual(['Cozinha', 'Novela']);
+    expect(await buscar('aesp verao')).toEqual(['Cozinha']);
+    // a campanha junto com a claquete: as duas palavras têm que estar
+    expect(await buscar('carona sinfonia')).toEqual(['Novela']);
+    expect(await buscar('arona')).toEqual([]);
+    // o card achado vem com as campanhas, para a etiqueta
+    const r = (await (await ana('/api/producoes/busca?q=aesp')).json()) as { cards: Card[] };
+    expect(r.cards[0].campanhas.map((c) => c.nome)).toEqual(['Lançamento Avenida Carona', 'AESP Verão']);
   });
 });

@@ -35,6 +35,7 @@ import { redatoresConhecidos, semAcento } from '../modelo/vocabularios';
 import { dataCurtaComDia, ehCelular, plural } from './util';
 import { ehDoTour } from '../tour/exemplo';
 import { LinhaDoTempoDoCard } from './LinhaDoTempo';
+import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { MenuDeContexto } from './MenuDeContexto';
 import { corrigirLiberacao, letraEVersaoDoRoteiro, marcaDaLetraEVersao } from '../modelo/letraEVersao';
 
@@ -735,6 +736,9 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
         {/* na semana encolhida, a etapa vira só o pontinho à direita da claquete */}
         {etapa && etapa !== 'caiu' && <i key={etapa} className={`card-semana-sinal ${etapa}`} aria-hidden="true" />}
       </button>
+      {/* a etiqueta da campanha (#181), a mesma de Produções e da Pauta: a primeira e "+N"; fora do botão do card,
+          porque abre a campanha */}
+      {!doTour && <EtiquetaDaCampanha campanhas={andamento?.campanhas} />}
       <div className="card-semana-mais" id={idMais} inert={!aberto || undefined}>
         <div>
           <div className="card-semana-mais-dentro">

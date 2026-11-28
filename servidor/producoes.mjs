@@ -961,12 +961,13 @@ export function criarProducoes(db) {
   /**
    * A busca da tela de produções (#161): as Produções do histórico todo (também as entregues há mais de 3 dias, que a
    * tela não mostra; sem as arquivadas) que têm todas as palavras do termo na claquete, na atração ou numa pessoa (os
-   * designers, e o redator e o editor do Roteiro ligado), cada palavra pelo começo de uma palavra e sem diferença de
+   * designers, e o redator e o editor do Roteiro ligado) ou no nome de uma campanha dela (#181), cada palavra pelo começo de uma palavra e sem diferença de
    * caixa, acento e pontuação (`nomeComparavel`). As mais recentes primeiro, em páginas de `porPagina`, como o card da
    * tela mostra (o de `naTela`, com o dia da entrega em `entregaEm`).
+   * @param campanhasDe (id) => [{ nome }]: as campanhas da Produção (servidor/campanhas.mjs, `porProducao`)
    * @returns { cards, total (as achadas, em todas as páginas), pagina, mais (há a página seguinte) }
    */
-  function naBusca(termo, { pagina = 0, porPagina = POR_PAGINA_DA_BUSCA, atracaoDaClaquete = () => '' } = {}) {
+  function naBusca(termo, { pagina = 0, porPagina = POR_PAGINA_DA_BUSCA, atracaoDaClaquete = () => '', campanhasDe = () => [] } = {}) {
     const palavras = nomeComparavel(termo).split(' ').filter(Boolean);
     const n = Math.max(0, Math.floor(Number(pagina)) || 0);
     if (!palavras.length) return { cards: [], total: 0, pagina: 0, mais: false };
@@ -974,7 +975,7 @@ export function criarProducoes(db) {
     const achadas = q.daBusca.all().flatMap((l) => {
       const c = aTela(l);
       const meta = metaDaLinha(l);
-      const onde = ` ${nomeComparavel([c.claquete, c.atracao, ...c.designers, meta.redator, meta.editor].join(' '))}`;
+      const onde = ` ${nomeComparavel([c.claquete, c.atracao, ...c.designers, meta.redator, meta.editor, ...campanhasDe(c.id).map((x) => x.nome)].join(' '))}`;
       return palavras.every((p) => onde.includes(` ${p}`)) ? [c] : [];
     });
     const cards = achadas.slice(n * porPagina, (n + 1) * porPagina);

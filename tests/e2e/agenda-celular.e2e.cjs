@@ -1179,6 +1179,60 @@ async function mostrarOCodigo(p, ligado) {
   await p.waitForTimeout(200);
 }
 
+/**
+ * A etiqueta da campanha no card da agenda (#181): a mesma pílula de Produções e da Pauta, a primeira e "+N", fora do
+ * botão do card; o clique leva à página da campanha (#180). As campanhas vêm no andamento (pela rota,
+ * como o resto do andamento deste e2e; a rota de verdade é a do teste de servidor das campanhas). Claro e escuro, no
+ * computador e no celular.
+ */
+async function campanhaNaAgenda(navegador, url, conferir) {
+  const COM_CAMPANHAS = {
+    ...ANDAMENTO,
+    agdhoje1: { ...ANDAMENTO.agdhoje1, campanhas: [{ id: 'campE2eLanc', nome: 'Lançamento Fictício' }, { id: 'campE2eAesp', nome: 'AESP Fictícia' }] },
+    agdhoje3: { ...ANDAMENTO.agdhoje3, campanhas: [{ id: 'campE2eLanc', nome: 'Lançamento Fictício' }] },
+  };
+  const pasta = CAPTURAS || CAPTURAS_SUFIXO;
+  for (const [rotulo, opcoes] of [
+    ['computador-claro', { viewport: { width: 1440, height: 900 }, colorScheme: 'light' }],
+    ['computador-escuro', { viewport: { width: 1440, height: 900 }, colorScheme: 'dark' }],
+    ['celular-claro', { ...aparelho('iPhone 13'), colorScheme: 'light' }],
+  ]) {
+    const { ctx, p, erros } = await contexto(navegador, 'about:blank', { ...opcoes, ...(pasta ? { deviceScaleFactor: 2 } : {}) });
+    try {
+      await ctx.route('**/api/andamento', (r) => r.fulfill({ json: COM_CAMPANHAS }));
+      await p.goto(url);
+      await p.waitForSelector('.secao-trello .semana .coluna');
+      const card = (id) => p.locator(`.secao-trello .card-semana[data-card="${id}"]`);
+      const etiqueta = card('agdhoje1').locator('.campanhas.compacta');
+      await etiqueta.waitFor();
+      conferir((await etiqueta.locator('.campanha-nome').allTextContents()).join('|') === 'Lançamento Fictício', `${rotulo}: a etiqueta mostra a primeira campanha`);
+      conferir((await etiqueta.locator('.campanha-mais').textContent()).trim() === '+1', `${rotulo}: e "+1" das outras`);
+      conferir((await etiqueta.locator('.campanha-mais').getAttribute('title')) === 'AESP Fictícia', `${rotulo}: o título do "+1" diz quais`);
+      conferir((await card('agdhoje3').locator('.campanha-mais').count()) === 0, `${rotulo}: com uma campanha, sem "+N"`);
+      conferir((await card('agdhoje2').locator('.campanha').count()) === 0, `${rotulo}: sem campanha, sem etiqueta`);
+      // a etiqueta fica fora do botão do card (não abre o card) e sem "unha"
+      conferir((await etiqueta.evaluate((e) => !e.closest('.card-semana-abrir'))) === true, `${rotulo}: a etiqueta fica fora do botão do card`);
+      const unha = await etiqueta.locator('.campanha').evaluate((e) => ({ borda: parseFloat(getComputedStyle(e).borderLeftWidth), sombra: getComputedStyle(e).boxShadow }));
+      conferir(unha.borda === 0 && !/inset/.test(unha.sombra), `${rotulo}: sem unha`);
+      conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${rotulo}: a página não rola para o lado`);
+      await card('agdhoje1').scrollIntoViewIfNeeded();
+      if (pasta) {
+        await p.waitForTimeout(300);
+        await card('agdhoje1').screenshot({ path: `${pasta}/agenda-campanha-card-${rotulo}.png` });
+        await p.screenshot({ path: `${pasta}/agenda-campanha-${rotulo}.png` });
+      }
+      // o clique na etiqueta leva à página da campanha (#180), como em qualquer tela (a campanha fictícia não existe no
+      // servidor: a página diz que ela não existe mais, mas o endereço é o dela)
+      await etiqueta.getByRole('button', { name: 'Abrir a campanha Lançamento Fictício' }).click();
+      const foi = await p.waitForFunction(() => location.hash === '#/campanhas/campE2eLanc', null, { timeout: 5000 }).then(() => true, () => false);
+      conferir(foi, `${rotulo}: a etiqueta abre a página da campanha`);
+      conferir(erros.length === 0, `${rotulo}: sem erros na página (${erros.join(' | ')})`);
+    } finally {
+      await ctx.close();
+    }
+  }
+}
+
 async function principal() {
   const amb = await subir();
   const navegador = await chromium.launch();
@@ -1190,6 +1244,11 @@ async function principal() {
   const medicao = {};
   try {
     await semearAgenda(amb.api);
+    // SO=campanha roda só a etiqueta da campanha (#181)
+    if (process.env.SO === 'campanha') {
+      await fetch(`${amb.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
+      return void (await campanhaNaAgenda(navegador, amb.url, conferir));
+    }
     for (const nome of ['iPhone 13', 'Galaxy S24']) medicao[nome] = await gestos(navegador, amb.url, nome, conferir);
     // no computador, o tour da revisão já visto (senão o convite cobre a tela)
     await fetch(`${amb.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
@@ -1197,6 +1256,7 @@ async function principal() {
     await filtroDasPrioridades(navegador, amb.url, conferir);
     await criterio(navegador, amb.url, conferir);
     await linhaDoTempo(navegador, amb.url, conferir);
+    await campanhaNaAgenda(navegador, amb.url, conferir);
     await semearRevisao(amb.api);
     await encolhida(navegador, amb.url, conferir);
     await apelidoNaAgenda(navegador, amb.url, amb.api, conferir);

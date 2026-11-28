@@ -936,6 +936,20 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     return erro ? { linhas, erro } : { linhas };
   }
 
+  /**
+   * O andamento da agenda No Trello com as campanhas de cada card (#181): as das Produções do roteiro e do card dele, só
+   * no PROMeiro. O andamento lido (guardado por 30 s pelo trello.mjs) não muda: sai uma cópia. O card sem o andamento da
+   * produção da arte (o Teable fora do ar) ganha um andamento vazio, que não muda a etapa nem as datas.
+   */
+  function comAsCampanhasNaAgenda(dados, enviados) {
+    const campanhasDe = campanhas.porRoteiroECard();
+    const saida = { ...dados };
+    for (const l of enviados) {
+      const daqui = campanhasDe(l.id, l.envio_card);
+      if (daqui.length) saida[l.id] = { ...(saida[l.id] ?? { status: [], designers: [], entregue: false, entrega: null }), campanhas: daqui };
+    }
+    return saida;
+  }
   /** Quem cria, liga e tira Produções das campanhas (#178): o administrador, a coordenação, o designer e o redator. O
       nome de quem fez é o do cadastro de designer ou de redator ou, sem eles, o do login. */
   async function papelNasCampanhas(eu) {
@@ -3392,7 +3406,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const dados = await trello.andamento(linhas.map((l) => ({ id: l.id, card: l.envio_card, claquete: JSON.parse(l.meta).claquete ?? '', ...(enviado(l) ? {} : { naFila: true }) })));
       // card que saiu (finalizado ou entregue): as artes novas dele entram no acervo da atração, uma vez só
       if (acervo.ligado && acervo.grava) void registrarNoAcervo(dados);
-      return json(res, 200, dados);
+      return json(res, 200, comAsCampanhasNaAgenda(dados, linhas.filter(enviado)));
     }
     const posterDe = /^\/api\/filmes\/poster\/(rec[A-Za-z0-9]{6,32})$/.exec(caminho);
     if (posterDe && req.method === 'GET') {
@@ -3504,8 +3518,10 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (req.method !== 'GET') return json(res, 405, { erro: 'Método não permitido.' });
       const busca = new URL(req.url, 'http://x').searchParams;
       const programas = (await vocabulario.ler().catch(() => null))?.programas ?? [];
-      const r = producoes.naBusca((busca.get('q') ?? '').slice(0, 100), { pagina: busca.get('pagina') ?? 0, atracaoDaClaquete: (claquete) => atracaoPelaClaquete(claquete, programas, pracas) });
-      return json(res, 200, { ...r, cards: comAsVersoesDeTodos(r.cards) });
+      // também pelo nome das campanhas da Produção (#181)
+      const campanhasDe = campanhas.porProducao();
+      const r = producoes.naBusca((busca.get('q') ?? '').slice(0, 100), { pagina: busca.get('pagina') ?? 0, atracaoDaClaquete: (claquete) => atracaoPelaClaquete(claquete, programas, pracas), campanhasDe });
+      return json(res, 200, { ...r, cards: r.cards.map((c) => comAsVersoes(c, campanhasDe)) });
     }
     if (caminho === '/api/producoes/etapa') {
       // pegar, voltar para a Entrada (#110) e entregar (#111), para quem está ligado a um designer: { producao, etapa
@@ -3628,10 +3644,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // tolerância da busca do editor (sem a versão, sem a praça)
       const desde = new Date(Date.parse(`${s.inicio ?? s.dia}T12:00:00Z`) - 120 * 86_400_000).toISOString();
       const semPraca = (chave) => semPracaNoFim(chave, pracas, [MARCA_TODAS]);
-      // cada Produção com as versões lidas do roteiro dela (#152), o valor inicial da claquete sem código no nome
+      // cada Produção com as versões lidas do roteiro dela (#152), o valor inicial da claquete sem código no nome, e as
+      // campanhas dela (#181): a etiqueta da claquete sai deste cruzamento, a claquete não guarda nada
+      const campanhasDe = campanhas.porProducao();
       const comAsLidas = producoes.naPauta(desde).map((p) => {
         const { lidas } = apelidos.roteiroDaProducao(p.id);
-        return lidas.length ? { ...p, versoesLidas: lidas } : p;
+        return { ...p, ...(lidas.length ? { versoesLidas: lidas } : {}), campanhas: campanhasDe(p.id) };
       });
       const linhas = cruzarComAProducao(s.linhas, comAsLidas, semPraca);
       // os filtros pessoais (#99): "Só as minhas" pelo editor ligado ao e-mail (#106), "Com arte minha" pelo designer
