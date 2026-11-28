@@ -1625,9 +1625,12 @@ async function oCardAberto(navegador, url, chamadasAoTrello, db) {
       await painel.getByRole('button', { name: 'Apagar AMANHÃ' }).click();
       await painel.locator('.vaga-y.saindo .pa-arte', { hasText: 'AMANHÃ' }).waitFor();
       await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).waitFor({ state: 'detached' });
-      await painel.locator('.desfazer', { hasText: 'Apagou AMANHÃ' }).waitFor();
+      await p.locator('.desfazer', { hasText: 'Apagou AMANHÃ' }).waitFor();
+      // #171: a caixinha do apagar é a mesma das outras, no mesmo lugar: embaixo, no meio da janela, fora do card
+      const lugar = await p.locator('.desfazer').evaluate((c) => ({ dentro: !!c.closest('[role="dialog"]'), meio: Math.abs(c.getBoundingClientRect().left + c.getBoundingClientRect().width / 2 - innerWidth / 2), baixo: innerHeight - c.getBoundingClientRect().bottom }));
+      assert.ok(!lugar.dentro && lugar.meio < 2 && lugar.baixo >= 14 && lugar.baixo <= 26, `a caixinha do apagar no lugar das outras (${JSON.stringify(lugar)})`);
       await capturar(p, `22-card-aberto-${nome}-apagou`);
-      await painel.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
+      await p.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
       await painel.locator('.vaga-y.entrando .pa-arte', { hasText: 'AMANHÃ' }).waitFor();
       await novela.locator('.prod-artes', { hasText: '1 de 2 artes' }).waitFor();
       // "+ arte"
@@ -1735,7 +1738,7 @@ async function filmarOCardAberto(navegador, url, db) {
   await p.waitForTimeout(300);
   await painel.getByRole('button', { name: 'Apagar HOJE' }).click();
   await p.waitForTimeout(1200);
-  await painel.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
+  await p.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
   await p.waitForTimeout(1200);
   await painel.locator('.pa-arte', { hasText: 'AMANHÃ' }).locator('.arte-linha').click();
   await p.waitForTimeout(900);
@@ -1878,10 +1881,10 @@ async function asCampanhas(navegador, url, chamadasAoTrello, db) {
       await painel.getByRole('button', { name: 'Tirar da campanha AESP Verão' }).click();
       await p.waitForFunction(() => window.__fechou === true);
       await painel.locator('.campanhas-do-card .campanha', { hasText: 'AESP Verão' }).waitFor({ state: 'detached' });
-      await painel.locator('.desfazer', { hasText: 'Tirou da campanha AESP Verão' }).waitFor();
+      await p.locator('.desfazer', { hasText: 'Tirou da campanha AESP Verão' }).waitFor();
       await festa.locator('.campanha-mais', { hasText: '+1' }).waitFor();
       await capturar(p, `42-campanha-${nome}-tirou`);
-      await painel.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
+      await p.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
       await painel.locator('.campanhas-do-card .campanha', { hasText: 'AESP Verão' }).waitFor();
       await festa.locator('.campanha-mais', { hasText: '+2' }).waitFor();
       // ligar uma que já existe, pela busca (sem acento), na Novela

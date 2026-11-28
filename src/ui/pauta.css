@@ -32,7 +32,7 @@
 .pauta-lendo { color: var(--tinta3); font: 400 14px var(--sans); }
 .pauta-vazia { display: inline-block; padding: 20px 4px; font: 600 22px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-2deg); }
 .pauta-falha { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 12px 16px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 14px/1.45 var(--sans); }
-.pauta-nada { padding: 6px 2px; font: 600 18px/1.1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); transform-origin: left; }
+.pauta-nada { padding: 6px 2px; }
 
 .pauta-avatar { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--neutro); color: var(--tinta2); font: 600 10.5px var(--sans); letter-spacing: 0.02em; }
 .pauta-qtd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: var(--neutro); color: var(--tinta2); font: 600 11px var(--sans); letter-spacing: 0; vertical-align: 1px; }
@@ -44,6 +44,7 @@
 .pauta-fita button { flex: none; display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border: 0; border-bottom: 1px solid var(--regua-forte); border-radius: 10px 10px 0 0; background: transparent; color: var(--tinta3); font: 600 12px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: background-color 0.2s var(--suave), color 0.2s var(--suave), box-shadow 0.2s var(--suave); }
 .pauta-fita button:hover { color: var(--tinta); }
 .pauta-fita-num { font: 500 12.5px var(--mono); letter-spacing: 0; text-transform: none; }
+.pauta-fita-rel { margin-left: 2px; font-size: 17px; animation: surgir 0.25s var(--suave); }
 .pauta-fita-pinta { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.3px var(--tinta3); }
 .pauta-fita button.hoje { color: var(--ultra-tinta); }
 .pauta-fita button.hoje .pauta-fita-pinta { background: var(--ultra); box-shadow: none; }
@@ -74,6 +75,9 @@
 .pauta-conta-num { font: 400 30px/1 var(--serifa); font-variant-numeric: tabular-nums; color: var(--tinta); overflow: hidden; }
 .pauta-conta-vira { display: inline-block; animation: pauta-vira 0.32s var(--suave); }
 .pauta-conta-num em { font-style: normal; font-size: 20px; color: var(--tinta3); }
+/* a sua conta, na Minha pauta: o número circulado (NumeroCirculado), sem cortar o círculo */
+.pauta-conta-num:has(.numero-circulado) { overflow: visible; }
+.pauta-conta-num .numero-circulado { font-weight: inherit; }
 .pauta-conta-rot { display: block; margin-top: 3px; font: 400 12px var(--sans); color: var(--tinta3); }
 .pauta-conta-bolinhas { display: flex; justify-content: flex-end; gap: 4px; margin-top: 7px; }
 .pauta-conta-bolinhas i { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.3px var(--regua-forte); transition: background-color 0.25s var(--suave), box-shadow 0.25s var(--suave); }
@@ -176,7 +180,9 @@
 .pauta-dia-link:hover .pauta-dia-num { color: var(--ultra-tinta); }
 .pauta-dia-link:focus-visible { outline: 2px solid var(--ultra); outline-offset: -2px; }
 .pauta-dia-sem { font: 600 11.5px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); }
-.pauta-dia-num { transition: color 0.15s; }
+.pauta-dia-num { transition: color 0.15s var(--suave); }
+/* hoje: o número circulado (NumeroCirculado), na cor do dia, com o círculo da agenda */
+.pauta-dia-num.numero-circulado { color: inherit; font-weight: inherit; margin: 0 4px 0 2px; }
 .pauta-dia.hoje .pauta-dia-link, .pauta-dia.hoje .pauta-dia-sem { color: var(--ultra-tinta); }
 .pauta-dia-rel { display: inline-block; font: 600 18px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); }
 .pauta-celula.hoje, .pauta-dia.hoje { background: color-mix(in srgb, var(--ultra-suave) 45%, transparent); }
@@ -197,7 +203,6 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
 .pauta-celula-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-height: 22px; margin-bottom: 2px; }
 .pauta-turno { font: 500 11.5px var(--mono); color: var(--tinta3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pauta-cel-fora { display: inline-block; margin-top: 4px; font: italic 400 14px var(--serifa); color: var(--tinta3); }
-.pauta-celula .pauta-nada { font-size: 16px; }
 
 /* ---------- o Dia: um editor por coluna ---------- */
 .pauta-faixa { overflow-x: auto; overscroll-behavior-x: contain; margin: 0 -8px; padding: 0 8px 10px; }

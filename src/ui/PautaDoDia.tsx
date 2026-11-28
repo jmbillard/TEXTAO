@@ -3,9 +3,9 @@ import { iniciais } from '../dados/colaboracao';
 import { colunasDoDia, diasDaSemana, ehDaPessoa, noArAgora, segundaDaSemana, type ColunaDoDia, type LinhaDaPauta } from '../modelo/pauta';
 import { BalaoDeInfo } from './BalaoDeInfo';
 import { ContaDoDia, ListaDaPauta } from './MesaDaPauta';
-import { Avisos, DIAS_DA_SEMANA, partes, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
+import { Avisos, DIAS_DA_SEMANA, partes, relativoA, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
 import { useDiaQueConta } from './trocaDaPauta';
-import { VoceAMao } from './pecas';
+import { RelativoAMao, VoceAMao } from './pecas';
 
 /* O Dia da Pauta da edição (#97, no desenho do #162): a fita com os dias da semana e, embaixo, cada editor numa
    coluna. A coluna de quem vê vem primeiro ("você"), depois a do que sobrou sem editor ("quem puder") e então a equipe,
@@ -14,13 +14,15 @@ import { VoceAMao } from './pecas';
 
 /** Uma aba da fita: "SEG 16/11". Na troca de semana, a aba fica no lugar e o número conta junto com o período
     (SemanaQueConta, #170), como as colunas da agenda; a pinta de hoje volta quando a contagem termina. */
-function DiaDaFita({ d, i, aberto, hoje, ir }: { d: string; i: number; aberto: boolean; hoje: boolean; ir: (d: string) => void }) {
+function DiaDaFita({ d, i, aberto, hoje, rel, ir }: { d: string; i: number; aberto: boolean; hoje: boolean; rel: string; ir: (d: string) => void }) {
   const { contado, contando } = useDiaQueConta(d, i);
   const p = partes(contado);
   return (
     <button type="button" className={hoje && !contando ? 'hoje' : ''} aria-current={aberto} data-dia={d} onClick={() => !aberto && ir(d)}>
       <span className="pauta-fita-pinta" aria-hidden="true" />
       {DIAS_DA_SEMANA[partes(d).semana]} <span className="pauta-fita-num">{`${String(p.dia).padStart(2, '0')}/${String(p.mes + 1).padStart(2, '0')}`}</span>
+      {/* hoje, amanhã e ontem à mão, como no Montar a pauta e na agenda (#171); some enquanto o número conta */}
+      {!contando && <RelativoAMao rel={rel} className="pauta-fita-rel" />}
     </button>
   );
 }
@@ -38,7 +40,7 @@ export function FitaDosDias({ dia, hoje, ir }: { dia: string; hoje: string; ir: 
   return (
     <nav className="pauta-fita" aria-label="Dias da semana" ref={fita}>
       {dias.map((d, i) => (
-        <DiaDaFita key={i} d={d} i={i} aberto={d === dia} hoje={d === hoje} ir={ir} />
+        <DiaDaFita key={i} d={d} i={i} aberto={d === dia} hoje={d === hoje} rel={relativoA(hoje, d)} ir={ir} />
       ))}
     </nav>
   );

@@ -36,6 +36,7 @@ import { dataCurtaComDia, ehCelular, plural } from './util';
 import { CaixinhaDoDesfazer } from './desfazer';
 import { ehDoTour } from '../tour/exemplo';
 import { LinhaDoTempoDoCard } from './LinhaDoTempo';
+import { CardAberto, FecharOCardAberto } from './CardAberto';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { MenuDeContexto } from './MenuDeContexto';
 import { corrigirLiberacao, letraEVersaoDoRoteiro, marcaDaLetraEVersao } from '../modelo/letraEVersao';
@@ -660,21 +661,23 @@ function OutraData({ pe }: { pe: PeDoCard }) {
   );
 }
 
-/** O card da semana (formato A). Fechado: a claquete em cima; embaixo, discretas, a praça e as artes à mão; à direita,
-    a etapa (se não couber, ela desce); no pé, a outra data do critério (OutraData). Por entrega, o card que ainda não
-    saiu fica tracejado, como um prazo. Um clique abre (com animação de altura) a ficha do card: uma pessoa por linha
-    (redator, editor, designer), a Linha do tempo da Produção (lida só quando o card abre), a rubrica de quem revisou e
-    os atalhos para o roteiro e para o card no Trello. A etapa não se repete na ficha. A letra e a versão do roteiro
-    (#156, #166) ficam sempre na ficha (A sem letra, V1 sem versão nova), com a correção da resposta da liberação para
-    exibição, e no fim da claquete só o que não é o início ("B", "V2", "B V2"). O apelido se dá pelo lápis, que
-    aparece ao lado da claquete com o mouse (no celular, sempre, no card aberto), e pelo menu do clique direito. */
-function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; alternar: () => void; abrir: () => void; tirar?: () => void; corrigirLiberacao?: (liberada: boolean) => void }) {
+/** O card da semana (formato A). Na agenda: a claquete em cima; embaixo, discretas, a praça e as artes à mão; à
+    direita, a etapa (se não couber, ela desce); no pé, a outra data do critério (OutraData). Por entrega, o card que
+    ainda não saiu fica tracejado, como um prazo. Um clique abre o card no centro (CardAberto, #171), o mesmo painel da
+    Pauta, das Produções e dos Filmes, que cresce do card e volta para ele: a claquete com o lápis, as campanhas, uma
+    pessoa por linha (redator, editor, designer), a Linha do tempo da Produção (lida só quando o card abre), a rubrica de
+    quem revisou e os atalhos para o roteiro e para o card no Trello. A letra e a versão do roteiro (#156, #166) ficam
+    sempre no card aberto (A sem letra, V1 sem versão nova), com a correção da resposta da liberação para exibição, e no
+    fim da claquete só o que não é o início ("B", "V2", "B V2"). O apelido se dá pelo lápis, que aparece ao lado da
+    claquete com o mouse (e sempre no card aberto), e pelo menu do clique direito: os dois abrem o card no campo. */
+function CardNoTrello({ c, pe, aberto, abrirCard, fecharCard, abrir, tirar, corrigirLiberacao }: { c: CardDaSemana; pe: PeDoCard | null; aberto: boolean; abrirCard: () => void; fecharCard: () => void; abrir: () => void; tirar?: () => void; corrigirLiberacao?: (liberada: boolean) => void }) {
   const { r, etapa, andamento } = c;
   // o nome de hoje na produção da arte (o card no Trello); sem ele, o guardado no padrão da casa
   const claquete = nomeSemAsVersoes(claqueteParaMostrar(r.meta, andamento, r.id)) || r.meta.titulo || 'Sem claquete';
   const versoes = versoesDoResumo(r);
   const letraEVersao = letraEVersaoDoRoteiro(r.meta);
-  const idMais = `card-mais-${r.id}`;
+  const idTitulo = `card-trello-titulo-${r.id}`;
+  const eu = useRef<HTMLDivElement>(null);
   // o card simulado do roteiro de exemplo, no fim do tour: não é um card do Trello
   const doTour = ehDoTour(r.id);
   // o apelido pelo lápis e pelo clique direito (#156): cada pedido abre o card, se fechado, e o campo do apelido
@@ -688,7 +691,7 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
   }, [aberto]);
   const nomeDoLapis = apelidoDoRoteiro(r.id) ? 'Editar o apelido' : 'Dar um apelido';
   const darApelido = () => {
-    if (!aberto) alternar();
+    if (!aberto) abrirCard();
     setPedidoDoLapis((n) => n + 1);
   };
   const lapis = (classe: string) => (
@@ -696,9 +699,19 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
       <Icone nome="lapis" tam={classe === 'card-lapis' ? 13 : 15} traco={1.9} />
     </button>
   );
+  const nomeDaClaquete = (
+    <>
+      {c.prioridade ? <MarcaTexto traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></MarcaTexto> : <TextoDaClaquete texto={claquete} quebras />}
+      {/* as versões que a claquete sabe (#121, #152): o sufixo colado no fim do nome, se a pessoa liga */}
+      <SufixoDaClaquete versoes={versoes} />
+      {/* a letra e a versão do roteiro (#156, #166), só o que não é o início (e não de novo, se o nome já diz) */}
+      <MarcaDaLetraEVersao marca={marcaDaLetraEVersao(letraEVersao)} nome={claquete} />
+    </>
+  );
   return (
     <div
-      className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'aberto' : ''} ${doTour ? 'exemplo' : ''} ${c.aEntregar ? 'a-entregar' : ''}`}
+      ref={eu}
+      className={`card-semana ${etapa === 'caiu' ? 'caiu' : ''} ${aberto ? 'com-ficha' : ''} ${doTour ? 'exemplo' : ''} ${c.aEntregar ? 'a-entregar' : ''}`}
       data-card={r.id}
       onContextMenu={
         podeApelidar
@@ -711,13 +724,9 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
           : undefined
       }
     >
-      <button type="button" className="card-semana-abrir" onClick={alternar} aria-expanded={aberto} aria-controls={idMais}>
+      <button type="button" className="card-semana-abrir" onClick={abrirCard} aria-haspopup="dialog">
         <span className="card-semana-claquete" title={apelidoDoRoteiro(r.id) ? `Claquete: ${r.meta.claquete}` : undefined}>
-          {c.prioridade ? <MarcaTexto traco={tracoDe(r.id)}><TextoDaClaquete texto={claquete} quebras /></MarcaTexto> : <TextoDaClaquete texto={claquete} quebras />}
-          {/* as versões que a claquete sabe (#121, #152): o sufixo colado no fim do nome, se a pessoa liga */}
-          <SufixoDaClaquete versoes={versoes} />
-          {/* a letra e a versão do roteiro (#156, #166), só o que não é o início (e não de novo, se o nome já diz) */}
-          <MarcaDaLetraEVersao marca={marcaDaLetraEVersao(letraEVersao)} nome={claquete} />
+          {nomeDaClaquete}
         </span>
         <ConflitoDoCard versoes={versoes} />
         <span className="card-semana-linha">
@@ -740,9 +749,25 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
       {/* a etiqueta da campanha (#181), a mesma de Produções e da Pauta: a primeira e "+N"; fora do botão do card,
           porque abre a campanha */}
       {!doTour && <EtiquetaDaCampanha campanhas={andamento?.campanhas} />}
-      <div className="card-semana-mais" id={idMais} inert={!aberto || undefined}>
-        <div>
-          <div className="card-semana-mais-dentro">
+      {aberto && (
+        <CardAberto origem={eu.current} titulo={idTitulo} fechar={fecharCard}>
+          <div className="card-trello-ficha">
+            <div className="card-trello-ficha-topo">
+              <span className="rotulo">
+                No Trello
+                {etapa && <> · {ETAPA_NO_CARD[etapa]}</>}
+              </span>
+              <FecharOCardAberto rotulo="Fechar o card" />
+            </div>
+            <h2 id={idTitulo}>
+              <span className="card-semana-claquete">{nomeDaClaquete}</span>
+              {podeApelidar && lapis('card-lapis-ficha')}
+            </h2>
+            <ConflitoDoCard versoes={versoes} />
+            {pe && <OutraData pe={pe} />}
+            {doTour && <span className="nota-exemplo">só de exemplo</span>}
+            {/* as campanhas (#181): todas, cada uma abre a página dela */}
+            {!doTour && !!andamento?.campanhas?.length && <EtiquetaDaCampanha campanhas={andamento.campanhas} modo="todas" />}
             <dl className="card-semana-dados">
               <DadoNoCard rotulo="redator" nome={r.meta.redator} falta="sem redator" />
               <DadoNoCard rotulo="editor" nome={r.meta.editor} falta="sem editor" />
@@ -752,8 +777,8 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
               <DadoNoCard rotulo="versão" nome={`V${letraEVersao.versao}`} />
             </dl>
             {r.meta.substituiu && corrigirLiberacao && <CorrigirLiberacao liberada={r.meta.substituiu.liberada} mudar={corrigirLiberacao} />}
-            {!doTour && aberto && <ApelidoDaClaquete alvo={{ roteiro: r.id }} claquete={r.meta.claquete} versoes={r.versoesLidas ?? []} dia={r.meta.dataExibicao ?? ''} podeMudar pedidoDoLapis={pedidoDoLapis} />}
-            {!doTour && <LinhaDoTempoDoCard card={r.trello?.card} aberto={aberto} />}
+            {!doTour && <ApelidoDaClaquete alvo={{ roteiro: r.id }} claquete={r.meta.claquete} versoes={r.versoesLidas ?? []} dia={r.meta.dataExibicao ?? ''} podeMudar pedidoDoLapis={pedidoDoLapis} />}
+            {!doTour && <LinhaDoTempoDoCard card={r.trello?.card} />}
             <div className="card-semana-pe">
               {r.revisadoPor && (
                 <span className="card-semana-rubrica" title={`Revisado por ${r.revisadoPor.nome}`}>
@@ -761,8 +786,6 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
                 </span>
               )}
               <span className="card-semana-links">
-                {/* no toque, o lápis fica aqui, sempre à vista no card aberto */}
-                {podeApelidar && lapis('card-lapis-toque')}
                 <button type="button" onClick={abrir} title="Abrir o roteiro" aria-label={`Abrir o roteiro ${claquete}`}>
                   <Icone nome="arquivo" tam={15} traco={1.9} />
                 </button>
@@ -774,8 +797,8 @@ function CardNoTrello({ c, pe, aberto, alternar, abrir, tirar, corrigirLiberacao
               </span>
             </div>
           </div>
-        </div>
-      </div>
+        </CardAberto>
+      )}
       {/* com o mouse, o lápis aparece ao lado da claquete */}
       {podeApelidar && lapis('card-lapis')}
       {tirar && (
@@ -797,7 +820,7 @@ const CHAVE_CRITERIO = 'promeiro:criterio';
 /** Os roteiros já enviados: uma seção só, abaixo da revisão, com a semana de agenda a partir de ontem. Com roteiros
     para revisar na fila, a semana encolhe; "ver a semana inteira" volta ao tamanho normal (a escolha fica no navegador).
     No celular (até 600px), a semana vira a faixa de dias arrastada com o dedo, dois dias à vista, abrindo em hoje. */
-function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir }: { lista: Resumo[]; fila: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void; corrigir?: (r: Resumo) => ((liberada: boolean) => void) | undefined }) {
+function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir, busca = '' }: { lista: Resumo[]; fila: Resumo[]; andamento: Record<string, Andamento>; abrir: (id: string) => void; tirar: (r: Resumo) => void; corrigir?: (r: Resumo) => ((liberada: boolean) => void) | undefined; /** a busca da lupa (#171): a agenda fica, e diz quando nada bate */ busca?: string }) {
   const [inteira, setInteira] = useState(() => {
     try {
       return localStorage.getItem(CHAVE_SEMANA) === 'inteira';
@@ -836,19 +859,8 @@ function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir }: { lista: R
   const encolhida = semanaEncolhida(fila, inteira);
   const [deslocamento, setDeslocamento] = useState(0);
   const [verAnteriores, setVerAnteriores] = useState(false);
-  // só um card aberto por vez; Esc fecha (e devolve o foco ao card, se ele estava lá dentro)
+  // um card aberto por vez, no centro (CardAberto, #171): o Esc, o X e o véu fecham, e o foco volta ao card
   const [aberto, setAberto] = useState<string | null>(null);
-  useEffect(() => {
-    if (!aberto) return;
-    const tecla = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      const li = document.querySelector<HTMLElement>(`.secao-trello [data-card="${CSS.escape(aberto)}"]`);
-      if (li?.contains(document.activeElement)) li.querySelector<HTMLElement>('.card-semana-abrir')?.focus();
-      setAberto(null);
-    };
-    document.addEventListener('keydown', tecla);
-    return () => document.removeEventListener('keydown', tecla);
-  }, [aberto]);
   // no celular, a faixa de dias; no computador, a semana das setas
   const celular = useTelaDeCelular();
   // no computador, a semana na tela chega à que as setas pediram depois que a anterior sai (useTrocaDeSemana)
@@ -930,7 +942,8 @@ function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir }: { lista: R
       c={c}
       pe={peDoCard(c, criterio, agora)}
       aberto={aberto === c.r.id}
-      alternar={() => setAberto((a) => (a === c.r.id ? null : c.r.id))}
+      abrirCard={() => setAberto(c.r.id)}
+      fecharCard={() => setAberto((a) => (a === c.r.id ? null : a))}
       abrir={() => abrir(c.r.id)}
       tirar={() => tirar(c.r)}
       corrigirLiberacao={corrigir?.(c.r)}
@@ -1018,6 +1031,8 @@ function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir }: { lista: R
   return (
     <section ref={secao} className={`secao-trello ${encolhida ? 'encolhida' : ''} por-${criterio}`} aria-label="No Trello">
       {f ? topoDoCelular(f) : topoDoComputador}
+      {/* a busca da lupa vale para a agenda (#171): sem nenhum card com o termo, a agenda fica e diz, à mão */}
+      {!!busca.trim() && !lista.length && <NadaNaBusca termo={busca} onde="na agenda" className="nada-na-agenda" />}
       {/* no celular, cada dia é uma coluna da faixa; no computador, as sete colunas ficam no lugar quando a semana troca:
           os números contam e as marcas do dia (o hoje circulado) se escrevem quando a contagem termina */}
       <div className="semana" ref={f ? trilho : grade}>
@@ -1412,7 +1427,8 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         {/* os caminhos (#156, #168): a fila (aqui, o aberto), a tela de produções (#109), a aba Filmes e a Pauta da edição (#94) */}
         <CaminhosDoTopo atual="agenda" agenda={naFila} producoes={producoes} campanhas={campanhas} filmes={temFilmes() ? filmes : undefined} pauta={pauta} montar={pauta && montarPauta} />
         <span className="espaco" />
-        {(todos.length > 6 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
+        {/* toda tela de lista ou agenda tem a lupa (#171): ela busca na fila e na agenda No Trello */}
+        {roteiros !== null && (todos.length > 0 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
         {colegas.length > 0 && (
           <div className="na-fila" title={`Também com a fila aberta: ${colegas.map((c) => c.nome).join(', ')}`}>
             {colegas.slice(0, 5).map((c) => (
@@ -1542,9 +1558,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           )
         )}
       </main>
-      {!vazio && roteiros && enviados.length > 0 && (
+      {!vazio && roteiros && (enviados.length > 0 || (!!termo && todos.some(noTrello))) && (
         <AnoNovoNaAgenda.Provider value={enfeite?.anoNovo ?? null}>
-          <NoTrello lista={enviados} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} corrigir={(r) => ((r.podeEditar || r.meu || aberto) && !ehDoTour(r.id) ? (liberada) => void corrigirALiberacao(r, liberada) : undefined)} />
+          <NoTrello lista={enviados} busca={busca} fila={todos} andamento={andamento} abrir={abrir} tirar={tirar} corrigir={(r) => ((r.podeEditar || r.meu || aberto) && !ehDoTour(r.id) ? (liberada) => void corrigirALiberacao(r, liberada) : undefined)} />
         </AnoNovoNaAgenda.Provider>
       )}
       <CaixinhaDoDesfazer caixinha={saindo && { id: saindo.id, texto: <><b>{saindo.meta.claquete || saindo.meta.titulo || 'Roteiro'}</b> saiu da fila.</>, desfazer, fechar: concluirSaida }} />

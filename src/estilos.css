@@ -1795,7 +1795,9 @@ a.ficha-marca.trello { text-decoration: none; }
 .vazio-a-mao { margin: 0; padding: 6px 4px; font: 600 18px/1.1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); transform-origin: left center; overflow-wrap: anywhere; }
 .vazio-a-mao.pequeno { font-size: 16px; }
 .nada { padding: 10px 8px; }
+.nada-na-agenda { margin: 2px 6px 12px; }
 /* o "você" à mão (VoceAMao): a sua linha na Pauta, o seu card em Produções */
+.rel-a-mao { display: inline-block; font: 600 19px/1 Caveat, cursive; letter-spacing: 0; text-transform: none; color: var(--ultra); rotate: -2deg; }
 .voce-a-mao { display: inline-block; margin-left: 2px; font: 600 17px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); }
 /* o número da sua tarefa, circulado à caneta (NumeroCirculado, #171); o círculo se escreve ao chegar */
 .numero-circulado { position: relative; display: inline-block; padding: 0 0.42em; margin: 0 0.12em; color: var(--ultra); font-weight: 700; }
@@ -1845,16 +1847,25 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-outra .mao { display: inline-block; padding-left: 12px; font: 600 16px/1 Caveat, cursive; color: var(--ultra); transform: rotate(-3deg); transform-origin: 12px 50%; }
 /* por entrega, o que ainda não saiu fica no dia da exibição, tracejado: o prazo */
 .card-semana.a-entregar { border-style: dashed; border-color: var(--regua-forte); background: transparent; }
-.card-semana.a-entregar.aberto { background: var(--cartao); }
 
 /* o card aberto: um clique abre a ficha com animação de altura (as linhas da grade vão de 0fr a 1fr) */
-.card-semana.aberto { border-color: var(--regua-forte); background: var(--cartao); }
-.card-semana.caiu.aberto { opacity: 1; }
-.card-semana-mais { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.34s var(--suave); }
-.card-semana-mais > div { overflow: hidden; min-height: 0; }
-.card-semana-mais-dentro { padding: 2px 12px 10px; opacity: 0; transform: translateY(-3px); transition: opacity 0.2s, transform 0.34s var(--suave); }
-.card-semana.aberto .card-semana-mais { grid-template-rows: 1fr; }
-.card-semana.aberto .card-semana-mais-dentro { opacity: 1; transform: none; transition-delay: 0.06s; }
+/* o card de onde o card aberto cresceu: a borda do hover enquanto ele está aberto */
+.card-semana.com-ficha { border-color: var(--regua-forte); }
+/* o card aberto da agenda (#171): no centro, no CardAberto da Pauta, das Produções e dos Filmes */
+.card-trello-ficha { display: flex; flex-direction: column; gap: 10px; }
+.card-trello-ficha-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card-trello-ficha h2 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 0; font: 600 24px/1.25 var(--mono); letter-spacing: -0.02em; color: var(--tinta); overflow-wrap: anywhere; }
+.card-trello-ficha h2 .card-semana-claquete { font: inherit; white-space: normal; overflow: visible; }
+.card-trello-ficha .card-outra { font-size: 13px; }
+.card-trello-ficha .card-semana-dados { padding-top: 12px; font-size: 14px; gap: 5px; }
+.card-trello-ficha .card-semana-dados dd small { font-size: 13px; }
+.card-trello-ficha .card-semana-liberacao { font-size: 13px; }
+.card-trello-ficha .tempo-da-producao ol { font-size: 12px; }
+.card-trello-ficha .card-semana-pe { margin-top: 4px; }
+.card-lapis-ficha { flex: none; align-self: center; display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--tinta3); cursor: pointer; transition: background-color 0.15s var(--suave), color 0.15s var(--suave); }
+.card-lapis-ficha:hover { background: var(--neutro); color: var(--tinta); }
+.card-lapis-ficha:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+@media (pointer: coarse) { .card-lapis-ficha { width: 44px; height: 44px; } }
 /* uma pessoa por linha: o rótulo discreto e o nome lado a lado; o nome longo termina em reticências (inteiro na dica) */
 .card-semana-dados { margin: 0; padding-top: 9px; border-top: 1px dashed var(--regua-forte); display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
 .card-semana-pessoa { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
@@ -1882,9 +1893,6 @@ a.ficha-marca.trello { text-decoration: none; }
 .card-semana-links a, .card-semana-links button { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--tinta2); text-decoration: none; cursor: pointer; }
 .card-semana-links a:hover, .card-semana-links button:hover { background: var(--neutro); color: var(--tinta); }
 .card-semana-links a:focus-visible, .card-semana-links button:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
-@media (prefers-reduced-motion: reduce) {
-  .card-semana-mais, .card-semana-mais-dentro { transition: none; }
-}
 
 /* ---- No Trello entre o celular e a tela larga (601 a ~1440 px): os tamanhos saem da largura da agenda, da coluna e do
    card (@container), não da janela ---- */
@@ -2261,11 +2269,7 @@ html.com-cursor-meu { min-height: 100%; }
 .card-semana:hover .card-lapis, .card-lapis:focus-visible { opacity: 1; }
 .card-lapis:hover { color: var(--tinta); background: var(--neutro); }
 .card-lapis:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
-.card-semana-links .card-lapis-toque { display: none; }
-@media (hover: none) {
-  .card-lapis { display: none; }
-  .card-semana-links .card-lapis-toque { display: inline-grid; }
-}
+@media (hover: none) { .card-lapis { display: none; } }
 /* a letra e a versão do roteiro depois do nome (#156, #166): "B", "V2", "B V2", discretas como o código das versões */
 .marca-letra-versao { font-weight: 500; color: var(--tinta2); white-space: nowrap; }
 /* o menu do clique direito do card (#156): no ponto do clique, por cima de tudo */
@@ -2726,26 +2730,26 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
 .secao-trello.encolhida .dia-rel { font-size: 18px; }
 .secao-trello.encolhida .coluna-corpo { min-height: 0; gap: 4px; --vaga-gap: 4px; padding: 6px; border-radius: 12px; }
 .secao-trello.encolhida .nada { font-size: 16px; padding: 4px 6px; }
-.secao-trello.encolhida .card-semana:not(.aberto) { border-radius: 8px; }
-.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-abrir { position: relative; padding: 6px 10px; }
-.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.secao-trello.encolhida .card-semana { border-radius: 8px; }
+.secao-trello.encolhida .card-semana .card-semana-abrir { position: relative; padding: 6px 10px; }
+.secao-trello.encolhida .card-semana .card-semana-claquete { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   padding-bottom: 3px; margin-bottom: -3px; }
-.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete .seg { white-space: nowrap; }
-.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-linha, .secao-trello.encolhida .card-semana:not(.aberto) .card-outra { display: none; }
+.secao-trello.encolhida .card-semana .card-semana-claquete .seg { white-space: nowrap; }
+.secao-trello.encolhida .card-semana .card-semana-linha, .secao-trello.encolhida .card-semana .card-outra { display: none; }
 /* na semana encolhida, a etiqueta da campanha também se recolhe: só com o card aberto */
-.secao-trello.encolhida .card-semana:not(.aberto) > .campanhas { display: none; }
-.secao-trello.encolhida .card-semana:not(.aberto) .card-semana-sinal { display: block; position: absolute; right: 8px; top: 50%; margin-top: -3px; width: 6px; height: 6px; border-radius: 50%; transition: opacity 0.15s; }
-.secao-trello.encolhida .card-semana:not(.aberto):has(.card-semana-sinal) .card-semana-claquete { padding-right: 10px; }
+.secao-trello.encolhida .card-semana > .campanhas { display: none; }
+.secao-trello.encolhida .card-semana .card-semana-sinal { display: block; position: absolute; right: 8px; top: 50%; margin-top: -3px; width: 6px; height: 6px; border-radius: 50%; transition: opacity 0.15s; }
+.secao-trello.encolhida .card-semana:has(.card-semana-sinal) .card-semana-claquete { padding-right: 10px; }
 .card-semana-sinal.produzindo { background: var(--ultra); }
 .card-semana-sinal.aprovacao { background: var(--producao); }
 .card-semana-sinal.entregue { background: var(--ok); }
 /* o x de tirar da fila aparece no lugar do pontinho */
-.secao-trello.encolhida .card-semana:not(.aberto) .card-lixo { top: 3px; right: 4px; }
-.secao-trello.encolhida .card-semana:not(.aberto) .card-lapis { top: 3px; right: 4px; }
-.secao-trello.encolhida .card-semana:not(.aberto):has(.card-lixo) .card-lapis { right: 26px; }
-.secao-trello.encolhida .card-semana:not(.aberto):hover .card-semana-sinal,
-.secao-trello.encolhida .card-semana:not(.aberto):has(.card-lixo:focus-visible) .card-semana-sinal,
-.secao-trello.encolhida .card-semana:not(.aberto):has(.card-lapis:focus-visible) .card-semana-sinal { opacity: 0; }
+.secao-trello.encolhida .card-semana .card-lixo { top: 3px; right: 4px; }
+.secao-trello.encolhida .card-semana .card-lapis { top: 3px; right: 4px; }
+.secao-trello.encolhida .card-semana:has(.card-lixo) .card-lapis { right: 26px; }
+.secao-trello.encolhida .card-semana:hover .card-semana-sinal,
+.secao-trello.encolhida .card-semana:has(.card-lixo:focus-visible) .card-semana-sinal,
+.secao-trello.encolhida .card-semana:has(.card-lapis:focus-visible) .card-semana-sinal { opacity: 0; }
 
 /* =========================================================
    Tour da revisão: o balão de papel, o laço à mão, o véu leve e a seta
@@ -2912,17 +2916,15 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .card-semana-artes { font-size: 16px; }
   .card-semana-etapa { font-size: 11.5px; }
   .card-outra { font-size: 11px; }
-  .card-semana-mais-dentro, .card-semana.aberto .card-semana-mais-dentro { padding: 0 8px 8px; }
-  .card-semana-dados { padding-top: 7px; font-size: 11.5px; line-height: 1.35; }
-  .card-semana-dados dd small { font-size: 11px; }
+  .card-trello-ficha h2 { font-size: 20px; }
   .card-semana-pe { align-items: center; gap: 6px; margin-top: 8px; min-height: 0; }
   .card-semana-links { gap: 6px; }
   .card-semana-links a, .card-semana-links button { width: 44px; height: 44px; border-radius: 10px; background: var(--neutro); color: var(--tinta); }
   /* encolhida (há revisão na fila): o card só com a claquete, que quebra nos sublinhados, e o pontinho da etapa */
   .secao-trello.encolhida .coluna-corpo { min-height: 0; }
-  .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-abrir { min-height: 44px; display: flex; align-items: center; padding: 6px 16px 6px 9px; }
-  .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-sinal { right: 8px; }
-  .secao-trello.encolhida .card-semana:not(.aberto) .card-semana-claquete { font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
+  .secao-trello.encolhida .card-semana .card-semana-abrir { min-height: 44px; display: flex; align-items: center; padding: 6px 16px 6px 9px; }
+  .secao-trello.encolhida .card-semana .card-semana-sinal { right: 8px; }
+  .secao-trello.encolhida .card-semana .card-semana-claquete { font-size: 12px; white-space: normal; overflow: visible; text-overflow: clip; }
   /* o "sem data" numa grade de dois, embaixo; no pé, o "ver a semana inteira" e os "dias anteriores" */
   .semana-avulsa { margin-top: 16px; }
   .semana-avulsa h3 { margin: 0 0 6px 4px; }

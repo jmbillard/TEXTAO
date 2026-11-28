@@ -13,7 +13,7 @@ import { CampoDaIlha } from './CampoDaIlha';
 import type { Ilha } from '../modelo/ilhas';
 import { Icone } from './icones';
 import { CaixinhaDoDesfazer } from './desfazer';
-import { Marca } from './pecas';
+import { Marca, RelativoAMao } from './pecas';
 import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { AusenciasDoDia } from './AusenciasDaPauta';
 import { ColarDaPlanilha, type ColadoParaAplicar } from './ColarDaPlanilha';
@@ -624,7 +624,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 {rel && (
                   <>
                     {' · '}
-                    <span className="montar-rel">{rel}</span>
+                    <RelativoAMao rel={rel} className="montar-rel" />
                   </>
                 )}
                 {' · '}

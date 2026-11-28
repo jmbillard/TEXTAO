@@ -2,6 +2,7 @@ import { colunasDoDia, contaDoEditor, ehDaPessoa, recadoDoDia, type LeituraDaPau
 import { ForaNaPautaTela } from './ForaNaPauta';
 import { BalaoDeInfo } from './BalaoDeInfo';
 import { Avisos, DIAS_DA_SEMANA, ItemDaPauta, MESES, partes, relativoA, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
+import { NumeroCirculado, Vazio } from './pecas';
 
 /* A mesa do dia da Pauta da edição (#162, o mock-up aprovado): o recado do dia e, no alto, o "Minha pauta" de quem é
    editor (o turno, os avisos ⚑ e a contagem do dia), com o que sobrou sem editor e quem está fora ao lado. Quem não é
@@ -32,13 +33,14 @@ export function RecadoDoDia({ linhas, dia, hoje }: { linhas: readonly LinhaDaPau
 }
 
 /** A contagem do dia: "N de M" com a arte entregue, o número virando quando muda, e uma bolinha por claquete. */
-export function ContaDoDia({ itens, rotulo = true }: { itens: readonly LinhaDaPauta[]; rotulo?: boolean }) {
+export function ContaDoDia({ itens, rotulo = true, sua = false }: { itens: readonly LinhaDaPauta[]; rotulo?: boolean; sua?: boolean }) {
   const c = contaDoEditor(itens);
   return (
     <div className="pauta-conta" aria-live="polite" aria-label={`${c.feitas} de ${c.total} com a arte entregue`}>
       <div className="pauta-conta-num">
         <span className="pauta-conta-vira" key={c.feitas}>
-          {c.feitas}
+          {/* na Minha pauta, o número da sua tarefa vem circulado à caneta (#171) */}
+          {sua ? <NumeroCirculado>{c.feitas}</NumeroCirculado> : c.feitas}
         </span>{' '}
         <em>de {c.total}</em>
       </div>
@@ -56,7 +58,7 @@ export function ContaDoDia({ itens, rotulo = true }: { itens: readonly LinhaDaPa
 
 /** Uma lista de cards da pauta, com a cascata na entrada; vazia, a anotação à mão. */
 export function ListaDaPauta({ itens, abrir, vazio, compacta = false, comProducao = true }: { itens: readonly LinhaDaPauta[]; abrir: AbrirClaquete; vazio?: string; compacta?: boolean; comProducao?: boolean }) {
-  if (!itens.length) return vazio ? <p className="pauta-nada">{vazio}</p> : null;
+  if (!itens.length) return vazio ? <Vazio className="pauta-nada">{vazio}</Vazio> : null;
   return (
     <ul className={`pauta-lista${compacta ? ' compacta' : ''}`}>
       {itens.map((l, i) => (
@@ -108,9 +110,9 @@ export function MesaDaPauta({ linhas, dia, hoje, voce, fora, abrir, comSobra = t
               {minha && minha.infos.length > 0 && <BalaoDeInfo textos={minha.infos} rotulo={`você, ${diaDaFolha(hoje, dia)}`} />}
             </div>
           </div>
-          {minha && <ContaDoDia itens={minha.itens} />}
+          {minha && <ContaDoDia itens={minha.itens} sua />}
         </div>
-        {estaFora ? <p className="pauta-nada">você está fora neste dia</p> : minha ? <ListaDaPauta itens={minha.itens} abrir={abrir} vazio="nada na sua fila" /> : <p className="pauta-nada">você não está na pauta deste dia</p>}
+        {estaFora ? <Vazio className="pauta-nada">você está fora neste dia</Vazio> : minha ? <ListaDaPauta itens={minha.itens} abrir={abrir} vazio="nada na sua fila" /> : <Vazio className="pauta-nada">você não está na pauta deste dia</Vazio>}
       </section>
       {lateral}
     </div>

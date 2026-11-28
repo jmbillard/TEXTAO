@@ -72,6 +72,11 @@ export function VoceAMao() {
   return <span className="voce-a-mao">você</span>;
 }
 
+/** "hoje", "amanhã" ou "ontem" à mão, em --ultra, ao lado do dia (a fita do Dia da Pauta, o Montar a pauta, #171). */
+export function RelativoAMao({ rel, className = '' }: { rel: string; className?: string }) {
+  return rel ? <span className={`rel-a-mao${className ? ` ${className}` : ''}`}>{rel}</span> : null;
+}
+
 /** O vazio da busca, à mão: "nada com “x”", e onde se buscou ("na fila"). */
 export function NadaNaBusca({ termo, onde, className = '' }: { termo: string; onde?: string; className?: string }) {
   return (
