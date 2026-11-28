@@ -474,7 +474,7 @@ async function noComputador(navegador, url, tema, chamadasAoTrello) {
   // os caminhos do topo (#156, #168): "No Trello · Produções · Pauta da edição", com as Produções abertas e a bolinha
   // só antes da Pauta, sem o "De todo mundo"
   const caminhos = p.locator('.barra-topo nav.caminhos-do-topo');
-  assert.deepEqual((await caminhos.locator('a').evaluateAll((as) => as.map((a) => a.getAttribute('aria-label')))).slice(0, 3), ['No Trello', 'Produções', 'Pauta da edição']);
+  assert.deepEqual((await caminhos.locator('a').evaluateAll((as) => as.map((a) => a.getAttribute('aria-label')))).slice(0, 4), ['No Trello', 'Produções', 'Campanhas', 'Pauta da edição']);
   assert.equal(await caminhos.locator('[aria-current="page"]').getAttribute('aria-label'), 'Produções', 'as Produções são o caminho atual');
   assert.equal(await caminhos.locator('.caminho-bolinha').count(), 1, 'uma bolinha só');
   assert.equal(await caminhos.locator('.caminho-bolinha + .topo-pauta').count(), 1, 'a bolinha antes da Pauta');

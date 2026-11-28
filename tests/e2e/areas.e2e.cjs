@@ -760,10 +760,10 @@ async function caminhosDoTopo(navegador, url) {
       const { ctx, p, erros } = await comFilmes(navegador, url, { ...opcoes, colorScheme: tema }, estado);
       const nav = p.locator('.barra-topo nav.caminhos-do-topo');
       const nomes = await nav.locator('a').evaluateAll((as) => as.map((a) => a.querySelector('.caminho-nome').textContent));
-      assert.deepEqual(nomes.slice(0, 4), ['No Trello', 'Produções', 'Filmes', 'Pauta da edição'], `${onde}: No Trello · Produções · Filmes · Pauta da edição`);
+      assert.deepEqual(nomes.slice(0, 5), ['No Trello', 'Produções', 'Campanhas', 'Filmes', 'Pauta da edição'], `${onde}: No Trello · Produções · Campanhas · Filmes · Pauta da edição`);
       // #168: todos os caminhos, o da fila aberto e marcado; a bolinha separadora só antes da Pauta
       const filhos = await nav.evaluate((n) => [...n.children].map((e) => (e.tagName === 'A' ? e.className : `• ${e.className}`)));
-      assert.deepEqual(filhos.slice(0, 5), ['topo-agenda aberto', 'topo-producoes', 'topo-filmes', '• caminho-bolinha', 'topo-pauta'], `${onde}: a bolinha só antes da Pauta`);
+      assert.deepEqual(filhos.slice(0, 6), ['topo-agenda aberto', 'topo-producoes', 'topo-campanhas', 'topo-filmes', '• caminho-bolinha', 'topo-pauta'], `${onde}: a bolinha só antes da Pauta`);
       assert.equal(await nav.locator('[aria-current="page"]').getAttribute('class'), 'topo-agenda aberto', `${onde}: o caminho da fila é o atual`);
       assert.equal(await p.locator('.barra-topo', { hasText: /de todo mundo/i }).count(), 0, `${onde}: sem o "De todo mundo"`);
       assert.equal(await nav.evaluate((n) => getComputedStyle(n).borderLeftWidth), '0px', `${onde}: sem a linha vertical`);
