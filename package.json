@@ -24,6 +24,7 @@
     "e2e:andamento": "node tests/e2e/andamento.e2e.cjs",
     "e2e:areas": "node tests/e2e/areas.e2e.cjs",
     "e2e:roteiros": "node tests/e2e/roteiros-escritos.e2e.cjs",
+    "e2e:escrever": "node tests/e2e/escrever.e2e.cjs",
     "e2e:pauta": "node tests/e2e/pauta.e2e.cjs",
     "e2e:correcoes": "node tests/e2e/correcoes.e2e.cjs",
     "e2e:producoes": "node tests/e2e/producoes.e2e.cjs",
