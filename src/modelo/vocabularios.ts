@@ -328,6 +328,9 @@ export const quantasAtracoes = () => externos.length;
 export const atracaoCadastrada = (nome: string) => externos.some((e) => e.p.nome === nome);
 
 /** Programas para sugerir no cabeçalho: os da casa, quando existem; senão, os embutidos. */
+/** A key da atração do cadastro, em caixa alta, como abre a claquete (a primeira das keys); '' sem cadastro ou sem key.
+    É o começo da claquete que o Enviar propõe (#194). */
+export const keyDaAtracao = (nome: string): string => externos.find((e) => e.p.nome === nome)?.chaves[0]?.toUpperCase() ?? '';
 export const programasConhecidos = (): ProgramaVocab[] => (externos.length ? externos.map((e) => e.p) : PROGRAMAS);
 export const redatoresConhecidos = (): string[] => redatores.map((r) => r.nome);
 /** Os redatores do cadastro, com as keys e o "ativo", para reconhecer o autor e sugerir o redator. */
