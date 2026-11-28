@@ -325,9 +325,9 @@ export function criarProducoes(db) {
     doCard: db.prepare('SELECT * FROM producoes WHERE card_id = ? ORDER BY entrada_em'),
     doRegistro: db.prepare('SELECT * FROM producoes WHERE teable_registro = ?'),
     doId: db.prepare('SELECT * FROM producoes WHERE id = ?'),
-    // a pauta da edição (#96): as que entraram desde a data (e as sem data de entrada)
     // as Produções com card no Trello (#199): a lista de claquetes do Montar a pauta diz de onde cada uma veio
     comCard: db.prepare('SELECT id FROM producoes WHERE card_id IS NOT NULL AND (entrada_em IS NULL OR entrada_em >= ?)'),
+    // a pauta da edição (#96): as que entraram desde a data (e as sem data de entrada)
     daPauta: db.prepare(`SELECT p.id, p.claquete, p.praca, p.etapa, p.designers, p.artes, p.artes_novas, p.artes_apagadas, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, r.meta AS roteiro_meta,
        -- o Roteiro escrito no PROMeiro (#197): o da cópia ligada; sem ela (a anterior saiu no reenvio e a carga ainda
        -- não religou), o da cópia mais nova enviada ao card

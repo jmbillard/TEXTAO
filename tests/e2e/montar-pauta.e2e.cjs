@@ -248,7 +248,7 @@ async function montarPeloTeclado(navegador, url) {
 
   // não há linha livre (#199): a posição só recebe claquetes escolhidas das Produções
   assert.equal(await p.locator('input[data-campo="demanda"]').count(), 0, 'nenhum campo para digitar uma claquete');
-  await celula.locator('.montar-solte', { hasText: 'arraste uma claquete das Produções' }).waitFor();
+  await celula.locator('.montar-solte', { hasText: 'escolha uma claquete das Produções' }).waitFor();
   const dasProducoes = p.getByRole('region', { name: 'Claquetes das Produções' });
   await dasProducoes.locator('.coluna-producao').first().waitFor();
   assert.equal(await dasProducoes.locator('.coluna-producao').count(), 8, 'a lista mostra as primeiras');
@@ -653,6 +653,28 @@ async function conferirEPublicar(navegador, url, teable) {
   await lia.ctx.close();
   await ctx.close();
   console.log('ok: conferir, corrigir, "está certo", publicar, a Pauta sem dobrar, alterado, republicar e desfazer');
+}
+
+/* ---------- as capturas do #199 (só com CAPTURAS): o Montar só com claquetes, no computador e no celular ---------- */
+async function capturasDasClaquetes(navegador, url) {
+  if (!CAPTURAS) return;
+  for (const [onde, opcoes] of [['computador', {}], ['celular', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]]) {
+    for (const tema of ['light', 'dark']) {
+      const { ctx, p, erros } = await abrir(navegador, url, BIA, `#/pauta/montar/${amanha}`, { ...opcoes, colorScheme: tema });
+      await p.getByRole('region', { name: 'Claquetes das Produções' }).locator('.coluna-producao').first().waitFor();
+      const deFora = p.getByRole('region', { name: 'De fora da Pauta' });
+      await deFora.getByRole('button', { name: 'ver a lista' }).click();
+      await deFora.locator('.de-fora-lista.aberta').waitFor();
+      await semRolagemDeLado(p, `capturas ${onde} ${tema}`);
+      const nome = `199-montar-${onde}-${tema === 'light' ? 'claro' : 'escuro'}`;
+      await capturar(p, nome, { fullPage: true });
+      // a coluna de perto: as Produções, Para distribuir e o "N de fora" aberto
+      await p.getByRole('complementary', { name: 'Coluna lateral' }).screenshot({ path: join(CAPTURAS, `${nome}-coluna.png`) });
+      assert.deepEqual(erros, [], `capturas ${onde} ${tema}: erros na página`);
+      await ctx.close();
+    }
+  }
+  console.log('ok: as capturas do Montar só com claquetes (#199)');
 }
 
 /* ---------- "Mostrar o código das versões" desligado (#152) ---------- */
@@ -1359,6 +1381,7 @@ async function principal() {
     await montarPeloTeclado(navegador, s.url);
     await noCelular(navegador, s.url);
     await conferirEPublicar(navegador, s.url, teable);
+    await capturasDasClaquetes(navegador, s.url);
     await oCodigoDesligado(navegador, s.url, s.api);
     await turnosDaConfiguracao(navegador, s.url, s.app);
     await avisosERecado(navegador, s.url);

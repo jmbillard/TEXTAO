@@ -661,8 +661,8 @@ export interface ClaqueteParaEscolher {
 
 /**
  * As claquetes que a coordenação escolhe no Montar a pauta (#199, ADR 0008): as das Produções que entraram perto do dia
- * (a mesma janela do cruzamento), sem as arquivadas, uma por chave (as praças juntas), da que entrou por último para a
- * mais velha. Fica de fora a que já está no dia (`noDia`: as Produções que as demandas e "Para distribuir" já casam).
+ * (a mesma janela do cruzamento), sem as arquivadas, uma por chave (as praças juntas), da data mais perto do dia para a
+ * mais longe (sem data, no fim; no empate, a que entrou por último). Fica de fora a que já está no dia (`noDia`: as Produções que as demandas e "Para distribuir" já casam).
  * @param comCard os ids das Produções com card no Trello
  */
 export function claquetesParaEscolher(producoes: readonly ProducaoNaPauta[], dia: string, semPraca: (chave: string) => string, { comCard = new Set<string>(), noDia = new Set<string>() }: { comCard?: ReadonlySet<string>; noDia?: ReadonlySet<string> } = {}): ClaqueteParaEscolher[] {
@@ -685,7 +685,14 @@ export function claquetesParaEscolher(producoes: readonly ProducaoNaPauta[], dia
     const resumo = resumoDaProducao(ps)!;
     lista.push({ claquete: ultima.claquete, chave, pracas: [...resumo.pracas].sort(), etapa: resumo.etapa, noTrello: ps.some((p) => comCard.has(p.id)), entradaEm: ultima.entradaEm, producoes: ps.map((p) => p.id) });
   }
-  return lista.sort((a, b) => (b.entradaEm ?? '').localeCompare(a.entradaEm ?? '') || a.claquete.localeCompare(b.claquete, 'pt-BR'));
+  // a da data mais perto do dia primeiro (a claquete de amanhã antes da do mês que vem); sem data, depois; no empate, a
+  // que entrou por último
+  const doDiaMs = Date.parse(`${dia}T12:00:00Z`);
+  const distancia = (c: ClaqueteParaEscolher) => {
+    const d = lerDataDaClaquete(c.claquete) ? dataDaVersao(c.claquete, dia) : null;
+    return d ? Math.abs(d.getTime() - doDiaMs) : Number.POSITIVE_INFINITY;
+  };
+  return lista.sort((a, b) => distancia(a) - distancia(b) || (b.entradaEm ?? '').localeCompare(a.entradaEm ?? '') || a.claquete.localeCompare(b.claquete, 'pt-BR'));
 }
 
 const ORDEM_DA_ETAPA: Etapa[] = ['entrada', 'produzindo', 'entregue'];
