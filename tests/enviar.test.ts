@@ -37,6 +37,31 @@ describe('o documento que vai para a fila', () => {
     expect(fila.content![1]).toEqual(doc.content![1]);
   });
 
+  it('o recado vai para a fila como a etiqueta dos roteiros de fora: para a edição, a produção e a arte', () => {
+    const comRecados: NoJSON = {
+      type: 'doc',
+      content: [
+        par([txt('NESTE SÁBADO, NA BRASA.')], { tipo: 'locucao', confirmado: true }),
+        par([txt('Abrir no plano da grelha')], { tipo: 'edicao', confirmado: true }),
+        par([txt('Providenciar a grelha de 2 metros')], { tipo: 'producao', confirmado: true }),
+        par([txt('A cartela entra com o logo novo')], { tipo: 'comentario', confirmado: true }),
+        // o palpite não é recado: só o que a pessoa escolheu
+        par([txt('Texto solto')], { tipo: 'texto', confirmado: false }),
+      ],
+    };
+    const fila = docParaAFila(comRecados);
+    const saida = exportar({ id: 'x', meta: metaVazia(), doc: fila, revisao: 1, criadoEm: '', atualizadoEm: '' });
+    expect(saida.orientacoes.edicao.map((o) => o.texto)).toEqual(['Abrir no plano da grelha']);
+    expect(saida.orientacoes.producao.map((o) => o.texto)).toEqual(['Providenciar a grelha de 2 metros']);
+    // o recado para a arte é o "comentário" de sempre da revisão
+    expect(saida.comentarios.map((o) => o.texto)).toEqual(['A cartela entra com o logo novo']);
+    // e não é lido: fica fora da locução
+    expect(saida.texto.locucao).not.toMatch(/cartela|grelha/i);
+    // o tipo guardado continua no trecho, e a etiqueta que já estava não dobra
+    expect(fila.content![3].attrs).toMatchObject({ tipo: 'comentario' });
+    expect(docParaAFila(fila)).toEqual(fila);
+  });
+
   it('sem a garantia, o trecho sem a marca não chegaria à fila', () => {
     const r = { id: 'x', meta: metaVazia(), doc, revisao: 1, criadoEm: '', atualizadoEm: '' };
     expect(artesUnicas(exportar(r).artes).map((a) => a.texto)).not.toContain('AMANHÃ, NA BRASA');

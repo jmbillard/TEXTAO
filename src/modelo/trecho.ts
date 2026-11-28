@@ -276,7 +276,7 @@ export const SOBRE_O_TIPO: Record<TipoDoTrecho, { nome: string; rotulo: string; 
   locutor: { nome: 'Para o locutor', rotulo: 'LOCUTOR', dica: 'o jeito de ler, para quem grava' },
   producao: { nome: 'Produção', rotulo: 'PRODUÇÃO', dica: 'o que a produção precisa providenciar' },
   locacao: { nome: 'Locação', rotulo: 'LOCAÇÃO', dica: 'onde a cena se passa; agrupa o que vem depois' },
-  comentario: { nome: 'Comentário', rotulo: 'NOTA', dica: 'uma nota no roteiro, fora do texto lido' },
+  comentario: { nome: 'Recado para a arte', rotulo: 'RECADO', dica: 'um aviso para a arte, fora do texto lido' },
   texto: { nome: 'Texto sem tipo', rotulo: 'TEXTO', dica: 'o PROMeiro adivinha pelo texto' },
 };
 
@@ -300,12 +300,36 @@ export interface ComandoDaBarra {
 
 const comandoDoTipo = (tipo: TipoDoTrecho): ComandoDaBarra => ({ id: tipo, tipo, nome: SOBRE_O_TIPO[tipo].nome, dica: SOBRE_O_TIPO[tipo].dica });
 
-/** Os comandos do "/", na ordem do menu: os tipos, as fichas e, no fim, o texto sem tipo. */
+/** O "/comentario" não troca o tipo: pergunta qual dos dois, o recado ou o comentário (`ESCOLHAS_DO_COMENTARIO`). */
+export const COMANDO_DO_COMENTARIO: ComandoDaBarra = { id: 'comentario', nome: 'Recado ou comentário', dica: 'recado para a edição, a produção ou a arte; ou comentar o texto' };
+
+/** Os comandos do "/", na ordem do menu: os tipos, o recado ou comentário, as fichas e, no fim, o texto sem tipo. */
 export const COMANDOS_DA_BARRA: readonly ComandoDaBarra[] = [
-  ...(['locucao', 'arte', 'sonora', 'edicao', 'trilha', 'locutor', 'producao', 'locacao', 'comentario'] as const).map(comandoDoTipo),
+  ...(['locucao', 'arte', 'sonora', 'edicao', 'trilha', 'locutor', 'producao', 'locacao'] as const).map(comandoDoTipo),
+  COMANDO_DO_COMENTARIO,
   { id: 'timecode', nome: 'Timecode', dica: '00:00:00:00, vira ficha' },
   { id: 'arquivo', nome: 'Arquivo na rede', dica: '\\\\servidor\\pasta\\…, vira ficha' },
   comandoDoTipo('texto'),
+];
+
+/**
+ * A escolha do "/comentario": o recado (o aviso dentro do texto que vai no Enviar) para a edição, a produção ou a arte,
+ * ou o comentário sobre o texto (o fio do #192, que não vai). O recado para a edição e para a produção é o trecho de
+ * edição e o de produção (as orientações que a edição e a produção já leem); o recado para a arte é o tipo
+ * "comentario", o mesmo da etiqueta dos roteiros que chegam de fora.
+ */
+export interface EscolhaDoComentario {
+  id: 'recado-edicao' | 'recado-producao' | 'recado-arte' | 'comentario';
+  nome: string;
+  dica: string;
+  /** o tipo que o trecho ganha; sem ele, abre o fio do comentário */
+  tipo?: TipoDoTrecho;
+}
+export const ESCOLHAS_DO_COMENTARIO: readonly EscolhaDoComentario[] = [
+  { id: 'recado-edicao', nome: 'edição', dica: 'imagem, corte, material', tipo: 'edicao' },
+  { id: 'recado-producao', nome: 'produção', dica: 'o que providenciar', tipo: 'producao' },
+  { id: 'recado-arte', nome: 'arte', dica: 'vai com o roteiro para a arte', tipo: 'comentario' },
+  { id: 'comentario', nome: 'Comentário sobre o texto', dica: 'a conversa no trecho, com resposta; não vai no Enviar' },
 ];
 
 const semAcentoNemCaixa = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();

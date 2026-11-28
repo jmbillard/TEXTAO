@@ -10,7 +10,7 @@ import { exportar, pendencias } from './exportar';
 import { conflitoDasVersoes, claqueteComAsVersoes, versoesDoRoteiro } from './versoesDoRoteiro.ts';
 import type { Versao } from './pauta.ts';
 import { acharPrograma, claquetePadrao, dataDaClaquete, keyDaAtracao, lerDataDaClaquete } from './vocabularios';
-import { metaVazia, type Meta, type NoJSON, type Roteiro } from './tipos';
+import { metaVazia, type Meta, type NoJSON, type Roteiro, type TipoEtiqueta } from './tipos';
 import { letraEVersaoDoRoteiro, marcaDaLetraEVersao, proximaLetraEVersao } from './letraEVersao';
 
 /** A origem do roteiro da fila que saiu do Enviar: é o "escrito no PROMeiro" que a ficha da fila mostra. */
@@ -32,8 +32,13 @@ export const textoDoMotivo = (motivo: string) => (motivo.startsWith('enviado: ')
 
 const ARTE_DO_TRECHO = (n: number) => ({ id: `arte-do-trecho-${n}`, subtipo: '', grupo: null, obs: '', sugerido: false });
 
+/** O recado (para a edição, a produção ou a arte) vai para a fila como a etiqueta da revisão, a mesma dos roteiros de
+    fora: o tipo do trecho e a etiqueta que cobre o trecho inteiro são o mesmo recado (`tipoPelasMarcas`). */
+const ETIQUETA_DO_RECADO: Partial<Record<string, TipoEtiqueta>> = { edicao: 'edicao', producao: 'producao', comentario: 'comentario' };
+
 /**
- * O documento como vai para a fila: o trecho inteiro do tipo arte coberto por uma só marca `Arte` (a da folha, quando
+ * O documento como vai para a fila: o recado (o trecho de edição, de produção ou o recado para a arte) coberto pela
+ * etiqueta dele, como chega o roteiro de fora; e o trecho inteiro do tipo arte coberto por uma só marca `Arte` (a da folha, quando
  * ela já está lá), para a fila, o Trello e o .docx lerem a arte dele como leem a arte marcada no meio da frase (a regra
  * de `artesDoTexto` e a de `artesUnicas` chegam na mesma lista). A folha já cobre o trecho ao digitar (`editor/escrita`);
  * aqui é a garantia, também para o texto gravado antes dela.
@@ -43,7 +48,10 @@ export function docParaAFila(doc: NoJSON): NoJSON {
   const arrumar = (no: NoJSON): NoJSON => {
     if (no.type !== 'paragraph') return no.content ? { ...no, content: no.content.map(arrumar) } : no;
     n++;
-    if (no.attrs?.tipo !== 'arte' || !no.content?.some((x) => x.type === 'text' && x.text?.trim())) return no;
+    if (!no.content?.some((x) => x.type === 'text' && x.text?.trim())) return no;
+    const recado = ETIQUETA_DO_RECADO[String(no.attrs?.tipo)];
+    if (recado) return comORecado(no, recado, n);
+    if (no.attrs?.tipo !== 'arte') return no;
     const ja = no.content.flatMap((x) => x.marks ?? []).find((m) => m.type === 'arte');
     const attrs = ja?.attrs ?? ARTE_DO_TRECHO(n);
     return {
@@ -52,6 +60,18 @@ export function docParaAFila(doc: NoJSON): NoJSON {
     };
   };
   return arrumar(doc);
+}
+
+/** O trecho do recado coberto por uma só etiqueta do tipo dele (a que já cobre o trecho inteiro fica). As artes de
+    dentro ficam. */
+function comORecado(no: NoJSON, tipo: TipoEtiqueta, n: number): NoJSON {
+  const textos = (no.content ?? []).filter((x) => x.type === 'text');
+  if (textos.every((x) => x.marks?.some((m) => m.type === 'etiqueta' && m.attrs?.tipo === tipo))) return no;
+  const attrs = { id: `recado-do-trecho-${n}`, tipo, obs: '' };
+  return {
+    ...no,
+    content: (no.content ?? []).map((x) => (x.type !== 'text' ? x : { ...x, marks: [...(x.marks ?? []).filter((m) => m.type !== 'etiqueta'), { type: 'etiqueta', attrs }] })),
+  };
 }
 
 /** Os textos das artes como vão para a fila (cada uma uma vez), de onde saem as versões lidas. */
