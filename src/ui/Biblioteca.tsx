@@ -93,6 +93,8 @@ interface Props {
   producoes?: () => void;
   /** a lista das campanhas (#180), o caminho logo depois das Produções */
   campanhas?: () => void;
+  /** os Roteiros escritos no PROMeiro (#189), o último caminho da Designer */
+  roteiros?: () => void;
   /** A fila abre já buscando isto (o "Buscar na fila" do link quebrado). */
   buscaInicial?: string;
   /** O caminho "PROMeiro / designer ▾" das áreas de trabalho (#101), logo depois do logo. */
@@ -1074,7 +1076,7 @@ function NoTrello({ lista, fila, andamento, abrir, tirar, corrigir, busca = '' }
 /** As frases do convite ao lado do título: as de hoje, menos a que repetiria o título "Fila em dia". */
 const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 
-export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, pauta, montarPauta, producoes, campanhas, buscaInicial = '', seletorDeArea }: Props) {
+export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, pauta, montarPauta, producoes, campanhas, roteiros: irAosRoteiros, buscaInicial = '', seletorDeArea }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
@@ -1428,7 +1430,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         <h1 className="bib-marca"><Marca /></h1>
         {seletorDeArea}
         {/* os caminhos (#156, #168): a fila (aqui, o aberto), a tela de produções (#109), a aba Filmes e a Pauta da edição (#94) */}
-        <CaminhosDoTopo atual="agenda" agenda={naFila} producoes={producoes} campanhas={campanhas} filmes={temFilmes() ? filmes : undefined} pauta={pauta} montar={pauta && montarPauta} />
+        <CaminhosDoTopo atual="agenda" agenda={naFila} producoes={producoes} campanhas={campanhas} filmes={temFilmes() ? filmes : undefined} roteiros={irAosRoteiros} pauta={pauta} montar={pauta && montarPauta} />
         <span className="espaco" />
         {colegas.length > 0 && (
           <div className="na-fila" title={`Também com a fila aberta: ${colegas.map((c) => c.nome).join(', ')}`}>

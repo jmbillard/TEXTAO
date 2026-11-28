@@ -44,3 +44,40 @@ export const metaDoNovo = (titulo: string, redator: string): Meta => ({ ...metaV
 
 /** O título para mostrar: o dado, ou "Sem título". */
 export const tituloParaMostrar = (meta: Pick<Meta, 'titulo' | 'claquete'> | undefined) => meta?.titulo?.trim() || meta?.claquete?.trim() || 'Sem título';
+
+/* ---------- a lista de "Roteiros" (#189) ---------- */
+
+/** As abas da lista de "Roteiros": os meus (o ciclo dos roteiros em que a pessoa é o redator, com os que ela escreve), os
+    da equipe (escritos no PROMeiro por outras pessoas), os sendo escritos e os enviados (do Enviar, #194). */
+export const ABAS_DOS_ROTEIROS = [
+  { id: 'meus', nome: 'Meus' },
+  { id: 'equipe', nome: 'Da equipe' },
+  { id: 'sendo', nome: 'Sendo escritos' },
+  { id: 'enviados', nome: 'Enviados' },
+] as const;
+export type AbaDosRoteiros = (typeof ABAS_DOS_ROTEIROS)[number]['id'];
+
+/** O que a lista lê de um Roteiro escrito no PROMeiro. */
+export interface EscritoNaLista {
+  escrito: EstadoDoEscrito;
+  meu: boolean;
+}
+
+/** Os escritos de uma aba (fora a "meus", que é a lista do ciclo): da equipe, os de outras pessoas; sendo escritos e
+    enviados, pelo estado, de todo mundo. */
+export function escritosDaAba<T extends EscritoNaLista>(escritos: readonly T[], aba: Exclude<AbaDosRoteiros, 'meus'>): T[] {
+  if (aba === 'equipe') return escritos.filter((r) => !r.meu);
+  return escritos.filter((r) => r.escrito === (aba === 'sendo' ? 'sendo-escrito' : 'enviado'));
+}
+
+/** Sem caixa e sem acento, para a busca. */
+const comparavel = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/** O roteiro bate com a busca (cada palavra em algum lugar): o título, a claquete, a atração, o redator, o editor e o
+    nome de quem escreve. Busca vazia, todos. */
+export function bateComABusca(r: { meta: Partial<Pick<Meta, 'titulo' | 'claquete' | 'programa' | 'redator' | 'editor'>>; dono?: { nome: string } | null }, busca: string): boolean {
+  const palavras = comparavel(busca).split(/\s+/).filter(Boolean);
+  if (!palavras.length) return true;
+  const onde = comparavel([r.meta.titulo, r.meta.claquete, r.meta.programa, r.meta.redator, r.meta.editor, r.dono?.nome].filter(Boolean).join(' '));
+  return palavras.every((p) => onde.includes(p));
+}

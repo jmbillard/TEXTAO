@@ -1866,6 +1866,14 @@ a.ficha-marca.trello { text-decoration: none; }
 .bolinha-estado.ficha.card, .bolinha-estado.ficha.sem-card { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tinta3); }
 .bolinha-estado { transition: background-color 0.3s var(--suave); }
 .bolinha-estado.arquivada { background: var(--regua-forte); }
+/* o roteiro sendo escrito (#189): é o agora, em laranja; a marca de salvo da folha também é a bolinha laranja (nunca um
+   ✓), e, enquanto salva, ela respira em cinza */
+.bolinha-estado.escrevendo, .bolinha-estado.salvo { background: var(--ultra); }
+.bolinha-estado.salvando { background: var(--tinta3); animation: bolinha-respira 1.1s ease-in-out infinite; }
+.bolinha-estado.salvo { animation: bolinha-salvou 0.45s var(--suave); }
+@keyframes bolinha-respira { 50% { opacity: 0.35; transform: scale(0.8); } }
+@keyframes bolinha-salvou { 0% { transform: scale(0.6); } 60% { transform: scale(1.35); } }
+@media (prefers-reduced-motion: reduce) { .bolinha-estado.salvando, .bolinha-estado.salvo { animation: none; } }
 .card-semana-etapa.entregue { color: var(--ok); }
 .card-semana-etapa.caiu { color: var(--tinta3); }
 .card-semana.caiu { opacity: 0.75; }

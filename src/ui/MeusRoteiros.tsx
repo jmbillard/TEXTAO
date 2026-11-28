@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
 import { NomeDaClaquete, versoesDoResumo } from './Apelido';
-import { exibicaoLembrada, lembrarExibicao, lerMeusRoteiros, type MeuRoteiro, type MeusRoteiros as Lidos, type Resumo } from '../dados/armazenamento';
+import { comecarRoteiro, exibicaoLembrada, lembrarExibicao, lerMeusRoteiros, lerRoteirosEscritos, type MeuRoteiro, type MeusRoteiros as Lidos, type Resumo, type RoteirosEscritos } from '../dados/armazenamento';
 import { EXIBICOES, type AreaDosRoteiros, type Exibicao } from '../modelo/areas';
 import { CICLO, frasesDoCiclo, type CicloDoRoteiro, type EstadoDoCiclo as Estado } from '../modelo/cicloDoRoteiro';
 import { agruparPorDia, LER_ANDAMENTO_MS, type GrupoDia } from './fila';
@@ -9,7 +9,12 @@ import { Icone, type NomeIcone } from './icones';
 import { plural } from './util';
 import { RoteiroAberto } from './RoteiroAberto';
 import './areas.css';
-import { Vazio } from './pecas';
+import { AbaComRabisco, BolinhaDeEstado, NadaNaBusca, Vazio } from './pecas';
+import { BuscaNaLupa } from './BuscaNaLupa';
+import { ABAS_DOS_ROTEIROS, bateComABusca, escritosDaAba, tituloParaMostrar, type AbaDosRoteiros } from '../modelo/escrito';
+import { CASCATA_MS, NA_CASCATA } from './cena';
+import { haQuantoTempo } from './util';
+import type { CSSProperties } from 'react';
 
 /* "Meus roteiros" do Redator e do Editor (#101): a lista simples, por dia, dos roteiros guardados no PROMeiro em que a
    pessoa é o redator (ou o editor), pelo nome do cadastro ligado ao e-mail dela. Cada roteiro mostra o seu estado no
@@ -17,7 +22,12 @@ import { Vazio } from './pecas';
    escolhe no topo da lista como ver (#103): por dia, em quadro (uma coluna por estado do ciclo) ou por estado (uma
    lista agrupada, boa no celular); o PROMeiro lembra a escolha por pessoa e por área. Um toque abre o roteiro, só para
    leitura (#104, RoteiroAberto). O administrador vê os roteiros de todos, com o filtro "de quem" (#105). Nada vem do
-   Trello. */
+   Trello.
+
+   No Redator, é a tela de "Roteiros" (#189): a busca (BuscaNaLupa), o Novo roteiro e as abas meus, da equipe, sendo
+   escritos e enviados. A aba "meus" é a lista do ciclo, com os Roteiros que a pessoa escreve no PROMeiro no Escrevendo;
+   as outras listam os escritos no PROMeiro que ela lê. Um toque num escrito abre a folha de escrita. A mesma tela é o
+   caminho "Roteiros" da Designer e da coordenação (#/roteiros). */
 
 interface Props {
   area: AreaDosRoteiros;
@@ -30,6 +40,8 @@ interface Props {
   voltar: () => void;
   /** o administrador (#105): vê os roteiros de todos, com o filtro "de quem" */
   admin?: boolean;
+  /** "Roteiros" (#189), só no Redator: abre a folha de escrita de um escrito no PROMeiro; a aba de entrada */
+  escrita?: { abrir: (id: string) => void; aba?: AbaDosRoteiros };
 }
 
 const OUTRO: Record<AreaDosRoteiros, { campo: 'redator' | 'editor'; rotulo: string }> = {
@@ -53,6 +65,14 @@ function TrilhaDoCiclo({ ciclo }: { ciclo: CicloDoRoteiro }) {
   );
 }
 
+/** O nome do roteiro na lista: o apelido ou a claquete; o Roteiro escrito no PROMeiro, sem claquete até o Enviar, pelo
+    título (#189). */
+function nomeNaFicha(r: Resumo) {
+  const nome = apelidoDoRoteiro(r.id) || r.meta.claquete;
+  if (nome) return <NomeDaClaquete nome={nome} versoes={versoesDoResumo(r)} />;
+  return r.escrito ? <span className="titulo-escrito">{tituloParaMostrar(r.meta)}</span> : 'Sem claquete';
+}
+
 const nomeDoEstado = (id: Estado) => CICLO.find((c) => c.id === id)?.nome ?? '';
 
 /** A trilha curta do ciclo e o nome do estado. */
@@ -65,7 +85,8 @@ function EstadoDoCiclo({ ciclo }: { ciclo: CicloDoRoteiro }) {
   );
 }
 
-/** Os estados do PROMeiro, um por coluna do quadro e um por grupo da exibição por estado; os de antes ficam "em breve". */
+/** Os estados do PROMeiro, um por coluna do quadro e um por grupo da exibição por estado; os da aprovação ficam "em
+    breve", logo depois do Escrevendo (#189). */
 const ESTADOS = CICLO.filter((c) => !c.antes);
 const ANTES = CICLO.filter((c) => c.antes);
 /** O estado do roteiro no ciclo; o roteiro ainda sem ciclo está na revisão (chegou à fila). */
@@ -154,7 +175,7 @@ function FiltroDeQuem({ de, pessoas, escolher }: { de: string; pessoas: { nome: 
   );
 }
 
-export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false }: Props) {
+export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false, escrita }: Props) {
   // o apelido da claquete (#120) aparece no lugar dela: redesenha quando ele muda
   useApelidos();
   const [lido, setLido] = useState<Lidos | null>(null);
@@ -165,6 +186,12 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
   // a exibição lembrada da área (o App remonta a tela a cada área); o estado escolhido na faixa vale só nesta visita
   const [exibicao, setExibicao] = useState<Exibicao>(() => exibicaoLembrada(area));
   const [soEstado, setSoEstado] = useState<Estado | null>(null);
+  // "Roteiros" (#189): a busca, a aba e os escritos no PROMeiro que a pessoa lê
+  const [busca, setBusca] = useState('');
+  const [aba, setAba] = useState<AbaDosRoteiros>(escrita?.aba ?? 'meus');
+  const [escritos, setEscritos] = useState<RoteirosEscritos | null>(null);
+  const [comecando, setComecando] = useState(false);
+  const comEscrita = !!escrita;
   const [lembrado, setLembrado] = useState(false);
   const prazoDoLembrado = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(prazoDoLembrado.current), []);
@@ -188,8 +215,9 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
     let vivo = true;
     setLido(null);
     setErro('');
-    const ler = (primeira: boolean) =>
-      lerMeusRoteiros(area, de).then(
+    const ler = (primeira: boolean) => {
+      if (comEscrita) void lerRoteirosEscritos().then((d) => vivo && setEscritos(d), () => vivo && primeira && setEscritos({ podeComecar: false, roteiros: [] }));
+      return lerMeusRoteiros(area, de).then(
         (d) => {
           if (!vivo) return;
           setLido(d);
@@ -198,6 +226,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
         // na releitura, o erro não apaga a lista que já está à vista
         (e) => vivo && primeira && setErro(e instanceof Error ? e.message : 'Não deu para ler os roteiros.'),
       );
+    };
     void ler(true);
     // o ciclo muda sozinho (o envio, a Produção, a data): na cadência da agenda, a cada minuto com a aba à vista, e de
     // novo quando a aba volta à vista ou ganha o foco
@@ -213,17 +242,20 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
       document.removeEventListener('visibilitychange', deNovo);
       window.removeEventListener('focus', deNovo);
     };
-  }, [area, de]);
+  }, [area, de, comEscrita]);
 
   if (aberto) return <RoteiroAberto area={area} id={aberto} lido={lido} topo={topo} abrir={abrir} voltar={voltar} />;
 
-  const { proximos, exibidos } = agruparPorDia(lido?.roteiros ?? []);
-  // cada roteiro, em qualquer exibição, abre com um toque ou com Enter
-  const abreCom = (r: { id: string }) => ({
+  // a busca (#189) vale para a lista inteira, em qualquer exibição
+  const vistos = (lido?.roteiros ?? []).filter((r) => !comEscrita || bateComABusca(r, busca));
+  const { proximos, exibidos } = agruparPorDia(vistos);
+  // cada roteiro, em qualquer exibição, abre com um toque ou com Enter; o escrito no PROMeiro abre na folha de escrita
+  const abrirUm = (r: { id: string; escrito?: string }) => (r.escrito && escrita ? escrita.abrir(r.id) : abrir(r.id));
+  const abreCom = (r: { id: string; escrito?: string }) => ({
     tabIndex: 0,
-    onClick: () => abrir(r.id),
+    onClick: () => abrirUm(r),
     onKeyDown: (e: KeyboardEvent) => {
-      if (e.key === 'Enter') abrir(r.id);
+      if (e.key === 'Enter') abrirUm(r);
     },
   });
   const outro = OUTRO[area];
@@ -238,7 +270,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
     return (
       <li key={r.id} className="ficha ficha-minha" data-estado={r.ciclo?.estado} {...abreCom(r)}>
         <span className="ficha-claquete">
-          <b>{apelidoDoRoteiro(r.id) || r.meta.claquete ? <NomeDaClaquete nome={apelidoDoRoteiro(r.id) || r.meta.claquete} versoes={versoesDoResumo(r)} /> : 'Sem claquete'}</b>
+          <b>{nomeNaFicha(r)}</b>
           <span>
             {r.meta.programa || 'sem atração'}
             {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
@@ -279,13 +311,15 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
   );
   // sem gênero, como a sugestão dos Cadastros (#106)
   const papel = area === 'redator' ? 'redator' : 'editor';
-  const roteiros = lido?.roteiros ?? [];
-  const total = roteiros.length;
+  const roteiros = vistos;
+  const total = (lido?.roteiros ?? []).length;
 
-  // quadro: uma coluna por estado do ciclo; os passos de antes do PROMeiro numa coluna apagada, "em breve"
+  // quadro: uma coluna por estado do ciclo; os passos da aprovação numa coluna apagada, "em breve". O Escrevendo (#189)
+  // só no Redator: no Editor, o roteiro chega depois dele
+  const estadosDaArea = ESTADOS.filter((c) => c.id !== 'escrevendo' || area === 'redator');
   const cartao = (r: MeuRoteiro) => (
     <li key={r.id} className="cartao-meu" data-estado={estadoDe(r)} {...abreCom(r)}>
-      <b>{apelidoDoRoteiro(r.id) || r.meta.claquete ? <NomeDaClaquete nome={apelidoDoRoteiro(r.id) || r.meta.claquete} versoes={versoesDoResumo(r)} /> : 'Sem claquete'}</b>
+      <b>{nomeNaFicha(r)}</b>
       <span>
         {r.meta.programa || 'sem atração'} · {diaCurto(r.meta.dataExibicao)}
       </span>
@@ -297,27 +331,30 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
   );
   const quadro = (
     <div className="quadro-rolar">
-      <div className="quadro-meus">
-        <section className="coluna-meus antes" aria-label="Antes, em breve">
-          <h4>Antes</h4>
-          <ol>
-            {ANTES.map((c) => (
-              <li key={c.id}>{c.nome}</li>
-            ))}
-          </ol>
-          <p>em breve, quando o roteiro nascer aqui</p>
-        </section>
-        {ESTADOS.map((c) => {
+      <div className={`quadro-meus${area === 'redator' ? ' com-escrevendo' : ''}`}>
+        {estadosDaArea.map((c) => {
           const deles = doEstado(roteiros, c.id);
-          return (
+          return [
+            // a aprovação, em breve, entre o Escrevendo e a revisão (no Editor, que não tem o Escrevendo, na frente)
+            c.id === 'revisao' && (
+              <section key="antes" className="coluna-meus antes" aria-label="Aprovação, em breve">
+                <h4>Aprovação</h4>
+                <ol>
+                  {ANTES.map((a) => (
+                    <li key={a.id}>{a.nome}</li>
+                  ))}
+                </ol>
+                <p>em breve no PROMeiro</p>
+              </section>
+            ),
             <section key={c.id} className="coluna-meus" data-estado={c.id} aria-label={`${c.nome}, ${plural(deles.length, 'roteiro', 'roteiros')}`}>
               <h4>
                 {c.nome}
                 <span>{deles.length}</span>
               </h4>
               {deles.length ? <ul className="cartoes-meus">{deles.map(cartao)}</ul> : <Vazio como="span" pequeno className="coluna-vazia">nenhum</Vazio>}
-            </section>
-          );
+            </section>,
+          ];
         })}
       </div>
     </div>
@@ -327,7 +364,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
   const linha = (r: MeuRoteiro) => (
     <li key={r.id} className="linha-meu" data-estado={estadoDe(r)} {...abreCom(r)}>
       <span className="linha-meu-quem">
-        <b>{apelidoDoRoteiro(r.id) || r.meta.claquete ? <NomeDaClaquete nome={apelidoDoRoteiro(r.id) || r.meta.claquete} versoes={versoesDoResumo(r)} /> : 'Sem claquete'}</b>
+        <b>{nomeNaFicha(r)}</b>
         <small>
           {r.meta.programa || 'sem atração'} · {quem(r)}
         </small>
@@ -338,12 +375,12 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
   );
   const porEstado = (
     <>
-      <div className="faixa-ciclo">
+      <div className={`faixa-ciclo${area === 'redator' ? ' com-escrevendo' : ''}`}>
         <span className="seg-ciclo antes" aria-hidden="true">
           <b>—</b>
           <span>{ANTES.map((c) => c.nome).join(' · ')} (em breve)</span>
         </span>
-        {ESTADOS.map((c) => (
+        {estadosDaArea.map((c) => (
           <button key={c.id} type="button" className="seg-ciclo" data-estado={c.id} aria-pressed={soEstado === c.id} onClick={() => setSoEstado((e) => (e === c.id ? null : c.id))}>
             <b>{doEstado(roteiros, c.id).length}</b>
             <span>{c.nome}</span>
@@ -351,7 +388,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
         ))}
       </div>
       <p className="faixa-nota">O ciclo de um roteiro, da esquerda para a direita. Toque num estado para ver só ele.</p>
-      {ESTADOS.filter((c) => !soEstado || soEstado === c.id).map((c) => {
+      {estadosDaArea.filter((c) => !soEstado || soEstado === c.id).map((c) => {
         const deles = doEstado(roteiros, c.id);
         if (!deles.length) return soEstado ? <Vazio key={c.id} pequeno className="coluna-vazia">nenhum roteiro {c.nome.toLowerCase()} agora</Vazio> : null;
         return (
@@ -383,13 +420,45 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
     </>
   );
 
+  // "Roteiros" (#189): os escritos de cada aba, com a busca; o Novo roteiro abre a folha já com o cursor
+  const dosEscritos = escritos?.roteiros ?? [];
+  const naAba = (a: Exclude<AbaDosRoteiros, 'meus'>) => escritosDaAba(dosEscritos, a).filter((r) => bateComABusca(r, busca));
+  const totalDaAba = (a: AbaDosRoteiros) => (a === 'meus' ? roteiros.length : naAba(a).length);
+  const comecar = () => {
+    if (!escrita || comecando) return;
+    setComecando(true);
+    comecarRoteiro().then(
+      (r) => escrita.abrir(r.id),
+      (e) => {
+        setComecando(false);
+        setErro(e instanceof Error ? e.message : 'Não deu para começar o roteiro.');
+      },
+    );
+  };
+  const abasDaEscrita = escrita && (
+    <div className="abas-cad abas-roteiros" role="tablist" aria-label="Roteiros">
+      {ABAS_DOS_ROTEIROS.map((a) => (
+        <AbaComRabisco key={a.id} nome={a.nome} mostrarNome classe={`aba-${a.id}`} aba={{ ativa: aba === a.id, total: totalDaAba(a.id), abrir: () => setAba(a.id) }} />
+      ))}
+    </div>
+  );
+  const listaDaAba = escrita && aba !== 'meus' && (
+    <ListaDosEscritos
+      roteiros={naAba(aba)}
+      lendo={!escritos}
+      busca={busca}
+      vazio={aba === 'equipe' ? 'ninguém da equipe escrevendo por aqui ainda' : aba === 'sendo' ? 'nenhum roteiro sendo escrito agora' : 'nenhum roteiro enviado ainda: o Enviar chega em breve'}
+      abrir={escrita.abrir}
+    />
+  );
+
   return (
     <div className="pagina">
       {topo}
-      <main className={`biblioteca meus-roteiros exibe-${exibicao}`} aria-busy={!erro && (!lido || (admin && lido.de !== deQuem))}>
-        <div className="fila-topo">
+      <main className={`biblioteca meus-roteiros exibe-${exibicao}${escrita ? ` roteiros-escritos aba-${aba}` : ''}`} aria-busy={!erro && (!lido || (admin && lido.de !== deQuem))}>
+        <div className={`fila-topo${escrita ? ' cabeca-com-lupa' : ''}`}>
           <div className="fila-titulo">
-            <h2 className="titulo-serifa">{admin ? 'Roteiros' : 'Meus roteiros'}</h2>
+            <h2 className="titulo-serifa">{escrita ? 'Roteiros' : admin ? 'Roteiros' : 'Meus roteiros'}</h2>
             {lido && admin && (
               <p className="fila-conta">
                 <span>
@@ -404,20 +473,45 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
               </p>
             )}
           </div>
+          {escrita && (
+            <span className="roteiros-acoes ao-lado-da-lupa">
+              {escritos?.podeComecar && (
+                <button type="button" className="botao primario novo-roteiro" onClick={comecar} disabled={comecando}>
+                  <Icone nome="mais" tam={14} traco={2.2} /> Novo roteiro
+                </button>
+              )}
+              <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa dica="Buscar título, claquete, atração ou pessoa" rotulo="Buscar nos roteiros" />
+            </span>
+          )}
         </div>
+        {abasDaEscrita}
+        {listaDaAba}
         {erro && <p className="aviso-meus erro" role="alert">{erro}</p>}
-        {lido && !admin && !lido.nome && (
+        {(!escrita || aba === 'meus') && conteudoDosMeus()}
+      </main>
+    </div>
+  );
+
+  function conteudoDosMeus() {
+    // em "Roteiros" (#189), quem não tem cadastro de redator (a coordenação, o administrador) vê os que começou
+    const semCadastro = lido && !admin && !lido.nome;
+    const vazioDaEscrita = escrita && lido && !total;
+    return (
+      <>
+        {vazioDaEscrita && <Vazio className="meus-vazio">{escritos?.podeComecar ? 'nenhum roteiro seu ainda: aperte “Novo roteiro” e saia escrevendo' : 'nenhum roteiro seu por aqui'}</Vazio>}
+        {escrita && lido && total > 0 && !roteiros.length && busca.trim() && <NadaNaBusca termo={busca.trim()} onde="nos seus roteiros" />}
+        {semCadastro && !escrita && (
           <p className="aviso-meus" role="status">
             O seu e-mail ainda não está ligado a um cadastro de {papel}. Quando um administrador puser o seu e-mail nos Cadastros, os seus roteiros como {papel} aparecem aqui.
           </p>
         )}
-        {lido && !admin && lido.nome && !total && (
+        {lido && !escrita && !admin && lido.nome && !total && (
           <p className="aviso-meus" role="status">
             Nenhum roteiro seu como {papel} por enquanto. Quando um roteiro seu chegar à fila da arte, ele aparece aqui.
           </p>
         )}
         {/* o administrador escolhe "de quem" (#105) no topo da lista, à esquerda da exibição */}
-        {lido && ((admin && lido.pessoas) || (lido.nome && total > 0)) && (
+        {lido && ((admin && lido.pessoas) || ((lido.nome || escrita) && total > 0)) && (
           <div className="lista-meus">
             <div className="lista-meus-topo">
               {admin && lido.pessoas && <FiltroDeQuem de={deQuem} pessoas={lido.pessoas} escolher={setDeQuem} />}
@@ -432,7 +526,48 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
             )}
           </div>
         )}
-      </main>
-    </div>
+      </>
+    );
+  }
+}
+
+/** Os Roteiros escritos no PROMeiro de uma aba de "Roteiros" (#189): a mesma ficha da lista do ciclo, com o título, quem
+    escreve, quando começou, a bolinha do estado, quem vê e se a pessoa escreve ou só lê. Entram em cascata. */
+function ListaDosEscritos({ roteiros, lendo, busca, vazio, abrir }: { roteiros: (Resumo & { escrito: string })[]; lendo: boolean; busca: string; vazio: string; abrir: (id: string) => void }) {
+  if (lendo) return <p className="aviso-meus" role="status">Lendo os roteiros…</p>;
+  if (!roteiros.length) return busca.trim() ? <NadaNaBusca termo={busca.trim()} onde="nesta aba" /> : <Vazio className="meus-vazio">{vazio}</Vazio>;
+  return (
+    <ul className="fichas fichas-escritas">
+      {roteiros.map((r, i) => (
+        <li
+          key={r.id}
+          className="ficha ficha-minha ficha-escrita"
+          data-estado={r.escrito}
+          tabIndex={0}
+          style={{ '--atraso': `${Math.min(i, NA_CASCATA) * CASCATA_MS}ms` } as CSSProperties}
+          onClick={() => abrir(r.id)}
+          onKeyDown={(e) => e.key === 'Enter' && abrir(r.id)}
+        >
+          <span className="ficha-claquete">
+            <b>{nomeNaFicha(r)}</b>
+            <span>
+              {r.dono?.nome ? `por ${r.dono.nome}` : 'sem autor'}
+              {r.criadoEm && ` · começou ${haQuantoTempo(r.criadoEm)}`}
+            </span>
+            <span className="ficha-de">{r.meu ? 'você escreve' : r.podeEditar ? (r.convidado ? 'convidado: você escreve' : 'você também escreve') : 'você lê'}</span>
+          </span>
+          <span className="ficha-ciclo">
+            <span className="estado-ciclo">
+              <BolinhaDeEstado estado={r.escrito === 'sendo-escrito' ? 'escrevendo' : 'entrada'} tam="ficha" />
+              <b className={`estado-nome e-${r.escrito === 'sendo-escrito' ? 'escrevendo' : 'revisao'}`}>{r.escrito === 'sendo-escrito' ? 'Sendo escrito' : 'Enviado'}</b>
+            </span>
+            <small className="visto-por">
+              <Icone nome={r.publico ? 'olho' : 'cadeado'} tam={12} traco={2} /> {r.publico ? 'visível para a equipe' : 'fechado'}
+            </small>
+          </span>
+          <span className="ficha-artes-minha">{plural(r.nArtes, 'arte', 'artes')}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

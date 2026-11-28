@@ -86,7 +86,7 @@ function useFilmesParaRevisar(ligado: boolean) {
 }
 
 /** Os caminhos do topo, pela ordem fixa (#168). */
-export type IdDoCaminho = 'agenda' | 'producoes' | 'campanhas' | 'filmes' | 'pauta' | 'montar';
+export type IdDoCaminho = 'agenda' | 'producoes' | 'campanhas' | 'filmes' | 'roteiros' | 'pauta' | 'montar';
 
 interface Caminho {
   id: IdDoCaminho;
@@ -106,9 +106,11 @@ let abertoAntes: IdDoCaminho | undefined;
  * abre com o texto, como as abas dos Cadastros, e a largura anima (a tela nova começa com o caminho da anterior aberto e
  * troca no quadro seguinte). Só para a coordenação, "Montar a pauta" (#123) vem depois da Pauta. A única bolinha
  * separadora fica antes da Pauta, que é de todo mundo. O aviso de filme para revisar é uma bolinha laranja no ícone dos
- * Filmes. O nome de cada um vai na dica (hover e foco) e no `aria-label`. No celular, só os ícones.
+ * Filmes. O nome de cada um vai na dica (hover e foco) e no `aria-label`. No celular, só os ícones. Os Roteiros (#189),
+ * os escritos no PROMeiro, vêm por último entre os da área: na Designer (a equipe toda e a coordenação) em #/roteiros e,
+ * no Redator, a própria área (`roteirosEm` "#/redator").
  */
-export function CaminhosDoTopo({ agenda, producoes, campanhas, filmes, pauta, montar, atual }: { agenda?: () => void; producoes?: () => void; campanhas?: () => void; filmes?: () => void; pauta?: () => void; montar?: () => void; atual?: IdDoCaminho }) {
+export function CaminhosDoTopo({ agenda, producoes, campanhas, filmes, roteiros, roteirosEm = '#/roteiros', pauta, montar, atual }: { agenda?: () => void; producoes?: () => void; campanhas?: () => void; filmes?: () => void; roteiros?: () => void; roteirosEm?: string; pauta?: () => void; montar?: () => void; atual?: IdDoCaminho }) {
   const revisar = useFilmesParaRevisar(!!filmes);
   const [aberto, setAberto] = useState(() => abertoAntes ?? atual);
   useEffect(() => {
@@ -124,6 +126,8 @@ export function CaminhosDoTopo({ agenda, producoes, campanhas, filmes, pauta, mo
     // as campanhas (#180), logo depois das Produções que elas juntam
     ...(campanhas ? [{ id: 'campanhas' as const, href: '#/campanhas', nome: 'Campanhas', icone: 'etiqueta' as const, ir: campanhas }] : []),
     ...(filmes ? [{ id: 'filmes' as const, href: '#/filmes', nome: 'Filmes', icone: 'filme' as const, ir: filmes }] : []),
+    // os Roteiros escritos no PROMeiro (#189)
+    ...(roteiros ? [{ id: 'roteiros' as const, href: roteirosEm, nome: 'Roteiros', icone: 'lapis' as const, ir: roteiros }] : []),
     ...(pauta ? [{ id: 'pauta' as const, href: '#/pauta', nome: 'Pauta da edição', icone: 'edicao' as const, ir: pauta }] : []),
     ...(montar ? [{ id: 'montar' as const, href: '#/pauta/montar', nome: 'Montar a pauta', icone: 'ajustes' as const, ir: montar }] : []),
   ];

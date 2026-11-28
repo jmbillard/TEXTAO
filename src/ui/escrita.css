@@ -1,0 +1,68 @@
+/* O editor de escrita (#189): o Roteiro sendo escrito, numa folha corrida de papel (o mesmo da revisão), com o título no
+   topo e a margem dos tipos à esquerda (vazia até o #190). Nada de "unha" e nada de ✓: o salvo é a bolinha laranja. */
+
+.escrita-barra { display: flex; align-items: center; gap: 12px; max-width: 980px; margin: 0 auto; padding: 0 32px 10px; min-height: 40px; }
+.escrita-barra .espaco { flex: 1; }
+.escrita-voltar { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; }
+.escrita-salvo, .escrita-so-lendo-curto { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--tinta3); transition: color var(--medio) var(--suave); }
+.escrita-salvo.salvo { color: var(--tinta2); }
+.escrita-salvo.erro { color: var(--perigo); }
+.escrita-salvo .bolinha-estado { width: 7px; height: 7px; }
+.escrita-visivel { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; font-size: 13px; color: var(--tinta2); background: var(--neutro); }
+.escrita-visivel.publico { background: var(--ultra-suave); color: var(--ultra); }
+/* o painel de quem vê abre para baixo, alinhado à direita do botão */
+.escrita-visibilidade .painel-compartilhar { right: 0; left: auto; }
+
+/* quem não escreve lê, e a faixa diz isso: o fundo levemente tingido, sem borda lateral */
+.escrita-so-lendo {
+  display: flex; align-items: center; gap: 10px; max-width: 916px; margin: 0 auto 14px; padding: 10px 16px; border-radius: 10px;
+  background: var(--neutro); color: var(--tinta2); font-size: 13.5px; animation: surgir 0.3s var(--suave) both;
+}
+.escrita-so-lendo b { color: var(--tinta); font-weight: 600; }
+.escrita-so-lendo svg { flex: none; color: var(--tinta3); }
+
+.escrita { max-width: 980px; margin: 0 auto; padding: 0 32px 120px; }
+.folha-escrita {
+  background: var(--folha-fibras), url('/papel-grao.svg'), var(--papel); border: 1px solid var(--regua); border-radius: 4px;
+  box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 4px 14px rgb(26 25 22 / 4%); min-height: 70vh;
+  padding: 44px 64px 80px; animation: pousar-folha 0.45s var(--suave) both;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .folha-escrita { box-shadow: 0 1px 2px rgb(0 0 0 / 30%); } }
+:root[data-theme='dark'] .folha-escrita { box-shadow: 0 1px 2px rgb(0 0 0 / 30%); }
+
+.folha-escrita-cabeca { padding-left: var(--margem-dos-tipos); margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--regua); }
+.folha-escrita-sobre { margin: 0 0 6px; font: 600 11.5px var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--tinta3); }
+.folha-escrita-titulo {
+  display: block; width: 100%; resize: none; overflow: hidden; border: 0; padding: 0; margin: 0; background: none; outline: 0;
+  font: 400 40px/1.15 var(--serifa); color: var(--tinta); caret-color: var(--ultra);
+  animation: entrar-suave 0.4s 0.08s var(--suave) both;
+}
+.folha-escrita-titulo::placeholder { color: var(--tinta3); opacity: 0.55; }
+.folha-escrita-quem { margin: 8px 0 0; font-size: 13px; color: var(--tinta3); min-height: 1em; }
+
+/* a margem dos tipos (#190) à esquerda do texto: o espaço já fica guardado, para o texto não pular quando ela chegar */
+.folha-escrita { --margem-dos-tipos: 88px; }
+.folha-escrita-corpo { padding-left: var(--margem-dos-tipos); animation: entrar-suave 0.4s 0.14s var(--suave) both; }
+.folha-escrita .texto-escrita { min-height: 50vh; }
+.folha-escrita .texto-escrita p { font-size: 17px; line-height: 1.75; padding: 6px 0; }
+/* a folha vazia diz por onde começar, onde o cursor está */
+.folha-escrita.vazia .texto-escrita > p:first-child::before {
+  content: 'Comece a escrever. Enter abre um trecho novo.'; float: left; height: 0; pointer-events: none;
+  color: var(--tinta3); opacity: 0.7;
+}
+.folha-escrita.so-leitura.vazia .texto-escrita > p:first-child::before { content: 'Ainda não há texto.'; }
+
+@media (prefers-reduced-motion: reduce) {
+  .folha-escrita, .folha-escrita-titulo, .folha-escrita-corpo, .escrita-so-lendo { animation: none; }
+}
+
+/* o celular não quebra (escrever no celular é o #198): a folha ocupa a largura, a margem dos tipos encolhe */
+@media (max-width: 600px) {
+  .escrita-barra { padding: 0 16px 8px; gap: 8px; flex-wrap: wrap; }
+  .escrita-barra .visibilidade-nome { display: none; }
+  .escrita-so-lendo { margin: 0 12px 12px; }
+  .escrita { padding: 0 0 80px; }
+  .folha-escrita { --margem-dos-tipos: 0px; border-left: 0; border-right: 0; border-radius: 0; padding: 26px 18px 60px; min-height: 60vh; }
+  .folha-escrita-titulo { font-size: 30px; }
+  .folha-escrita .texto-escrita p { font-size: 16.5px; }
+}

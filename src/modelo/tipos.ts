@@ -194,6 +194,9 @@ export interface Roteiro {
   meu?: boolean;
   /** Nome do arquivo de origem, quando importado. */
   origem?: string;
+  /** O Roteiro escrito no PROMeiro (#189): o estado dele, guardado pelo servidor ('sendo-escrito' antes do Enviar).
+      Ausente no roteiro que chegou de fora. */
+  escrito?: 'sendo-escrito' | 'enviado';
 }
 
 export const novoId = (): string =>

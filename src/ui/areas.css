@@ -42,7 +42,7 @@
 .trilha-passo { display: inline-flex; align-items: center; gap: 3px; margin-left: 3px; }
 .trilha-passo:first-child { margin-left: 0; }
 .trilha-ciclo i { width: 9px; height: 9px; border-radius: 50%; background: var(--regua-forte); flex: none; }
-.trilha-ciclo i.em-breve { background: none; box-shadow: inset 0 0 0 1.2px var(--regua-forte); opacity: 0.7; width: 7px; height: 7px; }
+.trilha-ciclo i.em-breve, .trilha-ciclo i.fora { background: none; box-shadow: inset 0 0 0 1.2px var(--regua-forte); opacity: 0.7; width: 7px; height: 7px; }
 .trilha-ciclo i.feito { background: var(--tinta3); }
 .trilha-ciclo i.agora { background: var(--ultra); box-shadow: 0 0 0 3px var(--ultra-suave); }
 .trilha-ciclo u { width: 6px; height: 1.5px; background: var(--regua-forte); text-decoration: none; flex: none; }
@@ -275,9 +275,9 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 .ciclo-em-pe .nome { font: 500 14px var(--sans); color: var(--tinta2); }
 .ciclo-em-pe .agora .nome { color: var(--tinta); font-weight: 600; }
 .ciclo-em-pe .quando { grid-column: 2; font-size: 12px; color: var(--tinta3); }
-.ciclo-em-pe .em-breve { opacity: 0.5; }
-.ciclo-em-pe .em-breve .ponto { background: none; box-shadow: inset 0 0 0 1.2px var(--regua-forte); }
-.ciclo-em-pe .em-breve .nome { font-weight: 400; }
+.ciclo-em-pe .em-breve, .ciclo-em-pe .fora { opacity: 0.5; }
+.ciclo-em-pe .em-breve .ponto, .ciclo-em-pe .fora .ponto { background: none; box-shadow: inset 0 0 0 1.2px var(--regua-forte); }
+.ciclo-em-pe .em-breve .nome, .ciclo-em-pe .fora .nome { font-weight: 400; }
 .ciclo-em-pe li.ciclo-nota { display: block; font: 600 17px/1.1 Caveat, cursive; color: var(--tinta3); margin: -4px 0 10px 28px; padding: 0; }
 
 /* as artes no Editor: o estado (a fazer, produzindo, entregue, já existe) e a origem (do roteiro, do designer). O
@@ -311,4 +311,28 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
   .folha-aberta .cab { padding: 24px 20px 12px; }
   .folha-aberta .corpo { padding: 4px 20px 24px; }
   .folha-aberta .cab-titulo { font-size: 28px; }
+}
+
+/* ---------- "Roteiros" (#189): a busca, o Novo roteiro, as abas e os escritos no PROMeiro ---------- */
+.roteiros-acoes { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
+.novo-roteiro { display: inline-flex; align-items: center; gap: 6px; }
+.abas-roteiros { margin: -2px 0 22px; flex-wrap: wrap; }
+.abas-cad .rot-fechada { display: inline-flex; align-items: baseline; gap: 2px; }
+.abas-cad .rot-fechada sup { margin-left: 0; }
+.titulo-escrito { font-family: var(--serifa); font-weight: 500; }
+.fichas-escritas .ficha { animation: surgir-ficha 0.34s var(--suave) backwards; animation-delay: var(--atraso, 0ms); }
+.visto-por { display: inline-flex; align-items: center; gap: 5px; color: var(--tinta3); }
+.meus-vazio { margin: 26px 0; }
+/* o Escrevendo (#189) é o agora de quem escreve: o nome em laranja */
+.estado-nome.e-escrevendo { color: var(--ultra); }
+/* o quadro e a faixa do Redator têm o Escrevendo antes da aprovação (em breve) */
+.quadro-meus.com-escrevendo { grid-template-columns: minmax(190px, 1fr) 120px repeat(4, minmax(190px, 1fr)); min-width: 1110px; }
+.faixa-ciclo.com-escrevendo { grid-template-columns: 1.3fr repeat(5, 1fr); }
+@media (prefers-reduced-motion: reduce) { .fichas-escritas .ficha { animation: none; } }
+@media (max-width: 600px) {
+  .roteiros-acoes { margin-left: 0; }
+  .abas-roteiros { gap: 0; margin-bottom: 14px; }
+  .abas-roteiros button { padding: 8px 8px; font-size: 14px; }
+  .faixa-ciclo.com-escrevendo { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .quadro-meus.com-escrevendo { min-width: 0; }
 }

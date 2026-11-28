@@ -13,7 +13,8 @@ import { CHAVE_DO_CODIGO_DAS_VERSOES, mostraOCodigoDasVersoes, type VersoesDaCha
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
-import type { ArteDoAcervo, Meta, NaProducao, NoJSON, Pessoa, ProducaoCompleta, Roteiro, SugestaoRedator } from '../modelo/tipos';
+import { novoId, type ArteDoAcervo, type Meta, type NaProducao, type NoJSON, type Pessoa, type ProducaoCompleta, type Roteiro, type SugestaoRedator } from '../modelo/tipos';
+import type { EstadoDoEscrito } from '../modelo/escrito';
 
 /* Camada de persistência. Duas implementações com a mesma interface:
    - servidor (SQLite, com dono, público/privado e histórico), quando a API responde;
@@ -43,6 +44,12 @@ export interface Resumo {
   trello?: EnvioTrello;
   /** O arquivo que subiu está guardado no servidor (vira o PDF do card). */
   temOriginal?: boolean;
+  /** O Roteiro escrito no PROMeiro (#189): o estado; ausente no que chegou de fora. */
+  escrito?: EstadoDoEscrito;
+  /** Quando o Roteiro escrito no PROMeiro começou (só nele). */
+  criadoEm?: string;
+  /** A pessoa foi convidada pelo autor (só no Roteiro escrito no PROMeiro). */
+  convidado?: boolean;
 }
 export interface EnvioTrello {
   /** "duplicado": a claquete já tinha entrado hoje na produção da arte (pelo upload antigo). */
@@ -1104,6 +1111,18 @@ export interface MeuRoteiro extends Resumo {
   daArte: string[];
   artes: ArtesDoRoteiro;
 }
+/** Os Roteiros escritos no PROMeiro que a pessoa lê (#189), para a lista de "Roteiros", e se ela pode começar um. */
+export interface RoteirosEscritos {
+  podeComecar: boolean;
+  roteiros: (Resumo & { escrito: EstadoDoEscrito })[];
+}
+export async function lerRoteirosEscritos(): Promise<RoteirosEscritos> {
+  if (armazenamento.tipo !== 'servidor') return { podeComecar: false, roteiros: [] };
+  return pedir<RoteirosEscritos>('/api/roteiros-escritos');
+}
+/** O Novo roteiro (#189): nasce sendo escrito, visível para a equipe, com a pessoa de redatora. */
+export const comecarRoteiro = (titulo = '') => pedir<Roteiro>('/api/roteiros-escritos', { method: 'POST', body: JSON.stringify({ id: novoId(), titulo }) });
+
 /** Com `de` (só administradores, #105), os roteiros de todos ("todos") ou os de uma pessoa, pelo nome. */
 export async function lerMeusRoteiros(area: AreaDosRoteiros, de?: string): Promise<MeusRoteiros> {
   if (armazenamento.tipo !== 'servidor') return { area, nome: null, roteiros: [] };

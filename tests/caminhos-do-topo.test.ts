@@ -94,4 +94,14 @@ describe('os caminhos do topo', () => {
     expect(caixa.querySelector('.caminho-aviso')).toBeNull();
     expect(caixa.querySelector('nav a.topo-filmes')!.getAttribute('aria-label')).toBe('Filmes');
   });
+
+  it('os Roteiros (#189) vêm por último entre os da área, antes da bolinha da Pauta, no endereço da área', async () => {
+    await montar({ ...todos, roteiros: nada, atual: 'roteiros' });
+    expect(filhos()).toEqual(['topo-agenda', 'topo-producoes', 'topo-filmes', 'topo-roteiros', '•', 'topo-pauta']);
+    expect(caixa.querySelector('nav a.topo-roteiros')!.getAttribute('href')).toBe('#/roteiros');
+    expect(abertos()).toEqual(['topo-roteiros']);
+    await montar({ roteiros: nada, roteirosEm: '#/redator', pauta: nada, atual: 'roteiros' });
+    expect(filhos()).toEqual(['topo-roteiros', '•', 'topo-pauta']);
+    expect(caixa.querySelector('nav a.topo-roteiros')!.getAttribute('href')).toBe('#/redator');
+  });
 });
