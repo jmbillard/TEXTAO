@@ -515,6 +515,8 @@ function Ficha({ r, nova, ordem, prioridade, abrir, acoes, agora, eu, versao, pr
           {r.meta.praca && <span className="ficha-praca">{r.meta.praca}</span>}
           {r.meta.dataExibicao ? ` · ${dataCurtaComDia(r.meta.dataExibicao)}` : ' · sem data'}
           <ConflitoDoCard versoes={versoes} />
+          {/* o roteiro que saiu do Enviar da folha de escrita (#194) */}
+          {r.escritoDe && <span className="ficha-escrito" title="Escrito no PROMeiro: o último envio do roteiro">escrito no PROMeiro</span>}
         </span>
       </button>
       <span className="ficha-gente some">

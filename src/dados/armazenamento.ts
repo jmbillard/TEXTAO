@@ -50,6 +50,8 @@ export interface Resumo {
   criadoEm?: string;
   /** A pessoa foi convidada pelo autor (só no Roteiro escrito no PROMeiro). */
   convidado?: boolean;
+  /** O roteiro da fila que saiu do Enviar (#194): o id do Roteiro escrito no PROMeiro de onde veio. */
+  escritoDe?: string;
   /** Os avisos de comentário que a pessoa ainda não viu neste roteiro (#192): a bolinha na lista. */
   avisos?: { n: number; mencao: boolean };
 }
@@ -1122,8 +1124,41 @@ export async function lerRoteirosEscritos(): Promise<RoteirosEscritos> {
   if (armazenamento.tipo !== 'servidor') return { podeComecar: false, roteiros: [] };
   return pedir<RoteirosEscritos>('/api/roteiros-escritos');
 }
-/** O Novo roteiro (#189): nasce sendo escrito, visível para a equipe, com a pessoa de redatora. */
-export const comecarRoteiro = (titulo = '') => pedir<Roteiro>('/api/roteiros-escritos', { method: 'POST', body: JSON.stringify({ id: novoId(), titulo }) });
+/* ---------- o Enviar (#194) ---------- */
+
+/** Um envio do Roteiro escrito no PROMeiro: a foto do texto como foi, com a claquete, a letra e a versão. */
+export interface EnvioDoEscrito {
+  n: number;
+  em: string;
+  por: Pessoa;
+  /** o que o redator escreveu no envio ('' sem nada) */
+  motivo: string;
+  claquete: string;
+  letra: string;
+  versao: number;
+}
+/** Os envios (do mais novo ao mais velho) e o roteiro da fila do último, com o card e o andamento da arte. */
+export interface EnviosDoEscrito {
+  envios: EnvioDoEscrito[];
+  fila: { id: string; claquete: string; trello?: { estado: EnvioTrello['estado']; url?: string }; designers: string[]; andamento: { id: 'entrada' | 'produzindo' | 'entregue'; nome: string; situacao: 'feito' | 'agora' | 'depois'; quando: string | null }[] } | null;
+}
+export const lerEnviosDoEscrito = (id: string) => pedir<EnviosDoEscrito>(`/api/roteiros-escritos/${encodeURIComponent(id)}/envios`);
+/** O que o Enviar devolve: a cópia do envio que entrou na fila, o envio e o escrito como ficou. */
+export interface EnvioFeito {
+  copia: Roteiro;
+  envio: { n: number; claquete: string; letra: string; versao: number };
+  cardHerdado: boolean;
+  substituiu: string | null;
+  escrito: Roteiro;
+}
+/** O Enviar: grava a foto e põe a cópia do envio na fila (no reenvio, com a resposta da liberação). */
+export const enviarOEscrito = (id: string, corpo: { roteiro: Pick<Roteiro, 'meta' | 'doc'>; copia: string; motivo?: string; liberada?: boolean }) =>
+  pedir<EnvioFeito>(`/api/roteiros-escritos/${encodeURIComponent(id)}/enviar`, { method: 'POST', body: JSON.stringify(corpo) });
+
+/** O Novo roteiro (#189): nasce sendo escrito, visível para a equipe, com a pessoa de redatora. `deFora` (#195): o
+    texto de um arquivo aberto ou colado, já lido no navegador (com os tipos e as artes), e o que a leitura achou. */
+export const comecarRoteiro = (titulo = '', deFora?: { doc: NoJSON; meta: Partial<Meta>; nArtes: number; origem?: string }) =>
+  pedir<Roteiro>('/api/roteiros-escritos', { method: 'POST', body: JSON.stringify({ id: novoId(), titulo, ...deFora }) });
 
 /** Com `de` (só administradores, #105), os roteiros de todos ("todos") ou os de uma pessoa, pelo nome. */
 export async function lerMeusRoteiros(area: AreaDosRoteiros, de?: string): Promise<MeusRoteiros> {

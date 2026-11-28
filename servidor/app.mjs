@@ -39,7 +39,7 @@ import { ehSessaoDaTarde } from './exibicao.mjs';
 // a chave da claquete é a do navegador (a mesma da "versão nova" na fila): o módulo é lido pelo Node sem os tipos
 import { chaveDaClaquete } from '../src/modelo/vocabularios.ts';
 import { MARCA_TODAS, pracasDaConfiguracao, pracasParaONavegador, pracasRegistradas, semPracaNoComeco, semPracaNoFim } from '../src/modelo/pracas.ts';
-import { acertarNArtesUmaVez, artesComOEstado, fogoNoNivel, versoesLidas } from './artes.mjs';
+import { acertarNArtesUmaVez, artesComOEstado, contarArtes, fogoNoNivel, versoesLidas } from './artes.mjs';
 import { conferirSecaoPracas, criarOpcoesDasNovas, lerOQuadro, lerQuadro, lerSecaoPracas, mudancasDaSecao, pracasSalvas, secaoDoPedido } from './configuracao-pracas.mjs';
 import { criarPessoas } from './configuracao-pessoas.mjs';
 import { TIPOS_COM_EMAIL, criarLigacaoDePessoas } from './ligacao-de-pessoas.mjs';
@@ -52,6 +52,7 @@ import { metaDoNovo, podeComecar, regraDoEscrito, tituloLimpo } from '../src/mod
 import { ancoraValida, mencoesDoTexto, podeResolver, quemAvisar, textoDoComentario } from '../src/modelo/comentarios.ts';
 import { criarComentarios, criarTabelasDosComentarios } from './comentarios.mjs';
 import { docDaSala, salaPreenchida } from './doc-da-sala.mjs';
+import { andamentoDaArte, letraEVersaoDaFoto, metaDoEscritoEnviado, motivoDoEnvio, ORIGEM_DO_ENVIO, roteiroDaFila, textoDoMotivo } from './envio-do-escrito.mjs';
 import { criarEscala, posicoesDoPedido, recadoDoPedido } from './escala.mjs';
 import { juntarODia } from '../src/modelo/juntarODia.ts';
 import { criarIlhas } from './ilhas.mjs';
@@ -209,6 +210,10 @@ export function abrirBanco(caminho) {
   // o Roteiro escrito no PROMeiro (#189): o estado dele ('sendo-escrito'; o Enviar, #194, traz o 'enviado'), guardado
   // só pelo servidor; NULL no roteiro que chegou de fora
   if (!tem('roteiros', 'escrito')) db.exec('ALTER TABLE roteiros ADD COLUMN escrito TEXT');
+  // o Enviar (#194): o roteiro da fila que saiu de um Roteiro escrito no PROMeiro aponta o escrito (a cópia do último
+  // envio, que a fila e a Pauta leem); NULL nos outros
+  if (!tem('roteiros', 'escrito_de')) db.exec('ALTER TABLE roteiros ADD COLUMN escrito_de TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS roteiros_escrito_de ON roteiros (escrito_de)');
   // keys que alguém marcou como "não é atração" na aba Sem cadastro: não voltam para a lista
   db.exec('CREATE TABLE IF NOT EXISTS keys_ignoradas (key TEXT PRIMARY KEY, por TEXT, em TEXT)');
   // cards de filme cujas artes já foram para o acervo do filme (uma vez só, como os roteiros); o card da semana da
@@ -1249,7 +1254,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   }
   const q = {
     lista: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, versoes_lidas, atualizado_em, revisado_email, revisado_nome, escrito, criado_em,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, versoes_lidas, atualizado_em, revisado_email, revisado_nome, escrito, escrito_de, criado_em,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?) AS convidado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
@@ -1260,7 +1265,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
        ORDER BY atualizado_em DESC LIMIT 2000`,
     ),
     listaTudo: db.prepare(
-      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, versoes_lidas, atualizado_em, revisado_email, revisado_nome, escrito, criado_em,
+      `SELECT id, dono_email, dono_nome, publico, meta, n_artes, versoes_lidas, atualizado_em, revisado_email, revisado_nome, escrito, escrito_de, criado_em,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id) AS compartilhado,
               EXISTS (SELECT 1 FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?) AS convidado,
               COALESCE((SELECT pode_editar FROM compartilhamentos c WHERE c.roteiro_id = roteiros.id AND c.email = ?), 0) AS pode_editar,
@@ -1285,18 +1290,18 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     noAcervo: db.prepare('UPDATE envios SET acervo_em = ?, atracao = ? WHERE roteiro_id = ?'),
     marcarEnvio: db.prepare('INSERT OR REPLACE INTO envios (roteiro_id, estado, card_id, url, erro, avisos, em, por_email, por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     // as da fila, das mais novas para as mais velhas (a contagem das claquetes que mudariam de praça, #73)
-    claquetesRecentesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete FROM roteiros WHERE atualizado_em >= ? AND escrito IS NOT 'sendo-escrito' ORDER BY atualizado_em DESC, rowid DESC"),
-    claquetesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete, atualizado_em AS em FROM roteiros WHERE atualizado_em >= ? AND escrito IS NOT 'sendo-escrito'"),
+    claquetesRecentesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete FROM roteiros WHERE atualizado_em >= ? AND escrito IS NULL ORDER BY atualizado_em DESC, rowid DESC"),
+    claquetesDaFila: db.prepare("SELECT json_extract(meta, '$.claquete') AS claquete, atualizado_em AS em FROM roteiros WHERE atualizado_em >= ? AND escrito IS NULL"),
     ignoradas: db.prepare('SELECT key FROM keys_ignoradas'),
     filmeNoAcervo: db.prepare('SELECT 1 FROM filmes_no_acervo WHERE card = ?'),
     filmeFoiAoAcervo: db.prepare('INSERT OR IGNORE INTO filmes_no_acervo (card, em) VALUES (?, ?)'),
     ignorar: db.prepare('INSERT OR REPLACE INTO keys_ignoradas (key, por, em) VALUES (?, ?, ?)'),
     designorar: db.prepare('DELETE FROM keys_ignoradas WHERE key = ?'),
-    um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, escrito, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
+    um: db.prepare('SELECT id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, escrito, escrito_de, criado_em, atualizado_em, revisado_email, ydoc IS NOT NULL AS tem_ydoc FROM roteiros WHERE id = ?'),
     // o Roteiro que começa a ser escrito no PROMeiro (#189): visível para a equipe e sendo escrito
     inserirEscrito: db.prepare(
       `INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, escrito, criado_em, atualizado_em)
-       VALUES (?, ?, ?, 1, ?, ?, 0, 1, NULL, 'sendo-escrito', ?, ?)`,
+       VALUES (?, ?, ?, 1, ?, ?, ?, 1, ?, 'sendo-escrito', ?, ?)`,
     ),
     ydoc: db.prepare('SELECT ydoc FROM roteiros WHERE id = ?'),
     salvarYdoc: db.prepare('UPDATE roteiros SET ydoc = ? WHERE id = ?'),
@@ -1314,13 +1319,21 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     apagar: db.prepare('DELETE FROM roteiros WHERE id = ?'),
     gravarLapide: db.prepare('INSERT OR REPLACE INTO apagados (id, claquete, por_nome, por_email, em, publico, leitores) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     lapide: db.prepare('SELECT claquete, por_nome, por_email, em, publico, leitores FROM apagados WHERE id = ?'),
-    vivosDesde: db.prepare("SELECT id, json_extract(meta, '$.claquete') AS claquete FROM roteiros WHERE atualizado_em >= ? AND escrito IS NOT 'sendo-escrito' ORDER BY atualizado_em DESC"),
+    vivosDesde: db.prepare("SELECT id, json_extract(meta, '$.claquete') AS claquete FROM roteiros WHERE atualizado_em >= ? AND escrito IS NULL ORDER BY atualizado_em DESC"),
     ultimaVersao: db.prepare('SELECT n, criado_em, meta, doc FROM versoes WHERE roteiro_id = ? ORDER BY n DESC LIMIT 1'),
     // o roteiro como foi importado: é dele que sai o PDF do card (a revisão não entra no anexo)
     primeiraVersao: db.prepare('SELECT meta, doc FROM versoes WHERE roteiro_id = ? ORDER BY n ASC LIMIT 1'),
     novaVersao: db.prepare('INSERT INTO versoes (roteiro_id, n, criado_em, por_email, por_nome, motivo, meta, doc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     versoes: db.prepare('SELECT n, criado_em, por_email, por_nome, motivo FROM versoes WHERE roteiro_id = ? ORDER BY n DESC LIMIT 200'),
     versao: db.prepare('SELECT * FROM versoes WHERE roteiro_id = ? AND n = ?'),
+    // o Enviar (#194): a cópia do último envio na fila, as fotos dos envios e o escrito que passa a enviado
+    copiaDoEscrito: db.prepare('SELECT id, meta, doc FROM roteiros WHERE escrito_de = ? ORDER BY criado_em DESC LIMIT 1'),
+    inserirCopia: db.prepare(
+      `INSERT INTO roteiros (id, dono_email, dono_nome, publico, meta, doc, n_artes, revisao, origem, escrito_de, criado_em, atualizado_em)
+       VALUES (?, ?, ?, 1, ?, ?, ?, 1, ?, ?, ?, ?)`,
+    ),
+    fotosDoEscrito: db.prepare("SELECT n, criado_em, por_email, por_nome, motivo, meta FROM versoes WHERE roteiro_id = ? AND (motivo = 'enviado' OR motivo LIKE 'enviado: %') ORDER BY n DESC LIMIT 200"),
+    marcarEnviado: db.prepare("UPDATE roteiros SET escrito = 'enviado', meta = ?, atualizado_em = ? WHERE id = ?"),
     verUsuario: db.prepare(
       `INSERT INTO usuarios (email, nome, visto_em) VALUES (?, ?, ?)
        ON CONFLICT (email) DO UPDATE SET nome = excluded.nome, visto_em = excluded.visto_em`,
@@ -1368,7 +1381,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       que a regra do escrito deixa ler. */
   const linhasPara = (eu, { escritos = false } = {}) => {
     const todas = escritos || aberto ? q.listaTudo.all(eu.email, eu.email) : q.lista.all(eu.email, eu.email, eu.email, eu.email);
-    if (!escritos) return todas.filter((l) => l.escrito !== 'sendo-escrito');
+    // o escrito não entra na fila, nem depois do Enviar: quem está nela é a cópia do último envio (#194)
+    if (!escritos) return todas.filter((l) => !l.escrito);
     const forte = coordenaOuAdministra(eu.email);
     return todas.filter((l) => l.escrito && regraDoEscrito(conviteDaLinha(l, eu, forte)).ler);
   };
@@ -1403,6 +1417,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         compartilhado: !!l.compartilhado,
         podeEditar: l.escrito ? regraDoEscrito(conviteDaLinha(l, eu, forte)).escrever : aberto || l.dono_email === eu.email || !!l.pode_editar,
         ...(l.escrito ? { escrito: l.escrito, criadoEm: l.criado_em, convidado: l.dono_email !== eu.email && !!l.convidado, ...(avisos[l.id] ? { avisos: avisos[l.id] } : {}) } : {}),
+        // o roteiro da fila que saiu do Enviar (#194): o escrito de onde veio ("escrito no PROMeiro")
+        ...(l.escrito_de ? { escritoDe: l.escrito_de } : {}),
         revisadoPor: l.revisado_email ? { nome: l.revisado_nome, email: l.revisado_email } : null,
         ...(l.envio_estado ? { trello: { estado: l.envio_estado, card: l.envio_card || undefined, url: l.envio_url ?? undefined, erro: l.envio_erro ?? undefined, em: l.envio_em, por: l.envio_por ?? undefined } } : {}),
         temOriginal: !!l.tem_original,
@@ -1488,6 +1504,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const mapa = sala.doc.getMap('meta');
     const r = { meta: { ...JSON.parse(linha.meta), ...(mapa.toJSON()) }, doc: docDaSala(sala.doc) };
     if (linha.escrito === 'sendo-escrito') r.meta.status = 'rascunho';
+    // depois do Enviar, a claquete, a letra e a versão são do envio (#194): só o próximo Enviar as muda
+    else r.meta = metaDoEscritoEnviado(r.meta, JSON.parse(linha.meta));
     const meta = JSON.stringify(r.meta);
     const doc = JSON.stringify(r.doc);
     if (meta !== linha.meta || doc !== linha.doc) {
@@ -1801,6 +1819,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     meu: l.dono_email === eu.email,
     // o Roteiro escrito no PROMeiro (#189): o estado; a regra de quem escreve é a dele, não a do servidor aberto
     ...(l.escrito ? { escrito: l.escrito } : aberto ? { aberto: true } : {}),
+    // o roteiro da fila que saiu do Enviar (#194): o escrito de onde veio
+    ...(l.escrito_de ? { escritoDe: l.escrito_de } : {}),
     // o arquivo que subiu, para baixar de novo
     ...(() => {
       const o = q.infoOriginal.get(l.id);
@@ -1839,7 +1859,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const { linha: atual, editar: podeEditar, ler: podeLer } = acesso(id, eu);
     if (!atual || !podeLer) return json(res, 404, { erro: 'Roteiro não encontrado.' });
     // o roteiro sendo escrito (#189) não está na fila: ele chega ao Trello (e à Produção, e à Pauta) só pelo Enviar (#194)
-    if (oque === 'trello' && atual.escrito === 'sendo-escrito') return json(res, 409, { erro: 'Este roteiro ainda está sendo escrito: ele vai para a fila pelo Enviar.' });
+    // depois do Enviar (#194), quem vai é o roteiro da fila (a cópia do último envio), nunca o escrito
+    if (oque === 'trello' && atual.escrito) return json(res, 409, { erro: atual.escrito === 'sendo-escrito' ? 'Este roteiro ainda está sendo escrito: ele vai para a fila pelo Enviar.' : 'Este roteiro vai pela fila: quem vai ao Trello é o último envio dele.' });
 
     if (oque === 'original' && req.method === 'GET') {
       // baixar o arquivo como subiu: quem lê o roteiro pode baixar
@@ -1969,6 +1990,116 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     } finally {
       enviando.delete(id);
       avisarFila('alterado', id, eu);
+    }
+  }
+
+  /* ---------- o Enviar do Roteiro escrito no PROMeiro (#194) ---------- */
+
+  /** Envios em andamento, por escrito: dois Enviar ao mesmo tempo não viram duas cópias na fila. */
+  const enviandoEscrito = new Set();
+
+  /** Os envios de um escrito (as fotos, do mais novo ao mais velho) e o roteiro da fila do último, com o card e o
+      andamento da arte (pela Produção ligada a ele, pelo card ou pelo roteiro). */
+  function enviosDoEscrito(id, eu) {
+    const envios = q.fotosDoEscrito.all(id).map((v) => {
+      const meta = JSON.parse(v.meta);
+      return { n: v.n, em: v.criado_em, por: { nome: v.por_nome, email: v.por_email }, motivo: textoDoMotivo(v.motivo), claquete: String(meta.claquete ?? ''), ...letraEVersaoDaFoto(meta) };
+    });
+    const copia = q.copiaDoEscrito.get(id);
+    if (!copia || !acesso(copia.id, eu).ler) return { envios, fila: null };
+    const e = q.envio.get(copia.id);
+    const noTrello = e?.estado === 'enviado' || e?.estado === 'duplicado';
+    const producao = producoes.doRoteiro({ roteiro: copia.id, card: noTrello ? e.card_id : null });
+    const meta = JSON.parse(copia.meta);
+    return {
+      envios,
+      fila: {
+        id: copia.id,
+        claquete: String(meta.claquete ?? ''),
+        ...(e ? { trello: { estado: e.estado, url: e.url ?? undefined } } : {}),
+        designers: producao?.designers ?? [],
+        andamento: andamentoDaArte(producao),
+      },
+    };
+  }
+
+  /**
+   * O Enviar: POST { roteiro: { meta, doc }, liberada?, motivo?, copia? }. O navegador manda o texto da folha e a meta já
+   * pelo caminho da fila (a claquete conferida, a atração, o editor da pauta, as artes que já existem); o servidor, numa
+   * transação, grava a foto do envio no escrito (versoes, motivo "enviado"), põe na fila a cópia do envio (um roteiro
+   * comum, `escrito_de` = o escrito) e passa o escrito a enviado, com a claquete. No reenvio (pede `liberada`, a resposta
+   * de "já foi liberada para exibição?"), a cópia nova substitui a anterior como a versão nova de hoje: fica com o
+   * trabalho da revisão, a letra ou a versão seguinte e o card do Trello, e a anterior sai da fila (com a lápide).
+   */
+  async function rotaDoEnviar(req, res, eu, id, oque) {
+    if (!ID_VALIDO.test(id)) return json(res, 400, { erro: 'Identificador inválido.' });
+    const { linha, editar, ler } = acesso(id, eu);
+    if (!linha || !ler) return json(res, 404, { erro: 'Roteiro não encontrado.' });
+    if (!linha.escrito) return json(res, 409, { erro: 'Este roteiro chegou de fora: ele já está na fila.' });
+    if (oque === 'envios') return req.method === 'GET' ? json(res, 200, enviosDoEscrito(id, eu)) : json(res, 405, { erro: 'Método não permitido.' });
+    if (req.method !== 'POST') return json(res, 405, { erro: 'Método não permitido.' });
+    if (!editar) return json(res, 403, { erro: 'Só quem escreve o roteiro o envia.' });
+    const corpo = (await lerCorpo(req)) ?? {};
+    const r = corpo.roteiro;
+    if (!r || typeof r.meta !== 'object' || !r.meta || r.doc?.type !== 'doc') return json(res, 400, { erro: 'Roteiro inválido.' });
+    if (!String(r.meta.claquete ?? '').trim()) return json(res, 400, { erro: 'Falta a claquete.' });
+    const ultimaFoto = q.fotosDoEscrito.get(id);
+    if (ultimaFoto && typeof corpo.liberada !== 'boolean') return json(res, 400, { erro: 'Responda se a chamada já foi liberada para exibição.' });
+    const novo = typeof corpo.copia === 'string' && corpo.copia ? corpo.copia : randomUUID();
+    if (!ID_VALIDO.test(novo) || novo.startsWith(PREFIXO_DO_TOUR)) return json(res, 400, { erro: 'Identificador inválido.' });
+    if (q.um.get(novo) || q.lapide.get(novo)) return json(res, 409, { erro: 'Esse roteiro já existe.' });
+    if (enviandoEscrito.has(id)) return json(res, 409, { erro: 'Este roteiro já está sendo enviado.' });
+    enviandoEscrito.add(id);
+    try {
+      const agora = new Date().toISOString();
+      const anteriorLinha = q.copiaDoEscrito.get(id);
+      const anterior = anteriorLinha ? { meta: JSON.parse(anteriorLinha.meta), doc: JSON.parse(anteriorLinha.doc) } : null;
+      const meta = { ...r.meta, claquete: String(r.meta.claquete).trim().slice(0, 300) };
+      const nova = roteiroDaFila({ id: novo, meta, doc: r.doc, anterior, ultimo: ultimaFoto ? JSON.parse(ultimaFoto.meta) : null, liberada: !!corpo.liberada, agora });
+      const metaJ = JSON.stringify(nova.meta);
+      const docJ = JSON.stringify(nova.doc);
+      // a conta das artes da cópia é a do servidor: a herança da anterior pode tirar artes da lista
+      const nArtes = contarArtes(nova.meta, nova.doc);
+      const metaDoEscrito = metaDoEscritoEnviado(JSON.parse(linha.meta), nova.meta);
+      const herdado = anteriorLinha ? q.envio.get(anteriorLinha.id) : null;
+      const n = (q.ultimaVersao.get(id)?.n ?? 0) + 1;
+      db.exec('BEGIN');
+      try {
+        q.inserirCopia.run(novo, linha.dono_email, linha.dono_nome, metaJ, docJ, nArtes, ORIGEM_DO_ENVIO, id, agora, agora);
+        q.versoesLidas.run(JSON.stringify(versoesLidas(nova.meta, nova.doc)), novo);
+        versionar(novo, eu, metaJ, docJ, 'criação', agora);
+        // a anterior: o card passa para a nova (o herdarDe de hoje) e ela sai da fila, com a lápide
+        if (anteriorLinha) {
+          if (herdado) q.marcarEnvio.run(novo, herdado.estado, herdado.card_id, herdado.url, herdado.erro, herdado.avisos, herdado.em, null, herdado.por_nome);
+          const velha = q.um.get(anteriorLinha.id);
+          q.gravarLapide.run(velha.id, String(JSON.parse(velha.meta)?.claquete ?? ''), eu.nome, eu.email, agora, velha.publico ? 1 : 0, JSON.stringify([velha.dono_email, ...q.compartilhadoCom.all(velha.id).map((c) => c.email)]));
+          q.apagar.run(velha.id);
+        }
+        // a foto do envio, com o motivo, no escrito; e o escrito passa a enviado, com a claquete conferida
+        q.novaVersao.run(id, n, agora, eu.email, eu.nome, motivoDoEnvio(corpo.motivo), metaJ, docJ);
+        q.marcarEnviado.run(JSON.stringify(metaDoEscrito), agora, id);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+      // a sala do escrito fica sabendo da claquete (quem está nela vê na hora; a guardada recebe para a próxima abertura)
+      metaNoYdoc(id, metaDoEscrito);
+      if (anteriorLinha) {
+        fecharSala(anteriorLinha.id, 'apagado');
+        avisarFila('apagado', anteriorLinha.id, eu);
+      }
+      avisarFila('criado', novo, eu);
+      console.log(`[roteiros] ${eu.email} enviou o roteiro ${id} (envio ${n}) para a fila como ${novo}`);
+      return json(res, 201, {
+        copia: { ...paraFora(q.um.get(novo), eu), podeEditar: acesso(novo, eu).editar },
+        envio: { n, claquete: nova.meta.claquete, ...letraEVersaoDaFoto(nova.meta) },
+        cardHerdado: !!herdado && (herdado.estado === 'enviado' || herdado.estado === 'duplicado'),
+        substituiu: anteriorLinha?.id ?? null,
+        escrito: { ...paraFora(q.um.get(id), eu), podeEditar: editar },
+      });
+    } finally {
+      enviandoEscrito.delete(id);
     }
   }
 
@@ -3367,9 +3498,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       for (const [chave, valor] of entradas) preferencias.gravar(eu.email, chave, valor);
       return json(res, 200, { ok: true, preferencias: preferencias.ler(eu.email) });
     }
+    const doEnviar = /^\/api\/roteiros-escritos\/([^/]+)\/(enviar|envios)$/.exec(caminho);
+    if (doEnviar) return rotaDoEnviar(req, res, eu, doEnviar[1], doEnviar[2]);
     if (caminho === '/api/roteiros-escritos') {
       // os Roteiros escritos no PROMeiro (#189): GET, os que a pessoa lê (a lista de "Roteiros", com as abas); POST
-      // { id?, titulo? }, o Novo roteiro, que nasce sendo escrito, visível para a equipe e com a pessoa de redatora
+      // { id?, titulo? }, o Novo roteiro, que nasce sendo escrito, visível para a equipe e com a pessoa de redatora. Aberto
+      // de um arquivo ou colado (#195), também { doc, meta, origem, nArtes }: o texto já lido no navegador, com os tipos
+      // e as artes, e da meta só os campos de fora (metaDeFora)
       const eRedator = await areas.quemE(eu.email, cadastros);
       const comecar = podeComecar({ redator: !!eRedator.redator, coordenacao: escala.ehCoordenacao(eu.email), admin: cadastros.podeApagar(eu.email) });
       if (req.method === 'GET') return json(res, 200, { podeComecar: comecar, roteiros: resumosPara(eu, { escritos: true }) });
@@ -3380,11 +3515,15 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!ID_VALIDO.test(id) || id.startsWith(PREFIXO_DO_TOUR)) return json(res, 400, { erro: 'Identificador inválido.' });
       if (q.um.get(id) || q.lapide.get(id)) return json(res, 409, { erro: 'Esse roteiro já existe.' });
       const agora = new Date().toISOString();
-      const meta = metaDoNovo(tituloLimpo(corpo.titulo), eRedator.redator?.nome ?? eu.nome);
-      const doc = { type: 'doc', content: [{ type: 'paragraph' }] };
-      q.inserirEscrito.run(id, eu.email, eu.nome, JSON.stringify(meta), JSON.stringify(doc), agora, agora);
-      versionar(id, eu, JSON.stringify(meta), JSON.stringify(doc), 'começou', agora);
-      console.log(`[roteiros] ${eu.email} começou o roteiro ${id}`);
+      const deFora = corpo.doc !== undefined;
+      if (deFora && (corpo.doc?.type !== 'doc' || !Array.isArray(corpo.doc.content) || !corpo.doc.content.length)) return json(res, 400, { erro: 'Roteiro inválido.' });
+      const meta = metaDoNovo(tituloLimpo(corpo.titulo), eRedator.redator?.nome ?? eu.nome, deFora ? corpo.meta : {});
+      const doc = deFora ? corpo.doc : { type: 'doc', content: [{ type: 'paragraph' }] };
+      const origem = deFora && typeof corpo.origem === 'string' && corpo.origem.trim() ? corpo.origem.trim().slice(0, 255) : null;
+      const nArtes = deFora && Number.isInteger(corpo.nArtes) && corpo.nArtes >= 0 ? corpo.nArtes : 0;
+      q.inserirEscrito.run(id, eu.email, eu.nome, JSON.stringify(meta), JSON.stringify(doc), nArtes, origem, agora, agora);
+      versionar(id, eu, JSON.stringify(meta), JSON.stringify(doc), deFora ? (origem ? 'começou do arquivo' : 'começou do colado') : 'começou', agora);
+      console.log(`[roteiros] ${eu.email} começou o roteiro ${id}${deFora ? (origem ? ' de um arquivo' : ' de um texto colado') : ''}`);
       return json(res, 201, { ...paraFora(q.um.get(id), eu), podeEditar: true });
     }
     if (caminho === '/api/meus-roteiros') {
@@ -3425,6 +3564,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       }
       const meusEscritos = escritos.filter((r) => r.meu);
       const daFila = nome ? dosMeusRoteiros(resumosPara(eu), area, nome) : [];
+      // o último envio de um Roteiro que a pessoa escreveu (#194) é dela no Redator, também sem o cadastro de redator
+      if (area === 'redator') for (const r of resumosPara(eu)) if (r.escritoDe && r.meu && !daFila.some((x) => x.id === r.id)) daFila.push(r);
       return json(res, 200, { area, nome, roteiros: [...meusEscritos, ...daFila].map(comOCiclo) });
     }
     if (caminho === '/api/eu/tour') {
@@ -3960,6 +4101,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         reservas.set(id, { ate: Date.now() + 20_000, aba });
         fora.semear = true;
       }
+      // quem só lê o Roteiro escrito no PROMeiro que nunca teve sala (o salvo antes do #191) não espera quem escreve
+      // abrir: lê o texto guardado, sem a sala (#194)
+      if (atual.escrito && !podeEditar && vazio) fora.semSala = true;
       return json(res, 200, fora);
     }
     if (req.method === 'DELETE') {
@@ -3998,7 +4142,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (pelaSala) {
         r.meta = JSON.parse(atual.meta);
         r.doc = JSON.parse(atual.doc);
-      }
+      } else if (atual?.escrito === 'enviado') r.meta = metaDoEscritoEnviado(r.meta, JSON.parse(atual.meta));
       const agora = new Date().toISOString();
       const meta = JSON.stringify(r.meta);
       const doc = JSON.stringify(r.doc);
@@ -4030,7 +4174,7 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         }
         // o que o app preenche sozinho (a atração reconhecida depois de um cadastro) não é revisão de ninguém; escrever o
         // roteiro também não (o "revisado por" é da fila)
-        if (atual && !sendoEscrito && !corpo.automatico && (atual.meta !== meta || atual.doc !== doc)) {
+        if (atual && !atual.escrito && !corpo.automatico && (atual.meta !== meta || atual.doc !== doc)) {
           novoRevisor = atual.revisado_email !== eu.email;
           q.revisou.run(eu.email, eu.nome, id);
         }
@@ -4050,7 +4194,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (mudouAcesso) fecharSala(id, 'acesso alterado', (con) => con.eu.email !== eu.email);
       // a fila só precisa saber quando muda o que ela mostra; o texto sendo digitado não conta, e o roteiro sendo
       // escrito (#189) não está nela
-      if (sendoEscrito) return json(res, 200, { ok: true, atualizadoEm: agora });
+      // nem o enviado (#194): na fila está a cópia do último envio
+      if (atual?.escrito) return json(res, 200, { ok: true, atualizadoEm: agora });
       if (!atual) avisarFila('criado', id, eu);
       else if (novoRevisor || atual.meta !== meta || atual.n_artes !== nArtes) avisarFila('alterado', id, eu);
       return json(res, 200, { ok: true, atualizadoEm: agora });

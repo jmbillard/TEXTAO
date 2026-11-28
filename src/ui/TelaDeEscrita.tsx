@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { EditorContent, useEditor } from '@tiptap/react';
 import History from '@tiptap/extension-history';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
-import { armazenamento, type Leitura } from '../dados/armazenamento';
+import { armazenamento, guardarOriginal, type Leitura } from '../dados/armazenamento';
 import { abrirSala, corDe } from '../dados/colaboracao';
 import { extensoesDoRoteiro, prepararColagem, Teclado } from '../editor/extensoes';
 import { Escrita, type PonteDaEscrita } from '../editor/escrita';
+import { ColagemNaEscrita } from '../editor/colagem';
+import { ComecarNaFolha, type ComecoLido } from './ComecarDeFora';
+import { Colunas, mudarVisao, type Visao } from '../editor/colunas';
+import { exportar } from '../modelo/exportar';
 import { metaVazia, type Meta, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
@@ -15,9 +20,13 @@ import { ComentariosNoTexto } from '../editor/comentarios';
 import { ArtesDaEscrita, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
-import { ATALHO_DE_COMENTAR, quandoComecou } from './util';
+import { atalho, ATALHO_DE_COMENTAR, baixar, nomeDoArquivo, plural, quandoComecou, semMovimento } from './util';
 import { Presentes } from './Filmes';
 import { useSalaDaEscrita } from './salaDaEscrita';
+import { EnviosDaEscrita, PainelDoEnviar } from './EnviarDaEscrita';
+import type { EnvioDoEscrito, EnvioFeito } from '../dados/armazenamento';
+import type { ClaqueteConferida } from '../modelo/enviar';
+import { letraEVersaoDoRoteiro, marcaDaLetraEVersao } from '../modelo/letraEVersao';
 import './escrita.css';
 
 /* O editor de escrita (#189, spec #186): o Roteiro sendo escrito no PROMeiro, numa folha corrida com o título no topo e
@@ -31,7 +40,13 @@ import './escrita.css';
 
    O escrever (#190) mora em `editor/escrita.ts` (o teclado, o palpite, as fichas) e em `EscritaNaFolha.tsx` (a margem
    dos tipos, o menu do "/", os balões, a lista das artes e o rodapé). Os ganchos dos próximos tickets ficam marcados: a
-   sala e a presença no topo (#191), os comentários (#192), Texto/Colunas e o modo limpo (#193) e o Enviar (#194). */
+   sala e a presença no topo (#191), os comentários (#192) e o Enviar (#194).
+
+   Ver (#193): embaixo do título, "Texto" e "Colunas" (vídeo | áudio) são duas visões do mesmo documento: nas colunas,
+   cada trecho ganha o lugar dele por decoração (`editor/colunas.ts`), e a troca anda numa animação FLIP. O modo limpo
+   (o botão e Ctrl+Shift+L, numa transição) esconde tudo menos a folha e mostra a cara dos .docx de hoje; o "/" e os
+   atalhos continuam, porque o editor é o mesmo. Em colunas, o limpo vira a tabela de bordas pretas. O .docx baixado
+   sai igual ao limpo da visão de agora (`gerarDocx` com `limpo`). */
 
 /** Quanto a folha espera depois da última tecla para salvar. */
 const SALVAR_MS = 600;
@@ -46,9 +61,13 @@ interface Props {
   pessoa?: Pessoa;
   /** a linha do logo, com o caminho de "Roteiros" */
   topo: ReactNode;
+  /** o Enviar (#194): o caminho da fila (App), com a claquete conferida no painel */
+  enviar?: EnviarDaFolha;
 }
+/** O Enviar da folha (#194): o roteiro como está, a claquete conferida, o motivo e, no reenvio, a resposta da liberação. */
+export type EnviarDaFolha = (escrito: Roteiro, conferida: ClaqueteConferida, opcoes: { motivo: string; liberada?: boolean; jaEnviado: boolean }) => Promise<EnvioFeito>;
 
-export function TelaDeEscrita({ id, voltar, abrirNaRevisao, avisar, pessoa, topo }: Props) {
+export function TelaDeEscrita({ id, voltar, abrirNaRevisao, avisar, pessoa, topo, enviar }: Props) {
   const [leitura, setLeitura] = useState<Leitura | undefined>(undefined);
   const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
@@ -71,13 +90,13 @@ export function TelaDeEscrita({ id, voltar, abrirNaRevisao, avisar, pessoa, topo
         <LinkQuebrado caso={casoDaLeitura(leitura)} voltar={voltar} tentar={() => setTentativa((n) => n + 1)} />
       </div>
     );
-  return <Folha key={leitura.roteiro.id} inicial={leitura.roteiro} voltar={voltar} avisar={avisar} pessoa={pessoa} topo={topo} />;
+  return <Folha key={leitura.roteiro.id} inicial={leitura.roteiro} voltar={voltar} avisar={avisar} pessoa={pessoa} topo={topo} enviar={enviar} />;
 }
 
 /** O que a folha salva agora. */
 type Salvamento = 'salvo' | 'salvando' | 'erro';
 
-function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa; topo: ReactNode }) {
+function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Roteiro; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa; topo: ReactNode; enviar?: EnviarDaFolha }) {
   const meu = inicial.meu !== false;
   // a regra é do servidor (regraDoEscrito): o autor, o convidado que escreve, a coordenação e o administrador
   const escreve = meu || !!inicial.podeEditar;
@@ -99,16 +118,32 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   const [abertos, setAbertos] = useState(0);
   // a escrita (#190): a ponte entre o teclado do editor e a tela (o menu do "/", os balões), e a arte com o balão aberto
   const ponte = useRef<PonteDaEscrita>({});
+  // o Ctrl+Enter do Enviar (#194), à parte da ponte que a margem preenche
+  const enviarPelaTecla = useRef<PonteDaEscrita['enviar']>(undefined);
   const [arteAberta, setArteAberta] = useState<string | null>(null);
   // a sala ao vivo (#191): só existe com o servidor; o exemplo do tour não chega aqui (ele não é escrito no PROMeiro)
-  const [sala] = useState(() => (armazenamento.tipo === 'servidor' ? abrirSala(inicial.id) : null));
+  // quem só lê o roteiro que nunca teve sala (o salvo antes do #191) lê o texto guardado, sem esperar quem escreve (#194)
+  const [sala] = useState(() => (armazenamento.tipo === 'servidor' && !inicial.semSala ? abrirSala(inicial.id) : null));
+  // o Enviar (#194): o estado do escrito, o último envio, o painel aberto (e o botão de onde ele cresce)
+  const [estadoDoEscrito, setEstadoDoEscrito] = useState(inicial.escrito ?? 'sendo-escrito');
+  const [ultimoEnvio, setUltimoEnvio] = useState<EnvioDoEscrito | null>(null);
+  const [vezDosEnvios, setVezDosEnvios] = useState(0);
+  const [enviando, setEnviando] = useState<Roteiro | null>(null);
+  const botaoEnviar = useRef<HTMLButtonElement>(null);
+  // ver (#193): a visão (texto ou colunas) e o modo limpo são de cada um, não do roteiro
+  const [visao, setVisao] = useState<Visao>('texto');
+  const [limpo, setLimpo] = useState(false);
 
   const editor = useEditor({
     extensions: [
       ...extensoesDoRoteiro(),
       // o teclado da escrita (#190) vem antes do da revisão: o "/", o Tab nos tipos, o Ctrl+U no trecho, as fichas
-      Escrita.configure({ ponte: () => ponte.current, programa: () => estado.current.meta.programa }),
+      Escrita.configure({ ponte: () => ({ ...ponte.current, enviar: enviarPelaTecla.current }), programa: () => estado.current.meta.programa }),
+      // as colunas (#193): o lugar de cada trecho na grade vídeo | áudio, só decoração sobre o mesmo documento
+      Colunas,
       Teclado.configure({ programa: () => estado.current.meta.programa }),
+      // colar do Word no meio do texto (#195): linha a linha, com a arte inteira já do tipo arte
+      ColagemNaEscrita,
       // o grifo dos trechos comentados (#192): decoração, o documento não muda
       ComentariosNoTexto,
       // na sala, o texto é o do documento compartilhado (com o desfazer de cada um) e os cursores dos colegas
@@ -129,6 +164,9 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
       transformPastedHTML: prepararColagem,
     },
     onCreate: ({ editor: e }) => setVazia(e.isEmpty),
+    // o texto que chega da sala (o preenchimento, o colega digitando) não passa pelo onUpdate: a folha vazia também
+    // deixa de ser vazia com ele (senão o convite do começo, #195, ficaria por cima do texto)
+    onTransaction: ({ editor: e, transaction }) => transaction.docChanged && setVazia(e.isEmpty),
     onUpdate: ({ editor: e }) => {
       setVazia(e.isEmpty);
       // na sala, quem salva é ela
@@ -143,6 +181,21 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   });
   // a marca de salvo junta a sala (o texto) e o PUT (quem vê)
   const marca: Salvamento = salvamento === 'erro' || gravacao === 'sem-conexao' ? 'erro' : salvamento === 'salvando' || gravacao === 'salvando' ? 'salvando' : 'salvo';
+
+  // o começo lido de um arquivo ou de um colado na folha vazia (#195): o texto com os tipos e as artes, o título (se
+  // ainda não há) e os campos de fora da meta; o original fica guardado no roteiro
+  const corpo = useRef<HTMLDivElement>(null);
+  const receberDeFora = ({ comeco, arquivo, original }: ComecoLido) => {
+    if (!editor) return;
+    editor.chain().setContent(comeco.doc, true).focus('end').run();
+    const novos: Partial<Meta> = { ...comeco.meta, ...(estado.current.meta.titulo.trim() || !comeco.titulo ? {} : { titulo: comeco.titulo }) };
+    setMeta((m) => ({ ...m, ...novos }));
+    if (sala) sala.doc.transact(() => Object.entries(novos).forEach(([k, v]) => v !== undefined && sala.meta.set(k, v)));
+    else mudou();
+    if (arquivo) void guardarOriginal(inicial.id, arquivo, original).catch(() => {});
+    const trechos = (comeco.doc.content ?? []).filter((p) => (p.content ?? []).length).length;
+    avisar(`${arquivo ? arquivo.name : 'O texto colado'} entrou na folha: ${plural(trechos, 'trecho', 'trechos')}, ${plural(comeco.nArtes, 'arte', 'artes')}.`);
+  };
 
   const mudou = () => {
     mexeu.current = true;
@@ -163,6 +216,33 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
     }),
     [editor, inicial, meu],
   );
+
+  // o Enviar (#194): o botão e o Ctrl+Enter abrem o painel com o roteiro como está agora
+  const podeEnviar = escreve && !!enviar && armazenamento.tipo === 'servidor';
+  const abrirEnviar = useCallback(() => {
+    if (podeEnviar && liberado) setEnviando(roteiroAtual());
+  }, [podeEnviar, liberado, roteiroAtual]);
+  // no texto, a tecla chega pela ponte da escrita (antes da quebra de linha do editor); fora dele, pela janela
+  enviarPelaTecla.current = podeEnviar && !enviando ? () => (abrirEnviar(), true) : undefined;
+  useEffect(() => {
+    if (!podeEnviar || enviando) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.defaultPrevented) return;
+      e.preventDefault();
+      abrirEnviar();
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [podeEnviar, enviando, abrirEnviar]);
+  const aoEnviar = (feito: EnvioFeito) => {
+    setEstadoDoEscrito('enviado');
+    // a claquete, a letra e a versão são do envio; o resto da meta continua o da folha
+    const { claquete, programa, tipoPrograma, dataExibicao, editor: ed, letra, versao, status } = feito.escrito.meta;
+    setMeta((m) => ({ ...m, claquete, programa, tipoPrograma, dataExibicao, editor: ed, letra, versao, status }));
+    setVezDosEnvios((n) => n + 1);
+    const marca = marcaDaLetraEVersao(feito.envio) || 'V1';
+    avisar(feito.substituiu ? `${feito.envio.claquete} · ${marca} está na fila, no lugar do envio anterior${feito.cardHerdado ? ', com o card dele' : ''}.` : `${feito.envio.claquete} está na fila da arte.`);
+  };
 
   // salva sozinho, um instante depois da última mudança; o que muda enquanto a gravação vai e volta salva na próxima
   const mudancasAgora = useRef(0);
@@ -201,7 +281,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
     if (!t) return;
     t.style.height = 'auto';
     t.style.height = `${t.scrollHeight}px`;
-  }, [meta.titulo]);
+    // no modo limpo (#193), a letra do título muda: a altura acompanha
+  }, [meta.titulo, limpo]);
 
   const mudarTitulo = (valor: string) => {
     const t = valor.replace(/\n/g, ' ');
@@ -215,6 +296,40 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
     setPessoas(lista);
     mudou();
   };
+  // Texto | Colunas: a grade vem da decoração e a tela muda junto, no mesmo instante, para o FLIP medir o lugar final
+  const trocarVisao = (v: Visao) => {
+    if (!editor || v === visao) return;
+    mudarVisao(editor, v, () => flushSync(() => setVisao(v)));
+  };
+  // o modo limpo entra e sai numa transição da página (a folha muda de cara no lugar); com o movimento reduzido, direto
+  const alternarLimpo = useCallback(() => {
+    const trocar = () => flushSync(() => setLimpo((v) => !v));
+    const doc = document as Document & { startViewTransition?: (f: () => void) => unknown };
+    if (doc.startViewTransition && !semMovimento()) doc.startViewTransition(trocar);
+    else trocar();
+  }, []);
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      // Ctrl+Shift+L (⌘⇧L no Mac), também com o cursor no texto
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === 'KeyL') {
+        e.preventDefault();
+        alternarLimpo();
+      }
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [alternarLimpo]);
+  // o .docx sai igual ao limpo da visão de agora
+  const baixarDocx = async () => {
+    try {
+      const r = roteiroAtual();
+      const blob = await (await import('./exportarDocx')).gerarDocx(exportar(r), { limpo: visao });
+      baixar(blob, `${nomeDoArquivo(r.meta)}.docx`);
+    } catch (e) {
+      avisar((e as Error).message || 'Não consegui gerar o .docx.');
+    }
+  };
+
   // o painel de quem vê fecha no clique fora e no Esc
   const caixaDoPainel = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -233,7 +348,18 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   const visibilidade = publico ? 'Visível para a equipe' : pessoas.length ? `Fechado · ${pessoas.length === 1 ? '1 convidado' : `${pessoas.length} convidados`}` : 'Fechado';
 
   return (
-    <div className="pagina pagina-escrita">
+    <div className={`pagina pagina-escrita${limpo ? ' limpo' : ''}`} data-visao={visao}>
+      {/* no limpo, só a folha: o topo, a barra, as artes e o rodapé saem; fica o caminho de volta */}
+      {limpo && (
+        <div className="sair-do-limpo" role="toolbar" aria-label="Modo limpo">
+          <button type="button" className="botao-texto" onClick={() => void baixarDocx()} title={`Baixa o .docx igual a esta folha, em ${visao === 'colunas' ? 'colunas' : 'texto'}`}>
+            <Icone nome="baixar" tam={14} traco={2} /> .docx
+          </button>
+          <button type="button" className="botao" onClick={alternarLimpo}>
+            Sair do modo limpo <kbd>{atalho('Mod-Shift-l')}</kbd>
+          </button>
+        </div>
+      )}
       {topo}
       <div className="escrita-barra" role="toolbar" aria-label="O roteiro">
         <button type="button" className="botao-texto escrita-voltar" onClick={voltar}>
@@ -279,7 +405,13 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
             <Icone nome={publico ? 'olho' : 'cadeado'} tam={14} traco={2} /> {publico ? 'Visível para a equipe' : 'Fechado'}
           </span>
         )}
-        {/* #194: o Enviar (e o Ctrl+Enter) entra aqui, na ponta */}
+        {/* #194: o Enviar (e o Ctrl+Enter), na ponta */}
+        {podeEnviar && (
+          <button type="button" ref={botaoEnviar} className="botao primario escrita-enviar" disabled={!liberado} aria-keyshortcuts="Control+Enter" title={`${estadoDoEscrito === 'enviado' ? 'Enviar a versão nova' : 'Enviar para a fila'} (${atalho('Mod-Enter')})`} onClick={abrirEnviar}>
+            <Icone nome="subir" tam={14} traco={2} />
+            <span className="escrita-enviar-nome">Enviar</span>
+          </button>
+        )}
       </div>
       {!escreve && (
         <p className="escrita-so-lendo" role="status">
@@ -290,10 +422,10 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
         </p>
       )}
       <main className="escrita">
-        <article className={`folha-escrita${vazia ? ' vazia' : ''}${escreve ? '' : ' so-leitura'}${liberado ? '' : ' chegando'}`} aria-label="Roteiro sendo escrito" aria-busy={!liberado}>
+        <article data-visao={visao} className={`folha-escrita${limpo ? ' limpo' : ''}${vazia ? ' vazia' : ''}${escreve ? '' : ' so-leitura'}${liberado ? '' : ' chegando'}`} aria-label="Roteiro sendo escrito" aria-busy={!liberado}>
           <header className="folha-escrita-cabeca">
             <p className="folha-escrita-sobre">
-              Roteiro <span aria-hidden="true">·</span> sendo escrito
+              Roteiro <span aria-hidden="true">·</span> {estadoDoEscrito === 'enviado' ? <>enviado <span aria-hidden="true">·</span> <span className="folha-escrita-claquete">{meta.claquete}{marcaDaLetraEVersao(letraEVersaoDoRoteiro(meta)) ? ` ${marcaDaLetraEVersao(letraEVersaoDoRoteiro(meta))}` : ''}</span></> : 'sendo escrito'}
             </p>
             <textarea
               ref={titulo}
@@ -322,22 +454,60 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
                 </span>
               )}
             </p>
-            {/* #193: Texto/Colunas e o modo limpo entram aqui, embaixo do título */}
+            {/* ver (#193): Texto | Colunas, o modo limpo e o .docx igual a ele */}
+            <div className="escrita-ver" role="toolbar" aria-label="Ver o roteiro">
+              <div className="segmento" role="radiogroup" aria-label="Texto ou colunas">
+                <button type="button" role="radio" aria-checked={visao === 'texto'} onClick={() => trocarVisao('texto')} title="O texto corrido">
+                  <Icone nome="corrido" tam={14} traco={2} /> Texto
+                </button>
+                <button type="button" role="radio" aria-checked={visao === 'colunas'} onClick={() => trocarVisao('colunas')} title="Vídeo | áudio, como roteiro de TV">
+                  <Icone nome="colunas" tam={14} traco={2} /> Colunas
+                </button>
+              </div>
+              <button type="button" className="botao escrita-ver-limpo" aria-pressed={limpo} onClick={alternarLimpo} title={`Só a folha, com a cara do .docx (${atalho('Mod-Shift-l')})`}>
+                <Icone nome="arquivo" tam={14} traco={2} /> Limpo
+              </button>
+              <button type="button" className="botao-texto escrita-ver-docx" onClick={() => void baixarDocx()} title={`Baixa o .docx igual ao modo limpo, em ${visao === 'colunas' ? 'colunas' : 'texto'}`}>
+                <Icone nome="baixar" tam={14} traco={2} /> .docx
+              </button>
+            </div>
           </header>
           {/* a margem fica à esquerda do texto, com o tipo de cada trecho (e o "?" do palpite, #190); os balões de
               comentário (#192) ficam à direita */}
-          <div className="folha-escrita-corpo" data-margem="tipos">
+          <div className="folha-escrita-corpo" data-margem="tipos" ref={corpo}>
+            {visao === 'colunas' && (
+              <div className="cabeca-das-colunas" aria-hidden="true">
+                <span>Vídeo</span>
+                <span>Áudio</span>
+              </div>
+            )}
             <EditorContent editor={editor} />
+            {/* #195: na folha vazia, começar de um arquivo ou de um texto colado */}
+            {escreve && <ComecarNaFolha corpo={corpo} vazia={vazia} pode={liberado && !!editor} receber={receberDeFora} falhou={avisar} />}
             <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} />
             {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} />}
           </div>
         </article>
         {/* ao lado da folha: a lista das artes (#190) */}
         <aside className="escrita-lado" aria-label="Ao lado do roteiro">
+          {/* o andamento da arte e os envios (#194), depois do primeiro Enviar */}
+          {estadoDoEscrito === 'enviado' && <EnviosDaEscrita id={inicial.id} vez={vezDosEnvios} aoLer={(e) => setUltimoEnvio(e.envios[0] ?? null)} />}
           {editor && <ArtesDaEscrita editor={editor} escreve={escreve} arteAberta={arteAberta} abrirArte={setArteAberta} />}
         </aside>
       </main>
       {editor && <RodapeDaEscrita editor={editor} />}
+      {enviando && enviar && (
+        <PainelDoEnviar
+          origem={botaoEnviar.current}
+          escrito={enviando}
+          // o último envio ainda não lido: a letra e a versão que a folha já sabe
+          ultimo={estadoDoEscrito === 'enviado' ? (ultimoEnvio ?? { n: 0, em: '', por: { nome: '', email: '' }, motivo: '', claquete: meta.claquete, ...letraEVersaoDoRoteiro(meta) }) : null}
+          comentariosAbertos={abertos}
+          enviar={(conferida, opcoes) => enviar(enviando, conferida, { ...opcoes, jaEnviado: estadoDoEscrito === 'enviado' })}
+          aoEnviar={aoEnviar}
+          fechar={() => setEnviando(null)}
+        />
+      )}
     </div>
   );
 }

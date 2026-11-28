@@ -325,7 +325,7 @@ export function Comparar({ id, voltar, revisar, avisar, buscar }: Props) {
 }
 
 /** A folha com o texto de um dos lados e as diferenças marcadas: na anterior, o que saiu; na nova, o que entrou. */
-function FolhaComDiferencas({ pedacos, rotulo, anotacao, lado = 'esquerda' }: { pedacos: PedacoDaFolha[]; rotulo: string; anotacao: string; lado?: 'esquerda' | 'direita' }) {
+export function FolhaComDiferencas({ pedacos, rotulo, anotacao, lado = 'esquerda' }: { pedacos: PedacoDaFolha[]; rotulo: string; anotacao: string; lado?: 'esquerda' | 'direita' }) {
   return (
     <div className="comparar-folha-texto" aria-label={rotulo}>
       <span className={`anotacao-folha ${lado} ${lado === 'direita' ? 'circulada' : ''}`}>

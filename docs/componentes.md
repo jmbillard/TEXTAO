@@ -21,7 +21,7 @@ as durações `--rapido` (0.15s) e `--medio` (0.2s) e o respeito ao `prefers-red
 
 | Peça | Onde mora | O que é | Quando usar |
 |---|---|---|---|
-| `CardAberto` | `CardAberto.tsx` | O painel que cresce do card clicado e volta para ele, por cima de tudo. `FecharOCardAberto` é o × dele. | Para abrir qualquer card: a agenda No Trello, a Pauta, as Produções e os Filmes. Nada de abrir em linha. |
+| `CardAberto` | `CardAberto.tsx` | O painel que cresce do card clicado e volta para ele, por cima de tudo. `FecharOCardAberto` é o × dele. | Para abrir qualquer card: a agenda No Trello, a Pauta, as Produções e os Filmes; o painel do Enviar e um envio do histórico, na folha de escrita (#194). Nada de abrir em linha. |
 | `Vagas` | `vagas.tsx` | A lista com vagas animadas: o item que entra abre a vaga e o que sai a fecha (`eixo` "y" para linhas, "x" para chips). O `vazio` entra depois que a última vaga fecha. | Toda lista em que um item entra ou sai sem trocar a tela. |
 | `useDeslize` | `vagas.tsx` | O FLIP dos `[data-card]`: o que muda de lugar desliza até o lugar novo. | Quando a disposição muda (ordem, coluna). Não serve para a troca de semana (aí é a troca). |
 | `CASCATA_MS` | `cena.tsx` | O passo da cascata de entrada e quantos entram nela. | Toda lista ou coluna que chega em cascata. |
@@ -63,6 +63,7 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `RelativoAMao` | `pecas.tsx` | "hoje", "amanhã" ou "ontem" à mão. | Ao lado de um dia. |
 | `Vazio` | `pecas.tsx` | O vazio curto à mão ("nada aqui", "ninguém"). `pequeno` para células e colunas estreitas. | Os vazios de lista e de coluna. Os vazios que explicam (formulários) ficam no texto comum. |
 | `MarcaTexto` | `pecas.tsx` | A passada de marca-texto da claquete de prioridade. | A prioridade, onde a claquete aparece. |
+| `FolhaComDiferencas` | `Comparar.tsx` | A folha com o texto e o que entrou e saiu marcado, com a anotação à mão. | A comparação da versão nova e o envio aberto no histórico da folha de escrita (#194). |
 | `Riscado` | `Comparar.tsx` | O risco à mão que atravessa cada linha do texto. | O que saiu do roteiro e a arte que já existe. |
 | `BalaoDeInfo` | `BalaoDeInfo.tsx` | O balão de fala que abre o texto ali mesmo. | A observação de uma claquete ou de uma posição. |
 | `FogoComTroca` | `fogo.tsx` | O fogo da complexidade, com a troca cruzada de nível. | Onde a complexidade da arte muda. |
@@ -91,6 +92,8 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `CaixinhaDoDesfazer` | `desfazer.tsx` | A caixinha preta embaixo: a frase, o "Desfazer" sublinhado, o × e o trilho do tempo. Fica 8 s (`PRAZO_DO_DESFAZER`). | Toda ação que se pode desfazer. |
 | `useDesfazerAdiado` | `desfazer.tsx` | O desfazer adiado: some na hora e só vai ao servidor no fim do prazo. | Apagar, remover ou ignorar nos Cadastros e nas Pessoas. |
 | `ConviteDeArrastar`, `ConviteCompacto` | `pecas.tsx` | A área de soltar: o quadro tracejado com o título que se escreve e a versão deitada ao lado do título da fila. | Toda área de soltar arquivo (a fila, os Filmes). |
+| `useSeletorDeArquivos`, `AvisoDeSoltar` | `pecas.tsx` | O seletor de arquivos escondido (`um`: um arquivo só, só os de texto) e o cartão "Pode soltar" de quando um arquivo é arrastado sobre a tela. | Todo botão que abre arquivo e toda tela que aceita o arquivo solto (a fila, "Roteiros" e a folha vazia, #195). |
+| `useComecoDeFora`, `ComecarNaFolha` | `ComecarDeFora.tsx` | Começar o Roteiro de um .docx, RTF, PDF ou colado, pela leitura da fila: o seletor, o soltar na tela, o Ctrl+V e o "Lendo…"; na folha vazia, o convite e o colado do roteiro inteiro. | A lista de "Roteiros" e a folha de escrita vazia. |
 | `MenuLigar` | `Cadastros.tsx` | A busca para ligar um nome de uma lista, com o "+ Nova" preso embaixo, pelas setas e pelo Enter. | Ligar uma atração, uma campanha ou uma Produção. |
 | `EscolhaDeNome` | `pecas.tsx` | Escolher um nome da lista do Teable, com busca e o palpite à mão. | O redator e o editor. |
 | `ListaDosTurnos` | `TurnosDaConfiguracao.tsx` | A lista de turnos da Configuração (nome, horário, ordem, tirar, "+ Novo turno"). `qual` escolhe a da edição ou a da arte. | As seções de turnos. |

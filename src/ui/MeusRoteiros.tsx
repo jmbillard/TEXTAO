@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { apelidoDoRoteiro, useApelidos } from '../dados/apelidos';
 import { NomeDaClaquete, versoesDoResumo } from './Apelido';
-import { comecarRoteiro, exibicaoLembrada, lembrarExibicao, lerMeusRoteiros, lerRoteirosEscritos, type MeuRoteiro, type MeusRoteiros as Lidos, type Resumo, type RoteirosEscritos } from '../dados/armazenamento';
+import { comecarRoteiro, exibicaoLembrada, guardarOriginal, lembrarExibicao, lerMeusRoteiros, lerRoteirosEscritos, type MeuRoteiro, type MeusRoteiros as Lidos, type Resumo, type RoteirosEscritos } from '../dados/armazenamento';
 import { EXIBICOES, type AreaDosRoteiros, type Exibicao } from '../modelo/areas';
 import { CICLO, frasesDoCiclo, type CicloDoRoteiro, type EstadoDoCiclo as Estado } from '../modelo/cicloDoRoteiro';
 import { agruparPorDia, LER_ANDAMENTO_MS, type GrupoDia } from './fila';
 import { Icone, type NomeIcone } from './icones';
-import { plural, quandoComecou } from './util';
+import { atalho, ehMac, plural, quandoComecou } from './util';
 import { RoteiroAberto } from './RoteiroAberto';
 import './areas.css';
 import { AbaComRabisco, BolinhaDeAviso, BolinhaDeEstado, NadaNaBusca, Vazio } from './pecas';
@@ -14,6 +14,7 @@ import { ouvirComentarios } from '../dados/comentarios';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { ABAS_DOS_ROTEIROS, bateComABusca, escritosDaAba, tituloParaMostrar, type AbaDosRoteiros } from '../modelo/escrito';
 import { CASCATA_MS, NA_CASCATA } from './cena';
+import { fraseDoLendo, useComecoDeFora, type ComecoLido } from './ComecarDeFora';
 
 /* "Meus roteiros" do Redator e do Editor (#101): a lista simples, por dia, dos roteiros guardados no PROMeiro em que a
    pessoa é o redator (ou o editor), pelo nome do cadastro ligado ao e-mail dela. Cada roteiro mostra o seu estado no
@@ -260,14 +261,28 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false,
     };
   }, [area, de, comEscrita]);
 
+  // começar de um arquivo ou de um texto colado (#195): o Abrir arquivo, o arquivo solto na tela e o Ctrl+V fora dos
+  // campos; o roteiro nasce sendo escrito, com os tipos e as artes da leitura da fila, e a folha abre com ele
+  const podeComecarDeFora = !!escrita && !!escritos?.podeComecar && !aberto;
+  const comecarDeFora = async ({ comeco, arquivo, original }: ComecoLido) => {
+    if (!escrita) return;
+    setErro('');
+    const r = await comecarRoteiro(comeco.titulo, { doc: comeco.doc, meta: comeco.meta, nArtes: comeco.nArtes, ...(arquivo ? { origem: arquivo.name } : {}) });
+    // o arquivo como veio fica guardado no roteiro, como na fila (para baixar de novo e para o PDF do card)
+    if (arquivo) void guardarOriginal(r.id, arquivo, original).catch(() => {});
+    escrita.abrir(r.id);
+  };
+  const deFora = useComecoDeFora({ receber: comecarDeFora, falhou: setErro, soltar: podeComecarDeFora, colarNaJanela: podeComecarDeFora });
+
   if (aberto) return <RoteiroAberto area={area} id={aberto} lido={lido} topo={topo} abrir={abrir} voltar={voltar} />;
 
   // a busca (#189) vale para a lista inteira, em qualquer exibição
   const vistos = (lido?.roteiros ?? []).filter((r) => !comEscrita || bateComABusca(r, busca));
   const { proximos, exibidos } = agruparPorDia(vistos);
   // cada roteiro, em qualquer exibição, abre com um toque ou com Enter; o escrito no PROMeiro abre na folha de escrita
-  const abrirUm = (r: { id: string; escrito?: string }) => (r.escrito && escrita ? escrita.abrir(r.id) : abrir(r.id));
-  const abreCom = (r: { id: string; escrito?: string }) => ({
+  // o último envio de um escrito (#194) abre o escrito, onde o redator continua escrevendo
+  const abrirUm = (r: { id: string; escrito?: string; escritoDe?: string }) => (r.escrito && escrita ? escrita.abrir(r.id) : r.escritoDe && escrita ? escrita.abrir(r.escritoDe) : abrir(r.id));
+  const abreCom = (r: { id: string; escrito?: string; escritoDe?: string }) => ({
     tabIndex: 0,
     onClick: () => abrirUm(r),
     onKeyDown: (e: KeyboardEvent) => {
@@ -463,7 +478,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false,
       roteiros={naAba(aba)}
       lendo={!escritos}
       busca={busca}
-      vazio={aba === 'equipe' ? 'ninguém da equipe escrevendo por aqui ainda' : aba === 'sendo' ? 'nenhum roteiro sendo escrito agora' : 'nenhum roteiro enviado ainda: o Enviar chega em breve'}
+      vazio={aba === 'equipe' ? 'ninguém da equipe escrevendo por aqui ainda' : aba === 'sendo' ? 'nenhum roteiro sendo escrito agora' : 'nenhum roteiro enviado ainda'}
       abrir={escrita.abrir}
     />
   );
@@ -492,9 +507,21 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false,
           {escrita && (
             <span className="roteiros-acoes ao-lado-da-lupa">
               {escritos?.podeComecar && (
-                <button type="button" className="botao primario novo-roteiro" onClick={comecar} disabled={comecando}>
-                  <Icone nome="mais" tam={14} traco={2.2} /> Novo roteiro
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="botao abrir-roteiro"
+                    onClick={deFora.abrir}
+                    disabled={comecando || !!deFora.lendo}
+                    aria-keyshortcuts={ehMac ? 'Meta+V' : 'Control+V'}
+                    title={`Abrir um .docx, RTF ou PDF, ou soltar o arquivo aqui. Para começar de um texto do Word, cole com ${atalho('Mod-V')}.`}
+                  >
+                    <Icone nome="importar" tam={14} traco={2} /> {deFora.lendo ? 'Lendo…' : 'Abrir arquivo'}
+                  </button>
+                  <button type="button" className="botao primario novo-roteiro" onClick={comecar} disabled={comecando || !!deFora.lendo}>
+                    <Icone nome="mais" tam={14} traco={2.2} /> Novo roteiro
+                  </button>
+                </>
               )}
               <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa dica="Buscar título, claquete, atração ou pessoa" rotulo="Buscar nos roteiros" />
             </span>
@@ -502,7 +529,9 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false,
         </div>
         {abasDaEscrita}
         {listaDaAba}
+        {deFora.lendo && <p className="aviso-meus lendo-de-fora" role="status">{fraseDoLendo(deFora.lendo)}</p>}
         {erro && <p className="aviso-meus erro" role="alert">{erro}</p>}
+        {deFora.elemento}
         {(!escrita || aba === 'meus') && conteudoDosMeus()}
       </main>
     </div>
@@ -566,6 +595,8 @@ function ListaDosEscritos({ roteiros, lendo, busca, vazio, abrir }: { roteiros: 
         >
           <span className="ficha-claquete">
             <b>{nomeNaFicha(r)}</b>
+            {/* o enviado (#194) mostra a claquete conferida no Enviar */}
+            {r.escrito === 'enviado' && r.meta.claquete && <span className="ficha-claquete-enviada">{r.meta.claquete}</span>}
             <span>
               {r.dono?.nome ? `por ${r.dono.nome}` : 'sem autor'}
               {r.criadoEm && ` · ${quandoComecou(r.criadoEm)}`}

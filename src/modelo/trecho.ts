@@ -77,6 +77,20 @@ export function tipoDoTrecho(p: NoJSON): TipoLido {
   return { tipo: palpiteDoTipo(textoDoTrecho(p)), confirmado: false };
 }
 
+/**
+ * O documento que chega de fora (o arquivo aberto, o texto colado) com o tipo guardado em cada trecho (#195), para
+ * começar a ser escrito: o que a arte ou a etiqueta cobre inteiro, como a fila leu, fica confirmado; o resto fica com
+ * o palpite pelo texto, com "?". O trecho que já tem tipo guardado fica como está.
+ */
+export function comOsTiposGuardados(no: NoJSON): NoJSON {
+  if (no.type === 'paragraph') {
+    if (ehTipo(no.attrs?.tipo)) return no;
+    const { tipo, confirmado } = tipoDoTrecho(no);
+    return { ...no, attrs: { ...no.attrs, tipo, confirmado } };
+  }
+  return no.content ? { ...no, content: no.content.map(comOsTiposGuardados) } : no;
+}
+
 /** Onde o trecho fica nas colunas: no vídeo, no áudio ou na linha inteira, por cima das duas. */
 export type ColunaDoTrecho = 'video' | 'audio' | 'linha';
 
@@ -96,6 +110,77 @@ const COLUNA: Record<TipoDoTrecho, ColunaDoTrecho> = {
 /** A coluna de cada tipo: arte, edição e produção no vídeo; locução, sonora, trilha, para o locutor e o texto sem tipo
     no áudio; a locação na linha inteira (ela agrupa os trechos que vêm depois). O comentário fica com as notas, no vídeo. */
 export const colunaDoTipo = (tipo: TipoDoTrecho): ColunaDoTrecho => COLUNA[tipo];
+
+/** Um grupo das colunas (#193): a locação, sozinha na linha inteira, ou o vídeo e o áudio que andam lado a lado (os
+    índices dos trechos, na ordem do texto). */
+export type GrupoDasColunas = { tipo: 'linha'; trecho: number } | { tipo: 'par'; video: number[]; audio: number[] };
+
+/**
+ * Os grupos das colunas, na ordem do texto: os vídeos seguidos e depois os áudios seguidos andam juntos; um vídeo que
+ * vem depois de um áudio abre um grupo novo, e a locação fecha o grupo e fica numa linha só dela. É a mesma regra da
+ * grade na folha e da tabela do .docx.
+ */
+export function gruposDasColunas(tipos: readonly TipoDoTrecho[]): GrupoDasColunas[] {
+  const out: GrupoDasColunas[] = [];
+  let par: { tipo: 'par'; video: number[]; audio: number[] } | null = null;
+  tipos.forEach((tipo, i) => {
+    const coluna = colunaDoTipo(tipo);
+    if (coluna === 'linha') {
+      par = null;
+      out.push({ tipo: 'linha', trecho: i });
+      return;
+    }
+    if (!par || (coluna === 'video' && par.audio.length)) out.push((par = { tipo: 'par', video: [], audio: [] }));
+    par[coluna].push(i);
+  });
+  return out;
+}
+
+/** Onde o trecho fica na grade da folha: a linha (de 1), a coluna, quantas linhas ele ocupa e se abre ou fecha a
+    coluna dele no grupo (o fio de cima e o de baixo da tabela do modo limpo). */
+export interface LugarNaGrade {
+  linha: number;
+  coluna: ColunaDoTrecho;
+  vao: number;
+  abre: boolean;
+  fecha: boolean;
+}
+/** A célula vazia de um grupo sem trecho numa das colunas; entra na folha depois do último trecho do grupo. */
+export interface VazioNaGrade {
+  linha: number;
+  coluna: 'video' | 'audio';
+  vao: number;
+  depoisDo: number;
+}
+
+/**
+ * A grade das colunas na folha: cada trecho na linha e na coluna dele, um embaixo do outro dentro do grupo; o último
+ * da coluna mais curta estica até o fim do grupo, e a coluna sem trecho vira uma célula vazia. Assim cada grupo é uma
+ * linha da tabela, como no .docx.
+ */
+export function gradeDasColunas(tipos: readonly TipoDoTrecho[]): { lugares: LugarNaGrade[]; vazios: VazioNaGrade[] } {
+  const lugares: LugarNaGrade[] = [];
+  const vazios: VazioNaGrade[] = [];
+  let linha = 1;
+  for (const g of gruposDasColunas(tipos)) {
+    if (g.tipo === 'linha') {
+      lugares[g.trecho] = { linha: linha++, coluna: 'linha', vao: 1, abre: true, fecha: true };
+      continue;
+    }
+    const altura = Math.max(g.video.length, g.audio.length);
+    const ultimo = Math.max(...g.video, ...g.audio);
+    for (const coluna of ['video', 'audio'] as const) {
+      const lista = g[coluna];
+      if (!lista.length) vazios.push({ linha, coluna, vao: altura, depoisDo: ultimo });
+      lista.forEach((t, k) => {
+        const fecha = k === lista.length - 1;
+        lugares[t] = { linha: linha + k, coluna, vao: fecha ? altura - k : 1, abre: k === 0, fecha };
+      });
+    }
+    linha += altura;
+  }
+  return { lugares, vazios };
+}
 
 /** Um timecode ou um arquivo da rede achado no texto, que vira ficha: [ini, fim) no texto. */
 export interface FichaNoTexto {

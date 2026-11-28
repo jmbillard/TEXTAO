@@ -388,7 +388,7 @@ export function TelaEditor({ id, voltar, abrir, comparar, avisar, pessoa, cadast
     };
   }, [id, tentativa]);
   // o link da revisão de um roteiro sendo escrito (#189) leva à folha de escrita: ele só chega à revisão pelo Enviar
-  const sendoEscrito = leitura?.estado === 'ok' && leitura.roteiro.escrito === 'sendo-escrito' && !!abrirNaEscrita;
+  const sendoEscrito = leitura?.estado === 'ok' && !!leitura.roteiro.escrito && !!abrirNaEscrita;
   useEffect(() => {
     if (sendoEscrito) abrirNaEscrita?.(id);
   }, [sendoEscrito, id, abrirNaEscrita]);

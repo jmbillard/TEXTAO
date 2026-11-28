@@ -63,7 +63,25 @@
 .folha-escrita.chegando .folha-escrita-corpo, .folha-escrita.chegando .folha-escrita-titulo { opacity: 0.35; }
 .folha-escrita.chegando.vazia .texto-escrita > p:first-child::before { content: 'Abrindo o roteiro…'; }
 
+/* a folha vazia também começa de um roteiro pronto (#195): o convite fica duas linhas abaixo do cursor, sem empurrar
+   o texto, e some com a primeira letra */
+.comecar-na-folha {
+  position: absolute; top: 4.2em; left: var(--margem-dos-tipos); right: 0; margin: 0;
+  font-size: 14px; line-height: 1.6; color: var(--tinta3); animation: entrar-suave 0.4s 0.2s var(--suave) both;
+}
+.comecar-na-folha .comecar-abrir { display: inline-flex; align-items: center; gap: 5px; font-size: inherit; }
+.comecar-na-folha kbd { font-size: 12px; }
+.comecar-na-folha-lendo { color: var(--tinta2); }
+/* no modo limpo e nas colunas, o convite sai (o colar e o soltar continuam valendo); o "lendo" fica */
+.pagina-escrita.limpo .comecar-na-folha:not([role="status"]), .pagina-escrita[data-visao="colunas"] .comecar-na-folha:not([role="status"]) { display: none; }
+/* no celular, o convite desce (o "Comece a escrever" quebra em duas linhas) e fica só o abrir: lá não se arrasta nem há Ctrl+V */
+@media (max-width: 600px) {
+  .comecar-na-folha { top: 6.6em; }
+  .comecar-no-computador { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .comecar-na-folha { animation: none; }
   .folha-escrita, .folha-escrita-titulo, .folha-escrita-corpo, .escrita-so-lendo, .folha-escrita .collaboration-cursor__label { animation: none; }
   .folha-escrita .folha-escrita-corpo, .folha-escrita .folha-escrita-titulo { transition: none; }
 }
@@ -208,4 +226,125 @@
   .margem-dos-tipos { display: none; }
   .escrita-lado { padding: 0 12px; }
   .menu-da-barra, .menu-do-tipo { min-width: 0; width: min(320px, calc(100vw - 24px)); }
+}
+
+/* ================= ver: Texto | Colunas, o modo limpo e o .docx (#193) ================= */
+
+/* embaixo do título: o segmento Texto | Colunas (o mesmo da revisão), o limpo e o .docx */
+.escrita-ver { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; animation: entrar-suave 0.4s 0.12s var(--suave) both; }
+.escrita-ver .segmento button { height: 28px; }
+.escrita-ver-limpo { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; font-size: 13px; }
+.escrita-ver-limpo[aria-pressed='true'] { background: var(--neutro); }
+.escrita-ver-docx { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+
+/* as colunas: a grade vídeo | áudio, com cada trecho no lugar que a decoração dá (o grid-row vem dela) */
+.folha-escrita-corpo:has(.texto-escrita[data-visao='colunas']) { padding-left: 0; }
+.cabeca-das-colunas { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 4px; font: 600 11px var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--tinta3); animation: entrar-suave 0.35s var(--suave) both; }
+.cabeca-das-colunas span { padding-left: 8px; }
+.folha-escrita .texto-escrita[data-visao='colunas'] { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; }
+.texto-escrita[data-visao='colunas'] > p { min-width: 0; padding: 8px 16px 8px 90px; }
+.texto-escrita[data-visao='colunas'] > p[data-coluna='video'] { grid-column: 1; }
+.texto-escrita[data-visao='colunas'] > p[data-coluna='audio'] { grid-column: 2; }
+.texto-escrita[data-visao='colunas'] > p[data-coluna='linha'] { grid-column: 1 / -1; }
+/* o fio fino que abre cada grupo, nas duas colunas, e o que separa o vídeo do áudio */
+.texto-escrita[data-visao='colunas'] > :is(p.abre, .celula-vazia) { border-top: 1px solid var(--regua); }
+.texto-escrita[data-visao='colunas'] > p:first-child { border-top: 0; }
+.texto-escrita[data-visao='colunas'] > :is(p[data-coluna='audio'], .celula-vazia[data-coluna='audio']) { box-shadow: -1px 0 0 var(--regua); }
+.texto-escrita .celula-vazia { min-height: 100%; pointer-events: none; animation: aparecer-fundo var(--medio) var(--suave) both; }
+.texto-escrita .celula-vazia[data-coluna='video'] { grid-column: 1; }
+.texto-escrita .celula-vazia[data-coluna='audio'] { grid-column: 2; }
+/* a locação, na linha inteira: o rótulo da margem já diz o que ela é, o pino sai */
+.folha-escrita .texto-escrita[data-visao='colunas'] > p[data-tipo='locacao'] { margin-top: 0; padding: 14px 16px 8px 90px; }
+.folha-escrita .texto-escrita[data-visao='colunas'] > p[data-tipo='locacao']::after { display: none; }
+/* nas colunas, o rótulo do tipo fica no começo do trecho, na coluna dele (a margem cobre a folha toda) */
+.folha-escrita-corpo:has(.texto-escrita[data-visao='colunas']) .margem-dos-tipos { width: 100%; }
+.folha-escrita-corpo:has(.texto-escrita[data-visao='colunas']) .tipo-na-margem { right: auto; left: 8px; }
+
+/* ---------- o modo limpo: só a folha, com a cara dos .docx de hoje ---------- */
+
+/* a folha muda de cara no lugar, numa transição da página (View Transitions, onde houver) */
+.folha-escrita { view-transition-name: folha-escrita; }
+::view-transition-group(folha-escrita) { animation-duration: 0.45s; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.3s; }
+
+.pagina-escrita.limpo { --limpo-papel: #ffffff; --limpo-tinta: #111111; --limpo-borda: #000000; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .pagina-escrita.limpo { --limpo-papel: #1d1c1a; --limpo-tinta: #ece8df; --limpo-borda: #d9d4c9; } }
+:root[data-theme='dark'] .pagina-escrita.limpo { --limpo-papel: #1d1c1a; --limpo-tinta: #ece8df; --limpo-borda: #d9d4c9; }
+
+/* tudo sai, menos a folha e o caminho de volta (o topo, a barra, as artes, o rodapé e o "?") */
+.pagina-escrita.limpo > :not(.escrita, .sair-do-limpo) { display: none; }
+body:has(.pagina-escrita.limpo) :is(.botao-atalhos, .rodape-da-escrita) { display: none; }
+.pagina-escrita.limpo .escrita { grid-template-columns: minmax(0, 1fr); max-width: 900px; padding-top: 72px; }
+.pagina-escrita.limpo .escrita-lado { display: none; }
+.sair-do-limpo { position: fixed; top: 14px; right: 18px; z-index: 40; display: flex; align-items: center; gap: 10px; animation: entrar-suave 0.35s 0.1s var(--suave) both; }
+.sair-do-limpo .botao, .sair-do-limpo .botao-texto { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.sair-do-limpo kbd { font: 600 10.5px var(--mono); padding: 1px 5px; }
+
+.folha-escrita.limpo { background: var(--limpo-papel); border-color: transparent; box-shadow: 0 1px 3px rgb(0 0 0 / 8%), 0 10px 30px rgb(0 0 0 / 6%); padding: 72px 88px 96px; animation: none; }
+.folha-escrita.limpo .folha-escrita-cabeca { padding: 0; margin: 0 0 18px; border: 0; }
+.folha-escrita.limpo :is(.folha-escrita-sobre, .folha-escrita-quem, .escrita-ver, .margem-dos-tipos, .cabeca-das-colunas) { display: none; }
+.folha-escrita.limpo .folha-escrita-titulo { font: 700 11pt/1.4 Arial, 'Helvetica Neue', Helvetica, sans-serif; text-transform: uppercase; color: var(--limpo-tinta); animation: none; }
+.folha-escrita.limpo .folha-escrita-corpo { padding-left: 0; }
+
+/* o texto: Arial 11, cada tipo com a cara do .docx (a mesma de `gerarDocx` com `limpo`) */
+.folha-escrita.limpo .texto-escrita { min-height: 40vh; }
+.folha-escrita.limpo .texto-escrita > p,
+.folha-escrita.limpo .texto-escrita > p:is([data-tipo]) {
+  font: 400 11pt/1.4 Arial, 'Helvetica Neue', Helvetica, sans-serif; color: var(--limpo-tinta); letter-spacing: 0; text-transform: none;
+  margin: 0; padding: 0 0 8pt; border: 0;
+}
+.folha-escrita.limpo .texto-escrita > p[data-tipo='locucao'] { text-transform: uppercase; }
+.folha-escrita.limpo .texto-escrita > p[data-tipo='sonora'] { font-weight: 700; }
+.folha-escrita.limpo .texto-escrita > p[data-tipo='locacao'] { text-decoration: underline; text-underline-offset: 0.15em; }
+.folha-escrita.limpo .texto-escrita > p[data-tipo='locacao']::after { display: none; }
+.folha-escrita.limpo .texto-escrita > p[data-tipo='comentario'] { font-style: italic; }
+.folha-escrita.limpo .texto u.arte { font-weight: 700; color: inherit; text-decoration: underline; text-decoration-color: currentColor; text-decoration-thickness: 1px; text-underline-offset: 0.15em; background: none; }
+.folha-escrita.limpo .texto .etq { font: inherit; color: inherit; background: none; padding: 0; }
+/* as fichas voltam a ser o texto, com o caminho inteiro, como no .docx */
+.folha-escrita.limpo .texto-escrita .ficha-do-texto { padding: 0; margin: 0; font: inherit; color: inherit; background: none; animation: none; }
+.folha-escrita.limpo .texto-escrita .ficha-do-texto::before { display: none; }
+.folha-escrita.limpo .texto-escrita .ficha-do-texto-pasta { display: inline; }
+/* o comentário (#192) vira um pontinho no fim do trecho; a coluna dos balões sai, e o balão aberto (no clique no
+   trecho) abre por cima da folha, como na folha estreita */
+.folha-escrita.limpo { --coluna-dos-comentarios: 0px; }
+.pagina-escrita .folha-escrita.limpo .folha-escrita-corpo { padding-right: 0; }
+.folha-escrita.limpo .texto-escrita .comentario-trecho { background: none; }
+.folha-escrita.limpo .texto-escrita .comentario-trecho:not(:has(+ .comentario-trecho))::after {
+  content: ''; display: inline-block; width: 6px; height: 6px; margin: 0 1px 0 2px; border-radius: 50%; vertical-align: 0.55em;
+  background: #e0a400; animation: aparecer-fundo var(--medio) var(--suave) both;
+}
+.folha-escrita.limpo .comentarios-da-folha { left: 0; width: auto; z-index: 5; }
+.folha-escrita.limpo .comentarios-da-folha .balao-comentario { right: 0; left: auto; width: min(360px, 100%); }
+.folha-escrita.limpo .comentarios-da-folha .balao-comentario:not(.ativo), .folha-escrita.limpo .comentarios-sem-trecho { display: none; }
+
+/* o limpo em colunas: a tabela de bordas pretas, um grupo por linha, como no .docx */
+.folha-escrita.limpo .texto-escrita[data-visao='colunas'] { padding: 1px 0 0 1px; }
+.folha-escrita.limpo .texto-escrita[data-visao='colunas'] > :is(p, .celula-vazia) {
+  padding: 6pt 8pt; margin: -1px 0 0 -1px; box-shadow: none;
+  border: 1px solid var(--limpo-borda); border-top-width: 0; border-bottom-width: 0;
+}
+.folha-escrita.limpo .texto-escrita[data-visao='colunas'] > :is(p.abre, .celula-vazia) { border-top-width: 1px; padding-top: 6pt; }
+.folha-escrita.limpo .texto-escrita[data-visao='colunas'] > :is(p.fecha, .celula-vazia) { border-bottom-width: 1px; }
+.folha-escrita.limpo .texto-escrita[data-visao='colunas'] > p:not(.fecha) { padding-bottom: 4pt; }
+.folha-escrita.limpo .texto-escrita[data-visao='colunas'] > p:not(.abre) { padding-top: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .escrita-ver, .cabeca-das-colunas, .texto-escrita .celula-vazia, .sair-do-limpo, .folha-escrita.limpo .texto-escrita .comentario-trecho::after { animation: none; }
+  ::view-transition-group(folha-escrita), ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
+@media print { .sair-do-limpo { display: none; } }
+
+/* no celular, as colunas viram as linhas empilhadas do texto (o celular das colunas é o #198) */
+@media (max-width: 600px) {
+  .folha-escrita .texto-escrita[data-visao='colunas'] { display: block; }
+  .texto-escrita[data-visao='colunas'] > p { padding: 6px 0; }
+  .folha-escrita .texto-escrita[data-visao='colunas'] > p[data-tipo='locacao'] { margin-top: 14px; padding: 12px 0 6px 24px; }
+  .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p[data-tipo='locacao']::after { display: block; }
+  .texto-escrita[data-visao='colunas'] > p.abre { border-top: 0; }
+  .texto-escrita[data-visao='colunas'] > p { box-shadow: none; }
+  .texto-escrita .celula-vazia, .cabeca-das-colunas { display: none; }
+  .folha-escrita-corpo:has(.texto-escrita[data-visao='colunas']) .margem-dos-tipos { display: none; }
+  .folha-escrita.limpo { padding: 40px 18px 60px; }
+  .pagina-escrita.limpo .escrita { padding-top: 60px; }
+  .sair-do-limpo { top: 10px; right: 10px; }
 }
