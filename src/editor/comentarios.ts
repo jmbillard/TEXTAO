@@ -66,8 +66,10 @@ interface Estado {
   ativo: string | null;
   /** as âncoras refeitas pela digitação daqui, para quem escreve guardar */
   refeitas: Set<string>;
+  /** as sugestões da revisão (#196): o texto sugerido de cada uma, que aparece inserido depois do trecho riscado */
+  sugeridos: Map<string, string>;
 }
-type Meta = { ancoras: { id: string; ancora: Ancora }[] } | { ativo: string | null } | { guardadas: string[] };
+type Meta = { ancoras: { id: string; ancora: Ancora; sugerido?: string }[] } | { ativo: string | null } | { guardadas: string[] };
 
 export const chaveDosComentarios = new PluginKey<Estado>('comentarios-no-texto');
 
@@ -90,12 +92,13 @@ export const ComentariosNoTexto = Extension.create({
       new Plugin<Estado>({
         key: chaveDosComentarios,
         state: {
-          init: () => ({ ancoras: new Map(), faixas: new Map(), ativo: null, refeitas: new Set() }),
+          init: () => ({ ancoras: new Map(), faixas: new Map(), ativo: null, refeitas: new Set(), sugeridos: new Map() }),
           apply(tr, velho, _antes, depois) {
             const meta = tr.getMeta(chaveDosComentarios) as Meta | undefined;
             if (meta && 'ancoras' in meta) {
               const ancoras = new Map(meta.ancoras.map((a) => [a.id, a.ancora]));
-              return { ...velho, ancoras, faixas: acharTodas(depois.doc, ancoras), refeitas: new Set([...velho.refeitas].filter((id) => ancoras.has(id))) };
+              const sugeridos = new Map(meta.ancoras.filter((a) => a.sugerido !== undefined).map((a) => [a.id, a.sugerido!]));
+              return { ...velho, ancoras, sugeridos, faixas: acharTodas(depois.doc, ancoras), refeitas: new Set([...velho.refeitas].filter((id) => ancoras.has(id))) };
             }
             if (meta && 'ativo' in meta) return { ...velho, ativo: meta.ativo };
             if (meta && 'guardadas' in meta) return { ...velho, refeitas: new Set([...velho.refeitas].filter((id) => !meta.guardadas.includes(id))) };
@@ -135,7 +138,16 @@ export const ComentariosNoTexto = Extension.create({
             if (!e?.faixas.size) return DecorationSet.empty;
             return DecorationSet.create(
               state.doc,
-              [...e.faixas].map(([id, f]) => Decoration.inline(f.de, f.ate, { class: `comentario-trecho${e.ativo === id ? ' ativo' : ''}`, 'data-comentario': id })),
+              [...e.faixas].flatMap(([id, f]) => {
+                const ativo = e.ativo === id ? ' ativo' : '';
+                const sugerido = e.sugeridos.get(id);
+                if (sugerido === undefined) return [Decoration.inline(f.de, f.ate, { class: `comentario-trecho${ativo}`, 'data-comentario': id })];
+                // a sugestão (#196): o trecho de agora riscado e o sugerido inserido logo depois, como no controle de alterações
+                return [
+                  Decoration.inline(f.de, f.ate, { class: `comentario-trecho sugestao-trecho${ativo}`, 'data-comentario': id }),
+                  Decoration.widget(f.ate, () => inseridoDaSugestao(id, sugerido, !!ativo), { side: 1, key: `sugerido-${id}-${ativo}-${sugerido}`, ignoreSelection: true }),
+                ];
+              }),
             );
           },
         },
@@ -144,8 +156,18 @@ export const ComentariosNoTexto = Extension.create({
   },
 });
 
+/** O texto sugerido, inserido depois do trecho riscado (não é texto do documento: não se seleciona nem se edita). */
+function inseridoDaSugestao(id: string, sugerido: string, ativo: boolean): HTMLElement {
+  const el = document.createElement('ins');
+  el.className = `sugestao-inserido${ativo ? ' ativo' : ''}`;
+  el.setAttribute('data-comentario', id);
+  el.contentEditable = 'false';
+  el.textContent = sugerido;
+  return el;
+}
+
 /** Põe as âncoras dos comentários abertos (e a do que está sendo escrito) no texto. */
-export const definirAncoras = (view: EditorView, ancoras: { id: string; ancora: Ancora }[]) => view.dispatch(view.state.tr.setMeta(chaveDosComentarios, { ancoras }).setMeta('addToHistory', false));
+export const definirAncoras = (view: EditorView, ancoras: { id: string; ancora: Ancora; sugerido?: string }[]) => view.dispatch(view.state.tr.setMeta(chaveDosComentarios, { ancoras }).setMeta('addToHistory', false));
 /** O comentário em foco: o grifo dele fica mais forte. */
 export const ativarComentario = (view: EditorView, ativo: string | null) => view.dispatch(view.state.tr.setMeta(chaveDosComentarios, { ativo }).setMeta('addToHistory', false));
 /** Onde está cada comentário agora. */

@@ -1,6 +1,7 @@
 import { armazenamento, pedir } from './armazenamento';
 import { ouvirFila } from './eventos';
 import type { Ancora, Comentario, Quem } from '../modelo/comentarios';
+import type { SugestaoNova } from '../modelo/sugestoes';
 
 /* Os comentários do Roteiro escrito no PROMeiro (#192), pelo servidor: ler, comentar, responder, resolver, reabrir, o
    visto e a âncora refeita. E o aviso ao vivo: uma conexão só por página, que só escuta os comentários (não conta como
@@ -29,6 +30,12 @@ export const responder = (id: string, fio: string, texto: string) =>
   pedir<{ comentario: Comentario }>(base(id), { method: 'POST', body: JSON.stringify({ texto, fio }) }).then((r) => r.comentario);
 export const resolverComentario = (id: string, comentario: string, reabrir = false) =>
   pedir<{ comentario: Comentario }>(`${base(id)}/${encodeURIComponent(comentario)}/${reabrir ? 'reabrir' : 'resolver'}`, { method: 'POST' }).then((r) => r.comentario);
+/** A sugestão da revisão (#196): quem escreve aceita ou recusa (o desfazer é o `resolverComentario(…, true)`). */
+export const decidirSugestao = (id: string, sugestao: string, acao: 'aceitar' | 'recusar') =>
+  pedir<{ comentario: Comentario }>(`${base(id)}/${encodeURIComponent(sugestao)}/${acao}`, { method: 'POST' }).then((r) => r.comentario);
+/** O designer, na cópia da fila, manda as mudanças do lote como estão agora; volta o que o redator já decidiu. */
+export const sugerir = (copia: string, lote: string, sugestoes: SugestaoNova[]) =>
+  pedir<{ decididas: string[]; escrito: string }>(`/api/roteiros/${encodeURIComponent(copia)}/sugestoes`, { method: 'POST', body: JSON.stringify({ lote, sugestoes }), keepalive: true });
 export const marcarVisto = (id: string) => (comServidor() ? pedir<{ vistos: number }>(`${base(id)}/visto`, { method: 'POST' }) : Promise.resolve({ vistos: 0 }));
 export const refazerAncoras = (id: string, ancoras: Record<string, Ancora>) => pedir<{ mudadas: number }>(`${base(id)}/ancoras`, { method: 'POST', body: JSON.stringify({ ancoras }) });
 

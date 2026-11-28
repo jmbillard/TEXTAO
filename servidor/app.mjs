@@ -3495,7 +3495,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       const daFila = nome ? dosMeusRoteiros(resumosPara(eu), area, nome) : [];
       // o último envio de um Roteiro que a pessoa escreveu (#194) é dela no Redator, também sem o cadastro de redator
       if (area === 'redator') for (const r of resumosPara(eu)) if (r.escritoDe && r.meu && !daFila.some((x) => x.id === r.id)) daFila.push(r);
-      return json(res, 200, { area, nome, roteiros: [...meusEscritos, ...daFila].map(comOCiclo) });
+      // o último envio abre o escrito (#194): ele leva a bolinha dos avisos do escrito, os comentários e as sugestões
+      // da revisão (#196) que chegaram depois do Enviar
+      const avisosDosEscritos = area === 'redator' && daFila.some((r) => r.escritoDe) ? comentarios.naoVistos(eu.email) : {};
+      const comAviso = (r) => (r.escritoDe && avisosDosEscritos[r.escritoDe] ? { ...r, avisos: avisosDosEscritos[r.escritoDe] } : r);
+      return json(res, 200, { area, nome, roteiros: [...meusEscritos, ...daFila.map(comAviso)].map(comOCiclo) });
     }
     if (caminho === '/api/eu/tour') {
       // a pessoa viu o tour da revisão: o convite não aparece mais, em nenhum navegador

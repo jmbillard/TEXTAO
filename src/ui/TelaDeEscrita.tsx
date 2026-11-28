@@ -116,6 +116,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
   // os comentários (#192): o pedido do botão Comentar e quantos estão abertos
   const [pedidoDeComentario, setPedidoDeComentario] = useState(0);
   const [abertos, setAbertos] = useState(0);
+  // as sugestões da revisão (#196) que esperam a decisão: o Enviar diz que elas não vão
+  const [sugestoes, setSugestoes] = useState(0);
   // a escrita (#190): a ponte entre o teclado do editor e a tela (o menu do "/", os balões), e a arte com o balão aberto
   const ponte = useRef<PonteDaEscrita>({});
   // o Ctrl+Enter do Enviar (#194), à parte da ponte que a margem preenche
@@ -484,7 +486,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
             <EditorContent editor={editor} />
             {/* #195: na folha vazia, começar de um arquivo ou de um texto colado */}
             {escreve && <ComecarNaFolha corpo={corpo} vazia={vazia} pode={liberado && !!editor} receber={receberDeFora} falhou={avisar} />}
-            <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} />
+            <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} contarSugestoes={setSugestoes} />
             {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} />}
           </div>
         </article>
@@ -503,6 +505,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
           // o último envio ainda não lido: a letra e a versão que a folha já sabe
           ultimo={estadoDoEscrito === 'enviado' ? (ultimoEnvio ?? { n: 0, em: '', por: { nome: '', email: '' }, motivo: '', claquete: meta.claquete, ...letraEVersaoDoRoteiro(meta) }) : null}
           comentariosAbertos={abertos}
+          sugestoesAbertas={sugestoes}
           enviar={(conferida, opcoes) => enviar(enviando, conferida, { ...opcoes, jaEnviado: estadoDoEscrito === 'enviado' })}
           aoEnviar={aoEnviar}
           fechar={() => setEnviando(null)}

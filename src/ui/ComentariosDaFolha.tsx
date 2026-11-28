@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as TeclaReact } from 'react';
 import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/react';
-import { comentar, lerComentarios, marcarVisto, ouvirComentarios, refazerAncoras, resolverComentario, responder, type ComentariosLidos } from '../dados/comentarios';
+import { comentar, decidirSugestao, lerComentarios, marcarVisto, ouvirComentarios, refazerAncoras, resolverComentario, responder, type ComentariosLidos } from '../dados/comentarios';
+import { aplicarSugestao } from '../editor/sugestoes';
+import { textoCorrido } from '../editor/comentarios';
 import { corDe, iniciais } from '../dados/colaboracao';
 import { ancorasGuardadas, ancorasRefeitas, ancoraDaSelecao, ativarComentario, definirAncoras, faixasDosComentarios } from '../editor/comentarios';
-import { fiosDosComentarios, mencaoSendoDigitada, pedacosComMencoes, podeResolver, quemCombina, type Ancora, type Comentario, type Fio, type Quem } from '../modelo/comentarios';
+import { acharAncora, fiosDosComentarios, mencaoSendoDigitada, pedacosComMencoes, podeResolver, quemCombina, type Ancora, type Comentario, type Fio, type Quem } from '../modelo/comentarios';
 import type { Pessoa } from '../modelo/tipos';
 import { CaixinhaDoDesfazer, type Desfazivel } from './desfazer';
 import { Icone } from './icones';
@@ -51,9 +53,11 @@ interface Props {
   pedido: number;
   /** quantos comentários abertos há (para a barra) */
   contar?: (n: number) => void;
+  /** quantas sugestões da revisão (#196) esperam a decisão (para o Enviar) */
+  contarSugestoes?: (n: number) => void;
 }
 
-export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: Props) {
+export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar, contarSugestoes }: Props) {
   const [lidos, setLidos] = useState<ComentariosLidos | null>(null);
   const [novo, setNovo] = useState<{ ancora: Ancora } | null>(null);
   const [ativo, setAtivo] = useState<string | null>(null);
@@ -91,12 +95,15 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: P
   }, []);
 
   const fios = useMemo(() => fiosDosComentarios(lidos?.comentarios ?? []).filter((f) => !f.resolvido && f.ancora), [lidos]);
-  useEffect(() => contar?.(fios.length), [fios.length, contar]);
+  // as sugestões da revisão (#196) moram junto (os mesmos balões, a mesma âncora e o mesmo aviso), mas contam à parte
+  const nSugestoes = fios.filter((f) => f.sugestao).length;
+  useEffect(() => contar?.(fios.length - nSugestoes), [fios.length, nSugestoes, contar]);
+  useEffect(() => contarSugestoes?.(nSugestoes), [nSugestoes, contarSugestoes]);
 
   // as âncoras no texto: as dos abertos e a do que está sendo escrito
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    definirAncoras(editor.view, [...fios.map((f) => ({ id: f.id, ancora: f.ancora! })), ...(novo ? [{ id: NOVO, ancora: novo.ancora }] : [])]);
+    definirAncoras(editor.view, [...fios.map((f) => ({ id: f.id, ancora: f.ancora!, ...(f.sugestao ? { sugerido: f.sugestao.texto } : {}) })), ...(novo ? [{ id: NOVO, ancora: novo.ancora }] : [])]);
   }, [editor, fios, novo]);
   useEffect(() => {
     if (editor && !editor.isDestroyed) ativarComentario(editor.view, novo ? NOVO : ativo);
@@ -231,6 +238,54 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: P
     );
   };
 
+  /* A sugestão da revisão (#196): aceitar troca o trecho pelo sugerido no texto (só o meio que muda, com as marcas), e
+     o próximo Enviar já leva o certo; recusar deixa como está. As duas com o desfazer. */
+  const decidir = (f: Fio, acao: 'aceitar' | 'recusar') => {
+    if (!editor || editor.isDestroyed || !f.sugestao || !f.ancora) return;
+    const sugerido = f.sugestao.texto;
+    const ancora = f.ancora;
+    if (acao === 'aceitar' && !acharAncora(textoCorrido(editor.state.doc).texto, ancora)) return avisarRef.current('O trecho dessa sugestão saiu do texto: dá para recusar.');
+    void decidirSugestao(id, f.id, acao).then(
+      (c) => {
+        let feita: Ancora | null = null;
+        let original = '';
+        if (acao === 'aceitar' && !editor.isDestroyed) {
+          const { texto } = textoCorrido(editor.state.doc);
+          const a = acharAncora(texto, ancora);
+          original = a ? texto.slice(a.de, a.ate) : ancora.trecho;
+          feita = aplicarSugestao(editor.view, ancora, sugerido);
+        }
+        juntar(c);
+        setAtivo(null);
+        setCaixinha({
+          id: Date.now(),
+          texto: acao === 'aceitar' ? 'Sugestão aceita: o texto mudou.' : 'Sugestão recusada.',
+          desfazer: () => {
+            setCaixinha((x) => x && { ...x, ocupado: true });
+            resolverComentario(id, f.id, true).then(
+              (r) => {
+                // a aceita volta: o texto sugerido sai e o de antes volta ao lugar
+                if (feita && !editor.isDestroyed) aplicarSugestao(editor.view, feita, original);
+                juntar(r);
+                setCaixinha(null);
+                abrir(r.id);
+              },
+              (e: Error) => {
+                setCaixinha((x) => x && { ...x, ocupado: false });
+                avisarRef.current(e.message || 'Não consegui desfazer.');
+              },
+            );
+          },
+          fechar: () => setCaixinha(null),
+        });
+      },
+      (e: Error) => {
+        avisarRef.current(e.message || 'Não consegui decidir a sugestão.');
+        ler();
+      },
+    );
+  };
+
   // onde cada balão fica: à altura do trecho; empilhados sem se cobrir, com o aberto no lugar dele
   const coluna = useRef<HTMLElement>(null);
   const baloes = useRef(new Map<string, HTMLElement>());
@@ -322,6 +377,8 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: P
             fechar={() => setAtivo(null)}
             responder={(t) => enviarResposta(c, t)}
             resolver={() => resolver(f)}
+            decide={escreve}
+            decidir={(acao) => decidir(f, acao)}
             avisar={avisar}
           />
         );
@@ -349,6 +406,9 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: P
               fechar={() => setAtivo(null)}
               responder={(t) => enviarResposta(f.id, t)}
               resolver={() => resolver(f)}
+              decide={escreve}
+              decidir={(acao) => decidir(f, acao)}
+              semTrecho
               avisar={avisar}
               citacao
             />
@@ -379,6 +439,20 @@ function ItemDoFio({ c, pessoas, novo }: { c: Comentario; pessoas: Quem[]; novo?
             {haQuantoTempo(c.criadoEm)}
           </time>
         </p>
+        {c.sugestao && c.ancora ? (
+          <p className="sugestao-troca">
+            <span className="sugestao-rotulo">Sugere, na revisão:</span>{' '}
+            <del>{c.ancora.trecho}</del>
+            {c.sugestao.texto ? (
+              <>
+                {' '}
+                <span className="sugestao-seta" aria-label="por">→</span> <ins>{c.sugestao.texto}</ins>
+              </>
+            ) : (
+              <span className="sugestao-apagar"> (apagar)</span>
+            )}
+          </p>
+        ) : (
         <p className="comentario-texto">
           {pedacosComMencoes(c.texto, pessoas).map((p, i) =>
             p.mencao ? (
@@ -390,6 +464,7 @@ function ItemDoFio({ c, pessoas, novo }: { c: Comentario; pessoas: Quem[]; novo?
             ),
           )}
         </p>
+        )}
       </div>
     </div>
   );
@@ -409,19 +484,24 @@ interface PropsDoBalao {
   avisar: (t: string) => void;
   /** o trecho entre aspas no topo (o comentário cujo trecho saiu do texto) */
   citacao?: boolean;
+  /** a sugestão da revisão (#196): quem escreve aceita ou recusa; sem o trecho no texto, só recusa */
+  decide?: boolean;
+  decidir?: (acao: 'aceitar' | 'recusar') => void;
+  semTrecho?: boolean;
   ref?: React.Ref<HTMLElement>;
 }
 
 /** O balão de um fio: o comentário e as respostas; aberto, o responder e o resolver. */
-function BalaoDoFio({ fio, estilo, aberto, novo, pessoas, resolve, abrir, fechar, responder, resolver, avisar, citacao, ref }: PropsDoBalao) {
+function BalaoDoFio({ fio, estilo, aberto, novo, pessoas, resolve, abrir, fechar, responder, resolver, avisar, citacao, decide, decidir, semTrecho, ref }: PropsDoBalao) {
   const n = fio.respostas.length;
+  const sugestao = !!fio.sugestao;
   return (
     <article
       ref={ref}
-      className={`balao-comentario${aberto ? ' ativo' : ''}${novo ? ' novo' : ''}`}
+      className={`balao-comentario${sugestao ? ' balao-sugestao' : ''}${aberto ? ' ativo' : ''}${novo ? ' novo' : ''}`}
       style={estilo}
       data-fio={fio.id}
-      aria-label={`Comentário de ${fio.autor.nome}`}
+      aria-label={`${sugestao ? 'Sugestão' : 'Comentário'} de ${fio.autor.nome}`}
       onClick={() => !aberto && abrir()}
     >
       {aberto && (
@@ -429,7 +509,7 @@ function BalaoDoFio({ fio, estilo, aberto, novo, pessoas, resolve, abrir, fechar
           <Icone nome="fechar" tam={13} traco={2} />
         </button>
       )}
-      {citacao && fio.ancora && <p className="balao-trecho">“{fio.ancora.trecho}”</p>}
+      {citacao && fio.ancora && !sugestao && <p className="balao-trecho">“{fio.ancora.trecho}”</p>}
       <ItemDoFio c={fio} pessoas={pessoas} novo={novo} />
       {aberto || n <= 1 ? (
         fio.respostas.map((r) => <ItemDoFio key={r.id} c={r} pessoas={pessoas} />)
@@ -438,10 +518,21 @@ function BalaoDoFio({ fio, estilo, aberto, novo, pessoas, resolve, abrir, fechar
           {n} respostas
         </button>
       )}
+      {/* a sugestão: aceitar e recusar à vista, também com o balão fechado, para quem escreve */}
+      {sugestao && decide && decidir && (
+        <div className="sugestao-decidir" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="botao primario sugestao-aceitar" disabled={semTrecho} title={semTrecho ? 'O trecho saiu do texto' : 'Troca o trecho pelo sugerido'} onClick={() => decidir('aceitar')}>
+            Aceitar
+          </button>
+          <button type="button" className="botao sugestao-recusar" onClick={() => decidir('recusar')}>
+            Recusar
+          </button>
+        </div>
+      )}
       {aberto && (
         <>
           <CaixaDeComentario pessoas={pessoas} rotulo="Responder" dica="Responder…" enviar={responder} avisar={avisar} />
-          {resolve && (
+          {resolve && !sugestao && (
             <button type="button" className="botao-texto balao-resolver" onClick={resolver}>
               <i className="anel" aria-hidden="true" /> Resolver
             </button>

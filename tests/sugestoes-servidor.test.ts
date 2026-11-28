@@ -83,6 +83,9 @@ describe('a revisão que volta como sugestão (#196)', () => {
     // a bolinha em "Roteiros", para a autora; quem sugeriu não ganha aviso
     expect(await avisos(marina)).toMatchObject({ 'sug-escrito-1': { n: 1 } });
     expect(await avisos(davi)).toEqual({});
+    // e na lista do Redator, no último envio (que abre o escrito)
+    const meus = await (await marina('/api/meus-roteiros?area=redator')).json();
+    expect(meus.roteiros.find((x: { id: string }) => x.id === 'sug-copia-1')).toMatchObject({ escritoDe: 'sug-escrito-1', avisos: { n: 1 } });
 
     // continuando a digitar no mesmo trecho: a mesma sugestão muda no lugar, sem aviso novo
     await sugerir(davi, 'sug-copia-1', 'lote-davi-1', [{ id: 'sug-churras-1', ancora: ANCORA, texto: 'CHURRASQUEIROS!' }]);
