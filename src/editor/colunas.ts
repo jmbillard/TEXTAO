@@ -102,14 +102,17 @@ export function mudarVisao(editor: Editor, visao: Visao, junto?: () => void) {
 /** A visão de agora. */
 export const visaoDe = (editor: Editor): Visao => (chave.getState(editor.state)?.ativo ? 'colunas' : 'texto');
 
-export const Colunas = Extension.create({
+export const Colunas = Extension.create<{ inicial: Visao }>({
   name: 'colunasDaEscrita',
+  // a visão em que a folha abre: o envio que a edição lê pela Pauta (#197) já abre nas colunas
+  addOptions: () => ({ inicial: 'texto' as Visao }),
   addProseMirrorPlugins() {
+    const inicial = this.options.inicial === 'colunas';
     return [
       new Plugin<Estado>({
         key: chave,
         state: {
-          init: (_, state) => decorar(state, false),
+          init: (_, state) => decorar(state, inicial),
           apply: (tr, antigo, _velho, novo) => {
             const meta = tr.getMeta(chave) as boolean | undefined;
             const ativo = meta ?? antigo.ativo;
