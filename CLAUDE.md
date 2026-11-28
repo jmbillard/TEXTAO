@@ -13,6 +13,8 @@ respostas ficam com o gestor. Ao delegar ou conferir, siga `docs/agents/gestao.m
 ## Regras de UI
 
 - Nada de "unha": nenhum item, cartão, linha ou bloco leva faixa colorida na borda esquerda (`border-left` grosso, `box-shadow: inset Npx 0 0`, `border-inline-start`); o estado vai numa bolinha ou etiqueta, no fundo levemente tingido ou no texto.
+- Antes de criar uma peça de UI, procure no catálogo `docs/componentes.md`: o que é reaproveitado com o mesmo propósito usa a mesma peça e se comporta igual (a variação vira opção, nunca cópia).
+- Nada de check verde: o estado vai na `BolinhaDeEstado`. Toda tela de lista ou agenda tem a `BuscaNaLupa`, no lugar de todas.
 
 ## Skills dos agentes (Agent skills)
 
