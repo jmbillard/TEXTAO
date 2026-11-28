@@ -1472,6 +1472,8 @@ input.key.editando { border-color: var(--ultra); color: var(--tinta); background
    do toque; os campos em 16 px para o iOS não dar zoom */
 @media (max-width: 600px) {
   .lista-topo { padding: 8px 12px; }
+  /* as abas ficam com a linha delas (quebram, se não couberem); a lupa desce para a linha de baixo, à direita */
+  .lista-topo .abas-cad { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; row-gap: 6px; }
   .busca.lupa.cad-busca.aberta { width: 100%; }
   .cad-busca input, input.entrada-cad, .entrada-cad.chips input, input.key.editando { font-size: 16px; }
 }

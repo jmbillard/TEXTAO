@@ -361,7 +361,8 @@ async function noCelular(navegador, url, tema) {
   await capturar(p, `ficha-celular-${tema === 'dark' ? 'escuro' : 'claro'}`);
   await ficha.locator('.cad-busca input').focus();
   await ficha.locator('.cad-busca input').fill('nenhuma assim');
-  await ficha.locator('.cad-vazio', { hasText: 'Nada com “nenhuma assim” no acervo.' }).waitFor();
+  // #171: o vazio da busca à mão (NadaNaBusca)
+  await ficha.locator('.nada-na-busca', { hasText: 'nada com “nenhuma assim” no acervo' }).waitFor();
   await ficha.locator('.trilha-cad .botao-texto').tap();
   await linha(p, PROGRAMA).waitFor();
   assert.deepEqual(erros, [], `celular ${tema}: erros na página`);
