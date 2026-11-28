@@ -2,6 +2,7 @@
    adivinhado pelo texto. Regras puras, usadas pelo editor de escrita e pelas colunas. */
 import { analisarSonoras, ehLocucao, NAO_E_NOME } from './sonora';
 import { chaveDeArte } from './diferencas';
+import { RITMO } from './exportar';
 import type { NoJSON, TipoEtiqueta } from './tipos';
 
 export const TIPOS_DO_TRECHO = ['texto', 'locucao', 'sonora', 'trilha', 'locutor', 'arte', 'edicao', 'producao', 'locacao', 'comentario'] as const;
@@ -251,8 +252,6 @@ const semFichas = (texto: string) => {
   for (const f of fichasDoTexto(texto).reverse()) out = out.slice(0, f.ini) + ' ' + out.slice(f.fim);
   return out;
 };
-/** Ritmo médio de leitura de chamada, em palavras por segundo (o mesmo de `RITMO`, na exportação). */
-const LEITURA = { locucao: 2.6, sonora: 3 };
 
 /**
  * Os números do rodapé: as palavras do texto, as da locução e o tempo de leitura (a locução e a fala das sonoras, no
@@ -269,8 +268,8 @@ export function contagemDoTexto(doc: NoJSON): { palavras: number; locucao: numbe
     const { tipo } = tipoDoTrecho(p);
     if (tipo === 'locucao') {
       locucao += n;
-      seg += n / LEITURA.locucao;
-    } else if (tipo === 'sonora') seg += contarPalavras(texto.replace(/^[^:\n]{1,60}:\s*/u, '')) / LEITURA.sonora;
+      seg += n / RITMO.locucao;
+    } else if (tipo === 'sonora') seg += contarPalavras(texto.replace(/^[^:\n]{1,60}:\s*/u, '')) / RITMO.sonora;
   }
   return { palavras, locucao, segundos: Math.round(seg) };
 }
