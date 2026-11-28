@@ -86,6 +86,7 @@ const assert = require('node:assert/strict');
 const { mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 const { subir } = require('./tour.e2e.cjs');
+const { checksVerdes, lugarDaLupa } = require('./coerencia.cjs');
 const RAIZ = join(__dirname, '..', '..');
 
 let chromium;
@@ -345,6 +346,12 @@ async function montarPeloTeclado(navegador, url) {
   assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
 
   // #171: a busca, a lupa das outras telas: a claquete que bate fica, as outras esmaecem; sem nenhuma, à mão
+  // a coerência entre as telas (#171): a lupa no lugar de todas e nenhum check verde de estado
+  {
+    const lugar = await lugarDaLupa(p);
+    assert.ok(lugar.ok, `o Montar a pauta: a lupa na ponta da linha do título (${JSON.stringify(lugar)})`);
+    assert.deepEqual(await checksVerdes(p), [], 'o Montar a pauta: nenhum check verde de estado');
+  }
   const lupa = p.getByRole('searchbox', { name: 'Buscar no dia' });
   await p.keyboard.press('/');
   await lupa.fill('mundo');

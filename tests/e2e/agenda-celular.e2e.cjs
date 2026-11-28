@@ -16,6 +16,7 @@
 // Com MEDICAO=arquivo.json, grava os números de cada gesto.
 const { writeFileSync } = require('node:fs');
 const { subir, contexto } = require('./tour.e2e.cjs');
+const { checksVerdes, lugarDaLupa } = require('./coerencia.cjs');
 
 let chromium, devices;
 try {
@@ -1303,8 +1304,13 @@ async function buscaNaAgenda(navegador, url, conferir) {
     await p.goto(url);
     await p.waitForSelector('.secao-trello .semana .coluna');
     await p.waitForTimeout(900);
-    const lupa = p.locator('.barra-topo .busca.lupa');
-    conferir((await lupa.count()) === 1, rotulo('a lupa está no topo'));
+    // o lugar de todas as lupas (#171): na linha do título da fila, na ponta direita
+    const lugar = await lugarDaLupa(p);
+    conferir(lugar.ok, rotulo(`a lupa na ponta da linha do título (${JSON.stringify(lugar)})`));
+    // nada de check verde (#171): o entregue e o pronto vão na bolinha de estado
+    const verdes = await checksVerdes(p);
+    conferir(verdes.length === 0, rotulo(`nenhum check verde de estado (${verdes.join(', ')})`));
+    conferir((await p.locator('.secao-trello .card-semana-etapa.entregue .bolinha-estado.entregue').count()) >= 1, rotulo('o entregue leva a bolinha de estado'));
     const cards = p.locator('.secao-trello .card-semana');
     const antes = await cards.count();
     const alvo = (await p.locator('.secao-trello .card-semana[data-card="agdhoje1"] .card-semana-claquete').innerText()).trim().split(/\s+/)[0];
@@ -1313,7 +1319,7 @@ async function buscaNaAgenda(navegador, url, conferir) {
     await p.waitForTimeout(700);
     const depois = await cards.count();
     conferir(depois >= 1 && depois < antes && (await p.locator('.secao-trello .card-semana[data-card="agdhoje1"]').count()) === 1, rotulo(`a lupa filtra a agenda (${antes} → ${depois}, "${alvo}")`));
-    await p.locator('.barra-topo .busca.lupa input').fill('zzzqqq');
+    await p.locator('.lupa-da-cabeca input').fill('zzzqqq');
     const nada = p.locator('.secao-trello .nada-na-busca');
     await nada.waitFor({ timeout: 5000 });
     conferir((await nada.textContent()).trim() === 'nada com “zzzqqq” na agenda', rotulo(`sem nenhum, a agenda fica e diz à mão (${(await nada.textContent()).trim()})`));

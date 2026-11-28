@@ -16,6 +16,7 @@ const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const zlib = require('node:zlib');
 const { subir } = require('./tour.e2e.cjs');
+const { checksVerdes, lugarDaLupa } = require('./coerencia.cjs');
 
 let chromium, devices;
 try {
@@ -205,6 +206,12 @@ async function noComputador(navegador, s, video) {
   assert.match(await colunas.nth(1).textContent(), /hoje/);
 
   // a busca (#182): a lupa acha pelo sessão, sem acento, em outras semanas também, e mostra como a busca de Produções
+  // a coerência entre as telas (#171): a lupa no lugar de todas e nenhum check verde de estado
+  {
+    const lugar = await lugarDaLupa(p);
+    assert.ok(lugar.ok, `a agenda de filmes: a lupa na ponta da linha do título (${JSON.stringify(lugar)})`);
+    assert.deepEqual(await checksVerdes(p), [], 'a agenda de filmes: nenhum check verde de estado');
+  }
   await p.locator('.agenda-filmes .busca.lupa').click();
   await p.keyboard.type('corujao');
   const achados = p.locator('.filmes-busca .prod-achado');

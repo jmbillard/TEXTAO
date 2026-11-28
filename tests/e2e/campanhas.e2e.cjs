@@ -17,6 +17,7 @@ const assert = require('node:assert/strict');
 const { mkdirSync, readdirSync, renameSync } = require('node:fs');
 const { join } = require('node:path');
 const { subir } = require('./tour.e2e.cjs');
+const { checksVerdes, lugarDaLupa } = require('./coerencia.cjs');
 const RAIZ = join(__dirname, '..', '..');
 
 let chromium, devices;
@@ -104,6 +105,12 @@ async function naLista(navegador, url, ids) {
     assert.match(await p.locator(`.camp-cartao[data-campanha="${ids.aurora}"] .camp-cartao-pe`).textContent(), /3 produções\s*·\s*mexida agora há pouco/);
     await semUnha(p, 'a lista');
     await capturar(p, '01-lista-claro');
+    // a coerência entre as telas (#171): a lupa no lugar de todas e nenhum check verde de estado
+    {
+      const lugar = await lugarDaLupa(p);
+      assert.ok(lugar.ok, `as Campanhas: a lupa na ponta da linha do título (${JSON.stringify(lugar)})`);
+      assert.deepEqual(await checksVerdes(p), [], 'as Campanhas: nenhum check verde de estado');
+    }
     // a lupa: "/" abre; filtra sem caixa nem acento; Esc limpa
     await p.keyboard.press('/');
     await p.keyboard.type('AURORA');

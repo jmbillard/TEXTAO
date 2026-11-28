@@ -68,6 +68,7 @@ const assert = require('node:assert/strict');
 const { mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 const { subir } = require('./tour.e2e.cjs');
+const { checksVerdes, lugarDaLupa } = require('./coerencia.cjs');
 const RAIZ = join(__dirname, '..', '..');
 
 let chromium, devices;
@@ -1316,6 +1317,12 @@ async function espacoEBusca(navegador, url, db, api, chamadasAoTrello) {
   await quieta(p);
   chamadasAoTrello.splice(0);
   const novela = cardDe(p, 'Novela Sinfonia');
+  // a coerência entre as telas (#171): a lupa no lugar de todas e nenhum check verde de estado
+  {
+    const lugar = await lugarDaLupa(p);
+    assert.ok(lugar.ok, `Produções: a lupa na ponta da linha do título (${JSON.stringify(lugar)})`);
+    assert.deepEqual(await checksVerdes(p), [], 'Produções: nenhum check verde de estado');
+  }
   const lupa = p.getByRole('searchbox', { name: 'Buscar nas produções' });
 
   // com o foco no campo da busca, o espaço é do campo: nada muda
@@ -1409,6 +1416,8 @@ async function espacoEBusca(navegador, url, db, api, chamadasAoTrello) {
   // no celular: a lupa toma a linha do título, e a lista cabe sem rolar para o lado
   const cel = await abrir(navegador, url, { ...devices['iPhone 13'], colorScheme: 'dark' });
   await cel.p.locator('.prod-bloco').first().waitFor();
+  const lugarNoCelular = await lugarDaLupa(cel.p);
+  assert.ok(lugarNoCelular.ok && lugarNoCelular.direita === 0, `celular: a lupa na ponta da linha do título (${JSON.stringify(lugarNoCelular)})`);
   await cel.p.locator('.prod-cabeca .busca.lupa').click();
   await cel.p.keyboard.type('jogo');
   await cel.p.locator('.prod-achado').first().waitFor();
