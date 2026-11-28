@@ -87,7 +87,7 @@
 .cartao-meu { background: var(--papel); border: 1px solid var(--regua); border-radius: 10px; padding: 9px 10px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .cartao-meu b { font: 600 13px/1.3 var(--mono); overflow-wrap: anywhere; }
 .cartao-meu span { font-size: 12px; line-height: 1.4; color: var(--tinta2); overflow-wrap: anywhere; }
-.coluna-vazia { padding: 0 4px; font-size: 12.5px; color: var(--tinta3); }
+.coluna-vazia { padding: 0 4px; }
 
 /* por estado: a faixa do ciclo (quantos em cada estado; um toque mostra só aquele) e a lista agrupada */
 .faixa-ciclo { display: grid; grid-template-columns: 1.3fr repeat(4, 1fr); gap: 4px; margin: 0 0 -16px; }
