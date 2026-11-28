@@ -9,7 +9,8 @@ import { Icone, type NomeIcone } from './icones';
 import { plural, quandoComecou } from './util';
 import { RoteiroAberto } from './RoteiroAberto';
 import './areas.css';
-import { AbaComRabisco, BolinhaDeEstado, NadaNaBusca, Vazio } from './pecas';
+import { AbaComRabisco, BolinhaDeAviso, BolinhaDeEstado, NadaNaBusca, Vazio } from './pecas';
+import { ouvirComentarios } from '../dados/comentarios';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { ABAS_DOS_ROTEIROS, bateComABusca, escritosDaAba, tituloParaMostrar, type AbaDosRoteiros } from '../modelo/escrito';
 import { CASCATA_MS, NA_CASCATA } from './cena';
@@ -67,8 +68,22 @@ function TrilhaDoCiclo({ ciclo }: { ciclo: CicloDoRoteiro }) {
     título (#189). */
 function nomeNaFicha(r: Resumo) {
   const nome = apelidoDoRoteiro(r.id) || r.meta.claquete;
-  if (nome) return <NomeDaClaquete nome={nome} versoes={versoesDoResumo(r)} />;
-  return r.escrito ? <span className="titulo-escrito">{tituloParaMostrar(r.meta)}</span> : 'Sem claquete';
+  const aviso = r.avisos && <BolinhaDeAviso className="aviso-na-ficha" rotulo={r.avisos.mencao ? 'citaram você num comentário' : 'comentário novo no seu roteiro'} />;
+  if (nome)
+    return (
+      <>
+        <NomeDaClaquete nome={nome} versoes={versoesDoResumo(r)} />
+        {aviso}
+      </>
+    );
+  return r.escrito ? (
+    <span className="titulo-escrito">
+      {tituloParaMostrar(r.meta)}
+      {aviso}
+    </span>
+  ) : (
+    'Sem claquete'
+  );
 }
 
 const nomeDoEstado = (id: Estado) => CICLO.find((c) => c.id === id)?.nome ?? '';
@@ -226,6 +241,8 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false,
       );
     };
     void ler(true);
+    // um comentário novo (#192) acende a bolinha do roteiro na hora
+    const pararComentarios = comEscrita ? ouvirComentarios(() => void ler(false)) : () => {};
     // o ciclo muda sozinho (o envio, a Produção, a data): na cadência da agenda, a cada minuto com a aba à vista, e de
     // novo quando a aba volta à vista ou ganha o foco
     const deNovo = () => {
@@ -236,6 +253,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false,
     window.addEventListener('focus', deNovo);
     return () => {
       vivo = false;
+      pararComentarios();
       clearInterval(t);
       document.removeEventListener('visibilitychange', deNovo);
       window.removeEventListener('focus', deNovo);

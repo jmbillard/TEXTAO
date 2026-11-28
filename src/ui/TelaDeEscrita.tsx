@@ -6,6 +6,8 @@ import { extensoesDoRoteiro, prepararColagem, Teclado } from '../editor/extensoe
 import { metaVazia, type Meta, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
+import { ComentariosDaFolha } from './ComentariosDaFolha';
+import { ComentariosNoTexto } from '../editor/comentarios';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
 import { quandoComecou } from './util';
@@ -82,6 +84,9 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   const pessoaRef = useRef(pessoa);
   pessoaRef.current = pessoa;
   const titulo = useRef<HTMLTextAreaElement>(null);
+  // os comentários (#192): o pedido do botão Comentar e quantos estão abertos
+  const [pedidoDeComentario, setPedidoDeComentario] = useState(0);
+  const [abertos, setAbertos] = useState(0);
 
   const editor = useEditor({
     extensions: [
@@ -89,6 +94,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
       // Ctrl+U marca a arte, como na revisão; o resto do teclado da escrita (o "/", Tab nos tipos) chega no #190
       Teclado.configure({ programa: () => estado.current.meta.programa }),
       History.configure({ depth: 500 }),
+      // o grifo dos trechos comentados (#192): decoração, o documento não muda
+      ComentariosNoTexto,
     ],
     content: inicial.doc,
     editable: escreve,
@@ -207,6 +214,20 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
         )}
         <span className="espaco" />
         {/* #191: quem está no roteiro agora (a presença) entra aqui */}
+        {/* #192: comentar o trecho selecionado (também Ctrl+Alt+M), para toda pessoa que lê o roteiro */}
+        <button
+          type="button"
+          className="botao escrita-comentar"
+          title="Comentar o trecho selecionado (Ctrl+Alt+M)"
+          aria-keyshortcuts="Control+Alt+M"
+          // o clique não tira a seleção do texto
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setPedidoDeComentario((n) => n + 1)}
+        >
+          <Icone nome="comentario" tam={14} traco={2} />
+          <span className="rotulo">Comentar</span>
+          {abertos > 0 && <span className="contagem" aria-label={`${abertos} abertos`}>{abertos}</span>}
+        </button>
         {meu ? (
           <span className="compartilhar escrita-visibilidade" ref={caixaDoPainel}>
             <button type="button" className={`visibilidade ${publico ? 'publico' : ''}`} aria-haspopup="dialog" aria-expanded={compartilhando} onClick={() => setCompartilhando((v) => !v)}>
@@ -226,7 +247,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
         <p className="escrita-so-lendo" role="status">
           <Icone nome="olho" tam={15} traco={2} />
           <span>
-            Você está <b>só lendo</b>: quem escreve é {autor || 'o redator'} e quem {autor ? 'ele ou ela' : 'ele'} convidar.
+            Você está <b>só lendo</b>: quem escreve é {autor || 'o redator'} e quem {autor ? 'ele ou ela' : 'ele'} convidar. Selecione um trecho para comentar.
           </span>
         </p>
       )}
@@ -269,6 +290,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
               balões de comentário (#192) ficam à direita */}
           <div className="folha-escrita-corpo" data-margem="tipos">
             <EditorContent editor={editor} />
+            <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} />
           </div>
         </article>
       </main>

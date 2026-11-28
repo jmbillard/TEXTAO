@@ -55,6 +55,7 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | Peça | Onde mora | O que é | Quando usar |
 |---|---|---|---|
 | `BolinhaDeEstado` | `pecas.tsx` | O pontinho da etapa: entrada neutra, produzindo `--ultra`, aprovação, entregue `--ok`, arquivada. O estado `ok` (pronto, confere, pode) também é ela; `escrevendo` é o roteiro sendo escrito, e `salvando`/`salvou` são a marca de salvo da folha de escrita (a laranja, nunca um ✓). Tamanhos: `pequena` (6 px) e `ficha` (8 px, a classe `tam-ficha`). | Todo estado. É ela que diz "está tudo certo", nunca um ✓ verde. |
+| `BolinhaDeAviso` | `pecas.tsx` | O pontinho laranja do novo para você, que surge com um pulo e uma onda (o mesmo do aviso dos Filmes no topo, `caminho-aviso`). Some quando a pessoa vê. | O comentário que cita a pessoa ou que chegou no roteiro dela (#192): na lista de "Roteiros" e no balão. No topo, o caminho usa o `caminho-aviso`. |
 | `EtiquetaDaCampanha` | `EtiquetaDaCampanha.tsx` | A etiqueta da campanha, no tom dela: a primeira e "+N". Abre a página da campanha. | Onde um card mostra a campanha: agenda, Pauta, Produções, card aberto. |
 | `NumeroCirculado` | `pecas.tsx` | O número circulado à caneta em `--ultra`. | Um por tela: o número da sua tarefa. |
 | `VoceAMao` | `pecas.tsx` | O "você" à mão, em `--ultra`. | Ao lado do que é seu (a sua linha na Pauta, o seu card nas Produções). |
